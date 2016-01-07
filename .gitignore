@@ -1,0 +1,12 @@
+.cache
+.idea
+*.pyc
+*.egg-info
+*.orig
+out.txt
+.coverage
+coverage.xml
+cover
+jenkins.xml
+.cache
+/env/
