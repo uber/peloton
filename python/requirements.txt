@@ -1,0 +1,10 @@
+# Standard requirements
+clay-tornado==0.11.1
+tornado>=4.1
+clay-sortsol-logging==1.1.7
+clay-thrift==0.3.1
+
+# tornado request metrics
+mutornadomon==0.3.2
+mock==1.0.1
+psutil==3.1.1

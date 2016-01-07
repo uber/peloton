@@ -10,3 +10,4 @@ cover
 jenkins.xml
 .cache
 /env/
+*~
