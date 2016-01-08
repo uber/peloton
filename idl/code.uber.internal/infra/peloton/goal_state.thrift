@@ -157,11 +157,12 @@ service GoalStateManager {
   )
 
   /**
-   *  Update the actual states for the list of instances. (Append only ??)
+   *  Update the actual states for the list of instances. The goal state agent
+   *  also uses this method as a way to keep-alive service instances in the
+   *  master if the version number and digest is the same. (Append only ??)
    */
   void updateActualStates(1: list<ActualState> states) throws (
-    1: StateAlreadyExists alreadyExists,
-    2: InternalServerError serverError,
+    1: InternalServerError serverError,
   )
 
   /**

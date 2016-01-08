@@ -23,29 +23,32 @@ struct ConfigBundleState
   /** Config bundle type */
   1: required ConfigBundleType type;
 
-  /** Datacenter where config bundle to be deployed */
-  2: required string datacenter;
+  /** Datacenter where config bundle to be deployed, e.g. sjc1/dca1/pek1/pvg1 */
+  2: required string datacenterId;
 
-  /** Pipeline where config bundle to be deployed */
-  3: required string pipeline;
-  
-  /** Application ID of the config bundle, e.g. marge */
-  4: required string appId;
+  /** Pipeline where config bundle to be deployed, e.g. us1/us2/cn1/cn2 */
+  3: required string pipelineId;
+
+  /** Service ID of the config bundle, e.g. homer */
+  4: required string serviceId;
+
+  /** Application ID of the config bundle, e.g. homer-kafka-ingester */
+  5: required string appId;
   
   /** Deployment ID of the config bundle, e.g. production */
-  5: required string deploymentId;
+  6: required string deploymentId;
 
   /** Current active revision of the config bundle */
-  6: optional string activeRevision;
+  7: optional string activeRevision;
 
   /** Next revision to which the config bundle is upgraded */
-  7: optional string nextRevision;
+  8: optional string nextRevision;
 
   /**
    *  Past revisions of the config bundle which can be used for
    *  upgrade rollback
    */
-  8: optional list<string> pastRevisions;
+  9: optional list<string> pastRevisions;
 
 }
   

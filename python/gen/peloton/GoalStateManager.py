@@ -44,7 +44,9 @@ class Iface(object):
 
   def updateActualStates(self, states):
     """
-    Update the actual states for the list of instances. (Append only ??)
+    Update the actual states for the list of instances. The goal state agent
+    also uses this method as a way to keep-alive service instances in the
+    master if the version number and digest is the same. (Append only ??)
 
     Parameters:
      - states
@@ -177,7 +179,9 @@ class Client(Iface):
 
   def updateActualStates(self, states):
     """
-    Update the actual states for the list of instances. (Append only ??)
+    Update the actual states for the list of instances. The goal state agent
+    also uses this method as a way to keep-alive service instances in the
+    master if the version number and digest is the same. (Append only ??)
 
     Parameters:
      - states
@@ -205,8 +209,6 @@ class Client(Iface):
     result = updateActualStates_result()
     result.read(iprot)
     iprot.readMessageEnd()
-    if result.alreadyExists is not None:
-      raise result.alreadyExists
     if result.serverError is not None:
       raise result.serverError
     return
@@ -311,8 +313,6 @@ class Processor(Iface, TProcessor):
     result = updateActualStates_result()
     try:
       yield gen.maybe_future(self._handler.updateActualStates(args.states))
-    except StateAlreadyExists as alreadyExists:
-      result.alreadyExists = alreadyExists
     except InternalServerError as serverError:
       result.serverError = serverError
     oprot.writeMessageBegin("updateActualStates", TMessageType.REPLY, seqid)
@@ -470,28 +470,23 @@ class updateActualStates_args(TBase):
 class updateActualStates_result(TBase):
   """
   Attributes:
-   - alreadyExists
    - serverError
   """
 
   __slots__ = [ 
-    'alreadyExists',
     'serverError',
    ]
 
   thrift_spec = (
     None, # 0
-    (1, TType.STRUCT, 'alreadyExists', (StateAlreadyExists, StateAlreadyExists.thrift_spec), None, ), # 1
-    (2, TType.STRUCT, 'serverError', (InternalServerError, InternalServerError.thrift_spec), None, ), # 2
+    (1, TType.STRUCT, 'serverError', (InternalServerError, InternalServerError.thrift_spec), None, ), # 1
   )
 
-  def __init__(self, alreadyExists=None, serverError=None,):
-    self.alreadyExists = alreadyExists
+  def __init__(self, serverError=None,):
     self.serverError = serverError
 
   def __hash__(self):
     value = 17
-    value = (value * 31) ^ hash(self.alreadyExists)
     value = (value * 31) ^ hash(self.serverError)
     return value
 
