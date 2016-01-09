@@ -1,8 +1,9 @@
 # Standard requirements
 clay-tornado==0.11.1
-tornado>=4.1
+tornado==4.3
 clay-sortsol-logging==1.1.7
 clay-thrift==0.3.1
+thriftrw==1.0
 
 # tornado request metrics
 mutornadomon==0.3.2

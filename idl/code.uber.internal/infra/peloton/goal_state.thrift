@@ -47,7 +47,7 @@ struct StateIdentity
   2: required string instanceId;
 
   /**
-   *  Version number of the goal state which is monolithically increasing.
+   *  Version number of the goal state which is monotonically increasing.
    *  Goal state clients and executors can use this to guide against
    *  race conditions using MVCC.
    */
@@ -175,6 +175,12 @@ service GoalStateManager {
 }
 
 
+/**
+ *  Pluggable goal state module interface to be implemented by a goal state
+ *  plugin such as config bundle manager. Note that the goal state module
+ *  can be either running within the same process space as goal state agent
+ *  or running in a separate process on the same host.
+ */
 service GoalStateModule {
 
   /** Get the module name */
