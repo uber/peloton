@@ -1,0 +1,6 @@
+service_name: peloton-master
+owning_team: udeploy
+backend_port: 5336
+frontend_port: 15336
+service_type: clay_tornado
+
