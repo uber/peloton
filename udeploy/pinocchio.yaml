@@ -3,4 +3,6 @@ owning_team: udeploy
 backend_port: 5289
 frontend_port: 15289
 service_type: clay_tornado
-
+build_cmds:
+  - 'RUN pip install -r python/requirements.txt'
+  - 'RUN pip install --editable python'
