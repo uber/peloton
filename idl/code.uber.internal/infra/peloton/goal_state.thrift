@@ -14,8 +14,9 @@ exception StateAlreadyExists
   1: optional string message;
 
   /** List of state IDs that already exist */
-  2: optional list<StateIdentity> existingStates
+  2: optional list<StateKey> existingStates
 }
+
 
 /** Raised when a given state is not valid */
 exception InvalidGoalState
@@ -26,6 +27,7 @@ exception InvalidGoalState
   2: optional list<GoalState> states
 }
 
+
 /** 
  *  Rasied when a Thrift request invocation throws uncaught exception
  */
@@ -35,7 +37,11 @@ exception InternalServerError
 }
 
 
-struct StateIdentity
+/**
+ *  Composite key of a goal state or actual state. Unique to identify
+ *  a state for a module at a specific version.
+ */
+struct StateKey
 {
   /** Name of the module which handles the goal state */
   1: required string moduleName;
@@ -65,16 +71,13 @@ struct StateIdentity
 struct GoalState
 {
   /** The identity of the goal state */
-  1: required StateIdentity id;
+  1: required StateKey key;
 
   /** The timestamp when the goal state is updated */
   2: required DateTime updatedAt;
 
   /** The opaque state data that will be handled by the module */
   3: optional string data;
-
-  /** The digest of the goal state content including fields above */
-  4: optional string digest;
 }
 
 
@@ -83,28 +86,26 @@ struct GoalState
  *  The actual state represents the actual state of a module for a service
  *  instance running in a Peloton/Mesos cluster. It is reported by goal
  *  state agents to the master via periodical updates. If there is no recent
- *  actual state change, only digest but not data will be present in the request.
- *  In this case, the actual state update can be treated as a keep alive update.
+ *  actual state change, only state key and updatedAt but not data will be
+ *  present in the request. In this case, the actual state update can be treated
+ *  as a keep alive update.
  */
 struct ActualState
 {
-  /** The identity of the actual state */
-  1: required StateIdentity id;
+  /** The key of the actual state */
+  1: required StateKey key;
   
   /** The timestamp when the actual state is updated */
   2: required DateTime updatedAt;
   
   /** The opaque state data that is reported by the module */
   3: optional string data;
-
-  /** The digest of the goal state content including fields above */
-  4: optional string digest;
 }
 
 
 /**
  *  Query for goal or actual states that match the list of attributes such as
- *  moduleName, instanceId and minimalVersion
+ *  moduleName, instanceId and minVersion
  */ 
 struct StateQuery
 {
@@ -118,11 +119,11 @@ struct StateQuery
   2: required string instanceId;
 
   /**
-   *  Minimal version number on which the goal or actual states should be
+   *  Minimum version number on which the goal or actual states should be
    *  greater than or equal to.
    */
-  3: optional i64 minimalVersion;
-  
+  3: optional i64 minVersion;
+
   /**
    *  The digest of the goal or actual state. If matches, the data field will
    *  be omitted in the return states.
@@ -159,7 +160,7 @@ service GoalStateManager {
   /**
    *  Update the actual states for the list of instances. The goal state agent
    *  also uses this method as a way to keep-alive service instances in the
-   *  master if the version number and digest is the same. (Append only ??)
+   *  master if the version number is the same. (Append only ??)
    */
   void updateActualStates(1: list<ActualState> states) throws (
     1: InternalServerError serverError,

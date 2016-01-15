@@ -1,0 +1,9 @@
+extends:
+  - ./config/development.yaml
+deep_extend: true
+
+application_identifier: peloton-master
+
+server:
+  port: 5336
+

@@ -58,7 +58,7 @@ def clean():
 def flake8():
     """Check for lints"""
     print green('Checking for lints')
-    local('flake8 peloton')
+    local('flake8 peloton tests')
 
 
 @task
@@ -140,6 +140,7 @@ def setenv(env='development'):
     """Set clay environment"""
     os.environ['CLAY_CONFIG'] = './config/%s.yaml' % env
 
+
 @task
 @run_in_virtualenv
 def idl_gen():
@@ -149,4 +150,5 @@ def idl_gen():
     thrift_files = [f for f in files if f.endswith('.thrift')]
     args = '-out gen --gen py:tornado,new_style,dynamic,slots,utf8strings'
     for thrift_file in thrift_files:
+        print "Compiling %s ..." % thrift_file
         local('thrift %s %s/%s' % (args, idl_path, thrift_file))

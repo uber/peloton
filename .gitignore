@@ -10,4 +10,8 @@ cover
 jenkins.xml
 .cache
 /env/
+
+# Emacs
 *~
+.\#*
+\#*\#
