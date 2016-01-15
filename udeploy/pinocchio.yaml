@@ -3,6 +3,11 @@ owning_team: udeploy
 backend_port: 5289
 frontend_port: 15289
 service_type: clay_tornado
+
+pre_build_cmds:
+  - 'ADD git-repo/python/requirements.txt /tmp/requirements.txt'
+  - 'RUN cd /tmp && /ucontainer/build_python_in_docker_pre.sh && rm /tmp/requirements.txt'
+
 build_cmds:
   - 'RUN pip install -r python/requirements.txt'
   - 'RUN pip install --editable python'
