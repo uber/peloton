@@ -1,18 +1,4 @@
-STATUS_OK = 200
-STATUS_ACCEPTED = 202
-HEADER_CONTENT_TYPE = 'Content-Type'
-CONTENT_TYPE_JSON = 'application/json'
-CONTENT_TYPE_TEXT_PLAIN = 'text/plain'
-WORKER_ID = 0
-
-
-def get_worker_id():
-    return WORKER_ID
-
-
-def set_worker_id(val):
-    global WORKER_ID
-    WORKER_ID = val
+from __future__ import absolute_import
 
 
 SERVICE_IMPL_MAP = {}

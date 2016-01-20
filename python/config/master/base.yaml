@@ -1,0 +1,17 @@
+application_identifier: peloton-master
+
+clay-tornado:
+  debug: true
+  max_clients: 150
+  routes: peloton.rpc.routes.get_routes
+  imports:
+    - peloton.master.services.goal_state_manager
+    
+  async:
+    num_workers: 8
+
+socket:
+  backlog: 128
+
+server:
+  port: 5289

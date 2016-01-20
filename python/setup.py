@@ -5,7 +5,7 @@ __version__ = "0.0.1"
 
 _console_scripts = [
     'peloton-agent = peloton.agent.main:serve',
-    'peloton-master = peloton.master.main:serve',
+    'peloton-master-tornado = peloton.master.main:serve',
 ]
 
 setup(

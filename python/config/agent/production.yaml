@@ -1,0 +1,70 @@
+extends:
+  - base.yaml
+deep_extend: true
+
+statsd:
+  host: 127.0.0.1
+  port: 4744
+  protocol: udp
+
+tornado:
+  debug: False
+  gzip: True
+
+logging:
+  version: 1
+  formatters:
+    sortsol:
+      (): sortsol.logger.SortsolJSONFormatter
+    file:
+      (): logging.Formatter
+      fmt: '[%(levelname)1.1s %(asctime)s %(threadName)s:%(module)s:%(lineno)d] %(message)s'
+  handlers:
+    sortsol:
+      class: sortsol.logger.SortsolKafkaHandler
+      level: DEBUG
+      host: 127.0.0.1
+      port: 2182
+      formatter: sortsol
+      prefix_overrides:
+        "tornado.": "peloton-agent.tornado."
+    sentry:
+      class: raven.handlers.logging.SentryHandler
+      level: WARNING
+      auto_log_stacks: false
+    files:
+      class: logging.handlers.WatchedFileHandler
+      level: DEBUG
+      formatter: file
+      filename: /var/log/uber/peloton-agent/peloton-agent.log
+    files-access:
+      class: logging.handlers.WatchedFileHandler
+      level: DEBUG
+      formatter: file
+      filename: /var/log/uber/peloton-agent/tornado-access.log
+  loggers:
+    udeploy_aggregator:
+      level: DEBUG
+      handlers: [files, sortsol, sentry]
+      propagate: no
+    kazoo:
+      level: INFO
+      handlers: [files, sentry]
+      propagate: no
+    sortsol.logger:
+      level: INFO
+      handlers: [files, sentry]
+      propagate: no
+    tornado:
+      level: INFO
+      handlers: [files, sortsol, sentry]
+    tornado.access:
+      level: INFO
+      handlers: [files-access, sortsol]
+      propagate: no
+  root:
+    level: NOTSET
+    handlers: [files, sentry]
+
+sentry:
+  enabled: True

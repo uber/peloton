@@ -11,3 +11,7 @@ pre_build_cmds:
 build_cmds:
   - 'RUN pip install -r python/requirements.txt'
   - 'RUN pip install --editable python'
+
+clay_tornado:
+  use_datacenter_config: false
+  clay_config_dir: python/config/agent/

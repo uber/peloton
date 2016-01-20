@@ -1,0 +1,13 @@
+application_identifier: peloton-agent
+
+clay-tornado:
+  debug: true
+  max_clients: 150
+  async:
+    num_workers: 8
+
+socket:
+  backlog: 128
+
+server:
+  port: 5290

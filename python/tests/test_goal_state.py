@@ -9,14 +9,13 @@ from peloton.rpc.client import ThriftHttpClient
 
 @gen.coroutine
 def test_goal_state():
-    client = ThriftHttpClient('localhost', 5336)
+    client = ThriftHttpClient('localhost', 5289)
     client.add_service(GoalStateManager, '/goal_state/goal_state_manager')
     states = [
         GoalState(
             StateKey('config_bundle', 'homer-kafka-ingester', 1),
             '2016-01-01T00:00:00',
             'opaque string',
-            'e0f47c4b-0a29-452d-8337-9e25523a89bd',
         )
     ]
 
