@@ -1,0 +1,84 @@
+hash: eeab2a8d57137960610ceec4016ad8b95c4366a20eb8f857774ab5f06283c91d
+updated: 2016-05-24T12:02:45.101224003-07:00
+imports:
+- name: code.uber.internal/go-common.git
+  version: 8419231cba23e5cd5594f2d554c128667af69c95
+  repo: gitolite@code.uber.internal:go-common.git
+  vcs: git
+  subpackages:
+  - x/config
+  - x/log
+  - x/metrics
+  - x/tchannel
+  - x/kafka
+  - x/metrics/m3
+  - x/tchannel/log
+  - x/tchannel/metrics
+  - x/metrics/m3/customtransports
+  - x/metrics/m3/thrift
+  - x/metrics/m3/thriftudp
+- name: code.uber.internal/infra/jaeger-client-go.git
+  version: e9ebaa4dc624c72c61ef6ccfd3e3008850b03c34
+  repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
+  vcs: git
+  subpackages:
+  - thrift/gen/sampling
+  - thrift/gen/zipkincore
+  - utils
+  - thrift/gen/agent
+- name: github.com/apache/thrift
+  version: 9549b25c77587b29be4e0b5c258221a4ed85d37a
+  subpackages:
+  - lib/go/thrift
+- name: github.com/cactus/go-statsd-client
+  version: 95cb85a8d6b2d1ccfce95fa58d1ca3445779d8af
+  subpackages:
+  - statsd
+- name: github.com/codahale/hdrhistogram
+  version: f8ad88b59a584afeee9d334eff879b104439117b
+- name: github.com/getsentry/raven-go
+  version: e39495fea085e98d1281fac0ff4d6eb8dc56f86d
+- name: github.com/opentracing/opentracing-go
+  version: 02e66dfd350ad9bac2960a0bf5ccea6472afaaad
+  subpackages:
+  - ext
+- name: github.com/Sirupsen/logrus
+  version: cd7d1bbe41066b6c1f19780f895901052150a575
+- name: github.com/uber-common/bark
+  version: d52ffa061726911f47fcd3d9e8b9b55f22794772
+- name: github.com/uber/tchannel-go
+  version: 521248db9bf9eb98e86f0d5334e56a890b6a559b
+  subpackages:
+  - atomic
+  - examples/keyvalue/gen-go/keyvalue
+  - http
+  - hyperbahn
+  - hyperbahn/gen-go/hyperbahn
+  - json
+  - pprof
+  - raw
+  - stats
+  - testutils
+  - testutils/goroutines
+  - testutils/mockhyperbahn
+  - thrift
+  - thrift/gen-go/meta
+  - thrift/gen-go/test
+  - tnet
+  - trace
+  - trace/thrift/gen-go/tcollector
+  - typed
+- name: golang.org/x/net
+  version: 3b993948b6f0e651ffb58ba135d8538a68b1cddf
+  subpackages:
+  - context
+  - context/ctxhttp
+- name: golang.org/x/sys
+  version: d4feaf1a7e61e1d9e79e6c4e76c6349e9cab0a03
+  subpackages:
+  - unix
+- name: gopkg.in/validator.v2
+  version: 3e4f037f12a1221a0864cf0dd2e81c452ab22448
+- name: gopkg.in/yaml.v2
+  version: a83829b6f1293c91addabc89d0571c246397bbf4
+devImports: []

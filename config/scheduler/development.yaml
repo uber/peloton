@@ -1,0 +1,6 @@
+# Add your development configuration here
+tchannel:
+  # Use a fixed port during development.
+  port: 9876
+  # Use the local Hyperbahn nodes during development.
+  routers: ["127.0.0.1:21300", "127.0.0.1:21301"]

@@ -2,6 +2,7 @@
  *  Config bundle Thrift interface
  */
 
+namespace java com.uber.infra.peloton
 namespace py peloton
 
 /** Config bundle type */

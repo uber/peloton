@@ -1,0 +1,13 @@
+# Add your production configuration here
+logging:
+  stdout: true
+  kafka:
+    topic: peloton-executor
+
+metrics:
+  statsd:
+    hostPort: 127.0.0.1:4744
+    prefix: peloton
+
+sentry:
+  dsn: http://fill:mein@sentry.local.uber.internal/fillmein

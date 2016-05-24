@@ -2,12 +2,12 @@
 logging:
   stdout: true
   kafka:
-    topic: peloton_agent
+    topic: peloton-scheduler
 
 metrics:
   statsd:
     hostPort: 127.0.0.1:4744
-    prefix: peloton_agent
+    prefix: peloton
 
 sentry:
   dsn: http://fill:mein@sentry.local.uber.internal/fillmein

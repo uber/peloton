@@ -1,11 +1,17 @@
 package main
 
 import (
-	gen "code.uber.internal/infra/peloton/.gen/go/peloton-agent"
-
 	"code.uber.internal/go-common.git/x/config"
+	"code.uber.internal/go-common.git/x/metrics"
 	"code.uber.internal/go-common.git/x/log"
 )
+
+type appConfig struct {
+    Logging  log.Configuration
+    Metrics  metrics.Configuration
+    Sentry   log.SentryConfiguration
+    Verbose  bool
+}
 
 func main() {
 	var cfg appConfig
@@ -21,20 +27,6 @@ func main() {
 	}
 	metrics.Counter("boot").Inc(1)
 
-	if _, err := cfg.TChannel.New("peloton-agent", metrics, registerHandlers); err != nil {
-		log.Fatalf("TChannel.New failed: %v", err)
-	}
-
 	// Block forever.
 	select {}
-}
-
-func registerHandlers(ch *tchannel.Channel, server *thrift.Server) {
-	server.Register(gen.NewTChanMyServiceServer(myHandler{}))
-}
-
-type myHandler struct{}
-
-func (myHandler) Hello(ctx thrift.Context) (string, error) {
-	return "Hello World!", nil
 }

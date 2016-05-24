@@ -1,3 +1,17 @@
+*.out
+*.test
+*.xml
+*.swp
+.idea/
+*.iml
+*.cov
+*.html
+.tmp/
+.build/
+.gen/
+/vendor
+
+
 .cache
 .idea
 *.pyc

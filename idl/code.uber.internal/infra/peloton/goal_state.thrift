@@ -2,39 +2,11 @@
  *  Goal state Thrift interface
  */
 
+namespace java com.uber.infra.peloton
 namespace py peloton
 
 /** DateTime in ISO format */
 typedef string DateTime
-
-
-/** Raised when a given state already exists */
-exception StateAlreadyExists
-{
-  1: optional string message;
-
-  /** List of state IDs that already exist */
-  2: optional list<StateKey> existingStates
-}
-
-
-/** Raised when a given state is not valid */
-exception InvalidGoalState
-{
-  1: optional string message;
-
-  /** List of invalid goal states */
-  2: optional list<GoalState> states
-}
-
-
-/** 
- *  Rasied when a Thrift request invocation throws uncaught exception
- */
-exception InternalServerError
-{
-  1: optional string message;
-}
 
 
 /**
@@ -129,6 +101,35 @@ struct StateQuery
    *  be omitted in the return states.
    */
   4: optional string digest;
+}
+
+
+/** Raised when a given state already exists */
+exception StateAlreadyExists
+{
+  1: optional string message;
+
+  /** List of state IDs that already exist */
+  2: optional list<StateKey> existingStates
+}
+
+
+/** Raised when a given state is not valid */
+exception InvalidGoalState
+{
+  1: optional string message;
+
+  /** List of invalid goal states */
+  2: optional list<GoalState> states
+}
+
+
+/** 
+ *  Rasied when a Thrift request invocation throws uncaught exception
+ */
+exception InternalServerError
+{
+  1: optional string message;
 }
 
 
