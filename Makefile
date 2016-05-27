@@ -28,8 +28,11 @@ PROJECT_ROOT = code.uber.internal/infra/peloton
 
 # define the list of thrift files the service depends on
 # (if you have some)
-THRIFT_SRCS = idl/code.uber.internal/infra/peloton/goal_state.thrift \
-	      idl/code.uber.internal/infra/peloton/config_bundle.thrift \
+THRIFT_SRCS = idl/code.uber.internal/infra/peloton/job.thrift \
+              idl/code.uber.internal/infra/peloton/upgrade.thrift \
+              idl/code.uber.internal/infra/peloton/instance.thrift \
+              idl/code.uber.internal/infra/peloton/goal_state.thrift \
+              idl/code.uber.internal/infra/peloton/config_bundle.thrift
 
 # list all executables
 PROGS = master/peloton_master \
