@@ -14,8 +14,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+syntax = "proto2";
+
 import "mesos/v1/mesos.proto";
-import "mesos/v1/master/allocator.proto";
+import "mesos/v1/allocator/allocator.proto";
 
 package mesos.v1.maintenance;
 
@@ -76,7 +78,7 @@ message ClusterStatus {
 
     // A list of the most recent responses to inverse offers from frameworks
     // running on this draining machine.
-    repeated master.InverseOfferStatus statuses = 2;
+    repeated allocator.InverseOfferStatus statuses = 2;
   }
 
   repeated DrainingMachine draining_machines = 1;

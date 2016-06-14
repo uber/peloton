@@ -1,0 +1,246 @@
+/**
+ *  Job Manager API
+ */
+
+
+syntax = "proto3";
+
+package peloton.job;
+
+option go_package = "job";
+
+import "mesos/v1/mesos.proto";
+import "peloton/changelog/changelog.proto";
+
+/**
+ *  A unique ID assigned to an job.
+ */
+message JobID {
+  string value = 1;
+}
+
+
+/**
+ *  Resource configuration for a job
+ */
+message ResourceConfig {
+  // CPU limit in number of CPU cores
+  double cpusLimit = 1;
+
+  // Memory limit in MB
+  double memLimitMb = 2;
+
+  // Disk limit in MB
+  double diskLimitMb = 3;
+
+  // File descriptor limit
+  int32 fdLimit = 4;
+}
+
+
+/**
+ *  Health check configuration for a job
+ */
+message HealthCheckConfig {
+  // Whether the health check is enabled.
+  bool enabled = 1;
+
+  // Start time wait in seconds
+  int32 initialIntervalSecs = 2;
+
+  // Interval in seconds between two health checks
+  int32 intervalSecs = 3;
+
+  // Max number of consecutive failures before failing health check
+  int32 maxConsecutiveFailures = 4;
+
+  // Health check command timeout in seconds
+  int32 timeoutSecs = 5;
+
+  // Health check command to be executed
+  string shellCommand = 6;
+}
+
+
+/**
+ *  Network port configuration for a job
+ */
+message PortConfig {
+  // Name of the network port, e.g. http, tchannel
+  string name = 1;
+
+  // Static port number if any. If unset, will be dynamically allocated
+  // by the scheduler
+  int32 value = 2;
+
+  // Environment variable name to be exported when running a job for this port.
+  // Will default to UBER_PORT_{name} if unset
+  string envName = 3;
+}
+
+
+/**
+ *  Volume mount configuration for a job
+ */
+message VolumeMount {
+  // Access mode for a volume mount
+  enum Mode {
+    READONLY  = 0;
+    READWRITE = 1;
+  }
+
+  // Absolute path of the source volume to be mounted
+  string srcVolume = 1;
+
+  // Absolute path of the destination volume to be mounted
+  string dstVolume = 2;
+
+  // Readonly or Readwrite mode of the mount
+  Mode mode = 3;
+}
+
+
+/**
+ *  Container configuration for a job
+ */
+message ContainerConfig {
+  enum Type {
+    MESOS = 0;
+    DOCKER = 1;
+  }
+
+  // The container type
+  Type type = 1;
+
+  // The container image to be run
+  string image = 2;
+
+  // List of environment variables to be exported in container
+  mesos.v1.Environment environment = 3;
+
+  // List of volumes to be mounted from host into container
+  repeated VolumeMount mounts = 4;
+} 
+
+
+/**
+ *  SLA configuration for a job
+ */
+message SlaConfig {
+  // Priority of a job
+  int32 priority = 1;
+
+  // Minimum viable number of instances
+  int32 minimumInstanceCount = 2;
+
+  // Minimum viable instance percentage
+  double minimumInstancePercent = 3;
+
+  // Whether the job instances are preemptible. If so, it might
+  // be scheduled using revocable offers
+  bool preemptible = 4;
+}
+
+
+/**
+ *  Job configuration
+ */
+message JobConfig {
+  // Change log entry of the job config
+  changelog.ChangeLog changeLog = 1;
+
+  // Name of the job
+  string name = 2;
+
+  // Owning team of the job
+  string owningTeam = 3;
+
+  // LDAP groups of the job
+  repeated string ldapGroups = 4;
+   
+  // Description of the job
+  string description = 5;
+
+  // List of user-defined labels for the job
+  mesos.v1.Labels labels = 6;
+
+  // Number of instances of the job
+  int32 instanceCount = 7;
+
+  // Resource config of the job
+  ResourceConfig resource = 8;
+
+  // Health check config of the job
+  HealthCheckConfig healthCheck = 9;
+
+  // List of network ports to be allocated for the job
+  repeated PortConfig ports = 10;
+
+  // Container config of the job
+  ContainerConfig container = 11;
+
+  // SLA config of the job
+  SlaConfig sla = 12;
+}
+
+
+message CreateRequest {
+  JobID id = 1;
+  JobConfig config = 2;
+}
+
+message JobAlreadyExists {
+  JobID id = 1;
+  string message = 2;
+}
+
+
+message CreateResponse {
+  oneof response{
+    JobID result = 1;
+    JobAlreadyExists alreadyExists = 2;
+  }
+}
+
+message GetRequest {
+  JobID id = 1;
+}
+
+message GetResponse {
+  JobConfig result = 1;
+}
+
+message QueryRequest {
+  mesos.v1.Labels labels = 1;
+}
+
+message QueryResponse {
+  map<string, JobConfig> result = 1;
+}
+
+message DeleteRequest {
+  JobID id = 1;
+}
+
+message DeleteResponse {
+}
+
+
+/**
+ *  Job Manager service interface
+ */
+service JobManager
+{
+  // Create a Job entity for a given config
+  rpc create(CreateRequest) returns (CreateResponse);
+
+  // Get the config of a job entity
+  rpc get(GetRequest) returns (GetResponse);
+
+  // Query the jobs that match a list of labels.
+  rpc query(QueryRequest) returns (QueryResponse);
+
+  // Delete a job entity and stop all related tasks
+  rpc delete(DeleteRequest) returns (DeleteResponse);
+}
+

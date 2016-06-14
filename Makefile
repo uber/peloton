@@ -1,49 +1,42 @@
-BUILD_DIR = .build
+.PHONY: all master scheduler executor install test cover clean
 
-# Flags to pass to go build
-BUILD_FLAGS =
+PBGENDIR = pbgen/src
+PROTOC = protoc
+PROTOC_FLAGS = --proto_path=protobuf --go_out=$(PBGENDIR)
+PBFILES = $(shell find protobuf -name *.proto)
+PBGENS = $(PBFILES:%.proto=%.pb.go)
 
-# Environment variables to set before go build
-BUILD_ENV=
+# TODO: figure out why -pkgdir does not work
+GOPATH := ${PWD}/pbgen:${GOPATH}
 
-# Flags to pass to go test
-TEST_FLAGS =
+.PRECIOUS: $(PBGENS)
 
-# Extra dependencies that the tests use
-TEST_DEPS =
+all: $(PBGENS) master scheduler executor
 
-# regex of files which will be removed from test coverage numbers (eg. mock
-# object files)
-COVER_IGNORE_SRCS = _(mock|string).go
+master:
+	go build -o ./bin/peloton-master master/main.go
 
-# Exclude the mocks from the linter
-LINT_EXCLUDES = .*_mock.go .*_string.go
+scheduler:
+	go build -o ./bin/peloton-scheduler scheduler/main.go
 
-# Where to find your project
-PROJECT_ROOT = code.uber.internal/infra/peloton
+executor:
+	go build -o ./bin/peloton-executor executor/main.go
 
-# Tells udeploy what your service name is (set to $(notdir of PROJECT_ROOT))
-# by default
-# SERVICES =
+install:
+	glide --version || go get github.com/Masterminds/glide
+	glide install
 
-# define the list of thrift files the service depends on
-# (if you have some)
-THRIFT_SRCS = idl/code.uber.internal/infra/peloton/job.thrift \
-              idl/code.uber.internal/infra/peloton/upgrade.thrift \
-              idl/code.uber.internal/infra/peloton/instance.thrift \
-              idl/code.uber.internal/infra/peloton/goal_state.thrift \
-              idl/code.uber.internal/infra/peloton/config_bundle.thrift
+test:
+	go test $(PACKAGES)
 
-# list all executables
-PROGS = master/peloton_master \
-	scheduler/peloton_scheduler \
-	executor/peloton_executor
 
-master/peloton_master: master/main.go  $(wildcard master/*.go)
-scheduler/peloton_scheduler: scheduler/main.go $(wildcard scheduler/*.go)
-executor/peloton_executor: executor/main.go $(wildcard executor/*.go)
+cover:
+	./scripts/cover.sh $(shell go list $(PACKAGES))
+	go tool cover -html=cover.out -o cover.html
 
--include go-build/rules.mk
+clean:
+	rm -rf $(PBGENDIR)/*
+	rm bin/*
 
-go-build/rules.mk:
-	git submodule update --init
+%.pb.go: %.proto
+	${PROTOC} ${PROTOC_FLAGS} $<

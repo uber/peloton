@@ -13,7 +13,7 @@ typedef common.EntityID WorkflowID
 /**
  *  Batch size config for a job rolling upgrade
  */
-struct UpgradeBatchConfig
+struct UpgradeOptions
 {
   /** Upgrade batch size of the deployment */
   1: optional i32 batchSize
@@ -45,7 +45,7 @@ struct UpgradeWorkflowSpec
   2: required job.JobConfig jobConfig
 
   /** The batch size config of the rolling upgrade */
-  3: required UpgradeBatchConfig batchConfig
+  3: optional UpgradeOptions options
 }
 
 

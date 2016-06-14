@@ -7,7 +7,7 @@ import:
   - x/config
   - x/log
   - x/metrics
-  - x/tchannel
 - package: code.uber.internal/infra/jaeger-client-go.git
   repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
   vcs: git
+- package: github.com/yarpc/yarpc-go.git

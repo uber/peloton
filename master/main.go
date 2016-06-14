@@ -1,14 +1,18 @@
 package main
 
 import (
-	gen "code.uber.internal/infra/peloton/.gen/go/goal_state"
-	"code.uber.internal/go-common.git/x/config"
+    "golang.org/x/net/context"
+
+    "github.com/yarpc/yarpc-go"
+    "github.com/yarpc/yarpc-go/encoding/json"
+    "github.com/yarpc/yarpc-go/transport"
+    "github.com/yarpc/yarpc-go/transport/http"
+
+    "code.uber.internal/go-common.git/x/config"
 	"code.uber.internal/go-common.git/x/metrics"
 	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/go-common.git/x/tchannel"
-    
-	"github.com/uber/tchannel-go"
-	"github.com/uber/tchannel-go/thrift"
+
+    "peloton/job"
 )
 
 type appConfig struct {
@@ -16,7 +20,51 @@ type appConfig struct {
     Metrics  metrics.Configuration
     Sentry   log.SentryConfiguration
     Verbose  bool
-    TChannel xtchannel.Configuration
+}
+
+type jobManagerHandler struct {
+}
+
+func (h *jobManagerHandler) Create(
+    reqMeta *json.ReqMeta,
+    body *job.CreateRequest) (*job.CreateResponse, *json.ResMeta, error) {
+
+    log.Infof("Job create called: %s", body)
+    return &job.CreateResponse{}, nil, nil
+}
+
+func (h *jobManagerHandler) Get(
+    reqMeta *json.ReqMeta,
+    body *job.GetRequest) (*job.GetResponse, *json.ResMeta, error) {
+
+    log.Infof("Job get called: %s", body)
+    return &job.GetResponse{}, nil, nil
+}
+
+func (h *jobManagerHandler) Query(
+    reqMeta *json.ReqMeta,
+    body *job.QueryRequest) (*job.QueryResponse, *json.ResMeta, error) {
+
+    log.Infof("Job query called: %s", body)
+    return &job.QueryResponse{}, nil, nil
+}
+
+func (h *jobManagerHandler) Delete(
+    reqMeta *json.ReqMeta,
+    body *job.DeleteRequest) (*job.DeleteResponse, *json.ResMeta, error) {
+
+    log.Infof("Job delete called: %s", body)
+    return &job.DeleteResponse{}, nil, nil
+}
+
+type requestLogInterceptor struct{}
+
+func (requestLogInterceptor) Handle(
+    ctx context.Context, req *transport.Request, resw transport.ResponseWriter,
+    handler transport.Handler) error {
+    
+    log.Infof("Received a request to %q\n", req.Procedure)
+    return handler.Handle(ctx, req, resw)
 }
 
 func main() {
@@ -33,37 +81,26 @@ func main() {
 	}
 	metrics.Counter("boot").Inc(1)
 
-	if _, err := cfg.TChannel.New("peloton-master", metrics, registerHandlers); err != nil {
-		log.Fatalf("TChannel.New failed: %v", err)
+	rpc := yarpc.New(yarpc.Config{
+		Name: "peloton-master",
+		Inbounds: []transport.Inbound{
+			http.NewInbound(":5289"),
+		},
+		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
+	})
+
+	handler := jobManagerHandler{}
+
+	json.Register(rpc, json.Procedure("create", handler.Create))
+	json.Register(rpc, json.Procedure("get", handler.Get))
+	json.Register(rpc, json.Procedure("query", handler.Query))
+	json.Register(rpc, json.Procedure("delete", handler.Delete))
+
+	if err := rpc.Start(); err != nil {
+		log.Fatalf("Could not start rpc server: %v", err)
 	}
 
-	// Block forever.
-	select {}
+    log.Info("Started rpc server")
+    select {}
+
 }
-
-func registerHandlers(ch *tchannel.Channel, server *thrift.Server) {
-	server.Register(gen.NewTChanGoalStateManagerServer(goalStateManager{}))
-}
-
-type goalStateManager struct{}
-
-func (goalStateManager)	QueryActualStates(
-    ctx thrift.Context, queries []*gen.StateQuery) ([]*gen.ActualState, error) {
-    return make([]*gen.ActualState, 0), nil
-}
-
-func (goalStateManager)	QueryGoalStates(
-    ctx thrift.Context, queries []*gen.StateQuery) ([]*gen.GoalState, error) {
-    return  make([]*gen.GoalState, 0), nil
-}
-
-func (goalStateManager) SetGoalStates(
-    ctx thrift.Context, states []*gen.GoalState) error {
-    return nil
-}
-
-func (goalStateManager) UpdateActualStates(
-    ctx thrift.Context, states []*gen.ActualState) error {
-    return nil
-}
-

@@ -1,3 +1,6 @@
+extends: base.yaml
+deep_extend: true
+
 # Add your production configuration here
 logging:
   stdout: true
