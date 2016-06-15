@@ -11,14 +11,14 @@ package upgrade
 
 import (
 	"github.com/yarpc/yarpc-go"
-    "github.com/yarpc/yarpc-go/encoding/json"
+	"github.com/yarpc/yarpc-go/encoding/json"
 
-    "code.uber.internal/go-common.git/x/log"
-    "peloton/upgrade"
+	"code.uber.internal/go-common.git/x/log"
+	"peloton/upgrade"
 )
 
 func InitManager(rpc yarpc.RPC) {
-    handler := upgradeManager{}
+	handler := upgradeManager{}
 	json.Register(rpc, json.Procedure("create", handler.Create))
 	json.Register(rpc, json.Procedure("get", handler.Get))
 	json.Register(rpc, json.Procedure("list", handler.List))
@@ -32,57 +32,57 @@ type upgradeManager struct {
 }
 
 func (m *upgradeManager) Create(
-    reqMeta *json.ReqMeta,
-    body *upgrade.CreateRequest) (*upgrade.CreateResponse, *json.ResMeta, error) {
+	reqMeta *json.ReqMeta,
+	body *upgrade.CreateRequest) (*upgrade.CreateResponse, *json.ResMeta, error) {
 
-    log.Infof("UpgradeManager.create called: %s", body)
-    return &upgrade.CreateResponse{}, nil, nil
+	log.Infof("UpgradeManager.create called: %s", body)
+	return &upgrade.CreateResponse{}, nil, nil
 }
 
 func (m *upgradeManager) Get(
-    reqMeta *json.ReqMeta,
-    body *upgrade.GetRequest) (*upgrade.GetResponse, *json.ResMeta, error) {
+	reqMeta *json.ReqMeta,
+body *upgrade.GetRequest) (*upgrade.GetResponse, *json.ResMeta, error) {
 
-    log.Infof("UpgradeManager.get called: %s", body)
-    return &upgrade.GetResponse{}, nil, nil
+	log.Infof("UpgradeManager.get called: %s", body)
+	return &upgrade.GetResponse{}, nil, nil
 }
 
 func (m *upgradeManager) List(
-    reqMeta *json.ReqMeta,
-    body *upgrade.ListRequest) (*upgrade.ListResponse, *json.ResMeta, error) {
+	reqMeta *json.ReqMeta,
+	body *upgrade.ListRequest) (*upgrade.ListResponse, *json.ResMeta, error) {
 
-    log.Infof("UpgradeManager.list called: %s", body)
-    return &upgrade.ListResponse{}, nil, nil
+	log.Infof("UpgradeManager.list called: %s", body)
+	return &upgrade.ListResponse{}, nil, nil
 }
 
 func (m *upgradeManager) Pause(
-    reqMeta *json.ReqMeta,
-    body *upgrade.PauseRequest) (*upgrade.PauseResponse, *json.ResMeta, error) {
+	reqMeta *json.ReqMeta,
+	body *upgrade.PauseRequest) (*upgrade.PauseResponse, *json.ResMeta, error) {
 
-    log.Infof("UpgradeManager.pause called: %s", body)
-    return &upgrade.PauseResponse{}, nil, nil
+	log.Infof("UpgradeManager.pause called: %s", body)
+	return &upgrade.PauseResponse{}, nil, nil
 }
 
 func (m *upgradeManager) Resume(
-    reqMeta *json.ReqMeta,
-    body *upgrade.ResumeRequest) (*upgrade.ResumeResponse, *json.ResMeta, error) {
+	reqMeta *json.ReqMeta,
+	body *upgrade.ResumeRequest) (*upgrade.ResumeResponse, *json.ResMeta, error) {
 
-    log.Infof("UpgradeManager.resume called: %s", body)
-    return &upgrade.ResumeResponse{}, nil, nil
+	log.Infof("UpgradeManager.resume called: %s", body)
+	return &upgrade.ResumeResponse{}, nil, nil
 }
 
 func (m *upgradeManager) Rollback(
-    reqMeta *json.ReqMeta,
-    body *upgrade.RollbackRequest) (*upgrade.RollbackResponse, *json.ResMeta, error) {
+	reqMeta *json.ReqMeta,
+	body *upgrade.RollbackRequest) (*upgrade.RollbackResponse, *json.ResMeta, error) {
 
-    log.Infof("UpgradeManager.rollback called: %s", body)
-    return &upgrade.RollbackResponse{}, nil, nil
+	log.Infof("UpgradeManager.rollback called: %s", body)
+	return &upgrade.RollbackResponse{}, nil, nil
 }
 
 func (m *upgradeManager) Abort(
-    reqMeta *json.ReqMeta,
-    body *upgrade.AbortRequest) (*upgrade.AbortResponse, *json.ResMeta, error) {
+	reqMeta *json.ReqMeta,
+	body *upgrade.AbortRequest) (*upgrade.AbortResponse, *json.ResMeta, error) {
 
-    log.Infof("UpgradeManager.abprt called: %s", body)
-    return &upgrade.AbortResponse{}, nil, nil
+	log.Infof("UpgradeManager.abprt called: %s", body)
+	return &upgrade.AbortResponse{}, nil, nil
 }
