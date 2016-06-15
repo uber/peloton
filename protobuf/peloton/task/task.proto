@@ -1,0 +1,193 @@
+/**
+ *  Task Manager API
+ */
+
+syntax = "proto3";
+
+package peloton.task;
+
+option go_package = "task";
+
+import "mesos/v1/mesos.proto";
+import "peloton/job/job.proto";
+
+
+/**
+ *  Runtime info of an task instance in a Job
+ */
+message RuntimeInfo {
+
+  // Runtime states of a task instance
+  enum TaskState {
+    // The task is being initialized
+    INITIALIZED = 0;
+
+    // The task is being scheduled
+    SCHEDULING  = 1;
+
+    // The task has been assigned to a node
+    ASSIGNED    = 2;
+
+    // The task has been launched by Mesos
+    LAUNCHED    = 3;
+
+    // The task is running on a node
+    RUNNING     = 4;
+
+    // The task terminated with an exit code of zero
+    SUCCEEDED   = 5;
+
+    // The task terminated with a non-zero exit code
+    FAILED      = 6;
+
+    // Execution of the task was terminated by the system
+    KILLED      = 7;
+
+    // The task is being preempted by another one on the node
+    PREEMPTING  = 8;
+
+    // The taskis being throttled for restarting too frequently
+    THROTTLED   = 9;
+  }
+
+  // Runtime status of the task
+  TaskState state = 1;
+
+  // The mesos task ID for this instance
+  mesos.v1.TaskID taskId = 2;
+
+  // The start time of the instance. The instance is stopped when unset
+  mesos.v1.TimeInfo startedAt = 3;
+
+  // The name of the host where the instance is running
+  string host = 4;
+
+  // Ports reserved on the host while this instance is running
+  map<string, uint32> ports = 5;
+}
+
+
+/**
+ *  Info of a task instance in a Job
+ */
+message TaskInfo {
+
+  // The numerical ID assigned to this instance. Instance IDs must be
+  // unique and contiguous within a job. The ID is in the range of
+  // [0, N-1] for a job with instance count of N.
+  uint32 instanceId = 1;
+
+  // Job ID of the task
+  job.JobID jobId = 2;
+
+  // Job configuration of the task
+  job.JobConfig jobConfig = 3;
+
+  // Runtime info of the instance
+  RuntimeInfo runtime = 4;
+}
+
+
+/**
+ *  Task manager interface
+ */
+service TaskManager
+{
+  // Get the info of a task in job.
+  rpc get(GetRequest) returns (GetResponse);
+
+  // List all task info in a job.
+  rpc list(ListRequest) returns (ListResponse);
+  
+  // Start a set of tasks for a job. Will be no-op for tasks that
+  // are currently running.
+  rpc start(StartRequest) returns (StartResponse);
+
+  // Stop a set of tasks for a job. Will be no-op for tasks that
+  // are currently stopped.
+  rpc stop(StopRequest) returns (StopResponse);
+
+  // Restart a set of tasks for a job. Will start tasks that are
+  // currently stopped.
+  rpc restart(RestartRequest) returns (RestartResponse);
+}
+
+
+message InstanceIdOutOfRange
+{
+  // Entity ID of the job
+  job.JobID jobId = 1;
+
+  // Instance count of the job
+  uint32 instanceCount = 2;
+}
+
+message GetRequest {
+  job.JobID jobId = 1;
+  uint32 instanceId = 2;
+}
+
+message GetResponse {
+  oneof response {
+    TaskInfo result = 1;
+    job.JobNotFound notFound = 2;
+    InstanceIdOutOfRange outOfRange = 3;
+  }
+}
+
+// InstanceID range [from, to]
+message InstanceRange {
+  uint32 from = 1;
+  uint32 to = 2;
+}
+
+message ListRequest {
+  job.JobID jobId = 1;
+  InstanceRange range = 2;
+}
+
+message ListResponse {
+  message Result {
+    map<uint32, TaskInfo> value = 1;
+  }
+  oneof response {
+    Result result = 1;
+    job.JobNotFound notFound = 2;
+  }
+}
+
+message StartRequest {
+  job.JobID jobId = 1;
+  repeated InstanceRange ranges = 2;
+}
+
+message StartResponse {
+  oneof response {
+    job.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+  }
+}
+
+message StopRequest {
+  job.JobID jobId = 1;
+  repeated InstanceRange ranges = 2;
+}
+
+message StopResponse {
+  oneof response {
+    job.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+  }
+}
+
+message RestartRequest {
+  job.JobID jobId = 1;
+  repeated InstanceRange ranges = 2;
+}
+
+message RestartResponse {
+  oneof response {
+    job.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+  }
+}
