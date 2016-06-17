@@ -1,8 +1,9 @@
 .PHONY: all master scheduler executor install test cover clean
 
-PBGENDIR = pbgen/src
+BIN_DIR = bin
+PBGEN_DIR = pbgen/src
 PROTOC = protoc
-PROTOC_FLAGS = --proto_path=protobuf --go_out=$(PBGENDIR)
+PROTOC_FLAGS = --proto_path=protobuf --go_out=$(PBGEN_DIR)
 PBFILES = $(shell find protobuf -name *.proto)
 PBGENS = $(PBFILES:%.proto=%.pb.go)
 
@@ -14,13 +15,14 @@ GOPATH := ${PWD}/pbgen:${GOPATH}
 all: $(PBGENS) master scheduler executor
 
 master:
-	go build -o ./bin/peloton-master master/main.go
+	@mkdir -p $(BIN_DIR)
+	go build -o ./$(BIN_DIR)/peloton-master master/main.go
 
 scheduler:
-	go build -o ./bin/peloton-scheduler scheduler/main.go
+	go build -o ./$(BIN_DIR)/peloton-scheduler scheduler/main.go
 
 executor:
-	go build -o ./bin/peloton-executor executor/main.go
+	go build -o ./$(BIN_DIR)/peloton-executor executor/main.go
 
 install:
 	glide --version || go get github.com/Masterminds/glide
@@ -35,8 +37,9 @@ cover:
 	go tool cover -html=cover.out -o cover.html
 
 clean:
-	rm -rf $(PBGENDIR)/*
-	rm bin/*
+	rm -rf pbgen
+	rm -rf $(BIN_DIR)
 
 %.pb.go: %.proto
+	@mkdir -p $(PBGEN_DIR)
 	${PROTOC} ${PROTOC_FLAGS} $<
