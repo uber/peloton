@@ -10,4 +10,6 @@ import:
 - package: code.uber.internal/infra/jaeger-client-go.git
   repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
   vcs: git
+- package: github.com/golang/protobuf/protoc
+- package: github.com/golang/protobuf/protoc-gen-go
 - package: github.com/yarpc/yarpc-go.git
