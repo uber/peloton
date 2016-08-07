@@ -1,4 +1,9 @@
 package: code.uber.internal/infra/peloton
+
+ignore:
+- peloton
+- mesos/v1
+
 import:
 - package: code.uber.internal/go-common.git
   repo: gitolite@code.uber.internal:go-common.git
@@ -10,6 +15,7 @@ import:
 - package: code.uber.internal/infra/jaeger-client-go.git
   repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
   vcs: git
+- package: github.com/golang/protobuf/proto
 - package: github.com/golang/protobuf/protoc
 - package: github.com/golang/protobuf/protoc-gen-go
 - package: github.com/yarpc/yarpc-go.git

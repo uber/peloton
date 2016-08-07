@@ -1,5 +1,5 @@
-hash: bd1a82b4a3fb2a795b321b2edad9e61e1f0d66803f4bf4cbc6bddda718aaf385
-updated: 2016-06-13T23:29:38.592912637-07:00
+hash: 63302b80b210f7b755314872f42a3c318d2599ea304b00613d6e0e13c918586d
+updated: 2016-08-07T09:16:16.015374563-07:00
 imports:
 - name: code.uber.internal/go-common.git
   version: a6cd07d467a9483c0f06b3262e4194280fb77148
@@ -30,6 +30,12 @@ imports:
   version: f8ad88b59a584afeee9d334eff879b104439117b
 - name: github.com/getsentry/raven-go
   version: e39495fea085e98d1281fac0ff4d6eb8dc56f86d
+- name: github.com/golang/protobuf
+  version: c3cefd437628a0b7d31b34fe44b3a7a540e98527
+  subpackages:
+  - proto
+  - protoc
+  - protoc-gen-go
 - name: github.com/Sirupsen/logrus
   version: cd7d1bbe41066b6c1f19780f895901052150a575
 - name: github.com/uber-common/bark
@@ -37,16 +43,16 @@ imports:
 - name: github.com/yarpc/yarpc-go
   version: 9cd8f9f8bac89aba2e8a65a6f38ccabcd275f746
   subpackages:
-  - encoding/json
   - transport
   - transport/http
+  - encoding/json
   - internal/baggage
   - internal/filter
   - internal/interceptor
   - internal/request
   - sync
-  - internal/encoding
   - internal/errors
+  - internal/encoding
 - name: github.com/yarpc/yarpc-go.git
   version: 9cd8f9f8bac89aba2e8a65a6f38ccabcd275f746
 - name: golang.org/x/net
