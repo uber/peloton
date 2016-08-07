@@ -1,5 +1,5 @@
-hash: 63302b80b210f7b755314872f42a3c318d2599ea304b00613d6e0e13c918586d
-updated: 2016-08-07T09:16:16.015374563-07:00
+hash: 8405d7466d48f4a3ed105a89e60ac5ec5c143a781d0305dde134d0f9f9223708
+updated: 2016-08-07T10:55:28.119416991-07:00
 imports:
 - name: code.uber.internal/go-common.git
   version: a6cd07d467a9483c0f06b3262e4194280fb77148
@@ -40,21 +40,23 @@ imports:
   version: cd7d1bbe41066b6c1f19780f895901052150a575
 - name: github.com/uber-common/bark
   version: d52ffa061726911f47fcd3d9e8b9b55f22794772
+- name: github.com/uber-go/atomic
+  version: e682c1008ac17bf26d2e4b5ad6cdd08520ed0b22
 - name: github.com/yarpc/yarpc-go
-  version: 9cd8f9f8bac89aba2e8a65a6f38ccabcd275f746
+  version: 3a4561d3e198e36cabc726b2e2862fb1bb9e3fc3
   subpackages:
   - transport
   - transport/http
   - encoding/json
+  - internal
   - internal/baggage
   - internal/filter
   - internal/interceptor
   - internal/request
-  - sync
+  - internal/sync
   - internal/errors
   - internal/encoding
-- name: github.com/yarpc/yarpc-go.git
-  version: 9cd8f9f8bac89aba2e8a65a6f38ccabcd275f746
+  - internal/meta
 - name: golang.org/x/net
   version: 3b993948b6f0e651ffb58ba135d8538a68b1cddf
   subpackages:

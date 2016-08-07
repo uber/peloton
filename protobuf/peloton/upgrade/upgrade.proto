@@ -96,25 +96,25 @@ message UpgradeInfo {
 service UpgradeManager
 {
   // Create a new rolling upgrade workflow for a job
-  rpc create(CreateRequest) returns (CreateResponse);
+  rpc Create(CreateRequest) returns (CreateResponse);
 
   // Get the upgrade workflow of a job
-  rpc get(GetRequest) returns (GetResponse);
+  rpc Get(GetRequest) returns (GetResponse);
 
   // List all upgrade workflows that are currently running
-  rpc list(ListRequest) returns (ListResponse);
+  rpc List(ListRequest) returns (ListResponse);
 
   // Pause a running upgrade workflow
-  rpc pause(PauseRequest) returns (PauseResponse);
+  rpc Pause(PauseRequest) returns (PauseResponse);
 
   // Resume a paused upgrade workflow
-  rpc resume(ResumeRequest) returns (ResumeResponse);
+  rpc Resume(ResumeRequest) returns (ResumeResponse);
   
   // Rollback an upgrade workflow
-  rpc rollback(RollbackRequest) returns (RollbackResponse);
+  rpc Rollback(RollbackRequest) returns (RollbackResponse);
 
   // Abort an upgrade workflow
-  rpc abort(AbortRequest) returns (AbortResponse);
+  rpc Abort(AbortRequest) returns (AbortResponse);
   
 }
 

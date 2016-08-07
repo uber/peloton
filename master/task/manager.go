@@ -8,54 +8,54 @@ import (
 	"peloton/task"
 )
 
-func InitManager(rpc yarpc.RPC) {
+func InitManager(d yarpc.Dispatcher) {
 	handler := taskManager{}
-	json.Register(rpc, json.Procedure("get", handler.Get))
-	json.Register(rpc, json.Procedure("list", handler.List))
-	json.Register(rpc, json.Procedure("start", handler.Start))
-	json.Register(rpc, json.Procedure("stop", handler.Stop))
-	json.Register(rpc, json.Procedure("restart", handler.Restart))
+	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
+	json.Register(d, json.Procedure("TaskManager.List", handler.List))
+	json.Register(d, json.Procedure("TaskManager.Start", handler.Start))
+	json.Register(d, json.Procedure("TaskManager.Stop", handler.Stop))
+	json.Register(d, json.Procedure("TaskManager.Restart", handler.Restart))
 }
 
 type taskManager struct {
 }
 
 func (m *taskManager) Get(
-	reqMeta *json.ReqMeta,
-	body *task.GetRequest) (*task.GetResponse, *json.ResMeta, error) {
+	reqMeta yarpc.ReqMeta,
+	body *task.GetRequest) (*task.GetResponse, yarpc.ResMeta, error) {
 
-	log.Infof("TaskManager.get called: %s", body)
+	log.Infof("TaskManager.Get called: %s", body)
 	return &task.GetResponse{}, nil, nil
 }
 
 func (m *taskManager) List(
-	reqMeta *json.ReqMeta,
-	body *task.ListRequest) (*task.ListResponse, *json.ResMeta, error) {
+	reqMeta yarpc.ReqMeta,
+	body *task.ListRequest) (*task.ListResponse, yarpc.ResMeta, error) {
 
-	log.Infof("TaskManager.list called: %s", body)
+	log.Infof("TaskManager.List called: %s", body)
 	return &task.ListResponse{}, nil, nil
 }
 
 func (m *taskManager) Start(
-	reqMeta *json.ReqMeta,
-	body *task.StartRequest) (*task.StartResponse, *json.ResMeta, error) {
+	reqMeta yarpc.ReqMeta,
+	body *task.StartRequest) (*task.StartResponse, yarpc.ResMeta, error) {
 
-	log.Infof("TaskManager.start called: %s", body)
+	log.Infof("TaskManager.Start called: %s", body)
 	return &task.StartResponse{}, nil, nil
 }
 
 func (m *taskManager) Stop(
-	reqMeta *json.ReqMeta,
-	body *task.StopRequest) (*task.StopResponse, *json.ResMeta, error) {
+	reqMeta yarpc.ReqMeta,
+	body *task.StopRequest) (*task.StopResponse, yarpc.ResMeta, error) {
 
-	log.Infof("TaskManager.stop called: %s", body)
+	log.Infof("TaskManager.Stop called: %s", body)
 	return &task.StopResponse{}, nil, nil
 }
 
 func (m *taskManager) Restart(
-	reqMeta *json.ReqMeta,
-	body *task.RestartRequest) (*task.RestartResponse, *json.ResMeta, error) {
+	reqMeta yarpc.ReqMeta,
+	body *task.RestartRequest) (*task.RestartResponse, yarpc.ResMeta, error) {
 
-	log.Infof("TaskManager.restart called: %s", body)
+	log.Infof("TaskManager.Restart called: %s", body)
 	return &task.RestartResponse{}, nil, nil
 }

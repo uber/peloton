@@ -190,16 +190,16 @@ message JobConfig {
 service JobManager
 {
   // Create a Job entity for a given config
-  rpc create(CreateRequest) returns (CreateResponse);
+  rpc Create(CreateRequest) returns (CreateResponse);
 
   // Get the config of a job entity
-  rpc get(GetRequest) returns (GetResponse);
+  rpc Get(GetRequest) returns (GetResponse);
 
   // Query the jobs that match a list of labels.
-  rpc query(QueryRequest) returns (QueryResponse);
+  rpc Query(QueryRequest) returns (QueryResponse);
 
   // Delete a job entity and stop all related tasks
-  rpc delete(DeleteRequest) returns (DeleteResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
 }
 
 message JobAlreadyExists {

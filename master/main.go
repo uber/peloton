@@ -26,11 +26,15 @@ type appConfig struct {
 type requestLogInterceptor struct{}
 
 func (requestLogInterceptor) Handle(
-	ctx context.Context, req *transport.Request, resw transport.ResponseWriter,
+	ctx context.Context,
+	opts transport.Options,
+	req *transport.Request,
+	resw transport.ResponseWriter,
 	handler transport.Handler) error {
 
-	log.Infof("Received a request to %q\n", req.Procedure)
-	return handler.Handle(ctx, req, resw)
+	log.Infof("Received a request to %q from client %q (encoding %q)\n",
+		req.Procedure, req.Caller, req.Encoding)
+	return handler.Handle(ctx, opts, req, resw)
 }
 
 func main() {
@@ -47,7 +51,7 @@ func main() {
 	}
 	metrics.Counter("boot").Inc(1)
 
-	rpc := yarpc.New(yarpc.Config{
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: "peloton-master",
 		Inbounds: []transport.Inbound{
 			http.NewInbound(":5289"),
@@ -55,12 +59,12 @@ func main() {
 		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
 	})
 
-	job.InitManager(rpc)
-	task.InitManager(rpc)
-	upgrade.InitManager(rpc)
+	job.InitManager(dispatcher)
+	task.InitManager(dispatcher)
+	upgrade.InitManager(dispatcher)
 
 
-	if err := rpc.Start(); err != nil {
+	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 

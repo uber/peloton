@@ -4,6 +4,9 @@ ignore:
 - peloton
 - mesos/v1
 
+excludeDirs:
+- pbgen
+
 import:
 - package: code.uber.internal/go-common.git
   repo: gitolite@code.uber.internal:go-common.git
@@ -18,4 +21,5 @@ import:
 - package: github.com/golang/protobuf/proto
 - package: github.com/golang/protobuf/protoc
 - package: github.com/golang/protobuf/protoc-gen-go
-- package: github.com/yarpc/yarpc-go.git
+- package: github.com/yarpc/yarpc-go
+  version: master

@@ -94,22 +94,22 @@ message TaskInfo {
 service TaskManager
 {
   // Get the info of a task in job.
-  rpc get(GetRequest) returns (GetResponse);
+  rpc Get(GetRequest) returns (GetResponse);
 
   // List all task info in a job.
-  rpc list(ListRequest) returns (ListResponse);
+  rpc List(ListRequest) returns (ListResponse);
   
   // Start a set of tasks for a job. Will be no-op for tasks that
   // are currently running.
-  rpc start(StartRequest) returns (StartResponse);
+  rpc Start(StartRequest) returns (StartResponse);
 
   // Stop a set of tasks for a job. Will be no-op for tasks that
   // are currently stopped.
-  rpc stop(StopRequest) returns (StopResponse);
+  rpc Stop(StopRequest) returns (StopResponse);
 
   // Restart a set of tasks for a job. Will start tasks that are
   // currently stopped.
-  rpc restart(RestartRequest) returns (RestartResponse);
+  rpc Restart(RestartRequest) returns (RestartResponse);
 }
 
 
