@@ -22,4 +22,6 @@ import:
 - package: github.com/golang/protobuf/protoc
 - package: github.com/golang/protobuf/protoc-gen-go
 - package: github.com/yarpc/yarpc-go
+- package: github.com/go-sql-driver/mysql
+- package: github.com/jmoiron/sqlx
   version: master

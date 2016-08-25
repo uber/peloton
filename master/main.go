@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
+	"code.uber.internal/infra/peloton/storage/mysql"
 )
 
 type appConfig struct {
@@ -21,7 +22,10 @@ type appConfig struct {
 	Metrics  metrics.Configuration
 	Sentry   log.SentryConfiguration
 	Verbose  bool
+	DbConfig mysql.Config `yaml:"db"`
 }
+
+
 
 type requestLogInterceptor struct{}
 
@@ -50,6 +54,16 @@ func main() {
 		log.Fatalf("Could not connect to metrics: %v", err)
 	}
 	metrics.Counter("boot").Inc(1)
+
+	// connect to mysql DB
+	if err := cfg.DbConfig.Connect(); err != nil {
+		log.Fatalf("Could not connect to database: %+v", err)
+	}
+
+	// Migrate DB if necessary
+	if errs := cfg.DbConfig.AutoMigrate(); errs != nil {
+		log.Fatalf("Could not migrate database: %+v", errs)
+	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: "peloton-master",

@@ -40,6 +40,15 @@ clean:
 	rm -rf pbgen
 	rm -rf $(BIN_DIR)
 
+
+MYSQL = mysql
+MYSQL_PELOTON = $(MYSQL) -upeloton -ppeloton
+
+bootstrap:
+	@echo Creating database
+	$(MYSQL_PELOTON) -e 'create database if not exists peloton'
+
+
 %.pb.go: %.proto
 	@mkdir -p $(PBGEN_DIR)
 	${PROTOC} ${PROTOC_FLAGS} $<

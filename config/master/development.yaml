@@ -1,2 +1,10 @@
 extends: base.yaml
 deep_extend: true
+
+db:
+  user: peloton
+  password: peloton
+  database: peloton
+  host: 127.0.0.1
+  port: 3306
+  migrations: storage/mysql/migrations/
