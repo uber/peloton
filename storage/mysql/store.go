@@ -17,6 +17,10 @@ import (
 )
 
 const (
+	// Table names
+	jobsTable  = "jobs"
+	tasksTable = "tasks"
+
 	// values for the col_key
 	colRuntimeInfo = "runtime_info"
 	colBaseInfo    = "base_info"
@@ -31,6 +35,8 @@ const (
 	getJobsbyOwnerStmt    = `SELECT * from jobs where col_key='` + colJobConfig + `' and owning_team = ?`
 
 	// Various statement templates for task runtime_info
+	insertTaskStmt             = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
+	updateTaskStmt             = `UPDATE tasks SET body = ? where row_key = ?`
 	getTasksForJobStmt         = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ?`
 	getTasksForJobAndStateStmt = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ? and task_state = ?`
 )
@@ -190,7 +196,6 @@ func (m *MysqlJobStore) Query(Labels *mesos_v1.Labels) ([]*job.JobConfig, error)
 func (m *MysqlJobStore) DeleteJob(id *job.JobID) error {
 	// Check if there are any task left for the job. If there is any, abort the deletion
 	// TODO: slu -- discussion on if the task state matter here
-
 	tasks, err := m.GetTasksForJob(id)
 	if err != nil {
 		log.Errorf("GetTasksForJob for job id %v failed with error %v", id.Value, err)
@@ -210,50 +215,110 @@ func (m *MysqlJobStore) DeleteJob(id *job.JobID) error {
 
 // GetJobsByOwner returns jobs by owner
 func (m *MysqlJobStore) GetJobsByOwner(owner string) ([]*job.JobConfig, error) {
-	records := []storage.JobRecord{}
-	var result []*job.JobConfig
-	err := m.DB.Select(&records, getJobsbyOwnerStmt, owner)
-	if err == sql.ErrNoRows {
-		log.Warnf("GetJobsByOwner for owner %v returns no rows", owner)
-		return result, nil
-	}
+	blobs, err := m.GetBodyFields(jobsTable, map[string]interface{}{"owning_team": owner})
 	if err != nil {
 		log.Errorf("GetJobsByOwner for owner %v failed with error %v", owner, err)
 		return nil, err
 	}
-	// TODO: consider select 'body' directly
-	for _, record := range records {
-		jobConfig, err := record.GetJobConfig()
-		if err != nil {
-			log.Warnf("record.GetJobConfig for owner %v, failed with error %v", owner, err)
-			continue
-		}
-		result = append(result, jobConfig)
-	}
-	return result, nil
+	var result []*job.JobConfig
+	result, err = storage.ToJobConfigs(blobs)
+	return result, err
 }
 
-// GetTasksForJob returns the tasks (runtime_config) for a peloton job
-func (m *MysqlJobStore) GetTasksForJob(id *job.JobID) ([]*task.RuntimeInfo, error) {
-	records := []storage.TaskRecord{}
-	var result []*task.RuntimeInfo
-	err := m.DB.Select(&records, getTasksForJobStmt, id.Value)
+// GetBodyFields returns the body fields given where condition and the table name
+func (m *MysqlJobStore) GetBodyFields(table string, whereFilters map[string]interface{}) ([]string, error) {
+	var blobs []string
+	q, args := getTaskQueryAndArgs(table, whereFilters, []string{"body"})
+	err := m.DB.Select(&blobs, q, args...)
 	if err == sql.ErrNoRows {
-		log.Warnf("GetTasksForJob for id %v returns no rows", id)
-		return result, nil
+		log.Warnf("GetBodyFields for table %v where %v returns no rows", table, whereFilters)
+		return blobs, nil
 	}
+	if err != nil {
+		log.Errorf("GetBodyFields for table %v where %v failed with error %v", table, whereFilters, err)
+		return nil, err
+	}
+	return blobs, nil
+}
+
+// GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
+func (m *MysqlJobStore) GetTasksForJob(id *job.JobID) ([]*task.TaskInfo, error) {
+	blobs, err := m.GetBodyFields(tasksTable, map[string]interface{}{"job_id": id.Value})
 	if err != nil {
 		log.Errorf("GetTasksForJob for id %v failed with error %v", id, err)
 		return nil, err
 	}
-	// TODO: consider select 'body' directly
-	for _, record := range records {
-		runtimeInfo, err := record.GetRuntimeInfo()
-		if err != nil {
-			log.Errorf("record.GetRuntimeConfig for id %v, failed with error %v", id, err)
-			continue
-		}
-		result = append(result, runtimeInfo)
+	var result []*task.TaskInfo
+	result, err = storage.ToTaskInfos(blobs)
+	return result, err
+}
+
+// CreateTask creates a task for a peloton job
+func (m *MysqlJobStore) CreateTask(id *job.JobID, instanceId int, taskInfo *task.TaskInfo) error {
+	// TODO: discuss on whether taskId should be part of the taskInfo instead of runtime
+	taskId := taskInfo.GetRuntime().TaskId.Value
+	if taskInfo.JobId.Value != id.Value {
+		errMsg := fmt.Sprintf("Task %d has job id %v, different than the jobId %d expected", taskId, taskInfo.JobId.Value, id.Value)
+		log.Errorf(errMsg)
+		return fmt.Errorf(errMsg)
 	}
-	return result, nil
+	if taskInfo.InstanceId != uint32(instanceId) {
+		errMsg := fmt.Sprintf("Task %d has job id %v, different than the jobId %d expected", taskId, instanceId, taskInfo.InstanceId)
+		log.Errorf(errMsg)
+		return fmt.Errorf(errMsg)
+	}
+	buffer, err := json.Marshal(taskInfo)
+	if err != nil {
+		log.Errorf("error = %v", err)
+		return err
+	}
+	_, err = m.DB.Exec(insertTaskStmt, taskId, colBaseInfo, 0, string(buffer), "peloton")
+	return err
+}
+
+// GetTasksForJob returns the tasks (runtime_config) for a peloton job with certain state
+func (m *MysqlJobStore) GetTasksForJobAndState(id *job.JobID, state string) ([]*task.TaskInfo, error) {
+	blobs, err := m.GetBodyFields(jobsTable, map[string]interface{}{"job_id": id.Value, "task_state": state})
+	if err != nil {
+		log.Errorf("GetTasksForJob for id %v failed with error %v", id, err)
+		return nil, err
+	}
+	var result []*task.TaskInfo
+	result, err = storage.ToTaskInfos(blobs)
+	return result, err
+}
+
+// UpdateTask updates a task for a peloton job
+func (m *MysqlJobStore) UpdateTask(taskInfo *task.TaskInfo) error {
+	taskId := taskInfo.GetRuntime().TaskId.Value
+	buffer, err := json.Marshal(taskInfo)
+	if err != nil {
+		log.Errorf("error = %v", err)
+		return err
+	}
+	_, err = m.DB.Exec(updateTaskStmt, string(buffer), taskId)
+	return err
+}
+
+// getTaskQueryAndArgs returns the SQL query along with the bind args
+func getTaskQueryAndArgs(table string, filters map[string]interface{}, fields []string) (string, []interface{}) {
+	var args []interface{}
+	q := "SELECT"
+	for _, field := range fields {
+		q = q + " " + field
+	}
+	q = q + " FROM " + table
+	if len(filters) > 0 {
+		q = q + " where "
+		var i = 0
+		for field, value := range filters {
+			q = q + field + "= ? "
+			args = append(args, value)
+			i++
+			if i < len(filters)-1 {
+				q = q + field + "and "
+			}
+		}
+	}
+	return q, args
 }

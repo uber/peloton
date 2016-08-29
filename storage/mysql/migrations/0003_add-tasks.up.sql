@@ -10,7 +10,7 @@ CREATE TABLE tasks (
   `created_by`      VARCHAR(64) NOT NULL ,
   `create_time`     DATETIME DEFAULT CURRENT_TIMESTAMP,
   `update_time`     TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `job_id`          VARCHAR(64) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(body, '$.jobId'))),
+  `job_id`          VARCHAR(64) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(body, '$.jobId.value'))),
   `task_state`      VARCHAR(64) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(body, '$.runtime.state'))),
   `task_host`       VARCHAR(64) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(body, '$.runtime.host'))),
   `flags`           INTEGER DEFAULT 0,

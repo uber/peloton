@@ -6,8 +6,9 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/mattes/migrate/migrate"
 	"github.com/stretchr/testify/suite"
-	"mesos/v1"
+	mesos_v1 "mesos/v1"
 	"peloton/job"
+	"peloton/task"
 	"strconv"
 	"testing"
 )
@@ -71,11 +72,80 @@ func TestMysqlStore(t *testing.T) {
 	suite.Run(t, new(MysqlStoreTestSuite))
 }
 
-/*
-func (suite *MysqlStoreTestSuite) TestCreateGetRuntimeInfo() {
+func (suite *MysqlStoreTestSuite) TestCreateGetTaskInfo() {
+	// Insert 2 jobs
+	var nJobs = 3
+	var jobIDs []*job.JobID
+	var jobs []*job.JobConfig
+	for i := 0; i < nJobs; i++ {
+		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		jobIDs = append(jobIDs, &jobID)
+		var sla = job.SlaConfig{
+			Priority:               22,
+			MinimumInstanceCount:   3 + uint32(i),
+			MinimumInstancePercent: 50,
+			Preemptible:            false,
+		}
+		var jobConfig = job.JobConfig{
+			Name:       "TestJob_" + strconv.Itoa(i),
+			OwningTeam: "team6",
+			LdapGroups: []string{"money", "team6", "otto"},
+			Sla:        &sla,
+		}
+		jobs = append(jobs, &jobConfig)
+		err := suite.store.CreateJob(&jobID, &jobConfig, "uber")
+		suite.NoError(err)
 
+		// For each job, create 3 tasks
+		for j := 0; j < 3; j++ {
+			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
+			var taskInfo = task.TaskInfo{
+				Runtime: &task.RuntimeInfo{
+					TaskId: &mesos_v1.TaskID{Value: &tID},
+					State:  task.RuntimeInfo_TaskState(j),
+				},
+				JobConfig:  &jobConfig,
+				InstanceId: uint32(j),
+				JobId:      &jobID,
+			}
+			err = suite.store.CreateTask(&jobID, j, &taskInfo)
+			suite.NoError(err)
+		}
+	}
+	// List all tasks by job
+	for i := 0; i < nJobs; i++ {
+		tasks, err := suite.store.GetTasksForJob(jobIDs[i])
+		suite.NoError(err)
+		suite.Equal(len(tasks), 3)
+		for _, task := range tasks {
+			suite.Equal(task.JobId.Value, jobIDs[i].Value)
+		}
+	}
+
+	// List tasks for a job in certain state
+	// TODO: change the task.runtime.State to string type
+
+	// Update task
+	// List all tasks by job
+	for i := 0; i < nJobs; i++ {
+		tasks, err := suite.store.GetTasksForJob(jobIDs[i])
+		suite.NoError(err)
+		suite.Equal(len(tasks), 3)
+		for _, task := range tasks {
+			task.Runtime.Host = fmt.Sprintf("compute-%d", i)
+			err := suite.store.UpdateTask(task)
+			suite.NoError(err)
+		}
+	}
+	for i := 0; i < nJobs; i++ {
+		tasks, err := suite.store.GetTasksForJob(jobIDs[i])
+		suite.NoError(err)
+		suite.Equal(len(tasks), 3)
+		for _, task := range tasks {
+			suite.Equal(task.Runtime.Host, fmt.Sprintf("compute-%d", i))
+		}
+	}
 }
-*/
 
 func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	// Create 10 jobs in db
@@ -84,8 +154,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	var keys = []string{"testKey0", "testKey1", "testKey2", "key0"}
 	var vals = []string{"testVal0", "testVal1", "testVal2", "val0"}
 	for i := 0; i < records; i++ {
-
-		var jobId = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		var sla = job.SlaConfig{
 			Priority:               22,
 			MinimumInstanceCount:   3 + uint32(i),
@@ -124,13 +193,13 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 			Labels:     &labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
-		err := suite.store.CreateJob(&jobId, &jobconfig, "uber")
+		err := suite.store.CreateJob(&jobID, &jobconfig, "uber")
 		suite.NoError(err)
 	}
-	// search by job id
+	// search by job ID
 	for i := 0; i < records; i++ {
-		var jobId = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-		result, err := suite.store.GetJob(&jobId)
+		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		result, err := suite.store.GetJob(&jobID)
 		suite.NoError(err)
 		suite.Equal(result.Name, originalJobs[i].Name)
 		suite.Equal(result.Resource.FdLimit, originalJobs[i].Resource.FdLimit)
@@ -189,18 +258,18 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	jobs, err = suite.store.GetJobsByOwner("owner")
 	suite.NoError(err)
 	suite.Equal(len(jobs), 0)
-	/*
-		// Delete job
-		for i := 0; i < records; i++ {
-			var jobId = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-			err := suite.store.DeleteJob(&jobId)
-			suite.NoError(err)
-		}
-		// Get should not return anything
-		for i := 0; i < records; i++ {
-			var jobId = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-			result, err := suite.store.GetJob(&jobId)
-			suite.NoError(err)
-			suite.Nil(result)
-		}*/
+
+	// Delete job
+	for i := 0; i < records; i++ {
+		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		err := suite.store.DeleteJob(&jobID)
+		suite.NoError(err)
+	}
+	// Get should not return anything
+	for i := 0; i < records; i++ {
+		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		result, err := suite.store.GetJob(&jobID)
+		suite.NoError(err)
+		suite.Nil(result)
+	}
 }
