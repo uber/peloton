@@ -139,17 +139,20 @@ func (m *MysqlJobStore) CreateJob(id *job.JobID, jobConfig *job.JobConfig, creat
 
 // GetJob returns a job config given the job id
 func (m *MysqlJobStore) GetJob(id *job.JobID) (*job.JobConfig, error) {
-	var taskRec storage.JobRecord
-	err := m.DB.Get(&taskRec, getJobStmt, id.Value)
-	if err == sql.ErrNoRows {
-		log.Warnf("GetJob for id %v returns no rows", id)
-		return nil, nil
+	blobs, err := m.GetBodyFields(jobsTable, map[string]interface{}{"row_key": id.Value, "col_key" : colJobConfig})
+	if blobs != nil && len(blobs) > 1 {
+		err = fmt.Errorf("More than one result %v jobs found for id %v", len(blobs), id.Value)
 	}
 	if err != nil {
-		log.Errorf("Get has error %v", err)
+		log.Errorf("GetJob for jobId %v failed with error %v", id, err)
 		return nil, err
 	}
-	return taskRec.GetJobConfig()
+	if len(blobs) == 0 || blobs == nil {
+		return nil, nil
+	}
+	var result []*job.JobConfig
+	result, err = storage.ToJobConfigs(blobs)
+	return result[0], err
 }
 
 // Query returns all jobs that contains the Labels.
@@ -228,14 +231,14 @@ func (m *MysqlJobStore) GetJobsByOwner(owner string) ([]*job.JobConfig, error) {
 // GetBodyFields returns the body fields given where condition and the table name
 func (m *MysqlJobStore) GetBodyFields(table string, whereFilters map[string]interface{}) ([]string, error) {
 	var blobs []string
-	q, args := getTaskQueryAndArgs(table, whereFilters, []string{"body"})
+	q, args := getQueryAndArgs(table, whereFilters, []string{"body"})
 	err := m.DB.Select(&blobs, q, args...)
 	if err == sql.ErrNoRows {
 		log.Warnf("GetBodyFields for table %v where %v returns no rows", table, whereFilters)
 		return blobs, nil
 	}
 	if err != nil {
-		log.Errorf("GetBodyFields for table %v where %v failed with error %v", table, whereFilters, err)
+		log.Errorf("GetBodyFields for table %v where %v failed with error %v, q=%v args=%v", table, whereFilters, err, q, args)
 		return nil, err
 	}
 	return blobs, nil
@@ -300,8 +303,8 @@ func (m *MysqlJobStore) UpdateTask(taskInfo *task.TaskInfo) error {
 	return err
 }
 
-// getTaskQueryAndArgs returns the SQL query along with the bind args
-func getTaskQueryAndArgs(table string, filters map[string]interface{}, fields []string) (string, []interface{}) {
+// getQueryAndArgs returns the SQL query along with the bind args
+func getQueryAndArgs(table string, filters map[string]interface{}, fields []string) (string, []interface{}) {
 	var args []interface{}
 	q := "SELECT"
 	for _, field := range fields {
@@ -314,10 +317,10 @@ func getTaskQueryAndArgs(table string, filters map[string]interface{}, fields []
 		for field, value := range filters {
 			q = q + field + "= ? "
 			args = append(args, value)
-			i++
 			if i < len(filters)-1 {
-				q = q + field + "and "
+				q = q + "and "
 			}
+			i++
 		}
 	}
 	return q, args
