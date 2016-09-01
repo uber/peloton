@@ -8,8 +8,8 @@ import (
 	"github.com/yarpc/yarpc-go/transport/http"
 
 	"code.uber.internal/go-common.git/x/config"
-	"code.uber.internal/go-common.git/x/metrics"
 	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/go-common.git/x/metrics"
 
 	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/task"
@@ -24,8 +24,6 @@ type appConfig struct {
 	Verbose  bool
 	DbConfig mysql.Config `yaml:"db"`
 }
-
-
 
 type requestLogInterceptor struct{}
 
@@ -72,11 +70,11 @@ func main() {
 		},
 		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
 	})
+	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
 
-	job.InitManager(dispatcher)
-	task.InitManager(dispatcher)
+	job.InitManager(dispatcher, store, store)
+	task.InitManager(dispatcher, store, store)
 	upgrade.InitManager(dispatcher)
-
 
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)

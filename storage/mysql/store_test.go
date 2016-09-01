@@ -108,7 +108,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetTaskInfo() {
 				InstanceId: uint32(j),
 				JobId:      &jobID,
 			}
-			err = suite.store.CreateTask(&jobID, j, &taskInfo)
+			err = suite.store.CreateTask(&jobID, j, &taskInfo, "test")
 			suite.NoError(err)
 		}
 	}
@@ -195,6 +195,9 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 		originalJobs = append(originalJobs, &jobconfig)
 		err := suite.store.CreateJob(&jobID, &jobconfig, "uber")
 		suite.NoError(err)
+
+		err = suite.store.CreateJob(&jobID, &jobconfig, "uber")
+		suite.Error(err)
 	}
 	// search by job ID
 	for i := 0; i < records; i++ {
@@ -207,7 +210,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	}
 
 	// Query by owner
-	var jobs []*job.JobConfig
+	var jobs map[string]*job.JobConfig
 	var err error
 	var labelQuery = mesos_v1.Labels{
 		Labels: []*mesos_v1.Label{

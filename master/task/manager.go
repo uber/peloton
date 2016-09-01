@@ -5,11 +5,13 @@ import (
 	"github.com/yarpc/yarpc-go/encoding/json"
 
 	"code.uber.internal/go-common.git/x/log"
+	"peloton/job"
 	"peloton/task"
+	"code.uber.internal/infra/peloton/storage"
 )
 
-func InitManager(d yarpc.Dispatcher) {
-	handler := taskManager{}
+func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore) {
+	handler := taskManager{TaskStore : taskStore, JobStore:jobStore}
 	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
 	json.Register(d, json.Procedure("TaskManager.List", handler.List))
 	json.Register(d, json.Procedure("TaskManager.Start", handler.Start))
@@ -18,14 +20,45 @@ func InitManager(d yarpc.Dispatcher) {
 }
 
 type taskManager struct {
+	TaskStore storage.TaskStore
+	JobStore storage.JobStore
 }
 
 func (m *taskManager) Get(
 	reqMeta yarpc.ReqMeta,
 	body *task.GetRequest) (*task.GetResponse, yarpc.ResMeta, error) {
 
+	jobConfig, err := m.JobStore.GetJob(body.JobId)
+	if err != nil {
+		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
+		return &task.GetResponse{
+			Response:&task.GetResponse_NotFound{
+				NotFound : &job.JobNotFound{
+					Id : body.JobId,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
 	log.Infof("TaskManager.Get called: %s", body)
-	return &task.GetResponse{}, nil, nil
+	result, err := m.TaskStore.GetTaskForJob(body.JobId, body.InstanceId)
+	for _, taskInfo := range(result){
+		return &task.GetResponse{
+			Response : &task.GetResponse_Result {
+				Result:taskInfo,
+			},
+		}, nil, nil
+	}
+
+	return &task.GetResponse{
+		Response: &task.GetResponse_OutOfRange {
+			OutOfRange : & task.InstanceIdOutOfRange{
+			    JobId : body.JobId,
+				InstanceCount: jobConfig.InstanceCount,
+			},
+		},
+	}, nil, nil
 }
 
 func (m *taskManager) List(

@@ -8,17 +8,18 @@ import (
 
 // JobStore is the interface to store job states
 type JobStore interface {
-	CreateJob(id *job.JobID, Config *job.JobConfig) (err error)
-	GetJob(id *job.JobID) (job *job.JobConfig, err error)
-	Query(Labels *mesos_v1.Labels) (jobs []*job.JobConfig, err error)
-	DeleteJob(id *job.JobID) (err error)
-	GetJobsByOwner(owner string) (jobs []*job.JobConfig, err error)
+	CreateJob(id *job.JobID, Config *job.JobConfig, create_by string) error
+	GetJob(id *job.JobID) (*job.JobConfig, error)
+	Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, error)
+	DeleteJob(id *job.JobID) error
+	GetJobsByOwner(owner string) (map[string]*job.JobConfig, error)
 }
 
 // TaskStore is the interface to store task states
 type TaskStore interface {
-	CreateTask(id *job.JobID, instanceId int, taskInfo *task.TaskInfo) (err error)
-	GetTasksForJob(id *job.JobID) (tasks []*task.TaskInfo, err error)
-	GetTasksForJobAndState(id *job.JobID, state string) (tasks []*task.TaskInfo, err error)
-	UpdateTask(taskInfo *task.TaskInfo) (err error)
+	CreateTask(id *job.JobID, instanceId int, taskInfo *task.TaskInfo, created_by string) error
+	GetTasksForJob(id *job.JobID) (map[string]*task.TaskInfo, error)
+	GetTasksForJobAndState(id *job.JobID, state string) (map[string]*task.TaskInfo, error)
+	GetTaskForJob(id *job.JobID, instanceId uint32) (map[string]*task.TaskInfo, error)
+	UpdateTask(taskInfo *task.TaskInfo) error
 }

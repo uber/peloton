@@ -5,10 +5,12 @@ import (
 	"github.com/yarpc/yarpc-go/encoding/json"
 	"code.uber.internal/go-common.git/x/log"
 	"peloton/job"
+	"code.uber.internal/infra/peloton/storage"
+	"peloton/task"
 )
 
-func InitManager(d yarpc.Dispatcher) {
-	handler := jobManager{}
+func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore) {
+	handler := jobManager{JobStore:store, TaskStore:taskStore}
 	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
 	json.Register(d, json.Procedure("JobManager.Get", handler.Get))
 	json.Register(d, json.Procedure("JobManager.Query", handler.Query))
@@ -16,6 +18,8 @@ func InitManager(d yarpc.Dispatcher) {
 }
 
 type jobManager struct {
+	JobStore storage.JobStore
+	TaskStore storage.TaskStore
 }
 
 func (m *jobManager) Create(
@@ -23,23 +27,67 @@ func (m *jobManager) Create(
 	body *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
 	log.Infof("JobManager.Create called: %s", body)
-	return &job.CreateResponse{}, nil, nil
+	jobId := body.Id
+	jobConfig := body.Config
+	err := m.JobStore.CreateJob(jobId, jobConfig, "peloton")
+	if err != nil {
+		return &job.CreateResponse{
+			Response : &job.CreateResponse_AlreadyExists{
+				AlreadyExists: &job.JobAlreadyExists{
+					Id : body.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+	// Create tasks for the job
+	for i := 0; i < int(body.Config.InstanceCount); i++ {
+		taskInfo := task.TaskInfo{
+			Runtime: &task.RuntimeInfo{
+					State:  task.RuntimeInfo_INITIALIZED,
+				},
+				JobConfig:  jobConfig,
+				InstanceId: uint32(i),
+				JobId:      jobId,
+		}
+		log.Infof("Creating %v =th task for job %v", i, jobId)
+		err := m.TaskStore.CreateTask(jobId, i, &taskInfo, "peloton")
+		if err != nil {
+			log.Errorf("Creating %v =th task for job %v failed with err=%v", i, jobId, err)
+			// TODO : decide how to handle the case that some tasks failed to be added (rare)
+			// 1. Rely on job level healthcheck to alert on # of instances mismatch, and re-try creating the task later
+			// 2. revert te job creation altogether
+		}
+	}
+	return &job.CreateResponse{
+		Response : &job.CreateResponse_Result {
+			Result : jobId,
+		},
+	}, nil, nil
 }
 
 func (m *jobManager) Get(
 	reqMeta yarpc.ReqMeta,
 	body *job.GetRequest) (*job.GetResponse, yarpc.ResMeta, error) {
-
 	log.Infof("JobManager.Get called: %s", body)
-	return &job.GetResponse{}, nil, nil
+
+	jobConfig, err := m.JobStore.GetJob(body.Id)
+	if err != nil {
+		log.Errorf("GetJob failed with error %v", err)
+	}
+	return &job.GetResponse{Result:jobConfig}, nil, nil
 }
 
 func (m *jobManager) Query(
 	reqMeta yarpc.ReqMeta,
 	body *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
-
 	log.Infof("JobManager.Query called: %s", body)
-	return &job.QueryResponse{}, nil, nil
+
+	jobConfigs, err := m.JobStore.Query(body.Labels)
+	if err != nil {
+		log.Errorf("Query job failed with error %v", err)
+	}
+	return &job.QueryResponse{Result:jobConfigs}, nil, nil
 }
 
 func (m *jobManager) Delete(
@@ -47,6 +95,10 @@ func (m *jobManager) Delete(
 	body *job.DeleteRequest) (*job.DeleteResponse, yarpc.ResMeta, error) {
 
 	log.Infof("JobManager.Delete called: %s", body)
+	err := m.JobStore.DeleteJob(body.Id)
+	if err != nil {
+		log.Errorf("Delete job failed with error %v", err)
+	}
 	return &job.DeleteResponse{}, nil, nil
 }
 
