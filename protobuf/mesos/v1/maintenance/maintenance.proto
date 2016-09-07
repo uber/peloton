@@ -17,6 +17,7 @@
 syntax = "proto2";
 
 import "mesos/v1/mesos.proto";
+
 import "mesos/v1/allocator/allocator.proto";
 
 package mesos.v1.maintenance;

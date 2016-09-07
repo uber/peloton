@@ -12,6 +12,7 @@ package upgrade
 import (
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/encoding/json"
+	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
 	"peloton/upgrade"
@@ -32,6 +33,7 @@ type upgradeManager struct {
 }
 
 func (m *upgradeManager) Create(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *upgrade.CreateRequest) (*upgrade.CreateResponse, yarpc.ResMeta, error) {
 
@@ -40,6 +42,7 @@ func (m *upgradeManager) Create(
 }
 
 func (m *upgradeManager) Get(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *upgrade.GetRequest) (*upgrade.GetResponse, yarpc.ResMeta, error) {
 
@@ -48,6 +51,7 @@ func (m *upgradeManager) Get(
 }
 
 func (m *upgradeManager) List(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *upgrade.ListRequest) (*upgrade.ListResponse, yarpc.ResMeta, error) {
 
@@ -56,6 +60,7 @@ func (m *upgradeManager) List(
 }
 
 func (m *upgradeManager) Pause(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *upgrade.PauseRequest) (*upgrade.PauseResponse, yarpc.ResMeta, error) {
 
@@ -64,6 +69,7 @@ func (m *upgradeManager) Pause(
 }
 
 func (m *upgradeManager) Resume(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *upgrade.ResumeRequest) (*upgrade.ResumeResponse, yarpc.ResMeta, error) {
 
@@ -72,6 +78,7 @@ func (m *upgradeManager) Resume(
 }
 
 func (m *upgradeManager) Rollback(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *upgrade.RollbackRequest) (*upgrade.RollbackResponse, yarpc.ResMeta, error) {
 
@@ -80,6 +87,7 @@ func (m *upgradeManager) Rollback(
 }
 
 func (m *upgradeManager) Abort(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *upgrade.AbortRequest) (*upgrade.AbortResponse, yarpc.ResMeta, error) {
 

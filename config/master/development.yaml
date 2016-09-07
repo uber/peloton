@@ -8,3 +8,13 @@ db:
   host: 127.0.0.1
   port: 3306
   migrations: storage/mysql/migrations/
+
+logging:
+  stdout: true
+  level: debug
+
+master:
+  port: 8888
+
+mesos:
+  hostPort: "192.168.33.7:5050"

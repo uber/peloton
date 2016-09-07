@@ -7,24 +7,18 @@ import (
 	"github.com/yarpc/yarpc-go/transport"
 	"github.com/yarpc/yarpc-go/transport/http"
 
-	"code.uber.internal/go-common.git/x/config"
 	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/go-common.git/x/metrics"
-
+	"code.uber.internal/go-common.git/x/config"
+	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
+	"code.uber.internal/infra/peloton/master/offer"
+	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"code.uber.internal/infra/peloton/storage/mysql"
 )
 
-type appConfig struct {
-	Logging  log.Configuration
-	Metrics  metrics.Configuration
-	Sentry   log.SentryConfiguration
-	Verbose  bool
-	DbConfig mysql.Config `yaml:"db"`
-}
-
+// Simple request interceptor which logs the request summary
 type requestLogInterceptor struct{}
 
 func (requestLogInterceptor) Handle(
@@ -34,13 +28,12 @@ func (requestLogInterceptor) Handle(
 	resw transport.ResponseWriter,
 	handler transport.Handler) error {
 
-	log.Infof("Received a request to %q from client %q (encoding %q)\n",
-		req.Procedure, req.Caller, req.Encoding)
+	log.Infof("Received a %s request from %s", req.Procedure, req.Caller)
 	return handler.Handle(ctx, opts, req, resw)
 }
 
 func main() {
-	var cfg appConfig
+	var cfg AppConfig
 	if err := config.Load(&cfg); err != nil {
 		log.Fatalf("Error initializing configuration: %s", err)
 	}
@@ -63,18 +56,23 @@ func main() {
 		log.Fatalf("Could not migrate database: %+v", errs)
 	}
 
+	// TODO: Load framework ID from DB
+	f := mesos.NewSchedulerDriver(&cfg.Mesos.Framework, nil)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: "peloton-master",
 		Inbounds: []transport.Inbound{
-			http.NewInbound(":5289"),
+			http.NewInbound(":" + string(cfg.Master.Port)),
+			mhttp.NewInbound(cfg.Mesos.HostPort, f),
 		},
 		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
 	})
 	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
 
+	mesos.InitManager(dispatcher)
 	job.InitManager(dispatcher, store, store)
 	task.InitManager(dispatcher, store, store)
 	upgrade.InitManager(dispatcher)
+	offer.InitManager(dispatcher)
 
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
@@ -82,5 +80,4 @@ func main() {
 
 	log.Info("Started rpc server")
 	select {}
-
 }

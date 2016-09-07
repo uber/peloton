@@ -1,5 +1,5 @@
-hash: 8405d7466d48f4a3ed105a89e60ac5ec5c143a781d0305dde134d0f9f9223708
-updated: 2016-08-07T10:55:28.119416991-07:00
+hash: 406af1ae8ecb11d81bc8f30f0beb087e5c18744711c43d08a3164b67e3760227
+updated: 2016-09-06T12:50:31.724054497-07:00
 imports:
 - name: code.uber.internal/go-common.git
   version: a6cd07d467a9483c0f06b3262e4194280fb77148
@@ -30,12 +30,32 @@ imports:
   version: f8ad88b59a584afeee9d334eff879b104439117b
 - name: github.com/getsentry/raven-go
   version: e39495fea085e98d1281fac0ff4d6eb8dc56f86d
+- name: github.com/go-sql-driver/mysql
+  version: 0b58b37b664c21f3010e836f1b931e1d0b0b0685
+- name: github.com/gogo/protobuf
+  version: 25ba8223d7d87221953053beb97ebf159b982257
+  subpackages:
+  - jsonpb
+  - proto
 - name: github.com/golang/protobuf
   version: c3cefd437628a0b7d31b34fe44b3a7a540e98527
   subpackages:
   - proto
   - protoc
   - protoc-gen-go
+- name: github.com/jmoiron/sqlx
+  version: 7396209bbeada6a4fcc28aa9408f89b2e71cac39
+  subpackages:
+  - reflectx
+- name: github.com/mattes/migrate
+  version: ce1b59bb819416ca67422929b1cb48bb342720b6
+  subpackages:
+  - driver/mysql
+  - migrate
+  - driver
+  - file
+  - migrate/direction
+  - pipe
 - name: github.com/Sirupsen/logrus
   version: cd7d1bbe41066b6c1f19780f895901052150a575
 - name: github.com/uber-common/bark
@@ -43,7 +63,7 @@ imports:
 - name: github.com/uber-go/atomic
   version: e682c1008ac17bf26d2e4b5ad6cdd08520ed0b22
 - name: github.com/yarpc/yarpc-go
-  version: 3a4561d3e198e36cabc726b2e2862fb1bb9e3fc3
+  version: cd726a40ccb8b89781f62677b9e75facd066989d
   subpackages:
   - transport
   - transport/http
@@ -70,4 +90,14 @@ imports:
   version: 3e4f037f12a1221a0864cf0dd2e81c452ab22448
 - name: gopkg.in/yaml.v2
   version: a83829b6f1293c91addabc89d0571c246397bbf4
+- name: mesos/v1
+  version: ""
+- name: mesos/v1/scheduler
+  version: ""
+- name: peloton/job
+  version: ""
+- name: peloton/task
+  version: ""
+- name: peloton/upgrade
+  version: ""
 devImports: []

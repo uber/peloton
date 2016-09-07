@@ -1,3 +1,15 @@
 logging:
   level: info
   stdout: true
+
+master:
+  port: 5289
+
+mesos:
+  framework:
+    user: "root"
+    name: "Peloton"
+    role: "peloton-role"
+    principal: ""
+    failoverTimeout: 60
+    checkpoint: false

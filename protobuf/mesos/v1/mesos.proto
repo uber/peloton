@@ -207,9 +207,14 @@ message MachineInfo {
  * Describes a framework.
  */
 message FrameworkInfo {
-  // Used to determine the Unix user that an executor or task should
-  // be launched as. If the user field is set to an empty string Mesos
-  // will automagically set it to the current user.
+  // Used to determine the Unix user that an executor or task should be
+  // launched as.
+  //
+  // When using the MesosSchedulerDriver, if the field is set to an
+  // empty string, it will automagically set it to the current user.
+  //
+  // When using the HTTP Scheduler API, the user has to be set
+  // explicitly.
   required string user = 1;
 
   // Name of the framework that shows up in the Mesos Web UI.
@@ -269,13 +274,30 @@ message FrameworkInfo {
 
       // Receive offers with revocable resources. See 'Resource'
       // message for details.
-      // TODO(vinod): This is currently a no-op.
       REVOCABLE_RESOURCES = 1;
 
       // Receive the TASK_KILLING TaskState when a task is being
       // killed by an executor. The executor will examine this
       // capability to determine whether it can send TASK_KILLING.
       TASK_KILLING_STATE = 2;
+
+      // Indicates whether the framework is aware of GPU resources.
+      // Frameworks that are aware of GPU resources are expected to
+      // avoid placing non-GPU workloads on GPU agents, in order
+      // to avoid occupying a GPU agent and preventing GPU workloads
+      // from running! Currently, if a framework is unaware of GPU
+      // resources, it will not be offered *any* of the resources on
+      // an agent with GPUs. This restriction is in place because we
+      // do not have a revocation mechanism that ensures GPU workloads
+      // can evict GPU agent occupants if necessary.
+      //
+      // TODO(bmahler): As we add revocation we can relax the
+      // restriction here. See MESOS-5634 for more information.
+      GPU_RESOURCES = 3;
+
+      // Receive offers with resources that are shared.
+      // TODO(anindya_sinha): This is currently a no-op.
+      SHARED_RESOURCES = 4;
     }
 
     // Enum fields should be optional, see: MESOS-4997.
@@ -480,9 +502,9 @@ message ExecutorInfo {
   // executor via JSON on the agent. This allows users to import usage
   // information into a time series database for monitoring.
   //
-  // This field is deprecated since 0.29.0. Please use labels for
+  // This field is deprecated since 1.0. Please use labels for
   // free-form metadata instead.
-  optional string source = 10 [deprecated = true]; // Since 0.29.0.
+  optional string source = 10 [deprecated = true]; // Since 1.0.
 
   optional bytes data = 4;
 
@@ -769,6 +791,15 @@ message Resource {
   // guarantees. Note that if this is set, 'disk' or 'reservation'
   // cannot be set.
   optional RevocableInfo revocable = 9;
+
+  // Allow the resource to be shared across tasks.
+  message SharedInfo {}
+
+  // If this is set, the resources are shared, i.e. multiple tasks
+  // can be launched using this resource and all of them shall refer
+  // to the same physical resource on the cluster. Note that only
+  // persistent volumes can be shared currently.
+  optional SharedInfo shared = 10;
 }
 
 /**
@@ -1302,6 +1333,55 @@ message TaskInfo {
 }
 
 
+// TODO(bmahler): Add executor_uuid here, and send it to the master. This will
+// allow us to expose executor work directories for tasks in the webui when
+// looking from the master level. Currently only the agent knows which run the
+// task belongs to.
+/**
+ * Describes a task, similar to `TaskInfo`.
+ *
+ * `Task` is used in some of the Mesos messages found below.
+ * `Task` is used instead of `TaskInfo` if:
+ *   1) we need additional IDs, such as a specific
+ *      framework, executor, or agent; or
+ *   2) we do not need the additional data, such as the command run by the
+ *      task or the health checks.  These additional fields may be large and
+ *      unnecessary for some Mesos messages.
+ *
+ * `Task` is generally constructed from a `TaskInfo`.  See protobuf::createTask.
+ */
+message Task {
+  required string name = 1;
+  required TaskID task_id = 2;
+  required FrameworkID framework_id = 3;
+  optional ExecutorID executor_id = 4;
+  required AgentID agent_id = 5;
+  required TaskState state = 6; // Latest state of the task.
+  repeated Resource resources = 7;
+  repeated TaskStatus statuses = 8;
+
+  // These fields correspond to the state and uuid of the latest
+  // status update forwarded to the master.
+  // NOTE: Either both the fields must be set or both must be unset.
+  optional TaskState status_update_state = 9;
+  optional bytes status_update_uuid = 10;
+
+  optional Labels labels = 11;
+
+  // Service discovery information for the task. It is not interpreted
+  // or acted upon by Mesos. It is up to a service discovery system
+  // to use this information as needed and to handle tasks without
+  // service discovery information.
+  optional DiscoveryInfo discovery = 12;
+
+  // Container information for the task.
+  optional ContainerInfo container = 13;
+
+  // Specific user under which task is running.
+  optional string user = 14;
+}
+
+
 /**
  * Describes possible task states. IMPORTANT: Mesos assumes tasks that
  * enter terminal states (see below) imply the task is no longer
@@ -1592,7 +1672,7 @@ message Volume {
     RO = 2; // read-only.
   }
 
-  // TODO(gyliu513): Make this as `optional` after deprecation cycle of 0.29.
+  // TODO(gyliu513): Make this as `optional` after deprecation cycle of 1.0.
   required Mode mode = 3;
 
   // Path pointing to a directory or file in the container. If the
@@ -1714,19 +1794,6 @@ message NetworkInfo {
   // to decide how to interpret this field.
   optional string name = 6;
 
-  // Specify IP address requirement. Set protocol to the desired value to
-  // request the network isolator on the Agent to assign an IP address to the
-  // container being launched. If a specific IP address is specified in
-  // ip_address, this field should not be set.
-  optional Protocol protocol = 1 [deprecated = true]; // Since 0.26.0
-
-  // Statically assigned IP provided by the Framework. This IP will be assigned
-  // to the container by the network isolator module on the Agent. This field
-  // should not be used with the protocol field above.
-  // NOTE: It is up to the networking 'provider' (IPAM/Isolator) to interpret
-  // this either as a hint of as a requirement for assigning the IP.
-  optional string ip_address = 2 [deprecated = true]; // Since 0.26.0
-
   // A group is the name given to a set of logically-related interfaces that
   // are allowed to communicate among themselves. Network traffic is allowed
   // between two container interfaces that share at least one network group.
@@ -1737,6 +1804,72 @@ message NetworkInfo {
   // To tag certain metadata to be used by Isolator/IPAM, e.g., rack, etc.
   optional Labels labels = 4;
 };
+
+
+/**
+ *  Encapsulation of `Capabilities` supported by Linux.
+ *  Reference: http://linux.die.net/man/7/capabilities.
+ */
+message CapabilityInfo {
+  // We start the actual values at an offset(1000) because Protobuf 2
+  // uses the first value as the default one. Separating the default
+  // value from the real first value helps to disambiguate them. This
+  // is especially valuable for backward compatibility.
+  // See: MESOS-4997.
+  enum Capability {
+    UNKNOWN = 0;
+    CHOWN = 1000;
+    DAC_OVERRIDE = 1001;
+    DAC_READ_SEARCH = 1002;
+    FOWNER = 1003;
+    FSETID = 1004;
+    KILL = 1005;
+    SETGID = 1006;
+    SETUID = 1007;
+    SETPCAP = 1008;
+    LINUX_IMMUTABLE = 1009;
+    NET_BIND_SERVICE = 1010;
+    NET_BROADCAST = 1011;
+    NET_ADMIN = 1012;
+    NET_RAW = 1013;
+    IPC_LOCK = 1014;
+    IPC_OWNER = 1015;
+    SYS_MODULE = 1016;
+    SYS_RAWIO = 1017;
+    SYS_CHROOT = 1018;
+    SYS_PTRACE = 1019;
+    SYS_PACCT = 1020;
+    SYS_ADMIN = 1021;
+    SYS_BOOT = 1022;
+    SYS_NICE = 1023;
+    SYS_RESOURCE = 1024;
+    SYS_TIME = 1025;
+    SYS_TTY_CONFIG = 1026;
+    MKNOD = 1027;
+    LEASE = 1028;
+    AUDIT_WRITE = 1029;
+    AUDIT_CONTROL = 1030;
+    SETFCAP = 1031;
+    MAC_OVERRIDE = 1032;
+    MAC_ADMIN = 1033;
+    SYSLOG = 1034;
+    WAKE_ALARM = 1035;
+    BLOCK_SUSPEND = 1036;
+    AUDIT_READ = 1037;
+  }
+
+  repeated Capability capabilities = 1;
+}
+
+
+/**
+ * Encapsulation for Linux specific configuration.
+ * E.g, capabilities, limits etc.
+ */
+message LinuxInfo {
+  // Represents the capability whitelist.
+  optional CapabilityInfo capability_info = 1;
+}
 
 
 /**
@@ -1787,7 +1920,7 @@ message ContainerInfo {
     optional bool force_pull_image = 6;
 
     // The name of volume driver plugin.
-    optional string volume_driver = 7;
+    optional string volume_driver = 7 [deprecated = true]; // Since 1.0
   }
 
   message MesosInfo {
@@ -1806,6 +1939,9 @@ message ContainerInfo {
   // A list of network requests. A framework can request multiple IP addresses
   // for the container.
   repeated NetworkInfo network_infos = 7;
+
+  // Linux specific information for the container.
+  optional LinuxInfo linux_info = 8;
 }
 
 
@@ -1820,6 +1956,9 @@ message ContainerStatus {
 
   // Information about Linux control group (cgroup).
   optional CgroupInfo cgroup_info = 2;
+
+  //Information about Executor PID.
+  optional uint32 executor_pid = 3;
 }
 
 
@@ -1939,9 +2078,9 @@ message WeightInfo {
  */
 message VersionInfo {
   required string version = 1;
-  required string build_date = 2;
-  required double build_time = 3;
-  required string build_user = 4;
+  optional string build_date = 2;
+  optional double build_time = 3;
+  optional string build_user = 4;
   optional string git_sha = 5;
   optional string git_branch = 6;
   optional string git_tag = 7;
@@ -1958,9 +2097,49 @@ message Flag {
 
 
 /**
+ * Describes a Role. Roles can be used to specify that certain resources are
+ * reserved for the use of one or more frameworks.
+ */
+message Role {
+  required string name = 1;
+  required double weight = 2;
+  repeated FrameworkID frameworks = 3;
+  repeated Resource resources = 4;
+}
+
+
+/**
  * Metric consists of a name and optionally its value.
  */
 message Metric {
   required string name = 1;
   optional double value = 2;
+}
+
+
+/**
+ * Describes a File.
+ */
+message FileInfo {
+  // Absolute path to the file.
+  required string path = 1;
+
+  // Number of hard links.
+  optional int32 nlink = 2;
+
+  // Total size in bytes.
+  optional uint64 size = 3;
+
+  // Last modification time.
+  optional TimeInfo mtime = 4;
+
+  // Represents a file's mode and permission bits. The bits have the same
+  // definition on all systems and is portable.
+  optional uint32 mode = 5;
+
+  // User ID of owner.
+  optional string uid = 6;
+
+  // Group ID of owner.
+  optional string gid = 7;
 }

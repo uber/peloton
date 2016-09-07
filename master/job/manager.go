@@ -3,6 +3,8 @@ package job
 import (
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/encoding/json"
+	"golang.org/x/net/context"
+
 	"code.uber.internal/go-common.git/x/log"
 	"peloton/job"
 	"code.uber.internal/infra/peloton/storage"
@@ -23,6 +25,7 @@ type jobManager struct {
 }
 
 func (m *jobManager) Create(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
@@ -67,6 +70,7 @@ func (m *jobManager) Create(
 }
 
 func (m *jobManager) Get(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *job.GetRequest) (*job.GetResponse, yarpc.ResMeta, error) {
 	log.Infof("JobManager.Get called: %s", body)
@@ -79,6 +83,7 @@ func (m *jobManager) Get(
 }
 
 func (m *jobManager) Query(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
 	log.Infof("JobManager.Query called: %s", body)
@@ -91,6 +96,7 @@ func (m *jobManager) Query(
 }
 
 func (m *jobManager) Delete(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *job.DeleteRequest) (*job.DeleteResponse, yarpc.ResMeta, error) {
 

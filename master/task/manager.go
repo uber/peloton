@@ -3,6 +3,7 @@ package task
 import (
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/encoding/json"
+	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
 	"peloton/job"
@@ -25,6 +26,7 @@ type taskManager struct {
 }
 
 func (m *taskManager) Get(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.GetRequest) (*task.GetResponse, yarpc.ResMeta, error) {
 
@@ -62,6 +64,7 @@ func (m *taskManager) Get(
 }
 
 func (m *taskManager) List(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.ListRequest) (*task.ListResponse, yarpc.ResMeta, error) {
 
@@ -70,6 +73,7 @@ func (m *taskManager) List(
 }
 
 func (m *taskManager) Start(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.StartRequest) (*task.StartResponse, yarpc.ResMeta, error) {
 
@@ -78,6 +82,7 @@ func (m *taskManager) Start(
 }
 
 func (m *taskManager) Stop(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.StopRequest) (*task.StopResponse, yarpc.ResMeta, error) {
 
@@ -86,6 +91,7 @@ func (m *taskManager) Stop(
 }
 
 func (m *taskManager) Restart(
+	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.RestartRequest) (*task.RestartResponse, yarpc.ResMeta, error) {
 
