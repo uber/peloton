@@ -1,0 +1,30 @@
+changelog: null
+name: TestPelotonJob_123
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test job for peloton"
+labels:
+  labels:
+  - key: testKey0
+    value: testVal0
+  - key: testKey1
+    value: testVal1
+  - key: testKey2
+    value: testVal2
+instancecount: 10
+resource:
+  cpuslimit: 0.8
+  memlimitmb: 800
+  disklimitmb: 1500
+  fdlimit: 1009
+healthcheck: null
+ports: []
+container: null
+sla:
+  priority: 22
+  minimuminstancecount: 12
+  minimuminstancepercent: 50
+  preemptible: false

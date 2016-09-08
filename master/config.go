@@ -9,16 +9,16 @@ import (
 
 // Configuration encapulates the master runtime config
 type AppConfig struct {
-	Logging   log.Configuration
-	Metrics   metrics.Configuration
-	Sentry    log.SentryConfiguration
-	Verbose   bool
-	DbConfig  mysql.Config        `yaml:"db"`
-	Master    MasterConfig        `yaml:"master"`
-	Mesos     mesos.Config        `yaml:"mesos"`
+	Logging  log.Configuration
+	Metrics  metrics.Configuration
+	Sentry   log.SentryConfiguration
+	Verbose  bool
+	DbConfig mysql.Config `yaml:"db"`
+	Master   MasterConfig `yaml:"master"`
+	Mesos    mesos.Config `yaml:"mesos"`
 }
 
 // Peloton master specific configuration
 type MasterConfig struct {
-	Port      int                 `yaml:"port"`
+	Port int `yaml:"port"`
 }

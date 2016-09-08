@@ -6,13 +6,13 @@ import (
 	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
-	"peloton/job"
 	"code.uber.internal/infra/peloton/storage"
+	"peloton/job"
 	"peloton/task"
 )
 
 func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore) {
-	handler := jobManager{JobStore:store, TaskStore:taskStore}
+	handler := jobManager{JobStore: store, TaskStore: taskStore}
 	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
 	json.Register(d, json.Procedure("JobManager.Get", handler.Get))
 	json.Register(d, json.Procedure("JobManager.Query", handler.Query))
@@ -20,7 +20,7 @@ func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.T
 }
 
 type jobManager struct {
-	JobStore storage.JobStore
+	JobStore  storage.JobStore
 	TaskStore storage.TaskStore
 }
 
@@ -29,15 +29,15 @@ func (m *jobManager) Create(
 	reqMeta yarpc.ReqMeta,
 	body *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
-	log.Infof("JobManager.Create called: %s", body)
+	log.Infof("JobManager.Create called: %v", body)
 	jobId := body.Id
 	jobConfig := body.Config
 	err := m.JobStore.CreateJob(jobId, jobConfig, "peloton")
 	if err != nil {
 		return &job.CreateResponse{
-			Response : &job.CreateResponse_AlreadyExists{
+			Response: &job.CreateResponse_AlreadyExists{
 				AlreadyExists: &job.JobAlreadyExists{
-					Id : body.Id,
+					Id:      body.Id,
 					Message: err.Error(),
 				},
 			},
@@ -47,11 +47,11 @@ func (m *jobManager) Create(
 	for i := 0; i < int(body.Config.InstanceCount); i++ {
 		taskInfo := task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-					State:  task.RuntimeInfo_INITIALIZED,
-				},
-				JobConfig:  jobConfig,
-				InstanceId: uint32(i),
-				JobId:      jobId,
+				State: task.RuntimeInfo_INITIALIZED,
+			},
+			JobConfig:  jobConfig,
+			InstanceId: uint32(i),
+			JobId:      jobId,
 		}
 		log.Infof("Creating %v =th task for job %v", i, jobId)
 		err := m.TaskStore.CreateTask(jobId, i, &taskInfo, "peloton")
@@ -63,8 +63,8 @@ func (m *jobManager) Create(
 		}
 	}
 	return &job.CreateResponse{
-		Response : &job.CreateResponse_Result {
-			Result : jobId,
+		Response: &job.CreateResponse_Result{
+			Result: jobId,
 		},
 	}, nil, nil
 }
@@ -73,26 +73,26 @@ func (m *jobManager) Get(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *job.GetRequest) (*job.GetResponse, yarpc.ResMeta, error) {
-	log.Infof("JobManager.Get called: %s", body)
+	log.Infof("JobManager.Get called: %v", body)
 
 	jobConfig, err := m.JobStore.GetJob(body.Id)
 	if err != nil {
 		log.Errorf("GetJob failed with error %v", err)
 	}
-	return &job.GetResponse{Result:jobConfig}, nil, nil
+	return &job.GetResponse{Result: jobConfig}, nil, nil
 }
 
 func (m *jobManager) Query(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
-	log.Infof("JobManager.Query called: %s", body)
+	log.Infof("JobManager.Query called: %v", body)
 
 	jobConfigs, err := m.JobStore.Query(body.Labels)
 	if err != nil {
 		log.Errorf("Query job failed with error %v", err)
 	}
-	return &job.QueryResponse{Result:jobConfigs}, nil, nil
+	return &job.QueryResponse{Result: jobConfigs}, nil, nil
 }
 
 func (m *jobManager) Delete(
@@ -100,11 +100,10 @@ func (m *jobManager) Delete(
 	reqMeta yarpc.ReqMeta,
 	body *job.DeleteRequest) (*job.DeleteResponse, yarpc.ResMeta, error) {
 
-	log.Infof("JobManager.Delete called: %s", body)
+	log.Infof("JobManager.Delete called: %v", body)
 	err := m.JobStore.DeleteJob(body.Id)
 	if err != nil {
 		log.Errorf("Delete job failed with error %v", err)
 	}
 	return &job.DeleteResponse{}, nil, nil
 }
-

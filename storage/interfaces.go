@@ -18,8 +18,9 @@ type JobStore interface {
 // TaskStore is the interface to store task states
 type TaskStore interface {
 	CreateTask(id *job.JobID, instanceId int, taskInfo *task.TaskInfo, created_by string) error
-	GetTasksForJob(id *job.JobID) (map[string]*task.TaskInfo, error)
-	GetTasksForJobAndState(id *job.JobID, state string) (map[string]*task.TaskInfo, error)
-	GetTaskForJob(id *job.JobID, instanceId uint32) (map[string]*task.TaskInfo, error)
+	GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error)
+	GetTasksForJobAndState(id *job.JobID, state string) (map[uint32]*task.TaskInfo, error)
+	GetTasksForJobByRange(id *job.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)
+	GetTaskForJob(id *job.JobID, instanceId uint32) (map[uint32]*task.TaskInfo, error)
 	UpdateTask(taskInfo *task.TaskInfo) error
 }

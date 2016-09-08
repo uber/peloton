@@ -223,17 +223,17 @@ func (m *MysqlJobStore) GetJobsByOwner(owner string) (map[string]*job.JobConfig,
 }
 
 // GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *MysqlJobStore) GetTasksForJob(id *job.JobID) (map[string]*task.TaskInfo, error) {
+func (m *MysqlJobStore) GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value})
 }
 
 // GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *MysqlJobStore) GetTasksForJobbyRange(id *job.JobID, Range *task.InstanceRange) (map[string]*task.TaskInfo, error) {
+func (m *MysqlJobStore) GetTasksForJobByRange(id *job.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id >=": Range.From, "instance_id <=": Range.To})
 }
 
 // GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *MysqlJobStore) GetTaskForJob(id *job.JobID, instanceId uint32) (map[string]*task.TaskInfo, error) {
+func (m *MysqlJobStore) GetTaskForJob(id *job.JobID, instanceId uint32) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id=": instanceId})
 }
 
@@ -257,7 +257,7 @@ func (m *MysqlJobStore) CreateTask(id *job.JobID, instanceId int, taskInfo *task
 }
 
 // GetTasksForJob returns the tasks (runtime_config) for a peloton job with certain state
-func (m *MysqlJobStore) GetTasksForJobAndState(id *job.JobID, state string) (map[string]*task.TaskInfo, error) {
+func (m *MysqlJobStore) GetTasksForJobAndState(id *job.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "task_state=": state})
 }
 
@@ -320,9 +320,9 @@ func (m *MysqlJobStore) getJobs(filters map[string]interface{}) (map[string]*job
 	return result, nil
 }
 
-func (m *MysqlJobStore) getTasks(filters map[string]interface{}) (map[string]*task.TaskInfo, error) {
+func (m *MysqlJobStore) getTasks(filters map[string]interface{}) (map[uint32]*task.TaskInfo, error) {
 	var records = []storage.TaskRecord{}
-	var result = make(map[string]*task.TaskInfo)
+	var result = make(map[uint32]*task.TaskInfo)
 	q, args := getQueryAndArgs(tasksTable, filters, []string{"*"})
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
@@ -339,7 +339,7 @@ func (m *MysqlJobStore) getTasks(filters map[string]interface{}) (map[string]*ta
 			log.Errorf("taskRecord %v GetTaskInfo failed, err=%v", taskRecord, err)
 			return nil, err
 		}
-		result[taskRecord.RowKey] = taskInfo
+		result[uint32(taskRecord.InstanceId)] = taskInfo
 	}
 	return result, nil
 }

@@ -1,4 +1,4 @@
-.PHONY: all master scheduler executor install test cover clean
+.PHONY: all master scheduler executor install client test cover clean
 
 BIN_DIR = bin
 PBGEN_DIR = pbgen/src
@@ -13,7 +13,7 @@ GOPATH := ${PWD}/pbgen:${GOPATH}
 
 .PRECIOUS: $(PBGENS)
 
-all: $(PBGENS) master scheduler executor
+all: $(PBGENS) master scheduler executor client
 
 master:
 	@mkdir -p $(BIN_DIR)
@@ -28,6 +28,9 @@ executor:
 install:
 	glide --version || go get github.com/Masterminds/glide
 	glide install
+
+client:
+	go build -o ./$(BIN_DIR)/peloton-client cli/peloton-client.go
 
 test:
 	go test $(PACKAGES)
