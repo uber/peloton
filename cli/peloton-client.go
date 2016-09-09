@@ -37,32 +37,26 @@ var instanceId int
 var instanceRange string
 
 func main() {
-
 	flag.StringVar(
 		&masterAddr,
 		"master", "http://localhost:8888", "name of the master address to use (http/tchannel)",
 	)
-
 	flag.StringVar(
 		&yamlFilename,
 		"yaml", "", "name of the yaml file to use",
 	)
-
 	flag.StringVar(
 		&jobId,
 		"jobid", "TestJob_0", "the job id",
 	)
-
 	flag.StringVar(
 		&labels,
 		"labels", "", "the job labels",
 	)
-
 	flag.IntVar(
 		&instanceId,
 		"instanceId", -1, "the task instance id",
 	)
-
 	flag.StringVar(
 		&instanceRange,
 		"range", "", "the task instance range",
@@ -71,10 +65,13 @@ func main() {
 	if len(os.Args) < 2 {
 		log.Fatalf("Missing args")
 	}
+	oldArgs := os.Args
+	os.Args = os.Args[2:]
 	flag.Parse()
 
-	fmt.Println(os.Args)
-	fmt.Println("params:", yamlFilename, masterAddr, jobId)
+	os.Args = oldArgs
+	fmt.Println("params:", yamlFilename, masterAddr, jobId, instanceId)
+
 	outbound := http.NewOutbound(masterAddr)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      "peloton-client",
