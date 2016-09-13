@@ -1,10 +1,10 @@
 package main
 
 import (
-	"golang.org/x/net/context"
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/transport"
 	"github.com/yarpc/yarpc-go/transport/http"
+	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/config"
 	"code.uber.internal/go-common.git/x/log"
@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	"strconv"
 )
 
 // Simple request interceptor which logs the request summary
@@ -60,7 +61,7 @@ func main() {
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: "peloton-master",
 		Inbounds: []transport.Inbound{
-			http.NewInbound(":" + string(cfg.Master.Port)),
+			http.NewInbound(":" + strconv.Itoa(cfg.Master.Port)),
 			mhttp.NewInbound(cfg.Mesos.HostPort, f),
 		},
 		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
