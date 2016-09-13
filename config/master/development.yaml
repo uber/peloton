@@ -13,8 +13,5 @@ logging:
   stdout: true
   level: debug
 
-master:
-  port: 8888
-
 mesos:
-  hostPort: "192.168.33.7:5050"
+  hostPort: "192.168.33.10:5050"

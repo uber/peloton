@@ -11,7 +11,8 @@
 /pbgen
 /vendor
 /bin
-
+.vagrant
+.DS_Store
 
 .cache
 .idea

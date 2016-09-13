@@ -1,0 +1,12 @@
+{
+  "libraries": {
+    "file": "/usr/lib/libfixed_resource_estimator.so",
+    "modules": {
+      "name": "org_apache_mesos_FixedResourceEstimator",
+      "parameters": {
+        "key": "resources",
+        "value": "cpus:3"
+      }
+    }
+  }
+}
