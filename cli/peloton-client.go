@@ -148,7 +148,8 @@ func processJobCommand(ctx context.Context, c json.Client) {
 }
 
 func processTaskCommand(ctx context.Context, c json.Client) {
-	switch strings.ToLower(os.Args[1]) {
+	ctx, _ = context.WithTimeout(ctx, 100*time.Millisecond)
+	switch strings.ToLower(os.Args[2]) {
 	case "get":
 		var request = &task.GetRequest{
 			JobId: &job.JobID{
@@ -171,7 +172,7 @@ func processTaskCommand(ctx context.Context, c json.Client) {
 		}
 		var from uint32
 		var to uint32
-		fmt.Sscanf(instanceRange, "%d-%d", from, to)
+		fmt.Sscanf(instanceRange, "%d-%d", &from, &to)
 		var request = &task.ListRequest{
 			JobId: &job.JobID{
 				Value: jobId,

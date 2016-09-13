@@ -35,11 +35,9 @@ func (m *jobManager) Create(
 	err := m.JobStore.CreateJob(jobId, jobConfig, "peloton")
 	if err != nil {
 		return &job.CreateResponse{
-			Response: &job.CreateResponse_AlreadyExists{
-				AlreadyExists: &job.JobAlreadyExists{
-					Id:      body.Id,
-					Message: err.Error(),
-				},
+			AlreadyExists: &job.JobAlreadyExists{
+				Id:      body.Id,
+				Message: err.Error(),
 			},
 		}, nil, nil
 	}
@@ -63,9 +61,7 @@ func (m *jobManager) Create(
 		}
 	}
 	return &job.CreateResponse{
-		Response: &job.CreateResponse_Result{
-			Result: jobId,
-		},
+		Result: jobId,
 	}, nil, nil
 }
 

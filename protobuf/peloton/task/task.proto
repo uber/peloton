@@ -128,11 +128,9 @@ message GetRequest {
 }
 
 message GetResponse {
-  oneof response {
-    TaskInfo result = 1;
-    job.JobNotFound notFound = 2;
-    InstanceIdOutOfRange outOfRange = 3;
-  }
+  TaskInfo result = 1;
+  job.JobNotFound notFound = 2;
+  InstanceIdOutOfRange outOfRange = 3;
 }
 
 // InstanceID range [from, to]
@@ -150,10 +148,9 @@ message ListResponse {
   message Result {
     map<uint32, TaskInfo> value = 1;
   }
-  oneof response {
-    Result result = 1;
-    job.JobNotFound notFound = 2;
-  }
+  Result result = 1;
+  job.JobNotFound notFound = 2;
+
 }
 
 message StartRequest {
@@ -162,10 +159,8 @@ message StartRequest {
 }
 
 message StartResponse {
-  oneof response {
-    job.JobNotFound notFound = 1;
-    InstanceIdOutOfRange outOfRange = 2;
-  }
+  job.JobNotFound notFound = 1;
+  InstanceIdOutOfRange outOfRange = 2;
 }
 
 message StopRequest {
@@ -174,10 +169,8 @@ message StopRequest {
 }
 
 message StopResponse {
-  oneof response {
-    job.JobNotFound notFound = 1;
-    InstanceIdOutOfRange outOfRange = 2;
-  }
+  job.JobNotFound notFound = 1;
+  InstanceIdOutOfRange outOfRange = 2;
 }
 
 message RestartRequest {
@@ -186,8 +179,6 @@ message RestartRequest {
 }
 
 message RestartResponse {
-  oneof response {
-    job.JobNotFound notFound = 1;
-    InstanceIdOutOfRange outOfRange = 2;
-  }
+  job.JobNotFound notFound = 1;
+  InstanceIdOutOfRange outOfRange = 2;
 }

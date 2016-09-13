@@ -1,6 +1,7 @@
 package task
 
 import (
+	"fmt"
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/encoding/json"
 	"golang.org/x/net/context"
@@ -32,34 +33,29 @@ func (m *taskManager) Get(
 
 	log.Infof("TaskManager.Get called: %v", body)
 	jobConfig, err := m.JobStore.GetJob(body.JobId)
-	if err != nil {
+	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
-			Response: &task.GetResponse_NotFound{
 				NotFound: &job.JobNotFound{
 					Id:      body.JobId,
-					Message: err.Error(),
+					Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
 				},
-			},
 		}, nil, nil
 	}
 
 	result, err := m.TaskStore.GetTaskForJob(body.JobId, body.InstanceId)
 	for _, taskInfo := range result {
+		log.Infof("found task %v", taskInfo)
 		return &task.GetResponse{
-			Response: &task.GetResponse_Result{
 				Result: taskInfo,
-			},
 		}, nil, nil
 	}
 
 	return &task.GetResponse{
-		Response: &task.GetResponse_OutOfRange{
 			OutOfRange: &task.InstanceIdOutOfRange{
 				JobId:         body.JobId,
 				InstanceCount: jobConfig.InstanceCount,
 			},
-		},
 	}, nil, nil
 }
 
@@ -73,31 +69,25 @@ func (m *taskManager) List(
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.ListResponse{
-			Response: &task.ListResponse_NotFound{
 				NotFound: &job.JobNotFound{
 					Id:      body.JobId,
 					Message: err.Error(),
 				},
-			},
 		}, nil, nil
 	}
 	result, err := m.TaskStore.GetTasksForJobByRange(body.JobId, body.Range)
 	if err != nil || len(result) == 0 {
 		return &task.ListResponse{
-			Response: &task.ListResponse_NotFound{
 				NotFound: &job.JobNotFound{
 					Id:      body.JobId,
 					Message: err.Error(),
 				},
-			},
 		}, nil, nil
 	}
 	return &task.ListResponse{
-		Response: &task.ListResponse_Result_{
 			Result: &task.ListResponse_Result{
 				Value: result,
 			},
-		},
 	}, nil, nil
 }
 

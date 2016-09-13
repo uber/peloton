@@ -218,10 +218,8 @@ message CreateRequest {
 }
 
 message CreateResponse {
-  oneof response{
-    JobID result = 1;
-    JobAlreadyExists alreadyExists = 2;
-  }
+  JobID result = 1;
+  JobAlreadyExists alreadyExists = 2;
 }
 
 message GetRequest {
