@@ -30,10 +30,11 @@ volume.
 
 
 ## Install
+Installations of protoc/proto/protoc-gen-go are required
 
 cd $GOPATH
 mkdir -p src/code.uber.internal/infra/
-clone gitolite@code.uber.internal:infra/peloton/ src/code.uber.internal/infra/peloton
+git clone gitolite@code.uber.internal:infra/peloton/ src/code.uber.internal/infra/peloton
 cd src/code.uber.internal/infra/peloton
 glide install
 make
