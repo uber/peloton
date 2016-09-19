@@ -36,10 +36,10 @@ func (m *taskManager) Get(
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
-				NotFound: &job.JobNotFound{
-					Id:      body.JobId,
-					Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
-				},
+			NotFound: &job.JobNotFound{
+				Id:      body.JobId,
+				Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
+			},
 		}, nil, nil
 	}
 
@@ -47,15 +47,15 @@ func (m *taskManager) Get(
 	for _, taskInfo := range result {
 		log.Infof("found task %v", taskInfo)
 		return &task.GetResponse{
-				Result: taskInfo,
+			Result: taskInfo,
 		}, nil, nil
 	}
 
 	return &task.GetResponse{
-			OutOfRange: &task.InstanceIdOutOfRange{
-				JobId:         body.JobId,
-				InstanceCount: jobConfig.InstanceCount,
-			},
+		OutOfRange: &task.InstanceIdOutOfRange{
+			JobId:         body.JobId,
+			InstanceCount: jobConfig.InstanceCount,
+		},
 	}, nil, nil
 }
 
@@ -69,25 +69,25 @@ func (m *taskManager) List(
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.ListResponse{
-				NotFound: &job.JobNotFound{
-					Id:      body.JobId,
-					Message: err.Error(),
-				},
+			NotFound: &job.JobNotFound{
+				Id:      body.JobId,
+				Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
+			},
 		}, nil, nil
 	}
 	result, err := m.TaskStore.GetTasksForJobByRange(body.JobId, body.Range)
 	if err != nil || len(result) == 0 {
 		return &task.ListResponse{
-				NotFound: &job.JobNotFound{
-					Id:      body.JobId,
-					Message: err.Error(),
-				},
+			NotFound: &job.JobNotFound{
+				Id:      body.JobId,
+				Message: fmt.Sprintf("err= %v", err),
+			},
 		}, nil, nil
 	}
 	return &task.ListResponse{
-			Result: &task.ListResponse_Result{
-				Value: result,
-			},
+		Result: &task.ListResponse_Result{
+			Value: result,
+		},
 	}, nil, nil
 }
 

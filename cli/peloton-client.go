@@ -1,6 +1,7 @@
 package main
 
 import (
+	ej "encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -123,7 +124,7 @@ func processJobCommand(ctx context.Context, c json.Client) {
 			request,
 			&response,
 		)
-		log.Infof("Create returns response = %v, err=%v", response, err)
+		printResponse(response, err)
 		return
 	case "get":
 		var response job.GetResponse
@@ -138,7 +139,8 @@ func processJobCommand(ctx context.Context, c json.Client) {
 			request,
 			&response,
 		)
-		log.Infof("Get job returns response = %v, err=%v", response, err)
+
+		printResponse(response, err)
 		return
 	case "query":
 	case "delete":
@@ -164,7 +166,7 @@ func processTaskCommand(ctx context.Context, c json.Client) {
 			request,
 			&response,
 		)
-		log.Infof("Get task returns response = %v, err=%v", response, err)
+		printResponse(response, err)
 		return
 	case "list":
 		if len(instanceRange) == 0 {
@@ -189,7 +191,7 @@ func processTaskCommand(ctx context.Context, c json.Client) {
 			request,
 			&response,
 		)
-		log.Infof("List task returns response = %v, err=%v", response, err)
+		printResponse(response, err)
 		return
 	case "start":
 	case "stop":
@@ -201,4 +203,13 @@ func processTaskCommand(ctx context.Context, c json.Client) {
 
 func processUpgradeCommand(ctx context.Context, c json.Client) {
 
+}
+
+func printResponse(response interface{}, er error) {
+	buffer, err := ej.MarshalIndent(response, "", "  ")
+	if err == nil {
+		fmt.Printf("%s %s returns response = %v, err=%v", os.Args[1], os.Args[2], string(buffer), er)
+	} else {
+		fmt.Printf("%s %s returns response = %v, err=%v, MarshalIndent err= %v", os.Args[1], os.Args[2], response, er, err)
+	}
 }
