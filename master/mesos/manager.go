@@ -18,6 +18,7 @@ func InitManager(d yarpc.Dispatcher) {
 		sched.Event_ERROR:                m.Error,
 		sched.Event_HEARTBEAT:            m.Heartbeat,
 		sched.Event_UNKNOWN:              m.Unknown,
+		sched.Event_UPDATE:               m.Update,
 	}
 	for typ, hdl := range procedures {
 		name := typ.String()
@@ -71,5 +72,13 @@ func (m *mesosManager) Unknown(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	log.Infof("mesosManager: unknown event called")
+	return nil
+}
+
+func (m *mesosManager) Update(
+	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+	taskUpdate := body.GetUpdate()
+
+	log.WithField("task update", taskUpdate).Infof("mesosManager: Update called")
 	return nil
 }

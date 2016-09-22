@@ -58,12 +58,15 @@ func main() {
 
 	// TODO: Load framework ID from DB
 	f := mesos.NewSchedulerDriver(&cfg.Mesos.Framework, nil)
+	mInbound := mhttp.NewInbound(cfg.Mesos.HostPort, f)
+	mOutbound := mhttp.NewOutbound(cfg.Mesos.HostPort, f, mInbound)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: "peloton-master",
 		Inbounds: []transport.Inbound{
 			http.NewInbound(":" + strconv.Itoa(cfg.Master.Port)),
-			mhttp.NewInbound(cfg.Mesos.HostPort, f),
+			mInbound,
 		},
+		Outbounds:   transport.Outbounds{"peloton-master": mOutbound},
 		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
 	})
 	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
@@ -72,7 +75,7 @@ func main() {
 	job.InitManager(dispatcher, store, store)
 	task.InitManager(dispatcher, store, store)
 	upgrade.InitManager(dispatcher)
-	offer.InitManager(dispatcher)
+	offer.InitManager(dispatcher, mOutbound)
 
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)

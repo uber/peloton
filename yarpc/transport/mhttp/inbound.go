@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"fmt"
+	"unsafe"
 
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/yarpc/yarpc-go/transport"
@@ -22,6 +23,7 @@ import (
 // connections.
 type Inbound interface {
 	transport.Inbound
+	GetMesosStreamId() string
 }
 
 // InboundOption is an option for an Mesos HTTP inbound.
@@ -42,6 +44,7 @@ type inbound struct {
 	driver     MesosDriver
 	stopped    uint32
 	done       chan error
+	mesosStreamId unsafe.Pointer
 }
 
 func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
@@ -81,6 +84,10 @@ func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
 		return fmt.Errorf("Failed to subscribe to master (Status=%d): %s",
 			resp.StatusCode, respBody)
 	}
+
+	mesosStreamId := resp.Header["Mesos-Stream-Id"]
+	log.Infof("Mesos stream id : %v", mesosStreamId)
+	atomic.StorePointer(&i.mesosStreamId, unsafe.Pointer(&mesosStreamId[0]))
 
 	hdl := handler{
 		Handler: h,
@@ -136,4 +143,14 @@ func (i *inbound) Stop() error {
 
 	serveErr := <-i.done
 	return serveErr
+}
+
+// GetMesosStreamId returns the mesos stream id that is get after Start()
+func (i *inbound) GetMesosStreamId() string{
+	var streamId = atomic.LoadPointer(&i.mesosStreamId)
+	var stringPtr = (*string)(streamId)
+	if stringPtr == nil {
+		return ""
+	}
+	return *stringPtr
 }
