@@ -3,18 +3,16 @@ package offer
 import (
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/master/mesos"
+	myarpc "code.uber.internal/infra/peloton/yarpc"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"fmt"
 	"github.com/yarpc/yarpc-go"
-
 	mesos_v1 "mesos/v1"
 	sched "mesos/v1/scheduler"
 )
 
-func InitManager(d yarpc.Dispatcher, outbound mhttp.Outbound) {
+func InitManager(d yarpc.Dispatcher, caller myarpc.Caller) {
 	m := offerManager{}
-
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_OFFERS:                m.Offers,
 		sched.Event_INVERSE_OFFERS:        m.InverseOffers,
@@ -26,18 +24,18 @@ func InitManager(d yarpc.Dispatcher, outbound mhttp.Outbound) {
 		name := typ.String()
 		mjson.Register(d, mesos.ServiceName, mjson.Procedure(name, hdl))
 	}
-	m.outbound = outbound
+	m.caller = caller
 }
 
 type offerManager struct {
-	outbound mhttp.Outbound
+	caller myarpc.Caller
 }
 
 func (m *offerManager) Offers(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	offers := body.GetOffers()
-	launchTestTask(m.outbound, offers)
+	launchTestTask(m.caller, offers)
 	log.WithField("params", offers).Debug("OfferManager.Offers called")
 	return nil
 }
@@ -70,7 +68,7 @@ func (m *offerManager) RescindInverseOffer(
 // TODO: remove later after integration test to launch task is in place. Also this should not be put int production
 var taskIndex = 0
 
-func launchTestTask(o mhttp.Outbound, offers *sched.Event_Offers) {
+func launchTestTask(caller myarpc.Caller, offers *sched.Event_Offers) {
 	callType := sched.Call_ACCEPT
 	var offerIds []*mesos_v1.OfferID
 	for _, offer := range offers.Offers {
@@ -121,5 +119,5 @@ func launchTestTask(o mhttp.Outbound, offers *sched.Event_Offers) {
 			},
 		},
 	}
-	o.SendPbRequest(msg)
+	caller.SendPbRequest(msg)
 }

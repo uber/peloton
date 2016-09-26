@@ -10,26 +10,16 @@ import (
 	"time"
 
 	"code.uber.internal/go-common.git/x/log"
-	"github.com/gogo/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
 	"github.com/yarpc/yarpc-go/transport"
 	"golang.org/x/net/context"
 )
-
-// Outbound represents an Mesos HTTP Outbound. It is the same as the transport Outbound
-// except it exposes the address on which the system is listening for
-// connections.
-type Outbound interface {
-	transport.Outbound
-	SendPbRequest(msg proto.Message) error
-}
 
 // OutboundOption is an option for an Mesos HTTP outbound.
 type OutboundOption func(*outbound)
 
 // NewOutbound builds a new Mesos HTTP outbound, with the inbound, which is to register with
 // Mesos master via Subscribe message
-func NewOutbound(hostPort string, d MesosDriver, inbound Inbound, opts ...OutboundOption) Outbound {
+func NewOutbound(hostPort string, d MesosDriver, inbound Inbound, opts ...OutboundOption) transport.Outbound {
 	o := &outbound{hostPort: hostPort, driver: d}
 	for _, opt := range opts {
 		opt(o)
@@ -61,26 +51,6 @@ func (o *outbound) Start(d transport.Deps) error {
 func (o *outbound) Stop() error {
 	atomic.CompareAndSwapUint32(&o.stopped, 0, 1)
 	return nil
-}
-
-// SendPbRequest sends a protocol buffer message to the server (mesos master)
-func (o *outbound) SendPbRequest(msg proto.Message) error {
-	encoder := jsonpb.Marshaler{
-		EnumsAsInts: false,
-		OrigName:    true,
-	}
-	body, err := encoder.MarshalToString(msg)
-	if err != nil {
-		return fmt.Errorf("Failed to marshal subscribe call: %s", err)
-	}
-	log.WithField("sent", body).Infof("Sending accept request")
-	ctx := context.Background()
-	var tReq = transport.Request{
-		Body: strings.NewReader(body),
-	}
-	_, err = o.Call(ctx, &tReq)
-	log.WithField("request", tReq).Infof("response from accept request %v", err)
-	return err
 }
 
 // Call simply sent the body to mesos master, with appropriate headers added.
