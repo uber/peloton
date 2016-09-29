@@ -20,7 +20,7 @@ master:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/*.go
 
 scheduler:
-	go build -o ./$(BIN_DIR)/peloton-scheduler scheduler/main.go
+	go build -o ./$(BIN_DIR)/peloton-scheduler scheduler/main/main.go
 
 executor:
 	go build -o ./$(BIN_DIR)/peloton-executor executor/main.go

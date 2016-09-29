@@ -16,6 +16,8 @@ import (
 	"code.uber.internal/infra/peloton/storage/mysql"
 	myarpc "code.uber.internal/infra/peloton/yarpc"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	"code.uber.internal/infra/peloton/util"
+	"code.uber.internal/infra/peloton/scheduler"
 	"strconv"
 )
 
@@ -58,6 +60,9 @@ func main() {
 	}
 
 	// TODO: Load framework ID from DB
+	offerQueue := util.NewMemLocalOfferQueue("LocalOfferQueue")
+	taskQueue := util.NewMemLocalTaskQueue("LocalTaskQueue")
+
 	f := mesos.NewSchedulerDriver(&cfg.Mesos.Framework, nil)
 	mInbound := mhttp.NewInbound(cfg.Mesos.HostPort, f)
 	mOutbound := mhttp.NewOutbound(cfg.Mesos.HostPort, f, mInbound)
@@ -73,10 +78,11 @@ func main() {
 	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
 
 	mesos.InitManager(dispatcher)
-	job.InitManager(dispatcher, store, store)
+	job.InitManager(dispatcher, store, store, taskQueue)
 	task.InitManager(dispatcher, store, store)
 	upgrade.InitManager(dispatcher)
-	offer.InitManager(dispatcher, myarpc.NewMesoCaller(mOutbound))
+	offer.InitManager(dispatcher, offerQueue)
+	scheduler.InitManager(offerQueue, taskQueue, myarpc.NewMesoCaller(mOutbound))
 
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)

@@ -1,5 +1,5 @@
-hash: 406af1ae8ecb11d81bc8f30f0beb087e5c18744711c43d08a3164b67e3760227
-updated: 2016-09-06T12:50:31.724054497-07:00
+hash: 3d00601e0f9d5e554e7b5d18bd331a139a37642b9b1c0203770da8e5abfd0409
+updated: 2016-09-30T16:17:38.127333485-07:00
 imports:
 - name: code.uber.internal/go-common.git
   version: a6cd07d467a9483c0f06b3262e4194280fb77148
@@ -7,9 +7,9 @@ imports:
   vcs: git
   subpackages:
   - x/config
+  - x/kafka
   - x/log
   - x/metrics
-  - x/kafka
   - x/metrics/m3
   - x/metrics/m3/customtransports
   - x/metrics/m3/thrift
@@ -50,12 +50,14 @@ imports:
 - name: github.com/mattes/migrate
   version: ce1b59bb819416ca67422929b1cb48bb342720b6
   subpackages:
-  - driver/mysql
-  - migrate
   - driver
+  - driver/mysql
   - file
+  - migrate
   - migrate/direction
   - pipe
+- name: github.com/pborman/uuid
+  version: b984ec7fa9ff9e428bd0cf0abf429384dfbe3e37
 - name: github.com/Sirupsen/logrus
   version: cd7d1bbe41066b6c1f19780f895901052150a575
 - name: github.com/uber-common/bark
@@ -65,20 +67,20 @@ imports:
 - name: github.com/yarpc/yarpc-go
   version: cd726a40ccb8b89781f62677b9e75facd066989d
   subpackages:
-  - transport
-  - transport/http
   - encoding/json
   - internal
   - internal/baggage
+  - internal/encoding
+  - internal/errors
   - internal/filter
   - internal/interceptor
+  - internal/meta
   - internal/request
   - internal/sync
-  - internal/errors
-  - internal/encoding
-  - internal/meta
+  - transport
+  - transport/http
 - name: golang.org/x/net
-  version: 3b993948b6f0e651ffb58ba135d8538a68b1cddf
+  version: 697293012c1df3836225e65b04b16871ac5bf0bf
   subpackages:
   - context
   - context/ctxhttp
@@ -90,4 +92,18 @@ imports:
   version: 3e4f037f12a1221a0864cf0dd2e81c452ab22448
 - name: gopkg.in/yaml.v2
   version: a83829b6f1293c91addabc89d0571c246397bbf4
-devImports: []
+testImports:
+- name: github.com/davecgh/go-spew
+  version: 6d212800a42e8ab5c146b8ace3490ee17e5225f9
+  subpackages:
+  - spew
+- name: github.com/pmezard/go-difflib
+  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  subpackages:
+  - difflib
+- name: github.com/stretchr/testify
+  version: 976c720a22c8eb4eb6a0b4348ad85ad12491a506
+  subpackages:
+  - assert
+  - require
+  - suite

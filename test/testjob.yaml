@@ -16,9 +16,9 @@ labels:
     value: testVal2
 instancecount: 10
 resource:
-  cpuslimit: 0.8
-  memlimitmb: 800
-  disklimitmb: 1500
+  cpuslimit: 0.1
+  memlimitmb: 0.0
+  disklimitmb: 10
   fdlimit: 1009
 healthcheck: null
 ports: []

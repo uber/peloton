@@ -7,12 +7,17 @@ import (
 
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 	"peloton/job"
 	"peloton/task"
 )
 
-func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore) {
-	handler := jobManager{JobStore: store, TaskStore: taskStore}
+func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore, taskQueue util.TaskQueue) {
+	handler := jobManager{
+		JobStore: store,
+		TaskStore: taskStore,
+		TaskQueue: taskQueue,
+	}
 	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
 	json.Register(d, json.Procedure("JobManager.Get", handler.Get))
 	json.Register(d, json.Procedure("JobManager.Query", handler.Query))
@@ -22,6 +27,7 @@ func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.T
 type jobManager struct {
 	JobStore  storage.JobStore
 	TaskStore storage.TaskStore
+	TaskQueue util.TaskQueue
 }
 
 func (m *jobManager) Create(
@@ -55,10 +61,13 @@ func (m *jobManager) Create(
 		err := m.TaskStore.CreateTask(jobId, i, &taskInfo, "peloton")
 		if err != nil {
 			log.Errorf("Creating %v =th task for job %v failed with err=%v", i, jobId, err)
+			continue
 			// TODO : decide how to handle the case that some tasks failed to be added (rare)
 			// 1. Rely on job level healthcheck to alert on # of instances mismatch, and re-try creating the task later
 			// 2. revert te job creation altogether
 		}
+		// Put the task into the taskQueue. Scheduler will pick the task up and schedule them
+		m.TaskQueue.PutTask(&taskInfo)
 	}
 	return &job.CreateResponse{
 		Result: jobId,

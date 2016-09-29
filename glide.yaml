@@ -24,4 +24,5 @@ import:
 - package: github.com/yarpc/yarpc-go
 - package: github.com/go-sql-driver/mysql
 - package: github.com/jmoiron/sqlx
+- package: github.com/pborman/uuid
   version: master
