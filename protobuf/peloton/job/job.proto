@@ -141,7 +141,6 @@ message SlaConfig {
   bool preemptible = 4;
 }
 
-
 /**
  *  Job configuration
  */
@@ -181,6 +180,9 @@ message JobConfig {
 
   // SLA config of the job
   SlaConfig sla = 12;
+
+  // Command line config of the job
+  mesos.v1.CommandInfo command = 13;
 }
 
 

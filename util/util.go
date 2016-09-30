@@ -35,10 +35,6 @@ func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) *mesos_v1.TaskInfo {
 	rs = append(rs, NewMesosResourceBuilder().WithName("disk").WithValue(taskResources.DiskLimitMb).Build())
 	// TODO: translate job.ResourceConfig fdlimit
 
-	// TODO: command info should be part of jobConfig
-	var cmdVal = "ls /tmp"
-	var shell = true
-
 	taskId := fmt.Sprintf("%s-%d", taskInfo.JobId.Value, taskInfo.InstanceId)
 	mesosTask := &mesos_v1.TaskInfo{
 		Name: &taskInfo.JobId.Value,
@@ -46,11 +42,7 @@ func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) *mesos_v1.TaskInfo {
 			Value: &taskId,
 		},
 		Resources: rs,
-		// TODO: command info should be part of jobConfig
-		Command: &mesos_v1.CommandInfo{
-			Shell: &shell,
-			Value: &cmdVal,
-		},
+		Command: taskInfo.GetJobConfig().GetCommand(),
 	}
 	return mesosTask
 }

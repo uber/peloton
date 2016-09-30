@@ -28,3 +28,6 @@ sla:
   minimuminstancecount: 12
   minimuminstancepercent: 50
   preemptible: false
+command:
+  shell: true
+  value: 'ls /tmp'
