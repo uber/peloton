@@ -1,9 +1,9 @@
 package mesos
 
 import (
-	"github.com/yarpc/yarpc-go"
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"github.com/yarpc/yarpc-go"
 
 	sched "mesos/v1/scheduler"
 )
@@ -11,14 +11,13 @@ import (
 func InitManager(d yarpc.Dispatcher) {
 	m := mesosManager{}
 
-	procedures := map[sched.Event_Type]interface{} {
-		sched.Event_SUBSCRIBED:           m.Subscribed,
-		sched.Event_MESSAGE:              m.Message,
-		sched.Event_FAILURE:              m.Failure,
-		sched.Event_ERROR:                m.Error,
-		sched.Event_HEARTBEAT:            m.Heartbeat,
-		sched.Event_UNKNOWN:              m.Unknown,
-		sched.Event_UPDATE:               m.Update,
+	procedures := map[sched.Event_Type]interface{}{
+		sched.Event_SUBSCRIBED: m.Subscribed,
+		sched.Event_MESSAGE:    m.Message,
+		sched.Event_FAILURE:    m.Failure,
+		sched.Event_ERROR:      m.Error,
+		sched.Event_HEARTBEAT:  m.Heartbeat,
+		sched.Event_UNKNOWN:    m.Unknown,
 	}
 	for typ, hdl := range procedures {
 		name := typ.String()
@@ -72,13 +71,5 @@ func (m *mesosManager) Unknown(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	log.Infof("mesosManager: unknown event called")
-	return nil
-}
-
-func (m *mesosManager) Update(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
-	taskUpdate := body.GetUpdate()
-
-	log.WithField("task update", taskUpdate).Infof("mesosManager: Update called")
 	return nil
 }

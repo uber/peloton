@@ -46,8 +46,11 @@ message RuntimeInfo {
     // The task is being preempted by another one on the node
     PREEMPTING  = 8;
 
-    // The taskis being throttled for restarting too frequently
+    // The task is being throttled for restarting too frequently
     THROTTLED   = 9;
+
+    // The task is lost
+    LOST  = 10;
   }
 
   // Runtime status of the task

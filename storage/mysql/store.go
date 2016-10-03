@@ -232,6 +232,25 @@ func (m *MysqlJobStore) GetTasksForJobByRange(id *job.JobID, Range *task.Instanc
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id >=": Range.From, "instance_id <=": Range.To})
 }
 
+// GetTaskById returns the tasks (tasks.TaskInfo) for a peloton job
+func (m *MysqlJobStore) GetTaskById(taskId string) (*task.TaskInfo, error) {
+	result, err := m.getTasks(map[string]interface{}{"task_id=": taskId})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(result) > 1 {
+		log.Warnf("Found %v records for taskId %v", len(result), taskId)
+	}
+	// Return the first result
+	for _, task := range result {
+		return task, nil
+	}
+	// No record found
+	log.Warnf("No task records found for taskId %v", taskId)
+	return nil, nil
+}
+
 // GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
 func (m *MysqlJobStore) GetTaskForJob(id *job.JobID, instanceId uint32) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id=": instanceId})

@@ -7,23 +7,48 @@ import (
 	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
+	myarpc "code.uber.internal/infra/peloton/yarpc"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"mesos/v1"
+	sched "mesos/v1/scheduler"
 	"peloton/job"
 	"peloton/task"
 )
 
-func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore) {
-	handler := taskManager{TaskStore: taskStore, JobStore: jobStore}
+func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, oq util.OfferQueue, tq util.TaskQueue, mc myarpc.Caller) util.TaskLauncher {
+	handler := taskManager{
+		TaskStore:   taskStore,
+		JobStore:    jobStore,
+		mesosCaller: mc,
+		offerQueue:  oq,
+		taskQueue:   tq,
+	}
 	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
 	json.Register(d, json.Procedure("TaskManager.List", handler.List))
 	json.Register(d, json.Procedure("TaskManager.Start", handler.Start))
 	json.Register(d, json.Procedure("TaskManager.Stop", handler.Stop))
 	json.Register(d, json.Procedure("TaskManager.Restart", handler.Restart))
+
+	procedures := map[sched.Event_Type]interface{}{
+		sched.Event_UPDATE: handler.Update,
+	}
+	for typ, hdl := range procedures {
+		name := typ.String()
+		mjson.Register(d, mesos.ServiceName, mjson.Procedure(name, hdl))
+	}
+
+	return &handler
 }
 
 type taskManager struct {
-	TaskStore storage.TaskStore
-	JobStore  storage.JobStore
+	TaskStore   storage.TaskStore
+	JobStore    storage.JobStore
+	mesosCaller myarpc.Caller
+	offerQueue  util.OfferQueue
+	taskQueue   util.TaskQueue
 }
 
 func (m *taskManager) Get(
@@ -116,4 +141,61 @@ func (m *taskManager) Restart(
 
 	log.Infof("TaskManager.Restart called: %v", body)
 	return &task.RestartResponse{}, nil, nil
+}
+
+// LaunchTasks launches a list of tasks using an offer
+func (m *taskManager) LaunchTasks(offer *mesos_v1.Offer, pelotonTasks []*task.TaskInfo) {
+	callType := sched.Call_ACCEPT
+	var offerIds []*mesos_v1.OfferID
+	offerIds = append(offerIds, offer.Id)
+
+	var mesosTaskInfos []*mesos_v1.TaskInfo
+	var mesosTaskIds []string
+	for _, t := range pelotonTasks {
+		mesosTask := util.ConvertToMesosTaskInfo(t)
+		mesosTask.AgentId = offer.AgentId
+		mesosTaskInfos = append(mesosTaskInfos, mesosTask)
+		mesosTaskIds = append(mesosTaskIds, *mesosTask.TaskId.Value)
+	}
+	log.Infof("Launching tasks %v using offer %v", mesosTaskIds, *offer.GetId().Value)
+	opType := mesos_v1.Offer_Operation_LAUNCH
+	msg := &sched.Call{
+		FrameworkId: offer.FrameworkId,
+		Type:        &callType,
+		Accept: &sched.Call_Accept{
+			OfferIds: offerIds,
+			Operations: []*mesos_v1.Offer_Operation{
+				&mesos_v1.Offer_Operation{
+					Type: &opType,
+					Launch: &mesos_v1.Offer_Operation_Launch{
+						TaskInfos: mesosTaskInfos,
+					},
+				},
+			},
+		},
+	}
+	// TODO: add retry / put back offer and tasks in failure scenarios
+	m.mesosCaller.SendPbRequest(msg)
+}
+
+// Update is the Mesos callback on mesos state updates
+func (m *taskManager) Update(
+	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+	taskUpdate := body.GetUpdate()
+	log.WithField("Task update", taskUpdate).Infof("taskManager: Update called")
+
+	taskId := taskUpdate.GetStatus().GetTaskId().GetValue()
+	taskInfo, err := m.TaskStore.GetTaskById(taskId)
+	if err != nil {
+		log.Errorf("Fail to find taskInfo for taskId %v, err=%v", taskId, err)
+		return err
+	}
+	state := util.MesosStateToPelotonState(taskUpdate.GetStatus().GetState())
+	taskInfo.GetRuntime().State = state
+	err = m.TaskStore.UpdateTask(taskInfo)
+	if err != nil {
+		log.Errorf("Fail to update taskInfo for taskId %v, new state %v, err=%v", taskId, state, err)
+		return err
+	}
+	return nil
 }

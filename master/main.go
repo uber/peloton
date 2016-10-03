@@ -13,11 +13,11 @@ import (
 	"code.uber.internal/infra/peloton/master/offer"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
+	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/storage/mysql"
+	"code.uber.internal/infra/peloton/util"
 	myarpc "code.uber.internal/infra/peloton/yarpc"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
-	"code.uber.internal/infra/peloton/util"
-	"code.uber.internal/infra/peloton/scheduler"
 	"strconv"
 )
 
@@ -79,10 +79,10 @@ func main() {
 
 	mesos.InitManager(dispatcher)
 	job.InitManager(dispatcher, store, store, taskQueue)
-	task.InitManager(dispatcher, store, store)
+	launcher := task.InitManager(dispatcher, store, store, offerQueue, taskQueue, myarpc.NewMesoCaller(mOutbound))
 	upgrade.InitManager(dispatcher)
 	offer.InitManager(dispatcher, offerQueue)
-	scheduler.InitManager(offerQueue, taskQueue, myarpc.NewMesoCaller(mOutbound))
+	scheduler.InitManager(offerQueue, taskQueue, launcher)
 
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)

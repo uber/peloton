@@ -14,6 +14,7 @@ CREATE TABLE tasks (
   `task_state`      VARCHAR(64) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(body, '$.runtime.state'))),
   `task_host`       VARCHAR(64) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(body, '$.runtime.host'))),
   `instance_id`     INTEGER GENERATED ALWAYS AS (COALESCE ((JSON_UNQUOTE(JSON_EXTRACT(body, '$.instanceId'))), 0)),
+  `task_id`         VARCHAR(128) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(body, '$.runtime.taskId.value'))),
   `flags`           INTEGER DEFAULT 0,
    KEY `added_id` (`added_id`)
 );

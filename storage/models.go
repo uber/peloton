@@ -29,6 +29,7 @@ type TaskRecord struct {
 	JobId      sql.NullString `db:"job_id"`
 	TaskState  sql.NullString `db:"task_state"`
 	TaskHost   sql.NullString `db:"task_host"`
+	TaskId     sql.NullString `db:"task_id"`
 	InstanceId int            `db:"instance_id"`
 }
 

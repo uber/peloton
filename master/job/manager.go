@@ -8,13 +8,16 @@ import (
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
+	"fmt"
+	"github.com/pborman/uuid"
+	mesos_v1 "mesos/v1"
 	"peloton/job"
 	"peloton/task"
 )
 
 func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore, taskQueue util.TaskQueue) {
 	handler := jobManager{
-		JobStore: store,
+		JobStore:  store,
 		TaskStore: taskStore,
 		TaskQueue: taskQueue,
 	}
@@ -49,9 +52,13 @@ func (m *jobManager) Create(
 	}
 	// Create tasks for the job
 	for i := 0; i < int(body.Config.InstanceCount); i++ {
+		taskId := fmt.Sprintf("%s-%d-%v", jobId.Value, i, uuid.NewUUID().String())
 		taskInfo := task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
 				State: task.RuntimeInfo_INITIALIZED,
+				TaskId: &mesos_v1.TaskID{
+					Value: &taskId,
+				},
 			},
 			JobConfig:  jobConfig,
 			InstanceId: uint32(i),

@@ -2,10 +2,14 @@ package util
 
 import (
 	"code.uber.internal/go-common.git/x/log"
-	"fmt"
 	mesos_v1 "mesos/v1"
 	"peloton/task"
 )
+
+// TaskLauncher is the interface to launch a set of tasks using an offer
+type TaskLauncher interface {
+	LaunchTasks(offer *mesos_v1.Offer, pelotonTasks []*task.TaskInfo)
+}
 
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
 // first level : role -> map(resource type-> resouce value)
@@ -35,14 +39,14 @@ func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) *mesos_v1.TaskInfo {
 	rs = append(rs, NewMesosResourceBuilder().WithName("disk").WithValue(taskResources.DiskLimitMb).Build())
 	// TODO: translate job.ResourceConfig fdlimit
 
-	taskId := fmt.Sprintf("%s-%d", taskInfo.JobId.Value, taskInfo.InstanceId)
+	taskId := taskInfo.GetRuntime().GetTaskId().GetValue()
 	mesosTask := &mesos_v1.TaskInfo{
 		Name: &taskInfo.JobId.Value,
 		TaskId: &mesos_v1.TaskID{
 			Value: &taskId,
 		},
 		Resources: rs,
-		Command: taskInfo.GetJobConfig().GetCommand(),
+		Command:   taskInfo.GetJobConfig().GetCommand(),
 	}
 	return mesosTask
 }
@@ -130,4 +134,33 @@ func (o *MesosResourceBuilder) WithValue(value float64) *MesosResourceBuilder {
 func (o *MesosResourceBuilder) Build() *mesos_v1.Resource {
 	res := o.Resource
 	return &res
+}
+
+// TODO: adjust in case there are additional peloton states
+func MesosStateToPelotonState(mstate mesos_v1.TaskState) task.RuntimeInfo_TaskState {
+	switch mstate {
+	case mesos_v1.TaskState_TASK_STAGING:
+		return task.RuntimeInfo_LAUNCHED
+	case mesos_v1.TaskState_TASK_STARTING:
+		return task.RuntimeInfo_LAUNCHED
+	case mesos_v1.TaskState_TASK_RUNNING:
+		return task.RuntimeInfo_RUNNING
+	// NOTE: This should only be sent when the framework has
+	// the TASK_KILLING_STATE capability.
+	case mesos_v1.TaskState_TASK_KILLING:
+		return task.RuntimeInfo_RUNNING
+	case mesos_v1.TaskState_TASK_FINISHED:
+		return task.RuntimeInfo_SUCCEEDED
+	case mesos_v1.TaskState_TASK_FAILED:
+		return task.RuntimeInfo_FAILED
+	case mesos_v1.TaskState_TASK_KILLED:
+		return task.RuntimeInfo_KILLED
+	case mesos_v1.TaskState_TASK_LOST:
+		return task.RuntimeInfo_LOST
+	case mesos_v1.TaskState_TASK_ERROR:
+		return task.RuntimeInfo_FAILED
+	default:
+		log.Errorf("Unknown mesos taskState %v", mstate)
+		return task.RuntimeInfo_INITIALIZED
+	}
 }

@@ -23,4 +23,5 @@ type TaskStore interface {
 	GetTasksForJobByRange(id *job.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)
 	GetTaskForJob(id *job.JobID, instanceId uint32) (map[uint32]*task.TaskInfo, error)
 	UpdateTask(taskInfo *task.TaskInfo) error
+	GetTaskById(taskId string) (*task.TaskInfo, error)
 }

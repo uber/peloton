@@ -8,11 +8,6 @@ package scheduler
 import (
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/util"
-	"github.com/pborman/uuid"
-	myarpc "code.uber.internal/infra/peloton/yarpc"
-	"fmt"
-	"mesos/v1"
-	sched "mesos/v1/scheduler"
 	"peloton/task"
 	"sync/atomic"
 	"time"
@@ -24,21 +19,21 @@ const (
 )
 
 // InitManager inits the schedulerManager
-func InitManager(oq util.OfferQueue, tq util.TaskQueue, caller myarpc.Caller) {
+func InitManager(oq util.OfferQueue, tq util.TaskQueue, launcher util.TaskLauncher) {
 	s := schedulerManager{
-		offerQueue:  oq,
-		taskQueue:   tq,
-		mesosCaller: caller,
+		offerQueue: oq,
+		taskQueue:  tq,
+		launcher:   launcher,
 	}
 	s.Start()
 }
 
 type schedulerManager struct {
-	offerQueue  util.OfferQueue
-	taskQueue   util.TaskQueue
-	mesosCaller myarpc.Caller
-	started     int32
-	shutdown    int32
+	offerQueue util.OfferQueue
+	taskQueue  util.TaskQueue
+	started    int32
+	shutdown   int32
+	launcher   util.TaskLauncher
 }
 
 func (s *schedulerManager) Start() {
@@ -73,11 +68,11 @@ func (s *schedulerManager) workLoop() {
 					if len(tasks) == 0 {
 						continue
 					} else {
-						s.LaunchTasks(offer, tasks)
+						s.launcher.LaunchTasks(offer, tasks)
 					}
 					break
 				} else {
-					taskId := fmt.Sprintf("%s-%d-%v", task.JobId.Value, task.InstanceId, uuid.NewUUID().String())
+					taskId := task.GetRuntime().GetTaskId().GetValue()
 					log.Infof("Task queue dequeue task %v, offerId %v", taskId, *offerId)
 					ok = util.CanTakeTask(&remain, task)
 					if ok {
@@ -91,7 +86,7 @@ func (s *schedulerManager) workLoop() {
 							log.Infof("No task can be launched, put the offer %v back to queue", offer)
 							s.offerQueue.PutOffer(offer)
 						} else {
-							s.LaunchTasks(offer, tasks)
+							s.launcher.LaunchTasks(offer, tasks)
 						}
 						break
 					}
@@ -101,40 +96,4 @@ func (s *schedulerManager) workLoop() {
 			log.Infof("No offer from offerQueue")
 		}
 	}
-}
-
-// LaunchTasks launches the tasks using an offer.
-// TODO: consider move this into task manager
-func (s *schedulerManager) LaunchTasks(offer *mesos_v1.Offer, pelotonTasks []*task.TaskInfo) {
-	callType := sched.Call_ACCEPT
-	var offerIds []*mesos_v1.OfferID
-	offerIds = append(offerIds, offer.Id)
-
-	var mesosTaskInfos []*mesos_v1.TaskInfo
-	var mesosTaskIds []string
-	for _, t := range pelotonTasks {
-		mesosTask := util.ConvertToMesosTaskInfo(t)
-		mesosTask.AgentId = offer.AgentId
-		mesosTaskInfos = append(mesosTaskInfos, mesosTask)
-		mesosTaskIds = append(mesosTaskIds, *mesosTask.TaskId.Value)
-	}
-	log.Infof("Launching tasks %v using offer %v", mesosTaskIds, *offer.GetId().Value)
-	opType := mesos_v1.Offer_Operation_LAUNCH
-	msg := &sched.Call{
-		FrameworkId: offer.FrameworkId,
-		Type:        &callType,
-		Accept: &sched.Call_Accept{
-			OfferIds: offerIds,
-			Operations: []*mesos_v1.Offer_Operation{
-				&mesos_v1.Offer_Operation{
-					Type: &opType,
-					Launch: &mesos_v1.Offer_Operation_Launch{
-						TaskInfos: mesosTaskInfos,
-					},
-				},
-			},
-		},
-	}
-	// TODO: add retry / put back offer and tasks in failure scenarios
-	s.mesosCaller.SendPbRequest(msg)
 }
