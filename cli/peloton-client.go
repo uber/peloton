@@ -99,7 +99,7 @@ func main() {
 }
 
 func processJobCommand(ctx context.Context, c json.Client) {
-	ctx, _ = context.WithTimeout(ctx, 100*time.Millisecond)
+	ctx, _ = context.WithTimeout(ctx, 10000*time.Millisecond)
 	switch strings.ToLower(os.Args[2]) {
 	case "create":
 		// Read yaml file to

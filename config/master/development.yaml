@@ -6,7 +6,7 @@ db:
   password: peloton
   database: peloton
   host: 127.0.0.1
-  port: 3306
+  port: 8193
   migrations: storage/mysql/migrations/
 
 logging:
@@ -14,4 +14,4 @@ logging:
   level: debug
 
 mesos:
-  hostPort: "192.168.33.10:5050"
+  hostPort: "localhost:5050"

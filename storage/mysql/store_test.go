@@ -29,7 +29,7 @@ func prepareTest() *Config {
 		User:       "peloton",
 		Password:   "peloton",
 		Host:       "127.0.0.1",
-		Port:       3306,
+		Port:       8193,
 		Database:   "peloton",
 		Migrations: "migrations",
 	}

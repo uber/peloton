@@ -1,0 +1,21 @@
+# TODO: remove this config and env vars in docker run command once we figure out how to make mesos read config files
+#       under /etc/mesos-master and /etc/mesos-slave. Based on testing, mesos in container doesn't seem to pick up the
+#       values from config files
+
+# master configs
+QUORUM=1
+REGISTRY=in_memory
+ROLES=peloton-role
+
+# slave configs
+SWITCH_USER=0
+CONTAINERS=docker,mesos
+LOG_DIR=/var/log/mesos
+ISOLATION=filesystem/linux,namespaces/pid,docker/runtime,cgroups/cpu,cgroups/mem,disk/du
+IMAGE_PROVIDERS=appc,docker
+IMAGE_PROVISIONER_BACKEND=copy
+APPC_STORE_DIR=/tmp/mesos/images/appc
+WORK_DIR=/var/lib/mesos
+RESOURCES="cpus(peloton-role):0.5;cpus(*):3.5;mem(peloton-role):1024;disk(*):20000;gpus(*):4;mem(*):1024"
+MODULES=file:///etc/mesos-slave/modules
+RESOURCE_ESTIMATOR=org_apache_mesos_FixedResourceEstimator

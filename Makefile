@@ -44,8 +44,8 @@ clean:
 	rm -rf pbgen
 	rm -rf $(BIN_DIR)
 
-
-MYSQL = mysql
+# MYSQL should be run against mysql with port 8193, which can be launched in container by running docker/bootstrap.sh
+MYSQL = mysql --host=127.0.0.1 -P 8193
 MYSQL_PELOTON = $(MYSQL) -upeloton -ppeloton
 
 bootstrap:

@@ -26,3 +26,9 @@ import:
 - package: github.com/jmoiron/sqlx
 - package: github.com/pborman/uuid
   version: master
+- package: github.com/stretchr/testify
+  version: e3a8ff8ce36581f87a15341206f205b1da467059
+  subpackages:
+   - assert
+   - require
+   - suite

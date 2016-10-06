@@ -1,0 +1,5 @@
+#!/bin/bash
+
+source config
+
+sudo docker stop $ZK_CONTAINER $MESOS_MASTER_CONTAINER $MESOS_AGENT_CONTAINER $MYSQL_CONTAINER
