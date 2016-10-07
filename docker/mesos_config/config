@@ -3,11 +3,13 @@
 #       values from config files
 
 # master configs
+MASTER_PORT=5050
 QUORUM=1
 REGISTRY=in_memory
 ROLES=peloton-role
 
 # slave configs
+AGENT_PORT=5051
 SWITCH_USER=0
 CONTAINERS=docker,mesos
 LOG_DIR=/var/log/mesos

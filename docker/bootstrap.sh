@@ -8,18 +8,30 @@ echo "clean up existing containers before bootstrapping the environment"
 
 set -euxo pipefail
 
+# fetch hostIp, this is not required for linux if container is launched with host network, but missing it will break mesos
+# connection to zk in container with bridged network on Mac osx. On Mac, bridged network is required for mesos containers
+# otherwise DNS service won't be able to resolve IP for containers.
+if [ "$(uname)" == "Darwin" ]; then
+   hostIp=$(ipconfig getifaddr en0)
+   echo 'running on Mac laptop ip '${hostIp}
+else
+   hostIp=$(ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}')
+   echo 'running on Linux dev server ip '${hostIp}
+fi
+
 # run zk
 echo "run zk container"
 sudo docker run -d --name $ZK_CONTAINER -p $LOCAL_ZK_PORT:$DEFAULT_ZK_PORT netflixoss/exhibitor:$ZK_EXHIBITOR_VERSION
 
 # run master
 echo "run mesos master container"
-sudo docker run -d --name $MESOS_MASTER_CONTAINER --net=host --privileged \
-  -e MESOS_PORT=5050 \
-  -e MESOS_ZK=zk://127.0.0.1:$LOCAL_ZK_PORT/mesos \
+sudo docker run -d --name $MESOS_MASTER_CONTAINER --privileged \
+  -e MESOS_PORT=$MASTER_PORT \
+  -e MESOS_ZK=zk://$hostIp:$LOCAL_ZK_PORT/mesos \
   -e MESOS_QUORUM=$QUORUM \
   -e MESOS_REGISTRY=$REGISTRY \
   -e MESOS_ROLES=$ROLES \
+  -p $MASTER_PORT:$MASTER_PORT \
   -v "$(pwd)/mesos_config/etc_mesos-master:/etc/mesos-master" \
   -v $(pwd)/scripts:/scripts \
   --entrypoint /bin/bash \
@@ -29,9 +41,9 @@ sudo docker run -d --name $MESOS_MASTER_CONTAINER --net=host --privileged \
 # run slave
 # TODO: run multiple slaves
 echo "run mesos slave container"
-sudo docker run -d --name $MESOS_AGENT_CONTAINER --net=host --privileged \
-  -e MESOS_PORT=5051 \
-  -e MESOS_MASTER=zk://127.0.0.1:$LOCAL_ZK_PORT/mesos \
+sudo docker run -d --name $MESOS_AGENT_CONTAINER --privileged \
+  -e MESOS_PORT=$AGENT_PORT \
+  -e MESOS_MASTER=zk://$hostIp:$LOCAL_ZK_PORT/mesos \
   -e MESOS_SWITCH_USER=$SWITCH_USER \
   -e MESOS_CONTAINERIZERS=$CONTAINERS \
   -e MESOS_LOG_DIR=$LOG_DIR \
@@ -43,6 +55,7 @@ sudo docker run -d --name $MESOS_AGENT_CONTAINER --net=host --privileged \
   -e MESOS_RESOURCES="$RESOURCES" \
   -e MESOS_MODULES=$MODULES \
   -e MESOS_RESOURCE_ESTIMATOR=$RESOURCE_ESTIMATOR \
+  -p $AGENT_PORT:$AGENT_PORT \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$(pwd)/mesos_config/etc_mesos-slave:/etc/mesos-slave" \
   -v $(pwd)/scripts:/scripts \
