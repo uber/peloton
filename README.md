@@ -34,10 +34,15 @@ volume.
 Installations of protoc/proto/protoc-gen-go are required, run bootstrap.sh once so all dependencies will be installed.
 
 goclone infra/peloton
+
 cd $GOPATH/src/code.uber.internal/infra/peloton
+
 # run bootstrap.sh only once
+
 ./bootstrap.sh
+
 glide install
+
 make
 
 
