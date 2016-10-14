@@ -30,18 +30,29 @@ volume.
 
 
 ## Install
-Installations of protoc/proto/protoc-gen-go are required
 
-cd $GOPATH
-mkdir -p src/code.uber.internal/infra/
-git clone gitolite@code.uber.internal:infra/peloton/ src/code.uber.internal/infra/peloton
-cd src/code.uber.internal/infra/peloton
+Installations of protoc/proto/protoc-gen-go are required, run bootstrap.sh once so all dependencies will be installed.
+
+goclone infra/peloton
+cd $GOPATH/src/code.uber.internal/infra/peloton
+# run bootstrap.sh only once
+./bootstrap.sh
 glide install
 make
 
+
 ## Run Peloton master
 
-UBER_CONFIG_DIR=config/master bin/peloton-master
+Before running peloton locally, dependencies like mesos/mysql, need to be set up. Refer to "docker/README.md" on how to
+launch dependencies in containers.
+
+PELOTON_HOME=$GOPATH/src/code.uber.internal/infra/peloton
+
+UBER_CONFIG_DIR=$PELOTON_HOME/config/master
+
+UBER_ENVIRONMENT=development
+
+bin/peloton-master
 
 
 ## Test Peloton master
@@ -55,3 +66,9 @@ curl -X POST  \
      -H 'Rpc-Encoding: json'              \
      --data '{"id": {"value": "myjob12345"}}' 	\
     localhost:5289
+
+Create new job via yarpc based go client:
+
+cd $GOPATH/src/code.uber.internal/infra/peloton
+
+bin/peloton-client job create --master http://localhost:5289 --jobid test --yaml test/testjob.yaml
