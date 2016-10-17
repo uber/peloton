@@ -3,15 +3,15 @@ package mesos
 import (
 	"reflect"
 
-	"github.com/golang/protobuf/proto"
 	"code.uber.internal/go-common.git/x/log"
+	"github.com/golang/protobuf/proto"
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 )
 
 const (
-	ServiceName = "Scheduler"
+	ServiceName     = "Scheduler"
 	ServiceEndpoint = "/api/v1/scheduler"
 )
 
@@ -21,7 +21,7 @@ type schedulerDriver struct {
 	cfg *FrameworkConfig
 }
 
-func NewSchedulerDriver(cfg *FrameworkConfig, id *mesos.FrameworkID) *schedulerDriver{
+func NewSchedulerDriver(cfg *FrameworkConfig, id *mesos.FrameworkID) *schedulerDriver {
 	return &schedulerDriver{id: id, cfg: cfg}
 }
 

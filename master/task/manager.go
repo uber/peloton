@@ -1,17 +1,14 @@
 package task
 
 import (
+	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
+	myarpc "code.uber.internal/infra/peloton/yarpc"
 	"fmt"
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/encoding/json"
 	"golang.org/x/net/context"
-
-	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/peloton/master/mesos"
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
-	myarpc "code.uber.internal/infra/peloton/yarpc"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
 	"mesos/v1"
 	sched "mesos/v1/scheduler"
 	"peloton/job"
@@ -31,14 +28,6 @@ func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storag
 	json.Register(d, json.Procedure("TaskManager.Start", handler.Start))
 	json.Register(d, json.Procedure("TaskManager.Stop", handler.Stop))
 	json.Register(d, json.Procedure("TaskManager.Restart", handler.Restart))
-
-	procedures := map[sched.Event_Type]interface{}{
-		sched.Event_UPDATE: handler.Update,
-	}
-	for typ, hdl := range procedures {
-		name := typ.String()
-		mjson.Register(d, mesos.ServiceName, mjson.Procedure(name, hdl))
-	}
 
 	return &handler
 }
@@ -176,26 +165,4 @@ func (m *taskManager) LaunchTasks(offer *mesos_v1.Offer, pelotonTasks []*task.Ta
 	}
 	// TODO: add retry / put back offer and tasks in failure scenarios
 	m.mesosCaller.SendPbRequest(msg)
-}
-
-// Update is the Mesos callback on mesos state updates
-func (m *taskManager) Update(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
-	taskUpdate := body.GetUpdate()
-	log.WithField("Task update", taskUpdate).Infof("taskManager: Update called")
-
-	taskId := taskUpdate.GetStatus().GetTaskId().GetValue()
-	taskInfo, err := m.TaskStore.GetTaskById(taskId)
-	if err != nil {
-		log.Errorf("Fail to find taskInfo for taskId %v, err=%v", taskId, err)
-		return err
-	}
-	state := util.MesosStateToPelotonState(taskUpdate.GetStatus().GetState())
-	taskInfo.GetRuntime().State = state
-	err = m.TaskStore.UpdateTask(taskInfo)
-	if err != nil {
-		log.Errorf("Fail to update taskInfo for taskId %v, new state %v, err=%v", taskId, state, err)
-		return err
-	}
-	return nil
 }

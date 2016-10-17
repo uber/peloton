@@ -25,3 +25,9 @@ type TaskStore interface {
 	UpdateTask(taskInfo *task.TaskInfo) error
 	GetTaskById(taskId string) (*task.TaskInfo, error)
 }
+
+type FrameworkInfoStore interface {
+	SetMesosStreamId(frameworkName string, mesosStreamId string) error
+	SetMesosFrameworkId(frameworkName string, frameworkId string) error
+	GetMesosStreamId(frameworkName string) (string, error)
+}

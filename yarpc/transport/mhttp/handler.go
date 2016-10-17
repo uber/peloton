@@ -1,10 +1,10 @@
 package mhttp
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"reflect"
-	"encoding/json"
-	"bytes"
 
 	"github.com/yarpc/yarpc-go/transport"
 	"golang.org/x/net/context"
@@ -55,8 +55,8 @@ func (h handler) HandleRecordIO(data []byte) error {
 
 // mesosEventReader decodes a Mesos Event object from RecordIO frame
 type MesosEventReader struct {
-	Event      reflect.Value  // Decoded Mesos event
-	Type       EventType      // Mesos event type such as offers, rescind etc
+	Event reflect.Value // Decoded Mesos event
+	Type  EventType     // Mesos event type such as offers, rescind etc
 }
 
 func newMesosEventReader(data []byte, typ reflect.Type) (*MesosEventReader, error) {

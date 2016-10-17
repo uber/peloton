@@ -6,10 +6,14 @@ import (
 	"github.com/yarpc/yarpc-go"
 
 	sched "mesos/v1/scheduler"
+	"code.uber.internal/infra/peloton/storage"
 )
 
-func InitManager(d yarpc.Dispatcher) {
-	m := mesosManager{}
+func InitManager(d yarpc.Dispatcher, mesosConfig *Config, store storage.FrameworkInfoStore) {
+	m := mesosManager{
+		store:       store,
+		mesosConfig: mesosConfig,
+	}
 
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_SUBSCRIBED: m.Subscribed,
@@ -26,6 +30,8 @@ func InitManager(d yarpc.Dispatcher) {
 }
 
 type mesosManager struct {
+	store       storage.FrameworkInfoStore
+	mesosConfig *Config
 }
 
 func (m *mesosManager) Subscribed(
@@ -33,7 +39,12 @@ func (m *mesosManager) Subscribed(
 
 	subscribed := body.GetSubscribed()
 	log.WithField("params", subscribed).Debug("mesosManager: subscribed called")
-	return nil
+	frameworkId := subscribed.GetFrameworkId().GetValue()
+	err := m.store.SetMesosFrameworkId(m.mesosConfig.Framework.Name, frameworkId)
+	if err != nil {
+		log.Errorf("failed to SetMesosFrameworkId %v %v, err=%v", m.mesosConfig.Framework.Name, frameworkId, err)
+	}
+	return err
 }
 
 func (m *mesosManager) Message(

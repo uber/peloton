@@ -109,3 +109,12 @@ func ToJobConfigs(jsonStrings []string) ([]*job.JobConfig, error) {
 	}
 	return finalResult, nil
 }
+
+// MesosFrameworkInfo stores the framework id and mesos stream id information
+type MesosFrameworkInfo struct {
+	FrameworkName sql.NullString `db:"framework_name"`
+	FrameworkId   sql.NullString `db:"framework_id"`
+	MesosStreamId sql.NullString `db:"mesos_stream_id"`
+	UpdateTime    time.Time      `db:"update_time"`
+	UpdateHost    sql.NullString `db:"update_host"`
+}

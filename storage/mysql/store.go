@@ -14,12 +14,14 @@ import (
 	"peloton/job"
 	"peloton/task"
 	"strings"
+	"os"
 )
 
 const (
 	// Table names
 	jobsTable  = "jobs"
 	tasksTable = "tasks"
+	frameworksTable = "frameworks"
 
 	// values for the col_key
 	colRuntimeInfo = "runtime_info"
@@ -39,6 +41,9 @@ const (
 	updateTaskStmt             = `UPDATE tasks SET body = ? where row_key = ?`
 	getTasksForJobStmt         = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ?`
 	getTasksForJobAndStateStmt = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ? and task_state = ?`
+	getMesosFrameworkInfoStmt  = `SELECT * from frameworks where framework_name = ?`
+	setMesosStreamIdStmt = `INSERT INTO frameworks (framework_name, mesos_stream_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE mesos_stream_id = ?`
+	setMesosFrameworkIdStmt = `INSERT INTO frameworks (framework_name, framework_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE framework_id = ?`
 )
 
 // Container for database configs
@@ -361,4 +366,47 @@ func (m *MysqlJobStore) getTasks(filters map[string]interface{}) (map[uint32]*ta
 		result[uint32(taskRecord.InstanceId)] = taskInfo
 	}
 	return result, nil
+}
+
+//SetMesosStreamId stores the mesos stream id for a framework name
+func (m *MysqlJobStore) SetMesosStreamId(frameworkName string, mesosStreamId string) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Errorf("os.HostName() failed with err=%v", err)
+	}
+	_, err = m.DB.Exec(setMesosStreamIdStmt, frameworkName, mesosStreamId, hostname, mesosStreamId)
+	if err != nil {
+		log.Errorf("SetMesosStreamId failed with id %v error = %v", err)
+		return err
+	}
+	return nil
+}
+
+//SetMesosFrameworkId stores the mesos framework id for a framework name
+func (m *MysqlJobStore) SetMesosFrameworkId(frameworkName string, frameworkId string) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Errorf("os.HostName() failed with err=%v", err)
+	}
+	_, err = m.DB.Exec(setMesosFrameworkIdStmt, frameworkName, frameworkId, hostname, frameworkId)
+	if err != nil {
+		log.Errorf("SetMesosFrameworkId failed with id %v error = %v", err)
+		return err
+	}
+	return nil
+}
+
+//GetMesosStreamId reads the mesos stream id for a framework name
+func (m *MysqlJobStore) GetMesosStreamId(frameworkName string) (string, error) {
+	var records = []storage.MesosFrameworkInfo{}
+	q, args := getQueryAndArgs(frameworksTable, map[string]interface{}{"framework_name=": frameworkName}, []string{"*"})
+	err := m.DB.Select(&records, q, args...)
+	if err == sql.ErrNoRows {
+		log.Warnf("GetMesosStreamId for frmeworkName %v returns no rows", frameworkName)
+		return "", nil
+	}
+	for _, frameworkInfo := range records {
+		return frameworkInfo.MesosStreamId.String, nil
+	}
+	return "", nil
 }

@@ -19,21 +19,22 @@ type OutboundOption func(*outbound)
 
 // NewOutbound builds a new Mesos HTTP outbound, with the inbound, which is to register with
 // Mesos master via Subscribe message
-func NewOutbound(hostPort string, d MesosDriver, inbound Inbound, opts ...OutboundOption) transport.Outbound {
+func NewOutbound(hostPort string, d MesosDriver, mesosStreamId string, opts ...OutboundOption) transport.Outbound {
 	o := &outbound{hostPort: hostPort, driver: d}
 	for _, opt := range opts {
 		opt(o)
 	}
-	o.inbound = inbound
+	log.Infof("mOutbound using mesos stream id %v", mesosStreamId)
+	o.mesosStreamId = mesosStreamId
 	return o
 }
 
 type outbound struct {
-	hostPort string
-	driver   MesosDriver
-	stopped  uint32
-	inbound  Inbound
-	client   *http.Client
+	hostPort      string
+	driver        MesosDriver
+	stopped       uint32
+	mesosStreamId string
+	client        *http.Client
 }
 
 // Start thee outbound
@@ -65,7 +66,7 @@ func (o outbound) Call(ctx context.Context, treq *transport.Request) (*transport
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	// Obtain the MesosStreamId from the inbound
-	mesosStreamId := o.inbound.GetMesosStreamId()
+	mesosStreamId := o.mesosStreamId
 	if mesosStreamId == "" {
 		return nil, fmt.Errorf("mesosStreamId is not set")
 	}
