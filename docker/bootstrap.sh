@@ -30,7 +30,6 @@ sudo docker run -d --name $MESOS_MASTER_CONTAINER --privileged \
   -e MESOS_ZK=zk://$hostIp:$LOCAL_ZK_PORT/mesos \
   -e MESOS_QUORUM=$QUORUM \
   -e MESOS_REGISTRY=$REGISTRY \
-  -e MESOS_ROLES=$ROLES \
   -p $MASTER_PORT:$MASTER_PORT \
   -v "$(pwd)/mesos_config/etc_mesos-master:/etc/mesos-master" \
   -v $(pwd)/scripts:/scripts \
