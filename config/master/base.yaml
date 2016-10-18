@@ -2,9 +2,20 @@ logging:
   level: info
   stdout: true
 
+db:
+  user: peloton
+  password: peloton
+  database: peloton
+  host: 127.0.0.1
+  port: 8193
+  migrations: storage/mysql/migrations/
+
+# TODO: add leader election using zookeeper
 master:
-  port: 5289
-  leader: true
+  leader:
+    port: 5289
+  follower:
+    port: 5290
 
 mesos:
   framework:
@@ -12,7 +23,6 @@ mesos:
     name: "Peloton"
     # TODO : add roles for other components
     role: "peloton-master"
-    principal: ""
+    principal: "peloton"
     failoverTimeout: 60
     checkpoint: false
-    id: "peloton"

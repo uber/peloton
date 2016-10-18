@@ -20,6 +20,17 @@ type AppConfig struct {
 
 // Peloton master specific configuration
 type MasterConfig struct {
+	Port     int            `yaml:"port"`
+	Leader   LeaderConfig   `yaml:"leader"`
+	Follower FollowerConfig `yaml:"follower"`
+}
+
+// Peloton master leader specific configuration
+type LeaderConfig struct {
 	Port        int    `yaml:"port"`
-	Leader      bool   `yaml:"leader"`
+}
+
+// Peloton master followerspecific configuration
+type FollowerConfig struct {
+	Port        int    `yaml:"port"`
 }

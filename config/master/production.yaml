@@ -3,7 +3,6 @@ deep_extend: true
 
 # Add your production configuration here
 logging:
-  stdout: true
   kafka:
     topic: peloton
 
@@ -11,14 +10,6 @@ metrics:
   statsd:
     hostPort: 127.0.0.1:4744
     prefix: peloton
-
-db:
-  user: peloton
-  password: peloton
-  database: peloton
-  host: 127.0.0.1
-  port: 8193
-  migrations: storage/mysql/migrations/
 
 sentry:
   dsn: http://fill:mein@sentry.local.uber.internal/123

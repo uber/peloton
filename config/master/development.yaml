@@ -1,16 +1,7 @@
 extends: base.yaml
 deep_extend: true
 
-db:
-  user: peloton
-  password: peloton
-  database: peloton
-  host: 127.0.0.1
-  port: 8193
-  migrations: storage/mysql/migrations/
-
 logging:
-  stdout: true
   level: debug
 
 mesos:

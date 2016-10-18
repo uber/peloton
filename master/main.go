@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"flag"
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/transport"
 	"github.com/yarpc/yarpc-go/transport/http"
@@ -27,6 +28,9 @@ const (
 	getStreamIdRetryTimes = 30
 	getStreamIdRetrySleep = 10 * time.Second
 )
+
+var role = flag.String("role", "leader",
+	"The role of Peloton master [leader|follower]")
 
 // Simple request interceptor which logs the request summary
 type requestLogInterceptor struct{}
@@ -75,10 +79,17 @@ func getStreamId(store *mysql.MysqlJobStore, cfg *AppConfig) (string, error) {
 	return "", fmt.Errorf(errMsg)
 }
 
+
 func main() {
+	// Parse command line arguments
+	flag.Parse()
+
+	// Load configuration YAML file
 	var cfg AppConfig
 	if err := config.Load(&cfg); err != nil {
 		log.Fatalf("Error initializing configuration: %s", err)
+	} else {
+		log.WithField("config", cfg).Info("Loading Peloton configuration")
 	}
 	log.Configure(&cfg.Logging, cfg.Verbose)
 	log.ConfigureSentry(&cfg.Sentry)
@@ -88,6 +99,17 @@ func main() {
 		log.Fatalf("Could not connect to metrics: %v", err)
 	}
 	metrics.Counter("boot").Inc(1)
+
+	// Check if the master is a leader or follower
+	// TODO: use zookeeper for leader election
+	var masterPort int
+	if *role == "leader" {
+		masterPort = cfg.Master.Leader.Port
+	} else if *role == "follower" {
+		masterPort = cfg.Master.Follower.Port
+	} else {
+		log.Fatalf("Unknown master role '%s', must be leader or follower", *role)
+	}
 
 	// connect to mysql DB
 	if err := cfg.DbConfig.Connect(); err != nil {
@@ -107,14 +129,14 @@ func main() {
 	pelotonInDispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: "peloton-master",
 		Inbounds: []transport.Inbound{
-			http.NewInbound(":" + strconv.Itoa(cfg.Master.Port)),
+			http.NewInbound(":" + strconv.Itoa(masterPort)),
 		},
 		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
 	})
 	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
 	f := mesos.NewSchedulerDriver(&cfg.Mesos.Framework, nil)
 	var mesosStreamId string
-	if cfg.Master.Leader {
+	if *role == "leader" {
 		mInbound := mhttp.NewInbound(cfg.Mesos.HostPort, f)
 		log.Infof("Becoming leader, creating mesosInDispatcher")
 		mesosInDispatcher := becomeLeader(mInbound, offerQueue, store, &cfg)
@@ -128,7 +150,7 @@ func main() {
 		}
 		log.Info("mesosInDispatcher started with stream id %v", mesosStreamId)
 
-	} else {
+	} else if *role == "follower" {
 		mesosStreamId, err = getStreamId(store, &cfg)
 		if err != nil {
 			log.Fatalf("Could not get mesos stream id from db: %v", err)
