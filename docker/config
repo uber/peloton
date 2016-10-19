@@ -8,6 +8,7 @@ ZK_CONTAINER=peloton-zk
 MESOS_VERSION=1.0.1-rc1
 MESOS_MASTER_CONTAINER=peloton-mesos-master
 MESOS_AGENT_CONTAINER=peloton-mesos-agent
+NUM_AGENTS=3
 
 # Mysql configs
 MYSQL_VERSION=5.7.15
