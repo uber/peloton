@@ -6,11 +6,6 @@ import (
 	"peloton/task"
 )
 
-// TaskLauncher is the interface to launch a set of tasks using an offer
-type TaskLauncher interface {
-	LaunchTasks(offer *mesos_v1.Offer, pelotonTasks []*task.TaskInfo)
-}
-
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
 // first level : role -> map(resource type-> resouce value)
 func GetOfferScalarResourceSummary(offer *mesos_v1.Offer) map[string]map[string]float64 {

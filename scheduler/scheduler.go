@@ -6,11 +6,15 @@
 package scheduler
 
 import (
-	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/peloton/util"
-	"peloton/task"
 	"sync/atomic"
 	"time"
+
+	"github.com/yarpc/yarpc-go"
+	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/util"
+	master_task "code.uber.internal/infra/peloton/master/task"
+
+	"peloton/task"
 )
 
 const (
@@ -19,11 +23,11 @@ const (
 )
 
 // InitManager inits the schedulerManager
-func InitManager(oq util.OfferQueue, tq util.TaskQueue, launcher util.TaskLauncher) {
+func InitManager(d yarpc.Dispatcher, oq util.OfferQueue, tq util.TaskQueue) {
 	s := schedulerManager{
 		offerQueue: oq,
 		taskQueue:  tq,
-		launcher:   launcher,
+		launcher:   master_task.GetTaskLauncher(d),
 	}
 	s.Start()
 }
@@ -33,7 +37,7 @@ type schedulerManager struct {
 	taskQueue  util.TaskQueue
 	started    int32
 	shutdown   int32
-	launcher   util.TaskLauncher
+	launcher   master_task.TaskLauncher
 }
 
 func (s *schedulerManager) Start() {
@@ -68,7 +72,11 @@ func (s *schedulerManager) workLoop() {
 					if len(tasks) == 0 {
 						continue
 					} else {
-						s.launcher.LaunchTasks(offer, tasks)
+						err := s.launcher.LaunchTasks(offer, tasks)
+						if err != nil {
+							log.Errorf("Failed to launch tasks with offer %v", *offerId)
+							// TODO: handle task launch errors
+						}
 					}
 					break
 				} else {

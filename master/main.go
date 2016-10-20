@@ -18,15 +18,8 @@ import (
 	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
-	myarpc "code.uber.internal/infra/peloton/yarpc"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"strconv"
-	"time"
-)
-
-const (
-	getStreamIdRetryTimes = 30
-	getStreamIdRetrySleep = 10 * time.Second
 )
 
 var role = flag.String("role", "leader",
@@ -45,40 +38,6 @@ func (requestLogInterceptor) Handle(
 	log.Infof("Received a %s request from %s", req.Procedure, req.Caller)
 	return handler.Handle(ctx, opts, req, resw)
 }
-
-// peloton master leader would create mesos inbound, which would subscribe to meso master
-func becomeLeader(mInbound transport.Inbound, offerQueue util.OfferQueue, store *mysql.MysqlJobStore, cfg *AppConfig) yarpc.Dispatcher {
-	mesosInDispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name: "peloton-mesos-inbound",
-		Inbounds: []transport.Inbound{
-			mInbound,
-		},
-		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
-	})
-
-	mesos.InitManager(mesosInDispatcher, &cfg.Mesos, store)
-	upgrade.InitManager(mesosInDispatcher)
-	offer.InitManager(mesosInDispatcher, offerQueue)
-	task.InitTaskStateUpdateManager(mesosInDispatcher, store, store)
-	return mesosInDispatcher
-}
-
-// peloton master follower would try to read db for the mesos stream id
-func getStreamId(store *mysql.MysqlJobStore, cfg *AppConfig) (string, error) {
-	var errMsg string
-	for i := 0; i < getStreamIdRetryTimes; i++ {
-		mesosStreamId, err := store.GetMesosStreamId(cfg.Mesos.Framework.Name)
-		if err == nil && mesosStreamId != "" {
-			return mesosStreamId, err
-		}
-		errMsg = fmt.Sprintf("Could not get mesos stream id from db, framework %v, error= %v", cfg.Mesos.Framework.Name, err)
-		log.Errorf(errMsg)
-		log.Infof("attempt %v, sleep 100 sec", i)
-		time.Sleep(getStreamIdRetrySleep)
-	}
-	return "", fmt.Errorf(errMsg)
-}
-
 
 func main() {
 	// Parse command line arguments
@@ -100,6 +59,17 @@ func main() {
 	}
 	metrics.Counter("boot").Inc(1)
 
+	// Connect to mysql DB
+	if err := cfg.DbConfig.Connect(); err != nil {
+		log.Fatalf("Could not connect to database: %+v", err)
+	}
+	// Migrate DB if necessary
+	if errs := cfg.DbConfig.AutoMigrate(); errs != nil {
+		log.Fatalf("Could not migrate database: %+v", errs)
+	}
+	// Initialize job and task stores
+	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
+
 	// Check if the master is a leader or follower
 	// TODO: use zookeeper for leader election
 	var masterPort int
@@ -111,75 +81,53 @@ func main() {
 		log.Fatalf("Unknown master role '%s', must be leader or follower", *role)
 	}
 
-	// connect to mysql DB
-	if err := cfg.DbConfig.Connect(); err != nil {
-		log.Fatalf("Could not connect to database: %+v", err)
+	// Initialize YARPC dispatcher with necessary inbounds and outbounds
+	driver := mesos.InitSchedulerDriver(&cfg.Mesos.Framework, store)
+	inbounds := []transport.Inbound{
+		http.NewInbound(":" + strconv.Itoa(masterPort)),
+	}
+	// Only leader needs a Mesos inbound
+	if *role == "leader" {
+		inbounds = append(inbounds, mhttp.NewInbound(cfg.Mesos.HostPort, driver))
 	}
 
-	// Migrate DB if necessary
-	if errs := cfg.DbConfig.AutoMigrate(); errs != nil {
-		log.Fatalf("Could not migrate database: %+v", errs)
-	}
+	// TODO: resolve Mesos master and Peloton master URLs from zookeeper
+	mesosUrl := fmt.Sprintf("http://%s%s", cfg.Mesos.HostPort, driver.Endpoint())
+	leaderUrl := fmt.Sprintf("http://localhost:%d", cfg.Master.Leader.Port)
 
-	// TODO: Load framework ID from DB
+	// TODO: initialize one outbound for each follower so we can
+	// switch to it at fail-over
+	outbounds := transport.Outbounds{
+		"mesos-master": http.NewOutbound(mesosUrl),
+		"peloton-master": http.NewOutbound(leaderUrl),
+	}
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name: "peloton-master",
+		Inbounds: inbounds,
+		Outbounds: outbounds,
+		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
+	})
+
+	// TODO: remove taskQueue and offerQueue
 	offerQueue := util.NewMemLocalOfferQueue("LocalOfferQueue")
 	taskQueue := util.NewMemLocalTaskQueue("LocalTaskQueue")
 
-	// Creates the peloton rpc inbound
-	pelotonInDispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name: "peloton-master",
-		Inbounds: []transport.Inbound{
-			http.NewInbound(":" + strconv.Itoa(masterPort)),
-		},
-		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
-	})
-	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
-	f := mesos.NewSchedulerDriver(&cfg.Mesos.Framework, nil)
-	var mesosStreamId string
+	// Initalize managers
+	job.InitManager(dispatcher, store, store, taskQueue)
+	task.InitManager(dispatcher, store, store)
+	upgrade.InitManager(dispatcher)
+	scheduler.InitManager(dispatcher, offerQueue, taskQueue)
+
+	// Only leader needs to initialize Mesos and Offer managers
 	if *role == "leader" {
-		mInbound := mhttp.NewInbound(cfg.Mesos.HostPort, f)
-		log.Infof("Becoming leader, creating mesosInDispatcher")
-		mesosInDispatcher := becomeLeader(mInbound, offerQueue, store, &cfg)
-		if err := mesosInDispatcher.Start(); err != nil {
-			log.Fatalf("Could not start rpc server for mesosInDispatcher: %v", err)
-		}
-		mesosStreamId = mInbound.GetMesosStreamId()
-		err = store.SetMesosStreamId(cfg.Mesos.Framework.Name, mesosStreamId)
-		if err != nil {
-			log.Errorf("failed to SetMesosStreamId %v %v, err=%v", cfg.Mesos.Framework.Name, mesosStreamId, err)
-		}
-		log.Info("mesosInDispatcher started with stream id %v", mesosStreamId)
-
-	} else if *role == "follower" {
-		mesosStreamId, err = getStreamId(store, &cfg)
-		if err != nil {
-			log.Fatalf("Could not get mesos stream id from db: %v", err)
-		}
+		mesos.InitManager(dispatcher, &cfg.Mesos, store)
+		offer.InitManager(dispatcher, offerQueue)
 	}
 
-	mOutbound := mhttp.NewOutbound(cfg.Mesos.HostPort, f, mesosStreamId)
-	outDispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:        "peloton-mesos-outbound",
-		Outbounds:   transport.Outbounds{"peloton-master": mOutbound},
-		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
-	})
-
-	job.InitManager(pelotonInDispatcher, store, store, taskQueue)
-
-	// Create mesos outbound
-	launcher := task.InitManager(pelotonInDispatcher, store, store, offerQueue, taskQueue, myarpc.NewMesoCaller(mOutbound))
-	scheduler.InitManager(offerQueue, taskQueue, launcher)
-
-	if err := outDispatcher.Start(); err != nil {
-		log.Fatalf("Could not start rpc server for outDispatcher: %v", err)
+	// Start dispatch loop
+	if err := dispatcher.Start(); err != nil {
+		log.Fatalf("Could not start rpc server: %v", err)
 	}
-	log.Info("outDispatcher started")
-
-	if err := pelotonInDispatcher.Start(); err != nil {
-		log.Fatalf("Could not start rpc server for pelotonInDispatcher: %v", err)
-	}
-	log.Info("pelotonInDispatcher started")
-
 	log.Info("Started rpc server")
 	select {}
 }

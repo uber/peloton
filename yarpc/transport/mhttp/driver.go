@@ -27,11 +27,14 @@ type MesosDriver interface {
 	// Returns the Mesos endpoint to be connected to
 	Endpoint() string
 
-	// Returns a subscribe Call message to be sent to Mesos for
-	// setting up an event stream connection
-	Subscribe() proto.Message
-
 	// Returns the Type of Mesos event message such as
 	// mesos.v1.scheduler.Event or mesos.v1.executor.Event
 	EventDataType() reflect.Type
+
+	// Returns a subscribe Call message to be sent to Mesos for
+	// setting up an event stream connection
+	PrepareSubscribe() proto.Message
+
+	// Invoked after the subscription to Mesos is done
+	PostSubscribe(mesosStreamId string)
 }

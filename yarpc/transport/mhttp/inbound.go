@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"code.uber.internal/go-common.git/x/log"
 	"github.com/gogo/protobuf/jsonpb"
@@ -23,7 +22,6 @@ import (
 // connections.
 type Inbound interface {
 	transport.Inbound
-	GetMesosStreamId() string
 }
 
 // InboundOption is an option for an Mesos HTTP inbound.
@@ -44,7 +42,6 @@ type inbound struct {
 	driver        MesosDriver
 	stopped       uint32
 	done          chan error
-	mesosStreamId unsafe.Pointer
 }
 
 func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
@@ -58,7 +55,7 @@ func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
 	}
 	client := &http.Client{Transport: transport}
 
-	msg := i.driver.Subscribe()
+	msg := i.driver.PrepareSubscribe()
 	encoder := jsonpb.Marshaler{
 		EnumsAsInts: false,
 		OrigName:    true,
@@ -85,9 +82,9 @@ func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
 			resp.StatusCode, respBody)
 	}
 
+	// Invoke the post subscribe callback on Mesos driver
 	mesosStreamId := resp.Header["Mesos-Stream-Id"]
-	log.Infof("Mesos stream id : %v", mesosStreamId)
-	atomic.StorePointer(&i.mesosStreamId, unsafe.Pointer(&mesosStreamId[0]))
+	i.driver.PostSubscribe(mesosStreamId[0])
 
 	hdl := handler{
 		Handler:       h,
@@ -149,14 +146,4 @@ func (i *inbound) Stop() error {
 
 	serveErr := <-i.done
 	return serveErr
-}
-
-// GetMesosStreamId returns the mesos stream id that is get after Start()
-func (i *inbound) GetMesosStreamId() string {
-	var streamId = atomic.LoadPointer(&i.mesosStreamId)
-	var stringPtr = (*string)(streamId)
-	if stringPtr == nil {
-		return ""
-	}
-	return *stringPtr
 }

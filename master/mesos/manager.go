@@ -2,11 +2,11 @@ package mesos
 
 import (
 	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
 	"github.com/yarpc/yarpc-go"
 
-	sched "mesos/v1/scheduler"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	sched "mesos/v1/scheduler"
 )
 
 func InitManager(d yarpc.Dispatcher, mesosConfig *Config, store storage.FrameworkInfoStore) {

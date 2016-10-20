@@ -1,43 +1,35 @@
 package task
 
 import (
-	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
-	myarpc "code.uber.internal/infra/peloton/yarpc"
 	"fmt"
+
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/encoding/json"
 	"golang.org/x/net/context"
-	"mesos/v1"
-	sched "mesos/v1/scheduler"
+
+	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/storage"
+
 	"peloton/job"
 	"peloton/task"
 )
 
-func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, oq util.OfferQueue, tq util.TaskQueue, mc myarpc.Caller) util.TaskLauncher {
+func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore,	taskStore storage.TaskStore) {
+
 	handler := taskManager{
-		TaskStore:   taskStore,
-		JobStore:    jobStore,
-		mesosCaller: mc,
-		offerQueue:  oq,
-		taskQueue:   tq,
+		taskStore:   taskStore,
+		jobStore:    jobStore,
 	}
 	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
 	json.Register(d, json.Procedure("TaskManager.List", handler.List))
 	json.Register(d, json.Procedure("TaskManager.Start", handler.Start))
 	json.Register(d, json.Procedure("TaskManager.Stop", handler.Stop))
 	json.Register(d, json.Procedure("TaskManager.Restart", handler.Restart))
-
-	return &handler
 }
 
 type taskManager struct {
-	TaskStore   storage.TaskStore
-	JobStore    storage.JobStore
-	mesosCaller myarpc.Caller
-	offerQueue  util.OfferQueue
-	taskQueue   util.TaskQueue
+	taskStore   storage.TaskStore
+	jobStore    storage.JobStore
 }
 
 func (m *taskManager) Get(
@@ -46,7 +38,7 @@ func (m *taskManager) Get(
 	body *task.GetRequest) (*task.GetResponse, yarpc.ResMeta, error) {
 
 	log.Infof("TaskManager.Get called: %v", body)
-	jobConfig, err := m.JobStore.GetJob(body.JobId)
+	jobConfig, err := m.jobStore.GetJob(body.JobId)
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
@@ -57,7 +49,7 @@ func (m *taskManager) Get(
 		}, nil, nil
 	}
 
-	result, err := m.TaskStore.GetTaskForJob(body.JobId, body.InstanceId)
+	result, err := m.taskStore.GetTaskForJob(body.JobId, body.InstanceId)
 	for _, taskInfo := range result {
 		log.Infof("found task %v", taskInfo)
 		return &task.GetResponse{
@@ -79,7 +71,7 @@ func (m *taskManager) List(
 	body *task.ListRequest) (*task.ListResponse, yarpc.ResMeta, error) {
 
 	log.Infof("TaskManager.List called: %v", body)
-	_, err := m.JobStore.GetJob(body.JobId)
+	_, err := m.jobStore.GetJob(body.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.ListResponse{
@@ -89,7 +81,7 @@ func (m *taskManager) List(
 			},
 		}, nil, nil
 	}
-	result, err := m.TaskStore.GetTasksForJobByRange(body.JobId, body.Range)
+	result, err := m.taskStore.GetTasksForJobByRange(body.JobId, body.Range)
 	if err != nil || len(result) == 0 {
 		return &task.ListResponse{
 			NotFound: &job.JobNotFound{
@@ -130,39 +122,4 @@ func (m *taskManager) Restart(
 
 	log.Infof("TaskManager.Restart called: %v", body)
 	return &task.RestartResponse{}, nil, nil
-}
-
-// LaunchTasks launches a list of tasks using an offer
-func (m *taskManager) LaunchTasks(offer *mesos_v1.Offer, pelotonTasks []*task.TaskInfo) {
-	callType := sched.Call_ACCEPT
-	var offerIds []*mesos_v1.OfferID
-	offerIds = append(offerIds, offer.Id)
-
-	var mesosTaskInfos []*mesos_v1.TaskInfo
-	var mesosTaskIds []string
-	for _, t := range pelotonTasks {
-		mesosTask := util.ConvertToMesosTaskInfo(t)
-		mesosTask.AgentId = offer.AgentId
-		mesosTaskInfos = append(mesosTaskInfos, mesosTask)
-		mesosTaskIds = append(mesosTaskIds, *mesosTask.TaskId.Value)
-	}
-	log.Infof("Launching tasks %v using offer %v", mesosTaskIds, *offer.GetId().Value)
-	opType := mesos_v1.Offer_Operation_LAUNCH
-	msg := &sched.Call{
-		FrameworkId: offer.FrameworkId,
-		Type:        &callType,
-		Accept: &sched.Call_Accept{
-			OfferIds: offerIds,
-			Operations: []*mesos_v1.Offer_Operation{
-				&mesos_v1.Offer_Operation{
-					Type: &opType,
-					Launch: &mesos_v1.Offer_Operation_Launch{
-						TaskInfos: mesosTaskInfos,
-					},
-				},
-			},
-		},
-	}
-	// TODO: add retry / put back offer and tasks in failure scenarios
-	m.mesosCaller.SendPbRequest(msg)
 }
