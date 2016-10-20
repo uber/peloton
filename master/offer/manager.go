@@ -6,11 +6,14 @@ import (
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
 	"github.com/yarpc/yarpc-go"
+
 	sched "mesos/v1/scheduler"
 )
 
 func InitManager(d yarpc.Dispatcher, offerQueue util.OfferQueue) {
-	m := offerManager{}
+	m := offerManager{
+		offerPool: NewOfferPool(d),
+	}
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_OFFERS:                m.Offers,
 		sched.Event_INVERSE_OFFERS:        m.InverseOffers,
@@ -22,44 +25,54 @@ func InitManager(d yarpc.Dispatcher, offerQueue util.OfferQueue) {
 		name := typ.String()
 		mjson.Register(d, mesos.ServiceName, mjson.Procedure(name, hdl))
 	}
-	m.offerQueue = offerQueue
 }
 
 type offerManager struct {
+	offerPool OfferPool
+
+	// TODO: to be removed after switching to offer pool
 	offerQueue util.OfferQueue
 }
 
 func (m *offerManager) Offers(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
-	offers := body.GetOffers()
-	log.WithField("params", offers).Debug("OfferManager.Offers called")
-	for _, offer := range offers.Offers {
+	event := body.GetOffers()
+	log.WithField("event", event).Debug("OfferManager: processing Offers event")
+	m.offerPool.AddOffers(event.Offers)
+
+	// TODO: to be removed after switching to offer pool
+	for _, offer := range event.Offers {
 		m.offerQueue.PutOffer(offer)
 	}
+
 	return nil
 }
 
 func (m *offerManager) InverseOffers(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
-	inverseOffers := body.GetInverseOffers()
-	log.WithField("params", inverseOffers).Debug("OfferManager.InverseOffers called")
+	event := body.GetInverseOffers()
+	log.WithField("event", event).Debug("OfferManager: processing InverseOffers event")
+
+	// TODO: Handle inverse offers from Mesos
 	return nil
 }
 
 func (m *offerManager) Rescind(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
-	rescind := body.GetRescind()
-	log.WithField("params", rescind).Debug("OfferManager.Rescind called")
+	event := body.GetRescind()
+	log.WithField("event", event).Debug("OfferManager: processing Rescind event")
+	m.offerPool.RescindOffer(event.OfferId)
+
 	return nil
 }
 
 func (m *offerManager) RescindInverseOffer(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
-	rescind := body.GetRescindInverseOffer()
-	log.WithField("params", rescind).Debug("OfferManager.RescindInverseOffers called")
+	event := body.GetRescindInverseOffer()
+	log.WithField("event", event).Debug("OfferManager: processing RescindInverseOffer event")
 	return nil
 }

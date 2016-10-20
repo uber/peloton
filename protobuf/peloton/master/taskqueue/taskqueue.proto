@@ -5,7 +5,7 @@
 
 syntax = "proto3";
 
-package peloton.internal.queue;
+package peloton.master.taskqueue;
 
 option go_package = "taskqueue";
 

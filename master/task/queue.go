@@ -6,7 +6,7 @@ import (
 	"github.com/yarpc/yarpc-go/encoding/json"
 	"golang.org/x/net/context"
 
-	"peloton/taskqueue"
+	"peloton/master/taskqueue"
 )
 
 func InitTaskQueue(d yarpc.Dispatcher) {
