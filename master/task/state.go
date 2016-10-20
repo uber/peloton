@@ -44,6 +44,7 @@ func (m *taskStateUpdateManager) Update(reqMeta yarpc.ReqMeta, body *sched.Event
 		return err
 	}
 	state := util.MesosStateToPelotonState(taskUpdate.GetStatus().GetState())
+	// TODO: depends on the state, may need to put the task back to the queue, or clear the pending task record from taskqueue
 	taskInfo.GetRuntime().State = state
 	err = m.TaskStore.UpdateTask(taskInfo)
 	if err != nil {
