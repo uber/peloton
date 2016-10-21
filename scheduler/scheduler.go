@@ -23,7 +23,7 @@ import (
 const (
 	GetOfferTimeout      = 1 * time.Second
 	GetTaskTimeout       = 1 * time.Second
-	defaultTaskBatchSize = 100
+	defaultTaskBatchSize = 20
 )
 
 // InitManager inits the schedulerManager
