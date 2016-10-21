@@ -14,6 +14,7 @@ db:
 master:
   leader:
     port: 5289
+    host: localhost
   follower:
     port: 5290
 

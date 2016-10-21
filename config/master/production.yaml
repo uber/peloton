@@ -18,3 +18,11 @@ sentry:
 mesos:
   # TODO : T578097, read mesos master from zk
   hostPort: "compute72-sjc1:5050"
+
+master:
+  leader:
+    host: compute74-sjc1
+
+db:
+  # TODO : T578097, read db from zk
+  host: compute74-sjc1

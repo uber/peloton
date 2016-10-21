@@ -93,7 +93,7 @@ func main() {
 
 	// TODO: resolve Mesos master and Peloton master URLs from zookeeper
 	mesosUrl := fmt.Sprintf("http://%s%s", cfg.Mesos.HostPort, driver.Endpoint())
-	leaderUrl := fmt.Sprintf("http://localhost:%d", cfg.Master.Leader.Port)
+	leaderUrl := fmt.Sprintf("http://%s:%d", cfg.Master.Leader.Host, cfg.Master.Leader.Port)
 
 	// TODO: initialize one outbound for each follower so we can
 	// switch to it at fail-over
