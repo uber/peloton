@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	GetOfferTimeout      = 5 * time.Second
+	GetOfferTimeout      = 1 * time.Second
 	GetTaskTimeout       = 1 * time.Second
-	defaultTaskBatchSize = 20
+	defaultTaskBatchSize = 100
 )
 
 // InitManager inits the schedulerManager
@@ -119,6 +119,12 @@ func (s *schedulerManager) workLoop() {
 			continue
 		}
 		s.launchTasksLoop(tasks)
+		// It could happen that the work loop is started before the peloton master inbound is started.
+		// In such case it could panic. This we capture the panic, log, wait and then resume
+		if r := recover(); r != nil {
+			log.Errorf("Recovered from panic %v", r)
+			time.Sleep(GetTaskTimeout)
+		}
 	}
 }
 
