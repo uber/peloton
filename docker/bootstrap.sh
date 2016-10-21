@@ -6,6 +6,8 @@ source mesos_config/config
 echo "clean up existing containers before bootstrapping the environment"
 ./cleanup.sh
 
+sleep 10
+
 set -euxo pipefail
 
 # fetch hostIp, this is not required for linux if container is launched with host network, but missing it will break mesos
@@ -26,6 +28,7 @@ sudo docker run -d --name $ZK_CONTAINER -p $LOCAL_ZK_PORT:$DEFAULT_ZK_PORT netfl
 # run master
 echo "run mesos master container"
 sudo docker run -d --name $MESOS_MASTER_CONTAINER --privileged \
+  -e MESOS_LOG_DIR=/var/log/mesos \
   -e MESOS_PORT=$MASTER_PORT \
   -e MESOS_ZK=zk://$hostIp:$LOCAL_ZK_PORT/mesos \
   -e MESOS_QUORUM=$QUORUM \
@@ -43,6 +46,7 @@ for ((i=0; i<$NUM_AGENTS; i++)); do
    container_name=$MESOS_AGENT_CONTAINER$i
    agent_port=$(($AGENT_PORT + $i))
    sudo docker run -d --name $container_name --privileged \
+     -e MESOS_LOG_DIR=/var/log/mesos \
      -e MESOS_PORT=$agent_port \
      -e MESOS_MASTER=zk://$hostIp:$LOCAL_ZK_PORT/mesos \
      -e MESOS_SWITCH_USER=$SWITCH_USER \
