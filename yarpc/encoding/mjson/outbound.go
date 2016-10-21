@@ -3,6 +3,7 @@ package mjson
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"golang.org/x/net/context"
 	"github.com/gogo/protobuf/jsonpb"
@@ -16,7 +17,7 @@ type Client interface {
 	// Call performs an outbound Mesos JSON request.
 	//
 	// Returns an error if the request failed.
-	Call(reqMeta yarpc.CallReqMeta, msg proto.Message) error
+	Call(mesosStreamId string, msg proto.Message) error
 }
 
 // New builds a new Mesos JSON client.
@@ -28,7 +29,12 @@ type mjsonClient struct {
 	ch transport.Channel
 }
 
-func (c mjsonClient) Call(reqMeta yarpc.CallReqMeta, msg proto.Message) error {
+func (c mjsonClient) Call(mesosStreamId string, msg proto.Message) error {
+	headers := yarpc.NewHeaders().
+		With("Mesos-Stream-Id", mesosStreamId).
+		With("Content-Type", "application/json").
+		With("Accept", "application/json")
+
 	encoder := jsonpb.Marshaler{
 		EnumsAsInts: false,
 		OrigName:    true,
@@ -42,11 +48,12 @@ func (c mjsonClient) Call(reqMeta yarpc.CallReqMeta, msg proto.Message) error {
 		Caller:   c.ch.Caller(),
 		Service:  c.ch.Service(),
 		Encoding: Encoding,
-		Headers: transport.Headers(reqMeta.GetHeaders()),
+		Procedure: "Scheduler_Call",
+		Headers: transport.Headers(headers),
 		Body: strings.NewReader(body),
 	}
 
-	ctx := context.Background()
+	ctx, _ := context.WithTimeout(context.Background(), 100*1000*time.Millisecond)
 	_, err = c.ch.GetOutbound().Call(ctx, &treq)
 
 	// All Mesos calls are one-way so no need to decode response body

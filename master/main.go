@@ -98,7 +98,7 @@ func main() {
 	// TODO: initialize one outbound for each follower so we can
 	// switch to it at fail-over
 	outbounds := transport.Outbounds{
-		"mesos-master": http.NewOutbound(mesosUrl),
+		"mesos-master": mhttp.NewOutbound(mesosUrl),
 		"peloton-master": http.NewOutbound(leaderUrl),
 	}
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{

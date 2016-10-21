@@ -12,7 +12,8 @@ import (
 
 func InitManager(d yarpc.Dispatcher, offerQueue util.OfferQueue) {
 	m := offerManager{
-		offerPool: NewOfferPool(d),
+		offerPool:  NewOfferPool(d),
+		offerQueue: offerQueue,
 	}
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_OFFERS:                m.Offers,

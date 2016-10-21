@@ -74,7 +74,7 @@ func (s *schedulerManager) workLoop() {
 					} else {
 						err := s.launcher.LaunchTasks(offer, tasks)
 						if err != nil {
-							log.Errorf("Failed to launch tasks with offer %v", *offerId)
+							log.Errorf("Failed to launch tasks with offer %v: %v", *offerId, err)
 							// TODO: handle task launch errors
 						}
 					}

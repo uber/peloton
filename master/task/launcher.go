@@ -66,11 +66,7 @@ func (t *taskLauncher) LaunchTasks(offer *mesos.Offer, tasks []*task.TaskInfo) e
 		},
 	}
 	// TODO: add retry / put back offer and tasks in failure scenarios
-	headers := yarpc.NewHeaders().With(
-		"Mesos-Stream-Id",
-		master_mesos.GetSchedulerDriver().GetMesosStreamId(),
-	)
-	reqMeta := yarpc.NewReqMeta().Headers(headers)
-	err := t.client.Call(reqMeta, msg)
+	msid := master_mesos.GetSchedulerDriver().GetMesosStreamId()
+	err := t.client.Call(msid, msg)
 	return err
 }
