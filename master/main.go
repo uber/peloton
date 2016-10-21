@@ -110,13 +110,13 @@ func main() {
 
 	// TODO: remove taskQueue and offerQueue
 	offerQueue := util.NewMemLocalOfferQueue("LocalOfferQueue")
-	taskQueue := util.NewMemLocalTaskQueue("LocalTaskQueue")
 
 	// Initalize managers
-	job.InitManager(dispatcher, store, store, taskQueue)
+	job.InitManager(dispatcher, store, store)
 	task.InitManager(dispatcher, store, store)
+	task.InitTaskQueue(dispatcher)
 	upgrade.InitManager(dispatcher)
-	scheduler.InitManager(dispatcher, offerQueue, taskQueue)
+	scheduler.InitManager(dispatcher)
 
 	// Only leader needs to initialize Mesos and Offer managers
 	if *role == "leader" {

@@ -3,11 +3,11 @@ package task
 import (
 	"sync"
 
-	"github.com/yarpc/yarpc-go"
-	"code.uber.internal/go-common.git/x/log"	
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
-	"code.uber.internal/infra/peloton/util"
+	"code.uber.internal/go-common.git/x/log"
 	master_mesos "code.uber.internal/infra/peloton/master/mesos"
+	"code.uber.internal/infra/peloton/util"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"github.com/yarpc/yarpc-go"
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
@@ -27,12 +27,12 @@ var instance *taskLauncher
 var once sync.Once
 
 func GetTaskLauncher(d yarpc.Dispatcher) *taskLauncher {
-    once.Do(func() {
+	once.Do(func() {
 		client := mjson.New(d.Channel("mesos-master"))
-        instance = &taskLauncher{
+		instance = &taskLauncher{
 			client: client,
 		}
-    })
+	})
 	return instance
 }
 
@@ -46,7 +46,7 @@ func (t *taskLauncher) LaunchTasks(offer *mesos.Offer, tasks []*task.TaskInfo) e
 		mesosTasks = append(mesosTasks, mesosTask)
 		mesosTaskIds = append(mesosTaskIds, *mesosTask.TaskId.Value)
 	}
-	log.Infof("Launching tasks %v using offer %v", mesosTaskIds, *offer.GetId().Value)
+	log.Infof("Launching %v tasks %v using offer %v", len(tasks), mesosTaskIds, *offer.GetId().Value)
 
 	callType := sched.Call_ACCEPT
 	opType := mesos.Offer_Operation_LAUNCH

@@ -12,14 +12,17 @@ import (
 	"github.com/pborman/uuid"
 	mesos_v1 "mesos/v1"
 	"peloton/job"
+	"peloton/master/taskqueue"
 	"peloton/task"
+	"time"
 )
 
-func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore, taskQueue util.TaskQueue) {
+func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore) {
 	handler := jobManager{
 		JobStore:  store,
 		TaskStore: taskStore,
-		TaskQueue: taskQueue,
+		client:    json.New(d.Channel("peloton-master")),
+		rootCtx:   context.Background(),
 	}
 	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
 	json.Register(d, json.Procedure("JobManager.Get", handler.Get))
@@ -31,6 +34,8 @@ type jobManager struct {
 	JobStore  storage.JobStore
 	TaskStore storage.TaskStore
 	TaskQueue util.TaskQueue
+	client    json.Client
+	rootCtx   context.Context
 }
 
 func (m *jobManager) Create(
@@ -74,7 +79,7 @@ func (m *jobManager) Create(
 			// 2. revert te job creation altogether
 		}
 		// Put the task into the taskQueue. Scheduler will pick the task up and schedule them
-		m.TaskQueue.PutTask(&taskInfo)
+		m.putTasks([]*task.TaskInfo{&taskInfo})
 	}
 	return &job.CreateResponse{
 		Result: jobId,
@@ -118,4 +123,24 @@ func (m *jobManager) Delete(
 		log.Errorf("Delete job failed with error %v", err)
 	}
 	return &job.DeleteResponse{}, nil, nil
+}
+
+func (m *jobManager) putTasks(tasks []*task.TaskInfo) error {
+	ctx, _ := context.WithTimeout(m.rootCtx, 10*time.Second)
+	var response taskqueue.EnqueueResponse
+	var request = &taskqueue.EnqueueRequest{
+		Tasks: tasks,
+	}
+	_, err := m.client.Call(
+		ctx,
+		yarpc.NewReqMeta().Procedure("TaskQueue.Enqueue"),
+		request,
+		&response,
+	)
+	if err != nil {
+		log.Errorf("Deque failed with err=%v", err)
+		return err
+	}
+	log.Infof("%d tasks put in queue", len(tasks))
+	return nil
 }

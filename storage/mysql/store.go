@@ -11,16 +11,16 @@ import (
 	_ "github.com/mattes/migrate/driver/mysql" // Pull in MySQL driver for migrate
 	"github.com/mattes/migrate/migrate"
 	mesos_v1 "mesos/v1"
+	"os"
 	"peloton/job"
 	"peloton/task"
 	"strings"
-	"os"
 )
 
 const (
 	// Table names
-	jobsTable  = "jobs"
-	tasksTable = "tasks"
+	jobsTable       = "jobs"
+	tasksTable      = "tasks"
 	frameworksTable = "frameworks"
 
 	// values for the col_key
@@ -42,8 +42,8 @@ const (
 	getTasksForJobStmt         = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ?`
 	getTasksForJobAndStateStmt = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ? and task_state = ?`
 	getMesosFrameworkInfoStmt  = `SELECT * from frameworks where framework_name = ?`
-	setMesosStreamIdStmt = `INSERT INTO frameworks (framework_name, mesos_stream_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE mesos_stream_id = ?`
-	setMesosFrameworkIdStmt = `INSERT INTO frameworks (framework_name, framework_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE framework_id = ?`
+	setMesosStreamIdStmt       = `INSERT INTO frameworks (framework_name, mesos_stream_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE mesos_stream_id = ?`
+	setMesosFrameworkIdStmt    = `INSERT INTO frameworks (framework_name, framework_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE framework_id = ?`
 )
 
 // Container for database configs
@@ -376,7 +376,7 @@ func (m *MysqlJobStore) SetMesosStreamId(frameworkName string, mesosStreamId str
 	}
 	_, err = m.DB.Exec(setMesosStreamIdStmt, frameworkName, mesosStreamId, hostname, mesosStreamId)
 	if err != nil {
-		log.Errorf("SetMesosStreamId failed with id %v error = %v", err)
+		log.Errorf("SetMesosStreamId failed with framework named %v error = %v", frameworkName, err)
 		return err
 	}
 	return nil

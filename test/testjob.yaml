@@ -14,10 +14,10 @@ labels:
     value: testVal1
   - key: testKey2
     value: testVal2
-instancecount: 10
+instancecount: 100
 resource:
-  cpuslimit: 0.1
-  memlimitmb: 0.0
+  cpuslimit: 0.5
+  memlimitmb: 200.0
   disklimitmb: 10
   fdlimit: 1009
 healthcheck: null
