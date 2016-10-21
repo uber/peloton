@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"flag"
+	"fmt"
 	"github.com/yarpc/yarpc-go"
 	"github.com/yarpc/yarpc-go/transport"
 	"github.com/yarpc/yarpc-go/transport/http"
@@ -98,13 +98,13 @@ func main() {
 	// TODO: initialize one outbound for each follower so we can
 	// switch to it at fail-over
 	outbounds := transport.Outbounds{
-		"mesos-master": mhttp.NewOutbound(mesosUrl),
+		"mesos-master":   mhttp.NewOutbound(mesosUrl),
 		"peloton-master": http.NewOutbound(leaderUrl),
 	}
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name: "peloton-master",
-		Inbounds: inbounds,
-		Outbounds: outbounds,
+		Name:        "peloton-master",
+		Inbounds:    inbounds,
+		Outbounds:   outbounds,
 		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
 	})
 
@@ -122,6 +122,7 @@ func main() {
 	if *role == "leader" {
 		mesos.InitManager(dispatcher, &cfg.Mesos, store)
 		offer.InitManager(dispatcher, offerQueue)
+		task.InitTaskStateUpdateManager(dispatcher, store, store)
 	}
 
 	// Start dispatch loop

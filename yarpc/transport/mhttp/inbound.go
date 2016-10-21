@@ -38,10 +38,10 @@ func NewInbound(hostPort string, d MesosDriver, opts ...InboundOption) Inbound {
 }
 
 type inbound struct {
-	hostPort      string
-	driver        MesosDriver
-	stopped       uint32
-	done          chan error
+	hostPort string
+	driver   MesosDriver
+	stopped  uint32
+	done     chan error
 }
 
 func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
@@ -122,14 +122,18 @@ func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
 				return err
 			}
 			if uint64(readlen) != framelen {
-				return fmt.Errorf("Failed to read full frame: read %d bytes, "+
+				errMsg := fmt.Sprintf("Failed to read full frame: read %d bytes, "+
 					"expect %d bytes", readlen, framelen)
+				log.Errorf(errMsg)
+				return fmt.Errorf(errMsg)
 			}
 
 			// TODO: spawn a goroutine to process frame
 			err = hdl.HandleRecordIO(buf)
 			if err != nil {
-				return fmt.Errorf("Failed to handle record IO event: %s", err)
+				errMsg := fmt.Sprintf("Failed to handle record IO event: %s", err)
+				log.Errorf(errMsg)
+				return fmt.Errorf(errMsg)
 			}
 		}
 		// TODO: handle error conditions more gracefully

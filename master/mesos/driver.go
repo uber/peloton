@@ -3,10 +3,10 @@ package mesos
 import (
 	"reflect"
 
-	"github.com/golang/protobuf/proto"
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	"github.com/golang/protobuf/proto"
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
@@ -63,8 +63,10 @@ func (d *schedulerDriver) GetMesosStreamId() string {
 	// updated in case that the leader reconnects to Mesos
 	id, err := d.store.GetMesosStreamId(d.cfg.Name)
 	if err != nil {
+		log.Errorf("failed to GetMesosStreamId from db for framework %v, err=%v", d.cfg.Name, err)
 		return ""
 	}
+	log.Infof("GetMesosStreamId returns mesos stream id, framework %v id %v ", d.cfg.Name, id)
 	d.mesosStreamId = id
 	return id
 }
