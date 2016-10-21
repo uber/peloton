@@ -40,6 +40,8 @@ if [ -n "$PRODUCTION" ]; then
    sudo docker tag infra/peloton:$TAG $DOCKER_REGISTRY_URL/peloton:$TAG
    sudo docker push $DOCKER_REGISTRY_URL/peloton:$TAG
    echo 'The image can now be pulled from docker registry at '${DOCKER_REGISTRY_URL}'/peloton:'$TAG
+   sudo docker rmi -f infra/peloton:$TAG
+   sudo docker rmi -f $DOCKER_REGISTRY_URL/peloton:$TAG
 else
    echo 'The image is available locally by tag infra/peloton:'$TAG
 fi
