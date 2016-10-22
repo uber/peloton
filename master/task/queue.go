@@ -57,7 +57,6 @@ func (q *taskQueue) Dequeue(
 			break
 		}
 	}
-	log.Infof("%d tasks dequeued", len(tasks))
 	log.WithField("tasks", tasks).Debug("TaskQueue.Dequeue returned")
 
 	return &taskqueue.DequeueResponse{

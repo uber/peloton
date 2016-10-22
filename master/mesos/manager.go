@@ -74,7 +74,7 @@ func (m *mesosManager) Error(
 func (m *mesosManager) Heartbeat(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
-	log.Infof("mesosManager: heartbeat called")
+	log.Debugf("mesosManager: heartbeat called")
 	return nil
 }
 

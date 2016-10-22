@@ -2,7 +2,7 @@ extends: base.yaml
 deep_extend: true
 
 logging:
-  level: debug
+  level: info
 
 mesos:
   hostPort: "localhost:5050"

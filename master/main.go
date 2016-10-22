@@ -17,7 +17,6 @@ import (
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/storage/mysql"
-	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"strconv"
 )
@@ -35,7 +34,7 @@ func (requestLogInterceptor) Handle(
 	resw transport.ResponseWriter,
 	handler transport.Handler) error {
 
-	log.Infof("Received a %s request from %s", req.Procedure, req.Caller)
+	log.Debugf("Received a %s request from %s", req.Procedure, req.Caller)
 	return handler.Handle(ctx, opts, req, resw)
 }
 
@@ -108,9 +107,6 @@ func main() {
 		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
 	})
 
-	// TODO: remove taskQueue and offerQueue
-	offerQueue := util.NewMemLocalOfferQueue("LocalOfferQueue")
-
 	// Initalize managers
 	job.InitManager(dispatcher, store, store)
 	task.InitManager(dispatcher, store, store)
@@ -121,14 +117,14 @@ func main() {
 	// Only leader needs to initialize Mesos and Offer managers
 	if *role == "leader" {
 		mesos.InitManager(dispatcher, &cfg.Mesos, store)
-		offer.InitManager(dispatcher, offerQueue)
-		task.InitTaskStateUpdateManager(dispatcher, store, store)
+		offer.InitManager(dispatcher)
+		task.InitTaskStateManager(dispatcher, store, store)
 	}
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
-	log.Info("Started rpc server")
+	log.Infof("Started Peloton master %v", *role)
 	select {}
 }

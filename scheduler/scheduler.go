@@ -55,12 +55,13 @@ func (s *schedulerManager) Start() {
 }
 
 func (s *schedulerManager) Stop() {
-	log.Infof("scheduler stopping")
+	log.Infof("Scheduler stopping")
 	atomic.StoreInt32(&s.shutdown, 1)
 }
 
-func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
+func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {	
 	nTasks := len(tasks)
+	log.Debugf("Launching %v tasks", nTasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		offers, err := s.getOffers(1)
 		if len(offers) == 0 {
@@ -75,18 +76,18 @@ func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 		// TODO: handle multiple offer -> multiple tasks assignment
 		// for now only get one offer each time
 		offer := offers[0]
-		tasks = s.useOfferLaunchTasks(tasks, offer)
+		tasks = s.assignTasksToOffer(tasks, offer)
 		if len(tasks) == 0 {
-			log.Infof("Tasks all launched, total %v tasks", nTasks)
-			return
+			break
 		}
 	}
+	log.Debugf("Launched %v tasks", nTasks)
 }
 
-func (s *schedulerManager) useOfferLaunchTasks(tasks []*task.TaskInfo, offer *mesos.Offer) []*task.TaskInfo {
+func (s *schedulerManager) assignTasksToOffer(
+	tasks []*task.TaskInfo, offer *mesos.Offer) []*task.TaskInfo {
 	remain := util.GetOfferScalarResourceSummary(offer)
 	offerId := offer.GetId().Value
-	log.Infof("Using offer %v to launch tasks", *offerId)
 	nTasks := len(tasks)
 	var selectedTasks []*task.TaskInfo
 	for i := 0; i < nTasks; i++ {
@@ -100,7 +101,10 @@ func (s *schedulerManager) useOfferLaunchTasks(tasks []*task.TaskInfo, offer *me
 	}
 	// launch the tasks that can be launched
 	if len(selectedTasks) > 0 {
+		// TODO: handle task launch error and reschedule the tasks
 		s.launcher.LaunchTasks(offer, selectedTasks)
+
+		log.Infof("Launched %v tasks using offer %v", len(selectedTasks), *offerId)
 	}
 	return tasks
 }
@@ -144,7 +148,6 @@ func (s *schedulerManager) getTasks(limit int) ([]*task.TaskInfo, error) {
 		log.Errorf("Deque failed with err=%v", err)
 		return nil, err
 	}
-	log.Infof("%d tasks returned", len(response.Tasks))
 	return response.Tasks, nil
 }
 

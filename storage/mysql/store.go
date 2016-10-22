@@ -79,9 +79,9 @@ func (d *Config) IsReadOnly() bool {
 	}
 
 	if d.ReadOnly {
-		log.Infof("%v is read-only.", d.Database)
+		log.Infof("Database %v is read-only.", d.Database)
 	} else {
-		log.Infof("%v is read-write.", d.Database)
+		log.Infof("Database %v is read-write.", d.Database)
 	}
 	return d.ReadOnly
 }
@@ -111,13 +111,13 @@ func (d *Config) MigrateString() string {
 // main app to initialize a connection
 func (d *Config) Connect() error {
 	dbString := d.String()
-	log.Infof("connecting to %s:", dbString)
+	log.Debugf("Connecting to database %s:", dbString)
 	db, err := sqlx.Open("mysql", dbString)
 	if err != nil {
 		return err
 	}
 	d.Conn = db
-	log.Infof("connected to %s:", dbString)
+	log.Infof("Connected to database %s:", dbString)
 	return err
 }
 
@@ -180,7 +180,7 @@ func (m *MysqlJobStore) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfi
 		text := strings.Replace(strings.Replace(string(buffer), "\"", "", -1), " ", "", -1)
 		queryLabels = queryLabels + "+\"" + text + "\""
 	}
-	log.Infof("Querying using labels %v, text (%v)", Labels, queryLabels)
+	log.Debugf("Querying using labels %v, text (%v)", Labels, queryLabels)
 	err := m.DB.Select(&records, queryJobsForLabelStmt, queryLabels)
 	if err == sql.ErrNoRows {
 		log.Warnf("Query for Label %v returns no rows", Labels)

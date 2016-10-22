@@ -49,7 +49,7 @@ func (m *memLocalQueue) GetRec(d time.Duration) interface{} {
 	case rec := <-m.channel:
 		return rec
 	case <-timeout:
-		log.Infof("Queue %v GetRec timeout after %v", m.GetQueueName(), d)
+		log.Debugf("Queue %v GetRec timeout after %v", m.GetQueueName(), d)
 		return nil
 	}
 	return nil

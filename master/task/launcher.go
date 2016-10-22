@@ -37,7 +37,8 @@ func GetTaskLauncher(d yarpc.Dispatcher) *taskLauncher {
 }
 
 // LaunchTasks launches a list of tasks using an offer
-func (t *taskLauncher) LaunchTasks(offer *mesos.Offer, tasks []*task.TaskInfo) error {
+func (t *taskLauncher) LaunchTasks(
+	offer *mesos.Offer, tasks []*task.TaskInfo) error {
 	var mesosTasks []*mesos.TaskInfo
 	var mesosTaskIds []string
 	for _, t := range tasks {
@@ -46,8 +47,6 @@ func (t *taskLauncher) LaunchTasks(offer *mesos.Offer, tasks []*task.TaskInfo) e
 		mesosTasks = append(mesosTasks, mesosTask)
 		mesosTaskIds = append(mesosTaskIds, *mesosTask.TaskId.Value)
 	}
-	log.Infof("Launching %v tasks %v using offer %v", len(tasks), mesosTaskIds, *offer.GetId().Value)
-
 	callType := sched.Call_ACCEPT
 	opType := mesos.Offer_Operation_LAUNCH
 	msg := &sched.Call{
@@ -68,5 +67,12 @@ func (t *taskLauncher) LaunchTasks(offer *mesos.Offer, tasks []*task.TaskInfo) e
 	// TODO: add retry / put back offer and tasks in failure scenarios
 	msid := master_mesos.GetSchedulerDriver().GetMesosStreamId()
 	err := t.client.Call(msid, msg)
+	if err != nil {
+		log.Warnf("Failed to launch %v tasks using offer %v",
+			len(tasks), *offer.GetId().Value)
+	} else {
+		log.Debugf("Launched %v tasks %v using offer %v",
+			len(tasks), mesosTaskIds, *offer.GetId().Value)
+	}
 	return err
 }

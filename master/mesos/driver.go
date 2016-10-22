@@ -63,10 +63,11 @@ func (d *schedulerDriver) GetMesosStreamId() string {
 	// updated in case that the leader reconnects to Mesos
 	id, err := d.store.GetMesosStreamId(d.cfg.Name)
 	if err != nil {
-		log.Errorf("failed to GetMesosStreamId from db for framework %v, err=%v", d.cfg.Name, err)
+		log.Errorf("failed to GetMesosStreamId from db for framework %v, err=%v",
+			d.cfg.Name, err)
 		return ""
 	}
-	log.Infof("GetMesosStreamId returns mesos stream id, framework %v id %v ", d.cfg.Name, id)
+	log.Debugf("Load Mesos stream id %v for framework %v", id, d.cfg.Name)
 	d.mesosStreamId = id
 	return id
 }

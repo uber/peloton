@@ -12,9 +12,13 @@ import (
 	sched "mesos/v1/scheduler"
 )
 
-// InitTaskStateUpdateManager init the task state update manager
-func InitTaskStateUpdateManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore) {
-	handler := taskStateUpdateManager{
+// InitTaskUpdateManager init the task state manager
+func InitTaskStateManager(
+	d yarpc.Dispatcher,
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore) {
+	
+	handler := taskStateManager{
 		TaskStore: taskStore,
 		JobStore:  jobStore,
 	}
@@ -27,28 +31,35 @@ func InitTaskStateUpdateManager(d yarpc.Dispatcher, jobStore storage.JobStore, t
 	}
 }
 
-type taskStateUpdateManager struct {
+type taskStateManager struct {
 	JobStore  storage.JobStore
 	TaskStore storage.TaskStore
 }
 
 // Update is the Mesos callback on mesos state updates
-func (m *taskStateUpdateManager) Update(reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (m *taskStateManager) Update(
+	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+	
 	taskUpdate := body.GetUpdate()
-	log.WithField("Task update", taskUpdate).Infof("taskManager: Update called")
+	log.WithField("Task update", taskUpdate).Debugf(
+		"taskManager: Update called")
 
 	taskId := taskUpdate.GetStatus().GetTaskId().GetValue()
 	taskInfo, err := m.TaskStore.GetTaskById(taskId)
 	if err != nil {
-		log.Errorf("Fail to find taskInfo for taskId %v, err=%v", taskId, err)
+		log.Errorf("Fail to find taskInfo for taskId %v, err=%v",
+			taskId, err)
 		return err
 	}
 	state := util.MesosStateToPelotonState(taskUpdate.GetStatus().GetState())
-	// TODO: depends on the state, may need to put the task back to the queue, or clear the pending task record from taskqueue
+	
+	// TODO: depends on the state, may need to put the task back to
+	// the queue, or clear the pending task record from taskqueue
 	taskInfo.GetRuntime().State = state
 	err = m.TaskStore.UpdateTask(taskInfo)
 	if err != nil {
-		log.Errorf("Fail to update taskInfo for taskId %v, new state %v, err=%v", taskId, state, err)
+		log.Errorf("Fail to update taskInfo for taskId %v, new state %v, err=%v",
+			taskId, state, err)
 		return err
 	}
 	return nil

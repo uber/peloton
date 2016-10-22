@@ -3,17 +3,15 @@ package offer
 import (
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/master/mesos"
-	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
 	"github.com/yarpc/yarpc-go"
 
 	sched "mesos/v1/scheduler"
 )
 
-func InitManager(d yarpc.Dispatcher, offerQueue util.OfferQueue) {
+func InitManager(d yarpc.Dispatcher) {
 	m := offerManager{
 		offerPool:  NewOfferPool(d),
-		offerQueue: offerQueue,
 	}
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_OFFERS:                m.Offers,
@@ -30,9 +28,6 @@ func InitManager(d yarpc.Dispatcher, offerQueue util.OfferQueue) {
 
 type offerManager struct {
 	offerPool OfferPool
-
-	// TODO: to be removed after switching to offer pool
-	offerQueue util.OfferQueue
 }
 
 func (m *offerManager) Offers(
@@ -41,11 +36,6 @@ func (m *offerManager) Offers(
 	event := body.GetOffers()
 	log.WithField("event", event).Debug("OfferManager: processing Offers event")
 	m.offerPool.AddOffers(event.Offers)
-
-	// TODO: to be removed after switching to offer pool
-	for _, offer := range event.Offers {
-		m.offerQueue.PutOffer(offer)
-	}
 
 	return nil
 }

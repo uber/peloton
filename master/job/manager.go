@@ -43,9 +43,10 @@ func (m *jobManager) Create(
 	reqMeta yarpc.ReqMeta,
 	body *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
-	log.Infof("JobManager.Create called: %v", body)
 	jobId := body.Id
 	jobConfig := body.Config
+	
+	log.WithField("config", jobConfig).Info("Creating job with config")
 	err := m.JobStore.CreateJob(jobId, jobConfig, "peloton")
 	if err != nil {
 		return &job.CreateResponse{
@@ -69,16 +70,22 @@ func (m *jobManager) Create(
 			InstanceId: uint32(i),
 			JobId:      jobId,
 		}
-		log.Infof("Creating %v =th task for job %v", i, jobId)
+		log.Debugf("Creating %v =th task for job %v", i, jobId)
 		err := m.TaskStore.CreateTask(jobId, i, &taskInfo, "peloton")
 		if err != nil {
 			log.Errorf("Creating %v =th task for job %v failed with err=%v", i, jobId, err)
 			continue
-			// TODO : decide how to handle the case that some tasks failed to be added (rare)
-			// 1. Rely on job level healthcheck to alert on # of instances mismatch, and re-try creating the task later
+			// TODO : decide how to handle the case that some tasks
+			// failed to be added (rare)
+
+			// 1. Rely on job level healthcheck to alert on # of
+			// instances mismatch, and re-try creating the task later
+			
 			// 2. revert te job creation altogether
 		}
-		// Put the task into the taskQueue. Scheduler will pick the task up and schedule them
+		// Put the task into the taskQueue. Scheduler will pick the
+		// task up and schedule them
+		// TODO: batch the tasks for each Enqueue request
 		m.putTasks([]*task.TaskInfo{&taskInfo})
 	}
 	return &job.CreateResponse{
@@ -141,6 +148,6 @@ func (m *jobManager) putTasks(tasks []*task.TaskInfo) error {
 		log.Errorf("Deque failed with err=%v", err)
 		return err
 	}
-	log.Infof("%d tasks put in queue", len(tasks))
+	log.Debugf("Enqueued %d tasks to leader", len(tasks))
 	return nil
 }
