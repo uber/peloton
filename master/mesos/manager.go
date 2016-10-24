@@ -2,10 +2,10 @@ package mesos
 
 import (
 	"code.uber.internal/go-common.git/x/log"
-	"github.com/yarpc/yarpc-go"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
 	sched "mesos/v1/scheduler"
 )
 

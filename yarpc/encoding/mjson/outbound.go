@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/transport"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/transport"
+	"golang.org/x/net/context"
 )
 
 // Client makes Mesos JSON requests to Mesos endpoint
@@ -45,12 +45,12 @@ func (c mjsonClient) Call(mesosStreamId string, msg proto.Message) error {
 	}
 
 	treq := transport.Request{
-		Caller:   c.ch.Caller(),
-		Service:  c.ch.Service(),
-		Encoding: Encoding,
+		Caller:    c.ch.Caller(),
+		Service:   c.ch.Service(),
+		Encoding:  Encoding,
 		Procedure: "Scheduler_Call",
-		Headers: transport.Headers(headers),
-		Body: strings.NewReader(body),
+		Headers:   transport.Headers(headers),
+		Body:      strings.NewReader(body),
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), 100*1000*time.Millisecond)

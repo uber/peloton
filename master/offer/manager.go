@@ -4,14 +4,13 @@ import (
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
-	"github.com/yarpc/yarpc-go"
-
+	"go.uber.org/yarpc"
 	sched "mesos/v1/scheduler"
 )
 
 func InitManager(d yarpc.Dispatcher) {
 	m := offerManager{
-		offerPool:  NewOfferPool(d),
+		offerPool: NewOfferPool(d),
 	}
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_OFFERS:                m.Offers,

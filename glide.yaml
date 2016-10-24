@@ -1,12 +1,9 @@
 package: code.uber.internal/infra/peloton
-
 ignore:
 - peloton
 - mesos/v1
-
 excludeDirs:
 - pbgen
-
 import:
 - package: code.uber.internal/go-common.git
   repo: gitolite@code.uber.internal:go-common.git
@@ -18,10 +15,11 @@ import:
 - package: code.uber.internal/infra/jaeger-client-go.git
   repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
   vcs: git
-- package: github.com/golang/protobuf/proto
-- package: github.com/golang/protobuf/protoc
-- package: github.com/golang/protobuf/protoc-gen-go
-- package: github.com/yarpc/yarpc-go
+- package: github.com/golang/protobuf
+  subpackages:
+  - proto
+  - protoc
+  - protoc-gen-go
 - package: github.com/go-sql-driver/mysql
 - package: github.com/jmoiron/sqlx
 - package: github.com/pborman/uuid
@@ -29,6 +27,20 @@ import:
 - package: github.com/stretchr/testify
   version: e3a8ff8ce36581f87a15341206f205b1da467059
   subpackages:
-   - assert
-   - require
-   - suite
+  - assert
+  - require
+  - suite
+- package: code.uber.internal/infra/uns.git
+  version: master
+  repo: gitolite@code.uber.internal:infra/uns.git
+  vcs: git
+  subpackages:
+  - zk
+  - net/zk/election
+  - net/server/status
+- package: github.com/samuel/go-zookeeper
+  version: master
+  repo: https://github.com/nomis52/go-zookeeper.git
+  vcs: git
+  subpackages:
+  - zk

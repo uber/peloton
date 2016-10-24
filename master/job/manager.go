@@ -1,8 +1,8 @@
 package job
 
 import (
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/encoding/json"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
@@ -45,7 +45,7 @@ func (m *jobManager) Create(
 
 	jobId := body.Id
 	jobConfig := body.Config
-	
+
 	log.WithField("config", jobConfig).Info("Creating job with config")
 	err := m.JobStore.CreateJob(jobId, jobConfig, "peloton")
 	if err != nil {
@@ -80,7 +80,7 @@ func (m *jobManager) Create(
 
 			// 1. Rely on job level healthcheck to alert on # of
 			// instances mismatch, and re-try creating the task later
-			
+
 			// 2. revert te job creation altogether
 		}
 		// Put the task into the taskQueue. Scheduler will pick the

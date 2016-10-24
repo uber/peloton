@@ -6,3 +6,6 @@ logging:
 
 mesos:
   hostPort: "localhost:5050"
+
+zk:
+  hostPort: "localhost:8192"

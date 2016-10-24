@@ -7,7 +7,7 @@ import (
 	master_mesos "code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
-	"github.com/yarpc/yarpc-go"
+	"go.uber.org/yarpc"
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"

@@ -2,9 +2,8 @@ package task
 
 import (
 	"fmt"
-
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/encoding/json"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
@@ -14,11 +13,11 @@ import (
 	"peloton/task"
 )
 
-func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore,	taskStore storage.TaskStore) {
+func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore) {
 
 	handler := taskManager{
-		taskStore:   taskStore,
-		jobStore:    jobStore,
+		taskStore: taskStore,
+		jobStore:  jobStore,
 	}
 	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
 	json.Register(d, json.Procedure("TaskManager.List", handler.List))
@@ -28,8 +27,8 @@ func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore,	taskStore storag
 }
 
 type taskManager struct {
-	taskStore   storage.TaskStore
-	jobStore    storage.JobStore
+	taskStore storage.TaskStore
+	jobStore  storage.JobStore
 }
 
 func (m *taskManager) Get(

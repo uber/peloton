@@ -9,8 +9,8 @@ import (
 	"code.uber.internal/go-common.git/x/log"
 	master_task "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/util"
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/encoding/json"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
 	mesos "mesos/v1"
 	"peloton/master/offerpool"
@@ -59,7 +59,7 @@ func (s *schedulerManager) Stop() {
 	atomic.StoreInt32(&s.shutdown, 1)
 }
 
-func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {	
+func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 	nTasks := len(tasks)
 	log.Debugf("Launching %v tasks", nTasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {

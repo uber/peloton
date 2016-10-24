@@ -13,12 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yarpc/yarpc-go/transport"
-
 	"github.com/uber-go/atomic"
+	"go.uber.org/yarpc/transport"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
-
 
 	"code.uber.internal/infra/peloton/yarpc/internal/errors"
 )

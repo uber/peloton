@@ -1,6 +1,12 @@
 .PHONY: all master scheduler executor install client test cover clean
 
+# all .go files that don't exist in hidden directories
+ALL_SRC := $(shell find . -name "*.go" | grep -v -e Godeps -e vendor -e go-build \
+	-e ".*/\..*" \
+	-e ".*/_.*" \
+	-e ".*/mocks.*")
 BIN_DIR = bin
+FMT_SRC:=$(shell echo "$(ALL_SRC)" | tr ' ' '\n')
 PBGEN_DIR = pbgen/src
 PROTOC = protoc
 PROTOC_FLAGS = --proto_path=protobuf --go_out=$(PBGEN_DIR)
@@ -32,10 +38,6 @@ install:
 client:
 	go build -o ./$(BIN_DIR)/peloton-client cli/peloton-client.go
 
-test:
-	go test $(PACKAGES)
-
-
 cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
 	go tool cover -html=cover.out -o cover.html
@@ -43,6 +45,9 @@ cover:
 clean:
 	rm -rf pbgen
 	rm -rf $(BIN_DIR)
+
+format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
+	gofmt -w $(FMT_SRC)
 
 # MYSQL should be run against mysql with port 8193, which can be launched in container by running docker/bootstrap.sh
 MYSQL = mysql --host=127.0.0.1 -P 8193

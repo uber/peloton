@@ -3,10 +3,10 @@ package mjson
 import (
 	"reflect"
 
-	"golang.org/x/net/context"
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/transport"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/transport"
+	"golang.org/x/net/context"
 )
 
 // mjsonHandler adapts a Mesos event handler into a transport-level

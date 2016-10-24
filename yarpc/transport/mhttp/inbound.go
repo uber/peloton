@@ -14,7 +14,7 @@ import (
 
 	"code.uber.internal/go-common.git/x/log"
 	"github.com/gogo/protobuf/jsonpb"
-	"github.com/yarpc/yarpc-go/transport"
+	"go.uber.org/yarpc/transport"
 )
 
 // Inbound represents an Mesos HTTP Inbound. It is the same as the transport Inbound

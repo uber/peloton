@@ -4,8 +4,8 @@ import (
 	"sync"
 
 	"code.uber.internal/go-common.git/x/log"
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/encoding/json"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
 
 	mesos "mesos/v1"
@@ -24,7 +24,7 @@ type OfferPool interface {
 
 // NewOfferPool creates a offerPool object and registers the
 // corresponding YARPC procedures.
-func NewOfferPool(d yarpc.Dispatcher) OfferPool{
+func NewOfferPool(d yarpc.Dispatcher) OfferPool {
 	pool := &offerPool{
 		offers: make(map[string]*mesos.Offer),
 	}
@@ -44,7 +44,7 @@ func (p *offerPool) GetOffers(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *offerpool.GetOffersRequest) (
-		*offerpool.GetOffersResponse, yarpc.ResMeta, error) {
+	*offerpool.GetOffersResponse, yarpc.ResMeta, error) {
 
 	limit := body.Limit
 	defer p.Unlock()
@@ -67,7 +67,7 @@ func (p *offerPool) GetOffers(
 	}, nil, nil
 }
 
-func (p *offerPool) AddOffers(offers [] *mesos.Offer) error {
+func (p *offerPool) AddOffers(offers []*mesos.Offer) error {
 	defer p.Unlock()
 	p.Lock()
 

@@ -3,8 +3,8 @@ package task
 import (
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/util"
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/encoding/json"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
 	"peloton/master/taskqueue"
 	"peloton/task"

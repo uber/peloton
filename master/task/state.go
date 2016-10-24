@@ -8,7 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
-	"github.com/yarpc/yarpc-go"
+	"go.uber.org/yarpc"
 	sched "mesos/v1/scheduler"
 )
 
@@ -17,7 +17,7 @@ func InitTaskStateManager(
 	d yarpc.Dispatcher,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore) {
-	
+
 	handler := taskStateManager{
 		TaskStore: taskStore,
 		JobStore:  jobStore,
@@ -39,7 +39,7 @@ type taskStateManager struct {
 // Update is the Mesos callback on mesos state updates
 func (m *taskStateManager) Update(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
-	
+
 	taskUpdate := body.GetUpdate()
 	log.WithField("Task update", taskUpdate).Debugf(
 		"taskManager: Update called")
@@ -52,7 +52,7 @@ func (m *taskStateManager) Update(
 		return err
 	}
 	state := util.MesosStateToPelotonState(taskUpdate.GetStatus().GetState())
-	
+
 	// TODO: depends on the state, may need to put the task back to
 	// the queue, or clear the pending task record from taskqueue
 	taskInfo.GetRuntime().State = state

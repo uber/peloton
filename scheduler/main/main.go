@@ -2,15 +2,15 @@ package main
 
 import (
 	"code.uber.internal/go-common.git/x/config"
-	"code.uber.internal/go-common.git/x/metrics"
 	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/go-common.git/x/metrics"
 )
 
 type appConfig struct {
-    Logging  log.Configuration
-    Metrics  metrics.Configuration
-    Sentry   log.SentryConfiguration
-    Verbose  bool
+	Logging log.Configuration
+	Metrics metrics.Configuration
+	Sentry  log.SentryConfiguration
+	Verbose bool
 }
 
 func main() {

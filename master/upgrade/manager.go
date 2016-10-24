@@ -10,8 +10,8 @@
 package upgrade
 
 import (
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/encoding/json"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"

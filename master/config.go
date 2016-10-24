@@ -27,11 +27,11 @@ type MasterConfig struct {
 
 // Peloton master leader specific configuration
 type LeaderConfig struct {
-	Port        int    `yaml:"port"`
-	Host        string `yaml:"host"`
+	Port int    `yaml:"port"`
+	Host string `yaml:"host"`
 }
 
 // Peloton master followerspecific configuration
 type FollowerConfig struct {
-	Port        int    `yaml:"port"`
+	Port int `yaml:"port"`
 }

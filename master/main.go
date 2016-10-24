@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/yarpc/yarpc-go"
-	"github.com/yarpc/yarpc-go/transport"
-	"github.com/yarpc/yarpc-go/transport/http"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/transport/http"
 	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/config"
