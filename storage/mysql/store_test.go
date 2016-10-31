@@ -1,10 +1,8 @@
 package mysql
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"fmt"
 	"github.com/jmoiron/sqlx"
-	"github.com/mattes/migrate/migrate"
 	"github.com/stretchr/testify/suite"
 	mesos_v1 "mesos/v1"
 	"peloton/job"
@@ -13,42 +11,6 @@ import (
 	"testing"
 )
 
-func downSync(cfg *Config) []error {
-	connString := cfg.MigrateString()
-	errors, ok := migrate.DownSync(connString, cfg.Migrations)
-	if !ok {
-		return errors
-	}
-	return nil
-}
-
-// LoadConfig loads test configuration
-// TODO: figure out how to install mysql 5.7.x before testing
-func prepareTest() *Config {
-	conf := &Config{
-		User:       "peloton",
-		Password:   "peloton",
-		Host:       "127.0.0.1",
-		Port:       8193,
-		Database:   "peloton",
-		Migrations: "migrations",
-	}
-	err := conf.Connect()
-	if err != nil {
-		panic(err)
-	}
-	if errs := downSync(conf); errs != nil {
-		log.Warnf(fmt.Sprintf("downSync is having the following error: %+v", errs))
-	}
-
-	// bring the schema up to date
-	if errs := conf.AutoMigrate(); errs != nil {
-		panic(fmt.Sprintf("%+v", errs))
-	}
-	fmt.Println("setting up again")
-	return conf
-}
-
 type MysqlStoreTestSuite struct {
 	suite.Suite
 	store *MysqlJobStore
@@ -56,7 +18,7 @@ type MysqlStoreTestSuite struct {
 }
 
 func (suite *MysqlStoreTestSuite) SetupTest() {
-	conf := prepareTest()
+	conf := LoadConfigWithDB()
 
 	suite.db = conf.Conn
 	suite.store = NewMysqlJobStore(conf.Conn)

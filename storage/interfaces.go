@@ -13,6 +13,7 @@ type JobStore interface {
 	Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, error)
 	DeleteJob(id *job.JobID) error
 	GetJobsByOwner(owner string) (map[string]*job.JobConfig, error)
+	GetAllJobs() (map[string]*job.JobConfig, error)
 }
 
 // TaskStore is the interface to store task states

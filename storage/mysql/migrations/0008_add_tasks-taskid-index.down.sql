@@ -1,2 +1,2 @@
 
-DROP INDEX idx_taskid_to_task;
+DROP INDEX idx_taskid_to_task on tasks;

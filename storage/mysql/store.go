@@ -325,6 +325,7 @@ func (m *MysqlJobStore) getJobs(filters map[string]interface{}) (map[string]*job
 	var records = []storage.JobRecord{}
 	var result = make(map[string]*job.JobConfig)
 	q, args := getQueryAndArgs(jobsTable, filters, []string{"*"})
+	log.Debugf("DB query -- %v %v", q, args)
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
 		log.Warnf("getJobs for filters %v returns no rows", filters)
@@ -425,4 +426,9 @@ func (m *MysqlJobStore) GetFrameworkId(frameworkName string) (string, error) {
 		return frameworkInfo.FrameworkId.String, nil
 	}
 	return "", nil
+}
+
+// GetJobs returns all jobs
+func (m *MysqlJobStore) GetAllJobs() (map[string]*job.JobConfig, error) {
+	return m.getJobs(map[string]interface{}{})
 }
