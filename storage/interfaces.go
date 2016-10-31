@@ -30,4 +30,5 @@ type FrameworkInfoStore interface {
 	SetMesosStreamId(frameworkName string, mesosStreamId string) error
 	SetMesosFrameworkId(frameworkName string, frameworkId string) error
 	GetMesosStreamId(frameworkName string) (string, error)
+	GetFrameworkId(frameworkName string) (string, error)
 }

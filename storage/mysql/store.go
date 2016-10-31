@@ -410,3 +410,18 @@ func (m *MysqlJobStore) GetMesosStreamId(frameworkName string) (string, error) {
 	}
 	return "", nil
 }
+
+//GetFrameworkId reads the framework id for a framework name
+func (m *MysqlJobStore) GetFrameworkId(frameworkName string) (string, error) {
+	var records = []storage.MesosFrameworkInfo{}
+	q, args := getQueryAndArgs(frameworksTable, map[string]interface{}{"framework_name=": frameworkName}, []string{"*"})
+	err := m.DB.Select(&records, q, args...)
+	if err == sql.ErrNoRows {
+		log.Warnf("GetFrameworkId for frameworkName %v returns no rows", frameworkName)
+		return "", nil
+	}
+	for _, frameworkInfo := range records {
+		return frameworkInfo.FrameworkId.String, nil
+	}
+	return "", nil
+}

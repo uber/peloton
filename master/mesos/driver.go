@@ -53,6 +53,24 @@ func GetSchedulerDriver() *schedulerDriver {
 	return instance
 }
 
+// GetFrameworkId returns the frameworkid
+func (d *schedulerDriver) GetFrameworkId() *mesos.FrameworkID {
+	if d.frameworkId != nil {
+		return d.frameworkId
+	}
+	frameworkIdVal, err := d.store.GetFrameworkId(d.cfg.Name)
+	if err != nil {
+		log.Errorf("failed to GetFrameworkId from db for framework %v, err=%v",
+			d.cfg.Name, err)
+		return nil
+	}
+	log.Debugf("Load FrameworkId %v for framework %v", frameworkIdVal, d.cfg.Name)
+	d.frameworkId = &mesos.FrameworkID{
+		Value: &frameworkIdVal,
+	}
+	return d.frameworkId
+}
+
 func (d *schedulerDriver) GetMesosStreamId() string {
 	if d.mesosStreamId != "" {
 		return d.mesosStreamId
