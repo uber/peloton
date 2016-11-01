@@ -75,6 +75,7 @@ func (d *Config) IsReadOnly() bool {
 	// check if it's a slave db
 	err := d.Conn.Get(&d.ReadOnly, "SELECT @@global.read_only")
 	if err != nil {
+		log.Errorf("Failed to check db readonly, err=%v", err)
 		return true
 	}
 

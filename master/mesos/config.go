@@ -4,6 +4,7 @@ package mesos
 type Config struct {
 	HostPort  string          `yaml:"hostPort"`
 	Framework FrameworkConfig `yaml:"framework"`
+	ZkPath    string          `yaml:"zkPath"`
 }
 
 // Framework specific configuration

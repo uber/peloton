@@ -1,37 +1,39 @@
 hash: 510ce4fbd08dbb4501b28bce648a6915feefe1f3caabe0cc0a26e753893d42bc
-updated: 2016-10-24T16:33:36.35760122-07:00
+updated: 2016-10-28T15:41:39.601907202-07:00
 imports:
 - name: code.uber.internal/go-common.git
   version: 5ffd27fdc0e457cf6a9237d299cc75acc93904e3
   repo: gitolite@code.uber.internal:go-common.git
   vcs: git
   subpackages:
+  - x/backoff
   - x/config
+  - x/kafka
   - x/log
   - x/metrics
-  - x/kafka
   - x/metrics/customtransports
   - x/metrics/idgeneration
   - x/metrics/sampling
   - x/metrics/thrift
   - x/metrics/thriftudp
   - x/pool
-  - x/backoff
   - x/time
 - name: code.uber.internal/infra/jaeger-client-go.git
   version: 76bb8f64eda8984eaa1cb2fcf239c2396a007b01
   repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
   vcs: git
 - name: code.uber.internal/infra/uns.git
-  version: 8be65f669c42d828b8a1b72eaf6b82838aade553
+  version: 53a98ee3c28c37f7d26830eca25409d5b0fe78d3
   repo: gitolite@code.uber.internal:infra/uns.git
   vcs: git
   subpackages:
-  - zk
-  - net/zk/election
-  - net/server/status
+  - net/ds/stringset
   - net/log
   - net/metrics
+  - net/server/status
+  - net/zk/election
+  - zk
+  - zk/testutils
 - name: github.com/andres-erbsen/clock
   version: 9e14626cd129ba01ccb6806bcca9d523e570aaf0
 - name: github.com/apache/thrift
@@ -44,6 +46,10 @@ imports:
   - statsd
 - name: github.com/codahale/hdrhistogram
   version: f8ad88b59a584afeee9d334eff879b104439117b
+- name: github.com/davecgh/go-spew
+  version: 5215b55f46b2b919f50a1df0eaa5886afe4e3b3d
+  subpackages:
+  - spew
 - name: github.com/facebookgo/clock
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
 - name: github.com/getsentry/raven-go
@@ -55,8 +61,8 @@ imports:
   subpackages:
   - jsonpb
   - proto
-  - types
   - sortkeys
+  - types
 - name: github.com/golang/mock
   version: bd3c8e81be01eef76d4b503f5e687d2d1354d2d9
   subpackages:
@@ -74,10 +80,10 @@ imports:
 - name: github.com/mattes/migrate
   version: ce1b59bb819416ca67422929b1cb48bb342720b6
   subpackages:
-  - driver/mysql
-  - migrate
   - driver
+  - driver/mysql
   - file
+  - migrate
   - migrate/direction
   - pipe
 - name: github.com/opentracing/opentracing-go
@@ -87,6 +93,10 @@ imports:
   - log
 - name: github.com/pborman/uuid
   version: 3d4f2ba23642d3cfd06bd4b54cf03d99d95c0f1b
+- name: github.com/pmezard/go-difflib
+  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  subpackages:
+  - difflib
 - name: github.com/samuel/go-zookeeper
   version: 059fe7f9753e88663c3437e6e633ad7a95c118b6
   repo: https://github.com/nomis52/go-zookeeper.git
@@ -95,10 +105,13 @@ imports:
   - zk
 - name: github.com/Sirupsen/logrus
   version: 08a8a7c27e3d058a8989316a850daad1c10bf4ab
+- name: github.com/stretchr/objx
+  version: 1a9d0bb9f541897e62256577b352fdbc1fb4fd94
 - name: github.com/stretchr/testify
   version: e3a8ff8ce36581f87a15341206f205b1da467059
   subpackages:
   - assert
+  - mock
   - require
   - suite
 - name: github.com/uber-common/bark
@@ -111,21 +124,21 @@ imports:
   version: 8ecdb8768bc43c1ac64a02259335ab3b231fbbd9
   subpackages:
   - encoding/json
-  - transport
-  - transport/http
   - internal
   - internal/baggage
+  - internal/encoding
+  - internal/errors
   - internal/filter
   - internal/interceptor
+  - internal/meta
+  - internal/net
   - internal/request
   - internal/sync
-  - internal/encoding
-  - internal/meta
-  - internal/errors
-  - internal/net
+  - transport
+  - transport/http
   - transport/internal
 - name: golang.org/x/net
-  version: 3b993948b6f0e651ffb58ba135d8538a68b1cddf
+  version: dffc95cbb4ff9af8614b2741ec26371fffcc19b3
   subpackages:
   - context
   - context/ctxhttp
@@ -137,4 +150,4 @@ imports:
   version: 3e4f037f12a1221a0864cf0dd2e81c452ab22448
 - name: gopkg.in/yaml.v2
   version: a83829b6f1293c91addabc89d0571c246397bbf4
-devImports: []
+testImports: []

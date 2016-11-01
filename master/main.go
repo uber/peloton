@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
@@ -19,6 +20,14 @@ import (
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"strconv"
+)
+
+const (
+  environmentKey           = "UBER_ENVIRONMENT"
+  productionEnvValue       = "production"
+  mesosZkPath              = "MESOS_ZK_PATH"
+  leaderHost               = "LEADER_HOST"
+  dbHost                   = "DB_HOST"
 )
 
 var role = flag.String("role", "leader",
@@ -58,6 +67,10 @@ func main() {
 	}
 	metrics.Counter("boot").Inc(1)
 
+	// override app config from env vars if set
+	// TODO : use reflection to override any YAML configurations from ENV
+	overrideAppConfig(&cfg)
+
 	// Connect to mysql DB
 	if err := cfg.DbConfig.Connect(); err != nil {
 		log.Fatalf("Could not connect to database: %+v", err)
@@ -85,13 +98,30 @@ func main() {
 	inbounds := []transport.Inbound{
 		http.NewInbound(":" + strconv.Itoa(masterPort)),
 	}
-	// Only leader needs a Mesos inbound
-	if *role == "leader" {
-		inbounds = append(inbounds, mhttp.NewInbound(cfg.Mesos.HostPort, driver))
+
+
+    mesosMasterLocation := cfg.Mesos.HostPort
+    mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
+    if err != nil {
+       log.Fatalf("Failed to initialize mesos master detector: %v", err)
+    }
+	// Not doing this for development for now because on Mac, mesos containers are launched in bridged network, therefore
+	// master registers with docker internal ip to zk, which can not be accessed by peloton running outside the container.
+	if os.Getenv(environmentKey) == productionEnvValue {
+       mesosMasterLocation, err = mesosMasterDetector.GetMasterLocation()
+       if err != nil {
+         log.Fatalf("Failed to get mesos leading master location, err=%v", err)
+       }
+       log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
 	}
 
-	// TODO: resolve Mesos master and Peloton master URLs from zookeeper
-	mesosUrl := fmt.Sprintf("http://%s%s", cfg.Mesos.HostPort, driver.Endpoint())
+	// Only leader needs a Mesos inbound
+	if *role == "leader" {
+		inbounds = append(inbounds, mhttp.NewInbound(mesosMasterLocation, driver))
+	}
+
+	// TODO: update mesos url when leading mesos master changes
+	mesosUrl := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
 	leaderUrl := fmt.Sprintf("http://%s:%d", cfg.Master.Leader.Host, cfg.Master.Leader.Port)
 
 	// TODO: initialize one outbound for each follower so we can
@@ -112,7 +142,6 @@ func main() {
 	task.InitManager(dispatcher, store, store)
 	task.InitTaskQueue(dispatcher)
 	upgrade.InitManager(dispatcher)
-	scheduler.InitManager(dispatcher)
 
 	// Only leader needs to initialize Mesos and Offer managers
 	if *role == "leader" {
@@ -121,10 +150,31 @@ func main() {
 		task.InitTaskStateManager(dispatcher, store, store)
 	}
 
+	// Defer initalizing to the end
+    scheduler.InitManager(dispatcher)
+
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 	log.Infof("Started Peloton master %v", *role)
 	select {}
+}
+
+// overrideAppConfig overrides configs with env vars if set, otherwise values from yaml files will be used
+func overrideAppConfig(cfg *AppConfig) {
+    if v := os.Getenv(mesosZkPath); v != "" {
+         log.Infof("Override mesos zkPath with '%v'", v)
+         cfg.Mesos.ZkPath = v
+    }
+
+    if v := os.Getenv(leaderHost); v != "" {
+         log.Infof("Override leader host with '%v'", v)
+         cfg.Master.Leader.Host = v
+    }
+
+    if v := os.Getenv(dbHost); v != "" {
+         log.Infof("Override db host with '%v'", v)
+         cfg.DbConfig.Host = v
+    }
 }

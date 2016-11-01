@@ -15,14 +15,15 @@ sentry:
   dsn: http://fill:mein@sentry.local.uber.internal/123
   enable: false
 
+# TODO wu: configure meso/db by clusters
 mesos:
-  # TODO : T578097, read mesos master from zk
-  hostPort: "compute72-sjc1:5050"
+  zkPath: "zk://zookeeper-mesos-devel01-dca1.uber.internal:2181/mesos"
 
 master:
   leader:
-    host: compute74-sjc1
+    # TODO: read leader from zk
+    host: compute840-dca1
 
 db:
-  # TODO : T578097, read db from zk
-  host: compute74-sjc1
+  # TODO: read db from zk
+  host: compute841-dca1

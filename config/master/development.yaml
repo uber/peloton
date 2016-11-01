@@ -6,6 +6,7 @@ logging:
 
 mesos:
   hostPort: "localhost:5050"
+  zkPath: "zk://localhost:8192/mesos"
 
 zk:
   hostPort: "localhost:8192"
