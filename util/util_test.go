@@ -4,9 +4,11 @@ import (
 	"code.uber.internal/infra/peloton/util"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/yarpc/transport/http"
 	"mesos/v1"
 	"peloton/job"
 	"peloton/task"
+	"strings"
 	"testing"
 )
 
@@ -77,4 +79,15 @@ func TestCanTakeTask(t *testing.T) {
 
 	ok = util.CanTakeTask(&offerSummary, &taskInfo)
 	assert.False(t, ok)
+}
+
+func TestSetOutboundURL(t *testing.T) {
+	outbound := http.NewOutbound("http://www.google.com:8080")
+	str := fmt.Sprintf("%v", outbound)
+	assert.True(t, strings.Contains(str, "http://www.google.com:8080"))
+
+	util.SetOutboundURL(outbound, "http://www.uber.com:8088")
+	str = fmt.Sprintf("%v", outbound)
+	assert.False(t, strings.Contains(str, "http://www.google.com:8080"))
+	assert.True(t, strings.Contains(str, "http://www.uber.com:8088"))
 }

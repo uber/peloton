@@ -2,8 +2,11 @@ package util
 
 import (
 	"code.uber.internal/go-common.git/x/log"
+	"fmt"
+	"go.uber.org/yarpc/transport"
 	mesos_v1 "mesos/v1"
 	"peloton/task"
+	"reflect"
 )
 
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
@@ -158,4 +161,19 @@ func MesosStateToPelotonState(mstate mesos_v1.TaskState) task.RuntimeInfo_TaskSt
 		log.Errorf("Unknown mesos taskState %v", mstate)
 		return task.RuntimeInfo_INITIALIZED
 	}
+}
+
+//SetOutboundURL sets the URL to a transport.Outbound
+// http.NewOutbound() returns an interface, and the underlying impl struct http.outbound (which contains the URL field)
+// is not exported by yarpc package. Thus use reflection to set the field.
+// TODO: update when yarpc package is updated
+func SetOutboundURL(outbound transport.Outbound, newURL string) error {
+	val := reflect.ValueOf(outbound).Elem()
+	urlField := val.FieldByName("URL")
+	if urlField.IsValid() && urlField.CanSet() {
+		log.Infof("Setting outbound URL to %v, outbound URL canset : %v", newURL, urlField.CanSet())
+		urlField.SetString(newURL)
+		return nil
+	}
+	return fmt.Errorf("Fail to update URL field on outbound, valid : %v, canset: %v", urlField.IsValid(), urlField.CanSet())
 }
