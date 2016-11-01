@@ -1,6 +1,7 @@
 package mesos
 
 import (
+	"os"
 	"reflect"
 
 	"code.uber.internal/go-common.git/x/log"
@@ -91,12 +92,19 @@ func (d *schedulerDriver) PrepareSubscribe() proto.Message {
 			Type: &gpuSupported,
 		},
 	}
+	host, err := os.Hostname()
+	if err != nil {
+		log.Errorf("Failed to get host name, err=%v", err)
+	}
+
 	info := &mesos.FrameworkInfo{
 		User:            &d.cfg.User,
 		Name:            &d.cfg.Name,
 		FailoverTimeout: &d.cfg.FailoverTimeout,
 		Checkpoint:      &d.cfg.Checkpoint,
 		Capabilities:    capabilities,
+		Hostname:        &host,
+		Principal:       &d.cfg.Principal,
 	}
 
 	callType := sched.Call_SUBSCRIBE
