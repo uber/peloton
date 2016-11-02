@@ -18,6 +18,7 @@ import (
 	"peloton/task"
 	"sync/atomic"
 	"time"
+	"fmt"
 )
 
 const (
@@ -64,12 +65,12 @@ func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 	log.Debugf("Launching %v tasks", nTasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		offers, err := s.getOffers(1)
-		if len(offers) == 0 {
+		if err != nil {
+			log.Errorf("Failed to dequeue offer, err=%v", err)
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
-		if err != nil {
-			log.Errorf("Failed to dequeue offer, err=%v", err)
+		if len(offers) == 0 {
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
@@ -113,32 +114,34 @@ func (s *schedulerManager) assignTasksToOffer(
 func (s *schedulerManager) workLoop() {
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		tasks, err := s.getTasks(defaultTaskBatchSize)
-		if len(tasks) == 0 {
-			time.Sleep(GetTaskTimeout)
-			continue
-		}
 		if err != nil {
 			log.Errorf("Failed to dequeue tasks, err=%v", err)
 			time.Sleep(GetTaskTimeout)
 			continue
 		}
-		s.launchTasksLoop(tasks)
-		// It could happen that the work loop is started before the peloton master inbound is started.
-		// In such case it could panic. This we capture the panic, log, wait and then resume
-		if r := recover(); r != nil {
-			log.Errorf("Recovered from panic %v", r)
+		if len(tasks) == 0 {
 			time.Sleep(GetTaskTimeout)
+			continue
 		}
+		s.launchTasksLoop(tasks)
 	}
 }
 
-func (s *schedulerManager) getTasks(limit int) ([]*task.TaskInfo, error) {
+func (s *schedulerManager) getTasks(limit int) (taskInfos []*task.TaskInfo, err error) {
+	// It could happen that the work loop is started before the peloton master inbound is started.
+	// In such case it could panic. This we capture the panic, return error, wait then resume
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("Recovered from panic %v", r)
+		}
+	}()
+
 	ctx, _ := context.WithTimeout(s.rootCtx, 10*time.Second)
 	var response taskqueue.DequeueResponse
 	var request = &taskqueue.DequeueRequest{
 		Limit: uint32(limit),
 	}
-	_, err := s.client.Call(
+	_, err = s.client.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("TaskQueue.Dequeue"),
 		request,
@@ -151,13 +154,21 @@ func (s *schedulerManager) getTasks(limit int) ([]*task.TaskInfo, error) {
 	return response.Tasks, nil
 }
 
-func (s *schedulerManager) getOffers(limit int) ([]*mesos.Offer, error) {
+func (s *schedulerManager) getOffers(limit int) (offers []*mesos.Offer, err error) {
+	// It could happen that the work loop is started before the peloton master inbound is started.
+	// In such case it could panic. This we capture the panic, return error, wait then resume
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("Recovered from panic %v", r)
+		}
+	}()
+
 	ctx, _ := context.WithTimeout(s.rootCtx, 10*time.Second)
 	var response offerpool.GetOffersResponse
 	var request = &offerpool.GetOffersRequest{
 		Limit: uint32(limit),
 	}
-	_, err := s.client.Call(
+	_, err = s.client.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("OfferPool.GetOffers"),
 		request,
