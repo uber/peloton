@@ -1,10 +1,10 @@
 extends: base.yaml
 deep_extend: true
 
-# Add your production configuration here
-logging:
-  kafka:
-    topic: peloton
+# Disable kafka logging before kafka is ready in ATC
+# logging:
+#  kafka:
+#    topic: peloton
 
 metrics:
   statsd:
