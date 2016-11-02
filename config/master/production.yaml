@@ -27,3 +27,4 @@ master:
 db:
   # TODO: read db from zk
   host: compute841-dca1
+  port: 3306

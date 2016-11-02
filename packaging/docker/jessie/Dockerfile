@@ -3,8 +3,10 @@ FROM debian:jessie
 MAINTAINER Uber Compute Platform <compute@uber.com>
 
 
-RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
-        curl
+RUN apt-get -yqq update
+RUN apt-get -yqq install \
+                    curl \
+              python-dev
 
 ADD peloton.deb /peloton.deb
 ADD entrypoint.sh /entrypoint.sh
