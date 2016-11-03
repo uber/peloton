@@ -25,9 +25,6 @@ import (
 const (
   environmentKey           = "UBER_ENVIRONMENT"
   productionEnvValue       = "production"
-  mesosZkPath              = "MESOS_ZK_PATH"
-  leaderHost               = "LEADER_HOST"
-  dbHost                   = "DB_HOST"
 )
 
 var role = flag.String("role", "leader",
@@ -56,8 +53,13 @@ func main() {
 	if err := config.Load(&cfg); err != nil {
 		log.Fatalf("Error initializing configuration: %s", err)
 	} else {
+		// Dump the current configuration
 		log.WithField("config", cfg).Info("Loading Peloton configuration")
 	}
+		
+	// Override app config from env vars if set
+	LoadConfigFromEnv(&cfg)
+
 	log.Configure(&cfg.Logging, cfg.Verbose)
 	log.ConfigureSentry(&cfg.Sentry)
 
@@ -66,10 +68,6 @@ func main() {
 		log.Fatalf("Could not connect to metrics: %v", err)
 	}
 	metrics.Counter("boot").Inc(1)
-
-	// override app config from env vars if set
-	// TODO : use reflection to override any YAML configurations from ENV
-	overrideAppConfig(&cfg)
 
 	// Connect to mysql DB
 	if err := cfg.DbConfig.Connect(); err != nil {
@@ -105,8 +103,10 @@ func main() {
     if err != nil {
        log.Fatalf("Failed to initialize mesos master detector: %v", err)
     }
-	// Not doing this for development for now because on Mac, mesos containers are launched in bridged network, therefore
-	// master registers with docker internal ip to zk, which can not be accessed by peloton running outside the container.
+	// Not doing this for development for now because on Mac, mesos
+	// containers are launched in bridged network, therefore master
+	// registers with docker internal ip to zk, which can not be
+	// accessed by peloton running outside the container.
 	if os.Getenv(environmentKey) == productionEnvValue {
        mesosMasterLocation, err = mesosMasterDetector.GetMasterLocation()
        if err != nil {
@@ -151,7 +151,7 @@ func main() {
 	}
 
 	// Defer initalizing to the end
-    scheduler.InitManager(dispatcher)
+    scheduler.InitManager(dispatcher, &cfg.Scheduler)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
@@ -159,22 +159,4 @@ func main() {
 	}
 	log.Infof("Started Peloton master %v", *role)
 	select {}
-}
-
-// overrideAppConfig overrides configs with env vars if set, otherwise values from yaml files will be used
-func overrideAppConfig(cfg *AppConfig) {
-    if v := os.Getenv(mesosZkPath); v != "" {
-         log.Infof("Override mesos zkPath with '%v'", v)
-         cfg.Mesos.ZkPath = v
-    }
-
-    if v := os.Getenv(leaderHost); v != "" {
-         log.Infof("Override leader host with '%v'", v)
-         cfg.Master.Leader.Host = v
-    }
-
-    if v := os.Getenv(dbHost); v != "" {
-         log.Infof("Override db host with '%v'", v)
-         cfg.DbConfig.Host = v
-    }
 }

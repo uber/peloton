@@ -14,7 +14,7 @@ labels:
     value: testVal1
   - key: testKey2
     value: testVal2
-instancecount: 100
+instancecount: 200
 resource:
   cpuslimit: 0.1
   memlimitmb: 2.0
@@ -30,4 +30,4 @@ sla:
   preemptible: false
 command:
   shell: true
-  value: 'ls /tmp'
+  value: 'echo Hello'

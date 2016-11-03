@@ -2,11 +2,11 @@ extends: base.yaml
 deep_extend: true
 
 logging:
-  level: info
+  level: debug
 
 mesos:
-  hostPort: "localhost:5050"
-  zkPath: "zk://localhost:8192/mesos"
+  host_port: "localhost:5050"
+  zk_path: "zk://localhost:8192/mesos"
 
 zk:
-  hostPort: "localhost:8192"
+  host_port: "localhost:8192"

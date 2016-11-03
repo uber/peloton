@@ -25,5 +25,8 @@ mesos:
     # TODO : add roles for other components
     role: "peloton-master"
     principal: "peloton"
-    failoverTimeout: 60
+    failover_timeout: 60
     checkpoint: false
+
+scheduler:
+   task_dequeue_limit: 20

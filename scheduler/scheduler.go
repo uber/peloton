@@ -24,12 +24,12 @@ import (
 const (
 	GetOfferTimeout      = 1 * time.Second
 	GetTaskTimeout       = 1 * time.Second
-	defaultTaskBatchSize = 20
 )
 
 // InitManager inits the schedulerManager
-func InitManager(d yarpc.Dispatcher) {
+func InitManager(d yarpc.Dispatcher, cfg *Config) {
 	s := schedulerManager{
+		cfg:      cfg,
 		launcher: master_task.GetTaskLauncher(d),
 		client:   json.New(d.Channel("peloton-master")),
 		rootCtx:  context.Background(),
@@ -39,6 +39,7 @@ func InitManager(d yarpc.Dispatcher) {
 
 type schedulerManager struct {
 	dispatcher yarpc.Dispatcher
+	cfg        *Config
 	client     json.Client
 	rootCtx    context.Context
 	started    int32
@@ -113,7 +114,7 @@ func (s *schedulerManager) assignTasksToOffer(
 // workLoop is the internal loop that
 func (s *schedulerManager) workLoop() {
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
-		tasks, err := s.getTasks(defaultTaskBatchSize)
+		tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
 		if err != nil {
 			log.Errorf("Failed to dequeue tasks, err=%v", err)
 			time.Sleep(GetTaskTimeout)

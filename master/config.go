@@ -1,21 +1,33 @@
 package main
 
 import (
+	"os"
+	"strconv"
+
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/go-common.git/x/metrics"
 	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/storage/mysql"
+	"code.uber.internal/infra/peloton/scheduler"
+)
+
+const (
+	mesosZkPath              = "MESOS_ZK_PATH"
+	leaderHost               = "MASTER_LEADER_HOST"
+	dbHost                   = "DB_HOST"
+	taskDequeueLimit         = "SCHEDULER_TASK_DEQUEUE_LIMIT"
 )
 
 // Configuration encapulates the master runtime config
 type AppConfig struct {
-	Logging  log.Configuration
-	Metrics  metrics.Configuration
-	Sentry   log.SentryConfiguration
-	Verbose  bool
-	DbConfig mysql.Config `yaml:"db"`
-	Master   MasterConfig `yaml:"master"`
-	Mesos    mesos.Config `yaml:"mesos"`
+	Logging   log.Configuration
+	Metrics   metrics.Configuration
+	Sentry    log.SentryConfiguration
+	Verbose   bool
+	DbConfig  mysql.Config            `yaml:"db"`
+	Master    MasterConfig            `yaml:"master"`
+	Mesos     mesos.Config            `yaml:"mesos"`
+	Scheduler scheduler.Config        `yaml:"scheduler"`
 }
 
 // Peloton master specific configuration
@@ -31,7 +43,32 @@ type LeaderConfig struct {
 	Host string `yaml:"host"`
 }
 
-// Peloton master followerspecific configuration
+// Peloton master follower specific configuration
 type FollowerConfig struct {
 	Port int `yaml:"port"`
+}
+
+// Override configs with environment vars if set, otherwise values
+// from yaml files will be used.
+// TODO: use reflection to override any YAML configurations from ENV
+func LoadConfigFromEnv(cfg *AppConfig) {
+    if v := os.Getenv(mesosZkPath); v != "" {
+		log.Infof("Override mesos.zk_path with '%v'", v)
+		cfg.Mesos.ZkPath = v
+    }
+
+    if v := os.Getenv(leaderHost); v != "" {
+		log.Infof("Override master.leader.host with '%v'", v)
+		cfg.Master.Leader.Host = v
+    }
+
+    if v := os.Getenv(dbHost); v != "" {
+		log.Infof("Override db.host with '%v'", v)
+		cfg.DbConfig.Host = v
+    }
+
+    if v := os.Getenv(taskDequeueLimit); v != "" {
+		log.Infof("Override scheduler.task_dequeue_limit with '%v'", v)
+		cfg.Scheduler.TaskDequeueLimit, _ = strconv.Atoi(v)
+    }
 }

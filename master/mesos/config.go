@@ -2,9 +2,9 @@ package mesos
 
 // Mesos specific configuration
 type Config struct {
-	HostPort  string          `yaml:"hostPort"`
+	HostPort  string          `yaml:"host_port"`
 	Framework FrameworkConfig `yaml:"framework"`
-	ZkPath    string          `yaml:"zkPath"`
+	ZkPath    string          `yaml:"zk_path"`
 }
 
 // Framework specific configuration
@@ -13,6 +13,6 @@ type FrameworkConfig struct {
 	Name            string  `yaml:"name"`
 	Role            string  `yaml:"role"`
 	Principal       string  `yaml:"principal"`
-	FailoverTimeout float64 `yaml:"failoverTimeout"`
+	FailoverTimeout float64 `yaml:"failover_timeout"`
 	Checkpoint      bool    `yaml:"checkpoint"`
 }
