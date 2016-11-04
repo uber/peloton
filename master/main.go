@@ -124,10 +124,9 @@ func main() {
 		log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
 	}
 
-	// Only leader needs a Mesos inbound
-	if *role == "leader" {
-		inbounds = append(inbounds, mhttp.NewInbound(mesosMasterLocation, driver))
-	}
+	// Both leader / follower needs a Mesos inbound
+	var mesosInbound = mhttp.NewInbound(driver)
+	inbounds = append(inbounds, mesosInbound)
 
 	// TODO: update mesos url when leading mesos master changes
 	mesosUrl := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
@@ -152,12 +151,12 @@ func main() {
 	task.InitTaskQueue(dispatcher)
 	upgrade.InitManager(dispatcher)
 
-	// Only leader needs to initialize Mesos and Offer managers
-	if *role == "leader" {
-		mesos.InitManager(dispatcher, &cfg.Mesos, store)
-		offer.InitManager(dispatcher)
-		task.InitTaskStateManager(dispatcher, store, store)
-	}
+	// Init the managers driven by the mesos callbacks.
+	// They are driven by the leader who will subscribe to
+	// mesos callbacks
+	mesos.InitManager(dispatcher, &cfg.Mesos, store)
+	offer.InitManager(dispatcher)
+	task.InitTaskStateManager(dispatcher, store, store)
 
 	// Defer initalizing to the end
 	scheduler.InitManager(dispatcher, &cfg.Scheduler)
@@ -167,5 +166,10 @@ func main() {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 	log.Infof("Started Peloton master %v", *role)
+
+	// Leader would start the mesos loop ()
+	if *role == "leader" {
+		mesosInbound.StartMesosLoop(cfg.Mesos.HostPort)
+	}
 	select {}
 }

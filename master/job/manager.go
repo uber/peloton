@@ -9,7 +9,6 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"fmt"
-	"github.com/pborman/uuid"
 	mesos_v1 "mesos/v1"
 	"peloton/job"
 	"peloton/master/taskqueue"
@@ -58,7 +57,7 @@ func (m *jobManager) Create(
 	}
 	// Create tasks for the job
 	for i := 0; i < int(body.Config.InstanceCount); i++ {
-		taskId := fmt.Sprintf("%s-%d-%v", jobId.Value, i, uuid.NewUUID().String())
+		taskId := fmt.Sprintf("%s-%d", jobId.Value, i)
 		taskInfo := task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
 				State: task.RuntimeInfo_INITIALIZED,

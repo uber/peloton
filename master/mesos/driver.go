@@ -64,6 +64,10 @@ func (d *schedulerDriver) GetFrameworkId() *mesos.FrameworkID {
 			d.cfg.Name, err)
 		return nil
 	}
+	if frameworkIdVal == "" {
+		log.Errorf("GetFrameworkId from db for framework %v is empty", d.cfg.Name)
+		return nil
+	}
 	log.Debugf("Load FrameworkId %v for framework %v", frameworkIdVal, d.cfg.Name)
 	d.frameworkId = &mesos.FrameworkID{
 		Value: &frameworkIdVal,
@@ -124,7 +128,10 @@ func (d *schedulerDriver) PrepareSubscribe() proto.Message {
 		Hostname:        &host,
 		Principal:       &d.cfg.Principal,
 	}
-
+	// TODO: it could happen that when we register, the framework id has already failed over timeout.
+	// Although we have set the timeout to a very long time in the config. In this case we need to
+	// use an empty framework id and subscribe again
+	d.frameworkId = d.GetFrameworkId()
 	callType := sched.Call_SUBSCRIBE
 	msg := &sched.Call{
 		FrameworkId: d.frameworkId,
@@ -137,9 +144,9 @@ func (d *schedulerDriver) PrepareSubscribe() proto.Message {
 	if d.frameworkId != nil {
 		info.Id = d.frameworkId
 		msg.FrameworkId = d.frameworkId
-		log.Infof("Reregister to Mesos with framework ID: %s", d.frameworkId)
+		log.Infof("Reregister to Mesos with framework ID: %s, with FailoverTimeout %v", d.frameworkId, d.cfg.FailoverTimeout)
 	} else {
-		log.Infof("Register to Mesos without framework ID")
+		log.Infof("Register to Mesos without framework ID, with FailoverTimeout %v", d.cfg.FailoverTimeout)
 	}
 
 	if d.cfg.Role != "" {

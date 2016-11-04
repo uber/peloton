@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/go-common.git/x/log"
 	master_task "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/util"
+	"fmt"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
@@ -18,12 +19,11 @@ import (
 	"peloton/task"
 	"sync/atomic"
 	"time"
-	"fmt"
 )
 
 const (
-	GetOfferTimeout      = 1 * time.Second
-	GetTaskTimeout       = 1 * time.Second
+	GetOfferTimeout = 1 * time.Second
+	GetTaskTimeout  = 1 * time.Second
 )
 
 // InitManager inits the schedulerManager
