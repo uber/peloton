@@ -31,3 +31,7 @@ db:
 
 scheduler:
    task_dequeue_limit: 100
+
+election:
+  zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
+  path: "/peloton/master/leader"

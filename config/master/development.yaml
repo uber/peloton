@@ -2,11 +2,12 @@ extends: base.yaml
 deep_extend: true
 
 logging:
-  level: debug
+  level: info
 
 mesos:
   host_port: "localhost:5050"
   zk_path: "zk://localhost:8192/mesos"
 
-zk:
-  host_port: "localhost:8192"
+election:
+  zk_servers: ["localhost:8192"]
+  path: "/peloton/master/leader"

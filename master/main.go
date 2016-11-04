@@ -3,14 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	"golang.org/x/net/context"
+	"os"
 
 	"code.uber.internal/go-common.git/x/config"
 	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/master/offer"
@@ -23,8 +24,8 @@ import (
 )
 
 const (
-  environmentKey           = "UBER_ENVIRONMENT"
-  productionEnvValue       = "production"
+	environmentKey     = "UBER_ENVIRONMENT"
+	productionEnvValue = "production"
 )
 
 var role = flag.String("role", "leader",
@@ -56,7 +57,7 @@ func main() {
 		// Dump the current configuration
 		log.WithField("config", cfg).Info("Loading Peloton configuration")
 	}
-		
+
 	// Override app config from env vars if set
 	LoadConfigFromEnv(&cfg)
 
@@ -80,6 +81,15 @@ func main() {
 	// Initialize job and task stores
 	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
 
+	// initialize leader election
+	// TODO: integrate leader election into peloton components
+	if os.Getenv(environmentKey) == productionEnvValue {
+		// TODO : enable for Prod once zk node is set up and we are confident to roll this out
+		log.Infof("Skip leader election in %v for now", productionEnvValue)
+	} else {
+		leader.InitLeaderElection(cfg.Election)
+	}
+
 	// Check if the master is a leader or follower
 	// TODO: use zookeeper for leader election
 	var masterPort int
@@ -97,22 +107,21 @@ func main() {
 		http.NewInbound(":" + strconv.Itoa(masterPort)),
 	}
 
-
-    mesosMasterLocation := cfg.Mesos.HostPort
-    mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
-    if err != nil {
-       log.Fatalf("Failed to initialize mesos master detector: %v", err)
-    }
+	mesosMasterLocation := cfg.Mesos.HostPort
+	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize mesos master detector: %v", err)
+	}
 	// Not doing this for development for now because on Mac, mesos
 	// containers are launched in bridged network, therefore master
 	// registers with docker internal ip to zk, which can not be
 	// accessed by peloton running outside the container.
 	if os.Getenv(environmentKey) == productionEnvValue {
-       mesosMasterLocation, err = mesosMasterDetector.GetMasterLocation()
-       if err != nil {
-         log.Fatalf("Failed to get mesos leading master location, err=%v", err)
-       }
-       log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
+		mesosMasterLocation, err = mesosMasterDetector.GetMasterLocation()
+		if err != nil {
+			log.Fatalf("Failed to get mesos leading master location, err=%v", err)
+		}
+		log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
 	}
 
 	// Only leader needs a Mesos inbound
@@ -151,7 +160,7 @@ func main() {
 	}
 
 	// Defer initalizing to the end
-    scheduler.InitManager(dispatcher, &cfg.Scheduler)
+	scheduler.InitManager(dispatcher, &cfg.Scheduler)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

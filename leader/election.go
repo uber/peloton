@@ -1,6 +1,7 @@
 package leader
 
 import (
+	"os"
 	"sync"
 
 	"code.uber.internal/go-common.git/x/log"
@@ -14,8 +15,8 @@ const leaderElectionZKPath = "/peloton/master/leader"
 type Node interface {
 	// GainedLeadershipCallBack is the callback when the current node becomes the leader
 	GainedLeadershipCallBack() error
-	// NewLeaderCallBack is the callback when some other node becomes the leader
-	NewLeaderCallBack() error
+	// NewLeaderCallBack is the callback when some other node becomes the leader, leader is hostname of the leader
+	NewLeaderCallBack(leader string) error
 	// ShutDownCallback is the callback to shut down gracefully if possible
 	ShutDownCallback() error
 }
@@ -23,7 +24,9 @@ type Node interface {
 // ElectionConfig is config related to leader election of this service
 type ElectionConfig struct {
 	// A comma separated list of ZK servers to use for leader election
-	ZKServers []string `yaml:"zkServers" validate:"min=1"`
+	ZKServers []string `yaml:"zk_servers" validate:"min=1"`
+	// The path in ZK to use for leader election
+	Path string `yaml:"path" validate:"nonzero"`
 }
 
 // LeaderElection holds the state of the election
@@ -32,7 +35,6 @@ type LeaderElection struct {
 	electionStateMu sync.RWMutex
 	electionState   election.Event // protected by electionStateMu
 	node            Node
-	leader          string
 }
 
 // GetElectionState returns the current state of the election
@@ -42,7 +44,7 @@ func (el *LeaderElection) getElectionState() election.Event {
 	return el.electionState
 }
 
-// GetCurrentLeader returns the current leader
+// GetCurrentLeader returns the current leader hostname
 func (el *LeaderElection) GetCurrentLeader() string {
 	// The data provided by the current leader
 	return el.getElectionState().Data
@@ -50,6 +52,7 @@ func (el *LeaderElection) GetCurrentLeader() string {
 
 // NewZkElection creates new election object to control participation in leader election
 func NewZkElection(cfg ElectionConfig, instanceID string, peloton Node) (*LeaderElection, error) {
+	log.Info("Start leader election")
 	connectionFactory, err := zk.NewConnectionFactory(cfg.ZKServers)
 	if err != nil {
 		return nil, err
@@ -58,7 +61,7 @@ func NewZkElection(cfg ElectionConfig, instanceID string, peloton Node) (*Leader
 	if err != nil {
 		return nil, err
 	}
-	return newZKElection(conn, leaderElectionZKPath, instanceID, peloton)
+	return newZKElection(conn, cfg.Path, instanceID, peloton)
 }
 
 func newZKElection(conn zk.StatefulConnection, path string, instanceID string, peloton Node, options ...election.Option) (*LeaderElection, error) {
@@ -67,7 +70,7 @@ func newZKElection(conn zk.StatefulConnection, path string, instanceID string, p
 	}
 	election, err := election.NewElection(
 		conn,
-		leaderElectionZKPath,
+		path,
 		instanceID,
 		el.electionCallback,
 		options...,
@@ -94,7 +97,7 @@ func (el *LeaderElection) electionCallback(ev election.Event) {
 		el.node.GainedLeadershipCallBack()
 	case election.NewLeader:
 		// someone else is the leader.
-		el.node.NewLeaderCallBack()
+		el.node.NewLeaderCallBack(el.GetCurrentLeader())
 	case election.Withdrawn:
 		// no longer participating in the election
 		// shutting down
@@ -107,4 +110,40 @@ func (el *LeaderElection) electionCallback(ev election.Event) {
 		// we may no longer be the election
 		// wait for NewLeader or GainedLeadership
 	}
+}
+
+// pNode implements Node
+type pNode struct {
+	name string
+}
+
+// GainedLeadershipCallBack is the callback when the current node becomes the leader
+func (pn pNode) GainedLeadershipCallBack() error {
+	log.Infof("This is the leader")
+	// TODO: fill in peloton related logics
+	return nil
+}
+
+// NewLeaderCallBack is the callback when some other node becomes the leader, leader is hostname of the leader
+func (pn pNode) NewLeaderCallBack(leader string) error {
+	log.Infof("New Leader is elected : %v", leader)
+	// TODO: fill in peloton related logics
+	return nil
+}
+
+// ShutDownCallback is the callback to shut down gracefully if possible
+func (pn pNode) ShutDownCallback() error {
+	log.Infof("Quiting the election")
+	// TODO: fill in peloton related logics
+	return nil
+}
+
+// InitLeaderElection initialize leader election from host
+func InitLeaderElection(cfg ElectionConfig) (*LeaderElection, error) {
+	host, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("Failed to get host name, err=%v", err)
+	}
+	node := pNode{name: host}
+	return NewZkElection(cfg, host, node)
 }

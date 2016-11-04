@@ -23,7 +23,14 @@ fi
 
 # run zk
 echo "run zk container"
-sudo docker run -d --name $ZK_CONTAINER -p $LOCAL_ZK_PORT:$DEFAULT_ZK_PORT netflixoss/exhibitor:$ZK_EXHIBITOR_VERSION
+sudo docker run -d --name $ZK_CONTAINER -p $LOCAL_ZK_PORT:$DEFAULT_ZK_PORT \
+  -v $(pwd)/scripts:/scripts \
+  netflixoss/exhibitor:$ZK_EXHIBITOR_VERSION
+
+sleep 5
+
+# set up zk nodes
+sudo docker exec $ZK_CONTAINER /scripts/setup_zk.sh
 
 # run master
 echo "run mesos master container"
