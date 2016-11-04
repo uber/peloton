@@ -12,19 +12,20 @@ import (
 	"peloton/job"
 	"peloton/master/taskqueue"
 	"peloton/task"
+	"sync/atomic"
 	"time"
 )
 
-func InitTaskQueue(d yarpc.Dispatcher) {
-	tq := TaskQueue{
-		tQueue: util.NewMemLocalTaskQueue("sourceTaskQueue"),
-	}
+func InitTaskQueue(d yarpc.Dispatcher) *TaskQueue {
+	tq := TaskQueue{}
+	tq.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
 	json.Register(d, json.Procedure("TaskQueue.Enqueue", tq.Enqueue))
 	json.Register(d, json.Procedure("TaskQueue.Dequeue", tq.Dequeue))
+	return &tq
 }
 
 type TaskQueue struct {
-	tQueue util.TaskQueue
+	tqValue atomic.Value
 	// TODO: need to handle the case if dequeue RPC fails / follower is down
 	// which can lead to some tasks are dequeued and lost. We can find those tasks
 	// by reconcilation, and put those tasks back
@@ -39,7 +40,7 @@ func (q *TaskQueue) Enqueue(
 	tasks := body.Tasks
 	log.WithField("tasks", tasks).Debug("TaskQueue.Enqueue called")
 	for _, task := range tasks {
-		q.tQueue.PutTask(task)
+		q.tqValue.Load().(util.TaskQueue).PutTask(task)
 	}
 	return &taskqueue.EnqueueResponse{}, nil, nil
 }
@@ -54,7 +55,7 @@ func (q *TaskQueue) Dequeue(
 	log.WithField("limit", limit).Debug("TaskQueue.Dequeue called")
 	var tasks []*task.TaskInfo
 	for i := 0; i < int(limit); i++ {
-		task := q.tQueue.GetTask(1 * time.Millisecond)
+		task := q.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
 		if task != nil {
 			tasks = append(tasks, task)
 		} else {
@@ -124,7 +125,7 @@ func (q *TaskQueue) refillQueue(jobId string, jobConf *job.JobConfig, taskStore 
 					// refill the tasks with these states into the queue again
 					taskInfo.Runtime.State = task.RuntimeInfo_INITIALIZED
 					taskStore.UpdateTask(taskInfo)
-					q.tQueue.PutTask(taskInfo)
+					q.tqValue.Load().(util.TaskQueue).PutTask(taskInfo)
 				}
 				taskIds[*(taskInfo.Runtime.TaskId.Value)] = true
 			}
@@ -144,10 +145,15 @@ func (q *TaskQueue) refillQueue(jobId string, jobConf *job.JobConfig, taskStore 
 						JobId:      jobID,
 					}
 					taskStore.CreateTask(jobID, i, taskInfo, "peloton")
-					q.tQueue.PutTask(taskInfo)
+					q.tqValue.Load().(util.TaskQueue).PutTask(taskInfo)
 				}
 			}
 		}
 	}
 	return e
+}
+
+// Reset would discard the queue content. Called when the current peloton master is no longer the leader
+func (q *TaskQueue) Reset() {
+	q.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
 }

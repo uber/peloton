@@ -19,8 +19,10 @@ import (
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/storage/mysql"
+	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"strconv"
+	"sync"
 )
 
 const (
@@ -30,7 +32,7 @@ const (
 
 var role = flag.String("role", "leader",
 	"The role of Peloton master [leader|follower]")
-var election = flag.Bool("election", false, "Indicate whether to run leader election")
+var election = flag.Bool("election", true, "Indicate whether to run leader election")
 
 // Simple request interceptor which logs the request summary
 type requestLogInterceptor struct{}
@@ -44,6 +46,88 @@ func (requestLogInterceptor) Handle(
 
 	log.Debugf("Received a %s request from %s", req.Procedure, req.Caller)
 	return handler.Handle(ctx, opts, req, resw)
+}
+
+type pelotonMaster struct {
+	mesosInbound           mhttp.Inbound
+	pelotonMasterOutbound  transport.Outbound
+	mesosOutbound          transport.Outbound
+	taskQueue              *task.TaskQueue
+	store                  *mysql.MysqlJobStore
+	cfg                    *AppConfig
+	mutex                  *sync.Mutex
+	localPelotonMasterAddr string
+}
+
+func NewPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOutbound transport.Outbound, tq *task.TaskQueue, store *mysql.MysqlJobStore, cfg *AppConfig, localPelotonMasterAddr string) *pelotonMaster {
+	result := pelotonMaster{
+		mesosInbound:          mInbound,
+		pelotonMasterOutbound: pOutbound,
+		mesosOutbound:         mOutbound,
+		taskQueue:             tq,
+		store:                 store,
+		cfg:                   cfg,
+		mutex:                 &sync.Mutex{},
+		localPelotonMasterAddr: localPelotonMasterAddr,
+	}
+	return &result
+}
+
+// GainedLeadershipCallBack is the callback when the current node becomes the leader
+func (p *pelotonMaster) GainedLeadershipCallBack() error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	log.Infof("Gained leadership")
+
+	// Gained leadership, register with mesos, then refill task queue if needed
+	err := p.mesosInbound.StartMesosLoop(p.cfg.Mesos.HostPort)
+	if err != nil {
+		log.Errorf("Failed to StartMesosLoop, err = %v", err)
+	}
+	err = p.taskQueue.LoadFromDB(p.store, p.store)
+	if err != nil {
+		log.Errorf("Failed to taskQueue.LoadFromDB, err = %v", err)
+	}
+	util.SetOutboundURL(p.pelotonMasterOutbound, p.localPelotonMasterAddr)
+	return err
+}
+
+// LostLeadershipCallback is the callback when the current node lost leadership
+func (p *pelotonMaster) LostLeadershipCallback() error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	log.Infof("Lost leadership")
+	err := p.mesosInbound.Stop()
+	p.taskQueue.Reset()
+	//TODO: offerPool cleanup
+	if err != nil {
+		log.Errorf("Failed to stop mesos inbound, err = %v", err)
+	}
+	return err
+}
+
+// NewLeaderCallBack is the callback when some other node becomes the leader, leader is hostname of the leader
+func (p *pelotonMaster) NewLeaderCallBack(leader string) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	log.Infof("New Leader is elected : %v", leader)
+	// leader changes, so point pelotonMasterOutbound to the new leader
+	util.SetOutboundURL(p.pelotonMasterOutbound, leader)
+	return nil
+}
+
+// ShutDownCallback is the callback to shut down gracefully if possible
+func (p *pelotonMaster) ShutDownCallback() error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	log.Infof("Quiting the election")
+	return nil
+}
+
+// GetHostPort function returns the peloton master address
+func (p *pelotonMaster) GetHostPort() string {
+	return p.localPelotonMasterAddr
 }
 
 func main() {
@@ -93,15 +177,6 @@ func main() {
 		log.Fatalf("Unknown master role '%s', must be leader or follower", *role)
 	}
 
-	// Initialize leader election
-	// TODO: integrate leader election into peloton components
-	if os.Getenv(environmentKey) == productionEnvValue && *election == false {
-		// TODO : enforce election for Prod once zk node is set up and we are confident to roll this out
-		log.Infof("Skip leader election in %v", productionEnvValue)
-	} else {
-		leader.InitLeaderElection(cfg.Election, masterPort)
-	}
-
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos.Framework, store)
 	inbounds := []transport.Inbound{
@@ -126,8 +201,8 @@ func main() {
 	}
 
 	// Both leader / follower needs a Mesos inbound
-	var mesosInbound = mhttp.NewInbound(driver)
-	inbounds = append(inbounds, mesosInbound)
+	var mInbound = mhttp.NewInbound(driver)
+	inbounds = append(inbounds, mInbound)
 
 	// TODO: update mesos url when leading mesos master changes
 	mesosUrl := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
@@ -135,9 +210,11 @@ func main() {
 
 	// TODO: initialize one outbound for each follower so we can
 	// switch to it at fail-over
+	mOutbound := mhttp.NewOutbound(mesosUrl)
+	pOutbound := http.NewOutbound(leaderUrl)
 	outbounds := transport.Outbounds{
-		"mesos-master":   mhttp.NewOutbound(mesosUrl),
-		"peloton-master": http.NewOutbound(leaderUrl),
+		"mesos-master":   mOutbound,
+		"peloton-master": pOutbound,
 	}
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:        "peloton-master",
@@ -149,7 +226,7 @@ func main() {
 	// Initalize managers
 	job.InitManager(dispatcher, store, store)
 	task.InitManager(dispatcher, store, store)
-	task.InitTaskQueue(dispatcher)
+	tq := task.InitTaskQueue(dispatcher)
 	upgrade.InitManager(dispatcher)
 
 	// Init the managers driven by the mesos callbacks.
@@ -168,9 +245,24 @@ func main() {
 	}
 	log.Infof("Started Peloton master %v", *role)
 
-	// Leader would start the mesos loop ()
-	if *role == "leader" {
-		mesosInbound.StartMesosLoop(cfg.Mesos.HostPort)
+	// This is the address of the local peloton master address to be announced via leader election
+	ip, err := util.ListenIP()
+	if err != nil {
+		log.Fatalf("Failed to get ip, err=%v", err)
 	}
+	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, masterPort)
+
+	pMaster := NewPelotonMaster(mInbound, mOutbound, pOutbound, tq, store, &cfg, localPelotonMasterAddr)
+
+	if os.Getenv(environmentKey) == productionEnvValue || *election == false {
+		// TODO : enforce election for Prod once zk node is set up and we are confident to roll this out
+		log.Infof("Skip leader election in %v", productionEnvValue)
+		if *role == "leader" {
+			mInbound.StartMesosLoop(cfg.Mesos.HostPort)
+		}
+	} else {
+		leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
+	}
+
 	select {}
 }

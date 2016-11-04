@@ -68,8 +68,8 @@ func (t *taskLauncher) LaunchTasks(
 	msid := master_mesos.GetSchedulerDriver().GetMesosStreamId()
 	err := t.client.Call(msid, msg)
 	if err != nil {
-		log.Warnf("Failed to launch %v tasks using offer %v",
-			len(tasks), *offer.GetId().Value)
+		log.Warnf("Failed to launch %v tasks using offer %v, err=%v",
+			len(tasks), *offer.GetId().Value, err)
 	} else {
 		log.Debugf("Launched %v tasks %v using offer %v",
 			len(tasks), mesosTaskIds, *offer.GetId().Value)

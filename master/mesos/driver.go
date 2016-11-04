@@ -75,15 +75,11 @@ func (d *schedulerDriver) GetFrameworkId() *mesos.FrameworkID {
 	return d.frameworkId
 }
 
+// GetMesosStreamId reads DB for the Mesos stream ID
 func (d *schedulerDriver) GetMesosStreamId() string {
-	if d.mesosStreamId != "" {
-		return d.mesosStreamId
-	}
-
-	// Follower would try to read DB for the Mesos stream ID
 
 	// TODO: followers should watch the stream ID from ZK so it can be
-	// updated in case that the leader reconnects to Mesos
+	// updated in case that the leader reconnects to Mesos, or the leader changes
 	id, err := d.store.GetMesosStreamId(d.cfg.Name)
 	if err != nil {
 		log.Errorf("failed to GetMesosStreamId from db for framework %v, err=%v",

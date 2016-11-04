@@ -1,14 +1,10 @@
 package leader
 
 import (
-	"fmt"
-	"os"
-	"sync"
-
 	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/uns.git/net/zk/election"
 	"code.uber.internal/infra/uns.git/zk"
+	"sync"
 )
 
 const leaderElectionZKPath = "/peloton/master/leader"
@@ -21,6 +17,8 @@ type Node interface {
 	NewLeaderCallBack(leader string) error
 	// ShutDownCallback is the callback to shut down gracefully if possible
 	ShutDownCallback() error
+	// LostLeadershipCallback is the callback when the leader lost leadership
+	LostLeadershipCallback() error
 	// GetHostPort returns the host:master_port of the node
 	GetHostPort() string
 }
@@ -110,58 +108,11 @@ func (el *LeaderElection) electionCallback(ev election.Event) {
 		// shutting down
 		el.node.ShutDownCallback()
 	case election.Abdicated:
+		el.node.LostLeadershipCallback()
 		// we gave up the leadership
-		// no-op
 		// wait for NewLeader or GainedLeadership
 	case election.InJeopardy:
 		// we may no longer be the election
 		// wait for NewLeader or GainedLeadership
 	}
-}
-
-// pNode implements Node
-type pNode struct {
-	name string
-	ip   string
-	port int
-}
-
-// GainedLeadershipCallBack is the callback when the current node becomes the leader
-func (pn pNode) GainedLeadershipCallBack() error {
-	log.Infof("This is the leader")
-	// TODO: fill in peloton related logics
-	return nil
-}
-
-// NewLeaderCallBack is the callback when some other node becomes the leader, leader is hostname of the leader
-func (pn pNode) NewLeaderCallBack(leader string) error {
-	log.Infof("New Leader is elected : %v", leader)
-	// TODO: fill in peloton related logics
-	return nil
-}
-
-// ShutDownCallback is the callback to shut down gracefully if possible
-func (pn pNode) ShutDownCallback() error {
-	log.Infof("Quiting the election")
-	// TODO: fill in peloton related logics
-	return nil
-}
-
-// GetHostPort returns the host:master_port of the node
-func (pn pNode) GetHostPort() string {
-	return fmt.Sprintf("%s:%d", pn.ip, pn.port)
-}
-
-// InitLeaderElection initialize leader election from host
-func InitLeaderElection(cfg ElectionConfig, port int) (*LeaderElection, error) {
-	host, err := os.Hostname()
-	if err != nil {
-		log.Fatalf("Failed to get host name, err=%v", err)
-	}
-	ip, err := util.ListenIP()
-	if err != nil {
-		log.Fatalf("Failed to get ip, err=%v", err)
-	}
-	node := pNode{name: host, ip: ip.String(), port: port}
-	return NewZkElection(cfg, "", node)
 }
