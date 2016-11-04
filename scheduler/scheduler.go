@@ -63,7 +63,6 @@ func (s *schedulerManager) Stop() {
 
 func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 	nTasks := len(tasks)
-	log.Debugf("Launching %v tasks", nTasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		offers, err := s.getOffers(1)
 		if err != nil {
@@ -83,7 +82,7 @@ func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 			break
 		}
 	}
-	log.Debugf("Launched %v tasks", nTasks)
+	log.Debugf("Launched all %v tasks", nTasks)
 }
 
 func (s *schedulerManager) assignTasksToOffer(
@@ -106,7 +105,8 @@ func (s *schedulerManager) assignTasksToOffer(
 		// TODO: handle task launch error and reschedule the tasks
 		s.launcher.LaunchTasks(offer, selectedTasks)
 
-		log.Infof("Launched %v tasks using offer %v", len(selectedTasks), *offerId)
+		log.Infof("Launched %v tasks on %v using offer %v", len(selectedTasks),
+			offer.GetHostname(), *offerId)
 	}
 	return tasks
 }
@@ -124,13 +124,17 @@ func (s *schedulerManager) workLoop() {
 			time.Sleep(GetTaskTimeout)
 			continue
 		}
+		log.Infof("Dequeued %v tasks from task queue", len(tasks))
 		s.launchTasksLoop(tasks)
 	}
 }
 
-func (s *schedulerManager) getTasks(limit int) (taskInfos []*task.TaskInfo, err error) {
-	// It could happen that the work loop is started before the peloton master inbound is started.
-	// In such case it could panic. This we capture the panic, return error, wait then resume
+func (s *schedulerManager) getTasks(limit int) (
+	taskInfos []*task.TaskInfo, err error) {
+	// It could happen that the work loop is started before the
+	// peloton master inbound is started.  In such case it could
+	// panic. This we capture the panic, return error, wait then
+	// resume
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("Recovered from panic %v", r)
@@ -155,9 +159,12 @@ func (s *schedulerManager) getTasks(limit int) (taskInfos []*task.TaskInfo, err 
 	return response.Tasks, nil
 }
 
-func (s *schedulerManager) getOffers(limit int) (offers []*mesos.Offer, err error) {
-	// It could happen that the work loop is started before the peloton master inbound is started.
-	// In such case it could panic. This we capture the panic, return error, wait then resume
+func (s *schedulerManager) getOffers(limit int) (
+	offers []*mesos.Offer, err error) {
+	// It could happen that the work loop is started before the
+	// peloton master inbound is started.  In such case it could
+	// panic. This we capture the panic, return error, wait then
+	// resume
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("Recovered from panic %v", r)

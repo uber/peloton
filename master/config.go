@@ -18,6 +18,7 @@ const (
 	dbHost            = "DB_HOST"
 	taskDequeueLimit  = "SCHEDULER_TASK_DEQUEUE_LIMIT"
 	electionZkServers = "ELECTION_ZK_SERVERS"
+	loggingLevel      = "LOGGING_LEVEL"
 )
 
 // Configuration encapulates the master runtime config
@@ -80,4 +81,9 @@ func LoadConfigFromEnv(cfg *AppConfig) {
 		log.Infof("Override election.ZKServers with '%v'", v)
 		cfg.Election.ZKServers = []string{v}
 	}
+
+    if v := os.Getenv(loggingLevel); v != "" {
+		log.Infof("Override logging.level with '%v'", v)
+		cfg.Logging.Level, _ = log.ParseLevel(v)
+    }
 }
