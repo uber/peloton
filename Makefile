@@ -4,19 +4,20 @@
 ALL_SRC := $(shell find . -name "*.go" | grep -v -e Godeps -e vendor -e go-build \
 	-e ".*/\..*" \
 	-e ".*/_.*" \
-	-e ".*/mocks.*")
+	-e ".*/mocks.*" \
+	-e ".*/*.pb.go")
 BIN_DIR = bin
 FMT_SRC:=$(shell echo "$(ALL_SRC)" | tr ' ' '\n')
+ALL_PKGS = $(shell go list $(sort $(dir $(ALL_SRC))) | grep -v vendor | grep -v mesos-go)
 PBGEN_DIR = pbgen/src
 PROTOC = protoc
 PROTOC_FLAGS = --proto_path=protobuf --go_out=$(PBGEN_DIR)
 PBFILES = $(shell find protobuf -name *.proto)
 PBGENS = $(PBFILES:%.proto=%.pb.go)
-
+GOCOV = $(go get github.com/axw/gocov/gocov)
 GO_FLAGS = -gcflags '-N'
 # TODO: figure out why -pkgdir does not work
 GOPATH := ${PWD}/pbgen:${GOPATH}
-
 .PRECIOUS: $(PBGENS)
 
 all: $(PBGENS) master scheduler executor client
@@ -48,6 +49,9 @@ clean:
 
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 	gofmt -w $(FMT_SRC)
+
+test: $(GOCOV)
+	gocov test $(ALL_PKGS) | gocov report
 
 # MYSQL should be run against mysql with port 8193, which can be launched in container by running docker/bootstrap.sh
 MYSQL = mysql --host=127.0.0.1 -P 8193

@@ -29,7 +29,7 @@ func LoadConfigWithDB() *Config {
 	}
 	dir := os.Getenv("UBER_CONFIG_DIR")
 	if dir != "" {
-		conf.Migrations = path.Join(dir, "..", "storage", "mysql", conf.Migrations)
+		conf.Migrations = path.Join(dir, "../..", "storage", "mysql", conf.Migrations)
 	}
 	fmt.Printf("dir=%s %s", dir, conf.Migrations)
 	err := conf.Connect()
