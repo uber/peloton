@@ -30,6 +30,7 @@ const (
 
 var role = flag.String("role", "leader",
 	"The role of Peloton master [leader|follower]")
+var election = flag.Bool("election", false, "Indicate whether to run leader election")
 
 // Simple request interceptor which logs the request summary
 type requestLogInterceptor struct{}
@@ -81,15 +82,6 @@ func main() {
 	// Initialize job and task stores
 	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
 
-	// initialize leader election
-	// TODO: integrate leader election into peloton components
-	if os.Getenv(environmentKey) == productionEnvValue {
-		// TODO : enable for Prod once zk node is set up and we are confident to roll this out
-		log.Infof("Skip leader election in %v for now", productionEnvValue)
-	} else {
-		leader.InitLeaderElection(cfg.Election)
-	}
-
 	// Check if the master is a leader or follower
 	// TODO: use zookeeper for leader election
 	var masterPort int
@@ -99,6 +91,15 @@ func main() {
 		masterPort = cfg.Master.Follower.Port
 	} else {
 		log.Fatalf("Unknown master role '%s', must be leader or follower", *role)
+	}
+
+	// Initialize leader election
+	// TODO: integrate leader election into peloton components
+	if os.Getenv(environmentKey) == productionEnvValue && *election == false {
+		// TODO : enforce election for Prod once zk node is set up and we are confident to roll this out
+		log.Infof("Skip leader election in %v", productionEnvValue)
+	} else {
+		leader.InitLeaderElection(cfg.Election, masterPort)
 	}
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
