@@ -33,6 +33,7 @@ const (
 var role = flag.String("role", "leader",
 	"The role of Peloton master [leader|follower]")
 var election = flag.Bool("election", true, "Indicate whether to run leader election")
+var port = flag.Int("port", 0, "The port for Peloton master to listen on")
 
 // Simple request interceptor which logs the request summary
 type requestLogInterceptor struct{}
@@ -57,9 +58,11 @@ type pelotonMaster struct {
 	cfg                    *AppConfig
 	mutex                  *sync.Mutex
 	localPelotonMasterAddr string
+	mesosDetector          mesos.MasterDetector
 }
 
-func NewPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOutbound transport.Outbound, tq *task.TaskQueue, store *mysql.MysqlJobStore, cfg *AppConfig, localPelotonMasterAddr string) *pelotonMaster {
+func NewPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOutbound transport.Outbound, tq *task.TaskQueue,
+	store *mysql.MysqlJobStore, cfg *AppConfig, localPelotonMasterAddr string, mesosDetector mesos.MasterDetector) *pelotonMaster {
 	result := pelotonMaster{
 		mesosInbound:          mInbound,
 		pelotonMasterOutbound: pOutbound,
@@ -69,6 +72,7 @@ func NewPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOut
 		cfg:                   cfg,
 		mutex:                 &sync.Mutex{},
 		localPelotonMasterAddr: localPelotonMasterAddr,
+		mesosDetector:          mesosDetector,
 	}
 	return &result
 }
@@ -80,7 +84,21 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 	log.Infof("Gained leadership")
 
 	// Gained leadership, register with mesos, then refill task queue if needed
-	err := p.mesosInbound.StartMesosLoop(p.cfg.Mesos.HostPort)
+	var err error
+	mesosMasterAddr := p.cfg.Mesos.HostPort
+	// Not using zkDetector for development for now because on Mac, mesos
+	// containers are launched in bridged network, therefore master
+	// registers with docker internal ip to zk, which can not be
+	// accessed by peloton running outside the container.
+	if os.Getenv(environmentKey) == productionEnvValue {
+		mesosMasterAddr, err = p.mesosDetector.GetMasterLocation()
+		if err != nil {
+			log.Errorf("Failed to get mesosMasterAddr, err = %v", err)
+			return err
+		}
+	}
+
+	err = p.mesosInbound.StartMesosLoop(mesosMasterAddr)
 	if err != nil {
 		log.Errorf("Failed to StartMesosLoop, err = %v", err)
 	}
@@ -167,7 +185,7 @@ func main() {
 	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
 
 	// Check if the master is a leader or follower
-	// TODO: use zookeeper for leader election
+	// TODO: remove the 'role' based logic once we are done with zk based leader election testing
 	var masterPort int
 	if *role == "leader" {
 		masterPort = cfg.Master.Leader.Port
@@ -175,6 +193,11 @@ func main() {
 		masterPort = cfg.Master.Follower.Port
 	} else {
 		log.Fatalf("Unknown master role '%s', must be leader or follower", *role)
+	}
+
+	if *port != 0 {
+		// Override masterPort if 'port' flag is set
+		masterPort = *port
 	}
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
@@ -252,13 +275,13 @@ func main() {
 	}
 	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, masterPort)
 
-	pMaster := NewPelotonMaster(mInbound, mOutbound, pOutbound, tq, store, &cfg, localPelotonMasterAddr)
+	pMaster := NewPelotonMaster(mInbound, mOutbound, pOutbound, tq, store, &cfg, localPelotonMasterAddr, mesosMasterDetector)
 
-	if os.Getenv(environmentKey) == productionEnvValue || *election == false {
+	if os.Getenv(environmentKey) == productionEnvValue && *election == false {
 		// TODO : enforce election for Prod once zk node is set up and we are confident to roll this out
 		log.Infof("Skip leader election in %v", productionEnvValue)
 		if *role == "leader" {
-			mInbound.StartMesosLoop(cfg.Mesos.HostPort)
+			mInbound.StartMesosLoop(mesosMasterLocation)
 		}
 	} else {
 		leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
