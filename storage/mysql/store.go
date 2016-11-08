@@ -253,8 +253,9 @@ func (m *MysqlJobStore) GetTaskById(taskId string) (*task.TaskInfo, error) {
 		return task, nil
 	}
 	// No record found
-	log.Warnf("No task records found for taskId %v", taskId)
-	return nil, nil
+	errMsg := fmt.Sprintf("No task records found for taskId %v", taskId)
+	log.Warnf(errMsg)
+	return nil, fmt.Errorf(errMsg)
 }
 
 // GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
