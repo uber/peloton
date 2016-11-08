@@ -1,0 +1,26 @@
+{
+  "role": "peloton-master",
+  "guarantee": [
+    {
+      "name": "cpus",
+      "type": "SCALAR",
+      "scalar": {
+        "value": 12680
+      }
+    },
+    {
+      "name": "mem",
+      "type": "SCALAR",
+      "scalar": {
+        "value": 40530688
+      }
+    },
+    {
+      "name": "disk",
+      "type": "SCALAR",
+      "scalar": {
+        "value": 293411379
+      }
+    }
+  ]
+}

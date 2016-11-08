@@ -1,0 +1,73 @@
+class Profile(Struct):
+  svc_id = Default(String, 'peloton')
+  app_id = Required(String)
+  environment = Default(String, 'devel')  # TODO: make this production once we have quota.
+  cluster = Default(String, 'storm_eagle')
+  instances = Required(Integer)
+  pinned_hosts = Required(String)
+  docker_image = Default(String, 'docker.int.uberatc.com/uber-usi/peloton:latest')
+  leader_host = Default(String, 'fsms-3746f30d')
+  mesos_zk_path = Default(String, 'zk://zk-3303a7e2.den-lmt-1.uberatc.net:2181/mesos/storm_eagle')
+  mysql_host = Default(String, 'fsms-7c7c9d45')
+  logging_level = Default(String, 'debug')
+  peloton_role = Required(String)
+
+
+PROFILES = [
+  Profile(
+    app_id = 'leader',
+    instances = 1,
+    pinned_hosts = 'fsms-3746f30d',
+    peloton_role = 'leader'
+  ),
+  Profile(
+    app_id = 'follower',
+    instances = 1,
+    pinned_hosts = 'fsms-e8ab6565',
+    peloton_role = 'follower'
+  )
+]
+
+docker_entrypoint = Process(
+   name='{{profile.app_id}}',
+   cmdline='cd /peloton-install && /entrypoint.sh'
+)
+
+executor_task = SequentialTask(
+  name='{{profile.app_id}}',
+  processes=[
+    docker_entrypoint
+  ],
+  resources = Resources(cpu = 16.0, ram = 32*GB, disk = 128*GB)
+)
+
+JOB_TEMPLATE = Service(
+  cluster='{{profile.cluster}}',
+  environment='{{profile.environment}}',
+  role='{{profile.svc_id}}',
+  name='{{profile.svc_id}}.{{profile.app_id}}',
+  task=executor_task,
+  instances='{{profile.instances}}',
+  # TODO: make instances more than one after distributed lock.
+  container=Container(
+    docker = Docker(
+      image = '{{profile.docker_image}}',
+      parameters=[
+        Parameter(name='env', value='UBER_ENVIRONMENT=production'),
+        Parameter(name='env', value='MESOS_ZK_PATH={{profile.mesos_zk_path}}'),
+        Parameter(name='env', value='MASTER_LEADER_HOST={{profile.leader_host}}'),
+        Parameter(name='env', value='DB_HOST={{profile.mysql_host}}'),
+        Parameter(name='env', value='LOGGING_LEVEL={{profile.logging_level}}'),
+        Parameter(name='env', value='ROLE={{profile.peloton_role}}')
+      ]
+    )
+  ),
+  constraints = {
+    'hostname': '{{profile.pinned_hosts}}'
+  }
+)
+
+jobs = [
+  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+]
+

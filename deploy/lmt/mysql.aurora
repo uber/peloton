@@ -1,0 +1,64 @@
+class Profile(Struct):
+  svc_id = Default(String, 'peloton')
+  app_id = Required(String)
+  environment = Default(String, 'devel')  # TODO: make this production once we have quota.
+  cluster = Default(String, 'storm_eagle')
+  instances = Required(Integer)
+  pinned_hosts = Default(String, 'fsms-7c7c9d45')
+  docker_image = Required(String)
+  mysql_root_password = Default(String, 'peloton-root')
+  mysql_database = Default(String, 'peloton')
+  mysql_user = Default(String, 'peloton')
+  mysql_password = Default(String, 'peloton')
+  mysql_host_volume = Default(String, '/var/lib/peloton/mysql')
+
+PROFILES = [
+  Profile(
+    app_id = 'mysql',
+    instances = 1,
+    docker_image = 'mysql/mysql-server:5.7.15',
+  )
+]
+
+docker_entrypoint = Process(
+   name='{{profile.app_id}}',
+   cmdline='/entrypoint.sh mysqld'
+)
+
+executor_task = SequentialTask(
+  name='{{profile.app_id}}',
+  processes=[
+    docker_entrypoint
+  ],
+  resources = Resources(cpu = 16.0, ram = 32*GB, disk = 128*GB)
+)
+
+JOB_TEMPLATE = Service(
+  cluster='{{profile.cluster}}',
+  environment='{{profile.environment}}',
+  role='{{profile.svc_id}}',
+  name='{{profile.svc_id}}.{{profile.app_id}}',
+  task=executor_task,
+  instances='{{profile.instances}}',
+  # TODO: make instances more than one after distributed lock.
+  container=Container(
+    docker = Docker(
+      image = '{{profile.docker_image}}',
+      parameters=[
+        Parameter(name='env', value='MYSQL_ROOT_PASSWORD={{profile.mysql_root_password}}'),
+        Parameter(name='env', value='MYSQL_DATABASE={{profile.mysql_database}}'),
+        Parameter(name='env', value='MYSQL_USER={{profile.mysql_user}}'),
+        Parameter(name='env', value='MYSQL_PASSWORD={{profile.mysql_password}}'),
+        Parameter(name='volume', value='{{profile.mysql_host_volume}}:/var/lib/mysql'),
+      ]
+    )
+  ),
+  constraints = {
+    'hostname': '{{profile.pinned_hosts}}'
+  }
+)
+
+jobs = [
+  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+]
+
