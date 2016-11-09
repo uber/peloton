@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"code.uber.internal/go-common.git/x/log"
-	mesos "mesos/v1"
 	"code.uber.internal/infra/peloton/mesos-go/upid"
 	"golang.org/x/net/context"
+	mesos "mesos/v1"
 )
 
 const (

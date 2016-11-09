@@ -5,8 +5,8 @@ import (
 
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/mesos-go/detector/zoo"
-	mesos "mesos/v1"
 	"github.com/stretchr/testify/mock"
+	mesos "mesos/v1"
 )
 
 type Client struct {

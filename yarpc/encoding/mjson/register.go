@@ -95,7 +95,7 @@ func verifySignature(n string, t reflect.Type) {
 	if t.Out(0) != _errorType {
 		panic(fmt.Sprintf(
 			"the last resultsof the handler for %q must be of type error, "+
-				"and not: %v, %v",
+				"and not: %v",
 			n, t.Out(0),
 		))
 	}

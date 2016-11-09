@@ -20,7 +20,7 @@ import (
 
 const (
 	RunningState_NotStarted = 0
-	RunningState_Running = 1
+	RunningState_Running    = 1
 )
 
 // Inbound represents an Mesos HTTP Inbound. It is the same as the transport Inbound
@@ -184,7 +184,6 @@ func (i *inbound) StartMesosLoop(hostPort string) error {
 				return fmt.Errorf(errMsg)
 			}
 		}
-		return nil
 	}()
 	// Wait until go routine is started
 	<-started

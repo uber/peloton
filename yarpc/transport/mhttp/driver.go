@@ -12,7 +12,7 @@ type EventType interface {
 	String() string
 }
 
-// Event is an interface for auto-generated events from Mesos HTTP API
+// MesosEvent is an interface for auto-generated events from Mesos HTTP API
 // such as mesos/v1/scheduler.proto
 type MesosEvent interface {
 	GetType() EventType

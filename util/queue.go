@@ -52,7 +52,6 @@ func (m *memLocalQueue) GetRec(d time.Duration) interface{} {
 		log.Debugf("Queue %v GetRec timeout after %v", m.GetQueueName(), d)
 		return nil
 	}
-	return nil
 }
 
 // PutRec puts a record

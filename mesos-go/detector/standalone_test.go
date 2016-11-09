@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	mesos "mesos/v1"
 	"code.uber.internal/infra/peloton/mesos-go/upid"
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
+	mesos "mesos/v1"
 )
 
 const (

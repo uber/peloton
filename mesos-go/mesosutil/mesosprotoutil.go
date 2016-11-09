@@ -30,4 +30,3 @@ func NewMasterInfo(id string, ip, port uint32) *mesos.MasterInfo {
 		Port: proto.Uint32(port),
 	}
 }
-

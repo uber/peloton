@@ -15,6 +15,8 @@ PROTOC_FLAGS = --proto_path=protobuf --go_out=$(PBGEN_DIR)
 PBFILES = $(shell find protobuf -name *.proto)
 PBGENS = $(PBFILES:%.proto=%.pb.go)
 GOCOV = $(go get github.com/axw/gocov/gocov)
+GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
+GOLINT = $(go get github.com/golang/lint/golint)
 GO_FLAGS = -gcflags '-N'
 # TODO: figure out why -pkgdir does not work
 GOPATH := ${PWD}/pbgen:${GOPATH}
@@ -53,6 +55,7 @@ format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 test: $(GOCOV)
 	gocov test $(ALL_PKGS) | gocov report
 
+
 # MYSQL should be run against mysql with port 8193, which can be launched in container by running docker/bootstrap.sh
 MYSQL = mysql --host=127.0.0.1 -P 8193
 MYSQL_PELOTON = $(MYSQL) -upeloton -ppeloton
@@ -65,3 +68,28 @@ bootstrap:
 %.pb.go: %.proto
 	@mkdir -p $(PBGEN_DIR)
 	${PROTOC} ${PROTOC_FLAGS} $<
+
+
+# Jenkins related tasks
+
+LINT_SKIP_ERRORF=grep -v -e "not a string in call to Errorf"
+FILTER_LINT := $(if $(LINT_EXCLUDES), grep -v $(foreach file, $(LINT_EXCLUDES),-e $(file)),cat) | $(LINT_SKIP_ERRORF)
+# Runs all Go code through "go vet", "golint", and ensures files are formatted using "gofmt"
+lint: $(GOLINT)
+	@# Skip the last line of the vet output if it contains "exit status"
+	go vet $(ALL_PKGS) 2>&1 | sed '/exit status 1/d' | $(FILTER_LINT) > vet.log || true
+	if [ -s "vet.log" ] ; \
+	then \
+	    (echo "Go Vet Failures" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
+	fi;
+
+	@cat /dev/null > vet.log
+	gofmt -e -s -l $(FMT_SRC) | $(FILTER_LINT) > vet.log || true
+	if [ -s "vet.log" ] ; \
+	then \
+	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
+	fi;
+
+jenkins:
+	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'
+	gocov-xml < coverage.json > coverage.xml

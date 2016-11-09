@@ -13,7 +13,9 @@
 /bin
 .vagrant
 .DS_Store
-
+*.log*
+.phabricator-comment
+*coverage*
 .cache
 .idea
 *.pyc

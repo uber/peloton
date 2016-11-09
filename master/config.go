@@ -82,8 +82,8 @@ func LoadConfigFromEnv(cfg *AppConfig) {
 		cfg.Election.ZKServers = []string{v}
 	}
 
-    if v := os.Getenv(loggingLevel); v != "" {
+	if v := os.Getenv(loggingLevel); v != "" {
 		log.Infof("Override logging.level with '%v'", v)
 		cfg.Logging.Level, _ = log.ParseLevel(v)
-    }
+	}
 }

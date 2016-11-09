@@ -29,12 +29,20 @@ func (tn testNode) GainedLeadershipCallBack() error {
 	return nil
 }
 
-func (tn testNode) NewLeaderCallBack() error {
+func (tn testNode) NewLeaderCallBack(leader string) error {
 	return nil
 }
 
 func (tn testNode) ShutDownCallback() error {
 	return nil
+}
+
+func (tn testNode) LostLeadershipCallback() error {
+	return nil
+}
+
+func (tn testNode) GetHostPort() string {
+	return ""
 }
 
 // Test the case where initially we are the leader and when we

@@ -183,7 +183,7 @@ func (s *schedulerManager) getOffers(limit int) (
 		&response,
 	)
 	if err != nil {
-		log.Errorf("getOffers failed with err=%V", err)
+		log.Errorf("getOffers failed with err=%v", err)
 		return nil, err
 	}
 	return response.Offers, nil

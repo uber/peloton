@@ -30,8 +30,8 @@ import (
 	"time"
 
 	"code.uber.internal/go-common.git/x/log"
-	"github.com/golang/protobuf/proto"
 	"code.uber.internal/infra/peloton/mesos-go/detector"
+	"github.com/golang/protobuf/proto"
 	mesos "mesos/v1"
 )
 

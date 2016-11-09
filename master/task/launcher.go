@@ -26,6 +26,7 @@ type taskLauncher struct {
 var instance *taskLauncher
 var once sync.Once
 
+// GetTaskLauncher returns the task launcher
 func GetTaskLauncher(d yarpc.Dispatcher) *taskLauncher {
 	once.Do(func() {
 		client := mjson.New(d.Channel("mesos-master"))

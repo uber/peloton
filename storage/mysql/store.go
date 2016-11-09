@@ -393,7 +393,7 @@ func (m *MysqlJobStore) SetMesosFrameworkId(frameworkName string, frameworkId st
 	}
 	_, err = m.DB.Exec(setMesosFrameworkIdStmt, frameworkName, frameworkId, hostname, frameworkId)
 	if err != nil {
-		log.Errorf("SetMesosFrameworkId failed with id %v error = %v", err)
+		log.Errorf("SetMesosFrameworkId failed with id %v error = %v", frameworkName, err)
 		return err
 	}
 	return nil

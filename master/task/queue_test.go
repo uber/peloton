@@ -1,14 +1,11 @@
 package task
 
 import (
-	//"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage/mysql"
-	"code.uber.internal/infra/peloton/util"
 	"fmt"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	mesos "mesos/v1"
@@ -17,6 +14,7 @@ import (
 	"strconv"
 	"testing"
 	"time"
+	"code.uber.internal/infra/peloton/util"
 )
 
 var masterPort = 47960
@@ -56,11 +54,7 @@ func TestPelotonTaskQueue(t *testing.T) {
 }
 
 func (suite *QueueTestSuite) TestRefillTaskQueue() {
-	tq := TaskQueue{
-		tQueue: util.NewMemLocalTaskQueue("sourceTaskQueue"),
-	}
-	json.Register(suite.dispatcher, json.Procedure("TaskQueue.Enqueue", tq.Enqueue))
-	json.Register(suite.dispatcher, json.Procedure("TaskQueue.Dequeue", tq.Dequeue))
+	tq := InitTaskQueue(suite.dispatcher)
 
 	// Create jobs. each with different
 	suite.createJob(0, 10, 10, task.RuntimeInfo_SUCCEEDED)
@@ -85,7 +79,7 @@ func (suite *QueueTestSuite) TestRefillTaskQueue() {
 	suite.Equal(len(tasks), 10)
 
 	// 2. check the queue content
-	contentSummary := getQueueContent(&tq)
+	contentSummary := getQueueContent(tq)
 	suite.Equal(len(contentSummary["TestJob_1"]), 3)
 	suite.Equal(len(contentSummary["TestJob_2"]), 8)
 	suite.Equal(len(contentSummary["TestJob_3"]), 10)
@@ -125,7 +119,7 @@ func (suite *QueueTestSuite) createJob(i int, tasks int, totalTasks int, taskSta
 func getQueueContent(q *TaskQueue) map[string]map[string]bool {
 	var result = make(map[string]map[string]bool)
 	for {
-		task := q.tQueue.GetTask(1 * time.Millisecond)
+		task := q.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
 		if task != nil {
 			jobId := task.JobId.Value
 			taskId := task.Runtime.TaskId.Value
