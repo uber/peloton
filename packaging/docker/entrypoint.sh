@@ -2,4 +2,4 @@
 
 set -euxo pipefail
 
-/usr/bin/peloton/peloton-master -role $ROLE
+/usr/bin/peloton/peloton-master

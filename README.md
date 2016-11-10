@@ -65,7 +65,7 @@ UBER_ENVIRONMENT=development
 
 bin/peloton-master
 
-By default, it runs peloton master leader. To run follower, specify flag "--role follower"
+By default, it runs peloton master at port 5289. To run another peloton master, run with env var 'MASTER_PORT=5290'
 
 
 ## Test Peloton master

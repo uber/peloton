@@ -14,7 +14,6 @@ RUN dpkg -i peloton.deb
 
 ENV UBER_CONFIG_DIR  /etc/peloton/config/master
 ENV UBER_ENVIRONMENT development
-ENV ROLE             leader
 
 # workdir is required until T581823 is fixed.
 WORKDIR /peloton-install

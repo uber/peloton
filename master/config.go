@@ -14,11 +14,11 @@ import (
 
 const (
 	mesosZkPath       = "MESOS_ZK_PATH"
-	leaderHost        = "MASTER_LEADER_HOST"
 	dbHost            = "DB_HOST"
 	taskDequeueLimit  = "SCHEDULER_TASK_DEQUEUE_LIMIT"
 	electionZkServers = "ELECTION_ZK_SERVERS"
 	loggingLevel      = "LOGGING_LEVEL"
+	masterPort        = "MASTER_PORT"
 )
 
 // Configuration encapulates the master runtime config
@@ -36,19 +36,6 @@ type AppConfig struct {
 
 // Peloton master specific configuration
 type MasterConfig struct {
-	Port     int            `yaml:"port"`
-	Leader   LeaderConfig   `yaml:"leader"`
-	Follower FollowerConfig `yaml:"follower"`
-}
-
-// Peloton master leader specific configuration
-type LeaderConfig struct {
-	Port int    `yaml:"port"`
-	Host string `yaml:"host"`
-}
-
-// Peloton master follower specific configuration
-type FollowerConfig struct {
 	Port int `yaml:"port"`
 }
 
@@ -59,11 +46,6 @@ func LoadConfigFromEnv(cfg *AppConfig) {
 	if v := os.Getenv(mesosZkPath); v != "" {
 		log.Infof("Override mesos.zk_path with '%v'", v)
 		cfg.Mesos.ZkPath = v
-	}
-
-	if v := os.Getenv(leaderHost); v != "" {
-		log.Infof("Override master.leader.host with '%v'", v)
-		cfg.Master.Leader.Host = v
 	}
 
 	if v := os.Getenv(dbHost); v != "" {
@@ -85,5 +67,10 @@ func LoadConfigFromEnv(cfg *AppConfig) {
 	if v := os.Getenv(loggingLevel); v != "" {
 		log.Infof("Override logging.level with '%v'", v)
 		cfg.Logging.Level, _ = log.ParseLevel(v)
+	}
+
+	if v := os.Getenv(masterPort); v != "" {
+		log.Infof("Override master port with %v", v)
+		cfg.Master.Port, _ = strconv.Atoi(v)
 	}
 }

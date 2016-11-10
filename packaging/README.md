@@ -54,37 +54,33 @@ On the host where you want to run peloton-master from, run the following command
 
 DOCKER_IMAGE_URL=infra/peloton:$TAG
 
-Leader :
+First Peloton master:
 
-sudo docker run --net host -d -i --name peloton-leader $DOCKER_IMAGE_URL
+sudo docker run --net host -d -i --name peloton1 $DOCKER_IMAGE_URL
 
-Follower :
+Second Peloton master:
 
-sudo docker run --net host -d -i --name peloton-follower -e ROLE=follower $DOCKER_IMAGE_URL
+sudo docker run --net host -d -i --name peloton2 -e MASTER_PORT=5290 $DOCKER_IMAGE_URL
+
+Repeat command to launch more peloton masters.
+
 
 ## Running peloton container in Prod/ATC
 
 For prod/atc, make sure mysql container is running first, then run peloton container with '-e UBER_ENVIRONMENT=production',
-plus '-e MESOS_ZK_PATH ${full mesos zk path}', '-e LEADER_HOST=${leader host name}', '-e DB_HOST=${db host name}' and with
-the target docker image url, i.e docker-registry01-sjc1:5055/vendor/peloton:23 ,
+plus '-e MESOS_ZK_PATH ${full mesos zk path}', '-e ELECTION_ZK_SERVERS=${dns of zk ensemble}', '-e DB_HOST=${db host name}'
+and with the target docker image url, i.e docker-registry01-sjc1:5055/vendor/peloton:23 ,
 refer to [Runbook](https://code.uberinternal.com/w/runbooks/peloton/operations/#docker-run-based) for more details.
 
-Example command to run leader in sjc1-devel01:
+Example command to run peloton master in sjc1-devel01:
 
-sudo docker run --net host -d -i --name peloton-leader -e UBER_ENVIRONMENT=production \
+sudo docker run --net host -d -i --name peloton -e UBER_ENVIRONMENT=production \
                            -e MESOS_ZK_PATH=zk://zookeeper-mesos-devel01-sjc1.uber.internal:2181/mesos \
-                           -e LEADER_HOST=compute74-sjc1 \
                            -e DB_HOST=compute74-sjc1 \
-                           docker-registry01-sjc1:5055/test/peloton:override_config-wu1031
+                           -e ELECTION_ZK_SERVERS=zookeeper-mesos-devel01-sjc1.uber.internal \
+                           docker-registry01-sjc1:5055/vendor/peloton:29
 
-Example command to run follower in sjc1-devel01:
-
-sudo docker run --net host -d -i --name peloton-follower -e UBER_ENVIRONMENT=production \
-                           -e MESOS_ZK_PATH=zk://zookeeper-mesos-devel01-sjc1.uber.internal:2181/mesos \
-                           -e ROLE=follower \
-                           -e LEADER_HOST=compute74-sjc1 \
-                           -e DB_HOST=compute74-sjc1 \
-                           docker-registry01-sjc1:5055/test/peloton:override_config-wu1031
+Repeat the same command on a different host to run another peloton master.
 
 
 ## Jenkins build job

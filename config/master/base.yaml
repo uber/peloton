@@ -10,13 +10,8 @@ db:
   port: 8193
   migrations: storage/mysql/migrations/
 
-# TODO: add leader election using zookeeper
 master:
-  leader:
-    port: 5289
-    host: localhost
-  follower:
-    port: 5290
+  port: 5289
 
 mesos:
   framework:
