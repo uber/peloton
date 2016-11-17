@@ -107,7 +107,7 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 	}
 	util.SetOutboundURL(p.pelotonMasterOutbound, p.localPelotonMasterAddr)
 
-	// TODO: Start offer manager
+	p.offerManager.Start()
 
 	return err
 }
@@ -123,7 +123,7 @@ func (p *pelotonMaster) LostLeadershipCallback() error {
 		log.Errorf("Failed to stop mesos inbound, err = %v", err)
 	}
 
-	// TODO: Shut down offer manager
+	p.offerManager.Stop()
 
 	return err
 }

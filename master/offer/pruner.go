@@ -25,8 +25,8 @@ func NewOfferPruner(pool OfferPool, offerPruningPeriod time.Duration, d yarpc.Di
 	pruner := &offerPruner{
 		pool:               pool,
 		runningState:       RunningState_NotStarted,
-		stopFlag:           0,
 		offerPruningPeriod: offerPruningPeriod,
+		stopPrunerChan:     make(chan struct{}, 1),
 	}
 	return pruner
 }
@@ -36,9 +36,9 @@ type offerPruner struct {
 	sync.Mutex
 
 	runningState       int32
-	stopFlag           int32
 	pool               OfferPool
 	offerPruningPeriod time.Duration
+	stopPrunerChan     chan struct{}
 }
 
 // Start starts offer pruning process
@@ -47,7 +47,7 @@ func (p *offerPruner) Start() {
 	p.Lock()
 
 	if p.runningState == RunningState_Running {
-		log.Warn("Offer prunner is already running, no action")
+		log.Warn("Offer prunner is already running, no action will be performed")
 		return
 	}
 
@@ -58,22 +58,22 @@ func (p *offerPruner) Start() {
 
 		log.Info("Starting offer pruning loop")
 		started <- 0
+
 		for {
-			log.Debug("Running offer pruning loop")
-
-			stopFlag := atomic.LoadInt32(&p.stopFlag)
-			if stopFlag != 0 {
-				log.Info("Exiting offer pruning loop")
+			timer := time.NewTimer(p.offerPruningPeriod)
+			select {
+			case <-p.stopPrunerChan:
+				log.Info("Exiting the offer pruning loop")
 				return
+			case <-timer.C:
+				log.Debug("Running offer pruning loop")
+				offersIDsToDecline, offersToDecline := p.pool.RemoveExpiredOffers()
+				if len(offersToDecline) != 0 {
+					log.Debugf("Offers to decline: %v", offersIDsToDecline)
+					p.pool.DeclineOffers(offersIDsToDecline, offersToDecline)
+				}
 			}
-
-			offersIDsToDecline, offersToDecline := p.pool.RemoveExpiredOffers()
-			if len(offersToDecline) != 0 {
-				log.Debugf("Offers to decline: %v", offersIDsToDecline)
-				p.pool.DeclineOffers(offersIDsToDecline, offersToDecline)
-			}
-
-			time.Sleep(p.offerPruningPeriod)
+			timer.Stop()
 		}
 	}()
 	// Wait until go routine is started
@@ -86,23 +86,22 @@ func (p *offerPruner) Stop() {
 	p.Lock()
 
 	if p.runningState == RunningState_NotStarted {
-		log.Warn("Offer prunner is already stopped, no action")
+		log.Warn("Offer prunner is already stopped, no action will be performed")
 		return
 	}
 
 	log.Info("Stopping offer pruner")
-	p.stopFlag = 1
+	p.stopPrunerChan <- struct{}{}
 
-	// Wait for pruner to be stopped
-	// TODO: see if we can improve the locking effciency
+	// Wait for pruner to be stopped, should happen pretty quickly
 	for {
 		runningState := atomic.LoadInt32(&p.runningState)
 		if runningState == RunningState_Running {
-			time.Sleep(5 * time.Second)
+			time.Sleep(10 * time.Millisecond)
 		} else {
 			break
 		}
 	}
-	p.stopFlag = 0
+
 	log.Info("Offer pruner stopped")
 }
