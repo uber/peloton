@@ -111,7 +111,7 @@ func (d *schedulerDriver) EventDataType() reflect.Type {
 func (d *schedulerDriver) PrepareSubscribe() proto.Message {
 	gpuSupported := mesos.FrameworkInfo_Capability_GPU_RESOURCES
 	capabilities := []*mesos.FrameworkInfo_Capability{
-		&mesos.FrameworkInfo_Capability{
+		{
 			Type: &gpuSupported,
 		},
 	}

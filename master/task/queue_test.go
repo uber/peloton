@@ -2,6 +2,7 @@ package task
 
 import (
 	"code.uber.internal/infra/peloton/storage/mysql"
+	"code.uber.internal/infra/peloton/util"
 	"fmt"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/suite"
@@ -14,7 +15,6 @@ import (
 	"strconv"
 	"testing"
 	"time"
-	"code.uber.internal/infra/peloton/util"
 )
 
 var masterPort = 47960

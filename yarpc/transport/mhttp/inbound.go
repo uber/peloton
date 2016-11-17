@@ -22,6 +22,7 @@ const (
 	RunningState_NotStarted = 0
 	RunningState_Running    = 1
 )
+
 var tickerInterval = time.Second * 1
 
 // Inbound represents an Mesos HTTP Inbound. It is the same as the transport Inbound
@@ -55,7 +56,7 @@ type inbound struct {
 	deps         transport.Deps
 	client       *http.Client
 	runningState int32
-	ticker *time.Ticker
+	ticker       *time.Ticker
 }
 
 // Start would initialize some variables, actual mesos communication would be
@@ -78,7 +79,7 @@ func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
 // mesos subscription routine.
 // The call can be called multiple times to start / stop talking to mesos master, or can be
 // used to switch between mesos masters when mesos master itself fails over
-func (i *inbound) StartMesosLoop(hostPort string) error{
+func (i *inbound) StartMesosLoop(hostPort string) error {
 	log.Infof("StartMesosLoop called")
 	err := i.startMesosLoopInternal(hostPort)
 	if err != nil {

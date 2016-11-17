@@ -56,7 +56,7 @@ func (t *taskLauncher) LaunchTasks(
 		Accept: &sched.Call_Accept{
 			OfferIds: []*mesos.OfferID{offer.Id},
 			Operations: []*mesos.Offer_Operation{
-				&mesos.Offer_Operation{
+				{
 					Type: &opType,
 					Launch: &mesos.Offer_Operation_Launch{
 						TaskInfos: mesosTasks,

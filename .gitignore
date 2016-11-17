@@ -11,9 +11,11 @@
 /pbgen
 /vendor
 /bin
+/protoc
 .vagrant
 .DS_Store
 *.log*
+*.zip
 .phabricator-comment
 *coverage*
 .cache

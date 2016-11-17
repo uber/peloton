@@ -131,9 +131,9 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 		}
 		var labels = mesos_v1.Labels{
 			Labels: []*mesos_v1.Label{
-				&mesos_v1.Label{Key: &keys[0], Value: &vals[0]},
-				&mesos_v1.Label{Key: &keys[1], Value: &vals[1]},
-				&mesos_v1.Label{Key: &keys[2], Value: &vals[2]},
+				{Key: &keys[0], Value: &vals[0]},
+				{Key: &keys[1], Value: &vals[1]},
+				{Key: &keys[2], Value: &vals[2]},
 			},
 		}
 		// Add some special label to job0 and job1
@@ -176,8 +176,8 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	var err error
 	var labelQuery = mesos_v1.Labels{
 		Labels: []*mesos_v1.Label{
-			&mesos_v1.Label{Key: &keys[0], Value: &vals[0]},
-			&mesos_v1.Label{Key: &keys[1], Value: &vals[1]},
+			{Key: &keys[0], Value: &vals[0]},
+			{Key: &keys[1], Value: &vals[1]},
 		},
 	}
 	jobs, err = suite.store.Query(&labelQuery)
@@ -186,9 +186,9 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 
 	labelQuery = mesos_v1.Labels{
 		Labels: []*mesos_v1.Label{
-			&mesos_v1.Label{Key: &keys[0], Value: &vals[0]},
-			&mesos_v1.Label{Key: &keys[1], Value: &vals[1]},
-			&mesos_v1.Label{Key: &keys[3], Value: &vals[3]},
+			{Key: &keys[0], Value: &vals[0]},
+			{Key: &keys[1], Value: &vals[1]},
+			{Key: &keys[3], Value: &vals[3]},
 		},
 	}
 	jobs, err = suite.store.Query(&labelQuery)
@@ -196,7 +196,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	suite.Equal(len(jobs), 2)
 	labelQuery = mesos_v1.Labels{
 		Labels: []*mesos_v1.Label{
-			&mesos_v1.Label{Key: &keys[3], Value: &vals[3]},
+			{Key: &keys[3], Value: &vals[3]},
 		},
 	}
 	jobs, err = suite.store.Query(&labelQuery)
@@ -205,7 +205,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 
 	labelQuery = mesos_v1.Labels{
 		Labels: []*mesos_v1.Label{
-			&mesos_v1.Label{Key: &keys[2], Value: &vals[3]},
+			{Key: &keys[2], Value: &vals[3]},
 		},
 	}
 	jobs, err = suite.store.Query(&labelQuery)
