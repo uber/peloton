@@ -26,13 +26,13 @@ type OfferPool interface {
 	RescindOffer(*mesos.OfferID) error
 
 	// Remove expired offers from the pool
-	RemoveExpiredOffers() ([]*mesos.OfferID, map[string]*Offer)
+	RemoveExpiredOffers() map[string]*Offer
 
 	// Cleanup offers in the pool
 	CleanupOffers()
 
 	// Decline offers
-	DeclineOffers(offerIDs []*mesos.OfferID, offers map[string]*Offer) error
+	DeclineOffers(offers map[string]*Offer) error
 }
 
 // NewOfferPool creates a offerPool object and registers the
@@ -119,13 +119,12 @@ func (p *offerPool) RescindOffer(offerId *mesos.OfferID) error {
 
 // RemoveExpiredOffers removes offers which are over offerHoldTime from pool
 // and return the list of removed mesos offer ids plus offer map
-func (p *offerPool) RemoveExpiredOffers() ([]*mesos.OfferID, map[string]*Offer) {
+func (p *offerPool) RemoveExpiredOffers() map[string]*Offer {
 	defer p.Unlock()
 	p.Lock()
 
-	offerIDsToDecline := []*mesos.OfferID{}
 	offersToDecline := map[string]*Offer{}
-	// TODO: build offer index based on timestamp to avoid linear scan of all offers
+    // TODO: fix and revive code path below once T628276 is done
 	for id, offer := range p.offers {
 		offerHoldTime := offer.Timestamp.Add(p.offerHoldTime)
 		if time.Now().After(offerHoldTime) {
@@ -133,10 +132,9 @@ func (p *offerPool) RemoveExpiredOffers() ([]*mesos.OfferID, map[string]*Offer) 
 			// Save offer map so we can put offers back to pool to retry if mesos decline call fails
 			offersToDecline[id] = offer
 			delete(p.offers, id)
-			offerIDsToDecline = append(offerIDsToDecline, offer.MesosOffer.Id)
 		}
 	}
-	return offerIDsToDecline, offersToDecline
+	return offersToDecline
 }
 
 // CleanupOffers remove all offers from pool
@@ -149,7 +147,12 @@ func (p *offerPool) CleanupOffers() {
 }
 
 // DeclineOffers calls mesos master to decline list of offers
-func (p *offerPool) DeclineOffers(offerIDs []*mesos.OfferID, offers map[string]*Offer) error {
+func (p *offerPool) DeclineOffers(offers map[string]*Offer) error {
+	offerIDs := []*mesos.OfferID{}
+	for _, offer := range offers {
+		offerIDs = append(offerIDs, offer.MesosOffer.Id)
+	}
+
 	callType := sched.Call_DECLINE
 	msg := &sched.Call{
 		FrameworkId: master_mesos.GetSchedulerDriver().GetFrameworkId(),

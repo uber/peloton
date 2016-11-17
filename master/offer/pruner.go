@@ -67,10 +67,10 @@ func (p *offerPruner) Start() {
 				return
 			case <-timer.C:
 				log.Debug("Running offer pruning loop")
-				offersIDsToDecline, offersToDecline := p.pool.RemoveExpiredOffers()
+				offersToDecline := p.pool.RemoveExpiredOffers()
 				if len(offersToDecline) != 0 {
-					log.Debugf("Offers to decline: %v", offersIDsToDecline)
-					p.pool.DeclineOffers(offersIDsToDecline, offersToDecline)
+					log.Debugf("Offers to decline: %v", offersToDecline)
+					p.pool.DeclineOffers(offersToDecline)
 				}
 			}
 			timer.Stop()
