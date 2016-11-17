@@ -23,7 +23,7 @@ func LoadConfigWithDB() *Config {
 		User:       "peloton",
 		Password:   "peloton",
 		Host:       "127.0.0.1",
-		Port:       8193,
+		Port:       8194,
 		Database:   "peloton",
 		Migrations: "migrations",
 	}

@@ -2,13 +2,17 @@ package offer
 
 import (
 	"sync"
+	"time"
 
 	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
 
+	master_mesos "code.uber.internal/infra/peloton/master/mesos"
 	mesos "mesos/v1"
+	sched "mesos/v1/scheduler"
 	"peloton/master/offerpool"
 )
 
@@ -20,24 +24,43 @@ type OfferPool interface {
 
 	// Rescind a offer from the pool
 	RescindOffer(*mesos.OfferID) error
+
+	// Remove expired offers from the pool
+	RemoveExpiredOffers() ([]*mesos.OfferID, map[string]*Offer)
+
+	// Cleanup offers in the pool
+	CleanupOffers()
+
+	// Decline offers
+	DeclineOffers(offerIDs []*mesos.OfferID, offers map[string]*Offer) error
 }
 
 // NewOfferPool creates a offerPool object and registers the
 // corresponding YARPC procedures.
-func NewOfferPool(d yarpc.Dispatcher) OfferPool {
+func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration) OfferPool {
 	pool := &offerPool{
-		offers: make(map[string]*mesos.Offer),
+		offers: make(map[string]*Offer),
+		client: mjson.New(d.Channel("mesos-master")),
 	}
 	json.Register(d, json.Procedure("OfferPool.GetOffers", pool.GetOffers))
 
 	return pool
 }
 
+// Offer contains details of a Mesos Offer
+type Offer struct {
+	MesosOffer *mesos.Offer
+	Timestamp  time.Time // This is needed for offer pruner, but not included in mesos.Offer
+}
+
 type offerPool struct {
 	sync.Mutex
 
 	// Set of offers received from Mesos master
-	offers map[string]*mesos.Offer
+	offers map[string]*Offer
+	// Time to hold offer for
+	offerHoldTime time.Duration
+	client        mjson.Client
 }
 
 func (p *offerPool) GetOffers(
@@ -53,7 +76,7 @@ func (p *offerPool) GetOffers(
 	count := uint32(0)
 	offers := []*mesos.Offer{}
 	for id, offer := range p.offers {
-		offers = append(offers, offer)
+		offers = append(offers, offer.MesosOffer)
 		delete(p.offers, id)
 		count++
 		if count >= limit {
@@ -72,12 +95,12 @@ func (p *offerPool) AddOffers(offers []*mesos.Offer) error {
 	p.Lock()
 
 	for _, offer := range offers {
+		o := Offer{MesosOffer: offer, Timestamp: time.Now()}
 		id := *offer.Id.Value
-		p.offers[id] = offer
+		p.offers[id] = &o
 	}
 
 	log.WithField("offers", offers).Debug("OfferPool: added offers")
-
 	// TODO: error handling for offer validation such as duplicate
 	// offers for the same host etc.
 	return nil
@@ -91,5 +114,66 @@ func (p *offerPool) RescindOffer(offerId *mesos.OfferID) error {
 	delete(p.offers, *offerId.Value)
 
 	log.Debugf("OfferPool: rescinded offer %v", *offerId.Value)
+	return nil
+}
+
+// RemoveExpiredOffers removes offers which are over offerHoldTime from pool
+// and return the list of removed mesos offer ids plus offer map
+func (p *offerPool) RemoveExpiredOffers() ([]*mesos.OfferID, map[string]*Offer) {
+	defer p.Unlock()
+	p.Lock()
+
+	offerIDsToDecline := []*mesos.OfferID{}
+	offersToDecline := map[string]*Offer{}
+	// TODO: build offer index based on timestamp to avoid linear scan of all offers
+	for id, offer := range p.offers {
+		offerHoldTime := offer.Timestamp.Add(p.offerHoldTime)
+		if time.Now().After(offerHoldTime) {
+			log.Debugf("Offer %v has expired, removed from offer pool", id)
+			// Save offer map so we can put offers back to pool to retry if mesos decline call fails
+			offersToDecline[id] = offer
+			delete(p.offers, id)
+			offerIDsToDecline = append(offerIDsToDecline, offer.MesosOffer.Id)
+		}
+	}
+	return offerIDsToDecline, offersToDecline
+}
+
+// CleanupOffers remove all offers from pool
+func (p *offerPool) CleanupOffers() {
+	defer p.Unlock()
+	p.Lock()
+
+	log.Info("Clean up offers")
+	p.offers = map[string]*Offer{}
+}
+
+// DeclineOffers calls mesos master to decline list of offers
+func (p *offerPool) DeclineOffers(offerIDs []*mesos.OfferID, offers map[string]*Offer) error {
+	callType := sched.Call_DECLINE
+	msg := &sched.Call{
+		FrameworkId: master_mesos.GetSchedulerDriver().GetFrameworkId(),
+		Type:        &callType,
+		Decline: &sched.Call_Decline{
+			OfferIds: offerIDs,
+		},
+	}
+	msid := master_mesos.GetSchedulerDriver().GetMesosStreamId()
+	err := p.client.Call(msid, msg)
+	if err != nil {
+		// Ideally, we assume that Mesos has offer_timeout configured, so in the event that
+		// offer declining call fails, offers should eventually be invalidated by Mesos, but
+		// just in case there is no offer timeout, here offers are put back into pool for pruner
+		// to retry cleanup at the next run
+		log.Warnf("Failed to decline offers, put offers back to pool, err=%v", err)
+
+		defer p.Unlock()
+		p.Lock()
+		for id, offer := range offers {
+			p.offers[id] = offer
+		}
+		return err
+	}
+
 	return nil
 }

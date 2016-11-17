@@ -13,12 +13,14 @@ import (
 )
 
 const (
-	mesosZkPath       = "MESOS_ZK_PATH"
-	dbHost            = "DB_HOST"
-	taskDequeueLimit  = "SCHEDULER_TASK_DEQUEUE_LIMIT"
-	electionZkServers = "ELECTION_ZK_SERVERS"
-	loggingLevel      = "LOGGING_LEVEL"
-	masterPort        = "MASTER_PORT"
+	mesosZkPath           = "MESOS_ZK_PATH"
+	dbHost                = "DB_HOST"
+	taskDequeueLimit      = "SCHEDULER_TASK_DEQUEUE_LIMIT"
+	electionZkServers     = "ELECTION_ZK_SERVERS"
+	loggingLevel          = "LOGGING_LEVEL"
+	masterPort            = "MASTER_PORT"
+	OfferHoldTimeSec      = "OFFER_HOLD_TIME_SEC"
+	OfferPruningPeriodSec = "OFFER_PRUNING_PERIOD_SEC"
 )
 
 // Configuration encapulates the master runtime config
@@ -36,7 +38,9 @@ type AppConfig struct {
 
 // Peloton master specific configuration
 type MasterConfig struct {
-	Port int `yaml:"port"`
+	Port                  int `yaml:"port"`
+	OfferHoldTimeSec      int `yaml:"offer_hold_time_sec"`      // Time to hold offer for in seconds
+	OfferPruningPeriodSec int `yaml:"offer_pruning_period_sec"` // Frequency of running offer pruner
 }
 
 // Override configs with environment vars if set, otherwise values
@@ -72,5 +76,15 @@ func LoadConfigFromEnv(cfg *AppConfig) {
 	if v := os.Getenv(masterPort); v != "" {
 		log.Infof("Override master port with %v", v)
 		cfg.Master.Port, _ = strconv.Atoi(v)
+	}
+
+	if v := os.Getenv(OfferHoldTimeSec); v != "" {
+		log.Infof("Override OfferHoldTimeSec with %v", v)
+		cfg.Master.OfferHoldTimeSec, _ = strconv.Atoi(v)
+	}
+
+	if v := os.Getenv(OfferPruningPeriodSec); v != "" {
+		log.Infof("Override OfferPruningPeriodSec with %v", v)
+		cfg.Master.OfferPruningPeriodSec, _ = strconv.Atoi(v)
 	}
 }

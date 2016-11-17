@@ -8,6 +8,7 @@ import (
 	"go.uber.org/yarpc/transport/http"
 	"golang.org/x/net/context"
 	"os"
+	"time"
 
 	"code.uber.internal/go-common.git/x/config"
 	"code.uber.internal/go-common.git/x/log"
@@ -54,10 +55,12 @@ type pelotonMaster struct {
 	mutex                  *sync.Mutex
 	localPelotonMasterAddr string
 	mesosDetector          mesos.MasterDetector
+	offerManager           *offer.OfferManager
 }
 
 func NewPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOutbound transport.Outbound, tq *task.TaskQueue,
-	store *mysql.MysqlJobStore, cfg *AppConfig, localPelotonMasterAddr string, mesosDetector mesos.MasterDetector) *pelotonMaster {
+	store *mysql.MysqlJobStore, cfg *AppConfig, localPelotonMasterAddr string, mesosDetector mesos.MasterDetector,
+	om *offer.OfferManager) *pelotonMaster {
 	result := pelotonMaster{
 		mesosInbound:          mInbound,
 		pelotonMasterOutbound: pOutbound,
@@ -68,6 +71,7 @@ func NewPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOut
 		mutex:                 &sync.Mutex{},
 		localPelotonMasterAddr: localPelotonMasterAddr,
 		mesosDetector:          mesosDetector,
+		offerManager:           om,
 	}
 	return &result
 }
@@ -102,6 +106,9 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 		log.Errorf("Failed to taskQueue.LoadFromDB, err = %v", err)
 	}
 	util.SetOutboundURL(p.pelotonMasterOutbound, p.localPelotonMasterAddr)
+
+	// TODO: Start offer manager
+
 	return err
 }
 
@@ -112,10 +119,12 @@ func (p *pelotonMaster) LostLeadershipCallback() error {
 	log.Infof("Lost leadership")
 	err := p.mesosInbound.Stop()
 	p.taskQueue.Reset()
-	//TODO: offerPool cleanup
 	if err != nil {
 		log.Errorf("Failed to stop mesos inbound, err = %v", err)
 	}
+
+	// TODO: Shut down offer manager
+
 	return err
 }
 
@@ -233,7 +242,8 @@ func main() {
 	// They are driven by the leader who will subscribe to
 	// mesos callbacks
 	mesos.InitManager(dispatcher, &cfg.Mesos, store)
-	offer.InitManager(dispatcher)
+	om := offer.InitManager(dispatcher, time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
+		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second)
 	task.InitTaskStateManager(dispatcher, store, store)
 
 	// Start dispatch loop
@@ -249,7 +259,8 @@ func main() {
 	}
 	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, cfg.Master.Port)
 
-	pMaster := NewPelotonMaster(mInbound, mOutbound, pOutbound, tq, store, &cfg, localPelotonMasterAddr, mesosMasterDetector)
+	pMaster := NewPelotonMaster(mInbound, mOutbound, pOutbound, tq, store, &cfg, localPelotonMasterAddr,
+		mesosMasterDetector, om)
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 
 	// Defer initializing scheduler till the end

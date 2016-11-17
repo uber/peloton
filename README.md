@@ -54,8 +54,8 @@ make
 
 ## Run Peloton master
 
-Before running peloton locally, dependencies like mesos/mysql, need to be set up. Refer to "docker/README.md" on how to
-launch dependencies in containers.
+To run peloton in dev environment, dependencies like mesos/mysql, need to be set up first. Run 'make bootstrap-dev' to
+bootstrap those dependencies in containers. Refer to "docker/README.md" for details.
 
 PELOTON_HOME=$GOPATH/src/code.uber.internal/infra/peloton
 

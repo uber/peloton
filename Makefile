@@ -22,6 +22,7 @@ GO_FLAGS = -gcflags '-N'
 GOPATH := ${PWD}/pbgen:${GOPATH}
 .PRECIOUS: $(PBGENS)
 
+
 all: $(PBGENS) master scheduler executor client
 
 master:
@@ -52,17 +53,12 @@ clean:
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 	gofmt -w $(FMT_SRC)
 
-test: $(GOCOV)
+test: $(GOCOV) $(PBGENS)
+	bash docker/run_test_mysql.sh
 	gocov test $(ALL_PKGS) | gocov report
 
-
-# MYSQL should be run against mysql with port 8193, which can be launched in container by running docker/bootstrap.sh
-MYSQL = mysql --host=127.0.0.1 -P 8193
-MYSQL_PELOTON = $(MYSQL) -upeloton -ppeloton
-
-bootstrap:
-	@echo Creating database
-	$(MYSQL_PELOTON) -e 'create database if not exists peloton'
+bootstrap-dev:
+	cd docker && bash bootstrap.sh
 
 
 %.pb.go: %.proto
