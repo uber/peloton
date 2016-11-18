@@ -6,6 +6,7 @@ import (
 	"github.com/mattes/migrate/migrate"
 	"os"
 	"path"
+	"strings"
 )
 
 func downSync(cfg *Config) []error {
@@ -27,12 +28,18 @@ func LoadConfigWithDB() *Config {
 		Database:   "peloton",
 		Migrations: "migrations",
 	}
-	dir := os.Getenv("UBER_CONFIG_DIR")
-	if dir != "" {
-		conf.Migrations = path.Join(dir, "../..", "storage", "mysql", conf.Migrations)
+	dir, err := os.Getwd()
+	if err != nil {
+		log.Fatalf("failed to get PWD, err=%v", err)
 	}
-	fmt.Printf("dir=%s %s", dir, conf.Migrations)
-	err := conf.Connect()
+
+	for !strings.HasSuffix(path.Clean(dir), "/peloton") && len(dir) > 1 {
+		dir = path.Join(dir, "..")
+	}
+
+	conf.Migrations = path.Join(dir, "storage", "mysql", conf.Migrations)
+	fmt.Println("dir=", dir, conf.Migrations)
+	err = conf.Connect()
 	if err != nil {
 		panic(err)
 	}

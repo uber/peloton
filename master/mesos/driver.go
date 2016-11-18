@@ -21,8 +21,13 @@ const (
 // SchedulerDriver extends the Mesos HTTP Driver API
 type SchedulerDriver interface {
 	mhttp.MesosDriver
+	MesosFrameworkInfoProvider
+}
 
+// MesosFrameworkInfoProvider can be used to retrieve MesosStreamId and FrameworkID
+type MesosFrameworkInfoProvider interface {
 	GetMesosStreamId() string
+	GetFrameworkId() *mesos.FrameworkID
 }
 
 // schedulerDriver implements the Mesos Driver API

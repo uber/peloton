@@ -39,8 +39,10 @@ type OfferPool interface {
 // corresponding YARPC procedures.
 func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration) OfferPool {
 	pool := &offerPool{
-		offers: make(map[string]*Offer),
-		client: mjson.New(d.Channel("mesos-master")),
+		offers:                     make(map[string]*Offer),
+		client:                     mjson.New(d.Channel("mesos-master")),
+		agentOfferIndex:            make(map[string]*Offer),
+		mesosFrameworkInfoProvider: master_mesos.GetSchedulerDriver(),
 	}
 	json.Register(d, json.Procedure("OfferPool.GetOffers", pool.GetOffers))
 
@@ -56,11 +58,16 @@ type Offer struct {
 type offerPool struct {
 	sync.Mutex
 
+	// agentOfferIndex -- key: agentId, value: Offer
+	agentOfferIndex map[string]*Offer
+
 	// Set of offers received from Mesos master
+	// key -- offerId, value: offer
 	offers map[string]*Offer
 	// Time to hold offer for
-	offerHoldTime time.Duration
-	client        mjson.Client
+	offerHoldTime              time.Duration
+	client                     mjson.Client
+	mesosFrameworkInfoProvider master_mesos.MesosFrameworkInfoProvider
 }
 
 func (p *offerPool) GetOffers(
@@ -75,9 +82,11 @@ func (p *offerPool) GetOffers(
 
 	count := uint32(0)
 	offers := []*mesos.Offer{}
-	for id, offer := range p.offers {
-		offers = append(offers, offer.MesosOffer)
-		delete(p.offers, id)
+	for agentId, agentOffer := range p.agentOfferIndex {
+		delete(p.agentOfferIndex, agentId)
+		offerId := *agentOffer.MesosOffer.Id.Value
+		delete(p.offers, offerId)
+		offers = append(offers, agentOffer.MesosOffer)
 		count++
 		if count >= limit {
 			break
@@ -94,12 +103,37 @@ func (p *offerPool) AddOffers(offers []*mesos.Offer) error {
 	defer p.Unlock()
 	p.Lock()
 
+	var hostContainsOffersToReject = make(map[string]bool)
+	var offersToReject = make(map[string]*Offer)
 	for _, offer := range offers {
+		offerId := *offer.Id.Value
+		agentId := *offer.AgentId.Value
 		o := Offer{MesosOffer: offer, Timestamp: time.Now()}
-		id := *offer.Id.Value
-		p.offers[id] = &o
-	}
+		// if on the host, there is offer that need to be rejected,
+		// then reject current offer
+		if hostContainsOffersToReject[agentId] {
+			offersToReject[offerId] = &o
+		} else if existingOffer, ok := p.agentOfferIndex[agentId]; !ok {
+			// there is no offer under agentId in agentOfferIndex, add the incoming offer
+			p.agentOfferIndex[agentId] = &o
+			p.offers[offerId] = &o
+		} else {
+			// otherwise reject both
+			hostContainsOffersToReject[agentId] = true
+			offersToReject[offerId] = &o
+			existingOfferId := *existingOffer.MesosOffer.Id.Value
+			offersToReject[existingOfferId] = existingOffer
 
+			delete(p.agentOfferIndex, agentId)
+			delete(p.offers, offerId)
+		}
+	}
+	if len(offersToReject) > 0 {
+		err := p.DeclineOffers(offersToReject)
+		if err != nil {
+			log.Errorf("Failed to reject offers, err=%v", err)
+		}
+	}
 	log.WithField("offers", offers).Debug("OfferPool: added offers")
 	// TODO: error handling for offer validation such as duplicate
 	// offers for the same host etc.
@@ -111,6 +145,10 @@ func (p *offerPool) RescindOffer(offerId *mesos.OfferID) error {
 	p.Lock()
 
 	// No-op if offer does not exist
+	if offer, ok := p.offers[*offerId.Value]; ok {
+		agentId := *offer.MesosOffer.AgentId.Value
+		delete(p.agentOfferIndex, agentId)
+	}
 	delete(p.offers, *offerId.Value)
 
 	log.Debugf("OfferPool: rescinded offer %v", *offerId.Value)
@@ -124,14 +162,16 @@ func (p *offerPool) RemoveExpiredOffers() map[string]*Offer {
 	p.Lock()
 
 	offersToDecline := map[string]*Offer{}
-    // TODO: fix and revive code path below once T628276 is done
-	for id, offer := range p.offers {
+	// TODO: fix and revive code path below once T628276 is done
+	for offerId, offer := range p.offers {
 		offerHoldTime := offer.Timestamp.Add(p.offerHoldTime)
 		if time.Now().After(offerHoldTime) {
-			log.Debugf("Offer %v has expired, removed from offer pool", id)
+			log.Debugf("Offer %v has expired, removed from offer pool", offerId)
 			// Save offer map so we can put offers back to pool to retry if mesos decline call fails
-			offersToDecline[id] = offer
-			delete(p.offers, id)
+			offersToDecline[offerId] = offer
+			delete(p.offers, offerId)
+			agentId := *offer.MesosOffer.AgentId.Value
+			delete(p.agentOfferIndex, agentId)
 		}
 	}
 	return offersToDecline
@@ -152,16 +192,16 @@ func (p *offerPool) DeclineOffers(offers map[string]*Offer) error {
 	for _, offer := range offers {
 		offerIDs = append(offerIDs, offer.MesosOffer.Id)
 	}
-
+	log.Debugf("OfferPool: decline offers %v", offerIDs)
 	callType := sched.Call_DECLINE
 	msg := &sched.Call{
-		FrameworkId: master_mesos.GetSchedulerDriver().GetFrameworkId(),
+		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkId(),
 		Type:        &callType,
 		Decline: &sched.Call_Decline{
 			OfferIds: offerIDs,
 		},
 	}
-	msid := master_mesos.GetSchedulerDriver().GetMesosStreamId()
+	msid := p.mesosFrameworkInfoProvider.GetMesosStreamId()
 	err := p.client.Call(msid, msg)
 	if err != nil {
 		// Ideally, we assume that Mesos has offer_timeout configured, so in the event that
@@ -174,6 +214,8 @@ func (p *offerPool) DeclineOffers(offers map[string]*Offer) error {
 		p.Lock()
 		for id, offer := range offers {
 			p.offers[id] = offer
+			agentId := *offer.MesosOffer.AgentId.Value
+			p.agentOfferIndex[agentId] = offer
 		}
 		return err
 	}
