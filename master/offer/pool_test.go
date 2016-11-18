@@ -13,7 +13,7 @@ func TestRemoveExpiredOffers(t *testing.T) {
 		offers:        make(map[string]*Offer),
 		offerHoldTime: 1 * time.Minute,
 	}
-	result := pool.RemoveExpiredOffers(false)
+	result := pool.RemoveExpiredOffers()
 	assert.Equal(t, len(result), 0)
 
 	// pool with offers within timeout
@@ -26,7 +26,7 @@ func TestRemoveExpiredOffers(t *testing.T) {
 		},
 		offerHoldTime: 1 * time.Minute,
 	}
-	result = pool.RemoveExpiredOffers(false)
+	result = pool.RemoveExpiredOffers()
 	assert.Equal(t, len(result), 0)
 
 	// pool with some offers which time out
@@ -43,20 +43,6 @@ func TestRemoveExpiredOffers(t *testing.T) {
 		},
 		offerHoldTime: 1 * time.Minute,
 	}
-	result = pool.RemoveExpiredOffers(false)
-	assert.Exactly(t, result, []*mesos.OfferID{&mesos.OfferID{Value: &offerId2}})
-
-	// pool with offers within timeout and force remove
-	offerId1 := "offer1"
-	offer1 = &Offer{Timestamp: time.Now(), MesosOffer: &mesos.Offer{Id: &mesos.OfferID{Value: &offerId1}}}
-	offer2 = &Offer{Timestamp: time.Now(), MesosOffer: &mesos.Offer{Id: &mesos.OfferID{Value: &offerId2}}}
-	pool = &offerPool{
-		offers: map[string]*Offer{
-			"offer1": offer1,
-			"offer2": offer2,
-		},
-		offerHoldTime: 5 * time.Minute,
-	}
-	result = pool.RemoveExpiredOffers(true)
-	assert.Equal(t, len(result), 2)
+	result = pool.RemoveExpiredOffers()
+	assert.Exactly(t, result, map[string]*Offer{"offer2": offer2})
 }
