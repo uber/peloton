@@ -176,7 +176,7 @@ message JobConfig {
   repeated PortConfig ports = 10;
 
   // Container config of the job
-  ContainerConfig container = 11;
+  mesos.v1.ContainerInfo container = 11;
 
   // SLA config of the job
   SlaConfig sla = 12;

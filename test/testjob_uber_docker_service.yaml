@@ -1,0 +1,52 @@
+changelog: null
+name: TestPelotonUberDockerServiceJob
+owningteam: compute
+ldapgroups:
+- money
+- team6
+- otto
+description: "A test uber docker service job for peloton"
+labels:
+  labels:
+  - key: testKey0
+    value: testVal0
+  - key: testKey1
+    value: testVal1
+  - key: testKey2
+    value: testVal2
+instancecount: 1
+resource:
+  cpuslimit: 0.1
+  memlimitmb: 128.0
+  disklimitmb: 128
+  fdlimit: 10
+healthcheck: null
+ports: []
+container:
+  type: 1
+  docker:
+    image: "127.0.0.1:15055/uber-usi/test-uber-docker-service:sjc1-produ-0000000591"
+    parameters:
+      - key: env
+        value: UBER_CLUSTER=dca1-devel01
+      - key: env
+        value: UBER_DATACENTER=dca1
+      - key: env
+        value: UDEPLOY_APP_ID=test-uber-docker-service
+      - key: env
+        value: UDEPLOY_SERVICE_NAME=test-uber-docker-service
+  volumes:
+    - containerpath: /etc/uber
+      hostpath: /etc/uber
+      mode: 1
+    - containerpath: /langley/udocker/test-uber-docker-service
+      hostpath: /langley/udocker/test-uber-docker-service
+      mode: 1
+sla:
+  priority: 22
+  minimuminstancecount: 12
+  minimuminstancepercent: 50
+  preemptible: false
+command:
+  shell: true
+  value: 'UBER_ENVIRONMENT=development UDEPLOY_APP_ID=test-uber-docker-service /etc/udocker/entrypoint'

@@ -1,12 +1,13 @@
 package util
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"fmt"
+	"reflect"
+
+	"code.uber.internal/go-common.git/x/log"
 	"go.uber.org/yarpc/transport"
 	mesos_v1 "mesos/v1"
 	"peloton/task"
-	"reflect"
 )
 
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
@@ -45,6 +46,7 @@ func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) *mesos_v1.TaskInfo {
 		},
 		Resources: rs,
 		Command:   taskInfo.GetJobConfig().GetCommand(),
+		Container: taskInfo.GetJobConfig().GetContainer(),
 	}
 	return mesosTask
 }
