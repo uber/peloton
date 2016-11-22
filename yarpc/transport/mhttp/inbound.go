@@ -22,6 +22,7 @@ const (
 	RunningState_NotStarted = 0
 	RunningState_Running    = 1
 )
+var tickerInterval = time.Second * 1
 
 // Inbound represents an Mesos HTTP Inbound. It is the same as the transport Inbound
 // except it exposes the address on which the system is listening for
@@ -54,6 +55,7 @@ type inbound struct {
 	deps         transport.Deps
 	client       *http.Client
 	runningState int32
+	ticker *time.Ticker
 }
 
 // Start would initialize some variables, actual mesos communication would be
@@ -68,6 +70,24 @@ func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
 	i.client = &http.Client{Transport: transport}
 	i.handler = h
 	i.deps = d
+	i.ticker = time.NewTicker(tickerInterval)
+	go func() {
+        for t := range i.ticker.C {
+			// The go routine that does mesos master subscription and event
+			// processing can exit due to error (e.g. lose network etc) thus
+			// there is a ticker callback to re-kickoff the mesos subscription
+			// if needed.
+			stopFlag := atomic.LoadInt32(&i.stopFlag)
+			runningState := atomic.LoadInt32(&i.runningState)
+			if stopFlag == 0 && runningState != RunningState_Running{
+				log.Infof("Restarting mesos loop at %v, running state %v", t, runningState)
+				err := i.StartMesosLoop(i.hostPort)
+				if err != nil {
+					log.Errorf("Failed to start mesos loop, hostport = %v, err = %v", i.hostPort, err)
+				}
+			}
+        }
+    }()
 	return nil
 }
 
@@ -80,7 +100,10 @@ func (i *inbound) StartMesosLoop(hostPort string) error {
 	defer i.mutex.Unlock()
 	var err error
 
-	i.stopFlag = 0
+	if hostPort == "" {
+		log.Infof("hostPort empty, thus return")
+		return nil
+	}
 	runningState := atomic.LoadInt32(&i.runningState)
 	if i.hostPort == hostPort && runningState == RunningState_Running {
 		log.Infof("mesos hostPort is already %v, and inbound is running, thus return", hostPort)
@@ -91,6 +114,7 @@ func (i *inbound) StartMesosLoop(hostPort string) error {
 		log.Infof("Stopping the inbound for mesos master %v", i.hostPort)
 		i.stopInternal()
 	}
+	atomic.StoreInt32(&i.stopFlag, 0)
 	log.Infof("Starting the inbound for mesos master %v", hostPort)
 	i.hostPort = hostPort
 
@@ -192,7 +216,7 @@ func (i *inbound) StartMesosLoop(hostPort string) error {
 
 // stopInternal must be called with mutex locked
 func (i *inbound) stopInternal() error {
-	i.stopFlag = 1
+	atomic.StoreInt32(&i.stopFlag, 1)
 	for {
 		runningState := atomic.LoadInt32(&i.runningState)
 		if runningState == RunningState_Running {
@@ -210,6 +234,7 @@ func (i *inbound) stopInternal() error {
 func (i *inbound) Stop() error {
 	i.mutex.Lock()
 	defer i.mutex.Unlock()
+	i.ticker.Stop()
 	return i.stopInternal()
 }
 
