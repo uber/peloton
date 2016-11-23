@@ -70,32 +70,51 @@ func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
 	i.client = &http.Client{Transport: transport}
 	i.handler = h
 	i.deps = d
+	return nil
+}
+
+// StartMesosLoop subscribes to mesos master as a framework, and starts a go-routine to
+// dispatch the mesos callbacks. It also creates a ticker to periodically check and retry the
+// mesos subscription routine.
+// The call can be called multiple times to start / stop talking to mesos master, or can be
+// used to switch between mesos masters when mesos master itself fails over
+func (i *inbound) StartMesosLoop(hostPort string) error{
+	log.Infof("StartMesosLoop called")
+	err := i.startMesosLoopInternal(hostPort)
+	if err != nil {
+		log.Errorf("Initial start mesos loop failed, err=%v", err)
+	}
+	i.mutex.Lock()
+	defer i.mutex.Unlock()
+	if i.ticker != nil {
+		log.Warnf("ticker already created")
+		return err
+	}
 	i.ticker = time.NewTicker(tickerInterval)
 	go func() {
-        for t := range i.ticker.C {
+		for t := range i.ticker.C {
 			// The go routine that does mesos master subscription and event
 			// processing can exit due to error (e.g. lose network etc) thus
 			// there is a ticker callback to re-kickoff the mesos subscription
 			// if needed.
 			stopFlag := atomic.LoadInt32(&i.stopFlag)
 			runningState := atomic.LoadInt32(&i.runningState)
-			if stopFlag == 0 && runningState != RunningState_Running{
+			if stopFlag == 0 && runningState != RunningState_Running && len(i.hostPort) > 0 {
 				log.Infof("Restarting mesos loop at %v, running state %v", t, runningState)
-				err := i.StartMesosLoop(i.hostPort)
+				err := i.startMesosLoopInternal(i.hostPort)
 				if err != nil {
 					log.Errorf("Failed to start mesos loop, hostport = %v, err = %v", i.hostPort, err)
 				}
 			}
-        }
-    }()
-	return nil
+		}
+	}()
+	return err
 }
 
-// StartMesosLoop subscribes to mesos master as a framework, and starts a go-routine to
+// startMesosLoopInternal subscribes to mesos master as a framework, and starts a go-routine to
 // dispatch the mesos callbacks.
-// The call can be called multiple times to start / stop talking to mesos master, or can be
-// used to switch between mesos masters when mesos master itself fails over
-func (i *inbound) StartMesosLoop(hostPort string) error {
+
+func (i *inbound) startMesosLoopInternal(hostPort string) error {
 	i.mutex.Lock()
 	defer i.mutex.Unlock()
 	var err error
@@ -234,7 +253,13 @@ func (i *inbound) stopInternal() error {
 func (i *inbound) Stop() error {
 	i.mutex.Lock()
 	defer i.mutex.Unlock()
-	i.ticker.Stop()
+	log.Infof("mInbound stopping with mesos master url %v", i.hostPort)
+	if i.ticker != nil {
+		i.ticker.Stop()
+		i.ticker = nil
+	} else {
+		log.Warnf("ticker is already nil")
+	}
 	return i.stopInternal()
 }
 
