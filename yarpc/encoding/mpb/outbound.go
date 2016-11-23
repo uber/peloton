@@ -1,11 +1,10 @@
-package mjson
+package mpb
 
 import (
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/gogo/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
@@ -21,27 +20,24 @@ type Client interface {
 }
 
 // New builds a new Mesos JSON client.
-func New(c transport.Channel) Client {
-	return mjsonClient{ch: c}
+func New(c transport.Channel, contentType string) Client {
+	return mpbClient{ch: c, contentType: contentType}
 }
 
-type mjsonClient struct {
-	ch transport.Channel
+type mpbClient struct {
+	ch          transport.Channel
+	contentType string
 }
 
-func (c mjsonClient) Call(mesosStreamId string, msg proto.Message) error {
+func (c mpbClient) Call(mesosStreamId string, msg proto.Message) error {
 	headers := yarpc.NewHeaders().
 		With("Mesos-Stream-Id", mesosStreamId).
-		With("Content-Type", "application/json").
-		With("Accept", "application/json")
+		With("Content-Type", fmt.Sprintf("application/%s", c.contentType)).
+		With("Accept", fmt.Sprintf("application/%s", c.contentType))
 
-	encoder := jsonpb.Marshaler{
-		EnumsAsInts: false,
-		OrigName:    true,
-	}
-	body, err := encoder.MarshalToString(msg)
+	body, err := MarshalPbMessage(msg, c.contentType)
 	if err != nil {
-		return fmt.Errorf("Failed to marshal call message: %s", err)
+		return fmt.Errorf("Failed to marshal subscribe call to contentType %s %v", c.contentType, err)
 	}
 
 	treq := transport.Request{

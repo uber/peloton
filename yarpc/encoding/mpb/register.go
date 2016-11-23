@@ -1,4 +1,4 @@
-package mjson
+package mpb
 
 import (
 	"fmt"
@@ -56,7 +56,7 @@ func Procedure(name string, handler interface{}) Registrant {
 func Register(reg transport.Registry, svc string, registrant Registrant) {
 	for name, handler := range registrant.getHandlers() {
 		verifySignature(name, reflect.TypeOf(handler))
-		reg.Register(svc, name, mjsonHandler{handler: reflect.ValueOf(handler)})
+		reg.Register(svc, name, mpbHandler{handler: reflect.ValueOf(handler)})
 	}
 }
 

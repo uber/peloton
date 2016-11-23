@@ -1,13 +1,10 @@
 package mhttp
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"reflect"
-
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"go.uber.org/yarpc/transport"
 	"golang.org/x/net/context"
+	"reflect"
 )
 
 var httpOptions transport.Options
@@ -18,13 +15,13 @@ type handler struct {
 	Service       string
 	Caller        string
 	EventDataType reflect.Type
+	ContentType   string
 }
 
 // Handle a record IO frame by unmarshal the mesos event and invoke
 // transport.handler
 func (h handler) HandleRecordIO(data []byte) error {
-
-	body, err := newMesosEventReader(data, h.EventDataType)
+	body, err := mpb.NewMesosEventReader(data, h.EventDataType, h.ContentType)
 	if err != nil {
 		return err
 	}
@@ -51,39 +48,6 @@ func (h handler) HandleRecordIO(data []byte) error {
 
 	// TODO: capture and handle panic
 	return h.Handler.Handle(ctx, httpOptions, treq, newResponseWriter())
-}
-
-// mesosEventReader decodes a Mesos Event object from RecordIO frame
-type MesosEventReader struct {
-	Event reflect.Value // Decoded Mesos event
-	Type  EventType     // Mesos event type such as offers, rescind etc
-}
-
-func newMesosEventReader(data []byte, typ reflect.Type) (*MesosEventReader, error) {
-	if typ.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("Wrong mesos event type: %s", typ)
-	}
-
-	// Decode the RecordIO frame to Probuf event
-	event := reflect.New(typ)
-	err := json.NewDecoder(bytes.NewReader(data)).Decode(event.Interface())
-	if err != nil {
-		return nil, err
-	}
-
-	// Get the event type of the Mesos event
-	method := event.MethodByName("GetType")
-	result := method.Call([]reflect.Value{})[0]
-	eventType := result.Interface().(EventType)
-
-	// TODO: Decode the nested event object using reflect.MethodByName
-	reader := &MesosEventReader{Event: event, Type: eventType}
-	return reader, nil
-}
-
-func (r MesosEventReader) Read(p []byte) (n int, err error) {
-	// TODO: make Request.Body in YARPC to be interface{} instead of io.Reader
-	panic("mesosEventReader does not support Read method")
 }
 
 // responseWriter implements a dummy transport.ResponseWriter

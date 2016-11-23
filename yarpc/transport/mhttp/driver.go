@@ -1,22 +1,9 @@
 package mhttp
 
 import (
+	"net/http"
 	"reflect"
-
-	"github.com/golang/protobuf/proto"
 )
-
-// EventType is an interface for auto-generated event types from
-// Mesos HTTP API such as mesos/v1/scheduler.proto
-type EventType interface {
-	String() string
-}
-
-// MesosEvent is an interface for auto-generated events from Mesos HTTP API
-// such as mesos/v1/scheduler.proto
-type MesosEvent interface {
-	GetType() EventType
-}
 
 // MesosDriver is an inteface used by Inbound to subscribe to a Mesos
 // service endpoint such as scheduler, executor, master etc.
@@ -33,8 +20,11 @@ type MesosDriver interface {
 
 	// Returns a subscribe Call message to be sent to Mesos for
 	// setting up an event stream connection
-	PrepareSubscribe() proto.Message
+	PrepareSubscribeRequest(mesosMasterHostPort string) (*http.Request, error)
 
 	// Invoked after the subscription to Mesos is done
 	PostSubscribe(mesosStreamId string)
+
+	// GetContentEncoding returns the http content encoding of the mesos HTTP traffic
+	GetContentEncoding() string
 }

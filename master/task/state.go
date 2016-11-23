@@ -8,7 +8,7 @@ import (
 	master_mesos "code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"go.uber.org/yarpc"
 	"mesos/v1/scheduler"
 	sched "mesos/v1/scheduler"
@@ -18,26 +18,27 @@ import (
 func InitTaskStateManager(
 	d yarpc.Dispatcher,
 	jobStore storage.JobStore,
-	taskStore storage.TaskStore) {
+	taskStore storage.TaskStore,
+	mesosClient mpb.Client) {
 
 	handler := taskStateManager{
 		TaskStore: taskStore,
 		JobStore:  jobStore,
-		client:    mjson.New(d.Channel("mesos-master")),
+		client:    mesosClient,
 	}
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_UPDATE: handler.Update,
 	}
 	for typ, hdl := range procedures {
 		name := typ.String()
-		mjson.Register(d, mesos.ServiceName, mjson.Procedure(name, hdl))
+		mpb.Register(d, mesos.ServiceName, mpb.Procedure(name, hdl))
 	}
 }
 
 type taskStateManager struct {
 	JobStore  storage.JobStore
 	TaskStore storage.TaskStore
-	client    mjson.Client
+	client    mpb.Client
 }
 
 // Update is the Mesos callback on mesos state updates

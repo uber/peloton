@@ -2,7 +2,7 @@ package mesos
 
 import (
 	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -25,7 +25,7 @@ func InitManager(d yarpc.Dispatcher, mesosConfig *Config, store storage.Framewor
 	}
 	for typ, hdl := range procedures {
 		name := typ.String()
-		mjson.Register(d, ServiceName, mjson.Procedure(name, hdl))
+		mpb.Register(d, ServiceName, mpb.Procedure(name, hdl))
 	}
 }
 

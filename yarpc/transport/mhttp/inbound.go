@@ -8,19 +8,20 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"code.uber.internal/go-common.git/x/log"
-	"github.com/gogo/protobuf/jsonpb"
 	"go.uber.org/yarpc/transport"
 )
 
 const (
 	RunningState_NotStarted = 0
 	RunningState_Running    = 1
+
+	MesosHttpConnTimeout   = 30 * time.Second
+	MesosHttpConnKeepAlive = 30 * time.Second
 )
 
 var tickerInterval = time.Second * 1
@@ -64,8 +65,8 @@ type inbound struct {
 func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
 	transport := &http.Transport{
 		Dial: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
+			Timeout:   MesosHttpConnTimeout,
+			KeepAlive: MesosHttpConnKeepAlive,
 		}).Dial,
 	}
 	i.client = &http.Client{Transport: transport}
@@ -138,25 +139,13 @@ func (i *inbound) startMesosLoopInternal(hostPort string) error {
 	log.Infof("Starting the inbound for mesos master %v", hostPort)
 	i.hostPort = hostPort
 
-	msg := i.driver.PrepareSubscribe()
-	i.hostPort = hostPort
-	encoder := jsonpb.Marshaler{
-		EnumsAsInts: false,
-		OrigName:    true,
-	}
-	body, err := encoder.MarshalToString(msg)
+	req, err := i.driver.PrepareSubscribeRequest(hostPort)
 	if err != nil {
-		return fmt.Errorf("Failed to marshal subscribe call: %s", err)
+		return fmt.Errorf("Failed to PrepareSubscribeRequest: %v", err)
 	}
-	url := fmt.Sprintf("http://%s%s", i.hostPort, i.driver.Endpoint())
-
-	req, err := http.NewRequest("POST", url, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
 	resp, err := i.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("Failed to POST request to master: %s", err)
+		return fmt.Errorf("Failed to POST subscribe request to master: %v", err)
 	}
 
 	if resp.StatusCode != 200 {
@@ -175,6 +164,7 @@ func (i *inbound) startMesosLoopInternal(hostPort string) error {
 		Service:       i.driver.Name(),
 		Caller:        i.hostPort,
 		EventDataType: i.driver.EventDataType(),
+		ContentType:   i.driver.GetContentEncoding(),
 	}
 
 	started := make(chan int, 1)

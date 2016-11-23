@@ -1,14 +1,18 @@
 package mesos
 
 import (
+	"fmt"
+	"net/http"
 	"os"
 	"reflect"
+	"strings"
 
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"github.com/golang/protobuf/proto"
 
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 )
@@ -36,19 +40,22 @@ type schedulerDriver struct {
 	frameworkId   *mesos.FrameworkID
 	mesosStreamId string
 	cfg           *FrameworkConfig
+	encoding      string
 }
 
 var instance *schedulerDriver = nil
 
 // Initialize Mesos scheduler driver for Mesos scheduler HTTP API
 func InitSchedulerDriver(
-	cfg *FrameworkConfig, store *mysql.MysqlJobStore) *schedulerDriver {
+	cfg *Config,
+	store *mysql.MysqlJobStore) *schedulerDriver {
 	// TODO: load framework ID from ZK or DB
 	instance = &schedulerDriver{
 		store:         store,
 		frameworkId:   nil,
 		mesosStreamId: "",
-		cfg:           cfg,
+		cfg:           cfg.Framework,
+		encoding:      cfg.Encoding,
 	}
 	return instance
 }
@@ -108,7 +115,7 @@ func (d *schedulerDriver) EventDataType() reflect.Type {
 	return reflect.TypeOf(sched.Event{})
 }
 
-func (d *schedulerDriver) PrepareSubscribe() proto.Message {
+func (d *schedulerDriver) prepareSubscribe() proto.Message {
 	gpuSupported := mesos.FrameworkInfo_Capability_GPU_RESOURCES
 	capabilities := []*mesos.FrameworkInfo_Capability{
 		{
@@ -157,10 +164,32 @@ func (d *schedulerDriver) PrepareSubscribe() proto.Message {
 	return msg
 }
 
+// PrepareSubscribeRequest returns a HTTP post request that can be used to initiate subscription to mesos master
+func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (*http.Request, error) {
+	pbMsg := d.prepareSubscribe()
+	body, err := mpb.MarshalPbMessage(pbMsg, d.encoding)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal subscribe call: %s", err)
+	}
+	url := fmt.Sprintf("http://%s%s", mesosMasterHostPort, d.Endpoint())
+	var req *http.Request
+	req, err = http.NewRequest("POST", url, strings.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", fmt.Sprintf("application/%s", d.encoding))
+	req.Header.Set("Accept", fmt.Sprintf("application/%s", d.encoding))
+	return req, nil
+}
+
 func (d *schedulerDriver) PostSubscribe(mesosStreamId string) {
 	err := d.store.SetMesosStreamId(d.cfg.Name, mesosStreamId)
 	if err != nil {
 		log.Errorf("Failed to save Mesos stream ID %v %v, err=%v",
 			d.cfg.Name, mesosStreamId, err)
 	}
+}
+
+func (d *schedulerDriver) GetContentEncoding() string {
+	return d.encoding
 }

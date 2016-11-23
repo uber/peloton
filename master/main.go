@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"strconv"
 	"sync"
@@ -189,7 +190,7 @@ func main() {
 	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
-	driver := mesos.InitSchedulerDriver(&cfg.Mesos.Framework, store)
+	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
 	inbounds := []transport.Inbound{
 		http.NewInbound(":" + strconv.Itoa(cfg.Master.Port)),
 	}
@@ -238,13 +239,16 @@ func main() {
 	tq := task.InitTaskQueue(dispatcher)
 	upgrade.InitManager(dispatcher)
 
+	mesosClient := mpb.New(dispatcher.Channel("mesos-master"), cfg.Mesos.Encoding)
+
 	// Init the managers driven by the mesos callbacks.
 	// They are driven by the leader who will subscribe to
 	// mesos callbacks
 	mesos.InitManager(dispatcher, &cfg.Mesos, store)
 	om := offer.InitManager(dispatcher, time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
-		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second)
-	task.InitTaskStateManager(dispatcher, store, store)
+		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
+		mesosClient)
+	task.InitTaskStateManager(dispatcher, store, store, mesosClient)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
@@ -264,7 +268,7 @@ func main() {
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 
 	// Defer initializing scheduler till the end
-	scheduler.InitManager(dispatcher, &cfg.Scheduler)
+	scheduler.InitManager(dispatcher, &cfg.Scheduler, mesosClient)
 
 	select {}
 }

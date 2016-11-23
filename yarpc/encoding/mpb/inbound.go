@@ -1,0 +1,106 @@
+package mpb
+
+import (
+	"fmt"
+	"reflect"
+
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/transport"
+	"golang.org/x/net/context"
+)
+
+// EventType is an interface for auto-generated event types from
+// Mesos HTTP API such as mesos/v1/scheduler.proto
+type EventType interface {
+	String() string
+}
+
+// MesosEvent is an interface for auto-generated events from Mesos HTTP API
+// such as mesos/v1/scheduler.proto
+type MesosEvent interface {
+	GetType() EventType
+}
+
+// mesosEventReader decodes a Mesos Event object from RecordIO frame
+type MesosEventReader struct {
+	Event reflect.Value // Decoded Mesos event
+	Type  EventType     // Mesos event type such as offers, rescind etc
+}
+
+func NewMesosEventReader(data []byte, typ reflect.Type, contentType string) (*MesosEventReader, error) {
+	if typ.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("Wrong mesos event type: %s", typ)
+	}
+
+	// Decode the RecordIO frame to Protobuf event
+	event := reflect.New(typ)
+	err := UnmarshalPbMessage(data, event, contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the event type of the Mesos event
+	method := event.MethodByName("GetType")
+	result := method.Call([]reflect.Value{})[0]
+	eventType := result.Interface().(EventType)
+
+	// TODO: Decode the nested event object using reflect.MethodByName
+	reader := &MesosEventReader{Event: event, Type: eventType}
+	return reader, nil
+}
+
+func (r MesosEventReader) Read(p []byte) (n int, err error) {
+	// TODO: make Request.Body in YARPC to be interface{} instead of io.Reader
+	panic("mesosEventReader does not support Read method")
+}
+
+// mjsonHandler adapts a Mesos event handler into a transport-level
+// Handler.
+//
+// The wrapped function must already be in the correct format:
+//
+// 	f(reqMeta yarpc.ReqMeta, body $reqBody) error
+type mpbHandler struct {
+	handler reflect.Value
+}
+
+func (h mpbHandler) Handle(
+	ctx context.Context,
+	_ transport.Options,
+	treq *transport.Request,
+	rw transport.ResponseWriter) error {
+
+	reader := treq.Body.(*MesosEventReader)
+	meta := reflect.ValueOf(reqMeta{req: treq})
+	results := h.handler.Call([]reflect.Value{meta, reader.Event})
+
+	if err := results[0].Interface(); err != nil {
+		return err.(error)
+	}
+
+	return nil
+}
+
+type reqMeta struct {
+	req *transport.Request
+}
+
+func (r reqMeta) Caller() string {
+	return r.req.Caller
+}
+
+func (r reqMeta) Encoding() transport.Encoding {
+	return r.req.Encoding
+}
+
+func (r reqMeta) Headers() yarpc.Headers {
+	return yarpc.Headers(r.req.Headers)
+}
+
+func (r reqMeta) Procedure() string {
+	return r.req.Procedure
+}
+
+func (r reqMeta) Service() string {
+	return r.req.Service
+}

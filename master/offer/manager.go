@@ -5,13 +5,13 @@ import (
 
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/master/mesos"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"go.uber.org/yarpc"
 	sched "mesos/v1/scheduler"
 )
 
-func InitManager(d yarpc.Dispatcher, offerHoldTime time.Duration, offerPruningPeriod time.Duration) *OfferManager {
-	pool := NewOfferPool(d, offerHoldTime)
+func InitManager(d yarpc.Dispatcher, offerHoldTime time.Duration, offerPruningPeriod time.Duration, client mpb.Client) *OfferManager {
+	pool := NewOfferPool(d, offerHoldTime, client)
 	m := OfferManager{
 		offerPool:   pool,
 		offerPruner: NewOfferPruner(pool, offerPruningPeriod, d),
@@ -25,7 +25,7 @@ func InitManager(d yarpc.Dispatcher, offerHoldTime time.Duration, offerPruningPe
 
 	for typ, hdl := range procedures {
 		name := typ.String()
-		mjson.Register(d, mesos.ServiceName, mjson.Procedure(name, hdl))
+		mpb.Register(d, mesos.ServiceName, mpb.Procedure(name, hdl))
 	}
 	return &m
 }

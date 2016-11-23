@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"golang.org/x/net/context"
@@ -37,10 +37,10 @@ type OfferPool interface {
 
 // NewOfferPool creates a offerPool object and registers the
 // corresponding YARPC procedures.
-func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration) OfferPool {
+func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration, client mpb.Client) OfferPool {
 	pool := &offerPool{
 		offers:                     make(map[string]*Offer),
-		client:                     mjson.New(d.Channel("mesos-master")),
+		client:                     client,
 		agentOfferIndex:            make(map[string]*Offer),
 		mesosFrameworkInfoProvider: master_mesos.GetSchedulerDriver(),
 	}
@@ -66,7 +66,7 @@ type offerPool struct {
 	offers map[string]*Offer
 	// Time to hold offer for
 	offerHoldTime              time.Duration
-	client                     mjson.Client
+	client                     mpb.Client
 	mesosFrameworkInfoProvider master_mesos.MesosFrameworkInfoProvider
 }
 

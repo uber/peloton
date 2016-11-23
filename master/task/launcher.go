@@ -6,7 +6,7 @@ import (
 	"code.uber.internal/go-common.git/x/log"
 	master_mesos "code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/util"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mjson"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"go.uber.org/yarpc"
 
 	mesos "mesos/v1"
@@ -20,18 +20,17 @@ type TaskLauncher interface {
 }
 
 type taskLauncher struct {
-	client mjson.Client
+	client mpb.Client
 }
 
 var instance *taskLauncher
 var once sync.Once
 
 // GetTaskLauncher returns the task launcher
-func GetTaskLauncher(d yarpc.Dispatcher) *taskLauncher {
+func GetTaskLauncher(d yarpc.Dispatcher, mesosClient mpb.Client) *taskLauncher {
 	once.Do(func() {
-		client := mjson.New(d.Channel("mesos-master"))
 		instance = &taskLauncher{
-			client: client,
+			client: mesosClient,
 		}
 	})
 	return instance
