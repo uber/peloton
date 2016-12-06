@@ -49,7 +49,7 @@ package() {(
         --iteration "$BUILD_ITERATION"
         --description
 "Peloton is Uber's meta-framework for managing, scheduling and upgrading jobs on Mesos clusters.
- It has a few unique design priciples that differentiates itself from other Mesos meta-frameworks"
+ It has a few unique design principles that differentiates itself from other Mesos meta-frameworks"
         --url=https://code.uberinternal.com/w/repo/infra/peloton/
         --license Uber
         -a amd64
