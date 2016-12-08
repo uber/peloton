@@ -1,0 +1,41 @@
+# ZK configs
+zk_image: netflixoss/exhibitor:1.5.2
+default_zk_port: 2181
+local_zk_port: 8192
+zk_container: peloton-zk
+
+# Mesos configs
+mesos_master_image: mesosphere/mesos-master:1.0.1-rc1
+mesos_slave_image: mesosphere/mesos-slave:1.0.1-rc1
+mesos_master_container: peloton-mesos-master
+mesos_agent_container: peloton-mesos-agent
+num_agents: 3
+
+# Mesos master configs
+master_port: 5050
+quorum: 1
+registry: in_memory
+
+# Mesos slave configs
+agent_port: 5051
+switch_user: 0
+containers: docker,mesos
+log_dir: /var/log/mesos
+isolation: filesystem/linux,namespaces/pid,docker/runtime,cgroups/cpu,cgroups/mem,disk/du
+image_providers: appc,docker
+image_provisioner_backend: copy
+appc_store_dir: /tmp/mesos/images/appc
+work_dir: /var/lib/mesos
+resources: cpus(peloton-master):0.5;cpus(*):3.5;mem(peloton-master):1024;disk(*):20000;gpus(*):4;mem(*):1024
+modules: file:///etc/mesos-slave/modules
+resource_estimator: org_apache_mesos_FixedResourceEstimator
+
+# Mysql configs
+mysql_image: mysql/mysql-server:5.7.15
+default_mysql_port: 3306
+local_mysql_port: 8193
+mysql_root_password: peloton-root
+mysql_database: peloton
+mysql_user: peloton
+mysql_password: peloton
+mysql_container: peloton-mysql

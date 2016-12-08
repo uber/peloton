@@ -28,7 +28,7 @@ udeploy-replicator. Peloton will use the same job upgrade workflow to
 upgrade an uConfig version by simplying changing the URL of a remote
 volume.
 
-[Runbook WIP](https://code.uberinternal.com/w/runbooks/peloton/)
+[Runbook](https://code.uberinternal.com/w/runbooks/peloton/)
 
 ## Install
 
@@ -54,8 +54,9 @@ make
 
 ## Run Peloton master
 
-To run peloton in dev environment, dependencies like mesos/mysql, need to be set up first. Run 'make bootstrap-dev' to
-bootstrap those dependencies in containers. Refer to "docker/README.md" for details.
+To run peloton in dev environment, dependencies like mesos/mysql, need to be set up first.
+Run 'docker/pcluster.py setup' to bootstrap those dependencies in containers.
+Refer to "docker/README.md" for details.
 
 PELOTON_HOME=$GOPATH/src/code.uber.internal/infra/peloton
 
@@ -65,7 +66,8 @@ UBER_ENVIRONMENT=development
 
 bin/peloton-master
 
-By default, it runs peloton master at port 5289. To run another peloton master, run with env var 'MASTER_PORT=5290'
+By default, it runs peloton master at port 5289. To run another peloton master instance,
+set env var 'MASTER_PORT=5290'
 
 
 ## Test Peloton master
@@ -77,7 +79,7 @@ cd $GOPATH/src/code.uber.internal/infra/peloton
 bin/peloton-client job create --master http://localhost:5289 --jobid test --yaml test/testjob.yaml
 
 
-2. Curl into peloton endpoint (To be updated) :
+2. Curl into peloton endpoint (Deprecated) :
 
 curl -X POST  \
      -H 'content-type: application/json'  \
