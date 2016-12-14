@@ -58,13 +58,7 @@ To run peloton in dev environment, dependencies like mesos/mysql, need to be set
 Run 'docker/pcluster.py setup' to bootstrap those dependencies in containers.
 Refer to "docker/README.md" for details.
 
-PELOTON_HOME=$GOPATH/src/code.uber.internal/infra/peloton
-
-UBER_CONFIG_DIR=$PELOTON_HOME/config/master
-
-UBER_ENVIRONMENT=development
-
-bin/peloton-master
+PELOTON_HOME=$GOPATH/src/code.uber.internal/infra/peloton UBER_CONFIG_DIR=$PELOTON_HOME/config/master UBER_ENVIRONMENT=development bin/peloton-master
 
 By default, it runs peloton master at port 5289. To run another peloton master instance,
 set env var 'MASTER_PORT=5290'

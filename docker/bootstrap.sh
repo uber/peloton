@@ -1,7 +1,9 @@
 #!/bin/bash
 
+pushd $(dirname $0)
 source config
 source mesos_config/config
+[[ $(uname) == Darwin ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
 echo "clean up existing containers before bootstrapping the environment"
 ./cleanup.sh
@@ -23,18 +25,18 @@ fi
 
 # run zk
 echo "run zk container"
-sudo docker run -d --name $ZK_CONTAINER -p $LOCAL_ZK_PORT:$DEFAULT_ZK_PORT \
+$docker_cmd run -d --name $ZK_CONTAINER -p $LOCAL_ZK_PORT:$DEFAULT_ZK_PORT \
   -v $(pwd)/scripts:/scripts \
   netflixoss/exhibitor:$ZK_EXHIBITOR_VERSION
 
 sleep 10
 
 # set up zk nodes
-sudo docker exec $ZK_CONTAINER /scripts/setup_zk.sh
+$docker_cmd exec $ZK_CONTAINER /scripts/setup_zk.sh
 
 # run master
 echo "run mesos master container"
-sudo docker run -d --name $MESOS_MASTER_CONTAINER --privileged \
+$docker_cmd run -d --name $MESOS_MASTER_CONTAINER --privileged \
   -e MESOS_LOG_DIR=/var/log/mesos \
   -e MESOS_PORT=$MASTER_PORT \
   -e MESOS_ZK=zk://$hostIp:$LOCAL_ZK_PORT/mesos \
@@ -52,7 +54,7 @@ for ((i=0; i<$NUM_AGENTS; i++)); do
    echo "run mesos slave container"$i
    container_name=$MESOS_AGENT_CONTAINER$i
    agent_port=$(($AGENT_PORT + $i))
-   sudo docker run -d --name $container_name --privileged \
+   $docker_cmd run -d --name $container_name --privileged \
      -e MESOS_LOG_DIR=/var/log/mesos \
      -e MESOS_PORT=$agent_port \
      -e MESOS_MASTER=zk://$hostIp:$LOCAL_ZK_PORT/mesos \
@@ -78,7 +80,7 @@ done
 
 # run mysql
 echo "run mysql container"
-sudo docker run --name $MYSQL_CONTAINER -p $LOCAL_MYSQL_PORT:$DEFAULT_MYSQL_PORT -d \
+$docker_cmd run --name $MYSQL_CONTAINER -p $LOCAL_MYSQL_PORT:$DEFAULT_MYSQL_PORT -d \
    -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD \
    -e MYSQL_DATABASE=$MYSQL_DATABASE \
    -e MYSQL_USER=$MYSQL_USER \

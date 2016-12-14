@@ -1,13 +1,15 @@
 #!/bin/bash
-
+set -e
+pushd $(dirname $0)
 source config
+[[ $(uname) == Darwin ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
-sudo docker start $ZK_CONTAINER
-sudo docker start $MESOS_MASTER_CONTAINER
-sudo docker start $MYSQL_CONTAINER
+$docker_cmd start $ZK_CONTAINER
+$docker_cmd start $MESOS_MASTER_CONTAINER
+$docker_cmd start $MYSQL_CONTAINER
 
 # start mesos slave containers
 for ((i=0; i<$NUM_AGENTS; i++)); do
    container_name=$MESOS_AGENT_CONTAINER$i
-   sudo docker start $container_name
+   $docker_cmd start $container_name
 done
