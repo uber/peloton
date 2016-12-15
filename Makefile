@@ -72,7 +72,6 @@ devtools:
 
 %.pb.go: %.proto
 	@mkdir -p $(PBGEN_DIR)
-	@chmod -R 777 $(dir $(PBGEN_DIR))
 	${PROTOC} ${PROTOC_FLAGS} $<
 
 # Jenkins related tasks
@@ -96,7 +95,7 @@ lint: $(GOLINT)
 	fi;
 
 jenkins: devtools $(PBGENS)
+	@chmod -R 777 $(dir $(PBGEN_DIR))
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'
 	gocov-xml < coverage.json > coverage.xml
-	go test -v -race $(ALL_PKGS) | go-junit-report > junit.xml
 	$(MAKE) lint PHAB_COMMENT=.phabricator-comment
