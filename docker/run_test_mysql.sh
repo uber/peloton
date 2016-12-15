@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e
+
+# This script is called by 'make test'
+
 pushd $(dirname $0)
 [[ $(uname) == Darwin ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 

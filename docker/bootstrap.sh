@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo 'This script is being deprecated, run "pcluster.py setup" instead'
+
 pushd $(dirname $0)
 source config
 source mesos_config/config

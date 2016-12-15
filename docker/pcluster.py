@@ -27,7 +27,7 @@ __author__ = 'wu'
 
 
 #
-# get eth0 ip of the host
+# Get eth0 ip of the host
 # TODO: see if we can do better than running ipconfig/ifconfig
 #
 def get_host_ip():
@@ -40,7 +40,7 @@ def get_host_ip():
 
 
 #
-# load configs from file
+# Load configs from file
 #
 def load_config():
     config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
@@ -56,7 +56,7 @@ config = load_config()
 
 
 #
-# force remove container by name
+# Force remove container by name
 #
 def remove_existing_container(name):
     try:
@@ -68,11 +68,12 @@ def remove_existing_container(name):
 
 
 #
-# set up a personal cluster
+# Run mesos cluster
 #
-def setup():
-    # run zk
+def run_mesos():
+    # Run zk
     remove_existing_container(config['zk_container'])
+    cli.pull(config['zk_image'])
     container = cli.create_container(
         name=config['zk_container'],
         volumes=['/scripts'],
@@ -92,12 +93,13 @@ def setup():
     print 'sleep 10 secs for zk to come up'
     time.sleep(10)
 
-    # create zk nodes
+    # Create zk nodes
     exe = cli.exec_create(container=config['zk_container'], cmd='/scripts/setup_zk.sh')
     cli.exec_start(exec_id=exe)
 
-    # run mesos master
+    # Run mesos master
     remove_existing_container(config['mesos_master_container'])
+    cli.pull(config['mesos_master_image'])
     container = cli.create_container(
         name=config['mesos_master_container'],
         volumes=['/scripts'],
@@ -128,7 +130,8 @@ def setup():
     cli.start(container=container.get('Id'))
     print 'started container %s' % config['mesos_master_container']
 
-    # run mesos slaves
+    # Run mesos slaves
+    cli.pull(config['mesos_slave_image'])
     for i in range(0, config['num_agents']):
         agent = config['mesos_agent_container'] + repr(i)
         port = config['agent_port'] + i
@@ -175,8 +178,14 @@ def setup():
         cli.start(container=container.get('Id'))
         print 'started container %s' % agent
 
-    # run mysql
+
+#
+# Run mysql
+#
+def run_mysql():
+    # Run mysql
     remove_existing_container(config['mysql_container'])
+    cli.pull(config['mysql_image'])
     container = cli.create_container(
         name=config['mysql_container'],
         host_config=cli.create_host_config(
@@ -196,9 +205,78 @@ def setup():
     cli.start(container=container.get('Id'))
     print 'started container %s' % config['mysql_container']
 
+    print 'sleep 10 secs for mysql to come up'
+    time.sleep(10)
+
 
 #
-# tear down a personal cluster
+# Run cassandra cluster
+#
+def run_cassandra():
+    remove_existing_container(config['cassandra_container'])
+    cli.pull(config['cassandra_image'])
+    container = cli.create_container(
+        name=config['cassandra_container'],
+        host_config=cli.create_host_config(
+            port_bindings={
+                config['cassandra_cql_port']: config['cassandra_cql_port'],
+                config['cassandra_thrift_port']: config['cassandra_thrift_port'],
+            }
+        ),
+        image=config['cassandra_image'],
+        detach=True,
+    )
+    cli.start(container=container.get('Id'))
+    print 'started container %s' % config['cassandra_container']
+
+
+#
+# Run peloton (@wu: This is still experimental)
+#
+def run_peloton():
+    # On Mac, peloton can only be accessed by 'localhost:<port>'
+    # from inside a container, there is no such issue with Linux.
+    # TODO: update the docker run mechanism once T664460 is resolved
+    cli.pull(config['peloton_image'])
+    for i in range(0, config['peloton_master_instance_count']):
+        port = config['peloton_master_port'] + i
+        name = config['peloton_container'] + repr(i)
+        remove_existing_container(name)
+        container = cli.create_container(
+            name=name,
+            environment=[
+                'MASTER_PORT=' + repr(port)
+            ],
+            host_config=cli.create_host_config(
+                network_mode='host',
+            ),
+            # pull or build peloton image if not exists
+            image=config['peloton_image'],
+            detach=True,
+        )
+        cli.start(container=container.get('Id'))
+        print 'started container %s' % name
+
+
+#
+# Set up a personal cluster
+#
+def setup(enable_mesos=True, enable_mysql=True, enable_cassandra=True, enable_peloton=False):
+    if enable_mysql:
+        run_mysql()
+
+    if enable_mesos:
+        run_mesos()
+
+    if enable_cassandra:
+        run_cassandra()
+
+    if enable_peloton:
+        run_peloton()
+
+
+#
+# Tear down a personal cluster
 #
 def teardown():
     remove_existing_container(config['zk_container'])
@@ -210,6 +288,12 @@ def teardown():
         remove_existing_container(agent)
 
     remove_existing_container(config['mysql_container'])
+
+    remove_existing_container(config['cassandra_container'])
+
+    for i in range(0, config['peloton_master_instance_count']):
+        name = config['peloton_container'] + repr(i)
+        remove_existing_container(name)
 
 
 def main(argv):
@@ -227,8 +311,18 @@ USAGE
 
     subparsers = parser.add_subparsers(help='command help', dest='command')
 
-    # Subparser for the 'start' command
-    subparsers.add_parser('setup', help='set up a personal cluster')
+    # Subparser for the 'setup' command
+    parser_setup = subparsers.add_parser('setup', help='set up a personal cluster')
+    parser_setup.add_argument(
+        "-ep",
+        "--enable_peloton",
+        dest="enable_peloton",
+        action='store_true',
+        default=False,
+        help="enable peloton"
+    )
+
+    # Subparser for the 'teardown' command
     subparsers.add_parser('teardown', help='tear down a personal cluster')
 
     # Process arguments
@@ -237,7 +331,9 @@ USAGE
     command = args.command
 
     if command == 'setup':
-        setup()
+        setup(
+            enable_peloton=args.enable_peloton,
+        )
     elif command == 'teardown':
         teardown()
     else:

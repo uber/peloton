@@ -55,7 +55,7 @@ make
 ## Run Peloton master
 
 To run peloton in dev environment, dependencies like mesos/mysql, need to be set up first.
-Run 'docker/pcluster.py setup' to bootstrap those dependencies in containers.
+Run 'make pcluster' to bootstrap those dependencies in containers (docker-py installation is required, see bootstrap.sh for more details).
 Refer to "docker/README.md" for details.
 
 PELOTON_HOME=$GOPATH/src/code.uber.internal/infra/peloton UBER_CONFIG_DIR=$PELOTON_HOME/config/master UBER_ENVIRONMENT=development bin/peloton-master

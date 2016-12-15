@@ -1,8 +1,12 @@
+# TODO: make the configs hierarchical for each component
+
+
 # ZK configs
 zk_image: netflixoss/exhibitor:1.5.2
 default_zk_port: 2181
 local_zk_port: 8192
 zk_container: peloton-zk
+
 
 # Mesos configs
 mesos_master_image: mesosphere/mesos-master:1.0.1-rc1
@@ -30,6 +34,7 @@ resources: cpus(peloton-master):0.5;cpus(*):3.5;mem(peloton-master):1024;disk(*)
 modules: file:///etc/mesos-slave/modules
 resource_estimator: org_apache_mesos_FixedResourceEstimator
 
+
 # Mysql configs
 mysql_image: mysql/mysql-server:5.7.15
 default_mysql_port: 3306
@@ -39,3 +44,20 @@ mysql_database: peloton
 mysql_user: peloton
 mysql_password: peloton
 mysql_container: peloton-mysql
+
+
+# Cassandra configs
+cassandra_image: cassandra:3.9
+cassandra_container: peloton-cassandra
+cassandra_cql_port: 9042
+cassandra_thrift_port: 9160
+
+
+# Peloton configs
+# peloton image is expected to be available before running container,
+# it can be built by running "$PELOTON_HOME/packaging/build-docker.sh --tag pcluster",
+# refer to "$PELOTON_HOME/packaging/README.md" for more details
+peloton_image: infra/peloton:pcluster
+peloton_container: peloton_container
+peloton_master_port: 5289
+peloton_master_instance_count: 2

@@ -59,8 +59,9 @@ test: $(GOCOV) $(PBGENS)
 	bash docker/run_test_mysql.sh
 	gocov test $(ALL_PKGS) | gocov report
 
-bootstrap-dev:
-	cd docker && bash bootstrap.sh
+pcluster:
+	# installaltion of docker-py is required, see "bootstrap.sh" / "docker/README.md" for more info
+	docker/pcluster.py setup
 
 devtools:
 	@echo "Installing tools"

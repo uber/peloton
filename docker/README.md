@@ -1,21 +1,15 @@
-This folder includes scripts to launch all dependencies in different containers on localhost : zk, mesos master, mesos agent, mysql.
-Docker installation is required, expected version : 1.12.1. Update 'NUM_AGENTS' in docker/config to change number of mesos slaves,
-by default 3 agents.
+This folder includes scripts to locally run and manage a personal dev env cluster in containers.
+Dependencies:
+1) docker engine: expected version >=1.12.1
+2) docker-py: run "pip install docker-py" or "$PELOTON_HOME/bootstrap.sh" to install
+Update 'num_agents' in config.yaml to change number of mesos slaves, by default 3 agents.
 
 Usage:
 
-To bootstrap the environment (clean up old containers if exist and launch brand new ones) :
+To bootstrap the local dev env cluster (clean up existing containers and launch brand new ones) :
 
-./bootstrap.sh
+$PELOTON_HOME/docker/pcluster.py setup
 
-To stop all containers :
+To destroy the local dev env cluster (clean up all existing containers):
 
-./stop.sh
-
-To start all containers :
-
-./start.sh
-
-To clean up all existing containers :
-
-./cleanup.sh
+$PELOTON_HOME/docker/pcluster.py teardown
