@@ -12,6 +12,7 @@ TAG=test-peloton
 # keys inside the container
 setup_gopath() {
     mkdir -p .tmp/.goroot/src/${PROJECT_ROOT}
+    chmod -R 777 .tmp
     ln -s ${workspace} .tmp/.goroot/src/${PROJECT_ROOT}/${PROJECT_NAME}
     GOPATH=${workspace}/.tmp/.goroot
     export GOPATH
