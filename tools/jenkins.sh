@@ -12,12 +12,12 @@ DOCKER_NET_ARGS="--net=host"
 
 # Builds the peloton docker container with all the dependencies
 build_peloton_container() {
-    ./docker/peloton/build.sh $1
+    ${workspace}/tools/peloton-dev/build.sh $1
 }
 
 # Starts mysql ins a separate container as a peer to the peloton container
 run_mysql_container(){
-    ./docker/run_test_mysql.sh
+    ${workspace}/docker/run_test_mysql.sh
 }
 
 # Runs `make jenkins` inside the peloton container
