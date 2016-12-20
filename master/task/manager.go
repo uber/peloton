@@ -13,6 +13,7 @@ import (
 	"peloton/task"
 )
 
+// InitManager initializes the TaskManager
 func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore) {
 
 	handler := taskManager{
@@ -80,7 +81,12 @@ func (m *taskManager) List(
 			},
 		}, nil, nil
 	}
-	result, err := m.taskStore.GetTasksForJobByRange(body.JobId, body.Range)
+	var result map[uint32]*task.TaskInfo
+	if body.Range == nil {
+		result, err = m.taskStore.GetTasksForJob(body.JobId)
+	} else {
+		result, err = m.taskStore.GetTasksForJobByRange(body.JobId, body.Range)
+	}
 	if err != nil || len(result) == 0 {
 		return &task.ListResponse{
 			NotFound: &job.JobNotFound{

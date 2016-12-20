@@ -3,6 +3,18 @@
     "flake8": {
       "type": "flake8",
       "include": "(\\.py$)"
+    },
+    "gofmt": {
+      "type": "gofmt",
+      "include": "(\\.go$)"
+    },
+    "golint": {
+      "type": "golint",
+      "include": "(\\.go$)"
+    },
+    "govet": {
+      "type": "govet",
+      "include": "(\\.go$)"
     }
   }
 }

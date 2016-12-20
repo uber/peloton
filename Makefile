@@ -42,7 +42,7 @@ install:
 	glide install
 
 client:
-	go build -o ./$(BIN_DIR)/peloton-client cli/peloton-client.go
+	go build -o ./$(BIN_DIR)/peloton cli/*.go
 
 cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
@@ -53,7 +53,7 @@ clean:
 	rm -rf $(BIN_DIR)
 
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
-	gofmt -w $(FMT_SRC)
+	gofmt -s -w $(FMT_SRC)
 
 test: $(GOCOV) $(PBGENS)
 	bash docker/run_test_mysql.sh
