@@ -14,8 +14,8 @@ import (
 	"peloton/task"
 )
 
-// TaskLauncher is the interface to launch a set of tasks using an offer
-type TaskLauncher interface {
+// Launcher is the interface to launch a set of tasks using an offer
+type Launcher interface {
 	LaunchTasks(offer *mesos.Offer, tasks []*task.TaskInfo) error
 }
 
@@ -27,7 +27,7 @@ var instance *taskLauncher
 var once sync.Once
 
 // GetTaskLauncher returns the task launcher
-func GetTaskLauncher(d yarpc.Dispatcher, mesosClient mpb.Client) *taskLauncher {
+func GetTaskLauncher(d yarpc.Dispatcher, mesosClient mpb.Client) Launcher {
 	once.Do(func() {
 		instance = &taskLauncher{
 			client: mesosClient,
@@ -65,7 +65,7 @@ func (t *taskLauncher) LaunchTasks(
 		},
 	}
 	// TODO: add retry / put back offer and tasks in failure scenarios
-	msid := master_mesos.GetSchedulerDriver().GetMesosStreamId()
+	msid := master_mesos.GetSchedulerDriver().GetMesosStreamID()
 	err := t.client.Call(msid, msg)
 	if err != nil {
 		log.Warnf("Failed to launch %v tasks using offer %v, err=%v",

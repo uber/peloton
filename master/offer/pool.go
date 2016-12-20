@@ -16,9 +16,9 @@ import (
 	"peloton/master/offerpool"
 )
 
-// OfferPool caches a set of offers received from Mesos master. It is
+// Pool caches a set of offers received from Mesos master. It is
 // currently only instantiated at the leader of Peloton masters.
-type OfferPool interface {
+type Pool interface {
 	// Add offers to the pool
 	AddOffers([]*mesos.Offer) error
 
@@ -37,7 +37,7 @@ type OfferPool interface {
 
 // NewOfferPool creates a offerPool object and registers the
 // corresponding YARPC procedures.
-func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration, client mpb.Client) OfferPool {
+func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration, client mpb.Client) Pool {
 	pool := &offerPool{
 		offers:                     make(map[string]*Offer),
 		client:                     client,
@@ -58,16 +58,16 @@ type Offer struct {
 type offerPool struct {
 	sync.Mutex
 
-	// agentOfferIndex -- key: agentId, value: Offer
+	// agentOfferIndex -- key: agentID, value: Offer
 	agentOfferIndex map[string]*Offer
 
 	// Set of offers received from Mesos master
-	// key -- offerId, value: offer
+	// key -- offerID, value: offer
 	offers map[string]*Offer
 	// Time to hold offer for
 	offerHoldTime              time.Duration
 	client                     mpb.Client
-	mesosFrameworkInfoProvider master_mesos.MesosFrameworkInfoProvider
+	mesosFrameworkInfoProvider master_mesos.FrameworkInfoProvider
 }
 
 func (p *offerPool) GetOffers(
@@ -82,10 +82,10 @@ func (p *offerPool) GetOffers(
 
 	count := uint32(0)
 	offers := []*mesos.Offer{}
-	for agentId, agentOffer := range p.agentOfferIndex {
-		delete(p.agentOfferIndex, agentId)
-		offerId := *agentOffer.MesosOffer.Id.Value
-		delete(p.offers, offerId)
+	for agentID, agentOffer := range p.agentOfferIndex {
+		delete(p.agentOfferIndex, agentID)
+		offerID := *agentOffer.MesosOffer.Id.Value
+		delete(p.offers, offerID)
 		offers = append(offers, agentOffer.MesosOffer)
 		count++
 		if count >= limit {
@@ -106,26 +106,26 @@ func (p *offerPool) AddOffers(offers []*mesos.Offer) error {
 	var hostContainsOffersToReject = make(map[string]bool)
 	var offersToReject = make(map[string]*Offer)
 	for _, offer := range offers {
-		offerId := *offer.Id.Value
-		agentId := *offer.AgentId.Value
+		offerID := *offer.Id.Value
+		agentID := *offer.AgentId.Value
 		o := Offer{MesosOffer: offer, Timestamp: time.Now()}
 		// if on the host, there is offer that need to be rejected,
 		// then reject current offer
-		if hostContainsOffersToReject[agentId] {
-			offersToReject[offerId] = &o
-		} else if existingOffer, ok := p.agentOfferIndex[agentId]; !ok {
-			// there is no offer under agentId in agentOfferIndex, add the incoming offer
-			p.agentOfferIndex[agentId] = &o
-			p.offers[offerId] = &o
+		if hostContainsOffersToReject[agentID] {
+			offersToReject[offerID] = &o
+		} else if existingOffer, ok := p.agentOfferIndex[agentID]; !ok {
+			// there is no offer under agentID in agentOfferIndex, add the incoming offer
+			p.agentOfferIndex[agentID] = &o
+			p.offers[offerID] = &o
 		} else {
 			// otherwise reject both
-			hostContainsOffersToReject[agentId] = true
-			offersToReject[offerId] = &o
-			existingOfferId := *existingOffer.MesosOffer.Id.Value
-			offersToReject[existingOfferId] = existingOffer
+			hostContainsOffersToReject[agentID] = true
+			offersToReject[offerID] = &o
+			existingOfferID := *existingOffer.MesosOffer.Id.Value
+			offersToReject[existingOfferID] = existingOffer
 
-			delete(p.agentOfferIndex, agentId)
-			delete(p.offers, offerId)
+			delete(p.agentOfferIndex, agentID)
+			delete(p.offers, offerID)
 		}
 	}
 	if len(offersToReject) > 0 {
@@ -140,18 +140,18 @@ func (p *offerPool) AddOffers(offers []*mesos.Offer) error {
 	return nil
 }
 
-func (p *offerPool) RescindOffer(offerId *mesos.OfferID) error {
+func (p *offerPool) RescindOffer(offerID *mesos.OfferID) error {
 	defer p.Unlock()
 	p.Lock()
 
 	// No-op if offer does not exist
-	if offer, ok := p.offers[*offerId.Value]; ok {
-		agentId := *offer.MesosOffer.AgentId.Value
-		delete(p.agentOfferIndex, agentId)
+	if offer, ok := p.offers[*offerID.Value]; ok {
+		agentID := *offer.MesosOffer.AgentId.Value
+		delete(p.agentOfferIndex, agentID)
 	}
-	delete(p.offers, *offerId.Value)
+	delete(p.offers, *offerID.Value)
 
-	log.Debugf("OfferPool: rescinded offer %v", *offerId.Value)
+	log.Debugf("OfferPool: rescinded offer %v", *offerID.Value)
 	return nil
 }
 
@@ -163,15 +163,15 @@ func (p *offerPool) RemoveExpiredOffers() map[string]*Offer {
 
 	offersToDecline := map[string]*Offer{}
 	// TODO: fix and revive code path below once T628276 is done
-	for offerId, offer := range p.offers {
+	for offerID, offer := range p.offers {
 		offerHoldTime := offer.Timestamp.Add(p.offerHoldTime)
 		if time.Now().After(offerHoldTime) {
-			log.Debugf("Offer %v has expired, removed from offer pool", offerId)
+			log.Debugf("Offer %v has expired, removed from offer pool", offerID)
 			// Save offer map so we can put offers back to pool to retry if mesos decline call fails
-			offersToDecline[offerId] = offer
-			delete(p.offers, offerId)
-			agentId := *offer.MesosOffer.AgentId.Value
-			delete(p.agentOfferIndex, agentId)
+			offersToDecline[offerID] = offer
+			delete(p.offers, offerID)
+			agentID := *offer.MesosOffer.AgentId.Value
+			delete(p.agentOfferIndex, agentID)
 		}
 	}
 	return offersToDecline
@@ -195,13 +195,13 @@ func (p *offerPool) DeclineOffers(offers map[string]*Offer) error {
 	log.Debugf("OfferPool: decline offers %v", offerIDs)
 	callType := sched.Call_DECLINE
 	msg := &sched.Call{
-		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkId(),
+		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkID(),
 		Type:        &callType,
 		Decline: &sched.Call_Decline{
 			OfferIds: offerIDs,
 		},
 	}
-	msid := p.mesosFrameworkInfoProvider.GetMesosStreamId()
+	msid := p.mesosFrameworkInfoProvider.GetMesosStreamID()
 	err := p.client.Call(msid, msg)
 	if err != nil {
 		// Ideally, we assume that Mesos has offer_timeout configured, so in the event that
@@ -214,8 +214,8 @@ func (p *offerPool) DeclineOffers(offers map[string]*Offer) error {
 		p.Lock()
 		for id, offer := range offers {
 			p.offers[id] = offer
-			agentId := *offer.MesosOffer.AgentId.Value
-			p.agentOfferIndex[agentId] = offer
+			agentID := *offer.MesosOffer.AgentId.Value
+			p.agentOfferIndex[agentID] = offer
 		}
 		return err
 	}

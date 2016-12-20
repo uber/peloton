@@ -23,8 +23,10 @@ import (
 )
 
 const (
+	// GetOfferTimeout is the timeout value for get offer request
 	GetOfferTimeout = 1 * time.Second
-	GetTaskTimeout  = 1 * time.Second
+	// GetTaskTimeout is the timeout value for get task request
+	GetTaskTimeout = 1 * time.Second
 )
 
 // InitManager inits the schedulerManager
@@ -45,7 +47,7 @@ type schedulerManager struct {
 	rootCtx    context.Context
 	started    int32
 	shutdown   int32
-	launcher   master_task.TaskLauncher
+	launcher   master_task.Launcher
 }
 
 func (s *schedulerManager) Start() {
@@ -89,7 +91,7 @@ func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 func (s *schedulerManager) assignTasksToOffer(
 	tasks []*task.TaskInfo, offer *mesos.Offer) []*task.TaskInfo {
 	remain := util.GetOfferScalarResourceSummary(offer)
-	offerId := offer.GetId().Value
+	offerID := offer.GetId().Value
 	nTasks := len(tasks)
 	var selectedTasks []*task.TaskInfo
 	for i := 0; i < nTasks; i++ {
@@ -107,7 +109,7 @@ func (s *schedulerManager) assignTasksToOffer(
 		s.launcher.LaunchTasks(offer, selectedTasks)
 
 		log.Infof("Launched %v tasks on %v using offer %v", len(selectedTasks),
-			offer.GetHostname(), *offerId)
+			offer.GetHostname(), *offerID)
 	}
 	return tasks
 }

@@ -10,21 +10,21 @@ import (
 )
 
 const (
-	RunningState_NotStarted = 0
-	RunningState_Running    = 1
+	runningStateNotStarted = 0
+	runningStateRunning    = 1
 )
 
-// OfferPruner prunes offers
-type OfferPruner interface {
+// Pruner prunes offers
+type Pruner interface {
 	Start()
 	Stop()
 }
 
 // NewOfferPruner initiates an instance of OfferPruner
-func NewOfferPruner(pool OfferPool, offerPruningPeriod time.Duration, d yarpc.Dispatcher) OfferPruner {
+func NewOfferPruner(pool Pool, offerPruningPeriod time.Duration, d yarpc.Dispatcher) Pruner {
 	pruner := &offerPruner{
 		pool:               pool,
-		runningState:       RunningState_NotStarted,
+		runningState:       runningStateNotStarted,
 		offerPruningPeriod: offerPruningPeriod,
 		stopPrunerChan:     make(chan struct{}, 1),
 	}
@@ -36,7 +36,7 @@ type offerPruner struct {
 	sync.Mutex
 
 	runningState       int32
-	pool               OfferPool
+	pool               Pool
 	offerPruningPeriod time.Duration
 	stopPrunerChan     chan struct{}
 }
@@ -46,15 +46,15 @@ func (p *offerPruner) Start() {
 	defer p.Unlock()
 	p.Lock()
 
-	if p.runningState == RunningState_Running {
+	if p.runningState == runningStateRunning {
 		log.Warn("Offer prunner is already running, no action will be performed")
 		return
 	}
 
 	started := make(chan int, 1)
 	go func() {
-		defer atomic.StoreInt32(&p.runningState, RunningState_NotStarted)
-		atomic.StoreInt32(&p.runningState, RunningState_Running)
+		defer atomic.StoreInt32(&p.runningState, runningStateNotStarted)
+		atomic.StoreInt32(&p.runningState, runningStateRunning)
 
 		log.Info("Starting offer pruning loop")
 		started <- 0
@@ -85,7 +85,7 @@ func (p *offerPruner) Stop() {
 	defer p.Unlock()
 	p.Lock()
 
-	if p.runningState == RunningState_NotStarted {
+	if p.runningState == runningStateNotStarted {
 		log.Warn("Offer prunner is already stopped, no action will be performed")
 		return
 	}
@@ -96,7 +96,7 @@ func (p *offerPruner) Stop() {
 	// Wait for pruner to be stopped, should happen pretty quickly
 	for {
 		runningState := atomic.LoadInt32(&p.runningState)
-		if runningState == RunningState_Running {
+		if runningState == runningStateRunning {
 			time.Sleep(10 * time.Millisecond)
 		} else {
 			break

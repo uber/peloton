@@ -1,6 +1,6 @@
 package mesos
 
-// Mesos specific configuration
+// Config for mesos specific configuration
 type Config struct {
 	HostPort  string           `yaml:"host_port"`
 	Framework *FrameworkConfig `yaml:"framework"`
@@ -8,7 +8,7 @@ type Config struct {
 	Encoding  string           `yaml:"encoding"`
 }
 
-// Framework specific configuration
+// FrameworkConfig for framework specific configuration
 type FrameworkConfig struct {
 	User            string  `yaml:"user"`
 	Name            string  `yaml:"name"`
@@ -16,4 +16,5 @@ type FrameworkConfig struct {
 	Principal       string  `yaml:"principal"`
 	FailoverTimeout float64 `yaml:"failover_timeout"`
 	Checkpoint      bool    `yaml:"checkpoint"`
+	GPUSupported    bool    `yaml:"gpu_suported"`
 }

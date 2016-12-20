@@ -14,7 +14,7 @@ import (
 	sched "mesos/v1/scheduler"
 )
 
-// InitTaskUpdateManager init the task state manager
+// InitTaskStateManager init the task state manager
 func InitTaskStateManager(
 	d yarpc.Dispatcher,
 	jobStore storage.JobStore,
@@ -49,11 +49,11 @@ func (m *taskStateManager) Update(
 	log.WithField("Task update", taskUpdate).Debugf(
 		"taskManager: Update called")
 
-	taskId := taskUpdate.GetStatus().GetTaskId().GetValue()
-	taskInfo, err := m.TaskStore.GetTaskById(taskId)
+	taskID := taskUpdate.GetStatus().GetTaskId().GetValue()
+	taskInfo, err := m.TaskStore.GetTaskById(taskID)
 	if err != nil {
-		log.Errorf("Fail to find taskInfo for taskId %v, err=%v",
-			taskId, err)
+		log.Errorf("Fail to find taskInfo for taskID %v, err=%v",
+			taskID, err)
 		return err
 	}
 	state := util.MesosStateToPelotonState(taskUpdate.GetStatus().GetState())
@@ -63,8 +63,8 @@ func (m *taskStateManager) Update(
 	taskInfo.GetRuntime().State = state
 	err = m.TaskStore.UpdateTask(taskInfo)
 	if err != nil {
-		log.Errorf("Fail to update taskInfo for taskId %v, new state %v, err=%v",
-			taskId, state, err)
+		log.Errorf("Fail to update taskInfo for taskID %v, new state %v, err=%v",
+			taskID, state, err)
 		return err
 	}
 	if taskUpdate.Status.Uuid != nil && len(taskUpdate.Status.Uuid) > 0 {
@@ -79,7 +79,7 @@ func (m *taskStateManager) Update(
 func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *mesos_v1_scheduler.Event_Update) error {
 	callType := sched.Call_ACKNOWLEDGE
 	msg := &sched.Call{
-		FrameworkId: master_mesos.GetSchedulerDriver().GetFrameworkId(),
+		FrameworkId: master_mesos.GetSchedulerDriver().GetFrameworkID(),
 		Type:        &callType,
 		Acknowledge: &sched.Call_Acknowledge{
 			AgentId: taskUpdate.Status.AgentId,
@@ -87,7 +87,7 @@ func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *mesos_v1_scheduler.
 			Uuid:    taskUpdate.Status.Uuid,
 		},
 	}
-	msid := master_mesos.GetSchedulerDriver().GetMesosStreamId()
+	msid := master_mesos.GetSchedulerDriver().GetMesosStreamID()
 	err := m.client.Call(msid, msg)
 	if err != nil {
 		log.Errorf("Failed to ack task update %v, err=%v", *taskUpdate, err)

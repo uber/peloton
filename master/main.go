@@ -56,12 +56,13 @@ type pelotonMaster struct {
 	mutex                  *sync.Mutex
 	localPelotonMasterAddr string
 	mesosDetector          mesos.MasterDetector
-	offerManager           *offer.OfferManager
+	offerManager           *offer.Manager
 }
 
-func NewPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOutbound transport.Outbound, tq *task.TaskQueue,
+// newPelotonMaster creates a peloton master struct
+func newPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOutbound transport.Outbound, tq *task.TaskQueue,
 	store *mysql.MysqlJobStore, cfg *AppConfig, localPelotonMasterAddr string, mesosDetector mesos.MasterDetector,
-	om *offer.OfferManager) *pelotonMaster {
+	om *offer.Manager) *pelotonMaster {
 	result := pelotonMaster{
 		mesosInbound:          mInbound,
 		pelotonMasterOutbound: pOutbound,
@@ -217,9 +218,9 @@ func main() {
 	inbounds = append(inbounds, mInbound)
 
 	// TODO: update mesos url when leading mesos master changes
-	mesosUrl := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
+	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
 
-	mOutbound := mhttp.NewOutbound(mesosUrl)
+	mOutbound := mhttp.NewOutbound(mesosURL)
 	// The leaderUrl for pOutbound would be updated by leader election NewLeaderCallBack once leader is elected
 	pOutbound := http.NewOutbound("")
 	outbounds := transport.Outbounds{
@@ -263,7 +264,7 @@ func main() {
 	}
 	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, cfg.Master.Port)
 
-	pMaster := NewPelotonMaster(mInbound, mOutbound, pOutbound, tq, store, &cfg, localPelotonMasterAddr,
+	pMaster := newPelotonMaster(mInbound, mOutbound, pOutbound, tq, store, &cfg, localPelotonMasterAddr,
 		mesosMasterDetector, om)
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 

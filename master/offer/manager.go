@@ -10,9 +10,10 @@ import (
 	sched "mesos/v1/scheduler"
 )
 
-func InitManager(d yarpc.Dispatcher, offerHoldTime time.Duration, offerPruningPeriod time.Duration, client mpb.Client) *OfferManager {
+// InitManager inits the offer manager
+func InitManager(d yarpc.Dispatcher, offerHoldTime time.Duration, offerPruningPeriod time.Duration, client mpb.Client) *Manager {
 	pool := NewOfferPool(d, offerHoldTime, client)
-	m := OfferManager{
+	m := Manager{
 		offerPool:   pool,
 		offerPruner: NewOfferPruner(pool, offerPruningPeriod, d),
 	}
@@ -30,12 +31,14 @@ func InitManager(d yarpc.Dispatcher, offerHoldTime time.Duration, offerPruningPe
 	return &m
 }
 
-type OfferManager struct {
-	offerPool   OfferPool
-	offerPruner OfferPruner
+// Manager is the offer manager
+type Manager struct {
+	offerPool   Pool
+	offerPruner Pruner
 }
 
-func (m *OfferManager) Offers(
+// Offers is the mesos callback that sends the offers from master
+func (m *Manager) Offers(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	event := body.GetOffers()
@@ -45,7 +48,8 @@ func (m *OfferManager) Offers(
 	return nil
 }
 
-func (m *OfferManager) InverseOffers(
+// InverseOffers is the mesos callback that sends the InverseOffers from master
+func (m *Manager) InverseOffers(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	event := body.GetInverseOffers()
@@ -55,7 +59,8 @@ func (m *OfferManager) InverseOffers(
 	return nil
 }
 
-func (m *OfferManager) Rescind(
+// Rescind offers
+func (m *Manager) Rescind(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	event := body.GetRescind()
@@ -65,7 +70,8 @@ func (m *OfferManager) Rescind(
 	return nil
 }
 
-func (m *OfferManager) RescindInverseOffer(
+// RescindInverseOffer rescinds a inverse offer
+func (m *Manager) RescindInverseOffer(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	event := body.GetRescindInverseOffer()
@@ -74,13 +80,13 @@ func (m *OfferManager) RescindInverseOffer(
 }
 
 // Start runs startup related procedures
-func (m *OfferManager) Start() {
+func (m *Manager) Start() {
 	// Start offer pruner
 	m.offerPruner.Start()
 }
 
 // Stop runs shutdown related procedures
-func (m *OfferManager) Stop() {
+func (m *Manager) Stop() {
 	// Clean up all existing offers
 	m.offerPool.CleanupOffers()
 	// Stop offer pruner
