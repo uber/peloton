@@ -16,5 +16,5 @@ type FrameworkConfig struct {
 	Principal       string  `yaml:"principal"`
 	FailoverTimeout float64 `yaml:"failover_timeout"`
 	Checkpoint      bool    `yaml:"checkpoint"`
-	GPUSupported    bool    `yaml:"gpu_suported"`
+	GPUSupported    bool    `yaml:"gpu_supported"`
 }
