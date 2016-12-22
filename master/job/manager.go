@@ -1,9 +1,9 @@
 package job
 
 import (
+	"context"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage"
@@ -16,11 +16,12 @@ import (
 	"time"
 )
 
+// InitManager inits the jobManager
 func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore) {
 	handler := jobManager{
 		JobStore:  store,
 		TaskStore: taskStore,
-		client:    json.New(d.Channel("peloton-master")),
+		client:    json.New(d.ClientConfig("peloton-master")),
 		rootCtx:   context.Background(),
 	}
 	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
@@ -42,11 +43,11 @@ func (m *jobManager) Create(
 	reqMeta yarpc.ReqMeta,
 	body *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
-	jobId := body.Id
+	jobID := body.Id
 	jobConfig := body.Config
 
 	log.WithField("config", jobConfig).Info("Creating job with config")
-	err := m.JobStore.CreateJob(jobId, jobConfig, "peloton")
+	err := m.JobStore.CreateJob(jobID, jobConfig, "peloton")
 	if err != nil {
 		return &job.CreateResponse{
 			AlreadyExists: &job.JobAlreadyExists{
@@ -57,22 +58,22 @@ func (m *jobManager) Create(
 	}
 	// Create tasks for the job
 	for i := 0; i < int(body.Config.InstanceCount); i++ {
-		taskId := fmt.Sprintf("%s-%d", jobId.Value, i)
+		taskID := fmt.Sprintf("%s-%d", jobID.Value, i)
 		taskInfo := task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
 				State: task.RuntimeInfo_INITIALIZED,
 				TaskId: &mesos_v1.TaskID{
-					Value: &taskId,
+					Value: &taskID,
 				},
 			},
 			JobConfig:  jobConfig,
 			InstanceId: uint32(i),
-			JobId:      jobId,
+			JobId:      jobID,
 		}
-		log.Debugf("Creating %v =th task for job %v", i, jobId)
-		err := m.TaskStore.CreateTask(jobId, i, &taskInfo, "peloton")
+		log.Debugf("Creating %v =th task for job %v", i, jobID)
+		err := m.TaskStore.CreateTask(jobID, i, &taskInfo, "peloton")
 		if err != nil {
-			log.Errorf("Creating %v =th task for job %v failed with err=%v", i, jobId, err)
+			log.Errorf("Creating %v =th task for job %v failed with err=%v", i, jobID, err)
 			continue
 			// TODO : decide how to handle the case that some tasks
 			// failed to be added (rare)
@@ -88,7 +89,7 @@ func (m *jobManager) Create(
 		m.putTasks([]*task.TaskInfo{&taskInfo})
 	}
 	return &job.CreateResponse{
-		Result: jobId,
+		Result: jobID,
 	}, nil, nil
 }
 
@@ -132,7 +133,8 @@ func (m *jobManager) Delete(
 }
 
 func (m *jobManager) putTasks(tasks []*task.TaskInfo) error {
-	ctx, _ := context.WithTimeout(m.rootCtx, 10*time.Second)
+	ctx, cancelFunc := context.WithTimeout(m.rootCtx, 10*time.Second)
+	defer cancelFunc()
 	var response taskqueue.EnqueueResponse
 	var request = &taskqueue.EnqueueRequest{
 		Tasks: tasks,

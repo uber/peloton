@@ -10,14 +10,15 @@
 package upgrade
 
 import (
+	"context"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
 	"peloton/upgrade"
 )
 
+// InitManager inits the upgradeManager
 func InitManager(d yarpc.Dispatcher) {
 	handler := upgradeManager{}
 	json.Register(d, json.Procedure("UpgradeManager.Create", handler.Create))

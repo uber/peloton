@@ -16,22 +16,22 @@ type Client interface {
 	// Call performs an outbound Mesos JSON request.
 	//
 	// Returns an error if the request failed.
-	Call(mesosStreamId string, msg proto.Message) error
+	Call(mesosStreamID string, msg proto.Message) error
 }
 
 // New builds a new Mesos JSON client.
-func New(c transport.Channel, contentType string) Client {
-	return mpbClient{ch: c, contentType: contentType}
+func New(c transport.ClientConfig, contentType string) Client {
+	return mpbClient{cfg: c, contentType: contentType}
 }
 
 type mpbClient struct {
-	ch          transport.Channel
+	cfg         transport.ClientConfig
 	contentType string
 }
 
-func (c mpbClient) Call(mesosStreamId string, msg proto.Message) error {
+func (c mpbClient) Call(mesosStreamID string, msg proto.Message) error {
 	headers := yarpc.NewHeaders().
-		With("Mesos-Stream-Id", mesosStreamId).
+		With("Mesos-Stream-Id", mesosStreamID).
 		With("Content-Type", fmt.Sprintf("application/%s", c.contentType)).
 		With("Accept", fmt.Sprintf("application/%s", c.contentType))
 
@@ -41,8 +41,8 @@ func (c mpbClient) Call(mesosStreamId string, msg proto.Message) error {
 	}
 
 	treq := transport.Request{
-		Caller:    c.ch.Caller(),
-		Service:   c.ch.Service(),
+		Caller:    c.cfg.Caller(),
+		Service:   c.cfg.Service(),
 		Encoding:  Encoding,
 		Procedure: "Scheduler_Call",
 		Headers:   transport.Headers(headers),
@@ -50,7 +50,7 @@ func (c mpbClient) Call(mesosStreamId string, msg proto.Message) error {
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), 100*1000*time.Millisecond)
-	_, err = c.ch.GetOutbound().Call(ctx, &treq)
+	_, err = c.cfg.GetUnaryOutbound().Call(ctx, &treq)
 
 	// All Mesos calls are one-way so no need to decode response body
 	return err

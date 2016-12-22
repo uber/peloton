@@ -9,6 +9,7 @@ import (
 	sched "mesos/v1/scheduler"
 )
 
+// InitManager inits the mesosManager
 func InitManager(d yarpc.Dispatcher, mesosConfig *Config, store storage.FrameworkInfoStore) {
 	m := mesosManager{
 		store:       store,
@@ -39,10 +40,10 @@ func (m *mesosManager) Subscribed(
 
 	subscribed := body.GetSubscribed()
 	log.WithField("params", subscribed).Debug("mesosManager: subscribed called")
-	frameworkId := subscribed.GetFrameworkId().GetValue()
-	err := m.store.SetMesosFrameworkId(m.mesosConfig.Framework.Name, frameworkId)
+	frameworkID := subscribed.GetFrameworkId().GetValue()
+	err := m.store.SetMesosFrameworkID(m.mesosConfig.Framework.Name, frameworkID)
 	if err != nil {
-		log.Errorf("failed to SetMesosFrameworkId %v %v, err=%v", m.mesosConfig.Framework.Name, frameworkId, err)
+		log.Errorf("failed to SetMesosFrameworkId %v %v, err=%v", m.mesosConfig.Framework.Name, frameworkID, err)
 	}
 	return err
 }

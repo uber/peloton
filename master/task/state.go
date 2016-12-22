@@ -50,7 +50,7 @@ func (m *taskStateManager) Update(
 		"taskManager: Update called")
 
 	taskID := taskUpdate.GetStatus().GetTaskId().GetValue()
-	taskInfo, err := m.TaskStore.GetTaskById(taskID)
+	taskInfo, err := m.TaskStore.GetTaskByID(taskID)
 	if err != nil {
 		log.Errorf("Fail to find taskInfo for taskID %v, err=%v",
 			taskID, err)

@@ -4,10 +4,10 @@ import (
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
+	"context"
 	"fmt"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	"golang.org/x/net/context"
 	mesos "mesos/v1"
 	"peloton/job"
 	"peloton/master/taskqueue"
@@ -16,15 +16,17 @@ import (
 	"time"
 )
 
-func InitTaskQueue(d yarpc.Dispatcher) *TaskQueue {
-	tq := TaskQueue{}
+// InitTaskQueue inits the TaskQueue
+func InitTaskQueue(d yarpc.Dispatcher) *Queue {
+	tq := Queue{}
 	tq.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
 	json.Register(d, json.Procedure("TaskQueue.Enqueue", tq.Enqueue))
 	json.Register(d, json.Procedure("TaskQueue.Dequeue", tq.Dequeue))
 	return &tq
 }
 
-type TaskQueue struct {
+// Queue is the distributed task queue for peloton
+type Queue struct {
 	tqValue atomic.Value
 	// TODO: need to handle the case if dequeue RPC fails / follower is down
 	// which can lead to some tasks are dequeued and lost. We can find those tasks
@@ -32,7 +34,7 @@ type TaskQueue struct {
 }
 
 // Enqueue enqueues tasks into the queue
-func (q *TaskQueue) Enqueue(
+func (q *Queue) Enqueue(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *taskqueue.EnqueueRequest) (*taskqueue.EnqueueResponse, yarpc.ResMeta, error) {
@@ -46,7 +48,7 @@ func (q *TaskQueue) Enqueue(
 }
 
 // Dequeue dequeues tasks from the queue
-func (q *TaskQueue) Dequeue(
+func (q *Queue) Dequeue(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *taskqueue.DequeueRequest) (*taskqueue.DequeueResponse, yarpc.ResMeta, error) {
@@ -73,27 +75,27 @@ func (q *TaskQueue) Dequeue(
 // This is called then the peloton master becomes leader
 // TODO: 1. make this async and cancelable; 2. optimize by: select total task count, and task count in each state that need retry
 // so that we don't need to scan though all tasks
-func (q *TaskQueue) LoadFromDB(jobStore storage.JobStore, taskStore storage.TaskStore) error {
+func (q *Queue) LoadFromDB(jobStore storage.JobStore, taskStore storage.TaskStore) error {
 	jobs, err := jobStore.GetAllJobs()
 	if err != nil {
 		log.Errorf("Fail to get all jobs from DB, err=%v", err)
 		return err
 	}
 	log.Infof("jobs : %v", jobs)
-	for jobId, jobConf := range jobs {
-		err = q.refillQueue(jobId, jobConf, taskStore)
+	for jobID, jobConf := range jobs {
+		err = q.refillQueue(jobID, jobConf, taskStore)
 	}
 	return err
 }
 
 // refillQueue scan the tasks batch by batch, update / create task infos, also put those task records into the queue
-func (q *TaskQueue) refillQueue(jobId string, jobConf *job.JobConfig, taskStore storage.TaskStore) error {
-	log.Infof("Refill task queue for job %v", jobId)
+func (q *Queue) refillQueue(jobID string, jobConf *job.JobConfig, taskStore storage.TaskStore) error {
+	log.Infof("Refill task queue for job %v", jobID)
 	var batchSize = uint32(1000)
 
 	var e error
-	var jobID = &job.JobID{
-		Value: jobId,
+	var pJobID = &job.JobID{
+		Value: jobID,
 	}
 	// TODO: add getTaskCount(jobId, taskState) in task store to help optimize this function
 	for i := 0; i <= int(jobConf.InstanceCount/batchSize); i++ {
@@ -103,9 +105,9 @@ func (q *TaskQueue) refillQueue(jobId string, jobConf *job.JobConfig, taskStore 
 			to = jobConf.InstanceCount - 1
 		}
 		if from < to {
-			log.Infof("Checking job %v instance range %v - %v", jobId, from, to)
+			log.Infof("Checking job %v instance range %v - %v", pJobID, from, to)
 			taskBatch, err := taskStore.GetTasksForJobByRange(
-				jobID,
+				pJobID,
 				&task.InstanceRange{
 					From: from,
 					To:   to,
@@ -130,21 +132,21 @@ func (q *TaskQueue) refillQueue(jobId string, jobConf *job.JobConfig, taskStore 
 				taskIds[*(taskInfo.Runtime.TaskId.Value)] = true
 			}
 			for i := int(from); i <= int(to); i++ {
-				taskId := fmt.Sprintf("%s-%d", jobId, i)
-				if ok, _ := taskIds[taskId]; !ok {
-					log.Infof("Creating missing task %d for job %v", i, jobId)
+				taskID := fmt.Sprintf("%s-%d", jobID, i)
+				if ok, _ := taskIds[taskID]; !ok {
+					log.Infof("Creating missing task %d for job %v", i, jobID)
 					taskInfo := &task.TaskInfo{
 						Runtime: &task.RuntimeInfo{
 							State: task.RuntimeInfo_INITIALIZED,
 							TaskId: &mesos.TaskID{
-								Value: &taskId,
+								Value: &taskID,
 							},
 						},
 						JobConfig:  jobConf,
 						InstanceId: uint32(i),
-						JobId:      jobID,
+						JobId:      pJobID,
 					}
-					taskStore.CreateTask(jobID, i, taskInfo, "peloton")
+					taskStore.CreateTask(pJobID, i, taskInfo, "peloton")
 					q.tqValue.Load().(util.TaskQueue).PutTask(taskInfo)
 				}
 			}
@@ -154,6 +156,6 @@ func (q *TaskQueue) refillQueue(jobId string, jobConf *job.JobConfig, taskStore 
 }
 
 // Reset would discard the queue content. Called when the current peloton master is no longer the leader
-func (q *TaskQueue) Reset() {
+func (q *Queue) Reset() {
 	q.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
 }

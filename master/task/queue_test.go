@@ -21,7 +21,7 @@ var masterPort = 47960
 
 type QueueTestSuite struct {
 	suite.Suite
-	store      *mysql.MysqlJobStore
+	store      *mysql.JobStore
 	db         *sqlx.DB
 	dispatcher yarpc.Dispatcher
 }
@@ -35,12 +35,15 @@ func (suite *QueueTestSuite) SetupTest() {
 		http.NewInbound(":" + strconv.Itoa(masterPort)),
 	}
 	outbounds := transport.Outbounds{
-		"peloton-master": http.NewOutbound("http://localhost:" + strconv.Itoa(masterPort)),
+		Unary: http.NewOutbound("http://localhost:" + strconv.Itoa(masterPort)),
+	}
+	yOutbounds := yarpc.Outbounds{
+		"peloton-master": outbounds,
 	}
 	suite.dispatcher = yarpc.NewDispatcher(yarpc.Config{
 		Name:      "peloton-master",
 		Inbounds:  inbounds,
-		Outbounds: outbounds,
+		Outbounds: yOutbounds,
 	})
 	suite.dispatcher.Start()
 }
@@ -116,18 +119,18 @@ func (suite *QueueTestSuite) createJob(i int, tasks int, totalTasks int, taskSta
 	}
 }
 
-func getQueueContent(q *TaskQueue) map[string]map[string]bool {
+func getQueueContent(q *Queue) map[string]map[string]bool {
 	var result = make(map[string]map[string]bool)
 	for {
 		task := q.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
 		if task != nil {
-			jobId := task.JobId.Value
-			taskId := task.Runtime.TaskId.Value
-			_, ok := result[jobId]
+			jobID := task.JobId.Value
+			taskID := task.Runtime.TaskId.Value
+			_, ok := result[jobID]
 			if !ok {
-				result[jobId] = make(map[string]bool)
+				result[jobID] = make(map[string]bool)
 			}
-			result[jobId][*taskId] = true
+			result[jobID][*taskID] = true
 		} else {
 			break
 		}

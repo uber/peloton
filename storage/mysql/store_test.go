@@ -13,7 +13,7 @@ import (
 
 type MysqlStoreTestSuite struct {
 	suite.Suite
-	store *MysqlJobStore
+	store *JobStore
 	db    *sqlx.DB
 }
 

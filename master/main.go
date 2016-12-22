@@ -6,7 +6,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
-	"golang.org/x/net/context"
+	"net/url"
 	"os"
 	"time"
 
@@ -22,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	"strconv"
 	"sync"
@@ -32,48 +33,40 @@ const (
 	productionEnvValue = "production"
 )
 
-// Simple request interceptor which logs the request summary
-type requestLogInterceptor struct{}
-
-func (requestLogInterceptor) Handle(
-	ctx context.Context,
-	opts transport.Options,
-	req *transport.Request,
-	resw transport.ResponseWriter,
-	handler transport.Handler) error {
-
-	log.Debugf("Received a %s request from %s", req.Procedure, req.Caller)
-	return handler.Handle(ctx, opts, req, resw)
-}
-
 type pelotonMaster struct {
-	mesosInbound           mhttp.Inbound
-	pelotonMasterOutbound  transport.Outbound
-	mesosOutbound          transport.Outbound
-	taskQueue              *task.TaskQueue
-	store                  *mysql.MysqlJobStore
-	cfg                    *AppConfig
-	mutex                  *sync.Mutex
-	localPelotonMasterAddr string
-	mesosDetector          mesos.MasterDetector
-	offerManager           *offer.Manager
+	mesosInbound  mhttp.Inbound
+	peerChooser   *peer.Chooser
+	mesosOutbound transport.Outbounds
+	taskQueue     *task.Queue
+	store         *mysql.JobStore
+	cfg           *AppConfig
+	mutex         *sync.Mutex
+	// Local address for peloton master
+	localAddr     string
+	mesosDetector mesos.MasterDetector
+	offerManager  *offer.Manager
 }
 
-// newPelotonMaster creates a peloton master struct
-func newPelotonMaster(mInbound mhttp.Inbound, mOutbound transport.Outbound, pOutbound transport.Outbound, tq *task.TaskQueue,
-	store *mysql.MysqlJobStore, cfg *AppConfig, localPelotonMasterAddr string, mesosDetector mesos.MasterDetector,
+func newPelotonMaster(mInbound mhttp.Inbound,
+	mOutbounds transport.Outbounds,
+	pChooser *peer.Chooser,
+	tq *task.Queue,
+	store *mysql.JobStore,
+	cfg *AppConfig,
+	localPelotonMasterAddr string,
+	mesosDetector mesos.MasterDetector,
 	om *offer.Manager) *pelotonMaster {
 	result := pelotonMaster{
-		mesosInbound:          mInbound,
-		pelotonMasterOutbound: pOutbound,
-		mesosOutbound:         mOutbound,
-		taskQueue:             tq,
-		store:                 store,
-		cfg:                   cfg,
-		mutex:                 &sync.Mutex{},
-		localPelotonMasterAddr: localPelotonMasterAddr,
-		mesosDetector:          mesosDetector,
-		offerManager:           om,
+		mesosInbound:  mInbound,
+		peerChooser:   pChooser,
+		mesosOutbound: mOutbounds,
+		taskQueue:     tq,
+		store:         store,
+		cfg:           cfg,
+		mutex:         &sync.Mutex{},
+		localAddr:     localPelotonMasterAddr,
+		mesosDetector: mesosDetector,
+		offerManager:  om,
 	}
 	return &result
 }
@@ -102,16 +95,22 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 	err = p.mesosInbound.StartMesosLoop(mesosMasterAddr)
 	if err != nil {
 		log.Errorf("Failed to StartMesosLoop, err = %v", err)
+		return err
 	}
 	err = p.taskQueue.LoadFromDB(p.store, p.store)
 	if err != nil {
 		log.Errorf("Failed to taskQueue.LoadFromDB, err = %v", err)
+		return err
 	}
-	util.SetOutboundURL(p.pelotonMasterOutbound, p.localPelotonMasterAddr)
 
+	err = p.peerChooser.UpdatePeer(p.localAddr)
+	if err != nil {
+		log.Errorf("Failed to update peer with p.localPelotonMasterAddr, err = %v", err)
+		return err
+	}
 	p.offerManager.Start()
 
-	return err
+	return nil
 }
 
 // LostLeadershipCallback is the callback when the current node lost leadership
@@ -137,8 +136,7 @@ func (p *pelotonMaster) NewLeaderCallBack(leader string) error {
 
 	log.Infof("New Leader is elected : %v", leader)
 	// leader changes, so point pelotonMasterOutbound to the new leader
-	util.SetOutboundURL(p.pelotonMasterOutbound, leader)
-	return nil
+	return p.peerChooser.UpdatePeer(leader)
 }
 
 // ShutDownCallback is the callback to shut down gracefully if possible
@@ -151,7 +149,7 @@ func (p *pelotonMaster) ShutDownCallback() error {
 
 // GetHostPort function returns the peloton master address
 func (p *pelotonMaster) GetHostPort() string {
-	return p.localPelotonMasterAddr
+	return p.localAddr
 }
 
 func main() {
@@ -220,18 +218,21 @@ func main() {
 	// TODO: update mesos url when leading mesos master changes
 	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
 
-	mOutbound := mhttp.NewOutbound(mesosURL)
+	mOutbounds := mhttp.NewOutbound(mesosURL)
+	pelotonMasterPeerChooser := peer.NewPeerChooser()
 	// The leaderUrl for pOutbound would be updated by leader election NewLeaderCallBack once leader is elected
-	pOutbound := http.NewOutbound("")
-	outbounds := transport.Outbounds{
-		"mesos-master":   mOutbound,
-		"peloton-master": pOutbound,
+	pOutbound := http.NewChooserOutbound(pelotonMasterPeerChooser, &url.URL{Scheme: "http"})
+	pOutbounds := transport.Outbounds{
+		Unary: pOutbound,
+	}
+	outbounds := yarpc.Outbounds{
+		"mesos-master":   mOutbounds,
+		"peloton-master": pOutbounds,
 	}
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:        "peloton-master",
-		Inbounds:    inbounds,
-		Outbounds:   outbounds,
-		Interceptor: yarpc.Interceptors(requestLogInterceptor{}),
+		Name:      "peloton-master",
+		Inbounds:  inbounds,
+		Outbounds: outbounds,
 	})
 
 	// Initalize managers
@@ -240,7 +241,7 @@ func main() {
 	tq := task.InitTaskQueue(dispatcher)
 	upgrade.InitManager(dispatcher)
 
-	mesosClient := mpb.New(dispatcher.Channel("mesos-master"), cfg.Mesos.Encoding)
+	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), cfg.Mesos.Encoding)
 
 	// Init the managers driven by the mesos callbacks.
 	// They are driven by the leader who will subscribe to
@@ -263,8 +264,7 @@ func main() {
 		log.Fatalf("Failed to get ip, err=%v", err)
 	}
 	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, cfg.Master.Port)
-
-	pMaster := newPelotonMaster(mInbound, mOutbound, pOutbound, tq, store, &cfg, localPelotonMasterAddr,
+	pMaster := newPelotonMaster(mInbound, mOutbounds, pelotonMasterPeerChooser, tq, store, &cfg, localPelotonMasterAddr,
 		mesosMasterDetector, om)
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 

@@ -38,7 +38,7 @@ type FrameworkInfoProvider interface {
 
 // schedulerDriver implements the Mesos Driver API
 type schedulerDriver struct {
-	store         *mysql.MysqlJobStore
+	store         *mysql.JobStore
 	frameworkID   *mesos.FrameworkID
 	mesosStreamID string
 	cfg           *FrameworkConfig
@@ -50,7 +50,7 @@ var instance *schedulerDriver
 // InitSchedulerDriver initialize Mesos scheduler driver for Mesos scheduler HTTP API
 func InitSchedulerDriver(
 	cfg *Config,
-	store *mysql.MysqlJobStore) SchedulerDriver {
+	store *mysql.JobStore) SchedulerDriver {
 	// TODO: load framework ID from ZK or DB
 	instance = &schedulerDriver{
 		store:         store,
@@ -72,7 +72,7 @@ func (d *schedulerDriver) GetFrameworkID() *mesos.FrameworkID {
 	if d.frameworkID != nil {
 		return d.frameworkID
 	}
-	frameworkIDVal, err := d.store.GetFrameworkId(d.cfg.Name)
+	frameworkIDVal, err := d.store.GetFrameworkID(d.cfg.Name)
 	if err != nil {
 		log.Errorf("failed to GetframeworkID from db for framework %v, err=%v",
 			d.cfg.Name, err)
@@ -94,7 +94,7 @@ func (d *schedulerDriver) GetMesosStreamID() string {
 
 	// TODO: followers should watch the stream ID from ZK so it can be
 	// updated in case that the leader reconnects to Mesos, or the leader changes
-	id, err := d.store.GetMesosStreamId(d.cfg.Name)
+	id, err := d.store.GetMesosStreamID(d.cfg.Name)
 	if err != nil {
 		log.Errorf("failed to GetmesosStreamID from db for framework %v, err=%v",
 			d.cfg.Name, err)
@@ -194,7 +194,7 @@ func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (*
 }
 
 func (d *schedulerDriver) PostSubscribe(mesosStreamID string) {
-	err := d.store.SetMesosStreamId(d.cfg.Name, mesosStreamID)
+	err := d.store.SetMesosStreamID(d.cfg.Name, mesosStreamID)
 	if err != nil {
 		log.Errorf("Failed to save Mesos stream ID %v %v, err=%v",
 			d.cfg.Name, mesosStreamID, err)

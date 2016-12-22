@@ -10,10 +10,10 @@ import (
 	master_task "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"context"
 	"fmt"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	"golang.org/x/net/context"
 	mesos "mesos/v1"
 	"peloton/master/offerpool"
 	"peloton/master/taskqueue"
@@ -34,7 +34,7 @@ func InitManager(d yarpc.Dispatcher, cfg *Config, mesosClient mpb.Client) {
 	s := schedulerManager{
 		cfg:      cfg,
 		launcher: master_task.GetTaskLauncher(d, mesosClient),
-		client:   json.New(d.Channel("peloton-master")),
+		client:   json.New(d.ClientConfig("peloton-master")),
 		rootCtx:  context.Background(),
 	}
 	s.Start()
@@ -144,7 +144,8 @@ func (s *schedulerManager) getTasks(limit int) (
 		}
 	}()
 
-	ctx, _ := context.WithTimeout(s.rootCtx, 10*time.Second)
+	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
+	defer cancelFunc()
 	var response taskqueue.DequeueResponse
 	var request = &taskqueue.DequeueRequest{
 		Limit: uint32(limit),
@@ -174,7 +175,8 @@ func (s *schedulerManager) getOffers(limit int) (
 		}
 	}()
 
-	ctx, _ := context.WithTimeout(s.rootCtx, 10*time.Second)
+	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
+	defer cancelFunc()
 	var response offerpool.GetOffersResponse
 	var request = &offerpool.GetOffersRequest{
 		Limit: uint32(limit),

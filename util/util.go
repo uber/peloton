@@ -1,11 +1,7 @@
 package util
 
 import (
-	"fmt"
-	"reflect"
-
 	"code.uber.internal/go-common.git/x/log"
-	"go.uber.org/yarpc/transport"
 	mesos_v1 "mesos/v1"
 	"peloton/task"
 )
@@ -38,11 +34,11 @@ func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) *mesos_v1.TaskInfo {
 	rs = append(rs, NewMesosResourceBuilder().WithName("disk").WithValue(taskResources.DiskLimitMb).Build())
 	// TODO: translate job.ResourceConfig fdlimit
 
-	taskId := taskInfo.GetRuntime().GetTaskId().GetValue()
+	taskID := taskInfo.GetRuntime().GetTaskId().GetValue()
 	mesosTask := &mesos_v1.TaskInfo{
 		Name: &taskInfo.JobId.Value,
 		TaskId: &mesos_v1.TaskID{
-			Value: &taskId,
+			Value: &taskID,
 		},
 		Resources: rs,
 		Command:   taskInfo.GetJobConfig().GetCommand(),
@@ -136,6 +132,7 @@ func (o *MesosResourceBuilder) Build() *mesos_v1.Resource {
 	return &res
 }
 
+// MesosStateToPelotonState translates mesos task state to peloton task state
 // TODO: adjust in case there are additional peloton states
 func MesosStateToPelotonState(mstate mesos_v1.TaskState) task.RuntimeInfo_TaskState {
 	switch mstate {
@@ -163,19 +160,4 @@ func MesosStateToPelotonState(mstate mesos_v1.TaskState) task.RuntimeInfo_TaskSt
 		log.Errorf("Unknown mesos taskState %v", mstate)
 		return task.RuntimeInfo_INITIALIZED
 	}
-}
-
-//SetOutboundURL sets the URL to a transport.Outbound
-// http.NewOutbound() returns an interface, and the underlying impl struct http.outbound (which contains the URL field)
-// is not exported by yarpc package. Thus use reflection to set the field.
-// TODO: update when yarpc package is updated
-func SetOutboundURL(outbound transport.Outbound, newURL string) error {
-	val := reflect.ValueOf(outbound).Elem()
-	urlField := val.FieldByName("URL")
-	if urlField.IsValid() && urlField.CanSet() {
-		log.Infof("Setting outbound URL to %v, outbound URL canset : %v", newURL, urlField.CanSet())
-		urlField.SetString(newURL)
-		return nil
-	}
-	return fmt.Errorf("Fail to update URL field on outbound, valid : %v, canset: %v", urlField.IsValid(), urlField.CanSet())
 }

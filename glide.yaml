@@ -46,3 +46,6 @@ import:
   - zk
 - package: gopkg.in/alecthomas/kingpin.v2
   version: ^2.2.3
+- package: code.uber.internal/infra/stapi-go.git
+  repo: gitolite@code.uber.internal:infra/stapi-go.git
+  vcs: git

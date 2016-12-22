@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"reflect"
 
+	"context"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
-	"golang.org/x/net/context"
 )
 
 // EventType is an interface for auto-generated event types from
@@ -21,12 +21,13 @@ type MesosEvent interface {
 	GetType() EventType
 }
 
-// mesosEventReader decodes a Mesos Event object from RecordIO frame
+// MesosEventReader decodes a Mesos Event object from RecordIO frame
 type MesosEventReader struct {
 	Event reflect.Value // Decoded Mesos event
 	Type  EventType     // Mesos event type such as offers, rescind etc
 }
 
+// NewMesosEventReader creates a new MesosEventReader
 func NewMesosEventReader(data []byte, typ reflect.Type, contentType string) (*MesosEventReader, error) {
 	if typ.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("Wrong mesos event type: %s", typ)
@@ -54,7 +55,7 @@ func (r MesosEventReader) Read(p []byte) (n int, err error) {
 	panic("mesosEventReader does not support Read method")
 }
 
-// mjsonHandler adapts a Mesos event handler into a transport-level
+// mpbHandler adapts a Mesos event handler into a transport-level
 // Handler.
 //
 // The wrapped function must already be in the correct format:
@@ -66,7 +67,6 @@ type mpbHandler struct {
 
 func (h mpbHandler) Handle(
 	ctx context.Context,
-	_ transport.Options,
 	treq *transport.Request,
 	rw transport.ResponseWriter) error {
 

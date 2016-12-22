@@ -2,10 +2,9 @@ package mpb
 
 import (
 	"fmt"
-	"reflect"
-
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
+	"reflect"
 )
 
 var (
@@ -53,10 +52,15 @@ func Procedure(name string, handler interface{}) Registrant {
 //
 // Where $reqBody and $resBody are a map[string]interface{} or pointers to
 // structs.
-func Register(reg transport.Registry, svc string, registrant Registrant) {
+func Register(reg transport.Registrar, svc string, registrant Registrant) {
 	for name, handler := range registrant.getHandlers() {
 		verifySignature(name, reflect.TypeOf(handler))
-		reg.Register(svc, name, mpbHandler{handler: reflect.ValueOf(handler)})
+		reg.Register([]transport.Registrant{
+			{
+				Service:     svc,
+				Procedure:   name,
+				HandlerSpec: transport.NewUnaryHandlerSpec(mpbHandler{handler: reflect.ValueOf(handler)}),
+			}})
 	}
 }
 

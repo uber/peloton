@@ -7,11 +7,9 @@ import (
 	"reflect"
 )
 
-var httpOptions transport.Options
-
 // handler adapts a transport.Handler into a handler for net/http.
 type handler struct {
-	Handler       transport.Handler
+	ServiceDetail transport.ServiceDetail
 	Service       string
 	Caller        string
 	EventDataType reflect.Type
@@ -28,10 +26,11 @@ func (h handler) HandleRecordIO(data []byte) error {
 
 	// We will decode Procedure later in encoding layer so that we can
 	// void unmarshal twice.
+	procedure := body.Type.String()
 	treq := &transport.Request{
 		Caller:    h.Caller,
 		Service:   h.Service,
-		Procedure: body.Type.String(),
+		Procedure: procedure,
 		Encoding:  transport.Encoding("mesos"),
 		Headers:   transport.NewHeaders(),
 		Body:      body,
@@ -45,9 +44,13 @@ func (h handler) HandleRecordIO(data []byte) error {
 	// if err != nil {
 	//	  return err
 	// }
-
+	var handlerSpec transport.HandlerSpec
+	handlerSpec, err = h.ServiceDetail.Registry.Choose(ctx, treq)
+	if err != nil {
+		return err
+	}
 	// TODO: capture and handle panic
-	return h.Handler.Handle(ctx, httpOptions, treq, newResponseWriter())
+	return handlerSpec.Unary().Handle(ctx, treq, newResponseWriter())
 }
 
 // responseWriter implements a dummy transport.ResponseWriter

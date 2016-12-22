@@ -6,9 +6,9 @@ import (
 
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"context"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	"golang.org/x/net/context"
 
 	master_mesos "code.uber.internal/infra/peloton/master/mesos"
 	mesos "mesos/v1"

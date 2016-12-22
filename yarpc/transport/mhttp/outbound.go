@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"context"
 	"github.com/uber-go/atomic"
 	"go.uber.org/yarpc/transport"
-	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
 	"code.uber.internal/infra/peloton/yarpc/internal/errors"
@@ -47,7 +47,7 @@ func KeepAlive(t time.Duration) OutboundOption {
 
 // NewOutbound builds a new HTTP outbound that sends requests to the given
 // URL.
-func NewOutbound(url string, opts ...OutboundOption) transport.Outbound {
+func NewOutbound(url string, opts ...OutboundOption) transport.Outbounds {
 	cfg := defaultConfig
 	for _, o := range opts {
 		o(&cfg)
@@ -58,7 +58,11 @@ func NewOutbound(url string, opts ...OutboundOption) transport.Outbound {
 	client := buildClient(&cfg)
 
 	// TODO: Use option pattern with varargs instead
-	return outbound{Client: client, URL: url, started: atomic.NewBool(false)}
+	return transport.Outbounds{
+		Unary: outbound{
+			Client: client, URL: url, started: atomic.NewBool(false),
+		},
+	}
 }
 
 type outbound struct {
@@ -72,11 +76,6 @@ func (o outbound) Start(d transport.Deps) error {
 		return errOutboundAlreadyStarted
 	}
 	return nil
-}
-
-// Options for the HTTP transport.
-func (outbound) Options() (o transport.Options) {
-	return o
 }
 
 func (o outbound) Stop() error {

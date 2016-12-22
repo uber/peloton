@@ -1,10 +1,10 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	"golang.org/x/net/context"
 
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage"

@@ -17,11 +17,13 @@ import (
 )
 
 const (
-	RunningState_NotStarted = 0
-	RunningState_Running    = 1
+	runningStateNotStarted = 0
+	runningStateRunning    = 1
 
-	MesosHttpConnTimeout   = 30 * time.Second
-	MesosHttpConnKeepAlive = 30 * time.Second
+	// MesosHTTPConnTimeout is the mesos connection timeout
+	MesosHTTPConnTimeout = 30 * time.Second
+	// MesosHTTPConnKeepAlive is the mesos connection keep alive
+	MesosHTTPConnKeepAlive = 30 * time.Second
 )
 
 var tickerInterval = time.Second * 1
@@ -41,7 +43,7 @@ type InboundOption func(*inbound)
 // NewInbound builds a new Mesos HTTP inbound after registering with
 // Mesos master via Subscribe message
 func NewInbound(d MesosDriver, opts ...InboundOption) Inbound {
-	i := &inbound{driver: d, mutex: &sync.Mutex{}, runningState: int32(RunningState_NotStarted)}
+	i := &inbound{driver: d, mutex: &sync.Mutex{}, runningState: int32(runningStateNotStarted)}
 	for _, opt := range opts {
 		opt(i)
 	}
@@ -49,28 +51,28 @@ func NewInbound(d MesosDriver, opts ...InboundOption) Inbound {
 }
 
 type inbound struct {
-	mutex        *sync.Mutex
-	hostPort     string
-	driver       MesosDriver
-	stopFlag     int32
-	handler      transport.Handler
-	deps         transport.Deps
-	client       *http.Client
-	runningState int32
-	ticker       *time.Ticker
+	mutex         *sync.Mutex
+	hostPort      string
+	driver        MesosDriver
+	stopFlag      int32
+	serviceDetail transport.ServiceDetail
+	deps          transport.Deps
+	client        *http.Client
+	runningState  int32
+	ticker        *time.Ticker
 }
 
 // Start would initialize some variables, actual mesos communication would be
 // started by StartMesosLoop(...)
-func (i *inbound) Start(h transport.Handler, d transport.Deps) error {
+func (i *inbound) Start(service transport.ServiceDetail, d transport.Deps) error {
 	transport := &http.Transport{
 		Dial: (&net.Dialer{
-			Timeout:   MesosHttpConnTimeout,
-			KeepAlive: MesosHttpConnKeepAlive,
+			Timeout:   MesosHTTPConnTimeout,
+			KeepAlive: MesosHTTPConnKeepAlive,
 		}).Dial,
 	}
 	i.client = &http.Client{Transport: transport}
-	i.handler = h
+	i.serviceDetail = service
 	i.deps = d
 	return nil
 }
@@ -101,7 +103,7 @@ func (i *inbound) StartMesosLoop(hostPort string) error {
 			// if needed.
 			stopFlag := atomic.LoadInt32(&i.stopFlag)
 			runningState := atomic.LoadInt32(&i.runningState)
-			if stopFlag == 0 && runningState != RunningState_Running && len(i.hostPort) > 0 {
+			if stopFlag == 0 && runningState != runningStateRunning && len(i.hostPort) > 0 {
 				log.Infof("Restarting mesos loop at %v, running state %v", t, runningState)
 				err := i.startMesosLoopInternal(i.hostPort)
 				if err != nil {
@@ -126,12 +128,12 @@ func (i *inbound) startMesosLoopInternal(hostPort string) error {
 		return nil
 	}
 	runningState := atomic.LoadInt32(&i.runningState)
-	if i.hostPort == hostPort && runningState == RunningState_Running {
+	if i.hostPort == hostPort && runningState == runningStateRunning {
 		log.Infof("mesos hostPort is already %v, and inbound is running, thus return", hostPort)
 		return nil
 	}
 
-	if runningState == RunningState_Running {
+	if runningState == runningStateRunning {
 		log.Infof("Stopping the inbound for mesos master %v", i.hostPort)
 		i.stopInternal()
 	}
@@ -156,11 +158,11 @@ func (i *inbound) startMesosLoopInternal(hostPort string) error {
 	}
 
 	// Invoke the post subscribe callback on Mesos driver
-	mesosStreamId := resp.Header["Mesos-Stream-Id"]
-	i.driver.PostSubscribe(mesosStreamId[0])
+	mesosStreamID := resp.Header["Mesos-Stream-Id"]
+	i.driver.PostSubscribe(mesosStreamID[0])
 
 	hdl := handler{
-		Handler:       i.handler,
+		ServiceDetail: i.serviceDetail,
 		Service:       i.driver.Name(),
 		Caller:        i.hostPort,
 		EventDataType: i.driver.EventDataType(),
@@ -169,10 +171,10 @@ func (i *inbound) startMesosLoopInternal(hostPort string) error {
 
 	started := make(chan int, 1)
 	go func() error {
-		defer atomic.StoreInt32(&i.runningState, RunningState_NotStarted)
+		defer atomic.StoreInt32(&i.runningState, runningStateNotStarted)
 		defer resp.Body.Close()
 
-		atomic.StoreInt32(&i.runningState, RunningState_Running)
+		atomic.StoreInt32(&i.runningState, runningStateRunning)
 		started <- 0
 		reader := bufio.NewReader(resp.Body)
 		for {
@@ -229,7 +231,7 @@ func (i *inbound) stopInternal() error {
 	atomic.StoreInt32(&i.stopFlag, 1)
 	for {
 		runningState := atomic.LoadInt32(&i.runningState)
-		if runningState == RunningState_Running {
+		if runningState == runningStateRunning {
 			time.Sleep(100 * time.Millisecond)
 		} else {
 			break
