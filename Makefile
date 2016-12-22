@@ -57,6 +57,7 @@ format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 
 test: $(GOCOV) $(PBGENS)
 	bash docker/run_test_mysql.sh
+	bash docker/run_test_cassandra.sh
 	gocov test $(ALL_PKGS) | gocov report
 
 pcluster:

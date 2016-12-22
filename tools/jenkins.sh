@@ -15,9 +15,15 @@ build_peloton_container() {
     ${workspace}/tools/peloton-dev/build.sh $1
 }
 
-# Starts mysql ins a separate container as a peer to the peloton container
+# Starts mysql in a separate container as a peer to the peloton container
 run_mysql_container(){
     ${workspace}/docker/run_test_mysql.sh
+}
+
+
+# Starts cassandra in a separate container as a peer to the peloton container
+run_cassandra_container(){
+    ${workspace}/docker/run_test_cassandra.sh
 }
 
 # Runs `make jenkins` inside the peloton container
@@ -49,6 +55,7 @@ main() {
 
     build_peloton_container ${workspace}
     run_mysql_container
+    run_cassandra_container
     run_jenkins ${workspace}
 }
 
