@@ -1,12 +1,13 @@
 INSTALL_DIR=/peloton-install
 SRC_DIR="${SRC_DIR:-/peloton}"
 PROTOC_VERSION="3.0.2"
+GO_VERSION="1.7.3"
 POST_INSTALL_FILE="${POST_INSTALL_FILE:-/post-install.sh}"
 
 install_golang() {
-    echo 'start installing golang 1.6'
-    curl -O https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz
-    tar -xvf go1.6.linux-amd64.tar.gz
+    echo 'start installing golang '$GO_VERSION
+    curl -O https://storage.googleapis.com/golang/go$GO_VERSION.linux-amd64.tar.gz
+    tar -xvf go$GO_VERSION.linux-amd64.tar.gz
     mv go /usr/local
     export GOROOT=/usr/local/go
     export PATH=$PATH:$GOROOT/bin
