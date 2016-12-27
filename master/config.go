@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/go-common.git/x/metrics"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/scheduler"
@@ -13,20 +12,22 @@ import (
 )
 
 const (
-	mesosZkPath           = "MESOS_ZK_PATH"
-	dbHost                = "DB_HOST"
-	taskDequeueLimit      = "SCHEDULER_TASK_DEQUEUE_LIMIT"
-	electionZkServers     = "ELECTION_ZK_SERVERS"
-	loggingLevel          = "LOGGING_LEVEL"
-	masterPort            = "MASTER_PORT"
-	OfferHoldTimeSec      = "OFFER_HOLD_TIME_SEC"
+	mesosZkPath       = "MESOS_ZK_PATH"
+	dbHost            = "DB_HOST"
+	taskDequeueLimit  = "SCHEDULER_TASK_DEQUEUE_LIMIT"
+	electionZkServers = "ELECTION_ZK_SERVERS"
+	loggingLevel      = "LOGGING_LEVEL"
+	masterPort        = "MASTER_PORT"
+	// OfferHoldTimeSec is how long the framework will keep mesos offers before releasing them
+	OfferHoldTimeSec = "OFFER_HOLD_TIME_SEC"
+	// OfferPruningPeriodSec is how frequently the framework will prune mesos offers that exceed OfferHoldTimeSec
 	OfferPruningPeriodSec = "OFFER_PRUNING_PERIOD_SEC"
 )
 
-// Configuration encapulates the master runtime config
+// AppConfig encapulates the master runtime config
 type AppConfig struct {
 	Logging   log.Configuration
-	Metrics   metrics.Configuration
+	Metrics   metricsConfiguration `yaml:"metrics"`
 	Sentry    log.SentryConfiguration
 	Verbose   bool
 	DbConfig  mysql.Config          `yaml:"db"`
@@ -36,14 +37,26 @@ type AppConfig struct {
 	Election  leader.ElectionConfig `yaml:"election"`
 }
 
-// Peloton master specific configuration
+// MasterConfig is framework specific configuration
 type MasterConfig struct {
 	Port                  int `yaml:"port"`
 	OfferHoldTimeSec      int `yaml:"offer_hold_time_sec"`      // Time to hold offer for in seconds
 	OfferPruningPeriodSec int `yaml:"offer_pruning_period_sec"` // Frequency of running offer pruner
 }
 
-// Override configs with environment vars if set, otherwise values
+type metricsConfiguration struct {
+	Prometheus *prometheusConfiguration `yaml:"prometheus"`
+	Statsd     *statsdConfiguration     `yaml:"statsd"`
+}
+type prometheusConfiguration struct {
+	Enable bool `yaml:"enable"`
+}
+type statsdConfiguration struct {
+	Enable   bool   `yaml:"enable"`
+	Endpoint string `yaml:"endpoint"`
+}
+
+// LoadConfigFromEnv will verride configs with environment vars if set, otherwise values
 // from yaml files will be used.
 // TODO: use reflection to override any YAML configurations from ENV
 func LoadConfigFromEnv(cfg *AppConfig) {

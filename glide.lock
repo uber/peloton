@@ -1,9 +1,8 @@
-
-hash: d8001d3a0751a91d045ab70a0e23e36a42e90d9fac402162374d85a3eef772ae
-updated: 2016-12-18T12:02:52.721578997-08:00
+hash: 4a80cb94da9288c7a47d41d6e567c94cf0fb873802a00b6caa688d5c6d60cd29
+updated: 2016-12-23T15:09:07.32651628-05:00
 imports:
 - name: code.uber.internal/engsec/polizei.git
-  version: 44e6af81566dee57a3f30468f77b6f643c65fa32
+  version: 8821470415c5ebcf41b9f8920b576c73852e6cbc
   repo: gitolite@code.uber.internal:engsec/polizei.git
   vcs: git
   subpackages:
@@ -12,10 +11,9 @@ imports:
   - api/enforcer
   - api/injector
   - common
-  - storage/policy
   - storage/stapi
 - name: code.uber.internal/go-common.git
-  version: 783923e6b3a6fe55df62294728449527bbe4a30d
+  version: 97c491b28999f2eeb8f12a3977a739f582946799
   repo: gitolite@code.uber.internal:go-common.git
   vcs: git
   subpackages:
@@ -23,6 +21,7 @@ imports:
   - client/flipr
   - client/flipr/gen-go/flipr
   - client/uconfig
+  - version
   - x/backoff
   - x/config
   - x/kafka
@@ -44,7 +43,7 @@ imports:
   repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
   vcs: git
 - name: code.uber.internal/infra/stapi-go.git
-  version: 7c6a45fae65519f2dbb589d4ccd5e749b8082cba
+  version: a64e3bf946672df4b2193656402cb51f481f021b
   repo: gitolite@code.uber.internal:infra/stapi-go.git
   vcs: git
   subpackages:
@@ -63,7 +62,7 @@ imports:
   - unsutils
   - zookeeper
 - name: code.uber.internal/infra/uns.git
-  version: b7897af8d266c83c7a5478045518f3ef76d07f26
+  version: b259ac652742e21a701fc1844f2dbf25d118c546
   repo: gitolite@code.uber.internal:infra/uns.git
   vcs: git
   subpackages:
@@ -89,15 +88,10 @@ imports:
   - net/rpc/tchannel/peerupdater/dns
   - net/rpc/tchannel/stream
   - net/server/status
+  - net/server/vars
   - net/zk/election
   - zk
   - zk/testutils
-- name: github.com/alecthomas/template
-  version: a0175ee3bccc567396460bf5acd36800cb10c49c
-  subpackages:
-  - parse
-- name: github.com/alecthomas/units
-  version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
 - name: code.uber.internal/infra/xyarpc-go.git
   version: c55887061676522db3e2cca82846418afee2104a
   repo: gitolite@code.uber.internal:infra/xyarpc-go.git
@@ -116,16 +110,22 @@ imports:
   vcs: git
   subpackages:
   - filter
+- name: github.com/alecthomas/template
+  version: a0175ee3bccc567396460bf5acd36800cb10c49c
+  subpackages:
+  - parse
+- name: github.com/alecthomas/units
+  version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
 - name: github.com/andres-erbsen/clock
   version: 9e14626cd129ba01ccb6806bcca9d523e570aaf0
 - name: github.com/apache/thrift
-  version: f39d4c8535472db962930fb22d733a4f32ed6fc1
+  version: 366e89ead7df34b4132c2accb59dc14fce564883
   subpackages:
   - lib/go/thrift
 - name: github.com/blang/semver
   version: 3a37c301dda64cbe17f16f661b4c976803c0e2d2
 - name: github.com/cactus/go-statsd-client
-  version: d8eabe07bc70ff9ba6a56836cde99d1ea3d005f7
+  version: 91c326c3f7bd20f0226d3d1c289dd9f8ce28d33d
   subpackages:
   - statsd
 - name: github.com/certifi/gocertifi
@@ -155,7 +155,7 @@ imports:
   - internal/murmur
   - internal/streams
 - name: github.com/gogo/protobuf
-  version: 06ec6c31ff1bac6ed4e205a547a3d72934813ef3
+  version: 84af2615df1ba1d35cc975ba94b64ee67d6c196e
   subpackages:
   - jsonpb
   - proto
@@ -190,7 +190,7 @@ imports:
 - name: github.com/lann/ps
   version: 62de8c46ede02a7675c4c79c84883eb164cb71e3
 - name: github.com/mattes/migrate
-  version: ce1b59bb819416ca67422929b1cb48bb342720b6
+  version: 3e3cef3763f4e1422745768d666e7a7106da89f9
   subpackages:
   - driver
   - driver/mysql
@@ -233,11 +233,13 @@ imports:
 - name: github.com/uber-common/bark
   version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
 - name: github.com/uber-go/atomic
-  version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
+  version: 0c9e689d64f004564b79d9a663634756df322902
 - name: github.com/uber-go/tally
   version: 2750b4ae690cbeb294016efe18ceaeb80c4ce17c
+  subpackages:
+  - statsd
 - name: github.com/uber/tchannel-go
-  version: 4a23f3aae76694b21107f118ece763a61b98ea07
+  version: 2caa315516e1836b7b2eff70d2fcbd23538d1b22
   subpackages:
   - http
   - hyperbahn
@@ -267,27 +269,27 @@ imports:
   version: b8e8c0ff7b690926285c2d87d5ea222700310457
   subpackages:
   - encoding/json
-  - internal
-  - internal/baggage
-  - internal/encoding
-  - internal/errors
-  - internal/filter
-  - internal/interceptor
-  - internal/meta
-  - internal/net
-  - internal/request
-  - internal/sync
   - encoding/thrift
   - encoding/thrift/internal
   - internal
+  - internal
+  - internal/baggage
   - internal/clientconfig
   - internal/encoding
+  - internal/encoding
   - internal/errors
+  - internal/errors
+  - internal/filter
   - internal/inboundmiddleware
+  - internal/interceptor
   - internal/meta
+  - internal/meta
+  - internal/net
   - internal/net
   - internal/outboundmiddleware
   - internal/request
+  - internal/request
+  - internal/sync
   - internal/sync
   - peer
   - peer/hostport
@@ -313,5 +315,5 @@ imports:
 - name: gopkg.in/validator.v2
   version: 0a9835d809fb647a62611d30cb792e0b5dd65b11
 - name: gopkg.in/yaml.v2
-  version: a83829b6f1293c91addabc89d0571c246397bbf4
+  version: a5b47d31c556af34a302ce5d659e6fea44d90de0
 testImports: []

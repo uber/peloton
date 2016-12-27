@@ -46,6 +46,47 @@ import:
   - zk
 - package: gopkg.in/alecthomas/kingpin.v2
   version: ^2.2.3
+- package: go.uber.org/yarpc
+  version: b8e8c0ff7b690926285c2d87d5ea222700310457
+  subpackages:
+  - encoding/json
+  - internal
+  - internal/baggage
+  - internal/encoding
+  - internal/errors
+  - internal/filter
+  - internal/interceptor
+  - internal/meta
+  - internal/net
+  - internal/request
+  - internal/sync
+  - encoding/thrift
+  - encoding/thrift/internal
+  - internal
+  - internal/clientconfig
+  - internal/encoding
+  - internal/errors
+  - internal/inboundmiddleware
+  - internal/meta
+  - internal/net
+  - internal/outboundmiddleware
+  - internal/request
+  - internal/sync
+  - peer
+  - peer/hostport
+  - peer/single
+  - transport
+  - transport/http
+  - transport/internal
+  - transport/tchannel
+  - transport/tchannel/internal
+- package: github.com/cactus/go-statsd-client
+  version: ^3.1.0
+  subpackages:
+  - statsd
+- package: github.com/uber-go/tally
+  subpackages:
+  - statsd
 - package: code.uber.internal/infra/stapi-go.git
   repo: gitolite@code.uber.internal:infra/stapi-go.git
   vcs: git

@@ -3,11 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
-	"go.uber.org/yarpc/transport/http"
 	"net/url"
 	"os"
+	"strconv"
+	"sync"
 	"time"
 
 	"code.uber.internal/go-common.git/x/config"
@@ -24,13 +23,20 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
-	"strconv"
-	"sync"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/uber-go/tally"
+	tallystatsd "github.com/uber-go/tally/statsd"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/transport/http"
 )
 
 const (
 	environmentKey     = "UBER_ENVIRONMENT"
 	productionEnvValue = "production"
+	// metricFlushInterval is the flush interval for metrics as configured in Tally. This may be unused, depending on
+	// if the backend selected supports push or pull metrics
+	metricFlushInterval = 30 * time.Second
 )
 
 type pelotonMaster struct {
@@ -171,11 +177,25 @@ func main() {
 	log.Configure(&cfg.Logging, cfg.Verbose)
 	log.ConfigureSentry(&cfg.Sentry)
 
-	metrics, err := cfg.Metrics.New()
-	if err != nil {
-		log.Fatalf("Could not connect to metrics: %v", err)
+	var reporter tally.StatsReporter
+	if cfg.Metrics.Prometheus != nil && cfg.Metrics.Prometheus.Enable {
+		// TODO: setup prom
+		log.Fatalf("Prom metrics unimplemented, until https://github.com/uber-go/tally/pull/16 lands")
+	} else if cfg.Metrics.Statsd != nil && cfg.Metrics.Statsd.Enable {
+		log.Infof("Metrics configured with statsd endpoint %s", cfg.Metrics.Statsd.Endpoint)
+		c, err := statsd.NewClient(cfg.Metrics.Statsd.Endpoint, "")
+		if err != nil {
+			log.Fatalf("Unable to setup Statsd client: %v", err)
+		}
+		reporter = tallystatsd.NewStatsdReporter(c, tallystatsd.NewOptions())
+	} else {
+		log.Warnf("No metrics backends configured, using the statsd.NoopClient")
+		c, _ := statsd.NewNoopClient()
+		reporter = tallystatsd.NewStatsdReporter(c, tallystatsd.NewOptions())
 	}
-	metrics.Counter("boot").Inc(1)
+	metricScope, scopeCloser := tally.NewRootScope("peloton_framework", map[string]string{}, reporter, metricFlushInterval)
+	defer scopeCloser.Close()
+	metricScope.Counter("boot").Inc(1)
 
 	// Connect to mysql DB
 	if err := cfg.DbConfig.Connect(); err != nil {
@@ -236,8 +256,8 @@ func main() {
 	})
 
 	// Initalize managers
-	job.InitManager(dispatcher, store, store)
-	task.InitManager(dispatcher, store, store)
+	job.InitManager(dispatcher, store, store, metricScope.SubScope("job"))
+	task.InitManager(dispatcher, store, store, metricScope.SubScope("task"))
 	tq := task.InitTaskQueue(dispatcher)
 	upgrade.InitManager(dispatcher)
 

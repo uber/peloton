@@ -13,3 +13,10 @@ mesos:
 election:
   zk_servers: ["localhost:8192"]
   path: "/peloton/master/leader"
+
+metrics:
+  #prometheus:
+  #  enable: true
+  #statsd:
+  #  enable: true
+  #  endpoint: localhost:1234
