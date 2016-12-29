@@ -17,3 +17,15 @@ $docker_cmd run --name $MYSQL_TEST_CONTAINER -p $TEST_MYSQL_PORT:$DEFAULT_MYSQL_
    -e MYSQL_USER=$MYSQL_USER \
    -e MYSQL_PASSWORD=$MYSQL_PASSWORD \
    mysql/mysql-server:$MYSQL_VERSION
+
+max_wait_cycles=20
+i=0
+until nc -z localhost $TEST_MYSQL_PORT ; do
+  echo "waiting for mysql container to begin listening..."
+  sleep 0.5
+  let i+=1
+  if [[ $i -ge $max_wait_cycles ]] ; then
+    echo "mysql container was not listening after $i test cycles, aborting"
+    exit 1
+  fi
+done
