@@ -1,20 +1,23 @@
 package task
 
 import (
+	"fmt"
+	"strconv"
+	"testing"
+	"time"
+
+	"code.uber.internal/infra/peloton/master"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
-	"fmt"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	mesos "mesos/v1"
 	"peloton/job"
 	"peloton/task"
-	"strconv"
-	"testing"
-	"time"
 )
 
 var masterPort = 47960
@@ -29,7 +32,7 @@ type QueueTestSuite struct {
 func (suite *QueueTestSuite) SetupTest() {
 	conf := mysql.LoadConfigWithDB()
 	suite.db = conf.Conn
-	suite.store = mysql.NewMysqlJobStore(conf.Conn)
+	suite.store = mysql.NewJobStore(conf.Conn, tally.NoopScope)
 
 	inbounds := []transport.Inbound{
 		http.NewInbound(":" + strconv.Itoa(masterPort)),
@@ -57,7 +60,8 @@ func TestPelotonTaskQueue(t *testing.T) {
 }
 
 func (suite *QueueTestSuite) TestRefillTaskQueue() {
-	tq := InitTaskQueue(suite.dispatcher)
+	mtx := master.NewMetrics(tally.NoopScope)
+	tq := InitTaskQueue(suite.dispatcher, &mtx)
 
 	// Create jobs. each with different
 	suite.createJob(0, 10, 10, task.RuntimeInfo_SUCCEEDED)

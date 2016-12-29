@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/go-common.git/x/config"
 	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/master"
 	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/master/offer"
@@ -206,7 +207,7 @@ func main() {
 		log.Fatalf("Could not migrate database: %+v", errs)
 	}
 	// Initialize job and task stores
-	store := mysql.NewMysqlJobStore(cfg.DbConfig.Conn)
+	store := mysql.NewJobStore(cfg.DbConfig.Conn, metricScope.SubScope("storage"))
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
@@ -256,9 +257,10 @@ func main() {
 	})
 
 	// Initalize managers
-	job.InitManager(dispatcher, store, store, metricScope.SubScope("job"))
-	task.InitManager(dispatcher, store, store, metricScope.SubScope("task"))
-	tq := task.InitTaskQueue(dispatcher)
+	metrics := master.NewMetrics(metricScope.SubScope("master"))
+	job.InitManager(dispatcher, store, store, &metrics)
+	task.InitManager(dispatcher, store, store, &metrics)
+	tq := task.InitTaskQueue(dispatcher, &metrics)
 	upgrade.InitManager(dispatcher)
 
 	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), cfg.Mesos.Encoding)
@@ -289,7 +291,8 @@ func main() {
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 
 	// Defer initializing scheduler till the end
-	scheduler.InitManager(dispatcher, &cfg.Scheduler, mesosClient)
+	schedulerMetrics := scheduler.NewMetrics(metricScope.SubScope("scheduler"))
+	scheduler.InitManager(dispatcher, &cfg.Scheduler, mesosClient, &schedulerMetrics)
 
 	select {}
 }

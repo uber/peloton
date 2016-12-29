@@ -6,20 +6,23 @@
 package scheduler
 
 import (
-	"code.uber.internal/go-common.git/x/log"
-	master_task "code.uber.internal/infra/peloton/master/task"
-	"code.uber.internal/infra/peloton/util"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"context"
 	"fmt"
+	"sync/atomic"
+	"time"
+
+	"code.uber.internal/go-common.git/x/log"
+	master_task "code.uber.internal/infra/peloton/master/task"
+	sched_metrics "code.uber.internal/infra/peloton/scheduler/metrics"
+	"code.uber.internal/infra/peloton/util"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	mesos "mesos/v1"
 	"peloton/master/offerpool"
 	"peloton/master/taskqueue"
 	"peloton/task"
-	"sync/atomic"
-	"time"
 )
 
 const (
@@ -30,12 +33,13 @@ const (
 )
 
 // InitManager inits the schedulerManager
-func InitManager(d yarpc.Dispatcher, cfg *Config, mesosClient mpb.Client) {
+func InitManager(d yarpc.Dispatcher, cfg *Config, mesosClient mpb.Client, metrics *sched_metrics.Metrics) {
 	s := schedulerManager{
 		cfg:      cfg,
-		launcher: master_task.GetTaskLauncher(d, mesosClient),
+		launcher: master_task.GetTaskLauncher(d, mesosClient, metrics),
 		client:   json.New(d.ClientConfig("peloton-master")),
 		rootCtx:  context.Background(),
+		metrics:  metrics,
 	}
 	s.Start()
 }
@@ -48,11 +52,13 @@ type schedulerManager struct {
 	started    int32
 	shutdown   int32
 	launcher   master_task.Launcher
+	metrics    *sched_metrics.Metrics
 }
 
 func (s *schedulerManager) Start() {
 	if atomic.CompareAndSwapInt32(&s.started, 0, 1) {
 		log.Infof("Scheduler started")
+		s.metrics.Running.Update(1)
 		go s.workLoop()
 		return
 	}
@@ -61,6 +67,7 @@ func (s *schedulerManager) Start() {
 
 func (s *schedulerManager) Stop() {
 	log.Infof("Scheduler stopping")
+	s.metrics.Running.Update(0)
 	atomic.StoreInt32(&s.shutdown, 1)
 }
 
@@ -70,13 +77,16 @@ func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 		offers, err := s.getOffers(1)
 		if err != nil {
 			log.Errorf("Failed to dequeue offer, err=%v", err)
+			s.metrics.OfferGetFail.Inc(1)
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
 		if len(offers) == 0 {
+			s.metrics.OfferStarved.Inc(1)
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
+		s.metrics.OfferGet.Inc(1)
 		// TODO: handle multiple offer -> multiple tasks assignment
 		// for now only get one offer each time
 		offer := offers[0]
@@ -105,8 +115,14 @@ func (s *schedulerManager) assignTasksToOffer(
 	}
 	// launch the tasks that can be launched
 	if len(selectedTasks) > 0 {
-		// TODO: handle task launch error and reschedule the tasks
-		s.launcher.LaunchTasks(offer, selectedTasks)
+		err := s.launcher.LaunchTasks(offer, selectedTasks)
+		if err != nil {
+			// TODO: handle task launch error and reschedule the tasks
+			log.Errorf("Failed to launch %d tasks: %v", len(selectedTasks), err)
+			s.metrics.TaskLaunchDispatchesFail.Inc(1)
+			return tasks
+		}
+		s.metrics.TaskLaunchDispatches.Inc(1)
 
 		log.Infof("Launched %v tasks on %v using offer %v", len(selectedTasks),
 			offer.GetHostname(), *offerID)
@@ -157,7 +173,7 @@ func (s *schedulerManager) getTasks(limit int) (
 		&response,
 	)
 	if err != nil {
-		log.Errorf("Deque failed with err=%v", err)
+		log.Errorf("Dequeue failed with err=%v", err)
 		return nil, err
 	}
 	return response.Tasks, nil
@@ -192,4 +208,10 @@ func (s *schedulerManager) getOffers(limit int) (
 		return nil, err
 	}
 	return response.Offers, nil
+}
+
+// NewMetrics returns a new Metrics struct with all metrics initialized and rooted below the given tally scope
+// NOTE: helper function to delegate to metrics.New() to avoid cyclical import dependencies
+func NewMetrics(scope tally.Scope) sched_metrics.Metrics {
+	return sched_metrics.New(scope)
 }

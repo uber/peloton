@@ -29,7 +29,7 @@ all: $(PBGENS) master scheduler executor client
 
 master:
 	@mkdir -p $(BIN_DIR)
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/cli/*.go
 
 scheduler:
 	go build -o ./$(BIN_DIR)/peloton-scheduler scheduler/main/main.go

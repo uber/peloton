@@ -1,20 +1,23 @@
 package mysql
 
 import (
-	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/peloton/storage"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+
+	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/storage"
 	_ "github.com/go-sql-driver/mysql" // Pull in MySQL driver for sqlx
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattes/migrate/driver/mysql" // Pull in MySQL driver for migrate
 	"github.com/mattes/migrate/migrate"
+	"github.com/uber-go/tally"
+
 	mesos_v1 "mesos/v1"
-	"os"
 	"peloton/job"
 	"peloton/task"
-	"strings"
 )
 
 const (
@@ -124,12 +127,16 @@ func (d *Config) Connect() error {
 
 // JobStore implements JobStore using a mysql backend
 type JobStore struct {
-	DB *sqlx.DB
+	DB      *sqlx.DB
+	metrics storage.Metrics
 }
 
-// NewMysqlJobStore creates a MysqlJobStore
-func NewMysqlJobStore(db *sqlx.DB) *JobStore {
-	return &JobStore{DB: db}
+// NewJobStore creates a MysqlJobStore
+func NewJobStore(db *sqlx.DB, metricScope tally.Scope) *JobStore {
+	return &JobStore{
+		DB:      db,
+		metrics: storage.NewMetrics(metricScope),
+	}
 }
 
 // CreateJob creates a job with the job id and the config value
@@ -137,14 +144,17 @@ func (m *JobStore) CreateJob(id *job.JobID, jobConfig *job.JobConfig, createdBy 
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
 		log.Errorf("error = %v", err)
+		m.metrics.JobCreateFail.Inc(1)
 		return err
 	}
 	_, err = m.DB.Exec(insertJobStmt, id.Value, colJobConfig, 0, string(buffer), createdBy)
 	if err != nil {
 		log.Errorf("CreateJob failed with id %v error = %v", id.Value, err)
+		m.metrics.JobCreateFail.Inc(1)
 		return err
 	}
-	return err
+	m.metrics.JobCreate.Inc(1)
+	return nil
 }
 
 // GetJob returns a job config given the job id
@@ -209,18 +219,23 @@ func (m *JobStore) DeleteJob(id *job.JobID) error {
 	tasks, err := m.GetTasksForJob(id)
 	if err != nil {
 		log.Errorf("GetTasksForJob for job id %v failed with error %v", id.Value, err)
+		m.metrics.JobDeleteFail.Inc(1)
 		return err
 	}
 	if len(tasks) > 0 {
 		err = fmt.Errorf("job id %v still have task runtime records, cannot delete %v", id.Value, tasks)
+		m.metrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
 	_, err = m.DB.Exec(deleteJobStmt, id.Value)
 	if err != nil {
 		log.Errorf("Delete job id %v failed with error %v", id.Value, err)
+		m.metrics.JobDeleteFail.Inc(1)
+		return err
 	}
-	return err
+	m.metrics.JobDelete.Inc(1)
+	return nil
 }
 
 // GetJobsByOwner returns jobs by owner
@@ -270,16 +285,24 @@ func (m *JobStore) CreateTask(id *job.JobID, instanceID int, taskInfo *task.Task
 	if taskInfo.InstanceId != uint32(instanceID) {
 		errMsg := fmt.Sprintf("Task %v has instance id %v, different than the instanceID %d expected", rowKey, instanceID, taskInfo.InstanceId)
 		log.Errorf(errMsg)
+		m.metrics.TaskCreateFail.Inc(1)
 		return fmt.Errorf(errMsg)
 	}
 	buffer, err := json.Marshal(taskInfo)
 	if err != nil {
 		log.Errorf("error = %v", err)
+		m.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
 	// TODO: adjust when taskInfo pb change to introduce static config and runtime config
 	_, err = m.DB.Exec(insertTaskStmt, rowKey, colBaseInfo, 0, string(buffer), createdBy)
-	return err
+	if err != nil {
+		log.Errorf("Create task for job %v instance %d failed with error %v", id.Value, instanceID, err)
+		m.metrics.TaskCreateFail.Inc(1)
+		return err
+	}
+	m.metrics.TaskCreate.Inc(1)
+	return nil
 }
 
 // GetTasksForJobAndState returns the tasks (runtime_config) for a peloton job with certain state
@@ -291,12 +314,22 @@ func (m *JobStore) GetTasksForJobAndState(id *job.JobID, state string) (map[uint
 func (m *JobStore) UpdateTask(taskInfo *task.TaskInfo) error {
 	rowKey := fmt.Sprintf("%s-%d", taskInfo.JobId.Value, taskInfo.InstanceId)
 	buffer, err := json.Marshal(taskInfo)
+
 	if err != nil {
 		log.Errorf("error = %v", err)
+		m.metrics.TaskUpdateFail.Inc(1)
 		return err
 	}
+
 	_, err = m.DB.Exec(updateTaskStmt, string(buffer), rowKey)
-	return err
+	if err != nil {
+		log.Errorf("Update task for job %v instance %d failed with error %v", taskInfo.JobId.Value, taskInfo.InstanceId, err)
+		m.metrics.TaskUpdateFail.Inc(1)
+		return err
+	}
+
+	m.metrics.TaskUpdate.Inc(1)
+	return nil
 }
 
 // getQueryAndArgs returns the SQL query along with the bind args
@@ -330,20 +363,24 @@ func (m *JobStore) getJobs(filters map[string]interface{}) (map[string]*job.JobC
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
 		log.Warnf("getJobs for filters %v returns no rows", filters)
+		m.metrics.JobGetFail.Inc(1)
 		return result, nil
 	}
 	if err != nil {
 		log.Errorf("getJobs for filter %v failed with error %v", filters, err)
+		m.metrics.JobGetFail.Inc(1)
 		return nil, err
 	}
 	for _, jobRecord := range records {
 		jobConfig, err := jobRecord.GetJobConfig()
 		if err != nil {
 			log.Errorf("jobRecord %v GetJobConfig failed, err=%v", jobRecord, err)
+			m.metrics.JobGetFail.Inc(1)
 			return nil, err
 		}
 		result[jobRecord.RowKey] = jobConfig
 	}
+	m.metrics.JobGet.Inc(1)
 	return result, nil
 }
 
@@ -354,20 +391,24 @@ func (m *JobStore) getTasks(filters map[string]interface{}) (map[uint32]*task.Ta
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
 		log.Warnf("getTasks for filters %v returns no rows", filters)
+		m.metrics.TaskGetFail.Inc(1)
 		return result, nil
 	}
 	if err != nil {
 		log.Errorf("getTasks for filter %v failed with error %v", filters, err)
+		m.metrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
 	for _, taskRecord := range records {
 		taskInfo, err := taskRecord.GetTaskInfo()
 		if err != nil {
 			log.Errorf("taskRecord %v GetTaskInfo failed, err=%v", taskRecord, err)
+			m.metrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
 		result[uint32(taskRecord.InstanceId)] = taskInfo
 	}
+	m.metrics.TaskGet.Inc(1)
 	return result, nil
 }
 

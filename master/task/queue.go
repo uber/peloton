@@ -2,6 +2,7 @@ package task
 
 import (
 	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/master"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"context"
@@ -17,8 +18,10 @@ import (
 )
 
 // InitTaskQueue inits the TaskQueue
-func InitTaskQueue(d yarpc.Dispatcher) *Queue {
-	tq := Queue{}
+func InitTaskQueue(d yarpc.Dispatcher, metrics *master.Metrics) *Queue {
+	tq := Queue{
+		metrics: metrics,
+	}
 	tq.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
 	json.Register(d, json.Procedure("TaskQueue.Enqueue", tq.Enqueue))
 	json.Register(d, json.Procedure("TaskQueue.Dequeue", tq.Dequeue))
@@ -31,6 +34,7 @@ type Queue struct {
 	// TODO: need to handle the case if dequeue RPC fails / follower is down
 	// which can lead to some tasks are dequeued and lost. We can find those tasks
 	// by reconcilation, and put those tasks back
+	metrics *master.Metrics
 }
 
 // Enqueue enqueues tasks into the queue
@@ -41,8 +45,10 @@ func (q *Queue) Enqueue(
 
 	tasks := body.Tasks
 	log.WithField("tasks", tasks).Debug("TaskQueue.Enqueue called")
+	q.metrics.QueueAPIEnqueue.Inc(1)
 	for _, task := range tasks {
 		q.tqValue.Load().(util.TaskQueue).PutTask(task)
+		q.metrics.QueueEnqueue.Inc(1)
 	}
 	return &taskqueue.EnqueueResponse{}, nil, nil
 }
@@ -55,9 +61,11 @@ func (q *Queue) Dequeue(
 
 	limit := body.Limit
 	log.WithField("limit", limit).Debug("TaskQueue.Dequeue called")
+	q.metrics.QueueAPIDequeue.Inc(1)
 	var tasks []*task.TaskInfo
 	for i := 0; i < int(limit); i++ {
 		task := q.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
+		q.metrics.QueueDequeue.Inc(1)
 		if task != nil {
 			tasks = append(tasks, task)
 		} else {

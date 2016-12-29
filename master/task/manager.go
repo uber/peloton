@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/master"
 	"code.uber.internal/infra/peloton/storage"
-	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
@@ -15,31 +15,11 @@ import (
 )
 
 // InitManager initializes the TaskManager
-func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, metricScope tally.Scope) {
-	successScope := metricScope.Tagged(map[string]string{"type": "success"})
-	failScope := metricScope.Tagged(map[string]string{"type": "fail"})
-	apiScope := metricScope.SubScope("api")
-
+func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, metrics *master.Metrics) {
 	handler := taskManager{
 		taskStore: taskStore,
 		jobStore:  jobStore,
-		metrics: taskMetrics{
-			apiGet:      apiScope.Counter("get"),
-			get:         successScope.Counter("get"),
-			getFail:     failScope.Counter("get"),
-			apiList:     apiScope.Counter("list"),
-			list:        successScope.Counter("list"),
-			listFail:    failScope.Counter("list"),
-			apiStart:    apiScope.Counter("start"),
-			start:       successScope.Counter("start"),
-			startFail:   failScope.Counter("start"),
-			apiStop:     apiScope.Counter("stop"),
-			stop:        successScope.Counter("stop"),
-			stopFail:    failScope.Counter("stop"),
-			apiRestart:  apiScope.Counter("restart"),
-			restart:     successScope.Counter("restart"),
-			restartFail: failScope.Counter("restart"),
-		},
+		metrics:   metrics,
 	}
 	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
 	json.Register(d, json.Procedure("TaskManager.List", handler.List))
@@ -51,25 +31,7 @@ func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storag
 type taskManager struct {
 	taskStore storage.TaskStore
 	jobStore  storage.JobStore
-	metrics   taskMetrics
-}
-
-type taskMetrics struct {
-	apiGet      tally.Counter
-	get         tally.Counter
-	getFail     tally.Counter
-	apiList     tally.Counter
-	list        tally.Counter
-	listFail    tally.Counter
-	apiStart    tally.Counter
-	start       tally.Counter
-	startFail   tally.Counter
-	apiStop     tally.Counter
-	stop        tally.Counter
-	stopFail    tally.Counter
-	apiRestart  tally.Counter
-	restart     tally.Counter
-	restartFail tally.Counter
+	metrics   *master.Metrics
 }
 
 func (m *taskManager) Get(
@@ -78,7 +40,7 @@ func (m *taskManager) Get(
 	body *task.GetRequest) (*task.GetResponse, yarpc.ResMeta, error) {
 
 	log.Infof("TaskManager.Get called: %v", body)
-	m.metrics.apiGet.Inc(1)
+	m.metrics.TaskAPIGet.Inc(1)
 	jobConfig, err := m.jobStore.GetJob(body.JobId)
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
@@ -93,13 +55,13 @@ func (m *taskManager) Get(
 	result, err := m.taskStore.GetTaskForJob(body.JobId, body.InstanceId)
 	for _, taskInfo := range result {
 		log.Infof("found task %v", taskInfo)
-		m.metrics.get.Inc(1)
+		m.metrics.TaskGet.Inc(1)
 		return &task.GetResponse{
 			Result: taskInfo,
 		}, nil, nil
 	}
 
-	m.metrics.getFail.Inc(1)
+	m.metrics.TaskGetFail.Inc(1)
 	return &task.GetResponse{
 		OutOfRange: &task.InstanceIdOutOfRange{
 			JobId:         body.JobId,
@@ -114,11 +76,11 @@ func (m *taskManager) List(
 	body *task.ListRequest) (*task.ListResponse, yarpc.ResMeta, error) {
 
 	log.Infof("TaskManager.List called: %v", body)
-	m.metrics.apiList.Inc(1)
+	m.metrics.TaskAPIList.Inc(1)
 	_, err := m.jobStore.GetJob(body.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
-		m.metrics.listFail.Inc(1)
+		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
 			NotFound: &job.JobNotFound{
 				Id:      body.JobId,
@@ -133,7 +95,7 @@ func (m *taskManager) List(
 		result, err = m.taskStore.GetTasksForJobByRange(body.JobId, body.Range)
 	}
 	if err != nil || len(result) == 0 {
-		m.metrics.listFail.Inc(1)
+		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
 			NotFound: &job.JobNotFound{
 				Id:      body.JobId,
@@ -142,7 +104,7 @@ func (m *taskManager) List(
 		}, nil, nil
 	}
 
-	m.metrics.list.Inc(1)
+	m.metrics.TaskList.Inc(1)
 	return &task.ListResponse{
 		Result: &task.ListResponse_Result{
 			Value: result,
@@ -156,8 +118,8 @@ func (m *taskManager) Start(
 	body *task.StartRequest) (*task.StartResponse, yarpc.ResMeta, error) {
 
 	log.Infof("TaskManager.Start called: %v", body)
-	m.metrics.apiStart.Inc(1)
-	m.metrics.start.Inc(1)
+	m.metrics.TaskAPIStart.Inc(1)
+	m.metrics.TaskStart.Inc(1)
 	return &task.StartResponse{}, nil, nil
 }
 
@@ -167,8 +129,8 @@ func (m *taskManager) Stop(
 	body *task.StopRequest) (*task.StopResponse, yarpc.ResMeta, error) {
 
 	log.Infof("TaskManager.Stop called: %v", body)
-	m.metrics.apiStop.Inc(1)
-	m.metrics.stop.Inc(1)
+	m.metrics.TaskAPIStop.Inc(1)
+	m.metrics.TaskStop.Inc(1)
 	return &task.StopResponse{}, nil, nil
 }
 
@@ -178,7 +140,7 @@ func (m *taskManager) Restart(
 	body *task.RestartRequest) (*task.RestartResponse, yarpc.ResMeta, error) {
 
 	log.Infof("TaskManager.Restart called: %v", body)
-	m.metrics.apiRestart.Inc(1)
-	m.metrics.restart.Inc(1)
+	m.metrics.TaskAPIRestart.Inc(1)
+	m.metrics.TaskRestart.Inc(1)
 	return &task.RestartResponse{}, nil, nil
 }

@@ -5,6 +5,7 @@ import (
 
 	"code.uber.internal/go-common.git/x/log"
 	master_mesos "code.uber.internal/infra/peloton/master/mesos"
+	sched_metrics "code.uber.internal/infra/peloton/scheduler/metrics"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"go.uber.org/yarpc"
@@ -20,17 +21,19 @@ type Launcher interface {
 }
 
 type taskLauncher struct {
-	client mpb.Client
+	client  mpb.Client
+	metrics *sched_metrics.Metrics
 }
 
 var instance *taskLauncher
 var once sync.Once
 
 // GetTaskLauncher returns the task launcher
-func GetTaskLauncher(d yarpc.Dispatcher, mesosClient mpb.Client) Launcher {
+func GetTaskLauncher(d yarpc.Dispatcher, mesosClient mpb.Client, metrics *sched_metrics.Metrics) Launcher {
 	once.Do(func() {
 		instance = &taskLauncher{
-			client: mesosClient,
+			client:  mesosClient,
+			metrics: metrics,
 		}
 	})
 	return instance
@@ -68,11 +71,15 @@ func (t *taskLauncher) LaunchTasks(
 	msid := master_mesos.GetSchedulerDriver().GetMesosStreamID()
 	err := t.client.Call(msid, msg)
 	if err != nil {
-		log.Warnf("Failed to launch %v tasks using offer %v, err=%v",
-			len(tasks), *offer.GetId().Value, err)
-	} else {
-		log.Debugf("Launched %v tasks %v using offer %v",
-			len(tasks), mesosTaskIds, *offer.GetId().Value)
+		t.metrics.LaunchTaskFail.Inc(int64(len(mesosTasks)))
+		t.metrics.LaunchOfferAcceptFail.Inc(1)
+		log.Warnf("Failed to launch %d tasks using offer %v, err=%v",
+			len(mesosTasks), *offer.GetId().Value, err)
+		return err
 	}
-	return err
+	t.metrics.LaunchTask.Inc(int64(len(mesosTasks)))
+	t.metrics.LaunchOfferAccept.Inc(1)
+	log.Debugf("Launched %d tasks %v using offer %v",
+		len(mesosTasks), mesosTaskIds, *offer.GetId().Value)
+	return nil
 }

@@ -2,13 +2,15 @@ package mysql
 
 import (
 	"fmt"
+	"strconv"
+	"testing"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 	mesos_v1 "mesos/v1"
 	"peloton/job"
 	"peloton/task"
-	"strconv"
-	"testing"
 )
 
 type MysqlStoreTestSuite struct {
@@ -21,7 +23,7 @@ func (suite *MysqlStoreTestSuite) SetupTest() {
 	conf := LoadConfigWithDB()
 
 	suite.db = conf.Conn
-	suite.store = NewMysqlJobStore(conf.Conn)
+	suite.store = NewJobStore(conf.Conn, tally.NoopScope)
 }
 
 func (suite *MysqlStoreTestSuite) TearDownTest() {
