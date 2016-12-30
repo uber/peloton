@@ -1,12 +1,13 @@
 package mysql
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"fmt"
-	"github.com/mattes/migrate/migrate"
 	"os"
 	"path"
 	"strings"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/mattes/migrate/migrate"
 )
 
 func downSync(cfg *Config) []error {

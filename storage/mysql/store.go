@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage"
+	log "github.com/Sirupsen/logrus"
 	_ "github.com/go-sql-driver/mysql" // Pull in MySQL driver for sqlx
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattes/migrate/driver/mysql" // Pull in MySQL driver for migrate
@@ -406,7 +406,7 @@ func (m *JobStore) getTasks(filters map[string]interface{}) (map[uint32]*task.Ta
 			m.metrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
-		result[uint32(taskRecord.InstanceId)] = taskInfo
+		result[uint32(taskRecord.InstanceID)] = taskInfo
 	}
 	m.metrics.TaskGet.Inc(1)
 	return result, nil
@@ -450,7 +450,7 @@ func (m *JobStore) GetMesosStreamID(frameworkName string) (string, error) {
 		return "", nil
 	}
 	for _, frameworkInfo := range records {
-		return frameworkInfo.MesosStreamId.String, nil
+		return frameworkInfo.MesosStreamID.String, nil
 	}
 	return "", nil
 }
@@ -465,7 +465,7 @@ func (m *JobStore) GetFrameworkID(frameworkName string) (string, error) {
 		return "", nil
 	}
 	for _, frameworkInfo := range records {
-		return frameworkInfo.FrameworkId.String, nil
+		return frameworkInfo.FrameworkID.String, nil
 	}
 	return "", nil
 }

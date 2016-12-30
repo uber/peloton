@@ -3,9 +3,9 @@ package offer
 import (
 	"time"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	sched "mesos/v1/scheduler"
 )

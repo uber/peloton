@@ -5,17 +5,11 @@ ignore:
 excludeDirs:
 - pbgen
 import:
-- package: code.uber.internal/go-common.git
-  repo: gitolite@code.uber.internal:go-common.git
-  vcs: git
-  subpackages:
-  - x/config
-  - x/log
-  - x/metrics
 - package: code.uber.internal/infra/jaeger-client-go.git
   repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
   vcs: git
 - package: github.com/golang/protobuf
+  version: 8ee79997227bf9b34611aee7946ae64735e6fd93
   subpackages:
   - proto
   - protoc
@@ -31,7 +25,7 @@ import:
   - require
   - suite
 - package: code.uber.internal/infra/uns.git
-  version: master
+  version: b259ac652742e21a701fc1844f2dbf25d118c546
   repo: gitolite@code.uber.internal:infra/uns.git
   vcs: git
   subpackages:
@@ -85,8 +79,25 @@ import:
   subpackages:
   - statsd
 - package: github.com/uber-go/tally
+  version: 4ecb8f919865e9fb8aa397f0c00a6f76b6a815f5
   subpackages:
   - statsd
 - package: code.uber.internal/infra/stapi-go.git
   repo: gitolite@code.uber.internal:infra/stapi-go.git
   vcs: git
+- package: github.com/Sirupsen/logrus
+  version: ^0.11.0
+- package: gopkg.in/validator.v2
+  version: 0a9835d809fb647a62611d30cb792e0b5dd65b11
+- package: gopkg.in/yaml.v2
+  version: a5b47d31c556af34a302ce5d659e6fea44d90de0
+# this is necessary because glide cant discover the transitive dependencies of code.uber.internal/go-common.git
+# correctly. TODO find better way than explicitly declaring transitive dependencies of packages we care about
+- package: code.uber.internal/rt/filter-go.git
+  version: 0d29066edd2b08207ae24474e5b5acf8002b1de2
+  repo: gitolite@code.uber.internal:rt/filter-go.git
+  vcs: git
+  subpackages:
+  - filter
+- package: github.com/uber-common/bark
+  version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46

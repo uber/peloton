@@ -1,20 +1,22 @@
 package task
 
 import (
-	"code.uber.internal/go-common.git/x/log"
+	"context"
+	"fmt"
+	"sync/atomic"
+	"time"
+
 	"code.uber.internal/infra/peloton/master"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
-	"context"
-	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
+
 	mesos "mesos/v1"
 	"peloton/job"
 	"peloton/master/taskqueue"
 	"peloton/task"
-	"sync/atomic"
-	"time"
 )
 
 // InitTaskQueue inits the TaskQueue

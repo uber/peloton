@@ -1,16 +1,12 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
-	"code.uber.internal/go-common.git/x/config"
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master"
 	"code.uber.internal/infra/peloton/master/job"
@@ -24,20 +20,42 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/uber-go/tally"
+	tallyprom "github.com/uber-go/tally/prometheus"
 	tallystatsd "github.com/uber-go/tally/statsd"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
-	environmentKey     = "UBER_ENVIRONMENT"
 	productionEnvValue = "production"
-	// metricFlushInterval is the flush interval for metrics as configured in Tally. This may be unused, depending on
-	// if the backend selected supports push or pull metrics
-	metricFlushInterval = 30 * time.Second
+	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
+	metricFlushInterval = 1 * time.Second
+)
+
+var (
+	version string
+	app     = kingpin.New("peloton-framework", "Peloton Mesos Framework")
+	debug   = app.Flag("debug", "enable debug mode (print full json responses)").Short('d').Default("false").Bool()
+	configs = app.Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").Short('c').Required().ExistingFiles()
+	env     = app.Flag("env", "environment (development will do no mesos master auto discovery) (set $ENVIRONMENT to override)").Short('e').Default("development").
+		Envar("ENVIRONMENT\nUBER_ENVIRONMENT").Enum("development", "production")
+	logFormatJSON    = app.Flag("log-json", "Log in JSON format").Default("true").Bool()
+	zkPath           = app.Flag("zk-path", "Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to override)").Envar("MESOS_ZK_PATH").String()
+	dbHost           = app.Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").Envar("DB_HOST").String()
+	taskDequeueLimit = app.Flag("task-dequeue-limit", "Scheduler task dequeue limit (scheduler.task_dequeue_limit override) (set $SCHEDULER_TASK_DEQUEUE_LIMIT to override)").
+				Envar("SCHEDULER_TASK_DEQUEUE_LIMIT").Int()
+	electionZkServers = app.Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+				Envar("ELECTION_ZK_SERVERS").Strings()
+	masterPort    = app.Flag("master-port", "Master port (master.port override) (set $MASTER_PORT to override)").Envar("MASTER_PORT").Int()
+	offerHoldTime = app.Flag("offer-hold", "Master offer time (master.offer_hold_time_sec override) (set $OFFER_HOLD_TIME to override)").
+			HintOptions("5s", "1m").Envar("OFFER_HOLD_TIME").Duration()
+	offerPruningPeriod = app.Flag("offer-pruning-period", "Master offer pruning period (master.offer_pruning_period_sec override) (set $OFFER_PRUNING_PERIOD to override)").
+				HintOptions("20s").Envar("OFFER_PRUNING_PERIOD").Duration()
 )
 
 type pelotonMaster struct {
@@ -52,9 +70,11 @@ type pelotonMaster struct {
 	localAddr     string
 	mesosDetector mesos.MasterDetector
 	offerManager  *offer.Manager
+	env           string
 }
 
-func newPelotonMaster(mInbound mhttp.Inbound,
+func newPelotonMaster(env string,
+	mInbound mhttp.Inbound,
 	mOutbounds transport.Outbounds,
 	pChooser *peer.Chooser,
 	tq *task.Queue,
@@ -64,6 +84,7 @@ func newPelotonMaster(mInbound mhttp.Inbound,
 	mesosDetector mesos.MasterDetector,
 	om *offer.Manager) *pelotonMaster {
 	result := pelotonMaster{
+		env:           env,
 		mesosInbound:  mInbound,
 		peerChooser:   pChooser,
 		mesosOutbound: mOutbounds,
@@ -91,7 +112,7 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 	// containers are launched in bridged network, therefore master
 	// registers with docker internal ip to zk, which can not be
 	// accessed by peloton running outside the container.
-	if os.Getenv(environmentKey) == productionEnvValue {
+	if p.env == productionEnvValue {
 		mesosMasterAddr, err = p.mesosDetector.GetMasterLocation()
 		if err != nil {
 			log.Errorf("Failed to get mesosMasterAddr, err = %v", err)
@@ -160,41 +181,67 @@ func (p *pelotonMaster) GetHostPort() string {
 }
 
 func main() {
-	// Parse command line arguments
-	flag.Parse()
+	app.Version(version)
+	app.HelpFlag.Short('h')
+	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	// Load configuration YAML file
-	var cfg AppConfig
-	if err := config.Load(&cfg); err != nil {
-		log.Fatalf("Error initializing configuration: %s", err)
-	} else {
-		// Dump the current configuration
-		log.WithField("config", cfg).Info("Loading Peloton configuration")
+	if *logFormatJSON {
+		log.SetFormatter(&log.JSONFormatter{})
+	}
+	if *debug {
+		log.SetLevel(log.DebugLevel)
 	}
 
-	// Override app config from env vars if set
-	LoadConfigFromEnv(&cfg)
+	log.Debugf("Loading config from %v...", *configs)
+	cfg, err := NewAppConfig(*configs...)
+	if err != nil {
+		log.Fatalf("Error initializing configuration: %v", err)
+	}
 
-	log.Configure(&cfg.Logging, cfg.Verbose)
-	log.ConfigureSentry(&cfg.Sentry)
+	// now, override any CLI flags in the loaded AppConfig
+	if *zkPath != "" {
+		cfg.Mesos.ZkPath = *zkPath
+	}
+	if *dbHost != "" {
+		cfg.DbConfig.Host = *dbHost
+	}
+	if *taskDequeueLimit != 0 {
+		cfg.Scheduler.TaskDequeueLimit = *taskDequeueLimit
+	}
+	if len(*electionZkServers) > 0 {
+		cfg.Election.ZKServers = *electionZkServers
+	}
+	if *masterPort != 0 {
+		cfg.Master.Port = *masterPort
+	}
+	if *offerHoldTime != 0 {
+		cfg.Master.OfferHoldTimeSec = int(offerHoldTime.Seconds())
+	}
+	if *offerPruningPeriod != 0 {
+		cfg.Master.OfferPruningPeriodSec = int(offerPruningPeriod.Seconds())
+	}
+
+	log.WithField("config", cfg).Debug("Loaded Peloton configuration")
 
 	var reporter tally.StatsReporter
+	metricSeparator := "."
 	if cfg.Metrics.Prometheus != nil && cfg.Metrics.Prometheus.Enable {
-		// TODO: setup prom
-		log.Fatalf("Prom metrics unimplemented, until https://github.com/uber-go/tally/pull/16 lands")
+		metricSeparator = "_"
+		reporter = tallyprom.NewReporter(nil)
+		log.Fatalf("Metrics configured with prometheus endpoint /metrics, not wired up yet!")
 	} else if cfg.Metrics.Statsd != nil && cfg.Metrics.Statsd.Enable {
 		log.Infof("Metrics configured with statsd endpoint %s", cfg.Metrics.Statsd.Endpoint)
 		c, err := statsd.NewClient(cfg.Metrics.Statsd.Endpoint, "")
 		if err != nil {
 			log.Fatalf("Unable to setup Statsd client: %v", err)
 		}
-		reporter = tallystatsd.NewStatsdReporter(c, tallystatsd.NewOptions())
+		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
 	} else {
 		log.Warnf("No metrics backends configured, using the statsd.NoopClient")
 		c, _ := statsd.NewNoopClient()
-		reporter = tallystatsd.NewStatsdReporter(c, tallystatsd.NewOptions())
+		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
 	}
-	metricScope, scopeCloser := tally.NewRootScope("peloton_framework", map[string]string{}, reporter, metricFlushInterval)
+	metricScope, scopeCloser := tally.NewRootScope("peloton_framework", map[string]string{}, reporter, metricFlushInterval, metricSeparator)
 	defer scopeCloser.Close()
 	metricScope.Counter("boot").Inc(1)
 
@@ -212,7 +259,7 @@ func main() {
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
 	inbounds := []transport.Inbound{
-		http.NewInbound(":" + strconv.Itoa(cfg.Master.Port)),
+		http.NewInbound(fmt.Sprintf(":%d", cfg.Master.Port)),
 	}
 
 	mesosMasterLocation := cfg.Mesos.HostPort
@@ -224,7 +271,7 @@ func main() {
 	// containers are launched in bridged network, therefore master
 	// registers with docker internal ip to zk, which can not be
 	// accessed by peloton running outside the container.
-	if os.Getenv(environmentKey) == productionEnvValue {
+	if *env == productionEnvValue {
 		mesosMasterLocation, err = mesosMasterDetector.GetMasterLocation()
 		if err != nil {
 			log.Fatalf("Failed to get mesos leading master location, err=%v", err)
@@ -286,7 +333,7 @@ func main() {
 		log.Fatalf("Failed to get ip, err=%v", err)
 	}
 	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, cfg.Master.Port)
-	pMaster := newPelotonMaster(mInbound, mOutbounds, pelotonMasterPeerChooser, tq, store, &cfg, localPelotonMasterAddr,
+	pMaster := newPelotonMaster(*env, mInbound, mOutbounds, pelotonMasterPeerChooser, tq, store, cfg, localPelotonMasterAddr,
 		mesosMasterDetector, om)
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 

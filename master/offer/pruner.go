@@ -1,12 +1,12 @@
 package offer
 
 import (
-	"go.uber.org/yarpc"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/go-common.git/x/log"
+	log "github.com/Sirupsen/logrus"
+	"go.uber.org/yarpc"
 )
 
 const (

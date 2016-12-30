@@ -1,8 +1,8 @@
 package mesos
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/storage"

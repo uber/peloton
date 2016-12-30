@@ -1,9 +1,9 @@
 package leader
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/uns.git/net/zk/election"
 	"code.uber.internal/infra/uns.git/zk"
+	log "github.com/Sirupsen/logrus"
 	"sync"
 )
 
@@ -31,8 +31,8 @@ type ElectionConfig struct {
 	Path string `yaml:"path" validate:"nonzero"`
 }
 
-// LeaderElection holds the state of the election
-type LeaderElection struct {
+// Election holds the state of the election
+type Election struct {
 	election        election.Election
 	electionStateMu sync.RWMutex
 	electionState   election.Event // protected by electionStateMu
@@ -40,20 +40,20 @@ type LeaderElection struct {
 }
 
 // GetElectionState returns the current state of the election
-func (el *LeaderElection) getElectionState() election.Event {
+func (el *Election) getElectionState() election.Event {
 	el.electionStateMu.RLock()
 	defer el.electionStateMu.RUnlock()
 	return el.electionState
 }
 
 // GetCurrentLeader returns the current leader hostname
-func (el *LeaderElection) GetCurrentLeader() string {
+func (el *Election) GetCurrentLeader() string {
 	// The data provided by the current leader
 	return el.getElectionState().Data
 }
 
 // NewZkElection creates new election object to control participation in leader election
-func NewZkElection(cfg ElectionConfig, instanceID string, peloton Node) (*LeaderElection, error) {
+func NewZkElection(cfg ElectionConfig, instanceID string, peloton Node) (*Election, error) {
 	log.Info("Start leader election")
 	connectionFactory, err := zk.NewConnectionFactory(cfg.ZKServers)
 	if err != nil {
@@ -69,8 +69,8 @@ func NewZkElection(cfg ElectionConfig, instanceID string, peloton Node) (*Leader
 	return newZKElection(conn, cfg.Path, instanceID, peloton)
 }
 
-func newZKElection(conn zk.StatefulConnection, path string, instanceID string, peloton Node, options ...election.Option) (*LeaderElection, error) {
-	el := &LeaderElection{
+func newZKElection(conn zk.StatefulConnection, path string, instanceID string, peloton Node, options ...election.Option) (*Election, error) {
+	el := &Election{
 		node: peloton,
 	}
 	election, err := election.NewElection(
@@ -89,7 +89,7 @@ func newZKElection(conn zk.StatefulConnection, path string, instanceID string, p
 	return el, nil
 }
 
-func (el *LeaderElection) electionCallback(ev election.Event) {
+func (el *Election) electionCallback(ev election.Event) {
 	el.electionStateMu.Lock()
 	el.electionState = ev
 	el.electionStateMu.Unlock()

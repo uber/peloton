@@ -1,7 +1,7 @@
-/**
-* This file is copied from mesos-uns-bridge/mesos/detector.go with modifications :
-      1) refer to forked mesos-go dependencies
-      2) added GetMasterLocation() which retries on empty MasterLocation
+/*
+Package mesos is copied from mesos-uns-bridge/mesos/detector.go with modifications :
+1) refer to forked mesos-go dependencies
+2) added GetMasterLocation() which retries on empty MasterLocation
 */
 package mesos
 
@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/mesos-go/detector"
 	_ "code.uber.internal/infra/peloton/mesos-go/detector/zoo" // To register zookeeper based plugin.
+	log "github.com/Sirupsen/logrus"
 	mesos_v1 "mesos/v1"
 )
 

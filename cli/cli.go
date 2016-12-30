@@ -12,12 +12,9 @@ import (
 	pt "peloton/task"
 )
 
-const (
-	// VERSION of the peloton client. TODO: read me from a gold generated string
-	version = "0.1.0"
-)
-
 var (
+	// version of the peloton client. will be set by Makefile
+	version   string
 	client    *Client
 	tabWriter = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight|tabwriter.Debug)
 

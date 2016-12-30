@@ -1,14 +1,15 @@
 package peer
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"context"
+	"net/url"
+	"sync"
+
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc/peer"
 	"go.uber.org/yarpc/peer/hostport"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
-	"net/url"
-	"sync"
 )
 
 // Chooser holds the peloton manager master RPC server address

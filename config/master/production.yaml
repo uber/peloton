@@ -1,6 +1,3 @@
-extends: base.yaml
-deep_extend: true
-
 # Disable kafka logging before kafka is ready in ATC
 # logging:
 #  kafka:

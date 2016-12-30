@@ -19,7 +19,8 @@ PBGENS = $(PBFILES:%.proto=%.pb.go)
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
 GOLINT = $(go get github.com/golang/lint/golint)
-GO_FLAGS = -gcflags '-N'
+PACKAGE_VERSION=`git describe --always --tags`
+GO_FLAGS = -gcflags '-N' -ldflags "-X main.version=$(PACKAGE_VERSION)"
 # TODO: figure out why -pkgdir does not work
 GOPATH := ${GOPATH}:${GOPATH}/src/${PROJECT_ROOT}/pbgen
 .PRECIOUS: $(PBGENS)
@@ -32,17 +33,17 @@ master:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/cli/*.go
 
 scheduler:
-	go build -o ./$(BIN_DIR)/peloton-scheduler scheduler/main/main.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-scheduler scheduler/main/main.go
 
 executor:
-	go build -o ./$(BIN_DIR)/peloton-executor executor/main.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-executor executor/main.go
 
 install:
 	glide --version || go get github.com/Masterminds/glide
 	glide install
 
 client:
-	go build -o ./$(BIN_DIR)/peloton cli/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cli/*.go
 
 cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))

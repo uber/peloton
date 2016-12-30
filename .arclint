@@ -10,11 +10,17 @@
     },
     "golint": {
       "type": "golint",
-      "include": "(\\.go$)"
+      "include": "(\\.go$)",
+      "exclude": ["(^mesos-go/.+\\.go$)", "(^pbgen/.+\\.go$)"]
     },
     "govet": {
       "type": "govet",
-      "include": "(\\.go$)"
+      "include": "(\\.go$)",
+      "exclude": "(^mesos-go/.+.go$)"
+    },
+    "json": {
+      "type": "json",
+      "include": "(\\.json$)"
     }
   }
 }

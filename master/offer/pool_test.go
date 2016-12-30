@@ -1,12 +1,13 @@
 package offer
 
 import (
+	"testing"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
-	"testing"
-	"time"
 )
 
 type mockJSONClient struct {

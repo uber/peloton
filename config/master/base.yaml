@@ -1,7 +1,3 @@
-logging:
-  level: info
-  stdout: true
-
 db:
   user: peloton
   password: peloton

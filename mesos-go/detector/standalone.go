@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/mesos-go/upid"
+	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
 	mesos "mesos/v1"
 )

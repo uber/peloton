@@ -7,9 +7,9 @@ import (
 	"reflect"
 	"strings"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"

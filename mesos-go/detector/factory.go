@@ -10,21 +10,22 @@ import (
 	"strings"
 	"sync"
 
-	"code.uber.internal/go-common.git/x/log"
 	util "code.uber.internal/infra/peloton/mesos-go/mesosutil"
 	"code.uber.internal/infra/peloton/mesos-go/upid"
+	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	mesos "mesos/v1"
 )
 
 var (
-	pluginLock     sync.Mutex
-	plugins        = map[string]PluginFactory{}
-	EmptySpecError = errors.New("empty master specification")
+	pluginLock sync.Mutex
+	plugins    = map[string]PluginFactory{}
+	// ErrEmptySpec is the error for when no master is provided
+	ErrEmptySpec = errors.New("empty master specification")
 
 	defaultFactory = PluginFactory(func(spec string, _ ...Option) (Master, error) {
 		if len(spec) == 0 {
-			return nil, EmptySpecError
+			return nil, ErrEmptySpec
 		}
 		if strings.Index(spec, "@") < 0 {
 			spec = "master@" + spec

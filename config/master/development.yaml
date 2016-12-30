@@ -1,6 +1,3 @@
-extends: base.yaml
-deep_extend: true
-
 logging:
   level: info
 

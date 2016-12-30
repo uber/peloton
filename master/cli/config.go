@@ -1,35 +1,44 @@
 package main
 
 import (
-	"os"
-	"strconv"
+	"bytes"
+	"errors"
+	"fmt"
+	"io/ioutil"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/storage/mysql"
+	"gopkg.in/validator.v2"
+	"gopkg.in/yaml.v2"
 )
 
-const (
-	mesosZkPath       = "MESOS_ZK_PATH"
-	dbHost            = "DB_HOST"
-	taskDequeueLimit  = "SCHEDULER_TASK_DEQUEUE_LIMIT"
-	electionZkServers = "ELECTION_ZK_SERVERS"
-	loggingLevel      = "LOGGING_LEVEL"
-	masterPort        = "MASTER_PORT"
-	// OfferHoldTimeSec is how long the framework will keep mesos offers before releasing them
-	OfferHoldTimeSec = "OFFER_HOLD_TIME_SEC"
-	// OfferPruningPeriodSec is how frequently the framework will prune mesos offers that exceed OfferHoldTimeSec
-	OfferPruningPeriodSec = "OFFER_PRUNING_PERIOD_SEC"
-)
+// ValidationError is the returned when a configuration fails to pass validation
+type ValidationError struct {
+	errorMap validator.ErrorMap
+}
+
+// ErrForField returns the validation error for the given field
+func (e ValidationError) ErrForField(name string) error {
+	return e.errorMap[name]
+}
+
+// Error returns the error string from a ValidationError
+func (e ValidationError) Error() string {
+	var w bytes.Buffer
+
+	fmt.Fprintf(&w, "validation failed")
+	for f, err := range e.errorMap {
+		fmt.Fprintf(&w, "   %s: %v\n", f, err)
+	}
+
+	return w.String()
+}
 
 // AppConfig encapulates the master runtime config
 type AppConfig struct {
-	Logging   log.Configuration
-	Metrics   metricsConfiguration `yaml:"metrics"`
-	Sentry    log.SentryConfiguration
-	Verbose   bool
+	Metrics   metricsConfiguration  `yaml:"metrics"`
 	DbConfig  mysql.Config          `yaml:"db"`
 	Master    MasterConfig          `yaml:"master"`
 	Mesos     mesos.Config          `yaml:"mesos"`
@@ -56,48 +65,30 @@ type statsdConfiguration struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
-// LoadConfigFromEnv will verride configs with environment vars if set, otherwise values
-// from yaml files will be used.
-// TODO: use reflection to override any YAML configurations from ENV
-func LoadConfigFromEnv(cfg *AppConfig) {
-	if v := os.Getenv(mesosZkPath); v != "" {
-		log.Infof("Override mesos.zk_path with '%v'", v)
-		cfg.Mesos.ZkPath = v
+// NewAppConfig loads the given configs in order, merges them together, and returns
+// the AppConfig
+func NewAppConfig(configs ...string) (*AppConfig, error) {
+	var config *AppConfig
+	if len(configs) == 0 {
+		return config, errors.New("no files to load")
+	}
+	config = &AppConfig{}
+	for _, fname := range configs {
+		data, err := ioutil.ReadFile(fname)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := yaml.Unmarshal(data, config); err != nil {
+			return nil, err
+		}
 	}
 
-	if v := os.Getenv(dbHost); v != "" {
-		log.Infof("Override db.host with '%v'", v)
-		cfg.DbConfig.Host = v
+	// Validate on the merged config at the end.
+	if err := validator.Validate(config); err != nil {
+		return nil, ValidationError{
+			errorMap: err.(validator.ErrorMap),
+		}
 	}
-
-	if v := os.Getenv(taskDequeueLimit); v != "" {
-		log.Infof("Override scheduler.task_dequeue_limit with '%v'", v)
-		cfg.Scheduler.TaskDequeueLimit, _ = strconv.Atoi(v)
-	}
-
-	// TODO: combine mesosZkPath and electionZkServers to share same zk
-	if v := os.Getenv(electionZkServers); v != "" {
-		log.Infof("Override election.ZKServers with '%v'", v)
-		cfg.Election.ZKServers = []string{v}
-	}
-
-	if v := os.Getenv(loggingLevel); v != "" {
-		log.Infof("Override logging.level with '%v'", v)
-		cfg.Logging.Level, _ = log.ParseLevel(v)
-	}
-
-	if v := os.Getenv(masterPort); v != "" {
-		log.Infof("Override master port with %v", v)
-		cfg.Master.Port, _ = strconv.Atoi(v)
-	}
-
-	if v := os.Getenv(OfferHoldTimeSec); v != "" {
-		log.Infof("Override OfferHoldTimeSec with %v", v)
-		cfg.Master.OfferHoldTimeSec, _ = strconv.Atoi(v)
-	}
-
-	if v := os.Getenv(OfferPruningPeriodSec); v != "" {
-		log.Infof("Override OfferPruningPeriodSec with %v", v)
-		cfg.Master.OfferPruningPeriodSec, _ = strconv.Atoi(v)
-	}
+	return config, nil
 }

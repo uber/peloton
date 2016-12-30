@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/master"
 	"code.uber.internal/infra/peloton/storage"
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 

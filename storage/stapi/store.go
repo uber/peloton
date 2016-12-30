@@ -1,14 +1,14 @@
 package stapi
 
 import (
-	"code.uber.internal/go-common.git/x/log"
-	"code.uber.internal/infra/stapi-go.git"
-	"code.uber.internal/infra/stapi-go.git/api"
-	//qb "code.uber.internal/infra/stapi-go.git/querybuilder"
 	mesos "code.uber.internal/infra/peloton/pbgen/src/mesos/v1"
 	"code.uber.internal/infra/peloton/pbgen/src/peloton/job"
 	"code.uber.internal/infra/peloton/pbgen/src/peloton/task"
+	"code.uber.internal/infra/stapi-go.git"
+	"code.uber.internal/infra/stapi-go.git/api"
 	sc "code.uber.internal/infra/stapi-go.git/config"
+	log "github.com/Sirupsen/logrus"
+	"github.com/uber-common/bark"
 )
 
 // Config is the config for STAPIStore
@@ -27,7 +27,7 @@ func NewStore(config *Config) (*Store, error) {
 	storage.Initialize(storage.Options{
 		Cfg:    config.Stapi,
 		AppID:  "peloton",
-		Logger: log.DefaultLogger(),
+		Logger: bark.NewLoggerFromLogrus(log.StandardLogger()),
 	})
 	dataStore, err := storage.OpenDataStore(config.StoreName)
 	if err != nil {

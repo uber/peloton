@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/go-common.git/x/log"
 	master_task "code.uber.internal/infra/peloton/master/task"
 	sched_metrics "code.uber.internal/infra/peloton/scheduler/metrics"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"

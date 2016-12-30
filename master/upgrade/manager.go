@@ -11,10 +11,11 @@ package upgrade
 
 import (
 	"context"
+
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	"code.uber.internal/go-common.git/x/log"
 	"peloton/upgrade"
 )
 

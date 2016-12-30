@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/mesos-go/detector"
 	mock_zkdetector "code.uber.internal/infra/peloton/mesos-go/detector/zoo/mock"
 	util "code.uber.internal/infra/peloton/mesos-go/mesosutil"
+	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/samuel/go-zookeeper/zk"
 	"github.com/stretchr/testify/assert"

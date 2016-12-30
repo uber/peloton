@@ -3,12 +3,12 @@
 package task
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/master/mesos"
 	master_mesos "code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"mesos/v1/scheduler"
 	sched "mesos/v1/scheduler"

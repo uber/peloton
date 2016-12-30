@@ -3,8 +3,8 @@ package mock
 import (
 	"sync"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/mesos-go/detector/zoo"
+	log "github.com/Sirupsen/logrus"
 	"github.com/stretchr/testify/mock"
 	mesos "mesos/v1"
 )

@@ -1,7 +1,7 @@
 package util
 
 import (
-	"code.uber.internal/go-common.git/x/log"
+	log "github.com/Sirupsen/logrus"
 	mesos_v1 "mesos/v1"
 	"peloton/task"
 )

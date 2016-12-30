@@ -29,8 +29,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/mesos-go/detector"
+	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	mesos "mesos/v1"
 )

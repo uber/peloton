@@ -1,18 +1,19 @@
 package storage
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"database/sql"
 	"encoding/json"
 	"peloton/job"
 	"peloton/task"
 	"reflect"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 // BaseRowRecord contains the common fields of table tasks and table jobs
 type BaseRowRecord struct {
-	AddedId     int       `db:"added_id"`
+	AddedID     int       `db:"added_id"`
 	RowKey      string    `db:"row_key"`
 	ColKey      string    `db:"col_key"`
 	RefKey      int       `db:"ref_key"`
@@ -26,11 +27,11 @@ type BaseRowRecord struct {
 // TaskRecord also contains the virtual generated columns for tasks table
 type TaskRecord struct {
 	BaseRowRecord
-	JobId      sql.NullString `db:"job_id"`
+	JobID      sql.NullString `db:"job_id"`
 	TaskState  sql.NullString `db:"task_state"`
 	TaskHost   sql.NullString `db:"task_host"`
-	TaskId     sql.NullString `db:"task_id"`
-	InstanceId int            `db:"instance_id"`
+	TaskID     sql.NullString `db:"task_id"`
+	InstanceID int            `db:"instance_id"`
 }
 
 // JobRecord also contains the generated columns for jobs table
@@ -113,8 +114,8 @@ func ToJobConfigs(jsonStrings []string) ([]*job.JobConfig, error) {
 // MesosFrameworkInfo stores the framework id and mesos stream id information
 type MesosFrameworkInfo struct {
 	FrameworkName sql.NullString `db:"framework_name"`
-	FrameworkId   sql.NullString `db:"framework_id"`
-	MesosStreamId sql.NullString `db:"mesos_stream_id"`
+	FrameworkID   sql.NullString `db:"framework_id"`
+	MesosStreamID sql.NullString `db:"mesos_stream_id"`
 	UpdateTime    time.Time      `db:"update_time"`
 	UpdateHost    sql.NullString `db:"update_host"`
 }

@@ -1,12 +1,12 @@
 package offer
 
 import (
+	"context"
 	"sync"
 	"time"
 
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
-	"context"
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
