@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/master"
+	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
@@ -18,7 +18,7 @@ import (
 )
 
 // InitManager initalizes the job manager
-func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore, metrics *master.Metrics) {
+func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore, metrics *metrics.Metrics) {
 	handler := jobManager{
 		JobStore:  store,
 		TaskStore: taskStore,
@@ -38,7 +38,7 @@ type jobManager struct {
 	TaskQueue util.TaskQueue
 	client    json.Client
 	rootCtx   context.Context
-	metrics   *master.Metrics
+	metrics   *metrics.Metrics
 }
 
 func (m *jobManager) Create(

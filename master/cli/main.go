@@ -2,15 +2,17 @@ package main
 
 import (
 	"fmt"
+	nethttp "net/http"
 	"net/url"
 	"os"
 	"sync"
 	"time"
 
 	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/master"
+	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/mesos"
+	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/master/offer"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
@@ -64,7 +66,7 @@ type pelotonMaster struct {
 	mesosOutbound transport.Outbounds
 	taskQueue     *task.Queue
 	store         *mysql.JobStore
-	cfg           *AppConfig
+	cfg           *config.Config
 	mutex         *sync.Mutex
 	// Local address for peloton master
 	localAddr     string
@@ -79,7 +81,7 @@ func newPelotonMaster(env string,
 	pChooser *peer.Chooser,
 	tq *task.Queue,
 	store *mysql.JobStore,
-	cfg *AppConfig,
+	cfg *config.Config,
 	localPelotonMasterAddr string,
 	mesosDetector mesos.MasterDetector,
 	om *offer.Manager) *pelotonMaster {
@@ -193,12 +195,12 @@ func main() {
 	}
 
 	log.Debugf("Loading config from %v...", *configs)
-	cfg, err := NewAppConfig(*configs...)
+	cfg, err := config.New(*configs...)
 	if err != nil {
 		log.Fatalf("Error initializing configuration: %v", err)
 	}
 
-	// now, override any CLI flags in the loaded AppConfig
+	// now, override any CLI flags in the loaded config.Config
 	if *zkPath != "" {
 		cfg.Mesos.ZkPath = *zkPath
 	}
@@ -224,11 +226,13 @@ func main() {
 	log.WithField("config", cfg).Debug("Loaded Peloton configuration")
 
 	var reporter tally.StatsReporter
+	var promHandler nethttp.Handler
 	metricSeparator := "."
 	if cfg.Metrics.Prometheus != nil && cfg.Metrics.Prometheus.Enable {
 		metricSeparator = "_"
-		reporter = tallyprom.NewReporter(nil)
-		log.Fatalf("Metrics configured with prometheus endpoint /metrics, not wired up yet!")
+		promreporter := tallyprom.NewReporter(nil)
+		reporter = promreporter
+		promHandler = promreporter.HTTPHandler()
 	} else if cfg.Metrics.Statsd != nil && cfg.Metrics.Statsd.Enable {
 		log.Infof("Metrics configured with statsd endpoint %s", cfg.Metrics.Statsd.Endpoint)
 		c, err := statsd.NewClient(cfg.Metrics.Statsd.Endpoint, "")
@@ -258,8 +262,29 @@ func main() {
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
+
+	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
+	mux := nethttp.NewServeMux()
+	if promHandler != nil {
+		// if prometheus support is enabled, handle /metrics to serve prom metrics
+		log.Infof("Setting up prometheus metrics handler at /metrics")
+		mux.Handle("/metrics", promHandler)
+	}
+	// expose a /health endpoint that just returns 200
+	mux.HandleFunc("/health", func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		// TODO: make this healthcheck live, and check some kind of internal health?
+		if true {
+			w.WriteHeader(nethttp.StatusOK)
+			fmt.Fprintln(w, `\(★ω★)/`)
+		} else {
+			w.WriteHeader(nethttp.StatusInternalServerError)
+			fmt.Fprintln(w, `(╥﹏╥)`)
+		}
+	})
+
+	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can mux in other HTTP handlers
 	inbounds := []transport.Inbound{
-		http.NewInbound(fmt.Sprintf(":%d", cfg.Master.Port)),
+		http.NewInbound(fmt.Sprintf(":%d", cfg.Master.Port), http.Mux(config.FrameworkURLPath, mux)),
 	}
 
 	mesosMasterLocation := cfg.Mesos.HostPort
@@ -289,7 +314,7 @@ func main() {
 	mOutbounds := mhttp.NewOutbound(mesosURL)
 	pelotonMasterPeerChooser := peer.NewPeerChooser()
 	// The leaderUrl for pOutbound would be updated by leader election NewLeaderCallBack once leader is elected
-	pOutbound := http.NewChooserOutbound(pelotonMasterPeerChooser, &url.URL{Scheme: "http"})
+	pOutbound := http.NewChooserOutbound(pelotonMasterPeerChooser, &url.URL{Scheme: "http", Path: config.FrameworkURLPath})
 	pOutbounds := transport.Outbounds{
 		Unary: pOutbound,
 	}
@@ -304,7 +329,7 @@ func main() {
 	})
 
 	// Initalize managers
-	metrics := master.NewMetrics(metricScope.SubScope("master"))
+	metrics := metrics.New(metricScope.SubScope("master"))
 	job.InitManager(dispatcher, store, store, &metrics)
 	task.InitManager(dispatcher, store, store, &metrics)
 	tq := task.InitTaskQueue(dispatcher, &metrics)

@@ -1,4 +1,4 @@
-package master
+package metrics
 
 import (
 	"github.com/uber-go/tally"
@@ -45,23 +45,23 @@ type Metrics struct {
 	QueueDequeueFail tally.Counter
 }
 
-// NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
-func NewMetrics(scope tally.Scope) Metrics {
+// New returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
+func New(scope tally.Scope) Metrics {
 	taskScope := scope.SubScope("task")
 	jobScope := scope.SubScope("job")
 	queueScope := scope.SubScope("queue")
 
 	taskSuccessScope := taskScope.Tagged(map[string]string{"type": "success"})
 	taskFailScope := taskScope.Tagged(map[string]string{"type": "fail"})
-	taskAPIScope := taskScope.SubScope("API")
+	taskAPIScope := taskScope.SubScope("api")
 
 	jobSuccessScope := jobScope.Tagged(map[string]string{"type": "success"})
 	jobFailScope := jobScope.Tagged(map[string]string{"type": "fail"})
-	jobAPIScope := jobScope.SubScope("API")
+	jobAPIScope := jobScope.SubScope("api")
 
 	queueSuccessScope := queueScope.Tagged(map[string]string{"type": "success"})
 	queueFailScope := queueScope.Tagged(map[string]string{"type": "fail"})
-	queueAPIScope := queueScope.SubScope("API")
+	queueAPIScope := queueScope.SubScope("api")
 
 	m := Metrics{
 		JobAPICreate:  jobAPIScope.Counter("create"),

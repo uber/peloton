@@ -43,7 +43,7 @@ install:
 	glide install
 
 client:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cli/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton client/cli/*.go
 
 cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))

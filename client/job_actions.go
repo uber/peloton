@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"fmt"
@@ -15,7 +15,8 @@ const (
 	jobListFormatBody   = "%s\t%s\t%s\t%.1f\t%.0f MB\t%.0f MB\t%d\t%s\t\n"
 )
 
-func (client *Client) jobCreateAction(jobName string, cfg string) error {
+// JobCreateAction is the action for creating a job
+func (client *Client) JobCreateAction(jobName string, cfg string) error {
 	var jobConfig pj.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
@@ -41,11 +42,12 @@ func (client *Client) jobCreateAction(jobName string, cfg string) error {
 	if err != nil {
 		return err
 	}
-	printJobCreateResponse(response)
+	printJobCreateResponse(response, client.Debug)
 	return nil
 }
 
-func (client *Client) jobDeleteAction(jobName string) error {
+// JobDeleteAction is the action for deleting a job
+func (client *Client) JobDeleteAction(jobName string) error {
 	var response pj.DeleteResponse
 	var request = &pj.DeleteRequest{
 		Id: &pj.JobID{
@@ -65,7 +67,8 @@ func (client *Client) jobDeleteAction(jobName string) error {
 	return nil
 }
 
-func (client *Client) jobGetAction(jobName string) error {
+// JobGetAction is the action for getting a job
+func (client *Client) JobGetAction(jobName string) error {
 	var response pj.GetResponse
 	var request = &pj.GetRequest{
 		Id: &pj.JobID{
@@ -81,12 +84,12 @@ func (client *Client) jobGetAction(jobName string) error {
 	if err != nil {
 		return err
 	}
-	printJobGetResponse(response)
+	printJobGetResponse(response, client.Debug)
 	return nil
 }
 
-func printJobCreateResponse(r pj.CreateResponse) {
-	if *debug {
+func printJobCreateResponse(r pj.CreateResponse, debug bool) {
+	if debug {
 		printResponseJSON(r)
 	} else {
 		if r.AlreadyExists != nil {
@@ -98,9 +101,9 @@ func printJobCreateResponse(r pj.CreateResponse) {
 	}
 }
 
-func printJobDeleteResponse(r pj.DeleteResponse) {
+func printJobDeleteResponse(r pj.DeleteResponse, debug bool) {
 	// TODO: when DeleteResponse has useful fields in it, fill me in! Right now, its completely empty
-	if *debug {
+	if debug {
 		printResponseJSON(r)
 	} else {
 		fmt.Fprintf(tabWriter, "Job deleted\n")
@@ -108,8 +111,8 @@ func printJobDeleteResponse(r pj.DeleteResponse) {
 	}
 }
 
-func printJobGetResponse(r pj.GetResponse) {
-	if *debug {
+func printJobGetResponse(r pj.GetResponse, debug bool) {
+	if debug {
 		printResponseJSON(r)
 	} else {
 		if r.GetResult() == nil {

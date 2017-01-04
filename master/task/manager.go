@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"code.uber.internal/infra/peloton/master"
+	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -15,7 +15,7 @@ import (
 )
 
 // InitManager initializes the TaskManager
-func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, metrics *master.Metrics) {
+func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, metrics *metrics.Metrics) {
 	handler := taskManager{
 		taskStore: taskStore,
 		jobStore:  jobStore,
@@ -31,7 +31,7 @@ func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storag
 type taskManager struct {
 	taskStore storage.TaskStore
 	jobStore  storage.JobStore
-	metrics   *master.Metrics
+	metrics   *metrics.Metrics
 }
 
 func (m *taskManager) Get(

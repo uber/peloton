@@ -6,17 +6,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
+	pc "code.uber.internal/infra/peloton/client"
 	"gopkg.in/alecthomas/kingpin.v2"
 	pt "peloton/task"
 )
 
 var (
 	// version of the peloton client. will be set by Makefile
-	version   string
-	client    *Client
-	tabWriter = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	version string
+	client  *pc.Client
 
 	app = kingpin.New("peloton", "Peloton CLI for interacting with peloton-master")
 	// Global CLI flags
@@ -159,7 +158,7 @@ func main() {
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 	var err error
 
-	client, err := newClient(**frameworkURL, *timeout)
+	client, err := pc.New(**frameworkURL, *timeout, *debug)
 	if err != nil {
 		app.FatalIfError(err, "")
 	}
@@ -167,21 +166,21 @@ func main() {
 
 	switch cmd {
 	case jobCreate.FullCommand():
-		err = client.jobCreateAction(*jobCreateName, *jobCreateConfig)
+		err = client.JobCreateAction(*jobCreateName, *jobCreateConfig)
 	case jobDelete.FullCommand():
-		err = client.jobDeleteAction(*jobDeleteName)
+		err = client.JobDeleteAction(*jobDeleteName)
 	case jobGet.FullCommand():
-		err = client.jobGetAction(*jobGetName)
+		err = client.JobGetAction(*jobGetName)
 	case taskGet.FullCommand():
-		err = client.taskGetAction(*taskGetJobName, *taskGetInstanceID)
+		err = client.TaskGetAction(*taskGetJobName, *taskGetInstanceID)
 	case taskList.FullCommand():
-		err = client.taskListAction(*taskListJobName, taskListInstanceRange)
+		err = client.TaskListAction(*taskListJobName, taskListInstanceRange)
 	case taskStart.FullCommand():
-		err = client.taskStartAction(*taskStartJobName, *taskStartInstanceRanges)
+		err = client.TaskStartAction(*taskStartJobName, *taskStartInstanceRanges)
 	case taskStop.FullCommand():
-		err = client.taskStopAction(*taskStopJobName, *taskStopInstanceRanges)
+		err = client.TaskStopAction(*taskStopJobName, *taskStopInstanceRanges)
 	case taskRestart.FullCommand():
-		err = client.taskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
+		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

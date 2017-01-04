@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"bytes"
@@ -8,11 +8,14 @@ import (
 
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/mesos"
-	"code.uber.internal/infra/peloton/scheduler"
+	schedulerconfig "code.uber.internal/infra/peloton/scheduler/config"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"gopkg.in/validator.v2"
 	"gopkg.in/yaml.v2"
 )
+
+// FrameworkURLPath is where the RPC endpoint lives for peloton
+const FrameworkURLPath = "/api/v1"
 
 // ValidationError is the returned when a configuration fails to pass validation
 type ValidationError struct {
@@ -36,14 +39,14 @@ func (e ValidationError) Error() string {
 	return w.String()
 }
 
-// AppConfig encapulates the master runtime config
-type AppConfig struct {
-	Metrics   metricsConfiguration  `yaml:"metrics"`
-	DbConfig  mysql.Config          `yaml:"db"`
-	Master    MasterConfig          `yaml:"master"`
-	Mesos     mesos.Config          `yaml:"mesos"`
-	Scheduler scheduler.Config      `yaml:"scheduler"`
-	Election  leader.ElectionConfig `yaml:"election"`
+// Config encapulates the master runtime config
+type Config struct {
+	Metrics   metricsConfiguration   `yaml:"metrics"`
+	DbConfig  mysql.Config           `yaml:"db"`
+	Master    MasterConfig           `yaml:"master"`
+	Mesos     mesos.Config           `yaml:"mesos"`
+	Scheduler schedulerconfig.Config `yaml:"scheduler"`
+	Election  leader.ElectionConfig  `yaml:"election"`
 }
 
 // MasterConfig is framework specific configuration
@@ -65,14 +68,14 @@ type statsdConfiguration struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
-// NewAppConfig loads the given configs in order, merges them together, and returns
-// the AppConfig
-func NewAppConfig(configs ...string) (*AppConfig, error) {
-	var config *AppConfig
+// New loads the given configs in order, merges them together, and returns
+// the Config
+func New(configs ...string) (*Config, error) {
+	var config *Config
 	if len(configs) == 0 {
 		return config, errors.New("no files to load")
 	}
-	config = &AppConfig{}
+	config = &Config{}
 	for _, fname := range configs {
 		data, err := ioutil.ReadFile(fname)
 		if err != nil {

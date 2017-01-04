@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"fmt"
@@ -21,7 +21,8 @@ func (a SortedTaskInfoList) Len() int           { return len(a) }
 func (a SortedTaskInfoList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a SortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].InstanceId }
 
-func (client *Client) taskGetAction(jobName string, instanceID uint32) error {
+// TaskGetAction is the action to get a task instance
+func (client *Client) TaskGetAction(jobName string, instanceID uint32) error {
 	var response pt.GetResponse
 	var request = &pt.GetRequest{
 		JobId: &pj.JobID{
@@ -38,11 +39,12 @@ func (client *Client) taskGetAction(jobName string, instanceID uint32) error {
 	if err != nil {
 		return err
 	}
-	printTaskGetResponse(response)
+	printTaskGetResponse(response, client.Debug)
 	return nil
 }
 
-func (client *Client) taskListAction(jobName string, instanceRange *pt.InstanceRange) error {
+// TaskListAction is the action to list tasks
+func (client *Client) TaskListAction(jobName string, instanceRange *pt.InstanceRange) error {
 	var request = &pt.ListRequest{
 		JobId: &pj.JobID{
 			Value: jobName,
@@ -60,11 +62,12 @@ func (client *Client) taskListAction(jobName string, instanceRange *pt.InstanceR
 	if err != nil {
 		return err
 	}
-	printTaskListResponse(response)
+	printTaskListResponse(response, client.Debug)
 	return nil
 }
 
-func (client *Client) taskStartAction(jobName string, instanceRanges []*pt.InstanceRange) error {
+// TaskStartAction is the action to start a task
+func (client *Client) TaskStartAction(jobName string, instanceRanges []*pt.InstanceRange) error {
 	var response pt.StartResponse
 	var request = &pt.StartRequest{
 		JobId: &pj.JobID{
@@ -81,11 +84,12 @@ func (client *Client) taskStartAction(jobName string, instanceRanges []*pt.Insta
 	if err != nil {
 		return err
 	}
-	printTaskStartResponse(response)
+	printTaskStartResponse(response, client.Debug)
 	return nil
 }
 
-func (client *Client) taskStopAction(jobName string, instanceRanges []*pt.InstanceRange) error {
+// TaskStopAction is the action to stop a task
+func (client *Client) TaskStopAction(jobName string, instanceRanges []*pt.InstanceRange) error {
 	var response pt.StopResponse
 	var request = &pt.StopRequest{
 		JobId: &pj.JobID{
@@ -102,11 +106,12 @@ func (client *Client) taskStopAction(jobName string, instanceRanges []*pt.Instan
 	if err != nil {
 		return err
 	}
-	printTaskStopResponse(response)
+	printTaskStopResponse(response, client.Debug)
 	return nil
 }
 
-func (client *Client) taskRestartAction(jobName string, instanceRanges []*pt.InstanceRange) error {
+// TaskRestartAction is the action to restart a task
+func (client *Client) TaskRestartAction(jobName string, instanceRanges []*pt.InstanceRange) error {
 	var response pt.RestartResponse
 	var request = &pt.RestartRequest{
 		JobId: &pj.JobID{
@@ -123,12 +128,12 @@ func (client *Client) taskRestartAction(jobName string, instanceRanges []*pt.Ins
 	if err != nil {
 		return err
 	}
-	printTaskRestartResponse(response)
+	printTaskRestartResponse(response, client.Debug)
 	return nil
 }
 
-func printTaskGetResponse(r pt.GetResponse) {
-	if *debug {
+func printTaskGetResponse(r pt.GetResponse, debug bool) {
+	if debug {
 		printResponseJSON(r)
 	} else {
 		if r.GetNotFound() != nil {
@@ -148,8 +153,8 @@ func printTaskGetResponse(r pt.GetResponse) {
 	tabWriter.Flush()
 }
 
-func printTaskListResponse(r pt.ListResponse) {
-	if *debug {
+func printTaskListResponse(r pt.ListResponse, debug bool) {
+	if debug {
 		printResponseJSON(r)
 	} else {
 		if r.GetNotFound() != nil {
@@ -177,8 +182,8 @@ func printTaskListResponse(r pt.ListResponse) {
 	tabWriter.Flush()
 }
 
-func printTaskStartResponse(r pt.StartResponse) {
-	if *debug {
+func printTaskStartResponse(r pt.StartResponse, debug bool) {
+	if debug {
 		printResponseJSON(r)
 	} else {
 		if r.GetNotFound() != nil {
@@ -192,8 +197,8 @@ func printTaskStartResponse(r pt.StartResponse) {
 	tabWriter.Flush()
 }
 
-func printTaskStopResponse(r pt.StopResponse) {
-	if *debug {
+func printTaskStopResponse(r pt.StopResponse, debug bool) {
+	if debug {
 		printResponseJSON(r)
 	} else {
 		if r.GetNotFound() != nil {
@@ -207,8 +212,8 @@ func printTaskStopResponse(r pt.StopResponse) {
 	tabWriter.Flush()
 }
 
-func printTaskRestartResponse(r pt.RestartResponse) {
-	if *debug {
+func printTaskRestartResponse(r pt.RestartResponse, debug bool) {
+	if debug {
 		printResponseJSON(r)
 	} else {
 		if r.GetNotFound() != nil {

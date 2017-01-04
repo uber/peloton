@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/master"
+	"code.uber.internal/infra/peloton/master/config"
+	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 	"github.com/jmoiron/sqlx"
@@ -38,7 +39,7 @@ func (suite *QueueTestSuite) SetupTest() {
 		http.NewInbound(":" + strconv.Itoa(masterPort)),
 	}
 	outbounds := transport.Outbounds{
-		Unary: http.NewOutbound("http://localhost:" + strconv.Itoa(masterPort)),
+		Unary: http.NewOutbound("http://localhost:" + strconv.Itoa(masterPort) + config.FrameworkURLPath),
 	}
 	yOutbounds := yarpc.Outbounds{
 		"peloton-master": outbounds,
@@ -60,7 +61,7 @@ func TestPelotonTaskQueue(t *testing.T) {
 }
 
 func (suite *QueueTestSuite) TestRefillTaskQueue() {
-	mtx := master.NewMetrics(tally.NoopScope)
+	mtx := metrics.New(tally.NoopScope)
 	tq := InitTaskQueue(suite.dispatcher, &mtx)
 
 	// Create jobs. each with different

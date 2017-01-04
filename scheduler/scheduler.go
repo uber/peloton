@@ -12,6 +12,7 @@ import (
 	"time"
 
 	master_task "code.uber.internal/infra/peloton/master/task"
+	sched_config "code.uber.internal/infra/peloton/scheduler/config"
 	sched_metrics "code.uber.internal/infra/peloton/scheduler/metrics"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -33,7 +34,7 @@ const (
 )
 
 // InitManager inits the schedulerManager
-func InitManager(d yarpc.Dispatcher, cfg *Config, mesosClient mpb.Client, metrics *sched_metrics.Metrics) {
+func InitManager(d yarpc.Dispatcher, cfg *sched_config.Config, mesosClient mpb.Client, metrics *sched_metrics.Metrics) {
 	s := schedulerManager{
 		cfg:      cfg,
 		launcher: master_task.GetTaskLauncher(d, mesosClient, metrics),
@@ -46,7 +47,7 @@ func InitManager(d yarpc.Dispatcher, cfg *Config, mesosClient mpb.Client, metric
 
 type schedulerManager struct {
 	dispatcher yarpc.Dispatcher
-	cfg        *Config
+	cfg        *sched_config.Config
 	client     json.Client
 	rootCtx    context.Context
 	started    int32

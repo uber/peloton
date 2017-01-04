@@ -12,8 +12,8 @@ election:
   path: "/peloton/master/leader"
 
 metrics:
-  #prometheus:
-  #  enable: true
+  prometheus:
+    enable: true
   #statsd:
   #  enable: true
   #  endpoint: localhost:1234

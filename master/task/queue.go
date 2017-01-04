@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/infra/peloton/master"
+	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
@@ -20,7 +20,7 @@ import (
 )
 
 // InitTaskQueue inits the TaskQueue
-func InitTaskQueue(d yarpc.Dispatcher, metrics *master.Metrics) *Queue {
+func InitTaskQueue(d yarpc.Dispatcher, metrics *metrics.Metrics) *Queue {
 	tq := Queue{
 		metrics: metrics,
 	}
@@ -36,7 +36,7 @@ type Queue struct {
 	// TODO: need to handle the case if dequeue RPC fails / follower is down
 	// which can lead to some tasks are dequeued and lost. We can find those tasks
 	// by reconcilation, and put those tasks back
-	metrics *master.Metrics
+	metrics *metrics.Metrics
 }
 
 // Enqueue enqueues tasks into the queue

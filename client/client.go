@@ -1,12 +1,12 @@
-package main
+package client
 
 import (
-	ej "encoding/json"
+	"context"
 	"fmt"
 	"net/url"
 	"time"
 
-	"context"
+	"code.uber.internal/infra/peloton/master/config"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
@@ -19,10 +19,14 @@ type Client struct {
 	dispatcher yarpc.Dispatcher
 	ctx        context.Context
 	cancelFunc context.CancelFunc
+	// Debug is whether debug output is enabled
+	Debug bool
 }
 
-// Returns a new RPC client given a framework URL and timeout and error
-func newClient(frameworkURL url.URL, timeout time.Duration) (*Client, error) {
+// New returns a new RPC client given a framework URL and timeout and error
+func New(frameworkURL url.URL, timeout time.Duration, debug bool) (*Client, error) {
+	// use whereever the master roots its RPC path
+	frameworkURL.Path = config.FrameworkURLPath
 	outbound := http.NewOutbound(frameworkURL.String())
 	pOutbounds := transport.Outbounds{
 		Unary: outbound,
@@ -38,6 +42,7 @@ func newClient(frameworkURL url.URL, timeout time.Duration) (*Client, error) {
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	client := Client{
+		Debug:      debug,
 		jsonClient: json.New(dispatcher.ClientConfig("peloton-master")),
 		dispatcher: dispatcher,
 		ctx:        ctx,
@@ -50,13 +55,4 @@ func newClient(frameworkURL url.URL, timeout time.Duration) (*Client, error) {
 func (c *Client) Cleanup() {
 	defer c.cancelFunc()
 	c.dispatcher.Stop()
-}
-
-func printResponseJSON(response interface{}) {
-	buffer, err := ej.MarshalIndent(response, "", "  ")
-	if err == nil {
-		fmt.Printf("%v\n", string(buffer))
-	} else {
-		fmt.Printf("MarshalIndent err=%v\n", err)
-	}
 }
