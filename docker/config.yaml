@@ -51,6 +51,7 @@ cassandra_image: cassandra:3.9
 cassandra_container: peloton-cassandra
 cassandra_cql_port: 9042
 cassandra_thrift_port: 9160
+cassandra_test_db: peloton_test
 
 
 # Peloton configs

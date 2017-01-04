@@ -101,3 +101,5 @@ import:
   - filter
 - package: github.com/uber-common/bark
   version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
+- package: github.com/gemnasium/migrate
+  version: v1.4.1

@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/master/mesos"
 	schedulerconfig "code.uber.internal/infra/peloton/scheduler/config"
 	"code.uber.internal/infra/peloton/storage/mysql"
+	"code.uber.internal/infra/peloton/storage/stapi"
 	"gopkg.in/validator.v2"
 	"gopkg.in/yaml.v2"
 )
@@ -41,12 +42,14 @@ func (e ValidationError) Error() string {
 
 // Config encapulates the master runtime config
 type Config struct {
-	Metrics   metricsConfiguration   `yaml:"metrics"`
-	DbConfig  mysql.Config           `yaml:"db"`
-	Master    MasterConfig           `yaml:"master"`
-	Mesos     mesos.Config           `yaml:"mesos"`
-	Scheduler schedulerconfig.Config `yaml:"scheduler"`
-	Election  leader.ElectionConfig  `yaml:"election"`
+	Metrics metricsConfiguration `yaml:"metrics"`
+	// TODO: deprecate mysql DbConfig
+	DbConfig    mysql.Config           `yaml:"db"`
+	STAPIConfig stapi.Config           `yaml:"stapi"`
+	Master      MasterConfig           `yaml:"master"`
+	Mesos       mesos.Config           `yaml:"mesos"`
+	Scheduler   schedulerconfig.Config `yaml:"scheduler"`
+	Election    leader.ElectionConfig  `yaml:"election"`
 }
 
 // MasterConfig is framework specific configuration

@@ -2,12 +2,12 @@ package mysql
 
 import (
 	"fmt"
+	"github.com/gemnasium/migrate/migrate"
 	"os"
 	"path"
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/mattes/migrate/migrate"
 )
 
 func downSync(cfg *Config) []error {

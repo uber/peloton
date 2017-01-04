@@ -146,6 +146,8 @@ imports:
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
 - name: github.com/fsnotify/fsnotify
   version: fd9ec7deca8bf46ecd2a795baaacf2b3a9be1197
+- name: github.com/gemnasium/migrate
+  version: 603c58f2c1d0882d7d5b24791e6e5af5ab392e44
 - name: github.com/getsentry/raven-go
   version: 3f7439d3e74d88e21d196ba20eb61a5a958bc118
 - name: github.com/go-sql-driver/mysql
@@ -197,6 +199,7 @@ imports:
   version: 3e3cef3763f4e1422745768d666e7a7106da89f9
   subpackages:
   - driver
+  - driver/cassandra
   - driver/mysql
   - file
   - migrate

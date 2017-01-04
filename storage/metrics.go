@@ -13,6 +13,7 @@ type Metrics struct {
 	JobGetFail    tally.Counter
 	JobDelete     tally.Counter
 	JobDeleteFail tally.Counter
+	JobNotFound   tally.Counter
 
 	TaskCreate     tally.Counter
 	TaskCreateFail tally.Counter
@@ -22,6 +23,7 @@ type Metrics struct {
 	TaskDeleteFail tally.Counter
 	TaskUpdate     tally.Counter
 	TaskUpdateFail tally.Counter
+	TaskNotFound   tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -29,9 +31,11 @@ func NewMetrics(scope tally.Scope) Metrics {
 	jobScope := scope.SubScope("job")
 	jobSuccessScope := jobScope.Tagged(map[string]string{"type": "success"})
 	jobFailScope := jobScope.Tagged(map[string]string{"type": "fail"})
+	jobNotFoundScope := jobScope.Tagged(map[string]string{"type": "not_found"})
 	taskScope := scope.SubScope("task")
 	taskSuccessScope := taskScope.Tagged(map[string]string{"type": "success"})
 	taskFailScope := taskScope.Tagged(map[string]string{"type": "fail"})
+	taskNotFoundScope := taskScope.Tagged(map[string]string{"type": "not_found"})
 	metrics := Metrics{
 		JobCreate:      jobSuccessScope.Counter("create"),
 		JobCreateFail:  jobFailScope.Counter("create"),
@@ -39,6 +43,7 @@ func NewMetrics(scope tally.Scope) Metrics {
 		JobDeleteFail:  jobFailScope.Counter("delete"),
 		JobGet:         jobSuccessScope.Counter("get"),
 		JobGetFail:     jobFailScope.Counter("get"),
+		JobNotFound:    jobNotFoundScope.Counter("get"),
 		TaskCreate:     taskSuccessScope.Counter("create"),
 		TaskCreateFail: taskFailScope.Counter("create"),
 		TaskGet:        taskSuccessScope.Counter("get"),
@@ -47,6 +52,7 @@ func NewMetrics(scope tally.Scope) Metrics {
 		TaskDeleteFail: taskFailScope.Counter("delete"),
 		TaskUpdate:     taskSuccessScope.Counter("update"),
 		TaskUpdateFail: taskFailScope.Counter("update"),
+		TaskNotFound:   taskNotFoundScope.Counter("get"),
 	}
 	return metrics
 }

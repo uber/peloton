@@ -1,30 +1,55 @@
 package stapi
 
 import (
+	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/storage"
+	"fmt"
+	"peloton/job"
+	"peloton/task"
+	"reflect"
+	"strings"
 	"time"
 )
 
 // JobRecord correspond to a peloton job
 type JobRecord struct {
-	JobID        string    //`cql:"job_id"`
-	JobConfig    string    //`cql:"job_config"`
-	Owner        string    //`cql:"owner"`
-	CreatedTime  time.Time //`cql:"create_time"`
-	Labels       string    //`cql:"labels"`
-	CompleteTime time.Time //`cql:"complete_time"`
-	TaskSummary  string    //`cql:"task_summary"`
+	JobID        string
+	JobConfig    string
+	Owner        string
+	CreatedTime  time.Time
+	Labels       string
+	JobState     string
+	CompleteTime time.Time
+}
+
+// GetJobConfig returns the unmarshaled job.JobConfig
+func (j *JobRecord) GetJobConfig() (*job.JobConfig, error) {
+	result, err := storage.UnmarshalToType(j.JobConfig, reflect.TypeOf(job.JobConfig{}))
+	if err != nil {
+		return nil, err
+	}
+	return result.(*job.JobConfig), err
 }
 
 // TaskRecord correspond to a peloton task
 type TaskRecord struct {
-	TaskID     string    //`cql:"task_id"`
-	JobID      string    //`cql:"job_id"`
-	TaskState  string    //`cql:"task_state"`
-	TaskHost   string    //`cql:"task_host"`
-	InstanceID int       //`cql:"instance_id"`
-	TaskInfo   string    //`cql:"task_info"`
-	CreateTime time.Time //`cql:"create_time"`
-	UpdateTime time.Time //`cql:"update_time"`
+	TaskID     string
+	JobID      string
+	TaskState  string
+	TaskHost   string
+	InstanceID int
+	TaskInfo   string
+	CreateTime time.Time
+	UpdateTime time.Time
+}
+
+// GetTaskInfo returns the unmarshaled task.TaskInfo
+func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
+	result, err := storage.UnmarshalToType(t.TaskInfo, reflect.TypeOf(task.TaskInfo{}))
+	if err != nil {
+		return nil, err
+	}
+	return result.(*task.TaskInfo), err
 }
 
 // TaskEventRecords tracks a peloton task's state transitions
@@ -39,4 +64,63 @@ type TaskEventRecord struct {
 	ToState   string
 	DateTime  time.Time
 	Duration  time.Duration
+}
+
+// FrameworkInfoRecord tracks the framework info
+type FrameworkInfoRecord struct {
+	FrameworkName string
+	FrameworkID   string
+	MesosStreamID string
+	UpdateTime    time.Time
+	UpdateHost    string
+}
+
+// Resource pool (to be added)
+
+// SetObjectField sets a field in object with the fieldname with the value
+func SetObjectField(object interface{}, fieldName string, value interface{}) error {
+	objValue := reflect.ValueOf(object).Elem()
+	objFieldValue := objValue.FieldByName(fieldName)
+
+	if !objFieldValue.IsValid() {
+		return fmt.Errorf("Field %v is invalid, not found in object", fieldName)
+	}
+	if !objFieldValue.CanSet() {
+		return fmt.Errorf("Field %v cannot be set", fieldName)
+	}
+
+	objFieldType := objFieldValue.Type()
+	val := reflect.ValueOf(value)
+	if objFieldType != val.Type() {
+		return fmt.Errorf("Provided value type didn't match obj field type, Field %v val %v", fieldName, value)
+	}
+	objFieldValue.Set(val)
+	return nil
+}
+
+// FillObject fills the data from DB into an object
+func FillObject(data map[string]interface{}, object interface{}, objType reflect.Type) error {
+	objectFields := getAllFieldInLowercase(objType)
+	log.Debugf("objectFields : %v", objectFields)
+	for fieldName, value := range data {
+		_, contains := objectFields[strings.ToLower(fieldName)]
+		if !contains {
+			return fmt.Errorf("Field %v not found in object", fieldName)
+		}
+		err := SetObjectField(object, objectFields[strings.ToLower(fieldName)], value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// For a struct type, returns a mapping from the lowercase of the field name to field name.
+// This is needed as C* returns a map that the field name is all in lower case
+func getAllFieldInLowercase(objType reflect.Type) map[string]string {
+	var result = make(map[string]string)
+	for i := 0; i < objType.NumField(); i++ {
+		result[strings.ToLower(objType.Field(i).Name)] = objType.Field(i).Name
+	}
+	return result
 }

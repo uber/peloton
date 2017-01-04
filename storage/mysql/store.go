@@ -9,12 +9,11 @@ import (
 
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
+	_ "github.com/gemnasium/migrate/driver/mysql" // Pull in MySQL driver for migrate
+	"github.com/gemnasium/migrate/migrate"
 	_ "github.com/go-sql-driver/mysql" // Pull in MySQL driver for sqlx
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattes/migrate/driver/mysql" // Pull in MySQL driver for migrate
-	"github.com/mattes/migrate/migrate"
 	"github.com/uber-go/tally"
-
 	mesos_v1 "mesos/v1"
 	"peloton/job"
 	"peloton/task"

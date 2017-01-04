@@ -1,0 +1,1 @@
+DROP MATERIALIZED VIEW IF EXISTS mv_jobs_by_state;
