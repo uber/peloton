@@ -45,7 +45,7 @@ var (
 	debug   = app.Flag("debug", "enable debug mode (print full json responses)").Short('d').Default("false").Bool()
 	configs = app.Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").Short('c').Required().ExistingFiles()
 	env     = app.Flag("env", "environment (development will do no mesos master auto discovery) (set $ENVIRONMENT to override)").Short('e').Default("development").
-		Envar("ENVIRONMENT\nUBER_ENVIRONMENT").Enum("development", "production")
+		Envar("UBER_ENVIRONMENT").Enum("development", "production")
 	logFormatJSON    = app.Flag("log-json", "Log in JSON format").Default("true").Bool()
 	zkPath           = app.Flag("zk-path", "Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to override)").Envar("MESOS_ZK_PATH").String()
 	dbHost           = app.Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").Envar("DB_HOST").String()
