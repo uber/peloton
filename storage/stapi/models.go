@@ -52,18 +52,31 @@ func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
 	return result.(*task.TaskInfo), err
 }
 
-// TaskEventRecords tracks a peloton task's state transitions
-type TaskEventRecords struct {
-	TaskID  string
-	Records []TaskEventRecord
+// TaskStateChangeRecords tracks a peloton task's state transition events
+type TaskStateChangeRecords struct {
+	TaskID string
+	Events []string
 }
 
-// TaskEventRecord tracks a peloton task state transition
-type TaskEventRecord struct {
-	FromState string
-	ToState   string
-	DateTime  time.Time
-	Duration  time.Duration
+// GetStateChangeRecords returns the TaskStateChangeRecord array
+func (t *TaskStateChangeRecords) GetStateChangeRecords() ([]*TaskStateChangeRecord, error) {
+	var result []*TaskStateChangeRecord
+	for _, e := range t.Events {
+		rec, err := storage.UnmarshalToType(e, reflect.TypeOf(TaskStateChangeRecord{}))
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, rec.(*TaskStateChangeRecord))
+	}
+	return result, nil
+}
+
+// TaskStateChangeRecord tracks a peloton task state transition
+type TaskStateChangeRecord struct {
+	TaskState string
+	EventTime time.Time
+	TaskHost  string
+	TaskID    string
 }
 
 // FrameworkInfoRecord tracks the framework info

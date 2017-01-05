@@ -24,13 +24,14 @@ import (
 )
 
 const (
-	taskIDFmt        = "%s-%d"
-	jobsTable        = "jobs"
-	tasksTable       = "tasks"
-	frameworksTable  = "frameworks"
-	jobOwnerView     = "mv_jobs_by_owner"
-	taskJobStateView = "mv_task_by_job_state"
-	taskHostView     = "mv_task_by_host"
+	taskIDFmt             = "%s-%d"
+	jobsTable             = "jobs"
+	tasksTable            = "tasks"
+	taskStateChangesTable = "task_state_changes"
+	frameworksTable       = "frameworks"
+	jobOwnerView          = "mv_jobs_by_owner"
+	taskJobStateView      = "mv_task_by_job_state"
+	taskHostView          = "mv_task_by_host"
 )
 
 // Config is the config for STAPIStore
@@ -226,11 +227,12 @@ func (s *Store) CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInf
 		s.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
+	taskInfo.Runtime.State = task.RuntimeInfo_INITIALIZED
 	taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(tasksTable). // TODO: runtime conf and task conf
 							Columns("TaskID", "JobID", "TaskState", "CreateTime", "TaskInfo").
-							Values(taskID, jobID, task.RuntimeInfo_INITIALIZED.String(), time.Now(), string(buffer)).
+							Values(taskID, jobID, taskInfo.Runtime.State.String(), time.Now(), string(buffer)).
 							IfNotExist()
 
 	err = s.applyInsertStmt(stmt, taskID)
@@ -239,7 +241,66 @@ func (s *Store) CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInf
 		return err
 	}
 	s.metrics.TaskCreate.Inc(1)
+	// Track the task events
+	s.logTaskStateChange(taskID, taskInfo)
 	return nil
+}
+
+// logTaskStateChange logs the task state change events
+func (s *Store) logTaskStateChange(taskID string, taskInfo *task.TaskInfo) {
+	var stateChange = TaskStateChangeRecord{
+		TaskID:    taskID,
+		TaskState: taskInfo.Runtime.State.String(),
+		TaskHost:  taskInfo.Runtime.Host,
+		EventTime: time.Now(),
+	}
+	buffer, err := json.Marshal(stateChange)
+	if err != nil {
+		log.Errorf("Failed to marshal stateChange, error = %v", err)
+		return
+	}
+	stateChangePart := []string{string(buffer)}
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(taskStateChangesTable).
+		Add("Events", stateChangePart).
+		Where(qb.Eq{"TaskID": taskID})
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.Errorf("Fail to logTaskStateChange by taskID %v %v, err=%v", taskID, stateChangePart, err)
+	}
+	if result != nil {
+		defer result.Close()
+	}
+}
+
+// GetTaskStateChanges returns the state changes for a task
+func (s *Store) GetTaskStateChanges(taskID string) ([]*TaskStateChangeRecord, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(taskStateChangesTable).
+		Where(qb.Eq{"TaskID": taskID})
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.Errorf("Fail to GetTaskStateChanges by taskID %v, err=%v", taskID, err)
+		return nil, err
+	}
+	if result != nil {
+		defer result.Close()
+	}
+	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.Errorf("Fail to GetTaskStateChanges by taskID %v, err=%v", taskID, err)
+		return nil, err
+	}
+	for _, value := range allResults {
+		var stateChangeRecords TaskStateChangeRecords
+		err = FillObject(value, &stateChangeRecords, reflect.TypeOf(stateChangeRecords))
+		if err != nil {
+			log.Errorf("Failed to Fill into TaskStateChangeRecords, val = %v err= %v", value, err)
+			return nil, err
+		}
+		return stateChangeRecords.GetStateChangeRecords()
+	}
+	return nil, fmt.Errorf("No state change records found for taskID %v", taskID)
 }
 
 // GetTasksForJobResultSet returns the result set that can be used to iterate each task in a job
@@ -251,7 +312,7 @@ func (s *Store) GetTasksForJobResultSet(id *job.JobID) (api.ResultSet, error) {
 		Where(qb.Eq{"JobID": jobID})
 	result, err := s.DataStore.Execute(context.Background(), stmt)
 	if err != nil {
-		log.Errorf("Fail to GetTasksForJob by jobId %v, err=%v", jobID, err)
+		log.Errorf("Fail to GetTasksForJobResultSet by jobId %v, err=%v", jobID, err)
 		return nil, err
 	}
 	return result, nil
@@ -270,6 +331,11 @@ func (s *Store) GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error)
 	}
 	resultMap := make(map[uint32]*task.TaskInfo)
 	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.Errorf("Fail to get all results for GetTasksForJob by jobId %v, err=%v", id.Value, err)
+		s.metrics.TaskGetFail.Inc(1)
+		return nil, err
+	}
 	for _, value := range allResults {
 		var record TaskRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -430,6 +496,7 @@ func (s *Store) UpdateTask(taskInfo *task.TaskInfo) error {
 		return err
 	}
 	s.metrics.TaskUpdate.Inc(1)
+	s.logTaskStateChange(taskID, taskInfo)
 	return nil
 }
 

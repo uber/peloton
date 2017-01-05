@@ -187,7 +187,6 @@ func (suite *STAPIStoreTestSuite) TestAddTasks() {
 			suite.Equal(task.InstanceId, uint32(j))
 		}
 		// TaskID does not exist
-
 	}
 	task, err := store.GetTaskByID("taskdoesnotexist")
 	suite.Error(err)
@@ -207,9 +206,9 @@ func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
 		suite.NoError(err)
 		for j := 0; j < nTasks; j++ {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
-			taskInfo.Runtime.State = task.RuntimeInfo_TaskState(j)
 			err = store.CreateTask(&jobID, j, taskInfo, "test")
 			suite.NoError(err)
+			taskInfo.Runtime.State = task.RuntimeInfo_TaskState(j)
 			taskInfo.Runtime.Host = fmt.Sprintf("compute2-%d", j)
 			err = store.UpdateTask(taskInfo)
 			suite.NoError(err)
@@ -247,6 +246,68 @@ func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
 		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState0-%d", j)], task.RuntimeInfo_TaskState(j).String())
 		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState1-%d", j)], task.RuntimeInfo_TaskState(j).String())
 	}
+}
+
+func (suite *STAPIStoreTestSuite) TestGetTaskStateChanges() {
+	nTasks := 2
+	host1 := "compute1"
+	host2 := "compute2"
+	var jobID = job.JobID{Value: "TestGetTaskStateChanges"}
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = uint32(nTasks)
+	err := store.CreateJob(&jobID, jobConfig, "uber")
+	suite.NoError(err)
+
+	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+	err = store.CreateTask(&jobID, 0, taskInfo, "test")
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.RuntimeInfo_SCHEDULING
+	err = store.UpdateTask(taskInfo)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.RuntimeInfo_RUNNING
+	taskInfo.Runtime.Host = host1
+	err = store.UpdateTask(taskInfo)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.RuntimeInfo_PREEMPTING
+	taskInfo.Runtime.Host = ""
+	err = store.UpdateTask(taskInfo)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.RuntimeInfo_RUNNING
+	taskInfo.Runtime.Host = host2
+	err = store.UpdateTask(taskInfo)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.RuntimeInfo_SUCCEEDED
+	taskInfo.Runtime.Host = host2
+	err = store.UpdateTask(taskInfo)
+	suite.NoError(err)
+
+	taskID := fmt.Sprintf("%s-%d", jobID.Value, 0)
+
+	stateRecords, err := store.GetTaskStateChanges(taskID)
+	suite.NoError(err)
+
+	suite.Equal(stateRecords[0].TaskState, task.RuntimeInfo_INITIALIZED.String())
+	suite.Equal(stateRecords[1].TaskState, task.RuntimeInfo_SCHEDULING.String())
+	suite.Equal(stateRecords[2].TaskState, task.RuntimeInfo_RUNNING.String())
+	suite.Equal(stateRecords[3].TaskState, task.RuntimeInfo_PREEMPTING.String())
+	suite.Equal(stateRecords[4].TaskState, task.RuntimeInfo_RUNNING.String())
+	suite.Equal(stateRecords[5].TaskState, task.RuntimeInfo_SUCCEEDED.String())
+
+	suite.Equal(stateRecords[0].TaskHost, "")
+	suite.Equal(stateRecords[1].TaskHost, "")
+	suite.Equal(stateRecords[2].TaskHost, host1)
+	suite.Equal(stateRecords[3].TaskHost, "")
+	suite.Equal(stateRecords[4].TaskHost, host2)
+	suite.Equal(stateRecords[5].TaskHost, host2)
+
+	stateRecords, err = store.GetTaskStateChanges("taskdoesnotexist")
+	suite.Error(err)
+
 }
 
 func (suite *STAPIStoreTestSuite) TestGetJobsByOwner() {
