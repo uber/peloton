@@ -70,6 +70,7 @@ func (m *jobManager) Create(
 	maxDBConcurrency := 100
 	instances := int(body.Config.InstanceCount)
 	batches := instances/maxDBConcurrency + 1
+	startAddTaskTime := time.Now()
 	go func() {
 		for j := 0; j < batches; j++ {
 			start := j * maxDBConcurrency
@@ -131,6 +132,7 @@ func (m *jobManager) Create(
 			}
 			wg.Wait()
 		}
+		log.Infof("Job %v all %v tasks created, time spent: %v", jobID.Value, instances, time.Now().Sub(startAddTaskTime))
 	}()
 	return &job.CreateResponse{
 		Result: jobID,
