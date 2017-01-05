@@ -15,6 +15,7 @@ import (
 	"peloton/job"
 	"peloton/master/taskqueue"
 	"peloton/task"
+	"sync"
 )
 
 // InitManager initalizes the job manager
@@ -63,43 +64,74 @@ func (m *jobManager) Create(
 		}, nil, nil
 	}
 	m.metrics.JobCreate.Inc(1)
+	// NOTE: temp work to make task creation concurrent for mysql store.
+	// mysql store will be deprecated soon and we are moving on the C* store
+	// As of now, only create one job with many tasks at a time
+	maxDBConcurrency := 100
+	instances := int(body.Config.InstanceCount)
+	batches := instances/maxDBConcurrency + 1
+	go func() {
+		for j := 0; j < batches; j++ {
+			start := j * maxDBConcurrency
+			end := (j + 1) * maxDBConcurrency
+			if start >= instances {
+				break
+			}
+			if end > instances {
+				end = instances
+			}
+			wg := new(sync.WaitGroup)
+			wg.Add(end - start)
+			for i := start; i < end; i++ {
+				log.Debugf("Creating task %v for job %v", i, jobID.Value)
+				instanceID := i
+				go func() {
+					defer wg.Done()
+					taskID := fmt.Sprintf("%s-%d", jobID.Value, instanceID)
+					taskInfo := task.TaskInfo{
+						Runtime: &task.RuntimeInfo{
+							State: task.RuntimeInfo_INITIALIZED,
+							TaskId: &mesos_v1.TaskID{
+								Value: &taskID,
+							},
+						},
+						JobConfig:  jobConfig,
+						InstanceId: uint32(instanceID),
+						JobId:      jobID,
+					}
+					// FIXME: we should be tracking task creates with metrics here, using the same metric scope as in TaskManager
+					// https://code.uberinternal.com/T674463
 
-	// Create tasks for the job
-	for i := 0; i < int(body.Config.InstanceCount); i++ {
-		taskID := fmt.Sprintf("%s-%d", jobID.Value, i)
-		taskInfo := task.TaskInfo{
-			Runtime: &task.RuntimeInfo{
-				State: task.RuntimeInfo_INITIALIZED,
-				TaskId: &mesos_v1.TaskID{
-					Value: &taskID,
-				},
-			},
-			JobConfig:  jobConfig,
-			InstanceId: uint32(i),
-			JobId:      jobID,
+					maxTaskCreateAttempts := 100
+					for j := 0; j < maxTaskCreateAttempts; j++ {
+						err := m.TaskStore.CreateTask(jobID, instanceID, &taskInfo, "peloton")
+						if err != nil {
+							m.metrics.TaskCreateFail.Inc(1)
+							log.Errorf("Creating task %v for job %v failed with err=%v", instanceID, jobID.Value, err)
+							time.Sleep(1 * time.Second)
+							continue
+							// TODO : decide how to handle the case that some tasks
+							// failed to be added (rare)
+
+							// 1. Rely on job level healthcheck to alert on # of
+							// instances mismatch, and re-try creating the task later
+
+							// 2. revert te job creation altogether
+						}
+						// Put the task into the taskQueue. Scheduler will pick the
+						// task up and schedule them
+						// TODO: batch the tasks for each Enqueue request
+						m.metrics.TaskCreate.Inc(1)
+						m.putTasks([]*task.TaskInfo{&taskInfo})
+						return
+					}
+					log.Errorf("Failed to create task %d for job %v after %d attempts", instanceID, jobID.Value, maxTaskCreateAttempts)
+					// TODO: fire alerts, or make job enter certain state (task missing)
+				}()
+			}
+			wg.Wait()
 		}
-		// FIXME: we should be tracking task creates with metrics here, using the same metric scope as in TaskManager
-		// https://code.uberinternal.com/T674463
-		log.Debugf("Creating %v =th task for job %v", i, jobID)
-		err := m.TaskStore.CreateTask(jobID, i, &taskInfo, "peloton")
-		if err != nil {
-			m.metrics.TaskCreateFail.Inc(1)
-			log.Errorf("Creating %v =th task for job %v failed with err=%v", i, jobID, err)
-			continue
-			// TODO : decide how to handle the case that some tasks
-			// failed to be added (rare)
-
-			// 1. Rely on job level healthcheck to alert on # of
-			// instances mismatch, and re-try creating the task later
-
-			// 2. revert te job creation altogether
-		}
-		// Put the task into the taskQueue. Scheduler will pick the
-		// task up and schedule them
-		// TODO: batch the tasks for each Enqueue request
-		m.metrics.TaskCreate.Inc(1)
-		m.putTasks([]*task.TaskInfo{&taskInfo})
-	}
+	}()
 	return &job.CreateResponse{
 		Result: jobID,
 	}, nil, nil
