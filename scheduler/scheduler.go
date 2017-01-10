@@ -75,7 +75,7 @@ func (s *schedulerManager) Stop() {
 func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 	nTasks := len(tasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
-		offers, err := s.getOffers(1)
+		offers, err := s.getOffers(s.cfg.OfferDequeueLimit)
 		if err != nil {
 			log.Errorf("Failed to dequeue offer, err=%v", err)
 			s.metrics.OfferGetFail.Inc(1)

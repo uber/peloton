@@ -36,3 +36,4 @@ mesos:
 
 scheduler:
    task_dequeue_limit: 20
+   offer_dequeue_limit: 10
