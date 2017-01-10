@@ -10,7 +10,7 @@ Binaries are built within Docker containers that provide the appropriate build e
 You will need to have a working Docker installation before proceeding.
 
 To generate a debian package build from any machine(i.e. laptop, production host), follow below steps:
-1. cd $PATH_TO_PELOTON/packaging
+1. cd $PATH_TO_PELOTON/tools/packaging/peloton-release
 2.  ./build-debian.sh --build BUILD_NUMBER [optional : [--branch BRANCH_NAME] [--package_name PACKAGE_NAME] [--distribution DISTRIBUTION_NAME]]
 Once build is done, a .deb file with name pattern 'peloton-{release ver}-{build number}-3_amd64.deb' will be generated
 under the "build" directory
@@ -40,7 +40,7 @@ A docker image can be built by leveraging the debian package build script, then 
 To generate a build from any machine(i.e. laptop, production host), follow below steps:
 
 1. git clone gitolite@code.uber.internal:infra/peloton
-2. cd peloton/packaging
+2. cd peloton/tools/packaging/peloton-release
 3. ./build-docker.sh --tag [optional tag, but highly recommended to specify one][optional : [--branch BRANCH_NAME]
 [--prod [Optional flag, specify 1 to push to uber docker registry, tunnel is required if running from non prod host]]
 [--registry [Optional flag, the docker registry url to tag and push the docker image]]]

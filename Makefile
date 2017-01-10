@@ -62,8 +62,8 @@ test: $(GOCOV) $(PBGENS)
 	gocov test $(ALL_PKGS) | gocov report
 
 pcluster:
-	# installaltion of docker-py is required, see "bootstrap.sh" / "docker/README.md" for more info
-	docker/pcluster.py setup
+	# installaltion of docker-py is required, see "bootstrap.sh" or ""tools/pcluster//README.md" for more info
+	tools/pcluster/pcluster.py setup
 
 devtools:
 	@echo "Installing tools"
