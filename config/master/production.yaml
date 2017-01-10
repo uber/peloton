@@ -23,6 +23,7 @@ db:
 
 scheduler:
    task_dequeue_limit: 100
+   offer_dequeue_limit: 30
 
 election:
   zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]

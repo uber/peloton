@@ -36,11 +36,12 @@ const (
 // InitManager inits the schedulerManager
 func InitManager(d yarpc.Dispatcher, cfg *sched_config.Config, mesosClient mpb.Client, metrics *sched_metrics.Metrics) {
 	s := schedulerManager{
-		cfg:      cfg,
-		launcher: master_task.GetTaskLauncher(d, mesosClient, metrics),
-		client:   json.New(d.ClientConfig("peloton-master")),
-		rootCtx:  context.Background(),
-		metrics:  metrics,
+		cfg:        cfg,
+		launcher:   master_task.GetTaskLauncher(d, mesosClient, metrics),
+		client:     json.New(d.ClientConfig("peloton-master")),
+		rootCtx:    context.Background(),
+		metrics:    metrics,
+		offerQueue: util.NewMemLocalOfferQueue("localOfferQueue"),
 	}
 	s.Start()
 }
@@ -54,6 +55,7 @@ type schedulerManager struct {
 	shutdown   int32
 	launcher   master_task.Launcher
 	metrics    *sched_metrics.Metrics
+	offerQueue util.OfferQueue
 }
 
 func (s *schedulerManager) Start() {
@@ -75,14 +77,14 @@ func (s *schedulerManager) Stop() {
 func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 	nTasks := len(tasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
-		offers, err := s.getOffers(s.cfg.OfferDequeueLimit)
+		offer, err := s.getLocalOffer()
 		if err != nil {
 			log.Errorf("Failed to dequeue offer, err=%v", err)
 			s.metrics.OfferGetFail.Inc(1)
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
-		if len(offers) == 0 {
+		if offer == nil {
 			s.metrics.OfferStarved.Inc(1)
 			time.Sleep(GetOfferTimeout)
 			continue
@@ -90,7 +92,6 @@ func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 		s.metrics.OfferGet.Inc(1)
 		// TODO: handle multiple offer -> multiple tasks assignment
 		// for now only get one offer each time
-		offer := offers[0]
 		tasks = s.assignTasksToOffer(tasks, offer)
 		if len(tasks) == 0 {
 			break
@@ -178,6 +179,27 @@ func (s *schedulerManager) getTasks(limit int) (
 		return nil, err
 	}
 	return response.Tasks, nil
+}
+
+func (s *schedulerManager) getLocalOffer() (*mesos.Offer, error) {
+	for {
+		offer := s.offerQueue.GetOffer(GetOfferTimeout)
+		if offer != nil {
+			return offer, nil
+		}
+		offers, err := s.getOffers(s.cfg.OfferDequeueLimit)
+		if err != nil {
+			return nil, err
+		}
+		log.Infof("Get %v offers from offerPool", len(offers))
+		if offers != nil && len(offers) > 0 {
+			for _, o := range offers {
+				s.offerQueue.PutOffer(o)
+			}
+		} else {
+			return nil, nil
+		}
+	}
 }
 
 func (s *schedulerManager) getOffers(limit int) (
