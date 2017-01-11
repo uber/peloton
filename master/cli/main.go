@@ -5,6 +5,7 @@ import (
 	nethttp "net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -183,6 +184,10 @@ func (p *pelotonMaster) GetHostPort() string {
 }
 
 func main() {
+	// After go 1.5 the GOMAXPROCS is default to # of CPUs
+	// As we need to do quite some DB writes, set the GOMAXPROCS to
+	// 2 * NumCPUs
+	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
 	app.Version(version)
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))

@@ -69,26 +69,33 @@ func (m *jobManager) Create(
 	// As of now, only create one job with many tasks at a time
 	maxDBConcurrency := 100
 	instances := int(body.Config.InstanceCount)
-	batches := instances/maxDBConcurrency + 1
+	perRoutineTasks := instances / maxDBConcurrency
 	startAddTaskTime := time.Now()
 	go func() {
-		for j := 0; j < batches; j++ {
-			start := j * maxDBConcurrency
-			end := (j + 1) * maxDBConcurrency
+		wg := new(sync.WaitGroup)
+		mod := instances % maxDBConcurrency
+		for i := 0; i < maxDBConcurrency; i++ {
+			var start int
+			var end int
+			if i < mod {
+				start = i * (perRoutineTasks + 1)
+				end = (i + 1) * (perRoutineTasks + 1)
+			} else {
+				start = i*perRoutineTasks + mod
+				end = (i+1)*perRoutineTasks + mod
+			}
 			if start >= instances {
 				break
 			}
 			if end > instances {
 				end = instances
 			}
-			wg := new(sync.WaitGroup)
-			wg.Add(end - start)
-			for i := start; i < end; i++ {
-				log.Debugf("Creating task %v for job %v", i, jobID.Value)
-				instanceID := i
-				go func() {
-					defer wg.Done()
-					taskID := fmt.Sprintf("%s-%d", jobID.Value, instanceID)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				log.Infof("task range %v %v", start, end)
+				for j := start; j < end; j++ {
+					taskID := fmt.Sprintf("%s-%d", jobID.Value, j)
 					taskInfo := task.TaskInfo{
 						Runtime: &task.RuntimeInfo{
 							State: task.RuntimeInfo_INITIALIZED,
@@ -97,18 +104,15 @@ func (m *jobManager) Create(
 							},
 						},
 						JobConfig:  jobConfig,
-						InstanceId: uint32(instanceID),
+						InstanceId: uint32(j),
 						JobId:      jobID,
 					}
-					// FIXME: we should be tracking task creates with metrics here, using the same metric scope as in TaskManager
-					// https://code.uberinternal.com/T674463
-
 					maxTaskCreateAttempts := 100
-					for j := 0; j < maxTaskCreateAttempts; j++ {
-						err := m.TaskStore.CreateTask(jobID, instanceID, &taskInfo, "peloton")
+					for k := 0; k < maxTaskCreateAttempts; k++ {
+						err := m.TaskStore.CreateTask(jobID, j, &taskInfo, "peloton")
 						if err != nil {
 							m.metrics.TaskCreateFail.Inc(1)
-							log.Errorf("Creating task %v for job %v failed with err=%v", instanceID, jobID.Value, err)
+							log.Errorf("Creating task %v for job %v failed with err=%v", j, jobID.Value, err)
 							time.Sleep(1 * time.Second)
 							continue
 							// TODO : decide how to handle the case that some tasks
@@ -124,15 +128,14 @@ func (m *jobManager) Create(
 						// TODO: batch the tasks for each Enqueue request
 						m.metrics.TaskCreate.Inc(1)
 						m.putTasks([]*task.TaskInfo{&taskInfo})
-						return
+						break
 					}
-					log.Errorf("Failed to create task %d for job %v after %d attempts", instanceID, jobID.Value, maxTaskCreateAttempts)
-					// TODO: fire alerts, or make job enter certain state (task missing)
-				}()
-			}
-			wg.Wait()
+					log.Errorf("Failed to create task %d for job %v after %d attempts", j, jobID.Value, maxTaskCreateAttempts)
+				}
+			}()
 		}
-		log.Infof("Job %v all %v tasks created, time spent: %v", jobID.Value, instances, time.Now().Sub(startAddTaskTime))
+		wg.Wait()
+		log.Infof("Job %v all %v tasks created, time spent: %v", jobID.Value, instances, time.Since(startAddTaskTime))
 	}()
 	return &job.CreateResponse{
 		Result: jobID,
