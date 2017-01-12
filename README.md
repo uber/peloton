@@ -51,6 +51,8 @@ glide install
 
 make
 
+## We need to run pcluster
+make pcluster
 
 ## Run Peloton master
 
