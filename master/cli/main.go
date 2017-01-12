@@ -335,7 +335,7 @@ func main() {
 
 	// Initalize managers
 	metrics := metrics.New(metricScope.SubScope("master"))
-	job.InitManager(dispatcher, store, store, &metrics)
+	job.InitManager(dispatcher, &cfg.Master, store, store, &metrics)
 	task.InitManager(dispatcher, store, store, &metrics)
 	tq := task.InitTaskQueue(dispatcher, &metrics)
 	upgrade.InitManager(dispatcher)
@@ -349,7 +349,7 @@ func main() {
 	om := offer.InitManager(dispatcher, time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
-	task.InitTaskStateManager(dispatcher, store, store, mesosClient)
+	task.InitTaskStateManager(dispatcher, &cfg.Master, store, store, mesosClient)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

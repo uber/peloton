@@ -1,9 +1,12 @@
 package util
 
 import (
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	mesos_v1 "mesos/v1"
 	"peloton/task"
+	"strconv"
+	"strings"
 )
 
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
@@ -160,4 +163,20 @@ func MesosStateToPelotonState(mstate mesos_v1.TaskState) task.RuntimeInfo_TaskSt
 		log.Errorf("Unknown mesos taskState %v", mstate)
 		return task.RuntimeInfo_INITIALIZED
 	}
+}
+
+// ParseTaskID parses the jobID and instanceID from taskID
+func ParseTaskID(taskID string) (string, int, error) {
+	pos := strings.LastIndex(taskID, "-")
+	if pos == -1 {
+		return taskID, 0, fmt.Errorf("Invalid task ID %v", taskID)
+	}
+	jobID := taskID[0:pos]
+	ins := taskID[pos+1:]
+
+	instanceID, err := strconv.Atoi(ins)
+	if err != nil {
+		log.Errorf("Failed to parse taskID %v err=%v", taskID, err)
+	}
+	return jobID, instanceID, err
 }

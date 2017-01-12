@@ -21,6 +21,7 @@ master:
   port: 5289
   offer_hold_time_sec: 300
   offer_pruning_period_sec: 900
+  db_write_concurrency: 40
 
 mesos:
   encoding: "x-protobuf"

@@ -28,3 +28,6 @@ scheduler:
 election:
   zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
   path: "/peloton/master/leader"
+
+master:
+  db_write_concurrency: 400

@@ -57,6 +57,7 @@ type MasterConfig struct {
 	Port                  int `yaml:"port"`
 	OfferHoldTimeSec      int `yaml:"offer_hold_time_sec"`      // Time to hold offer for in seconds
 	OfferPruningPeriodSec int `yaml:"offer_pruning_period_sec"` // Frequency of running offer pruner
+	DbWriteConcurrency    int `yaml:"db_write_concurrency"`
 }
 
 type metricsConfiguration struct {

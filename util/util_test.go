@@ -78,3 +78,23 @@ func TestCanTakeTask(t *testing.T) {
 	ok = util.CanTakeTask(&offerSummary, &taskInfo)
 	assert.False(t, ok)
 }
+
+func TestParseTaskID(t *testing.T) {
+	jobID, instanceID, err := util.ParseTaskID("Test-1234")
+	assert.Equal(t, jobID, "Test")
+	assert.Equal(t, instanceID, 1234)
+	assert.Nil(t, err)
+
+	jobID, instanceID, err = util.ParseTaskID("a2342-Test_3-52344")
+	assert.Equal(t, jobID, "a2342-Test_3")
+	assert.Equal(t, instanceID, 52344)
+	assert.Nil(t, err)
+
+	jobID, instanceID, err = util.ParseTaskID("a234Test_3_52344")
+	assert.Equal(t, jobID, "a234Test_3_52344")
+	assert.Equal(t, instanceID, 0)
+	assert.NotNil(t, err)
+
+	jobID, instanceID, err = util.ParseTaskID("a234Test_3-52344qw")
+	assert.NotNil(t, err)
+}

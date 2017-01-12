@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -19,13 +20,18 @@ import (
 )
 
 // InitManager initalizes the job manager
-func InitManager(d yarpc.Dispatcher, store storage.JobStore, taskStore storage.TaskStore, metrics *metrics.Metrics) {
+func InitManager(d yarpc.Dispatcher,
+	masterConfig *config.MasterConfig,
+	store storage.JobStore,
+	taskStore storage.TaskStore,
+	metrics *metrics.Metrics) {
 	handler := jobManager{
 		JobStore:  store,
 		TaskStore: taskStore,
 		client:    json.New(d.ClientConfig("peloton-master")),
 		rootCtx:   context.Background(),
 		metrics:   metrics,
+		config:    masterConfig,
 	}
 	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
 	json.Register(d, json.Procedure("JobManager.Get", handler.Get))
@@ -40,6 +46,7 @@ type jobManager struct {
 	client    json.Client
 	rootCtx   context.Context
 	metrics   *metrics.Metrics
+	config    *config.MasterConfig
 }
 
 func (m *jobManager) Create(
@@ -67,7 +74,7 @@ func (m *jobManager) Create(
 	// NOTE: temp work to make task creation concurrent for mysql store.
 	// mysql store will be deprecated soon and we are moving on the C* store
 	// As of now, only create one job with many tasks at a time
-	maxDBConcurrency := 100
+	maxDBConcurrency := m.config.DbWriteConcurrency
 	instances := int(body.Config.InstanceCount)
 	perRoutineTasks := instances / maxDBConcurrency
 	startAddTaskTime := time.Now()
@@ -94,6 +101,7 @@ func (m *jobManager) Create(
 			go func() {
 				defer wg.Done()
 				log.Infof("task range %v %v", start, end)
+				var tasks []*task.TaskInfo
 				for j := start; j < end; j++ {
 					taskID := fmt.Sprintf("%s-%d", jobID.Value, j)
 					taskInfo := task.TaskInfo{
@@ -108,7 +116,8 @@ func (m *jobManager) Create(
 						JobId:      jobID,
 					}
 					maxTaskCreateAttempts := 100
-					for k := 0; k < maxTaskCreateAttempts; k++ {
+					attempts := 0
+					for attempts = 0; attempts < maxTaskCreateAttempts; attempts++ {
 						err := m.TaskStore.CreateTask(jobID, j, &taskInfo, "peloton")
 						if err != nil {
 							m.metrics.TaskCreateFail.Inc(1)
@@ -127,11 +136,14 @@ func (m *jobManager) Create(
 						// task up and schedule them
 						// TODO: batch the tasks for each Enqueue request
 						m.metrics.TaskCreate.Inc(1)
-						m.putTasks([]*task.TaskInfo{&taskInfo})
+						tasks = append(tasks, &taskInfo)
 						break
 					}
-					log.Errorf("Failed to create task %d for job %v after %d attempts", j, jobID.Value, maxTaskCreateAttempts)
+					if attempts == maxTaskCreateAttempts {
+						log.Errorf("Failed to create task %d for job %v after %d attempts", j, jobID.Value, maxTaskCreateAttempts)
+					}
 				}
+				m.putTasks(tasks)
 			}()
 		}
 		wg.Wait()
@@ -207,7 +219,7 @@ func (m *jobManager) putTasks(tasks []*task.TaskInfo) error {
 		&response,
 	)
 	if err != nil {
-		log.Errorf("Deque failed with err=%v", err)
+		log.Errorf("Enqueue failed with err=%v", err)
 		return err
 	}
 	log.Debugf("Enqueued %d tasks to leader", len(tasks))
