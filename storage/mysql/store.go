@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
@@ -50,14 +51,15 @@ const (
 
 // Config is the container for database configs
 type Config struct {
-	User       string `yaml:"user"`
-	Password   string `yaml:"password"`
-	Host       string `yaml:"host"`
-	Port       int    `yaml:"port"`
-	Database   string `yaml:"database",validate:"nonzero"`
-	Migrations string `yaml:"migrations"`
-	ReadOnly   bool
-	Conn       *sqlx.DB
+	User         string `yaml:"user"`
+	Password     string `yaml:"password"`
+	Host         string `yaml:"host"`
+	Port         int    `yaml:"port"`
+	Database     string `yaml:"database",validate:"nonzero"`
+	Migrations   string `yaml:"migrations"`
+	ReadOnly     bool
+	Conn         *sqlx.DB
+	ConnLifeTime time.Duration `yaml:"conn_lifetime"`
 }
 
 // String returns the connection string for the DB
