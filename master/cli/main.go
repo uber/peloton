@@ -264,6 +264,7 @@ func main() {
 	}
 	// Initialize job and task stores
 	store := mysql.NewJobStore(cfg.DbConfig.Conn, metricScope.SubScope("storage"))
+	store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
