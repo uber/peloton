@@ -6,7 +6,10 @@ MAINTAINER Uber Compute Platform <compute@uber.com>
 RUN apt-get -yqq update
 RUN apt-get -yqq install \
                     curl \
-              python-dev
+              python-dev \
+                     vim \
+                     gdb \
+              util-linux
 
 ADD peloton.deb /peloton.deb
 ADD entrypoint.sh /entrypoint.sh

@@ -73,7 +73,8 @@ main() {
     rm -rf $BUILD_DIR
     mkdir -p $BUILD_DIR
     sudo docker cp "$container_name:/pkg.deb" $BUILD_DIR/"$package_name"
-    sudo docker rm "$container_name"
+    sudo docker rm -f "$container_name"
+    sudo docker rmi -f "$image_name"
 
     echo "Produced artifacts $BUILD_DIR/$package_name"
     # clean up temporarily generated files
