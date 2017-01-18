@@ -1,0 +1,145 @@
+/**
+ *  Resource Pool Manager API
+ */
+
+
+syntax = "proto3";
+
+package peloton.resmgr;
+
+option go_package = "resourcemanager";
+
+import "mesos/v1/mesos.proto";
+import "peloton/changelog/changelog.proto";
+
+/**
+ *  A unique ID assigned to a Resource Pool.
+ */
+message ResourcePoolID {
+  string value = 1;
+}
+
+/**
+ *  Resource configuration for a resource
+ */
+message ResourceConfig {
+
+  // Type of the resource
+  string kind = 1;
+
+  // Reservation/min of the resource
+  double reservation = 2;
+
+  // Limit of the resource
+  double limit = 3;
+
+  // Share on the resource pool
+  double share = 4;
+
+}
+
+
+/**
+ *  Resource Pool configuration
+ */
+message ResourcePoolConfig {
+  // Change log entry of the Resource Pool config
+  changelog.ChangeLog changeLog = 1;
+
+  // Name of the resource pool
+  string name = 2;
+
+  // Owning team of the pool
+  string owningTeam = 3;
+
+  // LDAP groups of the pool
+  repeated string ldapGroups = 4;
+
+  // Description of the resource pool
+  string description = 5;
+
+  // Resource config of the Resource Pool
+  repeated ResourceConfig resources = 6;
+
+  // Resource Pool's parent
+  ResourcePoolID parent = 7;
+
+}
+
+message ResourcePoolInfo {
+  // Resource Pool Id
+  ResourcePoolID id = 1;
+
+  // ResourcePool config
+  ResourcePoolConfig config = 2;
+
+  //Resource Pool's parent
+  ResourcePoolID parent = 3;
+
+  //Resource Pool's children
+  repeated ResourcePoolID children = 4;
+}
+
+/**
+ *  Resource Manager service interface
+ */
+service ResourceManager
+{
+  // Create a resource pool entity for a given config
+  rpc CreateResourcePool(CreateRequest) returns (CreateResponse);
+
+  // Get the resource pool entity
+  rpc GetResourcePool(GetRequest) returns (GetResponse);
+
+  // Delete a resource pool entity
+  rpc DeleteResourcePool(DeleteRequest) returns (DeleteResponse);
+
+  // modify a resource pool entity
+  rpc UpdateResourcePool(UpdateRequest) returns (UpdateResponse);
+}
+
+message ResourcePoolAlreadyExists {
+  ResourcePoolID id = 1;
+  string message = 2;
+}
+
+message ResourcePoolNotFound {
+  ResourcePoolID id = 1;
+  string message = 2;
+}
+
+message CreateRequest {
+  ResourcePoolID id = 1;
+  ResourcePoolConfig config = 2;
+}
+
+message CreateResponse {
+  ResourcePoolID result = 1;
+  ResourcePoolAlreadyExists alreadyExists = 2;
+}
+
+message GetRequest {
+  ResourcePoolID id = 1;
+}
+
+message GetResponse {
+  ResourcePoolInfo poolinfo = 1;
+  ResourcePoolNotFound notFound = 2;
+}
+
+message DeleteRequest {
+  ResourcePoolID id = 1;
+}
+
+message DeleteResponse {
+  ResourcePoolNotFound notFound = 1;
+}
+
+message UpdateRequest{
+  ResourcePoolID id = 1;
+  ResourcePoolConfig config = 2;
+}
+
+message UpdateResponse {
+  ResourcePoolNotFound notFound = 1;
+}
