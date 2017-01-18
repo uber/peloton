@@ -98,6 +98,20 @@ func (a *hostOfferSummary) getOffers(maxOffers int) []*mesos.Offer {
 	return result
 }
 
+// Returns all of offers
+func (a *hostOfferSummary) getAllOffers() []*mesos.Offer {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+
+	var result []*mesos.Offer
+	for id, offer := range a.offersOnHost {
+		result = append(result, offer)
+		delete(a.offersOnHost, id)
+	}
+	atomic.StoreInt32(a.hasOfferFlag, 0)
+	return result
+}
+
 func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
@@ -147,25 +161,24 @@ func (p *offerPool) GetOffers(
 	}, nil, nil
 }
 
-func (p *offerPool) getOffers(limit int) []*mesos.Offer {
+func (p *offerPool) getOffers(hostLimit int) []*mesos.Offer {
 	defer p.RUnlock()
 	p.RLock()
 
 	count := 0
-	remain := limit
 	offers := []*mesos.Offer{}
 	for _, hostOffers := range p.hostOfferIndex {
 		if hostOffers.hasOffer() {
-			offerGot := hostOffers.getOffers(remain)
+			offerGot := hostOffers.getAllOffers()
 			if len(offerGot) > 0 {
 				for _, o := range offerGot {
 					offers = append(offers, o)
-					count++
-					if count >= limit {
-						break
-					}
+
 				}
-				remain -= len(offerGot)
+				count++
+				if count >= hostLimit {
+					break
+				}
 			}
 		}
 	}

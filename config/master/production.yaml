@@ -22,7 +22,7 @@ db:
   port: 3306
 
 scheduler:
-   task_dequeue_limit: 100
+   task_dequeue_limit: 200
    offer_dequeue_limit: 30
 
 election:

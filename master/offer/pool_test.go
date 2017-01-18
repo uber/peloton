@@ -102,7 +102,7 @@ func TestAddGetRemoveOffers(t *testing.T) {
 		offersLock:     &sync.Mutex{},
 	}
 	// Add offer concurrently
-	nOffers := 5
+	nOffers := 10
 	nAgents := 10
 	wg := sync.WaitGroup{}
 	for i := 0; i < nOffers; i++ {
@@ -143,8 +143,8 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	// Get offer
 	takenOffers := map[string]*mesos.Offer{}
 	mutex := &sync.Mutex{}
-	nClients := 6
-	nBatchSize := 3
+	nClients := 4
+	nBatchSize := 2
 	wg = sync.WaitGroup{}
 	for i := 0; i < nClients; i++ {
 		wg.Add(1)
@@ -159,12 +159,12 @@ func TestAddGetRemoveOffers(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	assert.Equal(t, len(takenOffers), nClients*nBatchSize)
+	assert.Equal(t, len(takenOffers), nClients*nBatchSize*nOffers)
 	for offerID, offer := range takenOffers {
 		assert.Equal(t, offerID, *offer.Id.Value)
 		assert.Nil(t, pool.offers[offerID])
 	}
-	assert.Equal(t, len(pool.offers), nOffers*nAgents-nClients*nBatchSize)
+	assert.Equal(t, len(pool.offers), nOffers*nAgents-nClients*nBatchSize*nOffers)
 
 	//Rescind offer
 	wg = sync.WaitGroup{}
