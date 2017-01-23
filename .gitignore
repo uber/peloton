@@ -6,6 +6,7 @@
 *.iml
 *.cov
 *.html
+*.tmp
 .tmp/
 .build/
 /pbgen
@@ -35,3 +36,4 @@ jenkins.xml
 *~
 .\#*
 \#*\#
+.unison.*.tmp
