@@ -5,7 +5,7 @@ ldapgroups:
 - money
 - team6
 - otto
-description: "A dummy test job for peloton, 10K tasks"
+description: "A dummy non docker test job for peloton, 10K tasks"
 labels:
   labels:
   - key: testKey0

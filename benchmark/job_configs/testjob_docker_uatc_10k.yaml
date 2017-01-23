@@ -1,0 +1,48 @@
+changelog: null
+name: TestPelotonDockerUatcJob_123_10k
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy uatc test docker job for peloton, 10k"
+labels:
+  labels:
+  - key: testKey0
+    value: testVal0
+  - key: testKey1
+    value: testVal1
+  - key: testKey2
+    value: testVal2
+instancecount: 10000
+resource:
+  cpuslimit: 0.1
+  memlimitmb: 2.0
+  disklimitmb: 10
+  fdlimit: 10
+healthcheck: null
+ports: []
+container:
+  type: 1
+  docker:
+    image: "docker.int.uberatc.com/uatc/uberatc-laptop"
+    parameters:
+      - key: env
+        value: TEST_ENV0=testVal0
+      - key: env
+        value: TEST_ENV1=testVal1
+  volumes:
+    - containerpath: /test-tmp
+      hostpath: /tmp
+      mode: 1
+    - containerpath: /test-var
+      hostpath: /var
+      mode: 2
+sla:
+  priority: 22
+  minimuminstancecount: 12
+  minimuminstancepercent: 50
+  preemptible: false
+command:
+  shell: true
+  value: 'echo Hello'
