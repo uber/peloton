@@ -1,4 +1,4 @@
-#!/usr/local/bin/python
+#!/usr/bin/env python
 '''
  -- Locally run and manage a personal cluster in containers.
 
