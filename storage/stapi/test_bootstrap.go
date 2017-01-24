@@ -25,7 +25,7 @@ func downSync(cfg *Config) []error {
 // can take a long time (upsync/downsync take 3 min) with local docker,
 // To verify with jenkins
 func MigrateForTest() *Config {
-	conf := &Config{
+	conf := Config{
 		Stapi: sc.Configuration{
 			Cassandra: sc.Cassandra{
 				ContactPoints: []string{"127.0.0.1"},
@@ -34,8 +34,9 @@ func MigrateForTest() *Config {
 			},
 			MaxGoRoutines: 1000,
 		},
-		StoreName:  "peloton_test",
-		Migrations: "migrations",
+		StoreName:    "peloton_test",
+		Migrations:   "migrations",
+		MaxBatchSize: 20,
 	}
 	dir, err := os.Getwd()
 	if err != nil {
@@ -48,7 +49,7 @@ func MigrateForTest() *Config {
 
 	conf.Migrations = path.Join(dir, "storage", "stapi", conf.Migrations)
 	log.Infof("pwd=%v migration path=%v", dir, conf.Migrations)
-	if errs := downSync(conf); errs != nil {
+	if errs := downSync(&conf); errs != nil {
 		log.Warnf(fmt.Sprintf("downSync is having the following error: %+v", errs))
 	}
 	log.Infof("downSync complete")
@@ -56,5 +57,5 @@ func MigrateForTest() *Config {
 	if errs := conf.AutoMigrate(); errs != nil {
 		panic(fmt.Sprintf("%+v", errs))
 	}
-	return conf
+	return &conf
 }

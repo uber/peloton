@@ -16,7 +16,6 @@ import (
 	"peloton/job"
 	"peloton/master/taskqueue"
 	"peloton/task"
-	"sync"
 )
 
 // InitManager initalizes the job manager
@@ -74,81 +73,39 @@ func (m *jobManager) Create(
 	// NOTE: temp work to make task creation concurrent for mysql store.
 	// mysql store will be deprecated soon and we are moving on the C* store
 	// As of now, only create one job with many tasks at a time
-	maxDBConcurrency := m.config.DbWriteConcurrency
 	instances := int(body.Config.InstanceCount)
-	perRoutineTasks := instances / maxDBConcurrency
 	startAddTaskTime := time.Now()
-	go func() {
-		wg := new(sync.WaitGroup)
-		mod := instances % maxDBConcurrency
-		for i := 0; i < maxDBConcurrency; i++ {
-			var start int
-			var end int
-			if i < mod {
-				start = i * (perRoutineTasks + 1)
-				end = (i + 1) * (perRoutineTasks + 1)
-			} else {
-				start = i*perRoutineTasks + mod
-				end = (i+1)*perRoutineTasks + mod
-			}
-			if start >= instances {
-				break
-			}
-			if end > instances {
-				end = instances
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				log.Infof("task range %v %v", start, end)
-				var tasks []*task.TaskInfo
-				for j := start; j < end; j++ {
-					taskID := fmt.Sprintf("%s-%d", jobID.Value, j)
-					taskInfo := task.TaskInfo{
-						Runtime: &task.RuntimeInfo{
-							State: task.RuntimeInfo_INITIALIZED,
-							TaskId: &mesos_v1.TaskID{
-								Value: &taskID,
-							},
-						},
-						JobConfig:  jobConfig,
-						InstanceId: uint32(j),
-						JobId:      jobID,
-					}
-					maxTaskCreateAttempts := 100
-					attempts := 0
-					for attempts = 0; attempts < maxTaskCreateAttempts; attempts++ {
-						err := m.TaskStore.CreateTask(jobID, j, &taskInfo, "peloton")
-						if err != nil {
-							m.metrics.TaskCreateFail.Inc(1)
-							log.Errorf("Creating task %v for job %v failed with err=%v", j, jobID.Value, err)
-							time.Sleep(1 * time.Second)
-							continue
-							// TODO : decide how to handle the case that some tasks
-							// failed to be added (rare)
 
-							// 1. Rely on job level healthcheck to alert on # of
-							// instances mismatch, and re-try creating the task later
-
-							// 2. revert te job creation altogether
-						}
-						// Put the task into the taskQueue. Scheduler will pick the
-						// task up and schedule them
-						// TODO: batch the tasks for each Enqueue request
-						m.metrics.TaskCreate.Inc(1)
-						tasks = append(tasks, &taskInfo)
-						break
-					}
-					if attempts == maxTaskCreateAttempts {
-						log.Errorf("Failed to create task %d for job %v after %d attempts", j, jobID.Value, maxTaskCreateAttempts)
-					}
-				}
-				m.putTasks(tasks)
-			}()
+	tasks := make([]*task.TaskInfo, instances)
+	for i := 0; i < instances; i++ {
+		// populate taskInfos
+		instance := i
+		taskID := fmt.Sprintf("%s-%d", jobID.Value, instance)
+		t := task.TaskInfo{
+			Runtime: &task.RuntimeInfo{
+				State: task.RuntimeInfo_INITIALIZED,
+				TaskId: &mesos_v1.TaskID{
+					Value: &taskID,
+				},
+			},
+			JobConfig:  jobConfig,
+			InstanceId: uint32(instance),
+			JobId:      jobID,
 		}
-		wg.Wait()
-		log.Infof("Job %v all %v tasks created, time spent: %v", jobID.Value, instances, time.Since(startAddTaskTime))
-	}()
+		tasks[i] = &t
+	}
+	err = m.TaskStore.CreateTasks(jobID, tasks, "peloton")
+	nTasks := int64(len(tasks))
+	if err != nil {
+		log.Errorf("Failed to create tasks (%d) for job %v: %v", nTasks, jobID.Value, err)
+		m.metrics.TaskCreateFail.Inc(nTasks)
+		return nil, nil, err
+	}
+	m.metrics.TaskCreate.Inc(nTasks)
+	m.putTasks(tasks)
+
+	log.Infof("Job %v all %v tasks created, time spent: %v", jobID.Value, instances, time.Since(startAddTaskTime))
+
 	return &job.CreateResponse{
 		Result: jobID,
 	}, nil, nil

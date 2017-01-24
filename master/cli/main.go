@@ -210,7 +210,7 @@ func main() {
 		cfg.Mesos.ZkPath = *zkPath
 	}
 	if *dbHost != "" {
-		cfg.DbConfig.Host = *dbHost
+		cfg.StorageConfig.MySQLConfig.Host = *dbHost
 	}
 	if *taskDequeueLimit != 0 {
 		cfg.Scheduler.TaskDequeueLimit = *taskDequeueLimit
@@ -255,18 +255,18 @@ func main() {
 	metricScope.Counter("boot").Inc(1)
 
 	// Connect to mysql DB
-	if err := cfg.DbConfig.Connect(); err != nil {
+	if err := cfg.StorageConfig.MySQLConfig.Connect(); err != nil {
 		log.Fatalf("Could not connect to database: %+v", err)
 	}
 	// Migrate DB if necessary
-	if errs := cfg.DbConfig.AutoMigrate(); errs != nil {
+	if errs := cfg.StorageConfig.MySQLConfig.AutoMigrate(); errs != nil {
 		log.Fatalf("Could not migrate database: %+v", errs)
 	}
 	// Initialize job and task stores
-	store := mysql.NewJobStore(cfg.DbConfig.Conn, metricScope.SubScope("storage"))
+	store := mysql.NewJobStore(cfg.StorageConfig.MySQLConfig, metricScope.SubScope("storage"))
 	store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
 	store.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
-	store.DB.SetConnMaxLifetime(cfg.DbConfig.ConnLifeTime)
+	store.DB.SetConnMaxLifetime(cfg.StorageConfig.MySQLConfig.ConnLifeTime)
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)

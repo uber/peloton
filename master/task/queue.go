@@ -46,7 +46,7 @@ func (q *Queue) Enqueue(
 	body *taskqueue.EnqueueRequest) (*taskqueue.EnqueueResponse, yarpc.ResMeta, error) {
 
 	tasks := body.Tasks
-	log.WithField("tasks", tasks).Debug("TaskQueue.Enqueue called")
+	log.Debug("TaskQueue.Enqueue called")
 	q.metrics.QueueAPIEnqueue.Inc(1)
 	for _, task := range tasks {
 		q.tqValue.Load().(util.TaskQueue).PutTask(task)
@@ -74,7 +74,7 @@ func (q *Queue) Dequeue(
 			break
 		}
 	}
-	log.WithField("tasks", tasks).Debug("TaskQueue.Dequeue returned")
+	log.Debug("TaskQueue.Dequeue returned")
 
 	return &taskqueue.DequeueResponse{
 		Tasks: tasks,

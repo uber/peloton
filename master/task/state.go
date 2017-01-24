@@ -148,6 +148,7 @@ func (t *taskUpdateBucket) getProcessedCount() int32 {
 
 func newTaskStateUpdateApplier(t *taskStateManager, bucketNum int, chanSize int) *taskUpdateApplier {
 	var buckets []*taskUpdateBucket
+	// TODO: make me use batch task updates instead of individual updates
 	for i := 0; i < bucketNum; i++ {
 		bucket := newTaskUpdateBucket(chanSize, i)
 		buckets = append(buckets, bucket)

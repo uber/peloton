@@ -1,26 +1,30 @@
 package stapi
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"peloton/job"
+	"peloton/task"
+	"reflect"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	mesos "code.uber.internal/infra/peloton/pbgen/src/mesos/v1"
 	peloton_storage "code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/stapi-go.git"
 	"code.uber.internal/infra/stapi-go.git/api"
 	sc "code.uber.internal/infra/stapi-go.git/config"
 	qb "code.uber.internal/infra/stapi-go.git/querybuilder"
-	"context"
-	"encoding/json"
-	"fmt"
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
 	"github.com/uber-common/bark"
 	"github.com/uber-go/tally"
-	"os"
-	"peloton/job"
-	"peloton/task"
-	"reflect"
-	"strings"
-	"time"
 )
 
 const (
@@ -39,6 +43,10 @@ type Config struct {
 	Stapi      sc.Configuration `yaml:"stapi"`
 	StoreName  string           `yaml:"store_name"`
 	Migrations string           `yaml:"migrations"`
+	// MaxBatchSize makes sure we avoid batching too many statements and avoid
+	// http://docs.datastax.com/en/archived/cassandra/3.x/cassandra/configuration/configCassandra_yaml.html#configCassandra_yaml__batch_size_fail_threshold_in_kb
+	// This value is the number of records that are included in a single transaction/commit RPC request
+	MaxBatchSize int `yaml:"max_batch_size_rows"`
 }
 
 // AutoMigrate migrates the db schemas for cassandra
@@ -71,6 +79,7 @@ func (c *Config) MigrateString() string {
 type Store struct {
 	DataStore api.DataStore
 	metrics   peloton_storage.Metrics
+	Conf      *Config
 }
 
 // NewStore creates a Store
@@ -88,6 +97,7 @@ func NewStore(config *Config, metricScope tally.Scope) (*Store, error) {
 	return &Store{
 		DataStore: dataStore,
 		metrics:   peloton_storage.NewMetrics(metricScope),
+		Conf:      config,
 	}, nil
 }
 
@@ -114,7 +124,7 @@ func (s *Store) CreateJob(id *job.JobID, jobConfig *job.JobConfig, owner string)
 		Values(jobID, string(configBuffer), owner, string(labelBuffer), "Init", time.Now()).
 		IfNotExist()
 
-	err = s.applyInsertStmt(stmt, jobID)
+	err = s.applyStatement(stmt, jobID)
 	if err != nil {
 		s.metrics.JobCreateFail.Inc(1)
 		return err
@@ -212,6 +222,7 @@ func (s *Store) GetAllJobs() (map[string]*job.JobConfig, error) {
 }
 
 // CreateTask creates a task for a peloton job
+// TODO: remove this in favor of CreateTasks
 func (s *Store) CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInfo, owner string) error {
 	jobID := id.Value
 	if taskInfo.InstanceId != uint32(instanceID) || taskInfo.JobId.Value != jobID {
@@ -235,19 +246,121 @@ func (s *Store) CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInf
 							Values(taskID, jobID, taskInfo.Runtime.State.String(), time.Now(), string(buffer)).
 							IfNotExist()
 
-	err = s.applyInsertStmt(stmt, taskID)
+	err = s.applyStatement(stmt, taskID)
 	if err != nil {
 		s.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
 	s.metrics.TaskCreate.Inc(1)
 	// Track the task events
-	s.logTaskStateChange(taskID, taskInfo)
+	err = s.logTaskStateChange(taskID, taskInfo)
+	if err != nil {
+		log.Errorf("Unable to log task state changes for job ID %v instance %v, error = %v", jobID, taskID, err)
+		return err
+	}
 	return nil
 }
 
+// CreateTasks creates tasks for the given slice of task infos, instances 0..n
+func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner string) error {
+	maxBatchSize := int64(s.Conf.MaxBatchSize)
+	if maxBatchSize == 0 {
+		maxBatchSize = math.MaxInt64
+	}
+	jobID := id.Value
+	nTasks := int64(len(taskInfos))
+	tasksNotCreated := int64(0)
+	writeLock := sync.Mutex{} // protect these datastructs against concurrent modification
+	idsToTaskInfos := map[string]*task.TaskInfo{}
+	timeStart := time.Now()
+	wg := new(sync.WaitGroup)
+
+	for batch := int64(0); batch <= nTasks/maxBatchSize; batch++ {
+		// do batching by rows, up to s.Conf.MaxBatchSize
+		start := batch * maxBatchSize // the starting instance ID
+		end := nTasks                 // the end bounds (noninclusive)
+		if nTasks >= (batch+1)*maxBatchSize {
+			end = (batch + 1) * maxBatchSize
+		}
+		batchSize := end - start // how many tasks in this batch
+		wg.Add(1)
+		go func() {
+			batchTimeStart := time.Now()
+			insertStatements := []api.Statement{}
+			defer wg.Done()
+			for instanceID := start; instanceID < end; instanceID++ {
+				t := taskInfos[instanceID]
+				// abort if the tasks dont have the expected instance IDs and job IDs
+				if t.InstanceId != uint32(instanceID) || t.JobId.Value != jobID {
+					errMsg := fmt.Sprintf("Task should have id %v, different than instance ID %d in task info, jobID %v, task JobId %v",
+						instanceID, t.InstanceId, jobID, t.JobId.Value)
+					log.Errorf(errMsg)
+					s.metrics.TaskCreateFail.Inc(nTasks)
+					atomic.AddInt64(&tasksNotCreated, batchSize)
+					return
+				}
+				buffer, err := json.Marshal(t)
+				if err != nil {
+					log.Errorf("Failed to marshal taskInfo for job ID %v and instance %d, error = %v", jobID, instanceID, err)
+					s.metrics.TaskCreateFail.Inc(nTasks)
+					atomic.AddInt64(&tasksNotCreated, batchSize)
+					return
+				}
+
+				t.Runtime.State = task.RuntimeInfo_INITIALIZED
+				taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
+
+				writeLock.Lock()
+				idsToTaskInfos[taskID] = t
+				writeLock.Unlock()
+
+				queryBuilder := s.DataStore.NewQuery()
+				stmt := queryBuilder.Insert(tasksTable).
+					Columns("TaskID", "JobID", "TaskState", "CreateTime", "TaskInfo").
+					Values(taskID, jobID, t.Runtime.State.String(), time.Now(), string(buffer))
+
+					// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
+					// Batch with conditions cannot span multiple partitions. For now, drop the IfNotExist()
+
+				writeLock.Lock()
+				insertStatements = append(insertStatements, stmt)
+				writeLock.Unlock()
+			}
+			err := s.applyStatements(insertStatements, jobID)
+			if err != nil {
+				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
+					Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
+				s.metrics.TaskCreateFail.Inc(nTasks)
+				atomic.AddInt64(&tasksNotCreated, batchSize)
+				return
+			}
+			log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
+				Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
+			s.metrics.TaskCreate.Inc(nTasks)
+		}()
+	}
+	wg.Wait()
+	if tasksNotCreated != 0 {
+		// TODO: should we propogate this error up the stack? Should we fire logTaskStateChanges before doing so?
+		log.Errorf("Wrote %d tasks for %v, and was unable to write %d tasks to Cassandra in %v", nTasks-tasksNotCreated, id, tasksNotCreated, time.Since(timeStart))
+	} else {
+		log.WithField("duration_s", time.Since(timeStart).Seconds()).
+			Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, id, time.Since(timeStart))
+	}
+
+	// Track the task events
+	err := s.logTaskStateChanges(idsToTaskInfos)
+	if err != nil {
+		log.Errorf("Unable to log %d task state changes for job ID %v, error = %v", nTasks, jobID, err)
+		return err
+	}
+
+	return nil
+
+}
+
 // logTaskStateChange logs the task state change events
-func (s *Store) logTaskStateChange(taskID string, taskInfo *task.TaskInfo) {
+func (s *Store) logTaskStateChange(taskID string, taskInfo *task.TaskInfo) error {
 	var stateChange = TaskStateChangeRecord{
 		TaskID:    taskID,
 		TaskState: taskInfo.Runtime.State.String(),
@@ -257,7 +370,7 @@ func (s *Store) logTaskStateChange(taskID string, taskInfo *task.TaskInfo) {
 	buffer, err := json.Marshal(stateChange)
 	if err != nil {
 		log.Errorf("Failed to marshal stateChange, error = %v", err)
-		return
+		return err
 	}
 	stateChangePart := []string{string(buffer)}
 	queryBuilder := s.DataStore.NewQuery()
@@ -265,12 +378,45 @@ func (s *Store) logTaskStateChange(taskID string, taskInfo *task.TaskInfo) {
 		Add("Events", stateChangePart).
 		Where(qb.Eq{"TaskID": taskID})
 	result, err := s.DataStore.Execute(context.Background(), stmt)
-	if err != nil {
-		log.Errorf("Fail to logTaskStateChange by taskID %v %v, err=%v", taskID, stateChangePart, err)
-	}
 	if result != nil {
 		defer result.Close()
 	}
+	if err != nil {
+		log.Errorf("Fail to logTaskStateChange by taskID %v %v, err=%v", taskID, stateChangePart, err)
+		return err
+	}
+	return nil
+}
+
+// logTaskStateChanges logs multiple task state change events in a batch operation (one RPC, separate statements)
+// taskIDToTaskInfos is a map of task ID to task info
+func (s *Store) logTaskStateChanges(taskIDToTaskInfos map[string]*task.TaskInfo) error {
+	statements := []api.Statement{}
+	for taskID, taskInfo := range taskIDToTaskInfos {
+		var stateChange = TaskStateChangeRecord{
+			TaskID:    taskID,
+			TaskState: taskInfo.Runtime.State.String(),
+			TaskHost:  taskInfo.Runtime.Host,
+			EventTime: time.Now(),
+		}
+		buffer, err := json.Marshal(stateChange)
+		if err != nil {
+			log.Errorf("Failed to marshal stateChange for task %v, error = %v", taskID, err)
+			return err
+		}
+		stateChangePart := []string{string(buffer)}
+		queryBuilder := s.DataStore.NewQuery()
+		stmt := queryBuilder.Update(taskStateChangesTable).
+			Add("Events", stateChangePart).
+			Where(qb.Eq{"TaskID": taskID})
+		statements = append(statements, stmt)
+	}
+	err := s.DataStore.ExecuteBatch(context.Background(), statements)
+	if err != nil {
+		log.Errorf("Fail to logTaskStateChanges for %d tasks, err=%v", len(taskIDToTaskInfos), err)
+		return err
+	}
+	return nil
 }
 
 // GetTaskStateChanges returns the state changes for a task
@@ -490,7 +636,7 @@ func (s *Store) UpdateTask(taskInfo *task.TaskInfo) error {
 	stmt := queryBuilder.Insert(tasksTable). // TODO: runtime conf and task conf
 							Columns("TaskID", "JobID", "TaskState", "TaskHost", "CreateTime", "TaskInfo").
 							Values(taskID, taskInfo.JobId.Value, taskInfo.GetRuntime().State.String(), taskInfo.GetRuntime().Host, time.Now(), string(buffer))
-	err = s.applyInsertStmt(stmt, taskID)
+	err = s.applyStatement(stmt, taskID)
 	if err != nil {
 		s.metrics.TaskUpdateFail.Inc(1)
 		return err
@@ -558,7 +704,7 @@ func (s *Store) updateFrameworkTable(content map[string]interface{}) error {
 	stmt := queryBuilder.Insert(frameworksTable).
 		Columns(columns...).
 		Values(values...)
-	return s.applyInsertStmt(stmt, frameworksTable)
+	return s.applyStatement(stmt, frameworksTable)
 }
 
 //GetMesosStreamID reads the mesos stream id for a framework name
@@ -604,7 +750,16 @@ func (s *Store) getFrameworkInfo(frameworkName string) (*FrameworkInfoRecord, er
 	return nil, fmt.Errorf("FrameworkInfo not found for framework %v", frameworkName)
 }
 
-func (s *Store) applyInsertStmt(stmt qb.InsertBuilder, itemName string) error {
+func (s *Store) applyStatements(stmts []api.Statement, jobID string) error {
+	err := s.DataStore.ExecuteBatch(context.Background(), stmts)
+	if err != nil {
+		log.Errorf("Fail to execute %d insert statements for job %v, err=%v", len(stmts), jobID, err)
+		return err
+	}
+	return nil
+}
+
+func (s *Store) applyStatement(stmt api.Statement, itemName string) error {
 	stmtString, _, _ := stmt.ToSql()
 	log.Debugf("stmt=%v", stmtString)
 	result, err := s.DataStore.Execute(context.Background(), stmt)

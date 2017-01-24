@@ -16,10 +16,11 @@ sentry:
 mesos:
   zk_path: "zk://zookeeper-mesos-devel01-dca1.uber.internal:2181/mesos"
 
-db:
-  # TODO: read db from zk
-  host: compute841-dca1
-  port: 3306
+storage:
+  mysql:
+    # TODO: read db from zk
+    host: compute841-dca1
+    port: 3306
 
 scheduler:
    task_dequeue_limit: 200

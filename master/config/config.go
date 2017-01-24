@@ -42,14 +42,18 @@ func (e ValidationError) Error() string {
 
 // Config encapulates the master runtime config
 type Config struct {
-	Metrics metricsConfiguration `yaml:"metrics"`
-	// TODO: deprecate mysql DbConfig
-	DbConfig    mysql.Config           `yaml:"db"`
-	STAPIConfig stapi.Config           `yaml:"stapi"`
-	Master      MasterConfig           `yaml:"master"`
-	Mesos       mesos.Config           `yaml:"mesos"`
-	Scheduler   schedulerconfig.Config `yaml:"scheduler"`
-	Election    leader.ElectionConfig  `yaml:"election"`
+	Metrics       metricsConfiguration   `yaml:"metrics"`
+	StorageConfig StorageConfig          `yaml:"storage"`
+	Master        MasterConfig           `yaml:"master"`
+	Mesos         mesos.Config           `yaml:"mesos"`
+	Scheduler     schedulerconfig.Config `yaml:"scheduler"`
+	Election      leader.ElectionConfig  `yaml:"election"`
+}
+
+// StorageConfig contains the different DB config values for each supported backend
+type StorageConfig struct {
+	MySQLConfig mysql.Config `yaml:"mysql"`
+	STAPIConfig stapi.Config `yaml:"stapi"`
 }
 
 // MasterConfig is framework specific configuration
@@ -57,7 +61,9 @@ type MasterConfig struct {
 	Port                  int `yaml:"port"`
 	OfferHoldTimeSec      int `yaml:"offer_hold_time_sec"`      // Time to hold offer for in seconds
 	OfferPruningPeriodSec int `yaml:"offer_pruning_period_sec"` // Frequency of running offer pruner
-	DbWriteConcurrency    int `yaml:"db_write_concurrency"`
+	// FIXME(gabe): this isnt really the DB write concurrency. This is only used for processing task updates
+	// and should be moved into the storage namespace, and made clearer what this controls (threads? rows? statements?)
+	DbWriteConcurrency int `yaml:"db_write_concurrency"`
 }
 
 type metricsConfiguration struct {

@@ -33,7 +33,7 @@ type QueueTestSuite struct {
 func (suite *QueueTestSuite) SetupTest() {
 	conf := mysql.LoadConfigWithDB()
 	suite.db = conf.Conn
-	suite.store = mysql.NewJobStore(conf.Conn, tally.NoopScope)
+	suite.store = mysql.NewJobStore(*conf, tally.NoopScope)
 
 	inbounds := []transport.Inbound{
 		http.NewInbound(":" + strconv.Itoa(masterPort)),

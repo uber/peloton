@@ -8,7 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-	mesos_v1 "mesos/v1"
+	mesos "mesos/v1"
 	"peloton/job"
 	"peloton/task"
 )
@@ -23,7 +23,7 @@ func (suite *MysqlStoreTestSuite) SetupTest() {
 	conf := LoadConfigWithDB()
 
 	suite.db = conf.Conn
-	suite.store = NewJobStore(conf.Conn, tally.NoopScope)
+	suite.store = NewJobStore(*conf, tally.NoopScope)
 }
 
 func (suite *MysqlStoreTestSuite) TearDownTest() {
@@ -65,7 +65,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetTaskInfo() {
 			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
-					TaskId: &mesos_v1.TaskID{Value: &tID},
+					TaskId: &mesos.TaskID{Value: &tID},
 					State:  task.RuntimeInfo_TaskState(j),
 				},
 				JobConfig:  &jobConfig,
@@ -111,6 +111,61 @@ func (suite *MysqlStoreTestSuite) TestCreateGetTaskInfo() {
 	}
 }
 
+// TestCreateTasks ensures mysql task create batching works as expected.
+func (suite *MysqlStoreTestSuite) TestCreateTasks() {
+	jobTasks := map[string]int{
+		"TestJob1": 10,
+		"TestJob2": suite.store.Conf.MaxBatchSize,
+		"TestJob3": suite.store.Conf.MaxBatchSize*3 + 10,
+	}
+	for jobID, nTasks := range jobTasks {
+		var jobID = job.JobID{Value: jobID}
+		var sla = job.SlaConfig{
+			Priority:               22,
+			MinimumInstanceCount:   3,
+			MinimumInstancePercent: 50,
+			Preemptible:            false,
+		}
+		var jobConfig = job.JobConfig{
+			Name:       jobID.Value,
+			OwningTeam: "team6",
+			LdapGroups: []string{"money", "team6", "otto"},
+			Sla:        &sla,
+		}
+		err := suite.store.CreateJob(&jobID, &jobConfig, "uber")
+		suite.NoError(err)
+
+		// now, create a mess of tasks
+		taskInfos := []*task.TaskInfo{}
+		for j := 0; j < nTasks; j++ {
+			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
+			var taskInfo = task.TaskInfo{
+				Runtime: &task.RuntimeInfo{
+					TaskId: &mesos.TaskID{Value: &tID},
+					State:  task.RuntimeInfo_TaskState(j),
+				},
+				JobConfig:  &jobConfig,
+				InstanceId: uint32(j),
+				JobId:      &jobID,
+			}
+			taskInfos = append(taskInfos, &taskInfo)
+		}
+		err = suite.store.CreateTasks(&jobID, taskInfos, "test")
+		suite.NoError(err)
+	}
+
+	// List all tasks by job, ensure they were created properly, and have the right parent
+	for jobID, nTasks := range jobTasks {
+		job := job.JobID{Value: jobID}
+		tasks, err := suite.store.GetTasksForJob(&job)
+		suite.NoError(err)
+		suite.Equal(len(tasks), nTasks)
+		for _, task := range tasks {
+			suite.Equal(task.JobId.Value, jobID)
+		}
+	}
+}
+
 func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	// Create 10 jobs in db
 	var originalJobs []*job.JobConfig
@@ -131,8 +186,8 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 			DiskLimitMb: 1500,
 			FdLimit:     1000 + uint32(i),
 		}
-		var labels = mesos_v1.Labels{
-			Labels: []*mesos_v1.Label{
+		var labels = mesos.Labels{
+			Labels: []*mesos.Label{
 				{Key: &keys[0], Value: &vals[0]},
 				{Key: &keys[1], Value: &vals[1]},
 				{Key: &keys[2], Value: &vals[2]},
@@ -140,7 +195,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 		}
 		// Add some special label to job0 and job1
 		if i < 2 {
-			labels.Labels = append(labels.Labels, &mesos_v1.Label{Key: &keys[3], Value: &vals[3]})
+			labels.Labels = append(labels.Labels, &mesos.Label{Key: &keys[3], Value: &vals[3]})
 		}
 
 		// Add owner to job0 and job1
@@ -176,8 +231,8 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	// Query by owner
 	var jobs map[string]*job.JobConfig
 	var err error
-	var labelQuery = mesos_v1.Labels{
-		Labels: []*mesos_v1.Label{
+	var labelQuery = mesos.Labels{
+		Labels: []*mesos.Label{
 			{Key: &keys[0], Value: &vals[0]},
 			{Key: &keys[1], Value: &vals[1]},
 		},
@@ -186,8 +241,8 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	suite.NoError(err)
 	suite.Equal(len(jobs), len(originalJobs))
 
-	labelQuery = mesos_v1.Labels{
-		Labels: []*mesos_v1.Label{
+	labelQuery = mesos.Labels{
+		Labels: []*mesos.Label{
 			{Key: &keys[0], Value: &vals[0]},
 			{Key: &keys[1], Value: &vals[1]},
 			{Key: &keys[3], Value: &vals[3]},
@@ -196,8 +251,8 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	jobs, err = suite.store.Query(&labelQuery)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
-	labelQuery = mesos_v1.Labels{
-		Labels: []*mesos_v1.Label{
+	labelQuery = mesos.Labels{
+		Labels: []*mesos.Label{
 			{Key: &keys[3], Value: &vals[3]},
 		},
 	}
@@ -205,8 +260,8 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
 
-	labelQuery = mesos_v1.Labels{
-		Labels: []*mesos_v1.Label{
+	labelQuery = mesos.Labels{
+		Labels: []*mesos.Label{
 			{Key: &keys[2], Value: &vals[3]},
 		},
 	}

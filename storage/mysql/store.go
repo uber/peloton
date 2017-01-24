@@ -4,8 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -41,6 +44,7 @@ const (
 
 	// Various statement templates for task runtime_info
 	insertTaskStmt             = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
+	insertTaskBatchStmt        = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) VALUES `
 	updateTaskStmt             = `UPDATE tasks SET body = ? where row_key = ?`
 	getTasksForJobStmt         = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ?`
 	getTasksForJobAndStateStmt = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ? and task_state = ?`
@@ -60,6 +64,9 @@ type Config struct {
 	ReadOnly     bool
 	Conn         *sqlx.DB
 	ConnLifeTime time.Duration `yaml:"conn_lifetime"`
+	// MaxBatchSize controls how many updates or inserts are batched together in a single statement
+	// this maps to the number of rows updated or inserted at once. This is measured in rows.
+	MaxBatchSize int `yaml:"max_batch_size_rows"`
 }
 
 // String returns the connection string for the DB
@@ -130,13 +137,16 @@ func (d *Config) Connect() error {
 type JobStore struct {
 	DB      *sqlx.DB
 	metrics storage.Metrics
+	Conf    Config
 }
 
-// NewJobStore creates a MysqlJobStore
-func NewJobStore(db *sqlx.DB, metricScope tally.Scope) *JobStore {
+// NewJobStore creates a MysqlJobStore, from a properly initialized config that has
+// already established a connection to the DB
+func NewJobStore(config Config, metricScope tally.Scope) *JobStore {
 	return &JobStore{
-		DB:      db,
+		DB:      config.Conn,
 		metrics: storage.NewMetrics(metricScope),
+		Conf:    config,
 	}
 }
 
@@ -280,6 +290,7 @@ func (m *JobStore) GetTaskForJob(id *job.JobID, instanceID uint32) (map[uint32]*
 }
 
 // CreateTask creates a task for a peloton job
+// TODO: remove this in favor of CreateTasks
 func (m *JobStore) CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInfo, createdBy string) error {
 	// TODO: discuss on whether taskID should be part of the taskInfo instead of runtime
 	rowKey := fmt.Sprintf("%s-%d", id.Value, instanceID)
@@ -303,6 +314,81 @@ func (m *JobStore) CreateTask(id *job.JobID, instanceID int, taskInfo *task.Task
 		return err
 	}
 	m.metrics.TaskCreate.Inc(1)
+	return nil
+}
+
+// CreateTasks creates rows for a slice of Tasks, numbered 0..n
+func (m *JobStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
+	timeStart := time.Now()
+	maxBatchSize := int64(m.Conf.MaxBatchSize)
+	if maxBatchSize == 0 {
+		// TODO(gabe) move this into config parsing to ensure valid default values?
+		maxBatchSize = math.MaxInt64
+	}
+	nTasks := int64(len(taskInfos))
+	tasksNotCreated := int64(0)
+	wg := new(sync.WaitGroup)
+	// use MaxBatchSize to batch updates in smaller chunks, rather than blasting all
+	// tasks into DB in single insert
+	for batch := int64(0); batch <= nTasks/maxBatchSize; batch++ {
+		// do batching by rows, up to m.Conf.MaxBatchSize
+		params := []string{}          // the list of parameters for the insert function
+		values := []interface{}{}     // the list of parameters for the insert statement
+		start := batch * maxBatchSize // the starting instance ID
+		end := nTasks                 // the end bounds (noninclusive)
+		if nTasks >= (batch+1)*maxBatchSize {
+			end = (batch + 1) * maxBatchSize
+		}
+		batchSize := end - start // how many tasks in this batch
+
+		wg.Add(1)
+		go func() {
+			batchTimeStart := time.Now()
+			defer wg.Done()
+			for i := start; i < end; i++ {
+				t := taskInfos[i]
+				rowKey := fmt.Sprintf("%s-%d", id.Value, t.InstanceId)
+
+				if t.InstanceId != uint32(i) {
+					errMsg := fmt.Sprintf("Task %v has instance id %v, different than the instanceID %d expected", rowKey, i, t.InstanceId)
+					log.Errorf(errMsg)
+					m.metrics.TaskCreateFail.Inc(batchSize)
+					atomic.AddInt64(&tasksNotCreated, batchSize)
+					return
+				}
+
+				params = append(params, `(?, ?, ?, ?, ?)`)
+				buffer, err := json.Marshal(t)
+				if err != nil {
+					log.Errorf("Unable to marshal task %v error = %v", rowKey, err)
+					m.metrics.TaskCreateFail.Inc(batchSize)
+					atomic.AddInt64(&tasksNotCreated, batchSize)
+					return
+				}
+				values = append(values, rowKey, colBaseInfo, 0, string(buffer), createdBy)
+			}
+
+			insertStatement := insertTaskBatchStmt + strings.Join(params, ", ")
+			_, err := m.DB.Exec(insertStatement, values...)
+			if err != nil {
+				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
+					Errorf("Writing %d tasks (%d:%d) for %v to DB failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
+				m.metrics.TaskCreateFail.Inc(batchSize)
+				atomic.AddInt64(&tasksNotCreated, batchSize)
+				return
+			}
+			log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
+				Debugf("Wrote %d tasks (%d:%d) for %v to DB in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
+			m.metrics.TaskCreate.Inc(batchSize)
+		}()
+	}
+	wg.Wait()
+	if tasksNotCreated != 0 {
+		log.Errorf("Wrote %d tasks for %v, and was unable to write %d tasks to DB in %v", nTasks-tasksNotCreated, id.Value, tasksNotCreated, time.Since(timeStart))
+		return fmt.Errorf("Only %d of %d tasks for %v were written successfully in DB", tasksNotCreated, nTasks, id.Value)
+	}
+	log.WithField("duration_s", time.Since(timeStart).Seconds()).
+		Infof("Wrote all %d tasks for %v to DB in %v", nTasks, id.Value, time.Since(timeStart))
 	return nil
 }
 

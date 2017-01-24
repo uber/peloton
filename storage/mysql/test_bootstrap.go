@@ -22,12 +22,13 @@ func downSync(cfg *Config) []error {
 // LoadConfigWithDB instantiates a config with a DB connection
 func LoadConfigWithDB() *Config {
 	conf := &Config{
-		User:       "peloton",
-		Password:   "peloton",
-		Host:       "127.0.0.1",
-		Port:       8194,
-		Database:   "peloton",
-		Migrations: "migrations",
+		User:         "peloton",
+		Password:     "peloton",
+		Host:         "127.0.0.1",
+		Port:         8194,
+		Database:     "peloton",
+		Migrations:   "migrations",
+		MaxBatchSize: 20,
 	}
 	dir, err := os.Getwd()
 	if err != nil {

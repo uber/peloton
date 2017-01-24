@@ -17,6 +17,10 @@ type STAPIStoreTestSuite struct {
 	store *stapi.Store
 }
 
+// NOTE(gabe): using this method of setup is definitely less elegant than a SetupTest() and TearDownTest()
+// helper functions of suite, but has the unfortunate sideeffect of making test runs on my MBP go from ~3m
+// wall to 10m wall. For now, keep using init() until a fix for this is found
+
 var store *stapi.Store
 
 func init() {
@@ -117,7 +121,7 @@ func (suite *STAPIStoreTestSuite) TestFrameworkInfo() {
 	suite.Equal(frameworkID, "s-12345")
 }
 
-func (suite *STAPIStoreTestSuite) TestAddTasks() {
+func (suite *STAPIStoreTestSuite) TestCreateTask() {
 	var nJobs = 3
 	var nTasks = 3
 	var jobIDs []*job.JobID
@@ -191,6 +195,61 @@ func (suite *STAPIStoreTestSuite) TestAddTasks() {
 	task, err := store.GetTaskByID("taskdoesnotexist")
 	suite.Error(err)
 	suite.Nil(task)
+}
+
+// TestCreateTasks ensures mysql task create batching works as expected.
+func (suite *STAPIStoreTestSuite) TestCreateTasks() {
+	jobTasks := map[string]int{
+		"TestJob1": 10,
+		"TestJob2": store.Conf.MaxBatchSize,
+		"TestJob3": store.Conf.MaxBatchSize*3 + 10,
+	}
+	for jobID, nTasks := range jobTasks {
+		var jobID = job.JobID{Value: jobID}
+		var sla = job.SlaConfig{
+			Priority:               22,
+			MinimumInstanceCount:   3,
+			MinimumInstancePercent: 50,
+			Preemptible:            false,
+		}
+		var jobConfig = job.JobConfig{
+			Name:       jobID.Value,
+			OwningTeam: "team6",
+			LdapGroups: []string{"money", "team6", "otto"},
+			Sla:        &sla,
+		}
+		err := store.CreateJob(&jobID, &jobConfig, "uber")
+		suite.NoError(err)
+
+		// now, create a mess of tasks
+		taskInfos := []*task.TaskInfo{}
+		for j := 0; j < nTasks; j++ {
+			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
+			var taskInfo = task.TaskInfo{
+				Runtime: &task.RuntimeInfo{
+					TaskId: &mesos.TaskID{Value: &tID},
+					State:  task.RuntimeInfo_TaskState(j),
+				},
+				JobConfig:  &jobConfig,
+				InstanceId: uint32(j),
+				JobId:      &jobID,
+			}
+			taskInfos = append(taskInfos, &taskInfo)
+		}
+		err = store.CreateTasks(&jobID, taskInfos, "test")
+		suite.NoError(err)
+	}
+
+	// List all tasks by job, ensure they were created properly, and have the right parent
+	for jobID, nTasks := range jobTasks {
+		job := job.JobID{Value: jobID}
+		tasks, err := store.GetTasksForJob(&job)
+		suite.NoError(err)
+		suite.Equal(len(tasks), nTasks)
+		for _, task := range tasks {
+			suite.Equal(task.JobId.Value, jobID)
+		}
+	}
 }
 
 func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {

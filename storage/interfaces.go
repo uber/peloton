@@ -18,7 +18,9 @@ type JobStore interface {
 
 // TaskStore is the interface to store task states
 type TaskStore interface {
+	// TODO: remove CreateTask as it should be deprecated for CreateTasks
 	CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInfo, createdBy string) error
+	CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, createdBy string) error
 	GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error)
 	GetTasksForJobAndState(id *job.JobID, state string) (map[uint32]*task.TaskInfo, error)
 	GetTasksForJobByRange(id *job.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)
