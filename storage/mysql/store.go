@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,11 @@ const (
 	jobsTable       = "jobs"
 	tasksTable      = "tasks"
 	frameworksTable = "frameworks"
+
+	// MaxDeadlockRetries is how many times a statement will be retried when a deadlock is detected before failing
+	MaxDeadlockRetries = 4
+	// DeadlockBackoffDuration is how long to sleep between deadlock detection and attempting to commit again
+	DeadlockBackoffDuration = 100 * time.Millisecond
 
 	// values for the col_key
 	colRuntimeInfo = "runtime_info"
@@ -351,8 +357,10 @@ func (m *JobStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, create
 				rowKey := fmt.Sprintf("%s-%d", id.Value, t.InstanceId)
 
 				if t.InstanceId != uint32(i) {
-					errMsg := fmt.Sprintf("Task %v has instance id %v, different than the instanceID %d expected", rowKey, i, t.InstanceId)
-					log.Errorf(errMsg)
+					log.WithField("task", rowKey).
+						WithField("expected_instance_id", i).
+						WithField("actual_instance_id", t.InstanceId).
+						Errorf("Unexpected instance ID")
 					m.metrics.TaskCreateFail.Inc(batchSize)
 					atomic.AddInt64(&tasksNotCreated, batchSize)
 					return
@@ -370,26 +378,60 @@ func (m *JobStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, create
 			}
 
 			insertStatement := insertTaskBatchStmt + strings.Join(params, ", ")
-			_, err := m.DB.Exec(insertStatement, values...)
+			var err error
+			for retries := 1; retries <= MaxDeadlockRetries; retries++ {
+				_, err = m.DB.Exec(insertStatement, values...)
+				if err != nil {
+					if match, _ := regexp.MatchString(".*Deadlock found.*", err.Error()); match {
+						// attempt to detect and reexecute deadlock txs
+						log.WithField("jobid", id.Value).
+							WithField("error", err.Error()).
+							WithField("task_range_start", start).
+							WithField("task_range_end", end-1).
+							WithField("tasks", batchSize).
+							WithField("retry", retries).
+							WithField("retry_max", MaxDeadlockRetries).
+							Warnf("Deadlock detected creating task batch in DB, retrying in %v", DeadlockBackoffDuration)
+						time.Sleep(DeadlockBackoffDuration)
+						continue
+					}
+				}
+				break
+			}
 			if err != nil {
 				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-					Errorf("Writing %d tasks (%d:%d) for %v to DB failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
+					WithField("jobid", id.Value).
+					WithField("error", err.Error()).
+					WithField("task_range_start", start).
+					WithField("task_range_end", end-1).
+					WithField("tasks", batchSize).
+					Errorf("Writing task batch to DB failed in %v", time.Since(batchTimeStart))
 				m.metrics.TaskCreateFail.Inc(batchSize)
 				atomic.AddInt64(&tasksNotCreated, batchSize)
 				return
 			}
 			log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-				Debugf("Wrote %d tasks (%d:%d) for %v to DB in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
+				WithField("jobid", id.Value).
+				WithField("task_range_from", start).
+				WithField("task_range_end", end-1).
+				WithField("tasks", batchSize).
+				Debugf("Wrote tasks to DB in %v", time.Since(batchTimeStart))
 			m.metrics.TaskCreate.Inc(batchSize)
 		}()
 	}
 	wg.Wait()
 	if tasksNotCreated != 0 {
-		log.Errorf("Wrote %d tasks for %v, and was unable to write %d tasks to DB in %v", nTasks-tasksNotCreated, id.Value, tasksNotCreated, time.Since(timeStart))
+		log.WithField("duration_s", time.Since(timeStart).Seconds()).
+			WithField("jobid", id.Value).
+			WithField("tasks_created", nTasks-tasksNotCreated).
+			WithField("tasks_not_created", tasksNotCreated).
+			Errorf("Unable to write some tasks to DB in %v", time.Since(timeStart))
 		return fmt.Errorf("Only %d of %d tasks for %v were written successfully in DB", tasksNotCreated, nTasks, id.Value)
 	}
 	log.WithField("duration_s", time.Since(timeStart).Seconds()).
-		Infof("Wrote all %d tasks for %v to DB in %v", nTasks, id.Value, time.Since(timeStart))
+		WithField("tasks", nTasks).
+		WithField("jobid", id.Value).
+		Infof("Wrote all tasks to DB in %v", time.Since(timeStart))
 	return nil
 }
 
