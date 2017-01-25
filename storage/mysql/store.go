@@ -328,9 +328,10 @@ func (m *JobStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, create
 	nTasks := int64(len(taskInfos))
 	tasksNotCreated := int64(0)
 	wg := new(sync.WaitGroup)
+	nBatches := nTasks/maxBatchSize + 1
 	// use MaxBatchSize to batch updates in smaller chunks, rather than blasting all
 	// tasks into DB in single insert
-	for batch := int64(0); batch <= nTasks/maxBatchSize; batch++ {
+	for batch := int64(0); batch < nBatches; batch++ {
 		// do batching by rows, up to m.Conf.MaxBatchSize
 		params := []string{}          // the list of parameters for the insert function
 		values := []interface{}{}     // the list of parameters for the insert statement

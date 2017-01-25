@@ -273,9 +273,10 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 	writeLock := sync.Mutex{} // protect these datastructs against concurrent modification
 	idsToTaskInfos := map[string]*task.TaskInfo{}
 	timeStart := time.Now()
+	nBatches := nTasks/maxBatchSize + 1
 	wg := new(sync.WaitGroup)
 
-	for batch := int64(0); batch <= nTasks/maxBatchSize; batch++ {
+	for batch := int64(0); batch < nBatches; batch++ {
 		// do batching by rows, up to s.Conf.MaxBatchSize
 		start := batch * maxBatchSize // the starting instance ID
 		end := nTasks                 // the end bounds (noninclusive)

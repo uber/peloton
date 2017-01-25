@@ -245,9 +245,9 @@ func (suite *STAPIStoreTestSuite) TestCreateTasks() {
 		job := job.JobID{Value: jobID}
 		tasks, err := store.GetTasksForJob(&job)
 		suite.NoError(err)
-		suite.Equal(len(tasks), nTasks)
+		suite.Equal(nTasks, len(tasks))
 		for _, task := range tasks {
-			suite.Equal(task.JobId.Value, jobID)
+			suite.Equal(jobID, task.JobId.Value)
 		}
 	}
 }

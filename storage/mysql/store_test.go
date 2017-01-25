@@ -116,7 +116,8 @@ func (suite *MysqlStoreTestSuite) TestCreateTasks() {
 	jobTasks := map[string]int{
 		"TestJob1": 10,
 		"TestJob2": suite.store.Conf.MaxBatchSize,
-		"TestJob3": suite.store.Conf.MaxBatchSize*3 + 10,
+		"TestJob3": suite.store.Conf.MaxBatchSize * 3,
+		"TestJob4": suite.store.Conf.MaxBatchSize*3 + 10,
 	}
 	for jobID, nTasks := range jobTasks {
 		var jobID = job.JobID{Value: jobID}
@@ -159,9 +160,9 @@ func (suite *MysqlStoreTestSuite) TestCreateTasks() {
 		job := job.JobID{Value: jobID}
 		tasks, err := suite.store.GetTasksForJob(&job)
 		suite.NoError(err)
-		suite.Equal(len(tasks), nTasks)
+		suite.Equal(nTasks, len(tasks))
 		for _, task := range tasks {
-			suite.Equal(task.JobId.Value, jobID)
+			suite.Equal(jobID, task.JobId.Value)
 		}
 	}
 }
