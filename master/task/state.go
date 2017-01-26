@@ -13,6 +13,7 @@ import (
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 	"sync/atomic"
+	"time"
 )
 
 // InitTaskStateManager init the task state manager
@@ -20,14 +21,29 @@ func InitTaskStateManager(
 	d yarpc.Dispatcher,
 	masterConfig *config.MasterConfig,
 	jobStore storage.JobStore,
-	taskStore storage.TaskStore,
-	mesosClient mpb.Client) {
+	taskStore storage.TaskStore) {
+
+	var taskUpdateCount int64
+	var prevUpdateCount int64
+	var taskUpdateAckCount int64
+	var prevTaskUpdateAckCount int64
+	var taskUpdateDBWrittenCount int64
+	var prevTaskUpdateDBWrittenCount int64
+	var statusChannelCount int32
 
 	handler := taskStateManager{
-		TaskStore: taskStore,
-		JobStore:  jobStore,
-		client:    mesosClient,
-		config:    masterConfig,
+		TaskStore:          taskStore,
+		JobStore:           jobStore,
+		client:             mpb.New(d.ClientConfig("mesos-master"), "x-protobuf"),
+		config:             masterConfig,
+		ackChannel:         make(chan *sched.Event_Update, masterConfig.TaskUpdateBufferSize),
+		taskUpdateCount:    &taskUpdateCount,
+		prevUpdateCount:    &prevUpdateCount,
+		taskAckCount:       &taskUpdateAckCount,
+		prevAckCount:       &prevTaskUpdateAckCount,
+		dBWrittenCount:     &taskUpdateDBWrittenCount,
+		prevDBWrittenCount: &prevTaskUpdateDBWrittenCount,
+		statusChannelCount: &statusChannelCount,
 	}
 	handler.applier = newTaskStateUpdateApplier(&handler, masterConfig.DbWriteConcurrency, 10000)
 	procedures := map[sched.Event_Type]interface{}{
@@ -37,6 +53,7 @@ func InitTaskStateManager(
 		name := typ.String()
 		mpb.Register(d, master_mesos.ServiceName, mpb.Procedure(name, hdl))
 	}
+	handler.startAsyncProcessTaskUpdates()
 }
 
 type taskStateManager struct {
@@ -45,8 +62,18 @@ type taskStateManager struct {
 	client    mpb.Client
 	applier   *taskUpdateApplier
 	config    *config.MasterConfig
-	// TODO: cache of task states
+	// Buffers the status updates to ack
+	ackChannel chan *sched.Event_Update
 
+	taskUpdateCount    *int64
+	prevUpdateCount    *int64
+	taskAckCount       *int64
+	prevAckCount       *int64
+	dBWrittenCount     *int64
+	prevDBWrittenCount *int64
+	statusChannelCount *int32
+
+	lastPrintTime time.Time
 }
 
 // Update is the Mesos callback on mesos state updates
@@ -58,15 +85,49 @@ func (m *taskStateManager) Update(
 		"taskManager: Update called")
 
 	m.applier.addTaskStatus(taskUpdate.GetStatus())
-	if taskUpdate.Status.Uuid != nil && len(taskUpdate.Status.Uuid) > 0 {
-		err = m.acknowledgeTaskUpdate(taskUpdate)
-	} else {
-		log.Debugf("Skip status update without uuid")
+	m.ackChannel <- taskUpdate
+	atomic.AddInt32(m.statusChannelCount, 1)
+	atomic.AddInt64(m.taskUpdateCount, 1)
+	if time.Since(m.lastPrintTime).Seconds() > 1.0 {
+		m.lastPrintTime = time.Now()
+		updateCount := atomic.LoadInt64(m.taskUpdateCount)
+		prevCount := atomic.LoadInt64(m.prevUpdateCount)
+		log.WithField("TaskUpdateCount", updateCount).WithField("delta", updateCount-prevCount).Info("Task updates received")
+		atomic.StoreInt64(m.prevUpdateCount, updateCount)
+
+		ackCount := atomic.LoadInt64(m.taskAckCount)
+		prevAckCount := atomic.LoadInt64(m.prevAckCount)
+		log.WithField("TaskAckCount", ackCount).WithField("delta", ackCount-prevAckCount).Info("Task updates acked")
+		atomic.StoreInt64(m.prevAckCount, ackCount)
+
+		writtenCount := atomic.LoadInt64(m.dBWrittenCount)
+		prevWrittenCount := atomic.LoadInt64(m.prevDBWrittenCount)
+		log.WithField("TaskWrittenCount", writtenCount).WithField("delta", writtenCount-prevWrittenCount).Info("Task db persisted")
+		atomic.StoreInt64(m.prevDBWrittenCount, writtenCount)
+
+		log.WithField("TaskUpdateChannelCount", atomic.LoadInt32(m.statusChannelCount)).Info("TaskUpdate channel size")
 	}
 	return err
 }
 
+func (m *taskStateManager) startAsyncProcessTaskUpdates() {
+	for i := 0; i < m.config.TaskUpdateAckConcurrency; i++ {
+		go func() {
+			for {
+				select {
+				case taskUpdate := <-m.ackChannel:
+					err := m.acknowledgeTaskUpdate(taskUpdate)
+					if err != nil {
+						log.Errorf("Failed to acknowledgeTaskUpdate %v, err=%v", taskUpdate, err)
+					}
+				}
+			}
+		}()
+	}
+}
+
 func (m *taskStateManager) processTaskStatusChange(taskStatus *mesos.TaskStatus) error {
+	atomic.AddInt64(m.dBWrittenCount, 1)
 	taskID := taskStatus.GetTaskId().GetValue()
 	taskInfo, err := m.TaskStore.GetTaskByID(taskID)
 	if err != nil {
@@ -88,8 +149,9 @@ func (m *taskStateManager) processTaskStatusChange(taskStatus *mesos.TaskStatus)
 	return nil
 }
 
-// TODO: see if we can do batching(check mesos master code) and make this async
 func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *sched.Event_Update) error {
+	atomic.AddInt64(m.taskAckCount, 1)
+	atomic.AddInt32(m.statusChannelCount, -1)
 	callType := sched.Call_ACKNOWLEDGE
 	msg := &sched.Call{
 		FrameworkId: master_mesos.GetSchedulerDriver().GetFrameworkID(),

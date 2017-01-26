@@ -64,6 +64,10 @@ type MasterConfig struct {
 	// FIXME(gabe): this isnt really the DB write concurrency. This is only used for processing task updates
 	// and should be moved into the storage namespace, and made clearer what this controls (threads? rows? statements?)
 	DbWriteConcurrency int `yaml:"db_write_concurrency"`
+	// Number of go routines that will ack for status updates to mesos
+	TaskUpdateAckConcurrency int `yaml:"taskupdate_ack_concurrency"`
+	// Size of the channel buffer of the status updates
+	TaskUpdateBufferSize int `yaml:"taskupdate_buffer_size"`
 }
 
 type metricsConfiguration struct {

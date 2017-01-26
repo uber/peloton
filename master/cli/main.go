@@ -352,7 +352,7 @@ func main() {
 	om := offer.InitManager(dispatcher, time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
-	task.InitTaskStateManager(dispatcher, &cfg.Master, store, store, mesosClient)
+	task.InitTaskStateManager(dispatcher, &cfg.Master, store, store)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

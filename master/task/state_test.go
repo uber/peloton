@@ -1,6 +1,7 @@
 package task
 
 import (
+	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/util"
 	"fmt"
 	"github.com/stretchr/testify/assert"
@@ -64,10 +65,15 @@ func TestTaskStateUpdateApplier(t *testing.T) {
 		mutex:   &sync.Mutex{},
 		updates: make(map[string][]*task.TaskInfo),
 	}
+	var dBWrittenCount int64
 	handler := &taskStateManager{
 		TaskStore: store,
 		JobStore:  nil,
 		client:    nil,
+		config: &config.MasterConfig{
+			TaskUpdateAckConcurrency: 0,
+		},
+		dBWrittenCount: &dBWrittenCount,
 	}
 
 	applier := newTaskStateUpdateApplier(handler, 15, 100)
