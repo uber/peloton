@@ -1,11 +1,11 @@
 changelog: null
-name: TestPelotonDockerUatcJob_123_50k
+name: TestPelotonDockerUatcJob_123_100k_Tiny
 owningteam: team6
 ldapgroups:
 - money
 - team6
 - otto
-description: "A dummy uatc test docker job for peloton, 50k"
+description: "A dummy uatc test docker job for peloton, 100k with 0.1cpu 24MBmem"
 labels:
   labels:
   - key: testKey0
@@ -14,10 +14,10 @@ labels:
     value: testVal1
   - key: testKey2
     value: testVal2
-instancecount: 50000
+instancecount: 100000
 resource:
-  cpuslimit: 1.0
-  memlimitmb: 8192.0
+  cpuslimit: 0.1
+  memlimitmb: 24.0
   disklimitmb: 24
   fdlimit: 10
 healthcheck: null

@@ -1,11 +1,11 @@
 changelog: null
-name: TestPelotonJob_123_10k
+name: TestPelotonJob_123_50k
 owningteam: team6
 ldapgroups:
 - money
 - team6
 - otto
-description: "A dummy non docker test job for peloton, 10k"
+description: "A dummy non docker test job for peloton, 50k"
 labels:
   labels:
   - key: testKey0
@@ -14,7 +14,7 @@ labels:
     value: testVal1
   - key: testKey2
     value: testVal2
-instancecount: 10000
+instancecount: 50000
 resource:
   cpuslimit: 1.0
   memlimitmb: 8192.0
