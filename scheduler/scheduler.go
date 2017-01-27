@@ -183,7 +183,7 @@ func (s *schedulerManager) getTasks(limit int) (
 
 func (s *schedulerManager) getLocalOffer() (*mesos.Offer, error) {
 	for {
-		offer := s.offerQueue.GetOffer(GetOfferTimeout)
+		offer := s.offerQueue.GetOffer(1 * time.Millisecond)
 		if offer != nil {
 			return offer, nil
 		}
