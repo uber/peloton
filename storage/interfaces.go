@@ -3,6 +3,7 @@ package storage
 import (
 	mesos_v1 "mesos/v1"
 	"peloton/job"
+	"peloton/resmgr"
 	"peloton/task"
 )
 
@@ -35,4 +36,13 @@ type FrameworkInfoStore interface {
 	SetMesosFrameworkID(frameworkName string, frameworkID string) error
 	GetMesosStreamID(frameworkName string) (string, error)
 	GetFrameworkID(frameworkName string) (string, error)
+}
+
+// ResourcePoolStore is the interface to store all the resource pool information
+type ResourcePoolStore interface {
+	CreateResourcePool(id *resmgr.ResourcePoolID, Config *resmgr.ResourcePoolConfig, cratedBy string) error
+	GetResourcePool(id *resmgr.ResourcePoolID) (*resmgr.ResourcePoolInfo, error)
+	DeleteResourcePool(id *resmgr.ResourcePoolID) error
+	UpdateResourcePool(id *resmgr.ResourcePoolID, Config *resmgr.ResourcePoolConfig) error
+	GetAllResourcePools() (map[string]*resmgr.ResourcePoolConfig, error)
 }

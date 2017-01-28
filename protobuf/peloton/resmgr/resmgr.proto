@@ -7,7 +7,7 @@ syntax = "proto3";
 
 package peloton.resmgr;
 
-option go_package = "resourcemanager";
+option go_package = "resmgr";
 
 import "mesos/v1/mesos.proto";
 import "peloton/changelog/changelog.proto";
@@ -73,10 +73,10 @@ message ResourcePoolInfo {
   // ResourcePool config
   ResourcePoolConfig config = 2;
 
-  //Resource Pool's parent
+  // Resource Pool's parent
   ResourcePoolID parent = 3;
 
-  //Resource Pool's children
+  // Resource Pool's children
   repeated ResourcePoolID children = 4;
 }
 

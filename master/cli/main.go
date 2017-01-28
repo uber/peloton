@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/master/offer"
+	"code.uber.internal/infra/peloton/master/resmgr"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/scheduler"
@@ -70,10 +71,11 @@ type pelotonMaster struct {
 	cfg           *config.Config
 	mutex         *sync.Mutex
 	// Local address for peloton master
-	localAddr     string
-	mesosDetector mesos.MasterDetector
-	offerManager  *offer.Manager
-	env           string
+	localAddr       string
+	mesosDetector   mesos.MasterDetector
+	offerManager    *offer.Manager
+	env             string
+	resourceManager *resmgr.ResourceManager
 }
 
 func newPelotonMaster(env string,
@@ -85,19 +87,21 @@ func newPelotonMaster(env string,
 	cfg *config.Config,
 	localPelotonMasterAddr string,
 	mesosDetector mesos.MasterDetector,
-	om *offer.Manager) *pelotonMaster {
+	om *offer.Manager,
+	rm *resmgr.ResourceManager) *pelotonMaster {
 	result := pelotonMaster{
-		env:           env,
-		mesosInbound:  mInbound,
-		peerChooser:   pChooser,
-		mesosOutbound: mOutbounds,
-		taskQueue:     tq,
-		store:         store,
-		cfg:           cfg,
-		mutex:         &sync.Mutex{},
-		localAddr:     localPelotonMasterAddr,
-		mesosDetector: mesosDetector,
-		offerManager:  om,
+		env:             env,
+		mesosInbound:    mInbound,
+		peerChooser:     pChooser,
+		mesosOutbound:   mOutbounds,
+		taskQueue:       tq,
+		store:           store,
+		cfg:             cfg,
+		mutex:           &sync.Mutex{},
+		localAddr:       localPelotonMasterAddr,
+		mesosDetector:   mesosDetector,
+		offerManager:    om,
+		resourceManager: rm,
 	}
 	return &result
 }
@@ -140,6 +144,7 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 		return err
 	}
 	p.offerManager.Start()
+	p.resourceManager.Start()
 
 	return nil
 }
@@ -156,6 +161,7 @@ func (p *pelotonMaster) LostLeadershipCallback() error {
 	}
 
 	p.offerManager.Stop()
+	p.resourceManager.Stop()
 
 	return err
 }
@@ -268,6 +274,11 @@ func main() {
 	store.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
 	store.DB.SetConnMaxLifetime(cfg.StorageConfig.MySQLConfig.ConnLifeTime)
 
+	resstore := mysql.NewResourcePoolStore(cfg.StorageConfig.MySQLConfig.Conn, metricScope.SubScope("storage"))
+	resstore.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
+	resstore.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
+	resstore.DB.SetConnMaxLifetime(cfg.StorageConfig.MySQLConfig.ConnLifeTime)
+
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
 
@@ -352,7 +363,10 @@ func main() {
 	om := offer.InitManager(dispatcher, time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
+
 	task.InitTaskStateManager(dispatcher, &cfg.Master, store, store)
+
+	rm := resmgr.InitManager(dispatcher, &cfg.Master, resstore, &metrics)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
@@ -367,7 +381,7 @@ func main() {
 	}
 	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, cfg.Master.Port)
 	pMaster := newPelotonMaster(*env, mInbound, mOutbounds, pelotonMasterPeerChooser, tq, store, cfg, localPelotonMasterAddr,
-		mesosMasterDetector, om)
+		mesosMasterDetector, om, rm)
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 
 	// Defer initializing scheduler till the end

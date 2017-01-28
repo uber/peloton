@@ -12,6 +12,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	mesos_v1 "mesos/v1"
+	"peloton/job"
+	"peloton/resmgr"
+	"peloton/task"
+
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/mysql" // Pull in MySQL driver for migrate
@@ -19,16 +24,14 @@ import (
 	_ "github.com/go-sql-driver/mysql" // Pull in MySQL driver for sqlx
 	"github.com/jmoiron/sqlx"
 	"github.com/uber-go/tally"
-	mesos_v1 "mesos/v1"
-	"peloton/job"
-	"peloton/task"
 )
 
 const (
 	// Table names
-	jobsTable       = "jobs"
-	tasksTable      = "tasks"
-	frameworksTable = "frameworks"
+	jobsTable         = "jobs"
+	tasksTable        = "tasks"
+	frameworksTable   = "frameworks"
+	resourcePoolTable = "respools"
 
 	// MaxDeadlockRetries is how many times a statement will be retried when a deadlock is detected before failing
 	MaxDeadlockRetries = 4
@@ -36,9 +39,10 @@ const (
 	DeadlockBackoffDuration = 100 * time.Millisecond
 
 	// values for the col_key
-	colRuntimeInfo = "runtime_info"
-	colBaseInfo    = "base_info"
-	colJobConfig   = "job_config"
+	colRuntimeInfo   = "runtime_info"
+	colBaseInfo      = "base_info"
+	colJobConfig     = "job_config"
+	colResPoolConfig = "respool_config"
 
 	// Various statement templates for job_config
 	insertJobStmt = `INSERT INTO jobs (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
@@ -57,6 +61,9 @@ const (
 	getMesosFrameworkInfoStmt  = `SELECT * from frameworks where framework_name = ?`
 	setMesosStreamIDStmt       = `INSERT INTO frameworks (framework_name, mesos_stream_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE mesos_stream_id = ?`
 	setMesosFrameworkIDStmt    = `INSERT INTO frameworks (framework_name, framework_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE framework_id = ?`
+
+	// Statements for resource Manager
+	insertResPoolStmt = `INSERT INTO respools (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
 )
 
 // Config is the container for database configs
@@ -603,4 +610,59 @@ func (m *JobStore) GetFrameworkID(frameworkName string) (string, error) {
 // GetAllJobs returns all jobs
 func (m *JobStore) GetAllJobs() (map[string]*job.JobConfig, error) {
 	return m.getJobs(map[string]interface{}{})
+}
+
+// ResourcePoolStore implements ResMgrStore using a mysql backend
+type ResourcePoolStore struct {
+	DB      *sqlx.DB
+	metrics storage.Metrics
+}
+
+// NewResourcePoolStore creates a MysqlJobStore
+func NewResourcePoolStore(db *sqlx.DB, metricScope tally.Scope) *ResourcePoolStore {
+	return &ResourcePoolStore{
+		DB:      db,
+		metrics: storage.NewMetrics(metricScope),
+	}
+}
+
+// CreateResourcePool creates a resource pool with the resource pool id and the config value
+// TODO: Need to create test case
+func (m *ResourcePoolStore) CreateResourcePool(id *resmgr.ResourcePoolID, respoolConfig *resmgr.ResourcePoolConfig, createdBy string) error {
+	buffer, err := json.Marshal(respoolConfig)
+	if err != nil {
+		log.Errorf("error = %v", err)
+		// Need to add metrics for respool creation fail
+		return err
+	}
+
+	// TODO: Add check for Parent checking
+	_, err = m.DB.Exec(insertResPoolStmt, id.Value, colResPoolConfig, 0, string(buffer), createdBy)
+	if err != nil {
+		log.Errorf("Create Resource Pool failed with id %v error = %v", id.Value, err)
+		// Need to add metrics for respool creation fail
+		return err
+	}
+	// Need to add metrics for respool creation succeded
+	return nil
+}
+
+// GetResourcePool gets a resource pool info object
+func (m *ResourcePoolStore) GetResourcePool(id *resmgr.ResourcePoolID) (*resmgr.ResourcePoolInfo, error) {
+	return nil, nil
+}
+
+// DeleteResourcePool Deletes the resource pool
+func (m *ResourcePoolStore) DeleteResourcePool(id *resmgr.ResourcePoolID) error {
+	return nil
+}
+
+// UpdateResourcePool Update the resource pool
+func (m *ResourcePoolStore) UpdateResourcePool(id *resmgr.ResourcePoolID, Config *resmgr.ResourcePoolConfig) error {
+	return nil
+}
+
+// GetAllResourcePools Get all the resource pool
+func (m *ResourcePoolStore) GetAllResourcePools() (map[string]*resmgr.ResourcePoolConfig, error) {
+	return nil, nil
 }

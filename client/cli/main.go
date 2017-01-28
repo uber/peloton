@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	pt "peloton/task"
+
 	pc "code.uber.internal/infra/peloton/client"
 	"gopkg.in/alecthomas/kingpin.v2"
-	pt "peloton/task"
 )
 
 var (
@@ -61,6 +62,12 @@ var (
 	taskRestart               = task.Command("restart", "restart a task")
 	taskRestartJobName        = taskRestart.Arg("job", "job identifier").Required().String()
 	taskRestartInstanceRanges = taskRangeListFlag(taskRestart.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
+
+	// Top level resource pool command
+	resPool             = app.Command("respool", "manage resource pools")
+	resPoolCreate       = resPool.Command("create", "Create a resource pool")
+	resPoolCreateName   = resPoolCreate.Arg("respool", "respool identifier").Required().String()
+	resPoolCreateConfig = resPoolCreate.Arg("config", "YAML Resource Pool configuration").Required().ExistingFile()
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -181,6 +188,8 @@ func main() {
 		err = client.TaskStopAction(*taskStopJobName, *taskStopInstanceRanges)
 	case taskRestart.FullCommand():
 		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
+	case resPoolCreate.FullCommand():
+		err = client.ResPoolCreateAction(*resPoolCreateName, *resPoolCreateConfig)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}
