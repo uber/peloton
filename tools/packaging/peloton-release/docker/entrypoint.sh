@@ -2,5 +2,7 @@
 
 set -euxo pipefail
 
-/usr/bin/peloton/peloton-master -c $UBER_CONFIG_DIR/base.yaml \
-                                -c $UBER_CONFIG_DIR/$UBER_ENVIRONMENT.yaml
+# Identify which binary to run by component name
+/usr/bin/peloton/peloton-$PELOTON_COMPONENT \
+    -c $PELOTON_CONFIG_DIR/base.yaml   \
+    -c $PELOTON_CONFIG_DIR/$PELOTON_ENVIRONMENT.yaml

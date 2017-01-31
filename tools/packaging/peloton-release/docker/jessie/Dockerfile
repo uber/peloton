@@ -15,8 +15,10 @@ ADD peloton.deb /peloton.deb
 ADD entrypoint.sh /entrypoint.sh
 RUN dpkg -i peloton.deb
 
-ENV UBER_CONFIG_DIR  /etc/peloton/config/master
-ENV UBER_ENVIRONMENT development
+ENV PELOTON_CONFIG_DIR  /etc/peloton/config/master
+ENV PELOTON_ENVIRONMENT development
+# TODO: remove this once we have split master into 4 components
+ENV PELOTON_COMPONENT        master
 
 # workdir is required until T581823 is fixed.
 WORKDIR /peloton-install
