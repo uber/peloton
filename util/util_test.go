@@ -98,3 +98,26 @@ func TestParseTaskID(t *testing.T) {
 	jobID, instanceID, err = util.ParseTaskID("a234Test_3-52344qw")
 	assert.NotNil(t, err)
 }
+
+func TestParseTaskIDFromMesosTaskID(t *testing.T) {
+	taskID, err := util.ParseTaskIDFromMesosTaskID("Test-1234-11da214")
+	assert.Equal(t, taskID, "Test-1234")
+	assert.Nil(t, err)
+
+	taskID, err = util.ParseTaskIDFromMesosTaskID("a2342-Test_3-52344-agdjhg3u4")
+	assert.NotNil(t, err)
+
+	taskID, err = util.ParseTaskIDFromMesosTaskID("Test-0")
+	assert.Equal(t, taskID, "Test-0")
+	assert.Nil(t, err)
+
+	taskID, err = util.ParseTaskIDFromMesosTaskID("Test_1234-223_wde2")
+	assert.NotNil(t, err)
+
+	taskID, err = util.ParseTaskIDFromMesosTaskID("Test_123a")
+	assert.NotNil(t, err)
+
+	taskID, err = util.ParseTaskIDFromMesosTaskID("test1006-170-057fbf96-e7f1-11e6-943a-a45e60eeffd5")
+	assert.Equal(t, taskID, "test1006-170")
+	assert.Nil(t, err)
+}

@@ -128,7 +128,12 @@ func (m *taskStateManager) startAsyncProcessTaskUpdates() {
 
 func (m *taskStateManager) processTaskStatusChange(taskStatus *mesos.TaskStatus) error {
 	atomic.AddInt64(m.dBWrittenCount, 1)
-	taskID := taskStatus.GetTaskId().GetValue()
+	mesosTaskID := taskStatus.GetTaskId().GetValue()
+	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+	if err != nil {
+		log.Errorf("Fail to parse taskID for mesostaskID %v, err=%v", mesosTaskID, err)
+		return err
+	}
 	taskInfo, err := m.TaskStore.GetTaskByID(taskID)
 	if err != nil {
 		log.Errorf("Fail to find taskInfo for taskID %v, err=%v",
@@ -236,7 +241,12 @@ func newTaskStateUpdateApplier(t *taskStateManager, bucketNum int, chanSize int)
 }
 
 func (t *taskUpdateApplier) addTaskStatus(taskStatus *mesos.TaskStatus) {
-	taskID := taskStatus.GetTaskId().GetValue()
+	mesosTaskID := taskStatus.GetTaskId().GetValue()
+	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+	if err != nil {
+		log.Errorf("Failed to ParseTaskIDFromMesosTaskID, mesosTaskID=%v, err=%v", mesosTaskID, err)
+		return
+	}
 	_, instanceID, _ := util.ParseTaskID(taskID)
 	index := instanceID % len(t.statusBuckets)
 	t.statusBuckets[index].statusChannel <- taskStatus

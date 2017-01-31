@@ -127,7 +127,7 @@ func (q *Queue) refillQueue(jobID string, jobConf *job.JobConfig, taskStore stor
 				e = err
 				continue
 			}
-			var taskIds = make(map[string]bool)
+			var taskIDs = make(map[string]bool)
 			for _, taskInfo := range taskBatch {
 				if taskInfo.Runtime.State == task.RuntimeInfo_INITIALIZED ||
 					taskInfo.Runtime.State == task.RuntimeInfo_LOST ||
@@ -139,11 +139,12 @@ func (q *Queue) refillQueue(jobID string, jobConf *job.JobConfig, taskStore stor
 					taskStore.UpdateTask(taskInfo)
 					q.tqValue.Load().(util.TaskQueue).PutTask(taskInfo)
 				}
-				taskIds[*(taskInfo.Runtime.TaskId.Value)] = true
+				taskID := fmt.Sprintf("%s-%d", taskInfo.JobId.Value, taskInfo.InstanceId)
+				taskIDs[taskID] = true
 			}
 			for i := int(from); i <= int(to); i++ {
 				taskID := fmt.Sprintf("%s-%d", jobID, i)
-				if ok, _ := taskIds[taskID]; !ok {
+				if ok, _ := taskIDs[taskID]; !ok {
 					log.Infof("Creating missing task %d for job %v", i, jobID)
 					taskInfo := &task.TaskInfo{
 						Runtime: &task.RuntimeInfo{

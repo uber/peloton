@@ -279,7 +279,7 @@ func (m *JobStore) GetTasksForJobByRange(id *job.JobID, Range *task.InstanceRang
 
 // GetTaskByID returns the tasks (tasks.TaskInfo) for a peloton job
 func (m *JobStore) GetTaskByID(taskID string) (*task.TaskInfo, error) {
-	result, err := m.getTasks(map[string]interface{}{"task_id=": taskID})
+	result, err := m.getTasks(map[string]interface{}{"row_key=": taskID})
 	if err != nil {
 		return nil, err
 	}

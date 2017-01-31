@@ -10,12 +10,14 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
+	"github.com/pborman/uuid"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	mesos_v1 "mesos/v1"
 	"peloton/job"
 	"peloton/master/taskqueue"
 	"peloton/task"
+	"strings"
 )
 
 // InitManager initalizes the job manager
@@ -54,6 +56,11 @@ func (m *jobManager) Create(
 	body *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
 	jobID := body.Id
+	if strings.Index(jobID.Value, "-") > 0 {
+		// TODO: define another CreateResponse for naming error
+		m.metrics.JobCreateFail.Inc(1)
+		return nil, nil, fmt.Errorf("Invalid jobId %v that contains '-'", jobID.Value)
+	}
 	jobConfig := body.Config
 
 	log.WithField("config", jobConfig).Infof("JobManager.Create called: %v", body)
@@ -80,12 +87,12 @@ func (m *jobManager) Create(
 	for i := 0; i < instances; i++ {
 		// populate taskInfos
 		instance := i
-		taskID := fmt.Sprintf("%s-%d", jobID.Value, instance)
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instance, uuid.NewUUID().String())
 		t := task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
 				State: task.RuntimeInfo_INITIALIZED,
 				TaskId: &mesos_v1.TaskID{
-					Value: &taskID,
+					Value: &mesosTaskID,
 				},
 			},
 			JobConfig:  jobConfig,

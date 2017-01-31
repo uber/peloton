@@ -73,7 +73,7 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 			owner = "money"
 		}
 		var jobconfig = job.JobConfig{
-			Name:       fmt.Sprintf("TestJob-%d", i),
+			Name:       fmt.Sprintf("TestJob_%d", i),
 			OwningTeam: owner,
 			LdapGroups: []string{"money", "team6", "otto"},
 			Sla:        &sla,
@@ -93,7 +93,7 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 		var jobconf *job.JobConfig
 		jobconf, err = store.GetJob(&jobID)
 		suite.NoError(err)
-		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob-%d", i))
+		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
 		suite.Equal(len((*(jobconf.Labels)).Labels), 4)
 	}
 }
@@ -127,10 +127,10 @@ func (suite *STAPIStoreTestSuite) TestCreateTask() {
 	var jobIDs []*job.JobID
 	var jobs []*job.JobConfig
 	for i := 0; i < nJobs; i++ {
-		var jobID = job.JobID{Value: fmt.Sprintf("TestAddTasks-%d", i)}
+		var jobID = job.JobID{Value: fmt.Sprintf("TestAddTasks_%d", i)}
 		jobIDs = append(jobIDs, &jobID)
 		jobConfig := createJobConfig()
-		jobConfig.Name = fmt.Sprintf("TestAddTasks-%d", i)
+		jobConfig.Name = fmt.Sprintf("TestAddTasks_%d", i)
 		jobs = append(jobs, jobConfig)
 		err := store.CreateJob(&jobID, jobConfig, "uber")
 		suite.NoError(err)
@@ -168,7 +168,7 @@ func (suite *STAPIStoreTestSuite) TestCreateTask() {
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
-			task.Runtime.Host = fmt.Sprintf("compute-%d", i)
+			task.Runtime.Host = fmt.Sprintf("compute_%d", i)
 			err := store.UpdateTask(task)
 			suite.NoError(err)
 		}
@@ -178,7 +178,7 @@ func (suite *STAPIStoreTestSuite) TestCreateTask() {
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
-			suite.Equal(task.Runtime.Host, fmt.Sprintf("compute-%d", i))
+			suite.Equal(task.Runtime.Host, fmt.Sprintf("compute_%d", i))
 		}
 	}
 

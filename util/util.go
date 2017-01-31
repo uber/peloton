@@ -180,3 +180,20 @@ func ParseTaskID(taskID string) (string, int, error) {
 	}
 	return jobID, instanceID, err
 }
+
+// ParseTaskIDFromMesosTaskID parses the taskID from mesosTaskID
+func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
+	// mesos task id would be "(jobID)-(instanceID)-(GUID)" form, while the GUID part is optional
+	parts := strings.Split(mesosTaskID, "-")
+
+	if len(parts) < 2 {
+		return "", fmt.Errorf("Invalid peloton mesos task ID %v", mesosTaskID)
+	}
+
+	jobID := parts[0]
+	iID, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("Invalid peloton mesos task ID %v, err %v", mesosTaskID, err)
+	}
+	return fmt.Sprintf("%s-%d", jobID, iID), nil
+}
