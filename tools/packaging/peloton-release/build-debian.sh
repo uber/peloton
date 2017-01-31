@@ -2,6 +2,7 @@
 
 set -euxo pipefail
 
+[[ $(uname) == Darwin ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
 PELOTON_REPO="gitolite@code.uber.internal:infra/peloton.git"
 SRC_DIR=peloton
@@ -59,12 +60,12 @@ main() {
     cp $BUILDER_COMMON_FILE $builder_dir
     cp $POST_INSTALL_SCRIPT $builder_dir
     if $no_cache ; then
-        sudo docker build --no-cache -t "$image_name" "$builder_dir"
+        $docker_cmd build --no-cache -t "$image_name" "$builder_dir"
     else
-        sudo docker build -t "$image_name" "$builder_dir"
+        $docker_cmd build -t "$image_name" "$builder_dir"
     fi
 
-    sudo docker run \
+    $docker_cmd run \
         --name "$container_name" \
         -e "BUILD_ITERATION=$build_iteration" \
         -e "SRC_DIR=/$SRC_DIR" \
@@ -72,9 +73,9 @@ main() {
 
     rm -rf $BUILD_DIR
     mkdir -p $BUILD_DIR
-    sudo docker cp "$container_name:/pkg.deb" $BUILD_DIR/"$package_name"
-    sudo docker rm -f "$container_name"
-    sudo docker rmi -f "$image_name"
+    $docker_cmd cp "$container_name:/pkg.deb" $BUILD_DIR/"$package_name"
+    $docker_cmd rm -f "$container_name"
+    $docker_cmd rmi -f "$image_name"
 
     echo "Produced artifacts $BUILD_DIR/$package_name"
     # clean up temporarily generated files
