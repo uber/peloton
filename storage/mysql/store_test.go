@@ -270,6 +270,14 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	suite.NoError(err)
 	suite.Equal(len(jobs), 0)
 
+	labelQuery = mesos.Labels{
+		Labels: []*mesos.Label{},
+	}
+	// test get all jobs if no labels
+	jobs, err = suite.store.Query(&labelQuery)
+	suite.NoError(err)
+	suite.Equal(len(jobs), 10)
+
 	jobs, err = suite.store.GetJobsByOwner("team6")
 	suite.NoError(err)
 	suite.Equal(len(jobs), records-2)

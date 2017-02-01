@@ -202,6 +202,11 @@ func (m *JobStore) GetJob(id *job.JobID) (*job.JobConfig, error) {
 // then stored as the "labels_summary" row. Mysql fulltext index are also set on this field.
 // When a query comes, the query labels are compacted in the same way then queried against the fulltext index.
 func (m *JobStore) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, error) {
+	if len(Labels.Labels) == 0 {
+		log.Debug("Labels is empty, return all jobs")
+		return m.GetAllJobs()
+	}
+
 	var queryLabels = ""
 	records := []storage.JobRecord{}
 	var result = make(map[string]*job.JobConfig)
@@ -215,6 +220,7 @@ func (m *JobStore) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, er
 		text := strings.Replace(strings.Replace(string(buffer), "\"", "", -1), " ", "", -1)
 		queryLabels = queryLabels + "+\"" + text + "\""
 	}
+
 	log.Debugf("Querying using labels %v, text (%v)", Labels, queryLabels)
 	err := m.DB.Select(&records, queryJobsForLabelStmt, queryLabels)
 	if err == sql.ErrNoRows {
