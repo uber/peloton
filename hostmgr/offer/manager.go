@@ -3,11 +3,12 @@ package offer
 import (
 	"time"
 
-	"code.uber.internal/infra/peloton/master/mesos"
+	sched "mesos/v1/scheduler"
+
+	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
-	sched "mesos/v1/scheduler"
 )
 
 // InitManager inits the offer manager

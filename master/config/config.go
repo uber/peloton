@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/master/mesos"
 	schedulerconfig "code.uber.internal/infra/peloton/scheduler/config"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/storage/stapi"

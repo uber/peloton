@@ -6,14 +6,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	master_mesos "code.uber.internal/infra/peloton/master/mesos"
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
+
 	"peloton/master/offerpool"
 )
 
@@ -43,7 +44,7 @@ func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration, client mpb.Cl
 		offers:                     make(map[string]*TimedOffer),
 		client:                     client,
 		hostOfferIndex:             make(map[string]*hostOfferSummary),
-		mesosFrameworkInfoProvider: master_mesos.GetSchedulerDriver(),
+		mesosFrameworkInfoProvider: hostmgr_mesos.GetSchedulerDriver(),
 		offersLock:                 &sync.Mutex{},
 	}
 	json.Register(d, json.Procedure("OfferPool.GetOffers", pool.GetOffers))
@@ -143,7 +144,7 @@ type offerPool struct {
 	// Time to hold offer for
 	offerHoldTime              time.Duration
 	client                     mpb.Client
-	mesosFrameworkInfoProvider master_mesos.FrameworkInfoProvider
+	mesosFrameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 }
 
 func (p *offerPool) GetOffers(

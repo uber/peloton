@@ -3,17 +3,18 @@
 package task
 
 import (
+	mesos "mesos/v1"
+	sched "mesos/v1/scheduler"
+	"sync/atomic"
+	"time"
+
+	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/master/config"
-	master_mesos "code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
-	mesos "mesos/v1"
-	sched "mesos/v1/scheduler"
-	"sync/atomic"
-	"time"
 )
 
 // InitTaskStateManager init the task state manager
@@ -51,7 +52,7 @@ func InitTaskStateManager(
 	}
 	for typ, hdl := range procedures {
 		name := typ.String()
-		mpb.Register(d, master_mesos.ServiceName, mpb.Procedure(name, hdl))
+		mpb.Register(d, hostmgr_mesos.ServiceName, mpb.Procedure(name, hdl))
 	}
 	handler.startAsyncProcessTaskUpdates()
 }
@@ -159,7 +160,7 @@ func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *sched.Event_Update)
 	atomic.AddInt32(m.statusChannelCount, -1)
 	callType := sched.Call_ACKNOWLEDGE
 	msg := &sched.Call{
-		FrameworkId: master_mesos.GetSchedulerDriver().GetFrameworkID(),
+		FrameworkId: hostmgr_mesos.GetSchedulerDriver().GetFrameworkID(),
 		Type:        &callType,
 		Acknowledge: &sched.Call_Acknowledge{
 			AgentId: taskUpdate.Status.AgentId,
@@ -167,7 +168,7 @@ func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *sched.Event_Update)
 			Uuid:    taskUpdate.Status.Uuid,
 		},
 	}
-	msid := master_mesos.GetSchedulerDriver().GetMesosStreamID()
+	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID()
 	err := m.client.Call(msid, msg)
 	if err != nil {
 		log.Errorf("Failed to ack task update %v, err=%v", *taskUpdate, err)

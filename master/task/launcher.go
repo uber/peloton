@@ -3,7 +3,7 @@ package task
 import (
 	"sync"
 
-	master_mesos "code.uber.internal/infra/peloton/master/mesos"
+	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	sched_metrics "code.uber.internal/infra/peloton/scheduler/metrics"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -68,7 +68,7 @@ func (t *taskLauncher) LaunchTasks(
 		},
 	}
 	// TODO: add retry / put back offer and tasks in failure scenarios
-	msid := master_mesos.GetSchedulerDriver().GetMesosStreamID()
+	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID()
 	err := t.client.Call(msid, msg)
 	if err != nil {
 		t.metrics.LaunchTaskFail.Inc(int64(len(mesosTasks)))

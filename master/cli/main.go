@@ -9,12 +9,14 @@ import (
 	"sync"
 	"time"
 
+	"gopkg.in/alecthomas/kingpin.v2"
+
+	"code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/job"
-	"code.uber.internal/infra/peloton/master/mesos"
 	"code.uber.internal/infra/peloton/master/metrics"
-	"code.uber.internal/infra/peloton/master/offer"
 	"code.uber.internal/infra/peloton/master/resmgr"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
@@ -32,7 +34,6 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
