@@ -15,7 +15,7 @@ option go_package = "hostmgr";
 /**
  *  Host Manager service interface
  */
-service HostManager
+service HostService
 {
   // Get current cluster available resource.
   rpc GetResources(GetResourcesRequest) returns (GetResourcesResponse);

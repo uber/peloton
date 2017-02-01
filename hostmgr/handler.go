@@ -12,22 +12,22 @@ import (
 	"go.uber.org/yarpc/encoding/json"
 )
 
-// hostManager implements the peloton.hostmgr.HostManager service.
-type hostManager struct {
+// serviceHandler implements peloton.hostmgr.HostService.
+type serviceHandler struct {
 	// TODO(zhitao): Add offer pool batching and implement OfferManager API.
 
 	// TODO(zhitao): Add host batching.
 }
 
-// InitManager initialize the service handler for HostManager.
-func InitManager(d yarpc.Dispatcher) {
-	handler := hostManager{}
+// InitServiceHandler initialize serviceHandler.
+func InitServiceHandler(d yarpc.Dispatcher) {
+	handler := serviceHandler{}
 
-	json.Register(d, json.Procedure("HostManager.GetResources", handler.GetResources))
+	json.Register(d, json.Procedure("HostService.GetResources", handler.GetResources))
 }
 
-// GetResources implements HostManager.GetResources.
-func (m *hostManager) GetResources(
+// GetResources implements HostService.GetResources.
+func (m *serviceHandler) GetResources(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *hostmgr.GetResourcesRequest) (*hostmgr.GetResourcesResponse, yarpc.ResMeta, error) {

@@ -62,15 +62,13 @@ func main() {
 		Outbounds: outbounds,
 	})
 
-	// Init the managers driven by the mesos callbacks.
-	// They are driven by the leader who will subscribe to
-	// mesos callbacks
-	hostmgr.InitManager(dispatcher)
+	// Init service handler.
+	hostmgr.InitServiceHandler(dispatcher)
 
 	log.WithFields(log.Fields{
 		"port":     port,
 		"url_path": urlPath,
-	}).Info("HostManager initialized")
+	}).Info("HostService initialized")
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
