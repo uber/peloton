@@ -360,7 +360,10 @@ func (m *JobStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, create
 			end = (batch + 1) * maxBatchSize
 		}
 		batchSize := end - start // how many tasks in this batch
-
+		if batchSize < 1 {
+			// skip if it overflows
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			batchTimeStart := time.Now()

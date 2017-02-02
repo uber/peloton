@@ -284,6 +284,10 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 			end = (batch + 1) * maxBatchSize
 		}
 		batchSize := end - start // how many tasks in this batch
+		if batchSize < 1 {
+			// skip if it overflows
+			continue
+		}
 		wg.Add(1)
 		go func() {
 			batchTimeStart := time.Now()
