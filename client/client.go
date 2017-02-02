@@ -15,7 +15,8 @@ import (
 
 // Client is a JSON Client with associated dispatcher and context
 type Client struct {
-	jsonClient json.Client
+	jobClient  json.Client
+	resClient  json.Client
 	dispatcher yarpc.Dispatcher
 	ctx        context.Context
 	cancelFunc context.CancelFunc
@@ -24,16 +25,28 @@ type Client struct {
 }
 
 // New returns a new RPC client given a framework URL and timeout and error
-func New(frameworkURL url.URL, timeout time.Duration, debug bool) (*Client, error) {
+func New(frameworkURL url.URL, timeout time.Duration, debug bool, resframeworkURL url.URL) (*Client, error) {
+
 	// use whereever the master roots its RPC path
 	frameworkURL.Path = config.FrameworkURLPath
+	resframeworkURL.Path = config.FrameworkURLPath
+
 	outbound := http.NewOutbound(frameworkURL.String())
 	pOutbounds := transport.Outbounds{
 		Unary: outbound,
 	}
+
+	resoutbound := http.NewOutbound(resframeworkURL.String())
+	resOutbounds := transport.Outbounds{
+		Unary: resoutbound,
+	}
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      "peloton-client",
-		Outbounds: yarpc.Outbounds{"peloton-master": pOutbounds},
+		Name: "peloton-client",
+		Outbounds: yarpc.Outbounds{
+			"peloton-master": pOutbounds,
+			"peloton-resmgr": resOutbounds,
+		},
 	})
 
 	if err := dispatcher.Start(); err != nil {
@@ -43,7 +56,8 @@ func New(frameworkURL url.URL, timeout time.Duration, debug bool) (*Client, erro
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	client := Client{
 		Debug:      debug,
-		jsonClient: json.New(dispatcher.ClientConfig("peloton-master")),
+		jobClient:  json.New(dispatcher.ClientConfig("peloton-master")),
+		resClient:  json.New(dispatcher.ClientConfig("peloton-resmgr")),
 		dispatcher: dispatcher,
 		ctx:        ctx,
 		cancelFunc: cancelFunc,

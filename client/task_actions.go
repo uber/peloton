@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"go.uber.org/yarpc"
 	pj "peloton/job"
 	pt "peloton/task"
+
+	"go.uber.org/yarpc"
 )
 
 const (
@@ -30,7 +31,7 @@ func (client *Client) TaskGetAction(jobName string, instanceID uint32) error {
 		},
 		InstanceId: instanceID,
 	}
-	_, err := client.jsonClient.Call(
+	_, err := client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("TaskManager.Get"),
 		request,
@@ -52,7 +53,7 @@ func (client *Client) TaskListAction(jobName string, instanceRange *pt.InstanceR
 		Range: instanceRange,
 	}
 	var response pt.ListResponse
-	_, err := client.jsonClient.Call(
+	_, err := client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("TaskManager.List"),
 		request,
@@ -75,7 +76,7 @@ func (client *Client) TaskStartAction(jobName string, instanceRanges []*pt.Insta
 		},
 		Ranges: instanceRanges,
 	}
-	_, err := client.jsonClient.Call(
+	_, err := client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("TaskManager.Start"),
 		request,
@@ -97,7 +98,7 @@ func (client *Client) TaskStopAction(jobName string, instanceRanges []*pt.Instan
 		},
 		Ranges: instanceRanges,
 	}
-	_, err := client.jsonClient.Call(
+	_, err := client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("TaskManager.Stop"),
 		request,
@@ -119,7 +120,7 @@ func (client *Client) TaskRestartAction(jobName string, instanceRanges []*pt.Ins
 		},
 		Ranges: instanceRanges,
 	}
-	_, err := client.jsonClient.Call(
+	_, err := client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("TaskManager.Restart"),
 		request,

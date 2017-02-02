@@ -9,7 +9,6 @@ package peloton.resmgr;
 
 option go_package = "resmgr";
 
-import "mesos/v1/mesos.proto";
 import "peloton/changelog/changelog.proto";
 
 /**

@@ -28,7 +28,7 @@ func (client *Client) ResPoolCreateAction(respoolName string, cfgFile string) er
 		},
 		Config: &respoolConfig,
 	}
-	_, err = client.jsonClient.Call(
+	_, err = client.resClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("ResourceManager.CreateResourcePool"),
 		request,

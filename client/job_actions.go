@@ -5,9 +5,10 @@ import (
 	"io/ioutil"
 	"strings"
 
+	pj "peloton/job"
+
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
-	pj "peloton/job"
 )
 
 const (
@@ -33,7 +34,7 @@ func (client *Client) JobCreateAction(jobName string, cfg string) error {
 		},
 		Config: &jobConfig,
 	}
-	_, err = client.jsonClient.Call(
+	_, err = client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("JobManager.Create"),
 		request,
@@ -54,7 +55,7 @@ func (client *Client) JobDeleteAction(jobName string) error {
 			Value: jobName,
 		},
 	}
-	_, err := client.jsonClient.Call(
+	_, err := client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("JobManager.Delete"),
 		request,
@@ -75,7 +76,7 @@ func (client *Client) JobGetAction(jobName string) error {
 			Value: jobName,
 		},
 	}
-	_, err := client.jsonClient.Call(
+	_, err := client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("JobManager.Get"),
 		request,

@@ -4,6 +4,7 @@ import (
 	cconfig "code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/leader"
+	rm_config "code.uber.internal/infra/peloton/resmgr/config"
 	schedulerconfig "code.uber.internal/infra/peloton/scheduler/config"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/storage/stapi"
@@ -20,6 +21,7 @@ type Config struct {
 	Mesos         mesos.Config           `yaml:"mesos"`
 	Scheduler     schedulerconfig.Config `yaml:"scheduler"`
 	Election      leader.ElectionConfig  `yaml:"election"`
+	ResourceMgr   rm_config.Config       `yaml:"resmgr"`
 }
 
 // StorageConfig contains the different DB config values for each supported backend

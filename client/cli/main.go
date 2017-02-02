@@ -24,6 +24,8 @@ var (
 	debug        = app.Flag("debug", "enable debug mode (print full json responses)").Short('d').Default("false").Bool()
 	frameworkURL = app.Flag("master", "name of the master address to use (http/tchannel) (set $MASTER_URL to override)").
 			Short('m').Default("http://localhost:5289").OverrideDefaultFromEnvar("MASTER_URL").URL()
+	resframeworkURL = app.Flag("resmgr", "name of the resource manager address to use (http/tchannel) (set $RESMGR_URL to override)").
+			Short('e').Default("http://localhost:5290").OverrideDefaultFromEnvar("RESMGR_URL").URL()
 	timeout = app.Flag("timeout", "default RPC timeout (set $TIMEOUT to override)").
 		Default("2s").OverrideDefaultFromEnvar("TIMEOUT").Duration()
 
@@ -165,7 +167,7 @@ func main() {
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 	var err error
 
-	client, err := pc.New(**frameworkURL, *timeout, *debug)
+	client, err := pc.New(**frameworkURL, *timeout, *debug, **resframeworkURL)
 	if err != nil {
 		app.FatalIfError(err, "")
 	}

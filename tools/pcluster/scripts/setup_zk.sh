@@ -4,4 +4,8 @@
 create /peloton peloton
 create /peloton/master peloton/master
 create /peloton/master/leader /peloton/master/leader
+
+create /peloton/resmgr peloton/resmgr
+create /peloton/resmgr/leader /peloton/resmgr/leader
+
 EOF

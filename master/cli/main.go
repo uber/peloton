@@ -8,31 +8,28 @@ import (
 	"runtime"
 	"sync"
 	"time"
-
 	"gopkg.in/alecthomas/kingpin.v2"
-
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/metrics"
-	"code.uber.internal/infra/peloton/master/resmgr"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/transport"
+	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	"go.uber.org/yarpc"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
-	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/uber-go/tally"
 	tallyprom "github.com/uber-go/tally/prometheus"
 	tallystatsd "github.com/uber-go/tally/statsd"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 )
 
@@ -72,11 +69,10 @@ type pelotonMaster struct {
 	cfg           *config.Config
 	mutex         *sync.Mutex
 	// Local address for peloton master
-	localAddr       string
-	mesosDetector   mesos.MasterDetector
-	offerManager    *offer.Manager
-	env             string
-	resourceManager *resmgr.ResourceManager
+	localAddr     string
+	mesosDetector mesos.MasterDetector
+	offerManager  *offer.Manager
+	env           string
 }
 
 func newPelotonMaster(env string,
@@ -88,21 +84,19 @@ func newPelotonMaster(env string,
 	cfg *config.Config,
 	localPelotonMasterAddr string,
 	mesosDetector mesos.MasterDetector,
-	om *offer.Manager,
-	rm *resmgr.ResourceManager) *pelotonMaster {
+	om *offer.Manager) *pelotonMaster {
 	result := pelotonMaster{
-		env:             env,
-		mesosInbound:    mInbound,
-		peerChooser:     pChooser,
-		mesosOutbound:   mOutbounds,
-		taskQueue:       tq,
-		store:           store,
-		cfg:             cfg,
-		mutex:           &sync.Mutex{},
-		localAddr:       localPelotonMasterAddr,
-		mesosDetector:   mesosDetector,
-		offerManager:    om,
-		resourceManager: rm,
+		env:           env,
+		mesosInbound:  mInbound,
+		peerChooser:   pChooser,
+		mesosOutbound: mOutbounds,
+		taskQueue:     tq,
+		store:         store,
+		cfg:           cfg,
+		mutex:         &sync.Mutex{},
+		localAddr:     localPelotonMasterAddr,
+		mesosDetector: mesosDetector,
+		offerManager:  om,
 	}
 	return &result
 }
@@ -145,7 +139,6 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 		return err
 	}
 	p.offerManager.Start()
-	p.resourceManager.Start()
 
 	return nil
 }
@@ -162,7 +155,6 @@ func (p *pelotonMaster) LostLeadershipCallback() error {
 	}
 
 	p.offerManager.Stop()
-	p.resourceManager.Stop()
 
 	return err
 }
@@ -367,8 +359,6 @@ func main() {
 
 	task.InitTaskStateManager(dispatcher, &cfg.Master, store, store)
 
-	rm := resmgr.InitManager(dispatcher, &cfg.Master, resstore, &metrics)
-
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
@@ -382,7 +372,7 @@ func main() {
 	}
 	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, cfg.Master.Port)
 	pMaster := newPelotonMaster(*env, mInbound, mOutbounds, pelotonMasterPeerChooser, tq, store, cfg, localPelotonMasterAddr,
-		mesosMasterDetector, om, rm)
+		mesosMasterDetector, om)
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 
 	// Defer initializing scheduler till the end

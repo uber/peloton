@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync/atomic"
 
-	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/metrics"
+	rm_config "code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -22,16 +22,17 @@ const (
 // InitManager initializes the resource pool manager
 func InitManager(
 	d yarpc.Dispatcher,
-	masterConfig *config.MasterConfig,
+	config *rm_config.Config,
 	store storage.ResourcePoolStore,
 	metrics *metrics.Metrics) *ResourceManager {
 	handler := ResourceManager{
 		store:        store,
 		metrics:      metrics,
-		config:       masterConfig,
+		config:       config,
 		dispatcher:   d,
 		runningState: runningStateNotStarted,
 	}
+	log.Info("Resource Manager created")
 	return &handler
 }
 
@@ -39,7 +40,7 @@ func InitManager(
 type ResourceManager struct {
 	store        storage.ResourcePoolStore
 	metrics      *metrics.Metrics
-	config       *config.MasterConfig
+	config       *rm_config.Config
 	dispatcher   yarpc.Dispatcher
 	runningState int32
 }
@@ -91,6 +92,7 @@ func (m *ResourceManager) UpdateResourcePool() {
 // Registerprocs will register all api's for end points
 func (m *ResourceManager) registerProcs(d yarpc.Dispatcher) {
 	json.Register(d, json.Procedure("ResourceManager.CreateResourcePool", m.CreateResourcePool))
+	log.Info("CreateResourcePool Registered ")
 	/* TODO: Will have to implement these api's
 	json.Register(d, json.Procedure("ResourceManager.GetResourcePool", m.GetResourcePool))
 	json.Register(d, json.Procedure("ResourceManager.DeleteResourcePool", m.DeleteResourcePool))
