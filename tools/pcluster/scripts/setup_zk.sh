@@ -8,4 +8,7 @@ create /peloton/master/leader /peloton/master/leader
 create /peloton/resmgr peloton/resmgr
 create /peloton/resmgr/leader /peloton/resmgr/leader
 
+create /peloton/hostmgr peloton/hostmgr
+create /peloton/hostmgr/leader /peloton/hostmgr/leader
+
 EOF

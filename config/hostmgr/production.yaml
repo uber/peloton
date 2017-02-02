@@ -1,0 +1,34 @@
+# Disable kafka logging before kafka is ready in ATC
+# logging:
+#  kafka:
+#    topic: peloton
+
+metrics:
+  statsd:
+    hostPort: 127.0.0.1:4744
+    prefix: peloton
+
+sentry:
+  dsn: http://fill:mein@sentry.local.uber.internal/123
+  enable: false
+
+# TODO wu: configure meso/db by clusters
+mesos:
+  zk_path: "zk://zookeeper-mesos-devel01-dca1.uber.internal:2181/mesos"
+
+storage:
+  mysql:
+    # TODO: read db from zk
+    host: compute841-dca1
+    port: 3306
+
+scheduler:
+   task_dequeue_limit: 1000
+   offer_dequeue_limit: 30
+
+election:
+  zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
+  path: "/peloton/hostmgr/leader"
+
+master:
+  db_write_concurrency: 400
