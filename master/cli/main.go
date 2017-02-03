@@ -8,29 +8,30 @@ import (
 	"runtime"
 	"sync"
 	"time"
-	"gopkg.in/alecthomas/kingpin.v2"
+
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/metrics"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc/transport"
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
-	"go.uber.org/yarpc"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
-	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
+	"code.uber.internal/infra/peloton/scheduler"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
+	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/uber-go/tally"
 	tallyprom "github.com/uber-go/tally/prometheus"
 	tallystatsd "github.com/uber-go/tally/statsd"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -108,18 +109,10 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 	log.Infof("Gained leadership")
 
 	// Gained leadership, register with mesos, then refill task queue if needed
-	var err error
-	mesosMasterAddr := p.cfg.Mesos.HostPort
-	// Not using zkDetector for development for now because on Mac, mesos
-	// containers are launched in bridged network, therefore master
-	// registers with docker internal ip to zk, which can not be
-	// accessed by peloton running outside the container.
-	if p.env == productionEnvValue {
-		mesosMasterAddr, err = p.mesosDetector.GetMasterLocation()
-		if err != nil {
-			log.Errorf("Failed to get mesosMasterAddr, err = %v", err)
-			return err
-		}
+	mesosMasterAddr, err := p.mesosDetector.GetMasterLocation()
+	if err != nil {
+		log.Errorf("Failed to get mesosMasterAddr, err = %v", err)
+		return err
 	}
 
 	err = p.mesosInbound.StartMesosLoop(mesosMasterAddr)

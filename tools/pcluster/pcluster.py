@@ -36,7 +36,7 @@ def get_host_ip():
         ip = os.popen('ipconfig getifaddr en0').read()
     else:
         ip = os.popen('ifconfig eth0 | grep "inet addr:" | cut -d: -f2 | awk "{ print $1}"').read()
-    return ip
+    return ip.strip()
 
 
 #
@@ -122,6 +122,7 @@ def run_mesos():
                 config['local_zk_port']),
             'MESOS_QUORUM=' + repr(config['quorum']),
             'MESOS_REGISTRY=' + config['registry'],
+            'MESOS_ADVERTISE_IP={}'.format(host_ip),
         ],
         image=config['mesos_master_image'],
         entrypoint='bash /scripts/run_mesos_master.sh',
