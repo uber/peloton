@@ -2,12 +2,11 @@ package config
 
 import (
 	cconfig "code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/leader"
-	rm_config "code.uber.internal/infra/peloton/resmgr/config"
 	schedulerconfig "code.uber.internal/infra/peloton/scheduler/config"
-	"code.uber.internal/infra/peloton/storage/mysql"
-	"code.uber.internal/infra/peloton/storage/stapi"
+	"code.uber.internal/infra/peloton/storage/config"
 )
 
 // FrameworkURLPath is where the RPC endpoint lives for peloton
@@ -15,19 +14,12 @@ const FrameworkURLPath = "/api/v1"
 
 // Config encapulates the master runtime config
 type Config struct {
-	Metrics       metricsConfiguration   `yaml:"metrics"`
-	StorageConfig StorageConfig          `yaml:"storage"`
-	Master        MasterConfig           `yaml:"master"`
-	Mesos         mesos.Config           `yaml:"mesos"`
-	Scheduler     schedulerconfig.Config `yaml:"scheduler"`
-	Election      leader.ElectionConfig  `yaml:"election"`
-	ResourceMgr   rm_config.Config       `yaml:"resmgr"`
-}
-
-// StorageConfig contains the different DB config values for each supported backend
-type StorageConfig struct {
-	MySQLConfig mysql.Config `yaml:"mysql"`
-	STAPIConfig stapi.Config `yaml:"stapi"`
+	Metrics   metrics.Config         `yaml:"metrics"`
+	Storage   config.StorageConfig   `yaml:"storage"`
+	Master    MasterConfig           `yaml:"master"`
+	Mesos     mesos.Config           `yaml:"mesos"`
+	Scheduler schedulerconfig.Config `yaml:"scheduler"`
+	Election  leader.ElectionConfig  `yaml:"election"`
 }
 
 // MasterConfig is framework specific configuration
@@ -42,18 +34,6 @@ type MasterConfig struct {
 	TaskUpdateAckConcurrency int `yaml:"taskupdate_ack_concurrency"`
 	// Size of the channel buffer of the status updates
 	TaskUpdateBufferSize int `yaml:"taskupdate_buffer_size"`
-}
-
-type metricsConfiguration struct {
-	Prometheus *prometheusConfiguration `yaml:"prometheus"`
-	Statsd     *statsdConfiguration     `yaml:"statsd"`
-}
-type prometheusConfiguration struct {
-	Enable bool `yaml:"enable"`
-}
-type statsdConfiguration struct {
-	Enable   bool   `yaml:"enable"`
-	Endpoint string `yaml:"endpoint"`
 }
 
 // New loads the given configs in order, merges them together, and returns

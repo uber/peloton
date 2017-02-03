@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/resmgr"
+	"code.uber.internal/infra/peloton/resmgr/config"
 	resleader "code.uber.internal/infra/peloton/resmgr/election"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
@@ -69,7 +69,7 @@ func main() {
 
 	// now, override any CLI flags in the loaded config.Config
 	if *dbHost != "" {
-		cfg.StorageConfig.MySQLConfig.Host = *dbHost
+		cfg.Storage.MySQL.Host = *dbHost
 	}
 
 	if len(*electionZkServers) > 0 {
@@ -77,7 +77,7 @@ func main() {
 	}
 
 	if *resmgrPort != 0 {
-		cfg.ResourceMgr.Port = *resmgrPort
+		cfg.ResMgr.Port = *resmgrPort
 	}
 	log.WithField("config", cfg).Debug("Loaded Peloton Resource Manager configuration")
 
@@ -106,19 +106,19 @@ func main() {
 	metricScope.Counter("boot").Inc(1)
 
 	// Connect to mysql DB
-	if err := cfg.StorageConfig.MySQLConfig.Connect(); err != nil {
+	if err := cfg.Storage.MySQL.Connect(); err != nil {
 		log.Fatalf("Could not connect to database: %+v", err)
 	}
 	// Migrate DB if necessary
-	if errs := cfg.StorageConfig.MySQLConfig.AutoMigrate(); errs != nil {
+	if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
 		log.Fatalf("Could not migrate database: %+v", errs)
 	}
 
 	// Initialize resmgr store
-	resstore := mysql.NewResourcePoolStore(cfg.StorageConfig.MySQLConfig.Conn, metricScope.SubScope("storage"))
-	resstore.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
-	resstore.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
-	resstore.DB.SetConnMaxLifetime(cfg.StorageConfig.MySQLConfig.ConnLifeTime)
+	resstore := mysql.NewResourcePoolStore(cfg.Storage.MySQL.Conn, metricScope.SubScope("storage"))
+	resstore.DB.SetMaxOpenConns(cfg.ResMgr.DbWriteConcurrency)
+	resstore.DB.SetMaxIdleConns(cfg.ResMgr.DbWriteConcurrency)
+	resstore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
 	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
 	mux := nethttp.NewServeMux()
@@ -141,7 +141,7 @@ func main() {
 
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can mux in other HTTP handlers
 	inbounds := []transport.Inbound{
-		http.NewInbound(fmt.Sprintf(":%d", cfg.ResourceMgr.Port), http.Mux(config.FrameworkURLPath, mux)),
+		http.NewInbound(fmt.Sprintf(":%d", cfg.ResMgr.Port), http.Mux(config.FrameworkURLPath, mux)),
 	}
 
 	resmgrPeerChooser := peer.NewPeerChooser()
@@ -153,23 +153,23 @@ func main() {
 	// Initalize managers
 	metrics := metrics.New(metricScope.SubScope("resource-manager"))
 
-	rm := resmgr.InitManager(dispatcher, &cfg.ResourceMgr, resstore, &metrics)
+	rm := resmgr.InitManager(dispatcher, cfg, resstore, &metrics)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
-	log.Infof("Started Peloton resource manager on port %v", cfg.ResourceMgr.Port)
+	log.Infof("Started Peloton resource manager on port %v", cfg.ResMgr.Port)
 
 	// This is the address of the local resource manager address to be announced via leader election
 	ip, err := util.ListenIP()
 	if err != nil {
 		log.Fatalf("Failed to get ip, err=%v", err)
 	}
-	localPelotonRMAddr := fmt.Sprintf("http://%s:%d", ip, cfg.ResourceMgr.Port)
+	localPelotonRMAddr := fmt.Sprintf("http://%s:%d", ip, cfg.ResMgr.Port)
 	pLeader := resleader.NewElectionHandler(*env, resmgrPeerChooser, cfg, localPelotonRMAddr,
 		rm)
-	leader.NewZkElection(cfg.ResourceMgr.Election, localPelotonRMAddr, pLeader)
+	leader.NewZkElection(cfg.Election, localPelotonRMAddr, pLeader)
 
 	select {}
 }

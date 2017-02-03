@@ -3,8 +3,8 @@ package election
 import (
 	"sync"
 
-	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/resmgr"
+	"code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	log "github.com/Sirupsen/logrus"
 )

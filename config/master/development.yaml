@@ -11,11 +11,6 @@ election:
   zk_servers: ["localhost:8192"]
   path: "/peloton/master/leader"
 
-resmgr:
-  election:
-    zk_servers: ["localhost:8192"]
-    path: "/peloton/resmgr/leader"
-
 metrics:
   prometheus:
     enable: true

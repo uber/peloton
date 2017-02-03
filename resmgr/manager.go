@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 
 	"code.uber.internal/infra/peloton/master/metrics"
-	rm_config "code.uber.internal/infra/peloton/resmgr/config"
+	rmconfig "code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -22,7 +22,7 @@ const (
 // InitManager initializes the resource pool manager
 func InitManager(
 	d yarpc.Dispatcher,
-	config *rm_config.Config,
+	config *rmconfig.Config,
 	store storage.ResourcePoolStore,
 	metrics *metrics.Metrics) *ResourceManager {
 	handler := ResourceManager{
@@ -40,7 +40,7 @@ func InitManager(
 type ResourceManager struct {
 	store        storage.ResourcePoolStore
 	metrics      *metrics.Metrics
-	config       *rm_config.Config
+	config       *rmconfig.Config
 	dispatcher   yarpc.Dispatcher
 	runningState int32
 }

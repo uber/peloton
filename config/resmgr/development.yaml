@@ -1,20 +1,12 @@
 logging:
   level: info
 
-mesos:
-  host_port: "localhost:5050"
-  zk_path: "zk://localhost:8192/mesos"
-  framework:
-    gpu_supported: true
+resmgr:
+  db_write_concurrency: 40
 
 election:
   zk_servers: ["localhost:8192"]
-  path: "/peloton/master/leader"
-
-resmgr:
-  election:
-    zk_servers: ["localhost:8192"]
-    path: "/peloton/resmgr/leader"
+  path: "/peloton/resmgr/leader"
 
 metrics:
   prometheus:

@@ -12,29 +12,14 @@ sentry:
   dsn: http://fill:mein@sentry.local.uber.internal/123
   enable: false
 
-# TODO Remove all the unused configs
-# TODO wu: configure meso/db by clusters
-mesos:
-  zk_path: "zk://zookeeper-mesos-devel01-dca1.uber.internal:2181/mesos"
-
 storage:
   mysql:
     # TODO: read db from zk
     host: compute841-dca1
     port: 3306
-
-scheduler:
-   task_dequeue_limit: 1000
-   offer_dequeue_limit: 30
-
 resmgr:
-  election:
-    zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
-    path: "/peloton/resmgr/leader"
+  db_write_concurrency: 400
 
 election:
   zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
-  path: "/peloton/master/leader"
-
-master:
-  db_write_concurrency: 400
+  path: "/peloton/resmgr/leader"
