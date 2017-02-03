@@ -1,0 +1,150 @@
+/**
+ *  Task Configurations
+ */
+
+syntax = "proto3";
+
+package peloton.task;
+
+option go_package = "peloton/task/config";
+
+import "mesos/v1/mesos.proto";
+
+
+/**
+ *  Resource configuration for a task, e.g. job instance
+ */
+message ResourceConfig {
+
+  // CPU limit in number of CPU cores
+  double cpusLimit = 1;
+
+  // Memory limit in MB
+  double memLimitMb = 2;
+
+  // Disk limit in MB
+  double diskLimitMb = 3;
+
+  // File descriptor limit
+  uint32 fdLimit = 4;
+
+  // GPU limit in number of GPUs
+  double gpuLimit = 5;
+}
+
+
+/**
+ *  Health check configuration for a task
+ */
+message HealthCheckConfig {
+
+  // Whether the health check is enabled.
+  bool enabled = 1;
+
+  // Start time wait in seconds
+  uint32 initialIntervalSecs = 2;
+
+  // Interval in seconds between two health checks
+  uint32 intervalSecs = 3;
+
+  // Max number of consecutive failures before failing health check
+  uint32 maxConsecutiveFailures = 4;
+
+  // Health check command timeout in seconds
+  uint32 timeoutSecs = 5;
+
+  // Health check command to be executed
+  string shellCommand = 6;
+}
+
+
+/**
+ *  Network port configuration for a task
+ */
+message PortConfig {
+
+  // Name of the network port, e.g. http, tchannel
+  string name = 1;
+
+  // Static port number if any. If unset, will be dynamically allocated
+  // by the scheduler
+  uint32 value = 2;
+
+  // Environment variable name to be exported when running a task for this port.
+  // Will default to UBER_PORT_{name} if unset
+  string envName = 3;
+}
+
+
+/**
+ *  Volume mount configuration for a task
+ */
+message VolumeMount {
+
+  // Access mode for a volume mount
+  enum Mode {
+    READONLY  = 0;
+    READWRITE = 1;
+  }
+
+  // Absolute path of the source volume to be mounted
+  string srcVolume = 1;
+
+  // Absolute path of the destination volume to be mounted
+  string dstVolume = 2;
+
+  // Readonly or Readwrite mode of the mount
+  Mode mode = 3;
+}
+
+
+/**
+ *  Container configuration for a task
+ */
+message ContainerConfig {
+
+  enum Type {
+    MESOS = 0;
+    DOCKER = 1;
+  }
+
+  // The container type
+  Type type = 1;
+
+  // The container image to be run
+  string image = 2;
+
+  // List of environment variables to be exported in container
+  mesos.v1.Environment environment = 3;
+
+  // List of volumes to be mounted from host into container
+  repeated VolumeMount mounts = 4;
+} 
+
+
+/**
+ *  Task configuration for a given job instance
+ */
+message TaskConfig {
+
+  // Name of the task
+  string name = 1;
+
+  // List of user-defined labels for the task
+  mesos.v1.Labels labels = 2;
+
+  // Resource config of the task
+  ResourceConfig resource = 3;
+
+  // Container config of the task.
+  mesos.v1.ContainerInfo container = 4;
+
+  // Command line config of the task
+  mesos.v1.CommandInfo command = 5;
+
+  // Health check config of the task
+  HealthCheckConfig healthCheck = 6;
+
+  // List of network ports to be allocated for the task
+  repeated PortConfig ports = 7;
+}

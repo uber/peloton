@@ -9,6 +9,22 @@ import (
 	"strings"
 )
 
+// Min returns the minimum value of x, y
+func Min(x, y uint32) uint32 {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+// Max returns the maximum value of x, y
+func Max(x, y uint32) uint32 {
+	if x > y {
+		return x
+	}
+	return y
+}
+
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
 // first level : role -> map(resource type-> resouce value)
 func GetOfferScalarResourceSummary(offer *mesos_v1.Offer) map[string]map[string]float64 {
@@ -31,21 +47,18 @@ func GetOfferScalarResourceSummary(offer *mesos_v1.Offer) map[string]map[string]
 // ConvertToMesosTaskInfo converts a task.TaskInfo into mesos TaskInfo
 func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) *mesos_v1.TaskInfo {
 	var rs []*mesos_v1.Resource
-	taskResources := taskInfo.GetJobConfig().Resource
+	taskResources := taskInfo.GetConfig().Resource
 	rs = append(rs, NewMesosResourceBuilder().WithName("cpus").WithValue(taskResources.CpusLimit).Build())
 	rs = append(rs, NewMesosResourceBuilder().WithName("mem").WithValue(taskResources.MemLimitMb).Build())
 	rs = append(rs, NewMesosResourceBuilder().WithName("disk").WithValue(taskResources.DiskLimitMb).Build())
 	// TODO: translate job.ResourceConfig fdlimit
 
-	taskID := taskInfo.GetRuntime().GetTaskId().GetValue()
 	mesosTask := &mesos_v1.TaskInfo{
-		Name: &taskInfo.JobId.Value,
-		TaskId: &mesos_v1.TaskID{
-			Value: &taskID,
-		},
+		Name:      &taskInfo.JobId.Value,
+		TaskId:    taskInfo.GetRuntime().GetTaskId(),
 		Resources: rs,
-		Command:   taskInfo.GetJobConfig().GetCommand(),
-		Container: taskInfo.GetJobConfig().GetContainer(),
+		Command:   taskInfo.GetConfig().GetCommand(),
+		Container: taskInfo.GetConfig().GetContainer(),
 	}
 	return mesosTask
 }

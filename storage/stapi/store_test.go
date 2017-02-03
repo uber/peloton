@@ -9,6 +9,7 @@ import (
 	mesos "mesos/v1"
 	"peloton/job"
 	"peloton/task"
+	"peloton/task/config"
 	"testing"
 )
 
@@ -17,9 +18,11 @@ type STAPIStoreTestSuite struct {
 	store *stapi.Store
 }
 
-// NOTE(gabe): using this method of setup is definitely less elegant than a SetupTest() and TearDownTest()
-// helper functions of suite, but has the unfortunate sideeffect of making test runs on my MBP go from ~3m
-// wall to 10m wall. For now, keep using init() until a fix for this is found
+// NOTE(gabe): using this method of setup is definitely less elegant
+// than a SetupTest() and TearDownTest() helper functions of suite,
+// but has the unfortunate sideeffect of making test runs on my MBP go
+// from ~3m wall to 10m wall. For now, keep using init() until a fix
+// for this is found
 
 var store *stapi.Store
 
@@ -44,16 +47,17 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 	for i := 0; i < records; i++ {
 		var jobID = job.JobID{Value: fmt.Sprintf("TestCreateGetJobConfig%d", i)}
 		var sla = job.SlaConfig{
-			Priority:               22,
-			MinimumInstanceCount:   3 + uint32(i),
-			MinimumInstancePercent: 50,
-			Preemptible:            false,
+			Priority:                22,
+			MaximumRunningInstances: 3,
+			Preemptible:             false,
 		}
-		var resourceConfig = job.ResourceConfig{
-			CpusLimit:   0.8,
-			MemLimitMb:  800,
-			DiskLimitMb: 1500,
-			FdLimit:     1000 + uint32(i),
+		var taskConfig = config.TaskConfig{
+			Resource: &config.ResourceConfig{
+				CpusLimit:   0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+				FdLimit:     1000 + uint32(i),
+			},
 		}
 		var labels = mesos.Labels{
 			Labels: []*mesos.Label{
@@ -64,7 +68,8 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 		}
 		// Add some special label to job0 and job1
 		if i < 2 {
-			labels.Labels = append(labels.Labels, &mesos.Label{Key: &keys[3], Value: &vals[3]})
+			labels.Labels = append(labels.Labels,
+				&mesos.Label{Key: &keys[3], Value: &vals[3]})
 		}
 
 		// Add owner to job0 and job1
@@ -73,12 +78,12 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 			owner = "money"
 		}
 		var jobconfig = job.JobConfig{
-			Name:       fmt.Sprintf("TestJob_%d", i),
-			OwningTeam: owner,
-			LdapGroups: []string{"money", "team6", "otto"},
-			Sla:        &sla,
-			Resource:   &resourceConfig,
-			Labels:     &labels,
+			Name:          fmt.Sprintf("TestJob_%d", i),
+			OwningTeam:    owner,
+			LdapGroups:    []string{"money", "team6", "otto"},
+			Sla:           &sla,
+			DefaultConfig: &taskConfig,
+			Labels:        &labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
 		err := store.CreateJob(&jobID, &jobconfig, "uber")
@@ -207,16 +212,24 @@ func (suite *STAPIStoreTestSuite) TestCreateTasks() {
 	for jobID, nTasks := range jobTasks {
 		var jobID = job.JobID{Value: jobID}
 		var sla = job.SlaConfig{
-			Priority:               22,
-			MinimumInstanceCount:   3,
-			MinimumInstancePercent: 50,
-			Preemptible:            false,
+			Priority:                22,
+			MaximumRunningInstances: 3,
+			Preemptible:             false,
+		}
+		var taskConfig = config.TaskConfig{
+			Resource: &config.ResourceConfig{
+				CpusLimit:   0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+				FdLimit:     1000,
+			},
 		}
 		var jobConfig = job.JobConfig{
-			Name:       jobID.Value,
-			OwningTeam: "team6",
-			LdapGroups: []string{"money", "team6", "otto"},
-			Sla:        &sla,
+			Name:          jobID.Value,
+			OwningTeam:    "team6",
+			LdapGroups:    []string{"money", "team6", "otto"},
+			Sla:           &sla,
+			DefaultConfig: &taskConfig,
 		}
 		err := store.CreateJob(&jobID, &jobConfig, "uber")
 		suite.NoError(err)
@@ -230,7 +243,7 @@ func (suite *STAPIStoreTestSuite) TestCreateTasks() {
 					TaskId: &mesos.TaskID{Value: &tID},
 					State:  task.RuntimeInfo_TaskState(j),
 				},
-				JobConfig:  &jobConfig,
+				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
 				JobId:      &jobID,
 			}
@@ -240,7 +253,8 @@ func (suite *STAPIStoreTestSuite) TestCreateTasks() {
 		suite.NoError(err)
 	}
 
-	// List all tasks by job, ensure they were created properly, and have the right parent
+	// List all tasks by job, ensure they were created properly, and
+	// have the right parent
 	for jobID, nTasks := range jobTasks {
 		job := job.JobID{Value: jobID}
 		tasks, err := store.GetTasksForJob(&job)
@@ -276,7 +290,8 @@ func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
 	// GetTaskByState
 	for j := 0; j < nTasks; j++ {
 		jobID := job.JobID{Value: "TestGetTasksByHostState0"}
-		tasks, err := store.GetTasksForJobAndState(&jobID, task.RuntimeInfo_TaskState(j).String())
+		tasks, err := store.GetTasksForJobAndState(
+			&jobID, task.RuntimeInfo_TaskState(j).String())
 		suite.NoError(err)
 		suite.Equal(len(tasks), 1)
 
@@ -286,7 +301,8 @@ func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
 		}
 
 		jobID = job.JobID{Value: "TestGetTasksByHostState1"}
-		tasks, err = store.GetTasksForJobAndState(&jobID, task.RuntimeInfo_TaskState(j).String())
+		tasks, err = store.GetTasksForJobAndState(
+			&jobID, task.RuntimeInfo_TaskState(j).String())
 		suite.NoError(err)
 
 		for tid, host := range tasks {
@@ -302,8 +318,10 @@ func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
 		suite.NoError(err)
 
 		suite.Equal(len(tasks), 2)
-		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState0-%d", j)], task.RuntimeInfo_TaskState(j).String())
-		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState1-%d", j)], task.RuntimeInfo_TaskState(j).String())
+		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState0-%d", j)],
+			task.RuntimeInfo_TaskState(j).String())
+		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState1-%d", j)],
+			task.RuntimeInfo_TaskState(j).String())
 	}
 }
 
@@ -451,7 +469,7 @@ func (suite *STAPIStoreTestSuite) TestGetTaskByRange() {
 	suite.validateRange(&jobID, 70, 120)
 }
 
-func (suite *STAPIStoreTestSuite) validateRange(jobID *job.JobID, from int, to int) {
+func (suite *STAPIStoreTestSuite) validateRange(jobID *job.JobID, from, to int) {
 	jobConfig, err := store.GetJob(jobID)
 	suite.NoError(err)
 
@@ -461,11 +479,11 @@ func (suite *STAPIStoreTestSuite) validateRange(jobID *job.JobID, from int, to i
 	}
 	var taskInRange map[uint32]*task.TaskInfo
 	taskInRange = store.GetTasksForJobByRange(jobID, r)
-	if to >= int(jobConfig.InstanceCount) {
-		to = int(jobConfig.InstanceCount - 1)
+	if to > int(jobConfig.InstanceCount) {
+		to = int(jobConfig.InstanceCount)
 	}
-	suite.Equal(to-from+1, len(taskInRange))
-	for i := from; i <= to; i++ {
+	suite.Equal(to-from, len(taskInRange))
+	for i := from; i < to; i++ {
 		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
 		suite.Equal(tID, *(taskInRange[uint32(i)].Runtime.TaskId.Value))
 	}
@@ -473,10 +491,9 @@ func (suite *STAPIStoreTestSuite) validateRange(jobID *job.JobID, from int, to i
 
 func createJobConfig() *job.JobConfig {
 	var sla = job.SlaConfig{
-		Priority:               22,
-		MinimumInstanceCount:   6,
-		MinimumInstancePercent: 50,
-		Preemptible:            false,
+		Priority:                22,
+		MaximumRunningInstances: 6,
+		Preemptible:             false,
 	}
 	var jobConfig = job.JobConfig{
 		OwningTeam:    "uber",
@@ -487,13 +504,15 @@ func createJobConfig() *job.JobConfig {
 	return &jobConfig
 }
 
-func createTaskInfo(jobConfig *job.JobConfig, jobID *job.JobID, i int) *task.TaskInfo {
+func createTaskInfo(
+	jobConfig *job.JobConfig, jobID *job.JobID, i int) *task.TaskInfo {
+
 	var tID = fmt.Sprintf("%s-%d", jobID.Value, i)
 	var taskInfo = task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			TaskId: &mesos.TaskID{Value: &tID},
 		},
-		JobConfig:  jobConfig,
+		Config:     jobConfig.GetDefaultConfig(),
 		InstanceId: uint32(i),
 		JobId:      jobID,
 	}

@@ -6,7 +6,7 @@ syntax = "proto3";
 
 package peloton.upgrade;
 
-option go_package = "upgrade";
+option go_package = "peloton/upgrade";
 
 import "peloton/job/job.proto";
 

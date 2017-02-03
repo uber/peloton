@@ -38,16 +38,16 @@ func (suite *QueueTestSuite) SetupTest() {
 	inbounds := []transport.Inbound{
 		http.NewInbound(":" + strconv.Itoa(masterPort)),
 	}
+	url := "http://localhost:" + strconv.Itoa(masterPort) + config.FrameworkURLPath
 	outbounds := transport.Outbounds{
-		Unary: http.NewOutbound("http://localhost:" + strconv.Itoa(masterPort) + config.FrameworkURLPath),
-	}
-	yOutbounds := yarpc.Outbounds{
-		"peloton-master": outbounds,
+		Unary: http.NewOutbound(url),
 	}
 	suite.dispatcher = yarpc.NewDispatcher(yarpc.Config{
-		Name:      "peloton-master",
-		Inbounds:  inbounds,
-		Outbounds: yOutbounds,
+		Name:     "peloton-master",
+		Inbounds: inbounds,
+		Outbounds: yarpc.Outbounds{
+			"peloton-master": outbounds,
+		},
 	})
 	suite.dispatcher.Start()
 }
@@ -62,27 +62,31 @@ func TestPelotonTaskQueue(t *testing.T) {
 
 func (suite *QueueTestSuite) TestRefillTaskQueue() {
 	mtx := metrics.New(tally.NoopScope)
-	tq := InitTaskQueue(suite.dispatcher, &mtx)
+	tq := InitTaskQueue(suite.dispatcher, &mtx, suite.store, suite.store)
 
-	// Create jobs. each with different
-	suite.createJob(0, 10, 10, task.RuntimeInfo_SUCCEEDED)
-	suite.createJob(1, 7, 10, task.RuntimeInfo_SUCCEEDED)
-	suite.createJob(2, 2, 10, task.RuntimeInfo_SUCCEEDED)
-	suite.createJob(3, 2, 10, task.RuntimeInfo_INITIALIZED)
+	// Create jobs. each with different number of tasks
+	jobs := [4]job.JobID{}
+	for i := 0; i < 4; i++ {
+		jobs[i] = job.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+	}
+	suite.createJob(&jobs[0], 10, 10, task.RuntimeInfo_SUCCEEDED)
+	suite.createJob(&jobs[1], 7, 10, task.RuntimeInfo_SUCCEEDED)
+	suite.createJob(&jobs[2], 2, 10, task.RuntimeInfo_SUCCEEDED)
+	suite.createJob(&jobs[3], 2, 10, task.RuntimeInfo_INITIALIZED)
 
-	tq.LoadFromDB(suite.store, suite.store)
+	tq.LoadFromDB()
 
 	// 1. All jobs should have 10 tasks in DB
-	tasks, err := suite.store.GetTasksForJob(&job.JobID{Value: "TestJob_0"})
+	tasks, err := suite.store.GetTasksForJob(&jobs[0])
 	suite.NoError(err)
 	suite.Equal(len(tasks), 10)
-	tasks, err = suite.store.GetTasksForJob(&job.JobID{Value: "TestJob_1"})
+	tasks, err = suite.store.GetTasksForJob(&jobs[1])
 	suite.NoError(err)
 	suite.Equal(len(tasks), 10)
-	tasks, err = suite.store.GetTasksForJob(&job.JobID{Value: "TestJob_2"})
+	tasks, err = suite.store.GetTasksForJob(&jobs[2])
 	suite.NoError(err)
 	suite.Equal(len(tasks), 10)
-	tasks, err = suite.store.GetTasksForJob(&job.JobID{Value: "TestJob_3"})
+	tasks, err = suite.store.GetTasksForJob(&jobs[3])
 	suite.NoError(err)
 	suite.Equal(len(tasks), 10)
 
@@ -94,32 +98,34 @@ func (suite *QueueTestSuite) TestRefillTaskQueue() {
 	suite.Equal(len(contentSummary), 3)
 }
 
-func (suite *QueueTestSuite) createJob(i int, tasks int, totalTasks int, taskState task.RuntimeInfo_TaskState) {
-	var jobID = job.JobID{Value: fmt.Sprintf("TestJob_%v", i)}
-	var sla = job.SlaConfig{
+func (suite *QueueTestSuite) createJob(
+	jobID *job.JobID,
+	numTasks uint32,
+	instanceCount uint32,
+	taskState task.RuntimeInfo_TaskState) {
+
+	sla := job.SlaConfig{
 		Preemptible: false,
 	}
 	var jobConfig = job.JobConfig{
-		Name:          fmt.Sprintf("TestJob_%v", i),
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"money", "team6", "otto"},
+		Name:          jobID.Value,
 		Sla:           &sla,
-		InstanceCount: uint32(totalTasks),
+		InstanceCount: instanceCount,
 	}
-	var err = suite.store.CreateJob(&jobID, &jobConfig, "uber")
+	var err = suite.store.CreateJob(jobID, &jobConfig, "uber")
 	suite.NoError(err)
-	for j := 0; j < tasks; j++ {
-		var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
+	for i := uint32(0); i < numTasks; i++ {
+		var taskID = fmt.Sprintf("%s-%d", jobID.Value, i)
 		var taskInfo = task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				TaskId: &mesos.TaskID{Value: &tID},
+				TaskId: &mesos.TaskID{Value: &taskID},
 				State:  taskState,
 			},
-			JobConfig:  &jobConfig,
-			InstanceId: uint32(j),
-			JobId:      &jobID,
+			Config:     jobConfig.GetDefaultConfig(),
+			InstanceId: i,
+			JobId:      jobID,
 		}
-		err = suite.store.CreateTask(&jobID, j, &taskInfo, "test")
+		err = suite.store.CreateTask(jobID, i, &taskInfo, "test")
 		suite.NoError(err)
 	}
 }

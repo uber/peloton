@@ -138,17 +138,24 @@ func printTaskGetResponse(r pt.GetResponse, debug bool) {
 		printResponseJSON(r)
 	} else {
 		if r.GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n", r.NotFound.Id.Value, r.NotFound.Message)
+			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
+				r.NotFound.Id.Value, r.NotFound.Message)
 		} else if r.GetOutOfRange() != nil {
-			fmt.Fprintf(tabWriter, "Requested instance of job %s is not within the range of valid instances (0...%d)\n", r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
-		} else if r.GetResult() == nil {
-			fmt.Fprintf(tabWriter, "Unexpected error, no results in response.\n")
-		} else {
+			fmt.Fprintf(tabWriter,
+				"Requested instance of job %s is not within the range of valid "+
+					"instances (0...%d)\n",
+				r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
+		} else if r.GetResult() != nil {
+			cfg := r.Result.Config
+			rt := r.Result.Runtime
 			fmt.Fprintf(tabWriter, taskListFormatHeader)
 			fmt.Fprintf(tabWriter, taskListFormatBody,
-				r.Result.InstanceId, r.Result.JobConfig.Name, r.Result.JobConfig.Resource.CpusLimit,
-				r.Result.JobConfig.Resource.MemLimitMb, r.Result.JobConfig.Resource.DiskLimitMb,
-				r.Result.Runtime.State.String(), r.Result.Runtime.StartedAt, *r.Result.Runtime.TaskId.Value, r.Result.Runtime.Host)
+				r.Result.InstanceId, cfg.Name, cfg.Resource.CpusLimit,
+				cfg.Resource.MemLimitMb, cfg.Resource.DiskLimitMb,
+				rt.State.String(), rt.StartedAt, *rt.TaskId.Value,
+				rt.Host)
+		} else {
+			fmt.Fprintf(tabWriter, "Unexpected error, no results in response.\n")
 		}
 	}
 	tabWriter.Flush()
@@ -159,7 +166,8 @@ func printTaskListResponse(r pt.ListResponse, debug bool) {
 		printResponseJSON(r)
 	} else {
 		if r.GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n", r.NotFound.Id.Value, r.NotFound.Message)
+			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
+				r.NotFound.Id.Value, r.NotFound.Message)
 		} else {
 			fmt.Fprintf(tabWriter, taskListFormatHeader)
 
@@ -173,10 +181,12 @@ func printTaskListResponse(r pt.ListResponse, debug bool) {
 			sort.Sort(tasks)
 
 			for _, t := range tasks {
+				cfg := t.Config
+				rt := t.Runtime
 				fmt.Fprintf(tabWriter, taskListFormatBody,
-					t.InstanceId, t.JobConfig.Name, t.JobConfig.Resource.CpusLimit,
-					t.JobConfig.Resource.MemLimitMb, t.JobConfig.Resource.DiskLimitMb,
-					t.Runtime.State.String(), t.Runtime.StartedAt, *t.Runtime.TaskId.Value, t.Runtime.Host)
+					t.InstanceId, cfg.Name, cfg.Resource.CpusLimit,
+					cfg.Resource.MemLimitMb, cfg.Resource.DiskLimitMb,
+					rt.State.String(), rt.StartedAt, *rt.TaskId.Value, rt.Host)
 			}
 		}
 	}
@@ -190,7 +200,9 @@ func printTaskStartResponse(r pt.StartResponse, debug bool) {
 		if r.GetNotFound() != nil {
 			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n", r.NotFound.Id.Value, r.NotFound.Message)
 		} else if r.GetOutOfRange() != nil {
-			fmt.Fprintf(tabWriter, "Requested instance of job %s is not within the range of valid instances (0...%d)\n", r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
+			fmt.Fprintf(tabWriter, "Requested instance of job %s is not within "+
+				"the range of valid instances (0...%d)\n",
+				r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
 		} else {
 			fmt.Fprintf(tabWriter, "Job started\n")
 		}
@@ -203,9 +215,12 @@ func printTaskStopResponse(r pt.StopResponse, debug bool) {
 		printResponseJSON(r)
 	} else {
 		if r.GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n", r.NotFound.Id.Value, r.NotFound.Message)
+			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
+				r.NotFound.Id.Value, r.NotFound.Message)
 		} else if r.GetOutOfRange() != nil {
-			fmt.Fprintf(tabWriter, "Requested instance of job %s is not within the range of valid instances (0...%d)\n", r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
+			fmt.Fprintf(tabWriter, "Requested instance of job %s is not within "+
+				"the range of valid instances (0...%d)\n",
+				r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
 		} else {
 			fmt.Fprintf(tabWriter, "Job stopped\n")
 		}

@@ -7,13 +7,15 @@ import (
 
 	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/metrics"
+	pmt "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	mesos_v1 "mesos/v1"
+	mesos "mesos/v1"
+
 	"peloton/job"
 	"peloton/master/taskqueue"
 	"peloton/task"
@@ -23,12 +25,13 @@ import (
 // InitManager initalizes the job manager
 func InitManager(d yarpc.Dispatcher,
 	masterConfig *config.MasterConfig,
-	store storage.JobStore,
-	taskStore storage.TaskStore,
+	js storage.JobStore,
+	ts storage.TaskStore,
 	metrics *metrics.Metrics) {
+
 	handler := jobManager{
-		JobStore:  store,
-		TaskStore: taskStore,
+		JobStore:  js,
+		TaskStore: ts,
 		client:    json.New(d.ClientConfig("peloton-master")),
 		rootCtx:   context.Background(),
 		metrics:   metrics,
@@ -50,28 +53,41 @@ type jobManager struct {
 	config    *config.MasterConfig
 }
 
+// Create creates a job object for a given job configuration and
+// enqueues the tasks for scheduling
 func (m *jobManager) Create(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
+	req *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
-	jobID := body.Id
+	jobID := req.Id
 	if strings.Index(jobID.Value, "-") > 0 {
 		// TODO: define another CreateResponse for naming error
 		m.metrics.JobCreateFail.Inc(1)
 		return nil, nil, fmt.Errorf("Invalid jobId %v that contains '-'", jobID.Value)
 	}
-	jobConfig := body.Config
+	jobConfig := req.Config
 
-	log.WithField("config", jobConfig).Infof("JobManager.Create called: %v", body)
+	log.WithField("config", jobConfig).Infof("JobManager.Create called")
 	m.metrics.JobAPICreate.Inc(1)
 
-	err := m.JobStore.CreateJob(jobID, jobConfig, "peloton")
+	// Validate job config with default task configs
+	err := pmt.ValidateTaskConfig(jobConfig)
+	if err != nil {
+		return &job.CreateResponse{
+			InvalidConfig: &job.InvalidJobConfig{
+				Id:      req.Id,
+				Message: err.Error(),
+			},
+		}, nil, nil
+	}
+
+	err = m.JobStore.CreateJob(jobID, jobConfig, "peloton")
 	if err != nil {
 		m.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
 			AlreadyExists: &job.JobAlreadyExists{
-				Id:      body.Id,
+				Id:      req.Id,
 				Message: err.Error(),
 			},
 		}, nil, nil
@@ -80,38 +96,49 @@ func (m *jobManager) Create(
 	// NOTE: temp work to make task creation concurrent for mysql store.
 	// mysql store will be deprecated soon and we are moving on the C* store
 	// As of now, only create one job with many tasks at a time
-	instances := int(body.Config.InstanceCount)
+	instances := req.Config.InstanceCount
 	startAddTaskTime := time.Now()
 
 	tasks := make([]*task.TaskInfo, instances)
-	for i := 0; i < instances; i++ {
-		// populate taskInfos
+	for i := uint32(0); i < instances; i++ {
+		// Populate taskInfos
 		instance := i
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instance, uuid.NewUUID().String())
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instance,
+			uuid.NewUUID().String())
+		taskConfig, err := pmt.GetTaskConfig(jobConfig, i)
+		if err != nil {
+			log.Errorf("Failed to get task config (%d) for job %v: %v",
+				i, jobID.Value, err)
+			m.metrics.JobCreateFail.Inc(1)
+			return nil, nil, err
+		}
 		t := task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
 				State: task.RuntimeInfo_INITIALIZED,
-				TaskId: &mesos_v1.TaskID{
+				TaskId: &mesos.TaskID{
 					Value: &mesosTaskID,
 				},
 			},
-			JobConfig:  jobConfig,
+			Config:     taskConfig,
 			InstanceId: uint32(instance),
 			JobId:      jobID,
 		}
 		tasks[i] = &t
 	}
+	// TODO: use the username of current session for createBy param
 	err = m.TaskStore.CreateTasks(jobID, tasks, "peloton")
 	nTasks := int64(len(tasks))
 	if err != nil {
-		log.Errorf("Failed to create tasks (%d) for job %v: %v", nTasks, jobID.Value, err)
+		log.Errorf("Failed to create tasks (%d) for job %v: %v",
+			nTasks, jobID.Value, err)
 		m.metrics.TaskCreateFail.Inc(nTasks)
 		return nil, nil, err
 	}
 	m.metrics.TaskCreate.Inc(nTasks)
 	m.putTasks(tasks)
 
-	log.Infof("Job %v all %v tasks created, time spent: %v", jobID.Value, instances, time.Since(startAddTaskTime))
+	log.Infof("Job %v all %v tasks created, time spent: %v",
+		jobID.Value, instances, time.Since(startAddTaskTime))
 
 	return &job.CreateResponse{
 		Result: jobID,
@@ -121,11 +148,11 @@ func (m *jobManager) Create(
 func (m *jobManager) Get(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *job.GetRequest) (*job.GetResponse, yarpc.ResMeta, error) {
-	log.Infof("JobManager.Get called: %v", body)
+	req *job.GetRequest) (*job.GetResponse, yarpc.ResMeta, error) {
+	log.Infof("JobManager.Get called: %v", req)
 	m.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, err := m.JobStore.GetJob(body.Id)
+	jobConfig, err := m.JobStore.GetJob(req.Id)
 	if err != nil {
 		m.metrics.JobGetFail.Inc(1)
 		log.Errorf("GetJob failed with error %v", err)
@@ -138,11 +165,11 @@ func (m *jobManager) Get(
 func (m *jobManager) Query(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
-	log.Infof("JobManager.Query called: %v", body)
+	req *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
+	log.Infof("JobManager.Query called: %v", req)
 	m.metrics.JobAPIQuery.Inc(1)
 
-	jobConfigs, err := m.JobStore.Query(body.Labels)
+	jobConfigs, err := m.JobStore.Query(req.Labels)
 	if err != nil {
 		m.metrics.JobQueryFail.Inc(1)
 		log.Errorf("Query job failed with error %v", err)
@@ -155,11 +182,12 @@ func (m *jobManager) Query(
 func (m *jobManager) Delete(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *job.DeleteRequest) (*job.DeleteResponse, yarpc.ResMeta, error) {
-	log.Infof("JobManager.Delete called: %v", body)
+	req *job.DeleteRequest) (*job.DeleteResponse, yarpc.ResMeta, error) {
+
+	log.Infof("JobManager.Delete called: %v", req)
 	m.metrics.JobAPIDelete.Inc(1)
 
-	err := m.JobStore.DeleteJob(body.Id)
+	err := m.JobStore.DeleteJob(req.Id)
 	if err != nil {
 		m.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)

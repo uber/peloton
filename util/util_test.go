@@ -7,6 +7,7 @@ import (
 	"mesos/v1"
 	"peloton/job"
 	"peloton/task"
+	"peloton/task/config"
 	"testing"
 )
 
@@ -47,11 +48,8 @@ func TestCanTakeTask(t *testing.T) {
 		},
 	}
 	var jobID = job.JobID{Value: "TestJob_0"}
-	var jobConfig = job.JobConfig{
-		Name:       "TestJob_0",
-		OwningTeam: "team6",
-		LdapGroups: []string{"money", "team6", "otto"},
-		Resource: &job.ResourceConfig{
+	var taskConfig = config.TaskConfig{
+		Resource: &config.ResourceConfig{
 			CpusLimit:   25,
 			MemLimitMb:  700,
 			DiskLimitMb: 200,
@@ -60,7 +58,7 @@ func TestCanTakeTask(t *testing.T) {
 	}
 
 	var taskInfo = task.TaskInfo{
-		JobConfig:  &jobConfig,
+		Config:     &taskConfig,
 		InstanceId: 20,
 		JobId:      &jobID,
 	}

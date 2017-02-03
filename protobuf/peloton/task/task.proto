@@ -6,10 +6,11 @@ syntax = "proto3";
 
 package peloton.task;
 
-option go_package = "task";
+option go_package = "peloton/task";
 
 import "mesos/v1/mesos.proto";
 import "peloton/job/job.proto";
+import "peloton/task/config.proto";
 
 
 /**
@@ -83,8 +84,8 @@ message TaskInfo {
   // Job ID of the task
   job.JobID jobId = 2;
 
-  // Job configuration of the task
-  job.JobConfig jobConfig = 3;
+  // Configuration of the task
+  TaskConfig config = 3;
 
   // Runtime info of the instance
   RuntimeInfo runtime = 4;
@@ -136,8 +137,11 @@ message GetResponse {
   InstanceIdOutOfRange outOfRange = 3;
 }
 
-// InstanceID range [from, to]
+/**
+ *  Task InstanceID range [from, to)
+ */
 message InstanceRange {
+
   uint32 from = 1;
   uint32 to = 2;
 }

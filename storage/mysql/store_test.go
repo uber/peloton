@@ -11,6 +11,7 @@ import (
 	mesos "mesos/v1"
 	"peloton/job"
 	"peloton/task"
+	"peloton/task/config"
 )
 
 type MysqlStoreTestSuite struct {
@@ -45,30 +46,38 @@ func (suite *MysqlStoreTestSuite) TestCreateGetTaskInfo() {
 		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		jobIDs = append(jobIDs, &jobID)
 		var sla = job.SlaConfig{
-			Priority:               22,
-			MinimumInstanceCount:   3 + uint32(i),
-			MinimumInstancePercent: 50,
-			Preemptible:            false,
+			Priority:                22,
+			Preemptible:             false,
+			MaximumRunningInstances: 3 + uint32(i),
+		}
+		var taskConfig = config.TaskConfig{
+			Resource: &config.ResourceConfig{
+				CpusLimit:   0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+				FdLimit:     1000,
+			},
 		}
 		var jobConfig = job.JobConfig{
-			Name:       "TestJob_" + strconv.Itoa(i),
-			OwningTeam: "team6",
-			LdapGroups: []string{"money", "team6", "otto"},
-			Sla:        &sla,
+			Name:          "TestJob_" + strconv.Itoa(i),
+			OwningTeam:    "team6",
+			LdapGroups:    []string{"money", "team6", "otto"},
+			Sla:           &sla,
+			DefaultConfig: &taskConfig,
 		}
 		jobs = append(jobs, &jobConfig)
 		err := suite.store.CreateJob(&jobID, &jobConfig, "uber")
 		suite.NoError(err)
 
 		// For each job, create 3 tasks
-		for j := 0; j < 3; j++ {
+		for j := uint32(0); j < 3; j++ {
 			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
 					TaskId: &mesos.TaskID{Value: &tID},
 					State:  task.RuntimeInfo_TaskState(j),
 				},
-				JobConfig:  &jobConfig,
+				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
 				JobId:      &jobID,
 			}
@@ -122,16 +131,24 @@ func (suite *MysqlStoreTestSuite) TestCreateTasks() {
 	for jobID, nTasks := range jobTasks {
 		var jobID = job.JobID{Value: jobID}
 		var sla = job.SlaConfig{
-			Priority:               22,
-			MinimumInstanceCount:   3,
-			MinimumInstancePercent: 50,
-			Preemptible:            false,
+			Priority:                22,
+			Preemptible:             false,
+			MaximumRunningInstances: 3,
+		}
+		var taskConfig = config.TaskConfig{
+			Resource: &config.ResourceConfig{
+				CpusLimit:   0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+				FdLimit:     1000,
+			},
 		}
 		var jobConfig = job.JobConfig{
-			Name:       jobID.Value,
-			OwningTeam: "team6",
-			LdapGroups: []string{"money", "team6", "otto"},
-			Sla:        &sla,
+			Name:          jobID.Value,
+			OwningTeam:    "team6",
+			LdapGroups:    []string{"money", "team6", "otto"},
+			Sla:           &sla,
+			DefaultConfig: &taskConfig,
 		}
 		err := suite.store.CreateJob(&jobID, &jobConfig, "uber")
 		suite.NoError(err)
@@ -145,7 +162,7 @@ func (suite *MysqlStoreTestSuite) TestCreateTasks() {
 					TaskId: &mesos.TaskID{Value: &tID},
 					State:  task.RuntimeInfo_TaskState(j),
 				},
-				JobConfig:  &jobConfig,
+				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
 				JobId:      &jobID,
 			}
@@ -176,16 +193,17 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 	for i := 0; i < records; i++ {
 		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		var sla = job.SlaConfig{
-			Priority:               22,
-			MinimumInstanceCount:   3 + uint32(i),
-			MinimumInstancePercent: 50,
-			Preemptible:            false,
+			Priority:                22,
+			Preemptible:             false,
+			MaximumRunningInstances: 3,
 		}
-		var resourceConfig = job.ResourceConfig{
-			CpusLimit:   0.8,
-			MemLimitMb:  800,
-			DiskLimitMb: 1500,
-			FdLimit:     1000 + uint32(i),
+		var taskConfig = config.TaskConfig{
+			Resource: &config.ResourceConfig{
+				CpusLimit:   0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+				FdLimit:     1000,
+			},
 		}
 		var labels = mesos.Labels{
 			Labels: []*mesos.Label{
@@ -194,23 +212,25 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 				{Key: &keys[2], Value: &vals[2]},
 			},
 		}
-		// Add some special label to job0 and job1
-		if i < 2 {
-			labels.Labels = append(labels.Labels, &mesos.Label{Key: &keys[3], Value: &vals[3]})
-		}
-
 		// Add owner to job0 and job1
 		var owner = "team6"
 		if i < 2 {
 			owner = "money"
 		}
+
+		// Add some special label to job0 and job1
+		if i < 2 {
+			labels.Labels = append(labels.Labels,
+				&mesos.Label{Key: &keys[3], Value: &vals[3]})
+		}
+
 		var jobconfig = job.JobConfig{
-			Name:       "TestJob_" + strconv.Itoa(i),
-			OwningTeam: owner,
-			LdapGroups: []string{"money", "team6", "otto"},
-			Sla:        &sla,
-			Resource:   &resourceConfig,
-			Labels:     &labels,
+			Name:          "TestJob_" + strconv.Itoa(i),
+			Sla:           &sla,
+			OwningTeam:    owner,
+			LdapGroups:    []string{"money", "team6", "otto"},
+			DefaultConfig: &taskConfig,
+			Labels:        &labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
 		err := suite.store.CreateJob(&jobID, &jobconfig, "uber")
@@ -225,8 +245,10 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 		result, err := suite.store.GetJob(&jobID)
 		suite.NoError(err)
 		suite.Equal(result.Name, originalJobs[i].Name)
-		suite.Equal(result.Resource.FdLimit, originalJobs[i].Resource.FdLimit)
-		suite.Equal(result.Sla.MinimumInstanceCount, originalJobs[i].Sla.MinimumInstanceCount)
+		suite.Equal(result.DefaultConfig.Resource.FdLimit,
+			originalJobs[i].DefaultConfig.Resource.FdLimit)
+		suite.Equal(result.Sla.MaximumRunningInstances,
+			originalJobs[i].Sla.MaximumRunningInstances)
 	}
 
 	// Query by owner

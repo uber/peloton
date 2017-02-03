@@ -7,6 +7,8 @@ import (
 	"peloton/task"
 )
 
+// TODO: Use string type for jobID and taskID
+
 // JobStore is the interface to store job states
 type JobStore interface {
 	CreateJob(id *job.JobID, Config *job.JobConfig, createBy string) error
@@ -20,7 +22,7 @@ type JobStore interface {
 // TaskStore is the interface to store task states
 type TaskStore interface {
 	// TODO: remove CreateTask as it should be deprecated for CreateTasks
-	CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInfo, createdBy string) error
+	CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error
 	CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, createdBy string) error
 	GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error)
 	GetTasksForJobAndState(id *job.JobID, state string) (map[uint32]*task.TaskInfo, error)

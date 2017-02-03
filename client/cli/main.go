@@ -27,7 +27,7 @@ var (
 	resframeworkURL = app.Flag("resmgr", "name of the resource manager address to use (http/tchannel) (set $RESMGR_URL to override)").
 			Short('e').Default("http://localhost:5290").OverrideDefaultFromEnvar("RESMGR_URL").URL()
 	timeout = app.Flag("timeout", "default RPC timeout (set $TIMEOUT to override)").
-		Default("2s").OverrideDefaultFromEnvar("TIMEOUT").Duration()
+		Default("10s").OverrideDefaultFromEnvar("TIMEOUT").Duration()
 
 	// Top level job command
 	job = app.Command("job", "manage jobs")

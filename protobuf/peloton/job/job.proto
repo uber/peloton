@@ -7,10 +7,11 @@ syntax = "proto3";
 
 package peloton.job;
 
-option go_package = "job";
+option go_package = "peloton/job";
 
 import "mesos/v1/mesos.proto";
 import "peloton/changelog/changelog.proto";
+import "peloton/task/config.proto";
 
 /**
  *  A unique ID assigned to an job.
@@ -21,176 +22,88 @@ message JobID {
 
 
 /**
- *  Resource configuration for a job
+ *  Job type definition such as batch, service and infra agent.
  */
-message ResourceConfig {
-  // CPU limit in number of CPU cores
-  double cpusLimit = 1;
+enum JobType {
+  // Normal batch job which will run to completion after all instances finishes.
+  BATCH = 0;
 
-  // Memory limit in MB
-  double memLimitMb = 2;
+  // Service job which is long running and will be restarted upon failures.
+  SERVICE = 1;
 
-  // Disk limit in MB
-  double diskLimitMb = 3;
-
-  // File descriptor limit
-  uint32 fdLimit = 4;
+  // Daemon job which has one instance running on each host for infra
+  // agents like muttley, m3collector etc.
+  DAEMON = 2;
 }
-
-
-/**
- *  Health check configuration for a job
- */
-message HealthCheckConfig {
-  // Whether the health check is enabled.
-  bool enabled = 1;
-
-  // Start time wait in seconds
-  uint32 initialIntervalSecs = 2;
-
-  // Interval in seconds between two health checks
-  uint32 intervalSecs = 3;
-
-  // Max number of consecutive failures before failing health check
-  uint32 maxConsecutiveFailures = 4;
-
-  // Health check command timeout in seconds
-  uint32 timeoutSecs = 5;
-
-  // Health check command to be executed
-  string shellCommand = 6;
-}
-
-
-/**
- *  Network port configuration for a job
- */
-message PortConfig {
-  // Name of the network port, e.g. http, tchannel
-  string name = 1;
-
-  // Static port number if any. If unset, will be dynamically allocated
-  // by the scheduler
-  uint32 value = 2;
-
-  // Environment variable name to be exported when running a job for this port.
-  // Will default to UBER_PORT_{name} if unset
-  string envName = 3;
-}
-
-
-/**
- *  Volume mount configuration for a job
- */
-message VolumeMount {
-  // Access mode for a volume mount
-  enum Mode {
-    READONLY  = 0;
-    READWRITE = 1;
-  }
-
-  // Absolute path of the source volume to be mounted
-  string srcVolume = 1;
-
-  // Absolute path of the destination volume to be mounted
-  string dstVolume = 2;
-
-  // Readonly or Readwrite mode of the mount
-  Mode mode = 3;
-}
-
-
-/**
- *  Container configuration for a job
- */
-message ContainerConfig {
-  enum Type {
-    MESOS = 0;
-    DOCKER = 1;
-  }
-
-  // The container type
-  Type type = 1;
-
-  // The container image to be run
-  string image = 2;
-
-  // List of environment variables to be exported in container
-  mesos.v1.Environment environment = 3;
-
-  // List of volumes to be mounted from host into container
-  repeated VolumeMount mounts = 4;
-} 
 
 
 /**
  *  SLA configuration for a job
  */
 message SlaConfig {
-  // Priority of a job
+
+  //
+  // Priority of a job. Higher value takes priority over lower value
+  // when making scheduling decisions as well as preemption decisions
+  //
   uint32 priority = 1;
 
-  // Minimum viable number of instances
-  uint32 minimumInstanceCount = 2;
-
-  // Minimum viable instance percentage
-  double minimumInstancePercent = 3;
-
+  //
   // Whether the job instances are preemptible. If so, it might
   // be scheduled using revocable offers
-  bool preemptible = 4;
+  //
+  bool preemptible = 2;
+
+  // Maximum number of instances to schedule at any point in time.
+  uint32 maximumRunningInstances = 3;
 }
+
 
 /**
  *  Job configuration
  */
 message JobConfig {
+
   // Change log entry of the job config
   changelog.ChangeLog changeLog = 1;
 
   // Name of the job
   string name = 2;
 
+  // Type of the job
+  JobType type = 3;
+
   // Owning team of the job
-  string owningTeam = 3;
+  string owningTeam = 4;
 
   // LDAP groups of the job
-  repeated string ldapGroups = 4;
-   
+  repeated string ldapGroups = 5;
+
   // Description of the job
-  string description = 5;
+  string description = 6;
 
   // List of user-defined labels for the job
-  mesos.v1.Labels labels = 6;
+  mesos.v1.Labels labels = 7;
 
   // Number of instances of the job
-  uint32 instanceCount = 7;
-
-  // Resource config of the job
-  ResourceConfig resource = 8;
-
-  // Health check config of the job
-  HealthCheckConfig healthCheck = 9;
-
-  // List of network ports to be allocated for the job
-  repeated PortConfig ports = 10;
-
-  // Container config of the job
-  mesos.v1.ContainerInfo container = 11;
+  uint32 instanceCount = 8;
 
   // SLA config of the job
-  SlaConfig sla = 12;
+  SlaConfig sla = 9;
 
-  // Command line config of the job
-  mesos.v1.CommandInfo command = 13;
+  // Default task configuration of the job
+  task.TaskConfig defaultConfig = 10;
+
+  // Instance specific task config which overwrites the default one
+  map<uint32, task.TaskConfig> instanceConfig = 11;
 }
 
 
 /**
  *  Job Manager service interface
  */
-service JobManager
-{
+service JobManager {
+
   // Create a Job entity for a given config
   rpc Create(CreateRequest) returns (CreateResponse);
 
@@ -214,6 +127,11 @@ message JobNotFound {
   string message = 2;
 }
 
+message InvalidJobConfig {
+  JobID id = 1;
+  string message = 2;
+}
+
 message CreateRequest {
   JobID id = 1;
   JobConfig config = 2;
@@ -222,6 +140,7 @@ message CreateRequest {
 message CreateResponse {
   JobID result = 1;
   JobAlreadyExists alreadyExists = 2;
+  InvalidJobConfig invalidConfig = 3;
 }
 
 message GetRequest {

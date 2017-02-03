@@ -280,7 +280,7 @@ func (m *JobStore) GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, err
 
 // GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job
 func (m *JobStore) GetTasksForJobByRange(id *job.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
-	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id >=": Range.From, "instance_id <=": Range.To})
+	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id >=": Range.From, "instance_id <": Range.To})
 }
 
 // GetTaskByID returns the tasks (tasks.TaskInfo) for a peloton job
@@ -310,10 +310,10 @@ func (m *JobStore) GetTaskForJob(id *job.JobID, instanceID uint32) (map[uint32]*
 
 // CreateTask creates a task for a peloton job
 // TODO: remove this in favor of CreateTasks
-func (m *JobStore) CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInfo, createdBy string) error {
+func (m *JobStore) CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
 	// TODO: discuss on whether taskID should be part of the taskInfo instead of runtime
 	rowKey := fmt.Sprintf("%s-%d", id.Value, instanceID)
-	if taskInfo.InstanceId != uint32(instanceID) {
+	if taskInfo.InstanceId != instanceID {
 		errMsg := fmt.Sprintf("Task %v has instance id %v, different than the instanceID %d expected", rowKey, instanceID, taskInfo.InstanceId)
 		log.Errorf(errMsg)
 		m.metrics.TaskCreateFail.Inc(1)

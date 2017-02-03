@@ -120,7 +120,7 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 		log.Errorf("Failed to StartMesosLoop, err = %v", err)
 		return err
 	}
-	err = p.taskQueue.LoadFromDB(p.store, p.store)
+	err = p.taskQueue.LoadFromDB()
 	if err != nil {
 		log.Errorf("Failed to taskQueue.LoadFromDB, err = %v", err)
 		return err
@@ -328,11 +328,14 @@ func main() {
 		Outbounds: outbounds,
 	})
 
+	// TODO: Refactor our storage interfaces to avoid passing both
+	// jobstore and taskstore.
+
 	// Initalize managers
 	metrics := metrics.New(metricScope.SubScope("master"))
 	job.InitManager(dispatcher, &cfg.Master, store, store, &metrics)
 	task.InitManager(dispatcher, store, store, &metrics)
-	tq := task.InitTaskQueue(dispatcher, &metrics)
+	tq := task.InitTaskQueue(dispatcher, &metrics, store, store)
 	upgrade.InitManager(dispatcher)
 
 	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), cfg.Mesos.Encoding)

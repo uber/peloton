@@ -18,7 +18,7 @@ type mockTaskStore struct {
 	updates map[string][]*task.TaskInfo
 }
 
-func (m *mockTaskStore) CreateTask(id *job.JobID, instanceID int, taskInfo *task.TaskInfo, createdBy string) error {
+func (m *mockTaskStore) CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
 	return nil
 }
 func (m *mockTaskStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, createdBy string) error {

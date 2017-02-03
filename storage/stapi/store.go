@@ -614,7 +614,7 @@ func (s *Store) GetTasksForJobByRange(id *job.JobID, instanceRange *task.Instanc
 	jobID := id.Value
 	result := make(map[uint32]*task.TaskInfo)
 	var i uint32
-	for i = instanceRange.From; i <= instanceRange.To; i++ {
+	for i = instanceRange.From; i < instanceRange.To; i++ {
 		taskID := fmt.Sprintf(taskIDFmt, jobID, i)
 		task, err := s.GetTaskByID(taskID)
 		if err != nil {
