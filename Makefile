@@ -1,4 +1,4 @@
-.PHONY: all master scheduler executor install client test cover clean hostmgr resmgr
+.PHONY: all master scheduler executor install client test cover clean hostmgr jobmgr resmgr
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
 
@@ -47,6 +47,9 @@ install:
 
 client:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton client/cli/*.go
+
+jobmgr:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/main.go
 
 hostmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-hostmgr hostmgr/main/main.go

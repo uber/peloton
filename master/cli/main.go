@@ -1,19 +1,11 @@
 package main
 
 import (
-	"fmt"
-	nethttp "net/http"
-	"net/url"
-	"os"
-	"runtime"
-	"sync"
-	"time"
-
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/config"
-	"code.uber.internal/infra/peloton/master/job"
 	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
@@ -23,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/uber-go/tally"
@@ -32,6 +25,12 @@ import (
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
+	nethttp "net/http"
+	"net/url"
+	"os"
+	"runtime"
+	"sync"
+	"time"
 )
 
 const (
@@ -333,7 +332,7 @@ func main() {
 
 	// Initalize managers
 	metrics := metrics.New(metricScope.SubScope("master"))
-	job.InitManager(dispatcher, &cfg.Master, store, store, &metrics)
+	jobmgr.InitManager(dispatcher, &cfg.Master, store, store, &metrics)
 	task.InitManager(dispatcher, store, store, &metrics)
 	tq := task.InitTaskQueue(dispatcher, &metrics, store, store)
 	upgrade.InitManager(dispatcher)
