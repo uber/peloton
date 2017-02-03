@@ -5,7 +5,7 @@ import (
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/leader"
-	schedulerconfig "code.uber.internal/infra/peloton/scheduler/config"
+	placementconfig "code.uber.internal/infra/peloton/placement/config"
 	"code.uber.internal/infra/peloton/storage/config"
 )
 
@@ -14,12 +14,12 @@ const FrameworkURLPath = "/api/v1"
 
 // Config encapulates the master runtime config
 type Config struct {
-	Metrics   metrics.Config         `yaml:"metrics"`
-	Storage   config.StorageConfig   `yaml:"storage"`
-	Master    MasterConfig           `yaml:"master"`
-	Mesos     mesos.Config           `yaml:"mesos"`
-	Scheduler schedulerconfig.Config `yaml:"scheduler"`
-	Election  leader.ElectionConfig  `yaml:"election"`
+	Metrics   metrics.Config                  `yaml:"metrics"`
+	Storage   config.StorageConfig            `yaml:"storage"`
+	Master    MasterConfig                    `yaml:"master"`
+	Mesos     mesos.Config                    `yaml:"mesos"`
+	Placement placementconfig.PlacementConfig `yaml:"placement"`
+	Election  leader.ElectionConfig           `yaml:"election"`
 }
 
 // MasterConfig is framework specific configuration

@@ -90,8 +90,9 @@ def run_mesos():
     cli.start(container=container.get('Id'))
     print 'started container %s' % config['zk_container']
 
-    print 'sleep 10 secs for zk to come up'
-    time.sleep(10)
+    # TODO: add retry
+    print 'sleep 20 secs for zk to come up'
+    time.sleep(20)
 
     # Create zk nodes
     exe = cli.exec_create(container=config['zk_container'], cmd='/scripts/setup_zk.sh')

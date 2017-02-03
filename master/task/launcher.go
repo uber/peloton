@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	sched_metrics "code.uber.internal/infra/peloton/scheduler/metrics"
+	placement_metrics "code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
@@ -22,14 +22,14 @@ type Launcher interface {
 
 type taskLauncher struct {
 	client  mpb.Client
-	metrics *sched_metrics.Metrics
+	metrics *placement_metrics.Metrics
 }
 
 var instance *taskLauncher
 var once sync.Once
 
 // GetTaskLauncher returns the task launcher
-func GetTaskLauncher(d yarpc.Dispatcher, mesosClient mpb.Client, metrics *sched_metrics.Metrics) Launcher {
+func GetTaskLauncher(d yarpc.Dispatcher, mesosClient mpb.Client, metrics *placement_metrics.Metrics) Launcher {
 	once.Do(func() {
 		instance = &taskLauncher{
 			client:  mesosClient,

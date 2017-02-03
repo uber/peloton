@@ -22,7 +22,7 @@ storage:
     host: compute841-dca1
     port: 3306
 
-scheduler:
+placement:
    task_dequeue_limit: 1000
    offer_dequeue_limit: 30
 

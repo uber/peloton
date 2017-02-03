@@ -1,4 +1,4 @@
-.PHONY: all master scheduler executor install client test cover clean hostmgr jobmgr resmgr
+.PHONY: all master placement executor install client test cover clean hostmgr jobmgr resmgr
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
 
@@ -26,14 +26,14 @@ GOPATH := ${GOPATH}:${GOPATH}/src/${PROJECT_ROOT}/pbgen
 .PRECIOUS: $(PBGENS)
 
 
-all: $(PBGENS) master scheduler executor client hostmgr resmgr
+all: $(PBGENS) master placement executor client hostmgr resmgr
 
 master:
 	@mkdir -p $(BIN_DIR)
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/cli/*.go
 
-scheduler:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-scheduler scheduler/main/main.go
+placement:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-placement placement/main/main.go
 
 resmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-resmgr resmgr/main/main.go

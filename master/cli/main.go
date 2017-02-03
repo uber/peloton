@@ -9,7 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
-	"code.uber.internal/infra/peloton/scheduler"
+	"code.uber.internal/infra/peloton/placement"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -49,8 +49,8 @@ var (
 	logFormatJSON    = app.Flag("log-json", "Log in JSON format").Default("true").Bool()
 	zkPath           = app.Flag("zk-path", "Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to override)").Envar("MESOS_ZK_PATH").String()
 	dbHost           = app.Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").Envar("DB_HOST").String()
-	taskDequeueLimit = app.Flag("task-dequeue-limit", "Scheduler task dequeue limit (scheduler.task_dequeue_limit override) (set $SCHEDULER_TASK_DEQUEUE_LIMIT to override)").
-				Envar("SCHEDULER_TASK_DEQUEUE_LIMIT").Int()
+	taskDequeueLimit = app.Flag("task-dequeue-limit", "Placement Engine task dequeue limit (placement.task_dequeue_limit override) (set $PLACEMENT_TASK_DEQUEUE_LIMIT to override)").
+				Envar("PLACEMENT_TASK_DEQUEUE_LIMIT").Int()
 	electionZkServers = app.Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
 				Envar("ELECTION_ZK_SERVERS").Strings()
 	masterPort    = app.Flag("master-port", "Master port (master.port override) (set $MASTER_PORT to override)").Envar("MASTER_PORT").Int()
@@ -204,7 +204,7 @@ func main() {
 		cfg.Storage.MySQL.Host = *dbHost
 	}
 	if *taskDequeueLimit != 0 {
-		cfg.Scheduler.TaskDequeueLimit = *taskDequeueLimit
+		cfg.Placement.TaskDequeueLimit = *taskDequeueLimit
 	}
 	if len(*electionZkServers) > 0 {
 		cfg.Election.ZKServers = *electionZkServers
@@ -365,9 +365,9 @@ func main() {
 		mesosMasterDetector, om)
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 
-	// Defer initializing scheduler till the end
-	schedulerMetrics := scheduler.NewMetrics(metricScope.SubScope("scheduler"))
-	scheduler.InitManager(dispatcher, &cfg.Scheduler, mesosClient, &schedulerMetrics)
+	// Defer initializing placement engine till the end
+	placementMetrics := placement.NewMetrics(metricScope.SubScope("placement"))
+	placement.InitManager(dispatcher, &cfg.Placement, mesosClient, &placementMetrics)
 
 	select {}
 }

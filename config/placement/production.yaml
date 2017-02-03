@@ -1,0 +1,17 @@
+# Disable kafka logging before kafka is ready in ATC
+# logging:
+#  kafka:
+#    topic: peloton
+
+metrics:
+  statsd:
+    hostPort: 127.0.0.1:4744
+    prefix: peloton
+
+sentry:
+  dsn: http://fill:mein@sentry.local.uber.internal/123
+  enable: false
+
+placement:
+   task_dequeue_limit: 1000
+   offer_dequeue_limit: 30

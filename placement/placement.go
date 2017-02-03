@@ -1,9 +1,9 @@
-// Scheduler Interface
+// Placement Engine Interface
 // IN: job
 // OUT: placement decision <task, node>
 // https://github.com/Netflix/Fenzo
 
-package scheduler
+package placement
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"time"
 
 	master_task "code.uber.internal/infra/peloton/master/task"
-	sched_config "code.uber.internal/infra/peloton/scheduler/config"
-	sched_metrics "code.uber.internal/infra/peloton/scheduler/metrics"
+	placement_config "code.uber.internal/infra/peloton/placement/config"
+	placement_metrics "code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
@@ -33,9 +33,10 @@ const (
 	GetTaskTimeout = 1 * time.Second
 )
 
-// InitManager inits the schedulerManager
-func InitManager(d yarpc.Dispatcher, cfg *sched_config.Config, mesosClient mpb.Client, metrics *sched_metrics.Metrics) {
-	s := schedulerManager{
+// InitManager inits the placementManager
+func InitManager(d yarpc.Dispatcher, cfg *placement_config.PlacementConfig,
+	mesosClient mpb.Client, metrics *placement_metrics.Metrics) {
+	s := placementManager{
 		cfg:        cfg,
 		launcher:   master_task.GetTaskLauncher(d, mesosClient, metrics),
 		client:     json.New(d.ClientConfig("peloton-master")),
@@ -46,35 +47,35 @@ func InitManager(d yarpc.Dispatcher, cfg *sched_config.Config, mesosClient mpb.C
 	s.Start()
 }
 
-type schedulerManager struct {
+type placementManager struct {
 	dispatcher yarpc.Dispatcher
-	cfg        *sched_config.Config
+	cfg        *placement_config.PlacementConfig
 	client     json.Client
 	rootCtx    context.Context
 	started    int32
 	shutdown   int32
 	launcher   master_task.Launcher
-	metrics    *sched_metrics.Metrics
+	metrics    *placement_metrics.Metrics
 	offerQueue util.OfferQueue
 }
 
-func (s *schedulerManager) Start() {
+func (s *placementManager) Start() {
 	if atomic.CompareAndSwapInt32(&s.started, 0, 1) {
-		log.Infof("Scheduler started")
+		log.Infof("Placement Engine started")
 		s.metrics.Running.Update(1)
 		go s.workLoop()
 		return
 	}
-	log.Warnf("Scheduler already started")
+	log.Warnf("Placement Engine already started")
 }
 
-func (s *schedulerManager) Stop() {
-	log.Infof("Scheduler stopping")
+func (s *placementManager) Stop() {
+	log.Infof("Placement Engine stopping")
 	s.metrics.Running.Update(0)
 	atomic.StoreInt32(&s.shutdown, 1)
 }
 
-func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
+func (s *placementManager) launchTasksLoop(tasks []*task.TaskInfo) {
 	nTasks := len(tasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		offer, err := s.getLocalOffer()
@@ -100,7 +101,7 @@ func (s *schedulerManager) launchTasksLoop(tasks []*task.TaskInfo) {
 	log.Debugf("Launched all %v tasks", nTasks)
 }
 
-func (s *schedulerManager) assignTasksToOffer(
+func (s *placementManager) assignTasksToOffer(
 	tasks []*task.TaskInfo, offer *mesos.Offer) []*task.TaskInfo {
 	remain := util.GetOfferScalarResourceSummary(offer)
 	offerID := offer.GetId().Value
@@ -133,7 +134,7 @@ func (s *schedulerManager) assignTasksToOffer(
 }
 
 // workLoop is the internal loop that
-func (s *schedulerManager) workLoop() {
+func (s *placementManager) workLoop() {
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
 		if err != nil {
@@ -150,7 +151,7 @@ func (s *schedulerManager) workLoop() {
 	}
 }
 
-func (s *schedulerManager) getTasks(limit int) (
+func (s *placementManager) getTasks(limit int) (
 	taskInfos []*task.TaskInfo, err error) {
 	// It could happen that the work loop is started before the
 	// peloton master inbound is started.  In such case it could
@@ -181,7 +182,7 @@ func (s *schedulerManager) getTasks(limit int) (
 	return response.Tasks, nil
 }
 
-func (s *schedulerManager) getLocalOffer() (*mesos.Offer, error) {
+func (s *placementManager) getLocalOffer() (*mesos.Offer, error) {
 	for {
 		offer := s.offerQueue.GetOffer(1 * time.Millisecond)
 		if offer != nil {
@@ -202,7 +203,7 @@ func (s *schedulerManager) getLocalOffer() (*mesos.Offer, error) {
 	}
 }
 
-func (s *schedulerManager) getOffers(limit int) (
+func (s *placementManager) getOffers(limit int) (
 	offers []*mesos.Offer, err error) {
 	// It could happen that the work loop is started before the
 	// peloton master inbound is started.  In such case it could
@@ -235,6 +236,6 @@ func (s *schedulerManager) getOffers(limit int) (
 
 // NewMetrics returns a new Metrics struct with all metrics initialized and rooted below the given tally scope
 // NOTE: helper function to delegate to metrics.New() to avoid cyclical import dependencies
-func NewMetrics(scope tally.Scope) sched_metrics.Metrics {
-	return sched_metrics.New(scope)
+func NewMetrics(scope tally.Scope) placement_metrics.Metrics {
+	return placement_metrics.New(scope)
 }

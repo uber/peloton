@@ -1,0 +1,9 @@
+logging:
+  level: info
+
+metrics:
+  prometheus:
+    enable: true
+  #statsd:
+  #  enable: true
+  #  endpoint: localhost:1234

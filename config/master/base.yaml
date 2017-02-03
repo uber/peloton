@@ -43,6 +43,6 @@ mesos:
     failover_timeout: 60000000
     checkpoint: false
 
-scheduler:
+placement:
    task_dequeue_limit: 20
    offer_dequeue_limit: 10
