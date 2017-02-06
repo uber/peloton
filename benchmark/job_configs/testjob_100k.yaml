@@ -15,19 +15,20 @@ labels:
   - key: testKey2
     value: testVal2
 instancecount: 100000
-resource:
-  cpuslimit: 1.0
-  memlimitmb: 8192.0
-  disklimitmb: 24
-  fdlimit: 10
-healthcheck: null
-ports: []
-container: null
 sla:
   priority: 22
   minimuminstancecount: 12
   minimuminstancepercent: 50
   preemptible: false
-command:
-  shell: true
-  value: 'echo Hello'
+defaultconfig:
+  resource:
+    cpuslimit: 1.0
+    memlimitmb: 8192.0
+    disklimitmb: 24
+    fdlimit: 10
+  healthcheck: null
+  ports: []
+  container: null
+  command:
+    shell: true
+    value: 'echo Hello'
