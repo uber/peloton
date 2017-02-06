@@ -9,7 +9,6 @@ import (
 	"time"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -20,7 +19,9 @@ import (
 // InitTaskStateManager init the task state manager
 func InitTaskStateManager(
 	d yarpc.Dispatcher,
-	masterConfig *config.MasterConfig,
+	updateBufferSize int,
+	updateAckConcurrency int,
+	dbWriteConcurrency int,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore) {
 
@@ -33,20 +34,20 @@ func InitTaskStateManager(
 	var statusChannelCount int32
 
 	handler := taskStateManager{
-		TaskStore:          taskStore,
-		JobStore:           jobStore,
-		client:             mpb.New(d.ClientConfig("mesos-master"), "x-protobuf"),
-		config:             masterConfig,
-		ackChannel:         make(chan *sched.Event_Update, masterConfig.TaskUpdateBufferSize),
-		taskUpdateCount:    &taskUpdateCount,
-		prevUpdateCount:    &prevUpdateCount,
-		taskAckCount:       &taskUpdateAckCount,
-		prevAckCount:       &prevTaskUpdateAckCount,
-		dBWrittenCount:     &taskUpdateDBWrittenCount,
-		prevDBWrittenCount: &prevTaskUpdateDBWrittenCount,
-		statusChannelCount: &statusChannelCount,
+		TaskStore:            taskStore,
+		JobStore:             jobStore,
+		client:               mpb.New(d.ClientConfig("mesos-master"), "x-protobuf"),
+		updateAckConcurrency: updateAckConcurrency,
+		ackChannel:           make(chan *sched.Event_Update, updateBufferSize),
+		taskUpdateCount:      &taskUpdateCount,
+		prevUpdateCount:      &prevUpdateCount,
+		taskAckCount:         &taskUpdateAckCount,
+		prevAckCount:         &prevTaskUpdateAckCount,
+		dBWrittenCount:       &taskUpdateDBWrittenCount,
+		prevDBWrittenCount:   &prevTaskUpdateDBWrittenCount,
+		statusChannelCount:   &statusChannelCount,
 	}
-	handler.applier = newTaskStateUpdateApplier(&handler, masterConfig.DbWriteConcurrency, 10000)
+	handler.applier = newTaskStateUpdateApplier(&handler, dbWriteConcurrency, 10000)
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_UPDATE: handler.Update,
 	}
@@ -58,11 +59,11 @@ func InitTaskStateManager(
 }
 
 type taskStateManager struct {
-	JobStore  storage.JobStore
-	TaskStore storage.TaskStore
-	client    mpb.Client
-	applier   *taskUpdateApplier
-	config    *config.MasterConfig
+	JobStore             storage.JobStore
+	TaskStore            storage.TaskStore
+	client               mpb.Client
+	applier              *taskUpdateApplier
+	updateAckConcurrency int
 	// Buffers the status updates to ack
 	ackChannel chan *sched.Event_Update
 
@@ -112,7 +113,7 @@ func (m *taskStateManager) Update(
 }
 
 func (m *taskStateManager) startAsyncProcessTaskUpdates() {
-	for i := 0; i < m.config.TaskUpdateAckConcurrency; i++ {
+	for i := 0; i < m.updateAckConcurrency; i++ {
 		go func() {
 			for {
 				select {

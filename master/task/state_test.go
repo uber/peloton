@@ -1,16 +1,16 @@
 package task
 
 import (
-	"code.uber.internal/infra/peloton/master/config"
-	"code.uber.internal/infra/peloton/util"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	mesos "mesos/v1"
 	"peloton/api/job"
 	"peloton/api/task"
 	"sync"
 	"testing"
 	"time"
+
+	"code.uber.internal/infra/peloton/util"
+	"github.com/stretchr/testify/assert"
 )
 
 type mockTaskStore struct {
@@ -67,13 +67,11 @@ func TestTaskStateUpdateApplier(t *testing.T) {
 	}
 	var dBWrittenCount int64
 	handler := &taskStateManager{
-		TaskStore: store,
-		JobStore:  nil,
-		client:    nil,
-		config: &config.MasterConfig{
-			TaskUpdateAckConcurrency: 0,
-		},
-		dBWrittenCount: &dBWrittenCount,
+		TaskStore:            store,
+		JobStore:             nil,
+		client:               nil,
+		updateAckConcurrency: 0,
+		dBWrittenCount:       &dBWrittenCount,
 	}
 
 	applier := newTaskStateUpdateApplier(handler, 15, 100)

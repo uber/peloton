@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"gopkg.in/alecthomas/kingpin.v2"
+
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/jobmgr"
@@ -24,6 +26,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/uber-go/tally"
@@ -32,7 +35,6 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -349,7 +351,13 @@ func main() {
 		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
 
-	task.InitTaskStateManager(dispatcher, &cfg.Master, store, store)
+	task.InitTaskStateManager(
+		dispatcher,
+		cfg.Master.TaskUpdateBufferSize,
+		cfg.Master.TaskUpdateAckConcurrency,
+		cfg.Master.DbWriteConcurrency,
+		store,
+		store)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

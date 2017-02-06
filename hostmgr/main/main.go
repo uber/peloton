@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -187,6 +188,17 @@ func main() {
 		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
+
+	// Initializing TaskStateManager will start to record task status update back to storage.
+	// TODO(zhitao): This is temporary. Eventually we should create proper API protocol for
+	// `WaitTaskStatusUpdate` and allow RM/JM to retrieve this separately.
+	task.InitTaskStateManager(
+		dispatcher,
+		cfg.HostManager.TaskUpdateBufferSize,
+		cfg.HostManager.TaskUpdateAckConcurrency,
+		cfg.HostManager.DbWriteConcurrency,
+		store,
+		store)
 
 	// This is the address of the local server address to be announced via leader election
 	ip, err := util.ListenIP()
