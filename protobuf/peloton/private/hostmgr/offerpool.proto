@@ -5,9 +5,9 @@
 
 syntax = "proto3";
 
-package peloton.master.offerpool;
+package peloton.private.hostmgr.offerpool;
 
-option go_package = "offerpool";
+option go_package = "peloton/private/hostmgr/offerpool";
 
 import "mesos/v1/mesos.proto";
 

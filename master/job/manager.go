@@ -18,7 +18,7 @@ import (
 
 	"peloton/api/job"
 	"peloton/api/task"
-	"peloton/master/taskqueue"
+	"peloton/private/resmgr/taskqueue"
 	"strings"
 )
 

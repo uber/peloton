@@ -16,7 +16,7 @@ import (
 	mesos "mesos/v1"
 	"peloton/api/job"
 	"peloton/api/task"
-	tq "peloton/master/taskqueue"
+	tq "peloton/private/resmgr/taskqueue"
 )
 
 // InitTaskQueue inits the TaskQueue

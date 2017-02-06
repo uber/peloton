@@ -5,9 +5,9 @@
 
 syntax = "proto3";
 
-package peloton.master.taskqueue;
+package peloton.private.resmgr.taskqueue;
 
-option go_package = "taskqueue";
+option go_package = "peloton/private/resmgr/taskqueue";
 
 import "peloton/api/task/task.proto";
 

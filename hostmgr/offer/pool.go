@@ -15,7 +15,7 @@ import (
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 
-	"peloton/master/offerpool"
+	"peloton/private/hostmgr/offerpool"
 )
 
 // Pool caches a set of offers received from Mesos master. It is

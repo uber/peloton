@@ -22,8 +22,8 @@ import (
 	"go.uber.org/yarpc/encoding/json"
 	mesos "mesos/v1"
 	"peloton/api/task"
-	"peloton/master/offerpool"
-	"peloton/master/taskqueue"
+	"peloton/private/hostmgr/offerpool"
+	"peloton/private/resmgr/taskqueue"
 )
 
 const (
