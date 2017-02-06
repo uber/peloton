@@ -1,11 +1,11 @@
-package jobmgr
+package job
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/master/config"
+	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/master/metrics"
 	pmt "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/storage"
@@ -22,20 +22,21 @@ import (
 	"strings"
 )
 
-// InitManager initalizes the job manager
-func InitManager(d yarpc.Dispatcher,
-	masterConfig *config.MasterConfig,
+// InitServiceHandler initalizes the job manager
+func InitServiceHandler(d yarpc.Dispatcher,
+	config *jobmgr.Config,
 	js storage.JobStore,
 	ts storage.TaskStore,
-	metrics *metrics.Metrics) {
+	metrics *metrics.Metrics,
+	clientName string) {
 
-	handler := jobManager{
+	handler := serviceHandler{
 		JobStore:  js,
 		TaskStore: ts,
-		client:    json.New(d.ClientConfig("peloton-master")),
+		client:    json.New(d.ClientConfig(clientName)),
 		rootCtx:   context.Background(),
 		metrics:   metrics,
-		config:    masterConfig,
+		config:    config,
 	}
 	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
 	json.Register(d, json.Procedure("JobManager.Get", handler.Get))
@@ -43,19 +44,20 @@ func InitManager(d yarpc.Dispatcher,
 	json.Register(d, json.Procedure("JobManager.Delete", handler.Delete))
 }
 
-type jobManager struct {
+// serviceHandler implements peloton.api.job.JobManager
+type serviceHandler struct {
 	JobStore  storage.JobStore
 	TaskStore storage.TaskStore
 	TaskQueue util.TaskQueue
 	client    json.Client
 	rootCtx   context.Context
 	metrics   *metrics.Metrics
-	config    *config.MasterConfig
+	config    *jobmgr.Config
 }
 
 // Create creates a job object for a given job configuration and
 // enqueues the tasks for scheduling
-func (m *jobManager) Create(
+func (m *serviceHandler) Create(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
@@ -145,7 +147,7 @@ func (m *jobManager) Create(
 	}, nil, nil
 }
 
-func (m *jobManager) Get(
+func (m *serviceHandler) Get(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *job.GetRequest) (*job.GetResponse, yarpc.ResMeta, error) {
@@ -162,7 +164,7 @@ func (m *jobManager) Get(
 	return &job.GetResponse{Result: jobConfig}, nil, nil
 }
 
-func (m *jobManager) Query(
+func (m *serviceHandler) Query(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
@@ -179,7 +181,7 @@ func (m *jobManager) Query(
 	return &job.QueryResponse{Result: jobConfigs}, nil, nil
 }
 
-func (m *jobManager) Delete(
+func (m *serviceHandler) Delete(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *job.DeleteRequest) (*job.DeleteResponse, yarpc.ResMeta, error) {
@@ -197,7 +199,7 @@ func (m *jobManager) Delete(
 	return &job.DeleteResponse{}, nil, nil
 }
 
-func (m *jobManager) putTasks(tasks []*task.TaskInfo) error {
+func (m *serviceHandler) putTasks(tasks []*task.TaskInfo) error {
 	ctx, cancelFunc := context.WithTimeout(m.rootCtx, 10*time.Second)
 	defer cancelFunc()
 	var response taskqueue.EnqueueResponse

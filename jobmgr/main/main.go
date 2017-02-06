@@ -2,7 +2,8 @@ package main
 
 import (
 	"code.uber.internal/infra/peloton/jobmgr"
-	"code.uber.internal/infra/peloton/master/config"
+	"code.uber.internal/infra/peloton/jobmgr/job"
+	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -15,6 +16,7 @@ import (
 	"os"
 	"time"
 
+	cconfig "code.uber.internal/infra/peloton/common/config"
 	resmgr_config "code.uber.internal/infra/peloton/resmgr/config"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -48,10 +50,10 @@ func main() {
 	// TODO: Add metrics introspection to scope.
 
 	// TODO: Move to jobmgr.Config
-	log.Debugf("Loading config from %v...", *configs)
-	cfg, err := config.New(*configs...)
-	if err != nil {
-		log.Fatalf("Error initializing configuration: %v", err)
+	var cfg jobmgr.Config
+
+	if err := cconfig.Parse(&cfg, *configs...); err != nil {
+		log.WithField("error", err).Fatal("Cannot parse host manager config")
 	}
 
 	// Connect to mysql DB
@@ -60,8 +62,8 @@ func main() {
 	}
 	// TODO: fix metric scope
 	store := mysql.NewJobStore(cfg.Storage.MySQL, tally.NoopScope)
-	store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
-	store.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
+	store.DB.SetMaxOpenConns(cfg.JobManager.DbWriteConcurrency)
+	store.DB.SetMaxIdleConns(cfg.JobManager.DbWriteConcurrency)
 	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
 	urlPath := "/jobmgr/v1"
@@ -72,7 +74,7 @@ func main() {
 	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
 	mux := nethttp.NewServeMux()
 	inbounds := []transport.Inbound{
-		http.NewInbound(fmt.Sprintf(":%d", cfg.Master.Port), http.Mux(urlPath, mux)),
+		http.NewInbound(fmt.Sprintf(":%d", cfg.JobManager.Port), http.Mux(urlPath, mux)),
 	}
 
 	resourceManagerPeerChooser := peer.NewPeerChooser()
@@ -95,7 +97,9 @@ func main() {
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
 	jobManagerMetrics := metrics.New(tally.NoopScope)
-	jobmgr.InitManager(dispatcher, &(cfg.Master), store, store, &jobManagerMetrics)
+	taskManagerMetrics := metrics.New(tally.NoopScope)
+	job.InitServiceHandler(dispatcher, &cfg, store, store, &jobManagerMetrics, resmgrServiceName)
+	task.InitServiceHandler(dispatcher, store, store, &taskManagerMetrics)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

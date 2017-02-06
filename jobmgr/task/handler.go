@@ -14,9 +14,9 @@ import (
 	"peloton/api/task"
 )
 
-// InitManager initializes the TaskManager
-func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, metrics *metrics.Metrics) {
-	handler := taskManager{
+// InitServiceHandler initializes the TaskManager
+func InitServiceHandler(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, metrics *metrics.Metrics) {
+	handler := serviceHandler{
 		taskStore: taskStore,
 		jobStore:  jobStore,
 		metrics:   metrics,
@@ -28,13 +28,14 @@ func InitManager(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storag
 	json.Register(d, json.Procedure("TaskManager.Restart", handler.Restart))
 }
 
-type taskManager struct {
+// serviceHandler implements peloton.api.task.TaskManager
+type serviceHandler struct {
 	taskStore storage.TaskStore
 	jobStore  storage.JobStore
 	metrics   *metrics.Metrics
 }
 
-func (m *taskManager) Get(
+func (m *serviceHandler) Get(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.GetRequest) (*task.GetResponse, yarpc.ResMeta, error) {
@@ -70,7 +71,7 @@ func (m *taskManager) Get(
 	}, nil, nil
 }
 
-func (m *taskManager) List(
+func (m *serviceHandler) List(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.ListRequest) (*task.ListResponse, yarpc.ResMeta, error) {
@@ -112,7 +113,7 @@ func (m *taskManager) List(
 	}, nil, nil
 }
 
-func (m *taskManager) Start(
+func (m *serviceHandler) Start(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.StartRequest) (*task.StartResponse, yarpc.ResMeta, error) {
@@ -123,7 +124,7 @@ func (m *taskManager) Start(
 	return &task.StartResponse{}, nil, nil
 }
 
-func (m *taskManager) Stop(
+func (m *serviceHandler) Stop(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.StopRequest) (*task.StopResponse, yarpc.ResMeta, error) {
@@ -134,7 +135,7 @@ func (m *taskManager) Stop(
 	return &task.StopResponse{}, nil, nil
 }
 
-func (m *taskManager) Restart(
+func (m *serviceHandler) Restart(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *task.RestartRequest) (*task.RestartResponse, yarpc.ResMeta, error) {

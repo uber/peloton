@@ -13,11 +13,12 @@ import (
 
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
-	"code.uber.internal/infra/peloton/jobmgr"
+	"code.uber.internal/infra/peloton/jobmgr/job"
+	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/metrics"
-	"code.uber.internal/infra/peloton/master/task"
+	master_task "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/placement"
 	taskq "code.uber.internal/infra/peloton/resmgr/taskqueue"
@@ -336,8 +337,8 @@ func main() {
 
 	// Initalize managers
 	metrics := metrics.New(metricScope.SubScope("master"))
-	jobmgr.InitManager(dispatcher, &cfg.Master, store, store, &metrics)
-	task.InitManager(dispatcher, store, store, &metrics)
+	job.InitServiceHandler(dispatcher, &cfg.JobManager, store, store, &metrics, "peloton-master")
+	task.InitServiceHandler(dispatcher, store, store, &metrics)
 	tq := taskq.InitTaskQueue(dispatcher, &metrics, store, store)
 	upgrade.InitManager(dispatcher)
 
@@ -351,7 +352,7 @@ func main() {
 		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
 
-	task.InitTaskStateManager(
+	master_task.InitTaskStateManager(
 		dispatcher,
 		cfg.Master.TaskUpdateBufferSize,
 		cfg.Master.TaskUpdateAckConcurrency,
