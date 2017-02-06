@@ -17,10 +17,10 @@ RUN dpkg -i peloton.deb
 
 ENV PELOTON_CONFIG_DIR  /etc/peloton/config/master
 ENV PELOTON_ENVIRONMENT development
-# TODO: remove this once we have split master into 4 components
-ENV PELOTON_COMPONENT        master
+# TODO: remove this once we have split master into 4 apps
+ENV PELOTON_APP        master
 
 # workdir is required until T581823 is fixed.
 WORKDIR /peloton-install
 ENTRYPOINT ["/entrypoint.sh"]
-EXPOSE 5289 5290
+EXPOSE 5289 5290 5291 5292
