@@ -29,7 +29,7 @@ func MigrateForTest() *Config {
 		Stapi: sc.Configuration{
 			Cassandra: sc.Cassandra{
 				ContactPoints: []string{"127.0.0.1"},
-				Port:          9042,
+				Port:          9043,
 				CQLVersion:    "3.4.2",
 			},
 			MaxGoRoutines: 1000,
