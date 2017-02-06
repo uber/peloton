@@ -5,6 +5,7 @@ import (
 
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/config"
+	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	log "github.com/Sirupsen/logrus"
 )
@@ -18,6 +19,7 @@ type Handler struct {
 	localAddr       string
 	env             string
 	resourceManager *resmgr.ResourceManager
+	taskQueue       *tq.Queue
 }
 
 // NewElectionHandler will create the elect handle object
@@ -25,7 +27,8 @@ func NewElectionHandler(env string,
 	pChooser *peer.Chooser,
 	cfg *config.Config,
 	localResMgrMasterAddr string,
-	rm *resmgr.ResourceManager) *Handler {
+	rm *resmgr.ResourceManager,
+	taskqueue *tq.Queue) *Handler {
 	result := Handler{
 		env:             env,
 		peerChooser:     pChooser,
@@ -33,6 +36,7 @@ func NewElectionHandler(env string,
 		mutex:           &sync.Mutex{},
 		localAddr:       localResMgrMasterAddr,
 		resourceManager: rm,
+		taskQueue:       taskqueue,
 	}
 	return &result
 }
@@ -43,8 +47,14 @@ func (p *Handler) GainedLeadershipCallBack() error {
 	defer p.mutex.Unlock()
 	log.Infof("Gained leadership")
 
+	err := p.taskQueue.LoadFromDB()
+	if err != nil {
+		log.Errorf("Failed to taskQueue.LoadFromDB, err = %v", err)
+		return err
+	}
+
 	// Gained leadership, Need to start resmgr service
-	err := p.peerChooser.UpdatePeer(p.localAddr)
+	err = p.peerChooser.UpdatePeer(p.localAddr)
 	if err != nil {
 		log.Errorf("Failed to update peer with p.localResMgrAddr, err = %v", err)
 		return err
@@ -59,6 +69,7 @@ func (p *Handler) LostLeadershipCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	log.Infof("Lost leadership")
+	p.taskQueue.Reset()
 	p.resourceManager.Stop()
 
 	return nil

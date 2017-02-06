@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/config"
 	resleader "code.uber.internal/infra/peloton/resmgr/election"
+	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -120,6 +121,12 @@ func main() {
 	resstore.DB.SetMaxIdleConns(cfg.ResMgr.DbWriteConcurrency)
 	resstore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
+	// Initialize job and task stores
+	store := mysql.NewJobStore(cfg.Storage.MySQL, metricScope.SubScope("storage"))
+	store.DB.SetMaxOpenConns(cfg.ResMgr.DbWriteConcurrency)
+	store.DB.SetMaxIdleConns(cfg.ResMgr.DbWriteConcurrency)
+	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
+
 	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
 	mux := nethttp.NewServeMux()
 	if promHandler != nil {
@@ -154,6 +161,7 @@ func main() {
 	metrics := metrics.New(metricScope.SubScope("resource-manager"))
 
 	rm := resmgr.InitManager(dispatcher, cfg, resstore, &metrics)
+	taskqueue := tq.InitTaskQueue(dispatcher, &metrics, store, store)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
@@ -168,7 +176,7 @@ func main() {
 	}
 	localPelotonRMAddr := fmt.Sprintf("http://%s:%d", ip, cfg.ResMgr.Port)
 	pLeader := resleader.NewElectionHandler(*env, resmgrPeerChooser, cfg, localPelotonRMAddr,
-		rm)
+		rm, taskqueue)
 	leader.NewZkElection(cfg.Election, localPelotonRMAddr, pLeader)
 
 	select {}

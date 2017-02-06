@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	mesos "mesos/v1"
+	"peloton/api/job"
+	"peloton/api/task"
+
 	"code.uber.internal/infra/peloton/master/config"
 	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/storage/mysql"
@@ -16,9 +20,6 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
-	mesos "mesos/v1"
-	"peloton/api/job"
-	"peloton/api/task"
 )
 
 var masterPort = 47960
@@ -43,10 +44,10 @@ func (suite *QueueTestSuite) SetupTest() {
 		Unary: http.NewOutbound(url),
 	}
 	suite.dispatcher = yarpc.NewDispatcher(yarpc.Config{
-		Name:     "peloton-master",
+		Name:     "peloton-resmgr",
 		Inbounds: inbounds,
 		Outbounds: yarpc.Outbounds{
-			"peloton-master": outbounds,
+			"peloton-resmgr": outbounds,
 		},
 	})
 	suite.dispatcher.Start()

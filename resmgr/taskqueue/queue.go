@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/master/metrics"
+	pmt "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
@@ -180,7 +181,7 @@ func (q *Queue) requeueTasks(
 		taskID := fmt.Sprintf("%s-%d", jobID, i)
 		if exist, _ := taskIDs[taskID]; !exist {
 			log.Infof("Creating missing task %d for job %v", i, jobID)
-			taskConfig, _ := GetTaskConfig(jobConfig, i)
+			taskConfig, _ := pmt.GetTaskConfig(jobConfig, i)
 			t := &task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
 					State:  task.RuntimeInfo_INITIALIZED,

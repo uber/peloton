@@ -1,6 +1,14 @@
 package main
 
 import (
+	"fmt"
+	nethttp "net/http"
+	"net/url"
+	"os"
+	"runtime"
+	"sync"
+	"time"
+
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/jobmgr"
@@ -10,12 +18,12 @@ import (
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/placement"
+	taskq "code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
-	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/uber-go/tally"
@@ -25,12 +33,6 @@ import (
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
-	nethttp "net/http"
-	"net/url"
-	"os"
-	"runtime"
-	"sync"
-	"time"
 )
 
 const (
@@ -64,7 +66,7 @@ type pelotonMaster struct {
 	mesosInbound  mhttp.Inbound
 	peerChooser   *peer.Chooser
 	mesosOutbound transport.Outbounds
-	taskQueue     *task.Queue
+	taskQueue     *taskq.Queue
 	store         *mysql.JobStore
 	cfg           *config.Config
 	mutex         *sync.Mutex
@@ -79,7 +81,7 @@ func newPelotonMaster(env string,
 	mInbound mhttp.Inbound,
 	mOutbounds transport.Outbounds,
 	pChooser *peer.Chooser,
-	tq *task.Queue,
+	tq *taskq.Queue,
 	store *mysql.JobStore,
 	cfg *config.Config,
 	localPelotonMasterAddr string,
@@ -334,7 +336,7 @@ func main() {
 	metrics := metrics.New(metricScope.SubScope("master"))
 	jobmgr.InitManager(dispatcher, &cfg.Master, store, store, &metrics)
 	task.InitManager(dispatcher, store, store, &metrics)
-	tq := task.InitTaskQueue(dispatcher, &metrics, store, store)
+	tq := taskq.InitTaskQueue(dispatcher, &metrics, store, store)
 	upgrade.InitManager(dispatcher)
 
 	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), cfg.Mesos.Encoding)
