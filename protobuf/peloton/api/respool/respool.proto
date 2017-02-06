@@ -5,11 +5,11 @@
 
 syntax = "proto3";
 
-package peloton.resmgr;
+package peloton.api.respool;
 
-option go_package = "resmgr";
+option go_package = "peloton/api/respool";
 
-import "peloton/changelog/changelog.proto";
+import "peloton/api/changelog/changelog.proto";
 
 /**
  *  A unique ID assigned to a Resource Pool.

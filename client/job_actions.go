@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	pj "peloton/job"
+	pj "peloton/api/job"
 
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"

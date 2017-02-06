@@ -10,8 +10,8 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	"peloton/job"
-	"peloton/task"
+	"peloton/api/job"
+	"peloton/api/task"
 )
 
 // InitManager initializes the TaskManager

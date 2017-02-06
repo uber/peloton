@@ -6,8 +6,8 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"peloton/job"
-	"peloton/task/config"
+	"peloton/api/job"
+	"peloton/api/task/config"
 )
 
 // GetTaskConfig returns the task config of a given task instance by

@@ -16,9 +16,9 @@ import (
 	"go.uber.org/yarpc/encoding/json"
 	mesos "mesos/v1"
 
-	"peloton/job"
+	"peloton/api/job"
+	"peloton/api/task"
 	"peloton/master/taskqueue"
-	"peloton/task"
 	"strings"
 )
 

@@ -17,8 +17,8 @@ import (
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	mesos "mesos/v1"
-	"peloton/job"
-	"peloton/task"
+	"peloton/api/job"
+	"peloton/api/task"
 )
 
 var masterPort = 47960

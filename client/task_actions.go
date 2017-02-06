@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	pj "peloton/job"
-	pt "peloton/task"
+	pj "peloton/api/job"
+	pt "peloton/api/task"
 
 	"go.uber.org/yarpc"
 )

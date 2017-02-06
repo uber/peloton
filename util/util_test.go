@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"mesos/v1"
-	"peloton/job"
-	"peloton/task"
-	"peloton/task/config"
+	"peloton/api/job"
+	"peloton/api/task"
+	"peloton/api/task/config"
 	"testing"
 )
 

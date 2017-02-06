@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	pt "peloton/task"
+	pt "peloton/api/task"
 )
 
 func TestParseJobCreate(t *testing.T) {

@@ -4,9 +4,9 @@
 
 syntax = "proto3";
 
-package peloton.task;
+package peloton.api.task;
 
-option go_package = "peloton/task/config";
+option go_package = "peloton/api/task/config";
 
 import "mesos/v1/mesos.proto";
 

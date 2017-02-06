@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"peloton/resmgr"
+	"peloton/api/respool"
 
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
@@ -12,7 +12,7 @@ import (
 
 // ResPoolCreateAction is the action for creating a job
 func (client *Client) ResPoolCreateAction(respoolName string, cfgFile string) error {
-	var respoolConfig resmgr.ResourcePoolConfig
+	var respoolConfig respool.ResourcePoolConfig
 	buffer, err := ioutil.ReadFile(cfgFile)
 	if err != nil {
 		return fmt.Errorf("Unable to open file %s: %v", cfgFile, err)
@@ -21,9 +21,9 @@ func (client *Client) ResPoolCreateAction(respoolName string, cfgFile string) er
 		return fmt.Errorf("Unable to parse file %s: %v", cfgFile, err)
 	}
 
-	var response resmgr.CreateResponse
-	var request = &resmgr.CreateRequest{
-		Id: &resmgr.ResourcePoolID{
+	var response respool.CreateResponse
+	var request = &respool.CreateRequest{
+		Id: &respool.ResourcePoolID{
 			Value: respoolName,
 		},
 		Config: &respoolConfig,
@@ -41,7 +41,7 @@ func (client *Client) ResPoolCreateAction(respoolName string, cfgFile string) er
 	return nil
 }
 
-func printResPoolCreateResponse(r resmgr.CreateResponse, debug bool) {
+func printResPoolCreateResponse(r respool.CreateResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {

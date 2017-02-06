@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"peloton/job"
-	"peloton/task/config"
+	"peloton/api/job"
+	"peloton/api/task/config"
 )
 
 type TaskConfigTestSuite struct {

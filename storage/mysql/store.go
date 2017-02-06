@@ -13,9 +13,9 @@ import (
 	"time"
 
 	mesos_v1 "mesos/v1"
-	"peloton/job"
-	"peloton/resmgr"
-	"peloton/task"
+	"peloton/api/job"
+	"peloton/api/respool"
+	"peloton/api/task"
 
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
@@ -637,7 +637,7 @@ func NewResourcePoolStore(db *sqlx.DB, metricScope tally.Scope) *ResourcePoolSto
 
 // CreateResourcePool creates a resource pool with the resource pool id and the config value
 // TODO: Need to create test case
-func (m *ResourcePoolStore) CreateResourcePool(id *resmgr.ResourcePoolID, respoolConfig *resmgr.ResourcePoolConfig, createdBy string) error {
+func (m *ResourcePoolStore) CreateResourcePool(id *respool.ResourcePoolID, respoolConfig *respool.ResourcePoolConfig, createdBy string) error {
 	buffer, err := json.Marshal(respoolConfig)
 	if err != nil {
 		log.Errorf("error = %v", err)
@@ -657,21 +657,21 @@ func (m *ResourcePoolStore) CreateResourcePool(id *resmgr.ResourcePoolID, respoo
 }
 
 // GetResourcePool gets a resource pool info object
-func (m *ResourcePoolStore) GetResourcePool(id *resmgr.ResourcePoolID) (*resmgr.ResourcePoolInfo, error) {
+func (m *ResourcePoolStore) GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
 	return nil, nil
 }
 
 // DeleteResourcePool Deletes the resource pool
-func (m *ResourcePoolStore) DeleteResourcePool(id *resmgr.ResourcePoolID) error {
+func (m *ResourcePoolStore) DeleteResourcePool(id *respool.ResourcePoolID) error {
 	return nil
 }
 
 // UpdateResourcePool Update the resource pool
-func (m *ResourcePoolStore) UpdateResourcePool(id *resmgr.ResourcePoolID, Config *resmgr.ResourcePoolConfig) error {
+func (m *ResourcePoolStore) UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
 	return nil
 }
 
 // GetAllResourcePools Get all the resource pool
-func (m *ResourcePoolStore) GetAllResourcePools() (map[string]*resmgr.ResourcePoolConfig, error) {
+func (m *ResourcePoolStore) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error) {
 	return nil, nil
 }

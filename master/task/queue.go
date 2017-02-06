@@ -14,9 +14,9 @@ import (
 	"go.uber.org/yarpc/encoding/json"
 
 	mesos "mesos/v1"
-	"peloton/job"
+	"peloton/api/job"
+	"peloton/api/task"
 	tq "peloton/master/taskqueue"
-	"peloton/task"
 )
 
 // InitTaskQueue inits the TaskQueue

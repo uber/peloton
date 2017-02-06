@@ -4,13 +4,13 @@
 
 syntax = "proto3";
 
-package peloton.task;
+package peloton.api.task;
 
-option go_package = "peloton/task";
+option go_package = "peloton/api/task";
 
 import "mesos/v1/mesos.proto";
-import "peloton/job/job.proto";
-import "peloton/task/config.proto";
+import "peloton/api/job/job.proto";
+import "peloton/api/task/config.proto";
 
 
 /**

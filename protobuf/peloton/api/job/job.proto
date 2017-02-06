@@ -5,13 +5,13 @@
 
 syntax = "proto3";
 
-package peloton.job;
+package peloton.api.job;
 
-option go_package = "peloton/job";
+option go_package = "peloton/api/job";
 
 import "mesos/v1/mesos.proto";
-import "peloton/changelog/changelog.proto";
-import "peloton/task/config.proto";
+import "peloton/api/changelog/changelog.proto";
+import "peloton/api/task/config.proto";
 
 /**
  *  A unique ID assigned to an job.

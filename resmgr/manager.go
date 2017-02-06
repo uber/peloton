@@ -11,7 +11,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	"peloton/resmgr"
+	"peloton/api/respool"
 )
 
 const (
@@ -49,27 +49,27 @@ type ResourceManager struct {
 func (m *ResourceManager) CreateResourcePool(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	req *resmgr.CreateRequest) (*resmgr.CreateResponse, yarpc.ResMeta, error) {
+	req *respool.CreateRequest) (*respool.CreateResponse, yarpc.ResMeta, error) {
 
 	log.Info("CreateResourcePool Called")
 
 	resPoolID := req.Id
 	resPoolConfig := req.Config
 
-	log.WithField("config", resPoolConfig).Infof("resmgr.CreateResourcePool called: %v", req)
+	log.WithField("config", resPoolConfig).Infof("respool.CreateResourcePool called: %v", req)
 	// Add metrics
 
 	err := m.store.CreateResourcePool(resPoolID, resPoolConfig, "peloton")
 	if err != nil {
 		// Add failure metrics
-		return &resmgr.CreateResponse{
-			AlreadyExists: &resmgr.ResourcePoolAlreadyExists{
+		return &respool.CreateResponse{
+			AlreadyExists: &respool.ResourcePoolAlreadyExists{
 				Id:      resPoolID,
 				Message: err.Error(),
 			},
 		}, nil, nil
 	}
-	return &resmgr.CreateResponse{
+	return &respool.CreateResponse{
 		Result: resPoolID,
 	}, nil, nil
 }

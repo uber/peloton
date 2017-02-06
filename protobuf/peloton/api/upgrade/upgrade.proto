@@ -4,11 +4,11 @@
 
 syntax = "proto3";
 
-package peloton.upgrade;
+package peloton.api.upgrade;
 
-option go_package = "peloton/upgrade";
+option go_package = "peloton/api/upgrade";
 
-import "peloton/job/job.proto";
+import "peloton/api/job/job.proto";
 
 
 /**

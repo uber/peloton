@@ -12,7 +12,7 @@ import (
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
-	"peloton/task"
+	"peloton/api/task"
 )
 
 // Launcher is the interface to launch a set of tasks using an offer

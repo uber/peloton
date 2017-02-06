@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	pt "peloton/task"
+	pt "peloton/api/task"
 
 	pc "code.uber.internal/infra/peloton/client"
 	"gopkg.in/alecthomas/kingpin.v2"

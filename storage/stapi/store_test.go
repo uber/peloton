@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	mesos "mesos/v1"
-	"peloton/job"
-	"peloton/task"
-	"peloton/task/config"
+	"peloton/api/job"
+	"peloton/api/task"
+	"peloton/api/task/config"
 	"testing"
 )
 

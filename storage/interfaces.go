@@ -2,9 +2,9 @@ package storage
 
 import (
 	mesos_v1 "mesos/v1"
-	"peloton/job"
-	"peloton/resmgr"
-	"peloton/task"
+	"peloton/api/job"
+	"peloton/api/respool"
+	"peloton/api/task"
 )
 
 // TODO: Use string type for jobID and taskID
@@ -42,9 +42,9 @@ type FrameworkInfoStore interface {
 
 // ResourcePoolStore is the interface to store all the resource pool information
 type ResourcePoolStore interface {
-	CreateResourcePool(id *resmgr.ResourcePoolID, Config *resmgr.ResourcePoolConfig, cratedBy string) error
-	GetResourcePool(id *resmgr.ResourcePoolID) (*resmgr.ResourcePoolInfo, error)
-	DeleteResourcePool(id *resmgr.ResourcePoolID) error
-	UpdateResourcePool(id *resmgr.ResourcePoolID, Config *resmgr.ResourcePoolConfig) error
-	GetAllResourcePools() (map[string]*resmgr.ResourcePoolConfig, error)
+	CreateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig, cratedBy string) error
+	GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error)
+	DeleteResourcePool(id *respool.ResourcePoolID) error
+	UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error
+	GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error)
 }

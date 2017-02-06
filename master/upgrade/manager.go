@@ -16,7 +16,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	"peloton/upgrade"
+	"peloton/api/upgrade"
 )
 
 // InitManager inits the upgradeManager

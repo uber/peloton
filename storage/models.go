@@ -3,8 +3,8 @@ package storage
 import (
 	"database/sql"
 	"encoding/json"
-	"peloton/job"
-	"peloton/task"
+	"peloton/api/job"
+	"peloton/api/task"
 	"reflect"
 	"time"
 
