@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
@@ -17,7 +18,6 @@ import (
 	"time"
 
 	cconfig "code.uber.internal/infra/peloton/common/config"
-	resmgr_config "code.uber.internal/infra/peloton/resmgr/config"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"net/url"
@@ -27,13 +27,11 @@ import (
 const (
 	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
 	metricFlushInterval = 1 * time.Second
-	serviceName         = "peloton-jobmgr"
-	resmgrServiceName   = "peloton-resmgr"
 )
 
 var (
 	version string
-	app     = kingpin.New(serviceName, "Peloton Job Manager")
+	app     = kingpin.New(common.PelotonJobManager, "Peloton Job Manager")
 	configs = app.
 		Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").
 		Short('c').
@@ -77,19 +75,29 @@ func main() {
 		http.NewInbound(fmt.Sprintf(":%d", cfg.JobManager.Port), http.Mux(urlPath, mux)),
 	}
 
-	resourceManagerPeerChooser := peer.NewPeerChooser()
+	// TODO: hook up with service discovery code to auto-detect the resmgr/hostmgr leader address
+	resmgrPeerChooser := peer.NewPeerChooser()
+	resmgrAddr := fmt.Sprintf("http://%s:%d", cfg.JobManager.ResmgrHost, cfg.JobManager.ResmgrPort)
+	resmgrPeerChooser.UpdatePeer(resmgrAddr)
 	// TODO: change FrameworkURLPath to resource manager URL path
-	// TODO: hook up with service discovery code, point to the leader of the resource manager
-	pOutbound := http.NewChooserOutbound(resourceManagerPeerChooser, &url.URL{Scheme: "http", Path: resmgr_config.FrameworkURLPath})
-	pOutbounds := transport.Outbounds{
-		Unary: pOutbound,
-	}
+	resmgrOutbound := http.NewChooserOutbound(resmgrPeerChooser, &url.URL{Scheme: "http", Path: common.PelotonEndpointURL})
+
+	// TODO: hookup with service discovery for hostmgr leader
+	// As of now, peloton-jobmgr does not talk to hostmgr, hostmgrOutbound is placeholder
+	hostmgrPeerChooser := peer.NewPeerChooser()
+	hostmgrOutbound := http.NewChooserOutbound(hostmgrPeerChooser, &url.URL{Scheme: "http", Path: common.PelotonEndpointURL})
+
 	outbounds := yarpc.Outbounds{
-		resmgrServiceName: pOutbounds,
+		common.PelotonResourceManager: transport.Outbounds{
+			Unary: resmgrOutbound,
+		},
+		common.PelotonHostManager: transport.Outbounds{
+			Unary: hostmgrOutbound,
+		},
 	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      serviceName,
+		Name:      common.PelotonJobManager,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 	})
@@ -98,7 +106,7 @@ func main() {
 	// TODO: change to updated jobmgr.Config
 	jobManagerMetrics := metrics.New(tally.NoopScope)
 	taskManagerMetrics := metrics.New(tally.NoopScope)
-	job.InitServiceHandler(dispatcher, &cfg, store, store, &jobManagerMetrics, resmgrServiceName)
+	job.InitServiceHandler(dispatcher, &cfg, store, store, &jobManagerMetrics, common.PelotonJobManager)
 	task.InitServiceHandler(dispatcher, store, store, &taskManagerMetrics)
 
 	// Start dispatch loop

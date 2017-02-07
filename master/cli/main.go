@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
+	peloton_common "code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/jobmgr/job"
@@ -318,16 +319,16 @@ func main() {
 	mOutbounds := mhttp.NewOutbound(mesosURL)
 	pelotonMasterPeerChooser := peer.NewPeerChooser()
 	// The leaderUrl for pOutbound would be updated by leader election NewLeaderCallBack once leader is elected
-	pOutbound := http.NewChooserOutbound(pelotonMasterPeerChooser, &url.URL{Scheme: "http", Path: config.FrameworkURLPath})
+	pOutbound := http.NewChooserOutbound(pelotonMasterPeerChooser, &url.URL{Scheme: "http", Path: peloton_common.PelotonEndpointURL})
 	pOutbounds := transport.Outbounds{
 		Unary: pOutbound,
 	}
 	outbounds := yarpc.Outbounds{
-		"mesos-master":   mOutbounds,
-		"peloton-master": pOutbounds,
+		peloton_common.MesosMaster:   mOutbounds,
+		peloton_common.PelotonMaster: pOutbounds,
 	}
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      "peloton-master",
+		Name:      peloton_common.PelotonMaster,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 	})
@@ -337,7 +338,7 @@ func main() {
 
 	// Initalize managers
 	metrics := metrics.New(metricScope.SubScope("master"))
-	job.InitServiceHandler(dispatcher, &cfg.JobManager, store, store, &metrics, "peloton-master")
+	job.InitServiceHandler(dispatcher, &cfg.JobManager, store, store, &metrics, peloton_common.PelotonMaster)
 	task.InitServiceHandler(dispatcher, store, store, &metrics)
 	tq := taskq.InitTaskQueue(dispatcher, &metrics, store, store)
 	upgrade.InitManager(dispatcher)
