@@ -2,6 +2,7 @@ package stapi_test
 
 import (
 	"code.uber.internal/go-common.git/x/log"
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/stapi"
 	"fmt"
 	"github.com/stretchr/testify/suite"
@@ -40,6 +41,8 @@ func TestSTAPIStore(t *testing.T) {
 }
 
 func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
+	var jobStore storage.JobStore
+	jobStore = store
 	var originalJobs []*job.JobConfig
 	var records = 1
 	var keys = []string{"testKey0", "testKey1", "testKey2", "key0"}
@@ -86,17 +89,17 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 			Labels:        &labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
-		err := store.CreateJob(&jobID, &jobconfig, "uber")
+		err := jobStore.CreateJob(&jobID, &jobconfig, "uber")
 		suite.NoError(err)
 
 		// Create job with same job id would be no op
 		jobconfig.Labels = nil
 		jobconfig.Name = "random"
-		err = store.CreateJob(&jobID, &jobconfig, "uber2")
+		err = jobStore.CreateJob(&jobID, &jobconfig, "uber2")
 		suite.Error(err)
 
 		var jobconf *job.JobConfig
-		jobconf, err = store.GetJob(&jobID)
+		jobconf, err = jobStore.GetJob(&jobID)
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
 		suite.Equal(len((*(jobconf.Labels)).Labels), 4)
@@ -104,31 +107,37 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 }
 
 func (suite *STAPIStoreTestSuite) TestFrameworkInfo() {
-	err := store.SetMesosFrameworkID("framework1", "12345")
+	var frameworkStore storage.FrameworkInfoStore
+	frameworkStore = store
+	err := frameworkStore.SetMesosFrameworkID("framework1", "12345")
 	suite.NoError(err)
 	var frameworkID string
-	frameworkID, err = store.GetFrameworkID("framework1")
+	frameworkID, err = frameworkStore.GetFrameworkID("framework1")
 	suite.NoError(err)
 	suite.Equal(frameworkID, "12345")
 
-	frameworkID, err = store.GetFrameworkID("framework2")
+	frameworkID, err = frameworkStore.GetFrameworkID("framework2")
 	suite.Error(err)
 
-	err = store.SetMesosStreamID("framework1", "s-12345")
+	err = frameworkStore.SetMesosStreamID("framework1", "s-12345")
 	suite.NoError(err)
 
-	frameworkID, err = store.GetFrameworkID("framework1")
+	frameworkID, err = frameworkStore.GetFrameworkID("framework1")
 	suite.NoError(err)
 	suite.Equal(frameworkID, "12345")
 
-	frameworkID, err = store.GetMesosStreamID("framework1")
+	frameworkID, err = frameworkStore.GetMesosStreamID("framework1")
 	suite.NoError(err)
 	suite.Equal(frameworkID, "s-12345")
 }
 
-func (suite *STAPIStoreTestSuite) TestCreateTask() {
+func (suite *STAPIStoreTestSuite) TestAddTasks() {
+	var jobStore storage.JobStore
+	jobStore = store
+	var taskStore storage.TaskStore
+	taskStore = store
 	var nJobs = 3
-	var nTasks = 3
+	var nTasks = uint32(3)
 	var jobIDs []*job.JobID
 	var jobs []*job.JobConfig
 	for i := 0; i < nJobs; i++ {
@@ -137,25 +146,25 @@ func (suite *STAPIStoreTestSuite) TestCreateTask() {
 		jobConfig := createJobConfig()
 		jobConfig.Name = fmt.Sprintf("TestAddTasks_%d", i)
 		jobs = append(jobs, jobConfig)
-		err := store.CreateJob(&jobID, jobConfig, "uber")
+		err := jobStore.CreateJob(&jobID, jobConfig, "uber")
 		suite.NoError(err)
 
 		// For each job, create 3 tasks
-		for j := 0; j < nTasks; j++ {
+		for j := uint32(0); j < nTasks; j++ {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
 			taskInfo.Runtime.State = task.RuntimeInfo_TaskState(j)
-			err = store.CreateTask(&jobID, j, taskInfo, "test")
+			err = taskStore.CreateTask(&jobID, j, taskInfo, "test")
 			suite.NoError(err)
 			// Create same task should error
-			err = store.CreateTask(&jobID, j, taskInfo, "test")
+			err = taskStore.CreateTask(&jobID, j, taskInfo, "test")
 			suite.Error(err)
-			err = store.UpdateTask(taskInfo)
+			err = taskStore.UpdateTask(taskInfo)
 			suite.NoError(err)
 		}
 	}
 	// List all tasks by job
 	for i := 0; i < nJobs; i++ {
-		tasks, err := store.GetTasksForJob(jobIDs[i])
+		tasks, err := taskStore.GetTasksForJob(jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
@@ -169,7 +178,7 @@ func (suite *STAPIStoreTestSuite) TestCreateTask() {
 	// Update task
 	// List all tasks by job
 	for i := 0; i < nJobs; i++ {
-		tasks, err := store.GetTasksForJob(jobIDs[i])
+		tasks, err := taskStore.GetTasksForJob(jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
@@ -179,7 +188,7 @@ func (suite *STAPIStoreTestSuite) TestCreateTask() {
 		}
 	}
 	for i := 0; i < nJobs; i++ {
-		tasks, err := store.GetTasksForJob(jobIDs[i])
+		tasks, err := taskStore.GetTasksForJob(jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
@@ -188,16 +197,23 @@ func (suite *STAPIStoreTestSuite) TestCreateTask() {
 	}
 
 	for i := 0; i < nJobs; i++ {
-		for j := 0; j < nTasks; j++ {
+		for j := 0; j < int(nTasks); j++ {
 			taskID := fmt.Sprintf("%s-%d", jobIDs[i].Value, j)
-			task, err := store.GetTaskByID(taskID)
+			taskInfo, err := taskStore.GetTaskByID(taskID)
 			suite.NoError(err)
-			suite.Equal(task.JobId.Value, jobIDs[i].Value)
-			suite.Equal(task.InstanceId, uint32(j))
+			suite.Equal(taskInfo.JobId.Value, jobIDs[i].Value)
+			suite.Equal(taskInfo.InstanceId, uint32(j))
+
+			var taskMap map[uint32]*task.TaskInfo
+			taskMap, err = taskStore.GetTaskForJob(jobIDs[i], uint32(j))
+			suite.NoError(err)
+			taskInfo = taskMap[uint32(j)]
+			suite.Equal(taskInfo.JobId.Value, jobIDs[i].Value)
+			suite.Equal(taskInfo.InstanceId, uint32(j))
 		}
 		// TaskID does not exist
 	}
-	task, err := store.GetTaskByID("taskdoesnotexist")
+	task, err := taskStore.GetTaskByID("taskdoesnotexist")
 	suite.Error(err)
 	suite.Nil(task)
 }
@@ -267,37 +283,41 @@ func (suite *STAPIStoreTestSuite) TestCreateTasks() {
 }
 
 func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
+	var jobStore storage.JobStore
+	jobStore = store
+	var taskStore storage.TaskStore
+	taskStore = store
 	var nJobs = 2
-	var nTasks = 6
+	var nTasks = uint32(6)
 	var jobs []*job.JobConfig
 	for i := 0; i < nJobs; i++ {
 		var jobID = job.JobID{Value: fmt.Sprintf("TestGetTasksByHostState%d", i)}
 		jobConfig := createJobConfig()
 		jobConfig.InstanceCount = uint32(nTasks)
 		jobs = append(jobs, jobConfig)
-		err := store.CreateJob(&jobID, jobConfig, "uber")
+		err := jobStore.CreateJob(&jobID, jobConfig, "uber")
 		suite.NoError(err)
-		for j := 0; j < nTasks; j++ {
+		for j := uint32(0); j < nTasks; j++ {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
-			err = store.CreateTask(&jobID, j, taskInfo, "test")
+			err = taskStore.CreateTask(&jobID, j, taskInfo, "test")
 			suite.NoError(err)
 			taskInfo.Runtime.State = task.RuntimeInfo_TaskState(j)
 			taskInfo.Runtime.Host = fmt.Sprintf("compute2-%d", j)
-			err = store.UpdateTask(taskInfo)
+			err = taskStore.UpdateTask(taskInfo)
 			suite.NoError(err)
 		}
 	}
 	// GetTaskByState
-	for j := 0; j < nTasks; j++ {
+	for j := 0; j < int(nTasks); j++ {
 		jobID := job.JobID{Value: "TestGetTasksByHostState0"}
 		tasks, err := store.GetTasksForJobAndState(
 			&jobID, task.RuntimeInfo_TaskState(j).String())
 		suite.NoError(err)
 		suite.Equal(len(tasks), 1)
 
-		for tid, host := range tasks {
-			suite.Equal(tid, fmt.Sprintf("%s-%d", jobID.Value, j))
-			suite.Equal(host, fmt.Sprintf("compute2-%d", j))
+		for tid, taskInfo := range tasks {
+			suite.Equal(tid, uint32(j))
+			suite.Equal(taskInfo.Runtime.Host, fmt.Sprintf("compute2-%d", j))
 		}
 
 		jobID = job.JobID{Value: "TestGetTasksByHostState1"}
@@ -305,14 +325,14 @@ func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
 			&jobID, task.RuntimeInfo_TaskState(j).String())
 		suite.NoError(err)
 
-		for tid, host := range tasks {
-			suite.Equal(tid, fmt.Sprintf("%s-%d", jobID.Value, j))
-			suite.Equal(host, fmt.Sprintf("compute2-%d", j))
+		for tid, taskInfo := range tasks {
+			suite.Equal(tid, uint32(j))
+			suite.Equal(taskInfo.Runtime.Host, fmt.Sprintf("compute2-%d", j))
 		}
 	}
 
 	// GetTaskByHost
-	for j := 0; j < nTasks; j++ {
+	for j := 0; j < int(nTasks); j++ {
 		host := fmt.Sprintf("compute2-%d", j)
 		tasks, err := store.GetTasksOnHost(host)
 		suite.NoError(err)
@@ -326,41 +346,45 @@ func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
 }
 
 func (suite *STAPIStoreTestSuite) TestGetTaskStateChanges() {
+	var jobStore storage.JobStore
+	jobStore = store
+	var taskStore storage.TaskStore
+	taskStore = store
 	nTasks := 2
 	host1 := "compute1"
 	host2 := "compute2"
 	var jobID = job.JobID{Value: "TestGetTaskStateChanges"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(nTasks)
-	err := store.CreateJob(&jobID, jobConfig, "uber")
+	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
 	suite.NoError(err)
 
 	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
-	err = store.CreateTask(&jobID, 0, taskInfo, "test")
+	err = taskStore.CreateTask(&jobID, 0, taskInfo, "test")
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.RuntimeInfo_SCHEDULING
-	err = store.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.RuntimeInfo_RUNNING
 	taskInfo.Runtime.Host = host1
-	err = store.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.RuntimeInfo_PREEMPTING
 	taskInfo.Runtime.Host = ""
-	err = store.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.RuntimeInfo_RUNNING
 	taskInfo.Runtime.Host = host2
-	err = store.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.RuntimeInfo_SUCCEEDED
 	taskInfo.Runtime.Host = host2
-	err = store.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
 	taskID := fmt.Sprintf("%s-%d", jobID.Value, 0)
@@ -425,18 +449,20 @@ func (suite *STAPIStoreTestSuite) TestGetJobsByOwner() {
 }
 
 func (suite *STAPIStoreTestSuite) TestGetTaskStateSummary() {
+	var taskStore storage.TaskStore
+	taskStore = store
 	var jobID = job.JobID{Value: "TestGetTaskStateSummary"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(2 * len(task.RuntimeInfo_TaskState_name))
 	err := store.CreateJob(&jobID, jobConfig, "user1")
 	suite.Nil(err)
 
-	for i := 0; i < 2*len(task.RuntimeInfo_TaskState_name); i++ {
+	for i := uint32(0); i < uint32(2*len(task.RuntimeInfo_TaskState_name)); i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
-		err := store.CreateTask(&jobID, i, taskInfo, "user1")
+		err := taskStore.CreateTask(&jobID, i, taskInfo, "user1")
 		suite.Nil(err)
 		taskInfo.Runtime.State = task.RuntimeInfo_TaskState(i / 2)
-		err = store.UpdateTask(taskInfo)
+		err = taskStore.UpdateTask(taskInfo)
 		suite.Nil(err)
 	}
 
@@ -449,18 +475,18 @@ func (suite *STAPIStoreTestSuite) TestGetTaskStateSummary() {
 }
 
 func (suite *STAPIStoreTestSuite) TestGetTaskByRange() {
+	var taskStore storage.TaskStore
+	taskStore = store
 	var jobID = job.JobID{Value: "TestGetTaskByRange"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(100)
 	err := store.CreateJob(&jobID, jobConfig, "user1")
 	suite.Nil(err)
 
-	for i := 0; i < int(jobConfig.InstanceCount); i++ {
+	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
-		err := store.CreateTask(&jobID, i, taskInfo, "user1")
+		err := taskStore.CreateTask(&jobID, i, taskInfo, "user1")
 		suite.Nil(err)
-		err = store.CreateTask(&jobID, i, taskInfo, "user1")
-		suite.Error(err)
 	}
 	suite.validateRange(&jobID, 0, 30)
 	suite.validateRange(&jobID, 30, 65)
@@ -470,18 +496,21 @@ func (suite *STAPIStoreTestSuite) TestGetTaskByRange() {
 }
 
 func (suite *STAPIStoreTestSuite) validateRange(jobID *job.JobID, from, to int) {
+	var taskStore storage.TaskStore
+	taskStore = store
 	jobConfig, err := store.GetJob(jobID)
 	suite.NoError(err)
 
+	if to > int(jobConfig.InstanceCount) {
+		to = int(jobConfig.InstanceCount)
+	}
 	r := &task.InstanceRange{
 		From: uint32(from),
 		To:   uint32(to),
 	}
 	var taskInRange map[uint32]*task.TaskInfo
-	taskInRange = store.GetTasksForJobByRange(jobID, r)
-	if to > int(jobConfig.InstanceCount) {
-		to = int(jobConfig.InstanceCount)
-	}
+	taskInRange, _ = taskStore.GetTasksForJobByRange(jobID, r)
+
 	suite.Equal(to-from, len(taskInRange))
 	for i := from; i < to; i++ {
 		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
@@ -505,7 +534,7 @@ func createJobConfig() *job.JobConfig {
 }
 
 func createTaskInfo(
-	jobConfig *job.JobConfig, jobID *job.JobID, i int) *task.TaskInfo {
+	jobConfig *job.JobConfig, jobID *job.JobID, i uint32) *task.TaskInfo {
 
 	var tID = fmt.Sprintf("%s-%d", jobID.Value, i)
 	var taskInfo = task.TaskInfo{
