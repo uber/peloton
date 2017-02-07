@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	mesos "mesos/v1"
+
 	"code.uber.internal/infra/peloton/jobmgr"
-	"code.uber.internal/infra/peloton/master/metrics"
 	pmt "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -14,7 +15,6 @@ import (
 	"github.com/pborman/uuid"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	mesos "mesos/v1"
 
 	"peloton/api/job"
 	"peloton/api/task"
@@ -27,7 +27,7 @@ func InitServiceHandler(d yarpc.Dispatcher,
 	config *jobmgr.Config,
 	js storage.JobStore,
 	ts storage.TaskStore,
-	metrics *metrics.Metrics,
+	metrics *jobmgr.Metrics,
 	clientName string) {
 
 	handler := serviceHandler{
@@ -51,7 +51,7 @@ type serviceHandler struct {
 	TaskQueue util.TaskQueue
 	client    json.Client
 	rootCtx   context.Context
-	metrics   *metrics.Metrics
+	metrics   *jobmgr.Metrics
 	config    *jobmgr.Config
 }
 

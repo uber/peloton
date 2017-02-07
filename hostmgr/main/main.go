@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	nethttp "net/http"
 	"os"
 	"time"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
@@ -24,15 +25,9 @@ import (
 	"go.uber.org/yarpc/transport/http"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/uber-go/tally"
-	tallyprom "github.com/uber-go/tally/prometheus"
-	tallystatsd "github.com/uber-go/tally/statsd"
 )
 
 const (
-	apiURLPath = "/api/v1"
-
 	productionEnvValue = "production"
 	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
 	metricFlushInterval = 1 * time.Second
@@ -77,12 +72,12 @@ func main() {
 		log.WithField("error", err).Fatal("Cannot parse host manager config")
 	}
 
-	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
-	mux := nethttp.NewServeMux()
+	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonHostManager, metricFlushInterval)
+	defer scopeCloser.Close()
 
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can mux in other HTTP handlers
 	inbounds := []transport.Inbound{
-		http.NewInbound(fmt.Sprintf(":%d", cfg.HostManager.Port), http.Mux(apiURLPath, mux)),
+		http.NewInbound(fmt.Sprintf(":%d", cfg.HostManager.Port), http.Mux(common.PelotonEndpointURL, mux)),
 	}
 
 	// TODO(zhitao): Confirm this code is working when mesos leader changes.
@@ -97,43 +92,7 @@ func main() {
 	}
 	log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
 
-	// TODO: Refactor metrics initialization code into common package.
-	var reporter tally.StatsReporter
-	var promHandler nethttp.Handler
-	metricSeparator := "."
-	if cfg.Metrics.Prometheus != nil && cfg.Metrics.Prometheus.Enable {
-		metricSeparator = "_"
-		promreporter := tallyprom.NewReporter(nil)
-		reporter = promreporter
-		promHandler = promreporter.HTTPHandler()
-	} else if cfg.Metrics.Statsd != nil && cfg.Metrics.Statsd.Enable {
-		log.Infof("Metrics configured with statsd endpoint %s", cfg.Metrics.Statsd.Endpoint)
-		c, err := statsd.NewClient(cfg.Metrics.Statsd.Endpoint, "")
-		if err != nil {
-			log.Fatalf("Unable to setup Statsd client: %v", err)
-		}
-		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
-	} else {
-		log.Warnf("No metrics backends configured, using the statsd.NoopClient")
-		c, _ := statsd.NewNoopClient()
-		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
-	}
-
-	if promHandler != nil {
-		// if prometheus support is enabled, handle /metrics to serve prom metrics
-		log.Infof("Setting up prometheus metrics handler at /metrics")
-		mux.Handle("/metrics", promHandler)
-	}
-
-	metricScope, scopeCloser := tally.NewRootScope(
-		rootMetricScope,
-		map[string]string{},
-		reporter,
-		metricFlushInterval,
-		metricSeparator)
-	defer scopeCloser.Close()
-
-	metricScope.Counter("boot").Inc(1)
+	rootScope.Counter("boot").Inc(1)
 
 	// Connect to mysql DB
 	if err := cfg.Storage.MySQL.Connect(); err != nil {
@@ -146,7 +105,7 @@ func main() {
 		log.Fatalf("Could not migrate database: %+v", errs)
 	}
 
-	store := mysql.NewJobStore(cfg.Storage.MySQL, metricScope.SubScope("storage"))
+	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
@@ -160,11 +119,11 @@ func main() {
 	mOutbound := mhttp.NewOutbound(mesosURL)
 
 	outbounds := yarpc.Outbounds{
-		"mesos-master": mOutbound,
+		common.MesosMaster: mOutbound,
 	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      "peloton-hostmgr",
+		Name:      common.PelotonHostManager,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 	})
@@ -174,7 +133,7 @@ func main() {
 
 	log.WithFields(log.Fields{
 		"port":     cfg.HostManager.Port,
-		"url_path": apiURLPath,
+		"url_path": common.PelotonEndpointURL,
 	}).Info("HostService initialized")
 
 	// Init the managers driven by the mesos callbacks.

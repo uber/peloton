@@ -1,27 +1,27 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"time"
+
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/peer"
-	"fmt"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
-	nethttp "net/http"
-	"os"
-	"time"
+
+	"net/url"
+	"runtime"
 
 	cconfig "code.uber.internal/infra/peloton/common/config"
 	log "github.com/Sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"net/url"
-	"runtime"
 )
 
 const (
@@ -45,7 +45,8 @@ func main() {
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	// TODO: Add metrics introspection to scope.
+	log.SetFormatter(&log.JSONFormatter{})
+	log.SetLevel(log.DebugLevel)
 
 	// TODO: Move to jobmgr.Config
 	var cfg jobmgr.Config
@@ -54,25 +55,20 @@ func main() {
 		log.WithField("error", err).Fatal("Cannot parse host manager config")
 	}
 
+	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonJobManager, metricFlushInterval)
+	defer scopeCloser.Close()
 	// Connect to mysql DB
 	if err := cfg.Storage.MySQL.Connect(); err != nil {
 		log.Fatalf("Could not connect to database: %+v", err)
 	}
 	// TODO: fix metric scope
-	store := mysql.NewJobStore(cfg.Storage.MySQL, tally.NoopScope)
+	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
 	store.DB.SetMaxOpenConns(cfg.JobManager.DbWriteConcurrency)
 	store.DB.SetMaxIdleConns(cfg.JobManager.DbWriteConcurrency)
 	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
-	urlPath := "/jobmgr/v1"
-
-	log.SetFormatter(&log.JSONFormatter{})
-	log.SetLevel(log.DebugLevel)
-
-	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
-	mux := nethttp.NewServeMux()
 	inbounds := []transport.Inbound{
-		http.NewInbound(fmt.Sprintf(":%d", cfg.JobManager.Port), http.Mux(urlPath, mux)),
+		http.NewInbound(fmt.Sprintf(":%d", cfg.JobManager.Port), http.Mux(common.PelotonEndpointURL, mux)),
 	}
 
 	// TODO: hook up with service discovery code to auto-detect the resmgr/hostmgr leader address
@@ -104,10 +100,9 @@ func main() {
 
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
-	jobManagerMetrics := metrics.New(tally.NoopScope)
-	taskManagerMetrics := metrics.New(tally.NoopScope)
+	jobManagerMetrics := jobmgr.NewMetrics(rootScope)
 	job.InitServiceHandler(dispatcher, &cfg, store, store, &jobManagerMetrics, common.PelotonJobManager)
-	task.InitServiceHandler(dispatcher, store, store, &taskManagerMetrics)
+	task.InitServiceHandler(dispatcher, store, store, &jobManagerMetrics)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

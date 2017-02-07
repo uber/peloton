@@ -1,27 +1,24 @@
 package main
 
 import (
-	"gopkg.in/alecthomas/kingpin.v2"
-	nethttp "net/http"
 	"os"
 	"time"
 
+	"gopkg.in/alecthomas/kingpin.v2"
+
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/metrics"
 	placementconfig "code.uber.internal/infra/peloton/placement/config"
 
 	"go.uber.org/yarpc"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/uber-go/tally"
-	tallyprom "github.com/uber-go/tally/prometheus"
-	tallystatsd "github.com/uber-go/tally/statsd"
 )
 
 const (
 	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
 	metricFlushInterval = 1 * time.Second
-	rootMetricScope     = "peloton_placement"
 )
 
 var (
@@ -62,49 +59,13 @@ func main() {
 		log.WithField("error", err).Fatal("Cannot parse placement engine config")
 	}
 
-	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
-	mux := nethttp.NewServeMux()
-
-	// TODO: Refactor metrics initialization code into common package.
-	var reporter tally.StatsReporter
-	var promHandler nethttp.Handler
-	metricSeparator := "."
-	if cfg.Metrics.Prometheus != nil && cfg.Metrics.Prometheus.Enable {
-		metricSeparator = "_"
-		promreporter := tallyprom.NewReporter(nil)
-		reporter = promreporter
-		promHandler = promreporter.HTTPHandler()
-	} else if cfg.Metrics.Statsd != nil && cfg.Metrics.Statsd.Enable {
-		log.Infof("Metrics configured with statsd endpoint %s", cfg.Metrics.Statsd.Endpoint)
-		c, err := statsd.NewClient(cfg.Metrics.Statsd.Endpoint, "")
-		if err != nil {
-			log.Fatalf("Unable to setup Statsd client: %v", err)
-		}
-		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
-	} else {
-		log.Warnf("No metrics backends configured, using the statsd.NoopClient")
-		c, _ := statsd.NewNoopClient()
-		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
-	}
-
-	if promHandler != nil {
-		// if prometheus support is enabled, handle /metrics to serve prom metrics
-		log.Infof("Setting up prometheus metrics handler at /metrics")
-		mux.Handle("/metrics", promHandler)
-	}
-
-	metricScope, scopeCloser := tally.NewRootScope(
-		rootMetricScope,
-		map[string]string{},
-		reporter,
-		metricFlushInterval,
-		metricSeparator)
+	rootScope, scopeCloser, _ := metrics.InitMetricScope(&cfg.Metrics, common.PelotonPlacement, metricFlushInterval)
 	defer scopeCloser.Close()
 
-	metricScope.Counter("boot").Inc(1)
+	rootScope.Counter("boot").Inc(1)
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name: "peloton-placement",
+		Name: common.PelotonPlacement,
 	})
 
 	// Start dispatch loop

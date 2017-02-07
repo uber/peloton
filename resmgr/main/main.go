@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
-	nethttp "net/http"
 	"os"
 	"runtime"
 	"time"
+
+	"code.uber.internal/infra/peloton/common"
+	common_metrics "code.uber.internal/infra/peloton/common/metrics"
 
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/metrics"
@@ -17,10 +19,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	log "github.com/Sirupsen/logrus"
-	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/uber-go/tally"
-	tallyprom "github.com/uber-go/tally/prometheus"
-	tallystatsd "github.com/uber-go/tally/statsd"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
@@ -82,29 +80,9 @@ func main() {
 	}
 	log.WithField("config", cfg).Debug("Loaded Peloton Resource Manager configuration")
 
-	var reporter tally.StatsReporter
-	var promHandler nethttp.Handler
-	metricSeparator := "."
-	if cfg.Metrics.Prometheus != nil && cfg.Metrics.Prometheus.Enable {
-		metricSeparator = "_"
-		promreporter := tallyprom.NewReporter(nil)
-		reporter = promreporter
-		promHandler = promreporter.HTTPHandler()
-	} else if cfg.Metrics.Statsd != nil && cfg.Metrics.Statsd.Enable {
-		log.Infof("Metrics configured with statsd endpoint %s", cfg.Metrics.Statsd.Endpoint)
-		c, err := statsd.NewClient(cfg.Metrics.Statsd.Endpoint, "")
-		if err != nil {
-			log.Fatalf("Unable to setup Statsd client: %v", err)
-		}
-		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
-	} else {
-		log.Warnf("No metrics backends configured, using the statsd.NoopClient")
-		c, _ := statsd.NewNoopClient()
-		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
-	}
-	metricScope, scopeCloser := tally.NewRootScope("peloton_framework", map[string]string{}, reporter, metricFlushInterval, metricSeparator)
+	rootScope, scopeCloser, mux := common_metrics.InitMetricScope(&cfg.Metrics, common.PelotonResourceManager, metricFlushInterval)
 	defer scopeCloser.Close()
-	metricScope.Counter("boot").Inc(1)
+	rootScope.Counter("boot").Inc(1)
 
 	// Connect to mysql DB
 	if err := cfg.Storage.MySQL.Connect(); err != nil {
@@ -116,49 +94,30 @@ func main() {
 	}
 
 	// Initialize resmgr store
-	resstore := mysql.NewResourcePoolStore(cfg.Storage.MySQL.Conn, metricScope.SubScope("storage"))
+	resstore := mysql.NewResourcePoolStore(cfg.Storage.MySQL.Conn, rootScope.SubScope("storage"))
 	resstore.DB.SetMaxOpenConns(cfg.ResMgr.DbWriteConcurrency)
 	resstore.DB.SetMaxIdleConns(cfg.ResMgr.DbWriteConcurrency)
 	resstore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
 	// Initialize job and task stores
-	store := mysql.NewJobStore(cfg.Storage.MySQL, metricScope.SubScope("storage"))
+	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
 	store.DB.SetMaxOpenConns(cfg.ResMgr.DbWriteConcurrency)
 	store.DB.SetMaxIdleConns(cfg.ResMgr.DbWriteConcurrency)
 	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
-	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
-	mux := nethttp.NewServeMux()
-	if promHandler != nil {
-		// if prometheus support is enabled, handle /metrics to serve prom metrics
-		log.Infof("Setting up prometheus metrics handler at /metrics")
-		mux.Handle("/metrics", promHandler)
-	}
-	// expose a /health endpoint that just returns 200
-	mux.HandleFunc("/health", func(w nethttp.ResponseWriter, _ *nethttp.Request) {
-		// TODO: make this healthcheck live, and check some kind of internal health?
-		if true {
-			w.WriteHeader(nethttp.StatusOK)
-			fmt.Fprintln(w, `\(★ω★)/`)
-		} else {
-			w.WriteHeader(nethttp.StatusInternalServerError)
-			fmt.Fprintln(w, `(╥﹏╥)`)
-		}
-	})
-
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can mux in other HTTP handlers
 	inbounds := []transport.Inbound{
-		http.NewInbound(fmt.Sprintf(":%d", cfg.ResMgr.Port), http.Mux(config.FrameworkURLPath, mux)),
+		http.NewInbound(fmt.Sprintf(":%d", cfg.ResMgr.Port), http.Mux(common.PelotonEndpointURL, mux)),
 	}
 
 	resmgrPeerChooser := peer.NewPeerChooser()
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:     "peloton-resmgr",
+		Name:     common.PelotonResourceManager,
 		Inbounds: inbounds,
 	})
 
 	// Initalize managers
-	metrics := metrics.New(metricScope.SubScope("resource-manager"))
+	metrics := metrics.New(rootScope.SubScope("resource-manager"))
 
 	rm := res.InitServiceHandler(dispatcher, cfg, resstore, &metrics)
 	taskqueue := tq.InitTaskQueue(dispatcher, &metrics, store, store)

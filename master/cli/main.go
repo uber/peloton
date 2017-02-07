@@ -14,6 +14,7 @@ import (
 	peloton_common "code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/leader"
@@ -338,8 +339,10 @@ func main() {
 
 	// Initalize managers
 	metrics := metrics.New(metricScope.SubScope("master"))
-	job.InitServiceHandler(dispatcher, &cfg.JobManager, store, store, &metrics, peloton_common.PelotonMaster)
-	task.InitServiceHandler(dispatcher, store, store, &metrics)
+
+	jobmgrMetrics := jobmgr.NewMetrics(metricScope.SubScope("master"))
+	job.InitServiceHandler(dispatcher, &cfg.JobManager, store, store, &jobmgrMetrics, peloton_common.PelotonMaster)
+	task.InitServiceHandler(dispatcher, store, store, &jobmgrMetrics)
 	tq := taskq.InitTaskQueue(dispatcher, &metrics, store, store)
 	upgrade.InitManager(dispatcher)
 

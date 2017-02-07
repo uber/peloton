@@ -13,4 +13,6 @@ const (
 	PelotonHostManager = "peloton-hostmgr"
 	// PelotonMaster service name
 	PelotonMaster = "peloton-master"
+	// PelotonPlacement service name
+	PelotonPlacement = "peloton-placement"
 )
