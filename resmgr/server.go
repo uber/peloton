@@ -1,48 +1,48 @@
-package election
+package resmgr
 
 import (
 	"sync"
 
-	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/config"
+	"code.uber.internal/infra/peloton/resmgr/respool"
 	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	log "github.com/Sirupsen/logrus"
 )
 
-// Handler struct for handling the zk election
-type Handler struct {
+// Server struct for handling the zk election
+type Server struct {
 	peerChooser *peer.Chooser
 	cfg         *config.Config
 	mutex       *sync.Mutex
 	// Local address for peloton Master Resource Manager
-	localAddr       string
-	env             string
-	resourceManager *resmgr.ResourceManager
-	taskQueue       *tq.Queue
+	localAddr      string
+	env            string
+	respoolService respool.ServiceHandler
+	taskQueue      *tq.Queue
 }
 
-// NewElectionHandler will create the elect handle object
-func NewElectionHandler(env string,
+// NewServer will create the elect handle object
+func NewServer(env string,
 	pChooser *peer.Chooser,
 	cfg *config.Config,
 	localResMgrMasterAddr string,
-	rm *resmgr.ResourceManager,
-	taskqueue *tq.Queue) *Handler {
-	result := Handler{
-		env:             env,
-		peerChooser:     pChooser,
-		cfg:             cfg,
-		mutex:           &sync.Mutex{},
-		localAddr:       localResMgrMasterAddr,
-		resourceManager: rm,
-		taskQueue:       taskqueue,
+	rm respool.ServiceHandler,
+	taskqueue *tq.Queue) *Server {
+	result := Server{
+		env:            env,
+		peerChooser:    pChooser,
+		cfg:            cfg,
+		mutex:          &sync.Mutex{},
+		localAddr:      localResMgrMasterAddr,
+		respoolService: rm,
+		taskQueue:      taskqueue,
 	}
 	return &result
 }
 
 // GainedLeadershipCallBack is the callback when the current node becomes the leader
-func (p *Handler) GainedLeadershipCallBack() error {
+func (p *Server) GainedLeadershipCallBack() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	log.Infof("Gained leadership")
@@ -59,24 +59,24 @@ func (p *Handler) GainedLeadershipCallBack() error {
 		log.Errorf("Failed to update peer with p.localResMgrAddr, err = %v", err)
 		return err
 	}
-	p.resourceManager.Start()
+	p.respoolService.Start()
 
 	return nil
 }
 
 // LostLeadershipCallback is the callback when the current node lost leadership
-func (p *Handler) LostLeadershipCallback() error {
+func (p *Server) LostLeadershipCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	log.Infof("Lost leadership")
 	p.taskQueue.Reset()
-	p.resourceManager.Stop()
+	p.respoolService.Stop()
 
 	return nil
 }
 
 // NewLeaderCallBack is the callback when some other node becomes the leader, leader is hostname of the leader
-func (p *Handler) NewLeaderCallBack(leader string) error {
+func (p *Server) NewLeaderCallBack(leader string) error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
@@ -86,7 +86,7 @@ func (p *Handler) NewLeaderCallBack(leader string) error {
 }
 
 // ShutDownCallback is the callback to shut down gracefully if possible
-func (p *Handler) ShutDownCallback() error {
+func (p *Server) ShutDownCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	log.Infof("Quiting the election")
@@ -94,6 +94,6 @@ func (p *Handler) ShutDownCallback() error {
 }
 
 // GetHostPort function returns the peloton resource manager master address
-func (p *Handler) GetHostPort() string {
+func (p *Server) GetHostPort() string {
 	return p.localAddr
 }

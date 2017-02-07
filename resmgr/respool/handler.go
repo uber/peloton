@@ -1,4 +1,4 @@
-package resmgr
+package respool
 
 import (
 	"context"
@@ -19,13 +19,13 @@ const (
 	runningStateRunning    = 1
 )
 
-// InitManager initializes the resource pool manager
-func InitManager(
+// InitServiceHandler initializes the resource pool manager
+func InitServiceHandler(
 	d yarpc.Dispatcher,
 	config *rmconfig.Config,
 	store storage.ResourcePoolStore,
-	metrics *metrics.Metrics) *ResourceManager {
-	handler := ResourceManager{
+	metrics *metrics.Metrics) *ServiceHandler {
+	handler := ServiceHandler{
 		store:        store,
 		metrics:      metrics,
 		config:       config,
@@ -36,8 +36,8 @@ func InitManager(
 	return &handler
 }
 
-// ResourceManager is Resource Manager
-type ResourceManager struct {
+// ServiceHandler implements peloton.api.respool.ResourceManager
+type ServiceHandler struct {
 	store        storage.ResourcePoolStore
 	metrics      *metrics.Metrics
 	config       *rmconfig.Config
@@ -46,7 +46,7 @@ type ResourceManager struct {
 }
 
 // CreateResourcePool will create resource pool
-func (m *ResourceManager) CreateResourcePool(
+func (m *ServiceHandler) CreateResourcePool(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *respool.CreateRequest) (*respool.CreateResponse, yarpc.ResMeta, error) {
@@ -75,22 +75,22 @@ func (m *ResourceManager) CreateResourcePool(
 }
 
 // GetResourcePool will get resource pool
-func (m *ResourceManager) GetResourcePool() {
+func (m *ServiceHandler) GetResourcePool() {
 	// TODO
 }
 
 // DeleteResourcePool will delete resource pool
-func (m *ResourceManager) DeleteResourcePool() {
+func (m *ServiceHandler) DeleteResourcePool() {
 	// TODO
 }
 
 // UpdateResourcePool will update resource pool
-func (m *ResourceManager) UpdateResourcePool() {
+func (m *ServiceHandler) UpdateResourcePool() {
 	// TODO
 }
 
 // Registerprocs will register all api's for end points
-func (m *ResourceManager) registerProcs(d yarpc.Dispatcher) {
+func (m *ServiceHandler) registerProcs(d yarpc.Dispatcher) {
 	json.Register(d, json.Procedure("ResourceManager.CreateResourcePool", m.CreateResourcePool))
 	log.Info("CreateResourcePool Registered ")
 	/* TODO: Will have to implement these api's
@@ -102,7 +102,7 @@ func (m *ResourceManager) registerProcs(d yarpc.Dispatcher) {
 }
 
 // Start will start resource manager
-func (m *ResourceManager) Start() {
+func (m *ServiceHandler) Start() {
 
 	if m.runningState == runningStateRunning {
 		log.Warn("Resource Manager is already running, no action will be performed")
@@ -116,7 +116,7 @@ func (m *ResourceManager) Start() {
 }
 
 // Stop will stop resource manager
-func (m *ResourceManager) Stop() {
+func (m *ServiceHandler) Stop() {
 	if m.runningState == runningStateNotStarted {
 		log.Warn("Resource Manager is already stopped, no action will be performed")
 		return
