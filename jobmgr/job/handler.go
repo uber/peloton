@@ -24,7 +24,7 @@ import (
 
 // InitServiceHandler initalizes the job manager
 func InitServiceHandler(d yarpc.Dispatcher,
-	config *jobmgr.Config,
+	config *jobmgr.JobManagerConfig, // TODO: revisit config definition
 	js storage.JobStore,
 	ts storage.TaskStore,
 	metrics *jobmgr.Metrics,
@@ -52,7 +52,7 @@ type serviceHandler struct {
 	client    json.Client
 	rootCtx   context.Context
 	metrics   *jobmgr.Metrics
-	config    *jobmgr.Config
+	config    *jobmgr.JobManagerConfig
 }
 
 // Create creates a job object for a given job configuration and

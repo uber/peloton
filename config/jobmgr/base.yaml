@@ -26,3 +26,13 @@ storage:
 job_manager:
   port: 5292
   db_write_concurrency: 40
+  resmgr_host: localhost
+  resmgr_port: 5290
+  hostmgr_host: localhost
+  hostmgr_port: 5291
+  resmgr_election:
+    zk_servers: ["localhost:8192"]
+    path: "/peloton/resmgr/leader"
+  hostmgr_election:
+    zk_servers: ["localhost:8192"]
+    path: "/peloton/hostmgr/leader"

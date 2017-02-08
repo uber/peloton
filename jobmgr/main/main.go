@@ -32,11 +32,28 @@ const (
 var (
 	version string
 	app     = kingpin.New(common.PelotonJobManager, "Peloton Job Manager")
+
+	debug = app.
+		Flag("debug", "enable debug mode (print full json responses)").
+		Short('d').
+		Default("false").
+		Bool()
+
 	configs = app.
 		Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").
 		Short('c').
 		Required().
 		ExistingFiles()
+
+	jobmgrPort = app.
+			Flag("jobmgr-port", "Job manager port (jobmgr.port override) (set $JOBMGR_PORT to override)").
+			Envar("JOBMGR_PORT").
+			Int()
+
+	dbHost = app.
+		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
+		Envar("DB_HOST").
+		String()
 )
 
 func main() {
@@ -46,7 +63,9 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	log.SetFormatter(&log.JSONFormatter{})
-	log.SetLevel(log.DebugLevel)
+	if *debug {
+		log.SetLevel(log.DebugLevel)
+	}
 
 	// TODO: Move to jobmgr.Config
 	var cfg jobmgr.Config
@@ -54,6 +73,17 @@ func main() {
 	if err := cconfig.Parse(&cfg, *configs...); err != nil {
 		log.WithField("error", err).Fatal("Cannot parse host manager config")
 	}
+
+	// now, override any CLI flags in the loaded config.Config
+	if *jobmgrPort != 0 {
+		cfg.JobManager.Port = *jobmgrPort
+	}
+
+	if *dbHost != "" {
+		cfg.Storage.MySQL.Host = *dbHost
+	}
+
+	log.WithField("config", cfg).Debug("Loaded Peloton job manager configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonJobManager, metricFlushInterval)
 	defer scopeCloser.Close()
@@ -74,7 +104,7 @@ func main() {
 	// TODO: hook up with service discovery code to auto-detect the resmgr/hostmgr leader address
 	resmgrPeerChooser := peer.NewPeerChooser()
 	resmgrAddr := fmt.Sprintf("http://%s:%d", cfg.JobManager.ResmgrHost, cfg.JobManager.ResmgrPort)
-	resmgrPeerChooser.UpdatePeer(resmgrAddr)
+	resmgrPeerChooser.UpdatePeer(resmgrAddr, common.PelotonResourceManager)
 	// TODO: change FrameworkURLPath to resource manager URL path
 	resmgrOutbound := http.NewChooserOutbound(resmgrPeerChooser, &url.URL{Scheme: "http", Path: common.PelotonEndpointURL})
 
@@ -93,7 +123,9 @@ func main() {
 	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:      common.PelotonJobManager,
+		// Temp fix for T730605 so that we don't have to change peloton client,
+		// we should change it back to common.PelotonJobManager when master is deprecated
+		Name:      common.PelotonMaster,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 	})
@@ -101,13 +133,22 @@ func main() {
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
 	jobManagerMetrics := jobmgr.NewMetrics(rootScope)
-	job.InitServiceHandler(dispatcher, &cfg, store, store, &jobManagerMetrics, common.PelotonJobManager)
+	job.InitServiceHandler(
+		dispatcher,
+		&cfg.JobManager,
+		store,
+		store,
+		&jobManagerMetrics,
+		common.PelotonResourceManager,
+	)
 	task.InitServiceHandler(dispatcher, store, store, &jobManagerMetrics)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
+
+	log.Infof("Started Peloton job manager on port %v", cfg.JobManager.Port)
 
 	select {}
 }

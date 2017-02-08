@@ -5,3 +5,38 @@ logging:
 placement:
    task_dequeue_limit: 20
    offer_dequeue_limit: 10
+   # TODO: remove host port configs once zk detector is in place
+   resmgr_host: localhost
+   resmgr_port: 5290
+   hostmgr_host: localhost
+   hostmgr_port: 5291
+   resmgr_election:
+     zk_servers: ["localhost:8192"]
+     path: "/peloton/resmgr/leader"
+   hostmgr_election:
+     zk_servers: ["localhost:8192"]
+     path: "/peloton/hostmgr/leader"
+
+# TODO: remove storage and mesos config when we
+# completely switch to hostMgr launch task api
+storage:
+  mysql:
+    user: peloton
+    password: peloton
+    database: peloton
+    host: 127.0.0.1
+    port: 8193
+
+mesos:
+  host_port: "localhost:5050"
+  zk_path: "zk://localhost:8192/mesos"
+  encoding: "x-protobuf"
+  framework:
+    user: "root"
+    name: "Peloton"
+    # TODO : add roles for other components
+    role: "peloton-master"
+    principal: "peloton"
+    # ~100 weeks to failover
+    failover_timeout: 60000000
+    checkpoint: false

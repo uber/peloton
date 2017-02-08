@@ -3,6 +3,7 @@ package resmgr
 import (
 	"sync"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
@@ -54,7 +55,7 @@ func (p *Server) GainedLeadershipCallBack() error {
 	}
 
 	// Gained leadership, Need to start resmgr service
-	err = p.peerChooser.UpdatePeer(p.localAddr)
+	err = p.peerChooser.UpdatePeer(p.localAddr, common.PelotonResourceManager)
 	if err != nil {
 		log.Errorf("Failed to update peer with p.localResMgrAddr, err = %v", err)
 		return err
@@ -82,7 +83,7 @@ func (p *Server) NewLeaderCallBack(leader string) error {
 
 	log.Infof("New Leader is elected : %v", leader)
 	// leader changes, so point resmgrOutbound to the new leader
-	return p.peerChooser.UpdatePeer(leader)
+	return p.peerChooser.UpdatePeer(leader, common.PelotonResourceManager)
 }
 
 // ShutDownCallback is the callback to shut down gracefully if possible

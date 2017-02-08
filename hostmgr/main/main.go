@@ -50,12 +50,25 @@ var (
 		Required().
 		ExistingFiles()
 
-	env = app.
-		Flag("env", "environment (development will do no mesos master auto discovery) (set $PELOTON_ENVIRONMENT to override)").
-		Short('e').
-		Default("development").
-		Envar("PELOTON_ENVIRONMENT").
-		Enum("development", "production")
+	hostmgrPort = app.
+			Flag("hostmgr-port", "Host manager port (hostmgr.port override) (set $HOSTMGR_PORT to override)").
+			Envar("HOSTMGR_PORT").
+			Int()
+
+	zkPath = app.
+		Flag("zk-path", "Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to override)").
+		Envar("MESOS_ZK_PATH").
+		String()
+
+	dbHost = app.
+		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
+		Envar("DB_HOST").
+		String()
+
+	electionZkServers = app.
+				Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+				Envar("ELECTION_ZK_SERVERS").
+				Strings()
 )
 
 func main() {
@@ -64,13 +77,34 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	log.SetFormatter(&log.JSONFormatter{})
-	log.SetLevel(log.DebugLevel)
+	if *debug {
+		log.SetLevel(log.DebugLevel)
+	}
 
 	var cfg hostmgr.Config
 
 	if err := config.Parse(&cfg, *configs...); err != nil {
 		log.WithField("error", err).Fatal("Cannot parse host manager config")
 	}
+
+	// now, override any CLI flags in the loaded config.Config
+	if *hostmgrPort != 0 {
+		cfg.HostManager.Port = *hostmgrPort
+	}
+
+	if *zkPath != "" {
+		cfg.Mesos.ZkPath = *zkPath
+	}
+
+	if *dbHost != "" {
+		cfg.Storage.MySQL.Host = *dbHost
+	}
+
+	if len(*electionZkServers) > 0 {
+		cfg.Election.ZKServers = *electionZkServers
+	}
+
+	log.WithField("config", cfg).Debug("Loaded Peloton host manager configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonHostManager, metricFlushInterval)
 	defer scopeCloser.Close()

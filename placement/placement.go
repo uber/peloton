@@ -11,6 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	mesos "mesos/v1"
+	"peloton/api/task"
+	"peloton/private/hostmgr/offerpool"
+	"peloton/private/resmgr/taskqueue"
+
 	master_task "code.uber.internal/infra/peloton/master/task"
 	placement_config "code.uber.internal/infra/peloton/placement/config"
 	placement_metrics "code.uber.internal/infra/peloton/placement/metrics"
@@ -20,10 +25,6 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	mesos "mesos/v1"
-	"peloton/api/task"
-	"peloton/private/hostmgr/offerpool"
-	"peloton/private/resmgr/taskqueue"
 )
 
 const (
@@ -33,33 +34,41 @@ const (
 	GetTaskTimeout = 1 * time.Second
 )
 
-// InitManager inits the placementManager
-func InitManager(d yarpc.Dispatcher, cfg *placement_config.PlacementConfig,
-	mesosClient mpb.Client, metrics *placement_metrics.Metrics) {
-	s := placementManager{
-		cfg:        cfg,
-		launcher:   master_task.GetTaskLauncher(d, mesosClient, metrics),
-		client:     json.New(d.ClientConfig("peloton-master")),
-		rootCtx:    context.Background(),
-		metrics:    metrics,
-		offerQueue: util.NewMemLocalOfferQueue("localOfferQueue"),
+// InitServer inits placement engine
+func InitServer(
+	d yarpc.Dispatcher,
+	cfg *placement_config.PlacementConfig,
+	mesosClient mpb.Client,
+	metrics *placement_metrics.Metrics,
+	// TODO: remove resMgrClientName and hostMgrClientName when alpha is done
+	resMgrClientName string,
+	hostMgrClientName string) {
+	s := placementEngine{
+		cfg:           cfg,
+		launcher:      master_task.GetTaskLauncher(d, mesosClient, metrics),
+		resMgrClient:  json.New(d.ClientConfig(resMgrClientName)),
+		hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
+		rootCtx:       context.Background(),
+		metrics:       metrics,
+		offerQueue:    util.NewMemLocalOfferQueue("localOfferQueue"),
 	}
 	s.Start()
 }
 
-type placementManager struct {
-	dispatcher yarpc.Dispatcher
-	cfg        *placement_config.PlacementConfig
-	client     json.Client
-	rootCtx    context.Context
-	started    int32
-	shutdown   int32
-	launcher   master_task.Launcher
-	metrics    *placement_metrics.Metrics
-	offerQueue util.OfferQueue
+type placementEngine struct {
+	dispatcher    yarpc.Dispatcher
+	cfg           *placement_config.PlacementConfig
+	resMgrClient  json.Client
+	hostMgrClient json.Client
+	rootCtx       context.Context
+	started       int32
+	shutdown      int32
+	launcher      master_task.Launcher
+	metrics       *placement_metrics.Metrics
+	offerQueue    util.OfferQueue
 }
 
-func (s *placementManager) Start() {
+func (s *placementEngine) Start() {
 	if atomic.CompareAndSwapInt32(&s.started, 0, 1) {
 		log.Infof("Placement Engine started")
 		s.metrics.Running.Update(1)
@@ -69,13 +78,13 @@ func (s *placementManager) Start() {
 	log.Warnf("Placement Engine already started")
 }
 
-func (s *placementManager) Stop() {
+func (s *placementEngine) Stop() {
 	log.Infof("Placement Engine stopping")
 	s.metrics.Running.Update(0)
 	atomic.StoreInt32(&s.shutdown, 1)
 }
 
-func (s *placementManager) launchTasksLoop(tasks []*task.TaskInfo) {
+func (s *placementEngine) launchTasksLoop(tasks []*task.TaskInfo) {
 	nTasks := len(tasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		offer, err := s.getLocalOffer()
@@ -101,7 +110,7 @@ func (s *placementManager) launchTasksLoop(tasks []*task.TaskInfo) {
 	log.Debugf("Launched all %v tasks", nTasks)
 }
 
-func (s *placementManager) assignTasksToOffer(
+func (s *placementEngine) assignTasksToOffer(
 	tasks []*task.TaskInfo, offer *mesos.Offer) []*task.TaskInfo {
 	remain := util.GetOfferScalarResourceSummary(offer)
 	offerID := offer.GetId().Value
@@ -134,7 +143,7 @@ func (s *placementManager) assignTasksToOffer(
 }
 
 // workLoop is the internal loop that
-func (s *placementManager) workLoop() {
+func (s *placementEngine) workLoop() {
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
 		if err != nil {
@@ -151,7 +160,7 @@ func (s *placementManager) workLoop() {
 	}
 }
 
-func (s *placementManager) getTasks(limit int) (
+func (s *placementEngine) getTasks(limit int) (
 	taskInfos []*task.TaskInfo, err error) {
 	// It could happen that the work loop is started before the
 	// peloton master inbound is started.  In such case it could
@@ -169,7 +178,7 @@ func (s *placementManager) getTasks(limit int) (
 	var request = &taskqueue.DequeueRequest{
 		Limit: uint32(limit),
 	}
-	_, err = s.client.Call(
+	_, err = s.resMgrClient.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("TaskQueue.Dequeue"),
 		request,
@@ -182,7 +191,7 @@ func (s *placementManager) getTasks(limit int) (
 	return response.Tasks, nil
 }
 
-func (s *placementManager) getLocalOffer() (*mesos.Offer, error) {
+func (s *placementEngine) getLocalOffer() (*mesos.Offer, error) {
 	for {
 		offer := s.offerQueue.GetOffer(1 * time.Millisecond)
 		if offer != nil {
@@ -203,7 +212,7 @@ func (s *placementManager) getLocalOffer() (*mesos.Offer, error) {
 	}
 }
 
-func (s *placementManager) getOffers(limit int) (
+func (s *placementEngine) getOffers(limit int) (
 	offers []*mesos.Offer, err error) {
 	// It could happen that the work loop is started before the
 	// peloton master inbound is started.  In such case it could
@@ -221,7 +230,7 @@ func (s *placementManager) getOffers(limit int) (
 	var request = &offerpool.GetOffersRequest{
 		Limit: uint32(limit),
 	}
-	_, err = s.client.Call(
+	_, err = s.hostMgrClient.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("OfferPool.GetOffers"),
 		request,

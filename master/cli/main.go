@@ -132,7 +132,7 @@ func (p *pelotonMaster) GainedLeadershipCallBack() error {
 		return err
 	}
 
-	err = p.peerChooser.UpdatePeer(p.localAddr)
+	err = p.peerChooser.UpdatePeer(p.localAddr, peloton_common.PelotonMaster)
 	if err != nil {
 		log.Errorf("Failed to update peer with p.localPelotonMasterAddr, err = %v", err)
 		return err
@@ -165,7 +165,7 @@ func (p *pelotonMaster) NewLeaderCallBack(leader string) error {
 
 	log.Infof("New Leader is elected : %v", leader)
 	// leader changes, so point pelotonMasterOutbound to the new leader
-	return p.peerChooser.UpdatePeer(leader)
+	return p.peerChooser.UpdatePeer(leader, peloton_common.PelotonMaster)
 }
 
 // ShutDownCallback is the callback to shut down gracefully if possible
@@ -382,7 +382,14 @@ func main() {
 
 	// Defer initializing placement engine till the end
 	placementMetrics := placement.NewMetrics(metricScope.SubScope("placement"))
-	placement.InitManager(dispatcher, &cfg.Placement, mesosClient, &placementMetrics)
+	placement.InitServer(
+		dispatcher,
+		&cfg.Placement,
+		mesosClient,
+		&placementMetrics,
+		peloton_common.PelotonMaster,
+		peloton_common.PelotonMaster,
+	)
 
 	select {}
 }

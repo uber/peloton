@@ -26,7 +26,7 @@ GOPATH := ${GOPATH}:${GOPATH}/src/${PROJECT_ROOT}/pbgen
 .PRECIOUS: $(PBGENS)
 
 
-all: $(PBGENS) master placement executor client hostmgr resmgr
+all: $(PBGENS) master placement executor client hostmgr resmgr jobmgr
 
 master:
 	@mkdir -p $(BIN_DIR)

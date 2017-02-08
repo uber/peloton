@@ -44,5 +44,19 @@ mesos:
     checkpoint: false
 
 placement:
-   task_dequeue_limit: 20
-   offer_dequeue_limit: 10
+  task_dequeue_limit: 20
+  offer_dequeue_limit: 10
+  resmgr_election:
+    zk_servers: ["localhost:8192"]
+    path: "/peloton/resmgr/leader"
+  hostmgr_election:
+    zk_servers: ["localhost:8192"]
+    path: "/peloton/hostmgr/leader"
+
+job_manager:
+  resmgr_election:
+    zk_servers: ["localhost:8192"]
+    path: "/peloton/resmgr/leader"
+  hostmgr_election:
+    zk_servers: ["localhost:8192"]
+    path: "/peloton/hostmgr/leader"

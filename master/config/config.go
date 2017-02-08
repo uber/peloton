@@ -19,7 +19,7 @@ type Config struct {
 	Storage    config.StorageConfig            `yaml:"storage"`
 	Master     MasterConfig                    `yaml:"master"`
 	Mesos      mesos.Config                    `yaml:"mesos"`
-	JobManager jobmgr.Config                   `yaml:"job_manager"`
+	JobManager jobmgr.JobManagerConfig         `yaml:"job_manager"`
 	Placement  placementconfig.PlacementConfig `yaml:"placement"`
 	Election   leader.ElectionConfig           `yaml:"election"`
 }

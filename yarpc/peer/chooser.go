@@ -47,17 +47,17 @@ func (c *Chooser) Choose(context.Context, *transport.Request) (peer.Peer, error)
 	return c.p, nil
 }
 
-// UpdatePeer updates the current peloton master url
-func (c *Chooser) UpdatePeer(urlString string) error {
+// UpdatePeer updates the current url for component
+func (c *Chooser) UpdatePeer(urlString string, component string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	log.Infof("Updating peloton master peer address to %v", urlString)
+	log.Infof("Updating %v peer address to %v", component, urlString)
 	url, err := url.Parse(urlString)
 	if err != nil {
 		log.Errorf("Failed to parse url %v, err = %v", urlString, err)
 		return err
 	}
 	c.p = hostport.NewPeer(hostport.PeerIdentifier(url.Host), c.transport)
-	log.Infof("New peloton master peer is %v", c.p)
+	log.Infof("New %v peer is %v", component, c.p)
 	return nil
 }

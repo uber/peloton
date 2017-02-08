@@ -2,14 +2,16 @@ package metrics
 
 import (
 	"fmt"
+	"io"
+	nethttp "net/http"
+	"strings"
+	"time"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/uber-go/tally"
 	tallyprom "github.com/uber-go/tally/prometheus"
 	tallystatsd "github.com/uber-go/tally/statsd"
-	"io"
-	nethttp "net/http"
-	"time"
 )
 
 // Config will be contianing the metrics configuration
@@ -38,6 +40,8 @@ func InitMetricScope(
 	var promHandler nethttp.Handler
 	metricSeparator := "."
 	if cfg.Prometheus != nil && cfg.Prometheus.Enable {
+		// tally panics if scope name contains "-", hence force convert to "_"
+		rootMetricScope = strings.Replace(rootMetricScope, "-", "_", -1)
 		metricSeparator = "_"
 		promReporter := tallyprom.NewReporter(nil)
 		reporter = promReporter
