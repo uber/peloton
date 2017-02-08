@@ -1,0 +1,135 @@
+/**
+ *  Internal Host Service API
+ */
+
+
+syntax = "proto3";
+
+package peloton.private.hostmgr.hostsvc;
+
+option go_package = "peloton/private/hostmgr/hostsvc";
+
+import "mesos/v1/mesos.proto";
+import "peloton/api/task/config.proto";
+
+
+/**
+ *  HostOffer describes the resources available on a host by aggregating
+ *  a list of Mesos offers to avoid offer defragmentation issue.
+ */
+message HostOffer {
+  string hostname = 1;
+  mesos.v1.AgentID agentId = 2;
+  repeated mesos.v1.Resource resources = 3;
+  repeated mesos.v1.Attribute attributes = 4;
+  repeated mesos.v1.OfferID offerIds = 5;
+}
+
+
+/**
+ *  LaunchableTask describes the task to be launched by host manager including Mesos
+ *  task id and task config.
+ */
+message LaunchableTask {
+  mesos.v1.TaskID taskId = 1;
+  api.task.TaskConfig config = 2;
+}
+
+
+/**
+ *  Internal host service interface to be used by JobManager and
+ *  PlacementEngine for task, reservation, volume and offer operations
+ *
+ *  TODO: figure out a better name for InternalHostService
+ */
+service InternalHostService
+{
+  /**
+   *  Get a set of host offers from the host manager. Each host offer will
+   *  only be used by one client at a given time.
+   */
+  rpc GetHostOffers(GetHostOffersRequest) returns (GetHostOffersResponse);
+
+  // Launch tasks on Mesos cluster
+  rpc LaunchTasks(LaunchTasksRequest) returns (LaunchTasksResponse);
+
+  // Kill tasks that are running on Mesos cluster
+  rpc KillTasks(KillTasksRequest) returns (KillTasksRequest);
+
+  // Reserve resources on a host
+  rpc ReserveResources(ReserveResourcesRequest) returns (ReserveResourcesResponse);
+
+  // Unreserve resources on a host
+  rpc UnreserveResources(UnreserveResourcesRequest) returns (
+      UnreserveResourcesResponse);
+
+  // Create volumes on a Mesos host
+  rpc CreateVolumes(CreateVolumesRequest) returns (CreateVolumesResponse);
+
+  // Destroy volumes on a Mesos host
+  rpc DestroyVolumes(DestroyVolumesRequest) returns (DestroyVolumesResponse);
+}
+
+
+message GetHostOffersRequest {
+  // Max number of hosts to acquire
+  uint32 limit = 1;
+
+  // TODO: Add simple filters for resources and host attributes
+}
+
+message GetHostOffersResponse {
+  // The list of host offers that have been returned
+  repeated HostOffer hostOffers = 1;
+}
+
+message LaunchTasksRequest {
+  string hostname = 1;
+  repeated LaunchableTask tasks = 2;
+  mesos.v1.AgentID agentId = 3;
+  repeated mesos.v1.OfferID offerIds = 4;
+}
+
+message LaunchTasksResponse {
+  // TODO: Add errors that could fail a launch task request
+}
+
+message KillTasksRequest {
+  repeated string taskIds = 1;
+}
+
+message KillTasksResponse {
+  // TODO: Add errors that could fail a kill task request
+}
+
+message ReserveResourcesRequest {
+  repeated mesos.v1.Resource resources = 1;
+}
+
+message ReserveResourcesResponse {
+  // TODO: Add errors that could fail a reserve resources request
+}
+
+message UnreserveResourcesRequest {
+  repeated mesos.v1.Resource resources = 1;
+}
+
+message UnreserveResourcesResponse {
+  // TODO: Add errors that could fail a unreserve resources request
+}
+
+message CreateVolumesRequest {
+  repeated mesos.v1.Resource volumes = 1;
+}
+
+message CreateVolumesResponse {
+  // TODO: Add errors that could fail a create volumes request
+}
+
+message DestroyVolumesRequest {
+  repeated mesos.v1.Resource volumes = 1;
+}
+
+message DestroyVolumesResponse {
+  // TODO: Add errors that could fail a destroy volumes request
+}
