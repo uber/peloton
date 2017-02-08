@@ -6,7 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
-	"github.com/prometheus/common/log"
+	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc/transport"
 )
 

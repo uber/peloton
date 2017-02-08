@@ -1,14 +1,16 @@
 package util_test
 
 import (
-	"code.uber.internal/infra/peloton/util"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"mesos/v1"
 	"peloton/api/job"
 	"peloton/api/task"
 	"peloton/api/task/config"
 	"testing"
+
+	mesos_v1 "mesos/v1"
+
+	"code.uber.internal/infra/peloton/util"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetOfferScalarResourceSummary(t *testing.T) {
@@ -56,11 +58,16 @@ func TestCanTakeTask(t *testing.T) {
 			FdLimit:     100,
 		},
 	}
-
+	taskID := fmt.Sprintf("%s-%d-0", jobID, 20)
 	var taskInfo = task.TaskInfo{
 		Config:     &taskConfig,
 		InstanceId: 20,
 		JobId:      &jobID,
+		Runtime: &task.RuntimeInfo{
+			TaskId: &mesos_v1.TaskID{
+				Value: &taskID,
+			},
+		},
 	}
 	offerSummary := util.GetOfferScalarResourceSummary(offer)
 	ok := util.CanTakeTask(&offerSummary, &taskInfo)

@@ -45,7 +45,11 @@ func (t *taskLauncher) LaunchTasks(
 	var mesosTasks []*mesos.TaskInfo
 	var mesosTaskIds []string
 	for _, t := range tasks {
-		mesosTask := util.ConvertToMesosTaskInfo(t)
+		mesosTask, err := util.ConvertToMesosTaskInfo(t)
+		if err != nil {
+			log.WithField("error", err).Error("Cannot convert to Mesos task")
+			return err
+		}
 		mesosTask.AgentId = offer.AgentId
 		mesosTasks = append(mesosTasks, mesosTask)
 		mesosTaskIds = append(mesosTaskIds, *mesosTask.TaskId.Value)

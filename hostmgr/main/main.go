@@ -162,19 +162,21 @@ func main() {
 		Outbounds: outbounds,
 	})
 
+	// Init the managers driven by the mesos callbacks.
+	// They are driven by the leader who will subscribe to
+	// mesos callbacks
+	mesosClient := mpb.New(dispatcher.ClientConfig(common.MesosMaster), cfg.Mesos.Encoding)
+	mesos.InitManager(dispatcher, &cfg.Mesos, store)
+
+	metrics := hostmgr.NewMetrics(rootScope)
+
 	// Init service handler.
-	hostmgr.InitServiceHandler(dispatcher)
+	hostmgr.InitServiceHandler(dispatcher, mesosClient, metrics)
 
 	log.WithFields(log.Fields{
 		"port":     cfg.HostManager.Port,
 		"url_path": common.PelotonEndpointURL,
 	}).Info("HostService initialized")
-
-	// Init the managers driven by the mesos callbacks.
-	// They are driven by the leader who will subscribe to
-	// mesos callbacks
-	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), cfg.Mesos.Encoding)
-	mesos.InitManager(dispatcher, &cfg.Mesos, store)
 
 	offerManager := offer.InitManager(
 		dispatcher,

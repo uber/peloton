@@ -1,12 +1,15 @@
 package util
 
 import (
+	"errors"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
 	mesos_v1 "mesos/v1"
 	"peloton/api/task"
+	tc "peloton/api/task/config"
 	"strconv"
 	"strings"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 // Min returns the minimum value of x, y
@@ -45,28 +48,61 @@ func GetOfferScalarResourceSummary(offer *mesos_v1.Offer) map[string]map[string]
 }
 
 // ConvertToMesosTaskInfo converts a task.TaskInfo into mesos TaskInfo
-func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) *mesos_v1.TaskInfo {
+func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) (*mesos_v1.TaskInfo, error) {
+	taskConfig := taskInfo.GetConfig()
+	taskID := taskInfo.GetRuntime().GetTaskId()
+	return GetMesosTaskInfo(taskID, taskConfig)
+}
+
+// GetMesosTaskInfo converts TaskID and TaskConfig into mesos TaskInfo.
+func GetMesosTaskInfo(
+	taskID *mesos_v1.TaskID,
+	taskConfig *tc.TaskConfig) (*mesos_v1.TaskInfo, error) {
+	if taskConfig == nil {
+		return nil, errors.New("TaskConfig cannot be nil")
+	}
+
+	if taskID == nil {
+		return nil, errors.New("taskID cannot be nil")
+	}
+
+	taskResources := taskConfig.Resource
+
+	if taskResources == nil {
+		return nil, errors.New("TaskConfig.Resource cannot be nil!")
+	}
+
 	var rs []*mesos_v1.Resource
-	taskResources := taskInfo.GetConfig().Resource
 	rs = append(rs, NewMesosResourceBuilder().WithName("cpus").WithValue(taskResources.CpusLimit).Build())
 	rs = append(rs, NewMesosResourceBuilder().WithName("mem").WithValue(taskResources.MemLimitMb).Build())
 	rs = append(rs, NewMesosResourceBuilder().WithName("disk").WithValue(taskResources.DiskLimitMb).Build())
+	// TODO(zhitao): Figure out how to add GPU, which is optional.
 	// TODO: translate job.ResourceConfig fdlimit
 
-	mesosTask := &mesos_v1.TaskInfo{
-		Name:      &taskInfo.JobId.Value,
-		TaskId:    taskInfo.GetRuntime().GetTaskId(),
-		Resources: rs,
-		Command:   taskInfo.GetConfig().GetCommand(),
-		Container: taskInfo.GetConfig().GetContainer(),
+	jobID, _, err := ParseTaskID(taskID.GetValue())
+	if err != nil {
+		return nil, err
 	}
-	return mesosTask
+
+	mesosTask := &mesos_v1.TaskInfo{
+		Name:      &jobID,
+		TaskId:    taskID,
+		Resources: rs,
+		Command:   taskConfig.GetCommand(),
+		Container: taskConfig.GetContainer(),
+	}
+	return mesosTask, nil
 }
 
 // CanTakeTask takes an offer and a taskInfo and check if the offer can be used to run the task.
 // If yes, the resources for the task would be substracted from the offer
 func CanTakeTask(offerScalaSummary *map[string]map[string]float64, nextTask *task.TaskInfo) bool {
-	nextMesosTask := ConvertToMesosTaskInfo(nextTask)
+	nextMesosTask, err := ConvertToMesosTaskInfo(nextTask)
+	if err != nil {
+		log.Error(err)
+		return false
+	}
+
 	log.Debugf("resources -- %v", nextMesosTask.Resources)
 	log.Debugf("summary -- %v", offerScalaSummary)
 	for _, resource := range nextMesosTask.Resources {
