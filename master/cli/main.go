@@ -24,12 +24,14 @@ import (
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/placement"
 	taskq "code.uber.internal/infra/peloton/resmgr/taskqueue"
-	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
+	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/storage/mysql"
+	"code.uber.internal/infra/peloton/storage/stapi"
 	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/uber-go/tally"
@@ -65,6 +67,7 @@ var (
 			HintOptions("5s", "1m").Envar("OFFER_HOLD_TIME").Duration()
 	offerPruningPeriod = app.Flag("offer-pruning-period", "Master offer pruning period (master.offer_pruning_period_sec override) (set $OFFER_PRUNING_PERIOD to override)").
 				HintOptions("20s").Envar("OFFER_PRUNING_PERIOD").Duration()
+	useSTAPI = app.Flag("use-stapi", "Use STAPI storage implementation").Default("false").Envar("USE_STAPI").Bool()
 )
 
 type pelotonMaster struct {
@@ -72,7 +75,6 @@ type pelotonMaster struct {
 	peerChooser   *peer.Chooser
 	mesosOutbound transport.Outbounds
 	taskQueue     *taskq.Queue
-	store         *mysql.JobStore
 	cfg           *config.Config
 	mutex         *sync.Mutex
 	// Local address for peloton master
@@ -87,7 +89,6 @@ func newPelotonMaster(env string,
 	mOutbounds transport.Outbounds,
 	pChooser *peer.Chooser,
 	tq *taskq.Queue,
-	store *mysql.JobStore,
 	cfg *config.Config,
 	localPelotonMasterAddr string,
 	mesosDetector mesos.MasterDetector,
@@ -98,7 +99,6 @@ func newPelotonMaster(env string,
 		peerChooser:   pChooser,
 		mesosOutbound: mOutbounds,
 		taskQueue:     tq,
-		store:         store,
 		cfg:           cfg,
 		mutex:         &sync.Mutex{},
 		localAddr:     localPelotonMasterAddr,
@@ -225,6 +225,9 @@ func main() {
 	if *offerPruningPeriod != 0 {
 		cfg.Master.OfferPruningPeriodSec = int(offerPruningPeriod.Seconds())
 	}
+	if *useSTAPI {
+		cfg.Storage.UseSTAPI = true
+	}
 
 	log.WithField("config", cfg).Debug("Loaded Peloton configuration")
 
@@ -251,23 +254,43 @@ func main() {
 	metricScope, scopeCloser := tally.NewRootScope("peloton_framework", map[string]string{}, reporter, metricFlushInterval, metricSeparator)
 	defer scopeCloser.Close()
 	metricScope.Counter("boot").Inc(1)
+	var jobStore storage.JobStore
+	var taskStore storage.TaskStore
+	var frameworkStore storage.FrameworkInfoStore
 
-	// Connect to mysql DB
-	if err := cfg.Storage.MySQL.Connect(); err != nil {
-		log.Fatalf("Could not connect to database: %+v", err)
-	}
-	// Migrate DB if necessary
-	if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
-		log.Fatalf("Could not migrate database: %+v", errs)
-	}
-	// Initialize job and task stores
-	store := mysql.NewJobStore(cfg.Storage.MySQL, metricScope.SubScope("storage"))
-	store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
-	store.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
-	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
+	if !cfg.Storage.UseSTAPI {
+		// Connect to mysql DB
+		if err := cfg.Storage.MySQL.Connect(); err != nil {
+			log.Fatalf("Could not connect to database: %+v", err)
+		}
+		// Migrate DB if necessary
+		if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
+			log.Fatalf("Could not migrate database: %+v", errs)
+		}
+		// Initialize job and task stores
+		store := mysql.NewJobStore(cfg.Storage.MySQL, metricScope.SubScope("storage"))
+		store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
+		store.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
+		store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
+		jobStore = store
+		taskStore = store
+		frameworkStore = store
+	} else {
+		log.Infof("stapi Config: %v", cfg.Storage.STAPI)
+		if errs := cfg.Storage.STAPI.AutoMigrate(); errs != nil {
+			log.Fatalf("Could not migrate database: %+v", errs)
+		}
+		store, err := stapi.NewStore(&cfg.Storage.STAPI, metricScope.SubScope("storage"))
+		if err != nil {
+			log.Fatalf("Could not create stapi store: %+v", err)
+		}
+		jobStore = store
+		taskStore = store
+		frameworkStore = store
+	}
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
-	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
+	driver := mesos.InitSchedulerDriver(&cfg.Mesos, frameworkStore)
 
 	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
 	mux := nethttp.NewServeMux()
@@ -341,9 +364,9 @@ func main() {
 	metrics := metrics.New(metricScope.SubScope("master"))
 
 	jobmgrMetrics := jobmgr.NewMetrics(metricScope.SubScope("master"))
-	job.InitServiceHandler(dispatcher, &cfg.JobManager, store, store, &jobmgrMetrics, peloton_common.PelotonMaster)
-	task.InitServiceHandler(dispatcher, store, store, &jobmgrMetrics)
-	tq := taskq.InitTaskQueue(dispatcher, &metrics, store, store)
+	job.InitServiceHandler(dispatcher, &cfg.JobManager, jobStore, taskStore, &jobmgrMetrics, peloton_common.PelotonMaster)
+	task.InitServiceHandler(dispatcher, jobStore, taskStore, &jobmgrMetrics)
+	tq := taskq.InitTaskQueue(dispatcher, &metrics, jobStore, taskStore)
 	upgrade.InitManager(dispatcher)
 
 	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), cfg.Mesos.Encoding)
@@ -351,7 +374,7 @@ func main() {
 	// Init the managers driven by the mesos callbacks.
 	// They are driven by the leader who will subscribe to
 	// mesos callbacks
-	mesos.InitManager(dispatcher, &cfg.Mesos, store)
+	mesos.InitManager(dispatcher, &cfg.Mesos, frameworkStore)
 	om := offer.InitManager(dispatcher, time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
@@ -361,8 +384,8 @@ func main() {
 		cfg.Master.TaskUpdateBufferSize,
 		cfg.Master.TaskUpdateAckConcurrency,
 		cfg.Master.DbWriteConcurrency,
-		store,
-		store)
+		jobStore,
+		taskStore)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
@@ -376,8 +399,17 @@ func main() {
 		log.Fatalf("Failed to get ip, err=%v", err)
 	}
 	localPelotonMasterAddr := fmt.Sprintf("http://%s:%d", ip, cfg.Master.Port)
-	pMaster := newPelotonMaster(*env, mInbound, mOutbounds, pelotonMasterPeerChooser, tq, store, cfg, localPelotonMasterAddr,
-		mesosMasterDetector, om)
+	pMaster := newPelotonMaster(
+		*env,
+		mInbound,
+		mOutbounds,
+		pelotonMasterPeerChooser,
+		tq,
+		cfg,
+		localPelotonMasterAddr,
+		mesosMasterDetector,
+		om,
+	)
 	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
 
 	// Defer initializing placement engine till the end

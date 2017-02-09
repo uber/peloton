@@ -73,10 +73,11 @@ func (t *TaskStateChangeRecords) GetStateChangeRecords() ([]*TaskStateChangeReco
 
 // TaskStateChangeRecord tracks a peloton task state transition
 type TaskStateChangeRecord struct {
-	TaskState string
-	EventTime time.Time
-	TaskHost  string
-	TaskID    string
+	TaskState   string
+	EventTime   time.Time
+	TaskHost    string
+	TaskID      string
+	MesosTaskID string
 }
 
 // FrameworkInfoRecord tracks the framework info

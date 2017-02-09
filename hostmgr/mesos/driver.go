@@ -7,11 +7,11 @@ import (
 	"reflect"
 	"strings"
 
-	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
@@ -38,7 +38,7 @@ type FrameworkInfoProvider interface {
 
 // schedulerDriver implements the Mesos Driver API
 type schedulerDriver struct {
-	store         *mysql.JobStore
+	store         storage.FrameworkInfoStore
 	frameworkID   *mesos.FrameworkID
 	mesosStreamID string
 	cfg           *FrameworkConfig
@@ -50,7 +50,7 @@ var instance *schedulerDriver
 // InitSchedulerDriver initialize Mesos scheduler driver for Mesos scheduler HTTP API
 func InitSchedulerDriver(
 	cfg *Config,
-	store *mysql.JobStore) SchedulerDriver {
+	store storage.FrameworkInfoStore) SchedulerDriver {
 	// TODO: load framework ID from ZK or DB
 	instance = &schedulerDriver{
 		store:         store,

@@ -7,6 +7,7 @@ import (
 
 // StorageConfig contains the different DB config values for each supported backend
 type StorageConfig struct {
-	MySQL mysql.Config `yaml:"mysql"`
-	STAPI stapi.Config `yaml:"stapi"`
+	MySQL    mysql.Config `yaml:"mysql"`
+	STAPI    stapi.Config `yaml:"stapi_store_config"`
+	UseSTAPI bool         `yaml:"use_stapi"`
 }

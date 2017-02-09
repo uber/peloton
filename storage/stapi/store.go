@@ -270,8 +270,6 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 	jobID := id.Value
 	nTasks := int64(len(taskInfos))
 	tasksNotCreated := int64(0)
-	writeLock := sync.Mutex{} // protect these datastructs against concurrent modification
-	idsToTaskInfos := map[string]*task.TaskInfo{}
 	timeStart := time.Now()
 	nBatches := nTasks/maxBatchSize + 1
 	wg := new(sync.WaitGroup)
@@ -292,6 +290,7 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 		go func() {
 			batchTimeStart := time.Now()
 			insertStatements := []api.Statement{}
+			idsToTaskInfos := map[string]*task.TaskInfo{}
 			defer wg.Done()
 			for instanceID := start; instanceID < end; instanceID++ {
 				t := taskInfos[instanceID]
@@ -315,9 +314,7 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 				t.Runtime.State = task.RuntimeInfo_INITIALIZED
 				taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
 
-				writeLock.Lock()
 				idsToTaskInfos[taskID] = t
-				writeLock.Unlock()
 
 				queryBuilder := s.DataStore.NewQuery()
 				stmt := queryBuilder.Insert(tasksTable).
@@ -327,9 +324,7 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 					// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
 					// Batch with conditions cannot span multiple partitions. For now, drop the IfNotExist()
 
-				writeLock.Lock()
 				insertStatements = append(insertStatements, stmt)
-				writeLock.Unlock()
 			}
 			err := s.applyStatements(insertStatements, jobID)
 			if err != nil {
@@ -342,6 +337,11 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 			log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 				Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
 			s.metrics.TaskCreate.Inc(nTasks)
+
+			err = s.logTaskStateChanges(idsToTaskInfos)
+			if err != nil {
+				log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
+			}
 		}()
 	}
 	wg.Wait()
@@ -352,14 +352,6 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 		log.WithField("duration_s", time.Since(timeStart).Seconds()).
 			Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, id, time.Since(timeStart))
 	}
-
-	// Track the task events
-	err := s.logTaskStateChanges(idsToTaskInfos)
-	if err != nil {
-		log.Errorf("Unable to log %d task state changes for job ID %v, error = %v", nTasks, jobID, err)
-		return err
-	}
-
 	return nil
 
 }
@@ -399,10 +391,11 @@ func (s *Store) logTaskStateChanges(taskIDToTaskInfos map[string]*task.TaskInfo)
 	statements := []api.Statement{}
 	for taskID, taskInfo := range taskIDToTaskInfos {
 		var stateChange = TaskStateChangeRecord{
-			TaskID:    taskID,
-			TaskState: taskInfo.Runtime.State.String(),
-			TaskHost:  taskInfo.Runtime.Host,
-			EventTime: time.Now(),
+			TaskID:      taskID,
+			TaskState:   taskInfo.Runtime.State.String(),
+			TaskHost:    taskInfo.Runtime.Host,
+			EventTime:   time.Now(),
+			MesosTaskID: taskInfo.Runtime.TaskId.GetValue(),
 		}
 		buffer, err := json.Marshal(stateChange)
 		if err != nil {
