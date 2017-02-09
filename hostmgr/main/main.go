@@ -140,6 +140,11 @@ func main() {
 	}
 
 	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
+	// Tune db connections to make sure that task updates won't leak too many conns
+	// TODO: make it common db config for all components to share
+	store.DB.SetMaxOpenConns(cfg.HostManager.DbWriteConcurrency)
+	store.DB.SetMaxIdleConns(cfg.HostManager.DbWriteConcurrency)
+	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)

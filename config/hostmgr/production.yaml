@@ -30,5 +30,5 @@ election:
   zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
   path: "/peloton/hostmgr/leader"
 
-master:
+host_manager:
   db_write_concurrency: 400

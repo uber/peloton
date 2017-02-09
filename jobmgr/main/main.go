@@ -54,6 +54,11 @@ var (
 		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
 		Envar("DB_HOST").
 		String()
+
+	resmgrHost = app.
+			Flag("resmgr-host", "Res manager host (resmgrHost override) (set $RESMGR_HOST to override)").
+			Envar("RESMGR_HOST").
+			String()
 )
 
 func main() {
@@ -81,6 +86,10 @@ func main() {
 
 	if *dbHost != "" {
 		cfg.Storage.MySQL.Host = *dbHost
+	}
+
+	if *resmgrHost != "" {
+		cfg.JobManager.ResmgrHost = *resmgrHost
 	}
 
 	log.WithField("config", cfg).Debug("Loaded Peloton job manager configuration")

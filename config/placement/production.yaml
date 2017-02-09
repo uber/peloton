@@ -15,3 +15,7 @@ sentry:
 placement:
    task_dequeue_limit: 1000
    offer_dequeue_limit: 30
+
+storage:
+  mysql:
+    port: 3306

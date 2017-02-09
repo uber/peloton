@@ -55,6 +55,16 @@ var (
 		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
 		Envar("DB_HOST").
 		String()
+
+	resmgrHost = app.
+			Flag("resmgr-host", "Res manager host (resmgrHost override) (set $RESMGR_HOST to override)").
+			Envar("RESMGR_HOST").
+			String()
+
+	hostmgrHost = app.
+			Flag("hostmgr-host", "Host manager host (hostmgrHost override) (set $HOSTMGR_HOST to override)").
+			Envar("HOSTMGR_HOST").
+			String()
 )
 
 func main() {
@@ -80,6 +90,14 @@ func main() {
 
 	if *dbHost != "" {
 		cfg.Storage.MySQL.Host = *dbHost
+	}
+
+	if *resmgrHost != "" {
+		cfg.Placement.ResmgrHost = *resmgrHost
+	}
+
+	if *hostmgrHost != "" {
+		cfg.Placement.HostmgrHost = *hostmgrHost
 	}
 
 	rootScope, scopeCloser, _ := metrics.InitMetricScope(
