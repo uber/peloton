@@ -79,7 +79,12 @@ func GetMesosTaskInfo(
 	// TODO(zhitao): Figure out how to add GPU, which is optional.
 	// TODO: translate job.ResourceConfig fdlimit
 
-	jobID, _, err := ParseTaskID(taskID.GetValue())
+	tid, err := ParseTaskIDFromMesosTaskID(taskID.GetValue())
+	if err != nil {
+		return nil, err
+	}
+
+	jobID, _, err := ParseTaskID(tid)
 	if err != nil {
 		return nil, err
 	}
