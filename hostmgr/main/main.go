@@ -175,9 +175,6 @@ func main() {
 
 	metrics := hostmgr.NewMetrics(rootScope)
 
-	// Init service handler.
-	hostmgr.InitServiceHandler(dispatcher, mesosClient, metrics)
-
 	log.WithFields(log.Fields{
 		"port":     cfg.HostManager.Port,
 		"url_path": common.PelotonEndpointURL,
@@ -188,6 +185,13 @@ func main() {
 		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
+
+	// Init service handler.
+	hostmgr.InitServiceHandler(
+		dispatcher,
+		mesosClient,
+		metrics,
+		offerManager.Pool())
 
 	// Initializing TaskStateManager will start to record task status update back to storage.
 	// TODO(zhitao): This is temporary. Eventually we should create proper API protocol for

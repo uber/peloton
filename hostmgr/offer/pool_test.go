@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/stretchr/testify/assert"
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 type mockJSONClient struct {
@@ -144,27 +145,29 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	takenOffers := map[string]*mesos.Offer{}
 	mutex := &sync.Mutex{}
 	nClients := 4
-	nBatchSize := 2
+	filter := HostOfferFilter{HostLimit: 2}
 	wg = sync.WaitGroup{}
 	for i := 0; i < nClients; i++ {
 		wg.Add(1)
 		go func() {
-			offers := pool.getOffers(nBatchSize)
+			hostOffers := pool.GetHostOffers(&filter)
 			mutex.Lock()
 			defer mutex.Unlock()
-			for _, offer := range offers {
-				takenOffers[*offer.Id.Value] = offer
+			for _, offers := range hostOffers {
+				for _, offer := range offers {
+					takenOffers[offer.GetId().GetValue()] = offer
+				}
 			}
 			wg.Done()
 		}()
 	}
 	wg.Wait()
-	assert.Equal(t, len(takenOffers), nClients*nBatchSize*nOffers)
+	assert.Equal(t, len(takenOffers), nClients*int(filter.HostLimit)*nOffers)
 	for offerID, offer := range takenOffers {
 		assert.Equal(t, offerID, *offer.Id.Value)
 		assert.Nil(t, pool.offers[offerID])
 	}
-	assert.Equal(t, len(pool.offers), nOffers*nAgents-nClients*nBatchSize*nOffers)
+	assert.Equal(t, len(pool.offers), nOffers*nAgents-nClients*int(filter.HostLimit)*nOffers)
 
 	//Rescind offer
 	wg = sync.WaitGroup{}

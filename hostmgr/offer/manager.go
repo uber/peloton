@@ -12,7 +12,11 @@ import (
 )
 
 // InitManager inits the offer manager
-func InitManager(d yarpc.Dispatcher, offerHoldTime time.Duration, offerPruningPeriod time.Duration, client mpb.Client) *Manager {
+func InitManager(
+	d yarpc.Dispatcher,
+	offerHoldTime time.Duration,
+	offerPruningPeriod time.Duration,
+	client mpb.Client) *Manager {
 	pool := NewOfferPool(d, offerHoldTime, client)
 	m := Manager{
 		offerPool:   pool,
@@ -78,6 +82,11 @@ func (m *Manager) RescindInverseOffer(
 	event := body.GetRescindInverseOffer()
 	log.WithField("event", event).Debug("OfferManager: processing RescindInverseOffer event")
 	return nil
+}
+
+// Pool returns the underlying OfferPool.
+func (m *Manager) Pool() Pool {
+	return m.offerPool
 }
 
 // Start runs startup related procedures

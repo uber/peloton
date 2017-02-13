@@ -9,6 +9,7 @@ import (
 	sched "mesos/v1/scheduler"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/pbgen/src/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -20,8 +21,9 @@ import (
 
 // serviceHandler implements peloton.private.hostmgr.InternalHostService.
 type serviceHandler struct {
-	client  mpb.Client
-	metrics *Metrics
+	client    mpb.Client
+	metrics   *Metrics
+	offerPool offer.Pool
 
 	// TODO(zhitao): Add offer pool batching and implement OfferManager API.
 
@@ -32,10 +34,12 @@ type serviceHandler struct {
 func InitServiceHandler(
 	d yarpc.Dispatcher,
 	client mpb.Client,
-	metrics *Metrics) {
+	metrics *Metrics,
+	offerPool offer.Pool) {
 	handler := serviceHandler{
-		client:  client,
-		metrics: metrics,
+		client:    client,
+		metrics:   metrics,
+		offerPool: offerPool,
 	}
 
 	json.Register(d, json.Procedure("InternalHostService.GetHostOffers", handler.GetHostOffers))
@@ -53,7 +57,43 @@ func (h *serviceHandler) GetHostOffers(
 	reqMeta yarpc.ReqMeta,
 	body *hostsvc.GetHostOffersRequest) (*hostsvc.GetHostOffersResponse, yarpc.ResMeta, error) {
 	log.Info("GetHostOffers called.")
-	return nil, nil, fmt.Errorf("Unimplemented")
+
+	offerFilter := offer.HostOfferFilter{
+		HostLimit: body.Limit,
+	}
+
+	hostOffers := h.offerPool.GetHostOffers(&offerFilter)
+
+	response := hostsvc.GetHostOffersResponse{
+		HostOffers: []*hostsvc.HostOffer{},
+	}
+
+	for hostname, offers := range hostOffers {
+		if len(offers) <= 0 {
+			log.WithField("host", hostname).Warn("Empty offer slice from host")
+			continue
+		}
+
+		var resources []*mesos_v1.Resource
+		var offerIds []*mesos_v1.OfferID
+
+		for _, offer := range offers {
+			offerIds = append(offerIds, offer.GetId())
+			resources = append(resources, offer.GetResources()...)
+		}
+
+		hostOffer := hostsvc.HostOffer{
+			Hostname:   hostname,
+			AgentId:    offers[0].GetAgentId(),
+			Attributes: offers[0].GetAttributes(),
+			Resources:  resources,
+			OfferIds:   offerIds,
+		}
+
+		response.HostOffers = append(response.HostOffers, &hostOffer)
+	}
+
+	return &response, nil, nil
 }
 
 // LaunchTasks implements InternalHostService.LaunchTasks.

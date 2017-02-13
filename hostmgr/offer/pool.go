@@ -2,6 +2,7 @@ package offer
 
 import (
 	"context"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -35,6 +36,9 @@ type Pool interface {
 
 	// Decline offers
 	DeclineOffers(offers map[string]*TimedOffer) error
+
+	// GetHostOffers obtains offers from pool, grouped by hostname as key.
+	GetHostOffers(offerFilter *HostOfferFilter) map[string][]*mesos.Offer
 }
 
 // NewOfferPool creates a offerPool object and registers the
@@ -50,6 +54,12 @@ func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration, client mpb.Cl
 	json.Register(d, json.Procedure("OfferPool.GetOffers", pool.GetOffers))
 
 	return pool
+}
+
+// HostOfferFilter describes offers from which host should be returned in a GetOffers call.
+type HostOfferFilter struct {
+	// HostLimit is the maximum number of hosts to return. Any non-positive number means unlimited.
+	HostLimit uint32
 }
 
 // TimedOffer contains details of a Mesos Offer
@@ -68,35 +78,6 @@ type hostOfferSummary struct {
 // A heuristic about if the agentResourceSummary has any offer.
 func (a *hostOfferSummary) hasOffer() bool {
 	return atomic.LoadInt32(a.hasOfferFlag) == int32(1)
-}
-
-// Returns up to maxOffers of offers
-func (a *hostOfferSummary) getOffers(maxOffers int) []*mesos.Offer {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-
-	var result []*mesos.Offer
-	currentOfferNum := len(a.offersOnHost)
-	if currentOfferNum == 0 {
-		return result
-	}
-
-	offerNum := maxOffers
-	if offerNum > currentOfferNum {
-		offerNum = currentOfferNum
-	}
-	for id, offer := range a.offersOnHost {
-		if offerNum == 0 {
-			break
-		}
-		offerNum--
-		delete(a.offersOnHost, id)
-		result = append(result, offer)
-	}
-	if len(a.offersOnHost) == 0 {
-		atomic.StoreInt32(a.hasOfferFlag, 0)
-	}
-	return result
 }
 
 // Returns all of offers
@@ -153,8 +134,16 @@ func (p *offerPool) GetOffers(
 	body *offerpool.GetOffersRequest) (
 	*offerpool.GetOffersResponse, yarpc.ResMeta, error) {
 
-	limit := body.Limit
-	offers := p.getOffers(int(limit))
+	filter := HostOfferFilter{
+		HostLimit: body.Limit,
+	}
+
+	hostOffers := p.GetHostOffers(&filter)
+
+	var offers []*mesos.Offer
+	for _, ol := range hostOffers {
+		offers = append(offers, ol...)
+	}
 
 	log.WithField("offers", offers).Debug("OfferPool: get offers")
 	return &offerpool.GetOffersResponse{
@@ -162,36 +151,44 @@ func (p *offerPool) GetOffers(
 	}, nil, nil
 }
 
-func (p *offerPool) getOffers(hostLimit int) []*mesos.Offer {
+// GetHostOffers returns Mesos offers according to input filter.
+func (p *offerPool) GetHostOffers(offerFilter *HostOfferFilter) map[string][]*mesos.Offer {
 	defer p.RUnlock()
 	p.RLock()
 
-	count := 0
-	offers := []*mesos.Offer{}
-	for _, hostOffers := range p.hostOfferIndex {
-		if hostOffers.hasOffer() {
-			offerGot := hostOffers.getAllOffers()
-			if len(offerGot) > 0 {
-				for _, o := range offerGot {
-					offers = append(offers, o)
+	var hostLimit uint32 = math.MaxUint32
+	if offerFilter.HostLimit > 0 {
+		hostLimit = offerFilter.HostLimit
+	}
 
-				}
-				count++
-				if count >= hostLimit {
+	var numHosts uint32
+
+	hostOffers := make(map[string][]*mesos.Offer)
+
+	for hostname, summary := range p.hostOfferIndex {
+		if summary.hasOffer() {
+			offersGot := summary.getAllOffers()
+			if len(offersGot) > 0 {
+				hostOffers[hostname] = offersGot
+				numHosts++
+				if numHosts >= hostLimit {
 					break
 				}
 			}
 		}
 	}
+
 	// Clear the entries for the selected offers in p.offers
-	if len(offers) > 0 {
+	if len(hostOffers) > 0 {
 		p.offersLock.Lock()
 		defer p.offersLock.Unlock()
-		for _, o := range offers {
-			delete(p.offers, *o.Id.Value)
+		for _, offers := range hostOffers {
+			for _, o := range offers {
+				delete(p.offers, *o.Id.Value)
+			}
 		}
 	}
-	return offers
+	return hostOffers
 }
 
 // tryAddOffer acquires read lock of the offerPool. If the offerPool does not
@@ -244,7 +241,8 @@ func (p *offerPool) AddOffers(offers []*mesos.Offer) {
 }
 
 func (p *offerPool) RescindOffer(offerID *mesos.OfferID) {
-	log.Debugf("OfferPool: rescinded offer %v", offerID)
+	id := offerID.GetValue()
+	log.WithField("offer_id", id).Debug("RescindOffer Received")
 	p.RLock()
 	defer p.RUnlock()
 	p.offersLock.Lock()
@@ -257,7 +255,7 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) {
 		hostName = *offer.MesosOffer.Hostname
 		delete(p.offers, oID)
 	} else {
-		log.Warnf("OfferID %v not found in offerPool", offerID)
+		log.WithField("offer_id", offerID).Warn("OfferID not found in pool")
 		return
 	}
 
@@ -266,7 +264,10 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) {
 	if ok {
 		hosttOffers.removeMesosOffer(oID)
 	} else {
-		log.Warnf("hostName %v not found in hostOfferIndex, offerID %v", hostName, offerID)
+		log.WithFields(log.Fields{
+			"host":     hostName,
+			"offer_id": id,
+		}).Warn("host not found in hostOfferIndex")
 	}
 }
 
@@ -283,7 +284,7 @@ func (p *offerPool) RemoveExpiredOffers() map[string]*TimedOffer {
 	for offerID, offer := range p.offers {
 		offerHoldTime := offer.Timestamp.Add(p.offerHoldTime)
 		if time.Now().After(offerHoldTime) {
-			log.Debugf("Offer %v has expired, removed from offer pool", offerID)
+			log.WithField("offer_id", offerID).Debug("Removing expired offer from pool")
 			// Save offer map so we can put offers back to pool to retry if mesos decline call fails
 			offersToDecline[offerID] = offer
 			delete(p.offers, offerID)
@@ -318,7 +319,7 @@ func (p *offerPool) DeclineOffers(offers map[string]*TimedOffer) error {
 	for _, offer := range offers {
 		offerIDs = append(offerIDs, offer.MesosOffer.Id)
 	}
-	log.Debugf("OfferPool: decline offers %v", offerIDs)
+	log.WithField("offer_ids", offerIDs).Debug("Decline offers")
 	callType := sched.Call_DECLINE
 	msg := &sched.Call{
 		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkID(),
@@ -336,7 +337,7 @@ func (p *offerPool) DeclineOffers(offers map[string]*TimedOffer) error {
 		// to retry cleanup at the next run
 		// TODO: discuss the correct behavior. If mesos master has offer-timeout set (which it definitely should),
 		// we can ignore the error.
-		log.Warnf("Failed to decline offers, put offers back to pool, err=%v", err)
+		log.WithField("error", err).Warn("Failed to decline offers so put offers back to pool")
 
 		defer p.RUnlock()
 		p.RLock()
