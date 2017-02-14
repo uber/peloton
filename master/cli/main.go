@@ -43,7 +43,6 @@ import (
 )
 
 const (
-	productionEnvValue = "production"
 	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
 	metricFlushInterval = 1 * time.Second
 )
@@ -312,17 +311,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize mesos master detector: %v", err)
 	}
-	// Not doing this for development for now because on Mac, mesos
-	// containers are launched in bridged network, therefore master
-	// registers with docker internal ip to zk, which can not be
-	// accessed by peloton running outside the container.
-	if *env == productionEnvValue {
-		mesosMasterLocation, err = mesosMasterDetector.GetMasterLocation()
-		if err != nil {
-			log.Fatalf("Failed to get mesos leading master location, err=%v", err)
-		}
-		log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
+
+	mesosMasterLocation, err = mesosMasterDetector.GetMasterLocation()
+	if err != nil {
+		log.Fatalf("Failed to get mesos leading master location, err=%v", err)
 	}
+	log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
 
 	// Each master needs a Mesos inbound
 	var mInbound = mhttp.NewInbound(driver)

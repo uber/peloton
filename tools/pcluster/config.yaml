@@ -56,9 +56,30 @@ cassandra_test_db: peloton_test
 
 # Peloton configs
 # peloton image is expected to be available before running container,
-# it can be built by running "$PELOTON_HOME/packaging/build-docker.sh --tag pcluster",
-# refer to "$PELOTON_HOME/packaging/README.md" for more details
+# it can be built by running
+#    $PELOTON_HOME/tools/packaging/peloton-release/build-docker.sh --tag pcluster
+# refer to "$PELOTON_HOME/tools/packaging/peloton-release/README.md" for more details
 peloton_image: infra/peloton:pcluster
-peloton_container: peloton_container
+
+
+# Peloton master specific configs
+peloton_master_container: peloton-master
 peloton_master_port: 5289
-peloton_master_instance_count: 2
+peloton_master_instance_count: 1
+
+
+# Peloton app specific configs
+peloton_resmgr_container: peloton_resmgr
+peloton_resmgr_port: 5290
+peloton_resmgr_instance_count: 1
+
+peloton_hostmgr_container: peloton_hostmgr
+peloton_hostmgr_port: 5291
+peloton_hostmgr_instance_count: 1
+
+peloton_jobmgr_container: peloton_jobmgr
+peloton_jobmgr_port: 5292
+peloton_jobmgr_instance_count: 1
+
+peloton_placement_container: peloton_placement
+peloton_placement_instance_count: 1

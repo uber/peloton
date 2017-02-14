@@ -2,6 +2,8 @@
 
 set -euxo pipefail
 
+pushd $(dirname $0)
+
 [[ $(uname) == Darwin ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
 PELOTON_REPO="gitolite@code.uber.internal:infra/peloton.git"

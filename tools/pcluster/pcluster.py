@@ -2,16 +2,15 @@
 '''
  -- Locally run and manage a personal cluster in containers.
 
-This script can be used to manage (setup, teardown) a personal Mesos cluster and Mysql etc in containers.
-Once a personal cluster is running you can run Peloton master against it.
+This script can be used to manage (setup, teardown) a personal
+Mesos cluster and Mysql etc in containers, optionally Peloton
+master or apps can be specified to run in containers as well.
 
-@author:     wu
-
-@copyright:  2016 Uber Compute Platform. All rights reserved.
+@copyright:  2017 Uber Compute Platform. All rights reserved.
 
 @license:    license
 
-@contact:    wu@uber.com
+@contact:    peloton-dev@uber.com
 '''
 
 import os
@@ -56,15 +55,16 @@ config = load_config()
 
 
 #
-# Force remove container by name
+# Force remove container by name (best effort)
 #
 def remove_existing_container(name):
     try:
         cli.remove_container(name, force=True)
         print 'removed container %s' % name
     except Exception, e:
-        print 'Error removing container %s : %s, skipping' % (name, e)
-        pass
+        if 'No such container' in str(e):
+            return
+        raise e
 
 
 #
@@ -233,24 +233,31 @@ def run_cassandra():
 
 
 #
-# Run peloton (@wu: This is still experimental)
+# Run peloton master
 #
-def run_peloton():
-    # On Mac, peloton can only be accessed by 'localhost:<port>'
-    # from inside a container, there is no such issue with Linux.
-    # TODO: update the docker run mechanism once T664460 is resolved
-    cli.pull(config['peloton_image'])
+def run_peloton_master():
+    print 'docker image "infra/peloton:pcluster" has to be built first locally by running ' \
+          '$PELOTON_HOME/tools/packaging/peloton-release/build-docker.sh --tag pcluster'
+
     for i in range(0, config['peloton_master_instance_count']):
         port = config['peloton_master_port'] + i
-        name = config['peloton_container'] + repr(i)
+        name = config['peloton_master_container'] + repr(i)
         remove_existing_container(name)
         container = cli.create_container(
             name=name,
             environment=[
-                'MASTER_PORT=' + repr(port)
+                'MASTER_PORT=' + repr(port),
+                'DB_HOST=' + host_ip,
+                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
+                    host_ip,
+                    config['local_zk_port']
+                ),
             ],
             host_config=cli.create_host_config(
-                network_mode='host',
+                port_bindings={
+                    port: port,
+                },
             ),
             # pull or build peloton image if not exists
             image=config['peloton_image'],
@@ -258,27 +265,197 @@ def run_peloton():
         )
         cli.start(container=container.get('Id'))
         print 'started container %s' % name
+        time.sleep(1)
+
+
+#
+# Run peloton apps
+#
+def run_peloton(disable_peloton_resmgr=False,
+                disable_peloton_hostmgr=False,
+                disable_peloton_jobmgr=False,
+                disable_peloton_placement=False):
+    print 'docker image "infra/peloton:pcluster" has to be built first locally by running ' \
+          '$PELOTON_HOME/tools/packaging/peloton-release/build-docker.sh --tag pcluster'
+
+    if not disable_peloton_resmgr:
+        run_peloton_resmgr()
+
+    if not disable_peloton_hostmgr:
+        run_peloton_hostmgr()
+
+    if not disable_peloton_jobmgr:
+        run_peloton_jobmgr()
+
+    if not disable_peloton_placement:
+        run_peloton_placement()
+
+
+#
+# Run peloton resmgr app
+#
+def run_peloton_resmgr():
+    # TODO: move docker run logic into a common function for all apps to share
+    for i in range(0, config['peloton_resmgr_instance_count']):
+        # to not cause port conflicts among apps, increase port by 10 for each instance
+        port = config['peloton_resmgr_port'] + i*10
+        name = config['peloton_resmgr_container'] + repr(i)
+        remove_existing_container(name)
+        container = cli.create_container(
+            name=name,
+            ports=[repr(port)],
+            environment=[
+                'PELOTON_CONFIG_DIR=config/resmgr',
+                'PELOTON_APP=resmgr',
+                'RESMGR_PORT=' + repr(port),
+                'DB_HOST=' + host_ip,
+                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+            ],
+            host_config=cli.create_host_config(
+                port_bindings={
+                    port: port,
+                },
+            ),
+            # pull or build peloton image if not exists
+            image=config['peloton_image'],
+            detach=True,
+        )
+        cli.start(container=container.get('Id'))
+        print 'started container %s' % name
+        time.sleep(1)
+
+
+#
+# Run peloton hostmgr app
+#
+def run_peloton_hostmgr():
+    for i in range(0, config['peloton_hostmgr_instance_count']):
+        # to not cause port conflicts among apps, increase port by 10 for each instance
+        port = config['peloton_hostmgr_port'] + i*10
+        name = config['peloton_hostmgr_container'] + repr(i)
+        remove_existing_container(name)
+        container = cli.create_container(
+            name=name,
+            ports=[repr(port)],
+            environment=[
+                'PELOTON_CONFIG_DIR=config/hostmgr',
+                'PELOTON_APP=hostmgr',
+                'HOSTMGR_PORT=' + repr(port),
+                'DB_HOST=' + host_ip,
+                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
+                    host_ip,
+                    config['local_zk_port']
+                ),
+            ],
+            host_config=cli.create_host_config(
+                port_bindings={
+                    port: port,
+                },
+            ),
+            # pull or build peloton image if not exists
+            image=config['peloton_image'],
+            detach=True,
+        )
+        cli.start(container=container.get('Id'))
+        print 'started container %s' % name
+        time.sleep(1)
+
+
+#
+# Run peloton jobmgr app
+#
+def run_peloton_jobmgr():
+    for i in range(0, config['peloton_jobmgr_instance_count']):
+        # to not cause port conflicts among apps, increase port by 10 for each instance
+        port = config['peloton_jobmgr_port'] + i*10
+        name = config['peloton_jobmgr_container'] + repr(i)
+        remove_existing_container(name)
+        container = cli.create_container(
+            name=name,
+            ports=[repr(port)],
+            environment=[
+                'PELOTON_CONFIG_DIR=config/jobmgr',
+                'PELOTON_APP=jobmgr',
+                'JOBMGR_PORT=' + repr(port),
+                'DB_HOST=' + host_ip,
+                'RESMGR_HOST=' + host_ip,
+                'HOSTMGR_PORT=' + repr(port),
+            ],
+            host_config=cli.create_host_config(
+                port_bindings={
+                    port: port,
+                },
+            ),
+            # pull or build peloton image if not exists
+            image=config['peloton_image'],
+            detach=True,
+        )
+        cli.start(container=container.get('Id'))
+        print 'started container %s' % name
+        time.sleep(1)
+
+
+#
+# Run peloton placement app
+#
+def run_peloton_placement():
+    for i in range(0, config['peloton_placement_instance_count']):
+        name = config['peloton_placement_container'] + repr(i)
+        remove_existing_container(name)
+        container = cli.create_container(
+            name=name,
+            environment=[
+                'PELOTON_CONFIG_DIR=config/placement',
+                'PELOTON_APP=placement',
+                'DB_HOST=' + host_ip,
+                'RESMGR_HOST=' + host_ip,
+                'HOSTMGR_HOST=' + host_ip,
+                'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
+                    host_ip,
+                    config['local_zk_port']
+                ),
+            ],
+            # pull or build peloton image if not exists
+            image=config['peloton_image'],
+            detach=True,
+        )
+        cli.start(container=container.get('Id'))
+        print 'started container %s' % name
+        time.sleep(1)
 
 
 #
 # Set up a personal cluster
 #
-def setup(enable_mesos=True, enable_mysql=True, enable_cassandra=True, enable_peloton=False):
-    if enable_mysql:
-        run_mysql()
+def setup(enable_peloton_master=False,
+          enable_peloton=False,
+          disable_peloton_resmgr=False,
+          disable_peloton_hostmgr=False,
+          disable_peloton_jobmgr=False,
+          disable_peloton_placement=False):
 
-    if enable_mesos:
-        run_mesos()
+    run_cassandra()
+    run_mysql()
+    run_mesos()
 
-    if enable_cassandra:
-        run_cassandra()
+    if enable_peloton_master:
+        run_peloton_master()
 
-    if enable_peloton:
-        run_peloton()
+    # single master mode and 4-app mode should be exclusive
+    if not enable_peloton_master and enable_peloton:
+        run_peloton(
+            disable_peloton_resmgr,
+            disable_peloton_hostmgr,
+            disable_peloton_jobmgr,
+            disable_peloton_placement
+        )
 
 
 #
 # Tear down a personal cluster
+# TODO (wu): use docker labels when launching containers
+#            and then remove all containers with that label
 #
 def teardown():
     remove_existing_container(config['zk_container'])
@@ -294,7 +471,23 @@ def teardown():
     remove_existing_container(config['cassandra_container'])
 
     for i in range(0, config['peloton_master_instance_count']):
-        name = config['peloton_container'] + repr(i)
+        name = config['peloton_master_container'] + repr(i)
+        remove_existing_container(name)
+
+    for i in range(0, config['peloton_resmgr_instance_count']):
+        name = config['peloton_resmgr_container'] + repr(i)
+        remove_existing_container(name)
+
+    for i in range(0, config['peloton_hostmgr_instance_count']):
+        name = config['peloton_hostmgr_container'] + repr(i)
+        remove_existing_container(name)
+
+    for i in range(0, config['peloton_jobmgr_instance_count']):
+        name = config['peloton_jobmgr_container'] + repr(i)
+        remove_existing_container(name)
+
+    for i in range(0, config['peloton_placement_instance_count']):
+        name = config['peloton_placement_container'] + repr(i)
         remove_existing_container(name)
 
 
@@ -316,12 +509,48 @@ USAGE
     # Subparser for the 'setup' command
     parser_setup = subparsers.add_parser('setup', help='set up a personal cluster')
     parser_setup.add_argument(
-        "-ep",
-        "--enable_peloton",
+        "-m",
+        "--enable-peloton-master",
+        dest="enable_peloton_master",
+        action='store_true',
+        default=False,
+        help="enable peloton in master mode"
+    )
+    parser_setup.add_argument(
+        "-a",
+        "--enable-peloton",
         dest="enable_peloton",
         action='store_true',
         default=False,
-        help="enable peloton"
+        help="enable peloton in multi app mode, if enable_peloton_master is specified this will be False"
+    )
+    parser_setup.add_argument(
+        "--no-resmgr",
+        dest="disable_peloton_resmgr",
+        action='store_true',
+        default=False,
+        help="disable peloton resmgr app"
+    )
+    parser_setup.add_argument(
+        "--no-hostmgr",
+        dest="disable_peloton_hostmgr",
+        action='store_true',
+        default=False,
+        help="disable peloton hostmgr app"
+    )
+    parser_setup.add_argument(
+        "--no-jobmgr",
+        dest="disable_peloton_jobmgr",
+        action='store_true',
+        default=False,
+        help="disable peloton jobmgr app"
+    )
+    parser_setup.add_argument(
+        "--no-placement",
+        dest="disable_peloton_placement",
+        action='store_true',
+        default=False,
+        help="disable peloton placement engine app"
     )
 
     # Subparser for the 'teardown' command
@@ -334,7 +563,12 @@ USAGE
 
     if command == 'setup':
         setup(
+            enable_peloton_master=args.enable_peloton_master,
             enable_peloton=args.enable_peloton,
+            disable_peloton_hostmgr=args.disable_peloton_hostmgr,
+            disable_peloton_resmgr=args.disable_peloton_resmgr,
+            disable_peloton_jobmgr=args.disable_peloton_jobmgr,
+            disable_peloton_placement=args.disable_peloton_placement,
         )
     elif command == 'teardown':
         teardown()

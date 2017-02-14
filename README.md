@@ -51,8 +51,22 @@ glide install
 
 make
 
-## We need to run pcluster
+## Run pcluster to bootstrap runtime dependencies like mesos and db
 make pcluster
+
+
+## Run Peloton master/apps in containers
+Please refer to tools/pcluster/README.md for more details
+
+## Test Peloton apps
+Create new job via yarpc based go client:
+
+cd $GOPATH/src/code.uber.internal/infra/peloton
+
+bin/peloton job create test test/testjob.yaml --master http://localhost:5292
+
+bin/peloton task list test --master http://localhost:5292
+
 
 ## Run Peloton master
 
@@ -87,4 +101,6 @@ curl -X POST  \
      -H 'Context-TTL-MS: 1000'            \
      -H 'Rpc-Encoding: json'              \
      --data '{"id": {"value": "myjob12345"}}' 	\
-    localhost:5289
+    localhost:5289/api/v1
+
+

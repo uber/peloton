@@ -14,7 +14,7 @@ labels:
     value: testVal1
   - key: testKey2
     value: testVal2
-instancecount: 1000
+instancecount: 100
 sla:
   priority: 22
   minimuminstancecount: 12

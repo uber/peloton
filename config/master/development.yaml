@@ -19,4 +19,5 @@ metrics:
   #  endpoint: localhost:1234
 
 storage:
-  use_stapi: true
+  # TODO: turn this back on once T736115 is resolved
+  use_stapi: false

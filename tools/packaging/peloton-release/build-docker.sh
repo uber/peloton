@@ -2,6 +2,8 @@
 
 set -euxo pipefail
 
+pushd $(dirname $0)
+
 [[ $(uname) == Darwin ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
 # bump me up !
@@ -39,7 +41,7 @@ while [ $# -gt 0 ] ; do
     esac
 done
 
-./build-debian.sh --package-name peloton.deb --branch $BRANCH
+$(dirname "$0")/build-debian.sh --package-name peloton.deb --branch $BRANCH
 mv -f build/peloton.deb $DOCKERFILE_PATH
 cp docker/entrypoint.sh $DOCKERFILE_PATH
 $docker_cmd build -t infra/peloton:$TAG $DOCKERFILE_PATH
