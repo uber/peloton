@@ -6,7 +6,7 @@ resmgr:
 
 election:
   zk_servers: ["localhost:8192"]
-  path: "/peloton/resmgr/leader"
+  root: "/peloton/development"
 
 metrics:
   prometheus:

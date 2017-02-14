@@ -11,7 +11,6 @@ type Config struct {
 	Metrics    metrics.Config   `yaml:"metrics"`
 	Storage    sc.StorageConfig `yaml:"storage"`
 	JobManager JobManagerConfig `yaml:"job_manager"`
-	//TODO: add service discovery for resmgr / hostmgr
 }
 
 // JobManagerConfig is JobManager specific configuration

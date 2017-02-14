@@ -28,7 +28,7 @@ placement:
 
 election:
   zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
-  path: "/peloton/master/leader"
+  root: "/peloton/production"
 
 master:
   db_write_concurrency: 400

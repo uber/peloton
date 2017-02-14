@@ -136,7 +136,14 @@ func main() {
 	localPelotonRMAddr := fmt.Sprintf("http://%s:%d", ip, cfg.ResMgr.Port)
 	resMgrLeader := resmgr.NewServer(*env, resmgrPeerChooser, cfg, localPelotonRMAddr,
 		*rm, taskqueue)
-	leader.NewZkElection(cfg.Election, localPelotonRMAddr, resMgrLeader)
+	leadercandidate, err := leader.NewCandidate(cfg.Election, rootScope.SubScope("election"), common.ResourceManagerRole, resMgrLeader)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Fatal("Unable to create leader candidate")
+	}
+	err = leadercandidate.Start()
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Fatal("Unable to start leader candidate")
+	}
 
 	select {}
 }

@@ -42,11 +42,10 @@ func NewServer(
 	}
 }
 
-// GainedLeadershipCallBack is the callback when the current node becomes the leader
-func (s *Server) GainedLeadershipCallBack() error {
+// GainedLeadershipCallback is the callback when the current node becomes the leader
+func (s *Server) GainedLeadershipCallback() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	log.Infof("Gained leadership")
 
 	mesosMasterAddr, err := s.mesosDetector.GetMasterLocation()
 	if err != nil {
@@ -81,16 +80,6 @@ func (s *Server) LostLeadershipCallback() error {
 	return err
 }
 
-// NewLeaderCallBack is the callback when some other node becomes the leader, leader is hostname of the leader
-func (s *Server) NewLeaderCallBack(leader string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	log.Infof("New Leader is elected : %v", leader)
-
-	return nil
-}
-
 // ShutDownCallback is the callback to shut down gracefully if possible
 func (s *Server) ShutDownCallback() error {
 	s.mutex.Lock()
@@ -99,7 +88,8 @@ func (s *Server) ShutDownCallback() error {
 	return nil
 }
 
-// GetHostPort function returns the peloton master address
-func (s *Server) GetHostPort() string {
+// GetID function returns the peloton master address
+// required to implement leader.Nomination
+func (s *Server) GetID() string {
 	return s.localAddr
 }

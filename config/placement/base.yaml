@@ -12,10 +12,10 @@ placement:
    hostmgr_port: 5291
    resmgr_election:
      zk_servers: ["localhost:8192"]
-     path: "/peloton/resmgr/leader"
+     root: "/peloton"
    hostmgr_election:
      zk_servers: ["localhost:8192"]
-     path: "/peloton/hostmgr/leader"
+     root: "/peloton"
 
 # TODO: remove storage and mesos config when we
 # completely switch to hostMgr launch task api

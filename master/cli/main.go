@@ -108,8 +108,8 @@ func newPelotonMaster(env string,
 	return &result
 }
 
-// GainedLeadershipCallBack is the callback when the current node becomes the leader
-func (p *pelotonMaster) GainedLeadershipCallBack() error {
+// GainedLeadershipCallback is the callback when the current node becomes the leader
+func (p *pelotonMaster) GainedLeadershipCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	log.Infof("Gained leadership")
@@ -158,16 +158,6 @@ func (p *pelotonMaster) LostLeadershipCallback() error {
 	return err
 }
 
-// NewLeaderCallBack is the callback when some other node becomes the leader, leader is hostname of the leader
-func (p *pelotonMaster) NewLeaderCallBack(leader string) error {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	log.Infof("New Leader is elected : %v", leader)
-	// leader changes, so point pelotonMasterOutbound to the new leader
-	return p.peerChooser.UpdatePeer(leader, peloton_common.PelotonMaster)
-}
-
 // ShutDownCallback is the callback to shut down gracefully if possible
 func (p *pelotonMaster) ShutDownCallback() error {
 	p.mutex.Lock()
@@ -176,8 +166,9 @@ func (p *pelotonMaster) ShutDownCallback() error {
 	return nil
 }
 
-// GetHostPort function returns the peloton master address
-func (p *pelotonMaster) GetHostPort() string {
+// GetID function returns the peloton master address
+// required to implement leader.Nomination
+func (p *pelotonMaster) GetID() string {
 	return p.localAddr
 }
 
@@ -410,7 +401,14 @@ func main() {
 		mesosMasterDetector,
 		om,
 	)
-	leader.NewZkElection(cfg.Election, localPelotonMasterAddr, pMaster)
+	leadercandidate, err := leader.NewCandidate(cfg.Election, metricScope.SubScope("election"), peloton_common.MasterRole, pMaster)
+	if err != nil {
+		log.Fatalf("Unable to create leader candidate: %v", err)
+	}
+	err = leadercandidate.Start()
+	if err != nil {
+		log.Fatalf("Unable to start leader candidate: %v", err)
+	}
 
 	// Defer initializing placement engine till the end
 	placementMetrics := placement.NewMetrics(metricScope.SubScope("placement"))

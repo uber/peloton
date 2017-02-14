@@ -42,8 +42,8 @@ func NewServer(env string,
 	return &result
 }
 
-// GainedLeadershipCallBack is the callback when the current node becomes the leader
-func (p *Server) GainedLeadershipCallBack() error {
+// GainedLeadershipCallback is the callback when the current node becomes the leader
+func (p *Server) GainedLeadershipCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	log.Infof("Gained leadership")
@@ -76,16 +76,6 @@ func (p *Server) LostLeadershipCallback() error {
 	return nil
 }
 
-// NewLeaderCallBack is the callback when some other node becomes the leader, leader is hostname of the leader
-func (p *Server) NewLeaderCallBack(leader string) error {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	log.Infof("New Leader is elected : %v", leader)
-	// leader changes, so point resmgrOutbound to the new leader
-	return p.peerChooser.UpdatePeer(leader, common.PelotonResourceManager)
-}
-
 // ShutDownCallback is the callback to shut down gracefully if possible
 func (p *Server) ShutDownCallback() error {
 	p.mutex.Lock()
@@ -94,7 +84,8 @@ func (p *Server) ShutDownCallback() error {
 	return nil
 }
 
-// GetHostPort function returns the peloton resource manager master address
-func (p *Server) GetHostPort() string {
+// GetID function returns the peloton resource manager master address
+// required to implement leader.Nomination
+func (p *Server) GetID() string {
 	return p.localAddr
 }

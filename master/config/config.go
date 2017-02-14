@@ -10,8 +10,10 @@ import (
 	"code.uber.internal/infra/peloton/storage/config"
 )
 
-// FrameworkURLPath is where the RPC endpoint lives for peloton
-const FrameworkURLPath = "/api/v1"
+const (
+	// FrameworkURLPath is where the RPC endpoint lives for peloton
+	FrameworkURLPath = "/api/v1"
+)
 
 // Config encapulates the master runtime config
 type Config struct {

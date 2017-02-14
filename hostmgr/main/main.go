@@ -216,7 +216,14 @@ func main() {
 		offerManager,
 		localAddr)
 
-	leader.NewZkElection(cfg.Election, localAddr, server)
+	leadercandidate, err := leader.NewCandidate(cfg.Election, rootScope.SubScope("election"), common.HostManagerRole, server)
+	if err != nil {
+		log.Fatalf("Unable to create leader candidate: %v", err)
+	}
+	err = leadercandidate.Start()
+	if err != nil {
+		log.Fatalf("Unable to start leader candidate: %v", err)
+	}
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

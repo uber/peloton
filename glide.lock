@@ -1,5 +1,5 @@
-hash: c90e09276ce6b7226f3c44a59b202c773e01fcfc9717613c4cd78d11062dcd7b
-updated: 2016-12-30T10:17:07.773492074-05:00
+hash: 6070db2313be75377b22d73104b86e8ee49e4004877a7b6ace47811a1258388e
+updated: 2017-02-08T14:11:26.481326891-05:00
 imports:
 - name: code.uber.internal/engsec/polizei.git
   version: 8821470415c5ebcf41b9f8920b576c73852e6cbc
@@ -142,12 +142,26 @@ imports:
   - spew
 - name: github.com/dghubble/sling
   version: 52e88a7b75a5db3b49f8911f16d49d9b7b67adc5
+- name: github.com/docker/leadership
+  version: bfc7753dd48af19513b29deec23c364bf0f274eb
+- name: github.com/docker/libkv
+  version: aabc039ad04deb721e234f99cd1b4aa28ac71a40
+  subpackages:
+  - store
 - name: github.com/facebookgo/clock
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
 - name: github.com/fsnotify/fsnotify
   version: fd9ec7deca8bf46ecd2a795baaacf2b3a9be1197
 - name: github.com/gemnasium/migrate
   version: 603c58f2c1d0882d7d5b24791e6e5af5ab392e44
+  subpackages:
+  - driver
+  - driver/cassandra
+  - driver/mysql
+  - file
+  - migrate
+  - migrate/direction
+  - pipe
 - name: github.com/getsentry/raven-go
   version: 3f7439d3e74d88e21d196ba20eb61a5a958bc118
 - name: github.com/go-sql-driver/mysql
@@ -195,16 +209,6 @@ imports:
   version: f22ce00fd9394014049dad11c244859432bd6820
 - name: github.com/lann/ps
   version: 62de8c46ede02a7675c4c79c84883eb164cb71e3
-- name: github.com/mattes/migrate
-  version: 3e3cef3763f4e1422745768d666e7a7106da89f9
-  subpackages:
-  - driver
-  - driver/cassandra
-  - driver/mysql
-  - file
-  - migrate
-  - migrate/direction
-  - pipe
 - name: github.com/matttproud/golang_protobuf_extensions
   version: c12348ce28de40eed0136aa2b644d0ee0650e56c
   subpackages:
@@ -236,6 +240,7 @@ imports:
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
+  - log
   - model
 - name: github.com/prometheus/procfs
   version: fcdb11ccb4389efb1b210b7ffb623ab71c5fdd60

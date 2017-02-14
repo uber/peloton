@@ -22,4 +22,4 @@ resmgr:
 
 election:
   zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
-  path: "/peloton/resmgr/leader"
+  root: "/peloton/production"

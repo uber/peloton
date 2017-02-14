@@ -1,94 +1,100 @@
 package leader
 
 import (
-	"code.uber.internal/infra/uns.git/net/zk/election"
-	"code.uber.internal/infra/uns.git/zk/testutils"
-	"fmt"
-	uzk "github.com/samuel/go-zookeeper/zk"
-	"github.com/stretchr/testify/assert"
-	"path"
+	"strings"
 	"testing"
-	"time"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/docker/leadership"
+	libkvmock "github.com/docker/libkv/store/mock"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/uber-go/tally"
 )
 
-const (
-	_testData           = "my-instance-%d"
-	_testConnection     = "election-conn-%d"
-	_testNodeIdentifier = "test"
+var (
+	events = make(chan string, 100)
 )
 
-// testNode represents a node taking part in the election
-type testNode struct {
-	name string
-	c    chan string
+type testComponent struct {
+	host string
+	port string
 }
 
-func (tn testNode) GainedLeadershipCallBack() error {
-	fmt.Printf("%s is leader!\n", tn.name)
-	tn.c <- tn.name
+func (x testComponent) GainedLeadershipCallback() error {
+	log.Info("GainedLeadershipCallback called")
+	events <- "leadership_gained"
 	return nil
 }
-
-func (tn testNode) NewLeaderCallBack(leader string) error {
+func (x testComponent) LostLeadershipCallback() error {
+	log.Info("LostLeadershipCallback called")
+	events <- "leadership_lost"
 	return nil
 }
-
-func (tn testNode) ShutDownCallback() error {
+func (x testComponent) NewLeaderCallback(leader string) error {
+	log.Info("NewLeaderCallback called")
+	events <- "new_leader"
 	return nil
 }
-
-func (tn testNode) LostLeadershipCallback() error {
+func (x testComponent) ShutDownCallback() error {
+	log.Info("ShutdownCallback called")
+	events <- "shutdown"
 	return nil
 }
+func (x testComponent) GetID() string { return x.host + ":" + x.port }
 
-func (tn testNode) GetHostPort() string {
-	return ""
-}
-
-// Test the case where initially we are the leader and when we
-// as the leader disappear, the other node becomes the new leader.
 func TestLeaderElection(t *testing.T) {
-	fakeZK := testutils.NewFakeZookeeper(t)
-	defer fakeZK.Stop()
+	// the zkservers will be replaced with the mock libkv client, dont worry :)
+	role := "testrole"
+	zkpath := "/peloton/fake"
+	key := strings.TrimPrefix(zkpath, "/")
 
-	fakeZK.ForceSetNode(leaderElectionZKPath, nil)
+	kv, err := libkvmock.New([]string{}, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, kv)
+	mockStore := kv.(*libkvmock.Mock)
+	mockLock := &libkvmock.Lock{}
+	mockStore.On("NewLock", key, mock.Anything).Return(mockLock, nil)
 
-	leader := make(chan string, 1)
-	option := election.WithIdentifier(_testNodeIdentifier)
-	nodes := []testNode{}
+	// Lock and unlock always succeeds.
+	lostCh := make(chan struct{})
+	var mockLostCh <-chan struct{} = lostCh
+	mockLock.On("Lock", mock.Anything).Return(mockLostCh, nil)
+	mockLock.On("Unlock").Return(nil)
 
-	// simulate 2 peloton masters
-	for i := 0; i < 2; i++ {
-		// create fake zk
-		conn, err := fakeZK.GetConnection(fmt.Sprintf(_testConnection, i))
-		// start of connected to zk
-		fakeZK.SetState(fmt.Sprintf(_testConnection, i), uzk.StateHasSession)
-
-		// fake node
-		node := testNode{name: fmt.Sprintf(_testData, i), c: leader}
-
-		// new election
-		if _, err = newZKElection(conn, leaderElectionZKPath, fmt.Sprintf(_testData, i), node, option); err != nil {
-			t.Fatal(err)
-		}
-
-		nodes = append(nodes, node)
-		time.Sleep(time.Second * 1)
+	el := election{
+		role:       role,
+		metrics:    newElectionMetrics(tally.NoopScope, "role", "testhost:666"),
+		candidate:  leadership.NewCandidate(mockStore, key, "testhost:666", ttl),
+		nomination: testComponent{host: "testhost", port: "666"},
 	}
 
-	// wait for leader
-	l := <-leader
+	log.Info("About to start")
+	err = el.Start()
+	log.Info("started")
+	assert.NoError(t, err)
 
-	// node1 should be the leader
-	assert.Equal(t, nodes[0].name, l)
+	// Should issue a false upon start, no matter what.
+	assert.Equal(t, "leadership_lost", <-events)
 
-	// disconnect node2 from zk
-	znode := path.Join(leaderElectionZKPath, fmt.Sprintf("%s_leader_", _testNodeIdentifier))
-	fakeZK.ForceDelNode(znode)
+	// Since the lock always succeeeds, we should get elected.
+	assert.Equal(t, "leadership_gained", <-events)
+	assert.Equal(t, el.IsLeader(), true)
 
-	// wait for leader
-	l = <-leader
+	// When we resign, unlock will get called, we'll be notified of the
+	// de-election and we'll try to get the lock again.
+	go el.Resign()
+	assert.Equal(t, "leadership_lost", <-events)
+	assert.Equal(t, "leadership_gained", <-events)
+	assert.Equal(t, true, el.IsLeader())
 
-	// node2 should become the leader
-	assert.Equal(t, nodes[1].name, l)
+	log.Info("about to stop election")
+	err = el.Stop()
+	log.Info("stopped election")
+	assert.NoError(t, err)
+	// make sure abdicating triggers shutdown handler
+	assert.Equal(t, "shutdown", <-events)
+	// and then you are no longer leader
+	assert.Equal(t, false, el.IsLeader())
+
 }
