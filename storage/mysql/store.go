@@ -64,6 +64,7 @@ const (
 
 	// Statements for resource Manager
 	insertResPoolStmt = `INSERT INTO respools (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
+	selectAllResPools = `SELECT * FROM respools`
 )
 
 // Config is the container for database configs
@@ -648,7 +649,10 @@ func (m *ResourcePoolStore) CreateResourcePool(id *respool.ResourcePoolID, respo
 	// TODO: Add check for Parent checking
 	_, err = m.DB.Exec(insertResPoolStmt, id.Value, colResPoolConfig, 0, string(buffer), createdBy)
 	if err != nil {
-		log.Errorf("Create Resource Pool failed with id %v error = %v", id.Value, err)
+		log.WithFields(log.Fields{
+			"ID":    id.Value,
+			"Error": err,
+		}).Error("Create Resource Pool failed")
 		// Need to add metrics for respool creation fail
 		return err
 	}
@@ -673,5 +677,35 @@ func (m *ResourcePoolStore) UpdateResourcePool(id *respool.ResourcePoolID, Confi
 
 // GetAllResourcePools Get all the resource pool
 func (m *ResourcePoolStore) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error) {
-	return nil, nil
+	var records = []storage.ResourcePoolRecord{}
+	var result = make(map[string]*respool.ResourcePoolConfig)
+	q, args := getQueryAndArgs(resourcePoolTable, map[string]interface{}{}, []string{"*"})
+	log.WithFields(log.Fields{
+		"Query": q,
+		"Args":  args,
+	}).Debug("DB query")
+	err := m.DB.Select(&records, q, args...)
+	if err == sql.ErrNoRows {
+		log.Warnf("GetAllResourcePools returns no rows")
+		// TODO: Adding metrics
+		return result, nil
+	}
+	if err != nil {
+		log.WithField("Error", err).Error("GetAllResourcePools failed")
+		return nil, err
+	}
+	for _, resPoolRecord := range records {
+		resPoolConfig, err := resPoolRecord.GetResPoolConfig()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"resPoolRecord": resPoolRecord,
+				"Error ":        err,
+			}).Error("GetResPoolConfig failed")
+			// TODO: Adding metrics
+			return nil, err
+		}
+		result[resPoolRecord.RowKey] = resPoolConfig
+	}
+	// TODO: Adding metrics
+	return result, nil
 }

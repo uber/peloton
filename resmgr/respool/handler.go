@@ -25,12 +25,17 @@ func InitServiceHandler(
 	config *rmconfig.Config,
 	store storage.ResourcePoolStore,
 	metrics *metrics.Metrics) *ServiceHandler {
+
+	// Initializing Resource Pool Tree
+	resPoolTree := InitTree(config, store, metrics)
+
 	handler := ServiceHandler{
 		store:        store,
 		metrics:      metrics,
 		config:       config,
 		dispatcher:   d,
 		runningState: runningStateNotStarted,
+		resPoolTree:  resPoolTree,
 	}
 	log.Info("Resource Manager created")
 	return &handler
@@ -43,6 +48,7 @@ type ServiceHandler struct {
 	config       *rmconfig.Config
 	dispatcher   yarpc.Dispatcher
 	runningState int32
+	resPoolTree  *Tree
 }
 
 // CreateResourcePool will create resource pool
@@ -113,6 +119,7 @@ func (m *ServiceHandler) Start() {
 
 	log.Info("Registering the procedures")
 	m.registerProcs(m.dispatcher)
+	m.resPoolTree.StartResPool()
 }
 
 // Stop will stop resource manager

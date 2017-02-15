@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"peloton/api/job"
+	"peloton/api/respool"
 	"peloton/api/task"
 	"reflect"
 	"time"
@@ -41,6 +42,12 @@ type JobRecord struct {
 	LabelsSummary sql.NullString `db:"labels_summary"`
 }
 
+// ResourcePoolRecord also contains the generated columns for respool table
+type ResourcePoolRecord struct {
+	BaseRowRecord
+	OwningTeam sql.NullString `db:"owning_team"`
+}
+
 // GetTaskInfo returns the task.TaskInfo from a TaskRecord table record
 func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
 	result, err := UnmarshalToType(t.Body, reflect.TypeOf(task.TaskInfo{}))
@@ -57,6 +64,15 @@ func (t *JobRecord) GetJobConfig() (*job.JobConfig, error) {
 		return nil, nil
 	}
 	return result.(*job.JobConfig), err
+}
+
+// GetResPoolConfig returns the respool.ResourceConfig from a resourcePoolTable
+func (t *ResourcePoolRecord) GetResPoolConfig() (*respool.ResourcePoolConfig, error) {
+	result, err := UnmarshalToType(t.Body, reflect.TypeOf(respool.ResourcePoolConfig{}))
+	if err != nil {
+		return nil, err
+	}
+	return result.(*respool.ResourcePoolConfig), err
 }
 
 // UnmarshalToType unmarshal a string to a typed interface{}
