@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"fmt"
+	"math"
 	mesos_v1 "mesos/v1"
 	"peloton/api/task"
 	tc "peloton/api/task/config"
@@ -10,6 +11,12 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
+)
+
+const (
+	// ResourceEspilon is the minimum espilon mesos resource;
+	// This is because Mesos internally uses a fixed point precision. See MESOS-4687 for details.
+	ResourceEspilon float64 = 0.0009
 )
 
 // Min returns the minimum value of x, y
@@ -54,6 +61,20 @@ func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) (*mesos_v1.TaskInfo, error)
 	return GetMesosTaskInfo(taskID, taskConfig)
 }
 
+func getMesosScalarResources(values map[string]float64) []*mesos_v1.Resource {
+	var rs []*mesos_v1.Resource
+	for name, value := range values {
+		// Skip any value smaller than Espilon.
+		if math.Abs(value) < ResourceEspilon {
+			continue
+		}
+
+		rs = append(rs, NewMesosResourceBuilder().WithName(name).WithValue(value).Build())
+	}
+
+	return rs
+}
+
 // GetMesosTaskInfo converts TaskID and TaskConfig into mesos TaskInfo.
 func GetMesosTaskInfo(
 	taskID *mesos_v1.TaskID,
@@ -72,12 +93,12 @@ func GetMesosTaskInfo(
 		return nil, errors.New("TaskConfig.Resource cannot be nil!")
 	}
 
-	var rs []*mesos_v1.Resource
-	rs = append(rs, NewMesosResourceBuilder().WithName("cpus").WithValue(taskResources.CpusLimit).Build())
-	rs = append(rs, NewMesosResourceBuilder().WithName("mem").WithValue(taskResources.MemLimitMb).Build())
-	rs = append(rs, NewMesosResourceBuilder().WithName("disk").WithValue(taskResources.DiskLimitMb).Build())
-	// TODO(zhitao): Figure out how to add GPU, which is optional.
-	// TODO: translate job.ResourceConfig fdlimit
+	rs := getMesosScalarResources(map[string]float64{
+		"cpus": taskResources.CpuLimit,
+		"mem":  taskResources.MemLimitMb,
+		"disk": taskResources.DiskLimitMb,
+		"gpus": taskResources.GpuLimit,
+	})
 
 	tid, err := ParseTaskIDFromMesosTaskID(taskID.GetValue())
 	if err != nil {

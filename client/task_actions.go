@@ -150,7 +150,7 @@ func printTaskGetResponse(r pt.GetResponse, debug bool) {
 			rt := r.Result.Runtime
 			fmt.Fprintf(tabWriter, taskListFormatHeader)
 			fmt.Fprintf(tabWriter, taskListFormatBody,
-				r.Result.InstanceId, cfg.Name, cfg.Resource.CpusLimit,
+				r.Result.InstanceId, cfg.Name, cfg.Resource.CpuLimit,
 				cfg.Resource.MemLimitMb, cfg.Resource.DiskLimitMb,
 				rt.State.String(), rt.StartedAt, *rt.TaskId.Value,
 				rt.Host)
@@ -184,7 +184,7 @@ func printTaskListResponse(r pt.ListResponse, debug bool) {
 				cfg := t.Config
 				rt := t.Runtime
 				fmt.Fprintf(tabWriter, taskListFormatBody,
-					t.InstanceId, cfg.Name, cfg.Resource.CpusLimit,
+					t.InstanceId, cfg.Name, cfg.Resource.CpuLimit,
 					cfg.Resource.MemLimitMb, cfg.Resource.DiskLimitMb,
 					rt.State.String(), rt.StartedAt, *rt.TaskId.Value, rt.Host)
 			}

@@ -39,7 +39,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigOutOfRange() {
 func (suite *TaskConfigTestSuite) TestGetTaskConfigNoInstanceConfig() {
 	defaultConfig := config.TaskConfig{
 		Resource: &config.ResourceConfig{
-			CpusLimit:   0.8,
+			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
@@ -59,7 +59,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigNoInstanceConfig() {
 func (suite *TaskConfigTestSuite) TestGetTaskConfigNoDefaultConfig() {
 	instanceConfig := config.TaskConfig{
 		Resource: &config.ResourceConfig{
-			CpusLimit:   0.8,
+			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
@@ -85,7 +85,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigNoDefaultConfig() {
 func (suite *TaskConfigTestSuite) TestGetTaskConfigInstanceOverride() {
 	defaultConfig := config.TaskConfig{
 		Resource: &config.ResourceConfig{
-			CpusLimit:   0.8,
+			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
@@ -94,7 +94,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigInstanceOverride() {
 	instanceConfig := config.TaskConfig{
 		Name: "Instance_0",
 		Resource: &config.ResourceConfig{
-			CpusLimit:   1,
+			CpuLimit:    1,
 			MemLimitMb:  100,
 			DiskLimitMb: 2000,
 			FdLimit:     3000,
@@ -124,7 +124,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 	// No error if there is a default task config
 	taskConfig := config.TaskConfig{
 		Resource: &config.ResourceConfig{
-			CpusLimit:   0.8,
+			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
@@ -157,7 +157,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
 	// Error if there is any instance config is missing
 	taskConfig := config.TaskConfig{
 		Resource: &config.ResourceConfig{
-			CpusLimit:   0.8,
+			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
 			FdLimit:     1000,

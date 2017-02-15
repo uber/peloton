@@ -56,7 +56,7 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 		}
 		var taskConfig = config.TaskConfig{
 			Resource: &config.ResourceConfig{
-				CpusLimit:   0.8,
+				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
 				FdLimit:     1000 + uint32(i),
@@ -234,7 +234,7 @@ func (suite *STAPIStoreTestSuite) TestCreateTasks() {
 		}
 		var taskConfig = config.TaskConfig{
 			Resource: &config.ResourceConfig{
-				CpusLimit:   0.8,
+				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
 				FdLimit:     1000,

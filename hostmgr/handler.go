@@ -93,6 +93,8 @@ func (h *serviceHandler) GetHostOffers(
 		response.HostOffers = append(response.HostOffers, &hostOffer)
 	}
 
+	h.metrics.GetHostOffers.Inc(1)
+
 	return &response, nil, nil
 }
 

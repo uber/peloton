@@ -17,7 +17,7 @@ import "mesos/v1/mesos.proto";
 message ResourceConfig {
 
   // CPU limit in number of CPU cores
-  double cpusLimit = 1;
+  double cpuLimit = 1;
 
   // Memory limit in MB
   double memLimitMb = 2;
@@ -119,7 +119,7 @@ message ContainerConfig {
 
   // List of volumes to be mounted from host into container
   repeated VolumeMount mounts = 4;
-} 
+}
 
 
 /**

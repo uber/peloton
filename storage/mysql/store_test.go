@@ -52,7 +52,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetTaskInfo() {
 		}
 		var taskConfig = config.TaskConfig{
 			Resource: &config.ResourceConfig{
-				CpusLimit:   0.8,
+				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
 				FdLimit:     1000,
@@ -137,7 +137,7 @@ func (suite *MysqlStoreTestSuite) TestCreateTasks() {
 		}
 		var taskConfig = config.TaskConfig{
 			Resource: &config.ResourceConfig{
-				CpusLimit:   0.8,
+				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
 				FdLimit:     1000,
@@ -199,7 +199,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 		}
 		var taskConfig = config.TaskConfig{
 			Resource: &config.ResourceConfig{
-				CpusLimit:   0.8,
+				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
 				FdLimit:     1000,

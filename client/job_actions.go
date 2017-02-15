@@ -131,7 +131,7 @@ func printJobGetResponse(r pj.GetResponse, debug bool) {
 			rs := r.Result.DefaultConfig.Resource
 			fmt.Fprintf(tabWriter, jobListFormatHeader)
 			fmt.Fprintf(tabWriter, jobListFormatBody,
-				r.Result.Name, rs.CpusLimit, rs.MemLimitMb, rs.DiskLimitMb,
+				r.Result.Name, rs.CpuLimit, rs.MemLimitMb, rs.DiskLimitMb,
 				r.Result.InstanceCount, r.Result.DefaultConfig.Command)
 		}
 		tabWriter.Flush()
