@@ -2,9 +2,8 @@ package offer
 
 import (
 	"context"
-	"math"
+	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
@@ -16,6 +15,7 @@ import (
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 
+	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/hostmgr/offerpool"
 )
 
@@ -37,8 +37,9 @@ type Pool interface {
 	// Decline offers
 	DeclineOffers(offers map[string]*TimedOffer) error
 
-	// GetHostOffers obtains offers from pool, grouped by hostname as key.
-	GetHostOffers(offerFilter *HostOfferFilter) map[string][]*mesos.Offer
+	// GetHostOffers obtains offers from pool conforming to given constraints.
+	// Results are grouped by hostname as key.
+	GetHostOffers(contraints []*Constraint) (map[string][]*mesos.Offer, error)
 }
 
 // NewOfferPool creates a offerPool object and registers the
@@ -56,59 +57,10 @@ func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration, client mpb.Cl
 	return pool
 }
 
-// HostOfferFilter describes offers from which host should be returned in a GetOffers call.
-type HostOfferFilter struct {
-	// HostLimit is the maximum number of hosts to return. Any non-positive number means unlimited.
-	HostLimit uint32
-}
-
 // TimedOffer contains details of a Mesos Offer
 type TimedOffer struct {
 	MesosOffer *mesos.Offer
 	Timestamp  time.Time // This is needed for offer pruner, but not included in mesos.Offer
-}
-
-type hostOfferSummary struct {
-	// offerID -> offer
-	offersOnHost map[string]*mesos.Offer
-	mutex        *sync.Mutex
-	hasOfferFlag *int32
-}
-
-// A heuristic about if the agentResourceSummary has any offer.
-func (a *hostOfferSummary) hasOffer() bool {
-	return atomic.LoadInt32(a.hasOfferFlag) == int32(1)
-}
-
-// Returns all of offers
-func (a *hostOfferSummary) getAllOffers() []*mesos.Offer {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-
-	var result []*mesos.Offer
-	for id, offer := range a.offersOnHost {
-		result = append(result, offer)
-		delete(a.offersOnHost, id)
-	}
-	atomic.StoreInt32(a.hasOfferFlag, 0)
-	return result
-}
-
-func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	offerID := *offer.Id.Value
-	a.offersOnHost[offerID] = offer
-	atomic.StoreInt32(a.hasOfferFlag, 1)
-}
-
-func (a *hostOfferSummary) removeMesosOffer(offerID string) {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	delete(a.offersOnHost, offerID)
-	if len(a.offersOnHost) == 0 {
-		atomic.StoreInt32(a.hasOfferFlag, 0)
-	}
 }
 
 type offerPool struct {
@@ -134,11 +86,19 @@ func (p *offerPool) GetOffers(
 	body *offerpool.GetOffersRequest) (
 	*offerpool.GetOffersResponse, yarpc.ResMeta, error) {
 
-	filter := HostOfferFilter{
-		HostLimit: body.Limit,
+	// this deprecated semantic is equivalent to a single constraint with same limit.
+	c := &Constraint{
+		hostsvc.Constraint{
+			Limit: body.Limit,
+		},
 	}
+	constraints := []*Constraint{c}
 
-	hostOffers := p.GetHostOffers(&filter)
+	hostOffers, err := p.GetHostOffers(constraints)
+	if err != nil {
+		log.WithField("error", err).Error("GetHostOffers failed")
+		return nil, nil, err
+	}
 
 	var offers []*mesos.Offer
 	for _, ol := range hostOffers {
@@ -151,32 +111,32 @@ func (p *offerPool) GetOffers(
 	}, nil, nil
 }
 
-// GetHostOffers returns Mesos offers according to input filter.
-func (p *offerPool) GetHostOffers(offerFilter *HostOfferFilter) map[string][]*mesos.Offer {
-	defer p.RUnlock()
-	p.RLock()
-
-	var hostLimit uint32 = math.MaxUint32
-	if offerFilter.HostLimit > 0 {
-		hostLimit = offerFilter.HostLimit
+// GetHostOffers obtains offers from pool conforming to given constraints.
+// Results are grouped by hostname as key.
+// This implements Pool.GetHostOffers.
+func (p *offerPool) GetHostOffers(constraints []*Constraint) (map[string][]*mesos.Offer, error) {
+	if len(constraints) <= 0 {
+		return nil, errors.New("Empty constraints passed in!")
 	}
 
-	var numHosts uint32
+	p.RLock()
+	defer p.RUnlock()
 
-	hostOffers := make(map[string][]*mesos.Offer)
+	matcher := NewConstraintMatcher(constraints)
 
 	for hostname, summary := range p.hostOfferIndex {
-		if summary.hasOffer() {
-			offersGot := summary.getAllOffers()
-			if len(offersGot) > 0 {
-				hostOffers[hostname] = offersGot
-				numHosts++
-				if numHosts >= hostLimit {
-					break
-				}
-			}
+		matcher.tryMatch(hostname, summary)
+		if matcher.HasEnoughOffers() {
+			break
 		}
 	}
+
+	if !matcher.HasEnoughOffers() {
+		// Still proceed to return something.
+		log.Warn("Not enough offers are matched to given constraint")
+	}
+
+	hostOffers := matcher.claimHostOffers()
 
 	// Clear the entries for the selected offers in p.offers
 	if len(hostOffers) > 0 {
@@ -188,7 +148,7 @@ func (p *offerPool) GetHostOffers(offerFilter *HostOfferFilter) map[string][]*me
 			}
 		}
 	}
-	return hostOffers
+	return hostOffers, nil
 }
 
 // tryAddOffer acquires read lock of the offerPool. If the offerPool does not

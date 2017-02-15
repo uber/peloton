@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"peloton/private/hostmgr/hostsvc"
+
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 
@@ -106,8 +108,9 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	nOffers := 10
 	nAgents := 10
 	wg := sync.WaitGroup{}
+	wg.Add(nOffers)
+
 	for i := 0; i < nOffers; i++ {
-		wg.Add(1)
 		go func(i int) {
 			var offers []*mesos.Offer
 			for j := 0; j < nAgents; j++ {
@@ -122,7 +125,7 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	}
 	wg.Wait()
 
-	assert.Equal(t, len(pool.offers), nOffers*nAgents)
+	assert.Equal(t, nOffers*nAgents, len(pool.offers))
 	for i := 0; i < nOffers; i++ {
 		for j := 0; j < nAgents; j++ {
 			hostName := fmt.Sprintf("agent-%d", j)
@@ -145,34 +148,48 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	takenOffers := map[string]*mesos.Offer{}
 	mutex := &sync.Mutex{}
 	nClients := 4
-	filter := HostOfferFilter{HostLimit: 2}
+	var limit uint32 = 2
 	wg = sync.WaitGroup{}
+	wg.Add(nClients)
 	for i := 0; i < nClients; i++ {
-		wg.Add(1)
-		go func() {
-			hostOffers := pool.GetHostOffers(&filter)
+		go func(i int) {
+			constraints := []*Constraint{
+				{
+					hostsvc.Constraint{
+						Limit: limit,
+					},
+				},
+			}
+			hostOffers, err := pool.GetHostOffers(constraints)
+			assert.NoError(t, err)
+			assert.Equal(t, int(limit), len(hostOffers))
 			mutex.Lock()
 			defer mutex.Unlock()
-			for _, offers := range hostOffers {
+			for hostname, offers := range hostOffers {
+				assert.Equal(t, nOffers, len(offers), "hostname %s has incorrect offer length", hostname)
 				for _, offer := range offers {
-					takenOffers[offer.GetId().GetValue()] = offer
+					oid := offer.GetId().GetValue()
+					if _, ok := takenOffers[oid]; ok {
+						assert.Fail(t, "offer id %s already in takenOffer %v", oid, takenOffers)
+					}
+					takenOffers[oid] = offer
 				}
 			}
 			wg.Done()
-		}()
+		}(i)
 	}
 	wg.Wait()
-	assert.Equal(t, len(takenOffers), nClients*int(filter.HostLimit)*nOffers)
+	assert.Equal(t, nClients*int(limit)*nOffers, len(takenOffers))
 	for offerID, offer := range takenOffers {
 		assert.Equal(t, offerID, *offer.Id.Value)
 		assert.Nil(t, pool.offers[offerID])
 	}
-	assert.Equal(t, len(pool.offers), nOffers*nAgents-nClients*int(filter.HostLimit)*nOffers)
+	assert.Equal(t, nOffers*nAgents-nClients*int(limit)*nOffers, len(pool.offers))
 
 	//Rescind offer
 	wg = sync.WaitGroup{}
+	wg.Add(nOffers)
 	for i := 0; i < nOffers; i++ {
-		wg.Add(1)
 		go func(i int) {
 			for j := 0; j < nAgents; j++ {
 				hostName := fmt.Sprintf("agent-%d", j)

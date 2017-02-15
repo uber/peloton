@@ -8,9 +8,10 @@ import (
 	mesos_v1 "mesos/v1"
 	sched "mesos/v1/scheduler"
 
+	"peloton/private/hostmgr/hostsvc"
+
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
-	"code.uber.internal/infra/peloton/pbgen/src/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
@@ -51,6 +52,18 @@ func InitServiceHandler(
 	json.Register(d, json.Procedure("InternalHostService.DestroyVolumes", handler.DestroyVolumes))
 }
 
+func validateConstraints(req *hostsvc.GetHostOffersRequest) *hostsvc.InvalidConstraints {
+	constraints := req.GetConstraints()
+	if len(constraints) <= 0 {
+		log.Error("Empty constraints")
+		return &hostsvc.InvalidConstraints{
+			Message: "Empty constraints",
+		}
+	}
+
+	return nil
+}
+
 // GetHostOffers implements InternalHostService.GetHostOffers.
 func (h *serviceHandler) GetHostOffers(
 	ctx context.Context,
@@ -58,11 +71,31 @@ func (h *serviceHandler) GetHostOffers(
 	body *hostsvc.GetHostOffersRequest) (*hostsvc.GetHostOffersResponse, yarpc.ResMeta, error) {
 	log.Info("GetHostOffers called.")
 
-	offerFilter := offer.HostOfferFilter{
-		HostLimit: body.Limit,
+	if invalidConstraints := validateConstraints(body); invalidConstraints != nil {
+		h.metrics.GetHostOffersInvalid.Inc(1)
+		return &hostsvc.GetHostOffersResponse{
+			Error: &hostsvc.GetHostOffersResponse_Error{
+				InvalidConstraints: invalidConstraints,
+			},
+		}, nil, nil
 	}
 
-	hostOffers := h.offerPool.GetHostOffers(&offerFilter)
+	var constraints []*offer.Constraint
+	for _, c := range body.GetConstraints() {
+		constraints = append(constraints, &offer.Constraint{*c})
+	}
+
+	hostOffers, err := h.offerPool.GetHostOffers(constraints)
+	if err != nil {
+		log.WithField("error", err).Error("GetHostOffers failed")
+		return &hostsvc.GetHostOffersResponse{
+			Error: &hostsvc.GetHostOffersResponse_Error{
+				Failure: &hostsvc.GetHostOffersFailure{
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
 
 	response := hostsvc.GetHostOffersResponse{
 		HostOffers: []*hostsvc.HostOffer{},

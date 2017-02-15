@@ -8,7 +8,8 @@ type Metrics struct {
 	LaunchTasksFail    tally.Counter
 	LaunchTasksInvalid tally.Counter
 
-	GetHostOffers tally.Counter
+	GetHostOffers        tally.Counter
+	GetHostOffersInvalid tally.Counter
 }
 
 // NewMetrics returns a new instance of hostmgr.Metrics.
@@ -18,6 +19,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		LaunchTasksFail:    scope.Counter("launch_tasks_fail"),
 		LaunchTasksInvalid: scope.Counter("launch_tasks_invalid"),
 
-		GetHostOffers: scope.Counter("get_host_offers"),
+		GetHostOffers:        scope.Counter("get_host_offers"),
+		GetHostOffersInvalid: scope.Counter("get_host_offers_invalid"),
 	}
 }

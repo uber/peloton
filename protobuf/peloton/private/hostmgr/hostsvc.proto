@@ -35,6 +35,36 @@ message LaunchableTask {
   api.task.TaskConfig config = 2;
 }
 
+
+/**
+ * Constraint describes a condition for which offers from a certain host must meet
+ * in order to return to placement engine to use.
+ */
+message Constraint {
+  // Maximum number of hosts which need to satisfy the given constraint.
+  // Default value of zero means no repeat and this applies to one host.
+  // Use this field to avoid repeating the same constraint multiple times.
+  // TODO(zhitao): Consider adding `minimumHosts` which can be useful to satisfy gang-scheduling.
+  uint32 limit = 1;
+
+  ResourceConstraint resourceConstraint = 2;
+  // TODO(zhitao): Add support for attribute affinity/anti-affinity constraints of boolean logic.
+}
+
+/**
+ * ResourceConstraint descrbes a condition for which aggregated resources from a host must meet
+ * in order for it to be returned in `GetHostOffers`.
+ */
+message ResourceConstraint {
+  // Minimum amount of resources
+  // NOTE: gpu resources are specially protected in the following way:
+  //   - if `gpuLimit` is specified, only hosts with enough gpu resources are returned;
+  //   - if `gpuLimit` is not specified, only hosts without gpu resource will be returned.
+  api.task.ResourceConfig minimum = 1;
+
+  // TODO(zhitao): Consider adding Maximum amount of resources constraint to avoid fragmentation.
+}
+
 /**
  * Error for invalid argument.
  */
@@ -52,6 +82,22 @@ message LaunchFailure {
   string message = 1;
 }
 
+/**
+ * Error for constrants which are invalid.
+ */
+message InvalidConstraints {
+  string message = 1;
+
+  // Any Constraint which is invalid.
+  repeated Constraint invalidConstraints = 2;
+}
+
+/**
+ * Error when GetHostOffers failed.
+ */
+message GetHostOffersFailure {
+  string message = 1;
+}
 
 /**
  *  Internal host service interface to be used by JobManager and
@@ -88,15 +134,20 @@ service InternalHostService
 }
 
 message GetHostOffersRequest {
-  // Max number of hosts to acquire
-  uint32 limit = 1;
-
-  // TODO: Add simple filters for resources and host attributes
+  // Each Constraint is only applicable to `numHosts` hosts, or one if `numHosts` is unset.
+  // This list cannot be empty.
+  repeated Constraint constraints = 2;
 }
 
 message GetHostOffersResponse {
+  message Error {
+    InvalidConstraints invalidConstraints = 1;
+    GetHostOffersFailure failure = 2;
+  }
+
+  Error error = 1;
   // The list of host offers that have been returned
-  repeated HostOffer hostOffers = 1;
+  repeated HostOffer hostOffers = 2;
 }
 
 message LaunchTasksRequest {
