@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/metrics"
@@ -22,11 +21,6 @@ import (
 
 	cconfig "code.uber.internal/infra/peloton/common/config"
 	log "github.com/Sirupsen/logrus"
-)
-
-const (
-	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
-	metricFlushInterval = 1 * time.Second
 )
 
 var (
@@ -94,7 +88,7 @@ func main() {
 
 	log.WithField("config", cfg).Debug("Loaded Peloton job manager configuration")
 
-	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonJobManager, metricFlushInterval)
+	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonJobManager, metrics.TallyFlushInterval)
 	defer scopeCloser.Close()
 	// Connect to mysql DB
 	if err := cfg.Storage.MySQL.Connect(); err != nil {
@@ -111,15 +105,15 @@ func main() {
 	}
 
 	// TODO: hook up with service discovery code to auto-detect the resmgr/hostmgr leader address
-	resmgrPeerChooser := peer.NewPeerChooser()
+	resmgrPeerChooser := peer.NewPeerChooser(common.ResourceManagerRole)
 	resmgrAddr := fmt.Sprintf("http://%s:%d", cfg.JobManager.ResmgrHost, cfg.JobManager.ResmgrPort)
-	resmgrPeerChooser.UpdatePeer(resmgrAddr, common.PelotonResourceManager)
+	resmgrPeerChooser.UpdatePeer(resmgrAddr)
 	// TODO: change FrameworkURLPath to resource manager URL path
 	resmgrOutbound := http.NewChooserOutbound(resmgrPeerChooser, &url.URL{Scheme: "http", Path: common.PelotonEndpointURL})
 
 	// TODO: hookup with service discovery for hostmgr leader
 	// As of now, peloton-jobmgr does not talk to hostmgr, hostmgrOutbound is placeholder
-	hostmgrPeerChooser := peer.NewPeerChooser()
+	hostmgrPeerChooser := peer.NewPeerChooser(common.HostManagerRole)
 	hostmgrOutbound := http.NewChooserOutbound(hostmgrPeerChooser, &url.URL{Scheme: "http", Path: common.PelotonEndpointURL})
 
 	outbounds := yarpc.Outbounds{

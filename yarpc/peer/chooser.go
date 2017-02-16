@@ -12,52 +12,60 @@ import (
 	"go.uber.org/yarpc/transport/http"
 )
 
-// Chooser holds the peloton manager master RPC server address
-// It is updated via zk leader change callback by all peloton masters
-// when there is a leader change. It implements go.uber.org/yarpc/peer/Chooser
-type Chooser struct {
+// Chooser is the interface for a YARPC endpoint that can be updated dynamically.
+// This is an implementation of go.uber.org/yarpc/peer/Chooser
+type Chooser interface {
+	Start() error
+	Stop() error
+	Choose(context.Context, *transport.Request) (peer.Peer, error)
+	UpdatePeer(urlString string) error
+}
+
+type chooser struct {
+	sync.Mutex
 	p         peer.Peer
+	role      string
 	transport peer.Transport
-	mutex     *sync.Mutex
 }
 
 // NewPeerChooser creates a new Chooser
-func NewPeerChooser(opts ...http.TransportOption) *Chooser {
-	return &Chooser{
-		mutex:     &sync.Mutex{},
+// role is the string identifier for what this peer represents (mesos-master, hostmgr, etc)
+func NewPeerChooser(role string, opts ...http.TransportOption) Chooser {
+	return &chooser{
+		role:      role,
 		transport: http.NewTransport(opts...),
 	}
 }
 
 // Start interface method. No-op
-func (c *Chooser) Start() error {
+func (c *chooser) Start() error {
 	return nil
 }
 
 // Stop interface method. No-op
-func (c *Chooser) Stop() error {
+func (c *chooser) Stop() error {
 	return nil
 }
 
 // Choose is called when a request is sent. See go.uber.org/yarpc/transport/http/outbound.
 // Here it returns the current peer (the leader peloton master).
-func (c *Chooser) Choose(context.Context, *transport.Request) (peer.Peer, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+func (c *chooser) Choose(context.Context, *transport.Request) (peer.Peer, error) {
+	c.Lock()
+	defer c.Unlock()
 	return c.p, nil
 }
 
-// UpdatePeer updates the current url for component
-func (c *Chooser) UpdatePeer(urlString string, component string) error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	log.Infof("Updating %v peer address to %v", component, urlString)
+// UpdatePeer updates the current url for app
+func (c *chooser) UpdatePeer(urlString string) error {
+	c.Lock()
+	defer c.Unlock()
+	log.Infof("Updating %v peer address to %v", c.role, urlString)
 	url, err := url.Parse(urlString)
 	if err != nil {
 		log.Errorf("Failed to parse url %v, err = %v", urlString, err)
 		return err
 	}
 	c.p = hostport.NewPeer(hostport.PeerIdentifier(url.Host), c.transport)
-	log.Infof("New %v peer is %v", component, c.p)
+	log.Infof("New %v peer is %v", c.role, c.p)
 	return nil
 }

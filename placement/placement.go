@@ -34,25 +34,32 @@ const (
 	GetTaskTimeout = 1 * time.Second
 )
 
-// InitServer inits placement engine
-func InitServer(
+// Engine is an interface implementing a way to Start and Stop the placement engine
+type Engine interface {
+	Start()
+	Stop()
+}
+
+// New creates a new placement engine
+func New(
 	d yarpc.Dispatcher,
 	cfg *placement_config.PlacementConfig,
 	mesosClient mpb.Client,
-	metrics *placement_metrics.Metrics,
+	scope tally.Scope,
 	// TODO: remove resMgrClientName and hostMgrClientName when alpha is done
 	resMgrClientName string,
-	hostMgrClientName string) {
+	hostMgrClientName string) Engine {
+	metrics := placement_metrics.New(scope)
 	s := placementEngine{
 		cfg:           cfg,
-		launcher:      master_task.GetTaskLauncher(d, mesosClient, metrics),
+		launcher:      master_task.GetTaskLauncher(d, mesosClient, &metrics),
 		resMgrClient:  json.New(d.ClientConfig(resMgrClientName)),
 		hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
 		rootCtx:       context.Background(),
-		metrics:       metrics,
+		metrics:       &metrics,
 		offerQueue:    util.NewMemLocalOfferQueue("localOfferQueue"),
 	}
-	s.Start()
+	return &s
 }
 
 type placementEngine struct {
@@ -241,10 +248,4 @@ func (s *placementEngine) getOffers(limit int) (
 		return nil, err
 	}
 	return response.Offers, nil
-}
-
-// NewMetrics returns a new Metrics struct with all metrics initialized and rooted below the given tally scope
-// NOTE: helper function to delegate to metrics.New() to avoid cyclical import dependencies
-func NewMetrics(scope tally.Scope) placement_metrics.Metrics {
-	return placement_metrics.New(scope)
 }

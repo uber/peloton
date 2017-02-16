@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"time"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 
@@ -23,11 +22,6 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
-)
-
-const (
-	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
-	metricFlushInterval = 1 * time.Second
 )
 
 var (
@@ -55,16 +49,6 @@ var (
 		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
 		Envar("DB_HOST").
 		String()
-
-	resmgrHost = app.
-			Flag("resmgr-host", "Res manager host (resmgrHost override) (set $RESMGR_HOST to override)").
-			Envar("RESMGR_HOST").
-			String()
-
-	hostmgrHost = app.
-			Flag("hostmgr-host", "Host manager host (hostmgrHost override) (set $HOSTMGR_HOST to override)").
-			Envar("HOSTMGR_HOST").
-			String()
 )
 
 func main() {
@@ -92,40 +76,28 @@ func main() {
 		cfg.Storage.MySQL.Host = *dbHost
 	}
 
-	if *resmgrHost != "" {
-		cfg.Placement.ResmgrHost = *resmgrHost
-	}
-
-	if *hostmgrHost != "" {
-		cfg.Placement.HostmgrHost = *hostmgrHost
-	}
-
 	rootScope, scopeCloser, _ := metrics.InitMetricScope(
 		&cfg.Metrics,
 		common.PelotonPlacement,
-		metricFlushInterval,
+		metrics.TallyFlushInterval,
 	)
 	defer scopeCloser.Close()
 
-	rootScope.Counter("boot").Inc(1)
+	// Initialize job and task stores
+	if err := cfg.Storage.MySQL.Connect(); err != nil {
+		log.Fatalf("Could not connect to database: %+v", err)
+	}
+	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
+	discoveryMetricScope := rootScope.SubScope("discovery")
 
-	// TODO: hook up with service discovery code to auto-detect the resmgr leader
-	resmgrPeerChooser := peer.NewPeerChooser()
-	resmgrAddr := fmt.Sprintf("http://%s:%d", cfg.Placement.ResmgrHost, cfg.Placement.ResmgrPort)
-	resmgrPeerChooser.UpdatePeer(resmgrAddr, common.PelotonResourceManager)
-	// TODO: change FrameworkURLPath to resource manager URL path
-	resmgrOutbound := http.NewChooserOutbound(
-		resmgrPeerChooser,
-		&url.URL{
-			Scheme: "http",
-			Path:   common.PelotonEndpointURL,
-		},
-	)
-
-	// TODO: hookup with service discovery for hostmgr leader
-	hostmgrPeerChooser := peer.NewPeerChooser()
-	hostmgrAddr := fmt.Sprintf("http://%s:%d", cfg.Placement.HostmgrHost, cfg.Placement.HostmgrPort)
-	hostmgrPeerChooser.UpdatePeer(hostmgrAddr, common.PelotonHostManager)
+	hostmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryMetricScope, common.HostManagerRole)
+	if err != nil {
+		log.Fatalf("Could not create smart peer chooser for %s: %v", common.HostManagerRole, err)
+	}
+	if err := hostmgrPeerChooser.Start(); err != nil {
+		log.Fatalf("Could not start smart peer chooser for %s: %v", common.HostManagerRole, err)
+	}
+	defer hostmgrPeerChooser.Stop()
 	hostmgrOutbound := http.NewChooserOutbound(
 		hostmgrPeerChooser,
 		&url.URL{
@@ -134,14 +106,25 @@ func main() {
 		},
 	)
 
-	// TODO: remove mesos dependency once we switch to hostMgr launch task api
-	// Initialize job and task stores
-	if err := cfg.Storage.MySQL.Connect(); err != nil {
-		log.Fatalf("Could not connect to database: %+v", err)
+	resmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryMetricScope, common.ResourceManagerRole)
+	if err != nil {
+		log.Fatalf("Could not create smart peer chooser for %s: %v", common.ResourceManagerRole, err)
 	}
-	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
+	if err := resmgrPeerChooser.Start(); err != nil {
+		log.Fatalf("Could not start smart peer chooser for %s: %v", common.ResourceManagerRole, err)
+	}
+	defer resmgrPeerChooser.Stop()
+	resmgrOutbound := http.NewChooserOutbound(
+		resmgrPeerChooser,
+		&url.URL{
+			Scheme: "http",
+			Path:   common.PelotonEndpointURL,
+		},
+	)
 
-	// Initialize mesos driver and  detector
+	// Initialize mesos driver and detector
+	// TODO: this isnt dynamic, and wont follow when the mesos master changes. FIXME!!!
+	// TODO: remove mesos dependency once we switch to hostMgr launch task api
 	mesos.InitSchedulerDriver(&cfg.Mesos, store)
 	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
 	if err != nil {
@@ -152,7 +135,9 @@ func main() {
 		log.Fatalf("Failed to get mesos leading master location, err=%v", err)
 	}
 	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, "/api/v1/scheduler")
+	mesosOutbound := mhttp.NewOutbound(mesosURL)
 
+	// now, attempt to setup the dispatcher
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{
 			Unary: resmgrOutbound,
@@ -161,14 +146,16 @@ func main() {
 			Unary: hostmgrOutbound,
 		},
 		// TODO: remove mOutbounds once we switch to hostMgr launch task api
-		common.MesosMaster: mhttp.NewOutbound(mesosURL),
+		common.MesosMaster: mesosOutbound,
 	}
 
+	log.Debug("Creating new YARPC dispatcher")
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonPlacement,
 		Outbounds: outbounds,
 	})
 
+	log.Debug("Starting YARPC dispatcher")
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Unable to start dispatcher: %v", err)
 	}
@@ -176,16 +163,19 @@ func main() {
 	// TODO: remove dependency on mesos once we switch to hostMgr launch task api
 	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), "x-protobuf")
 
-	placementMetrics := placement.NewMetrics(rootScope)
 	// Initialize and start placement engine
-	placement.InitServer(
+	placementEngine := placement.New(
 		dispatcher,
 		&cfg.Placement,
 		mesosClient,
-		&placementMetrics,
+		rootScope.SubScope("placement"),
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
 	)
+	placementEngine.Start()
+	defer placementEngine.Stop()
+	// we can *honestly* say the server is booted up now
+	rootScope.Counter("boot").Inc(1)
 
 	select {}
 }

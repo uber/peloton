@@ -14,6 +14,12 @@ import (
 	tallystatsd "github.com/uber-go/tally/statsd"
 )
 
+const (
+	// TallyFlushInterval is the flush interval for metrics buffered in Tally to
+	// be flushed to the backend
+	TallyFlushInterval = 1 * time.Second
+)
+
 // Config will be contianing the metrics configuration
 type Config struct {
 	Prometheus *prometheusConfig `yaml:"prometheus"`

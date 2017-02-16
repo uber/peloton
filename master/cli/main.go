@@ -12,6 +12,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	peloton_common "code.uber.internal/infra/peloton/common"
+	common_metrics "code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/jobmgr"
@@ -42,11 +43,6 @@ import (
 	"go.uber.org/yarpc/transport/http"
 )
 
-const (
-	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
-	metricFlushInterval = 1 * time.Second
-)
-
 var (
 	version string
 	app     = kingpin.New("peloton-framework", "Peloton Mesos Framework")
@@ -71,7 +67,7 @@ var (
 
 type pelotonMaster struct {
 	mesosInbound  mhttp.Inbound
-	peerChooser   *peer.Chooser
+	peerChooser   peer.Chooser
 	mesosOutbound transport.Outbounds
 	taskQueue     *taskq.Queue
 	cfg           *config.Config
@@ -86,7 +82,7 @@ type pelotonMaster struct {
 func newPelotonMaster(env string,
 	mInbound mhttp.Inbound,
 	mOutbounds transport.Outbounds,
-	pChooser *peer.Chooser,
+	pChooser peer.Chooser,
 	tq *taskq.Queue,
 	cfg *config.Config,
 	localPelotonMasterAddr string,
@@ -111,7 +107,7 @@ func newPelotonMaster(env string,
 func (p *pelotonMaster) GainedLeadershipCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	log.Infof("Gained leadership")
+	log.WithFields(log.Fields{"role": peloton_common.MasterRole}).Info("Gained leadership")
 
 	// Gained leadership, register with mesos, then refill task queue if needed
 	mesosMasterAddr, err := p.mesosDetector.GetMasterLocation()
@@ -131,7 +127,7 @@ func (p *pelotonMaster) GainedLeadershipCallback() error {
 		return err
 	}
 
-	err = p.peerChooser.UpdatePeer(p.localAddr, peloton_common.PelotonMaster)
+	err = p.peerChooser.UpdatePeer(p.localAddr)
 	if err != nil {
 		log.Errorf("Failed to update peer with p.localPelotonMasterAddr, err = %v", err)
 		return err
@@ -145,7 +141,7 @@ func (p *pelotonMaster) GainedLeadershipCallback() error {
 func (p *pelotonMaster) LostLeadershipCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	log.Infof("Lost leadership")
+	log.WithFields(log.Fields{"role": peloton_common.MasterRole}).Info("Lost leadership")
 	err := p.mesosInbound.Stop()
 	p.taskQueue.Reset()
 	if err != nil {
@@ -241,7 +237,7 @@ func main() {
 		c, _ := statsd.NewNoopClient()
 		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
 	}
-	metricScope, scopeCloser := tally.NewRootScope("peloton_framework", map[string]string{}, reporter, metricFlushInterval, metricSeparator)
+	metricScope, scopeCloser := tally.NewRootScope("peloton_framework", map[string]string{}, reporter, common_metrics.TallyFlushInterval, metricSeparator)
 	defer scopeCloser.Close()
 	metricScope.Counter("boot").Inc(1)
 	var jobStore storage.JobStore
@@ -326,7 +322,7 @@ func main() {
 	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
 
 	mOutbounds := mhttp.NewOutbound(mesosURL)
-	pelotonMasterPeerChooser := peer.NewPeerChooser()
+	pelotonMasterPeerChooser := peer.NewPeerChooser(peloton_common.MasterRole)
 	// The leaderUrl for pOutbound would be updated by leader election NewLeaderCallBack once leader is elected
 	pOutbound := http.NewChooserOutbound(pelotonMasterPeerChooser, &url.URL{Scheme: "http", Path: peloton_common.PelotonEndpointURL})
 	pOutbounds := transport.Outbounds{
@@ -403,17 +399,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to start leader candidate: %v", err)
 	}
+	defer leadercandidate.Stop()
 
 	// Defer initializing placement engine till the end
-	placementMetrics := placement.NewMetrics(metricScope.SubScope("placement"))
-	placement.InitServer(
+	placementEngine := placement.New(
 		dispatcher,
 		&cfg.Placement,
 		mesosClient,
-		&placementMetrics,
+		metricScope.SubScope("placement"),
 		peloton_common.PelotonMaster,
 		peloton_common.PelotonMaster,
 	)
+	placementEngine.Start()
+	defer placementEngine.Stop()
 
 	select {}
 }

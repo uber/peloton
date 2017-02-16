@@ -5,17 +5,10 @@ logging:
 placement:
    task_dequeue_limit: 20
    offer_dequeue_limit: 10
-   # TODO: remove host port configs once zk detector is in place
-   resmgr_host: localhost
-   resmgr_port: 5290
-   hostmgr_host: localhost
-   hostmgr_port: 5291
-   resmgr_election:
-     zk_servers: ["localhost:8192"]
-     root: "/peloton"
-   hostmgr_election:
-     zk_servers: ["localhost:8192"]
-     root: "/peloton"
+
+election:
+  zk_servers: ["localhost:8192"]
+  root: "/peloton/development"
 
 # TODO: remove storage and mesos config when we
 # completely switch to hostMgr launch task api

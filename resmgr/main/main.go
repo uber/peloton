@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"time"
 
 	"code.uber.internal/infra/peloton/common"
 	common_metrics "code.uber.internal/infra/peloton/common/metrics"
@@ -23,11 +22,6 @@ import (
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
-)
-
-const (
-	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
-	metricFlushInterval = 1 * time.Second
 )
 
 var (
@@ -80,7 +74,7 @@ func main() {
 	}
 	log.WithField("config", cfg).Debug("Loaded Peloton Resource Manager configuration")
 
-	rootScope, scopeCloser, mux := common_metrics.InitMetricScope(&cfg.Metrics, common.PelotonResourceManager, metricFlushInterval)
+	rootScope, scopeCloser, mux := common_metrics.InitMetricScope(&cfg.Metrics, common.PelotonResourceManager, common_metrics.TallyFlushInterval)
 	defer scopeCloser.Close()
 	rootScope.Counter("boot").Inc(1)
 
@@ -110,7 +104,7 @@ func main() {
 		http.NewInbound(fmt.Sprintf(":%d", cfg.ResMgr.Port), http.Mux(common.PelotonEndpointURL, mux)),
 	}
 
-	resmgrPeerChooser := peer.NewPeerChooser()
+	resmgrPeerChooser := peer.NewPeerChooser(common.ResourceManagerRole)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:     common.PelotonResourceManager,
 		Inbounds: inbounds,
@@ -144,6 +138,7 @@ func main() {
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Fatal("Unable to start leader candidate")
 	}
+	defer leadercandidate.Stop()
 
 	select {}
 }

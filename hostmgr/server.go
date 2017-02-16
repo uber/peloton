@@ -3,6 +3,7 @@ package hostmgr
 import (
 	"sync"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
@@ -46,6 +47,7 @@ func NewServer(
 func (s *Server) GainedLeadershipCallback() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	log.WithFields(log.Fields{"role": common.HostManagerRole}).Info("Gained leadership")
 
 	mesosMasterAddr, err := s.mesosDetector.GetMasterLocation()
 	if err != nil {
@@ -69,7 +71,7 @@ func (s *Server) LostLeadershipCallback() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	log.Infof("Lost leadership")
+	log.WithFields(log.Fields{"role": common.HostManagerRole}).Info("Lost leadership")
 	err := s.mesosInbound.Stop()
 	if err != nil {
 		log.Errorf("Failed to stop mesos inbound, err = %v", err)
@@ -84,7 +86,7 @@ func (s *Server) LostLeadershipCallback() error {
 func (s *Server) ShutDownCallback() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	log.Infof("Quiting the election")
+	log.WithFields(log.Fields{"role": common.HostManagerRole}).Info("Quitting election")
 	return nil
 }
 

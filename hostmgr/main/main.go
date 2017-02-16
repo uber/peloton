@@ -27,13 +27,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
-const (
-	productionEnvValue = "production"
-	// metricFlushInterval is the flush interval for metrics buffered in Tally to be flushed to the backend
-	metricFlushInterval = 1 * time.Second
-	rootMetricScope     = "peloton_hostmgr"
-)
-
 var (
 	version string
 	app     = kingpin.New("peloton-hostmgr", "Peloton Host Manager")
@@ -106,7 +99,7 @@ func main() {
 
 	log.WithField("config", cfg).Debug("Loaded Peloton host manager configuration")
 
-	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonHostManager, metricFlushInterval)
+	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonHostManager, metrics.TallyFlushInterval)
 	defer scopeCloser.Close()
 
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can mux in other HTTP handlers
@@ -228,6 +221,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to start leader candidate: %v", err)
 	}
+	defer leadercandidate.Stop()
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

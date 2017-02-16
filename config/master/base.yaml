@@ -45,20 +45,18 @@ mesos:
     failover_timeout: 60000000
     checkpoint: false
 
+election:
+  zk_servers: ["localhost:8192"]
+  root: "/peloton/development"
+
 placement:
   task_dequeue_limit: 20
   offer_dequeue_limit: 10
-  resmgr_election:
-    zk_servers: ["localhost:8192"]
-    root: "/peloton"
-  hostmgr_election:
-    zk_servers: ["localhost:8192"]
-    root: "/peloton"
 
 job_manager:
   resmgr_election:
     zk_servers: ["localhost:8192"]
-    root: "/peloton"
+    root: "/peloton/development"
   hostmgr_election:
     zk_servers: ["localhost:8192"]
-    root: "/peloton"
+    root: "/peloton/development"

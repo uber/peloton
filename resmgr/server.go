@@ -13,7 +13,7 @@ import (
 
 // Server struct for handling the zk election
 type Server struct {
-	peerChooser *peer.Chooser
+	peerChooser peer.Chooser
 	cfg         *config.Config
 	mutex       *sync.Mutex
 	// Local address for peloton Master Resource Manager
@@ -25,7 +25,7 @@ type Server struct {
 
 // NewServer will create the elect handle object
 func NewServer(env string,
-	pChooser *peer.Chooser,
+	pChooser peer.Chooser,
 	cfg *config.Config,
 	localResMgrMasterAddr string,
 	rm respool.ServiceHandler,
@@ -46,7 +46,7 @@ func NewServer(env string,
 func (p *Server) GainedLeadershipCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	log.Infof("Gained leadership")
+	log.WithFields(log.Fields{"role": common.ResourceManagerRole}).Info("Gained leadership")
 
 	err := p.taskQueue.LoadFromDB()
 	if err != nil {
@@ -55,7 +55,7 @@ func (p *Server) GainedLeadershipCallback() error {
 	}
 
 	// Gained leadership, Need to start resmgr service
-	err = p.peerChooser.UpdatePeer(p.localAddr, common.PelotonResourceManager)
+	err = p.peerChooser.UpdatePeer(p.localAddr)
 	if err != nil {
 		log.Errorf("Failed to update peer with p.localResMgrAddr, err = %v", err)
 		return err
@@ -69,7 +69,7 @@ func (p *Server) GainedLeadershipCallback() error {
 func (p *Server) LostLeadershipCallback() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	log.Infof("Lost leadership")
+	log.WithFields(log.Fields{"role": common.ResourceManagerRole}).Info("Lost leadership")
 	p.taskQueue.Reset()
 	p.respoolService.Stop()
 
