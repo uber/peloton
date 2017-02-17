@@ -44,8 +44,8 @@ var (
 		ExistingFiles()
 
 	hostmgrPort = app.
-			Flag("hostmgr-port", "Host manager port (hostmgr.port override) (set $HOSTMGR_PORT to override)").
-			Envar("HOSTMGR_PORT").
+			Flag("port", "Host manager port (hostmgr.port override) (set $PORT to override)").
+			Envar("PORT").
 			Int()
 
 	zkPath = app.

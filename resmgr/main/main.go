@@ -25,17 +25,15 @@ import (
 )
 
 var (
-	version string
-	app     = kingpin.New("peloton-resmgr", "Peloton Resource Manager")
-	debug   = app.Flag("debug", "enable debug mode (print full json responses)").Short('d').Default("false").Bool()
-	configs = app.Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").Short('c').Required().ExistingFiles()
-	env     = app.Flag("env", "environment (development will do no mesos master auto discovery) (set $PELOTON_ENVIRONMENT to override)").Short('e').Default("development").
-		Envar("PELOTON_ENVIRONMENT").Enum("development", "production")
+	version           string
+	app               = kingpin.New("peloton-resmgr", "Peloton Resource Manager")
+	debug             = app.Flag("debug", "enable debug mode (print full json responses)").Short('d').Default("false").Bool()
+	configs           = app.Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").Short('c').Required().ExistingFiles()
 	logFormatJSON     = app.Flag("log-json", "Log in JSON format").Default("true").Bool()
 	dbHost            = app.Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").Envar("DB_HOST").String()
 	electionZkServers = app.Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
 				Envar("ELECTION_ZK_SERVERS").Strings()
-	resmgrPort = app.Flag("resmgr-port", "Master port (resmgr.port override) (set $RESMGR_PORT to override)").Envar("RESMGR_PORT").Int()
+	resmgrPort = app.Flag("port", "Resource manager port (resmgr.port override) (set $PORT to override)").Envar("PORT").Int()
 )
 
 func main() {
@@ -128,7 +126,7 @@ func main() {
 		log.Fatalf("Failed to get ip, err=%v", err)
 	}
 	localPelotonRMAddr := fmt.Sprintf("http://%s:%d", ip, cfg.ResMgr.Port)
-	resMgrLeader := resmgr.NewServer(*env, resmgrPeerChooser, cfg, localPelotonRMAddr,
+	resMgrLeader := resmgr.NewServer(resmgrPeerChooser, cfg, localPelotonRMAddr,
 		*rm, taskqueue)
 	leadercandidate, err := leader.NewCandidate(cfg.Election, rootScope.SubScope("election"), common.ResourceManagerRole, resMgrLeader)
 	if err != nil {

@@ -40,19 +40,14 @@ var (
 		ExistingFiles()
 
 	jobmgrPort = app.
-			Flag("jobmgr-port", "Job manager port (jobmgr.port override) (set $JOBMGR_PORT to override)").
-			Envar("JOBMGR_PORT").
+			Flag("port", "Job manager port (jobmgr.port override) (set $PORT to override)").
+			Envar("PORT").
 			Int()
 
 	dbHost = app.
 		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
 		Envar("DB_HOST").
 		String()
-
-	resmgrHost = app.
-			Flag("resmgr-host", "Res manager host (resmgrHost override) (set $RESMGR_HOST to override)").
-			Envar("RESMGR_HOST").
-			String()
 )
 
 func main() {
@@ -82,13 +77,12 @@ func main() {
 		cfg.Storage.MySQL.Host = *dbHost
 	}
 
-	if *resmgrHost != "" {
-		cfg.JobManager.ResmgrHost = *resmgrHost
-	}
-
 	log.WithField("config", cfg).Debug("Loaded Peloton job manager configuration")
 
-	rootScope, scopeCloser, mux := metrics.InitMetricScope(&cfg.Metrics, common.PelotonJobManager, metrics.TallyFlushInterval)
+	rootScope, scopeCloser, mux := metrics.InitMetricScope(
+		&cfg.Metrics,
+		common.PelotonJobManager,
+		metrics.TallyFlushInterval)
 	defer scopeCloser.Close()
 	// Connect to mysql DB
 	if err := cfg.Storage.MySQL.Connect(); err != nil {
@@ -104,17 +98,45 @@ func main() {
 		http.NewInbound(fmt.Sprintf(":%d", cfg.JobManager.Port), http.Mux(common.PelotonEndpointURL, mux)),
 	}
 
-	// TODO: hook up with service discovery code to auto-detect the resmgr/hostmgr leader address
-	resmgrPeerChooser := peer.NewPeerChooser(common.ResourceManagerRole)
-	resmgrAddr := fmt.Sprintf("http://%s:%d", cfg.JobManager.ResmgrHost, cfg.JobManager.ResmgrPort)
-	resmgrPeerChooser.UpdatePeer(resmgrAddr)
-	// TODO: change FrameworkURLPath to resource manager URL path
-	resmgrOutbound := http.NewChooserOutbound(resmgrPeerChooser, &url.URL{Scheme: "http", Path: common.PelotonEndpointURL})
+	// all leader discovery metrics share a scope (and will be tagged with role={role})
+	discoveryScope := rootScope.SubScope("discovery")
+	// setup the discovery service to detect resmgr leaders and configure the
+	// YARPC Peer dynamically
+	resmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryScope, common.ResourceManagerRole)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
+			Fatal("Could not create smart peer chooser")
+	}
+	if err := resmgrPeerChooser.Start(); err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
+			Fatal("Could not start smart peer chooser")
+	}
+	defer resmgrPeerChooser.Stop()
+	resmgrOutbound := http.NewChooserOutbound(
+		resmgrPeerChooser,
+		&url.URL{
+			Scheme: "http",
+			Path:   common.PelotonEndpointURL,
+		})
 
-	// TODO: hookup with service discovery for hostmgr leader
-	// As of now, peloton-jobmgr does not talk to hostmgr, hostmgrOutbound is placeholder
-	hostmgrPeerChooser := peer.NewPeerChooser(common.HostManagerRole)
-	hostmgrOutbound := http.NewChooserOutbound(hostmgrPeerChooser, &url.URL{Scheme: "http", Path: common.PelotonEndpointURL})
+	// setup the discovery service to detect hostmgr leaders and configure the
+	// YARPC Peer dynamically
+	hostmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryScope, common.HostManagerRole)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
+			Fatal("Could not create smart peer chooser")
+	}
+	if err := hostmgrPeerChooser.Start(); err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
+			Fatal("Could not start smart peer chooser")
+	}
+	defer hostmgrPeerChooser.Stop()
+	hostmgrOutbound := http.NewChooserOutbound(
+		hostmgrPeerChooser,
+		&url.URL{
+			Scheme: "http",
+			Path:   common.PelotonEndpointURL,
+		})
 
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{

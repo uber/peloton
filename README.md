@@ -77,7 +77,7 @@ Refer to "docker/README.md" for details.
 ./bin/peloton-master -c config/master/base.yaml -c config/master/development.yaml -e development -d
 
 By default, it runs peloton master at port 5289. To run another peloton master instance,
-set env var 'MASTER_PORT=5290', or pass the `--master-port` flag.
+set env var 'PORT=5290', or pass the `--port` flag.
 
 
 ## Test Peloton master

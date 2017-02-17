@@ -21,6 +21,10 @@ const (
 	PlacementRole = "placement"
 	// HostManagerRole is the leadership election role for hostmgr
 	HostManagerRole = "hostmanager"
+	// JobManagerRole is the leadership election role for jobmgr
+	JobManagerRole = "jobmanager"
+	// TaskManagerRole is the leadership election role for taskmgr
+	TaskManagerRole = "taskmanager"
 	// ResourceManagerRole is the leadership election role for resmgr
 	ResourceManagerRole = "resourcemanager"
 )

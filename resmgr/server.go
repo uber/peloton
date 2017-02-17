@@ -18,20 +18,18 @@ type Server struct {
 	mutex       *sync.Mutex
 	// Local address for peloton Master Resource Manager
 	localAddr      string
-	env            string
 	respoolService respool.ServiceHandler
 	taskQueue      *tq.Queue
 }
 
 // NewServer will create the elect handle object
-func NewServer(env string,
+func NewServer(
 	pChooser peer.Chooser,
 	cfg *config.Config,
 	localResMgrMasterAddr string,
 	rm respool.ServiceHandler,
 	taskqueue *tq.Queue) *Server {
 	result := Server{
-		env:            env,
 		peerChooser:    pChooser,
 		cfg:            cfg,
 		mutex:          &sync.Mutex{},

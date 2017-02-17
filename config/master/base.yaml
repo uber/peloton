@@ -54,9 +54,3 @@ placement:
   offer_dequeue_limit: 10
 
 job_manager:
-  resmgr_election:
-    zk_servers: ["localhost:8192"]
-    root: "/peloton/development"
-  hostmgr_election:
-    zk_servers: ["localhost:8192"]
-    root: "/peloton/development"

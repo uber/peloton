@@ -57,7 +57,7 @@ var (
 				Envar("PLACEMENT_TASK_DEQUEUE_LIMIT").Int()
 	electionZkServers = app.Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
 				Envar("ELECTION_ZK_SERVERS").Strings()
-	masterPort    = app.Flag("master-port", "Master port (master.port override) (set $MASTER_PORT to override)").Envar("MASTER_PORT").Int()
+	port          = app.Flag("port", "Master port (master.port override) (set $PORT to override)").Envar("PORT").Int()
 	offerHoldTime = app.Flag("offer-hold", "Master offer time (master.offer_hold_time_sec override) (set $OFFER_HOLD_TIME to override)").
 			HintOptions("5s", "1m").Envar("OFFER_HOLD_TIME").Duration()
 	offerPruningPeriod = app.Flag("offer-pruning-period", "Master offer pruning period (master.offer_pruning_period_sec override) (set $OFFER_PRUNING_PERIOD to override)").
@@ -202,8 +202,8 @@ func main() {
 	if len(*electionZkServers) > 0 {
 		cfg.Election.ZKServers = *electionZkServers
 	}
-	if *masterPort != 0 {
-		cfg.Master.Port = *masterPort
+	if *port != 0 {
+		cfg.Master.Port = *port
 	}
 	if *offerHoldTime != 0 {
 		cfg.Master.OfferHoldTimeSec = int(offerHoldTime.Seconds())
