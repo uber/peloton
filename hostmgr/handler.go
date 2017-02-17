@@ -108,8 +108,10 @@ func (h *serviceHandler) LaunchTasks(
 	if err := validateLaunchTasks(body); err != nil {
 		h.metrics.LaunchTasksInvalid.Inc(1)
 		return &hostsvc.LaunchTasksResponse{
-			InvalidArgument: &hostsvc.InvalidArgument{
-				Message: err.Error(),
+			Error: &hostsvc.LaunchTasksResponse_Error{
+				InvalidArgument: &hostsvc.InvalidArgument{
+					Message: err.Error(),
+				},
 			},
 		}, nil, nil
 	}
@@ -127,10 +129,12 @@ func (h *serviceHandler) LaunchTasks(
 			h.metrics.LaunchTasksInvalid.Inc(1)
 
 			return &hostsvc.LaunchTasksResponse{
-				InvalidArgument: &hostsvc.InvalidArgument{
-					Message: "Cannot get Mesos task info: " + err.Error(),
-					InvalidTasks: []*hostsvc.LaunchableTask{
-						t,
+				Error: &hostsvc.LaunchTasksResponse_Error{
+					InvalidArgument: &hostsvc.InvalidArgument{
+						Message: "Cannot get Mesos task info: " + err.Error(),
+						InvalidTasks: []*hostsvc.LaunchableTask{
+							t,
+						},
 					},
 				},
 			}, nil, nil
@@ -171,8 +175,10 @@ func (h *serviceHandler) LaunchTasks(
 		}).Error("Tasks launch failure")
 
 		return &hostsvc.LaunchTasksResponse{
-			LaunchFailure: &hostsvc.LaunchFailure{
-				Message: err.Error(),
+			Error: &hostsvc.LaunchTasksResponse_Error{
+				LaunchFailure: &hostsvc.LaunchFailure{
+					Message: err.Error(),
+				},
 			},
 		}, nil, nil
 	}

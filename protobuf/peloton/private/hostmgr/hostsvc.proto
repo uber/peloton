@@ -107,8 +107,12 @@ message LaunchTasksRequest {
 }
 
 message LaunchTasksResponse {
-  InvalidArgument invalidArgument = 1;
-  LaunchFailure launchFailure = 2;
+  message Error {
+    InvalidArgument invalidArgument = 1;
+    LaunchFailure launchFailure = 2;
+  }
+
+  Error error = 1;
 }
 
 message KillTasksRequest {
