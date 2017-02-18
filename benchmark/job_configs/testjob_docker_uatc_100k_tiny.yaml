@@ -22,7 +22,7 @@ sla:
   preemptible: false
 defaultconfig:
   resource:
-    cpuslimit: 0.1
+    cpulimit: 0.1
     memlimitmb: 24.0
     disklimitmb: 24
     fdlimit: 10
