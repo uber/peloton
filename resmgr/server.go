@@ -7,15 +7,13 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
-	"code.uber.internal/infra/peloton/yarpc/peer"
 	log "github.com/Sirupsen/logrus"
 )
 
 // Server struct for handling the zk election
 type Server struct {
-	peerChooser peer.Chooser
-	cfg         *config.Config
-	mutex       *sync.Mutex
+	cfg   *config.Config
+	mutex *sync.Mutex
 	// Local address for peloton Master Resource Manager
 	localAddr      string
 	respoolService respool.ServiceHandler
@@ -24,13 +22,11 @@ type Server struct {
 
 // NewServer will create the elect handle object
 func NewServer(
-	pChooser peer.Chooser,
 	cfg *config.Config,
 	localResMgrMasterAddr string,
 	rm respool.ServiceHandler,
 	taskqueue *tq.Queue) *Server {
 	result := Server{
-		peerChooser:    pChooser,
 		cfg:            cfg,
 		mutex:          &sync.Mutex{},
 		localAddr:      localResMgrMasterAddr,
@@ -49,13 +45,6 @@ func (p *Server) GainedLeadershipCallback() error {
 	err := p.taskQueue.LoadFromDB()
 	if err != nil {
 		log.Errorf("Failed to taskQueue.LoadFromDB, err = %v", err)
-		return err
-	}
-
-	// Gained leadership, Need to start resmgr service
-	err = p.peerChooser.UpdatePeer(p.localAddr)
-	if err != nil {
-		log.Errorf("Failed to update peer with p.localResMgrAddr, err = %v", err)
 		return err
 	}
 	p.respoolService.Start()

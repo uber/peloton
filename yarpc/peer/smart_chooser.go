@@ -30,7 +30,7 @@ func NewSmartChooser(
 	role string,
 	opts ...http.TransportOption) (Chooser, error) {
 	sc := smartChooser{
-		chooser:  NewPeerChooser(role, opts...),
+		chooser:  NewSimpleChooser(role, opts...),
 		role:     role,
 		observer: nil,
 	}

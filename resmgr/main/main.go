@@ -16,7 +16,6 @@ import (
 	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
-	"code.uber.internal/infra/peloton/yarpc/peer"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
@@ -102,7 +101,6 @@ func main() {
 		http.NewInbound(fmt.Sprintf(":%d", cfg.ResMgr.Port), http.Mux(common.PelotonEndpointURL, mux)),
 	}
 
-	resmgrPeerChooser := peer.NewPeerChooser(common.ResourceManagerRole)
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:     common.PelotonResourceManager,
 		Inbounds: inbounds,
@@ -126,8 +124,7 @@ func main() {
 		log.Fatalf("Failed to get ip, err=%v", err)
 	}
 	localPelotonRMAddr := fmt.Sprintf("http://%s:%d", ip, cfg.ResMgr.Port)
-	resMgrLeader := resmgr.NewServer(resmgrPeerChooser, cfg, localPelotonRMAddr,
-		*rm, taskqueue)
+	resMgrLeader := resmgr.NewServer(cfg, localPelotonRMAddr, *rm, taskqueue)
 	leadercandidate, err := leader.NewCandidate(cfg.Election, rootScope.SubScope("election"), common.ResourceManagerRole, resMgrLeader)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Fatal("Unable to create leader candidate")

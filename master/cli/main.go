@@ -67,7 +67,6 @@ var (
 
 type pelotonMaster struct {
 	mesosInbound  mhttp.Inbound
-	peerChooser   peer.Chooser
 	mesosOutbound transport.Outbounds
 	taskQueue     *taskq.Queue
 	cfg           *config.Config
@@ -82,7 +81,6 @@ type pelotonMaster struct {
 func newPelotonMaster(env string,
 	mInbound mhttp.Inbound,
 	mOutbounds transport.Outbounds,
-	pChooser peer.Chooser,
 	tq *taskq.Queue,
 	cfg *config.Config,
 	localPelotonMasterAddr string,
@@ -91,7 +89,6 @@ func newPelotonMaster(env string,
 	result := pelotonMaster{
 		env:           env,
 		mesosInbound:  mInbound,
-		peerChooser:   pChooser,
 		mesosOutbound: mOutbounds,
 		taskQueue:     tq,
 		cfg:           cfg,
@@ -127,11 +124,6 @@ func (p *pelotonMaster) GainedLeadershipCallback() error {
 		return err
 	}
 
-	err = p.peerChooser.UpdatePeer(p.localAddr)
-	if err != nil {
-		log.Errorf("Failed to update peer with p.localPelotonMasterAddr, err = %v", err)
-		return err
-	}
 	p.offerManager.Start()
 
 	return nil
@@ -322,9 +314,19 @@ func main() {
 	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
 
 	mOutbounds := mhttp.NewOutbound(mesosURL)
-	pelotonMasterPeerChooser := peer.NewPeerChooser(peloton_common.MasterRole)
+	peerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		metricScope.SubScope("discovery"),
+		peloton_common.MasterRole)
+	if err != nil {
+		log.Fatalf("Could not create smart peer chooser for %s: %v", peloton_common.MasterRole, err)
+	}
+	if err := peerChooser.Start(); err != nil {
+		log.Fatalf("Could not start smart peer chooser for %s: %v", peloton_common.MasterRole, err)
+	}
+	defer peerChooser.Stop()
 	// The leaderUrl for pOutbound would be updated by leader election NewLeaderCallBack once leader is elected
-	pOutbound := http.NewChooserOutbound(pelotonMasterPeerChooser, &url.URL{Scheme: "http", Path: peloton_common.PelotonEndpointURL})
+	pOutbound := http.NewChooserOutbound(peerChooser, &url.URL{Scheme: "http", Path: peloton_common.PelotonEndpointURL})
 	pOutbounds := transport.Outbounds{
 		Unary: pOutbound,
 	}
@@ -342,9 +344,10 @@ func main() {
 	// jobstore and taskstore.
 
 	// Initalize managers
-	metrics := metrics.New(metricScope.SubScope("master"))
+	masterScope := metricScope.SubScope("master")
+	metrics := metrics.New(masterScope)
 
-	jobmgrMetrics := jobmgr.NewMetrics(metricScope.SubScope("master"))
+	jobmgrMetrics := jobmgr.NewMetrics(masterScope)
 	job.InitServiceHandler(dispatcher, &cfg.JobManager, jobStore, taskStore, &jobmgrMetrics, peloton_common.PelotonMaster)
 	task.InitServiceHandler(dispatcher, jobStore, taskStore, &jobmgrMetrics)
 	tq := taskq.InitTaskQueue(dispatcher, &metrics, jobStore, taskStore)
@@ -384,14 +387,17 @@ func main() {
 		*env,
 		mInbound,
 		mOutbounds,
-		pelotonMasterPeerChooser,
 		tq,
 		cfg,
 		localPelotonMasterAddr,
 		mesosMasterDetector,
 		om,
 	)
-	leadercandidate, err := leader.NewCandidate(cfg.Election, metricScope.SubScope("election"), peloton_common.MasterRole, pMaster)
+	leadercandidate, err := leader.NewCandidate(
+		cfg.Election,
+		metricScope.SubScope("election"),
+		peloton_common.MasterRole,
+		pMaster)
 	if err != nil {
 		log.Fatalf("Unable to create leader candidate: %v", err)
 	}
