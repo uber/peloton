@@ -2,22 +2,24 @@ class Profile(Struct):
   svc_id = Default(String, 'peloton')
   app_id = Required(String)
   environment = Default(String, 'devel')  # TODO: make this production once we have quota.
-  cluster = Default(String, 'storm_eagle')
+  cluster = Required(String)
   instances = Required(Integer)
-  pinned_hosts = Default(String, 'fsms-3746f30d,fsms-e8ab6565,fsms-adcc87f0')
   docker_image = Default(String, 'docker.int.uberatc.com/uber-usi/peloton:latest')
-  leader_host = Default(String, 'fsms-3746f30d')
-  mesos_zk_path = Default(String, 'zk://zk-3303a7e2.den-lmt-1.uberatc.net:2181/mesos/storm_eagle')
-  election_zk_servers = Default(String, 'zk-3303a7e2.den-lmt-1.uberatc.net')
-  mysql_host = Default(String, 'fsms-7c7c9d45')
+  mesos_zk_path = Required(String)
+  election_zk_servers = Required(String)
+  mysql_host = Required(String)
   logging_level = Default(String, 'info')
 
-PROFILES = [
-  Profile(
-    app_id = 'master',
-    instances = 2,
-  )
-]
+#
+# Cluster specific profiles here
+#
+
+# PROFILES = [
+#   Profile(
+#     app_id = 'master',
+#     instances = 2,
+#   )
+# ]
 
 docker_entrypoint = Process(
    name='{{profile.app_id}}',
@@ -29,7 +31,7 @@ executor_task = SequentialTask(
   processes=[
     docker_entrypoint
   ],
-  resources = Resources(cpu = 16.0, ram = 32*GB, disk = 128*GB)
+  resources = Resources(cpu = 4.0, ram = 8*GB, disk = 16*GB)
 )
 
 JOB_TEMPLATE = Service(
@@ -44,21 +46,20 @@ JOB_TEMPLATE = Service(
     docker = Docker(
       image = '{{profile.docker_image}}',
       parameters=[
-        Parameter(name='env', value='UBER_ENVIRONMENT=production'),
+        Parameter(name='env', value='PELOTON_ENVIRONMENT=production'),
         Parameter(name='env', value='MESOS_ZK_PATH={{profile.mesos_zk_path}}'),
         Parameter(name='env', value='DB_HOST={{profile.mysql_host}}'),
         Parameter(name='env', value='LOGGING_LEVEL={{profile.logging_level}}'),
         Parameter(name='env', value='ELECTION_ZK_SERVERS={{profile.election_zk_servers}}')
       ]
     )
-  ),
-  constraints = {
-    'hostname': '{{profile.pinned_hosts}}',
-  }
+  )
 )
 
+#
+# Cluster specific jobs here
+#
 
-jobs = [
-  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
-]
-
+# jobs = [
+#   JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+# ]

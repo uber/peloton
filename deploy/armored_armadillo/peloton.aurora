@@ -1,0 +1,16 @@
+include('../template/peloton-template.aurora')
+
+PROFILES = [
+  Profile(
+    cluster = 'armored_armadillo',
+    app_id = 'master',
+    instances = 3,
+    mesos_zk_path = 'zk://zk-4b60f997.pit-irn-1.uberatc.net:2181/mesos/armored_armadillo',
+    election_zk_servers = 'zk-4b60f997.pit-irn-1.uberatc.net',
+    mysql_host = 'ms-759264a9'
+  )
+]
+
+jobs = [
+  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+]

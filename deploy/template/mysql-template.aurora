@@ -1,24 +1,28 @@
 class Profile(Struct):
   svc_id = Default(String, 'peloton')
-  app_id = Required(String)
-  environment = Default(String, 'devel')  # TODO: make this production once we have quota.
-  cluster = Default(String, 'storm_eagle')
-  instances = Required(Integer)
-  pinned_hosts = Default(String, 'fsms-7c7c9d45')
-  docker_image = Required(String)
+  app_id = Default(String, 'mysql')
+  environment = Default(String, 'devel')
+  cluster = Required(String)
+  instances = Default(Integer, 1)
+  pinned_hosts = Required(String)
+  docker_image = Default(String, 'mysql/mysql-server:5.7.15')
   mysql_root_password = Default(String, 'peloton-root')
   mysql_database = Default(String, 'peloton')
   mysql_user = Default(String, 'peloton')
   mysql_password = Default(String, 'peloton')
   mysql_host_volume = Default(String, '/var/lib/peloton/mysql')
 
-PROFILES = [
-  Profile(
-    app_id = 'mysql',
-    instances = 1,
-    docker_image = 'mysql/mysql-server:5.7.15',
-  )
-]
+
+#
+# Cluster specific profiles here
+#
+
+# PROFILES = [
+#   Profile(
+#     cluster = 'CLUSTER_NAME',
+#     pinned_hosts = 'PINNED_MYSQL_HOST',
+#   )
+# ]
 
 docker_entrypoint = Process(
    name='{{profile.app_id}}',
@@ -30,7 +34,7 @@ executor_task = SequentialTask(
   processes=[
     docker_entrypoint
   ],
-  resources = Resources(cpu = 16.0, ram = 32*GB, disk = 128*GB)
+  resources = Resources(cpu = 16.0, ram = 32*GB, disk = 64*GB)
 )
 
 JOB_TEMPLATE = Service(
@@ -58,7 +62,10 @@ JOB_TEMPLATE = Service(
   }
 )
 
-jobs = [
-  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
-]
+#
+# Cluster specific jobs here
+#
 
+# jobs = [
+#   JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+# ]
