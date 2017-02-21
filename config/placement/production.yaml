@@ -13,8 +13,8 @@ sentry:
   enable: false
 
 placement:
-   task_dequeue_limit: 1000
-   offer_dequeue_limit: 30
+  task_dequeue_limit: 1000
+  offer_dequeue_limit: 30
 
- election:
+election:
   root: "/peloton/production"
