@@ -42,7 +42,6 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
-	"strings"
 )
 
 var (
@@ -211,7 +210,7 @@ func main() {
 	}
 	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
 		if *useSTAPI {
-			cfg.Storage.STAPI.Stapi.Cassandra.ContactPoints = cassandraHosts
+			cfg.Storage.STAPI.Stapi.Cassandra.ContactPoints = *cassandraHosts
 		}
 	}
 
