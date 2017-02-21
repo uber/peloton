@@ -42,6 +42,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
+	"strings"
 )
 
 var (
@@ -63,7 +64,8 @@ var (
 			HintOptions("5s", "1m").Envar("OFFER_HOLD_TIME").Duration()
 	offerPruningPeriod = app.Flag("offer-pruning-period", "Master offer pruning period (master.offer_pruning_period_sec override) (set $OFFER_PRUNING_PERIOD to override)").
 				HintOptions("20s").Envar("OFFER_PRUNING_PERIOD").Duration()
-	useSTAPI = app.Flag("use-stapi", "Use STAPI storage implementation").Default("false").Envar("USE_STAPI").Bool()
+	useSTAPI       = app.Flag("use-stapi", "Use STAPI storage implementation").Default("false").Envar("USE_STAPI").Bool()
+	cassandraHosts = app.Flag("cassandra-hosts", "Cassandra hosts for STAPI").Envar("CASSANDRA_HOSTS").Strings()
 )
 
 type pelotonMaster struct {
@@ -206,6 +208,11 @@ func main() {
 	}
 	if *useSTAPI {
 		cfg.Storage.UseSTAPI = true
+	}
+	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
+		if *useSTAPI {
+			cfg.Storage.STAPI.Stapi.Cassandra.ContactPoints = cassandraHosts
+		}
 	}
 
 	log.WithField("config", cfg).Debug("Loaded Peloton configuration")
