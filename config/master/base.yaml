@@ -45,10 +45,6 @@ mesos:
     failover_timeout: 60000000
     checkpoint: false
 
-election:
-  zk_servers: ["localhost:8192"]
-  root: "/peloton/development"
-
 placement:
   task_dequeue_limit: 20
   offer_dequeue_limit: 10

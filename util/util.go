@@ -7,6 +7,7 @@ import (
 	mesos_v1 "mesos/v1"
 	"peloton/api/task"
 	tc "peloton/api/task/config"
+	"peloton/private/hostmgr/hostsvc"
 	"strconv"
 	"strings"
 
@@ -90,7 +91,7 @@ func GetMesosTaskInfo(
 	taskResources := taskConfig.Resource
 
 	if taskResources == nil {
-		return nil, errors.New("TaskConfig.Resource cannot be nil!")
+		return nil, errors.New("TaskConfig.Resource cannot be nil")
 	}
 
 	rs := getMesosScalarResources(map[string]float64{
@@ -271,4 +272,29 @@ func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
 		return "", fmt.Errorf("Invalid peloton mesos task ID %v, err %v", mesosTaskID, err)
 	}
 	return fmt.Sprintf("%s-%d", jobID, iID), nil
+}
+
+// GetLaunchTasksRequest generates hostsvc.LaunchTasksRequest from tasks and offer
+func GetLaunchTasksRequest(
+	tasks []*task.TaskInfo,
+	offer *mesos_v1.Offer) *hostsvc.LaunchTasksRequest {
+	return &hostsvc.LaunchTasksRequest{
+		Hostname: offer.GetHostname(),
+		Tasks:    GetLaunchableTasks(tasks),
+		AgentId:  offer.GetAgentId(),
+		OfferIds: []*mesos_v1.OfferID{offer.Id},
+	}
+}
+
+// GetLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
+func GetLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.LaunchableTask {
+	var launchableTasks []*hostsvc.LaunchableTask
+	for _, task := range tasks {
+		launchableTask := hostsvc.LaunchableTask{
+			TaskId: task.GetRuntime().GetTaskId(),
+			Config: task.GetConfig(),
+		}
+		launchableTasks = append(launchableTasks, &launchableTask)
+	}
+	return launchableTasks
 }

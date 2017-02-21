@@ -379,6 +379,7 @@ def run_peloton_jobmgr():
                 'PELOTON_APP=jobmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
+                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
             ],
             host_config=cli.create_host_config(
                 port_bindings={
@@ -407,12 +408,11 @@ def run_peloton_placement():
                 'PELOTON_CONFIG_DIR=config/placement',
                 'PELOTON_APP=placement',
                 'DB_HOST=' + host_ip,
-                'RESMGR_HOST=' + host_ip,
-                'HOSTMGR_HOST=' + host_ip,
                 'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
                     host_ip,
                     config['local_zk_port']
                 ),
+                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
             ],
             # pull or build peloton image if not exists
             image=config['peloton_image'],

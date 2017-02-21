@@ -74,7 +74,7 @@ To run peloton in dev environment, dependencies like mesos/mysql, need to be set
 Run 'make pcluster' to bootstrap those dependencies in containers (docker-py installation is required, see bootstrap.sh for more details).
 Refer to "docker/README.md" for details.
 
-./bin/peloton-master -c config/master/base.yaml -c config/master/development.yaml -e development -d
+./bin/peloton-master -c config/master/base.yaml -c config/master/development.yaml -d
 
 By default, it runs peloton master at port 5289. To run another peloton master instance,
 set env var 'PORT=5290', or pass the `--port` flag.

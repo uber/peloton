@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 
@@ -10,13 +9,9 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/metrics"
-	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/placement"
 	placementconfig "code.uber.internal/infra/peloton/placement/config"
-	"code.uber.internal/infra/peloton/storage/mysql"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -49,6 +44,11 @@ var (
 		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
 		Envar("DB_HOST").
 		String()
+
+	electionZkServers = app.
+				Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+				Envar("ELECTION_ZK_SERVERS").
+				Strings()
 )
 
 func main() {
@@ -76,6 +76,10 @@ func main() {
 		cfg.Storage.MySQL.Host = *dbHost
 	}
 
+	if len(*electionZkServers) > 0 {
+		cfg.Election.ZKServers = *electionZkServers
+	}
+
 	rootScope, scopeCloser, _ := metrics.InitMetricScope(
 		&cfg.Metrics,
 		common.PelotonPlacement,
@@ -83,11 +87,6 @@ func main() {
 	)
 	defer scopeCloser.Close()
 
-	// Initialize job and task stores
-	if err := cfg.Storage.MySQL.Connect(); err != nil {
-		log.Fatalf("Could not connect to database: %+v", err)
-	}
-	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
 	discoveryMetricScope := rootScope.SubScope("discovery")
 
 	hostmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryMetricScope, common.HostManagerRole)
@@ -122,21 +121,6 @@ func main() {
 		},
 	)
 
-	// Initialize mesos driver and detector
-	// TODO: this isnt dynamic, and wont follow when the mesos master changes. FIXME!!!
-	// TODO: remove mesos dependency once we switch to hostMgr launch task api
-	mesos.InitSchedulerDriver(&cfg.Mesos, store)
-	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
-	if err != nil {
-		log.Fatalf("Failed to initialize mesos master detector: %v", err)
-	}
-	mesosMasterLocation, err := mesosMasterDetector.GetMasterLocation()
-	if err != nil {
-		log.Fatalf("Failed to get mesos leading master location, err=%v", err)
-	}
-	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, "/api/v1/scheduler")
-	mesosOutbound := mhttp.NewOutbound(mesosURL)
-
 	// now, attempt to setup the dispatcher
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{
@@ -145,8 +129,6 @@ func main() {
 		common.PelotonHostManager: transport.Outbounds{
 			Unary: hostmgrOutbound,
 		},
-		// TODO: remove mOutbounds once we switch to hostMgr launch task api
-		common.MesosMaster: mesosOutbound,
 	}
 
 	log.Debug("Creating new YARPC dispatcher")
@@ -160,14 +142,10 @@ func main() {
 		log.Fatalf("Unable to start dispatcher: %v", err)
 	}
 
-	// TODO: remove dependency on mesos once we switch to hostMgr launch task api
-	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), "x-protobuf")
-
 	// Initialize and start placement engine
 	placementEngine := placement.New(
 		dispatcher,
 		&cfg.Placement,
-		mesosClient,
 		rootScope.SubScope("placement"),
 		common.PelotonResourceManager,
 		common.PelotonHostManager,

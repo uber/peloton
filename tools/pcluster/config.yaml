@@ -69,17 +69,17 @@ peloton_master_instance_count: 1
 
 
 # Peloton app specific configs
-peloton_resmgr_container: peloton_resmgr
+peloton_resmgr_container: peloton-resmgr
 peloton_resmgr_port: 5290
 peloton_resmgr_instance_count: 1
 
-peloton_hostmgr_container: peloton_hostmgr
+peloton_hostmgr_container: peloton-hostmgr
 peloton_hostmgr_port: 5291
 peloton_hostmgr_instance_count: 1
 
-peloton_jobmgr_container: peloton_jobmgr
+peloton_jobmgr_container: peloton-jobmgr
 peloton_jobmgr_port: 5292
 peloton_jobmgr_instance_count: 1
 
-peloton_placement_container: peloton_placement
+peloton_placement_container: peloton-placement
 peloton_placement_instance_count: 1

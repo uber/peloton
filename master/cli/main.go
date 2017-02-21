@@ -13,6 +13,7 @@ import (
 
 	peloton_common "code.uber.internal/infra/peloton/common"
 	common_metrics "code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/jobmgr"
@@ -343,23 +344,37 @@ func main() {
 	// TODO: Refactor our storage interfaces to avoid passing both
 	// jobstore and taskstore.
 
-	// Initalize managers
 	masterScope := metricScope.SubScope("master")
 	metrics := metrics.New(masterScope)
 
+	// Initialize job manager related handlers
 	jobmgrMetrics := jobmgr.NewMetrics(masterScope)
-	job.InitServiceHandler(dispatcher, &cfg.JobManager, jobStore, taskStore, &jobmgrMetrics, peloton_common.PelotonMaster)
+	job.InitServiceHandler(
+		dispatcher,
+		&cfg.JobManager,
+		jobStore,
+		taskStore,
+		&jobmgrMetrics,
+		peloton_common.PelotonMaster)
 	task.InitServiceHandler(dispatcher, jobStore, taskStore, &jobmgrMetrics)
-	tq := taskq.InitTaskQueue(dispatcher, &metrics, jobStore, taskStore)
 	upgrade.InitManager(dispatcher)
 
-	mesosClient := mpb.New(dispatcher.ClientConfig("mesos-master"), cfg.Mesos.Encoding)
+	// Initialize resource manager related handlers
+	// TODO: initialize resource manager
+	tq := taskq.InitTaskQueue(dispatcher, &metrics, jobStore, taskStore)
+
+	// Initialize host manager related handlers
 
 	// Init the managers driven by the mesos callbacks.
 	// They are driven by the leader who will subscribe to
 	// mesos callbacks
 	mesos.InitManager(dispatcher, &cfg.Mesos, frameworkStore)
-	om := offer.InitManager(dispatcher, time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
+	mesosClient := mpb.New(
+		dispatcher.ClientConfig(peloton_common.MesosMaster),
+		cfg.Mesos.Encoding)
+	om := offer.InitManager(
+		dispatcher,
+		time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
 		mesosClient)
 
@@ -371,13 +386,22 @@ func main() {
 		jobStore,
 		taskStore)
 
+	hostmgrMetrics := hostmgr.NewMetrics(metricScope.SubScope("master"))
+	// Init host manager service handler
+	hostmgr.InitServiceHandler(
+		dispatcher,
+		mesosClient,
+		hostmgrMetrics,
+		om.Pool())
+
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 	log.Infof("Started Peloton master on port %v", cfg.Master.Port)
 
-	// This is the address of the local peloton master address to be announced via leader election
+	// This is the address of the local peloton master address to be announced
+	// via leader election
 	ip, err := util.ListenIP()
 	if err != nil {
 		log.Fatalf("Failed to get ip, err=%v", err)
@@ -391,8 +415,7 @@ func main() {
 		cfg,
 		localPelotonMasterAddr,
 		mesosMasterDetector,
-		om,
-	)
+		om)
 	leadercandidate, err := leader.NewCandidate(
 		cfg.Election,
 		metricScope.SubScope("election"),
@@ -407,15 +430,13 @@ func main() {
 	}
 	defer leadercandidate.Stop()
 
-	// Defer initializing placement engine till the end
+	// Initialize and start placement engine
 	placementEngine := placement.New(
 		dispatcher,
 		&cfg.Placement,
-		mesosClient,
 		metricScope.SubScope("placement"),
 		peloton_common.PelotonMaster,
-		peloton_common.PelotonMaster,
-	)
+		peloton_common.PelotonMaster)
 	placementEngine.Start()
 	defer placementEngine.Stop()
 

@@ -24,9 +24,9 @@ const (
 // ElectionConfig is config related to leader election of this service
 type ElectionConfig struct {
 	// A comma separated list of ZK servers to use for leader election
-	ZKServers []string `yaml:"zk_servers" validate:"min=1"`
+	ZKServers []string `yaml:"zk_servers"`
 	// The root path in ZK to use for role leader election. This will be something like /peloton/YOURCLUSTERHERE
-	Root string `yaml:"root" validate:"nonzero"`
+	Root string `yaml:"root"`
 }
 
 // election holds the state of the zkelection

@@ -20,3 +20,6 @@ storage:
 
 job_manager:
   db_write_concurrency: 400
+
+election:
+  root: "/peloton/production"

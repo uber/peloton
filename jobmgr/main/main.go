@@ -48,6 +48,11 @@ var (
 		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
 		Envar("DB_HOST").
 		String()
+
+	electionZkServers = app.
+				Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+				Envar("ELECTION_ZK_SERVERS").
+				Strings()
 )
 
 func main() {
@@ -75,6 +80,10 @@ func main() {
 
 	if *dbHost != "" {
 		cfg.Storage.MySQL.Host = *dbHost
+	}
+
+	if len(*electionZkServers) > 0 {
+		cfg.Election.ZKServers = *electionZkServers
 	}
 
 	log.WithField("config", cfg).Debug("Loaded Peloton job manager configuration")

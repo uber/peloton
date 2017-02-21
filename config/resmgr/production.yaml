@@ -21,5 +21,4 @@ resmgr:
   db_write_concurrency: 400
 
 election:
-  zk_servers: ["zookeeper-mesos-devel01-dca1.uber.internal"]
   root: "/peloton/production"

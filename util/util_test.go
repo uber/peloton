@@ -158,3 +158,115 @@ func TestGPUResources(t *testing.T) {
 
 	assert.Equal(t, 4, len(rs))
 }
+
+func TestGetLaunchTasksRequest(t *testing.T) {
+	var taskconfig0 = config.TaskConfig{
+		Name: "testjob",
+		Resource: &config.ResourceConfig{
+			CpuLimit:    25,
+			MemLimitMb:  700,
+			DiskLimitMb: 200,
+			FdLimit:     100,
+		},
+	}
+	var taskid0 = "testjob-0-a98a067d-f556-11e6-a8b3-98e0d987e631"
+	var runtime0 = task.RuntimeInfo{
+		TaskId: &mesos_v1.TaskID{
+			Value: &taskid0,
+		},
+	}
+	var taskconfig1 = config.TaskConfig{
+		Name: "testjob",
+		Resource: &config.ResourceConfig{
+			CpuLimit:    15,
+			MemLimitMb:  300,
+			DiskLimitMb: 200,
+			FdLimit:     100,
+		},
+	}
+	var taskid1 = "testjob-1-a98a067d-f556-11e6-a8b3-98e0d987e631"
+	var runtime1 = task.RuntimeInfo{
+		TaskId: &mesos_v1.TaskID{
+			Value: &taskid1,
+		},
+	}
+	lt := GetLaunchableTasks(
+		[]*task.TaskInfo{
+			{
+				InstanceId: 0,
+				Config:     &taskconfig0,
+				Runtime:    &runtime0,
+			},
+			{
+				InstanceId: 1,
+				Config:     &taskconfig1,
+				Runtime:    &runtime1,
+			},
+		})
+
+	assert.Equal(t, 2, len(lt))
+	assert.Equal(t, lt[0].TaskId.GetValue(), taskid0)
+	assert.ObjectsAreEqualValues(lt[0].Config, taskconfig0)
+	assert.Equal(t, lt[1].TaskId.GetValue(), taskid1)
+	assert.ObjectsAreEqualValues(lt[1].Config, taskconfig1)
+}
+
+func TestGetLaunchableTasks(t *testing.T) {
+	var hostname = "testhost"
+	var agentID = "testagentid"
+	var offerID = "testofferid"
+	var offer = &mesos_v1.Offer{
+		Hostname: &hostname,
+		AgentId:  &mesos_v1.AgentID{Value: &agentID},
+		Id:       &mesos_v1.OfferID{Value: &offerID},
+	}
+	var taskconfig0 = config.TaskConfig{
+		Name: "testjob",
+		Resource: &config.ResourceConfig{
+			CpuLimit:    25,
+			MemLimitMb:  700,
+			DiskLimitMb: 200,
+			FdLimit:     100,
+		},
+	}
+	var taskid0 = "testjob-0-a98a067d-f556-11e6-a8b3-98e0d987e631"
+	var runtime0 = task.RuntimeInfo{
+		TaskId: &mesos_v1.TaskID{
+			Value: &taskid0,
+		},
+	}
+	var taskconfig1 = config.TaskConfig{
+		Name: "testjob",
+		Resource: &config.ResourceConfig{
+			CpuLimit:    15,
+			MemLimitMb:  300,
+			DiskLimitMb: 200,
+			FdLimit:     100,
+		},
+	}
+	var taskid1 = "testjob-1-a98a067d-f556-11e6-a8b3-98e0d987e631"
+	var runtime1 = task.RuntimeInfo{
+		TaskId: &mesos_v1.TaskID{
+			Value: &taskid1,
+		},
+	}
+	var tasks = []*task.TaskInfo{
+		{
+			InstanceId: 0,
+			Config:     &taskconfig0,
+			Runtime:    &runtime0,
+		},
+		{
+			InstanceId: 1,
+			Config:     &taskconfig1,
+			Runtime:    &runtime1,
+		},
+	}
+
+	ltr := GetLaunchTasksRequest(tasks, offer)
+
+	assert.Equal(t, ltr.Hostname, hostname)
+	assert.Equal(t, ltr.AgentId.GetValue(), agentID)
+	assert.Equal(t, ltr.OfferIds[0].GetValue(), offerID)
+	assert.Equal(t, 2, len(ltr.Tasks))
+}

@@ -13,14 +13,13 @@ import (
 
 	mesos "mesos/v1"
 	"peloton/api/task"
+	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/hostmgr/offerpool"
 	"peloton/private/resmgr/taskqueue"
 
-	master_task "code.uber.internal/infra/peloton/master/task"
 	placement_config "code.uber.internal/infra/peloton/placement/config"
 	placement_metrics "code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/util"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -44,15 +43,12 @@ type Engine interface {
 func New(
 	d yarpc.Dispatcher,
 	cfg *placement_config.PlacementConfig,
-	mesosClient mpb.Client,
 	scope tally.Scope,
-	// TODO: remove resMgrClientName and hostMgrClientName when alpha is done
 	resMgrClientName string,
 	hostMgrClientName string) Engine {
 	metrics := placement_metrics.New(scope)
 	s := placementEngine{
 		cfg:           cfg,
-		launcher:      master_task.GetTaskLauncher(d, mesosClient, &metrics),
 		resMgrClient:  json.New(d.ClientConfig(resMgrClientName)),
 		hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
 		rootCtx:       context.Background(),
@@ -70,11 +66,11 @@ type placementEngine struct {
 	rootCtx       context.Context
 	started       int32
 	shutdown      int32
-	launcher      master_task.Launcher
 	metrics       *placement_metrics.Metrics
 	offerQueue    util.OfferQueue
 }
 
+// Start starts placement engine
 func (s *placementEngine) Start() {
 	if atomic.CompareAndSwapInt32(&s.started, 0, 1) {
 		log.Infof("Placement Engine started")
@@ -85,15 +81,18 @@ func (s *placementEngine) Start() {
 	log.Warnf("Placement Engine already started")
 }
 
+// Stop stops placement engine
 func (s *placementEngine) Stop() {
 	log.Infof("Placement Engine stopping")
 	s.metrics.Running.Update(0)
 	atomic.StoreInt32(&s.shutdown, 1)
 }
 
-func (s *placementEngine) launchTasksLoop(tasks []*task.TaskInfo) {
+// placeTasksLoop is the internal loop that makes placement decisions on tasks
+func (s *placementEngine) placeTasksLoop(tasks []*task.TaskInfo) {
 	nTasks := len(tasks)
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
+		// TODO: switch to hostmgr.GetHostOffers api
 		offer, err := s.getLocalOffer()
 		if err != nil {
 			log.Errorf("Failed to dequeue offer, err=%v", err)
@@ -109,7 +108,7 @@ func (s *placementEngine) launchTasksLoop(tasks []*task.TaskInfo) {
 		s.metrics.OfferGet.Inc(1)
 		// TODO: handle multiple offer -> multiple tasks assignment
 		// for now only get one offer each time
-		tasks = s.assignTasksToOffer(tasks, offer)
+		tasks = s.placeTasks(tasks, offer)
 		if len(tasks) == 0 {
 			break
 		}
@@ -117,7 +116,8 @@ func (s *placementEngine) launchTasksLoop(tasks []*task.TaskInfo) {
 	log.Debugf("Launched all %v tasks", nTasks)
 }
 
-func (s *placementEngine) assignTasksToOffer(
+// placeTasks makes placement decisions by assigning tasks to offer
+func (s *placementEngine) placeTasks(
 	tasks []*task.TaskInfo, offer *mesos.Offer) []*task.TaskInfo {
 	remain := util.GetOfferScalarResourceSummary(offer)
 	offerID := offer.GetId().Value
@@ -132,12 +132,27 @@ func (s *placementEngine) assignTasksToOffer(
 			break
 		}
 	}
-	// launch the tasks that can be launched
+	// TODO: replace launch task with resmgr.SetPlacement once it's implemented,
+	//       and move task launching logic into Jobmgr
 	if len(selectedTasks) > 0 {
-		err := s.launcher.LaunchTasks(offer, selectedTasks)
+		ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
+		defer cancelFunc()
+		var response hostsvc.LaunchTasksResponse
+		var request = util.GetLaunchTasksRequest(selectedTasks, offer)
+		_, err := s.hostMgrClient.Call(
+			ctx,
+			yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks"),
+			request,
+			&response,
+		)
+		// TODO: add retry / put back offer and tasks in failure scenarios
 		if err != nil {
-			// TODO: handle task launch error and reschedule the tasks
-			log.Errorf("Failed to launch %d tasks: %v", len(selectedTasks), err)
+			log.Errorf("Failed to launch %d tasks, err=%v", len(selectedTasks), err)
+			s.metrics.TaskLaunchDispatchesFail.Inc(1)
+			return tasks
+		}
+		if response.Error != nil {
+			log.Errorf("Failed to launch %d tasks, response.Error=%v", len(selectedTasks), response.Error)
 			s.metrics.TaskLaunchDispatchesFail.Inc(1)
 			return tasks
 		}
@@ -149,7 +164,7 @@ func (s *placementEngine) assignTasksToOffer(
 	return tasks
 }
 
-// workLoop is the internal loop that
+// workLoop is the internal loop that gets tasks and makes placement decisions
 func (s *placementEngine) workLoop() {
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
@@ -163,10 +178,11 @@ func (s *placementEngine) workLoop() {
 			continue
 		}
 		log.Infof("Dequeued %v tasks from task queue", len(tasks))
-		s.launchTasksLoop(tasks)
+		s.placeTasksLoop(tasks)
 	}
 }
 
+// getTasks deques tasks from task queue in resource manager
 func (s *placementEngine) getTasks(limit int) (
 	taskInfos []*task.TaskInfo, err error) {
 	// It could happen that the work loop is started before the
