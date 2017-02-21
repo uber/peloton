@@ -47,6 +47,8 @@ JOB_TEMPLATE = Service(
       image = '{{profile.docker_image}}',
       parameters=[
         Parameter(name='env', value='PELOTON_ENVIRONMENT=production'),
+        Parameter(name='env', value='PELOTON_CONFIG_DIR=config/{{profile.app_id}}'),
+        Parameter(name='env', value='PELOTON_APP={{profile.app_id}}'),
         Parameter(name='env', value='MESOS_ZK_PATH={{profile.mesos_zk_path}}'),
         Parameter(name='env', value='DB_HOST={{profile.mysql_host}}'),
         Parameter(name='env', value='LOGGING_LEVEL={{profile.logging_level}}'),
