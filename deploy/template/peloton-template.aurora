@@ -4,7 +4,7 @@ class Profile(Struct):
   environment = Default(String, 'devel')  # TODO: make this production once we have quota.
   cluster = Required(String)
   instances = Required(Integer)
-  docker_image = Default(String, 'docker.int.uberatc.com/uber-usi/peloton:latest')
+  docker_image = Default(String, 'docker.int.uberatc.com/uber-usi/infra/peloton:latest')
   mesos_zk_path = Required(String)
   election_zk_servers = Required(String)
   mysql_host = Required(String)
