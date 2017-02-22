@@ -1,0 +1,45 @@
+include('../template/peloton-template.aurora')
+
+PROFILES = [
+  Profile(
+    cluster = 'sjc1-devel01',
+    app_id = 'resmgr',
+    instances = 1,
+    docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:latest',
+    mesos_zk_path = 'zk://zookeeper-mesos-devel01-sjc1.uber.internal:2181/mesos',
+    election_zk_servers = 'zookeeper-mesos-devel01-sjc1.uber.internal',
+    mysql_host = 'compute74-sjc1'
+
+  ),
+  Profile(
+    cluster = 'sjc1-devel01',
+    app_id = 'hostmgr',
+    instances = 1,
+    docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:latest',
+    mesos_zk_path = 'zk://zookeeper-mesos-devel01-sjc1.uber.internal:2181/mesos',
+    election_zk_servers = 'zookeeper-mesos-devel01-sjc1.uber.internal',
+    mysql_host = 'compute74-sjc1'
+  ),
+  Profile(
+    cluster = 'sjc1-devel01',
+    app_id = 'jobmgr',
+    instances = 1,
+    docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:latest',
+    mesos_zk_path = 'zk://zookeeper-mesos-devel01-sjc1.uber.internal:2181/mesos',
+    election_zk_servers = 'zookeeper-mesos-devel01-sjc1.uber.internal',
+    mysql_host = 'compute74-sjc1'
+  ),
+  Profile(
+    cluster = 'sjc1-devel01',
+    app_id = 'placement',
+    instances = 1,
+    docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:latest',
+    mesos_zk_path = 'zk://zookeeper-mesos-devel01-sjc1.uber.internal:2181/mesos',
+    election_zk_servers = 'zookeeper-mesos-devel01-sjc1.uber.internal',
+    mysql_host = 'compute74-sjc1'
+  )
+]
+
+jobs = [
+  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+]

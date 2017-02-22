@@ -1,0 +1,17 @@
+include('../template/peloton-template.aurora')
+
+PROFILES = [
+  Profile(
+    cluster = 'sjc1-devel01',
+    app_id = 'master',
+    instances = 3,
+    mesos_zk_path = 'zk://zookeeper-mesos-devel01-sjc1.uber.internal:2181/mesos',
+    election_zk_servers = 'zookeeper-mesos-devel01-sjc1.uber.internal',
+    mysql_host = 'compute74-sjc1',
+    # TODO: currently no Cassandra nodes in sjc1-devel01 cluster
+  )
+]
+
+jobs = [
+  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+]
