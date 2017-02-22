@@ -22,6 +22,6 @@ type Config struct {
 // PlacementConfig is Placement engine specific config
 type PlacementConfig struct {
 	TaskDequeueLimit int `yaml:"task_dequeue_limit"`
-	// OfferDequeueLimit is the max Number of Offers to dequeue in a request
+	// OfferDequeueLimit is the max Number of HostOffers to dequeue in a request
 	OfferDequeueLimit int `yaml:"offer_dequeue_limit"`
 }

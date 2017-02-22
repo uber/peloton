@@ -7,19 +7,21 @@ package placement
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
 
-	mesos "mesos/v1"
 	"peloton/api/task"
+	"peloton/api/task/config"
 	"peloton/private/hostmgr/hostsvc"
-	"peloton/private/hostmgr/offerpool"
 	"peloton/private/resmgr/taskqueue"
 
+	mesos "mesos/v1"
+
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	placement_config "code.uber.internal/infra/peloton/placement/config"
 	placement_metrics "code.uber.internal/infra/peloton/placement/metrics"
-	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -53,13 +55,11 @@ func New(
 		hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
 		rootCtx:       context.Background(),
 		metrics:       &metrics,
-		offerQueue:    util.NewMemLocalOfferQueue("localOfferQueue"),
 	}
 	return &s
 }
 
 type placementEngine struct {
-	dispatcher    yarpc.Dispatcher
 	cfg           *placement_config.PlacementConfig
 	resMgrClient  json.Client
 	hostMgrClient json.Client
@@ -67,78 +67,141 @@ type placementEngine struct {
 	started       int32
 	shutdown      int32
 	metrics       *placement_metrics.Metrics
-	offerQueue    util.OfferQueue
 }
 
 // Start starts placement engine
 func (s *placementEngine) Start() {
 	if atomic.CompareAndSwapInt32(&s.started, 0, 1) {
-		log.Infof("Placement Engine started")
+		log.Info("Placement Engine started")
 		s.metrics.Running.Update(1)
 		go s.workLoop()
 		return
 	}
-	log.Warnf("Placement Engine already started")
+	log.Warn("Placement Engine already started")
 }
 
 // Stop stops placement engine
 func (s *placementEngine) Stop() {
-	log.Infof("Placement Engine stopping")
+	log.Info("Placement Engine stopping")
 	s.metrics.Running.Update(0)
 	atomic.StoreInt32(&s.shutdown, 1)
 }
 
-// placeTasksLoop is the internal loop that makes placement decisions on tasks
-func (s *placementEngine) placeTasksLoop(tasks []*task.TaskInfo) {
-	nTasks := len(tasks)
+// placeTaskGroup is the internal loop that makes placement decisions on a group of tasks
+// with same grouping constraint.
+func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
-		// TODO: switch to hostmgr.GetHostOffers api
-		offer, err := s.getLocalOffer()
+		hostOffers, err := s.getHostOffers(group)
+		// TODO: Add a stopping condition so this does not loop forever.
 		if err != nil {
-			log.Errorf("Failed to dequeue offer, err=%v", err)
+			log.WithField("error", err).Error("Failed to dequeue offer")
 			s.metrics.OfferGetFail.Inc(1)
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
-		if offer == nil {
+
+		if len(hostOffers) == 0 {
 			s.metrics.OfferStarved.Inc(1)
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
 		s.metrics.OfferGet.Inc(1)
-		// TODO: handle multiple offer -> multiple tasks assignment
-		// for now only get one offer each time
-		tasks = s.placeTasks(tasks, offer)
-		if len(tasks) == 0 {
-			break
+
+		index := 0
+		for _, hostOffer := range hostOffers {
+			group.tasks = s.placeTasks(group.tasks, group.resourceConfig, hostOffer)
+			if len(group.tasks) == 0 {
+				log.Debug("All tasks in group are placed")
+				break
+			}
+			index++
 		}
+
+		unused := hostOffers[index:]
+		// TODO: Handle remaining offers rather than a log.
+		if len(unused) > 0 {
+			log.WithField("remaining_offers", unused).Warn("HostOffes reamining will not be used until next cycle!")
+		}
+		log.WithField("remainng_tasks", len(group.tasks)).Info("Tasks remaining for next placeTaskGroup")
 	}
-	log.Debugf("Launched all %v tasks", nTasks)
+}
+
+// getHostOffers calls hostmgr and obtain HostOffers for given task group.
+func (s *placementEngine) getHostOffers(group *taskGroup) ([]*hostsvc.HostOffer, error) {
+	// Right now, this limits number of hosts to request from hostsvc.
+	// In the longer term, we should consider converting this to total resources necessary.
+	limit := s.cfg.OfferDequeueLimit
+	if len(group.tasks) < limit {
+		limit = len(group.tasks)
+	}
+
+	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
+	defer cancelFunc()
+	var response hostsvc.GetHostOffersResponse
+	var request = &hostsvc.GetHostOffersRequest{
+		Constraints: []*hostsvc.Constraint{
+			{
+				Limit: uint32(limit),
+				ResourceConstraint: &hostsvc.ResourceConstraint{
+					Minimum: group.resourceConfig,
+				},
+			},
+		},
+	}
+	_, err := s.hostMgrClient.Call(
+		ctx,
+		yarpc.NewReqMeta().Procedure("InternalHostService.GetHostOffers"),
+		request,
+		&response,
+	)
+
+	if err != nil {
+		log.WithField("error", err).Error("GetHostOffers failed")
+		return nil, err
+	}
+
+	if respErr := response.GetError(); respErr != nil {
+		log.WithField("error", respErr).Error("GetHostOffer error")
+		// TODO: Differentiate known error types by metrics and logs.
+		return nil, errors.New(respErr.String())
+	}
+
+	log.Debug("Obtained HostOffers")
+	return response.GetHostOffers(), nil
 }
 
 // placeTasks makes placement decisions by assigning tasks to offer
 func (s *placementEngine) placeTasks(
-	tasks []*task.TaskInfo, offer *mesos.Offer) []*task.TaskInfo {
-	remain := util.GetOfferScalarResourceSummary(offer)
-	offerID := offer.GetId().Value
+	tasks []*task.TaskInfo,
+	resourceConfig *config.ResourceConfig,
+	hostOffer *hostsvc.HostOffer) []*task.TaskInfo {
+	usage := scalar.FromResourceConfig(resourceConfig)
+	remain := scalar.FromMesosResources(hostOffer.GetResources())
 	nTasks := len(tasks)
+
 	var selectedTasks []*task.TaskInfo
 	for i := 0; i < nTasks; i++ {
-		ok := util.CanTakeTask(&remain, tasks[len(tasks)-1])
-		if ok {
-			selectedTasks = append(selectedTasks, tasks[len(tasks)-1])
-			tasks = tasks[:len(tasks)-1]
-		} else {
+		if !remain.TrySubtract(&usage) {
 			break
 		}
+
+		selectedTasks = append(selectedTasks, tasks[i])
 	}
+
+	log.WithField("selected_tasks", len(selectedTasks)).Debug("Selected tasks count")
+	tasks = tasks[len(selectedTasks) : len(tasks)-1]
 	// TODO: replace launch task with resmgr.SetPlacement once it's implemented,
 	//       and move task launching logic into Jobmgr
 	if len(selectedTasks) > 0 {
 		ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 		defer cancelFunc()
 		var response hostsvc.LaunchTasksResponse
-		var request = util.GetLaunchTasksRequest(selectedTasks, offer)
+		var request = &hostsvc.LaunchTasksRequest{
+			Hostname: hostOffer.GetHostname(),
+			Tasks:    createLaunchableTasks(selectedTasks),
+			AgentId:  hostOffer.GetAgentId(),
+			OfferIds: hostOffer.GetOfferIds(),
+		}
 		_, err := s.hostMgrClient.Call(
 			ctx,
 			yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks"),
@@ -147,19 +210,28 @@ func (s *placementEngine) placeTasks(
 		)
 		// TODO: add retry / put back offer and tasks in failure scenarios
 		if err != nil {
-			log.Errorf("Failed to launch %d tasks, err=%v", len(selectedTasks), err)
+			log.WithFields(log.Fields{
+				"tasks": len(selectedTasks),
+				"error": err,
+			}).Error("Failed to launch tasks")
 			s.metrics.TaskLaunchDispatchesFail.Inc(1)
 			return tasks
 		}
 		if response.Error != nil {
-			log.Errorf("Failed to launch %d tasks, response.Error=%v", len(selectedTasks), response.Error)
+			log.WithFields(log.Fields{
+				"tasks": len(selectedTasks),
+				"error": response.Error.String(),
+			}).Error("Failed to launch tasks")
 			s.metrics.TaskLaunchDispatchesFail.Inc(1)
 			return tasks
 		}
 		s.metrics.TaskLaunchDispatches.Inc(1)
 
-		log.Infof("Launched %v tasks on %v using offer %v", len(selectedTasks),
-			offer.GetHostname(), *offerID)
+		log.WithFields(log.Fields{
+			"tasks":    selectedTasks,
+			"hostname": hostOffer.GetHostname(),
+			"offers":   hostOffer.GetOfferIds(),
+		}).Info("Launched tasks")
 	}
 	return tasks
 }
@@ -169,7 +241,7 @@ func (s *placementEngine) workLoop() {
 	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
 		tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
 		if err != nil {
-			log.Errorf("Failed to dequeue tasks, err=%v", err)
+			log.WithField("error", err).Error("Failed to dequeue tasks")
 			time.Sleep(GetTaskTimeout)
 			continue
 		}
@@ -177,8 +249,11 @@ func (s *placementEngine) workLoop() {
 			time.Sleep(GetTaskTimeout)
 			continue
 		}
-		log.Infof("Dequeued %v tasks from task queue", len(tasks))
-		s.placeTasksLoop(tasks)
+		log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
+		taskGroups := groupTasksByResource(tasks)
+		for _, taskGroup := range taskGroups {
+			s.placeTaskGroup(taskGroup)
+		}
 	}
 }
 
@@ -208,60 +283,57 @@ func (s *placementEngine) getTasks(limit int) (
 		&response,
 	)
 	if err != nil {
-		log.Errorf("Dequeue failed with err=%v", err)
+		log.WithField("error", err).Error("Dequeue failed")
 		return nil, err
 	}
 	return response.Tasks, nil
 }
 
-func (s *placementEngine) getLocalOffer() (*mesos.Offer, error) {
-	for {
-		offer := s.offerQueue.GetOffer(1 * time.Millisecond)
-		if offer != nil {
-			return offer, nil
-		}
-		offers, err := s.getOffers(s.cfg.OfferDequeueLimit)
-		if err != nil {
-			return nil, err
-		}
-		log.Infof("Get %v offers from offerPool", len(offers))
-		if offers != nil && len(offers) > 0 {
-			for _, o := range offers {
-				s.offerQueue.PutOffer(o)
+type taskGroup struct {
+	resourceConfig *config.ResourceConfig
+	tasks          []*task.TaskInfo
+}
+
+// groupTasksByResource groups tasks which are to be placed based on their ResourceConfig.
+// Returns grouped tasks keyed by serialized ResourceLimit
+func groupTasksByResource(tasks []*task.TaskInfo) map[string]*taskGroup {
+	groups := make(map[string]*taskGroup)
+	for _, t := range tasks {
+		rc := t.GetConfig().GetResource()
+		// String() function on protobuf message should be nil-safe.
+		s := rc.String()
+		if _, ok := groups[s]; !ok {
+			groups[s] = &taskGroup{
+				resourceConfig: rc,
+				tasks:          []*task.TaskInfo{},
 			}
-		} else {
-			return nil, nil
 		}
+		groups[s].tasks = append(groups[s].tasks, t)
+	}
+	return groups
+}
+
+// createLaunchTasksRequest generates hostsvc.LaunchTasksRequest from tasks and offer
+func createLaunchTasksRequest(
+	tasks []*task.TaskInfo,
+	offer *mesos.Offer) *hostsvc.LaunchTasksRequest {
+	return &hostsvc.LaunchTasksRequest{
+		Hostname: offer.GetHostname(),
+		Tasks:    createLaunchableTasks(tasks),
+		AgentId:  offer.GetAgentId(),
+		OfferIds: []*mesos.OfferID{offer.Id},
 	}
 }
 
-func (s *placementEngine) getOffers(limit int) (
-	offers []*mesos.Offer, err error) {
-	// It could happen that the work loop is started before the
-	// peloton master inbound is started.  In such case it could
-	// panic. This we capture the panic, return error, wait then
-	// resume
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("Recovered from panic %v", r)
+// createLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
+func createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.LaunchableTask {
+	var launchableTasks []*hostsvc.LaunchableTask
+	for _, task := range tasks {
+		launchableTask := hostsvc.LaunchableTask{
+			TaskId: task.GetRuntime().GetTaskId(),
+			Config: task.GetConfig(),
 		}
-	}()
-
-	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
-	defer cancelFunc()
-	var response offerpool.GetOffersResponse
-	var request = &offerpool.GetOffersRequest{
-		Limit: uint32(limit),
+		launchableTasks = append(launchableTasks, &launchableTask)
 	}
-	_, err = s.hostMgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("OfferPool.GetOffers"),
-		request,
-		&response,
-	)
-	if err != nil {
-		log.Errorf("getOffers failed with err=%v", err)
-		return nil, err
-	}
-	return response.Offers, nil
+	return launchableTasks
 }

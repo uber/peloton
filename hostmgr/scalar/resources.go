@@ -39,6 +39,19 @@ func (r *Resources) Add(other *Resources) {
 	r.GPU += other.GPU
 }
 
+// TrySubtract attempts to subtract another scalar resources from current one, but returns false
+// if other has more resources while not changing current instance.
+func (r *Resources) TrySubtract(other *Resources) bool {
+	if !r.Contains(other) {
+		return false
+	}
+	r.CPU -= other.CPU
+	r.Mem -= other.Mem
+	r.Disk -= other.Disk
+	r.GPU -= other.GPU
+	return true
+}
+
 // FromResourceConfig creats a new instance of `Resources` frmo a `ResourceConfig`.
 func FromResourceConfig(rc *config.ResourceConfig) (r Resources) {
 	r.CPU = rc.GetCpuLimit()
@@ -48,9 +61,9 @@ func FromResourceConfig(rc *config.ResourceConfig) (r Resources) {
 	return r
 }
 
-// FromOffer returns the scalar Resources from an offer.
-func FromOffer(offer *mesos.Offer) (r Resources) {
-	for _, resource := range offer.GetResources() {
+// FromMesosResources returns the scalar Resources from a list of Mesos resource objects.
+func FromMesosResources(resources []*mesos.Resource) (r Resources) {
+	for _, resource := range resources {
 		value := resource.GetScalar().GetValue()
 		switch name := resource.GetName(); name {
 		case "cpus":
@@ -67,6 +80,11 @@ func FromOffer(offer *mesos.Offer) (r Resources) {
 	}
 
 	return r
+}
+
+// FromOffer returns the scalar Resources from an offer.
+func FromOffer(offer *mesos.Offer) (r Resources) {
+	return FromMesosResources(offer.GetResources())
 }
 
 // FromOfferMap returns the scalar Resources from given id to offer map.
