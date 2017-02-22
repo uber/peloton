@@ -16,7 +16,7 @@ $docker_cmd run --name $MYSQL_TEST_CONTAINER -p $TEST_MYSQL_PORT:$DEFAULT_MYSQL_
    -e MYSQL_DATABASE=$MYSQL_DATABASE \
    -e MYSQL_USER=$MYSQL_USER \
    -e MYSQL_PASSWORD=$MYSQL_PASSWORD \
-   mysql/mysql-server:$MYSQL_VERSION
+   $MYSQL_DOCKER_IMAGE
 
 max_wait_cycles=20
 i=0

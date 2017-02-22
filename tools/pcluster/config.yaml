@@ -36,7 +36,7 @@ resource_estimator: org_apache_mesos_FixedResourceEstimator
 
 
 # Mysql configs
-mysql_image: mysql/mysql-server:5.7.15
+mysql_image: percona:5.7.17
 default_mysql_port: 3306
 local_mysql_port: 8193
 mysql_root_password: peloton-root
