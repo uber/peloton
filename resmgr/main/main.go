@@ -109,7 +109,7 @@ func main() {
 	// Initalize managers
 	metrics := metrics.New(rootScope.SubScope("resource_manager"))
 
-	rm := res.InitServiceHandler(dispatcher, cfg, resstore, &metrics)
+	rm := res.InitServiceHandler(dispatcher, &cfg.ResMgr, resstore, &metrics)
 	taskqueue := tq.InitTaskQueue(dispatcher, &metrics, store, store)
 
 	// Start dispatch loop

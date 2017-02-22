@@ -25,6 +25,7 @@ import (
 	master_task "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/placement"
+	"code.uber.internal/infra/peloton/resmgr/respool"
 	taskq "code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -74,10 +75,11 @@ type pelotonMaster struct {
 	cfg           *config.Config
 	mutex         *sync.Mutex
 	// Local address for peloton master
-	localAddr     string
-	mesosDetector mesos.MasterDetector
-	offerManager  *offer.Manager
-	env           string
+	localAddr      string
+	mesosDetector  mesos.MasterDetector
+	offerManager   *offer.Manager
+	respoolService *respool.ServiceHandler
+	env            string
 }
 
 func newPelotonMaster(env string,
@@ -87,17 +89,19 @@ func newPelotonMaster(env string,
 	cfg *config.Config,
 	localPelotonMasterAddr string,
 	mesosDetector mesos.MasterDetector,
-	om *offer.Manager) *pelotonMaster {
+	om *offer.Manager,
+	rm *respool.ServiceHandler) *pelotonMaster {
 	result := pelotonMaster{
-		env:           env,
-		mesosInbound:  mInbound,
-		mesosOutbound: mOutbounds,
-		taskQueue:     tq,
-		cfg:           cfg,
-		mutex:         &sync.Mutex{},
-		localAddr:     localPelotonMasterAddr,
-		mesosDetector: mesosDetector,
-		offerManager:  om,
+		env:            env,
+		mesosInbound:   mInbound,
+		mesosOutbound:  mOutbounds,
+		taskQueue:      tq,
+		cfg:            cfg,
+		mutex:          &sync.Mutex{},
+		localAddr:      localPelotonMasterAddr,
+		mesosDetector:  mesosDetector,
+		offerManager:   om,
+		respoolService: rm,
 	}
 	return &result
 }
@@ -128,6 +132,8 @@ func (p *pelotonMaster) GainedLeadershipCallback() error {
 
 	p.offerManager.Start()
 
+	p.respoolService.Start()
+
 	return nil
 }
 
@@ -143,6 +149,8 @@ func (p *pelotonMaster) LostLeadershipCallback() error {
 	}
 
 	p.offerManager.Stop()
+
+	p.respoolService.Stop()
 
 	return err
 }
@@ -366,7 +374,27 @@ func main() {
 	upgrade.InitManager(dispatcher)
 
 	// Initialize resource manager related handlers
-	// TODO: initialize resource manager
+	// Initialize resmgr store
+	resstore := mysql.NewResourcePoolStore(cfg.Storage.MySQL.Conn, metricScope.SubScope("storage"))
+	resstore.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
+	resstore.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
+	resstore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
+
+	// Initialize resource pool service handler
+	resmgrInbounds := []transport.Inbound{
+		http.NewInbound(
+			fmt.Sprintf(":%d", cfg.ResMgr.Port),
+			http.Mux(config.FrameworkURLPath, nethttp.NewServeMux()),
+		),
+	}
+	// create a separate dispatcher for resmgr so client can work with both master and multi-app modes
+	resmgrDispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name:     peloton_common.PelotonResourceManager,
+		Inbounds: resmgrInbounds,
+	})
+	rm := respool.InitServiceHandler(resmgrDispatcher, &cfg.ResMgr, resstore, &metrics)
+
+	// Initialize task queue
 	tq := taskq.InitTaskQueue(dispatcher, &metrics, jobStore, taskStore)
 
 	// Initialize host manager related handlers
@@ -400,11 +428,17 @@ func main() {
 		hostmgrMetrics,
 		om.Pool())
 
-	// Start dispatch loop
+	// Start master dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 	log.Infof("Started Peloton master on port %v", cfg.Master.Port)
+
+	// Start resmgr dispatch loop
+	if err := resmgrDispatcher.Start(); err != nil {
+		log.Fatalf("Could not start rpc server: %v", err)
+	}
+	log.Infof("Started Peloton resmgr on port %v", cfg.ResMgr.Port)
 
 	// This is the address of the local peloton master address to be announced
 	// via leader election
@@ -421,7 +455,8 @@ func main() {
 		cfg,
 		localPelotonMasterAddr,
 		mesosMasterDetector,
-		om)
+		om,
+		rm)
 	leadercandidate, err := leader.NewCandidate(
 		cfg.Election,
 		metricScope.SubScope("election"),

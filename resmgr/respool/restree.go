@@ -14,7 +14,7 @@ import (
 
 // InitTree will be initializing the respool tree
 func InitTree(
-	config *rmconfig.Config,
+	config *rmconfig.ResMgrConfig,
 	store storage.ResourcePoolStore,
 	metrics *metrics.Metrics) *Tree {
 

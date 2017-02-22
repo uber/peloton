@@ -49,4 +49,5 @@ placement:
   task_dequeue_limit: 20
   offer_dequeue_limit: 10
 
-job_manager:
+resmgr:
+  port: 5290

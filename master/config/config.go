@@ -7,6 +7,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/leader"
 	placementconfig "code.uber.internal/infra/peloton/placement/config"
+	resmgrconfig "code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/storage/config"
 )
 
@@ -23,6 +24,7 @@ type Config struct {
 	Mesos      mesos.Config                    `yaml:"mesos"`
 	JobManager jobmgr.JobManagerConfig         `yaml:"job_manager"`
 	Placement  placementconfig.PlacementConfig `yaml:"placement"`
+	ResMgr     resmgrconfig.ResMgrConfig       `yaml:"resmgr"`
 	Election   leader.ElectionConfig           `yaml:"election"`
 }
 

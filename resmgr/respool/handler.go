@@ -22,7 +22,7 @@ const (
 // InitServiceHandler initializes the resource pool manager
 func InitServiceHandler(
 	d yarpc.Dispatcher,
-	config *rmconfig.Config,
+	config *rmconfig.ResMgrConfig,
 	store storage.ResourcePoolStore,
 	metrics *metrics.Metrics) *ServiceHandler {
 
@@ -45,7 +45,7 @@ func InitServiceHandler(
 type ServiceHandler struct {
 	store        storage.ResourcePoolStore
 	metrics      *metrics.Metrics
-	config       *rmconfig.Config
+	config       *rmconfig.ResMgrConfig
 	dispatcher   yarpc.Dispatcher
 	runningState int32
 	resPoolTree  *Tree
@@ -117,7 +117,7 @@ func (m *ServiceHandler) Start() {
 
 	atomic.StoreInt32(&m.runningState, runningStateRunning)
 
-	log.Info("Registering the procedures")
+	log.Info("Registering the respool procedures")
 	m.registerProcs(m.dispatcher)
 	m.resPoolTree.StartResPool()
 }
