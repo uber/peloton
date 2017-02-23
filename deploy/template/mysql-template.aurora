@@ -5,7 +5,8 @@ class Profile(Struct):
   cluster = Required(String)
   instances = Default(Integer, 1)
   pinned_hosts = Required(String)
-  docker_image = Default(String, 'docker.int.uberatc.com/uber-usi/infra/peloton-mysql5.7.17:latest')
+  # This docker image is not compatible with aurora in AA until T745768 is resolved
+  docker_image = Default(String, 'mysql/mysql-server:5.7.15')
   mysql_root_password = Default(String, 'peloton-root')
   mysql_database = Default(String, 'peloton')
   mysql_user = Default(String, 'peloton')
@@ -26,7 +27,7 @@ class Profile(Struct):
 
 docker_entrypoint = Process(
    name='{{profile.app_id}}',
-   cmdline='/docker-entrypoint.sh mysqld'
+   cmdline='/entrypoint.sh mysqld'
 )
 
 executor_task = SequentialTask(
