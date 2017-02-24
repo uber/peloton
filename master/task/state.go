@@ -118,9 +118,13 @@ func (m *taskStateManager) startAsyncProcessTaskUpdates() {
 			for {
 				select {
 				case taskUpdate := <-m.ackChannel:
-					err := m.acknowledgeTaskUpdate(taskUpdate)
-					if err != nil {
-						log.Errorf("Failed to acknowledgeTaskUpdate %v, err=%v", taskUpdate, err)
+					if len(taskUpdate.GetStatus().GetUuid()) == 0 {
+						log.WithField("status_update", taskUpdate).Debug("Skipping acknowledging update with empty uuid")
+					} else {
+						err := m.acknowledgeTaskUpdate(taskUpdate)
+						if err != nil {
+							log.Errorf("Failed to acknowledgeTaskUpdate %v, err=%v", taskUpdate, err)
+						}
 					}
 				}
 			}

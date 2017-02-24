@@ -33,6 +33,9 @@ const (
 	GetOfferTimeout = 1 * time.Second
 	// GetTaskTimeout is the timeout value for get task request
 	GetTaskTimeout = 1 * time.Second
+
+	// Allow up to 5 attempts to place tasks
+	maxPlacementAttempts = 5
 )
 
 // Engine is an interface implementing a way to Start and Stop the placement engine
@@ -90,7 +93,13 @@ func (s *placementEngine) Stop() {
 // placeTaskGroup is the internal loop that makes placement decisions on a group of tasks
 // with same grouping constraint.
 func (s *placementEngine) placeTaskGroup(group *taskGroup) {
-	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
+	log.WithField("group", group).Debug("Placing task group")
+	for i := 0; i < maxPlacementAttempts && s.isRunning(); i++ {
+		if len(group.tasks) == 0 {
+			log.Debug("Finishing place task group look because all tasks are placed")
+			return
+		}
+
 		hostOffers, err := s.getHostOffers(group)
 		// TODO: Add a stopping condition so this does not loop forever.
 		if err != nil {
@@ -110,11 +119,11 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 
 		index := 0
 		for _, hostOffer := range hostOffers {
-			group.tasks = s.placeTasks(group.tasks, group.resourceConfig, hostOffer)
 			if len(group.tasks) == 0 {
 				log.Debug("All tasks in group are placed")
 				break
 			}
+			group.tasks = s.placeTasks(group.tasks, group.resourceConfig, hostOffer)
 			index++
 		}
 
@@ -123,7 +132,6 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		if len(unused) > 0 {
 			log.WithField("remaining_offers", unused).Warn("HostOffers remaining will not be used until next cycle!")
 		}
-
 		log.WithField("remaining_tasks", group.tasks).Debug("Tasks remaining for next placeTaskGroup")
 	}
 }
@@ -258,9 +266,14 @@ func (s *placementEngine) placeTasks(
 	return tasks
 }
 
+func (s *placementEngine) isRunning() bool {
+	shutdown := atomic.LoadInt32(&s.shutdown)
+	return shutdown == 0
+}
+
 // workLoop is the internal loop that gets tasks and makes placement decisions
 func (s *placementEngine) workLoop() {
-	for shutdown := atomic.LoadInt32(&s.shutdown); shutdown == 0; {
+	for s.isRunning() {
 		tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
 		if err != nil {
 			log.WithField("error", err).Error("Failed to dequeue tasks")
@@ -276,6 +289,10 @@ func (s *placementEngine) workLoop() {
 		taskGroups := groupTasksByResource(tasks)
 		for _, taskGroup := range taskGroups {
 			s.placeTaskGroup(taskGroup)
+			if len(taskGroup.tasks) > 0 {
+				log.WithField("task_group", taskGroup).Warn("Task group still has remaining tasks after allowed attempts")
+				// TODO: send unplaced tasks back to correct state (READY).
+			}
 		}
 	}
 }
