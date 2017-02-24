@@ -46,6 +46,12 @@ message InvalidStreamID {
   string currentStreamID = 1;
 }
 
+// Error message for incorrect purge offset
+message InvalidPurgeOffset {
+    uint64 purgeOffset = 1;
+    uint64 beginOffset = 2;
+}
+
 // Client need to call this to init a stream on server side
 message InitStreamRequest {
   string clientName = 1;
@@ -57,9 +63,11 @@ message InitStreamResponse {
   message Error {
     ClientUnsupported clientUnsupported = 1;
   }
+  Error error = 1;
   // streamID is created by the server and will change when server restarts
-  string streamID = 1;
-  uint64 minOffset = 2;
+  string streamID = 2;
+  // min Offset of the event in the server side circular buffer
+  uint64 minOffset = 3;
 }
 
 message WaitForEventsRequest {
@@ -79,9 +87,10 @@ message WaitForEventsRequest {
 
 message WaitForEventsResponse {
   message Error {
-    OffsetOutOfRange  outOfRange = 1;
-    ClientUnsupported clientUnsupported = 2;
-    InvalidStreamID   invalidStreamID = 3;
+    OffsetOutOfRange   outOfRange = 1;
+    ClientUnsupported  clientUnsupported = 2;
+    InvalidStreamID    invalidStreamID = 3;
+    InvalidPurgeOffset invalidPurgeOffset = 4;
   }
   Error error = 1;
   repeated Event events = 2;

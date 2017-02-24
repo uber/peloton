@@ -79,6 +79,7 @@ func TestCBContinueAddItems(t *testing.T) {
 	// remove and track
 	removed, err := cb.MoveTail(cb.head)
 	assert.Nil(t, err)
+	assert.Equal(t, 0, cb.Size())
 	removedItems = append(removedItems, removed...)
 
 	// All removed items should match all the items
@@ -99,6 +100,7 @@ func TestCBGetItemsByRange(t *testing.T) {
 		_, err := cb.AddItem(event{value: i})
 		assert.Nil(t, err)
 	}
+	// Normal case that from and to are both within buffer range
 	from := 2
 	to := 7
 	items, err := cb.GetItemsByRange(uint64(from), uint64(to))
@@ -109,17 +111,30 @@ func TestCBGetItemsByRange(t *testing.T) {
 		assert.Equal(t, i, int(items[i-from].Value.(event).value))
 	}
 
+	// to is larger than tail
 	from = 4
 	to = 9
-	_, err = cb.GetItemsByRange(uint64(from), uint64(to))
-	assert.NotNil(t, err)
+	items, err = cb.GetItemsByRange(uint64(from), uint64(to))
+	assert.Nil(t, err)
+	assert.Equal(t, 4, len(items))
+	for i := 0; i < len(items); i++ {
+		assert.Equal(t, i+4, int(items[i].SequenceID))
+		assert.Equal(t, i+4, int(items[i].Value.(event).value))
+	}
 
+	// from is less than tail
 	cb.MoveTail(3)
 	from = 0
 	to = 6
-	_, err = cb.GetItemsByRange(uint64(from), uint64(to))
-	assert.NotNil(t, err)
+	items, err = cb.GetItemsByRange(uint64(from), uint64(to))
+	assert.Nil(t, err)
+	assert.Equal(t, 4, len(items))
+	for i := 0; i < len(items); i++ {
+		assert.Equal(t, i+3, int(items[i].SequenceID))
+		assert.Equal(t, i+3, int(items[i].Value.(event).value))
+	}
 
+	// Add more data and make circular buffer rollover
 	cb.MoveTail(6)
 	head := cb.head
 	for i := 0; i < 5; i++ {
