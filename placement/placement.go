@@ -189,7 +189,7 @@ func (s *placementEngine) placeTasks(
 	}
 
 	log.WithField("selected_tasks", len(selectedTasks)).Debug("Selected tasks count")
-	tasks = tasks[len(selectedTasks) : len(tasks)-1]
+	tasks = tasks[len(selectedTasks):]
 	// TODO: replace launch task with resmgr.SetPlacement once it's implemented,
 	//       and move task launching logic into Jobmgr
 	if len(selectedTasks) > 0 {
