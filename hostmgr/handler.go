@@ -69,7 +69,7 @@ func (h *serviceHandler) GetHostOffers(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *hostsvc.GetHostOffersRequest) (*hostsvc.GetHostOffersResponse, yarpc.ResMeta, error) {
-	log.Info("GetHostOffers called.")
+	log.WithField("request", body).Debug("GetHostOffers called.")
 
 	if invalidConstraints := validateConstraints(body); invalidConstraints != nil {
 		h.metrics.GetHostOffersInvalid.Inc(1)
@@ -128,6 +128,7 @@ func (h *serviceHandler) GetHostOffers(
 
 	h.metrics.GetHostOffers.Inc(1)
 
+	log.WithField("response", response).Debug("GetHostOffers returned")
 	return &response, nil, nil
 }
 
@@ -136,7 +137,7 @@ func (h *serviceHandler) LaunchTasks(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *hostsvc.LaunchTasksRequest) (*hostsvc.LaunchTasksResponse, yarpc.ResMeta, error) {
-	log.Info("LaunchTasks called.")
+	log.WithField("request", body).Debug("LaunchTasks called.")
 
 	if err := validateLaunchTasks(body); err != nil {
 		h.metrics.LaunchTasksInvalid.Inc(1)
@@ -250,7 +251,7 @@ func (h *serviceHandler) KillTasks(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	body *hostsvc.KillTasksRequest) (*hostsvc.KillTasksResponse, yarpc.ResMeta, error) {
-	log.Info("KillTasks called.")
+	log.WithField("request", body).Debug("KillTasks called.")
 	return nil, nil, fmt.Errorf("Unimplemented")
 }
 

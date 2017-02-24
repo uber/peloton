@@ -102,6 +102,7 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 
 		if len(hostOffers) == 0 {
 			s.metrics.OfferStarved.Inc(1)
+			log.Warn("Empty hostOffers received")
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
@@ -120,9 +121,10 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		unused := hostOffers[index:]
 		// TODO: Handle remaining offers rather than a log.
 		if len(unused) > 0 {
-			log.WithField("remaining_offers", unused).Warn("HostOffes reamining will not be used until next cycle!")
+			log.WithField("remaining_offers", unused).Warn("HostOffers remaining will not be used until next cycle!")
 		}
-		log.WithField("remainng_tasks", len(group.tasks)).Info("Tasks remaining for next placeTaskGroup")
+
+		log.WithField("remaining_tasks", group.tasks).Debug("Tasks remaining for next placeTaskGroup")
 	}
 }
 
@@ -148,6 +150,9 @@ func (s *placementEngine) getHostOffers(group *taskGroup) ([]*hostsvc.HostOffer,
 			},
 		},
 	}
+
+	log.WithField("request", request).Debug("Calling GetHostOffers")
+
 	_, err := s.hostMgrClient.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("InternalHostService.GetHostOffers"),
@@ -160,14 +165,16 @@ func (s *placementEngine) getHostOffers(group *taskGroup) ([]*hostsvc.HostOffer,
 		return nil, err
 	}
 
+	log.WithField("response", response).Debug("GetHostOffers returned")
+
 	if respErr := response.GetError(); respErr != nil {
 		log.WithField("error", respErr).Error("GetHostOffer error")
 		// TODO: Differentiate known error types by metrics and logs.
 		return nil, errors.New(respErr.String())
 	}
 
-	log.Debug("Obtained HostOffers")
-	return response.GetHostOffers(), nil
+	result := response.GetHostOffers()
+	return result, nil
 }
 
 // placeTasks makes placement decisions by assigning tasks to offer
@@ -175,9 +182,14 @@ func (s *placementEngine) placeTasks(
 	tasks []*task.TaskInfo,
 	resourceConfig *config.ResourceConfig,
 	hostOffer *hostsvc.HostOffer) []*task.TaskInfo {
+	nTasks := len(tasks)
+	if nTasks == 0 {
+		log.Debug("No task to place")
+		return tasks
+	}
+
 	usage := scalar.FromResourceConfig(resourceConfig)
 	remain := scalar.FromMesosResources(hostOffer.GetResources())
-	nTasks := len(tasks)
 
 	var selectedTasks []*task.TaskInfo
 	for i := 0; i < nTasks; i++ {
@@ -188,8 +200,11 @@ func (s *placementEngine) placeTasks(
 		selectedTasks = append(selectedTasks, tasks[i])
 	}
 
-	log.WithField("selected_tasks", len(selectedTasks)).Debug("Selected tasks count")
 	tasks = tasks[len(selectedTasks):]
+	log.WithFields(log.Fields{
+		"selected_tasks":  selectedTasks,
+		"remaining_tasks": tasks,
+	}).Debug("Selected tasks to place")
 	// TODO: replace launch task with resmgr.SetPlacement once it's implemented,
 	//       and move task launching logic into Jobmgr
 	if len(selectedTasks) > 0 {
@@ -202,6 +217,8 @@ func (s *placementEngine) placeTasks(
 			AgentId:  hostOffer.GetAgentId(),
 			OfferIds: hostOffer.GetOfferIds(),
 		}
+
+		log.WithField("request", request).Debug("Calling LaunchTasks")
 		_, err := s.hostMgrClient.Call(
 			ctx,
 			yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks"),
@@ -217,6 +234,9 @@ func (s *placementEngine) placeTasks(
 			s.metrics.TaskLaunchDispatchesFail.Inc(1)
 			return tasks
 		}
+
+		log.WithField("response", response).Debug("LaunchTasks returned")
+
 		if response.Error != nil {
 			log.WithFields(log.Fields{
 				"tasks": len(selectedTasks),
@@ -232,6 +252,8 @@ func (s *placementEngine) placeTasks(
 			"hostname": hostOffer.GetHostname(),
 			"offers":   hostOffer.GetOfferIds(),
 		}).Info("Launched tasks")
+	} else {
+		log.WithField("remaining_tasks", tasks).Info("No task is selected to launch")
 	}
 	return tasks
 }
@@ -246,6 +268,7 @@ func (s *placementEngine) workLoop() {
 			continue
 		}
 		if len(tasks) == 0 {
+			log.Debug("No task to place in workLoop")
 			time.Sleep(GetTaskTimeout)
 			continue
 		}
@@ -276,6 +299,9 @@ func (s *placementEngine) getTasks(limit int) (
 	var request = &taskqueue.DequeueRequest{
 		Limit: uint32(limit),
 	}
+
+	log.WithField("request", request).Debug("Dequeuing tasks")
+
 	_, err = s.resMgrClient.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("TaskQueue.Dequeue"),
@@ -286,6 +312,9 @@ func (s *placementEngine) getTasks(limit int) (
 		log.WithField("error", err).Error("Dequeue failed")
 		return nil, err
 	}
+
+	log.WithField("tasks", response.Tasks).Debug("Dequeued tasks")
+
 	return response.Tasks, nil
 }
 
