@@ -4,9 +4,12 @@
 #    topic: peloton
 
 metrics:
-  statsd:
-    hostPort: 127.0.0.1:4744
-    prefix: peloton
+  prometheus:
+    enable: true
+  # statsd:
+  #   hostPort: 127.0.0.1:4744
+  #   prefix: peloton
+
 
 sentry:
   dsn: http://fill:mein@sentry.local.uber.internal/123

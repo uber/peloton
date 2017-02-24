@@ -74,10 +74,10 @@ func InitMetricScope(
 		// TODO: make this healthcheck live, and check some kind of internal health?
 		if true {
 			w.WriteHeader(nethttp.StatusOK)
-			fmt.Fprintln(w, `\(★ω★)/`)
+			fmt.Fprintln(w, `OK`)
 		} else {
 			w.WriteHeader(nethttp.StatusInternalServerError)
-			fmt.Fprintln(w, `(╥﹏╥)`)
+			fmt.Fprintln(w, `UNHEALTHY`)
 		}
 	})
 

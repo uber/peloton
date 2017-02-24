@@ -48,7 +48,13 @@ import (
 var (
 	version string
 	app     = kingpin.New("peloton-framework", "Peloton Mesos Framework")
-	debug   = app.Flag("debug", "enable debug mode (print full json responses)").Short('d').Default("false").Bool()
+
+	debug = app.Flag("debug", "enable debug mode (print full json responses)").
+		Short('d').
+		Default("false").
+		Envar("ENABLE_DEBUG_LOGGING").
+		Bool()
+
 	configs = app.Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").Short('c').Required().ExistingFiles()
 	env     = app.Flag("env", "environment (development will do no mesos master auto discovery) (set $PELOTON_ENVIRONMENT to override)").Short('e').Default("development").
 		Envar("PELOTON_ENVIRONMENT").Enum("development", "production")

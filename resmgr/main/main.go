@@ -24,9 +24,15 @@ import (
 )
 
 var (
-	version           string
-	app               = kingpin.New("peloton-resmgr", "Peloton Resource Manager")
-	debug             = app.Flag("debug", "enable debug mode (print full json responses)").Short('d').Default("false").Bool()
+	version string
+	app     = kingpin.New("peloton-resmgr", "Peloton Resource Manager")
+
+	debug = app.Flag("debug", "enable debug mode (print full json responses)").
+		Short('d').
+		Default("false").
+		Envar("ENABLE_DEBUG_LOGGING").
+		Bool()
+
 	configs           = app.Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").Short('c').Required().ExistingFiles()
 	logFormatJSON     = app.Flag("log-json", "Log in JSON format").Default("true").Bool()
 	dbHost            = app.Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").Envar("DB_HOST").String()

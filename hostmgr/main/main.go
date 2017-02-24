@@ -35,6 +35,7 @@ var (
 		Flag("debug", "enable debug mode (print full json responses)").
 		Short('d').
 		Default("false").
+		Envar("ENABLE_DEBUG_LOGGING").
 		Bool()
 
 	configs = app.
