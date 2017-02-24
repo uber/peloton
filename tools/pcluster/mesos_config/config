@@ -17,6 +17,6 @@ IMAGE_PROVIDERS=appc,docker
 IMAGE_PROVISIONER_BACKEND=copy
 APPC_STORE_DIR=/tmp/mesos/images/appc
 WORK_DIR=/var/lib/mesos
-RESOURCES="cpus(peloton-master):0.5;cpus(*):3.5;mem(peloton-master):1024;disk(*):20000;gpus(*):4;mem(*):1024"
+RESOURCES="cpus(peloton-master):0.5;cpus(*):3.5;mem(peloton-master):1024;disk(*):20000;mem(*):1024"
 MODULES=file:///etc/mesos-slave/modules
 RESOURCE_ESTIMATOR=org_apache_mesos_FixedResourceEstimator
