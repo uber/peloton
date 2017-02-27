@@ -61,7 +61,8 @@ func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) (*mesos_v1.TaskInfo, error)
 	return GetMesosTaskInfo(taskID, taskConfig)
 }
 
-func getMesosScalarResources(values map[string]float64) []*mesos_v1.Resource {
+// CreateMesosScalarResources is a helper function to convert resource values into Mesos resources.
+func CreateMesosScalarResources(values map[string]float64) []*mesos_v1.Resource {
 	var rs []*mesos_v1.Resource
 	for name, value := range values {
 		// Skip any value smaller than Espilon.
@@ -93,7 +94,7 @@ func GetMesosTaskInfo(
 		return nil, errors.New("TaskConfig.Resource cannot be nil")
 	}
 
-	rs := getMesosScalarResources(map[string]float64{
+	rs := CreateMesosScalarResources(map[string]float64{
 		"cpus": taskResources.CpuLimit,
 		"mem":  taskResources.MemLimitMb,
 		"disk": taskResources.DiskLimitMb,

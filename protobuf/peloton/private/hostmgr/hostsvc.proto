@@ -22,6 +22,8 @@ message HostOffer {
   mesos.v1.AgentID agentId = 2;
   repeated mesos.v1.Resource resources = 3;
   repeated mesos.v1.Attribute attributes = 4;
+
+  // Deprecated: this will soon be not returned anymore, please rely on hostname instead.
   repeated mesos.v1.OfferID offerIds = 5;
 }
 
@@ -53,7 +55,7 @@ message Constraint {
 
 /**
  * ResourceConstraint descrbes a condition for which aggregated resources from a host must meet
- * in order for it to be returned in `GetHostOffers`.
+ * in order for it to be returned in `AcquireHostOffers`.
  */
 message ResourceConstraint {
   // Minimum amount of resources
@@ -76,6 +78,16 @@ message InvalidArgument {
 }
 
 /**
+ * Error for invalid offers.
+ */
+message InvalidOffers {
+  string message = 1;
+
+  // Any offer id whose content is invalid.
+  repeated mesos.v1.OfferID offerIds = 2;
+}
+
+/**
  * Error when actually tasks launch failed.
  */
 message LaunchFailure {
@@ -93,9 +105,9 @@ message InvalidConstraints {
 }
 
 /**
- * Error when GetHostOffers failed.
+ * Error when AcquireHostOffers failed.
  */
-message GetHostOffersFailure {
+message AcquireHostOffersFailure {
   string message = 1;
 }
 
@@ -108,10 +120,15 @@ message GetHostOffersFailure {
 service InternalHostService
 {
   /**
-   *  Get a set of host offers from the host manager. Each host offer will
+   *  Acquire a set of host offers from the host manager. Each host offer will
    *  only be used by one client at a given time.
    */
-  rpc GetHostOffers(GetHostOffersRequest) returns (GetHostOffersResponse);
+  rpc AcquireHostOffers(AcquireHostOffersRequest) returns (AcquireHostOffersResponse);
+
+  /**
+   *  Release unused host offers to the host manager.
+   */
+  rpc ReleaseHostOffers(ReleaseHostOffersRequest) returns (ReleaseHostOffersResponse);
 
   // Launch tasks on Mesos cluster
   rpc LaunchTasks(LaunchTasksRequest) returns (LaunchTasksResponse);
@@ -133,16 +150,16 @@ service InternalHostService
   rpc DestroyVolumes(DestroyVolumesRequest) returns (DestroyVolumesResponse);
 }
 
-message GetHostOffersRequest {
+message AcquireHostOffersRequest {
   // Each Constraint is only applicable to `numHosts` hosts, or one if `numHosts` is unset.
   // This list cannot be empty.
   repeated Constraint constraints = 2;
 }
 
-message GetHostOffersResponse {
+message AcquireHostOffersResponse {
   message Error {
     InvalidConstraints invalidConstraints = 1;
-    GetHostOffersFailure failure = 2;
+    AcquireHostOffersFailure failure = 2;
   }
 
   Error error = 1;
@@ -150,10 +167,23 @@ message GetHostOffersResponse {
   repeated HostOffer hostOffers = 2;
 }
 
+message ReleaseHostOffersRequest {
+  repeated HostOffer hostOffers = 1;
+}
+
+message ReleaseHostOffersResponse {
+  message Error {
+  }
+
+  Error error = 1;
+}
+
 message LaunchTasksRequest {
   string hostname = 1;
   repeated LaunchableTask tasks = 2;
   mesos.v1.AgentID agentId = 3;
+
+  // Deprecated.
   repeated mesos.v1.OfferID offerIds = 4;
 }
 
@@ -161,6 +191,7 @@ message LaunchTasksResponse {
   message Error {
     InvalidArgument invalidArgument = 1;
     LaunchFailure launchFailure = 2;
+    InvalidOffers invalidOffers = 3;
   }
 
   Error error = 1;

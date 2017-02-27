@@ -97,8 +97,8 @@ func (m *Manager) Start() {
 
 // Stop runs shutdown related procedures
 func (m *Manager) Stop() {
-	// Clean up all existing offers
-	m.offerPool.CleanupOffers()
+	// Clear all existing offers
+	m.offerPool.Clear()
 	// Stop offer pruner
 	m.offerPruner.Stop()
 }

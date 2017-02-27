@@ -67,22 +67,21 @@ func TestRemoveExpiredOffers(t *testing.T) {
 	// pool with offers within timeout
 	pool.AddOffers([]*mesos.Offer{offer1, offer2, offer3, offer4})
 	result = pool.RemoveExpiredOffers()
-	assert.Equal(t, len(result), 0)
+	assert.Empty(t, result)
 
-	//adjust the time stamp
-	pool.offers[offerID1].Timestamp = time.Now().Add(-2 * time.Minute)
-	pool.offers[offerID4].Timestamp = time.Now().Add(-2 * time.Minute)
+	// adjust the time stamp
+	pool.offers[offerID1].Expiration = time.Now().Add(-2 * time.Minute)
+	pool.offers[offerID4].Expiration = time.Now().Add(-2 * time.Minute)
 
 	expected := map[string]*TimedOffer{offerID1: pool.offers[offerID1], offerID4: pool.offers[offerID4]}
 
 	result = pool.RemoveExpiredOffers()
-	assert.Exactly(t, result, expected)
+	assert.Exactly(t, expected, result)
 
-	assert.Equal(t, len(pool.hostOfferIndex[hostName1].offersOnHost), 1)
-	assert.Equal(t, *pool.hostOfferIndex[hostName1].offersOnHost[offerID3].Id.Value, offerID3)
-
-	assert.Equal(t, len(pool.hostOfferIndex[hostName4].offersOnHost), 0)
-
+	assert.Equal(t, 1, len(pool.hostOfferIndex[hostName1].offersOnHost))
+	offer := pool.hostOfferIndex[hostName1].offersOnHost[offerID3]
+	assert.Equal(t, offerID3, *offer.Id.Value)
+	assert.Empty(t, len(pool.hostOfferIndex[hostName4].offersOnHost))
 }
 
 func getMesosOffer(hostName string, offerID string) *mesos.Offer {
@@ -135,16 +134,17 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	}
 	for j := 0; j < nAgents; j++ {
 		hostName := fmt.Sprintf("agent-%d", j)
-		assert.Equal(t, len(pool.hostOfferIndex[hostName].offersOnHost), nOffers)
+		assert.Equal(t, ReadyOffer, pool.hostOfferIndex[hostName].status)
+		assert.Equal(t, nOffers, len(pool.hostOfferIndex[hostName].offersOnHost))
 		assert.True(t, pool.hostOfferIndex[hostName].hasOffer())
 		for i := 0; i < nOffers; i++ {
 			offerID := fmt.Sprintf("%s-%d", hostName, i)
-			o := *pool.hostOfferIndex[hostName].offersOnHost[offerID]
-			assert.Equal(t, *o.Hostname, hostName)
+			offer := pool.hostOfferIndex[hostName].offersOnHost[offerID]
+			assert.Equal(t, hostName, offer.GetHostname())
 		}
 	}
 
-	// Get offer
+	// Get offer for placement
 	takenOffers := map[string]*mesos.Offer{}
 	mutex := &sync.Mutex{}
 	nClients := 4
@@ -160,13 +160,18 @@ func TestAddGetRemoveOffers(t *testing.T) {
 					},
 				},
 			}
-			hostOffers, err := pool.GetHostOffers(constraints)
+			hostOffers, err := pool.ClaimForPlace(constraints)
 			assert.NoError(t, err)
 			assert.Equal(t, int(limit), len(hostOffers))
 			mutex.Lock()
 			defer mutex.Unlock()
 			for hostname, offers := range hostOffers {
-				assert.Equal(t, nOffers, len(offers), "hostname %s has incorrect offer length", hostname)
+				assert.Equal(
+					t,
+					nOffers,
+					len(offers),
+					"hostname %s has incorrect offer length",
+					hostname)
 				for _, offer := range offers {
 					oid := offer.GetId().GetValue()
 					if _, ok := takenOffers[oid]; ok {
@@ -182,11 +187,27 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	assert.Equal(t, nClients*int(limit)*nOffers, len(takenOffers))
 	for offerID, offer := range takenOffers {
 		assert.Equal(t, offerID, *offer.Id.Value)
-		assert.Nil(t, pool.offers[offerID])
+		// Check that all offers are still around.
+		// TODO: Check their status
+		assert.NotNil(t, pool.offers[offerID])
 	}
-	assert.Equal(t, nOffers*nAgents-nClients*int(limit)*nOffers, len(pool.offers))
 
-	//Rescind offer
+	for _, summary := range pool.hostOfferIndex {
+		assert.NotNil(t, summary)
+		for oid := range summary.offersOnHost {
+			if _, ok := takenOffers[oid]; ok {
+				// For a taken offer, host status should be PlacingOffer
+				// offersTakenFromHost[hostname] = true
+				assert.Equal(t, PlacingOffer, summary.status)
+			} else {
+				assert.Equal(t, ReadyOffer, summary.status)
+			}
+		}
+	}
+
+	assert.Equal(t, nOffers*nAgents, len(pool.offers))
+
+	// Rescind all offers.
 	wg = sync.WaitGroup{}
 	wg.Add(nOffers)
 	for i := 0; i < nOffers; i++ {
@@ -194,7 +215,13 @@ func TestAddGetRemoveOffers(t *testing.T) {
 			for j := 0; j < nAgents; j++ {
 				hostName := fmt.Sprintf("agent-%d", j)
 				offerID := fmt.Sprintf("%s-%d", hostName, i)
-				pool.RescindOffer(&mesos.OfferID{Value: &offerID})
+				rFound := pool.RescindOffer(&mesos.OfferID{Value: &offerID})
+				assert.Equal(
+					t,
+					true,
+					rFound,
+					"Offer %s has inconsistent result when rescinding",
+					offerID)
 			}
 			wg.Done()
 		}(i)
@@ -202,9 +229,31 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	wg.Wait()
 	assert.Equal(t, len(pool.offers), 0)
 
-	for _, agentOffers := range pool.hostOfferIndex {
-		assert.False(t, agentOffers.hasOffer())
-		assert.Equal(t, len(agentOffers.offersOnHost), 0)
-	}
+	for hostname, summary := range pool.hostOfferIndex {
+		assert.False(t, summary.hasOffer())
+		for oid := range summary.offersOnHost {
+			if _, ok := takenOffers[oid]; ok {
+				assert.Equal(t, PlacingOffer, summary.status)
+			} else {
+				assert.Equal(t, ReadyOffer, summary.status)
+			}
+		}
 
+		assert.Equal(
+			t,
+			0,
+			len(summary.offersOnHost),
+			"Incorrect leftover offer count on hostname %s, leftover: %v",
+			hostname,
+			summary.offersOnHost)
+	}
 }
+
+// TODO: Add test case covering:
+// - ready offer pruned;
+// - ready offer rescinded;
+// - ready offer claimed but never launch within expiration;
+// - ready offer claimed then returnd unused;
+// - ready offer claimed then launched;
+// - launch w/ offer already expired/rescinded/pruned;
+// - return offer already expired/rescinded/pruned.

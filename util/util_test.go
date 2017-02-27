@@ -127,7 +127,7 @@ func TestParseTaskIDFromMesosTaskID(t *testing.T) {
 }
 
 func TestNonGPUResources(t *testing.T) {
-	rs := getMesosScalarResources(map[string]float64{
+	rs := CreateMesosScalarResources(map[string]float64{
 		"cpus": 1.0,
 		"mem":  2.0,
 		"disk": 3.0,
@@ -138,7 +138,7 @@ func TestNonGPUResources(t *testing.T) {
 }
 
 func TestLowerThanEspilonResources(t *testing.T) {
-	rs := getMesosScalarResources(map[string]float64{
+	rs := CreateMesosScalarResources(map[string]float64{
 		"cpus": 1.0,
 		"mem":  2.0,
 		"disk": 3.0,
@@ -149,7 +149,7 @@ func TestLowerThanEspilonResources(t *testing.T) {
 }
 
 func TestGPUResources(t *testing.T) {
-	rs := getMesosScalarResources(map[string]float64{
+	rs := CreateMesosScalarResources(map[string]float64{
 		"cpus": 1.0,
 		"mem":  2.0,
 		"disk": 3.0,

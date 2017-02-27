@@ -57,7 +57,7 @@ func New(
 		resMgrClient:  json.New(d.ClientConfig(resMgrClientName)),
 		hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
 		rootCtx:       context.Background(),
-		metrics:       &metrics,
+		metrics:       metrics,
 	}
 	return &s
 }
@@ -70,6 +70,7 @@ type placementEngine struct {
 	started       int32
 	shutdown      int32
 	metrics       *placement_metrics.Metrics
+	tick          <-chan time.Time
 }
 
 // Start starts placement engine
@@ -77,8 +78,11 @@ func (s *placementEngine) Start() {
 	if atomic.CompareAndSwapInt32(&s.started, 0, 1) {
 		log.Info("Placement Engine started")
 		s.metrics.Running.Update(1)
-		go s.workLoop()
-		return
+		go func() {
+			for s.isRunning() {
+				s.placeRound()
+			}
+		}()
 	}
 	log.Warn("Placement Engine already started")
 }
@@ -100,7 +104,7 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 			return
 		}
 
-		hostOffers, err := s.getHostOffers(group)
+		hostOffers, err := s.AcquireHostOffers(group)
 		// TODO: Add a stopping condition so this does not loop forever.
 		if err != nil {
 			log.WithField("error", err).Error("Failed to dequeue offer")
@@ -128,16 +132,45 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		}
 
 		unused := hostOffers[index:]
-		// TODO: Handle remaining offers rather than a log.
 		if len(unused) > 0 {
-			log.WithField("remaining_offers", unused).Warn("HostOffers remaining will not be used until next cycle!")
+			s.returnUnused(unused)
 		}
 		log.WithField("remaining_tasks", group.tasks).Debug("Tasks remaining for next placeTaskGroup")
 	}
 }
 
-// getHostOffers calls hostmgr and obtain HostOffers for given task group.
-func (s *placementEngine) getHostOffers(group *taskGroup) ([]*hostsvc.HostOffer, error) {
+// returnUnused returns unused host offers back to host manager.
+func (s *placementEngine) returnUnused(hostOffers []*hostsvc.HostOffer) error {
+	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
+	defer cancelFunc()
+	var response hostsvc.ReleaseHostOffersResponse
+	var request = &hostsvc.ReleaseHostOffersRequest{
+		HostOffers: hostOffers,
+	}
+	_, err := s.hostMgrClient.Call(
+		ctx,
+		yarpc.NewReqMeta().Procedure("InternalHostService.ReleaseHostOffers"),
+		request,
+		&response,
+	)
+
+	if err != nil {
+		log.WithField("error", err).Error("ReleaseHostOffers failed")
+		return err
+	}
+
+	if respErr := response.GetError(); respErr != nil {
+		log.WithField("error", respErr).Error("ReleaseHostOffers error")
+		// TODO: Differentiate known error types by metrics and logs.
+		return errors.New(respErr.String())
+	}
+
+	log.WithField("host_offers", hostOffers).Debug("Returned unused host offers")
+	return nil
+}
+
+// AcquireHostOffers calls hostmgr and obtain HostOffers for given task group.
+func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOffer, error) {
 	// Right now, this limits number of hosts to request from hostsvc.
 	// In the longer term, we should consider converting this to total resources necessary.
 	limit := s.cfg.OfferDequeueLimit
@@ -147,8 +180,8 @@ func (s *placementEngine) getHostOffers(group *taskGroup) ([]*hostsvc.HostOffer,
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var response hostsvc.GetHostOffersResponse
-	var request = &hostsvc.GetHostOffersRequest{
+	var response hostsvc.AcquireHostOffersResponse
+	var request = &hostsvc.AcquireHostOffersRequest{
 		Constraints: []*hostsvc.Constraint{
 			{
 				Limit: uint32(limit),
@@ -159,24 +192,24 @@ func (s *placementEngine) getHostOffers(group *taskGroup) ([]*hostsvc.HostOffer,
 		},
 	}
 
-	log.WithField("request", request).Debug("Calling GetHostOffers")
+	log.WithField("request", request).Debug("Calling AcquireHostOffers")
 
 	_, err := s.hostMgrClient.Call(
 		ctx,
-		yarpc.NewReqMeta().Procedure("InternalHostService.GetHostOffers"),
+		yarpc.NewReqMeta().Procedure("InternalHostService.AcquireHostOffers"),
 		request,
 		&response,
 	)
 
 	if err != nil {
-		log.WithField("error", err).Error("GetHostOffers failed")
+		log.WithField("error", err).Error("AcquireHostOffers failed")
 		return nil, err
 	}
 
-	log.WithField("response", response).Debug("GetHostOffers returned")
+	log.WithField("response", response).Debug("AcquireHostOffers returned")
 
 	if respErr := response.GetError(); respErr != nil {
-		log.WithField("error", respErr).Error("GetHostOffer error")
+		log.WithField("error", respErr).Error("AcquireHostOffers error")
 		// TODO: Differentiate known error types by metrics and logs.
 		return nil, errors.New(respErr.String())
 	}
@@ -271,28 +304,26 @@ func (s *placementEngine) isRunning() bool {
 	return shutdown == 0
 }
 
-// workLoop is the internal loop that gets tasks and makes placement decisions
-func (s *placementEngine) workLoop() {
-	for s.isRunning() {
-		tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
-		if err != nil {
-			log.WithField("error", err).Error("Failed to dequeue tasks")
-			time.Sleep(GetTaskTimeout)
-			continue
-		}
-		if len(tasks) == 0 {
-			log.Debug("No task to place in workLoop")
-			time.Sleep(GetTaskTimeout)
-			continue
-		}
-		log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
-		taskGroups := groupTasksByResource(tasks)
-		for _, taskGroup := range taskGroups {
-			s.placeTaskGroup(taskGroup)
-			if len(taskGroup.tasks) > 0 {
-				log.WithField("task_group", taskGroup).Warn("Task group still has remaining tasks after allowed attempts")
-				// TODO: send unplaced tasks back to correct state (READY).
-			}
+// placeRound tries one round of placement action
+func (s *placementEngine) placeRound() {
+	tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
+	if err != nil {
+		log.WithField("error", err).Error("Failed to dequeue tasks")
+		time.Sleep(GetTaskTimeout)
+		return
+	}
+	if len(tasks) == 0 {
+		log.Debug("No task to place in workLoop")
+		time.Sleep(GetTaskTimeout)
+		return
+	}
+	log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
+	taskGroups := groupTasksByResource(tasks)
+	for _, taskGroup := range taskGroups {
+		s.placeTaskGroup(taskGroup)
+		if len(taskGroup.tasks) > 0 {
+			log.WithField("task_group", taskGroup).Warn("Task group still has remaining tasks after allowed attempts")
+			// TODO: send unplaced tasks back to correct state (READY).
 		}
 	}
 }

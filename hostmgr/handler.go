@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	mesos_v1 "mesos/v1"
+	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 
 	"peloton/private/hostmgr/hostsvc"
@@ -25,10 +25,6 @@ type serviceHandler struct {
 	client    mpb.Client
 	metrics   *Metrics
 	offerPool offer.Pool
-
-	// TODO(zhitao): Add offer pool batching and implement OfferManager API.
-
-	// TODO(zhitao): Add host batching.
 }
 
 // InitServiceHandler initialize serviceHandler.
@@ -43,7 +39,8 @@ func InitServiceHandler(
 		offerPool: offerPool,
 	}
 
-	json.Register(d, json.Procedure("InternalHostService.GetHostOffers", handler.GetHostOffers))
+	json.Register(d, json.Procedure("InternalHostService.AcquireHostOffers", handler.AcquireHostOffers))
+	json.Register(d, json.Procedure("InternalHostService.ReleaseHostOffers", handler.ReleaseHostOffers))
 	json.Register(d, json.Procedure("InternalHostService.LaunchTasks", handler.LaunchTasks))
 	json.Register(d, json.Procedure("InternalHostService.KillTasks", handler.KillTasks))
 	json.Register(d, json.Procedure("InternalHostService.ReserveResources", handler.ReserveResources))
@@ -52,7 +49,7 @@ func InitServiceHandler(
 	json.Register(d, json.Procedure("InternalHostService.DestroyVolumes", handler.DestroyVolumes))
 }
 
-func validateConstraints(req *hostsvc.GetHostOffersRequest) *hostsvc.InvalidConstraints {
+func validateConstraints(req *hostsvc.AcquireHostOffersRequest) *hostsvc.InvalidConstraints {
 	constraints := req.GetConstraints()
 	if len(constraints) <= 0 {
 		log.Error("Empty constraints")
@@ -64,17 +61,17 @@ func validateConstraints(req *hostsvc.GetHostOffersRequest) *hostsvc.InvalidCons
 	return nil
 }
 
-// GetHostOffers implements InternalHostService.GetHostOffers.
-func (h *serviceHandler) GetHostOffers(
+// AcquireHostOffers implements InternalHostService.AcquireHostOffers.
+func (h *serviceHandler) AcquireHostOffers(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.GetHostOffersRequest) (*hostsvc.GetHostOffersResponse, yarpc.ResMeta, error) {
-	log.WithField("request", body).Debug("GetHostOffers called.")
+	body *hostsvc.AcquireHostOffersRequest) (*hostsvc.AcquireHostOffersResponse, yarpc.ResMeta, error) {
+	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
 	if invalidConstraints := validateConstraints(body); invalidConstraints != nil {
-		h.metrics.GetHostOffersInvalid.Inc(1)
-		return &hostsvc.GetHostOffersResponse{
-			Error: &hostsvc.GetHostOffersResponse_Error{
+		h.metrics.AcquireHostOffersInvalid.Inc(1)
+		return &hostsvc.AcquireHostOffersResponse{
+			Error: &hostsvc.AcquireHostOffersResponse_Error{
 				InvalidConstraints: invalidConstraints,
 			},
 		}, nil, nil
@@ -85,19 +82,19 @@ func (h *serviceHandler) GetHostOffers(
 		constraints = append(constraints, &offer.Constraint{*c})
 	}
 
-	hostOffers, err := h.offerPool.GetHostOffers(constraints)
+	hostOffers, err := h.offerPool.ClaimForPlace(constraints)
 	if err != nil {
-		log.WithField("error", err).Error("GetHostOffers failed")
-		return &hostsvc.GetHostOffersResponse{
-			Error: &hostsvc.GetHostOffersResponse_Error{
-				Failure: &hostsvc.GetHostOffersFailure{
+		log.WithField("error", err).Error("ClaimForPlace failed")
+		return &hostsvc.AcquireHostOffersResponse{
+			Error: &hostsvc.AcquireHostOffersResponse_Error{
+				Failure: &hostsvc.AcquireHostOffersFailure{
 					Message: err.Error(),
 				},
 			},
 		}, nil, nil
 	}
 
-	response := hostsvc.GetHostOffersResponse{
+	response := hostsvc.AcquireHostOffersResponse{
 		HostOffers: []*hostsvc.HostOffer{},
 	}
 
@@ -107,8 +104,8 @@ func (h *serviceHandler) GetHostOffers(
 			continue
 		}
 
-		var resources []*mesos_v1.Resource
-		var offerIds []*mesos_v1.OfferID
+		var resources []*mesos.Resource
+		var offerIds []*mesos.OfferID
 
 		for _, offer := range offers {
 			offerIds = append(offerIds, offer.GetId())
@@ -126,9 +123,28 @@ func (h *serviceHandler) GetHostOffers(
 		response.HostOffers = append(response.HostOffers, &hostOffer)
 	}
 
-	h.metrics.GetHostOffers.Inc(1)
+	h.metrics.AcquireHostOffers.Inc(1)
 
-	log.WithField("response", response).Debug("GetHostOffers returned")
+	log.WithField("response", response).Debug("AcquireHostOffers returned")
+	return &response, nil, nil
+}
+
+// ReleaseHostOffers implements InternalHostService.ReleaseHostOffers.
+func (h *serviceHandler) ReleaseHostOffers(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	body *hostsvc.ReleaseHostOffersRequest) (*hostsvc.ReleaseHostOffersResponse, yarpc.ResMeta, error) {
+	log.WithField("request", body).Debug("ReleaseHostOffers called.")
+	response := hostsvc.ReleaseHostOffersResponse{}
+
+	for _, hostOffer := range body.GetHostOffers() {
+		hostname := hostOffer.GetHostname()
+		if err := h.offerPool.ReturnUnusedOffers(hostname); err != nil {
+			log.WithField("host", hostname).Error("Cannot return unused offer on host.")
+		}
+	}
+
+	h.metrics.ReleaseHostOffers.Inc(1)
 	return &response, nil, nil
 }
 
@@ -136,7 +152,10 @@ func (h *serviceHandler) GetHostOffers(
 func (h *serviceHandler) LaunchTasks(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.LaunchTasksRequest) (*hostsvc.LaunchTasksResponse, yarpc.ResMeta, error) {
+	body *hostsvc.LaunchTasksRequest) (
+	*hostsvc.LaunchTasksResponse,
+	yarpc.ResMeta,
+	error) {
 	log.WithField("request", body).Debug("LaunchTasks called.")
 
 	if err := validateLaunchTasks(body); err != nil {
@@ -150,7 +169,28 @@ func (h *serviceHandler) LaunchTasks(
 		}, nil, nil
 	}
 
-	var mesosTasks []*mesos_v1.TaskInfo
+	offers, err := h.offerPool.ClaimForLaunch(body.GetHostname())
+	if err != nil {
+		h.metrics.LaunchTasksInvalidOffers.Inc(1)
+		return &hostsvc.LaunchTasksResponse{
+			Error: &hostsvc.LaunchTasksResponse_Error{
+				InvalidOffers: &hostsvc.InvalidOffers{
+					Message:  err.Error(),
+					OfferIds: body.GetOfferIds(),
+				},
+			},
+		}, nil, nil
+	}
+
+	var offerIds []*mesos.OfferID
+	for _, offer := range offers {
+		offerIds = append(offerIds, offer.GetId())
+	}
+
+	// TODO: Use `offers` so we can support reservation, port picking, etc.
+	log.WithField("offers", offers).Debug("Offers found for launch")
+
+	var mesosTasks []*mesos.TaskInfo
 	var mesosTaskIds []string
 
 	for _, t := range body.Tasks {
@@ -180,16 +220,16 @@ func (h *serviceHandler) LaunchTasks(
 	}
 
 	callType := sched.Call_ACCEPT
-	opType := mesos_v1.Offer_Operation_LAUNCH
+	opType := mesos.Offer_Operation_LAUNCH
 	msg := &sched.Call{
 		FrameworkId: hostmgr_mesos.GetSchedulerDriver().GetFrameworkID(),
 		Type:        &callType,
 		Accept: &sched.Call_Accept{
-			OfferIds: body.OfferIds,
-			Operations: []*mesos_v1.Offer_Operation{
+			OfferIds: offerIds,
+			Operations: []*mesos.Offer_Operation{
 				{
 					Type: &opType,
-					Launch: &mesos_v1.Offer_Operation_Launch{
+					Launch: &mesos.Offer_Operation_Launch{
 						TaskInfos: mesosTasks,
 					},
 				},
@@ -199,12 +239,12 @@ func (h *serviceHandler) LaunchTasks(
 
 	// TODO: add retry / put back offer and tasks in failure scenarios
 	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID()
-	err := h.client.Call(msid, msg)
+	err = h.client.Call(msid, msg)
 	if err != nil {
 		h.metrics.LaunchTasksFail.Inc(int64(len(mesosTasks)))
 		log.WithFields(log.Fields{
 			"tasks":  mesosTasks,
-			"offers": body.OfferIds,
+			"offers": offerIds,
 			"error":  err,
 		}).Error("Tasks launch failure")
 
@@ -220,7 +260,7 @@ func (h *serviceHandler) LaunchTasks(
 	h.metrics.LaunchTasks.Inc(int64(len(mesosTasks)))
 	log.WithFields(log.Fields{
 		"tasks":  len(mesosTasks),
-		"offers": len(body.OfferIds),
+		"offers": len(offerIds),
 	}).Debug("Tasks launched.")
 
 	return &hostsvc.LaunchTasksResponse{}, nil, nil
@@ -229,10 +269,6 @@ func (h *serviceHandler) LaunchTasks(
 func validateLaunchTasks(request *hostsvc.LaunchTasksRequest) error {
 	if len(request.Tasks) <= 0 {
 		return errors.New("Empty task list in LaunchTasksRequest")
-	}
-
-	if len(request.OfferIds) <= 0 {
-		return errors.New("Empty offer id in LaunchTasksRequest")
 	}
 
 	if len(request.GetAgentId().GetValue()) <= 0 {

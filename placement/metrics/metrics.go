@@ -37,7 +37,7 @@ type Metrics struct {
 }
 
 // New returns a new Metrics struct with all metrics initialized and rooted below the given tally scope
-func New(scope tally.Scope) Metrics {
+func New(scope tally.Scope) *Metrics {
 	taskScope := scope.SubScope("task")
 	offerScope := scope.SubScope("offer")
 
@@ -46,7 +46,7 @@ func New(scope tally.Scope) Metrics {
 	offerSuccessScope := offerScope.Tagged(map[string]string{"type": "success"})
 	offerFailScope := offerScope.Tagged(map[string]string{"type": "fail"})
 
-	m := Metrics{
+	m := &Metrics{
 		Running:      scope.Gauge("running"),
 		OfferStarved: scope.Counter("offer_starved"),
 
@@ -55,7 +55,7 @@ func New(scope tally.Scope) Metrics {
 		TaskLaunchDispatchesFail: taskFailScope.Counter("launch_dispatch"),
 
 		OfferGet:     offerSuccessScope.Counter("get"),
-		OfferGetFail: offerFailScope.Counter("get"),
+		OfferGetFail: offerFailScope.Counter("get_fail"),
 
 		LaunchTask:            taskSuccessScope.Counter("launch"),
 		LaunchTaskFail:        taskFailScope.Counter("launch"),

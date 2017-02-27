@@ -1,10 +1,25 @@
 package offer
 
 import (
+	"errors"
 	"sync"
-	"sync/atomic"
+	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	mesos "mesos/v1"
+
+	"github.com/uber-go/atomic"
+)
+
+// CacheStatus represents status of the offer in offer pool's cache.
+type CacheStatus int
+
+const (
+	// ReadyOffer represents an offer ready to be used.
+	ReadyOffer CacheStatus = iota
+	// PlacingOffer represents an offer being used by placement engine.
+	PlacingOffer
 )
 
 // hostOfferSummary is an internal data struct holding offers on a particular host.
@@ -12,13 +27,14 @@ type hostOfferSummary struct {
 	// offerID -> offer
 	offersOnHost map[string]*mesos.Offer
 	mutex        *sync.Mutex
-	hasOfferFlag *int32
+	status       CacheStatus
+	readyCount   atomic.Int32
 }
 
-// A heuristic about if the agentResourceSummary has any offer.
+// A heuristic about if the hostOfferSummary has any offer.
 // TODO(zhitao): Create micro-benchmark to prove this is useful, otherwise remove it!
 func (a *hostOfferSummary) hasOffer() bool {
-	return atomic.LoadInt32(a.hasOfferFlag) == int32(1)
+	return a.readyCount.Load() > 0
 }
 
 // tryMatch atomically tries to match offers from the current host with given constraint.
@@ -30,38 +46,86 @@ func (a *hostOfferSummary) tryMatch(c *Constraint) (bool, []*mesos.Offer) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
-	if !a.hasOffer() {
+	if !a.hasOffer() || a.status != ReadyOffer {
 		return false, nil
 	}
 
-	// NOTE: We take all offers from a host to satisify a constraint right now, but it is
-	// possible to perform this at a smaller granularity.
-	if c.match(a.offersOnHost) {
+	readyOffers := make(map[string]*mesos.Offer)
+	for id, offer := range a.offersOnHost {
+		readyOffers[id] = offer
+	}
+
+	if c.match(readyOffers) {
 		var result []*mesos.Offer
-		for id, offer := range a.offersOnHost {
+		for _, offer := range readyOffers {
 			result = append(result, offer)
-			delete(a.offersOnHost, id)
 		}
-		atomic.StoreInt32(a.hasOfferFlag, 0)
+		a.status = PlacingOffer
+		a.readyCount.Store(0)
 		return true, result
 	}
 
 	return false, nil
 }
 
-func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer) {
+func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer, expiration time.Time) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 	offerID := *offer.Id.Value
 	a.offersOnHost[offerID] = offer
-	atomic.StoreInt32(a.hasOfferFlag, 1)
+	if a.status == ReadyOffer {
+		a.readyCount.Inc()
+	}
+}
+
+func (a *hostOfferSummary) removeOffersByStatus(status CacheStatus) map[string]*mesos.Offer {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	if a.status != status {
+		return nil
+	}
+
+	result := make(map[string]*mesos.Offer)
+	for id, offer := range a.offersOnHost {
+		result[id] = offer
+		delete(a.offersOnHost, id)
+	}
+	return result
 }
 
 func (a *hostOfferSummary) removeMesosOffer(offerID string) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	delete(a.offersOnHost, offerID)
-	if len(a.offersOnHost) == 0 {
-		atomic.StoreInt32(a.hasOfferFlag, 0)
+
+	_, ok := a.offersOnHost[offerID]
+	if !ok {
+		return
 	}
+
+	switch a.status {
+	case PlacingOffer:
+		log.WithField("offer", offerID).Warn("Offer removed while being used for placement, this could trigger INVALID_OFFER error if available resources are reduced further.")
+	case ReadyOffer:
+		log.WithField("offer", offerID).Debug("Ready offer removed")
+		a.readyCount.Dec()
+	default:
+		log.WithField("status", a.status).Error("Unknown offer status")
+	}
+
+	delete(a.offersOnHost, offerID)
+}
+
+// casStatus atomically sets the status to new value if current value is old value,
+// otherwise returns error.
+func (a *hostOfferSummary) casStatus(old, new CacheStatus) error {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	if a.status != old {
+		return errors.New("Invalid status")
+	}
+	a.status = new
+	if a.status == ReadyOffer {
+		a.readyCount.Store(int32(len(a.offersOnHost)))
+	}
+	return nil
 }
