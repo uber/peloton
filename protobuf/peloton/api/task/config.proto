@@ -71,7 +71,7 @@ message PortConfig {
   uint32 value = 2;
 
   // Environment variable name to be exported when running a task for this port.
-  // Will default to UBER_PORT_{name} if unset
+  // Will not populate any environment variable if unset
   string envName = 3;
 }
 

@@ -1,0 +1,106 @@
+/**
+ *  Internal API for Peloton Resource Manager
+ */
+
+syntax = "proto3";
+
+package peloton.private.resmgr;
+
+option go_package = "peloton/private/resmgrsvc";
+
+import "mesos/v1/mesos.proto";
+import "peloton/api/respool/respool.proto";
+import "peloton/private/resmgr/resmgr.proto";
+
+
+/**
+ * ResourceManagerService describes the internal interface of
+ * Resource Manager to other Peloton applications such as Job Manager
+ * and Placement Engine. This includes the EnqueueTasks and GetPlacements
+ * APIs called by Job Manager, and DequeueTasks and SetPlacements APIs
+ * called by Placement Engine.
+ */
+service ResourceManagerService {
+
+  /**
+   *  Enqueue a list of tasks to a given leaf resource pool for
+   *  scheduling. The tasks will be in PENDING state first and then
+   *  transit to READY state when the resource pool has available
+   *  resources. This method will be called by Job Manager when a new
+   *  job is created or new tasks are added.
+   */
+  rpc EnqueueTasks(EnqueueTasksRequest) returns (EnqueueTasksResponse);
+
+  /**
+   *  Dequeue a list of tasks that are in READY state for placement.
+   *  The tasks will transit from READY to PLACING state after the
+   *  return of this method. This method will be called by Placement
+   *  Engine to retrieve a list of tasks for computing placement. If
+   *  tasks are in PLACING state for too long in case of Placement
+   *  Engine failures, the tasks will be timed out and transit back
+   *  to READY state.
+   */
+  rpc DequeueTasks(DequeueTasksRequest) returns (DequeueTasksResponse);
+
+  /**
+   *  Set the placement information for a list of tasks. The tasks will
+   *  transit from PLACING to PLACED state after this call. This method
+   *  will be called by Placement Engine after it computes the placement
+   *  decision for those tasks.
+   */
+  rpc SetPlacements(SetPlacementsRequest) returns (SetPlacementsResponse);
+
+  /**
+   *  Get the placement information for a list of tasks. The tasks will
+   *  transit from PLACED to LAUNCHING state after this call. This method
+   *  is called by Job Manager to launch the tasks on Mesos. If the tasks
+   *  are in LAUNCHING state for too long without transiting to RUNNING
+   *  state, the tasks will be timedout and transit back to PLACED state.
+   */
+  rpc GetPlacements(GetPlacementsRequest) returns (GetPlacementsResponse);
+}
+
+message EnqueueTasksRequest {
+  // ResourcePool
+  api.respool.ResourcePoolID resPool = 1;
+
+  // The list of tasks to enqueue
+  repeated resmgr.Task tasks = 2;
+}
+
+message EnqueueTasksResponse {
+  // TODO: Add error handling here
+}
+
+message DequeueTasksRequest {
+  // Max number of ready tasks to dequeue
+  uint32 limit = 1;
+}
+
+message DequeueTasksResponse {
+  // TODO: Add error handling here
+
+  // The list of tasks that have been dequeued
+  repeated resmgr.Task tasks = 1;
+}
+
+message SetPlacementsRequest {
+  // List of task placements to set
+  repeated resmgr.Placement placements = 1;
+}
+
+message SetPlacementsResponse {
+  // TODO: Add error handling here
+}
+
+message GetPlacementsRequest {
+  // Max number of placements to retrieve
+  uint32 limit = 1;
+}
+
+message GetPlacementsResponse {
+  // TODO: Add error handling here
+
+  // List of task placements to return
+  repeated resmgr.Placement placements = 1;
+}
