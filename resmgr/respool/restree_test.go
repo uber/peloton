@@ -6,8 +6,11 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc"
 
+	"code.uber.internal/infra/peloton/resmgr/queue"
 	"fmt"
+	"peloton/api/job"
 	"peloton/api/respool"
+	"peloton/api/task"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,13 +23,13 @@ type RespoolTestSuite struct {
 	dispatcher yarpc.Dispatcher
 	resTree    Tree
 	resPools   map[string]*respool.ResourcePoolConfig
-	allNodes   map[string]*Node
-	root       *Node
+	allNodes   map[string]*ResPool
+	root       *ResPool
 }
 
 func (suite *RespoolTestSuite) SetupTest() {
 	suite.resPools = make(map[string]*respool.ResourcePoolConfig)
-	suite.allNodes = make(map[string]*Node)
+	suite.allNodes = make(map[string]*ResPool)
 	suite.setUpRespools()
 	suite.root = suite.resTree.createTree(nil, RootResPoolID, suite.resPools, suite.allNodes)
 
@@ -68,23 +71,34 @@ func (suite *RespoolTestSuite) getResourceConfig() []*respool.ResourceConfig {
 func (suite *RespoolTestSuite) setUpRespools() {
 	var parentID respool.ResourcePoolID
 	parentID.Value = "root"
+	policy := respool.SchedulingPolicy_PriorityFIFO
+
+	var respoolConfigRoot respool.ResourcePoolConfig
+	respoolConfigRoot.Name = "root"
+	respoolConfigRoot.Parent = nil
+	respoolConfigRoot.Resources = suite.getResourceConfig()
+	respoolConfigRoot.Policy = policy
+	suite.resPools["root"] = &respoolConfigRoot
 
 	var respoolConfig1 respool.ResourcePoolConfig
 	respoolConfig1.Name = "respool1"
 	respoolConfig1.Parent = &parentID
 	respoolConfig1.Resources = suite.getResourceConfig()
+	respoolConfig1.Policy = policy
 	suite.resPools["respool1"] = &respoolConfig1
 
 	var respoolConfig2 respool.ResourcePoolConfig
 	respoolConfig2.Name = "respool2"
 	respoolConfig2.Parent = &parentID
 	respoolConfig2.Resources = suite.getResourceConfig()
+	respoolConfig2.Policy = policy
 	suite.resPools["respool2"] = &respoolConfig2
 
 	var respoolConfig3 respool.ResourcePoolConfig
 	respoolConfig3.Name = "respool3"
 	respoolConfig3.Parent = &parentID
 	respoolConfig3.Resources = suite.getResourceConfig()
+	respoolConfig3.Policy = policy
 	suite.resPools["respool3"] = &respoolConfig3
 
 	var parent1ID respool.ResourcePoolID
@@ -94,12 +108,14 @@ func (suite *RespoolTestSuite) setUpRespools() {
 	respoolConfig11.Name = "respool11"
 	respoolConfig11.Parent = &parent1ID
 	respoolConfig11.Resources = suite.getResourceConfig()
+	respoolConfig11.Policy = policy
 	suite.resPools["respool11"] = &respoolConfig11
 
 	var respoolConfig12 respool.ResourcePoolConfig
 	respoolConfig12.Name = "respool12"
 	respoolConfig12.Parent = &parent1ID
 	respoolConfig12.Resources = suite.getResourceConfig()
+	respoolConfig12.Policy = policy
 	suite.resPools["respool12"] = &respoolConfig12
 
 	var parent2ID respool.ResourcePoolID
@@ -109,14 +125,15 @@ func (suite *RespoolTestSuite) setUpRespools() {
 	respoolConfig21.Name = "respool21"
 	respoolConfig21.Parent = &parent2ID
 	respoolConfig21.Resources = suite.getResourceConfig()
+	respoolConfig21.Policy = policy
 	suite.resPools["respool21"] = &respoolConfig21
 
 	var respoolConfig22 respool.ResourcePoolConfig
 	respoolConfig22.Name = "respool22"
 	respoolConfig22.Parent = &parent2ID
 	respoolConfig22.Resources = suite.getResourceConfig()
+	respoolConfig22.Policy = policy
 	suite.resPools["respool22"] = &respoolConfig22
-
 }
 
 func (suite *RespoolTestSuite) TearDownTest() {
@@ -164,4 +181,44 @@ func (suite *RespoolTestSuite) TestResourceConfig() {
 			assert.Equal(suite.T(), res.Limit, 4.00, "Limit is not equal")
 		}
 	}
+}
+
+func (suite *RespoolTestSuite) TestPendingQueue() {
+	// Task -1
+	taskInfo1 := task.TaskInfo{
+		InstanceId: 1,
+		JobId: &job.JobID{
+			Value: "job1",
+		},
+	}
+	taskID1 := fmt.Sprintf("%s-%d", taskInfo1.JobId.Value, taskInfo1.InstanceId)
+	enq1 := queue.NewTaskItem(&taskInfo1, 0, taskID1)
+	suite.allNodes["respool11"].EnqueueTask(enq1)
+
+	// Task -2
+	taskInfo2 := task.TaskInfo{
+		InstanceId: 2,
+		JobId: &job.JobID{
+			Value: "job1",
+		},
+	}
+	taskID2 := fmt.Sprintf("%s-%d", taskInfo2.JobId.Value, taskInfo2.InstanceId)
+	enq2 := queue.NewTaskItem(&taskInfo2, 0, taskID2)
+	suite.allNodes["respool11"].EnqueueTask(enq2)
+
+	res, err := suite.allNodes["respool11"].DequeueTask()
+	if err != nil {
+		assert.Fail(suite.T(), "Dequeue should not fail")
+	}
+
+	assert.Equal(suite.T(), res.TaskInfo.JobId.Value, "job1", "Should get Job-1")
+	assert.Equal(suite.T(), res.TaskInfo.InstanceId, uint32(1), "Should get Job-1 and Task-1")
+
+	res, err = suite.allNodes["respool11"].DequeueTask()
+	if err != nil {
+		assert.Fail(suite.T(), "Dequeue should not fail")
+	}
+
+	assert.Equal(suite.T(), res.TaskInfo.JobId.Value, "job1", "Should get Job-1")
+	assert.Equal(suite.T(), res.TaskInfo.InstanceId, uint32(2), "Should get Job-1 and Task-1")
 }

@@ -37,11 +37,19 @@ message ResourceConfig {
 
 }
 
+/**
+  * Scheduling policy for Resource Pool.
+  */
+  enum SchedulingPolicy {
+    // This scheduling policy will return item for highest priority in FIFO order
+    PriorityFIFO = 0;
+  }
 
 /**
  *  Resource Pool configuration
  */
 message ResourcePoolConfig {
+
   // Change log entry of the Resource Pool config
   changelog.ChangeLog changeLog = 1;
 
@@ -63,6 +71,8 @@ message ResourcePoolConfig {
   // Resource Pool's parent
   ResourcePoolID parent = 7;
 
+  // Task Scheduling policy
+  SchedulingPolicy policy = 8;
 }
 
 message ResourcePoolInfo {

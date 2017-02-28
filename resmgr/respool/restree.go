@@ -6,9 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/master/metrics"
 	rmconfig "code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/storage"
-
 	"container/list"
-
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -22,17 +20,17 @@ func InitTree(
 		resPoolTree: nil,
 		store:       store,
 	}
-	service.allNodes = make(map[string]*Node)
+	service.allNodes = make(map[string]*ResPool)
 	return &service
 }
 
 // Tree will be storing the Tree for respools
 type Tree struct {
-	resPoolTree *Node
+	resPoolTree *ResPool
 	store       storage.ResourcePoolStore
 	resPools    map[string]*respool.ResourcePoolConfig
 	// Hashmap of [ID] = Node, having all Nodes
-	allNodes map[string]*Node
+	allNodes map[string]*ResPool
 }
 
 // StartResPool will start the respool tree
@@ -53,23 +51,22 @@ func (r *Tree) StopResPool() {
 }
 
 // initializeResourceTree will initialize all the resource pools from Storage
-func (r *Tree) initializeResourceTree() *Node {
+func (r *Tree) initializeResourceTree() *ResPool {
 	log.Info("Initializing Resource Tree")
 	if r.resPools == nil {
 		return nil
 	}
 	root := r.createTree(nil, RootResPoolID, r.resPools, r.allNodes)
-	r.printTree(root)
 	return root
 }
 
 // createTree function will take the Parent node and create the tree underneath
 func (r *Tree) createTree(
-	parent *Node,
+	parent *ResPool,
 	ID string,
 	resPools map[string]*respool.ResourcePoolConfig,
-	allNodes map[string]*Node) *Node {
-	node := NewNode(ID, parent, resPools[ID])
+	allNodes map[string]*ResPool) *ResPool {
+	node := NewRespool(ID, parent, resPools[ID])
 	allNodes[ID] = node
 	node.SetParent(parent)
 	childs := r.getChildResPools(ID, resPools)
@@ -84,18 +81,18 @@ func (r *Tree) createTree(
 }
 
 // printTree will print the whole Resource Pool Tree in BFS manner
-func (r *Tree) printTree(root *Node) {
+func (r *Tree) printTree(root *ResPool) {
 	var queue list.List
 	queue.PushBack(root)
 	for queue.Len() != 0 {
 		n := queue.Front()
 		queue.Remove(n)
-		nodeVar := n.Value.(*Node)
+		nodeVar := n.Value.(*ResPool)
 		log.WithField("Node", nodeVar.ID).Info()
 		nodeVar.logNodeResources(nodeVar)
 		children := nodeVar.GetChildren()
 		for e := children.Front(); e != nil; e = e.Next() {
-			queue.PushBack(e.Value.(*Node))
+			queue.PushBack(e.Value.(*ResPool))
 		}
 	}
 }
@@ -113,6 +110,6 @@ func (r *Tree) getChildResPools(parentID string,
 }
 
 // GetResPoolRoot will return the root node for the resource pool tree
-func (r *Tree) GetResPoolRoot() *Node {
+func (r *Tree) GetResPoolRoot() *ResPool {
 	return r.resPoolTree
 }
