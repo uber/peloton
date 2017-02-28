@@ -20,7 +20,8 @@ GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
 GOLINT = $(go get github.com/golang/lint/golint)
 PACKAGE_VERSION=`git describe --always --tags`
-GO_FLAGS = -gcflags '-N' -ldflags "-X main.version=$(PACKAGE_VERSION)"
+# See https://golang.org/doc/gdb for details of the flags
+GO_FLAGS = -gcflags '-N -l' -ldflags "-X main.version=$(PACKAGE_VERSION)"
 # TODO: figure out why -pkgdir does not work
 GOPATH := ${GOPATH}:${GOPATH}/src/${PROJECT_ROOT}/pbgen
 .PRECIOUS: $(PBGENS)
