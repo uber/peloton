@@ -237,7 +237,7 @@ def run_cassandra():
 #
 def run_peloton_master():
     print 'docker image "infra/peloton:pcluster" has to be built first locally by running ' \
-          '$PELOTON_HOME/tools/packaging/peloton-release/build-docker.sh --tag pcluster'
+          'IMAGE=uber/peloton make docker'
 
     for i in range(0, config['peloton_master_instance_count']):
         port = config['peloton_master_port'] + i
@@ -276,7 +276,7 @@ def run_peloton(disable_peloton_resmgr=False,
                 disable_peloton_jobmgr=False,
                 disable_peloton_placement=False):
     print 'docker image "infra/peloton:pcluster" has to be built first locally by running ' \
-          '$PELOTON_HOME/tools/packaging/peloton-release/build-docker.sh --tag pcluster'
+          'IMAGE=uber/peloton make docker'
 
     if not disable_peloton_resmgr:
         run_peloton_resmgr()
@@ -305,7 +305,7 @@ def run_peloton_resmgr():
             name=name,
             ports=[repr(port)],
             environment=[
-                'CONFIG_DIR=config/resmgr',
+                'CONFIG_DIR=config',
                 'APP=resmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
@@ -338,7 +338,7 @@ def run_peloton_hostmgr():
             name=name,
             ports=[repr(port)],
             environment=[
-                'CONFIG_DIR=config/hostmgr',
+                'CONFIG_DIR=config',
                 'APP=hostmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
@@ -375,7 +375,7 @@ def run_peloton_jobmgr():
             name=name,
             ports=[repr(port)],
             environment=[
-                'CONFIG_DIR=config/jobmgr',
+                'CONFIG_DIR=config',
                 'APP=jobmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
@@ -405,7 +405,7 @@ def run_peloton_placement():
         container = cli.create_container(
             name=name,
             environment=[
-                'CONFIG_DIR=config/placement',
+                'CONFIG_DIR=config',
                 'APP=placement',
                 'DB_HOST=' + host_ip,
                 'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(

@@ -6,7 +6,7 @@ Update 'num_agents' in config.yaml to change number of mesos slaves, by default 
 
 Note:
 To run peloton containers, please build docker image first by running the following command:
-$PELOTON_HOME/tools/packaging/peloton-release/build-docker.sh --tag pcluster
+IMAGE=uber/peloton make docker
 If you have made changes to some app and want to test it out with other apps, feel free to
 specify "--no-<app>" flags with pcluster setup command so it'll be skipped, then you can run
 it via command line:

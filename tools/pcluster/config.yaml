@@ -56,10 +56,10 @@ cassandra_test_db: peloton_test
 
 # Peloton configs
 # peloton image is expected to be available before running container,
-# it can be built by running
-#    $PELOTON_HOME/tools/packaging/peloton-release/build-docker.sh --tag pcluster
+# it can be built with command below:
+#    IMAGE=uber/peloton make docker
 # refer to "$PELOTON_HOME/tools/packaging/peloton-release/README.md" for more details
-peloton_image: infra/peloton:pcluster
+peloton_image: uber/peloton
 
 
 # Peloton master specific configs

@@ -47,3 +47,5 @@ COPY ./docker/entrypoint.sh /bin/entrypoint.sh
 RUN ( echo "Built Peloton" && peloton-master --version ) >&2 && cp ./bin/* /usr/bin/
 
 ENTRYPOINT ["/bin/entrypoint.sh"]
+
+EXPOSE 5289 5290 5291 5292 5293
