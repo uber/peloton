@@ -41,6 +41,10 @@ func (r *Tree) StartResPool() {
 		return
 	}
 	r.resPools = resPools
+	if len(resPools) == 0 {
+		log.Warnf("There are no resource pools existing")
+		return
+	}
 	// Initializing the respoolTree
 	r.resPoolTree = r.initializeResourceTree()
 }
@@ -56,6 +60,12 @@ func (r *Tree) initializeResourceTree() *ResPool {
 	if r.resPools == nil {
 		return nil
 	}
+	rootResPoolConfig := respool.ResourcePoolConfig{
+		Name:   "root",
+		Parent: nil,
+		Policy: respool.SchedulingPolicy_PriorityFIFO,
+	}
+	r.resPools[RootResPoolID] = &rootResPoolConfig
 	root := r.createTree(nil, RootResPoolID, r.resPools, r.allNodes)
 	return root
 }

@@ -25,5 +25,5 @@ resources:
   share: 1
 parent:
   value: root
-policy: 0
+policy: 1 
 

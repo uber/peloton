@@ -41,8 +41,11 @@ message ResourceConfig {
   * Scheduling policy for Resource Pool.
   */
   enum SchedulingPolicy {
+    // TODO: We need to investigate why yarpc is ommiting value 0
+    UNKNOWN = 0;
+
     // This scheduling policy will return item for highest priority in FIFO order
-    PriorityFIFO = 0;
+    PriorityFIFO = 1;
   }
 
 /**
