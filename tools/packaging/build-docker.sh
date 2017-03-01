@@ -27,6 +27,6 @@ fi
 # TODO(gabe) always do a glide install on the host before building an image
 make install
 
-"${docker_cmd}" build -t "${image_name}" .
+${docker_cmd} build -t "${image_name}" .
 echo "Built ${image_name}"
 
