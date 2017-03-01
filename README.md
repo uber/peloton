@@ -149,6 +149,25 @@ to `all`.
 $ make debs
 ```
 
+## Tagging a new release
+
+Releases are managed by git tags, using semantic versioning. To tag a new release:
+
+Check the current version:
+```
+$ make version
+0.1.0-abcdef
+```
+
+Make sure you are on master, and have the proper sha at HEAD you want to tag. Then,
+increment the version and tag, then push tags:
+
+```
+$ git tag -a 0.2.0
+...
+$ git push origin --tags
+```
+
 ## Pushing docker containers
 
 `make docker-push` will build docker containers, and push them to both ATG and
