@@ -246,6 +246,7 @@ def run_peloton_master():
         container = cli.create_container(
             name=name,
             environment=[
+                'CONFIG_DIR=config',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
                 'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
