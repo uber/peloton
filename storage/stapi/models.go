@@ -1,9 +1,9 @@
 package stapi
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage"
 	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"peloton/api/job"
 	"peloton/api/task"
 	"reflect"

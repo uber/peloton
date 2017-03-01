@@ -38,10 +38,6 @@ imports:
   - x/tchannel/log
   - x/tchannel/metrics
   - x/time
-- name: code.uber.internal/infra/jaeger-client-go.git
-  version: 76bb8f64eda8984eaa1cb2fcf239c2396a007b01
-  repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
-  vcs: git
 - name: code.uber.internal/infra/stapi-go.git
   version: 34d940bc2446228c8accc121aaec15dc467d6d56
   repo: gitolite@code.uber.internal:infra/stapi-go.git

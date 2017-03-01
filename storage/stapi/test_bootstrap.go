@@ -1,9 +1,9 @@
 package stapi
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	sc "code.uber.internal/infra/stapi-go.git/config"
 	"fmt"
+	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
 	"os"

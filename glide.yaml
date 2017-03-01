@@ -5,9 +5,6 @@ ignore:
 excludeDirs:
 - pbgen
 import:
-- package: code.uber.internal/infra/jaeger-client-go.git
-  repo: gitolite@code.uber.internal:infra/jaeger-client-go.git
-  vcs: git
 - package: github.com/golang/protobuf
   version: 8ee79997227bf9b34611aee7946ae64735e6fd93
   subpackages:

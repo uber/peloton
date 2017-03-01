@@ -4,7 +4,7 @@ class Profile(Struct):
   environment = Default(String, 'devel')  # TODO: make this production once we have quota.
   cluster = Required(String)
   instances = Required(Integer)
-  docker_image = Default(String, 'docker.int.uberatc.com/uber-usi/infra/peloton:latest')
+  docker_image = Default(String, 'docker.int.uberatc.com/uber-usi/infra/peloton:fbc89d1')
   mesos_zk_path = Required(String)
   election_zk_servers = Required(String)
   mysql_host = Required(String)
@@ -25,7 +25,7 @@ class Profile(Struct):
 
 docker_entrypoint = Process(
    name='{{profile.app_id}}',
-   cmdline='cd /peloton-install && /entrypoint.sh'
+   cmdline='/bin/entrypoint.sh'
 )
 
 executor_task = SequentialTask(
@@ -48,9 +48,9 @@ JOB_TEMPLATE = Service(
     docker = Docker(
       image = '{{profile.docker_image}}',
       parameters=[
-        Parameter(name='env', value='PELOTON_ENVIRONMENT=production'),
-        Parameter(name='env', value='PELOTON_CONFIG_DIR=config/{{profile.app_id}}'),
-        Parameter(name='env', value='PELOTON_APP={{profile.app_id}}'),
+        Parameter(name='env', value='ENVIRONMENT=production'),
+        Parameter(name='env', value='CONFIG_DIR=./config'),
+        Parameter(name='env', value='APP={{profile.app_id}}'),
         Parameter(name='env', value='MESOS_ZK_PATH={{profile.mesos_zk_path}}'),
         Parameter(name='env', value='DB_HOST={{profile.mysql_host}}'),
         Parameter(name='env', value='ENABLE_DEBUG_LOGGING={{profile.enable_debug_logging}}'),

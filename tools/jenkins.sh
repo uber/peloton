@@ -1,36 +1,41 @@
 #!/usr/bin/env bash
 # This runs the jenkins tests inside a peloton docker container
-
-set -euxo pipefail
+set -euo pipefail
 
 # Constants
-DOCKER=docker
-DOCKER_TAG=test-peloton
-DOCKER_CMD="/usr/bin/make jenkins"
-DOCKER_GOPATH=/home/goroot/src/code.uber.internal/infra/peloton
-DOCKER_NET_ARGS="--net=host"
+[[ $(uname) == Darwin || -n $JENKINS_HOME ]] && docker_cmd='docker' || docker_cmd='sudo docker'
+package_path=code.uber.internal/infra/peloton
 
 # Builds the peloton docker container with all the dependencies
 build_peloton_container() {
-    ${workspace}/tools/peloton-dev/build.sh $1
+    image="$1"
+    echo "Building docker container $image"
+    make -f "${workspace}/Makefile" docker IMAGE=$image
 }
 
-# Starts mysql in a separate container as a peer to the peloton container
-run_mysql_container(){
-    ${workspace}/docker/run_test_mysql.sh
+# This is a workaround for downloading the dependencies via glide outside the container since we don't have ssh
+# keys inside the container
+setup_gopath() {
+  mkdir -p ".tmp/.goroot/src/${package_path}"
+  chmod -R 777 .tmp
+  ln -s "${workspace}" ".tmp/.goroot/src/${package_path}"
+  export GOPATH="${workspace}/.tmp/.goroot"
 }
 
-
-# Starts cassandra in a separate container as a peer to the peloton container
-run_cassandra_container(){
-    ${workspace}/docker/run_test_cassandra.sh
+# launch the test containers necessary to run integration/unit tests
+run_test_containers(){
+    make -f "${workspace}/Makefile" test-containers
 }
 
 # Runs `make jenkins` inside the peloton container
-run_jenkins() {
-    # mounts the workspace inside the container's GOPATH
-    docker_mount=$1:${DOCKER_GOPATH}
-    ${DOCKER} run -t ${DOCKER_NET_ARGS} -v ${docker_mount} ${DOCKER_TAG} ${DOCKER_CMD}
+run_jenkins_in_container() {
+    image="$1"
+    echo "Running 'make jenkins' in ${image}"
+    ${docker_cmd} run --rm -t \
+      -v "${workspace}:/go/src/${package_path}" \
+      --entrypoint make \
+      --net=host \
+      "${image}" jenkins
 }
 
 usage() { echo "Usage: $0 [-w <workspace directory>]" 1>&2; exit 1; }
@@ -53,10 +58,10 @@ main() {
         usage
     fi
 
-    build_peloton_container ${workspace}
-    run_mysql_container
-    run_cassandra_container
-    run_jenkins ${workspace}
+    setup_gopath
+    build_peloton_container test-peloton
+    run_test_containers
+    run_jenkins_in_container test-peloton
 }
 
 main "$@"

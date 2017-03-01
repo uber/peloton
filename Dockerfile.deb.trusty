@@ -1,0 +1,25 @@
+FROM ubuntu:trusty
+
+VOLUME /output
+
+RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
+        dpkg-dev \
+        lsb-release \
+        curl \
+        git \
+        wget \
+        make \
+        unzip \
+        ruby-dev \
+        rubygems-integration \
+        software-properties-common
+
+RUN gem install fpm
+
+ADD . /peloton
+WORKDIR /peloton
+
+ADD tools/packaging/peloton-release/deb/trusty/build.sh /build.sh
+ADD tools/packaging/peloton-release/deb/build-common.sh /build-common.sh
+ADD tools/packaging/peloton-release/deb/post-install.sh /post-install.sh
+ENTRYPOINT ["/build.sh"]

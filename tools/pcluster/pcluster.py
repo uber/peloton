@@ -305,8 +305,8 @@ def run_peloton_resmgr():
             name=name,
             ports=[repr(port)],
             environment=[
-                'PELOTON_CONFIG_DIR=config/resmgr',
-                'PELOTON_APP=resmgr',
+                'CONFIG_DIR=config/resmgr',
+                'APP=resmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
                 'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
@@ -338,8 +338,8 @@ def run_peloton_hostmgr():
             name=name,
             ports=[repr(port)],
             environment=[
-                'PELOTON_CONFIG_DIR=config/hostmgr',
-                'PELOTON_APP=hostmgr',
+                'CONFIG_DIR=config/hostmgr',
+                'APP=hostmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
                 'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
@@ -375,8 +375,8 @@ def run_peloton_jobmgr():
             name=name,
             ports=[repr(port)],
             environment=[
-                'PELOTON_CONFIG_DIR=config/jobmgr',
-                'PELOTON_APP=jobmgr',
+                'CONFIG_DIR=config/jobmgr',
+                'APP=jobmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
                 'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
@@ -405,8 +405,8 @@ def run_peloton_placement():
         container = cli.create_container(
             name=name,
             environment=[
-                'PELOTON_CONFIG_DIR=config/placement',
-                'PELOTON_APP=placement',
+                'CONFIG_DIR=config/placement',
+                'APP=placement',
                 'DB_HOST=' + host_ip,
                 'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
                     host_ip,

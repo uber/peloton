@@ -1,0 +1,32 @@
+storage:
+  mysql:
+    user: peloton
+    password: peloton
+    database: peloton
+    host: mysql
+    port: 3306
+    migrations: storage/mysql/migrations/
+    # max_batch_size_rows controls how many tasks are created/updated in 1
+    # insert statement. Increasing this will improve startup times for high task
+    # count jobs. WARNING: tuning this up beyond the threshold of MYSQL_PACKET_SIZE
+    # may result in failed task creations
+    max_batch_size_rows: 500
+    conn_lifetime: 30s
+  stapi:
+    max_batch_size_rows: 500
+    cassandra:
+      contactPoints: ["cassandra"]
+      port: 9042
+      consistency: LOCAL_QUORUM
+      # C* data TTL is set to 60days
+      ttl: 1440h
+  store_name: peloton_test
+  migrations: storage/stapi/migrations/
+
+job_manager:
+  port: 5292
+  db_write_concurrency: 40
+
+election:
+  zk_servers: ["zookeeper:2181"]
+  root: "/peloton/development"

@@ -1,10 +1,10 @@
 package stapi_test
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/stapi"
 	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	mesos "mesos/v1"

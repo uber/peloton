@@ -1,0 +1,15 @@
+description "Peloton Master"
+
+start on (filesystem and net-device-up IFACE!=lo)
+stop on runlevel [!2345]
+
+respawn
+
+kill timeout 20
+
+script
+  set -a
+  . /etc/default/peloton/master || :
+  ENVIRONMENT="${ENVIRONMENT:-production}"
+	exec /usr/bin/peloton-master -c /etc/peloton/master/base.yaml -c /etc/peloton/master/$ENVIRONMENT.yaml
+end script

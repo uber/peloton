@@ -94,6 +94,74 @@ peloton master instance, set env var 'PORT=5290', or pass the `--port`
 flag.
 
 
+## Run peloton from docker container
+
+### Build
+
+```
+$ make docker
+...
+Built uber/peloton:51f1c4f
+```
+
+If you want to build an image with a different name: `IMAGE=foo/bar:baz make docker`
+
+### Run
+
+The docker container takes a few environment variables to configure how it will run. Each peloton
+app is launchable by setting `APP=$name` in the environment. For example, to run the
+peloton-master, execute:
+
+```
+$ docker run --rm --name peloton -it -p 5289:5289 -e APP=master -e ENVIRONMENT=development peloton
+```
+
+Configurations are stored in `/etc/peloton/$APP/`, and by default we will pass the following
+arguments: `-c "/etc/peloton/${APP}/base.yaml" -c "/etc/peloton/${APP}/${ENVIRONMENT}.yaml"`
+
+NOTE: you need to make sure the container has access to all the dependencies it needs, like mesos-master,
+zookeeper, mysql, cassandra, etc. Check your configs!
+
+#### Master with pcluster
+
+```
+$ make pcluster
+$ docker run --rm --name peloton -it -e APP=master -e ENVIRONMENT=development --link peloton-mesos-master:mesos-master --link peloton-zk:zookeeper --link peloton-mysql:mysql --link peloton-cassandra:cassandra peloton
+```
+
+#### Client
+
+Launching the client is similar (replace `-m` argument with whereever your peloton-master runs:
+
+```
+$ docker run --rm -it --link peloton:peloton -e APP=client peloton job -m http://peloton:5289/ create test1 test/testjob.yaml
+```
+
+
+
+## Packaging
+
+Build debs for supported distributions. Output will be placed into `./debs`. You can specify
+the DISTRIBUTION by passing `DISTRIBUTION=jessie` (jessie and trusty are supported). Defaults
+to `all`.
+
+```
+$ make debs
+```
+
+## Pushing docker containers
+
+`make docker-push` will build docker containers, and push them to both ATG and
+SJC1 registries. You can push to only one DC with `DC=atg` or `DC=sjc1`. You can
+override the image to push with `IMAGE=foo/bar:baz`
+
+To build and deploy docker containers everywhere:
+
+```
+make docker docker-push
+```
+
+
 ## Test Peloton master
 
 1. Create new job via yarpc based go client:
@@ -118,6 +186,7 @@ curl -X POST  \
     localhost:5289/api/v1
 
 ## Debug Peloton Apps in Docker Container
+
 
 1. Find docker container process ID:
 sudo docker inspect -f {{.State.Pid}} <DOCKER_IMAGE_ID>

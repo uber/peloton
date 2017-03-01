@@ -17,6 +17,7 @@
 .DS_Store
 *.log*
 *.zip
+*.deb
 .phabricator-comment
 *coverage*
 .cache
@@ -37,3 +38,4 @@ jenkins.xml
 .\#*
 \#*\#
 .unison.*.tmp
+

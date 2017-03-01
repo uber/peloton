@@ -1,0 +1,11 @@
+[Unit]
+Description=Peloton Master
+After=syslog.target network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/peloton/master
+ExecStart=/usr/bin/peloton-master -c /etc/peloton/master/base.yaml -c /etc/peloton/master/${ENVIRONMENT}.yaml
+
+[Install]
+WantedBy=multi-user.target

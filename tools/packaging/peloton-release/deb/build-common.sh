@@ -1,4 +1,6 @@
+PREFIX=/
 INSTALL_DIR=/peloton-install
+OUTPUT_DIR=/output
 SRC_DIR="${SRC_DIR:-/peloton}"
 PROTOC_VERSION="3.0.2"
 GO_VERSION="1.7.3"
@@ -34,20 +36,30 @@ build_peloton() {
     cp -R $SRC_DIR/vendor/* $GOPATH/src
     cp -R $SRC_DIR $GOPATH/src/code.uber.internal/infra/
     cd $GOPATH/src/code.uber.internal/infra/peloton
+    go version
     make
 }
 
 create_installation() {
-    mkdir -p "$INSTALL_DIR"
-    cp -R $GOPATH/src/code.uber.internal/infra/peloton/* $INSTALL_DIR
+    mkdir -p $INSTALL_DIR/{usr/bin,etc/peloton,etc/default/peloton}
+    # we only want bins, configs, docs
+    cp -R $GOPATH/src/code.uber.internal/infra/peloton/bin/* $INSTALL_DIR/usr/bin/
+    cp -R $SRC_DIR/config/* $INSTALL_DIR/etc/peloton/
 }
 
 
 package() {(
+    # TODO: make this only use the tags, because version should be baked in
+    version="$(make version)"
+    os="$(lsb_release -si)"
+    codename="$(lsb_release -sc)"
+    release="$(lsb_release -sr)"
+    pkg="/$OUTPUT_DIR/peloton-$version-${os}-${release}-${codename}.deb"
     local opts=(
         -s dir
         -n peloton
-        --iteration "$BUILD_ITERATION"
+        --version "${version}-${codename}"
+        --iteration "1"
         --description
 "Peloton is Uber's meta-framework for managing, scheduling and upgrading jobs on Mesos clusters.
  It has a few unique design principles that differentiates itself from other Mesos meta-frameworks"
@@ -56,14 +68,14 @@ package() {(
         -a amd64
         --category misc
         --vendor "Uber Technologies"
-        -m compute@uber.com
-        --prefix=/$INSTALL_DIR
+        -m peloton-dev@uber.com
+        --prefix=$PREFIX
+        --force
         -t deb
-        -p /pkg.deb
+        -p "$pkg"
         --after-install $POST_INSTALL_FILE
     )
 
     cd "$INSTALL_DIR"
-    ls
     fpm "${opts[@]}" -- .
 )}
