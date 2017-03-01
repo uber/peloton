@@ -38,4 +38,4 @@ jenkins.xml
 .\#*
 \#*\#
 .unison.*.tmp
-
+workspace/

@@ -92,6 +92,9 @@ devtools:
 version:
 	@echo $(PACKAGE_VERSION)
 
+project-name:
+	@echo $(PROJECT_ROOT)
+
 debs:
 	@./tools/packaging/build-pkg.sh
 

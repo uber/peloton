@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 [[ $(uname) == Darwin || -n $JENKINS_HOME ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 
@@ -16,6 +16,24 @@ image_name="peloton-build"
 if [[ $DISTRIBUTION == all ]] ; then
   DISTRIBUTION="trusty jessie"
   echo "Building debs for all supported distributions ($DISTRIBUTION); set \$DISTRIBUTION to override"
+fi
+
+# make sure GOPATH is setup if missing. this is necessary to support building on
+# uber ubuild machines without a valid gopath setup
+# TODO(gabe): remove me when we no longer need a functioning GO env to build the docker
+# containers.
+if [[ -z ${GOPATH+x} ]] ; then
+  workspace="$(pwd -P)/workspace"
+  rm -rf "${workspace}" || :
+  goDirPath="${workspace}/src/$(make project-name)"
+  mkdir -p "$(dirname "$goDirPath")"
+  if [ ! -e "$goDirPath" ]; then
+    ln -sfv "$(dirname $workspace)" "$goDirPath"
+  elif [ ! -L "$goDirPath" ]; then
+    echo >&2 "error: $goDirPath already exists but is unexpectedly not a symlink"
+    exit 1
+  fi
+  export GOPATH="$workspace"
 fi
 
 # FIXME(gabe) this is a hack; ensure deps are up to date before performing package build

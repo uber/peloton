@@ -32,10 +32,11 @@ install_protoc () {
 
 build_peloton() {
     echo 'start building peloton'
-    mkdir -p $GOPATH/src/code.uber.internal/infra/peloton
+    proj="$(make project-name)"
+    mkdir -p $GOPATH/src/$proj
     cp -R $SRC_DIR/vendor/* $GOPATH/src
-    cp -R $SRC_DIR $GOPATH/src/code.uber.internal/infra/
-    cd $GOPATH/src/code.uber.internal/infra/peloton
+    cp -R $SRC_DIR $GOPATH/src/$(dirname $proj)
+    cd $GOPATH/src/$proj
     go version
     make
 }
@@ -43,7 +44,7 @@ build_peloton() {
 create_installation() {
     mkdir -p $INSTALL_DIR/{usr/bin,etc/peloton,etc/default/peloton}
     # we only want bins, configs, docs
-    cp -R $GOPATH/src/code.uber.internal/infra/peloton/bin/* $INSTALL_DIR/usr/bin/
+    cp -R $GOPATH/src/$(make project-name)/bin/* $INSTALL_DIR/usr/bin/
     cp -R $SRC_DIR/config/* $INSTALL_DIR/etc/peloton/
 }
 

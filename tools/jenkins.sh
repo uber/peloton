@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # This runs the jenkins tests inside a peloton docker container
-set -euo pipefail
+set -eo pipefail
 
 # Constants
 [[ $(uname) == Darwin || -n $JENKINS_HOME ]] && docker_cmd='docker' || docker_cmd='sudo docker'

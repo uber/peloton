@@ -50,9 +50,9 @@ cd $GOPATH
 
 mkdir -p src/code.uber.internal/infra/
 
-git clone gitolite@code.uber.internal:infra/peloton src/code.uber.internal/infra/peloton
+git clone gitolite@code.uber.internal:infra/peloton src/$(make project-name)
 
-cd $GOPATH/src/code.uber.internal/infra/peloton
+cd $GOPATH/src/$(make project-name)
 
 ( run bootstrap.sh only once )
 
@@ -72,7 +72,7 @@ Please refer to tools/pcluster/README.md for more details
 ## Test Peloton apps
 Create new job via yarpc based go client:
 
-cd $GOPATH/src/code.uber.internal/infra/peloton
+cd $GOPATH/src/$(make project-name)
 
 bin/peloton job create test test/testjob.yaml --master http://localhost:5292
 
@@ -166,7 +166,7 @@ make docker docker-push
 
 1. Create new job via yarpc based go client:
 
-cd $GOPATH/src/code.uber.internal/infra/peloton
+cd $GOPATH/src/$(make project-name)
 
 bin/peloton job create test test/testjob.yaml
 
@@ -196,7 +196,7 @@ nsenter -t <PID> -m -p bash
 
 3. Setup source code directory symlink:
 mkdir -p /workspace/src/code.uber.internal/infra/
-ln -s /peloton-install /workspace/src/code.uber.internal/infra/peloton
+ln -s /peloton-install /workspace/src/$(make project-name)
 
 4. Start the gdb in the bash shell:
 gdb peloton-install/bin/peloton-[hostmgr|jobmgr|resmgr|placement] <PID>
