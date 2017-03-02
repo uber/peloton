@@ -44,9 +44,10 @@ func (c *CircularBuffer) GetItem(sequence uint64) (*CircularBufferItem, error) {
 	c.RLock()
 	defer c.RUnlock()
 	if sequence < c.tail || sequence >= c.head {
-		log.WithField("position", sequence).
-			WithField("head", c.head).
-			WithField("tail", c.tail).
+		log.WithFields(log.Fields{
+			"position": sequence,
+			"head":     c.head,
+			"tail":     c.tail}).
 			Error("GetItem Index out of bound")
 		return nil, errors.New("GetItem Index out of bound")
 	}
@@ -59,18 +60,27 @@ func (c *CircularBuffer) GetItem(sequence uint64) (*CircularBufferItem, error) {
 func (c *CircularBuffer) GetItemsByRange(from uint64, to uint64) ([]*CircularBufferItem, error) {
 	c.RLock()
 	defer c.RUnlock()
-	log.WithField("from", from).
-		WithField("to", to).
-		WithField("head", c.head).
-		WithField("tail", c.tail).
-		Debugf("GetItemsByRange")
-	if from >= c.head || to < c.tail {
-		log.WithField("from", from).
-			WithField("to", to).
-			WithField("head", c.head).
-			WithField("tail", c.tail).
+	log.WithFields(log.Fields{
+		"from": from,
+		"to":   to,
+		"head": c.head,
+		"tail": c.tail}).
+		Debug("GetItemsByRange")
+	if from > c.head || to < c.tail {
+		log.WithFields(log.Fields{
+			"from": from,
+			"to":   to,
+			"head": c.head,
+			"tail": c.tail}).
 			Error("Index out of bound")
 		return nil, errors.New("GetItemsByRange Index out of bound")
+	}
+	var items []*CircularBufferItem
+	if from == c.head {
+		return items, nil
+	}
+	if c.head == 0 {
+		return items, nil
 	}
 
 	if from < c.tail {
@@ -80,7 +90,6 @@ func (c *CircularBuffer) GetItemsByRange(from uint64, to uint64) ([]*CircularBuf
 		to = c.head - 1
 	}
 
-	var items []*CircularBufferItem
 	for i := from; i <= to; i++ {
 		items = append(items, c.buffer[int(i%uint64(len(c.buffer)))])
 	}
@@ -92,8 +101,9 @@ func (c *CircularBuffer) AddItem(data interface{}) (*CircularBufferItem, error) 
 	c.Lock()
 	defer c.Unlock()
 	if c.isFull() {
-		log.WithField("head", c.head).
-			WithField("tail", c.tail).
+		log.WithFields(log.Fields{
+			"head": c.head,
+			"tail": c.tail}).
 			Error("Buffer is full")
 		return nil, fmt.Errorf("AddItem buffer is full")
 	}
@@ -111,8 +121,9 @@ func (c *CircularBuffer) MoveTail(newTail uint64) ([]*CircularBufferItem, error)
 	c.Lock()
 	defer c.Unlock()
 	if newTail > c.head || newTail < c.tail {
-		log.WithField("head", c.head).
-			WithField("tail", c.tail).
+		log.WithFields(log.Fields{
+			"head": c.head,
+			"tail": c.tail}).
 			Error("New tail value is out of range")
 		return nil, fmt.Errorf("MoveTail new tail value is out of range")
 	}

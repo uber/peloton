@@ -68,6 +68,10 @@ message InitStreamResponse {
   string streamID = 2;
   // min Offset of the event in the server side circular buffer
   uint64 minOffset = 3;
+  // previous purgeOffset for the client, if there is any stored on the server
+  // the client can use previousPurgeOffset as the begin offset for the next
+  // WaitForEventsRequest
+  uint64 previousPurgeOffset = 4;
 }
 
 message WaitForEventsRequest {

@@ -92,8 +92,12 @@ func TestCBContinueAddItems(t *testing.T) {
 
 func TestCBGetItemsByRange(t *testing.T) {
 	cb := NewCircularBuffer(8)
-	_, err := cb.GetItemsByRange(uint64(0), uint64(0))
-	assert.NotNil(t, err)
+	items, err := cb.GetItemsByRange(uint64(0), uint64(0))
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(items))
+	items, err = cb.GetItemsByRange(uint64(0), uint64(100))
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(items))
 
 	// fill all buffer
 	for i := 0; i < cb.Capacity(); i++ {
@@ -103,7 +107,7 @@ func TestCBGetItemsByRange(t *testing.T) {
 	// Normal case that from and to are both within buffer range
 	from := 2
 	to := 7
-	items, err := cb.GetItemsByRange(uint64(from), uint64(to))
+	items, err = cb.GetItemsByRange(uint64(from), uint64(to))
 	assert.Nil(t, err)
 	assert.Equal(t, len(items), to-from+1)
 	for i := from; i <= to; i++ {
@@ -133,7 +137,6 @@ func TestCBGetItemsByRange(t *testing.T) {
 		assert.Equal(t, i+3, int(items[i].SequenceID))
 		assert.Equal(t, i+3, int(items[i].Value.(event).value))
 	}
-
 	// Add more data and make circular buffer rollover
 	cb.MoveTail(6)
 	head := cb.head

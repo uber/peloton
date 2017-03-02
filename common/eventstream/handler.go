@@ -56,11 +56,11 @@ func (h *Handler) isClientExpected(clientName string) bool {
 	for _, ok := h.clientPurgeOffsets[clientName]; ok; {
 		return true
 	}
-	log.WithField("request clientName", clientName).Error("Client not supported")
+	log.WithField("Request clientName", clientName).Error("Client not supported")
 	return false
 }
 
-// AddStatusUpdate adds an task status update into the inner circular buffer
+// AddStatusUpdate adds a task status update into the inner circular buffer
 func (h *Handler) AddStatusUpdate(taskStatus *mesos.TaskStatus) error {
 	log.WithFields(log.Fields{
 		"mesosTaskId": taskStatus.TaskId,
@@ -87,6 +87,7 @@ func (h *Handler) InitStream(
 	req *pb_eventstream.InitStreamRequest) (*pb_eventstream.InitStreamResponse, yarpc.ResMeta, error) {
 	h.Lock()
 	defer h.Unlock()
+	log.WithField("InitStream request", req).Debug("request")
 	var response pb_eventstream.InitStreamResponse
 	clientName := req.ClientName
 	clientSupported := h.isClientExpected(clientName)
@@ -101,6 +102,8 @@ func (h *Handler) InitStream(
 	response.StreamID = h.streamID
 	_, tail := h.circularBuffer.GetRange()
 	response.MinOffset = tail
+	response.PreviousPurgeOffset = h.clientPurgeOffsets[clientName]
+	log.WithField("InitStream response", response).Debug("")
 	return &response, nil, nil
 
 }
@@ -110,8 +113,10 @@ func (h *Handler) WaitForEvents(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *pb_eventstream.WaitForEventsRequest) (*pb_eventstream.WaitForEventsResponse, yarpc.ResMeta, error) {
+
 	h.Lock()
 	defer h.Unlock()
+	log.WithField("WaitForEvents request", req).Debug("request")
 	var response pb_eventstream.WaitForEventsResponse
 	// Validate client
 	clientName := req.ClientName
