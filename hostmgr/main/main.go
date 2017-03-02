@@ -60,7 +60,7 @@ var (
 		String()
 
 	electionZkServers = app.
-				Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+				Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override using new line characters to specify multiple servers)").
 				Envar("ELECTION_ZK_SERVERS").
 				Strings()
 )

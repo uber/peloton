@@ -4,6 +4,7 @@ class Profile(Struct):
   environment = Default(String, 'devel')
   cluster = Required(String)
   instances = Default(Integer, 1)
+  pinned_attribute = Default(String, "hostname")
   pinned_hosts = Required(String)
   # This docker image is not compatible with aurora in AA until T745768 is resolved
   docker_image = Default(String, 'mysql/mysql-server:5.7.15')
@@ -12,7 +13,7 @@ class Profile(Struct):
   mysql_user = Default(String, 'peloton')
   mysql_password = Default(String, 'peloton')
   mysql_host_volume = Default(String, '/var/lib/peloton/mysql')
-
+  cpus = Default(Float, 16.0)
 
 #
 # Cluster specific profiles here
@@ -35,7 +36,7 @@ executor_task = SequentialTask(
   processes=[
     docker_entrypoint
   ],
-  resources = Resources(cpu = 16.0, ram = 32*GB, disk = 64*GB)
+  resources = Resources(cpu = '{{profile.cpus}}', ram = 32*GB, disk = 64*GB)
 )
 
 JOB_TEMPLATE = Service(
@@ -59,7 +60,7 @@ JOB_TEMPLATE = Service(
     )
   ),
   constraints = {
-    'hostname': '{{profile.pinned_hosts}}'
+    '{{profile.pinned_attribute}}': '{{profile.pinned_hosts}}'
   }
 )
 

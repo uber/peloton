@@ -1,0 +1,16 @@
+include('../template/mysql-template.aurora')
+
+PROFILES = [
+  Profile(
+    cluster = 'opusprodda2',
+    pinned_hosts = 'opusprod2000-wbu2',
+    pinned_attribute = 'host',
+    cpus = 8.0,
+    mysql_host_volume = '/mnt/01/peloton',
+    docker_image = 'da2-docker-registry:80/mysql/mysql-server:5.7.15'
+  )
+]
+
+jobs = [
+  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+]
