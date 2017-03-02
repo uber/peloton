@@ -78,9 +78,23 @@ test-containers:
 test: $(GOCOV) $(PBGENS) test-containers
 	gocov test $(ALL_PKGS) | gocov report
 
+# launch peloton with PELOTON={app,master}, default to none
 pcluster:
-	# installaltion of docker-py is required, see "bootstrap.sh" or ""tools/pcluster//README.md" for more info
-	tools/pcluster/pcluster.py setup
+# installaltion of docker-py is required, see "bootstrap.sh" or ""tools/pcluster/README.md" for more info
+ifndef PELOTON
+	@./tools/pcluster/pcluster.py setup
+else
+ifeq ($(PELOTON),master)
+	@./tools/pcluster/pcluster.py setup -m
+else ifeq ($(PELOTON),app)
+	@./tools/pcluster/pcluster.py setup -a
+else
+	@echo "Unknown Peloton mode: "$(PELOTON)
+endif
+endif
+
+pcluster-teardown:
+	@./tools/pcluster/pcluster.py teardown
 
 devtools:
 	@echo "Installing tools"
