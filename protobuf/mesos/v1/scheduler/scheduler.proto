@@ -68,6 +68,9 @@ message Event {
     // This value will be set if the master is sending heartbeats. See
     // the comment above on 'HEARTBEAT' for more details.
     optional double heartbeat_interval_seconds = 2;
+
+    // Since Mesos 1.1.
+    optional MasterInfo master_info = 3;
   }
 
   // Received whenever there are new resources that are offered to the
@@ -272,6 +275,13 @@ message Call {
     optional Filters filters = 2;
   }
 
+  // Revive offers for a specified role. If role is unset, the
+  // `REVIVE` call will revive offers for all of the roles the
+  // framework is subscribed to.
+  message Revive {
+    optional string role = 1;
+  }
+
   // Kills a specific task. If the scheduler has a custom executor,
   // the kill is forwarded to the executor and it is up to the
   // executor to kill the task and send a TASK_KILLED (or TASK_FAILED)
@@ -279,6 +289,13 @@ message Call {
   // receives a terminal update (See TaskState in v1/mesos.proto) for
   // it. If the task is unknown to the master, a TASK_LOST update is
   // generated.
+  //
+  // If a task within a task group is killed before the group is
+  // delivered to the executor, all tasks in the task group are
+  // killed. When a task group has been delivered to the executor,
+  // it is up to the executor to decide how to deal with the kill.
+  // Note The default Mesos executor will currently kill all the
+  // tasks in the task group if it gets a kill for any task.
   message Kill {
     required TaskID task_id = 1;
     optional AgentID agent_id = 2;
@@ -315,11 +332,11 @@ message Call {
   // Allows the scheduler to query the status for non-terminal tasks.
   // This causes the master to send back the latest task status for
   // each task in 'tasks', if possible. Tasks that are no longer known
-  // will result in a TASK_LOST update. If 'statuses' is empty, then
-  // the master will send the latest status for each task currently
-  // known.
+  // will result in a TASK_LOST, TASK_UNKNOWN, or TASK_UNREACHABLE update.
+  // If 'tasks' is empty, then the master will send the latest status
+  // for each task currently known.
   message Reconcile {
-   // TODO(vinod): Support arbitrary queries than just state of tasks.
+    // TODO(vinod): Support arbitrary queries than just state of tasks.
     message Task {
       required TaskID task_id = 1;
       optional AgentID agent_id = 2;
@@ -347,6 +364,13 @@ message Call {
     repeated mesos.v1.Request requests = 1;
   }
 
+  // Suppress offers for a specified role. If role is unset, the
+  // `SUPPRESS` call will suppress offers for all of the roles the
+  // framework is subscribed to.
+  message Suppress {
+    optional string role = 1;
+  }
+
   // Identifies who generated this call. Master assigns a framework id
   // when a new scheduler subscribes for the first time. Once assigned,
   // the scheduler must set the 'framework_id' here and within its
@@ -365,10 +389,12 @@ message Call {
   optional Decline decline = 5;
   optional AcceptInverseOffers accept_inverse_offers = 13;
   optional DeclineInverseOffers decline_inverse_offers = 14;
+  optional Revive revive = 15;
   optional Kill kill = 6;
   optional Shutdown shutdown = 7;
   optional Acknowledge acknowledge = 8;
   optional Reconcile reconcile = 9;
   optional Message message = 10;
   optional Request request = 11;
+  optional Suppress suppress = 16;
 }

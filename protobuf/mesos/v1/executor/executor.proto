@@ -42,6 +42,7 @@ message Event {
 
     SUBSCRIBED = 1;   // See 'Subscribed' below.
     LAUNCH = 2;       // See 'Launch' below.
+    LAUNCH_GROUP = 8; // See 'LaunchGroup' below.
     KILL = 3;         // See 'Kill' below.
     ACKNOWLEDGED = 4; // See 'Acknowledged' below.
     MESSAGE = 5;      // See 'Message' below.
@@ -73,6 +74,9 @@ message Event {
     required ExecutorInfo executor_info = 1;
     required FrameworkInfo framework_info = 2;
     required AgentInfo agent_info = 3;
+
+    // Uniquely identifies the container of an executor run.
+    optional ContainerID container_id = 4;
   }
 
   // Received when the framework attempts to launch a task. Once
@@ -80,6 +84,13 @@ message Event {
   // a TASK_RUNNING update (See TaskState in v1/mesos.proto).
   message Launch {
     required TaskInfo task = 1;
+  }
+
+  // Received when the framework attempts to launch a group of tasks atomically.
+  // Similar to `Launch` above the executor must send TASK_RUNNING updates for
+  // tasks that are successfully launched.
+  message LaunchGroup {
+    required TaskGroupInfo task_group = 1;
   }
 
   // Received when the scheduler wants to kill a specific task. Once
@@ -132,6 +143,7 @@ message Event {
   optional Subscribed subscribed = 2;
   optional Acknowledged acknowledged = 3;
   optional Launch launch = 4;
+  optional LaunchGroup launch_group = 8;
   optional Kill kill = 5;
   optional Message message = 6;
   optional Error error = 7;
@@ -192,7 +204,8 @@ message Event {
   // Type of the call, indicates which optional field below should be
   // present if that type has a nested message definition.
   // In case type is SUBSCRIBED, no message needs to be set.
-  // See comments on `Event::Type` above on the reasoning behind this field being optional.
+  // See comments on `Event::Type` above on the reasoning behind this
+  // field being optional.
   optional Type type = 3;
 
   optional Subscribe subscribe = 4;

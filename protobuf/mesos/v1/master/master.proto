@@ -68,7 +68,7 @@ message Call {
 
     GET_MASTER = 17;        // Retrieves the master's information.
 
-    SUBSCRIBE = 18;          // Subscribes the master to receive events.
+    SUBSCRIBE = 18;         // Subscribes the master to receive events.
 
     RESERVE_RESOURCES = 19;
     UNRESERVE_RESOURCES = 20;
@@ -86,7 +86,7 @@ message Call {
 
     GET_QUOTA = 28;
     SET_QUOTA = 29;          // See 'SetQuota' below.
-    REMOVE_QUOTA = 30;
+    REMOVE_QUOTA = 30;       // See 'RemoveQuota' below.
   }
 
   // Provides a snapshot of the current metrics tracked by the master.
@@ -308,10 +308,15 @@ message Response {
 
       repeated Resource allocated_resources = 8;
       repeated Resource offered_resources = 9;
+
+      repeated AgentInfo.Capability capabilities = 10;
     }
 
     // Registered agents.
     repeated Agent agents = 1;
+
+    // Agents which are recovered from registry but not reregistered yet.
+    repeated AgentInfo recovered_agents = 2;
   }
 
   // Information about all the frameworks known to the master at the current
@@ -322,6 +327,13 @@ message Response {
       required FrameworkInfo framework_info = 1;
       required bool active = 2;
       required bool connected = 3;
+
+      // If true, this framework was previously subscribed but hasn't
+      // yet re-subscribed after a master failover. Recovered frameworks
+      // are only reported if one or more agents running a task or
+      // executor for the framework have re-registered after master
+      // failover.
+      required bool recovered = 11;
 
       optional TimeInfo registered_time = 4;
       optional TimeInfo reregistered_time = 5;
@@ -341,8 +353,14 @@ message Response {
     // Frameworks that have been teared down.
     repeated Framework completed_frameworks = 2;
 
-    // Frameworks that have previously subscribed but haven't yet subscribed
-    // after a master failover.
+    // This field previously contained frameworks that previously
+    // subscribed but haven't yet re-subscribed after a master failover.
+    // As of Mesos 1.2, this field will always be empty; recovered
+    // frameworks are now reported in the `frameworks` list with the
+    // `recovered` field set to true.
+    //
+    // TODO(neilc): Remove this field after a deprecation cycle starting
+    // in Mesos 1.2.
     repeated FrameworkInfo recovered_frameworks = 3;
   }
 
@@ -356,6 +374,11 @@ message Response {
     }
 
     repeated Executor executors = 1;
+
+    // As of Mesos 1.2, this field will always be empty.
+    //
+    // TODO(neilc): Remove this field after a deprecation cycle starting
+    // in Mesos 1.2.
     repeated Executor orphan_executors = 2;
   }
 
@@ -363,20 +386,32 @@ message Response {
   // time. Note that there might be tasks unknown to the master running on
   // partitioned or unsubscribed agents.
   message GetTasks {
-    // Tasks that are an enqueued on the master waiting (e.g., authorizing)
+    // Tasks that are enqueued on the master waiting (e.g., authorizing)
     // to be launched.
     repeated Task pending_tasks = 1;
 
-    // Tasks that have been forwarded to the agent for launch. This includes
-    // tasks that are running and reached terminal state.
+    // Tasks that have been forwarded to the agent for launch. This
+    // includes tasks that are staging or running; it also includes
+    // tasks that have reached a terminal state but the terminal status
+    // update has not yet been acknowledged by the scheduler.
     repeated Task tasks = 2;
+
+    // Tasks that were running on agents that have become partitioned
+    // from the master. If/when the agent is no longer partitioned,
+    // tasks running on that agent will no longer be unreachable (they
+    // will either be running or completed). Note that the master only
+    // stores a limited number of unreachable tasks; information about
+    // unreachable tasks is also not preserved across master failover.
+    repeated Task unreachable_tasks = 5;
 
     // Tasks that have reached terminal state and have all their updates
     // acknowledged by the scheduler.
     repeated Task completed_tasks = 3;
 
-    // Tasks belonging to frameworks that have not yet re-subscribed with
-    // master (e.g., immediately after master failover).
+    // As of Mesos 1.2, this field will always be empty.
+    //
+    // TODO(neilc): Remove this field after a deprecation cycle starting
+    // in Mesos 1.2.
     repeated Task orphan_tasks = 4;
   }
 
@@ -444,6 +479,8 @@ message Event {
     SUBSCRIBED = 1; // See `Subscribed` below.
     TASK_ADDED = 2; // See `TaskAdded` below.
     TASK_UPDATED = 3; // See `TaskUpdated` below.
+    AGENT_ADDED = 4; // See `AgentAdded` below.
+    AGENT_REMOVED = 5; // See `AgentRemoved` below.
 
     // TODO(vinod): Fill in more events.
   }
@@ -464,11 +501,34 @@ message Event {
 
   // Forwarded by the master when an existing task transitions to a new state.
   message TaskUpdated {
-    required TaskID task_id = 1;
-    required FrameworkID framework_id = 2;
-    required AgentID agent_id = 3;
-    optional ExecutorID executor_id = 4;
-    required TaskState state = 5;
+    required FrameworkID framework_id = 1;
+
+    // This is the status of the task corresponding to the last
+    // status update acknowledged by the scheduler.
+    required TaskStatus status = 2;
+
+    // This is the latest state of the task according to the agent.
+    required TaskState state = 3;
+  }
+
+  // Forwarded by the master when an agent becomes known to it.
+  // This can happen when an agent registered for the first
+  // time, or reregistered after a master failover.
+  message AgentAdded {
+    required Response.GetAgents.Agent agent = 1;
+  }
+
+  // Forwarded by the master when an agent is removed.
+  // This can happen when an agent does not re-register
+  // within `--agent_reregister_timeout` upon a master failover,
+  // or when the agent is scheduled for maintenance.
+  //
+  // NOTE: It's possible that an agent might become
+  // active once it has been removed, i.e. if the master
+  // has gc'ed its list of known "dead" agents.
+  // See MESOS-5965 for context.
+  message AgentRemoved {
+    required AgentID agent_id = 1;
   }
 
   optional Type type = 1;
@@ -476,4 +536,6 @@ message Event {
   optional Subscribed subscribed = 2;
   optional TaskAdded task_added = 3;
   optional TaskUpdated task_updated = 4;
+  optional AgentAdded agent_added = 5;
+  optional AgentRemoved agent_removed = 6;
 }
