@@ -17,10 +17,10 @@ func InitManager(
 	offerHoldTime time.Duration,
 	offerPruningPeriod time.Duration,
 	client mpb.Client) *Manager {
-	pool := NewOfferPool(d, offerHoldTime, client)
+	pool := NewOfferPool(offerHoldTime, client)
 	m := Manager{
 		offerPool:   pool,
-		offerPruner: NewOfferPruner(pool, offerPruningPeriod, d),
+		offerPruner: NewOfferPruner(pool, offerPruningPeriod),
 	}
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_OFFERS:                m.Offers,

@@ -85,6 +85,18 @@ func createHostOffer(hostID int, resources []*mesos.Resource) *hostsvc.HostOffer
 	}
 }
 
+// createLaunchTasksRequest generates hostsvc.LaunchTasksRequest from tasks and hostname
+func createLaunchTasksRequest(
+	tasks []*task.TaskInfo,
+	hostname string,
+	agentID *mesos.AgentID) *hostsvc.LaunchTasksRequest {
+	return &hostsvc.LaunchTasksRequest{
+		Hostname: hostname,
+		Tasks:    createLaunchableTasks(tasks),
+		AgentId:  agentID,
+	}
+}
+
 // TODO: Add a test for Start()/Stop() pair.
 
 // This test ensures that empty task returned from resmgr does not trigger hostmgr calls.
@@ -325,31 +337,17 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	assert.Equal(t, taskConfigs, launchedTasks)
 }
 
-func TestCreateLaunchTasksRequest(t *testing.T) {
-	tasks := createTestTasks([]int{0, 1})
-	lt := createLaunchableTasks(tasks)
-	assert.Equal(t, 2, len(lt))
-	assert.Equal(t, fmt.Sprintf(taskIDFmt, 0), lt[0].TaskId.GetValue())
-	assert.ObjectsAreEqualValues(tasks[0].Config, lt[0].Config)
-	assert.Equal(t, fmt.Sprintf(taskIDFmt, 1), lt[1].TaskId.GetValue())
-	assert.ObjectsAreEqualValues(tasks[1].Config, lt[1].Config)
-}
-
 func TestCreateLaunchableTasks(t *testing.T) {
 	var hostname = "testhost"
-	var agentID = "testagentid"
-	var offerID = "testofferid"
-	var offer = &mesos.Offer{
-		Hostname: &hostname,
-		AgentId:  &mesos.AgentID{Value: &agentID},
-		Id:       &mesos.OfferID{Value: &offerID},
+	var tmp = "agentid"
+	var agentID = &mesos.AgentID{
+		Value: &tmp,
 	}
 
 	tasks := createTestTasks([]int{0, 1})
-	ltr := createLaunchTasksRequest(tasks, offer)
-	assert.Equal(t, ltr.Hostname, hostname)
-	assert.Equal(t, ltr.AgentId.GetValue(), agentID)
-	assert.Equal(t, ltr.OfferIds[0].GetValue(), offerID)
+	ltr := createLaunchTasksRequest(tasks, hostname, agentID)
+	assert.Equal(t, hostname, ltr.Hostname)
+	assert.Equal(t, agentID, ltr.AgentId)
 	assert.Equal(t, 2, len(ltr.Tasks))
 }
 

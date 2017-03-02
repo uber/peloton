@@ -17,8 +17,6 @@ import (
 	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/resmgr/taskqueue"
 
-	mesos "mesos/v1"
-
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	placement_config "code.uber.internal/infra/peloton/placement/config"
 	placement_metrics "code.uber.internal/infra/peloton/placement/metrics"
@@ -256,7 +254,6 @@ func (s *placementEngine) placeTasks(
 			Hostname: hostOffer.GetHostname(),
 			Tasks:    createLaunchableTasks(selectedTasks),
 			AgentId:  hostOffer.GetAgentId(),
-			OfferIds: hostOffer.GetOfferIds(),
 		}
 
 		log.WithField("request", request).Debug("Calling LaunchTasks")
@@ -289,9 +286,9 @@ func (s *placementEngine) placeTasks(
 		s.metrics.TaskLaunchDispatches.Inc(1)
 
 		log.WithFields(log.Fields{
-			"tasks":    selectedTasks,
-			"hostname": hostOffer.GetHostname(),
-			"offers":   hostOffer.GetOfferIds(),
+			"tasks":     selectedTasks,
+			"hostname":  hostOffer.GetHostname(),
+			"resources": hostOffer.GetResources(),
 		}).Info("Launched tasks")
 	} else {
 		log.WithField("remaining_tasks", tasks).Info("No task is selected to launch")
@@ -388,18 +385,6 @@ func groupTasksByResource(tasks []*task.TaskInfo) map[string]*taskGroup {
 		groups[s].tasks = append(groups[s].tasks, t)
 	}
 	return groups
-}
-
-// createLaunchTasksRequest generates hostsvc.LaunchTasksRequest from tasks and offer
-func createLaunchTasksRequest(
-	tasks []*task.TaskInfo,
-	offer *mesos.Offer) *hostsvc.LaunchTasksRequest {
-	return &hostsvc.LaunchTasksRequest{
-		Hostname: offer.GetHostname(),
-		Tasks:    createLaunchableTasks(tasks),
-		AgentId:  offer.GetAgentId(),
-		OfferIds: []*mesos.OfferID{offer.Id},
-	}
 }
 
 // createLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo

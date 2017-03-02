@@ -6,7 +6,6 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"go.uber.org/yarpc"
 )
 
 const (
@@ -21,7 +20,7 @@ type Pruner interface {
 }
 
 // NewOfferPruner initiates an instance of OfferPruner
-func NewOfferPruner(pool Pool, offerPruningPeriod time.Duration, d yarpc.Dispatcher) Pruner {
+func NewOfferPruner(pool Pool, offerPruningPeriod time.Duration) Pruner {
 	pruner := &offerPruner{
 		pool:               pool,
 		runningState:       runningStateNotStarted,

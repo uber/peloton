@@ -105,10 +105,7 @@ func (h *serviceHandler) AcquireHostOffers(
 		}
 
 		var resources []*mesos.Resource
-		var offerIds []*mesos.OfferID
-
 		for _, offer := range offers {
-			offerIds = append(offerIds, offer.GetId())
 			resources = append(resources, offer.GetResources()...)
 		}
 
@@ -117,7 +114,6 @@ func (h *serviceHandler) AcquireHostOffers(
 			AgentId:    offers[0].GetAgentId(),
 			Attributes: offers[0].GetAttributes(),
 			Resources:  resources,
-			OfferIds:   offerIds,
 		}
 
 		response.HostOffers = append(response.HostOffers, &hostOffer)
@@ -175,8 +171,7 @@ func (h *serviceHandler) LaunchTasks(
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
 				InvalidOffers: &hostsvc.InvalidOffers{
-					Message:  err.Error(),
-					OfferIds: body.GetOfferIds(),
+					Message: err.Error(),
 				},
 			},
 		}, nil, nil

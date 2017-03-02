@@ -22,9 +22,6 @@ message HostOffer {
   mesos.v1.AgentID agentId = 2;
   repeated mesos.v1.Resource resources = 3;
   repeated mesos.v1.Attribute attributes = 4;
-
-  // Deprecated: this will soon be not returned anymore, please rely on hostname instead.
-  repeated mesos.v1.OfferID offerIds = 5;
 }
 
 
@@ -82,9 +79,6 @@ message InvalidArgument {
  */
 message InvalidOffers {
   string message = 1;
-
-  // Any offer id whose content is invalid.
-  repeated mesos.v1.OfferID offerIds = 2;
 }
 
 /**
@@ -182,9 +176,6 @@ message LaunchTasksRequest {
   string hostname = 1;
   repeated LaunchableTask tasks = 2;
   mesos.v1.AgentID agentId = 3;
-
-  // Deprecated.
-  repeated mesos.v1.OfferID offerIds = 4;
 }
 
 message LaunchTasksResponse {

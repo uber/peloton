@@ -1,7 +1,6 @@
 package offer
 
 import (
-	"context"
 	"errors"
 	"sync"
 	"time"
@@ -9,14 +8,9 @@ import (
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
-
-	"peloton/private/hostmgr/hostsvc"
-	"peloton/private/hostmgr/offerpool"
 )
 
 // Pool caches a set of offers received from Mesos master. It is
@@ -59,7 +53,7 @@ type Pool interface {
 
 // NewOfferPool creates a offerPool object and registers the
 // corresponding YARPC procedures.
-func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration, client mpb.Client) Pool {
+func NewOfferPool(offerHoldTime time.Duration, client mpb.Client) Pool {
 	pool := &offerPool{
 		offers:                     make(map[string]*TimedOffer),
 		client:                     client,
@@ -67,7 +61,6 @@ func NewOfferPool(d yarpc.Dispatcher, offerHoldTime time.Duration, client mpb.Cl
 		mesosFrameworkInfoProvider: hostmgr_mesos.GetSchedulerDriver(),
 		offersLock:                 &sync.Mutex{},
 	}
-	json.Register(d, json.Procedure("OfferPool.GetOffers", pool.GetOffers))
 
 	return pool
 }
@@ -94,37 +87,6 @@ type offerPool struct {
 	offerHoldTime              time.Duration
 	client                     mpb.Client
 	mesosFrameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
-}
-
-func (p *offerPool) GetOffers(
-	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	body *offerpool.GetOffersRequest) (
-	*offerpool.GetOffersResponse, yarpc.ResMeta, error) {
-
-	// this deprecated semantic is equivalent to a single constraint with same limit.
-	c := &Constraint{
-		hostsvc.Constraint{
-			Limit: body.Limit,
-		},
-	}
-	constraints := []*Constraint{c}
-
-	hostOffers, err := p.ClaimForPlace(constraints)
-	if err != nil {
-		log.WithField("error", err).Error("ClaimForPlace failed")
-		return nil, nil, err
-	}
-
-	var offers []*mesos.Offer
-	for _, ol := range hostOffers {
-		offers = append(offers, ol...)
-	}
-
-	log.WithField("offers", offers).Debug("ClaimForPlace: claimed offers")
-	return &offerpool.GetOffersResponse{
-		Offers: offers,
-	}, nil, nil
 }
 
 // ClaimForPlace obtains offers from pool conforming to given constraints.
