@@ -11,6 +11,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
+	"code.uber.internal/infra/peloton/resmgr/queue"
 	"peloton/api/respool"
 )
 
@@ -36,6 +37,9 @@ func InitServiceHandler(
 		dispatcher:   d,
 		runningState: runningStateNotStarted,
 		resPoolTree:  resPoolTree,
+		readyQueue:   queue.NewMultiLevelList(),
+		placingQueue: queue.NewMultiLevelList(),
+		placedQueue:  queue.NewMultiLevelList(),
 	}
 	log.Info("Resource Manager created")
 	return &handler
@@ -49,6 +53,9 @@ type ServiceHandler struct {
 	dispatcher   yarpc.Dispatcher
 	runningState int32
 	resPoolTree  *Tree
+	readyQueue   *queue.MultiLevelList
+	placingQueue *queue.MultiLevelList
+	placedQueue  *queue.MultiLevelList
 }
 
 // CreateResourcePool will create resource pool
@@ -129,4 +136,27 @@ func (m *ServiceHandler) Stop() {
 		return
 	}
 	atomic.StoreInt32(&m.runningState, runningStateNotStarted)
+}
+
+// GetResourcePoolTree returns the resource pool tree.
+func (m *ServiceHandler) GetResourcePoolTree() *Tree {
+	return m.resPoolTree
+}
+
+// GetReadyQueue returns the Ready queue for Resource Manager
+// This will be having tasks which are ready to be placed
+func (m *ServiceHandler) GetReadyQueue() *queue.MultiLevelList {
+	return m.readyQueue
+}
+
+// GetPlacingQueue returns the Placing queue for Resource Manager
+// Which stores the tasks which are taken by the placement engine for placement
+func (m *ServiceHandler) GetPlacingQueue() *queue.MultiLevelList {
+	return m.placingQueue
+}
+
+// GetPlacedQueue returns the Ready queue for Resource Manager
+// This stores the tasks which are already been placed by placement engine
+func (m *ServiceHandler) GetPlacedQueue() *queue.MultiLevelList {
+	return m.placedQueue
 }

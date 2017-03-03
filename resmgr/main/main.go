@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 
 	"code.uber.internal/infra/peloton/common"
 	common_metrics "code.uber.internal/infra/peloton/common/metrics"
@@ -13,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/config"
 	res "code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/task"
 	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
@@ -117,7 +119,9 @@ func main() {
 
 	rm := res.InitServiceHandler(dispatcher, &cfg.ResMgr, resstore, &metrics)
 	taskqueue := tq.InitTaskQueue(dispatcher, &metrics, store, store)
-
+	taskSched := task.NewTaskScheduler(rm.GetResourcePoolTree(),
+		time.Duration(cfg.ResMgr.TaskSchedulerRunPeriodSec)*time.Second,
+		rm.GetReadyQueue())
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
@@ -130,7 +134,7 @@ func main() {
 		log.Fatalf("Failed to get ip, err=%v", err)
 	}
 	localPelotonRMAddr := fmt.Sprintf("http://%s:%d", ip, cfg.ResMgr.Port)
-	resMgrLeader := resmgr.NewServer(cfg, localPelotonRMAddr, *rm, taskqueue)
+	resMgrLeader := resmgr.NewServer(cfg, localPelotonRMAddr, *rm, taskqueue, taskSched)
 	leadercandidate, err := leader.NewCandidate(cfg.Election, rootScope.SubScope("election"), common.ResourceManagerRole, resMgrLeader)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Fatal("Unable to create leader candidate")

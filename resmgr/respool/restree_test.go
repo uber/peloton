@@ -31,7 +31,7 @@ func (suite *RespoolTestSuite) SetupTest() {
 	suite.resPools = make(map[string]*respool.ResourcePoolConfig)
 	suite.allNodes = make(map[string]*ResPool)
 	suite.setUpRespools()
-	suite.root = suite.resTree.createTree(nil, RootResPoolID, suite.resPools, suite.allNodes)
+	suite.root = suite.resTree.CreateTree(nil, RootResPoolID, suite.resPools, suite.allNodes)
 
 }
 

@@ -5,6 +5,7 @@ import (
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/config"
+	"time"
 )
 
 // FrameworkURLPath is where the RPC endpoint lives for peloton
@@ -22,6 +23,8 @@ type Config struct {
 type ResMgrConfig struct {
 	Port               int `yaml:"port"`
 	DbWriteConcurrency int `yaml:"db_write_concurrency"`
+	// Frequency of running Task Scheduler
+	TaskSchedulerRunPeriodSec time.Duration `yaml:"task_scheduling_cycle"`
 }
 
 // New loads the given configs in order, merges them together, and returns

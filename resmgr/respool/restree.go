@@ -2,6 +2,7 @@ package respool
 
 import (
 	"peloton/api/respool"
+	"sync"
 
 	"code.uber.internal/infra/peloton/master/metrics"
 	rmconfig "code.uber.internal/infra/peloton/resmgr/config"
@@ -26,6 +27,7 @@ func InitTree(
 
 // Tree will be storing the Tree for respools
 type Tree struct {
+	sync.RWMutex
 	resPoolTree *ResPool
 	store       storage.ResourcePoolStore
 	resPools    map[string]*respool.ResourcePoolConfig
@@ -66,12 +68,12 @@ func (r *Tree) initializeResourceTree() *ResPool {
 		Policy: respool.SchedulingPolicy_PriorityFIFO,
 	}
 	r.resPools[RootResPoolID] = &rootResPoolConfig
-	root := r.createTree(nil, RootResPoolID, r.resPools, r.allNodes)
+	root := r.CreateTree(nil, RootResPoolID, r.resPools, r.allNodes)
 	return root
 }
 
-// createTree function will take the Parent node and create the tree underneath
-func (r *Tree) createTree(
+// CreateTree function will take the Parent node and create the tree underneath
+func (r *Tree) CreateTree(
 	parent *ResPool,
 	ID string,
 	resPools map[string]*respool.ResourcePoolConfig,
@@ -83,7 +85,7 @@ func (r *Tree) createTree(
 	var childNodes = list.New()
 	// TODO: We need to detect cycle here.
 	for child := range childs {
-		childNode := r.createTree(node, child, resPools, allNodes)
+		childNode := r.CreateTree(node, child, resPools, allNodes)
 		childNodes.PushBack(childNode)
 	}
 	node.SetChildren(childNodes)
@@ -121,5 +123,38 @@ func (r *Tree) getChildResPools(parentID string,
 
 // GetResPoolRoot will return the root node for the resource pool tree
 func (r *Tree) GetResPoolRoot() *ResPool {
+	// TODO: Need to clone the tree
 	return r.resPoolTree
+}
+
+// GetAllNodes returns all the nodes in the tree
+func (r *Tree) GetAllNodes() *list.List {
+	r.RLock()
+	defer r.Unlock()
+	list := new(list.List)
+	for _, n := range r.allNodes {
+		list.PushBack(n)
+	}
+	return list
+}
+
+// GetAllLeafNodes returns all the leaf nodes in the tree
+func (r *Tree) GetAllLeafNodes() *list.List {
+	// TODO: we need to merge GetAllNodes with GetAllLeafNodes
+	r.RLock()
+	defer r.RUnlock()
+	list := new(list.List)
+	for _, n := range r.allNodes {
+		if n.Isleaf() {
+			list.PushBack(n)
+		}
+	}
+	return list
+}
+
+// SetAllNodes sets all nodes in the tree
+func (r *Tree) SetAllNodes(nodes *map[string]*ResPool) {
+	r.Lock()
+	defer r.Unlock()
+	r.allNodes = *nodes
 }

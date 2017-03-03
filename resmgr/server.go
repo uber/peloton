@@ -6,6 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/task"
 	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
 	log "github.com/Sirupsen/logrus"
 )
@@ -18,6 +19,7 @@ type Server struct {
 	localAddr      string
 	respoolService respool.ServiceHandler
 	taskQueue      *tq.Queue
+	taskSched      *task.Scheduler
 }
 
 // NewServer will create the elect handle object
@@ -25,13 +27,15 @@ func NewServer(
 	cfg *config.Config,
 	localResMgrMasterAddr string,
 	rm respool.ServiceHandler,
-	taskqueue *tq.Queue) *Server {
+	taskqueue *tq.Queue,
+	taskSched *task.Scheduler) *Server {
 	result := Server{
 		cfg:            cfg,
 		mutex:          &sync.Mutex{},
 		localAddr:      localResMgrMasterAddr,
 		respoolService: rm,
 		taskQueue:      taskqueue,
+		taskSched:      taskSched,
 	}
 	return &result
 }
@@ -48,6 +52,7 @@ func (p *Server) GainedLeadershipCallback() error {
 		return err
 	}
 	p.respoolService.Start()
+	p.taskSched.Start()
 
 	return nil
 }
@@ -59,7 +64,7 @@ func (p *Server) LostLeadershipCallback() error {
 	log.WithFields(log.Fields{"role": common.ResourceManagerRole}).Info("Lost leadership")
 	p.taskQueue.Reset()
 	p.respoolService.Stop()
-
+	p.taskSched.Stop()
 	return nil
 }
 

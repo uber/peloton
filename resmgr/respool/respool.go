@@ -106,12 +106,38 @@ func (n *ResPool) EnqueueTask(task *queue.TaskItem) error {
 
 // DequeueTask dequeues the task from the pending queue
 func (n *ResPool) DequeueTask() (*queue.TaskItem, error) {
+	// TODO: We need to merge both dequeuetask and dequeuetasks
 	if n.Isleaf() {
 		res, err := n.pendingQueue.Dequeue()
 		if err != nil {
 			return nil, err
 		}
 		return res, err
+	}
+	err := errors.Errorf("Respool %s is not a leaf node", n.name)
+	return nil, err
+}
+
+// DequeueTasks dequeues the tasks from the pending queue
+func (n *ResPool) DequeueTasks(limit int) (*list.List, error) {
+	if n.Isleaf() {
+		if limit <= 0 {
+			err := errors.Errorf("limt %d is not valid", limit)
+			return nil, err
+		}
+		l := new(list.List)
+		for i := 1; i <= limit; i++ {
+			res, err := n.pendingQueue.Dequeue()
+			if err != nil {
+				if l.Len() == 0 {
+					return nil, err
+				}
+				break
+			}
+			l.PushBack(res)
+		}
+
+		return l, nil
 	}
 	err := errors.Errorf("Respool %s is not a leaf node", n.name)
 	return nil, err
