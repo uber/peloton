@@ -74,8 +74,9 @@ func createResources(defaultMultiplier float64) []*mesos.Resource {
 		"cpus": defaultMultiplier * defaultResourceConfig.CpuLimit,
 		"mem":  defaultMultiplier * defaultResourceConfig.MemLimitMb,
 		"disk": defaultMultiplier * defaultResourceConfig.DiskLimitMb,
+		"gpus": defaultMultiplier * defaultResourceConfig.GpuLimit,
 	}
-	return util.CreateMesosScalarResources(values)
+	return util.CreateMesosScalarResources(values, "*")
 }
 
 func createHostOffer(hostID int, resources []*mesos.Resource) *hostsvc.HostOffer {

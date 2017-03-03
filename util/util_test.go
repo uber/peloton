@@ -132,7 +132,7 @@ func TestNonGPUResources(t *testing.T) {
 		"mem":  2.0,
 		"disk": 3.0,
 		"gpus": 0.0,
-	})
+	}, "*")
 
 	assert.Equal(t, 3, len(rs))
 }
@@ -143,7 +143,7 @@ func TestLowerThanEspilonResources(t *testing.T) {
 		"mem":  2.0,
 		"disk": 3.0,
 		"gpus": ResourceEspilon / 2.0,
-	})
+	}, "*")
 
 	assert.Equal(t, 3, len(rs))
 }
@@ -154,7 +154,7 @@ func TestGPUResources(t *testing.T) {
 		"mem":  2.0,
 		"disk": 3.0,
 		"gpus": 1.0,
-	})
+	}, "*")
 
 	assert.Equal(t, 4, len(rs))
 }

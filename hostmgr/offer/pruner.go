@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	mesos "mesos/v1"
+
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -66,10 +68,16 @@ func (p *offerPruner) Start() {
 				return
 			case <-timer.C:
 				log.Debug("Running offer pruning loop")
-				offersToDecline := p.pool.RemoveExpiredOffers()
-				if len(offersToDecline) != 0 {
-					log.Debugf("Offers to decline: %v", offersToDecline)
-					p.pool.DeclineOffers(offersToDecline)
+				expiredOffers := p.pool.RemoveExpiredOffers()
+				if len(expiredOffers) != 0 {
+					offersToDecline := make(map[string]*mesos.Offer)
+					for id, timedOffer := range expiredOffers {
+						offersToDecline[id] = timedOffer.MesosOffer
+					}
+					log.WithField("offers", offersToDecline).Debug("Offers to decline")
+					if err := p.pool.DeclineOffers(offersToDecline); err != nil {
+						log.WithError(err).Error("Failed to decline offers")
+					}
 				}
 			}
 			timer.Stop()

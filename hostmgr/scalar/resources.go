@@ -52,6 +52,30 @@ func (r *Resources) TrySubtract(other *Resources) bool {
 	return true
 }
 
+// NonEmptyFields returns corresponding Mesos resource names for fields which are not empty.
+func (r *Resources) NonEmptyFields() []string {
+	var nonEmptyFields []string
+	if math.Abs(r.CPU) > util.ResourceEspilon {
+		nonEmptyFields = append(nonEmptyFields, "cpus")
+	}
+	if math.Abs(r.Mem) > util.ResourceEspilon {
+		nonEmptyFields = append(nonEmptyFields, "mem")
+	}
+	if math.Abs(r.Disk) > util.ResourceEspilon {
+		nonEmptyFields = append(nonEmptyFields, "disk")
+	}
+	if math.Abs(r.GPU) > util.ResourceEspilon {
+		nonEmptyFields = append(nonEmptyFields, "gpus")
+	}
+
+	return nonEmptyFields
+}
+
+// Empty returns whether all fields are empty now.
+func (r *Resources) Empty() bool {
+	return len(r.NonEmptyFields()) == 0
+}
+
 // FromResourceConfig creats a new instance of `Resources` frmo a `ResourceConfig`.
 func FromResourceConfig(rc *config.ResourceConfig) (r Resources) {
 	r.CPU = rc.GetCpuLimit()
@@ -61,22 +85,27 @@ func FromResourceConfig(rc *config.ResourceConfig) (r Resources) {
 	return r
 }
 
+// FromMesosResource returns the scalar Resources from a single Mesos resource object.
+func FromMesosResource(resource *mesos.Resource) (r Resources) {
+	value := resource.GetScalar().GetValue()
+	switch name := resource.GetName(); name {
+	case "cpus":
+		r.CPU += value
+	case "mem":
+		r.Mem += value
+	case "disk":
+		r.Disk += value
+	case "gpus":
+		r.GPU += value
+	}
+	return r
+}
+
 // FromMesosResources returns the scalar Resources from a list of Mesos resource objects.
 func FromMesosResources(resources []*mesos.Resource) (r Resources) {
 	for _, resource := range resources {
-		value := resource.GetScalar().GetValue()
-		switch name := resource.GetName(); name {
-		case "cpus":
-			r.CPU += value
-		case "mem":
-			r.Mem += value
-		case "disk":
-			r.Disk += value
-		case "gpus":
-			r.GPU += value
-		default:
-			continue
-		}
+		tmp := FromMesosResource(resource)
+		r.Add(&tmp)
 	}
 
 	return r
@@ -95,4 +124,13 @@ func FromOfferMap(offerMap map[string]*mesos.Offer) (r Resources) {
 	}
 
 	return r
+}
+
+// Minimum returns minimum amount of resources in each type.
+func Minimum(r1, r2 Resources) (m Resources) {
+	m.CPU = math.Min(r1.CPU, r2.CPU)
+	m.Mem = math.Min(r1.Mem, r2.Mem)
+	m.Disk = math.Min(r1.Disk, r2.Disk)
+	m.GPU = math.Min(r1.GPU, r2.GPU)
+	return m
 }

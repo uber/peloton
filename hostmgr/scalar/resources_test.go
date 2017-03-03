@@ -193,3 +193,35 @@ func TestFromResourceConfig(t *testing.T) {
 	assert.InEpsilon(t, 3.0, result.Disk, zeroEpsilon)
 	assert.InEpsilon(t, 4.0, result.GPU, zeroEpsilon)
 }
+
+func TestMinimum(t *testing.T) {
+	r1 := Minimum(
+		Resources{
+			CPU: 1.0,
+			Mem: 2.0,
+		},
+		Resources{
+			CPU:  2.0,
+			Mem:  2.0,
+			Disk: 2.0,
+		},
+	)
+
+	assert.InEpsilon(t, 1.0, r1.CPU, zeroEpsilon)
+	assert.InEpsilon(t, 2.0, r1.Mem, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, r1.Disk, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, r1.GPU, zeroEpsilon)
+}
+
+func TestNonEmptyFields(t *testing.T) {
+	r1 := Resources{}
+	assert.True(t, r1.Empty())
+	assert.Empty(t, r1.NonEmptyFields())
+
+	r2 := Resources{
+		CPU:  1.0,
+		Disk: 2.0,
+	}
+	assert.False(t, r2.Empty())
+	assert.Equal(t, []string{"cpus", "disk"}, r2.NonEmptyFields())
+}

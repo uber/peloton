@@ -12,7 +12,6 @@ import (
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
-	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/Sirupsen/logrus"
@@ -178,8 +177,10 @@ func (h *serviceHandler) LaunchTasks(
 	}
 
 	var offerIds []*mesos.OfferID
+	var mesosResources []*mesos.Resource
 	for _, offer := range offers {
 		offerIds = append(offerIds, offer.GetId())
+		mesosResources = append(mesosResources, offer.GetResources()...)
 	}
 
 	// TODO: Use `offers` so we can support reservation, port picking, etc.
@@ -188,14 +189,25 @@ func (h *serviceHandler) LaunchTasks(
 	var mesosTasks []*mesos.TaskInfo
 	var mesosTaskIds []string
 
+	builder := newTaskBuilder(mesosResources)
+
 	for _, t := range body.Tasks {
-		mesosTask, err := util.GetMesosTaskInfo(t.TaskId, t.Config)
+		mesosTask, err := builder.build(t.TaskId, t.Config)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err,
 				"task_id": t.TaskId,
 			}).Error("Fail to get correct Mesos TaskInfo")
 			h.metrics.LaunchTasksInvalid.Inc(1)
+
+			// For now, decline all offers to Mesos in the hope that next
+			// call to pool will select some different host.
+			// An alternative is to mark offers on the host as ready.
+			if err := h.offerPool.DeclineOffers(offers); err != nil {
+				log.WithError(err).
+					WithField("offers", offers).
+					Error("Cannot decline offers task building error")
+			}
 
 			return &hostsvc.LaunchTasksResponse{
 				Error: &hostsvc.LaunchTasksResponse_Error{
@@ -231,6 +243,10 @@ func (h *serviceHandler) LaunchTasks(
 			},
 		},
 	}
+
+	log.WithFields(log.Fields{
+		"call": msg,
+	}).Debug("Launching tasks to Mesos.")
 
 	// TODO: add retry / put back offer and tasks in failure scenarios
 	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID()

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	mesos_v1 "mesos/v1"
+	mesos "mesos/v1"
 	"peloton/api/task"
 	tc "peloton/api/task/config"
 	"strconv"
@@ -37,7 +37,7 @@ func Max(x, y uint32) uint32 {
 
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
 // first level : role -> map(resource type-> resouce value)
-func GetOfferScalarResourceSummary(offer *mesos_v1.Offer) map[string]map[string]float64 {
+func GetOfferScalarResourceSummary(offer *mesos.Offer) map[string]map[string]float64 {
 	var result = make(map[string]map[string]float64)
 	for _, resource := range offer.Resources {
 		if resource.Scalar != nil {
@@ -55,22 +55,22 @@ func GetOfferScalarResourceSummary(offer *mesos_v1.Offer) map[string]map[string]
 }
 
 // ConvertToMesosTaskInfo converts a task.TaskInfo into mesos TaskInfo
-func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) (*mesos_v1.TaskInfo, error) {
+func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) (*mesos.TaskInfo, error) {
 	taskConfig := taskInfo.GetConfig()
 	taskID := taskInfo.GetRuntime().GetTaskId()
 	return GetMesosTaskInfo(taskID, taskConfig)
 }
 
 // CreateMesosScalarResources is a helper function to convert resource values into Mesos resources.
-func CreateMesosScalarResources(values map[string]float64) []*mesos_v1.Resource {
-	var rs []*mesos_v1.Resource
+func CreateMesosScalarResources(values map[string]float64, role string) []*mesos.Resource {
+	var rs []*mesos.Resource
 	for name, value := range values {
 		// Skip any value smaller than Espilon.
 		if math.Abs(value) < ResourceEspilon {
 			continue
 		}
 
-		rs = append(rs, NewMesosResourceBuilder().WithName(name).WithValue(value).Build())
+		rs = append(rs, NewMesosResourceBuilder().WithName(name).WithValue(value).WithRole(role).Build())
 	}
 
 	return rs
@@ -78,8 +78,8 @@ func CreateMesosScalarResources(values map[string]float64) []*mesos_v1.Resource 
 
 // GetMesosTaskInfo converts TaskID and TaskConfig into mesos TaskInfo.
 func GetMesosTaskInfo(
-	taskID *mesos_v1.TaskID,
-	taskConfig *tc.TaskConfig) (*mesos_v1.TaskInfo, error) {
+	taskID *mesos.TaskID,
+	taskConfig *tc.TaskConfig) (*mesos.TaskInfo, error) {
 	if taskConfig == nil {
 		return nil, errors.New("TaskConfig cannot be nil")
 	}
@@ -99,7 +99,7 @@ func GetMesosTaskInfo(
 		"mem":  taskResources.MemLimitMb,
 		"disk": taskResources.DiskLimitMb,
 		"gpus": taskResources.GpuLimit,
-	})
+	}, "*")
 
 	tid, err := ParseTaskIDFromMesosTaskID(taskID.GetValue())
 	if err != nil {
@@ -111,7 +111,7 @@ func GetMesosTaskInfo(
 		return nil, err
 	}
 
-	mesosTask := &mesos_v1.TaskInfo{
+	mesosTask := &mesos.TaskInfo{
 		Name:      &jobID,
 		TaskId:    taskID,
 		Resources: rs,
@@ -135,7 +135,7 @@ func CanTakeTask(offerScalaSummary *map[string]map[string]float64, nextTask *tas
 	for _, resource := range nextMesosTask.Resources {
 		// Check if all scalar resource requirements are met
 		// TODO: check range and items
-		if *resource.Type == mesos_v1.Value_SCALAR {
+		if *resource.Type == mesos.Value_SCALAR {
 			role := "*"
 			if resource.Role != nil {
 				role = *resource.Role
@@ -161,15 +161,15 @@ func CanTakeTask(offerScalaSummary *map[string]map[string]float64, nextTask *tas
 
 // MesosResourceBuilder is the helper to build a mesos resource
 type MesosResourceBuilder struct {
-	Resource mesos_v1.Resource
+	Resource mesos.Resource
 }
 
-//NewMesosResourceBuilder creates a MesosResourceBuilder
+// NewMesosResourceBuilder creates a MesosResourceBuilder
 func NewMesosResourceBuilder() *MesosResourceBuilder {
 	defaultRole := "*"
-	defaultType := mesos_v1.Value_SCALAR
+	defaultType := mesos.Value_SCALAR
 	return &MesosResourceBuilder{
-		Resource: mesos_v1.Resource{
+		Resource: mesos.Resource{
 			Role: &defaultRole,
 			Type: &defaultType,
 		},
@@ -182,58 +182,64 @@ func (o *MesosResourceBuilder) WithName(name string) *MesosResourceBuilder {
 	return o
 }
 
-//WithType sets type
-func (o *MesosResourceBuilder) WithType(t mesos_v1.Value_Type) *MesosResourceBuilder {
+// WithType sets type
+func (o *MesosResourceBuilder) WithType(t mesos.Value_Type) *MesosResourceBuilder {
 	o.Resource.Type = &t
 	return o
 }
 
-//WithRole sets role
+// WithRole sets role
 func (o *MesosResourceBuilder) WithRole(role string) *MesosResourceBuilder {
 	o.Resource.Role = &role
 	return o
 }
 
-//WithValue sets value
+// WithValue sets value
 func (o *MesosResourceBuilder) WithValue(value float64) *MesosResourceBuilder {
-	scalarVal := mesos_v1.Value_Scalar{
+	scalarVal := mesos.Value_Scalar{
 		Value: &value,
 	}
 	o.Resource.Scalar = &scalarVal
 	return o
 }
 
+// WithRanges sets ranges
+func (o *MesosResourceBuilder) WithRanges(ranges *mesos.Value_Ranges) *MesosResourceBuilder {
+	o.Resource.Ranges = ranges
+	return o
+}
+
 // TODO: add other building functions when needed
 
-//Build returns the mesos resource
-func (o *MesosResourceBuilder) Build() *mesos_v1.Resource {
+// Build returns the mesos resource
+func (o *MesosResourceBuilder) Build() *mesos.Resource {
 	res := o.Resource
 	return &res
 }
 
 // MesosStateToPelotonState translates mesos task state to peloton task state
 // TODO: adjust in case there are additional peloton states
-func MesosStateToPelotonState(mstate mesos_v1.TaskState) task.RuntimeInfo_TaskState {
+func MesosStateToPelotonState(mstate mesos.TaskState) task.RuntimeInfo_TaskState {
 	switch mstate {
-	case mesos_v1.TaskState_TASK_STAGING:
+	case mesos.TaskState_TASK_STAGING:
 		return task.RuntimeInfo_LAUNCHED
-	case mesos_v1.TaskState_TASK_STARTING:
+	case mesos.TaskState_TASK_STARTING:
 		return task.RuntimeInfo_LAUNCHED
-	case mesos_v1.TaskState_TASK_RUNNING:
+	case mesos.TaskState_TASK_RUNNING:
 		return task.RuntimeInfo_RUNNING
 	// NOTE: This should only be sent when the framework has
 	// the TASK_KILLING_STATE capability.
-	case mesos_v1.TaskState_TASK_KILLING:
+	case mesos.TaskState_TASK_KILLING:
 		return task.RuntimeInfo_RUNNING
-	case mesos_v1.TaskState_TASK_FINISHED:
+	case mesos.TaskState_TASK_FINISHED:
 		return task.RuntimeInfo_SUCCEEDED
-	case mesos_v1.TaskState_TASK_FAILED:
+	case mesos.TaskState_TASK_FAILED:
 		return task.RuntimeInfo_FAILED
-	case mesos_v1.TaskState_TASK_KILLED:
+	case mesos.TaskState_TASK_KILLED:
 		return task.RuntimeInfo_KILLED
-	case mesos_v1.TaskState_TASK_LOST:
+	case mesos.TaskState_TASK_LOST:
 		return task.RuntimeInfo_LOST
-	case mesos_v1.TaskState_TASK_ERROR:
+	case mesos.TaskState_TASK_ERROR:
 		return task.RuntimeInfo_FAILED
 	default:
 		log.Errorf("Unknown mesos taskState %v", mstate)

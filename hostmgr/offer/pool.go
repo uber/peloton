@@ -30,7 +30,7 @@ type Pool interface {
 	Clear()
 
 	// Decline offers
-	DeclineOffers(offers map[string]*TimedOffer) error
+	DeclineOffers(offers map[string]*mesos.Offer) error
 
 	// ClaimForPlace obtains offers from pool conforming to given constraints
 	// for placement purposes. Results are grouped by hostname as key.
@@ -276,10 +276,10 @@ func (p *offerPool) Clear() {
 }
 
 // DeclineOffers calls mesos master to decline list of offers
-func (p *offerPool) DeclineOffers(offers map[string]*TimedOffer) error {
+func (p *offerPool) DeclineOffers(offers map[string]*mesos.Offer) error {
 	offerIDs := []*mesos.OfferID{}
 	for _, offer := range offers {
-		offerIDs = append(offerIDs, offer.MesosOffer.Id)
+		offerIDs = append(offerIDs, offer.Id)
 	}
 	log.WithField("offer_ids", offerIDs).Debug("Decline offers")
 	callType := sched.Call_DECLINE
@@ -301,14 +301,18 @@ func (p *offerPool) DeclineOffers(offers map[string]*TimedOffer) error {
 		// we can ignore the error.
 		log.WithField("error", err).Warn("Failed to decline offers so put offers back to pool")
 
+		expiration := time.Now().Add(p.offerHoldTime)
 		defer p.RUnlock()
 		p.RLock()
 		defer p.offersLock.Lock()
 		p.offersLock.Unlock()
 		for id, offer := range offers {
-			p.offers[id] = offer
-			hostName := *offer.MesosOffer.Hostname
-			p.hostOfferIndex[hostName].addMesosOffer(offer.MesosOffer, offer.Expiration)
+			p.offers[id] = &TimedOffer{
+				MesosOffer: offer,
+				Expiration: expiration,
+			}
+			hostName := *offer.Hostname
+			p.hostOfferIndex[hostName].addMesosOffer(offer, expiration)
 		}
 		return err
 	}
