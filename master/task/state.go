@@ -3,7 +3,6 @@
 package task
 
 import (
-	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 	"sync/atomic"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -50,7 +48,6 @@ func InitTaskStateManager(
 		prevDBWrittenCount:   &prevTaskUpdateDBWrittenCount,
 		statusChannelCount:   &statusChannelCount,
 	}
-	handler.applier = newTaskStateUpdateApplier(&handler, dbWriteConcurrency, 10000)
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_UPDATE: handler.Update,
 	}
@@ -75,15 +72,15 @@ type taskStateManager struct {
 	JobStore             storage.JobStore
 	TaskStore            storage.TaskStore
 	client               mpb.Client
-	applier              *taskUpdateApplier
 	updateAckConcurrency int
 	// Buffers the status updates to ack
 	ackChannel chan *sched.Event_Update
 
-	taskUpdateCount    *int64
-	prevUpdateCount    *int64
-	taskAckCount       *int64
-	prevAckCount       *int64
+	taskUpdateCount *int64
+	prevUpdateCount *int64
+	taskAckCount    *int64
+	prevAckCount    *int64
+	// TODO: move DB written counts into jobmgr
 	dBWrittenCount     *int64
 	prevDBWrittenCount *int64
 	statusChannelCount *int32
@@ -97,14 +94,14 @@ func (m *taskStateManager) Update(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 	var err error
 	taskUpdate := body.GetUpdate()
-	log.WithField("Task update", taskUpdate).Debugf(
-		"taskManager: Update called")
-
-	m.applier.addTaskStatus(taskUpdate.GetStatus())
+	log.WithField("task_update", taskUpdate).
+		Debugf("taskManager: Update called")
 
 	err = m.eventStreamHandler.AddStatusUpdate(taskUpdate.GetStatus())
 	if err != nil {
-		log.WithError(err).WithField("statusupdate", taskUpdate.GetStatus()).Error("Cannot add status update")
+		log.WithError(err).
+			WithField("status_update", taskUpdate.GetStatus()).
+			Error("Cannot add status update")
 	} else {
 		m.ackChannel <- taskUpdate
 	}
@@ -119,17 +116,26 @@ func (m *taskStateManager) updateCounters() {
 		m.lastPrintTime = time.Now()
 		updateCount := atomic.LoadInt64(m.taskUpdateCount)
 		prevCount := atomic.LoadInt64(m.prevUpdateCount)
-		log.WithField("TaskUpdateCount", updateCount).WithField("delta", updateCount-prevCount).Info("Task updates received")
+		log.WithFields(log.Fields{
+			"TaskUpdateCount": updateCount,
+			"delta":           updateCount - prevCount,
+		}).Info("Task updates received")
 		atomic.StoreInt64(m.prevUpdateCount, updateCount)
 
 		ackCount := atomic.LoadInt64(m.taskAckCount)
 		prevAckCount := atomic.LoadInt64(m.prevAckCount)
-		log.WithField("TaskAckCount", ackCount).WithField("delta", ackCount-prevAckCount).Info("Task updates acked")
+		log.WithFields(log.Fields{
+			"TaskAckCount": ackCount,
+			"delta":        ackCount - prevAckCount,
+		}).Info("Task updates acked")
 		atomic.StoreInt64(m.prevAckCount, ackCount)
 
 		writtenCount := atomic.LoadInt64(m.dBWrittenCount)
 		prevWrittenCount := atomic.LoadInt64(m.prevDBWrittenCount)
-		log.WithField("TaskWrittenCount", writtenCount).WithField("delta", writtenCount-prevWrittenCount).Info("Task db persisted")
+		log.WithFields(log.Fields{
+			"TaskWrittenCount": writtenCount,
+			"delta":            writtenCount - prevWrittenCount,
+		}).Info("Task db persisted")
 		atomic.StoreInt64(m.prevDBWrittenCount, writtenCount)
 
 		log.WithField("TaskUpdateChannelCount", atomic.LoadInt32(m.statusChannelCount)).Info("TaskUpdate channel size")
@@ -147,41 +153,15 @@ func (m *taskStateManager) startAsyncProcessTaskUpdates() {
 					} else {
 						err := m.acknowledgeTaskUpdate(taskUpdate)
 						if err != nil {
-							log.Errorf("Failed to acknowledgeTaskUpdate %v, err=%v", taskUpdate, err)
+							log.WithField("task_status", *taskUpdate).
+								WithError(err).
+								Error("Failed to acknowledgeTaskUpdate")
 						}
 					}
 				}
 			}
 		}()
 	}
-}
-
-func (m *taskStateManager) processTaskStatusChange(taskStatus *mesos.TaskStatus) error {
-	atomic.AddInt64(m.dBWrittenCount, 1)
-	mesosTaskID := taskStatus.GetTaskId().GetValue()
-	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
-	if err != nil {
-		log.Errorf("Fail to parse taskID for mesostaskID %v, err=%v", mesosTaskID, err)
-		return err
-	}
-	taskInfo, err := m.TaskStore.GetTaskByID(taskID)
-	if err != nil {
-		log.Errorf("Fail to find taskInfo for taskID %v, err=%v",
-			taskID, err)
-		return err
-	}
-	state := util.MesosStateToPelotonState(taskStatus.GetState())
-
-	// TODO: depends on the state, may need to put the task back to
-	// the queue, or clear the pending task record from taskqueue
-	taskInfo.GetRuntime().State = state
-	err = m.TaskStore.UpdateTask(taskInfo)
-	if err != nil {
-		log.Errorf("Fail to update taskInfo for taskID %v, new state %v, err=%v",
-			taskID, state, err)
-		return err
-	}
-	return nil
 }
 
 func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *sched.Event_Update) error {
@@ -200,90 +180,11 @@ func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *sched.Event_Update)
 	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID()
 	err := m.client.Call(msid, msg)
 	if err != nil {
-		log.Errorf("Failed to ack task update %v, err=%v", *taskUpdate, err)
+		log.WithField("task_status", *taskUpdate).
+			WithError(err).
+			Error("Failed to ack task update")
 		return err
 	}
-	log.Debugf("ack task update %v", *taskUpdate)
+	log.WithField("task_status", *taskUpdate).Debug("Acked task update")
 	return nil
-}
-
-// taskUpdateApplier maps taskUpdate to a list of buckets; and each bucket would be consumed by a single go routine
-// in which the task updates are processed. This would allow quick response to mesos for those status updates; while
-// for each individual task, the events are processed in order
-type taskUpdateApplier struct {
-	statusBuckets []*taskUpdateBucket
-}
-
-// taskUpdateBucket is a bucket of task updates. All updates for one task would end up in one bucket in order; a bucket
-// can hold status updates for multiple tasks.
-type taskUpdateBucket struct {
-	statusChannel   chan *mesos.TaskStatus
-	shutdownChannel chan struct{}
-	index           int
-	processedCount  *int32
-}
-
-func newTaskUpdateBucket(size int, index int) *taskUpdateBucket {
-	updates := make(chan *mesos.TaskStatus, size)
-	var count int32
-	return &taskUpdateBucket{
-		statusChannel:   updates,
-		shutdownChannel: make(chan struct{}, 10),
-		index:           index,
-		processedCount:  &count,
-	}
-}
-
-func (t *taskUpdateBucket) shutdown() {
-	log.Infof("Shutting down bucket %v", t.index)
-	t.shutdownChannel <- struct{}{}
-}
-
-func (t *taskUpdateBucket) getProcessedCount() int32 {
-	return atomic.LoadInt32(t.processedCount)
-}
-
-func newTaskStateUpdateApplier(t *taskStateManager, bucketNum int, chanSize int) *taskUpdateApplier {
-	var buckets []*taskUpdateBucket
-	// TODO: make me use batch task updates instead of individual updates
-	for i := 0; i < bucketNum; i++ {
-		bucket := newTaskUpdateBucket(chanSize, i)
-		buckets = append(buckets, bucket)
-		go func() {
-			for {
-				select {
-				case taskStatus := <-bucket.statusChannel:
-					err := t.processTaskStatusChange(taskStatus)
-					if err != nil {
-						log.Errorf("Error applying taskSatus, err=%v status=%v, bucket=%v", err, taskStatus, bucket.index)
-					}
-					atomic.AddInt32(bucket.processedCount, 1)
-				case <-bucket.shutdownChannel:
-					log.Infof("bucket %v is shutdown", bucket.index)
-					return
-				}
-			}
-		}()
-	}
-	return &taskUpdateApplier{
-		statusBuckets: buckets,
-	}
-}
-
-func (t *taskUpdateApplier) addTaskStatus(taskStatus *mesos.TaskStatus) {
-	mesosTaskID := taskStatus.GetTaskId().GetValue()
-	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
-	if err != nil {
-		log.Errorf("Failed to ParseTaskIDFromMesosTaskID, mesosTaskID=%v, err=%v", mesosTaskID, err)
-		return
-	}
-	_, instanceID, _ := util.ParseTaskID(taskID)
-	index := instanceID % len(t.statusBuckets)
-	t.statusBuckets[index].statusChannel <- taskStatus
-}
-
-func (t *taskUpdateApplier) shutdown() {
-	for _, bucket := range t.statusBuckets {
-		bucket.shutdown()
-	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"code.uber.internal/infra/peloton/util"
 	"github.com/stretchr/testify/assert"
+	pb_eventstream "peloton/private/eventstream"
 )
 
 type mockTaskStore struct {
@@ -60,21 +61,16 @@ func (m *mockTaskStore) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 	}, nil
 }
 
-func TestTaskStateUpdateApplier(t *testing.T) {
+func TestBucketEventProcessor(t *testing.T) {
 	store := &mockTaskStore{
 		mutex:   &sync.Mutex{},
 		updates: make(map[string][]*task.TaskInfo),
 	}
-	var dBWrittenCount int64
-	handler := &taskStateManager{
-		TaskStore:            store,
-		JobStore:             nil,
-		client:               nil,
-		updateAckConcurrency: 0,
-		dBWrittenCount:       &dBWrittenCount,
+	handler := &StatusUpdate{
+		taskStore: store,
 	}
-
-	applier := newTaskStateUpdateApplier(handler, 15, 100)
+	var offset uint64
+	applier := newBucketEventProcessor(handler, 15, 100)
 
 	jobID := "Test"
 	n := 243
@@ -88,7 +84,11 @@ func TestTaskStateUpdateApplier(t *testing.T) {
 			},
 			State: &state,
 		}
-		applier.addTaskStatus(status)
+		offset++
+		applier.addEvent(&pb_eventstream.Event{
+			Offset:     offset,
+			TaskStatus: status,
+		})
 	}
 	for i := 0; i < n; i++ {
 		taskID := fmt.Sprintf("%s-%d", jobID, i)
@@ -99,7 +99,11 @@ func TestTaskStateUpdateApplier(t *testing.T) {
 			},
 			State: &state,
 		}
-		applier.addTaskStatus(status)
+		offset++
+		applier.addEvent(&pb_eventstream.Event{
+			Offset:     offset,
+			TaskStatus: status,
+		})
 	}
 	for i := 0; i < n; i++ {
 		taskID := fmt.Sprintf("%s-%d", jobID, i)
@@ -110,7 +114,11 @@ func TestTaskStateUpdateApplier(t *testing.T) {
 			},
 			State: &state,
 		}
-		applier.addTaskStatus(status)
+		offset++
+		applier.addEvent(&pb_eventstream.Event{
+			Offset:     offset,
+			TaskStatus: status,
+		})
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -124,7 +132,7 @@ func TestTaskStateUpdateApplier(t *testing.T) {
 		assert.Equal(t, taskUpdates[1].Runtime.State.String(), util.MesosStateToPelotonState(mesos.TaskState_TASK_RUNNING).String())
 		assert.Equal(t, taskUpdates[2].Runtime.State.String(), util.MesosStateToPelotonState(mesos.TaskState_TASK_FINISHED).String())
 	}
-	for _, bucket := range applier.statusBuckets {
+	for _, bucket := range applier.eventBuckets {
 		assert.True(t, bucket.getProcessedCount() > 0)
 	}
 	applier.shutdown()
