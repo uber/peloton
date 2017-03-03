@@ -85,6 +85,15 @@ func (p *TestEventProcessor) OnEvent(event *pb_eventstream.Event) {
 	p.events = append(p.events, event)
 }
 
+func (p *TestEventProcessor) GetEventProgress() uint64 {
+	p.Lock()
+	defer p.Unlock()
+	if len(p.events) > 0 {
+		return p.events[len(p.events)-1].Offset
+	}
+	return uint64(0)
+}
+
 func makeStreamClient(clientName string, client *testJSONClient) (*Client, *TestEventProcessor) {
 	eventProcessor := &TestEventProcessor{}
 	var shutdownFlag int32

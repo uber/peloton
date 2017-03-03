@@ -21,7 +21,11 @@ var (
 
 // EventHandler is the interface for handling task update events
 type EventHandler interface {
+	// The event notification callback
 	OnEvent(event *pb_eventstream.Event)
+	// Returns the event progress the handler has processed. The value
+	// will be used by the client to determine the purgeOffset
+	GetEventProgress() uint64
 }
 
 // Client is the event stream client
@@ -103,8 +107,17 @@ func (c *Client) sendWaitEventRequest(
 	purgeOffset uint64) (*pb_eventstream.WaitForEventsResponse, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelFunc()
+
+	// We need to make this adjust for the first event,
+	// where c.eventHandler.GetEventProgress() and BeginOffset are both 0
+	purgeOffset = c.eventHandler.GetEventProgress() + 1
+	if purgeOffset > beginOffset {
+		purgeOffset = beginOffset
+	}
+
 	request := &pb_eventstream.WaitForEventsRequest{
 		BeginOffset: beginOffset,
+		// purgeOffset are used to move the circular buffer tail, thus plus 1
 		PurgeOffset: purgeOffset,
 		StreamID:    c.streamID,
 		ClientName:  c.clientName,
