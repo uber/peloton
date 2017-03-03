@@ -8,6 +8,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"math"
+	"peloton/private/resmgr"
 )
 
 // ResPool this is the struct which will be holding the resource pool
@@ -95,7 +96,7 @@ func (n *ResPool) Isleaf() bool {
 }
 
 // EnqueueTask enques the task into pending queue
-func (n *ResPool) EnqueueTask(task *queue.TaskItem) error {
+func (n *ResPool) EnqueueTask(task *resmgr.Task) error {
 	if n.Isleaf() {
 		err := n.pendingQueue.Enqueue(task)
 		return err
@@ -105,7 +106,7 @@ func (n *ResPool) EnqueueTask(task *queue.TaskItem) error {
 }
 
 // DequeueTask dequeues the task from the pending queue
-func (n *ResPool) DequeueTask() (*queue.TaskItem, error) {
+func (n *ResPool) DequeueTask() (*resmgr.Task, error) {
 	// TODO: We need to merge both dequeuetask and dequeuetasks
 	if n.Isleaf() {
 		res, err := n.pendingQueue.Dequeue()

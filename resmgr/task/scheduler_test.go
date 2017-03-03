@@ -9,6 +9,7 @@ import (
 	"peloton/api/job"
 	pb_respool "peloton/api/respool"
 	"peloton/api/task"
+	"peloton/private/resmgr"
 	"testing"
 	"time"
 )
@@ -150,62 +151,63 @@ func (suite *TaskSchedulerTestSuite) setUpRespools() {
 func (suite *TaskSchedulerTestSuite) AddTasks() {
 
 	// Task -1
-	taskInfo1 := task.TaskInfo{
-		InstanceId: 1,
-		JobId: &job.JobID{
-			Value: "job1",
-		},
+	// Task - 1
+	jobID1 := &job.JobID{
+		Value: "job1",
 	}
-	enq1 := new(queue.TaskItem)
-	enq1 = &queue.TaskItem{
-		TaskInfo: &taskInfo1,
-		TaskID:   fmt.Sprintf("%s-%d", taskInfo1.JobId.Value, taskInfo1.InstanceId),
+	taskID1 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
+	}
+	enq1 := &resmgr.Task{
+		Name:     "job1-1",
 		Priority: 0,
+		JobId:    jobID1,
+		Id:       taskID1,
 	}
 	suite.allNodes["respool11"].EnqueueTask(enq1)
 
 	// Task -2
-	taskInfo2 := task.TaskInfo{
-		InstanceId: 2,
-		JobId: &job.JobID{
-			Value: "job1",
-		},
+	jobID2 := &job.JobID{
+		Value: "job1",
 	}
-
-	enq2 := queue.TaskItem{
-		TaskInfo: &taskInfo2,
-		TaskID:   fmt.Sprintf("%s-%d", taskInfo2.JobId.Value, taskInfo2.InstanceId),
+	taskID2 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
+	}
+	enq2 := resmgr.Task{
+		Name:     "job1-2",
 		Priority: 1,
+		JobId:    jobID2,
+		Id:       taskID2,
 	}
 	suite.allNodes["respool11"].EnqueueTask(&enq2)
 
 	// Task -3
-	taskInfo3 := task.TaskInfo{
-		InstanceId: 1,
-		JobId: &job.JobID{
-			Value: "job2",
-		},
+	jobID3 := &job.JobID{
+		Value: "job2",
 	}
-
-	enq3 := queue.TaskItem{
-		TaskInfo: &taskInfo3,
-		TaskID:   fmt.Sprintf("%s-%d", taskInfo3.JobId.Value, taskInfo3.InstanceId),
+	taskID3 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID3.Value, 1),
+	}
+	enq3 := resmgr.Task{
+		Name:     "job2-1",
 		Priority: 2,
+		JobId:    jobID3,
+		Id:       taskID3,
 	}
 	suite.allNodes["respool11"].EnqueueTask(&enq3)
 
 	// Task -4
-	taskInfo4 := task.TaskInfo{
-		InstanceId: 2,
-		JobId: &job.JobID{
-			Value: "job2",
-		},
+	jobID4 := &job.JobID{
+		Value: "job2",
 	}
-
-	enq4 := queue.TaskItem{
-		TaskInfo: &taskInfo4,
-		TaskID:   fmt.Sprintf("%s-%d", taskInfo4.JobId.Value, taskInfo4.InstanceId),
+	taskID4 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID4.Value, 2),
+	}
+	enq4 := resmgr.Task{
+		Name:     "job2-2",
 		Priority: 2,
+		JobId:    jobID4,
+		Id:       taskID4,
 	}
 	suite.allNodes["respool11"].EnqueueTask(&enq4)
 }

@@ -3,6 +3,7 @@ package queue
 import (
 	"code.uber.internal/go-common.git/x/log"
 	"errors"
+	"peloton/private/resmgr"
 	"sync"
 )
 
@@ -27,20 +28,20 @@ func NewPriorityQueue(limit int64) *PriorityQueue {
 }
 
 // Enqueue queues the task based on the priority in FIFO queue
-func (f *PriorityQueue) Enqueue(ti *TaskItem) error {
+func (f *PriorityQueue) Enqueue(ti *resmgr.Task) error {
 	f.Lock()
 	defer f.Unlock()
 	if f.count >= f.limit {
 		err := errors.New("Queue Limit is reached")
 		return err
 	}
-	f.list.Push(ti.Priority, ti)
+	f.list.Push(int(ti.Priority), ti)
 	f.count++
 	return nil
 }
 
 // Dequeue dequeues the task based on the priority and order they came into the queue
-func (f *PriorityQueue) Dequeue() (*TaskItem, error) {
+func (f *PriorityQueue) Dequeue() (*resmgr.Task, error) {
 	highestPriority := f.list.GetHighestLevel()
 	item, err := f.list.Pop(highestPriority)
 	if err != nil {
@@ -52,13 +53,13 @@ func (f *PriorityQueue) Dequeue() (*TaskItem, error) {
 				break
 			}
 		}
-		return &TaskItem{}, err
+		return &resmgr.Task{}, err
 	}
 	if item == nil {
 		log.Errorf("Dequeue Failed")
-		return &TaskItem{}, err
+		return &resmgr.Task{}, err
 	}
-	res := item.(*TaskItem)
+	res := item.(*resmgr.Task)
 	f.Lock()
 	defer f.Unlock()
 	f.count--

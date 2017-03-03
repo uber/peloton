@@ -4,6 +4,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	log "github.com/Sirupsen/logrus"
+	"peloton/private/resmgr"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -90,8 +91,8 @@ func (p *Scheduler) scheduleTasks() {
 			continue
 		}
 		for e := t.Front(); e != nil; e = e.Next() {
-			task := e.Value.(*queue.TaskItem)
-			p.readyQueue.Push(task.Priority, t)
+			task := e.Value.(*resmgr.Task)
+			p.readyQueue.Push(int(task.Priority), t)
 		}
 	}
 }

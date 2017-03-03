@@ -6,54 +6,69 @@ import (
 	"github.com/stretchr/testify/suite"
 	"peloton/api/job"
 	"peloton/api/task"
+	"peloton/private/resmgr"
 	"testing"
 )
 
 type MultiLevelListTestSuite struct {
 	suite.Suite
 	mll      *MultiLevelList
-	mapTasks map[string]*TaskItem
+	mapTasks map[string]*resmgr.Task
 }
 
 func (suite *MultiLevelListTestSuite) SetupTest() {
 	suite.mll = NewMultiLevelList()
-	suite.mapTasks = make(map[string]*TaskItem)
+	suite.mapTasks = make(map[string]*resmgr.Task)
 	suite.AddTasks()
 }
 
 func (suite *MultiLevelListTestSuite) AddTasks() {
-	taskInfo1 := task.TaskInfo{
-		InstanceId: 1,
-		JobId: &job.JobID{
-			Value: "job1",
-		},
+	jobID1 := &job.JobID{
+		Value: "job1",
 	}
-	taskid1 := fmt.Sprintf("%s-%d", taskInfo1.JobId.Value, taskInfo1.InstanceId)
-	taskItem1 := NewTaskItem(&taskInfo1, 0, taskid1)
+	taskID1 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
+	}
+	taskItem1 := &resmgr.Task{
+		Name:     "job1-1",
+		Priority: 0,
+		JobId:    jobID1,
+		Id:       taskID1,
+	}
+
 	suite.mll.Push(0, taskItem1)
 	suite.mapTasks["job1-1"] = taskItem1
 	assert.Equal(suite.T(), suite.mll.GetHighestLevel(), 0, "Highest Level should be 0")
 
-	taskInfo0 := task.TaskInfo{
-		InstanceId: 1,
-		JobId: &job.JobID{
-			Value: "job2",
-		},
+	jobID0 := &job.JobID{
+		Value: "job2",
 	}
-	taskid0 := fmt.Sprintf("%s-%d", taskInfo0.JobId.Value, taskInfo0.InstanceId)
-	taskItem0 := NewTaskItem(&taskInfo0, 1, taskid0)
+	taskID0 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID0.Value, 1),
+	}
+	taskItem0 := &resmgr.Task{
+		Name:     "job2-1",
+		Priority: 1,
+		JobId:    jobID0,
+		Id:       taskID0,
+	}
+
 	suite.mll.Push(1, taskItem0)
 	suite.mapTasks["job2-1"] = taskItem0
 	assert.Equal(suite.T(), suite.mll.GetHighestLevel(), 1, "Highest Level should be 1")
 
-	taskInfo2 := task.TaskInfo{
-		InstanceId: 2,
-		JobId: &job.JobID{
-			Value: "job1",
-		},
+	jobID2 := &job.JobID{
+		Value: "job1",
 	}
-	taskid2 := fmt.Sprintf("%s-%d", taskInfo2.JobId.Value, taskInfo2.InstanceId)
-	taskItem2 := NewTaskItem(&taskInfo2, 0, taskid2)
+	taskID2 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
+	}
+	taskItem2 := &resmgr.Task{
+		Name:     "job1-2",
+		Priority: 0,
+		JobId:    jobID2,
+		Id:       taskID2,
+	}
 	suite.mll.Push(0, taskItem2)
 	suite.mapTasks["job1-2"] = taskItem2
 }
@@ -72,8 +87,8 @@ func (suite *MultiLevelListTestSuite) TestLength() {
 
 func (suite *MultiLevelListTestSuite) TestPop() {
 	t, _ := suite.mll.Pop(0)
-	assert.Equal(suite.T(), t.(*TaskItem).TaskInfo.JobId.Value, "job1", "Job 1 should be out")
-	assert.Equal(suite.T(), t.(*TaskItem).TaskInfo.InstanceId, uint32(1), "Job 1 , Instance 1 should be out")
+	assert.Equal(suite.T(), t.(*resmgr.Task).JobId.Value, "job1", "Job 1 should be out")
+	assert.Equal(suite.T(), t.(*resmgr.Task).Id.Value, "job1-1", "Job 1 , Instance 1 should be out")
 	assert.Equal(suite.T(), suite.mll.Len(0), 1, "Length should be 1")
 }
 

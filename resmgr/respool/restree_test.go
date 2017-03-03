@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc"
 
-	"code.uber.internal/infra/peloton/resmgr/queue"
 	"fmt"
 	"peloton/api/job"
 	"peloton/api/respool"
@@ -14,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"peloton/private/resmgr"
 )
 
 type RespoolTestSuite struct {
@@ -185,40 +185,48 @@ func (suite *RespoolTestSuite) TestResourceConfig() {
 
 func (suite *RespoolTestSuite) TestPendingQueue() {
 	// Task -1
-	taskInfo1 := task.TaskInfo{
-		InstanceId: 1,
-		JobId: &job.JobID{
-			Value: "job1",
-		},
+	jobID1 := &job.JobID{
+		Value: "job1",
 	}
-	taskID1 := fmt.Sprintf("%s-%d", taskInfo1.JobId.Value, taskInfo1.InstanceId)
-	enq1 := queue.NewTaskItem(&taskInfo1, 0, taskID1)
-	suite.allNodes["respool11"].EnqueueTask(enq1)
+	taskID1 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
+	}
+	taskItem1 := &resmgr.Task{
+		Name:     "job1-1",
+		Priority: 0,
+		JobId:    jobID1,
+		Id:       taskID1,
+	}
+	suite.allNodes["respool11"].EnqueueTask(taskItem1)
 
 	// Task -2
-	taskInfo2 := task.TaskInfo{
-		InstanceId: 2,
-		JobId: &job.JobID{
-			Value: "job1",
-		},
+	jobID2 := &job.JobID{
+		Value: "job1",
 	}
-	taskID2 := fmt.Sprintf("%s-%d", taskInfo2.JobId.Value, taskInfo2.InstanceId)
-	enq2 := queue.NewTaskItem(&taskInfo2, 0, taskID2)
-	suite.allNodes["respool11"].EnqueueTask(enq2)
+	taskID2 := &task.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
+	}
+	taskItem2 := &resmgr.Task{
+		Name:     "job1-2",
+		Priority: 0,
+		JobId:    jobID2,
+		Id:       taskID2,
+	}
+	suite.allNodes["respool11"].EnqueueTask(taskItem2)
 
 	res, err := suite.allNodes["respool11"].DequeueTask()
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 
-	assert.Equal(suite.T(), res.TaskInfo.JobId.Value, "job1", "Should get Job-1")
-	assert.Equal(suite.T(), res.TaskInfo.InstanceId, uint32(1), "Should get Job-1 and Task-1")
+	assert.Equal(suite.T(), res.JobId.Value, "job1", "Should get Job-1")
+	assert.Equal(suite.T(), res.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
 	res, err = suite.allNodes["respool11"].DequeueTask()
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 
-	assert.Equal(suite.T(), res.TaskInfo.JobId.Value, "job1", "Should get Job-1")
-	assert.Equal(suite.T(), res.TaskInfo.InstanceId, uint32(2), "Should get Job-1 and Task-1")
+	assert.Equal(suite.T(), res.JobId.Value, "job1", "Should get Job-1")
+	assert.Equal(suite.T(), res.Id.GetValue(), "job1-2", "Should get Job-1 and Task-1")
 }
