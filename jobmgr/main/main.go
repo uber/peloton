@@ -183,6 +183,9 @@ func main() {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 
+	// Init the Task status update which pulls task update events from HM
+	task.InitTaskStatusUpdate(dispatcher, common.PelotonHostManager, store)
+
 	log.Infof("Started Peloton job manager on port %v", cfg.JobManager.Port)
 
 	select {}

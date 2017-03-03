@@ -8,12 +8,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/eventstream"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 )
 
 // InitTaskStateManager init the task state manager
@@ -56,6 +59,16 @@ func InitTaskStateManager(
 		mpb.Register(d, hostmgr_mesos.ServiceName, mpb.Procedure(name, hdl))
 	}
 	handler.startAsyncProcessTaskUpdates()
+	// TODO: move eventStreamHandler buffer size into config
+	handler.eventStreamHandler = initEventStreamHandler(d, 10000)
+}
+
+func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int) *eventstream.Handler {
+	// TODO: add remgr as another client
+	eventStreamHandler := eventstream.NewEventStreamHandler(bufferSize, []string{common.PelotonJobManager}, nil)
+	json.Register(d, json.Procedure("EventStream.InitStream", eventStreamHandler.InitStream))
+	json.Register(d, json.Procedure("EventStream.WaitForEvents", eventStreamHandler.WaitForEvents))
+	return eventStreamHandler
 }
 
 type taskStateManager struct {
@@ -75,7 +88,8 @@ type taskStateManager struct {
 	prevDBWrittenCount *int64
 	statusChannelCount *int32
 
-	lastPrintTime time.Time
+	lastPrintTime      time.Time
+	eventStreamHandler *eventstream.Handler
 }
 
 // Update is the Mesos callback on mesos state updates
@@ -87,7 +101,18 @@ func (m *taskStateManager) Update(
 		"taskManager: Update called")
 
 	m.applier.addTaskStatus(taskUpdate.GetStatus())
-	m.ackChannel <- taskUpdate
+
+	err = m.eventStreamHandler.AddStatusUpdate(taskUpdate.GetStatus())
+	if err != nil {
+		log.WithError(err).WithField("statusupdate", taskUpdate.GetStatus()).Error("Cannot add status update")
+	} else {
+		m.ackChannel <- taskUpdate
+	}
+	m.updateCounters()
+	return err
+}
+
+func (m *taskStateManager) updateCounters() {
 	atomic.AddInt32(m.statusChannelCount, 1)
 	atomic.AddInt64(m.taskUpdateCount, 1)
 	if time.Since(m.lastPrintTime).Seconds() > 1.0 {
@@ -109,7 +134,6 @@ func (m *taskStateManager) Update(
 
 		log.WithField("TaskUpdateChannelCount", atomic.LoadInt32(m.statusChannelCount)).Info("TaskUpdate channel size")
 	}
-	return err
 }
 
 func (m *taskStateManager) startAsyncProcessTaskUpdates() {

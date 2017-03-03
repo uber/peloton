@@ -442,6 +442,9 @@ func main() {
 	}
 	log.Infof("Started Peloton master on port %v", cfg.Master.Port)
 
+	// Init task status update
+	task.InitTaskStatusUpdate(dispatcher, peloton_common.PelotonMaster, taskStore)
+
 	// Start resmgr dispatch loop
 	if err := resmgrDispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
