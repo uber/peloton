@@ -25,6 +25,10 @@ __date__ = '2016-12-08'
 __author__ = 'wu'
 
 
+max_retry_attempts = 20
+sleep_time_secs = 5
+
+
 #
 # Get eth0 ip of the host
 # TODO: see if we can do better than running ipconfig/ifconfig
@@ -223,13 +227,48 @@ def run_cassandra():
             port_bindings={
                 config['cassandra_cql_port']: config['cassandra_cql_port'],
                 config['cassandra_thrift_port']: config['cassandra_thrift_port'],
-            }
+            },
+            binds=[
+                work_dir + '/scripts:/scripts',
+            ],
         ),
         image=config['cassandra_image'],
         detach=True,
     )
     cli.start(container=container.get('Id'))
     print 'started container %s' % config['cassandra_container']
+
+    # Create cassandra store
+    create_cassandra_store()
+
+
+#
+# Create cassandra store with retries
+#
+def create_cassandra_store():
+    retry_attempts = 0
+    while retry_attempts < max_retry_attempts:
+        time.sleep(sleep_time_secs)
+        setup_exe = cli.exec_create(
+            container=config['cassandra_container'],
+            cmd='/scripts/setup_cassandra.sh',
+        )
+        show_exe = cli.exec_create(
+            container=config['cassandra_container'],
+            cmd='cqlsh -e "describe %s"' % config['cassandra_test_db'],
+        )
+        # by api design, exec_start needs to be called after exec_create to run 'docker exec'
+        resp = cli.exec_start(exec_id=setup_exe)
+        if resp is "":
+            resp = cli.exec_start(exec_id=show_exe)
+            if "CREATE KEYSPACE peloton_test WITH" in resp:
+                print 'cassandra store is created'
+                return
+        print 'Attempt{1} failed to create cassandra store, err: {0}, retrying...'.format(resp, retry_attempts)
+        retry_attempts += 1
+
+    print 'Failed to create cassandra store after %d attempts, aborting...' % max_retry_attempts
+    sys.exit(1)
 
 
 #

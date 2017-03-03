@@ -257,15 +257,17 @@ func main() {
 	var taskStore storage.TaskStore
 	var frameworkStore storage.FrameworkInfoStore
 
+	// Connect to mysql DB
+	// This is mandatory until resmgr supports stapi, otherwise resmgr will crash
+	if err := cfg.Storage.MySQL.Connect(); err != nil {
+		log.Fatalf("Could not connect to database: %+v", err)
+	}
+	// Migrate DB if necessary
+	if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
+		log.Fatalf("Could not migrate database: %+v", errs)
+	}
+
 	if !cfg.Storage.UseSTAPI {
-		// Connect to mysql DB
-		if err := cfg.Storage.MySQL.Connect(); err != nil {
-			log.Fatalf("Could not connect to database: %+v", err)
-		}
-		// Migrate DB if necessary
-		if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
-			log.Fatalf("Could not migrate database: %+v", errs)
-		}
 		// Initialize job and task stores
 		store := mysql.NewJobStore(cfg.Storage.MySQL, metricScope.SubScope("storage"))
 		store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
