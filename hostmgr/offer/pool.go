@@ -169,7 +169,14 @@ func (p *offerPool) ClaimForLaunch(hostname string) (
 	p.offersLock.Lock()
 	defer p.offersLock.Unlock()
 
-	offerMap := p.hostOfferIndex[hostname].removeOffersByStatus(PlacingOffer)
+	offerMap, err := p.hostOfferIndex[hostname].claimForLaunch()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"host":  hostname,
+			"error": err,
+		}).Error("ClaimForLaunch error")
+		return nil, err
+	}
 
 	for id := range offerMap {
 		if _, ok := p.offers[id]; ok {

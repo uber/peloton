@@ -78,11 +78,11 @@ func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer, expiration time.Tim
 	}
 }
 
-func (a *hostOfferSummary) removeOffersByStatus(status CacheStatus) map[string]*mesos.Offer {
+func (a *hostOfferSummary) claimForLaunch() (map[string]*mesos.Offer, error) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	if a.status != status {
-		return nil
+	if a.status != PlacingOffer {
+		return nil, errors.New("Host status is not Placing")
 	}
 
 	result := make(map[string]*mesos.Offer)
@@ -90,7 +90,11 @@ func (a *hostOfferSummary) removeOffersByStatus(status CacheStatus) map[string]*
 		result[id] = offer
 		delete(a.offersOnHost, id)
 	}
-	return result
+
+	// Reseting status to ready so any future offer on the host is considered as ready.
+	a.status = ReadyOffer
+	a.readyCount.Store(0)
+	return result, nil
 }
 
 func (a *hostOfferSummary) removeMesosOffer(offerID string) {
