@@ -35,7 +35,7 @@ all: $(PBGENS) master placement executor client hostmgr resmgr jobmgr
 
 master:
 	@mkdir -p $(BIN_DIR)
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/cli/*.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/main/*.go
 
 placement:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-placement placement/main/main.go
