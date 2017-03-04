@@ -23,6 +23,7 @@ import (
 	"github.com/gemnasium/migrate/migrate"
 	_ "github.com/go-sql-driver/mysql" // Pull in MySQL driver for sqlx
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 )
 
@@ -662,17 +663,52 @@ func (m *ResourcePoolStore) CreateResourcePool(id *respool.ResourcePoolID, respo
 
 // GetResourcePool gets a resource pool info object
 func (m *ResourcePoolStore) GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
-	return nil, nil
+	return nil, errors.New("unimplemented")
 }
 
 // DeleteResourcePool Deletes the resource pool
 func (m *ResourcePoolStore) DeleteResourcePool(id *respool.ResourcePoolID) error {
-	return nil
+	return errors.New("unimplemented")
 }
 
 // UpdateResourcePool Update the resource pool
 func (m *ResourcePoolStore) UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
-	return nil
+	return errors.New("unimplemented")
+}
+
+// GetResourcePoolsByOwner gets resource pool(s) by owner
+func (m *ResourcePoolStore) GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error) {
+	var records = []storage.ResourcePoolRecord{}
+	var result = make(map[string]*respool.ResourcePoolConfig)
+	q, args := getQueryAndArgs(resourcePoolTable, map[string]interface{}{"created_by=": owner}, []string{"*"})
+	log.WithFields(log.Fields{
+		"Query": q,
+		"Args":  args,
+	}).Debug("DB query")
+	err := m.DB.Select(&records, q, args...)
+	if err == sql.ErrNoRows {
+		log.Warnf("GetResourcePoolsByOwner returns no rows")
+		// TODO: Adding metrics
+		return result, nil
+	}
+	if err != nil {
+		log.WithField("Error", err).Error("GetResourcePoolsByOwner failed")
+		return nil, err
+	}
+	for _, resPoolRecord := range records {
+		resPoolConfig, err := resPoolRecord.GetResPoolConfig()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"resPoolRecord": resPoolRecord,
+				"Error ":        err,
+			}).Error("GetResPoolConfig failed")
+			// TODO: Adding metrics
+			return nil, err
+		}
+		result[resPoolRecord.RowKey] = resPoolConfig
+	}
+	// TODO: Adding metrics
+	return result, nil
 }
 
 // GetAllResourcePools Get all the resource pool

@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"peloton/api/job"
+	"peloton/api/respool"
 	"peloton/api/task"
 	"reflect"
 	"strings"
@@ -14,17 +15,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	mesos "mesos/v1"
+
 	peloton_storage "code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/stapi-go.git"
 	"code.uber.internal/infra/stapi-go.git/api"
 	sc "code.uber.internal/infra/stapi-go.git/config"
 	qb "code.uber.internal/infra/stapi-go.git/querybuilder"
+
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
+	"github.com/pkg/errors"
 	"github.com/uber-common/bark"
 	"github.com/uber-go/tally"
-	mesos "mesos/v1"
 )
 
 const (
@@ -36,6 +40,8 @@ const (
 	jobOwnerView          = "mv_jobs_by_owner"
 	taskJobStateView      = "mv_task_by_job_state"
 	taskHostView          = "mv_task_by_host"
+	resPools              = "respools"
+	resPoolsOwnerView     = "mv_respools_by_owner"
 )
 
 // Config is the config for STAPIStore
@@ -801,6 +807,122 @@ func (s *Store) applyStatement(stmt api.Statement, itemName string) error {
 		return fmt.Errorf(errMsg)
 	}
 	return nil
+}
+
+// CreateResourcePool creates a resource pool with the resource pool id and the config value
+func (s *Store) CreateResourcePool(id *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig, owner string) error {
+	resourcePoolID := id.Value
+	configBuffer, err := json.Marshal(resPoolConfig)
+	if err != nil {
+		log.Errorf("error = %v", err)
+		s.metrics.ResourcePoolCreateFail.Inc(1)
+		return err
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(resPools).
+		Columns("ID", "ResourcePoolConfig", "Owner", "CreateTime", "UpdateTime").
+		Values(resourcePoolID, string(configBuffer), owner, time.Now(), time.Now()).
+		IfNotExist()
+
+	err = s.applyStatement(stmt, resourcePoolID)
+	if err != nil {
+		s.metrics.ResourcePoolCreateFail.Inc(1)
+		return err
+	}
+	s.metrics.ResourcePoolCreate.Inc(1)
+	return nil
+}
+
+// GetResourcePool gets a resource pool info object
+func (s *Store) GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
+	return nil, errors.New("unimplemented")
+}
+
+// DeleteResourcePool Deletes the resource pool
+func (s *Store) DeleteResourcePool(id *respool.ResourcePoolID) error {
+	return errors.New("unimplemented")
+}
+
+// UpdateResourcePool Update the resource pool
+func (s *Store) UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
+	return errors.New("unimplemented")
+}
+
+// GetAllResourcePools Get all the resource pool configs
+func (s *Store) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("ID", "Owner", "ResourcePoolConfig", "CreateTime", "UpdateTime").From(resPools)
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.Errorf("Fail to GetAllResourcePools, err=%v", err)
+		s.metrics.ResourcePoolGetFail.Inc(1)
+		return nil, err
+	}
+	var resultMap = make(map[string]*respool.ResourcePoolConfig)
+	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.Errorf("Fail to get all results for GetAllResourcePools, err=%v", err)
+		s.metrics.ResourcePoolGetFail.Inc(1)
+		return nil, err
+	}
+	for _, value := range allResults {
+		var record ResourcePoolRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.Errorf("Failed to Fill into ResourcePoolRecord, err= %v", err)
+			s.metrics.ResourcePoolGetFail.Inc(1)
+			return nil, err
+		}
+		resourcePoolConfig, err := record.GetResourcePoolConfig()
+		if err != nil {
+			log.Errorf("Failed to get ResourceConfig from record, err= %v", err)
+			s.metrics.ResourcePoolGetFail.Inc(1)
+			return nil, err
+		}
+		resultMap[record.ID] = resourcePoolConfig
+		s.metrics.ResourcePoolGet.Inc(1)
+	}
+	return resultMap, nil
+}
+
+// GetResourcePoolsByOwner Get all the resource pool b owner
+func (s *Store) GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("ID", "Owner", "ResourcePoolConfig", "CreateTime", "UpdateTime").From(resPoolsOwnerView).
+		Where(qb.Eq{"Owner": owner})
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.Errorf("Fail to GetResourcePoolsByOwner %v, err=%v", owner, err)
+		s.metrics.ResourcePoolGetFail.Inc(1)
+		return nil, err
+	}
+	var resultMap = make(map[string]*respool.ResourcePoolConfig)
+	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.Errorf("Fail to get all results for GetResourcePoolsByOwner %v, err=%v", owner, err)
+		s.metrics.ResourcePoolGetFail.Inc(1)
+		return nil, err
+	}
+
+	for _, value := range allResults {
+		var record ResourcePoolRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.Errorf("Failed to Fill into ResourcePoolRecord, err= %v", err)
+			s.metrics.ResourcePoolGetFail.Inc(1)
+			return nil, err
+		}
+		resourcePoolConfig, err := record.GetResourcePoolConfig()
+		if err != nil {
+			log.Errorf("Failed to get ResourceConfig from record, err= %v", err)
+			s.metrics.ResourcePoolGetFail.Inc(1)
+			return nil, err
+		}
+		resultMap[record.ID] = resourcePoolConfig
+		s.metrics.ResourcePoolGet.Inc(1)
+	}
+	return resultMap, nil
 }
 
 func getTaskID(taskInfo *task.TaskInfo) string {

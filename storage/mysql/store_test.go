@@ -5,39 +5,47 @@ import (
 	"strconv"
 	"testing"
 
+	mesos "mesos/v1"
+	"peloton/api/job"
+	"peloton/api/respool"
+	"peloton/api/task"
+	"peloton/api/task/config"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-	mesos "mesos/v1"
-	"peloton/api/job"
-	"peloton/api/task"
-	"peloton/api/task/config"
 )
 
-type MysqlStoreTestSuite struct {
+const (
+	_resPoolOwner = "teamPeloton"
+)
+
+type mySQLStoreTestSuite struct {
 	suite.Suite
-	store *JobStore
-	db    *sqlx.DB
+	store         *JobStore
+	resPoolsStore *ResourcePoolStore
+	db            *sqlx.DB
 }
 
-func (suite *MysqlStoreTestSuite) SetupTest() {
+func (suite *mySQLStoreTestSuite) SetupTest() {
 	conf := LoadConfigWithDB()
 
 	suite.db = conf.Conn
 	suite.store = NewJobStore(*conf, tally.NoopScope)
+	suite.resPoolsStore = NewResourcePoolStore(conf.Conn, tally.NoopScope)
 }
 
-func (suite *MysqlStoreTestSuite) TearDownTest() {
+func (suite *mySQLStoreTestSuite) TearDownTest() {
 	fmt.Println("tearing down")
 	//_, err := suite.db.Exec("DELETE FROM task")
 	//suite.NoError(err)
 }
 
 func TestMysqlStore(t *testing.T) {
-	suite.Run(t, new(MysqlStoreTestSuite))
+	suite.Run(t, new(mySQLStoreTestSuite))
 }
 
-func (suite *MysqlStoreTestSuite) TestCreateGetTaskInfo() {
+func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 	// Insert 2 jobs
 	var nJobs = 3
 	var jobIDs []*job.JobID
@@ -121,7 +129,7 @@ func (suite *MysqlStoreTestSuite) TestCreateGetTaskInfo() {
 }
 
 // TestCreateTasks ensures mysql task create batching works as expected.
-func (suite *MysqlStoreTestSuite) TestCreateTasks() {
+func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 	jobTasks := map[string]int{
 		"TestJob1": 10,
 		"TestJob2": suite.store.Conf.MaxBatchSize,
@@ -184,7 +192,7 @@ func (suite *MysqlStoreTestSuite) TestCreateTasks() {
 	}
 }
 
-func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
+func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	// Create 10 jobs in db
 	var originalJobs []*job.JobConfig
 	var records = 10
@@ -324,5 +332,80 @@ func (suite *MysqlStoreTestSuite) TestCreateGetJobConfig() {
 		result, err := suite.store.GetJob(&jobID)
 		suite.NoError(err)
 		suite.Nil(result)
+	}
+}
+
+func (suite *mySQLStoreTestSuite) TestGetResourcePoolsByOwner() {
+	nResourcePools := 2
+
+	// todo move to setup once ^^^ issue resolves
+	for i := 0; i < nResourcePools; i++ {
+		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		resourcePoolConfig := createResourcePoolConfig()
+		resourcePoolConfig.Name = resourcePoolID.Value
+		err := suite.resPoolsStore.CreateResourcePool(resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		suite.Nil(err)
+	}
+
+	testCases := []struct {
+		expectedErr    error
+		owner          string
+		nResourcePools int
+		msg            string
+	}{
+		{
+			expectedErr:    nil,
+			owner:          "idon'texist",
+			nResourcePools: 0,
+			msg:            "testcase: fetch resource pools by non existent owner",
+		},
+		{
+			expectedErr:    nil,
+			owner:          _resPoolOwner,
+			nResourcePools: nResourcePools,
+			msg:            "testcase: fetch resource pools owner",
+		},
+	}
+
+	for _, tc := range testCases {
+		resourcePools, actualErr := suite.resPoolsStore.GetResourcePoolsByOwner(tc.owner)
+		if tc.expectedErr == nil {
+			suite.Nil(actualErr, tc.msg)
+			suite.Len(resourcePools, tc.nResourcePools, tc.msg)
+		} else {
+			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
+		}
+	}
+}
+
+// Returns mock resource pool config
+func createResourcePoolConfig() *respool.ResourcePoolConfig {
+	return &respool.ResourcePoolConfig{
+		Name:        "TestResourcePool_1",
+		ChangeLog:   nil,
+		Description: "test resource pool",
+		LdapGroups:  []string{"l1", "l2"},
+		OwningTeam:  "team1",
+		Parent:      nil,
+		Policy:      1,
+		Resources:   createResourceConfigs(),
+	}
+}
+
+// Returns mock list of resource configs
+func createResourceConfigs() []*respool.ResourceConfig {
+	return []*respool.ResourceConfig{
+		{
+			Kind:        "cpu",
+			Limit:       1000.0,
+			Reservation: 100.0,
+			Share:       1.0,
+		},
+		{
+			Kind:        "gpu",
+			Limit:       4.0,
+			Reservation: 2.0,
+			Share:       1.0,
+		},
 	}
 }

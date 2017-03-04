@@ -42,9 +42,11 @@ type FrameworkInfoStore interface {
 
 // ResourcePoolStore is the interface to store all the resource pool information
 type ResourcePoolStore interface {
-	CreateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig, cratedBy string) error
+	CreateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig, createdBy string) error
 	GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error)
 	DeleteResourcePool(id *respool.ResourcePoolID) error
 	UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error
+	// TODO change to return ResourcePoolInfo
+	GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error)
 	GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error)
 }

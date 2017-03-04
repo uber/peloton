@@ -24,6 +24,12 @@ type Metrics struct {
 	TaskUpdate     tally.Counter
 	TaskUpdateFail tally.Counter
 	TaskNotFound   tally.Counter
+
+	// resource pool metrics
+	ResourcePoolCreate     tally.Counter
+	ResourcePoolCreateFail tally.Counter
+	ResourcePoolGet        tally.Counter
+	ResourcePoolGetFail    tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -32,18 +38,25 @@ func NewMetrics(scope tally.Scope) Metrics {
 	jobSuccessScope := jobScope.Tagged(map[string]string{"type": "success"})
 	jobFailScope := jobScope.Tagged(map[string]string{"type": "fail"})
 	jobNotFoundScope := jobScope.Tagged(map[string]string{"type": "not_found"})
+
 	taskScope := scope.SubScope("task")
 	taskSuccessScope := taskScope.Tagged(map[string]string{"type": "success"})
 	taskFailScope := taskScope.Tagged(map[string]string{"type": "fail"})
 	taskNotFoundScope := taskScope.Tagged(map[string]string{"type": "not_found"})
+
+	resourcePoolScope := scope.SubScope("resource_pool")
+	resourcePoolSuccessScope := resourcePoolScope.Tagged(map[string]string{"type": "success"})
+	resourcePoolFailScope := resourcePoolScope.Tagged(map[string]string{"type": "fail"})
+
 	metrics := Metrics{
-		JobCreate:      jobSuccessScope.Counter("create"),
-		JobCreateFail:  jobFailScope.Counter("create"),
-		JobDelete:      jobSuccessScope.Counter("delete"),
-		JobDeleteFail:  jobFailScope.Counter("delete"),
-		JobGet:         jobSuccessScope.Counter("get"),
-		JobGetFail:     jobFailScope.Counter("get"),
-		JobNotFound:    jobNotFoundScope.Counter("get"),
+		JobCreate:     jobSuccessScope.Counter("create"),
+		JobCreateFail: jobFailScope.Counter("create"),
+		JobDelete:     jobSuccessScope.Counter("delete"),
+		JobDeleteFail: jobFailScope.Counter("delete"),
+		JobGet:        jobSuccessScope.Counter("get"),
+		JobGetFail:    jobFailScope.Counter("get"),
+		JobNotFound:   jobNotFoundScope.Counter("get"),
+
 		TaskCreate:     taskSuccessScope.Counter("create"),
 		TaskCreateFail: taskFailScope.Counter("create"),
 		TaskGet:        taskSuccessScope.Counter("get"),
@@ -53,6 +66,11 @@ func NewMetrics(scope tally.Scope) Metrics {
 		TaskUpdate:     taskSuccessScope.Counter("update"),
 		TaskUpdateFail: taskFailScope.Counter("update"),
 		TaskNotFound:   taskNotFoundScope.Counter("get"),
+
+		ResourcePoolCreate:     resourcePoolSuccessScope.Counter("create"),
+		ResourcePoolCreateFail: resourcePoolFailScope.Counter("create"),
+		ResourcePoolGet:        resourcePoolScope.Counter("get"),
+		ResourcePoolGetFail:    resourcePoolFailScope.Counter("get"),
 	}
 	return metrics
 }

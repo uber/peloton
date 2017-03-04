@@ -1,20 +1,29 @@
 package stapi_test
 
 import (
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/storage/stapi"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
+	"testing"
+
 	mesos "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/respool"
 	"peloton/api/task"
 	"peloton/api/task/config"
-	"testing"
+
+	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/storage/stapi"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
-type STAPIStoreTestSuite struct {
+const (
+	_resPoolOwner = "teamPeloton"
+)
+
+type stAPIStoreTestSuite struct {
 	suite.Suite
 	store *stapi.Store
 }
@@ -37,10 +46,10 @@ func init() {
 }
 
 func TestSTAPIStore(t *testing.T) {
-	suite.Run(t, new(STAPIStoreTestSuite))
+	suite.Run(t, new(stAPIStoreTestSuite))
 }
 
-func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
+func (suite *stAPIStoreTestSuite) TestCreateGetJobConfig() {
 	var jobStore storage.JobStore
 	jobStore = store
 	var originalJobs []*job.JobConfig
@@ -106,7 +115,7 @@ func (suite *STAPIStoreTestSuite) TestCreateGetJobConfig() {
 	}
 }
 
-func (suite *STAPIStoreTestSuite) TestFrameworkInfo() {
+func (suite *stAPIStoreTestSuite) TestFrameworkInfo() {
 	var frameworkStore storage.FrameworkInfoStore
 	frameworkStore = store
 	err := frameworkStore.SetMesosFrameworkID("framework1", "12345")
@@ -131,7 +140,7 @@ func (suite *STAPIStoreTestSuite) TestFrameworkInfo() {
 	suite.Equal(frameworkID, "s-12345")
 }
 
-func (suite *STAPIStoreTestSuite) TestAddTasks() {
+func (suite *stAPIStoreTestSuite) TestAddTasks() {
 	var jobStore storage.JobStore
 	jobStore = store
 	var taskStore storage.TaskStore
@@ -219,7 +228,7 @@ func (suite *STAPIStoreTestSuite) TestAddTasks() {
 }
 
 // TestCreateTasks ensures mysql task create batching works as expected.
-func (suite *STAPIStoreTestSuite) TestCreateTasks() {
+func (suite *stAPIStoreTestSuite) TestCreateTasks() {
 	jobTasks := map[string]int{
 		"TestJob1": 10,
 		"TestJob2": store.Conf.MaxBatchSize,
@@ -282,7 +291,7 @@ func (suite *STAPIStoreTestSuite) TestCreateTasks() {
 	}
 }
 
-func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
+func (suite *stAPIStoreTestSuite) TestGetTasksByHostState() {
 	var jobStore storage.JobStore
 	jobStore = store
 	var taskStore storage.TaskStore
@@ -345,7 +354,7 @@ func (suite *STAPIStoreTestSuite) TestGetTasksByHostState() {
 	}
 }
 
-func (suite *STAPIStoreTestSuite) TestGetTaskStateChanges() {
+func (suite *stAPIStoreTestSuite) TestGetTaskStateChanges() {
 	var jobStore storage.JobStore
 	jobStore = store
 	var taskStore storage.TaskStore
@@ -411,7 +420,7 @@ func (suite *STAPIStoreTestSuite) TestGetTaskStateChanges() {
 
 }
 
-func (suite *STAPIStoreTestSuite) TestGetJobsByOwner() {
+func (suite *stAPIStoreTestSuite) TestGetJobsByOwner() {
 	nJobs := 2
 	owner := "uberx"
 	for i := 0; i < nJobs; i++ {
@@ -448,7 +457,7 @@ func (suite *STAPIStoreTestSuite) TestGetJobsByOwner() {
 	suite.Equal(len(jobs), 0)
 }
 
-func (suite *STAPIStoreTestSuite) TestGetTaskStateSummary() {
+func (suite *stAPIStoreTestSuite) TestGetTaskStateSummary() {
 	var taskStore storage.TaskStore
 	taskStore = store
 	var jobID = job.JobID{Value: "TestGetTaskStateSummary"}
@@ -474,7 +483,7 @@ func (suite *STAPIStoreTestSuite) TestGetTaskStateSummary() {
 	}
 }
 
-func (suite *STAPIStoreTestSuite) TestGetTaskByRange() {
+func (suite *stAPIStoreTestSuite) TestGetTaskByRange() {
 	var taskStore storage.TaskStore
 	taskStore = store
 	var jobID = job.JobID{Value: "TestGetTaskByRange"}
@@ -495,7 +504,7 @@ func (suite *STAPIStoreTestSuite) TestGetTaskByRange() {
 	suite.validateRange(&jobID, 70, 120)
 }
 
-func (suite *STAPIStoreTestSuite) validateRange(jobID *job.JobID, from, to int) {
+func (suite *stAPIStoreTestSuite) validateRange(jobID *job.JobID, from, to int) {
 	var taskStore storage.TaskStore
 	taskStore = store
 	jobConfig, err := store.GetJob(jobID)
@@ -515,6 +524,131 @@ func (suite *STAPIStoreTestSuite) validateRange(jobID *job.JobID, from, to int) 
 	for i := from; i < to; i++ {
 		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
 		suite.Equal(tID, *(taskInRange[uint32(i)].Runtime.TaskId.Value))
+	}
+}
+
+func (suite *stAPIStoreTestSuite) TestCreateGetResourcePoolConfig() {
+	var resourcePoolStore storage.ResourcePoolStore
+	resourcePoolStore = store
+	testCases := []struct {
+		resourcePoolID string
+		owner          string
+		config         *respool.ResourcePoolConfig
+		expectedErr    error
+		msg            string
+	}{
+		{
+			resourcePoolID: "first",
+			owner:          "team1",
+			config:         createResourcePoolConfig(),
+			expectedErr:    nil,
+			msg:            "testcase: create resource pool",
+		},
+		{
+			resourcePoolID: "second",
+			owner:          "",
+			config:         createResourcePoolConfig(),
+			expectedErr:    nil,
+			msg:            "testcase: create resource pool, no owner",
+		},
+		{
+			resourcePoolID: "",
+			owner:          "team2",
+			config:         createResourcePoolConfig(),
+			expectedErr:    errors.New("Key may not be empty"),
+			msg:            "testcase: create resource pool, no resource ID",
+		},
+		{
+			resourcePoolID: "first",
+			owner:          "team1",
+			config:         createResourcePoolConfig(),
+			expectedErr:    errors.New("first is not applied, item could exist already"),
+			msg:            "testcase: create resource pool, duplicate ID",
+		},
+	}
+
+	for _, tc := range testCases {
+		actualErr := resourcePoolStore.CreateResourcePool(&respool.ResourcePoolID{Value: tc.resourcePoolID},
+			tc.config, tc.owner)
+		if tc.expectedErr == nil {
+			suite.Nil(actualErr, tc.msg)
+		} else {
+			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
+		}
+	}
+}
+
+func (suite *stAPIStoreTestSuite) GetAllResourcePools() {
+	var resourcePoolStore storage.ResourcePoolStore
+	resourcePoolStore = store
+	nResourcePools := 2
+
+	// todo move to setup once ^^^ issue resolves
+	for i := 0; i < nResourcePools; i++ {
+		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		resourcePoolConfig := createResourcePoolConfig()
+		resourcePoolConfig.Name = resourcePoolID.Value
+		err := resourcePoolStore.CreateResourcePool(resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		suite.Nil(err)
+	}
+
+	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools()
+	suite.NoError(actualErr)
+	suite.Len(resourcePools, nResourcePools)
+
+}
+
+func (suite *stAPIStoreTestSuite) GetAllResourcePoolsEmptyResourcePool() {
+	var resourcePoolStore storage.ResourcePoolStore
+	resourcePoolStore = store
+	nResourcePools := 0
+	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools()
+	suite.NoError(actualErr)
+	suite.Len(resourcePools, nResourcePools)
+}
+
+func (suite *stAPIStoreTestSuite) TestGetResourcePoolsByOwner() {
+	var resourcePoolStore storage.ResourcePoolStore
+	resourcePoolStore = store
+	nResourcePools := 2
+
+	// todo move to setup once ^^^ issue resolves
+	for i := 0; i < nResourcePools; i++ {
+		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		resourcePoolConfig := createResourcePoolConfig()
+		resourcePoolConfig.Name = resourcePoolID.Value
+		err := resourcePoolStore.CreateResourcePool(resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		suite.Nil(err)
+	}
+
+	testCases := []struct {
+		expectedErr    error
+		owner          string
+		nResourcePools int
+		msg            string
+	}{
+		{
+			expectedErr:    nil,
+			owner:          "idon'texist",
+			nResourcePools: 0,
+			msg:            "testcase: fetch resource pools by non existent owner",
+		},
+		{
+			expectedErr:    nil,
+			owner:          _resPoolOwner,
+			nResourcePools: nResourcePools,
+			msg:            "testcase: fetch resource pools owner",
+		},
+	}
+
+	for _, tc := range testCases {
+		resourcePools, actualErr := resourcePoolStore.GetResourcePoolsByOwner(tc.owner)
+		if tc.expectedErr == nil {
+			suite.Nil(actualErr, tc.msg)
+			suite.Len(resourcePools, tc.nResourcePools, tc.msg)
+		} else {
+			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
+		}
 	}
 }
 
@@ -546,4 +680,36 @@ func createTaskInfo(
 		JobId:      jobID,
 	}
 	return &taskInfo
+}
+
+// Returns mock resource pool config
+func createResourcePoolConfig() *respool.ResourcePoolConfig {
+	return &respool.ResourcePoolConfig{
+		Name:        "TestResourcePool_1",
+		ChangeLog:   nil,
+		Description: "test resource pool",
+		LdapGroups:  []string{"l1", "l2"},
+		OwningTeam:  "team1",
+		Parent:      nil,
+		Policy:      1,
+		Resources:   createResourceConfigs(),
+	}
+}
+
+// Returns mock list of resource configs
+func createResourceConfigs() []*respool.ResourceConfig {
+	return []*respool.ResourceConfig{
+		{
+			Kind:        "cpu",
+			Limit:       1000.0,
+			Reservation: 100.0,
+			Share:       1.0,
+		},
+		{
+			Kind:        "gpu",
+			Limit:       4.0,
+			Reservation: 2.0,
+			Share:       1.0,
+		},
+	}
 }

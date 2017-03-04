@@ -1,14 +1,18 @@
 package stapi
 
 import (
-	"code.uber.internal/infra/peloton/storage"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"peloton/api/job"
-	"peloton/api/task"
 	"reflect"
 	"strings"
 	"time"
+
+	"peloton/api/job"
+	"peloton/api/respool"
+	"peloton/api/task"
+
+	"code.uber.internal/infra/peloton/storage"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 // JobRecord correspond to a peloton job
@@ -137,4 +141,22 @@ func getAllFieldInLowercase(objType reflect.Type) map[string]string {
 		result[strings.ToLower(objType.Field(i).Name)] = objType.Field(i).Name
 	}
 	return result
+}
+
+// ResourcePoolRecord corresponds to a peloton resource pool
+type ResourcePoolRecord struct {
+	ID                 string
+	ResourcePoolConfig string
+	Owner              string
+	CreateTime         time.Time
+	UpdateTime         time.Time
+}
+
+// GetResourcePoolConfig returns the unmarshaled respool.ResourceConfig
+func (r *ResourcePoolRecord) GetResourcePoolConfig() (*respool.ResourcePoolConfig, error) {
+	result, err := storage.UnmarshalToType(r.ResourcePoolConfig, reflect.TypeOf(respool.ResourcePoolConfig{}))
+	if err != nil {
+		return nil, err
+	}
+	return result.(*respool.ResourcePoolConfig), err
 }
