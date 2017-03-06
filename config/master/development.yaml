@@ -19,4 +19,5 @@ metrics:
   #  endpoint: localhost:1234
 
 storage:
-  use_stapi: true
+  # TODO: switch this back on after Alpha
+  use_stapi: false
