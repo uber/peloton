@@ -31,9 +31,6 @@ const (
 	GetOfferTimeout = 1 * time.Second
 	// GetTaskTimeout is the timeout value for get task request
 	GetTaskTimeout = 1 * time.Second
-
-	// Allow up to 5 attempts to place tasks
-	maxPlacementAttempts = 5
 )
 
 // Engine is an interface implementing a way to Start and Stop the placement engine
@@ -96,9 +93,13 @@ func (s *placementEngine) Stop() {
 // with same grouping constraint.
 func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 	log.WithField("group", group).Debug("Placing task group")
-	for i := 0; i < maxPlacementAttempts && s.isRunning(); i++ {
+
+	// TODO: move this loop out to the call site of current function,
+	//       so we don't need to loop in the test code.
+	placementDeadline := time.Now().Add(s.cfg.MaxPlacementDuration)
+	for time.Now().Before(placementDeadline) && s.isRunning() {
 		if len(group.tasks) == 0 {
-			log.Debug("Finishing place task group look because all tasks are placed")
+			log.Debug("Finishing place task group loop because all tasks are placed")
 			return
 		}
 
@@ -319,7 +320,8 @@ func (s *placementEngine) placeRound() {
 	for _, taskGroup := range taskGroups {
 		s.placeTaskGroup(taskGroup)
 		if len(taskGroup.tasks) > 0 {
-			log.WithField("task_group", taskGroup).Warn("Task group still has remaining tasks after allowed attempts")
+			log.WithField("task_group", taskGroup).Warn("Task group still has remaining tasks after allowed duration")
+			// TODO: add metrics for this
 			// TODO: send unplaced tasks back to correct state (READY).
 		}
 	}

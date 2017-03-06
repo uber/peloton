@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/leader"
@@ -22,6 +24,8 @@ type Config struct {
 // PlacementConfig is Placement engine specific config
 type PlacementConfig struct {
 	TaskDequeueLimit int `yaml:"task_dequeue_limit"`
-	// OfferDequeueLimit is the max Number of HostOffers to dequeue in a request
+	// OfferDequeueLimit is the max number of HostOffers to dequeue in a request
 	OfferDequeueLimit int `yaml:"offer_dequeue_limit"`
+	// MaxPlacementDuration is the max time duration to place tasks for a task group
+	MaxPlacementDuration time.Duration `yaml:"max_placement_duration"`
 }

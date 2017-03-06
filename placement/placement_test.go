@@ -3,6 +3,7 @@ package placement
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"go.uber.org/yarpc"
 
@@ -26,9 +27,12 @@ import (
 	yarpc_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mocks"
 )
 
+// TODO: load from test configs
 const (
 	taskIDFmt   = "testjob-%d-abcdefgh-abcd-1234-5678-1234567890"
 	testJobName = "testjob"
+	// a fake maxPlacementDuration to ensure that placementLoop doesn't complete immediately
+	maxPlacementDuration = time.Duration(10) * time.Second
 )
 
 var (
@@ -111,8 +115,9 @@ func TestEmptyTaskToPlace(t *testing.T) {
 
 	pe := placementEngine{
 		cfg: &placement_config.PlacementConfig{
-			TaskDequeueLimit:  10,
-			OfferDequeueLimit: 10,
+			TaskDequeueLimit:     10,
+			OfferDequeueLimit:    10,
+			MaxPlacementDuration: maxPlacementDuration,
 		},
 		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
@@ -150,10 +155,12 @@ func TestNoHostOfferReturned(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := placement_metrics.New(testScope)
 
+	// TODO: read from test configs
 	pe := placementEngine{
 		cfg: &placement_config.PlacementConfig{
-			TaskDequeueLimit:  10,
-			OfferDequeueLimit: 10,
+			TaskDequeueLimit:     10,
+			OfferDequeueLimit:    10,
+			MaxPlacementDuration: maxPlacementDuration,
 		},
 		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
@@ -202,14 +209,14 @@ func TestNoHostOfferReturned(t *testing.T) {
 				}),
 				gomock.Any()).
 			Return(nil, nil).
-			Times(maxPlacementAttempts),
+			MinTimes(1),
 	)
 
 	pe.placeRound()
 
-	assert.Equal(
+	assert.NotEqual(
 		t,
-		int64(maxPlacementAttempts),
+		int64(0),
 		testScope.Snapshot().Counters()["offer_starved"].Value())
 }
 
@@ -226,8 +233,9 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	pe := placementEngine{
 		cfg: &placement_config.PlacementConfig{
-			TaskDequeueLimit:  10,
-			OfferDequeueLimit: 10,
+			TaskDequeueLimit:     10,
+			OfferDequeueLimit:    10,
+			MaxPlacementDuration: maxPlacementDuration,
 		},
 		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
