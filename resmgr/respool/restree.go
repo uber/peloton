@@ -8,6 +8,7 @@ import (
 	rmconfig "code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/storage"
 	"container/list"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -157,4 +158,14 @@ func (r *Tree) SetAllNodes(nodes *map[string]*ResPool) {
 	r.Lock()
 	defer r.Unlock()
 	r.allNodes = *nodes
+}
+
+// LookupResPool returns the resource pool for the given resource pool ID
+func (r *Tree) LookupResPool(ID respool.ResourcePoolID) (*ResPool, error) {
+	r.RLock()
+	defer r.RUnlock()
+	if val, ok := r.allNodes[ID.Value]; ok {
+		return val, nil
+	}
+	return nil, fmt.Errorf("Not able to find Respool %s ", ID.Value)
 }

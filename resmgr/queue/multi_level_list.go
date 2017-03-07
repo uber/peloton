@@ -3,7 +3,6 @@ package queue
 import (
 	"container/list"
 	"fmt"
-	"github.com/pkg/errors"
 	"math"
 	"sync"
 )
@@ -32,28 +31,42 @@ func NewMultiLevelList() *MultiLevelList {
 
 // Push method adds taskItem to MultiLevel List
 // it takes input as the level and value as interface{}
-func (p *MultiLevelList) Push(level int, element interface{}) error {
+func (p *MultiLevelList) Push(level int, element interface{}) {
 	// TODO: We need to optimize the locking
-	// TODO: Need to take RLock on Map and Excusive lock on indivisual list
+	// TODO: Need to take RLock on Map and Excusive lock on individual list
 
 	p.Lock()
 	defer p.Unlock()
-	itemPushed := false
 	if val, ok := p.mapLists[level]; ok {
 		val.PushBack(element)
-		itemPushed = true
 	} else {
 		pList := list.New()
 		pList.PushBack(element)
 		p.mapLists[level] = pList
-		itemPushed = true
 	}
-	if itemPushed && level > p.highestLevel {
+	if level > p.highestLevel {
 		p.highestLevel = level
-		return nil
 	}
-	err := errors.Errorf("Not able to push element %s at %d level ", element, level)
-	return err
+}
+
+// PushList method adds list to MultiLevel List
+// it takes input as the level and list
+func (p *MultiLevelList) PushList(level int, newlist *list.List) {
+	// TODO: We need to optimize the locking
+	// TODO: Need to take RLock on Map and Excusive lock on individual list
+	p.Lock()
+	defer p.Unlock()
+	if val, ok := p.mapLists[level]; ok {
+		val.PushBackList(newlist)
+	} else {
+		pList := list.New()
+		pList.PushBackList(newlist)
+		p.mapLists[level] = pList
+	}
+	if level > p.highestLevel {
+		p.highestLevel = level
+
+	}
 }
 
 // Pop method removes the Front Item for the given Level

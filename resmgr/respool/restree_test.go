@@ -214,19 +214,20 @@ func (suite *RespoolTestSuite) TestPendingQueue() {
 	}
 	suite.allNodes["respool11"].EnqueueTask(taskItem2)
 
-	res, err := suite.allNodes["respool11"].DequeueTask()
+	res, err := suite.allNodes["respool11"].DequeueTasks(1)
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
+	t1 := res.Front().Value.(*resmgr.Task)
+	assert.Equal(suite.T(), t1.JobId.Value, "job1", "Should get Job-1")
+	assert.Equal(suite.T(), t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
-	assert.Equal(suite.T(), res.JobId.Value, "job1", "Should get Job-1")
-	assert.Equal(suite.T(), res.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
-
-	res, err = suite.allNodes["respool11"].DequeueTask()
-	if err != nil {
+	res2, err2 := suite.allNodes["respool11"].DequeueTasks(1)
+	t2 := res2.Front().Value.(*resmgr.Task)
+	if err2 != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 
-	assert.Equal(suite.T(), res.JobId.Value, "job1", "Should get Job-1")
-	assert.Equal(suite.T(), res.Id.GetValue(), "job1-2", "Should get Job-1 and Task-1")
+	assert.Equal(suite.T(), t2.JobId.Value, "job1", "Should get Job-1")
+	assert.Equal(suite.T(), t2.Id.GetValue(), "job1-2", "Should get Job-1 and Task-1")
 }
