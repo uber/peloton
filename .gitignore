@@ -11,6 +11,7 @@
 .build/
 /pbgen
 /vendor
+/vendor_mocks
 /bin
 /protoc
 .vagrant
@@ -32,6 +33,9 @@ cover
 jenkins.xml
 .cache
 /env/
+
+# Ignore any mocks sub-directory.
+mocks/
 
 # Emacs
 *~

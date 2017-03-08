@@ -1,4 +1,5 @@
 .PHONY: all master placement executor install client test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers
+.DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
 
@@ -22,14 +23,15 @@ PBGENS = $(PBFILES:%.proto=%.pb.go)
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
 GOLINT = $(go get github.com/golang/lint/golint)
+GOMOCK = $(go get github.com/golang/mock/gomock github.com/golang/mock/mockgen)
 PHAB_COMMENT = .phabricator-comment
 PACKAGE_VERSION=`git describe --always --tags`
 # See https://golang.org/doc/gdb for details of the flags
 GO_FLAGS = -gcflags '-N -l' -ldflags "-X main.version=$(PACKAGE_VERSION)"
 # TODO: figure out why -pkgdir does not work
 GOPATH := ${GOPATH}:${GOPATH}/src/${PROJECT_ROOT}/pbgen
-.PRECIOUS: $(PBGENS)
 
+.PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
 all: $(PBGENS) master placement executor client hostmgr resmgr jobmgr
 
@@ -65,17 +67,44 @@ cover:
 
 clean:
 	rm -rf pbgen
+	rm -rf vendor_mocks
+	find . -path "*/mocks/*.go" | grep -v "./vendor" | xargs rm -f {}
 	rm -rf $(BIN_DIR)
 
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 	@gofmt -s -w $(FMT_SRC)
+
+# Local files containing interfaces to be mocked.
+LOCAL_MOCK_SRCS := \
+  storage/interfaces.go \
+  yarpc/encoding/mpb/outbound.go
+
+LOCAL_MOCKS = $(join $(addsuffix mocks/,$(dir $(LOCAL_MOCK_SRCS))), $(notdir $(LOCAL_MOCK_SRCS)))
+
+# Vendored code which we want to generate out own mocks.
+VENDOR_MOCK_SRCS := \
+  vendor/go.uber.org/yarpc/encoding/json/outbound.go
+
+VENDOR_MOCKS = $(join $(addsuffix mocks/,$(dir $(VENDOR_MOCK_SRCS:vendor/%=vendor_mocks/%))), $(notdir $(VENDOR_MOCK_SRCS)))
+
+$(LOCAL_MOCKS): $(LOCAL_MOCK_SRCS)
+	@mkdir -p $(@D)
+	mockgen -source $(subst /mocks,,$@) -destination $@ -self_package mocks -package mocks
+	@chmod -R 777 $(@D)
+
+$(VENDOR_MOCKS): $(VENDOR_MOCK_SRCS)
+	@mkdir -p $(@D)
+	mockgen -source $(subst /mocks,,$(subst vendor_mocks/,vendor/,$@)) -destination $@ -self_package mocks -package mocks
+	@chmod -R 777 vendor_mocks
+
+mockgens: $(GOMOCK) $(LOCAL_MOCKS) $(VENDOR_MOCKS)
 
 # launch the test containers to run integration tests and so-on
 test-containers:
 	bash docker/run_test_mysql.sh
 	bash docker/run_test_cassandra.sh
 
-test: $(GOCOV) $(PBGENS) test-containers
+test: $(GOCOV) $(PBGENS) mockgens test-containers
 	gocov test $(ALL_PKGS) | gocov report
 
 # launch peloton with PELOTON={app,master}, default to none
@@ -102,6 +131,8 @@ devtools:
 	go get github.com/AlekSi/gocov-xml
 	go get github.com/matm/gocov-html
 	go get github.com/golang/lint/golint
+	go get github.com/golang/mock/gomock
+	go get github.com/golang/mock/mockgen
 
 version:
 	@echo $(PACKAGE_VERSION)
@@ -151,7 +182,7 @@ lint: devtools
 	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
 	fi;
 
-jenkins: devtools lint $(PBGENS)
-	@chmod -R 777 $(dir $(PBGEN_DIR))
+jenkins: devtools lint $(PBGENS) mockgens
+	@chmod -R 777 $(dir $(PBGEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'
 	gocov-xml < coverage.json > coverage.xml

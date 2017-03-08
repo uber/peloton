@@ -13,7 +13,7 @@ import (
 	"peloton/private/hostmgr/hostsvc"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	yarpc_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mocks"
+	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"

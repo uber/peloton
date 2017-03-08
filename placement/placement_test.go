@@ -22,7 +22,7 @@ import (
 
 	"code.uber.internal/infra/peloton/util"
 
-	yarpc_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mocks"
+	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
 // TODO: load from test configs
