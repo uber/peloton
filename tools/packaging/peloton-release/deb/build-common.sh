@@ -1,10 +1,9 @@
 PREFIX=/
-INSTALL_DIR=/peloton-install
+INSTALL_DIR="$(mktemp -d)"
 OUTPUT_DIR=/output
 SRC_DIR="${SRC_DIR:-/peloton}"
 PROTOC_VERSION="3.0.2"
 GO_VERSION="1.7.3"
-POST_INSTALL_FILE="${POST_INSTALL_FILE:-/post-install.sh}"
 
 install_golang() {
     echo 'start installing golang '$GO_VERSION
@@ -42,6 +41,7 @@ build_peloton() {
 }
 
 create_installation() {
+    echo "Installing into chroot ${INSTALL_DIR}"
     mkdir -p $INSTALL_DIR/{usr/bin,etc/peloton,etc/default/peloton}
     # we only want bins, configs, docs
     cp -R $GOPATH/src/$(make project-name)/bin/* $INSTALL_DIR/usr/bin/
@@ -74,9 +74,10 @@ package() {(
         --force
         -t deb
         -p "$pkg"
-        --after-install $POST_INSTALL_FILE
     )
 
-    cd "$INSTALL_DIR"
+    pushd "$INSTALL_DIR"
     fpm "${opts[@]}" -- .
+    popd
+    rm -rf $INSTALL_DIR
 )}

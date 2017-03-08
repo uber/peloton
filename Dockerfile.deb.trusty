@@ -21,5 +21,4 @@ WORKDIR /peloton
 
 ADD tools/packaging/peloton-release/deb/trusty/build.sh /build.sh
 ADD tools/packaging/peloton-release/deb/build-common.sh /build-common.sh
-ADD tools/packaging/peloton-release/deb/post-install.sh /post-install.sh
 ENTRYPOINT ["/build.sh"]

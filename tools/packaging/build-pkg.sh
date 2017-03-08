@@ -6,7 +6,6 @@ set -eo pipefail
 BUILD_DIR="build"
 BUILDER_PATH="deb"
 BUILDER_COMMON_FILE="$BUILDER_PATH/build-common.sh"
-POST_INSTALL_SCRIPT="$BUILDER_PATH/post-install.sh"
 DISTRIBUTION="${DISTRIBUTION:-all}"
 
 image_name="peloton-build"
@@ -47,6 +46,6 @@ for dist in $DISTRIBUTION ; do
   $docker_cmd build -t "$image_name" -f Dockerfile.deb.$dist .
   $docker_cmd run --rm -v "$(pwd)/${outputdir}":/output -t "$image_name"
   echo -e "\n\nDebs built:"
-  ls -la $outputdir
+  find $outputdir -type f -name '*.deb' -ls
   echo ""
 done
