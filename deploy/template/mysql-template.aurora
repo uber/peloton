@@ -4,7 +4,7 @@ class Profile(Struct):
   environment = Default(String, 'devel')
   cluster = Required(String)
   instances = Default(Integer, 1)
-  pinned_attribute = Default(String, "hostname")
+  pinned_attribute = Default(String, "host")
   pinned_hosts = Required(String)
   # This docker image is not compatible with aurora in AA until T745768 is resolved
   docker_image = Default(String, 'mysql/mysql-server:5.7.15')

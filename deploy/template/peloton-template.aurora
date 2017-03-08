@@ -4,7 +4,7 @@ class Profile(Struct):
   environment = Default(String, 'devel')  # TODO: make this production once we have quota.
   cluster = Required(String)
   instances = Required(Integer)
-  docker_image = Default(String, 'docker.int.uberatc.com/uber-usi/infra/peloton:fbc89d1')
+  docker_image = Required(String)
   mesos_zk_path = Required(String)
   election_zk_servers = Required(String)
   mysql_host = Required(String)
@@ -12,16 +12,10 @@ class Profile(Struct):
   use_stapi = Default(Boolean, 'false')
   cassandra_hosts = Default(String, '')
 
+
 #
 # Cluster specific profiles here
 #
-
-# PROFILES = [
-#   Profile(
-#     app_id = 'master',
-#     instances = 2,
-#   )
-# ]
 
 docker_entrypoint = Process(
    name='{{profile.app_id}}',

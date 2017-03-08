@@ -1,38 +1,56 @@
 include('../template/peloton-template.aurora')
 
+cluster = 'armored_armadillo'
+mesos_zk_path = 'zk://' + ','.join([
+    'zk-125c58ff.pit-irn-1.uberatc.net:2181',
+    'zk-c0d7569d.pit-irn-1.uberatc.net:2181',
+    'zk-ea34a2c6.pit-irn-1.uberatc.net:2181'
+]) + '/mesos/armored_armadillo'
+# TODO: figure out why comma doesn't get parsed correctly though it's supposed to be supported
+election_zk_servers = '\n'.join([
+    'zk-125c58ff.pit-irn-1.uberatc.net:2181',
+    'zk-c0d7569d.pit-irn-1.uberatc.net:2181',
+    'zk-ea34a2c6.pit-irn-1.uberatc.net:2181',
+])
+mysql_host = 'ms-0d1a494c'
+docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-26-gc94c8c3'
+
 PROFILES = [
   Profile(
-    cluster = 'armored_armadillo',
+    cluster = cluster,
     app_id = 'resmgr',
     instances = 1,
-    mesos_zk_path = 'zk://zk-4b60f997.pit-irn-1.uberatc.net:2181/mesos/armored_armadillo',
-    election_zk_servers = 'zk-4b60f997.pit-irn-1.uberatc.net',
-    mysql_host = 'ms-759264a9'
-
+    mesos_zk_path = mesos_zk_path,
+    election_zk_servers = election_zk_servers,
+    mysql_host = mysql_host,
+    docker_image = docker_image,
   ),
   Profile(
-    cluster = 'armored_armadillo',
+    cluster = cluster,
     app_id = 'hostmgr',
     instances = 1,
-    mesos_zk_path = 'zk://zk-4b60f997.pit-irn-1.uberatc.net:2181/mesos/armored_armadillo',
-    election_zk_servers = 'zk-4b60f997.pit-irn-1.uberatc.net',
-    mysql_host = 'ms-759264a9'
+    mesos_zk_path = mesos_zk_path,
+    election_zk_servers = election_zk_servers,
+    mysql_host = mysql_host,
+    docker_image = docker_image,
   ),
   Profile(
-    cluster = 'armored_armadillo',
+    cluster = cluster,
     app_id = 'jobmgr',
     instances = 1,
-    mesos_zk_path = 'zk://zk-4b60f997.pit-irn-1.uberatc.net:2181/mesos/armored_armadillo',
-    election_zk_servers = 'zk-4b60f997.pit-irn-1.uberatc.net',
-    mysql_host = 'ms-759264a9'
+    mesos_zk_path = mesos_zk_path,
+    election_zk_servers = election_zk_servers,
+    mysql_host = mysql_host,
+    docker_image = docker_image,
   ),
   Profile(
-    cluster = 'armored_armadillo',
+    cluster = cluster,
     app_id = 'placement',
     instances = 1,
-    mesos_zk_path = 'zk://zk-4b60f997.pit-irn-1.uberatc.net:2181/mesos/armored_armadillo',
-    election_zk_servers = 'zk-4b60f997.pit-irn-1.uberatc.net',
-    mysql_host = 'ms-759264a9'
+    mesos_zk_path = mesos_zk_path,
+    election_zk_servers = election_zk_servers,
+    mysql_host = mysql_host,
+    docker_image = docker_image,
   )
 ]
 
