@@ -7,12 +7,11 @@ import (
 
 	mesos "mesos/v1"
 
-	"code.uber.internal/infra/peloton/jobmgr"
-	pmt "code.uber.internal/infra/peloton/master/task"
+	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
@@ -23,20 +22,19 @@ import (
 )
 
 // InitServiceHandler initalizes the job manager
-func InitServiceHandler(d yarpc.Dispatcher,
-	config *jobmgr.JobManagerConfig, // TODO: revisit config definition
-	js storage.JobStore,
-	ts storage.TaskStore,
-	metrics *jobmgr.Metrics,
+func InitServiceHandler(
+	d yarpc.Dispatcher,
+	parent tally.Scope,
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore,
 	clientName string) {
 
 	handler := serviceHandler{
-		JobStore:  js,
-		TaskStore: ts,
+		jobStore:  jobStore,
+		taskStore: taskStore,
 		client:    json.New(d.ClientConfig(clientName)),
 		rootCtx:   context.Background(),
-		metrics:   metrics,
-		config:    config,
+		metrics:   NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
 	}
 	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
 	json.Register(d, json.Procedure("JobManager.Get", handler.Get))
@@ -46,18 +44,16 @@ func InitServiceHandler(d yarpc.Dispatcher,
 
 // serviceHandler implements peloton.api.job.JobManager
 type serviceHandler struct {
-	JobStore  storage.JobStore
-	TaskStore storage.TaskStore
-	TaskQueue util.TaskQueue
+	jobStore  storage.JobStore
+	taskStore storage.TaskStore
 	client    json.Client
 	rootCtx   context.Context
-	metrics   *jobmgr.Metrics
-	config    *jobmgr.JobManagerConfig
+	metrics   *Metrics
 }
 
 // Create creates a job object for a given job configuration and
 // enqueues the tasks for scheduling
-func (m *serviceHandler) Create(
+func (h *serviceHandler) Create(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
@@ -65,16 +61,17 @@ func (m *serviceHandler) Create(
 	jobID := req.Id
 	if strings.Index(jobID.Value, "-") > 0 {
 		// TODO: define another CreateResponse for naming error
-		m.metrics.JobCreateFail.Inc(1)
-		return nil, nil, fmt.Errorf("Invalid jobId %v that contains '-'", jobID.Value)
+		h.metrics.JobCreateFail.Inc(1)
+		err := fmt.Errorf("Invalid jobId %v that contains '-'", jobID.Value)
+		return nil, nil, err
 	}
 	jobConfig := req.Config
 
 	log.WithField("config", jobConfig).Infof("JobManager.Create called")
-	m.metrics.JobAPICreate.Inc(1)
+	h.metrics.JobAPICreate.Inc(1)
 
 	// Validate job config with default task configs
-	err := pmt.ValidateTaskConfig(jobConfig)
+	err := jm_task.ValidateTaskConfig(jobConfig)
 	if err != nil {
 		return &job.CreateResponse{
 			InvalidConfig: &job.InvalidJobConfig{
@@ -84,9 +81,9 @@ func (m *serviceHandler) Create(
 		}, nil, nil
 	}
 
-	err = m.JobStore.CreateJob(jobID, jobConfig, "peloton")
+	err = h.jobStore.CreateJob(jobID, jobConfig, "peloton")
 	if err != nil {
-		m.metrics.JobCreateFail.Inc(1)
+		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
 			AlreadyExists: &job.JobAlreadyExists{
 				Id:      req.Id,
@@ -94,7 +91,7 @@ func (m *serviceHandler) Create(
 			},
 		}, nil, nil
 	}
-	m.metrics.JobCreate.Inc(1)
+	h.metrics.JobCreate.Inc(1)
 	// NOTE: temp work to make task creation concurrent for mysql store.
 	// mysql store will be deprecated soon and we are moving on the C* store
 	// As of now, only create one job with many tasks at a time
@@ -107,11 +104,11 @@ func (m *serviceHandler) Create(
 		instance := i
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instance,
 			uuid.NewUUID().String())
-		taskConfig, err := pmt.GetTaskConfig(jobConfig, i)
+		taskConfig, err := jm_task.GetTaskConfig(jobConfig, i)
 		if err != nil {
 			log.Errorf("Failed to get task config (%d) for job %v: %v",
 				i, jobID.Value, err)
-			m.metrics.JobCreateFail.Inc(1)
+			h.metrics.JobCreateFail.Inc(1)
 			return nil, nil, err
 		}
 		t := task.TaskInfo{
@@ -128,16 +125,16 @@ func (m *serviceHandler) Create(
 		tasks[i] = &t
 	}
 	// TODO: use the username of current session for createBy param
-	err = m.TaskStore.CreateTasks(jobID, tasks, "peloton")
+	err = h.taskStore.CreateTasks(jobID, tasks, "peloton")
 	nTasks := int64(len(tasks))
 	if err != nil {
 		log.Errorf("Failed to create tasks (%d) for job %v: %v",
 			nTasks, jobID.Value, err)
-		m.metrics.TaskCreateFail.Inc(nTasks)
+		h.metrics.TaskCreateFail.Inc(nTasks)
 		return nil, nil, err
 	}
-	m.metrics.TaskCreate.Inc(nTasks)
-	m.putTasks(tasks)
+	h.metrics.TaskCreate.Inc(nTasks)
+	h.putTasks(tasks)
 
 	log.Infof("Job %v all %v tasks created, time spent: %v",
 		jobID.Value, instances, time.Since(startAddTaskTime))
@@ -147,66 +144,74 @@ func (m *serviceHandler) Create(
 	}, nil, nil
 }
 
-func (m *serviceHandler) Get(
+// Get returns a job config for a given job ID
+func (h *serviceHandler) Get(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *job.GetRequest) (*job.GetResponse, yarpc.ResMeta, error) {
-	log.Infof("JobManager.Get called: %v", req)
-	m.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, err := m.JobStore.GetJob(req.Id)
+	log.Infof("JobManager.Get called: %v", req)
+	h.metrics.JobAPIGet.Inc(1)
+
+	jobConfig, err := h.jobStore.GetJob(req.Id)
 	if err != nil {
-		m.metrics.JobGetFail.Inc(1)
+		h.metrics.JobGetFail.Inc(1)
 		log.Errorf("GetJob failed with error %v", err)
 		return nil, nil, err
 	}
-	m.metrics.JobGet.Inc(1)
+	h.metrics.JobGet.Inc(1)
 	return &job.GetResponse{Result: jobConfig}, nil, nil
 }
 
-func (m *serviceHandler) Query(
+// Query returns a list of jobs matching the given query
+func (h *serviceHandler) Query(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
-	log.Infof("JobManager.Query called: %v", req)
-	m.metrics.JobAPIQuery.Inc(1)
 
-	jobConfigs, err := m.JobStore.Query(req.Labels)
+	log.Infof("JobManager.Query called: %v", req)
+	h.metrics.JobAPIQuery.Inc(1)
+
+	jobConfigs, err := h.jobStore.Query(req.Labels)
 	if err != nil {
-		m.metrics.JobQueryFail.Inc(1)
+		h.metrics.JobQueryFail.Inc(1)
 		log.Errorf("Query job failed with error %v", err)
 		return nil, nil, err
 	}
-	m.metrics.JobQuery.Inc(1)
+	h.metrics.JobQuery.Inc(1)
 	return &job.QueryResponse{Result: jobConfigs}, nil, nil
 }
 
-func (m *serviceHandler) Delete(
+// Delete kills all running tasks in a job
+func (h *serviceHandler) Delete(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *job.DeleteRequest) (*job.DeleteResponse, yarpc.ResMeta, error) {
 
 	log.Infof("JobManager.Delete called: %v", req)
-	m.metrics.JobAPIDelete.Inc(1)
+	h.metrics.JobAPIDelete.Inc(1)
 
-	err := m.JobStore.DeleteJob(req.Id)
+	err := h.jobStore.DeleteJob(req.Id)
 	if err != nil {
-		m.metrics.JobDeleteFail.Inc(1)
+		h.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)
 		return nil, nil, err
 	}
-	m.metrics.JobDelete.Inc(1)
+	h.metrics.JobDelete.Inc(1)
 	return &job.DeleteResponse{}, nil, nil
 }
 
-func (m *serviceHandler) putTasks(tasks []*task.TaskInfo) error {
-	ctx, cancelFunc := context.WithTimeout(m.rootCtx, 10*time.Second)
+// putTasks enqueues all tasks to a task queue in resmgr.
+func (h *serviceHandler) putTasks(tasks []*task.TaskInfo) error {
+
+	// TODO: switch to use the ResourceManagerService.EnqueueTasks API
+	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
 	defer cancelFunc()
 	var response taskqueue.EnqueueResponse
 	var request = &taskqueue.EnqueueRequest{
 		Tasks: tasks,
 	}
-	_, err := m.client.Call(
+	_, err := h.client.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("TaskQueue.Enqueue"),
 		request,

@@ -18,8 +18,6 @@ import (
 	"peloton/private/resmgr/taskqueue"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	placement_config "code.uber.internal/infra/peloton/placement/config"
-	placement_metrics "code.uber.internal/infra/peloton/placement/metrics"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -33,7 +31,8 @@ const (
 	GetTaskTimeout = 1 * time.Second
 )
 
-// Engine is an interface implementing a way to Start and Stop the placement engine
+// Engine is an interface implementing a way to Start and Stop the
+// placement engine
 type Engine interface {
 	Start()
 	Stop()
@@ -42,29 +41,29 @@ type Engine interface {
 // New creates a new placement engine
 func New(
 	d yarpc.Dispatcher,
-	cfg *placement_config.PlacementConfig,
-	scope tally.Scope,
+	parent tally.Scope,
+	cfg *Config,
 	resMgrClientName string,
 	hostMgrClientName string) Engine {
-	metrics := placement_metrics.New(scope)
+
 	s := placementEngine{
 		cfg:           cfg,
 		resMgrClient:  json.New(d.ClientConfig(resMgrClientName)),
 		hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
 		rootCtx:       context.Background(),
-		metrics:       metrics,
+		metrics:       NewMetrics(parent.SubScope("placement")),
 	}
 	return &s
 }
 
 type placementEngine struct {
-	cfg           *placement_config.PlacementConfig
+	cfg           *Config
 	resMgrClient  json.Client
 	hostMgrClient json.Client
 	rootCtx       context.Context
 	started       int32
 	shutdown      int32
-	metrics       *placement_metrics.Metrics
+	metrics       *Metrics
 	tick          <-chan time.Time
 }
 

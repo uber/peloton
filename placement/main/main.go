@@ -10,7 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/placement"
-	placementconfig "code.uber.internal/infra/peloton/placement/config"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 
 	log "github.com/Sirupsen/logrus"
@@ -23,33 +22,32 @@ var (
 	version string
 	app     = kingpin.New("peloton-placement", "Peloton Placement Engine")
 
-	debug = app.
-		Flag("debug", "enable debug mode (print full json responses)").
+	debug = app.Flag(
+		"debug", "enable debug mode (print full json responses)").
 		Short('d').
 		Default("false").
 		Envar("ENABLE_DEBUG_LOGGING").
 		Bool()
 
-	configs = app.
-		Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").
+	cfgFiles = app.Flag(
+		"config",
+		"YAML config files (can be provided multiple times to merge configs)").
 		Short('c').
 		Required().
 		ExistingFiles()
 
-	zkPath = app.
-		Flag("zk-path", "Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to override)").
+	zkPath = app.Flag(
+		"zk-path",
+		"Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to override)").
 		Envar("MESOS_ZK_PATH").
 		String()
 
-	dbHost = app.
-		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
-		Envar("DB_HOST").
-		String()
-
-	electionZkServers = app.
-				Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
-				Envar("ELECTION_ZK_SERVERS").
-				Strings()
+	electionZkServers = app.Flag(
+		"election-zk-server",
+		"Election Zookeeper servers. Specify multiple times for multiple servers "+
+			"(election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+		Envar("ELECTION_ZK_SERVERS").
+		Strings()
 )
 
 func main() {
@@ -62,10 +60,10 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	var cfg placementconfig.Config
-
-	if err := config.Parse(&cfg, *configs...); err != nil {
-		log.WithField("error", err).Fatal("Cannot parse placement engine config")
+	log.WithField("files", *cfgFiles).Info("Loading Placement Engnine config")
+	var cfg Config
+	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
+		log.WithField("error", err).Fatal("Cannot parse yaml config")
 	}
 
 	// now, override any CLI flags in the loaded config.Config
@@ -73,13 +71,10 @@ func main() {
 		cfg.Mesos.ZkPath = *zkPath
 	}
 
-	if *dbHost != "" {
-		cfg.Storage.MySQL.Host = *dbHost
-	}
-
 	if len(*electionZkServers) > 0 {
 		cfg.Election.ZKServers = *electionZkServers
 	}
+	log.WithField("config", cfg).Info("Loaded Placement Engine config")
 
 	rootScope, scopeCloser, _ := metrics.InitMetricScope(
 		&cfg.Metrics,
@@ -88,41 +83,51 @@ func main() {
 	)
 	defer scopeCloser.Close()
 
-	discoveryMetricScope := rootScope.SubScope("discovery")
-
-	hostmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryMetricScope, common.HostManagerRole)
+	hostmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		rootScope,
+		common.HostManagerRole,
+	)
 	if err != nil {
-		log.Fatalf("Could not create smart peer chooser for %s: %v", common.HostManagerRole, err)
+		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
+			Fatal("Could not create smart peer chooser")
 	}
 	if err := hostmgrPeerChooser.Start(); err != nil {
-		log.Fatalf("Could not start smart peer chooser for %s: %v", common.HostManagerRole, err)
+		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
+			Fatal("Could not start smart peer chooser")
 	}
 	defer hostmgrPeerChooser.Stop()
 	hostmgrOutbound := http.NewChooserOutbound(
 		hostmgrPeerChooser,
 		&url.URL{
 			Scheme: "http",
-			Path:   common.PelotonEndpointURL,
+			Path:   common.PelotonEndpointPath,
 		},
 	)
 
-	resmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryMetricScope, common.ResourceManagerRole)
+	resmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		rootScope,
+		common.ResourceManagerRole,
+	)
 	if err != nil {
-		log.Fatalf("Could not create smart peer chooser for %s: %v", common.ResourceManagerRole, err)
+		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
+			Fatal("Could not create smart peer chooser")
 	}
 	if err := resmgrPeerChooser.Start(); err != nil {
-		log.Fatalf("Could not start smart peer chooser for %s: %v", common.ResourceManagerRole, err)
+		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
+			Fatal("Could not start smart peer chooser")
 	}
 	defer resmgrPeerChooser.Stop()
 	resmgrOutbound := http.NewChooserOutbound(
 		resmgrPeerChooser,
 		&url.URL{
 			Scheme: "http",
-			Path:   common.PelotonEndpointURL,
+			Path:   common.PelotonEndpointPath,
 		},
 	)
 
-	// now, attempt to setup the dispatcher
+	// Now attempt to setup the dispatcher
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{
 			Unary: resmgrOutbound,
@@ -146,8 +151,8 @@ func main() {
 	// Initialize and start placement engine
 	placementEngine := placement.New(
 		dispatcher,
+		rootScope,
 		&cfg.Placement,
-		rootScope.SubScope("placement"),
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
 	)

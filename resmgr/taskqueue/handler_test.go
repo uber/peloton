@@ -1,4 +1,4 @@
-package task
+package taskqueue
 
 import (
 	"fmt"
@@ -10,8 +10,7 @@ import (
 	"peloton/api/job"
 	"peloton/api/task"
 
-	"code.uber.internal/infra/peloton/master/config"
-	"code.uber.internal/infra/peloton/master/metrics"
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 	"github.com/jmoiron/sqlx"
@@ -24,14 +23,14 @@ import (
 
 var masterPort = 47960
 
-type QueueTestSuite struct {
+type ServiceHandlerTestSuite struct {
 	suite.Suite
 	store      *mysql.JobStore
 	db         *sqlx.DB
 	dispatcher yarpc.Dispatcher
 }
 
-func (suite *QueueTestSuite) SetupTest() {
+func (suite *ServiceHandlerTestSuite) SetupTest() {
 	conf := mysql.LoadConfigWithDB()
 	suite.db = conf.Conn
 	suite.store = mysql.NewJobStore(*conf, tally.NoopScope)
@@ -39,7 +38,7 @@ func (suite *QueueTestSuite) SetupTest() {
 	inbounds := []transport.Inbound{
 		http.NewInbound(":" + strconv.Itoa(masterPort)),
 	}
-	url := "http://localhost:" + strconv.Itoa(masterPort) + config.FrameworkURLPath
+	url := "http://localhost:" + strconv.Itoa(masterPort) + common.PelotonEndpointPath
 	outbounds := transport.Outbounds{
 		Unary: http.NewOutbound(url),
 	}
@@ -53,17 +52,16 @@ func (suite *QueueTestSuite) SetupTest() {
 	suite.dispatcher.Start()
 }
 
-func (suite *QueueTestSuite) TearDownTest() {
+func (suite *ServiceHandlerTestSuite) TearDownTest() {
 	fmt.Println("tearing down")
 }
 
 func TestPelotonTaskQueue(t *testing.T) {
-	suite.Run(t, new(QueueTestSuite))
+	suite.Run(t, new(ServiceHandlerTestSuite))
 }
 
-func (suite *QueueTestSuite) TestRefillTaskQueue() {
-	mtx := metrics.New(tally.NoopScope)
-	tq := InitTaskQueue(suite.dispatcher, &mtx, suite.store, suite.store)
+func (suite *ServiceHandlerTestSuite) TestRefillTaskQueue() {
+	InitServiceHandler(suite.dispatcher, tally.NoopScope, suite.store, suite.store)
 
 	// Create jobs. each with different number of tasks
 	jobs := [4]job.JobID{}
@@ -75,7 +73,7 @@ func (suite *QueueTestSuite) TestRefillTaskQueue() {
 	suite.createJob(&jobs[2], 2, 10, task.RuntimeInfo_SUCCEEDED)
 	suite.createJob(&jobs[3], 2, 10, task.RuntimeInfo_INITIALIZED)
 
-	tq.LoadFromDB()
+	handler.LoadFromDB()
 
 	// 1. All jobs should have 10 tasks in DB
 	tasks, err := suite.store.GetTasksForJob(&jobs[0])
@@ -92,14 +90,14 @@ func (suite *QueueTestSuite) TestRefillTaskQueue() {
 	suite.Equal(len(tasks), 10)
 
 	// 2. check the queue content
-	contentSummary := getQueueContent(tq)
+	contentSummary := getQueueContent(handler)
 	suite.Equal(len(contentSummary["TestJob_1"]), 3)
 	suite.Equal(len(contentSummary["TestJob_2"]), 8)
 	suite.Equal(len(contentSummary["TestJob_3"]), 10)
 	suite.Equal(len(contentSummary), 3)
 }
 
-func (suite *QueueTestSuite) createJob(
+func (suite *ServiceHandlerTestSuite) createJob(
 	jobID *job.JobID,
 	numTasks uint32,
 	instanceCount uint32,
@@ -131,10 +129,10 @@ func (suite *QueueTestSuite) createJob(
 	}
 }
 
-func getQueueContent(q *Queue) map[string]map[string]bool {
+func getQueueContent(h *serviceHandler) map[string]map[string]bool {
 	var result = make(map[string]map[string]bool)
 	for {
-		task := q.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
+		task := h.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
 		if task != nil {
 			jobID := task.JobId.Value
 			taskID := task.Runtime.TaskId.Value

@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 )
@@ -29,13 +30,12 @@ type serviceHandler struct {
 // InitServiceHandler initialize serviceHandler.
 func InitServiceHandler(
 	d yarpc.Dispatcher,
-	client mpb.Client,
-	metrics *Metrics,
-	offerPool offer.Pool) {
+	parent tally.Scope,
+	client mpb.Client) {
 	handler := serviceHandler{
 		client:    client,
-		metrics:   metrics,
-		offerPool: offerPool,
+		metrics:   NewMetrics(parent.SubScope("hostmgr")),
+		offerPool: offer.GetEventHandler().GetOfferPool(),
 	}
 
 	json.Register(d, json.Procedure("InternalHostService.AcquireHostOffers", handler.AcquireHostOffers))
@@ -64,7 +64,9 @@ func validateConstraints(req *hostsvc.AcquireHostOffersRequest) *hostsvc.Invalid
 func (h *serviceHandler) AcquireHostOffers(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.AcquireHostOffersRequest) (*hostsvc.AcquireHostOffersResponse, yarpc.ResMeta, error) {
+	body *hostsvc.AcquireHostOffersRequest,
+) (*hostsvc.AcquireHostOffersResponse, yarpc.ResMeta, error) {
+
 	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
 	if invalidConstraints := validateConstraints(body); invalidConstraints != nil {

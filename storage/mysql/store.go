@@ -157,10 +157,10 @@ type JobStore struct {
 
 // NewJobStore creates a MysqlJobStore, from a properly initialized config that has
 // already established a connection to the DB
-func NewJobStore(config Config, metricScope tally.Scope) *JobStore {
+func NewJobStore(config Config, scope tally.Scope) *JobStore {
 	return &JobStore{
 		DB:      config.Conn,
-		metrics: storage.NewMetrics(metricScope),
+		metrics: storage.NewMetrics(scope.SubScope("storage")),
 		Conf:    config,
 	}
 }
@@ -630,10 +630,10 @@ type ResourcePoolStore struct {
 }
 
 // NewResourcePoolStore creates a MysqlJobStore
-func NewResourcePoolStore(db *sqlx.DB, metricScope tally.Scope) *ResourcePoolStore {
+func NewResourcePoolStore(db *sqlx.DB, scope tally.Scope) *ResourcePoolStore {
 	return &ResourcePoolStore{
 		DB:      db,
-		metrics: storage.NewMetrics(metricScope),
+		metrics: storage.NewMetrics(scope.SubScope("storage")),
 	}
 }
 

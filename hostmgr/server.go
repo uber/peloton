@@ -6,48 +6,52 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc/transport"
 )
 
 // Server contains all structs necessary to run a hostmgr server.
-// This struct also implements leader.Node interface so that it can perform leader election
-// among multiple host manager server instances.
+// This struct also implements leader.Node interface so that it can
+// perform leader election among multiple host manager server
+// instances.
 type Server struct {
-	mutex         *sync.Mutex
-	cfg           *Config
+	sync.Mutex
+	ID                   string
+	role                 string
+	getOfferEventHandler func() offer.EventHandler
+
+	// TODO: move mesos related fields into hostmgr.ServiceHandler
 	mesosDetector mesos.MasterDetector
 	mesosInbound  mhttp.Inbound
 	mesosOutbound transport.Outbounds
-	offerManager  *offer.Manager
-	localAddr     string
 }
 
 // NewServer creates a host manager Server instance.
 func NewServer(
-	cfg *Config,
+	port int,
 	mesosDetector mesos.MasterDetector,
 	mesosInbound mhttp.Inbound,
-	mesosOutbound transport.Outbounds,
-	offerManager *offer.Manager,
-	localAddr string) *Server {
+	mesosOutbound transport.Outbounds) *Server {
+
 	return &Server{
-		mutex:         &sync.Mutex{},
-		cfg:           cfg,
-		mesosDetector: mesosDetector,
-		mesosInbound:  mesosInbound,
-		mesosOutbound: mesosOutbound,
-		offerManager:  offerManager,
-		localAddr:     localAddr,
+		ID:                   leader.NewID(port),
+		role:                 common.HostManagerRole,
+		getOfferEventHandler: offer.GetEventHandler,
+		mesosDetector:        mesosDetector,
+		mesosInbound:         mesosInbound,
+		mesosOutbound:        mesosOutbound,
 	}
 }
 
-// GainedLeadershipCallback is the callback when the current node becomes the leader
+// GainedLeadershipCallback is the callback when the current node
+// becomes the leader
 func (s *Server) GainedLeadershipCallback() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	log.WithFields(log.Fields{"role": common.HostManagerRole}).Info("Gained leadership")
+	s.Lock()
+	defer s.Unlock()
+
+	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 
 	mesosMasterAddr, err := s.mesosDetector.GetMasterLocation()
 	if err != nil {
@@ -61,37 +65,40 @@ func (s *Server) GainedLeadershipCallback() error {
 		return err
 	}
 
-	s.offerManager.Start()
+	s.getOfferEventHandler().Start()
 
 	return nil
 }
 
-// LostLeadershipCallback is the callback when the current node lost leadership
+// LostLeadershipCallback is the callback when the current node lost
+// leadership
 func (s *Server) LostLeadershipCallback() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.Lock()
+	defer s.Unlock()
 
-	log.WithFields(log.Fields{"role": common.HostManagerRole}).Info("Lost leadership")
+	log.WithFields(log.Fields{"role": s.role}).Info("Lost leadership")
+
 	err := s.mesosInbound.Stop()
 	if err != nil {
 		log.Errorf("Failed to stop mesos inbound, err = %v", err)
 	}
 
-	s.offerManager.Stop()
+	s.getOfferEventHandler().Stop()
 
 	return err
 }
 
 // ShutDownCallback is the callback to shut down gracefully if possible
 func (s *Server) ShutDownCallback() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	log.WithFields(log.Fields{"role": common.HostManagerRole}).Info("Quitting election")
+	s.Lock()
+	defer s.Unlock()
+
+	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
 	return nil
 }
 
 // GetID function returns the peloton master address
 // required to implement leader.Nomination
 func (s *Server) GetID() string {
-	return s.localAddr
+	return s.ID
 }

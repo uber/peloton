@@ -34,11 +34,17 @@ func NewSmartChooser(
 		role:     role,
 		observer: nil,
 	}
-	observer, err := leader.NewObserver(cfg, scope, role, func(leader string) error {
-		log.WithFields(log.Fields{"leader": leader, "role": sc.role}).
-			Info("New leader observed; updating peer")
-		return sc.UpdatePeer(leader)
-	})
+
+	observer, err := leader.NewObserver(
+		cfg,
+		scope.SubScope("discovery"),
+		role,
+		func(leader string) error {
+			log.WithFields(log.Fields{"leader": leader, "role": sc.role}).
+				Info("New leader observed; updating peer")
+			return sc.UpdatePeer(leader)
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

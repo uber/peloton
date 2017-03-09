@@ -6,21 +6,25 @@ import (
 
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
 	"peloton/api/job"
 	"peloton/api/task"
-
-	"code.uber.internal/infra/peloton/jobmgr"
 )
 
 // InitServiceHandler initializes the TaskManager
-func InitServiceHandler(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, metrics *jobmgr.Metrics) {
+func InitServiceHandler(
+	d yarpc.Dispatcher,
+	parent tally.Scope,
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore) {
+
 	handler := serviceHandler{
 		taskStore: taskStore,
 		jobStore:  jobStore,
-		metrics:   metrics,
+		metrics:   NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 	}
 	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
 	json.Register(d, json.Procedure("TaskManager.List", handler.List))
@@ -33,7 +37,7 @@ func InitServiceHandler(d yarpc.Dispatcher, jobStore storage.JobStore, taskStore
 type serviceHandler struct {
 	taskStore storage.TaskStore
 	jobStore  storage.JobStore
-	metrics   *jobmgr.Metrics
+	metrics   *Metrics
 }
 
 func (m *serviceHandler) Get(

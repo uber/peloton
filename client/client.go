@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	"code.uber.internal/infra/peloton/master/config"
+	"code.uber.internal/infra/peloton/common"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
@@ -25,27 +25,25 @@ type Client struct {
 }
 
 // New returns a new RPC client given a framework URL and timeout and error
-func New(frameworkURL url.URL, timeout time.Duration, debug bool, resframeworkURL url.URL) (*Client, error) {
+func New(
+	jobmgrURL url.URL,
+	timeout time.Duration,
+	debug bool,
+	resmgrURL url.URL) (*Client, error) {
 
 	// use whereever the master roots its RPC path
-	frameworkURL.Path = config.FrameworkURLPath
-	resframeworkURL.Path = config.FrameworkURLPath
-
-	outbound := http.NewOutbound(frameworkURL.String())
-	pOutbounds := transport.Outbounds{
-		Unary: outbound,
-	}
-
-	resoutbound := http.NewOutbound(resframeworkURL.String())
-	resOutbounds := transport.Outbounds{
-		Unary: resoutbound,
-	}
+	jobmgrURL.Path = common.PelotonEndpointPath
+	resmgrURL.Path = common.PelotonEndpointPath
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: "peloton-client",
 		Outbounds: yarpc.Outbounds{
-			"peloton-master": pOutbounds,
-			"peloton-resmgr": resOutbounds,
+			"peloton-master": transport.Outbounds{
+				Unary: http.NewOutbound(jobmgrURL.String()),
+			},
+			"peloton-resmgr": transport.Outbounds{
+				Unary: http.NewOutbound(resmgrURL.String()),
+			},
 		},
 	})
 

@@ -4,20 +4,17 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"time"
 
 	"code.uber.internal/infra/peloton/common"
-	common_metrics "code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/metrics"
 
 	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/master/metrics"
 	"code.uber.internal/infra/peloton/resmgr"
-	"code.uber.internal/infra/peloton/resmgr/config"
-	res "code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
-	tq "code.uber.internal/infra/peloton/resmgr/taskqueue"
+	"code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/storage/mysql"
-	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
@@ -29,18 +26,37 @@ var (
 	version string
 	app     = kingpin.New("peloton-resmgr", "Peloton Resource Manager")
 
-	debug = app.Flag("debug", "enable debug mode (print full json responses)").
+	debug = app.Flag(
+		"debug", "enable debug mode (print full json responses)").
 		Short('d').
 		Default("false").
 		Envar("ENABLE_DEBUG_LOGGING").
 		Bool()
 
-	configs           = app.Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").Short('c').Required().ExistingFiles()
-	logFormatJSON     = app.Flag("log-json", "Log in JSON format").Default("true").Bool()
-	dbHost            = app.Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").Envar("DB_HOST").String()
-	electionZkServers = app.Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
-				Envar("ELECTION_ZK_SERVERS").Strings()
-	resmgrPort = app.Flag("port", "Resource manager port (resmgr.port override) (set $PORT to override)").Envar("PORT").Int()
+	cfgFiles = app.Flag(
+		"config",
+		"YAML config files (can be provided multiple times to merge configs)").
+		Short('c').
+		Required().
+		ExistingFiles()
+
+	dbHost = app.Flag(
+		"db-host",
+		"Database host (db.host override) (set $DB_HOST to override)").
+		Envar("DB_HOST").
+		String()
+
+	electionZkServers = app.Flag(
+		"election-zk-server",
+		"Election Zookeeper servers. Specify multiple times for multiple servers "+
+			"(election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+		Envar("ELECTION_ZK_SERVERS").
+		Strings()
+
+	resmgrPort = app.Flag(
+		"port", "Resource manager port (resmgr.port override) (set $PORT to override)").
+		Envar("PORT").
+		Int()
 )
 
 func main() {
@@ -52,17 +68,15 @@ func main() {
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	if *logFormatJSON {
-		log.SetFormatter(&log.JSONFormatter{})
-	}
+	log.SetFormatter(&log.JSONFormatter{})
 	if *debug {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	log.Debugf("Loading config from %v...", *configs)
-	cfg, err := config.New(*configs...)
-	if err != nil {
-		log.Fatalf("Error initializing configuration: %v", err)
+	log.WithField("files", *cfgFiles).Info("Loading Resource Manager config")
+	var cfg Config
+	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
+		log.WithField("error", err).Fatal("Cannot parse yaml config")
 	}
 
 	// now, override any CLI flags in the loaded config.Config
@@ -75,11 +89,15 @@ func main() {
 	}
 
 	if *resmgrPort != 0 {
-		cfg.ResMgr.Port = *resmgrPort
+		cfg.ResManager.Port = *resmgrPort
 	}
-	log.WithField("config", cfg).Debug("Loaded Peloton Resource Manager configuration")
+	log.WithField("config", cfg).Info("Loaded Resource Manager config")
 
-	rootScope, scopeCloser, mux := common_metrics.InitMetricScope(&cfg.Metrics, common.PelotonResourceManager, common_metrics.TallyFlushInterval)
+	rootScope, scopeCloser, mux := metrics.InitMetricScope(
+		&cfg.Metrics,
+		common.PelotonResourceManager,
+		metrics.TallyFlushInterval,
+	)
 	defer scopeCloser.Close()
 	rootScope.Counter("boot").Inc(1)
 
@@ -93,20 +111,24 @@ func main() {
 	}
 
 	// Initialize resmgr store
-	resstore := mysql.NewResourcePoolStore(cfg.Storage.MySQL.Conn, rootScope.SubScope("storage"))
-	resstore.DB.SetMaxOpenConns(cfg.ResMgr.DbWriteConcurrency)
-	resstore.DB.SetMaxIdleConns(cfg.ResMgr.DbWriteConcurrency)
-	resstore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
+	respoolStore := mysql.NewResourcePoolStore(cfg.Storage.MySQL.Conn, rootScope)
+	respoolStore.DB.SetMaxOpenConns(cfg.ResManager.DbWriteConcurrency)
+	respoolStore.DB.SetMaxIdleConns(cfg.ResManager.DbWriteConcurrency)
+	respoolStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
 	// Initialize job and task stores
-	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
-	store.DB.SetMaxOpenConns(cfg.ResMgr.DbWriteConcurrency)
-	store.DB.SetMaxIdleConns(cfg.ResMgr.DbWriteConcurrency)
-	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
+	jobStore := mysql.NewJobStore(cfg.Storage.MySQL, rootScope)
+	jobStore.DB.SetMaxOpenConns(cfg.ResManager.DbWriteConcurrency)
+	jobStore.DB.SetMaxIdleConns(cfg.ResManager.DbWriteConcurrency)
+	jobStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
-	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can mux in other HTTP handlers
+	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
+	// mux in other HTTP handlers
 	inbounds := []transport.Inbound{
-		http.NewInbound(fmt.Sprintf(":%d", cfg.ResMgr.Port), http.Mux(common.PelotonEndpointURL, mux)),
+		http.NewInbound(
+			fmt.Sprintf(":%d", cfg.ResManager.Port),
+			http.Mux(common.PelotonEndpointPath, mux),
+		),
 	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
@@ -114,36 +136,32 @@ func main() {
 		Inbounds: inbounds,
 	})
 
-	// Initalize managers
-	metrics := metrics.New(rootScope.SubScope("resource_manager"))
+	// Initialize service handlers
+	respool.InitServiceHandler(dispatcher, rootScope, respoolStore)
+	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, jobStore)
+	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
 
-	rm := res.InitServiceHandler(dispatcher, &cfg.ResMgr, resstore, &metrics)
-	taskqueue := tq.InitTaskQueue(dispatcher, &metrics, store, store)
-	taskSched := task.NewTaskScheduler(rm.GetResourcePoolTree(),
-		time.Duration(cfg.ResMgr.TaskSchedulerRunPeriodSec)*time.Second,
-		rm.GetReadyQueue())
+	server := resmgr.NewServer(cfg.ResManager.Port)
+	candidate, err := leader.NewCandidate(
+		cfg.Election,
+		rootScope,
+		common.ResourceManagerRole,
+		server,
+	)
+	if err != nil {
+		log.Fatalf("Unable to create leader candidate: %v", err)
+	}
+	err = candidate.Start()
+	if err != nil {
+		log.Fatalf("Unable to start leader candidate: %v", err)
+	}
+	defer candidate.Stop()
+
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
-	log.Infof("Started Peloton resource manager on port %v", cfg.ResMgr.Port)
-
-	// This is the address of the local resource manager address to be announced via leader election
-	ip, err := util.ListenIP()
-	if err != nil {
-		log.Fatalf("Failed to get ip, err=%v", err)
-	}
-	localPelotonRMAddr := fmt.Sprintf("http://%s:%d", ip, cfg.ResMgr.Port)
-	resMgrLeader := resmgr.NewServer(cfg, localPelotonRMAddr, *rm, taskqueue, taskSched)
-	leadercandidate, err := leader.NewCandidate(cfg.Election, rootScope.SubScope("election"), common.ResourceManagerRole, resMgrLeader)
-	if err != nil {
-		log.WithFields(log.Fields{"error": err}).Fatal("Unable to create leader candidate")
-	}
-	err = leadercandidate.Start()
-	if err != nil {
-		log.WithFields(log.Fields{"error": err}).Fatal("Unable to start leader candidate")
-	}
-	defer leadercandidate.Stop()
+	log.Infof("Started Resource Manager on port %v", cfg.ResManager.Port)
 
 	select {}
 }

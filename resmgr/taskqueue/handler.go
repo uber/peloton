@@ -1,4 +1,4 @@
-package task
+package taskqueue
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/infra/peloton/master/metrics"
-	pmt "code.uber.internal/infra/peloton/master/task"
+	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
@@ -20,62 +20,91 @@ import (
 	tq "peloton/private/resmgr/taskqueue"
 )
 
-// InitTaskQueue inits the TaskQueue
-func InitTaskQueue(
-	d yarpc.Dispatcher,
-	metrics *metrics.Metrics,
-	js storage.JobStore,
-	ts storage.TaskStore) *Queue {
-
-	tq := Queue{metrics: metrics, jobStore: js, taskStore: ts}
-	tq.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
-	json.Register(d, json.Procedure("TaskQueue.Enqueue", tq.Enqueue))
-	json.Register(d, json.Procedure("TaskQueue.Dequeue", tq.Dequeue))
-	return &tq
+// ServiceHandler defines the interface for taskqueue service handler
+// to be called by leader election callbacks.
+type ServiceHandler interface {
+	LoadFromDB() error
+	Reset()
 }
 
-// Queue is the distributed task queue for peloton
+// serviceHandler implements peloton.private.resmgr.taskqueue.TaskQueue
 // TODO: need to handle the case if dequeue RPC fails / follower is
 // down which can lead to some tasks are dequeued and lost. We can
 // find those tasks by reconcilation, and put those tasks back
-type Queue struct {
+type serviceHandler struct {
 	tqValue atomic.Value
-	// TODO: need to handle the case if dequeue RPC fails / follower is down
-	// which can lead to some tasks are dequeued and lost. We can find those tasks
-	// by reconcilation, and put those tasks back
-	metrics   *metrics.Metrics
+	// TODO: need to handle the case if dequeue RPC fails / follower
+	// is down which can lead to some tasks are dequeued and lost. We
+	// can find those tasks by reconcilation, and put those tasks back
+	metrics   *Metrics
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
 }
 
+// Singleton service handler for TaskQueue
+var handler *serviceHandler
+
+// InitServiceHandler initialize the ServiceHandler for TaskQueue
+func InitServiceHandler(
+	d yarpc.Dispatcher,
+	parent tally.Scope,
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore) {
+
+	if handler != nil {
+		log.Warning("TaskQueue service handler has already been initialized")
+		return
+	}
+
+	handler = &serviceHandler{
+		metrics:   NewMetrics(parent.SubScope("taskqueue")),
+		jobStore:  jobStore,
+		taskStore: taskStore,
+	}
+	handler.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
+
+	json.Register(d, json.Procedure("TaskQueue.Enqueue", handler.Enqueue))
+	json.Register(d, json.Procedure("TaskQueue.Dequeue", handler.Dequeue))
+}
+
+// GetServiceHandler returns the handler for TaskQueue service. This
+// function assumes the handler has been initialized as part of the
+// InitEventHandler function.
+func GetServiceHandler() ServiceHandler {
+	if handler == nil {
+		log.Fatalf("TaskQueue handler is not initialized")
+	}
+	return handler
+}
+
 // Enqueue enqueues tasks into the queue
-func (q *Queue) Enqueue(
+func (h *serviceHandler) Enqueue(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *tq.EnqueueRequest) (*tq.EnqueueResponse, yarpc.ResMeta, error) {
 
 	tasks := req.Tasks
 	log.Debug("TaskQueue.Enqueue called")
-	q.metrics.QueueAPIEnqueue.Inc(1)
+	h.metrics.APIEnqueue.Inc(1)
 	for _, task := range tasks {
-		q.tqValue.Load().(util.TaskQueue).PutTask(task)
-		q.metrics.QueueEnqueue.Inc(1)
+		h.tqValue.Load().(util.TaskQueue).PutTask(task)
+		h.metrics.Enqueue.Inc(1)
 	}
 	return &tq.EnqueueResponse{}, nil, nil
 }
 
 // Dequeue dequeues tasks from the queue
-func (q *Queue) Dequeue(
+func (h *serviceHandler) Dequeue(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *tq.DequeueRequest) (*tq.DequeueResponse, yarpc.ResMeta, error) {
 
 	limit := req.Limit
-	q.metrics.QueueAPIDequeue.Inc(1)
+	h.metrics.APIDequeue.Inc(1)
 	var tasks []*task.TaskInfo
 	for i := 0; i < int(limit); i++ {
-		task := q.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
-		q.metrics.QueueDequeue.Inc(1)
+		task := h.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
+		h.metrics.Dequeue.Inc(1)
 		if task != nil {
 			tasks = append(tasks, task)
 		} else {
@@ -97,23 +126,25 @@ func (q *Queue) Dequeue(
 //  2. optimize by: select total task count, and task count in each
 //     state that need retry so that we don't need to scan though all
 //     tasks
-func (q *Queue) LoadFromDB() error {
+func (h *serviceHandler) LoadFromDB() error {
 
-	jobs, err := q.jobStore.GetAllJobs()
+	jobs, err := h.jobStore.GetAllJobs()
 	if err != nil {
 		log.Errorf("Fail to get all jobs from DB, err=%v", err)
 		return err
 	}
 	log.Infof("jobs : %v", jobs)
 	for jobID, jobConfig := range jobs {
-		err = q.requeueJob(jobID, jobConfig)
+		err = h.requeueJob(jobID, jobConfig)
 	}
 	return err
 }
 
 // requeueJob scan the tasks batch by batch, update / create task
 // infos, also put those task records into the queue
-func (q *Queue) requeueJob(jobID string, jobConfig *job.JobConfig) error {
+func (h *serviceHandler) requeueJob(
+	jobID string,
+	jobConfig *job.JobConfig) error {
 
 	log.Infof("Requeue job %v to task queue", jobID)
 
@@ -123,7 +154,7 @@ func (q *Queue) requeueJob(jobID string, jobConfig *job.JobConfig) error {
 	for i := uint32(0); i <= jobConfig.InstanceCount/RequeueBatchSize; i++ {
 		from := i * RequeueBatchSize
 		to := util.Min((i+1)*RequeueBatchSize, jobConfig.InstanceCount)
-		err = q.requeueTasks(jobID, jobConfig, from, to)
+		err = h.requeueTasks(jobID, jobConfig, from, to)
 		if err != nil {
 			log.Errorf("Failed to requeue tasks for job %v in [%v, %v)",
 				jobID, from, to)
@@ -135,8 +166,10 @@ func (q *Queue) requeueJob(jobID string, jobConfig *job.JobConfig) error {
 
 // requeueTasks loads the tasks in a given range from storage and
 // enqueue them to task queue
-func (q *Queue) requeueTasks(
-	jobID string, jobConfig *job.JobConfig, from, to uint32) error {
+func (h *serviceHandler) requeueTasks(
+	jobID string,
+	jobConfig *job.JobConfig,
+	from, to uint32) error {
 
 	log.Infof("Checking job %v instance range [%v, %v)", jobID, from, to)
 
@@ -147,7 +180,7 @@ func (q *Queue) requeueTasks(
 	}
 
 	pbJobID := &job.JobID{Value: jobID}
-	tasks, err := q.taskStore.GetTasksForJobByRange(
+	tasks, err := h.taskStore.GetTasksForJobByRange(
 		pbJobID,
 		&task.InstanceRange{
 			From: from,
@@ -168,8 +201,8 @@ func (q *Queue) requeueTasks(
 
 			// Requeue the tasks with these states into the queue again
 			t.Runtime.State = task.RuntimeInfo_INITIALIZED
-			q.taskStore.UpdateTask(t)
-			q.tqValue.Load().(util.TaskQueue).PutTask(t)
+			h.taskStore.UpdateTask(t)
+			h.tqValue.Load().(util.TaskQueue).PutTask(t)
 		default:
 			// Pass
 		}
@@ -181,7 +214,7 @@ func (q *Queue) requeueTasks(
 		taskID := fmt.Sprintf("%s-%d", jobID, i)
 		if exist, _ := taskIDs[taskID]; !exist {
 			log.Infof("Creating missing task %d for job %v", i, jobID)
-			taskConfig, _ := pmt.GetTaskConfig(jobConfig, i)
+			taskConfig, _ := jm_task.GetTaskConfig(jobConfig, i)
 			t := &task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
 					State:  task.RuntimeInfo_INITIALIZED,
@@ -191,8 +224,8 @@ func (q *Queue) requeueTasks(
 				InstanceId: uint32(i),
 				JobId:      pbJobID,
 			}
-			q.taskStore.CreateTask(pbJobID, i, t, "peloton")
-			q.tqValue.Load().(util.TaskQueue).PutTask(t)
+			h.taskStore.CreateTask(pbJobID, i, t, "peloton")
+			h.tqValue.Load().(util.TaskQueue).PutTask(t)
 		}
 	}
 	return nil
@@ -200,6 +233,6 @@ func (q *Queue) requeueTasks(
 
 // Reset would discard the queue content. Called when the current
 // peloton master is no longer the leader
-func (q *Queue) Reset() {
-	q.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
+func (h *serviceHandler) Reset() {
+	h.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
 }

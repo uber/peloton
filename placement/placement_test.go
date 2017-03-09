@@ -20,8 +20,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
-	placement_config "code.uber.internal/infra/peloton/placement/config"
-	placement_metrics "code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/util"
 
 	yarpc_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mocks"
@@ -112,10 +110,10 @@ func TestEmptyTaskToPlace(t *testing.T) {
 	mockRes := yarpc_mocks.NewMockClient(ctrl)
 	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := placement_metrics.New(testScope)
+	metrics := NewMetrics(testScope)
 
 	pe := placementEngine{
-		cfg: &placement_config.PlacementConfig{
+		cfg: &Config{
 			TaskDequeueLimit:     10,
 			OfferDequeueLimit:    10,
 			MaxPlacementDuration: maxPlacementDuration,
@@ -154,11 +152,11 @@ func TestNoHostOfferReturned(t *testing.T) {
 	mockRes := yarpc_mocks.NewMockClient(ctrl)
 	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := placement_metrics.New(testScope)
+	metrics := NewMetrics(testScope)
 
 	// TODO: read from test configs
 	pe := placementEngine{
-		cfg: &placement_config.PlacementConfig{
+		cfg: &Config{
 			TaskDequeueLimit:     10,
 			OfferDequeueLimit:    10,
 			MaxPlacementDuration: maxPlacementDuration,
@@ -230,10 +228,10 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	mockRes := yarpc_mocks.NewMockClient(ctrl)
 	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := placement_metrics.New(testScope)
+	metrics := NewMetrics(testScope)
 
 	pe := placementEngine{
-		cfg: &placement_config.PlacementConfig{
+		cfg: &Config{
 			TaskDequeueLimit:     10,
 			OfferDequeueLimit:    10,
 			MaxPlacementDuration: maxPlacementDuration,

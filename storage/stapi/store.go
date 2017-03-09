@@ -15,13 +15,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	mesos "mesos/v1"
-
-	peloton_storage "code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/stapi-go.git"
+	"code.uber.internal/infra/peloton/storage"
+	stapi "code.uber.internal/infra/stapi-go.git"
 	"code.uber.internal/infra/stapi-go.git/api"
 	sc "code.uber.internal/infra/stapi-go.git/config"
 	qb "code.uber.internal/infra/stapi-go.git/querybuilder"
+	mesos "mesos/v1"
 
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
@@ -84,25 +83,25 @@ func (c *Config) MigrateString() string {
 // Store implements JobStore using a cassandra backend
 type Store struct {
 	DataStore api.DataStore
-	metrics   peloton_storage.Metrics
+	metrics   storage.Metrics
 	Conf      *Config
 }
 
 // NewStore creates a Store
-func NewStore(config *Config, metricScope tally.Scope) (*Store, error) {
-	storage.Initialize(storage.Options{
+func NewStore(config *Config, scope tally.Scope) (*Store, error) {
+	stapi.Initialize(stapi.Options{
 		Cfg:    config.Stapi,
 		AppID:  "peloton",
 		Logger: bark.NewLoggerFromLogrus(log.StandardLogger()),
 	})
-	dataStore, err := storage.OpenDataStore(config.StoreName)
+	dataStore, err := stapi.OpenDataStore(config.StoreName)
 	if err != nil {
 		log.Errorf("Failed to NewSTAPIStore, err=%v", err)
 		return nil, err
 	}
 	return &Store{
 		DataStore: dataStore,
-		metrics:   peloton_storage.NewMetrics(metricScope),
+		metrics:   storage.NewMetrics(scope.SubScope("storage")),
 		Conf:      config,
 	}, nil
 }

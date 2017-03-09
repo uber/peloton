@@ -6,7 +6,6 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/metrics"
-	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage/mysql"
@@ -19,7 +18,7 @@ import (
 	"net/url"
 	"runtime"
 
-	cconfig "code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/config"
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -27,37 +26,42 @@ var (
 	version string
 	app     = kingpin.New(common.PelotonJobManager, "Peloton Job Manager")
 
-	debug = app.
-		Flag("debug", "enable debug mode (print full json responses)").
+	debug = app.Flag(
+		"debug", "enable debug mode (print full json responses)").
 		Short('d').
 		Default("false").
 		Envar("ENABLE_DEBUG_LOGGING").
 		Bool()
 
-	configs = app.
-		Flag("config", "YAML framework configuration (can be provided multiple times to merge configs)").
+	cfgFiles = app.Flag(
+		"config",
+		"YAML config files (can be provided multiple times to merge configs)").
 		Short('c').
 		Required().
 		ExistingFiles()
 
-	jobmgrPort = app.
-			Flag("port", "Job manager port (jobmgr.port override) (set $PORT to override)").
-			Envar("PORT").
-			Int()
-
-	dbHost = app.
-		Flag("db-host", "Database host (db.host override) (set $DB_HOST to override)").
+	dbHost = app.Flag(
+		"db-host",
+		"Database host (db.host override) (set $DB_HOST to override)").
 		Envar("DB_HOST").
 		String()
 
-	electionZkServers = app.
-				Flag("election-zk-server", "Election Zookeeper servers. Specify multiple times for multiple servers (election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
-				Envar("ELECTION_ZK_SERVERS").
-				Strings()
+	electionZkServers = app.Flag(
+		"election-zk-server",
+		"Election Zookeeper servers. Specify multiple times for multiple servers "+
+			"(election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+		Envar("ELECTION_ZK_SERVERS").
+		Strings()
+
+	jobmgrPort = app.Flag(
+		"port", "Job manager port (jobmgr.port override) (set $PORT to override)").
+		Envar("PORT").
+		Int()
 )
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
+
 	app.Version(version)
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
@@ -67,11 +71,10 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	// TODO: Move to jobmgr.Config
-	var cfg jobmgr.Config
-
-	if err := cconfig.Parse(&cfg, *configs...); err != nil {
-		log.WithField("error", err).Fatal("Cannot parse host manager config")
+	log.WithField("files", *cfgFiles).Info("Loading job manager config")
+	var cfg Config
+	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
+		log.WithField("error", err).Fatal("Cannot parse yaml config")
 	}
 
 	// now, override any CLI flags in the loaded config.Config
@@ -87,13 +90,14 @@ func main() {
 		cfg.Election.ZKServers = *electionZkServers
 	}
 
-	log.WithField("config", cfg).Debug("Loaded Peloton job manager configuration")
+	log.WithField("config", cfg).Info("Loaded Job Manager configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
 		common.PelotonJobManager,
 		metrics.TallyFlushInterval)
 	defer scopeCloser.Close()
+
 	// Connect to mysql DB
 	if err := cfg.Storage.MySQL.Connect(); err != nil {
 		log.Fatalf("Could not connect to database: %+v", err)
@@ -105,14 +109,22 @@ func main() {
 	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
 	inbounds := []transport.Inbound{
-		http.NewInbound(fmt.Sprintf(":%d", cfg.JobManager.Port), http.Mux(common.PelotonEndpointURL, mux)),
+		http.NewInbound(
+			fmt.Sprintf(":%d", cfg.JobManager.Port),
+			http.Mux(common.PelotonEndpointPath, mux),
+		),
 	}
 
-	// all leader discovery metrics share a scope (and will be tagged with role={role})
+	// all leader discovery metrics share a scope (and will be tagged
+	// with role={role})
 	discoveryScope := rootScope.SubScope("discovery")
-	// setup the discovery service to detect resmgr leaders and configure the
-	// YARPC Peer dynamically
-	resmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryScope, common.ResourceManagerRole)
+	// setup the discovery service to detect resmgr leaders and
+	// configure the YARPC Peer dynamically
+	resmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		discoveryScope,
+		common.ResourceManagerRole,
+	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
 			Fatal("Could not create smart peer chooser")
@@ -126,12 +138,16 @@ func main() {
 		resmgrPeerChooser,
 		&url.URL{
 			Scheme: "http",
-			Path:   common.PelotonEndpointURL,
+			Path:   common.PelotonEndpointPath,
 		})
 
-	// setup the discovery service to detect hostmgr leaders and configure the
-	// YARPC Peer dynamically
-	hostmgrPeerChooser, err := peer.NewSmartChooser(cfg.Election, discoveryScope, common.HostManagerRole)
+	// setup the discovery service to detect hostmgr leaders and
+	// configure the YARPC Peer dynamically
+	hostmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		discoveryScope,
+		common.HostManagerRole,
+	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
 			Fatal("Could not create smart peer chooser")
@@ -145,7 +161,7 @@ func main() {
 		hostmgrPeerChooser,
 		&url.URL{
 			Scheme: "http",
-			Path:   common.PelotonEndpointURL,
+			Path:   common.PelotonEndpointPath,
 		})
 
 	outbounds := yarpc.Outbounds{
@@ -158,8 +174,9 @@ func main() {
 	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		// Temp fix for T730605 so that we don't have to change peloton client,
-		// we should change it back to common.PelotonJobManager when master is deprecated
+		// Temp fix for T730605 so that we don't have to change
+		// peloton client, we should change it back to
+		// common.PelotonJobManager when master is deprecated
 		Name:      common.PelotonMaster,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
@@ -167,16 +184,14 @@ func main() {
 
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
-	jobManagerMetrics := jobmgr.NewMetrics(rootScope)
 	job.InitServiceHandler(
 		dispatcher,
-		&cfg.JobManager,
+		rootScope,
 		store,
 		store,
-		&jobManagerMetrics,
-		common.PelotonResourceManager,
+		common.PelotonResourceManager, // TODO: to be removed
 	)
-	task.InitServiceHandler(dispatcher, store, store, &jobManagerMetrics)
+	task.InitServiceHandler(dispatcher, rootScope, store, store)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

@@ -3,8 +3,8 @@ package common
 const (
 	// MesosMaster service name
 	MesosMaster = "mesos-master"
-	// PelotonEndpointURL is the url for peloton mux endpoint
-	PelotonEndpointURL = "/api/v1"
+	// PelotonEndpointPath is the path for Peloton mux endpoint
+	PelotonEndpointPath = "/api/v1"
 	// PelotonJobManager service name
 	PelotonJobManager = "peloton-jobmgr"
 	// PelotonResourceManager service name

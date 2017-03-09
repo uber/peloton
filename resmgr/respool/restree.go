@@ -4,8 +4,6 @@ import (
 	"peloton/api/respool"
 	"sync"
 
-	"code.uber.internal/infra/peloton/master/metrics"
-	rmconfig "code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/storage"
 	"container/list"
 	"fmt"
@@ -14,9 +12,8 @@ import (
 
 // InitTree will be initializing the respool tree
 func InitTree(
-	config *rmconfig.ResMgrConfig,
 	store storage.ResourcePoolStore,
-	metrics *metrics.Metrics) *Tree {
+	metrics *Metrics) *Tree {
 
 	service := Tree{
 		resPoolTree: nil,
@@ -37,19 +34,20 @@ type Tree struct {
 }
 
 // StartResPool will start the respool tree
-func (r *Tree) StartResPool() {
+func (r *Tree) StartResPool() error {
 	resPools, err := r.store.GetAllResourcePools()
 	if err != nil {
 		log.WithField("Error", err).Error("GetAllResourcePools failed")
-		return
+		return err
 	}
 	r.resPools = resPools
 	if len(resPools) == 0 {
 		log.Warnf("There are no resource pools existing")
-		return
+		return nil
 	}
 	// Initializing the respoolTree
 	r.resPoolTree = r.initializeResourceTree()
+	return nil
 }
 
 // StopResPool will stop the respool tree

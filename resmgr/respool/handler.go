@@ -4,14 +4,12 @@ import (
 	"context"
 	"sync/atomic"
 
-	"code.uber.internal/infra/peloton/master/metrics"
-	rmconfig "code.uber.internal/infra/peloton/resmgr/config"
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	"code.uber.internal/infra/peloton/resmgr/queue"
 	"peloton/api/respool"
 )
 
@@ -20,59 +18,79 @@ const (
 	runningStateRunning    = 1
 )
 
-// InitServiceHandler initializes the resource pool manager
-func InitServiceHandler(
-	d yarpc.Dispatcher,
-	config *rmconfig.ResMgrConfig,
-	store storage.ResourcePoolStore,
-	metrics *metrics.Metrics) *ServiceHandler {
+// ServiceHandler defines the interface of respool service handler to
+// be called by leader election callbacks.
+type ServiceHandler interface {
+	Start() error
+	Stop() error
 
-	// Initializing Resource Pool Tree
-	resPoolTree := InitTree(config, store, metrics)
-
-	handler := ServiceHandler{
-		store:        store,
-		metrics:      metrics,
-		config:       config,
-		dispatcher:   d,
-		runningState: runningStateNotStarted,
-		resPoolTree:  resPoolTree,
-		readyQueue:   queue.NewMultiLevelList(),
-		placingQueue: queue.NewMultiLevelList(),
-		placedQueue:  queue.NewMultiLevelList(),
-	}
-	log.Info("Resource Manager created")
-	return &handler
+	// TODO: replace this by adding a respool.Tree interface and a
+	// respool.GetTree function in tree.go
+	GetResourcePoolTree() *Tree
 }
 
-// ServiceHandler implements peloton.api.respool.ResourceManager
-type ServiceHandler struct {
+// serviceHandler implements peloton.api.respool.ResourcePoolService
+type serviceHandler struct {
 	store        storage.ResourcePoolStore
-	metrics      *metrics.Metrics
-	config       *rmconfig.ResMgrConfig
+	metrics      *Metrics
 	dispatcher   yarpc.Dispatcher
 	runningState int32
 	resPoolTree  *Tree
-	readyQueue   *queue.MultiLevelList
-	placingQueue *queue.MultiLevelList
-	placedQueue  *queue.MultiLevelList
+}
+
+// Singleton service handler for ResourcePoolService
+var handler *serviceHandler
+
+// InitServiceHandler initializes the handler for ResourcePoolService
+func InitServiceHandler(
+	d yarpc.Dispatcher,
+	parent tally.Scope,
+	store storage.ResourcePoolStore) {
+
+	if handler != nil {
+		log.Warning("Resource pool service handler has already been initialized")
+		return
+	}
+
+	metrics := NewMetrics(parent.SubScope("respool"))
+
+	// Initializing Resource Pool Tree
+	resPoolTree := InitTree(store, metrics)
+
+	handler = &serviceHandler{
+		store:        store,
+		metrics:      metrics,
+		dispatcher:   d,
+		runningState: runningStateNotStarted,
+		resPoolTree:  resPoolTree,
+	}
+	log.Info("ResourcePoolService handler created")
+}
+
+// GetServiceHandler returns the handler of ResourcePoolService. This
+// function assumes the handler has been initialized as part of the
+// InitEventHandler function.
+func GetServiceHandler() ServiceHandler {
+	if handler == nil {
+		log.Fatalf("ResourcePoolService handler is not initialized")
+	}
+	return handler
 }
 
 // CreateResourcePool will create resource pool
-func (m *ServiceHandler) CreateResourcePool(
+func (h *serviceHandler) CreateResourcePool(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *respool.CreateRequest) (*respool.CreateResponse, yarpc.ResMeta, error) {
 
-	log.Info("CreateResourcePool Called")
+	log.WithField("request", req).Info("CreateResourcePool called")
 
 	resPoolID := req.Id
 	resPoolConfig := req.Config
 
-	log.WithField("config", resPoolConfig).Infof("respool.CreateResourcePool called: %v", req)
 	// Add metrics
 
-	err := m.store.CreateResourcePool(resPoolID, resPoolConfig, "peloton")
+	err := h.store.CreateResourcePool(resPoolID, resPoolConfig, "peloton")
 	if err != nil {
 		// Add failure metrics
 		return &respool.CreateResponse{
@@ -88,75 +106,77 @@ func (m *ServiceHandler) CreateResourcePool(
 }
 
 // GetResourcePool will get resource pool
-func (m *ServiceHandler) GetResourcePool() {
-	// TODO
+func (h *serviceHandler) GetResourcePool(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	req *respool.GetRequest) (*respool.GetResponse, yarpc.ResMeta, error) {
+
+	log.WithField("request", req).Info("GetResourcePool called")
+
+	log.Fatal("Not implemented")
+	return &respool.GetResponse{}, nil, nil
 }
 
 // DeleteResourcePool will delete resource pool
-func (m *ServiceHandler) DeleteResourcePool() {
-	// TODO
+func (h *serviceHandler) DeleteResourcePool(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	req *respool.DeleteRequest) (*respool.DeleteResponse, yarpc.ResMeta, error) {
+
+	log.WithField("request", req).Info("DeleteResourcePool called")
+
+	log.Fatal("Not implemented")
+	return &respool.DeleteResponse{}, nil, nil
 }
 
 // UpdateResourcePool will update resource pool
-func (m *ServiceHandler) UpdateResourcePool() {
-	// TODO
+func (h *serviceHandler) UpdateResourcePool(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	req *respool.UpdateRequest) (*respool.UpdateResponse, yarpc.ResMeta, error) {
+
+	log.WithField("request", req).Info("UpdateResourcePool called")
+
+	log.Fatal("Not implemented")
+	return &respool.UpdateResponse{}, nil, nil
 }
 
 // Registerprocs will register all api's for end points
-func (m *ServiceHandler) registerProcs(d yarpc.Dispatcher) {
-	json.Register(d, json.Procedure("ResourceManager.CreateResourcePool", m.CreateResourcePool))
-	log.Info("CreateResourcePool Registered ")
-	/* TODO: Will have to implement these api's
-	json.Register(d, json.Procedure("ResourceManager.GetResourcePool", m.GetResourcePool))
-	json.Register(d, json.Procedure("ResourceManager.DeleteResourcePool", m.DeleteResourcePool))
-	json.Register(d, json.Procedure("ResourceManager.UpdateResourcePool", m.UpdateResourcePool))
-	*/
-
+func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
+	json.Register(d, json.Procedure("ResourceManager.CreateResourcePool", h.CreateResourcePool))
+	json.Register(d, json.Procedure("ResourceManager.GetResourcePool", h.GetResourcePool))
+	json.Register(d, json.Procedure("ResourceManager.DeleteResourcePool", h.DeleteResourcePool))
+	json.Register(d, json.Procedure("ResourceManager.UpdateResourcePool", h.UpdateResourcePool))
 }
 
 // Start will start resource manager
-func (m *ServiceHandler) Start() {
+func (h *serviceHandler) Start() error {
 
-	if m.runningState == runningStateRunning {
+	if h.runningState == runningStateRunning {
 		log.Warn("Resource Manager is already running, no action will be performed")
-		return
+		return nil
 	}
 
-	atomic.StoreInt32(&m.runningState, runningStateRunning)
+	atomic.StoreInt32(&h.runningState, runningStateRunning)
 
 	log.Info("Registering the respool procedures")
-	m.registerProcs(m.dispatcher)
-	m.resPoolTree.StartResPool()
+	h.registerProcs(h.dispatcher)
+
+	err := h.resPoolTree.StartResPool()
+	return err
 }
 
 // Stop will stop resource manager
-func (m *ServiceHandler) Stop() {
-	if m.runningState == runningStateNotStarted {
+func (h *serviceHandler) Stop() error {
+	if h.runningState == runningStateNotStarted {
 		log.Warn("Resource Manager is already stopped, no action will be performed")
-		return
+		return nil
 	}
-	atomic.StoreInt32(&m.runningState, runningStateNotStarted)
+	atomic.StoreInt32(&h.runningState, runningStateNotStarted)
+	return nil
 }
 
 // GetResourcePoolTree returns the resource pool tree.
-func (m *ServiceHandler) GetResourcePoolTree() *Tree {
-	return m.resPoolTree
-}
-
-// GetReadyQueue returns the Ready queue for Resource Manager
-// This will be having tasks which are ready to be placed
-func (m *ServiceHandler) GetReadyQueue() *queue.MultiLevelList {
-	return m.readyQueue
-}
-
-// GetPlacingQueue returns the Placing queue for Resource Manager
-// Which stores the tasks which are taken by the placement engine for placement
-func (m *ServiceHandler) GetPlacingQueue() *queue.MultiLevelList {
-	return m.placingQueue
-}
-
-// GetPlacedQueue returns the Ready queue for Resource Manager
-// This stores the tasks which are already been placed by placement engine
-func (m *ServiceHandler) GetPlacedQueue() *queue.MultiLevelList {
-	return m.placedQueue
+func (h *serviceHandler) GetResourcePoolTree() *Tree {
+	return h.resPoolTree
 }

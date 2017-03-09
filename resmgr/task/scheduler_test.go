@@ -21,22 +21,26 @@ type TaskSchedulerTestSuite struct {
 	allNodes   map[string]*respool.ResPool
 	root       *respool.ResPool
 	readyQueue *queue.MultiLevelList
-	taskSched  *Scheduler
+	taskSched  *scheduler
 }
 
 func (suite *TaskSchedulerTestSuite) SetupTest() {
 	suite.resPools = make(map[string]*pb_respool.ResourcePoolConfig)
 	suite.allNodes = make(map[string]*respool.ResPool)
-	suite.resTree = respool.InitTree(nil, nil, nil)
+	suite.resTree = respool.InitTree(nil, nil)
 	suite.setUpRespools()
 	suite.root = suite.resTree.CreateTree(nil, respool.RootResPoolID, suite.resPools, suite.allNodes)
 
-	suite.readyQueue = queue.NewMultiLevelList()
 	suite.resTree.SetAllNodes(&suite.allNodes)
 	suite.AddTasks()
-	suite.taskSched = NewTaskScheduler(suite.resTree,
-		time.Duration(1)*time.Second,
-		suite.readyQueue)
+	suite.readyQueue = queue.NewMultiLevelList()
+	suite.taskSched = &scheduler{
+		resPoolTree:      suite.resTree,
+		runningState:     runningStateNotStarted,
+		schedulingPeriod: time.Duration(1) * time.Second,
+		stopChan:         make(chan struct{}, 1),
+		readyQueue:       suite.readyQueue,
+	}
 }
 
 func (suite *TaskSchedulerTestSuite) TearDownTest() {

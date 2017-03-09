@@ -37,14 +37,20 @@ master:
 	@mkdir -p $(BIN_DIR)
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/main/*.go
 
+jobmgr:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go
+
+hostmgr:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-hostmgr hostmgr/main/*.go
+
 placement:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-placement placement/main/main.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-placement placement/main/*.go
 
 resmgr:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-resmgr resmgr/main/main.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-resmgr resmgr/main/*.go
 
 executor:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-executor executor/main.go
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-executor executor/*.go
 
 install:
 	glide --version || go get github.com/Masterminds/glide
@@ -52,12 +58,6 @@ install:
 
 client:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton client/cli/*.go
-
-jobmgr:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/main.go
-
-hostmgr:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-hostmgr hostmgr/main/main.go
 
 cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
