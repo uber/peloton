@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/resmgr/taskqueue"
+	"code.uber.internal/infra/peloton/resmgr/taskupdate"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -141,6 +142,7 @@ func main() {
 	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, jobStore)
 	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
 
+	taskupdate.InitServiceHandler(dispatcher)
 	server := resmgr.NewServer(cfg.ResManager.Port)
 	candidate, err := leader.NewCandidate(
 		cfg.Election,
@@ -148,6 +150,7 @@ func main() {
 		common.ResourceManagerRole,
 		server,
 	)
+
 	if err != nil {
 		log.Fatalf("Unable to create leader candidate: %v", err)
 	}

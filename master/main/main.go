@@ -27,6 +27,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	resmgr_task "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/resmgr/taskqueue"
+	resmgr_taskupdate "code.uber.internal/infra/peloton/resmgr/taskupdate"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
@@ -368,10 +369,7 @@ func main() {
 		dispatcher,
 		cfg.Master.TaskUpdateBufferSize,
 		cfg.Master.TaskUpdateAckConcurrency,
-		cfg.Master.DbWriteConcurrency,
-		jobStore,
-		taskStore,
-	)
+		common.PelotonMaster)
 
 	// Init host manager service handler
 	hostmgr.InitServiceHandler(
@@ -389,11 +387,13 @@ func main() {
 
 	// Init task status update
 	task.InitTaskStatusUpdate(dispatcher, common.PelotonMaster, taskStore)
+
 	// Start resmgr dispatch loop
 	if err := resmgrDispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 	log.Infof("Started Resource Manager on port %v", cfg.ResManager.Port)
+	resmgr_taskupdate.InitServiceHandler(dispatcher)
 
 	taskReconciler := reconciliation.NewTaskReconciler(
 		mesosClient,

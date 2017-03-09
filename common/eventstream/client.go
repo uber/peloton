@@ -2,9 +2,11 @@ package eventstream
 
 import (
 	"context"
+	"errors"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
+	"go.uber.org/yarpc/transport"
 	pb_eventstream "peloton/private/eventstream"
 	"sync"
 	"sync/atomic"
@@ -23,6 +25,10 @@ var (
 type EventHandler interface {
 	// The event notification callback
 	OnEvent(event *pb_eventstream.Event)
+
+	// The events notification callback
+	OnEvents(events []*pb_eventstream.Event)
+
 	// Returns the event progress the handler has processed. The value
 	// will be used by the client to determine the purgeOffset
 	GetEventProgress() uint64
@@ -31,18 +37,26 @@ type EventHandler interface {
 // Client is the event stream client
 type Client struct {
 	sync.RWMutex
-	client       json.Client
-	clientName   string
-	streamID     string
+	// The rpc client to pull events from event stream handler
+	rpcClient json.Client
+	// the client name
+	clientName string
+	// the stream id of the event stream
+	streamID string
+	// beginOffset of the next pull event request
+	beginOffset uint64
+	// event purge offset to be send to the event stream handler
+	purgeOffset uint64
+	// event handler interface to process the received events
+	eventHandler EventHandler
+
 	shutdownFlag *int32
 	runningState *int32
 	started      bool
-	beginOffset  uint64
-	purgeOffset  uint64
-	eventHandler EventHandler
 }
 
-// NewEventStreamClient creates a client
+// NewEventStreamClient creates a client that
+// consumes from remote event stream handler
 func NewEventStreamClient(
 	d yarpc.Dispatcher,
 	clientName string,
@@ -52,13 +66,79 @@ func NewEventStreamClient(
 	var runningState int32
 	client := &Client{
 		clientName:   clientName,
-		client:       json.New(d.ClientConfig(server)),
+		rpcClient:    json.New(d.ClientConfig(server)),
 		shutdownFlag: &flag,
 		runningState: &runningState,
 		eventHandler: taskUpdateHandler,
 	}
 	client.Start()
 	return client
+}
+
+// NewLocalEventStreamClient creates a local client that
+// directly consumes from a local event stream handler
+func NewLocalEventStreamClient(
+	clientName string,
+	handler *Handler,
+	taskUpdateHandler EventHandler) *Client {
+	var flag int32
+	var runningState int32
+
+	client := &Client{
+		clientName:   clientName,
+		rpcClient:    newLocalClient(handler),
+		shutdownFlag: &flag,
+		runningState: &runningState,
+		eventHandler: taskUpdateHandler,
+	}
+	client.Start()
+	return client
+}
+
+func newLocalClient(h *Handler) json.Client {
+	return &localClient{
+		handler: h,
+	}
+}
+
+// Local client implements json.Client interface. It is a client
+// adaptor on an event stream handler, it takes a event stream
+// handler and consume event from it. Events from HM->RM would need this.
+type localClient struct {
+	handler *Handler
+}
+
+// Call simply use the underlying handler to handle the request then
+// return the response
+func (c *localClient) Call(
+	ctx context.Context,
+	reqMeta yarpc.CallReqMeta,
+	reqBody interface{},
+	resBodyOut interface{}) (yarpc.CallResMeta, error) {
+	initStreamRequest, ok := reqBody.(*pb_eventstream.InitStreamRequest)
+	if ok {
+		response, _, err := c.handler.InitStream(ctx, nil, initStreamRequest)
+		responsePtr, _ := resBodyOut.(*pb_eventstream.InitStreamResponse)
+		*responsePtr = *response
+		return nil, err
+	}
+
+	waitEventsRequest, ok := reqBody.(*pb_eventstream.WaitForEventsRequest)
+	if ok {
+		response, _, err := c.handler.WaitForEvents(ctx, nil, waitEventsRequest)
+		responsePtr, _ := resBodyOut.(*pb_eventstream.WaitForEventsResponse)
+		*responsePtr = *response
+		resBodyOut = response
+		return nil, err
+	}
+	return nil, errors.New("Unexpected request type")
+}
+
+func (c *localClient) CallOneway(
+	ctx context.Context,
+	reqMeta yarpc.CallReqMeta,
+	reqBody interface{}) (transport.Ack, error) {
+	return nil, errors.New("Not implemented")
 }
 
 func (c *Client) sendInitStreamRequest(clientName string) (*pb_eventstream.InitStreamResponse, error) {
@@ -68,7 +148,7 @@ func (c *Client) sendInitStreamRequest(clientName string) (*pb_eventstream.InitS
 		ClientName: clientName,
 	}
 	var response pb_eventstream.InitStreamResponse
-	_, err := c.client.Call(
+	_, err := c.rpcClient.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("EventStream.InitStream"),
 		request,
@@ -124,7 +204,7 @@ func (c *Client) sendWaitEventRequest(
 		Limit:       int32(maxEventSize),
 	}
 	var response pb_eventstream.WaitForEventsResponse
-	_, err := c.client.Call(
+	_, err := c.rpcClient.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("EventStream.WaitForEvents"),
 		request,
@@ -162,12 +242,15 @@ func (c *Client) waitEventsLoop() {
 			time.Sleep(noEventSleep)
 			continue
 		}
-		for _, event := range response.Events {
-			log.WithField("event offset", event.GetOffset()).Debug("Processing event")
-			if c.eventHandler != nil {
-				c.eventHandler.OnEvent(event)
+		if len(response.Events) > 0 {
+			for _, event := range response.Events {
+				log.WithField("event offset", event.GetOffset()).Debug("Processing event")
+				if c.eventHandler != nil {
+					c.eventHandler.OnEvent(event)
+				}
+				c.beginOffset = event.GetOffset() + 1
 			}
-			c.beginOffset = event.GetOffset() + 1
+			c.eventHandler.OnEvents(response.Events)
 		}
 	}
 	log.Info("waitEventsLoop returned due to shutdown")

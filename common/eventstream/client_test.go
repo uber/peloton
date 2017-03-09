@@ -19,7 +19,7 @@ var waitEventConsumedInterval = 100 * time.Millisecond
 
 type testJSONClient struct {
 	sync.Mutex
-	handler     *Handler
+	localClient *localClient
 	returnError bool
 }
 
@@ -33,7 +33,7 @@ func (c *testJSONClient) setErrorFlag(errorFlag bool) {
 func (c *testJSONClient) changeStreamID(streamID string) {
 	c.Lock()
 	defer c.Unlock()
-	c.handler.streamID = streamID
+	c.localClient.handler.streamID = streamID
 }
 
 func (c *testJSONClient) Call(
@@ -47,24 +47,7 @@ func (c *testJSONClient) Call(
 		return nil, errors.New("Mocked RPC server error")
 	}
 
-	initStreamRequest, ok := reqBody.(*pb_eventstream.InitStreamRequest)
-	if ok {
-		response, _, err := c.handler.InitStream(ctx, nil, initStreamRequest)
-		responsePtr, _ := resBodyOut.(*pb_eventstream.InitStreamResponse)
-		*responsePtr = *response
-		return nil, err
-	}
-
-	waitEventsRequest, ok := reqBody.(*pb_eventstream.WaitForEventsRequest)
-	if ok {
-		response, _, err := c.handler.WaitForEvents(ctx, nil, waitEventsRequest)
-		responsePtr, _ := resBodyOut.(*pb_eventstream.WaitForEventsResponse)
-		*responsePtr = *response
-		resBodyOut = response
-		return nil, err
-	}
-
-	return nil, errors.New("Unexpected")
+	return c.localClient.Call(ctx, reqMeta, reqBody, resBodyOut)
 }
 
 func (c *testJSONClient) CallOneway(
@@ -85,6 +68,10 @@ func (p *TestEventProcessor) OnEvent(event *pb_eventstream.Event) {
 	p.events = append(p.events, event)
 }
 
+func (p *TestEventProcessor) OnEvents(events []*pb_eventstream.Event) {
+
+}
+
 func (p *TestEventProcessor) GetEventProgress() uint64 {
 	p.Lock()
 	defer p.Unlock()
@@ -99,7 +86,7 @@ func makeStreamClient(clientName string, client *testJSONClient) (*Client, *Test
 	var shutdownFlag int32
 	var runningState int32
 	eventStreamClient := &Client{
-		client:       client,
+		rpcClient:    client,
 		shutdownFlag: &shutdownFlag,
 		runningState: &runningState,
 		eventHandler: eventProcessor,
@@ -116,7 +103,9 @@ func TestHappycase(t *testing.T) {
 	purgedEventCollector := &PurgeEventCollector{}
 	handler := NewEventStreamHandler(bufferSize, []string{clientName1, clientName2}, purgedEventCollector)
 	jsonClient := &testJSONClient{
-		handler: handler,
+		localClient: &localClient{
+			handler: handler,
+		},
 	}
 	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, jsonClient)
 	eventStreamClient1.Start()
@@ -171,7 +160,9 @@ func TestStreamIDChange(t *testing.T) {
 	purgedEventCollector := &PurgeEventCollector{}
 	handler := NewEventStreamHandler(bufferSize, []string{clientName1, clientName2}, purgedEventCollector)
 	jsonClient := &testJSONClient{
-		handler: handler,
+		localClient: &localClient{
+			handler: handler,
+		},
 	}
 	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, jsonClient)
 	eventStreamClient1.Start()
@@ -245,7 +236,9 @@ func TestMockRPCError(t *testing.T) {
 	purgedEventCollector := &PurgeEventCollector{}
 	handler := NewEventStreamHandler(bufferSize, []string{clientName1, clientName2}, purgedEventCollector)
 	jsonClient := &testJSONClient{
-		handler: handler,
+		localClient: &localClient{
+			handler: handler,
+		},
 	}
 
 	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, jsonClient)
@@ -334,7 +327,9 @@ func TestClientFailover(t *testing.T) {
 	purgedEventCollector := &PurgeEventCollector{}
 	handler := NewEventStreamHandler(bufferSize, []string{clientName1, clientName2}, purgedEventCollector)
 	jsonClient := &testJSONClient{
-		handler: handler,
+		localClient: &localClient{
+			handler: handler,
+		},
 	}
 
 	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, jsonClient)

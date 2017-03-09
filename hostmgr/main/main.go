@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
 	"go.uber.org/yarpc"
@@ -165,8 +167,37 @@ func main() {
 	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
 	mOutbound := mhttp.NewOutbound(mesosURL)
 
+	// all leader discovery metrics share a scope (and will be tagged
+	// with role={role})
+	discoveryScope := rootScope.SubScope("discovery")
+	// setup the discovery service to detect resmgr leaders and
+	// configure the YARPC Peer dynamically
+	resmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		discoveryScope,
+		common.ResourceManagerRole,
+	)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
+			Fatal("Could not create smart peer chooser")
+	}
+	if err := resmgrPeerChooser.Start(); err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
+			Fatal("Could not start smart peer chooser")
+	}
+	defer resmgrPeerChooser.Stop()
+	resmgrOutbound := http.NewChooserOutbound(
+		resmgrPeerChooser,
+		&url.URL{
+			Scheme: "http",
+			Path:   common.PelotonEndpointPath,
+		})
+
 	outbounds := yarpc.Outbounds{
 		common.MesosMaster: mOutbound,
+		common.PelotonResourceManager: transport.Outbounds{
+			Unary: resmgrOutbound,
+		},
 	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
@@ -213,9 +244,7 @@ func main() {
 		dispatcher,
 		cfg.HostManager.TaskUpdateBufferSize,
 		cfg.HostManager.TaskUpdateAckConcurrency,
-		cfg.HostManager.DbWriteConcurrency,
-		store,
-		store)
+		common.PelotonResourceManager)
 
 	taskReconciler := reconciliation.NewTaskReconciler(
 		mesosClient,

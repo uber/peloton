@@ -20,26 +20,28 @@ type StatusUpdate struct {
 }
 
 // InitTaskStatusUpdate creates a StatusUpdate
+// TODO: add shutdown method to stop the eventClient
+// In case the current jobmgr lost leadership
 func InitTaskStatusUpdate(
 	d yarpc.Dispatcher,
 	server string,
 	taskStore storage.TaskStore) *StatusUpdate {
 
-	result := &StatusUpdate{
+	statusUpdate := &StatusUpdate{
 		taskStore: taskStore,
 	}
-	eventClient := eventstream.NewEventStreamClient(d, common.PelotonJobManager, server, result)
 	// TODO: add config for BucketEventProcessor
-	result.applier = newBucketEventProcessor(result, 100, 10000)
+	statusUpdate.applier = newBucketEventProcessor(statusUpdate, 100, 10000)
 
-	result.eventClient = eventClient
-	eventClient.Start()
-	return result
+	eventClient := eventstream.NewEventStreamClient(d, common.PelotonJobManager, server, statusUpdate)
+	statusUpdate.eventClient = eventClient
+
+	return statusUpdate
 }
 
 // OnEvent is the callback function notifying an event
 func (p *StatusUpdate) OnEvent(event *pb_eventstream.Event) {
-	log.WithField("event_offset", event.Offset).Debug("Receiving event")
+	log.WithField("event_offset", event.Offset).Debug("JobMgr receiving event")
 	p.applier.addEvent(event)
 }
 
@@ -108,4 +110,9 @@ func isUnexpected(taskState p_task.RuntimeInfo_TaskState) bool {
 		// TODO: we may want to treat unknown state as error
 		return false
 	}
+}
+
+// OnEvents is the callback function notifying a batch of events
+func (p *StatusUpdate) OnEvents(events []*pb_eventstream.Event) {
+	// Not implemented
 }

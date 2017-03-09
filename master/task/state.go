@@ -3,28 +3,30 @@
 package task
 
 import (
-	sched "mesos/v1/scheduler"
+	"context"
 	"sync/atomic"
 	"time"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
+	sched "mesos/v1/scheduler"
+	pb_eventstream "peloton/private/eventstream"
+	"peloton/private/resmgrsvc"
 )
+
+var errorWaitInterval = 10 * time.Second
 
 // InitTaskStateManager init the task state manager
 func InitTaskStateManager(
 	d yarpc.Dispatcher,
 	updateBufferSize int,
 	updateAckConcurrency int,
-	dbWriteConcurrency int,
-	jobStore storage.JobStore,
-	taskStore storage.TaskStore) {
+	eventDestinationRole string) {
 
 	var taskUpdateCount int64
 	var prevUpdateCount int64
@@ -35,8 +37,6 @@ func InitTaskStateManager(
 	var statusChannelCount int32
 
 	handler := taskStateManager{
-		TaskStore:            taskStore,
-		JobStore:             jobStore,
 		client:               mpb.New(d.ClientConfig("mesos-master"), "x-protobuf"),
 		updateAckConcurrency: updateAckConcurrency,
 		ackChannel:           make(chan *sched.Event_Update, updateBufferSize),
@@ -57,20 +57,92 @@ func InitTaskStateManager(
 	}
 	handler.startAsyncProcessTaskUpdates()
 	// TODO: move eventStreamHandler buffer size into config
-	handler.eventStreamHandler = initEventStreamHandler(d, 10000)
+	handler.eventStreamHandler = initEventStreamHandler(d, 1000)
+	// initialize the status update event forwarder for resmgr
+	initResMgrEventForwarder(d, handler.eventStreamHandler, eventDestinationRole)
+}
+
+// eventForwarder is the struct to forward status update events to
+// resource manager. It implements eventstream.EventHandler and it
+// forwards the events to remote in the OnEvents function.
+type eventForwarder struct {
+	// jsonClient to send NotifyTaskUpdatesRequest
+	jsonClient json.Client
+	// Tracking the progress returned from remote side
+	progress *uint64
+}
+
+func newEventForwarder(d yarpc.Dispatcher, eventDestinationRole string) eventstream.EventHandler {
+	var progress uint64
+	return &eventForwarder{
+		jsonClient: json.New(d.ClientConfig(eventDestinationRole)),
+		progress:   &progress,
+	}
+}
+
+// OnEvent callback
+func (f *eventForwarder) OnEvent(event *pb_eventstream.Event) {
+	//Not implemented
+}
+
+// OnEvents callback. In this callback, a batch of events are forwarded to
+// resource manager.
+func (f *eventForwarder) OnEvents(events []*pb_eventstream.Event) {
+	if len(events) > 0 {
+		ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancelFunc()
+		// Forward events
+		request := &resmgrsvc.NotifyTaskUpdatesRequest{
+			Events: events,
+		}
+		var response resmgrsvc.NotifyTaskUpdatesResponse
+		for {
+			_, err := f.jsonClient.Call(
+				ctx,
+				yarpc.NewReqMeta().Procedure("ResourceManager.NotifyTaskUpdates"),
+				request,
+				&response,
+			)
+			if err == nil {
+				break
+			} else {
+				log.WithError(err).WithField("progress", events[0].Offset).
+					Error("Failed to call ResourceManager.NotifyTaskUpdate")
+				time.Sleep(errorWaitInterval)
+			}
+		}
+		if response.PurgeOffset > 0 {
+			atomic.StoreUint64(f.progress, response.PurgeOffset)
+		}
+		if response.Error != nil {
+			log.WithField("NotifyTaskUpdatesResponse_Error", response.Error).Error("NotifyTaskUpdatesRequest failed")
+		}
+	}
+}
+
+// GetEventProgress returns the event forward progress
+func (f *eventForwarder) GetEventProgress() uint64 {
+	return atomic.LoadUint64(f.progress)
+}
+
+func initResMgrEventForwarder(d yarpc.Dispatcher, eventStreamHandler *eventstream.Handler, eventDestinationRole string) {
+	eventstream.NewLocalEventStreamClient(
+		common.PelotonResourceManager,
+		eventStreamHandler,
+		newEventForwarder(d, eventDestinationRole))
 }
 
 func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int) *eventstream.Handler {
-	// TODO: add remgr as another client
-	eventStreamHandler := eventstream.NewEventStreamHandler(bufferSize, []string{common.PelotonJobManager}, nil)
+	eventStreamHandler := eventstream.NewEventStreamHandler(
+		bufferSize,
+		[]string{common.PelotonJobManager, common.PelotonResourceManager},
+		nil)
 	json.Register(d, json.Procedure("EventStream.InitStream", eventStreamHandler.InitStream))
 	json.Register(d, json.Procedure("EventStream.WaitForEvents", eventStreamHandler.WaitForEvents))
 	return eventStreamHandler
 }
 
 type taskStateManager struct {
-	JobStore             storage.JobStore
-	TaskStore            storage.TaskStore
 	client               mpb.Client
 	updateAckConcurrency int
 	// Buffers the status updates to ack

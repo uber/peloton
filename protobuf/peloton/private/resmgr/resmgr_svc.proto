@@ -8,9 +8,9 @@ package peloton.private.resmgr;
 
 option go_package = "peloton/private/resmgrsvc";
 
-import "mesos/v1/mesos.proto";
 import "peloton/api/respool/respool.proto";
 import "peloton/private/resmgr/resmgr.proto";
+import "peloton/private/eventstream/eventstream.proto";
 
 
 /**
@@ -58,6 +58,12 @@ service ResourceManagerService {
    *  state, the tasks will be timedout and transit back to PLACED state.
    */
   rpc GetPlacements(GetPlacementsRequest) returns (GetPlacementsResponse);
+
+  /**
+   * Notifies task status updates to resource manager. This will be called by
+   * Host manager to notify resource manager on task status updates.
+   */
+  rpc NotifyTaskUpdates(NotifyTaskUpdatesRequest) returns (NotifyTaskUpdatesResponse);
 }
 
 message EnqueueTasksRequest {
@@ -103,4 +109,20 @@ message GetPlacementsResponse {
 
   // List of task placements to return
   repeated resmgr.Placement placements = 1;
+}
+
+message NotifyTaskUpdatesError {
+  string message = 1;
+}
+
+message NotifyTaskUpdatesRequest {
+  repeated eventstream.Event events = 1;
+}
+
+message NotifyTaskUpdatesResponse {
+  message Error {
+    NotifyTaskUpdatesError error = 1;
+  }
+  Error error = 1;
+  uint64 purgeOffset = 2;
 }
