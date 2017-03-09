@@ -301,7 +301,8 @@ func (h *serviceHandler) KillTasks(
 	reqMeta yarpc.ReqMeta,
 	body *hostsvc.KillTasksRequest) (*hostsvc.KillTasksResponse, yarpc.ResMeta, error) {
 	log.WithField("request", body).Debug("KillTasks called.")
-	return nil, nil, fmt.Errorf("Unimplemented")
+	// TODO(mu): implement this function per T741386
+	return &hostsvc.KillTasksResponse{}, nil, nil
 }
 
 // ReserveResources implements InternalHostService.ReserveResources.

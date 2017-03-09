@@ -28,11 +28,12 @@ type BaseRowRecord struct {
 // TaskRecord also contains the virtual generated columns for tasks table
 type TaskRecord struct {
 	BaseRowRecord
-	JobID       sql.NullString `db:"job_id"`
-	TaskState   sql.NullString `db:"task_state"`
-	TaskHost    sql.NullString `db:"task_host"`
-	MesosTaskID sql.NullString `db:"mesos_task_id"`
-	InstanceID  int            `db:"instance_id"`
+	JobID         sql.NullString `db:"job_id"`
+	TaskGoalState sql.NullString `db:"task_goal_state"`
+	TaskState     sql.NullString `db:"task_state"`
+	TaskHost      sql.NullString `db:"task_host"`
+	MesosTaskID   sql.NullString `db:"mesos_task_id"`
+	InstanceID    int            `db:"instance_id"`
 }
 
 // JobRecord also contains the generated columns for jobs table

@@ -114,6 +114,9 @@ func (h *serviceHandler) Create(
 		t := task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
 				State: task.RuntimeInfo_INITIALIZED,
+				// New task is by default treated as batch task and get SUCCEEDED goalstate.
+				// TODO(mu): Long running tasks need RUNNING as default goalstate.
+				GoalState: task.RuntimeInfo_SUCCEEDED,
 				TaskId: &mesos.TaskID{
 					Value: &mesosTaskID,
 				},

@@ -28,6 +28,7 @@ message RuntimeInfo {
 
   // Runtime states of a task instance
   enum TaskState {
+    // TODO: Reserve 0 value for all enums in protobuf as UNKNOWN.
     // The task is being initialized
     INITIALIZED = 0;
 
@@ -60,6 +61,9 @@ message RuntimeInfo {
 
     // The task is lost
     LOST  = 10;
+
+    // The task is being killed
+    KILLING  = 11;
   }
 
   // Runtime status of the task
@@ -76,6 +80,9 @@ message RuntimeInfo {
 
   // Ports reserved on the host while this instance is running
   map<string, uint32> ports = 5;
+
+  // Goalstate of the task
+  TaskState goalState = 6;
 }
 
 
@@ -124,7 +131,6 @@ service TaskManager
   rpc Restart(RestartRequest) returns (RestartResponse);
 }
 
-
 message InstanceIdOutOfRange
 {
   // Entity ID of the job
@@ -149,7 +155,6 @@ message GetResponse {
  *  Task InstanceID range [from, to)
  */
 message InstanceRange {
-
   uint32 from = 1;
   uint32 to = 2;
 }
@@ -165,7 +170,6 @@ message ListResponse {
   }
   Result result = 1;
   job.JobNotFound notFound = 2;
-
 }
 
 message StartRequest {
@@ -178,14 +182,26 @@ message StartResponse {
   InstanceIdOutOfRange outOfRange = 2;
 }
 
+// If no ranges specified, then stop all the tasks in the job.
 message StopRequest {
   job.JobID jobId = 1;
   repeated InstanceRange ranges = 2;
 }
 
+message TaskUpdateError {
+  string message = 1;
+}
+
 message StopResponse {
-  job.JobNotFound notFound = 1;
-  InstanceIdOutOfRange outOfRange = 2;
+  message Error {
+    job.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+    TaskUpdateError updateError = 3;
+  }
+
+  Error error = 1;
+  repeated uint32 stoppedInstanceIds = 2;
+  repeated uint32 invalidInstanceIds = 3;
 }
 
 message RestartRequest {

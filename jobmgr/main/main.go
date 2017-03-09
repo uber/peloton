@@ -191,7 +191,13 @@ func main() {
 		store,
 		common.PelotonResourceManager, // TODO: to be removed
 	)
-	task.InitServiceHandler(dispatcher, rootScope, store, store)
+	task.InitServiceHandler(
+		dispatcher,
+		rootScope,
+		store,
+		store,
+		common.PelotonHostManager, // TODO: to be removed
+	)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

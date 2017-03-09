@@ -308,7 +308,13 @@ func main() {
 		taskStore,
 		common.PelotonMaster, // TODO: to be removed
 	)
-	task.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
+	task.InitServiceHandler(
+		dispatcher,
+		rootScope,
+		jobStore,
+		taskStore,
+		common.PelotonMaster, // TODO: to be removed
+	)
 	upgrade.InitManager(dispatcher)
 
 	// Initialize resource manager related handlers

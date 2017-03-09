@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	taskListFormatHeader = "Instance\tJob\tCPU Limit\tMem Limit\tDisk Limit\tState\tStarted At\tTask ID\tHost\t\n"
-	taskListFormatBody   = "%d\t%s\t%.1f\t%.0f MB\t%.0f MB\t%s\t%s\t%s\t%s\t\n"
+	taskListFormatHeader = "Instance\tJob\tCPU Limit\tMem Limit\tDisk Limit\tState\tGoalState\tStarted At\tTask ID\tHost\t\n"
+	taskListFormatBody   = "%d\t%s\t%.1f\t%.0f MB\t%.0f MB\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // SortedTaskInfoList makes TaskInfo implement sortable interface
@@ -149,11 +149,20 @@ func printTaskGetResponse(r pt.GetResponse, debug bool) {
 			cfg := r.Result.Config
 			rt := r.Result.Runtime
 			fmt.Fprintf(tabWriter, taskListFormatHeader)
-			fmt.Fprintf(tabWriter, taskListFormatBody,
-				r.Result.InstanceId, cfg.Name, cfg.Resource.CpuLimit,
-				cfg.Resource.MemLimitMb, cfg.Resource.DiskLimitMb,
-				rt.State.String(), rt.StartedAt, *rt.TaskId.Value,
-				rt.Host)
+			fmt.Fprintf(
+				tabWriter,
+				taskListFormatBody,
+				r.Result.InstanceId,
+				cfg.Name,
+				cfg.Resource.CpuLimit,
+				cfg.Resource.MemLimitMb,
+				cfg.Resource.DiskLimitMb,
+				rt.State.String(),
+				rt.GoalState.String(),
+				rt.StartedAt,
+				*rt.TaskId.Value,
+				rt.Host,
+			)
 		} else {
 			fmt.Fprintf(tabWriter, "Unexpected error, no results in response.\n")
 		}
@@ -183,10 +192,20 @@ func printTaskListResponse(r pt.ListResponse, debug bool) {
 			for _, t := range tasks {
 				cfg := t.Config
 				rt := t.Runtime
-				fmt.Fprintf(tabWriter, taskListFormatBody,
-					t.InstanceId, cfg.Name, cfg.Resource.CpuLimit,
-					cfg.Resource.MemLimitMb, cfg.Resource.DiskLimitMb,
-					rt.State.String(), rt.StartedAt, *rt.TaskId.Value, rt.Host)
+				fmt.Fprintf(
+					tabWriter,
+					taskListFormatBody,
+					t.InstanceId,
+					cfg.Name,
+					cfg.Resource.CpuLimit,
+					cfg.Resource.MemLimitMb,
+					cfg.Resource.DiskLimitMb,
+					rt.State.String(),
+					rt.GoalState.String(),
+					rt.StartedAt,
+					*rt.TaskId.Value,
+					rt.Host,
+				)
 			}
 		}
 	}
@@ -214,15 +233,38 @@ func printTaskStopResponse(r pt.StopResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		if r.GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
-				r.NotFound.Id.Value, r.NotFound.Message)
-		} else if r.GetOutOfRange() != nil {
-			fmt.Fprintf(tabWriter, "Requested instance of job %s is not within "+
-				"the range of valid instances (0...%d)\n",
-				r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
+		if r.GetError() != nil {
+			if r.GetError().GetNotFound() != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"Job %s was not found: %s\n",
+					r.GetError().GetNotFound().GetId().GetValue(),
+					r.GetError().GetNotFound().GetMessage(),
+				)
+			} else if r.GetError().GetOutOfRange() != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"Requested instances:%s of job %s is not within "+
+						"the range of valid instances (0...%d)\n",
+					r.GetInvalidInstanceIds(),
+					r.GetError().GetOutOfRange().GetJobId().GetValue(),
+					r.GetError().GetOutOfRange().GetInstanceCount(),
+				)
+			} else if r.GetError().GetUpdateError() != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"Tasks stop goalstate update in DB got error: %s\n",
+					r.GetError().GetUpdateError(),
+				)
+			}
 		} else {
-			fmt.Fprintf(tabWriter, "Job stopped\n")
+			fmt.Fprintf(
+				tabWriter,
+				"Tasks stopped successfully for instances: %v and "+
+					"invalid instances are: %v",
+				r.GetStoppedInstanceIds(),
+				r.GetInvalidInstanceIds(),
+			)
 		}
 	}
 	tabWriter.Flush()

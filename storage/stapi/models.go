@@ -37,14 +37,15 @@ func (j *JobRecord) GetJobConfig() (*job.JobConfig, error) {
 
 // TaskRecord correspond to a peloton task
 type TaskRecord struct {
-	TaskID     string
-	JobID      string
-	TaskState  string
-	TaskHost   string
-	InstanceID int
-	TaskInfo   string
-	CreateTime time.Time
-	UpdateTime time.Time
+	TaskID        string
+	JobID         string
+	TaskGoalState string
+	TaskState     string
+	TaskHost      string
+	InstanceID    int
+	TaskInfo      string
+	CreateTime    time.Time
+	UpdateTime    time.Time
 }
 
 // GetTaskInfo returns the unmarshaled task.TaskInfo

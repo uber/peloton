@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
@@ -12,6 +13,11 @@ import (
 
 	"peloton/api/job"
 	"peloton/api/task"
+	"peloton/private/hostmgr/hostsvc"
+)
+
+const (
+	stopRequestTimeoutSecs = 10
 )
 
 // InitServiceHandler initializes the TaskManager
@@ -19,12 +25,15 @@ func InitServiceHandler(
 	d yarpc.Dispatcher,
 	parent tally.Scope,
 	jobStore storage.JobStore,
-	taskStore storage.TaskStore) {
+	taskStore storage.TaskStore,
+	hostmgrClientName string) {
 
 	handler := serviceHandler{
-		taskStore: taskStore,
-		jobStore:  jobStore,
-		metrics:   NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		taskStore:     taskStore,
+		jobStore:      jobStore,
+		metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		rootCtx:       context.Background(),
+		hostmgrClient: json.New(d.ClientConfig(hostmgrClientName)),
 	}
 	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
 	json.Register(d, json.Procedure("TaskManager.List", handler.List))
@@ -35,9 +44,11 @@ func InitServiceHandler(
 
 // serviceHandler implements peloton.api.task.TaskManager
 type serviceHandler struct {
-	taskStore storage.TaskStore
-	jobStore  storage.JobStore
-	metrics   *Metrics
+	taskStore     storage.TaskStore
+	jobStore      storage.JobStore
+	metrics       *Metrics
+	rootCtx       context.Context
+	hostmgrClient json.Client
 }
 
 func (m *serviceHandler) Get(
@@ -129,6 +140,7 @@ func (m *serviceHandler) Start(
 	return &task.StartResponse{}, nil, nil
 }
 
+// Stop implements TaskManager.Stop, tries to stop tasks in a given job.
 func (m *serviceHandler) Stop(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
@@ -136,8 +148,125 @@ func (m *serviceHandler) Stop(
 
 	log.Infof("TaskManager.Stop called: %v", body)
 	m.metrics.TaskAPIStop.Inc(1)
-	m.metrics.TaskStop.Inc(1)
-	return &task.StopResponse{}, nil, nil
+	ctx, cancelFunc := context.WithTimeout(
+		m.rootCtx,
+		stopRequestTimeoutSecs*time.Second,
+	)
+	defer cancelFunc()
+
+	jobConfig, err := m.jobStore.GetJob(body.JobId)
+	if err != nil || jobConfig == nil {
+		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
+		return &task.StopResponse{
+			Error: &task.StopResponse_Error{
+				NotFound: &job.JobNotFound{
+					Id:      body.JobId,
+					Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
+				},
+			},
+		}, nil, nil
+	}
+
+	var instanceIds []uint32
+	for _, taskRange := range body.GetRanges() {
+		from := taskRange.GetFrom()
+		for from < taskRange.GetTo() {
+			instanceIds = append(instanceIds, from)
+			from++
+		}
+	}
+	taskInfos := make(map[uint32]*task.TaskInfo)
+	var invalidInstanceIds []uint32
+	// TODO: refactor the ranges code to peloton/range subpackage.
+	if body.GetRanges() == nil {
+		// If no ranges specified, then stop all instances in the given job.
+		taskInfos, err = m.taskStore.GetTasksForJob(body.JobId)
+	} else {
+		for _, instance := range instanceIds {
+			var tasks = make(map[uint32]*task.TaskInfo)
+			tasks, err = m.taskStore.GetTaskForJob(body.JobId, instance)
+			if err != nil || len(tasks) != 1 {
+				// Do not continue if task db query got error.
+				invalidInstanceIds = append(invalidInstanceIds, instance)
+				for k := range taskInfos {
+					delete(taskInfos, k)
+				}
+				break
+			}
+			for inst := range tasks {
+				taskInfos[inst] = tasks[inst]
+			}
+		}
+	}
+
+	if err != nil || len(taskInfos) == 0 {
+		log.Errorf("Failed to get tasks for job id %v, err=%v", body.JobId, err)
+		return &task.StopResponse{
+			Error: &task.StopResponse_Error{
+				OutOfRange: &task.InstanceIdOutOfRange{
+					JobId:         body.JobId,
+					InstanceCount: jobConfig.InstanceCount,
+				},
+			},
+			InvalidInstanceIds: invalidInstanceIds,
+		}, nil, nil
+	}
+
+	var tasksToKill []string
+	var stoppedInstanceIds []uint32
+	// Persist KILLED goalstate for tasks in db.
+	for instID, taskInfo := range taskInfos {
+		taskID := taskInfo.GetRuntime().GetTaskId().GetValue()
+		// Skip update task goalstate if it is already KILLED.
+		if taskInfo.GetRuntime().GoalState != task.RuntimeInfo_KILLED {
+			taskInfo.GetRuntime().GoalState = task.RuntimeInfo_KILLED
+			err = m.taskStore.UpdateTask(taskInfo)
+			if err != nil {
+				// Skip remaining tasks killing if db update error occurs.
+				log.WithError(err).WithField("taskID", taskID).
+					Error("Failed to update KILLED goalstate")
+				break
+			}
+		}
+		tasksToKill = append(tasksToKill, taskID)
+		stoppedInstanceIds = append(stoppedInstanceIds, instID)
+		m.metrics.TaskStop.Inc(1)
+	}
+
+	// TODO(mu): Notify RM to also remove these tasks from task queue.
+	// TODO(mu): Add kill retry module since the kill msg to mesos could get lost.
+	if len(tasksToKill) > 0 {
+		var response hostsvc.KillTasksResponse
+		var request = &hostsvc.KillTasksRequest{
+			TaskIds: tasksToKill,
+		}
+		_, killTasksInHostmgrErr := m.hostmgrClient.Call(
+			ctx,
+			yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks"),
+			request,
+			&response,
+		)
+		if killTasksInHostmgrErr != nil {
+			log.WithError(killTasksInHostmgrErr).WithField("tasks", tasksToKill).
+				Error("Failed to kill tasks on host manager")
+		}
+	}
+
+	if err != nil {
+		return &task.StopResponse{
+			Error: &task.StopResponse_Error{
+				UpdateError: &task.TaskUpdateError{
+					Message: fmt.Sprint("Goalstate update failed for %v", err),
+				},
+			},
+			InvalidInstanceIds: invalidInstanceIds,
+			StoppedInstanceIds: stoppedInstanceIds,
+		}, nil, nil
+	}
+	return &task.StopResponse{
+		InvalidInstanceIds: invalidInstanceIds,
+		StoppedInstanceIds: stoppedInstanceIds,
+	}, nil, nil
 }
 
 func (m *serviceHandler) Restart(
