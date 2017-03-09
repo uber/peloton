@@ -19,4 +19,7 @@ type Config struct {
 
 	// Size of the channel buffer of the status updates
 	TaskUpdateBufferSize int `yaml:"taskupdate_buffer_size"`
+
+	// Initial delay before running reconciliation
+	InitialReconcileDelaySec int `yaml:"initial_reconcile_delay_sec"`
 }

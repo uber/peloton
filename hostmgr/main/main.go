@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/hostmgr/reconciliation"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/storage/mysql"
@@ -215,11 +216,17 @@ func main() {
 		store,
 		store)
 
+	taskReconciler := reconciliation.NewTaskReconciler(
+		mesosClient,
+		rootScope)
+
 	server := hostmgr.NewServer(
 		cfg.HostManager.Port,
 		mesosMasterDetector,
 		mInbound,
 		mOutbound,
+		taskReconciler,
+		time.Duration(cfg.HostManager.InitialReconcileDelaySec)*time.Second,
 	)
 
 	candidate, err := leader.NewCandidate(

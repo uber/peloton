@@ -2,10 +2,12 @@ package hostmgr
 
 import (
 	"sync"
+	"time"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/hostmgr/reconciliation"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	log "github.com/Sirupsen/logrus"
@@ -26,6 +28,9 @@ type Server struct {
 	mesosDetector mesos.MasterDetector
 	mesosInbound  mhttp.Inbound
 	mesosOutbound transport.Outbounds
+
+	taskReconciler            reconciliation.TaskReconciler
+	initialReconcileDelaySecs time.Duration
 }
 
 // NewServer creates a host manager Server instance.
@@ -33,15 +38,19 @@ func NewServer(
 	port int,
 	mesosDetector mesos.MasterDetector,
 	mesosInbound mhttp.Inbound,
-	mesosOutbound transport.Outbounds) *Server {
+	mesosOutbound transport.Outbounds,
+	taskReconciler reconciliation.TaskReconciler,
+	initialReconcileDelaySecs time.Duration) *Server {
 
 	return &Server{
-		ID:                   leader.NewID(port),
-		role:                 common.HostManagerRole,
-		getOfferEventHandler: offer.GetEventHandler,
-		mesosDetector:        mesosDetector,
-		mesosInbound:         mesosInbound,
-		mesosOutbound:        mesosOutbound,
+		ID:                        leader.NewID(port),
+		role:                      common.HostManagerRole,
+		getOfferEventHandler:      offer.GetEventHandler,
+		mesosDetector:             mesosDetector,
+		mesosInbound:              mesosInbound,
+		mesosOutbound:             mesosOutbound,
+		taskReconciler:            taskReconciler,
+		initialReconcileDelaySecs: initialReconcileDelaySecs,
 	}
 }
 
@@ -66,6 +75,16 @@ func (s *Server) GainedLeadershipCallback() error {
 	}
 
 	s.getOfferEventHandler().Start()
+
+	go func() {
+		// Initiate implicit reconciliation after initial delay.
+		time.Sleep(s.initialReconcileDelaySecs)
+		err = s.taskReconciler.ReconcileTasksImplicitly()
+		if err != nil {
+			log.WithField("error", err).Error("Implicit task reconciliation failed")
+		}
+		// TODO(mu): Add periodic implicit reconcicilation.
+	}()
 
 	return nil
 }

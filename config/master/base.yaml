@@ -52,3 +52,6 @@ placement:
 
 resmgr:
   port: 5290
+
+hostmgr:
+  initial_reconcile_delay_sec: 60

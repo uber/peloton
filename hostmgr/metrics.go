@@ -1,6 +1,8 @@
 package hostmgr
 
-import "github.com/uber-go/tally"
+import (
+	"github.com/uber-go/tally"
+)
 
 // Metrics is a placeholder for all metrics in hostmgr.
 type Metrics struct {

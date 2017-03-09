@@ -2,9 +2,11 @@ package master
 
 import (
 	"sync"
+	"time"
 
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/reconciliation"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
@@ -27,7 +29,9 @@ func NewServer(
 	port int,
 	mesosDetector mesos.MasterDetector,
 	mesosInbound mhttp.Inbound,
-	mesosOutbound transport.Outbounds) *Server {
+	mesosOutbound transport.Outbounds,
+	taskReconciler reconciliation.TaskReconciler,
+	initialReconcileDelaySecs time.Duration) *Server {
 
 	rm := resmgr.NewServer(port)
 	hm := hostmgr.NewServer(
@@ -35,6 +39,8 @@ func NewServer(
 		mesosDetector,
 		mesosInbound,
 		mesosOutbound,
+		taskReconciler,
+		initialReconcileDelaySecs,
 	)
 	return &Server{
 		ID:   leader.NewID(port),

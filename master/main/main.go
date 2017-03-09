@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/hostmgr/reconciliation"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/leader"
@@ -393,11 +394,17 @@ func main() {
 	}
 	log.Infof("Started Resource Manager on port %v", cfg.ResManager.Port)
 
+	taskReconciler := reconciliation.NewTaskReconciler(
+		mesosClient,
+		rootScope)
+
 	server := master.NewServer(
 		cfg.Master.Port,
 		mesosMasterDetector,
 		mInbound,
 		mOutbounds,
+		taskReconciler,
+		time.Duration(cfg.HostManager.InitialReconcileDelaySec)*time.Second,
 	)
 	candidate, err := leader.NewCandidate(
 		cfg.Election,

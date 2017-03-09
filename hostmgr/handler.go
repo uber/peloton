@@ -32,6 +32,7 @@ func InitServiceHandler(
 	d yarpc.Dispatcher,
 	parent tally.Scope,
 	client mpb.Client) {
+
 	handler := serviceHandler{
 		client:    client,
 		metrics:   NewMetrics(parent.SubScope("hostmgr")),
