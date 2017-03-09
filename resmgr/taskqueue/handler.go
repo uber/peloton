@@ -3,9 +3,11 @@ package taskqueue
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync/atomic"
 	"time"
 
+	"code.uber.internal/infra/peloton/common/queue"
 	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -61,7 +63,9 @@ func InitServiceHandler(
 		jobStore:  jobStore,
 		taskStore: taskStore,
 	}
-	handler.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
+	itemType := reflect.TypeOf(task.TaskInfo{})
+	q := queue.NewQueue("TaskQueue", itemType, MaxTaskQueueSize)
+	handler.tqValue.Store(q)
 
 	json.Register(d, json.Procedure("TaskQueue.Enqueue", handler.Enqueue))
 	json.Register(d, json.Procedure("TaskQueue.Dequeue", handler.Dequeue))
@@ -83,11 +87,19 @@ func (h *serviceHandler) Enqueue(
 	reqMeta yarpc.ReqMeta,
 	req *tq.EnqueueRequest) (*tq.EnqueueResponse, yarpc.ResMeta, error) {
 
-	tasks := req.Tasks
-	log.Debug("TaskQueue.Enqueue called")
+	log.WithField("request", req).Debug("TaskQueue.Enqueue called")
 	h.metrics.APIEnqueue.Inc(1)
+
+	tasks := req.Tasks
 	for _, task := range tasks {
-		h.tqValue.Load().(util.TaskQueue).PutTask(task)
+		err := h.tqValue.Load().(queue.Queue).Enqueue(task)
+		if err != nil {
+			log.WithError(err).WithField("task", task).
+				Error("Failed to enqueue task")
+			h.metrics.EnqueueFail.Inc(1)
+
+			// TODO Add error handling here
+		}
 		h.metrics.Enqueue.Inc(1)
 	}
 	return &tq.EnqueueResponse{}, nil, nil
@@ -99,17 +111,19 @@ func (h *serviceHandler) Dequeue(
 	reqMeta yarpc.ReqMeta,
 	req *tq.DequeueRequest) (*tq.DequeueResponse, yarpc.ResMeta, error) {
 
-	limit := req.Limit
+	log.WithField("request", req).Debug("TaskQueue.Dequeue called")
 	h.metrics.APIDequeue.Inc(1)
+
+	limit := req.Limit
 	var tasks []*task.TaskInfo
 	for i := 0; i < int(limit); i++ {
-		task := h.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
-		h.metrics.Dequeue.Inc(1)
-		if task != nil {
-			tasks = append(tasks, task)
-		} else {
+		item, err := h.tqValue.Load().(queue.Queue).Dequeue(1 * time.Millisecond)
+		if err != nil {
 			break
 		}
+		task := item.(*task.TaskInfo)
+		h.metrics.Dequeue.Inc(1)
+		tasks = append(tasks, task)
 	}
 
 	// TODO: Add metrics to profile timing for dequeue
@@ -202,7 +216,7 @@ func (h *serviceHandler) requeueTasks(
 			// Requeue the tasks with these states into the queue again
 			t.Runtime.State = task.RuntimeInfo_INITIALIZED
 			h.taskStore.UpdateTask(t)
-			h.tqValue.Load().(util.TaskQueue).PutTask(t)
+			h.tqValue.Load().(queue.Queue).Enqueue(t)
 		default:
 			// Pass
 		}
@@ -225,7 +239,12 @@ func (h *serviceHandler) requeueTasks(
 				JobId:      pbJobID,
 			}
 			h.taskStore.CreateTask(pbJobID, i, t, "peloton")
-			h.tqValue.Load().(util.TaskQueue).PutTask(t)
+			err := h.tqValue.Load().(queue.Queue).Enqueue(t)
+			if err != nil {
+				log.WithError(err).WithField("task", t).
+					Error("Failed to enqueue task")
+				return err
+			}
 		}
 	}
 	return nil
@@ -234,5 +253,7 @@ func (h *serviceHandler) requeueTasks(
 // Reset would discard the queue content. Called when the current
 // peloton master is no longer the leader
 func (h *serviceHandler) Reset() {
-	h.tqValue.Store(util.NewMemLocalTaskQueue("sourceTaskQueue"))
+	itemType := reflect.TypeOf(task.TaskInfo{})
+	q := queue.NewQueue("TaskQueue", itemType, MaxTaskQueueSize)
+	h.tqValue.Store(q)
 }

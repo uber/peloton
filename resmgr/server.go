@@ -79,7 +79,6 @@ func (s *Server) LostLeadershipCallback() error {
 		log.Errorf("Failed to stop task scheduler")
 		return err
 	}
-
 	return nil
 }
 

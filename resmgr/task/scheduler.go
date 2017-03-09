@@ -90,7 +90,6 @@ func (s *scheduler) Start() error {
 				log.Info("Exiting Task Scheduler")
 				return
 			case <-timer.C:
-				log.Debug("Running Task scheduler")
 				s.scheduleTasks()
 			}
 			timer.Stop()

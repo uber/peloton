@@ -11,8 +11,8 @@ import (
 	"peloton/api/task"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/storage/mysql"
-	"code.uber.internal/infra/peloton/util"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -132,7 +132,12 @@ func (suite *ServiceHandlerTestSuite) createJob(
 func getQueueContent(h *serviceHandler) map[string]map[string]bool {
 	var result = make(map[string]map[string]bool)
 	for {
-		task := h.tqValue.Load().(util.TaskQueue).GetTask(1 * time.Millisecond)
+		item, err := h.tqValue.Load().(queue.Queue).Dequeue(10 * time.Millisecond)
+		if err != nil {
+			fmt.Printf("Failed to dequeue item: %v", err)
+			break
+		}
+		task := item.(*task.TaskInfo)
 		if task != nil {
 			jobID := task.JobId.Value
 			taskID := task.Runtime.TaskId.Value
