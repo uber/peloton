@@ -275,7 +275,7 @@ def create_cassandra_store():
 # Run peloton master
 #
 def run_peloton_master():
-    print 'docker image "infra/peloton:pcluster" has to be built first locally by running ' \
+    print 'docker image "uber/peloton" has to be built first locally by running ' \
           'IMAGE=uber/peloton make docker'
 
     for i in range(0, config['peloton_master_instance_count']):
@@ -315,7 +315,7 @@ def run_peloton(disable_peloton_resmgr=False,
                 disable_peloton_hostmgr=False,
                 disable_peloton_jobmgr=False,
                 disable_peloton_placement=False):
-    print 'docker image "infra/peloton:pcluster" has to be built first locally by running ' \
+    print 'docker image "uber/peloton" has to be built first locally by running ' \
           'IMAGE=uber/peloton make docker'
 
     if not disable_peloton_resmgr:
@@ -440,6 +440,8 @@ def run_peloton_jobmgr():
 #
 def run_peloton_placement():
     for i in range(0, config['peloton_placement_instance_count']):
+        # to not cause port conflicts among apps, increase port by 10 for each instance
+        port = config['peloton_placement_port'] + i*10
         name = config['peloton_placement_container'] + repr(i)
         remove_existing_container(name)
         container = cli.create_container(
@@ -447,6 +449,7 @@ def run_peloton_placement():
             environment=[
                 'CONFIG_DIR=config',
                 'APP=placement',
+                'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
                 'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
                     host_ip,
@@ -454,6 +457,11 @@ def run_peloton_placement():
                 ),
                 'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
             ],
+            host_config=cli.create_host_config(
+                port_bindings={
+                    port: port,
+                },
+            ),
             # pull or build peloton image if not exists
             image=config['peloton_image'],
             detach=True,

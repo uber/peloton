@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 
@@ -48,6 +49,10 @@ var (
 			"(election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
 		Envar("ELECTION_ZK_SERVERS").
 		Strings()
+
+	placementPort = app.Flag("port", "Placement engine port (placement.port override) (set $PORT to override)").
+			Envar("PORT").
+			Int()
 )
 
 func main() {
@@ -76,7 +81,11 @@ func main() {
 	}
 	log.WithField("config", cfg).Info("Loaded Placement Engine config")
 
-	rootScope, scopeCloser, _ := metrics.InitMetricScope(
+	if *placementPort != 0 {
+		cfg.Placement.Port = *placementPort
+	}
+
+	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
 		common.PelotonPlacement,
 		metrics.TallyFlushInterval,
@@ -137,9 +146,16 @@ func main() {
 		},
 	}
 
+	inbounds := []transport.Inbound{
+		http.NewInbound(
+			fmt.Sprintf(":%d", cfg.Placement.Port),
+			http.Mux(common.PelotonEndpointPath, mux)),
+	}
+
 	log.Debug("Creating new YARPC dispatcher")
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonPlacement,
+		Inbounds:  inbounds,
 		Outbounds: outbounds,
 	})
 

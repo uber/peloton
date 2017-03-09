@@ -3,6 +3,7 @@ logging:
   stdout: true
 
 placement:
+   port: 5293
    task_dequeue_limit: 20
    offer_dequeue_limit: 10
    max_placement_duration: 1800s
