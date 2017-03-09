@@ -38,7 +38,7 @@ func InitTaskStatusUpdate(
 
 // OnEvent is the callback function notifying an event
 func (p *StatusUpdate) OnEvent(event *pb_eventstream.Event) {
-	log.WithField("event_offset", event.Offset).Debug("Receiving event")
+	log.WithField("event_offset", event.Offset).Info("Receiving event")
 	p.applier.addEvent(event)
 }
 
