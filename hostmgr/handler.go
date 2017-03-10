@@ -12,6 +12,7 @@ import (
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/Sirupsen/logrus"
@@ -22,21 +23,25 @@ import (
 
 // serviceHandler implements peloton.private.hostmgr.InternalHostService.
 type serviceHandler struct {
-	client    mpb.Client
-	metrics   *Metrics
-	offerPool offer.Pool
+	client                mpb.Client
+	metrics               *Metrics
+	offerPool             offer.Pool
+	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 }
 
 // InitServiceHandler initialize serviceHandler.
 func InitServiceHandler(
 	d yarpc.Dispatcher,
 	parent tally.Scope,
-	client mpb.Client) {
+	client mpb.Client,
+	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
+) {
 
 	handler := serviceHandler{
-		client:    client,
-		metrics:   NewMetrics(parent.SubScope("hostmgr")),
-		offerPool: offer.GetEventHandler().GetOfferPool(),
+		client:                client,
+		metrics:               NewMetrics(parent.SubScope("hostmgr")),
+		offerPool:             offer.GetEventHandler().GetOfferPool(),
+		frameworkInfoProvider: frameworkInfoProvider,
 	}
 
 	json.Register(d, json.Procedure("InternalHostService.AcquireHostOffers", handler.AcquireHostOffers))
@@ -232,7 +237,7 @@ func (h *serviceHandler) LaunchTasks(
 	callType := sched.Call_ACCEPT
 	opType := mesos.Offer_Operation_LAUNCH
 	msg := &sched.Call{
-		FrameworkId: hostmgr_mesos.GetSchedulerDriver().GetFrameworkID(),
+		FrameworkId: h.frameworkInfoProvider.GetFrameworkID(),
 		Type:        &callType,
 		Accept: &sched.Call_Accept{
 			OfferIds: offerIds,
@@ -252,7 +257,7 @@ func (h *serviceHandler) LaunchTasks(
 	}).Debug("Launching tasks to Mesos.")
 
 	// TODO: add retry / put back offer and tasks in failure scenarios
-	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID()
+	msid := h.frameworkInfoProvider.GetMesosStreamID()
 	err = h.client.Call(msid, msg)
 	if err != nil {
 		h.metrics.LaunchTasksFail.Inc(int64(len(mesosTasks)))

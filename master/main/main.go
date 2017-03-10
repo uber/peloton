@@ -378,6 +378,7 @@ func main() {
 		dispatcher,
 		rootScope,
 		mesosClient,
+		driver,
 	)
 
 	// Start master dispatch loop

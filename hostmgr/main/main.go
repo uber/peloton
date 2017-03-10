@@ -201,6 +201,7 @@ func main() {
 		dispatcher,
 		rootScope,
 		mesosClient,
+		driver,
 	)
 
 	// Initializing TaskStateManager will start to record task status
