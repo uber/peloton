@@ -75,6 +75,16 @@ message InvalidArgument {
 }
 
 /**
+ * Error for invalid task ids.
+ */
+message InvalidTaskIDs {
+  string message = 1;
+
+  // Any LaunchableTask whose content is invalid.
+  repeated mesos.v1.TaskID taskIds = 2;
+}
+
+/**
  * Error for invalid offers.
  */
 message InvalidOffers {
@@ -86,6 +96,14 @@ message InvalidOffers {
  */
 message LaunchFailure {
   string message = 1;
+}
+
+/**
+ * Error when actually tasks kill failed.
+ */
+message KillFailure {
+  string message = 1;
+  repeated mesos.v1.TaskID taskIds = 2;
 }
 
 /**
@@ -189,11 +207,16 @@ message LaunchTasksResponse {
 }
 
 message KillTasksRequest {
-  repeated string taskIds = 1;
+  repeated mesos.v1.TaskID taskIds = 1;
 }
 
 message KillTasksResponse {
-  // TODO: Add errors that could fail a kill task request
+  message Error {
+    InvalidTaskIDs invalidTaskIDs = 1;
+    KillFailure killFailure = 2;
+  }
+
+  Error error = 1;
 }
 
 message ReserveResourcesRequest {

@@ -80,6 +80,11 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
 
+	var expectedTaskIds []*mesos.TaskID
+	for _, taskInfo := range suite.taskInfos {
+		expectedTaskIds = append(expectedTaskIds, taskInfo.GetRuntime().GetTaskId())
+	}
+
 	gomock.InOrder(
 		mockJobStore.EXPECT().
 			GetJob(suite.testJobID).Return(suite.testJobConfig, nil),
@@ -92,7 +97,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 				gomock.Any(),
 				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks")),
 				gomock.Eq(&hostsvc.KillTasksRequest{
-					TaskIds: []string{"test_job-0", "test_job-1"},
+					TaskIds: expectedTaskIds,
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
@@ -128,6 +133,9 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
+
+	expectedTaskIds := []*mesos.TaskID{suite.taskInfos[1].GetRuntime().GetTaskId()}
+
 	gomock.InOrder(
 		mockJobStore.EXPECT().
 			GetJob(suite.testJobID).Return(suite.testJobConfig, nil),
@@ -140,7 +148,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 				gomock.Any(),
 				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks")),
 				gomock.Eq(&hostsvc.KillTasksRequest{
-					TaskIds: []string{"test_job-1"},
+					TaskIds: expectedTaskIds,
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
@@ -307,7 +309,68 @@ func (h *serviceHandler) KillTasks(
 	reqMeta yarpc.ReqMeta,
 	body *hostsvc.KillTasksRequest) (*hostsvc.KillTasksResponse, yarpc.ResMeta, error) {
 	log.WithField("request", body).Debug("KillTasks called.")
-	// TODO(mu): implement this function per T741386
+	taskIds := body.GetTaskIds()
+	if len(taskIds) == 0 {
+		return &hostsvc.KillTasksResponse{
+			Error: &hostsvc.KillTasksResponse_Error{
+				InvalidTaskIDs: &hostsvc.InvalidTaskIDs{
+					Message: "Empty task ids",
+				},
+			},
+		}, nil, nil
+	}
+
+	var wg sync.WaitGroup
+	failedMutex := &sync.Mutex{}
+	var failedTaskIds []*mesos.TaskID
+	var errs []string
+	for _, taskID := range taskIds {
+		wg.Add(1)
+		go func(taskID *mesos.TaskID) {
+			defer wg.Done()
+			callType := sched.Call_KILL
+			msg := &sched.Call{
+				FrameworkId: h.frameworkInfoProvider.GetFrameworkID(),
+				Type:        &callType,
+				Kill: &sched.Call_Kill{
+					TaskId: taskID,
+				},
+			}
+
+			msid := h.frameworkInfoProvider.GetMesosStreamID()
+			err := h.client.Call(msid, msg)
+			if err != nil {
+				h.metrics.KillTasksFail.Inc(1)
+				log.WithFields(log.Fields{
+					"task_id": taskID,
+					"error":   err,
+				}).Error("Kill task failure")
+
+				failedMutex.Lock()
+				defer failedMutex.Unlock()
+				failedTaskIds = append(failedTaskIds, taskID)
+				errs = append(errs, err.Error())
+				return
+			}
+
+			h.metrics.KillTasks.Inc(1)
+			log.WithField("task", taskID).Info("Task kill request sent")
+		}(taskID)
+	}
+
+	wg.Wait()
+
+	if len(failedTaskIds) > 0 {
+		return &hostsvc.KillTasksResponse{
+			Error: &hostsvc.KillTasksResponse_Error{
+				KillFailure: &hostsvc.KillFailure{
+					Message: strings.Join(errs, ";"),
+					TaskIds: failedTaskIds,
+				},
+			},
+		}, nil, nil
+	}
+
 	return &hostsvc.KillTasksResponse{}, nil, nil
 }
 

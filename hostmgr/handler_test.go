@@ -1,7 +1,9 @@
 package hostmgr
 
 import (
+	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -330,4 +332,156 @@ func TestAcquireAndLaunch(t *testing.T) {
 		t,
 		int64(1),
 		testScope.Snapshot().Counters()["launch_tasks"].Value())
+}
+
+// Test happy case of killing task
+func TestKillTask(t *testing.T) {
+	t1 := "t1"
+	t2 := "t2"
+	taskIDs := []*mesos.TaskID{
+		{Value: &t1},
+		{Value: &t2},
+	}
+	killReq := &hostsvc.KillTasksRequest{
+		TaskIds: taskIDs,
+	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testScope := tally.NewTestScope("", map[string]string{})
+	client := mpb_mocks.NewMockClient(ctrl)
+	pool := offer.NewOfferPool(offerHoldTime, client)
+	provider := &mockFrameworkInfoProvider{}
+	h := &serviceHandler{
+		client:                client,
+		metrics:               NewMetrics(testScope),
+		offerPool:             pool,
+		frameworkInfoProvider: provider,
+	}
+
+	killedTaskIds := make(map[string]bool)
+	mockMutex := &sync.Mutex{}
+
+	gomock.InOrder(
+		client.EXPECT().
+			Call(
+				gomock.Eq(streamID),
+				gomock.Any(),
+			).
+			Do(func(_ string, msg proto.Message) {
+				// Verify call message.
+				call := msg.(*sched.Call)
+				assert.Equal(t, sched.Call_KILL, call.GetType())
+				assert.Equal(t, provider.GetFrameworkID(), call.GetFrameworkId())
+
+				tid := call.GetKill().GetTaskId()
+				assert.NotNil(t, tid)
+				mockMutex.Lock()
+				defer mockMutex.Unlock()
+				killedTaskIds[tid.GetValue()] = true
+			}).
+			Return(nil).
+			Times(2),
+	)
+	resp, _, err := h.KillTasks(rootCtx, nil, killReq)
+	assert.NoError(t, err)
+	assert.Nil(t, resp.GetError())
+	assert.Equal(t, map[string]bool{"t1": true, "t2": true}, killedTaskIds)
+
+	assert.Equal(
+		t,
+		int64(2),
+		testScope.Snapshot().Counters()["kill_tasks"].Value())
+}
+
+// Test some failure cases of killing task
+func TestKillTaskFailure(t *testing.T) {
+	t1 := "t1"
+	t2 := "t2"
+	taskIDs := []*mesos.TaskID{
+		{Value: &t1},
+		{Value: &t2},
+	}
+	killReq := &hostsvc.KillTasksRequest{
+		TaskIds: taskIDs,
+	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testScope := tally.NewTestScope("", map[string]string{})
+	client := mpb_mocks.NewMockClient(ctrl)
+	pool := offer.NewOfferPool(offerHoldTime, client)
+	provider := &mockFrameworkInfoProvider{}
+	h := &serviceHandler{
+		client:                client,
+		metrics:               NewMetrics(testScope),
+		offerPool:             pool,
+		frameworkInfoProvider: provider,
+	}
+
+	killedTaskIds := make(map[string]bool)
+	failedTaskIds := make(map[string]bool)
+	mockMutex := &sync.Mutex{}
+
+	// A failed call.
+	client.EXPECT().
+		Call(
+			gomock.Eq(streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify call message.
+			call := msg.(*sched.Call)
+			assert.Equal(t, sched.Call_KILL, call.GetType())
+			assert.Equal(t, provider.GetFrameworkID(), call.GetFrameworkId())
+
+			tid := call.GetKill().GetTaskId()
+			assert.NotNil(t, tid)
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+			failedTaskIds[tid.GetValue()] = true
+		}).
+		Return(errors.New("Some error"))
+
+	// A successful call.
+	client.EXPECT().
+		Call(
+			gomock.Eq(streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify call message.
+			call := msg.(*sched.Call)
+			assert.Equal(t, sched.Call_KILL, call.GetType())
+			assert.Equal(t, provider.GetFrameworkID(), call.GetFrameworkId())
+
+			tid := call.GetKill().GetTaskId()
+			assert.NotNil(t, tid)
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+
+			killedTaskIds[tid.GetValue()] = true
+		}).
+		Return(nil)
+
+	resp, _, err := h.KillTasks(rootCtx, nil, killReq)
+	assert.NoError(t, err)
+	assert.NotNil(t, resp.GetError().GetKillFailure())
+
+	assert.Equal(t, 1, len(killedTaskIds))
+	assert.Equal(t, 1, len(failedTaskIds))
+
+	assert.NotEqual(t, killedTaskIds, failedTaskIds)
+
+	assert.Equal(
+		t,
+		int64(1),
+		testScope.Snapshot().Counters()["kill_tasks"].Value())
+
+	assert.Equal(
+		t,
+		int64(1),
+		testScope.Snapshot().Counters()["kill_tasks_fail"].Value())
 }

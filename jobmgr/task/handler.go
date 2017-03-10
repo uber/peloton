@@ -11,6 +11,8 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
+	mesos "mesos/v1"
+
 	"peloton/api/job"
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
@@ -146,7 +148,7 @@ func (m *serviceHandler) Stop(
 	reqMeta yarpc.ReqMeta,
 	body *task.StopRequest) (*task.StopResponse, yarpc.ResMeta, error) {
 
-	log.Infof("TaskManager.Stop called: %v", body)
+	log.WithField("request", body).Info("TaskManager.Stop called")
 	m.metrics.TaskAPIStop.Inc(1)
 	ctx, cancelFunc := context.WithTimeout(
 		m.rootCtx,
@@ -200,7 +202,9 @@ func (m *serviceHandler) Stop(
 	}
 
 	if err != nil || len(taskInfos) == 0 {
-		log.Errorf("Failed to get tasks for job id %v, err=%v", body.JobId, err)
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("Failed to get tasks to stop for job")
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
 				OutOfRange: &task.InstanceIdOutOfRange{
@@ -212,18 +216,20 @@ func (m *serviceHandler) Stop(
 		}, nil, nil
 	}
 
-	var tasksToKill []string
+	// tasksToKill only includes taks ids whose goal state update succeeds.
+	var tasksToKill []*mesos.TaskID
 	var stoppedInstanceIds []uint32
 	// Persist KILLED goalstate for tasks in db.
 	for instID, taskInfo := range taskInfos {
-		taskID := taskInfo.GetRuntime().GetTaskId().GetValue()
+		taskID := taskInfo.GetRuntime().GetTaskId()
 		// Skip update task goalstate if it is already KILLED.
 		if taskInfo.GetRuntime().GoalState != task.RuntimeInfo_KILLED {
 			taskInfo.GetRuntime().GoalState = task.RuntimeInfo_KILLED
 			err = m.taskStore.UpdateTask(taskInfo)
 			if err != nil {
 				// Skip remaining tasks killing if db update error occurs.
-				log.WithError(err).WithField("taskID", taskID).
+				log.WithError(err).
+					WithField("task_id", taskID).
 					Error("Failed to update KILLED goalstate")
 				break
 			}
@@ -247,7 +253,8 @@ func (m *serviceHandler) Stop(
 			&response,
 		)
 		if killTasksInHostmgrErr != nil {
-			log.WithError(killTasksInHostmgrErr).WithField("tasks", tasksToKill).
+			log.WithError(killTasksInHostmgrErr).
+				WithField("tasks", tasksToKill).
 				Error("Failed to kill tasks on host manager")
 		}
 	}
