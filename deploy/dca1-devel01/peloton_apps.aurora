@@ -8,7 +8,7 @@ election_zk_servers = '\n'.join([
     'zookeeper-mesos-devel01-dca1.uber.internal:2181',
 ])
 mysql_host = 'compute840-dca1'
-docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.1.0-19-g715bd56'
+docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.1.0-34-g13ab113'
 
 
 PROFILES = [

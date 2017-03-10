@@ -13,7 +13,7 @@ election_zk_servers = '\n'.join([
     'zk-ea34a2c6.pit-irn-1.uberatc.net:2181',
 ])
 mysql_host = 'ms-0d1a494c'
-docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-26-gc94c8c3'
+docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-34-g13ab113'
 
 PROFILES = [
   Profile(
