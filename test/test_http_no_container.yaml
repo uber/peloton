@@ -24,4 +24,4 @@ defaultconfig:
   labels:
     labels:
     - key: "org.apache.aurora.metadata.uns"
-      value: '["/sjc1-test01/us1/test_http/production/test_http"]'
+      value: '["/peloton_test_http1/us1/peloton_test_http1"]'
