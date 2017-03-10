@@ -83,6 +83,12 @@ message RuntimeInfo {
 
   // Goalstate of the task
   TaskState goalState = 6;
+
+  // The message about task updates
+  string message = 7;
+
+  // The reason for task updates
+  string reason = 8;
 }
 
 

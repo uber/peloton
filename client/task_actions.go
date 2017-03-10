@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	taskListFormatHeader = "Instance\tJob\tCPU Limit\tMem Limit\tDisk Limit\tState\tGoalState\tStarted At\tTask ID\tHost\t\n"
-	taskListFormatBody   = "%d\t%s\t%.1f\t%.0f MB\t%.0f MB\t%s\t%s\t%s\t%s\t%s\t\n"
+	taskListFormatHeader = "Instance\tJob\tCPU Limit\tMem Limit\tDisk Limit\tState\tGoalState\tStarted At" +
+		"\tTask ID\tHost\tMessage\tReason\t\n"
+	taskListFormatBody = "%d\t%s\t%.1f\t%.0f MB\t%.0f MB\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // SortedTaskInfoList makes TaskInfo implement sortable interface
@@ -160,9 +161,10 @@ func printTaskGetResponse(r pt.GetResponse, debug bool) {
 				rt.State.String(),
 				rt.GoalState.String(),
 				rt.StartedAt,
-				*rt.TaskId.Value,
+				rt.GetTaskId().GetValue(),
 				rt.Host,
-			)
+				rt.Message,
+				rt.Reason)
 		} else {
 			fmt.Fprintf(tabWriter, "Unexpected error, no results in response.\n")
 		}
@@ -203,9 +205,10 @@ func printTaskListResponse(r pt.ListResponse, debug bool) {
 					rt.State.String(),
 					rt.GoalState.String(),
 					rt.StartedAt,
-					*rt.TaskId.Value,
+					rt.GetTaskId().GetValue(),
 					rt.Host,
-				)
+					rt.Message,
+					rt.Reason)
 			}
 		}
 	}

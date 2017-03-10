@@ -50,9 +50,11 @@ var (
 		Envar("ELECTION_ZK_SERVERS").
 		Strings()
 
-	placementPort = app.Flag("port", "Placement engine port (placement.port override) (set $PORT to override)").
-			Envar("PORT").
-			Int()
+	placementPort = app.Flag(
+		"port",
+		"Placement engine port (placement.port override) (set $PORT to override)").
+		Envar("PORT").
+		Int()
 )
 
 func main() {

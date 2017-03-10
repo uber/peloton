@@ -8,6 +8,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	mesos "mesos/v1"
+	p_task "peloton/api/task"
 	pb_eventstream "peloton/private/eventstream"
 )
 
@@ -38,7 +39,7 @@ func InitTaskStatusUpdate(
 
 // OnEvent is the callback function notifying an event
 func (p *StatusUpdate) OnEvent(event *pb_eventstream.Event) {
-	log.WithField("event_offset", event.Offset).Info("Receiving event")
+	log.WithField("event_offset", event.Offset).Debug("Receiving event")
 	p.applier.addEvent(event)
 }
 
@@ -66,9 +67,25 @@ func (p *StatusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 	}
 	state := util.MesosStateToPelotonState(taskStatus.GetState())
 
+	// TODO: figure out on what cases state updates should not be persisted
+
 	// TODO: depends on the state, may need to put the task back to
 	// the queue, or clear the pending task record from taskqueue
 	taskInfo.GetRuntime().State = state
+
+	// persist error message to help end user figure out root cause
+	if isUnexpected(state) {
+		taskInfo.GetRuntime().Message = taskStatus.GetMessage()
+		taskInfo.GetRuntime().Reason = taskStatus.GetReason().String()
+		// TODO: Add metrics for unexpected task updates
+		log.WithFields(log.Fields{
+			"task_id": taskID,
+			"state":   state,
+			"message": taskStatus.GetMessage(),
+			"reason":  taskStatus.GetReason().String()}).
+			Debug("Received unexpected update for task")
+	}
+
 	err = p.taskStore.UpdateTask(taskInfo)
 	if err != nil {
 		log.WithError(err).
@@ -79,4 +96,16 @@ func (p *StatusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 		return err
 	}
 	return nil
+}
+
+// isUnexpected tells if taskState is unexpected or not
+func isUnexpected(taskState p_task.RuntimeInfo_TaskState) bool {
+	switch taskState {
+	case p_task.RuntimeInfo_FAILED,
+		p_task.RuntimeInfo_LOST:
+		return true
+	default:
+		// TODO: we may want to treat unknown state as error
+		return false
+	}
 }
