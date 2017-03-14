@@ -1,4 +1,4 @@
-package reconciliation
+package reconcile
 
 import (
 	"github.com/uber-go/tally"

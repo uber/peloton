@@ -55,3 +55,4 @@ resmgr:
 
 hostmgr:
   initial_reconcile_delay_sec: 60
+  implicit_reconcile_interval_sec: 3600

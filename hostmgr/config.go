@@ -22,4 +22,7 @@ type Config struct {
 
 	// Initial delay before running reconciliation
 	InitialReconcileDelaySec int `yaml:"initial_reconcile_delay_sec"`
+
+	// Implicit task reconciliation interval
+	ImplicitReconcileIntervalSec int `yaml:"implicit_reconcile_interval_sec"`
 }
