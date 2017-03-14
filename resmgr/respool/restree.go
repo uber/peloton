@@ -1,64 +1,114 @@
 package respool
 
 import (
-	"peloton/api/respool"
 	"sync"
 
 	"code.uber.internal/infra/peloton/storage"
 	"container/list"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
+
+	"peloton/api/respool"
 )
 
-// InitTree will be initializing the respool tree
-func InitTree(
-	store storage.ResourcePoolStore,
-	metrics *Metrics) *Tree {
+// Tree defines the interface for a Resource Pool Tree
+type Tree interface {
+	// Start starts a respooltree by loading all respools
+	// and pending tasks from DB. This should be called when a
+	// resource manager gains the leadership.
+	Start() error
 
-	service := Tree{
-		resPoolTree: nil,
-		store:       store,
-	}
-	service.allNodes = make(map[string]*ResPool)
-	return &service
+	// Stop resets a respool tree when a resource manager lost the
+	// leadership.
+	Stop() error
+
+	// LookupResPool returns a respool node by the given ID
+	LookupResPool(ID *respool.ResourcePoolID) (*ResPool, error)
+
+	// GetAllNodes returns all respool nodes or all leaf respool nodes.
+	GetAllNodes(leafOnly bool) *list.List
+
+	// FIXME: the following functions are used by
+	// scheduler_test.go. Need to mock the ResourcePoolStore interface
+	// in the test so that we don't leak these functions.
+	SetAllNodes(nodes *map[string]*ResPool)
+	CreateTree(parent *ResPool, ID string,
+		resPools map[string]*respool.ResourcePoolConfig,
+		allNodes map[string]*ResPool) *ResPool
 }
 
-// Tree will be storing the Tree for respools
-type Tree struct {
+// tree implements the Tree interface
+type tree struct {
 	sync.RWMutex
-	resPoolTree *ResPool
-	store       storage.ResourcePoolStore
-	resPools    map[string]*respool.ResourcePoolConfig
+
+	store    storage.ResourcePoolStore
+	metrics  *Metrics
+	root     *ResPool
+	resPools map[string]*respool.ResourcePoolConfig
 	// Hashmap of [ID] = Node, having all Nodes
 	allNodes map[string]*ResPool
 }
 
-// StartResPool will start the respool tree
-func (r *Tree) StartResPool() error {
-	resPools, err := r.store.GetAllResourcePools()
+// Singleton resource pool tree
+var respoolTree *tree
+
+// InitTree will be initializing the respool tree
+func InitTree(
+	scope tally.Scope,
+	store storage.ResourcePoolStore) {
+
+	if respoolTree != nil {
+		log.Warning("Resource pool tree has already been initialized")
+		return
+	}
+
+	respoolTree = &tree{
+		store:    store,
+		root:     nil,
+		metrics:  NewMetrics(scope),
+		allNodes: make(map[string]*ResPool),
+	}
+}
+
+// GetTree returns the interface of a Resource Pool Tree. This
+// function assumes the tree has been initialized as part of the
+// InitTree function.
+func GetTree() Tree {
+	if respoolTree == nil {
+		log.Fatal("Resource pool tree is not initialized")
+	}
+	return respoolTree
+}
+
+// Start will start the respool tree by loading respools and tasks
+// from storage
+func (t *tree) Start() error {
+	resPools, err := t.store.GetAllResourcePools()
 	if err != nil {
 		log.WithField("Error", err).Error("GetAllResourcePools failed")
 		return err
 	}
-	r.resPools = resPools
+	t.resPools = resPools
 	if len(resPools) == 0 {
 		log.Warnf("There are no resource pools existing")
 		return nil
 	}
 	// Initializing the respoolTree
-	r.resPoolTree = r.initializeResourceTree()
+	t.root = t.initializeResourceTree()
 	return nil
 }
 
-// StopResPool will stop the respool tree
-func (r *Tree) StopResPool() {
+// Stop will stop the respool tree
+func (t *tree) Stop() error {
 	// TODO: Need to be done
+	return nil
 }
 
 // initializeResourceTree will initialize all the resource pools from Storage
-func (r *Tree) initializeResourceTree() *ResPool {
+func (t *tree) initializeResourceTree() *ResPool {
 	log.Info("Initializing Resource Tree")
-	if r.resPools == nil {
+	if t.resPools == nil {
 		return nil
 	}
 	rootResPoolConfig := respool.ResourcePoolConfig{
@@ -66,13 +116,13 @@ func (r *Tree) initializeResourceTree() *ResPool {
 		Parent: nil,
 		Policy: respool.SchedulingPolicy_PriorityFIFO,
 	}
-	r.resPools[RootResPoolID] = &rootResPoolConfig
-	root := r.CreateTree(nil, RootResPoolID, r.resPools, r.allNodes)
+	t.resPools[RootResPoolID] = &rootResPoolConfig
+	root := t.CreateTree(nil, RootResPoolID, t.resPools, t.allNodes)
 	return root
 }
 
 // CreateTree function will take the Parent node and create the tree underneath
-func (r *Tree) CreateTree(
+func (t *tree) CreateTree(
 	parent *ResPool,
 	ID string,
 	resPools map[string]*respool.ResourcePoolConfig,
@@ -80,11 +130,11 @@ func (r *Tree) CreateTree(
 	node := NewRespool(ID, parent, resPools[ID])
 	allNodes[ID] = node
 	node.SetParent(parent)
-	childs := r.getChildResPools(ID, resPools)
+	childs := t.getChildResPools(ID, resPools)
 	var childNodes = list.New()
 	// TODO: We need to detect cycle here.
 	for child := range childs {
-		childNode := r.CreateTree(node, child, resPools, allNodes)
+		childNode := t.CreateTree(node, child, resPools, allNodes)
 		childNodes.PushBack(childNode)
 	}
 	node.SetChildren(childNodes)
@@ -92,7 +142,7 @@ func (r *Tree) CreateTree(
 }
 
 // printTree will print the whole Resource Pool Tree in BFS manner
-func (r *Tree) printTree(root *ResPool) {
+func (t *tree) printTree(root *ResPool) {
 	var queue list.List
 	queue.PushBack(root)
 	for queue.Len() != 0 {
@@ -109,7 +159,7 @@ func (r *Tree) printTree(root *ResPool) {
 }
 
 // getChildResPools will return map[respoolid] = respoolConfig
-func (r *Tree) getChildResPools(parentID string,
+func (t *tree) getChildResPools(parentID string,
 	resPools map[string]*respool.ResourcePoolConfig) map[string]*respool.ResourcePoolConfig {
 	childs := make(map[string]*respool.ResourcePoolConfig)
 	for respool, respoolConf := range resPools {
@@ -120,31 +170,20 @@ func (r *Tree) getChildResPools(parentID string,
 	return childs
 }
 
-// GetResPoolRoot will return the root node for the resource pool tree
-func (r *Tree) GetResPoolRoot() *ResPool {
+// getRoot will return the root node for the resource pool tree
+func (t *tree) getRoot() *ResPool {
 	// TODO: Need to clone the tree
-	return r.resPoolTree
+	return t.root
 }
 
-// GetAllNodes returns all the nodes in the tree
-func (r *Tree) GetAllNodes() *list.List {
-	r.RLock()
-	defer r.Unlock()
-	list := new(list.List)
-	for _, n := range r.allNodes {
-		list.PushBack(n)
-	}
-	return list
-}
-
-// GetAllLeafNodes returns all the leaf nodes in the tree
-func (r *Tree) GetAllLeafNodes() *list.List {
+// GetAllNodes returns all the leaf nodes in the tree
+func (t *tree) GetAllNodes(leafOnly bool) *list.List {
 	// TODO: we need to merge GetAllNodes with GetAllLeafNodes
-	r.RLock()
-	defer r.RUnlock()
+	t.RLock()
+	defer t.RUnlock()
 	list := new(list.List)
-	for _, n := range r.allNodes {
-		if n.Isleaf() {
+	for _, n := range t.allNodes {
+		if !leafOnly || n.Isleaf() {
 			list.PushBack(n)
 		}
 	}
@@ -152,18 +191,18 @@ func (r *Tree) GetAllLeafNodes() *list.List {
 }
 
 // SetAllNodes sets all nodes in the tree
-func (r *Tree) SetAllNodes(nodes *map[string]*ResPool) {
-	r.Lock()
-	defer r.Unlock()
-	r.allNodes = *nodes
+func (t *tree) SetAllNodes(nodes *map[string]*ResPool) {
+	t.Lock()
+	defer t.Unlock()
+	t.allNodes = *nodes
 }
 
 // LookupResPool returns the resource pool for the given resource pool ID
-func (r *Tree) LookupResPool(ID respool.ResourcePoolID) (*ResPool, error) {
-	r.RLock()
-	defer r.RUnlock()
-	if val, ok := r.allNodes[ID.Value]; ok {
+func (t *tree) LookupResPool(ID *respool.ResourcePoolID) (*ResPool, error) {
+	t.RLock()
+	defer t.RUnlock()
+	if val, ok := t.allNodes[ID.Value]; ok {
 		return val, nil
 	}
-	return nil, fmt.Errorf("Not able to find Respool %s ", ID.Value)
+	return nil, fmt.Errorf("Resource pool (%s) not found", ID.Value)
 }

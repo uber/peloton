@@ -27,7 +27,8 @@ service ResourceManagerService {
    *  scheduling. The tasks will be in PENDING state first and then
    *  transit to READY state when the resource pool has available
    *  resources. This method will be called by Job Manager when a new
-   *  job is created or new tasks are added.
+   *  job is created or new tasks are added. If there is any tasks that
+   *  are failed to enqueue, Job Manager should retry those failed tasks.
    */
   rpc EnqueueTasks(EnqueueTasksRequest) returns (EnqueueTasksResponse);
 
@@ -66,6 +67,25 @@ service ResourceManagerService {
   rpc NotifyTaskUpdates(NotifyTaskUpdatesRequest) returns (NotifyTaskUpdatesResponse);
 }
 
+message ResourcePoolNotFound {
+  api.respool.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+message ResourcePoolNoPermission {
+  api.respool.ResourcePoolID id = 1;
+  string message = 2;
+}
+
+message EnqueueTasksFailure {
+  message FailedTask {
+    resmgr.Task task = 1;
+    string message = 2;
+  }
+
+  repeated FailedTask failed = 1;
+}
+
 message EnqueueTasksRequest {
   // ResourcePool
   api.respool.ResourcePoolID resPool = 1;
@@ -75,19 +95,47 @@ message EnqueueTasksRequest {
 }
 
 message EnqueueTasksResponse {
-  // TODO: Add error handling here
+  message Error {
+    ResourcePoolNotFound notFound = 1;
+    ResourcePoolNoPermission noPermission = 2;
+    EnqueueTasksFailure failure = 3;
+  }
+  Error error = 1;
+}
+
+message RequestTimedout {
+  string message = 1;
+}
+
+message DequeueTasksFailure {
+  string message = 1;
 }
 
 message DequeueTasksRequest {
   // Max number of ready tasks to dequeue
   uint32 limit = 1;
+
+  // Timeout in milliseconds if no tasks are ready
+  uint32 timeout = 2;
 }
 
 message DequeueTasksResponse {
-  // TODO: Add error handling here
+  message Error {
+    RequestTimedout timedout = 1;
+    DequeueTasksFailure failure = 2;
+  }
+  Error error = 1;
 
   // The list of tasks that have been dequeued
-  repeated resmgr.Task tasks = 1;
+  repeated resmgr.Task tasks = 2;
+}
+
+message SetPlacementsFailure {
+  message FailedPlacement{
+    resmgr.Placement placement = 1;
+    string message = 2;
+  }
+  repeated FailedPlacement failed = 1;
 }
 
 message SetPlacementsRequest {
@@ -96,19 +144,32 @@ message SetPlacementsRequest {
 }
 
 message SetPlacementsResponse {
-  // TODO: Add error handling here
+  message Error {
+    SetPlacementsFailure failure = 1;
+  }
+  Error error = 1;
+}
+
+message GetPlacementsFailure {
+  string message = 1;
 }
 
 message GetPlacementsRequest {
   // Max number of placements to retrieve
   uint32 limit = 1;
+
+  // Timeout in milliseconds if no placements
+  uint32 timeout = 2;
 }
 
 message GetPlacementsResponse {
-  // TODO: Add error handling here
+  message Error {
+    GetPlacementsFailure failure = 1;
+  }
+  Error error = 1;
 
   // List of task placements to return
-  repeated resmgr.Placement placements = 1;
+  repeated resmgr.Placement placements = 2;
 }
 
 message NotifyTaskUpdatesError {

@@ -21,7 +21,7 @@ type RespoolTestSuite struct {
 	store      *mysql.JobStore
 	db         *sqlx.DB
 	dispatcher yarpc.Dispatcher
-	resTree    Tree
+	resTree    tree
 	resPools   map[string]*respool.ResourcePoolConfig
 	allNodes   map[string]*ResPool
 	root       *ResPool

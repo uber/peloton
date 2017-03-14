@@ -23,10 +23,6 @@ const (
 type ServiceHandler interface {
 	Start() error
 	Stop() error
-
-	// TODO: replace this by adding a respool.Tree interface and a
-	// respool.GetTree function in tree.go
-	GetResourcePoolTree() *Tree
 }
 
 // serviceHandler implements peloton.api.respool.ResourcePoolService
@@ -35,7 +31,7 @@ type serviceHandler struct {
 	metrics      *Metrics
 	dispatcher   yarpc.Dispatcher
 	runningState int32
-	resPoolTree  *Tree
+	resPoolTree  Tree
 }
 
 // Singleton service handler for ResourcePoolService
@@ -52,17 +48,18 @@ func InitServiceHandler(
 		return
 	}
 
-	metrics := NewMetrics(parent.SubScope("respool"))
+	scope := parent.SubScope("respool")
+	metrics := NewMetrics(scope)
 
 	// Initializing Resource Pool Tree
-	resPoolTree := InitTree(store, metrics)
+	InitTree(scope, store)
 
 	handler = &serviceHandler{
 		store:        store,
 		metrics:      metrics,
 		dispatcher:   d,
 		runningState: runningStateNotStarted,
-		resPoolTree:  resPoolTree,
+		resPoolTree:  GetTree(),
 	}
 	log.Info("ResourcePoolService handler created")
 }
@@ -72,7 +69,7 @@ func InitServiceHandler(
 // InitEventHandler function.
 func GetServiceHandler() ServiceHandler {
 	if handler == nil {
-		log.Fatalf("ResourcePoolService handler is not initialized")
+		log.Fatal("ResourcePoolService handler is not initialized")
 	}
 	return handler
 }
@@ -100,6 +97,9 @@ func (h *serviceHandler) CreateResourcePool(
 			},
 		}, nil, nil
 	}
+
+	// TODO: update in-memory respool tree structure
+
 	return &respool.CreateResponse{
 		Result: resPoolID,
 	}, nil, nil
@@ -153,7 +153,7 @@ func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
 func (h *serviceHandler) Start() error {
 
 	if h.runningState == runningStateRunning {
-		log.Warn("Resource Manager is already running, no action will be performed")
+		log.Warn("Resource pool service is already running")
 		return nil
 	}
 
@@ -162,7 +162,7 @@ func (h *serviceHandler) Start() error {
 	log.Info("Registering the respool procedures")
 	h.registerProcs(h.dispatcher)
 
-	err := h.resPoolTree.StartResPool()
+	err := h.resPoolTree.Start()
 	return err
 }
 
@@ -174,9 +174,4 @@ func (h *serviceHandler) Stop() error {
 	}
 	atomic.StoreInt32(&h.runningState, runningStateNotStarted)
 	return nil
-}
-
-// GetResourcePoolTree returns the resource pool tree.
-func (h *serviceHandler) GetResourcePoolTree() *Tree {
-	return h.resPoolTree
 }

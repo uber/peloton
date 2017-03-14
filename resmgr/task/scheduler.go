@@ -1,37 +1,39 @@
 package task
 
 import (
-	"code.uber.internal/infra/peloton/resmgr/queue"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	log "github.com/Sirupsen/logrus"
-	"peloton/private/resmgr"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
-)
 
-const (
-	runningStateNotStarted = 0
-	runningStateRunning    = 1
-	dequeueTaskLimit       = 1000
+	"code.uber.internal/infra/peloton/common/queue"
+	"code.uber.internal/infra/peloton/resmgr/respool"
+	log "github.com/Sirupsen/logrus"
+
+	"peloton/private/resmgr"
 )
 
 // Scheduler defines the interface of task scheduler which schedules
 // tasks from the pending queues of resource pools to a ready queue
 // using different scheduling policies.
 type Scheduler interface {
+	// Start starts the task scheduler goroutines
 	Start() error
+	// Stop stops the task scheduler goroutines
 	Stop() error
+	// GetReadyQueue returns the Ready queue in which all tasks which
+	// are ready to be placed
+	GetReadyQueue() queue.Queue
 }
 
 // scheduler implements the TaskScheduler interface
 type scheduler struct {
 	sync.Mutex
 	runningState     int32
-	resPoolTree      *respool.Tree
+	resPoolTree      respool.Tree
 	schedulingPeriod time.Duration
 	stopChan         chan struct{}
-	readyQueue       *queue.MultiLevelList
+	readyQueue       queue.Queue
 }
 
 var sched *scheduler
@@ -39,16 +41,22 @@ var sched *scheduler
 // InitScheduler initializes a Task Scheduler
 func InitScheduler(taskSchedulingPeriod time.Duration) {
 
-	// TODO: replace with respool.GetTree
-	resPoolTree := respool.GetServiceHandler().GetResourcePoolTree()
+	if sched != nil {
+		log.Warning("Task scheduler has already been initialized")
+		return
+	}
 
 	sched = &scheduler{
-		resPoolTree:      resPoolTree,
+		resPoolTree:      respool.GetTree(),
 		runningState:     runningStateNotStarted,
 		schedulingPeriod: taskSchedulingPeriod,
 		stopChan:         make(chan struct{}, 1),
 		// TODO: initialize ready queue elsewhere
-		readyQueue: queue.NewMultiLevelList(),
+		readyQueue: queue.NewQueue(
+			"ready-queue",
+			reflect.TypeOf(resmgr.Task{}),
+			maxReadyQueueSize,
+		),
 	}
 }
 
@@ -102,7 +110,9 @@ func (s *scheduler) Start() error {
 
 // scheduleTasks moves the task to ready queue in every scheduling cycle
 func (s *scheduler) scheduleTasks() {
-	nodes := s.resPoolTree.GetAllLeafNodes()
+	// TODO: consider add DequeueTasks to respool.Tree interface
+	// instead of returning all leaf nodes.
+	nodes := s.resPoolTree.GetAllNodes(true)
 	// TODO: we need to check the entitlement first
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*respool.ResPool)
@@ -113,7 +123,7 @@ func (s *scheduler) scheduleTasks() {
 		}
 		for e := t.Front(); e != nil; e = e.Next() {
 			task := e.Value.(*resmgr.Task)
-			s.readyQueue.Push(int(task.Priority), t)
+			s.readyQueue.Enqueue(task)
 		}
 	}
 }
@@ -146,6 +156,6 @@ func (s *scheduler) Stop() error {
 
 // GetReadyQueue returns the Ready queue in which all tasks which are
 // ready to be placed
-func (s *scheduler) GetReadyQueue() *queue.MultiLevelList {
+func (s *scheduler) GetReadyQueue() queue.Queue {
 	return s.readyQueue
 }

@@ -42,6 +42,10 @@ func (f *PriorityQueue) Enqueue(ti *resmgr.Task) error {
 
 // Dequeue dequeues the task based on the priority and order they came into the queue
 func (f *PriorityQueue) Dequeue() (*resmgr.Task, error) {
+	// TODO: optimize the write lock here with potential read lock
+	f.Lock()
+	defer f.Unlock()
+
 	highestPriority := f.list.GetHighestLevel()
 	item, err := f.list.Pop(highestPriority)
 	if err != nil {
@@ -60,8 +64,6 @@ func (f *PriorityQueue) Dequeue() (*resmgr.Task, error) {
 		return &resmgr.Task{}, err
 	}
 	res := item.(*resmgr.Task)
-	f.Lock()
-	defer f.Unlock()
 	f.count--
 	return res, nil
 }
