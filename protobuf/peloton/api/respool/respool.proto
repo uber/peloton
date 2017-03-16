@@ -86,6 +86,7 @@ message ResourcePoolInfo {
   ResourcePoolConfig config = 2;
 
   // Resource Pool's parent
+  //TODO: parent duplicated from ResourcePoolConfig
   ResourcePoolID parent = 3;
 
   // Resource Pool's children

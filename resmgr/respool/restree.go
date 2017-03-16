@@ -1,15 +1,16 @@
 package respool
 
 import (
-	"sync"
-
-	"code.uber.internal/infra/peloton/storage"
 	"container/list"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"github.com/uber-go/tally"
+	"sync"
 
 	"peloton/api/respool"
+
+	"code.uber.internal/infra/peloton/storage"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 )
 
 // Tree defines the interface for a Resource Pool Tree
@@ -181,13 +182,13 @@ func (t *tree) GetAllNodes(leafOnly bool) *list.List {
 	// TODO: we need to merge GetAllNodes with GetAllLeafNodes
 	t.RLock()
 	defer t.RUnlock()
-	list := new(list.List)
+	nodesList := new(list.List)
 	for _, n := range t.allNodes {
 		if !leafOnly || n.Isleaf() {
-			list.PushBack(n)
+			nodesList.PushBack(n)
 		}
 	}
-	return list
+	return nodesList
 }
 
 // SetAllNodes sets all nodes in the tree

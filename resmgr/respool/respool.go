@@ -2,13 +2,15 @@ package respool
 
 import (
 	"container/list"
+	"math"
+
 	"peloton/api/respool"
+	"peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/resmgr/queue"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
-	"math"
-	"peloton/private/resmgr"
 )
 
 // ResPool this is the struct which will be holding the resource pool
@@ -20,11 +22,10 @@ type ResPool struct {
 	name            string
 	resourceConfigs map[string]*respool.ResourceConfig
 	respoolConfig   *respool.ResourcePoolConfig
-	schedulingPlicy respool.SchedulingPolicy
 	pendingQueue    queue.Queue
 }
 
-// NewRespool will intializing the resource pool node and return that
+// NewRespool will initialize the resource pool node and return that
 func NewRespool(
 	ID string,
 	parent *ResPool,
@@ -36,8 +37,8 @@ func NewRespool(
 		resourceConfigs: make(map[string]*respool.ResourceConfig),
 		respoolConfig:   respoolConfig,
 	}
+
 	result.initResources(respoolConfig)
-	result.schedulingPlicy = respoolConfig.Policy
 	q, err := queue.CreateQueue(respoolConfig.Policy, math.MaxInt64)
 	if err != nil {
 		log.WithField("ResPool: ", ID).Error("Error creating resource pool pending queue")
@@ -92,7 +93,7 @@ func (n *ResPool) SetResources(resources *respool.ResourceConfig) {
 
 // Isleaf will tell us if this resource pool is leaf or not
 func (n *ResPool) Isleaf() bool {
-	return (n.GetChildren().Len() == 0)
+	return n.GetChildren().Len() == 0
 }
 
 // EnqueueTask enques the task into pending queue
@@ -128,4 +129,25 @@ func (n *ResPool) DequeueTasks(limit int) (*list.List, error) {
 	}
 	err := errors.Errorf("Respool %s is not a leaf node", n.name)
 	return nil, err
+}
+
+// toResourcePoolInfo converts ResPool to ResourcePoolInfo
+func (n *ResPool) toResourcePoolInfo() *respool.ResourcePoolInfo {
+	childrenResPools := n.GetChildren()
+	childrenResourcePoolIDs := make([]*respool.ResourcePoolID, childrenResPools.Len())
+	for child := childrenResPools.Front(); child != nil; child = child.Next() {
+		childrenResourcePoolIDs = append(childrenResourcePoolIDs, &respool.ResourcePoolID{
+			Value: child.Value.(*ResPool).ID,
+		})
+	}
+	return &respool.ResourcePoolInfo{
+		Id: &respool.ResourcePoolID{
+			Value: n.ID,
+		},
+		Parent: &respool.ResourcePoolID{
+			Value: n.parent.ID,
+		},
+		Config:   n.respoolConfig,
+		Children: childrenResourcePoolIDs,
+	}
 }

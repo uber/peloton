@@ -2,9 +2,11 @@ package respool
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"code.uber.internal/infra/peloton/storage"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -80,16 +82,14 @@ func (h *serviceHandler) CreateResourcePool(
 	reqMeta yarpc.ReqMeta,
 	req *respool.CreateRequest) (*respool.CreateResponse, yarpc.ResMeta, error) {
 
+	h.metrics.APICreateResourcePool.Inc(1)
 	log.WithField("request", req).Info("CreateResourcePool called")
 
 	resPoolID := req.Id
 	resPoolConfig := req.Config
-
-	// Add metrics
-
 	err := h.store.CreateResourcePool(resPoolID, resPoolConfig, "peloton")
 	if err != nil {
-		// Add failure metrics
+		h.metrics.CreateResourcePoolFail.Inc(1)
 		return &respool.CreateResponse{
 			AlreadyExists: &respool.ResourcePoolAlreadyExists{
 				Id:      resPoolID,
@@ -100,6 +100,7 @@ func (h *serviceHandler) CreateResourcePool(
 
 	// TODO: update in-memory respool tree structure
 
+	h.metrics.CreateResourcePoolSuccess.Inc(1)
 	return &respool.CreateResponse{
 		Result: resPoolID,
 	}, nil, nil
@@ -111,10 +112,24 @@ func (h *serviceHandler) GetResourcePool(
 	reqMeta yarpc.ReqMeta,
 	req *respool.GetRequest) (*respool.GetResponse, yarpc.ResMeta, error) {
 
+	h.metrics.APIGetResourcePool.Inc(1)
 	log.WithField("request", req).Info("GetResourcePool called")
 
-	log.Fatal("Not implemented")
-	return &respool.GetResponse{}, nil, nil
+	resPoolID := req.Id
+	resPool, err := h.resPoolTree.LookupResPool(resPoolID)
+	if err != nil {
+		h.metrics.GetResourcePoolFail.Inc(1)
+		return &respool.GetResponse{
+			NotFound: &respool.ResourcePoolNotFound{
+				Id:      resPoolID,
+				Message: fmt.Sprintf("resournce pool ID:%s not found", resPoolID),
+			},
+		}, nil, nil
+	}
+	h.metrics.GetResourcePoolSuccess.Inc(1)
+	return &respool.GetResponse{
+		Poolinfo: resPool.toResourcePoolInfo(),
+	}, nil, nil
 }
 
 // DeleteResourcePool will delete resource pool
@@ -143,10 +158,10 @@ func (h *serviceHandler) UpdateResourcePool(
 
 // Registerprocs will register all api's for end points
 func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
-	json.Register(d, json.Procedure("ResourceManager.CreateResourcePool", h.CreateResourcePool))
-	json.Register(d, json.Procedure("ResourceManager.GetResourcePool", h.GetResourcePool))
-	json.Register(d, json.Procedure("ResourceManager.DeleteResourcePool", h.DeleteResourcePool))
-	json.Register(d, json.Procedure("ResourceManager.UpdateResourcePool", h.UpdateResourcePool))
+	d.Register(json.Procedure("ResourceManager.CreateResourcePool", h.CreateResourcePool))
+	d.Register(json.Procedure("ResourceManager.GetResourcePool", h.GetResourcePool))
+	d.Register(json.Procedure("ResourceManager.DeleteResourcePool", h.DeleteResourcePool))
+	d.Register(json.Procedure("ResourceManager.UpdateResourcePool", h.UpdateResourcePool))
 }
 
 // Start will start resource manager
