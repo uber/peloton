@@ -116,7 +116,6 @@ func (h *Handler) WaitForEvents(
 
 	h.Lock()
 	defer h.Unlock()
-	log.WithField("WaitForEvents request", req).Debug("request")
 	var response pb_eventstream.WaitForEventsResponse
 	// Validate client
 	clientName := req.ClientName

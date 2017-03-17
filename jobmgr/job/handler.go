@@ -60,10 +60,15 @@ func (h *serviceHandler) Create(
 
 	jobID := req.Id
 	if strings.Index(jobID.Value, "-") > 0 {
-		// TODO: define another CreateResponse for naming error
 		h.metrics.JobCreateFail.Inc(1)
 		err := fmt.Errorf("Invalid jobId %v that contains '-'", jobID.Value)
-		return nil, nil, err
+		log.WithError(err).Info("Invalid jobID value")
+		return &job.CreateResponse{
+			InvalidConfig: &job.InvalidJobConfig{
+				Id:      req.Id,
+				Message: err.Error(),
+			},
+		}, nil, nil
 	}
 	jobConfig := req.Config
 
