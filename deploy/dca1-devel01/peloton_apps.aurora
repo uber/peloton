@@ -7,9 +7,13 @@ mesos_zk_path = 'zk://' + ','.join([
 election_zk_servers = '\n'.join([
     'zookeeper-mesos-devel01-dca1.uber.internal:2181',
 ])
-mysql_host = 'compute840-dca1'
 docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.1.0-34-g13ab113'
-
+mysql_host = 'compute840-dca1'
+# TODO: remove the host pin once peloton is hooked up with uns
+resmgr_host = 'compute842-dca1'
+hostmgr_host = 'compute846-dca1'
+jobmgr_host = 'compute841-dca1'
+placement_host = 'compute840-dca1'
 
 PROFILES = [
   Profile(
@@ -20,6 +24,7 @@ PROFILES = [
     election_zk_servers = election_zk_servers,
     mysql_host = mysql_host,
     docker_image = docker_image,
+    pinned_hosts = resmgr_host,
   ),
   Profile(
     cluster = cluster,
@@ -29,6 +34,7 @@ PROFILES = [
     election_zk_servers = election_zk_servers,
     mysql_host = mysql_host,
     docker_image = docker_image,
+    pinned_hosts = hostmgr_host,
   ),
   Profile(
     cluster = cluster,
@@ -38,6 +44,7 @@ PROFILES = [
     election_zk_servers = election_zk_servers,
     mysql_host = mysql_host,
     docker_image = docker_image,
+    pinned_hosts = jobmgr_host,
   ),
   Profile(
     cluster = cluster,
@@ -47,6 +54,7 @@ PROFILES = [
     election_zk_servers = election_zk_servers,
     mysql_host = mysql_host,
     docker_image = docker_image,
+    pinned_hosts = placement_host,
   )
 ]
 

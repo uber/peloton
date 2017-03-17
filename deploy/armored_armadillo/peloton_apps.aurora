@@ -12,8 +12,13 @@ election_zk_servers = '\n'.join([
     'zk-c0d7569d.pit-irn-1.uberatc.net:2181',
     'zk-ea34a2c6.pit-irn-1.uberatc.net:2181',
 ])
-mysql_host = 'ms-0d1a494c'
 docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-34-g13ab113'
+mysql_host = 'ms-0d1a494c'
+# TODO: remove the host pin once peloton is hooked up with uns
+resmgr_host = 'ms-eb90b179'
+hostmgr_host = 'ms-9baf6789'
+jobmgr_host = 'ms-56ad1385'
+placement_host = 'ms-e0d3105d'
 
 PROFILES = [
   Profile(
@@ -24,6 +29,8 @@ PROFILES = [
     election_zk_servers = election_zk_servers,
     mysql_host = mysql_host,
     docker_image = docker_image,
+    pinned_attribute = 'hostname',
+    pinned_hosts = resmgr_host,
   ),
   Profile(
     cluster = cluster,
@@ -33,6 +40,8 @@ PROFILES = [
     election_zk_servers = election_zk_servers,
     mysql_host = mysql_host,
     docker_image = docker_image,
+    pinned_attribute = 'hostname',
+    pinned_hosts = hostmgr_host,
   ),
   Profile(
     cluster = cluster,
@@ -42,6 +51,8 @@ PROFILES = [
     election_zk_servers = election_zk_servers,
     mysql_host = mysql_host,
     docker_image = docker_image,
+    pinned_attribute = 'hostname',
+    pinned_hosts = jobmgr_host,
   ),
   Profile(
     cluster = cluster,
@@ -51,6 +62,8 @@ PROFILES = [
     election_zk_servers = election_zk_servers,
     mysql_host = mysql_host,
     docker_image = docker_image,
+    pinned_attribute = 'hostname',
+    pinned_hosts = placement_host,
   )
 ]
 

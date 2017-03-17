@@ -11,7 +11,8 @@ class Profile(Struct):
   enable_debug_logging = Default(Boolean, 'true')
   use_stapi = Default(Boolean, 'false')
   cassandra_hosts = Default(String, '')
-
+  pinned_attribute = Default(String, "host")
+  pinned_hosts = Required(String)
 
 #
 # Cluster specific profiles here
@@ -53,7 +54,10 @@ JOB_TEMPLATE = Service(
         Parameter(name='env', value='CASSANDRA_HOSTS={{profile.cassandra_hosts}}'),
       ]
     )
-  )
+  ),
+  constraints = {
+     '{{profile.pinned_attribute}}': '{{profile.pinned_hosts}}'
+  }
 )
 
 #
