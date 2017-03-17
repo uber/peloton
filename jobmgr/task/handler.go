@@ -234,7 +234,12 @@ func (m *serviceHandler) Stop(
 				break
 			}
 		}
-		tasksToKill = append(tasksToKill, taskID)
+		curState := taskInfo.GetRuntime().GetState()
+		// Only kill tasks that is actively starting/running.
+		switch curState {
+		case task.RuntimeInfo_LAUNCHED, task.RuntimeInfo_RUNNING:
+			tasksToKill = append(tasksToKill, taskID)
+		}
 		stoppedInstanceIds = append(stoppedInstanceIds, instID)
 		m.metrics.TaskStop.Inc(1)
 	}
@@ -242,6 +247,7 @@ func (m *serviceHandler) Stop(
 	// TODO(mu): Notify RM to also remove these tasks from task queue.
 	// TODO(mu): Add kill retry module since the kill msg to mesos could get lost.
 	if len(tasksToKill) > 0 {
+		log.WithField("tasks_to_kill", tasksToKill).Info("Call HM to kill tasks.")
 		var response hostsvc.KillTasksResponse
 		var request = &hostsvc.KillTasksRequest{
 			TaskIds: tasksToKill,

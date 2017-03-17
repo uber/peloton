@@ -15,6 +15,7 @@ import (
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -46,17 +47,8 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	}
 	var taskInfos = make(map[uint32]*task.TaskInfo)
 	for i := uint32(0); i < testInstanceCount; i++ {
-		var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, i)
-		taskInfos[i] = &task.TaskInfo{
-			Runtime: &task.RuntimeInfo{
-				TaskId:    &mesos.TaskID{Value: &taskID},
-				State:     task.RuntimeInfo_INITIALIZED,
-				GoalState: task.RuntimeInfo_SUCCEEDED,
-			},
-			Config:     suite.testJobConfig.GetDefaultConfig(),
-			InstanceId: i,
-			JobId:      suite.testJobID,
-		}
+		taskInfos[i] = suite.createTestTaskInfo(
+			task.RuntimeInfo_RUNNING, i)
 	}
 	suite.taskInfos = taskInfos
 }
@@ -69,8 +61,24 @@ func TestPelotonTaskHanlder(t *testing.T) {
 	suite.Run(t, new(TaskHandlerTestSuite))
 }
 
-// FIXME: this test has been flaky in jenkins
-func (suite *TaskHandlerTestSuite) testStopAllTasks() {
+func (suite *TaskHandlerTestSuite) createTestTaskInfo(
+	state task.RuntimeInfo_TaskState,
+	instanceID uint32) *task.TaskInfo {
+
+	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
+	return &task.TaskInfo{
+		Runtime: &task.RuntimeInfo{
+			TaskId:    &mesos.TaskID{Value: &taskID},
+			State:     state,
+			GoalState: task.RuntimeInfo_SUCCEEDED,
+		},
+		Config:     suite.testJobConfig.GetDefaultConfig(),
+		InstanceId: instanceID,
+		JobId:      suite.testJobID,
+	}
+}
+
+func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
@@ -81,9 +89,9 @@ func (suite *TaskHandlerTestSuite) testStopAllTasks() {
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
 
-	var expectedTaskIds []*mesos.TaskID
+	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
-		expectedTaskIds = append(expectedTaskIds, taskInfo.GetRuntime().GetTaskId())
+		expectedTaskIds[taskInfo.GetRuntime().GetTaskId()] = true
 	}
 
 	gomock.InOrder(
@@ -97,11 +105,14 @@ func (suite *TaskHandlerTestSuite) testStopAllTasks() {
 			Call(
 				gomock.Any(),
 				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks")),
-				gomock.Eq(&hostsvc.KillTasksRequest{
-					TaskIds: expectedTaskIds,
-				}),
+				gomock.Any(),
 				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
+			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, resBodyOut interface{}) {
+				killTaskReq := reqBody.(*hostsvc.KillTasksRequest)
+				for _, tid := range killTaskReq.TaskIds {
+					_, ok := expectedTaskIds[tid]
+					assert.Equal(suite.T(), ok, true)
+				}
 				o := resBodyOut.(*hostsvc.KillTasksResponse)
 				*o = hostsvc.KillTasksResponse{}
 			}).
@@ -177,6 +188,69 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	suite.NoError(err)
 	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
 	suite.Equal(resp.GetStoppedInstanceIds(), []uint32{1})
+}
+
+func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockHostmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	suite.handler.hostmgrClient = mockHostmgrClient
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+
+	singleTaskInfo := make(map[uint32]*task.TaskInfo)
+	singleTaskInfo[1] = suite.taskInfos[1]
+	failedTaskInfo := make(map[uint32]*task.TaskInfo)
+	failedTaskInfo[2] = suite.createTestTaskInfo(task.RuntimeInfo_FAILED, uint32(2))
+
+	expectedTaskIds := []*mesos.TaskID{singleTaskInfo[1].GetRuntime().GetTaskId()}
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().
+			GetJob(suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().
+			GetTaskForJob(suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
+		mockTaskStore.EXPECT().
+			GetTaskForJob(suite.testJobID, uint32(2)).Return(failedTaskInfo, nil),
+		mockTaskStore.EXPECT().
+			UpdateTask(gomock.Any()).Times(2).Return(nil),
+		mockHostmgrClient.EXPECT().
+			Call(
+				gomock.Any(),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks")),
+				gomock.Eq(&hostsvc.KillTasksRequest{
+					TaskIds: expectedTaskIds,
+				}),
+				gomock.Any()).
+			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
+				o := resBodyOut.(*hostsvc.KillTasksResponse)
+				*o = hostsvc.KillTasksResponse{}
+			}).
+			Times(1).
+			Return(nil, nil),
+	)
+
+	taskRanges := []*task.InstanceRange{
+		{
+			From: 1,
+			To:   3,
+		},
+	}
+	var request = &task.StopRequest{
+		JobId:  suite.testJobID,
+		Ranges: taskRanges,
+	}
+	resp, _, err := suite.handler.Stop(
+		suite.handler.rootCtx,
+		nil,
+		request,
+	)
+	suite.NoError(err)
+	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
+	suite.Equal(len(resp.GetStoppedInstanceIds()), 2)
 }
 
 func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
