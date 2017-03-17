@@ -66,14 +66,13 @@ func TestAdd(t *testing.T) {
 		CPU: 1.0,
 	}
 
-	empty.Add(&empty)
-	assert.InEpsilon(t, 0.0, empty.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.GPU, zeroEpsilon)
+	result := empty.Add(&empty)
+	assert.InEpsilon(t, 0.0, result.CPU, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, result.Mem, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, result.Disk, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, result.GPU, zeroEpsilon)
 
-	result := Resources{}
-	result.Add(&r1)
+	result = r1.Add(&Resources{})
 	assert.InEpsilon(t, 1.0, result.CPU, zeroEpsilon)
 	assert.InEpsilon(t, 0.0, result.Mem, zeroEpsilon)
 	assert.InEpsilon(t, 0.0, result.Disk, zeroEpsilon)
@@ -85,7 +84,7 @@ func TestAdd(t *testing.T) {
 		Disk: 2.0,
 		GPU:  1.0,
 	}
-	result.Add(&r2)
+	result = r1.Add(&r2)
 	assert.InEpsilon(t, 5.0, result.CPU, zeroEpsilon)
 	assert.InEpsilon(t, 3.0, result.Mem, zeroEpsilon)
 	assert.InEpsilon(t, 2.0, result.Disk, zeroEpsilon)
@@ -102,33 +101,29 @@ func TestTrySubtract(t *testing.T) {
 	}
 
 	res := empty.TrySubtract(&empty)
-	assert.True(t, res)
-	assert.InEpsilon(t, 0.0, empty.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.GPU, zeroEpsilon)
+	assert.NotNil(t, res)
+	assert.InEpsilon(t, 0.0, res.CPU, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, res.Mem, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, res.Disk, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, res.GPU, zeroEpsilon)
 
 	res = empty.TrySubtract(&r1)
-	assert.False(t, res)
-	assert.InEpsilon(t, 0.0, empty.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, empty.GPU, zeroEpsilon)
+	assert.Nil(t, res)
 
 	r2 := r1
 	res = r2.TrySubtract(&r1)
-	assert.True(t, res)
-	assert.InEpsilon(t, 0.0, r2.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, r2.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, r2.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, r2.GPU, zeroEpsilon)
+	assert.NotNil(t, res)
+	assert.InEpsilon(t, 0.0, res.CPU, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, res.Mem, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, res.Disk, zeroEpsilon)
+	assert.InEpsilon(t, 0.0, res.GPU, zeroEpsilon)
 
 	res = r1.TrySubtract(&empty)
-	assert.True(t, res)
-	assert.InEpsilon(t, 1.0, r1.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, r1.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, r1.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, r1.GPU, zeroEpsilon)
+	assert.NotNil(t, res)
+	assert.InEpsilon(t, 1.0, res.CPU, zeroEpsilon)
+	assert.InEpsilon(t, 2.0, res.Mem, zeroEpsilon)
+	assert.InEpsilon(t, 3.0, res.Disk, zeroEpsilon)
+	assert.InEpsilon(t, 4.0, res.GPU, zeroEpsilon)
 
 	r3 := Resources{
 		CPU:  5.0,
@@ -136,20 +131,16 @@ func TestTrySubtract(t *testing.T) {
 		Disk: 7.0,
 		GPU:  8.0,
 	}
-
-	r3.TrySubtract(&r1)
-	assert.InEpsilon(t, 4.0, r3.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, r3.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, r3.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, r3.GPU, zeroEpsilon)
+	res = r3.TrySubtract(&r1)
+	assert.NotNil(t, res)
+	assert.InEpsilon(t, 4.0, res.CPU, zeroEpsilon)
+	assert.InEpsilon(t, 4.0, res.Mem, zeroEpsilon)
+	assert.InEpsilon(t, 4.0, res.Disk, zeroEpsilon)
+	assert.InEpsilon(t, 4.0, res.GPU, zeroEpsilon)
 
 	// r3 is more than r1
 	res = r1.TrySubtract(&r3)
-	assert.False(t, res)
-	assert.InEpsilon(t, 1.0, r1.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, r1.Mem, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, r1.Disk, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, r1.GPU, zeroEpsilon)
+	assert.Nil(t, res)
 }
 
 func TestFromOfferMap(t *testing.T) {

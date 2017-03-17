@@ -29,11 +29,10 @@ func newTaskBuilder(resources []*mesos.Resource) *taskBuilder {
 	scalars := make(map[string]scalar.Resources)
 	portSets := make(map[string]map[uint32]bool)
 	for _, rs := range resources {
-		role := rs.GetRole()
-		curr := scalars[role]
 		tmp := scalar.FromMesosResource(rs)
-		curr.Add(&tmp)
-		scalars[role] = curr
+		role := rs.GetRole()
+		prev := scalars[role]
+		scalars[role] = *(prev.Add(&tmp))
 
 		ports := extractPortSet(rs)
 		if len(ports) > 0 {
@@ -348,9 +347,12 @@ func (tb *taskBuilder) extractScalarResources(taskResources *tc.ResourceConfig) 
 		}, role)
 
 		launchResources = append(launchResources, rs...)
-		if !leftover.TrySubtract(&minimum) {
+
+		trySubtract := leftover.TrySubtract(&minimum)
+		if trySubtract == nil {
 			return nil, errors.New("Incorrect resource amount in subtract!")
 		}
+		leftover = *trySubtract
 
 		if leftover.Empty() {
 			delete(tb.scalars, role)
@@ -358,9 +360,11 @@ func (tb *taskBuilder) extractScalarResources(taskResources *tc.ResourceConfig) 
 			tb.scalars[role] = leftover
 		}
 
-		if !requiredScalar.TrySubtract(&minimum) {
+		trySubtract = requiredScalar.TrySubtract(&minimum)
+		if trySubtract == nil {
 			return nil, errors.New("Incorrect resource amount in subtract!")
 		}
+		requiredScalar = *trySubtract
 
 		if requiredScalar.Empty() {
 			break

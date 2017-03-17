@@ -13,6 +13,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
 type mockJSONClient struct {
@@ -40,11 +41,13 @@ func (msp *mockMesosStreamIDProvider) GetFrameworkID() *mesos.FrameworkID {
 
 func TestRemoveExpiredOffers(t *testing.T) {
 	// empty offer pool
+	scope := tally.NewTestScope("", map[string]string{})
 	pool := &offerPool{
 		offers:         make(map[string]*TimedOffer),
 		hostOfferIndex: make(map[string]*hostOfferSummary),
 		offersLock:     &sync.Mutex{},
 		offerHoldTime:  1 * time.Minute,
+		metrics:        NewMetrics(scope),
 	}
 	result := pool.RemoveExpiredOffers()
 	assert.Equal(t, len(result), 0)
@@ -73,7 +76,10 @@ func TestRemoveExpiredOffers(t *testing.T) {
 	pool.offers[offerID1].Expiration = time.Now().Add(-2 * time.Minute)
 	pool.offers[offerID4].Expiration = time.Now().Add(-2 * time.Minute)
 
-	expected := map[string]*TimedOffer{offerID1: pool.offers[offerID1], offerID4: pool.offers[offerID4]}
+	expected := map[string]*TimedOffer{
+		offerID1: pool.offers[offerID1],
+		offerID4: pool.offers[offerID4],
+	}
 
 	result = pool.RemoveExpiredOffers()
 	assert.Exactly(t, expected, result)
@@ -98,10 +104,12 @@ func getMesosOffer(hostName string, offerID string) *mesos.Offer {
 }
 
 func TestAddGetRemoveOffers(t *testing.T) {
+	scope := tally.NewTestScope("", map[string]string{})
 	pool := &offerPool{
 		offers:         make(map[string]*TimedOffer),
 		hostOfferIndex: make(map[string]*hostOfferSummary),
 		offersLock:     &sync.Mutex{},
+		metrics:        NewMetrics(scope),
 	}
 	// Add offer concurrently
 	nOffers := 10

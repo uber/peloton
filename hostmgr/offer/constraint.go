@@ -10,12 +10,14 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
-// Constraint is a wrapper around hostsvc.Constraint type, with additional mention functions defined.
+// Constraint is a wrapper around hostsvc.Constraint type, with additional
+// member functions defined.
 type Constraint struct {
 	hostsvc.Constraint
 }
 
-// effectiveLimit is common helper function to determine effective limit on number of OfferOffer.
+// effectiveLimit is common helper function to determine effective limit on
+// number of OfferOffer.
 func (c *Constraint) effectiveLimit() uint32 {
 	var limit uint32 = 1
 	// Zero limit is treated as one.
@@ -45,18 +47,22 @@ func (c *Constraint) match(offerMap map[string]*mesos.Offer) bool {
 	return true
 }
 
-// ConstraintMatcher keeps a list of constraints and try to match each incoming HostOffer.
+// ConstraintMatcher keeps a list of constraints and try to match each incoming
+// HostOffer.
 type ConstraintMatcher struct {
 	constraints []*Constraint
 
-	// matchedHostCount is the number of `HostOffer` already matched for the constraint with the same index.
+	// matchedHostCount is the number of `HostOffer` already matched for the
+	// constraint with the same index.
 	matchedHostCount []uint32
 
 	hostOffers map[string][]*mesos.Offer
 }
 
-// tryMatch determines whether given list of offers matches a particular constraint and should be kept.
-func (m *ConstraintMatcher) tryMatch(hostname string, summary *hostOfferSummary) bool {
+// tryMatch determines whether given list of offers matches a particular
+// constraint and should be kept.
+func (m *ConstraintMatcher) tryMatch(
+	hostname string, summary *hostOfferSummary) bool {
 	if !summary.hasOffer() {
 		return false
 	}
@@ -94,7 +100,7 @@ func (m *ConstraintMatcher) HasEnoughOffers() bool {
 	return true
 }
 
-// claimHostOffers returns all hostOffers from this matcher and clears cached result.
+// claimHostOffers returns all hostOffers from matcher and clears cached result.
 func (m *ConstraintMatcher) claimHostOffers() map[string][]*mesos.Offer {
 	result := make(map[string][]*mesos.Offer)
 	// swap
