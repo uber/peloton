@@ -251,7 +251,9 @@ func main() {
 		dispatcher,
 		cfg.HostManager.TaskUpdateBufferSize,
 		cfg.HostManager.TaskUpdateAckConcurrency,
-		common.PelotonResourceManager)
+		common.PelotonResourceManager,
+		rootScope,
+	)
 
 	reconcile.InitTaskReconciler(
 		mesosClient,

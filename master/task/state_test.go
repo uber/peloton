@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	mesos "mesos/v1"
@@ -75,12 +76,16 @@ func TestEventForwarder(t *testing.T) {
 	eventStreamHandler := eventstream.NewEventStreamHandler(
 		400,
 		[]string{common.PelotonJobManager},
-		nil)
+		nil,
+		tally.NoopScope,
+	)
 
 	eventstream.NewLocalEventStreamClient(
 		common.PelotonJobManager,
 		eventStreamHandler,
-		forwarder)
+		forwarder,
+		tally.NoopScope,
+	)
 	// Add event in event handler, make sure that all get correctly forwarded
 	for i := 0; i < 100; i++ {
 		eventStreamHandler.AddStatusUpdate(&mesos.TaskStatus{})

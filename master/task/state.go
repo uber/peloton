@@ -12,6 +12,7 @@ import (
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	sched "mesos/v1/scheduler"
@@ -26,7 +27,8 @@ func InitTaskStateManager(
 	d yarpc.Dispatcher,
 	updateBufferSize int,
 	updateAckConcurrency int,
-	eventDestinationRole string) {
+	eventDestinationRole string,
+	parentScope tally.Scope) {
 
 	var taskUpdateCount int64
 	var prevUpdateCount int64
@@ -47,6 +49,7 @@ func InitTaskStateManager(
 		dBWrittenCount:       &taskUpdateDBWrittenCount,
 		prevDBWrittenCount:   &prevTaskUpdateDBWrittenCount,
 		statusChannelCount:   &statusChannelCount,
+		scope:                parentScope.SubScope("taskStateManager"),
 	}
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_UPDATE: handler.Update,
@@ -57,9 +60,15 @@ func InitTaskStateManager(
 	}
 	handler.startAsyncProcessTaskUpdates()
 	// TODO: move eventStreamHandler buffer size into config
-	handler.eventStreamHandler = initEventStreamHandler(d, 1000)
+	handler.eventStreamHandler = initEventStreamHandler(
+		d,
+		1000,
+		handler.scope.SubScope("EventStreamHandler"))
 	// initialize the status update event forwarder for resmgr
-	initResMgrEventForwarder(d, handler.eventStreamHandler, eventDestinationRole)
+	initResMgrEventForwarder(d,
+		handler.eventStreamHandler,
+		eventDestinationRole,
+		handler.scope.SubScope("ResourceManagerClient"))
 }
 
 // eventForwarder is the struct to forward status update events to
@@ -125,18 +134,26 @@ func (f *eventForwarder) GetEventProgress() uint64 {
 	return atomic.LoadUint64(f.progress)
 }
 
-func initResMgrEventForwarder(d yarpc.Dispatcher, eventStreamHandler *eventstream.Handler, eventDestinationRole string) {
+func initResMgrEventForwarder(
+	d yarpc.Dispatcher,
+	eventStreamHandler *eventstream.Handler,
+	eventDestinationRole string,
+	scope tally.Scope) {
 	eventstream.NewLocalEventStreamClient(
 		common.PelotonResourceManager,
 		eventStreamHandler,
-		newEventForwarder(d, eventDestinationRole))
+		newEventForwarder(d, eventDestinationRole),
+		scope,
+	)
 }
 
-func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int) *eventstream.Handler {
+func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int, scope tally.Scope) *eventstream.Handler {
 	eventStreamHandler := eventstream.NewEventStreamHandler(
 		bufferSize,
 		[]string{common.PelotonJobManager, common.PelotonResourceManager},
-		nil)
+		nil,
+		scope,
+	)
 	json.Register(d, json.Procedure("EventStream.InitStream", eventStreamHandler.InitStream))
 	json.Register(d, json.Procedure("EventStream.WaitForEvents", eventStreamHandler.WaitForEvents))
 	return eventStreamHandler
@@ -159,6 +176,7 @@ type taskStateManager struct {
 
 	lastPrintTime      time.Time
 	eventStreamHandler *eventstream.Handler
+	scope              tally.Scope
 }
 
 // Update is the Mesos callback on mesos state updates
