@@ -22,8 +22,8 @@ max_wait_cycles=20
 i=0
 until nc -z localhost $TEST_MYSQL_PORT ; do
   echo "waiting for mysql container to begin listening..."
-  sleep 0.5
   let i+=1
+  sleep $(($i * $TEST_CONTAINER_RETRY_BACKOFF))
   if [[ $i -ge $max_wait_cycles ]] ; then
     echo "mysql container was not listening after $i test cycles, aborting"
     exit 1

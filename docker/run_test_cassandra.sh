@@ -20,8 +20,8 @@ max_wait_cycles=20
 i=0
 until nc -z localhost $TEST_CASSANDRA_CQL_PORT ; do
   echo "waiting for cassandra container to begin listening..."
-  sleep 0.5
   let i+=1
+  sleep $(($i * $TEST_CONTAINER_RETRY_BACKOFF))
   if [[ $i -ge $max_wait_cycles ]] ; then
     echo "cassandra container was not listening after $i test cycles, aborting"
     exit 1
@@ -32,14 +32,14 @@ done
 # Need to retry connecting to C* container -- on mac it can take > 10 seconds even if with the nc -z retry logic above
 # TODO: investigate and see if this is a docker issue
 
-RESULT=$($docker_cmd exec -t $CONTAINER_ID cqlsh -e "create keyspace IF NOT EXISTS $CASSANDRA_TEST_DB with replication={ 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
-CONN_ERR="Connection error"
+RESULT='Create Cassandra key space'
 i=0
 echo "Attempt connect C* 0 $RESULT"
-while [[ $RESULT == $CONN_ERR* ]] && [[ $i -lt 40 ]]
+while [[ ! -z $RESULT ]] && [[ $i -lt 20 ]]
 do
-   sleep 1
    let i+=1
+   sleep $(($i * $TEST_CONTAINER_RETRY_BACKOFF))
+
    RESULT=$($docker_cmd exec -t $CONTAINER_ID cqlsh -e "create keyspace IF NOT EXISTS $CASSANDRA_TEST_DB with replication={ 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
    echo "Attempt connect C* $i $RESULT"
    if [ "$RESULT" == "" ];then
