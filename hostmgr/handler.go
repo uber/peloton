@@ -9,10 +9,12 @@ import (
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
+
 	"peloton/private/hostmgr/hostsvc"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/Sirupsen/logrus"
@@ -44,29 +46,20 @@ func InitServiceHandler(
 		frameworkInfoProvider: frameworkInfoProvider,
 	}
 
-	d.Register(json.Procedure(
-		"InternalHostService.AcquireHostOffers", handler.AcquireHostOffers))
-	d.Register(json.Procedure(
-		"InternalHostService.ReleaseHostOffers", handler.ReleaseHostOffers))
-	d.Register(json.Procedure(
-		"InternalHostService.LaunchTasks", handler.LaunchTasks))
-	d.Register(json.Procedure(
-		"InternalHostService.KillTasks", handler.KillTasks))
-	d.Register(json.Procedure(
-		"InternalHostService.ReserveResources", handler.ReserveResources))
-	d.Register(json.Procedure(
-		"InternalHostService.UnreserveResources", handler.UnreserveResources))
-	d.Register(json.Procedure(
-		"InternalHostService.CreateVolumes", handler.CreateVolumes))
-	d.Register(json.Procedure(
-		"InternalHostService.DestroyVolumes", handler.DestroyVolumes))
+	json.Register(d, json.Procedure("InternalHostService.AcquireHostOffers", handler.AcquireHostOffers))
+	json.Register(d, json.Procedure("InternalHostService.ReleaseHostOffers", handler.ReleaseHostOffers))
+	json.Register(d, json.Procedure("InternalHostService.LaunchTasks", handler.LaunchTasks))
+	json.Register(d, json.Procedure("InternalHostService.KillTasks", handler.KillTasks))
+	json.Register(d, json.Procedure("InternalHostService.ReserveResources", handler.ReserveResources))
+	json.Register(d, json.Procedure("InternalHostService.UnreserveResources", handler.UnreserveResources))
+	json.Register(d, json.Procedure("InternalHostService.CreateVolumes", handler.CreateVolumes))
+	json.Register(d, json.Procedure("InternalHostService.DestroyVolumes", handler.DestroyVolumes))
 }
 
-func validateConstraints(
-	req *hostsvc.AcquireHostOffersRequest) *hostsvc.InvalidConstraints {
-
-	if len(req.GetConstraints()) <= 0 {
-		log.WithField("request", req).Warn("Empty constraints")
+func validateConstraints(req *hostsvc.AcquireHostOffersRequest) *hostsvc.InvalidConstraints {
+	constraints := req.GetConstraints()
+	if len(constraints) <= 0 {
+		log.Error("Empty constraints")
 		return &hostsvc.InvalidConstraints{
 			Message: "Empty constraints",
 		}
@@ -84,8 +77,7 @@ func (h *serviceHandler) AcquireHostOffers(
 
 	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
-	invalidConstraints := validateConstraints(body)
-	if invalidConstraints != nil {
+	if invalidConstraints := validateConstraints(body); invalidConstraints != nil {
 		h.metrics.AcquireHostOffersInvalid.Inc(1)
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
@@ -101,7 +93,7 @@ func (h *serviceHandler) AcquireHostOffers(
 
 	hostOffers, err := h.offerPool.ClaimForPlace(constraints)
 	if err != nil {
-		log.WithError(err).Warn("ClaimForPlace failed")
+		log.WithField("error", err).Error("ClaimForPlace failed")
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
 				Failure: &hostsvc.AcquireHostOffersFailure{
@@ -146,17 +138,14 @@ func (h *serviceHandler) AcquireHostOffers(
 func (h *serviceHandler) ReleaseHostOffers(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.ReleaseHostOffersRequest) (
-	*hostsvc.ReleaseHostOffersResponse, yarpc.ResMeta, error) {
-
+	body *hostsvc.ReleaseHostOffersRequest) (*hostsvc.ReleaseHostOffersResponse, yarpc.ResMeta, error) {
 	log.WithField("request", body).Debug("ReleaseHostOffers called.")
 	response := hostsvc.ReleaseHostOffersResponse{}
 
 	for _, hostOffer := range body.GetHostOffers() {
 		hostname := hostOffer.GetHostname()
 		if err := h.offerPool.ReturnUnusedOffers(hostname); err != nil {
-			log.WithField("host", hostname).
-				Warn("Cannot return unused offer on host.")
+			log.WithField("host", hostname).Error("Cannot return unused offer on host.")
 		}
 	}
 
@@ -218,7 +207,7 @@ func (h *serviceHandler) LaunchTasks(
 			log.WithFields(log.Fields{
 				"error":   err,
 				"task_id": t.TaskId,
-			}).Warn("Fail to get correct Mesos TaskInfo")
+			}).Error("Fail to get correct Mesos TaskInfo")
 			h.metrics.LaunchTasksInvalid.Inc(1)
 
 			// For now, decline all offers to Mesos in the hope that next
@@ -227,7 +216,7 @@ func (h *serviceHandler) LaunchTasks(
 			if err := h.offerPool.DeclineOffers(offers); err != nil {
 				log.WithError(err).
 					WithField("offers", offers).
-					Warn("Cannot decline offers task building error")
+					Error("Cannot decline offers task building error")
 			}
 
 			return &hostsvc.LaunchTasksResponse{
@@ -278,7 +267,7 @@ func (h *serviceHandler) LaunchTasks(
 			"tasks":  mesosTasks,
 			"offers": offerIds,
 			"error":  err,
-		}).Warn("Tasks launch failure")
+		}).Error("Tasks launch failure")
 
 		return &hostsvc.LaunchTasksResponse{
 			Error: &hostsvc.LaunchTasksResponse_Error{
@@ -318,9 +307,7 @@ func validateLaunchTasks(request *hostsvc.LaunchTasksRequest) error {
 func (h *serviceHandler) KillTasks(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.KillTasksRequest) (
-	*hostsvc.KillTasksResponse, yarpc.ResMeta, error) {
-
+	body *hostsvc.KillTasksRequest) (*hostsvc.KillTasksResponse, yarpc.ResMeta, error) {
 	log.WithField("request", body).Debug("KillTasks called.")
 	taskIds := body.GetTaskIds()
 	if len(taskIds) == 0 {
@@ -391,10 +378,8 @@ func (h *serviceHandler) KillTasks(
 func (h *serviceHandler) ReserveResources(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.ReserveResourcesRequest) (
-	*hostsvc.ReserveResourcesResponse, yarpc.ResMeta, error) {
-
-	log.Debug("ReserveResources called.")
+	body *hostsvc.ReserveResourcesRequest) (*hostsvc.ReserveResourcesResponse, yarpc.ResMeta, error) {
+	log.Info("ReserveResources called.")
 	return nil, nil, fmt.Errorf("Unimplemented")
 }
 
@@ -402,10 +387,8 @@ func (h *serviceHandler) ReserveResources(
 func (h *serviceHandler) UnreserveResources(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.UnreserveResourcesRequest) (
-	*hostsvc.UnreserveResourcesResponse, yarpc.ResMeta, error) {
-
-	log.Debug("UnreserveResources called.")
+	body *hostsvc.UnreserveResourcesRequest) (*hostsvc.UnreserveResourcesResponse, yarpc.ResMeta, error) {
+	log.Info("UnreserveResources called.")
 	return nil, nil, fmt.Errorf("Unimplemented")
 }
 
@@ -413,10 +396,8 @@ func (h *serviceHandler) UnreserveResources(
 func (h *serviceHandler) CreateVolumes(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.CreateVolumesRequest) (
-	*hostsvc.CreateVolumesResponse, yarpc.ResMeta, error) {
-
-	log.Debug("CreateVolumes called.")
+	body *hostsvc.CreateVolumesRequest) (*hostsvc.CreateVolumesResponse, yarpc.ResMeta, error) {
+	log.Info("CreateVolumes called.")
 	return nil, nil, fmt.Errorf("Unimplemented")
 }
 
@@ -424,9 +405,7 @@ func (h *serviceHandler) CreateVolumes(
 func (h *serviceHandler) DestroyVolumes(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	body *hostsvc.DestroyVolumesRequest) (
-	*hostsvc.DestroyVolumesResponse, yarpc.ResMeta, error) {
-
-	log.Debug("DestroyVolumes called.")
+	body *hostsvc.DestroyVolumesRequest) (*hostsvc.DestroyVolumesResponse, yarpc.ResMeta, error) {
+	log.Info("DestroyVolumes called.")
 	return nil, nil, fmt.Errorf("Unimplemented")
 }

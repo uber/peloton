@@ -6,7 +6,6 @@ import (
 	"time"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 
@@ -39,7 +38,7 @@ type Pool interface {
 
 	// ClaimForLaunch finds offers previously for placement on given host.
 	// The difference from ClaimForPlace is that offers claimed from this
-	// function are consided used and sent back to Mesos master in a Launch
+	// function are consided used and sent back to Mesos master in a Launch or similar
 	// operation, while result in `ClaimForPlace` are still considered part of
 	// peloton apps.
 	ClaimForLaunch(hostname string) (map[string]*mesos.Offer, error)
@@ -48,37 +47,22 @@ type Pool interface {
 	// the current offer pool so they can be used by future launch actions.
 	ReturnUnusedOffers(hostname string) error
 
-	// TODO: Add following API for viewing offers, and optionally expose this in
-	// a debugging endpoint.
+	// TODO: Add following API for viewingin offers, and optionally expose this in a debugging endpoint.
 	// View() (map[string][]*mesos.Offer, err)
 }
 
 // NewOfferPool creates a offerPool object and registers the
 // corresponding YARPC procedures.
-func NewOfferPool(
-	offerHoldTime time.Duration,
-	client mpb.Client,
-	metrics *Metrics,
-	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
-) Pool {
-	p := &offerPool{
-		hostOfferIndex: make(map[string]*hostOfferSummary),
-
-		offers:        make(map[string]*TimedOffer),
-		offersLock:    &sync.Mutex{},
-		offerHoldTime: offerHoldTime,
-
-		client: client,
-		mesosFrameworkInfoProvider: frameworkInfoProvider,
-
-		metrics: metrics,
+func NewOfferPool(offerHoldTime time.Duration, client mpb.Client) Pool {
+	pool := &offerPool{
+		offers:                     make(map[string]*TimedOffer),
+		client:                     client,
+		hostOfferIndex:             make(map[string]*hostOfferSummary),
+		mesosFrameworkInfoProvider: hostmgr_mesos.GetSchedulerDriver(),
+		offersLock:                 &sync.Mutex{},
 	}
 
-	// Initialize gauges.
-	p.metrics.ready.Update(p.readyResources.Get())
-	p.metrics.placing.Update(p.placingResources.Get())
-
-	return p
+	return pool
 }
 
 // TimedOffer contains details of a Mesos Offer
@@ -100,22 +84,15 @@ type offerPool struct {
 	offersLock *sync.Mutex
 
 	// Time to hold offer for
-	offerHoldTime time.Duration
-
+	offerHoldTime              time.Duration
 	client                     mpb.Client
 	mesosFrameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
-
-	metrics          *Metrics
-	readyResources   scalar.AtomicResources
-	placingResources scalar.AtomicResources
 }
 
 // ClaimForPlace obtains offers from pool conforming to given constraints.
 // Results are grouped by hostname as key.
 // This implements Pool.ClaimForPlace.
-func (p *offerPool) ClaimForPlace(constraints []*Constraint) (
-	map[string][]*mesos.Offer, error) {
-
+func (p *offerPool) ClaimForPlace(constraints []*Constraint) (map[string][]*mesos.Offer, error) {
 	if len(constraints) <= 0 {
 		return nil, errors.New("Empty constraints passed in!")
 	}
@@ -139,26 +116,16 @@ func (p *offerPool) ClaimForPlace(constraints []*Constraint) (
 
 	hostOffers := matcher.claimHostOffers()
 
-	var delta scalar.Resources
-	for _, offers := range hostOffers {
-		for _, offer := range offers {
-			tmp := scalar.FromOffer(offer)
-			delta = *(delta.Add(&tmp))
-		}
-	}
-	incQuantity(&p.placingResources, delta, p.metrics.placing)
-	decQuantity(&p.readyResources, delta, p.metrics.ready)
-
 	// NOTE: we should not clear the entries for the selected offers in p.offers
-	// because we still need to visit corresponding offers, when these offers
-	// are returned or used.
+	// because we still need to visit corresponding offers, when these offers are returned
+	// or used.
 	return hostOffers, nil
 }
 
 // ClaimForLaunch takes offers from pool for launch.
 func (p *offerPool) ClaimForLaunch(hostname string) (
 	map[string]*mesos.Offer, error) {
-	// TODO: This is very similar to RemoveExpiredOffers, maybe refactor it.
+	// TODO: This is very similar to RemoveExpiredOffers, maybe refactor it somehow.
 	p.RLock()
 	defer p.RUnlock()
 	p.offersLock.Lock()
@@ -184,15 +151,11 @@ func (p *offerPool) ClaimForLaunch(hostname string) (
 		}
 	}
 
-	delta := scalar.FromOfferMap(offerMap)
-	decQuantity(&p.placingResources, delta, p.metrics.placing)
-
 	return offerMap, nil
 }
 
-// tryAddOffer acquires read lock of the offerPool.
-// If the offerPool does not have the hostName, returns false; otherwise,
-// add offer with its expiration time to the agent and returns true.
+// tryAddOffer acquires read lock of the offerPool. If the offerPool does not
+// have the hostName, return false. If yes, add offer with its expiration time to the agent.
 func (p *offerPool) tryAddOffer(offer *mesos.Offer, expiration time.Time) bool {
 	p.RLock()
 	defer p.RUnlock()
@@ -202,22 +165,11 @@ func (p *offerPool) tryAddOffer(offer *mesos.Offer, expiration time.Time) bool {
 		return false
 	}
 	p.hostOfferIndex[hostName].addMesosOffer(offer, expiration)
-
-	delta := scalar.FromOffer(offer)
-	switch p.hostOfferIndex[hostName].status {
-	case ReadyOffer:
-		incQuantity(&p.readyResources, delta, p.metrics.ready)
-	case PlacingOffer:
-		incQuantity(&p.placingResources, delta, p.metrics.placing)
-	default:
-		log.WithField("status", p.hostOfferIndex[hostName].status).
-			Error("Unknown CacheStatus")
-	}
 	return true
 }
 
-// addOffer acquires the write lock. It would guarantee that the hostName
-//  correspond to the offer is added, then add the offer to the agent.
+// addOffer acquires the write lock. It would guarantee that the hostName correspond to the offer
+// is added, then add the offer to the agent.
 func (p *offerPool) addOffer(offer *mesos.Offer, expiration time.Time) {
 	p.Lock()
 	defer p.Unlock()
@@ -225,22 +177,11 @@ func (p *offerPool) addOffer(offer *mesos.Offer, expiration time.Time) {
 	_, ok := p.hostOfferIndex[hostName]
 	if !ok {
 		p.hostOfferIndex[hostName] = &hostOfferSummary{
+			mutex:        &sync.Mutex{},
 			offersOnHost: make(map[string]*mesos.Offer),
-			status:       ReadyOffer,
 		}
 	}
 	p.hostOfferIndex[hostName].addMesosOffer(offer, expiration)
-
-	delta := scalar.FromOffer(offer)
-	switch p.hostOfferIndex[hostName].status {
-	case ReadyOffer:
-		incQuantity(&p.readyResources, delta, p.metrics.ready)
-	case PlacingOffer:
-		incQuantity(&p.placingResources, delta, p.metrics.placing)
-	default:
-		log.WithField("status", p.hostOfferIndex[hostName].status).
-			Error("Unknown CacheStatus")
-	}
 }
 
 func (p *offerPool) AddOffers(offers []*mesos.Offer) {
@@ -288,17 +229,6 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
 		return false
 	}
 
-	delta := scalar.FromOffer(offer.MesosOffer)
-	switch p.hostOfferIndex[hostName].status {
-	case ReadyOffer:
-		decQuantity(&p.readyResources, delta, p.metrics.ready)
-	case PlacingOffer:
-		decQuantity(&p.placingResources, delta, p.metrics.placing)
-	default:
-		log.WithField("status", p.hostOfferIndex[hostName].status).
-			Error("Unknown CacheStatus")
-	}
-
 	hostOffers.removeMesosOffer(oID)
 	return true
 }
@@ -313,38 +243,27 @@ func (p *offerPool) RemoveExpiredOffers() map[string]*TimedOffer {
 
 	offersToDecline := map[string]*TimedOffer{}
 
+	// TODO: fix and revive code path below once T628276 is done
 	for offerID, offer := range p.offers {
 		if time.Now().After(offer.Expiration) {
-			log.WithField("offer_id", offerID).
-				Debug("Removing expired offer from pool")
+			log.WithField("offer_id", offerID).Debug("Removing expired offer from pool")
+			// Save offer map so we can put offers back to pool to retry if mesos decline call fails
 			offersToDecline[offerID] = offer
 			delete(p.offers, offerID)
 		}
 	}
-
 	// Remove the expired offers from hostOfferIndex
 	if len(offersToDecline) > 0 {
 		for _, offer := range offersToDecline {
 			hostName := *offer.MesosOffer.Hostname
 			offerID := *offer.MesosOffer.Id.Value
 			p.hostOfferIndex[hostName].removeMesosOffer(offerID)
-
-			delta := scalar.FromOffer(offer.MesosOffer)
-			switch p.hostOfferIndex[hostName].status {
-			case ReadyOffer:
-				decQuantity(&p.readyResources, delta, p.metrics.ready)
-			case PlacingOffer:
-				decQuantity(&p.placingResources, delta, p.metrics.placing)
-			default:
-				log.WithField("status", p.hostOfferIndex[hostName].status).
-					Error("Unknown CacheStatus")
-			}
 		}
 	}
 	return offersToDecline
 }
 
-// Clear removes all offers from pool.
+// Clear remove all offers from pool
 func (p *offerPool) Clear() {
 	log.Info("Clean up offers")
 	p.Lock()
@@ -354,10 +273,6 @@ func (p *offerPool) Clear() {
 
 	p.offers = map[string]*TimedOffer{}
 	p.hostOfferIndex = map[string]*hostOfferSummary{}
-	p.readyResources = scalar.AtomicResources{}
-	p.placingResources = scalar.AtomicResources{}
-	p.metrics.ready.Update(p.readyResources.Get())
-	p.metrics.placing.Update(p.readyResources.Get())
 }
 
 // DeclineOffers calls mesos master to decline list of offers
@@ -378,16 +293,13 @@ func (p *offerPool) DeclineOffers(offers map[string]*mesos.Offer) error {
 	msid := p.mesosFrameworkInfoProvider.GetMesosStreamID()
 	err := p.client.Call(msid, msg)
 	if err != nil {
-		// Ideally, we assume that Mesos has offer_timeout configured, so in the
-		//  event that offer declining call fails, offers should eventually be
-		// invalidated by Mesos, but just in case there is no offer timeout,
-		// offers are put back into pool here for pruner to retry at the next run.
-		// TODO: discuss the correct behavior. If mesos master has offer-timeout set
-		// (which is possible to know in a GET_FLAGS call),
+		// Ideally, we assume that Mesos has offer_timeout configured, so in the event that
+		// offer declining call fails, offers should eventually be invalidated by Mesos, but
+		// just in case there is no offer timeout, here offers are put back into pool for pruner
+		// to retry cleanup at the next run
+		// TODO: discuss the correct behavior. If mesos master has offer-timeout set (which it definitely should),
 		// we can ignore the error.
-		log.WithError(err).
-			WithField("call", msg).
-			Warn("Failed to decline offers so put offers back to pool")
+		log.WithField("error", err).Warn("Failed to decline offers so put offers back to pool")
 
 		expiration := time.Now().Add(p.offerHoldTime)
 		defer p.RUnlock()
@@ -427,38 +339,5 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 		"host":  hostname,
 		"count": count,
 	}).Info("Returned offers to Ready state.")
-
-	delta := scalar.FromOfferMap(hostOffers.offersOnHost)
-	decQuantity(&p.placingResources, delta, p.metrics.placing)
-	incQuantity(&p.readyResources, delta, p.metrics.ready)
-
 	return nil
-}
-
-func incQuantity(
-	resources *scalar.AtomicResources,
-	delta scalar.Resources,
-	gaugeMaps scalar.GaugeMaps,
-) {
-	tmp := resources.Get()
-	tmp = *(tmp.Add(&delta))
-	resources.Set(tmp)
-	gaugeMaps.Update(tmp)
-}
-
-func decQuantity(
-	resources *scalar.AtomicResources,
-	delta scalar.Resources,
-	gaugeMaps scalar.GaugeMaps,
-) {
-	curr := resources.Get()
-	tmp := curr.TrySubtract(&delta)
-	if tmp == nil {
-		log.WithFields(log.Fields{
-			"resources": resources,
-			"delta":     delta,
-		}).Error("No enough resources to subtract delta")
-	}
-	resources.Set(*tmp)
-	gaugeMaps.Update(*tmp)
 }

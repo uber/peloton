@@ -360,7 +360,6 @@ func main() {
 	)
 	offer.InitEventHandler(
 		dispatcher,
-		rootScope,
 		time.Duration(cfg.Master.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.Master.OfferPruningPeriodSec)*time.Second,
 		mesosClient,

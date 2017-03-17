@@ -232,11 +232,10 @@ func (s *placementEngine) placeTasks(
 
 	var selectedTasks []*task.TaskInfo
 	for i := 0; i < nTasks; i++ {
-		trySubtract := remain.TrySubtract(&usage)
-		if trySubtract == nil {
+		if !remain.TrySubtract(&usage) {
 			break
 		}
-		remain = *trySubtract
+
 		selectedTasks = append(selectedTasks, tasks[i])
 	}
 

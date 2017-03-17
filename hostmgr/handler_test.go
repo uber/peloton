@@ -9,10 +9,9 @@ import (
 
 	"golang.org/x/net/context"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/suite"
+	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
 	mesos "mesos/v1"
@@ -21,22 +20,17 @@ import (
 	"peloton/api/task/config"
 	"peloton/private/hostmgr/hostsvc"
 
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/util"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
 )
 
 const (
-	_offerHoldTime = time.Minute * 5
-	_streamID      = "streamID"
-	_frameworkID   = "frameworkID"
-
-	_perHostCPU  = 10.0
-	_perHostMem  = 20.0
-	_perHostDisk = 30.0
-
-	_epsilon = 0.00001
+	offerHoldTime time.Duration = time.Minute * 5
+	agent1                      = "agent-1"
+	hostname1                   = "hostname1"
+	streamID                    = "streamID"
+	frameworkID                 = "frameworkID"
 )
 
 var (
@@ -47,11 +41,11 @@ var (
 type mockFrameworkInfoProvider struct{}
 
 func (m *mockFrameworkInfoProvider) GetMesosStreamID() string {
-	return _streamID
+	return streamID
 }
 
 func (m *mockFrameworkInfoProvider) GetFrameworkID() *mesos.FrameworkID {
-	tmp := _frameworkID
+	tmp := frameworkID
 	return &mesos.FrameworkID{Value: &tmp}
 }
 
@@ -68,15 +62,15 @@ func generateOffers(numOffers int) []*mesos.Offer {
 			Resources: []*mesos.Resource{
 				util.NewMesosResourceBuilder().
 					WithName("cpus").
-					WithValue(_perHostCPU).
+					WithValue(10).
 					Build(),
 				util.NewMesosResourceBuilder().
 					WithName("mem").
-					WithValue(_perHostMem).
+					WithValue(10).
 					Build(),
 				util.NewMesosResourceBuilder().
 					WithName("disk").
-					WithValue(_perHostDisk).
+					WithValue(10).
 					Build(),
 			},
 		})
@@ -103,90 +97,27 @@ func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
 	return tasks
 }
 
-type HostMgrHandlerTestSuite struct {
-	suite.Suite
-
-	ctrl      *gomock.Controller
-	testScope tally.TestScope
-	client    *mpb_mocks.MockClient
-	provider  hostmgr_mesos.FrameworkInfoProvider
-	pool      offer.Pool
-	handler   *serviceHandler
-}
-
-func (suite *HostMgrHandlerTestSuite) SetupTest() {
-	suite.ctrl = gomock.NewController(suite.T())
-	suite.testScope = tally.NewTestScope("", map[string]string{})
-	suite.client = mpb_mocks.NewMockClient(suite.ctrl)
-	suite.provider = &mockFrameworkInfoProvider{}
-
-	suite.pool = offer.NewOfferPool(
-		_offerHoldTime,
-		suite.client,
-		offer.NewMetrics(suite.testScope.SubScope("offer")),
-		nil, /* frameworkInfoProvider */
-	)
-
-	suite.handler = &serviceHandler{
-		client:                suite.client,
-		metrics:               NewMetrics(suite.testScope),
-		offerPool:             suite.pool,
-		frameworkInfoProvider: suite.provider,
-	}
-}
-
-func (suite *HostMgrHandlerTestSuite) TearDownTest() {
-	log.Debug("tearing down")
-}
-
-func (suite *HostMgrHandlerTestSuite) assertGaugeValues(
-	values map[string]float64) {
-
-	gauges := suite.testScope.Snapshot().Gauges()
-
-	for key, value := range values {
-		g, ok := gauges[key]
-		suite.True(ok, "Snapshot %v does not have key %s", gauges, key)
-		suite.InEpsilon(
-			value,
-			g.Value(),
-			_epsilon,
-			"Expected value %f does not match on key %s, full snapshot: %v",
-			value,
-			key,
-			gauges,
-		)
-	}
-}
-
-// helper function to check particular set of resource quantity gauges
-// matches number of hosts with default amount of resources.
-func (suite *HostMgrHandlerTestSuite) checkResourcesGauges(
-	numHosts int,
-	status string,
-) {
-	values := map[string]float64{
-		fmt.Sprintf("offer.pool.%s.cpu", status):  float64(numHosts * _perHostCPU),
-		fmt.Sprintf("offer.pool.%s.mem", status):  float64(numHosts * _perHostMem),
-		fmt.Sprintf("offer.pool.%s.disk", status): float64(numHosts * _perHostDisk),
-	}
-	suite.assertGaugeValues(values)
-}
-
 // This checks the happy case of acquire -> release -> acquire
 // sequence and verifies that released resources can be used
 // again by next acquire call.
-func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
-	defer suite.ctrl.Finish()
+func TestAcquireReleaseHostOffers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	numHosts := 5
-	suite.pool.AddOffers(generateOffers(numHosts))
+	testScope := tally.NewTestScope("", map[string]string{})
+	client := mpb_mocks.NewMockClient(ctrl)
+	pool := offer.NewOfferPool(offerHoldTime, client)
+	numOffers := 5
+	h := &serviceHandler{
+		client:    client,
+		metrics:   NewMetrics(testScope),
+		offerPool: pool,
+	}
 
-	suite.checkResourcesGauges(numHosts, "ready")
-	suite.checkResourcesGauges(0, "placing")
+	pool.AddOffers(generateOffers(numOffers))
 
 	// Empty constraint.
-	acquiredResp, _, err := suite.handler.AcquireHostOffers(
+	acquiredResp, _, err := h.AcquireHostOffers(
 		rootCtx,
 		nil,
 		&hostsvc.AcquireHostOffersRequest{
@@ -194,61 +125,62 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 		},
 	)
 
-	suite.NoError(err)
-	suite.NotNil(acquiredResp.GetError().GetInvalidConstraints())
+	assert.NoError(t, err)
+	assert.NotNil(t, acquiredResp.GetError().GetInvalidConstraints())
 
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers_invalid"].Value())
+		testScope.Snapshot().Counters()["acquire_host_offers_invalid"].Value())
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
 		Constraints: []*hostsvc.Constraint{
 			{
-				Limit: uint32(numHosts * 2),
+				Limit: uint32(numOffers * 2),
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					Minimum: &config.ResourceConfig{
-						CpuLimit:    _perHostCPU,
-						MemLimitMb:  _perHostMem,
-						DiskLimitMb: _perHostDisk,
+						CpuLimit:    10,
+						MemLimitMb:  10,
+						DiskLimitMb: 10,
 					},
 				},
 			},
 		},
 	}
-	acquiredResp, _, err = suite.handler.AcquireHostOffers(
+	acquiredResp, _, err = h.AcquireHostOffers(
 		rootCtx,
 		nil,
 		acquireReq,
 	)
 
-	suite.NoError(err)
-	suite.Nil(acquiredResp.GetError())
+	assert.NoError(t, err)
+	assert.Nil(t, acquiredResp.GetError())
 	acquiredHostOffers := acquiredResp.GetHostOffers()
-	suite.Equal(numHosts, len(acquiredHostOffers))
+	assert.Equal(t, numOffers, len(acquiredHostOffers))
 
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers"].Value())
+		testScope.Snapshot().Counters()["acquire_host_offers"].Value())
 
 	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(0, "ready")
-	suite.checkResourcesGauges(numHosts, "placing")
 
 	// Call AcquireHostOffers again should not give us anything.
-	acquiredResp, _, err = suite.handler.AcquireHostOffers(
+	acquiredResp, _, err = h.AcquireHostOffers(
 		rootCtx,
 		nil,
 		acquireReq,
 	)
 
-	suite.NoError(err)
-	suite.Nil(acquiredResp.GetError())
-	suite.Equal(0, len(acquiredResp.GetHostOffers()))
+	assert.NoError(t, err)
+	assert.Nil(t, acquiredResp.GetError())
+	assert.Equal(t, 0, len(acquiredResp.GetHostOffers()))
 
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(2),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers"].Value())
+		testScope.Snapshot().Counters()["acquire_host_offers"].Value())
 
 	// Release previously acquired host offers.
 
@@ -256,47 +188,53 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 		HostOffers: acquiredHostOffers,
 	}
 
-	releaseResp, _, err := suite.handler.ReleaseHostOffers(
+	releaseResp, _, err := h.ReleaseHostOffers(
 		rootCtx,
 		nil,
 		releaseReq,
 	)
 
-	suite.NoError(err)
-	suite.Nil(releaseResp.GetError())
+	assert.NoError(t, err)
+	assert.Nil(t, releaseResp.GetError())
 
 	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(numHosts, "ready")
-	suite.checkResourcesGauges(0, "placing")
-
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(1),
-		suite.testScope.Snapshot().Counters()["release_host_offers"].Value())
+		testScope.Snapshot().Counters()["release_host_offers"].Value())
 
 	// Acquire again should return non empty result.
-	acquiredResp, _, err = suite.handler.AcquireHostOffers(
+	acquiredResp, _, err = h.AcquireHostOffers(
 		rootCtx,
 		nil,
 		acquireReq,
 	)
 
-	suite.NoError(err)
-	suite.Nil(acquiredResp.GetError())
-	suite.Equal(numHosts, len(acquiredResp.GetHostOffers()))
+	assert.NoError(t, err)
+	assert.Nil(t, acquiredResp.GetError())
+	assert.Equal(t, numOffers, len(acquiredResp.GetHostOffers()))
 }
 
 // This checks the happy case of acquire -> launch
 // sequence.
-func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
-	defer suite.ctrl.Finish()
+func TestAcquireAndLaunch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
+	testScope := tally.NewTestScope("", map[string]string{})
+	client := mpb_mocks.NewMockClient(ctrl)
+	pool := offer.NewOfferPool(offerHoldTime, client)
 	// only create one host offer in this test.
-	numHosts := 1
-	suite.pool.AddOffers(generateOffers(numHosts))
+	numOffers := 1
+	provider := &mockFrameworkInfoProvider{}
+	h := &serviceHandler{
+		client:                client,
+		metrics:               NewMetrics(testScope),
+		offerPool:             pool,
+		frameworkInfoProvider: provider,
+	}
 
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(numHosts, "ready")
-	suite.checkResourcesGauges(0, "placing")
+	pool.AddOffers(generateOffers(numOffers))
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
@@ -305,32 +243,31 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 				Limit: uint32(1),
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					Minimum: &config.ResourceConfig{
-						CpuLimit:    _perHostCPU,
-						MemLimitMb:  _perHostMem,
-						DiskLimitMb: _perHostDisk,
+						CpuLimit:    10,
+						MemLimitMb:  10,
+						DiskLimitMb: 10,
 					},
 				},
 			},
 		},
 	}
-	acquiredResp, _, err := suite.handler.AcquireHostOffers(
+	acquiredResp, _, err := h.AcquireHostOffers(
 		rootCtx,
 		nil,
 		acquireReq,
 	)
 
-	suite.NoError(err)
-	suite.Nil(acquiredResp.GetError())
+	assert.NoError(t, err)
+	assert.Nil(t, acquiredResp.GetError())
 	acquiredHostOffers := acquiredResp.GetHostOffers()
-	suite.Equal(1, len(acquiredHostOffers))
+	assert.Equal(t, 1, len(acquiredHostOffers))
 
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers"].Value())
+		testScope.Snapshot().Counters()["acquire_host_offers"].Value())
 
 	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(0, "ready")
-	suite.checkResourcesGauges(numHosts, "placing")
 
 	// An empty launch request will trigger an error.
 	launchReq := &hostsvc.LaunchTasksRequest{
@@ -339,74 +276,66 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 		Tasks:    []*hostsvc.LaunchableTask{},
 	}
 
-	launchResp, _, err := suite.handler.LaunchTasks(
+	launchResp, _, err := h.LaunchTasks(
 		rootCtx,
 		nil,
 		launchReq,
 	)
 
-	suite.NoError(err)
-	suite.NotNil(launchResp.GetError().GetInvalidArgument())
+	assert.NoError(t, err)
+	assert.NotNil(t, launchResp.GetError().GetInvalidArgument())
 
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(1),
-		suite.testScope.Snapshot().Counters()["launch_tasks_invalid"].Value())
+		testScope.Snapshot().Counters()["launch_tasks_invalid"].Value())
 
 	// Generate some launchable tasks.
 	launchReq.Tasks = generateLaunchableTasks(1)
 
 	gomock.InOrder(
-		suite.client.EXPECT().
+		client.EXPECT().
 			Call(
-				gomock.Eq(_streamID),
+				gomock.Eq(streamID),
 				gomock.Any(),
 			).
 			Do(func(_ string, msg proto.Message) {
 				// Verify call message.
 				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_ACCEPT, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+				assert.Equal(t, sched.Call_ACCEPT, call.GetType())
+				assert.Equal(t, provider.GetFrameworkID(), call.GetFrameworkId())
 
 				accept := call.GetAccept()
-				suite.NotNil(accept)
-				suite.Equal(1, len(accept.GetOfferIds()))
-				suite.Equal("offer-0", accept.GetOfferIds()[0].GetValue())
-				suite.Equal(1, len(accept.GetOperations()))
+				assert.NotNil(t, accept)
+				assert.Equal(t, 1, len(accept.GetOfferIds()))
+				assert.Equal(t, "offer-0", accept.GetOfferIds()[0].GetValue())
+				assert.Equal(t, 1, len(accept.GetOperations()))
 				operation := accept.GetOperations()[0]
-				suite.Equal(
-					mesos.Offer_Operation_LAUNCH,
-					operation.GetType())
+				assert.Equal(t, mesos.Offer_Operation_LAUNCH, operation.GetType())
 				launch := operation.GetLaunch()
-				suite.NotNil(launch)
-				suite.Equal(1, len(launch.GetTaskInfos()))
-				suite.Equal(
-					fmt.Sprintf(taskIDFmt, 0),
-					launch.GetTaskInfos()[0].GetTaskId().GetValue())
+				assert.NotNil(t, launch)
+				assert.Equal(t, 1, len(launch.GetTaskInfos()))
+				assert.Equal(t, fmt.Sprintf(taskIDFmt, 0), launch.GetTaskInfos()[0].GetTaskId().GetValue())
 			}).
 			Return(nil),
 	)
 
-	launchResp, _, err = suite.handler.LaunchTasks(
+	launchResp, _, err = h.LaunchTasks(
 		rootCtx,
 		nil,
 		launchReq,
 	)
 
-	suite.NoError(err)
-	suite.Nil(launchResp.GetError())
-	suite.Equal(
+	assert.NoError(t, err)
+	assert.Nil(t, launchResp.GetError())
+	assert.Equal(
+		t,
 		int64(1),
-		suite.testScope.Snapshot().Counters()["launch_tasks"].Value())
-
-	// TODO: Add check for number of HostOffers in placing state.
-	suite.checkResourcesGauges(0, "ready")
-	suite.checkResourcesGauges(0, "placing")
+		testScope.Snapshot().Counters()["launch_tasks"].Value())
 }
 
 // Test happy case of killing task
-func (suite *HostMgrHandlerTestSuite) TestKillTask() {
-	defer suite.ctrl.Finish()
-
+func TestKillTask(t *testing.T) {
 	t1 := "t1"
 	t2 := "t2"
 	taskIDs := []*mesos.TaskID{
@@ -416,23 +345,38 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	killReq := &hostsvc.KillTasksRequest{
 		TaskIds: taskIDs,
 	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testScope := tally.NewTestScope("", map[string]string{})
+	client := mpb_mocks.NewMockClient(ctrl)
+	pool := offer.NewOfferPool(offerHoldTime, client)
+	provider := &mockFrameworkInfoProvider{}
+	h := &serviceHandler{
+		client:                client,
+		metrics:               NewMetrics(testScope),
+		offerPool:             pool,
+		frameworkInfoProvider: provider,
+	}
+
 	killedTaskIds := make(map[string]bool)
 	mockMutex := &sync.Mutex{}
 
 	gomock.InOrder(
-		suite.client.EXPECT().
+		client.EXPECT().
 			Call(
-				gomock.Eq(_streamID),
+				gomock.Eq(streamID),
 				gomock.Any(),
 			).
 			Do(func(_ string, msg proto.Message) {
 				// Verify call message.
 				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_KILL, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+				assert.Equal(t, sched.Call_KILL, call.GetType())
+				assert.Equal(t, provider.GetFrameworkID(), call.GetFrameworkId())
 
 				tid := call.GetKill().GetTaskId()
-				suite.NotNil(tid)
+				assert.NotNil(t, tid)
 				mockMutex.Lock()
 				defer mockMutex.Unlock()
 				killedTaskIds[tid.GetValue()] = true
@@ -440,22 +384,19 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 			Return(nil).
 			Times(2),
 	)
-	resp, _, err := suite.handler.KillTasks(rootCtx, nil, killReq)
-	suite.NoError(err)
-	suite.Nil(resp.GetError())
-	suite.Equal(
-		map[string]bool{"t1": true, "t2": true},
-		killedTaskIds)
+	resp, _, err := h.KillTasks(rootCtx, nil, killReq)
+	assert.NoError(t, err)
+	assert.Nil(t, resp.GetError())
+	assert.Equal(t, map[string]bool{"t1": true, "t2": true}, killedTaskIds)
 
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(2),
-		suite.testScope.Snapshot().Counters()["kill_tasks"].Value())
+		testScope.Snapshot().Counters()["kill_tasks"].Value())
 }
 
 // Test some failure cases of killing task
-func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
-	defer suite.ctrl.Finish()
-
+func TestKillTaskFailure(t *testing.T) {
 	t1 := "t1"
 	t2 := "t2"
 	taskIDs := []*mesos.TaskID{
@@ -466,24 +407,38 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 		TaskIds: taskIDs,
 	}
 
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	testScope := tally.NewTestScope("", map[string]string{})
+	client := mpb_mocks.NewMockClient(ctrl)
+	pool := offer.NewOfferPool(offerHoldTime, client)
+	provider := &mockFrameworkInfoProvider{}
+	h := &serviceHandler{
+		client:                client,
+		metrics:               NewMetrics(testScope),
+		offerPool:             pool,
+		frameworkInfoProvider: provider,
+	}
+
 	killedTaskIds := make(map[string]bool)
 	failedTaskIds := make(map[string]bool)
 	mockMutex := &sync.Mutex{}
 
 	// A failed call.
-	suite.client.EXPECT().
+	client.EXPECT().
 		Call(
-			gomock.Eq(_streamID),
+			gomock.Eq(streamID),
 			gomock.Any(),
 		).
 		Do(func(_ string, msg proto.Message) {
-			// Verify call message and process task id into `failedTaskIds`
+			// Verify call message.
 			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_KILL, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+			assert.Equal(t, sched.Call_KILL, call.GetType())
+			assert.Equal(t, provider.GetFrameworkID(), call.GetFrameworkId())
 
 			tid := call.GetKill().GetTaskId()
-			suite.NotNil(tid)
+			assert.NotNil(t, tid)
 			mockMutex.Lock()
 			defer mockMutex.Unlock()
 			failedTaskIds[tid.GetValue()] = true
@@ -491,19 +446,19 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 		Return(errors.New("Some error"))
 
 	// A successful call.
-	suite.client.EXPECT().
+	client.EXPECT().
 		Call(
-			gomock.Eq(_streamID),
+			gomock.Eq(streamID),
 			gomock.Any(),
 		).
 		Do(func(_ string, msg proto.Message) {
-			// Verify call message while process the kill task id into `killedTaskIds`
+			// Verify call message.
 			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_KILL, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+			assert.Equal(t, sched.Call_KILL, call.GetType())
+			assert.Equal(t, provider.GetFrameworkID(), call.GetFrameworkId())
 
 			tid := call.GetKill().GetTaskId()
-			suite.NotNil(tid)
+			assert.NotNil(t, tid)
 			mockMutex.Lock()
 			defer mockMutex.Unlock()
 
@@ -511,24 +466,22 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 		}).
 		Return(nil)
 
-	resp, _, err := suite.handler.KillTasks(rootCtx, nil, killReq)
-	suite.NoError(err)
-	suite.NotNil(resp.GetError().GetKillFailure())
+	resp, _, err := h.KillTasks(rootCtx, nil, killReq)
+	assert.NoError(t, err)
+	assert.NotNil(t, resp.GetError().GetKillFailure())
 
-	suite.Equal(1, len(killedTaskIds))
-	suite.Equal(1, len(failedTaskIds))
+	assert.Equal(t, 1, len(killedTaskIds))
+	assert.Equal(t, 1, len(failedTaskIds))
 
-	suite.NotEqual(killedTaskIds, failedTaskIds)
+	assert.NotEqual(t, killedTaskIds, failedTaskIds)
 
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(1),
-		suite.testScope.Snapshot().Counters()["kill_tasks"].Value())
+		testScope.Snapshot().Counters()["kill_tasks"].Value())
 
-	suite.Equal(
+	assert.Equal(
+		t,
 		int64(1),
-		suite.testScope.Snapshot().Counters()["kill_tasks_fail"].Value())
-}
-
-func TestHostManagerTestSuite(t *testing.T) {
-	suite.Run(t, new(HostMgrHandlerTestSuite))
+		testScope.Snapshot().Counters()["kill_tasks_fail"].Value())
 }

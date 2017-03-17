@@ -222,7 +222,6 @@ func main() {
 
 	offer.InitEventHandler(
 		dispatcher,
-		rootScope,
 		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
 		mesosClient,

@@ -5,27 +5,17 @@ import (
 
 	sched "mesos/v1/scheduler"
 
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
-
 	log "github.com/Sirupsen/logrus"
-	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 )
 
 // EventHandler defines the interface for offer event handler that is
 // called by leader election callbacks
 type EventHandler interface {
-	// Start starts the offer event handler, after which the handler will be
-	// ready to process process offer events from an Mesos inbound.
-	// Offers sent to the handler before `Start()` could be silently discarded.
 	Start() error
-
-	// Stop stops the offer event handlers and clears cached offers in pool.
-	// Offers sent to the handler after `Stop()` could be silently discarded.
 	Stop() error
-
-	// GetOfferPool returns the underlying Pool holding the offers.
 	GetOfferPool() Pool
 }
 
@@ -33,7 +23,6 @@ type EventHandler interface {
 type eventHandler struct {
 	offerPool   Pool
 	offerPruner Pruner
-	metrics     *Metrics
 }
 
 // Singleton event handler for offers
@@ -42,7 +31,6 @@ var handler *eventHandler
 // InitEventHandler initializes the event handler for offers
 func InitEventHandler(
 	d yarpc.Dispatcher,
-	parent tally.Scope,
 	offerHoldTime time.Duration,
 	offerPruningPeriod time.Duration,
 	client mpb.Client) {
@@ -51,17 +39,10 @@ func InitEventHandler(
 		log.Warning("Offer event handler has already been initialized")
 		return
 	}
-	metrics := NewMetrics(parent)
-	pool := NewOfferPool(
-		offerHoldTime,
-		client,
-		metrics,
-		hostmgr_mesos.GetSchedulerDriver(),
-	)
+	pool := NewOfferPool(offerHoldTime, client)
 	handler = &eventHandler{
 		offerPool:   pool,
 		offerPruner: NewOfferPruner(pool, offerPruningPeriod),
-		metrics:     metrics,
 	}
 	procedures := map[sched.Event_Type]interface{}{
 		sched.Event_OFFERS:                handler.Offers,
@@ -72,7 +53,7 @@ func InitEventHandler(
 
 	for typ, hdl := range procedures {
 		name := typ.String()
-		mpb.Register(d, hostmgr_mesos.ServiceName, mpb.Procedure(name, hdl))
+		mpb.Register(d, mesos.ServiceName, mpb.Procedure(name, hdl))
 	}
 }
 
@@ -96,8 +77,6 @@ func (h *eventHandler) Offers(
 	log.WithField("event", event).Debug("OfferManager: processing Offers event")
 	h.offerPool.AddOffers(event.Offers)
 
-	h.metrics.OfferEvents.Inc(1)
-
 	return nil
 }
 
@@ -108,8 +87,6 @@ func (h *eventHandler) InverseOffers(
 	event := body.GetInverseOffers()
 	log.WithField("event", event).
 		Debug("OfferManager: processing InverseOffers event")
-
-	h.metrics.InverseOfferEvents.Inc(1)
 
 	// TODO: Handle inverse offers from Mesos
 	return nil
@@ -123,8 +100,6 @@ func (h *eventHandler) Rescind(
 	log.WithField("event", event).Debug("OfferManager: processing Rescind event")
 	h.offerPool.RescindOffer(event.OfferId)
 
-	h.metrics.RescindEvents.Inc(1)
-
 	return nil
 }
 
@@ -135,8 +110,6 @@ func (h *eventHandler) RescindInverseOffer(
 	event := body.GetRescindInverseOffer()
 	log.WithField("event", event).
 		Debug("OfferManager: processing RescindInverseOffer event")
-
-	h.metrics.RescindInverseOfferEvents.Inc(1)
 	return nil
 }
 
