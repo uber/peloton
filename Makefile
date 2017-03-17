@@ -1,4 +1,4 @@
-.PHONY: all master placement executor install client test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers
+.PHONY: all master placement executor install client test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -106,6 +106,9 @@ test-containers:
 
 test: $(GOCOV) $(PBGENS) mockgens test-containers
 	gocov test $(ALL_PKGS) | gocov report
+
+unit_test: $(GOCOV) $(PBGENS) mockgens
+	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
 # launch peloton with PELOTON={app,master}, default to none
 pcluster:

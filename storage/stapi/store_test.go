@@ -1,3 +1,5 @@
+// +build !unit
+
 package stapi_test
 
 import (

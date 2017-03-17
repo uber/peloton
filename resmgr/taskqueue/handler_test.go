@@ -1,3 +1,7 @@
+// +build !unit
+
+// FIXME: Use a store mock and remove above build tag!
+
 package taskqueue
 
 import (
