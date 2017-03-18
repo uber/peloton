@@ -32,6 +32,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
+	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/storage/stapi"
@@ -142,9 +143,12 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	log.SetFormatter(&log.JSONFormatter{})
+
+	initialLevel := log.InfoLevel
 	if *debug {
-		log.SetLevel(log.DebugLevel)
+		initialLevel = log.DebugLevel
 	}
+	log.SetLevel(initialLevel)
 
 	log.Infof("Loading config from %v...", *configFiles)
 	var cfg Config
@@ -193,6 +197,8 @@ func main() {
 	defer scopeCloser.Close()
 
 	rootScope.Counter("boot").Inc(1)
+
+	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
 	var jobStore storage.JobStore
 	var taskStore storage.TaskStore

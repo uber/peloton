@@ -10,6 +10,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
@@ -78,9 +79,12 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	log.SetFormatter(&log.JSONFormatter{})
+
+	initialLevel := log.InfoLevel
 	if *debug {
-		log.SetLevel(log.DebugLevel)
+		initialLevel = log.DebugLevel
 	}
+	log.SetLevel(initialLevel)
 
 	log.WithField("files", *configFiles).Info("Loading host manager config")
 	var cfg Config
@@ -113,6 +117,8 @@ func main() {
 		metrics.TallyFlushInterval,
 	)
 	defer scopeCloser.Close()
+
+	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
 	// mux in other HTTP handlers

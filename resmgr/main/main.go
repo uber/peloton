@@ -7,6 +7,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 
 	"code.uber.internal/infra/peloton/leader"
@@ -70,9 +71,12 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	log.SetFormatter(&log.JSONFormatter{})
+
+	initialLevel := log.InfoLevel
 	if *debug {
-		log.SetLevel(log.DebugLevel)
+		initialLevel = log.DebugLevel
 	}
+	log.SetLevel(initialLevel)
 
 	log.WithField("files", *cfgFiles).Info("Loading Resource Manager config")
 	var cfg Config
@@ -101,6 +105,8 @@ func main() {
 	)
 	defer scopeCloser.Close()
 	rootScope.Counter("boot").Inc(1)
+
+	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
 	// Connect to mysql DB
 	if err := cfg.Storage.MySQL.Connect(); err != nil {

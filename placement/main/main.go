@@ -9,6 +9,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/placement"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -63,9 +64,12 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	log.SetFormatter(&log.JSONFormatter{})
+
+	initialLevel := log.InfoLevel
 	if *debug {
-		log.SetLevel(log.DebugLevel)
+		initialLevel = log.DebugLevel
 	}
+	log.SetLevel(initialLevel)
 
 	log.WithField("files", *cfgFiles).Info("Loading Placement Engnine config")
 	var cfg Config
@@ -93,6 +97,8 @@ func main() {
 		metrics.TallyFlushInterval,
 	)
 	defer scopeCloser.Close()
+
+	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
 	hostmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
