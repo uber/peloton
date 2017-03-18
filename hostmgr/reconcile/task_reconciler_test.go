@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
 	mesos "mesos/v1"
@@ -40,6 +41,7 @@ func TestInitImplicitTaskReconcilationOnce(t *testing.T) {
 	mockMesosClient := mock_mpb.NewMockClient(ctrl)
 	mtx := NewMetrics(tally.NoopScope)
 	reconciler := &taskReconciler{
+		Running:                   atomic.NewBool(false),
 		client:                    mockMesosClient,
 		metrics:                   mtx,
 		frameworkInfoProvider:     &mockFrameworkInfoProvider{},
@@ -71,6 +73,7 @@ func TestInitImplicitTaskReconcilationWithPeriodicalCalls(t *testing.T) {
 	mockMesosClient := mock_mpb.NewMockClient(ctrl)
 	mtx := NewMetrics(tally.NoopScope)
 	reconciler := &taskReconciler{
+		Running:                   atomic.NewBool(false),
 		client:                    mockMesosClient,
 		metrics:                   mtx,
 		frameworkInfoProvider:     &mockFrameworkInfoProvider{},
@@ -103,6 +106,7 @@ func TestInitImplicitTaskReconcilationPeriodicalFailure(t *testing.T) {
 	mockMesosClient := mock_mpb.NewMockClient(ctrl)
 	mtx := NewMetrics(tally.NoopScope)
 	reconciler := &taskReconciler{
+		Running:                   atomic.NewBool(false),
 		client:                    mockMesosClient,
 		metrics:                   mtx,
 		frameworkInfoProvider:     &mockFrameworkInfoProvider{},
@@ -129,6 +133,41 @@ func TestInitImplicitTaskReconcilationPeriodicalFailure(t *testing.T) {
 	reconciler.Start()
 	time.Sleep(450 * time.Millisecond)
 	assert.Equal(t, len(reconciler.stopChan), 0)
+	reconciler.Stop()
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, len(reconciler.stopChan), 0)
+}
+
+func TestInitImplicitTaskReconcilationNotStartIfAlreadyRunning(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockMesosClient := mock_mpb.NewMockClient(ctrl)
+	mtx := NewMetrics(tally.NoopScope)
+	reconciler := &taskReconciler{
+		Running:                   atomic.NewBool(false),
+		client:                    mockMesosClient,
+		metrics:                   mtx,
+		frameworkInfoProvider:     &mockFrameworkInfoProvider{},
+		initialReconcileDelay:     initialReconcileDelay,
+		implicitReconcileInterval: implicitReconcileInterval,
+		stopChan:                  make(chan struct{}, 1),
+	}
+
+	gomock.InOrder(
+		mockMesosClient.EXPECT().
+			Call(
+				gomock.Eq(streamID),
+				gomock.Any()).
+			Return(nil),
+	)
+
+	reconciler.Stop()
+	reconciler.Start()
+	reconciler.Start()
+	time.Sleep(350 * time.Millisecond)
+	assert.Equal(t, len(reconciler.stopChan), 0)
+	reconciler.Stop()
 	reconciler.Stop()
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, len(reconciler.stopChan), 0)
