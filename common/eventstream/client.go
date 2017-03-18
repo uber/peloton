@@ -177,6 +177,9 @@ func (c *Client) initStream(clientName string) {
 		}
 		c.streamID = response.StreamID
 		c.beginOffset = response.PreviousPurgeOffset
+		if response.PreviousPurgeOffset < response.MinOffset {
+			c.beginOffset = response.MinOffset
+		}
 		return
 	}
 	log.Info("initStream returned due to shutdown")
