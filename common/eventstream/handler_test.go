@@ -4,7 +4,6 @@ import (
 	"code.uber.internal/infra/peloton/common/cirbuf"
 	"context"
 	"github.com/stretchr/testify/assert"
-	"github.com/uber-go/tally"
 	mesos "mesos/v1"
 	pb_eventstream "peloton/private/eventstream"
 	"sync"
@@ -48,9 +47,7 @@ func TestInitStream(t *testing.T) {
 	eventStreamHandler := NewEventStreamHandler(
 		100,
 		[]string{"jobMgr", "resMgr"},
-		&purgeEventProcessor,
-		tally.NoopScope,
-	)
+		&purgeEventProcessor)
 	// Unexpected client
 	response, _, _ := eventStreamHandler.InitStream(context.Background(), nil, makeInitStreamRequest("test"))
 	assert.NotNil(t, response.Error.ClientUnsupported)
@@ -82,9 +79,7 @@ func TestWaitForEvent(t *testing.T) {
 	eventStreamHandler := NewEventStreamHandler(
 		bufferSize,
 		[]string{"jobMgr", "resMgr"},
-		nil,
-		tally.NoopScope,
-	)
+		nil)
 
 	streamID := eventStreamHandler.streamID
 
@@ -150,9 +145,7 @@ func TestPurgeData(t *testing.T) {
 	eventStreamHandler := NewEventStreamHandler(
 		bufferSize,
 		[]string{"jobMgr", "resMgr"},
-		collector,
-		tally.NoopScope,
-	)
+		collector)
 
 	streamID := eventStreamHandler.streamID
 

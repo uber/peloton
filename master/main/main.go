@@ -376,8 +376,7 @@ func main() {
 		dispatcher,
 		cfg.Master.TaskUpdateBufferSize,
 		cfg.Master.TaskUpdateAckConcurrency,
-		common.PelotonMaster,
-		rootScope)
+		common.PelotonMaster)
 
 	// Init host manager service handler
 	hostmgr.InitServiceHandler(
@@ -394,12 +393,7 @@ func main() {
 	log.Infof("Started Peloton master on port %v", cfg.Master.Port)
 
 	// Init task status update
-	task.InitTaskStatusUpdate(
-		dispatcher,
-		common.PelotonMaster,
-		taskStore,
-		rootScope,
-	)
+	task.InitTaskStatusUpdate(dispatcher, common.PelotonMaster, taskStore)
 
 	// Start resmgr dispatch loop
 	if err := resmgrDispatcher.Start(); err != nil {

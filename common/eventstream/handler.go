@@ -11,7 +11,6 @@ import (
 	"code.uber.internal/infra/peloton/common/cirbuf"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
-	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 )
 
@@ -22,6 +21,7 @@ type PurgedEventsProcessor interface {
 
 // Handler holds a circular buffer and serves request to pull data.
 // This component is used in hostmgr and resmgr
+// TODO:slu Add monitoring data point
 type Handler struct {
 	sync.RWMutex
 	// streamID is created to identify this stream lifecycle
@@ -32,25 +32,20 @@ type Handler struct {
 	//  Tracks the purge offset per client
 	clientPurgeOffsets   map[string]uint64
 	purgedEventProcessor PurgedEventsProcessor
-
-	metrics *HandlerMetrics
 }
 
 // NewEventStreamHandler creates an EventStreamHandler
 func NewEventStreamHandler(
 	bufferSize int,
 	expectedClients []string,
-	purgedEventProcessor PurgedEventsProcessor,
-	parentScope tally.Scope) *Handler {
+	purgedEventProcessor PurgedEventsProcessor) *Handler {
 	handler := Handler{
 		streamID:             uuid.NewUUID().String(),
 		circularBuffer:       cirbuf.NewCircularBuffer(bufferSize),
 		clientPurgeOffsets:   make(map[string]uint64),
 		purgedEventProcessor: purgedEventProcessor,
 		expectedClients:      expectedClients,
-		metrics:              NewHandlerMetrics(parentScope.SubScope("EventStreamHandler")),
 	}
-	handler.metrics.Capacity.Update(float64(handler.circularBuffer.Capacity()))
 	for _, client := range expectedClients {
 		handler.clientPurgeOffsets[client] = uint64(0)
 	}
@@ -63,7 +58,6 @@ func (h *Handler) isClientExpected(clientName string) bool {
 		return true
 	}
 	log.WithField("Request clientName", clientName).Error("Client not supported")
-	h.metrics.UnexpectedClients.Inc(1)
 	return false
 }
 
@@ -82,10 +76,6 @@ func (h *Handler) AddStatusUpdate(taskStatus *mesos.TaskStatus) error {
 			Error("Adding taskStatus failed")
 		return err
 	}
-	head, tail := h.circularBuffer.GetRange()
-	h.metrics.Head.Update(float64(head))
-	h.metrics.Tail.Update(float64(tail))
-	h.metrics.Size.Update(float64(head - tail))
 	log.WithField("Current head", item.SequenceID).Debug("Event added")
 	return nil
 
@@ -99,7 +89,6 @@ func (h *Handler) InitStream(
 	h.Lock()
 	defer h.Unlock()
 	log.WithField("InitStream request", req).Debug("request")
-	h.metrics.InitStream.Inc(1)
 	var response pb_eventstream.InitStreamResponse
 	clientName := req.ClientName
 	clientSupported := h.isClientExpected(clientName)
@@ -109,7 +98,6 @@ func (h *Handler) InitStream(
 				Message: fmt.Sprintf("Client %v not supported, valid clients : %v", clientName, h.expectedClients),
 			},
 		}
-		h.metrics.InitStreamFail.Inc(1)
 		return &response, nil, nil
 	}
 	response.StreamID = h.streamID
@@ -117,7 +105,6 @@ func (h *Handler) InitStream(
 	response.MinOffset = tail
 	response.PreviousPurgeOffset = h.clientPurgeOffsets[clientName]
 	log.WithField("InitStream response", response).Debug("")
-	h.metrics.InitStreamSuccess.Inc(1)
 	return &response, nil, nil
 
 }
@@ -130,7 +117,6 @@ func (h *Handler) WaitForEvents(
 
 	h.Lock()
 	defer h.Unlock()
-	h.metrics.WaitForEvents.Inc(1)
 	var response pb_eventstream.WaitForEventsResponse
 	// Validate client
 	clientName := req.ClientName
@@ -141,7 +127,6 @@ func (h *Handler) WaitForEvents(
 				Message: fmt.Sprintf("Client %v not supported, valid clients : %v", clientName, h.expectedClients),
 			},
 		}
-		h.metrics.WaitForEventsFailed.Inc(1)
 		return &response, nil, nil
 	}
 	// Validate stream id
@@ -153,8 +138,6 @@ func (h *Handler) WaitForEvents(
 				CurrentStreamID: h.streamID,
 			},
 		}
-		h.metrics.WaitForEventsFailed.Inc(1)
-		h.metrics.InvalidStreamIDError.Inc(1)
 		return &response, nil, nil
 	}
 	// Get and return data
@@ -171,7 +154,6 @@ func (h *Handler) WaitForEvents(
 				OffsetRequested: beginOffset,
 			},
 		}
-		h.metrics.WaitForEventsFailed.Inc(1)
 		return &response, nil, nil
 	}
 	var events []*pb_eventstream.Event
@@ -182,7 +164,6 @@ func (h *Handler) WaitForEvents(
 		}
 		events = append(events, &e)
 	}
-	h.metrics.WaitForEventsSuccess.Inc(1)
 	response.Events = events
 	// Purge old data if specified
 	if req.PurgeOffset > req.BeginOffset {
@@ -217,7 +198,6 @@ func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 		purgedItems, err := h.circularBuffer.MoveTail(minPurgeOffset)
 		if err != nil {
 			log.WithField("minPurgeOffset", minPurgeOffset).Error("Invalid minPurgeOffset")
-			h.metrics.PurgeEventError.Inc(1)
 		} else {
 			if h.purgedEventProcessor != nil {
 				h.purgedEventProcessor.EventPurged(purgedItems)
@@ -229,8 +209,5 @@ func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 			"tail":           tail,
 			"head":           head,
 		}).Error("minPurgeOffset incorrect")
-		h.metrics.PurgeEventError.Inc(1)
 	}
-	h.metrics.Tail.Update(float64(tail))
-	h.metrics.Size.Update(float64(head - tail))
 }
