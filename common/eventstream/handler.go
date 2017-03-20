@@ -1,16 +1,17 @@
 package eventstream
 
 import (
-	"code.uber.internal/infra/peloton/common/cirbuf"
 	"context"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"github.com/pborman/uuid"
-	"go.uber.org/yarpc"
 	"math"
 	mesos "mesos/v1"
 	pb_eventstream "peloton/private/eventstream"
 	"sync"
+
+	"code.uber.internal/infra/peloton/common/cirbuf"
+	log "github.com/Sirupsen/logrus"
+	"github.com/pborman/uuid"
+	"go.uber.org/yarpc"
 )
 
 // PurgedEventsProcessor is the interface to handle the purged data

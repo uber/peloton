@@ -232,10 +232,17 @@ func (s *placementEngine) placeTasks(
 
 	var selectedTasks []*task.TaskInfo
 	for i := 0; i < nTasks; i++ {
-		if !remain.TrySubtract(&usage) {
+		trySubtract := remain.TrySubtract(&usage)
+		if trySubtract == nil {
+			// NOTE: current placement implementation means all
+			// tasks in the same group has the same resource configuration.
+			log.WithFields(log.Fields{
+				"remain": remain,
+				"usage":  usage,
+			}).Debug("Insufficient resource in remain")
 			break
 		}
-
+		remain = *trySubtract
 		selectedTasks = append(selectedTasks, tasks[i])
 	}
 

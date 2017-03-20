@@ -3,14 +3,15 @@ package eventstream
 import (
 	"context"
 	"errors"
-	log "github.com/Sirupsen/logrus"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
-	"go.uber.org/yarpc/transport"
 	pb_eventstream "peloton/private/eventstream"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
+	"go.uber.org/yarpc/transport"
 )
 
 var (

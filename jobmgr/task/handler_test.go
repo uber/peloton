@@ -14,6 +14,7 @@ import (
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
+	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -54,7 +55,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 }
 
 func (suite *TaskHandlerTestSuite) TearDownTest() {
-	fmt.Println("tearing down")
+	log.Debug("tearing down")
 }
 
 func TestPelotonTaskHanlder(t *testing.T) {
