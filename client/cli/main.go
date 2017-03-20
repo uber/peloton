@@ -60,7 +60,7 @@ var (
 	taskStop        = task.Command("stop", "stop tasks in the job. If no instances specified, then stop all tasks")
 	taskStopJobName = taskStop.Arg("job", "job identifier").Required().String()
 	// TODO(mu): Add support for --instances=1,3,5 for better cli experience.
-	taskStopInstanceRanges = taskRangeListFlag(taskStop.Flag("range", "stop range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
+	taskStopInstanceRanges = taskRangeListFlag(taskStop.Flag("range", "stop range of instances (specify multiple times) (from:to syntax, default ALL)").Short('r'))
 
 	taskRestart               = task.Command("restart", "restart a task")
 	taskRestartJobName        = taskRestart.Arg("job", "job identifier").Required().String()
