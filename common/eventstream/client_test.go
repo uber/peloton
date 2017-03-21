@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	mesos "mesos/v1"
@@ -91,6 +92,7 @@ func makeStreamClient(clientName string, client *testJSONClient) (*Client, *Test
 		runningState: &runningState,
 		eventHandler: eventProcessor,
 		clientName:   clientName,
+		metrics:      NewClientMetrics(tally.NewTestScope(clientName, map[string]string{})),
 	}
 	return eventStreamClient, eventProcessor
 }
@@ -101,7 +103,12 @@ func TestHappycase(t *testing.T) {
 	clientName1 := "jobMgr"
 	clientName2 := "resMgr"
 	purgedEventCollector := &PurgeEventCollector{}
-	handler := NewEventStreamHandler(bufferSize, []string{clientName1, clientName2}, purgedEventCollector)
+	handler := NewEventStreamHandler(
+		bufferSize,
+		[]string{clientName1, clientName2},
+		purgedEventCollector,
+		tally.NoopScope,
+	)
 	jsonClient := &testJSONClient{
 		localClient: &localClient{
 			handler: handler,
@@ -158,7 +165,12 @@ func TestStreamIDChange(t *testing.T) {
 	clientName1 := "jobMgr"
 	clientName2 := "resMgr"
 	purgedEventCollector := &PurgeEventCollector{}
-	handler := NewEventStreamHandler(bufferSize, []string{clientName1, clientName2}, purgedEventCollector)
+	handler := NewEventStreamHandler(
+		bufferSize,
+		[]string{clientName1, clientName2},
+		purgedEventCollector,
+		tally.NoopScope,
+	)
 	jsonClient := &testJSONClient{
 		localClient: &localClient{
 			handler: handler,
@@ -234,7 +246,12 @@ func TestMockRPCError(t *testing.T) {
 	clientName1 := "jobMgr"
 	clientName2 := "resMgr"
 	purgedEventCollector := &PurgeEventCollector{}
-	handler := NewEventStreamHandler(bufferSize, []string{clientName1, clientName2}, purgedEventCollector)
+	handler := NewEventStreamHandler(
+		bufferSize,
+		[]string{clientName1, clientName2},
+		purgedEventCollector,
+		tally.NoopScope,
+	)
 	jsonClient := &testJSONClient{
 		localClient: &localClient{
 			handler: handler,
@@ -325,7 +342,12 @@ func TestClientFailover(t *testing.T) {
 	clientName1 := "jobMgr"
 	clientName2 := "resMgr"
 	purgedEventCollector := &PurgeEventCollector{}
-	handler := NewEventStreamHandler(bufferSize, []string{clientName1, clientName2}, purgedEventCollector)
+	handler := NewEventStreamHandler(
+		bufferSize,
+		[]string{clientName1, clientName2},
+		purgedEventCollector,
+		tally.NoopScope,
+	)
 	jsonClient := &testJSONClient{
 		localClient: &localClient{
 			handler: handler,

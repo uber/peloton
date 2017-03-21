@@ -3,15 +3,17 @@ package eventstream
 import (
 	"context"
 	"errors"
-	pb_eventstream "peloton/private/eventstream"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"code.uber.internal/infra/peloton/common/metrics"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
+	pb_eventstream "peloton/private/eventstream"
 )
 
 var (
@@ -54,6 +56,8 @@ type Client struct {
 	shutdownFlag *int32
 	runningState *int32
 	started      bool
+
+	metrics *ClientMetrics
 }
 
 // NewEventStreamClient creates a client that
@@ -62,7 +66,9 @@ func NewEventStreamClient(
 	d yarpc.Dispatcher,
 	clientName string,
 	server string,
-	taskUpdateHandler EventHandler) *Client {
+	taskUpdateHandler EventHandler,
+	parentScope tally.Scope,
+) *Client {
 	var flag int32
 	var runningState int32
 	client := &Client{
@@ -71,6 +77,7 @@ func NewEventStreamClient(
 		shutdownFlag: &flag,
 		runningState: &runningState,
 		eventHandler: taskUpdateHandler,
+		metrics:      NewClientMetrics(parentScope.SubScope(metrics.SafeScopeName(clientName))),
 	}
 	client.Start()
 	return client
@@ -81,7 +88,9 @@ func NewEventStreamClient(
 func NewLocalEventStreamClient(
 	clientName string,
 	handler *Handler,
-	taskUpdateHandler EventHandler) *Client {
+	taskUpdateHandler EventHandler,
+	parentScope tally.Scope,
+) *Client {
 	var flag int32
 	var runningState int32
 
@@ -91,6 +100,7 @@ func NewLocalEventStreamClient(
 		shutdownFlag: &flag,
 		runningState: &runningState,
 		eventHandler: taskUpdateHandler,
+		metrics:      NewClientMetrics(parentScope.SubScope(metrics.SafeScopeName(clientName))),
 	}
 	client.Start()
 	return client
@@ -145,6 +155,7 @@ func (c *localClient) CallOneway(
 func (c *Client) sendInitStreamRequest(clientName string) (*pb_eventstream.InitStreamResponse, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelFunc()
+	c.metrics.InitStreamAPI.Inc(1)
 	request := &pb_eventstream.InitStreamRequest{
 		ClientName: clientName,
 	}
@@ -157,8 +168,11 @@ func (c *Client) sendInitStreamRequest(clientName string) (*pb_eventstream.InitS
 	)
 	if err != nil {
 		log.WithError(err).Error("sendInitStreamRequest failed")
+		c.metrics.InitStreamFail.Inc(1)
 		return nil, err
 	}
+	c.metrics.InitStreamSuccess.Inc(1)
+	c.metrics.StreamIDChange.Inc(1)
 	log.WithField("InitStreamResponse", response).Infoln()
 	return &response, nil
 }
@@ -179,6 +193,9 @@ func (c *Client) initStream(clientName string) {
 		c.streamID = response.StreamID
 		c.beginOffset = response.PreviousPurgeOffset
 		if response.PreviousPurgeOffset < response.MinOffset {
+			log.WithField("previous_purge_offset", response.PreviousPurgeOffset).
+				WithField("min_offset", response.MinOffset).
+				Error("Need to adjust beginOffset")
 			c.beginOffset = response.MinOffset
 		}
 		return
@@ -198,7 +215,8 @@ func (c *Client) sendWaitEventRequest(
 	if purgeOffset > beginOffset {
 		purgeOffset = beginOffset
 	}
-
+	c.metrics.WaitForEventsAPI.Inc(1)
+	c.metrics.PurgeOffset.Update(float64(purgeOffset))
 	request := &pb_eventstream.WaitForEventsRequest{
 		BeginOffset: beginOffset,
 		// purgeOffset are used to move the circular buffer tail, thus plus 1
@@ -216,8 +234,10 @@ func (c *Client) sendWaitEventRequest(
 	)
 	if err != nil {
 		log.WithError(err).Error("sendWaitForEventsRequest failed")
+		c.metrics.WaitForEventsFailed.Inc(1)
 		return nil, err
 	}
+	c.metrics.WaitForEventsSuccess.Inc(1)
 	log.WithField("WaitForEventsResponse", response).Debugln()
 	return &response, nil
 }
@@ -255,6 +275,7 @@ func (c *Client) waitEventsLoop() {
 				c.beginOffset = event.GetOffset() + 1
 			}
 			c.eventHandler.OnEvents(response.Events)
+			c.metrics.EventsConsumed.Inc(int64(len(response.Events)))
 		}
 	}
 	log.Info("waitEventsLoop returned due to shutdown")

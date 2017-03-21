@@ -211,7 +211,12 @@ func main() {
 	}
 
 	// Init the Task status update which pulls task update events from HM
-	task.InitTaskStatusUpdate(dispatcher, common.PelotonHostManager, store)
+	task.InitTaskStatusUpdate(
+		dispatcher,
+		common.PelotonHostManager,
+		store,
+		rootScope,
+	)
 
 	log.Infof("Started Peloton job manager on port %v", cfg.JobManager.Port)
 

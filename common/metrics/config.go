@@ -89,3 +89,9 @@ func InitMetricScope(
 		metricSeparator)
 	return metricScope, scopeCloser, mux
 }
+
+// SafeScopeName returns a safe scope name that removes dash which is not
+// allowed in tally
+func SafeScopeName(name string) string {
+	return strings.Replace(name, "-", "", -1)
+}

@@ -6,6 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	mesos "mesos/v1"
 	p_task "peloton/api/task"
@@ -25,7 +26,9 @@ type StatusUpdate struct {
 func InitTaskStatusUpdate(
 	d yarpc.Dispatcher,
 	server string,
-	taskStore storage.TaskStore) *StatusUpdate {
+	taskStore storage.TaskStore,
+	parentScope tally.Scope,
+) *StatusUpdate {
 
 	statusUpdate := &StatusUpdate{
 		taskStore: taskStore,
@@ -33,7 +36,12 @@ func InitTaskStatusUpdate(
 	// TODO: add config for BucketEventProcessor
 	statusUpdate.applier = newBucketEventProcessor(statusUpdate, 100, 10000)
 
-	eventClient := eventstream.NewEventStreamClient(d, common.PelotonJobManager, server, statusUpdate)
+	eventClient := eventstream.NewEventStreamClient(
+		d,
+		common.PelotonJobManager,
+		server,
+		statusUpdate,
+		parentScope.SubScope("HostmgrEventStreamClient"))
 	statusUpdate.eventClient = eventClient
 
 	return statusUpdate
