@@ -12,16 +12,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"peloton/api/task"
-	"peloton/api/task/config"
-	"peloton/private/hostmgr/hostsvc"
-	"peloton/private/resmgr/taskqueue"
-
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
+
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"peloton/api/task"
+	"peloton/api/task/config"
+	"peloton/private/hostmgr/hostsvc"
+	"peloton/private/resmgr"
+	"peloton/private/resmgr/taskqueue"
+	"peloton/private/resmgrsvc"
 )
 
 const (
@@ -256,51 +258,76 @@ func (s *placementEngine) placeTasks(
 	if len(selectedTasks) > 0 {
 		ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 		defer cancelFunc()
-		var response hostsvc.LaunchTasksResponse
-		var request = &hostsvc.LaunchTasksRequest{
-			Hostname: hostOffer.GetHostname(),
-			Tasks:    createLaunchableTasks(selectedTasks),
-			AgentId:  hostOffer.GetAgentId(),
+		var response resmgrsvc.SetPlacementsResponse
+		var request = &resmgrsvc.SetPlacementsRequest{
+			Placements: s.createPlacements(selectedTasks, hostOffer),
 		}
-
-		log.WithField("request", request).Debug("Calling LaunchTasks")
-		_, err := s.hostMgrClient.Call(
+		log.WithField("request", request).Debug("Calling SetPlacements")
+		_, err := s.resMgrClient.Call(
 			ctx,
-			yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks"),
+			yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements"),
 			request,
 			&response,
 		)
 		// TODO: add retry / put back offer and tasks in failure scenarios
 		if err != nil {
+
+			log.WithError(errors.New("Failed to place tasks"))
 			log.WithFields(log.Fields{
 				"tasks": len(selectedTasks),
-				"error": err,
-			}).Error("Failed to launch tasks")
-			s.metrics.TaskLaunchDispatchesFail.Inc(1)
+				"error": err.Error(),
+			})
+
+			s.metrics.SetPlacementFail.Inc(1)
 			return tasks
 		}
 
-		log.WithField("response", response).Debug("LaunchTasks returned")
+		log.WithField("response", response).Debug("Place Tasks returned")
 
 		if response.Error != nil {
 			log.WithFields(log.Fields{
 				"tasks": len(selectedTasks),
 				"error": response.Error.String(),
-			}).Error("Failed to launch tasks")
-			s.metrics.TaskLaunchDispatchesFail.Inc(1)
+			}).Error("Failed to place tasks")
+			s.metrics.SetPlacementFail.Inc(1)
 			return tasks
 		}
-		s.metrics.TaskLaunchDispatches.Inc(1)
+		s.metrics.SetPlacementSuccess.Inc(1)
 
 		log.WithFields(log.Fields{
 			"tasks":     selectedTasks,
 			"hostname":  hostOffer.GetHostname(),
 			"resources": hostOffer.GetResources(),
-		}).Info("Launched tasks")
+		}).Info("Placed tasks")
 	} else {
 		log.WithField("remaining_tasks", tasks).Info("No task is selected to launch")
 	}
 	return tasks
+}
+
+// createPlacements creates the placement for resource manager
+func (s *placementEngine) createPlacements(tasks []*task.TaskInfo,
+	hostOffer *hostsvc.HostOffer) []*resmgr.Placement {
+	TasksIds := make([]*task.TaskID, len(tasks))
+	placements := make([]*resmgr.Placement, 1)
+	i := 0
+	for _, t := range tasks {
+		taskID := &task.TaskID{
+			Value: t.JobId.Value + "-" + fmt.Sprint(t.InstanceId),
+		}
+		TasksIds[i] = taskID
+		i++
+	}
+	placement := &resmgr.Placement{
+		AgentId:  hostOffer.AgentId,
+		Hostname: hostOffer.Hostname,
+		Tasks:    TasksIds,
+		// TODO : We are not setting offerId's
+		// we need to remove it from protobuf
+	}
+	placements[0] = placement
+	log.WithField("Length ", len(placements)).Info("createPlacements : Len of placements ")
+	return placements
 }
 
 func (s *placementEngine) isRunning() bool {

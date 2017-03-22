@@ -52,6 +52,13 @@ type Metrics struct {
 	// LaunchOfferAcceptFail is the number of mesos offers that failed
 	// to be accepted
 	LaunchOfferAcceptFail tally.Counter
+
+	// SetPlacementSuccess counts the number of tasks we put the placement
+	// in resource manager
+	SetPlacementSuccess tally.Counter
+
+	// SetPlacementFail counts the number of tasks failed to be placed
+	SetPlacementFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct with all metrics initialized and
@@ -72,6 +79,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskQueueDepth:           taskScope.Gauge("queue_depth"),
 		TaskLaunchDispatches:     taskSuccessScope.Counter("launch_dispatch"),
 		TaskLaunchDispatchesFail: taskFailScope.Counter("launch_dispatch"),
+
+		SetPlacementSuccess: taskSuccessScope.Counter("placement"),
+		SetPlacementFail:    taskFailScope.Counter("placement"),
 
 		OfferGet:     offerSuccessScope.Counter("get"),
 		OfferGetFail: offerFailScope.Counter("get_fail"),

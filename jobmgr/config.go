@@ -8,4 +8,8 @@ type Config struct {
 	// the storage namespace, and made clearer what this controls
 	// (threads? rows? statements?)
 	DbWriteConcurrency int `yaml:"db_write_concurrency"`
+
+	// PlacementDequeueLimit is the limit which task launcher get the
+	// placements
+	PlacementDequeueLimit int `yaml:"placement_dequeue_limit"`
 }

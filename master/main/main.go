@@ -12,7 +12,9 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
+
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
@@ -24,6 +26,7 @@ import (
 	master_task "code.uber.internal/infra/peloton/master/task"
 	"code.uber.internal/infra/peloton/master/upgrade"
 	"code.uber.internal/infra/peloton/placement"
+	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	resmgr_task "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/resmgr/taskqueue"
@@ -32,10 +35,10 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
-	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/storage/stapi"
+
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
@@ -323,6 +326,7 @@ func main() {
 		taskStore,
 		common.PelotonMaster, // TODO: to be removed
 	)
+
 	upgrade.InitManager(dispatcher)
 
 	// Initialize resource manager related handlers
@@ -353,6 +357,7 @@ func main() {
 	respool.InitServiceHandler(resmgrDispatcher, rootScope, respoolStore)
 	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
 	resmgr_task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
+	resmgr.InitServiceHandler(dispatcher, rootScope)
 
 	// Initialize host manager related handlers
 
@@ -446,6 +451,17 @@ func main() {
 	)
 	placementEngine.Start()
 	defer placementEngine.Stop()
+
+	task.InitTaskLauncher(
+		dispatcher,
+		common.PelotonMaster,
+		common.PelotonMaster,
+		taskStore,
+		&cfg.JobManager,
+		rootScope,
+	)
+	task.GetLauncher().Start()
+	defer task.GetLauncher().Stop()
 
 	select {}
 }

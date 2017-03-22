@@ -149,6 +149,9 @@ func main() {
 	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
 
 	taskupdate.InitServiceHandler(dispatcher)
+
+	resmgr.InitServiceHandler(dispatcher, rootScope)
+
 	server := resmgr.NewServer(cfg.ResManager.Port)
 	candidate, err := leader.NewCandidate(
 		cfg.Election,

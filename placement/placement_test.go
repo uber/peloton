@@ -1,27 +1,26 @@
 package placement
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
-
-	"go.uber.org/yarpc"
-
-	"golang.org/x/net/context"
-
-	mesos "mesos/v1"
-
-	"peloton/api/task"
-	"peloton/api/task/config"
-	"peloton/private/hostmgr/hostsvc"
-	"peloton/private/resmgr/taskqueue"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
-	"code.uber.internal/infra/peloton/util"
+	"go.uber.org/yarpc"
 
+	mesos "mesos/v1"
+	"peloton/api/job"
+	"peloton/api/task"
+	"peloton/api/task/config"
+	"peloton/private/hostmgr/hostsvc"
+	"peloton/private/resmgr/taskqueue"
+	"peloton/private/resmgrsvc"
+
+	"code.uber.internal/infra/peloton/util"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
@@ -46,6 +45,9 @@ func createTestTask(instanceID int) *task.TaskInfo {
 	var tid = fmt.Sprintf(taskIDFmt, instanceID)
 
 	return &task.TaskInfo{
+		JobId: &job.JobID{
+			Value: testJobName,
+		},
 		InstanceId: uint32(instanceID),
 		Config: &config.TaskConfig{
 			Name:     testJobName,
@@ -246,10 +248,15 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	numTasks := 25
 	var testTasks []*task.TaskInfo
 	taskConfigs := make(map[string]*config.TaskConfig)
+	taskIds := make(map[string]*task.TaskID)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
+		taskID := &task.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		}
 		testTasks = append(testTasks, tmp)
 		taskConfigs[tmp.GetRuntime().GetTaskId().GetValue()] = tmp.Config
+		taskIds[taskID.Value] = taskID
 	}
 
 	// generate 5 host offers, each can hold 10 tasks.
@@ -262,7 +269,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	// Capture LaunchTasks calls
 	hostsLaunchedOn := make(map[string]bool)
-	launchedTasks := make(map[string]*config.TaskConfig)
+	launchedTasks := make(map[string]*task.TaskID)
 
 	gomock.InOrder(
 		mockRes.EXPECT().
@@ -303,20 +310,20 @@ func TestMultipleTasksPlaced(t *testing.T) {
 				}
 			}).
 			Return(nil, nil),
-		// Mock LaunchTasks call.
-		mockHostMgr.EXPECT().
+		// Mock PlaceTasks call.
+		mockRes.EXPECT().
 			Call(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks")),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements")),
 				gomock.Any(),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
 				// No need to unmarksnal output: empty means success.
 				// Capture call since we don't know ordering of tasks.
-				req := reqBody.(*hostsvc.LaunchTasksRequest)
-				hostsLaunchedOn[req.Hostname] = true
-				for _, lt := range req.Tasks {
-					launchedTasks[lt.TaskId.GetValue()] = lt.Config
+				req := reqBody.(*resmgrsvc.SetPlacementsRequest)
+				hostsLaunchedOn[req.Placements[0].Hostname] = true
+				for _, lt := range req.Placements[0].Tasks {
+					launchedTasks[lt.Value] = lt
 				}
 			}).
 			Return(nil, nil).
@@ -341,7 +348,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 		"hostname-2": true,
 	}
 	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
-	assert.Equal(t, taskConfigs, launchedTasks)
+	assert.Equal(t, taskIds, launchedTasks)
 }
 
 func TestCreateLaunchableTasks(t *testing.T) {

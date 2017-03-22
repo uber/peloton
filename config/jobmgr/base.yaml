@@ -26,6 +26,7 @@ storage:
 job_manager:
   port: 5292
   db_write_concurrency: 40
+  placement_dequeue_limit: 100
 
 election:
   zk_servers: ["localhost:8192"]

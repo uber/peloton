@@ -218,7 +218,19 @@ func main() {
 		rootScope,
 	)
 
-	log.Infof("Started Peloton job manager on port %v", cfg.JobManager.Port)
+	// TODO: We neeed to cleanup the client names
+	task.InitTaskLauncher(
+		dispatcher,
+		common.PelotonResourceManager,
+		common.PelotonHostManager,
+		store,
+		&cfg.JobManager,
+		rootScope,
+	)
+
+	task.GetLauncher().Start()
+	defer task.GetLauncher().Stop()
+	log.WithField("Port ", cfg.JobManager.Port).Info(" Started Peloton job manager on port ")
 
 	select {}
 }
