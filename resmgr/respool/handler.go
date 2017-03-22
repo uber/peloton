@@ -90,9 +90,11 @@ func (h *serviceHandler) CreateResourcePool(
 	if err != nil {
 		h.metrics.CreateResourcePoolFail.Inc(1)
 		return &respool.CreateResponse{
-			AlreadyExists: &respool.ResourcePoolAlreadyExists{
-				Id:      resPoolID,
-				Message: err.Error(),
+			Error: &respool.CreateResponse_Error{
+				AlreadyExists: &respool.ResourcePoolAlreadyExists{
+					Id:      resPoolID,
+					Message: err.Error(),
+				},
 			},
 		}, nil, nil
 	}
@@ -119,9 +121,11 @@ func (h *serviceHandler) GetResourcePool(
 	if err != nil {
 		h.metrics.GetResourcePoolFail.Inc(1)
 		return &respool.GetResponse{
-			NotFound: &respool.ResourcePoolNotFound{
-				Id:      resPoolID,
-				Message: "resource pool not found",
+			Error: &respool.GetResponse_Error{
+				NotFound: &respool.ResourcePoolNotFound{
+					Id:      resPoolID,
+					Message: "resource pool not found",
+				},
 			},
 		}, nil, nil
 	}

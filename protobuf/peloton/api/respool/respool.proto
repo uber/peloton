@@ -127,8 +127,13 @@ message CreateRequest {
 }
 
 message CreateResponse {
-  ResourcePoolID result = 1;
-  ResourcePoolAlreadyExists alreadyExists = 2;
+  message Error {
+    ResourcePoolAlreadyExists alreadyExists = 1;
+  }
+
+  Error error = 1;
+  ResourcePoolID result = 2;
+
 }
 
 message GetRequest {
@@ -136,8 +141,12 @@ message GetRequest {
 }
 
 message GetResponse {
-  ResourcePoolInfo poolinfo = 1;
-  ResourcePoolNotFound notFound = 2;
+  message Error {
+    ResourcePoolNotFound notFound = 1;
+  }
+
+  Error error = 1;
+  ResourcePoolInfo poolinfo = 2;
 }
 
 message DeleteRequest {
@@ -145,7 +154,11 @@ message DeleteRequest {
 }
 
 message DeleteResponse {
-  ResourcePoolNotFound notFound = 1;
+  message Error {
+    ResourcePoolNotFound notFound = 1;
+  }
+
+  Error error = 1;
 }
 
 message UpdateRequest{
@@ -154,5 +167,9 @@ message UpdateRequest{
 }
 
 message UpdateResponse {
-  ResourcePoolNotFound notFound = 1;
+  message Error {
+    ResourcePoolNotFound notFound = 1;
+  }
+
+  Error error = 1;
 }

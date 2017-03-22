@@ -10,6 +10,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -17,10 +18,11 @@ import (
 type resPoolHandlerTestSuite struct {
 	suite.Suite
 
-	context      context.Context
-	resourceTree Tree
-	mockCtrl     *gomock.Controller
-	handler      *serviceHandler
+	context          context.Context
+	resourceTree     Tree
+	mockCtrl         *gomock.Controller
+	handler          *serviceHandler
+	mockResPoolStore *store_mocks.MockResourcePoolStore
 }
 
 func (suite *resPoolHandlerTestSuite) SetupTest() {
@@ -28,15 +30,15 @@ func (suite *resPoolHandlerTestSuite) SetupTest() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 
 	// mock resource pool store
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 
 	if suite.resourceTree == nil {
 		// set expectations
-		mockResPoolStore.EXPECT().GetAllResourcePools().Return(
+		suite.mockResPoolStore.EXPECT().GetAllResourcePools().Return(
 			suite.getResPools(),
 			nil)
 
-		InitTree(tally.NoopScope, mockResPoolStore)
+		InitTree(tally.NoopScope, suite.mockResPoolStore)
 		suite.resourceTree = GetTree()
 		suite.resourceTree.Start()
 	}
@@ -45,7 +47,7 @@ func (suite *resPoolHandlerTestSuite) SetupTest() {
 		resPoolTree:  suite.resourceTree,
 		dispatcher:   nil,
 		metrics:      NewMetrics(tally.NoopScope),
-		store:        mockResPoolStore,
+		store:        suite.mockResPoolStore,
 		runningState: runningStateRunning,
 	}
 }
@@ -221,8 +223,89 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLookupEr
 
 	suite.NoError(err)
 	suite.NotNil(getResp)
-	suite.NotNil(getResp.NotFound)
+	suite.NotNil(getResp.Error)
 
 	expectedMsg := "resource pool not found"
-	suite.Equal(expectedMsg, getResp.NotFound.Message)
+	suite.Equal(expectedMsg, getResp.Error.NotFound.Message)
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
+	log.Info("TestServiceHandler_CreateResourcePool called")
+
+	mockResourcePoolName := "respool99"
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:      mockResourcePoolName,
+		Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+		Resources: suite.getResourceConfig(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+
+	// create request
+	createReq := &pb_respool.CreateRequest{
+		Id:     mockResourcePoolID,
+		Config: mockResourcePoolConfig,
+	}
+
+	// set expectations
+	suite.mockResPoolStore.EXPECT().CreateResourcePool(
+		gomock.Eq(mockResourcePoolID),
+		gomock.Eq(mockResourcePoolConfig),
+		"peloton").Return(nil)
+
+	createResp, _, err := suite.handler.CreateResourcePool(
+		suite.context,
+		nil,
+		createReq)
+
+	suite.NoError(err)
+	suite.NotNil(createResp)
+	suite.Nil(createResp.Error)
+	suite.Equal(mockResourcePoolID.Value, createResp.Result.Value)
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlreadyExistsError() {
+	log.Info("TestServiceHandler_CreateResourcePool called")
+
+	mockResourcePoolName := "respool99"
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:      mockResourcePoolName,
+		Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+		Resources: suite.getResourceConfig(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+
+	// create request
+	createReq := &pb_respool.CreateRequest{
+		Id:     mockResourcePoolID,
+		Config: mockResourcePoolConfig,
+	}
+
+	expectedErrMsg := "resource pool already exits"
+	// set expectations
+	suite.mockResPoolStore.EXPECT().CreateResourcePool(
+		gomock.Eq(mockResourcePoolID),
+		gomock.Eq(mockResourcePoolConfig),
+		"peloton",
+	).Return(errors.New(expectedErrMsg))
+
+	createResp, _, err := suite.handler.CreateResourcePool(
+		suite.context,
+		nil,
+		createReq)
+
+	actualErrResourcePoolID := createResp.Error.AlreadyExists.Id.Value
+	suite.NoError(err)
+	suite.NotNil(createResp)
+	suite.Nil(createResp.Result)
+	suite.NotNil(createResp.Error)
+	suite.Equal(expectedErrMsg, createResp.Error.AlreadyExists.Message)
+	suite.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
 }

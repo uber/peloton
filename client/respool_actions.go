@@ -45,8 +45,12 @@ func printResPoolCreateResponse(r respool.CreateResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		if r.AlreadyExists != nil {
-			fmt.Fprintf(tabWriter, "Resource Pool %s already exists: %s\n", r.AlreadyExists.Id.Value, r.AlreadyExists.Message)
+		if r.Error != nil {
+			fmt.Fprintf(
+				tabWriter,
+				"Resource Pool %s already exists: %s\n",
+				r.Error.AlreadyExists.Id.Value,
+				r.Error.AlreadyExists.Message)
 		} else {
 			fmt.Fprintf(tabWriter, "Resource Pool %s created\n", r.Result.Value)
 		}
