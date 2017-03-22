@@ -12,7 +12,7 @@ election_zk_servers = '\n'.join([
     'zk-c0d7569d.pit-irn-1.uberatc.net:2181',
     'zk-ea34a2c6.pit-irn-1.uberatc.net:2181',
 ])
-docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-34-g13ab113'
+docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-60-gcc8ab25'
 mysql_host = 'ms-0d1a494c'
 # TODO: remove the host pin once peloton is hooked up with uns
 resmgr_host = 'ms-eb90b179'
