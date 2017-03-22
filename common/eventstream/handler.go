@@ -147,7 +147,9 @@ func (h *Handler) WaitForEvents(
 	// Validate stream id
 	streamID := req.StreamID
 	if streamID != h.streamID {
-		log.WithField("request streamID", clientName).Error("Invalid streamID")
+		log.WithField("request_streamID", streamID).
+			WithField("client_name", clientName).
+			Warn("Invalid streamID")
 		response.Error = &pb_eventstream.WaitForEventsResponse_Error{
 			InvalidStreamID: &pb_eventstream.InvalidStreamID{
 				CurrentStreamID: h.streamID,

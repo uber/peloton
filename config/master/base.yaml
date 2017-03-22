@@ -31,7 +31,7 @@ master:
   offer_pruning_period_sec: 900
   db_write_concurrency: 40
   taskupdate_ack_concurrency: 10
-  taskupdate_buffer_size: 10000
+  taskupdate_buffer_size: 100000
 
 mesos:
   encoding: "x-protobuf"

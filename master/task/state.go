@@ -59,10 +59,9 @@ func InitTaskStateManager(
 		mpb.Register(d, hostmgr_mesos.ServiceName, mpb.Procedure(name, hdl))
 	}
 	handler.startAsyncProcessTaskUpdates()
-	// TODO: move eventStreamHandler buffer size into config
 	handler.eventStreamHandler = initEventStreamHandler(
 		d,
-		100000,
+		updateBufferSize,
 		handler.scope.SubScope("EventStreamHandler"))
 	// initialize the status update event forwarder for resmgr
 	initResMgrEventForwarder(d,
