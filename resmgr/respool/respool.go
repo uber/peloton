@@ -134,7 +134,7 @@ func (n *ResPool) DequeueTasks(limit int) (*list.List, error) {
 // toResourcePoolInfo converts ResPool to ResourcePoolInfo
 func (n *ResPool) toResourcePoolInfo() *respool.ResourcePoolInfo {
 	childrenResPools := n.GetChildren()
-	childrenResourcePoolIDs := make([]*respool.ResourcePoolID, childrenResPools.Len())
+	childrenResourcePoolIDs := make([]*respool.ResourcePoolID, 0, childrenResPools.Len())
 	for child := childrenResPools.Front(); child != nil; child = child.Next() {
 		childrenResourcePoolIDs = append(childrenResourcePoolIDs, &respool.ResourcePoolID{
 			Value: child.Value.(*ResPool).ID,

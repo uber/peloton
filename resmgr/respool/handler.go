@@ -2,7 +2,6 @@ package respool
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -122,7 +121,7 @@ func (h *serviceHandler) GetResourcePool(
 		return &respool.GetResponse{
 			NotFound: &respool.ResourcePoolNotFound{
 				Id:      resPoolID,
-				Message: fmt.Sprintf("resournce pool ID:%s not found", resPoolID),
+				Message: "resource pool not found",
 			},
 		}, nil, nil
 	}
