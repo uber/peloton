@@ -62,7 +62,7 @@ func InitTaskStateManager(
 	// TODO: move eventStreamHandler buffer size into config
 	handler.eventStreamHandler = initEventStreamHandler(
 		d,
-		1000,
+		100000,
 		handler.scope.SubScope("EventStreamHandler"))
 	// initialize the status update event forwarder for resmgr
 	initResMgrEventForwarder(d,
@@ -196,7 +196,10 @@ func (m *taskStateManager) Update(
 		m.ackChannel <- taskUpdate
 	}
 	m.updateCounters()
-	return err
+	// If buffer is full, AddStatusUpdate would fail and peloton would not
+	// ack the status update and mesos master would resend the status update.
+	// Return nil otherwise the framework would disconnect with the mesos master
+	return nil
 }
 
 func (m *taskStateManager) updateCounters() {
