@@ -38,7 +38,13 @@ def get_host_ip():
     if uname == "Darwin":
         ip = os.popen('ipconfig getifaddr en0').read()
     else:
-        ip = os.popen('ifconfig eth0 | grep "inet addr:" | cut -d: -f2 | awk "{ print $1}"').read()
+        # The command hostname -I gives a list of ip's for all network
+        # interfaces on the host and we just pick the first ip from that
+        # list. On a Debian Jessi box this returns:
+        #   10.162.17.29 10.162.81.29 172.17.0.1
+        # On a Ubuntu Trusty Tahr box this returns:
+        #   172.24.98.94 172.17.0.1
+        ip = os.popen('hostname -I').read().strip().split(' ')[0]
     return ip.strip()
 
 
