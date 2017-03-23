@@ -15,7 +15,13 @@ import (
 	tc "peloton/api/task/config"
 )
 
-// taskBuilder helps to build launchable Mesos TaskInfo from offers and peloton task configs.
+var (
+	errNotEnoughPorts = errors.New(
+		"No enough dynamic ports in Mesos offers")
+)
+
+// taskBuilder helps to build launchable Mesos TaskInfo from offers and
+// peloton task configs.
 type taskBuilder struct {
 	// A map from role -> scalar resources.
 	scalars map[string]scalar.Resources
@@ -36,12 +42,14 @@ func newTaskBuilder(resources []*mesos.Resource) *taskBuilder {
 		scalars[role] = *(prev.Add(&tmp))
 
 		ports := extractPortSet(rs)
-		if len(ports) > 0 {
-			if _, ok := portSets[role]; !ok {
-				portSets[role] = ports
-			} else {
-				portSets[role] = mergePortSets(portSets[role], ports)
-			}
+		if len(ports) == 0 {
+			continue
+		}
+
+		if _, ok := portSets[role]; !ok {
+			portSets[role] = ports
+		} else {
+			portSets[role] = mergePortSets(portSets[role], ports)
 		}
 	}
 
@@ -55,7 +63,8 @@ func newTaskBuilder(resources []*mesos.Resource) *taskBuilder {
 
 // Helper struct for port picking result.
 type portPickResult struct {
-	// select ports numbers by name. This is used to populated DiscoveryInfo.Ports
+	// select ports numbers by name.
+	// This is used to populated DiscoveryInfo.Ports
 	// so service discovery systems can find the task.
 	// This includes both static and dynamic ports.
 	selectedPorts map[string]uint32
@@ -120,18 +129,19 @@ func (tb *taskBuilder) pickPorts(taskConfig *tc.TaskConfig) (
 
 				index++
 				if index >= len(dynamicNames) {
-					// We have selected enough dynamic ports.
+					// We have selected enough dynamic ports
 					break Loop
 				}
 			}
 		}
 
 		if index < len(dynamicNames) {
-			return nil, errors.New("No enough dynamic ports for task in Mesos offers")
+			return nil, errNotEnoughPorts
 		}
 	} // end: if len(dynamicNames) > 0
 
-	// Build Mesos resources objects, which will be used later to launch the task.
+	// Build Mesos resources objects, which will be used later to launch
+	// the task.
 	for role, dynamicPorts := range rolePorts {
 		ranges := createPortRanges(dynamicPorts)
 		rs := util.NewMesosResourceBuilder().
@@ -143,8 +153,8 @@ func (tb *taskBuilder) pickPorts(taskConfig *tc.TaskConfig) (
 		result.portResources = append(result.portResources, rs)
 	}
 
-	// Populate extra environment variables, which will added to `CommandInfo`
-	// to launch the task.
+	// Populate extra environment variables, which will added to
+	// `CommandInfo` to launch the task.
 	for _, portConfig := range taskConfig.GetPorts() {
 		if envName := portConfig.GetEnvName(); len(envName) == 0 {
 			continue
@@ -157,8 +167,8 @@ func (tb *taskBuilder) pickPorts(taskConfig *tc.TaskConfig) (
 	return result, nil
 }
 
-// build is used to build a `mesos.TaskInfo` from cached resources. Caller can keep
-// calling this function to build more tasks.
+// build is used to build a `mesos.TaskInfo` from cached resources.
+// Caller can keep calling this function to build more tasks.
 // This returns error if the current
 // instance does not have enough resources leftover (scalar, port or
 // even volume in future), or the taskConfig is not correct.
@@ -195,8 +205,8 @@ func (tb *taskBuilder) build(
 		return nil, errors.New("Command cannot be nil")
 	}
 
-	// A list of resources this task needs when launched to Mesos.
-	launchResources, err := tb.extractScalarResources(taskConfig.GetResource())
+	// lres is list of "launch" resources this task needs when launched.
+	lres, err := tb.extractScalarResources(taskConfig.GetResource())
 	if err != nil {
 		return nil, err
 	}
@@ -207,19 +217,25 @@ func (tb *taskBuilder) build(
 	}
 
 	if len(pick.portResources) > 0 {
-		launchResources = append(launchResources, pick.portResources...)
+		lres = append(lres, pick.portResources...)
 	}
 
 	mesosTask := &mesos.TaskInfo{
 		Name:      &jobID,
 		TaskId:    taskID,
-		Resources: launchResources,
+		Resources: lres,
 	}
 
 	tb.populateDiscoveryInfo(mesosTask, pick.selectedPorts, jobID)
-	tb.populateCommandInfo(mesosTask, taskConfig.GetCommand(), pick.portEnvs)
+	tb.populateCommandInfo(
+		mesosTask,
+		taskConfig.GetCommand(),
+		pick.portEnvs,
+	)
 	tb.populateContainerInfo(mesosTask, taskConfig.GetContainer())
 	tb.populateLabels(mesosTask, taskConfig.GetLabels())
+
+	tb.populateHealthCheck(mesosTask, taskConfig.GetHealthCheck())
 
 	return mesosTask, nil
 }
@@ -233,45 +249,49 @@ func (tb *taskBuilder) populateCommandInfo(
 ) {
 
 	if command == nil {
-		// Input validation happens before this, so this is a case that we want a nil
-		// CommandInfo (aka custom executor case).
+		// Input validation happens before this, so this is a case that
+		//  we want a nil CommandInfo (aka custom executor case).
 		return
 	}
 
 	// Make a deep copy of pass through fields to avoid changing input.
 	mesosTask.Command = proto.Clone(command).(*mesos.CommandInfo)
 
-	// Populate optional environment variables.
-	if len(envMap) > 0 {
-		// Make sure `Environment` field is initialized.
-		if mesosTask.Command.GetEnvironment().GetVariables() == nil {
-			mesosTask.Command.Environment = &mesos.Environment{
-				Variables: []*mesos.Environment_Variable{},
-			}
-		}
+	if len(envMap) == 0 {
+		return
+	}
 
-		for name, value := range envMap {
-			// Make a copy since taking address of key/value in map is dangerous.
-			tmpName := name
-			tmpValue := value
-			env := &mesos.Environment_Variable{
-				Name:  &tmpName,
-				Value: &tmpValue,
-			}
-			mesosTask.Command.Environment.Variables =
-				append(mesosTask.Command.Environment.Variables, env)
+	// Populate optional environment variables.
+	// Make sure `Environment` field is initialized.
+	if mesosTask.Command.GetEnvironment().GetVariables() == nil {
+		mesosTask.Command.Environment = &mesos.Environment{
+			Variables: []*mesos.Environment_Variable{},
 		}
+	}
+
+	for name, value := range envMap {
+		// Make a copy since taking address of key/value in map
+		// is dangerous.
+		tmpName := name
+		tmpValue := value
+		env := &mesos.Environment_Variable{
+			Name:  &tmpName,
+			Value: &tmpValue,
+		}
+		mesosTask.Command.Environment.Variables =
+			append(mesosTask.Command.Environment.Variables, env)
 	}
 }
 
-// populateContainerInfo properly sets up the `ContainerInfo` field of a mesos task.
+// populateContainerInfo properly sets up the `ContainerInfo` field of a task.
 func (tb *taskBuilder) populateContainerInfo(
 	mesosTask *mesos.TaskInfo,
 	container *mesos.ContainerInfo,
 ) {
 	if container != nil {
 		// Make a deep copy to avoid changing input.
-		mesosTask.Container = proto.Clone(container).(*mesos.ContainerInfo)
+		mesosTask.Container =
+			proto.Clone(container).(*mesos.ContainerInfo)
 	}
 }
 
@@ -293,41 +313,103 @@ func (tb *taskBuilder) populateDiscoveryInfo(
 	selectedPorts map[string]uint32,
 	jobID string,
 ) {
-	if len(selectedPorts) > 0 {
-		// Visibility field on DiscoveryInfo is required.
-		defaultVisibility := mesos.DiscoveryInfo_EXTERNAL
-		portSlice := []*mesos.Port{}
-		for name, value := range selectedPorts {
-			// NOTE: we need tmp for both name and value,
-			// as taking address during iterator is unsafe.
-			tmpName := name
-			tmpValue := value
-			portSlice = append(portSlice, &mesos.Port{
-				Name:       &tmpName,
-				Number:     &tmpValue,
-				Visibility: &defaultVisibility,
-				// TODO: Consider add protocol, visibility and labels.
-			})
-		}
+	if len(selectedPorts) == 0 {
+		return
+	}
 
-		// Note that this overrides any DiscoveryInfo even if it's in input.
-		mesosTask.Discovery = &mesos.DiscoveryInfo{
-			Name:       &jobID,
+	// Visibility field on DiscoveryInfo is required.
+	defaultVisibility := mesos.DiscoveryInfo_EXTERNAL
+	portSlice := []*mesos.Port{}
+	for name, value := range selectedPorts {
+		// NOTE: we need tmp for both name and value,
+		// as taking address during iterator is unsafe.
+		tmpName := name
+		tmpValue := value
+		portSlice = append(portSlice, &mesos.Port{
+			Name:       &tmpName,
+			Number:     &tmpValue,
 			Visibility: &defaultVisibility,
-			Ports: &mesos.Ports{
-				Ports: portSlice,
-			},
-			// TODO: 1. add Environment, Location, Version, and Labels;
-			// 2. Determine how to find this in bridge.
-		}
+			// TODO: Consider add protocol, visibility and labels.
+		})
+	}
+
+	// Note that this overrides any DiscoveryInfo even if it's in input.
+	mesosTask.Discovery = &mesos.DiscoveryInfo{
+		Name:       &jobID,
+		Visibility: &defaultVisibility,
+		Ports: &mesos.Ports{
+			Ports: portSlice,
+		},
+		// TODO:
+		// 1. add Environment, Location, Version, and Labels;
+		// 2. Determine how to find this in bridge.
 	}
 }
 
+// populateHealthCheck properly sets up the health check part of a Mesos task.
+func (tb *taskBuilder) populateHealthCheck(
+	mesosTask *mesos.TaskInfo, health *tc.HealthCheckConfig) {
+	if health == nil {
+		return
+	}
+
+	mh := &mesos.HealthCheck{}
+
+	if t := health.GetInitialIntervalSecs(); t > 0 {
+		tmp := float64(t)
+		mh.DelaySeconds = &tmp
+	}
+
+	if t := health.GetIntervalSecs(); t > 0 {
+		tmp := float64(t)
+		mh.IntervalSeconds = &tmp
+	}
+
+	if t := health.GetTimeoutSecs(); t > 0 {
+		tmp := float64(t)
+		mh.TimeoutSeconds = &tmp
+	}
+
+	if t := health.GetMaxConsecutiveFailures(); t > 0 {
+		tmp := uint32(t)
+		mh.ConsecutiveFailures = &tmp
+	}
+
+	switch health.GetType() {
+	case tc.HealthCheckConfig_COMMAND:
+		cc := health.GetCommandCheck()
+		t := mesos.HealthCheck_COMMAND
+		mh.Type = &t
+		shell := true
+		value := cc.GetCommand()
+		cmd := &mesos.CommandInfo{
+			Shell: &shell,
+			Value: &value,
+		}
+		if !cc.GetUnshareEnvironments() {
+			cmd.Environment = proto.Clone(
+				mesosTask.GetCommand().GetEnvironment(),
+			).(*mesos.Environment)
+		}
+		mh.Command = cmd
+	default:
+		log.WithField("type", health.GetType()).
+			Warn("Unknown health check type")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"health": mh,
+		"task":   mesosTask.GetTaskId(),
+	}).Debug("Populated health check for mesos task")
+	mesosTask.HealthCheck = mh
+}
+
 // extractScalarResources takes necessary scalar resources from cached resources
-// of this instance to construct a task, and returns error if not enough resources
-// are left.
-func (tb *taskBuilder) extractScalarResources(taskResources *tc.ResourceConfig) (
-	[]*mesos.Resource, error) {
+// of this instance to construct a task, and returns error if not enough
+//  resources are left.
+func (tb *taskBuilder) extractScalarResources(
+	taskResources *tc.ResourceConfig) ([]*mesos.Resource, error) {
 
 	if taskResources == nil {
 		return nil, errors.New("Empty resources for task")
@@ -351,11 +433,12 @@ func (tb *taskBuilder) extractScalarResources(taskResources *tc.ResourceConfig) 
 
 		trySubtract := leftover.TrySubtract(&minimum)
 		if trySubtract == nil {
+			msg := "Incorrect resource amount in leftover!"
 			log.WithFields(log.Fields{
 				"leftover": leftover,
 				"minimum":  minimum,
-			}).Warn("Incorrect resource amount in leftover!")
-			return nil, errors.New("Incorrect resource amount in subtract!")
+			}).Warn(msg)
+			return nil, errors.New(msg)
 		}
 		leftover = *trySubtract
 
@@ -367,11 +450,12 @@ func (tb *taskBuilder) extractScalarResources(taskResources *tc.ResourceConfig) 
 
 		trySubtract = requiredScalar.TrySubtract(&minimum)
 		if trySubtract == nil {
+			msg := "Incorrect resource amount in required!"
 			log.WithFields(log.Fields{
 				"required": requiredScalar,
 				"minimum":  minimum,
-			}).Warn("Incorrect resource amount in required!")
-			return nil, errors.New("Incorrect resource amount in subtract!")
+			}).Warn(msg)
+			return nil, errors.New(msg)
 		}
 		requiredScalar = *trySubtract
 
@@ -436,7 +520,10 @@ func createPortRanges(portSet map[uint32]bool) *mesos.Value_Ranges {
 	}
 	for _, p := range sorted {
 		tmp := uint64(p)
-		res.Range = append(res.Range, &mesos.Value_Range{Begin: &tmp, End: &tmp})
+		res.Range = append(
+			res.Range,
+			&mesos.Value_Range{Begin: &tmp, End: &tmp},
+		)
 	}
 	return &res
 }

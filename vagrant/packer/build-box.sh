@@ -17,7 +17,7 @@ set -o errexit
 set -o nounset
 set -o verbose
 
-readonly MESOS_VERSION=1.1.1
+readonly MESOS_VERSION=1.2.0
 
 function remove_unused {
   # The default ubuntu/trusty64 image includes juju-core, which adds ~300 MB to our image.

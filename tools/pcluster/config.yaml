@@ -9,8 +9,8 @@ zk_container: peloton-zk
 
 
 # Mesos configs
-mesos_master_image: mesosphere/mesos-master:1.1.1-rc2
-mesos_slave_image: mesosphere/mesos-slave:1.1.1-rc2
+mesos_master_image: mesosphere/mesos-master:1.2.0-rc2
+mesos_slave_image: mesosphere/mesos-slave:1.2.0-rc2
 mesos_master_container: peloton-mesos-master
 mesos_agent_container: peloton-mesos-agent
 num_agents: 3

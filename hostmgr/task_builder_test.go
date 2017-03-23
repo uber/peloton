@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 
 	mesos "mesos/v1"
 
@@ -31,8 +31,14 @@ const (
 // - sufficient scalar resources for multiple tasks w/ multiple ports, some exports to envs while some doesn't;
 // - sufficient scalar resources for multiple tasks but insufficient multiple ports;
 
+type TaskBuilderTestSuite struct {
+	suite.Suite
+}
+
 // helper function for getting a set of ports from ranges of integers.
-func getPortSet(ranges ...uint32) map[uint32]bool {
+func (suite *TaskBuilderTestSuite) getPortSet(
+	ranges ...uint32) map[uint32]bool {
+
 	result := make(map[uint32]bool)
 	begin := uint32(0)
 	for index, num := range ranges {
@@ -53,8 +59,32 @@ func getPortSet(ranges ...uint32) map[uint32]bool {
 	return result
 }
 
+// helper function to build resources which fits exactly numTasks
+// default tasks.
+func (suite *TaskBuilderTestSuite) getResources(
+	numTasks int) []*mesos.Resource {
+
+	resources := []*mesos.Resource{
+		util.NewMesosResourceBuilder().
+			WithName("cpus").
+			WithValue(float64(numTasks * _cpu)).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName("mem").
+			WithValue(float64(numTasks * _mem)).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName("disk").
+			WithValue(float64(numTasks * _disk)).
+			Build(),
+	}
+	return resources
+}
+
 // helper function for creating test task ids
-func createTestTaskIDs(numTasks int) []*mesos.TaskID {
+func (suite *TaskBuilderTestSuite) createTestTaskIDs(
+	numTasks int) []*mesos.TaskID {
+
 	var tids []*mesos.TaskID
 	for i := 0; i < numTasks; i++ {
 		tmp := fmt.Sprintf(taskIDFmt, i)
@@ -63,11 +93,17 @@ func createTestTaskIDs(numTasks int) []*mesos.TaskID {
 	return tids
 }
 
+const (
+	_cpu  = 10
+	_mem  = 20
+	_disk = 30
+)
+
 var (
 	defaultResourceConfig = config.ResourceConfig{
-		CpuLimit:    10,
-		MemLimitMb:  10,
-		DiskLimitMb: 10,
+		CpuLimit:    _cpu,
+		MemLimitMb:  _mem,
+		DiskLimitMb: _disk,
 	}
 )
 
@@ -88,10 +124,11 @@ func createTestTaskConfigs(numTasks int) []*config.TaskConfig {
 }
 
 // helper function to test bi-directional port set/range transformation.
-func testPortSetTransformation(
-	t *testing.T, expected map[uint32]bool, rangeLen int) {
+func (suite *TaskBuilderTestSuite) testPortSetTransformation(
+	expected map[uint32]bool, rangeLen int) {
+
 	ranges := createPortRanges(expected)
-	assert.Equal(t, rangeLen, len(ranges.Range))
+	suite.Equal(rangeLen, len(ranges.Range))
 
 	rs := util.NewMesosResourceBuilder().
 		WithName("ports").
@@ -99,19 +136,19 @@ func testPortSetTransformation(
 		WithRanges(ranges).
 		Build()
 	portSet := extractPortSet(rs)
-	assert.Equal(t, expected, portSet)
+	suite.Equal(expected, portSet)
 }
 
-// This tests bidirection tranformation between set of available port and port
+// This tests bidirectional transformation between set of available port and
 // ranges in Mesos resource.
-func TestPortRanges(t *testing.T) {
+func (suite *TaskBuilderTestSuite) TestPortRanges() {
 	// Empty range.
 	rs := util.NewMesosResourceBuilder().
 		WithName("ports").
 		WithType(mesos.Value_RANGES).
 		Build()
 	portSet := extractPortSet(rs)
-	assert.Empty(t, portSet)
+	suite.Empty(portSet)
 
 	// Unmatch resource name.
 	rs = util.NewMesosResourceBuilder().
@@ -119,128 +156,110 @@ func TestPortRanges(t *testing.T) {
 		WithType(mesos.Value_RANGES).
 		Build()
 	portSet = extractPortSet(rs)
-	assert.Empty(t, portSet)
+	suite.Empty(portSet)
 
 	// Empty one
-	testPortSetTransformation(t, getPortSet(), 0)
+	suite.testPortSetTransformation(suite.getPortSet(), 0)
 	// Single port
-	testPortSetTransformation(t, getPortSet(1000, 1000), 1)
+	suite.testPortSetTransformation(suite.getPortSet(1000, 1000), 1)
 	// Single range
-	testPortSetTransformation(t, getPortSet(1000, 1001), 2)
+	suite.testPortSetTransformation(suite.getPortSet(1000, 1001), 2)
 	// Single range
-	testPortSetTransformation(t, getPortSet(1000, 1003), 4)
+	suite.testPortSetTransformation(suite.getPortSet(1000, 1003), 4)
 	// Multiple ranges.
-	testPortSetTransformation(t, getPortSet(1000, 1001, 1003, 1004), 4)
+	suite.testPortSetTransformation(suite.getPortSet(1000, 1001, 1003, 1004), 4)
 
 	// Multiple single ports.
-	testPortSetTransformation(
-		t,
-		getPortSet(1000, 1000, 2000, 2000, 3000, 3000, 4000, 4000),
+	suite.testPortSetTransformation(
+		suite.getPortSet(1000, 1000, 2000, 2000, 3000, 3000, 4000, 4000),
 		4)
 
 	// Multiple longer ranges.
-	testPortSetTransformation(
-		t,
-		getPortSet(1000, 2000, 3000, 4000),
+	suite.testPortSetTransformation(
+		suite.getPortSet(1000, 2000, 3000, 4000),
 		2002)
 	// Merged ranges.
-	testPortSetTransformation(
-		t,
-		getPortSet(1000, 2000, 2001, 3000),
+	suite.testPortSetTransformation(
+		suite.getPortSet(1000, 2000, 2001, 3000),
 		2001)
 	// More ranges
-	testPortSetTransformation(
-		t,
-		getPortSet(1000, 1001, 2000, 2001, 3000, 3001, 4000, 4000),
+	suite.testPortSetTransformation(
+		suite.getPortSet(1000, 1001, 2000, 2001, 3000, 3001, 4000, 4000),
 		7)
 }
 
 // This tests several copies of simple tasks without any port can be
 // created as long as there are enough resources.
-func TestNoPortTasks(t *testing.T) {
-	resources := []*mesos.Resource{
-		util.NewMesosResourceBuilder().
-			WithName("cpus").
-			WithValue(40).
-			Build(),
-		util.NewMesosResourceBuilder().
-			WithName("mem").
-			WithValue(40).
-			Build(),
-		util.NewMesosResourceBuilder().
-			WithName("disk").
-			WithValue(40).
-			Build(),
-	}
+func (suite *TaskBuilderTestSuite) TestNoPortTasks() {
+	numTasks := 4
+	resources := suite.getResources(numTasks)
 	builder := newTaskBuilder(resources)
-	assert.Equal(
-		t,
+	suite.Equal(
 		map[string]scalar.Resources{
-			"*": {CPU: 40, Mem: 40, Disk: 40},
+			"*": {
+				CPU:  float64(numTasks * _cpu),
+				Mem:  float64(numTasks * _mem),
+				Disk: float64(numTasks * _disk),
+			},
 		},
 		builder.scalars)
-	assert.Empty(t, builder.portSets)
-	numTasks := 4
-	tids := createTestTaskIDs(numTasks)
+	suite.Empty(builder.portSets)
+	tids := suite.createTestTaskIDs(numTasks)
 	configs := createTestTaskConfigs(numTasks)
 
 	for i := 0; i < numTasks; i++ {
 		info, err := builder.build(tids[i], configs[i])
-		assert.NoError(t, err)
-		assert.Equal(t, tids[i], info.GetTaskId())
+		suite.NoError(err)
+		suite.Equal(tids[i], info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
-		assert.Equal(
-			t,
-			scalar.Resources{CPU: 10, Mem: 10, Disk: 10},
+		suite.Equal(
+			scalar.Resources{
+				CPU:  _cpu,
+				Mem:  _mem,
+				Disk: _disk,
+			},
 			sc)
 	}
 
 	// next build call will return an error due to insufficient resource.
 	info, err := builder.build(tids[0], configs[0])
-	assert.Nil(t, info)
-	assert.EqualError(t, err, "Not enough resources left to run task")
+	suite.Nil(info)
+	suite.EqualError(err, "Not enough resources left to run task")
 }
 
 // This tests several tasks requiring ports can be created.
-func TestPortTasks(t *testing.T) {
+func (suite *TaskBuilderTestSuite) TestPortTasks() {
 	portSet := map[uint32]bool{
 		1000: true,
 		1002: true,
 		1004: true,
 		1006: true,
 	}
-	resources := []*mesos.Resource{
-		util.NewMesosResourceBuilder().
-			WithName("cpus").
-			WithValue(40).
-			Build(),
-		util.NewMesosResourceBuilder().
-			WithName("mem").
-			WithValue(40).
-			Build(),
-		util.NewMesosResourceBuilder().
-			WithName("disk").
-			WithValue(40).
-			Build(),
+	numTasks := 2
+	// add more scalar resource to make sure we are only bound by ports.
+	resourceTasks := 4
+	resources := suite.getResources(resourceTasks)
+	resources = append(resources,
 		util.NewMesosResourceBuilder().
 			WithName("ports").
 			WithType(mesos.Value_RANGES).
 			WithRanges(createPortRanges(portSet)).
-			Build(),
-	}
+			Build())
+
 	builder := newTaskBuilder(resources)
-	assert.Equal(
-		t,
+	suite.Equal(
 		map[string]scalar.Resources{
-			"*": {CPU: 40, Mem: 40, Disk: 40},
+			"*": {
+				CPU:  float64(resourceTasks * _cpu),
+				Mem:  float64(resourceTasks * _mem),
+				Disk: float64(resourceTasks * _disk),
+			},
 		},
 		builder.scalars)
-	assert.Equal(
-		t,
+	suite.Equal(
 		map[string]map[uint32]bool{"*": portSet},
 		builder.portSets)
-	numTasks := 2
-	tid := createTestTaskIDs(1)[0]
+	tid := suite.createTestTaskIDs(1)[0]
 	taskConfig := createTestTaskConfigs(1)[0]
 	taskConfig.Ports = []*config.PortConfig{
 		{
@@ -270,18 +289,17 @@ func TestPortTasks(t *testing.T) {
 	discoveryPortSet := make(map[uint32]bool)
 	for i := 0; i < numTasks; i++ {
 		info, err := builder.build(tid, taskConfig)
-		assert.NoError(t, err)
-		assert.Equal(t, tid, info.GetTaskId())
+		suite.NoError(err)
+		suite.Equal(tid, info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
-		assert.Equal(
-			t,
-			scalar.Resources{CPU: 10, Mem: 10, Disk: 10},
+		suite.Equal(
+			scalar.Resources{CPU: _cpu, Mem: _mem, Disk: _disk},
 			sc)
 		discoveryInfo := info.GetDiscovery()
-		assert.NotNil(t, discoveryInfo)
-		assert.Equal(t, "testjob", discoveryInfo.GetName()) // job id
+		suite.NotNil(discoveryInfo)
+		suite.Equal("testjob", discoveryInfo.GetName()) // job id
 		mesosPorts := discoveryInfo.GetPorts().GetPorts()
-		assert.Equal(t, 3, len(mesosPorts))
+		suite.Equal(3, len(mesosPorts))
 
 		var staticFound uint32
 		portsInDiscovery := make(map[string]uint32)
@@ -294,39 +312,181 @@ func TestPortTasks(t *testing.T) {
 			}
 		}
 
-		assert.Equal(
-			t,
+		suite.Equal(
 			uint32(80),
 			staticFound,
 			"static port is not found in %v", mesosPorts)
 
 		envVars := info.GetCommand().GetEnvironment().GetVariables()
-		assert.Equal(t, 2, len(envVars))
+		suite.Equal(2, len(envVars))
 
 		envMap := make(map[string]string)
 		for _, envVar := range envVars {
 			envMap[envVar.GetName()] = envVar.GetValue()
 		}
-		assert.Equal(t, 2, len(envMap))
-		assert.Contains(t, envMap, "DYNAMIC_ENV_PORT")
+		suite.Equal(2, len(envMap))
+		suite.Contains(envMap, "DYNAMIC_ENV_PORT")
 		p, err := strconv.Atoi(envMap["DYNAMIC_ENV_PORT"])
-		assert.NoError(t, err)
-		assert.Contains(t, portSet, uint32(p))
-		assert.Contains(t, envMap, "STATIC_PORT")
-		assert.Equal(t, "80", envMap["STATIC_PORT"])
+		suite.NoError(err)
+		suite.Contains(portSet, uint32(p))
+		suite.Contains(envMap, "STATIC_PORT")
+		suite.Equal("80", envMap["STATIC_PORT"])
 
-		assert.Equal(
-			t,
+		suite.Equal(
 			strconv.Itoa(int(portsInDiscovery["dynamic_env"])),
 			envMap["DYNAMIC_ENV_PORT"])
 
-		assert.Equal(t, taskConfig.Labels, info.Labels)
+		suite.Equal(taskConfig.Labels, info.Labels)
 	}
 
-	assert.Equal(t, portSet, discoveryPortSet)
+	suite.Equal(portSet, discoveryPortSet)
 
 	// next build call will return an error due to insufficient ports.
 	info, err := builder.build(tid, taskConfig)
-	assert.Nil(t, info)
-	assert.EqualError(t, err, "No enough dynamic ports for task in Mesos offers")
+	suite.Nil(info)
+	suite.EqualError(err, errNotEnoughPorts.Error())
+}
+
+// This tests task with command health can be created.
+func (suite *TaskBuilderTestSuite) TestCommandHealthCheck() {
+	numTasks := 1
+	resources := suite.getResources(numTasks)
+	builder := newTaskBuilder(resources)
+	tid := suite.createTestTaskIDs(numTasks)[0]
+	c := createTestTaskConfigs(numTasks)[0]
+
+	hcCmd := "hello world"
+	cmdCfg := &config.HealthCheckConfig_CommandCheck{
+		Command: hcCmd,
+	}
+	c.HealthCheck = &config.HealthCheckConfig{
+		Type:         config.HealthCheckConfig_COMMAND,
+		CommandCheck: cmdCfg,
+	}
+	info, err := builder.build(tid, c)
+	suite.NoError(err)
+	suite.Equal(tid, info.GetTaskId())
+	hc := info.GetHealthCheck().GetCommand()
+	suite.NotNil(hc)
+	suite.Equal(hcCmd, hc.GetValue())
+	suite.True(hc.GetShell())
+	suite.Empty(hc.GetEnvironment().GetVariables())
+}
+
+// This tests various combination of populating health check.
+func (suite *TaskBuilderTestSuite) TestPopulateHealthCheck() {
+	cmdType := mesos.HealthCheck_COMMAND
+	command := "hello world"
+	tmpTrue := true
+
+	delaySeconds := float64(1)
+	timeoutSeconds := float64(2)
+	intervalSeconds := float64(3)
+	consecutiveFailures := uint32(4)
+
+	envName := "name"
+	envValue := "value"
+	environment := &mesos.Environment{
+		Variables: []*mesos.Environment_Variable{
+			{
+				Name:  &envName,
+				Value: &envValue,
+			},
+		},
+	}
+
+	var testCases = []struct {
+		builder  *taskBuilder
+		taskInfo *mesos.TaskInfo
+		input    *config.HealthCheckConfig
+		output   *mesos.HealthCheck
+		err      error
+	}{
+		// default values
+		{
+			input: &config.HealthCheckConfig{
+				Type: config.HealthCheckConfig_COMMAND,
+				CommandCheck: &config.HealthCheckConfig_CommandCheck{
+					Command: command,
+				},
+			},
+			output: &mesos.HealthCheck{
+				Type: &cmdType,
+				Command: &mesos.CommandInfo{
+					Shell: &tmpTrue,
+					Value: &command,
+				},
+			},
+		},
+		// custom values w/ environment variables.
+		{
+			input: &config.HealthCheckConfig{
+				Type: config.HealthCheckConfig_COMMAND,
+				CommandCheck: &config.HealthCheckConfig_CommandCheck{
+					Command: command,
+				},
+				InitialIntervalSecs:    uint32(delaySeconds),
+				TimeoutSecs:            uint32(timeoutSeconds),
+				IntervalSecs:           uint32(intervalSeconds),
+				MaxConsecutiveFailures: uint32(consecutiveFailures),
+			},
+			output: &mesos.HealthCheck{
+				Type: &cmdType,
+				Command: &mesos.CommandInfo{
+					Shell:       &tmpTrue,
+					Value:       &command,
+					Environment: environment,
+				},
+				ConsecutiveFailures: &consecutiveFailures,
+				DelaySeconds:        &delaySeconds,
+				TimeoutSeconds:      &timeoutSeconds,
+				IntervalSeconds:     &intervalSeconds,
+			},
+			taskInfo: &mesos.TaskInfo{
+				Command: &mesos.CommandInfo{
+					Environment: environment,
+				},
+			},
+		},
+		// unshare environment variables from task info
+		{
+			input: &config.HealthCheckConfig{
+				Type: config.HealthCheckConfig_COMMAND,
+				CommandCheck: &config.HealthCheckConfig_CommandCheck{
+					Command:             command,
+					UnshareEnvironments: true,
+				},
+			},
+			output: &mesos.HealthCheck{
+				Type: &cmdType,
+				Command: &mesos.CommandInfo{
+					Shell: &tmpTrue,
+					Value: &command,
+				},
+			},
+			taskInfo: &mesos.TaskInfo{
+				Command: &mesos.CommandInfo{
+					Environment: environment,
+				},
+			},
+		},
+	}
+
+	for _, tt := range testCases {
+		builder := tt.builder
+		if builder == nil {
+			var empty []*mesos.Resource
+			builder = newTaskBuilder(empty)
+		}
+		taskInfo := tt.taskInfo
+		if taskInfo == nil {
+			taskInfo = &mesos.TaskInfo{}
+		}
+		builder.populateHealthCheck(taskInfo, tt.input)
+		suite.Equal(tt.output, taskInfo.GetHealthCheck())
+	}
+}
+
+func TestTaskBuilderTestSuite(t *testing.T) {
+	suite.Run(t, new(TaskBuilderTestSuite))
 }

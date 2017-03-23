@@ -41,20 +41,42 @@ message HealthCheckConfig {
   // Whether the health check is enabled.
   bool enabled = 1;
 
-  // Start time wait in seconds
+  // Start time wait in seconds.
+  // Zero or empty value would use default value of 15 from Mesos.
   uint32 initialIntervalSecs = 2;
 
-  // Interval in seconds between two health checks
+  // Interval in seconds between two health checks.
+  // Zero or empty value would use default value of 10 from Mesos.
   uint32 intervalSecs = 3;
 
-  // Max number of consecutive failures before failing health check
+  // Max number of consecutive failures before failing health check.
+  // Zero or empty value would use default value of 3 from Mesos.
   uint32 maxConsecutiveFailures = 4;
 
-  // Health check command timeout in seconds
+  // Health check command timeout in seconds.
+  // Zero or empty value would use default value of 20 from Mesos.
   uint32 timeoutSecs = 5;
 
-  // Health check command to be executed
-  string shellCommand = 6;
+  enum Type {
+    UNKNOWN = 0;
+    COMMAND = 1;
+    // HTTP = 2;
+  }
+
+  message CommandCheck {
+    // Health check command to be executed.
+    // Note that this command by default inherits all environment varibles from
+    // the task it's monitoring, unless `unshare_environments` is set to true.
+    string command = 1;
+
+    // If set, this check will not share the environment variables of the task.
+    bool unshareEnvironments = 2;
+  }
+
+  Type type = 6;
+
+  // Only applicable when type is `COMMAND`.
+  CommandCheck commandCheck = 7;
 }
 
 
