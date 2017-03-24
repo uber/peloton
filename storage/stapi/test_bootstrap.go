@@ -1,7 +1,7 @@
 package stapi
 
 import (
-	sc "code.uber.internal/infra/stapi-go.git/config"
+	sc "code.uber.internal/infra/peloton/storage/cassandra"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
@@ -26,7 +26,7 @@ func downSync(cfg *Config) []error {
 // To verify with jenkins
 func MigrateForTest() *Config {
 	conf := Config{
-		Stapi: sc.Configuration{
+		Stapi: &sc.Configuration{
 			Cassandra: sc.Cassandra{
 				ContactPoints: []string{"127.0.0.1"},
 				Port:          9043,

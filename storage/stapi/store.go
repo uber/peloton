@@ -16,17 +16,16 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/storage"
-	stapi "code.uber.internal/infra/stapi-go.git"
-	"code.uber.internal/infra/stapi-go.git/api"
-	sc "code.uber.internal/infra/stapi-go.git/config"
-	qb "code.uber.internal/infra/stapi-go.git/querybuilder"
+	sc "code.uber.internal/infra/peloton/storage/cassandra"
+	"code.uber.internal/infra/peloton/storage/cassandra/api"
+	qb "code.uber.internal/infra/peloton/storage/cassandra/querybuilder"
 	mesos "mesos/v1"
 
+	"code.uber.internal/infra/peloton/storage/cassandra/impl"
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
 	"github.com/pkg/errors"
-	"github.com/uber-common/bark"
 	"github.com/uber-go/tally"
 )
 
@@ -45,9 +44,9 @@ const (
 
 // Config is the config for STAPIStore
 type Config struct {
-	Stapi      sc.Configuration `yaml:"stapi"`
-	StoreName  string           `yaml:"store_name"`
-	Migrations string           `yaml:"migrations"`
+	Stapi      *sc.Configuration `yaml:"stapi"`
+	StoreName  string            `yaml:"store_name"`
+	Migrations string            `yaml:"migrations"`
 	// MaxBatchSize makes sure we avoid batching too many statements and avoid
 	// http://docs.datastax.com/en/archived/cassandra/3.x/cassandra/configuration/configCassandra_yaml.html#configCassandra_yaml__batch_size_fail_threshold_in_kb
 	// This value is the number of records that are included in a single transaction/commit RPC request
@@ -89,12 +88,7 @@ type Store struct {
 
 // NewStore creates a Store
 func NewStore(config *Config, scope tally.Scope) (*Store, error) {
-	stapi.Initialize(stapi.Options{
-		Cfg:    config.Stapi,
-		AppID:  "peloton",
-		Logger: bark.NewLoggerFromLogrus(log.StandardLogger()),
-	})
-	dataStore, err := stapi.OpenDataStore(config.StoreName)
+	dataStore, err := impl.CreateStore(config.Stapi, config.StoreName, scope)
 	if err != nil {
 		log.Errorf("Failed to NewSTAPIStore, err=%v", err)
 		return nil, err
@@ -144,7 +138,7 @@ func (s *Store) GetJob(id *job.JobID) (*job.JobConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobConfig").From(jobsTable).
 		Where(qb.Eq{"JobID": jobID})
-	stmtString, _, _ := stmt.ToSql()
+	stmtString, _, _ := stmt.ToSQL()
 	result, err := s.DataStore.Execute(context.Background(), stmt)
 	if err != nil {
 		log.Errorf("Fail to execute stmt %v, err=%v", stmtString, err)
@@ -788,7 +782,7 @@ func (s *Store) applyStatements(stmts []api.Statement, jobID string) error {
 }
 
 func (s *Store) applyStatement(stmt api.Statement, itemName string) error {
-	stmtString, _, _ := stmt.ToSql()
+	stmtString, _, _ := stmt.ToSQL()
 	log.Debugf("stmt=%v", stmtString)
 	result, err := s.DataStore.Execute(context.Background(), stmt)
 	if err != nil {
