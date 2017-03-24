@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	nethttp "net/http"
+	"net/http/pprof"
 	"strings"
 	"time"
 
@@ -80,6 +81,13 @@ func InitMetricScope(
 			fmt.Fprintln(w, `UNHEALTHY`)
 		}
 	})
+
+	// Profiling
+	mux.Handle("/debug/pprof/", nethttp.HandlerFunc(pprof.Index))
+	mux.Handle("/debug/pprof/cmdline", nethttp.HandlerFunc(pprof.Cmdline))
+	mux.Handle("/debug/pprof/profile", nethttp.HandlerFunc(pprof.Profile))
+	mux.Handle("/debug/pprof/symbol", nethttp.HandlerFunc(pprof.Symbol))
+	mux.Handle("/debug/pprof/trace", nethttp.HandlerFunc(pprof.Trace))
 
 	metricScope, scopeCloser := tally.NewRootScope(
 		rootMetricScope,
