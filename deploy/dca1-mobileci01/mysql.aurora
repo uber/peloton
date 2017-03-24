@@ -1,0 +1,12 @@
+include('../template/mysql-template.aurora')
+
+PROFILES = [
+  Profile(
+    cluster = 'dca1-mobileci01',
+    pinned_hosts = 'compute3090-dca1',
+  )
+]
+
+jobs = [
+  JOB_TEMPLATE.bind(profile = p) for p in PROFILES
+]
