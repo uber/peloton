@@ -11,7 +11,8 @@
     "headless": true,
     "vboxmanage": [
       ["modifyvm", "{{.Name}}", "--memory", "4096"],
-      ["modifyvm", "{{.Name}}", "--cpus", "2"]
+      ["modifyvm", "{{.Name}}", "--cpus", "2"],
+      ["modifyvm", "{{.Name}}", "--uart1", "0x3F8", "4" ]
     ]
   }],
   "provisioners": [{

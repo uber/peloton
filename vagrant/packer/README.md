@@ -9,19 +9,28 @@ cheap after the box has been fetched for the first time.
 
 ## Updating the box
 
-1. Download [packer](https://www.packer.io/downloads.html)
+1. Download [packer](https://www.packer.io/downloads.html), and make sure your install the latest
+   version of virtualbox.
 
 2. Modify build scripts to make the changes you want
    (e.g. install packages via `apt`)
 
 3. Fetch the latest version of our base box
 
-        $ vagrant box update --box ubuntu/trusty64
+        $ vagrant box update --box v0rtex/xenial64
 
     The box will be stored in version-specific directories under
-    `~/.vagrant.d/boxes/ubuntu-VAGRANTSLASH-trusty64/`.  Find the path to the `.ovf` file for the
+    `~/.vagrant.d/boxes/v0rtex-VAGRANTSLASH-xenial64/`.  Find the path to the `.ovf` file for the
     latest version of the box.  In the following step, this path will be referred to as
     `$UBUNTU_OVF`.
+
+    NOTE: We use a custom version of xenial64 from v0rtex instead of ubuntu's official one because
+    the latter does not conform to Vagrant convention of having a "vagrant" username/password
+    combo. See https://bugs.launchpad.net/cloud-images/+bug/1569237 for details.
+
+    NOTE: The line `["modifyvm", "{{.Name}}", "--uart1", "0x3F8", "4" ]` is copied from
+    v0rtex/xenial64 vagrant file, which seems to be some dark magic to properly configure COM1 serial
+    port for ubuntu.
 
 4. Build the new box
     Using the path from the previous step, run the following command to start the build.
@@ -33,7 +42,7 @@ cheap after the box has been fetched for the first time.
 
 5. Verify your box locally
 
-        $ vagrant box add --name peloton-dev-testing \
+        $ vagrant box add --force --name peloton-dev-testing \
           packer_virtualbox-ovf_virtualbox.box
 
     This will make a vagrant box named `peloton-dev-testing` locally available to vagrant
@@ -55,4 +64,4 @@ cheap after the box has been fetched for the first time.
     At this point, you can use the box as normal to run integration tests.
 
 6. Upload the box to Vagrant Cloud
-    Our boxes are stored [here](https://atlas.hashicorp.com/mincai/boxes/peloton-dev-trusty).
+    Our boxes are stored [here](https://atlas.hashicorp.com/mincai/boxes/peloton-dev-xenial).

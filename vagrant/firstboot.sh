@@ -3,15 +3,17 @@
 PELOTON_HOME=/workspace/src/code.uber.internal/infra/peloton
 
 function install_mesos_config {
+  modprobe overlay || true
+  modprobe aufs || true
   # Assign mesos command line arguments.
   cp $PELOTON_HOME/vagrant/mesos_config/etc_mesos-slave/* /etc/mesos-slave
   cp $PELOTON_HOME/vagrant/mesos_config/etc_mesos-master/* /etc/mesos-master
-  stop mesos-master || true
-  stop mesos-slave || true
+  systemctl stop mesos-master || true
+  systemctl stop mesos-slave  || true
   # Remove slave metadata to ensure slave start does not pick up old state.
   rm -rf /var/lib/mesos/meta/slaves/latest
-  start mesos-master
-  start mesos-slave
+  systemctl start mesos-master
+  systemctl start mesos-slave
 }
 
 function setup_workspace {

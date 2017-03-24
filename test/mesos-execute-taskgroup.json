@@ -1,0 +1,88 @@
+{
+  "tasks": [
+    {
+      "name": "redis1",
+      "task_id": {
+        "value": "redis1"
+      },
+      "agent_id": {
+        "value": ""
+      },
+      "resources": [
+        {
+          "name": "cpus",
+          "type": "SCALAR",
+          "scalar": {
+            "value": 0.1
+          },
+          "role": "*"
+        },
+        {
+          "name": "mem",
+          "type": "SCALAR",
+          "scalar": {
+            "value": 32
+          },
+          "role": "*"
+        }
+      ],
+      "container": {
+        "type": "MESOS",
+        "mesos": {
+          "image": {
+            "type": "DOCKER",
+            "docker": {
+              "name": "library/redis"
+            }
+          }
+        }
+      },
+      "command": {
+        "user": "root",
+        "shell": false
+      }
+    },
+    {
+      "name": "nginx1",
+      "task_id": {
+        "value": "nginx1"
+      },
+      "agent_id": {
+        "value": ""
+      },
+      "resources": [
+        {
+          "name": "cpus",
+          "type": "SCALAR",
+          "scalar": {
+            "value": 0.1
+          },
+          "role": "*"
+        },
+        {
+          "name": "mem",
+          "type": "SCALAR",
+          "scalar": {
+            "value": 32
+          },
+          "role": "*"
+        }
+      ],
+      "container": {
+        "type": "MESOS",
+        "mesos": {
+          "image": {
+            "type": "DOCKER",
+            "docker": {
+              "name": "library/nginx"
+            }
+          }
+        }
+      },
+      "command": {
+        "user": "root",
+        "shell": false
+      }
+    }
+  ]
+}
