@@ -8,8 +8,11 @@ import (
 
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"github.com/golang/mock/gomock"
 
 	"peloton/api/peloton"
 	pb_respool "peloton/api/respool"
@@ -19,20 +22,20 @@ import (
 type TaskSchedulerTestSuite struct {
 	suite.Suite
 	resTree    respool.Tree
-	resPools   map[string]*pb_respool.ResourcePoolConfig
-	allNodes   map[string]*respool.ResPool
-	root       *respool.ResPool
 	readyQueue queue.Queue
 	taskSched  *scheduler
+	mockCtrl   *gomock.Controller
 }
 
-func (suite *TaskSchedulerTestSuite) SetupTest() {
-	respool.InitTree(tally.NoopScope, nil)
+func (suite *TaskSchedulerTestSuite) SetupSuite() {
+	suite.mockCtrl = gomock.NewController(suite.T())
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+	gomock.InOrder(
+		mockResPoolStore.EXPECT().
+			GetAllResourcePools().Return(suite.getResPools(), nil).AnyTimes(),
+	)
+	respool.InitTree(tally.NoopScope, mockResPoolStore)
 	suite.resTree = respool.GetTree()
-	suite.setupResPools()
-	suite.root = suite.resTree.CreateTree(nil, respool.RootResPoolID, suite.resPools, suite.allNodes)
-	suite.resTree.SetAllNodes(&suite.allNodes)
-	suite.AddTasks()
 	suite.readyQueue = queue.NewQueue(
 		"ready-queue",
 		reflect.TypeOf(resmgr.Task{}),
@@ -47,8 +50,20 @@ func (suite *TaskSchedulerTestSuite) SetupTest() {
 	}
 }
 
+func (suite *TaskSchedulerTestSuite) SetupTest() {
+	fmt.Println("setting up")
+	suite.resTree.Start()
+	suite.taskSched.Start()
+	suite.AddTasks()
+}
+
 func (suite *TaskSchedulerTestSuite) TearDownTest() {
 	fmt.Println("tearing down")
+	err := suite.resTree.Stop()
+	suite.NoError(err)
+	err = suite.taskSched.Stop()
+	suite.NoError(err)
+	suite.mockCtrl.Finish()
 }
 
 func TestTaskScheduler(t *testing.T) {
@@ -86,12 +101,13 @@ func (suite *TaskSchedulerTestSuite) getResourceConfig() []*pb_respool.ResourceC
 	return resConfigs
 }
 
-func (suite *TaskSchedulerTestSuite) setupResPools() {
+// Returns resource pools
+func (suite *TaskSchedulerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+
 	rootID := pb_respool.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
-	suite.allNodes = make(map[string]*respool.ResPool)
-	suite.resPools = map[string]*pb_respool.ResourcePoolConfig{
+	return map[string]*pb_respool.ResourcePoolConfig{
 		"root": {
 			Name:      "root",
 			Parent:    nil,
@@ -173,7 +189,11 @@ func (suite *TaskSchedulerTestSuite) AddTasks() {
 	}
 
 	for _, task := range tasks {
-		suite.allNodes["respool11"].EnqueueTask(task)
+		resPool, err := suite.resTree.LookupResPool(&pb_respool.ResourcePoolID{
+			Value: "respool11",
+		})
+		suite.NoError(err)
+		resPool.EnqueueTask(task)
 	}
 }
 
@@ -192,9 +212,7 @@ func (suite *TaskSchedulerTestSuite) validateReadyQueue() {
 	}
 }
 
-func (suite *TaskSchedulerTestSuite) TestMovingtoReadyQueue() {
-	// TODO: Test start and stop differently
-	suite.taskSched.Start()
+func (suite *TaskSchedulerTestSuite) TestMovingToReadyQueue() {
 	time.Sleep(2000 * time.Millisecond)
 	suite.validateReadyQueue()
 }

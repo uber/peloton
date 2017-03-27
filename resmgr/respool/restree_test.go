@@ -1,142 +1,138 @@
 package respool
 
 import (
-	"code.uber.internal/infra/peloton/storage/mysql"
-	"github.com/jmoiron/sqlx"
-	"github.com/stretchr/testify/suite"
-	"go.uber.org/yarpc"
-
 	"fmt"
-	"peloton/api/peloton"
-	"peloton/api/respool"
 	"testing"
 
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
+
+	"peloton/api/peloton"
+	pb_respool "peloton/api/respool"
 	"peloton/private/resmgr"
 )
 
 type RespoolTestSuite struct {
 	suite.Suite
-	store      *mysql.JobStore
-	db         *sqlx.DB
-	dispatcher yarpc.Dispatcher
-	resTree    tree
-	resPools   map[string]*respool.ResourcePoolConfig
-	allNodes   map[string]*ResPool
-	root       *ResPool
+	resourceTree Tree
+	mockCtrl     *gomock.Controller
+}
+
+func (suite *RespoolTestSuite) SetupSuite() {
+	fmt.Println("setting up RespoolTestSuite")
+	suite.mockCtrl = gomock.NewController(suite.T())
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+	mockResPoolStore.EXPECT().GetAllResourcePools().
+		Return(suite.getResPools(), nil).AnyTimes()
+	InitTree(tally.NoopScope, mockResPoolStore)
+	suite.resourceTree = GetTree()
+}
+
+func (suite *RespoolTestSuite) TearDownSuite() {
+	suite.mockCtrl.Finish()
 }
 
 func (suite *RespoolTestSuite) SetupTest() {
-	suite.resPools = make(map[string]*respool.ResourcePoolConfig)
-	suite.allNodes = make(map[string]*ResPool)
-	suite.setUpRespools()
-	suite.root = suite.resTree.CreateTree(nil, RootResPoolID, suite.resPools, suite.allNodes)
-
-}
-
-func (suite *RespoolTestSuite) getResourceConfig() []*respool.ResourceConfig {
-	resConfigs := make([]*respool.ResourceConfig, 4)
-	resConfigcpu := new(respool.ResourceConfig)
-	resConfigcpu.Share = 1
-	resConfigcpu.Kind = "cpu"
-	resConfigcpu.Reservation = 100
-	resConfigcpu.Limit = 1000
-	resConfigs[0] = resConfigcpu
-
-	resConfigmem := new(respool.ResourceConfig)
-	resConfigmem.Share = 1
-	resConfigmem.Kind = "memory"
-	resConfigmem.Reservation = 100
-	resConfigmem.Limit = 1000
-	resConfigs[1] = resConfigmem
-
-	resConfigdisk := new(respool.ResourceConfig)
-	resConfigdisk.Share = 1
-	resConfigdisk.Kind = "disk"
-	resConfigdisk.Reservation = 100
-	resConfigdisk.Limit = 1000
-	resConfigs[2] = resConfigdisk
-
-	resConfiggpu := new(respool.ResourceConfig)
-	resConfiggpu.Share = 1
-	resConfiggpu.Kind = "gpu"
-	resConfiggpu.Reservation = 2
-	resConfiggpu.Limit = 4
-	resConfigs[3] = resConfiggpu
-
-	return resConfigs
-}
-
-func (suite *RespoolTestSuite) setUpRespools() {
-	var parentID respool.ResourcePoolID
-	parentID.Value = "root"
-	policy := respool.SchedulingPolicy_PriorityFIFO
-
-	var respoolConfigRoot respool.ResourcePoolConfig
-	respoolConfigRoot.Name = "root"
-	respoolConfigRoot.Parent = nil
-	respoolConfigRoot.Resources = suite.getResourceConfig()
-	respoolConfigRoot.Policy = policy
-	suite.resPools["root"] = &respoolConfigRoot
-
-	var respoolConfig1 respool.ResourcePoolConfig
-	respoolConfig1.Name = "respool1"
-	respoolConfig1.Parent = &parentID
-	respoolConfig1.Resources = suite.getResourceConfig()
-	respoolConfig1.Policy = policy
-	suite.resPools["respool1"] = &respoolConfig1
-
-	var respoolConfig2 respool.ResourcePoolConfig
-	respoolConfig2.Name = "respool2"
-	respoolConfig2.Parent = &parentID
-	respoolConfig2.Resources = suite.getResourceConfig()
-	respoolConfig2.Policy = policy
-	suite.resPools["respool2"] = &respoolConfig2
-
-	var respoolConfig3 respool.ResourcePoolConfig
-	respoolConfig3.Name = "respool3"
-	respoolConfig3.Parent = &parentID
-	respoolConfig3.Resources = suite.getResourceConfig()
-	respoolConfig3.Policy = policy
-	suite.resPools["respool3"] = &respoolConfig3
-
-	var parent1ID respool.ResourcePoolID
-	parent1ID.Value = "respool1"
-
-	var respoolConfig11 respool.ResourcePoolConfig
-	respoolConfig11.Name = "respool11"
-	respoolConfig11.Parent = &parent1ID
-	respoolConfig11.Resources = suite.getResourceConfig()
-	respoolConfig11.Policy = policy
-	suite.resPools["respool11"] = &respoolConfig11
-
-	var respoolConfig12 respool.ResourcePoolConfig
-	respoolConfig12.Name = "respool12"
-	respoolConfig12.Parent = &parent1ID
-	respoolConfig12.Resources = suite.getResourceConfig()
-	respoolConfig12.Policy = policy
-	suite.resPools["respool12"] = &respoolConfig12
-
-	var parent2ID respool.ResourcePoolID
-	parent2ID.Value = "respool2"
-
-	var respoolConfig21 respool.ResourcePoolConfig
-	respoolConfig21.Name = "respool21"
-	respoolConfig21.Parent = &parent2ID
-	respoolConfig21.Resources = suite.getResourceConfig()
-	respoolConfig21.Policy = policy
-	suite.resPools["respool21"] = &respoolConfig21
-
-	var respoolConfig22 respool.ResourcePoolConfig
-	respoolConfig22.Name = "respool22"
-	respoolConfig22.Parent = &parent2ID
-	respoolConfig22.Resources = suite.getResourceConfig()
-	respoolConfig22.Policy = policy
-	suite.resPools["respool22"] = &respoolConfig22
+	err := suite.resourceTree.Start()
+	suite.NoError(err)
 }
 
 func (suite *RespoolTestSuite) TearDownTest() {
-	fmt.Println("tearing down")
+	suite.resourceTree.Stop()
+}
+
+// Returns resource configs
+func (suite *RespoolTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
+
+	resConfigs := []*pb_respool.ResourceConfig{
+		{
+			Share:       1,
+			Kind:        "cpu",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "memory",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "disk",
+			Reservation: 100,
+			Limit:       1000,
+		},
+		{
+			Share:       1,
+			Kind:        "gpu",
+			Reservation: 2,
+			Limit:       4,
+		},
+	}
+	return resConfigs
+}
+
+// Returns resource pools
+func (suite *RespoolTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	policy := pb_respool.SchedulingPolicy_PriorityFIFO
+
+	return map[string]*pb_respool.ResourcePoolConfig{
+		"root": {
+			Name:      "root",
+			Parent:    nil,
+			Resources: suite.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool1": {
+			Name:      "respool1",
+			Parent:    &rootID,
+			Resources: suite.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool2": {
+			Name:      "respool2",
+			Parent:    &rootID,
+			Resources: suite.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool3": {
+			Name:      "respool3",
+			Parent:    &rootID,
+			Resources: suite.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool11": {
+			Name:      "respool11",
+			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Resources: suite.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool12": {
+			Name:      "respool12",
+			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Resources: suite.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool21": {
+			Name:      "respool21",
+			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Resources: suite.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool22": {
+			Name:      "respool22",
+			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Resources: suite.getResourceConfig(),
+			Policy:    policy,
+		},
+	}
 }
 
 func TestPelotonResPool(t *testing.T) {
@@ -145,22 +141,28 @@ func TestPelotonResPool(t *testing.T) {
 
 func (suite *RespoolTestSuite) TestPrintTree() {
 	// TODO: serialize the tree and compare it
-	suite.resTree.printTree(suite.root)
+	rt, ok := suite.resourceTree.(*tree)
+	suite.Equal(true, ok)
+	rt.printTree(rt.root)
 }
 
 func (suite *RespoolTestSuite) TestGetChildren() {
-	list := suite.root.GetChildren()
+	rt, ok := suite.resourceTree.(*tree)
+	suite.Equal(true, ok)
+	list := rt.root.GetChildren()
 	suite.Equal(list.Len(), 3)
-	n := suite.allNodes["respool1"]
+	n := rt.allNodes["respool1"]
 	list = n.GetChildren()
 	suite.Equal(list.Len(), 2)
-	n = suite.allNodes["respool2"]
+	n = rt.allNodes["respool2"]
 	list = n.GetChildren()
 	suite.Equal(list.Len(), 2)
 }
 
 func (suite *RespoolTestSuite) TestResourceConfig() {
-	n := suite.allNodes["respool1"]
+	rt, ok := suite.resourceTree.(*tree)
+	suite.Equal(true, ok)
+	n := rt.allNodes["respool1"]
 	suite.Equal(n.ID, "respool1")
 	for _, res := range n.resourceConfigs {
 		if res.Kind == "cpu" {
@@ -183,6 +185,8 @@ func (suite *RespoolTestSuite) TestResourceConfig() {
 }
 
 func (suite *RespoolTestSuite) TestPendingQueue() {
+	rt, ok := suite.resourceTree.(*tree)
+	suite.Equal(true, ok)
 	// Task -1
 	jobID1 := &peloton.JobID{
 		Value: "job1",
@@ -196,7 +200,7 @@ func (suite *RespoolTestSuite) TestPendingQueue() {
 		JobId:    jobID1,
 		Id:       taskID1,
 	}
-	suite.allNodes["respool11"].EnqueueTask(taskItem1)
+	rt.allNodes["respool11"].EnqueueTask(taskItem1)
 
 	// Task -2
 	jobID2 := &peloton.JobID{
@@ -211,9 +215,9 @@ func (suite *RespoolTestSuite) TestPendingQueue() {
 		JobId:    jobID2,
 		Id:       taskID2,
 	}
-	suite.allNodes["respool11"].EnqueueTask(taskItem2)
+	rt.allNodes["respool11"].EnqueueTask(taskItem2)
 
-	res, err := suite.allNodes["respool11"].DequeueTasks(1)
+	res, err := rt.allNodes["respool11"].DequeueTasks(1)
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
@@ -221,7 +225,7 @@ func (suite *RespoolTestSuite) TestPendingQueue() {
 	assert.Equal(suite.T(), t1.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
-	res2, err2 := suite.allNodes["respool11"].DequeueTasks(1)
+	res2, err2 := rt.allNodes["respool11"].DequeueTasks(1)
 	t2 := res2.Front().Value.(*resmgr.Task)
 	if err2 != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")

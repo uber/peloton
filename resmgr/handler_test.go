@@ -25,53 +25,54 @@ import (
 
 type HandlerTestSuite struct {
 	suite.Suite
-	handler  *serviceHandler
-	context  context.Context
-	resPools map[string]*pb_respool.ResourcePoolConfig
-	ctrl     *gomock.Controller
+	handler       *serviceHandler
+	context       context.Context
+	resTree       respool.Tree
+	taskScheduler rm_task.Scheduler
+	ctrl          *gomock.Controller
+}
+
+func (suite *HandlerTestSuite) SetupSuite() {
+	suite.ctrl = gomock.NewController(suite.T())
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.ctrl)
+	mockResPoolStore.EXPECT().GetAllResourcePools().
+		Return(suite.getResPools(), nil).AnyTimes()
+	respool.InitTree(tally.NoopScope, mockResPoolStore)
+	suite.resTree = respool.GetTree()
+	rm_task.InitScheduler(1 * time.Second)
+	suite.taskScheduler = rm_task.GetScheduler()
+}
+
+func (suite *HandlerTestSuite) TearDownSuite() {
+	suite.ctrl.Finish()
 }
 
 func (suite *HandlerTestSuite) SetupTest() {
 	suite.context = context.Background()
+	err := suite.resTree.Start()
+	suite.NoError(err)
 
-	// FIXME after making the respool tree and task scheduler re-entryable
-	// suite.ctrl = gomock.NewController(suite.T())
+	err = suite.taskScheduler.Start()
+	suite.NoError(err)
 
-	// mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.ctrl)
-	// gomock.InOrder(
-	//      mockResPoolStore.EXPECT().
-	//      GetAllResourcePools().Return(suite.getResPools(), nil),
-	// )
-	// respool.InitTree(tally.NoopScope, mockResPoolStore)
-	// err := respool.GetTree().Start()
-	// suite.NoError(err)
-
-	// rm_task.InitScheduler(1 * time.Second)
-	// err = rm_task.GetScheduler().Start()
-	// suite.NoError(err)
-
-	// suite.handler = &serviceHandler{
-	//	metrics:  NewMetrics(tally.NoopScope),
-	//	resPoolTree: respool.GetTree(),
-	//	placements: queue.NewQueue(
-	//		"placement-queue",
-	//		reflect.TypeOf(&resmgr.Placement{}),
-	//		maxPlacementQueueSize,
-	//	),
-	// }
+	suite.handler = &serviceHandler{
+		metrics:     NewMetrics(tally.NoopScope),
+		resPoolTree: respool.GetTree(),
+		placements: queue.NewQueue(
+			"placement-queue",
+			reflect.TypeOf(&resmgr.Placement{}),
+			maxPlacementQueueSize,
+		),
+	}
 }
 
 func (suite *HandlerTestSuite) TearDownTest() {
 	log.Info("tearing down")
 
-	// FIXME after making the respool tree and task scheduler re-entryable
-	// err := respool.GetTree().Stop()
-	// suite.NoError(err)
-
-	// err = rm_task.GetScheduler().Stop()
-	// suite.NoError(err)
-
-	// suite.ctrl.Finish()
+	err := respool.GetTree().Stop()
+	suite.NoError(err)
+	err = rm_task.GetScheduler().Stop()
+	suite.NoError(err)
 }
 
 func TestResManagerHandler(t *testing.T) {
@@ -227,34 +228,11 @@ func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
 func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 	log.Info("TestEnqueueDequeueTasksOneResPool called")
 
-	// Load respool tree from mocked respool store
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(ctrl)
-	gomock.InOrder(
-		mockResPoolStore.EXPECT().
-			GetAllResourcePools().Return(suite.getResPools(), nil),
-	)
-	respool.InitTree(tally.NoopScope, mockResPoolStore)
-	err := respool.GetTree().Start()
-	suite.NoError(err)
-
-	rm_task.InitScheduler(1 * time.Second)
-	err = rm_task.GetScheduler().Start()
-	suite.NoError(err)
-
-	handler := &serviceHandler{
-		metrics:     NewMetrics(tally.NoopScope),
-		resPoolTree: respool.GetTree(),
-		placements:  nil,
-	}
-
 	enqReq := &resmgrsvc.EnqueueTasksRequest{
 		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
 		Tasks:   suite.pendingTasks(),
 	}
-	enqResp, _, err := handler.EnqueueTasks(suite.context, nil, enqReq)
+	enqResp, _, err := suite.handler.EnqueueTasks(suite.context, nil, enqReq)
 	suite.NoError(err)
 	suite.Nil(enqResp.GetError())
 
@@ -262,7 +240,7 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 		Limit:   10,
 		Timeout: 2 * 1000, // 2 sec
 	}
-	deqResp, _, err := handler.DequeueTasks(suite.context, nil, deqReq)
+	deqResp, _, err := suite.handler.DequeueTasks(suite.context, nil, deqReq)
 	suite.NoError(err)
 	suite.Nil(deqResp.GetError())
 	suite.Equal(suite.expectedTasks(), deqResp.GetTasks())
@@ -274,18 +252,12 @@ func (suite *HandlerTestSuite) TestEnqueueTasksResPoolNotFound() {
 	log.Info("TestEnqueueTasksResPoolNotFound called")
 	respool.InitTree(tally.NoopScope, nil)
 
-	handler := &serviceHandler{
-		metrics:     NewMetrics(tally.NoopScope),
-		resPoolTree: respool.GetTree(),
-		placements:  nil,
-	}
-
 	respoolID := &pb_respool.ResourcePoolID{Value: "respool10"}
 	enqReq := &resmgrsvc.EnqueueTasksRequest{
 		ResPool: respoolID,
 		Tasks:   suite.pendingTasks(),
 	}
-	enqResp, _, err := handler.EnqueueTasks(suite.context, nil, enqReq)
+	enqResp, _, err := suite.handler.EnqueueTasks(suite.context, nil, enqReq)
 	suite.NoError(err)
 	log.Infof("%v", enqResp)
 	notFound := &resmgrsvc.ResourcePoolNotFound{

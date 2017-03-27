@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"peloton/api/respool"
-
 	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
+
+	"peloton/api/respool"
 )
 
 // Tree defines the interface for a Resource Pool Tree
@@ -29,14 +29,6 @@ type Tree interface {
 
 	// GetAllNodes returns all respool nodes or all leaf respool nodes.
 	GetAllNodes(leafOnly bool) *list.List
-
-	// FIXME: the following functions are used by
-	// scheduler_test.go. Need to mock the ResourcePoolStore interface
-	// in the test so that we don't leak these functions.
-	SetAllNodes(nodes *map[string]*ResPool)
-	CreateTree(parent *ResPool, ID string,
-		resPools map[string]*respool.ResourcePoolConfig,
-		allNodes map[string]*ResPool) *ResPool
 }
 
 // tree implements the Tree interface
@@ -102,7 +94,14 @@ func (t *tree) Start() error {
 
 // Stop will stop the respool tree
 func (t *tree) Stop() error {
-	// TODO: Need to be done
+	// TODO cleanup the queues?
+	log.Info("Stopping Resource Pool Tree")
+	t.Lock()
+	defer t.Unlock()
+	t.root = nil
+	t.resPools = nil
+	t.allNodes = make(map[string]*ResPool)
+	log.Info("Resource Pool Tree Stopped")
 	return nil
 }
 
@@ -118,24 +117,23 @@ func (t *tree) initializeResourceTree() *ResPool {
 		Policy: respool.SchedulingPolicy_PriorityFIFO,
 	}
 	t.resPools[RootResPoolID] = &rootResPoolConfig
-	root := t.CreateTree(nil, RootResPoolID, t.resPools, t.allNodes)
+	root := t.buildTree(nil, RootResPoolID)
 	return root
 }
 
-// CreateTree function will take the Parent node and create the tree underneath
-func (t *tree) CreateTree(
+// buildTree function will take the Parent node and create the tree underneath
+func (t *tree) buildTree(
 	parent *ResPool,
 	ID string,
-	resPools map[string]*respool.ResourcePoolConfig,
-	allNodes map[string]*ResPool) *ResPool {
-	node := NewRespool(ID, parent, resPools[ID])
-	allNodes[ID] = node
+) *ResPool {
+	node := NewRespool(ID, parent, t.resPools[ID])
+	t.allNodes[ID] = node
 	node.SetParent(parent)
-	childs := t.getChildResPools(ID, resPools)
+	childs := t.getChildResPools(ID)
 	var childNodes = list.New()
 	// TODO: We need to detect cycle here.
 	for child := range childs {
-		childNode := t.CreateTree(node, child, resPools, allNodes)
+		childNode := t.buildTree(node, child)
 		childNodes.PushBack(childNode)
 	}
 	node.SetChildren(childNodes)
@@ -160,10 +158,9 @@ func (t *tree) printTree(root *ResPool) {
 }
 
 // getChildResPools will return map[respoolid] = respoolConfig
-func (t *tree) getChildResPools(parentID string,
-	resPools map[string]*respool.ResourcePoolConfig) map[string]*respool.ResourcePoolConfig {
+func (t *tree) getChildResPools(parentID string) map[string]*respool.ResourcePoolConfig {
 	childs := make(map[string]*respool.ResourcePoolConfig)
-	for respool, respoolConf := range resPools {
+	for respool, respoolConf := range t.resPools {
 		if respoolConf.Parent.GetValue() == parentID {
 			childs[respool] = respoolConf
 		}
@@ -179,7 +176,6 @@ func (t *tree) getRoot() *ResPool {
 
 // GetAllNodes returns all the leaf nodes in the tree
 func (t *tree) GetAllNodes(leafOnly bool) *list.List {
-	// TODO: we need to merge GetAllNodes with GetAllLeafNodes
 	t.RLock()
 	defer t.RUnlock()
 	nodesList := new(list.List)

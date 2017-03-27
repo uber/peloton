@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	pb_respool "peloton/api/respool"
-
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	log "github.com/Sirupsen/logrus"
@@ -13,6 +11,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+
+	pb_respool "peloton/api/respool"
 )
 
 type resPoolHandlerTestSuite struct {
@@ -25,24 +25,23 @@ type resPoolHandlerTestSuite struct {
 	mockResPoolStore *store_mocks.MockResourcePoolStore
 }
 
+func (suite *resPoolHandlerTestSuite) SetupSuite() {
+	suite.mockCtrl = gomock.NewController(suite.T())
+	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+	suite.mockResPoolStore.EXPECT().GetAllResourcePools().
+		Return(suite.getResPools(), nil).AnyTimes()
+	InitTree(tally.NoopScope, suite.mockResPoolStore)
+	suite.resourceTree = GetTree()
+}
+
+func (suite *resPoolHandlerTestSuite) TearDownSuite() {
+	suite.mockCtrl.Finish()
+}
+
 func (suite *resPoolHandlerTestSuite) SetupTest() {
 	suite.context = context.Background()
-	suite.mockCtrl = gomock.NewController(suite.T())
-
-	// mock resource pool store
-	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
-
-	if suite.resourceTree == nil {
-		// set expectations
-		suite.mockResPoolStore.EXPECT().GetAllResourcePools().Return(
-			suite.getResPools(),
-			nil)
-
-		InitTree(tally.NoopScope, suite.mockResPoolStore)
-		suite.resourceTree = GetTree()
-		suite.resourceTree.Start()
-	}
-
+	err := suite.resourceTree.Start()
+	suite.NoError(err)
 	suite.handler = &serviceHandler{
 		resPoolTree:  suite.resourceTree,
 		dispatcher:   nil,
