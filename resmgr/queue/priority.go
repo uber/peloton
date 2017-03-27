@@ -1,8 +1,8 @@
 package queue
 
 import (
-	"code.uber.internal/go-common.git/x/log"
 	"errors"
+	log "github.com/Sirupsen/logrus"
 	"peloton/private/resmgr"
 	"sync"
 )

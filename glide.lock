@@ -1,153 +1,34 @@
-hash: 6070db2313be75377b22d73104b86e8ee49e4004877a7b6ace47811a1258388e
-updated: 2017-02-08T14:11:26.481326891-05:00
+hash: b1f2e88fa36be7ce11bb954b2d538dfcdcb07abac5feaac758c14ac90ae296b2
+updated: 2017-03-27T18:06:54.459846029-07:00
 imports:
-- name: code.uber.internal/engsec/polizei.git
-  version: 8821470415c5ebcf41b9f8920b576c73852e6cbc
-  repo: gitolite@code.uber.internal:engsec/polizei.git
-  vcs: git
-  subpackages:
-  - .gen/go/polizei
-  - api/common
-  - api/enforcer
-  - api/injector
-  - common
-  - storage/stapi
-- name: code.uber.internal/go-common.git
-  version: b363aeeef8e5efe1c7d7b52a3eb2b5e500df5786
-  repo: gitolite@code.uber.internal:go-common.git
-  vcs: git
-  subpackages:
-  - client/constants
-  - client/flipr
-  - client/flipr/gen-go/flipr
-  - client/uconfig
-  - version
-  - x/backoff
-  - x/config
-  - x/kafka
-  - x/log
-  - x/metrics
-  - x/metrics/customtransports
-  - x/metrics/idgeneration
-  - x/metrics/sampling
-  - x/metrics/thrift
-  - x/metrics/thriftudp
-  - x/net/xhttp
-  - x/pool
-  - x/tchannel
-  - x/tchannel/log
-  - x/tchannel/metrics
-  - x/time
-- name: code.uber.internal/infra/stapi-go.git
-  version: 34d940bc2446228c8accc121aaec15dc467d6d56
-  repo: gitolite@code.uber.internal:infra/stapi-go.git
-  vcs: git
-  subpackages:
-  - .gen/go/infra/stapi-go/stapi_gateway
-  - .gen/go/infra/stapi-go/stapi_gateway/yarpc/gatewayclient
-  - .gen/go/infra/stapi/base
-  - .gen/go/infra/stapi/schema
-  - api
-  - api/impl
-  - api/impl/gateway
-  - common
-  - config
-  - mapi
-  - mapi/impl
-  - querybuilder
-  - unsutils
-  - zookeeper
-- name: code.uber.internal/infra/uns.git
-  version: b259ac652742e21a701fc1844f2dbf25d118c546
-  repo: gitolite@code.uber.internal:infra/uns.git
-  vcs: git
-  subpackages:
-  - .gen/go/uns
-  - client
-  - common
-  - net/discovery/follower
-  - net/discovery/resolver
-  - net/discovery/stream
-  - net/discovery/trace
-  - net/discovery/watch
-  - net/dns
-  - net/ds/stringset
-  - net/errors
-  - net/flags
-  - net/http
-  - net/log
-  - net/metrics
-  - net/rpc/peers
-  - net/rpc/peers/updater/base
-  - net/rpc/peers/updater/dns
-  - net/rpc/tchannel/peerupdater/base
-  - net/rpc/tchannel/peerupdater/dns
-  - net/rpc/tchannel/stream
-  - net/server/status
-  - net/server/vars
-  - net/zk/election
-  - zk
-  - zk/testutils
-- name: code.uber.internal/infra/xyarpc-go.git
-  version: c55887061676522db3e2cca82846418afee2104a
-  repo: gitolite@code.uber.internal:infra/xyarpc-go.git
-  vcs: git
-  subpackages:
-  - internal
-  - internal/build
-  - internal/config
-  - internal/meta
-  - internal/meta/yarpc/metaserver
-  - internal/opts
-  - internal/validator
-- name: code.uber.internal/rt/filter-go.git
-  version: 0d29066edd2b08207ae24474e5b5acf8002b1de2
-  repo: gitolite@code.uber.internal:rt/filter-go.git
-  vcs: git
-  subpackages:
-  - filter
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
   subpackages:
   - parse
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
-- name: github.com/andres-erbsen/clock
-  version: 9e14626cd129ba01ccb6806bcca9d523e570aaf0
-- name: github.com/apache/thrift
-  version: 540e346d6ec3be9893ff1f29ef89e000c314edf4
-  subpackages:
-  - lib/go/thrift
 - name: github.com/beorn7/perks
   version: 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
   subpackages:
   - quantile
-- name: github.com/blang/semver
-  version: 3a37c301dda64cbe17f16f661b4c976803c0e2d2
 - name: github.com/cactus/go-statsd-client
   version: 91c326c3f7bd20f0226d3d1c289dd9f8ce28d33d
   subpackages:
   - statsd
-- name: github.com/certifi/gocertifi
-  version: a61bf5eafa3aee233ec8043e9da052447e5463dd
-- name: github.com/codahale/hdrhistogram
-  version: 3a0bb77429bd3a61596f5e8a3172445844342120
 - name: github.com/davecgh/go-spew
   version: 346938d642f2ec3594ed81d874461961cd0faa76
   subpackages:
   - spew
-- name: github.com/dghubble/sling
-  version: 52e88a7b75a5db3b49f8911f16d49d9b7b67adc5
 - name: github.com/docker/leadership
   version: bfc7753dd48af19513b29deec23c364bf0f274eb
 - name: github.com/docker/libkv
   version: aabc039ad04deb721e234f99cd1b4aa28ac71a40
   subpackages:
   - store
+  - store/mock
+  - store/zookeeper
 - name: github.com/facebookgo/clock
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
-- name: github.com/fsnotify/fsnotify
-  version: fd9ec7deca8bf46ecd2a795baaacf2b3a9be1197
 - name: github.com/gemnasium/migrate
   version: 603c58f2c1d0882d7d5b24791e6e5af5ab392e44
   subpackages:
@@ -158,20 +39,16 @@ imports:
   - migrate
   - migrate/direction
   - pipe
-- name: github.com/getsentry/raven-go
-  version: 3f7439d3e74d88e21d196ba20eb61a5a958bc118
 - name: github.com/go-sql-driver/mysql
   version: 2e00b5cd70399450106cec6431c2e2ce3cae5034
 - name: github.com/gocql/gocql
-  version: 43efb71dcca53e46c72b577a8709211ca4f9ef11
-  repo: gitolite@code.uber.internal:infra/stapi-gocql.git
-  vcs: git
+  version: b0b4cc30eff2e6acd0977ec5dd214f6bb9d0180b
   subpackages:
   - internal/lru
   - internal/murmur
   - internal/streams
 - name: github.com/gogo/protobuf
-  version: 84af2615df1ba1d35cc975ba94b64ee67d6c196e
+  version: 100ba4e885062801d56799d78530b73b178a78f3
   subpackages:
   - jsonpb
   - proto
@@ -189,14 +66,8 @@ imports:
   - protoc-gen-go
 - name: github.com/golang/snappy
   version: d9eb7a3d35ec988b8585d4a0068e462c27d28380
-- name: github.com/google/go-querystring
-  version: 9235644dd9e52eeae6fa48efd539fdc351a0af53
-  subpackages:
-  - query
 - name: github.com/hailocab/go-hostpool
   version: e80d13ce29ede4452c43dea11e79b9bc8a15b478
-- name: github.com/jessevdk/go-flags
-  version: 4e64e4a4e2552194cf594243e23aa9baf3b4297e
 - name: github.com/jmoiron/sqlx
   version: cac998c4f0959c19c638c523e374fa8e4e0bcfe3
   subpackages:
@@ -210,12 +81,12 @@ imports:
   subpackages:
   - pbutil
 - name: github.com/opentracing/opentracing-go
-  version: 0c3154a3c2ce79d3271985848659870599dfb77c
+  version: 6edb48674bd9467b8e91fda004f2bd7202d60ce4
   subpackages:
   - ext
   - log
 - name: github.com/pborman/uuid
-  version: 5007efa264d92316c43112bc573e754bc889b7b1
+  version: 1b00554d822231195d1babd97ff4a781231955c9
 - name: github.com/pkg/errors
   version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
 - name: github.com/pmezard/go-difflib
@@ -236,7 +107,6 @@ imports:
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
-  - log
   - model
 - name: github.com/prometheus/procfs
   version: fcdb11ccb4389efb1b210b7ffb623ab71c5fdd60
@@ -246,10 +116,8 @@ imports:
   vcs: git
   subpackages:
   - zk
-- name: github.com/satori/go.uuid
-  version: b061729afc07e77a8aa4fad0a2fd840958f1942a
 - name: github.com/Sirupsen/logrus
-  version: d26492970760ca5d33129d2d799e34be5c4782eb
+  version: ba1b36c82c5e05c4f912a88eab0dcd91a171688f
 - name: github.com/stretchr/objx
   version: 1a9d0bb9f541897e62256577b352fdbc1fb4fd94
 - name: github.com/stretchr/testify
@@ -268,33 +136,8 @@ imports:
   subpackages:
   - prometheus
   - statsd
-- name: github.com/uber/tchannel-go
-  version: 2caa315516e1836b7b2eff70d2fcbd23538d1b22
-  subpackages:
-  - http
-  - hyperbahn
-  - hyperbahn/gen-go/hyperbahn
-  - json
-  - pprof
-  - relay
-  - stats
-  - thrift
-  - thrift/gen-go/meta
-  - tnet
-  - trand
-  - typed
 - name: go.uber.org/atomic
-  version: 0c9e689d64f004564b79d9a663634756df322902
-- name: go.uber.org/thriftrw
-  version: c98a13058faa5dd41584a77221a268d2c72d832d
-  subpackages:
-  - envelope
-  - internal/envelope/exception
-  - internal/semver
-  - protocol
-  - protocol/binary
-  - version
-  - wire
+  version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
 - name: go.uber.org/yarpc
   version: b8e8c0ff7b690926285c2d87d5ea222700310457
   subpackages:
