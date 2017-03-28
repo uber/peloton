@@ -9,9 +9,8 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gocql/gocql"
 
-	"code.uber.internal/infra/peloton/storage/cassandra"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
-	qb "code.uber.internal/infra/peloton/storage/cassandra/querybuilder"
+	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 	"github.com/uber-go/tally"
 )
 
@@ -24,7 +23,6 @@ type Store struct {
 	closeMu        sync.RWMutex
 	scope          tally.Scope
 	concurrency    int32
-	config         *cassandra.Configuration
 	maxBatch       int
 	maxConcurrency int32
 }

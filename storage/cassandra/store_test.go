@@ -1,6 +1,6 @@
 // +build !unit
 
-package stapi_test
+package cassandra
 
 import (
 	"fmt"
@@ -13,7 +13,6 @@ import (
 	"peloton/api/task"
 
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/storage/stapi"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -27,7 +26,7 @@ const (
 
 type stAPIStoreTestSuite struct {
 	suite.Suite
-	store *stapi.Store
+	store *Store
 }
 
 // NOTE(gabe): using this method of setup is definitely less elegant
@@ -36,12 +35,12 @@ type stAPIStoreTestSuite struct {
 // from ~3m wall to 10m wall. For now, keep using init() until a fix
 // for this is found
 
-var store *stapi.Store
+var store *Store
 
 func init() {
-	conf := stapi.MigrateForTest()
+	conf := MigrateForTest()
 	var err error
-	store, err = stapi.NewStore(conf, tally.NoopScope)
+	store, err = NewStore(conf, tally.NoopScope)
 	if err != nil {
 		log.Fatal(err)
 	}

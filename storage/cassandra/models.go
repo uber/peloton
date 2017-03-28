@@ -1,4 +1,4 @@
-package stapi
+package cassandra
 
 import (
 	"fmt"
@@ -6,11 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"code.uber.internal/infra/peloton/util"
 	"peloton/api/job"
 	"peloton/api/respool"
 	"peloton/api/task"
-
-	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/Sirupsen/logrus"
 )
@@ -28,7 +27,7 @@ type JobRecord struct {
 
 // GetJobConfig returns the unmarshaled job.JobConfig
 func (j *JobRecord) GetJobConfig() (*job.JobConfig, error) {
-	result, err := storage.UnmarshalToType(j.JobConfig, reflect.TypeOf(job.JobConfig{}))
+	result, err := util.UnmarshalToType(j.JobConfig, reflect.TypeOf(job.JobConfig{}))
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +49,7 @@ type TaskRecord struct {
 
 // GetTaskInfo returns the unmarshaled task.TaskInfo
 func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
-	result, err := storage.UnmarshalToType(t.TaskInfo, reflect.TypeOf(task.TaskInfo{}))
+	result, err := util.UnmarshalToType(t.TaskInfo, reflect.TypeOf(task.TaskInfo{}))
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +66,7 @@ type TaskStateChangeRecords struct {
 func (t *TaskStateChangeRecords) GetStateChangeRecords() ([]*TaskStateChangeRecord, error) {
 	var result []*TaskStateChangeRecord
 	for _, e := range t.Events {
-		rec, err := storage.UnmarshalToType(e, reflect.TypeOf(TaskStateChangeRecord{}))
+		rec, err := util.UnmarshalToType(e, reflect.TypeOf(TaskStateChangeRecord{}))
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +154,7 @@ type ResourcePoolRecord struct {
 
 // GetResourcePoolConfig returns the unmarshaled respool.ResourceConfig
 func (r *ResourcePoolRecord) GetResourcePoolConfig() (*respool.ResourcePoolConfig, error) {
-	result, err := storage.UnmarshalToType(r.ResourcePoolConfig, reflect.TypeOf(respool.ResourcePoolConfig{}))
+	result, err := util.UnmarshalToType(r.ResourcePoolConfig, reflect.TypeOf(respool.ResourcePoolConfig{}))
 	if err != nil {
 		return nil, err
 	}

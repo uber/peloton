@@ -1,7 +1,7 @@
-package stapi
+package cassandra
 
 import (
-	sc "code.uber.internal/infra/peloton/storage/cassandra"
+	"code.uber.internal/infra/peloton/storage/cassandra/impl"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
@@ -26,8 +26,8 @@ func downSync(cfg *Config) []error {
 // To verify with jenkins
 func MigrateForTest() *Config {
 	conf := Config{
-		Stapi: &sc.Configuration{
-			Cassandra: sc.Cassandra{
+		Stapi: &impl.Configuration{
+			Cassandra: impl.Cassandra{
 				ContactPoints: []string{"127.0.0.1"},
 				Port:          9043,
 				CQLVersion:    "3.4.2",
@@ -47,7 +47,7 @@ func MigrateForTest() *Config {
 		dir = path.Join(dir, "..")
 	}
 
-	conf.Migrations = path.Join(dir, "storage", "stapi", conf.Migrations)
+	conf.Migrations = path.Join(dir, "storage", "cassandra", conf.Migrations)
 	log.Infof("pwd=%v migration path=%v", dir, conf.Migrations)
 	if errs := downSync(&conf); errs != nil {
 		log.Warnf(fmt.Sprintf("downSync is having the following error: %+v", errs))

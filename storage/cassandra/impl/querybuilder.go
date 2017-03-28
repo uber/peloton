@@ -3,7 +3,7 @@ package impl
 import (
 	"github.com/lann/builder"
 
-	qb "code.uber.internal/infra/peloton/storage/cassandra/querybuilder"
+	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 )
 
 // QueryBuilder is responsible for building queries

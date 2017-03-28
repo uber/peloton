@@ -1,4 +1,4 @@
-package cassandra
+package impl
 
 import (
 	"time"

@@ -1,15 +1,14 @@
-package storage
+package mysql
 
 import (
 	"database/sql"
-	"encoding/json"
 	"peloton/api/job"
 	"peloton/api/respool"
 	"peloton/api/task"
 	"reflect"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // BaseRowRecord contains the common fields of table tasks and table jobs
@@ -51,7 +50,7 @@ type ResourcePoolRecord struct {
 
 // GetTaskInfo returns the task.TaskInfo from a TaskRecord table record
 func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
-	result, err := UnmarshalToType(t.Body, reflect.TypeOf(task.TaskInfo{}))
+	result, err := util.UnmarshalToType(t.Body, reflect.TypeOf(task.TaskInfo{}))
 	if err != nil {
 		return nil, nil
 	}
@@ -60,7 +59,7 @@ func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
 
 // GetJobConfig returns the job.JobConfig from a JobRecord table record
 func (t *JobRecord) GetJobConfig() (*job.JobConfig, error) {
-	result, err := UnmarshalToType(t.Body, reflect.TypeOf(job.JobConfig{}))
+	result, err := util.UnmarshalToType(t.Body, reflect.TypeOf(job.JobConfig{}))
 	if err != nil {
 		return nil, nil
 	}
@@ -69,41 +68,17 @@ func (t *JobRecord) GetJobConfig() (*job.JobConfig, error) {
 
 // GetResPoolConfig returns the respool.ResourceConfig from a resourcePoolTable
 func (t *ResourcePoolRecord) GetResPoolConfig() (*respool.ResourcePoolConfig, error) {
-	result, err := UnmarshalToType(t.Body, reflect.TypeOf(respool.ResourcePoolConfig{}))
+	result, err := util.UnmarshalToType(t.Body, reflect.TypeOf(respool.ResourcePoolConfig{}))
 	if err != nil {
 		return nil, err
 	}
 	return result.(*respool.ResourcePoolConfig), err
 }
 
-// UnmarshalToType unmarshal a string to a typed interface{}
-func UnmarshalToType(jsonString string, resultType reflect.Type) (interface{}, error) {
-	result := reflect.New(resultType)
-	err := json.Unmarshal([]byte(jsonString), result.Interface())
-	if err != nil {
-		log.Errorf("Unmarshal failed with error %v, type %v, jsonString %v", err, resultType, jsonString)
-		return nil, nil
-	}
-	return result.Interface(), nil
-}
-
-// UnmarshalStringArray unmarshal a string array to a typed array, in interface{}
-func UnmarshalStringArray(jsonStrings []string, resultType reflect.Type) ([]interface{}, error) {
-	var results []interface{}
-	for _, jsonString := range jsonStrings {
-		result, err := UnmarshalToType(jsonString, resultType)
-		if err != nil {
-			return nil, nil
-		}
-		results = append(results, result)
-	}
-	return results, nil
-}
-
 // ToTaskInfos Convert a string array into an array of *task.TaskInfo
 func ToTaskInfos(jsonStrings []string) ([]*task.TaskInfo, error) {
 	resultType := reflect.TypeOf(task.TaskInfo{})
-	results, err := UnmarshalStringArray(jsonStrings, resultType)
+	results, err := util.UnmarshalStringArray(jsonStrings, resultType)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +92,7 @@ func ToTaskInfos(jsonStrings []string) ([]*task.TaskInfo, error) {
 // ToJobConfigs Convert a string array into an array of *job.JobConfig
 func ToJobConfigs(jsonStrings []string) ([]*job.JobConfig, error) {
 	resultType := reflect.TypeOf(job.JobConfig{})
-	results, err := UnmarshalStringArray(jsonStrings, resultType)
+	results, err := util.UnmarshalStringArray(jsonStrings, resultType)
 	if err != nil {
 		return nil, err
 	}

@@ -36,8 +36,8 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/storage/cassandra"
 	"code.uber.internal/infra/peloton/storage/mysql"
-	"code.uber.internal/infra/peloton/storage/stapi"
 
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -234,7 +234,7 @@ func main() {
 		if errs := cfg.Storage.STAPI.AutoMigrate(); errs != nil {
 			log.Fatalf("Could not migrate database: %+v", errs)
 		}
-		store, err := stapi.NewStore(&cfg.Storage.STAPI, rootScope)
+		store, err := cassandra.NewStore(&cfg.Storage.STAPI, rootScope)
 		if err != nil {
 			log.Fatalf("Could not create stapi store: %+v", err)
 		}

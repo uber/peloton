@@ -1,4 +1,4 @@
-package stapi
+package cassandra
 
 import (
 	"context"
@@ -17,9 +17,8 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/storage"
-	sc "code.uber.internal/infra/peloton/storage/cassandra"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
-	qb "code.uber.internal/infra/peloton/storage/cassandra/querybuilder"
+	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 	mesos "mesos/v1"
 
 	"code.uber.internal/infra/peloton/storage/cassandra/impl"
@@ -45,9 +44,9 @@ const (
 
 // Config is the config for STAPIStore
 type Config struct {
-	Stapi      *sc.Configuration `yaml:"stapi"`
-	StoreName  string            `yaml:"store_name"`
-	Migrations string            `yaml:"migrations"`
+	Stapi      *impl.Configuration `yaml:"stapi"`
+	StoreName  string              `yaml:"store_name"`
+	Migrations string              `yaml:"migrations"`
 	// MaxBatchSize makes sure we avoid batching too many statements and avoid
 	// http://docs.datastax.com/en/archived/cassandra/3.x/cassandra/configuration/configCassandra_yaml.html#configCassandra_yaml__batch_size_fail_threshold_in_kb
 	// This value is the number of records that are included in a single transaction/commit RPC request

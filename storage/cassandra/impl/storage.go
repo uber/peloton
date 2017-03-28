@@ -5,13 +5,12 @@ import (
 	"github.com/gocql/gocql"
 	"time"
 
-	"code.uber.internal/infra/peloton/storage/cassandra"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	"github.com/uber-go/tally"
 )
 
 // CreateStore is to create clusters and connections
-func CreateStore(storeConfig *cassandra.Configuration, keySpace string, scope tally.Scope) (*Store, error) {
+func CreateStore(storeConfig *Configuration, keySpace string, scope tally.Scope) (*Store, error) {
 	cluster := newCluster(storeConfig)
 	cluster.Keyspace = keySpace
 	cSession, err := cluster.CreateSession()
@@ -25,7 +24,6 @@ func CreateStore(storeConfig *cassandra.Configuration, keySpace string, scope ta
 		cSession:       cSession,
 		scope:          storeScope,
 		concurrency:    0,
-		config:         storeConfig,
 		maxBatch:       50,
 		maxConcurrency: int32(storeConfig.MaxGoRoutines),
 	}
@@ -48,7 +46,7 @@ const (
 )
 
 // NewCluster returns a clusterConfig object
-func newCluster(storeConfig *cassandra.Configuration) *gocql.ClusterConfig {
+func newCluster(storeConfig *Configuration) *gocql.ClusterConfig {
 
 	config := storeConfig.Cassandra
 	cluster := gocql.NewCluster(config.ContactPoints...)

@@ -18,7 +18,7 @@ import (
 	"context"
 	"errors"
 
-	qb "code.uber.internal/infra/peloton/storage/cassandra/querybuilder"
+	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 	"github.com/gocql/gocql"
 )
 

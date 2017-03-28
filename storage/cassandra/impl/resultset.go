@@ -7,7 +7,7 @@ import (
 	"github.com/gocql/gocql"
 
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
-	qb "code.uber.internal/infra/peloton/storage/cassandra/querybuilder"
+	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 )
 
 // ResultSet is the result of a executed query

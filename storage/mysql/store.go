@@ -211,7 +211,7 @@ func (m *JobStore) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, er
 	}
 
 	var queryLabels = ""
-	records := []storage.JobRecord{}
+	records := []JobRecord{}
 	var result = make(map[string]*job.JobConfig)
 	for _, label := range Labels.Labels {
 		buffer, err := json.Marshal(label)
@@ -505,7 +505,7 @@ func getQueryAndArgs(table string, filters map[string]interface{}, fields []stri
 }
 
 func (m *JobStore) getJobs(filters map[string]interface{}) (map[string]*job.JobConfig, error) {
-	var records = []storage.JobRecord{}
+	var records = []JobRecord{}
 	var result = make(map[string]*job.JobConfig)
 	q, args := getQueryAndArgs(jobsTable, filters, []string{"*"})
 	log.Debugf("DB query -- %v %v", q, args)
@@ -534,7 +534,7 @@ func (m *JobStore) getJobs(filters map[string]interface{}) (map[string]*job.JobC
 }
 
 func (m *JobStore) getTasks(filters map[string]interface{}) (map[uint32]*task.TaskInfo, error) {
-	var records = []storage.TaskRecord{}
+	var records = []TaskRecord{}
 	var result = make(map[uint32]*task.TaskInfo)
 	q, args := getQueryAndArgs(tasksTable, filters, []string{"*"})
 	err := m.DB.Select(&records, q, args...)
@@ -591,7 +591,7 @@ func (m *JobStore) SetMesosFrameworkID(frameworkName string, frameworkID string)
 
 //GetMesosStreamID reads the mesos stream id for a framework name
 func (m *JobStore) GetMesosStreamID(frameworkName string) (string, error) {
-	var records = []storage.MesosFrameworkInfo{}
+	var records = []MesosFrameworkInfo{}
 	q, args := getQueryAndArgs(frameworksTable, map[string]interface{}{"framework_name=": frameworkName}, []string{"*"})
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
@@ -606,7 +606,7 @@ func (m *JobStore) GetMesosStreamID(frameworkName string) (string, error) {
 
 // GetFrameworkID reads the framework id for a framework name
 func (m *JobStore) GetFrameworkID(frameworkName string) (string, error) {
-	var records = []storage.MesosFrameworkInfo{}
+	var records = []MesosFrameworkInfo{}
 	q, args := getQueryAndArgs(frameworksTable, map[string]interface{}{"framework_name=": frameworkName}, []string{"*"})
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
@@ -679,7 +679,7 @@ func (m *ResourcePoolStore) UpdateResourcePool(id *respool.ResourcePoolID, Confi
 
 // GetResourcePoolsByOwner gets resource pool(s) by owner
 func (m *ResourcePoolStore) GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error) {
-	var records = []storage.ResourcePoolRecord{}
+	var records = []ResourcePoolRecord{}
 	var result = make(map[string]*respool.ResourcePoolConfig)
 	q, args := getQueryAndArgs(resourcePoolTable, map[string]interface{}{"created_by=": owner}, []string{"*"})
 	log.WithFields(log.Fields{
@@ -714,7 +714,7 @@ func (m *ResourcePoolStore) GetResourcePoolsByOwner(owner string) (map[string]*r
 
 // GetAllResourcePools Get all the resource pool
 func (m *ResourcePoolStore) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error) {
-	var records = []storage.ResourcePoolRecord{}
+	var records = []ResourcePoolRecord{}
 	var result = make(map[string]*respool.ResourcePoolConfig)
 	q, args := getQueryAndArgs(resourcePoolTable, map[string]interface{}{}, []string{"*"})
 	log.WithFields(log.Fields{
