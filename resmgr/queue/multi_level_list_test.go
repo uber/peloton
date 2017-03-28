@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"peloton/api/job"
-	"peloton/api/task"
+	"peloton/api/peloton"
 	"peloton/private/resmgr"
 	"testing"
 )
@@ -23,10 +22,10 @@ func (suite *MultiLevelListTestSuite) SetupTest() {
 }
 
 func (suite *MultiLevelListTestSuite) AddTasks() {
-	jobID1 := &job.JobID{
+	jobID1 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID1 := &task.TaskID{
+	taskID1 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
 	}
 	taskItem1 := &resmgr.Task{
@@ -40,10 +39,10 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 	suite.mapTasks["job1-1"] = taskItem1
 	assert.Equal(suite.T(), suite.mll.GetHighestLevel(), 0, "Highest Level should be 0")
 
-	jobID0 := &job.JobID{
+	jobID0 := &peloton.JobID{
 		Value: "job2",
 	}
-	taskID0 := &task.TaskID{
+	taskID0 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID0.Value, 1),
 	}
 	taskItem0 := &resmgr.Task{
@@ -57,10 +56,10 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 	suite.mapTasks["job2-1"] = taskItem0
 	assert.Equal(suite.T(), suite.mll.GetHighestLevel(), 1, "Highest Level should be 1")
 
-	jobID2 := &job.JobID{
+	jobID2 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID2 := &task.TaskID{
+	taskID2 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
 	}
 	taskItem2 := &resmgr.Task{

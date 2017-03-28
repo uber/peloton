@@ -18,8 +18,8 @@ import (
 	"go.uber.org/yarpc/encoding/json"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"peloton/api/peloton"
 	"peloton/api/task"
-	"peloton/api/task/config"
 	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/resmgr"
 	"peloton/private/resmgr/taskqueue"
@@ -221,7 +221,7 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOf
 // placeTasks makes placement decisions by assigning tasks to offer
 func (s *placementEngine) placeTasks(
 	tasks []*task.TaskInfo,
-	resourceConfig *config.ResourceConfig,
+	resourceConfig *task.ResourceConfig,
 	hostOffer *hostsvc.HostOffer) []*task.TaskInfo {
 	nTasks := len(tasks)
 	if nTasks == 0 {
@@ -308,11 +308,11 @@ func (s *placementEngine) placeTasks(
 // createPlacements creates the placement for resource manager
 func (s *placementEngine) createPlacements(tasks []*task.TaskInfo,
 	hostOffer *hostsvc.HostOffer) []*resmgr.Placement {
-	TasksIds := make([]*task.TaskID, len(tasks))
+	TasksIds := make([]*peloton.TaskID, len(tasks))
 	placements := make([]*resmgr.Placement, 1)
 	i := 0
 	for _, t := range tasks {
-		taskID := &task.TaskID{
+		taskID := &peloton.TaskID{
 			Value: t.JobId.Value + "-" + fmt.Sprint(t.InstanceId),
 		}
 		TasksIds[i] = taskID
@@ -399,7 +399,7 @@ func (s *placementEngine) getTasks(limit int) (
 }
 
 type taskGroup struct {
-	resourceConfig *config.ResourceConfig
+	resourceConfig *task.ResourceConfig
 	tasks          []*task.TaskInfo
 }
 

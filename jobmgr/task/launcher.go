@@ -12,6 +12,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
+	"peloton/api/peloton"
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/resmgr"
@@ -160,7 +161,7 @@ func (l *launcher) processPlacements(placements []*resmgr.Placement) error {
 	return nil
 }
 
-func (l *launcher) getLaunchableTasks(tasks []*task.TaskID) []*hostsvc.LaunchableTask {
+func (l *launcher) getLaunchableTasks(tasks []*peloton.TaskID) []*hostsvc.LaunchableTask {
 
 	var tasksInfo []*task.TaskInfo
 	log.WithField("Length of Tasks", len(tasks)).

@@ -13,7 +13,7 @@ import (
 
 	mesos "mesos/v1"
 
-	"peloton/api/job"
+	"peloton/api/errors"
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 )
@@ -64,7 +64,7 @@ func (m *serviceHandler) Get(
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
-			NotFound: &job.JobNotFound{
+			NotFound: &errors.JobNotFound{
 				Id:      body.JobId,
 				Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
 			},
@@ -101,7 +101,7 @@ func (m *serviceHandler) List(
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
-			NotFound: &job.JobNotFound{
+			NotFound: &errors.JobNotFound{
 				Id:      body.JobId,
 				Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
 			},
@@ -116,7 +116,7 @@ func (m *serviceHandler) List(
 	if err != nil || len(result) == 0 {
 		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
-			NotFound: &job.JobNotFound{
+			NotFound: &errors.JobNotFound{
 				Id:      body.JobId,
 				Message: fmt.Sprintf("err= %v", err),
 			},
@@ -161,7 +161,7 @@ func (m *serviceHandler) Stop(
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
-				NotFound: &job.JobNotFound{
+				NotFound: &errors.JobNotFound{
 					Id:      body.JobId,
 					Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
 				},
@@ -223,8 +223,8 @@ func (m *serviceHandler) Stop(
 	for instID, taskInfo := range taskInfos {
 		taskID := taskInfo.GetRuntime().GetTaskId()
 		// Skip update task goalstate if it is already KILLED.
-		if taskInfo.GetRuntime().GoalState != task.RuntimeInfo_KILLED {
-			taskInfo.GetRuntime().GoalState = task.RuntimeInfo_KILLED
+		if taskInfo.GetRuntime().GoalState != task.TaskState_KILLED {
+			taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
 			err = m.taskStore.UpdateTask(taskInfo)
 			if err != nil {
 				// Skip remaining tasks killing if db update error occurs.
@@ -237,7 +237,7 @@ func (m *serviceHandler) Stop(
 		curState := taskInfo.GetRuntime().GetState()
 		// Only kill tasks that is actively starting/running.
 		switch curState {
-		case task.RuntimeInfo_LAUNCHED, task.RuntimeInfo_RUNNING:
+		case task.TaskState_LAUNCHING, task.TaskState_RUNNING:
 			tasksToKill = append(tasksToKill, taskID)
 		}
 		stoppedInstanceIds = append(stoppedInstanceIds, instID)

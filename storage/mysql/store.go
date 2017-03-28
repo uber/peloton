@@ -14,6 +14,7 @@ import (
 
 	mesos_v1 "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/respool"
 	"peloton/api/task"
 
@@ -166,7 +167,7 @@ func NewJobStore(config Config, scope tally.Scope) *JobStore {
 }
 
 // CreateJob creates a job with the job id and the config value
-func (m *JobStore) CreateJob(id *job.JobID, jobConfig *job.JobConfig, createdBy string) error {
+func (m *JobStore) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy string) error {
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
 		log.Errorf("error = %v", err)
@@ -184,7 +185,7 @@ func (m *JobStore) CreateJob(id *job.JobID, jobConfig *job.JobConfig, createdBy 
 }
 
 // GetJob returns a job config given the job id
-func (m *JobStore) GetJob(id *job.JobID) (*job.JobConfig, error) {
+func (m *JobStore) GetJob(id *peloton.JobID) (*job.JobConfig, error) {
 	jobs, err := m.getJobs(map[string]interface{}{"row_key=": id.Value, "col_key=": colJobConfig})
 	if err != nil {
 		return nil, err
@@ -245,7 +246,7 @@ func (m *JobStore) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, er
 }
 
 // DeleteJob deletes a job by id
-func (m *JobStore) DeleteJob(id *job.JobID) error {
+func (m *JobStore) DeleteJob(id *peloton.JobID) error {
 	// Check if there are any task left for the job. If there is any, abort the deletion
 	// TODO: slu -- discussion on if the task state matter here
 	tasks, err := m.GetTasksForJob(id)
@@ -276,12 +277,12 @@ func (m *JobStore) GetJobsByOwner(owner string) (map[string]*job.JobConfig, erro
 }
 
 // GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *JobStore) GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error) {
+func (m *JobStore) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value})
 }
 
 // GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *JobStore) GetTasksForJobByRange(id *job.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+func (m *JobStore) GetTasksForJobByRange(id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id >=": Range.From, "instance_id <": Range.To})
 }
 
@@ -306,13 +307,13 @@ func (m *JobStore) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 }
 
 // GetTaskForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *JobStore) GetTaskForJob(id *job.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
+func (m *JobStore) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id=": instanceID})
 }
 
 // CreateTask creates a task for a peloton job
 // TODO: remove this in favor of CreateTasks
-func (m *JobStore) CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
+func (m *JobStore) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
 	// TODO: discuss on whether taskID should be part of the taskInfo instead of runtime
 	rowKey := fmt.Sprintf("%s-%d", id.Value, instanceID)
 	if taskInfo.InstanceId != instanceID {
@@ -339,7 +340,7 @@ func (m *JobStore) CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.T
 }
 
 // CreateTasks creates rows for a slice of Tasks, numbered 0..n
-func (m *JobStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
+func (m *JobStore) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
 	timeStart := time.Now()
 	maxBatchSize := int64(m.Conf.MaxBatchSize)
 	if maxBatchSize == 0 {
@@ -454,7 +455,7 @@ func (m *JobStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, create
 }
 
 // GetTasksForJobAndState returns the tasks (runtime_config) for a peloton job with certain state
-func (m *JobStore) GetTasksForJobAndState(id *job.JobID, state string) (map[uint32]*task.TaskInfo, error) {
+func (m *JobStore) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "task_state=": state})
 }
 

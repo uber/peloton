@@ -15,6 +15,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
+	"peloton/api/errors"
 	"peloton/api/job"
 	"peloton/api/task"
 	"peloton/private/resmgr/taskqueue"
@@ -64,9 +65,11 @@ func (h *serviceHandler) Create(
 		err := fmt.Errorf("Invalid jobId %v that contains '-'", jobID.Value)
 		log.WithError(err).Info("Invalid jobID value")
 		return &job.CreateResponse{
-			InvalidConfig: &job.InvalidJobConfig{
-				Id:      req.Id,
-				Message: err.Error(),
+			Error: &job.CreateResponse_Error{
+				InvalidConfig: &job.InvalidJobConfig{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
 			},
 		}, nil, nil
 	}
@@ -79,9 +82,11 @@ func (h *serviceHandler) Create(
 	err := jm_task.ValidateTaskConfig(jobConfig)
 	if err != nil {
 		return &job.CreateResponse{
-			InvalidConfig: &job.InvalidJobConfig{
-				Id:      req.Id,
-				Message: err.Error(),
+			Error: &job.CreateResponse_Error{
+				InvalidConfig: &job.InvalidJobConfig{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
 			},
 		}, nil, nil
 	}
@@ -90,9 +95,11 @@ func (h *serviceHandler) Create(
 	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
-			AlreadyExists: &job.JobAlreadyExists{
-				Id:      req.Id,
-				Message: err.Error(),
+			Error: &job.CreateResponse_Error{
+				AlreadyExists: &job.JobAlreadyExists{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
 			},
 		}, nil, nil
 	}
@@ -114,14 +121,21 @@ func (h *serviceHandler) Create(
 			log.Errorf("Failed to get task config (%d) for job %v: %v",
 				i, jobID.Value, err)
 			h.metrics.JobCreateFail.Inc(1)
-			return nil, nil, err
+			return &job.CreateResponse{
+				Error: &job.CreateResponse_Error{
+					InvalidConfig: &job.InvalidJobConfig{
+						Id:      jobID,
+						Message: err.Error(),
+					},
+				},
+			}, nil, nil
 		}
 		t := task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				State: task.RuntimeInfo_INITIALIZED,
+				State: task.TaskState_INITIALIZED,
 				// New task is by default treated as batch task and get SUCCEEDED goalstate.
 				// TODO(mu): Long running tasks need RUNNING as default goalstate.
-				GoalState: task.RuntimeInfo_SUCCEEDED,
+				GoalState: task.TaskState_SUCCEEDED,
 				TaskId: &mesos.TaskID{
 					Value: &mesosTaskID,
 				},
@@ -139,6 +153,7 @@ func (h *serviceHandler) Create(
 		log.Errorf("Failed to create tasks (%d) for job %v: %v",
 			nTasks, jobID.Value, err)
 		h.metrics.TaskCreateFail.Inc(nTasks)
+		// FIXME: Add a new Error type for this
 		return nil, nil, err
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
@@ -148,7 +163,7 @@ func (h *serviceHandler) Create(
 		jobID.Value, instances, time.Since(startAddTaskTime))
 
 	return &job.CreateResponse{
-		Result: jobID,
+		JobId: jobID,
 	}, nil, nil
 }
 
@@ -165,10 +180,20 @@ func (h *serviceHandler) Get(
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.Errorf("GetJob failed with error %v", err)
-		return nil, nil, err
+		return &job.GetResponse{
+			Error: &job.GetResponse_Error{
+				NotFound: &errors.JobNotFound{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
 	}
 	h.metrics.JobGet.Inc(1)
-	return &job.GetResponse{Result: jobConfig}, nil, nil
+	return &job.GetResponse{
+		Config:  jobConfig,
+		Runtime: nil, // TODO: Add job runtime info here
+	}, nil, nil
 }
 
 // Query returns a list of jobs matching the given query
@@ -203,7 +228,14 @@ func (h *serviceHandler) Delete(
 	if err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)
-		return nil, nil, err
+		return &job.DeleteResponse{
+			Error: &job.DeleteResponse_Error{
+				NotFound: &errors.JobNotFound{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
 	}
 	h.metrics.JobDelete.Inc(1)
 	return &job.DeleteResponse{}, nil, nil

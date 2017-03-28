@@ -8,9 +8,9 @@ import (
 
 	mesos "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/respool"
 	"peloton/api/task"
-	"peloton/api/task/config"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/stapi"
@@ -59,14 +59,14 @@ func (suite *stAPIStoreTestSuite) TestCreateGetJobConfig() {
 	var keys = []string{"testKey0", "testKey1", "testKey2", "key0"}
 	var vals = []string{"testVal0", "testVal1", "testVal2", "val0"}
 	for i := 0; i < records; i++ {
-		var jobID = job.JobID{Value: fmt.Sprintf("TestCreateGetJobConfig%d", i)}
+		var jobID = peloton.JobID{Value: fmt.Sprintf("TestCreateGetJobConfig%d", i)}
 		var sla = job.SlaConfig{
 			Priority:                22,
 			MaximumRunningInstances: 3,
 			Preemptible:             false,
 		}
-		var taskConfig = config.TaskConfig{
-			Resource: &config.ResourceConfig{
+		var taskConfig = task.TaskConfig{
+			Resource: &task.ResourceConfig{
 				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
@@ -149,10 +149,10 @@ func (suite *stAPIStoreTestSuite) TestAddTasks() {
 	taskStore = store
 	var nJobs = 3
 	var nTasks = uint32(3)
-	var jobIDs []*job.JobID
+	var jobIDs []*peloton.JobID
 	var jobs []*job.JobConfig
 	for i := 0; i < nJobs; i++ {
-		var jobID = job.JobID{Value: fmt.Sprintf("TestAddTasks_%d", i)}
+		var jobID = peloton.JobID{Value: fmt.Sprintf("TestAddTasks_%d", i)}
 		jobIDs = append(jobIDs, &jobID)
 		jobConfig := createJobConfig()
 		jobConfig.Name = fmt.Sprintf("TestAddTasks_%d", i)
@@ -163,7 +163,7 @@ func (suite *stAPIStoreTestSuite) TestAddTasks() {
 		// For each job, create 3 tasks
 		for j := uint32(0); j < nTasks; j++ {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
-			taskInfo.Runtime.State = task.RuntimeInfo_TaskState(j)
+			taskInfo.Runtime.State = task.TaskState(j)
 			err = taskStore.CreateTask(&jobID, j, taskInfo, "test")
 			suite.NoError(err)
 			// Create same task should error
@@ -237,14 +237,14 @@ func (suite *stAPIStoreTestSuite) TestCreateTasks() {
 		"TestJob3": store.Conf.MaxBatchSize*3 + 10,
 	}
 	for jobID, nTasks := range jobTasks {
-		var jobID = job.JobID{Value: jobID}
+		var jobID = peloton.JobID{Value: jobID}
 		var sla = job.SlaConfig{
 			Priority:                22,
 			MaximumRunningInstances: 3,
 			Preemptible:             false,
 		}
-		var taskConfig = config.TaskConfig{
-			Resource: &config.ResourceConfig{
+		var taskConfig = task.TaskConfig{
+			Resource: &task.ResourceConfig{
 				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
@@ -268,7 +268,7 @@ func (suite *stAPIStoreTestSuite) TestCreateTasks() {
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
 					TaskId: &mesos.TaskID{Value: &tID},
-					State:  task.RuntimeInfo_TaskState(j),
+					State:  task.TaskState(j),
 				},
 				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
@@ -283,7 +283,7 @@ func (suite *stAPIStoreTestSuite) TestCreateTasks() {
 	// List all tasks by job, ensure they were created properly, and
 	// have the right parent
 	for jobID, nTasks := range jobTasks {
-		job := job.JobID{Value: jobID}
+		job := peloton.JobID{Value: jobID}
 		tasks, err := store.GetTasksForJob(&job)
 		suite.NoError(err)
 		suite.Equal(nTasks, len(tasks))
@@ -302,7 +302,7 @@ func (suite *stAPIStoreTestSuite) TestGetTasksByHostState() {
 	var nTasks = uint32(6)
 	var jobs []*job.JobConfig
 	for i := 0; i < nJobs; i++ {
-		var jobID = job.JobID{Value: fmt.Sprintf("TestGetTasksByHostState%d", i)}
+		var jobID = peloton.JobID{Value: fmt.Sprintf("TestGetTasksByHostState%d", i)}
 		jobConfig := createJobConfig()
 		jobConfig.InstanceCount = uint32(nTasks)
 		jobs = append(jobs, jobConfig)
@@ -312,7 +312,7 @@ func (suite *stAPIStoreTestSuite) TestGetTasksByHostState() {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
 			err = taskStore.CreateTask(&jobID, j, taskInfo, "test")
 			suite.NoError(err)
-			taskInfo.Runtime.State = task.RuntimeInfo_TaskState(j)
+			taskInfo.Runtime.State = task.TaskState(j)
 			taskInfo.Runtime.Host = fmt.Sprintf("compute2-%d", j)
 			err = taskStore.UpdateTask(taskInfo)
 			suite.NoError(err)
@@ -320,9 +320,9 @@ func (suite *stAPIStoreTestSuite) TestGetTasksByHostState() {
 	}
 	// GetTaskByState
 	for j := 0; j < int(nTasks); j++ {
-		jobID := job.JobID{Value: "TestGetTasksByHostState0"}
+		jobID := peloton.JobID{Value: "TestGetTasksByHostState0"}
 		tasks, err := store.GetTasksForJobAndState(
-			&jobID, task.RuntimeInfo_TaskState(j).String())
+			&jobID, task.TaskState(j).String())
 		suite.NoError(err)
 		suite.Equal(len(tasks), 1)
 
@@ -331,9 +331,9 @@ func (suite *stAPIStoreTestSuite) TestGetTasksByHostState() {
 			suite.Equal(taskInfo.Runtime.Host, fmt.Sprintf("compute2-%d", j))
 		}
 
-		jobID = job.JobID{Value: "TestGetTasksByHostState1"}
+		jobID = peloton.JobID{Value: "TestGetTasksByHostState1"}
 		tasks, err = store.GetTasksForJobAndState(
-			&jobID, task.RuntimeInfo_TaskState(j).String())
+			&jobID, task.TaskState(j).String())
 		suite.NoError(err)
 
 		for tid, taskInfo := range tasks {
@@ -350,9 +350,9 @@ func (suite *stAPIStoreTestSuite) TestGetTasksByHostState() {
 
 		suite.Equal(len(tasks), 2)
 		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState0-%d", j)],
-			task.RuntimeInfo_TaskState(j).String())
+			task.TaskState(j).String())
 		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState1-%d", j)],
-			task.RuntimeInfo_TaskState(j).String())
+			task.TaskState(j).String())
 	}
 }
 
@@ -364,7 +364,7 @@ func (suite *stAPIStoreTestSuite) TestGetTaskStateChanges() {
 	nTasks := 2
 	host1 := "compute1"
 	host2 := "compute2"
-	var jobID = job.JobID{Value: "TestGetTaskStateChanges"}
+	var jobID = peloton.JobID{Value: "TestGetTaskStateChanges"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(nTasks)
 	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
@@ -374,26 +374,26 @@ func (suite *stAPIStoreTestSuite) TestGetTaskStateChanges() {
 	err = taskStore.CreateTask(&jobID, 0, taskInfo, "test")
 	suite.NoError(err)
 
-	taskInfo.Runtime.State = task.RuntimeInfo_SCHEDULING
+	taskInfo.Runtime.State = task.TaskState_PENDING
 	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
-	taskInfo.Runtime.State = task.RuntimeInfo_RUNNING
+	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host1
 	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
-	taskInfo.Runtime.State = task.RuntimeInfo_PREEMPTING
+	taskInfo.Runtime.State = task.TaskState_PREEMPTING
 	taskInfo.Runtime.Host = ""
 	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
-	taskInfo.Runtime.State = task.RuntimeInfo_RUNNING
+	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host2
 	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
 
-	taskInfo.Runtime.State = task.RuntimeInfo_SUCCEEDED
+	taskInfo.Runtime.State = task.TaskState_SUCCEEDED
 	taskInfo.Runtime.Host = host2
 	err = taskStore.UpdateTask(taskInfo)
 	suite.NoError(err)
@@ -403,12 +403,12 @@ func (suite *stAPIStoreTestSuite) TestGetTaskStateChanges() {
 	stateRecords, err := store.GetTaskStateChanges(taskID)
 	suite.NoError(err)
 
-	suite.Equal(stateRecords[0].TaskState, task.RuntimeInfo_INITIALIZED.String())
-	suite.Equal(stateRecords[1].TaskState, task.RuntimeInfo_SCHEDULING.String())
-	suite.Equal(stateRecords[2].TaskState, task.RuntimeInfo_RUNNING.String())
-	suite.Equal(stateRecords[3].TaskState, task.RuntimeInfo_PREEMPTING.String())
-	suite.Equal(stateRecords[4].TaskState, task.RuntimeInfo_RUNNING.String())
-	suite.Equal(stateRecords[5].TaskState, task.RuntimeInfo_SUCCEEDED.String())
+	suite.Equal(stateRecords[0].TaskState, task.TaskState_INITIALIZED.String())
+	suite.Equal(stateRecords[1].TaskState, task.TaskState_PENDING.String())
+	suite.Equal(stateRecords[2].TaskState, task.TaskState_RUNNING.String())
+	suite.Equal(stateRecords[3].TaskState, task.TaskState_PREEMPTING.String())
+	suite.Equal(stateRecords[4].TaskState, task.TaskState_RUNNING.String())
+	suite.Equal(stateRecords[5].TaskState, task.TaskState_SUCCEEDED.String())
 
 	suite.Equal(stateRecords[0].TaskHost, "")
 	suite.Equal(stateRecords[1].TaskHost, "")
@@ -426,7 +426,7 @@ func (suite *stAPIStoreTestSuite) TestGetJobsByOwner() {
 	nJobs := 2
 	owner := "uberx"
 	for i := 0; i < nJobs; i++ {
-		var jobID = job.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
+		var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
 		jobConfig := createJobConfig()
 		jobConfig.Name = jobID.Value
 		err := store.CreateJob(&jobID, jobConfig, owner)
@@ -435,7 +435,7 @@ func (suite *stAPIStoreTestSuite) TestGetJobsByOwner() {
 
 	owner = "team6s"
 	for i := 0; i < nJobs; i++ {
-		var jobID = job.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
+		var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
 		jobConfig := createJobConfig()
 		jobConfig.Name = jobID.Value
 		err := store.CreateJob(&jobID, jobConfig, owner)
@@ -462,25 +462,25 @@ func (suite *stAPIStoreTestSuite) TestGetJobsByOwner() {
 func (suite *stAPIStoreTestSuite) TestGetTaskStateSummary() {
 	var taskStore storage.TaskStore
 	taskStore = store
-	var jobID = job.JobID{Value: "TestGetTaskStateSummary"}
+	var jobID = peloton.JobID{Value: "TestGetTaskStateSummary"}
 	jobConfig := createJobConfig()
-	jobConfig.InstanceCount = uint32(2 * len(task.RuntimeInfo_TaskState_name))
+	jobConfig.InstanceCount = uint32(2 * len(task.TaskState_name))
 	err := store.CreateJob(&jobID, jobConfig, "user1")
 	suite.Nil(err)
 
-	for i := uint32(0); i < uint32(2*len(task.RuntimeInfo_TaskState_name)); i++ {
+	for i := uint32(0); i < uint32(2*len(task.TaskState_name)); i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
 		err := taskStore.CreateTask(&jobID, i, taskInfo, "user1")
 		suite.Nil(err)
-		taskInfo.Runtime.State = task.RuntimeInfo_TaskState(i / 2)
+		taskInfo.Runtime.State = task.TaskState(i / 2)
 		err = taskStore.UpdateTask(taskInfo)
 		suite.Nil(err)
 	}
 
 	taskStateSummary, err := store.GetTaskStateSummaryForJob(&jobID)
 	suite.Nil(err)
-	suite.Equal(len(taskStateSummary), len(task.RuntimeInfo_TaskState_name))
-	for _, state := range task.RuntimeInfo_TaskState_name {
+	suite.Equal(len(taskStateSummary), len(task.TaskState_name))
+	for _, state := range task.TaskState_name {
 		suite.Equal(taskStateSummary[state], 2)
 	}
 }
@@ -488,7 +488,7 @@ func (suite *stAPIStoreTestSuite) TestGetTaskStateSummary() {
 func (suite *stAPIStoreTestSuite) TestGetTaskByRange() {
 	var taskStore storage.TaskStore
 	taskStore = store
-	var jobID = job.JobID{Value: "TestGetTaskByRange"}
+	var jobID = peloton.JobID{Value: "TestGetTaskByRange"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(100)
 	err := store.CreateJob(&jobID, jobConfig, "user1")
@@ -506,7 +506,7 @@ func (suite *stAPIStoreTestSuite) TestGetTaskByRange() {
 	suite.validateRange(&jobID, 70, 120)
 }
 
-func (suite *stAPIStoreTestSuite) validateRange(jobID *job.JobID, from, to int) {
+func (suite *stAPIStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {
 	var taskStore storage.TaskStore
 	taskStore = store
 	jobConfig, err := store.GetJob(jobID)
@@ -670,7 +670,7 @@ func createJobConfig() *job.JobConfig {
 }
 
 func createTaskInfo(
-	jobConfig *job.JobConfig, jobID *job.JobID, i uint32) *task.TaskInfo {
+	jobConfig *job.JobConfig, jobID *peloton.JobID, i uint32) *task.TaskInfo {
 
 	var tID = fmt.Sprintf("%s-%d", jobID.Value, i)
 	var taskInfo = task.TaskInfo{

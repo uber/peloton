@@ -9,9 +9,9 @@ import (
 
 	mesos "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/respool"
 	"peloton/api/task"
-	"peloton/api/task/config"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/suite"
@@ -50,18 +50,18 @@ func TestMysqlStore(t *testing.T) {
 func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 	// Insert 2 jobs
 	var nJobs = 3
-	var jobIDs []*job.JobID
+	var jobIDs []*peloton.JobID
 	var jobs []*job.JobConfig
 	for i := 0; i < nJobs; i++ {
-		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		jobIDs = append(jobIDs, &jobID)
 		var sla = job.SlaConfig{
 			Priority:                22,
 			Preemptible:             false,
 			MaximumRunningInstances: 3 + uint32(i),
 		}
-		var taskConfig = config.TaskConfig{
-			Resource: &config.ResourceConfig{
+		var taskConfig = task.TaskConfig{
+			Resource: &task.ResourceConfig{
 				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
@@ -85,7 +85,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
 					TaskId: &mesos.TaskID{Value: &tID},
-					State:  task.RuntimeInfo_TaskState(j),
+					State:  task.TaskState(j),
 				},
 				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
@@ -139,14 +139,14 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 		"TestJob4": suite.store.Conf.MaxBatchSize*3 + 10,
 	}
 	for jobID, nTasks := range jobTasks {
-		var jobID = job.JobID{Value: jobID}
+		var jobID = peloton.JobID{Value: jobID}
 		var sla = job.SlaConfig{
 			Priority:                22,
 			Preemptible:             false,
 			MaximumRunningInstances: 3,
 		}
-		var taskConfig = config.TaskConfig{
-			Resource: &config.ResourceConfig{
+		var taskConfig = task.TaskConfig{
+			Resource: &task.ResourceConfig{
 				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
@@ -170,7 +170,7 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
 					TaskId: &mesos.TaskID{Value: &tID},
-					State:  task.RuntimeInfo_TaskState(j),
+					State:  task.TaskState(j),
 				},
 				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
@@ -184,7 +184,7 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 
 	// List all tasks by job, ensure they were created properly, and have the right parent
 	for jobID, nTasks := range jobTasks {
-		job := job.JobID{Value: jobID}
+		job := peloton.JobID{Value: jobID}
 		tasks, err := suite.store.GetTasksForJob(&job)
 		suite.NoError(err)
 		suite.Equal(nTasks, len(tasks))
@@ -201,14 +201,14 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	var keys = []string{"testKey0", "testKey1", "testKey2", "key0"}
 	var vals = []string{"testVal0", "testVal1", "testVal2", "val0"}
 	for i := 0; i < records; i++ {
-		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		var sla = job.SlaConfig{
 			Priority:                22,
 			Preemptible:             false,
 			MaximumRunningInstances: 3,
 		}
-		var taskConfig = config.TaskConfig{
-			Resource: &config.ResourceConfig{
+		var taskConfig = task.TaskConfig{
+			Resource: &task.ResourceConfig{
 				CpuLimit:    0.8,
 				MemLimitMb:  800,
 				DiskLimitMb: 1500,
@@ -251,7 +251,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	}
 	// search by job ID
 	for i := 0; i < records; i++ {
-		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		result, err := suite.store.GetJob(&jobID)
 		suite.NoError(err)
 		suite.Equal(result.Name, originalJobs[i].Name)
@@ -324,13 +324,13 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 
 	// Delete job
 	for i := 0; i < records; i++ {
-		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		err := suite.store.DeleteJob(&jobID)
 		suite.NoError(err)
 	}
 	// Get should not return anything
 	for i := 0; i < records; i++ {
-		var jobID = job.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		result, err := suite.store.GetJob(&jobID)
 		suite.NoError(err)
 		suite.Nil(result)

@@ -9,7 +9,7 @@ import (
 
 	mesos "mesos/v1"
 
-	"peloton/api/task/config"
+	"peloton/api/task"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/util"
@@ -100,7 +100,7 @@ const (
 )
 
 var (
-	defaultResourceConfig = config.ResourceConfig{
+	defaultResourceConfig = task.ResourceConfig{
 		CpuLimit:    _cpu,
 		MemLimitMb:  _mem,
 		DiskLimitMb: _disk,
@@ -108,11 +108,11 @@ var (
 )
 
 // helper function to create a no-port task
-func createTestTaskConfigs(numTasks int) []*config.TaskConfig {
-	var configs []*config.TaskConfig
+func createTestTaskConfigs(numTasks int) []*task.TaskConfig {
+	var configs []*task.TaskConfig
 	tmpCmd := defaultCmd
 	for i := 0; i < numTasks; i++ {
-		configs = append(configs, &config.TaskConfig{
+		configs = append(configs, &task.TaskConfig{
 			Name:     fmt.Sprintf("name-%d", i),
 			Resource: &defaultResourceConfig,
 			Command: &mesos.CommandInfo{
@@ -261,7 +261,7 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 		builder.portSets)
 	tid := suite.createTestTaskIDs(1)[0]
 	taskConfig := createTestTaskConfigs(1)[0]
-	taskConfig.Ports = []*config.PortConfig{
+	taskConfig.Ports = []*task.PortConfig{
 		{
 			Name:    "static",
 			Value:   80,
@@ -356,11 +356,11 @@ func (suite *TaskBuilderTestSuite) TestCommandHealthCheck() {
 	c := createTestTaskConfigs(numTasks)[0]
 
 	hcCmd := "hello world"
-	cmdCfg := &config.HealthCheckConfig_CommandCheck{
+	cmdCfg := &task.HealthCheckConfig_CommandCheck{
 		Command: hcCmd,
 	}
-	c.HealthCheck = &config.HealthCheckConfig{
-		Type:         config.HealthCheckConfig_COMMAND,
+	c.HealthCheck = &task.HealthCheckConfig{
+		Type:         task.HealthCheckConfig_COMMAND,
 		CommandCheck: cmdCfg,
 	}
 	info, err := builder.build(tid, c)
@@ -398,15 +398,15 @@ func (suite *TaskBuilderTestSuite) TestPopulateHealthCheck() {
 	var testCases = []struct {
 		builder  *taskBuilder
 		taskInfo *mesos.TaskInfo
-		input    *config.HealthCheckConfig
+		input    *task.HealthCheckConfig
 		output   *mesos.HealthCheck
 		err      error
 	}{
 		// default values
 		{
-			input: &config.HealthCheckConfig{
-				Type: config.HealthCheckConfig_COMMAND,
-				CommandCheck: &config.HealthCheckConfig_CommandCheck{
+			input: &task.HealthCheckConfig{
+				Type: task.HealthCheckConfig_COMMAND,
+				CommandCheck: &task.HealthCheckConfig_CommandCheck{
 					Command: command,
 				},
 			},
@@ -420,9 +420,9 @@ func (suite *TaskBuilderTestSuite) TestPopulateHealthCheck() {
 		},
 		// custom values w/ environment variables.
 		{
-			input: &config.HealthCheckConfig{
-				Type: config.HealthCheckConfig_COMMAND,
-				CommandCheck: &config.HealthCheckConfig_CommandCheck{
+			input: &task.HealthCheckConfig{
+				Type: task.HealthCheckConfig_COMMAND,
+				CommandCheck: &task.HealthCheckConfig_CommandCheck{
 					Command: command,
 				},
 				InitialIntervalSecs:    uint32(delaySeconds),
@@ -450,9 +450,9 @@ func (suite *TaskBuilderTestSuite) TestPopulateHealthCheck() {
 		},
 		// unshare environment variables from task info
 		{
-			input: &config.HealthCheckConfig{
-				Type: config.HealthCheckConfig_COMMAND,
-				CommandCheck: &config.HealthCheckConfig_CommandCheck{
+			input: &task.HealthCheckConfig{
+				Type: task.HealthCheckConfig_COMMAND,
+				CommandCheck: &task.HealthCheckConfig_CommandCheck{
 					Command:             command,
 					UnshareEnvironments: true,
 				},

@@ -12,7 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	mesos "mesos/v1"
-	tc "peloton/api/task/config"
+	"peloton/api/task"
 )
 
 var (
@@ -80,7 +80,7 @@ type portPickResult struct {
 // pickPorts inspects the given taskConfig, picks dynamic ports from
 // available resources, and return selected static and dynamic ports
 // as well as necessary environment variables and resources.
-func (tb *taskBuilder) pickPorts(taskConfig *tc.TaskConfig) (
+func (tb *taskBuilder) pickPorts(taskConfig *task.TaskConfig) (
 	*portPickResult, error) {
 	result := &portPickResult{
 		selectedPorts: make(map[string]uint32),
@@ -174,7 +174,7 @@ func (tb *taskBuilder) pickPorts(taskConfig *tc.TaskConfig) (
 // even volume in future), or the taskConfig is not correct.
 func (tb *taskBuilder) build(
 	taskID *mesos.TaskID,
-	taskConfig *tc.TaskConfig,
+	taskConfig *task.TaskConfig,
 ) (*mesos.TaskInfo, error) {
 
 	// Validation of input.
@@ -348,7 +348,7 @@ func (tb *taskBuilder) populateDiscoveryInfo(
 
 // populateHealthCheck properly sets up the health check part of a Mesos task.
 func (tb *taskBuilder) populateHealthCheck(
-	mesosTask *mesos.TaskInfo, health *tc.HealthCheckConfig) {
+	mesosTask *mesos.TaskInfo, health *task.HealthCheckConfig) {
 	if health == nil {
 		return
 	}
@@ -376,7 +376,7 @@ func (tb *taskBuilder) populateHealthCheck(
 	}
 
 	switch health.GetType() {
-	case tc.HealthCheckConfig_COMMAND:
+	case task.HealthCheckConfig_COMMAND:
 		cc := health.GetCommandCheck()
 		t := mesos.HealthCheck_COMMAND
 		mh.Type = &t
@@ -407,9 +407,9 @@ func (tb *taskBuilder) populateHealthCheck(
 
 // extractScalarResources takes necessary scalar resources from cached resources
 // of this instance to construct a task, and returns error if not enough
-//  resources are left.
+// resources are left.
 func (tb *taskBuilder) extractScalarResources(
-	taskResources *tc.ResourceConfig) ([]*mesos.Resource, error) {
+	taskResources *task.ResourceConfig) ([]*mesos.Resource, error) {
 
 	if taskResources == nil {
 		return nil, errors.New("Empty resources for task")

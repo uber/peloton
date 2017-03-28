@@ -1,5 +1,5 @@
 /**
- *  Task Manager API
+ *  This file defines the Task related messages in Peloton API
  */
 
 syntax = "proto3";
@@ -9,62 +9,184 @@ package peloton.api.task;
 option go_package = "peloton/api/task";
 
 import "mesos/v1/mesos.proto";
-import "peloton/api/job/job.proto";
-import "peloton/api/task/config.proto";
+import "peloton/api/peloton.proto";
+import "peloton/api/errors/errors.proto";
+
+/**
+ *  Resource configuration for a task, e.g. job instance
+ */
+message ResourceConfig {
+
+  // CPU limit in number of CPU cores
+  double cpuLimit = 1;
+
+  // Memory limit in MB
+  double memLimitMb = 2;
+
+  // Disk limit in MB
+  double diskLimitMb = 3;
+
+  // File descriptor limit
+  uint32 fdLimit = 4;
+
+  // GPU limit in number of GPUs
+  double gpuLimit = 5;
+}
 
 
 /**
- *  A unique ID assigned to a Task (aka job instance). The task ID is in
- *  the format of JobID-<InstanceID>.
+ *  Health check configuration for a task
  */
-message TaskID {
-  string value = 1;
+message HealthCheckConfig {
+
+  // Whether the health check is enabled.
+  bool enabled = 1;
+
+  // Start time wait in seconds.
+  // Zero or empty value would use default value of 15 from Mesos.
+  uint32 initialIntervalSecs = 2;
+
+  // Interval in seconds between two health checks.
+  // Zero or empty value would use default value of 10 from Mesos.
+  uint32 intervalSecs = 3;
+
+  // Max number of consecutive failures before failing health check.
+  // Zero or empty value would use default value of 3 from Mesos.
+  uint32 maxConsecutiveFailures = 4;
+
+  // Health check command timeout in seconds.
+  // Zero or empty value would use default value of 20 from Mesos.
+  uint32 timeoutSecs = 5;
+
+  enum Type {
+    // Reserved for future compatibility of new types.
+    UNKNOWN = 0;
+
+    // Command line based health check
+    COMMAND = 1;
+
+    // HTTP endpoint based health check
+    HTTP = 2;
+  }
+
+  message CommandCheck {
+    // Health check command to be executed.
+    // Note that this command by default inherits all environment varibles from
+    // the task it's monitoring, unless `unshare_environments` is set to true.
+    string command = 1;
+
+    // If set, this check will not share the environment variables of the task.
+    bool unshareEnvironments = 2;
+  }
+
+  Type type = 6;
+
+  // Only applicable when type is `COMMAND`.
+  CommandCheck commandCheck = 7;
+}
+
+
+/**
+ *  Network port configuration for a task
+ */
+message PortConfig {
+
+  // Name of the network port, e.g. http, tchannel
+  string name = 1;
+
+  // Static port number if any. If unset, will be dynamically allocated
+  // by the scheduler
+  uint32 value = 2;
+
+  // Environment variable name to be exported when running a task for this port.
+  // Will default to UBER_PORT_{name} if unset
+  string envName = 3;
+}
+
+
+/**
+ *  Task configuration for a given job instance
+ */
+message TaskConfig {
+
+  // Name of the task
+  string name = 1;
+
+  // List of user-defined labels for the task
+  mesos.v1.Labels labels = 2;
+
+  // Resource config of the task
+  ResourceConfig resource = 3;
+
+  // Container config of the task.
+  mesos.v1.ContainerInfo container = 4;
+
+  // Command line config of the task
+  mesos.v1.CommandInfo command = 5;
+
+  // Health check config of the task
+  HealthCheckConfig healthCheck = 6;
+
+  // List of network ports to be allocated for the task
+  repeated PortConfig ports = 7;
+}
+
+/**
+ *  Runtime states of a task instance
+ */
+enum TaskState {
+  // Reserved for future compatibility of new states.
+  UNKNOWN     = 0;
+
+  // The task is being initialized
+  INITIALIZED = 1;
+
+  // The task is pending and waiting for resources
+  PENDING     = 2;
+
+  // The task has been allocated with resources and ready for placement
+  READY       = 3;
+
+  // The task is being placed to a host based on its resource
+  // requirements and constraints
+  PLACING     = 4;
+
+  // The task has been assigned to a host matching the resource
+  // requirements and constraints
+  PLACED      = 5;
+
+  // The task is being launched Mesos master
+  LAUNCHING   = 6;
+
+  // The task is being started by Mesos agent
+  STARTING    = 7;
+
+  // The task is running on a Mesos host
+  RUNNING     = 8;
+
+  // The task terminated with an exit code of zero
+  SUCCEEDED   = 9;
+
+  // The task terminated with a non-zero exit code
+  FAILED      = 10;
+
+  // The task is lost
+  LOST        = 11;
+
+  // The task is being preempted by another one on the node
+  PREEMPTING  = 12;
+
+  // The task is being killed
+  KILLING     = 13;
+
+  // Execution of the task was terminated by the system
+  KILLED      = 14;
 }
 
 /**
  *  Runtime info of an task instance in a Job
  */
 message RuntimeInfo {
-
-  // Runtime states of a task instance
-  enum TaskState {
-    // TODO: Reserve 0 value for all enums in protobuf as UNKNOWN.
-    // The task is being initialized
-    INITIALIZED = 0;
-
-    // The task is being scheduled
-    SCHEDULING  = 1;
-
-    // The task has been assigned to a node
-    ASSIGNED    = 2;
-
-    // The task has been launched by Mesos
-    LAUNCHED    = 3;
-
-    // The task is running on a node
-    RUNNING     = 4;
-
-    // The task terminated with an exit code of zero
-    SUCCEEDED   = 5;
-
-    // The task terminated with a non-zero exit code
-    FAILED      = 6;
-
-    // Execution of the task was terminated by the system
-    KILLED      = 7;
-
-    // The task is being preempted by another one on the node
-    PREEMPTING  = 8;
-
-    // The task is being throttled for restarting too frequently
-    THROTTLED   = 9;
-
-    // The task is lost
-    LOST  = 10;
-
-    // The task is being killed
-    KILLING  = 11;
-  }
 
   // Runtime status of the task
   TaskState state = 1;
@@ -103,7 +225,7 @@ message TaskInfo {
   uint32 instanceId = 1;
 
   // Job ID of the task
-  job.JobID jobId = 2;
+  peloton.JobID jobId = 2;
 
   // Configuration of the task
   TaskConfig config = 3;
@@ -140,20 +262,20 @@ service TaskManager
 message InstanceIdOutOfRange
 {
   // Entity ID of the job
-  job.JobID jobId = 1;
+  peloton.JobID jobId = 1;
 
   // Instance count of the job
   uint32 instanceCount = 2;
 }
 
 message GetRequest {
-  job.JobID jobId = 1;
+  peloton.JobID jobId = 1;
   uint32 instanceId = 2;
 }
 
 message GetResponse {
   TaskInfo result = 1;
-  job.JobNotFound notFound = 2;
+  errors.JobNotFound notFound = 2;
   InstanceIdOutOfRange outOfRange = 3;
 }
 
@@ -166,7 +288,7 @@ message InstanceRange {
 }
 
 message ListRequest {
-  job.JobID jobId = 1;
+  peloton.JobID jobId = 1;
   InstanceRange range = 2;
 }
 
@@ -175,22 +297,22 @@ message ListResponse {
     map<uint32, TaskInfo> value = 1;
   }
   Result result = 1;
-  job.JobNotFound notFound = 2;
+  errors.JobNotFound notFound = 2;
 }
 
 message StartRequest {
-  job.JobID jobId = 1;
+  peloton.JobID jobId = 1;
   repeated InstanceRange ranges = 2;
 }
 
 message StartResponse {
-  job.JobNotFound notFound = 1;
+  errors.JobNotFound notFound = 1;
   InstanceIdOutOfRange outOfRange = 2;
 }
 
 // If no ranges specified, then stop all the tasks in the job.
 message StopRequest {
-  job.JobID jobId = 1;
+  peloton.JobID jobId = 1;
   repeated InstanceRange ranges = 2;
 }
 
@@ -200,7 +322,7 @@ message TaskUpdateError {
 
 message StopResponse {
   message Error {
-    job.JobNotFound notFound = 1;
+    errors.JobNotFound notFound = 1;
     InstanceIdOutOfRange outOfRange = 2;
     TaskUpdateError updateError = 3;
   }
@@ -211,11 +333,11 @@ message StopResponse {
 }
 
 message RestartRequest {
-  job.JobID jobId = 1;
+  peloton.JobID jobId = 1;
   repeated InstanceRange ranges = 2;
 }
 
 message RestartResponse {
-  job.JobNotFound notFound = 1;
+  errors.JobNotFound notFound = 1;
   InstanceIdOutOfRange outOfRange = 2;
 }

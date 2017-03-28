@@ -18,7 +18,7 @@ import (
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 
-	"peloton/api/task/config"
+	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
@@ -91,7 +91,7 @@ func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
 		tmpCmd := defaultCmd
 		tasks = append(tasks, &hostsvc.LaunchableTask{
 			TaskId: &mesos.TaskID{Value: &tid},
-			Config: &config.TaskConfig{
+			Config: &task.TaskConfig{
 				Name:     fmt.Sprintf("name-%d", i),
 				Resource: &defaultResourceConfig,
 				Command: &mesos.CommandInfo{
@@ -207,7 +207,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 			{
 				Limit: uint32(numHosts * 2),
 				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: &config.ResourceConfig{
+					Minimum: &task.ResourceConfig{
 						CpuLimit:    _perHostCPU,
 						MemLimitMb:  _perHostMem,
 						DiskLimitMb: _perHostDisk,
@@ -304,7 +304,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 			{
 				Limit: uint32(1),
 				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: &config.ResourceConfig{
+					Minimum: &task.ResourceConfig{
 						CpuLimit:    _perHostCPU,
 						MemLimitMb:  _perHostMem,
 						DiskLimitMb: _perHostDisk,

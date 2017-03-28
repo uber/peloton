@@ -17,9 +17,8 @@ import (
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	"peloton/api/job"
+	"peloton/api/peloton"
 	pb_respool "peloton/api/respool"
-	"peloton/api/task"
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 )
@@ -172,26 +171,26 @@ func (suite *HandlerTestSuite) pendingTasks() []*resmgr.Task {
 		{
 			Name:     "job1-1",
 			Priority: 0,
-			JobId:    &job.JobID{Value: "job1"},
-			Id:       &task.TaskID{Value: "job1-1"},
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-1"},
 		},
 		{
 			Name:     "job1-1",
 			Priority: 1,
-			JobId:    &job.JobID{Value: "job1"},
-			Id:       &task.TaskID{Value: "job1-2"},
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-2"},
 		},
 		{
 			Name:     "job2-1",
 			Priority: 2,
-			JobId:    &job.JobID{Value: "job2"},
-			Id:       &task.TaskID{Value: "job2-1"},
+			JobId:    &peloton.JobID{Value: "job2"},
+			Id:       &peloton.TaskID{Value: "job2-1"},
 		},
 		{
 			Name:     "job2-2",
 			Priority: 2,
-			JobId:    &job.JobID{Value: "job2"},
-			Id:       &task.TaskID{Value: "job2-2"},
+			JobId:    &peloton.JobID{Value: "job2"},
+			Id:       &peloton.TaskID{Value: "job2-2"},
 		},
 	}
 }
@@ -201,26 +200,26 @@ func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
 		{
 			Name:     "job2-1",
 			Priority: 2,
-			JobId:    &job.JobID{Value: "job2"},
-			Id:       &task.TaskID{Value: "job2-1"},
+			JobId:    &peloton.JobID{Value: "job2"},
+			Id:       &peloton.TaskID{Value: "job2-1"},
 		},
 		{
 			Name:     "job2-2",
 			Priority: 2,
-			JobId:    &job.JobID{Value: "job2"},
-			Id:       &task.TaskID{Value: "job2-2"},
+			JobId:    &peloton.JobID{Value: "job2"},
+			Id:       &peloton.TaskID{Value: "job2-2"},
 		},
 		{
 			Name:     "job1-1",
 			Priority: 1,
-			JobId:    &job.JobID{Value: "job1"},
-			Id:       &task.TaskID{Value: "job1-2"},
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-2"},
 		},
 		{
 			Name:     "job1-1",
 			Priority: 0,
-			JobId:    &job.JobID{Value: "job1"},
-			Id:       &task.TaskID{Value: "job1-1"},
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-1"},
 		},
 	}
 }
@@ -305,9 +304,9 @@ func (suite *HandlerTestSuite) TestEnqueueTasksFailure() {
 func (suite *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	var placements []*resmgr.Placement
 	for i := 0; i < 10; i++ {
-		var tasks []*task.TaskID
+		var tasks []*peloton.TaskID
 		for j := 0; j < 5; j++ {
-			task := &task.TaskID{
+			task := &peloton.TaskID{
 				Value: fmt.Sprintf("task-%d-%d", i, j),
 			}
 			tasks = append(tasks, task)

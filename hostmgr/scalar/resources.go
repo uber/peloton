@@ -2,9 +2,10 @@ package scalar
 
 import (
 	"math"
-	mesos "mesos/v1"
-	"peloton/api/task/config"
 	"sync"
+
+	mesos "mesos/v1"
+	"peloton/api/task"
 
 	"code.uber.internal/infra/peloton/util"
 )
@@ -97,7 +98,7 @@ func (r *Resources) Empty() bool {
 }
 
 // FromResourceConfig creats a new instance of `Resources` frmo a `ResourceConfig`.
-func FromResourceConfig(rc *config.ResourceConfig) (r Resources) {
+func FromResourceConfig(rc *task.ResourceConfig) (r Resources) {
 	r.CPU = rc.GetCpuLimit()
 	r.Mem = rc.GetMemLimitMb()
 	r.Disk = rc.GetDiskLimitMb()

@@ -7,9 +7,8 @@ import (
 	"go.uber.org/yarpc"
 
 	"fmt"
-	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/respool"
-	"peloton/api/task"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -185,10 +184,10 @@ func (suite *RespoolTestSuite) TestResourceConfig() {
 
 func (suite *RespoolTestSuite) TestPendingQueue() {
 	// Task -1
-	jobID1 := &job.JobID{
+	jobID1 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID1 := &task.TaskID{
+	taskID1 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
 	}
 	taskItem1 := &resmgr.Task{
@@ -200,10 +199,10 @@ func (suite *RespoolTestSuite) TestPendingQueue() {
 	suite.allNodes["respool11"].EnqueueTask(taskItem1)
 
 	// Task -2
-	jobID2 := &job.JobID{
+	jobID2 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID2 := &task.TaskID{
+	taskID2 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
 	}
 	taskItem2 := &resmgr.Task{

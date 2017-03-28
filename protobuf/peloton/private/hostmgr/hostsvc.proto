@@ -10,7 +10,7 @@ package peloton.private.hostmgr.hostsvc;
 option go_package = "peloton/private/hostmgr/hostsvc";
 
 import "mesos/v1/mesos.proto";
-import "peloton/api/task/config.proto";
+import "peloton/api/task/task.proto";
 
 
 /**

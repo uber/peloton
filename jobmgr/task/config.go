@@ -7,14 +7,14 @@ import (
 	log "github.com/Sirupsen/logrus"
 
 	"peloton/api/job"
-	"peloton/api/task/config"
+	"peloton/api/task"
 )
 
 // GetTaskConfig returns the task config of a given task instance by
 // merging the fields in default task config and instance task config
 func GetTaskConfig(
 	jobConfig *job.JobConfig,
-	instanceID uint32) (*config.TaskConfig, error) {
+	instanceID uint32) (*task.TaskConfig, error) {
 
 	if instanceID >= jobConfig.InstanceCount {
 		// InstanceId out of range
@@ -24,7 +24,7 @@ func GetTaskConfig(
 		return nil, fmt.Errorf(errMsg)
 	}
 
-	result := config.TaskConfig{}
+	result := task.TaskConfig{}
 
 	// Shallow copy the default task config
 	if jobConfig.GetDefaultConfig() != nil {

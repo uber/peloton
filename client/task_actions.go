@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	pj "peloton/api/job"
-	pt "peloton/api/task"
+	"peloton/api/peloton"
+	"peloton/api/task"
 
 	"go.uber.org/yarpc"
 )
@@ -17,7 +17,7 @@ const (
 )
 
 // SortedTaskInfoList makes TaskInfo implement sortable interface
-type SortedTaskInfoList []*pt.TaskInfo
+type SortedTaskInfoList []*task.TaskInfo
 
 func (a SortedTaskInfoList) Len() int           { return len(a) }
 func (a SortedTaskInfoList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
@@ -25,9 +25,9 @@ func (a SortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].
 
 // TaskGetAction is the action to get a task instance
 func (client *Client) TaskGetAction(jobName string, instanceID uint32) error {
-	var response pt.GetResponse
-	var request = &pt.GetRequest{
-		JobId: &pj.JobID{
+	var response task.GetResponse
+	var request = &task.GetRequest{
+		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		InstanceId: instanceID,
@@ -46,14 +46,14 @@ func (client *Client) TaskGetAction(jobName string, instanceID uint32) error {
 }
 
 // TaskListAction is the action to list tasks
-func (client *Client) TaskListAction(jobName string, instanceRange *pt.InstanceRange) error {
-	var request = &pt.ListRequest{
-		JobId: &pj.JobID{
+func (client *Client) TaskListAction(jobName string, instanceRange *task.InstanceRange) error {
+	var request = &task.ListRequest{
+		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		Range: instanceRange,
 	}
-	var response pt.ListResponse
+	var response task.ListResponse
 	_, err := client.jobClient.Call(
 		client.ctx,
 		yarpc.NewReqMeta().Procedure("TaskManager.List"),
@@ -69,10 +69,10 @@ func (client *Client) TaskListAction(jobName string, instanceRange *pt.InstanceR
 }
 
 // TaskStartAction is the action to start a task
-func (client *Client) TaskStartAction(jobName string, instanceRanges []*pt.InstanceRange) error {
-	var response pt.StartResponse
-	var request = &pt.StartRequest{
-		JobId: &pj.JobID{
+func (client *Client) TaskStartAction(jobName string, instanceRanges []*task.InstanceRange) error {
+	var response task.StartResponse
+	var request = &task.StartRequest{
+		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		Ranges: instanceRanges,
@@ -91,10 +91,10 @@ func (client *Client) TaskStartAction(jobName string, instanceRanges []*pt.Insta
 }
 
 // TaskStopAction is the action to stop a task
-func (client *Client) TaskStopAction(jobName string, instanceRanges []*pt.InstanceRange) error {
-	var response pt.StopResponse
-	var request = &pt.StopRequest{
-		JobId: &pj.JobID{
+func (client *Client) TaskStopAction(jobName string, instanceRanges []*task.InstanceRange) error {
+	var response task.StopResponse
+	var request = &task.StopRequest{
+		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		Ranges: instanceRanges,
@@ -113,10 +113,10 @@ func (client *Client) TaskStopAction(jobName string, instanceRanges []*pt.Instan
 }
 
 // TaskRestartAction is the action to restart a task
-func (client *Client) TaskRestartAction(jobName string, instanceRanges []*pt.InstanceRange) error {
-	var response pt.RestartResponse
-	var request = &pt.RestartRequest{
-		JobId: &pj.JobID{
+func (client *Client) TaskRestartAction(jobName string, instanceRanges []*task.InstanceRange) error {
+	var response task.RestartResponse
+	var request = &task.RestartRequest{
+		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		Ranges: instanceRanges,
@@ -134,7 +134,7 @@ func (client *Client) TaskRestartAction(jobName string, instanceRanges []*pt.Ins
 	return nil
 }
 
-func printTaskGetResponse(r pt.GetResponse, debug bool) {
+func printTaskGetResponse(r task.GetResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -172,7 +172,7 @@ func printTaskGetResponse(r pt.GetResponse, debug bool) {
 	tabWriter.Flush()
 }
 
-func printTaskListResponse(r pt.ListResponse, debug bool) {
+func printTaskListResponse(r task.ListResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -215,7 +215,7 @@ func printTaskListResponse(r pt.ListResponse, debug bool) {
 	tabWriter.Flush()
 }
 
-func printTaskStartResponse(r pt.StartResponse, debug bool) {
+func printTaskStartResponse(r task.StartResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -232,7 +232,7 @@ func printTaskStartResponse(r pt.StartResponse, debug bool) {
 	tabWriter.Flush()
 }
 
-func printTaskStopResponse(r pt.StopResponse, debug bool) {
+func printTaskStopResponse(r task.StopResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -273,7 +273,7 @@ func printTaskStopResponse(r pt.StopResponse, debug bool) {
 	tabWriter.Flush()
 }
 
-func printTaskRestartResponse(r pt.RestartResponse, debug bool) {
+func printTaskRestartResponse(r task.RestartResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {

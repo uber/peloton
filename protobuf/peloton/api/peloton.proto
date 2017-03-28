@@ -1,0 +1,65 @@
+/**
+ *  This file defines the common types in Peloton API that are imported
+ *  by different subpackages.
+ */ 
+
+syntax = "proto3";
+
+package peloton.api.peloton;
+
+option go_package = "peloton/api/peloton";
+
+
+/**
+ *  A unique ID assigned to a Job. This is a UUID in RFC4122 format.
+ */
+message JobID {
+  string value = 1;
+}
+
+
+/**
+ *  A unique ID assigned to a Task (aka job instance). The task ID is in
+ *  the format of JobID-<InstanceID>.
+ */
+message TaskID {
+  string value = 1;
+}
+
+
+/**
+ *  A unique ID assigned to a Volume. This is a UUID in RFC4122 format.
+ */
+message VolumeID {
+  string value = 1;
+}
+
+
+/**
+ *  A unique ID assigned to a Resource Pool. This is a UUID in RFC4122 format.
+ */
+message ResourcePoolID {
+  string value = 1;
+}
+
+
+/**
+ *  Change log of an entity info, such as Job config etc.
+ */
+message ChangeLog {
+
+  /**
+   *  Version number of the entity info which is monotonically increasing.
+   *  Clients can use this to guide against race conditions using MVCC.
+   */
+  uint64 version = 1;
+
+  // The timestamp when the entity info is created
+  uint64 createdAt = 2;
+
+  // The timestamp when the entity info is updated
+  uint64 updatedAt = 3;
+
+  // The user or service that updated the entity info
+  string updatedBy = 4;
+}

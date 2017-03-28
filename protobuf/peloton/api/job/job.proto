@@ -10,15 +10,9 @@ package peloton.api.job;
 option go_package = "peloton/api/job";
 
 import "mesos/v1/mesos.proto";
-import "peloton/api/changelog/changelog.proto";
-import "peloton/api/task/config.proto";
-
-/**
- *  A unique ID assigned to an job.
- */
-message JobID {
-  string value = 1;
-}
+import "peloton/api/peloton.proto";
+import "peloton/api/errors/errors.proto";
+import "peloton/api/task/task.proto";
 
 
 /**
@@ -65,7 +59,7 @@ message SlaConfig {
 message JobConfig {
 
   // Change log entry of the job config
-  changelog.ChangeLog changeLog = 1;
+  peloton.ChangeLog changeLog = 1;
 
   // Name of the job
   string name = 2;
@@ -100,6 +94,62 @@ message JobConfig {
 
 
 /**
+ *  Runtime states of a Job
+ */
+enum JobState {
+  // Reserved for future compatibility of new states.
+  UNKNOWN = 0;
+
+  // The job has been initialized and persisted in DB.
+  INITIALIZED = 1;
+
+  // All tasks in the job are in PENDING state
+  PENDING = 2;
+
+  // Any of the tasks in the job is in RUNNING state.
+  RUNNING = 3;
+
+  // All tasks in the job are in SUCCEEDED state.
+  SUCCEEDED = 4;
+
+  // All tasks in the job are in terminated state and one or more
+  // tasks is in FAILED state.
+  FAILED = 5;
+
+  // All tasks in the job are in terminated state and one or more
+  // tasks in the job is killed by the user.
+  KILLED = 6;
+}
+
+
+/**
+ *  Job RuntimeInfo provides the current runtime status of a Job
+ */
+message RuntimeInfo
+{
+  // State of the job
+  JobState state = 1;
+
+  // The time when the job was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string creationTime = 2;
+
+  // The time when the first task of the job starts to run. The time
+  // is represented in RFC3339 form with UTC timezone.
+  string startTime = 3;
+
+  // The time when the last task of the job is completed. The time is
+  // represented in RFC3339 form with UTC timezone.
+  string completionTime = 4;
+
+  // The number of tasks grouped by each task state. The map key is
+  // the task.TaskState in string format and the map value is the number
+  // of tasks in the particular state.
+  map<string, uint32> taskStats = 5;
+}
+
+
+/**
  *  Job Manager service interface
  */
 service JobManager {
@@ -118,37 +168,42 @@ service JobManager {
 }
 
 message JobAlreadyExists {
-  JobID id = 1;
-  string message = 2;
-}
-
-message JobNotFound {
-  JobID id = 1;
+  peloton.JobID id = 1;
   string message = 2;
 }
 
 message InvalidJobConfig {
-  JobID id = 1;
+  peloton.JobID id = 1;
   string message = 2;
 }
 
 message CreateRequest {
-  JobID id = 1;
+  peloton.JobID id = 1;
   JobConfig config = 2;
 }
 
 message CreateResponse {
-  JobID result = 1;
-  JobAlreadyExists alreadyExists = 2;
-  InvalidJobConfig invalidConfig = 3;
+  message Error {
+    JobAlreadyExists alreadyExists = 1;
+    InvalidJobConfig invalidConfig = 2;
+  }
+
+  Error error = 1;
+  peloton.JobID jobId = 2;
 }
 
 message GetRequest {
-  JobID id = 1;
+  peloton.JobID id = 1;
 }
 
 message GetResponse {
-  JobConfig result = 1;
+  message Error {
+    errors.JobNotFound notFound = 1;
+  }
+
+  Error error = 1;
+  JobConfig config = 2;
+  RuntimeInfo runtime = 3;
 }
 
 message QueryRequest {
@@ -160,8 +215,13 @@ message QueryResponse {
 }
 
 message DeleteRequest {
-  JobID id = 1;
+  peloton.JobID id = 1;
 }
 
 message DeleteResponse {
+  message Error {
+    errors.JobNotFound notFound = 1;
+  }
+
+  Error error = 1;
 }

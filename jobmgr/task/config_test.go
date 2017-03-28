@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"peloton/api/job"
-	"peloton/api/task/config"
+	"peloton/api/task"
 )
 
 type TaskConfigTestSuite struct {
@@ -37,8 +37,8 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigOutOfRange() {
 }
 
 func (suite *TaskConfigTestSuite) TestGetTaskConfigNoInstanceConfig() {
-	defaultConfig := config.TaskConfig{
-		Resource: &config.ResourceConfig{
+	defaultConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
@@ -57,8 +57,8 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigNoInstanceConfig() {
 }
 
 func (suite *TaskConfigTestSuite) TestGetTaskConfigNoDefaultConfig() {
-	instanceConfig := config.TaskConfig{
-		Resource: &config.ResourceConfig{
+	instanceConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
@@ -68,7 +68,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigNoDefaultConfig() {
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
 		InstanceCount: 10,
-		InstanceConfig: map[uint32]*config.TaskConfig{
+		InstanceConfig: map[uint32]*task.TaskConfig{
 			0: &instanceConfig,
 		},
 	}
@@ -79,21 +79,21 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigNoDefaultConfig() {
 
 	taskConfig, err = GetTaskConfig(&jobConfig, 1)
 	suite.NoError(err)
-	suite.Equal(*taskConfig, config.TaskConfig{})
+	suite.Equal(*taskConfig, task.TaskConfig{})
 }
 
 func (suite *TaskConfigTestSuite) TestGetTaskConfigInstanceOverride() {
-	defaultConfig := config.TaskConfig{
-		Resource: &config.ResourceConfig{
+	defaultConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
 		},
 	}
-	instanceConfig := config.TaskConfig{
+	instanceConfig := task.TaskConfig{
 		Name: "Instance_0",
-		Resource: &config.ResourceConfig{
+		Resource: &task.ResourceConfig{
 			CpuLimit:    1,
 			MemLimitMb:  100,
 			DiskLimitMb: 2000,
@@ -104,7 +104,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigInstanceOverride() {
 		Name:          fmt.Sprintf("TestJob_1"),
 		InstanceCount: 10,
 		DefaultConfig: &defaultConfig,
-		InstanceConfig: map[uint32]*config.TaskConfig{
+		InstanceConfig: map[uint32]*task.TaskConfig{
 			0: &instanceConfig,
 		},
 	}
@@ -122,8 +122,8 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigInstanceOverride() {
 
 func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 	// No error if there is a default task config
-	taskConfig := config.TaskConfig{
-		Resource: &config.ResourceConfig{
+	taskConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
@@ -140,7 +140,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 	suite.NoError(err)
 
 	// No error if all instance configs exist
-	instances := make(map[uint32]*config.TaskConfig)
+	instances := make(map[uint32]*task.TaskConfig)
 	for i := uint32(0); i < 10; i++ {
 		instances[i] = &taskConfig
 	}
@@ -155,15 +155,15 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 
 func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
 	// Error if there is any instance config is missing
-	taskConfig := config.TaskConfig{
-		Resource: &config.ResourceConfig{
+	taskConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
 			MemLimitMb:  800,
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
 		},
 	}
-	instances := make(map[uint32]*config.TaskConfig)
+	instances := make(map[uint32]*task.TaskConfig)
 	for i := uint32(0); i < 10; i++ {
 		instances[i] = &taskConfig
 	}

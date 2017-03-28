@@ -10,9 +10,8 @@ import (
 	"go.uber.org/yarpc"
 
 	mesos "mesos/v1"
-	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
-	"peloton/api/task/config"
 	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
@@ -31,7 +30,7 @@ const (
 )
 
 var (
-	defaultResourceConfig = config.ResourceConfig{
+	defaultResourceConfig = task.ResourceConfig{
 		CpuLimit:    10,
 		MemLimitMb:  10,
 		DiskLimitMb: 10,
@@ -43,11 +42,11 @@ func createTestTask(instanceID int) *task.TaskInfo {
 	var tid = fmt.Sprintf(taskIDFmt, instanceID)
 
 	return &task.TaskInfo{
-		JobId: &job.JobID{
+		JobId: &peloton.JobID{
 			Value: testJobName,
 		},
 		InstanceId: uint32(instanceID),
-		Config: &config.TaskConfig{
+		Config: &task.TaskConfig{
 			Name:     testJobName,
 			Resource: &defaultResourceConfig,
 		},
@@ -104,13 +103,13 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	// generate 25 test tasks
 	numTasks := 1
 	testTasks := make([]*task.TaskInfo, numTasks)
-	taskIDs := make([]*task.TaskID, numTasks)
+	taskIDs := make([]*peloton.TaskID, numTasks)
 	placements := make([]*resmgr.Placement, numTasks)
-	taskConfigs := make(map[string]*config.TaskConfig)
-	taskIds := make(map[string]*task.TaskID)
+	taskConfigs := make(map[string]*task.TaskConfig)
+	taskIds := make(map[string]*peloton.TaskID)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
-		taskID := &task.TaskID{
+		taskID := &peloton.TaskID{
 			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
 		}
 		taskIDs[i] = taskID
@@ -135,7 +134,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	// Capture LaunchTasks calls
 	hostsLaunchedOn := make(map[string]bool)
-	launchedTasks := make(map[string]*config.TaskConfig)
+	launchedTasks := make(map[string]*task.TaskConfig)
 
 	gomock.InOrder(
 
@@ -194,9 +193,9 @@ func TestMultipleTasksPlaced(t *testing.T) {
 // createPlacements creates the placement
 func createPlacements(t *task.TaskInfo,
 	hostOffer *hostsvc.HostOffer) *resmgr.Placement {
-	TasksIds := make([]*task.TaskID, 1)
+	TasksIds := make([]*peloton.TaskID, 1)
 
-	taskID := &task.TaskID{
+	taskID := &peloton.TaskID{
 		Value: t.JobId.Value + "-" + fmt.Sprint(t.InstanceId),
 	}
 	TasksIds[0] = taskID

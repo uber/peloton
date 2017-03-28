@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	pj "peloton/api/job"
+	"peloton/api/job"
+	"peloton/api/peloton"
 
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
@@ -20,7 +21,7 @@ const (
 
 // JobCreateAction is the action for creating a job
 func (client *Client) JobCreateAction(jobName string, cfg string) error {
-	var jobConfig pj.JobConfig
+	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
 		return fmt.Errorf("Unable to open file %s: %v", cfg, err)
@@ -29,9 +30,9 @@ func (client *Client) JobCreateAction(jobName string, cfg string) error {
 		return fmt.Errorf("Unable to parse file %s: %v", cfg, err)
 	}
 
-	var response pj.CreateResponse
-	var request = &pj.CreateRequest{
-		Id: &pj.JobID{
+	var response job.CreateResponse
+	var request = &job.CreateRequest{
+		Id: &peloton.JobID{
 			Value: jobName,
 		},
 		Config: &jobConfig,
@@ -51,9 +52,9 @@ func (client *Client) JobCreateAction(jobName string, cfg string) error {
 
 // JobDeleteAction is the action for deleting a job
 func (client *Client) JobDeleteAction(jobName string) error {
-	var response pj.DeleteResponse
-	var request = &pj.DeleteRequest{
-		Id: &pj.JobID{
+	var response job.DeleteResponse
+	var request = &job.DeleteRequest{
+		Id: &peloton.JobID{
 			Value: jobName,
 		},
 	}
@@ -72,9 +73,9 @@ func (client *Client) JobDeleteAction(jobName string) error {
 
 // JobGetAction is the action for getting a job
 func (client *Client) JobGetAction(jobName string) error {
-	var response pj.GetResponse
-	var request = &pj.GetRequest{
-		Id: &pj.JobID{
+	var response job.GetResponse
+	var request = &job.GetRequest{
+		Id: &peloton.JobID{
 			Value: jobName,
 		},
 	}
@@ -91,26 +92,28 @@ func (client *Client) JobGetAction(jobName string) error {
 	return nil
 }
 
-func printJobCreateResponse(r pj.CreateResponse, debug bool) {
+func printJobCreateResponse(r job.CreateResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		if r.AlreadyExists != nil {
-			fmt.Fprintf(tabWriter, "Job %s already exists: %s\n",
-				r.AlreadyExists.Id.Value, r.AlreadyExists.Message)
-		} else if r.InvalidConfig != nil {
-			fmt.Fprintf(tabWriter, "Invalid job config: %s\n",
-				r.InvalidConfig.Message)
-		} else if r.Result != nil {
-			fmt.Fprintf(tabWriter, "Job %s created\n", r.Result.Value)
+		if r.Error != nil {
+			if r.Error.AlreadyExists != nil {
+				fmt.Fprintf(tabWriter, "Job %s already exists: %s\n",
+					r.Error.AlreadyExists.Id.Value, r.Error.AlreadyExists.Message)
+			} else if r.Error.InvalidConfig != nil {
+				fmt.Fprintf(tabWriter, "Invalid job config: %s\n",
+					r.Error.InvalidConfig.Message)
+			}
+		} else if r.JobId != nil {
+			fmt.Fprintf(tabWriter, "Job %s created\n", r.JobId.Value)
 		} else {
-			fmt.Fprintf(tabWriter, "Missing result in job create response\n")
+			fmt.Fprintf(tabWriter, "Missing job ID in job create response\n")
 		}
 		tabWriter.Flush()
 	}
 }
 
-func printJobDeleteResponse(r pj.DeleteResponse, debug bool) {
+func printJobDeleteResponse(r job.DeleteResponse, debug bool) {
 	// TODO: when DeleteResponse has useful fields in it, fill me in!
 	// Right now, its completely empty
 	if debug {
@@ -121,18 +124,18 @@ func printJobDeleteResponse(r pj.DeleteResponse, debug bool) {
 	}
 }
 
-func printJobGetResponse(r pj.GetResponse, debug bool) {
+func printJobGetResponse(r job.GetResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		if r.GetResult() == nil {
-			fmt.Fprintf(tabWriter, "Unable to get job\n")
+		if r.GetConfig() == nil {
+			fmt.Fprintf(tabWriter, "Unable to get job config\n")
 		} else {
-			rs := r.Result.DefaultConfig.Resource
+			rs := r.Config.DefaultConfig.Resource
 			fmt.Fprintf(tabWriter, jobListFormatHeader)
 			fmt.Fprintf(tabWriter, jobListFormatBody,
-				r.Result.Name, rs.CpuLimit, rs.MemLimitMb, rs.DiskLimitMb,
-				r.Result.InstanceCount, r.Result.DefaultConfig.Command)
+				r.Config.Name, rs.CpuLimit, rs.MemLimitMb, rs.DiskLimitMb,
+				r.Config.InstanceCount, r.Config.DefaultConfig.Command)
 		}
 		tabWriter.Flush()
 	}

@@ -9,6 +9,7 @@ import (
 
 	mesos "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 
@@ -28,7 +29,7 @@ const (
 type TaskHandlerTestSuite struct {
 	suite.Suite
 	handler       *serviceHandler
-	testJobID     *job.JobID
+	testJobID     *peloton.JobID
 	testJobConfig *job.JobConfig
 	taskInfos     map[uint32]*task.TaskInfo
 }
@@ -39,7 +40,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 		metrics: mtx,
 		rootCtx: context.Background(),
 	}
-	suite.testJobID = &job.JobID{
+	suite.testJobID = &peloton.JobID{
 		Value: "test_job",
 	}
 	suite.testJobConfig = &job.JobConfig{
@@ -49,7 +50,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	var taskInfos = make(map[uint32]*task.TaskInfo)
 	for i := uint32(0); i < testInstanceCount; i++ {
 		taskInfos[i] = suite.createTestTaskInfo(
-			task.RuntimeInfo_RUNNING, i)
+			task.TaskState_RUNNING, i)
 	}
 	suite.taskInfos = taskInfos
 }
@@ -63,7 +64,7 @@ func TestPelotonTaskHanlder(t *testing.T) {
 }
 
 func (suite *TaskHandlerTestSuite) createTestTaskInfo(
-	state task.RuntimeInfo_TaskState,
+	state task.TaskState,
 	instanceID uint32) *task.TaskInfo {
 
 	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
@@ -71,7 +72,7 @@ func (suite *TaskHandlerTestSuite) createTestTaskInfo(
 		Runtime: &task.RuntimeInfo{
 			TaskId:    &mesos.TaskID{Value: &taskID},
 			State:     state,
-			GoalState: task.RuntimeInfo_SUCCEEDED,
+			GoalState: task.TaskState_SUCCEEDED,
 		},
 		Config:     suite.testJobConfig.GetDefaultConfig(),
 		InstanceId: instanceID,
@@ -205,7 +206,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
 	failedTaskInfo := make(map[uint32]*task.TaskInfo)
-	failedTaskInfo[2] = suite.createTestTaskInfo(task.RuntimeInfo_FAILED, uint32(2))
+	failedTaskInfo[2] = suite.createTestTaskInfo(task.TaskState_FAILED, uint32(2))
 
 	expectedTaskIds := []*mesos.TaskID{singleTaskInfo[1].GetRuntime().GetTaskId()}
 

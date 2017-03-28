@@ -9,7 +9,7 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	mesos "mesos/v1"
-	p_task "peloton/api/task"
+	pb_task "peloton/api/task"
 	pb_eventstream "peloton/private/eventstream"
 )
 
@@ -109,10 +109,10 @@ func (p *StatusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 }
 
 // isUnexpected tells if taskState is unexpected or not
-func isUnexpected(taskState p_task.RuntimeInfo_TaskState) bool {
+func isUnexpected(taskState pb_task.TaskState) bool {
 	switch taskState {
-	case p_task.RuntimeInfo_FAILED,
-		p_task.RuntimeInfo_LOST:
+	case pb_task.TaskState_FAILED,
+		pb_task.TaskState_LOST:
 		return true
 	default:
 		// TODO: we may want to treat unknown state as error

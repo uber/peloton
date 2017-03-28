@@ -12,6 +12,7 @@ import (
 
 	mesos "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
 
 	"code.uber.internal/infra/peloton/common"
@@ -68,14 +69,14 @@ func (suite *ServiceHandlerTestSuite) TestRefillTaskQueue() {
 	InitServiceHandler(suite.dispatcher, tally.NoopScope, suite.store, suite.store)
 
 	// Create jobs. each with different number of tasks
-	jobs := [4]job.JobID{}
+	jobs := [4]peloton.JobID{}
 	for i := 0; i < 4; i++ {
-		jobs[i] = job.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
+		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
-	suite.createJob(&jobs[0], 10, 10, task.RuntimeInfo_SUCCEEDED)
-	suite.createJob(&jobs[1], 7, 10, task.RuntimeInfo_SUCCEEDED)
-	suite.createJob(&jobs[2], 2, 10, task.RuntimeInfo_SUCCEEDED)
-	suite.createJob(&jobs[3], 2, 10, task.RuntimeInfo_INITIALIZED)
+	suite.createJob(&jobs[0], 10, 10, task.TaskState_SUCCEEDED)
+	suite.createJob(&jobs[1], 7, 10, task.TaskState_SUCCEEDED)
+	suite.createJob(&jobs[2], 2, 10, task.TaskState_SUCCEEDED)
+	suite.createJob(&jobs[3], 2, 10, task.TaskState_INITIALIZED)
 
 	handler.LoadFromDB()
 
@@ -102,10 +103,10 @@ func (suite *ServiceHandlerTestSuite) TestRefillTaskQueue() {
 }
 
 func (suite *ServiceHandlerTestSuite) createJob(
-	jobID *job.JobID,
+	jobID *peloton.JobID,
 	numTasks uint32,
 	instanceCount uint32,
-	taskState task.RuntimeInfo_TaskState) {
+	taskState task.TaskState) {
 
 	sla := job.SlaConfig{
 		Preemptible: false,

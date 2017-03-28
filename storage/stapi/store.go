@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/respool"
 	"peloton/api/task"
 	"reflect"
@@ -101,7 +102,7 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 }
 
 // CreateJob creates a job with the job id and the config value
-func (s *Store) CreateJob(id *job.JobID, jobConfig *job.JobConfig, owner string) error {
+func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
 	jobID := id.Value
 	configBuffer, err := json.Marshal(jobConfig)
 	if err != nil {
@@ -133,7 +134,7 @@ func (s *Store) CreateJob(id *job.JobID, jobConfig *job.JobConfig, owner string)
 }
 
 // GetJob returns a job config given the job id
-func (s *Store) GetJob(id *job.JobID) (*job.JobConfig, error) {
+func (s *Store) GetJob(id *peloton.JobID) (*job.JobConfig, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobConfig").From(jobsTable).
@@ -222,7 +223,7 @@ func (s *Store) GetAllJobs() (map[string]*job.JobConfig, error) {
 
 // CreateTask creates a task for a peloton job
 // TODO: remove this in favor of CreateTasks
-func (s *Store) CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.TaskInfo, owner string) error {
+func (s *Store) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, owner string) error {
 	jobID := id.Value
 	if taskInfo.InstanceId != instanceID || taskInfo.JobId.Value != jobID {
 		errMsg := fmt.Sprintf("Task has instance id %v, different than the instanceID %d expected, jobID %v, task JobId %v",
@@ -237,7 +238,7 @@ func (s *Store) CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.Task
 		s.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
-	taskInfo.Runtime.State = task.RuntimeInfo_INITIALIZED
+	taskInfo.Runtime.State = task.TaskState_INITIALIZED
 	taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(tasksTable). // TODO: runtime conf and task conf
@@ -261,7 +262,7 @@ func (s *Store) CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.Task
 }
 
 // CreateTasks creates tasks for the given slice of task infos, instances 0..n
-func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner string) error {
+func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner string) error {
 	maxBatchSize := int64(s.Conf.MaxBatchSize)
 	if maxBatchSize == 0 {
 		maxBatchSize = math.MaxInt64
@@ -310,7 +311,7 @@ func (s *Store) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, owner str
 					return
 				}
 
-				t.Runtime.State = task.RuntimeInfo_INITIALIZED
+				t.Runtime.State = task.TaskState_INITIALIZED
 				taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
 
 				idsToTaskInfos[taskID] = t
@@ -448,7 +449,7 @@ func (s *Store) GetTaskStateChanges(taskID string) ([]*TaskStateChangeRecord, er
 
 // GetTasksForJobResultSet returns the result set that can be used to iterate each task in a job
 // Caller need to call result.Close()
-func (s *Store) GetTasksForJobResultSet(id *job.JobID) (api.ResultSet, error) {
+func (s *Store) GetTasksForJobResultSet(id *peloton.JobID) (api.ResultSet, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskJobStateView).
@@ -462,7 +463,7 @@ func (s *Store) GetTasksForJobResultSet(id *job.JobID) (api.ResultSet, error) {
 }
 
 // GetTasksForJob returns all the tasks (tasks.TaskInfo) for a peloton job
-func (s *Store) GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	result, err := s.GetTasksForJobResultSet(id)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJob by jobId %v, err=%v", id.Value, err)
@@ -501,7 +502,7 @@ func (s *Store) GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error)
 
 // GetTasksForJobAndState returns the tasks for a peloton job with certain state.
 // result map key is TaskID, value is TaskHost
-func (s *Store) GetTasksForJobAndState(id *job.JobID, state string) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("TaskID", "TaskInfo").From(taskJobStateView).
@@ -571,7 +572,7 @@ func (s *Store) GetTasksOnHost(host string) (map[string]string, error) {
 }
 
 // GetTasksForJobAndState returns the task count for a peloton job with certain state
-func (s *Store) getTaskStateCount(id *job.JobID, state string) (int, error) {
+func (s *Store) getTaskStateCount(id *peloton.JobID, state string) (int, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("count (*)").From(taskJobStateView).
@@ -596,9 +597,9 @@ func (s *Store) getTaskStateCount(id *job.JobID, state string) (int, error) {
 }
 
 // GetTaskStateSummaryForJob returns the tasks count (runtime_config) for a peloton job with certain state
-func (s *Store) GetTaskStateSummaryForJob(id *job.JobID) (map[string]int, error) {
+func (s *Store) GetTaskStateSummaryForJob(id *peloton.JobID) (map[string]int, error) {
 	resultMap := make(map[string]int)
-	for _, state := range task.RuntimeInfo_TaskState_name {
+	for _, state := range task.TaskState_name {
 		count, err := s.getTaskStateCount(id, state)
 		if err != nil {
 			return nil, err
@@ -609,7 +610,7 @@ func (s *Store) GetTaskStateSummaryForJob(id *job.JobID) (map[string]int, error)
 }
 
 // GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job given instance id range
-func (s *Store) GetTasksForJobByRange(id *job.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTasksForJobByRange(id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.Value
 	result := make(map[uint32]*task.TaskInfo)
 	var i uint32
@@ -651,7 +652,7 @@ func (s *Store) UpdateTask(taskInfo *task.TaskInfo) error {
 }
 
 // GetTaskForJob returns a task by jobID and instanceID
-func (s *Store) GetTaskForJob(id *job.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	taskID := fmt.Sprintf(taskIDFmt, id.Value, int(instanceID))
 	taskInfo, err := s.GetTaskByID(taskID)
 	if err != nil {
@@ -664,7 +665,7 @@ func (s *Store) GetTaskForJob(id *job.JobID, instanceID uint32) (map[uint32]*tas
 
 // DeleteJob deletes a job by id
 // TODO: decide if DeleteJob() should be removed from API
-func (s *Store) DeleteJob(id *job.JobID) error {
+func (s *Store) DeleteJob(id *peloton.JobID) error {
 	return nil
 }
 

@@ -2,9 +2,8 @@ package util
 
 import (
 	"fmt"
-	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
-	"peloton/api/task/config"
 	"testing"
 
 	mesos_v1 "mesos/v1"
@@ -48,9 +47,9 @@ func TestCanTakeTask(t *testing.T) {
 			NewMesosResourceBuilder().WithName("disk").WithRole("aurora").WithValue(1000.0).Build(),
 		},
 	}
-	var jobID = job.JobID{Value: "TestJob_0"}
-	var taskConfig = config.TaskConfig{
-		Resource: &config.ResourceConfig{
+	var jobID = peloton.JobID{Value: "TestJob_0"}
+	var taskConfig = task.TaskConfig{
+		Resource: &task.ResourceConfig{
 			CpuLimit:    25,
 			MemLimitMb:  700,
 			DiskLimitMb: 200,

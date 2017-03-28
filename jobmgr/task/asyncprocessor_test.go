@@ -3,7 +3,7 @@ package task
 import (
 	"fmt"
 	mesos "mesos/v1"
-	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
 	"sync"
 	"testing"
@@ -19,22 +19,22 @@ type mockTaskStore struct {
 	updates map[string][]*task.TaskInfo
 }
 
-func (m *mockTaskStore) CreateTask(id *job.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
+func (m *mockTaskStore) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
 	return nil
 }
-func (m *mockTaskStore) CreateTasks(id *job.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
+func (m *mockTaskStore) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
 	return nil
 }
-func (m *mockTaskStore) GetTasksForJob(id *job.JobID) (map[uint32]*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }
-func (m *mockTaskStore) GetTasksForJobAndState(id *job.JobID, state string) (map[uint32]*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }
-func (m *mockTaskStore) GetTasksForJobByRange(id *job.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTasksForJobByRange(id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }
-func (m *mockTaskStore) GetTaskForJob(id *job.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }
 func (m *mockTaskStore) UpdateTask(taskInfo *task.TaskInfo) error {
@@ -57,7 +57,7 @@ func (m *mockTaskStore) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 			},
 		},
 		InstanceId: uint32(instanceID),
-		JobId:      &job.JobID{Value: jobID},
+		JobId:      &peloton.JobID{Value: jobID},
 	}, nil
 }
 

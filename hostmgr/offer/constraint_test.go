@@ -8,7 +8,7 @@ import (
 
 	mesos "mesos/v1"
 
-	"peloton/api/task/config"
+	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 )
 
@@ -35,7 +35,7 @@ func TestConstraintMatchGPU(t *testing.T) {
 		hostsvc.Constraint{
 			Limit: 1,
 			ResourceConstraint: &hostsvc.ResourceConstraint{
-				Minimum: &config.ResourceConfig{
+				Minimum: &task.ResourceConfig{
 					CpuLimit:    1.0,
 					MemLimitMb:  1.0,
 					DiskLimitMb: 1.0,
@@ -63,7 +63,7 @@ func TestConstraintNotEnoughMem(t *testing.T) {
 		hostsvc.Constraint{
 			Limit: 1,
 			ResourceConstraint: &hostsvc.ResourceConstraint{
-				Minimum: &config.ResourceConfig{
+				Minimum: &task.ResourceConfig{
 					CpuLimit:    1.0,
 					MemLimitMb:  2.0,
 					DiskLimitMb: 1.0,
@@ -91,7 +91,7 @@ func TestConstraintNotEnoughGPU(t *testing.T) {
 		hostsvc.Constraint{
 			Limit: 1,
 			ResourceConstraint: &hostsvc.ResourceConstraint{
-				Minimum: &config.ResourceConfig{
+				Minimum: &task.ResourceConfig{
 					CpuLimit:    1.0,
 					MemLimitMb:  1.0,
 					DiskLimitMb: 1.0,
@@ -119,7 +119,7 @@ func TestConstraintNoGPU(t *testing.T) {
 		hostsvc.Constraint{
 			Limit: 1,
 			ResourceConstraint: &hostsvc.ResourceConstraint{
-				Minimum: &config.ResourceConfig{
+				Minimum: &task.ResourceConfig{
 					CpuLimit:    1.0,
 					MemLimitMb:  1.0,
 					DiskLimitMb: 1.0,
@@ -145,7 +145,7 @@ func TestGPUOfferNonGPUTask(t *testing.T) {
 		hostsvc.Constraint{
 			Limit: 1,
 			ResourceConstraint: &hostsvc.ResourceConstraint{
-				Minimum: &config.ResourceConfig{
+				Minimum: &task.ResourceConfig{
 					CpuLimit:    1.0,
 					MemLimitMb:  1.0,
 					DiskLimitMb: 1.0,

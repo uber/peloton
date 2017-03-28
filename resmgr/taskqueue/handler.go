@@ -18,6 +18,7 @@ import (
 
 	mesos "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
 	tq "peloton/private/resmgr/taskqueue"
 )
@@ -193,7 +194,7 @@ func (h *serviceHandler) requeueTasks(
 		return nil
 	}
 
-	pbJobID := &job.JobID{Value: jobID}
+	pbJobID := &peloton.JobID{Value: jobID}
 	tasks, err := h.taskStore.GetTasksForJobByRange(
 		pbJobID,
 		&task.InstanceRange{
@@ -207,14 +208,17 @@ func (h *serviceHandler) requeueTasks(
 	taskIDs := make(map[string]bool)
 	for _, t := range tasks {
 		switch t.Runtime.State {
-		case task.RuntimeInfo_INITIALIZED,
-			task.RuntimeInfo_LOST,
-			task.RuntimeInfo_ASSIGNED,
-			task.RuntimeInfo_SCHEDULING,
-			task.RuntimeInfo_FAILED:
+		case task.TaskState_INITIALIZED,
+			task.TaskState_PENDING,
+			task.TaskState_READY,
+			task.TaskState_PLACING,
+			task.TaskState_PLACED,
+			task.TaskState_LAUNCHING,
+			task.TaskState_LOST,
+			task.TaskState_FAILED:
 
 			// Requeue the tasks with these states into the queue again
-			t.Runtime.State = task.RuntimeInfo_INITIALIZED
+			t.Runtime.State = task.TaskState_INITIALIZED
 			h.taskStore.UpdateTask(t)
 			h.tqValue.Load().(queue.Queue).Enqueue(t)
 		default:
@@ -231,7 +235,7 @@ func (h *serviceHandler) requeueTasks(
 			taskConfig, _ := jm_task.GetTaskConfig(jobConfig, i)
 			t := &task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
-					State:  task.RuntimeInfo_INITIALIZED,
+					State:  task.TaskState_INITIALIZED,
 					TaskId: &mesos.TaskID{Value: &taskID},
 				},
 				Config:     taskConfig,

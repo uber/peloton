@@ -6,7 +6,6 @@ import (
 	"math"
 	mesos "mesos/v1"
 	"peloton/api/task"
-	tc "peloton/api/task/config"
 	"strconv"
 	"strings"
 
@@ -79,7 +78,7 @@ func CreateMesosScalarResources(values map[string]float64, role string) []*mesos
 // GetMesosTaskInfo converts TaskID and TaskConfig into mesos TaskInfo.
 func GetMesosTaskInfo(
 	taskID *mesos.TaskID,
-	taskConfig *tc.TaskConfig) (*mesos.TaskInfo, error) {
+	taskConfig *task.TaskConfig) (*mesos.TaskInfo, error) {
 	if taskConfig == nil {
 		return nil, errors.New("TaskConfig cannot be nil")
 	}
@@ -219,31 +218,31 @@ func (o *MesosResourceBuilder) Build() *mesos.Resource {
 
 // MesosStateToPelotonState translates mesos task state to peloton task state
 // TODO: adjust in case there are additional peloton states
-func MesosStateToPelotonState(mstate mesos.TaskState) task.RuntimeInfo_TaskState {
+func MesosStateToPelotonState(mstate mesos.TaskState) task.TaskState {
 	switch mstate {
 	case mesos.TaskState_TASK_STAGING:
-		return task.RuntimeInfo_LAUNCHED
+		return task.TaskState_LAUNCHING
 	case mesos.TaskState_TASK_STARTING:
-		return task.RuntimeInfo_LAUNCHED
+		return task.TaskState_STARTING
 	case mesos.TaskState_TASK_RUNNING:
-		return task.RuntimeInfo_RUNNING
+		return task.TaskState_RUNNING
 	// NOTE: This should only be sent when the framework has
 	// the TASK_KILLING_STATE capability.
 	case mesos.TaskState_TASK_KILLING:
-		return task.RuntimeInfo_RUNNING
+		return task.TaskState_RUNNING
 	case mesos.TaskState_TASK_FINISHED:
-		return task.RuntimeInfo_SUCCEEDED
+		return task.TaskState_SUCCEEDED
 	case mesos.TaskState_TASK_FAILED:
-		return task.RuntimeInfo_FAILED
+		return task.TaskState_FAILED
 	case mesos.TaskState_TASK_KILLED:
-		return task.RuntimeInfo_KILLED
+		return task.TaskState_KILLED
 	case mesos.TaskState_TASK_LOST:
-		return task.RuntimeInfo_LOST
+		return task.TaskState_LOST
 	case mesos.TaskState_TASK_ERROR:
-		return task.RuntimeInfo_FAILED
+		return task.TaskState_FAILED
 	default:
 		log.Errorf("Unknown mesos taskState %v", mstate)
-		return task.RuntimeInfo_INITIALIZED
+		return task.TaskState_INITIALIZED
 	}
 }
 

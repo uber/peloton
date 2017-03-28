@@ -5,8 +5,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"math"
-	"peloton/api/job"
-	"peloton/api/task"
+	"peloton/api/peloton"
 	"peloton/private/resmgr"
 	"testing"
 )
@@ -25,10 +24,10 @@ func (suite *FifoQueueTestSuite) SetupTest() {
 func (suite *FifoQueueTestSuite) AddTasks() {
 
 	// Task - 1
-	jobID1 := &job.JobID{
+	jobID1 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID1 := &task.TaskID{
+	taskID1 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
 	}
 	enq1 := resmgr.Task{
@@ -41,10 +40,10 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 	suite.fq.Enqueue(&enq1)
 
 	// Task - 2
-	jobID2 := &job.JobID{
+	jobID2 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID2 := &task.TaskID{
+	taskID2 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
 	}
 	enq2 := resmgr.Task{
@@ -57,10 +56,10 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 	suite.fq.Enqueue(&enq2)
 
 	// Task - 3
-	jobID3 := &job.JobID{
+	jobID3 := &peloton.JobID{
 		Value: "job2",
 	}
-	taskID3 := &task.TaskID{
+	taskID3 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID3.Value, 1),
 	}
 	enq3 := resmgr.Task{
@@ -73,10 +72,10 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 	suite.fq.Enqueue(&enq3)
 
 	// Task - 4
-	jobID4 := &job.JobID{
+	jobID4 := &peloton.JobID{
 		Value: "job2",
 	}
-	taskID4 := &task.TaskID{
+	taskID4 := &peloton.TaskID{
 		Value: fmt.Sprintf("%s-%d", jobID4.Value, 2),
 	}
 	enq4 := resmgr.Task{

@@ -2,7 +2,7 @@ package scalar
 
 import (
 	mesos "mesos/v1"
-	"peloton/api/task/config"
+	"peloton/api/task"
 	"testing"
 
 	"code.uber.internal/infra/peloton/util"
@@ -173,7 +173,7 @@ func TestFromOfferMap(t *testing.T) {
 }
 
 func TestFromResourceConfig(t *testing.T) {
-	result := FromResourceConfig(&config.ResourceConfig{
+	result := FromResourceConfig(&task.ResourceConfig{
 		CpuLimit:    1.0,
 		MemLimitMb:  2.0,
 		DiskLimitMb: 3.0,
