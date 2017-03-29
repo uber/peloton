@@ -10,9 +10,9 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-	"github.com/golang/mock/gomock"
 
 	"peloton/api/peloton"
 	pb_respool "peloton/api/respool"

@@ -12,4 +12,8 @@ type Config struct {
 	// PlacementDequeueLimit is the limit which task launcher get the
 	// placements
 	PlacementDequeueLimit int `yaml:"placement_dequeue_limit"`
+
+	// GetPlacementsTimeout is the timeout value for task launcher to
+	// call GetPlacements
+	GetPlacementsTimeout int `yaml:"get_placements_timeout_ms"`
 }

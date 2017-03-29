@@ -58,4 +58,5 @@ hostmgr:
   implicit_reconcile_interval_sec: 3600
 
 job_manager:
-  placement_dequeue_limit: 100
+  placement_dequeue_limit: 10
+  get_placements_timeout_ms: 10000

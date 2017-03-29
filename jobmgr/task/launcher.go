@@ -91,14 +91,14 @@ func (l *launcher) Start() error {
 			for l.isRunning() {
 				placements, err := l.getPlacements()
 				if err != nil {
-					log.WithError(err).Error("No placements found")
+					log.WithError(err).Error("Fail to get placements")
 					continue
 				}
 				l.processPlacements(placements)
 			}
 		}()
 	}
-	log.Warn("Task Launcher already started")
+	log.Info("Task Launcher started")
 	return nil
 }
 
@@ -109,15 +109,17 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 	var response resmgrsvc.GetPlacementsResponse
 	request := resmgrsvc.GetPlacementsRequest{
 		Limit:   uint32(l.config.PlacementDequeueLimit),
-		Timeout: uint32(getPlacementsTimeout),
+		Timeout: uint32(l.config.GetPlacementsTimeout),
 	}
 
+	callStart := time.Now()
 	_, err := l.resMgrClient.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("ResourceManagerService.GetPlacements"),
 		request,
 		&response,
 	)
+	callDuration := time.Since(callStart)
 
 	if err != nil {
 		log.WithError(err).Error("GetPlacements failed")
@@ -125,16 +127,23 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 		return nil, err
 	}
 
-	log.WithField("placements", response.Placements).Debug("GetPlacements")
 	if response.Error != nil {
 		log.WithFields(log.Fields{
-			"tasks": len(response.Placements),
-			"error": response.Error.String(),
+			"num_placements": len(response.Placements),
+			"error":          response.Error.String(),
 		}).Error("Failed to get placements")
 		l.metrics.GetPlacementFail.Inc(1)
 		return nil, err
 	}
-	l.metrics.GetPlacement.Inc(1)
+
+	log.WithFields(log.Fields{
+		"num_placements": len(response.Placements),
+		"duration":       callDuration.Seconds(),
+	}).Info("GetPlacements")
+
+	// TODO: turn getplacement metric into gauge so we can
+	//       get the current get_placements counts
+	l.metrics.GetPlacement.Inc(int64(len(response.Placements)))
 	return response.Placements, nil
 }
 
@@ -145,7 +154,7 @@ func (l *launcher) isRunning() bool {
 
 // launchTasks launches tasks to host manager
 func (l *launcher) processPlacements(placements []*resmgr.Placement) error {
-	log.WithField("placements", placements).Debug("Start process placements")
+	log.WithField("placements", placements).Debug("Start processing placements")
 	for _, placement := range placements {
 		tasks := l.getLaunchableTasks(placement.Tasks)
 		err := l.launchTasks(tasks, placement)
@@ -162,10 +171,11 @@ func (l *launcher) processPlacements(placements []*resmgr.Placement) error {
 }
 
 func (l *launcher) getLaunchableTasks(tasks []*peloton.TaskID) []*hostsvc.LaunchableTask {
-
 	var tasksInfo []*task.TaskInfo
 	log.WithField("Length of Tasks", len(tasks)).
 		Debug("getTasks: Length for tasks for placement")
+
+	getTaskInfoStart := time.Now()
 	for _, taskID := range tasks {
 		// TODO: we need to check if we can launch task to verify the goal state
 		taskInfo, err := l.taskStore.GetTaskByID(taskID.Value)
@@ -174,6 +184,13 @@ func (l *launcher) getLaunchableTasks(tasks []*peloton.TaskID) []*hostsvc.Launch
 		}
 		tasksInfo = append(tasksInfo, taskInfo)
 	}
+	getTaskInfoDuration := time.Since(getTaskInfoStart)
+
+	log.WithFields(log.Fields{
+		"num_tasks": len(tasks),
+		"duration":  getTaskInfoDuration.Seconds(),
+	}).Info("GetTaskInfo")
+
 	launchableTasks := createLaunchableTasks(tasksInfo)
 	return launchableTasks
 }
@@ -228,13 +245,17 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 			AgentId:  placement.GetAgentId(),
 		}
 
-		log.WithField("request", request).Debug(" LaunchTasks Called")
+		log.WithField("request", request).Debug("LaunchTasks Called")
+
+		callStart := time.Now()
 		_, err := l.hostMgrClient.Call(
 			ctx,
 			yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks"),
 			request,
 			&response,
 		)
+		callDuration := time.Since(callStart)
+
 		if err != nil {
 			log.WithFields(log.Fields{
 				"tasks": len(selectedTasks),
@@ -254,11 +275,13 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 			l.metrics.TaskLaunchFail.Inc(1)
 			return errors.New(response.Error.String())
 		}
-		l.metrics.TaskLaunch.Inc(1)
+
+		l.metrics.TaskLaunch.Inc(int64(len(selectedTasks)))
 
 		log.WithFields(log.Fields{
-			"tasks":    selectedTasks,
-			"hostname": placement.GetHostname(),
+			"num_tasks": len(selectedTasks),
+			"hostname":  placement.GetHostname(),
+			"duration":  callDuration.Seconds(),
 		}).Info("Launched tasks")
 	} else {
 		log.WithField("remaining_tasks", selectedTasks).Debug("No task is selected to launch")

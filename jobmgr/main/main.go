@@ -58,6 +58,20 @@ var (
 		"port", "Job manager port (jobmgr.port override) (set $PORT to override)").
 		Envar("PORT").
 		Int()
+
+	placementDequeLimit = app.Flag(
+		"placement-dequeue-limit", "Placements dequeue limit for each get "+
+			"placements attempt (jobmgr.placement_dequeue_limit override) "+
+			"(set $PLACEMENT_DEQUEUE_LIMIT to override)").
+		Envar("PLACEMENT_DEQUEUE_LIMIT").
+		Int()
+
+	getPlacementsTimeout = app.Flag(
+		"get-placements-timeout", "Timeout in milisecs for GetPlacements call "+
+			"(jobmgr.get_placements_timeout override) "+
+			"(set $GET_PLACEMENTS_TIMEOUT to override) ").
+		Envar("GET_PLACEMENTS_TIMEOUT").
+		Int()
 )
 
 func main() {
@@ -92,6 +106,14 @@ func main() {
 
 	if len(*electionZkServers) > 0 {
 		cfg.Election.ZKServers = *electionZkServers
+	}
+
+	if *placementDequeLimit != 0 {
+		cfg.JobManager.PlacementDequeueLimit = *placementDequeLimit
+	}
+
+	if *getPlacementsTimeout != 0 {
+		cfg.JobManager.GetPlacementsTimeout = *getPlacementsTimeout
 	}
 
 	log.WithField("config", cfg).Info("Loaded Job Manager configuration")
@@ -218,7 +240,7 @@ func main() {
 		rootScope,
 	)
 
-	// TODO: We neeed to cleanup the client names
+	// TODO: We need to cleanup the client names
 	task.InitTaskLauncher(
 		dispatcher,
 		common.PelotonResourceManager,
