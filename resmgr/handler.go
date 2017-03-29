@@ -57,7 +57,7 @@ func (h *serviceHandler) EnqueueTasks(
 
 	// Lookup respool from the resource pool tree
 	respoolID := req.GetResPool()
-	respool, err := respool.GetTree().LookupResPool(respoolID)
+	respool, err := respool.GetTree().Get(respoolID)
 	if err != nil {
 		h.metrics.EnqueueTaskFail.Inc(1)
 		return &resmgrsvc.EnqueueTasksResponse{

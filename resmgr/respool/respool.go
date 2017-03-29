@@ -131,6 +131,28 @@ func (n *ResPool) DequeueTasks(limit int) (*list.List, error) {
 	return nil, err
 }
 
+// AggregatedChildrenReservations returns aggregated child reservations by resource kind
+func (n *ResPool) AggregatedChildrenReservations() (map[string]float64, error) {
+	aggChildrenReservations := make(map[string]float64)
+
+	for child := n.children.Front(); child != nil; child = child.Next() {
+		if childResPool, ok := child.Value.(*ResPool); ok {
+			for kind, cResource := range childResPool.resourceConfigs {
+				cReservation := cResource.Reservation
+				if reservations, ok := aggChildrenReservations[kind]; ok {
+					// We only need reservations
+					cReservation += reservations
+				}
+				aggChildrenReservations[kind] = cReservation
+			}
+		} else {
+			return nil, errors.Errorf("failed to type assert child resource pool %v", child.Value)
+		}
+	}
+
+	return aggChildrenReservations, nil
+}
+
 // toResourcePoolInfo converts ResPool to ResourcePoolInfo
 func (n *ResPool) toResourcePoolInfo() *respool.ResourcePoolInfo {
 	childrenResPools := n.GetChildren()

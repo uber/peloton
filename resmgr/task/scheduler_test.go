@@ -189,7 +189,7 @@ func (suite *TaskSchedulerTestSuite) AddTasks() {
 	}
 
 	for _, task := range tasks {
-		resPool, err := suite.resTree.LookupResPool(&pb_respool.ResourcePoolID{
+		resPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{
 			Value: "respool11",
 		})
 		suite.NoError(err)

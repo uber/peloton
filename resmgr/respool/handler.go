@@ -87,6 +87,8 @@ func (h *serviceHandler) CreateResourcePool(
 	resPoolID := req.Id
 	resPoolConfig := req.Config
 	err := h.store.CreateResourcePool(resPoolID, resPoolConfig, "peloton")
+
+	// TODO  differentiate between n/w errors vs other data errors
 	if err != nil {
 		h.metrics.CreateResourcePoolFail.Inc(1)
 		return &respool.CreateResponse{
@@ -117,7 +119,7 @@ func (h *serviceHandler) GetResourcePool(
 	log.WithField("request", req).Info("GetResourcePool called")
 
 	resPoolID := req.Id
-	resPool, err := h.resPoolTree.LookupResPool(resPoolID)
+	resPool, err := h.resPoolTree.Get(resPoolID)
 	if err != nil {
 		h.metrics.GetResourcePoolFail.Inc(1)
 		return &respool.GetResponse{

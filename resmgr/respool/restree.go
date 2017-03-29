@@ -11,6 +11,8 @@ import (
 	"github.com/uber-go/tally"
 
 	"peloton/api/respool"
+
+	"github.com/pkg/errors"
 )
 
 // Tree defines the interface for a Resource Pool Tree
@@ -24,11 +26,14 @@ type Tree interface {
 	// leadership.
 	Stop() error
 
-	// LookupResPool returns a respool node by the given ID
-	LookupResPool(ID *respool.ResourcePoolID) (*ResPool, error)
+	// Get returns a respool node by the given ID
+	Get(ID *respool.ResourcePoolID) (*ResPool, error)
 
 	// GetAllNodes returns all respool nodes or all leaf respool nodes.
 	GetAllNodes(leafOnly bool) *list.List
+
+	//Upsert add/update a resource pool config to the tree
+	Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error
 }
 
 // tree implements the Tree interface
@@ -194,12 +199,85 @@ func (t *tree) SetAllNodes(nodes *map[string]*ResPool) {
 	t.allNodes = *nodes
 }
 
-// LookupResPool returns the resource pool for the given resource pool ID
-func (t *tree) LookupResPool(ID *respool.ResourcePoolID) (*ResPool, error) {
+// Get returns resource pool config for the given resource pool
+func (t *tree) Get(ID *respool.ResourcePoolID) (*ResPool, error) {
 	t.RLock()
 	defer t.RUnlock()
+	return t.lookupResPool(ID)
+}
+
+// Returns the resource pool for the given resource pool ID
+func (t *tree) lookupResPool(ID *respool.ResourcePoolID) (*ResPool, error) {
 	if val, ok := t.allNodes[ID.Value]; ok {
 		return val, nil
 	}
 	return nil, fmt.Errorf("Resource pool (%s) not found", ID.Value)
+}
+
+//Upsert adds/updates a resource pool config to the tree
+func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error {
+	// avoid overriding root
+	if ID.Value == RootResPoolID {
+		return errors.Errorf("Cannot override %s", RootResPoolID)
+	}
+
+	parentID := resPoolConfig.Parent
+
+	// check if parent exits
+	parent, err := t.lookupResPool(parentID)
+	if err != nil {
+		// parent is <nil>,  set the parent to be root
+		parent = t.allNodes[RootResPoolID]
+	}
+
+	// data to be validated
+	resourcePoolConfigData := resourcePoolConfigData{
+		ID:                 ID,
+		resourcePoolConfig: resPoolConfig,
+	}
+
+	// create a new resource pool config validator
+	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(respoolTree)
+
+	if err != nil {
+		return errors.Errorf("error initializing resource pool config validator %v", err)
+	}
+
+	// perform validation
+	if err := resourcePoolConfigValidator.Validate(resourcePoolConfigData); err != nil {
+		return errors.WithStack(err)
+	}
+
+	// acquire RW lock
+	t.Lock()
+	defer t.Unlock()
+
+	// check if already exists, and log
+	resourcePool, _ := t.lookupResPool(ID)
+
+	if resourcePool != nil {
+		// update existing respool
+		log.WithFields(log.Fields{
+			"Id": ID.Value,
+		}).Debug("Updating resource pool")
+
+		// TODO update only if leaf node ???
+		resourcePool.respoolConfig = resPoolConfig
+		resourcePool.initResources(resPoolConfig)
+	} else {
+		// add resource pool
+		log.WithFields(log.Fields{
+			"Id": ID.Value,
+		}).Debug("Adding resource pool")
+
+		resourcePool = NewRespool(ID.Value, parent, resPoolConfig)
+		// link parent to child resource pool
+		children := parent.GetChildren()
+		children.PushBack(resourcePool)
+	}
+
+	t.allNodes[ID.Value] = resourcePool
+	t.resPools[ID.Value] = resPoolConfig
+
+	return nil
 }

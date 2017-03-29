@@ -151,6 +151,32 @@ func (suite *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.Resou
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
+		"respool23": {
+			Name:   "respool23",
+			Parent: &pb_respool.ResourcePoolID{Value: "respool22"},
+			Resources: []*pb_respool.ResourceConfig{
+				{
+					Kind:        "cpu",
+					Reservation: 50,
+					Limit:       100,
+					Share:       1,
+				},
+			},
+			Policy: policy,
+		},
+		"respool99": {
+			Name:   "respool99",
+			Parent: &pb_respool.ResourcePoolID{Value: "respool21"},
+			Resources: []*pb_respool.ResourceConfig{
+				{
+					Kind:        "cpu",
+					Reservation: 50,
+					Limit:       100,
+					Share:       1,
+				},
+			},
+			Policy: policy,
+		},
 	}
 }
 
@@ -158,7 +184,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLeafNode
 	log.Info("TestServiceHandler_GetResourcePoolLeafNode called")
 
 	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: "respool22",
+		Value: "respool23",
 	}
 
 	// form request
