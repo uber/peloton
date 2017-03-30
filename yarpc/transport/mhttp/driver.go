@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-// MesosDriver is an inteface used by Inbound to subscribe to a Mesos
+// MesosDriver is an interface used by Inbound to subscribe to a Mesos
 // service endpoint such as scheduler, executor, master etc.
 type MesosDriver interface {
 	// Returns the name of Mesos driver such as scheduler or executor
@@ -20,11 +20,13 @@ type MesosDriver interface {
 
 	// Returns a subscribe Call message to be sent to Mesos for
 	// setting up an event stream connection
-	PrepareSubscribeRequest(mesosMasterHostPort string) (*http.Request, error)
+	PrepareSubscribeRequest(
+		mesosMasterHostPort string) (*http.Request, error)
 
 	// Invoked after the subscription to Mesos is done
-	PostSubscribe(mesosStreamId string)
+	PostSubscribe(mesosStreamID string)
 
-	// GetContentEncoding returns the http content encoding of the mesos HTTP traffic
+	// GetContentEncoding returns the http content encoding of the Mesos
+	// HTTP traffic
 	GetContentEncoding() string
 }

@@ -19,12 +19,13 @@ import (
 // instances.
 type Server struct {
 	sync.Mutex
+
 	ID                   string
 	role                 string
 	getOfferEventHandler func() offer.EventHandler
 	getTaskReconciler    func() reconcile.TaskReconciler
 
-	// TODO: move mesos related fields into hostmgr.ServiceHandler
+	// TODO: move Mesos related fields into hostmgr.ServiceHandler
 	mesosDetector mesos.MasterDetector
 	mesosInbound  mhttp.Inbound
 	mesosOutbound transport.Outbounds
@@ -56,6 +57,11 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 
+	// TODO(zhitao): Right now, this errors out after 5 min
+	// (getMesosMasterHostPortTimeout) when a leader cannot be found.
+	// This is risky for production use case as we want hostmgr to block
+	// and retry infinitely as long as no ZK configuration change.
+
 	mesosMasterAddr, err := s.mesosDetector.GetMasterLocation()
 	if err != nil {
 		log.Errorf("Failed to get mesosMasterAddr, err = %v", err)
@@ -64,13 +70,13 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	err = s.mesosInbound.StartMesosLoop(mesosMasterAddr)
 	if err != nil {
-		log.Errorf("Failed to StartMesosLoop, err = %v", err)
+		log.WithError(err).Error("Failed to StartMesosLoop")
 		return err
 	}
 
 	s.getOfferEventHandler().Start()
 
-	// TODO(mu): trigger task reconciliation if mesos master failover.
+	// TODO(mu): trigger task reconciliation if Mesos master failover.
 	s.getTaskReconciler().Start()
 
 	return nil
@@ -82,17 +88,18 @@ func (s *Server) LostLeadershipCallback() error {
 	s.Lock()
 	defer s.Unlock()
 
-	log.WithFields(log.Fields{"role": s.role}).Info("Lost leadership")
+	log.WithField("role", s.role).Info("Lost leadership")
+
 	s.getTaskReconciler().Stop()
 
 	err := s.mesosInbound.Stop()
 	if err != nil {
-		log.Errorf("Failed to stop mesos inbound, err = %v", err)
+		log.WithError(err).Error("Failed to stop mesos inbound")
 	}
 
 	s.getOfferEventHandler().Stop()
 
-	return err
+	return nil
 }
 
 // ShutDownCallback is the callback to shut down gracefully if possible
@@ -104,8 +111,8 @@ func (s *Server) ShutDownCallback() error {
 	return nil
 }
 
-// GetID function returns the peloton master address
-// required to implement leader.Nomination
+// GetID function returns the peloton master address.
+// This implements leader.Nomination.
 func (s *Server) GetID() string {
 	return s.ID
 }

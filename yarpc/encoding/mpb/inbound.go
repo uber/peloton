@@ -5,9 +5,14 @@ import (
 	"reflect"
 
 	"context"
+
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 )
+
+const _getTypeMethod = "GetType"
+
+var _invalidMethod = reflect.Value{}
 
 // EventType is an interface for auto-generated event types from
 // Mesos HTTP API such as mesos/v1/scheduler.proto
@@ -28,30 +33,41 @@ type MesosEventReader struct {
 }
 
 // NewMesosEventReader creates a new MesosEventReader
-func NewMesosEventReader(data []byte, typ reflect.Type, contentType string) (*MesosEventReader, error) {
+func NewMesosEventReader(data []byte, typ reflect.Type, contentType string) (
+	*MesosEventReader, error) {
+
 	if typ.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("Wrong mesos event type: %s", typ)
 	}
 
 	// Decode the RecordIO frame to Protobuf event
 	event := reflect.New(typ)
-	err := UnmarshalPbMessage(data, event, contentType)
-	if err != nil {
+	if err := UnmarshalPbMessage(data, event, contentType); err != nil {
 		return nil, err
 	}
 
 	// Get the event type of the Mesos event
-	method := event.MethodByName("GetType")
+	method := event.MethodByName(_getTypeMethod)
+	if method == _invalidMethod {
+		return nil, fmt.Errorf(
+			"Event object does not have method %s",
+			_getTypeMethod)
+	}
 	result := method.Call([]reflect.Value{})[0]
-	eventType := result.Interface().(EventType)
+	eventType, ok := result.Interface().(EventType)
+	if !ok {
+		return nil, fmt.Errorf(
+			"Result %v is not of event type %v", result, eventType)
+	}
 
 	// TODO: Decode the nested event object using reflect.MethodByName
 	reader := &MesosEventReader{Event: event, Type: eventType}
 	return reader, nil
 }
 
-func (r MesosEventReader) Read(p []byte) (n int, err error) {
-	// TODO: make Request.Body in YARPC to be interface{} instead of io.Reader
+func (r MesosEventReader) Read(p []byte) (_ int, _ error) {
+	// TODO: make Request.Body in YARPC to be interface{}
+	// instead of io.Reader
 	panic("mesosEventReader does not support Read method")
 }
 

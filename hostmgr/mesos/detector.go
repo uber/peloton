@@ -11,10 +11,12 @@ import (
 	"sync"
 	"time"
 
+	mesos "mesos/v1"
+
+	log "github.com/Sirupsen/logrus"
+
 	"code.uber.internal/infra/peloton/mesos-go/detector"
 	_ "code.uber.internal/infra/peloton/mesos-go/detector/zoo" // To register zookeeper based plugin.
-	log "github.com/Sirupsen/logrus"
-	mesos_v1 "mesos/v1"
 )
 
 const (
@@ -33,15 +35,19 @@ type MasterDetector interface {
 }
 
 type zkDetector struct {
-	mutex      sync.RWMutex
+	sync.RWMutex
+
 	masterIP   string
 	masterPort int
+
+	// Keep actual detector implementation wrapped so we can cancel it.
+	m detector.Master
 }
 
 // masterLocation returns ip and port for a Mesos master even if empty.
 func (d *zkDetector) MasterLocation() (string, int) {
-	d.mutex.RLock()
-	defer d.mutex.RUnlock()
+	d.RLock()
+	defer d.RUnlock()
 	return d.masterIP, d.masterPort
 }
 
@@ -49,41 +55,57 @@ func (d *zkDetector) MasterLocation() (string, int) {
 func (d *zkDetector) GetMasterLocation() (string, error) {
 	deadline := time.Now().Add(getMesosMasterHostPortTimeout)
 	for time.Now().Before(deadline) {
-		masterIP, masterPort := d.MasterLocation()
-		if masterIP != "" && masterPort != 0 {
-			mesosHostPort := fmt.Sprintf("%v:%v", masterIP, masterPort)
+		ip, port := d.MasterLocation()
+		if ip != "" && port != 0 {
+			mesosHostPort := fmt.Sprintf("%v:%v", ip, port)
 			return mesosHostPort, nil
 		}
 		log.Warn("No leading mesos master detected yet, sleep and retry")
 		time.Sleep(retrySleepTime)
 	}
-	return "", fmt.Errorf("No leading master detected after %v", getMesosMasterHostPortTimeout)
+	return "", fmt.Errorf(
+		"No leading master detected after %v",
+		getMesosMasterHostPortTimeout)
+}
+
+// OnMasterChanged implements `detector.MasterChanged.OnMasterChanged`.
+// This is called whenever underlying detector detected leader change.
+func (d *zkDetector) OnMasterChanged(masterInfo *mesos.MasterInfo) {
+	d.Lock()
+	defer d.Unlock()
+
+	if masterInfo == nil || masterInfo.GetAddress() == nil {
+		d.masterIP, d.masterPort = "", 0
+	} else {
+		d.masterIP, d.masterPort =
+			masterInfo.GetAddress().GetIp(),
+			int(masterInfo.GetAddress().GetPort())
+	}
 }
 
 // NewZKDetector creates a new MasterDetector which caches last detected leader.
 func NewZKDetector(zkPath string) (MasterDetector, error) {
 	if !strings.HasPrefix(zkPath, zkPathPrefix) {
-		return nil, fmt.Errorf("zkPath must start with %s", zkPathPrefix)
+		return nil, fmt.Errorf(
+			"zkPath must start with %s",
+			zkPathPrefix)
 	}
-
-	d := zkDetector{}
-	onMasterChangedCallback := detector.OnMasterChanged(func(master *mesos_v1.MasterInfo) {
-		d.mutex.Lock()
-		defer d.mutex.Unlock()
-		if master == nil || master.GetAddress() == nil {
-			d.masterIP, d.masterPort = "", 0
-		} else {
-			d.masterIP, d.masterPort = master.GetAddress().GetIp(), int(master.GetAddress().GetPort())
-		}
-	})
 
 	master, err := detector.New(zkPath)
 	if err != nil {
 		return nil, err
 	}
-	if err = master.Detect(onMasterChangedCallback); err != nil {
+
+	d := &zkDetector{
+		m: master,
+	}
+
+	if err = master.Detect(d); err != nil {
 		return nil, err
 	}
+
+	// TODO: handle `Done()` from `master` so we know that underlying
+	// detector accidentally finished.
 	// TODO: consider whether we need to Cancel (aka stop) this detector.
-	return &d, nil
+	return d, nil
 }

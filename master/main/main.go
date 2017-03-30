@@ -267,7 +267,7 @@ func main() {
 	log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
 
 	// Each master needs a Mesos inbound
-	var mInbound = mhttp.NewInbound(driver)
+	var mInbound = mhttp.NewInbound(rootScope, driver)
 	inbounds = append(inbounds, mInbound)
 
 	// TODO: update mesos url when leading mesos master changes

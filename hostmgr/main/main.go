@@ -118,7 +118,9 @@ func main() {
 	)
 	defer scopeCloser.Close()
 
-	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
+	mux.HandleFunc(
+		logging.LevelOverwrite,
+		logging.LevelOverwriteHandler(initialLevel))
 
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
 	// mux in other HTTP handlers
@@ -129,7 +131,7 @@ func main() {
 		),
 	}
 
-	// TODO(zhitao): Confirm this code is working when mesos leader changes.
+	// TODO(zhitao): Confirm this code is working when Mesos leader changes.
 	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize mesos master detector: %v", err)
@@ -166,7 +168,7 @@ func main() {
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
 
 	// Active host manager needs a Mesos inbound
-	var mInbound = mhttp.NewInbound(driver)
+	var mInbound = mhttp.NewInbound(rootScope, driver)
 	inbounds = append(inbounds, mInbound)
 
 	// TODO: update mesos url when leading mesos master changes

@@ -1,6 +1,6 @@
 package mesos
 
-// Config for mesos specific configuration
+// Config for Mesos specific configuration
 type Config struct {
 	HostPort  string           `yaml:"host_port"`
 	Framework *FrameworkConfig `yaml:"framework"`

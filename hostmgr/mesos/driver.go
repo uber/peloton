@@ -7,14 +7,15 @@ import (
 	"reflect"
 	"strings"
 
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	log "github.com/Sirupsen/logrus"
-	"github.com/golang/protobuf/proto"
+	"github.com/pkg/errors"
+
+	mesos "mesos/v1"
+	sched "mesos/v1/scheduler"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
-	mesos "mesos/v1"
-	sched "mesos/v1/scheduler"
+	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 )
 
 const (
@@ -47,7 +48,8 @@ type schedulerDriver struct {
 
 var instance *schedulerDriver
 
-// InitSchedulerDriver initialize Mesos scheduler driver for Mesos scheduler HTTP API
+// InitSchedulerDriver initialize Mesos scheduler driver for Mesos scheduler
+// HTTP API.
 func InitSchedulerDriver(
 	cfg *Config,
 	store storage.FrameworkInfoStore) SchedulerDriver {
@@ -62,12 +64,12 @@ func InitSchedulerDriver(
 	return instance
 }
 
-// GetSchedulerDriver return the interface to SchedulerDriver
+// GetSchedulerDriver return the interface to SchedulerDriver.
 func GetSchedulerDriver() SchedulerDriver {
 	return instance
 }
 
-// GetframeworkID returns the frameworkID
+// GetFrameworkID returns the frameworkID.
 func (d *schedulerDriver) GetFrameworkID() *mesos.FrameworkID {
 	if d.frameworkID != nil {
 		return d.frameworkID
@@ -96,11 +98,16 @@ func (d *schedulerDriver) GetMesosStreamID() string {
 	// updated in case that the leader reconnects to Mesos, or the leader changes
 	id, err := d.store.GetMesosStreamID(d.cfg.Name)
 	if err != nil {
-		log.Errorf("failed to GetmesosStreamID from db for framework %v, err=%v",
-			d.cfg.Name, err)
+		log.Errorf(
+			"failed to GetmesosStreamID from db for framework %v, err=%v",
+			d.cfg.Name,
+			err)
 		return ""
 	}
-	log.Debugf("Load Mesos stream id %v for framework %v", id, d.cfg.Name)
+	log.WithFields(log.Fields{
+		"stream_id": id,
+		"framework": d.cfg.Name,
+	}).Debug("Loaded Mesos stream id")
 	d.mesosStreamID = id
 	return id
 }
@@ -117,7 +124,8 @@ func (d *schedulerDriver) EventDataType() reflect.Type {
 	return reflect.TypeOf(sched.Event{})
 }
 
-func (d *schedulerDriver) prepareSubscribe() proto.Message {
+func (d *schedulerDriver) prepareSubscribe() (*sched.Call, error) {
+	// TODO: Inject capabilities based on config.
 	gpuSupported := mesos.FrameworkInfo_Capability_GPU_RESOURCES
 	capabilities := []*mesos.FrameworkInfo_Capability{
 		{
@@ -126,7 +134,9 @@ func (d *schedulerDriver) prepareSubscribe() proto.Message {
 	}
 	host, err := os.Hostname()
 	if err != nil {
-		log.Errorf("Failed to get host name, err=%v", err)
+		msg := "Failed to get host name"
+		log.WithError(err).Error(msg)
+		return nil, errors.Wrap(err, msg)
 	}
 
 	info := &mesos.FrameworkInfo{
@@ -139,7 +149,7 @@ func (d *schedulerDriver) prepareSubscribe() proto.Message {
 		Principal:       &d.cfg.Principal,
 	}
 	if d.cfg.GPUSupported {
-		log.Infof("GPU capability is supported")
+		log.Info("GPU capability is supported")
 		var gpuCapability = mesos.FrameworkInfo_Capability_GPU_RESOURCES
 		info.Capabilities = []*mesos.FrameworkInfo_Capability{
 			{
@@ -147,9 +157,11 @@ func (d *schedulerDriver) prepareSubscribe() proto.Message {
 			},
 		}
 	}
-	// TODO: it could happen that when we register, the framework id has already failed over timeout.
-	// Although we have set the timeout to a very long time in the config. In this case we need to
-	// use an empty framework id and subscribe again
+
+	// TODO: it could happen that when we register,
+	// the framework id has already failed over timeout.
+	// Although we have set the timeout to a very long time in the config.
+	// In this case we need to use an empty framework id and subscribe again
 	d.frameworkID = d.GetFrameworkID()
 	callType := sched.Call_SUBSCRIBE
 	msg := &sched.Call{
@@ -163,30 +175,42 @@ func (d *schedulerDriver) prepareSubscribe() proto.Message {
 	if d.frameworkID != nil {
 		info.Id = d.frameworkID
 		msg.FrameworkId = d.frameworkID
-		log.Infof("Reregister to Mesos with framework ID: %s, with FailoverTimeout %v", d.frameworkID, d.cfg.FailoverTimeout)
+		log.WithFields(log.Fields{
+			"framework_id": d.frameworkID,
+			"timeout":      d.cfg.FailoverTimeout,
+		}).Info("Reregister to Mesos master with previous framework ID")
 	} else {
-		log.Infof("Register to Mesos without framework ID, with FailoverTimeout %v", d.cfg.FailoverTimeout)
+		log.WithFields(log.Fields{
+			"timeout": d.cfg.FailoverTimeout,
+		}).Info("Register to Mesos without framework ID")
 	}
 
 	if d.cfg.Role != "" {
 		info.Role = &d.cfg.Role
 	}
 
-	return msg
+	return msg, nil
 }
 
 // PrepareSubscribeRequest returns a HTTP post request that can be used to initiate subscription to mesos master
-func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (*http.Request, error) {
-	pbMsg := d.prepareSubscribe()
-	body, err := mpb.MarshalPbMessage(pbMsg, d.encoding)
+func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (
+	*http.Request, error) {
+
+	subscribe, err := d.prepareSubscribe()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to marshal subscribe call: %s", err)
+		return nil, errors.Wrap(err, "Failed prepareSubscribe")
 	}
+
+	body, err := mpb.MarshalPbMessage(subscribe, d.encoding)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to marshal subscribe call")
+	}
+
 	url := fmt.Sprintf("http://%s%s", mesosMasterHostPort, d.Endpoint())
 	var req *http.Request
 	req, err = http.NewRequest("POST", url, strings.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "Failed HTTP request")
 	}
 	req.Header.Set("Content-Type", fmt.Sprintf("application/%s", d.encoding))
 	req.Header.Set("Accept", fmt.Sprintf("application/%s", d.encoding))

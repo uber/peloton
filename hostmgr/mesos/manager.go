@@ -1,16 +1,21 @@
 package mesos
 
 import (
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 
-	"code.uber.internal/infra/peloton/storage"
 	sched "mesos/v1/scheduler"
+
+	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
 
-// InitManager inits the mesosManager
-func InitManager(d yarpc.Dispatcher, mesosConfig *Config, store storage.FrameworkInfoStore) {
+// InitManager initializes the mesosManager
+func InitManager(
+	d yarpc.Dispatcher,
+	mesosConfig *Config,
+	store storage.FrameworkInfoStore) {
+
 	m := mesosManager{
 		store:       store,
 		mesosConfig: mesosConfig,
@@ -30,6 +35,7 @@ func InitManager(d yarpc.Dispatcher, mesosConfig *Config, store storage.Framewor
 	}
 }
 
+// mesosManager is a handler for Mesos scheduler API events.
 type mesosManager struct {
 	store       storage.FrameworkInfoStore
 	mesosConfig *Config
@@ -39,11 +45,16 @@ func (m *mesosManager) Subscribed(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	subscribed := body.GetSubscribed()
-	log.WithField("params", subscribed).Debug("mesosManager: subscribed called")
+	log.WithField("subscribed", subscribed).
+		Info("mesosManager: subscribed called")
 	frameworkID := subscribed.GetFrameworkId().GetValue()
-	err := m.store.SetMesosFrameworkID(m.mesosConfig.Framework.Name, frameworkID)
+	name := m.mesosConfig.Framework.Name
+	err := m.store.SetMesosFrameworkID(name, frameworkID)
 	if err != nil {
-		log.Errorf("failed to SetMesosFrameworkId %v %v, err=%v", m.mesosConfig.Framework.Name, frameworkID, err)
+		log.WithError(err).WithFields(log.Fields{
+			"framework_id": frameworkID,
+			"name":         name,
+		}).Error("Failed to SetMesosFrameworkId")
 	}
 	return err
 }
@@ -52,7 +63,7 @@ func (m *mesosManager) Message(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	msg := body.GetMessage()
-	log.WithField("params", msg).Debug("mesosManager: message called")
+	log.WithField("msg", msg).Debug("mesosManager: message called")
 	return nil
 }
 
@@ -60,7 +71,7 @@ func (m *mesosManager) Failure(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	failure := body.GetFailure()
-	log.WithField("params", failure).Debug("mesosManager: failure called")
+	log.WithField("failure", failure).Debug("mesosManager: failure called")
 	return nil
 }
 
@@ -68,20 +79,20 @@ func (m *mesosManager) Error(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
 	err := body.GetError()
-	log.WithField("params", err).Debug("mesosManager: error called")
+	log.WithField("error", err).Debug("mesosManager: error called")
 	return nil
 }
 
 func (m *mesosManager) Heartbeat(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
-	log.Debugf("mesosManager: heartbeat called")
+	log.Debug("mesosManager: heartbeat called")
 	return nil
 }
 
 func (m *mesosManager) Unknown(
 	reqMeta yarpc.ReqMeta, body *sched.Event) error {
 
-	log.Infof("mesosManager: unknown event called")
+	log.WithField("event", body).Info("mesosManager: unknown event called")
 	return nil
 }
