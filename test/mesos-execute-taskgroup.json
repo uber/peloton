@@ -1,7 +1,7 @@
 {
   "tasks": [
     {
-      "name": "redis1",
+      "name": "producer",
       "task_id": {
         "value": "redis1"
       },
@@ -35,15 +35,29 @@
               "name": "library/redis"
             }
           }
-        }
+        },
+        "volumes": [
+          {
+            "mode": "RW",
+            "container_path": "shared-volume",
+            "source": {
+              "type": "SANDBOX_PATH",
+              "sandbox_path": {
+                "type": "PARENT",
+                "path": "shared-volume-path"
+              }
+            }
+          }
+        ]
       },
       "command": {
         "user": "root",
-        "shell": false
+        "value": "touch shared-volume/foo.txt; while true; do date >> shared-volume/foo.txt; sleep 1; done",
+        "shell": true
       }
     },
     {
-      "name": "nginx1",
+      "name": "consumer",
       "task_id": {
         "value": "nginx1"
       },
@@ -77,11 +91,25 @@
               "name": "library/nginx"
             }
           }
-        }
+        },
+        "volumes": [
+          {
+            "mode": "RW",
+            "container_path": "shared-volume",
+            "source": {
+              "type": "SANDBOX_PATH",
+              "sandbox_path": {
+                "type": "PARENT",
+                "path": "shared-volume-path"
+              }
+            }
+          }
+        ]
       },
       "command": {
         "user": "root",
-        "shell": false
+        "value": "tail -f shared-volume/foo.txt",
+        "shell": true
       }
     }
   ]
