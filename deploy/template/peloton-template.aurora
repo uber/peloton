@@ -9,7 +9,7 @@ class Profile(Struct):
   election_zk_servers = Required(String)
   mysql_host = Required(String)
   enable_debug_logging = Default(Boolean, 'false')
-  use_stapi = Default(Boolean, 'false')
+  use_cassandra = Default(Boolean, 'false')
   cassandra_hosts = Default(String, '')
   pinned_attribute = Default(String, "host")
   pinned_hosts = Required(String)
@@ -50,7 +50,7 @@ JOB_TEMPLATE = Service(
         Parameter(name='env', value='DB_HOST={{profile.mysql_host}}'),
         Parameter(name='env', value='ENABLE_DEBUG_LOGGING={{profile.enable_debug_logging}}'),
         Parameter(name='env', value='ELECTION_ZK_SERVERS={{profile.election_zk_servers}}'),
-        Parameter(name='env', value='USE_STAPI={{profile.use_stapi}}'),
+        Parameter(name='env', value='USE_CASSANDRA={{profile.use_cassandra}}'),
         Parameter(name='env', value='CASSANDRA_HOSTS={{profile.cassandra_hosts}}'),
       ]
     )

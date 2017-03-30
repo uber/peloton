@@ -124,14 +124,14 @@ var (
 		Envar("OFFER_PRUNING_PERIOD").
 		Duration()
 
-	useSTAPI = app.Flag(
-		"use-stapi", "Use STAPI storage implementation").
+	useCassandra = app.Flag(
+		"use-cassandra", "Use cassandra storage implementation").
 		Default("false").
-		Envar("USE_STAPI").
+		Envar("USE_CASSNDRA").
 		Bool()
 
 	cassandraHosts = app.Flag(
-		"cassandra-hosts", "Cassandra hosts for STAPI").
+		"cassandra-hosts", "Cassandra hosts").
 		Envar("CASSANDRA_HOSTS").
 		Strings()
 )
@@ -181,12 +181,12 @@ func main() {
 	if *offerPruningPeriod != 0 {
 		cfg.Master.OfferPruningPeriodSec = int(offerPruningPeriod.Seconds())
 	}
-	if *useSTAPI {
-		cfg.Storage.UseSTAPI = true
+	if *useCassandra {
+		cfg.Storage.UseCassandra = true
 	}
 	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
-		if *useSTAPI {
-			cfg.Storage.STAPI.Stapi.Cassandra.ContactPoints = *cassandraHosts
+		if *useCassandra {
+			cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
 		}
 	}
 
@@ -219,7 +219,7 @@ func main() {
 		log.Fatalf("Could not migrate database: %+v", errs)
 	}
 
-	if !cfg.Storage.UseSTAPI {
+	if !cfg.Storage.UseCassandra {
 		// Initialize job and task stores
 		store := mysql.NewStore(cfg.Storage.MySQL, rootScope)
 		store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
@@ -230,13 +230,13 @@ func main() {
 		taskStore = store
 		frameworkStore = store
 	} else {
-		log.Infof("stapi Config: %v", cfg.Storage.STAPI)
-		if errs := cfg.Storage.STAPI.AutoMigrate(); errs != nil {
+		log.Infof("cassandra Config: %v", cfg.Storage.Cassandra)
+		if errs := cfg.Storage.Cassandra.AutoMigrate(); errs != nil {
 			log.Fatalf("Could not migrate database: %+v", errs)
 		}
-		store, err := cassandra.NewStore(&cfg.Storage.STAPI, rootScope)
+		store, err := cassandra.NewStore(&cfg.Storage.Cassandra, rootScope)
 		if err != nil {
-			log.Fatalf("Could not create stapi store: %+v", err)
+			log.Fatalf("Could not create cassandra store: %+v", err)
 		}
 		jobStore = store
 		taskStore = store

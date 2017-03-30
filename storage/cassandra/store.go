@@ -42,11 +42,11 @@ const (
 	resPoolsOwnerView     = "mv_respools_by_owner"
 )
 
-// Config is the config for STAPIStore
+// Config is the config for cassandra Store
 type Config struct {
-	Stapi      *impl.Configuration `yaml:"stapi"`
-	StoreName  string              `yaml:"store_name"`
-	Migrations string              `yaml:"migrations"`
+	CassandraConn *impl.CassandraConn `yaml:"connection"`
+	StoreName     string              `yaml:"store_name"`
+	Migrations    string              `yaml:"migrations"`
 	// MaxBatchSize makes sure we avoid batching too many statements and avoid
 	// http://docs.datastax.com/en/archived/cassandra/3.x/cassandra/configuration/configCassandra_yaml.html#configCassandra_yaml__batch_size_fail_threshold_in_kb
 	// This value is the number of records that are included in a single transaction/commit RPC request
@@ -71,8 +71,8 @@ func (c *Config) MigrateString() string {
 	// see https://github.com/gemnasium/migrate/pull/17 on why disable_init_host_lookup is needed
 	// This is for making local testing faster with docker running on mac
 	connStr := fmt.Sprintf("cassandra://%v:%v/%v?protocol=4&disable_init_host_lookup",
-		c.Stapi.Cassandra.ContactPoints[0],
-		c.Stapi.Cassandra.Port,
+		c.CassandraConn.ContactPoints[0],
+		c.CassandraConn.Port,
 		c.StoreName)
 	connStr = strings.Replace(connStr, " ", "", -1)
 	log.Infof("Cassandra migration string %v", connStr)
@@ -88,9 +88,9 @@ type Store struct {
 
 // NewStore creates a Store
 func NewStore(config *Config, scope tally.Scope) (*Store, error) {
-	dataStore, err := impl.CreateStore(config.Stapi, config.StoreName, scope)
+	dataStore, err := impl.CreateStore(config.CassandraConn, config.StoreName, scope)
 	if err != nil {
-		log.Errorf("Failed to NewSTAPIStore, err=%v", err)
+		log.Errorf("Failed to NewStore, err=%v", err)
 		return nil, err
 	}
 	return &Store{

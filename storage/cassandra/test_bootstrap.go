@@ -26,12 +26,10 @@ func downSync(cfg *Config) []error {
 // To verify with jenkins
 func MigrateForTest() *Config {
 	conf := Config{
-		Stapi: &impl.Configuration{
-			Cassandra: impl.Cassandra{
-				ContactPoints: []string{"127.0.0.1"},
-				Port:          9043,
-				CQLVersion:    "3.4.2",
-			},
+		CassandraConn: &impl.CassandraConn{
+			ContactPoints: []string{"127.0.0.1"},
+			Port:          9043,
+			CQLVersion:    "3.4.2",
 			MaxGoRoutines: 1000,
 		},
 		StoreName:    "peloton_test",

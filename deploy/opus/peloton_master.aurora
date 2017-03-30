@@ -9,7 +9,7 @@ PROFILES = [
     election_zk_servers = 'opusprod1051-wbu2:2181,opusprod1579-wbu2:2181,opusprod1931-wbu2:2181,opusprod2217-wbu2:2181,opusprod3185-wbu2:2181',
     docker_image = 'da2-docker-registry:80/infra/peloton:default-1488231492',
     mysql_host = 'opusprod2000-wbu2',
-    # TODO: change use_stapi to true after manual testing
+    # TODO: change use_cassandra to true after manual testing
     cassandra_hosts = 'opusprod2415-wbu2,'
                       'opusprod2503-wbu2,'
                       'opusprod2591-wbu2,'

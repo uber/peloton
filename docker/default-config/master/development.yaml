@@ -13,4 +13,4 @@ metrics:
 
 storage:
   # TODO: turn this back on once T736115 is resolved
-  use_stapi: false
+  use_cassandra: false

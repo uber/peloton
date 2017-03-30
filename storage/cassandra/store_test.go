@@ -24,7 +24,7 @@ const (
 	_resPoolOwner = "teamPeloton"
 )
 
-type stAPIStoreTestSuite struct {
+type CassandraStoreTestSuite struct {
 	suite.Suite
 	store *Store
 }
@@ -46,11 +46,11 @@ func init() {
 	}
 }
 
-func TestSTAPIStore(t *testing.T) {
-	suite.Run(t, new(stAPIStoreTestSuite))
+func TestCassandraStore(t *testing.T) {
+	suite.Run(t, new(CassandraStoreTestSuite))
 }
 
-func (suite *stAPIStoreTestSuite) TestCreateGetJobConfig() {
+func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 	var jobStore storage.JobStore
 	jobStore = store
 	var originalJobs []*job.JobConfig
@@ -116,7 +116,7 @@ func (suite *stAPIStoreTestSuite) TestCreateGetJobConfig() {
 	}
 }
 
-func (suite *stAPIStoreTestSuite) TestFrameworkInfo() {
+func (suite *CassandraStoreTestSuite) TestFrameworkInfo() {
 	var frameworkStore storage.FrameworkInfoStore
 	frameworkStore = store
 	err := frameworkStore.SetMesosFrameworkID("framework1", "12345")
@@ -141,7 +141,7 @@ func (suite *stAPIStoreTestSuite) TestFrameworkInfo() {
 	suite.Equal(frameworkID, "s-12345")
 }
 
-func (suite *stAPIStoreTestSuite) TestAddTasks() {
+func (suite *CassandraStoreTestSuite) TestAddTasks() {
 	var jobStore storage.JobStore
 	jobStore = store
 	var taskStore storage.TaskStore
@@ -229,7 +229,7 @@ func (suite *stAPIStoreTestSuite) TestAddTasks() {
 }
 
 // TestCreateTasks ensures mysql task create batching works as expected.
-func (suite *stAPIStoreTestSuite) TestCreateTasks() {
+func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 	jobTasks := map[string]int{
 		"TestJob1": 10,
 		"TestJob2": store.Conf.MaxBatchSize,
@@ -292,7 +292,7 @@ func (suite *stAPIStoreTestSuite) TestCreateTasks() {
 	}
 }
 
-func (suite *stAPIStoreTestSuite) TestGetTasksByHostState() {
+func (suite *CassandraStoreTestSuite) TestGetTasksByHostState() {
 	var jobStore storage.JobStore
 	jobStore = store
 	var taskStore storage.TaskStore
@@ -355,7 +355,7 @@ func (suite *stAPIStoreTestSuite) TestGetTasksByHostState() {
 	}
 }
 
-func (suite *stAPIStoreTestSuite) TestGetTaskStateChanges() {
+func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	var jobStore storage.JobStore
 	jobStore = store
 	var taskStore storage.TaskStore
@@ -421,7 +421,7 @@ func (suite *stAPIStoreTestSuite) TestGetTaskStateChanges() {
 
 }
 
-func (suite *stAPIStoreTestSuite) TestGetJobsByOwner() {
+func (suite *CassandraStoreTestSuite) TestGetJobsByOwner() {
 	nJobs := 2
 	owner := "uberx"
 	for i := 0; i < nJobs; i++ {
@@ -458,7 +458,7 @@ func (suite *stAPIStoreTestSuite) TestGetJobsByOwner() {
 	suite.Equal(len(jobs), 0)
 }
 
-func (suite *stAPIStoreTestSuite) TestGetTaskStateSummary() {
+func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 	var taskStore storage.TaskStore
 	taskStore = store
 	var jobID = peloton.JobID{Value: "TestGetTaskStateSummary"}
@@ -484,7 +484,7 @@ func (suite *stAPIStoreTestSuite) TestGetTaskStateSummary() {
 	}
 }
 
-func (suite *stAPIStoreTestSuite) TestGetTaskByRange() {
+func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 	var taskStore storage.TaskStore
 	taskStore = store
 	var jobID = peloton.JobID{Value: "TestGetTaskByRange"}
@@ -505,7 +505,7 @@ func (suite *stAPIStoreTestSuite) TestGetTaskByRange() {
 	suite.validateRange(&jobID, 70, 120)
 }
 
-func (suite *stAPIStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {
+func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {
 	var taskStore storage.TaskStore
 	taskStore = store
 	jobConfig, err := store.GetJob(jobID)
@@ -528,7 +528,7 @@ func (suite *stAPIStoreTestSuite) validateRange(jobID *peloton.JobID, from, to i
 	}
 }
 
-func (suite *stAPIStoreTestSuite) TestCreateGetResourcePoolConfig() {
+func (suite *CassandraStoreTestSuite) TestCreateGetResourcePoolConfig() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
 	testCases := []struct {
@@ -579,7 +579,7 @@ func (suite *stAPIStoreTestSuite) TestCreateGetResourcePoolConfig() {
 	}
 }
 
-func (suite *stAPIStoreTestSuite) GetAllResourcePools() {
+func (suite *CassandraStoreTestSuite) GetAllResourcePools() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
 	nResourcePools := 2
@@ -599,7 +599,7 @@ func (suite *stAPIStoreTestSuite) GetAllResourcePools() {
 
 }
 
-func (suite *stAPIStoreTestSuite) GetAllResourcePoolsEmptyResourcePool() {
+func (suite *CassandraStoreTestSuite) GetAllResourcePoolsEmptyResourcePool() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
 	nResourcePools := 0
@@ -608,7 +608,7 @@ func (suite *stAPIStoreTestSuite) GetAllResourcePoolsEmptyResourcePool() {
 	suite.Len(resourcePools, nResourcePools)
 }
 
-func (suite *stAPIStoreTestSuite) TestGetResourcePoolsByOwner() {
+func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
 	nResourcePools := 2

@@ -10,7 +10,7 @@ import (
 )
 
 // CreateStore is to create clusters and connections
-func CreateStore(storeConfig *Configuration, keySpace string, scope tally.Scope) (*Store, error) {
+func CreateStore(storeConfig *CassandraConn, keySpace string, scope tally.Scope) (*Store, error) {
 	cluster := newCluster(storeConfig)
 	cluster.Keyspace = keySpace
 	cSession, err := cluster.CreateSession()
@@ -46,9 +46,9 @@ const (
 )
 
 // NewCluster returns a clusterConfig object
-func newCluster(storeConfig *Configuration) *gocql.ClusterConfig {
+func newCluster(storeConfig *CassandraConn) *gocql.ClusterConfig {
 
-	config := storeConfig.Cassandra
+	config := storeConfig
 	cluster := gocql.NewCluster(config.ContactPoints...)
 
 	consistency := config.Consistency

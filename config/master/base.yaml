@@ -12,18 +12,15 @@ storage:
     # may result in failed task creations
     max_batch_size_rows: 500
     conn_lifetime: 30s
-  stapi_store_config:
+  cassandra:
     max_batch_size_rows: 50
-    stapi:
-      cassandra:
-        contactPoints: ["127.0.0.1"]
-        port: 9042
-        consistency: LOCAL_QUORUM
-        timeout: 10s
-        # C* data TTL is set to 60days
-        ttl: 1440h
-    store_name: peloton_test
-    migrations: storage/stapi/migrations/
+    connection:
+      contactPoints: ["127.0.0.1"]
+      port: 9042
+      consistency: LOCAL_QUORUM
+      timeout: 10s
+  store_name: peloton_test
+  migrations: storage/cassandra/migrations/
 
 master:
   port: 5289

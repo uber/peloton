@@ -4,8 +4,8 @@ import (
 	"time"
 )
 
-// Cassandra describes the properties to manage a Cassandra connection.
-type Cassandra struct {
+// CassandraConn describes the properties to manage a Cassandra connection.
+type CassandraConn struct {
 	ContactPoints      []string      `yaml:"contactPoints"`
 	Port               int           `yaml:"port"`
 	Username           string        `yaml:"username"`
@@ -21,13 +21,7 @@ type Cassandra struct {
 	PageSize           int           `yaml:"pageSize"`
 	RetryCount         int           `yaml:"retryCount"`
 	HostPolicy         string        `yaml:"hostPolicy"`
-	TimeoutLimit       int           `yaml:"timeoutLimit"` // number of timeouts allowed
-	CQLVersion         string        `yaml:"cqlVersion"`   // set only on C* 3.x
-}
-
-// Configuration is the top level yaml configuration for
-// this client library
-type Configuration struct {
-	Cassandra     Cassandra `yaml:"cassandra"`
-	MaxGoRoutines int       `yaml:"maxgoroutines"` // a capacity limit
+	TimeoutLimit       int           `yaml:"timeoutLimit"`  // number of timeouts allowed
+	CQLVersion         string        `yaml:"cqlVersion"`    // set only on C* 3.x
+	MaxGoRoutines      int           `yaml:"maxGoroutines"` // a capacity limit
 }

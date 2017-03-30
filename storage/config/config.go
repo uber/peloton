@@ -10,7 +10,7 @@ import (
 // TODO: Fix the cycle imports between storage and mysql/stapi so we
 // can move storage/config/config.go to storage/config.go
 type Config struct {
-	MySQL    mysql.Config     `yaml:"mysql"`
-	STAPI    cassandra.Config `yaml:"stapi_store_config"`
-	UseSTAPI bool             `yaml:"use_stapi"`
+	MySQL        mysql.Config     `yaml:"mysql"`
+	Cassandra    cassandra.Config `yaml:"cassandra"`
+	UseCassandra bool             `yaml:"use_cassandra"`
 }

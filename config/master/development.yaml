@@ -20,4 +20,4 @@ metrics:
 
 storage:
   # TODO: switch this back on after Alpha
-  use_stapi: false
+  use_cassandra: false

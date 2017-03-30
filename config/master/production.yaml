@@ -21,16 +21,15 @@ storage:
     # TODO: read db from zk
     host: compute841-dca1
     port: 3306
-  stapi_store_config:
+  cassandra:
     max_batch_size_rows: 50
-    stapi:
-      cassandra:
-        contactPoints: []
-        port: 9042
-        consistency: LOCAL_QUORUM
-        timeout: 10s
+    connection:
+      contactPoints: []
+      port: 9042
+      consistency: LOCAL_QUORUM
+      timeout: 10s
     store_name: peloton_test
-    migrations: storage/stapi/migrations/
+    migrations: storage/cassandra/migrations/
 
 placement:
    task_dequeue_limit: 1000

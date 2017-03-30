@@ -151,5 +151,5 @@ func (s *Store) sendLatency(ctx context.Context, name string, d time.Duration) {
 
 // String returns a string representation of the store object
 func (s *Store) String() string {
-	return fmt.Sprintf("STAPI.Store[%s]", s.keySpace)
+	return fmt.Sprintf("Cassandra.Store[%s]", s.keySpace)
 }
