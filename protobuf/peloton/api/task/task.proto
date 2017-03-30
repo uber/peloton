@@ -103,12 +103,72 @@ message PortConfig {
   string envName = 3;
 }
 
+/**
+ * Constraint represents a host label constraint or a related tasks label constraint.
+ * This is used to require that a host have certain label constraints or to require
+ * that the tasks already running on the host have certain label constraints.
+ */
+message Constraint {
+  oneof expression {
+    LabelConstraint labelConstraint = 1;
+    AndConstraint   andConstraint   = 2;
+    OrConstraint    orConstraint    = 3;
+  }
+}
+
+/**
+ * AndConstraint represents a logical 'and' of constraints.
+ */
+message AndConstraint {
+  repeated Constraint constraints  = 1;
+}
+
+/**
+ * OrConstraint represents a logical 'or' of constraints.
+ */
+message OrConstraint {
+  repeated Constraint constraints  = 1;
+}
+
+/**
+ * LabelConstraint represents a constraint on the number of occources a given
+ * label from the set of host labels or task labels present on the host.
+ */
+message LabelConstraint {
+  /**
+   * Condition represents a constraint on the number of occurrences of the label.
+   */
+  enum Condition {
+    OCCURRENCES_LESS_THAN             = 0;
+    OCCURRENCES_LESS_THAN_OR_EQUAL    = 1;
+    OCCURRENCES_EQUAL                 = 2;
+    OCCURRENCES_GREATER_THAN          = 3;
+    OCCURRENCES_GREATER_THAN_OR_EQUAL = 4;
+  }
+
+  /**
+   * Kind represents whatever the constraint applies to the labels on the host
+   * or to the labels of the tasks that are located on the host.
+   */
+  enum Kind {
+    TASK = 0;
+    HOST = 1;
+  }
+
+  // Determines which labels the constraint should apply to.
+  Kind           kind        = 1;
+  // Determines which constraint there should be on the number of occurrences of the label.
+  Condition      condition   = 2;
+  // The label which this defines a constraint on.
+  mesos.v1.Label label       = 3;
+  // A limit on the number of occurrences of the label.
+  uint32         requirement = 4;
+}
 
 /**
  *  Task configuration for a given job instance
  */
 message TaskConfig {
-
   // Name of the task
   string name = 1;
 
@@ -129,6 +189,10 @@ message TaskConfig {
 
   // List of network ports to be allocated for the task
   repeated PortConfig ports = 7;
+
+  // Constraints on the labels of the host or tasks on the host that this
+  // task should run on, all constraints have to be satisfied.
+  repeated Constraint constraints = 8;
 }
 
 /**
@@ -187,7 +251,6 @@ enum TaskState {
  *  Runtime info of an task instance in a Job
  */
 message RuntimeInfo {
-
   // Runtime status of the task
   TaskState state = 1;
 
@@ -218,7 +281,6 @@ message RuntimeInfo {
  *  Info of a task instance in a Job
  */
 message TaskInfo {
-
   // The numerical ID assigned to this instance. Instance IDs must be
   // unique and contiguous within a job. The ID is in the range of
   // [0, N-1] for a job with instance count of N.
