@@ -221,7 +221,7 @@ func main() {
 
 	if !cfg.Storage.UseSTAPI {
 		// Initialize job and task stores
-		store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope)
+		store := mysql.NewStore(cfg.Storage.MySQL, rootScope)
 		store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
 		store.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
 		store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)

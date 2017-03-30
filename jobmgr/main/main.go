@@ -131,7 +131,7 @@ func main() {
 		log.Fatalf("Could not connect to database: %+v", err)
 	}
 	// TODO: fix metric scope
-	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
+	store := mysql.NewStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
 	store.DB.SetMaxOpenConns(cfg.JobManager.DbWriteConcurrency)
 	store.DB.SetMaxIdleConns(cfg.JobManager.DbWriteConcurrency)
 	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)

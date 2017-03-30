@@ -30,7 +30,7 @@ var masterPort = 47960
 
 type ServiceHandlerTestSuite struct {
 	suite.Suite
-	store      *mysql.JobStore
+	store      *mysql.Store
 	db         *sqlx.DB
 	dispatcher yarpc.Dispatcher
 }
@@ -38,7 +38,7 @@ type ServiceHandlerTestSuite struct {
 func (suite *ServiceHandlerTestSuite) SetupTest() {
 	conf := mysql.LoadConfigWithDB()
 	suite.db = conf.Conn
-	suite.store = mysql.NewJobStore(*conf, tally.NoopScope)
+	suite.store = mysql.NewStore(*conf, tally.NoopScope)
 
 	inbounds := []transport.Inbound{
 		http.NewInbound(":" + strconv.Itoa(masterPort)),

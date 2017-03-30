@@ -124,7 +124,7 @@ func main() {
 	respoolStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
 	// Initialize job and task stores
-	jobStore := mysql.NewJobStore(cfg.Storage.MySQL, rootScope)
+	jobStore := mysql.NewStore(cfg.Storage.MySQL, rootScope)
 	jobStore.DB.SetMaxOpenConns(cfg.ResManager.DbWriteConcurrency)
 	jobStore.DB.SetMaxIdleConns(cfg.ResManager.DbWriteConcurrency)
 	jobStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)

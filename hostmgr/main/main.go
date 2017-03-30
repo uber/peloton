@@ -154,7 +154,7 @@ func main() {
 		log.Fatalf("Could not migrate database: %+v", errs)
 	}
 
-	store := mysql.NewJobStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
+	store := mysql.NewStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
 	// Tune db connections to make sure that task updates won't leak
 	// too many conns
 	// TODO: make it common db config for all components to share

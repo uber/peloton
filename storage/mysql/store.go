@@ -149,17 +149,17 @@ func (d *Config) Connect() error {
 	return err
 }
 
-// JobStore implements JobStore using a mysql backend
-type JobStore struct {
+// Store implements JobStore / TaskStore / FrameworkStore / respoolStore interfaces using a mysql backend
+type Store struct {
 	DB      *sqlx.DB
 	metrics storage.Metrics
 	Conf    Config
 }
 
-// NewJobStore creates a MysqlJobStore, from a properly initialized config that has
+// NewStore creates a MysqlJobStore, from a properly initialized config that has
 // already established a connection to the DB
-func NewJobStore(config Config, scope tally.Scope) *JobStore {
-	return &JobStore{
+func NewStore(config Config, scope tally.Scope) *Store {
+	return &Store{
 		DB:      config.Conn,
 		metrics: storage.NewMetrics(scope.SubScope("storage")),
 		Conf:    config,
@@ -167,7 +167,7 @@ func NewJobStore(config Config, scope tally.Scope) *JobStore {
 }
 
 // CreateJob creates a job with the job id and the config value
-func (m *JobStore) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy string) error {
+func (m *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy string) error {
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
 		log.Errorf("error = %v", err)
@@ -185,7 +185,7 @@ func (m *JobStore) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, create
 }
 
 // GetJob returns a job config given the job id
-func (m *JobStore) GetJob(id *peloton.JobID) (*job.JobConfig, error) {
+func (m *Store) GetJob(id *peloton.JobID) (*job.JobConfig, error) {
 	jobs, err := m.getJobs(map[string]interface{}{"row_key=": id.Value, "col_key=": colJobConfig})
 	if err != nil {
 		return nil, err
@@ -204,7 +204,7 @@ func (m *JobStore) GetJob(id *peloton.JobID) (*job.JobConfig, error) {
 // In the tasks table, the "Labels" field are compacted (all whitespaces and " are removed for each label),
 // then stored as the "labels_summary" row. Mysql fulltext index are also set on this field.
 // When a query comes, the query labels are compacted in the same way then queried against the fulltext index.
-func (m *JobStore) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, error) {
+func (m *Store) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, error) {
 	if len(Labels.Labels) == 0 {
 		log.Debug("Labels is empty, return all jobs")
 		return m.GetAllJobs()
@@ -246,7 +246,7 @@ func (m *JobStore) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, er
 }
 
 // DeleteJob deletes a job by id
-func (m *JobStore) DeleteJob(id *peloton.JobID) error {
+func (m *Store) DeleteJob(id *peloton.JobID) error {
 	// Check if there are any task left for the job. If there is any, abort the deletion
 	// TODO: slu -- discussion on if the task state matter here
 	tasks, err := m.GetTasksForJob(id)
@@ -272,22 +272,22 @@ func (m *JobStore) DeleteJob(id *peloton.JobID) error {
 }
 
 // GetJobsByOwner returns jobs by owner
-func (m *JobStore) GetJobsByOwner(owner string) (map[string]*job.JobConfig, error) {
+func (m *Store) GetJobsByOwner(owner string) (map[string]*job.JobConfig, error) {
 	return m.getJobs(map[string]interface{}{"owning_team=": owner, "col_key=": colJobConfig})
 }
 
 // GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *JobStore) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value})
 }
 
 // GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *JobStore) GetTasksForJobByRange(id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTasksForJobByRange(id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id >=": Range.From, "instance_id <": Range.To})
 }
 
 // GetTaskByID returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *JobStore) GetTaskByID(taskID string) (*task.TaskInfo, error) {
+func (m *Store) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 	result, err := m.getTasks(map[string]interface{}{"row_key=": taskID})
 	if err != nil {
 		return nil, err
@@ -307,13 +307,13 @@ func (m *JobStore) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 }
 
 // GetTaskForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *JobStore) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id=": instanceID})
 }
 
 // CreateTask creates a task for a peloton job
 // TODO: remove this in favor of CreateTasks
-func (m *JobStore) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
+func (m *Store) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
 	// TODO: discuss on whether taskID should be part of the taskInfo instead of runtime
 	rowKey := fmt.Sprintf("%s-%d", id.Value, instanceID)
 	if taskInfo.InstanceId != instanceID {
@@ -340,7 +340,7 @@ func (m *JobStore) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *ta
 }
 
 // CreateTasks creates rows for a slice of Tasks, numbered 0..n
-func (m *JobStore) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
+func (m *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
 	timeStart := time.Now()
 	maxBatchSize := int64(m.Conf.MaxBatchSize)
 	if maxBatchSize == 0 {
@@ -455,12 +455,12 @@ func (m *JobStore) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, cr
 }
 
 // GetTasksForJobAndState returns the tasks (runtime_config) for a peloton job with certain state
-func (m *JobStore) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "task_state=": state})
 }
 
 // UpdateTask updates a task for a peloton job
-func (m *JobStore) UpdateTask(taskInfo *task.TaskInfo) error {
+func (m *Store) UpdateTask(taskInfo *task.TaskInfo) error {
 	rowKey := fmt.Sprintf("%s-%d", taskInfo.JobId.Value, taskInfo.InstanceId)
 	buffer, err := json.Marshal(taskInfo)
 
@@ -504,7 +504,7 @@ func getQueryAndArgs(table string, filters map[string]interface{}, fields []stri
 	return q, args
 }
 
-func (m *JobStore) getJobs(filters map[string]interface{}) (map[string]*job.JobConfig, error) {
+func (m *Store) getJobs(filters map[string]interface{}) (map[string]*job.JobConfig, error) {
 	var records = []JobRecord{}
 	var result = make(map[string]*job.JobConfig)
 	q, args := getQueryAndArgs(jobsTable, filters, []string{"*"})
@@ -533,7 +533,7 @@ func (m *JobStore) getJobs(filters map[string]interface{}) (map[string]*job.JobC
 	return result, nil
 }
 
-func (m *JobStore) getTasks(filters map[string]interface{}) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) getTasks(filters map[string]interface{}) (map[uint32]*task.TaskInfo, error) {
 	var records = []TaskRecord{}
 	var result = make(map[uint32]*task.TaskInfo)
 	q, args := getQueryAndArgs(tasksTable, filters, []string{"*"})
@@ -562,7 +562,7 @@ func (m *JobStore) getTasks(filters map[string]interface{}) (map[uint32]*task.Ta
 }
 
 //SetMesosStreamID stores the mesos stream id for a framework name
-func (m *JobStore) SetMesosStreamID(frameworkName string, mesosStreamID string) error {
+func (m *Store) SetMesosStreamID(frameworkName string, mesosStreamID string) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Errorf("os.HostName() failed with err=%v", err)
@@ -576,7 +576,7 @@ func (m *JobStore) SetMesosStreamID(frameworkName string, mesosStreamID string) 
 }
 
 //SetMesosFrameworkID stores the mesos framework id for a framework name
-func (m *JobStore) SetMesosFrameworkID(frameworkName string, frameworkID string) error {
+func (m *Store) SetMesosFrameworkID(frameworkName string, frameworkID string) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Errorf("os.HostName() failed with err=%v", err)
@@ -590,7 +590,7 @@ func (m *JobStore) SetMesosFrameworkID(frameworkName string, frameworkID string)
 }
 
 //GetMesosStreamID reads the mesos stream id for a framework name
-func (m *JobStore) GetMesosStreamID(frameworkName string) (string, error) {
+func (m *Store) GetMesosStreamID(frameworkName string) (string, error) {
 	var records = []MesosFrameworkInfo{}
 	q, args := getQueryAndArgs(frameworksTable, map[string]interface{}{"framework_name=": frameworkName}, []string{"*"})
 	err := m.DB.Select(&records, q, args...)
@@ -605,7 +605,7 @@ func (m *JobStore) GetMesosStreamID(frameworkName string) (string, error) {
 }
 
 // GetFrameworkID reads the framework id for a framework name
-func (m *JobStore) GetFrameworkID(frameworkName string) (string, error) {
+func (m *Store) GetFrameworkID(frameworkName string) (string, error) {
 	var records = []MesosFrameworkInfo{}
 	q, args := getQueryAndArgs(frameworksTable, map[string]interface{}{"framework_name=": frameworkName}, []string{"*"})
 	err := m.DB.Select(&records, q, args...)
@@ -620,7 +620,7 @@ func (m *JobStore) GetFrameworkID(frameworkName string) (string, error) {
 }
 
 // GetAllJobs returns all jobs
-func (m *JobStore) GetAllJobs() (map[string]*job.JobConfig, error) {
+func (m *Store) GetAllJobs() (map[string]*job.JobConfig, error) {
 	return m.getJobs(map[string]interface{}{})
 }
 

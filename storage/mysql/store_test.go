@@ -24,7 +24,7 @@ const (
 
 type mySQLStoreTestSuite struct {
 	suite.Suite
-	store         *JobStore
+	store         *Store
 	resPoolsStore *ResourcePoolStore
 	db            *sqlx.DB
 }
@@ -33,7 +33,7 @@ func (suite *mySQLStoreTestSuite) SetupTest() {
 	conf := LoadConfigWithDB()
 
 	suite.db = conf.Conn
-	suite.store = NewJobStore(*conf, tally.NoopScope)
+	suite.store = NewStore(*conf, tally.NoopScope)
 	suite.resPoolsStore = NewResourcePoolStore(conf.Conn, tally.NoopScope)
 }
 
