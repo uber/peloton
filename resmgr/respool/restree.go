@@ -27,12 +27,12 @@ type Tree interface {
 	Stop() error
 
 	// Get returns a respool node by the given ID
-	Get(ID *respool.ResourcePoolID) (*ResPool, error)
+	Get(ID *respool.ResourcePoolID) (ResPool, error)
 
 	// GetAllNodes returns all respool nodes or all leaf respool nodes.
 	GetAllNodes(leafOnly bool) *list.List
 
-	//Upsert add/update a resource pool config to the tree
+	//Upsert add/update a resource pool poolConfig to the tree
 	Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error
 }
 
@@ -42,10 +42,10 @@ type tree struct {
 
 	store    storage.ResourcePoolStore
 	metrics  *Metrics
-	root     *ResPool
+	root     ResPool
 	resPools map[string]*respool.ResourcePoolConfig
-	// Hashmap of [ID] = Node, having all Nodes
-	allNodes map[string]*ResPool
+	// Hashmap of [ID] = ResPool, having all Nodes
+	allNodes map[string]ResPool
 }
 
 // Singleton resource pool tree
@@ -65,7 +65,7 @@ func InitTree(
 		store:    store,
 		root:     nil,
 		metrics:  NewMetrics(scope),
-		allNodes: make(map[string]*ResPool),
+		allNodes: make(map[string]ResPool),
 	}
 }
 
@@ -105,13 +105,13 @@ func (t *tree) Stop() error {
 	defer t.Unlock()
 	t.root = nil
 	t.resPools = nil
-	t.allNodes = make(map[string]*ResPool)
+	t.allNodes = make(map[string]ResPool)
 	log.Info("Resource Pool Tree Stopped")
 	return nil
 }
 
 // initializeResourceTree will initialize all the resource pools from Storage
-func (t *tree) initializeResourceTree() *ResPool {
+func (t *tree) initializeResourceTree() ResPool {
 	log.Info("Initializing Resource Tree")
 	if t.resPools == nil {
 		return nil
@@ -128,9 +128,9 @@ func (t *tree) initializeResourceTree() *ResPool {
 
 // buildTree function will take the Parent node and create the tree underneath
 func (t *tree) buildTree(
-	parent *ResPool,
+	parent ResPool,
 	ID string,
-) *ResPool {
+) ResPool {
 	node := NewRespool(ID, parent, t.resPools[ID])
 	t.allNodes[ID] = node
 	node.SetParent(parent)
@@ -146,18 +146,18 @@ func (t *tree) buildTree(
 }
 
 // printTree will print the whole Resource Pool Tree in BFS manner
-func (t *tree) printTree(root *ResPool) {
+func (t *tree) printTree(root ResPool) {
 	var queue list.List
 	queue.PushBack(root)
 	for queue.Len() != 0 {
 		n := queue.Front()
 		queue.Remove(n)
-		nodeVar := n.Value.(*ResPool)
-		log.WithField("Node", nodeVar.ID).Info()
-		nodeVar.logNodeResources(nodeVar)
-		children := nodeVar.GetChildren()
+		nodeVar := n.Value.(*resPool)
+		log.WithField("ResPool", nodeVar.ID).Info()
+		nodeVar.logNodeResources()
+		children := nodeVar.Children()
 		for e := children.Front(); e != nil; e = e.Next() {
-			queue.PushBack(e.Value.(*ResPool))
+			queue.PushBack(e.Value.(*resPool))
 		}
 	}
 }
@@ -174,7 +174,7 @@ func (t *tree) getChildResPools(parentID string) map[string]*respool.ResourcePoo
 }
 
 // getRoot will return the root node for the resource pool tree
-func (t *tree) getRoot() *ResPool {
+func (t *tree) getRoot() ResPool {
 	// TODO: Need to clone the tree
 	return t.root
 }
@@ -185,7 +185,7 @@ func (t *tree) GetAllNodes(leafOnly bool) *list.List {
 	defer t.RUnlock()
 	nodesList := new(list.List)
 	for _, n := range t.allNodes {
-		if !leafOnly || n.Isleaf() {
+		if !leafOnly || n.IsLeaf() {
 			nodesList.PushBack(n)
 		}
 	}
@@ -193,21 +193,21 @@ func (t *tree) GetAllNodes(leafOnly bool) *list.List {
 }
 
 // SetAllNodes sets all nodes in the tree
-func (t *tree) SetAllNodes(nodes *map[string]*ResPool) {
+func (t *tree) SetAllNodes(nodes *map[string]ResPool) {
 	t.Lock()
 	defer t.Unlock()
 	t.allNodes = *nodes
 }
 
 // Get returns resource pool config for the given resource pool
-func (t *tree) Get(ID *respool.ResourcePoolID) (*ResPool, error) {
+func (t *tree) Get(ID *respool.ResourcePoolID) (ResPool, error) {
 	t.RLock()
 	defer t.RUnlock()
 	return t.lookupResPool(ID)
 }
 
 // Returns the resource pool for the given resource pool ID
-func (t *tree) lookupResPool(ID *respool.ResourcePoolID) (*ResPool, error) {
+func (t *tree) lookupResPool(ID *respool.ResourcePoolID) (ResPool, error) {
 	if val, ok := t.allNodes[ID.Value]; ok {
 		return val, nil
 	}
@@ -239,8 +239,7 @@ func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.Resourc
 		}).Debug("Updating resource pool")
 
 		// TODO update only if leaf node ???
-		resourcePool.respoolConfig = resPoolConfig
-		resourcePool.initResources(resPoolConfig)
+		resourcePool.SetResourcePoolConfig(resPoolConfig)
 	} else {
 		// add resource pool
 		log.WithFields(log.Fields{
@@ -249,7 +248,7 @@ func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.Resourc
 
 		resourcePool = NewRespool(ID.Value, parent, resPoolConfig)
 		// link parent to child resource pool
-		children := parent.GetChildren()
+		children := parent.Children()
 		children.PushBack(resourcePool)
 	}
 

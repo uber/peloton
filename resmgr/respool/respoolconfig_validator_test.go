@@ -30,7 +30,7 @@ func (suite *resPoolConfigValidatorSuite) SetupSuite() {
 		store:    mockResPoolStore,
 		root:     nil,
 		metrics:  NewMetrics(tally.NoopScope),
-		allNodes: make(map[string]*ResPool),
+		allNodes: make(map[string]ResPool),
 	}
 }
 

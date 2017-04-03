@@ -35,7 +35,7 @@ func (suite *resPoolHandlerTestSuite) SetupSuite() {
 		store:    suite.mockResPoolStore,
 		root:     nil,
 		metrics:  NewMetrics(tally.NoopScope),
-		allNodes: make(map[string]*ResPool),
+		allNodes: make(map[string]ResPool),
 	}
 	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(suite.resourceTree)
 	suite.NoError(err)

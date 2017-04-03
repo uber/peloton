@@ -87,7 +87,7 @@ func ValidateParent(resTree Tree, resourcePoolConfigData ResourcePoolConfigData)
 
 	// for existing resource pool check if parent changed
 	if existingResourcePool != nil {
-		existingParentID := existingResourcePool.parent.ID
+		existingParentID := existingResourcePool.Parent().ID()
 
 		// avoid overriding child's parent
 		if newParentID.Value != existingParentID {
@@ -105,7 +105,7 @@ func ValidateParent(resTree Tree, resourcePoolConfigData ResourcePoolConfigData)
 	}
 
 	// get parent resources
-	pResources := parent.resourceConfigs
+	pResources := parent.Resources()
 
 	// iterate over child resource(s) and check with parent resource(s)
 	for _, cResource := range cResources {
@@ -172,13 +172,13 @@ func ValidateChildrenReservations(resTree Tree, resourcePoolConfigData ResourceP
 		// remove self reservations if we are updating resource pool config
 		if existingResPool != nil {
 
-			if existingResourceConfig, ok := existingResPool.resourceConfigs[cResource.Kind]; ok {
+			if existingResourceConfig, ok := existingResPool.Resources()[cResource.Kind]; ok {
 				cResourceReservations -= existingResourceConfig.Reservation
 			}
 		}
 
 		// check with parent and short circuit if aggregate reservations exceed parent reservations
-		if parentResourceConfig, ok := parent.resourceConfigs[cResource.Kind]; ok {
+		if parentResourceConfig, ok := parent.Resources()[cResource.Kind]; ok {
 			if cResourceReservations > parentResourceConfig.Reservation {
 				return errors.Errorf(
 					"Aggregated child reservation %v of kind `%s` exceed parent `%s` reservations %v",

@@ -231,7 +231,7 @@ func (h *serviceHandler) GetResourcePool(
 	}
 	h.metrics.GetResourcePoolSuccess.Inc(1)
 	return &respool.GetResponse{
-		Poolinfo: resPool.toResourcePoolInfo(),
+		Poolinfo: resPool.ToResourcePoolInfo(),
 	}, nil, nil
 }
 
@@ -356,7 +356,7 @@ func (h *serviceHandler) UpdateResourcePool(
 		// update with existing
 		if err := h.store.UpdateResourcePool(
 			resPoolID,
-			existingResPool.respoolConfig,
+			existingResPool.ResourcePoolConfig(),
 		); err != nil {
 			log.WithError(
 				err,

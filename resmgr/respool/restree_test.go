@@ -32,7 +32,7 @@ func (suite *resTreeTestSuite) SetupSuite() {
 		store:    mockResPoolStore,
 		root:     nil,
 		metrics:  NewMetrics(tally.NoopScope),
-		allNodes: make(map[string]*ResPool),
+		allNodes: make(map[string]ResPool),
 	}
 }
 
@@ -180,13 +180,13 @@ func (suite *resTreeTestSuite) TestPrintTree() {
 func (suite *resTreeTestSuite) TestGetChildren() {
 	rt, ok := suite.resourceTree.(*tree)
 	suite.Equal(true, ok)
-	list := rt.root.GetChildren()
+	list := rt.root.Children()
 	suite.Equal(list.Len(), 3)
 	n := rt.allNodes["respool1"]
-	list = n.GetChildren()
+	list = n.Children()
 	suite.Equal(list.Len(), 2)
 	n = rt.allNodes["respool2"]
-	list = n.GetChildren()
+	list = n.Children()
 	suite.Equal(list.Len(), 2)
 }
 
@@ -194,8 +194,8 @@ func (suite *resTreeTestSuite) TestResourceConfig() {
 	rt, ok := suite.resourceTree.(*tree)
 	suite.Equal(true, ok)
 	n := rt.allNodes["respool1"]
-	suite.Equal(n.ID, "respool1")
-	for _, res := range n.resourceConfigs {
+	suite.Equal(n.ID(), "respool1")
+	for _, res := range n.Resources() {
 		if res.Kind == "cpu" {
 			assert.Equal(suite.T(), res.Reservation, 100.00, "Reservation is not Equal")
 			assert.Equal(suite.T(), res.Limit, 1000.00, "Limit is not equal")

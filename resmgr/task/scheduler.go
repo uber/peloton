@@ -115,10 +115,10 @@ func (s *scheduler) scheduleTasks() {
 	nodes := s.resPoolTree.GetAllNodes(true)
 	// TODO: we need to check the entitlement first
 	for e := nodes.Front(); e != nil; e = e.Next() {
-		n := e.Value.(*respool.ResPool)
+		n := e.Value.(respool.ResPool)
 		t, err := n.DequeueTasks(dequeueTaskLimit)
 		if err != nil {
-			log.WithField("respool", n.ID).Debug("No Items found")
+			log.WithField("respool", n.ID()).Debug("No Items found")
 			continue
 		}
 		for e := t.Front(); e != nil; e = e.Next() {
