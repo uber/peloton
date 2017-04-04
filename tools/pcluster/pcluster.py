@@ -299,6 +299,9 @@ def run_peloton_master():
                     host_ip,
                     config['local_zk_port']
                 ),
+                'CASSANDRA_HOSTS={0}'.format(
+                    host_ip,
+                ),
             ],
             host_config=cli.create_host_config(
                 port_bindings={

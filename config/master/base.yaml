@@ -19,8 +19,9 @@ storage:
       port: 9042
       consistency: LOCAL_QUORUM
       timeout: 10s
-  store_name: peloton_test
-  migrations: storage/cassandra/migrations/
+    store_name: peloton_test
+    migrations: storage/cassandra/migrations/
+  use_cassandra: true
 
 master:
   port: 5289

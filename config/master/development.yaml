@@ -18,6 +18,3 @@ metrics:
   #  enable: true
   #  endpoint: localhost:1234
 
-storage:
-  # TODO: switch this back on after Alpha
-  use_cassandra: false

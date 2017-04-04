@@ -126,8 +126,8 @@ var (
 
 	useCassandra = app.Flag(
 		"use-cassandra", "Use cassandra storage implementation").
-		Default("false").
-		Envar("USE_CASSNDRA").
+		Default("true").
+		Envar("USE_CASSANDRA").
 		Bool()
 
 	cassandraHosts = app.Flag(
@@ -181,8 +181,8 @@ func main() {
 	if *offerPruningPeriod != 0 {
 		cfg.Master.OfferPruningPeriodSec = int(offerPruningPeriod.Seconds())
 	}
-	if *useCassandra {
-		cfg.Storage.UseCassandra = true
+	if !*useCassandra {
+		cfg.Storage.UseCassandra = false
 	}
 	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
 		if *useCassandra {
@@ -190,7 +190,7 @@ func main() {
 		}
 	}
 
-	log.WithField("config", cfg).Debug("Loaded Peloton Master configuration")
+	log.WithField("config", cfg).Info("Loaded Peloton Master configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
@@ -206,20 +206,21 @@ func main() {
 	var jobStore storage.JobStore
 	var taskStore storage.TaskStore
 	var frameworkStore storage.FrameworkInfoStore
+	var respoolStore storage.ResourcePoolStore
 
 	// This is mandatory until resmgr supports stapi, otherwise resmgr
 	// will crash
 
-	// Connect to mysql DB
-	if err := cfg.Storage.MySQL.Connect(); err != nil {
-		log.Fatalf("Could not connect to database: %+v", err)
-	}
-	// Migrate DB if necessary
-	if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
-		log.Fatalf("Could not migrate database: %+v", errs)
-	}
-
 	if !cfg.Storage.UseCassandra {
+		// Connect to mysql DB
+		if err := cfg.Storage.MySQL.Connect(); err != nil {
+			log.Fatalf("Could not connect to database: %+v", err)
+		}
+		// Migrate DB if necessary
+		if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
+			log.Fatalf("Could not migrate database: %+v", errs)
+		}
+
 		// Initialize job and task stores
 		store := mysql.NewStore(cfg.Storage.MySQL, rootScope)
 		store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
@@ -229,6 +230,14 @@ func main() {
 		jobStore = store
 		taskStore = store
 		frameworkStore = store
+		// Initialize resmgr store
+		respoolStore := mysql.NewResourcePoolStore(
+			cfg.Storage.MySQL.Conn,
+			rootScope,
+		)
+		respoolStore.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
+		respoolStore.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
+		respoolStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 	} else {
 		log.Infof("cassandra Config: %v", cfg.Storage.Cassandra)
 		if errs := cfg.Storage.Cassandra.AutoMigrate(); errs != nil {
@@ -241,6 +250,7 @@ func main() {
 		jobStore = store
 		taskStore = store
 		frameworkStore = store
+		respoolStore = store
 	}
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, frameworkStore)
@@ -330,14 +340,6 @@ func main() {
 	upgrade.InitManager(dispatcher)
 
 	// Initialize resource manager related handlers
-	// Initialize resmgr store
-	respoolStore := mysql.NewResourcePoolStore(
-		cfg.Storage.MySQL.Conn,
-		rootScope,
-	)
-	respoolStore.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
-	respoolStore.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
-	respoolStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
 
 	// Initialize resource pool service handler
 	resmgrInbounds := []transport.Inbound{

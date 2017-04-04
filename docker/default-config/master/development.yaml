@@ -10,7 +10,3 @@ mesos:
 metrics:
   prometheus:
     enable: true
-
-storage:
-  # TODO: turn this back on once T736115 is resolved
-  use_cassandra: false
