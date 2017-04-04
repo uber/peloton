@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	taskIDFmt   = "testjob-%d-abcdefgh-abcd-1234-5678-1234567890"
+	taskIDFmt   = "testjob-%d-abcdefgh-abcd-1234-5678-1234567890ab"
 	testJobName = "testjob"
 )
 

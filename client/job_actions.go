@@ -20,7 +20,7 @@ const (
 )
 
 // JobCreateAction is the action for creating a job
-func (client *Client) JobCreateAction(jobName string, cfg string) error {
+func (client *Client) JobCreateAction(cfg string) error {
 	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
@@ -33,7 +33,7 @@ func (client *Client) JobCreateAction(jobName string, cfg string) error {
 	var response job.CreateResponse
 	var request = &job.CreateRequest{
 		Id: &peloton.JobID{
-			Value: jobName,
+			Value: "",
 		},
 		Config: &jobConfig,
 	}
@@ -103,6 +103,10 @@ func printJobCreateResponse(r job.CreateResponse, debug bool) {
 			} else if r.Error.InvalidConfig != nil {
 				fmt.Fprintf(tabWriter, "Invalid job config: %s\n",
 					r.Error.InvalidConfig.Message)
+			} else if r.Error.InvalidJobId != nil {
+				fmt.Fprintf(tabWriter, "Invalid job ID: %v, message: %v\n",
+					r.Error.InvalidJobId.Id.Value,
+					r.Error.InvalidJobId.Message)
 			}
 		} else if r.JobId != nil {
 			fmt.Fprintf(tabWriter, "Job %s created\n", r.JobId.Value)

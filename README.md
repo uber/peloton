@@ -74,9 +74,9 @@ Create new job via yarpc based go client:
 
 cd $GOPATH/src/$(make project-name)
 
-bin/peloton job create test test/testjob.yaml --master http://localhost:5292
+bin/peloton job create test/testjob.yaml --master http://localhost:5292
 
-bin/peloton task list test --master http://localhost:5292
+bin/peloton task list <job ID> --master http://localhost:5292
 
 
 ## Run Peloton master
@@ -187,9 +187,9 @@ make docker docker-push
 
 cd $GOPATH/src/$(make project-name)
 
-bin/peloton job create test test/testjob.yaml
+bin/peloton job create test/testjob.yaml 
 
-bin/peloton task list test
+bin/peloton task list <job ID>
 
 
 2. Curl into Peloton endpoint:

@@ -19,7 +19,6 @@ import (
 	"peloton/api/job"
 	"peloton/api/task"
 	"peloton/private/resmgr/taskqueue"
-	"strings"
 )
 
 // InitServiceHandler initalizes the job manager
@@ -60,18 +59,21 @@ func (h *serviceHandler) Create(
 	req *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
 	jobID := req.Id
-	if strings.Index(jobID.Value, "-") > 0 {
-		h.metrics.JobCreateFail.Inc(1)
-		err := fmt.Errorf("Invalid jobId %v that contains '-'", jobID.Value)
-		log.WithError(err).Info("Invalid jobID value")
-		return &job.CreateResponse{
-			Error: &job.CreateResponse_Error{
-				InvalidConfig: &job.InvalidJobConfig{
-					Id:      req.Id,
-					Message: err.Error(),
+	if len(jobID.Value) == 0 {
+		jobID.Value = uuid.NewUUID().String()
+		log.WithField("jobID", jobID).Info("Genarating UUID ID for empty job ID")
+	} else {
+		if uuid.Parse(jobID.Value) == nil {
+			log.WithField("job_id", jobID.Value).Warn("JobID is not valid UUID")
+			return &job.CreateResponse{
+				Error: &job.CreateResponse_Error{
+					InvalidJobId: &job.InvalidJobId{
+						Id:      req.Id,
+						Message: "JobID must be valid UUID",
+					},
 				},
-			},
-		}, nil, nil
+			}, nil, nil
+		}
 	}
 	jobConfig := req.Config
 

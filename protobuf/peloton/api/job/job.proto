@@ -172,6 +172,12 @@ message JobAlreadyExists {
   string message = 2;
 }
 
+message InvalidJobId {
+  peloton.JobID id = 1;
+  string message = 2;
+}
+
+
 message InvalidJobConfig {
   peloton.JobID id = 1;
   string message = 2;
@@ -186,6 +192,7 @@ message CreateResponse {
   message Error {
     JobAlreadyExists alreadyExists = 1;
     InvalidJobConfig invalidConfig = 2;
+    InvalidJobId     invalidJobId = 3;
   }
 
   Error error = 1;

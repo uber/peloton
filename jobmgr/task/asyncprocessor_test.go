@@ -10,9 +10,12 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/util"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	pb_eventstream "peloton/private/eventstream"
 )
+
+var uuidStr = uuid.NewUUID().String()
 
 type mockTaskStore struct {
 	mutex   *sync.Mutex
@@ -40,20 +43,21 @@ func (m *mockTaskStore) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map
 func (m *mockTaskStore) UpdateTask(taskInfo *task.TaskInfo) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	taskID := *(taskInfo.Runtime.TaskId.Value)
-	_, ok := m.updates[taskID]
+	mesosTaskID := *(taskInfo.Runtime.TaskId.Value)
+	_, ok := m.updates[mesosTaskID]
 	if !ok {
-		m.updates[taskID] = []*task.TaskInfo{}
+		m.updates[mesosTaskID] = []*task.TaskInfo{}
 	}
-	m.updates[taskID] = append(m.updates[taskID], taskInfo)
+	m.updates[mesosTaskID] = append(m.updates[mesosTaskID], taskInfo)
 	return nil
 }
 func (m *mockTaskStore) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 	jobID, instanceID, _ := util.ParseTaskID(taskID)
+	mesosTaskID := taskID + "-" + uuidStr
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			TaskId: &mesos.TaskID{
-				Value: &taskID,
+				Value: &mesosTaskID,
 			},
 		},
 		InstanceId: uint32(instanceID),
@@ -74,13 +78,12 @@ func TestBucketEventProcessor(t *testing.T) {
 
 	jobID := "Test"
 	n := 243
-
 	for i := 0; i < n; i++ {
-		taskID := fmt.Sprintf("%s-%d", jobID, i)
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
 		state := mesos.TaskState_TASK_STARTING
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
-				Value: &taskID,
+				Value: &mesosTaskID,
 			},
 			State: &state,
 		}
@@ -91,11 +94,11 @@ func TestBucketEventProcessor(t *testing.T) {
 		})
 	}
 	for i := 0; i < n; i++ {
-		taskID := fmt.Sprintf("%s-%d", jobID, i)
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
 		state := mesos.TaskState_TASK_RUNNING
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
-				Value: &taskID,
+				Value: &mesosTaskID,
 			},
 			State: &state,
 		}
@@ -106,11 +109,11 @@ func TestBucketEventProcessor(t *testing.T) {
 		})
 	}
 	for i := 0; i < n; i++ {
-		taskID := fmt.Sprintf("%s-%d", jobID, i)
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
 		state := mesos.TaskState_TASK_FINISHED
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
-				Value: &taskID,
+				Value: &mesosTaskID,
 			},
 			State: &state,
 		}
@@ -126,8 +129,8 @@ func TestBucketEventProcessor(t *testing.T) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	for i := 0; i < n; i++ {
-		taskID := fmt.Sprintf("%s-%d", jobID, i)
-		taskUpdates := store.updates[taskID]
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
+		taskUpdates := store.updates[mesosTaskID]
 		assert.Equal(t, taskUpdates[0].Runtime.State.String(), util.MesosStateToPelotonState(mesos.TaskState_TASK_STARTING).String())
 		assert.Equal(t, taskUpdates[1].Runtime.State.String(), util.MesosStateToPelotonState(mesos.TaskState_TASK_RUNNING).String())
 		assert.Equal(t, taskUpdates[2].Runtime.State.String(), util.MesosStateToPelotonState(mesos.TaskState_TASK_FINISHED).String())

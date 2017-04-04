@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/pborman/uuid"
 	"reflect"
 )
 
@@ -19,6 +20,8 @@ const (
 	// This is because Mesos internally uses a fixed point precision. See MESOS-4687 for details.
 	ResourceEspilon float64 = 0.0009
 )
+
+var uuidLength = len(uuid.NewUUID().String())
 
 // Min returns the minimum value of x, y
 func Min(x, y uint32) uint32 {
@@ -266,19 +269,19 @@ func ParseTaskID(taskID string) (string, int, error) {
 
 // ParseTaskIDFromMesosTaskID parses the taskID from mesosTaskID
 func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
-	// mesos task id would be "(jobID)-(instanceID)-(GUID)" form, while the GUID part is optional
-	parts := strings.Split(mesosTaskID, "-")
-
-	if len(parts) < 2 {
-		return "", fmt.Errorf("Invalid peloton mesos task ID %v", mesosTaskID)
+	// mesos task id would be "(jobID)-(instanceID)-(GUID)" form
+	if len(mesosTaskID) < uuidLength+1 {
+		return "", fmt.Errorf("Invalid mesos task ID %v, not ending with uuid", mesosTaskID)
 	}
-
-	jobID := parts[0]
-	iID, err := strconv.Atoi(parts[1])
+	pelotonTaskID := mesosTaskID[:len(mesosTaskID)-(uuidLength+1)]
+	_, _, err := ParseTaskID(pelotonTaskID)
 	if err != nil {
-		return "", fmt.Errorf("Invalid peloton mesos task ID %v, err %v", mesosTaskID, err)
+		log.WithError(err).
+			WithField("mesos_task_id", mesosTaskID).
+			Error("Invalid mesos task ID, cannot parse jobID / instance")
+		return "", err
 	}
-	return fmt.Sprintf("%s-%d", jobID, iID), nil
+	return pelotonTaskID, nil
 }
 
 // UnmarshalToType unmarshal a string to a typed interface{}

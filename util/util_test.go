@@ -8,6 +8,7 @@ import (
 
 	mesos_v1 "mesos/v1"
 
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -56,7 +57,7 @@ func TestCanTakeTask(t *testing.T) {
 			FdLimit:     100,
 		},
 	}
-	taskID := fmt.Sprintf("%s-%d-0", jobID, 20)
+	taskID := fmt.Sprintf("%s-%d-%s", jobID, 20, uuid.NewUUID().String())
 	var taskInfo = task.TaskInfo{
 		Config:     &taskConfig,
 		InstanceId: 20,
@@ -104,15 +105,20 @@ func TestParseTaskID(t *testing.T) {
 
 func TestParseTaskIDFromMesosTaskID(t *testing.T) {
 	taskID, err := ParseTaskIDFromMesosTaskID("Test-1234-11da214")
-	assert.Equal(t, taskID, "Test-1234")
-	assert.Nil(t, err)
-
-	taskID, err = ParseTaskIDFromMesosTaskID("a2342-Test_3-52344-agdjhg3u4")
+	assert.Equal(t, taskID, "")
 	assert.NotNil(t, err)
 
-	taskID, err = ParseTaskIDFromMesosTaskID("Test-0")
-	assert.Equal(t, taskID, "Test-0")
+	taskID, err = ParseTaskIDFromMesosTaskID("a2342-Test_3-" + uuid.NewUUID().String())
+	assert.NotNil(t, err)
+	assert.Equal(t, taskID, "")
+
+	taskID, err = ParseTaskIDFromMesosTaskID("a2342-Test-3-" + uuid.NewUUID().String())
 	assert.Nil(t, err)
+	assert.Equal(t, taskID, "a2342-Test-3")
+
+	taskID, err = ParseTaskIDFromMesosTaskID("Test-0")
+	assert.Equal(t, taskID, "")
+	assert.NotNil(t, err)
 
 	taskID, err = ParseTaskIDFromMesosTaskID("Test_1234-223_wde2")
 	assert.NotNil(t, err)

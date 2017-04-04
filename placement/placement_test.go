@@ -26,7 +26,7 @@ import (
 
 // TODO: load from test configs
 const (
-	taskIDFmt   = "testjob-%d-abcdefgh-abcd-1234-5678-1234567890"
+	taskIDFmt   = "testjob-%d-abcdef12-abcd-1234-5678-1234567890ab"
 	testJobName = "testjob"
 	// a fake maxPlacementDuration to ensure that placementLoop doesn't complete immediately
 	maxPlacementDuration = time.Duration(10) * time.Second

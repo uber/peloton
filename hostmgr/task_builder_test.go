@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	taskIDFmt  = "testjob-%d-abcdefgh-abcd-1234-5678-1234567890"
+	taskIDFmt  = "testjob-%d-abcdef12-abcd-1234-5678-1234567890ab"
 	defaultCmd = "/bin/sh"
 )
 

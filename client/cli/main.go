@@ -33,7 +33,6 @@ var (
 	job = app.Command("job", "manage jobs")
 
 	jobCreate       = job.Command("create", "create a job")
-	jobCreateName   = jobCreate.Arg("job", "job identifier").Required().String()
 	jobCreateConfig = jobCreate.Arg("config", "YAML job configuration").Required().ExistingFile()
 
 	jobDelete     = job.Command("cancel", "cancel a job").Alias("delete")
@@ -176,7 +175,7 @@ func main() {
 
 	switch cmd {
 	case jobCreate.FullCommand():
-		err = client.JobCreateAction(*jobCreateName, *jobCreateConfig)
+		err = client.JobCreateAction(*jobCreateConfig)
 	case jobDelete.FullCommand():
 		err = client.JobDeleteAction(*jobDeleteName)
 	case jobGet.FullCommand():

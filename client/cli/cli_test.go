@@ -10,11 +10,15 @@ import (
 )
 
 func TestParseJobCreate(t *testing.T) {
-	job, cfg := "foojobid", "../../test/testjob.yaml"
-	cmd, err := app.Parse([]string{"job", "create", job, cfg})
+	cfg := "../../test/testjob.yaml"
+	cmd, err := app.Parse([]string{"job", "create", cfg})
 	assert.Nil(t, err)
 	assert.Equal(t, cmd, jobCreate.FullCommand())
-	assert.Equal(t, *jobCreateName, job)
+	assert.Equal(t, *jobCreateConfig, cfg)
+
+	cmd, err = app.Parse([]string{"job", "create", cfg})
+	assert.Nil(t, err)
+	assert.Equal(t, cmd, jobCreate.FullCommand())
 	assert.Equal(t, *jobCreateConfig, cfg)
 }
 
