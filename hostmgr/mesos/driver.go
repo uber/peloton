@@ -13,6 +13,8 @@ import (
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 
+	"net/url"
+
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
@@ -21,8 +23,10 @@ import (
 const (
 	// ServiceName for mesos scheduler
 	ServiceName = "Scheduler"
-	// ServiceEndpoint of scheduler
-	ServiceEndpoint = "/api/v1/scheduler"
+
+	// Schema and path for Mesos service URL.
+	serviceSchema = "http"
+	servicePath   = "/api/v1/scheduler"
 )
 
 // SchedulerDriver extends the Mesos HTTP Driver API
@@ -76,15 +80,20 @@ func (d *schedulerDriver) GetFrameworkID() *mesos.FrameworkID {
 	}
 	frameworkIDVal, err := d.store.GetFrameworkID(d.cfg.Name)
 	if err != nil {
-		log.Errorf("failed to GetframeworkID from db for framework %v, err=%v",
-			d.cfg.Name, err)
+		log.WithError(err).
+			WithField("framework_name", d.cfg.Name).
+			Error("failed to GetframeworkID from db for framework")
 		return nil
 	}
 	if frameworkIDVal == "" {
-		log.Errorf("GetframeworkID from db for framework %v is empty", d.cfg.Name)
+		log.WithField("framework_name", d.cfg.Name).
+			Error("GetframeworkID from db is empty")
 		return nil
 	}
-	log.Debugf("Load frameworkID %v for framework %v", frameworkIDVal, d.cfg.Name)
+	log.WithFields(log.Fields{
+		"framework_id":   frameworkIDVal,
+		"framework_name": d.cfg.Name,
+	}).Debug("Loaded frameworkID")
 	d.frameworkID = &mesos.FrameworkID{
 		Value: &frameworkIDVal,
 	}
@@ -98,10 +107,9 @@ func (d *schedulerDriver) GetMesosStreamID() string {
 	// updated in case that the leader reconnects to Mesos, or the leader changes
 	id, err := d.store.GetMesosStreamID(d.cfg.Name)
 	if err != nil {
-		log.Errorf(
-			"failed to GetmesosStreamID from db for framework %v, err=%v",
-			d.cfg.Name,
-			err)
+		log.WithError(err).
+			WithField("framework_name", d.cfg.Name).
+			Error("Failed to GetmesosStreamID from db")
 		return ""
 	}
 	log.WithFields(log.Fields{
@@ -116,8 +124,11 @@ func (d *schedulerDriver) Name() string {
 	return ServiceName
 }
 
-func (d *schedulerDriver) Endpoint() string {
-	return ServiceEndpoint
+func (d *schedulerDriver) Endpoint() url.URL {
+	return url.URL{
+		Scheme: serviceSchema,
+		Path:   servicePath,
+	}
 }
 
 func (d *schedulerDriver) EventDataType() reflect.Type {
@@ -196,6 +207,10 @@ func (d *schedulerDriver) prepareSubscribe() (*sched.Call, error) {
 func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (
 	*http.Request, error) {
 
+	if len(mesosMasterHostPort) == 0 {
+		return nil, errors.New("No active leader detected")
+	}
+
 	subscribe, err := d.prepareSubscribe()
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed prepareSubscribe")
@@ -206,9 +221,10 @@ func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (
 		return nil, errors.Wrap(err, "Failed to marshal subscribe call")
 	}
 
-	url := fmt.Sprintf("http://%s%s", mesosMasterHostPort, d.Endpoint())
+	url := d.Endpoint()
+	url.Host = mesosMasterHostPort
 	var req *http.Request
-	req, err = http.NewRequest("POST", url, strings.NewReader(body))
+	req, err = http.NewRequest("POST", url.String(), strings.NewReader(body))
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed HTTP request")
 	}
@@ -220,8 +236,11 @@ func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (
 func (d *schedulerDriver) PostSubscribe(mesosStreamID string) {
 	err := d.store.SetMesosStreamID(d.cfg.Name, mesosStreamID)
 	if err != nil {
-		log.Errorf("Failed to save Mesos stream ID %v %v, err=%v",
-			d.cfg.Name, mesosStreamID, err)
+		log.WithError(err).
+			WithFields(log.Fields{
+				"framework_name": d.cfg.Name,
+				"stream_id":      mesosStreamID,
+			}).Error("Failed to save Mesos stream ID")
 	}
 }
 

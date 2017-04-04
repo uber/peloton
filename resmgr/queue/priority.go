@@ -2,9 +2,10 @@ package queue
 
 import (
 	"errors"
-	log "github.com/Sirupsen/logrus"
 	"peloton/private/resmgr"
 	"sync"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 // PriorityQueue is FIFO queue which remove the highest priority task item entered first in the queue

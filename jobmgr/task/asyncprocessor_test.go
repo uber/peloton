@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
+	pb_eventstream "peloton/private/eventstream"
+
 	"code.uber.internal/infra/peloton/util"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
-	pb_eventstream "peloton/private/eventstream"
 )
 
 var uuidStr = uuid.NewUUID().String()

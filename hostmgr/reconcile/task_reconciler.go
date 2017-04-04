@@ -113,7 +113,16 @@ func (r *taskReconciler) Start() {
 	// TODO: add stats for # of reconciliation updates.
 	go func() {
 		defer r.Running.Store(false)
-		time.Sleep(r.initialReconcileDelay)
+
+		initialTimer := time.NewTimer(r.initialReconcileDelay)
+		select {
+		case <-r.stopChan:
+			log.Info("Periodic reconcile stopped before first run.")
+			return
+		case <-initialTimer.C:
+			log.Debug("Initial delay passed")
+		}
+
 		r.reconcile()
 
 		ticker := time.NewTicker(r.reconcileInterval)

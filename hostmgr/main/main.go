@@ -150,17 +150,13 @@ func main() {
 		),
 	}
 
-	// TODO(zhitao): Confirm this code is working when Mesos leader changes.
 	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize mesos master detector: %v", err)
 	}
 
-	mesosMasterLocation, err := mesosMasterDetector.GetMasterLocation()
-	if err != nil {
-		log.Fatalf("Failed to get mesos leading master location, err=%v", err)
-	}
-	log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
+	// NOTE: we start the server immediately even if no leader has been
+	// detected yet.
 
 	rootScope.Counter("boot").Inc(1)
 
@@ -174,8 +170,7 @@ func main() {
 	inbounds = append(inbounds, mInbound)
 
 	// TODO: update mesos url when leading mesos master changes
-	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
-	mOutbound := mhttp.NewOutbound(mesosURL)
+	mOutbound := mhttp.NewOutbound(mesosMasterDetector, driver.Endpoint())
 
 	// all leader discovery metrics share a scope (and will be tagged
 	// with role={role})
@@ -218,7 +213,9 @@ func main() {
 
 	// Init the managers driven by the mesos callbacks.
 	// They are driven by the leader who will subscribe to
-	// mesos callbacks
+	// Mesos callbacks
+	// NOTE: This blocks us to move all Mesos related logic into
+	// hostmgr.Server because mesosClient uses dispatcher...
 	mesosClient := mpb.New(
 		dispatcher.ClientConfig(common.MesosMaster),
 		cfg.Mesos.Encoding,
@@ -269,6 +266,7 @@ func main() {
 	)
 
 	server := hostmgr.NewServer(
+		rootScope,
 		cfg.HostManager.Port,
 		mesosMasterDetector,
 		mInbound,

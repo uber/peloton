@@ -2,6 +2,7 @@ package mhttp
 
 import (
 	"net/http"
+	"net/url"
 	"reflect"
 )
 
@@ -12,7 +13,7 @@ type MesosDriver interface {
 	Name() string
 
 	// Returns the Mesos endpoint to be connected to
-	Endpoint() string
+	Endpoint() url.URL
 
 	// Returns the Type of Mesos event message such as
 	// mesos.v1.scheduler.Event or mesos.v1.executor.Event

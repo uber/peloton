@@ -16,10 +16,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	mesos "mesos/v1"
+
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
-	mesos "mesos/v1"
 
 	"code.uber.internal/infra/peloton/storage/cassandra/impl"
 	log "github.com/Sirupsen/logrus"

@@ -3,16 +3,18 @@ package task
 import (
 	"sync"
 
+	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+
+	mesos "mesos/v1"
+	pb_task "peloton/api/task"
+	pb_eventstream "peloton/private/eventstream"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
-	log "github.com/Sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-	mesos "mesos/v1"
-	pb_task "peloton/api/task"
-	pb_eventstream "peloton/private/eventstream"
 )
 
 // StatusUpdate is the interface for task status updates

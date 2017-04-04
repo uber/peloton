@@ -1,20 +1,21 @@
 package task
 
 import (
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/eventstream"
 	"context"
-	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
 	mesos "mesos/v1"
 	pb_eventstream "peloton/private/eventstream"
 	"peloton/private/resmgrsvc"
 	"sync"
 	"testing"
 	"time"
+
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/eventstream"
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/transport"
 )
 
 type MockJSONClient struct {

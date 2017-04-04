@@ -7,17 +7,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/eventstream"
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
+
 	sched "mesos/v1/scheduler"
 	pb_eventstream "peloton/private/eventstream"
 	"peloton/private/resmgrsvc"
+
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/eventstream"
+	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
 
 var errorWaitInterval = 10 * time.Second

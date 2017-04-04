@@ -7,13 +7,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	pb_eventstream "peloton/private/eventstream"
+
 	"code.uber.internal/infra/peloton/common/metrics"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
-	pb_eventstream "peloton/private/eventstream"
 )
 
 var (

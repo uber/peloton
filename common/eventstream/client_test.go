@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
 	mesos "mesos/v1"
 	pb_eventstream "peloton/private/eventstream"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/transport"
 )
 
 var addEventSleepInterval = 2 * time.Millisecond

@@ -1,14 +1,15 @@
 package cassandra
 
 import (
-	"code.uber.internal/infra/peloton/storage/cassandra/impl"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
-	"github.com/gemnasium/migrate/migrate"
 	"os"
 	"path"
 	"strings"
+
+	"code.uber.internal/infra/peloton/storage/cassandra/impl"
+	log "github.com/Sirupsen/logrus"
+	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
+	"github.com/gemnasium/migrate/migrate"
 )
 
 func downSync(cfg *Config) []error {

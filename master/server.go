@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc/transport"
 )
 
@@ -25,6 +26,7 @@ type Server struct {
 
 // NewServer creates a master Server instance.
 func NewServer(
+	parentScope tally.Scope,
 	port int,
 	mesosDetector mesos.MasterDetector,
 	mesosInbound mhttp.Inbound,
@@ -32,6 +34,7 @@ func NewServer(
 
 	rm := resmgr.NewServer(port)
 	hm := hostmgr.NewServer(
+		parentScope,
 		port,
 		mesosDetector,
 		mesosInbound,

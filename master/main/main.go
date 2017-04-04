@@ -204,26 +204,16 @@ func main() {
 		),
 	}
 
-	mesosMasterLocation := cfg.Mesos.HostPort
 	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize mesos master detector: %v", err)
 	}
 
-	mesosMasterLocation, err = mesosMasterDetector.GetMasterLocation()
-	if err != nil {
-		log.Fatalf("Failed to get mesos leading master location, err=%v", err)
-	}
-	log.Infof("Detected Mesos leading master location: %s", mesosMasterLocation)
-
 	// Each master needs a Mesos inbound
 	var mInbound = mhttp.NewInbound(rootScope, driver)
 	inbounds = append(inbounds, mInbound)
 
-	// TODO: update mesos url when leading mesos master changes
-	mesosURL := fmt.Sprintf("http://%s%s", mesosMasterLocation, driver.Endpoint())
-
-	mOutbounds := mhttp.NewOutbound(mesosURL)
+	mOutbounds := mhttp.NewOutbound(mesosMasterDetector, driver.Endpoint())
 	peerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
 		rootScope,
@@ -365,6 +355,7 @@ func main() {
 	)
 
 	server := master.NewServer(
+		rootScope,
 		cfg.Master.Port,
 		mesosMasterDetector,
 		mInbound,

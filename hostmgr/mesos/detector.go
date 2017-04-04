@@ -1,7 +1,6 @@
 /*
 Package mesos is copied from mesos-uns-bridge/mesos/detector.go with modifications :
 1) refer to forked mesos-go dependencies
-2) added GetMasterLocation() which retries on empty MasterLocation
 */
 package mesos
 
@@ -9,29 +8,21 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	mesos "mesos/v1"
 
-	log "github.com/Sirupsen/logrus"
-
 	"code.uber.internal/infra/peloton/mesos-go/detector"
 	_ "code.uber.internal/infra/peloton/mesos-go/detector/zoo" // To register zookeeper based plugin.
+	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 )
 
 const (
-	zkPathPrefix                  = "zk://"
-	getMesosMasterHostPortTimeout = 5 * time.Minute
-	retrySleepTime                = 5 * time.Second
+	zkPathPrefix = "zk://"
 )
 
 // MasterDetector is the interface for finding where is an active Mesos master.
-// TODO : refactor to remove redundant logic
 type MasterDetector interface {
-	// MasterLocation returns ip and port for a Mesos master cached by MasterDetector
-	MasterLocation() (string, int)
-	// GetMasterLocation returns non empty ip and port for a Mesos master.
-	GetMasterLocation() (string, error)
+	mhttp.LeaderDetector
 }
 
 type zkDetector struct {
@@ -44,28 +35,15 @@ type zkDetector struct {
 	m detector.Master
 }
 
-// masterLocation returns ip and port for a Mesos master even if empty.
-func (d *zkDetector) MasterLocation() (string, int) {
+// HostPort implements mhttp.LeaderDetector and returns cached host port
+// if has one.
+func (d *zkDetector) HostPort() string {
 	d.RLock()
 	defer d.RUnlock()
-	return d.masterIP, d.masterPort
-}
-
-// GetMesosMasterHostPort returns mesos master host port from zk
-func (d *zkDetector) GetMasterLocation() (string, error) {
-	deadline := time.Now().Add(getMesosMasterHostPortTimeout)
-	for time.Now().Before(deadline) {
-		ip, port := d.MasterLocation()
-		if ip != "" && port != 0 {
-			mesosHostPort := fmt.Sprintf("%v:%v", ip, port)
-			return mesosHostPort, nil
-		}
-		log.Warn("No leading mesos master detected yet, sleep and retry")
-		time.Sleep(retrySleepTime)
+	if d.masterIP == "" || d.masterPort == 0 {
+		return ""
 	}
-	return "", fmt.Errorf(
-		"No leading master detected after %v",
-		getMesosMasterHostPortTimeout)
+	return fmt.Sprintf("%v:%v", d.masterIP, d.masterPort)
 }
 
 // OnMasterChanged implements `detector.MasterChanged.OnMasterChanged`.

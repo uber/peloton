@@ -18,10 +18,15 @@ type Metrics struct {
 	KillTasksFail tally.Counter
 
 	ReleaseHostOffers tally.Counter
+
+	Elected         tally.Gauge
+	MesosConnected  tally.Gauge
+	HandlersRunning tally.Gauge
 }
 
 // NewMetrics returns a new instance of hostmgr.Metrics.
 func NewMetrics(scope tally.Scope) *Metrics {
+	serverScope := scope.SubScope("server")
 	return &Metrics{
 		LaunchTasks:              scope.Counter("launch_tasks"),
 		LaunchTasksFail:          scope.Counter("launch_tasks_fail"),
@@ -35,5 +40,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		KillTasksFail: scope.Counter("kill_tasks_fail"),
 
 		ReleaseHostOffers: scope.Counter("release_host_offers"),
+
+		Elected:         serverScope.Gauge("elected"),
+		MesosConnected:  serverScope.Gauge("mesos_connected"),
+		HandlersRunning: serverScope.Gauge("handlers_running"),
 	}
 }

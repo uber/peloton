@@ -10,9 +10,10 @@ import (
 	"strconv"
 	"strings"
 
+	"reflect"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
-	"reflect"
 )
 
 const (

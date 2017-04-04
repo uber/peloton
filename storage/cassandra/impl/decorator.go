@@ -3,8 +3,9 @@ package impl
 import (
 	"context"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
 	"sync/atomic"
+
+	log "github.com/Sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	"github.com/opentracing/opentracing-go"

@@ -23,6 +23,7 @@ PBGENS = $(PBFILES:%.proto=%.pb.go)
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
 GOLINT = $(go get github.com/golang/lint/golint)
+GOIMPORTS = $(go get golang.org/x/tools/cmd/goimports)
 GOMOCK = $(go get github.com/golang/mock/gomock github.com/golang/mock/mockgen)
 PHAB_COMMENT = .phabricator-comment
 PACKAGE_VERSION=`git describe --always --tags`
@@ -30,6 +31,12 @@ PACKAGE_VERSION=`git describe --always --tags`
 GO_FLAGS = -gcflags '-N -l' -ldflags "-X main.version=$(PACKAGE_VERSION)"
 # TODO: figure out why -pkgdir does not work
 GOPATH := ${GOPATH}:${GOPATH}/src/${PROJECT_ROOT}/pbgen
+
+ifeq ($(shell uname),Linux)
+  SED := sed -i -e
+else
+  SED := sed -i ''
+endif
 
 .PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
@@ -74,30 +81,49 @@ clean:
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 	@gofmt -s -w $(FMT_SRC)
 
-# Local files containing interfaces to be mocked.
-LOCAL_MOCK_SRCS := \
-  storage/interfaces.go \
-  yarpc/encoding/mpb/outbound.go
+comma:= ,
+semicolon:= ;
 
-LOCAL_MOCKS = $(join $(addsuffix mocks/,$(dir $(LOCAL_MOCK_SRCS))), $(notdir $(LOCAL_MOCK_SRCS)))
+# Helper macro to call mockgen in reflect mode, taking arguments:
+# - output directory;
+# - package name;
+# - semicolon-separated interfaces.
+define reflect_mockgen
+  mkdir -p $(1) && rm -rf $(1)/*
+  mockgen -destination $(1)/mocks.go -self_package mocks -package mocks $(2) $(subst $(semicolon),$(comma),$(3))
+  # Fix broken vendor import because of https://github.com/golang/mock/issues/30
+  $(SED) s,$(PROJECT_ROOT)/vendor/,, $(1)/mocks.go && goimports -w $(1)/mocks.go
+	chmod -R 777 $(1)
+endef
 
-# Vendored code which we want to generate out own mocks.
-VENDOR_MOCK_SRCS := \
-  vendor/go.uber.org/yarpc/encoding/json/outbound.go
+# Helper macro to call mockgen in source mode, taking arguments:
+# - destination file.
+# - source file.
+define source_mockgen
+  mkdir -p $(dir $(1)) && rm -rf $(dir $(1))*
+  mockgen -source $(2) -destination $(1) -self_package mocks -package mocks
+  # Fix broken vendor import because of https://github.com/golang/mock/issues/30
+  $(SED) s,$(PROJECT_ROOT)/vendor/,, $(1) && goimports -w $(1)
+	chmod -R 777 $(dir $(1))
+endef
 
-VENDOR_MOCKS = $(join $(addsuffix mocks/,$(dir $(VENDOR_MOCK_SRCS:vendor/%=vendor_mocks/%))), $(notdir $(VENDOR_MOCK_SRCS)))
 
-$(LOCAL_MOCKS): $(LOCAL_MOCK_SRCS)
-	@mkdir -p $(@D)
-	mockgen -source $(subst /mocks,,$@) -destination $@ -self_package mocks -package mocks
-	@chmod -R 777 $(@D)
+define local_mockgen
+  $(call reflect_mockgen,$(1)/mocks,$(PROJECT_ROOT)/$(1),$(2))
+endef
 
-$(VENDOR_MOCKS): $(VENDOR_MOCK_SRCS)
-	@mkdir -p $(@D)
-	mockgen -source $(subst /mocks,,$(subst vendor_mocks/,vendor/,$@)) -destination $@ -self_package mocks -package mocks
-	@chmod -R 777 vendor_mocks
+define vendor_mockgen
+  $(call source_mockgen,vendor_mocks/$(dir $(1))mocks/$(notdir $(1)),vendor/$(1))
+endef
 
-mockgens: $(GOMOCK) $(LOCAL_MOCKS) $(VENDOR_MOCKS)
+mockgens: $(PBGENS) $(GOMOCK)
+	$(call local_mockgen,hostmgr/mesos,MasterDetector)
+	$(call local_mockgen,hostmgr/offer,EventHandler)
+	$(call local_mockgen,hostmgr/reconcile,TaskReconciler)
+	$(call local_mockgen,storage,JobStore;TaskStore;FrameworkInfoStore;ResourcePoolStore)
+	$(call local_mockgen,yarpc/encoding/mpb,Client)
+	$(call local_mockgen,yarpc/transport/mhttp,Inbound)
+	$(call vendor_mockgen,go.uber.org/yarpc/encoding/json/outbound.go)
 
 # launch the test containers to run integration tests and so-on
 test-containers:
@@ -136,6 +162,7 @@ devtools:
 	go get github.com/golang/lint/golint
 	go get github.com/golang/mock/gomock
 	go get github.com/golang/mock/mockgen
+	go get golang.org/x/tools/cmd/goimports
 
 version:
 	@echo $(PACKAGE_VERSION)

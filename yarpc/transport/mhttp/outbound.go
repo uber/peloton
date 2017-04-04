@@ -7,13 +7,14 @@
 package mhttp
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
-	"context"
 	"github.com/uber-go/atomic"
 	"go.uber.org/yarpc/transport"
 	"golang.org/x/net/context/ctxhttp"
@@ -21,9 +22,17 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/internal/errors"
 )
 
+// ErrNoLeader represents no leader is available for outbound.
+type ErrNoLeader string
+
+func (e ErrNoLeader) Error() string {
+	return fmt.Sprintf("%s has no active leader", string(e))
+}
+
 var (
 	errOutboundAlreadyStarted = errors.ErrOutboundAlreadyStarted("http.Outbound")
 	errOutboundNotStarted     = errors.ErrOutboundNotStarted("http.Outbound")
+	errNoLeader               = errors.ErrOutboundNotStarted("http.Outbound")
 )
 
 type outboundConfig struct {
@@ -45,9 +54,19 @@ func KeepAlive(t time.Duration) OutboundOption {
 	}
 }
 
+// LeaderDetector provides current leader's hostport.
+type LeaderDetector interface {
+	// Current leader's hostport, or empty string if no leader.
+	HostPort() string
+}
+
 // NewOutbound builds a new HTTP outbound that sends requests to the given
 // URL.
-func NewOutbound(url string, opts ...OutboundOption) transport.Outbounds {
+func NewOutbound(
+	detector LeaderDetector,
+	urlTemplate url.URL,
+	opts ...OutboundOption) transport.Outbounds {
+
 	cfg := defaultConfig
 	for _, o := range opts {
 		o(&cfg)
@@ -60,15 +79,19 @@ func NewOutbound(url string, opts ...OutboundOption) transport.Outbounds {
 	// TODO: Use option pattern with varargs instead
 	return transport.Outbounds{
 		Unary: outbound{
-			Client: client, URL: url, started: atomic.NewBool(false),
+			Client:      client,
+			detector:    detector,
+			started:     atomic.NewBool(false),
+			urlTemplate: urlTemplate,
 		},
 	}
 }
 
 type outbound struct {
-	started *atomic.Bool
-	Client  *http.Client
-	URL     string
+	Client      *http.Client
+	detector    LeaderDetector
+	started     *atomic.Bool
+	urlTemplate url.URL
 }
 
 func (o outbound) Start(d transport.Deps) error {
@@ -85,7 +108,10 @@ func (o outbound) Stop() error {
 	return nil
 }
 
-func (o outbound) Call(ctx context.Context, req *transport.Request) (*transport.Response, error) {
+func (o outbound) Call(
+	ctx context.Context,
+	req *transport.Request) (*transport.Response, error) {
+
 	if !o.started.Load() {
 		// panic because there's no recovery from this
 		panic(errOutboundNotStarted)
@@ -95,7 +121,15 @@ func (o outbound) Call(ctx context.Context, req *transport.Request) (*transport.
 	deadline, _ := ctx.Deadline()
 	ttl := deadline.Sub(start)
 
-	request, err := http.NewRequest("POST", o.URL, req.Body)
+	hostPort := o.detector.HostPort()
+	if len(hostPort) == 0 {
+		return nil, errNoLeader
+	}
+
+	actualURL := o.urlTemplate
+	actualURL.Host = hostPort
+
+	request, err := http.NewRequest("POST", actualURL.String(), req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +151,10 @@ func (o outbound) Call(ctx context.Context, req *transport.Request) (*transport.
 	response, err := ctxhttp.Do(ctx, o.Client, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			return nil, errors.ClientTimeoutError(req.Service, req.Procedure, deadline.Sub(start))
+			return nil, errors.ClientTimeoutError(
+				req.Service,
+				req.Procedure,
+				deadline.Sub(start))
 		}
 
 		return nil, err
@@ -141,7 +178,10 @@ func (o outbound) Call(ctx context.Context, req *transport.Request) (*transport.
 	}
 
 	// Trim the trailing newline from HTTP error messages
-	message := strings.TrimSuffix(string(contents), "\n")
+	message := fmt.Sprintf(
+		"{\"status_code\": %d, \"contents\": \"%s\"}",
+		response.StatusCode,
+		strings.TrimSuffix(string(contents), "\n"))
 
 	if response.StatusCode >= 400 && response.StatusCode < 500 {
 		return nil, errors.RemoteBadRequestError(message)

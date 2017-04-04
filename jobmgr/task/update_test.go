@@ -1,9 +1,10 @@
 package task
 
 import (
-	"github.com/stretchr/testify/assert"
 	pb_task "peloton/api/task"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIsErrorState(t *testing.T) {

@@ -3,11 +3,13 @@ package task
 import (
 	"context"
 	"fmt"
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
 	mesos "mesos/v1"
@@ -17,12 +19,9 @@ import (
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/util"
-
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
-	"github.com/uber-go/tally"
-	"time"
 )
 
 const (

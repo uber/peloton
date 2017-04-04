@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"code.uber.internal/infra/peloton/util"
 	"peloton/api/job"
 	"peloton/api/respool"
 	"peloton/api/task"
+
+	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/Sirupsen/logrus"
 )

@@ -2,11 +2,12 @@ package queue
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
 	"peloton/api/peloton"
 	"peloton/private/resmgr"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
 type MultiLevelListTestSuite struct {
