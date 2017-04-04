@@ -2,6 +2,7 @@ package respool
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -28,11 +29,13 @@ type ServiceHandler interface {
 
 // serviceHandler implements peloton.api.respool.ResourcePoolService
 type serviceHandler struct {
-	store        storage.ResourcePoolStore
-	metrics      *Metrics
-	dispatcher   yarpc.Dispatcher
-	runningState int32
-	resPoolTree  Tree
+	sync.Mutex
+	store                  storage.ResourcePoolStore
+	metrics                *Metrics
+	dispatcher             yarpc.Dispatcher
+	runningState           int32
+	resPoolTree            Tree
+	resPoolConfigValidator Validator
 }
 
 // Singleton service handler for ResourcePoolService
@@ -45,7 +48,10 @@ func InitServiceHandler(
 	store storage.ResourcePoolStore) {
 
 	if handler != nil {
-		log.Warning("Resource pool service handler has already been initialized")
+		log.Warning(
+			`Resource pool service handler has already
+			been initialized`,
+		)
 		return
 	}
 
@@ -55,12 +61,24 @@ func InitServiceHandler(
 	// Initializing Resource Pool Tree
 	InitTree(scope, store)
 
+	// Initialize Resource Pool Config Validator
+	resPoolConfigValidator, err := NewResourcePoolConfigValidator(GetTree())
+
+	if err != nil {
+		log.Fatalf(
+			`Error initializing resource pool
+			config validator: %v`,
+			err,
+		)
+	}
+
 	handler = &serviceHandler{
-		store:        store,
-		metrics:      metrics,
-		dispatcher:   d,
-		runningState: runningStateNotStarted,
-		resPoolTree:  GetTree(),
+		store:                  store,
+		metrics:                metrics,
+		dispatcher:             d,
+		runningState:           runningStateNotStarted,
+		resPoolTree:            GetTree(),
+		resPoolConfigValidator: resPoolConfigValidator,
 	}
 	log.Info("ResourcePoolService handler created")
 }
@@ -70,7 +88,9 @@ func InitServiceHandler(
 // InitEventHandler function.
 func GetServiceHandler() ServiceHandler {
 	if handler == nil {
-		log.Fatal("ResourcePoolService handler is not initialized")
+		log.Fatal(
+			"ResourcePoolService handler is not initialized",
+		)
 	}
 	return handler
 }
@@ -79,20 +99,67 @@ func GetServiceHandler() ServiceHandler {
 func (h *serviceHandler) CreateResourcePool(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	req *respool.CreateRequest) (*respool.CreateResponse, yarpc.ResMeta, error) {
+	req *respool.CreateRequest) (
+	*respool.CreateResponse,
+	yarpc.ResMeta,
+	error) {
+
+	h.Lock()
+	defer h.Unlock()
 
 	h.metrics.APICreateResourcePool.Inc(1)
-	log.WithField("request", req).Info("CreateResourcePool called")
+	log.WithField(
+		"request",
+		req,
+	).Info("CreateResourcePool called")
 
 	resPoolID := req.Id
 	resPoolConfig := req.Config
-	err := h.store.CreateResourcePool(resPoolID, resPoolConfig, "peloton")
 
-	// TODO  differentiate between n/w errors vs other data errors
-	if err != nil {
+	resourcePoolConfigData := ResourcePoolConfigData{
+		ID:                                resPoolID,
+		ResourcePoolConfig:                resPoolConfig,
+		SkipRootChildResourceConfigChecks: true,
+	}
+
+	// perform validation on resource pool config
+	if err := h.resPoolConfigValidator.Validate(
+		resourcePoolConfigData,
+	); err != nil {
 		h.metrics.CreateResourcePoolFail.Inc(1)
+		log.WithError(
+			err,
+		).Infof(
+			"Error validating respoolID: %s in store",
+			resPoolID.Value,
+		)
 		return &respool.CreateResponse{
 			Error: &respool.CreateResponse_Error{
+				InvalidResourcePoolConfig: &respool.InvalidResourcePoolConfig{
+					Id:      resPoolID,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
+	// TODO T808419 - handle parent of the new_resource_pool_config
+	// already has tasks added running, drain, distinguish?
+
+	// insert persistent store
+	if err := h.store.CreateResourcePool(
+		resPoolID,
+		resPoolConfig,
+		"peloton",
+	); err != nil {
+		h.metrics.CreateResourcePoolFail.Inc(1)
+		log.WithError(err).Infof(
+			"Error creating respoolID: %s in store",
+			resPoolID.Value,
+		)
+		return &respool.CreateResponse{
+			Error: &respool.CreateResponse_Error{
+				// TODO  differentiate between n/w errors vs other data errors
 				AlreadyExists: &respool.ResourcePoolAlreadyExists{
 					Id:      resPoolID,
 					Message: err.Error(),
@@ -101,7 +168,29 @@ func (h *serviceHandler) CreateResourcePool(
 		}, nil, nil
 	}
 
-	// TODO: update in-memory respool tree structure
+	// update the in-memory data structure
+	if err := h.resPoolTree.Upsert(resPoolID, resPoolConfig); err != nil {
+		// rollback i.e. delete the current version if any errors
+		h.metrics.CreateResourcePoolFail.Inc(1)
+		log.WithError(
+			err,
+		).Infof(
+			"Error creating respoolID: %s in memory tree",
+			resPoolID.Value,
+		)
+
+		if err := h.store.DeleteResourcePool(resPoolID); err != nil {
+			log.WithError(
+				err,
+			).Infof(
+				`Error rolling back respoolID:
+				%s in store`,
+				resPoolID.Value,
+			)
+			h.metrics.CreateResourcePoolRollbackFail.Inc(1)
+			return &respool.CreateResponse{}, nil, err
+		}
+	}
 
 	h.metrics.CreateResourcePoolSuccess.Inc(1)
 	return &respool.CreateResponse{
@@ -141,9 +230,18 @@ func (h *serviceHandler) GetResourcePool(
 func (h *serviceHandler) DeleteResourcePool(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	req *respool.DeleteRequest) (*respool.DeleteResponse, yarpc.ResMeta, error) {
+	req *respool.DeleteRequest) (
+	*respool.DeleteResponse,
+	yarpc.ResMeta,
+	error) {
 
-	log.WithField("request", req).Info("DeleteResourcePool called")
+	h.Lock()
+	defer h.Unlock()
+
+	log.WithField(
+		"request",
+		req,
+	).Info("DeleteResourcePool called")
 
 	log.Fatal("Not implemented")
 	return &respool.DeleteResponse{}, nil, nil
@@ -153,20 +251,146 @@ func (h *serviceHandler) DeleteResourcePool(
 func (h *serviceHandler) UpdateResourcePool(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	req *respool.UpdateRequest) (*respool.UpdateResponse, yarpc.ResMeta, error) {
+	req *respool.UpdateRequest) (
+	*respool.UpdateResponse,
+	yarpc.ResMeta,
+	error) {
 
-	log.WithField("request", req).Info("UpdateResourcePool called")
+	h.Lock()
+	defer h.Unlock()
 
-	log.Fatal("Not implemented")
+	log.WithField(
+		"request",
+		req,
+	).Info("UpdateResourcePool called")
+
+	resPoolID := req.Id
+	resPoolConfig := req.Config
+
+	resourcePoolConfigData := ResourcePoolConfigData{
+		ID:                 resPoolID,
+		ResourcePoolConfig: resPoolConfig,
+	}
+
+	// needed for rollback
+	existingResPool, err := h.resPoolTree.Get(resPoolID)
+	if err != nil {
+		h.metrics.UpdateResourcePoolFail.Inc(1)
+		log.WithError(
+			err,
+		).Infof(
+			"Error fetching respoolID: %s",
+			resPoolID.Value,
+		)
+		return &respool.UpdateResponse{
+			Error: &respool.UpdateResponse_Error{
+				// TODO  differentiate between n/w errors vs other data errors
+				NotFound: &respool.ResourcePoolNotFound{
+					Id:      resPoolID,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
+	// perform validation on resource pool config
+	if err := h.resPoolConfigValidator.Validate(resourcePoolConfigData); err != nil {
+		h.metrics.UpdateResourcePoolFail.Inc(1)
+		log.WithError(
+			err,
+		).Infof(
+			"Error validating respoolID: %s in store",
+			resPoolID.Value,
+		)
+		return &respool.UpdateResponse{
+			Error: &respool.UpdateResponse_Error{
+				InvalidResourcePoolConfig: &respool.InvalidResourcePoolConfig{
+					Id:      resPoolID,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
+	// update persistent store
+	if err := h.store.UpdateResourcePool(resPoolID, resPoolConfig); err != nil {
+		h.metrics.UpdateResourcePoolFail.Inc(1)
+		log.WithError(
+			err,
+		).Infof(
+			"Error updating respoolID: %s in store",
+			resPoolID.Value,
+		)
+		return &respool.UpdateResponse{
+			Error: &respool.UpdateResponse_Error{
+				// TODO  differentiate between n/w errors
+				// vs other data errors
+				NotFound: &respool.ResourcePoolNotFound{
+					Id:      resPoolID,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
+	// update the in-memory data structure
+	if err := h.resPoolTree.Upsert(resPoolID, resPoolConfig); err != nil {
+		// rollback to a previous version if any errors
+		h.metrics.UpdateResourcePoolFail.Inc(1)
+		log.WithError(
+			err,
+		).Info(
+			"Error updating respoolID: %s in memory tree",
+			resPoolID.Value,
+		)
+
+		// update with existing
+		if err := h.store.UpdateResourcePool(
+			resPoolID,
+			existingResPool.respoolConfig,
+		); err != nil {
+			log.WithError(
+				err,
+			).Infof(
+				`Error rolling back respoolID:
+				%s in store`,
+				resPoolID.Value,
+			)
+			h.metrics.UpdateResourcePoolRollbackFail.Inc(1)
+			return &respool.UpdateResponse{}, nil, err
+		}
+	}
+
+	h.metrics.UpdateResourcePoolSuccess.Inc(1)
 	return &respool.UpdateResponse{}, nil, nil
 }
 
 // Registerprocs will register all api's for end points
 func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
-	d.Register(json.Procedure("ResourceManager.CreateResourcePool", h.CreateResourcePool))
-	d.Register(json.Procedure("ResourceManager.GetResourcePool", h.GetResourcePool))
-	d.Register(json.Procedure("ResourceManager.DeleteResourcePool", h.DeleteResourcePool))
-	d.Register(json.Procedure("ResourceManager.UpdateResourcePool", h.UpdateResourcePool))
+	d.Register(
+		json.Procedure(
+			"ResourceManager.CreateResourcePool",
+			h.CreateResourcePool,
+		),
+	)
+	d.Register(
+		json.Procedure(
+			"ResourceManager.GetResourcePool",
+			h.GetResourcePool,
+		),
+	)
+	d.Register(
+		json.Procedure(
+			"ResourceManager.DeleteResourcePool",
+			h.DeleteResourcePool,
+		),
+	)
+	d.Register(
+		json.Procedure(
+			"ResourceManager.UpdateResourcePool",
+			h.UpdateResourcePool,
+		),
+	)
 }
 
 // Start will start resource manager
@@ -189,7 +413,10 @@ func (h *serviceHandler) Start() error {
 // Stop will stop resource manager
 func (h *serviceHandler) Stop() error {
 	if h.runningState == runningStateNotStarted {
-		log.Warn("Resource Manager is already stopped, no action will be performed")
+		log.Warn(
+			`Resource Manager is already stopped,
+			no action will be performed`,
+		)
 		return nil
 	}
 	atomic.StoreInt32(&h.runningState, runningStateNotStarted)

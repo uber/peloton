@@ -116,6 +116,11 @@ message ResourcePoolAlreadyExists {
   string message = 2;
 }
 
+message InvalidResourcePoolConfig {
+  ResourcePoolID id = 1;
+  string message = 2;
+}
+
 message ResourcePoolNotFound {
   ResourcePoolID id = 1;
   string message = 2;
@@ -129,6 +134,7 @@ message CreateRequest {
 message CreateResponse {
   message Error {
     ResourcePoolAlreadyExists alreadyExists = 1;
+    InvalidResourcePoolConfig invalidResourcePoolConfig = 2;
   }
 
   Error error = 1;
@@ -169,6 +175,7 @@ message UpdateRequest{
 message UpdateResponse {
   message Error {
     ResourcePoolNotFound notFound = 1;
+    InvalidResourcePoolConfig invalidResourcePoolConfig = 2;
   }
 
   Error error = 1;

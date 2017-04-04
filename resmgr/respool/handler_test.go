@@ -18,11 +18,12 @@ import (
 type resPoolHandlerTestSuite struct {
 	suite.Suite
 
-	context          context.Context
-	resourceTree     Tree
-	mockCtrl         *gomock.Controller
-	handler          *serviceHandler
-	mockResPoolStore *store_mocks.MockResourcePoolStore
+	context                     context.Context
+	resourceTree                Tree
+	mockCtrl                    *gomock.Controller
+	handler                     *serviceHandler
+	mockResPoolStore            *store_mocks.MockResourcePoolStore
+	resourcePoolConfigValidator Validator
 }
 
 func (suite *resPoolHandlerTestSuite) SetupSuite() {
@@ -30,8 +31,15 @@ func (suite *resPoolHandlerTestSuite) SetupSuite() {
 	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	suite.mockResPoolStore.EXPECT().GetAllResourcePools().
 		Return(suite.getResPools(), nil).AnyTimes()
-	InitTree(tally.NoopScope, suite.mockResPoolStore)
-	suite.resourceTree = GetTree()
+	suite.resourceTree = &tree{
+		store:    suite.mockResPoolStore,
+		root:     nil,
+		metrics:  NewMetrics(tally.NoopScope),
+		allNodes: make(map[string]*ResPool),
+	}
+	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(suite.resourceTree)
+	suite.NoError(err)
+	suite.resourcePoolConfigValidator = resourcePoolConfigValidator
 }
 
 func (suite *resPoolHandlerTestSuite) TearDownSuite() {
@@ -42,12 +50,14 @@ func (suite *resPoolHandlerTestSuite) SetupTest() {
 	suite.context = context.Background()
 	err := suite.resourceTree.Start()
 	suite.NoError(err)
+
 	suite.handler = &serviceHandler{
-		resPoolTree:  suite.resourceTree,
-		dispatcher:   nil,
-		metrics:      NewMetrics(tally.NoopScope),
-		store:        suite.mockResPoolStore,
-		runningState: runningStateRunning,
+		resPoolTree:            suite.resourceTree,
+		dispatcher:             nil,
+		metrics:                NewMetrics(tally.NoopScope),
+		store:                  suite.mockResPoolStore,
+		runningState:           runningStateRunning,
+		resPoolConfigValidator: suite.resourcePoolConfigValidator,
 	}
 }
 
@@ -164,19 +174,6 @@ func (suite *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.Resou
 			},
 			Policy: policy,
 		},
-		"respool99": {
-			Name:   "respool99",
-			Parent: &pb_respool.ResourcePoolID{Value: "respool21"},
-			Resources: []*pb_respool.ResourceConfig{
-				{
-					Kind:        "cpu",
-					Reservation: 50,
-					Limit:       100,
-					Share:       1,
-				},
-			},
-			Policy: policy,
-		},
 	}
 }
 
@@ -184,7 +181,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLeafNode
 	log.Info("TestServiceHandler_GetResourcePoolLeafNode called")
 
 	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: "respool23",
+		Value: "respool21",
 	}
 
 	// form request
@@ -260,10 +257,17 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
 	mockResourcePoolName := "respool99"
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Name:      mockResourcePoolName,
-		Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
-		Resources: suite.getResourceConfig(),
-		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		Name:   mockResourcePoolName,
+		Parent: &pb_respool.ResourcePoolID{Value: "respool23"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				Reservation: 1,
+				Limit:       1,
+				Share:       1,
+				Kind:        "cpu",
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 	mockResourcePoolID := &pb_respool.ResourcePoolID{
 		Value: mockResourcePoolName,
@@ -292,16 +296,64 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
 	suite.Equal(mockResourcePoolID.Value, createResp.Result.Value)
 }
 
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolValidationError() {
+	log.Info("TestServiceHandler_CreateResourcePoolValidationError called")
+
+	mockResourcePoolName := "respool101"
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:   mockResourcePoolName,
+		Parent: &pb_respool.ResourcePoolID{Value: "respool23"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				// reservation exceed limit,  should fail
+				Reservation: 5,
+				Limit:       1,
+				Share:       1,
+				Kind:        "cpu",
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+
+	// create request
+	createReq := &pb_respool.CreateRequest{
+		Id:     mockResourcePoolID,
+		Config: mockResourcePoolConfig,
+	}
+
+	createResp, _, err := suite.handler.CreateResourcePool(
+		suite.context,
+		nil,
+		createReq)
+
+	suite.NoError(err)
+	suite.NotNil(createResp)
+	suite.NotNil(createResp.Error)
+	expectedMsg := "resource cpu, reservation 5 exceeds limit 1"
+	suite.Equal(expectedMsg, createResp.Error.InvalidResourcePoolConfig.Message)
+}
+
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlreadyExistsError() {
-	log.Info("TestServiceHandler_CreateResourcePool called")
+	log.Info("TestServiceHandler_CreateResourcePoolAlreadyExistsError called")
 
 	mockResourcePoolName := "respool99"
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Name:      mockResourcePoolName,
-		Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
-		Resources: suite.getResourceConfig(),
-		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		Name:   mockResourcePoolName,
+		Parent: &pb_respool.ResourcePoolID{Value: "respool23"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				Kind:        "cpu",
+				Share:       1,
+				Limit:       1,
+				Reservation: 1,
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 	mockResourcePoolID := &pb_respool.ResourcePoolID{
 		Value: mockResourcePoolName,
@@ -332,5 +384,132 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlrea
 	suite.Nil(createResp.Result)
 	suite.NotNil(createResp.Error)
 	suite.Equal(expectedErrMsg, createResp.Error.AlreadyExists.Message)
+	suite.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePool() {
+	log.Info("TestServiceHandler_UpdateResourcePool called")
+
+	mockResourcePoolName := "respool23"
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:   mockResourcePoolName,
+		Parent: &pb_respool.ResourcePoolID{Value: "respool22"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				Reservation: 1,
+				Limit:       1,
+				Share:       1,
+				Kind:        "cpu",
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+
+	// update request
+	updateReq := &pb_respool.UpdateRequest{
+		Id:     mockResourcePoolID,
+		Config: mockResourcePoolConfig,
+	}
+
+	// set expectations
+	suite.mockResPoolStore.EXPECT().UpdateResourcePool(
+		gomock.Eq(mockResourcePoolID),
+		gomock.Eq(mockResourcePoolConfig)).Return(nil)
+
+	updateResp, _, err := suite.handler.UpdateResourcePool(
+		suite.context,
+		nil,
+		updateReq)
+
+	suite.NoError(err)
+	suite.NotNil(updateResp)
+	suite.Nil(updateResp.Error)
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolValidationError() {
+	log.Info("TestServiceHandler_UpdateResourcePoolValidationError called")
+
+	mockResourcePoolName := "respool22"
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:   mockResourcePoolName,
+		Parent: &pb_respool.ResourcePoolID{Value: "respool2"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				// reservation exceed limit,  should fail
+				Reservation: 5,
+				Limit:       1,
+				Share:       1,
+				Kind:        "cpu",
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+
+	// update request
+	updateReq := &pb_respool.UpdateRequest{
+		Id:     mockResourcePoolID,
+		Config: mockResourcePoolConfig,
+	}
+
+	updateResp, _, err := suite.handler.UpdateResourcePool(
+		suite.context,
+		nil,
+		updateReq)
+
+	suite.NoError(err)
+	suite.NotNil(updateResp)
+	suite.NotNil(updateResp.Error)
+	expectedMsg := "resource cpu, reservation 5 exceeds limit 1"
+	suite.Equal(expectedMsg, updateResp.Error.InvalidResourcePoolConfig.Message)
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotExistsError() {
+	log.Info("TestServiceHandler_UpdateResourcePoolNotExistsError called")
+
+	mockResourcePoolName := "respool105"
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:   mockResourcePoolName,
+		Parent: &pb_respool.ResourcePoolID{Value: "respool23"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				Kind:        "cpu",
+				Share:       1,
+				Limit:       1,
+				Reservation: 1,
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+
+	// update request
+	updateReq := &pb_respool.UpdateRequest{
+		Id:     mockResourcePoolID,
+		Config: mockResourcePoolConfig,
+	}
+
+	expectedErrMsg := "Resource pool (respool105) not found"
+
+	updateResp, _, err := suite.handler.UpdateResourcePool(
+		suite.context,
+		nil,
+		updateReq)
+
+	actualErrResourcePoolID := updateResp.Error.NotFound.Id.Value
+	suite.NoError(err)
+	suite.NotNil(updateResp)
+	suite.NotNil(updateResp.Error)
+	suite.Equal(expectedErrMsg, updateResp.Error.NotFound.Message)
 	suite.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
 }

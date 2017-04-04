@@ -216,41 +216,18 @@ func (t *tree) lookupResPool(ID *respool.ResourcePoolID) (*ResPool, error) {
 
 //Upsert adds/updates a resource pool config to the tree
 func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error {
-	// avoid overriding root
-	if ID.Value == RootResPoolID {
-		return errors.Errorf("Cannot override %s", RootResPoolID)
-	}
+	// acquire RW lock
+	t.Lock()
+	defer t.Unlock()
 
 	parentID := resPoolConfig.Parent
 
 	// check if parent exits
 	parent, err := t.lookupResPool(parentID)
 	if err != nil {
-		// parent is <nil>,  set the parent to be root
-		parent = t.allNodes[RootResPoolID]
+		// parent is <nil>
+		return errors.Wrap(err, "parent does not exists")
 	}
-
-	// data to be validated
-	resourcePoolConfigData := resourcePoolConfigData{
-		ID:                 ID,
-		resourcePoolConfig: resPoolConfig,
-	}
-
-	// create a new resource pool config validator
-	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(respoolTree)
-
-	if err != nil {
-		return errors.Errorf("error initializing resource pool config validator %v", err)
-	}
-
-	// perform validation
-	if err := resourcePoolConfigValidator.Validate(resourcePoolConfigData); err != nil {
-		return errors.WithStack(err)
-	}
-
-	// acquire RW lock
-	t.Lock()
-	defer t.Unlock()
 
 	// check if already exists, and log
 	resourcePool, _ := t.lookupResPool(ID)

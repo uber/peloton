@@ -3,22 +3,24 @@ package respool
 import (
 	"peloton/api/respool"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 )
 
-// validator func for registering custom validator
-type resourcePoolConfigValidatorFunc func(resTree Tree, resourcePoolConfigData resourcePoolConfigData) error
+// ResourcePoolConfigValidatorFunc validator func for registering custom validator
+type ResourcePoolConfigValidatorFunc func(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error
 
 // ResourcePoolConfigData holds the data that needs to be validated
-type resourcePoolConfigData struct {
-	ID                 *respool.ResourcePoolID
-	resourcePoolConfig *respool.ResourcePoolConfig
+type ResourcePoolConfigData struct {
+	ID                                *respool.ResourcePoolID     // Resource Pool Config ID
+	ResourcePoolConfig                *respool.ResourcePoolConfig // Resource Pool Configuration
+	SkipRootChildResourceConfigChecks bool                        // TODO Skip child resource config checks for Parent Root T799105
 }
 
 // Implements Validator
 type resourcePoolConfigValidator struct {
 	resTree                          Tree
-	resourcePoolConfigValidatorFuncs []resourcePoolConfigValidatorFunc
+	resourcePoolConfigValidatorFuncs []ResourcePoolConfigValidatorFunc
 }
 
 // NewResourcePoolConfigValidator returns a new resource pool config validator
@@ -28,7 +30,7 @@ func NewResourcePoolConfigValidator(rTree Tree) (Validator, error) {
 	}
 
 	return resourcePoolConfigValidator.Register(
-		[]resourcePoolConfigValidatorFunc{
+		[]ResourcePoolConfigValidatorFunc{
 			ValidateResourcePool,
 			ValidateCycle,
 			ValidateParent,
@@ -40,7 +42,7 @@ func NewResourcePoolConfigValidator(rTree Tree) (Validator, error) {
 // Validate validates the resource pool config
 func (rv *resourcePoolConfigValidator) Validate(data interface{}) error {
 
-	if resourcePoolConfigData, ok := data.(resourcePoolConfigData); ok {
+	if resourcePoolConfigData, ok := data.(ResourcePoolConfigData); ok {
 		for _, validatorFunc := range rv.resourcePoolConfigValidatorFuncs {
 			err := validatorFunc(rv.resTree, resourcePoolConfigData)
 			if err != nil {
@@ -56,25 +58,32 @@ func (rv *resourcePoolConfigValidator) Validate(data interface{}) error {
 
 // Register a slice of validator functions
 func (rv *resourcePoolConfigValidator) Register(validatorFuncs interface{}) (Validator, error) {
-	if vFuncs, ok := validatorFuncs.([]resourcePoolConfigValidatorFunc); ok {
+	if vFuncs, ok := validatorFuncs.([]ResourcePoolConfigValidatorFunc); ok {
 		rv.resourcePoolConfigValidatorFuncs = vFuncs
 		return rv, nil
 	}
-	return nil, errors.New("assertion failed, need type <resourcePoolConfigValidatorFunc>")
+	return nil, errors.New("assertion failed, need type <ResourcePoolConfigValidatorFunc>")
 }
 
 // ValidateParent {current} resource pool against it's {parent}
-func ValidateParent(resTree Tree, resourcePoolConfigData resourcePoolConfigData) error {
+func ValidateParent(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
 
-	resPoolConfig := resourcePoolConfigData.resourcePoolConfig
+	resPoolConfig := resourcePoolConfigData.ResourcePoolConfig
 	ID := resourcePoolConfigData.ID
+	skipRootChildResourceConfigChecks := resourcePoolConfigData.SkipRootChildResourceConfigChecks
 
 	cResources := resPoolConfig.Resources
 
 	// get parent ID
 	newParentID := resPoolConfig.Parent
 
-	existingResourcePool, err := resTree.Get(ID)
+	existingResourcePool, _ := resTree.Get(ID)
+
+	// lookup parent
+	parent, err := resTree.Get(newParentID)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 
 	// for existing resource pool check if parent changed
 	if existingResourcePool != nil {
@@ -89,10 +98,10 @@ func ValidateParent(resTree Tree, resourcePoolConfigData resourcePoolConfigData)
 		}
 	}
 
-	// lookup parent
-	parent, err := resTree.Get(newParentID)
-	if err != nil {
-		return errors.WithStack(err)
+	// bypass check if parent is root
+	if newParentID.Value == RootResPoolID && skipRootChildResourceConfigChecks {
+		log.WithField("respool_id", ID.Value).Info("skipping parent limit check")
+		return nil
 	}
 
 	// get parent resources
@@ -121,15 +130,22 @@ func ValidateParent(resTree Tree, resourcePoolConfigData resourcePoolConfigData)
 }
 
 // ValidateChildrenReservations All Child reservations against it parent
-func ValidateChildrenReservations(resTree Tree, resourcePoolConfigData resourcePoolConfigData) error {
+func ValidateChildrenReservations(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
 
-	resPoolConfig := resourcePoolConfigData.resourcePoolConfig
+	resPoolConfig := resourcePoolConfigData.ResourcePoolConfig
 	ID := resourcePoolConfigData.ID
-
-	cResources := resPoolConfig.Resources
+	skipRootChildResourceConfigChecks := resourcePoolConfigData.SkipRootChildResourceConfigChecks
 
 	// get parent ID
 	parentID := resPoolConfig.Parent
+
+	// bypass check if parent is root
+	if parentID.Value == RootResPoolID && skipRootChildResourceConfigChecks {
+		log.WithField("respool_id", ID.Value).Info("skipping child reservations check")
+		return nil
+	}
+
+	cResources := resPoolConfig.Resources
 
 	// lookup parent
 	parent, err := resTree.Get(parentID)
@@ -185,8 +201,8 @@ func ValidateChildrenReservations(resTree Tree, resourcePoolConfigData resourceP
 }
 
 // ValidateResourcePool if resource configurations are correct
-func ValidateResourcePool(resTree Tree, resourcePoolConfigData resourcePoolConfigData) error {
-	resPoolConfig := resourcePoolConfigData.resourcePoolConfig
+func ValidateResourcePool(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
+	resPoolConfig := resourcePoolConfigData.ResourcePoolConfig
 	ID := resourcePoolConfigData.ID
 
 	// ID nil check
@@ -197,6 +213,11 @@ func ValidateResourcePool(resTree Tree, resourcePoolConfigData resourcePoolConfi
 	// resPoolConfig nil check
 	if resPoolConfig == nil {
 		return errors.New("resource pool config cannot be <nil>")
+	}
+
+	// root override check
+	if ID.Value == RootResPoolID {
+		return errors.Errorf("Cannot override %s", RootResPoolID)
 	}
 
 	cResources := resPoolConfig.Resources
@@ -215,8 +236,8 @@ func ValidateResourcePool(resTree Tree, resourcePoolConfigData resourcePoolConfi
 }
 
 // ValidateCycle if adding/updating current pool would result in a cycle
-func ValidateCycle(resTree Tree, resourcePoolConfigData resourcePoolConfigData) error {
-	resPoolConfig := resourcePoolConfigData.resourcePoolConfig
+func ValidateCycle(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
+	resPoolConfig := resourcePoolConfigData.ResourcePoolConfig
 	ID := resourcePoolConfigData.ID
 
 	// get parent ID

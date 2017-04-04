@@ -28,8 +28,12 @@ func (suite *resTreeTestSuite) SetupSuite() {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	mockResPoolStore.EXPECT().GetAllResourcePools().
 		Return(suite.getResPools(), nil).AnyTimes()
-	InitTree(tally.NoopScope, mockResPoolStore)
-	suite.resourceTree = GetTree()
+	suite.resourceTree = &tree{
+		store:    mockResPoolStore,
+		root:     nil,
+		metrics:  NewMetrics(tally.NoopScope),
+		allNodes: make(map[string]*ResPool),
+	}
 }
 
 func (suite *resTreeTestSuite) TearDownSuite() {
@@ -289,33 +293,6 @@ func (suite *resTreeTestSuite) TestTree_UpsertExistingResourcePoolConfig() {
 	suite.NoError(err)
 }
 
-func (suite *resTreeTestSuite) TestTree_UpsertRootResourcePoolConfig() {
-	mockExistingResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: RootResPoolID,
-	}
-
-	mockParentPoolID := &pb_respool.ResourcePoolID{
-		Value: "respool22",
-	}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 10,
-				Kind:        "cpu",
-				Limit:       50,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockParentPoolID.Value,
-	}
-
-	err := suite.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(err, fmt.Sprintf("Cannot override %s", RootResPoolID))
-}
-
 func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfig() {
 	mockExistingResourcePoolID := &pb_respool.ResourcePoolID{
 		Value: "respool24",
@@ -341,185 +318,4 @@ func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfig() {
 
 	err := suite.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
 	suite.NoError(err)
-}
-
-func (suite *resTreeTestSuite) TestTree_UpsertValidateReservationsExceedLimit() {
-	mockResourcePoolID := &pb_respool.ResourcePoolID{Value: "respool33"}
-	mockParentPoolID := &pb_respool.ResourcePoolID{Value: "respool11"}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 50,
-				Kind:        "cpu",
-				Limit:       10,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockResourcePoolID.Value,
-	}
-
-	err := suite.resourceTree.Upsert(mockResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(err, "resource cpu, reservation 50 exceeds limit 10")
-}
-
-func (suite *resTreeTestSuite) TestTree_UpsertValidateCycle() {
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: "respool33",
-	}
-	mockParentPoolID := &pb_respool.ResourcePoolID{
-		Value: "respool33",
-	}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 50,
-				Kind:        "cpu",
-				Limit:       100,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockResourcePoolID.Value,
-	}
-
-	err := suite.resourceTree.Upsert(mockResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(err, "resource pool ID: respool33 and parent ID: respool33 cannot be same")
-}
-
-func (suite *resTreeTestSuite) TestTree_UpsertValidateParentLookupError() {
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: "respool33",
-	}
-	mockParentPoolID := &pb_respool.ResourcePoolID{
-		Value: "i_do_not_exist",
-	}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 50,
-				Kind:        "cpu",
-				Limit:       100,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockResourcePoolID.Value,
-	}
-
-	err := suite.resourceTree.Upsert(mockResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(err, "Resource pool (i_do_not_exist) not found")
-}
-
-func (suite *resTreeTestSuite) TestTree_UpsertValidateParentChanged() {
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: "respool1",
-	}
-	mockChangedParentPoolID := &pb_respool.ResourcePoolID{
-		Value: "respool2",
-	}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockChangedParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 50,
-				Kind:        "cpu",
-				Limit:       100,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockResourcePoolID.Value,
-	}
-
-	err := suite.resourceTree.Upsert(mockResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(err, "parent override not allowed, actual root, override respool2")
-}
-
-func (suite *resTreeTestSuite) TestTree_UpsertValidateParentExceedLimit() {
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: "respool33",
-	}
-	mockParentPoolID := &pb_respool.ResourcePoolID{
-		Value: "respool11",
-	}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 50,
-				Kind:        "cpu",
-				Limit:       99999,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockResourcePoolID.Value,
-	}
-
-	err := suite.resourceTree.Upsert(mockResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(err, "resource cpu, limit 99999 exceeds parent limit 1")
-}
-
-func (suite *resTreeTestSuite) TestTree_UpsertValidateInvalidResourceKind() {
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: "respool33",
-	}
-	mockParentPoolID := &pb_respool.ResourcePoolID{
-		Value: "respool11",
-	}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 50,
-				Kind:        "aaa",
-				Limit:       99999,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockResourcePoolID.Value,
-	}
-
-	err := suite.resourceTree.Upsert(mockResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(err, "parent respool11 doesn't have resource kind aaa")
-}
-
-func (suite *resTreeTestSuite) TestTree_UpsertValidateChildrenReservationsError() {
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: "respool34",
-	}
-	mockParentPoolID := &pb_respool.ResourcePoolID{
-		Value: "respool21",
-	}
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				Reservation: 51,
-				Kind:        "cpu",
-				Limit:       100,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockParentPoolID.Value,
-	}
-
-	err := suite.resourceTree.Upsert(mockResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(
-		err,
-		"Aggregated child reservation 101 of kind `cpu` exceed parent `respool21` reservations 100",
-	)
 }
