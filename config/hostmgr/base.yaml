@@ -29,7 +29,7 @@ host_manager:
   taskupdate_ack_concurrency: 10
   taskupdate_buffer_size: 100000
   task_reconciler:
-    initial_reconcile_delay_sec: 10
+    initial_reconcile_delay_sec: 60
     reconcile_interval_sec: 1800
     explicit_reconcile_batch_interval_sec: 5
     explicit_reconcile_batch_size: 1000
