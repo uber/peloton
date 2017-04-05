@@ -419,8 +419,9 @@ func main() {
 		mesosClient,
 		rootScope,
 		driver,
-		time.Duration(cfg.HostManager.InitialReconcileDelaySec)*time.Second,
-		time.Duration(cfg.HostManager.ImplicitReconcileIntervalSec)*time.Second,
+		jobStore,
+		taskStore,
+		cfg.HostManager.TaskReconcilerConfig,
 	)
 
 	server := master.NewServer(

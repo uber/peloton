@@ -1,5 +1,9 @@
 package hostmgr
 
+import (
+	"code.uber.internal/infra/peloton/hostmgr/reconcile"
+)
+
 // Config is Host Manager specific configuration
 type Config struct {
 	Port int `yaml:"port"`
@@ -20,9 +24,5 @@ type Config struct {
 	// Size of the channel buffer of the status updates
 	TaskUpdateBufferSize int `yaml:"taskupdate_buffer_size"`
 
-	// Initial delay before running reconciliation
-	InitialReconcileDelaySec int `yaml:"initial_reconcile_delay_sec"`
-
-	// Implicit task reconciliation interval
-	ImplicitReconcileIntervalSec int `yaml:"implicit_reconcile_interval_sec"`
+	TaskReconcilerConfig *reconcile.TaskReconcilerConfig `yaml:"task_reconciler"`
 }

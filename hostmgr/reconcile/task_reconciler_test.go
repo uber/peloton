@@ -5,21 +5,33 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
+	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
-	"github.com/uber-go/atomic"
+	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
 	mesos "mesos/v1"
+	sched "mesos/v1/scheduler"
+	"peloton/api/job"
+	"peloton/api/peloton"
+	"peloton/api/task"
 
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	mock_mpb "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
 )
 
 const (
-	streamID                                = "streamID"
-	frameworkID                             = "frameworkID"
-	initialReconcileDelay     time.Duration = 300 * time.Millisecond
-	implicitReconcileInterval time.Duration = 100 * time.Millisecond
+	streamID                       = "streamID"
+	frameworkID                    = "frameworkID"
+	testInstanceCount              = 5
+	testJobID                      = "testJob0"
+	testBatchSize                  = 3
+	explicitReconcileBatchInterval = 100 * time.Millisecond
+	initialReconcileDelay          = 300 * time.Millisecond
+	reconcileInterval              = 300 * time.Millisecond
+	runningStateStr                = "8"
+	oneExplicitReconcileRunDelay   = 350 * time.Millisecond
 )
 
 // A mock implementation of FrameworkInfoProvider
@@ -34,141 +46,231 @@ func (m *mockFrameworkInfoProvider) GetFrameworkID() *mesos.FrameworkID {
 	return &mesos.FrameworkID{Value: &tmp}
 }
 
-func TestInitImplicitTaskReconcilationOnce(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+type TaskReconcilerTestSuite struct {
+	suite.Suite
 
-	mockMesosClient := mock_mpb.NewMockClient(ctrl)
-	mtx := NewMetrics(tally.NoopScope)
-	reconciler := &taskReconciler{
-		Running:                   atomic.NewBool(false),
-		client:                    mockMesosClient,
-		metrics:                   mtx,
-		frameworkInfoProvider:     &mockFrameworkInfoProvider{},
-		initialReconcileDelay:     initialReconcileDelay,
-		implicitReconcileInterval: implicitReconcileInterval,
-		stopChan:                  make(chan struct{}, 1),
+	ctrl          *gomock.Controller
+	testScope     tally.TestScope
+	client        *mock_mpb.MockClient
+	reconciler    *taskReconciler
+	mockJobStore  *store_mocks.MockJobStore
+	mockTaskStore *store_mocks.MockTaskStore
+	testJobID     *peloton.JobID
+	testJobConfig *job.JobConfig
+	allJobConfigs map[string]*job.JobConfig
+	taskInfos     map[uint32]*task.TaskInfo
+}
+
+func (suite *TaskReconcilerTestSuite) SetupTest() {
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.testScope = tally.NewTestScope("", map[string]string{})
+	suite.client = mock_mpb.NewMockClient(suite.ctrl)
+	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
+	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
+	suite.testJobID = &peloton.JobID{
+		Value: testJobID,
+	}
+	suite.testJobConfig = &job.JobConfig{
+		Name:          suite.testJobID.Value,
+		InstanceCount: testInstanceCount,
+	}
+	suite.allJobConfigs = make(map[string]*job.JobConfig)
+	suite.allJobConfigs[testJobID] = suite.testJobConfig
+	suite.taskInfos = make(map[uint32]*task.TaskInfo)
+	for i := uint32(0); i < testInstanceCount; i++ {
+		suite.taskInfos[i] = suite.createTestTaskInfo(
+			task.TaskState_RUNNING, i)
 	}
 
+	suite.reconciler = &taskReconciler{
+		client:                         suite.client,
+		metrics:                        NewMetrics(suite.testScope),
+		frameworkInfoProvider:          &mockFrameworkInfoProvider{},
+		jobStore:                       suite.mockJobStore,
+		taskStore:                      suite.mockTaskStore,
+		initialReconcileDelay:          initialReconcileDelay,
+		reconcileInterval:              reconcileInterval,
+		explicitReconcileBatchInterval: explicitReconcileBatchInterval,
+		explicitReconcileBatchSize:     testBatchSize,
+		stopChan:                       make(chan struct{}, 1),
+	}
+	suite.reconciler.isExplicitReconcileTurn.Store(true)
+}
+
+func (suite *TaskReconcilerTestSuite) TearDownTest() {
+	log.Debug("tearing down")
+}
+
+func (suite *TaskReconcilerTestSuite) createTestTaskInfo(
+	state task.TaskState,
+	instanceID uint32) *task.TaskInfo {
+
+	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
+	return &task.TaskInfo{
+		Runtime: &task.RuntimeInfo{
+			TaskId:    &mesos.TaskID{Value: &taskID},
+			State:     state,
+			GoalState: task.TaskState_SUCCEEDED,
+		},
+		Config:     suite.testJobConfig.GetDefaultConfig(),
+		InstanceId: instanceID,
+		JobId:      suite.testJobID,
+	}
+}
+
+func TestTaskReconcilerTestSuite(t *testing.T) {
+	suite.Run(t, new(TaskReconcilerTestSuite))
+}
+
+func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
+	defer suite.ctrl.Finish()
 	gomock.InOrder(
-		mockMesosClient.EXPECT().
+		suite.mockJobStore.EXPECT().
+			GetAllJobs().Return(suite.allJobConfigs, nil),
+		suite.mockTaskStore.EXPECT().
+			GetTasksForJobAndState(suite.testJobID, runningStateStr).
+			Return(suite.taskInfos, nil),
+		suite.client.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).
+			Do(func(_ string, msg proto.Message) {
+				// Verify explicit reconcile tasks number is same as batch size.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(testBatchSize, len(call.GetReconcile().GetTasks()))
+			}).
+			Return(nil),
+		suite.client.EXPECT().
+			Call(
+				gomock.Eq(streamID),
+				gomock.Any()).
+			Do(func(_ string, msg proto.Message) {
+				// Verify explicit reconcile tasks number is less than batch size.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(
+					testInstanceCount-testBatchSize,
+					len(call.GetReconcile().GetTasks()))
+			}).
+			Return(nil),
+		suite.client.EXPECT().
+			Call(
+				gomock.Eq(streamID),
+				gomock.Any()).
+			Do(func(_ string, msg proto.Message) {
+				// Verify implicit reconcile call.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(0, len(call.GetReconcile().GetTasks()))
+			}).
 			Return(nil),
 	)
 
-	reconciler.Start()
-	time.Sleep(350 * time.Millisecond)
-	assert.Equal(t, len(reconciler.stopChan), 0)
-	reconciler.Stop()
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, len(reconciler.stopChan), 0)
+	suite.Equal(suite.reconciler.Running.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.reconciler.Start()
+	time.Sleep(oneExplicitReconcileRunDelay)
+	suite.Equal(suite.reconciler.Running.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), true)
+	time.Sleep(reconcileInterval)
+	suite.Equal(suite.reconciler.Running.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.reconciler.Stop()
+	suite.Equal(suite.reconciler.Running.Load(), false)
 }
 
-func TestInitImplicitTaskReconcilationWithPeriodicalCalls(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockMesosClient := mock_mpb.NewMockClient(ctrl)
-	mtx := NewMetrics(tally.NoopScope)
-	reconciler := &taskReconciler{
-		Running:                   atomic.NewBool(false),
-		client:                    mockMesosClient,
-		metrics:                   mtx,
-		frameworkInfoProvider:     &mockFrameworkInfoProvider{},
-		initialReconcileDelay:     initialReconcileDelay,
-		implicitReconcileInterval: implicitReconcileInterval,
-		stopChan:                  make(chan struct{}, 1),
-	}
-
+func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
+	defer suite.ctrl.Finish()
 	gomock.InOrder(
-		mockMesosClient.EXPECT().
+		suite.mockJobStore.EXPECT().
+			GetAllJobs().Return(suite.allJobConfigs, nil),
+		suite.mockTaskStore.EXPECT().
+			GetTasksForJobAndState(suite.testJobID, runningStateStr).
+			Return(suite.taskInfos, nil),
+		suite.client.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).
-			Return(nil).
-			Times(3),
-	)
-
-	reconciler.Start()
-	time.Sleep(550 * time.Millisecond)
-	assert.Equal(t, len(reconciler.stopChan), 0)
-	reconciler.Stop()
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, len(reconciler.stopChan), 0)
-}
-
-func TestInitImplicitTaskReconcilationPeriodicalFailure(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockMesosClient := mock_mpb.NewMockClient(ctrl)
-	mtx := NewMetrics(tally.NoopScope)
-	reconciler := &taskReconciler{
-		Running:                   atomic.NewBool(false),
-		client:                    mockMesosClient,
-		metrics:                   mtx,
-		frameworkInfoProvider:     &mockFrameworkInfoProvider{},
-		initialReconcileDelay:     initialReconcileDelay,
-		implicitReconcileInterval: implicitReconcileInterval,
-		stopChan:                  make(chan struct{}, 1),
-	}
-
-	gomock.InOrder(
-		mockMesosClient.EXPECT().
+			Do(func(_ string, msg proto.Message) {
+				// Verify explicit reconcile tasks number is same as batch size.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(testBatchSize, len(call.GetReconcile().GetTasks()))
+			}).
+			Return(fmt.Errorf("fake error")),
+		suite.client.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).
-			Return(nil).
-			Times(1),
-		mockMesosClient.EXPECT().
-			Call(
-				gomock.Eq(streamID),
-				gomock.Any()).
-			Return(fmt.Errorf("fake error")).
-			Times(1),
-	)
-
-	reconciler.Start()
-	time.Sleep(450 * time.Millisecond)
-	assert.Equal(t, len(reconciler.stopChan), 0)
-	reconciler.Stop()
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, len(reconciler.stopChan), 0)
-}
-
-func TestInitImplicitTaskReconcilationNotStartIfAlreadyRunning(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockMesosClient := mock_mpb.NewMockClient(ctrl)
-	mtx := NewMetrics(tally.NoopScope)
-	reconciler := &taskReconciler{
-		Running:                   atomic.NewBool(false),
-		client:                    mockMesosClient,
-		metrics:                   mtx,
-		frameworkInfoProvider:     &mockFrameworkInfoProvider{},
-		initialReconcileDelay:     initialReconcileDelay,
-		implicitReconcileInterval: implicitReconcileInterval,
-		stopChan:                  make(chan struct{}, 1),
-	}
-
-	gomock.InOrder(
-		mockMesosClient.EXPECT().
-			Call(
-				gomock.Eq(streamID),
-				gomock.Any()).
+			Do(func(_ string, msg proto.Message) {
+				// Verify implicit reconcile call.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(0, len(call.GetReconcile().GetTasks()))
+			}).
 			Return(nil),
 	)
 
-	reconciler.Stop()
-	reconciler.Start()
-	reconciler.Start()
-	time.Sleep(350 * time.Millisecond)
-	assert.Equal(t, len(reconciler.stopChan), 0)
-	reconciler.Stop()
-	reconciler.Stop()
-	time.Sleep(100 * time.Millisecond)
-	assert.Equal(t, len(reconciler.stopChan), 0)
+	suite.Equal(suite.reconciler.Running.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.reconciler.Start()
+	time.Sleep(oneExplicitReconcileRunDelay)
+	suite.Equal(suite.reconciler.Running.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	time.Sleep(reconcileInterval)
+	suite.Equal(suite.reconciler.Running.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.reconciler.Stop()
+	suite.Equal(suite.reconciler.Running.Load(), false)
+}
+
+func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
+	defer suite.ctrl.Finish()
+	gomock.InOrder(
+		suite.mockJobStore.EXPECT().
+			GetAllJobs().Return(suite.allJobConfigs, nil),
+		suite.mockTaskStore.EXPECT().
+			GetTasksForJobAndState(suite.testJobID, runningStateStr).
+			Return(suite.taskInfos, nil),
+		suite.client.EXPECT().
+			Call(
+				gomock.Eq(streamID),
+				gomock.Any()).
+			Do(func(_ string, msg proto.Message) {
+				// Verify explicit reconcile tasks number is same as batch size.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(testBatchSize, len(call.GetReconcile().GetTasks()))
+			}).
+			Return(nil),
+	)
+
+	suite.Equal(suite.reconciler.Running.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.reconciler.Stop()
+	suite.reconciler.Start()
+	suite.reconciler.Start()
+	time.Sleep(oneExplicitReconcileRunDelay)
+	suite.Equal(suite.reconciler.Running.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), true)
+	suite.reconciler.Stop()
+	suite.reconciler.Stop()
+	time.Sleep(reconcileInterval)
+	suite.Equal(suite.reconciler.Running.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
 }
