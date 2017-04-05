@@ -26,7 +26,7 @@ job_manager:
   db_write_concurrency: 40
   # TODO: figure out the most optimized value
   placement_dequeue_limit: 10
-  get_placements_timeout_ms: 10000
+  get_placements_timeout_ms: 100
 
 election:
   zk_servers: ["localhost:8192"]

@@ -12,6 +12,7 @@ type Queue interface {
 	GetItemType() reflect.Type
 	Enqueue(item interface{}) error
 	Dequeue(maxWaitTime time.Duration) (interface{}, error)
+	Length() int
 }
 
 // queue implements the Queue interface using go channel
@@ -71,4 +72,10 @@ func (q *queue) Dequeue(maxWaitTime time.Duration) (interface{}, error) {
 	case <-timeout:
 		return nil, fmt.Errorf("Dequeue timed out after %v", maxWaitTime)
 	}
+
+}
+
+// Length returns the length of the queue at any time
+func (q *queue) Length() int {
+	return len(q.channel)
 }

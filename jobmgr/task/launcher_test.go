@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"sync"
 	"testing"
 
 	"go.uber.org/yarpc"
@@ -22,6 +23,7 @@ import (
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 	"github.com/uber-go/tally"
+	"time"
 )
 
 const (
@@ -36,6 +38,7 @@ var (
 		DiskLimitMb: 10,
 		FdLimit:     10,
 	}
+	lock = sync.RWMutex{}
 )
 
 func createTestTask(instanceID int) *task.TaskInfo {
@@ -165,6 +168,8 @@ func TestMultipleTasksPlaced(t *testing.T) {
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
 				// No need to unmarksnal output: empty means success.
 				// Capture call since we don't know ordering of tasks.
+				lock.Lock()
+				defer lock.Unlock()
 				req := reqBody.(*hostsvc.LaunchTasksRequest)
 				hostsLaunchedOn[req.Hostname] = true
 				for _, lt := range req.Tasks {
@@ -182,10 +187,12 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	}
 	taskLauncher.processPlacements(placements)
 
+	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
 		"hostname-0": true,
 	}
-
+	lock.Lock()
+	defer lock.Unlock()
 	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
 	assert.Equal(t, taskConfigs, launchedTasks)
 }

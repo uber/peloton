@@ -19,6 +19,8 @@ type Metrics struct {
 	APIGetPlacements    tally.Counter
 	GetPlacementSuccess tally.Counter
 	GetPlacementFail    tally.Counter
+
+	PlacementQueueLen tally.Gauge
 }
 
 // NewMetrics returns a new instance of resmgr.Metrics.
@@ -26,6 +28,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	successScope := scope.Tagged(map[string]string{"type": "success"})
 	failScope := scope.Tagged(map[string]string{"type": "fail"})
 	apiScope := scope.SubScope("api")
+
+	placement := scope.SubScope("placement")
 
 	return &Metrics{
 		APIEnqueueTasks:    apiScope.Counter("enqueue_tasks"),
@@ -43,5 +47,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		APIGetPlacements:    apiScope.Counter("get_placements"),
 		GetPlacementSuccess: successScope.Counter("get_placements"),
 		GetPlacementFail:    failScope.Counter("get_placements"),
+
+		PlacementQueueLen: placement.Gauge("placement_queue_length"),
 	}
 }

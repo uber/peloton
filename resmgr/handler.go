@@ -101,6 +101,7 @@ func (h *serviceHandler) EnqueueTasks(
 	}
 
 	response := resmgrsvc.EnqueueTasksResponse{}
+	log.Debug("Enqueue Returned")
 	return &response, nil, nil
 }
 
@@ -117,6 +118,7 @@ func (h *serviceHandler) DequeueTasks(
 	limit := req.GetLimit()
 	timeout := time.Duration(req.GetTimeout())
 	readyQueue := task.GetScheduler().GetReadyQueue()
+
 	var tasks []*resmgr.Task
 	for i := uint32(0); i < limit; i++ {
 		item, err := readyQueue.Dequeue(timeout * time.Millisecond)
@@ -134,6 +136,7 @@ func (h *serviceHandler) DequeueTasks(
 	// TODO: handle the dequeue errors better
 	response := resmgrsvc.DequeueTasksResponse{Tasks: tasks}
 	log.WithField("response", response).Debug("DequeueTasks succeeded")
+	log.Debug("Dequeue Returned")
 	return &response, nil, nil
 }
 
@@ -177,6 +180,8 @@ func (h *serviceHandler) SetPlacements(
 		}, nil, nil
 	}
 	response := resmgrsvc.SetPlacementsResponse{}
+	h.metrics.PlacementQueueLen.Update(float64(h.placements.Length()))
+	log.Debug("Set Placement Returned")
 	return &response, nil, nil
 }
 
@@ -197,6 +202,7 @@ func (h *serviceHandler) GetPlacements(
 	var placements []*resmgr.Placement
 	for i := 0; i < int(limit); i++ {
 		item, err := h.placements.Dequeue(timeout * time.Millisecond)
+
 		if err != nil {
 			h.metrics.GetPlacementFail.Inc(1)
 			break
@@ -206,5 +212,8 @@ func (h *serviceHandler) GetPlacements(
 		h.metrics.GetPlacementSuccess.Inc(1)
 	}
 	response := resmgrsvc.GetPlacementsResponse{Placements: placements}
+	h.metrics.PlacementQueueLen.Update(float64(h.placements.Length()))
+	log.Debug("Get Placement Returned")
+
 	return &response, nil, nil
 }

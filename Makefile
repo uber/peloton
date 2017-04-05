@@ -105,7 +105,7 @@ test-containers:
 	bash docker/run_test_cassandra.sh
 
 test: $(GOCOV) $(PBGENS) mockgens test-containers
-	gocov test $(ALL_PKGS) | gocov report
+	gocov test -race $(ALL_PKGS) | gocov report
 
 unit_test: $(GOCOV) $(PBGENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
