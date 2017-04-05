@@ -59,6 +59,11 @@ type Metrics struct {
 
 	// SetPlacementFail counts the number of tasks failed to be placed
 	SetPlacementFail tally.Counter
+
+	CreatePlacementDuration tally.Timer
+
+	// Adding metrics for set placement call
+	SetPlacementDuration tally.Timer
 }
 
 // NewMetrics returns a new Metrics struct with all metrics initialized and
@@ -69,6 +74,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 	taskSuccessScope := taskScope.Tagged(map[string]string{"type": "success"})
 	taskFailScope := taskScope.Tagged(map[string]string{"type": "fail"})
+	taskTimeScope := taskScope.Tagged(map[string]string{"type": "timer"})
 	offerSuccessScope := offerScope.Tagged(map[string]string{"type": "success"})
 	offerFailScope := offerScope.Tagged(map[string]string{"type": "fail"})
 
@@ -90,5 +96,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		LaunchTaskFail:        taskFailScope.Counter("launch"),
 		LaunchOfferAccept:     offerSuccessScope.Counter("accept"),
 		LaunchOfferAcceptFail: offerFailScope.Counter("accept"),
+
+		CreatePlacementDuration: taskTimeScope.Timer("create_placement"),
+		SetPlacementDuration:    taskTimeScope.Timer("set_placement"),
 	}
 }

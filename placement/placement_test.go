@@ -3,6 +3,7 @@ package placement
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,6 +39,7 @@ var (
 		DiskLimitMb: 10,
 		FdLimit:     10,
 	}
+	lock = sync.RWMutex{}
 )
 
 func createTestTask(instanceID int) *task.TaskInfo {
@@ -214,6 +216,8 @@ func TestNoHostOfferReturned(t *testing.T) {
 
 	pe.placeRound()
 
+	time.Sleep(1 * time.Second)
+
 	assert.NotEqual(
 		t,
 		int64(0),
@@ -319,14 +323,19 @@ func TestMultipleTasksPlaced(t *testing.T) {
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
 				// No need to unmarksnal output: empty means success.
 				// Capture call since we don't know ordering of tasks.
+				lock.Lock()
+				defer lock.Unlock()
 				req := reqBody.(*resmgrsvc.SetPlacementsRequest)
 				hostsLaunchedOn[req.Placements[0].Hostname] = true
-				for _, lt := range req.Placements[0].Tasks {
-					launchedTasks[lt.Value] = lt
+				hostsLaunchedOn[req.Placements[1].Hostname] = true
+				hostsLaunchedOn[req.Placements[2].Hostname] = true
+				for _, p := range req.Placements {
+					for _, lt := range p.Tasks {
+						launchedTasks[lt.Value] = lt
+					}
 				}
 			}).
-			Return(nil, nil).
-			Times(3),
+			Return(nil, nil),
 		// Mock ReleaseHostOffers call, which should return the last two host offers back because they are not used.
 		mockHostMgr.EXPECT().
 			Call(
@@ -341,11 +350,15 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	pe.placeRound()
 
+	time.Sleep(1 * time.Second)
+
 	expectedLaunchedHosts := map[string]bool{
 		"hostname-0": true,
 		"hostname-1": true,
 		"hostname-2": true,
 	}
+	lock.Lock()
+	defer lock.Unlock()
 	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
 	assert.Equal(t, taskIds, launchedTasks)
 }

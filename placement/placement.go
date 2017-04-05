@@ -14,16 +14,18 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
+
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"peloton/api/peloton"
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/resmgr"
 	"peloton/private/resmgr/taskqueue"
 	"peloton/private/resmgrsvc"
+
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
 )
 
 const (
@@ -72,15 +74,17 @@ type placementEngine struct {
 // Start starts placement engine
 func (s *placementEngine) Start() {
 	if atomic.CompareAndSwapInt32(&s.started, 0, 1) {
-		log.Info("Placement Engine started")
+		log.Info("Placement Engine starting")
 		s.metrics.Running.Update(1)
 		go func() {
+			// TODO: We need to revisit here if we want to run multiple
+			// Placement engine threads
 			for s.isRunning() {
 				s.placeRound()
 			}
 		}()
 	}
-	log.Warn("Placement Engine already started")
+	log.Info("Placement Engine started")
 }
 
 // Stop stops placement engine
@@ -94,7 +98,7 @@ func (s *placementEngine) Stop() {
 // with same grouping constraint.
 func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 	log.WithField("group", group).Debug("Placing task group")
-
+	totalTasks := len(group.tasks)
 	// TODO: move this loop out to the call site of current function,
 	//       so we don't need to loop in the test code.
 	placementDeadline := time.Now().Add(s.cfg.MaxPlacementDuration)
@@ -121,21 +125,50 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		}
 		s.metrics.OfferGet.Inc(1)
 
+		// Creating the placements for all the host offers
+		var placements []*resmgr.Placement
+		var placement *resmgr.Placement
 		index := 0
 		for _, hostOffer := range hostOffers {
-			if len(group.tasks) == 0 {
-				log.Debug("All tasks in group are placed")
+			if len(group.tasks) <= 0 {
 				break
 			}
-			group.tasks = s.placeTasks(group.tasks, group.resourceConfig, hostOffer)
+			placement, group.tasks = s.placeTasks(
+				group.tasks,
+				group.resourceConfig,
+				hostOffer,
+			)
+			placements = append(placements, placement)
 			index++
 		}
 
-		unused := hostOffers[index:]
-		if len(unused) > 0 {
-			s.returnUnused(unused)
+		// Setting the placements for all the placements
+		err = s.setPlacements(placements)
+
+		if err != nil {
+			// If there is error in placement returning all the host offer
+			s.returnUnused(hostOffers)
+		} else {
+			unused := hostOffers[index:]
+			if len(unused) > 0 {
+				s.returnUnused(unused)
+			}
 		}
-		log.WithField("remaining_tasks", group.tasks).Debug("Tasks remaining for next placeTaskGroup")
+
+		log.WithField("remaining_tasks", group.tasks).
+			Debug("Tasks remaining for next placeTaskGroup")
+	}
+	if len(group.tasks) > 0 {
+		log.WithFields(log.Fields{
+			"Tasks Remaining": len(group.tasks),
+			"Tasks Total":     totalTasks,
+		}).Warn("Could not place Tasks due to insufficiant Offers")
+
+		log.WithField("task_group", group.tasks).
+			Debug("Task group still has remaining tasks " +
+				"after allowed duration")
+		// TODO: add metrics for this
+		// TODO: send unplaced tasks back to correct state (READY).
 	}
 }
 
@@ -218,22 +251,22 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOf
 	return result, nil
 }
 
-// placeTasks makes placement decisions by assigning tasks to offer
+// placeTasks takes the tasks and convert them to placements
 func (s *placementEngine) placeTasks(
 	tasks []*task.TaskInfo,
 	resourceConfig *task.ResourceConfig,
-	hostOffer *hostsvc.HostOffer) []*task.TaskInfo {
-	nTasks := len(tasks)
-	if nTasks == 0 {
+	hostOffer *hostsvc.HostOffer) (*resmgr.Placement, []*task.TaskInfo) {
+
+	if len(tasks) == 0 {
 		log.Debug("No task to place")
-		return tasks
+		return nil, tasks
 	}
 
 	usage := scalar.FromResourceConfig(resourceConfig)
 	remain := scalar.FromMesosResources(hostOffer.GetResources())
 
 	var selectedTasks []*task.TaskInfo
-	for i := 0; i < nTasks; i++ {
+	for i := 0; i < len(tasks); i++ {
 		trySubtract := remain.TrySubtract(&usage)
 		if trySubtract == nil {
 			// NOTE: current placement implementation means all
@@ -247,87 +280,100 @@ func (s *placementEngine) placeTasks(
 		remain = *trySubtract
 		selectedTasks = append(selectedTasks, tasks[i])
 	}
-
 	tasks = tasks[len(selectedTasks):]
+
 	log.WithFields(log.Fields{
 		"selected_tasks":  selectedTasks,
 		"remaining_tasks": tasks,
 	}).Debug("Selected tasks to place")
-	// TODO: replace launch task with resmgr.SetPlacement once it's implemented,
-	//       and move task launching logic into Jobmgr
-	if len(selectedTasks) > 0 {
-		ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
-		defer cancelFunc()
-		var response resmgrsvc.SetPlacementsResponse
-		var request = &resmgrsvc.SetPlacementsRequest{
-			Placements: s.createPlacements(selectedTasks, hostOffer),
-		}
-		log.WithField("request", request).Debug("Calling SetPlacements")
-		_, err := s.resMgrClient.Call(
-			ctx,
-			yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements"),
-			request,
-			&response,
-		)
-		// TODO: add retry / put back offer and tasks in failure scenarios
-		if err != nil {
 
-			log.WithError(errors.New("Failed to place tasks"))
-			log.WithFields(log.Fields{
-				"tasks": len(selectedTasks),
-				"error": err.Error(),
-			})
-
-			s.metrics.SetPlacementFail.Inc(1)
-			return tasks
-		}
-
-		log.WithField("response", response).Debug("Place Tasks returned")
-
-		if response.Error != nil {
-			log.WithFields(log.Fields{
-				"tasks": len(selectedTasks),
-				"error": response.Error.String(),
-			}).Error("Failed to place tasks")
-			s.metrics.SetPlacementFail.Inc(1)
-			return tasks
-		}
-		s.metrics.SetPlacementSuccess.Inc(1)
-
-		log.WithFields(log.Fields{
-			"tasks":     selectedTasks,
-			"hostname":  hostOffer.GetHostname(),
-			"resources": hostOffer.GetResources(),
-		}).Info("Placed tasks")
-	} else {
-		log.WithField("remaining_tasks", tasks).Info("No task is selected to launch")
+	if len(selectedTasks) <= 0 {
+		return nil, tasks
 	}
-	return tasks
+	placement := s.createTasksPlacement(selectedTasks, hostOffer)
+
+	return placement, tasks
 }
 
-// createPlacements creates the placement for resource manager
-func (s *placementEngine) createPlacements(tasks []*task.TaskInfo,
-	hostOffer *hostsvc.HostOffer) []*resmgr.Placement {
-	TasksIds := make([]*peloton.TaskID, len(tasks))
-	placements := make([]*resmgr.Placement, 1)
-	i := 0
+func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
+	if len(placements) == 0 {
+		log.Debug("No task to place")
+		err := errors.New("No placements to set")
+		return err
+	}
+	watcher := s.metrics.SetPlacementDuration.Start()
+	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
+	defer cancelFunc()
+	var response resmgrsvc.SetPlacementsResponse
+	var request = &resmgrsvc.SetPlacementsRequest{
+		Placements: placements,
+	}
+	log.WithField("request", request).Debug("Calling SetPlacements")
+	_, err := s.resMgrClient.Call(
+		ctx,
+		yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements"),
+		request,
+		&response,
+	)
+	// TODO: add retry / put back offer and tasks in failure scenarios
+	if err != nil {
+		log.WithFields(log.Fields{
+			"num_placements": len(placements),
+			"error":          err.Error(),
+		}).WithError(errors.New("Failed to set placements"))
+
+		s.metrics.SetPlacementFail.Inc(1)
+		return err
+	}
+
+	log.WithField("response", response).Debug("Place Tasks returned")
+
+	if response.Error != nil {
+		log.WithFields(log.Fields{
+			"num_placements": len(placements),
+			"error":          response.Error.String(),
+		}).Error("Failed to place tasks")
+		s.metrics.SetPlacementFail.Inc(1)
+		return errors.New("Failed to place tasks")
+	}
+	lenTasks := 0
+	for _, p := range placements {
+		lenTasks += len(p.Tasks)
+	}
+	s.metrics.SetPlacementSuccess.Inc(int64(len(placements)))
+	s.metrics.SetPlacementDuration.Record(watcher.Stop())
+
+	log.WithFields(log.Fields{
+		"num_placements": len(placements),
+	}).Info("Set placements")
+	return nil
+}
+
+// createTasksPlacement creates the placement for resource manager
+// It also returns the list of tasks which can not be placed
+func (s *placementEngine) createTasksPlacement(tasks []*task.TaskInfo,
+	hostOffer *hostsvc.HostOffer) *resmgr.Placement {
+	watcher := s.metrics.CreatePlacementDuration.Start()
+	var tasksIds []*peloton.TaskID
 	for _, t := range tasks {
 		taskID := &peloton.TaskID{
 			Value: t.JobId.Value + "-" + fmt.Sprint(t.InstanceId),
 		}
-		TasksIds[i] = taskID
-		i++
+		tasksIds = append(tasksIds, taskID)
 	}
 	placement := &resmgr.Placement{
 		AgentId:  hostOffer.AgentId,
 		Hostname: hostOffer.Hostname,
-		Tasks:    TasksIds,
+		Tasks:    tasksIds,
 		// TODO : We are not setting offerId's
 		// we need to remove it from protobuf
 	}
-	placements[0] = placement
-	log.WithField("Length ", len(placements)).Info("createPlacements : Len of placements ")
-	return placements
+
+	log.WithFields(log.Fields{
+		"num_tasks": len(tasksIds),
+	}).Info("Create Placements")
+	s.metrics.CreatePlacementDuration.Record(watcher.Stop())
+	return placement
 }
 
 func (s *placementEngine) isRunning() bool {
@@ -350,13 +396,12 @@ func (s *placementEngine) placeRound() {
 	}
 	log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
 	taskGroups := groupTasksByResource(tasks)
-	for _, taskGroup := range taskGroups {
-		s.placeTaskGroup(taskGroup)
-		if len(taskGroup.tasks) > 0 {
-			log.WithField("task_group", taskGroup).Warn("Task group still has remaining tasks after allowed duration")
-			// TODO: add metrics for this
-			// TODO: send unplaced tasks back to correct state (READY).
-		}
+	for _, tg := range taskGroups {
+		// Launching go routine per task group
+		// TODO: We need to change this worker thread pool model
+		go func(group *taskGroup) {
+			s.placeTaskGroup(group)
+		}(tg)
 	}
 }
 
