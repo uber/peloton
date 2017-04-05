@@ -89,8 +89,8 @@ func (t *tree) Start() error {
 	}
 	t.resPools = resPools
 	if len(resPools) == 0 {
+		// We should not return from here
 		log.Warnf("There are no resource pools existing")
-		return nil
 	}
 	// Initializing the respoolTree
 	t.root = t.initializeResourceTree()
