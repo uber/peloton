@@ -1,5 +1,9 @@
 package jobmgr
 
+import (
+	"code.uber.internal/infra/peloton/jobmgr/task"
+)
+
 // Config is JobManager specific configuration
 type Config struct {
 	Port int `yaml:"port"`
@@ -9,11 +13,6 @@ type Config struct {
 	// (threads? rows? statements?)
 	DbWriteConcurrency int `yaml:"db_write_concurrency"`
 
-	// PlacementDequeueLimit is the limit which task launcher get the
-	// placements
-	PlacementDequeueLimit int `yaml:"placement_dequeue_limit"`
-
-	// GetPlacementsTimeout is the timeout value for task launcher to
-	// call GetPlacements
-	GetPlacementsTimeout int `yaml:"get_placements_timeout_ms"`
+	// Task launcher specific configs
+	TaskLauncher task.LauncherConfig `yaml:"task_launcher"`
 }

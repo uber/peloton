@@ -70,7 +70,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		mutex:   &sync.Mutex{},
 		updates: make(map[string][]*task.TaskInfo),
 	}
-	handler := &StatusUpdate{
+	handler := &statusUpdate{
 		taskStore: store,
 	}
 	var offset uint64

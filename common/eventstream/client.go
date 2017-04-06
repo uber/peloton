@@ -79,7 +79,6 @@ func NewEventStreamClient(
 		eventHandler: taskUpdateHandler,
 		metrics:      NewClientMetrics(parentScope.SubScope(metrics.SafeScopeName(clientName))),
 	}
-	client.Start()
 	return client
 }
 
@@ -288,6 +287,7 @@ func (c *Client) Start() {
 	log.WithField("clientName", c.clientName).Info("Event stream client start() called")
 	if !c.started {
 		c.started = true
+		atomic.StoreInt32(c.shutdownFlag, 0)
 		go func() {
 			atomic.StoreInt32(c.runningState, int32(1))
 			defer atomic.StoreInt32(c.runningState, int32(0))
@@ -295,7 +295,7 @@ func (c *Client) Start() {
 				c.initStream(c.clientName)
 				c.waitEventsLoop()
 			}
-			log.Info("TaskUpdateStreamClient shutdown")
+			log.WithField("clientName", c.clientName).Info("TaskUpdateStreamClient shutdown")
 		}()
 		for atomic.LoadInt32(c.runningState) != int32(1) {
 			time.Sleep(1 * time.Millisecond)
@@ -308,7 +308,7 @@ func (c *Client) Start() {
 func (c *Client) Stop() {
 	log.WithField("clientName", c.clientName).Info("Event stream client stop() called")
 	atomic.StoreInt32(c.shutdownFlag, 1)
-	// wait until the evebt consuming go routine returns
+	// wait until the event consuming go routine returns
 	for atomic.LoadInt32(c.runningState) != int32(0) {
 		time.Sleep(1 * time.Millisecond)
 	}

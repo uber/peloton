@@ -59,5 +59,6 @@ hostmgr:
     explicit_reconcile_batch_size: 1000
 
 job_manager:
-  placement_dequeue_limit: 10
-  get_placements_timeout_ms: 10000
+  task_launcher:
+    placement_dequeue_limit: 10
+    get_placements_timeout_ms: 100

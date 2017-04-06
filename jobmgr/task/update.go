@@ -1,6 +1,8 @@
 package task
 
 import (
+	"sync"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/storage"
@@ -13,53 +15,73 @@ import (
 	pb_eventstream "peloton/private/eventstream"
 )
 
+// StatusUpdate is the interface for task status updates
+type StatusUpdate interface {
+	Start()
+	Stop()
+}
+
 // StatusUpdate reads and processes the task state change events from HM
-type StatusUpdate struct {
+type statusUpdate struct {
 	taskStore   storage.TaskStore
 	eventClient *eventstream.Client
 	applier     *asyncEventProcessor
 }
 
-// InitTaskStatusUpdate creates a StatusUpdate
-// TODO: add shutdown method to stop the eventClient
-// In case the current jobmgr lost leadership
+// Singleton task status updater
+var statusUpdater *statusUpdate
+var onceInitStatusUpdate sync.Once
+
+// InitTaskStatusUpdate creates a statusUpdate
 func InitTaskStatusUpdate(
 	d yarpc.Dispatcher,
 	server string,
 	taskStore storage.TaskStore,
-	parentScope tally.Scope,
-) *StatusUpdate {
+	parentScope tally.Scope) {
+	onceInitStatusUpdate.Do(func() {
+		if statusUpdater != nil {
+			log.Warning("Task updater has already been initialized")
+			return
+		}
+		statusUpdater = &statusUpdate{
+			taskStore: taskStore,
+		}
+		// TODO: add config for BucketEventProcessor
+		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
 
-	statusUpdate := &StatusUpdate{
-		taskStore: taskStore,
+		eventClient := eventstream.NewEventStreamClient(
+			d,
+			common.PelotonJobManager,
+			server,
+			statusUpdater,
+			parentScope.SubScope("HostmgrEventStreamClient"))
+		statusUpdater.eventClient = eventClient
+	})
+}
+
+// GetStatusUpdater returns the task status updater. This
+// function assumes the updater has been initialized as part of the
+// InitTaskStatusUpdate function.
+func GetStatusUpdater() StatusUpdate {
+	if statusUpdater == nil {
+		log.Fatal("Status updater is not initialized")
 	}
-	// TODO: add config for BucketEventProcessor
-	statusUpdate.applier = newBucketEventProcessor(statusUpdate, 100, 10000)
-
-	eventClient := eventstream.NewEventStreamClient(
-		d,
-		common.PelotonJobManager,
-		server,
-		statusUpdate,
-		parentScope.SubScope("HostmgrEventStreamClient"))
-	statusUpdate.eventClient = eventClient
-
-	return statusUpdate
+	return statusUpdater
 }
 
 // OnEvent is the callback function notifying an event
-func (p *StatusUpdate) OnEvent(event *pb_eventstream.Event) {
+func (p *statusUpdate) OnEvent(event *pb_eventstream.Event) {
 	log.WithField("event_offset", event.Offset).Debug("JobMgr receiving event")
 	p.applier.addEvent(event)
 }
 
 // GetEventProgress returns the progress of the event progressing
-func (p *StatusUpdate) GetEventProgress() uint64 {
+func (p *statusUpdate) GetEventProgress() uint64 {
 	return p.applier.GetEventProgress()
 }
 
 // ProcessStatusUpdate processes the actual task status
-func (p *StatusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
+func (p *statusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 	mesosTaskID := taskStatus.GetTaskId().GetValue()
 	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
 	if err != nil {
@@ -121,6 +143,18 @@ func isUnexpected(taskState pb_task.TaskState) bool {
 }
 
 // OnEvents is the callback function notifying a batch of events
-func (p *StatusUpdate) OnEvents(events []*pb_eventstream.Event) {
+func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {
 	// Not implemented
+}
+
+// Start starts processing status update events
+func (p *statusUpdate) Start() {
+	p.eventClient.Start()
+	log.Info("Task status updater started")
+}
+
+// Stop stops processing status update events
+func (p *statusUpdate) Stop() {
+	p.eventClient.Stop()
+	log.Info("Task status updater stopped")
 }

@@ -7,8 +7,10 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"go.uber.org/yarpc"
@@ -109,11 +111,11 @@ func main() {
 	}
 
 	if *placementDequeLimit != 0 {
-		cfg.JobManager.PlacementDequeueLimit = *placementDequeLimit
+		cfg.JobManager.TaskLauncher.PlacementDequeueLimit = *placementDequeLimit
 	}
 
 	if *getPlacementsTimeout != 0 {
-		cfg.JobManager.GetPlacementsTimeout = *getPlacementsTimeout
+		cfg.JobManager.TaskLauncher.GetPlacementsTimeout = *getPlacementsTimeout
 	}
 
 	log.WithField("config", cfg).Info("Loaded Job Manager configuration")
@@ -232,7 +234,8 @@ func main() {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 
-	// Init the Task status update which pulls task update events from HM
+	// Init the Task status update which pulls task update events
+	// from HM once started after gaining leadership
 	task.InitTaskStatusUpdate(
 		dispatcher,
 		common.PelotonHostManager,
@@ -240,19 +243,38 @@ func main() {
 		rootScope,
 	)
 
+	server := jobmgr.NewServer(
+		cfg.JobManager.Port,
+	)
+
+	candidate, err := leader.NewCandidate(
+		cfg.Election,
+		rootScope.SubScope("election"),
+		common.JobManagerRole,
+		server,
+	)
+	if err != nil {
+		log.Fatalf("Unable to create leader candidate: %v", err)
+	}
+	err = candidate.Start()
+	if err != nil {
+		log.Fatalf("Unable to start leader candidate: %v", err)
+	}
+	defer candidate.Stop()
+
 	// TODO: We need to cleanup the client names
 	task.InitTaskLauncher(
 		dispatcher,
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
 		store,
-		&cfg.JobManager,
+		&cfg.JobManager.TaskLauncher,
 		rootScope,
 	)
-
 	task.GetLauncher().Start()
 	defer task.GetLauncher().Stop()
-	log.WithField("Port ", cfg.JobManager.Port).Info(" Started Peloton job manager on port ")
+
+	log.WithField("Port", cfg.JobManager.Port).Info("Started Peloton job manager")
 
 	select {}
 }

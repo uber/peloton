@@ -5,6 +5,7 @@ import (
 
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
@@ -36,9 +37,10 @@ func NewServer(
 		mesosInbound,
 		mesosOutbound,
 	)
+	jm := jobmgr.NewServer(port)
 	return &Server{
 		ID:   leader.NewID(port),
-		apps: []leader.Nomination{rm, hm},
+		apps: []leader.Nomination{rm, hm, jm},
 	}
 }
 

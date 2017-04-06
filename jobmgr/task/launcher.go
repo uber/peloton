@@ -19,9 +19,19 @@ import (
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/storage"
 )
+
+// LauncherConfig is Task launcher specific config
+type LauncherConfig struct {
+	// PlacementDequeueLimit is the limit which task launcher get the
+	// placements
+	PlacementDequeueLimit int `yaml:"placement_dequeue_limit"`
+
+	// GetPlacementsTimeout is the timeout value for task launcher to
+	// call GetPlacements
+	GetPlacementsTimeout int `yaml:"get_placements_timeout_ms"`
+}
 
 // Launcher defines the interface of task launcher which launches
 // tasks from the placed queues of resource pool
@@ -42,12 +52,12 @@ type launcher struct {
 	started       int32
 	shutdown      int32
 	taskStore     storage.TaskStore
-	config        *jobmgr.Config
+	config        *LauncherConfig
 	metrics       *Metrics
 }
 
 var taskLauncher *launcher
-var once sync.Once
+var onceInitTaskLauncher sync.Once
 
 // InitTaskLauncher initializes a Task Launcher
 func InitTaskLauncher(
@@ -55,10 +65,10 @@ func InitTaskLauncher(
 	resMgrClientName string,
 	hostMgrClientName string,
 	taskStore storage.TaskStore,
-	config *jobmgr.Config,
+	config *LauncherConfig,
 	parent tally.Scope,
 ) {
-	once.Do(func() {
+	onceInitTaskLauncher.Do(func() {
 		if taskLauncher != nil {
 			log.Warning("Task launcher has already been initialized")
 			return

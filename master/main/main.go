@@ -65,15 +65,6 @@ var (
 		Required().
 		ExistingFiles()
 
-	env = app.Flag(
-		"env",
-		"environment (development will do no mesos master auto discovery) "+
-			"(set $ENVIRONMENT to override)").
-		Short('e').
-		Default("development").
-		Envar("ENVIRONMENT").
-		Enum("development", "production")
-
 	zkPath = app.Flag(
 		"zk-path",
 		"Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to "+
@@ -460,7 +451,7 @@ func main() {
 		common.PelotonMaster,
 		common.PelotonMaster,
 		taskStore,
-		&cfg.JobManager,
+		&cfg.JobManager.TaskLauncher,
 		rootScope,
 	)
 	task.GetLauncher().Start()

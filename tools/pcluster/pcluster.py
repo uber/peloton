@@ -104,10 +104,6 @@ def run_mesos():
     print 'sleep 20 secs for zk to come up'
     time.sleep(20)
 
-    # Create zk nodes
-    exe = cli.exec_create(container=config['zk_container'], cmd='/scripts/setup_zk.sh')
-    cli.exec_start(exec_id=exe)
-
     # Run mesos master
     remove_existing_container(config['mesos_master_container'])
     cli.pull(config['mesos_master_image'])
@@ -333,11 +329,11 @@ def run_peloton(disable_peloton_resmgr=False,
     if not disable_peloton_hostmgr:
         run_peloton_hostmgr()
 
-    if not disable_peloton_jobmgr:
-        run_peloton_jobmgr()
-
     if not disable_peloton_placement:
         run_peloton_placement()
+
+    if not disable_peloton_jobmgr:
+        run_peloton_jobmgr()
 
 
 #

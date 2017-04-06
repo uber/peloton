@@ -17,7 +17,6 @@ import (
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/util"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -93,7 +92,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &jobmgr.Config{
+		config: &LauncherConfig{
 			PlacementDequeueLimit: 100,
 		},
 		resMgrClient:  mockRes,
