@@ -177,6 +177,25 @@ func (suite *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.Resou
 	}
 }
 
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolEmptyID() {
+
+	log.Info("TestServiceHandler_GetResourcePoolInvalidID called")
+
+	// form request
+	getReq := &pb_respool.GetRequest{}
+
+	getResp, _, err := suite.handler.GetResourcePool(
+		suite.context,
+		nil,
+		getReq,
+	)
+
+	suite.NoError(err)
+	suite.NotNil(getResp)
+	suite.Equal(RootResPoolID, getResp.Poolinfo.Id.Value)
+	suite.Nil(getResp.Poolinfo.Parent)
+}
+
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLeafNode() {
 	log.Info("TestServiceHandler_GetResourcePoolLeafNode called")
 
@@ -484,7 +503,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotEx
 				Kind:        "cpu",
 				Share:       1,
 				Limit:       1,
-				Reservation: 1,
+				Reservation: 0,
 			},
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,

@@ -162,13 +162,21 @@ func (n *ResPool) toResourcePoolInfo() *respool.ResourcePoolInfo {
 			Value: child.Value.(*ResPool).ID,
 		})
 	}
+
+	var parentResPoolID *respool.ResourcePoolID
+
+	// handle Root's parent == nil
+	if n.parent != nil {
+		parentResPoolID = &respool.ResourcePoolID{
+			Value: n.parent.ID,
+		}
+	}
+
 	return &respool.ResourcePoolInfo{
 		Id: &respool.ResourcePoolID{
 			Value: n.ID,
 		},
-		Parent: &respool.ResourcePoolID{
-			Value: n.parent.ID,
-		},
+		Parent:   parentResPoolID,
 		Config:   n.respoolConfig,
 		Children: childrenResourcePoolIDs,
 	}

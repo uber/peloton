@@ -113,8 +113,8 @@ func (h *serviceHandler) CreateResourcePool(
 		req,
 	).Info("CreateResourcePool called")
 
-	resPoolID := req.Id
-	resPoolConfig := req.Config
+	resPoolID := req.GetId()
+	resPoolConfig := req.GetConfig()
 
 	resourcePoolConfigData := ResourcePoolConfigData{
 		ID:                                resPoolID,
@@ -122,7 +122,7 @@ func (h *serviceHandler) CreateResourcePool(
 		SkipRootChildResourceConfigChecks: true,
 	}
 
-	// perform validation on resource pool config
+	// perform validation on resource pool resPoolConfig
 	if err := h.resPoolConfigValidator.Validate(
 		resourcePoolConfigData,
 	); err != nil {
@@ -207,7 +207,16 @@ func (h *serviceHandler) GetResourcePool(
 	h.metrics.APIGetResourcePool.Inc(1)
 	log.WithField("request", req).Info("GetResourcePool called")
 
-	resPoolID := req.Id
+	resPoolID := req.GetId()
+
+	if resPoolID == nil {
+		//TODO temporary solution to unblock,
+		// fix with new naming convention
+		resPoolID = &respool.ResourcePoolID{
+			Value: RootResPoolID,
+		}
+	}
+
 	resPool, err := h.resPoolTree.Get(resPoolID)
 	if err != nil {
 		h.metrics.GetResourcePoolFail.Inc(1)
@@ -264,12 +273,31 @@ func (h *serviceHandler) UpdateResourcePool(
 		req,
 	).Info("UpdateResourcePool called")
 
-	resPoolID := req.Id
-	resPoolConfig := req.Config
+	resPoolID := req.GetId()
+	resPoolConfig := req.GetConfig()
 
 	resourcePoolConfigData := ResourcePoolConfigData{
 		ID:                 resPoolID,
 		ResourcePoolConfig: resPoolConfig,
+	}
+
+	// perform validation on resource pool resPoolConfig
+	if err := h.resPoolConfigValidator.Validate(resourcePoolConfigData); err != nil {
+		h.metrics.UpdateResourcePoolFail.Inc(1)
+		log.WithError(
+			err,
+		).Infof(
+			"Error validating respoolID: %s in store",
+			resPoolID.Value,
+		)
+		return &respool.UpdateResponse{
+			Error: &respool.UpdateResponse_Error{
+				InvalidResourcePoolConfig: &respool.InvalidResourcePoolConfig{
+					Id:      resPoolID,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
 	}
 
 	// needed for rollback
@@ -286,25 +314,6 @@ func (h *serviceHandler) UpdateResourcePool(
 			Error: &respool.UpdateResponse_Error{
 				// TODO  differentiate between n/w errors vs other data errors
 				NotFound: &respool.ResourcePoolNotFound{
-					Id:      resPoolID,
-					Message: err.Error(),
-				},
-			},
-		}, nil, nil
-	}
-
-	// perform validation on resource pool config
-	if err := h.resPoolConfigValidator.Validate(resourcePoolConfigData); err != nil {
-		h.metrics.UpdateResourcePoolFail.Inc(1)
-		log.WithError(
-			err,
-		).Infof(
-			"Error validating respoolID: %s in store",
-			resPoolID.Value,
-		)
-		return &respool.UpdateResponse{
-			Error: &respool.UpdateResponse_Error{
-				InvalidResourcePoolConfig: &respool.InvalidResourcePoolConfig{
 					Id:      resPoolID,
 					Message: err.Error(),
 				},
