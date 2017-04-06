@@ -18,7 +18,6 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/reconcile"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/master/task"
-	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
@@ -27,6 +26,7 @@ import (
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 
+	"code.uber.internal/infra/peloton/storage/stores"
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -71,6 +71,17 @@ var (
 		"Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to override)").
 		Envar("MESOS_ZK_PATH").
 		String()
+
+	useCassandra = app.Flag(
+		"use-cassandra", "Use cassandra storage implementation").
+		Default("true").
+		Envar("USE_CASSANDRA").
+		Bool()
+
+	cassandraHosts = app.Flag(
+		"cassandra-hosts", "Cassandra hosts").
+		Envar("CASSANDRA_HOSTS").
+		Strings()
 )
 
 func main() {
@@ -109,6 +120,14 @@ func main() {
 		cfg.Election.ZKServers = *electionZkServers
 	}
 
+	if !*useCassandra {
+		cfg.Storage.UseCassandra = false
+	}
+
+	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
+		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
+	}
+
 	log.WithField("config", cfg).Info("Loaded host manager config")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
@@ -145,27 +164,10 @@ func main() {
 
 	rootScope.Counter("boot").Inc(1)
 
-	// Connect to mysql DB
-	if err := cfg.Storage.MySQL.Connect(); err != nil {
-		log.Fatalf("Could not connect to database: %+v", err)
-	}
-
-	// TODO(wu): Remove this once `make pcluster` is capable to auto
-	// migrate the database.  Migrate DB if necessary
-	if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
-		log.Fatalf("Could not migrate database: %+v", errs)
-	}
-
-	store := mysql.NewStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
-	// Tune db connections to make sure that task updates won't leak
-	// too many conns
-	// TODO: make it common db config for all components to share
-	store.DB.SetMaxOpenConns(cfg.HostManager.DbWriteConcurrency)
-	store.DB.SetMaxIdleConns(cfg.HostManager.DbWriteConcurrency)
-	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
+	jobStore, taskStore, _, frameworkInfoStore := stores.CreateStores(&cfg.Storage, rootScope)
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
-	driver := mesos.InitSchedulerDriver(&cfg.Mesos, store)
+	driver := mesos.InitSchedulerDriver(&cfg.Mesos, frameworkInfoStore)
 
 	// Active host manager needs a Mesos inbound
 	var mInbound = mhttp.NewInbound(rootScope, driver)
@@ -221,7 +223,7 @@ func main() {
 		dispatcher.ClientConfig(common.MesosMaster),
 		cfg.Mesos.Encoding,
 	)
-	mesos.InitManager(dispatcher, &cfg.Mesos, store)
+	mesos.InitManager(dispatcher, &cfg.Mesos, frameworkInfoStore)
 
 	log.WithFields(log.Fields{
 		"port":     cfg.HostManager.Port,
@@ -261,8 +263,8 @@ func main() {
 		mesosClient,
 		rootScope,
 		driver,
-		store,
-		store,
+		jobStore,
+		taskStore,
 		cfg.HostManager.TaskReconcilerConfig,
 	)
 

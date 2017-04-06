@@ -10,3 +10,6 @@ mesos:
 metrics:
   prometheus:
     enable: true
+
+storage:
+  use_cassandra: true

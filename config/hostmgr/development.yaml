@@ -17,3 +17,6 @@ metrics:
   #statsd:
   #  enable: true
   #  endpoint: localhost:1234
+
+storage:
+  use_cassandra: true

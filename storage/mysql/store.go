@@ -624,23 +624,9 @@ func (m *Store) GetAllJobs() (map[string]*job.JobConfig, error) {
 	return m.getJobs(map[string]interface{}{})
 }
 
-// ResourcePoolStore implements ResMgrStore using a mysql backend
-type ResourcePoolStore struct {
-	DB      *sqlx.DB
-	metrics storage.Metrics
-}
-
-// NewResourcePoolStore creates a MysqlJobStore
-func NewResourcePoolStore(db *sqlx.DB, scope tally.Scope) *ResourcePoolStore {
-	return &ResourcePoolStore{
-		DB:      db,
-		metrics: storage.NewMetrics(scope.SubScope("storage")),
-	}
-}
-
 // CreateResourcePool creates a resource pool with the resource pool id and the config value
 // TODO: Need to create test case
-func (m *ResourcePoolStore) CreateResourcePool(id *respool.ResourcePoolID, respoolConfig *respool.ResourcePoolConfig, createdBy string) error {
+func (m *Store) CreateResourcePool(id *respool.ResourcePoolID, respoolConfig *respool.ResourcePoolConfig, createdBy string) error {
 	buffer, err := json.Marshal(respoolConfig)
 	if err != nil {
 		log.Errorf("error = %v", err)
@@ -663,22 +649,22 @@ func (m *ResourcePoolStore) CreateResourcePool(id *respool.ResourcePoolID, respo
 }
 
 // GetResourcePool gets a resource pool info object
-func (m *ResourcePoolStore) GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
+func (m *Store) GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
 	return nil, errors.New("unimplemented")
 }
 
 // DeleteResourcePool Deletes the resource pool
-func (m *ResourcePoolStore) DeleteResourcePool(id *respool.ResourcePoolID) error {
+func (m *Store) DeleteResourcePool(id *respool.ResourcePoolID) error {
 	return errors.New("unimplemented")
 }
 
 // UpdateResourcePool Update the resource pool
-func (m *ResourcePoolStore) UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
+func (m *Store) UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
 	return errors.New("unimplemented")
 }
 
 // GetResourcePoolsByOwner gets resource pool(s) by owner
-func (m *ResourcePoolStore) GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error) {
+func (m *Store) GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error) {
 	var records = []ResourcePoolRecord{}
 	var result = make(map[string]*respool.ResourcePoolConfig)
 	q, args := getQueryAndArgs(resourcePoolTable, map[string]interface{}{"created_by=": owner}, []string{"*"})
@@ -713,7 +699,7 @@ func (m *ResourcePoolStore) GetResourcePoolsByOwner(owner string) (map[string]*r
 }
 
 // GetAllResourcePools Get all the resource pool
-func (m *ResourcePoolStore) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error) {
+func (m *Store) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error) {
 	var records = []ResourcePoolRecord{}
 	var result = make(map[string]*respool.ResourcePoolConfig)
 	q, args := getQueryAndArgs(resourcePoolTable, map[string]interface{}{}, []string{"*"})

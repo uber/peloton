@@ -19,7 +19,12 @@ resmgr_host = 'ms-eb90b179'
 hostmgr_host = 'ms-9baf6789'
 jobmgr_host = 'ms-56ad1385'
 placement_host = 'ms-e0d3105d'
-
+cassandra_hosts = '\n'.join([
+                  'ms-3162c292.pit-irn-1.uberatc.net,'
+                  'ms-695847d2.pit-irn-1.uberatc.net,'
+                  'ms-95f0df84.pit-irn-1.uberatc.net,'
+                  'ms-b1f4ea1f.pit-irn-1.uberatc.net',
+])
 PROFILES = [
   Profile(
     cluster = cluster,

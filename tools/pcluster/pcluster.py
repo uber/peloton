@@ -355,6 +355,9 @@ def run_peloton_resmgr():
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
                 'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'CASSANDRA_HOSTS={0}'.format(
+                    host_ip,
+                ),
             ],
             host_config=cli.create_host_config(
                 port_bindings={
@@ -392,6 +395,9 @@ def run_peloton_hostmgr():
                     host_ip,
                     config['local_zk_port']
                 ),
+                'CASSANDRA_HOSTS={0}'.format(
+                    host_ip,
+                ),
             ],
             host_config=cli.create_host_config(
                 port_bindings={
@@ -425,6 +431,9 @@ def run_peloton_jobmgr():
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
                 'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'CASSANDRA_HOSTS={0}'.format(
+                    host_ip,
+                ),
             ],
             host_config=cli.create_host_config(
                 port_bindings={

@@ -35,10 +35,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
-	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/storage/cassandra"
-	"code.uber.internal/infra/peloton/storage/mysql"
-
+	"code.uber.internal/infra/peloton/storage/stores"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
@@ -194,55 +191,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	var jobStore storage.JobStore
-	var taskStore storage.TaskStore
-	var frameworkStore storage.FrameworkInfoStore
-	var respoolStore storage.ResourcePoolStore
-
-	// This is mandatory until resmgr supports stapi, otherwise resmgr
-	// will crash
-
-	if !cfg.Storage.UseCassandra {
-		// Connect to mysql DB
-		if err := cfg.Storage.MySQL.Connect(); err != nil {
-			log.Fatalf("Could not connect to database: %+v", err)
-		}
-		// Migrate DB if necessary
-		if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
-			log.Fatalf("Could not migrate database: %+v", errs)
-		}
-
-		// Initialize job and task stores
-		store := mysql.NewStore(cfg.Storage.MySQL, rootScope)
-		store.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
-		store.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
-		store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
-
-		jobStore = store
-		taskStore = store
-		frameworkStore = store
-		// Initialize resmgr store
-		respoolStore := mysql.NewResourcePoolStore(
-			cfg.Storage.MySQL.Conn,
-			rootScope,
-		)
-		respoolStore.DB.SetMaxOpenConns(cfg.Master.DbWriteConcurrency)
-		respoolStore.DB.SetMaxIdleConns(cfg.Master.DbWriteConcurrency)
-		respoolStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
-	} else {
-		log.Infof("cassandra Config: %v", cfg.Storage.Cassandra)
-		if errs := cfg.Storage.Cassandra.AutoMigrate(); errs != nil {
-			log.Fatalf("Could not migrate database: %+v", errs)
-		}
-		store, err := cassandra.NewStore(&cfg.Storage.Cassandra, rootScope)
-		if err != nil {
-			log.Fatalf("Could not create cassandra store: %+v", err)
-		}
-		jobStore = store
-		taskStore = store
-		frameworkStore = store
-		respoolStore = store
-	}
+	jobStore, taskStore, respoolStore, frameworkStore := stores.CreateStores(&cfg.Storage, rootScope)
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, frameworkStore)
 

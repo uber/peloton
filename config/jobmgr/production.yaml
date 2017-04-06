@@ -19,8 +19,6 @@ storage:
     # TODO: read db from zk
     host: compute841-dca1
     port: 3306
-
-job_manager:
   db_write_concurrency: 400
 
 election:

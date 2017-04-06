@@ -13,13 +13,15 @@ storage:
     max_batch_size_rows: 500
     conn_lifetime: 30s
   cassandra:
-    max_batch_size_rows: 500
+    max_batch_size_rows: 50
     connection:
-      contactPoints: ["cassandra"]
+      contactPoints: ["127.0.0.1"]
       port: 9042
       consistency: LOCAL_QUORUM
+      timeout: 10s
     store_name: peloton_test
     migrations: storage/cassandra/migrations/
+  use_cassandra: false
 
 resmgr:
   port: 5290

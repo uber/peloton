@@ -30,6 +30,7 @@ storage:
       timeout: 10s
     store_name: peloton_test
     migrations: storage/cassandra/migrations/
+  db_write_concurrency: 400
 
 placement:
    task_dequeue_limit: 1000
@@ -38,5 +39,3 @@ placement:
 election:
   root: "/peloton/production"
 
-master:
-  db_write_concurrency: 400

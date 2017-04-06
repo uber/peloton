@@ -16,7 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/resmgr/taskupdate"
-	"code.uber.internal/infra/peloton/storage/mysql"
+	"code.uber.internal/infra/peloton/storage/stores"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
@@ -59,6 +59,17 @@ var (
 		"port", "Resource manager port (resmgr.port override) (set $PORT to override)").
 		Envar("PORT").
 		Int()
+
+	useCassandra = app.Flag(
+		"use-cassandra", "Use cassandra storage implementation").
+		Default("true").
+		Envar("USE_CASSANDRA").
+		Bool()
+
+	cassandraHosts = app.Flag(
+		"cassandra-hosts", "Cassandra hosts").
+		Envar("CASSANDRA_HOSTS").
+		Strings()
 )
 
 func main() {
@@ -96,6 +107,14 @@ func main() {
 	if *resmgrPort != 0 {
 		cfg.ResManager.Port = *resmgrPort
 	}
+
+	if !*useCassandra {
+		cfg.Storage.UseCassandra = false
+	}
+
+	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
+		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
+	}
 	log.WithField("config", cfg).Info("Loaded Resource Manager config")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
@@ -117,17 +136,7 @@ func main() {
 		log.Fatalf("Could not migrate database: %+v", errs)
 	}
 
-	// Initialize resmgr store
-	respoolStore := mysql.NewResourcePoolStore(cfg.Storage.MySQL.Conn, rootScope)
-	respoolStore.DB.SetMaxOpenConns(cfg.ResManager.DbWriteConcurrency)
-	respoolStore.DB.SetMaxIdleConns(cfg.ResManager.DbWriteConcurrency)
-	respoolStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
-
-	// Initialize job and task stores
-	jobStore := mysql.NewStore(cfg.Storage.MySQL, rootScope)
-	jobStore.DB.SetMaxOpenConns(cfg.ResManager.DbWriteConcurrency)
-	jobStore.DB.SetMaxIdleConns(cfg.ResManager.DbWriteConcurrency)
-	jobStore.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
+	jobStore, taskStore, respoolStore, _ := stores.CreateStores(&cfg.Storage, rootScope)
 
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
 	// mux in other HTTP handlers
@@ -145,7 +154,7 @@ func main() {
 
 	// Initialize service handlers
 	respool.InitServiceHandler(dispatcher, rootScope, respoolStore)
-	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, jobStore)
+	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
 	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
 
 	taskupdate.InitServiceHandler(dispatcher)

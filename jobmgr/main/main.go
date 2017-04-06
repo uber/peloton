@@ -11,7 +11,6 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
@@ -22,6 +21,7 @@ import (
 	"runtime"
 
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/storage/stores"
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -74,6 +74,17 @@ var (
 			"(set $GET_PLACEMENTS_TIMEOUT to override) ").
 		Envar("GET_PLACEMENTS_TIMEOUT").
 		Int()
+
+	useCassandra = app.Flag(
+		"use-cassandra", "Use cassandra storage implementation").
+		Default("true").
+		Envar("USE_CASSANDRA").
+		Bool()
+
+	cassandraHosts = app.Flag(
+		"cassandra-hosts", "Cassandra hosts").
+		Envar("CASSANDRA_HOSTS").
+		Strings()
 )
 
 func main() {
@@ -118,6 +129,14 @@ func main() {
 		cfg.JobManager.TaskLauncher.GetPlacementsTimeout = *getPlacementsTimeout
 	}
 
+	if !*useCassandra {
+		cfg.Storage.UseCassandra = false
+	}
+
+	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
+		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
+	}
+
 	log.WithField("config", cfg).Info("Loaded Job Manager configuration")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
@@ -128,16 +147,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	// Connect to mysql DB
-	if err := cfg.Storage.MySQL.Connect(); err != nil {
-		log.Fatalf("Could not connect to database: %+v", err)
-	}
-	// TODO: fix metric scope
-	store := mysql.NewStore(cfg.Storage.MySQL, rootScope.SubScope("storage"))
-	store.DB.SetMaxOpenConns(cfg.JobManager.DbWriteConcurrency)
-	store.DB.SetMaxIdleConns(cfg.JobManager.DbWriteConcurrency)
-	store.DB.SetConnMaxLifetime(cfg.Storage.MySQL.ConnLifeTime)
-
+	jobStore, taskStore, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
 	inbounds := []transport.Inbound{
 		http.NewInbound(
 			fmt.Sprintf(":%d", cfg.JobManager.Port),
@@ -217,15 +227,15 @@ func main() {
 	job.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		store,
-		store,
+		jobStore,
+		taskStore,
 		common.PelotonResourceManager, // TODO: to be removed
 	)
 	task.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		store,
-		store,
+		jobStore,
+		taskStore,
 		common.PelotonHostManager, // TODO: to be removed
 	)
 
@@ -239,7 +249,7 @@ func main() {
 	task.InitTaskStatusUpdate(
 		dispatcher,
 		common.PelotonHostManager,
-		store,
+		taskStore,
 		rootScope,
 	)
 
@@ -267,7 +277,7 @@ func main() {
 		dispatcher,
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
-		store,
+		taskStore,
 		&cfg.JobManager.TaskLauncher,
 		rootScope,
 	)

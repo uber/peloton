@@ -24,9 +24,8 @@ const (
 
 type mySQLStoreTestSuite struct {
 	suite.Suite
-	store         *Store
-	resPoolsStore *ResourcePoolStore
-	db            *sqlx.DB
+	store *Store
+	db    *sqlx.DB
 }
 
 func (suite *mySQLStoreTestSuite) SetupTest() {
@@ -34,7 +33,6 @@ func (suite *mySQLStoreTestSuite) SetupTest() {
 
 	suite.db = conf.Conn
 	suite.store = NewStore(*conf, tally.NoopScope)
-	suite.resPoolsStore = NewResourcePoolStore(conf.Conn, tally.NoopScope)
 }
 
 func (suite *mySQLStoreTestSuite) TearDownTest() {
@@ -345,7 +343,7 @@ func (suite *mySQLStoreTestSuite) TestGetResourcePoolsByOwner() {
 		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
-		err := suite.resPoolsStore.CreateResourcePool(resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		err := suite.store.CreateResourcePool(resourcePoolID, resourcePoolConfig, _resPoolOwner)
 		suite.Nil(err)
 	}
 
@@ -370,7 +368,7 @@ func (suite *mySQLStoreTestSuite) TestGetResourcePoolsByOwner() {
 	}
 
 	for _, tc := range testCases {
-		resourcePools, actualErr := suite.resPoolsStore.GetResourcePoolsByOwner(tc.owner)
+		resourcePools, actualErr := suite.store.GetResourcePoolsByOwner(tc.owner)
 		if tc.expectedErr == nil {
 			suite.Nil(actualErr, tc.msg)
 			suite.Len(resourcePools, tc.nResourcePools, tc.msg)
