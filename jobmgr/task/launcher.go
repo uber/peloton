@@ -100,10 +100,17 @@ func (l *launcher) Start() error {
 		go func() {
 			for l.isRunning() {
 				placements, err := l.getPlacements()
-				if err != nil || len(placements) == 0 {
-					log.Info("Failed to get placements")
+				if err != nil {
+					log.Error("Failed to get placements")
 					continue
 				}
+
+				if len(placements) == 0 {
+					// log a debug to make it not verbose
+					log.Debug("No placements")
+					continue
+				}
+
 				// TODO: Implement this as a thread pool
 				// Getting and launching placements in different go routine
 				l.processPlacements(placements)
@@ -148,10 +155,12 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 		return nil, err
 	}
 
-	log.WithFields(log.Fields{
-		"num_placements": len(response.Placements),
-		"duration":       callDuration.Seconds(),
-	}).Info("GetPlacements")
+	if len(response.Placements) != 0 {
+		log.WithFields(log.Fields{
+			"num_placements": len(response.Placements),
+			"duration":       callDuration.Seconds(),
+		}).Info("GetPlacements")
+	}
 
 	// TODO: turn getplacement metric into gauge so we can
 	//       get the current get_placements counts
