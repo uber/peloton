@@ -96,7 +96,7 @@ func (m *serviceHandler) List(
 
 	log.Infof("TaskManager.List called: %v", body)
 	m.metrics.TaskAPIList.Inc(1)
-	_, err := m.jobStore.GetJob(body.JobId)
+	jobConfig, err := m.jobStore.GetJob(body.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskListFail.Inc(1)
@@ -111,6 +111,12 @@ func (m *serviceHandler) List(
 	if body.Range == nil {
 		result, err = m.taskStore.GetTasksForJob(body.JobId)
 	} else {
+		// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
+		// and  C* store would error out if it cannot find a instance id. A separate
+		// task is filed on the CLI side.
+		if body.Range.To > jobConfig.InstanceCount {
+			body.Range.To = jobConfig.InstanceCount
+		}
 		result, err = m.taskStore.GetTasksForJobByRange(body.JobId, body.Range)
 	}
 	if err != nil || len(result) == 0 {
@@ -171,6 +177,9 @@ func (m *serviceHandler) Stop(
 
 	var instanceIds []uint32
 	for _, taskRange := range body.GetRanges() {
+		// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
+		// and  C* store would error out if it cannot find a instance id. A separate
+		// task is filed on the CLI side.
 		from := taskRange.GetFrom()
 		for from < taskRange.GetTo() {
 			instanceIds = append(instanceIds, from)

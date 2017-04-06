@@ -370,7 +370,9 @@ def run_peloton_resmgr():
         )
         cli.start(container=container.get('Id'))
         print 'started container %s' % name
-        time.sleep(1)
+        # TODO: reduce the sleep time after the db schema logic is moved into
+        # pcluster
+        time.sleep(30)
 
 
 #
