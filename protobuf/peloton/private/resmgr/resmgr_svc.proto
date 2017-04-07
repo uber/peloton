@@ -65,6 +65,13 @@ service ResourceManagerService {
    * Host manager to notify resource manager on task status updates.
    */
   rpc NotifyTaskUpdates(NotifyTaskUpdatesRequest) returns (NotifyTaskUpdatesResponse);
+
+  /**
+   * Get the list of Tasks running on the the list of host provided. This information
+   * needed from the placement engines to find out what are the tasks running on
+   * which hosts by that they can place tasks accordingly
+   */
+  rpc GetTasksByHosts(GetTasksByHostsRequest) returns (GetTasksByHostsResponse);
 }
 
 message ResourcePoolNotFound {
@@ -117,6 +124,9 @@ message DequeueTasksRequest {
 
   // Timeout in milliseconds if no tasks are ready
   uint32 timeout = 2;
+
+  // Task Type to identify which kind of tasks need to be dequeued
+  TaskType type = 3;
 }
 
 message DequeueTasksResponse {
@@ -186,4 +196,25 @@ message NotifyTaskUpdatesResponse {
   }
   Error error = 1;
   uint64 purgeOffset = 2;
+}
+
+// GetTasksByHostsRequest will always returns the currently running tasks
+message GetTasksByHostsRequest {
+  repeated string hostname = 1;
+
+  // Task Type to identify which kind of tasks need to
+  // be dequeued, if this is left out all tasks wil be returned.
+  TaskType type = 2;
+}
+
+message TaskList {
+  repeated resmgr.Task tasks = 1;
+}
+
+message GetTasksByHostsResponse {
+  Error error = 1;
+  // This will return the list of tasks running on the host
+  // If there is no tasks running on that host it will return
+  // empty list
+  map <string,TaskList> hostTasksMap = 2;
 }

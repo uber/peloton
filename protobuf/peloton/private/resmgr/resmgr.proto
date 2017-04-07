@@ -14,6 +14,28 @@ import "peloton/api/task/task.proto";
 
 
 /**
+ *  TaskType task type definition such as batch, service and infra agent.
+ */
+enum TaskType {
+
+  // This is unknown type
+  UNKNOWN = 0;
+
+  // Normal batch task
+  BATCH = 1;
+
+  // STATELESS task which is long running and will be restarted upon failures.
+  STATELESS = 2;
+
+  // STATEFUL task which is using persistent volume and is long running
+  STATEFUL = 3;
+
+  // Daemon task which has one instance running on each host for infra
+  // agents like muttley, m3collector etc.
+  DAEMON = 4;
+}
+
+/**
  *  Task describes a task instance at Resource Manager layer. Only
  *  includes the minimal set of fields required for Resource Manager
  *  and Placement Engine, such as resource config, constraints etc.
@@ -54,6 +76,9 @@ message Task {
   // task should run on, all constraints have to be satisfied. These are
   // copied from the TaskConfig.
   repeated api.task.Constraint constraints = 9;
+
+  // Type of the Task
+  TaskType type = 10;
 }
 
 /**
