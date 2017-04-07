@@ -212,6 +212,9 @@ message TaskList {
 }
 
 message GetTasksByHostsResponse {
+  message Error {
+    string message = 1;
+  }
   Error error = 1;
   // This will return the list of tasks running on the host
   // If there is no tasks running on that host it will return
