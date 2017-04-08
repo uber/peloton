@@ -20,7 +20,11 @@ class Profile(Struct):
 
 docker_entrypoint = Process(
    name='{{profile.app_id}}',
-   cmdline='/bin/entrypoint.sh'
+   cmdline=' && '.join([
+     'rm -rf /var/log/peloton/{{profile.app_id}}',
+     'ln -s $MESOS_DIRECTORY/sandbox/.logs/{{profile.app_id}}/0 /var/log/peloton/{{profile.app_id}}',
+     '/bin/entrypoint.sh'
+   ])
 )
 
 executor_task = SequentialTask(
@@ -43,6 +47,7 @@ JOB_TEMPLATE = Service(
     docker = Docker(
       image = '{{profile.docker_image}}',
       parameters=[
+        Parameter(name='volume', value='/var/log/peloton:/var/log/peloton:rw'),
         Parameter(name='env', value='ENVIRONMENT=production'),
         Parameter(name='env', value='CONFIG_DIR=./config'),
         Parameter(name='env', value='APP={{profile.app_id}}'),
