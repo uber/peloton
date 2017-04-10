@@ -12,7 +12,7 @@ election_zk_servers = '\n'.join([
     'zk-c0d7569d.pit-irn-1.uberatc.net:2181',
     'zk-ea34a2c6.pit-irn-1.uberatc.net:2181',
 ])
-docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-103-g4d2b693'
+docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-104-g5561d4b'
 mysql_host = 'ms-0d1a494c'
 # TODO: remove the host pin once peloton is hooked up with uns
 resmgr_host = 'ms-eb90b179'
@@ -20,11 +20,12 @@ hostmgr_host = 'ms-9baf6789'
 jobmgr_host = 'ms-56ad1385'
 placement_host = 'ms-e0d3105d'
 cassandra_hosts = '\n'.join([
-                  'ms-3162c292.pit-irn-1.uberatc.net,'
-                  'ms-695847d2.pit-irn-1.uberatc.net,'
-                  'ms-95f0df84.pit-irn-1.uberatc.net,'
+                  'ms-3162c292.pit-irn-1.uberatc.net',
+                  'ms-95f0df84.pit-irn-1.uberatc.net',
                   'ms-b1f4ea1f.pit-irn-1.uberatc.net',
 ])
+use_cassandra = 'false'
+
 PROFILES = [
   Profile(
     cluster = cluster,
@@ -36,6 +37,8 @@ PROFILES = [
     docker_image = docker_image,
     pinned_attribute = 'hostname',
     pinned_hosts = resmgr_host,
+    use_cassandra = use_cassandra,
+    cassandra_hosts = cassandra_hosts,
   ),
   Profile(
     cluster = cluster,
@@ -47,6 +50,8 @@ PROFILES = [
     docker_image = docker_image,
     pinned_attribute = 'hostname',
     pinned_hosts = hostmgr_host,
+    use_cassandra = use_cassandra,
+    cassandra_hosts = cassandra_hosts,
   ),
   Profile(
     cluster = cluster,
@@ -58,6 +63,8 @@ PROFILES = [
     docker_image = docker_image,
     pinned_attribute = 'hostname',
     pinned_hosts = jobmgr_host,
+    use_cassandra = use_cassandra,
+    cassandra_hosts = cassandra_hosts,
   ),
   Profile(
     cluster = cluster,
@@ -69,6 +76,8 @@ PROFILES = [
     docker_image = docker_image,
     pinned_attribute = 'hostname',
     pinned_hosts = placement_host,
+    use_cassandra = use_cassandra,
+    cassandra_hosts = cassandra_hosts,
   )
 ]
 

@@ -20,3 +20,6 @@ placement:
 
 election:
   root: "/peloton/production"
+
+storage:
+  use_cassandra: true
