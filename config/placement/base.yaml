@@ -4,6 +4,7 @@ logging:
 
 placement:
    port: 5293
-   task_dequeue_limit: 20
+   task_dequeue_limit: 10
+   task_dequeue_timeout: 100
    offer_dequeue_limit: 10
    max_placement_duration: 1800s

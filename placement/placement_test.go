@@ -17,7 +17,7 @@ import (
 	"peloton/api/peloton"
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
-	"peloton/private/resmgr/taskqueue"
+	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/util"
@@ -30,6 +30,7 @@ const (
 	testJobName = "testjob"
 	// a fake maxPlacementDuration to ensure that placementLoop doesn't complete immediately
 	maxPlacementDuration = time.Duration(10) * time.Second
+	taskDequeueTimeout   = 100
 )
 
 var (
@@ -42,28 +43,26 @@ var (
 	lock = sync.RWMutex{}
 )
 
-func createTestTask(instanceID int) *task.TaskInfo {
+func createTestTask(instanceID int) *resmgr.Task {
 	var tid = fmt.Sprintf(taskIDFmt, instanceID)
-
-	return &task.TaskInfo{
+	return &resmgr.Task{
 		JobId: &peloton.JobID{
 			Value: testJobName,
 		},
-		InstanceId: uint32(instanceID),
-		Config: &task.TaskConfig{
-			Name:     testJobName,
-			Resource: &defaultResourceConfig,
+		Id: &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%s", testJobName, instanceID),
 		},
-		Runtime: &task.RuntimeInfo{
-			TaskId: &mesos.TaskID{
-				Value: &tid,
-			},
+		Resource: &defaultResourceConfig,
+		Priority: uint32(1),
+		TaskId: &mesos.TaskID{
+			Value: &tid,
 		},
+		Preemptible: true,
 	}
 }
 
-func createTestTasks(instanceIds []int) []*task.TaskInfo {
-	var tasks []*task.TaskInfo
+func createTestTasks(instanceIds []int) []*resmgr.Task {
+	var tasks []*resmgr.Task
 	for _, instanceID := range instanceIds {
 		tasks = append(tasks, createTestTask(instanceID))
 	}
@@ -91,18 +90,6 @@ func createHostOffer(hostID int, resources []*mesos.Resource) *hostsvc.HostOffer
 	}
 }
 
-// createLaunchTasksRequest generates hostsvc.LaunchTasksRequest from tasks and hostname
-func createLaunchTasksRequest(
-	tasks []*task.TaskInfo,
-	hostname string,
-	agentID *mesos.AgentID) *hostsvc.LaunchTasksRequest {
-	return &hostsvc.LaunchTasksRequest{
-		Hostname: hostname,
-		Tasks:    createLaunchableTasks(tasks),
-		AgentId:  agentID,
-	}
-}
-
 // TODO: Add a test for Start()/Stop() pair.
 
 // This test ensures that empty task returned from resmgr does not trigger hostmgr calls.
@@ -120,6 +107,7 @@ func TestEmptyTaskToPlace(t *testing.T) {
 			TaskDequeueLimit:     10,
 			OfferDequeueLimit:    10,
 			MaxPlacementDuration: maxPlacementDuration,
+			TaskDequeueTimeOut:   taskDequeueTimeout,
 		},
 		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
@@ -131,14 +119,15 @@ func TestEmptyTaskToPlace(t *testing.T) {
 		mockRes.EXPECT().
 			Call(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("TaskQueue.Dequeue")),
-				gomock.Eq(&taskqueue.DequeueRequest{
-					Limit: uint32(10),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks")),
+				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
+					Limit:   uint32(10),
+					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				var empty taskqueue.DequeueResponse
-				o := resBodyOut.(*taskqueue.DequeueResponse)
+				var empty resmgrsvc.DequeueTasksResponse
+				o := resBodyOut.(*resmgrsvc.DequeueTasksResponse)
 				*o = empty
 			}).
 			Return(nil, nil),
@@ -182,15 +171,17 @@ func TestNoHostOfferReturned(t *testing.T) {
 		mockRes.EXPECT().
 			Call(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("TaskQueue.Dequeue")),
-				gomock.Eq(&taskqueue.DequeueRequest{
-					Limit: uint32(10),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks")),
+				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
+					Limit:   uint32(10),
+					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*taskqueue.DequeueResponse)
-				*o = taskqueue.DequeueResponse{
-					Tasks: []*task.TaskInfo{t1},
+				o := resBodyOut.(*resmgrsvc.DequeueTasksResponse)
+				*o = resmgrsvc.DequeueTasksResponse{
+					Tasks: []*resmgr.Task{t1},
+					Error: nil,
 				}
 			}).
 			Return(nil, nil),
@@ -204,7 +195,7 @@ func TestNoHostOfferReturned(t *testing.T) {
 						{
 							Limit: uint32(1), // only one task
 							ResourceConstraint: &hostsvc.ResourceConstraint{
-								Minimum: t1.Config.Resource,
+								Minimum: t1.Resource,
 							},
 						},
 					},
@@ -249,17 +240,13 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	// generate 25 test tasks
 	numTasks := 25
-	var testTasks []*task.TaskInfo
-	taskConfigs := make(map[string]*task.TaskConfig)
+	var testTasks []*resmgr.Task
 	taskIds := make(map[string]*peloton.TaskID)
+
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
-		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
-		}
 		testTasks = append(testTasks, tmp)
-		taskConfigs[tmp.GetRuntime().GetTaskId().GetValue()] = tmp.Config
-		taskIds[taskID.Value] = taskID
+		taskIds[tmp.Id.Value] = tmp.Id
 	}
 
 	// generate 5 host offers, each can hold 10 tasks.
@@ -278,15 +265,17 @@ func TestMultipleTasksPlaced(t *testing.T) {
 		mockRes.EXPECT().
 			Call(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("TaskQueue.Dequeue")),
-				gomock.Eq(&taskqueue.DequeueRequest{
-					Limit: uint32(10),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks")),
+				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
+					Limit:   uint32(10),
+					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*taskqueue.DequeueResponse)
-				*o = taskqueue.DequeueResponse{
+				o := resBodyOut.(*resmgrsvc.DequeueTasksResponse)
+				*o = resmgrsvc.DequeueTasksResponse{
 					Tasks: testTasks,
+					Error: nil,
 				}
 			}).
 			Return(nil, nil),
@@ -300,7 +289,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 						{
 							Limit: uint32(10), // OfferDequeueLimit
 							ResourceConstraint: &hostsvc.ResourceConstraint{
-								Minimum: testTasks[0].Config.Resource,
+								Minimum: testTasks[0].Resource,
 							},
 						},
 					},
@@ -363,63 +352,42 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	assert.Equal(t, taskIds, launchedTasks)
 }
 
-func TestCreateLaunchableTasks(t *testing.T) {
-	var hostname = "testhost"
-	var tmp = "agentid"
-	var agentID = &mesos.AgentID{
-		Value: &tmp,
-	}
-
-	tasks := createTestTasks([]int{0, 1})
-	ltr := createLaunchTasksRequest(tasks, hostname, agentID)
-	assert.Equal(t, hostname, ltr.Hostname)
-	assert.Equal(t, agentID, ltr.AgentId)
-	assert.Equal(t, 2, len(ltr.Tasks))
-}
-
 func TestGroupTasksByResource(t *testing.T) {
 	t1 := createTestTask(0)
 	t2 := createTestTask(1)
-	result := groupTasksByResource([]*task.TaskInfo{t1, t2})
+	result := groupTasksByResource([]*resmgr.Task{t1, t2})
 	assert.Equal(t, 1, len(result))
-	key1 := t1.GetConfig().GetResource().String()
+	key1 := t1.GetResource().String()
 	assert.Contains(t, result, key1)
 	group1 := result[key1]
 	assert.NotNil(t, group1)
 	assert.Equal(t, 2, len(group1.tasks))
-	assert.Equal(t, t1.GetConfig().GetResource(), group1.resourceConfig)
+	assert.Equal(t, t1.GetResource(), group1.resourceConfig)
 
 	// t3 has a different resource config
 	t3 := createTestTask(2)
-	t3.Config.Resource = &task.ResourceConfig{
-		CpuLimit:    10,
-		MemLimitMb:  20,
-		DiskLimitMb: 20,
-		FdLimit:     20,
-	}
-
 	// t4 has a nil resource config
 	t4 := createTestTask(3)
-	t4.Config.Resource = nil
+	t4.Resource = nil
 
-	result = groupTasksByResource([]*task.TaskInfo{t1, t2, t3, t4})
-	assert.Equal(t, 3, len(result))
+	result = groupTasksByResource([]*resmgr.Task{t1, t2, t3, t4})
+	assert.Equal(t, 2, len(result))
 
-	key1 = t1.GetConfig().GetResource().String()
+	key1 = t1.GetResource().String()
 	assert.Contains(t, result, key1)
 	group1 = result[key1]
 	assert.NotNil(t, group1)
-	assert.Equal(t, 2, len(group1.tasks))
-	assert.Equal(t, t1.GetConfig().GetResource(), group1.resourceConfig)
+	assert.Equal(t, 3, len(group1.tasks))
+	assert.Equal(t, t1.GetResource(), group1.resourceConfig)
 
-	key3 := t3.GetConfig().GetResource().String()
+	key3 := t3.GetResource().String()
 	assert.Contains(t, result, key3)
 	group3 := result[key3]
 	assert.NotNil(t, group3)
-	assert.Equal(t, 1, len(group3.tasks))
-	assert.Equal(t, t3.GetConfig().GetResource(), group3.resourceConfig)
+	assert.Equal(t, 3, len(group3.tasks))
+	assert.Equal(t, t3.GetResource(), group3.resourceConfig)
 
-	key4 := t4.GetConfig().GetResource().String()
+	key4 := t4.GetResource().String()
 	assert.Contains(t, result, key4)
 	group4 := result[key4]
 	assert.NotNil(t, group4)

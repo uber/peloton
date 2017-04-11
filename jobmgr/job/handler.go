@@ -5,20 +5,25 @@ import (
 	"fmt"
 	"time"
 
-	mesos "mesos/v1"
-
-	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
+	er "github.com/pkg/errors"
 	"github.com/uber-go/tally"
+
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
+	mesos "mesos/v1"
 	"peloton/api/errors"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
+	"peloton/private/resmgr"
 	"peloton/private/resmgr/taskqueue"
+	"peloton/private/resmgrsvc"
+
+	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/storage"
 )
 
 // InitServiceHandler initalizes the job manager
@@ -159,7 +164,12 @@ func (h *serviceHandler) Create(
 		return nil, nil, err
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
-	h.putTasks(tasks)
+
+	err = h.enqueueTasks(tasks, jobConfig)
+
+	if err != nil {
+		return nil, nil, err
+	}
 
 	log.Infof("Job %v all %v tasks created, time spent: %v",
 		jobID.Value, instances, time.Since(startAddTaskTime))
@@ -265,4 +275,67 @@ func (h *serviceHandler) putTasks(tasks []*task.TaskInfo) error {
 	}
 	log.Debugf("Enqueued %d tasks to leader", len(tasks))
 	return nil
+}
+
+// submitTasksToResmgr enqueues all tasks to respool in resmgr.
+func (h *serviceHandler) enqueueTasks(
+	tasks []*task.TaskInfo,
+	config *job.JobConfig,
+) error {
+	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
+	defer cancelFunc()
+	resmgrTasks := h.convertToResMgrTask(tasks, config)
+	var response resmgrsvc.EnqueueTasksResponse
+	var request = &resmgrsvc.EnqueueTasksRequest{
+		Tasks:   resmgrTasks,
+		ResPool: config.RespoolID,
+	}
+	_, err := h.client.Call(
+		ctx,
+		yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks"),
+		request,
+		&response,
+	)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+			"tasks": tasks,
+		}).Error("Resource Manager Enqueue Failed")
+		return err
+	}
+	if response.Error != nil {
+		log.WithFields(log.Fields{
+			"error": response.Error,
+			"tasks": tasks,
+		}).Error("Resource Manager Enqueue Failed")
+		return er.New(response.Error.String())
+	}
+	log.WithField("Count", len(resmgrTasks)).Debug("Enqueued tasks to " +
+		"Resource Manager")
+	return nil
+}
+
+// convertToResMgrTask converts taskinfo to resmgr task
+func (h *serviceHandler) convertToResMgrTask(
+	tasks []*task.TaskInfo,
+	config *job.JobConfig,
+) []*resmgr.Task {
+	var resmgrtasks []*resmgr.Task
+
+	for _, t := range tasks {
+		taskID := &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", t.JobId.Value, t.InstanceId),
+		}
+		rmtask := &resmgr.Task{
+			Id:          taskID,
+			JobId:       t.JobId,
+			TaskId:      t.Runtime.TaskId,
+			Name:        t.Config.Name,
+			Preemptible: config.Sla.Preemptible,
+			Priority:    config.Sla.Priority,
+			Resource:    t.Config.Resource,
+		}
+		resmgrtasks = append(resmgrtasks, rmtask)
+	}
+	return resmgrtasks
 }

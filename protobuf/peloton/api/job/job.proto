@@ -13,7 +13,7 @@ import "mesos/v1/mesos.proto";
 import "peloton/api/peloton.proto";
 import "peloton/api/errors/errors.proto";
 import "peloton/api/task/task.proto";
-
+import "peloton/api/respool/respool.proto";
 
 /**
  *  Job type definition such as batch, service and infra agent.
@@ -90,6 +90,9 @@ message JobConfig {
 
   // Instance specific task config which overwrites the default one
   map<uint32, task.TaskConfig> instanceConfig = 11;
+
+  // Resource Pool ID where this job belongs to
+  respool.ResourcePoolID respoolID = 12;
 }
 
 

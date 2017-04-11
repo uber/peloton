@@ -22,7 +22,6 @@ import (
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/resmgr"
-	"peloton/private/resmgr/taskqueue"
 	"peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
@@ -253,9 +252,9 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOf
 
 // placeTasks takes the tasks and convert them to placements
 func (s *placementEngine) placeTasks(
-	tasks []*task.TaskInfo,
+	tasks []*resmgr.Task,
 	resourceConfig *task.ResourceConfig,
-	hostOffer *hostsvc.HostOffer) (*resmgr.Placement, []*task.TaskInfo) {
+	hostOffer *hostsvc.HostOffer) (*resmgr.Placement, []*resmgr.Task) {
 
 	if len(tasks) == 0 {
 		log.Debug("No task to place")
@@ -265,7 +264,7 @@ func (s *placementEngine) placeTasks(
 	usage := scalar.FromResourceConfig(resourceConfig)
 	remain := scalar.FromMesosResources(hostOffer.GetResources())
 
-	var selectedTasks []*task.TaskInfo
+	var selectedTasks []*resmgr.Task
 	for i := 0; i < len(tasks); i++ {
 		trySubtract := remain.TrySubtract(&usage)
 		if trySubtract == nil {
@@ -351,14 +350,12 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 
 // createTasksPlacement creates the placement for resource manager
 // It also returns the list of tasks which can not be placed
-func (s *placementEngine) createTasksPlacement(tasks []*task.TaskInfo,
+func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
 	hostOffer *hostsvc.HostOffer) *resmgr.Placement {
 	watcher := s.metrics.CreatePlacementDuration.Start()
 	var tasksIds []*peloton.TaskID
 	for _, t := range tasks {
-		taskID := &peloton.TaskID{
-			Value: t.JobId.Value + "-" + fmt.Sprint(t.InstanceId),
-		}
+		taskID := t.Id
 		tasksIds = append(tasksIds, taskID)
 	}
 	placement := &resmgr.Placement{
@@ -407,7 +404,7 @@ func (s *placementEngine) placeRound() {
 
 // getTasks deques tasks from task queue in resource manager
 func (s *placementEngine) getTasks(limit int) (
-	taskInfos []*task.TaskInfo, err error) {
+	taskInfos []*resmgr.Task, err error) {
 	// It could happen that the work loop is started before the
 	// peloton master inbound is started.  In such case it could
 	// panic. This we capture the panic, return error, wait then
@@ -420,16 +417,17 @@ func (s *placementEngine) getTasks(limit int) (
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var response taskqueue.DequeueResponse
-	var request = &taskqueue.DequeueRequest{
-		Limit: uint32(limit),
+	var response resmgrsvc.DequeueTasksResponse
+	var request = &resmgrsvc.DequeueTasksRequest{
+		Limit:   uint32(limit),
+		Timeout: uint32(s.cfg.TaskDequeueTimeOut),
 	}
 
 	log.WithField("request", request).Debug("Dequeuing tasks")
 
 	_, err = s.resMgrClient.Call(
 		ctx,
-		yarpc.NewReqMeta().Procedure("TaskQueue.Dequeue"),
+		yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks"),
 		request,
 		&response,
 	)
@@ -445,37 +443,24 @@ func (s *placementEngine) getTasks(limit int) (
 
 type taskGroup struct {
 	resourceConfig *task.ResourceConfig
-	tasks          []*task.TaskInfo
+	tasks          []*resmgr.Task
 }
 
 // groupTasksByResource groups tasks which are to be placed based on their ResourceConfig.
 // Returns grouped tasks keyed by serialized ResourceLimit
-func groupTasksByResource(tasks []*task.TaskInfo) map[string]*taskGroup {
+func groupTasksByResource(tasks []*resmgr.Task) map[string]*taskGroup {
 	groups := make(map[string]*taskGroup)
 	for _, t := range tasks {
-		rc := t.GetConfig().GetResource()
+		rc := t.GetResource()
 		// String() function on protobuf message should be nil-safe.
 		s := rc.String()
 		if _, ok := groups[s]; !ok {
 			groups[s] = &taskGroup{
 				resourceConfig: rc,
-				tasks:          []*task.TaskInfo{},
+				tasks:          []*resmgr.Task{},
 			}
 		}
 		groups[s].tasks = append(groups[s].tasks, t)
 	}
 	return groups
-}
-
-// createLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
-func createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.LaunchableTask {
-	var launchableTasks []*hostsvc.LaunchableTask
-	for _, task := range tasks {
-		launchableTask := hostsvc.LaunchableTask{
-			TaskId: task.GetRuntime().GetTaskId(),
-			Config: task.GetConfig(),
-		}
-		launchableTasks = append(launchableTasks, &launchableTask)
-	}
-	return launchableTasks
 }

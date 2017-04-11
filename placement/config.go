@@ -9,6 +9,8 @@ type Config struct {
 	Port int `yaml:"port"`
 	// TaskDequeueLimit is the max number of tasks to dequeue in a request
 	TaskDequeueLimit int `yaml:"task_dequeue_limit"`
+	// TaskDequeueTimeOut is th etimeout for the ready queue in resmgr
+	TaskDequeueTimeOut int `yaml:"task_dequeue_timeout"`
 	// OfferDequeueLimit is the max Number of HostOffers to dequeue in
 	// a request
 	OfferDequeueLimit int `yaml:"offer_dequeue_limit"`

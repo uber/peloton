@@ -26,4 +26,4 @@ storage:
 
 resmgr:
   port: 5290
-  task_scheduling_period: 1s
+  task_scheduling_period: 100ms
