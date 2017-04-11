@@ -17,6 +17,7 @@ import (
 	"peloton/api/errors"
 	"peloton/api/job"
 	"peloton/api/peloton"
+	"peloton/api/respool"
 	"peloton/api/task"
 	"peloton/private/resmgr"
 	"peloton/private/resmgr/taskqueue"
@@ -82,11 +83,23 @@ func (h *serviceHandler) Create(
 	}
 	jobConfig := req.Config
 
+	err := h.validateResourcePool(jobConfig.RespoolID)
+	if err != nil {
+		return &job.CreateResponse{
+			Error: &job.CreateResponse_Error{
+				InvalidConfig: &job.InvalidJobConfig{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
 	log.WithField("config", jobConfig).Infof("JobManager.Create called")
 	h.metrics.JobAPICreate.Inc(1)
 
 	// Validate job config with default task configs
-	err := jm_task.ValidateTaskConfig(jobConfig)
+	err = jm_task.ValidateTaskConfig(jobConfig)
 	if err != nil {
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
@@ -312,6 +325,52 @@ func (h *serviceHandler) enqueueTasks(
 	}
 	log.WithField("Count", len(resmgrTasks)).Debug("Enqueued tasks to " +
 		"Resource Manager")
+	return nil
+}
+
+// validateResourcePool validates the resource pool before submitting job
+func (h *serviceHandler) validateResourcePool(
+	respoolID *respool.ResourcePoolID,
+) error {
+	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
+	defer cancelFunc()
+	if respoolID == nil {
+		return er.New("Resource Pool Id is null")
+	}
+
+	var response respool.GetResponse
+	var request = &respool.GetRequest{
+		Id: respoolID,
+	}
+	_, err := h.client.Call(
+		ctx,
+		yarpc.NewReqMeta().Procedure("ResourceManager.GetResourcePool"),
+		request,
+		&response,
+	)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"error":     err,
+			"respoolID": respoolID.Value,
+		}).Error("Failed to get Resource Pool")
+		return err
+	}
+	if response.Error != nil {
+		log.WithFields(log.Fields{
+			"error":     err,
+			"respoolID": respoolID.Value,
+		}).Info("Resource Pool Not Found")
+		return er.New(response.Error.String())
+	}
+
+	if response.GetPoolinfo() != nil && response.GetPoolinfo().Id != nil {
+		if response.GetPoolinfo().Id.Value != respoolID.Value {
+			return er.New("Resource Pool Not Found")
+		}
+	} else {
+		return er.New("Resource Pool Not Found")
+	}
+
 	return nil
 }
 

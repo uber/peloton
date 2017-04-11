@@ -16,7 +16,9 @@ import (
 	mesos "mesos/v1"
 	"peloton/api/job"
 	"peloton/api/peloton"
+	"peloton/api/respool"
 	"peloton/api/task"
+
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 
@@ -164,4 +166,35 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	)
 	suite.handler.enqueueTasks(tasksInfo, suite.testJobConfig)
 	suite.Error(err)
+}
+
+func (suite *JobHandlerTestSuite) TestValidateResourcePool() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockResmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	suite.handler.client = mockResmgrClient
+	respoolID := &respool.ResourcePoolID{
+		Value: "respool11",
+	}
+	var request = &respool.GetRequest{
+		Id: respoolID,
+	}
+
+	var err error
+	gomock.InOrder(
+		mockResmgrClient.EXPECT().
+			Call(
+				gomock.Any(),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManager.GetResourcePool")),
+				gomock.Eq(request),
+				gomock.Any()).
+			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+				req := reqBody.(*respool.GetRequest)
+				err = errors.New("Respool Not found " + req.Id.Value)
+			}).
+			Return(nil, err),
+	)
+	errResponse := suite.handler.validateResourcePool(respoolID)
+	suite.Error(errResponse)
 }
