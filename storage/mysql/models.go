@@ -42,6 +42,15 @@ type JobRecord struct {
 	LabelsSummary sql.NullString `db:"labels_summary"`
 }
 
+// JobRuntimeRecord contains job runtime info
+type JobRuntimeRecord struct {
+	RowKey      string         `db:"row_key"`
+	Runtime     string         `db:"runtime"`
+	CreatedTime time.Time      `db:"create_time"`
+	UpdateTime  time.Time      `db:"update_time"`
+	JobState    sql.NullString `db:"job_state"`
+}
+
 // ResourcePoolRecord also contains the generated columns for respool table
 type ResourcePoolRecord struct {
 	BaseRowRecord
@@ -52,7 +61,7 @@ type ResourcePoolRecord struct {
 func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
 	result, err := util.UnmarshalToType(t.Body, reflect.TypeOf(task.TaskInfo{}))
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	return result.(*task.TaskInfo), err
 }
@@ -61,9 +70,22 @@ func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
 func (t *JobRecord) GetJobConfig() (*job.JobConfig, error) {
 	result, err := util.UnmarshalToType(t.Body, reflect.TypeOf(job.JobConfig{}))
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	return result.(*job.JobConfig), err
+}
+
+// GetJobRuntime returns the job.Runtime from a JobRecord table record
+func (t *JobRuntimeRecord) GetJobRuntime() (*job.RuntimeInfo, error) {
+	val, err := util.UnmarshalToType(t.Runtime, reflect.TypeOf(job.RuntimeInfo{}))
+	if err != nil {
+		return nil, err
+	}
+	result := val.(*job.RuntimeInfo)
+	if result.TaskStats == nil {
+		result.TaskStats = make(map[string]uint32)
+	}
+	return result, err
 }
 
 // GetResPoolConfig returns the respool.ResourceConfig from a resourcePoolTable

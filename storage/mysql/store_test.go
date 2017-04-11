@@ -28,14 +28,14 @@ type mySQLStoreTestSuite struct {
 	db    *sqlx.DB
 }
 
-func (suite *mySQLStoreTestSuite) SetupTest() {
+func (suite *mySQLStoreTestSuite) SetupSuite() {
 	conf := LoadConfigWithDB()
 
 	suite.db = conf.Conn
 	suite.store = NewStore(*conf, tally.NoopScope)
 }
 
-func (suite *mySQLStoreTestSuite) TearDownTest() {
+func (suite *mySQLStoreTestSuite) TearDownSuite() {
 	fmt.Println("tearing down")
 	//_, err := suite.db.Exec("DELETE FROM task")
 	//suite.NoError(err)
@@ -250,7 +250,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	// search by job ID
 	for i := 0; i < records; i++ {
 		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-		result, err := suite.store.GetJob(&jobID)
+		result, err := suite.store.GetJobConfig(&jobID)
 		suite.NoError(err)
 		suite.Equal(result.Name, originalJobs[i].Name)
 		suite.Equal(result.DefaultConfig.Resource.FdLimit,
@@ -329,7 +329,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	// Get should not return anything
 	for i := 0; i < records; i++ {
 		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-		result, err := suite.store.GetJob(&jobID)
+		result, err := suite.store.GetJobConfig(&jobID)
 		suite.NoError(err)
 		suite.Nil(result)
 	}
@@ -378,6 +378,52 @@ func (suite *mySQLStoreTestSuite) TestGetResourcePoolsByOwner() {
 	}
 }
 
+func (suite *mySQLStoreTestSuite) TestJobRuntime() {
+	var jobStore = suite.store
+	nTasks := 20
+
+	// CreateJob should create the default job runtime
+	var jobID = peloton.JobID{Value: "TestJobRuntime"}
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = uint32(nTasks)
+	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+	suite.NoError(err)
+
+	runtime, err := jobStore.GetJobRuntime(&jobID)
+	suite.NoError(err)
+	suite.Equal(job.JobState_INITIALIZED, runtime.State)
+	suite.Equal(0, len(runtime.TaskStats))
+
+	// update job runtime
+	runtime.State = job.JobState_RUNNING
+	runtime.TaskStats[task.TaskState_PENDING.String()] = 5
+	runtime.TaskStats[task.TaskState_PLACED.String()] = 5
+	runtime.TaskStats[task.TaskState_RUNNING.String()] = 5
+	runtime.TaskStats[task.TaskState_SUCCEEDED.String()] = 5
+
+	err = jobStore.UpdateJobRuntime(&jobID, runtime)
+	suite.NoError(err)
+
+	runtime, err = jobStore.GetJobRuntime(&jobID)
+	suite.NoError(err)
+	suite.Equal(job.JobState_RUNNING, runtime.State)
+	suite.Equal(4, len(runtime.TaskStats))
+
+	jobIds, err := jobStore.GetJobsByState(job.JobState_RUNNING)
+	suite.NoError(err)
+	idFound := false
+	for _, id := range jobIds {
+		if id.Value == jobID.Value {
+			idFound = true
+		}
+	}
+	suite.True(idFound)
+
+	jobIds, err = jobStore.GetJobsByState(120)
+	suite.NoError(err)
+	suite.Equal(0, len(jobIds))
+}
+
 // Returns mock resource pool config
 func createResourcePoolConfig() *respool.ResourcePoolConfig {
 	return &respool.ResourcePoolConfig{
@@ -408,4 +454,19 @@ func createResourceConfigs() []*respool.ResourceConfig {
 			Share:       1.0,
 		},
 	}
+}
+
+func createJobConfig() *job.JobConfig {
+	var sla = job.SlaConfig{
+		Priority:                22,
+		MaximumRunningInstances: 6,
+		Preemptible:             false,
+	}
+	var jobConfig = job.JobConfig{
+		OwningTeam:    "uber",
+		LdapGroups:    []string{"money", "team6", "otto"},
+		Sla:           &sla,
+		InstanceCount: uint32(6),
+	}
+	return &jobConfig
 }

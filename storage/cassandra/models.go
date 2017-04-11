@@ -22,7 +22,6 @@ type JobRecord struct {
 	Owner        string
 	CreatedTime  time.Time
 	Labels       string
-	JobState     string
 	CompleteTime time.Time
 }
 
@@ -160,4 +159,29 @@ func (r *ResourcePoolRecord) GetResourcePoolConfig() (*respool.ResourcePoolConfi
 		return nil, err
 	}
 	return result.(*respool.ResourcePoolConfig), err
+}
+
+// JobRuntimeRecord contains job runtime info
+type JobRuntimeRecord struct {
+	JobID       string
+	JobRuntime  string
+	CreatedTime time.Time
+	UpdateTime  time.Time
+	JobState    string
+}
+
+// GetJobRuntime returns the job.Runtime from a JobRecord table record
+func (t *JobRuntimeRecord) GetJobRuntime() (*job.RuntimeInfo, error) {
+	val, err := util.UnmarshalToType(t.JobRuntime, reflect.TypeOf(job.RuntimeInfo{}))
+	if err != nil {
+		log.WithError(err).
+			WithField("JobRuntime", t.JobRuntime).
+			Error("Unmarshal to RuntimeInfo failed")
+		return nil, err
+	}
+	result := val.(*job.RuntimeInfo)
+	if result.TaskStats == nil {
+		result.TaskStats = make(map[string]uint32)
+	}
+	return result, err
 }

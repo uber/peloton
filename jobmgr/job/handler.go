@@ -206,7 +206,7 @@ func (h *serviceHandler) Get(
 	log.Infof("JobManager.Get called: %v", req)
 	h.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, err := h.jobStore.GetJob(req.Id)
+	jobConfig, err := h.jobStore.GetJobConfig(req.Id)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.Errorf("GetJob failed with error %v", err)

@@ -13,11 +13,14 @@ import (
 // JobStore is the interface to store job states
 type JobStore interface {
 	CreateJob(id *peloton.JobID, Config *job.JobConfig, createBy string) error
-	GetJob(id *peloton.JobID) (*job.JobConfig, error)
+	GetJobConfig(id *peloton.JobID) (*job.JobConfig, error)
 	Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, error)
 	DeleteJob(id *peloton.JobID) error
 	GetJobsByOwner(owner string) (map[string]*job.JobConfig, error)
 	GetAllJobs() (map[string]*job.JobConfig, error)
+	GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error)
+	GetJobsByState(state job.JobState) ([]peloton.JobID, error)
+	UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) error
 }
 
 // TaskStore is the interface to store task states

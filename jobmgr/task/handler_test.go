@@ -98,7 +98,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJob(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJob(suite.testJobID).Return(suite.taskInfos, nil),
 		mockTaskStore.EXPECT().
@@ -152,7 +152,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJob(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTaskForJob(suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
@@ -212,7 +212,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJob(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTaskForJob(suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
@@ -271,7 +271,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 	emptyTaskInfo := make(map[uint32]*task.TaskInfo)
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJob(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTaskForJob(suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
@@ -321,7 +321,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidJobID() {
 	singleTaskInfo[1] = suite.taskInfos[1]
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJob(suite.testJobID).Return(nil, nil),
+			GetJobConfig(suite.testJobID).Return(nil, nil),
 	)
 
 	var request = &task.StopRequest{
@@ -351,7 +351,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithTaskUpdateFailure() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJob(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJob(suite.testJobID).Return(suite.taskInfos, nil),
 		mockTaskStore.EXPECT().

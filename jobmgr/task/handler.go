@@ -60,7 +60,7 @@ func (m *serviceHandler) Get(
 
 	log.Infof("TaskManager.Get called: %v", body)
 	m.metrics.TaskAPIGet.Inc(1)
-	jobConfig, err := m.jobStore.GetJob(body.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(body.JobId)
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
@@ -96,7 +96,7 @@ func (m *serviceHandler) List(
 
 	log.Infof("TaskManager.List called: %v", body)
 	m.metrics.TaskAPIList.Inc(1)
-	jobConfig, err := m.jobStore.GetJob(body.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(body.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskListFail.Inc(1)
@@ -162,7 +162,7 @@ func (m *serviceHandler) Stop(
 	)
 	defer cancelFunc()
 
-	jobConfig, err := m.jobStore.GetJob(body.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(body.JobId)
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.StopResponse{

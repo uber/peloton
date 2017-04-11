@@ -31,6 +31,7 @@ import (
 const (
 	// Table names
 	jobsTable         = "jobs"
+	jobRuntimeTable   = "job_runtime"
 	tasksTable        = "tasks"
 	frameworksTable   = "frameworks"
 	resourcePoolTable = "respools"
@@ -41,28 +42,28 @@ const (
 	DeadlockBackoffDuration = 100 * time.Millisecond
 
 	// values for the col_key
-	colRuntimeInfo   = "runtime_info"
 	colBaseInfo      = "base_info"
 	colJobConfig     = "job_config"
 	colResPoolConfig = "respool_config"
 
 	// Various statement templates for job_config
-	insertJobStmt = `INSERT INTO jobs (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
+	insertJobStmt        = `INSERT INTO jobs (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
+	upsertJobRuntimeStmt = `INSERT INTO job_runtime (row_key, runtime) values (?, ?) ON DUPLICATE KEY UPDATE runtime = ?`
 	// TODO: discuss on supporting soft delete.
 	deleteJobStmt         = `DELETE from jobs where row_key = ?`
 	getJobStmt            = `SELECT * from jobs where col_key = '` + colJobConfig + `' and row_key = ?`
 	queryJobsForLabelStmt = `SELECT * from jobs where col_key='` + colJobConfig + `' and match(labels_summary) against (? IN BOOLEAN MODE)`
 	getJobsbyOwnerStmt    = `SELECT * from jobs where col_key='` + colJobConfig + `' and owning_team = ?`
+	getJobRuntimeStmt     = `SELECT runtime from job_runtime where row_key = ?`
+	getJobByState         = `SELECT row_key from job_runtime where job_state = ?`
 
 	// Various statement templates for task runtime_info
-	insertTaskStmt             = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
-	insertTaskBatchStmt        = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) VALUES `
-	updateTaskStmt             = `UPDATE tasks SET body = ? where row_key = ?`
-	getTasksForJobStmt         = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ?`
-	getTasksForJobAndStateStmt = `SELECT * from tasks where col_key='` + colRuntimeInfo + `' and job_id = ? and task_state = ?`
-	getMesosFrameworkInfoStmt  = `SELECT * from frameworks where framework_name = ?`
-	setMesosStreamIDStmt       = `INSERT INTO frameworks (framework_name, mesos_stream_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE mesos_stream_id = ?`
-	setMesosFrameworkIDStmt    = `INSERT INTO frameworks (framework_name, framework_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE framework_id = ?`
+	insertTaskStmt            = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
+	insertTaskBatchStmt       = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) VALUES `
+	updateTaskStmt            = `UPDATE tasks SET body = ? where row_key = ?`
+	getMesosFrameworkInfoStmt = `SELECT * from frameworks where framework_name = ?`
+	setMesosStreamIDStmt      = `INSERT INTO frameworks (framework_name, mesos_stream_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE mesos_stream_id = ?`
+	setMesosFrameworkIDStmt   = `INSERT INTO frameworks (framework_name, framework_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE framework_id = ?`
 
 	// Statements for resource Manager
 	insertResPoolStmt = `INSERT INTO respools (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
@@ -170,13 +171,27 @@ func NewStore(config Config, scope tally.Scope) *Store {
 func (m *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy string) error {
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
-		log.Errorf("error = %v", err)
+		log.WithError(err).Error("Marshal job config failed")
 		m.metrics.JobCreateFail.Inc(1)
 		return err
 	}
+
+	initialJobRuntime := &job.RuntimeInfo{
+		State:        job.JobState_INITIALIZED,
+		CreationTime: time.Now().String(),
+		TaskStats:    make(map[string]uint32),
+	}
+	// TODO: make the two following statements in one transaction
+	// 0 is for "ref_key" field which is not used as of now
 	_, err = m.DB.Exec(insertJobStmt, id.Value, colJobConfig, 0, string(buffer), createdBy)
 	if err != nil {
-		log.Errorf("CreateJob failed with id %v error = %v", id.Value, err)
+		log.WithError(err).WithField("job_id", id.Value).Error("CreateJob failed")
+		m.metrics.JobCreateFail.Inc(1)
+		return err
+	}
+	err = m.UpdateJobRuntime(id, initialJobRuntime)
+	if err != nil {
+		log.WithError(err).WithField("job_id", id.Value).Error("Create initial runtime failed")
 		m.metrics.JobCreateFail.Inc(1)
 		return err
 	}
@@ -184,8 +199,8 @@ func (m *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy
 	return nil
 }
 
-// GetJob returns a job config given the job id
-func (m *Store) GetJob(id *peloton.JobID) (*job.JobConfig, error) {
+// GetJobConfig returns a job config given the job id
+func (m *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 	jobs, err := m.getJobs(map[string]interface{}{"row_key=": id.Value, "col_key=": colJobConfig})
 	if err != nil {
 		return nil, err
@@ -322,12 +337,14 @@ func (m *Store) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.
 		m.metrics.TaskCreateFail.Inc(1)
 		return fmt.Errorf(errMsg)
 	}
+
 	buffer, err := json.Marshal(taskInfo)
 	if err != nil {
 		log.Errorf("error = %v", err)
 		m.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
+
 	// TODO: adjust when taskInfo pb change to introduce static config and runtime config
 	_, err = m.DB.Exec(insertTaskStmt, rowKey, colBaseInfo, 0, string(buffer), createdBy)
 	if err != nil {
@@ -504,22 +521,32 @@ func getQueryAndArgs(table string, filters map[string]interface{}, fields []stri
 	return q, args
 }
 
-func (m *Store) getJobs(filters map[string]interface{}) (map[string]*job.JobConfig, error) {
+func (m *Store) getJobRecords(filters map[string]interface{}) ([]JobRecord, error) {
 	var records = []JobRecord{}
-	var result = make(map[string]*job.JobConfig)
 	q, args := getQueryAndArgs(jobsTable, filters, []string{"*"})
 	log.Debugf("DB query -- %v %v", q, args)
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
 		log.Warnf("getJobs for filters %v returns no rows", filters)
 		m.metrics.JobGetFail.Inc(1)
-		return result, nil
+		return records, nil
 	}
+
 	if err != nil {
 		log.Errorf("getJobs for filter %v failed with error %v", filters, err)
 		m.metrics.JobGetFail.Inc(1)
 		return nil, err
 	}
+	return records, nil
+}
+
+func (m *Store) getJobs(filters map[string]interface{}) (map[string]*job.JobConfig, error) {
+	var result = make(map[string]*job.JobConfig)
+	records, err := m.getJobRecords(filters)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, jobRecord := range records {
 		jobConfig, err := jobRecord.GetJobConfig()
 		if err != nil {
@@ -731,4 +758,82 @@ func (m *Store) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, e
 	}
 	// TODO: Adding metrics
 	return result, nil
+}
+
+// GetJobRuntime returns the job runtime info
+func (m *Store) GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error) {
+	var records = []JobRuntimeRecord{}
+
+	q, args := getQueryAndArgs(jobRuntimeTable, map[string]interface{}{"row_key=": id.Value}, []string{"runtime"})
+	err := m.DB.Select(&records, q, args...)
+	if err == sql.ErrNoRows {
+		log.Warnf("GetJobRuntime returns no rows")
+		return nil, nil
+	} else if err != nil {
+		log.WithError(err).WithField("job_id", id.Value).Error("Failed to GetJobRuntime")
+		m.metrics.JobGetRuntimeFail.Inc(1)
+		return nil, err
+	}
+
+	if len(records) > 1 {
+		m.metrics.JobGetRuntimeFail.Inc(1)
+		return nil, fmt.Errorf("found %d jobs %v for job id %v", len(records), records, id.Value)
+	}
+	for _, record := range records {
+		runtime, err := record.GetJobRuntime()
+		if err != nil {
+			m.metrics.JobGetRuntimeFail.Inc(1)
+			return nil, err
+		}
+		m.metrics.JobGetRuntime.Inc(1)
+		return runtime, nil
+	}
+	return nil, nil
+}
+
+// GetJobsByState returns the jobID by job state
+func (m *Store) GetJobsByState(state job.JobState) ([]peloton.JobID, error) {
+	var records = []JobRuntimeRecord{}
+	var result []peloton.JobID
+
+	q, args := getQueryAndArgs(jobRuntimeTable, map[string]interface{}{"job_state=": state}, []string{"row_key"})
+
+	err := m.DB.Select(&records, q, args...)
+	if err == sql.ErrNoRows {
+		log.WithField("job_state", state).Warn("GetJobsByState returns no rows")
+		return result, nil
+	} else if err != nil {
+		log.WithError(err).WithField("job_state", state).Error("Failed to GetJobsByState")
+		m.metrics.JobGetByStateFail.Inc(1)
+		return nil, err
+	}
+
+	for _, record := range records {
+		result = append(result, peloton.JobID{
+			Value: record.RowKey,
+		})
+	}
+	m.metrics.JobGetByState.Inc(1)
+	return result, nil
+}
+
+// UpdateJobRuntime updates the job runtime info
+func (m *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) error {
+	buffer, err := json.Marshal(runtime)
+	if err != nil {
+		log.WithError(err).Error("Failed to marshal job runtime")
+		m.metrics.JobUpdateRuntimeFail.Inc(1)
+		return err
+	}
+
+	_, err = m.DB.Exec(upsertJobRuntimeStmt, id.Value, string(buffer), string(buffer))
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("Failed to update job runtime")
+		m.metrics.JobUpdateRuntimeFail.Inc(1)
+		return err
+	}
+	m.metrics.JobUpdateRuntime.Inc(1)
+	return nil
 }

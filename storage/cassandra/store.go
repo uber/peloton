@@ -33,11 +33,13 @@ import (
 const (
 	taskIDFmt             = "%s-%d"
 	jobsTable             = "jobs"
+	jobRuntimeTable       = "job_runtime"
 	tasksTable            = "tasks"
 	taskStateChangesTable = "task_state_changes"
 	frameworksTable       = "frameworks"
 	jobOwnerView          = "mv_jobs_by_owner"
 	taskJobStateView      = "mv_task_by_job_state"
+	jobByStateView        = "mv_jobs_by_state"
 	taskHostView          = "mv_task_by_host"
 	resPools              = "respools"
 	resPoolsOwnerView     = "mv_respools_by_owner"
@@ -118,14 +120,43 @@ func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner str
 		s.metrics.JobCreateFail.Inc(1)
 		return err
 	}
+	initialJobRuntime := job.RuntimeInfo{
+		State:        job.JobState_INITIALIZED,
+		CreationTime: time.Now().String(),
+		TaskStats:    make(map[string]uint32),
+	}
+
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(jobsTable).
-		Columns("JobID", "JobConfig", "Owner", "Labels", "JobState", "CreateTime").
-		Values(jobID, string(configBuffer), owner, string(labelBuffer), "Init", time.Now()).
+		Columns(
+			"JobID",
+			"JobConfig",
+			"Owner",
+			"Labels",
+			"CreateTime").
+		Values(
+			jobID,
+			string(configBuffer),
+			owner,
+			string(labelBuffer),
+			time.Now()).
 		IfNotExist()
 
 	err = s.applyStatement(stmt, jobID)
 	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("CreateJob failed")
+		s.metrics.JobCreateFail.Inc(1)
+		return err
+	}
+
+	// Create the initial job runtime record
+	err = s.UpdateJobRuntime(id, &initialJobRuntime)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("UpdateJobRuntime failed")
 		s.metrics.JobCreateFail.Inc(1)
 		return err
 	}
@@ -133,8 +164,8 @@ func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner str
 	return nil
 }
 
-// GetJob returns a job config given the job id
-func (s *Store) GetJob(id *peloton.JobID) (*job.JobConfig, error) {
+// GetJobConfig returns a job config given the job id
+func (s *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobConfig").From(jobsTable).
@@ -922,4 +953,112 @@ func (s *Store) GetResourcePoolsByOwner(owner string) (map[string]*respool.Resou
 func getTaskID(taskInfo *task.TaskInfo) string {
 	jobID := taskInfo.JobId.Value
 	return fmt.Sprintf(taskIDFmt, jobID, taskInfo.InstanceId)
+}
+
+// GetJobRuntime returns the job runtime info
+func (s *Store) GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("JobRuntime").From(jobRuntimeTable).
+		Where(qb.Eq{"JobID": id.Value})
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("GetJobRuntime failed")
+		s.metrics.JobGetRuntimeFail.Inc(1)
+		return nil, err
+	}
+
+	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("GetJobRuntime Get all results failed")
+		s.metrics.JobGetRuntimeFail.Inc(1)
+		return nil, err
+	}
+
+	for _, value := range allResults {
+		var record JobRuntimeRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", id.Value).
+				WithField("value", value).
+				Error("Failed to get JobRuntimeRecord from record")
+			s.metrics.JobGetRuntimeFail.Inc(1)
+			return nil, err
+		}
+		s.metrics.JobGetRuntime.Inc(1)
+		return record.GetJobRuntime()
+	}
+	s.metrics.JobNotFound.Inc(1)
+	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.Value)
+}
+
+// GetJobsByState returns the jobID by job state
+func (s *Store) GetJobsByState(state job.JobState) ([]peloton.JobID, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("JobID").From(jobByStateView).
+		Where(qb.Eq{"JobState": state.String()})
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_state", state).
+			Error("GetJobsByState failed")
+		s.metrics.JobGetByStateFail.Inc(1)
+		return nil, err
+	}
+
+	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_state", state).
+			Error("GetJobsByState get all results failed")
+		s.metrics.JobGetByStateFail.Inc(1)
+		return nil, err
+	}
+
+	var results []peloton.JobID
+	for _, value := range allResults {
+		var record JobRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				WithField("job_state", state).
+				Error("Failed to get JobRecord from record")
+			s.metrics.JobGetByStateFail.Inc(1)
+			return nil, err
+		}
+		results = append(results, peloton.JobID{Value: record.JobID})
+	}
+	s.metrics.JobGetByState.Inc(1)
+	return results, nil
+}
+
+// UpdateJobRuntime updates the job runtime info
+func (s *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) error {
+	buffer, err := json.Marshal(runtime)
+	if err != nil {
+		log.WithField("job_id", id.Value).
+			WithError(err).
+			Error("Failed to marshal job runtime")
+		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		return err
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(jobRuntimeTable).
+		Columns("JobID", "JobState", "UpdateTime", "JobRuntime").
+		Values(id.Value, runtime.State.String(), time.Now(), string(buffer))
+	err = s.applyStatement(stmt, id.Value)
+	if err != nil {
+		log.WithField("job_id", id.Value).
+			WithError(err).
+			Error("Failed to update job runtime")
+		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		return err
+	}
+	s.metrics.JobUpdateRuntime.Inc(1)
+	return nil
 }

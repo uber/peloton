@@ -9,27 +9,42 @@ import (
 type Metrics struct {
 	JobCreate     tally.Counter
 	JobCreateFail tally.Counter
-	JobGet        tally.Counter
-	JobGetFail    tally.Counter
+
+	JobGet      tally.Counter
+	JobGetFail  tally.Counter
+	JobNotFound tally.Counter
+
 	JobDelete     tally.Counter
 	JobDeleteFail tally.Counter
-	JobNotFound   tally.Counter
+
+	JobGetRuntime     tally.Counter
+	JobGetRuntimeFail tally.Counter
+
+	JobGetByState     tally.Counter
+	JobGetByStateFail tally.Counter
+
+	JobUpdateRuntime     tally.Counter
+	JobUpdateRuntimeFail tally.Counter
 
 	TaskCreate     tally.Counter
 	TaskCreateFail tally.Counter
-	TaskGet        tally.Counter
-	TaskGetFail    tally.Counter
+
+	TaskGet      tally.Counter
+	TaskGetFail  tally.Counter
+	TaskNotFound tally.Counter
+
 	TaskDelete     tally.Counter
 	TaskDeleteFail tally.Counter
+
 	TaskUpdate     tally.Counter
 	TaskUpdateFail tally.Counter
-	TaskNotFound   tally.Counter
 
 	// resource pool metrics
 	ResourcePoolCreate     tally.Counter
 	ResourcePoolCreateFail tally.Counter
-	ResourcePoolGet        tally.Counter
-	ResourcePoolGetFail    tally.Counter
+
+	ResourcePoolGet     tally.Counter
+	ResourcePoolGetFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -38,6 +53,10 @@ func NewMetrics(scope tally.Scope) Metrics {
 	jobSuccessScope := jobScope.Tagged(map[string]string{"type": "success"})
 	jobFailScope := jobScope.Tagged(map[string]string{"type": "fail"})
 	jobNotFoundScope := jobScope.Tagged(map[string]string{"type": "not_found"})
+
+	jobRuntimeScope := scope.SubScope("job_runtime")
+	jobRuntimeSuccessScope := jobRuntimeScope.Tagged(map[string]string{"type": "success"})
+	jobRuntimeFailScope := jobRuntimeScope.Tagged(map[string]string{"type": "fail"})
 
 	taskScope := scope.SubScope("task")
 	taskSuccessScope := taskScope.Tagged(map[string]string{"type": "success"})
@@ -56,6 +75,13 @@ func NewMetrics(scope tally.Scope) Metrics {
 		JobGet:        jobSuccessScope.Counter("get"),
 		JobGetFail:    jobFailScope.Counter("get"),
 		JobNotFound:   jobNotFoundScope.Counter("get"),
+
+		JobGetRuntime:        jobRuntimeSuccessScope.Counter("get"),
+		JobGetRuntimeFail:    jobRuntimeFailScope.Counter("get"),
+		JobGetByState:        jobRuntimeScope.Counter("get_job_by_state"),
+		JobGetByStateFail:    jobRuntimeFailScope.Counter("get_job_by_state"),
+		JobUpdateRuntime:     jobRuntimeSuccessScope.Counter("update"),
+		JobUpdateRuntimeFail: jobRuntimeFailScope.Counter("update"),
 
 		TaskCreate:     taskSuccessScope.Counter("create"),
 		TaskCreateFail: taskFailScope.Counter("create"),

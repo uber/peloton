@@ -109,7 +109,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		suite.Error(err)
 
 		var jobconf *job.JobConfig
-		jobconf, err = jobStore.GetJob(&jobID)
+		jobconf, err = jobStore.GetJobConfig(&jobID)
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
 		suite.Equal(len((*(jobconf.Labels)).Labels), 4)
@@ -508,7 +508,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {
 	var taskStore storage.TaskStore
 	taskStore = store
-	jobConfig, err := store.GetJob(jobID)
+	jobConfig, err := store.GetJobConfig(jobID)
 	suite.NoError(err)
 
 	if to > int(jobConfig.InstanceCount) {
@@ -651,6 +651,52 @@ func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
 		}
 	}
+}
+
+func (suite *CassandraStoreTestSuite) TestJobRuntime() {
+	var jobStore = store
+	nTasks := 20
+
+	// CreateJob should create the default job runtime
+	var jobID = peloton.JobID{Value: "TestJobRuntime"}
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = uint32(nTasks)
+	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+	suite.NoError(err)
+
+	runtime, err := jobStore.GetJobRuntime(&jobID)
+	suite.NoError(err)
+	suite.Equal(job.JobState_INITIALIZED, runtime.State)
+	suite.Equal(0, len(runtime.TaskStats))
+
+	// update job runtime
+	runtime.State = job.JobState_RUNNING
+	runtime.TaskStats[task.TaskState_PENDING.String()] = 5
+	runtime.TaskStats[task.TaskState_PLACED.String()] = 5
+	runtime.TaskStats[task.TaskState_RUNNING.String()] = 5
+	runtime.TaskStats[task.TaskState_SUCCEEDED.String()] = 5
+
+	err = jobStore.UpdateJobRuntime(&jobID, runtime)
+	suite.NoError(err)
+
+	runtime, err = jobStore.GetJobRuntime(&jobID)
+	suite.NoError(err)
+	suite.Equal(job.JobState_RUNNING, runtime.State)
+	suite.Equal(4, len(runtime.TaskStats))
+
+	jobIds, err := store.GetJobsByState(job.JobState_RUNNING)
+	suite.NoError(err)
+	idFound := false
+	for _, id := range jobIds {
+		if id.Value == jobID.Value {
+			idFound = true
+		}
+	}
+	suite.True(idFound)
+
+	jobIds, err = store.GetJobsByState(120)
+	suite.NoError(err)
+	suite.Equal(0, len(jobIds))
 }
 
 func createJobConfig() *job.JobConfig {
