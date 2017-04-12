@@ -16,6 +16,8 @@ import (
 
 // ResPool is a node in a resource tree
 type ResPool interface {
+	// Returns the resource pool name
+	Name() string
 	// Returns the resource pool ID
 	ID() string
 	// Returns the resource pool's parent
@@ -53,7 +55,6 @@ type resPool struct {
 	id              string
 	children        *list.List
 	parent          ResPool
-	name            string
 	resourceConfigs map[string]*respool.ResourceConfig
 	poolConfig      *respool.ResourcePoolConfig
 	pendingQueue    queue.Queue
@@ -64,27 +65,44 @@ func NewRespool(
 	ID string,
 	parent ResPool,
 	config *respool.ResourcePoolConfig) (ResPool, error) {
+
+	if config == nil {
+		log.WithField("ResPool: ", ID).Error("resource config is empty")
+		return nil, errors.Errorf("error creating resource pool %s; "+
+			"ResourcePoolConfig is nil", ID)
+	}
+
+	q, err := queue.CreateQueue(config.Policy, math.MaxInt64)
+	if err != nil {
+		log.WithField("ResPool: ", ID).
+			WithError(err).
+			Error("Error creating resource pool pending queue")
+		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
+	}
+
 	result := resPool{
-		children:        list.New(),
 		id:              ID,
+		children:        list.New(),
 		parent:          parent,
 		resourceConfigs: make(map[string]*respool.ResourceConfig),
 		poolConfig:      config,
+		pendingQueue:    q,
 	}
 
 	result.initResources(config)
-	q, err := queue.CreateQueue(config.Policy, math.MaxInt64)
-	if err != nil {
-		log.WithField("ResPool: ", ID).Error("Error creating resource pool pending queue")
-		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
-	}
-	result.pendingQueue = q
 	return &result, nil
 }
 
-// ID returns the resource pool ID
+// ID returns the resource pool UUID
 func (n *resPool) ID() string {
 	return n.id
+}
+
+// Name returns the resource pool name
+func (n *resPool) Name() string {
+	n.RLock()
+	defer n.RUnlock()
+	return n.poolConfig.Name
 }
 
 // Parent returns the resource pool's parent pool
@@ -162,7 +180,7 @@ func (n *resPool) EnqueueTask(task *resmgr.Task) error {
 		err := n.pendingQueue.Enqueue(task)
 		return err
 	}
-	err := errors.Errorf("Respool %s is not a leaf node", n.name)
+	err := errors.Errorf("Respool %s is not a leaf node", n.id)
 	return err
 }
 
@@ -188,7 +206,7 @@ func (n *resPool) DequeueTasks(limit int) (*list.List, error) {
 		}
 		return l, nil
 	}
-	err := errors.Errorf("Respool %s is not a leaf node", n.name)
+	err := errors.Errorf("Respool %s is not a leaf node", n.id)
 	return nil, err
 }
 
@@ -208,7 +226,8 @@ func (n *resPool) AggregatedChildrenReservations() (map[string]float64, error) {
 				aggChildrenReservations[kind] = cReservation
 			}
 		} else {
-			return nil, errors.Errorf("failed to type assert child resource pool %v", child.Value)
+			return nil, errors.Errorf("failed to type assert child resource pool %v",
+				child.Value)
 		}
 	}
 

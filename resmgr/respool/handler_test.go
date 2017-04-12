@@ -41,7 +41,7 @@ func (suite *resPoolHandlerTestSuite) SetupSuite() {
 		store:     suite.mockResPoolStore,
 		root:      nil,
 		metrics:   NewMetrics(tally.NoopScope),
-		allNodes:  make(map[string]ResPool),
+		resPools:  make(map[string]ResPool),
 		jobStore:  mockJobStore,
 		taskStore: mockTaskStore,
 	}

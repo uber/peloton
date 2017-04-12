@@ -54,7 +54,7 @@ func (suite *resTreeTestSuite) SetupSuite() {
 		store:     mockResPoolStore,
 		root:      nil,
 		metrics:   NewMetrics(tally.NoopScope),
-		allNodes:  make(map[string]ResPool),
+		resPools:  make(map[string]ResPool),
 		jobStore:  suite.store,
 		taskStore: suite.store,
 	}
@@ -206,10 +206,10 @@ func (suite *resTreeTestSuite) TestGetChildren() {
 	suite.Equal(true, ok)
 	list := rt.root.Children()
 	suite.Equal(list.Len(), 3)
-	n := rt.allNodes["respool1"]
+	n := rt.resPools["respool1"]
 	list = n.Children()
 	suite.Equal(list.Len(), 2)
-	n = rt.allNodes["respool2"]
+	n = rt.resPools["respool2"]
 	list = n.Children()
 	suite.Equal(list.Len(), 2)
 }
@@ -217,7 +217,7 @@ func (suite *resTreeTestSuite) TestGetChildren() {
 func (suite *resTreeTestSuite) TestResourceConfig() {
 	rt, ok := suite.resourceTree.(*tree)
 	suite.Equal(true, ok)
-	n := rt.allNodes["respool1"]
+	n := rt.resPools["respool1"]
 	suite.Equal(n.ID(), "respool1")
 	for _, res := range n.Resources() {
 		if res.Kind == "cpu" {
@@ -255,7 +255,7 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 		JobId:    jobID1,
 		Id:       taskID1,
 	}
-	rt.allNodes["respool11"].EnqueueTask(taskItem1)
+	rt.resPools["respool11"].EnqueueTask(taskItem1)
 
 	// Task -2
 	jobID2 := &peloton.JobID{
@@ -270,9 +270,9 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 		JobId:    jobID2,
 		Id:       taskID2,
 	}
-	rt.allNodes["respool11"].EnqueueTask(taskItem2)
+	rt.resPools["respool11"].EnqueueTask(taskItem2)
 
-	res, err := rt.allNodes["respool11"].DequeueTasks(1)
+	res, err := rt.resPools["respool11"].DequeueTasks(1)
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
@@ -280,7 +280,7 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 	assert.Equal(suite.T(), t1.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
-	res2, err2 := rt.allNodes["respool11"].DequeueTasks(1)
+	res2, err2 := rt.resPools["respool11"].DequeueTasks(1)
 	t2 := res2.Front().Value.(*resmgr.Task)
 	if err2 != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
@@ -463,7 +463,7 @@ func (suite *resTreeTestSuite) getQueueContent(
 	var result = make(map[string]map[string]bool)
 	for {
 		rmTask, err := suite.resourceTree.(*tree).
-			allNodes[respoolID.Value].DequeueTasks(1)
+			resPools[respoolID.Value].DequeueTasks(1)
 		if err != nil {
 			fmt.Printf("Failed to dequeue item: %v", err)
 			break

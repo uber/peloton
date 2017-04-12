@@ -99,6 +99,14 @@ func (s *ResPoolSuite) TestResPool() {
 	s.True(resPool.Children().Len() == 0)
 	s.True(resPool.IsLeaf())
 	s.Equal(poolConfig, resPool.ResourcePoolConfig())
+	s.Equal("respool1", resPool.Name())
+
+	resPool, err = NewRespool(id, nil, nil)
+	s.Error(err)
+
+	poolConfig.Policy = pb_respool.SchedulingPolicy_UNKNOWN
+	resPool, err = NewRespool(id, nil, poolConfig)
+	s.Error(err)
 }
 
 func (s *ResPoolSuite) TestResPoolError() {
