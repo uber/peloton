@@ -124,6 +124,13 @@ message AcquireHostOffersFailure {
 }
 
 /**
+* Error when cluster is Unavailable
+*/
+message ClusterUnavailable {
+  string message = 1;
+}
+
+/**
  *  Internal host service interface to be used by JobManager and
  *  PlacementEngine for task, reservation, volume and offer operations
  *
@@ -160,6 +167,10 @@ service InternalHostService
 
   // Destroy volumes on a Mesos host
   rpc DestroyVolumes(DestroyVolumesRequest) returns (DestroyVolumesResponse);
+
+  // TODO move out to separate service if scope widens
+  // ClusterCapacity fetches the allocated resources to the framework`
+  rpc ClusterCapacity(ClusterCapacityRequest) returns (ClusterCapacityResponse);
 }
 
 message AcquireHostOffersRequest {
@@ -249,4 +260,28 @@ message DestroyVolumesRequest {
 
 message DestroyVolumesResponse {
   // TODO: Add errors that could fail a destroy volumes request
+}
+
+/**
+ *  Resource allocation for a resource
+ */
+message Resource {
+  // Type of the resource
+  string kind = 1;
+
+  // capacity of the resource
+  double capacity = 2;
+}
+
+message ClusterCapacityRequest {}
+
+message ClusterCapacityResponse {
+  message Error {
+    ClusterUnavailable clusterUnavailable = 1;
+  }
+
+  Error error = 1;
+
+  // Resources allocated
+  repeated Resource resources = 2;
 }

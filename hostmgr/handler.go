@@ -60,6 +60,9 @@ func InitServiceHandler(
 		"InternalHostService.CreateVolumes", handler.CreateVolumes))
 	d.Register(json.Procedure(
 		"InternalHostService.DestroyVolumes", handler.DestroyVolumes))
+	d.Register(json.Procedure(
+		"InternalHostService.ClusterCapacity",
+		handler.ClusterCapacity))
 }
 
 func validateConstraints(
@@ -428,5 +431,16 @@ func (h *serviceHandler) DestroyVolumes(
 	*hostsvc.DestroyVolumesResponse, yarpc.ResMeta, error) {
 
 	log.Debug("DestroyVolumes called.")
+	return nil, nil, fmt.Errorf("Unimplemented")
+}
+
+// ClusterCapacity fetches the allocated resources to the framework
+func (h *serviceHandler) ClusterCapacity(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	body *hostsvc.ClusterCapacityRequest) (
+	*hostsvc.ClusterCapacityResponse, yarpc.ResMeta, error) {
+
+	log.Debug("ClusterCapacity called.")
 	return nil, nil, fmt.Errorf("Unimplemented")
 }
