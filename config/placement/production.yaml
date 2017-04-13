@@ -18,8 +18,5 @@ placement:
   task_dequeue_limit: 1000
   offer_dequeue_limit: 30
 
-election:
-  root: "/peloton/production"
-
 storage:
   use_cassandra: true

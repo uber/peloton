@@ -9,7 +9,6 @@ mesos:
 
 election:
   zk_servers: ["localhost:8192"]
-  root: "/peloton/development"
 
 metrics:
   prometheus:

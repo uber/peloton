@@ -27,3 +27,6 @@ storage:
 resmgr:
   port: 5290
   task_scheduling_period: 100ms
+
+election:
+  root: "/peloton"

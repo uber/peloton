@@ -7,27 +7,69 @@ import (
 	"strconv"
 	"strings"
 
+	pc "code.uber.internal/infra/peloton/client"
 	pt "peloton/api/task"
 
-	pc "code.uber.internal/infra/peloton/client"
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/leader"
+
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
-	// version of the peloton client. will be set by Makefile
+	// Version of the peloton cli. will be set by Makefile
 	version string
-	client  *pc.Client
 
-	app = kingpin.New("peloton", "Peloton CLI for interacting with peloton-master")
+	app = kingpin.New("peloton", "CLI for interacting with peloton")
+
 	// Global CLI flags
+	debug = app.Flag(
+		"debug",
+		"enable debug mode (print full json responses)").
+		Short('d').
+		Default("false").
+		Bool()
 
-	debug        = app.Flag("debug", "enable debug mode (print full json responses)").Short('d').Default("false").Bool()
-	frameworkURL = app.Flag("master", "name of the master address to use (http/tchannel) (set $MASTER_URL to override)").
-			Short('m').Default("http://localhost:5289").OverrideDefaultFromEnvar("MASTER_URL").URL()
-	resframeworkURL = app.Flag("resmgr", "name of the resource manager address to use (http/tchannel) (set $RESMGR_URL to override)").
-			Short('e').Default("http://localhost:5290").OverrideDefaultFromEnvar("RESMGR_URL").URL()
-	timeout = app.Flag("timeout", "default RPC timeout (set $TIMEOUT to override)").
-		Default("10s").OverrideDefaultFromEnvar("TIMEOUT").Duration()
+	// TODO: deprecate jobMgrURL/resMgrURL once we fix pcluster container network
+	//       and make sure that local cli can access Uber Prodution hostname/ip
+	jobMgrURL = app.Flag(
+		"master",
+		"name of the master address to use (http/tchannel) (set $MASTER_URL to override)").
+		Short('m').
+		Default("http://localhost:5289").
+		OverrideDefaultFromEnvar("MASTER_URL").
+		URL()
+
+	resMgrURL = app.Flag(
+		"resmgr",
+		"name of the resource manager address to use (http/tchannel) (set $RESMGR_URL to override)").
+		Short('e').
+		Default("http://localhost:5290").
+		OverrideDefaultFromEnvar("RESMGR_URL").
+		URL()
+
+	zkServers = app.Flag(
+		"zkservers",
+		"zookeeper servers used for peloton service discovery. "+
+			"Specify multiple times for multiple servers"+
+			"(set $ZK_SERVERS to override with '\n' as delimiter)").
+		Short('z').
+		OverrideDefaultFromEnvar("ZK_SERVERS").
+		Strings()
+
+	zkRoot = app.Flag(
+		"zkroot",
+		"zookeeper root path for peloton service discovery(set $ZK_ROOT to override)").
+		Default(common.DefaultLeaderElectionRoot).
+		OverrideDefaultFromEnvar("ZK_ROOT").
+		String()
+
+	timeout = app.Flag(
+		"timeout",
+		"default RPC timeout (set $TIMEOUT to override)").
+		Default("20s").
+		OverrideDefaultFromEnvar("TIMEOUT").
+		Duration()
 
 	// Top level job command
 	job = app.Command("job", "manage jobs")
@@ -67,7 +109,7 @@ var (
 
 	// Top level resource pool command
 	resPool             = app.Command("respool", "manage resource pools")
-	resPoolCreate       = resPool.Command("create", "Create a resource pool")
+	resPoolCreate       = resPool.Command("create", "create a resource pool")
 	resPoolCreateName   = resPoolCreate.Arg("respool", "respool identifier").Required().String()
 	resPoolCreateConfig = resPoolCreate.Arg("config", "YAML Resource Pool configuration").Required().ExistingFile()
 )
@@ -167,9 +209,19 @@ func main() {
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 	var err error
 
-	client, err := pc.New(**frameworkURL, *timeout, *debug, **resframeworkURL)
+	var discovery leader.Discovery
+	if len(*zkServers) > 0 {
+		discovery, err = leader.NewZkServiceDiscovery(*zkServers, *zkRoot)
+	} else {
+		discovery, err = leader.NewStaticServiceDiscovery(*jobMgrURL, *resMgrURL)
+	}
 	if err != nil {
-		app.FatalIfError(err, "")
+		app.FatalIfError(err, "Fail to initialize service discovery")
+	}
+
+	client, err := pc.New(discovery, *timeout, *debug)
+	if err != nil {
+		app.FatalIfError(err, "Fail to initialize client")
 	}
 	defer client.Cleanup()
 

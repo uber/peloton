@@ -27,4 +27,6 @@ const (
 	TaskManagerRole = "taskmanager"
 	// ResourceManagerRole is the leadership election role for resmgr
 	ResourceManagerRole = "resourcemanager"
+	// DefaultLeaderElectionRoot is the default leader election root path
+	DefaultLeaderElectionRoot = "/peloton"
 )

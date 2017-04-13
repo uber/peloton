@@ -63,3 +63,6 @@ job_manager:
   task_launcher:
     placement_dequeue_limit: 10
     get_placements_timeout_ms: 100
+
+election:
+  root: "/peloton"

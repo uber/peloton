@@ -48,3 +48,5 @@ mesos:
     failover_timeout: 60000000
     checkpoint: false
 
+election:
+  root: "/peloton"

@@ -3,10 +3,10 @@ package client
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"time"
 
-	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/leader"
+
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
@@ -26,14 +26,19 @@ type Client struct {
 
 // New returns a new RPC client given a framework URL and timeout and error
 func New(
-	jobmgrURL url.URL,
+	discovery leader.Discovery,
 	timeout time.Duration,
-	debug bool,
-	resmgrURL url.URL) (*Client, error) {
+	debug bool) (*Client, error) {
 
-	// use whereever the master roots its RPC path
-	jobmgrURL.Path = common.PelotonEndpointPath
-	resmgrURL.Path = common.PelotonEndpointPath
+	jobmgrURL, err := discovery.GetJobMgrURL()
+	if err != nil {
+		return nil, err
+	}
+
+	resmgrURL, err := discovery.GetResMgrURL()
+	if err != nil {
+		return nil, err
+	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: "peloton-client",

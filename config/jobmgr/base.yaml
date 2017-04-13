@@ -31,5 +31,4 @@ job_manager:
     get_placements_timeout_ms: 100
 
 election:
-  zk_servers: ["localhost:8192"]
-  root: "/peloton/development"
+  root: "/peloton"
