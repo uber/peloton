@@ -2,9 +2,10 @@ package mpb
 
 import (
 	"fmt"
+	"reflect"
+
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
-	"reflect"
 )
 
 var (
