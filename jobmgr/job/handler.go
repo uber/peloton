@@ -65,6 +65,11 @@ func (h *serviceHandler) Create(
 	req *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
 
 	jobID := req.Id
+	// It is possible that jobId is nil since protobuf doesn't enforce it
+	if jobID == nil {
+		jobID = &peloton.JobID{Value: ""}
+	}
+
 	if len(jobID.Value) == 0 {
 		jobID.Value = uuid.NewUUID().String()
 		log.WithField("jobID", jobID).Info("Genarating UUID ID for empty job ID")

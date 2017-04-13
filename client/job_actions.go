@@ -32,9 +32,6 @@ func (client *Client) JobCreateAction(cfg string) error {
 
 	var response job.CreateResponse
 	var request = &job.CreateRequest{
-		Id: &peloton.JobID{
-			Value: "",
-		},
 		Config: &jobConfig,
 	}
 	_, err = client.jobClient.Call(
