@@ -45,6 +45,12 @@ type Metrics struct {
 
 	ResourcePoolGet     tally.Counter
 	ResourcePoolGetFail tally.Counter
+
+	// FrameworkStore metrics
+	FrameworkIDGet     tally.Counter
+	FrameworkIDGetFail tally.Counter
+	StreamIDGet        tally.Counter
+	StreamIDGetFail    tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -66,6 +72,14 @@ func NewMetrics(scope tally.Scope) Metrics {
 	resourcePoolScope := scope.SubScope("resource_pool")
 	resourcePoolSuccessScope := resourcePoolScope.Tagged(map[string]string{"type": "success"})
 	resourcePoolFailScope := resourcePoolScope.Tagged(map[string]string{"type": "fail"})
+
+	frameworkIDScope := scope.SubScope("framework_id")
+	frameworkIDSuccessScope := frameworkIDScope.Tagged(map[string]string{"type": "success"})
+	frameworkIDFailScope := frameworkIDScope.Tagged(map[string]string{"type": "fail"})
+
+	streamIDScope := scope.SubScope("stream_id")
+	streamIDSuccessScope := streamIDScope.Tagged(map[string]string{"type": "success"})
+	streamIDFailScope := streamIDScope.Tagged(map[string]string{"type": "fail"})
 
 	metrics := Metrics{
 		JobCreate:     jobSuccessScope.Counter("create"),
@@ -97,6 +111,12 @@ func NewMetrics(scope tally.Scope) Metrics {
 		ResourcePoolCreateFail: resourcePoolFailScope.Counter("create"),
 		ResourcePoolGet:        resourcePoolScope.Counter("get"),
 		ResourcePoolGetFail:    resourcePoolFailScope.Counter("get"),
+
+		FrameworkIDGet:     frameworkIDSuccessScope.Counter("get"),
+		FrameworkIDGetFail: frameworkIDFailScope.Counter("get"),
+
+		StreamIDGet:     streamIDSuccessScope.Counter("get"),
+		StreamIDGetFail: streamIDFailScope.Counter("get"),
 	}
 	return metrics
 }

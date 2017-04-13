@@ -765,8 +765,11 @@ func (s *Store) updateFrameworkTable(content map[string]interface{}) error {
 func (s *Store) GetMesosStreamID(frameworkName string) (string, error) {
 	frameworkInfoRecord, err := s.getFrameworkInfo(frameworkName)
 	if err != nil {
+		s.metrics.StreamIDGetFail.Inc(1)
 		return "", err
 	}
+
+	s.metrics.StreamIDGet.Inc(1)
 	return frameworkInfoRecord.MesosStreamID, nil
 }
 
@@ -774,8 +777,11 @@ func (s *Store) GetMesosStreamID(frameworkName string) (string, error) {
 func (s *Store) GetFrameworkID(frameworkName string) (string, error) {
 	frameworkInfoRecord, err := s.getFrameworkInfo(frameworkName)
 	if err != nil {
+		s.metrics.FrameworkIDGetFail.Inc(1)
 		return "", err
 	}
+
+	s.metrics.FrameworkIDGet.Inc(1)
 	return frameworkInfoRecord.FrameworkID, nil
 }
 
