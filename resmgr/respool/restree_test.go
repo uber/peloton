@@ -319,3 +319,32 @@ func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfig() {
 	err := suite.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
 	suite.NoError(err)
 }
+
+func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfigError() {
+	mockExistingResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: "respool200",
+	}
+
+	mockParentPoolID := &pb_respool.ResourcePoolID{
+		Value: "respool23",
+	}
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Parent: mockParentPoolID,
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				Reservation: 10,
+				Kind:        "cpu",
+				Limit:       50,
+				Share:       2,
+			},
+		},
+		Name: mockParentPoolID.Value,
+	}
+
+	err := suite.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
+	suite.EqualError(
+		err,
+		"failed to insert resource pool: respool200: error creating resource pool respool200: Invalid queue Type",
+	)
+}

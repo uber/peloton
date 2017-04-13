@@ -217,7 +217,14 @@ func ValidateResourcePool(resTree Tree, resourcePoolConfigData ResourcePoolConfi
 
 	// root override check
 	if ID.Value == RootResPoolID {
-		return errors.Errorf("Cannot override %s", RootResPoolID)
+		return errors.Errorf("cannot override %s", RootResPoolID)
+	}
+
+	// validate unknown policy
+	if resPoolConfig.Policy == respool.SchedulingPolicy_UNKNOWN {
+		return errors.Errorf(
+			"invalid policy type %d",
+			resPoolConfig.Policy)
 	}
 
 	cResources := resPoolConfig.Resources

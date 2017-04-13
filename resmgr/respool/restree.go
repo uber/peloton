@@ -84,7 +84,7 @@ func GetTree() Tree {
 func (t *tree) Start() error {
 	resPools, err := t.store.GetAllResourcePools()
 	if err != nil {
-		log.WithField("Error", err).Error("GetAllResourcePools failed")
+		log.WithError(err).Error("GetAllResourcePools failed")
 		return err
 	}
 	t.resPools = resPools
@@ -93,7 +93,11 @@ func (t *tree) Start() error {
 		log.Warnf("There are no resource pools existing")
 	}
 	// Initializing the respoolTree
-	t.root = t.initializeResourceTree()
+	t.root, err = t.initializeResourceTree()
+	if err != nil {
+		log.WithError(err).Error("initializeResourceTree failed")
+		return errors.Wrap(err, "failed to start tree")
+	}
 	return nil
 }
 
@@ -111,38 +115,56 @@ func (t *tree) Stop() error {
 }
 
 // initializeResourceTree will initialize all the resource pools from Storage
-func (t *tree) initializeResourceTree() ResPool {
+func (t *tree) initializeResourceTree() (ResPool, error) {
 	log.Info("Initializing Resource Tree")
+
+	// we assume the resPools needs to be created before calling init tree
 	if t.resPools == nil {
-		return nil
+		return nil, errors.New("respools cannot be nil")
 	}
+
 	rootResPoolConfig := respool.ResourcePoolConfig{
 		Name:   "root",
 		Parent: nil,
 		Policy: respool.SchedulingPolicy_PriorityFIFO,
 	}
 	t.resPools[RootResPoolID] = &rootResPoolConfig
-	root := t.buildTree(nil, RootResPoolID)
-	return root
+	root, err := t.buildTree(nil, RootResPoolID)
+	if err != nil {
+		return nil, errors.Wrap(
+			err,
+			"failed to initialize tree")
+	}
+	return root, nil
 }
 
 // buildTree function will take the Parent node and create the tree underneath
 func (t *tree) buildTree(
 	parent ResPool,
 	ID string,
-) ResPool {
-	node := NewRespool(ID, parent, t.resPools[ID])
+) (ResPool, error) {
+	node, err := NewRespool(ID, parent, t.resPools[ID])
+	if err != nil {
+		return nil, err
+	}
+
 	t.allNodes[ID] = node
 	node.SetParent(parent)
 	childs := t.getChildResPools(ID)
 	var childNodes = list.New()
 	// TODO: We need to detect cycle here.
 	for child := range childs {
-		childNode := t.buildTree(node, child)
+		childNode, err := t.buildTree(node, child)
+		if err != nil {
+			return nil, errors.Wrapf(
+				err,
+				"failed to create resource pool: %s",
+				child)
+		}
 		childNodes.PushBack(childNode)
 	}
 	node.SetChildren(childNodes)
-	return node
+	return node, nil
 }
 
 // printTree will print the whole Resource Pool Tree in BFS manner
@@ -214,7 +236,7 @@ func (t *tree) lookupResPool(ID *respool.ResourcePoolID) (ResPool, error) {
 	return nil, fmt.Errorf("Resource pool (%s) not found", ID.Value)
 }
 
-//Upsert adds/updates a resource pool config to the tree
+// Upsert adds/updates a resource pool config to the tree
 func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error {
 	// acquire RW lock
 	t.Lock()
@@ -246,7 +268,15 @@ func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.Resourc
 			"Id": ID.Value,
 		}).Debug("Adding resource pool")
 
-		resourcePool = NewRespool(ID.Value, parent, resPoolConfig)
+		resourcePool, err = NewRespool(ID.Value, parent, resPoolConfig)
+
+		if err != nil {
+			return errors.Wrapf(
+				err,
+				"failed to insert resource pool: %s",
+				ID.Value)
+		}
+
 		// link parent to child resource pool
 		children := parent.Children()
 		children.PushBack(resourcePool)

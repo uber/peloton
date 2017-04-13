@@ -1,6 +1,7 @@
 package respool
 
 import (
+	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/resmgr/queue"
@@ -90,13 +91,36 @@ func (s *ResPoolSuite) TestResPool() {
 	}
 
 	id := uuid.New()
-	resPool := NewRespool(id, nil, poolConfig)
+	resPool, err := NewRespool(id, nil, poolConfig)
+	s.NoError(err)
 
 	s.Equal(id, resPool.ID())
 	s.Equal(nil, resPool.Parent())
 	s.True(resPool.Children().Len() == 0)
 	s.True(resPool.IsLeaf())
 	s.Equal(poolConfig, resPool.ResourcePoolConfig())
+}
+
+func (s *ResPoolSuite) TestResPoolError() {
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+
+	poolConfig := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+	}
+
+	id := uuid.New()
+	resPool, err := NewRespool(id, nil, poolConfig)
+
+	s.EqualError(
+		err,
+		fmt.Sprintf(
+			"error creating resource pool %s: Invalid queue Type",
+			id),
+	)
+	s.Nil(resPool)
+
 }
 
 func (s *ResPoolSuite) TestResPoolEnqueue() {
@@ -109,7 +133,8 @@ func (s *ResPoolSuite) TestResPoolEnqueue() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode := NewRespool(uuid.New(), nil, poolConfig)
+	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	s.NoError(err)
 
 	for _, task := range s.getTasks() {
 		resPoolNode.EnqueueTask(task)
@@ -137,7 +162,8 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode := NewRespool(uuid.New(), nil, poolConfig)
+	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	s.NoError(err)
 
 	for _, task := range s.getTasks() {
 		resPoolNode.EnqueueTask(task)

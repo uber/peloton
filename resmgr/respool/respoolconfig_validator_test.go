@@ -229,7 +229,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 
 	err = rv.Validate(resourcePoolConfigData)
 
-	suite.EqualError(err, fmt.Sprintf("Cannot override %s", RootResPoolID))
+	suite.EqualError(err, fmt.Sprintf("cannot override %s", RootResPoolID))
 }
 
 func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateCycle() {
@@ -488,6 +488,46 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_SkipRo
 
 	err = rv.Validate(resourcePoolConfigData)
 	suite.NoError(err)
+}
+
+func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_InvalidPolicy() {
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: "respool99",
+	}
+	mockParentPoolID := &pb_respool.ResourcePoolID{
+		Value: RootResPoolID,
+	}
+
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Parent: mockParentPoolID,
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				Reservation: 51,
+				Kind:        "cpu",
+				Limit:       100,
+				Share:       2,
+			},
+		},
+		Name: mockParentPoolID.Value,
+	}
+
+	resourcePoolConfigData := ResourcePoolConfigData{
+		ID:                                mockResourcePoolID,
+		ResourcePoolConfig:                mockResourcePoolConfig,
+		SkipRootChildResourceConfigChecks: true,
+	}
+
+	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	_, err := rv.Register(
+		[]ResourcePoolConfigValidatorFunc{
+			ValidateResourcePool,
+		},
+	)
+
+	suite.NoError(err)
+
+	err = rv.Validate(resourcePoolConfigData)
+	suite.EqualError(err, "invalid policy type 0")
 }
 
 func TestResPoolConfigValidator(t *testing.T) {

@@ -63,7 +63,7 @@ type resPool struct {
 func NewRespool(
 	ID string,
 	parent ResPool,
-	config *respool.ResourcePoolConfig) ResPool {
+	config *respool.ResourcePoolConfig) (ResPool, error) {
 	result := resPool{
 		children:        list.New(),
 		id:              ID,
@@ -76,10 +76,10 @@ func NewRespool(
 	q, err := queue.CreateQueue(config.Policy, math.MaxInt64)
 	if err != nil {
 		log.WithField("ResPool: ", ID).Error("Error creating resource pool pending queue")
-		return nil
+		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
 	}
 	result.pendingQueue = q
-	return &result
+	return &result, nil
 }
 
 // ID returns the resource pool ID
