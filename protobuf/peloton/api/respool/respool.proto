@@ -19,6 +19,25 @@ message ResourcePoolID {
 }
 
 /**
+ *   A fully qualified path to a resource pool in a resource pool hierrarchy.
+ *   The path to a resource pool can be defined as an absolute path,
+ *   starting from the root node and separated by a slash.
+ *
+ *   The resource hierarchy is anchored at a node called the root,
+ *   designated by a slash "/".
+ *
+ *   For thhe below resource hierarchy ; the "compute" resource pool would be
+ *   desgignated by path: /infrastructure/compute
+ *               root
+ *                ├─ infrastructure
+ *                │  └─ compute
+ *                └─ marketplace
+ */
+message ResourcePoolPath {
+  string value = 1;
+}
+
+/**
  *  Resource configuration for a resource
  */
 message ResourceConfig {
@@ -40,13 +59,13 @@ message ResourceConfig {
 /**
   * Scheduling policy for Resource Pool.
   */
-  enum SchedulingPolicy {
-    // TODO: We need to investigate why yarpc is ommiting value 0
-    UNKNOWN = 0;
+enum SchedulingPolicy {
+  // TODO: We need to investigate why yarpc is ommiting value 0
+  UNKNOWN = 0;
 
-    // This scheduling policy will return item for highest priority in FIFO order
-    PriorityFIFO = 1;
-  }
+  // This scheduling policy will return item for highest priority in FIFO order
+  PriorityFIFO = 1;
+}
 
 /**
  *  Resource Pool configuration
@@ -109,6 +128,9 @@ service ResourceManager
 
   // modify a resource pool entity
   rpc UpdateResourcePool(UpdateRequest) returns (UpdateResponse);
+
+  // Lookup the resource pool ID for a given resource pool path
+  rpc LookupResourcePoolID(LookupRequest) returns (LookupResponse);
 }
 
 message ResourcePoolAlreadyExists {
@@ -123,6 +145,16 @@ message InvalidResourcePoolConfig {
 
 message ResourcePoolNotFound {
   ResourcePoolID id = 1;
+  string message = 2;
+}
+
+message ResourcePoolPathNotFound {
+  ResourcePoolPath path = 1;
+  string message = 2;
+}
+
+message InvalidResourcePoolPath {
+  ResourcePoolPath path = 1;
   string message = 2;
 }
 
@@ -173,7 +205,7 @@ message DeleteResponse {
   Error error = 1;
 }
 
-message UpdateRequest{
+message UpdateRequest {
   ResourcePoolID id = 1;
   ResourcePoolConfig config = 2;
 }
@@ -185,4 +217,18 @@ message UpdateResponse {
   }
 
   Error error = 1;
+}
+
+message LookupRequest {
+  ResourcePoolPath path = 1;
+}
+
+message LookupResponse {
+  message Error {
+    ResourcePoolPathNotFound notFound = 1;
+    InvalidResourcePoolPath invalidPath = 2;
+  }
+
+  Error error = 1;
+  ResourcePoolID id = 2;
 }

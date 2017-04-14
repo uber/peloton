@@ -8,6 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
@@ -381,7 +382,22 @@ func (h *serviceHandler) UpdateResourcePool(
 	return &respool.UpdateResponse{}, nil, nil
 }
 
-// Registerprocs will register all api's for end points
+// LookupResourcePoolID returns the resource pool ID for a given resource pool path
+func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	req *respool.LookupRequest) (
+	*respool.LookupResponse,
+	yarpc.ResMeta,
+	error) {
+
+	log.WithField(
+		"request",
+		req,
+	).Info("LookupResourcePoolID called")
+	return &respool.LookupResponse{}, nil, errors.New("not implemented")
+}
+
+// registerProcs will register all api's for end points
 func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
 	d.Register(
 		json.Procedure(
@@ -405,6 +421,12 @@ func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
 		json.Procedure(
 			"ResourceManager.UpdateResourcePool",
 			h.UpdateResourcePool,
+		),
+	)
+	d.Register(
+		json.Procedure(
+			"ResourceManager.LookupResourcePoolID",
+			h.LookupResourcePoolID,
 		),
 	)
 }
