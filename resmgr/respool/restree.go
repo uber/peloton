@@ -5,14 +5,19 @@ import (
 	"fmt"
 	"sync"
 
-	"code.uber.internal/infra/peloton/storage"
-
 	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
+
 	"github.com/uber-go/tally"
 
+	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/respool"
+	"peloton/api/task"
+	"peloton/private/resmgr"
 
-	"github.com/pkg/errors"
+	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // Tree defines the interface for a Resource Pool Tree
@@ -44,8 +49,11 @@ type tree struct {
 	metrics  *Metrics
 	root     ResPool
 	resPools map[string]*respool.ResourcePoolConfig
+
 	// Hashmap of [ID] = ResPool, having all Nodes
-	allNodes map[string]ResPool
+	allNodes  map[string]ResPool
+	jobStore  storage.JobStore
+	taskStore storage.TaskStore
 }
 
 // Singleton resource pool tree
@@ -54,7 +62,10 @@ var respoolTree *tree
 // InitTree will be initializing the respool tree
 func InitTree(
 	scope tally.Scope,
-	store storage.ResourcePoolStore) {
+	store storage.ResourcePoolStore,
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore,
+) {
 
 	if respoolTree != nil {
 		log.Warning("Resource pool tree has already been initialized")
@@ -62,10 +73,12 @@ func InitTree(
 	}
 
 	respoolTree = &tree{
-		store:    store,
-		root:     nil,
-		metrics:  NewMetrics(scope),
-		allNodes: make(map[string]ResPool),
+		store:     store,
+		root:      nil,
+		metrics:   NewMetrics(scope),
+		allNodes:  make(map[string]ResPool),
+		jobStore:  jobStore,
+		taskStore: taskStore,
 	}
 }
 
@@ -98,6 +111,9 @@ func (t *tree) Start() error {
 		log.WithError(err).Error("initializeResourceTree failed")
 		return errors.Wrap(err, "failed to start tree")
 	}
+	//Loading the jobs/tasks from DB and enquing it back to respool
+	// Pending queue.
+	t.loadFromDB()
 	return nil
 }
 
@@ -112,6 +128,144 @@ func (t *tree) Stop() error {
 	t.allNodes = make(map[string]ResPool)
 	log.Info("Resource Pool Tree Stopped")
 	return nil
+}
+
+// LoadFromDB loads all the jobs and tasks which are not in terminal state
+// And requeue them
+func (t *tree) loadFromDB() error {
+
+	jobs, err := t.jobStore.GetAllJobs()
+	if err != nil {
+		log.WithField("Fail to get all jobs from DB with %v", err).Error()
+		return err
+	}
+	log.WithField("jobs :", jobs).Info("Resource Manager loding" +
+		" jobs from DB for recovery")
+	var jobstring string
+	var isError = false
+	for jobID, jobConfig := range jobs {
+		err = t.requeueJob(jobID, jobConfig)
+		if err != nil {
+			log.WithField("Not able to requeue job ", jobID).Error()
+			jobstring = jobstring + jobID + " , "
+			isError = true
+		}
+	}
+	if isError {
+		return errors.Errorf("Not able to requeue jobs %s", jobstring)
+	}
+	return nil
+}
+
+// requeueJob scan the tasks batch by batch, update / create task
+// infos, also put those task records into the queue
+func (t *tree) requeueJob(
+	jobID string,
+	jobConfig *job.JobConfig) error {
+
+	log.Infof("Requeue job %v to task queue", jobID)
+
+	// TODO: add getTaskCount(jobID, taskState) in task store to help
+	// optimize this function
+	var err error
+	rangevar := jobConfig.InstanceCount / RequeueBatchSize
+	var errString string
+	var isError = false
+	for i := uint32(0); i <= rangevar; i++ {
+		from := i * RequeueBatchSize
+		to := util.Min((i+1)*RequeueBatchSize, jobConfig.InstanceCount)
+		err = t.requeueTasksInRange(jobID, jobConfig, from, to)
+
+		if err != nil {
+			log.Errorf("Failed to requeue tasks for job %v in [%v, %v)",
+				jobID, from, to)
+			errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]", jobID, from, to)
+			isError = true
+		}
+	}
+	if isError {
+		return errors.Errorf("Not able to reque tasks %s", errString)
+	}
+	return nil
+}
+
+// requeueTasks loads the tasks in a given range from storage and
+// enqueue them to task queue
+
+func (t *tree) requeueTasksInRange(
+	jobID string,
+	jobConfig *job.JobConfig,
+	from, to uint32) error {
+
+	log.WithFields(log.Fields{
+		"JobID": jobID,
+		"from":  from,
+		"to":    to,
+	}).Info("Checking job instance range")
+
+	if from > to {
+		return fmt.Errorf("Invalid job instance range [%v, %v)", from, to)
+	} else if from == to {
+		return nil
+	}
+
+	pbJobID := &peloton.JobID{Value: jobID}
+	tasks, err := t.taskStore.GetTasksForJobByRange(
+		pbJobID,
+		&task.InstanceRange{
+			From: from,
+			To:   to,
+		})
+	if err != nil {
+		return err
+	}
+	log.WithField("Count: ", len(tasks)).Debug("Tasks count")
+
+	for _, ta := range tasks {
+		switch ta.Runtime.State {
+		// TODO: Add more states here once all states are implemented
+		case task.TaskState_INITIALIZED,
+			task.TaskState_PENDING,
+			task.TaskState_PLACED,
+			task.TaskState_PLACING:
+			// Requeue the tasks with these states into the queue again
+			ta.Runtime.State = task.TaskState_PENDING
+			err := t.allNodes[jobConfig.RespoolID.Value].EnqueueTask(
+				t.ConvertResMgrTask(ta, jobConfig))
+			if err != nil {
+				log.WithField("task", ta.JobId.Value+"-"+
+					fmt.Sprint(ta.InstanceId)).Error(
+					"Not able to recover task")
+				break
+			}
+			err = t.taskStore.UpdateTask(ta)
+			if err != nil {
+				log.WithField("task", ta.JobId.Value+"-"+
+					fmt.Sprint(ta.InstanceId)).Error(
+					"Not able to Update task in DB")
+			}
+		default:
+			// Pass
+		}
+	}
+	return nil
+}
+
+// ConvertResMgrTask converts the taskinfo object to resmgr.Task
+func (t *tree) ConvertResMgrTask(ta *task.TaskInfo, jobConfig *job.JobConfig) *resmgr.Task {
+	rt := resmgr.Task{
+		Id: &peloton.TaskID{Value: fmt.Sprintf(
+			"%s-%d", ta.GetJobId().Value,
+			ta.InstanceId)},
+		JobId: ta.JobId,
+		Name:  ta.Config.Name,
+		// TODO: We need to add sla config per task
+		Priority:    jobConfig.Sla.Priority,
+		Preemptible: jobConfig.Sla.Preemptible,
+		Resource:    ta.GetConfig().Resource,
+		TaskId:      ta.GetRuntime().TaskId,
+	}
+	return &rt
 }
 
 // initializeResourceTree will initialize all the resource pools from Storage

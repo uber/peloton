@@ -36,6 +36,8 @@ type serviceHandler struct {
 	runningState           int32
 	resPoolTree            Tree
 	resPoolConfigValidator Validator
+	jobStore               storage.JobStore
+	taskStore              storage.TaskStore
 }
 
 // Singleton service handler for ResourcePoolService
@@ -45,7 +47,9 @@ var handler *serviceHandler
 func InitServiceHandler(
 	d yarpc.Dispatcher,
 	parent tally.Scope,
-	store storage.ResourcePoolStore) {
+	store storage.ResourcePoolStore,
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore) {
 
 	if handler != nil {
 		log.Warning(
@@ -59,7 +63,8 @@ func InitServiceHandler(
 	metrics := NewMetrics(scope)
 
 	// Initializing Resource Pool Tree
-	InitTree(scope, store)
+
+	InitTree(scope, store, jobStore, taskStore)
 
 	// Initialize Resource Pool Config Validator
 	resPoolConfigValidator, err := NewResourcePoolConfigValidator(GetTree())
@@ -79,6 +84,8 @@ func InitServiceHandler(
 		runningState:           runningStateNotStarted,
 		resPoolTree:            GetTree(),
 		resPoolConfigValidator: resPoolConfigValidator,
+		jobStore:               jobStore,
+		taskStore:              taskStore,
 	}
 	log.Info("ResourcePoolService handler created")
 }

@@ -286,7 +286,8 @@ func main() {
 	})
 
 	// Initialize resource manager related service handlers
-	respool.InitServiceHandler(resmgrDispatcher, rootScope, respoolStore)
+	respool.InitServiceHandler(resmgrDispatcher, rootScope, respoolStore,
+		jobStore, taskStore)
 	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
 	resmgr_task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
 	resmgr.InitServiceHandler(dispatcher, rootScope)

@@ -25,12 +25,18 @@ func (suite *resPoolConfigValidatorSuite) SetupSuite() {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	mockResPoolStore.EXPECT().GetAllResourcePools().
 		Return(suite.getResPools(), nil).AnyTimes()
-
+	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
+	gomock.InOrder(
+		mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).AnyTimes(),
+	)
 	suite.resourceTree = &tree{
-		store:    mockResPoolStore,
-		root:     nil,
-		metrics:  NewMetrics(tally.NoopScope),
-		allNodes: make(map[string]ResPool),
+		store:     mockResPoolStore,
+		root:      nil,
+		metrics:   NewMetrics(tally.NoopScope),
+		allNodes:  make(map[string]ResPool),
+		jobStore:  mockJobStore,
+		taskStore: mockTaskStore,
 	}
 }
 

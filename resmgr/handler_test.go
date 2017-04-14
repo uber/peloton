@@ -37,7 +37,13 @@ func (suite *HandlerTestSuite) SetupSuite() {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.ctrl)
 	mockResPoolStore.EXPECT().GetAllResourcePools().
 		Return(suite.getResPools(), nil).AnyTimes()
-	respool.InitTree(tally.NoopScope, mockResPoolStore)
+	mockJobStore := store_mocks.NewMockJobStore(suite.ctrl)
+	gomock.InOrder(
+		mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).Times(4),
+	)
+
+	mockTaskStore := store_mocks.NewMockTaskStore(suite.ctrl)
+	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 	suite.resTree = respool.GetTree()
 	rm_task.InitScheduler(1 * time.Second)
 	suite.taskScheduler = rm_task.GetScheduler()
@@ -250,7 +256,7 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 
 func (suite *HandlerTestSuite) TestEnqueueTasksResPoolNotFound() {
 	log.Info("TestEnqueueTasksResPoolNotFound called")
-	respool.InitTree(tally.NoopScope, nil)
+	respool.InitTree(tally.NoopScope, nil, nil, nil)
 
 	respoolID := &pb_respool.ResourcePoolID{Value: "respool10"}
 	enqReq := &resmgrsvc.EnqueueTasksRequest{

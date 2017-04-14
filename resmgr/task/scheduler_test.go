@@ -6,10 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/queue"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -17,6 +13,10 @@ import (
 	"peloton/api/peloton"
 	pb_respool "peloton/api/respool"
 	"peloton/private/resmgr"
+
+	"code.uber.internal/infra/peloton/common/queue"
+	"code.uber.internal/infra/peloton/resmgr/respool"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
 type TaskSchedulerTestSuite struct {
@@ -34,7 +34,13 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 		mockResPoolStore.EXPECT().
 			GetAllResourcePools().Return(suite.getResPools(), nil).AnyTimes(),
 	)
-	respool.InitTree(tally.NoopScope, mockResPoolStore)
+	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
+	gomock.InOrder(
+		mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).AnyTimes(),
+	)
+	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+
 	suite.resTree = respool.GetTree()
 	suite.readyQueue = queue.NewQueue(
 		"ready-queue",

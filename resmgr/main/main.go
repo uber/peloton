@@ -153,7 +153,7 @@ func main() {
 	})
 
 	// Initialize service handlers
-	respool.InitServiceHandler(dispatcher, rootScope, respoolStore)
+	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore, taskStore)
 	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
 	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
 

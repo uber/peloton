@@ -4,15 +4,16 @@ import (
 	"context"
 	"testing"
 
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
+
 	"github.com/uber-go/tally"
 
 	pb_respool "peloton/api/respool"
+
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
 type resPoolHandlerTestSuite struct {
@@ -31,11 +32,18 @@ func (suite *resPoolHandlerTestSuite) SetupSuite() {
 	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	suite.mockResPoolStore.EXPECT().GetAllResourcePools().
 		Return(suite.getResPools(), nil).AnyTimes()
+	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
+	gomock.InOrder(
+		mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).AnyTimes(),
+	)
 	suite.resourceTree = &tree{
-		store:    suite.mockResPoolStore,
-		root:     nil,
-		metrics:  NewMetrics(tally.NoopScope),
-		allNodes: make(map[string]ResPool),
+		store:     suite.mockResPoolStore,
+		root:      nil,
+		metrics:   NewMetrics(tally.NoopScope),
+		allNodes:  make(map[string]ResPool),
+		jobStore:  mockJobStore,
+		taskStore: mockTaskStore,
 	}
 	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(suite.resourceTree)
 	suite.NoError(err)
