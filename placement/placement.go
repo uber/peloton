@@ -1,8 +1,3 @@
-// Placement Engine Interface
-// IN: job
-// OUT: placement decision <task, node>
-// https://github.com/Netflix/Fenzo
-
 package placement
 
 import (
@@ -13,8 +8,8 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/golang/protobuf/proto"
 	"github.com/uber-go/tally"
-
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
@@ -134,7 +129,7 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 			}
 			placement, group.tasks = s.placeTasks(
 				group.tasks,
-				group.resourceConfig,
+				group.getResourceConfig(),
 				hostOffer,
 			)
 			placements = append(placements, placement)
@@ -210,18 +205,14 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOf
 		limit = len(group.tasks)
 	}
 
+	// Make a deep copy because we are modifying this struct here.
+	constraint := proto.Clone(&group.constraint).(*hostsvc.Constraint)
+	constraint.HostLimit = uint32(limit)
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
 	var response hostsvc.AcquireHostOffersResponse
 	var request = &hostsvc.AcquireHostOffersRequest{
-		Constraints: []*hostsvc.Constraint{
-			{
-				Limit: uint32(limit),
-				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: group.resourceConfig,
-				},
-			},
-		},
+		Constraint: constraint,
 	}
 
 	log.WithField("request", request).Debug("Calling AcquireHostOffers")
@@ -392,7 +383,7 @@ func (s *placementEngine) placeRound() {
 		return
 	}
 	log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
-	taskGroups := groupTasksByResource(tasks)
+	taskGroups := groupTasks(tasks)
 	for _, tg := range taskGroups {
 		// Launching go routine per task group
 		// TODO: We need to change this worker thread pool model
@@ -442,22 +433,39 @@ func (s *placementEngine) getTasks(limit int) (
 }
 
 type taskGroup struct {
-	resourceConfig *task.ResourceConfig
-	tasks          []*resmgr.Task
+	constraint hostsvc.Constraint
+	tasks      []*resmgr.Task
 }
 
-// groupTasksByResource groups tasks which are to be placed based on their ResourceConfig.
-// Returns grouped tasks keyed by serialized ResourceLimit
-func groupTasksByResource(tasks []*resmgr.Task) map[string]*taskGroup {
+func (g *taskGroup) getResourceConfig() *task.ResourceConfig {
+	return g.constraint.GetResourceConstraint().GetMinimum()
+}
+
+func getHostSvcConstraint(t *resmgr.Task) hostsvc.Constraint {
+	result := hostsvc.Constraint{
+		// HostLimit will be later determined by number of tasks.
+		ResourceConstraint: &hostsvc.ResourceConstraint{
+			Minimum: t.Resource,
+		},
+	}
+	if t.Constraint != nil {
+		result.SchedulingConstraint = t.Constraint
+	}
+	return result
+}
+
+// groupTasks groups tasks based on call constraint to hostsvc.
+// Returns grouped tasks keyed by serialized hostsvc.Constraint.
+func groupTasks(tasks []*resmgr.Task) map[string]*taskGroup {
 	groups := make(map[string]*taskGroup)
 	for _, t := range tasks {
-		rc := t.GetResource()
+		c := getHostSvcConstraint(t)
 		// String() function on protobuf message should be nil-safe.
-		s := rc.String()
+		s := c.String()
 		if _, ok := groups[s]; !ok {
 			groups[s] = &taskGroup{
-				resourceConfig: rc,
-				tasks:          []*resmgr.Task{},
+				constraint: c,
+				tasks:      []*resmgr.Task{},
 			}
 		}
 		groups[s].tasks = append(groups[s].tasks, t)

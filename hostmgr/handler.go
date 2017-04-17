@@ -7,6 +7,11 @@ import (
 	"strings"
 	"sync"
 
+	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
+
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
 	"peloton/private/hostmgr/hostsvc"
@@ -15,11 +20,6 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
-
-	log "github.com/Sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 )
 
 // serviceHandler implements peloton.private.hostmgr.InternalHostService.
@@ -69,13 +69,13 @@ func InitServiceHandler(
 		handler.ClusterCapacity))
 }
 
-func validateConstraints(
-	req *hostsvc.AcquireHostOffersRequest) *hostsvc.InvalidConstraints {
+func validateConstraint(
+	req *hostsvc.AcquireHostOffersRequest) *hostsvc.InvalidConstraint {
 
-	if len(req.GetConstraints()) <= 0 {
-		log.WithField("request", req).Warn("Empty constraints")
-		return &hostsvc.InvalidConstraints{
-			Message: "Empty constraints",
+	if req.GetConstraint() == nil {
+		log.WithField("request", req).Warn("Empty constraint")
+		return &hostsvc.InvalidConstraint{
+			Message: "Empty constraint",
 		}
 	}
 
@@ -91,22 +91,16 @@ func (h *serviceHandler) AcquireHostOffers(
 
 	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
-	invalidConstraints := validateConstraints(body)
-	if invalidConstraints != nil {
+	if invalid := validateConstraint(body); invalid != nil {
 		h.metrics.AcquireHostOffersInvalid.Inc(1)
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
-				InvalidConstraints: invalidConstraints,
+				InvalidConstraint: invalid,
 			},
 		}, nil, nil
 	}
 
-	var constraints []*offer.Constraint
-	for _, c := range body.GetConstraints() {
-		constraints = append(constraints, &offer.Constraint{*c})
-	}
-
-	hostOffers, err := h.offerPool.ClaimForPlace(constraints)
+	hostOffers, err := h.offerPool.ClaimForPlace(body.GetConstraint())
 	if err != nil {
 		log.WithError(err).Warn("ClaimForPlace failed")
 		return &hostsvc.AcquireHostOffersResponse{
@@ -124,7 +118,8 @@ func (h *serviceHandler) AcquireHostOffers(
 
 	for hostname, offers := range hostOffers {
 		if len(offers) <= 0 {
-			log.WithField("host", hostname).Warn("Empty offer slice from host")
+			log.WithField("host", hostname).
+				Warn("Empty offer slice from host")
 			continue
 		}
 

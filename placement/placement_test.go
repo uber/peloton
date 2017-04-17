@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
@@ -40,11 +41,23 @@ var (
 		DiskLimitMb: 10,
 		FdLimit:     10,
 	}
+
+	// a lock used for synchronizing data access between mock and goroutine
+	// being tested.
 	lock = sync.RWMutex{}
+
+	andConstraint = task.Constraint{
+		Type: task.Constraint_AND_CONSTRAINT,
+	}
+
+	orConstraint = task.Constraint{
+		Type: task.Constraint_OR_CONSTRAINT,
+	}
 )
 
 func createTestTask(instanceID int) *resmgr.Task {
 	var tid = fmt.Sprintf(taskIDFmt, instanceID)
+	resCfg := proto.Clone(&defaultResourceConfig).(*task.ResourceConfig)
 	return &resmgr.Task{
 		JobId: &peloton.JobID{
 			Value: testJobName,
@@ -52,7 +65,7 @@ func createTestTask(instanceID int) *resmgr.Task {
 		Id: &peloton.TaskID{
 			Value: fmt.Sprintf("%s-%s", testJobName, instanceID),
 		},
-		Resource: &defaultResourceConfig,
+		Resource: resCfg,
 		Priority: uint32(1),
 		TaskId: &mesos.TaskID{
 			Value: &tid,
@@ -191,12 +204,10 @@ func TestNoHostOfferReturned(t *testing.T) {
 				gomock.Any(),
 				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.AcquireHostOffers")),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
-					Constraints: []*hostsvc.Constraint{
-						{
-							Limit: uint32(1), // only one task
-							ResourceConstraint: &hostsvc.ResourceConstraint{
-								Minimum: t1.Resource,
-							},
+					Constraint: &hostsvc.Constraint{
+						HostLimit: uint32(1),
+						ResourceConstraint: &hostsvc.ResourceConstraint{
+							Minimum: t1.Resource,
 						},
 					},
 				}),
@@ -285,12 +296,10 @@ func TestMultipleTasksPlaced(t *testing.T) {
 				gomock.Any(),
 				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.AcquireHostOffers")),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
-					Constraints: []*hostsvc.Constraint{
-						{
-							Limit: uint32(10), // OfferDequeueLimit
-							ResourceConstraint: &hostsvc.ResourceConstraint{
-								Minimum: testTasks[0].Resource,
-							},
+					Constraint: &hostsvc.Constraint{
+						HostLimit: uint32(10), // OfferDequeueLimit
+						ResourceConstraint: &hostsvc.ResourceConstraint{
+							Minimum: testTasks[0].Resource,
 						},
 					},
 				}),
@@ -352,45 +361,74 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	assert.Equal(t, taskIds, launchedTasks)
 }
 
-func TestGroupTasksByResource(t *testing.T) {
+func TestGroupTasks(t *testing.T) {
 	t1 := createTestTask(0)
 	t2 := createTestTask(1)
-	result := groupTasksByResource([]*resmgr.Task{t1, t2})
+	result := groupTasks([]*resmgr.Task{t1, t2})
 	assert.Equal(t, 1, len(result))
-	key1 := t1.GetResource().String()
+	tmp1 := getHostSvcConstraint(t1)
+	key1 := tmp1.String()
 	assert.Contains(t, result, key1)
 	group1 := result[key1]
 	assert.NotNil(t, group1)
 	assert.Equal(t, 2, len(group1.tasks))
-	assert.Equal(t, t1.GetResource(), group1.resourceConfig)
+	assert.Equal(t, t1.GetResource(), group1.getResourceConfig())
 
 	// t3 has a different resource config
 	t3 := createTestTask(2)
+	t3.Resource.CpuLimit += float64(1)
+
 	// t4 has a nil resource config
 	t4 := createTestTask(3)
 	t4.Resource = nil
 
-	result = groupTasksByResource([]*resmgr.Task{t1, t2, t3, t4})
-	assert.Equal(t, 2, len(result))
+	// t5 and t6 have a non-nil scheduling constraint.
+	t5 := createTestTask(4)
+	t5.Constraint = &andConstraint
 
-	key1 = t1.GetResource().String()
+	t6 := createTestTask(6)
+	t6.Constraint = &orConstraint
+
+	result = groupTasks([]*resmgr.Task{t1, t2, t3, t4, t5, t6})
+	assert.Equal(t, 5, len(result))
+
+	tmp1 = getHostSvcConstraint(t1)
+	key1 = tmp1.String()
 	assert.Contains(t, result, key1)
 	group1 = result[key1]
 	assert.NotNil(t, group1)
-	assert.Equal(t, 3, len(group1.tasks))
-	assert.Equal(t, t1.GetResource(), group1.resourceConfig)
+	assert.Equal(t, 2, len(group1.tasks))
+	assert.Equal(t, t1.GetResource(), group1.getResourceConfig())
 
-	key3 := t3.GetResource().String()
+	tmp3 := getHostSvcConstraint(t3)
+	key3 := tmp3.String()
 	assert.Contains(t, result, key3)
 	group3 := result[key3]
 	assert.NotNil(t, group3)
-	assert.Equal(t, 3, len(group3.tasks))
-	assert.Equal(t, t3.GetResource(), group3.resourceConfig)
+	assert.Equal(t, 1, len(group3.tasks))
+	assert.Equal(t, t3.GetResource(), group3.getResourceConfig())
 
-	key4 := t4.GetResource().String()
+	tmp4 := getHostSvcConstraint(t4)
+	key4 := tmp4.String()
 	assert.Contains(t, result, key4)
 	group4 := result[key4]
 	assert.NotNil(t, group4)
 	assert.Equal(t, 1, len(group4.tasks))
-	assert.Nil(t, group4.resourceConfig)
+	assert.Nil(t, group4.getResourceConfig())
+
+	tmp5 := getHostSvcConstraint(t5)
+	key5 := tmp5.String()
+	assert.Contains(t, result, key5)
+	group5 := result[key5]
+	assert.NotNil(t, group5)
+	assert.Equal(t, 1, len(group5.tasks))
+	assert.Equal(t, t5.GetResource(), group5.getResourceConfig())
+
+	tmp6 := getHostSvcConstraint(t6)
+	key6 := tmp6.String()
+	assert.Contains(t, result, key6)
+	group6 := result[key6]
+	assert.NotNil(t, group6)
+	assert.Equal(t, 1, len(group6.tasks))
+	assert.Equal(t, t6.GetResource(), group6.getResourceConfig())
 }

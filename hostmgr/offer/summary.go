@@ -8,8 +8,11 @@ import (
 	"github.com/uber-go/atomic"
 
 	mesos "mesos/v1"
+	"peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
 )
 
 // CacheStatus represents status of the offer in offer pool's cache.
@@ -44,19 +47,90 @@ func (a *hostOfferSummary) hasOffer() bool {
 	return a.readyCount.Load() > 0
 }
 
+// matchConstraint determines whether given constraint matches
+// the given map of offers.
+func matchConstraint(
+	offerMap map[string]*mesos.Offer,
+	c *hostsvc.Constraint,
+	evaluator constraints.Evaluator,
+) MatchResult {
+
+	if len(offerMap) == 0 {
+		return MismatchStatus
+	}
+
+	min := c.GetResourceConstraint().GetMinimum()
+	if min != nil {
+		scalarRes := scalar.FromOfferMap(offerMap)
+		scalarMin := scalar.FromResourceConfig(min)
+		if !scalarRes.Contains(&scalarMin) {
+			return InsufficientResources
+		}
+
+		// Special handling for GPU: GPU hosts are only for GPU tasks.
+		if scalarRes.HasGPU() != scalarMin.HasGPU() {
+			return MismatchGPU
+		}
+	}
+
+	// Only try to get first offer in this host because all the offers have
+	// the same host attributes.
+	var firstOffer *mesos.Offer
+	for _, offer := range offerMap {
+		firstOffer = offer
+		break
+	}
+
+	if hc := c.GetSchedulingConstraint(); hc != nil {
+		hostname := firstOffer.GetHostname()
+		lv := constraints.GetHostLabelValues(
+			hostname,
+			firstOffer.GetAttributes(),
+		)
+		result, err := evaluator.Evaluate(hc, lv)
+		if err != nil {
+			log.WithError(err).
+				Error("Error when evaluating input constraint")
+			return MismatchAttributes
+		}
+		switch result {
+		case constraints.EvaluateResultMatch:
+		case constraints.EvaluateResultNotApplicable:
+			log.WithFields(log.Fields{
+				"values":     lv,
+				"hostname":   hostname,
+				"constraint": hc,
+			}).Debug("Attributes match constraint")
+		default:
+			log.WithFields(log.Fields{
+				"values":     lv,
+				"hostname":   hostname,
+				"constraint": hc,
+			}).Debug("Attributes do not match constraint")
+			return MismatchAttributes
+		}
+	}
+
+	return Matched
+}
+
 // tryMatch atomically tries to match offers from the current host with given
 // constraint.
-// If current hostOfferSummary can satisfy given constraint, the first return
-// value is true and all offers used to satisfy given constraint are atomically
-// released from this instance.
-// If current instance cannot satisfy given constraint, return value will be
-// (false, empty-slice) and no offers are released.
-func (a *hostOfferSummary) tryMatch(c *Constraint) (bool, []*mesos.Offer) {
+// If current hostOfferSummary can satisfy given constraints, the first return
+// value is true and unreserved offer status this instance will be marked as
+// `READY`, which will not be used by another placement engine until released.
+// If current instance cannot satisfy given constraints, return value will be
+// (false, empty-slice) and status will remain unchanged.
+func (a *hostOfferSummary) tryMatch(
+	c *hostsvc.Constraint,
+	evaluator constraints.Evaluator,
+) (MatchResult, []*mesos.Offer) {
+
 	a.Lock()
 	defer a.Unlock()
 
 	if !a.hasOffer() || a.status != ReadyOffer {
-		return false, nil
+		return MismatchStatus, nil
 	}
 
 	readyOffers := make(map[string]*mesos.Offer)
@@ -64,17 +138,23 @@ func (a *hostOfferSummary) tryMatch(c *Constraint) (bool, []*mesos.Offer) {
 		readyOffers[id] = offer
 	}
 
-	if c.match(readyOffers) {
+	match := matchConstraint(readyOffers, c, evaluator)
+	if match == Matched {
 		var result []*mesos.Offer
 		for _, offer := range readyOffers {
 			result = append(result, offer)
 		}
+
+		// Setting status to `PlacingOffer`: this ensures proper state
+		// tracking of resources on the host and also ensures offers on
+		// this host will not be sent to another `AcquireHostOffers`
+		// call before released.
 		a.status = PlacingOffer
 		a.readyCount.Store(0)
-		return true, result
+		return match, result
 	}
 
-	return false, nil
+	return match, nil
 }
 
 func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer) {

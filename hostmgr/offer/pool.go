@@ -9,7 +9,10 @@ import (
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
+	"peloton/api/task"
+	"peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/common/constraints"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
@@ -35,23 +38,23 @@ type Pool interface {
 	// Decline offers
 	DeclineOffers(offers map[string]*mesos.Offer) error
 
-	// ClaimForPlace obtains offers from pool conforming to given constraints
+	// ClaimForPlace obtains offers from pool conforming to given constraint
 	// for placement purposes. Results are grouped by hostname as key.
-	ClaimForPlace(contraints []*Constraint) (map[string][]*mesos.Offer, error)
+	ClaimForPlace(constraint *hostsvc.Constraint) (map[string][]*mesos.Offer, error)
 
 	// ClaimForLaunch finds offers previously for placement on given host.
 	// The difference from ClaimForPlace is that offers claimed from this
 	// function are consided used and sent back to Mesos master in a Launch
-	// operation, while result in `ClaimForPlace` are still considered part of
-	// peloton apps.
+	// operation, while result in `ClaimForPlace` are still considered part
+	// of peloton apps.
 	ClaimForLaunch(hostname string) (map[string]*mesos.Offer, error)
 
-	// ReturnUnusedOffers returns previously placed offers on hostname back to
-	// the current offer pool so they can be used by future launch actions.
+	// ReturnUnusedOffers returns previously placed offers on hostname back
+	// to current offer pool so they can be used by future launch actions.
 	ReturnUnusedOffers(hostname string) error
 
-	// TODO: Add following API for viewing offers, and optionally expose this in
-	// a debugging endpoint.
+	// TODO: Add following API for viewing offers, and optionally expose
+	//  this in a debugging endpoint.
 	// View() (map[string][]*mesos.Offer, err)
 }
 
@@ -115,31 +118,33 @@ type offerPool struct {
 // ClaimForPlace obtains offers from pool conforming to given constraints.
 // Results are grouped by hostname as key.
 // This implements Pool.ClaimForPlace.
-func (p *offerPool) ClaimForPlace(constraints []*Constraint) (
+func (p *offerPool) ClaimForPlace(constraint *hostsvc.Constraint) (
 	map[string][]*mesos.Offer, error) {
 
-	if len(constraints) <= 0 {
+	if constraint == nil {
 		return nil, errors.New("empty constraints passed in")
 	}
 
 	p.RLock()
 	defer p.RUnlock()
 
-	matcher := NewConstraintMatcher(constraints)
+	matcher := NewMatcher(
+		constraint,
+		constraints.NewEvaluator(task.LabelConstraint_HOST))
 
 	for hostname, summary := range p.hostOfferIndex {
 		matcher.tryMatch(hostname, summary)
-		if matcher.HasEnoughOffers() {
+		if matcher.HasEnoughHosts() {
 			break
 		}
 	}
 
-	if !matcher.HasEnoughOffers() {
+	if !matcher.HasEnoughHosts() {
 		// Still proceed to return something.
-		log.Warn("Not enough offers are matched to given constraint")
+		log.Warn("Not enough offers are matched to given constraints")
 	}
 
-	hostOffers := matcher.claimHostOffers()
+	hostOffers := matcher.getHostOffers()
 
 	var delta scalar.Resources
 	for _, offers := range hostOffers {
@@ -423,7 +428,7 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 	if !ok {
 		log.WithFields(log.Fields{
 			"host": hostname,
-		}).Info("Offers returned to host pool but not found, maybe already pruned?")
+		}).Info("Offers returned to pool but not found, maybe pruned?")
 		return nil
 	}
 
@@ -458,12 +463,14 @@ func decQuantity(
 ) {
 	curr := resources.Get()
 	if !(&curr).Contains(&delta) {
-		// NOTE: we still proceed from there, but logs an error which we hope to recover from logging.
-		// This could be triggered by either missed offer tracking in pool, or float point precision problem.
+		// NOTE: we still proceed from there, but logs an error which
+		// we hope to recover from logging.
+		// This could be triggered by either missed offer tracking in
+		// pool, or float point precision problem.
 		log.WithFields(log.Fields{
 			"current": curr,
 			"delta":   delta,
-		}).Error("Current resource is not sufficient to subtract delta from!")
+		}).Error("Not sufficient resource to subtract delta!")
 	}
 	tmp := *(curr.Subtract(&delta))
 	resources.Set(tmp)

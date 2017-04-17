@@ -179,7 +179,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveReservedMesosOffer() {
 }
 
 // TODO: Add the following test cases:
-// - Ready offers are used for constraint matching
+// - Ready offers are used for constraints matching
 // - placing offers are skipped for constaint matching
 // - return offer call path;
 // - remove offer call path;

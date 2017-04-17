@@ -25,7 +25,3 @@ storage:
     port: 3306
   db_write_concurrency: 400
   use_cassandra: true
-
-scheduler:
-   task_dequeue_limit: 1000
-   offer_dequeue_limit: 30

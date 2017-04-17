@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	pc "code.uber.internal/infra/peloton/client"
 	pt "peloton/api/task"
+
+	pc "code.uber.internal/infra/peloton/client"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"

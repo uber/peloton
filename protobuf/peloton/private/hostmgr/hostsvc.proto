@@ -36,23 +36,27 @@ message LaunchableTask {
 
 
 /**
- * Constraint describes a condition for which offers from a certain host must meet
- * in order to return to placement engine to use.
+ * Constraint describes a condition for which offers from a certain host must
+ * meet in order to return to placement engine to use.
  */
 message Constraint {
   // Maximum number of hosts which need to satisfy the given constraint.
   // Default value of zero means no repeat and this applies to one host.
-  // Use this field to avoid repeating the same constraint multiple times.
-  // TODO(zhitao): Consider adding `minimumHosts` which can be useful to satisfy gang-scheduling.
-  uint32 limit = 1;
+  // TODO(zhitao): Consider adding `minimumHosts` which can be useful for
+  // gang-scheduling.
+  uint32 hostLimit = 1;
 
   ResourceConstraint resourceConstraint = 2;
-  // TODO(zhitao): Add support for attribute affinity/anti-affinity constraints of boolean logic.
+
+  // Attribute based affinity/anti-affinity scheduling constraints, which is
+  // typically copied from original task scheduling constraint.
+  // Only constraint with kind == HOST will be considered.
+  api.task.Constraint schedulingConstraint = 3;
 }
 
 /**
- * ResourceConstraint descrbes a condition for which aggregated resources from a host must meet
- * in order for it to be returned in `AcquireHostOffers`.
+ * ResourceConstraint descrbes a condition for which aggregated resources from
+ * a host must meet in order for it to be returned in `AcquireHostOffers`.
  */
 message ResourceConstraint {
   // Minimum amount of resources
@@ -61,7 +65,8 @@ message ResourceConstraint {
   //   - if `gpuLimit` is not specified, only hosts without gpu resource will be returned.
   api.task.ResourceConfig minimum = 1;
 
-  // TODO(zhitao): Consider adding Maximum amount of resources constraint to avoid fragmentation.
+  // TODO(zhitao): Consider adding Maximum amount of resources constraint to
+  // avoid fragmentation.
 }
 
 /**
@@ -107,13 +112,13 @@ message KillFailure {
 }
 
 /**
- * Error for constrants which are invalid.
+ * Error for invalid constraint.
  */
-message InvalidConstraints {
+message InvalidConstraint {
   string message = 1;
 
-  // Any Constraint which is invalid.
-  repeated Constraint invalidConstraints = 2;
+  // Invalid constraint from input.
+  Constraint invalid = 2;
 }
 
 /**
@@ -174,14 +179,13 @@ service InternalHostService
 }
 
 message AcquireHostOffersRequest {
-  // Each Constraint is only applicable to `numHosts` hosts, or one if `numHosts` is unset.
-  // This list cannot be empty.
-  repeated Constraint constraints = 2;
+  // Required constraint.
+  Constraint constraint = 1;
 }
 
 message AcquireHostOffersResponse {
   message Error {
-    InvalidConstraints invalidConstraints = 1;
+    InvalidConstraint invalidConstraint = 1;
     AcquireHostOffersFailure failure = 2;
   }
 

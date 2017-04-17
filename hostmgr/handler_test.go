@@ -189,13 +189,11 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 	acquiredResp, _, err := suite.handler.AcquireHostOffers(
 		rootCtx,
 		nil,
-		&hostsvc.AcquireHostOffersRequest{
-			Constraints: []*hostsvc.Constraint{},
-		},
+		&hostsvc.AcquireHostOffersRequest{},
 	)
 
 	suite.NoError(err)
-	suite.NotNil(acquiredResp.GetError().GetInvalidConstraints())
+	suite.NotNil(acquiredResp.GetError().GetInvalidConstraint())
 
 	suite.Equal(
 		int64(1),
@@ -203,15 +201,13 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
-		Constraints: []*hostsvc.Constraint{
-			{
-				Limit: uint32(numHosts * 2),
-				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    _perHostCPU,
-						MemLimitMb:  _perHostMem,
-						DiskLimitMb: _perHostDisk,
-					},
+		Constraint: &hostsvc.Constraint{
+			HostLimit: uint32(numHosts * 2),
+			ResourceConstraint: &hostsvc.ResourceConstraint{
+				Minimum: &task.ResourceConfig{
+					CpuLimit:    _perHostCPU,
+					MemLimitMb:  _perHostMem,
+					DiskLimitMb: _perHostDisk,
 				},
 			},
 		},
@@ -300,15 +296,13 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
-		Constraints: []*hostsvc.Constraint{
-			{
-				Limit: uint32(1),
-				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    _perHostCPU,
-						MemLimitMb:  _perHostMem,
-						DiskLimitMb: _perHostDisk,
-					},
+		Constraint: &hostsvc.Constraint{
+			HostLimit: uint32(1),
+			ResourceConstraint: &hostsvc.ResourceConstraint{
+				Minimum: &task.ResourceConfig{
+					CpuLimit:    _perHostCPU,
+					MemLimitMb:  _perHostMem,
+					DiskLimitMb: _perHostDisk,
 				},
 			},
 		},

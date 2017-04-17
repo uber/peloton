@@ -38,7 +38,7 @@ enum TaskType {
 /**
  *  Task describes a task instance at Resource Manager layer. Only
  *  includes the minimal set of fields required for Resource Manager
- *  and Placement Engine, such as resource config, constraints etc.
+ *  and Placement Engine, such as resource config, constraint etc.
  */
 message Task {
   // Name of the task
@@ -69,13 +69,12 @@ message Task {
   bool preemptible = 7;
 
   // List of user-defined labels for the task, these are used to enforce
-  // the constraints. These are copied from the TaskConfig.
+  // the constraint. These are copied from the TaskConfig.
   mesos.v1.Labels labels = 8;
 
-  // Constraints on the labels of the host or tasks on the host that this
-  // task should run on, all constraints have to be satisfied. These are
-  // copied from the TaskConfig.
-  repeated api.task.Constraint constraints = 9;
+  // Constraint on the labels of the host or tasks on the host that this
+  // task should run on. This is copied from the TaskConfig.
+  api.task.Constraint constraint = 9;
 
   // Type of the Task
   TaskType type = 10;

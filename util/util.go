@@ -346,5 +346,6 @@ func ConvertTaskToResMgrTask(
 		Preemptible: jobConfig.GetSla().GetPreemptible(),
 		Priority:    jobConfig.GetSla().GetPriority(),
 		Resource:    taskInfo.GetConfig().GetResource(),
+		Constraint:  taskInfo.GetConfig().GetConstraint(),
 	}
 }
