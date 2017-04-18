@@ -142,3 +142,6 @@ func TestBucketEventProcessor(t *testing.T) {
 	applier.shutdown()
 
 }
+func (m *mockTaskStore) QueryTasks(id *peloton.JobID, offset, limit uint32) ([]*task.TaskInfo, uint32, error) {
+	return nil, 0, nil
+}

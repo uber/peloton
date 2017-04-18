@@ -61,6 +61,8 @@ const (
 	insertTaskStmt            = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
 	insertTaskBatchStmt       = `INSERT INTO tasks (row_key, col_key, ref_key, body, created_by) VALUES `
 	updateTaskStmt            = `UPDATE tasks SET body = ? where row_key = ?`
+	getTasksForJobStmt        = `SELECT * from tasks where job_id = ?`
+	getTasksCountForJobStmt   = `SELECT COUNT(*) from tasks where job_id = ?`
 	getMesosFrameworkInfoStmt = `SELECT * from frameworks where framework_name = ?`
 	setMesosStreamIDStmt      = `INSERT INTO frameworks (framework_name, mesos_stream_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE mesos_stream_id = ?`
 	setMesosFrameworkIDStmt   = `INSERT INTO frameworks (framework_name, framework_id, update_host) values (?, ?, ?) ON DUPLICATE KEY UPDATE framework_id = ?`
@@ -836,4 +838,40 @@ func (m *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) er
 	}
 	m.metrics.JobUpdateRuntime.Inc(1)
 	return nil
+}
+
+// QueryTasks returns all tasks in the given [offset...offset+limit) range.
+func (m *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
+	// First fetch total count.
+	var total uint32
+	if err := m.DB.QueryRow(getTasksCountForJobStmt, id.Value).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	// Now fetch the requested range.
+	q := getTasksForJobStmt + " LIMIT ?, ?"
+	rows, err := m.DB.Queryx(q, id.Value, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var tasks []*task.TaskInfo
+	for rows.Next() {
+		var taskRecord TaskRecord
+		if err := rows.StructScan(&taskRecord); err != nil {
+			return nil, 0, err
+		}
+
+		taskInfo, err := taskRecord.GetTaskInfo()
+		if err != nil {
+			log.Errorf("taskRecord %v GetTaskInfo failed, err=%v", taskRecord, err)
+			m.metrics.TaskGetFail.Inc(1)
+			return nil, 0, err
+		}
+
+		tasks = append(tasks, taskInfo)
+	}
+
+	return tasks, total, rows.Err()
 }

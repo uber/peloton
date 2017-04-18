@@ -103,6 +103,23 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 		}
 	}
 
+	// Paganate through the job tasks
+	for i := 0; i < nJobs; i++ {
+		var offset uint32
+		for {
+			tasks, total, err := suite.store.QueryTasks(jobIDs[i], offset, 1)
+			suite.NoError(err)
+			if len(tasks) == 0 {
+				break
+			}
+			suite.Equal(uint32(3), total)
+			suite.Equal(1, len(tasks))
+			suite.Equal(jobIDs[i].Value, tasks[0].JobId.Value)
+			offset++
+		}
+		suite.Equal(uint32(3), offset)
+	}
+
 	// List tasks for a job in certain state
 	// TODO: change the task.runtime.State to string type
 

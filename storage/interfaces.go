@@ -34,6 +34,7 @@ type TaskStore interface {
 	GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error)
 	UpdateTask(taskInfo *task.TaskInfo) error
 	GetTaskByID(taskID string) (*task.TaskInfo, error)
+	QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error)
 }
 
 // FrameworkInfoStore is the interface to store mesosStreamID for peloton frameworks

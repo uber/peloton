@@ -42,6 +42,7 @@ func InitServiceHandler(
 	json.Register(d, json.Procedure("TaskManager.Start", handler.Start))
 	json.Register(d, json.Procedure("TaskManager.Stop", handler.Stop))
 	json.Register(d, json.Procedure("TaskManager.Restart", handler.Restart))
+	json.Register(d, json.Procedure("TaskManager.Query", handler.Query))
 }
 
 // serviceHandler implements peloton.api.task.TaskManager
@@ -300,4 +301,48 @@ func (m *serviceHandler) Restart(
 	m.metrics.TaskAPIRestart.Inc(1)
 	m.metrics.TaskRestart.Inc(1)
 	return &task.RestartResponse{}, nil, nil
+}
+
+func (m *serviceHandler) Query(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	body *task.QueryRequest) (*task.QueryResponse, yarpc.ResMeta, error) {
+
+	log.Infof("TaskManager.Query called: %v", body)
+	m.metrics.TaskAPIQuery.Inc(1)
+	jobConfig, err := m.jobStore.GetJobConfig(body.JobId)
+	if err != nil || jobConfig == nil {
+		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
+		m.metrics.TaskQueryFail.Inc(1)
+		return &task.QueryResponse{
+			Error: &task.QueryResponse_Error{
+				NotFound: &errors.JobNotFound{
+					Id:      body.JobId,
+					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
+				},
+			},
+		}, nil, nil
+	}
+
+	// TODO: Support filter and order arguments.
+	result, total, err := m.taskStore.QueryTasks(body.JobId, body.Offset, body.Limit)
+	if err != nil {
+		m.metrics.TaskQueryFail.Inc(1)
+		return &task.QueryResponse{
+			Error: &task.QueryResponse_Error{
+				NotFound: &errors.JobNotFound{
+					Id:      body.JobId,
+					Message: fmt.Sprintf("err= %v", err),
+				},
+			},
+		}, nil, nil
+	}
+
+	m.metrics.TaskQuery.Inc(1)
+	return &task.QueryResponse{
+		Records: result,
+		Offset:  body.Offset,
+		Limit:   body.Limit,
+		Total:   total,
+	}, nil, nil
 }

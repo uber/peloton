@@ -1068,3 +1068,8 @@ func (s *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) er
 	s.metrics.JobUpdateRuntime.Inc(1)
 	return nil
 }
+
+// QueryTasks returns all tasks in the given offset..offset+limit range.
+func (s *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
+	return nil, 0, fmt.Errorf("Unimplemented Cassandra endpoint 'QueryTasks'")
+}
