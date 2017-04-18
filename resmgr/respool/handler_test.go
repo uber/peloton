@@ -237,7 +237,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolWithChil
 
 	// form request
 	getReq := &pb_respool.GetRequest{
-		Id: mockResourcePoolID,
+		Id:                mockResourcePoolID,
+		IncludeChildPools: true,
 	}
 
 	getResp, _, err := suite.handler.GetResourcePool(
@@ -250,6 +251,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolWithChil
 	suite.NotNil(getResp)
 	suite.Equal(mockResourcePoolID.Value, getResp.Poolinfo.Id.Value)
 	suite.Len(getResp.Poolinfo.Children, 2)
+	suite.Len(getResp.ChildPools, 2)
 }
 
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLookupError() {

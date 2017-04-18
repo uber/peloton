@@ -216,6 +216,7 @@ func (h *serviceHandler) GetResourcePool(
 	log.WithField("request", req).Info("GetResourcePool called")
 
 	resPoolID := req.GetId()
+	includeChildPools := req.GetIncludeChildPools()
 
 	if resPoolID == nil {
 		//TODO temporary solution to unblock,
@@ -237,9 +238,37 @@ func (h *serviceHandler) GetResourcePool(
 			},
 		}, nil, nil
 	}
+
+	resPoolInfo := resPool.ToResourcePoolInfo()
+
+	childPoolInfos := make([]*respool.ResourcePoolInfo, 0)
+
+	if includeChildPools &&
+		resPoolInfo.Children != nil &&
+		len(resPoolInfo.Children) > 0 {
+
+		for _, childID := range resPoolInfo.Children {
+			childPool, err := h.resPoolTree.Get(childID)
+			if err != nil {
+				h.metrics.GetResourcePoolFail.Inc(1)
+				return &respool.GetResponse{
+					Error: &respool.GetResponse_Error{
+						NotFound: &respool.ResourcePoolNotFound{
+							Id:      childID,
+							Message: "resource pool not found",
+						},
+					},
+				}, nil, nil
+
+			}
+			childPoolInfos = append(childPoolInfos, childPool.ToResourcePoolInfo())
+		}
+	}
+
 	h.metrics.GetResourcePoolSuccess.Inc(1)
 	return &respool.GetResponse{
-		Poolinfo: resPool.ToResourcePoolInfo(),
+		Poolinfo:   resPool.ToResourcePoolInfo(),
+		ChildPools: childPoolInfos,
 	}, nil, nil
 }
 
