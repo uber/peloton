@@ -113,16 +113,11 @@ func (suite *resTreeTestSuite) getResourceConfig() []*respool.ResourceConfig {
 // Returns resource pools
 func (suite *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
 
-	rootID := respool.ResourcePoolID{Value: "root"}
+	rootID := respool.ResourcePoolID{Value: RootResPoolID}
 	policy := respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*respool.ResourcePoolConfig{
-		"root": {
-			Name:      "root",
-			Parent:    nil,
-			Resources: suite.getResourceConfig(),
-			Policy:    policy,
-		},
+		// NB: root resource pool node is not stored in the database
 		"respool1": {
 			Name:      "respool1",
 			Parent:    &rootID,

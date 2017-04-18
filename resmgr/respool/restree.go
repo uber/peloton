@@ -274,18 +274,12 @@ func (t *tree) initTree(
 		log.Warnf("There are no resource pools existing")
 	}
 
-	// initialize root resource pool
-	rootResPoolConfig := &respool.ResourcePoolConfig{
+	// initialize root resource pool config
+	resPoolConfigs[RootResPoolID] = &respool.ResourcePoolConfig{
 		Name:   RootResPoolID,
 		Parent: nil,
 		Policy: respool.SchedulingPolicy_PriorityFIFO,
 	}
-	rootResPool, err := NewRespool(RootResPoolID, nil, rootResPoolConfig)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create root resource pool")
-	}
-
-	t.resPools[RootResPoolID] = rootResPool
 
 	root, err := t.buildTree(RootResPoolID, nil, resPoolConfigs)
 	if err != nil {
