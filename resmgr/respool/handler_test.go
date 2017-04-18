@@ -254,8 +254,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolWithChil
 	suite.Len(getResp.ChildPools, 2)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLookupError() {
-	log.Info("TestServiceHandler_GetResourcePoolLookupError called")
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolError() {
+	log.Info("TestServiceHandler_GetResourcePoolError called")
 
 	mockResourcePoolID := &pb_respool.ResourcePoolID{
 		Value: "non_exist",
@@ -556,4 +556,79 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_Query() {
 	suite.NotNil(updateResp)
 	suite.NotNil(updateResp.ResourcePools)
 	suite.Len(updateResp.ResourcePools, len(suite.getResPools()))
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolID() {
+	log.Info("TestServiceHandler_LookupResourcePoolID called")
+
+	// root
+	lookupRequest := &pb_respool.LookupRequest{
+		Path: &pb_respool.ResourcePoolPath{
+			Value: "/",
+		},
+	}
+
+	lookupResponse, _, err := suite.handler.LookupResourcePoolID(suite.context, nil, lookupRequest)
+	suite.NoError(err)
+	suite.NotNil(lookupResponse)
+	suite.Equal("root", lookupResponse.Id.Value)
+
+	// /respool1/respool11
+	lookupRequest.Path.Value = "/respool1/respool11"
+	lookupResponse, _, err = suite.handler.LookupResourcePoolID(suite.context, nil, lookupRequest)
+	suite.NoError(err)
+	suite.NotNil(lookupResponse)
+	suite.Equal("respool11", lookupResponse.Id.Value)
+
+	// /respool2/respool22/
+	lookupRequest.Path.Value = "/respool2/respool22/"
+	lookupResponse, _, err = suite.handler.LookupResourcePoolID(suite.context, nil, lookupRequest)
+	suite.NoError(err)
+	suite.NotNil(lookupResponse)
+	suite.Equal("respool22", lookupResponse.Id.Value)
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolPathDoesNotExist() {
+	log.Info("TestServiceHandler_LookupResourcePoolPathDoesNotExist called")
+
+	// root
+	lookupRequest := &pb_respool.LookupRequest{
+		Path: &pb_respool.ResourcePoolPath{
+			Value: "/does/not/exist",
+		},
+	}
+
+	lookupResponse, _, err := suite.handler.LookupResourcePoolID(suite.context,
+		nil,
+		lookupRequest,
+	)
+
+	suite.NoError(err)
+	suite.NotNil(lookupResponse)
+	suite.NotNil(lookupResponse.Error)
+	suite.NotNil(lookupResponse.Error.NotFound)
+	suite.Equal("/does/not/exist", lookupResponse.Error.NotFound.Path.Value)
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolInvalidPath() {
+	log.Info("TestServiceHandler_LookupResourcePoolInvalidPath called")
+
+	// invalid path
+	lookupRequest := &pb_respool.LookupRequest{
+		Path: &pb_respool.ResourcePoolPath{
+			Value: "does/not/begin/with/slash",
+		},
+	}
+
+	lookupResponse, _, err := suite.handler.LookupResourcePoolID(suite.context,
+		nil,
+		lookupRequest,
+	)
+
+	suite.NoError(err)
+	suite.NotNil(lookupResponse)
+	suite.NotNil(lookupResponse.Error)
+	suite.NotNil(lookupResponse.Error.InvalidPath)
+	suite.Equal("does/not/begin/with/slash", lookupResponse.Error.InvalidPath.Path.Value)
+	suite.Equal("path should begin with /", lookupResponse.Error.InvalidPath.Message)
 }

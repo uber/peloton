@@ -9,6 +9,7 @@ import (
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -534,6 +535,128 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Invali
 
 	err = rv.Validate(resourcePoolConfigData)
 	suite.EqualError(err, "invalid policy type 0")
+}
+
+func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidatePathError() {
+	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	_, err := rv.Register(
+		[]ResourcePoolConfigValidatorFunc{
+			ValidateResourcePoolPath,
+		},
+	)
+
+	// empty path
+	mockResourcePath := &pb_respool.ResourcePoolPath{
+		Value: "",
+	}
+	resourcePoolConfigData := ResourcePoolConfigData{
+		Path: mockResourcePath,
+	}
+	err = rv.Validate(resourcePoolConfigData)
+	suite.EqualError(err, "path cannot be empty")
+
+	// nil path
+	resourcePoolConfigData = ResourcePoolConfigData{
+		Path: nil,
+	}
+	err = rv.Validate(resourcePoolConfigData)
+	suite.EqualError(err, "path cannot be nil")
+
+	// invalid path
+	mockResourcePath.Value = "infrastructure/compute"
+	resourcePoolConfigData.Path = mockResourcePath
+	err = rv.Validate(resourcePoolConfigData)
+	suite.EqualError(err, "path should begin with /")
+}
+
+func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidatePath() {
+	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	_, err := rv.Register(
+		[]ResourcePoolConfigValidatorFunc{
+			ValidateResourcePoolPath,
+		},
+	)
+	suite.NoError(err)
+
+	// valid path
+	mockResourcePath := &pb_respool.ResourcePoolPath{
+		Value: "/infrastructure/compute",
+	}
+	resourcePoolConfigData := ResourcePoolConfigData{
+		Path: mockResourcePath,
+	}
+	err = rv.Validate(resourcePoolConfigData)
+	suite.NoError(err)
+
+	// root path
+	mockResourcePath.Value = "/"
+	resourcePoolConfigData.Path = mockResourcePath
+	err = rv.Validate(resourcePoolConfigData)
+	suite.NoError(err)
+}
+
+// tests creating pool with existing name should fail
+func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateSiblingsCreate() {
+	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	_, err := rv.Register(
+		[]ResourcePoolConfigValidatorFunc{
+			ValidateSiblings,
+		},
+	)
+	suite.NoError(err)
+
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: uuid.New(),
+	}
+	mockParentPoolID := &pb_respool.ResourcePoolID{
+		Value: RootResPoolID,
+	}
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Parent: mockParentPoolID,
+		Name:   "respool1", // duplicate name
+	}
+
+	resourcePoolConfigData := ResourcePoolConfigData{
+		ID:                 mockResourcePoolID,
+		ResourcePoolConfig: mockResourcePoolConfig,
+	}
+	err = rv.Validate(resourcePoolConfigData)
+	suite.Error(err)
+	suite.Equal("resource pool name respool1 should be unique "+
+		"amongst siblings for parent root",
+		err.Error())
+}
+
+// tests renaming pool to existing name should fail
+func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateSiblingsUpdate() {
+	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	_, err := rv.Register(
+		[]ResourcePoolConfigValidatorFunc{
+			ValidateSiblings,
+		},
+	)
+	suite.NoError(err)
+
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: "respool2", // existing ID
+	}
+	mockParentPoolID := &pb_respool.ResourcePoolID{
+		Value: RootResPoolID,
+	}
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Parent: mockParentPoolID,
+		Name:   "respool1", // duplicate name
+	}
+
+	resourcePoolConfigData := ResourcePoolConfigData{
+		ID:                 mockResourcePoolID,
+		ResourcePoolConfig: mockResourcePoolConfig,
+	}
+	err = rv.Validate(resourcePoolConfigData)
+	suite.Error(err)
+	suite.Equal("resource pool name respool1 should be unique "+
+		"amongst siblings for parent root",
+		err.Error())
 }
 
 func TestResPoolConfigValidator(t *testing.T) {

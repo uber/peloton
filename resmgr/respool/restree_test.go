@@ -37,7 +37,6 @@ type resTreeTestSuite struct {
 	store        *mysql.Store
 	db           *sqlx.DB
 	dispatcher   yarpc.Dispatcher
-	resTree      *tree
 	resPools     map[string]*respool.ResourcePoolConfig
 	allNodes     map[string]*ResPool
 	root         *ResPool
@@ -370,6 +369,43 @@ func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfigError() {
 		err,
 		"failed to insert resource pool: respool200: error creating resource pool respool200: Invalid queue Type",
 	)
+}
+
+func (suite *resTreeTestSuite) TestTree_GetByPath() {
+	// Get Root
+	resPool, err := suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+		Value: "/",
+	})
+	suite.NoError(err)
+	suite.Equal(resPool.Name(), "root")
+
+	// Get respool1
+	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+		Value: "/respool1",
+	})
+	suite.NoError(err)
+	suite.Equal(resPool.Name(), "respool1")
+	suite.Equal(resPool.Parent().Name(), "root")
+
+	// Get respool11
+	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+		Value: "/respool1/respool11",
+	})
+	suite.NoError(err)
+	suite.Equal(resPool.Name(), "respool11")
+	suite.Equal(resPool.Parent().Name(), "respool1")
+
+	// Get non-existent pool
+	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+		Value: "/doesnotexist",
+	})
+	suite.Error(err)
+
+	// Get non-existent pool
+	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+		Value: "/respool1/respool11/doesnotexist",
+	})
+	suite.Error(err)
 }
 
 func (suite *resTreeTestSuite) TestRefillTaskQueue() {

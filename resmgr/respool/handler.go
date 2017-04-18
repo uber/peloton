@@ -8,7 +8,6 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
@@ -284,6 +283,7 @@ func (h *serviceHandler) DeleteResourcePool(
 	h.Lock()
 	defer h.Unlock()
 
+	h.metrics.APIDeleteResourcePool.Inc(1)
 	log.WithField(
 		"request",
 		req,
@@ -305,6 +305,7 @@ func (h *serviceHandler) UpdateResourcePool(
 	h.Lock()
 	defer h.Unlock()
 
+	h.metrics.APIUpdateResourcePool.Inc(1)
 	log.WithField(
 		"request",
 		req,
@@ -419,11 +420,63 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 	yarpc.ResMeta,
 	error) {
 
+	h.metrics.APILookupResourcePoolID.Inc(1)
 	log.WithField(
 		"request",
 		req,
 	).Info("LookupResourcePoolID called")
-	return &respool.LookupResponse{}, nil, errors.New("not implemented")
+
+	path := req.Path
+
+	validator, err := NewResourcePoolConfigValidator(nil)
+	if err != nil {
+		log.Fatalf(
+			`Error initializing resource pool
+			config validator: %v`,
+			err,
+		)
+	}
+	validator.Register([]ResourcePoolConfigValidatorFunc{ValidateResourcePoolPath})
+	resourcePoolConfigData := ResourcePoolConfigData{
+		Path: path,
+	}
+	err = validator.Validate(resourcePoolConfigData)
+	if err != nil {
+		log.WithField("path", path).
+			WithError(err).Error("failed validating resource path")
+		h.metrics.LookupResourcePoolIDFail.Inc(1)
+		return &respool.LookupResponse{
+			Error: &respool.LookupResponse_Error{
+				InvalidPath: &respool.InvalidResourcePoolPath{
+					Path:    path,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
+	resPool, err := h.resPoolTree.GetByPath(path)
+	if err != nil {
+		log.WithField("path", path).
+			WithError(err).Error("failed finding resource path")
+		h.metrics.LookupResourcePoolIDFail.Inc(1)
+		return &respool.LookupResponse{
+			Error: &respool.LookupResponse_Error{
+				NotFound: &respool.ResourcePoolPathNotFound{
+					Path:    path,
+					Message: "resource pool not found",
+				},
+			},
+		}, nil, nil
+	}
+
+	h.metrics.LookupResourcePoolIDSuccess.Inc(1)
+
+	return &respool.LookupResponse{
+		Id: &respool.ResourcePoolID{
+			Value: resPool.ID(),
+		},
+	}, nil, nil
 }
 
 // Query returns the matching resource pools by default returns all
@@ -461,7 +514,7 @@ func (h *serviceHandler) Query(
 	}, nil, nil
 }
 
-// registerProcs will register all api's for end points
+// registerProcs will register all API's for end points
 func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
 	d.Register(
 		json.Procedure(

@@ -1,6 +1,8 @@
 package respool
 
 import (
+	"strings"
+
 	"peloton/api/respool"
 
 	log "github.com/Sirupsen/logrus"
@@ -13,6 +15,7 @@ type ResourcePoolConfigValidatorFunc func(resTree Tree, resourcePoolConfigData R
 // ResourcePoolConfigData holds the data that needs to be validated
 type ResourcePoolConfigData struct {
 	ID                                *respool.ResourcePoolID     // Resource Pool Config ID
+	Path                              *respool.ResourcePoolPath   // Resource Pool path
 	ResourcePoolConfig                *respool.ResourcePoolConfig // Resource Pool Configuration
 	SkipRootChildResourceConfigChecks bool                        // TODO Skip child resource config checks for Parent Root T799105
 }
@@ -34,6 +37,7 @@ func NewResourcePoolConfigValidator(rTree Tree) (Validator, error) {
 			ValidateResourcePool,
 			ValidateCycle,
 			ValidateParent,
+			ValidateSiblings,
 			ValidateChildrenReservations,
 		},
 	)
@@ -126,6 +130,43 @@ func ValidateParent(resTree Tree, resourcePoolConfigData ResourcePoolConfigData)
 				cResource.Kind)
 		}
 	}
+	return nil
+}
+
+// ValidateSiblings validates the siblings of a parent
+func ValidateSiblings(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
+	name := resourcePoolConfigData.ResourcePoolConfig.Name
+	parentID := resourcePoolConfigData.ResourcePoolConfig.Parent
+	ID := resourcePoolConfigData.ID
+
+	parentResPool, err := resTree.Get(parentID)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	existingResPool, _ := resTree.Get(ID)
+
+	siblings := parentResPool.Children()
+	if existingResPool != nil {
+		// update
+		for e := siblings.Front(); e != nil; e = e.Next() {
+			sibling := e.Value.(ResPool)
+			if sibling.ID() == existingResPool.ID() {
+				// remove self from siblings
+				siblings.Remove(e)
+				break
+			}
+		}
+	}
+
+	for e := siblings.Front(); e != nil; e = e.Next() {
+		sibling := e.Value.(ResPool)
+		if sibling.Name() == name {
+			return errors.Errorf("resource pool name %s should "+
+				"be unique amongst siblings for parent %s", name, parentID.Value)
+		}
+	}
+
 	return nil
 }
 
@@ -257,5 +298,28 @@ func ValidateCycle(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) 
 			ID.Value,
 			parentID.Value)
 	}
+	return nil
+}
+
+// ValidateResourcePoolPath validates the resource pool path
+func ValidateResourcePoolPath(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
+	path := resourcePoolConfigData.Path
+
+	if path == nil {
+		return errors.New("path cannot be nil")
+	}
+
+	if path.Value == "" {
+		return errors.New("path cannot be empty")
+	}
+
+	if path.Value == "/" {
+		return nil
+	}
+
+	if !strings.HasPrefix(path.Value, ResourcePoolPathDelimiter) {
+		return errors.Errorf("path should begin with %s", ResourcePoolPathDelimiter)
+	}
+
 	return nil
 }

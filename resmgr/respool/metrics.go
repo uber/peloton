@@ -13,6 +13,10 @@ type Metrics struct {
 	GetResourcePoolSuccess tally.Counter
 	GetResourcePoolFail    tally.Counter
 
+	APILookupResourcePoolID     tally.Counter
+	LookupResourcePoolIDSuccess tally.Counter
+	LookupResourcePoolIDFail    tally.Counter
+
 	APIUpdateResourcePool          tally.Counter
 	UpdateResourcePoolSuccess      tally.Counter
 	UpdateResourcePoolFail         tally.Counter
@@ -42,6 +46,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		APIGetResourcePool:     apiScope.Counter("get_resource_pool"),
 		GetResourcePoolSuccess: successScope.Counter("get_resource_pool"),
 		GetResourcePoolFail:    failScope.Counter("get_resource_pool"),
+
+		APILookupResourcePoolID:     apiScope.Counter("lookup_resource_pool_id"),
+		LookupResourcePoolIDSuccess: successScope.Counter("lookup_resource_pool_id"),
+		LookupResourcePoolIDFail:    failScope.Counter("lookup_resource_pool_id"),
 
 		APIUpdateResourcePool:          apiScope.Counter("update_resource_pool"),
 		UpdateResourcePoolSuccess:      successScope.Counter("update_resource_pool"),

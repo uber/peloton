@@ -3,6 +3,7 @@ package respool
 import (
 	"container/list"
 	"fmt"
+	"strings"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
@@ -33,6 +34,9 @@ type Tree interface {
 
 	// Get returns a respool node by the given ID
 	Get(ID *respool.ResourcePoolID) (ResPool, error)
+
+	// GetByPath returns the respool node by the given path
+	GetByPath(path *respool.ResourcePoolPath) (ResPool, error)
 
 	// GetAllNodes returns all respool nodes or all leaf respool nodes.
 	GetAllNodes(leafOnly bool) *list.List
@@ -385,7 +389,35 @@ func (t *tree) Get(ID *respool.ResourcePoolID) (ResPool, error) {
 	return t.lookupResPool(ID)
 }
 
-//Upsert adds/updates a resource pool config to the tree
+// GetByPath returns the respool node by the given path
+// This function assumes the path provided is valid
+func (t *tree) GetByPath(path *respool.ResourcePoolPath) (ResPool, error) {
+	t.RLock()
+	defer t.RUnlock()
+
+	if path.Value == ResourcePoolPathDelimiter {
+		return t.root, nil
+	}
+
+	resPath := t.trimPath(path)
+	nodes := strings.Split(resPath, ResourcePoolPathDelimiter)
+
+	resPool, err := t.walkTree(t.root, nodes)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unbale to find resource pool with path:%s", path.Value)
+	}
+	return resPool, nil
+}
+
+// trims the path of the
+func (t *tree) trimPath(path *respool.ResourcePoolPath) string {
+	return strings.TrimPrefix(
+		strings.TrimSuffix(path.Value, ResourcePoolPathDelimiter),
+		ResourcePoolPathDelimiter,
+	)
+}
+
+// Upsert adds/updates a resource pool config to the tree
 func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error {
 	// acquire RW lock
 	t.Lock()
@@ -441,4 +473,23 @@ func (t *tree) lookupResPool(ID *respool.ResourcePoolID) (ResPool, error) {
 		return val, nil
 	}
 	return nil, fmt.Errorf("Resource pool (%s) not found", ID.Value)
+}
+
+// Recursively walks the tree beneath the root based on resource pool names
+func (t *tree) walkTree(root ResPool, nodes []string) (ResPool, error) {
+	if len(nodes) == 0 {
+		// found the node
+		return root, nil
+	}
+
+	children := root.Children()
+	for e := children.Front(); e != nil; e = e.Next() {
+		child, _ := e.Value.(ResPool)
+		if child.Name() == nodes[0] {
+			// walk again with the child as the new root
+			return t.walkTree(child, nodes[1:])
+		}
+	}
+
+	return nil, errors.Errorf("Resource pool (%s) not found", nodes)
 }
