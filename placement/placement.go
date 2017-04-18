@@ -19,6 +19,7 @@ import (
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 )
 
@@ -50,6 +51,7 @@ func New(
 		hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
 		rootCtx:       context.Background(),
 		metrics:       NewMetrics(parent.SubScope("placement")),
+		pool:          async.NewPool(async.PoolOptions{}),
 	}
 	return &s
 }
@@ -63,6 +65,7 @@ type placementEngine struct {
 	shutdown      int32
 	metrics       *Metrics
 	tick          <-chan time.Time
+	pool          *async.Pool
 }
 
 // Start starts placement engine
@@ -74,7 +77,8 @@ func (s *placementEngine) Start() {
 			// TODO: We need to revisit here if we want to run multiple
 			// Placement engine threads
 			for s.isRunning() {
-				s.placeRound()
+				delay := s.placeRound()
+				time.Sleep(delay)
 			}
 		}()
 	}
@@ -370,27 +374,27 @@ func (s *placementEngine) isRunning() bool {
 }
 
 // placeRound tries one round of placement action
-func (s *placementEngine) placeRound() {
+func (s *placementEngine) placeRound() time.Duration {
 	tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
 	if err != nil {
 		log.WithField("error", err).Error("Failed to dequeue tasks")
-		time.Sleep(GetTaskTimeout)
-		return
+		return GetTaskTimeout
 	}
 	if len(tasks) == 0 {
 		log.Debug("No task to place in workLoop")
-		time.Sleep(GetTaskTimeout)
-		return
+		return GetTaskTimeout
 	}
 	log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
 	taskGroups := groupTasks(tasks)
 	for _, tg := range taskGroups {
-		// Launching go routine per task group
-		// TODO: We need to change this worker thread pool model
-		go func(group *taskGroup) {
+		// Enqueue per task group.
+		group := tg
+		s.pool.Enqueue(async.JobFunc(func(ctx context.Context) {
 			s.placeTaskGroup(group)
-		}(tg)
+		}))
 	}
+
+	return 0
 }
 
 // getTasks deques tasks from task queue in resource manager

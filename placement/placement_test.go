@@ -21,6 +21,7 @@ import (
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/util"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
@@ -126,6 +127,7 @@ func TestEmptyTaskToPlace(t *testing.T) {
 		hostMgrClient: mockHostMgr,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		pool:          async.NewPool(async.PoolOptions{}),
 	}
 
 	gomock.InOrder(
@@ -164,12 +166,13 @@ func TestNoHostOfferReturned(t *testing.T) {
 		cfg: &Config{
 			TaskDequeueLimit:     10,
 			OfferDequeueLimit:    10,
-			MaxPlacementDuration: maxPlacementDuration,
+			MaxPlacementDuration: 100 * time.Millisecond,
 		},
 		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		pool:          async.NewPool(async.PoolOptions{}),
 	}
 
 	assert.Equal(
@@ -218,7 +221,7 @@ func TestNoHostOfferReturned(t *testing.T) {
 
 	pe.placeRound()
 
-	time.Sleep(1 * time.Second)
+	pe.pool.WaitUntilProcessed()
 
 	assert.NotEqual(
 		t,
@@ -247,6 +250,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 		hostMgrClient: mockHostMgr,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		pool:          async.NewPool(async.PoolOptions{}),
 	}
 
 	// generate 25 test tasks
@@ -348,7 +352,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	pe.placeRound()
 
-	time.Sleep(1 * time.Second)
+	pe.pool.WaitUntilProcessed()
 
 	expectedLaunchedHosts := map[string]bool{
 		"hostname-0": true,
