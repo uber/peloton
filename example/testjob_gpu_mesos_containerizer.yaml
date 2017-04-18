@@ -1,11 +1,11 @@
 changelog: null
-name: TestPelotonUnifiedContainerizerJob_123
+name: TestGPUMesosContainerizerJob
 owningteam: team6
 ldapgroups:
-- infra
 - money
+- team6
 - otto
-description: "A dummy test job for peloton on unified containerizer"
+description: "A test job using unified containerizer and gpu"
 labels:
   labels:
   - key: testKey0
@@ -15,17 +15,12 @@ labels:
   - key: testKey2
     value: testVal2
 instancecount: 1
-sla:
-  priority: 22
-  minimuminstancecount: 12
-  minimuminstancepercent: 50
-  preemptible: false
 defaultconfig:
   resource:
-    cpulimit: 0.1
-    memlimitmb: 2.0
-    disklimitmb: 10
-    fdlimit: 10
+    cpulimit: 0.5
+    memlimitmb: 128.0
+    disklimitmb: 1024.0
+    gpulimit: 1
   healthcheck: null
   ports: []
   container:
@@ -34,7 +29,7 @@ defaultconfig:
       image:
         type: 2 # docker
         docker:
-          name: "debian"
+          name: "nvidia/cuda"
     volumes:
       - containerpath: /test-tmp
         hostpath: /tmp
@@ -44,4 +39,6 @@ defaultconfig:
         mode: 2
   command:
     shell: true
-    value: 'echo Hello'
+    value: 'nvidia-smi'
+respoolid:
+  value: respool11

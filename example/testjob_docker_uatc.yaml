@@ -1,11 +1,11 @@
 changelog: null
-name: TestPelotonDockerUatcJob_123_50k
+name: TestPelotonDockerJob_123
 owningteam: team6
 ldapgroups:
 - money
 - team6
 - otto
-description: "A dummy uatc test docker job for peloton, 50k"
+description: "A dummy uatc test docker job for peloton"
 labels:
   labels:
   - key: testKey0
@@ -14,7 +14,7 @@ labels:
     value: testVal1
   - key: testKey2
     value: testVal2
-instancecount: 50000
+instancecount: 10
 sla:
   priority: 22
   minimuminstancecount: 12
@@ -22,9 +22,9 @@ sla:
   preemptible: false
 defaultconfig:
   resource:
-    cpulimit: 1.0
-    memlimitmb: 8192.0
-    disklimitmb: 24
+    cpulimit: 0.1
+    memlimitmb: 2.0
+    disklimitmb: 10
     fdlimit: 10
   healthcheck: null
   ports: []
@@ -46,6 +46,6 @@ defaultconfig:
         mode: 2
   command:
     shell: true
-    value: 'echo Hello'
+    value: 'echo Hello && sleep 300'
 respoolid:
   value: respool11

@@ -5,7 +5,7 @@ ldapgroups:
 - money
 - team6
 - otto
-description: "A dummy uatc test docker job for peloton"
+description: "A dummy test docker job for peloton"
 labels:
   labels:
   - key: testKey0
@@ -31,7 +31,7 @@ defaultconfig:
   container:
     type: 1
     docker:
-      image: "docker.int.uberatc.com/uatc/uberatc-laptop"
+      image: "debian"
       parameters:
         - key: env
           value: TEST_ENV0=testVal0
@@ -47,3 +47,5 @@ defaultconfig:
   command:
     shell: true
     value: 'echo Hello && sleep 300'
+respoolid:
+  value: respool11

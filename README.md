@@ -45,41 +45,51 @@ volume.
 Installations of protoc/proto/protoc-gen-go are required, run
 bootstrap.sh once so all build dependencies will be installed.  Want
 to build debian package or docker image ? Follow packaging/README.md
+```
+$ cd $GOPATH
 
-cd $GOPATH
+$ mkdir -p src/code.uber.internal/infra/
 
-mkdir -p src/code.uber.internal/infra/
+$ git clone gitolite@code.uber.internal:infra/peloton src/code.uber.internal/infra/peloton
 
-git clone gitolite@code.uber.internal:infra/peloton src/$(make project-name)
+$ cd $GOPATH/src/code.uber.internal/infra/peloton
 
-cd $GOPATH/src/$(make project-name)
+$ ./bootstrap.sh
 
-( run bootstrap.sh only once )
+$ glide install
 
-./bootstrap.sh
+$ make devtools
 
-glide install
-
-make
-
-## Run pcluster to bootstrap runtime dependencies like mesos and db
-make pcluster
+$ make
+```
 
 
-## Run Peloton master/apps in containers
-Please refer to tools/pcluster/README.md for more details
+## Run Peloton apps in containers
+Build docker image:
+```
+$ IMAGE=uber/peloton make docker
+```
 
-## Test Peloton apps
-Create new job via yarpc based go client:
+Launch all dependencies and peloton apps in containers:
+```
+$ PELOTON=app make pcluster
+```
 
-cd $GOPATH/src/$(make project-name)
+## Test Peloton
 
-bin/peloton job create test/testjob.yaml --master http://localhost:5292
+Create resource pool (respool is required for job creation):
+```
+$ bin/peloton respool create respool11 example/test_respool.yaml
+```
 
-bin/peloton task list <job ID> --master http://localhost:5292
+Create job:
+```
+$ bin/peloton job create example/testjob.yaml --master http://localhost:5292
 
+$ bin/peloton task list <job ID> --master http://localhost:5292
+```
 
-## Run Peloton master
+## Run Peloton master via command line
 
 To run peloton in dev environment, dependencies like mesos/mysql, need
 to be set up first.  Run 'make pcluster' to bootstrap those
@@ -87,11 +97,42 @@ dependencies in containers (docker-py installation is required, see
 bootstrap.sh for more details).  Refer to "docker/README.md" for
 details.
 
-./bin/peloton-master -c config/master/base.yaml -c config/master/development.yaml -d
+```
+$ ./bin/peloton-master -c config/master/base.yaml -c config/master/development.yaml -d
+```
 
 By default, it runs peloton master at port 5289. To run another
 peloton master instance, set env var 'PORT=5290', or pass the `--port`
 flag.
+
+## Test Peloton master
+
+1. Create new job via yarpc based go client:
+```
+cd $GOPATH/src/$(make project-name)
+
+bin/peloton job create example/testjob.yaml
+
+bin/peloton task list <job ID>
+```
+
+2. Curl into Peloton endpoint:
+
+curl -X POST  \
+     -H 'content-type: application/json'  \
+     -H 'Rpc-Procedure: JobManager.Get'   \
+     -H 'Rpc-Service: peloton-master'     \
+     -H 'Rpc-Caller: peloton-client'      \
+     -H 'Context-TTL-MS: 1000'            \
+     -H 'Rpc-Encoding: json'              \
+     --data '{"id": {"value": "myjob12345"}}' 	\
+    localhost:5289/api/v1
+
+
+## Run unit tests
+```
+$ make test
+```
 
 
 ## Run peloton from docker container
@@ -179,30 +220,6 @@ To build and deploy docker containers everywhere:
 ```
 make docker docker-push
 ```
-
-
-## Test Peloton master
-
-1. Create new job via yarpc based go client:
-
-cd $GOPATH/src/$(make project-name)
-
-bin/peloton job create test/testjob.yaml 
-
-bin/peloton task list <job ID>
-
-
-2. Curl into Peloton endpoint:
-
-curl -X POST  \
-     -H 'content-type: application/json'  \
-     -H 'Rpc-Procedure: JobManager.Get'   \
-     -H 'Rpc-Service: peloton-master'     \
-     -H 'Rpc-Caller: peloton-client'      \
-     -H 'Context-TTL-MS: 1000'            \
-     -H 'Rpc-Encoding: json'              \
-     --data '{"id": {"value": "myjob12345"}}' 	\
-    localhost:5289/api/v1
 
 ## Debug Peloton Apps in Docker Container
 

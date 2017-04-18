@@ -1,11 +1,11 @@
 changelog: null
-name: TestPelotonDockerJob_123
+name: TestPelotonUnifiedContainerizerJob_123
 owningteam: team6
 ldapgroups:
+- infra
 - money
-- team6
 - otto
-description: "A dummy test docker job for peloton"
+description: "A dummy test job for peloton on unified containerizer"
 labels:
   labels:
   - key: testKey0
@@ -14,7 +14,7 @@ labels:
     value: testVal1
   - key: testKey2
     value: testVal2
-instancecount: 10
+instancecount: 1
 sla:
   priority: 22
   minimuminstancecount: 12
@@ -29,14 +29,12 @@ defaultconfig:
   healthcheck: null
   ports: []
   container:
-    type: 1
-    docker:
-      image: "debian"
-      parameters:
-        - key: env
-          value: TEST_ENV0=testVal0
-        - key: env
-          value: TEST_ENV1=testVal1
+    type: 2  # mesos
+    mesos:
+      image:
+        type: 2 # docker
+        docker:
+          name: "debian"
     volumes:
       - containerpath: /test-tmp
         hostpath: /tmp
@@ -46,4 +44,6 @@ defaultconfig:
         mode: 2
   command:
     shell: true
-    value: 'echo Hello && sleep 300'
+    value: 'echo Hello'
+respoolid:
+  value: respool11

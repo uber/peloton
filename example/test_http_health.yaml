@@ -67,3 +67,5 @@ instanceconfig:
       maxconsecutivefailures: 1
       commandcheck:
         command: "date && curl -f localhost:$UBER_HTTP_PORT"
+respoolid:
+  value: respool11

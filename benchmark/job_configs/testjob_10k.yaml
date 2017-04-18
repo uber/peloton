@@ -32,3 +32,5 @@ defaultconfig:
   command:
     shell: true
     value: 'echo Hello'
+respoolid:
+  value: respool11

@@ -11,7 +11,7 @@ import (
 )
 
 func TestParseJobCreate(t *testing.T) {
-	cfg := "../../test/testjob.yaml"
+	cfg := "../../example/testjob.yaml"
 	cmd, err := app.Parse([]string{"job", "create", cfg})
 	assert.Nil(t, err)
 	assert.Equal(t, cmd, jobCreate.FullCommand())
