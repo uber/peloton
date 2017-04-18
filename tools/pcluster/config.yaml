@@ -84,3 +84,6 @@ peloton_jobmgr_instance_count: 2
 peloton_placement_container: peloton-placement
 peloton_placement_port: 5293
 peloton_placement_instance_count: 1
+
+# log verbose level, set to true for debug
+debug: "false"

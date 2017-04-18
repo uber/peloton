@@ -358,6 +358,7 @@ def run_peloton_resmgr():
                 'CASSANDRA_HOSTS={0}'.format(
                     host_ip,
                 ),
+                'ENABLE_DEBUG_LOGGING=' + config['debug'],
             ],
             host_config=cli.create_host_config(
                 port_bindings={
@@ -400,6 +401,7 @@ def run_peloton_hostmgr():
                 'CASSANDRA_HOSTS={0}'.format(
                     host_ip,
                 ),
+                'ENABLE_DEBUG_LOGGING=' + config['debug'],
             ],
             host_config=cli.create_host_config(
                 port_bindings={
@@ -436,6 +438,7 @@ def run_peloton_jobmgr():
                 'CASSANDRA_HOSTS={0}'.format(
                     host_ip,
                 ),
+                'ENABLE_DEBUG_LOGGING=' + config['debug'],
             ],
             host_config=cli.create_host_config(
                 port_bindings={
@@ -472,6 +475,7 @@ def run_peloton_placement():
                     config['local_zk_port']
                 ),
                 'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'ENABLE_DEBUG_LOGGING=' + config['debug'],
             ],
             host_config=cli.create_host_config(
                 port_bindings={
