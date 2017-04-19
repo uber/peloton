@@ -238,10 +238,20 @@ func main() {
 	pOutbounds := transport.Outbounds{
 		Unary: pOutbound,
 	}
+	// MasterOperatorClient API outbound
+	mOperatorOutbound := mhttp.NewOutbound(
+		mesosMasterDetector,
+		url.URL{
+			Scheme: "http",
+			Path:   common.MesosMasterOperatorEndPoint,
+		})
+
 	outbounds := yarpc.Outbounds{
-		common.MesosMaster:   mOutbounds,
-		common.PelotonMaster: pOutbounds,
+		common.MesosMaster:         mOutbounds,
+		common.PelotonMaster:       pOutbounds,
+		common.MesosMasterOperator: mOperatorOutbound,
 	}
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name:      common.PelotonMaster,
 		Inbounds:  inbounds,
@@ -302,6 +312,11 @@ func main() {
 		dispatcher.ClientConfig(common.MesosMaster),
 		cfg.Mesos.Encoding,
 	)
+	mesosOperatorClient := mpb.NewMasterOperatorClient(
+		dispatcher.ClientConfig(common.MesosMasterOperator),
+		cfg.Mesos.Encoding,
+	)
+
 	offer.InitEventHandler(
 		dispatcher,
 		rootScope,
@@ -322,6 +337,7 @@ func main() {
 		dispatcher,
 		rootScope,
 		mesosClient,
+		mesosOperatorClient,
 		driver,
 	)
 

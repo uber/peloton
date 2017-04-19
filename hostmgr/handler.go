@@ -13,6 +13,7 @@ import (
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/Sirupsen/logrus"
@@ -23,7 +24,8 @@ import (
 
 // serviceHandler implements peloton.private.hostmgr.InternalHostService.
 type serviceHandler struct {
-	client                mpb.Client
+	schedulerClient       mpb.Client
+	mOperatorClient       mpb.MasterOperatorClient
 	metrics               *Metrics
 	offerPool             offer.Pool
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
@@ -33,12 +35,14 @@ type serviceHandler struct {
 func InitServiceHandler(
 	d yarpc.Dispatcher,
 	parent tally.Scope,
-	client mpb.Client,
+	schedulerClient mpb.Client,
+	operatorMClient mpb.MasterOperatorClient,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 ) {
 
 	handler := serviceHandler{
-		client:                client,
+		schedulerClient:       schedulerClient,
+		mOperatorClient:       operatorMClient,
 		metrics:               NewMetrics(parent.SubScope("hostmgr")),
 		offerPool:             offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider: frameworkInfoProvider,
@@ -274,7 +278,7 @@ func (h *serviceHandler) LaunchTasks(
 
 	// TODO: add retry / put back offer and tasks in failure scenarios
 	msid := h.frameworkInfoProvider.GetMesosStreamID()
-	err = h.client.Call(msid, msg)
+	err = h.schedulerClient.Call(msid, msg)
 	if err != nil {
 		h.metrics.LaunchTasksFail.Inc(int64(len(mesosTasks)))
 		log.WithFields(log.Fields{
@@ -354,7 +358,7 @@ func (h *serviceHandler) KillTasks(
 			}
 
 			msid := h.frameworkInfoProvider.GetMesosStreamID()
-			err := h.client.Call(msid, msg)
+			err := h.schedulerClient.Call(msid, msg)
 			if err != nil {
 				h.metrics.KillTasksFail.Inc(1)
 				log.WithFields(log.Fields{
@@ -441,6 +445,56 @@ func (h *serviceHandler) ClusterCapacity(
 	body *hostsvc.ClusterCapacityRequest) (
 	*hostsvc.ClusterCapacityResponse, yarpc.ResMeta, error) {
 
-	log.Debug("ClusterCapacity called.")
-	return nil, nil, fmt.Errorf("Unimplemented")
+	log.WithField("request", body).Debug("ClusterCapacity called.")
+
+	// Get frameworkID
+	frameWorkID := h.frameworkInfoProvider.GetFrameworkID()
+
+	// Validate FrameworkID
+	if len(frameWorkID.GetValue()) == 0 {
+		return &hostsvc.ClusterCapacityResponse{
+			Error: &hostsvc.ClusterCapacityResponse_Error{
+				ClusterUnavailable: &hostsvc.ClusterUnavailable{
+					Message: "unable to fetch framework ID",
+				},
+			},
+		}, nil, nil
+	}
+
+	// Fetch allocated resources
+	allocatedResources, err := h.mOperatorClient.AllocatedResources(frameWorkID.GetValue())
+
+	if err != nil {
+		h.metrics.ClusterCapacityFail.Inc(1)
+		log.WithError(err).Error("error making cluster capacity request")
+		return &hostsvc.ClusterCapacityResponse{
+			Error: &hostsvc.ClusterCapacityResponse_Error{
+				ClusterUnavailable: &hostsvc.ClusterUnavailable{
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
+	// Get scalar resource from Mesos resources
+	tAllocatedResources := scalar.FromMesosResources(allocatedResources)
+
+	h.metrics.ClusterCapacity.Inc(1)
+	return &hostsvc.ClusterCapacityResponse{
+		Resources: []*hostsvc.Resource{
+			{
+				Kind:     "cpus",
+				Capacity: tAllocatedResources.CPU,
+			}, {
+				Kind:     "disk",
+				Capacity: tAllocatedResources.Disk,
+			}, {
+				Kind:     "gpus",
+				Capacity: tAllocatedResources.GPU,
+			}, {
+				Kind:     "mem",
+				Capacity: tAllocatedResources.Mem,
+			},
+		},
+	}, nil, nil
 }

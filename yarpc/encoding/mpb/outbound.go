@@ -14,7 +14,6 @@ import (
 // Client makes Mesos JSON requests to Mesos endpoint
 type Client interface {
 	// Call performs an outbound Mesos JSON request.
-	//
 	// Returns an error if the request failed.
 	Call(mesosStreamID string, msg proto.Message) error
 }

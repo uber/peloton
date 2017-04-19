@@ -22,6 +22,9 @@ type Metrics struct {
 	Elected         tally.Gauge
 	MesosConnected  tally.Gauge
 	HandlersRunning tally.Gauge
+
+	ClusterCapacity     tally.Counter
+	ClusterCapacityFail tally.Counter
 }
 
 // NewMetrics returns a new instance of hostmgr.Metrics.
@@ -44,5 +47,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		Elected:         serverScope.Gauge("elected"),
 		MesosConnected:  serverScope.Gauge("mesos_connected"),
 		HandlersRunning: serverScope.Gauge("handlers_running"),
+
+		ClusterCapacity:     scope.Counter("cluster_capacity"),
+		ClusterCapacityFail: scope.Counter("cluster_capacity_fail"),
 	}
 }

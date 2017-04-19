@@ -21,7 +21,7 @@ import (
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
+	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/util"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
@@ -42,18 +42,6 @@ const (
 var (
 	rootCtx = context.Background()
 )
-
-// A mock implementation of FrameworkInfoProvider
-type mockFrameworkInfoProvider struct{}
-
-func (m *mockFrameworkInfoProvider) GetMesosStreamID() string {
-	return _streamID
-}
-
-func (m *mockFrameworkInfoProvider) GetFrameworkID() *mesos.FrameworkID {
-	tmp := _frameworkID
-	return &mesos.FrameworkID{Value: &tmp}
-}
 
 func generateOffers(numOffers int) []*mesos.Offer {
 	var offers []*mesos.Offer
@@ -106,19 +94,30 @@ func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
 type HostMgrHandlerTestSuite struct {
 	suite.Suite
 
-	ctrl      *gomock.Controller
-	testScope tally.TestScope
-	client    *mpb_mocks.MockClient
-	provider  hostmgr_mesos.FrameworkInfoProvider
-	pool      offer.Pool
-	handler   *serviceHandler
+	ctrl        *gomock.Controller
+	testScope   tally.TestScope
+	client      *mpb_mocks.MockClient
+	moClient    *mpb_mocks.MockMasterOperatorClient
+	provider    *hostmgr_mesos_mocks.MockFrameworkInfoProvider
+	pool        offer.Pool
+	handler     *serviceHandler
+	frameworkID *mesos.FrameworkID
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.client = mpb_mocks.NewMockClient(suite.ctrl)
-	suite.provider = &mockFrameworkInfoProvider{}
+	suite.moClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
+	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
+
+	mockValidValue := new(string)
+	*mockValidValue = _frameworkID
+	mockValidFrameWorkID := &mesos.FrameworkID{
+		Value: mockValidValue,
+	}
+
+	suite.frameworkID = mockValidFrameWorkID
 
 	suite.pool = offer.NewOfferPool(
 		_offerHoldTime,
@@ -128,7 +127,8 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	)
 
 	suite.handler = &serviceHandler{
-		client:                suite.client,
+		schedulerClient:       suite.client,
+		mOperatorClient:       suite.moClient,
 		metrics:               NewMetrics(suite.testScope),
 		offerPool:             suite.pool,
 		frameworkInfoProvider: suite.provider,
@@ -356,13 +356,19 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 	launchReq.Tasks = generateLaunchableTasks(1)
 
 	gomock.InOrder(
+		// Set expectations on provider
+		suite.provider.EXPECT().GetFrameworkID().Return(
+			suite.frameworkID),
+		// Set expectations on provider
+		suite.provider.EXPECT().GetMesosStreamID().Return(_streamID),
+		// Set expectations on scheduler client
 		suite.client.EXPECT().
 			Call(
 				gomock.Eq(_streamID),
 				gomock.Any(),
 			).
 			Do(func(_ string, msg proto.Message) {
-				// Verify call message.
+				// Verify clientCall message.
 				call := msg.(*sched.Call)
 				suite.Equal(sched.Call_ACCEPT, call.GetType())
 				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
@@ -419,27 +425,35 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	killedTaskIds := make(map[string]bool)
 	mockMutex := &sync.Mutex{}
 
-	gomock.InOrder(
-		suite.client.EXPECT().
-			Call(
-				gomock.Eq(_streamID),
-				gomock.Any(),
-			).
-			Do(func(_ string, msg proto.Message) {
-				// Verify call message.
-				call := msg.(*sched.Call)
-				suite.Equal(sched.Call_KILL, call.GetType())
-				suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+	// Set expectations on provider
+	suite.provider.EXPECT().GetFrameworkID().Return(
+		suite.frameworkID,
+	).Times(2)
+	suite.provider.EXPECT().GetMesosStreamID().Return(
+		_streamID,
+	).Times(2)
 
-				tid := call.GetKill().GetTaskId()
-				suite.NotNil(tid)
-				mockMutex.Lock()
-				defer mockMutex.Unlock()
-				killedTaskIds[tid.GetValue()] = true
-			}).
-			Return(nil).
-			Times(2),
-	)
+	// Set expectations on scheduler client
+	suite.client.EXPECT().
+		Call(
+			gomock.Eq(_streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify clientCall message.
+			call := msg.(*sched.Call)
+			suite.Equal(sched.Call_KILL, call.GetType())
+			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+			tid := call.GetKill().GetTaskId()
+			suite.NotNil(tid)
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+			killedTaskIds[tid.GetValue()] = true
+		}).
+		Return(nil).
+		Times(2)
+
 	resp, _, err := suite.handler.KillTasks(rootCtx, nil, killReq)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
@@ -469,6 +483,14 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 	killedTaskIds := make(map[string]bool)
 	failedTaskIds := make(map[string]bool)
 	mockMutex := &sync.Mutex{}
+
+	// Set expectations on provider
+	suite.provider.EXPECT().GetFrameworkID().Return(
+		suite.frameworkID,
+	).Times(2)
+	suite.provider.EXPECT().GetMesosStreamID().Return(
+		_streamID,
+	).Times(2)
 
 	// A failed call.
 	suite.client.EXPECT().
@@ -527,6 +549,77 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 	suite.Equal(
 		int64(1),
 		suite.testScope.Snapshot().Counters()["kill_tasks_fail"].Value())
+}
+
+func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
+	scalerType := mesos.Value_SCALAR
+	scalerVal := 200.0
+	name := "cpus"
+
+	tests := []struct {
+		err         error
+		response    []*mesos.Resource
+		clientCall  bool
+		frameworkID *mesos.FrameworkID
+	}{
+		{
+			err:         errors.New("no resources configured"),
+			response:    nil,
+			clientCall:  true,
+			frameworkID: suite.frameworkID,
+		},
+		{
+			err: nil,
+			response: []*mesos.Resource{
+				{
+					Name: &name,
+					Scalar: &mesos.Value_Scalar{
+						Value: &scalerVal,
+					},
+					Type: &scalerType,
+				},
+			},
+			clientCall:  true,
+			frameworkID: suite.frameworkID,
+		},
+		{
+			err:         errors.New("unable to fetch framework ID"),
+			clientCall:  true,
+			frameworkID: nil,
+		},
+	}
+
+	clusterCapacityReq := &hostsvc.ClusterCapacityRequest{}
+	for _, tt := range tests {
+		// Set expectations on provider interface
+		suite.provider.EXPECT().GetFrameworkID().Return(tt.frameworkID)
+
+		if tt.clientCall {
+			// Set expectations on the mesos operator client
+			suite.moClient.EXPECT().AllocatedResources(
+				gomock.Any(),
+			).Return(tt.response, tt.err)
+		}
+
+		// Make the cluster capacity API request
+		resp, _, _ := suite.handler.ClusterCapacity(
+			rootCtx,
+			nil,
+			clusterCapacityReq,
+		)
+
+		if tt.err != nil {
+			suite.NotNil(resp.Error)
+			suite.Equal(
+				tt.err.Error(),
+				resp.Error.ClusterUnavailable.Message,
+			)
+			suite.Nil(resp.Resources)
+		} else {
+			suite.Nil(resp.Error)
+			suite.NotNil(resp.Resources)
+		}
+	}
 }
 
 func TestHostManagerTestSuite(t *testing.T) {

@@ -117,11 +117,11 @@ define vendor_mockgen
 endef
 
 mockgens: $(PBGENS) $(GOMOCK)
-	$(call local_mockgen,hostmgr/mesos,MasterDetector)
+	$(call local_mockgen,hostmgr/mesos,MasterDetector;FrameworkInfoProvider)
 	$(call local_mockgen,hostmgr/offer,EventHandler)
 	$(call local_mockgen,hostmgr/reconcile,TaskReconciler)
 	$(call local_mockgen,storage,JobStore;TaskStore;FrameworkInfoStore;ResourcePoolStore)
-	$(call local_mockgen,yarpc/encoding/mpb,Client)
+	$(call local_mockgen,yarpc/encoding/mpb,Client;MasterOperatorClient)
 	$(call local_mockgen,yarpc/transport/mhttp,Inbound)
 	$(call vendor_mockgen,go.uber.org/yarpc/encoding/json/outbound.go)
 

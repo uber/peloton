@@ -172,6 +172,14 @@ func main() {
 	// TODO: update mesos url when leading mesos master changes
 	mOutbound := mhttp.NewOutbound(mesosMasterDetector, driver.Endpoint())
 
+	// MasterOperatorClient API outbound
+	mOperatorOutbound := mhttp.NewOutbound(
+		mesosMasterDetector,
+		url.URL{
+			Scheme: "http",
+			Path:   common.MesosMasterOperatorEndPoint,
+		})
+
 	// all leader discovery metrics share a scope (and will be tagged
 	// with role={role})
 	discoveryScope := rootScope.SubScope("discovery")
@@ -199,7 +207,8 @@ func main() {
 		})
 
 	outbounds := yarpc.Outbounds{
-		common.MesosMaster: mOutbound,
+		common.MesosMaster:         mOutbound,
+		common.MesosMasterOperator: mOperatorOutbound,
 		common.PelotonResourceManager: transport.Outbounds{
 			Unary: resmgrOutbound,
 		},
@@ -220,6 +229,11 @@ func main() {
 		dispatcher.ClientConfig(common.MesosMaster),
 		cfg.Mesos.Encoding,
 	)
+	mesosOperatorClient := mpb.NewMasterOperatorClient(
+		dispatcher.ClientConfig(common.MesosMasterOperator),
+		cfg.Mesos.Encoding,
+	)
+
 	mesos.InitManager(dispatcher, &cfg.Mesos, frameworkInfoStore)
 
 	log.WithFields(log.Fields{
@@ -240,6 +254,7 @@ func main() {
 		dispatcher,
 		rootScope,
 		mesosClient,
+		mesosOperatorClient,
 		driver,
 	)
 
