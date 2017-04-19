@@ -17,3 +17,7 @@ message JobNotFound {
   string message = 2;
 }
 
+message JobGetRuntimeFail {
+  peloton.JobID id = 1;
+  string message = 2;
+}

@@ -209,7 +209,9 @@ func (h *serviceHandler) Get(
 	jobConfig, err := h.jobStore.GetJobConfig(req.Id)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
-		log.Errorf("GetJob failed with error %v", err)
+		log.WithError(err).
+			WithField("job_id", req.Id).
+			Errorf("GetJobConfig failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
 				NotFound: &errors.JobNotFound{
@@ -219,10 +221,25 @@ func (h *serviceHandler) Get(
 			},
 		}, nil, nil
 	}
+	jobRuntime, err := h.jobStore.GetJobRuntime(req.Id)
+	if err != nil {
+		h.metrics.JobGetFail.Inc(1)
+		log.WithError(err).
+			WithField("job_id", req.Id).
+			Error("Get jobRuntime failed")
+		return &job.GetResponse{
+			Error: &job.GetResponse_Error{
+				GetRuntimeFail: &errors.JobGetRuntimeFail{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
 	h.metrics.JobGet.Inc(1)
 	return &job.GetResponse{
 		Config:  jobConfig,
-		Runtime: nil, // TODO: Add job runtime info here
+		Runtime: jobRuntime,
 	}, nil, nil
 }
 

@@ -209,6 +209,7 @@ message GetRequest {
 message GetResponse {
   message Error {
     errors.JobNotFound notFound = 1;
+    errors.JobGetRuntimeFail getRuntimeFail = 2;
   }
 
   Error error = 1;
