@@ -23,11 +23,19 @@ type StatusUpdate interface {
 	Stop()
 }
 
+// StatusUpdateListener is the interface for StatusUpdate listener
+type StatusUpdateListener interface {
+	Start()
+	Stop()
+	eventstream.EventHandler
+}
+
 // StatusUpdate reads and processes the task state change events from HM
 type statusUpdate struct {
-	taskStore   storage.TaskStore
-	eventClient *eventstream.Client
-	applier     *asyncEventProcessor
+	taskStore         storage.TaskStore
+	eventClient       *eventstream.Client
+	applier           *asyncEventProcessor
+	jobRuntimeUpdater StatusUpdateListener
 }
 
 // Singleton task status updater
@@ -39,6 +47,7 @@ func InitTaskStatusUpdate(
 	d yarpc.Dispatcher,
 	server string,
 	taskStore storage.TaskStore,
+	jobRuntimeUpdater StatusUpdateListener,
 	parentScope tally.Scope) {
 	onceInitStatusUpdate.Do(func() {
 		if statusUpdater != nil {
@@ -58,6 +67,8 @@ func InitTaskStatusUpdate(
 			statusUpdater,
 			parentScope.SubScope("HostmgrEventStreamClient"))
 		statusUpdater.eventClient = eventClient
+
+		statusUpdater.jobRuntimeUpdater = jobRuntimeUpdater
 	})
 }
 
@@ -146,17 +157,24 @@ func isUnexpected(taskState pb_task.TaskState) bool {
 
 // OnEvents is the callback function notifying a batch of events
 func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {
-	// Not implemented
+	p.jobRuntimeUpdater.OnEvents(events)
 }
 
 // Start starts processing status update events
 func (p *statusUpdate) Start() {
 	p.eventClient.Start()
 	log.Info("Task status updater started")
+	if p.jobRuntimeUpdater != nil {
+		p.jobRuntimeUpdater.Start()
+	}
 }
 
 // Stop stops processing status update events
 func (p *statusUpdate) Stop() {
 	p.eventClient.Stop()
 	log.Info("Task status updater stopped")
+	if p.jobRuntimeUpdater != nil {
+		p.jobRuntimeUpdater.Stop()
+	}
+
 }

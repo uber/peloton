@@ -250,6 +250,7 @@ func main() {
 		dispatcher,
 		common.PelotonHostManager,
 		taskStore,
+		job.NewJobRuntimeUpdater(jobStore, taskStore),
 		rootScope,
 	)
 

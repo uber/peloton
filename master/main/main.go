@@ -352,6 +352,7 @@ func main() {
 		dispatcher,
 		common.PelotonMaster,
 		taskStore,
+		job.NewJobRuntimeUpdater(jobStore, taskStore),
 		rootScope,
 	)
 
