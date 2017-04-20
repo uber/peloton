@@ -3,14 +3,13 @@ package offer
 import (
 	"errors"
 	"sync"
-	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/atomic"
 
 	mesos "mesos/v1"
 
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/hostmgr/reservation"
 )
 
 // CacheStatus represents status of the offer in offer pool's cache.
@@ -27,13 +26,15 @@ const (
 type hostOfferSummary struct {
 	sync.Mutex
 
-	// offerID -> offer
-	offersOnHost map[string]*mesos.Offer
-	readyCount   atomic.Int32
+	// offerID -> unreserved offer
+	unreservedOffers map[string]*mesos.Offer
+	status           CacheStatus
+	readyCount       atomic.Int32
 
-	// quantity of scalar resources.
-	quantity scalar.Resources
-	status   CacheStatus
+	// offerID -> reserved offer
+	reservedOffers map[string]*mesos.Offer
+	// reservedResources has reservationLabelID -> resources.
+	reservedResources map[string]*reservation.ReservedResources
 }
 
 // A heuristic about if the hostOfferSummary has any offer.
@@ -59,7 +60,7 @@ func (a *hostOfferSummary) tryMatch(c *Constraint) (bool, []*mesos.Offer) {
 	}
 
 	readyOffers := make(map[string]*mesos.Offer)
-	for id, offer := range a.offersOnHost {
+	for id, offer := range a.unreservedOffers {
 		readyOffers[id] = offer
 	}
 
@@ -76,15 +77,28 @@ func (a *hostOfferSummary) tryMatch(c *Constraint) (bool, []*mesos.Offer) {
 	return false, nil
 }
 
-func (a *hostOfferSummary) addMesosOffer(
-	offer *mesos.Offer, expiration time.Time) {
-
+func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer) {
 	a.Lock()
 	defer a.Unlock()
+
 	offerID := *offer.Id.Value
-	a.offersOnHost[offerID] = offer
-	if a.status == ReadyOffer {
-		a.readyCount.Inc()
+	if !reservation.HasLabeledReservedResources(offer) {
+		a.unreservedOffers[offerID] = offer
+		if a.status == ReadyOffer {
+			a.readyCount.Inc()
+		}
+	} else {
+		a.reservedOffers[offerID] = offer
+		reservedOffers := []*mesos.Offer{}
+		for _, offer := range a.reservedOffers {
+			reservedOffers = append(reservedOffers, offer)
+		}
+		a.reservedResources = reservation.GetLabeledReservedResources(
+			reservedOffers)
+		log.WithFields(log.Fields{
+			"offer":                    offer,
+			"total_reserved_resources": a.reservedResources,
+		}).Debug("Added reserved offer.")
 	}
 }
 
@@ -96,9 +110,9 @@ func (a *hostOfferSummary) claimForLaunch() (map[string]*mesos.Offer, error) {
 	}
 
 	result := make(map[string]*mesos.Offer)
-	for id, offer := range a.offersOnHost {
+	for id, offer := range a.unreservedOffers {
 		result[id] = offer
-		delete(a.offersOnHost, id)
+		delete(a.unreservedOffers, id)
 	}
 
 	// Reseting status to ready so any future offer on the host is considered
@@ -112,8 +126,25 @@ func (a *hostOfferSummary) removeMesosOffer(offerID string) {
 	a.Lock()
 	defer a.Unlock()
 
-	_, ok := a.offersOnHost[offerID]
+	_, ok := a.unreservedOffers[offerID]
 	if !ok {
+		if _, ok = a.reservedOffers[offerID]; !ok {
+			log.WithField("offer", offerID).
+				Warn("Remove non-exist reserved offer.")
+			return
+		}
+		// Remove offer then calculate/update the reserved resource.
+		delete(a.reservedOffers, offerID)
+		reservedOffers := []*mesos.Offer{}
+		for _, offer := range a.reservedOffers {
+			reservedOffers = append(reservedOffers, offer)
+		}
+		a.reservedResources = reservation.GetLabeledReservedResources(
+			reservedOffers)
+		log.WithFields(log.Fields{
+			"offerID":                  offerID,
+			"total_reserved_resources": a.reservedResources,
+		}).Debug("Removed reserved offer.")
 		return
 	}
 
@@ -129,7 +160,7 @@ func (a *hostOfferSummary) removeMesosOffer(offerID string) {
 		log.WithField("status", a.status).Error("Unknown offer status")
 	}
 
-	delete(a.offersOnHost, offerID)
+	delete(a.unreservedOffers, offerID)
 }
 
 // casStatus atomically sets the status to new value if current value is old,
@@ -142,7 +173,7 @@ func (a *hostOfferSummary) casStatus(old, new CacheStatus) error {
 	}
 	a.status = new
 	if a.status == ReadyOffer {
-		a.readyCount.Store(int32(len(a.offersOnHost)))
+		a.readyCount.Store(int32(len(a.unreservedOffers)))
 	}
 	return nil
 }

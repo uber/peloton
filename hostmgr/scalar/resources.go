@@ -10,6 +10,10 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+const (
+	pelotonRole = "peloton"
+)
+
 // Resources is a non-thread safe helper struct holding recognized resources.
 type Resources struct {
 	// TODO(zhitao): Figure out a way to upgrade to newer version of

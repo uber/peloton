@@ -214,6 +214,22 @@ func (o *MesosResourceBuilder) WithRanges(ranges *mesos.Value_Ranges) *MesosReso
 	return o
 }
 
+// WithReservation sets reservation info.
+func (o *MesosResourceBuilder) WithReservation(
+	reservation *mesos.Resource_ReservationInfo) *MesosResourceBuilder {
+
+	o.Resource.Reservation = reservation
+	return o
+}
+
+// WithDisk sets disk info.
+func (o *MesosResourceBuilder) WithDisk(
+	diskInfo *mesos.Resource_DiskInfo) *MesosResourceBuilder {
+
+	o.Resource.Disk = diskInfo
+	return o
+}
+
 // TODO: add other building functions when needed
 
 // Build returns the mesos resource

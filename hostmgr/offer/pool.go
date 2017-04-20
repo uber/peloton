@@ -5,13 +5,15 @@ import (
 	"sync"
 	"time"
 
-	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	log "github.com/Sirupsen/logrus"
 
 	mesos "mesos/v1"
 	sched "mesos/v1/scheduler"
+
+	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/reservation"
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
 
 // Pool caches a set of offers received from Mesos master. It is
@@ -117,7 +119,7 @@ func (p *offerPool) ClaimForPlace(constraints []*Constraint) (
 	map[string][]*mesos.Offer, error) {
 
 	if len(constraints) <= 0 {
-		return nil, errors.New("Empty constraints passed in!")
+		return nil, errors.New("empty constraints passed in")
 	}
 
 	p.RLock()
@@ -201,7 +203,7 @@ func (p *offerPool) tryAddOffer(offer *mesos.Offer, expiration time.Time) bool {
 	if _, ok := p.hostOfferIndex[hostName]; !ok {
 		return false
 	}
-	p.hostOfferIndex[hostName].addMesosOffer(offer, expiration)
+	p.hostOfferIndex[hostName].addMesosOffer(offer)
 
 	delta := scalar.FromOffer(offer)
 	switch p.hostOfferIndex[hostName].status {
@@ -225,11 +227,14 @@ func (p *offerPool) addOffer(offer *mesos.Offer, expiration time.Time) {
 	_, ok := p.hostOfferIndex[hostName]
 	if !ok {
 		p.hostOfferIndex[hostName] = &hostOfferSummary{
-			offersOnHost: make(map[string]*mesos.Offer),
-			status:       ReadyOffer,
+			reservedOffers: make(map[string]*mesos.Offer),
+			reservedResources: make(
+				map[string]*reservation.ReservedResources),
+			unreservedOffers: make(map[string]*mesos.Offer),
+			status:           ReadyOffer,
 		}
 	}
-	p.hostOfferIndex[hostName].addMesosOffer(offer, expiration)
+	p.hostOfferIndex[hostName].addMesosOffer(offer)
 
 	delta := scalar.FromOffer(offer)
 	switch p.hostOfferIndex[hostName].status {
@@ -400,7 +405,7 @@ func (p *offerPool) DeclineOffers(offers map[string]*mesos.Offer) error {
 				Expiration: expiration,
 			}
 			hostName := *offer.Hostname
-			p.hostOfferIndex[hostName].addMesosOffer(offer, expiration)
+			p.hostOfferIndex[hostName].addMesosOffer(offer)
 		}
 		return err
 	}
@@ -428,7 +433,7 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 		"count": count,
 	}).Info("Returned offers to Ready state.")
 
-	delta := scalar.FromOfferMap(hostOffers.offersOnHost)
+	delta := scalar.FromOfferMap(hostOffers.unreservedOffers)
 	decQuantity(&p.placingResources, delta, p.metrics.placing)
 	incQuantity(&p.readyResources, delta, p.metrics.ready)
 

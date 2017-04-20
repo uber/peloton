@@ -84,10 +84,10 @@ func TestRemoveExpiredOffers(t *testing.T) {
 	result = pool.RemoveExpiredOffers()
 	assert.Exactly(t, expected, result)
 
-	assert.Equal(t, 1, len(pool.hostOfferIndex[hostName1].offersOnHost))
-	offer := pool.hostOfferIndex[hostName1].offersOnHost[offerID3]
+	assert.Equal(t, 1, len(pool.hostOfferIndex[hostName1].unreservedOffers))
+	offer := pool.hostOfferIndex[hostName1].unreservedOffers[offerID3]
 	assert.Equal(t, offerID3, *offer.Id.Value)
-	assert.Empty(t, len(pool.hostOfferIndex[hostName4].offersOnHost))
+	assert.Empty(t, len(pool.hostOfferIndex[hostName4].unreservedOffers))
 }
 
 func getMesosOffer(hostName string, offerID string) *mesos.Offer {
@@ -143,11 +143,11 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	for j := 0; j < nAgents; j++ {
 		hostName := fmt.Sprintf("agent-%d", j)
 		assert.Equal(t, ReadyOffer, pool.hostOfferIndex[hostName].status)
-		assert.Equal(t, nOffers, len(pool.hostOfferIndex[hostName].offersOnHost))
+		assert.Equal(t, nOffers, len(pool.hostOfferIndex[hostName].unreservedOffers))
 		assert.True(t, pool.hostOfferIndex[hostName].hasOffer())
 		for i := 0; i < nOffers; i++ {
 			offerID := fmt.Sprintf("%s-%d", hostName, i)
-			offer := pool.hostOfferIndex[hostName].offersOnHost[offerID]
+			offer := pool.hostOfferIndex[hostName].unreservedOffers[offerID]
 			assert.Equal(t, hostName, offer.GetHostname())
 		}
 	}
@@ -202,7 +202,7 @@ func TestAddGetRemoveOffers(t *testing.T) {
 
 	for _, summary := range pool.hostOfferIndex {
 		assert.NotNil(t, summary)
-		for oid := range summary.offersOnHost {
+		for oid := range summary.unreservedOffers {
 			if _, ok := takenOffers[oid]; ok {
 				// For a taken offer, host status should be PlacingOffer
 				// offersTakenFromHost[hostname] = true
@@ -239,7 +239,7 @@ func TestAddGetRemoveOffers(t *testing.T) {
 
 	for hostname, summary := range pool.hostOfferIndex {
 		assert.False(t, summary.hasOffer())
-		for oid := range summary.offersOnHost {
+		for oid := range summary.unreservedOffers {
 			if _, ok := takenOffers[oid]; ok {
 				assert.Equal(t, PlacingOffer, summary.status)
 			} else {
@@ -250,10 +250,10 @@ func TestAddGetRemoveOffers(t *testing.T) {
 		assert.Equal(
 			t,
 			0,
-			len(summary.offersOnHost),
+			len(summary.unreservedOffers),
 			"Incorrect leftover offer count on hostname %s, leftover: %v",
 			hostname,
-			summary.offersOnHost)
+			summary.unreservedOffers)
 	}
 }
 
