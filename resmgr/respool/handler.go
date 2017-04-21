@@ -426,6 +426,41 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 	return &respool.LookupResponse{}, nil, errors.New("not implemented")
 }
 
+// Query returns the matching resource pools by default returns all
+func (h *serviceHandler) Query(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	req *respool.QueryRequest) (
+	*respool.QueryResponse,
+	yarpc.ResMeta,
+	error) {
+
+	h.metrics.APIQueryResourcePools.Inc(1)
+	log.WithField(
+		"request",
+		req,
+	).Info("Query called")
+
+	var resourcePoolInfos []*respool.ResourcePoolInfo
+
+	// TODO use query request to read filters
+	nodeList := h.resPoolTree.GetAllNodes(false)
+	if nodeList != nil {
+		for n := nodeList.Front(); n != nil; n = n.Next() {
+			resPoolNode, _ := n.Value.(ResPool)
+			resourcePoolInfos = append(
+				resourcePoolInfos,
+				resPoolNode.ToResourcePoolInfo(),
+			)
+		}
+	}
+
+	h.metrics.QueryResourcePoolsSuccess.Inc(1)
+	return &respool.QueryResponse{
+		ResourcePools: resourcePoolInfos,
+	}, nil, nil
+}
+
 // registerProcs will register all api's for end points
 func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
 	d.Register(
@@ -456,6 +491,12 @@ func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
 		json.Procedure(
 			"ResourceManager.LookupResourcePoolID",
 			h.LookupResourcePoolID,
+		),
+	)
+	d.Register(
+		json.Procedure(
+			"ResourceManager.Query",
+			h.Query,
 		),
 	)
 }

@@ -542,3 +542,18 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotEx
 	suite.Equal(expectedErrMsg, updateResp.Error.NotFound.Message)
 	suite.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
 }
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_Query() {
+	// query request
+	queryReq := &pb_respool.QueryRequest{}
+	updateResp, _, err := suite.handler.Query(
+		suite.context,
+		nil,
+		queryReq,
+	)
+
+	suite.NoError(err)
+	suite.NotNil(updateResp)
+	suite.NotNil(updateResp.ResourcePools)
+	suite.Len(updateResp.ResourcePools, len(suite.getResPools()))
+}

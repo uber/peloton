@@ -232,3 +232,15 @@ message LookupResponse {
   Error error = 1;
   ResourcePoolID id = 2;
 }
+
+message QueryRequest {
+  // TODO Filters
+}
+
+message QueryResponse {
+  message Error {
+    // TODO add error types
+  }
+  Error error = 1;
+  repeated ResourcePoolInfo resourcePools = 2;
+}

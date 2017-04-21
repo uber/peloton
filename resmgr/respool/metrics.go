@@ -21,6 +21,10 @@ type Metrics struct {
 	APIDeleteResourcePool     tally.Counter
 	DeleteResourcePoolSuccess tally.Counter
 	DeleteResourcePoolFail    tally.Counter
+
+	APIQueryResourcePools     tally.Counter
+	QueryResourcePoolsSuccess tally.Counter
+	QueryResourcePoolsFail    tally.Counter
 }
 
 // NewMetrics returns a new instance of respool.Metrics.
@@ -47,5 +51,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		APIDeleteResourcePool:     apiScope.Counter("delete_resource_pool"),
 		DeleteResourcePoolSuccess: successScope.Counter("delete_resource_pool"),
 		DeleteResourcePoolFail:    failScope.Counter("delete_resource_pool"),
+
+		APIQueryResourcePools:     apiScope.Counter("query_resource_pools"),
+		QueryResourcePoolsSuccess: successScope.Counter("query_resource_pools"),
+		QueryResourcePoolsFail:    failScope.Counter("query_resource_pools"),
 	}
 }
