@@ -7,7 +7,7 @@ mesos_zk_path = 'zk://' + ','.join([
 election_zk_servers = '\n'.join([
     'zookeeper-mesos-devel01-sjc1.uber.internal:2181',
 ])
-docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.1.0-103-g4d2b693'
+docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.1.0-133-g02407e1'
 mysql_host = 'compute74-sjc1'
 # TODO: remove the host pin once peloton is hooked up with uns
 resmgr_host = 'compute75-sjc1'
