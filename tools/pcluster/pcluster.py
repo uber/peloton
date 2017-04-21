@@ -86,6 +86,7 @@ def run_mesos():
     cli.pull(config['zk_image'])
     container = cli.create_container(
         name=config['zk_container'],
+        hostname=config['zk_container'],
         volumes=['/scripts'],
         host_config=cli.create_host_config(
             port_bindings={
@@ -109,6 +110,7 @@ def run_mesos():
     cli.pull(config['mesos_master_image'])
     container = cli.create_container(
         name=config['mesos_master_container'],
+        hostname=config['mesos_master_container'],
         volumes=['/scripts'],
         ports=[repr(config['master_port'])],
         host_config=cli.create_host_config(
@@ -146,6 +148,7 @@ def run_mesos():
         remove_existing_container(agent)
         container = cli.create_container(
             name=agent,
+            hostname=agent,
             volumes=['/scripts', '/var/run/docker.sock'],
             ports=[repr(config['agent_port'])],
             host_config=cli.create_host_config(
@@ -196,6 +199,7 @@ def run_mysql():
     cli.pull(config['mysql_image'])
     container = cli.create_container(
         name=config['mysql_container'],
+        hostname=config['mysql_container'],
         host_config=cli.create_host_config(
             port_bindings={
                 config['default_mysql_port']: config['local_mysql_port']
@@ -225,6 +229,7 @@ def run_cassandra():
     cli.pull(config['cassandra_image'])
     container = cli.create_container(
         name=config['cassandra_container'],
+        hostname=config['cassandra_container'],
         host_config=cli.create_host_config(
             port_bindings={
                 config['cassandra_cql_port']: config['cassandra_cql_port'],
@@ -286,6 +291,7 @@ def run_peloton_master():
         remove_existing_container(name)
         container = cli.create_container(
             name=name,
+            hostname=name,
             environment=[
                 'CONFIG_DIR=config',
                 'PORT=' + repr(port),
@@ -348,6 +354,7 @@ def run_peloton_resmgr():
         remove_existing_container(name)
         container = cli.create_container(
             name=name,
+            hostname=name,
             ports=[repr(port)],
             environment=[
                 'CONFIG_DIR=config',
@@ -387,6 +394,7 @@ def run_peloton_hostmgr():
         remove_existing_container(name)
         container = cli.create_container(
             name=name,
+            hostname=name,
             ports=[repr(port)],
             environment=[
                 'CONFIG_DIR=config',
@@ -428,6 +436,7 @@ def run_peloton_jobmgr():
         remove_existing_container(name)
         container = cli.create_container(
             name=name,
+            hostname=name,
             ports=[repr(port)],
             environment=[
                 'CONFIG_DIR=config',
@@ -465,6 +474,7 @@ def run_peloton_placement():
         remove_existing_container(name)
         container = cli.create_container(
             name=name,
+            hostname=name,
             environment=[
                 'CONFIG_DIR=config',
                 'APP=placement',
