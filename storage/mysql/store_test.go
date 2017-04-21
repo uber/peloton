@@ -347,7 +347,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	for i := 0; i < records; i++ {
 		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
 		result, err := suite.store.GetJobConfig(&jobID)
-		suite.NoError(err)
+		suite.NotNil(err)
 		suite.Nil(result)
 	}
 }

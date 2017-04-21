@@ -213,7 +213,7 @@ func (m *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 	for _, jobConfig := range jobs {
 		return jobConfig, nil
 	}
-	return nil, nil
+	return nil, fmt.Errorf("GetJobConfig cannot find JobConfig for jobID %v", id.Value)
 }
 
 // Query returns all jobs that contains the Labels.
@@ -790,7 +790,7 @@ func (m *Store) GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error) {
 		m.metrics.JobGetRuntime.Inc(1)
 		return runtime, nil
 	}
-	return nil, nil
+	return nil, fmt.Errorf("GetJobRuntime cannot find runtime for jobID %v", id.Value)
 }
 
 // GetJobsByState returns the jobID by job state

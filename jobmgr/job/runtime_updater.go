@@ -1,6 +1,7 @@
 package job
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -90,7 +91,7 @@ func (j *RuntimeUpdater) OnEvents(events []*pb_eventstream.Event) {
 
 func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 	log.WithField("job_id", jobID).
-		Debug("JobRuntimeUpdater updateJobState")
+		Info("JobRuntimeUpdater updateJobState")
 
 	// Read the job config and job runtime
 	jobConfig, err := j.jobStore.GetJobConfig(jobID)
@@ -100,6 +101,12 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 			Error("Failed to get jobConfig")
 		return err
 	}
+	if jobConfig == nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("Cannot find jobConfig")
+		return fmt.Errorf("Cannot find jobConfig for %s", jobID.Value)
+	}
 
 	jobRuntime, err := j.jobStore.GetJobRuntime(jobID)
 	if err != nil {
@@ -107,6 +114,12 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 			WithField("job_id", jobID).
 			Error("Failed to get jobRuntime")
 		return err
+	}
+	if jobRuntime == nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("Cannot find jobRuntime")
+		return fmt.Errorf("Cannot find jobRuntime for %s", jobID.Value)
 	}
 
 	var jobState job.JobState
