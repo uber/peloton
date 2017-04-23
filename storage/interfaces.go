@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	mesos_v1 "mesos/v1"
 	"peloton/api/job"
 	"peloton/api/peloton"
@@ -8,7 +9,14 @@ import (
 	"peloton/api/task"
 )
 
-// TODO: Use string type for jobID and taskID
+// TaskNotFoundError indicates that task is not found
+type TaskNotFoundError struct {
+	TaskID string
+}
+
+func (e *TaskNotFoundError) Error() string {
+	return fmt.Sprintf("%v is not found", e.TaskID)
+}
 
 // JobStore is the interface to store job states
 type JobStore interface {

@@ -6,7 +6,6 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/leader"
-
 	log "github.com/Sirupsen/logrus"
 )
 

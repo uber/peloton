@@ -14,7 +14,6 @@ import (
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
-
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
@@ -31,13 +30,14 @@ import (
 	resmgr_task "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/resmgr/taskqueue"
 	resmgr_taskupdate "code.uber.internal/infra/peloton/resmgr/taskupdate"
+	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
-	"code.uber.internal/infra/peloton/storage/stores"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 )
@@ -353,7 +353,11 @@ func main() {
 		common.PelotonMaster,
 		jobStore,
 		taskStore,
-		job.NewJobRuntimeUpdater(jobStore, taskStore),
+		job.NewJobRuntimeUpdater(
+			jobStore,
+			taskStore,
+			json.New(dispatcher.ClientConfig(common.PelotonMaster)),
+			rootScope),
 		common.PelotonResourceManager,
 		rootScope,
 	)

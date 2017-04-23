@@ -185,8 +185,29 @@ func (h *serviceHandler) Create(
 	h.metrics.TaskCreate.Inc(nTasks)
 
 	err = h.enqueueTasks(tasks, jobConfig)
-
 	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("Failed to enqueue tasks to RM")
+		h.metrics.JobCreateFail.Inc(1)
+		return nil, nil, err
+	}
+
+	jobRuntime, err := h.jobStore.GetJobRuntime(jobID)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("Failed to GetJobRuntime")
+		h.metrics.JobCreateFail.Inc(1)
+		return nil, nil, err
+	}
+	jobRuntime.State = job.JobState_PENDING
+	err = h.jobStore.UpdateJobRuntime(jobID, jobRuntime)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("Failed to UpdateJobRuntime")
+		h.metrics.JobCreateFail.Inc(1)
 		return nil, nil, err
 	}
 
@@ -318,15 +339,21 @@ func (h *serviceHandler) enqueueTasks(
 	tasks []*task.TaskInfo,
 	config *job.JobConfig,
 ) error {
-	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
+	return EnqueueTasks(tasks, config, h.client)
+}
+
+// EnqueueTasks enqueues all tasks to respool in resmgr.
+func EnqueueTasks(tasks []*task.TaskInfo, config *job.JobConfig, client json.Client) error {
+	rootCtx := context.Background()
+	ctx, cancelFunc := context.WithTimeout(rootCtx, 10*time.Second)
 	defer cancelFunc()
-	resmgrTasks := h.convertToResMgrTask(tasks, config)
+	resmgrTasks := convertToResMgrTask(tasks, config)
 	var response resmgrsvc.EnqueueTasksResponse
 	var request = &resmgrsvc.EnqueueTasksRequest{
 		Tasks:   resmgrTasks,
 		ResPool: config.RespoolID,
 	}
-	_, err := h.client.Call(
+	_, err := client.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks"),
 		request,
@@ -398,7 +425,7 @@ func (h *serviceHandler) validateResourcePool(
 }
 
 // convertToResMgrTask converts taskinfo to resmgr task
-func (h *serviceHandler) convertToResMgrTask(
+func convertToResMgrTask(
 	tasks []*task.TaskInfo,
 	config *job.JobConfig) []*resmgr.Task {
 

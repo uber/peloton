@@ -2,26 +2,26 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"runtime"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"net/url"
-	"runtime"
-
-	"code.uber.internal/infra/peloton/common/config"
-	"code.uber.internal/infra/peloton/storage/stores"
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -251,7 +251,11 @@ func main() {
 		common.PelotonHostManager,
 		jobStore,
 		taskStore,
-		job.NewJobRuntimeUpdater(jobStore, taskStore),
+		job.NewJobRuntimeUpdater(
+			jobStore,
+			taskStore,
+			json.New(dispatcher.ClientConfig(common.PelotonResourceManager)),
+			rootScope),
 		common.PelotonResourceManager,
 		rootScope,
 	)

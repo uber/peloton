@@ -727,7 +727,7 @@ func (s *Store) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 		return record.GetTaskInfo()
 	}
 	s.metrics.TaskNotFound.Inc(1)
-	return nil, fmt.Errorf("Task id %v not found", taskID)
+	return nil, &storage.TaskNotFoundError{TaskID: taskID}
 }
 
 //SetMesosStreamID stores the mesos framework id for a framework name

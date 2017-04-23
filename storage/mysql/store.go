@@ -318,9 +318,8 @@ func (m *Store) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 		return task, nil
 	}
 	// No record found
-	errMsg := fmt.Sprintf("No task records found for taskId %v", taskID)
-	log.Warnf(errMsg)
-	return nil, fmt.Errorf(errMsg)
+	log.WithField("task_id", taskID).Warn("Task not found")
+	return nil, &storage.TaskNotFoundError{TaskID: taskID}
 }
 
 // GetTaskForJob returns the tasks (tasks.TaskInfo) for a peloton job

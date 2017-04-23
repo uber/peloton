@@ -14,6 +14,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
 func TestUpdateJobRuntime_Events(t *testing.T) {
@@ -22,7 +23,7 @@ func TestUpdateJobRuntime_Events(t *testing.T) {
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
 
-	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore)
+	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
 
 	var events []*pb_eventstream.Event
 	var times []float64
@@ -70,7 +71,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		InstanceCount: uint32(3),
 	}
 	var jobRuntime = job.RuntimeInfo{
-		State: job.JobState_INITIALIZED,
+		State: job.JobState_PENDING,
 	}
 
 	mockJobStore.EXPECT().
@@ -78,7 +79,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		Return(&jobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(job.JobState_INITIALIZED).
+		GetJobsByState(job.JobState_PENDING).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
@@ -107,7 +108,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		AnyTimes()
 
 	taskID := fmt.Sprintf("job%d-%d-%s", 0, 1, uuid.NewUUID().String())
-	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore)
+	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
 	timeChange := float64(100000)
 	var events = []*pb_eventstream.Event{
 		{

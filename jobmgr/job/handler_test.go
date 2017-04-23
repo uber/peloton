@@ -109,7 +109,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	tasks := suite.handler.convertToResMgrTask(tasksInfo, suite.testJobConfig)
+	tasks := convertToResMgrTask(tasksInfo, suite.testJobConfig)
 	var expectedTasks []*resmgr.Task
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
@@ -143,7 +143,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	tasks := suite.handler.convertToResMgrTask(tasksInfo, suite.testJobConfig)
+	tasks := convertToResMgrTask(tasksInfo, suite.testJobConfig)
 	var expectedTasks []*resmgr.Task
 	var err error
 	gomock.InOrder(

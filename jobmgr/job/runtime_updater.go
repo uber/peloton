@@ -14,7 +14,9 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
+	"go.uber.org/yarpc/encoding/json"
 )
 
 // jobStateUpdateInterval is the interval at which the job update is checked
@@ -25,12 +27,22 @@ var jobStateUpdateInterval = 15 * time.Second
 var checkAllJobsInterval = 1 * time.Hour
 
 // NewJobRuntimeUpdater creates a new JobRuntimeUpdater
-func NewJobRuntimeUpdater(jobStore storage.JobStore, taskStore storage.TaskStore) *RuntimeUpdater {
+func NewJobRuntimeUpdater(
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore,
+	resmgrClient json.Client,
+	parentScope tally.Scope) *RuntimeUpdater {
 	updater := RuntimeUpdater{
 		jobStore:           jobStore,
 		taskStore:          taskStore,
 		lastTaskUpdateTime: make(map[string]float64),
 		taskUpdatedFlags:   make(map[string]bool),
+		metrics:            NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
+		jobRecovery: NewJobRecovery(
+			jobStore,
+			taskStore,
+			resmgrClient,
+			parentScope),
 	}
 	t := time.NewTicker(jobStateUpdateInterval)
 	go updater.updateJobStateLoop(t.C)
@@ -53,7 +65,9 @@ type RuntimeUpdater struct {
 
 	lastCheckAllJobsTime time.Time
 
-	//TODO: add metrics
+	jobRecovery *Recovery
+
+	metrics *RuntimeUpdaterMetrics
 }
 
 // OnEvent callback
@@ -160,22 +174,23 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 	if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
 		jobState = job.JobState_SUCCEEDED
 		jobRuntime.CompletionTime = lastTaskUpdateTime.String()
+		j.metrics.JobSucceeded.Inc(1)
 	} else if stateCounts[task.TaskState_SUCCEEDED.String()]+
 		stateCounts[task.TaskState_FAILED.String()] == instances {
 		jobState = job.JobState_FAILED
 		jobRuntime.CompletionTime = lastTaskUpdateTime.String()
+		j.metrics.JobFailed.Inc(1)
 	} else if stateCounts[task.TaskState_KILLED.String()] > 0 &&
 		(stateCounts[task.TaskState_SUCCEEDED.String()]+
 			stateCounts[task.TaskState_FAILED.String()]+
 			stateCounts[task.TaskState_KILLED.String()] == instances) {
 		jobState = job.JobState_KILLED
 		jobRuntime.CompletionTime = lastTaskUpdateTime.String()
+		j.metrics.JobKilled.Inc(1)
 	} else if stateCounts[task.TaskState_RUNNING.String()] > 0 {
 		jobState = job.JobState_RUNNING
-	} else if stateCounts[task.TaskState_PENDING.String()] > 0 {
-		jobState = job.JobState_PENDING
 	} else {
-		jobState = job.JobState_INITIALIZED
+		jobState = job.JobState_PENDING
 	}
 
 	jobRuntime.State = jobState
@@ -219,7 +234,6 @@ func (j *RuntimeUpdater) checkAllJobs() {
 	j.lastCheckAllJobsTime = time.Now()
 
 	nonTerminatedStates := []job.JobState{
-		job.JobState_INITIALIZED,
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
 		job.JobState_UNKNOWN,
@@ -233,7 +247,12 @@ func (j *RuntimeUpdater) checkAllJobs() {
 			continue
 		}
 		for _, jobID := range jobIDs {
-			j.updateJobRuntime(&jobID)
+			err := j.updateJobRuntime(&jobID)
+			if err == nil {
+				j.metrics.JobRuntimeUpdated.Inc(1)
+			} else {
+				j.metrics.JobRuntimeUpdateFailed.Inc(1)
+			}
 		}
 	}
 }
@@ -249,8 +268,16 @@ func (j *RuntimeUpdater) clear() {
 func (j *RuntimeUpdater) updateJobStateLoop(c <-chan time.Time) {
 	for range c {
 		if j.started.Load() {
+			// update job runtime based on taskUpdatedFlags
 			j.updateJobsRuntime()
+			// Also scan all jobs and see if their runtime state need to be
+			// updated, in case some task updates are lost
 			j.checkAllJobs()
+			// jobRecovery is ran from time to time on the leader JobManager.
+			// This is because all JM can fail and leave partially created jobs.
+			// Thus the leader need to check from time to time to recover the
+			// partially created jobs
+			j.jobRecovery.recoverJobs()
 		}
 	}
 }
@@ -262,6 +289,7 @@ func (j *RuntimeUpdater) Start() {
 
 	log.Info("JobRuntimeUpdater started")
 	j.started.Store(true)
+	j.metrics.IsLeader.Update(1.0)
 }
 
 // Stop stops processing status update events
@@ -271,6 +299,7 @@ func (j *RuntimeUpdater) Stop() {
 
 	log.Info("JobRuntimeUpdater stopped")
 	j.started.Store(false)
+	j.metrics.IsLeader.Update(0.0)
 	j.clear()
 
 }
