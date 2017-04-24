@@ -351,8 +351,10 @@ func main() {
 	task.InitTaskStatusUpdate(
 		dispatcher,
 		common.PelotonMaster,
+		jobStore,
 		taskStore,
 		job.NewJobRuntimeUpdater(jobStore, taskStore),
+		common.PelotonResourceManager,
 		rootScope,
 	)
 

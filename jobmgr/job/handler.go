@@ -25,6 +25,7 @@ import (
 
 	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // InitServiceHandler initalizes the job manager
@@ -399,24 +400,14 @@ func (h *serviceHandler) validateResourcePool(
 // convertToResMgrTask converts taskinfo to resmgr task
 func (h *serviceHandler) convertToResMgrTask(
 	tasks []*task.TaskInfo,
-	config *job.JobConfig,
-) []*resmgr.Task {
-	var resmgrtasks []*resmgr.Task
+	config *job.JobConfig) []*resmgr.Task {
 
+	var resmgrtasks []*resmgr.Task
 	for _, t := range tasks {
-		taskID := &peloton.TaskID{
-			Value: fmt.Sprintf("%s-%d", t.JobId.Value, t.InstanceId),
-		}
-		rmtask := &resmgr.Task{
-			Id:          taskID,
-			JobId:       t.JobId,
-			TaskId:      t.Runtime.TaskId,
-			Name:        t.Config.Name,
-			Preemptible: config.Sla.Preemptible,
-			Priority:    config.Sla.Priority,
-			Resource:    t.Config.Resource,
-		}
-		resmgrtasks = append(resmgrtasks, rmtask)
+		resmgrtasks = append(
+			resmgrtasks,
+			util.ConvertTaskToResMgrTask(t, config),
+		)
 	}
 	return resmgrtasks
 }

@@ -48,7 +48,8 @@ func GetTaskConfig(
 		log.Debugf("type: %v, field: %v", typ, field)
 
 		if (field.Kind() == reflect.String && field.String() == "") ||
-			(field.Kind() != reflect.String && field.IsNil()) {
+			(field.Kind() == reflect.Struct && field.IsNil()) ||
+			(field.Kind() == reflect.Slice && field.IsNil()) {
 			// Ignore fields that are unset
 			continue
 		}

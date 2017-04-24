@@ -193,6 +193,10 @@ message TaskConfig {
   // Constraints on the labels of the host or tasks on the host that this
   // task should run on, all constraints have to be satisfied.
   repeated Constraint constraints = 8;
+
+  // Max number of failures can occur before giving up scheduling retry, no
+  // backoff for now. Default 0 means no retry on failures.
+  uint32 maxTaskFailures = 9;
 }
 
 /**
@@ -274,6 +278,9 @@ message RuntimeInfo {
 
   // The reason for task updates
   string reason = 8;
+
+  // number of task failures
+  uint32 taskFailuresCount = 9;
 }
 
 

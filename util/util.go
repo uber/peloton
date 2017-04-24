@@ -5,15 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	mesos "mesos/v1"
-	"peloton/api/task"
+	"reflect"
 	"strconv"
 	"strings"
 
-	"reflect"
-
 	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
+
+	mesos "mesos/v1"
+	"peloton/api/job"
+	"peloton/api/peloton"
+	"peloton/api/task"
+	"peloton/private/resmgr"
 )
 
 const (
@@ -323,4 +326,25 @@ func UnmarshalStringArray(jsonStrings []string, resultType reflect.Type) ([]inte
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+// ConvertTaskToResMgrTask converts taskinfo to resmgr task.
+func ConvertTaskToResMgrTask(
+	taskInfo *task.TaskInfo,
+	jobConfig *job.JobConfig) *resmgr.Task {
+	taskID := &peloton.TaskID{
+		Value: fmt.Sprintf(
+			"%s-%d",
+			taskInfo.GetJobId().GetValue(),
+			taskInfo.GetInstanceId()),
+	}
+	return &resmgr.Task{
+		Id:          taskID,
+		JobId:       taskInfo.GetJobId(),
+		TaskId:      taskInfo.GetRuntime().GetTaskId(),
+		Name:        taskInfo.GetConfig().GetName(),
+		Preemptible: jobConfig.GetSla().GetPreemptible(),
+		Priority:    jobConfig.GetSla().GetPriority(),
+		Resource:    taskInfo.GetConfig().GetResource(),
+	}
 }
