@@ -32,7 +32,7 @@ func (suite *resPoolActions) TearDownSuite() {
 	suite.ctx.Done()
 }
 
-func (suite *resPoolActions) GetRespoolInfos() []*respool.ResourcePoolInfo {
+func (suite *resPoolActions) getRespoolInfos() []*respool.ResourcePoolInfo {
 	return []*respool.ResourcePoolInfo{
 		{
 			Id: &respool.ResourcePoolID{
@@ -106,7 +106,7 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 		{
 			request: &respool.QueryRequest{},
 			response: &respool.QueryResponse{
-				ResourcePools: suite.GetRespoolInfos(),
+				ResourcePools: suite.getRespoolInfos(),
 				Error:         nil,
 			},
 			format: "yaml",
@@ -141,6 +141,29 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 			suite.NoError(err)
 		}
 	}
+}
+
+func (suite *resPoolActions) TestGetParentPath() {
+	tt := []struct {
+		resourcePoolPath string
+		parentPath       string
+	}{
+		{"/a/b/c", "/a/b/"},
+		{"/a/b/c/", "/a/b/"},
+		{"/a", "/"},
+	}
+
+	for _, test := range tt {
+		suite.Equal(test.parentPath, getParentPath(test.resourcePoolPath))
+	}
+}
+
+func (suite *resPoolActions) TestResPoolCreateActionInvalidPath() {
+	c := Client{}
+	resourcePoolPath := "/"
+	err := c.ResPoolCreateAction(resourcePoolPath, "")
+	suite.Error(err)
+	suite.Equal("cannot create root resource pool", err.Error())
 }
 
 func TestResPoolHandler(t *testing.T) {

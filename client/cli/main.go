@@ -108,9 +108,10 @@ var (
 	taskRestartInstanceRanges = taskRangeListFlag(taskRestart.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
 
 	// Top level resource pool command
-	resPool             = app.Command("respool", "manage resource pools")
-	resPoolCreate       = resPool.Command("create", "create a resource pool")
-	resPoolCreateName   = resPoolCreate.Arg("respool", "respool identifier").Required().String()
+	resPool           = app.Command("respool", "manage resource pools")
+	resPoolCreate     = resPool.Command("create", "create a resource pool")
+	resPoolCreatePath = resPoolCreate.Arg("respool", "complete path of the "+
+		"resource pool starting from the root").Required().String()
 	resPoolCreateConfig = resPoolCreate.Arg("config", "YAML Resource Pool configuration").Required().ExistingFile()
 
 	resPoolDump = resPool.Command(
@@ -252,7 +253,7 @@ func main() {
 	case taskRestart.FullCommand():
 		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
 	case resPoolCreate.FullCommand():
-		err = client.ResPoolCreateAction(*resPoolCreateName, *resPoolCreateConfig)
+		err = client.ResPoolCreateAction(*resPoolCreatePath, *resPoolCreateConfig)
 	case resPoolDump.FullCommand():
 		err = client.ResPoolDumpAction(*resPoolDumpFormat)
 	default:

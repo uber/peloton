@@ -77,9 +77,9 @@ $ PELOTON=app make pcluster
 
 ## Test Peloton
 
-Create resource pool (respool is required for job creation):
+Create resource pool by providing the path(respool is required for job creation):
 ```
-$ bin/peloton respool create respool11 example/test_respool.yaml
+$ bin/peloton respool create /respool11 example/test_respool.yaml
 ```
 
 Create job:

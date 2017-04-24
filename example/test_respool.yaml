@@ -23,6 +23,4 @@ resources:
   reservation: 2
   limit: 4
   share: 1
-parent:
-  value: root
-policy: 1 
+policy: 1

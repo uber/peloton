@@ -6,15 +6,32 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"peloton/api/respool"
-
 	"github.com/pkg/errors"
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
+
+	"peloton/api/respool"
 )
 
-// ResPoolCreateAction is the action for creating a job
-func (client *Client) ResPoolCreateAction(respoolName string, cfgFile string) error {
+// ResourcePoolPathDelim is the resource pool path delimiter
+const ResourcePoolPathDelim = "/"
+
+// ResPoolCreateAction is the action for creating a resource pool
+func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) error {
+	if respoolPath == ResourcePoolPathDelim {
+		return errors.New("cannot create root resource pool")
+	}
+
+	parentPath := getParentPath(respoolPath)
+	parentID, err := client.LookupResourcePoolID(parentPath)
+	if err != nil {
+		return err
+	}
+	if parentID == nil {
+		return errors.Errorf("unable to find resource pool ID "+
+			"for parent:%s", parentPath)
+	}
+
 	var respoolConfig respool.ResourcePoolConfig
 	buffer, err := ioutil.ReadFile(cfgFile)
 	if err != nil {
@@ -23,11 +40,12 @@ func (client *Client) ResPoolCreateAction(respoolName string, cfgFile string) er
 	if err := yaml.Unmarshal(buffer, &respoolConfig); err != nil {
 		return fmt.Errorf("Unable to parse file %s: %v", cfgFile, err)
 	}
+	respoolConfig.Parent = parentID
 
 	var response respool.CreateResponse
 	var request = &respool.CreateRequest{
 		Id: &respool.ResourcePoolID{
-			Value: respoolName,
+			Value: respoolPath,
 		},
 		Config: &respoolConfig,
 	}
@@ -94,6 +112,15 @@ func marshall(
 	default:
 		return nil, fmt.Errorf("invalid format %s", format)
 	}
+}
+
+func getParentPath(resourcePoolPath string) string {
+	var parentPath string
+	resourcePoolPath = strings.TrimSuffix(resourcePoolPath, ResourcePoolPathDelim)
+	resourcePools := strings.Split(resourcePoolPath, ResourcePoolPathDelim)
+	resourcePoolName := resourcePools[len(resourcePools)-1]
+	parentPath = strings.TrimSuffix(resourcePoolPath, resourcePoolName)
+	return parentPath
 }
 
 func printResPoolCreateResponse(r respool.CreateResponse, debug bool) {
