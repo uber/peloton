@@ -112,6 +112,15 @@ var (
 	resPoolCreate       = resPool.Command("create", "create a resource pool")
 	resPoolCreateName   = resPoolCreate.Arg("respool", "respool identifier").Required().String()
 	resPoolCreateConfig = resPoolCreate.Arg("config", "YAML Resource Pool configuration").Required().ExistingFile()
+
+	resPoolDump = resPool.Command(
+		"dump",
+		"Dump all resource pool(s)",
+	)
+	resPoolDumpFormat = resPoolDump.Flag(
+		"format",
+		"Dump resource pool(s) in a format - default (yaml)",
+	).Default("yaml").Enum("yaml", "yml", "json")
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -244,6 +253,8 @@ func main() {
 		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
 	case resPoolCreate.FullCommand():
 		err = client.ResPoolCreateAction(*resPoolCreateName, *resPoolCreateConfig)
+	case resPoolDump.FullCommand():
+		err = client.ResPoolDumpAction(*resPoolDumpFormat)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}
