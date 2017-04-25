@@ -175,3 +175,15 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
 	err := ValidateTaskConfig(&jobConfig)
 	suite.Error(err)
 }
+
+func (suite *TaskConfigTestSuite) TestValidateTaskConfigWithInvalidFieldType() {
+	// Validates task config field type is string/ptr/slice, otherwise
+	// we cannot distinguish between unset value and default value through
+	// reflection.
+	taskConfig := &task.TaskConfig{}
+	val := reflect.ValueOf(taskConfig).Elem()
+	for i := 0; i < val.NumField(); i++ {
+		kind := val.Field(i).Kind()
+		suite.True(kind == reflect.String || kind == reflect.Ptr || kind == reflect.Slice)
+	}
+}

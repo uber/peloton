@@ -140,8 +140,8 @@ func (p *statusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 	state := util.MesosStateToPelotonState(taskStatus.GetState())
 
 	statusMsg := taskStatus.GetMessage()
-	if state == pb_task.TaskState_FAILED && (taskInfo.GetRuntime().GetTaskFailuresCount() <
-		taskInfo.GetConfig().GetMaxTaskFailures()) {
+	if state == pb_task.TaskState_FAILED && (taskInfo.GetRuntime().GetFailuresCount() <
+		taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()) {
 
 		p.metrics.RetryFailedTasksTotal.Inc(1)
 		statusMsg = "Rescheduled due to task failure status: " + statusMsg
@@ -153,7 +153,7 @@ func (p *statusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 			uuid.NewUUID().String())
 		taskInfo.GetRuntime().GetTaskId().Value = &newMesosTaskID
 		taskInfo.GetRuntime().State = pb_task.TaskState_INITIALIZED
-		taskInfo.GetRuntime().TaskFailuresCount++
+		taskInfo.GetRuntime().FailuresCount++
 		log.WithField("taskInfo", taskInfo).Debug("Reschedule failed task.")
 		// TODO: check for failing reason and do backoff before
 		// rescheduling.

@@ -166,7 +166,19 @@ message LabelConstraint {
 }
 
 /**
+ *  Restart policy for a task.
+ */
+message RestartPolicy {
+
+  // Max number of task failures can occur before giving up scheduling retry, no
+  // backoff for now. Default 0 means no retry on failures.
+  uint32 maxFailures = 1;
+}
+
+/**
  *  Task configuration for a given job instance
+ *  Note that only add string/slice/ptr type into TaskConfig directly due to
+ *  the limitation of go reflection inside our task specific config logic.
  */
 message TaskConfig {
   // Name of the task
@@ -194,9 +206,8 @@ message TaskConfig {
   // task should run on, all constraints have to be satisfied.
   repeated Constraint constraints = 8;
 
-  // Max number of failures can occur before giving up scheduling retry, no
-  // backoff for now. Default 0 means no retry on failures.
-  uint32 maxTaskFailures = 9;
+  // Task restart policy, unset means no restart.
+  RestartPolicy restartPolicy = 9;
 }
 
 /**
@@ -280,7 +291,7 @@ message RuntimeInfo {
   string reason = 8;
 
   // number of task failures
-  uint32 taskFailuresCount = 9;
+  uint32 failuresCount = 9;
 }
 
 

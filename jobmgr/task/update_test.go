@@ -146,8 +146,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 			GoalState: task.TaskState_SUCCEEDED,
 		},
 		Config: &task.TaskConfig{
-			Name:            jobID,
-			MaxTaskFailures: 3,
+			Name: jobID,
+			RestartPolicy: &task.RestartPolicy{
+				MaxFailures: 3,
+			},
 		},
 		InstanceId: uint32(instanceID),
 		JobId: &peloton.JobID{
@@ -194,7 +196,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 				rescheduleMsg,
 			)
 			suite.Equal(
-				updateTask.Runtime.TaskFailuresCount,
+				updateTask.Runtime.FailuresCount,
 				uint32(1),
 			)
 		}).
@@ -286,8 +288,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
 			GoalState: task.TaskState_SUCCEEDED,
 		},
 		Config: &task.TaskConfig{
-			Name:            jobID,
-			MaxTaskFailures: 3,
+			Name: jobID,
+			RestartPolicy: &task.RestartPolicy{
+				MaxFailures: 3,
+			},
 		},
 		InstanceId: uint32(instanceID),
 		JobId: &peloton.JobID{
@@ -325,7 +329,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
 				rescheduleMsg,
 			)
 			suite.Equal(
-				updateTask.Runtime.TaskFailuresCount,
+				updateTask.Runtime.FailuresCount,
 				uint32(1),
 			)
 		}).
