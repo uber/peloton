@@ -1,5 +1,9 @@
 package respool
 
+import (
+	"peloton/api/respool"
+)
+
 const (
 	// RootResPoolID is the ID for Root node
 	RootResPoolID = "root"
@@ -9,4 +13,7 @@ const (
 
 	// ResourcePoolPathDelimiter is the delimiter for the resource pool path
 	ResourcePoolPathDelimiter = "/"
+
+	// DefaultResPoolSchedulingPolicy is the default scheduling policy for respool
+	DefaultResPoolSchedulingPolicy = respool.SchedulingPolicy_PriorityFIFO
 )

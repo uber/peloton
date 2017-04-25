@@ -497,7 +497,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_SkipRo
 	suite.NoError(err)
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_InvalidPolicy() {
+func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_NoPolicy() {
 	mockResourcePoolID := &pb_respool.ResourcePoolID{
 		Value: "respool99",
 	}
@@ -532,9 +532,12 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Invali
 	)
 
 	suite.NoError(err)
+	suite.EqualValues(mockResourcePoolConfig.Policy, pb_respool.SchedulingPolicy_UNKNOWN)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "invalid policy type 0")
+
+	suite.NoError(err)
+	suite.EqualValues(mockResourcePoolConfig.Policy, pb_respool.SchedulingPolicy_PriorityFIFO)
 }
 
 func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidatePathError() {

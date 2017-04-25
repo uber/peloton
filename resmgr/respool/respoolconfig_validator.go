@@ -261,11 +261,10 @@ func ValidateResourcePool(resTree Tree, resourcePoolConfigData ResourcePoolConfi
 		return errors.Errorf("cannot override %s", RootResPoolID)
 	}
 
-	// validate unknown policy
+	// use default if scheduling policy is SchedulingPolicy_UNKNOWN (not set)
 	if resPoolConfig.Policy == respool.SchedulingPolicy_UNKNOWN {
-		return errors.Errorf(
-			"invalid policy type %d",
-			resPoolConfig.Policy)
+		log.Infof("Scheduling policy is not set, use default %v", DefaultResPoolSchedulingPolicy)
+		resPoolConfig.Policy = DefaultResPoolSchedulingPolicy
 	}
 
 	cResources := resPoolConfig.Resources
