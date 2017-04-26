@@ -22,7 +22,22 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 		return errors.New("cannot create root resource pool")
 	}
 
-	parentPath := getParentPath(respoolPath)
+	respoolConfig, err := readResourcePoolConfig(cfgFile)
+	if err != nil {
+		return err
+	}
+
+	if respoolConfig.GetParent() != nil {
+		return errors.New("parent should not be supplied in the config")
+	}
+
+	respoolName := parseRespoolName(respoolPath)
+	if respoolName != respoolConfig.Name {
+		return fmt.Errorf("resource pool name in path:%s and "+
+			"config:%s don't match", respoolName, respoolConfig.Name)
+	}
+
+	parentPath := parseParentPath(respoolPath)
 	parentID, err := client.LookupResourcePoolID(parentPath)
 	if err != nil {
 		return err
@@ -32,14 +47,7 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 			"for parent:%s", parentPath)
 	}
 
-	var respoolConfig respool.ResourcePoolConfig
-	buffer, err := ioutil.ReadFile(cfgFile)
-	if err != nil {
-		return fmt.Errorf("Unable to open file %s: %v", cfgFile, err)
-	}
-	if err := yaml.Unmarshal(buffer, &respoolConfig); err != nil {
-		return fmt.Errorf("Unable to parse file %s: %v", cfgFile, err)
-	}
+	// set parent ID
 	respoolConfig.Parent = parentID
 
 	var response respool.CreateResponse
@@ -60,6 +68,18 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 	}
 	printResPoolCreateResponse(response, client.Debug)
 	return nil
+}
+
+func readResourcePoolConfig(cfgFile string) (respool.ResourcePoolConfig, error) {
+	var respoolConfig respool.ResourcePoolConfig
+	buffer, err := ioutil.ReadFile(cfgFile)
+	if err != nil {
+		return respoolConfig, fmt.Errorf("Unable to open file %s: %v", cfgFile, err)
+	}
+	if err := yaml.Unmarshal(buffer, &respoolConfig); err != nil {
+		return respoolConfig, fmt.Errorf("Unable to parse file %s: %v", cfgFile, err)
+	}
+	return respoolConfig, nil
 }
 
 // ResPoolDumpAction dumps the resource pool tree
@@ -114,12 +134,18 @@ func marshall(
 	}
 }
 
-func getParentPath(resourcePoolPath string) string {
-	var parentPath string
+func parseRespoolName(resourcePoolPath string) string {
+	var resourcePoolName string
 	resourcePoolPath = strings.TrimSuffix(resourcePoolPath, ResourcePoolPathDelim)
 	resourcePools := strings.Split(resourcePoolPath, ResourcePoolPathDelim)
-	resourcePoolName := resourcePools[len(resourcePools)-1]
-	parentPath = strings.TrimSuffix(resourcePoolPath, resourcePoolName)
+	resourcePoolName = resourcePools[len(resourcePools)-1]
+	return resourcePoolName
+}
+
+func parseParentPath(resourcePoolPath string) string {
+	resourcePoolName := parseRespoolName(resourcePoolPath)
+	resourcePoolPath = strings.TrimSuffix(resourcePoolPath, ResourcePoolPathDelim)
+	parentPath := strings.TrimSuffix(resourcePoolPath, resourcePoolName)
 	return parentPath
 }
 

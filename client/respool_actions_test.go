@@ -144,18 +144,20 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 	}
 }
 
-func (suite *resPoolActions) TestGetParentPath() {
+func (suite *resPoolActions) TestParseResourcePath() {
 	tt := []struct {
 		resourcePoolPath string
 		parentPath       string
+		resourcePoolName string
 	}{
-		{"/a/b/c", "/a/b/"},
-		{"/a/b/c/", "/a/b/"},
-		{"/a", "/"},
+		{"/a/b/c", "/a/b/", "c"},
+		{"/a/b/c/", "/a/b/", "c"},
+		{"/a", "/", "a"},
 	}
 
 	for _, test := range tt {
-		suite.Equal(test.parentPath, getParentPath(test.resourcePoolPath))
+		suite.Equal(test.parentPath, parseParentPath(test.resourcePoolPath))
+		suite.Equal(test.resourcePoolName, parseRespoolName(test.resourcePoolPath))
 	}
 }
 
@@ -165,6 +167,23 @@ func (suite *resPoolActions) TestResPoolCreateActionInvalidPath() {
 	err := c.ResPoolCreateAction(resourcePoolPath, "")
 	suite.Error(err)
 	suite.Equal("cannot create root resource pool", err.Error())
+}
+
+func (suite *resPoolActions) TestResPoolCreateActionInvalidName() {
+	c := Client{}
+	resourcePoolPath := "/respool1"
+	err := c.ResPoolCreateAction(resourcePoolPath, "../example/test_respool.yaml")
+	suite.Error(err)
+	suite.Equal("resource pool name in path:respool1 and "+
+		"config:TestPelotonResPool_123 don't match", err.Error())
+}
+
+func (suite *resPoolActions) TestResPoolCreateActionInvalidConfig() {
+	c := Client{}
+	resourcePoolPath := "/respool1"
+	err := c.ResPoolCreateAction(resourcePoolPath, "testdata/test_respool_parent.yaml")
+	suite.Error(err)
+	suite.Equal("parent should not be supplied in the config", err.Error())
 }
 
 func TestResPoolHandler(t *testing.T) {
