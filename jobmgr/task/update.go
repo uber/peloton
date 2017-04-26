@@ -7,6 +7,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/golang/protobuf/proto"
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -157,7 +158,8 @@ func (p *statusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 		log.WithField("taskInfo", taskInfo).Debug("Reschedule failed task.")
 		// TODO: check for failing reason and do backoff before
 		// rescheduling.
-		go p.retrySchedulingTask(taskInfo)
+		retryTaskInfo := proto.Clone(taskInfo).(*pb_task.TaskInfo)
+		go p.retrySchedulingTask(retryTaskInfo)
 	} else {
 		// TODO: figure out on what cases state updates should not be persisted
 		// TODO: depends on the state, may need to put the task back to
