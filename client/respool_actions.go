@@ -52,9 +52,6 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 
 	var response respool.CreateResponse
 	var request = &respool.CreateRequest{
-		Id: &respool.ResourcePoolID{
-			Value: respoolPath,
-		},
 		Config: &respoolConfig,
 	}
 	_, err = client.resClient.Call(
@@ -66,7 +63,7 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 	if err != nil {
 		return err
 	}
-	printResPoolCreateResponse(response, client.Debug)
+	printResPoolCreateResponse(response, respoolPath, client.Debug)
 	return nil
 }
 
@@ -149,7 +146,7 @@ func parseParentPath(resourcePoolPath string) string {
 	return parentPath
 }
 
-func printResPoolCreateResponse(r respool.CreateResponse, debug bool) {
+func printResPoolCreateResponse(r respool.CreateResponse, respoolPath string, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -162,13 +159,13 @@ func printResPoolCreateResponse(r respool.CreateResponse, debug bool) {
 					r.Error.AlreadyExists.Message,
 				)
 			} else if r.Error.InvalidResourcePoolConfig != nil {
-				fmt.Fprintf(tabWriter, "Invalid resource pool %s config: %s\n",
-					r.Error.InvalidResourcePoolConfig.Id,
+				fmt.Fprintf(tabWriter, "Invalid resource pool config: %s\n",
 					r.Error.InvalidResourcePoolConfig.Message,
 				)
 			}
 		} else {
-			fmt.Fprintf(tabWriter, "Resource Pool %s created\n", r.Result.Value)
+			fmt.Fprintf(tabWriter, "Resource Pool %s created at %s\n",
+				r.Result.GetValue(), respoolPath)
 		}
 		tabWriter.Flush()
 	}

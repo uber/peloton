@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"io/ioutil"
 	"testing"
 
 	client_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
@@ -11,8 +12,10 @@ import (
 	"go.uber.org/yarpc"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v2"
 )
 
 type resPoolActions struct {
@@ -142,6 +145,124 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 			suite.NoError(err)
 		}
 	}
+}
+
+func (suite *resPoolActions) getConfig() *respool.ResourcePoolConfig {
+	var config respool.ResourcePoolConfig
+	buffer, err := ioutil.ReadFile("../example/test_respool.yaml")
+	suite.NoError(err)
+	err = yaml.Unmarshal(buffer, &config)
+	suite.NoError(err)
+	return &config
+}
+
+func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockBaseClient,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+	ID := uuid.New()
+	parentID := uuid.New()
+	path := "/a/b/c/d"
+	config := suite.getConfig()
+	config.Parent = &respool.ResourcePoolID{
+		Value: parentID,
+	}
+	for _, t := range []struct {
+		createRequest  *respool.CreateRequest
+		createResponse *respool.CreateResponse
+		lookupRequest  *respool.LookupRequest
+		lookupResponse *respool.LookupResponse
+		err            error
+	}{
+		{
+			createRequest: &respool.CreateRequest{
+				Config: config,
+			},
+			createResponse: &respool.CreateResponse{
+				Result: &respool.ResourcePoolID{
+					Value: ID,
+				},
+			},
+			lookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/a/b/c/",
+				},
+			},
+			lookupResponse: &respool.LookupResponse{
+				Id: &respool.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+		},
+		{
+			createRequest: &respool.CreateRequest{
+				Config: config,
+			},
+			createResponse: &respool.CreateResponse{
+				Result: &respool.ResourcePoolID{
+					Value: ID,
+				},
+			},
+			lookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/a/b/c/",
+				},
+			},
+			lookupResponse: &respool.LookupResponse{
+				Id: &respool.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			err: errors.New("cannot create root resource pool"),
+		},
+	} {
+		suite.withMockResourcePoolLookup(t.lookupRequest, t.lookupResponse)
+		suite.withMockCreateResponse(t.createRequest, t.createResponse, t.err)
+		err := c.ResPoolCreateAction(path, "../example/test_respool.yaml")
+		if t.err != nil {
+			suite.EqualError(err, t.err.Error())
+		} else {
+			suite.NoError(err)
+		}
+	}
+}
+
+func (suite *resPoolActions) withMockCreateResponse(
+	req *respool.CreateRequest,
+	resp *respool.CreateResponse,
+	err error,
+) {
+	suite.mockBaseClient.EXPECT().Call(
+		suite.ctx,
+		gomock.Eq(
+			yarpc.NewReqMeta().Procedure("ResourceManager.CreateResourcePool"),
+		),
+		gomock.Eq(req),
+		gomock.Eq(&respool.CreateResponse{}),
+	).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
+		o := resBodyOut.(*respool.CreateResponse)
+		*o = *resp
+	}).Return(nil, err)
+}
+
+func (suite *resPoolActions) withMockResourcePoolLookup(
+	req *respool.LookupRequest,
+	resp *respool.LookupResponse,
+) {
+	suite.mockBaseClient.EXPECT().Call(
+		suite.ctx,
+		gomock.Eq(
+			yarpc.NewReqMeta().Procedure("ResourceManager.LookupResourcePoolID"),
+		),
+		gomock.Eq(req),
+		gomock.Eq(&respool.LookupResponse{}),
+	).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
+		o := resBodyOut.(*respool.LookupResponse)
+		*o = *resp
+	}).Return(nil, nil)
 }
 
 func (suite *resPoolActions) TestParseResourcePath() {

@@ -159,7 +159,6 @@ message InvalidResourcePoolPath {
 }
 
 message CreateRequest {
-  ResourcePoolID id = 1;
   ResourcePoolConfig config = 2;
 }
 

@@ -6,9 +6,9 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
-
 	"github.com/uber-go/tally"
 
 	pb_respool "peloton/api/respool"
@@ -298,19 +298,15 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: mockResourcePoolName,
-	}
 
 	// create request
 	createReq := &pb_respool.CreateRequest{
-		Id:     mockResourcePoolID,
 		Config: mockResourcePoolConfig,
 	}
 
 	// set expectations
 	suite.mockResPoolStore.EXPECT().CreateResourcePool(
-		gomock.Eq(mockResourcePoolID),
+		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
 		"peloton").Return(nil)
 
@@ -322,7 +318,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
 	suite.NoError(err)
 	suite.NotNil(createResp)
 	suite.Nil(createResp.Error)
-	suite.Equal(mockResourcePoolID.Value, createResp.Result.Value)
+	suite.NotNil(uuid.Parse(createResp.Result.Value))
 }
 
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolValidationError() {
@@ -344,13 +340,9 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolValid
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: mockResourcePoolName,
-	}
 
 	// create request
 	createReq := &pb_respool.CreateRequest{
-		Id:     mockResourcePoolID,
 		Config: mockResourcePoolConfig,
 	}
 
@@ -384,20 +376,16 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlrea
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
-		Value: mockResourcePoolName,
-	}
 
 	// create request
 	createReq := &pb_respool.CreateRequest{
-		Id:     mockResourcePoolID,
 		Config: mockResourcePoolConfig,
 	}
 
 	expectedErrMsg := "resource pool already exits"
 	// set expectations
 	suite.mockResPoolStore.EXPECT().CreateResourcePool(
-		gomock.Eq(mockResourcePoolID),
+		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
 		"peloton",
 	).Return(errors.New(expectedErrMsg))
@@ -413,7 +401,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlrea
 	suite.Nil(createResp.Result)
 	suite.NotNil(createResp.Error)
 	suite.Equal(expectedErrMsg, createResp.Error.AlreadyExists.Message)
-	suite.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
+	suite.NotNil(uuid.Parse(actualErrResourcePoolID))
 }
 
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePool() {

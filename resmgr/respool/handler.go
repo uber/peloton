@@ -8,6 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
@@ -120,8 +121,10 @@ func (h *serviceHandler) CreateResourcePool(
 		req,
 	).Info("CreateResourcePool called")
 
-	resPoolID := req.GetId()
 	resPoolConfig := req.GetConfig()
+	resPoolID := &respool.ResourcePoolID{
+		Value: uuid.New(),
+	}
 
 	resourcePoolConfigData := ResourcePoolConfigData{
 		ID:                                resPoolID,
