@@ -12,12 +12,13 @@ import (
 
 func TestParseJobCreate(t *testing.T) {
 	cfg := "../../example/testjob.yaml"
-	cmd, err := app.Parse([]string{"job", "create", cfg})
+	path := "/infra/compute"
+	cmd, err := app.Parse([]string{"job", "create", path, cfg})
 	assert.Nil(t, err)
 	assert.Equal(t, cmd, jobCreate.FullCommand())
 	assert.Equal(t, *jobCreateConfig, cfg)
 
-	cmd, err = app.Parse([]string{"job", "create", cfg})
+	cmd, err = app.Parse([]string{"job", "create", path, cfg})
 	assert.Nil(t, err)
 	assert.Equal(t, cmd, jobCreate.FullCommand())
 	assert.Equal(t, *jobCreateConfig, cfg)

@@ -51,5 +51,3 @@ defaultconfig:
   command:
     shell: true
     value: 'UBER_ENVIRONMENT=development UDEPLOY_APP_ID=test-uber-docker-service /etc/udocker/entrypoint'
-respoolid:
-  value: respool11

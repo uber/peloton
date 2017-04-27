@@ -20,7 +20,16 @@ const (
 )
 
 // JobCreateAction is the action for creating a job
-func (client *Client) JobCreateAction(cfg string) error {
+func (client *Client) JobCreateAction(respoolPath string, cfg string) error {
+	respoolID, err := client.LookupResourcePoolID(respoolPath)
+	if err != nil {
+		return err
+	}
+	if respoolID == nil {
+		return fmt.Errorf("unable to find resource pool ID for "+
+			":%s", respoolPath)
+	}
+
 	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
@@ -29,6 +38,10 @@ func (client *Client) JobCreateAction(cfg string) error {
 	if err := yaml.Unmarshal(buffer, &jobConfig); err != nil {
 		return fmt.Errorf("Unable to parse file %s: %v", cfg, err)
 	}
+
+	// TODO remove this once respool is moved out of jobconfig
+	// set the resource pool ID
+	jobConfig.RespoolID = respoolID
 
 	var response job.CreateResponse
 	var request = &job.CreateRequest{
@@ -130,7 +143,7 @@ func printJobGetResponse(r job.GetResponse, debug bool) {
 		printResponseJSON(r)
 	} else {
 		if r.GetConfig() == nil {
-			fmt.Fprintf(tabWriter, "Unable to get job config\n")
+			fmt.Fprint(tabWriter, "Unable to get job config\n")
 		} else {
 			rs := r.Config.DefaultConfig.Resource
 			fmt.Fprintf(tabWriter, jobListFormatHeader)

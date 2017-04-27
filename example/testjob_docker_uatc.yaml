@@ -47,5 +47,3 @@ defaultconfig:
   command:
     shell: true
     value: 'echo Hello && sleep 300'
-respoolid:
-  value: respool11

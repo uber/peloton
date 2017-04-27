@@ -48,5 +48,3 @@ instanceconfig:
     command:
       shell: true
       value: 'echo Hello instance 2'
-respoolid:
-  value: /respool11

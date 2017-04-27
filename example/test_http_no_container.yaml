@@ -25,5 +25,3 @@ defaultconfig:
     labels:
     - key: "org.apache.aurora.metadata.uns"
       value: '["/peloton_test_http1/us1/peloton_test_http1"]'
-respoolid:
-  value: respool11
