@@ -79,14 +79,25 @@ $ PELOTON=app make pcluster
 
 Create resource pool by providing the path(respool is required for job creation):
 ```
-$ bin/peloton respool create /respool11 example/test_respool.yaml
+$ bin/peloton respool create /DefaultResPool example/default_respool.yaml
+Resource Pool d214ed86-1cf5-4e39-a0bb-08399ab1dee0 created at /DefaultResPool
 ```
 
 Create job:
-```
-$ bin/peloton job create example/testjob.yaml --master http://localhost:5292
 
+create job requires the resource pool path(where the job is to be subitted) and the job config
+```
+$ bin/peloton job create /DefaultResPool example/testjob.yaml --master http://localhost:5292
+Job 91b1b8e5-2ba8-11e7-bc23-0242ac11000d created
+```
+
+Get tasks:
+```
 $ bin/peloton task list <job ID> --master http://localhost:5292
+Instance|        Job|  CPU Limit|  Mem Limit|  Disk Limit|      State|  GoalState|  Started At|                                                                       Task ID|  Host|  Message|  Reason|
+         0|  instance0|        0.1|       2 MB|       10 MB|  SUCCEEDED|  SUCCEEDED|       <nil>|   91b1b8e5-2ba8-11e7-bc23-0242ac11000d-0-91b7fa56-2ba8-11e7-bc23-0242ac11000d|      |         |        |
+         1|  instance1|        0.1|       2 MB|       10 MB|  SUCCEEDED|  SUCCEEDED|       <nil>|   91b1b8e5-2ba8-11e7-bc23-0242ac11000d-1-91b82b47-2ba8-11e7-bc23-0242ac11000d|      |         |        |
+         2|  instance2|        0.1|       2 MB|       10 MB|  SUCCEEDED|  SUCCEEDED|       <nil>|   91b1b8e5-2ba8-11e7-bc23-0242ac11000d-2-91b837b9-2ba8-11e7-bc23
 ```
 
 ## Run Peloton master via command line

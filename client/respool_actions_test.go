@@ -18,6 +18,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const _defaultResPoolConfig = "../example/default_respool.yaml"
+
 type resPoolActions struct {
 	suite.Suite
 	mockCtrl       *gomock.Controller
@@ -149,7 +151,7 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 
 func (suite *resPoolActions) getConfig() *respool.ResourcePoolConfig {
 	var config respool.ResourcePoolConfig
-	buffer, err := ioutil.ReadFile("../example/test_respool.yaml")
+	buffer, err := ioutil.ReadFile(_defaultResPoolConfig)
 	suite.NoError(err)
 	err = yaml.Unmarshal(buffer, &config)
 	suite.NoError(err)
@@ -165,7 +167,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 	}
 	ID := uuid.New()
 	parentID := uuid.New()
-	path := "/a/b/c/d"
+	path := "/DefaultResPool"
 	config := suite.getConfig()
 	config.Parent = &respool.ResourcePoolID{
 		Value: parentID,
@@ -188,7 +190,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 			},
 			lookupRequest: &respool.LookupRequest{
 				Path: &respool.ResourcePoolPath{
-					Value: "/a/b/c/",
+					Value: "/",
 				},
 			},
 			lookupResponse: &respool.LookupResponse{
@@ -208,7 +210,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 			},
 			lookupRequest: &respool.LookupRequest{
 				Path: &respool.ResourcePoolPath{
-					Value: "/a/b/c/",
+					Value: "/",
 				},
 			},
 			lookupResponse: &respool.LookupResponse{
@@ -221,7 +223,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 	} {
 		suite.withMockResourcePoolLookup(t.lookupRequest, t.lookupResponse)
 		suite.withMockCreateResponse(t.createRequest, t.createResponse, t.err)
-		err := c.ResPoolCreateAction(path, "../example/test_respool.yaml")
+		err := c.ResPoolCreateAction(path, _defaultResPoolConfig)
 		if t.err != nil {
 			suite.EqualError(err, t.err.Error())
 		} else {
@@ -293,10 +295,10 @@ func (suite *resPoolActions) TestResPoolCreateActionInvalidPath() {
 func (suite *resPoolActions) TestResPoolCreateActionInvalidName() {
 	c := Client{}
 	resourcePoolPath := "/respool1"
-	err := c.ResPoolCreateAction(resourcePoolPath, "../example/test_respool.yaml")
+	err := c.ResPoolCreateAction(resourcePoolPath, _defaultResPoolConfig)
 	suite.Error(err)
 	suite.Equal("resource pool name in path:respool1 and "+
-		"config:TestPelotonResPool_123 don't match", err.Error())
+		"config:DefaultResPool don't match", err.Error())
 }
 
 func (suite *resPoolActions) TestResPoolCreateActionInvalidConfig() {

@@ -1,5 +1,5 @@
 changelog: null
-name: TestPelotonResPool_123
+name: DefaultResPool
 owningteam: team6
 ldapgroups:
 - money
