@@ -9,14 +9,24 @@ package peloton.private.eventstream;
 option go_package = "peloton/private/eventstream";
 
 import "mesos/v1/mesos.proto";
+import "peloton/api/task/task.proto";
 
 message Event {
   // offset is the sequence id of the event
   uint64 offset = 1;
-  // TODO: introduce peloton internal task status message type
-  // to be used by both resource manager and host manager
-  mesos.v1.TaskStatus taskStatus = 2;
+
+  // Describes the type of event
+  enum Type {
+    UNKNOWN_EVENT_TYPE = 0;
+    MESOS_TASK_STATUS = 1;
+    PELOTON_TASK_EVENT = 2;
+  }
+
+  Type type = 2;
+  mesos.v1.TaskStatus taskStatus = 3;
+  peloton.api.task.TaskEvent pelotonTaskEvent = 4;
 }
+
 
 service EventStreamService {
   // Client calls CreateStream to learn about information to consume the stream

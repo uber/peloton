@@ -489,3 +489,25 @@ message QueryResponse {
 
   Error error = 5;
 }
+
+message TaskEvent {
+
+  // Describes the source of the task event
+  enum Source {
+    SOURCE_UNKNOWN = 0;
+    SOURCE_JOBMGR = 1;
+    SOURCE_RESMGR = 2;
+    SOURCE_HOSTMGR = 3;
+  }
+
+  // TODO add reason
+  // with detailed reason for the task event
+
+  string task_id = 1;
+  TaskState state = 2;
+  string message = 3; // Short human friendly message explaining state.
+  // The time when the event was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string timestamp = 4;
+  Source source = 5;
+}
