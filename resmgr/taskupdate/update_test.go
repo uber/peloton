@@ -1,13 +1,16 @@
 package taskupdate
 
 import (
-	"code.uber.internal/infra/peloton/common"
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/yarpc"
 	"mesos/v1"
+	"testing"
+
 	"peloton/private/eventstream"
 	"peloton/private/resmgrsvc"
-	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/yarpc"
+
+	"code.uber.internal/infra/peloton/common"
 )
 
 func TestNotifyTaskStatusUpdate(t *testing.T) {

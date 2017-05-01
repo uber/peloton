@@ -61,7 +61,7 @@ executor:
 
 install:
 	glide --version || go get github.com/Masterminds/glide
-	glide install
+	rm -rf vendor && glide install
 
 client:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton client/cli/*.go

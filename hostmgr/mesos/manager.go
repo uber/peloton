@@ -17,11 +17,28 @@ func InitManager(
 	store storage.FrameworkInfoStore) {
 
 	m := mesosManager{
-		store:       store,
-		mesosConfig: mesosConfig,
+		store:         store,
+		frameworkName: mesosConfig.Framework.Name,
 	}
 
-	procedures := map[sched.Event_Type]interface{}{
+	for name, hdl := range getCallbacks(&m) {
+		mpb.Register(d, ServiceName, mpb.Procedure(name, hdl))
+	}
+}
+
+// mesosManager is a handler for Mesos scheduler API events.
+type mesosManager struct {
+	store         storage.FrameworkInfoStore
+	frameworkName string
+}
+
+type schedulerEventCallback func(yarpc.ReqMeta, *sched.Event) error
+
+// getCallbacks returns a map from name to usable callbacks
+// which can be registered to yarpc.Dispatcher.
+func getCallbacks(m *mesosManager) map[string]schedulerEventCallback {
+	procedures := make(map[string]schedulerEventCallback)
+	callbacks := map[sched.Event_Type]schedulerEventCallback{
 		sched.Event_SUBSCRIBED: m.Subscribed,
 		sched.Event_MESSAGE:    m.Message,
 		sched.Event_FAILURE:    m.Failure,
@@ -29,16 +46,11 @@ func InitManager(
 		sched.Event_HEARTBEAT:  m.Heartbeat,
 		sched.Event_UNKNOWN:    m.Unknown,
 	}
-	for typ, hdl := range procedures {
+	for typ, hdl := range callbacks {
 		name := typ.String()
-		mpb.Register(d, ServiceName, mpb.Procedure(name, hdl))
+		procedures[name] = hdl
 	}
-}
-
-// mesosManager is a handler for Mesos scheduler API events.
-type mesosManager struct {
-	store       storage.FrameworkInfoStore
-	mesosConfig *Config
+	return procedures
 }
 
 func (m *mesosManager) Subscribed(
@@ -48,12 +60,11 @@ func (m *mesosManager) Subscribed(
 	log.WithField("subscribed", subscribed).
 		Info("mesosManager: subscribed called")
 	frameworkID := subscribed.GetFrameworkId().GetValue()
-	name := m.mesosConfig.Framework.Name
-	err := m.store.SetMesosFrameworkID(name, frameworkID)
+	err := m.store.SetMesosFrameworkID(m.frameworkName, frameworkID)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"framework_id": frameworkID,
-			"name":         name,
+			"name":         m.frameworkName,
 		}).Error("Failed to SetMesosFrameworkId")
 	}
 	return err
