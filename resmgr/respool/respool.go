@@ -8,6 +8,7 @@ import (
 	"peloton/api/respool"
 	"peloton/private/resmgr"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
 
 	log "github.com/Sirupsen/logrus"
@@ -46,6 +47,17 @@ type ResPool interface {
 	EnqueueTask(task *resmgr.Task) error
 	// Dequques tasks from the resource pool
 	DequeueTasks(int) (*list.List, error)
+	//SetEntitlement sets the entitlement for the resource pool
+	// input is map[ResourceKind]->EntitledCapacity
+	SetEntitlement(map[string]float64)
+	// SetEntitlementByKind sets the entitlement of the respool
+	// by kind
+	SetEntitlementByKind(kind string, entitlement float64)
+	//GetEntitlement gets the entitlement for the resource pool
+	GetEntitlement() map[string]float64
+	// GetChildReservation returns the total reservation of all
+	// the childs by kind
+	GetChildReservation() (map[string]float64, error)
 }
 
 // resPool implements ResPool interface
@@ -58,6 +70,7 @@ type resPool struct {
 	resourceConfigs map[string]*respool.ResourceConfig
 	poolConfig      *respool.ResourcePoolConfig
 	pendingQueue    queue.Queue
+	entitlement     map[string]float64
 }
 
 // NewRespool will initialize the resource pool node and return that
@@ -87,6 +100,7 @@ func NewRespool(
 		resourceConfigs: make(map[string]*respool.ResourceConfig),
 		poolConfig:      config,
 		pendingQueue:    q,
+		entitlement:     make(map[string]float64),
 	}
 
 	result.initResources(config)
@@ -174,8 +188,6 @@ func (n *resPool) IsLeaf() bool {
 
 // EnqueueTask inserts the task into pending queue
 func (n *resPool) EnqueueTask(task *resmgr.Task) error {
-	n.Lock()
-	defer n.Unlock()
 	if n.isLeaf() {
 		err := n.pendingQueue.Enqueue(task)
 		return err
@@ -186,8 +198,6 @@ func (n *resPool) EnqueueTask(task *resmgr.Task) error {
 
 // DequeueTasks dequeues the tasks from the pending queue
 func (n *resPool) DequeueTasks(limit int) (*list.List, error) {
-	n.Lock()
-	defer n.Unlock()
 	if n.isLeaf() {
 		if limit <= 0 {
 			err := errors.Errorf("limt %d is not valid", limit)
@@ -230,7 +240,6 @@ func (n *resPool) AggregatedChildrenReservations() (map[string]float64, error) {
 				child.Value)
 		}
 	}
-
 	return aggChildrenReservations, nil
 }
 
@@ -290,4 +299,69 @@ func (n *resPool) logNodeResources() {
 			"Share":       res.Share,
 		}).Info("ResPool Resources for ResPool", n.id)
 	}
+}
+
+// SetEntitlement sets the entitlement for the resource pool
+func (n *resPool) SetEntitlement(entitlement map[string]float64) {
+	n.Lock()
+	defer n.Unlock()
+	if entitlement == nil {
+		return
+	}
+
+	for kind, capacity := range entitlement {
+		switch kind {
+		case
+			common.CPU,
+			common.DISK,
+			common.GPU,
+			common.MEMORY:
+			n.entitlement[kind] = capacity
+			log.WithFields(log.Fields{
+				"ID":       n.ID(),
+				"Kind":     kind,
+				"Capacity": capacity,
+			}).Debug("Setting Entitlement")
+		}
+	}
+}
+
+// SetEntitlement sets the entitlement for the resource pool
+func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
+	n.Lock()
+	defer n.Unlock()
+	n.entitlement[kind] = entitlement
+	log.WithFields(log.Fields{
+		"ID":       n.ID(),
+		"Kind":     kind,
+		"Capacity": entitlement,
+	}).Debug("Setting Entitlement")
+}
+
+// GetEntitlement gets the entitlement for the resource pool
+func (n *resPool) GetEntitlement() map[string]float64 {
+	n.RLock()
+	defer n.RUnlock()
+	return n.entitlement
+}
+
+// GetChildReservation returns the reservation of all the childs
+func (n *resPool) GetChildReservation() (map[string]float64, error) {
+	nodes := n.Children()
+	if nodes == nil || nodes.Len() == 0 {
+		return nil, errors.Errorf("respool %s does not have "+
+			"children", n.id)
+	}
+
+	totalReservation := make(map[string]float64)
+	// We need to find out the total reservation
+	for e := nodes.Front(); e != nil; e = e.Next() {
+		n := e.Value.(ResPool)
+		resources := n.Resources()
+		for kind, resource := range resources {
+			totalReservation[kind] =
+				totalReservation[kind] + resource.Reservation
+		}
+	}
+	return totalReservation, nil
 }

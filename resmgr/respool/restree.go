@@ -302,6 +302,7 @@ func (t *tree) buildTree(
 ) (ResPool, error) {
 	node, err := NewRespool(ID, parent, resPoolConfigs[ID])
 	if err != nil {
+		log.WithError(err).Error("Error creating resource pool")
 		return nil, err
 	}
 

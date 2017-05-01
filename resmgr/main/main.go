@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"runtime"
 
@@ -12,11 +13,14 @@ import (
 
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr"
+	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/resmgr/taskupdate"
 	"code.uber.internal/infra/peloton/storage/stores"
+	"code.uber.internal/infra/peloton/yarpc/peer"
+
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
@@ -147,15 +151,53 @@ func main() {
 		),
 	}
 
+	// all leader discovery metrics share a scope (and will be tagged
+	// with role={role})
+	discoveryScope := rootScope.SubScope("discovery")
+	// setup the discovery service to detect hostmgr leaders and
+	// configure the YARPC Peer dynamically
+	hostmgrPeerChooser, err := peer.NewSmartChooser(
+		cfg.Election,
+		discoveryScope,
+		common.HostManagerRole,
+	)
+	if err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
+			Fatal("Could not create smart peer chooser")
+	}
+	if err := hostmgrPeerChooser.Start(); err != nil {
+		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
+			Fatal("Could not start smart peer chooser")
+	}
+	defer hostmgrPeerChooser.Stop()
+	hostmgrOutbound := http.NewChooserOutbound(
+		hostmgrPeerChooser,
+		&url.URL{
+			Scheme: "http",
+			Path:   common.PelotonEndpointPath,
+		})
+
+	outbounds := yarpc.Outbounds{
+		common.PelotonHostManager: transport.Outbounds{
+			Unary: hostmgrOutbound,
+		},
+	}
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:     common.PelotonResourceManager,
-		Inbounds: inbounds,
+		Name:      common.PelotonResourceManager,
+		Inbounds:  inbounds,
+		Outbounds: outbounds,
 	})
 
 	// Initialize service handlers
 	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore, taskStore)
 	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
 	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
+
+	entitlement.InitCalculator(
+		dispatcher,
+		cfg.ResManager.EntitlementCaculationPeriod,
+	)
 
 	taskupdate.InitServiceHandler(dispatcher)
 

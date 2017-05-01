@@ -8,8 +8,8 @@ ldapgroups:
 description: "A dummy test respool for peloton"
 resources:
 - kind: cpu
-  reservation: 100
-  limit: 1000
+  reservation: 5
+  limit: 10
   share: 1
 - kind: memory
   reservation: 50

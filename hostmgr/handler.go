@@ -16,6 +16,7 @@ import (
 	sched "mesos/v1/scheduler"
 	"peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/common"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
@@ -478,16 +479,16 @@ func (h *serviceHandler) ClusterCapacity(
 	return &hostsvc.ClusterCapacityResponse{
 		Resources: []*hostsvc.Resource{
 			{
-				Kind:     "cpus",
+				Kind:     common.CPU,
 				Capacity: tAllocatedResources.CPU,
 			}, {
-				Kind:     "disk",
+				Kind:     common.DISK,
 				Capacity: tAllocatedResources.Disk,
 			}, {
-				Kind:     "gpus",
+				Kind:     common.GPU,
 				Capacity: tAllocatedResources.GPU,
 			}, {
-				Kind:     "mem",
+				Kind:     common.MEMORY,
 				Capacity: tAllocatedResources.Mem,
 			},
 		},

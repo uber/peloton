@@ -3,32 +3,36 @@ package resmgr
 import (
 	"sync"
 
+	log "github.com/Sirupsen/logrus"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/resmgr/taskqueue"
-	log "github.com/Sirupsen/logrus"
 )
 
 // Server struct for handling the zk election
 type Server struct {
 	sync.Mutex
-	ID                  string
-	role                string
-	getResPoolHandler   func() respool.ServiceHandler
-	getTaskQueueHandler func() taskqueue.ServiceHandler
-	getTaskScheduler    func() task.Scheduler
+	ID                       string
+	role                     string
+	getResPoolHandler        func() respool.ServiceHandler
+	getTaskQueueHandler      func() taskqueue.ServiceHandler
+	getTaskScheduler         func() task.Scheduler
+	getEntitlementCalculator func() entitlement.Calculator
 }
 
 // NewServer will create the elect handle object
 func NewServer(port int) *Server {
 	server := Server{
-		ID:                  leader.NewID(port),
-		role:                common.ResourceManagerRole,
-		getResPoolHandler:   respool.GetServiceHandler,
-		getTaskQueueHandler: taskqueue.GetServiceHandler,
-		getTaskScheduler:    task.GetScheduler,
+		ID:                       leader.NewID(port),
+		role:                     common.ResourceManagerRole,
+		getResPoolHandler:        respool.GetServiceHandler,
+		getTaskQueueHandler:      taskqueue.GetServiceHandler,
+		getTaskScheduler:         task.GetScheduler,
+		getEntitlementCalculator: entitlement.GetCalculator,
 	}
 	return &server
 }
@@ -56,6 +60,12 @@ func (s *Server) GainedLeadershipCallback() error {
 		log.Errorf("Failed to start task scheduler")
 		return err
 	}
+
+	err = s.getEntitlementCalculator().Start()
+	if err != nil {
+		log.Errorf("Failed to start entitlement Calculator")
+		return err
+	}
 	return nil
 }
 
@@ -79,6 +89,13 @@ func (s *Server) LostLeadershipCallback() error {
 		log.Errorf("Failed to stop task scheduler")
 		return err
 	}
+
+	err = s.getEntitlementCalculator().Stop()
+	if err != nil {
+		log.Errorf("Failed to stop entitlement Calculator")
+		return err
+	}
+
 	return nil
 }
 

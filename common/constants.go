@@ -33,4 +33,12 @@ const (
 	ResourceManagerRole = "resourcemanager"
 	// DefaultLeaderElectionRoot is the default leader election root path
 	DefaultLeaderElectionRoot = "/peloton"
+	// CPU resource type
+	CPU = "cpu"
+	// GPU resource type
+	GPU = "gpu"
+	// MEMORY resource type
+	MEMORY = "memory"
+	// DISK resource type
+	DISK = "disk"
 )
