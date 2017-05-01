@@ -90,8 +90,8 @@ func TestBucketEventProcessor(t *testing.T) {
 		}
 		offset++
 		applier.addEvent(&pb_eventstream.Event{
-			Offset:     offset,
-			TaskStatus: status,
+			Offset:          offset,
+			MesosTaskStatus: status,
 		})
 	}
 	for i := 0; i < n; i++ {
@@ -105,8 +105,8 @@ func TestBucketEventProcessor(t *testing.T) {
 		}
 		offset++
 		applier.addEvent(&pb_eventstream.Event{
-			Offset:     offset,
-			TaskStatus: status,
+			Offset:          offset,
+			MesosTaskStatus: status,
 		})
 	}
 	for i := 0; i < n; i++ {
@@ -120,8 +120,8 @@ func TestBucketEventProcessor(t *testing.T) {
 		}
 		offset++
 		applier.addEvent(&pb_eventstream.Event{
-			Offset:     offset,
-			TaskStatus: status,
+			Offset:          offset,
+			MesosTaskStatus: status,
 		})
 	}
 

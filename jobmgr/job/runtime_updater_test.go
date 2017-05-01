@@ -32,7 +32,7 @@ func TestUpdateJobRuntime_Events(t *testing.T) {
 		t := float64(i)
 		taskID := fmt.Sprintf("job%d-%d-%s", i, i, uuid.NewUUID().String())
 		events = append(events, &pb_eventstream.Event{
-			TaskStatus: &mesos.TaskStatus{
+			MesosTaskStatus: &mesos.TaskStatus{
 				TaskId: &mesos.TaskID{
 					Value: &taskID,
 				},
@@ -112,7 +112,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	timeChange := float64(100000)
 	var events = []*pb_eventstream.Event{
 		{
-			TaskStatus: &mesos.TaskStatus{
+			MesosTaskStatus: &mesos.TaskStatus{
 				TaskId: &mesos.TaskID{
 					Value: &taskID,
 				},
@@ -144,7 +144,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	timeChange = float64(200000)
 	events = []*pb_eventstream.Event{
 		{
-			TaskStatus: &mesos.TaskStatus{
+			MesosTaskStatus: &mesos.TaskStatus{
 				TaskId: &mesos.TaskID{
 					Value: &taskID,
 				},

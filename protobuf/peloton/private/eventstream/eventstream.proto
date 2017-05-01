@@ -23,7 +23,7 @@ message Event {
   }
 
   Type type = 2;
-  mesos.v1.TaskStatus taskStatus = 3;
+  mesos.v1.TaskStatus mesosTaskStatus = 3;
   peloton.api.task.TaskEvent pelotonTaskEvent = 4;
 }
 

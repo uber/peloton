@@ -19,8 +19,8 @@ func TestNotifyTaskStatusUpdate(t *testing.T) {
 	var events []*eventstream.Event
 	for i := 0; i < 100; i++ {
 		event := eventstream.Event{
-			Offset:     uint64(1000 + i),
-			TaskStatus: &mesos_v1.TaskStatus{},
+			Offset:          uint64(1000 + i),
+			MesosTaskStatus: &mesos_v1.TaskStatus{},
 		}
 		events = append(events, &event)
 	}

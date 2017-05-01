@@ -152,8 +152,8 @@ func TestHappycase(t *testing.T) {
 		assert.Equal(t, i, int(eventProcessor1.events[i].Offset))
 		assert.Equal(t, i, int(eventProcessor2.events[i].Offset))
 		assert.Equal(t, i, int(purgedEventCollector.data[i].SequenceID))
-		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].TaskStatus.TaskId.Value)
-		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].TaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].MesosTaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].MesosTaskStatus.TaskId.Value)
 	}
 	head, tail := handler.circularBuffer.GetRange()
 	assert.Equal(t, batches*batchSize, int(head))
@@ -232,8 +232,8 @@ func TestStreamIDChange(t *testing.T) {
 		assert.Equal(t, i, int(eventProcessor1.events[i].Offset))
 		assert.Equal(t, i, int(eventProcessor2.events[i].Offset))
 		assert.Equal(t, i, int(purgedEventCollector.data[i].SequenceID))
-		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].TaskStatus.TaskId.Value)
-		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].TaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].MesosTaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].MesosTaskStatus.TaskId.Value)
 	}
 	head, tail := handler.circularBuffer.GetRange()
 	assert.Equal(t, batches*batchSize*2, int(head))
@@ -326,8 +326,8 @@ func TestMockRPCError(t *testing.T) {
 		assert.Equal(t, i, int(eventProcessor1.events[i].Offset))
 		assert.Equal(t, i, int(eventProcessor2.events[i].Offset))
 		assert.Equal(t, i, int(purgedEventCollector.data[i].SequenceID))
-		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].TaskStatus.TaskId.Value)
-		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].TaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].MesosTaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].MesosTaskStatus.TaskId.Value)
 	}
 	head, tail := handler.circularBuffer.GetRange()
 	assert.Equal(t, count, int(head))
@@ -425,8 +425,8 @@ func TestClientFailover(t *testing.T) {
 		assert.Equal(t, i, int(eventProcessor1.events[i].Offset))
 		assert.Equal(t, i, int(eventProcessor2.events[i].Offset))
 		assert.Equal(t, i, int(purgedEventCollector.data[i].SequenceID))
-		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].TaskStatus.TaskId.Value)
-		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].TaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].MesosTaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].MesosTaskStatus.TaskId.Value)
 	}
 	head, tail := handler.circularBuffer.GetRange()
 	assert.Equal(t, count, int(head))

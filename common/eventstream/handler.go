@@ -179,8 +179,8 @@ func (h *Handler) WaitForEvents(
 	var events []*pb_eventstream.Event
 	for _, item := range items {
 		e := pb_eventstream.Event{
-			Offset:     item.SequenceID,
-			TaskStatus: item.Value.(*mesos.TaskStatus),
+			Offset:          item.SequenceID,
+			MesosTaskStatus: item.Value.(*mesos.TaskStatus),
 		}
 		events = append(events, &e)
 	}

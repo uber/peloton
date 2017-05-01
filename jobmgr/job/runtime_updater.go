@@ -81,7 +81,7 @@ func (j *RuntimeUpdater) OnEvents(events []*pb_eventstream.Event) {
 	defer j.Unlock()
 
 	for _, event := range events {
-		mesosTaskID := event.TaskStatus.GetTaskId().GetValue()
+		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
 		taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
 		if err != nil {
 			log.WithError(err).
@@ -98,7 +98,7 @@ func (j *RuntimeUpdater) OnEvents(events []*pb_eventstream.Event) {
 		}
 		// Mark the corresponding job as "taskUpdated", and track the update time
 		j.taskUpdatedFlags[jobID] = true
-		j.lastTaskUpdateTime[jobID] = *event.TaskStatus.Timestamp
+		j.lastTaskUpdateTime[jobID] = *event.MesosTaskStatus.Timestamp
 		j.progress.Store(event.Offset)
 	}
 }

@@ -65,11 +65,11 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 			for {
 				select {
 				case event := <-bucket.eventChannel:
-					err := t.ProcessStatusUpdate(event.TaskStatus)
+					err := t.ProcessStatusUpdate(event.MesosTaskStatus)
 					if err != nil {
 						log.WithError(err).
 							WithField("bucket_num", bucket.index).
-							WithField("status", event.TaskStatus).
+							WithField("status", event.MesosTaskStatus).
 							Error("Error applying taskSatus")
 					}
 					atomic.AddInt32(bucket.processedCount, 1)
@@ -87,7 +87,7 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 }
 
 func (t *asyncEventProcessor) addEvent(event *pb_eventstream.Event) {
-	mesosTaskID := event.TaskStatus.GetTaskId().GetValue()
+	mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
 	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
 	if err != nil {
 		log.WithError(err).
