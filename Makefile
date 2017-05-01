@@ -12,7 +12,7 @@ ALL_SRC := $(shell find . -name "*.go" | grep -v -e Godeps -e vendor -e go-build
 BIN_DIR = bin
 FMT_SRC:=$(shell echo "$(ALL_SRC)" | tr ' ' '\n')
 ALL_PKGS = $(shell go list $(sort $(dir $(ALL_SRC))) | grep -v vendor | grep -v mesos-go)
-PBGEN_DIR = pbgen/src
+PBGEN_DIR = vendor
 PROTOC = protoc
 PACKAGE_VERSION=`git describe --always --tags`
 DOCKER_IMAGE ?= uber/peloton
@@ -29,8 +29,6 @@ PHAB_COMMENT = .phabricator-comment
 PACKAGE_VERSION=`git describe --always --tags`
 # See https://golang.org/doc/gdb for details of the flags
 GO_FLAGS = -gcflags '-N -l' -ldflags "-X main.version=$(PACKAGE_VERSION)"
-# TODO: figure out why -pkgdir does not work
-GOPATH := ${GOPATH}:${GOPATH}/src/${PROJECT_ROOT}/pbgen
 
 ifeq ($(shell uname),Linux)
   SED := sed -i -e
@@ -73,7 +71,7 @@ cover:
 	go tool cover -html=cover.out -o cover.html
 
 clean:
-	rm -rf pbgen
+	rm -rf vendor/mesos vendor/peloton pbgen
 	rm -rf vendor_mocks
 	find . -path "*/mocks/*.go" | grep -v "./vendor" | xargs rm -f {}
 	rm -rf $(BIN_DIR)
