@@ -74,6 +74,12 @@ var (
 		"cassandra-hosts", "Cassandra hosts").
 		Envar("CASSANDRA_HOSTS").
 		Strings()
+
+	cassandraStore = app.Flag(
+		"cassandra-store", "Cassandra store name").
+		Default("").
+		Envar("CASSANDRA_STORE").
+		String()
 )
 
 func main() {
@@ -119,6 +125,11 @@ func main() {
 	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
 		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
 	}
+
+	if *cassandraStore != "" {
+		cfg.Storage.Cassandra.StoreName = *cassandraStore
+	}
+
 	log.WithField("config", cfg).Info("Loaded Resource Manager config")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
