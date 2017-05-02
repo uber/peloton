@@ -78,6 +78,9 @@ message Task {
 
   // Type of the Task
   TaskType type = 10;
+
+  // Number of dynamic ports
+  uint32 numPorts = 11;
 }
 
 /**
@@ -96,4 +99,7 @@ message Placement {
 
   // The list of Mesos offers of the placed tasks
   repeated mesos.v1.OfferID offerIds = 4;
+
+  // The list of allocated ports which should be sufficient for all placed tasks
+  repeated uint32 ports = 5;
 }

@@ -91,7 +91,7 @@ message HealthCheckConfig {
  */
 message PortConfig {
 
-  // Name of the network port, e.g. http, tchannel
+  // Name of the network port, e.g. http, tchannel. Required field.
   string name = 1;
 
   // Static port number if any. If unset, will be dynamically allocated
@@ -99,7 +99,7 @@ message PortConfig {
   uint32 value = 2;
 
   // Environment variable name to be exported when running a task for this port.
-  // Will default to UBER_PORT_{name} if unset
+  // Required field for dynamic port.
   string envName = 3;
 }
 

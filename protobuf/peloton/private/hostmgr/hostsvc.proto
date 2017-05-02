@@ -32,6 +32,9 @@ message HostOffer {
 message LaunchableTask {
   mesos.v1.TaskID taskId = 1;
   api.task.TaskConfig config = 2;
+
+  // Dynamic ports reserved on the host while this instance is running.
+  map<string, uint32> ports = 3;
 }
 
 
@@ -64,6 +67,9 @@ message ResourceConstraint {
   //   - if `gpuLimit` is specified, only hosts with enough gpu resources are returned;
   //   - if `gpuLimit` is not specified, only hosts without gpu resource will be returned.
   api.task.ResourceConfig minimum = 1;
+
+  // Number of dynamic ports
+  uint32 numPorts = 2;
 
   // TODO(zhitao): Consider adding Maximum amount of resources constraint to
   // avoid fragmentation.
