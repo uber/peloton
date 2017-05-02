@@ -45,7 +45,7 @@ func InitEventHandler(
 	parent tally.Scope,
 	offerHoldTime time.Duration,
 	offerPruningPeriod time.Duration,
-	client mpb.Client) {
+	schedulerClient mpb.SchedulerClient) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -54,7 +54,7 @@ func InitEventHandler(
 	metrics := NewMetrics(parent)
 	pool := NewOfferPool(
 		offerHoldTime,
-		client,
+		schedulerClient,
 		metrics,
 		hostmgr_mesos.GetSchedulerDriver(),
 	)

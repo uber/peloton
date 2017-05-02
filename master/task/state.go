@@ -41,7 +41,10 @@ func InitTaskStateManager(
 	var statusChannelCount int32
 
 	handler := taskStateManager{
-		client:               mpb.New(d.ClientConfig("mesos-master"), "x-protobuf"),
+		schedulerclient: mpb.NewSchedulerClient(
+			d.ClientConfig(common.MesosMasterScheduler),
+			mpb.ContentTypeProtobuf,
+		),
 		updateAckConcurrency: updateAckConcurrency,
 		ackChannel:           make(chan *sched.Event_Update, updateBufferSize),
 		taskUpdateCount:      &taskUpdateCount,
@@ -161,7 +164,7 @@ func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int, scope tally.Scop
 }
 
 type taskStateManager struct {
-	client               mpb.Client
+	schedulerclient      mpb.SchedulerClient
 	updateAckConcurrency int
 	// Buffers the status updates to ack
 	ackChannel chan *sched.Event_Update
@@ -272,7 +275,7 @@ func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *sched.Event_Update)
 		},
 	}
 	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID()
-	err := m.client.Call(msid, msg)
+	err := m.schedulerclient.Call(msid, msg)
 	if err != nil {
 		log.WithField("task_status", *taskUpdate).
 			WithError(err).

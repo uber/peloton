@@ -25,8 +25,8 @@ import (
 
 // serviceHandler implements peloton.private.hostmgr.InternalHostService.
 type serviceHandler struct {
-	schedulerClient       mpb.Client
-	mOperatorClient       mpb.MasterOperatorClient
+	schedulerClient       mpb.SchedulerClient
+	operatorMasterClient  mpb.MasterOperatorClient
 	metrics               *Metrics
 	offerPool             offer.Pool
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
@@ -36,14 +36,14 @@ type serviceHandler struct {
 func InitServiceHandler(
 	d yarpc.Dispatcher,
 	parent tally.Scope,
-	schedulerClient mpb.Client,
-	operatorMClient mpb.MasterOperatorClient,
+	schedulerClient mpb.SchedulerClient,
+	masterOperatorClient mpb.MasterOperatorClient,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 ) {
 
 	handler := serviceHandler{
 		schedulerClient:       schedulerClient,
-		mOperatorClient:       operatorMClient,
+		operatorMasterClient:  masterOperatorClient,
 		metrics:               NewMetrics(parent.SubScope("hostmgr")),
 		offerPool:             offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider: frameworkInfoProvider,
@@ -458,7 +458,7 @@ func (h *serviceHandler) ClusterCapacity(
 	}
 
 	// Fetch allocated resources
-	allocatedResources, err := h.mOperatorClient.AllocatedResources(frameWorkID.GetValue())
+	allocatedResources, err := h.operatorMasterClient.AllocatedResources(frameWorkID.GetValue())
 
 	if err != nil {
 		h.metrics.ClusterCapacityFail.Inc(1)

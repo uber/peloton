@@ -62,7 +62,7 @@ type Pool interface {
 // corresponding YARPC procedures.
 func NewOfferPool(
 	offerHoldTime time.Duration,
-	client mpb.Client,
+	schedulerClient mpb.SchedulerClient,
 	metrics *Metrics,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 ) Pool {
@@ -73,7 +73,7 @@ func NewOfferPool(
 		offersLock:    &sync.Mutex{},
 		offerHoldTime: offerHoldTime,
 
-		client: client,
+		mSchedulerClient:           schedulerClient,
 		mesosFrameworkInfoProvider: frameworkInfoProvider,
 
 		metrics: metrics,
@@ -107,7 +107,7 @@ type offerPool struct {
 	// Time to hold offer for
 	offerHoldTime time.Duration
 
-	client                     mpb.Client
+	mSchedulerClient           mpb.SchedulerClient
 	mesosFrameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 
 	metrics          *Metrics
@@ -386,7 +386,7 @@ func (p *offerPool) DeclineOffers(offers map[string]*mesos.Offer) error {
 		},
 	}
 	msid := p.mesosFrameworkInfoProvider.GetMesosStreamID()
-	err := p.client.Call(msid, msg)
+	err := p.mSchedulerClient.Call(msid, msg)
 	if err != nil {
 		// Ideally, we assume that Mesos has offer_timeout configured, so in the
 		//  event that offer declining call fails, offers should eventually be

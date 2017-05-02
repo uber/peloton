@@ -32,7 +32,7 @@ type taskReconciler struct {
 	stopChan chan struct{}
 	metrics  *Metrics
 
-	client                mpb.Client
+	schedulerClient       mpb.SchedulerClient
 	jobStore              storage.JobStore
 	taskStore             storage.TaskStore
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
@@ -62,7 +62,7 @@ var reconciler *taskReconciler
 
 // InitTaskReconciler initialize the task reconciler.
 func InitTaskReconciler(
-	client mpb.Client,
+	client mpb.SchedulerClient,
 	parent tally.Scope,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 	jobStore storage.JobStore,
@@ -75,7 +75,7 @@ func InitTaskReconciler(
 	}
 
 	reconciler = &taskReconciler{
-		client:                client,
+		schedulerClient:       client,
 		jobStore:              jobStore,
 		taskStore:             taskStore,
 		metrics:               NewMetrics(parent.SubScope("reconcile")),
@@ -187,7 +187,7 @@ func (r *taskReconciler) reconcileImplicitly() {
 		Reconcile:   &sched.Call_Reconcile{},
 	}
 
-	err := r.client.Call(streamID, msg)
+	err := r.schedulerClient.Call(streamID, msg)
 	if err != nil {
 		r.metrics.ReconcileImplicitlyFail.Inc(1)
 		log.WithField("error", err).
@@ -243,7 +243,7 @@ func (r *taskReconciler) reconcileExplicitly() {
 				Tasks: currBatch,
 			},
 		}
-		err = r.client.Call(streamID, msg)
+		err = r.schedulerClient.Call(streamID, msg)
 		if err != nil {
 			r.metrics.ExplicitTasksPerRun.Update(float64(explicitTasksPerRun))
 			r.metrics.ReconcileExplicitlyFail.Inc(1)

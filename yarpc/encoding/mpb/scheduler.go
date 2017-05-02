@@ -5,30 +5,34 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
 	"golang.org/x/net/context"
+
+	"mesos/v1/scheduler"
 )
 
-// Client makes Mesos JSON requests to Mesos endpoint
-type Client interface {
+// SchedulerClient makes Mesos JSON requests to Mesos endpoint
+type SchedulerClient interface {
 	// Call performs an outbound Mesos JSON request.
 	// Returns an error if the request failed.
-	Call(mesosStreamID string, msg proto.Message) error
+	Call(mesosStreamID string, msg *mesos_v1_scheduler.Call) error
 }
 
-// New builds a new Mesos JSON client.
-func New(c transport.ClientConfig, contentType string) Client {
-	return mpbClient{cfg: c, contentType: contentType}
+// NewSchedulerClient builds a new Mesos Scheduler JSON client.
+func NewSchedulerClient(c transport.ClientConfig, contentType string) SchedulerClient {
+	return &schedulerClient{
+		cfg:         c,
+		contentType: contentType,
+	}
 }
 
-type mpbClient struct {
+type schedulerClient struct {
 	cfg         transport.ClientConfig
 	contentType string
 }
 
-func (c mpbClient) Call(mesosStreamID string, msg proto.Message) error {
+func (c *schedulerClient) Call(mesosStreamID string, msg *mesos_v1_scheduler.Call) error {
 	headers := yarpc.NewHeaders().
 		With("Mesos-Stream-Id", mesosStreamID).
 		With("Content-Type", fmt.Sprintf("application/%s", c.contentType)).
@@ -36,7 +40,11 @@ func (c mpbClient) Call(mesosStreamID string, msg proto.Message) error {
 
 	body, err := MarshalPbMessage(msg, c.contentType)
 	if err != nil {
-		return fmt.Errorf("Failed to marshal subscribe call to contentType %s %v", c.contentType, err)
+		return fmt.Errorf(
+			"failed to marshal subscribe call to contentType %s %v",
+			c.contentType,
+			err,
+		)
 	}
 
 	treq := transport.Request{

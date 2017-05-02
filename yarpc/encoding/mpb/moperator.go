@@ -44,7 +44,7 @@ func NewMasterOperatorClient(
 }
 
 // Makes the actual RPC call and returns Master operator API response
-func (mo *masterOperatorClient) call(ctx context.Context, msg proto.Message) (
+func (mo *masterOperatorClient) call(ctx context.Context, msg *mesos_master.Call) (
 	*mesos_master.Response, error) {
 	// Create Headers
 	headers := yarpc.NewHeaders().

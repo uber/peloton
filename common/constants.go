@@ -1,8 +1,8 @@
 package common
 
 const (
-	// MesosMaster service name
-	MesosMaster = "mesos-master"
+	// MesosMasterScheduler service name
+	MesosMasterScheduler = "mesos-master-scheduler"
 	// MesosMasterOperator service name
 	MesosMasterOperator = "mesos-master-operator"
 	// MesosMasterOperatorEndPoint is the path for Mesos Master endpoint

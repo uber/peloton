@@ -15,6 +15,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 )
@@ -33,7 +34,7 @@ func (suite *masterOperatorClientTestSuite) SetupTest() {
 	suite.ctrl = ctrl
 	mockClientCfg := transport_mocks.NewMockClientConfig(suite.ctrl)
 	suite.mockClientCfg = mockClientCfg
-	suite.defaultEncoding = "x-protobuf"
+	suite.defaultEncoding = ContentTypeProtobuf
 }
 
 func (suite *masterOperatorClientTestSuite) TearDownTest() {
@@ -74,7 +75,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 	mockCaller := "testCall"
 	mockSvc := "testSvc"
 	mockValidValue := new(string)
-	*mockValidValue = "674f20db-296c-436f-a5f2-3d15ec3aa66f-0000"
+	*mockValidValue = uuid.NIL.String()
 	mockNotExistValue := new(string)
 	*mockNotExistValue = "do_not_exist"
 
@@ -230,11 +231,11 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			suite.Nil(resources)
 		} else {
 			suite.NoError(err)
-			suite.Equal(nil, nil)
+			suite.NotNil(resources)
 		}
 	}
 }
 
-func TestHostManagerTestSuite(t *testing.T) {
+func TestMasterOperatorClientTestSuite(t *testing.T) {
 	suite.Run(t, new(masterOperatorClientTestSuite))
 }

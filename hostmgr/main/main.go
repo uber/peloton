@@ -217,8 +217,8 @@ func main() {
 		})
 
 	outbounds := yarpc.Outbounds{
-		common.MesosMaster:         mOutbound,
-		common.MesosMasterOperator: mOperatorOutbound,
+		common.MesosMasterScheduler: mOutbound,
+		common.MesosMasterOperator:  mOperatorOutbound,
 		common.PelotonResourceManager: transport.Outbounds{
 			Unary: resmgrOutbound,
 		},
@@ -234,12 +234,12 @@ func main() {
 	// They are driven by the leader who will subscribe to
 	// Mesos callbacks
 	// NOTE: This blocks us to move all Mesos related logic into
-	// hostmgr.Server because mesosClient uses dispatcher...
-	mesosClient := mpb.New(
-		dispatcher.ClientConfig(common.MesosMaster),
+	// hostmgr.Server because schedulerClient uses dispatcher...
+	schedulerClient := mpb.NewSchedulerClient(
+		dispatcher.ClientConfig(common.MesosMasterScheduler),
 		cfg.Mesos.Encoding,
 	)
-	mesosOperatorClient := mpb.NewMasterOperatorClient(
+	masterOperatorClient := mpb.NewMasterOperatorClient(
 		dispatcher.ClientConfig(common.MesosMasterOperator),
 		cfg.Mesos.Encoding,
 	)
@@ -256,15 +256,15 @@ func main() {
 		rootScope,
 		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
-		mesosClient,
+		schedulerClient,
 	)
 
 	// Init service handler.
 	hostmgr.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		mesosClient,
-		mesosOperatorClient,
+		schedulerClient,
+		masterOperatorClient,
 		driver,
 	)
 
@@ -282,7 +282,7 @@ func main() {
 	)
 
 	reconcile.InitTaskReconciler(
-		mesosClient,
+		schedulerClient,
 		rootScope,
 		driver,
 		jobStore,

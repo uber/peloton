@@ -49,22 +49,22 @@ func (m *mockFrameworkInfoProvider) GetFrameworkID() *mesos.FrameworkID {
 type TaskReconcilerTestSuite struct {
 	suite.Suite
 
-	ctrl          *gomock.Controller
-	testScope     tally.TestScope
-	client        *mock_mpb.MockClient
-	reconciler    *taskReconciler
-	mockJobStore  *store_mocks.MockJobStore
-	mockTaskStore *store_mocks.MockTaskStore
-	testJobID     *peloton.JobID
-	testJobConfig *job.JobConfig
-	allJobConfigs map[string]*job.JobConfig
-	taskInfos     map[uint32]*task.TaskInfo
+	ctrl            *gomock.Controller
+	testScope       tally.TestScope
+	schedulerClient *mock_mpb.MockSchedulerClient
+	reconciler      *taskReconciler
+	mockJobStore    *store_mocks.MockJobStore
+	mockTaskStore   *store_mocks.MockTaskStore
+	testJobID       *peloton.JobID
+	testJobConfig   *job.JobConfig
+	allJobConfigs   map[string]*job.JobConfig
+	taskInfos       map[uint32]*task.TaskInfo
 }
 
 func (suite *TaskReconcilerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
-	suite.client = mock_mpb.NewMockClient(suite.ctrl)
+	suite.schedulerClient = mock_mpb.NewMockSchedulerClient(suite.ctrl)
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
 	suite.testJobID = &peloton.JobID{
@@ -83,7 +83,7 @@ func (suite *TaskReconcilerTestSuite) SetupTest() {
 	}
 
 	suite.reconciler = &taskReconciler{
-		client:                         suite.client,
+		schedulerClient:                suite.schedulerClient,
 		metrics:                        NewMetrics(suite.testScope),
 		frameworkInfoProvider:          &mockFrameworkInfoProvider{},
 		jobStore:                       suite.mockJobStore,
@@ -130,7 +130,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndState(suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),
-		suite.client.EXPECT().
+		suite.schedulerClient.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).
@@ -142,7 +142,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 				suite.Equal(testBatchSize, len(call.GetReconcile().GetTasks()))
 			}).
 			Return(nil),
-		suite.client.EXPECT().
+		suite.schedulerClient.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).
@@ -156,7 +156,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 					len(call.GetReconcile().GetTasks()))
 			}).
 			Return(nil),
-		suite.client.EXPECT().
+		suite.schedulerClient.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).
@@ -194,7 +194,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndState(suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),
-		suite.client.EXPECT().
+		suite.schedulerClient.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).
@@ -206,7 +206,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 				suite.Equal(testBatchSize, len(call.GetReconcile().GetTasks()))
 			}).
 			Return(fmt.Errorf("fake error")),
-		suite.client.EXPECT().
+		suite.schedulerClient.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).
@@ -244,7 +244,7 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndState(suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),
-		suite.client.EXPECT().
+		suite.schedulerClient.EXPECT().
 			Call(
 				gomock.Eq(streamID),
 				gomock.Any()).

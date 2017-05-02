@@ -94,21 +94,21 @@ func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
 type HostMgrHandlerTestSuite struct {
 	suite.Suite
 
-	ctrl        *gomock.Controller
-	testScope   tally.TestScope
-	client      *mpb_mocks.MockClient
-	moClient    *mpb_mocks.MockMasterOperatorClient
-	provider    *hostmgr_mesos_mocks.MockFrameworkInfoProvider
-	pool        offer.Pool
-	handler     *serviceHandler
-	frameworkID *mesos.FrameworkID
+	ctrl                 *gomock.Controller
+	testScope            tally.TestScope
+	schedulerClient      *mpb_mocks.MockSchedulerClient
+	masterOperatorClient *mpb_mocks.MockMasterOperatorClient
+	provider             *hostmgr_mesos_mocks.MockFrameworkInfoProvider
+	pool                 offer.Pool
+	handler              *serviceHandler
+	frameworkID          *mesos.FrameworkID
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
-	suite.client = mpb_mocks.NewMockClient(suite.ctrl)
-	suite.moClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
+	suite.schedulerClient = mpb_mocks.NewMockSchedulerClient(suite.ctrl)
+	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
 
 	mockValidValue := new(string)
@@ -121,14 +121,14 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 
 	suite.pool = offer.NewOfferPool(
 		_offerHoldTime,
-		suite.client,
+		suite.schedulerClient,
 		offer.NewMetrics(suite.testScope.SubScope("offer")),
 		nil, /* frameworkInfoProvider */
 	)
 
 	suite.handler = &serviceHandler{
-		schedulerClient:       suite.client,
-		mOperatorClient:       suite.moClient,
+		schedulerClient:       suite.schedulerClient,
+		operatorMasterClient:  suite.masterOperatorClient,
 		metrics:               NewMetrics(suite.testScope),
 		offerPool:             suite.pool,
 		frameworkInfoProvider: suite.provider,
@@ -355,8 +355,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 			suite.frameworkID),
 		// Set expectations on provider
 		suite.provider.EXPECT().GetMesosStreamID().Return(_streamID),
-		// Set expectations on scheduler client
-		suite.client.EXPECT().
+		// Set expectations on scheduler schedulerClient
+		suite.schedulerClient.EXPECT().
 			Call(
 				gomock.Eq(_streamID),
 				gomock.Any(),
@@ -427,8 +427,8 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 		_streamID,
 	).Times(2)
 
-	// Set expectations on scheduler client
-	suite.client.EXPECT().
+	// Set expectations on scheduler schedulerClient
+	suite.schedulerClient.EXPECT().
 		Call(
 			gomock.Eq(_streamID),
 			gomock.Any(),
@@ -487,7 +487,7 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 	).Times(2)
 
 	// A failed call.
-	suite.client.EXPECT().
+	suite.schedulerClient.EXPECT().
 		Call(
 			gomock.Eq(_streamID),
 			gomock.Any(),
@@ -507,7 +507,7 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 		Return(errors.New("Some error"))
 
 	// A successful call.
-	suite.client.EXPECT().
+	suite.schedulerClient.EXPECT().
 		Call(
 			gomock.Eq(_streamID),
 			gomock.Any(),
@@ -590,7 +590,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 
 		if tt.clientCall {
 			// Set expectations on the mesos operator client
-			suite.moClient.EXPECT().AllocatedResources(
+			suite.masterOperatorClient.EXPECT().AllocatedResources(
 				gomock.Any(),
 			).Return(tt.response, tt.err)
 		}
