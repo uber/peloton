@@ -48,8 +48,27 @@ message SlaConfig {
   //
   bool preemptible = 2;
 
-  // Maximum number of instances to schedule at any point in time.
-  uint32 maximumRunningInstances = 3;
+  //
+  // Whether the job instances are revocable. If so, it might
+  // be scheduled using revocable resources and subject to preemption
+  // when other jobs reclaims those resources.
+  //
+  bool revocable = 3;
+
+  //
+  // Maximum number of instances to admit and run at any point in time.
+  // If specified, should be <= instanceCount and >= minimumRunningInstances;
+  // default value is instanceCount.
+  //
+  uint32 maximumRunningInstances = 4;
+
+  //
+  // Minimum number of instances to admit and run at any point in time.
+  // If specified, should be <= maximumRunningInstances <= instanceCount;
+  // default value is 1.  Admission requires the corresponding resource pool
+  // has enough reserved resources for the full set of minimum number of instances.
+  //
+  uint32 minmumRunningInstances = 5;
 }
 
 
