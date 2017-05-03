@@ -1,4 +1,4 @@
-include('../template/peloton-template.aurora')
+include('../../template/peloton-template.aurora')
 
 cluster = 'sjc1-devel01'
 mesos_zk_path = 'zk://' + ','.join([

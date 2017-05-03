@@ -11,6 +11,7 @@ class Profile(Struct):
   enable_debug_logging = Default(Boolean, 'false')
   use_cassandra = Default(Boolean, 'false')
   cassandra_hosts = Default(String, '')
+  cassandra_store = Default(String, '')
   pinned_attribute = Default(String, "host")
   pinned_hosts = Required(String)
 
@@ -57,6 +58,7 @@ JOB_TEMPLATE = Service(
         Parameter(name='env', value='ELECTION_ZK_SERVERS={{profile.election_zk_servers}}'),
         Parameter(name='env', value='USE_CASSANDRA={{profile.use_cassandra}}'),
         Parameter(name='env', value='CASSANDRA_HOSTS={{profile.cassandra_hosts}}'),
+        Parameter(name='env', value='CASSANDRA_STORE={{profile.cassandra_store}}'),
       ]
     )
   ),
