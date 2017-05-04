@@ -35,30 +35,6 @@ type TaskBuilderTestSuite struct {
 	suite.Suite
 }
 
-// helper function for getting a set of ports from ranges of integers.
-func (suite *TaskBuilderTestSuite) getPortSet(
-	ranges ...uint32) map[uint32]bool {
-
-	result := make(map[uint32]bool)
-	begin := uint32(0)
-	for index, num := range ranges {
-		if index%2 == 0 {
-			begin = num
-		} else {
-			for i := begin; i <= num; i++ {
-				result[i] = true
-			}
-			begin = uint32(0)
-		}
-	}
-
-	if begin != uint32(0) {
-		panic("Odd number of input arguments!")
-	}
-
-	return result
-}
-
 // helper function to build resources which fits exactly numTasks
 // default tasks.
 func (suite *TaskBuilderTestSuite) getResources(
@@ -123,71 +99,6 @@ func createTestTaskConfigs(numTasks int) []*task.TaskConfig {
 	return configs
 }
 
-// helper function to test bi-directional port set/range transformation.
-func (suite *TaskBuilderTestSuite) testPortSetTransformation(
-	expected map[uint32]bool, rangeLen int) {
-
-	ranges := createPortRanges(expected)
-	suite.Equal(rangeLen, len(ranges.Range))
-
-	rs := util.NewMesosResourceBuilder().
-		WithName("ports").
-		WithType(mesos.Value_RANGES).
-		WithRanges(ranges).
-		Build()
-	portSet := extractPortSet(rs)
-	suite.Equal(expected, portSet)
-}
-
-// This tests bidirectional transformation between set of available port and
-// ranges in Mesos resource.
-func (suite *TaskBuilderTestSuite) TestPortRanges() {
-	// Empty range.
-	rs := util.NewMesosResourceBuilder().
-		WithName("ports").
-		WithType(mesos.Value_RANGES).
-		Build()
-	portSet := extractPortSet(rs)
-	suite.Empty(portSet)
-
-	// Unmatch resource name.
-	rs = util.NewMesosResourceBuilder().
-		WithName("foo").
-		WithType(mesos.Value_RANGES).
-		Build()
-	portSet = extractPortSet(rs)
-	suite.Empty(portSet)
-
-	// Empty one
-	suite.testPortSetTransformation(suite.getPortSet(), 0)
-	// Single port
-	suite.testPortSetTransformation(suite.getPortSet(1000, 1000), 1)
-	// Single range
-	suite.testPortSetTransformation(suite.getPortSet(1000, 1001), 2)
-	// Single range
-	suite.testPortSetTransformation(suite.getPortSet(1000, 1003), 4)
-	// Multiple ranges.
-	suite.testPortSetTransformation(suite.getPortSet(1000, 1001, 1003, 1004), 4)
-
-	// Multiple single ports.
-	suite.testPortSetTransformation(
-		suite.getPortSet(1000, 1000, 2000, 2000, 3000, 3000, 4000, 4000),
-		4)
-
-	// Multiple longer ranges.
-	suite.testPortSetTransformation(
-		suite.getPortSet(1000, 2000, 3000, 4000),
-		2002)
-	// Merged ranges.
-	suite.testPortSetTransformation(
-		suite.getPortSet(1000, 2000, 2001, 3000),
-		2001)
-	// More ranges
-	suite.testPortSetTransformation(
-		suite.getPortSet(1000, 1001, 2000, 2001, 3000, 3001, 4000, 4000),
-		7)
-}
-
 // This tests several copies of simple tasks without any port can be
 // created as long as there are enough resources.
 func (suite *TaskBuilderTestSuite) TestNoPortTasks() {
@@ -208,7 +119,7 @@ func (suite *TaskBuilderTestSuite) TestNoPortTasks() {
 	configs := createTestTaskConfigs(numTasks)
 
 	for i := 0; i < numTasks; i++ {
-		info, err := builder.build(tids[i], configs[i])
+		info, err := builder.build(tids[i], configs[i], nil)
 		suite.NoError(err)
 		suite.Equal(tids[i], info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
@@ -222,7 +133,7 @@ func (suite *TaskBuilderTestSuite) TestNoPortTasks() {
 	}
 
 	// next build call will return an error due to insufficient resource.
-	info, err := builder.build(tids[0], configs[0])
+	info, err := builder.build(tids[0], configs[0], nil)
 	suite.Nil(info)
 	suite.EqualError(err, "Not enough resources left to run task")
 }
@@ -243,7 +154,7 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 		util.NewMesosResourceBuilder().
 			WithName("ports").
 			WithType(mesos.Value_RANGES).
-			WithRanges(createPortRanges(portSet)).
+			WithRanges(util.CreatePortRanges(portSet)).
 			Build())
 
 	builder := newTaskBuilder(resources)
@@ -261,18 +172,20 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 		builder.portSets)
 	tid := suite.createTestTaskIDs(1)[0]
 	taskConfig := createTestTaskConfigs(1)[0]
+	// Requires 3 ports, 1 static and 2 dynamic ones.
 	taskConfig.Ports = []*task.PortConfig{
 		{
 			Name:    "static",
 			Value:   80,
 			EnvName: "STATIC_PORT",
 		},
-		{ // dynamic with env name
+		{
 			Name:    "dynamic_env",
-			EnvName: "DYNAMIC_ENV_PORT",
+			EnvName: "DYNAMIC_ENV",
 		},
-		{ // dynamic without env
-			Name: "dynamic_no_env",
+		{
+			Name:    "dynamic_env_port",
+			EnvName: "DYNAMIC_ENV_PORT",
 		},
 	}
 	tmpLabelKey := "label_key"
@@ -285,10 +198,21 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 			},
 		},
 	}
+	selectedDynamicPorts := []map[string]uint32{
+		{
+			"dynamic_env":      1000,
+			"dynamic_env_port": 1002,
+		},
+		{
+			"dynamic_env":      1004,
+			"dynamic_env_port": 1006,
+		},
+	}
 
 	discoveryPortSet := make(map[uint32]bool)
 	for i := 0; i < numTasks; i++ {
-		info, err := builder.build(tid, taskConfig)
+		info, err := builder.build(
+			tid, taskConfig, selectedDynamicPorts[i])
 		suite.NoError(err)
 		suite.Equal(tid, info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
@@ -318,13 +242,13 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 			"static port is not found in %v", mesosPorts)
 
 		envVars := info.GetCommand().GetEnvironment().GetVariables()
-		suite.Equal(2, len(envVars))
+		suite.Equal(3, len(envVars))
 
 		envMap := make(map[string]string)
 		for _, envVar := range envVars {
 			envMap[envVar.GetName()] = envVar.GetValue()
 		}
-		suite.Equal(2, len(envMap))
+		suite.Equal(3, len(envMap))
 		suite.Contains(envMap, "DYNAMIC_ENV_PORT")
 		p, err := strconv.Atoi(envMap["DYNAMIC_ENV_PORT"])
 		suite.NoError(err)
@@ -334,17 +258,59 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 
 		suite.Equal(
 			strconv.Itoa(int(portsInDiscovery["dynamic_env"])),
-			envMap["DYNAMIC_ENV_PORT"])
+			envMap["DYNAMIC_ENV"])
 
 		suite.Equal(taskConfig.Labels, info.Labels)
 	}
 
 	suite.Equal(portSet, discoveryPortSet)
+}
 
-	// next build call will return an error due to insufficient ports.
-	info, err := builder.build(tid, taskConfig)
-	suite.Nil(info)
-	suite.EqualError(err, errNotEnoughPorts.Error())
+// TestTaskBuilderPickPorts tests pickPorts call and its return value.
+func (suite *TaskBuilderTestSuite) TestTaskBuilderPickPorts() {
+	portSet := map[uint32]bool{
+		1000: true,
+		1002: true,
+		1004: true,
+		1006: true,
+	}
+	// add more scalar resource to make sure we are only bound by ports.
+	resourceTasks := 4
+	resources := suite.getResources(resourceTasks)
+	resources = append(resources,
+		util.NewMesosResourceBuilder().
+			WithName("ports").
+			WithType(mesos.Value_RANGES).
+			WithRanges(util.CreatePortRanges(portSet)).
+			Build())
+
+	builder := newTaskBuilder(resources)
+	taskConfig := createTestTaskConfigs(1)[0]
+	// Requires 3 ports, 1 static and 2 dynamic ones.
+	taskConfig.Ports = []*task.PortConfig{
+		{
+			Name:  "static",
+			Value: 80,
+		},
+		{
+			Name:    "dynamic_env",
+			EnvName: "DYNAMIC_ENV",
+		},
+		{
+			Name:    "dynamic_env_port",
+			EnvName: "DYNAMIC_ENV_PORT",
+		},
+	}
+	selectedDynamicPorts := map[string]uint32{
+		"dynamic_env":      1000,
+		"dynamic_env_port": 1002,
+	}
+
+	result, err := builder.pickPorts(taskConfig, selectedDynamicPorts)
+	suite.NoError(err)
+	suite.Equal(len(result.selectedPorts), 3)
+	suite.Equal(len(result.portEnvs), 2)
+	suite.Equal(len(result.portResources), 1)
 }
 
 // This tests task with command health can be created.
@@ -363,7 +329,7 @@ func (suite *TaskBuilderTestSuite) TestCommandHealthCheck() {
 		Type:         task.HealthCheckConfig_COMMAND,
 		CommandCheck: cmdCfg,
 	}
-	info, err := builder.build(tid, c)
+	info, err := builder.build(tid, c, nil)
 	suite.NoError(err)
 	suite.Equal(tid, info.GetTaskId())
 	hc := info.GetHealthCheck().GetCommand()

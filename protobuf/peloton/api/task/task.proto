@@ -293,7 +293,7 @@ message RuntimeInfo {
   // The name of the host where the instance is running
   string host = 4;
 
-  // Ports reserved on the host while this instance is running
+  // Dynamic ports reserved on the host while this instance is running
   map<string, uint32> ports = 5;
 
   // Goalstate of the task

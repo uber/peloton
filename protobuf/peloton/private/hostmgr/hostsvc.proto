@@ -33,7 +33,8 @@ message LaunchableTask {
   mesos.v1.TaskID taskId = 1;
   api.task.TaskConfig config = 2;
 
-  // Dynamic ports reserved on the host while this instance is running.
+  // Dynamic ports reserved on the host while this instance is running. The key
+  // is port name, value is port number.
   map<string, uint32> ports = 3;
 }
 

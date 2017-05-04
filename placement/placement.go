@@ -21,6 +21,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/util"
 )
 
 const (
@@ -212,6 +213,7 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOf
 	// Make a deep copy because we are modifying this struct here.
 	constraint := proto.Clone(&group.constraint).(*hostsvc.Constraint)
 	constraint.HostLimit = uint32(limit)
+
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
 	var response hostsvc.AcquireHostOffersResponse
@@ -259,8 +261,29 @@ func (s *placementEngine) placeTasks(
 	usage := scalar.FromResourceConfig(resourceConfig)
 	remain := scalar.FromMesosResources(hostOffer.GetResources())
 
+	numTotalTasks := uint32(len(tasks))
+	// Assuming all tasks within the same taskgroup have the same ports num
+	// config, as numports is used as task group key.
+	numPortsPerTask := tasks[0].GetNumPorts()
+	availablePorts := make(map[uint32]bool)
+	if numPortsPerTask > 0 {
+		availablePorts = util.GetPortsSetFromResources(
+			hostOffer.GetResources())
+		numAvailablePorts := len(availablePorts)
+		numTasksByAvailablePorts := uint32(numAvailablePorts) / numPortsPerTask
+		if numTasksByAvailablePorts < numTotalTasks {
+			log.WithFields(log.Fields{
+				"resmgr_task":         tasks[0],
+				"num_available_ports": numAvailablePorts,
+				"num_available_tasks": numTasksByAvailablePorts,
+				"total_tasks":         numTotalTasks,
+			}).Warn("Insufficient ports resources.")
+			numTotalTasks = numTasksByAvailablePorts
+		}
+	}
+
 	var selectedTasks []*resmgr.Task
-	for i := 0; i < len(tasks); i++ {
+	for i := uint32(0); i < numTotalTasks; i++ {
 		trySubtract := remain.TrySubtract(&usage)
 		if trySubtract == nil {
 			// NOTE: current placement implementation means all
@@ -281,10 +304,25 @@ func (s *placementEngine) placeTasks(
 		"remaining_tasks": tasks,
 	}).Debug("Selected tasks to place")
 
-	if len(selectedTasks) <= 0 {
+	numSelectedTasks := len(selectedTasks)
+	if numSelectedTasks <= 0 {
 		return nil, tasks
 	}
-	placement := s.createTasksPlacement(selectedTasks, hostOffer)
+
+	var selectedPorts []uint32
+	for port := range availablePorts {
+		// Port distribution is randomized by iterating map.
+		if uint32(len(selectedPorts)) >= uint32(numSelectedTasks)*numPortsPerTask {
+			break
+		}
+		selectedPorts = append(selectedPorts, port)
+	}
+
+	placement := s.createTasksPlacement(
+		selectedTasks,
+		hostOffer,
+		selectedPorts,
+	)
 
 	return placement, tasks
 }
@@ -346,17 +384,21 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 // createTasksPlacement creates the placement for resource manager
 // It also returns the list of tasks which can not be placed
 func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
-	hostOffer *hostsvc.HostOffer) *resmgr.Placement {
+	hostOffer *hostsvc.HostOffer,
+	selectedPorts []uint32) *resmgr.Placement {
+
 	watcher := s.metrics.CreatePlacementDuration.Start()
 	var tasksIds []*peloton.TaskID
 	for _, t := range tasks {
 		taskID := t.Id
 		tasksIds = append(tasksIds, taskID)
 	}
+
 	placement := &resmgr.Placement{
 		AgentId:  hostOffer.AgentId,
 		Hostname: hostOffer.Hostname,
 		Tasks:    tasksIds,
+		Ports:    selectedPorts,
 		// TODO : We are not setting offerId's
 		// we need to remove it from protobuf
 	}
@@ -449,7 +491,8 @@ func getHostSvcConstraint(t *resmgr.Task) hostsvc.Constraint {
 	result := hostsvc.Constraint{
 		// HostLimit will be later determined by number of tasks.
 		ResourceConstraint: &hostsvc.ResourceConstraint{
-			Minimum: t.Resource,
+			Minimum:  t.Resource,
+			NumPorts: t.NumPorts,
 		},
 	}
 	if t.Constraint != nil {

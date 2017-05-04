@@ -122,6 +122,12 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigInstanceOverride() {
 
 func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 	// No error if there is a default task config
+	portConfigs := []*task.PortConfig{
+		{
+			Name:    "port",
+			EnvName: "PORT",
+		},
+	}
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
@@ -129,6 +135,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
 		},
+		Ports: portConfigs,
 	}
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
@@ -173,6 +180,42 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
 		InstanceConfig: instances,
 	}
 	err := ValidateTaskConfig(&jobConfig)
+	suite.Error(err)
+}
+
+func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureForPortConfig() {
+	portConfigs := []*task.PortConfig{
+		{
+			Name: "port",
+		},
+	}
+	taskConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+			FdLimit:     1000,
+		},
+		Ports: portConfigs,
+	}
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		InstanceCount: 10,
+		DefaultConfig: &taskConfig,
+	}
+
+	err := ValidateTaskConfig(&jobConfig)
+	suite.Error(err)
+}
+
+func (suite *TaskConfigTestSuite) TestValidatePortConfigFailure() {
+	portConfigs := []*task.PortConfig{
+		{
+			Value: uint32(80),
+		},
+	}
+
+	err := validatePortConfig(portConfigs)
 	suite.Error(err)
 }
 

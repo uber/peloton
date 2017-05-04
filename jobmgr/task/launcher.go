@@ -13,7 +13,6 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	"peloton/api/peloton"
 	"peloton/api/task"
 	"peloton/private/hostmgr/hostsvc"
 	"peloton/private/resmgr"
@@ -179,9 +178,16 @@ func (l *launcher) processPlacements(placements []*resmgr.Placement) error {
 	log.WithField("placements", placements).Debug("Start processing placements")
 	for _, placement := range placements {
 		go func(placement *resmgr.Placement) {
-			tasks := l.getLaunchableTasks(placement.Tasks)
+			tasks, err := l.getLaunchableTasks(placement)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"placement": placement,
+					"error":     err.Error(),
+				}).Error("Failed to get launchable tasks")
+				return
+			}
 			l.metrics.LauncherGoRoutines.Inc(1)
-			err := l.launchTasks(tasks, placement)
+			err = l.launchTasks(tasks, placement)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"placement": placement,
@@ -196,7 +202,14 @@ func (l *launcher) processPlacements(placements []*resmgr.Placement) error {
 	return nil
 }
 
-func (l *launcher) getLaunchableTasks(tasks []*peloton.TaskID) []*hostsvc.LaunchableTask {
+func (l *launcher) getLaunchableTasks(
+	placement *resmgr.Placement) ([]*hostsvc.LaunchableTask, error) {
+
+	tasks := placement.GetTasks()
+	hostname := placement.GetHostname()
+	selectedPorts := placement.GetPorts()
+	portsIndex := 0
+
 	var tasksInfo []*task.TaskInfo
 	getTaskInfoStart := time.Now()
 	watcher := l.metrics.GetDBTaskInfo.Start()
@@ -207,7 +220,39 @@ func (l *launcher) getLaunchableTasks(tasks []*peloton.TaskID) []*hostsvc.Launch
 		taskInfo, err := l.taskStore.GetTaskByID(taskID.Value)
 		if err != nil {
 			log.WithField("Task Id", taskID.Value).Error("Not able to get Task")
+			continue
 		}
+
+		taskInfo.GetRuntime().Host = hostname
+		taskInfo.GetRuntime().State = task.TaskState_LAUNCHING
+		// Assign selected dynamic port to task per port config.
+		for _, portConfig := range taskInfo.GetConfig().GetPorts() {
+			if portConfig.GetValue() != 0 {
+				// Skip static port.
+				continue
+			}
+			if portsIndex >= len(selectedPorts) {
+				// This should never happen.
+				log.WithField("placement", placement).
+					Error("placement contains less ports than required.")
+				return nil, errors.New("invalid placement")
+			}
+			// Make sure runtime ports is not nil.
+			if taskInfo.GetRuntime().GetPorts() == nil {
+				taskInfo.GetRuntime().Ports = make(map[string]uint32)
+			}
+			taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
+			portsIndex++
+		}
+
+		// Writes the hostname and ports information back to db.
+		err = l.taskStore.UpdateTask(taskInfo)
+		if err != nil {
+			log.WithField("task_info", taskInfo).
+				Error("Not able to update Task")
+			continue
+		}
+
 		tasksInfo = append(tasksInfo, taskInfo)
 	}
 
@@ -222,7 +267,7 @@ func (l *launcher) getLaunchableTasks(tasks []*peloton.TaskID) []*hostsvc.Launch
 	l.metrics.GetDBTaskInfo.Record(d)
 
 	launchableTasks := l.createLaunchableTasks(tasksInfo)
-	return launchableTasks
+	return launchableTasks, nil
 }
 
 // createLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
@@ -230,8 +275,9 @@ func (l *launcher) createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.Laun
 	var launchableTasks []*hostsvc.LaunchableTask
 	for _, task := range tasks {
 		launchableTask := hostsvc.LaunchableTask{
-			TaskId: task.Runtime.TaskId,
+			TaskId: task.GetRuntime().GetTaskId(),
 			Config: task.GetConfig(),
+			Ports:  task.GetRuntime().GetPorts(),
 		}
 		launchableTasks = append(launchableTasks, &launchableTask)
 	}
@@ -263,61 +309,61 @@ func (l *launcher) Stop() error {
 }
 
 func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
-	// TODO: Add retry Logic for tasks launching failure
 	placement *resmgr.Placement) error {
-	if len(selectedTasks) > 0 {
-		log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
-		ctx, cancelFunc := context.WithTimeout(l.rootCtx, 10*time.Second)
-		defer cancelFunc()
-		var response hostsvc.LaunchTasksResponse
-		var request = &hostsvc.LaunchTasksRequest{
-			Hostname: placement.GetHostname(),
-			Tasks:    selectedTasks,
-			AgentId:  placement.GetAgentId(),
-		}
-
-		log.WithField("request", request).Debug("LaunchTasks Called")
-
-		callStart := time.Now()
-		_, err := l.hostMgrClient.Call(
-			ctx,
-			yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks"),
-			request,
-			&response,
-		)
-		callDuration := time.Since(callStart)
-
-		if err != nil {
-
-			log.WithFields(log.Fields{
-				"tasks":     len(selectedTasks),
-				"placement": placement,
-			}).WithError(err).Error("Failed to launch tasks")
-			l.metrics.TaskLaunchFail.Inc(1)
-			return err
-		}
-
-		log.WithField("response", response).Debug("LaunchTasks returned")
-
-		if response.Error != nil {
-			log.WithFields(log.Fields{
-				"tasks":     len(selectedTasks),
-				"placement": placement,
-				"error":     response.Error.String(),
-			}).Error("Failed to launch tasks")
-			l.metrics.TaskLaunchFail.Inc(1)
-			return errors.New(response.Error.String())
-		}
-		l.metrics.TaskLaunch.Inc(int64(len(selectedTasks)))
-		log.WithFields(log.Fields{
-			"num_tasks": len(selectedTasks),
-			"hostname":  placement.GetHostname(),
-			"duration":  callDuration.Seconds(),
-		}).Info("Launched tasks")
-		l.metrics.LaunchTasksCall.Record(callDuration)
-	} else {
-		log.WithField("remaining_tasks", selectedTasks).Debug("No task is selected to launch")
+	// TODO: Add retry Logic for tasks launching failure
+	if len(selectedTasks) == 0 {
+		log.Debug("No task is selected to launch")
 		return errors.New("No task is selected to launch")
 	}
+
+	log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
+	ctx, cancelFunc := context.WithTimeout(l.rootCtx, 10*time.Second)
+	defer cancelFunc()
+	var response hostsvc.LaunchTasksResponse
+	var request = &hostsvc.LaunchTasksRequest{
+		Hostname: placement.GetHostname(),
+		Tasks:    selectedTasks,
+		AgentId:  placement.GetAgentId(),
+	}
+
+	log.WithField("request", request).Debug("LaunchTasks Called")
+
+	callStart := time.Now()
+	_, err := l.hostMgrClient.Call(
+		ctx,
+		yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks"),
+		request,
+		&response,
+	)
+	callDuration := time.Since(callStart)
+
+	if err != nil {
+		log.WithFields(log.Fields{
+			"tasks":     len(selectedTasks),
+			"placement": placement,
+		}).WithError(err).Error("Failed to launch tasks")
+		l.metrics.TaskLaunchFail.Inc(1)
+		return err
+	}
+
+	log.WithField("response", response).Debug("LaunchTasks returned")
+
+	if response.Error != nil {
+		log.WithFields(log.Fields{
+			"tasks":     len(selectedTasks),
+			"placement": placement,
+			"error":     response.Error.String(),
+		}).Error("Failed to launch tasks")
+		l.metrics.TaskLaunchFail.Inc(1)
+		return errors.New(response.Error.String())
+	}
+	l.metrics.TaskLaunch.Inc(int64(len(selectedTasks)))
+
+	log.WithFields(log.Fields{
+		"num_tasks": len(selectedTasks),
+		"hostname":  placement.GetHostname(),
+		"duration":  callDuration.Seconds(),
+	}).Info("Launched tasks")
+	l.metrics.LaunchTasksCall.Record(callDuration)
 	return nil
 }

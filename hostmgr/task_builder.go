@@ -2,7 +2,6 @@ package hostmgr
 
 import (
 	"errors"
-	"sort"
 	"strconv"
 
 	log "github.com/Sirupsen/logrus"
@@ -13,11 +12,6 @@ import (
 
 	mesos "mesos/v1"
 	"peloton/api/task"
-)
-
-var (
-	errNotEnoughPorts = errors.New(
-		"No enough dynamic ports in Mesos offers")
 )
 
 // taskBuilder helps to build launchable Mesos TaskInfo from offers and
@@ -41,7 +35,7 @@ func newTaskBuilder(resources []*mesos.Resource) *taskBuilder {
 		prev := scalars[role]
 		scalars[role] = *(prev.Add(&tmp))
 
-		ports := extractPortSet(rs)
+		ports := util.ExtractPortSet(rs)
 		if len(ports) == 0 {
 			continue
 		}
@@ -49,7 +43,7 @@ func newTaskBuilder(resources []*mesos.Resource) *taskBuilder {
 		if _, ok := portSets[role]; !ok {
 			portSets[role] = ports
 		} else {
-			portSets[role] = mergePortSets(portSets[role], ports)
+			portSets[role] = util.MergePortSets(portSets[role], ports)
 		}
 	}
 
@@ -80,8 +74,10 @@ type portPickResult struct {
 // pickPorts inspects the given taskConfig, picks dynamic ports from
 // available resources, and return selected static and dynamic ports
 // as well as necessary environment variables and resources.
-func (tb *taskBuilder) pickPorts(taskConfig *task.TaskConfig) (
-	*portPickResult, error) {
+func (tb *taskBuilder) pickPorts(
+	taskConfig *task.TaskConfig,
+	selectedDynamicPorts map[string]uint32) (*portPickResult, error) {
+
 	result := &portPickResult{
 		selectedPorts: make(map[string]uint32),
 		portEnvs:      make(map[string]string),
@@ -92,74 +88,37 @@ func (tb *taskBuilder) pickPorts(taskConfig *task.TaskConfig) (
 		return result, nil
 	}
 
-	// Name of dynamic ports.
-	var dynamicNames []string
+	// Populates dynamic ports and build Mesos resources objects,
+	// which will be used later to launch the task.
+	dynamicPorts := make(map[uint32]bool)
+	for name, port := range selectedDynamicPorts {
+		dynamicPorts[port] = true
+		result.selectedPorts[name] = port
+	}
+	ranges := util.CreatePortRanges(dynamicPorts)
+	rs := util.NewMesosResourceBuilder().
+		WithName("ports").
+		WithType(mesos.Value_RANGES).
+		WithRanges(ranges).
+		Build()
+	result.portResources = append(result.portResources, rs)
 
+	// Populate static ports and extra environment variables, which will be
+	// added to `CommandInfo` to launch the task.
 	for _, portConfig := range taskConfig.GetPorts() {
 		name := portConfig.GetName()
 		if len(name) == 0 {
 			return nil, errors.New("Empty port name in task")
 		}
 		value := portConfig.GetValue()
-		if value == 0 { // dynamic port
-			dynamicNames = append(dynamicNames, name)
-		} else {
+		if value != 0 { // static port
 			result.selectedPorts[name] = value
 		}
-	}
 
-	// A map from role name to selected dynamic ports.
-	rolePorts := make(map[string]map[uint32]bool)
-
-	if len(dynamicNames) > 0 {
-		index := 0
-	Loop:
-		for role, portSet := range tb.portSets {
-			// Go lacks ways of random iterator for map, so this is
-			// an approximate of random iterating of map.
-			for port := range portSet {
-				result.selectedPorts[dynamicNames[index]] = port
-				delete(portSet, port)
-
-				// Make sure rolePorts[role] is not nil.
-				if _, ok2 := rolePorts[role]; !ok2 {
-					rolePorts[role] = make(map[uint32]bool)
-				}
-				rolePorts[role][port] = true
-
-				index++
-				if index >= len(dynamicNames) {
-					// We have selected enough dynamic ports
-					break Loop
-				}
-			}
-		}
-
-		if index < len(dynamicNames) {
-			return nil, errNotEnoughPorts
-		}
-	} // end: if len(dynamicNames) > 0
-
-	// Build Mesos resources objects, which will be used later to launch
-	// the task.
-	for role, dynamicPorts := range rolePorts {
-		ranges := createPortRanges(dynamicPorts)
-		rs := util.NewMesosResourceBuilder().
-			WithName("ports").
-			WithRole(role).
-			WithType(mesos.Value_RANGES).
-			WithRanges(ranges).
-			Build()
-		result.portResources = append(result.portResources, rs)
-	}
-
-	// Populate extra environment variables, which will added to
-	// `CommandInfo` to launch the task.
-	for _, portConfig := range taskConfig.GetPorts() {
 		if envName := portConfig.GetEnvName(); len(envName) == 0 {
 			continue
 		} else {
-			p := int(result.selectedPorts[portConfig.GetName()])
+			p := int(result.selectedPorts[name])
 			result.portEnvs[envName] = strconv.Itoa(p)
 		}
 	}
@@ -175,6 +134,7 @@ func (tb *taskBuilder) pickPorts(taskConfig *task.TaskConfig) (
 func (tb *taskBuilder) build(
 	taskID *mesos.TaskID,
 	taskConfig *task.TaskConfig,
+	selectedDynamicPorts map[string]uint32,
 ) (*mesos.TaskInfo, error) {
 
 	// Validation of input.
@@ -211,7 +171,7 @@ func (tb *taskBuilder) build(
 		return nil, err
 	}
 
-	pick, err := tb.pickPorts(taskConfig)
+	pick, err := tb.pickPorts(taskConfig, selectedDynamicPorts)
 	if err != nil {
 		return nil, err
 	}
@@ -469,61 +429,4 @@ func (tb *taskBuilder) extractScalarResources(
 		return nil, errors.New("Not enough resources left to run task")
 	}
 	return launchResources, nil
-}
-
-// extractPortSet is helper function to extract available port set
-// from a Mesos resource.
-func extractPortSet(resource *mesos.Resource) map[uint32]bool {
-	res := make(map[uint32]bool)
-
-	if resource.GetName() != "ports" {
-		return res
-	}
-
-	for _, r := range resource.GetRanges().GetRange() {
-		// Remember that end is inclusive
-		for i := r.GetBegin(); i <= r.GetEnd(); i++ {
-			res[uint32(i)] = true
-		}
-	}
-
-	return res
-}
-
-func mergePortSets(m1, m2 map[uint32]bool) map[uint32]bool {
-	m := make(map[uint32]bool)
-	for i1, ok := range m1 {
-		if ok {
-			m[i1] = true
-		}
-	}
-	for i2, ok := range m2 {
-		if ok {
-			m[i2] = true
-		}
-	}
-	return m
-}
-
-// createPortRanges create Mesos Ranges type from given port set.
-func createPortRanges(portSet map[uint32]bool) *mesos.Value_Ranges {
-	var sorted []int
-	for p, ok := range portSet {
-		if ok {
-			sorted = append(sorted, int(p))
-		}
-	}
-	sort.Ints(sorted)
-
-	res := mesos.Value_Ranges{
-		Range: []*mesos.Value_Range{},
-	}
-	for _, p := range sorted {
-		tmp := uint64(p)
-		res.Range = append(
-			res.Range,
-			&mesos.Value_Range{Begin: &tmp, End: &tmp},
-		)
-	}
-	return &res
 }

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -8,6 +9,11 @@ import (
 
 	"peloton/api/job"
 	"peloton/api/task"
+)
+
+var (
+	errPortNameMissing    = errors.New("port name is missing")
+	errPortEnvNameMissing = errors.New("env name is missing for dynamic port")
 )
 
 // GetTaskConfig returns the task config of a given task instance by
@@ -69,16 +75,35 @@ func GetTaskConfig(
 	return &result, nil
 }
 
+// validatePortConfig checks port name and port env name exists for dynamic port.
+func validatePortConfig(portConfigs []*task.PortConfig) error {
+	for _, port := range portConfigs {
+		if len(port.GetName()) == 0 {
+			return errPortNameMissing
+		}
+		if port.GetValue() == 0 && len(port.GetEnvName()) == 0 {
+			return errPortEnvNameMissing
+		}
+	}
+	return nil
+}
+
 // ValidateTaskConfig checks whether the task configs in a job config
-// is missing or not.
+// is missing or not, also validates port configs.
 func ValidateTaskConfig(jobConfig *job.JobConfig) error {
 
 	// Check if each instance has a default or instance-specific config
 	defaultConfig := jobConfig.GetDefaultConfig()
+	if err := validatePortConfig(defaultConfig.GetPorts()); err != nil {
+		return err
+	}
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskConfig := jobConfig.GetInstanceConfig()[i]
 		if taskConfig == nil && defaultConfig == nil {
-			err := fmt.Errorf("Missing task config for instance %v", i)
+			err := fmt.Errorf("missing task config for instance %v", i)
+			return err
+		}
+		if err := validatePortConfig(taskConfig.GetPorts()); err != nil {
 			return err
 		}
 	}

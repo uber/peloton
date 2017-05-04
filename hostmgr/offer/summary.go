@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // CacheStatus represents status of the offer in offer pool's cache.
@@ -71,6 +72,12 @@ func matchConstraint(
 		if scalarRes.HasGPU() != scalarMin.HasGPU() {
 			return MismatchGPU
 		}
+	}
+
+	// Match ports resources.
+	numPorts := c.GetResourceConstraint().GetNumPorts()
+	if numPorts > util.GetPortsNumFromOfferMap(offerMap) {
+		return InsufficientResources
 	}
 
 	// Only try to get first offer in this host because all the offers have

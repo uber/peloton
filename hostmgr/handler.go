@@ -216,7 +216,8 @@ func (h *serviceHandler) LaunchTasks(
 	builder := newTaskBuilder(mesosResources)
 
 	for _, t := range body.Tasks {
-		mesosTask, err := builder.build(t.TaskId, t.Config)
+		mesosTask, err := builder.build(
+			t.GetTaskId(), t.GetConfig(), t.GetPorts())
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err,

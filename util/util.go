@@ -338,6 +338,15 @@ func ConvertTaskToResMgrTask(
 			taskInfo.GetJobId().GetValue(),
 			taskInfo.GetInstanceId()),
 	}
+
+	numPorts := 0
+	for _, portConfig := range taskInfo.GetConfig().GetPorts() {
+		if portConfig.GetValue() == 0 {
+			// Dynamic port.
+			numPorts++
+		}
+	}
+
 	return &resmgr.Task{
 		Id:          taskID,
 		JobId:       taskInfo.GetJobId(),
@@ -347,5 +356,6 @@ func ConvertTaskToResMgrTask(
 		Priority:    jobConfig.GetSla().GetPriority(),
 		Resource:    taskInfo.GetConfig().GetResource(),
 		Constraint:  taskInfo.GetConfig().GetConstraint(),
+		NumPorts:    uint32(numPorts),
 	}
 }

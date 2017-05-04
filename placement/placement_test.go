@@ -3,6 +3,7 @@ package placement
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -72,15 +73,31 @@ func createTestTask(instanceID int) *resmgr.Task {
 			Value: &tid,
 		},
 		Preemptible: true,
+		NumPorts:    uint32(2),
 	}
 }
 
-func createTestTasks(instanceIds []int) []*resmgr.Task {
-	var tasks []*resmgr.Task
-	for _, instanceID := range instanceIds {
-		tasks = append(tasks, createTestTask(instanceID))
+// createPortRanges create Mesos Ranges type from given port set.
+func createPortRanges(portSet map[uint32]bool) *mesos.Value_Ranges {
+	var sorted []int
+	for p, ok := range portSet {
+		if ok {
+			sorted = append(sorted, int(p))
+		}
 	}
-	return tasks
+	sort.Ints(sorted)
+
+	res := mesos.Value_Ranges{
+		Range: []*mesos.Value_Range{},
+	}
+	for _, p := range sorted {
+		tmp := uint64(p)
+		res.Range = append(
+			res.Range,
+			&mesos.Value_Range{Begin: &tmp, End: &tmp},
+		)
+	}
+	return &res
 }
 
 func createResources(defaultMultiplier float64) []*mesos.Resource {
@@ -90,7 +107,20 @@ func createResources(defaultMultiplier float64) []*mesos.Resource {
 		"disk": defaultMultiplier * defaultResourceConfig.DiskLimitMb,
 		"gpus": defaultMultiplier * defaultResourceConfig.GpuLimit,
 	}
-	return util.CreateMesosScalarResources(values, "*")
+	portSet := make(map[uint32]bool)
+	for i := 0; i < int(defaultMultiplier); i++ {
+		portSet[uint32(1000+i*2)] = true
+		portSet[uint32(1001+i*2)] = true
+	}
+	portResource := util.NewMesosResourceBuilder().
+		WithName("ports").
+		WithType(mesos.Value_RANGES).
+		WithRanges(createPortRanges(portSet)).
+		Build()
+
+	result := util.CreateMesosScalarResources(values, "*")
+	result = append(result, portResource)
+	return result
 }
 
 func createHostOffer(hostID int, resources []*mesos.Resource) *hostsvc.HostOffer {
@@ -210,7 +240,8 @@ func TestNoHostOfferReturned(t *testing.T) {
 					Constraint: &hostsvc.Constraint{
 						HostLimit: uint32(1),
 						ResourceConstraint: &hostsvc.ResourceConstraint{
-							Minimum: t1.Resource,
+							Minimum:  t1.Resource,
+							NumPorts: t1.NumPorts,
 						},
 					},
 				}),
@@ -303,7 +334,8 @@ func TestMultipleTasksPlaced(t *testing.T) {
 					Constraint: &hostsvc.Constraint{
 						HostLimit: uint32(10), // OfferDequeueLimit
 						ResourceConstraint: &hostsvc.ResourceConstraint{
-							Minimum: testTasks[0].Resource,
+							Minimum:  testTasks[0].Resource,
+							NumPorts: testTasks[0].NumPorts,
 						},
 					},
 				}),
@@ -335,6 +367,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 					for _, lt := range p.Tasks {
 						launchedTasks[lt.Value] = lt
 					}
+					assert.Len(t, p.GetPorts(), len(p.GetTasks())*2)
 				}
 			}).
 			Return(nil, nil),
@@ -363,6 +396,135 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	defer lock.Unlock()
 	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
 	assert.Equal(t, taskIds, launchedTasks)
+}
+
+// This test ensures that only subset of tasks returned from resmgr can be
+// properly placed by hostmgr due to insufficient port resources.
+func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := yarpc_mocks.NewMockClient(ctrl)
+	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+
+	pe := placementEngine{
+		cfg: &Config{
+			TaskDequeueLimit:     10,
+			OfferDequeueLimit:    10,
+			MaxPlacementDuration: 1 * time.Microsecond,
+		},
+		resMgrClient:  mockRes,
+		hostMgrClient: mockHostMgr,
+		rootCtx:       context.Background(),
+		metrics:       metrics,
+		pool:          async.NewPool(async.PoolOptions{}),
+	}
+
+	// generate 25 test tasks
+	numTasks := 25
+	var testTasks []*resmgr.Task
+	taskIds := make(map[string]*peloton.TaskID)
+
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		tmp.NumPorts = uint32(10)
+		testTasks = append(testTasks, tmp)
+		taskIds[tmp.Id.Value] = tmp.Id
+	}
+
+	// generate 5 host offers, each can only hold 2 tasks as each task
+	// requires 10 ports.
+	numHostOffers := 5
+	rs := createResources(10)
+	var hostOffers []*hostsvc.HostOffer
+	for i := 0; i < numHostOffers; i++ {
+		hostOffers = append(hostOffers, createHostOffer(i, rs))
+	}
+
+	// Capture LaunchTasks calls
+	hostsLaunchedOn := make(map[string]bool)
+	launchedTasks := make(map[string]*peloton.TaskID)
+
+	gomock.InOrder(
+		mockRes.EXPECT().
+			Call(
+				gomock.Any(),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks")),
+				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
+					Limit:   uint32(10),
+					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
+				}),
+				gomock.Any()).
+			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
+				o := resBodyOut.(*resmgrsvc.DequeueTasksResponse)
+				*o = resmgrsvc.DequeueTasksResponse{
+					Tasks: testTasks,
+					Error: nil,
+				}
+			}).
+			Return(nil, nil),
+		// Mock AcquireHostOffers call.
+		mockHostMgr.EXPECT().
+			Call(
+				gomock.Any(),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.AcquireHostOffers")),
+				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
+					Constraint: &hostsvc.Constraint{
+						HostLimit: uint32(10), // OfferDequeueLimit
+						ResourceConstraint: &hostsvc.ResourceConstraint{
+							Minimum:  testTasks[0].Resource,
+							NumPorts: testTasks[0].NumPorts,
+						},
+					},
+				}),
+				gomock.Any()).
+			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
+				o := resBodyOut.(*hostsvc.AcquireHostOffersResponse)
+				*o = hostsvc.AcquireHostOffersResponse{
+					HostOffers: hostOffers,
+				}
+			}).
+			Return(nil, nil),
+		// Mock PlaceTasks call.
+		mockRes.EXPECT().
+			Call(
+				gomock.Any(),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements")),
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+				// No need to unmarksnal output: empty means success.
+				// Capture call since we don't know ordering of tasks.
+				lock.Lock()
+				defer lock.Unlock()
+				req := reqBody.(*resmgrsvc.SetPlacementsRequest)
+				hostsLaunchedOn[req.Placements[0].Hostname] = true
+				hostsLaunchedOn[req.Placements[1].Hostname] = true
+				hostsLaunchedOn[req.Placements[2].Hostname] = true
+				hostsLaunchedOn[req.Placements[3].Hostname] = true
+				hostsLaunchedOn[req.Placements[4].Hostname] = true
+				for _, p := range req.Placements {
+					for _, lt := range p.Tasks {
+						launchedTasks[lt.Value] = lt
+					}
+					// Verify allocated 20 ports for 2 tasks
+					// in the placement.
+					assert.Len(t, p.GetPorts(), 20)
+				}
+			}).
+			Return(nil, nil),
+	)
+
+	pe.placeRound()
+
+	pe.pool.WaitUntilProcessed()
+
+	lock.Lock()
+	defer lock.Unlock()
+	assert.Equal(t, len(hostsLaunchedOn), 5)
+	assert.Equal(t, len(launchedTasks), 10)
 }
 
 func TestGroupTasks(t *testing.T) {
@@ -435,4 +597,58 @@ func TestGroupTasks(t *testing.T) {
 	assert.NotNil(t, group6)
 	assert.Equal(t, 1, len(group6.tasks))
 	assert.Equal(t, t6.GetResource(), group6.getResourceConfig())
+}
+
+func TestGroupTasksWithPorts(t *testing.T) {
+	t1 := createTestTask(1)
+	t1.Constraint = &orConstraint
+
+	t2 := createTestTask(2)
+	t2.Constraint = &orConstraint
+	t2.NumPorts = uint32(3)
+
+	t3 := createTestTask(3)
+	t3.Constraint = &orConstraint
+	t3.NumPorts = uint32(3)
+
+	t4 := createTestTask(4)
+	t4.Constraint = &orConstraint
+	t4.NumPorts = uint32(4)
+
+	t5 := createTestTask(5)
+	t5.NumPorts = uint32(5)
+
+	t6 := createTestTask(6)
+	t6.NumPorts = uint32(5)
+
+	result := groupTasks([]*resmgr.Task{t1, t2, t3, t4, t5, t6})
+	assert.Equal(t, 4, len(result))
+
+	tmp1 := getHostSvcConstraint(t1)
+	key1 := tmp1.String()
+	assert.Contains(t, result, key1)
+	group1 := result[key1]
+	assert.NotNil(t, group1)
+	assert.Equal(t, 1, len(group1.tasks))
+
+	tmp3 := getHostSvcConstraint(t3)
+	key3 := tmp3.String()
+	assert.Contains(t, result, key3)
+	group3 := result[key3]
+	assert.NotNil(t, group3)
+	assert.Equal(t, 2, len(group3.tasks))
+
+	tmp4 := getHostSvcConstraint(t4)
+	key4 := tmp4.String()
+	assert.Contains(t, result, key4)
+	group4 := result[key4]
+	assert.NotNil(t, group4)
+	assert.Equal(t, 1, len(group4.tasks))
+
+	tmp5 := getHostSvcConstraint(t5)
+	key5 := tmp5.String()
+	assert.Contains(t, result, key5)
+	group5 := result[key5]
+	assert.NotNil(t, group5)
+	assert.Equal(t, 2, len(group5.tasks))
 }

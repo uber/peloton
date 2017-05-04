@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
@@ -27,6 +28,7 @@ import (
 const (
 	taskIDFmt   = "testjob-%d-abcdefgh-abcd-1234-5678-1234567890ab"
 	testJobName = "testjob"
+	testPort    = uint32(100)
 )
 
 var (
@@ -50,6 +52,12 @@ func createTestTask(instanceID int) *task.TaskInfo {
 		Config: &task.TaskConfig{
 			Name:     testJobName,
 			Resource: &defaultResourceConfig,
+			Ports: []*task.PortConfig{
+				{
+					Name:    "port",
+					EnvName: "PORT",
+				},
+			},
 		},
 		Runtime: &task.RuntimeInfo{
 			TaskId: &mesos.TaskID{
@@ -137,8 +145,13 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	hostsLaunchedOn := make(map[string]bool)
 	launchedTasks := make(map[string]*task.TaskConfig)
 
-	gomock.InOrder(
+	updatedTaskInfo := proto.Clone(testTasks[0]).(*task.TaskInfo)
+	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
+	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
+	updatedTaskInfo.Runtime.Ports["port"] = testPort
+	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHING
 
+	gomock.InOrder(
 		mockRes.EXPECT().
 			Call(
 				gomock.Any(),
@@ -155,6 +168,9 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 		// Mock Task Store GetTaskByID
 		mockTaskStore.EXPECT().GetTaskByID(taskIDs[0].Value).Return(testTasks[0], nil),
+
+		// Mock Task Store UpdateTask
+		mockTaskStore.EXPECT().UpdateTask(updatedTaskInfo).Return(nil),
 
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
@@ -208,6 +224,7 @@ func createPlacements(t *task.TaskInfo,
 		AgentId:  hostOffer.AgentId,
 		Hostname: hostOffer.Hostname,
 		Tasks:    TasksIds,
+		Ports:    []uint32{testPort},
 	}
 
 	return placement
