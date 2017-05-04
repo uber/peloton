@@ -18,7 +18,7 @@ cassandra_hosts = '\n'.join([
                   'ms-82ef95a4.pit-irn-1.uberatc.net',
                   'ms-7ab279a1.pit-irn-1.uberatc.net',
 ])
-use_cassandra = 'true'
+use_cassandra = 'false'
 cassandra_store = cluster
 
 PROFILES = [
