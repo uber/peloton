@@ -41,7 +41,7 @@ func (suite *schedulerDriverTestSuite) SetupTest() {
 		&Config{
 			Framework: &FrameworkConfig{
 				Name:         _frameworkName,
-				GPUSupported: true,
+				Capabilities: []string{"gpu_resources"},
 				Checkpoint:   true,
 			},
 			ZkPath:   _zkPath,
