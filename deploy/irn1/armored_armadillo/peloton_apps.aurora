@@ -20,11 +20,13 @@ hostmgr_host = 'ms-9baf6789'
 jobmgr_host = 'ms-56ad1385'
 placement_host = 'ms-e0d3105d'
 cassandra_hosts = '\n'.join([
+                  'ms-7ab279a1.pit-irn-1.uberatc.net',
                   'ms-3162c292.pit-irn-1.uberatc.net',
                   'ms-82ef95a4.pit-irn-1.uberatc.net',
-                  'ms-7ab279a1.pit-irn-1.uberatc.net',
-])
-use_cassandra = 'false'
+                  'ms-46d5ed57.pit-irn-1.uberatc.net',
+                  'ms-a8975ddc.pit-irn-1.uberatc.net',
+                  ])
+use_cassandra = 'true'
 
 PROFILES = [
   Profile(
