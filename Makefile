@@ -1,4 +1,4 @@
-.PHONY: all master placement executor install client test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers
+.PHONY: all master placement executor install client test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -58,6 +58,9 @@ resmgr:
 
 executor:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-executor executor/*.go
+
+db-pressure:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/dbpressure storage/pressuretest/main/*.go
 
 install:
 	glide --version || go get github.com/Masterminds/glide
