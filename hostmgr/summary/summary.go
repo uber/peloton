@@ -1,7 +1,8 @@
-package offer
+package summary
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
@@ -16,6 +17,39 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+// InvalidCacheStatus is returned when expected status on a hostSummary
+// does not actual value.
+type InvalidCacheStatus struct {
+	status CacheStatus
+}
+
+// Error implements error.Error.
+func (e InvalidCacheStatus) Error() string {
+	return fmt.Sprintf("Invalid status %v", e.status)
+}
+
+// MatchResult is an enum type describing why a constraint is not matched.
+type MatchResult int
+
+const (
+	// Matched indicates that offers on a host is matched
+	// to given constraint and will be used.
+	Matched MatchResult = iota + 1
+	// InsufficientResources due to insufficient scalar resources.
+	InsufficientResources
+	// MismatchAttributes indicates attributes mismatches
+	// to task-host scheduling constraint.
+	MismatchAttributes
+	// MismatchGPU indicates host is reserved for GPU tasks while task not
+	// using GPU.
+	MismatchGPU
+	// MismatchStatus indicates that host is not in ready status.
+	MismatchStatus
+	// HostLimitExceeded indicates host offers matched so far already
+	// exceeded host limit.
+	HostLimitExceeded
+)
+
 // CacheStatus represents status of the offer in offer pool's cache.
 type CacheStatus int
 
@@ -26,8 +60,38 @@ const (
 	PlacingOffer
 )
 
-// hostOfferSummary is an internal data struct holding offers on a particular host.
-type hostOfferSummary struct {
+// HostSummary is the core component of host manager's internal
+// data structure. It keeps track of offers in various state,
+// launching cycles and reservation information.
+type HostSummary interface {
+	// HasOffer provides a quick heuristic about if HostSummary has any offer.
+	HasOffer() bool
+
+	// TryMatch atomically tries to match offers from the current host with given
+	// constraint.
+	TryMatch(
+		c *hostsvc.Constraint,
+		evaluator constraints.Evaluator,
+	) (MatchResult, []*mesos.Offer)
+
+	// AddMesosOffer adds a Mesos offer to the current HostSummary.
+	AddMesosOffer(offer *mesos.Offer) CacheStatus
+
+	// RemoveMesosOffer removes the given Mesos offer by its id, and returns
+	// CacheStatus and possibly removed offer for tracking purpose.
+	RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offer)
+
+	ClaimForLaunch() (map[string]*mesos.Offer, error)
+
+	// CasStatus atomically sets the status to new value if current value is old,
+	// otherwise returns error.
+	CasStatus(old, new CacheStatus) error
+
+	UnreservedAmount() scalar.Resources
+}
+
+// hostSummary is a data struct holding offers on a particular host.
+type hostSummary struct {
 	sync.Mutex
 
 	// offerID -> unreserved offer
@@ -41,10 +105,23 @@ type hostOfferSummary struct {
 	reservedResources map[string]*reservation.ReservedResources
 }
 
-// A heuristic about if the hostOfferSummary has any offer.
+// New returns a zero initialized hostSummary
+func New() HostSummary {
+	return &hostSummary{
+		unreservedOffers: make(map[string]*mesos.Offer),
+
+		status: ReadyOffer,
+
+		reservedOffers: make(map[string]*mesos.Offer),
+		reservedResources: make(
+			map[string]*reservation.ReservedResources),
+	}
+}
+
+// HasOffer is a lock-free heuristic about if the hostOfferSummary has any offer.
 // TODO(zhitao): Create micro-benchmark to prove this is useful,
 // otherwise remove it!
-func (a *hostOfferSummary) hasOffer() bool {
+func (a *hostSummary) HasOffer() bool {
 	return a.readyCount.Load() > 0
 }
 
@@ -100,6 +177,7 @@ func matchConstraint(
 				Error("Error when evaluating input constraint")
 			return MismatchAttributes
 		}
+
 		switch result {
 		case constraints.EvaluateResultMatch:
 		case constraints.EvaluateResultNotApplicable:
@@ -121,14 +199,14 @@ func matchConstraint(
 	return Matched
 }
 
-// tryMatch atomically tries to match offers from the current host with given
+// TryMatch atomically tries to match offers from the current host with given
 // constraint.
-// If current hostOfferSummary can satisfy given constraints, the first return
+// If current hostSummary can satisfy given constraints, the first return
 // value is true and unreserved offer status this instance will be marked as
 // `READY`, which will not be used by another placement engine until released.
 // If current instance cannot satisfy given constraints, return value will be
 // (false, empty-slice) and status will remain unchanged.
-func (a *hostOfferSummary) tryMatch(
+func (a *hostSummary) TryMatch(
 	c *hostsvc.Constraint,
 	evaluator constraints.Evaluator,
 ) (MatchResult, []*mesos.Offer) {
@@ -136,7 +214,7 @@ func (a *hostOfferSummary) tryMatch(
 	a.Lock()
 	defer a.Unlock()
 
-	if !a.hasOffer() || a.status != ReadyOffer {
+	if !a.HasOffer() || a.status != ReadyOffer {
 		return MismatchStatus, nil
 	}
 
@@ -164,7 +242,9 @@ func (a *hostOfferSummary) tryMatch(
 	return match, nil
 }
 
-func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer) {
+// AddMesosOffer adds a Mesos offer to the current hostSummary and returns
+// its status for tracking purpose.
+func (a *hostSummary) AddMesosOffer(offer *mesos.Offer) CacheStatus {
 	a.Lock()
 	defer a.Unlock()
 
@@ -187,11 +267,17 @@ func (a *hostOfferSummary) addMesosOffer(offer *mesos.Offer) {
 			"total_reserved_resources": a.reservedResources,
 		}).Debug("Added reserved offer.")
 	}
+
+	return a.status
 }
 
-func (a *hostOfferSummary) claimForLaunch() (map[string]*mesos.Offer, error) {
+// ClaimForLaunch atomically check that current hostSummary is in Placing
+// status, release offers so caller can use them to launch tasks, and reset
+// status to ready.
+func (a *hostSummary) ClaimForLaunch() (map[string]*mesos.Offer, error) {
 	a.Lock()
 	defer a.Unlock()
+
 	if a.status != PlacingOffer {
 		return nil, errors.New("Host status is not Placing")
 	}
@@ -202,24 +288,28 @@ func (a *hostOfferSummary) claimForLaunch() (map[string]*mesos.Offer, error) {
 		delete(a.unreservedOffers, id)
 	}
 
-	// Reseting status to ready so any future offer on the host is considered
+	// Reset status to ready so any future offer on the host is considered
 	// as ready.
 	a.status = ReadyOffer
 	a.readyCount.Store(0)
 	return result, nil
 }
 
-func (a *hostOfferSummary) removeMesosOffer(offerID string) {
+// RemoveMesosOffer removes the given Mesos offer by its id, and returns
+// CacheStatus and possibly removed offer for tracking purpose.
+func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offer) {
 	a.Lock()
 	defer a.Unlock()
 
-	_, ok := a.unreservedOffers[offerID]
+	unreserved, ok := a.unreservedOffers[offerID]
 	if !ok {
-		if _, ok = a.reservedOffers[offerID]; !ok {
+		reserved, ok2 := a.reservedOffers[offerID]
+		if !ok2 {
 			log.WithField("offer", offerID).
 				Warn("Remove non-exist reserved offer.")
-			return
+			return a.status, reserved
 		}
+
 		// Remove offer then calculate/update the reserved resource.
 		delete(a.reservedOffers, offerID)
 		reservedOffers := []*mesos.Offer{}
@@ -232,35 +322,44 @@ func (a *hostOfferSummary) removeMesosOffer(offerID string) {
 			"offerID":                  offerID,
 			"total_reserved_resources": a.reservedResources,
 		}).Debug("Removed reserved offer.")
-		return
+		return a.status, reserved
 	}
 
 	switch a.status {
-	case PlacingOffer:
-		log.WithField("offer", offerID).
-			Warn("Offer removed while being used for placement, this could trigger " +
-				"INVALID_OFFER error if available resources are reduced further.")
 	case ReadyOffer:
 		log.WithField("offer", offerID).Debug("Ready offer removed")
 		a.readyCount.Dec()
 	default:
-		log.WithField("status", a.status).Error("Unknown offer status")
+		// This could trigger INVALID_OFFER error later.
+		log.WithField("offer", offerID).
+			WithField("status", a.status).
+			Warn("Offer removed while not in ready status")
 	}
 
 	delete(a.unreservedOffers, offerID)
+	return a.status, unreserved
 }
 
-// casStatus atomically sets the status to new value if current value is old,
+// CasStatus atomically sets the status to new value if current value is old,
 // otherwise returns error.
-func (a *hostOfferSummary) casStatus(old, new CacheStatus) error {
+func (a *hostSummary) CasStatus(old, new CacheStatus) error {
 	a.Lock()
 	defer a.Unlock()
 	if a.status != old {
-		return errors.New("Invalid status")
+		return InvalidCacheStatus{a.status}
 	}
 	a.status = new
 	if a.status == ReadyOffer {
 		a.readyCount.Store(int32(len(a.unreservedOffers)))
 	}
+
 	return nil
+}
+
+// UnreservedAmount returns the amount of unreserved resources.
+func (a *hostSummary) UnreservedAmount() scalar.Resources {
+	a.Lock()
+	defer a.Unlock()
+
+	return scalar.FromOfferMap(a.unreservedOffers)
 }

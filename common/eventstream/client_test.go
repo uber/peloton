@@ -1,8 +1,6 @@
 package eventstream
 
 import (
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +12,9 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"
+
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 )
 
 var addEventSleepInterval = 2 * time.Millisecond

@@ -1,9 +1,10 @@
 package scalar
 
 import (
+	"testing"
+
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"testing"
 
 	"code.uber.internal/infra/peloton/util"
 	"github.com/stretchr/testify/assert"

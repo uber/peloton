@@ -7,28 +7,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"
-)
-
-// MatchResult is an enum type describing why a constraint is not matched.
-type MatchResult int
-
-const (
-	// Matched indicates that offers on a host is matched
-	// to given constraint and will be used.
-	Matched MatchResult = iota + 1
-	// InsufficientResources due to insufficient scalar resources.
-	InsufficientResources
-	// MismatchAttributes indicates attributes mismatches
-	// to task-host scheduling constraint.
-	MismatchAttributes
-	// MismatchGPU indicates host is reserved for GPU tasks while task not
-	// using GPU.
-	MismatchGPU
-	// MismatchStatus indicates that host is not in ready status.
-	MismatchStatus
-	// HostLimitExceeded indicates host offers matched so far already
-	// exceeded host limit.
-	HostLimitExceeded
+	"code.uber.internal/infra/peloton/hostmgr/summary"
 )
 
 // effectiveHostLimit is common helper function to determine effective limit on
@@ -54,24 +33,24 @@ type Matcher struct {
 // If properly matched, the offers will be kept in Matcher for later return,
 // otherwise they are untouched.
 func (m *Matcher) tryMatch(
-	hostname string, summary *hostOfferSummary) MatchResult {
+	hostname string, s summary.HostSummary) summary.MatchResult {
 
 	if m.HasEnoughHosts() {
-		return HostLimitExceeded
+		return summary.HostLimitExceeded
 	}
 
-	if !summary.hasOffer() {
-		return MismatchStatus
+	if !s.HasOffer() {
+		return summary.MismatchStatus
 	}
 
-	tryResult, offers := summary.tryMatch(m.constraint, m.evaluator)
+	tryResult, offers := s.TryMatch(m.constraint, m.evaluator)
 	log.WithFields(log.Fields{
 		"constraint": m.constraint,
 		"host":       hostname,
 		"match":      tryResult,
 	}).Debug("Constraint matching result")
 
-	if tryResult == Matched {
+	if tryResult == summary.Matched {
 		m.hostOffers[hostname] = offers
 	}
 	return tryResult

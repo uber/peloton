@@ -137,7 +137,10 @@ func FromMesosResources(resources []*mesos.Resource) (r Resources) {
 }
 
 // FromOffer returns the scalar Resources from an offer.
-func FromOffer(offer *mesos.Offer) (r Resources) {
+func FromOffer(offer *mesos.Offer) Resources {
+	if offer == nil {
+		return Resources{}
+	}
 	return FromMesosResources(offer.GetResources())
 }
 

@@ -117,6 +117,7 @@ define vendor_mockgen
 endef
 
 mockgens: pbgens $(GOMOCK)
+	$(call local_mockgen,common/constraints,Evaluator)
 	$(call local_mockgen,hostmgr/mesos,MasterDetector;FrameworkInfoProvider)
 	$(call local_mockgen,hostmgr/offer,EventHandler)
 	$(call local_mockgen,hostmgr/reconcile,TaskReconciler)

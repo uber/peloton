@@ -1,10 +1,11 @@
 package task
 
 import (
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"math"
 	"sync"
 	"sync/atomic"
+
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"

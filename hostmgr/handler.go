@@ -228,9 +228,9 @@ func (h *serviceHandler) LaunchTasks(
 			// For now, decline all offers to Mesos in the hope that next
 			// call to pool will select some different host.
 			// An alternative is to mark offers on the host as ready.
-			if err := h.offerPool.DeclineOffers(offers); err != nil {
+			if err := h.offerPool.DeclineOffers(offerIds); err != nil {
 				log.WithError(err).
-					WithField("offers", offers).
+					WithField("offers", offerIds).
 					Warn("Cannot decline offers task building error")
 			}
 

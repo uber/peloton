@@ -1,15 +1,16 @@
 package eventstream
 
 import (
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"context"
 	"sync"
 	"testing"
 
-	"code.uber.internal/infra/peloton/common/cirbuf"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
+
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/common/cirbuf"
 )
 
 type PurgeEventCollector struct {

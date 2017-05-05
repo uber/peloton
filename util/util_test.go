@@ -1,10 +1,11 @@
 package util
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"fmt"
 	"testing"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 

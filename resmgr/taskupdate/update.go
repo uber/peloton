@@ -1,12 +1,13 @@
 package taskupdate
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"context"
+	"sync/atomic"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	"sync/atomic"
 )
 
 // ServiceHandler implements API to receive task updates from Hostmgr

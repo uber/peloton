@@ -1,10 +1,11 @@
 package queue
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"fmt"
 	"testing"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"

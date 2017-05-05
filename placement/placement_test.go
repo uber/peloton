@@ -360,10 +360,9 @@ func TestMultipleTasksPlaced(t *testing.T) {
 				lock.Lock()
 				defer lock.Unlock()
 				req := reqBody.(*resmgrsvc.SetPlacementsRequest)
-				hostsLaunchedOn[req.Placements[0].Hostname] = true
-				hostsLaunchedOn[req.Placements[1].Hostname] = true
-				hostsLaunchedOn[req.Placements[2].Hostname] = true
+				assert.Len(t, req.Placements, 3)
 				for _, p := range req.Placements {
+					hostsLaunchedOn[p.Hostname] = true
 					for _, lt := range p.Tasks {
 						launchedTasks[lt.Value] = lt
 					}
@@ -500,12 +499,8 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 				lock.Lock()
 				defer lock.Unlock()
 				req := reqBody.(*resmgrsvc.SetPlacementsRequest)
-				hostsLaunchedOn[req.Placements[0].Hostname] = true
-				hostsLaunchedOn[req.Placements[1].Hostname] = true
-				hostsLaunchedOn[req.Placements[2].Hostname] = true
-				hostsLaunchedOn[req.Placements[3].Hostname] = true
-				hostsLaunchedOn[req.Placements[4].Hostname] = true
 				for _, p := range req.Placements {
+					hostsLaunchedOn[p.Hostname] = true
 					for _, lt := range p.Tasks {
 						launchedTasks[lt.Value] = lt
 					}

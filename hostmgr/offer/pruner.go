@@ -70,12 +70,15 @@ func (p *offerPruner) Start() {
 				log.Debug("Running offer pruning loop")
 				expiredOffers := p.pool.RemoveExpiredOffers()
 				if len(expiredOffers) != 0 {
-					offersToDecline := make(map[string]*mesos.Offer)
-					for id, timedOffer := range expiredOffers {
-						offersToDecline[id] = timedOffer.MesosOffer
+					var offerIDs []*mesos.OfferID
+					for id := range expiredOffers {
+						tmp := id
+						offerIDs = append(offerIDs, &mesos.OfferID{
+							Value: &tmp,
+						})
 					}
-					log.WithField("offers", offersToDecline).Debug("Offers to decline")
-					if err := p.pool.DeclineOffers(offersToDecline); err != nil {
+					log.WithField("offers", offerIDs).Debug("Offers to decline")
+					if err := p.pool.DeclineOffers(offerIDs); err != nil {
 						log.WithError(err).Error("Failed to decline offers")
 					}
 				}

@@ -1,9 +1,10 @@
 package queue
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"container/list"
 	"errors"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
 // Queue is the interface implemented by all the the queues

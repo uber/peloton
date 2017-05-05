@@ -1,9 +1,10 @@
 package job
 
 import (
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"fmt"
 	"testing"
+
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"

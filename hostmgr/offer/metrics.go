@@ -16,6 +16,10 @@ type Metrics struct {
 	RescindEvents             tally.Counter
 	InverseOfferEvents        tally.Counter
 	RescindInverseOfferEvents tally.Counter
+
+	// metrics for pool
+	Decline     tally.Counter
+	DeclineFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized
@@ -24,6 +28,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	poolScope := scope.SubScope("pool")
 	readyScope := poolScope.SubScope("ready")
 	placingScope := poolScope.SubScope("placing")
+	poolFailScope := poolScope.SubScope("fail")
+	poolCallScope := poolScope.SubScope("call")
 
 	handlerScope := scope.SubScope("handler")
 	offerEventScope := handlerScope.Tagged(map[string]string{"type": "offer"})
@@ -38,5 +44,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		InverseOfferEvents:        inverseEventScope.Counter("offer"),
 		RescindInverseOfferEvents: inverseEventScope.Counter("rescind"),
+
+		Decline:     poolCallScope.Counter("decline"),
+		DeclineFail: poolFailScope.Counter("decline"),
 	}
 }
