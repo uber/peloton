@@ -15,6 +15,5 @@ type FrameworkConfig struct {
 	Principal       string  `yaml:"principal"`
 	FailoverTimeout float64 `yaml:"failover_timeout"`
 	Checkpoint      bool    `yaml:"checkpoint"`
-	// A list of Mesos framework capabilities.
-	Capabilities []string `yaml:"capabilities"`
+	GPUSupported    bool    `yaml:"gpu_supported"`
 }

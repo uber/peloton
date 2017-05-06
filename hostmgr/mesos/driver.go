@@ -19,16 +19,6 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 )
 
-// UnknownCapabilityError is used when unknown framework capability
-// is injected from config.
-type UnknownCapabilityError struct {
-	input string
-}
-
-func (err UnknownCapabilityError) Error() string {
-	return fmt.Sprintf("unknown framework capability value %s", err.input)
-}
-
 const (
 	// ServiceName for mesos scheduler
 	ServiceName = "Scheduler"
@@ -153,23 +143,13 @@ func (d *schedulerDriver) EventDataType() reflect.Type {
 }
 
 func (d *schedulerDriver) prepareSubscribe() (*sched.Call, error) {
-	capabilities := []*mesos.FrameworkInfo_Capability{}
-	for _, value := range d.cfg.Capabilities {
-		u := strings.ToUpper(value)
-		capability, ok := mesos.FrameworkInfo_Capability_Type_value[u]
-		if !ok {
-			return nil, UnknownCapabilityError{value}
-		}
-
-		log.WithField("capability", u).Info("Capability is supported")
-		tmp := mesos.FrameworkInfo_Capability_Type(capability)
-		capabilities = append(
-			capabilities,
-			&mesos.FrameworkInfo_Capability{
-				Type: &tmp,
-			})
+	// TODO: Inject capabilities based on config.
+	gpuSupported := mesos.FrameworkInfo_Capability_GPU_RESOURCES
+	capabilities := []*mesos.FrameworkInfo_Capability{
+		{
+			Type: &gpuSupported,
+		},
 	}
-
 	host, err := os.Hostname()
 	if err != nil {
 		msg := "Failed to get host name"
@@ -185,6 +165,15 @@ func (d *schedulerDriver) prepareSubscribe() (*sched.Call, error) {
 		Capabilities:    capabilities,
 		Hostname:        &host,
 		Principal:       &d.cfg.Principal,
+	}
+	if d.cfg.GPUSupported {
+		log.Info("GPU capability is supported")
+		var gpuCapability = mesos.FrameworkInfo_Capability_GPU_RESOURCES
+		info.Capabilities = []*mesos.FrameworkInfo_Capability{
+			{
+				Type: &gpuCapability,
+			},
+		}
 	}
 
 	// TODO: it could happen that when we register,

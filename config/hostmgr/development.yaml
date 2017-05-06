@@ -5,7 +5,7 @@ mesos:
   host_port: "localhost:5050"
   zk_path: "zk://localhost:8192/mesos"
   framework:
-    capabilities: ["gpu_resources"]
+    gpu_supported: true
 
 election:
   zk_servers: ["localhost:8192"]
