@@ -7,6 +7,7 @@ import (
 	"peloton/api/peloton"
 	"peloton/api/respool"
 	"peloton/api/task"
+	"peloton/api/volume"
 )
 
 // TaskNotFoundError indicates that task is not found
@@ -62,4 +63,12 @@ type ResourcePoolStore interface {
 	// TODO change to return ResourcePoolInfo
 	GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error)
 	GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error)
+}
+
+// PersistentVolumeStore is the interface to store all the persistent volume info
+type PersistentVolumeStore interface {
+	CreatePersistentVolume(volumeInfo *volume.PersistentVolumeInfo) error
+	UpdatePersistentVolume(volumeID string, state volume.VolumeState) error
+	GetPersistentVolume(volumeID string) (*volume.PersistentVolumeInfo, error)
+	DeletePersistentVolume(volumeID string) error
 }

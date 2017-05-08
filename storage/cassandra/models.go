@@ -185,3 +185,17 @@ func (t *JobRuntimeRecord) GetJobRuntime() (*job.RuntimeInfo, error) {
 	}
 	return result, err
 }
+
+// PersistentVolumeRecord contains persistent volume info.
+type PersistentVolumeRecord struct {
+	ID            string
+	JobID         string
+	InstanceID    int
+	Hostname      string
+	State         string
+	GoalState     string
+	SizeMB        int
+	ContainerPath string
+	CreateTime    time.Time
+	UpdateTime    time.Time
+}

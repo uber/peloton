@@ -6,10 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/respool"
-	"peloton/api/task"
 	"reflect"
 	"strings"
 	"sync"
@@ -17,6 +13,11 @@ import (
 	"time"
 
 	mesos "mesos/v1"
+	"peloton/api/job"
+	"peloton/api/peloton"
+	"peloton/api/respool"
+	"peloton/api/task"
+	pb_volume "peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
@@ -43,6 +44,7 @@ const (
 	taskHostView          = "mv_task_by_host"
 	resPools              = "respools"
 	resPoolsOwnerView     = "mv_respools_by_owner"
+	volumeTable           = "persistent_volumes"
 )
 
 // Config is the config for cassandra Store
@@ -1072,4 +1074,125 @@ func (s *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) er
 // QueryTasks returns all tasks in the given offset..offset+limit range.
 func (s *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
 	return nil, 0, fmt.Errorf("Unimplemented Cassandra endpoint 'QueryTasks'")
+}
+
+// CreatePersistentVolume creates a persistent volume entry.
+func (s *Store) CreatePersistentVolume(
+	volume *pb_volume.PersistentVolumeInfo) error {
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(volumeTable).
+		Columns("ID", "State", "GoalState", "JobID", "InstanceID", "Hostname", "SizeMb", "ContainerPath", "CreateTime", "UpdateTime").
+		Values(
+			volume.GetId().GetValue(),
+			volume.State.String(),
+			volume.GoalState.String(),
+			volume.GetJobId().GetValue(),
+			volume.InstanceId,
+			volume.Hostname,
+			volume.SizeMB,
+			volume.ContainerPath,
+			time.Now(),
+			time.Now()).
+		IfNotExist()
+
+	err := s.applyStatement(stmt, volume.GetId().GetValue())
+	if err != nil {
+		s.metrics.VolumeCreateFail.Inc(1)
+		return err
+	}
+
+	s.metrics.VolumeCreate.Inc(1)
+	return nil
+}
+
+// UpdatePersistentVolume update state for a persistent volume.
+func (s *Store) UpdatePersistentVolume(
+	volumeID string, state pb_volume.VolumeState) error {
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.
+		Update(volumeTable).
+		Set("State", state.String()).
+		Set("UpdateTime", time.Now()).
+		Where(qb.Eq{"ID": volumeID})
+
+	err := s.applyStatement(stmt, volumeID)
+	if err != nil {
+		s.metrics.VolumeUpdateFail.Inc(1)
+		return err
+	}
+
+	s.metrics.VolumeUpdate.Inc(1)
+	return nil
+}
+
+// GetPersistentVolume gets the persistent volume object.
+func (s *Store) GetPersistentVolume(
+	volumeID string) (*pb_volume.PersistentVolumeInfo, error) {
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.
+		Select("*").
+		From(volumeTable).
+		Where(qb.Eq{"ID": volumeID})
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("volume_id", volumeID).
+			Error("Fail to GetPersistentVolume by volumeID.")
+		s.metrics.VolumeGetFail.Inc(1)
+		return nil, err
+	}
+	if result != nil {
+		defer result.Close()
+	}
+
+	allResults, err := result.All(context.Background())
+	for _, value := range allResults {
+		var record PersistentVolumeRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				WithField("raw_volume_value", value).
+				Error("Failed to Fill into PersistentVolumeRecord.")
+			s.metrics.VolumeGetFail.Inc(1)
+			return nil, err
+		}
+		s.metrics.VolumeGet.Inc(1)
+		return &pb_volume.PersistentVolumeInfo{
+			Id: &peloton.VolumeID{
+				Value: record.ID,
+			},
+			State: pb_volume.VolumeState(
+				pb_volume.VolumeState_value[record.State]),
+			GoalState: pb_volume.VolumeState(
+				pb_volume.VolumeState_value[record.GoalState]),
+			JobId: &peloton.JobID{
+				Value: record.JobID,
+			},
+			InstanceId:    uint32(record.InstanceID),
+			Hostname:      record.Hostname,
+			SizeMB:        uint32(record.SizeMB),
+			ContainerPath: record.ContainerPath,
+			CreateTime:    record.CreateTime.String(),
+			UpdateTime:    record.UpdateTime.String(),
+		}, nil
+	}
+	return nil, fmt.Errorf("PersistentVolume not found for ID %s", volumeID)
+}
+
+// DeletePersistentVolume delete persistent volume entry.
+func (s *Store) DeletePersistentVolume(volumeID string) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Delete(volumeTable).Where(qb.Eq{"ID": volumeID})
+
+	err := s.applyStatement(stmt, volumeID)
+	if err != nil {
+		s.metrics.VolumeDeleteFail.Inc(1)
+		return err
+	}
+
+	s.metrics.VolumeDelete.Inc(1)
+	return nil
 }

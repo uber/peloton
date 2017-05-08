@@ -11,6 +11,7 @@ import (
 	"peloton/api/peloton"
 	"peloton/api/respool"
 	"peloton/api/task"
+	"peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/storage"
 
@@ -697,6 +698,64 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	jobIds, err = store.GetJobsByState(120)
 	suite.NoError(err)
 	suite.Equal(0, len(jobIds))
+}
+
+func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
+	var volumeStore storage.PersistentVolumeStore
+	volumeStore = store
+	pv := &volume.PersistentVolumeInfo{
+		Id: &peloton.VolumeID{
+			Value: "volume1",
+		},
+		State:     volume.VolumeState_INITIALIZED,
+		GoalState: volume.VolumeState_CREATED,
+		JobId: &peloton.JobID{
+			Value: "job",
+		},
+		Hostname:      "host",
+		InstanceId:    uint32(0),
+		SizeMB:        uint32(10),
+		ContainerPath: "testpath",
+	}
+	err := volumeStore.CreatePersistentVolume(pv)
+	suite.NoError(err)
+
+	rpv, err := volumeStore.GetPersistentVolume("volume1")
+	suite.NoError(err)
+	suite.Equal(rpv.Id.Value, "volume1")
+	suite.Equal(rpv.State.String(), "INITIALIZED")
+	suite.Equal(rpv.GoalState.String(), "CREATED")
+	suite.Equal(rpv.JobId.Value, "job")
+	suite.Equal(rpv.InstanceId, uint32(0))
+	suite.Equal(rpv.Hostname, "host")
+	suite.Equal(rpv.SizeMB, uint32(10))
+	suite.Equal(rpv.ContainerPath, "testpath")
+
+	// Verify get non-existent volume returns error.
+	_, err = volumeStore.GetPersistentVolume("volume2")
+	suite.Error(err)
+
+	err = volumeStore.UpdatePersistentVolume("volume1", volume.VolumeState_CREATED)
+	suite.NoError(err)
+
+	// Verfy updated persistent volume info.
+	rpv, err = volumeStore.GetPersistentVolume("volume1")
+	suite.NoError(err)
+	suite.Equal(rpv.Id.Value, "volume1")
+	suite.Equal(rpv.State.String(), "CREATED")
+	suite.Equal(rpv.State.String(), "CREATED")
+	suite.Equal(rpv.JobId.Value, "job")
+	suite.Equal(rpv.InstanceId, uint32(0))
+	suite.Equal(rpv.Hostname, "host")
+	suite.Equal(rpv.SizeMB, uint32(10))
+	suite.Equal(rpv.ContainerPath, "testpath")
+
+	err = volumeStore.DeletePersistentVolume("volume1")
+	suite.NoError(err)
+
+	// Verify volume has been deleted.
+	_, err = volumeStore.GetPersistentVolume("volume1")
+	suite.Error(err)
 }
 
 func createJobConfig() *job.JobConfig {

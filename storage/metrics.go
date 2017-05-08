@@ -51,6 +51,15 @@ type Metrics struct {
 	FrameworkIDGetFail tally.Counter
 	StreamIDGet        tally.Counter
 	StreamIDGetFail    tally.Counter
+
+	VolumeCreate     tally.Counter
+	VolumeCreateFail tally.Counter
+	VolumeUpdate     tally.Counter
+	VolumeUpdateFail tally.Counter
+	VolumeGet        tally.Counter
+	VolumeGetFail    tally.Counter
+	VolumeDelete     tally.Counter
+	VolumeDeleteFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -80,6 +89,10 @@ func NewMetrics(scope tally.Scope) Metrics {
 	streamIDScope := scope.SubScope("stream_id")
 	streamIDSuccessScope := streamIDScope.Tagged(map[string]string{"type": "success"})
 	streamIDFailScope := streamIDScope.Tagged(map[string]string{"type": "fail"})
+
+	volumeScope := scope.SubScope("persistent_volume")
+	volumeSuccessScope := volumeScope.Tagged(map[string]string{"type": "success"})
+	volumeFailScope := volumeScope.Tagged(map[string]string{"type": "fail"})
 
 	metrics := Metrics{
 		JobCreate:     jobSuccessScope.Counter("create"),
@@ -117,6 +130,15 @@ func NewMetrics(scope tally.Scope) Metrics {
 
 		StreamIDGet:     streamIDSuccessScope.Counter("get"),
 		StreamIDGetFail: streamIDFailScope.Counter("get"),
+
+		VolumeCreate:     volumeSuccessScope.Counter("create"),
+		VolumeCreateFail: volumeFailScope.Counter("create"),
+		VolumeGet:        volumeSuccessScope.Counter("get"),
+		VolumeGetFail:    volumeFailScope.Counter("get"),
+		VolumeUpdate:     volumeSuccessScope.Counter("update"),
+		VolumeUpdateFail: volumeFailScope.Counter("update"),
+		VolumeDelete:     volumeSuccessScope.Counter("delete"),
+		VolumeDeleteFail: volumeFailScope.Counter("delete"),
 	}
 	return metrics
 }
