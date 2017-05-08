@@ -7,6 +7,7 @@ import (
 
 	"code.uber.internal/infra/peloton/leader"
 
+	"code.uber.internal/infra/peloton/common"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 	"go.uber.org/yarpc/transport"
@@ -41,12 +42,12 @@ func New(
 	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name: "peloton-client",
+		Name: common.PelotonClient,
 		Outbounds: yarpc.Outbounds{
-			"peloton-master": transport.Outbounds{
+			common.PelotonJobManager: transport.Outbounds{
 				Unary: http.NewOutbound(jobmgrURL.String()),
 			},
-			"peloton-resmgr": transport.Outbounds{
+			common.PelotonResourceManager: transport.Outbounds{
 				Unary: http.NewOutbound(resmgrURL.String()),
 			},
 		},
@@ -59,8 +60,8 @@ func New(
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	client := Client{
 		Debug:      debug,
-		jobClient:  json.New(dispatcher.ClientConfig("peloton-master")),
-		resClient:  json.New(dispatcher.ClientConfig("peloton-resmgr")),
+		jobClient:  json.New(dispatcher.ClientConfig(common.PelotonJobManager)),
+		resClient:  json.New(dispatcher.ClientConfig(common.PelotonResourceManager)),
 		dispatcher: dispatcher,
 		ctx:        ctx,
 		cancelFunc: cancelFunc,

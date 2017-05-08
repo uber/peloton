@@ -19,6 +19,8 @@ const (
 	PelotonMaster = "peloton-master"
 	// PelotonPlacement service name
 	PelotonPlacement = "peloton-placement"
+	// PelotonClient is client name for cli
+	PelotonClient = "peloton-client"
 	// MasterRole is the leadership election role for master process
 	MasterRole = "master"
 	// PlacementRole is the leadership election role for placement engine

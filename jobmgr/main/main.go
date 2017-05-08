@@ -224,10 +224,7 @@ func main() {
 	}
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		// Temp fix for T730605 so that we don't have to change
-		// peloton client, we should change it back to
-		// common.PelotonJobManager when master is deprecated
-		Name:      common.PelotonMaster,
+		Name:      common.PelotonJobManager,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 	})

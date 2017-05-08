@@ -34,11 +34,11 @@ var (
 	// TODO: deprecate jobMgrURL/resMgrURL once we fix pcluster container network
 	//       and make sure that local cli can access Uber Prodution hostname/ip
 	jobMgrURL = app.Flag(
-		"master",
-		"name of the master address to use (http/tchannel) (set $MASTER_URL to override)").
+		"jobmgr",
+		"name of the jobmgr address to use (http/tchannel) (set $JOBMGR_URL to override)").
 		Short('m').
-		Default("http://localhost:5289").
-		OverrideDefaultFromEnvar("MASTER_URL").
+		Default("http://localhost:5292").
+		OverrideDefaultFromEnvar("JOBMGR_URL").
 		URL()
 
 	resMgrURL = app.Flag(
