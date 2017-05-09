@@ -76,6 +76,7 @@ var (
 	job = app.Command("job", "manage jobs")
 
 	jobCreate            = job.Command("create", "create a job")
+	jobCreateID          = jobCreate.Flag("jobID", "optional job identifier, must be UUID format").Short('i').String()
 	jobCreateResPoolPath = jobCreate.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
 	jobCreateConfig = jobCreate.Arg("config", "YAML job configuration").Required().ExistingFile()
@@ -240,7 +241,7 @@ func main() {
 
 	switch cmd {
 	case jobCreate.FullCommand():
-		err = client.JobCreateAction(*jobCreateResPoolPath, *jobCreateConfig)
+		err = client.JobCreateAction(*jobCreateID, *jobCreateResPoolPath, *jobCreateConfig)
 	case jobDelete.FullCommand():
 		err = client.JobDeleteAction(*jobDeleteName)
 	case jobGet.FullCommand():

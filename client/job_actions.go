@@ -20,7 +20,7 @@ const (
 )
 
 // JobCreateAction is the action for creating a job
-func (client *Client) JobCreateAction(respoolPath string, cfg string) error {
+func (client *Client) JobCreateAction(jobID string, respoolPath string, cfg string) error {
 	respoolID, err := client.LookupResourcePoolID(respoolPath)
 	if err != nil {
 		return err
@@ -45,6 +45,9 @@ func (client *Client) JobCreateAction(respoolPath string, cfg string) error {
 
 	var response job.CreateResponse
 	var request = &job.CreateRequest{
+		Id: &peloton.JobID{
+			Value: jobID,
+		},
 		Config: &jobConfig,
 	}
 	_, err = client.jobClient.Call(

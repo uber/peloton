@@ -64,6 +64,7 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 	}
 
 	tt := []struct {
+		jobID                 string
 		jobCreateRequest      *job.CreateRequest
 		jobCreateResponse     *job.CreateResponse
 		respoolLookupRequest  *respool.LookupRequest
@@ -71,7 +72,11 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 		createError           error
 	}{
 		{
+			jobID: "",
 			jobCreateRequest: &job.CreateRequest{
+				Id: &peloton.JobID{
+					Value: "",
+				},
 				Config: config,
 			},
 			jobCreateResponse: &job.CreateResponse{
@@ -92,7 +97,11 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 			createError: nil,
 		},
 		{
+			jobID: "",
 			jobCreateRequest: &job.CreateRequest{
+				Id: &peloton.JobID{
+					Value: "",
+				},
 				Config: config,
 			},
 			jobCreateResponse: &job.CreateResponse{
@@ -112,13 +121,38 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 			},
 			createError: errors.New("unable to create job"),
 		},
+		{
+			jobID: id,
+			jobCreateRequest: &job.CreateRequest{
+				Id: &peloton.JobID{
+					Value: id,
+				},
+				Config: config,
+			},
+			jobCreateResponse: &job.CreateResponse{
+				JobId: &peloton.JobID{
+					Value: id,
+				},
+			},
+			respoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			respoolLookupResponse: &respool.LookupResponse{
+				Id: &respool.ResourcePoolID{
+					Value: id,
+				},
+			},
+			createError: nil,
+		},
 	}
 
 	for _, t := range tt {
 		suite.withMockResourcePoolLookup(t.respoolLookupRequest, t.respoolLookupResponse)
 		suite.withMockJobCreateResponse(t.jobCreateRequest, t.jobCreateResponse, t.createError)
 
-		err := c.JobCreateAction(path, testJobConfig)
+		err := c.JobCreateAction(t.jobID, path, testJobConfig)
 		if t.createError != nil {
 			suite.EqualError(err, t.createError.Error())
 		} else {
