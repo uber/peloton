@@ -1,6 +1,5 @@
 FROM golang:1.7
 
-ENV APP master
 ENV CONFIG_DIR /etc/peloton
 ENV ENVIRONMENT development
 ENV PROTOC_VERSION 3.0.2
@@ -44,8 +43,8 @@ RUN mkdir /etc/peloton
 COPY ./docker/default-config/ /etc/peloton/
 COPY ./docker/entrypoint.sh /bin/entrypoint.sh
 
-RUN ( echo "Built Peloton" && peloton-master --version ) >&2 && cp ./bin/* /usr/bin/
+RUN ( echo "Built Peloton" && peloton-jobmgr --version ) >&2 && cp ./bin/* /usr/bin/
 
 ENTRYPOINT ["/bin/entrypoint.sh"]
 
-EXPOSE 5289 5290 5291 5292 5293
+EXPOSE 5290 5291 5292 5293

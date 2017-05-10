@@ -1,5 +1,5 @@
-hash: b1f2e88fa36be7ce11bb954b2d538dfcdcb07abac5feaac758c14ac90ae296b2
-updated: 2017-03-27T18:06:54.459846029-07:00
+hash: ef97aee2c9bda475d6b40eb72c32091cec9c77ce9a566439018630005508231f
+updated: 2017-05-11T14:28:52.739081234-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -107,6 +107,7 @@ imports:
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
+  - log
   - model
 - name: github.com/prometheus/procfs
   version: fcdb11ccb4389efb1b210b7ffb623ab71c5fdd60
@@ -137,7 +138,7 @@ imports:
   - prometheus
   - statsd
 - name: go.uber.org/atomic
-  version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
+  version: 4e336646b2ef9fc6e47be8e21594178f98e5ebcf
 - name: go.uber.org/yarpc
   version: b8e8c0ff7b690926285c2d87d5ea222700310457
   subpackages:
@@ -172,6 +173,7 @@ imports:
   - transport/internal
   - transport/tchannel
   - transport/tchannel/internal
+  - transport/transporttest
 - name: golang.org/x/net
   version: 45e771701b814666a7eb299e6c7a57d0b1799e91
   subpackages:
@@ -181,8 +183,11 @@ imports:
   version: d75a52659825e75fff6158388dddc6a5b04f9ba5
   subpackages:
   - unix
+  - windows
+  - windows/registry
+  - windows/svc/eventlog
 - name: gopkg.in/alecthomas/kingpin.v2
-  version: e9044be3ab2a8e11d4e1f418d12f0790d57e8d70
+  version: 7f0871f2e17818990e4eed73f9b5c2f429501228
 - name: gopkg.in/inf.v0
   version: 3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4
 - name: gopkg.in/validator.v2

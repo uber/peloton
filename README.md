@@ -87,57 +87,31 @@ Create job:
 
 create job requires the resource pool path(where the job is to be subitted) and the job config
 ```
-$ bin/peloton job create /DefaultResPool example/testjob.yaml --master http://localhost:5292
+$ bin/peloton job create /DefaultResPool example/testjob.yaml
 Job 91b1b8e5-2ba8-11e7-bc23-0242ac11000d created
 ```
 
 Get tasks:
 ```
-$ bin/peloton task list <job ID> --master http://localhost:5292
+$ bin/peloton task list <job ID>
 Instance|        Job|  CPU Limit|  Mem Limit|  Disk Limit|      State|  GoalState|  Started At|                                                                       Task ID|  Host|  Message|  Reason|
          0|  instance0|        0.1|       2 MB|       10 MB|  SUCCEEDED|  SUCCEEDED|       <nil>|   91b1b8e5-2ba8-11e7-bc23-0242ac11000d-0-91b7fa56-2ba8-11e7-bc23-0242ac11000d|      |         |        |
          1|  instance1|        0.1|       2 MB|       10 MB|  SUCCEEDED|  SUCCEEDED|       <nil>|   91b1b8e5-2ba8-11e7-bc23-0242ac11000d-1-91b82b47-2ba8-11e7-bc23-0242ac11000d|      |         |        |
          2|  instance2|        0.1|       2 MB|       10 MB|  SUCCEEDED|  SUCCEEDED|       <nil>|   91b1b8e5-2ba8-11e7-bc23-0242ac11000d-2-91b837b9-2ba8-11e7-bc23
 ```
 
-## Run Peloton master via command line
 
-To run peloton in dev environment, dependencies like mesos/mysql, need
-to be set up first.  Run 'make pcluster' to bootstrap those
-dependencies in containers (docker-py installation is required, see
-bootstrap.sh for more details).  Refer to "docker/README.md" for
-details.
-
-```
-$ ./bin/peloton-master -c config/master/base.yaml -c config/master/development.yaml -d
-```
-
-By default, it runs peloton master at port 5289. To run another
-peloton master instance, set env var 'PORT=5290', or pass the `--port`
-flag.
-
-## Test Peloton master
-
-1. Create new job via yarpc based go client:
-```
-cd $GOPATH/src/$(make project-name)
-
-bin/peloton job create example/testjob.yaml
-
-bin/peloton task list <job ID>
-```
-
-2. Curl into Peloton endpoint:
+## Curl into Peloton endpoint:
 
 curl -X POST  \
      -H 'content-type: application/json'  \
      -H 'Rpc-Procedure: JobManager.Get'   \
-     -H 'Rpc-Service: peloton-master'     \
+     -H 'Rpc-Service: peloton-jobmgr'     \
      -H 'Rpc-Caller: peloton-client'      \
      -H 'Context-TTL-MS: 1000'            \
      -H 'Rpc-Encoding: json'              \
      --data '{"id": {"value": "myjob12345"}}' 	\
-    localhost:5289/api/v1
+    localhost:5292/api/v1
 
 
 ## Run unit tests

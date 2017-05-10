@@ -1,4 +1,4 @@
-.PHONY: all master placement executor install client test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure
+.PHONY: all placement executor install client test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -38,11 +38,7 @@ endif
 
 .PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: $(PBGENS) master placement executor client hostmgr resmgr jobmgr
-
-master:
-	@mkdir -p $(BIN_DIR)
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-master master/main/*.go
+all: $(PBGENS) placement executor client hostmgr resmgr jobmgr
 
 jobmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go
@@ -137,15 +133,14 @@ test: $(GOCOV) $(PBGENS) mockgens test-containers
 unit_test: $(GOCOV) $(PBGENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
-# launch peloton with PELOTON={app,master}, default to none
+# launch peloton with PELOTON={app}, default to none
+# TODO: clean up the make rule when cleaning up pcluster
 pcluster:
 # installaltion of docker-py is required, see "bootstrap.sh" or ""tools/pcluster/README.md" for more info
 ifndef PELOTON
 	@./tools/pcluster/pcluster.py setup
 else
-ifeq ($(PELOTON),master)
-	@./tools/pcluster/pcluster.py setup -m
-else ifeq ($(PELOTON),app)
+ifeq ($(PELOTON),app)
 	@./tools/pcluster/pcluster.py setup -a
 else
 	@echo "Unknown Peloton mode: "$(PELOTON)
