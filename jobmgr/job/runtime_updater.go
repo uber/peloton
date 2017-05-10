@@ -166,9 +166,7 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 	nanoSec := int64((j.lastTaskUpdateTime[jobID.Value] - float64(seconds)) *
 		float64(time.Second/time.Nanosecond))
 
-	lastTaskUpdateTime := time.Time{}.
-		Add(time.Duration(seconds) * time.Second).
-		Add(time.Duration(nanoSec) * time.Nanosecond)
+	lastTaskUpdateTime := time.Unix(seconds, nanoSec)
 
 	// Decide the new job state from the task state counts
 	if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
