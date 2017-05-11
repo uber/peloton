@@ -4,13 +4,15 @@ import (
 	"context"
 	"fmt"
 	"math"
-	mesos "mesos/v1"
-	pb_eventstream "peloton/private/eventstream"
 	"sync"
 
+	pb_eventstream "peloton/private/eventstream"
+
 	"code.uber.internal/infra/peloton/common/cirbuf"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 )
@@ -67,19 +69,21 @@ func (h *Handler) isClientExpected(clientName string) bool {
 	return false
 }
 
-// AddStatusUpdate adds a task status update into the inner circular buffer
-func (h *Handler) AddStatusUpdate(taskStatus *mesos.TaskStatus) error {
+// AddEvent adds a task Event or mesos status update into the
+// inner circular buffer
+func (h *Handler) AddEvent(event *pb_eventstream.Event) error {
+	if event == nil {
+		return errors.New("event is nil")
+	}
 	log.WithFields(log.Fields{
-		"mesosTaskId": taskStatus.TaskId,
-		"uuid":        taskStatus.Uuid}).
-		Debug("Adding taskStatus")
-	item, err := h.circularBuffer.AddItem(taskStatus)
+		"Type": event.Type,
+	}).Debug("Adding eventstream event")
+	item, err := h.circularBuffer.AddItem(event)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"mesosTaskId": taskStatus.TaskId,
-			"uuid":        taskStatus.Uuid,
-			"error":       err}).
-			Error("Adding taskStatus failed")
+			"Type":  event.Type,
+			"error": err}).
+			Error("Adding event failed")
 		return err
 	}
 	head, tail := h.circularBuffer.GetRange()
@@ -88,7 +92,6 @@ func (h *Handler) AddStatusUpdate(taskStatus *mesos.TaskStatus) error {
 	h.metrics.Size.Update(float64(head - tail))
 	log.WithField("Current head", item.SequenceID).Debug("Event added")
 	return nil
-
 }
 
 // InitStream handles the initstream request
@@ -178,11 +181,15 @@ func (h *Handler) WaitForEvents(
 	}
 	var events []*pb_eventstream.Event
 	for _, item := range items {
-		e := pb_eventstream.Event{
-			Offset:          item.SequenceID,
-			MesosTaskStatus: item.Value.(*mesos.TaskStatus),
+		if event, ok := item.Value.(*pb_eventstream.Event); ok {
+			e := &pb_eventstream.Event{
+				Type:             event.Type,
+				MesosTaskStatus:  event.MesosTaskStatus,
+				PelotonTaskEvent: event.PelotonTaskEvent,
+				Offset:           item.SequenceID,
+			}
+			events = append(events, e)
 		}
-		events = append(events, &e)
 	}
 	h.metrics.WaitForEventsSuccess.Inc(1)
 	response.Events = events

@@ -223,7 +223,8 @@ func (t *tree) requeueTasksInRange(
 		case task.TaskState_INITIALIZED,
 			task.TaskState_PENDING,
 			task.TaskState_PLACED,
-			task.TaskState_PLACING:
+			task.TaskState_PLACING,
+			task.TaskState_READY:
 			// Requeue the tasks with these states into the queue again
 			ta.Runtime.State = task.TaskState_PENDING
 			err := t.resPools[jobConfig.RespoolID.Value].EnqueueTask(

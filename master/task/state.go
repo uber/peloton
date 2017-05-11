@@ -191,7 +191,11 @@ func (m *taskStateManager) Update(
 	log.WithField("task_update", taskUpdate).
 		Debugf("taskManager: Update called")
 
-	err = m.eventStreamHandler.AddStatusUpdate(taskUpdate.GetStatus())
+	event := &pb_eventstream.Event{
+		MesosTaskStatus: taskUpdate.GetStatus(),
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+	}
+	err = m.eventStreamHandler.AddEvent(event)
 	if err != nil {
 		log.WithError(err).
 			WithField("status_update", taskUpdate.GetStatus()).

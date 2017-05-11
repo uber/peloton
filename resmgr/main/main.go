@@ -203,7 +203,12 @@ func main() {
 	// Initialize service handlers
 	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore, taskStore)
 	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
-	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
+
+	// Initializing the resmgr state machine
+	task.InitTaskTracker()
+
+	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod,
+		task.GetTracker())
 
 	entitlement.InitCalculator(
 		dispatcher,
@@ -212,7 +217,7 @@ func main() {
 
 	taskupdate.InitServiceHandler(dispatcher)
 
-	resmgr.InitServiceHandler(dispatcher, rootScope)
+	resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker())
 
 	server := resmgr.NewServer(cfg.ResManager.Port)
 	candidate, err := leader.NewCandidate(

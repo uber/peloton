@@ -18,6 +18,7 @@ import (
 	"peloton/api/job"
 	"peloton/api/peloton"
 	"peloton/api/task"
+	pb_eventstream "peloton/private/eventstream"
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 
@@ -82,6 +83,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		},
 		State: &state,
 	}
+	event := &pb_eventstream.Event{
+		MesosTaskStatus: taskStatus,
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+	}
 	taskInfo := &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			TaskId:    &mesos.TaskID{Value: &mesosTaskID},
@@ -105,7 +110,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 			UpdateTask(updateTaskInfo).
 			Return(nil),
 	)
-	suite.NoError(suite.updater.ProcessStatusUpdate(taskStatus))
+	suite.NoError(suite.updater.ProcessStatusUpdate(event))
 }
 
 // Test processing task failure status update w/ retry.
@@ -127,6 +132,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 		State:   &state,
 		Reason:  &mesosReason,
 		Message: &failureMsg,
+	}
+	event := &pb_eventstream.Event{
+		MesosTaskStatus: taskStatus,
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 	}
 	sla := &job.SlaConfig{
 		Preemptible: false,
@@ -201,7 +210,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 			)
 		}).
 		Return(nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(taskStatus))
+	suite.NoError(suite.updater.ProcessStatusUpdate(event))
 	time.Sleep(_waitTime)
 }
 
@@ -223,6 +232,11 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 		State:  &state,
 		Reason: &mesosReason,
 	}
+	event := &pb_eventstream.Event{
+		MesosTaskStatus: taskStatus,
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+	}
+
 	taskInfo := &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			TaskId:    &mesos.TaskID{Value: &mesosTaskID},
@@ -247,7 +261,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 			UpdateTask(updateTaskInfo).
 			Return(nil),
 	)
-	suite.NoError(suite.updater.ProcessStatusUpdate(taskStatus))
+	suite.NoError(suite.updater.ProcessStatusUpdate(event))
 }
 
 // Test processing task failure status update w/ retry.
@@ -269,6 +283,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
 		State:   &state,
 		Reason:  &mesosReason,
 		Message: &failureMsg,
+	}
+	event := &pb_eventstream.Event{
+		MesosTaskStatus: taskStatus,
+		Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 	}
 	sla := &job.SlaConfig{
 		Preemptible: false,
@@ -334,7 +352,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
 			)
 		}).
 		Return(nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(taskStatus))
+	suite.NoError(suite.updater.ProcessStatusUpdate(event))
 	time.Sleep(_waitTime)
 }
 

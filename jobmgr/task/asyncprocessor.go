@@ -1,18 +1,18 @@
 package task
 
 import (
-	"code.uber.internal/infra/peloton/util"
-	log "github.com/Sirupsen/logrus"
 	"math"
-	mesos "mesos/v1"
 	pb_eventstream "peloton/private/eventstream"
 	"sync"
 	"sync/atomic"
+
+	"code.uber.internal/infra/peloton/util"
+	log "github.com/Sirupsen/logrus"
 )
 
 // StatusProcessor is the interface to process a task status update
 type StatusProcessor interface {
-	ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error
+	ProcessStatusUpdate(event *pb_eventstream.Event) error
 }
 
 // asyncEventProcessor maps events to a list of buckets; and each bucket would be consumed by a single go routine
@@ -65,11 +65,11 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 			for {
 				select {
 				case event := <-bucket.eventChannel:
-					err := t.ProcessStatusUpdate(event.MesosTaskStatus)
+					err := t.ProcessStatusUpdate(event)
 					if err != nil {
 						log.WithError(err).
 							WithField("bucket_num", bucket.index).
-							WithField("status", event.MesosTaskStatus).
+							WithField("event", event).
 							Error("Error applying taskSatus")
 					}
 					atomic.AddInt32(bucket.processedCount, 1)
@@ -87,14 +87,21 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 }
 
 func (t *asyncEventProcessor) addEvent(event *pb_eventstream.Event) {
-	mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
-	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
-	if err != nil {
-		log.WithError(err).
-			WithField("mesos_task_id", mesosTaskID).
-			Error("Failed to ParseTaskIDFromMesosTaskID")
-		return
+	var taskID string
+	var err error
+	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
+		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
+		taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+		if err != nil {
+			log.WithError(err).
+				WithField("mesos_task_id", mesosTaskID).
+				Error("Failed to ParseTaskIDFromMesosTaskID")
+			return
+		}
+	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
+		taskID = event.PelotonTaskEvent.TaskId.Value
 	}
+
 	_, instanceID, _ := util.ParseTaskID(taskID)
 	index := instanceID % len(t.eventBuckets)
 	t.eventBuckets[index].eventChannel <- event

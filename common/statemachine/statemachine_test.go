@@ -27,9 +27,9 @@ func (suite *StateMachineTestSuite) SetupTest() {
 		WithTransitionCallback(nil).
 		AddRule(
 			&Rule{
-				from: "initialized",
-				to:   []State{"running", "killed"},
-				callback: func(t *Transition) error {
+				From: "initialized",
+				To:   []State{"running", "killed"},
+				Callback: func(t *Transition) error {
 					switch t.To {
 					case "running":
 						return suite.callbackRunning(t)
@@ -42,9 +42,9 @@ func (suite *StateMachineTestSuite) SetupTest() {
 			}).
 		AddRule(
 			&Rule{
-				from: "running",
-				to:   []State{"killed", "succeeded", "running"},
-				callback: func(t *Transition) error {
+				From: "running",
+				To:   []State{"killed", "succeeded", "running"},
+				Callback: func(t *Transition) error {
 					switch t.To {
 					case "killed":
 						return suite.callbackKilledfromrunning(t)

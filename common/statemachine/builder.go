@@ -33,7 +33,7 @@ func (b *Builder) WithCurrentState(current State) *Builder {
 
 // AddRule adds the rule for state machine
 func (b *Builder) AddRule(rule *Rule) *Builder {
-	b.rules[rule.from] = rule
+	b.rules[rule.From] = rule
 	return b
 }
 

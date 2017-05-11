@@ -13,7 +13,6 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	mesos "mesos/v1"
 	pb_job "peloton/api/job"
 	pb_task "peloton/api/task"
 	pb_eventstream "peloton/private/eventstream"
@@ -24,6 +23,7 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
+	"github.com/pkg/errors"
 )
 
 // StatusUpdate is the interface for task status updates
@@ -43,7 +43,7 @@ type StatusUpdateListener interface {
 type statusUpdate struct {
 	jobStore          storage.JobStore
 	taskStore         storage.TaskStore
-	eventClient       *eventstream.Client
+	eventClients      map[string]*eventstream.Client
 	applier           *asyncEventProcessor
 	jobRuntimeUpdater StatusUpdateListener
 	rootCtx           context.Context
@@ -75,6 +75,7 @@ func InitTaskStatusUpdate(
 			rootCtx:      context.Background(),
 			resmgrClient: json.New(d.ClientConfig(resmgrClientName)),
 			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
+			eventClients: make(map[string]*eventstream.Client),
 		}
 		// TODO: add config for BucketEventProcessor
 		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
@@ -85,7 +86,15 @@ func InitTaskStatusUpdate(
 			server,
 			statusUpdater,
 			parentScope.SubScope("HostmgrEventStreamClient"))
-		statusUpdater.eventClient = eventClient
+		statusUpdater.eventClients[common.PelotonJobManager] = eventClient
+
+		eventClientRM := eventstream.NewEventStreamClient(
+			d,
+			common.PelotonJobManager,
+			common.PelotonResourceManager,
+			statusUpdater,
+			parentScope.SubScope("ResmgrEventStreamClient"))
+		statusUpdater.eventClients[common.PelotonResourceManager] = eventClientRM
 
 		statusUpdater.jobRuntimeUpdater = jobRuntimeUpdater
 	})
@@ -113,15 +122,47 @@ func (p *statusUpdate) GetEventProgress() uint64 {
 }
 
 // ProcessStatusUpdate processes the actual task status
-func (p *statusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
-	mesosTaskID := taskStatus.GetTaskId().GetValue()
-	taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
-	if err != nil {
-		log.WithError(err).
-			WithField("task_id", mesosTaskID).
-			Error("Fail to parse taskID for mesostaskID")
-		return err
+func (p *statusUpdate) ProcessStatusUpdate(event *pb_eventstream.Event) error {
+	var taskID string
+	var err error
+	var mesosTaskID string
+	var state pb_task.TaskState
+	var statusMsg string
+	isMesosStatus := false
+
+	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
+		mesosTaskID = event.MesosTaskStatus.GetTaskId().GetValue()
+		taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", mesosTaskID).
+				Error("Fail to parse taskID for mesostaskID")
+			return err
+		}
+		state = util.MesosStateToPelotonState(event.MesosTaskStatus.GetState())
+		statusMsg = event.MesosTaskStatus.GetMessage()
+		isMesosStatus = true
+		log.WithFields(log.Fields{
+			"taskID": taskID,
+			"state":  state.String(),
+		}).Debug("Adding Mesos Event ")
+
+	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
+		taskID = event.PelotonTaskEvent.TaskId.Value
+		state = event.PelotonTaskEvent.State
+		statusMsg = event.PelotonTaskEvent.Message
+		log.WithFields(log.Fields{
+			"taskID": taskID,
+			"state":  state.String(),
+		}).Debug("Adding Peloton Event ")
+	} else {
+		log.WithFields(log.Fields{
+			"taskID": taskID,
+			"state":  state.String(),
+		}).Error("Unknown Event ")
+		return errors.New("Unknown Event ")
 	}
+
 	taskInfo, err := p.taskStore.GetTaskByID(taskID)
 	if err != nil {
 		log.WithError(err).
@@ -129,18 +170,7 @@ func (p *statusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 			Error("Fail to find taskInfo for taskID")
 		return err
 	}
-	if taskInfo.GetRuntime().GetTaskId().GetValue() != mesosTaskID {
-		// TODO: kill orphaned tasks if running.
-		log.WithFields(log.Fields{
-			"old_task_info":   taskInfo,
-			"new_task_status": taskStatus}).
-			Warn("Received status update for orphan task")
-		return nil
-	}
 
-	state := util.MesosStateToPelotonState(taskStatus.GetState())
-
-	statusMsg := taskStatus.GetMessage()
 	if state == pb_task.TaskState_FAILED && (taskInfo.GetRuntime().GetFailuresCount() <
 		taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()) {
 
@@ -168,15 +198,15 @@ func (p *statusUpdate) ProcessStatusUpdate(taskStatus *mesos.TaskStatus) error {
 	}
 
 	// persist error message to help end user figure out root cause
-	if isUnexpected(state) {
+	if isUnexpected(state) && isMesosStatus {
 		taskInfo.GetRuntime().Message = statusMsg
-		taskInfo.GetRuntime().Reason = taskStatus.GetReason().String()
+		taskInfo.GetRuntime().Reason = event.MesosTaskStatus.GetReason().String()
 		// TODO: Add metrics for unexpected task updates
 		log.WithFields(log.Fields{
 			"task_id": taskID,
 			"state":   state,
 			"message": statusMsg,
-			"reason":  taskStatus.GetReason().String()}).
+			"reason":  event.MesosTaskStatus.GetReason().String()}).
 			Debug("Received unexpected update for task")
 	}
 
@@ -256,7 +286,9 @@ func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {
 
 // Start starts processing status update events
 func (p *statusUpdate) Start() {
-	p.eventClient.Start()
+	for _, client := range p.eventClients {
+		client.Start()
+	}
 	log.Info("Task status updater started")
 	if p.jobRuntimeUpdater != nil {
 		p.jobRuntimeUpdater.Start()
@@ -265,7 +297,9 @@ func (p *statusUpdate) Start() {
 
 // Stop stops processing status update events
 func (p *statusUpdate) Stop() {
-	p.eventClient.Stop()
+	for _, client := range p.eventClients {
+		client.Stop()
+	}
 	log.Info("Task status updater stopped")
 	if p.jobRuntimeUpdater != nil {
 		p.jobRuntimeUpdater.Stop()

@@ -21,10 +21,11 @@ import (
 
 type TaskSchedulerTestSuite struct {
 	suite.Suite
-	resTree    respool.Tree
-	readyQueue queue.Queue
-	taskSched  *scheduler
-	mockCtrl   *gomock.Controller
+	resTree       respool.Tree
+	readyQueue    queue.Queue
+	taskSched     *scheduler
+	mockCtrl      *gomock.Controller
+	rmTaskTracker Tracker
 }
 
 func (suite *TaskSchedulerTestSuite) SetupSuite() {
@@ -47,12 +48,17 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 		reflect.TypeOf(resmgr.Task{}),
 		maxReadyQueueSize,
 	)
+	// Initializing the resmgr state machine
+	InitTaskTracker()
+	suite.rmTaskTracker = GetTracker()
+
 	suite.taskSched = &scheduler{
 		resPoolTree:      suite.resTree,
 		runningState:     runningStateNotStarted,
 		schedulingPeriod: time.Duration(1) * time.Second,
 		stopChan:         make(chan struct{}, 1),
 		readyQueue:       suite.readyQueue,
+		rmTaskTracker:    suite.rmTaskTracker,
 	}
 }
 

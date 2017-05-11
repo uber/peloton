@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	log "github.com/Sirupsen/logrus"
 
+	pt "peloton/api/task"
 	"peloton/private/resmgr"
 )
 
@@ -34,12 +35,16 @@ type scheduler struct {
 	schedulingPeriod time.Duration
 	stopChan         chan struct{}
 	readyQueue       queue.Queue
+	rmTaskTracker    Tracker
 }
 
 var sched *scheduler
 
 // InitScheduler initializes a Task Scheduler
-func InitScheduler(taskSchedulingPeriod time.Duration) {
+func InitScheduler(
+	taskSchedulingPeriod time.Duration,
+	rmTaskTracker Tracker,
+) {
 
 	if sched != nil {
 		log.Warning("Task scheduler has already been initialized")
@@ -57,6 +62,7 @@ func InitScheduler(taskSchedulingPeriod time.Duration) {
 			reflect.TypeOf(resmgr.Task{}),
 			maxReadyQueueSize,
 		),
+		rmTaskTracker: rmTaskTracker,
 	}
 }
 
@@ -124,6 +130,17 @@ func (s *scheduler) scheduleTasks() {
 		for e := t.Front(); e != nil; e = e.Next() {
 			task := e.Value.(*resmgr.Task)
 			s.readyQueue.Enqueue(task)
+			if s.rmTaskTracker.GetTask(task.Id) != nil {
+				err := s.rmTaskTracker.GetTask(task.Id).
+					TransitTo(pt.TaskState_READY.String())
+				if err != nil {
+					log.WithError(err).Error("Error while " +
+						"tranistioning to Ready state")
+				}
+			} else {
+				log.WithError(err).Error("Error while " +
+					"tranistioning to Ready state")
+			}
 		}
 	}
 }

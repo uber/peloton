@@ -89,7 +89,10 @@ func TestEventForwarder(t *testing.T) {
 	)
 	// Add event in event handler, make sure that all get correctly forwarded
 	for i := 0; i < 100; i++ {
-		eventStreamHandler.AddStatusUpdate(&mesos.TaskStatus{})
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
 	}
 	time.Sleep(200 * time.Millisecond)
 
@@ -97,7 +100,10 @@ func TestEventForwarder(t *testing.T) {
 
 	c.setError(true)
 	for i := 0; i < 100; i++ {
-		eventStreamHandler.AddStatusUpdate(&mesos.TaskStatus{})
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
 	}
 	time.Sleep(100 * time.Millisecond)
 
@@ -107,7 +113,10 @@ func TestEventForwarder(t *testing.T) {
 	// Simulate temp RPC error recovery, after recovery, all events are
 	// still correctly forwarded
 	for i := 0; i < 100; i++ {
-		eventStreamHandler.AddStatusUpdate(&mesos.TaskStatus{})
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
 	}
 	time.Sleep(200 * time.Millisecond)
 

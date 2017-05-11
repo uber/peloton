@@ -21,6 +21,9 @@ import (
 	pb_respool "peloton/api/respool"
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
+
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/eventstream"
 )
 
 type HandlerTestSuite struct {
@@ -30,6 +33,7 @@ type HandlerTestSuite struct {
 	resTree       respool.Tree
 	taskScheduler rm_task.Scheduler
 	ctrl          *gomock.Controller
+	rmTaskTracker rm_task.Tracker
 }
 
 func (suite *HandlerTestSuite) SetupSuite() {
@@ -45,8 +49,30 @@ func (suite *HandlerTestSuite) SetupSuite() {
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.ctrl)
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 	suite.resTree = respool.GetTree()
-	rm_task.InitScheduler(1 * time.Second)
+	// Initializing the resmgr state machine
+	rm_task.InitTaskTracker()
+	suite.rmTaskTracker = rm_task.GetTracker()
+	rm_task.InitScheduler(1*time.Second, suite.rmTaskTracker)
 	suite.taskScheduler = rm_task.GetScheduler()
+
+	suite.handler = &serviceHandler{
+		metrics:     NewMetrics(tally.NoopScope),
+		resPoolTree: respool.GetTree(),
+		placements: queue.NewQueue(
+			"placement-queue",
+			reflect.TypeOf(&resmgr.Placement{}),
+			maxPlacementQueueSize,
+		),
+		rmTracker: suite.rmTaskTracker,
+	}
+	suite.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
+		1000,
+		[]string{
+			common.PelotonJobManager,
+			common.PelotonResourceManager,
+		},
+		nil,
+		tally.Scope(tally.NoopScope))
 }
 
 func (suite *HandlerTestSuite) TearDownSuite() {
@@ -61,15 +87,6 @@ func (suite *HandlerTestSuite) SetupTest() {
 	err = suite.taskScheduler.Start()
 	suite.NoError(err)
 
-	suite.handler = &serviceHandler{
-		metrics:     NewMetrics(tally.NoopScope),
-		resPoolTree: respool.GetTree(),
-		placements: queue.NewQueue(
-			"placement-queue",
-			reflect.TypeOf(&resmgr.Placement{}),
-			maxPlacementQueueSize,
-		),
-	}
 }
 
 func (suite *HandlerTestSuite) TearDownTest() {
@@ -307,7 +324,9 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 			reflect.TypeOf(resmgr.Placement{}),
 			maxPlacementQueueSize,
 		),
+		rmTracker: suite.rmTaskTracker,
 	}
+	handler.eventStreamHandler = suite.handler.eventStreamHandler
 
 	setReq := &resmgrsvc.SetPlacementsRequest{
 		Placements: suite.getPlacements(),

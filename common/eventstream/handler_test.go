@@ -63,7 +63,10 @@ func TestInitStream(t *testing.T) {
 	assert.Equal(t, eventStreamHandler.streamID, response.StreamID)
 
 	for i := 0; i < 10; i++ {
-		eventStreamHandler.AddStatusUpdate(&mesos.TaskStatus{})
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
 	}
 	eventStreamHandler.circularBuffer.MoveTail(6)
 
@@ -91,7 +94,10 @@ func TestWaitForEvent(t *testing.T) {
 
 	// Add some data into the circular buffer
 	for i := 0; i < bufferSize; i++ {
-		eventStreamHandler.AddStatusUpdate(&mesos.TaskStatus{})
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
 	}
 	// start and end within head tail range
 	request := makeWaitForEventsRequest("jobMgr", streamID, uint64(10), int32(23), uint64(10))
@@ -159,7 +165,10 @@ func TestPurgeData(t *testing.T) {
 
 	// Add some data into the circular buffer
 	for i := 0; i < bufferSize; i++ {
-		eventStreamHandler.AddStatusUpdate(&mesos.TaskStatus{})
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
 	}
 
 	// jobMgr consumes some data, with purgeOffset 120
@@ -203,7 +212,10 @@ func TestPurgeData(t *testing.T) {
 
 	// add more data until 300, rolled over the buffer
 	for i := 0; i < 300-bufferSize; i++ {
-		eventStreamHandler.AddStatusUpdate(&mesos.TaskStatus{})
+		eventStreamHandler.AddEvent(&pb_eventstream.Event{
+			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			MesosTaskStatus: &mesos.TaskStatus{},
+		})
 	}
 	head, tail = eventStreamHandler.circularBuffer.GetRange()
 	assert.Equal(t, 300, int(head))

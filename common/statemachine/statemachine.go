@@ -14,12 +14,12 @@ import (
 // This can define callback function from 1:1 basis from src->dest state
 type Rule struct {
 	// from is the source state
-	from State
+	From State
 	// to is the destination state
-	to []State
+	To []State
 	// callback is transition function which defines 1:1 mapping
 	// of callbacks
-	callback func(*Transition) error
+	Callback func(*Transition) error
 }
 
 // Callback is the type for callback function
@@ -104,7 +104,7 @@ func (sm *statemachine) addRules(rules map[State]*Rule) error {
 // All previous rules will be replaced by subsequent rules
 func (sm *statemachine) validateRule(rule *Rule) error {
 	sources := make(map[State]bool)
-	for _, s := range rule.to {
+	for _, s := range rule.To {
 		if val, ok := sources[s]; ok {
 			log.WithField("Source ", val).Error("Already exists, duplicate entry")
 			return errors.New("invalid rule to be applied, duplicate sources")
@@ -155,8 +155,8 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	sm.Unlock()
 
 	// invoking callback function
-	if sm.rules[curState].callback != nil {
-		err = sm.rules[curState].callback(t)
+	if sm.rules[curState].Callback != nil {
+		err = sm.rules[curState].Callback(t)
 		if err != nil {
 			log.Error("error in callback ")
 			return err
@@ -188,11 +188,11 @@ func (sm *statemachine) isValidTransition(to State) error {
 			"transition", to)
 	}
 	if val, ok := sm.rules[sm.current]; ok {
-		if val.from != sm.current {
+		if val.From != sm.current {
 			return errors.Errorf("invalid transition for %s "+
 				"[from %s to %s]", sm.name, sm.current, to)
 		}
-		for _, dest := range val.to {
+		for _, dest := range val.To {
 			if dest == to {
 				return nil
 			}

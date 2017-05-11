@@ -10,10 +10,13 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/task"
+	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 
+	t "peloton/api/task"
 	"peloton/private/resmgr"
 	"peloton/private/resmgrsvc"
 )
@@ -21,13 +24,18 @@ import (
 // serviceHandler implements peloton.private.resmgr.ResourceManagerService
 // TODO: add placing and placed task queues
 type serviceHandler struct {
-	metrics     *Metrics
-	resPoolTree respool.Tree
-	placements  queue.Queue
+	metrics            *Metrics
+	resPoolTree        respool.Tree
+	placements         queue.Queue
+	eventStreamHandler *eventstream.Handler
+	rmTracker          rmtask.Tracker
 }
 
 // InitServiceHandler initializes the handler for ResourceManagerService
-func InitServiceHandler(d yarpc.Dispatcher, parent tally.Scope) {
+func InitServiceHandler(
+	d yarpc.Dispatcher,
+	parent tally.Scope,
+	rmTracker rmtask.Tracker) {
 
 	handler := serviceHandler{
 		metrics:     NewMetrics(parent.SubScope("resmgr")),
@@ -37,12 +45,31 @@ func InitServiceHandler(d yarpc.Dispatcher, parent tally.Scope) {
 			reflect.TypeOf(resmgr.Placement{}),
 			maxPlacementQueueSize,
 		),
+		rmTracker: rmTracker,
 	}
+	// TODO: move eventStreamHandler buffer size into config
+	handler.eventStreamHandler = initEventStreamHandler(d, 1000, parent.SubScope("resmgr"))
 
 	json.Register(d, json.Procedure("ResourceManagerService.EnqueueTasks", handler.EnqueueTasks))
 	json.Register(d, json.Procedure("ResourceManagerService.DequeueTasks", handler.DequeueTasks))
 	json.Register(d, json.Procedure("ResourceManagerService.SetPlacements", handler.SetPlacements))
 	json.Register(d, json.Procedure("ResourceManagerService.GetPlacements", handler.GetPlacements))
+}
+
+func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int, parentScope tally.Scope) *eventstream.Handler {
+	eventStreamHandler := eventstream.NewEventStreamHandler(
+		bufferSize,
+		[]string{
+			common.PelotonJobManager,
+			common.PelotonResourceManager,
+		},
+		nil,
+		parentScope)
+	json.Register(d, json.Procedure("EventStream.InitStream",
+		eventStreamHandler.InitStream))
+	json.Register(d, json.Procedure("EventStream.WaitForEvents",
+		eventStreamHandler.WaitForEvents))
+	return eventStreamHandler
 }
 
 // EnqueueTasks implements ResourceManagerService.EnqueueTasks
@@ -75,6 +102,31 @@ func (h *serviceHandler) EnqueueTasks(
 	// Enqueue tasks to the pending queue of the respool
 	var failed []*resmgrsvc.EnqueueTasksFailure_FailedTask
 	for _, task := range req.GetTasks() {
+		// Adding task to state machine
+		err := h.rmTracker.AddTask(
+			task,
+			h.eventStreamHandler,
+			respool,
+		)
+		if err != nil {
+			failed = append(
+				failed,
+				&resmgrsvc.EnqueueTasksFailure_FailedTask{
+					Task:    task,
+					Message: err.Error(),
+				},
+			)
+			h.metrics.EnqueueTaskFail.Inc(1)
+			continue
+		}
+		if h.rmTracker.GetTask(task.Id) != nil {
+			err = h.rmTracker.GetTask(task.Id).TransitTo(
+				t.TaskState_PENDING.String())
+			if err != nil {
+				log.Error(err)
+			}
+		}
+
 		err = respool.EnqueueTask(task)
 		if err != nil {
 			failed = append(
@@ -117,13 +169,14 @@ func (h *serviceHandler) DequeueTasks(
 
 	limit := req.GetLimit()
 	timeout := time.Duration(req.GetTimeout())
-	readyQueue := task.GetScheduler().GetReadyQueue()
+	readyQueue := rmtask.GetScheduler().GetReadyQueue()
 
 	var tasks []*resmgr.Task
 	for i := uint32(0); i < limit; i++ {
 		item, err := readyQueue.Dequeue(timeout * time.Millisecond)
 		if err != nil {
-			log.WithError(err).Warning("Failed to dequeue task from ready queue")
+			log.WithError(err).Warning("Failed to dequeue " +
+				"task from ready queue")
 			h.metrics.DequeueTaskFail.Inc(1)
 			break
 		}
@@ -131,7 +184,13 @@ func (h *serviceHandler) DequeueTasks(
 		tasks = append(tasks, task)
 		h.metrics.DequeueTaskSuccess.Inc(1)
 
-		// TODO: We should move the task from READY to PLACING queue
+		// Moving task to Placing state
+		err = h.rmTracker.GetTask(task.Id).TransitTo(
+			t.TaskState_PLACING.String())
+		if err != nil {
+			log.WithError(err).Error("Not able to transition " +
+				task.Id.Value)
+		}
 	}
 	// TODO: handle the dequeue errors better
 	response := resmgrsvc.DequeueTasksResponse{Tasks: tasks}
@@ -167,7 +226,18 @@ func (h *serviceHandler) SetPlacements(
 			h.metrics.SetPlacementFail.Inc(1)
 		} else {
 			h.metrics.SetPlacementSuccess.Inc(1)
-			// TODO: We should move the tasks from PLACING to PLACED queue
+			// Transitioning tasks from Placing to Placed
+			for _, taskID := range placement.Tasks {
+				if h.rmTracker.GetTask(taskID) != nil {
+					err := h.rmTracker.GetTask(taskID).
+						TransitTo(t.TaskState_PLACED.String())
+					if err != nil {
+						log.WithError(err).Error("Not able " +
+							"to transition to placed " +
+							"for task " + taskID.Value)
+					}
+				}
+			}
 		}
 	}
 	if len(failed) > 0 {

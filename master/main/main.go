@@ -299,8 +299,12 @@ func main() {
 	respool.InitServiceHandler(resmgrDispatcher, rootScope, respoolStore,
 		jobStore, taskStore)
 	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
-	resmgr_task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod)
-	resmgr.InitServiceHandler(dispatcher, rootScope)
+	resmgr_task.InitTaskTracker()
+	resmgr_task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod,
+		resmgr_task.GetTracker())
+	resmgr.InitServiceHandler(dispatcher,
+		rootScope,
+		resmgr_task.GetTracker())
 
 	// Initialize host manager related handlers
 
