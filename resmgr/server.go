@@ -10,7 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/resmgr/taskqueue"
 )
 
 // Server struct for handling the zk election
@@ -19,7 +18,6 @@ type Server struct {
 	ID                       string
 	role                     string
 	getResPoolHandler        func() respool.ServiceHandler
-	getTaskQueueHandler      func() taskqueue.ServiceHandler
 	getTaskScheduler         func() task.Scheduler
 	getEntitlementCalculator func() entitlement.Calculator
 }
@@ -30,7 +28,6 @@ func NewServer(port int) *Server {
 		ID:                       leader.NewID(port),
 		role:                     common.ResourceManagerRole,
 		getResPoolHandler:        respool.GetServiceHandler,
-		getTaskQueueHandler:      taskqueue.GetServiceHandler,
 		getTaskScheduler:         task.GetScheduler,
 		getEntitlementCalculator: entitlement.GetCalculator,
 	}
@@ -45,12 +42,7 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 
-	err := s.getTaskQueueHandler().LoadFromDB()
-	if err != nil {
-		log.Errorf("Failed to load task queue from DB, err = %v", err)
-		return err
-	}
-	err = s.getResPoolHandler().Start()
+	err := s.getResPoolHandler().Start()
 	if err != nil {
 		log.Errorf("Failed to start respool service handler")
 		return err
@@ -75,8 +67,6 @@ func (s *Server) LostLeadershipCallback() error {
 	defer s.Unlock()
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Lost leadership")
-
-	taskqueue.GetServiceHandler().Reset()
 
 	err := s.getResPoolHandler().Stop()
 	if err != nil {

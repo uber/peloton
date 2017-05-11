@@ -16,7 +16,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/resmgr/taskupdate"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -202,7 +201,6 @@ func main() {
 
 	// Initialize service handlers
 	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore, taskStore)
-	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
 
 	// Initializing the resmgr state machine
 	task.InitTaskTracker()

@@ -28,7 +28,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	resmgr_task "code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/resmgr/taskqueue"
 	resmgr_taskupdate "code.uber.internal/infra/peloton/resmgr/taskupdate"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -298,7 +297,6 @@ func main() {
 	// Initialize resource manager related service handlers
 	respool.InitServiceHandler(resmgrDispatcher, rootScope, respoolStore,
 		jobStore, taskStore)
-	taskqueue.InitServiceHandler(dispatcher, rootScope, jobStore, taskStore)
 	resmgr_task.InitTaskTracker()
 	resmgr_task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod,
 		resmgr_task.GetTracker())
