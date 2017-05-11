@@ -14,6 +14,8 @@ $docker_cmd rm -f $CASSANDRA_TEST_CONTAINER
 CONTAINER_ID=$($docker_cmd run --name $CASSANDRA_TEST_CONTAINER -d \
   -p $TEST_CASSANDRA_CQL_PORT:$CASSANDRA_CQL_PORT \
   -p $TEST_CASSANDRA_THRIFT_PORT:$CASSANDRA_THRIFT_PORT \
+   -v $PWD/../tools/pcluster/scripts:/scripts \
+   --entrypoint='/scripts/run_cassandra_with_stratio_index.sh' \
    cassandra:$CASSANDRA_VERSION)
 
 max_wait_cycles=20

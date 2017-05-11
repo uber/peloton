@@ -241,6 +241,7 @@ def run_cassandra():
         ),
         image=config['cassandra_image'],
         detach=True,
+        entrypoint='bash /scripts/run_cassandra_with_stratio_index.sh',
     )
     cli.start(container=container.get('Id'))
     print 'started container %s' % config['cassandra_container']
@@ -526,7 +527,6 @@ def setup(enable_peloton_master=False,
             disable_peloton_jobmgr,
             disable_peloton_placement
         )
-
 
 #
 # Tear down a personal cluster

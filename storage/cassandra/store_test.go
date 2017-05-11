@@ -3,6 +3,7 @@
 package cassandra
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -49,6 +50,101 @@ func init() {
 
 func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
+}
+
+func (suite *CassandraStoreTestSuite) TestQueryJob() {
+	var jobStore storage.JobStore
+	jobStore = store
+
+	var originalJobs []*job.JobConfig
+	var jobIDs []*peloton.JobID
+	var records = 3
+
+	var keys0 = []string{"test0", "test1", "test2", "test3"}
+	var vals0 = []string{"testValue0", "testValue1", "testValue2", "testValue3"}
+
+	var keys1 = []string{"key0", "key1", "key2", "key3"}
+	var vals1 = []string{"valX0", "valX1", "valX2", "valX3"}
+	keyCommon := "keyX"
+	valCommon := "valX"
+
+	// Create 3 jobs with different labels and a common label
+	for i := 0; i < records; i++ {
+		var jobID = peloton.JobID{Value: fmt.Sprintf("TestQueryJob%d", i)}
+		jobIDs = append(jobIDs, &jobID)
+		var sla = job.SlaConfig{
+			Priority:                22,
+			MaximumRunningInstances: 3,
+			Preemptible:             false,
+		}
+		var taskConfig = task.TaskConfig{
+			Resource: &task.ResourceConfig{
+				CpuLimit:    0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+				FdLimit:     1000 + uint32(i),
+			},
+		}
+		var labels = mesos.Labels{
+			Labels: []*mesos.Label{
+				{Key: &keys0[i], Value: &vals0[i]},
+				{Key: &keys1[i], Value: &vals1[i]},
+				{Key: &keyCommon, Value: &valCommon},
+			},
+		}
+		var jobConfig = job.JobConfig{
+			Name:          fmt.Sprintf("TestJob_%d", i),
+			OwningTeam:    "owner",
+			LdapGroups:    []string{"money", "team6", "gign"},
+			Sla:           &sla,
+			DefaultConfig: &taskConfig,
+			Labels:        &labels,
+		}
+		originalJobs = append(originalJobs, &jobConfig)
+		err := jobStore.CreateJob(&jobID, &jobConfig, "uber")
+		suite.NoError(err)
+	}
+	// Run the following query to trigger rebuild the lucene index
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(jobsTable).Where("expr(jobs_index, '{refresh:true}')")
+	_, err := store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+
+	// query by common label should return all jobs
+	result1, err := jobStore.Query(&mesos.Labels{
+		Labels: []*mesos.Label{
+			{Key: &keyCommon, Value: &valCommon},
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(records, len(result1))
+	for i := 0; i < records; i++ {
+		suite.Equal(fmt.Sprintf("TestJob_%d", i), result1[jobIDs[i].Value].Name)
+	}
+
+	// query by specific label returns one job
+	for i := 0; i < records; i++ {
+		result1, err := jobStore.Query(&mesos.Labels{
+			Labels: []*mesos.Label{
+				{Key: &keys0[i], Value: &vals0[i]},
+				{Key: &keys1[i], Value: &vals1[i]},
+			},
+		})
+		suite.NoError(err)
+		suite.Equal(1, len(result1))
+		suite.Equal(fmt.Sprintf("TestJob_%d", i), result1[jobIDs[i].Value].Name)
+	}
+
+	// query for non-exist label return nothing
+	var other = "other"
+	result1, err = jobStore.Query(&mesos.Labels{
+		Labels: []*mesos.Label{
+			{Key: &keys0[0], Value: &other},
+			{Key: &keys1[1], Value: &vals1[0]},
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(0, len(result1))
 }
 
 func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {

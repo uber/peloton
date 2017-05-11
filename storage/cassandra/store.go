@@ -206,8 +206,63 @@ func (s *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 }
 
 // Query returns all jobs that contains the Labels.
-func (s *Store) Query(Labels *mesos.Labels) (map[string]*job.JobConfig, error) {
-	return nil, nil
+func (s *Store) Query(labels *mesos.Labels) (map[string]*job.JobConfig, error) {
+	// Query is based on stratio lucene index on jobs.
+	// See https://github.com/Stratio/cassandra-lucene-index
+	// We are using "must" for the labels and only return the jobs that contains all
+	// label values
+	// TODO: investigate if there are any golang library that can build lucene query
+
+	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["
+	for i, label := range labels.Labels {
+		where = where + fmt.Sprintf("{type: \"contains\", field:\"labels\", values:\"%s\"}", *label.Value)
+		if i < len(labels.Labels)-1 {
+			where = where + ","
+		}
+	}
+	where = where + "]}}')"
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable).Where(where)
+
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.WithField("labels", labels).
+			WithError(err).
+			Error("Fail to Query jobs")
+		s.metrics.JobQueryFail.Inc(1)
+		return nil, err
+	}
+	var resultMap = make(map[string]*job.JobConfig)
+	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.WithField("labels", labels).
+			WithError(err).
+			Error("Fail to Query jobs")
+		s.metrics.JobQueryFail.Inc(1)
+		return nil, err
+	}
+	for _, value := range allResults {
+		var record JobRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithField("labels", labels).
+				WithError(err).
+				Error("Fail to Query jobs")
+			s.metrics.JobQueryFail.Inc(1)
+			return nil, err
+		}
+		jobConfig, err := record.GetJobConfig()
+		if err != nil {
+			log.WithField("labels", labels).
+				WithError(err).
+				Error("Fail to Query jobs")
+			s.metrics.JobQueryFail.Inc(1)
+			return nil, err
+		}
+		resultMap[record.JobID] = jobConfig
+	}
+	s.metrics.JobQuery.Inc(1)
+	return resultMap, nil
 }
 
 // GetJobsByOwner returns jobs by owner
@@ -354,8 +409,8 @@ func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner
 					Columns("TaskID", "JobID", "TaskState", "CreateTime", "TaskInfo").
 					Values(taskID, jobID, t.Runtime.State.String(), time.Now(), string(buffer))
 
-					// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
-					// Batch with conditions cannot span multiple partitions. For now, drop the IfNotExist()
+				// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
+				// Batch with conditions cannot span multiple partitions. For now, drop the IfNotExist()
 
 				insertStatements = append(insertStatements, stmt)
 			}
