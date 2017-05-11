@@ -250,6 +250,12 @@ func (t *tree) requeueTasksInRange(
 
 // ConvertResMgrTask converts the taskinfo object to resmgr.Task
 func (t *tree) ConvertResMgrTask(ta *task.TaskInfo, jobConfig *job.JobConfig) *resmgr.Task {
+	var priority uint32
+	var preemptible bool
+	if jobConfig != nil && jobConfig.Sla != nil {
+		priority = jobConfig.Sla.Priority
+		preemptible = jobConfig.Sla.Preemptible
+	}
 	rt := resmgr.Task{
 		Id: &peloton.TaskID{Value: fmt.Sprintf(
 			"%s-%d", ta.GetJobId().Value,
@@ -257,8 +263,8 @@ func (t *tree) ConvertResMgrTask(ta *task.TaskInfo, jobConfig *job.JobConfig) *r
 		JobId: ta.JobId,
 		Name:  ta.Config.Name,
 		// TODO: We need to add sla config per task
-		Priority:    jobConfig.Sla.Priority,
-		Preemptible: jobConfig.Sla.Preemptible,
+		Priority:    priority,
+		Preemptible: preemptible,
 		Resource:    ta.GetConfig().Resource,
 		TaskId:      ta.GetRuntime().TaskId,
 	}

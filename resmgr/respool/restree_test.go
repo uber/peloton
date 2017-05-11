@@ -518,3 +518,40 @@ func (suite *resTreeTestSuite) getQueueContent(
 	}
 	return result
 }
+
+func (suite *resTreeTestSuite) TestConvertTask() {
+	ti := &task.TaskInfo{
+		JobId: &peloton.JobID{
+			Value: "job-1",
+		},
+		InstanceId: 1,
+		Config:     &task.TaskConfig{},
+		Runtime:    &task.RuntimeInfo{},
+	}
+	jobConfig := &job.JobConfig{
+		Sla: &job.SlaConfig{
+			Preemptible: true,
+			Priority:    12,
+		},
+	}
+
+	rmtask := respoolTree.ConvertResMgrTask(ti, jobConfig)
+	suite.NotNil(rmtask)
+	suite.EqualValues(rmtask.Priority, 12)
+	suite.EqualValues(rmtask.Preemptible, true)
+
+	ti = &task.TaskInfo{
+		JobId: &peloton.JobID{
+			Value: "job-2",
+		},
+		InstanceId: 1,
+		Config:     &task.TaskConfig{},
+		Runtime:    &task.RuntimeInfo{},
+	}
+	jobConfig = &job.JobConfig{}
+
+	rmtask = respoolTree.ConvertResMgrTask(ti, jobConfig)
+	suite.NotNil(rmtask)
+	suite.EqualValues(rmtask.Priority, 0)
+	suite.EqualValues(rmtask.Preemptible, false)
+}
