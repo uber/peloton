@@ -187,9 +187,17 @@ service JobManager {
 
   // Delete a job entity and stop all related tasks
   rpc Delete(DeleteRequest) returns (DeleteResponse);
+
+  // Update a Job entity with a new config
+  rpc Update(UpdateRequest) returns (UpdateResponse);
 }
 
 message JobAlreadyExists {
+  peloton.JobID id = 1;
+  string message = 2;
+}
+
+message JobNotFound {
   peloton.JobID id = 1;
   string message = 2;
 }
@@ -219,6 +227,22 @@ message CreateResponse {
 
   Error error = 1;
   peloton.JobID jobId = 2;
+}
+
+message UpdateRequest {
+  peloton.JobID id = 1;
+  JobConfig config = 2;
+}
+
+message UpdateResponse {
+  message Error {
+    JobNotFound jobNotFound = 1;
+    InvalidJobConfig invalidConfig = 2;
+    InvalidJobId invalidJobId = 3;
+  }
+  Error error = 1;
+  peloton.JobID id = 2;
+  string message = 3;
 }
 
 message GetRequest {

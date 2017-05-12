@@ -48,6 +48,7 @@ const (
 
 	// Various statement templates for job_config
 	insertJobStmt        = `INSERT INTO jobs (row_key, col_key, ref_key, body, created_by) values (?, ?, ?, ?, ?)`
+	updateJobConfig      = `UPDATE jobs SET body = ? where row_key = ?`
 	upsertJobRuntimeStmt = `INSERT INTO job_runtime (row_key, runtime) values (?, ?) ON DUPLICATE KEY UPDATE runtime = ?`
 	// TODO: discuss on supporting soft delete.
 	deleteJobStmt         = `DELETE from jobs where row_key = ?`
@@ -198,6 +199,25 @@ func (m *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy
 		return err
 	}
 	m.metrics.JobCreate.Inc(1)
+	return nil
+}
+
+// UpdateJobConfig updates the job config for a given job id
+func (m *Store) UpdateJobConfig(id *peloton.JobID, jobConfig *job.JobConfig) error {
+	buffer, err := json.Marshal(jobConfig)
+	if err != nil {
+		log.WithError(err).Error("Marshal job config failed")
+		m.metrics.JobUpdateFail.Inc(1)
+		return err
+	}
+	_, err = m.DB.Exec(updateJobConfig, string(buffer), id.Value)
+	if err != nil {
+		log.WithError(err).WithField("job_id", id.Value).Error("UpdateJobConfig failed")
+		m.metrics.JobUpdateFail.Inc(1)
+		return err
+	}
+
+	m.metrics.JobUpdate.Inc(1)
 	return nil
 }
 
@@ -392,17 +412,6 @@ func (m *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, creat
 			for i := start; i < end; i++ {
 				t := taskInfos[i]
 				rowKey := fmt.Sprintf("%s-%d", id.Value, t.InstanceId)
-
-				if t.InstanceId != uint32(i) {
-					log.WithField("task", rowKey).
-						WithField("expected_instance_id", i).
-						WithField("actual_instance_id", t.InstanceId).
-						Errorf("Unexpected instance ID")
-					m.metrics.TaskCreateFail.Inc(batchSize)
-					atomic.AddInt64(&tasksNotCreated, batchSize)
-					return
-				}
-
 				params = append(params, `(?, ?, ?, ?, ?)`)
 				buffer, err := json.Marshal(t)
 				if err != nil {

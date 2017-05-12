@@ -20,8 +20,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr/taskqueue"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 
 	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
@@ -34,28 +34,32 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	runtimeUpdater *RuntimeUpdater,
 	clientName string) {
 
 	handler := serviceHandler{
-		jobStore:  jobStore,
-		taskStore: taskStore,
-		client:    json.New(d.ClientConfig(clientName)),
-		rootCtx:   context.Background(),
-		metrics:   NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
+		jobStore:       jobStore,
+		taskStore:      taskStore,
+		client:         json.New(d.ClientConfig(clientName)),
+		rootCtx:        context.Background(),
+		runtimeUpdater: runtimeUpdater,
+		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
 	}
-	json.Register(d, json.Procedure("JobManager.Create", handler.Create))
-	json.Register(d, json.Procedure("JobManager.Get", handler.Get))
-	json.Register(d, json.Procedure("JobManager.Query", handler.Query))
-	json.Register(d, json.Procedure("JobManager.Delete", handler.Delete))
+	d.Register(json.Procedure("JobManager.Create", handler.Create))
+	d.Register(json.Procedure("JobManager.Get", handler.Get))
+	d.Register(json.Procedure("JobManager.Query", handler.Query))
+	d.Register(json.Procedure("JobManager.Delete", handler.Delete))
+	d.Register(json.Procedure("JobManager.Update", handler.Update))
 }
 
 // serviceHandler implements peloton.api.job.JobManager
 type serviceHandler struct {
-	jobStore  storage.JobStore
-	taskStore storage.TaskStore
-	client    json.Client
-	rootCtx   context.Context
-	metrics   *Metrics
+	jobStore       storage.JobStore
+	taskStore      storage.TaskStore
+	client         json.Client
+	runtimeUpdater *RuntimeUpdater
+	rootCtx        context.Context
+	metrics        *Metrics
 }
 
 // Create creates a job object for a given job configuration and
@@ -139,8 +143,8 @@ func (h *serviceHandler) Create(
 	tasks := make([]*task.TaskInfo, instances)
 	for i := uint32(0); i < instances; i++ {
 		// Populate taskInfos
-		instance := i
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instance,
+		instanceID := i
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instanceID,
 			uuid.NewUUID().String())
 		taskConfig, err := jm_task.GetTaskConfig(jobID, jobConfig, i)
 		if err != nil {
@@ -156,20 +160,7 @@ func (h *serviceHandler) Create(
 				},
 			}, nil, nil
 		}
-		t := task.TaskInfo{
-			Runtime: &task.RuntimeInfo{
-				State: task.TaskState_INITIALIZED,
-				// New task is by default treated as batch task and get SUCCEEDED goalstate.
-				// TODO(mu): Long running tasks need RUNNING as default goalstate.
-				GoalState: task.TaskState_SUCCEEDED,
-				TaskId: &mesos.TaskID{
-					Value: &mesosTaskID,
-				},
-			},
-			Config:     taskConfig,
-			InstanceId: uint32(instance),
-			JobId:      jobID,
-		}
+		t := getTaskInfo(mesosTaskID, taskConfig, instanceID, jobID)
 		tasks[i] = &t
 	}
 	// TODO: use the username of current session for createBy param
@@ -184,7 +175,7 @@ func (h *serviceHandler) Create(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = h.enqueueTasks(tasks, jobConfig)
+	err = EnqueueTasks(tasks, jobConfig, h.client)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -217,6 +208,148 @@ func (h *serviceHandler) Create(
 	return &job.CreateResponse{
 		JobId: jobID,
 	}, nil, nil
+}
+
+// Update updates a job object for a given job configuration and
+// performs the appropriate action based on the change
+func (h *serviceHandler) Update(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	req *job.UpdateRequest) (*job.UpdateResponse, yarpc.ResMeta, error) {
+
+	jobID := req.Id
+	jobRuntime, err := h.jobStore.GetJobRuntime(jobID)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.Value).
+			Error("Failed to GetJobRuntime")
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, nil, err
+	}
+
+	if !NonTerminatedStates[jobRuntime.State] {
+		msg := fmt.Sprintf("Job is in a terminal state:%s", jobRuntime.State)
+		h.metrics.JobUpdateFail.Inc(1)
+		return &job.UpdateResponse{
+			Error: &job.UpdateResponse_Error{
+				InvalidJobId: &job.InvalidJobId{
+					Id:      req.Id,
+					Message: msg,
+				},
+			},
+		}, nil, nil
+	}
+
+	newConfig := req.Config
+	oldConfig, err := h.jobStore.GetJobConfig(jobID)
+
+	if newConfig.RespoolID == nil {
+		newConfig.RespoolID = oldConfig.RespoolID
+	}
+
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.Value).
+			Error("Failed to GetJobConfig")
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, nil, err
+	}
+
+	diff, err := updater.CalculateJobDiff(jobID, oldConfig, newConfig)
+	if err != nil {
+		h.metrics.JobUpdateFail.Inc(1)
+		return &job.UpdateResponse{
+			Error: &job.UpdateResponse_Error{
+				InvalidConfig: &job.InvalidJobConfig{
+					Id:      jobID,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
+	if diff.IsNoop() {
+		log.WithField("job_id", jobID).
+			Info("update is a noop")
+		return nil, nil, nil
+	}
+
+	err = h.jobStore.UpdateJobConfig(jobID, newConfig)
+	if err != nil {
+		h.metrics.JobUpdateFail.Inc(1)
+		return &job.UpdateResponse{
+			Error: &job.UpdateResponse_Error{
+				JobNotFound: &job.JobNotFound{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil, nil
+	}
+
+	log.WithField("job_id", jobID.Value).
+		Infof("adding %d instances", len(diff.InstancesToAdd))
+
+	var tasks []*task.TaskInfo
+	for instanceID, taskConfig := range diff.InstancesToAdd {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instanceID,
+			uuid.NewUUID().String())
+		t := getTaskInfo(mesosTaskID, taskConfig, instanceID, jobID)
+		tasks = append(tasks, &t)
+	}
+
+	err = h.taskStore.CreateTasks(jobID, tasks, "peloton")
+	nTasks := int64(len(tasks))
+	if err != nil {
+		log.Errorf("Failed to create tasks (%d) for job %v: %v",
+			nTasks, jobID.Value, err)
+		h.metrics.TaskCreateFail.Inc(nTasks)
+		// FIXME: Add a new Error type for this
+		return nil, nil, err
+	}
+	h.metrics.TaskCreate.Inc(nTasks)
+
+	err = EnqueueTasks(tasks, newConfig, h.client)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("Failed to enqueue tasks to RM")
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, nil, err
+	}
+
+	err = h.runtimeUpdater.UpdateJob(jobID)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("Failed to update job runtime")
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, nil, err
+	}
+
+	msg := fmt.Sprintf("added %d instances", len(diff.InstancesToAdd))
+	return &job.UpdateResponse{
+		Id:      jobID,
+		Message: msg,
+	}, nil, nil
+}
+
+func getTaskInfo(mesosTaskID string, taskConfig *task.TaskConfig, instanceID uint32, jobID *peloton.JobID) task.TaskInfo {
+	t := task.TaskInfo{
+		Runtime: &task.RuntimeInfo{
+			State: task.TaskState_INITIALIZED,
+			// New task is by default treated as batch task and get SUCCEEDED goalstate.
+			// TODO(mu): Long running tasks need RUNNING as default goalstate.
+			GoalState: task.TaskState_SUCCEEDED,
+			TaskId: &mesos.TaskID{
+				Value: &mesosTaskID,
+			},
+		},
+		Config:     taskConfig,
+		InstanceId: instanceID,
+		JobId:      jobID,
+	}
+	return t
 }
 
 // Get returns a job config for a given job ID
@@ -340,38 +473,6 @@ func (h *serviceHandler) Delete(
 	}
 	h.metrics.JobDelete.Inc(1)
 	return &job.DeleteResponse{}, nil, nil
-}
-
-// putTasks enqueues all tasks to a task queue in resmgr.
-func (h *serviceHandler) putTasks(tasks []*task.TaskInfo) error {
-
-	// TODO: switch to use the ResourceManagerService.EnqueueTasks API
-	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
-	defer cancelFunc()
-	var response taskqueue.EnqueueResponse
-	var request = &taskqueue.EnqueueRequest{
-		Tasks: tasks,
-	}
-	_, err := h.client.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("TaskQueue.Enqueue"),
-		request,
-		&response,
-	)
-	if err != nil {
-		log.Errorf("Enqueue failed with err=%v", err)
-		return err
-	}
-	log.Debugf("Enqueued %d tasks to leader", len(tasks))
-	return nil
-}
-
-// submitTasksToResmgr enqueues all tasks to respool in resmgr.
-func (h *serviceHandler) enqueueTasks(
-	tasks []*task.TaskInfo,
-	config *job.JobConfig,
-) error {
-	return EnqueueTasks(tasks, config, h.client)
 }
 
 // EnqueueTasks enqueues all tasks to respool in resmgr.

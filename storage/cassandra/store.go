@@ -169,6 +169,31 @@ func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner str
 	return nil
 }
 
+// UpdateJobConfig updates a job with the job id and the config value
+func (s *Store) UpdateJobConfig(id *peloton.JobID, jobConfig *job.JobConfig) error {
+	jobID := id.Value
+	configBuffer, err := json.Marshal(jobConfig)
+	if err != nil {
+		log.Errorf("Failed to marshal jobConfig, error = %v", err)
+		s.metrics.JobUpdateFail.Inc(1)
+		return err
+	}
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(jobsTable).
+		Set("JobConfig", string(configBuffer)).
+		Where(qb.Eq{"JobID": jobID})
+	err = s.applyStatement(stmt, id.Value)
+	if err != nil {
+		log.WithField("job_id", id.Value).
+			WithError(err).
+			Error("Failed to update job config")
+		s.metrics.JobUpdateFail.Inc(1)
+		return err
+	}
+	s.metrics.JobUpdate.Inc(1)
+	return nil
+}
+
 // GetJobConfig returns a job config given the job id
 func (s *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 	jobID := id.Value
@@ -383,7 +408,7 @@ func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner
 	timeStart := time.Now()
 	nBatches := nTasks/maxBatchSize + 1
 	wg := new(sync.WaitGroup)
-
+	log.Infof("len:%d, taskInfos:%v", nTasks, taskInfos)
 	for batch := int64(0); batch < nBatches; batch++ {
 		// do batching by rows, up to s.Conf.MaxBatchSize
 		start := batch * maxBatchSize // the starting instance ID
@@ -402,27 +427,19 @@ func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner
 			insertStatements := []api.Statement{}
 			idsToTaskInfos := map[string]*task.TaskInfo{}
 			defer wg.Done()
-			for instanceID := start; instanceID < end; instanceID++ {
-				t := taskInfos[instanceID]
-				// abort if the tasks dont have the expected instance IDs and job IDs
-				if t.InstanceId != uint32(instanceID) || t.JobId.Value != jobID {
-					errMsg := fmt.Sprintf("Task should have id %v, different than instance ID %d in task info, jobID %v, task JobId %v",
-						instanceID, t.InstanceId, jobID, t.JobId.Value)
-					log.Errorf(errMsg)
-					s.metrics.TaskCreateFail.Inc(nTasks)
-					atomic.AddInt64(&tasksNotCreated, batchSize)
-					return
-				}
+			for i := start; i < end; i++ {
+				log.Infof("start:%d end:%d", start, end)
+				t := taskInfos[i]
 				buffer, err := json.Marshal(t)
 				if err != nil {
-					log.Errorf("Failed to marshal taskInfo for job ID %v and instance %d, error = %v", jobID, instanceID, err)
+					log.Errorf("Failed to marshal taskInfo for job ID %v and instance %d, error = %v", jobID, t.InstanceId, err)
 					s.metrics.TaskCreateFail.Inc(nTasks)
 					atomic.AddInt64(&tasksNotCreated, batchSize)
 					return
 				}
 
 				t.Runtime.State = task.TaskState_INITIALIZED
-				taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
+				taskID := fmt.Sprintf(taskIDFmt, jobID, t.InstanceId)
 
 				idsToTaskInfos[taskID] = t
 

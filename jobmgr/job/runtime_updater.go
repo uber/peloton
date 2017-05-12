@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
 	"go.uber.org/yarpc/encoding/json"
@@ -37,6 +38,13 @@ var taskStatesAfterStart = []task.TaskState{
 	task.TaskState_PREEMPTING,
 	task.TaskState_KILLING,
 	task.TaskState_KILLED,
+}
+
+// NonTerminatedStates represents the non terminal states of a job
+var NonTerminatedStates = map[job.JobState]bool{
+	job.JobState_PENDING: true,
+	job.JobState_RUNNING: true,
+	job.JobState_UNKNOWN: true,
 }
 
 // NewJobRuntimeUpdater creates a new JobRuntimeUpdater
@@ -133,6 +141,22 @@ func formatTime(timestamp float64, layout string) string {
 	nanoSec := int64((timestamp - float64(seconds)) *
 		float64(time.Second/time.Nanosecond))
 	return time.Unix(seconds, nanoSec).UTC().Format(layout)
+}
+
+// UpdateJob updates the job runtime synchronously
+func (j *RuntimeUpdater) UpdateJob(jobID *peloton.JobID) error {
+	j.Lock()
+	defer j.Unlock()
+	if j.started.Load() {
+		err := j.updateJobRuntime(jobID)
+		if err == nil {
+			j.metrics.JobRuntimeUpdated.Inc(1)
+			return err
+		}
+		j.metrics.JobRuntimeUpdateFailed.Inc(1)
+		return nil
+	}
+	return errors.New("RuntimeUpdater has not started")
 }
 
 func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {

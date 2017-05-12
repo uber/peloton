@@ -44,7 +44,7 @@ type calculator struct {
 	isRunning uat.Bool
 }
 
-// Singelton object for calculator
+// Singleton object for calculator
 var calc *calculator
 
 // InitCalculator initializes the entitlement calculator

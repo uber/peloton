@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -40,6 +41,7 @@ var (
 
 type JobHandlerTestSuite struct {
 	suite.Suite
+	context       context.Context
 	handler       *serviceHandler
 	testJobID     *peloton.JobID
 	testJobConfig *job.JobConfig
@@ -70,6 +72,7 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 		taskInfos[i] = suite.createTestTaskInfo(
 			task.TaskState_RUNNING, i)
 	}
+	suite.context = context.Background()
 	suite.taskInfos = taskInfos
 }
 
@@ -131,7 +134,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 			Return(nil, nil),
 	)
 
-	suite.handler.enqueueTasks(tasksInfo, suite.testJobConfig)
+	EnqueueTasks(tasksInfo, suite.testJobConfig, suite.handler.client)
 	suite.Equal(tasks, expectedTasks)
 }
 
@@ -166,7 +169,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 			}).
 			Return(nil, err),
 	)
-	suite.handler.enqueueTasks(tasksInfo, suite.testJobConfig)
+	EnqueueTasks(tasksInfo, suite.testJobConfig, suite.handler.client)
 	suite.Error(err)
 }
 
@@ -199,4 +202,84 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool() {
 	)
 	errResponse := suite.handler.validateResourcePool(respoolID)
 	suite.Error(errResponse)
+}
+
+func (suite *JobHandlerTestSuite) TestJobScaleUp() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	oldInstanceCount := uint32(3)
+	newInstanceCount := uint32(4)
+	jobID := &peloton.JobID{
+		Value: "job0",
+	}
+	oldJobConfig := job.JobConfig{
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"team1", "team2", "team3"},
+		InstanceCount: oldInstanceCount,
+	}
+	newJobConfig := job.JobConfig{
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"team1", "team2", "team3"},
+		InstanceCount: newInstanceCount,
+	}
+	var jobRuntime = job.RuntimeInfo{
+		State: job.JobState_PENDING,
+	}
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	mockResmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	suite.handler.client = mockResmgrClient
+	suite.handler.jobStore = mockJobStore
+	suite.handler.taskStore = mockTaskStore
+	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater.Start()
+	suite.handler.runtimeUpdater = updater
+
+	mockJobStore.EXPECT().
+		GetJobConfig(jobID).
+		Return(&oldJobConfig, nil).
+		AnyTimes()
+	mockJobStore.EXPECT().
+		GetJobRuntime(jobID).
+		Return(&jobRuntime, nil).
+		AnyTimes()
+	mockJobStore.EXPECT().
+		UpdateJobRuntime(jobID, gomock.Any()).
+		Return(nil).
+		AnyTimes()
+	mockJobStore.EXPECT().
+		UpdateJobConfig(jobID, gomock.Any()).
+		Return(nil).
+		AnyTimes()
+	mockTaskStore.EXPECT().
+		CreateTasks(jobID, gomock.Any(), "peloton").
+		Return(nil).
+		AnyTimes()
+	mockTaskStore.EXPECT().
+		GetTasksForJobAndState(jobID, gomock.Any()).
+		Return(map[uint32]*task.TaskInfo{}, nil).
+		AnyTimes()
+	var response resmgrsvc.EnqueueTasksResponse
+	mockResmgrClient.EXPECT().
+		Call(
+			gomock.Any(),
+			gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
+			gomock.Any(),
+			&response).
+		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {}).
+		Return(nil, nil).
+		AnyTimes()
+
+	req := &job.UpdateRequest{
+		Id:     jobID,
+		Config: &newJobConfig,
+	}
+
+	resp, _, err := suite.handler.Update(suite.context, nil, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(jobID, resp.Id)
+	suite.Equal("added 1 instances", resp.Message)
 }

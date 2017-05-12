@@ -19,6 +19,8 @@ type Metrics struct {
 	JobAPIQuery   tally.Counter
 	JobQuery      tally.Counter
 	JobQueryFail  tally.Counter
+	JobUpdate     tally.Counter
+	JobUpdateFail tally.Counter
 
 	JobAPIGetByRespoolID  tally.Counter
 	JobGetByRespoolID     tally.Counter
@@ -55,6 +57,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobAPIQuery:    jobAPIScope.Counter("query"),
 		JobQuery:       jobSuccessScope.Counter("query"),
 		JobQueryFail:   jobFailScope.Counter("query"),
+		JobUpdate:      jobSuccessScope.Counter("update"),
+		JobUpdateFail:  jobFailScope.Counter("update"),
 		TaskCreate:     taskSuccessScope.Counter("create"),
 		TaskCreateFail: taskFailScope.Counter("create"),
 

@@ -864,6 +864,32 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	suite.Equal(0, len(jobIds))
 }
 
+func (suite *CassandraStoreTestSuite) TestJobConfig() {
+	var jobStore = store
+	oldInstanceCount := 20
+	newInstanceCount := 50
+
+	// CreateJob should create the default job runtime
+	var jobID = peloton.JobID{Value: "TestJobConfig"}
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = uint32(oldInstanceCount)
+	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+	suite.NoError(err)
+
+	jobConfig, err = jobStore.GetJobConfig(&jobID)
+	suite.NoError(err)
+	suite.Equal(uint32(oldInstanceCount), jobConfig.InstanceCount)
+
+	// update instance count
+	jobConfig.InstanceCount = uint32(newInstanceCount)
+	err = jobStore.UpdateJobConfig(&jobID, jobConfig)
+	suite.NoError(err)
+
+	jobConfig, err = jobStore.GetJobConfig(&jobID)
+	suite.NoError(err)
+	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
+}
+
 func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	var volumeStore storage.PersistentVolumeStore
 	volumeStore = store

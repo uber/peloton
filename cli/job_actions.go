@@ -156,6 +156,57 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 	return nil
 }
 
+// JobUpdateAction is the action of updating a job
+func (client *Client) JobUpdateAction(jobName string, cfg string) error {
+	var jobConfig job.JobConfig
+	buffer, err := ioutil.ReadFile(cfg)
+	if err != nil {
+		return fmt.Errorf("Unable to open file %s: %v", cfg, err)
+	}
+	if err := yaml.Unmarshal(buffer, &jobConfig); err != nil {
+		return fmt.Errorf("Unable to parse file %s: %v", cfg, err)
+	}
+
+	var response job.UpdateResponse
+	var request = &job.UpdateRequest{
+		Id: &peloton.JobID{
+			Value: jobName,
+		},
+		Config: &jobConfig,
+	}
+	_, err = client.jobClient.Call(
+		client.ctx,
+		yarpc.NewReqMeta().Procedure("JobManager.Update"),
+		request,
+		&response,
+	)
+	if err != nil {
+		return err
+	}
+
+	printJobUpdateResponse(response, client.Debug)
+	return nil
+}
+
+func printJobUpdateResponse(r job.UpdateResponse, debug bool) {
+	if debug {
+		printResponseJSON(r)
+	} else {
+		if r.Error != nil {
+			if r.Error.JobNotFound != nil {
+				fmt.Fprintf(tabWriter, "Job %s not found: %s\n",
+					r.Error.JobNotFound.Id.Value, r.Error.JobNotFound.Message)
+			} else if r.Error.InvalidConfig != nil {
+				fmt.Fprintf(tabWriter, "Invalid job config: %s\n",
+					r.Error.InvalidConfig.Message)
+			}
+		} else if r.Id != nil {
+			fmt.Fprintf(tabWriter, "Job %s updated\n", r.Id.Value)
+			fmt.Fprint(tabWriter, "message:", r.Message)
+		}
+	}
+}
+
 func printJobCreateResponse(r job.CreateResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
@@ -175,7 +226,7 @@ func printJobCreateResponse(r job.CreateResponse, debug bool) {
 		} else if r.JobId != nil {
 			fmt.Fprintf(tabWriter, "Job %s created\n", r.JobId.Value)
 		} else {
-			fmt.Fprintf(tabWriter, "Missing job ID in job create response\n")
+			fmt.Fprint(tabWriter, "Missing job ID in job create response\n")
 		}
 		tabWriter.Flush()
 	}

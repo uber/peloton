@@ -25,6 +25,7 @@ type JobStore interface {
 	CreateJob(id *peloton.JobID, Config *job.JobConfig, createBy string) error
 	GetJobConfig(id *peloton.JobID) (*job.JobConfig, error)
 	Query(Labels *mesos_v1.Labels, keywords []string) (map[string]*job.JobConfig, error)
+	UpdateJobConfig(id *peloton.JobID, Config *job.JobConfig) error
 	DeleteJob(id *peloton.JobID) error
 	GetJobsByOwner(owner string) (map[string]*job.JobConfig, error)
 	GetAllJobs() (map[string]*job.JobConfig, error)

@@ -161,6 +161,76 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 	}
 }
 
+func (suite *jobActionsTestSuite) TestClient_JobUpdateAction() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockBaseClient,
+		jobClient:  suite.mockBaseClient,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+	id := uuid.New()
+	config := suite.getConfig()
+	tt := []struct {
+		jobID             string
+		jobUpdateRequest  *job.UpdateRequest
+		jobUpdateResponse *job.UpdateResponse
+		updateError       error
+	}{
+		{
+			jobID: id,
+			jobUpdateRequest: &job.UpdateRequest{
+				Id: &peloton.JobID{
+					Value: id,
+				},
+				Config: config,
+			},
+			jobUpdateResponse: &job.UpdateResponse{
+				Message: "50 instances added",
+			},
+		},
+		{
+			jobID: id,
+			jobUpdateRequest: &job.UpdateRequest{
+				Id: &peloton.JobID{
+					Value: id,
+				},
+				Config: config,
+			},
+			jobUpdateResponse: &job.UpdateResponse{},
+			updateError:       errors.New("unable to update job"),
+		},
+	}
+
+	for _, t := range tt {
+		suite.withMockJobUpdateResponse(t.jobUpdateRequest, t.jobUpdateResponse, t.updateError)
+		err := c.JobUpdateAction(t.jobID, testJobConfig)
+		if t.updateError != nil {
+			suite.EqualError(err, t.updateError.Error())
+		} else {
+			suite.NoError(err)
+		}
+	}
+}
+
+func (suite *jobActionsTestSuite) withMockJobUpdateResponse(
+	req *job.UpdateRequest,
+	resp *job.UpdateResponse,
+	err error,
+) {
+	suite.mockBaseClient.EXPECT().Call(
+		suite.ctx,
+		gomock.Eq(
+			yarpc.NewReqMeta().Procedure("JobManager.Update"),
+		),
+		gomock.Eq(req),
+		gomock.Eq(&job.UpdateResponse{}),
+	).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
+		o := resBodyOut.(*job.UpdateResponse)
+		*o = *resp
+	}).Return(nil, err)
+}
+
 func (suite *jobActionsTestSuite) withMockJobCreateResponse(
 	req *job.CreateRequest,
 	resp *job.CreateResponse,

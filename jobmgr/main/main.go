@@ -231,11 +231,17 @@ func main() {
 
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
+	runtimeUpdater := job.NewJobRuntimeUpdater(
+		jobStore,
+		taskStore,
+		json.New(dispatcher.ClientConfig(common.PelotonResourceManager)),
+		rootScope)
 	job.InitServiceHandler(
 		dispatcher,
 		rootScope,
 		jobStore,
 		taskStore,
+		runtimeUpdater,
 		common.PelotonResourceManager, // TODO: to be removed
 	)
 	task.InitServiceHandler(
@@ -258,11 +264,7 @@ func main() {
 		common.PelotonHostManager,
 		jobStore,
 		taskStore,
-		job.NewJobRuntimeUpdater(
-			jobStore,
-			taskStore,
-			json.New(dispatcher.ClientConfig(common.PelotonResourceManager)),
-			rootScope),
+		runtimeUpdater,
 		common.PelotonResourceManager,
 		rootScope,
 	)

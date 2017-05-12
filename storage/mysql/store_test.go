@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -352,6 +353,23 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	}
 }
 
+func (suite *mySQLStoreTestSuite) TestUpdateJobConfig() {
+	oldInstanceCount := uint32(6)
+	newInstanceCount := uint32(10)
+	jobConfig := createJobConfig()
+	var jobID = peloton.JobID{Value: uuid.New()}
+	err := suite.store.CreateJob(&jobID, jobConfig, "test")
+	suite.NoError(err)
+	jobConfig, err = suite.store.GetJobConfig(&jobID)
+
+	suite.Equal(oldInstanceCount, jobConfig.InstanceCount)
+
+	jobConfig.InstanceCount = newInstanceCount
+	err = suite.store.UpdateJobConfig(&jobID, jobConfig)
+	suite.NoError(err)
+	suite.Equal(newInstanceCount, jobConfig.InstanceCount)
+}
+
 func (suite *mySQLStoreTestSuite) TestGetResourcePoolsByOwner() {
 	nResourcePools := 2
 
@@ -481,7 +499,7 @@ func createJobConfig() *job.JobConfig {
 	}
 	var jobConfig = job.JobConfig{
 		OwningTeam:    "uber",
-		LdapGroups:    []string{"money", "team6", "otto"},
+		LdapGroups:    []string{"team1", "team2", "team3"},
 		Sla:           &sla,
 		InstanceCount: uint32(6),
 	}

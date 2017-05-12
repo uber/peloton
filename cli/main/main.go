@@ -92,6 +92,10 @@ var (
 	jobQueryRespoolPath = jobQuery.Arg("respool", "respool path").Default("").String()
 	jobQueryKeywords    = jobQuery.Arg("keywords", "keywords").Default("").String()
 
+	jobUpdate       = job.Command("update", "update a job")
+	jobUpdateID     = jobUpdate.Arg("job", "job identifier").Required().String()
+	jobUpdateConfig = jobUpdate.Arg("config", "YAML job configuration").Required().ExistingFile()
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
@@ -253,6 +257,8 @@ func main() {
 		err = client.JobGetAction(*jobGetName)
 	case jobQuery.FullCommand():
 		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords)
+	case jobUpdate.FullCommand():
+		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig)
 	case taskGet.FullCommand():
 		err = client.TaskGetAction(*taskGetJobName, *taskGetInstanceID)
 	case taskList.FullCommand():
