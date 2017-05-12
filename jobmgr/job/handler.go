@@ -142,7 +142,7 @@ func (h *serviceHandler) Create(
 		instance := i
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instance,
 			uuid.NewUUID().String())
-		taskConfig, err := jm_task.GetTaskConfig(jobConfig, i)
+		taskConfig, err := jm_task.GetTaskConfig(jobID, jobConfig, i)
 		if err != nil {
 			log.Errorf("Failed to get task config (%d) for job %v: %v",
 				i, jobID.Value, err)

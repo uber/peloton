@@ -201,7 +201,7 @@ func createTaskForJob(
 	jobConfig *job.JobConfig) (*task.TaskInfo, error) {
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, i,
 		uuid.NewUUID().String())
-	taskConfig, _ := jm_task.GetTaskConfig(jobConfig, i)
+	taskConfig, _ := jm_task.GetTaskConfig(jobID, jobConfig, i)
 	task := task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			State: task.TaskState_INITIALIZED,

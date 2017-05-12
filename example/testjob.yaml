@@ -31,7 +31,7 @@ defaultconfig:
   container: null
   command:
     shell: true
-    value: 'echo Hello'
+    value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID:  $PELOTON_TASK_ID"'
 instanceconfig:
   0:
     name: instance0

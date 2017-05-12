@@ -7,15 +7,23 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	mesos "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
+
+	"code.uber.internal/infra/peloton/util"
 )
 
 type TaskConfigTestSuite struct {
 	suite.Suite
+	jobID *peloton.JobID
 }
 
 func (suite *TaskConfigTestSuite) SetupTest() {
+	suite.jobID = &peloton.JobID{
+		Value: "4d8ef238-3747-11e7-a919-92ebcb67fe33",
+	}
 }
 
 func (suite *TaskConfigTestSuite) TearDownTest() {
@@ -31,7 +39,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigOutOfRange() {
 		InstanceCount: 10,
 	}
 
-	taskConfig, err := GetTaskConfig(&jobConfig, 11)
+	taskConfig, err := GetTaskConfig(suite.jobID, &jobConfig, 11)
 	suite.Error(err)
 	suite.True(taskConfig == nil)
 }
@@ -51,7 +59,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigNoInstanceConfig() {
 		DefaultConfig: &defaultConfig,
 	}
 
-	taskConfig, err := GetTaskConfig(&jobConfig, 1)
+	taskConfig, err := GetTaskConfig(suite.jobID, &jobConfig, 1)
 	suite.NoError(err)
 	suite.True(reflect.DeepEqual(*taskConfig, defaultConfig))
 }
@@ -73,11 +81,11 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigNoDefaultConfig() {
 		},
 	}
 
-	taskConfig, err := GetTaskConfig(&jobConfig, 0)
+	taskConfig, err := GetTaskConfig(suite.jobID, &jobConfig, 0)
 	suite.NoError(err)
 	suite.True(reflect.DeepEqual(*taskConfig, instanceConfig))
 
-	taskConfig, err = GetTaskConfig(&jobConfig, 1)
+	taskConfig, err = GetTaskConfig(suite.jobID, &jobConfig, 1)
 	suite.NoError(err)
 	suite.Equal(*taskConfig, task.TaskConfig{})
 }
@@ -109,12 +117,12 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigInstanceOverride() {
 		},
 	}
 
-	taskConfig, err := GetTaskConfig(&jobConfig, 0)
+	taskConfig, err := GetTaskConfig(suite.jobID, &jobConfig, 0)
 	suite.NoError(err)
 	suite.Equal(taskConfig.Name, instanceConfig.Name)
 	suite.True(reflect.DeepEqual(taskConfig.Resource, instanceConfig.Resource))
 
-	taskConfig, err = GetTaskConfig(&jobConfig, 1)
+	taskConfig, err = GetTaskConfig(suite.jobID, &jobConfig, 1)
 	suite.NoError(err)
 	suite.Equal(taskConfig.Name, "")
 	suite.True(reflect.DeepEqual(taskConfig.Resource, defaultConfig.Resource))
@@ -122,12 +130,6 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigInstanceOverride() {
 
 func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 	// No error if there is a default task config
-	portConfigs := []*task.PortConfig{
-		{
-			Name:    "port",
-			EnvName: "PORT",
-		},
-	}
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
@@ -135,7 +137,15 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
 		},
-		Ports: portConfigs,
+		Ports: []*task.PortConfig{
+			{
+				Name:    "port",
+				EnvName: "PORT",
+			},
+		},
+		Command: &mesos.CommandInfo{
+			Value: util.PtrPrintf("echo Hello"),
+		},
 	}
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
@@ -184,11 +194,6 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
 }
 
 func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureForPortConfig() {
-	portConfigs := []*task.PortConfig{
-		{
-			Name: "port",
-		},
-	}
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{
 			CpuLimit:    0.8,
@@ -196,7 +201,11 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureForPortConfig() {
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
 		},
-		Ports: portConfigs,
+		Ports: []*task.PortConfig{
+			{
+				Name: "port",
+			},
+		},
 	}
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
@@ -228,5 +237,87 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigWithInvalidFieldType() {
 	for i := 0; i < val.NumField(); i++ {
 		kind := val.Field(i).Kind()
 		suite.True(kind == reflect.String || kind == reflect.Ptr || kind == reflect.Slice)
+	}
+}
+
+func (suite *TaskConfigTestSuite) TestGetTaskConfigWithoutExistingEnviron() {
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{
+				Value: util.PtrPrintf("echo Hello"),
+			},
+		},
+	}
+
+	for i := uint32(0); i < 10; i++ {
+		taskConfig, err := GetTaskConfig(suite.jobID, &jobConfig, i)
+		suite.NoError(err)
+		suite.Equal(*taskConfig.Command.Environment,
+			mesos.Environment{
+				Variables: []*mesos.Environment_Variable{
+					{
+						Name:  util.PtrPrintf(PelotonJobID),
+						Value: &suite.jobID.Value,
+					},
+					{
+						Name:  util.PtrPrintf(PelotonInstanceID),
+						Value: util.PtrPrintf("%d", i),
+					},
+					{
+						Name:  util.PtrPrintf(PelotonTaskID),
+						Value: util.PtrPrintf("%s-%d", suite.jobID.Value, i),
+					},
+				},
+			},
+		)
+	}
+}
+
+func (suite *TaskConfigTestSuite) TestGetTaskConfigWithExistingEnviron() {
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		InstanceCount: 10,
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{
+				Value: util.PtrPrintf("echo Hello"),
+				Environment: &mesos.Environment{
+					Variables: []*mesos.Environment_Variable{
+						{
+							Name:  util.PtrPrintf("PATH"),
+							Value: util.PtrPrintf("/usr/bin;/usr/sbin"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for i := uint32(0); i < 10; i++ {
+		taskConfig, err := GetTaskConfig(suite.jobID, &jobConfig, i)
+		suite.NoError(err)
+		suite.Equal(*taskConfig.Command.Environment,
+			mesos.Environment{
+				Variables: []*mesos.Environment_Variable{
+					{
+						Name:  util.PtrPrintf("PATH"),
+						Value: util.PtrPrintf("/usr/bin;/usr/sbin"),
+					},
+					{
+						Name:  util.PtrPrintf(PelotonJobID),
+						Value: &suite.jobID.Value,
+					},
+					{
+						Name:  util.PtrPrintf(PelotonInstanceID),
+						Value: util.PtrPrintf("%d", i),
+					},
+					{
+						Name:  util.PtrPrintf(PelotonTaskID),
+						Value: util.PtrPrintf("%s-%d", suite.jobID.Value, i),
+					},
+				},
+			},
+		)
 	}
 }

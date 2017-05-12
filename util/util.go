@@ -43,6 +43,12 @@ func Max(x, y uint32) uint32 {
 	return y
 }
 
+// PtrPrintf returns a pointer to a string format
+func PtrPrintf(format string, a ...interface{}) *string {
+	str := fmt.Sprintf(format, a...)
+	return &str
+}
+
 // GetOfferScalarResourceSummary generates a summary for all the scalar values: role -> offerName-> Value
 // first level : role -> map(resource type-> resouce value)
 func GetOfferScalarResourceSummary(offer *mesos.Offer) map[string]map[string]float64 {

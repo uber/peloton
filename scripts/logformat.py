@@ -17,3 +17,4 @@ while True:
         print '%s %s' % (time, msg)
     else:
         print line
+    sys.stdout.flush()

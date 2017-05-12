@@ -10,7 +10,7 @@ type Metrics struct {
 
 	APIDequeueTasks    tally.Counter
 	DequeueTaskSuccess tally.Counter
-	DequeueTaskFail    tally.Counter
+	DequeueTaskTimeout tally.Counter
 
 	APISetPlacements    tally.Counter
 	SetPlacementSuccess tally.Counter
@@ -27,6 +27,7 @@ type Metrics struct {
 func NewMetrics(scope tally.Scope) *Metrics {
 	successScope := scope.Tagged(map[string]string{"type": "success"})
 	failScope := scope.Tagged(map[string]string{"type": "fail"})
+	timeoutScope := scope.Tagged(map[string]string{"type": "timeout"})
 	apiScope := scope.SubScope("api")
 
 	placement := scope.SubScope("placement")
@@ -38,7 +39,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		APIDequeueTasks:    apiScope.Counter("dequeue_tasks"),
 		DequeueTaskSuccess: successScope.Counter("dequeue_tasks"),
-		DequeueTaskFail:    failScope.Counter("dequeue_tasks"),
+		DequeueTaskTimeout: timeoutScope.Counter("dequeue_tasks"),
 
 		APISetPlacements:    apiScope.Counter("set_placements"),
 		SetPlacementSuccess: successScope.Counter("set_placements"),

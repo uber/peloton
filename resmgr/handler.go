@@ -164,7 +164,6 @@ func (h *serviceHandler) DequeueTasks(
 	req *resmgrsvc.DequeueTasksRequest,
 ) (*resmgrsvc.DequeueTasksResponse, yarpc.ResMeta, error) {
 
-	log.WithField("request", req).Info("DequeueTasks called.")
 	h.metrics.APIDequeueTasks.Inc(1)
 
 	limit := req.GetLimit()
@@ -175,9 +174,8 @@ func (h *serviceHandler) DequeueTasks(
 	for i := uint32(0); i < limit; i++ {
 		item, err := readyQueue.Dequeue(timeout * time.Millisecond)
 		if err != nil {
-			log.WithError(err).Warning("Failed to dequeue " +
-				"task from ready queue")
-			h.metrics.DequeueTaskFail.Inc(1)
+			log.Debug("Timeout to dequeue task from ready queue")
+			h.metrics.DequeueTaskTimeout.Inc(1)
 			break
 		}
 		task := item.(*resmgr.Task)
@@ -188,14 +186,13 @@ func (h *serviceHandler) DequeueTasks(
 		err = h.rmTracker.GetTask(task.Id).TransitTo(
 			t.TaskState_PLACING.String())
 		if err != nil {
-			log.WithError(err).Error("Not able to transition " +
-				task.Id.Value)
+			log.WithError(err).WithField("taskID", task.Id.Value).
+				Error("Failed to transit state for task")
 		}
 	}
 	// TODO: handle the dequeue errors better
 	response := resmgrsvc.DequeueTasksResponse{Tasks: tasks}
 	log.WithField("response", response).Debug("DequeueTasks succeeded")
-	log.Debug("Dequeue Returned")
 	return &response, nil, nil
 }
 

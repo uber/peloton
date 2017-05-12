@@ -7,8 +7,12 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
+	mesos "mesos/v1"
 	"peloton/api/job"
+	"peloton/api/peloton"
 	"peloton/api/task"
+
+	"code.uber.internal/infra/peloton/util"
 )
 
 var (
@@ -19,6 +23,7 @@ var (
 // GetTaskConfig returns the task config of a given task instance by
 // merging the fields in default task config and instance task config
 func GetTaskConfig(
+	jobID *peloton.JobID,
 	jobConfig *job.JobConfig,
 	instanceID uint32) (*task.TaskConfig, error) {
 
@@ -31,6 +36,11 @@ func GetTaskConfig(
 	}
 
 	result := task.TaskConfig{}
+
+	// Update the task environment with Peloton specific variables
+	// such as jobID, instanceID and taskID before returning the task
+	// config
+	defer updateEnvironment(&result, jobID, instanceID)
 
 	// Shallow copy the default task config
 	if jobConfig.GetDefaultConfig() != nil {
@@ -72,7 +82,48 @@ func GetTaskConfig(
 		}
 		resField.Set(field)
 	}
+
 	return &result, nil
+}
+
+// updateEnvironment adds the Peloton specific environment variables
+// such as jobID, instanceID and taskID so that the command can access
+// those information.
+func updateEnvironment(
+	taskConfig *task.TaskConfig,
+	jobID *peloton.JobID,
+	instanceID uint32) {
+
+	// Check if the task config has command or not
+	if taskConfig.GetCommand() == nil {
+		log.WithField("config", taskConfig).
+			Errorf("Missing command info in task config")
+		return
+	}
+
+	// Add JobID, TaskID and InstanceID as environment variables
+	variables := []*mesos.Environment_Variable{
+		{
+			Name:  util.PtrPrintf(PelotonJobID),
+			Value: &jobID.Value,
+		},
+		{
+			Name:  util.PtrPrintf(PelotonInstanceID),
+			Value: util.PtrPrintf("%d", instanceID),
+		},
+		{
+			Name:  util.PtrPrintf(PelotonTaskID),
+			Value: util.PtrPrintf("%s-%d", jobID.Value, instanceID),
+		},
+	}
+
+	// Make a shallow copy of the CommandInfo so that we can change
+	// the environment
+	cmd := *taskConfig.GetCommand()
+	cmd.Environment = &mesos.Environment{
+		Variables: append(cmd.GetEnvironment().GetVariables(), variables...),
+	}
+	taskConfig.Command = &cmd
 }
 
 // validatePortConfig checks port name and port env name exists for dynamic port.
@@ -97,13 +148,26 @@ func ValidateTaskConfig(jobConfig *job.JobConfig) error {
 	if err := validatePortConfig(defaultConfig.GetPorts()); err != nil {
 		return err
 	}
+
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskConfig := jobConfig.GetInstanceConfig()[i]
 		if taskConfig == nil && defaultConfig == nil {
 			err := fmt.Errorf("missing task config for instance %v", i)
 			return err
 		}
+
+		// Validate port config
 		if err := validatePortConfig(taskConfig.GetPorts()); err != nil {
+			return err
+		}
+
+		// Validate command info
+		cmd := defaultConfig.GetCommand()
+		if taskConfig.GetCommand() != nil {
+			cmd = taskConfig.GetCommand()
+		}
+		if cmd == nil {
+			err := fmt.Errorf("missing command info for instance %v", i)
 			return err
 		}
 	}
