@@ -26,6 +26,9 @@ type Metrics struct {
 	JobGetByState     tally.Counter
 	JobGetByStateFail tally.Counter
 
+	JobGetByRespoolID     tally.Counter
+	JobGetByRespoolIDFail tally.Counter
+
 	JobUpdateRuntime     tally.Counter
 	JobUpdateRuntimeFail tally.Counter
 
@@ -109,12 +112,14 @@ func NewMetrics(scope tally.Scope) Metrics {
 		JobQuery:     jobSuccessScope.Counter("query"),
 		JobQueryFail: jobFailScope.Counter("query"),
 
-		JobGetRuntime:        jobRuntimeSuccessScope.Counter("get"),
-		JobGetRuntimeFail:    jobRuntimeFailScope.Counter("get"),
-		JobGetByState:        jobRuntimeScope.Counter("get_job_by_state"),
-		JobGetByStateFail:    jobRuntimeFailScope.Counter("get_job_by_state"),
-		JobUpdateRuntime:     jobRuntimeSuccessScope.Counter("update"),
-		JobUpdateRuntimeFail: jobRuntimeFailScope.Counter("update"),
+		JobGetRuntime:         jobRuntimeSuccessScope.Counter("get"),
+		JobGetRuntimeFail:     jobRuntimeFailScope.Counter("get"),
+		JobGetByState:         jobRuntimeScope.Counter("get_job_by_state"),
+		JobGetByStateFail:     jobRuntimeFailScope.Counter("get_job_by_state"),
+		JobGetByRespoolID:     jobRuntimeScope.Counter("get_job_by_respool_id"),
+		JobGetByRespoolIDFail: jobRuntimeFailScope.Counter("get_job_by_respool_id"),
+		JobUpdateRuntime:      jobRuntimeSuccessScope.Counter("update"),
+		JobUpdateRuntimeFail:  jobRuntimeFailScope.Counter("update"),
 
 		TaskCreate:     taskSuccessScope.Counter("create"),
 		TaskCreateFail: taskFailScope.Counter("create"),

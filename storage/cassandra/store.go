@@ -45,6 +45,7 @@ const (
 	resPools              = "respools"
 	resPoolsOwnerView     = "mv_respools_by_owner"
 	volumeTable           = "persistent_volumes"
+	jobsByRespoolView     = "mv_jobs_by_respool"
 )
 
 // Config is the config for cassandra Store
@@ -135,13 +136,15 @@ func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner str
 			"JobConfig",
 			"Owner",
 			"Labels",
-			"CreateTime").
+			"CreateTime",
+			"RespoolID").
 		Values(
 			jobID,
 			string(configBuffer),
 			owner,
 			string(labelBuffer),
-			time.Now()).
+			time.Now(),
+			jobConfig.GetRespoolID().GetValue()).
 		IfNotExist()
 
 	err = s.applyStatement(stmt, jobID)
@@ -1250,4 +1253,57 @@ func (s *Store) DeletePersistentVolume(volumeID string) error {
 
 	s.metrics.VolumeDelete.Inc(1)
 	return nil
+}
+
+// GetJobsByRespoolID returns jobIDs in a respool
+func (s *Store) GetJobsByRespoolID(respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error) {
+	if respoolID == nil || respoolID.Value == "" {
+		return nil, errors.New("respoolID is null / empty")
+	}
+	respoolIDVal := respoolID.Value
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsByRespoolView).
+		Where(qb.Eq{"RespoolID": respoolID.Value})
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("respool_id", respoolIDVal).
+			Error("GetJobIDsByRespoolID failed")
+		s.metrics.JobGetByRespoolIDFail.Inc(1)
+		return nil, err
+	}
+
+	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.WithError(err).
+			WithField("respool_id", respoolIDVal).
+			Error("GetJobIDsByRespoolID get all results failed")
+		s.metrics.JobGetByRespoolIDFail.Inc(1)
+		return nil, err
+	}
+
+	results := make(map[string]*job.JobConfig)
+	for _, value := range allResults {
+		var record JobRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				WithField("respool_id", respoolIDVal).
+				Error("Failed to get JobRecord from record")
+			s.metrics.JobGetByRespoolIDFail.Inc(1)
+			return nil, err
+		}
+		jobConfig, err := record.GetJobConfig()
+		if err != nil {
+			log.WithError(err).
+				WithField("respool_id", respoolIDVal).
+				Error("Failed to get jobConfig from record")
+			s.metrics.JobGetByRespoolIDFail.Inc(1)
+			return nil, err
+		}
+		results[record.JobID] = jobConfig
+	}
+	s.metrics.JobGetByRespoolID.Inc(1)
+	return results, nil
 }

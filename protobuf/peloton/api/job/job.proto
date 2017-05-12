@@ -237,11 +237,21 @@ message GetResponse {
 }
 
 message QueryRequest {
+  // Both labels and respoolID fields are optional,
+  // and while query is executed, the two fields are
+  // in "AND" relationship if they are both specified.
   mesos.v1.Labels labels = 1;
+  respool.ResourcePoolID respoolID = 2;
 }
 
 message QueryResponse {
+   message Error {
+    errors.UnknownError err = 1;
+    errors.InvalidRespool invalidRespool = 2;
+  }
+
   map<string, JobConfig> result = 1;
+  Error error = 2;
 }
 
 message DeleteRequest {

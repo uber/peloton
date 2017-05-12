@@ -30,6 +30,7 @@ type JobStore interface {
 	GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error)
 	GetJobsByState(state job.JobState) ([]peloton.JobID, error)
 	UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) error
+	GetJobsByRespoolID(respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error)
 }
 
 // TaskStore is the interface to store task states

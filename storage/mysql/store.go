@@ -874,3 +874,8 @@ func (m *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*t
 
 	return tasks, total, rows.Err()
 }
+
+// GetJobsByRespoolID returns jobIDs in a respool
+func (m *Store) GetJobsByRespoolID(respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error) {
+	return nil, errors.New("Not implemented")
+}

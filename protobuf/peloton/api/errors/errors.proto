@@ -10,6 +10,7 @@ package peloton.api.errors;
 option go_package = "peloton/api/errors";
 
 import "peloton/api/peloton.proto";
+import "peloton/api/respool/respool.proto";
 
 
 message JobNotFound {
@@ -19,5 +20,14 @@ message JobNotFound {
 
 message JobGetRuntimeFail {
   peloton.JobID id = 1;
+  string message = 2;
+}
+
+message UnknownError {
+  string message = 1;
+}
+
+message InvalidRespool {
+  respool.ResourcePoolID respoolID = 1;
   string message = 2;
 }

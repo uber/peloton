@@ -555,6 +555,51 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByOwner() {
 	suite.Equal(len(jobs), 0)
 }
 
+func (suite *CassandraStoreTestSuite) TestGetJobsByRespoolID() {
+	nJobs := 2
+	owner := "TestGetJobsByRespoolID"
+	respoolBase := "respool"
+	for i := 0; i < nJobs; i++ {
+		var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
+		jobConfig := createJobConfig()
+		jobConfig.Name = jobID.Value
+		jobConfig.RespoolID = &respool.ResourcePoolID{
+			Value: fmt.Sprintf("%s%d", respoolBase, i),
+		}
+		err := store.CreateJob(&jobID, jobConfig, owner)
+		suite.Nil(err)
+	}
+
+	owner = "TestGetJobsByRespoolID2"
+	for i := 0; i < nJobs; i++ {
+		var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
+		jobConfig := createJobConfig()
+		jobConfig.Name = jobID.Value
+		jobConfig.RespoolID = &respool.ResourcePoolID{
+			Value: fmt.Sprintf("%s%d", respoolBase, i),
+		}
+		err := store.CreateJob(&jobID, jobConfig, owner)
+		suite.Nil(err)
+	}
+
+	jobs, err := store.GetJobsByRespoolID(&respool.ResourcePoolID{Value: respoolBase + "0"})
+	suite.Nil(err)
+	suite.Equal(len(jobs), 2)
+	suite.Equal(respoolBase+"0", jobs["TestGetJobsByRespoolID0"].RespoolID.GetValue())
+	suite.Equal(respoolBase+"0", jobs["TestGetJobsByRespoolID20"].RespoolID.GetValue())
+
+	jobs, err = store.GetJobsByRespoolID(&respool.ResourcePoolID{Value: respoolBase + "1"})
+	suite.Nil(err)
+	suite.Equal(len(jobs), 2)
+
+	suite.Equal(respoolBase+"1", jobs["TestGetJobsByRespoolID1"].RespoolID.GetValue())
+	suite.Equal(respoolBase+"1", jobs["TestGetJobsByRespoolID21"].RespoolID.GetValue())
+
+	jobs, err = store.GetJobsByRespoolID(&respool.ResourcePoolID{Value: "pooldoesnotexist"})
+	suite.Nil(err)
+	suite.Equal(len(jobs), 0)
+}
+
 func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 	var taskStore storage.TaskStore
 	taskStore = store

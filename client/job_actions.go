@@ -1,11 +1,15 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"strings"
 
+	mesos "mesos/v1"
 	"peloton/api/job"
 	"peloton/api/peloton"
+	"peloton/api/respool"
 
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
@@ -17,6 +21,8 @@ const (
 	jobListFormatHeader = "Name\tCPU Limit\tMem Limit\tDisk Limit\t" +
 		"Instances\tCommand\t\n"
 	jobListFormatBody = "%s\t%.1f\t%.0f MB\t%.0f MB\t%d\t%s\t\n"
+	labelSeparator    = ","
+	keyValSeparator   = ":"
 )
 
 // JobCreateAction is the action for creating a job
@@ -105,6 +111,49 @@ func (client *Client) JobGetAction(jobName string) error {
 	return nil
 }
 
+// JobQueryAction is the action for getting job ids by labels and respool path
+func (client *Client) JobQueryAction(labels string, respoolPath string) error {
+	var mesosLabels mesos.Labels
+	if len(labels) > 0 {
+		labelPairs := strings.Split(labels, labelSeparator)
+		for _, l := range labelPairs {
+			labelVals := strings.Split(l, keyValSeparator)
+			if len(labelVals) != 2 {
+				fmt.Printf("Invalid label %v", l)
+				return errors.New("Invalid label" + l)
+			}
+			mesosLabels.Labels = append(mesosLabels.Labels, &mesos.Label{
+				Key:   &labelVals[0],
+				Value: &labelVals[1],
+			})
+		}
+	}
+	var respoolID *respool.ResourcePoolID
+	var err error
+	if len(respoolPath) > 0 {
+		respoolID, err = client.LookupResourcePoolID(respoolPath)
+		if err != nil {
+			return err
+		}
+	}
+	var response job.QueryResponse
+	var request = &job.QueryRequest{
+		RespoolID: respoolID,
+		Labels:    &mesosLabels,
+	}
+	_, err = client.jobClient.Call(
+		client.ctx,
+		yarpc.NewReqMeta().Procedure("JobManager.Query"),
+		request,
+		&response,
+	)
+	if err != nil {
+		return err
+	}
+	printJobQueryResponse(response, client.Debug)
+	return nil
+}
+
 func printJobCreateResponse(r job.CreateResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
@@ -153,6 +202,23 @@ func printJobGetResponse(r job.GetResponse, debug bool) {
 			fmt.Fprintf(tabWriter, jobListFormatBody,
 				r.Config.Name, rs.CpuLimit, rs.MemLimitMb, rs.DiskLimitMb,
 				r.Config.InstanceCount, r.Config.DefaultConfig.Command)
+		}
+		tabWriter.Flush()
+	}
+}
+
+func printJobQueryResponse(r job.QueryResponse, debug bool) {
+	if debug {
+		printResponseJSON(r)
+	} else {
+		if r.Error != nil {
+			fmt.Fprintf(tabWriter, "Error: %v\n", r.GetError().String())
+		} else if len(r.Result) == 0 {
+			fmt.Fprint(tabWriter, "No jobs found.\n", r.GetError().String())
+		} else {
+			for jobID := range r.Result {
+				fmt.Fprintf(tabWriter, "%s\n", jobID)
+			}
 		}
 		tabWriter.Flush()
 	}

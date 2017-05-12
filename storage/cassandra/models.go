@@ -23,6 +23,7 @@ type JobRecord struct {
 	CreatedTime  time.Time
 	Labels       string
 	CompleteTime time.Time
+	RespoolID    string
 }
 
 // GetJobConfig returns the unmarshaled job.JobConfig

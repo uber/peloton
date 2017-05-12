@@ -271,14 +271,45 @@ func (h *serviceHandler) Query(
 	reqMeta yarpc.ReqMeta,
 	req *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
 
-	log.Infof("JobManager.Query called: %v", req)
+	log.WithField("request", req).Info("JobManager.Query called")
 	h.metrics.JobAPIQuery.Inc(1)
-
-	jobConfigs, err := h.jobStore.Query(req.Labels)
-	if err != nil {
-		h.metrics.JobQueryFail.Inc(1)
-		log.Errorf("Query job failed with error %v", err)
-		return nil, nil, err
+	var jobConfigs map[string]*job.JobConfig
+	var err error
+	if req.GetLabels().GetLabels() != nil && len(req.GetLabels().GetLabels()) > 0 {
+		jobConfigs, err = h.jobStore.Query(req.Labels)
+		if err != nil {
+			h.metrics.JobQueryFail.Inc(1)
+			log.WithError(err).Error("Query job failed with error")
+			return &job.QueryResponse{
+				Error: &job.QueryResponse_Error{
+					Err: &errors.UnknownError{
+						Message: err.Error(),
+					},
+				},
+			}, nil, nil
+		}
+		// if both labels and respool ID is specified, query then filter by respool id
+		if req.GetRespoolID() != nil {
+			for jobID, jobConfig := range jobConfigs {
+				if jobConfig.RespoolID.GetValue() != req.GetRespoolID().Value {
+					delete(jobConfigs, jobID)
+				}
+			}
+		}
+	} else {
+		// Query by respool id directly
+		jobConfigs, err = h.jobStore.GetJobsByRespoolID(req.GetRespoolID())
+		if err != nil {
+			h.metrics.JobQueryFail.Inc(1)
+			log.WithError(err).Error("Query job failed with error")
+			return &job.QueryResponse{
+				Error: &job.QueryResponse_Error{
+					Err: &errors.UnknownError{
+						Message: err.Error(),
+					},
+				},
+			}, nil, nil
+		}
 	}
 	h.metrics.JobQuery.Inc(1)
 	return &job.QueryResponse{Result: jobConfigs}, nil, nil
