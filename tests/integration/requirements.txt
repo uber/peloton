@@ -1,0 +1,4 @@
+pytest==3.0.7
+peloton-client==0.1.4
+docker-py==1.7.2
+pyyaml

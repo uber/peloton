@@ -130,8 +130,11 @@ test-containers:
 test: $(GOCOV) $(PBGENS) mockgens test-containers
 	gocov test -race $(ALL_PKGS) | gocov report
 
-unit_test: $(GOCOV) $(PBGENS) mockgens
+unit-test: $(GOCOV) $(PBGENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
+
+integ-test:
+	@./tests/run-integration-tests.sh
 
 # launch peloton with PELOTON={app}, default to none
 # TODO: clean up the make rule when cleaning up pcluster

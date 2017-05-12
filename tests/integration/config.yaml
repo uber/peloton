@@ -1,0 +1,11 @@
+client:
+  jobmgr_url: http://localhost:5292/api/v1
+  jobmgr_service_name: peloton-jobmgr
+  resmgr_url: http://localhost:5290/api/v1
+  resmgr_service_name: peloton-resmgr
+  name: peloton-integration-test
+  cluster_zk_servers:
+    peloton-devel01: zookeeper-peloton-devel01.pit-irn-1.uberatc.net
+    peloton-preprod01: zookeeper-peloton-preprod01.pit-irn-1.uberatc.net
+    sjc1-devel01: zookeeper-mesos-devel01-sjc1.uber.internal
+    dca1-devel01: zookeeper-mesos-devel01-dca1.uber.internal

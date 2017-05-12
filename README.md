@@ -119,6 +119,22 @@ curl -X POST  \
 $ make test
 ```
 
+## Run integration tests
+
+Against local pcluster:
+```
+$ make integ-test
+```
+
+Against a real cluster:
+irn1 (ATG VPN connection required) :
+```
+$ CLUSTER=<name of the cluster, i.e. peloton-devel01> make integ-test
+```
+dca1/sjc1 (run this from any compute host in the target dc):
+```
+$ CLUSTER=<name of the cluster, i.e. dca1-devel01> make integ-test
+```
 
 ## Run peloton from docker container
 

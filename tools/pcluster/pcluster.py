@@ -14,6 +14,7 @@ master or apps can be specified to run in containers as well.
 '''
 
 import os
+import requests
 import sys
 import time
 import yaml
@@ -27,6 +28,8 @@ __author__ = 'wu'
 
 max_retry_attempts = 20
 sleep_time_secs = 5
+healthcheck_path = '/health'
+default_host = '127.0.0.1'
 
 
 #
@@ -272,7 +275,7 @@ def create_cassandra_store():
             if "CREATE KEYSPACE peloton_test WITH" in resp:
                 print 'cassandra store is created'
                 return
-        print 'Attempt{1} failed to create cassandra store, err: {0}, retrying...'.format(resp, retry_attempts)
+        print 'failed to create cassandra store, retrying...'
         retry_attempts += 1
 
     print 'Failed to create cassandra store after %d attempts, aborting...' % max_retry_attempts
@@ -378,10 +381,10 @@ def run_peloton_resmgr():
             detach=True,
         )
         cli.start(container=container.get('Id'))
-        print 'started container %s' % name
-        # TODO: reduce the sleep time after the db schema logic is moved into
-        # pcluster
-        time.sleep(30)
+        wait_for_up(
+            name,
+            port,
+        )
 
 
 #
@@ -422,8 +425,10 @@ def run_peloton_hostmgr():
             detach=True,
         )
         cli.start(container=container.get('Id'))
-        print 'started container %s' % name
-        time.sleep(1)
+        wait_for_up(
+            name,
+            port,
+        )
 
 
 #
@@ -460,8 +465,10 @@ def run_peloton_jobmgr():
             detach=True,
         )
         cli.start(container=container.get('Id'))
-        print 'started container %s' % name
-        time.sleep(1)
+        wait_for_up(
+            name,
+            port,
+        )
 
 
 #
@@ -498,8 +505,42 @@ def run_peloton_placement():
             detach=True,
         )
         cli.start(container=container.get('Id'))
-        print 'started container %s' % name
-        time.sleep(1)
+        wait_for_up(
+            name,
+            port,
+        )
+
+
+#
+# Run health check for peloton apps
+#
+def wait_for_up(app, port):
+    count = 0
+    error = ''
+    url = 'http://%s:%s/%s' % (
+            default_host,
+            port,
+            healthcheck_path,
+    )
+    while count < max_retry_attempts:
+        try:
+            r = requests.get(url)
+            if r.status_code == 200:
+                print 'started %s' % app
+                return
+        except Exception, e:
+            print ('app %s is not up yet, retrying...' % app)
+            error = str(e)
+            time.sleep(sleep_time_secs)
+            count += 1
+
+    raise Exception('failed to start %s after %d attempts, err: %s' %
+                    (
+                        app,
+                        max_retry_attempts,
+                        error,
+                    )
+                    )
 
 
 #
