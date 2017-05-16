@@ -57,6 +57,11 @@ var (
 		"batch", "task batch size per worker").
 		Short('t').
 		Int()
+
+	validateUpdate = app.Flag(
+		"validate_update", "validate updated task state").
+		Short('v').
+		Bool()
 	//TODO: controllable QPS
 )
 
@@ -225,6 +230,34 @@ func updateTaskState(taskStore storage.TaskStore, jobIDVal string, instance uint
 	if err != nil {
 		log.WithError(err).Error("update task failed")
 		return err
+	}
+	if *validateUpdate == true {
+		taskInfo, err = taskStore.GetTaskForJob(jobID, instance)
+		if err != nil {
+			log.WithError(err).Error("Get task failed")
+			return err
+		}
+		// If updated task state is not read, wait for 100 msec and
+		// try again.
+		if taskInfo[instance].GetRuntime().State != state {
+			log.WithField("instance", instance).
+				WithField("expected state", state).
+				WithField("actual state", taskInfo[instance].GetRuntime().State).
+				Error("Task state not updated")
+
+			time.Sleep(100 * time.Millisecond)
+			taskInfo, err = taskStore.GetTaskForJob(jobID, instance)
+			if err != nil {
+				log.WithError(err).Error("Get task failed")
+				return err
+			}
+			if taskInfo[instance].GetRuntime().State != state {
+				log.WithField("instance", instance).
+					WithField("expected state", state).
+					WithField("actual state", taskInfo[instance].GetRuntime().State).
+					Error("Task state not updated after 100ms")
+			}
+		}
 	}
 	return nil
 }
