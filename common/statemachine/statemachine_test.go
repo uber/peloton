@@ -3,6 +3,7 @@ package statemachine
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -13,6 +14,7 @@ type StateMachineTask struct {
 
 type StateMachineTestSuite struct {
 	suite.Suite
+
 	task         *StateMachineTask
 	stateMachine StateMachine
 }
@@ -24,11 +26,11 @@ func (suite *StateMachineTestSuite) SetupTest() {
 	suite.stateMachine, err = NewBuilder().
 		WithName("task1").
 		WithCurrentState(suite.task.state).
-		WithTransitionCallback(nil).
+		WithTransitionCallback(suite.TransitionCallBack).
 		AddRule(
 			&Rule{
 				From: "initialized",
-				To:   []State{"running", "killed"},
+				To:   []State{"running", "killed", "placing"},
 				Callback: func(t *Transition) error {
 					switch t.To {
 					case "running":
@@ -43,18 +45,48 @@ func (suite *StateMachineTestSuite) SetupTest() {
 		AddRule(
 			&Rule{
 				From: "running",
-				To:   []State{"killed", "succeeded", "running"},
+				To:   []State{"killed", "succeeded", "running", "placing"},
 				Callback: func(t *Transition) error {
 					switch t.To {
 					case "killed":
 						return suite.callbackKilledfromrunning(t)
 					case "succeeded":
 						return suite.callbacksucceededfromrunning(t)
+					case "placing":
+						return nil
 					default:
 						return nil
 					}
 				},
 			}).
+		AddRule(
+			&Rule{
+				From: "placing",
+				To:   []State{"succeeded"},
+				Callback: func(t *Transition) error {
+					switch t.To {
+					case "succeeded":
+						return nil
+					default:
+						return nil
+					}
+				},
+			}).
+		AddTimeoutRule(
+			&TimeoutRule{
+				from:     "killed",
+				to:       "running",
+				timeout:  2 * time.Second,
+				Callback: suite.callbackTimeout,
+			},
+		).
+		AddTimeoutRule(
+			&TimeoutRule{
+				from:    "placing",
+				to:      "killed",
+				timeout: 2 * time.Second,
+			},
+		).
 		Build()
 	suite.NoError(err)
 }
@@ -82,6 +114,14 @@ func (suite *StateMachineTestSuite) callbacksucceededfromrunning(t *Transition) 
 	suite.task.state = t.To
 	err := suite.stateMachine.TransitTo("killed")
 	return err
+}
+
+func (suite *StateMachineTestSuite) TransitionCallBack(t *Transition) error {
+	return nil
+}
+
+func (suite *StateMachineTestSuite) callbackTimeout(t *Transition) error {
+	return nil
 }
 
 func (suite *StateMachineTestSuite) TestCallbacksRunning() {
@@ -123,4 +163,30 @@ func (suite *StateMachineTestSuite) TestTransitionSameState() {
 	// Transition to same state
 	err = suite.stateMachine.TransitTo("running")
 	suite.Error(err)
+}
+
+func (suite *StateMachineTestSuite) TestTimeOut() {
+	err := suite.stateMachine.TransitTo("killed")
+	suite.NoError(err)
+	suite.Equal(fmt.Sprint(suite.task.state), "killed")
+	time.Sleep(3 * time.Second)
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "running")
+}
+
+func (suite *StateMachineTestSuite) TestCancelTimeOutTransition() {
+	err := suite.stateMachine.TransitTo("placing")
+	suite.NoError(err)
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "placing")
+	err = suite.stateMachine.TransitTo("succeeded")
+	suite.NoError(err)
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "succeeded")
+}
+
+func (suite *StateMachineTestSuite) TestStopStateRecovery() {
+	err := suite.stateMachine.TransitTo("killed")
+	suite.NoError(err)
+	suite.Equal(fmt.Sprint(suite.task.state), "killed")
+	suite.stateMachine.GetStateTimer().Stop()
+	time.Sleep(3 * time.Second)
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "killed")
 }

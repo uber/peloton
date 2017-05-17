@@ -3,6 +3,7 @@ package statemachine
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -17,6 +18,21 @@ type Rule struct {
 	From State
 	// to is the destination state
 	To []State
+	// callback is transition function which defines 1:1 mapping
+	// of callbacks
+	Callback func(*Transition) error
+}
+
+// TimeoutRule is a struct to define the state transition which is
+// triggered by the time duration. This is kind of timeout where
+// state will automatically move to "to" state after the timeout
+type TimeoutRule struct {
+	// from is the source state
+	from State
+	// to is the destination state
+	to State
+	// timeout for transition to "to" state
+	timeout time.Duration
 	// callback is transition function which defines 1:1 mapping
 	// of callbacks
 	Callback func(*Transition) error
@@ -37,6 +53,9 @@ type StateMachine interface {
 
 	// GetName returns the Name of the StateMachine object
 	GetName() string
+
+	// GetStateTimer returns the statetimer object
+	GetStateTimer() StateTimer
 }
 
 // statemachine is state machine, State Machine is responsible for moving states
@@ -64,6 +83,16 @@ type statemachine struct {
 	// This atomic boolean helps to identify if previous transition is
 	// complete or still not done
 	inTransition atomic.Bool
+
+	// lastUpdatedTime records the time when last state is transitioned
+	lastUpdatedTime time.Time
+
+	// timeoutrules are the rules from transitioning from state which
+	// can be timed out
+	timeoutRules map[State]*TimeoutRule
+
+	// timer is the object for statetimer
+	timer StateTimer
 }
 
 // NewStateMachine it will create the new state machine
@@ -72,20 +101,30 @@ func NewStateMachine(
 	name string,
 	current State,
 	rules map[State]*Rule,
+	timeoutRules map[State]*TimeoutRule,
 	trasitionCallback Callback,
 ) (StateMachine, error) {
+
 	sm := &statemachine{
 		name:               name,
 		current:            current,
 		rules:              make(map[State]*Rule),
+		timeoutRules:       timeoutRules,
 		transitionCallback: trasitionCallback,
+		lastUpdatedTime:    time.Now(),
 	}
+
+	sm.timer = NewTimer(sm)
 
 	err := sm.addRules(rules)
 	if err != nil {
 		return nil, err
 	}
 	return sm, nil
+}
+
+func (sm *statemachine) GetStateTimer() StateTimer {
+	return sm.timer
 }
 
 // addRules add the rules which defines the transitions
@@ -150,6 +189,24 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	// Doing actual transition
 	curState := sm.current
 	sm.current = to
+	sm.lastUpdatedTime = time.Now()
+
+	// Try to stop state recovery if its transitioning
+	// from timeout state
+	if _, ok := sm.timeoutRules[curState]; ok {
+		sm.timer.Stop()
+	}
+
+	swapTransition := func() {
+		// Locking state machine before moving transition to finish
+		sm.Lock()
+		defer sm.Unlock()
+
+		// Making transition done
+		sm.inTransition.Swap(false)
+	}
+
+	defer swapTransition()
 
 	// Unlocking the state machine to call callback functions
 	sm.Unlock()
@@ -158,7 +215,10 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	if sm.rules[curState].Callback != nil {
 		err = sm.rules[curState].Callback(t)
 		if err != nil {
-			log.Error("error in callback ")
+			log.WithFields(log.Fields{
+				"Current State ": curState,
+				"To State":       to,
+			}).Error("Error in call back")
 			return err
 		}
 	}
@@ -171,10 +231,13 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 			return err
 		}
 	}
-
-	// Making transition done
-	sm.inTransition.Swap(false)
-
+	// Checking if this STATE is timeout state
+	if rule, ok := sm.timeoutRules[to]; ok {
+		log.Info("Starting from state " + to)
+		if rule.timeout != 0 {
+			sm.timer.Start(rule.timeout)
+		}
+	}
 	return nil
 }
 
@@ -212,4 +275,80 @@ func (sm *statemachine) GetCurrentState() State {
 // GetName returns the name of the state machine object
 func (sm *statemachine) GetName() string {
 	return sm.name
+}
+
+// rollbackState recovers the state.
+func (sm *statemachine) rollbackState() error {
+	sm.Lock()
+	defer sm.Unlock()
+
+	if sm.timeoutRules == nil {
+		return nil
+	}
+
+	if _, ok := sm.timeoutRules[sm.current]; !ok {
+		return nil
+	}
+
+	rule := sm.timeoutRules[sm.current]
+
+	if time.Now().Sub(sm.lastUpdatedTime) <= rule.timeout {
+		return nil
+	}
+
+	// Checking if any transition in place
+	linTransition := sm.inTransition.Load()
+	if linTransition {
+		return errors.Errorf("transition to  %s not able to "+
+			"transition, previous transition is not "+
+			"finished yet", fmt.Sprint(rule.to))
+	}
+	//  Creating Transition to pass to callbacks
+	t := &Transition{
+		StateMachine: sm,
+		From:         sm.current,
+		To:           rule.to,
+		Params:       nil,
+	}
+
+	// Changing intransition value by that we block rest
+	// of the transitions
+	sm.inTransition.Swap(true)
+
+	// Doing actual transition
+	sm.current = rule.to
+	sm.lastUpdatedTime = time.Now()
+
+	swapTransition := func() {
+		// Locking it again as we need it for transition
+		sm.Lock()
+		// Making transition done
+		sm.inTransition.Swap(false)
+	}
+	defer swapTransition()
+
+	// Unlocking the state machine to call callback functions
+	sm.Unlock()
+
+	// invoking callback function
+	if rule.Callback != nil {
+		err := rule.Callback(t)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"Current State ": rule.from,
+				"To State":       rule.to}).
+				Error("Error in call back")
+			return err
+		}
+	}
+
+	// Callback the transition callback
+	if sm.transitionCallback != nil {
+		err := sm.transitionCallback(t)
+		if err != nil {
+			log.Error("Error in transition callback ")
+			return err
+		}
+	}
+	return nil
 }

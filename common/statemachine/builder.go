@@ -1,11 +1,14 @@
 package statemachine
 
-import "github.com/pkg/errors"
+import (
+	"github.com/pkg/errors"
+)
 
 // Builder is the state machine builder
 type Builder struct {
 	statemachine       StateMachine
 	rules              map[State]*Rule
+	timeoutrules       map[State]*TimeoutRule
 	current            State
 	name               string
 	transitionCallback Callback
@@ -16,6 +19,7 @@ func NewBuilder() *Builder {
 	return &Builder{
 		statemachine: &statemachine{},
 		rules:        make(map[State]*Rule),
+		timeoutrules: make(map[State]*TimeoutRule),
 	}
 }
 
@@ -37,6 +41,12 @@ func (b *Builder) AddRule(rule *Rule) *Builder {
 	return b
 }
 
+// AddTimeoutRule adds the rule for state machine
+func (b *Builder) AddTimeoutRule(timeoutRule *TimeoutRule) *Builder {
+	b.timeoutrules[timeoutRule.from] = timeoutRule
+	return b
+}
+
 // WithTransitionCallback adds the transition call back
 func (b *Builder) WithTransitionCallback(callback Callback) *Builder {
 	b.transitionCallback = callback
@@ -50,6 +60,7 @@ func (b *Builder) Build() (StateMachine, error) {
 		b.name,
 		b.current,
 		b.rules,
+		b.timeoutrules,
 		b.transitionCallback,
 	)
 	if err != nil {
