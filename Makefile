@@ -1,4 +1,4 @@
-.PHONY: all placement executor install client test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure
+.PHONY: all placement executor install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -36,7 +36,7 @@ endif
 
 .PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: pbgens placement executor client hostmgr resmgr jobmgr
+all: pbgens placement executor cli hostmgr resmgr jobmgr
 
 jobmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go
@@ -60,8 +60,8 @@ install:
 	glide --version || go get github.com/Masterminds/glide
 	rm -rf vendor && glide install
 
-client:
-	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton client/cli/*.go
+cli:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cli/main/*.go
 
 cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))

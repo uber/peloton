@@ -9,7 +9,7 @@ import (
 
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
-	pc "code.uber.internal/infra/peloton/client"
+	pc "code.uber.internal/infra/peloton/cli"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"
