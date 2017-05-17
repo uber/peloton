@@ -7,11 +7,11 @@ import (
 
 	"go.uber.org/yarpc"
 
-	mesos "mesos/v1"
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/task"
-	"peloton/private/hostmgr/hostsvc"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"

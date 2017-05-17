@@ -6,10 +6,11 @@ import (
 	"io/ioutil"
 	"strings"
 
-	mesos "mesos/v1"
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"

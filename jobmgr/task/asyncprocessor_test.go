@@ -1,15 +1,15 @@
 package task
 
 import (
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"fmt"
-	mesos "mesos/v1"
-	"peloton/api/peloton"
-	"peloton/api/task"
 	"sync"
 	"testing"
 	"time"
 
-	pb_eventstream "peloton/private/eventstream"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/util"
 	"github.com/pborman/uuid"

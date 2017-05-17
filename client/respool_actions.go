@@ -10,7 +10,7 @@ import (
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
 
-	"peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
 // ResourcePoolPathDelim is the resource pool path delimiter

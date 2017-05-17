@@ -13,11 +13,11 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	pb_job "peloton/api/job"
-	pb_task "peloton/api/task"
-	pb_eventstream "peloton/private/eventstream"
-	"peloton/private/resmgr"
-	"peloton/private/resmgrsvc"
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"

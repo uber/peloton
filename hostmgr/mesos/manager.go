@@ -4,7 +4,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 
-	sched "mesos/v1/scheduler"
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	mesos "mesos/v1"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"code.uber.internal/infra/peloton/mesos-go/detector"
 	_ "code.uber.internal/infra/peloton/mesos-go/detector/zoo" // To register zookeeper based plugin.

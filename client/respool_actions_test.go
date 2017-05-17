@@ -7,7 +7,7 @@ import (
 
 	client_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 
-	"peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	"go.uber.org/yarpc"
 

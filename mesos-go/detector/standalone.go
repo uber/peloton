@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/mesos-go/upid"
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
-	mesos "mesos/v1"
 )
 
 const (

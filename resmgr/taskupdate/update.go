@@ -1,11 +1,11 @@
 package taskupdate
 
 import (
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"context"
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
-	"peloton/private/resmgrsvc"
 	"sync/atomic"
 )
 

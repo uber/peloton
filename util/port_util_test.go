@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	mesos_v1 "mesos/v1"
+	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 )
 
 func TestGetPortsNumFromOfferMap(t *testing.T) {

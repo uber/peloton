@@ -11,11 +11,11 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	mesos "mesos/v1"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
-	"peloton/api/errors"
-	"peloton/api/task"
-	"peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
 
 const (

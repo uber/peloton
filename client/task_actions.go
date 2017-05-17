@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"peloton/api/peloton"
-	"peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"go.uber.org/yarpc"
 )

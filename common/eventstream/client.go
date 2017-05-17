@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb_eventstream "peloton/private/eventstream"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/common/metrics"
 	log "github.com/Sirupsen/logrus"

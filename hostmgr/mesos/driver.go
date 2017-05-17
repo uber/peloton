@@ -11,8 +11,8 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	mesos "mesos/v1"
-	sched "mesos/v1/scheduler"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"

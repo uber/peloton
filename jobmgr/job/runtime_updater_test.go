@@ -1,14 +1,14 @@
 package job
 
 import (
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"fmt"
-	mesos "mesos/v1"
 	"testing"
 
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/task"
-	pb_eventstream "peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"github.com/golang/mock/gomock"

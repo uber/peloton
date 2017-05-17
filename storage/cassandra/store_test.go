@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"testing"
 
-	mesos "mesos/v1"
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/respool"
-	"peloton/api/task"
-	"peloton/api/volume"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/storage"
 

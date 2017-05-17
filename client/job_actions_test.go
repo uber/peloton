@@ -14,9 +14,9 @@ import (
 	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
 
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
 const testJobConfig = "../example/testjob.yaml"

@@ -15,12 +15,12 @@ import (
 
 	"go.uber.org/yarpc"
 
-	mesos "mesos/v1"
-	"peloton/api/peloton"
-	"peloton/api/task"
-	"peloton/private/hostmgr/hostsvc"
-	"peloton/private/resmgr"
-	"peloton/private/resmgrsvc"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/util"

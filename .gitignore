@@ -33,7 +33,7 @@ cover
 jenkins.xml
 .cache
 /env/
-
+.gen
 # Ignore any mocks sub-directory.
 mocks/
 

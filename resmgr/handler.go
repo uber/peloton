@@ -16,9 +16,9 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 
-	t "peloton/api/task"
-	"peloton/private/resmgr"
-	"peloton/private/resmgrsvc"
+	t "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 )
 
 // serviceHandler implements peloton.private.resmgr.ResourceManagerService

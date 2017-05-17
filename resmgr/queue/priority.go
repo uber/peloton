@@ -1,8 +1,8 @@
 package queue
 
 import (
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"errors"
-	"peloton/private/resmgr"
 	"sync"
 
 	log "github.com/Sirupsen/logrus"

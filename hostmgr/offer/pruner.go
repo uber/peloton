@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	mesos "mesos/v1"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	log "github.com/Sirupsen/logrus"
 )

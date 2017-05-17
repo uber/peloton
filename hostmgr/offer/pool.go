@@ -7,10 +7,10 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	mesos "mesos/v1"
-	sched "mesos/v1/scheduler"
-	"peloton/api/task"
-	"peloton/private/hostmgr/hostsvc"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"

@@ -1,9 +1,9 @@
 package eventstream
 
 import (
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"context"
-	mesos "mesos/v1"
-	pb_eventstream "peloton/private/eventstream"
 	"sync"
 	"testing"
 

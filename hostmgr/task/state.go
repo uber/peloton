@@ -12,9 +12,9 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	sched "mesos/v1/scheduler"
-	pb_eventstream "peloton/private/eventstream"
-	"peloton/private/resmgrsvc"
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"

@@ -11,11 +11,11 @@ import (
 
 	"github.com/uber-go/tally"
 
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/respool"
-	"peloton/api/task"
-	"peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"

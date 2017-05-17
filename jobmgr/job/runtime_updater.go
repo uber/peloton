@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/task"
-	pb_eventstream "peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"

@@ -1,10 +1,10 @@
 package mysql
 
 import (
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"database/sql"
-	"peloton/api/job"
-	"peloton/api/respool"
-	"peloton/api/task"
 	"reflect"
 	"time"
 

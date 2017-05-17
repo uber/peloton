@@ -2,12 +2,15 @@ package task
 
 import (
 	"context"
-	mesos "mesos/v1"
-	pb_eventstream "peloton/private/eventstream"
-	"peloton/private/resmgrsvc"
 	"sync"
 	"testing"
 	"time"
+
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"

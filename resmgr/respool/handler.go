@@ -13,7 +13,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	"peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
 const (

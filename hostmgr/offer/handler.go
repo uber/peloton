@@ -3,7 +3,7 @@ package offer
 import (
 	"time"
 
-	sched "mesos/v1/scheduler"
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"

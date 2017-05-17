@@ -1,11 +1,11 @@
 package taskupdate
 
 import (
-	"mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"testing"
 
-	"peloton/private/eventstream"
-	"peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/yarpc"

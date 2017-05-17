@@ -8,10 +8,10 @@ import (
 
 	"github.com/uber-go/tally"
 
-	"peloton/api/peloton"
-	"peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
-	"peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"

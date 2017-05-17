@@ -12,14 +12,12 @@ ALL_SRC := $(shell find . -name "*.go" | grep -v -e Godeps -e vendor -e go-build
 BIN_DIR = bin
 FMT_SRC:=$(shell echo "$(ALL_SRC)" | tr ' ' '\n')
 ALL_PKGS = $(shell go list $(sort $(dir $(ALL_SRC))) | grep -v vendor | grep -v mesos-go)
-PBGEN_DIR = vendor
-PROTOC = protoc
+
 PACKAGE_VERSION=`git describe --always --tags`
 DOCKER_IMAGE ?= uber/peloton
 DC ?= all
-PROTOC_FLAGS = --proto_path=protobuf --go_out=$(PBGEN_DIR)
-PBFILES = $(shell find protobuf -name *.proto)
-PBGENS = $(PBFILES:%.proto=%.pb.go)
+PBGEN_DIR = .gen
+
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
 GOLINT = $(go get github.com/golang/lint/golint)
@@ -38,7 +36,7 @@ endif
 
 .PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: $(PBGENS) placement executor client hostmgr resmgr jobmgr
+all: pbgens placement executor client hostmgr resmgr jobmgr
 
 jobmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go
@@ -69,11 +67,16 @@ cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
 	go tool cover -html=cover.out -o cover.html
 
+pbgens:
+	@mkdir -p $(PBGEN_DIR)
+	./scripts/generate-protobuf.py
+
 clean:
 	rm -rf vendor/mesos vendor/peloton pbgen
 	rm -rf vendor_mocks
 	find . -path "*/mocks/*.go" | grep -v "./vendor" | xargs rm -f {}
 	rm -rf $(BIN_DIR)
+	rm -rf .gen
 
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 	@gofmt -s -w $(FMT_SRC)
@@ -113,7 +116,7 @@ define vendor_mockgen
   $(call source_mockgen,vendor_mocks/$(dir $(1))mocks/$(notdir $(1)),vendor/$(1))
 endef
 
-mockgens: $(PBGENS) $(GOMOCK)
+mockgens: pbgens $(GOMOCK)
 	$(call local_mockgen,hostmgr/mesos,MasterDetector;FrameworkInfoProvider)
 	$(call local_mockgen,hostmgr/offer,EventHandler)
 	$(call local_mockgen,hostmgr/reconcile,TaskReconciler)
@@ -127,7 +130,7 @@ test-containers:
 	bash docker/run_test_mysql.sh
 	bash docker/run_test_cassandra.sh
 
-test: $(GOCOV) $(PBGENS) mockgens test-containers
+test: $(GOCOV) pbgens mockgens test-containers
 	gocov test -race $(ALL_PKGS) | gocov report
 
 unit-test: $(GOCOV) $(PBGENS) mockgens
@@ -188,10 +191,6 @@ else
 	@./tools/packaging/docker-push.sh $(IMAGE)
 endif
 
-%.pb.go: %.proto
-	@mkdir -p $(PBGEN_DIR)
-	${PROTOC} ${PROTOC_FLAGS} $<
-
 # Jenkins related tasks
 
 LINT_SKIP_ERRORF=grep -v -e "not a string in call to Errorf"
@@ -211,7 +210,7 @@ lint: devtools
 	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
 	fi;
 
-jenkins: devtools lint $(PBGENS) mockgens
+jenkins: devtools lint pbgens mockgens
 	@chmod -R 777 $(dir $(PBGEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'
 	gocov-xml < coverage.json > coverage.xml

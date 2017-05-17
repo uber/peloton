@@ -1,7 +1,7 @@
 package reservation
 
 import (
-	mesos "mesos/v1"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 )

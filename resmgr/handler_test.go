@@ -17,10 +17,10 @@ import (
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	"peloton/api/peloton"
-	pb_respool "peloton/api/respool"
-	"peloton/private/resmgr"
-	"peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"

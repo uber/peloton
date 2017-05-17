@@ -9,7 +9,7 @@ import (
 	"go.uber.org/yarpc/transport"
 	"golang.org/x/net/context"
 
-	"mesos/v1/scheduler"
+	"code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 )
 
 // SchedulerClient makes Mesos JSON requests to Mesos endpoint

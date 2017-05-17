@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	mesos "mesos/v1"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"github.com/stretchr/testify/suite"
 )

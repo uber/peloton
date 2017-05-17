@@ -10,8 +10,8 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	log "github.com/Sirupsen/logrus"
 
-	pt "peloton/api/task"
-	"peloton/private/resmgr"
+	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 )
 
 // Scheduler defines the interface of task scheduler which schedules

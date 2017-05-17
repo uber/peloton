@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
-	mesos "mesos/v1"
-	sched "mesos/v1/scheduler"
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/task"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	mock_mpb "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"

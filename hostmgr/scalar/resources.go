@@ -4,8 +4,8 @@ import (
 	"math"
 	"sync"
 
-	mesos "mesos/v1"
-	"peloton/api/task"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"code.uber.internal/infra/peloton/util"
 )

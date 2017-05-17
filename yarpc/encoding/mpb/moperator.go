@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	mesos "mesos/v1"
-	mesos_master "mesos/v1/master"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/transport"

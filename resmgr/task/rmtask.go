@@ -5,10 +5,10 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"peloton/api/task"
-	"peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
-	pb_eventstream "peloton/private/eventstream"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/common/eventstream"
 	state "code.uber.internal/infra/peloton/common/statemachine"

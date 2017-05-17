@@ -7,8 +7,8 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/atomic"
 
-	mesos "mesos/v1"
-	"peloton/private/hostmgr/hostsvc"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"

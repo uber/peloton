@@ -9,9 +9,9 @@ import (
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
-	sched "mesos/v1/scheduler"
-	"peloton/api/peloton"
-	"peloton/api/task"
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/storage"

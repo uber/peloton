@@ -13,8 +13,8 @@ import (
 
 	"go.uber.org/yarpc"
 
-	pb_respool "peloton/api/respool"
-	"peloton/private/hostmgr/hostsvc"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"

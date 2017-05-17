@@ -9,9 +9,9 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 
-	"peloton/api/peloton"
-	pb_respool "peloton/api/respool"
-	"peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 )
 
 type ResPoolSuite struct {

@@ -3,7 +3,7 @@ package client
 import (
 	"go.uber.org/yarpc"
 
-	"peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
 // LookupResourcePoolID returns the resource pool ID for a given path

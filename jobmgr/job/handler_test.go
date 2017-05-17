@@ -13,14 +13,14 @@ import (
 
 	"go.uber.org/yarpc"
 
-	mesos "mesos/v1"
-	"peloton/api/job"
-	"peloton/api/peloton"
-	"peloton/api/respool"
-	"peloton/api/task"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
-	"peloton/private/resmgr"
-	"peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )

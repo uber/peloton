@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/yarpc"
 
-	"peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
 type commonTestSuite struct {

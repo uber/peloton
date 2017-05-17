@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
-	pb_respool "peloton/api/respool"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	mesos "mesos/v1"
-	sched "mesos/v1/scheduler"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"

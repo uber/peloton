@@ -1,8 +1,8 @@
 package task
 
 import (
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"math"
-	pb_eventstream "peloton/private/eventstream"
 	"sync"
 	"sync/atomic"
 

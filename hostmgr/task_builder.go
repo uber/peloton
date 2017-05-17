@@ -10,8 +10,8 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/util"
 
-	mesos "mesos/v1"
-	"peloton/api/task"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
 // taskBuilder helps to build launchable Mesos TaskInfo from offers and

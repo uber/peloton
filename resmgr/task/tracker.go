@@ -5,8 +5,8 @@ import (
 
 	"github.com/prometheus/common/log"
 
-	"peloton/api/peloton"
-	"peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/respool"

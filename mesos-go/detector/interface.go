@@ -19,7 +19,7 @@
 package detector
 
 import (
-	mesos "mesos/v1"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 )
 
 type MasterChanged interface {
