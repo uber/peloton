@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
@@ -311,11 +312,22 @@ func (tb *Builder) populateContainerInfo(
 // populateLabels properly sets up the `Labels` field of a mesos task.
 func (tb *Builder) populateLabels(
 	mesosTask *mesos.TaskInfo,
-	labels *mesos.Labels,
+	labels []*peloton.Label,
 ) {
-	if labels != nil {
-		// Make a deep copy to avoid changing input.
-		mesosTask.Labels = proto.Clone(labels).(*mesos.Labels)
+	if len(labels) == 0 {
+		return
+	}
+
+	// Make a deep copy to avoid changing input.
+	mLabels := make([]*mesos.Label, len(labels))
+	for i, l := range labels {
+		mLabels[i] = &mesos.Label{
+			Key:   &l.Key,
+			Value: &l.Value,
+		}
+	}
+	mesosTask.Labels = &mesos.Labels{
+		Labels: mLabels,
 	}
 }
 

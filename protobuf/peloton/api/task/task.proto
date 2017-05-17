@@ -173,7 +173,7 @@ message LabelConstraint {
   // For Kind == HOST, each attribute on Mesos agent is transformed to a label,
   // with `hostname` as a special label which is always inferred from agent
   // hostname and set.
-  mesos.v1.Label label       = 3;
+  peloton.Label label       = 3;
   // A limit on the number of occurrences of the label.
   uint32         requirement = 4;
 }
@@ -209,7 +209,7 @@ message TaskConfig {
   string name = 1;
 
   // List of user-defined labels for the task
-  mesos.v1.Labels labels = 2;
+  repeated peloton.Label labels = 2;
 
   // Resource config of the task
   ResourceConfig resource = 3;

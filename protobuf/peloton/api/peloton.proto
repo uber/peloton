@@ -63,3 +63,11 @@ message ChangeLog {
   // The user or service that updated the entity info
   string updatedBy = 4;
 }
+
+/**
+ * Key, value pair used to store free form user-data.
+ */
+message Label {
+  string key = 1;
+  string value = 2;
+}

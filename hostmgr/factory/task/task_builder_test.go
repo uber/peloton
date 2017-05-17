@@ -9,10 +9,10 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -193,12 +193,10 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			EnvName: "DYNAMIC_ENV_PORT",
 		},
 	}
-	taskConfig.Labels = &mesos.Labels{
-		Labels: []*mesos.Label{
-			{
-				Key:   &_tmpLabelKey,
-				Value: &_tmpLabelValue,
-			},
+	taskConfig.Labels = []*peloton.Label{
+		{
+			Key:   _tmpLabelKey,
+			Value: _tmpLabelValue,
 		},
 	}
 	selectedDynamicPorts := []map[string]uint32{
@@ -263,7 +261,14 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			strconv.Itoa(int(portsInDiscovery["dynamic_env"])),
 			envMap["DYNAMIC_ENV"])
 
-		suite.Equal(taskConfig.Labels, info.Labels)
+		suite.Equal(&mesos.Labels{
+			Labels: []*mesos.Label{
+				{
+					Key:   &_tmpLabelKey,
+					Value: &_tmpLabelValue,
+				},
+			},
+		}, info.Labels)
 	}
 
 	suite.Equal(portSet, discoveryPortSet)

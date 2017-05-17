@@ -10,8 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-
 	"gopkg.in/yaml.v2"
 )
 
@@ -95,7 +93,7 @@ func (client *Client) JobGetAction(jobName string) error {
 
 // JobQueryAction is the action for getting job ids by labels and respool path
 func (client *Client) JobQueryAction(labels string, respoolPath string, keywords string) error {
-	var mesosLabels mesos.Labels
+	var apiLabels []*peloton.Label
 	if len(labels) > 0 {
 		labelPairs := strings.Split(labels, labelSeparator)
 		for _, l := range labelPairs {
@@ -104,9 +102,9 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 				fmt.Printf("Invalid label %v", l)
 				return errors.New("Invalid label" + l)
 			}
-			mesosLabels.Labels = append(mesosLabels.Labels, &mesos.Label{
-				Key:   &labelVals[0],
-				Value: &labelVals[1],
+			apiLabels = append(apiLabels, &peloton.Label{
+				Key:   labelVals[0],
+				Value: labelVals[1],
 			})
 		}
 	}
@@ -120,7 +118,7 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 	}
 	var request = &job.QueryRequest{
 		RespoolID: respoolID,
-		Labels:    &mesosLabels,
+		Labels:    apiLabels,
 		Keywords:  strings.Split(keywords, labelSeparator),
 	}
 	response, err := client.jobClient.Query(client.ctx, request)

@@ -7,13 +7,12 @@ ldapgroups:
 - otto
 description: "A dummy test job for peloton on unified containerizer"
 labels:
-  labels:
-  - key: testKey0
-    value: testVal0
-  - key: testKey1
-    value: testVal1
-  - key: testKey2
-    value: testVal2
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
 instancecount: 1
 sla:
   priority: 22

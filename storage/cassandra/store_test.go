@@ -86,12 +86,10 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 				FdLimit:     1000 + uint32(i),
 			},
 		}
-		var labels = mesos.Labels{
-			Labels: []*mesos.Label{
-				{Key: &keys0[i], Value: &vals0[i]},
-				{Key: &keys1[i], Value: &vals1[i]},
-				{Key: &keyCommon, Value: &valCommon},
-			},
+		var labels = []*peloton.Label{
+			{Key: keys0[i], Value: vals0[i]},
+			{Key: keys1[i], Value: vals1[i]},
+			{Key: keyCommon, Value: valCommon},
 		}
 		var jobConfig = job.JobConfig{
 			Name:          fmt.Sprintf("TestJob_%d", i),
@@ -99,7 +97,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 			LdapGroups:    []string{"money", "team6", "gign"},
 			Sla:           &sla,
 			DefaultConfig: &taskConfig,
-			Labels:        &labels,
+			Labels:        labels,
 			Description:   fmt.Sprintf("A test job with awesome keyword%v keytest%v", i, i),
 		}
 		originalJobs = append(originalJobs, &jobConfig)
@@ -113,10 +111,8 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.NoError(err)
 
 	// query by common label should return all jobs
-	result1, err := jobStore.Query(context.Background(), &mesos.Labels{
-		Labels: []*mesos.Label{
-			{Key: &keyCommon, Value: &valCommon},
-		},
+	result1, err := jobStore.Query(context.Background(), []*peloton.Label{
+		{Key: keyCommon, Value: valCommon},
 	}, nil)
 	suite.NoError(err)
 	suite.Equal(records, len(result1))
@@ -126,11 +122,9 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 	// query by specific label returns one job
 	for i := 0; i < records; i++ {
-		result1, err := jobStore.Query(context.Background(), &mesos.Labels{
-			Labels: []*mesos.Label{
-				{Key: &keys0[i], Value: &vals0[i]},
-				{Key: &keys1[i], Value: &vals1[i]},
-			},
+		result1, err := jobStore.Query(context.Background(), []*peloton.Label{
+			{Key: keys0[i], Value: vals0[i]},
+			{Key: keys1[i], Value: vals1[i]},
 		}, nil)
 		suite.NoError(err)
 		suite.Equal(1, len(result1))
@@ -139,11 +133,9 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 	// query for non-exist label return nothing
 	var other = "other"
-	result1, err = jobStore.Query(context.Background(), &mesos.Labels{
-		Labels: []*mesos.Label{
-			{Key: &keys0[0], Value: &other},
-			{Key: &keys1[1], Value: &vals1[0]},
-		},
+	result1, err = jobStore.Query(context.Background(), []*peloton.Label{
+		{Key: keys0[0], Value: other},
+		{Key: keys1[1], Value: vals1[0]},
 	}, nil)
 	suite.NoError(err)
 	suite.Equal(0, len(result1))
@@ -162,10 +154,8 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.Equal(0, len(result1))
 
 	// Query with both labels and keyword
-	result1, err = jobStore.Query(context.Background(), &mesos.Labels{
-		Labels: []*mesos.Label{
-			{Key: &keys0[0], Value: &vals0[0]},
-		},
+	result1, err = jobStore.Query(context.Background(), []*peloton.Label{
+		{Key: keys0[0], Value: vals0[0]},
 	}, []string{"team6", "test", "awesome"})
 	suite.NoError(err)
 	suite.Equal(1, len(result1))
@@ -193,17 +183,14 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 				FdLimit:     1000 + uint32(i),
 			},
 		}
-		var labels = mesos.Labels{
-			Labels: []*mesos.Label{
-				{Key: &keys[0], Value: &vals[0]},
-				{Key: &keys[1], Value: &vals[1]},
-				{Key: &keys[2], Value: &vals[2]},
-			},
+		var labels = []*peloton.Label{
+			{Key: keys[0], Value: vals[0]},
+			{Key: keys[1], Value: vals[1]},
+			{Key: keys[2], Value: vals[2]},
 		}
 		// Add some special label to job0 and job1
 		if i < 2 {
-			labels.Labels = append(labels.Labels,
-				&mesos.Label{Key: &keys[3], Value: &vals[3]})
+			labels = append(labels, &peloton.Label{Key: keys[3], Value: vals[3]})
 		}
 
 		// Add owner to job0 and job1
@@ -217,7 +204,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 			LdapGroups:    []string{"money", "team6", "otto"},
 			Sla:           &sla,
 			DefaultConfig: &taskConfig,
-			Labels:        &labels,
+			Labels:        labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
 		err := jobStore.CreateJob(context.Background(), &jobID, &jobconfig, "uber")
@@ -233,7 +220,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		jobconf, err = jobStore.GetJobConfig(context.Background(), &jobID)
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
-		suite.Equal(len((*(jobconf.Labels)).Labels), 4)
+		suite.Equal(len(jobconf.Labels), 4)
 	}
 }
 

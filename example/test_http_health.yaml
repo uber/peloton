@@ -33,9 +33,8 @@ defaultconfig:
       executable: false
       cache: false
   labels:
-    labels:
-    - key: "org.apache.aurora.metadata.uns"
-      value: '["/peloton_test_http1/us1/peloton_test_http_health_check"]'
+  - key: "org.apache.aurora.metadata.uns"
+    value: '["/peloton_test_http1/us1/peloton_test_http_health_check"]'
 instanceconfig:
   0:
     name: instance0

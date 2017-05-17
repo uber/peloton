@@ -21,7 +21,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 
-	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
@@ -244,8 +243,8 @@ func (m *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 // In the tasks table, the "Labels" field are compacted (all whitespaces and " are removed for each label),
 // then stored as the "labels_summary" row. Mysql fulltext index are also set on this field.
 // When a query comes, the query labels are compacted in the same way then queried against the fulltext index.
-func (m *Store) Query(ctx context.Context, Labels *mesos_v1.Labels, keywords []string) (map[string]*job.JobConfig, error) {
-	if Labels == nil || len(Labels.Labels) == 0 {
+func (m *Store) Query(ctx context.Context, labels []*peloton.Label, keywords []string) (map[string]*job.JobConfig, error) {
+	if len(labels) == 0 {
 		log.Debug("Labels is empty, return all jobs")
 		return m.GetAllJobs(ctx)
 	}
@@ -253,7 +252,7 @@ func (m *Store) Query(ctx context.Context, Labels *mesos_v1.Labels, keywords []s
 	var queryLabels = ""
 	records := []JobRecord{}
 	var result = make(map[string]*job.JobConfig)
-	for _, label := range Labels.Labels {
+	for _, label := range labels {
 		buffer, err := json.Marshal(label)
 		if err != nil {
 			log.Errorf("%v error %v", label, err)
@@ -264,10 +263,10 @@ func (m *Store) Query(ctx context.Context, Labels *mesos_v1.Labels, keywords []s
 		queryLabels = queryLabels + "+\"" + text + "\""
 	}
 
-	log.Debugf("Querying using labels %v, text (%v)", Labels, queryLabels)
+	log.Debugf("Querying using labels %v, text (%v)", labels, queryLabels)
 	err := m.DB.Select(&records, queryJobsForLabelStmt, queryLabels)
 	if err == sql.ErrNoRows {
-		log.Warnf("Query for Label %v returns no rows", Labels)
+		log.Warnf("Query for Label %v returns no rows", labels)
 		return nil, nil
 	}
 	if err != nil {

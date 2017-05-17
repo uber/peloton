@@ -410,8 +410,7 @@ func (h *serviceHandler) Query(
 		}
 	}
 
-	if (req.GetLabels().GetLabels() != nil && len(req.GetLabels().GetLabels()) > 0) ||
-		(len(keywords) > 0) {
+	if len(req.GetLabels()) > 0 || len(keywords) > 0 {
 		jobConfigs, err = h.jobStore.Query(ctx, req.GetLabels(), keywords)
 		if err != nil {
 			h.metrics.JobQueryFail.Inc(1)

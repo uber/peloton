@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
@@ -62,15 +62,15 @@ func (suite *EvaluatorTestSuite) TestKindEvaluator() {
 	}
 
 	tmp1, tmp2 := HostNameKey, _testHost1
-	hostLabel := mesos.Label{
-		Key:   &tmp1,
-		Value: &tmp2,
+	hostLabel := peloton.Label{
+		Key:   tmp1,
+		Value: tmp2,
 	}
 
 	tmp3, tmp4 := _rackLabel, _testRack
-	rackLabel := mesos.Label{
-		Key:   &tmp3,
-		Value: &tmp4,
+	rackLabel := peloton.Label{
+		Key:   tmp3,
+		Value: tmp4,
 	}
 
 	// A host affinity constraint which only passes on host1.

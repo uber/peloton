@@ -9,7 +9,6 @@ package peloton.api.job;
 
 option go_package = "peloton/api/job";
 
-import "mesos/v1/mesos.proto";
 import "peloton/api/peloton.proto";
 import "peloton/api/errors/errors.proto";
 import "peloton/api/task/task.proto";
@@ -96,7 +95,7 @@ message JobConfig {
   string description = 6;
 
   // List of user-defined labels for the job
-  mesos.v1.Labels labels = 7;
+  repeated peloton.Label labels = 7;
 
   // Number of instances of the job
   uint32 instanceCount = 8;
@@ -264,7 +263,7 @@ message QueryRequest {
   // Both labels/respoolID/keywords fields are optional,
   // and while query is executed, the fields are
   // in "AND" relationship if they are both specified.
-  mesos.v1.Labels labels = 1;
+  repeated peloton.Label labels = 1;
   respool.ResourcePoolID respoolID = 2;
   repeated string keywords = 3;
 }

@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
@@ -234,25 +233,24 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 }
 
 // Query returns all jobs that contains the Labels.
-func (s *Store) Query(ctx context.Context, labels *mesos.Labels, keywords []string) (map[string]*job.JobConfig, error) {
+func (s *Store) Query(ctx context.Context, labels []*peloton.Label, keywords []string) (map[string]*job.JobConfig, error) {
 	// Query is based on stratio lucene index on jobs.
 	// See https://github.com/Stratio/cassandra-lucene-index
 	// We are using "must" for the labels and only return the jobs that contains all
 	// label values
 	// TODO: investigate if there are any golang library that can build lucene query
 	var resultMap = make(map[string]*job.JobConfig)
-	if (labels == nil || len(labels.GetLabels()) == 0) &&
-		(keywords == nil || len(keywords) == 0) {
+	if len(labels) == 0 && len(keywords) == 0 {
 		return s.GetAllJobs(ctx)
 	}
 	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["
 	// Labels field must contain value of the specified labels
 	hasLabels := false
-	if labels != nil && len(labels.GetLabels()) > 0 {
+	if labels != nil && len(labels) > 0 {
 		hasLabels = true
-		for i, label := range labels.Labels {
-			where = where + fmt.Sprintf("{type: \"contains\", field:\"labels\", values:\"%s\"}", *label.Value)
-			if i < len(labels.Labels)-1 {
+		for i, label := range labels {
+			where = where + fmt.Sprintf("{type: \"contains\", field:\"labels\", values:\"%s\"}", label.Value)
+			if i < len(labels)-1 {
 				where = where + ","
 			}
 		}

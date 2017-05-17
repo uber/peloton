@@ -22,6 +22,5 @@ defaultconfig:
     shell: true
     value: 'python -m SimpleHTTPServer $UBER_HTTP_PORT'
   labels:
-    labels:
-    - key: "org.apache.aurora.metadata.uns"
-      value: '["/peloton_test_http1/us1/peloton_test_http1"]'
+  - key: "org.apache.aurora.metadata.uns"
+    value: '["/peloton_test_http1/us1/peloton_test_http1"]'

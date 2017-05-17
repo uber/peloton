@@ -232,12 +232,10 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 				FdLimit:     1000,
 			},
 		}
-		var labels = mesos.Labels{
-			Labels: []*mesos.Label{
-				{Key: &keys[0], Value: &vals[0]},
-				{Key: &keys[1], Value: &vals[1]},
-				{Key: &keys[2], Value: &vals[2]},
-			},
+		var labels = []*peloton.Label{
+			{Key: keys[0], Value: vals[0]},
+			{Key: keys[1], Value: vals[1]},
+			{Key: keys[2], Value: vals[2]},
 		}
 		// Add owner to job0 and job1
 		var owner = "team6"
@@ -247,8 +245,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 
 		// Add some special label to job0 and job1
 		if i < 2 {
-			labels.Labels = append(labels.Labels,
-				&mesos.Label{Key: &keys[3], Value: &vals[3]})
+			labels = append(labels, &peloton.Label{Key: keys[3], Value: vals[3]})
 		}
 
 		var jobconfig = job.JobConfig{
@@ -257,7 +254,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			OwningTeam:    owner,
 			LdapGroups:    []string{"money", "team6", "otto"},
 			DefaultConfig: &taskConfig,
-			Labels:        &labels,
+			Labels:        labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
 		err := suite.store.CreateJob(context.Background(), &jobID, &jobconfig, "uber")
@@ -281,49 +278,39 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	// Query by owner
 	var jobs map[string]*job.JobConfig
 	var err error
-	var labelQuery = mesos.Labels{
-		Labels: []*mesos.Label{
-			{Key: &keys[0], Value: &vals[0]},
-			{Key: &keys[1], Value: &vals[1]},
-		},
+	var labelQuery = []*peloton.Label{
+		{Key: keys[0], Value: vals[0]},
+		{Key: keys[1], Value: vals[1]},
 	}
-	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), len(originalJobs))
 
-	labelQuery = mesos.Labels{
-		Labels: []*mesos.Label{
-			{Key: &keys[0], Value: &vals[0]},
-			{Key: &keys[1], Value: &vals[1]},
-			{Key: &keys[3], Value: &vals[3]},
-		},
+	labelQuery = []*peloton.Label{
+		{Key: keys[0], Value: vals[0]},
+		{Key: keys[1], Value: vals[1]},
+		{Key: keys[3], Value: vals[3]},
 	}
-	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
-	labelQuery = mesos.Labels{
-		Labels: []*mesos.Label{
-			{Key: &keys[3], Value: &vals[3]},
-		},
+	labelQuery = []*peloton.Label{
+		{Key: keys[3], Value: vals[3]},
 	}
-	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
 
-	labelQuery = mesos.Labels{
-		Labels: []*mesos.Label{
-			{Key: &keys[2], Value: &vals[3]},
-		},
+	labelQuery = []*peloton.Label{
+		{Key: keys[2], Value: vals[3]},
 	}
-	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 0)
 
-	labelQuery = mesos.Labels{
-		Labels: []*mesos.Label{},
-	}
+	labelQuery = []*peloton.Label{}
 	// test get all jobs if no labels
-	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 10)
 

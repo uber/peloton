@@ -5,7 +5,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
@@ -159,6 +159,6 @@ func (e evaluator) evaluateLabelConstraint(
 	return EvaluateResultMismatch, nil
 }
 
-func valueCount(label *mesos.Label, labelValues LabelValues) uint32 {
+func valueCount(label *peloton.Label, labelValues LabelValues) uint32 {
 	return labelValues[label.GetKey()][label.GetValue()]
 }

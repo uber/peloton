@@ -7,13 +7,12 @@ ldapgroups:
 - otto
 description: "A test job using unified containerizer and gpu"
 labels:
-  labels:
-  - key: testKey0
-    value: testVal0
-  - key: testKey1
-    value: testVal1
-  - key: testKey2
-    value: testVal2
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
 instancecount: 1
 defaultconfig:
   resource:

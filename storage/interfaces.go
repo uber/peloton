@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
@@ -25,7 +24,7 @@ func (e *TaskNotFoundError) Error() string {
 type JobStore interface {
 	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error
 	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
-	Query(ctx context.Context, Labels *mesos_v1.Labels, keywords []string) (map[string]*job.JobConfig, error)
+	Query(ctx context.Context, labels []*peloton.Label, keywords []string) (map[string]*job.JobConfig, error)
 	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
 	GetJobsByOwner(ctx context.Context, owner string) (map[string]*job.JobConfig, error)
