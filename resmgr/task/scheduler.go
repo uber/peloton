@@ -1,6 +1,7 @@
 package task
 
 import (
+	"container/list"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -114,7 +115,7 @@ func (s *scheduler) Start() error {
 	return nil
 }
 
-// scheduleTasks moves the task to ready queue in every scheduling cycle
+// scheduleTasks moves scheduling unit tasks to ready queue in every scheduling cycle
 func (s *scheduler) scheduleTasks() {
 	// TODO: consider add DequeueTasks to respool.Tree interface
 	// instead of returning all leaf nodes.
@@ -122,24 +123,27 @@ func (s *scheduler) scheduleTasks() {
 	// TODO: we need to check the entitlement first
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		t, err := n.DequeueTasks(dequeueTaskLimit)
+		tlist, err := n.DequeueSchedulingUnitList(dequeueTaskLimit)
 		if err != nil {
 			log.WithField("respool", n.ID()).Debug("No Items found")
 			continue
 		}
-		for e := t.Front(); e != nil; e = e.Next() {
-			task := e.Value.(*resmgr.Task)
-			s.readyQueue.Enqueue(task)
-			if s.rmTaskTracker.GetTask(task.Id) != nil {
-				err := s.rmTaskTracker.GetTask(task.Id).
-					TransitTo(pt.TaskState_READY.String())
-				if err != nil {
+		for tl := tlist.Front(); tl != nil; tl = tl.Next() {
+			tle := tl.Value.(*list.List)
+			for t := tle.Front(); t != nil; t = t.Next() {
+				task := t.Value.(*resmgr.Task)
+				s.readyQueue.Enqueue(task)
+				if s.rmTaskTracker.GetTask(task.Id) != nil {
+					err := s.rmTaskTracker.GetTask(task.Id).
+						TransitTo(pt.TaskState_READY.String())
+					if err != nil {
+						log.WithError(err).Error("Error while " +
+							"tranistioning to Ready state")
+					}
+				} else {
 					log.WithError(err).Error("Error while " +
 						"tranistioning to Ready state")
 				}
-			} else {
-				log.WithError(err).Error("Error while " +
-					"tranistioning to Ready state")
 			}
 		}
 	}

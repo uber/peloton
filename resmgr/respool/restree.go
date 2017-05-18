@@ -15,7 +15,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -164,25 +163,71 @@ func (t *tree) requeueJob(
 	// TODO: add getTaskCount(jobID, taskState) in task store to help
 	// optimize this function
 	var err error
-	rangevar := jobConfig.InstanceCount / RequeueBatchSize
+	numSingleInstances := jobConfig.InstanceCount
+	initialSingleInstance := uint32(0)
 	var errString string
 	var isError = false
-	for i := uint32(0); i <= rangevar; i++ {
-		from := i * RequeueBatchSize
-		to := util.Min((i+1)*RequeueBatchSize, jobConfig.InstanceCount)
-		err = t.requeueTasksInRange(jobID, jobConfig, from, to)
 
+	// Handle gang scheduled tasks if any
+	minInstances := jobConfig.GetSla().GetMinimumRunningInstances()
+	if minInstances > 1 {
+		err = t.requeueGang(jobID, jobConfig, minInstances)
 		if err != nil {
 			log.Errorf("Failed to requeue tasks for job %v in [%v, %v)",
-				jobID, from, to)
-			errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]", jobID, from, to)
+				jobID, 0, minInstances)
+			errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]", jobID, 0, minInstances)
 			isError = true
 		}
+		numSingleInstances -= minInstances
+		initialSingleInstance += minInstances
 	}
+
+	if numSingleInstances > 0 {
+		rangevar := numSingleInstances / RequeueBatchSize
+		for i := initialSingleInstance; i <= rangevar; i++ {
+			from := i * RequeueBatchSize
+			to := util.Min((i+1)*RequeueBatchSize, numSingleInstances)
+			err = t.requeueTasksInRange(jobID, jobConfig, from, to)
+
+			if err != nil {
+				log.Errorf("Failed to requeue tasks for job %v in [%v, %v)",
+					jobID, from, to)
+				errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]", jobID, from, to)
+				isError = true
+			}
+		}
+	}
+
 	if isError {
 		return errors.Errorf("Not able to reque tasks %s", errString)
 	}
 	return nil
+}
+
+func (t *tree) loadTasksInRange(
+	jobID string,
+	from, to uint32) (map[uint32]*task.TaskInfo, error) {
+
+	log.WithFields(log.Fields{
+		"JobID": jobID,
+		"from":  from,
+		"to":    to,
+	}).Info("Checking job instance range")
+
+	if from > to {
+		return nil, fmt.Errorf("Invalid job instance range [%v, %v)", from, to)
+	} else if from == to {
+		return nil, nil
+	}
+
+	pbJobID := &peloton.JobID{Value: jobID}
+	tasks, err := t.taskStore.GetTasksForJobByRange(
+		pbJobID,
+		&task.InstanceRange{
+			From: from,
+			To:   to,
+		})
+	return tasks, err
 }
 
 // requeueTasks loads the tasks in a given range from storage and
@@ -193,30 +238,11 @@ func (t *tree) requeueTasksInRange(
 	jobConfig *job.JobConfig,
 	from, to uint32) error {
 
-	log.WithFields(log.Fields{
-		"JobID": jobID,
-		"from":  from,
-		"to":    to,
-	}).Info("Checking job instance range")
-
-	if from > to {
-		return fmt.Errorf("Invalid job instance range [%v, %v)", from, to)
-	} else if from == to {
-		return nil
-	}
-
-	pbJobID := &peloton.JobID{Value: jobID}
-	tasks, err := t.taskStore.GetTasksForJobByRange(
-		pbJobID,
-		&task.InstanceRange{
-			From: from,
-			To:   to,
-		})
+	tasks, err := t.loadTasksInRange(jobID, from, to)
 	if err != nil {
 		return err
 	}
 	log.WithField("Count: ", len(tasks)).Debug("Tasks count")
-
 	for _, ta := range tasks {
 		switch ta.Runtime.State {
 		// TODO: Add more states here once all states are implemented
@@ -227,8 +253,9 @@ func (t *tree) requeueTasksInRange(
 			task.TaskState_READY:
 			// Requeue the tasks with these states into the queue again
 			ta.Runtime.State = task.TaskState_PENDING
-			err := t.resPools[jobConfig.RespoolID.Value].EnqueueTask(
-				t.ConvertResMgrTask(ta, jobConfig))
+			task := util.ConvertTaskToResMgrTask(ta, jobConfig)
+			err := t.resPools[jobConfig.RespoolID.Value].EnqueueSchedulingUnit(
+				t.resPools[jobConfig.RespoolID.Value].MakeTaskSchedulingUnit(task))
 			if err != nil {
 				log.WithField("task", ta.JobId.Value+"-"+
 					fmt.Sprint(ta.InstanceId)).Error(
@@ -248,27 +275,62 @@ func (t *tree) requeueTasksInRange(
 	return nil
 }
 
-// ConvertResMgrTask converts the taskinfo object to resmgr.Task
-func (t *tree) ConvertResMgrTask(ta *task.TaskInfo, jobConfig *job.JobConfig) *resmgr.Task {
-	var priority uint32
-	var preemptible bool
-	if jobConfig != nil && jobConfig.Sla != nil {
-		priority = jobConfig.Sla.Priority
-		preemptible = jobConfig.Sla.Preemptible
+// All gang tasks move through placement (initialized/pending/placed/placing) states as a group.
+// If they are in placement state, requeue them to pending queue as a group & then update stored state.
+func (t *tree) requeueGang(
+	jobID string,
+	jobConfig *job.JobConfig,
+	minInstances uint32) error {
+
+	tasks, err := t.loadTasksInRange(jobID, 0, minInstances)
+	if err != nil {
+		return err
 	}
-	rt := resmgr.Task{
-		Id: &peloton.TaskID{Value: fmt.Sprintf(
-			"%s-%d", ta.GetJobId().Value,
-			ta.InstanceId)},
-		JobId: ta.JobId,
-		Name:  ta.Config.Name,
-		// TODO: We need to add sla config per task
-		Priority:    priority,
-		Preemptible: preemptible,
-		Resource:    ta.GetConfig().Resource,
-		TaskId:      ta.GetRuntime().TaskId,
+	log.WithField("Count: ", len(tasks)).Debug("Tasks count")
+
+	tlist := new(list.List)
+	for _, ta := range tasks {
+		switch ta.Runtime.State {
+		// TODO: Add more states here once all states are implemented
+		case task.TaskState_INITIALIZED,
+			task.TaskState_PENDING,
+			task.TaskState_PLACED,
+			task.TaskState_PLACING:
+			// Will place tasks with these states into pending queue again
+			ta.Runtime.State = task.TaskState_PENDING
+			resMgrTask := util.ConvertTaskToResMgrTask(ta, jobConfig)
+			tlist.PushBack(resMgrTask)
+		default:
+			return nil // Gang has progressed beyond placement
+		}
 	}
-	return &rt
+	if tlist.Len() != int(minInstances) {
+		log.WithFields(log.Fields{
+			"jobID":        jobID,
+			"minInstances": minInstances,
+			"tlist.Len()":  tlist.Len(),
+		}).Error("Not able to recover/load all gang tasks in job")
+		return nil
+	}
+
+	// Enqueue gang tasks
+	err = t.resPools[jobConfig.RespoolID.Value].EnqueueSchedulingUnit(tlist)
+	if err != nil {
+		log.WithField("jobID", jobID).Error("Not able to recover/enqueue gang tasks in job")
+		return nil
+	}
+
+	// Update gang tasks entries in DB
+	for _, ta := range tasks {
+		err = t.taskStore.UpdateTask(ta)
+		if err != nil {
+			log.WithField("task", ta.JobId.Value+"-"+
+				fmt.Sprint(ta.InstanceId)).Error(
+				"Not able to Update task in DB")
+		}
+	}
+
+	return nil
 }
 
 // initTree will initialize all the resource pools from Storage

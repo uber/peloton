@@ -193,6 +193,78 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
 	suite.Error(err)
 }
 
+func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxInstances() {
+	// No error if there is a default task config
+	taskConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+			FdLimit:     1000,
+		},
+		Ports: []*task.PortConfig{
+			{
+				Name:    "port",
+				EnvName: "PORT",
+			},
+		},
+		Command: &mesos.CommandInfo{
+			Value: util.PtrPrintf("echo Hello"),
+		},
+	}
+	sla := job.SlaConfig{
+		Preemptible:             false,
+		Priority:                1,
+		MaximumRunningInstances: 20,
+	}
+
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		InstanceCount: 10,
+		Sla:           &sla,
+		DefaultConfig: &taskConfig,
+	}
+
+	err := ValidateTaskConfig(&jobConfig)
+	suite.Error(err)
+}
+
+func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMinInstances() {
+	// No error if there is a default task config
+	taskConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+			FdLimit:     1000,
+		},
+		Ports: []*task.PortConfig{
+			{
+				Name:    "port",
+				EnvName: "PORT",
+			},
+		},
+		Command: &mesos.CommandInfo{
+			Value: util.PtrPrintf("echo Hello"),
+		},
+	}
+	sla := job.SlaConfig{
+		Preemptible:             false,
+		Priority:                1,
+		MaximumRunningInstances: 8,
+		MinimumRunningInstances: 9,
+	}
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		InstanceCount: 10,
+		Sla:           &sla,
+		DefaultConfig: &taskConfig,
+	}
+
+	err := ValidateTaskConfig(&jobConfig)
+	suite.Error(err)
+}
+
 func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureForPortConfig() {
 	taskConfig := task.TaskConfig{
 		Resource: &task.ResourceConfig{

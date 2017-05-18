@@ -1,6 +1,7 @@
 package resmgr
 
 import (
+	"container/list"
 	"context"
 	"reflect"
 	"time"
@@ -99,8 +100,15 @@ func (h *serviceHandler) EnqueueTasks(
 	// TODO: check if the user has permission to run tasks in the
 	// respool
 
-	// Enqueue tasks to the pending queue of the respool
+	// Enqueue the tasks sent in an API call to the pending queue of the respool.
+	// First enqueue the tasks forming a gang and then the non-gang (singleton) tasks.
+	// Note: jobmgr currently makes exactly 1 API call for each job; if jobmgr were
+	// to instead combine jobs in one API call, the code should change to form separate
+	// gangs per job and to retain job order for enqueueing, i.e., it should enqueue
+	// job1-gang, job1-singletons, job2-gang, job2-singletons
 	var failed []*resmgrsvc.EnqueueTasksFailure_FailedTask
+	gangTasks := new(list.List)
+	singletonTasks := new(list.List)
 	for _, task := range req.GetTasks() {
 		// Adding task to state machine
 		err := h.rmTracker.AddTask(
@@ -126,19 +134,47 @@ func (h *serviceHandler) EnqueueTasks(
 				log.Error(err)
 			}
 		}
-
-		err = respool.EnqueueTask(task)
-		if err != nil {
-			failed = append(
-				failed,
-				&resmgrsvc.EnqueueTasksFailure_FailedTask{
-					Task:    task,
-					Message: err.Error(),
-				},
-			)
-			h.metrics.EnqueueTaskFail.Inc(1)
+		if task.MinInstances > 1 {
+			gangTasks.PushBack(task)
 		} else {
-			h.metrics.EnqueueTaskSuccess.Inc(1)
+			singletonTasks.PushBack(task)
+		}
+	}
+
+	if gangTasks.Len() > 0 {
+		err = respool.EnqueueSchedulingUnit(gangTasks) // enqueue gang
+		// Report success/failure for all gang tasks
+		for gangTask := gangTasks.Front(); gangTask != nil; gangTask = gangTask.Next() {
+			if err != nil {
+				failed = append(
+					failed,
+					&resmgrsvc.EnqueueTasksFailure_FailedTask{
+						Task:    gangTask.Value.(*resmgr.Task),
+						Message: err.Error(),
+					},
+				)
+				h.metrics.EnqueueTaskFail.Inc(1)
+			} else {
+				h.metrics.EnqueueTaskSuccess.Inc(1)
+			}
+		}
+	}
+	if singletonTasks.Len() > 0 {
+		for singletonItem := singletonTasks.Front(); singletonItem != nil; singletonItem = singletonItem.Next() {
+			singletonTask := singletonItem.Value.(*resmgr.Task)
+			err = respool.EnqueueSchedulingUnit(respool.MakeTaskSchedulingUnit(singletonTask))
+			if err != nil {
+				failed = append(
+					failed,
+					&resmgrsvc.EnqueueTasksFailure_FailedTask{
+						Task:    singletonTask,
+						Message: err.Error(),
+					},
+				)
+				h.metrics.EnqueueTaskFail.Inc(1)
+			} else {
+				h.metrics.EnqueueTaskSuccess.Inc(1)
+			}
 		}
 	}
 

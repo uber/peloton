@@ -1,14 +1,16 @@
 package queue
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"container/list"
 	"fmt"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 )
 
 type FifoQueueTestSuite struct {
@@ -38,7 +40,9 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 		Id:       taskID1,
 	}
 
-	suite.fq.Enqueue(&enq1)
+	tlist1 := new(list.List)
+	tlist1.PushBack(&enq1)
+	suite.fq.Enqueue(tlist1)
 
 	// Task - 2
 	jobID2 := &peloton.JobID{
@@ -54,7 +58,9 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 		Id:       taskID2,
 	}
 
-	suite.fq.Enqueue(&enq2)
+	tlist2 := new(list.List)
+	tlist2.PushBack(&enq2)
+	suite.fq.Enqueue(tlist2)
 
 	// Task - 3
 	jobID3 := &peloton.JobID{
@@ -70,7 +76,9 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 		Id:       taskID3,
 	}
 
-	suite.fq.Enqueue(&enq3)
+	tlist3 := new(list.List)
+	tlist3.PushBack(&enq3)
+	suite.fq.Enqueue(tlist3)
 
 	// Task - 4
 	jobID4 := &peloton.JobID{
@@ -86,7 +94,9 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 		Id:       taskID4,
 	}
 
-	suite.fq.Enqueue(&enq4)
+	tlist4 := new(list.List)
+	tlist4.PushBack(&enq4)
+	suite.fq.Enqueue(tlist4)
 }
 
 func (suite *FifoQueueTestSuite) TearDownTest() {
@@ -104,30 +114,46 @@ func (suite *FifoQueueTestSuite) TestLength() {
 }
 
 func (suite *FifoQueueTestSuite) TestDequeue() {
-	dqRes, err := suite.fq.Dequeue()
+	tlist, err := suite.fq.Dequeue()
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
-
+	if tlist.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+	}
+	dqRes := tlist.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job2", "Should get Job-2")
-	dqRes, err = suite.fq.Dequeue()
+
+	tlist, err = suite.fq.Dequeue()
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
+	if tlist.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+	}
+	dqRes = tlist.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job2", "Should get Job-2")
 	assert.Equal(suite.T(), dqRes.Id.GetValue(), "job2-2", "Should get Job-2 and Instance Id 2")
 
-	dqRes, err = suite.fq.Dequeue()
+	tlist, err = suite.fq.Dequeue()
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
+	if tlist.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+	}
+	dqRes = tlist.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), dqRes.Id.GetValue(), "job1-2", "Should be instance 2")
 
-	dqRes, err = suite.fq.Dequeue()
+	tlist, err = suite.fq.Dequeue()
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
+	if tlist.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+	}
+	dqRes = tlist.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), dqRes.Id.GetValue(), "job1-1", "Should get Job-1 and instance 1")
 }

@@ -81,6 +81,11 @@ message Task {
 
   // Number of dynamic ports
   uint32 numPorts = 11;
+
+  // Minimum number of running instances.  Value > 1 indicates task is in
+  // scheduling gang of that size; task instanceID is in [0..minInstances-1].
+  // If value <= 1, task is not in scheduling gang and is scheduled singly.
+  uint32 minInstances = 12;
 }
 
 /**

@@ -205,7 +205,7 @@ func (suite *TaskSchedulerTestSuite) AddTasks() {
 			Value: "respool11",
 		})
 		suite.NoError(err)
-		resPool.EnqueueTask(task)
+		resPool.EnqueueSchedulingUnit(resPool.MakeTaskSchedulingUnit(task))
 	}
 }
 

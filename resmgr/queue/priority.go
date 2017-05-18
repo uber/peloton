@@ -1,11 +1,11 @@
 package queue
 
 import (
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"container/list"
 	"errors"
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 )
 
 // PriorityQueue is FIFO queue which remove the highest priority task item entered first in the queue
@@ -28,21 +28,28 @@ func NewPriorityQueue(limit int64) *PriorityQueue {
 	return &fq
 }
 
-// Enqueue queues the task based on the priority in FIFO queue
-func (f *PriorityQueue) Enqueue(ti *resmgr.Task) error {
+// Enqueue queues a scheduling unit (task list gang) based on its priority into FIFO queue
+func (f *PriorityQueue) Enqueue(tlist *list.List) error {
 	f.Lock()
 	defer f.Unlock()
+
 	if f.count >= f.limit {
-		err := errors.New("Queue Limit is reached")
-		return err
+		return errors.New("queue Limit is reached")
 	}
-	f.list.Push(int(ti.Priority), ti)
+	if tlist.Len() <= 0 {
+		return errors.New("enqueue of empty list")
+	}
+
+	firstItem := tlist.Front()
+	priority := firstItem.Value.(*resmgr.Task).Priority
+	f.list.Push(int(priority), tlist)
 	f.count++
 	return nil
 }
 
-// Dequeue dequeues the task based on the priority and order they came into the queue
-func (f *PriorityQueue) Dequeue() (*resmgr.Task, error) {
+// Dequeue dequeues the scheduling unit (task list gang) based on the priority and order
+// they came into the queue
+func (f *PriorityQueue) Dequeue() (*list.List, error) {
 	// TODO: optimize the write lock here with potential read lock
 	f.Lock()
 	defer f.Unlock()
@@ -58,13 +65,15 @@ func (f *PriorityQueue) Dequeue() (*resmgr.Task, error) {
 				break
 			}
 		}
-		return &resmgr.Task{}, err
+		if err != nil {
+			return nil, err
+		}
 	}
 	if item == nil {
-		log.Errorf("Dequeue Failed")
-		return &resmgr.Task{}, err
+		return nil, errors.New("dequeue failed")
 	}
-	res := item.(*resmgr.Task)
+
+	res := item.(*list.List)
 	f.count--
 	return res, nil
 }

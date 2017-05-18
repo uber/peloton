@@ -338,11 +338,19 @@ func UnmarshalStringArray(jsonStrings []string, resultType reflect.Type) ([]inte
 func ConvertTaskToResMgrTask(
 	taskInfo *task.TaskInfo,
 	jobConfig *job.JobConfig) *resmgr.Task {
+	instanceID := taskInfo.GetInstanceId()
 	taskID := &peloton.TaskID{
 		Value: fmt.Sprintf(
 			"%s-%d",
 			taskInfo.GetJobId().GetValue(),
-			taskInfo.GetInstanceId()),
+			instanceID),
+	}
+
+	// If minInstances > 1, instances w/instanceID between 0..minInstances-1 should be gang-scheduled;
+	// only pass MinInstances value > 1 for those tasks.
+	minInstances := jobConfig.GetSla().GetMinimumRunningInstances()
+	if (minInstances <= 1) || (instanceID >= minInstances) {
+		minInstances = 1
 	}
 
 	numPorts := 0
@@ -354,14 +362,15 @@ func ConvertTaskToResMgrTask(
 	}
 
 	return &resmgr.Task{
-		Id:          taskID,
-		JobId:       taskInfo.GetJobId(),
-		TaskId:      taskInfo.GetRuntime().GetTaskId(),
-		Name:        taskInfo.GetConfig().GetName(),
-		Preemptible: jobConfig.GetSla().GetPreemptible(),
-		Priority:    jobConfig.GetSla().GetPriority(),
-		Resource:    taskInfo.GetConfig().GetResource(),
-		Constraint:  taskInfo.GetConfig().GetConstraint(),
-		NumPorts:    uint32(numPorts),
+		Id:           taskID,
+		JobId:        taskInfo.GetJobId(),
+		TaskId:       taskInfo.GetRuntime().GetTaskId(),
+		Name:         taskInfo.GetConfig().GetName(),
+		Preemptible:  jobConfig.GetSla().GetPreemptible(),
+		Priority:     jobConfig.GetSla().GetPriority(),
+		MinInstances: minInstances,
+		Resource:     taskInfo.GetConfig().GetResource(),
+		Constraint:   taskInfo.GetConfig().GetConstraint(),
+		NumPorts:     uint32(numPorts),
 	}
 }

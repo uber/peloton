@@ -5,6 +5,7 @@
 package respool
 
 import (
+	"container/list"
 	"fmt"
 	"testing"
 
@@ -28,6 +29,7 @@ import (
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/storage/mysql"
+	"code.uber.internal/infra/peloton/util"
 )
 
 type resTreeTestSuite struct {
@@ -237,6 +239,29 @@ func (suite *resTreeTestSuite) TestResourceConfig() {
 	}
 }
 
+func (suite *resTreeTestSuite) TestPendingQueueError() {
+	rt, ok := suite.resourceTree.(*tree)
+	suite.Equal(true, ok)
+	// Task -1
+	jobID1 := &peloton.JobID{
+		Value: "job1",
+	}
+	taskID1 := &peloton.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
+	}
+	taskItem1 := &resmgr.Task{
+		Name:     "job1-1",
+		Priority: 0,
+		JobId:    jobID1,
+		Id:       taskID1,
+	}
+	err := rt.resPools["respool1"].EnqueueSchedulingUnit(rt.resPools["respool11"].MakeTaskSchedulingUnit(taskItem1))
+	suite.EqualError(
+		err,
+		"Respool respool1 is not a leaf node",
+	)
+}
+
 func (suite *resTreeTestSuite) TestPendingQueue() {
 	rt, ok := suite.resourceTree.(*tree)
 	suite.Equal(true, ok)
@@ -253,7 +278,7 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 		JobId:    jobID1,
 		Id:       taskID1,
 	}
-	rt.resPools["respool11"].EnqueueTask(taskItem1)
+	rt.resPools["respool11"].EnqueueSchedulingUnit(rt.resPools["respool11"].MakeTaskSchedulingUnit(taskItem1))
 
 	// Task -2
 	jobID2 := &peloton.JobID{
@@ -268,22 +293,35 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 		JobId:    jobID2,
 		Id:       taskID2,
 	}
-	rt.resPools["respool11"].EnqueueTask(taskItem2)
+	rt.resPools["respool11"].EnqueueSchedulingUnit(rt.resPools["respool11"].MakeTaskSchedulingUnit(taskItem2))
 
-	res, err := rt.resPools["respool11"].DequeueTasks(1)
+	tlist3, err := rt.resPools["respool11"].DequeueSchedulingUnitList(1)
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
-	t1 := res.Front().Value.(*resmgr.Task)
+	if tlist3.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+	}
+	schedunit := tlist3.Front().Value.(*list.List)
+	if schedunit.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue single task scheduling unit should be length 1")
+	}
+	t1 := schedunit.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), t1.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
-	res2, err2 := rt.resPools["respool11"].DequeueTasks(1)
-	t2 := res2.Front().Value.(*resmgr.Task)
+	tlist4, err2 := rt.resPools["respool11"].DequeueSchedulingUnitList(1)
 	if err2 != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
-
+	if tlist4.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+	}
+	schedunit = tlist4.Front().Value.(*list.List)
+	if schedunit.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue single task scheduling unit should be length 1")
+	}
+	t2 := schedunit.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), t2.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), t2.Id.GetValue(), "job1-2", "Should get Job-1 and Task-1")
 }
@@ -416,10 +454,10 @@ func (suite *resTreeTestSuite) TestRefillTaskQueue() {
 	for i := 0; i < 4; i++ {
 		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
-	suite.createJob(&jobs[0], 10, 10, task.TaskState_SUCCEEDED)
-	suite.createJob(&jobs[1], 7, 10, task.TaskState_SUCCEEDED)
-	suite.createJob(&jobs[2], 2, 10, task.TaskState_SUCCEEDED)
-	suite.createJob(&jobs[3], 2, 10, task.TaskState_PENDING)
+	suite.createJob(&jobs[0], 10, 10, 10, task.TaskState_SUCCEEDED)
+	suite.createJob(&jobs[1], 7, 10, 1, task.TaskState_SUCCEEDED)
+	suite.createJob(&jobs[2], 2, 10, 1, task.TaskState_SUCCEEDED)
+	suite.createJob(&jobs[3], 2, 10, 1, task.TaskState_PENDING)
 
 	suite.resourceTree.(*tree).loadFromDB()
 
@@ -451,11 +489,13 @@ func (suite *resTreeTestSuite) createJob(
 	jobID *peloton.JobID,
 	numTasks uint32,
 	instanceCount uint32,
+	minInstances uint32,
 	taskState task.TaskState) {
 
 	sla := job.SlaConfig{
-		Preemptible: false,
-		Priority:    1,
+		Preemptible:             false,
+		Priority:                1,
+		MinimumRunningInstances: minInstances,
 	}
 	var resPoolID respool.ResourcePoolID
 	resPoolID.Value = "respool11"
@@ -497,13 +537,16 @@ func (suite *resTreeTestSuite) getQueueContent(
 
 	var result = make(map[string]map[string]bool)
 	for {
-		rmTask, err := suite.resourceTree.(*tree).
-			resPools[respoolID.Value].DequeueTasks(1)
+		tlist, err := suite.resourceTree.(*tree).
+			resPools[respoolID.Value].DequeueSchedulingUnitList(1)
 		if err != nil {
 			fmt.Printf("Failed to dequeue item: %v", err)
 			break
 		}
-
+		if tlist.Len() != 1 {
+			assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+		}
+		rmTask := tlist.Front().Value.(*list.List)
 		if rmTask != nil {
 			jobID := rmTask.Front().Value.(*resmgr.Task).JobId.Value
 			taskID := rmTask.Front().Value.(*resmgr.Task).Id.Value
@@ -535,7 +578,7 @@ func (suite *resTreeTestSuite) TestConvertTask() {
 		},
 	}
 
-	rmtask := respoolTree.ConvertResMgrTask(ti, jobConfig)
+	rmtask := util.ConvertTaskToResMgrTask(ti, jobConfig)
 	suite.NotNil(rmtask)
 	suite.EqualValues(rmtask.Priority, 12)
 	suite.EqualValues(rmtask.Preemptible, true)
@@ -550,7 +593,7 @@ func (suite *resTreeTestSuite) TestConvertTask() {
 	}
 	jobConfig = &job.JobConfig{}
 
-	rmtask = respoolTree.ConvertResMgrTask(ti, jobConfig)
+	rmtask = util.ConvertTaskToResMgrTask(ti, jobConfig)
 	suite.NotNil(rmtask)
 	suite.EqualValues(rmtask.Priority, 0)
 	suite.EqualValues(rmtask.Preemptible, false)

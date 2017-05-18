@@ -145,7 +145,7 @@ func (s *ResPoolSuite) TestResPoolEnqueue() {
 	s.NoError(err)
 
 	for _, task := range s.getTasks() {
-		resPoolNode.EnqueueTask(task)
+		resPoolNode.EnqueueSchedulingUnit(resPoolNode.MakeTaskSchedulingUnit(task))
 	}
 
 	resPool, ok := resPoolNode.(*resPool)
@@ -158,6 +158,27 @@ func (s *ResPoolSuite) TestResPoolEnqueue() {
 	s.Equal(2, priorityQueue.Len(2))
 	s.Equal(1, priorityQueue.Len(1))
 	s.Equal(1, priorityQueue.Len(0))
+}
+
+func (s *ResPoolSuite) TestResPoolEnqueueError() {
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+
+	poolConfig := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	s.NoError(err)
+
+	err = resPoolNode.EnqueueSchedulingUnit(nil)
+
+	s.EqualError(
+		err,
+		"scheduling unit has no elements",
+	)
 }
 
 func (s *ResPoolSuite) TestResPoolDequeue() {
@@ -174,12 +195,12 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 	s.NoError(err)
 
 	for _, task := range s.getTasks() {
-		resPoolNode.EnqueueTask(task)
+		resPoolNode.EnqueueSchedulingUnit(resPoolNode.MakeTaskSchedulingUnit(task))
 	}
 
-	dequeuedTasks, err := resPoolNode.DequeueTasks(1)
+	dequeuedSchedulingUnits, err := resPoolNode.DequeueSchedulingUnitList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedTasks.Len())
+	s.Equal(1, dequeuedSchedulingUnits.Len())
 
 	resPool, ok := resPoolNode.(*resPool)
 	s.True(ok)
@@ -191,10 +212,35 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 	// 1 task should've been deququeued
 	s.Equal(1, priorityQueue.Len(2))
 
-	dequeuedTasks, err = resPoolNode.DequeueTasks(1)
+	dequeuedSchedulingUnits, err = resPoolNode.DequeueSchedulingUnitList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedTasks.Len())
+	s.Equal(1, dequeuedSchedulingUnits.Len())
 
 	// 1 task should've been deququeued
 	s.Equal(0, priorityQueue.Len(2))
+}
+
+func (s *ResPoolSuite) TestResPoolDequeueError() {
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+
+	poolConfig := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	s.NoError(err)
+
+	for _, task := range s.getTasks() {
+		resPoolNode.EnqueueSchedulingUnit(resPoolNode.MakeTaskSchedulingUnit(task))
+	}
+
+	_, err = resPoolNode.DequeueSchedulingUnitList(0)
+	s.EqualError(
+		err,
+		"limit 0 is not valid",
+	)
+	s.Error(err)
 }

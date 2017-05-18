@@ -205,16 +205,18 @@ func (suite *HandlerTestSuite) pendingTasks() []*resmgr.Task {
 			Id:       &peloton.TaskID{Value: "job1-2"},
 		},
 		{
-			Name:     "job2-1",
-			Priority: 2,
-			JobId:    &peloton.JobID{Value: "job2"},
-			Id:       &peloton.TaskID{Value: "job2-1"},
+			Name:         "job2-1",
+			Priority:     2,
+			MinInstances: 2,
+			JobId:        &peloton.JobID{Value: "job2"},
+			Id:           &peloton.TaskID{Value: "job2-1"},
 		},
 		{
-			Name:     "job2-2",
-			Priority: 2,
-			JobId:    &peloton.JobID{Value: "job2"},
-			Id:       &peloton.TaskID{Value: "job2-2"},
+			Name:         "job2-2",
+			Priority:     2,
+			MinInstances: 2,
+			JobId:        &peloton.JobID{Value: "job2"},
+			Id:           &peloton.TaskID{Value: "job2-2"},
 		},
 	}
 }
@@ -222,16 +224,18 @@ func (suite *HandlerTestSuite) pendingTasks() []*resmgr.Task {
 func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
 	return []*resmgr.Task{
 		{
-			Name:     "job2-1",
-			Priority: 2,
-			JobId:    &peloton.JobID{Value: "job2"},
-			Id:       &peloton.TaskID{Value: "job2-1"},
+			Name:         "job2-1",
+			Priority:     2,
+			MinInstances: 2,
+			JobId:        &peloton.JobID{Value: "job2"},
+			Id:           &peloton.TaskID{Value: "job2-1"},
 		},
 		{
-			Name:     "job2-2",
-			Priority: 2,
-			JobId:    &peloton.JobID{Value: "job2"},
-			Id:       &peloton.TaskID{Value: "job2-2"},
+			Name:         "job2-2",
+			Priority:     2,
+			MinInstances: 2,
+			JobId:        &peloton.JobID{Value: "job2"},
+			Id:           &peloton.TaskID{Value: "job2-2"},
 		},
 		{
 			Name:     "job1-1",

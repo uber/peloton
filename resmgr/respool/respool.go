@@ -43,11 +43,13 @@ type ResPool interface {
 	ToResourcePoolInfo() *respool.ResourcePoolInfo
 	// Aggregates the child reservations by resource type
 	AggregatedChildrenReservations() (map[string]float64, error)
-	// Enqueues task into the pending queue of the resource pool
-	EnqueueTask(task *resmgr.Task) error
-	// Dequques tasks from the resource pool
-	DequeueTasks(int) (*list.List, error)
-	//SetEntitlement sets the entitlement for the resource pool
+	// Forms a scheduling unit from a single task
+	MakeTaskSchedulingUnit(task *resmgr.Task) *list.List
+	// Enqueues scheduling unit (task list) into resource pool pending queue
+	EnqueueSchedulingUnit(tlist *list.List) error
+	// Dequeues scheduling unit (task list) list from the resource pool
+	DequeueSchedulingUnitList(int) (*list.List, error)
+	// SetEntitlement sets the entitlement for the resource pool
 	// input is map[ResourceKind]->EntitledCapacity
 	SetEntitlement(map[string]float64)
 	// SetEntitlementByKind sets the entitlement of the respool
@@ -186,33 +188,47 @@ func (n *resPool) IsLeaf() bool {
 	return n.isLeaf()
 }
 
-// EnqueueTask inserts the task into pending queue
-func (n *resPool) EnqueueTask(task *resmgr.Task) error {
+// MakeTaskSchedulingUnit forms a scheduling unit from a single task
+func (n *resPool) MakeTaskSchedulingUnit(task *resmgr.Task) *list.List {
+	tlist := new(list.List)
+	tlist.PushBack(task)
+	return tlist
+}
+
+// EnqueueSchedulingUnit inserts a scheduling unit, which is a task list
+// representing a gang of 1 or more (same priority) tasks, into pending queue
+func (n *resPool) EnqueueSchedulingUnit(tlist *list.List) error {
+	if (tlist == nil) || (tlist.Len() <= 0) {
+		err := errors.Errorf("scheduling unit has no elements")
+		return err
+	}
 	if n.isLeaf() {
-		err := n.pendingQueue.Enqueue(task)
+		err := n.pendingQueue.Enqueue(tlist)
 		return err
 	}
 	err := errors.Errorf("Respool %s is not a leaf node", n.id)
 	return err
 }
 
-// DequeueTasks dequeues the tasks from the pending queue
-func (n *resPool) DequeueTasks(limit int) (*list.List, error) {
+// DequeueSchedulingUnitList dequeues a list of scheduling units from the
+// pending queue.  Each scheduling unit is a task list representing a gang
+// of 1 or more (same priority) tasks, from the pending queue.
+func (n *resPool) DequeueSchedulingUnitList(limit int) (*list.List, error) {
 	if n.isLeaf() {
 		if limit <= 0 {
-			err := errors.Errorf("limt %d is not valid", limit)
+			err := errors.Errorf("limit %d is not valid", limit)
 			return nil, err
 		}
 		l := new(list.List)
 		for i := 1; i <= limit; i++ {
-			res, err := n.pendingQueue.Dequeue()
+			resList, err := n.pendingQueue.Dequeue()
 			if err != nil {
 				if l.Len() == 0 {
 					return nil, err
 				}
 				break
 			}
-			l.PushBack(res)
+			l.PushBack(resList)
 		}
 		return l, nil
 	}

@@ -18,6 +18,8 @@ import (
 var (
 	errPortNameMissing    = errors.New("port name is missing")
 	errPortEnvNameMissing = errors.New("env name is missing for dynamic port")
+	errMaxInstancesTooBig = errors.New("job specified MaximumRunningInstances > InstanceCount")
+	errMInInstancesTooBig = errors.New("job specified MinimumRunningInstances > MaximumRunningInstances")
 )
 
 // GetTaskConfig returns the task config of a given task instance by
@@ -171,5 +173,19 @@ func ValidateTaskConfig(jobConfig *job.JobConfig) error {
 			return err
 		}
 	}
+
+	// Validate sla max/min running instances wrt instanceCount
+	instanceCount := jobConfig.InstanceCount
+	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
+	if maxRunningInstances == 0 {
+		maxRunningInstances = instanceCount
+	} else if maxRunningInstances > instanceCount {
+		return errMaxInstancesTooBig
+	}
+	minRunningInstances := jobConfig.GetSla().GetMinimumRunningInstances()
+	if minRunningInstances > maxRunningInstances {
+		return errMaxInstancesTooBig
+	}
+
 	return nil
 }

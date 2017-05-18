@@ -68,7 +68,7 @@ message SlaConfig {
   // default value is 1.  Admission requires the corresponding resource pool
   // has enough reserved resources for the full set of minimum number of instances.
   //
-  uint32 minmumRunningInstances = 5;
+  uint32 minimumRunningInstances = 5;
 }
 
 
