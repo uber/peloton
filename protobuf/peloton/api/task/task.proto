@@ -13,7 +13,7 @@ import "peloton/api/peloton.proto";
 import "peloton/api/errors/errors.proto";
 
 /**
- *  Resource configuration for a task, e.g. job instance
+ *  Resource configuration for a task.
  */
 message ResourceConfig {
 
@@ -189,6 +189,17 @@ message RestartPolicy {
 }
 
 /**
+ *  Persistent volume configuration for a task.
+ */
+message PersistentVolumeConfig {
+    // Volume mount path inside container.
+    string containerPath = 1;
+
+    // Volume size in MB.
+    uint32 sizeMB = 2;
+}
+
+/**
  *  Task configuration for a given job instance
  *  Note that only add string/slice/ptr type into TaskConfig directly due to
  *  the limitation of go reflection inside our task specific config logic.
@@ -223,6 +234,9 @@ message TaskConfig {
 
   // Task restart policy, unset means no restart.
   RestartPolicy restartPolicy = 9;
+
+  // Persistent volume config of the task.
+  PersistentVolumeConfig volume = 10;
 }
 
 /**

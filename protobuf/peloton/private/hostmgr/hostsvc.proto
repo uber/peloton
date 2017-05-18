@@ -10,6 +10,7 @@ package peloton.private.hostmgr.hostsvc;
 option go_package = "peloton/private/hostmgr/hostsvc";
 
 import "mesos/v1/mesos.proto";
+import "peloton/api/peloton.proto";
 import "peloton/api/task/task.proto";
 
 
@@ -36,6 +37,9 @@ message LaunchableTask {
   // Dynamic ports reserved on the host while this instance is running. The key
   // is port name, value is port number.
   map<string, uint32> ports = 3;
+
+  // Persistent volume used to launch task.
+  Volume volume = 4;
 }
 
 
@@ -183,6 +187,85 @@ service InternalHostService
   // TODO move out to separate service if scope widens
   // ClusterCapacity fetches the allocated resources to the framework`
   rpc ClusterCapacity(ClusterCapacityRequest) returns (ClusterCapacityResponse);
+
+  // Performs batch offer operations.
+  rpc OfferOperations(OfferOperationsRequest) returns (OfferOperationsResponse);
+}
+
+/**
+ * Error for offer operations call to mesos failed.
+ */
+message OperationsFailure {
+  string message = 1;
+}
+
+/**
+ * Volume config used for offer create/launch operation.
+ */
+message Volume {
+    // ID of the persistent volume.
+    api.peloton.VolumeID id = 1;
+
+    // the relative volume path inside the container.
+    string containerPath = 2;
+
+    // Resource needed for the volume.
+    mesos.v1.Resource resource = 3;
+}
+
+message OfferOperation {
+    // Defines an operation that can be performed against offers.
+    enum Type {
+      UNKNOWN = 0;
+      LAUNCH = 1;
+      RESERVE = 2;
+      UNRESERVE = 3;
+      CREATE = 4;
+      DESTROY = 5;
+    }
+
+    message Reserve {
+      // Mesos resources to be reserved.
+      repeated mesos.v1.Resource resources = 1;
+    }
+
+    message Create {
+      // Persistent volume to be created.
+      Volume volume = 1;
+    }
+
+    message Launch {
+      // List of tasks to be launched.
+      repeated LaunchableTask tasks = 1;
+    }
+
+    // Type of the operation.
+    Type type = 1;
+
+    // Reservation labels used for operations.
+    mesos.v1.Labels reservationLabels = 2;
+
+    Reserve reserve = 3;
+    Create create = 4;
+    Launch launch = 5;
+
+}
+
+message OfferOperationsRequest {
+    // Repeated Operations will be performed in sequential manner.
+    repeated OfferOperation operations = 1;
+
+    string hostname = 2;
+}
+
+message OfferOperationsResponse {
+    message Error {
+      OperationsFailure failure = 1;
+      InvalidArgument invalidArgument = 2;
+      InvalidOffers invalidOffers = 3;
+    }
+
+    Error error = 1;
 }
 
 message AcquireHostOffersRequest {
