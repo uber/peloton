@@ -113,7 +113,7 @@ func (client *Client) JobGetAction(jobName string) error {
 }
 
 // JobQueryAction is the action for getting job ids by labels and respool path
-func (client *Client) JobQueryAction(labels string, respoolPath string) error {
+func (client *Client) JobQueryAction(labels string, respoolPath string, keywords string) error {
 	var mesosLabels mesos.Labels
 	if len(labels) > 0 {
 		labelPairs := strings.Split(labels, labelSeparator)
@@ -141,6 +141,7 @@ func (client *Client) JobQueryAction(labels string, respoolPath string) error {
 	var request = &job.QueryRequest{
 		RespoolID: respoolID,
 		Labels:    &mesosLabels,
+		Keywords:  strings.Split(keywords, labelSeparator),
 	}
 	_, err = client.jobClient.Call(
 		client.ctx,

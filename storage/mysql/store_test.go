@@ -285,7 +285,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			{Key: &keys[1], Value: &vals[1]},
 		},
 	}
-	jobs, err = suite.store.Query(&labelQuery)
+	jobs, err = suite.store.Query(&labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), len(originalJobs))
 
@@ -296,7 +296,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			{Key: &keys[3], Value: &vals[3]},
 		},
 	}
-	jobs, err = suite.store.Query(&labelQuery)
+	jobs, err = suite.store.Query(&labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
 	labelQuery = mesos.Labels{
@@ -304,7 +304,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			{Key: &keys[3], Value: &vals[3]},
 		},
 	}
-	jobs, err = suite.store.Query(&labelQuery)
+	jobs, err = suite.store.Query(&labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
 
@@ -313,7 +313,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			{Key: &keys[2], Value: &vals[3]},
 		},
 	}
-	jobs, err = suite.store.Query(&labelQuery)
+	jobs, err = suite.store.Query(&labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 0)
 
@@ -321,7 +321,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 		Labels: []*mesos.Label{},
 	}
 	// test get all jobs if no labels
-	jobs, err = suite.store.Query(&labelQuery)
+	jobs, err = suite.store.Query(&labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 10)
 

@@ -90,6 +90,7 @@ var (
 	jobQuery            = job.Command("query", "query jobs by mesos label / respool")
 	jobQueryLabels      = jobQuery.Arg("labels", "labels").Default("").String()
 	jobQueryRespoolPath = jobQuery.Arg("respool", "respool path").Default("").String()
+	jobQueryKeywords    = jobQuery.Arg("keywords", "keywords").Default("").String()
 
 	// Top level task command
 	task = app.Command("task", "manage tasks")
@@ -251,7 +252,7 @@ func main() {
 	case jobGet.FullCommand():
 		err = client.JobGetAction(*jobGetName)
 	case jobQuery.FullCommand():
-		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath)
+		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords)
 	case taskGet.FullCommand():
 		err = client.TaskGetAction(*taskGetJobName, *taskGetInstanceID)
 	case taskList.FullCommand():

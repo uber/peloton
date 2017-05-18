@@ -221,7 +221,7 @@ func (m *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 // In the tasks table, the "Labels" field are compacted (all whitespaces and " are removed for each label),
 // then stored as the "labels_summary" row. Mysql fulltext index are also set on this field.
 // When a query comes, the query labels are compacted in the same way then queried against the fulltext index.
-func (m *Store) Query(Labels *mesos_v1.Labels) (map[string]*job.JobConfig, error) {
+func (m *Store) Query(Labels *mesos_v1.Labels, keywords []string) (map[string]*job.JobConfig, error) {
 	if len(Labels.Labels) == 0 {
 		log.Debug("Labels is empty, return all jobs")
 		return m.GetAllJobs()

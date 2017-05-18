@@ -99,6 +99,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 			Sla:           &sla,
 			DefaultConfig: &taskConfig,
 			Labels:        &labels,
+			Description:   fmt.Sprintf("A test job with awesome keyword%v keytest%v", i, i),
 		}
 		originalJobs = append(originalJobs, &jobConfig)
 		err := jobStore.CreateJob(&jobID, &jobConfig, "uber")
@@ -115,7 +116,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		Labels: []*mesos.Label{
 			{Key: &keyCommon, Value: &valCommon},
 		},
-	})
+	}, nil)
 	suite.NoError(err)
 	suite.Equal(records, len(result1))
 	for i := 0; i < records; i++ {
@@ -129,7 +130,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 				{Key: &keys0[i], Value: &vals0[i]},
 				{Key: &keys1[i], Value: &vals1[i]},
 			},
-		})
+		}, nil)
 		suite.NoError(err)
 		suite.Equal(1, len(result1))
 		suite.Equal(fmt.Sprintf("TestJob_%d", i), result1[jobIDs[i].Value].Name)
@@ -142,9 +143,31 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 			{Key: &keys0[0], Value: &other},
 			{Key: &keys1[1], Value: &vals1[0]},
 		},
-	})
+	}, nil)
 	suite.NoError(err)
 	suite.Equal(0, len(result1))
+
+	// Test query with keyword
+	result1, err = jobStore.Query(nil, []string{"team6", "test", "awesome"})
+	suite.NoError(err)
+	suite.Equal(3, len(result1))
+
+	result1, err = jobStore.Query(nil, []string{"team6", "test", "awesome", "keytest1"})
+	suite.NoError(err)
+	suite.Equal(1, len(result1))
+
+	result1, err = jobStore.Query(nil, []string{"team6", "test", "awesome", "nonexistkeyword"})
+	suite.NoError(err)
+	suite.Equal(0, len(result1))
+
+	// Query with both labels and keyword
+	result1, err = jobStore.Query(&mesos.Labels{
+		Labels: []*mesos.Label{
+			{Key: &keys0[0], Value: &vals0[0]},
+		},
+	}, []string{"team6", "test", "awesome"})
+	suite.NoError(err)
+	suite.Equal(1, len(result1))
 }
 
 func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {

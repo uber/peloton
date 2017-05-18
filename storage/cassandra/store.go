@@ -209,24 +209,44 @@ func (s *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 }
 
 // Query returns all jobs that contains the Labels.
-func (s *Store) Query(labels *mesos.Labels) (map[string]*job.JobConfig, error) {
+func (s *Store) Query(labels *mesos.Labels, keywords []string) (map[string]*job.JobConfig, error) {
 	// Query is based on stratio lucene index on jobs.
 	// See https://github.com/Stratio/cassandra-lucene-index
 	// We are using "must" for the labels and only return the jobs that contains all
 	// label values
 	// TODO: investigate if there are any golang library that can build lucene query
-
+	var resultMap = make(map[string]*job.JobConfig)
+	if (labels == nil || len(labels.GetLabels()) == 0) &&
+		(keywords == nil || len(keywords) == 0) {
+		return resultMap, nil
+	}
 	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["
-	for i, label := range labels.Labels {
-		where = where + fmt.Sprintf("{type: \"contains\", field:\"labels\", values:\"%s\"}", *label.Value)
-		if i < len(labels.Labels)-1 {
+	// Labels field must contain value of the specified labels
+	hasLabels := false
+	if labels != nil && len(labels.GetLabels()) > 0 {
+		hasLabels = true
+		for i, label := range labels.Labels {
+			where = where + fmt.Sprintf("{type: \"contains\", field:\"labels\", values:\"%s\"}", *label.Value)
+			if i < len(labels.Labels)-1 {
+				where = where + ","
+			}
+		}
+	}
+	// jobconfig field must contain all specified keywords
+	if keywords != nil && len(keywords) > 0 {
+		if hasLabels {
 			where = where + ","
+		}
+		for i, word := range keywords {
+			where = where + fmt.Sprintf("{type: \"contains\", field:\"jobconfig\", values:\"%s\"}", word)
+			if i < len(keywords)-1 {
+				where = where + ","
+			}
 		}
 	}
 	where = where + "]}}')"
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable).Where(where)
-
 	result, err := s.DataStore.Execute(context.Background(), stmt)
 	if err != nil {
 		log.WithField("labels", labels).
@@ -235,7 +255,6 @@ func (s *Store) Query(labels *mesos.Labels) (map[string]*job.JobConfig, error) {
 		s.metrics.JobQueryFail.Inc(1)
 		return nil, err
 	}
-	var resultMap = make(map[string]*job.JobConfig)
 	allResults, err := result.All(context.Background())
 	if err != nil {
 		log.WithField("labels", labels).

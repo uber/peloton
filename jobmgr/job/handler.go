@@ -275,8 +275,9 @@ func (h *serviceHandler) Query(
 	h.metrics.JobAPIQuery.Inc(1)
 	var jobConfigs map[string]*job.JobConfig
 	var err error
-	if req.GetLabels().GetLabels() != nil && len(req.GetLabels().GetLabels()) > 0 {
-		jobConfigs, err = h.jobStore.Query(req.Labels)
+	if (req.GetLabels().GetLabels() != nil && len(req.GetLabels().GetLabels()) > 0) ||
+		(req.GetKeywords() != nil && len(req.GetKeywords()) > 0) {
+		jobConfigs, err = h.jobStore.Query(req.Labels, req.GetKeywords())
 		if err != nil {
 			h.metrics.JobQueryFail.Inc(1)
 			log.WithError(err).Error("Query job failed with error")

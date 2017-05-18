@@ -237,11 +237,12 @@ message GetResponse {
 }
 
 message QueryRequest {
-  // Both labels and respoolID fields are optional,
-  // and while query is executed, the two fields are
+  // Both labels/respoolID/keywords fields are optional,
+  // and while query is executed, the fields are
   // in "AND" relationship if they are both specified.
   mesos.v1.Labels labels = 1;
   respool.ResourcePoolID respoolID = 2;
+  repeated string keywords = 3;
 }
 
 message QueryResponse {
