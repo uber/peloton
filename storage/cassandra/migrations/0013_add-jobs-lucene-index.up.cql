@@ -9,6 +9,7 @@ WITH OPTIONS = {
       fields: {
          owner: {type: "string"},
          labels: {type: "text", analyzer: "english"},
+         jobconfig:{type: "text", analyzer: "english"},
          createtime: {type: "date", pattern: "yyyy/MM/dd"}
       }
    }'
