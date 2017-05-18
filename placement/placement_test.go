@@ -208,7 +208,7 @@ func TestNoHostOfferReturned(t *testing.T) {
 	assert.Equal(
 		t,
 		int64(0),
-		testScope.Snapshot().Counters()["offer_starved"].Value())
+		testScope.Snapshot().Counters()["offer_starved+"].Value())
 
 	t1 := createTestTask(0)
 
@@ -257,7 +257,7 @@ func TestNoHostOfferReturned(t *testing.T) {
 	assert.NotEqual(
 		t,
 		int64(0),
-		testScope.Snapshot().Counters()["offer_starved"].Value())
+		testScope.Snapshot().Counters()["offer_starved+"].Value())
 }
 
 // This test ensures that multiple tasks returned from resmgr can be properly placed by hostmgr

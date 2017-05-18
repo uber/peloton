@@ -30,12 +30,12 @@ type Metrics struct {
 	TaskQuery       tally.Counter
 	TaskQueryFail   tally.Counter
 
-	GetPlacement       tally.Counter
-	GetPlacementFail   tally.Counter
-	GetDBTaskInfo      tally.Timer
-	LauncherGoRoutines tally.Counter
-	GetPlacementsCall  tally.Timer
-	LaunchTasksCall    tally.Timer
+	GetPlacement              tally.Counter
+	GetPlacementFail          tally.Counter
+	GetDBTaskInfo             tally.Timer
+	LauncherGoRoutines        tally.Counter
+	GetPlacementsCallDuration tally.Timer
+	LaunchTasksCallDuration   tally.Timer
 
 	RetryFailedTasksTotal tally.Counter
 }
@@ -47,39 +47,39 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	taskFailScope := scope.Tagged(map[string]string{"type": "fail"})
 	taskAPIScope := scope.SubScope("api")
 	functionCallScope := scope.SubScope("functioncall")
-	getPlacementScope := scope.SubScope("getplacement")
+	getPlacementScope := scope.SubScope("get_placement")
 	launchTaskScope := scope.SubScope("launch_tasks")
 	retryTaskScope := scope.SubScope("retry_tasks")
 
 	return &Metrics{
-		TaskAPIGet:            taskAPIScope.Counter("get"),
-		TaskGet:               taskSuccessScope.Counter("get"),
-		TaskGetFail:           taskFailScope.Counter("get"),
-		TaskCreate:            taskSuccessScope.Counter("create"),
-		TaskCreateFail:        taskFailScope.Counter("create"),
-		TaskAPIList:           taskAPIScope.Counter("list"),
-		TaskList:              taskSuccessScope.Counter("list"),
-		TaskListFail:          taskFailScope.Counter("list"),
-		TaskAPIStart:          taskAPIScope.Counter("start"),
-		TaskStart:             taskSuccessScope.Counter("start"),
-		TaskStartFail:         taskFailScope.Counter("start"),
-		TaskAPIStop:           taskAPIScope.Counter("stop"),
-		TaskStop:              taskSuccessScope.Counter("stop"),
-		TaskStopFail:          taskFailScope.Counter("stop"),
-		TaskAPIRestart:        taskAPIScope.Counter("restart"),
-		TaskRestart:           taskSuccessScope.Counter("restart"),
-		TaskRestartFail:       taskFailScope.Counter("restart"),
-		TaskLaunch:            taskSuccessScope.Counter("launch"),
-		TaskLaunchFail:        taskFailScope.Counter("launch"),
-		TaskAPIQuery:          taskAPIScope.Counter("query"),
-		TaskQuery:             taskSuccessScope.Counter("query"),
-		TaskQueryFail:         taskFailScope.Counter("query"),
-		GetPlacement:          taskAPIScope.Counter("getplacement"),
-		GetPlacementFail:      taskFailScope.Counter("getplacement"),
-		GetDBTaskInfo:         functionCallScope.Timer("taskinfo"),
-		LauncherGoRoutines:    getPlacementScope.Counter("go_routines"),
-		GetPlacementsCall:     getPlacementScope.Timer("get_placement_call"),
-		LaunchTasksCall:       launchTaskScope.Timer("launch_tasks"),
-		RetryFailedTasksTotal: retryTaskScope.Counter("failed_total"),
+		TaskAPIGet:                taskAPIScope.Counter("get"),
+		TaskGet:                   taskSuccessScope.Counter("get"),
+		TaskGetFail:               taskFailScope.Counter("get"),
+		TaskCreate:                taskSuccessScope.Counter("create"),
+		TaskCreateFail:            taskFailScope.Counter("create"),
+		TaskAPIList:               taskAPIScope.Counter("list"),
+		TaskList:                  taskSuccessScope.Counter("list"),
+		TaskListFail:              taskFailScope.Counter("list"),
+		TaskAPIStart:              taskAPIScope.Counter("start"),
+		TaskStart:                 taskSuccessScope.Counter("start"),
+		TaskStartFail:             taskFailScope.Counter("start"),
+		TaskAPIStop:               taskAPIScope.Counter("stop"),
+		TaskStop:                  taskSuccessScope.Counter("stop"),
+		TaskStopFail:              taskFailScope.Counter("stop"),
+		TaskAPIRestart:            taskAPIScope.Counter("restart"),
+		TaskRestart:               taskSuccessScope.Counter("restart"),
+		TaskRestartFail:           taskFailScope.Counter("restart"),
+		TaskLaunch:                taskSuccessScope.Counter("launch"),
+		TaskLaunchFail:            taskFailScope.Counter("launch"),
+		TaskAPIQuery:              taskAPIScope.Counter("query"),
+		TaskQuery:                 taskSuccessScope.Counter("query"),
+		TaskQueryFail:             taskFailScope.Counter("query"),
+		GetPlacement:              taskAPIScope.Counter("get_placement"),
+		GetPlacementFail:          taskFailScope.Counter("get_placement"),
+		GetDBTaskInfo:             functionCallScope.Timer("get_taskinfo"),
+		LauncherGoRoutines:        getPlacementScope.Counter("go_routines"),
+		GetPlacementsCallDuration: getPlacementScope.Timer("call_duration"),
+		LaunchTasksCallDuration:   launchTaskScope.Timer("call_duration"),
+		RetryFailedTasksTotal:     retryTaskScope.Counter("failed_total"),
 	}
 }

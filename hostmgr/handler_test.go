@@ -166,9 +166,9 @@ func (suite *HostMgrHandlerTestSuite) checkResourcesGauges(
 	status string,
 ) {
 	values := map[string]float64{
-		fmt.Sprintf("offer.pool.%s.cpu", status):  float64(numHosts * _perHostCPU),
-		fmt.Sprintf("offer.pool.%s.mem", status):  float64(numHosts * _perHostMem),
-		fmt.Sprintf("offer.pool.%s.disk", status): float64(numHosts * _perHostDisk),
+		fmt.Sprintf("offer.pool.%s.cpu+", status):  float64(numHosts * _perHostCPU),
+		fmt.Sprintf("offer.pool.%s.mem+", status):  float64(numHosts * _perHostMem),
+		fmt.Sprintf("offer.pool.%s.disk+", status): float64(numHosts * _perHostDisk),
 	}
 	suite.assertGaugeValues(values)
 }
@@ -197,7 +197,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 
 	suite.Equal(
 		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers_invalid"].Value())
+		suite.testScope.Snapshot().Counters()["acquire_host_offers_invalid+"].Value())
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
@@ -225,7 +225,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 
 	suite.Equal(
 		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers"].Value())
+		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
 
 	// TODO: Add check for number of HostOffers in placing state.
 	suite.checkResourcesGauges(0, "ready")
@@ -244,7 +244,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 
 	suite.Equal(
 		int64(2),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers"].Value())
+		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
 
 	// Release previously acquired host offers.
 
@@ -267,7 +267,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 
 	suite.Equal(
 		int64(1),
-		suite.testScope.Snapshot().Counters()["release_host_offers"].Value())
+		suite.testScope.Snapshot().Counters()["release_host_offers+"].Value())
 
 	// Acquire again should return non empty result.
 	acquiredResp, _, err = suite.handler.AcquireHostOffers(
@@ -320,7 +320,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	suite.Equal(
 		int64(1),
-		suite.testScope.Snapshot().Counters()["acquire_host_offers"].Value())
+		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
 
 	// TODO: Add check for number of HostOffers in placing state.
 	suite.checkResourcesGauges(0, "ready")
@@ -344,7 +344,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	suite.Equal(
 		int64(1),
-		suite.testScope.Snapshot().Counters()["launch_tasks_invalid"].Value())
+		suite.testScope.Snapshot().Counters()["launch_tasks_invalid+"].Value())
 
 	// Generate some launchable tasks.
 	launchReq.Tasks = generateLaunchableTasks(1)
@@ -396,7 +396,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 	suite.Nil(launchResp.GetError())
 	suite.Equal(
 		int64(1),
-		suite.testScope.Snapshot().Counters()["launch_tasks"].Value())
+		suite.testScope.Snapshot().Counters()["launch_tasks+"].Value())
 
 	// TODO: Add check for number of HostOffers in placing state.
 	suite.checkResourcesGauges(0, "ready")
@@ -457,7 +457,7 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 
 	suite.Equal(
 		int64(2),
-		suite.testScope.Snapshot().Counters()["kill_tasks"].Value())
+		suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
 }
 
 // Test some failure cases of killing task
@@ -538,11 +538,11 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 
 	suite.Equal(
 		int64(1),
-		suite.testScope.Snapshot().Counters()["kill_tasks"].Value())
+		suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
 
 	suite.Equal(
 		int64(1),
-		suite.testScope.Snapshot().Counters()["kill_tasks_fail"].Value())
+		suite.testScope.Snapshot().Counters()["kill_tasks_fail+"].Value())
 }
 
 func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {

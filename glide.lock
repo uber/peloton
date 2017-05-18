@@ -1,5 +1,5 @@
-hash: ef97aee2c9bda475d6b40eb72c32091cec9c77ce9a566439018630005508231f
-updated: 2017-05-11T14:28:52.739081234-07:00
+hash: ffee48d86ad7a7a8e21bf6b29b57aa434acca57ef98810735e0e3cff36159689
+updated: 2017-05-17T12:07:10.132577347-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -133,7 +133,7 @@ imports:
 - name: github.com/uber-go/atomic
   version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
 - name: github.com/uber-go/tally
-  version: 4ecb8f919865e9fb8aa397f0c00a6f76b6a815f5
+  version: e9b601813b0be4771b1b3995390567b67ab2b3fc
   subpackages:
   - prometheus
   - statsd

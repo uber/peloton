@@ -60,9 +60,10 @@ type Metrics struct {
 	// SetPlacementFail counts the number of tasks failed to be placed
 	SetPlacementFail tally.Counter
 
+	// CreatePlacementDuration is the timer for create placement
 	CreatePlacementDuration tally.Timer
 
-	// Adding metrics for set placement call
+	// SetPlacementDuration is the timer for set placement
 	SetPlacementDuration tally.Timer
 }
 
@@ -71,12 +72,17 @@ type Metrics struct {
 func NewMetrics(scope tally.Scope) *Metrics {
 	taskScope := scope.SubScope("task")
 	offerScope := scope.SubScope("offer")
+	placementScope := scope.SubScope("placement")
 
 	taskSuccessScope := taskScope.Tagged(map[string]string{"type": "success"})
 	taskFailScope := taskScope.Tagged(map[string]string{"type": "fail"})
-	taskTimeScope := taskScope.Tagged(map[string]string{"type": "timer"})
+
 	offerSuccessScope := offerScope.Tagged(map[string]string{"type": "success"})
 	offerFailScope := offerScope.Tagged(map[string]string{"type": "fail"})
+
+	placementSuccessScope := placementScope.Tagged(map[string]string{"type": "success"})
+	placementFailScope := placementScope.Tagged(map[string]string{"type": "fail"})
+	placementTimeScope := placementScope.Tagged(map[string]string{"type": "timer"})
 
 	return &Metrics{
 		Running:      scope.Gauge("running"),
@@ -86,18 +92,18 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskLaunchDispatches:     taskSuccessScope.Counter("launch_dispatch"),
 		TaskLaunchDispatchesFail: taskFailScope.Counter("launch_dispatch"),
 
-		SetPlacementSuccess: taskSuccessScope.Counter("placement"),
-		SetPlacementFail:    taskFailScope.Counter("placement"),
+		SetPlacementSuccess: placementSuccessScope.Counter("set"),
+		SetPlacementFail:    placementFailScope.Counter("set"),
 
 		OfferGet:     offerSuccessScope.Counter("get"),
-		OfferGetFail: offerFailScope.Counter("get_fail"),
+		OfferGetFail: offerFailScope.Counter("get"),
 
 		LaunchTask:            taskSuccessScope.Counter("launch"),
 		LaunchTaskFail:        taskFailScope.Counter("launch"),
 		LaunchOfferAccept:     offerSuccessScope.Counter("accept"),
 		LaunchOfferAcceptFail: offerFailScope.Counter("accept"),
 
-		CreatePlacementDuration: taskTimeScope.Timer("create_placement"),
-		SetPlacementDuration:    taskTimeScope.Timer("set_placement"),
+		CreatePlacementDuration: placementTimeScope.Timer("create_duration"),
+		SetPlacementDuration:    placementTimeScope.Timer("set_duration"),
 	}
 }

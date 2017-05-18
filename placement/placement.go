@@ -333,7 +333,7 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 		err := errors.New("No placements to set")
 		return err
 	}
-	watcher := s.metrics.SetPlacementDuration.Start()
+
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
 	var response resmgrsvc.SetPlacementsResponse
@@ -341,12 +341,17 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 		Placements: placements,
 	}
 	log.WithField("request", request).Debug("Calling SetPlacements")
+
+	setPlacementStart := time.Now()
 	_, err := s.resMgrClient.Call(
 		ctx,
 		yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements"),
 		request,
 		&response,
 	)
+	setPlacementDuration := time.Since(setPlacementStart)
+	s.metrics.SetPlacementDuration.Record(setPlacementDuration)
+
 	// TODO: add retry / put back offer and tasks in failure scenarios
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -358,7 +363,7 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 		return err
 	}
 
-	log.WithField("response", response).Debug("Place Tasks returned")
+	log.WithField("response", response).Debug("SetPlacements returned")
 
 	if response.Error != nil {
 		log.WithFields(log.Fields{
@@ -373,10 +378,10 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 		lenTasks += len(p.Tasks)
 	}
 	s.metrics.SetPlacementSuccess.Inc(int64(len(placements)))
-	s.metrics.SetPlacementDuration.Record(watcher.Stop())
 
 	log.WithFields(log.Fields{
 		"num_placements": len(placements),
+		"duration":       setPlacementDuration.Seconds(),
 	}).Info("Set placements")
 	return nil
 }
@@ -387,7 +392,8 @@ func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
 	hostOffer *hostsvc.HostOffer,
 	selectedPorts []uint32) *resmgr.Placement {
 
-	watcher := s.metrics.CreatePlacementDuration.Start()
+	createPlacementStart := time.Now()
+	createPlacementDuration := time.Since(createPlacementStart)
 	var tasksIds []*peloton.TaskID
 	for _, t := range tasks {
 		taskID := t.Id
@@ -406,7 +412,8 @@ func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
 	log.WithFields(log.Fields{
 		"num_tasks": len(tasksIds),
 	}).Info("Create Placements")
-	s.metrics.CreatePlacementDuration.Record(watcher.Stop())
+
+	s.metrics.CreatePlacementDuration.Record(createPlacementDuration)
 	return placement
 }
 

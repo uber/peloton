@@ -114,9 +114,9 @@ func NewMetrics(scope tally.Scope) Metrics {
 
 		JobGetRuntime:         jobRuntimeSuccessScope.Counter("get"),
 		JobGetRuntimeFail:     jobRuntimeFailScope.Counter("get"),
-		JobGetByState:         jobRuntimeScope.Counter("get_job_by_state"),
+		JobGetByState:         jobRuntimeSuccessScope.Counter("get_job_by_state"),
 		JobGetByStateFail:     jobRuntimeFailScope.Counter("get_job_by_state"),
-		JobGetByRespoolID:     jobRuntimeScope.Counter("get_job_by_respool_id"),
+		JobGetByRespoolID:     jobRuntimeSuccessScope.Counter("get_job_by_respool_id"),
 		JobGetByRespoolIDFail: jobRuntimeFailScope.Counter("get_job_by_respool_id"),
 		JobUpdateRuntime:      jobRuntimeSuccessScope.Counter("update"),
 		JobUpdateRuntimeFail:  jobRuntimeFailScope.Counter("update"),
@@ -133,7 +133,7 @@ func NewMetrics(scope tally.Scope) Metrics {
 
 		ResourcePoolCreate:     resourcePoolSuccessScope.Counter("create"),
 		ResourcePoolCreateFail: resourcePoolFailScope.Counter("create"),
-		ResourcePoolGet:        resourcePoolScope.Counter("get"),
+		ResourcePoolGet:        resourcePoolSuccessScope.Counter("get"),
 		ResourcePoolGetFail:    resourcePoolFailScope.Counter("get"),
 
 		FrameworkIDGet:     frameworkIDSuccessScope.Counter("get"),
@@ -151,5 +151,6 @@ func NewMetrics(scope tally.Scope) Metrics {
 		VolumeDelete:     volumeSuccessScope.Counter("delete"),
 		VolumeDeleteFail: volumeFailScope.Counter("delete"),
 	}
+
 	return metrics
 }

@@ -21,7 +21,7 @@ const (
 	TallyFlushInterval = 1 * time.Second
 )
 
-// Config will be contianing the metrics configuration
+// Config will be containing the metrics configuration
 type Config struct {
 	Prometheus *prometheusConfig `yaml:"prometheus"`
 	Statsd     *statsdConfig     `yaml:"statsd"`
@@ -41,36 +41,70 @@ func InitMetricScope(
 	cfg *Config,
 	rootMetricScope string,
 	metricFlushInterval time.Duration) (tally.Scope, io.Closer, *nethttp.ServeMux) {
-	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
-	mux := nethttp.NewServeMux()
+	// TODO: move mux setup out of metrics initialization
+	mux := setupServeMux()
+
 	var reporter tally.StatsReporter
 	var promHandler nethttp.Handler
 	metricSeparator := "."
-	if cfg.Prometheus != nil && cfg.Prometheus.Enable {
-		// tally panics if scope name contains "-", hence force convert to "_"
-		rootMetricScope = strings.Replace(rootMetricScope, "-", "_", -1)
-		metricSeparator = "_"
-		promReporter := tallyprom.NewReporter(nil)
-		reporter = promReporter
-		promHandler = promReporter.HTTPHandler()
-	} else if cfg.Statsd != nil && cfg.Statsd.Enable {
-		log.Infof("Metrics configured with statsd endpoint %s", cfg.Statsd.Endpoint)
-		c, err := statsd.NewClient(cfg.Statsd.Endpoint, "")
-		if err != nil {
-			log.Fatalf("Unable to setup Statsd client: %v", err)
-		}
-		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
-	} else {
-		log.Warnf("No metrics backends configured, using the statsd.NoopClient")
-		c, _ := statsd.NewNoopClient()
-		reporter = tallystatsd.NewReporter(c, tallystatsd.NewOptions())
-	}
+	// promethus panics if scope name contains "-", hence force convert to "_"
+	rootMetricScope = SafeScopeName(rootMetricScope)
 
-	if promHandler != nil {
+	var metricScope tally.Scope
+	var scopeCloser io.Closer
+	// TODO: switch to multi reporter so we can hook up with m3 and prom together
+	if cfg.Prometheus != nil && cfg.Prometheus.Enable {
+		metricSeparator = "_"
+		promReporter := tallyprom.NewReporter(tallyprom.Options{})
+		promHandler = promReporter.HTTPHandler()
+
 		// if prometheus support is enabled, handle /metrics to serve prom metrics
 		log.Infof("Setting up prometheus metrics handler at /metrics")
 		mux.Handle("/metrics", promHandler)
+
+		metricScope, scopeCloser = tally.NewRootScope(
+			tally.ScopeOptions{
+				Prefix:         rootMetricScope,
+				Tags:           map[string]string{},
+				CachedReporter: promReporter,
+				Separator:      metricSeparator,
+			}, metricFlushInterval)
+	} else {
+		if cfg.Statsd != nil && cfg.Statsd.Enable {
+			log.Infof("Metrics configured with statsd endpoint %s", cfg.Statsd.Endpoint)
+			c, err := statsd.NewClient(cfg.Statsd.Endpoint, "")
+			if err != nil {
+				log.Fatalf("Unable to setup Statsd client: %v", err)
+			}
+			reporter = tallystatsd.NewReporter(c, tallystatsd.Options{})
+		} else {
+			log.Warnf("No metrics backends configured, using the statsd.NoopClient")
+			c, _ := statsd.NewNoopClient()
+			reporter = tallystatsd.NewReporter(c, tallystatsd.Options{})
+		}
+
+		metricScope, scopeCloser = tally.NewRootScope(tally.ScopeOptions{
+			Prefix:    rootMetricScope,
+			Tags:      map[string]string{},
+			Reporter:  reporter,
+			Separator: metricSeparator,
+		}, metricFlushInterval)
 	}
+
+	return metricScope, scopeCloser, mux
+}
+
+// SafeScopeName returns a safe scope name that removes dash which is not
+// allowed in tally
+func SafeScopeName(name string) string {
+	return strings.Replace(name, "-", "", -1)
+}
+
+// setupServeMux constructs server mux which is used to mux together other (non-RPC) handlers,
+// like metrics exposition endpoints, etc
+func setupServeMux() *nethttp.ServeMux {
+	// mux is used to mux together other (non-RPC) handlers, like metrics exposition endpoints, etc
+	mux := nethttp.NewServeMux()
 	mux.HandleFunc("/health", func(w nethttp.ResponseWriter, _ *nethttp.Request) {
 		// TODO: make this healthcheck live, and check some kind of internal health?
 		if true {
@@ -89,17 +123,5 @@ func InitMetricScope(
 	mux.Handle("/debug/pprof/symbol", nethttp.HandlerFunc(pprof.Symbol))
 	mux.Handle("/debug/pprof/trace", nethttp.HandlerFunc(pprof.Trace))
 
-	metricScope, scopeCloser := tally.NewRootScope(
-		rootMetricScope,
-		map[string]string{},
-		reporter,
-		metricFlushInterval,
-		metricSeparator)
-	return metricScope, scopeCloser, mux
-}
-
-// SafeScopeName returns a safe scope name that removes dash which is not
-// allowed in tally
-func SafeScopeName(name string) string {
-	return strings.Replace(name, "-", "", -1)
+	return mux
 }

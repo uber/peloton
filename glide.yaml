@@ -68,7 +68,7 @@ import:
   subpackages:
   - statsd
 - package: github.com/uber-go/tally
-  version: 4ecb8f919865e9fb8aa397f0c00a6f76b6a815f5
+  version: ^3.0.1
   subpackages:
   - statsd
 - package: github.com/Sirupsen/logrus

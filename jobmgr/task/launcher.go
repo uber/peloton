@@ -164,7 +164,7 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 	// TODO: turn getplacement metric into gauge so we can
 	//       get the current get_placements counts
 	l.metrics.GetPlacement.Inc(int64(len(response.Placements)))
-	l.metrics.GetPlacementsCall.Record(callDuration)
+	l.metrics.GetPlacementsCallDuration.Record(callDuration)
 	return response.Placements, nil
 }
 
@@ -212,7 +212,6 @@ func (l *launcher) getLaunchableTasks(
 
 	var tasksInfo []*task.TaskInfo
 	getTaskInfoStart := time.Now()
-	watcher := l.metrics.GetDBTaskInfo.Start()
 
 	for _, taskID := range tasks {
 		// TODO: we need to check goal state before we can launch tasks
@@ -263,8 +262,7 @@ func (l *launcher) getLaunchableTasks(
 		"duration":  getTaskInfoDuration.Seconds(),
 	}).Info("GetTaskInfo")
 
-	d := watcher.Stop()
-	l.metrics.GetDBTaskInfo.Record(d)
+	l.metrics.GetDBTaskInfo.Record(getTaskInfoDuration)
 
 	launchableTasks := l.createLaunchableTasks(tasksInfo)
 	return launchableTasks, nil
@@ -350,7 +348,7 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 
 	if response.Error != nil {
 		log.WithFields(log.Fields{
-			"tasks":     len(selectedTasks),
+			"num_tasks": len(selectedTasks),
 			"placement": placement,
 			"error":     response.Error.String(),
 		}).Error("Failed to launch tasks")
@@ -364,6 +362,6 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 		"hostname":  placement.GetHostname(),
 		"duration":  callDuration.Seconds(),
 	}).Info("Launched tasks")
-	l.metrics.LaunchTasksCall.Record(callDuration)
+	l.metrics.LaunchTasksCallDuration.Record(callDuration)
 	return nil
 }
