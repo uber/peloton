@@ -4,11 +4,15 @@ import subprocess
 import glob
 import string
 import os
+import sys
 
 # peloton_proto = './vendor/code.uber.internal/infra/peloton/protobuf/'
 peloton_proto = './protobuf/'
 go_loc = 'code.uber.internal/infra/peloton/.gen/'
 gen_dir = '.gen'
+protoc_cmd = (
+    'protoc --proto_path={proto_path} --go_out={mflag}:{gen_dir} {file}'
+)
 
 
 def protos():
@@ -35,10 +39,13 @@ def main():
 
     # For every .proto file in peloton generate us a golang file
     for f in files:
-        cmd = 'protoc --proto_path=%s --go_out=%s:%s %s' % \
-              (peloton_proto, m, gen_dir, f)
-        print cmd
-        subprocess.call(cmd, shell=True)
+        print protoc_cmd.format(proto_path=peloton_proto, mflag='${mflag}',
+                                gen_dir=gen_dir, file=f)
+        cmd = protoc_cmd.format(proto_path=peloton_proto, mflag=m,
+                                gen_dir=gen_dir, file=f)
+        retval = subprocess.call(cmd, shell=True)
+        if retval != 0:
+            sys.exit(retval)
 
 
 if __name__ == '__main__':
