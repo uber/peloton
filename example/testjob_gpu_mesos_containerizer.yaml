@@ -39,4 +39,4 @@ defaultconfig:
         mode: 2
   command:
     shell: true
-    value: 'nvidia-smi'
+    value: 'nvidia-smi && nvcc -V'
