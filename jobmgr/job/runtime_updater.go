@@ -26,18 +26,33 @@ var jobStateUpdateInterval = 15 * time.Second
 // checkAllJobsInterval is the interval at which all non-terminal jobs are checked
 var checkAllJobsInterval = 1 * time.Hour
 
+// taskStatesAfterStart is the set of Peloton task states which
+// indicate a task is being or has already been started.
+var taskStatesAfterStart = []task.TaskState{
+	task.TaskState_STARTING,
+	task.TaskState_RUNNING,
+	task.TaskState_SUCCEEDED,
+	task.TaskState_FAILED,
+	task.TaskState_LOST,
+	task.TaskState_PREEMPTING,
+	task.TaskState_KILLING,
+	task.TaskState_KILLED,
+}
+
 // NewJobRuntimeUpdater creates a new JobRuntimeUpdater
 func NewJobRuntimeUpdater(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	resmgrClient json.Client,
 	parentScope tally.Scope) *RuntimeUpdater {
+	// TODO: load firstTaskUpdateTime from DB after restart
 	updater := RuntimeUpdater{
-		jobStore:           jobStore,
-		taskStore:          taskStore,
-		lastTaskUpdateTime: make(map[string]float64),
-		taskUpdatedFlags:   make(map[string]bool),
-		metrics:            NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
+		jobStore:            jobStore,
+		taskStore:           taskStore,
+		firstTaskUpdateTime: make(map[string]float64),
+		lastTaskUpdateTime:  make(map[string]float64),
+		taskUpdatedFlags:    make(map[string]bool),
+		metrics:             NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
 		jobRecovery: NewJobRecovery(
 			jobStore,
 			taskStore,
@@ -53,6 +68,8 @@ func NewJobRuntimeUpdater(
 type RuntimeUpdater struct {
 	sync.Mutex
 
+	// jobID -> first task update time
+	firstTaskUpdateTime map[string]float64
 	// jobID -> last task update time
 	lastTaskUpdateTime map[string]float64
 	// jobID -> if task has updated
@@ -99,13 +116,28 @@ func (j *RuntimeUpdater) OnEvents(events []*pb_eventstream.Event) {
 		// Mark the corresponding job as "taskUpdated", and track the update time
 		j.taskUpdatedFlags[jobID] = true
 		j.lastTaskUpdateTime[jobID] = *event.MesosTaskStatus.Timestamp
+		if _, ok := j.firstTaskUpdateTime[jobID]; !ok {
+			j.firstTaskUpdateTime[jobID] = *event.MesosTaskStatus.Timestamp
+		}
 		j.progress.Store(event.Offset)
 	}
 }
 
+// formatTime converts a Unix timestamp to a string format of the
+// given layout in UTC. See https://golang.org/pkg/time/ for possible
+// time layout in golang. For example, it will return RFC3339 format
+// string like 2017-01-02T11:00:00.123456789Z if the layout is
+// time.RFC3339Nano
+func formatTime(timestamp float64, layout string) string {
+	seconds := int64(timestamp)
+	nanoSec := int64((timestamp - float64(seconds)) *
+		float64(time.Second/time.Nanosecond))
+	return time.Unix(seconds, nanoSec).UTC().Format(layout)
+}
+
 func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 	log.WithField("job_id", jobID).
-		Info("JobRuntimeUpdater updateJobState")
+		Info("JobRuntimeUpdater updateJobRuntime")
 
 	// Read the job config and job runtime
 	jobConfig, err := j.jobStore.GetJobConfig(jobID)
@@ -162,28 +194,39 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 		return nil
 	}
 
-	seconds := int64(j.lastTaskUpdateTime[jobID.Value])
-	nanoSec := int64((j.lastTaskUpdateTime[jobID.Value] - float64(seconds)) *
-		float64(time.Second/time.Nanosecond))
-
-	lastTaskUpdateTime := time.Unix(seconds, nanoSec)
+	// Update job start time if necessary
+	firstTaskUpdateTime, ok := j.firstTaskUpdateTime[jobID.Value]
+	if ok && jobRuntime.StartTime == "" {
+		count := uint32(0)
+		for _, state := range taskStatesAfterStart {
+			count += stateCounts[state.String()]
+		}
+		if count > 0 {
+			jobRuntime.StartTime = formatTime(firstTaskUpdateTime, time.RFC3339Nano)
+		}
+	}
 
 	// Decide the new job state from the task state counts
+	lastTaskUpdateTime, ok := j.lastTaskUpdateTime[jobID.Value]
+	completionTime := ""
+	if ok {
+		completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
+	}
 	if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
 		jobState = job.JobState_SUCCEEDED
-		jobRuntime.CompletionTime = lastTaskUpdateTime.String()
+		jobRuntime.CompletionTime = completionTime
 		j.metrics.JobSucceeded.Inc(1)
 	} else if stateCounts[task.TaskState_SUCCEEDED.String()]+
 		stateCounts[task.TaskState_FAILED.String()] == instances {
 		jobState = job.JobState_FAILED
-		jobRuntime.CompletionTime = lastTaskUpdateTime.String()
+		jobRuntime.CompletionTime = completionTime
 		j.metrics.JobFailed.Inc(1)
 	} else if stateCounts[task.TaskState_KILLED.String()] > 0 &&
 		(stateCounts[task.TaskState_SUCCEEDED.String()]+
 			stateCounts[task.TaskState_FAILED.String()]+
 			stateCounts[task.TaskState_KILLED.String()] == instances) {
 		jobState = job.JobState_KILLED
-		jobRuntime.CompletionTime = lastTaskUpdateTime.String()
+		jobRuntime.CompletionTime = completionTime
 		j.metrics.JobKilled.Inc(1)
 	} else if stateCounts[task.TaskState_RUNNING.String()] > 0 {
 		jobState = job.JobState_RUNNING
@@ -214,6 +257,7 @@ func (j *RuntimeUpdater) updateJobsRuntime() {
 		if taskUpdated && j.started.Load() {
 			j.updateJobRuntime(&peloton.JobID{Value: jobID})
 			delete(j.taskUpdatedFlags, jobID)
+			delete(j.firstTaskUpdateTime, jobID)
 			delete(j.lastTaskUpdateTime, jobID)
 		}
 	}
@@ -256,9 +300,10 @@ func (j *RuntimeUpdater) checkAllJobs() {
 }
 
 func (j *RuntimeUpdater) clear() {
-	log.Info("jobRuntimeHolder cleared")
+	log.Info("jobRuntimeUpdater cleared")
 
 	j.taskUpdatedFlags = make(map[string]bool)
+	j.firstTaskUpdateTime = make(map[string]float64)
 	j.lastTaskUpdateTime = make(map[string]float64)
 
 }

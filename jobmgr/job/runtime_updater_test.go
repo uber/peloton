@@ -3,6 +3,7 @@ package job
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
@@ -18,6 +19,15 @@ import (
 	"github.com/uber-go/tally"
 )
 
+const (
+	numJobs  = 10
+	numTasks = 20
+
+	jobCreationTime   = "2017-01-02T11:00:00.123456789Z"
+	jobStartTime      = "2017-01-02T15:04:05.456789016Z"
+	jobCompletionTime = "2017-01-03T18:04:05.987654447Z"
+)
+
 func TestUpdateJobRuntime_Events(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -27,26 +37,31 @@ func TestUpdateJobRuntime_Events(t *testing.T) {
 	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
 
 	var events []*pb_eventstream.Event
-	var times []float64
 
-	for i := 0; i < 10; i++ {
-		t := float64(i)
-		taskID := fmt.Sprintf("job%d-%d-%s", i, i, uuid.NewUUID().String())
-		events = append(events, &pb_eventstream.Event{
-			MesosTaskStatus: &mesos.TaskStatus{
-				TaskId: &mesos.TaskID{
-					Value: &taskID,
+	times := [numJobs][numTasks]float64{}
+
+	for i := 0; i < numJobs; i++ {
+		for j := 0; j < numTasks; j++ {
+			times[i][j] = float64(i*numTasks + j)
+			taskID := fmt.Sprintf("job%d-%d-%s", i, j, uuid.NewUUID().String())
+			events = append(events, &pb_eventstream.Event{
+				MesosTaskStatus: &mesos.TaskStatus{
+					TaskId: &mesos.TaskID{
+						Value: &taskID,
+					},
+					Timestamp: &times[i][j],
 				},
-				Timestamp: &t,
-			},
-		})
-		times = append(times, t)
+			})
+		}
 	}
 	updater.OnEvents(events)
 
 	for i := 0; i < 10; i++ {
 		assert.True(t, updater.taskUpdatedFlags[fmt.Sprintf("job%d", i)])
-		assert.Equal(t, updater.lastTaskUpdateTime[fmt.Sprintf("job%d", i)], times[i])
+		assert.Equal(t, updater.firstTaskUpdateTime[fmt.Sprintf("job%d", i)],
+			times[i][0])
+		assert.Equal(t, updater.lastTaskUpdateTime[fmt.Sprintf("job%d", i)],
+			times[i][numTasks-1])
 	}
 
 	updater.Start()
@@ -72,7 +87,8 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		InstanceCount: uint32(3),
 	}
 	var jobRuntime = job.RuntimeInfo{
-		State: job.JobState_PENDING,
+		State:        job.JobState_PENDING,
+		CreationTime: jobCreationTime,
 	}
 
 	mockJobStore.EXPECT().
@@ -109,25 +125,35 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		AnyTimes()
 
 	taskID := fmt.Sprintf("job%d-%d-%s", 0, 1, uuid.NewUUID().String())
-	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
-	timeChange := float64(100000)
+	eventTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	eventTimeUnix := float64(eventTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 	var events = []*pb_eventstream.Event{
 		{
 			MesosTaskStatus: &mesos.TaskStatus{
 				TaskId: &mesos.TaskID{
 					Value: &taskID,
 				},
-				Timestamp: &timeChange,
+				Timestamp: &eventTimeUnix,
 			},
 		},
 	}
+	// Initialize a new job runtime updater and expect to load three
+	// tasks (two succeded and one running) from DB. Also process one
+	// task event and verify the job start time is as expected.
+	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
 	updater.Start()
+	updater.OnEvents(events)
 	updater.checkAllJobs()
 
 	assert.Equal(t, job.JobState_RUNNING, jobRuntime.State)
 	assert.Equal(t, uint32(2), jobRuntime.TaskStats[task.TaskState_SUCCEEDED.String()])
 	assert.Equal(t, uint32(1), jobRuntime.TaskStats[task.TaskState_RUNNING.String()])
+	assert.Equal(t, jobCreationTime, jobRuntime.CreationTime)
+	assert.Equal(t, jobStartTime, jobRuntime.StartTime)
 
+	// Update the DB to have all three tasks in successed
+	// state. Process another task event and verify the job completion
+	// time is as expected.
 	mockTaskStore2.EXPECT().
 		GetTasksForJobAndState(gomock.Any(), task.TaskState_SUCCEEDED.String()).
 		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil, uint32(2): nil}, nil).
@@ -142,23 +168,33 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		AnyTimes()
 
 	updater.taskStore = mockTaskStore2
-	timeChange = float64(200000)
+	eventTime, _ = time.Parse(time.RFC3339Nano, jobCompletionTime)
+	eventTimeUnix = float64(eventTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 	events = []*pb_eventstream.Event{
 		{
 			MesosTaskStatus: &mesos.TaskStatus{
 				TaskId: &mesos.TaskID{
 					Value: &taskID,
 				},
-				Timestamp: &timeChange,
+				Timestamp: &eventTimeUnix,
 			},
 		},
 	}
 	updater.OnEvents(events)
-	assert.Equal(t, timeChange, updater.lastTaskUpdateTime["job0"])
+	assert.Equal(t, eventTimeUnix, updater.lastTaskUpdateTime["job0"])
 	updater.updateJobsRuntime()
 
 	assert.Equal(t, job.JobState_SUCCEEDED, jobRuntime.State)
 	assert.Equal(t, uint32(3), jobRuntime.TaskStats[task.TaskState_SUCCEEDED.String()])
 	assert.Equal(t, uint32(0), jobRuntime.TaskStats[task.TaskState_RUNNING.String()])
+	assert.Equal(t, jobCreationTime, jobRuntime.CreationTime)
+	assert.Equal(t, jobStartTime, jobRuntime.StartTime)
+	assert.Equal(t, jobCompletionTime, jobRuntime.CompletionTime)
+
 	updater.Stop()
+}
+
+func TestFormatTime(t *testing.T) {
+	str := formatTime(1495230211.12345, time.RFC3339Nano)
+	assert.Equal(t, str, "2017-05-19T21:43:31.12345004Z")
 }

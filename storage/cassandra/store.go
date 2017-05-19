@@ -125,7 +125,7 @@ func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner str
 	}
 	initialJobRuntime := job.RuntimeInfo{
 		State:        job.JobState_INITIALIZED,
-		CreationTime: time.Now().String(),
+		CreationTime: time.Now().Format(time.RFC3339Nano),
 		TaskStats:    make(map[string]uint32),
 	}
 

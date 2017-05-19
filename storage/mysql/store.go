@@ -180,7 +180,7 @@ func (m *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy
 
 	initialJobRuntime := &job.RuntimeInfo{
 		State:        job.JobState_INITIALIZED,
-		CreationTime: time.Now().String(),
+		CreationTime: time.Now().Format(time.RFC3339Nano),
 		TaskStats:    make(map[string]uint32),
 	}
 	// TODO: make the two following statements in one transaction

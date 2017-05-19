@@ -9,6 +9,7 @@
 *.tmp
 .tmp/
 .build/
+.gen/
 /pbgen
 /vendor
 /vendor_mocks
