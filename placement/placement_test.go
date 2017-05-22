@@ -65,7 +65,7 @@ func createTestTask(instanceID int) *resmgr.Task {
 			Value: testJobName,
 		},
 		Id: &peloton.TaskID{
-			Value: fmt.Sprintf("%s-%s", testJobName, instanceID),
+			Value: fmt.Sprintf("%s-%v", testJobName, instanceID),
 		},
 		Resource: resCfg,
 		Priority: uint32(1),

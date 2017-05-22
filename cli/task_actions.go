@@ -247,7 +247,7 @@ func printTaskStopResponse(r task.StopResponse, debug bool) {
 			} else if r.GetError().GetOutOfRange() != nil {
 				fmt.Fprintf(
 					tabWriter,
-					"Requested instances:%s of job %s is not within "+
+					"Requested instances:%v of job %s is not within "+
 						"the range of valid instances (0...%d)\n",
 					r.GetInvalidInstanceIds(),
 					r.GetError().GetOutOfRange().GetJobId().GetValue(),

@@ -279,7 +279,7 @@ func (m *serviceHandler) Stop(
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
 				UpdateError: &task.TaskUpdateError{
-					Message: fmt.Sprint("Goalstate update failed for %v", err),
+					Message: fmt.Sprintf("Goalstate update failed for %v", err),
 				},
 			},
 			InvalidInstanceIds: invalidInstanceIds,
