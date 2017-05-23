@@ -11,6 +11,7 @@ election:
   zk_servers: ["localhost:8192"]
 
 metrics:
+  multi_reporter: true
   prometheus:
     enable: true
   #statsd:

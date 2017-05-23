@@ -4,6 +4,14 @@
 #    topic: peloton
 
 metrics:
+  # to use statsd, multi_reporter should be turned off
+  multi_reporter: true
+  m3:
+    hostPort: 127.0.0.1:9052
+    service: peloton
+    env: staging
+    tags:
+        cluster: peloton-default
   prometheus:
     enable: true
   # statsd:

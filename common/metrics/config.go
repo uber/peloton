@@ -5,12 +5,16 @@ import (
 	"io"
 	nethttp "net/http"
 	"net/http/pprof"
+	"os"
 	"strings"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
+
 	"github.com/uber-go/tally"
+	tallym3 "github.com/uber-go/tally/m3"
+	tallymulti "github.com/uber-go/tally/multi"
 	tallyprom "github.com/uber-go/tally/prometheus"
 	tallystatsd "github.com/uber-go/tally/statsd"
 )
@@ -19,12 +23,21 @@ const (
 	// TallyFlushInterval is the flush interval for metrics buffered in Tally to
 	// be flushed to the backend
 	TallyFlushInterval = 1 * time.Second
+
+	// M3 related configs
+	m3HostPort = "M3_HOSTPORT"
+	m3Service  = "M3_SERVICE"
+	m3ENV      = "M3_ENV"
+	// TODO: reuse the global var name constant CLUSTER
+	m3Cluster = "CLUSTER"
 )
 
 // Config will be containing the metrics configuration
 type Config struct {
-	Prometheus *prometheusConfig `yaml:"prometheus"`
-	Statsd     *statsdConfig     `yaml:"statsd"`
+	MultiReporter bool                   `yaml:"multi_reporter"`
+	Prometheus    *prometheusConfig      `yaml:"prometheus"`
+	Statsd        *statsdConfig          `yaml:"statsd"`
+	M3            *tallym3.Configuration `yaml:"m3"`
 }
 
 type prometheusConfig struct {
@@ -45,31 +58,56 @@ func InitMetricScope(
 	mux := setupServeMux()
 
 	var reporter tally.StatsReporter
-	var promHandler nethttp.Handler
 	metricSeparator := "."
 	// promethus panics if scope name contains "-", hence force convert to "_"
 	rootMetricScope = SafeScopeName(rootMetricScope)
 
 	var metricScope tally.Scope
 	var scopeCloser io.Closer
-	// TODO: switch to multi reporter so we can hook up with m3 and prom together
-	if cfg.Prometheus != nil && cfg.Prometheus.Enable {
-		metricSeparator = "_"
-		promReporter := tallyprom.NewReporter(tallyprom.Options{})
-		promHandler = promReporter.HTTPHandler()
+	if cfg.MultiReporter {
+		var m3Reporter tallym3.Reporter
+		var promReporter tallyprom.Reporter
 
-		// if prometheus support is enabled, handle /metrics to serve prom metrics
-		log.Infof("Setting up prometheus metrics handler at /metrics")
-		mux.Handle("/metrics", promHandler)
+		if cfg.Prometheus != nil && cfg.Prometheus.Enable {
+			metricSeparator = "_"
+			promReporter = tallyprom.NewReporter(tallyprom.Options{})
+			promHandler := promReporter.HTTPHandler()
+
+			// if prometheus support is enabled, handle /metrics to serve prom metrics
+			log.Infof("Setting up prometheus metrics handler at /metrics")
+			mux.Handle("/metrics", promHandler)
+		}
+
+		loadM3Configs(cfg.M3)
+		if cfg.M3 != nil && cfg.M3.HostPort != "" {
+			r, err := cfg.M3.NewReporter()
+			if err != nil {
+				log.Fatalf("Failed to create m3 reporter: %v", err)
+			}
+			m3Reporter = r
+		}
+
+		var reporter tally.CachedStatsReporter
+		if m3Reporter != nil && promReporter != nil {
+			reporter = tallymulti.NewMultiCachedReporter(m3Reporter, promReporter)
+		} else if m3Reporter != nil {
+			reporter = tallymulti.NewMultiCachedReporter(m3Reporter)
+		} else if promReporter != nil {
+			reporter = tallymulti.NewMultiCachedReporter(promReporter)
+		} else {
+			log.Fatal("No metrics reporter is configured")
+		}
 
 		metricScope, scopeCloser = tally.NewRootScope(
 			tally.ScopeOptions{
 				Prefix:         rootMetricScope,
 				Tags:           map[string]string{},
-				CachedReporter: promReporter,
+				CachedReporter: reporter,
 				Separator:      metricSeparator,
-			}, metricFlushInterval)
+			},
+			metricFlushInterval)
 	} else {
+		// To use statsd, MultiReporter should be turned off
 		if cfg.Statsd != nil && cfg.Statsd.Enable {
 			log.Infof("Metrics configured with statsd endpoint %s", cfg.Statsd.Endpoint)
 			c, err := statsd.NewClient(cfg.Statsd.Endpoint, "")
@@ -83,12 +121,14 @@ func InitMetricScope(
 			reporter = tallystatsd.NewReporter(c, tallystatsd.Options{})
 		}
 
-		metricScope, scopeCloser = tally.NewRootScope(tally.ScopeOptions{
-			Prefix:    rootMetricScope,
-			Tags:      map[string]string{},
-			Reporter:  reporter,
-			Separator: metricSeparator,
-		}, metricFlushInterval)
+		metricScope, scopeCloser = tally.NewRootScope(
+			tally.ScopeOptions{
+				Prefix:    rootMetricScope,
+				Tags:      map[string]string{},
+				Reporter:  reporter,
+				Separator: metricSeparator,
+			},
+			metricFlushInterval)
 	}
 
 	return metricScope, scopeCloser, mux
@@ -124,4 +164,37 @@ func setupServeMux() *nethttp.ServeMux {
 	mux.Handle("/debug/pprof/trace", nethttp.HandlerFunc(pprof.Trace))
 
 	return mux
+}
+
+// loadM3Configs loads m3 configs from env vars if exist
+func loadM3Configs(cfg *tallym3.Configuration) {
+	if cfg == nil {
+		return
+	}
+
+	log.Info("Load m3 configs from env vars")
+
+	if v := os.Getenv(m3HostPort); v != "" {
+		log.WithField("hostport", v).
+			Info("Load m3 config")
+		cfg.HostPort = v
+	}
+
+	if v := os.Getenv(m3Service); v != "" {
+		log.WithField("service", v).
+			Info("Load m3 config")
+		cfg.Service = v
+	}
+
+	if v := os.Getenv(m3ENV); v != "" {
+		log.WithField("env", v).
+			Info("Load m3 config")
+		cfg.Env = v
+	}
+
+	if v := os.Getenv(m3Cluster); v != "" {
+		log.WithField("tag.cluster", v).
+			Info("Load m3 config")
+		cfg.CommonTags[m3Cluster] = v
+	}
 }

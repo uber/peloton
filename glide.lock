@@ -1,5 +1,5 @@
 hash: ffee48d86ad7a7a8e21bf6b29b57aa434acca57ef98810735e0e3cff36159689
-updated: 2017-05-22T11:06:03.963308682-07:00
+updated: 2017-05-23T16:35:58.518403899-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -7,6 +7,10 @@ imports:
   - parse
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
+- name: github.com/apache/thrift
+  version: 9549b25c77587b29be4e0b5c258221a4ed85d37a
+  subpackages:
+  - lib/go/thrift
 - name: github.com/beorn7/perks
   version: 4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9
   subpackages:
@@ -25,21 +29,22 @@ imports:
   version: aabc039ad04deb721e234f99cd1b4aa28ac71a40
   subpackages:
   - store
+  - store/mock
   - store/zookeeper
 - name: github.com/facebookgo/clock
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
 - name: github.com/gemnasium/migrate
   version: 603c58f2c1d0882d7d5b24791e6e5af5ab392e44
   subpackages:
-  - driver/cassandra
-  - migrate
-  - driver/mysql
   - driver
+  - driver/cassandra
+  - driver/mysql
   - file
+  - migrate
   - migrate/direction
   - pipe
 - name: github.com/go-sql-driver/mysql
-  version: 382e13d099fcf5f5994290892ab258fbebbdc5e3
+  version: 2e00b5cd70399450106cec6431c2e2ce3cae5034
 - name: github.com/gocql/gocql
   version: b0b4cc30eff2e6acd0977ec5dd214f6bb9d0180b
   subpackages:
@@ -51,8 +56,8 @@ imports:
   subpackages:
   - jsonpb
   - proto
-  - types
   - sortkeys
+  - types
 - name: github.com/golang/mock
   version: bd3c8e81be01eef76d4b503f5e687d2d1354d2d9
   subpackages:
@@ -64,7 +69,7 @@ imports:
   - protoc
   - protoc-gen-go
 - name: github.com/golang/snappy
-  version: 553a641470496b2327abcac10b36396bd98e45c9
+  version: d9eb7a3d35ec988b8585d4a0068e462c27d28380
 - name: github.com/hailocab/go-hostpool
   version: e80d13ce29ede4452c43dea11e79b9bc8a15b478
 - name: github.com/hashicorp/errwrap
@@ -72,7 +77,7 @@ imports:
 - name: github.com/hashicorp/go-multierror
   version: ed905158d87462226a13fe39ddf685ea65f1c11f
 - name: github.com/jmoiron/sqlx
-  version: d9bd385d68c068f1fabb5057e3dedcbcbb039d0f
+  version: cac998c4f0959c19c638c523e374fa8e4e0bcfe3
   subpackages:
   - reflectx
 - name: github.com/lann/builder
@@ -91,7 +96,7 @@ imports:
 - name: github.com/pborman/uuid
   version: 1b00554d822231195d1babd97ff4a781231955c9
 - name: github.com/pkg/errors
-  version: c605e284fe17294bda444b34710735b29d1a9d90
+  version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
 - name: github.com/pmezard/go-difflib
   version: 792786c7400a136282c1664665ae0a8db921c6c2
   subpackages:
@@ -102,20 +107,18 @@ imports:
   - prometheus
   - prometheus/promhttp
 - name: github.com/prometheus/client_model
-  version: 6f3806018612930941127f2a7c6c453ba2c527d2
+  version: fa8ad6fec33561be4280a8f0514318c79d7f6cb6
   subpackages:
   - go
 - name: github.com/prometheus/common
-  version: 13ba4ddd0caa9c28ca7b7bffe1dfa9ed8d5ef207
+  version: 6d76b79f239843a04e8ad8dfd8fcadfa3920236f
   subpackages:
-  - log
   - expfmt
-  - model
   - internal/bitbucket.org/ww/goautoneg
+  - log
+  - model
 - name: github.com/prometheus/procfs
-  version: 65c1f6f8f0fc1e2185eb9863a3bc751496404259
-  subpackages:
-  - xfs
+  version: fcdb11ccb4389efb1b210b7ffb623ab71c5fdd60
 - name: github.com/samuel/go-zookeeper
   version: 059fe7f9753e88663c3437e6e633ad7a95c118b6
   repo: https://github.com/nomis52/go-zookeeper.git
@@ -130,45 +133,50 @@ imports:
   version: e3a8ff8ce36581f87a15341206f205b1da467059
   subpackages:
   - assert
+  - mock
   - require
   - suite
-  - mock
 - name: github.com/uber-common/bark
   version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
 - name: github.com/uber-go/atomic
-  version: e682c1008ac17bf26d2e4b5ad6cdd08520ed0b22
+  version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
 - name: github.com/uber-go/tally
   version: e9b601813b0be4771b1b3995390567b67ab2b3fc
   subpackages:
-  - statsd
+  - m3
+  - m3/customtransports
+  - m3/thrift
+  - m3/thriftudp
+  - multi
   - prometheus
+  - statsd
 - name: go.uber.org/atomic
   version: 4e336646b2ef9fc6e47be8e21594178f98e5ebcf
 - name: go.uber.org/yarpc
   version: b8e8c0ff7b690926285c2d87d5ea222700310457
   subpackages:
   - encoding/json
-  - internal
-  - internal/baggage
-  - internal/encoding
-  - internal/errors
-  - internal/filter
-  - internal/interceptor
-  - internal/meta
-  - internal/net
-  - internal/request
-  - internal/sync
   - encoding/thrift
   - encoding/thrift/internal
   - internal
+  - internal
+  - internal/baggage
   - internal/clientconfig
   - internal/encoding
+  - internal/encoding
   - internal/errors
+  - internal/errors
+  - internal/filter
   - internal/inboundmiddleware
+  - internal/interceptor
   - internal/meta
+  - internal/meta
+  - internal/net
   - internal/net
   - internal/outboundmiddleware
   - internal/request
+  - internal/request
+  - internal/sync
   - internal/sync
   - peer
   - peer/hostport
@@ -178,18 +186,19 @@ imports:
   - transport/internal
   - transport/tchannel
   - transport/tchannel/internal
+  - transport/transporttest
 - name: golang.org/x/net
-  version: 513929065c19401a1c7b76ecd942f9f86a0c061b
+  version: 45e771701b814666a7eb299e6c7a57d0b1799e91
   subpackages:
   - context
   - context/ctxhttp
 - name: golang.org/x/sys
-  version: dbc2be9168a660ef302e04b6ff6406de6f967473
+  version: d75a52659825e75fff6158388dddc6a5b04f9ba5
   subpackages:
   - unix
-  - windows/svc/eventlog
   - windows
   - windows/registry
+  - windows/svc/eventlog
 - name: gopkg.in/alecthomas/kingpin.v2
   version: 7f0871f2e17818990e4eed73f9b5c2f429501228
 - name: gopkg.in/inf.v0
@@ -198,4 +207,4 @@ imports:
   version: 0a9835d809fb647a62611d30cb792e0b5dd65b11
 - name: gopkg.in/yaml.v2
   version: a5b47d31c556af34a302ce5d659e6fea44d90de0
-devImports: []
+testImports: []
