@@ -13,7 +13,7 @@ storage:
     max_batch_size_rows: 500
     conn_lifetime: 30s
   cassandra:
-    max_batch_size_rows: 50
+    max_batch_size_rows: 20
     connection:
       contactPoints: ["127.0.0.1"]
       port: 9042
