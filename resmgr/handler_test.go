@@ -34,7 +34,7 @@ import (
 
 type HandlerTestSuite struct {
 	suite.Suite
-	handler       *serviceHandler
+	handler       *ServiceHandler
 	context       context.Context
 	resTree       respool.Tree
 	taskScheduler rm_task.Scheduler
@@ -48,14 +48,8 @@ func (suite *HandlerTestSuite) SetupSuite() {
 	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(suite.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(suite.ctrl)
-
-	// commenting it out for removing loadfromdb from resmgr for now
-	// until we fix it
-	//gomock.InOrder(
-	//	mockJobStore.EXPECT().GetAllJobs(context.Background()).Return(nil, nil).Times(5),
-	//)
-
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.ctrl)
+
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 	suite.resTree = respool.GetTree()
 	// Initializing the resmgr state machine
@@ -64,7 +58,7 @@ func (suite *HandlerTestSuite) SetupSuite() {
 	rm_task.InitScheduler(1*time.Second, suite.rmTaskTracker)
 	suite.taskScheduler = rm_task.GetScheduler()
 
-	suite.handler = &serviceHandler{
+	suite.handler = &ServiceHandler{
 		metrics:     NewMetrics(tally.NoopScope),
 		resPoolTree: respool.GetTree(),
 		placements: queue.NewQueue(
@@ -405,7 +399,7 @@ func (suite *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 }
 
 func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
-	handler := &serviceHandler{
+	handler := &ServiceHandler{
 		metrics:     NewMetrics(tally.NoopScope),
 		resPoolTree: nil,
 		placements: queue.NewQueue(
@@ -436,7 +430,7 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 
 func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
-	handler := &serviceHandler{
+	handler := &ServiceHandler{
 		metrics:   NewMetrics(tally.NoopScope),
 		maxOffset: &c,
 	}

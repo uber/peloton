@@ -804,6 +804,11 @@ func (m *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 	return nil, fmt.Errorf("GetJobRuntime cannot find runtime for jobID %v", id.Value)
 }
 
+// GetJobsByStates returns the jobIDs by job states
+func (m *Store) GetJobsByStates(ctx context.Context, state []job.JobState) ([]peloton.JobID, error) {
+	return nil, nil
+}
+
 // GetJobsByState returns the jobID by job state
 func (m *Store) GetJobsByState(ctx context.Context, state job.JobState) ([]peloton.JobID, error) {
 	var records = []JobRuntimeRecord{}
@@ -817,7 +822,7 @@ func (m *Store) GetJobsByState(ctx context.Context, state job.JobState) ([]pelot
 		return result, nil
 	} else if err != nil {
 		log.WithError(err).WithField("job_state", state).Error("Failed to GetJobsByState")
-		m.metrics.JobGetByStateFail.Inc(1)
+		m.metrics.JobGetByStatesFail.Inc(1)
 		return nil, err
 	}
 
@@ -826,7 +831,7 @@ func (m *Store) GetJobsByState(ctx context.Context, state job.JobState) ([]pelot
 			Value: record.RowKey,
 		})
 	}
-	m.metrics.JobGetByState.Inc(1)
+	m.metrics.JobGetByStates.Inc(1)
 	return result, nil
 }
 

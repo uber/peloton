@@ -152,7 +152,7 @@ func TestValidator(t *testing.T) {
 	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
 
 	mockJobStore.EXPECT().
-		GetJobsByState(context.Background(), job.JobState_INITIALIZED).
+		GetJobsByStates(context.Background(), []job.JobState{job.JobState_INITIALIZED}).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
@@ -250,7 +250,7 @@ func TestValidatorFailures(t *testing.T) {
 	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
 
 	mockJobStore.EXPECT().
-		GetJobsByState(context.Background(), job.JobState_INITIALIZED).
+		GetJobsByStates(context.Background(), []job.JobState{job.JobState_INITIALIZED}).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().

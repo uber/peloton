@@ -31,9 +31,9 @@ var (
 	errFailingGangMemberTask = errors.New("task fail because other gang member failed")
 )
 
-// serviceHandler implements peloton.private.resmgr.ResourceManagerService
+// ServiceHandler implements peloton.private.resmgr.ResourceManagerService
 // TODO: add placing and placed task queues
-type serviceHandler struct {
+type ServiceHandler struct {
 	metrics            *Metrics
 	resPoolTree        respool.Tree
 	placements         queue.Queue
@@ -46,10 +46,10 @@ type serviceHandler struct {
 func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
-	rmTracker rmtask.Tracker) {
+	rmTracker rmtask.Tracker) *ServiceHandler {
 
 	var maxOffset uint64
-	handler := &serviceHandler{
+	handler := &ServiceHandler{
 		metrics:     NewMetrics(parent.SubScope("resmgr")),
 		resPoolTree: respool.GetTree(),
 		placements: queue.NewQueue(
@@ -64,6 +64,7 @@ func InitServiceHandler(
 	handler.eventStreamHandler = initEventStreamHandler(d, 1000, parent.SubScope("resmgr"))
 
 	d.Register(resmgrsvc.BuildResourceManagerServiceYarpcProcedures(handler))
+	return handler
 }
 
 func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, parentScope tally.Scope) *eventstream.Handler {
@@ -82,7 +83,7 @@ func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, parentScope tal
 }
 
 // EnqueueGangs implements ResourceManagerService.EnqueueGangs
-func (h *serviceHandler) EnqueueGangs(
+func (h *ServiceHandler) EnqueueGangs(
 	ctx context.Context,
 	req *resmgrsvc.EnqueueGangsRequest,
 ) (*resmgrsvc.EnqueueGangsResponse, error) {
@@ -179,7 +180,7 @@ func (h *serviceHandler) EnqueueGangs(
 }
 
 // DequeueTasks implements ResourceManagerService.DequeueTasks
-func (h *serviceHandler) DequeueTasks(
+func (h *ServiceHandler) DequeueTasks(
 	ctx context.Context,
 	req *resmgrsvc.DequeueTasksRequest,
 ) (*resmgrsvc.DequeueTasksResponse, error) {
@@ -221,7 +222,7 @@ func (h *serviceHandler) DequeueTasks(
 }
 
 // SetPlacements implements ResourceManagerService.SetPlacements
-func (h *serviceHandler) SetPlacements(
+func (h *ServiceHandler) SetPlacements(
 	ctx context.Context,
 	req *resmgrsvc.SetPlacementsRequest,
 ) (*resmgrsvc.SetPlacementsResponse, error) {
@@ -278,7 +279,7 @@ func (h *serviceHandler) SetPlacements(
 }
 
 // GetPlacements implements ResourceManagerService.GetPlacements
-func (h *serviceHandler) GetPlacements(
+func (h *ServiceHandler) GetPlacements(
 	ctx context.Context,
 	req *resmgrsvc.GetPlacementsRequest,
 ) (*resmgrsvc.GetPlacementsResponse, error) {
@@ -310,7 +311,7 @@ func (h *serviceHandler) GetPlacements(
 }
 
 // NotifyTaskUpdates is called by HM to notify task updates
-func (h *serviceHandler) NotifyTaskUpdates(
+func (h *ServiceHandler) NotifyTaskUpdates(
 	ctx context.Context,
 	req *resmgrsvc.NotifyTaskUpdatesRequest) (*resmgrsvc.NotifyTaskUpdatesResponse, error) {
 	var response resmgrsvc.NotifyTaskUpdatesResponse

@@ -150,7 +150,7 @@ func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	// That will be equal to cluster's reservation in total
 	totalReservation, err := rootResPool.GetChildReservation()
 	if err != nil {
-		log.Error(err)
+		log.Errorf("GetChildReservation failed err: %v", err)
 		return err
 	}
 

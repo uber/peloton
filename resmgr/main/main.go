@@ -204,7 +204,9 @@ func main() {
 		cfg.ResManager.EntitlementCaculationPeriod,
 	)
 
-	resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker())
+	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker())
+
+	resmgr.InitRecovery(jobStore, taskStore, serviceHandler)
 
 	server := resmgr.NewServer(cfg.ResManager.Port)
 	candidate, err := leader.NewCandidate(

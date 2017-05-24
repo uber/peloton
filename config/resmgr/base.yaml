@@ -21,7 +21,7 @@ storage:
       timeout: 10s
     store_name: peloton_test
     migrations: storage/cassandra/migrations/
-  use_cassandra: false
+  use_cassandra: true
   auto_migrate: true
 
 resmgr:

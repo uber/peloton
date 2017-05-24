@@ -27,8 +27,8 @@ type Metrics struct {
 	JobGetRuntime     tally.Counter
 	JobGetRuntimeFail tally.Counter
 
-	JobGetByState     tally.Counter
-	JobGetByStateFail tally.Counter
+	JobGetByStates     tally.Counter
+	JobGetByStatesFail tally.Counter
 
 	JobGetByRespoolID     tally.Counter
 	JobGetByRespoolIDFail tally.Counter
@@ -121,8 +121,8 @@ func NewMetrics(scope tally.Scope) Metrics {
 
 		JobGetRuntime:         jobRuntimeSuccessScope.Counter("get"),
 		JobGetRuntimeFail:     jobRuntimeFailScope.Counter("get"),
-		JobGetByState:         jobRuntimeSuccessScope.Counter("get_job_by_state"),
-		JobGetByStateFail:     jobRuntimeFailScope.Counter("get_job_by_state"),
+		JobGetByStates:        jobRuntimeSuccessScope.Counter("get_job_by_state"),
+		JobGetByStatesFail:    jobRuntimeFailScope.Counter("get_job_by_state"),
 		JobGetByRespoolID:     jobRuntimeSuccessScope.Counter("get_job_by_respool_id"),
 		JobGetByRespoolIDFail: jobRuntimeFailScope.Counter("get_job_by_respool_id"),
 		JobUpdateRuntime:      jobRuntimeSuccessScope.Counter("update"),

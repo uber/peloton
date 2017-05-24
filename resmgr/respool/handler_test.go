@@ -34,9 +34,6 @@ func (suite *resPoolHandlerTestSuite) SetupSuite() {
 		Return(suite.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
-	gomock.InOrder(
-		mockJobStore.EXPECT().GetAllJobs(context.Background()).Return(nil, nil).AnyTimes(),
-	)
 	suite.resourceTree = &tree{
 		store:     suite.mockResPoolStore,
 		root:      nil,

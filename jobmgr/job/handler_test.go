@@ -22,6 +22,7 @@ import (
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	jtask "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 )
 
 const (
@@ -112,7 +113,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := jtask.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
@@ -144,7 +145,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := jtask.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().

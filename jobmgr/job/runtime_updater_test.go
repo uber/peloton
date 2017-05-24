@@ -91,17 +91,22 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		State:        job.JobState_PENDING,
 		CreationTime: jobCreationTime,
 	}
+	nonTerminatedStates := []job.JobState{
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+		job.JobState_UNKNOWN,
+	}
 
 	mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).
 		Return(&jobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(context.Background(), job.JobState_PENDING).
+		GetJobsByStates(context.Background(), nonTerminatedStates).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(context.Background(), gomock.Any()).
+		GetJobsByStates(context.Background(), gomock.Any()).
 		Return([]peloton.JobID{}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
@@ -224,11 +229,11 @@ func TestUpdateJobRuntime_SynchronousJobUpdate(t *testing.T) {
 		Return(&jobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(context.Background(), job.JobState_PENDING).
+		GetJobsByStates(context.Background(), []job.JobState{job.JobState_PENDING}).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(context.Background(), gomock.Any()).
+		GetJobsByStates(context.Background(), gomock.Any()).
 		Return([]peloton.JobID{}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().

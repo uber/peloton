@@ -884,17 +884,17 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	suite.Equal(job.JobState_RUNNING, runtime.State)
 	suite.Equal(4, len(runtime.TaskStats))
 
-	jobIds, err := store.GetJobsByState(context.Background(), job.JobState_RUNNING)
+	jobIds, err := store.GetJobsByStates(context.Background(), []job.JobState{job.JobState_RUNNING})
 	suite.NoError(err)
 	idFound := false
 	for _, id := range jobIds {
-		if id.Value == jobID.Value {
+		if id == jobID {
 			idFound = true
 		}
 	}
 	suite.True(idFound)
 
-	jobIds, err = store.GetJobsByState(context.Background(), 120)
+	jobIds, err = store.GetJobsByStates(context.Background(), []job.JobState{120})
 	suite.NoError(err)
 	suite.Equal(0, len(jobIds))
 }

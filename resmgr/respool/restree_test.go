@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/golang/mock/gomock"
-	"github.com/jmoiron/sqlx"
 	"github.com/uber-go/tally"
 
 	"go.uber.org/yarpc"
@@ -29,8 +28,8 @@ import (
 
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
+	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/storage/mysql"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -38,8 +37,7 @@ type resTreeTestSuite struct {
 	suite.Suite
 	resourceTree Tree
 	mockCtrl     *gomock.Controller
-	store        *mysql.Store
-	db           *sqlx.DB
+	store        *cassandra.Store
 	dispatcher   yarpc.Dispatcher
 	resPools     map[string]*respool.ResourcePoolConfig
 	allNodes     map[string]*ResPool
@@ -54,9 +52,10 @@ func (suite *resTreeTestSuite) SetupSuite() {
 	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(suite.getResPools(), nil).AnyTimes()
 
-	conf := mysql.LoadConfigWithDB()
-	suite.db = conf.Conn
-	suite.store = mysql.NewStore(*conf, tally.NoopScope)
+	conf := cassandra.MigrateForTest()
+	store, err := cassandra.NewStore(conf, tally.NoopScope)
+	suite.NoError(err)
+	suite.store = store
 	suite.resourceTree = &tree{
 		store:     mockResPoolStore,
 		root:      nil,
@@ -468,45 +467,6 @@ func (suite *resTreeTestSuite) TestTree_GetByPath() {
 	suite.Error(err)
 }
 
-func (suite *resTreeTestSuite) TestRefillTaskQueue() {
-	//InitServiceHandler(suite.dispatcher, tally.NoopScope, suite.store, suite.store)
-	//
-	// Create jobs. each with different number of tasks
-	jobs := [4]peloton.JobID{}
-	for i := 0; i < 4; i++ {
-		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
-	}
-	suite.createJob(&jobs[0], 10, 10, 10, task.TaskState_SUCCEEDED)
-	suite.createJob(&jobs[1], 7, 10, 1, task.TaskState_SUCCEEDED)
-	suite.createJob(&jobs[2], 2, 10, 1, task.TaskState_SUCCEEDED)
-	suite.createJob(&jobs[3], 2, 10, 1, task.TaskState_PENDING)
-
-	suite.resourceTree.(*tree).loadFromDB(context.Background())
-
-	// 1. All jobs should have 10 tasks in DB
-	tasks, err := suite.store.GetTasksForJob(context.Background(), &jobs[0])
-	suite.NoError(err)
-	suite.Equal(len(tasks), 10)
-	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[1])
-	suite.NoError(err)
-	suite.Equal(len(tasks), 7)
-	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[2])
-	suite.NoError(err)
-	suite.Equal(len(tasks), 2)
-	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[3])
-	suite.NoError(err)
-	suite.Equal(len(tasks), 2)
-
-	// 2. check the queue content
-	var resPoolID respool.ResourcePoolID
-	resPoolID.Value = "respool11"
-	contentSummary := suite.getQueueContent(resPoolID)
-	suite.Equal(len(contentSummary["TestJob_1"]), 0)
-	suite.Equal(len(contentSummary["TestJob_2"]), 0)
-	suite.Equal(len(contentSummary["TestJob_3"]), 2)
-	suite.Equal(len(contentSummary), 1)
-}
-
 func (suite *resTreeTestSuite) createJob(
 	jobID *peloton.JobID,
 	numTasks uint32,
@@ -552,37 +512,6 @@ func (suite *resTreeTestSuite) createJob(
 		err = suite.store.CreateTask(context.Background(), jobID, i, &taskInfo, "test")
 		suite.NoError(err)
 	}
-}
-
-func (suite *resTreeTestSuite) getQueueContent(
-	respoolID respool.ResourcePoolID) map[string]map[string]bool {
-	suite.resourceTree.(*tree).resPools[respoolID.Value].
-		SetEntitlement(suite.getEntitlement())
-	var result = make(map[string]map[string]bool)
-	for {
-		tlist, err := suite.resourceTree.(*tree).
-			resPools[respoolID.Value].DequeueGangList(1)
-		if err != nil {
-			fmt.Printf("Failed to dequeue item: %v", err)
-			break
-		}
-		if tlist.Len() != 1 {
-			assert.Fail(suite.T(), "Dequeue should return single task gang")
-		}
-		rmTask := tlist.Front().Value.(*list.List)
-		if rmTask != nil {
-			jobID := rmTask.Front().Value.(*resmgr.Task).JobId.Value
-			taskID := rmTask.Front().Value.(*resmgr.Task).Id.Value
-			_, ok := result[jobID]
-			if !ok {
-				result[jobID] = make(map[string]bool)
-			}
-			result[jobID][taskID] = true
-		} else {
-			break
-		}
-	}
-	return result
 }
 
 func (suite *resTreeTestSuite) TestConvertTask() {

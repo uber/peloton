@@ -65,21 +65,18 @@ func (j *Recovery) recoverJobs(ctx context.Context) {
 	jobStates := []job.JobState{
 		job.JobState_INITIALIZED,
 	}
-	for _, state := range jobStates {
-		jobIDs, err := j.jobStore.GetJobsByState(ctx, state)
-		if err != nil {
-			log.WithError(err).
-				WithField("state", state).
-				Error("Failed to GetJobsByState")
-			continue
-		}
-		for _, jobID := range jobIDs {
-			err := j.recoverJob(ctx, &jobID)
-			if err == nil {
-				j.metrics.JobRecovered.Inc(1)
-			} else {
-				j.metrics.JobRecoverFailed.Inc(1)
-			}
+	jobIDs, err := j.jobStore.GetJobsByStates(ctx, jobStates)
+	if err != nil {
+		log.WithError(err).
+			WithField("states", jobStates).
+			Error("Failed to GetJobsByStates")
+	}
+	for _, jobID := range jobIDs {
+		err := j.recoverJob(ctx, &jobID)
+		if err == nil {
+			j.metrics.JobRecovered.Inc(1)
+		} else {
+			j.metrics.JobRecoverFailed.Inc(1)
 		}
 	}
 }

@@ -20,6 +20,7 @@ type Server struct {
 	getResPoolHandler        func() respool.ServiceHandler
 	getTaskScheduler         func() task.Scheduler
 	getEntitlementCalculator func() entitlement.Calculator
+	getRecoveryHandler       func() RecoveryHandler
 }
 
 // NewServer will create the elect handle object
@@ -30,6 +31,7 @@ func NewServer(port int) *Server {
 		getResPoolHandler:        respool.GetServiceHandler,
 		getTaskScheduler:         task.GetScheduler,
 		getEntitlementCalculator: entitlement.GetCalculator,
+		getRecoveryHandler:       GetRecoveryHandler,
 	}
 	return &server
 }
@@ -47,6 +49,13 @@ func (s *Server) GainedLeadershipCallback() error {
 		log.Errorf("Failed to start respool service handler")
 		return err
 	}
+
+	err = s.getRecoveryHandler().Start()
+	if err != nil {
+		log.Errorf("Failed to start recovery handler")
+		return err
+	}
+
 	err = s.getTaskScheduler().Start()
 	if err != nil {
 		log.Errorf("Failed to start task scheduler")
@@ -71,6 +80,12 @@ func (s *Server) LostLeadershipCallback() error {
 	err := s.getResPoolHandler().Stop()
 	if err != nil {
 		log.Errorf("Failed to stop respool service handler")
+		return err
+	}
+
+	err = s.getRecoveryHandler().Stop()
+	if err != nil {
+		log.Errorf("Failed to stop recovery handler")
 		return err
 	}
 

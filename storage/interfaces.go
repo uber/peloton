@@ -31,7 +31,7 @@ type JobStore interface {
 	GetJobsByOwner(ctx context.Context, owner string) (map[string]*job.JobConfig, error)
 	GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, error)
 	GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error)
-	GetJobsByState(ctx context.Context, state job.JobState) ([]peloton.JobID, error)
+	GetJobsByStates(ctx context.Context, state []job.JobState) ([]peloton.JobID, error)
 	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error
 	GetJobsByRespoolID(ctx context.Context, respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error)
 }

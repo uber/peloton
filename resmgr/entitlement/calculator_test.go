@@ -41,7 +41,8 @@ func (suite *EntitlementCalculatorTestSuite) SetupSuite() {
 	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
 	gomock.InOrder(
-		mockJobStore.EXPECT().GetAllJobs(context.Background()).Return(nil, nil).AnyTimes(),
+		mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Any()).
+			Return(nil, nil).AnyTimes(),
 	)
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 

@@ -312,6 +312,49 @@ func (s *Store) Query(ctx context.Context, labels *mesos.Labels, keywords []stri
 	return resultMap, nil
 }
 
+// GetJobsByStates returns all Jobs which belong one of the states
+func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]peloton.JobID, error) {
+	queryBuilder := s.DataStore.NewQuery()
+
+	var jobStates []string
+	for _, state := range states {
+		jobStates = append(jobStates, state.String())
+	}
+
+	stmt := queryBuilder.Select("JobID").From(jobByStateView).
+		Where(qb.Eq{"JobState": jobStates})
+	result, err := s.DataStore.Execute(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			Error("GetJobsByStates failed")
+		s.metrics.JobGetByStatesFail.Inc(1)
+		return nil, err
+	}
+
+	allResults, err := result.All(ctx)
+	if err != nil {
+		log.WithError(err).
+			Error("GetJobsByStates get all results failed")
+		s.metrics.JobGetByStatesFail.Inc(1)
+		return nil, err
+	}
+
+	var jobs []peloton.JobID
+	for _, value := range allResults {
+		var record JobRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				Error("Failed to get JobRecord from record")
+			s.metrics.JobGetByStatesFail.Inc(1)
+			return nil, err
+		}
+		jobs = append(jobs, peloton.JobID{Value: record.JobID})
+	}
+	s.metrics.JobGetByStates.Inc(1)
+	return jobs, nil
+}
+
 // GetJobsByOwner returns jobs by owner
 func (s *Store) GetJobsByOwner(ctx context.Context, owner string) (map[string]*job.JobConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
@@ -357,14 +400,14 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, erro
 	var resultMap = make(map[string]*job.JobConfig)
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable)
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			Error("Fail to Query all jobs")
 		s.metrics.JobQueryFail.Inc(1)
 		return nil, err
 	}
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.WithError(err).
 			Error("Fail to Query jobs")
@@ -1138,46 +1181,6 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 	}
 	s.metrics.JobNotFound.Inc(1)
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.Value)
-}
-
-// GetJobsByState returns the jobID by job state
-func (s *Store) GetJobsByState(ctx context.Context, state job.JobState) ([]peloton.JobID, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobID").From(jobByStateView).
-		Where(qb.Eq{"JobState": state.String()})
-	result, err := s.DataStore.Execute(ctx, stmt)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_state", state).
-			Error("GetJobsByState failed")
-		s.metrics.JobGetByStateFail.Inc(1)
-		return nil, err
-	}
-
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_state", state).
-			Error("GetJobsByState get all results failed")
-		s.metrics.JobGetByStateFail.Inc(1)
-		return nil, err
-	}
-
-	var results []peloton.JobID
-	for _, value := range allResults {
-		var record JobRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.WithError(err).
-				WithField("job_state", state).
-				Error("Failed to get JobRecord from record")
-			s.metrics.JobGetByStateFail.Inc(1)
-			return nil, err
-		}
-		results = append(results, peloton.JobID{Value: record.JobID})
-	}
-	s.metrics.JobGetByState.Inc(1)
-	return results, nil
 }
 
 // UpdateJobRuntime updates the job runtime info

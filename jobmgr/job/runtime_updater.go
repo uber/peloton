@@ -305,21 +305,18 @@ func (j *RuntimeUpdater) checkAllJobs(ctx context.Context) {
 		job.JobState_RUNNING,
 		job.JobState_UNKNOWN,
 	}
-	for _, state := range nonTerminatedStates {
-		jobIDs, err := j.jobStore.GetJobsByState(ctx, state)
-		if err != nil {
-			log.WithError(err).
-				WithField("state", state).
-				Error("Failed to GetJobsByState")
-			continue
-		}
-		for _, jobID := range jobIDs {
-			err := j.updateJobRuntime(ctx, &jobID)
-			if err == nil {
-				j.metrics.JobRuntimeUpdated.Inc(1)
-			} else {
-				j.metrics.JobRuntimeUpdateFailed.Inc(1)
-			}
+	jobIDs, err := j.jobStore.GetJobsByStates(ctx, nonTerminatedStates)
+	if err != nil {
+		log.WithError(err).
+			WithField("states", nonTerminatedStates).
+			Error("Failed to GetJobsByStates")
+	}
+	for _, jobID := range jobIDs {
+		err := j.updateJobRuntime(ctx, &jobID)
+		if err == nil {
+			j.metrics.JobRuntimeUpdated.Inc(1)
+		} else {
+			j.metrics.JobRuntimeUpdateFailed.Inc(1)
 		}
 	}
 }

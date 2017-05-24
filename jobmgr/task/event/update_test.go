@@ -22,7 +22,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -167,7 +166,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 	}
 
 	tasks := []*task.TaskInfo{taskInfo}
-	gangs := jm_task.ConvertToResMgrGangs(tasks, jobConfig)
+	gangs := util.ConvertToResMgrGangs(tasks, jobConfig)
 	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), pelotonTaskID).
