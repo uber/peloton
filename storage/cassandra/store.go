@@ -408,7 +408,9 @@ func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner
 	timeStart := time.Now()
 	nBatches := nTasks/maxBatchSize + 1
 	wg := new(sync.WaitGroup)
-	log.Infof("len:%d, taskInfos:%v", nTasks, taskInfos)
+	log.WithField("batches", nBatches).
+		WithField("tasks", nTasks).
+		Debug("Creating tasks")
 	for batch := int64(0); batch < nBatches; batch++ {
 		// do batching by rows, up to s.Conf.MaxBatchSize
 		start := batch * maxBatchSize // the starting instance ID
@@ -427,8 +429,11 @@ func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner
 			insertStatements := []api.Statement{}
 			idsToTaskInfos := map[string]*task.TaskInfo{}
 			defer wg.Done()
+			log.WithField("id", id.Value).
+				WithField("start", start).
+				WithField("end", end).
+				Debug("creating tasks")
 			for i := start; i < end; i++ {
-				log.Infof("start:%d end:%d", start, end)
 				t := taskInfos[i]
 				buffer, err := json.Marshal(t)
 				if err != nil {
@@ -1167,7 +1172,33 @@ func (s *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) er
 
 // QueryTasks returns all tasks in the given offset..offset+limit range.
 func (s *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
-	return nil, 0, fmt.Errorf("Unimplemented Cassandra endpoint 'QueryTasks'")
+	jobConfig, err := s.GetJobConfig(id)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.GetValue()).
+			Error("Failed to get jobConfig")
+		s.metrics.JobQueryFail.Inc(1)
+		return nil, 0, err
+	}
+	if offset >= jobConfig.InstanceCount {
+		return nil, 0, errors.New("offset larger than job instances")
+	}
+	end := offset + limit - 1
+	if end > jobConfig.InstanceCount-1 {
+		end = jobConfig.InstanceCount - 1
+	}
+	tasks, err := s.GetTasksForJobByRange(id, &task.InstanceRange{
+		From: offset,
+		To:   end,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	var result []*task.TaskInfo
+	for i := offset; i < end; i++ {
+		result = append(result, tasks[i])
+	}
+	return result, uint32(len(result)), nil
 }
 
 // CreatePersistentVolume creates a persistent volume entry.

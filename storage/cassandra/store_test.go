@@ -677,19 +677,30 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 	suite.NoError(err)
 
 	if to > int(jobConfig.InstanceCount) {
-		to = int(jobConfig.InstanceCount)
+		to = int(jobConfig.InstanceCount - 1)
 	}
 	r := &task.InstanceRange{
 		From: uint32(from),
 		To:   uint32(to),
 	}
 	var taskInRange map[uint32]*task.TaskInfo
-	taskInRange, _ = taskStore.GetTasksForJobByRange(jobID, r)
+	taskInRange, err = taskStore.GetTasksForJobByRange(jobID, r)
+	suite.NoError(err)
 
 	suite.Equal(to-from, len(taskInRange))
 	for i := from; i < to; i++ {
 		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
 		suite.Equal(tID, *(taskInRange[uint32(i)].Runtime.TaskId.Value))
+	}
+
+	var tasks []*task.TaskInfo
+	tasks, n, err := taskStore.QueryTasks(jobID, uint32(from), uint32(to-from+1))
+	suite.NoError(err)
+	suite.Equal(n, uint32(to-from))
+
+	for i := from; i < to; i++ {
+		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
+		suite.Equal(tID, *(tasks[uint32(i-from)].Runtime.TaskId.Value))
 	}
 }
 
