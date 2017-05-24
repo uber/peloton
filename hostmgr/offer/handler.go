@@ -60,7 +60,7 @@ func InitEventHandler(
 	)
 	handler = &eventHandler{
 		offerPool:   pool,
-		offerPruner: NewOfferPruner(pool, offerPruningPeriod),
+		offerPruner: NewOfferPruner(pool, offerPruningPeriod, metrics),
 		metrics:     metrics,
 	}
 	procedures := map[sched.Event_Type]interface{}{

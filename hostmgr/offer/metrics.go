@@ -20,6 +20,10 @@ type Metrics struct {
 	// metrics for pool
 	Decline     tally.Counter
 	DeclineFail tally.Counter
+
+	// metrics for pruner
+	Pruned      tally.Counter
+	PrunerValid tally.Gauge
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized
@@ -35,6 +39,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	offerEventScope := handlerScope.Tagged(map[string]string{"type": "offer"})
 	inverseEventScope := handlerScope.Tagged(map[string]string{"type": "inverse"})
 
+	prunerScope := handlerScope.SubScope("pruner")
+
 	return &Metrics{
 		ready:   scalar.NewGaugeMaps(readyScope),
 		placing: scalar.NewGaugeMaps(placingScope),
@@ -47,5 +53,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		Decline:     poolCallScope.Counter("decline"),
 		DeclineFail: poolFailScope.Counter("decline"),
+
+		Pruned:      prunerScope.Counter("pruned"),
+		PrunerValid: prunerScope.Gauge("valid"),
 	}
 }

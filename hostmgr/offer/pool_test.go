@@ -50,8 +50,9 @@ func TestRemoveExpiredOffers(t *testing.T) {
 		offerHoldTime:   1 * time.Minute,
 		metrics:         NewMetrics(scope),
 	}
-	result := pool.RemoveExpiredOffers()
-	assert.Equal(t, len(result), 0)
+	removed, valid := pool.RemoveExpiredOffers()
+	assert.Equal(t, len(removed), 0)
+	assert.Equal(t, 0, valid)
 
 	hostName1 := "agent1"
 	offerID1 := "offer1"
@@ -70,8 +71,9 @@ func TestRemoveExpiredOffers(t *testing.T) {
 
 	// pool with offers within timeout
 	pool.AddOffers([]*mesos.Offer{offer1, offer2, offer3, offer4})
-	result = pool.RemoveExpiredOffers()
-	assert.Empty(t, result)
+	removed, valid = pool.RemoveExpiredOffers()
+	assert.Empty(t, removed)
+	assert.Equal(t, 4, valid)
 
 	// adjust the time stamp
 	pool.timedOffers[offerID1].Expiration = time.Now().Add(-2 * time.Minute)
@@ -82,8 +84,9 @@ func TestRemoveExpiredOffers(t *testing.T) {
 		offerID4: pool.timedOffers[offerID4],
 	}
 
-	result = pool.RemoveExpiredOffers()
-	assert.Exactly(t, expected, result)
+	removed, valid = pool.RemoveExpiredOffers()
+	assert.Exactly(t, expected, removed)
+	assert.Equal(t, 2, valid)
 
 	/*
 		assert.Equal(t, 1, len(pool.hostOfferIndex[hostName1].unreservedOffers))

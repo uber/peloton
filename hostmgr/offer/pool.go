@@ -30,7 +30,7 @@ type Pool interface {
 	RescindOffer(*mesos.OfferID) bool
 
 	// Remove expired offers from the pool
-	RemoveExpiredOffers() map[string]*TimedOffer
+	RemoveExpiredOffers() (map[string]*TimedOffer, int)
 
 	// Clear offers in the pool
 	Clear()
@@ -314,8 +314,9 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
 }
 
 // RemoveExpiredOffers removes offers which are expired from pool
-// and return the list of removed mesos offer ids and their location.
-func (p *offerPool) RemoveExpiredOffers() map[string]*TimedOffer {
+// and return the list of removed mesos offer ids and their location as well as
+// how many valid offers are still left.
+func (p *offerPool) RemoveExpiredOffers() (map[string]*TimedOffer, int) {
 	p.RLock()
 	defer p.RUnlock()
 	p.timedOffersLock.Lock()
@@ -351,7 +352,7 @@ func (p *offerPool) RemoveExpiredOffers() map[string]*TimedOffer {
 			}
 		}
 	}
-	return offersToDecline
+	return offersToDecline, len(p.timedOffers)
 }
 
 // Clear removes all offers from pool.

@@ -22,12 +22,17 @@ type Pruner interface {
 }
 
 // NewOfferPruner initiates an instance of OfferPruner
-func NewOfferPruner(pool Pool, offerPruningPeriod time.Duration) Pruner {
+func NewOfferPruner(
+	pool Pool,
+	offerPruningPeriod time.Duration,
+	metrics *Metrics,
+) Pruner {
 	pruner := &offerPruner{
 		pool:               pool,
 		runningState:       runningStateNotStarted,
 		offerPruningPeriod: offerPruningPeriod,
 		stopPrunerChan:     make(chan struct{}, 1),
+		metrics:            metrics,
 	}
 	return pruner
 }
@@ -40,6 +45,7 @@ type offerPruner struct {
 	pool               Pool
 	offerPruningPeriod time.Duration
 	stopPrunerChan     chan struct{}
+	metrics            *Metrics
 }
 
 // Start starts offer pruning process
@@ -68,7 +74,11 @@ func (p *offerPruner) Start() {
 				return
 			case <-timer.C:
 				log.Debug("Running offer pruning loop")
-				expiredOffers := p.pool.RemoveExpiredOffers()
+				expiredOffers, numValid := p.pool.RemoveExpiredOffers()
+
+				p.metrics.Pruned.Inc(int64(len(expiredOffers)))
+				p.metrics.PrunerValid.Update(float64(numValid))
+
 				if len(expiredOffers) != 0 {
 					var offerIDs []*mesos.OfferID
 					for id := range expiredOffers {

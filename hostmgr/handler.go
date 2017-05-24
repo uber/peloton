@@ -44,7 +44,7 @@ func InitServiceHandler(
 	handler := serviceHandler{
 		schedulerClient:       schedulerClient,
 		operatorMasterClient:  masterOperatorClient,
-		metrics:               NewMetrics(parent.SubScope("hostmgr")),
+		metrics:               NewMetrics(parent),
 		offerPool:             offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider: frameworkInfoProvider,
 	}
