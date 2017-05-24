@@ -55,7 +55,9 @@ def get_host_ip():
 # Load configs from file
 #
 def load_config():
-    config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
+    config_file = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "config.yaml")
     with open(config_file, "r") as f:
         config = yaml.load(f)
     return config
@@ -160,7 +162,8 @@ def run_mesos():
                 },
                 binds=[
                     work_dir + '/scripts:/scripts',
-                    work_dir + '/mesos_config/etc_mesos-slave:/etc/mesos-slave',
+                    work_dir +
+                    '/mesos_config/etc_mesos-slave:/etc/mesos-slave',
                     '/var/run/docker.sock:/var/run/docker.sock',
                 ],
                 privileged=True,
@@ -236,7 +239,8 @@ def run_cassandra():
         host_config=cli.create_host_config(
             port_bindings={
                 config['cassandra_cql_port']: config['cassandra_cql_port'],
-                config['cassandra_thrift_port']: config['cassandra_thrift_port'],
+                config['cassandra_thrift_port']:
+                    config['cassandra_thrift_port'],
             },
             binds=[
                 work_dir + '/scripts:/scripts',
@@ -268,7 +272,8 @@ def create_cassandra_store():
             container=config['cassandra_container'],
             cmd='cqlsh -e "describe %s"' % config['cassandra_test_db'],
         )
-        # by api design, exec_start needs to be called after exec_create to run 'docker exec'
+        # by api design, exec_start needs to be called after exec_create
+        # to run 'docker exec'
         resp = cli.exec_start(exec_id=setup_exe)
         if resp is "":
             resp = cli.exec_start(exec_id=show_exe)
@@ -278,7 +283,8 @@ def create_cassandra_store():
         print 'failed to create cassandra store, retrying...'
         retry_attempts += 1
 
-    print 'Failed to create cassandra store after %d attempts, aborting...' % max_retry_attempts
+    print ('Failed to create cassandra store after %d attempts, aborting...'
+           % max_retry_attempts)
     sys.exit(1)
 
 
@@ -286,8 +292,8 @@ def create_cassandra_store():
 # Run peloton master
 #
 def run_peloton_master():
-    print 'docker image "uber/peloton" has to be built first locally by running ' \
-          'IMAGE=uber/peloton make docker'
+    print 'docker image "uber/peloton" has to be built first locally by ' \
+          'running IMAGE=uber/peloton make docker'
 
     for i in range(0, config['peloton_master_instance_count']):
         port = config['peloton_master_port'] + i
@@ -330,8 +336,8 @@ def run_peloton(disable_peloton_resmgr=False,
                 disable_peloton_hostmgr=False,
                 disable_peloton_jobmgr=False,
                 disable_peloton_placement=False):
-    print 'docker image "uber/peloton" has to be built first locally by running ' \
-          'IMAGE=uber/peloton make docker'
+    print 'docker image "uber/peloton" has to be built first locally by ' \
+          'running IMAGE=uber/peloton make docker'
 
     if not disable_peloton_resmgr:
         run_peloton_resmgr()
@@ -352,7 +358,8 @@ def run_peloton(disable_peloton_resmgr=False,
 def run_peloton_resmgr():
     # TODO: move docker run logic into a common function for all apps to share
     for i in range(0, config['peloton_resmgr_instance_count']):
-        # to not cause port conflicts among apps, increase port by 10 for each instance
+        # to not cause port conflicts among apps, increase port by 10
+        # for each instance
         port = config['peloton_resmgr_port'] + i*10
         name = config['peloton_resmgr_container'] + repr(i)
         remove_existing_container(name)
@@ -392,7 +399,8 @@ def run_peloton_resmgr():
 #
 def run_peloton_hostmgr():
     for i in range(0, config['peloton_hostmgr_instance_count']):
-        # to not cause port conflicts among apps, increase port by 10 for each instance
+        # to not cause port conflicts among apps, increase port
+        # by 10 for each instance
         port = config['peloton_hostmgr_port'] + i*10
         name = config['peloton_hostmgr_container'] + repr(i)
         remove_existing_container(name)
@@ -436,7 +444,8 @@ def run_peloton_hostmgr():
 #
 def run_peloton_jobmgr():
     for i in range(0, config['peloton_jobmgr_instance_count']):
-        # to not cause port conflicts among apps, increase port by 10 for each instance
+        # to not cause port conflicts among apps, increase port by 10
+        #  for each instance
         port = config['peloton_jobmgr_port'] + i*10
         name = config['peloton_jobmgr_container'] + repr(i)
         remove_existing_container(name)
@@ -476,7 +485,8 @@ def run_peloton_jobmgr():
 #
 def run_peloton_placement():
     for i in range(0, config['peloton_placement_instance_count']):
-        # to not cause port conflicts among apps, increase port by 10 for each instance
+        # to not cause port conflicts among apps, increase port by 10
+        # for each instance
         port = config['peloton_placement_port'] + i*10
         name = config['peloton_placement_container'] + repr(i)
         remove_existing_container(name)
@@ -569,11 +579,11 @@ def setup(enable_peloton_master=False,
             disable_peloton_placement
         )
 
+
 #
 # Tear down a personal cluster
 # TODO (wu): use docker labels when launching containers
 #            and then remove all containers with that label
-#
 def teardown():
     remove_existing_container(config['zk_container'])
 
@@ -619,12 +629,16 @@ USAGE
 ''' % (program_shortdesc, __author__, str(__date__))
 
     # Setup argument parser
-    parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
+    parser = ArgumentParser(
+        description=program_license,
+        formatter_class=RawDescriptionHelpFormatter)
 
     subparsers = parser.add_subparsers(help='command help', dest='command')
 
     # Subparser for the 'setup' command
-    parser_setup = subparsers.add_parser('setup', help='set up a personal cluster')
+    parser_setup = subparsers.add_parser(
+        'setup',
+        help='set up a personal cluster')
     parser_setup.add_argument(
         "-m",
         "--enable-peloton-master",
@@ -639,7 +653,8 @@ USAGE
         dest="enable_peloton",
         action='store_true',
         default=False,
-        help="enable peloton in multi app mode, if enable_peloton_master is specified this will be False"
+        help="enable peloton in multi app mode, if enable_peloton_master " +
+             "is specified this will be False"
     )
     parser_setup.add_argument(
         "--no-resmgr",
