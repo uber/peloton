@@ -5,14 +5,15 @@ mesos_zk_path = 'zk://' + ','.join([
     'zookeeper-peloton-devel01.pit-irn-1.uberatc.net:2181',
 ]) + '/mesos/peloton_devel01'
 election_zk_servers = 'zookeeper-peloton-devel01.pit-irn-1.uberatc.net:2181'
-docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-185-g47f26b5'
+docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-205-gf5f993d'
 mysql_host = 'ms-a208556d'
 
 # TODO: remove the host pin once peloton is hooked up with uns
+# Use colins to find host :  collins query -p peloton_devel01 -c tag,hostname,MESOS_ROLE|grep aurora
 resmgr_host = 'ms-f00feccc'
-hostmgr_host = 'ms-1f7a9e3f'
-jobmgr_host = 'ms-a218fef2'
-placement_host = 'ms-2dfa5943'
+hostmgr_host = 'ms-72ab5538'
+jobmgr_host = 'ms-046f74b9'
+placement_host = 'ms-a208556d'
 cassandra_hosts = '\n'.join([
                   'ms-7ab279a1.pit-irn-1.uberatc.net',
                   'ms-3162c292.pit-irn-1.uberatc.net',
