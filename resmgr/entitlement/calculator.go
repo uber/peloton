@@ -284,12 +284,14 @@ func (c *calculator) updateClusterCapacity(
 				Reservation: c.clusterCapacity[common.MEMORY],
 			},
 		}
+		rootResources.Resources = rootres
 	} else {
 		for _, resource := range rootres {
 			resource.Reservation =
 				c.clusterCapacity[resource.Kind]
 		}
 	}
+	rootResPool.SetResourcePoolConfig(rootResources)
 	log.WithField(" root resource ", rootres).Info("Updating root resources")
 	for _, r := range rootres {
 		rootResPool.SetResourceConfig(r)

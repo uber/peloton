@@ -212,3 +212,50 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(res[common.MEMORY], float64(240))
 	suite.Equal(res[common.DISK], float64(1600))
 }
+
+func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
+	// Mock LaunchTasks call.
+	gomock.InOrder(
+		suite.mockHostMgr.EXPECT().
+			Call(
+				gomock.Any(),
+				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.ClusterCapacity")),
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, resBodyOut interface{}) {
+				resources := []*hostsvc.Resource{
+					{
+						Kind:     common.CPU,
+						Capacity: 100,
+					},
+					{
+						Kind:     common.GPU,
+						Capacity: 0,
+					},
+					{
+						Kind:     common.MEMORY,
+						Capacity: 1000,
+					},
+					{
+						Kind:     common.DISK,
+						Capacity: 6000,
+					},
+				}
+				response := hostsvc.ClusterCapacityResponse{
+					Resources: resources,
+				}
+
+				o := resBodyOut.(*hostsvc.ClusterCapacityResponse)
+				*o = response
+			}).
+			Return(nil, nil).
+			Times(1),
+	)
+	suite.calculator.calculateEntitlement()
+	RootResPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "root"})
+	suite.NoError(err)
+	suite.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
+	suite.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(0))
+	suite.Equal(RootResPool.Resources()[common.MEMORY].Reservation, float64(1000))
+	suite.Equal(RootResPool.Resources()[common.DISK].Reservation, float64(6000))
+}
