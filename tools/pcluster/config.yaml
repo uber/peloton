@@ -62,7 +62,7 @@ cassandra_test_db: peloton_test
 peloton_image: uber/peloton
 
 
-# Peloton master specific configs
+# TODO: remove Peloton master
 peloton_master_container: peloton-master
 peloton_master_port: 5289
 peloton_master_instance_count: 1
@@ -71,11 +71,11 @@ peloton_master_instance_count: 1
 # Peloton app specific configs
 peloton_resmgr_container: peloton-resmgr
 peloton_resmgr_port: 5290
-peloton_resmgr_instance_count: 1
+peloton_resmgr_instance_count: 2
 
 peloton_hostmgr_container: peloton-hostmgr
 peloton_hostmgr_port: 5291
-peloton_hostmgr_instance_count: 1
+peloton_hostmgr_instance_count: 2
 
 peloton_jobmgr_container: peloton-jobmgr
 peloton_jobmgr_port: 5292
@@ -83,7 +83,7 @@ peloton_jobmgr_instance_count: 2
 
 peloton_placement_container: peloton-placement
 peloton_placement_port: 5293
-peloton_placement_instance_count: 1
+peloton_placement_instance_count: 2
 
 # log verbose level, set to true for debug
 debug: "false"

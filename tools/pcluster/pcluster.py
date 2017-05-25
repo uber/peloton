@@ -493,6 +493,7 @@ def run_peloton_placement():
         container = cli.create_container(
             name=name,
             hostname=name,
+            ports=[repr(port)],
             environment=[
                 'CONFIG_DIR=config',
                 'APP=placement',
@@ -544,9 +545,10 @@ def wait_for_up(app, port):
             time.sleep(sleep_time_secs)
             count += 1
 
-    raise Exception('failed to start %s after %d attempts, err: %s' %
+    raise Exception('failed to start %s on %d after %d attempts, err: %s' %
                     (
                         app,
+                        port,
                         max_retry_attempts,
                         error,
                     )
