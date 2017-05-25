@@ -3,15 +3,17 @@ package task
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
-	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/jobmgr/log_manager"
+	"code.uber.internal/infra/peloton/storage"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -20,6 +22,7 @@ import (
 
 const (
 	stopRequestTimeoutSecs = 10
+	httpClientTimeout      = 10 * time.Second
 )
 
 // InitServiceHandler initializes the TaskManager
@@ -36,6 +39,7 @@ func InitServiceHandler(
 		metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		rootCtx:       context.Background(),
 		hostmgrClient: json.New(d.ClientConfig(hostmgrClientName)),
+		httpClient:    &http.Client{Timeout: httpClientTimeout},
 	}
 	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
 	json.Register(d, json.Procedure("TaskManager.List", handler.List))
@@ -43,6 +47,7 @@ func InitServiceHandler(
 	json.Register(d, json.Procedure("TaskManager.Stop", handler.Stop))
 	json.Register(d, json.Procedure("TaskManager.Restart", handler.Restart))
 	json.Register(d, json.Procedure("TaskManager.Query", handler.Query))
+	json.Register(d, json.Procedure("TaskManager.BrowseSandbox", handler.BrowseSandbox))
 }
 
 // serviceHandler implements peloton.api.task.TaskManager
@@ -52,6 +57,7 @@ type serviceHandler struct {
 	metrics       *Metrics
 	rootCtx       context.Context
 	hostmgrClient json.Client
+	httpClient    *http.Client
 }
 
 func (m *serviceHandler) Get(
@@ -344,5 +350,94 @@ func (m *serviceHandler) Query(
 		Offset:  body.Offset,
 		Limit:   body.Limit,
 		Total:   total,
+	}, nil, nil
+}
+
+func (m *serviceHandler) BrowseSandbox(
+	ctx context.Context,
+	reqMeta yarpc.ReqMeta,
+	req *task.BrowseSandboxRequest) (*task.BrowseSandboxResponse, yarpc.ResMeta, error) {
+
+	log.WithField("req", req).Info("taskmanager getlogurls called")
+	m.metrics.TaskAPIListLogs.Inc(1)
+	jobConfig, err := m.jobStore.GetJobConfig(req.JobId)
+	if err != nil || jobConfig == nil {
+		log.WithField("job_id", req.JobId).
+			WithError(err).
+			Error("failed to find job with id")
+		m.metrics.TaskListLogsFail.Inc(1)
+		return &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				NotFound: &errors.JobNotFound{
+					Id:      req.JobId,
+					Message: fmt.Sprintf("job %v not found, %v", req.JobId, err),
+				},
+			},
+		}, nil, nil
+	}
+
+	result, err := m.taskStore.GetTaskForJob(req.JobId, req.InstanceId)
+	if err != nil || len(result) != 1 {
+		log.WithField("req", req).
+			WithField("result", result).
+			WithError(err).
+			Error("failed to get task for job")
+		m.metrics.TaskListLogsFail.Inc(1)
+		return &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				OutOfRange: &task.InstanceIdOutOfRange{
+					JobId:         req.JobId,
+					InstanceCount: jobConfig.InstanceCount,
+				},
+			},
+		}, nil, nil
+	}
+
+	var taskInfo *task.TaskInfo
+	for _, t := range result {
+		taskInfo = t
+	}
+	hostname := taskInfo.GetRuntime().GetHost()
+	taskID := taskInfo.GetRuntime().GetTaskId().GetValue()
+	if len(hostname) == 0 {
+		m.metrics.TaskListLogsFail.Inc(1)
+		return &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				NotRunning: &task.TaskNotRunning{
+					Message: "taskinfo does not have hostname",
+				},
+			},
+		}, nil, nil
+	}
+
+	logManager := logmanager.NewLogManager(m.httpClient)
+	var logPaths []string
+	logPaths, err = logManager.ListSandboxFilesPaths(hostname, taskID)
+
+	if err != nil {
+		m.metrics.TaskListLogsFail.Inc(1)
+		log.WithField("req", req).
+			WithField("hostname", hostname).
+			WithField("task_id", taskID).
+			WithError(err).
+			Error("failed to list slave logs files paths")
+		return &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				Failure: &task.BrowseSandboxFailure{
+					Message: fmt.Sprintf(
+						"get slave log failed on host:%s due to: %v",
+						hostname,
+						err,
+					),
+				},
+			},
+		}, nil, nil
+	}
+
+	m.metrics.TaskListLogs.Inc(1)
+	return &task.BrowseSandboxResponse{
+		Hostname: hostname,
+		Port:     "5051",
+		Paths:    logPaths,
 	}, nil, nil
 }

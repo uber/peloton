@@ -371,3 +371,35 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithTaskUpdateFailure() {
 	suite.Equal(len(resp.GetStoppedInstanceIds()), 0)
 	suite.NotNil(resp.GetError().GetUpdateError())
 }
+
+func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithoutHostname() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+
+	singleTaskInfo := make(map[uint32]*task.TaskInfo)
+	singleTaskInfo[0] = suite.taskInfos[0]
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().
+			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().
+			GetTaskForJob(suite.testJobID, uint32(0)).Return(singleTaskInfo, nil),
+	)
+
+	var request = &task.BrowseSandboxRequest{
+		JobId:      suite.testJobID,
+		InstanceId: 0,
+	}
+	resp, _, err := suite.handler.BrowseSandbox(
+		suite.handler.rootCtx,
+		nil,
+		request,
+	)
+	suite.NoError(err)
+	suite.NotNil(resp.GetError())
+}

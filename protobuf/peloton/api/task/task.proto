@@ -369,6 +369,42 @@ service TaskManager
 
   // Query task info in a job, using a set of filters.
   rpc Query(QueryRequest) returns (QueryResponse);
+
+  // BrowseSandbox returns list of file paths inside sandbox.
+  rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
+}
+
+/**
+ *  Failures for browsing sandbox files requests to mesos call.
+ */
+message BrowseSandboxFailure {
+  string message = 1;
+}
+
+/**
+ *  Task not running error.
+ */
+message TaskNotRunning {
+  string message = 1;
+}
+
+message BrowseSandboxRequest {
+  peloton.JobID jobId = 1;
+  uint32 instanceId = 2;
+}
+
+message BrowseSandboxResponse {
+  message Error {
+    errors.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+    TaskNotRunning notRunning = 3;
+    BrowseSandboxFailure failure = 4;
+  }
+
+  Error error = 1;
+  string hostname = 2;
+  string port = 3;
+  repeated string paths = 4;
 }
 
 message InstanceIdOutOfRange
