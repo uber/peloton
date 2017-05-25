@@ -1,14 +1,10 @@
 package task
 
 import (
-	"time"
-
 	log "github.com/Sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/common/eventstream"
 	state "code.uber.internal/infra/peloton/common/statemachine"
@@ -150,23 +146,28 @@ func (rmTask *RMTask) transitionCallBack(t *state.Transition) error {
 
 // updateStatus creates and send the task event to event stream
 func (rmTask *RMTask) updateStatus(status string) {
-	t := time.Now()
-	// Create Peloton task event
-	taskEvent := &task.TaskEvent{
-		Source:    task.TaskEvent_SOURCE_RESMGR,
-		State:     task.TaskState(task.TaskState_value[status]),
-		TaskId:    rmTask.task.Id,
-		Timestamp: t.Format(time.RFC3339),
-	}
 
-	event := &pb_eventstream.Event{
-		PelotonTaskEvent: taskEvent,
-		Type:             pb_eventstream.Event_PELOTON_TASK_EVENT,
-	}
+	// Commentig it for now to not publish yet
+	// Until we have Solution for event race
+	// T936171
 
-	err := rmTask.statusUpdateHandler.AddEvent(event)
-	if err != nil {
-		log.WithError(err).WithField("Event", event).
-			Error("Cannot add status update")
-	}
+	//t := time.Now()
+	//// Create Peloton task event
+	//taskEvent := &task.TaskEvent{
+	//	Source:    task.TaskEvent_SOURCE_RESMGR,
+	//	State:     task.TaskState(task.TaskState_value[status]),
+	//	TaskId:    rmTask.task.Id,
+	//	Timestamp: t.Format(time.RFC3339),
+	//}
+	//
+	//event := &pb_eventstream.Event{
+	//	PelotonTaskEvent: taskEvent,
+	//	Type:             pb_eventstream.Event_PELOTON_TASK_EVENT,
+	//}
+	//
+	//err := rmTask.statusUpdateHandler.AddEvent(event)
+	//if err != nil {
+	//	log.WithError(err).WithField("Event", event).
+	//		Error("Cannot add status update")
+	//}
 }
