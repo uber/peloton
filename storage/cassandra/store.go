@@ -243,6 +243,7 @@ func (s *Store) Query(labels *mesos.Labels, keywords []string) (map[string]*job.
 	var resultMap = make(map[string]*job.JobConfig)
 	if (labels == nil || len(labels.GetLabels()) == 0) &&
 		(keywords == nil || len(keywords) == 0) {
+		// TODO: call getAllJobs(...)
 		return resultMap, nil
 	}
 	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["

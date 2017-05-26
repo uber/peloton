@@ -406,9 +406,18 @@ func (h *serviceHandler) Query(
 	h.metrics.JobAPIQuery.Inc(1)
 	var jobConfigs map[string]*job.JobConfig
 	var err error
+	// Default keywords may contain empty string. They need to be filtered out
+	// Otherwise nothing would be returned
+	var keywords []string
+	for _, w := range req.GetKeywords() {
+		if w != "" {
+			keywords = append(keywords, w)
+		}
+	}
+
 	if (req.GetLabels().GetLabels() != nil && len(req.GetLabels().GetLabels()) > 0) ||
-		(req.GetKeywords() != nil && len(req.GetKeywords()) > 0) {
-		jobConfigs, err = h.jobStore.Query(req.Labels, req.GetKeywords())
+		(len(keywords) > 0) {
+		jobConfigs, err = h.jobStore.Query(req.GetLabels(), keywords)
 		if err != nil {
 			h.metrics.JobQueryFail.Inc(1)
 			log.WithError(err).Error("Query job failed with error")
@@ -430,17 +439,19 @@ func (h *serviceHandler) Query(
 		}
 	} else {
 		// Query by respool id directly
-		jobConfigs, err = h.jobStore.GetJobsByRespoolID(req.GetRespoolID())
-		if err != nil {
-			h.metrics.JobQueryFail.Inc(1)
-			log.WithError(err).Error("Query job failed with error")
-			return &job.QueryResponse{
-				Error: &job.QueryResponse_Error{
-					Err: &errors.UnknownError{
-						Message: err.Error(),
+		if req.GetRespoolID() != nil {
+			jobConfigs, err = h.jobStore.GetJobsByRespoolID(req.GetRespoolID())
+			if err != nil {
+				h.metrics.JobQueryFail.Inc(1)
+				log.WithError(err).Error("Query job failed with error")
+				return &job.QueryResponse{
+					Error: &job.QueryResponse_Error{
+						Err: &errors.UnknownError{
+							Message: err.Error(),
+						},
 					},
-				},
-			}, nil, nil
+				}, nil, nil
+			}
 		}
 	}
 	h.metrics.JobQuery.Inc(1)
