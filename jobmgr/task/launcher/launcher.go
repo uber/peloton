@@ -1,4 +1,4 @@
-package task
+package launcher
 
 import (
 	"context"
@@ -21,8 +21,8 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 )
 
-// LauncherConfig is Task launcher specific config
-type LauncherConfig struct {
+// Config is Task launcher specific config
+type Config struct {
 	// PlacementDequeueLimit is the limit which task launcher get the
 	// placements
 	PlacementDequeueLimit int `yaml:"placement_dequeue_limit"`
@@ -51,9 +51,14 @@ type launcher struct {
 	started       int32
 	shutdown      int32
 	taskStore     storage.TaskStore
-	config        *LauncherConfig
+	config        *Config
 	metrics       *Metrics
 }
+
+const (
+	// Time out for the function to time out
+	timeoutFunctionCall = 120 * time.Second
+)
 
 var taskLauncher *launcher
 var onceInitTaskLauncher sync.Once
@@ -64,7 +69,7 @@ func InitTaskLauncher(
 	resMgrClientName string,
 	hostMgrClientName string,
 	taskStore storage.TaskStore,
-	config *LauncherConfig,
+	config *Config,
 	parent tally.Scope,
 ) {
 	onceInitTaskLauncher.Do(func() {

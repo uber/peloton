@@ -7,7 +7,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/config"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/hashicorp/go-multierror"
@@ -103,7 +103,7 @@ func getInstancesToAdd(
 
 	for i := oldConfig.InstanceCount; i < newConfig.InstanceCount; i++ {
 		instanceID := i
-		taskConfig, err := jm_task.GetTaskConfig(jobID, newConfig, i)
+		taskConfig, err := config.GetTaskConfig(jobID, newConfig, i)
 		if err != nil {
 			log.Errorf("Failed to get task config (%d) for job %v: %v",
 				i, jobID.Value, err)

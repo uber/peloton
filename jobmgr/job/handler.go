@@ -21,9 +21,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 
-	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/job/updater"
+	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -109,7 +109,7 @@ func (h *serviceHandler) Create(
 	h.metrics.JobAPICreate.Inc(1)
 
 	// Validate job config with default task configs
-	err = jm_task.ValidateTaskConfig(jobConfig)
+	err = task_config.ValidateTaskConfig(jobConfig)
 	if err != nil {
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
@@ -146,7 +146,7 @@ func (h *serviceHandler) Create(
 		instanceID := i
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instanceID,
 			uuid.NewUUID().String())
-		taskConfig, err := jm_task.GetTaskConfig(jobID, jobConfig, i)
+		taskConfig, err := task_config.GetTaskConfig(jobID, jobConfig, i)
 		if err != nil {
 			log.Errorf("Failed to get task config (%d) for job %v: %v",
 				i, jobID.Value, err)

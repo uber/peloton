@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/leader"
 	log "github.com/Sirupsen/logrus"
 )
@@ -18,7 +18,7 @@ type Server struct {
 
 	ID              string
 	role            string
-	getStatusUpdate func() task.StatusUpdate
+	getStatusUpdate func() event.StatusUpdate
 }
 
 // NewServer creates a job manager Server instance.
@@ -27,7 +27,7 @@ func NewServer(port int) *Server {
 	return &Server{
 		ID:              leader.NewID(port),
 		role:            common.JobManagerRole,
-		getStatusUpdate: task.GetStatusUpdater,
+		getStatusUpdate: event.GetStatusUpdater,
 	}
 }
 

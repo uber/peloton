@@ -1,4 +1,4 @@
-package task
+package event
 
 import (
 	"fmt"

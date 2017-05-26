@@ -1,4 +1,4 @@
-package task
+package event
 
 import (
 	"context"
@@ -32,8 +32,8 @@ type StatusUpdate interface {
 	Stop()
 }
 
-// StatusUpdateListener is the interface for StatusUpdate listener
-type StatusUpdateListener interface {
+// Listener is the interface for StatusUpdate listener
+type Listener interface {
 	Start()
 	Stop()
 	eventstream.EventHandler
@@ -45,7 +45,7 @@ type statusUpdate struct {
 	taskStore         storage.TaskStore
 	eventClients      map[string]*eventstream.Client
 	applier           *asyncEventProcessor
-	jobRuntimeUpdater StatusUpdateListener
+	jobRuntimeUpdater Listener
 	rootCtx           context.Context
 	resmgrClient      json.Client
 	metrics           *Metrics
@@ -61,7 +61,7 @@ func InitTaskStatusUpdate(
 	server string,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	jobRuntimeUpdater StatusUpdateListener,
+	jobRuntimeUpdater Listener,
 	resmgrClientName string,
 	parentScope tally.Scope) {
 	onceInitStatusUpdate.Do(func() {

@@ -107,4 +107,8 @@ message Placement {
 
   // The list of allocated ports which should be sufficient for all placed tasks
   repeated uint32 ports = 5;
+
+  // Type of the tasks in the placement. Note all tasks must belong to same type.
+  // By default the type is batch task.
+  TaskType type = 6;
 }

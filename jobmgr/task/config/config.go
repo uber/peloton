@@ -1,4 +1,4 @@
-package task
+package config
 
 import (
 	"errors"
@@ -13,6 +13,15 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"code.uber.internal/infra/peloton/util"
+)
+
+const (
+	// PelotonJobID is the environment variable name for job ID
+	PelotonJobID = "PELOTON_JOB_ID"
+	// PelotonInstanceID is the environment variable name for instance ID
+	PelotonInstanceID = "PELOTON_INSTANCE_ID"
+	// PelotonTaskID is the environment variable name for task ID
+	PelotonTaskID = "PELOTON_TASK_ID"
 )
 
 var (

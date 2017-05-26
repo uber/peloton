@@ -1,4 +1,4 @@
-package task
+package launcher
 
 import (
 	"context"
@@ -99,7 +99,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &LauncherConfig{
+		config: &Config{
 			PlacementDequeueLimit: 100,
 		},
 		resMgrClient:  mockRes,

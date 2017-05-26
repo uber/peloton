@@ -13,6 +13,8 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/event"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -259,7 +261,7 @@ func main() {
 
 	// Init the Task status update which pulls task update events
 	// from HM once started after gaining leadership
-	task.InitTaskStatusUpdate(
+	event.InitTaskStatusUpdate(
 		dispatcher,
 		common.PelotonHostManager,
 		jobStore,
@@ -289,7 +291,7 @@ func main() {
 	defer candidate.Stop()
 
 	// TODO: We need to cleanup the client names
-	task.InitTaskLauncher(
+	launcher.InitTaskLauncher(
 		dispatcher,
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
@@ -297,8 +299,8 @@ func main() {
 		&cfg.JobManager.TaskLauncher,
 		rootScope,
 	)
-	task.GetLauncher().Start()
-	defer task.GetLauncher().Stop()
+	launcher.GetLauncher().Start()
+	defer launcher.GetLauncher().Stop()
 
 	log.WithField("Port", cfg.JobManager.Port).Info("Started Peloton job manager")
 

@@ -1,7 +1,7 @@
 package jobmgr
 
 import (
-	"code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 )
 
 // Config is JobManager specific configuration
@@ -14,5 +14,5 @@ type Config struct {
 	DbWriteConcurrency int `yaml:"db_write_concurrency"`
 
 	// Task launcher specific configs
-	TaskLauncher task.LauncherConfig `yaml:"task_launcher"`
+	TaskLauncher launcher.Config `yaml:"task_launcher"`
 }

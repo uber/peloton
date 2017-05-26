@@ -10,7 +10,7 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
-	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
+	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/Sirupsen/logrus"
@@ -201,7 +201,7 @@ func createTaskForJob(
 	jobConfig *job.JobConfig) (*task.TaskInfo, error) {
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, i,
 		uuid.NewUUID().String())
-	taskConfig, _ := jm_task.GetTaskConfig(jobID, jobConfig, i)
+	taskConfig, _ := task_config.GetTaskConfig(jobID, jobConfig, i)
 	task := task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			State: task.TaskState_INITIALIZED,
