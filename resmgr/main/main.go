@@ -141,15 +141,6 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	// Connect to mysql DB
-	if err := cfg.Storage.MySQL.Connect(); err != nil {
-		log.Fatalf("Could not connect to database: %+v", err)
-	}
-	// Migrate DB if necessary
-	if errs := cfg.Storage.MySQL.AutoMigrate(); errs != nil {
-		log.Fatalf("Could not migrate database: %+v", errs)
-	}
-
 	jobStore, taskStore, respoolStore, _ := stores.CreateStores(&cfg.Storage, rootScope)
 
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
