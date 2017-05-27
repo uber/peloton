@@ -11,9 +11,11 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -103,10 +105,13 @@ type hostSummary struct {
 	reservedOffers map[string]*mesos.Offer
 	// reservedResources has reservationLabelID -> resources.
 	reservedResources map[string]*reservation.ReservedResources
+
+	volumeStore storage.PersistentVolumeStore
 }
 
 // New returns a zero initialized hostSummary
-func New() HostSummary {
+func New(
+	volumeStore storage.PersistentVolumeStore) HostSummary {
 	return &hostSummary{
 		unreservedOffers: make(map[string]*mesos.Offer),
 
@@ -115,6 +120,7 @@ func New() HostSummary {
 		reservedOffers: make(map[string]*mesos.Offer),
 		reservedResources: make(
 			map[string]*reservation.ReservedResources),
+		volumeStore: volumeStore,
 	}
 }
 
@@ -262,6 +268,7 @@ func (a *hostSummary) AddMesosOffer(offer *mesos.Offer) CacheStatus {
 		}
 		a.reservedResources = reservation.GetLabeledReservedResources(
 			reservedOffers)
+		a.updatePersistentVolumes()
 		log.WithFields(log.Fields{
 			"offer":                    offer,
 			"total_reserved_resources": a.reservedResources,
@@ -269,6 +276,64 @@ func (a *hostSummary) AddMesosOffer(offer *mesos.Offer) CacheStatus {
 	}
 
 	return a.status
+}
+
+// storePersistentVolumes iterates reserved resources and write volume info into
+// the db if not exist.
+func (a *hostSummary) updatePersistentVolumes() error {
+	for labels, res := range a.reservedResources {
+		// TODO(mu): unreserve resources without persistent volume.
+		if len(res.Volumes) == 0 {
+			continue
+		}
+
+		if len(res.Volumes) != 1 {
+			log.WithField("reserved_resource", res).
+				WithField("labels", labels).
+				Warn("more than one volume reserved for same label")
+		}
+
+		// TODO(mu): Add cache for created volumes to avoid repeated db read/write.
+		for _, v := range res.Volumes {
+			pv, err := a.volumeStore.GetPersistentVolume(v)
+			if err != nil || pv == nil {
+				log.WithFields(
+					log.Fields{
+						"reserved_resource": res,
+						"labels":            labels,
+						"volume_id":         v}).
+					WithError(err).
+					Error("volume contained in reserved resources but not found in db")
+				continue
+			}
+
+			// TODO(mu): destory/unreserve volume/resource if goalstate is DELETED.
+			if pv.GetState() == volume.VolumeState_CREATED {
+				// Skip update volume if state already created.
+				continue
+			}
+
+			// TODO: compare volume info with result from db.
+			log.WithFields(
+				log.Fields{
+					"reserved_resource": res,
+					"labels":            labels,
+					"volume":            pv}).
+				Info("updating persistent volume table")
+			err = a.volumeStore.UpdatePersistentVolume(v, volume.VolumeState_CREATED)
+			if err != nil {
+				log.WithFields(
+					log.Fields{
+						"reserved_resource": res,
+						"labels":            labels,
+						"volume":            pv}).
+					WithError(err).
+					Error("volume state update failed")
+			}
+		}
+	}
+
+	return nil
 }
 
 // ClaimForLaunch atomically check that current hostSummary is in Placing

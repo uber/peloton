@@ -6,6 +6,7 @@ import (
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/Sirupsen/logrus"
@@ -45,7 +46,8 @@ func InitEventHandler(
 	parent tally.Scope,
 	offerHoldTime time.Duration,
 	offerPruningPeriod time.Duration,
-	schedulerClient mpb.SchedulerClient) {
+	schedulerClient mpb.SchedulerClient,
+	volumeStore storage.PersistentVolumeStore) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -57,6 +59,7 @@ func InitEventHandler(
 		schedulerClient,
 		metrics,
 		hostmgr_mesos.GetSchedulerDriver(),
+		volumeStore,
 	)
 	handler = &eventHandler{
 		offerPool:   pool,

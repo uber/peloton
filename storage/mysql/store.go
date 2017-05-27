@@ -12,13 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-
-	"code.uber.internal/infra/peloton/storage"
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/mysql" // Pull in MySQL driver for migrate
 	"github.com/gemnasium/migrate/migrate"
@@ -26,6 +19,15 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
+
+	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+
+	"code.uber.internal/infra/peloton/storage"
 )
 
 const (
@@ -882,6 +884,29 @@ func (m *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*t
 	}
 
 	return tasks, total, rows.Err()
+}
+
+// CreatePersistentVolume creates a persistent volume entry.
+func (m *Store) CreatePersistentVolume(
+	volume *pb_volume.PersistentVolumeInfo) error {
+	return errors.New("Not implemented")
+}
+
+// UpdatePersistentVolume update state for a persistent volume.
+func (m *Store) UpdatePersistentVolume(
+	volumeID string, state pb_volume.VolumeState) error {
+	return errors.New("Not implemented")
+}
+
+// GetPersistentVolume gets the persistent volume object.
+func (m *Store) GetPersistentVolume(
+	volumeID string) (*pb_volume.PersistentVolumeInfo, error) {
+	return nil, errors.New("Not implemented")
+}
+
+// DeletePersistentVolume delete persistent volume entry.
+func (m *Store) DeletePersistentVolume(volumeID string) error {
+	return errors.New("Not implemented")
 }
 
 // GetJobsByRespoolID returns jobIDs in a respool

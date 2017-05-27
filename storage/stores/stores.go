@@ -10,11 +10,19 @@ import (
 )
 
 // CreateStores creates all stores that is needed by peloton
-func CreateStores(cfg *storage_config.Config, rootScope tally.Scope) (storage.JobStore, storage.TaskStore, storage.ResourcePoolStore, storage.FrameworkInfoStore) {
+func CreateStores(
+	cfg *storage_config.Config, rootScope tally.Scope) (
+	storage.JobStore,
+	storage.TaskStore,
+	storage.ResourcePoolStore,
+	storage.FrameworkInfoStore,
+	storage.PersistentVolumeStore) {
+
 	var jobStore storage.JobStore
 	var taskStore storage.TaskStore
 	var resourcePoolStore storage.ResourcePoolStore
 	var frameworkInfoStore storage.FrameworkInfoStore
+	var volumeStore storage.PersistentVolumeStore
 
 	if !cfg.UseCassandra {
 		// Connect to mysql DB
@@ -38,6 +46,7 @@ func CreateStores(cfg *storage_config.Config, rootScope tally.Scope) (storage.Jo
 		taskStore = store
 		resourcePoolStore = store
 		frameworkInfoStore = store
+		volumeStore = store
 	} else {
 		log.Infof("cassandra Config: %v", cfg.Cassandra)
 		if cfg.AutoMigrate {
@@ -54,6 +63,7 @@ func CreateStores(cfg *storage_config.Config, rootScope tally.Scope) (storage.Jo
 		taskStore = store
 		resourcePoolStore = store
 		frameworkInfoStore = store
+		volumeStore = store
 	}
-	return jobStore, taskStore, resourcePoolStore, frameworkInfoStore
+	return jobStore, taskStore, resourcePoolStore, frameworkInfoStore, volumeStore
 }

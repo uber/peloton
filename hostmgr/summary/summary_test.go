@@ -7,16 +7,18 @@ import (
 	"testing"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"
 	constraint_mocks "code.uber.internal/infra/peloton/common/constraints/mocks"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
-	"github.com/golang/mock/gomock"
 )
 
 var (
@@ -58,9 +60,11 @@ var (
 type HostOfferSummaryTestSuite struct {
 	suite.Suite
 
-	offer   *mesos.Offer
-	labels1 *mesos.Labels
-	labels2 *mesos.Labels
+	offer           *mesos.Offer
+	labels1         *mesos.Labels
+	labels2         *mesos.Labels
+	ctrl            *gomock.Controller
+	mockVolumeStore *store_mocks.MockPersistentVolumeStore
 }
 
 func (suite *HostOfferSummaryTestSuite) SetupTest() {
@@ -80,6 +84,8 @@ func (suite *HostOfferSummaryTestSuite) SetupTest() {
 			},
 		},
 	}
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.mockVolumeStore = store_mocks.NewMockPersistentVolumeStore(suite.ctrl)
 }
 
 // Test various constraint matching cases.
@@ -322,6 +328,7 @@ func TestHostOfferSummaryTestSuite(t *testing.T) {
 }
 
 func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
+	defer suite.ctrl.Finish()
 	// Add offer concurrently.
 	reservedOffers := 5
 	unreservedOffers := 5
@@ -329,7 +336,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	wg := sync.WaitGroup{}
 	wg.Add(nOffers)
 
-	hybridSummary := New().(*hostSummary)
+	hybridSummary := New(suite.mockVolumeStore).(*hostSummary)
 
 	suite.False(hybridSummary.HasOffer())
 
@@ -342,6 +349,17 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 		offerID := fmt.Sprintf("unreserved-%d", i)
 		offers = append(offers, suite.createUnreservedMesosOffer(offerID))
 	}
+
+	volumeInfo := &volume.PersistentVolumeInfo{}
+
+	suite.mockVolumeStore.EXPECT().
+		GetPersistentVolume(gomock.Any()).
+		AnyTimes().
+		Return(volumeInfo, nil)
+	suite.mockVolumeStore.EXPECT().
+		UpdatePersistentVolume(gomock.Any(), volume.VolumeState_CREATED).
+		AnyTimes().
+		Return(nil)
 
 	for _, offer := range offers {
 		go func(offer *mesos.Offer) {
@@ -398,6 +416,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 }
 
 func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
+	defer suite.ctrl.Finish()
 	offer := suite.createUnreservedMesosOffer("offer-id")
 
 	testTable := []struct {
@@ -443,7 +462,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 		ctrl := gomock.NewController(suite.T())
 		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
 
-		s := New().(*hostSummary)
+		s := New(suite.mockVolumeStore).(*hostSummary)
 		s.status = tt.initialStatus
 		suite.Equal(tt.initialStatus, s.AddMesosOffer(offer))
 		constraint := &hostsvc.Constraint{

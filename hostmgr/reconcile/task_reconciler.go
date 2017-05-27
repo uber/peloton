@@ -47,16 +47,6 @@ type taskReconciler struct {
 	isExplicitReconcileTurn atomic.Bool
 }
 
-/*
-	reconcilerConfig := &reconcile.TaskReconcilerConfig{
-		InitialReconcileDelay: ,
-		ReconcileInterval: ,
-		ExplicitReconcileBatchInterval: ,
-		ExplicitReconcileBatchSize: ,
-	}
-
-*/
-
 // Singleton task reconciler in hostmgr.
 var reconciler *taskReconciler
 

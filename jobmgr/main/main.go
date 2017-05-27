@@ -159,7 +159,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	jobStore, taskStore, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
+	jobStore, taskStore, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
 	inbounds := []transport.Inbound{
 		http.NewInbound(
 			fmt.Sprintf(":%d", cfg.JobManager.Port),

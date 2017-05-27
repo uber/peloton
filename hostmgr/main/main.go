@@ -170,7 +170,7 @@ func main() {
 
 	rootScope.Counter("boot").Inc(1)
 
-	jobStore, taskStore, _, frameworkInfoStore := stores.CreateStores(&cfg.Storage, rootScope)
+	jobStore, taskStore, _, frameworkInfoStore, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, frameworkInfoStore)
@@ -257,6 +257,7 @@ func main() {
 		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
 		schedulerClient,
+		volumeStore,
 	)
 
 	// Init service handler.

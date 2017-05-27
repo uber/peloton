@@ -16,6 +16,7 @@ import (
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
 
@@ -65,6 +66,7 @@ func NewOfferPool(
 	schedulerClient mpb.SchedulerClient,
 	metrics *Metrics,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
+	volumeStore storage.PersistentVolumeStore,
 ) Pool {
 	p := &offerPool{
 		hostOfferIndex: make(map[string]summary.HostSummary),
@@ -77,6 +79,8 @@ func NewOfferPool(
 		mesosFrameworkInfoProvider: frameworkInfoProvider,
 
 		metrics: metrics,
+
+		volumeStore: volumeStore,
 	}
 
 	// Initialize gauges.
@@ -112,6 +116,8 @@ type offerPool struct {
 	metrics          *Metrics
 	readyResources   scalar.AtomicResources
 	placingResources scalar.AtomicResources
+
+	volumeStore storage.PersistentVolumeStore
 }
 
 // ClaimForPlace obtains offers from pool conforming to given constraints.
@@ -231,7 +237,7 @@ func (p *offerPool) addOffer(offer *mesos.Offer, expiration time.Time) {
 	hostName := *offer.Hostname
 	_, ok := p.hostOfferIndex[hostName]
 	if !ok {
-		p.hostOfferIndex[hostName] = summary.New()
+		p.hostOfferIndex[hostName] = summary.New(p.volumeStore)
 	}
 	status := p.hostOfferIndex[hostName].AddMesosOffer(offer)
 

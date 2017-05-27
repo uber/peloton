@@ -141,7 +141,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	jobStore, taskStore, respoolStore, _ := stores.CreateStores(&cfg.Storage, rootScope)
+	jobStore, taskStore, respoolStore, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
 
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
 	// mux in other HTTP handlers

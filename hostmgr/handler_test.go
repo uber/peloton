@@ -124,6 +124,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		suite.schedulerClient,
 		offer.NewMetrics(suite.testScope.SubScope("offer")),
 		nil, /* frameworkInfoProvider */
+		nil, /* volumeStore */
 	)
 
 	suite.handler = &serviceHandler{
