@@ -18,11 +18,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	jtask "code.uber.internal/infra/peloton/jobmgr/task"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
@@ -114,7 +114,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	tasks := convertToResMgrTask(tasksInfo, suite.testJobConfig)
+	tasks := jtask.ConvertToResMgrTask(tasksInfo, suite.testJobConfig)
 	var expectedTasks []*resmgr.Task
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
@@ -134,7 +134,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 			Return(nil, nil),
 	)
 
-	EnqueueTasks(tasksInfo, suite.testJobConfig, suite.handler.client)
+	jtask.EnqueueTasks(tasksInfo, suite.testJobConfig, suite.handler.client)
 	suite.Equal(tasks, expectedTasks)
 }
 
@@ -148,7 +148,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	tasks := convertToResMgrTask(tasksInfo, suite.testJobConfig)
+	tasks := jtask.ConvertToResMgrTask(tasksInfo, suite.testJobConfig)
 	var expectedTasks []*resmgr.Task
 	var err error
 	gomock.InOrder(
@@ -169,7 +169,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 			}).
 			Return(nil, err),
 	)
-	EnqueueTasks(tasksInfo, suite.testJobConfig, suite.handler.client)
+	jtask.EnqueueTasks(tasksInfo, suite.testJobConfig, suite.handler.client)
 	suite.Error(err)
 }
 

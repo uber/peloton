@@ -405,6 +405,7 @@ func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
 		Hostname: hostOffer.Hostname,
 		Tasks:    tasksIds,
 		Ports:    selectedPorts,
+		Type:     tasks[0].Type,
 		// TODO : We are not setting offerId's
 		// we need to remove it from protobuf
 	}

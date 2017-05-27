@@ -19,13 +19,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
+	jtask "code.uber.internal/infra/peloton/jobmgr/task"
 	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
 )
 
 // InitServiceHandler initalizes the job manager
@@ -175,7 +173,7 @@ func (h *serviceHandler) Create(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = EnqueueTasks(tasks, jobConfig, h.client)
+	err = jtask.EnqueueTasks(tasks, jobConfig, h.client)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -309,7 +307,7 @@ func (h *serviceHandler) Update(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = EnqueueTasks(tasks, newConfig, h.client)
+	err = jtask.EnqueueTasks(tasks, newConfig, h.client)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -475,42 +473,6 @@ func (h *serviceHandler) Delete(
 	return &job.DeleteResponse{}, nil, nil
 }
 
-// EnqueueTasks enqueues all tasks to respool in resmgr.
-func EnqueueTasks(tasks []*task.TaskInfo, config *job.JobConfig, client json.Client) error {
-	rootCtx := context.Background()
-	ctx, cancelFunc := context.WithTimeout(rootCtx, 10*time.Second)
-	defer cancelFunc()
-	resmgrTasks := convertToResMgrTask(tasks, config)
-	var response resmgrsvc.EnqueueTasksResponse
-	var request = &resmgrsvc.EnqueueTasksRequest{
-		Tasks:   resmgrTasks,
-		ResPool: config.RespoolID,
-	}
-	_, err := client.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks"),
-		request,
-		&response,
-	)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-			"tasks": tasks,
-		}).Error("Resource Manager Enqueue Failed")
-		return err
-	}
-	if response.Error != nil {
-		log.WithFields(log.Fields{
-			"error": response.Error,
-			"tasks": tasks,
-		}).Error("Resource Manager Enqueue Failed")
-		return er.New(response.Error.String())
-	}
-	log.WithField("Count", len(resmgrTasks)).Debug("Enqueued tasks to " +
-		"Resource Manager")
-	return nil
-}
-
 // validateResourcePool validates the resource pool before submitting job
 func (h *serviceHandler) validateResourcePool(
 	respoolID *respool.ResourcePoolID,
@@ -555,19 +517,4 @@ func (h *serviceHandler) validateResourcePool(
 	}
 
 	return nil
-}
-
-// convertToResMgrTask converts taskinfo to resmgr task
-func convertToResMgrTask(
-	tasks []*task.TaskInfo,
-	config *job.JobConfig) []*resmgr.Task {
-
-	var resmgrtasks []*resmgr.Task
-	for _, t := range tasks {
-		resmgrtasks = append(
-			resmgrtasks,
-			util.ConvertTaskToResMgrTask(t, config),
-		)
-	}
-	return resmgrtasks
 }

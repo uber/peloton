@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
@@ -13,14 +12,12 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"github.com/pkg/errors"
@@ -232,39 +229,8 @@ func (p *statusUpdate) retrySchedulingTask(taskInfo *pb_task.TaskInfo) {
 		}).Error("jobstore getjobconfig failed")
 		return
 	}
-	p.enqueueTask(taskInfo, jobConfig)
-}
-
-// enqueueTask enqueues given task to respool in resmgr.
-func (p *statusUpdate) enqueueTask(
-	taskInfo *pb_task.TaskInfo,
-	jobConfig *pb_job.JobConfig) {
-
-	ctx, cancelFunc := context.WithTimeout(p.rootCtx, 10*time.Second)
-	defer cancelFunc()
-	var resmgrTasks []*resmgr.Task
-	resmgrTasks = append(
-		resmgrTasks,
-		util.ConvertTaskToResMgrTask(taskInfo, jobConfig),
-	)
-	var response resmgrsvc.EnqueueTasksResponse
-	var request = &resmgrsvc.EnqueueTasksRequest{
-		Tasks:   resmgrTasks,
-		ResPool: jobConfig.GetRespoolID(),
-	}
-	_, err := p.resmgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks"),
-		request,
-		&response,
-	)
-	if err != nil || response.Error != nil {
-		log.WithFields(log.Fields{
-			"error":          err,
-			"response_error": response.Error,
-			"task":           taskInfo,
-		}).Error("enqueue task into resmgr failed")
-	}
+	taskInfos := []*pb_task.TaskInfo{taskInfo}
+	task.EnqueueTasks(taskInfos, jobConfig, p.resmgrClient)
 }
 
 // isUnexpected tells if taskState is unexpected or not

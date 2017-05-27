@@ -361,6 +361,12 @@ func ConvertTaskToResMgrTask(
 		}
 	}
 
+	// By default task type is batch.
+	taskType := resmgr.TaskType_BATCH
+	if taskInfo.GetConfig().GetVolume() != nil {
+		taskType = resmgr.TaskType_STATEFUL
+	}
+
 	return &resmgr.Task{
 		Id:           taskID,
 		JobId:        taskInfo.GetJobId(),
@@ -372,5 +378,6 @@ func ConvertTaskToResMgrTask(
 		Resource:     taskInfo.GetConfig().GetResource(),
 		Constraint:   taskInfo.GetConfig().GetConstraint(),
 		NumPorts:     uint32(numPorts),
+		Type:         taskType,
 	}
 }
