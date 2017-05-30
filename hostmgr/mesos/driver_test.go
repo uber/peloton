@@ -1,6 +1,7 @@
 package mesos
 
 import (
+	"context"
 	"errors"
 	"net/url"
 	"reflect"
@@ -70,28 +71,28 @@ func (suite *schedulerDriverTestSuite) TestGetFrameworkID() {
 	suite.Nil(suite.driver.frameworkID)
 
 	suite.store.EXPECT().
-		GetFrameworkID(gomock.Eq(_frameworkName)).
+		GetFrameworkID(context.Background(), gomock.Eq(_frameworkName)).
 		Return(value, nil)
 
-	suite.Equal(frameworkID, suite.driver.GetFrameworkID())
+	suite.Equal(frameworkID, suite.driver.GetFrameworkID(context.Background()))
 	suite.Equal(frameworkID, suite.driver.frameworkID)
-	suite.Equal(frameworkID, suite.driver.GetFrameworkID())
+	suite.Equal(frameworkID, suite.driver.GetFrameworkID(context.Background()))
 }
 
 func (suite *schedulerDriverTestSuite) TestGetFrameworkIDError() {
 	err := errors.New("test")
 
 	suite.store.EXPECT().
-		GetFrameworkID(gomock.Eq(_frameworkName)).
+		GetFrameworkID(context.Background(), gomock.Eq(_frameworkName)).
 		Return("", err)
 
-	suite.Nil(suite.driver.GetFrameworkID())
+	suite.Nil(suite.driver.GetFrameworkID(context.Background()))
 
 	suite.store.EXPECT().
-		GetFrameworkID(gomock.Eq(_frameworkName)).
+		GetFrameworkID(context.Background(), gomock.Eq(_frameworkName)).
 		Return("", nil)
 
-	suite.Nil(suite.driver.GetFrameworkID())
+	suite.Nil(suite.driver.GetFrameworkID(context.Background()))
 }
 
 func (suite *schedulerDriverTestSuite) TestGetStreamID() {
@@ -99,13 +100,13 @@ func (suite *schedulerDriverTestSuite) TestGetStreamID() {
 	suite.Empty(suite.driver.mesosStreamID)
 
 	suite.store.EXPECT().
-		GetMesosStreamID(_frameworkName).
+		GetMesosStreamID(context.Background(), _frameworkName).
 		Return(_streamID, nil).
 		Times(2)
 
-	suite.Equal(_streamID, suite.driver.GetMesosStreamID())
+	suite.Equal(_streamID, suite.driver.GetMesosStreamID(context.Background()))
 	suite.Equal(_streamID, suite.driver.mesosStreamID)
-	suite.Equal(_streamID, suite.driver.GetMesosStreamID())
+	suite.Equal(_streamID, suite.driver.GetMesosStreamID(context.Background()))
 }
 
 func (suite *schedulerDriverTestSuite) TestGetStreamIDError() {
@@ -114,10 +115,10 @@ func (suite *schedulerDriverTestSuite) TestGetStreamIDError() {
 	suite.Empty(suite.driver.mesosStreamID)
 
 	suite.store.EXPECT().
-		GetMesosStreamID(_frameworkName).
+		GetMesosStreamID(context.Background(), _frameworkName).
 		Return("", err)
 
-	suite.Empty(suite.driver.GetMesosStreamID())
+	suite.Empty(suite.driver.GetMesosStreamID(context.Background()))
 	suite.Empty(suite.driver.mesosStreamID)
 }
 
@@ -138,32 +139,32 @@ func (suite *schedulerDriverTestSuite) TestStaticMethods() {
 func (suite *schedulerDriverTestSuite) TestPostSubscribe() {
 
 	suite.store.EXPECT().
-		SetMesosStreamID(_frameworkName, _streamID).
+		SetMesosStreamID(context.Background(), _frameworkName, _streamID).
 		Return(nil)
 
-	suite.driver.PostSubscribe(_streamID)
+	suite.driver.PostSubscribe(context.Background(), _streamID)
 
 	err := errors.New("error saving stream id")
 	suite.store.EXPECT().
-		SetMesosStreamID(_frameworkName, _streamID).
+		SetMesosStreamID(context.Background(), _frameworkName, _streamID).
 		Return(err)
 
 	// TODO: Do something here.
-	suite.driver.PostSubscribe(_streamID)
+	suite.driver.PostSubscribe(context.Background(), _streamID)
 }
 
 func (suite *schedulerDriverTestSuite) TestPrepareSubscribeRequest() {
-	req, err := suite.driver.PrepareSubscribeRequest("")
+	req, err := suite.driver.PrepareSubscribeRequest(context.Background(), "")
 	suite.Error(err)
 	suite.Nil(req)
 
 	value := _frameworkID
 
 	suite.store.EXPECT().
-		GetFrameworkID(gomock.Eq(_frameworkName)).
+		GetFrameworkID(context.Background(), gomock.Eq(_frameworkName)).
 		Return(value, nil)
 
-	req, err = suite.driver.PrepareSubscribeRequest(_hostPort)
+	req, err = suite.driver.PrepareSubscribeRequest(context.Background(), _hostPort)
 	suite.NoError(err)
 	suite.Equal("POST", req.Method)
 	suite.Equal("http://test-host:1234/api/v1/scheduler", req.URL.String())

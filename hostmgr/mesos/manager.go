@@ -1,6 +1,8 @@
 package mesos
 
 import (
+	"context"
+
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
 
@@ -32,7 +34,7 @@ type mesosManager struct {
 	frameworkName string
 }
 
-type schedulerEventCallback func(*sched.Event) error
+type schedulerEventCallback func(context.Context, *sched.Event) error
 
 // getCallbacks returns a map from name to usable callbacks
 // which can be registered to yarpc.Dispatcher.
@@ -53,13 +55,12 @@ func getCallbacks(m *mesosManager) map[string]schedulerEventCallback {
 	return procedures
 }
 
-func (m *mesosManager) Subscribed(body *sched.Event) error {
-
+func (m *mesosManager) Subscribed(ctx context.Context, body *sched.Event) error {
 	subscribed := body.GetSubscribed()
 	log.WithField("subscribed", subscribed).
 		Info("mesosManager: subscribed called")
 	frameworkID := subscribed.GetFrameworkId().GetValue()
-	err := m.store.SetMesosFrameworkID(m.frameworkName, frameworkID)
+	err := m.store.SetMesosFrameworkID(ctx, m.frameworkName, frameworkID)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"framework_id": frameworkID,
@@ -69,35 +70,30 @@ func (m *mesosManager) Subscribed(body *sched.Event) error {
 	return err
 }
 
-func (m *mesosManager) Message(body *sched.Event) error {
-
+func (m *mesosManager) Message(ctx context.Context, body *sched.Event) error {
 	msg := body.GetMessage()
 	log.WithField("msg", msg).Debug("mesosManager: message called")
 	return nil
 }
 
-func (m *mesosManager) Failure(body *sched.Event) error {
-
+func (m *mesosManager) Failure(ctx context.Context, body *sched.Event) error {
 	failure := body.GetFailure()
 	log.WithField("failure", failure).Debug("mesosManager: failure called")
 	return nil
 }
 
-func (m *mesosManager) Error(body *sched.Event) error {
-
+func (m *mesosManager) Error(ctx context.Context, body *sched.Event) error {
 	err := body.GetError()
 	log.WithField("error", err).Debug("mesosManager: error called")
 	return nil
 }
 
-func (m *mesosManager) Heartbeat(body *sched.Event) error {
-
+func (m *mesosManager) Heartbeat(ctx context.Context, body *sched.Event) error {
 	log.Debug("mesosManager: heartbeat called")
 	return nil
 }
 
-func (m *mesosManager) Unknown(body *sched.Event) error {
-
+func (m *mesosManager) Unknown(ctx context.Context, body *sched.Event) error {
 	log.WithField("event", body).Info("mesosManager: unknown event called")
 	return nil
 }

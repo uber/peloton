@@ -75,7 +75,7 @@ func (r MesosEventReader) Read(p []byte) (_ int, _ error) {
 //
 // The wrapped function must already be in the correct format:
 //
-// 	f(reqMeta yarpc.ReqMeta, body $reqBody) error
+// 	f(ctx context.Context, body $reqBody) error
 type mpbHandler struct {
 	handler reflect.Value
 }
@@ -86,7 +86,7 @@ func (h mpbHandler) Handle(
 	rw transport.ResponseWriter) error {
 
 	reader := treq.Body.(*MesosEventReader)
-	results := h.handler.Call([]reflect.Value{reader.Event})
+	results := h.handler.Call([]reflect.Value{reflect.ValueOf(ctx), reader.Event})
 
 	if err := results[0].Interface(); err != nil {
 		return err.(error)

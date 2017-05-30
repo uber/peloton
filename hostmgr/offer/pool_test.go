@@ -1,6 +1,7 @@
 package offer
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -70,7 +71,7 @@ func TestRemoveExpiredOffers(t *testing.T) {
 	offer4 := getMesosOffer(hostName4, offerID4)
 
 	// pool with offers within timeout
-	pool.AddOffers([]*mesos.Offer{offer1, offer2, offer3, offer4})
+	pool.AddOffers(context.Background(), []*mesos.Offer{offer1, offer2, offer3, offer4})
 	removed, valid = pool.RemoveExpiredOffers()
 	assert.Empty(t, removed)
 	assert.Equal(t, 4, valid)
@@ -132,7 +133,7 @@ func TestAddGetRemoveOffers(t *testing.T) {
 				offer := getMesosOffer(hostName, offerID)
 				offers = append(offers, offer)
 			}
-			pool.AddOffers(offers)
+			pool.AddOffers(context.Background(), offers)
 			wg.Done()
 		}(i)
 	}

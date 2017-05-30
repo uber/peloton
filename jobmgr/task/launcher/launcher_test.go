@@ -159,10 +159,10 @@ func TestMultipleTasksPlaced(t *testing.T) {
 			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
 
 		// Mock Task Store GetTaskByID
-		mockTaskStore.EXPECT().GetTaskByID(taskIDs[0].Value).Return(testTasks[0], nil),
+		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
 		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTask(updatedTaskInfo).Return(nil),
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), updatedTaskInfo).Return(nil),
 
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
@@ -189,7 +189,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	if err != nil {
 		assert.Error(t, err)
 	}
-	taskLauncher.processPlacements(placements)
+	taskLauncher.processPlacements(context.Background(), placements)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{

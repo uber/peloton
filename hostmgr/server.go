@@ -1,6 +1,7 @@
 package hostmgr
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -160,7 +161,7 @@ func (s *Server) ensureRunning() {
 		// should be true.
 		backoffUntil := time.Unix(0, s.backoffUntilNano.Load())
 		if time.Now().After(backoffUntil) {
-			if shouldBackoff := s.reconnect(); shouldBackoff {
+			if shouldBackoff := s.reconnect(context.Background()); shouldBackoff {
 				d := s.currentBackoffNano.Load() * 2
 				if d < s.minBackoff.Nanoseconds() {
 					d = s.minBackoff.Nanoseconds()
@@ -259,7 +260,7 @@ func (s *Server) disconnect() {
 // If we have a leader but cannot connect to it, exponentially back off so that
 // we do not overload the leader.
 // Returns whether we should back off after current connection.
-func (s *Server) reconnect() bool {
+func (s *Server) reconnect(ctx context.Context) bool {
 	log.WithField("role", s.role).Info("Connecting to Mesos")
 
 	s.Lock()
@@ -271,7 +272,7 @@ func (s *Server) reconnect() bool {
 		return false
 	}
 
-	if _, err := s.mesosInbound.StartMesosLoop(hostPort); err != nil {
+	if _, err := s.mesosInbound.StartMesosLoop(ctx, hostPort); err != nil {
 		log.WithError(err).Error("Failed to StartMesosLoop")
 		return true
 	}

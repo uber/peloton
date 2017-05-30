@@ -1,6 +1,7 @@
 package offer
 
 import (
+	"context"
 	"time"
 
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
@@ -92,11 +93,10 @@ func GetEventHandler() EventHandler {
 }
 
 // Offers is the mesos callback that sends the offers from master
-func (h *eventHandler) Offers(body *sched.Event) error {
-
+func (h *eventHandler) Offers(ctx context.Context, body *sched.Event) error {
 	event := body.GetOffers()
 	log.WithField("event", event).Debug("OfferManager: processing Offers event")
-	h.offerPool.AddOffers(event.Offers)
+	h.offerPool.AddOffers(ctx, event.Offers)
 
 	h.metrics.OfferEvents.Inc(1)
 
@@ -104,7 +104,7 @@ func (h *eventHandler) Offers(body *sched.Event) error {
 }
 
 // InverseOffers is the mesos callback that sends the InverseOffers from master
-func (h *eventHandler) InverseOffers(body *sched.Event) error {
+func (h *eventHandler) InverseOffers(ctx context.Context, body *sched.Event) error {
 
 	event := body.GetInverseOffers()
 	log.WithField("event", event).
@@ -117,7 +117,7 @@ func (h *eventHandler) InverseOffers(body *sched.Event) error {
 }
 
 // Rescind offers
-func (h *eventHandler) Rescind(body *sched.Event) error {
+func (h *eventHandler) Rescind(ctx context.Context, body *sched.Event) error {
 
 	event := body.GetRescind()
 	log.WithField("event", event).Debug("OfferManager: processing Rescind event")
@@ -129,7 +129,7 @@ func (h *eventHandler) Rescind(body *sched.Event) error {
 }
 
 // RescindInverseOffer rescinds a inverse offer
-func (h *eventHandler) RescindInverseOffer(body *sched.Event) error {
+func (h *eventHandler) RescindInverseOffer(ctx context.Context, body *sched.Event) error {
 
 	event := body.GetRescindInverseOffer()
 	log.WithField("event", event).

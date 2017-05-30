@@ -195,7 +195,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 	defer suite.ctrl.Finish()
 
 	numHosts := 5
-	suite.pool.AddOffers(generateOffers(numHosts))
+	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 
 	suite.checkResourcesGauges(numHosts, "ready")
 	suite.checkResourcesGauges(0, "placing")
@@ -298,7 +298,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	// only create one host offer in this test.
 	numHosts := 1
-	suite.pool.AddOffers(generateOffers(numHosts))
+	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 
 	// TODO: Add check for number of HostOffers in placing state.
 	suite.checkResourcesGauges(numHosts, "ready")
@@ -359,10 +359,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	gomock.InOrder(
 		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID().Return(
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
 		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID().Return(_streamID),
+		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
 		// Set expectations on scheduler schedulerClient
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -416,7 +416,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOperation() {
 
 	// only create one host offer in this test.
 	numHosts := 1
-	suite.pool.AddOffers(generateOffers(numHosts))
+	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 
 	// TODO: Add check for number of HostOffers in placing state.
 	suite.checkResourcesGauges(numHosts, "ready")
@@ -484,10 +484,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOperation() {
 
 	gomock.InOrder(
 		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID().Return(
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
 		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID().Return(_streamID),
+		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
 		// Set expectations on scheduler schedulerClient
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -552,10 +552,10 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	mockMutex := &sync.Mutex{}
 
 	// Set expectations on provider
-	suite.provider.EXPECT().GetFrameworkID().Return(
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 		suite.frameworkID,
 	).Times(2)
-	suite.provider.EXPECT().GetMesosStreamID().Return(
+	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
 		_streamID,
 	).Times(2)
 
@@ -611,10 +611,10 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 	mockMutex := &sync.Mutex{}
 
 	// Set expectations on provider
-	suite.provider.EXPECT().GetFrameworkID().Return(
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 		suite.frameworkID,
 	).Times(2)
-	suite.provider.EXPECT().GetMesosStreamID().Return(
+	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
 		_streamID,
 	).Times(2)
 
@@ -718,7 +718,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	clusterCapacityReq := &hostsvc.ClusterCapacityRequest{}
 	for _, tt := range tests {
 		// Set expectations on provider interface
-		suite.provider.EXPECT().GetFrameworkID().Return(tt.frameworkID)
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(tt.frameworkID)
 
 		if tt.clientCall {
 			// Set expectations on the mesos operator client
@@ -753,20 +753,20 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchOperationWithReservedOffers() {
 	volumeInfo := &volume.PersistentVolumeInfo{}
 
 	suite.volumeStore.EXPECT().
-		GetPersistentVolume(gomock.Any()).
+		GetPersistentVolume(context.Background(), gomock.Any()).
 		AnyTimes().
 		Return(volumeInfo, nil)
 	suite.volumeStore.EXPECT().
-		UpdatePersistentVolume(gomock.Any(), volume.VolumeState_CREATED).
+		UpdatePersistentVolume(context.Background(), gomock.Any(), volume.VolumeState_CREATED).
 		AnyTimes().
 		Return(nil)
 
 	gomock.InOrder(
 		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID().Return(
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
 		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID().Return(_streamID),
+		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
 		// Set expectations on scheduler schedulerClient
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -859,7 +859,7 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchOperationWithReservedOffers() {
 			Build(),
 	}
 	reservedOffer.Resources = append(reservedOffer.Resources, reservedResources...)
-	suite.pool.AddOffers(reservedOffers)
+	suite.pool.AddOffers(context.Background(), reservedOffers)
 
 	operationResp, err := suite.handler.OfferOperations(
 		rootCtx,
@@ -878,7 +878,7 @@ func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperation() {
 
 	// only create one host offer in this test.
 	numHosts := 1
-	suite.pool.AddOffers(generateOffers(numHosts))
+	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
 
 	// TODO: Add check for number of HostOffers in placing state.
 	suite.checkResourcesGauges(numHosts, "ready")
@@ -1003,10 +1003,10 @@ func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperation() {
 
 	gomock.InOrder(
 		// Set expectations on provider
-		suite.provider.EXPECT().GetFrameworkID().Return(
+		suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
 			suite.frameworkID),
 		// Set expectations on provider
-		suite.provider.EXPECT().GetMesosStreamID().Return(_streamID),
+		suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID),
 		// Set expectations on scheduler schedulerClient
 		suite.schedulerClient.EXPECT().
 			Call(

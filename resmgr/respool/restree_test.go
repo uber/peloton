@@ -6,6 +6,7 @@ package respool
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"testing"
 
@@ -49,7 +50,7 @@ func (suite *resTreeTestSuite) SetupSuite() {
 	fmt.Println("setting up resTreeTestSuite")
 	suite.mockCtrl = gomock.NewController(suite.T())
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
-	mockResPoolStore.EXPECT().GetAllResourcePools().
+	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(suite.getResPools(), nil).AnyTimes()
 
 	conf := mysql.LoadConfigWithDB()
@@ -466,19 +467,19 @@ func (suite *resTreeTestSuite) TestRefillTaskQueue() {
 	suite.createJob(&jobs[2], 2, 10, 1, task.TaskState_SUCCEEDED)
 	suite.createJob(&jobs[3], 2, 10, 1, task.TaskState_PENDING)
 
-	suite.resourceTree.(*tree).loadFromDB()
+	suite.resourceTree.(*tree).loadFromDB(context.Background())
 
 	// 1. All jobs should have 10 tasks in DB
-	tasks, err := suite.store.GetTasksForJob(&jobs[0])
+	tasks, err := suite.store.GetTasksForJob(context.Background(), &jobs[0])
 	suite.NoError(err)
 	suite.Equal(len(tasks), 10)
-	tasks, err = suite.store.GetTasksForJob(&jobs[1])
+	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[1])
 	suite.NoError(err)
 	suite.Equal(len(tasks), 7)
-	tasks, err = suite.store.GetTasksForJob(&jobs[2])
+	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[2])
 	suite.NoError(err)
 	suite.Equal(len(tasks), 2)
-	tasks, err = suite.store.GetTasksForJob(&jobs[3])
+	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[3])
 	suite.NoError(err)
 	suite.Equal(len(tasks), 2)
 
@@ -514,7 +515,7 @@ func (suite *resTreeTestSuite) createJob(
 		RespoolID:     &resPoolID,
 	}
 
-	var err = suite.store.CreateJob(jobID, &jobConfig, "uber")
+	var err = suite.store.CreateJob(context.Background(), jobID, &jobConfig, "uber")
 	suite.NoError(err)
 	for i := uint32(0); i < numTasks; i++ {
 		var taskID = fmt.Sprintf("%s-%d", jobID.Value, i)
@@ -534,7 +535,7 @@ func (suite *resTreeTestSuite) createJob(
 			InstanceId: i,
 			JobId:      jobID,
 		}
-		err = suite.store.CreateTask(jobID, i, &taskInfo, "test")
+		err = suite.store.CreateTask(context.Background(), jobID, i, &taskInfo, "test")
 		suite.NoError(err)
 	}
 }

@@ -57,7 +57,7 @@ func NewJobRecovery(
 
 // recoverJobs validates all jobs to make sure that all tasks
 // are created and sent to RM, for jobs in INITIALIZED state
-func (j *Recovery) recoverJobs() {
+func (j *Recovery) recoverJobs(ctx context.Context) {
 	if time.Since(j.lastRecoveryTime) < recoveryInterval {
 		return
 	}
@@ -66,7 +66,7 @@ func (j *Recovery) recoverJobs() {
 		job.JobState_INITIALIZED,
 	}
 	for _, state := range jobStates {
-		jobIDs, err := j.jobStore.GetJobsByState(state)
+		jobIDs, err := j.jobStore.GetJobsByState(ctx, state)
 		if err != nil {
 			log.WithError(err).
 				WithField("state", state).
@@ -74,7 +74,7 @@ func (j *Recovery) recoverJobs() {
 			continue
 		}
 		for _, jobID := range jobIDs {
-			err := j.recoverJob(&jobID)
+			err := j.recoverJob(ctx, &jobID)
 			if err == nil {
 				j.metrics.JobRecovered.Inc(1)
 			} else {
@@ -85,10 +85,10 @@ func (j *Recovery) recoverJobs() {
 }
 
 // Make sure that all tasks created and queued to RM
-func (j *Recovery) recoverJob(jobID *peloton.JobID) error {
+func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID) error {
 	log.WithField("job_id", jobID.Value).Info("recovering job")
 
-	jobConfig, err := j.jobStore.GetJobConfig(jobID)
+	jobConfig, err := j.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -96,7 +96,7 @@ func (j *Recovery) recoverJob(jobID *peloton.JobID) error {
 		return err
 	}
 
-	jobRuntime, err := j.jobStore.GetJobRuntime(jobID)
+	jobRuntime, err := j.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -130,7 +130,7 @@ func (j *Recovery) recoverJob(jobID *peloton.JobID) error {
 			WithField("end", end).
 			Debug("Validating task range")
 		for i := start; i < end; i++ {
-			t, err := j.taskStore.GetTaskForJob(jobID, i)
+			t, err := j.taskStore.GetTaskForJob(ctx, jobID, i)
 			if err != nil {
 				_, ok := err.(*storage.TaskNotFoundError)
 				if !ok {
@@ -144,7 +144,7 @@ func (j *Recovery) recoverJob(jobID *peloton.JobID) error {
 				log.WithField("job_id", jobID.Value).
 					WithField("task_instance", i).
 					Info("Creating missing task")
-				task, err := createTaskForJob(j.taskStore, jobID, i, jobConfig)
+				task, err := createTaskForJob(ctx, j.taskStore, jobID, i, jobConfig)
 				if err != nil {
 					log.WithError(err).
 						WithField("job_id", jobID.Value).
@@ -186,7 +186,7 @@ func (j *Recovery) recoverJob(jobID *peloton.JobID) error {
 		}
 	}
 	jobRuntime.State = job.JobState_PENDING
-	err = j.jobStore.UpdateJobRuntime(jobID, jobRuntime)
+	err = j.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -197,6 +197,7 @@ func (j *Recovery) recoverJob(jobID *peloton.JobID) error {
 }
 
 func createTaskForJob(
+	ctx context.Context,
 	taskStore storage.TaskStore,
 	jobID *peloton.JobID,
 	i uint32,
@@ -218,7 +219,7 @@ func createTaskForJob(
 		InstanceId: i,
 		JobId:      jobID,
 	}
-	err := taskStore.CreateTask(jobID, i, &task, jobConfig.OwningTeam)
+	err := taskStore.CreateTask(ctx, jobID, i, &task, jobConfig.OwningTeam)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).

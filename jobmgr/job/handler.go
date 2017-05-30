@@ -117,7 +117,7 @@ func (h *serviceHandler) Create(
 		}, nil
 	}
 
-	err = h.jobStore.CreateJob(jobID, jobConfig, "peloton")
+	err = h.jobStore.CreateJob(ctx, jobID, jobConfig, "peloton")
 	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
@@ -160,7 +160,7 @@ func (h *serviceHandler) Create(
 		tasks[i] = &t
 	}
 	// TODO: use the username of current session for createBy param
-	err = h.taskStore.CreateTasks(jobID, tasks, "peloton")
+	err = h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
 	nTasks := int64(len(tasks))
 	if err != nil {
 		log.Errorf("Failed to create tasks (%d) for job %v: %v",
@@ -180,7 +180,7 @@ func (h *serviceHandler) Create(
 		return nil, err
 	}
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(jobID)
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -189,7 +189,7 @@ func (h *serviceHandler) Create(
 		return nil, err
 	}
 	jobRuntime.State = job.JobState_PENDING
-	err = h.jobStore.UpdateJobRuntime(jobID, jobRuntime)
+	err = h.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -213,7 +213,7 @@ func (h *serviceHandler) Update(
 	req *job.UpdateRequest) (*job.UpdateResponse, error) {
 
 	jobID := req.Id
-	jobRuntime, err := h.jobStore.GetJobRuntime(jobID)
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
@@ -236,7 +236,7 @@ func (h *serviceHandler) Update(
 	}
 
 	newConfig := req.Config
-	oldConfig, err := h.jobStore.GetJobConfig(jobID)
+	oldConfig, err := h.jobStore.GetJobConfig(ctx, jobID)
 
 	if newConfig.RespoolID == nil {
 		newConfig.RespoolID = oldConfig.RespoolID
@@ -269,7 +269,7 @@ func (h *serviceHandler) Update(
 		return nil, nil
 	}
 
-	err = h.jobStore.UpdateJobConfig(jobID, newConfig)
+	err = h.jobStore.UpdateJobConfig(ctx, jobID, newConfig)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return &job.UpdateResponse{
@@ -293,7 +293,7 @@ func (h *serviceHandler) Update(
 		tasks = append(tasks, &t)
 	}
 
-	err = h.taskStore.CreateTasks(jobID, tasks, "peloton")
+	err = h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
 	nTasks := int64(len(tasks))
 	if err != nil {
 		log.Errorf("Failed to create tasks (%d) for job %v: %v",
@@ -313,7 +313,7 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
-	err = h.runtimeUpdater.UpdateJob(jobID)
+	err = h.runtimeUpdater.UpdateJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -355,7 +355,7 @@ func (h *serviceHandler) Get(
 	log.Infof("JobManager.Get called: %v", req)
 	h.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, err := h.jobStore.GetJobConfig(req.Id)
+	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.Id)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
@@ -370,7 +370,7 @@ func (h *serviceHandler) Get(
 			},
 		}, nil
 	}
-	jobRuntime, err := h.jobStore.GetJobRuntime(req.Id)
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.Id)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
@@ -412,7 +412,7 @@ func (h *serviceHandler) Query(
 
 	if (req.GetLabels().GetLabels() != nil && len(req.GetLabels().GetLabels()) > 0) ||
 		(len(keywords) > 0) {
-		jobConfigs, err = h.jobStore.Query(req.GetLabels(), keywords)
+		jobConfigs, err = h.jobStore.Query(ctx, req.GetLabels(), keywords)
 		if err != nil {
 			h.metrics.JobQueryFail.Inc(1)
 			log.WithError(err).Error("Query job failed with error")
@@ -434,7 +434,7 @@ func (h *serviceHandler) Query(
 		}
 	} else if req.GetRespoolID() != nil {
 		// Query by respool id directly
-		jobConfigs, err = h.jobStore.GetJobsByRespoolID(req.GetRespoolID())
+		jobConfigs, err = h.jobStore.GetJobsByRespoolID(ctx, req.GetRespoolID())
 		if err != nil {
 			h.metrics.JobQueryFail.Inc(1)
 			log.WithError(err).Error("Query job failed with error")
@@ -449,7 +449,7 @@ func (h *serviceHandler) Query(
 	} else {
 		// query all jobs if neither label nor respool is provided
 		// TODO: add pagination support
-		jobConfigs, err = h.jobStore.Query(nil, nil)
+		jobConfigs, err = h.jobStore.Query(ctx, nil, nil)
 		if err != nil {
 			h.metrics.JobQueryFail.Inc(1)
 			log.WithError(err).Error("Query job failed with error")
@@ -474,7 +474,7 @@ func (h *serviceHandler) Delete(
 	log.Infof("JobManager.Delete called: %v", req)
 	h.metrics.JobAPIDelete.Inc(1)
 
-	err := h.jobStore.DeleteJob(req.Id)
+	err := h.jobStore.DeleteJob(ctx, req.Id)
 	if err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)

@@ -2,6 +2,7 @@ package respool
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -96,7 +97,7 @@ func GetTree() Tree {
 // Start will start the respool tree by loading respools and tasks
 // from storage
 func (t *tree) Start() error {
-	resPoolConfigs, err := t.store.GetAllResourcePools()
+	resPoolConfigs, err := t.store.GetAllResourcePools(context.Background())
 	if err != nil {
 		log.WithError(err).Error("GetAllResourcePools failed")
 		return err
@@ -110,7 +111,7 @@ func (t *tree) Start() error {
 	//Loading the jobs/tasks from DB and enquing it back to respool
 	// Pending queue.
 	// commenting it till we fix it in next diff
-	//t.loadFromDB()
+	//t.loadFromDB(context.Background())
 	return nil
 }
 
@@ -128,9 +129,8 @@ func (t *tree) Stop() error {
 
 // LoadFromDB loads all the jobs and tasks which are not in terminal state
 // And requeue them
-func (t *tree) loadFromDB() error {
-
-	jobs, err := t.jobStore.GetAllJobs()
+func (t *tree) loadFromDB(ctx context.Context) error {
+	jobs, err := t.jobStore.GetAllJobs(ctx)
 	if err != nil {
 		log.WithField("Fail to get all jobs from DB with %v", err).Error()
 		return err
@@ -140,7 +140,7 @@ func (t *tree) loadFromDB() error {
 	var jobstring string
 	var isError = false
 	for jobID, jobConfig := range jobs {
-		err = t.requeueJob(jobID, jobConfig)
+		err = t.requeueJob(ctx, jobID, jobConfig)
 		if err != nil {
 			log.WithField("Not able to requeue job ", jobID).Error()
 			jobstring = jobstring + jobID + " , "
@@ -155,10 +155,7 @@ func (t *tree) loadFromDB() error {
 
 // requeueJob scan the tasks batch by batch, update / create task
 // infos, also put those task records into the queue
-func (t *tree) requeueJob(
-	jobID string,
-	jobConfig *job.JobConfig) error {
-
+func (t *tree) requeueJob(ctx context.Context, jobID string, jobConfig *job.JobConfig) error {
 	log.Infof("Requeue job %v to task queue", jobID)
 
 	// TODO: add getTaskCount(jobID, taskState) in task store to help
@@ -172,7 +169,7 @@ func (t *tree) requeueJob(
 	// Handle gang scheduled tasks if any
 	minInstances := jobConfig.GetSla().GetMinimumRunningInstances()
 	if minInstances > 1 {
-		err = t.requeueGang(jobID, jobConfig, minInstances)
+		err = t.requeueGang(ctx, jobID, jobConfig, minInstances)
 		if err != nil {
 			log.Errorf("Failed to requeue tasks for job %v in [%v, %v)",
 				jobID, 0, minInstances)
@@ -188,7 +185,7 @@ func (t *tree) requeueJob(
 		for i := initialSingleInstance; i <= rangevar; i++ {
 			from := i * RequeueBatchSize
 			to := util.Min((i+1)*RequeueBatchSize, numSingleInstances)
-			err = t.requeueTasksInRange(jobID, jobConfig, from, to)
+			err = t.requeueTasksInRange(ctx, jobID, jobConfig, from, to)
 
 			if err != nil {
 				log.Errorf("Failed to requeue tasks for job %v in [%v, %v)",
@@ -205,10 +202,7 @@ func (t *tree) requeueJob(
 	return nil
 }
 
-func (t *tree) loadTasksInRange(
-	jobID string,
-	from, to uint32) (map[uint32]*task.TaskInfo, error) {
-
+func (t *tree) loadTasksInRange(ctx context.Context, jobID string, from, to uint32) (map[uint32]*task.TaskInfo, error) {
 	log.WithFields(log.Fields{
 		"JobID": jobID,
 		"from":  from,
@@ -222,24 +216,18 @@ func (t *tree) loadTasksInRange(
 	}
 
 	pbJobID := &peloton.JobID{Value: jobID}
-	tasks, err := t.taskStore.GetTasksForJobByRange(
-		pbJobID,
-		&task.InstanceRange{
-			From: from,
-			To:   to,
-		})
-	return tasks, err
+	return t.taskStore.GetTasksForJobByRange(ctx, pbJobID, &task.InstanceRange{
+		From: from,
+		To:   to,
+	})
 }
 
 // requeueTasks loads the tasks in a given range from storage and
 // enqueue them to task queue
 
-func (t *tree) requeueTasksInRange(
-	jobID string,
-	jobConfig *job.JobConfig,
-	from, to uint32) error {
+func (t *tree) requeueTasksInRange(ctx context.Context, jobID string, jobConfig *job.JobConfig, from, to uint32) error {
 
-	tasks, err := t.loadTasksInRange(jobID, from, to)
+	tasks, err := t.loadTasksInRange(ctx, jobID, from, to)
 	if err != nil {
 		return err
 	}
@@ -263,7 +251,7 @@ func (t *tree) requeueTasksInRange(
 					"Not able to recover task")
 				break
 			}
-			err = t.taskStore.UpdateTask(ta)
+			err = t.taskStore.UpdateTask(ctx, ta)
 			if err != nil {
 				log.WithField("task", ta.JobId.Value+"-"+
 					fmt.Sprint(ta.InstanceId)).Error(
@@ -278,12 +266,8 @@ func (t *tree) requeueTasksInRange(
 
 // All gang tasks move through placement (initialized/pending/placed/placing) states as a group.
 // If they are in placement state, requeue them to pending queue as a group & then update stored state.
-func (t *tree) requeueGang(
-	jobID string,
-	jobConfig *job.JobConfig,
-	minInstances uint32) error {
-
-	tasks, err := t.loadTasksInRange(jobID, 0, minInstances)
+func (t *tree) requeueGang(ctx context.Context, jobID string, jobConfig *job.JobConfig, minInstances uint32) error {
+	tasks, err := t.loadTasksInRange(ctx, jobID, 0, minInstances)
 	if err != nil {
 		return err
 	}
@@ -323,7 +307,7 @@ func (t *tree) requeueGang(
 
 	// Update gang tasks entries in DB
 	for _, ta := range tasks {
-		err = t.taskStore.UpdateTask(ta)
+		err = t.taskStore.UpdateTask(ctx, ta)
 		if err != nil {
 			log.WithField("task", ta.JobId.Value+"-"+
 				fmt.Sprint(ta.InstanceId)).Error(

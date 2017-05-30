@@ -3,6 +3,7 @@
 package mysql
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -75,7 +76,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 			DefaultConfig: &taskConfig,
 		}
 		jobs = append(jobs, &jobConfig)
-		err := suite.store.CreateJob(&jobID, &jobConfig, "uber")
+		err := suite.store.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
 		suite.NoError(err)
 
 		// For each job, create 3 tasks
@@ -90,13 +91,13 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 				InstanceId: uint32(j),
 				JobId:      &jobID,
 			}
-			err = suite.store.CreateTask(&jobID, j, &taskInfo, "test")
+			err = suite.store.CreateTask(context.Background(), &jobID, j, &taskInfo, "test")
 			suite.NoError(err)
 		}
 	}
 	// List all tasks by job
 	for i := 0; i < nJobs; i++ {
-		tasks, err := suite.store.GetTasksForJob(jobIDs[i])
+		tasks, err := suite.store.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
@@ -108,7 +109,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 	for i := 0; i < nJobs; i++ {
 		var offset uint32
 		for {
-			tasks, total, err := suite.store.QueryTasks(jobIDs[i], offset, 1)
+			tasks, total, err := suite.store.QueryTasks(context.Background(), jobIDs[i], offset, 1)
 			suite.NoError(err)
 			if len(tasks) == 0 {
 				break
@@ -127,17 +128,17 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 	// Update task
 	// List all tasks by job
 	for i := 0; i < nJobs; i++ {
-		tasks, err := suite.store.GetTasksForJob(jobIDs[i])
+		tasks, err := suite.store.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
 			task.Runtime.Host = fmt.Sprintf("compute-%d", i)
-			err := suite.store.UpdateTask(task)
+			err := suite.store.UpdateTask(context.Background(), task)
 			suite.NoError(err)
 		}
 	}
 	for i := 0; i < nJobs; i++ {
-		tasks, err := suite.store.GetTasksForJob(jobIDs[i])
+		tasks, err := suite.store.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
@@ -176,7 +177,7 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 			Sla:           &sla,
 			DefaultConfig: &taskConfig,
 		}
-		err := suite.store.CreateJob(&jobID, &jobConfig, "uber")
+		err := suite.store.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
 		suite.NoError(err)
 
 		// now, create a mess of tasks
@@ -194,14 +195,14 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 			}
 			taskInfos = append(taskInfos, &taskInfo)
 		}
-		err = suite.store.CreateTasks(&jobID, taskInfos, "test")
+		err = suite.store.CreateTasks(context.Background(), &jobID, taskInfos, "test")
 		suite.NoError(err)
 	}
 
 	// List all tasks by job, ensure they were created properly, and have the right parent
 	for jobID, nTasks := range jobTasks {
 		job := peloton.JobID{Value: jobID}
-		tasks, err := suite.store.GetTasksForJob(&job)
+		tasks, err := suite.store.GetTasksForJob(context.Background(), &job)
 		suite.NoError(err)
 		suite.Equal(nTasks, len(tasks))
 		for _, task := range tasks {
@@ -259,16 +260,16 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			Labels:        &labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
-		err := suite.store.CreateJob(&jobID, &jobconfig, "uber")
+		err := suite.store.CreateJob(context.Background(), &jobID, &jobconfig, "uber")
 		suite.NoError(err)
 
-		err = suite.store.CreateJob(&jobID, &jobconfig, "uber")
+		err = suite.store.CreateJob(context.Background(), &jobID, &jobconfig, "uber")
 		suite.Error(err)
 	}
 	// search by job ID
 	for i := 0; i < records; i++ {
 		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-		result, err := suite.store.GetJobConfig(&jobID)
+		result, err := suite.store.GetJobConfig(context.Background(), &jobID)
 		suite.NoError(err)
 		suite.Equal(result.Name, originalJobs[i].Name)
 		suite.Equal(result.DefaultConfig.Resource.FdLimit,
@@ -286,7 +287,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			{Key: &keys[1], Value: &vals[1]},
 		},
 	}
-	jobs, err = suite.store.Query(&labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), len(originalJobs))
 
@@ -297,7 +298,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			{Key: &keys[3], Value: &vals[3]},
 		},
 	}
-	jobs, err = suite.store.Query(&labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
 	labelQuery = mesos.Labels{
@@ -305,7 +306,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			{Key: &keys[3], Value: &vals[3]},
 		},
 	}
-	jobs, err = suite.store.Query(&labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
 
@@ -314,7 +315,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			{Key: &keys[2], Value: &vals[3]},
 		},
 	}
-	jobs, err = suite.store.Query(&labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 0)
 
@@ -322,36 +323,36 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 		Labels: []*mesos.Label{},
 	}
 	// test get all jobs if no labels
-	jobs, err = suite.store.Query(&labelQuery, nil)
+	jobs, err = suite.store.Query(context.Background(), &labelQuery, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 10)
 
-	jobs, err = suite.store.Query(nil, nil)
+	jobs, err = suite.store.Query(context.Background(), nil, nil)
 	suite.NoError(err)
 	suite.Equal(len(jobs), 10)
 
-	jobs, err = suite.store.GetJobsByOwner("team6")
+	jobs, err = suite.store.GetJobsByOwner(context.Background(), "team6")
 	suite.NoError(err)
 	suite.Equal(len(jobs), records-2)
 
-	jobs, err = suite.store.GetJobsByOwner("money")
+	jobs, err = suite.store.GetJobsByOwner(context.Background(), "money")
 	suite.NoError(err)
 	suite.Equal(len(jobs), 2)
 
-	jobs, err = suite.store.GetJobsByOwner("owner")
+	jobs, err = suite.store.GetJobsByOwner(context.Background(), "owner")
 	suite.NoError(err)
 	suite.Equal(len(jobs), 0)
 
 	// Delete job
 	for i := 0; i < records; i++ {
 		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-		err := suite.store.DeleteJob(&jobID)
+		err := suite.store.DeleteJob(context.Background(), &jobID)
 		suite.NoError(err)
 	}
 	// Get should not return anything
 	for i := 0; i < records; i++ {
 		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-		result, err := suite.store.GetJobConfig(&jobID)
+		result, err := suite.store.GetJobConfig(context.Background(), &jobID)
 		suite.NotNil(err)
 		suite.Nil(result)
 	}
@@ -362,14 +363,14 @@ func (suite *mySQLStoreTestSuite) TestUpdateJobConfig() {
 	newInstanceCount := uint32(10)
 	jobConfig := createJobConfig()
 	var jobID = peloton.JobID{Value: uuid.New()}
-	err := suite.store.CreateJob(&jobID, jobConfig, "test")
+	err := suite.store.CreateJob(context.Background(), &jobID, jobConfig, "test")
 	suite.NoError(err)
-	jobConfig, err = suite.store.GetJobConfig(&jobID)
+	jobConfig, err = suite.store.GetJobConfig(context.Background(), &jobID)
 
 	suite.Equal(oldInstanceCount, jobConfig.InstanceCount)
 
 	jobConfig.InstanceCount = newInstanceCount
-	err = suite.store.UpdateJobConfig(&jobID, jobConfig)
+	err = suite.store.UpdateJobConfig(context.Background(), &jobID, jobConfig)
 	suite.NoError(err)
 	suite.Equal(newInstanceCount, jobConfig.InstanceCount)
 }
@@ -382,7 +383,7 @@ func (suite *mySQLStoreTestSuite) TestGetResourcePoolsByOwner() {
 		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
-		err := suite.store.CreateResourcePool(resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		err := suite.store.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, _resPoolOwner)
 		suite.Nil(err)
 	}
 
@@ -407,7 +408,7 @@ func (suite *mySQLStoreTestSuite) TestGetResourcePoolsByOwner() {
 	}
 
 	for _, tc := range testCases {
-		resourcePools, actualErr := suite.store.GetResourcePoolsByOwner(tc.owner)
+		resourcePools, actualErr := suite.store.GetResourcePoolsByOwner(context.Background(), tc.owner)
 		if tc.expectedErr == nil {
 			suite.Nil(actualErr, tc.msg)
 			suite.Len(resourcePools, tc.nResourcePools, tc.msg)
@@ -425,10 +426,10 @@ func (suite *mySQLStoreTestSuite) TestJobRuntime() {
 	var jobID = peloton.JobID{Value: "TestJobRuntime"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(nTasks)
-	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+	err := jobStore.CreateJob(context.Background(), &jobID, jobConfig, "uber")
 	suite.NoError(err)
 
-	runtime, err := jobStore.GetJobRuntime(&jobID)
+	runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(job.JobState_INITIALIZED, runtime.State)
 	suite.Equal(0, len(runtime.TaskStats))
@@ -440,15 +441,15 @@ func (suite *mySQLStoreTestSuite) TestJobRuntime() {
 	runtime.TaskStats[task.TaskState_RUNNING.String()] = 5
 	runtime.TaskStats[task.TaskState_SUCCEEDED.String()] = 5
 
-	err = jobStore.UpdateJobRuntime(&jobID, runtime)
+	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
 	suite.NoError(err)
 
-	runtime, err = jobStore.GetJobRuntime(&jobID)
+	runtime, err = jobStore.GetJobRuntime(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(job.JobState_RUNNING, runtime.State)
 	suite.Equal(4, len(runtime.TaskStats))
 
-	jobIds, err := jobStore.GetJobsByState(job.JobState_RUNNING)
+	jobIds, err := jobStore.GetJobsByState(context.Background(), job.JobState_RUNNING)
 	suite.NoError(err)
 	idFound := false
 	for _, id := range jobIds {
@@ -458,7 +459,7 @@ func (suite *mySQLStoreTestSuite) TestJobRuntime() {
 	}
 	suite.True(idFound)
 
-	jobIds, err = jobStore.GetJobsByState(120)
+	jobIds, err = jobStore.GetJobsByState(context.Background(), 120)
 	suite.NoError(err)
 	suite.Equal(0, len(jobIds))
 }

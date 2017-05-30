@@ -281,7 +281,7 @@ func (h *serviceHandler) OfferOperations(
 		// call to pool will select some different host.
 		// An alternative is to mark offers on the host as ready.
 		if reservedOfferLabels == nil {
-			if err := h.offerPool.DeclineOffers(offerIds); err != nil {
+			if err := h.offerPool.DeclineOffers(ctx, offerIds); err != nil {
 				log.WithError(err).
 					WithField("offers", offerIds).
 					Warn("Cannot decline offers task building error")
@@ -300,7 +300,7 @@ func (h *serviceHandler) OfferOperations(
 
 	callType := sched.Call_ACCEPT
 	msg := &sched.Call{
-		FrameworkId: h.frameworkInfoProvider.GetFrameworkID(),
+		FrameworkId: h.frameworkInfoProvider.GetFrameworkID(ctx),
 		Type:        &callType,
 		Accept: &sched.Call_Accept{
 			OfferIds:   offerIds,
@@ -313,7 +313,7 @@ func (h *serviceHandler) OfferOperations(
 	}).Debug("Accepting offer with operations.")
 
 	// TODO: add retry / put back offer and tasks in failure scenarios
-	msid := h.frameworkInfoProvider.GetMesosStreamID()
+	msid := h.frameworkInfoProvider.GetMesosStreamID(ctx)
 	err = h.schedulerClient.Call(msid, msg)
 	if err != nil {
 		h.metrics.OfferOperationsFail.Inc(1)
@@ -395,7 +395,7 @@ func (h *serviceHandler) LaunchTasks(
 			// For now, decline all offers to Mesos in the hope that next
 			// call to pool will select some different host.
 			// An alternative is to mark offers on the host as ready.
-			if err := h.offerPool.DeclineOffers(offerIds); err != nil {
+			if err := h.offerPool.DeclineOffers(ctx, offerIds); err != nil {
 				log.WithError(err).
 					WithField("offers", offerIds).
 					Warn("Cannot decline offers task building error")
@@ -421,7 +421,7 @@ func (h *serviceHandler) LaunchTasks(
 	callType := sched.Call_ACCEPT
 	opType := mesos.Offer_Operation_LAUNCH
 	msg := &sched.Call{
-		FrameworkId: h.frameworkInfoProvider.GetFrameworkID(),
+		FrameworkId: h.frameworkInfoProvider.GetFrameworkID(ctx),
 		Type:        &callType,
 		Accept: &sched.Call_Accept{
 			OfferIds: offerIds,
@@ -441,7 +441,7 @@ func (h *serviceHandler) LaunchTasks(
 	}).Debug("Launching tasks to Mesos.")
 
 	// TODO: add retry / put back offer and tasks in failure scenarios
-	msid := h.frameworkInfoProvider.GetMesosStreamID()
+	msid := h.frameworkInfoProvider.GetMesosStreamID(ctx)
 	err = h.schedulerClient.Call(msid, msg)
 	if err != nil {
 		h.metrics.LaunchTasksFail.Inc(int64(len(mesosTasks)))
@@ -513,14 +513,14 @@ func (h *serviceHandler) KillTasks(
 			defer wg.Done()
 			callType := sched.Call_KILL
 			msg := &sched.Call{
-				FrameworkId: h.frameworkInfoProvider.GetFrameworkID(),
+				FrameworkId: h.frameworkInfoProvider.GetFrameworkID(ctx),
 				Type:        &callType,
 				Kill: &sched.Call_Kill{
 					TaskId: taskID,
 				},
 			}
 
-			msid := h.frameworkInfoProvider.GetMesosStreamID()
+			msid := h.frameworkInfoProvider.GetMesosStreamID(ctx)
 			err := h.schedulerClient.Call(msid, msg)
 			if err != nil {
 				h.metrics.KillTasksFail.Inc(1)
@@ -606,7 +606,7 @@ func (h *serviceHandler) ClusterCapacity(
 	log.WithField("request", body).Debug("ClusterCapacity called.")
 
 	// Get frameworkID
-	frameWorkID := h.frameworkInfoProvider.GetFrameworkID()
+	frameWorkID := h.frameworkInfoProvider.GetFrameworkID(ctx)
 
 	// Validate FrameworkID
 	if len(frameWorkID.GetValue()) == 0 {

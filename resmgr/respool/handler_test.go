@@ -30,12 +30,12 @@ type resPoolHandlerTestSuite struct {
 func (suite *resPoolHandlerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
-	suite.mockResPoolStore.EXPECT().GetAllResourcePools().
+	suite.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(suite.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
 	gomock.InOrder(
-		mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).AnyTimes(),
+		mockJobStore.EXPECT().GetAllJobs(context.Background()).Return(nil, nil).AnyTimes(),
 	)
 	suite.resourceTree = &tree{
 		store:     suite.mockResPoolStore,
@@ -302,6 +302,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
 
 	// set expectations
 	suite.mockResPoolStore.EXPECT().CreateResourcePool(
+		context.Background(),
 		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
 		"peloton").Return(nil)
@@ -379,6 +380,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlrea
 	expectedErrMsg := "resource pool already exits"
 	// set expectations
 	suite.mockResPoolStore.EXPECT().CreateResourcePool(
+		context.Background(),
 		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
 		"peloton",
@@ -427,6 +429,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePool() {
 
 	// set expectations
 	suite.mockResPoolStore.EXPECT().UpdateResourcePool(
+		context.Background(),
 		gomock.Eq(mockResourcePoolID),
 		gomock.Eq(mockResourcePoolConfig)).Return(nil)
 

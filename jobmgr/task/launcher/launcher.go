@@ -114,9 +114,8 @@ func (l *launcher) Start() error {
 					continue
 				}
 
-				// TODO: Implement this as a thread pool
 				// Getting and launching placements in different go routine
-				l.processPlacements(placements)
+				l.processPlacements(context.Background(), placements)
 			}
 		}()
 	}
@@ -172,11 +171,11 @@ func (l *launcher) isRunning() bool {
 }
 
 // launchTasks launches tasks to host manager
-func (l *launcher) processPlacements(placements []*resmgr.Placement) error {
+func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.Placement) error {
 	log.WithField("placements", placements).Debug("Start processing placements")
 	for _, placement := range placements {
 		go func(placement *resmgr.Placement) {
-			tasks, err := l.getLaunchableTasks(placement)
+			tasks, err := l.getLaunchableTasks(ctx, placement)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"placement": placement,
@@ -200,9 +199,7 @@ func (l *launcher) processPlacements(placements []*resmgr.Placement) error {
 	return nil
 }
 
-func (l *launcher) getLaunchableTasks(
-	placement *resmgr.Placement) ([]*hostsvc.LaunchableTask, error) {
-
+func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Placement) ([]*hostsvc.LaunchableTask, error) {
 	tasks := placement.GetTasks()
 	hostname := placement.GetHostname()
 	selectedPorts := placement.GetPorts()
@@ -214,7 +211,7 @@ func (l *launcher) getLaunchableTasks(
 	for _, taskID := range tasks {
 		// TODO: we need to check goal state before we can launch tasks
 		// TODO: We need to add batch api's for getting all tasks in one shot
-		taskInfo, err := l.taskStore.GetTaskByID(taskID.Value)
+		taskInfo, err := l.taskStore.GetTaskByID(ctx, taskID.Value)
 		if err != nil {
 			log.WithField("Task Id", taskID.Value).Error("Not able to get Task")
 			continue
@@ -243,7 +240,7 @@ func (l *launcher) getLaunchableTasks(
 		}
 
 		// Writes the hostname and ports information back to db.
-		err = l.taskStore.UpdateTask(taskInfo)
+		err = l.taskStore.UpdateTask(ctx, taskInfo)
 		if err != nil {
 			log.WithField("task_info", taskInfo).
 				Error("Not able to update Task")

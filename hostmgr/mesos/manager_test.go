@@ -1,6 +1,7 @@
 package mesos
 
 import (
+	"context"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -54,7 +55,7 @@ func (suite *managerTestSuite) TestCallbacks() {
 			},
 			mockCalls: []*gomock.Call{
 				suite.store.EXPECT().
-					SetMesosFrameworkID(_frameworkName, _frameworkID).
+					SetMesosFrameworkID(context.Background(), _frameworkName, _frameworkID).
 					Return(nil),
 			},
 		},
@@ -104,7 +105,7 @@ func (suite *managerTestSuite) TestCallbacks() {
 
 		tmp := tt.eventType
 		tt.body.Type = &tmp
-		err := c(tt.body)
+		err := c(context.Background(), tt.body)
 		suite.NoError(err)
 	}
 }

@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -173,7 +174,7 @@ func NewStore(config Config, scope tally.Scope) *Store {
 }
 
 // CreateJob creates a job with the job id and the config value
-func (m *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy string) error {
+func (m *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, createdBy string) error {
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
 		log.WithError(err).Error("Marshal job config failed")
@@ -194,7 +195,7 @@ func (m *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy
 		m.metrics.JobCreateFail.Inc(1)
 		return err
 	}
-	err = m.UpdateJobRuntime(id, initialJobRuntime)
+	err = m.UpdateJobRuntime(ctx, id, initialJobRuntime)
 	if err != nil {
 		log.WithError(err).WithField("job_id", id.Value).Error("Create initial runtime failed")
 		m.metrics.JobCreateFail.Inc(1)
@@ -205,7 +206,7 @@ func (m *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, createdBy
 }
 
 // UpdateJobConfig updates the job config for a given job id
-func (m *Store) UpdateJobConfig(id *peloton.JobID, jobConfig *job.JobConfig) error {
+func (m *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
 		log.WithError(err).Error("Marshal job config failed")
@@ -224,7 +225,7 @@ func (m *Store) UpdateJobConfig(id *peloton.JobID, jobConfig *job.JobConfig) err
 }
 
 // GetJobConfig returns a job config given the job id
-func (m *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
+func (m *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error) {
 	jobs, err := m.getJobs(map[string]interface{}{"row_key=": id.Value, "col_key=": colJobConfig})
 	if err != nil {
 		return nil, err
@@ -243,10 +244,10 @@ func (m *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 // In the tasks table, the "Labels" field are compacted (all whitespaces and " are removed for each label),
 // then stored as the "labels_summary" row. Mysql fulltext index are also set on this field.
 // When a query comes, the query labels are compacted in the same way then queried against the fulltext index.
-func (m *Store) Query(Labels *mesos_v1.Labels, keywords []string) (map[string]*job.JobConfig, error) {
+func (m *Store) Query(ctx context.Context, Labels *mesos_v1.Labels, keywords []string) (map[string]*job.JobConfig, error) {
 	if Labels == nil || len(Labels.Labels) == 0 {
 		log.Debug("Labels is empty, return all jobs")
-		return m.GetAllJobs()
+		return m.GetAllJobs(ctx)
 	}
 
 	var queryLabels = ""
@@ -285,10 +286,10 @@ func (m *Store) Query(Labels *mesos_v1.Labels, keywords []string) (map[string]*j
 }
 
 // DeleteJob deletes a job by id
-func (m *Store) DeleteJob(id *peloton.JobID) error {
+func (m *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 	// Check if there are any task left for the job. If there is any, abort the deletion
 	// TODO: slu -- discussion on if the task state matter here
-	tasks, err := m.GetTasksForJob(id)
+	tasks, err := m.GetTasksForJob(ctx, id)
 	if err != nil {
 		log.Errorf("GetTasksForJob for job id %v failed with error %v", id.Value, err)
 		m.metrics.JobDeleteFail.Inc(1)
@@ -311,22 +312,22 @@ func (m *Store) DeleteJob(id *peloton.JobID) error {
 }
 
 // GetJobsByOwner returns jobs by owner
-func (m *Store) GetJobsByOwner(owner string) (map[string]*job.JobConfig, error) {
+func (m *Store) GetJobsByOwner(ctx context.Context, owner string) (map[string]*job.JobConfig, error) {
 	return m.getJobs(map[string]interface{}{"owning_team=": owner, "col_key=": colJobConfig})
 }
 
 // GetTasksForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *Store) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value})
 }
 
 // GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *Store) GetTasksForJobByRange(id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id >=": Range.From, "instance_id <": Range.To})
 }
 
 // GetTaskByID returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *Store) GetTaskByID(taskID string) (*task.TaskInfo, error) {
+func (m *Store) GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error) {
 	result, err := m.getTasks(map[string]interface{}{"row_key=": taskID})
 	if err != nil {
 		return nil, err
@@ -345,13 +346,13 @@ func (m *Store) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 }
 
 // GetTaskForJob returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *Store) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "instance_id=": instanceID})
 }
 
 // CreateTask creates a task for a peloton job
 // TODO: remove this in favor of CreateTasks
-func (m *Store) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
+func (m *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
 	// TODO: discuss on whether taskID should be part of the taskInfo instead of runtime
 	rowKey := fmt.Sprintf("%s-%d", id.Value, instanceID)
 	if taskInfo.InstanceId != instanceID {
@@ -380,7 +381,7 @@ func (m *Store) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.
 }
 
 // CreateTasks creates rows for a slice of Tasks, numbered 0..n
-func (m *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
+func (m *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
 	timeStart := time.Now()
 	maxBatchSize := int64(m.Conf.MaxBatchSize)
 	if maxBatchSize == 0 {
@@ -484,12 +485,12 @@ func (m *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, creat
 }
 
 // GetTasksForJobAndState returns the tasks (runtime_config) for a peloton job with certain state
-func (m *Store) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasks(map[string]interface{}{"job_id=": id.Value, "task_state=": state})
 }
 
 // UpdateTask updates a task for a peloton job
-func (m *Store) UpdateTask(taskInfo *task.TaskInfo) error {
+func (m *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 	rowKey := fmt.Sprintf("%s-%d", taskInfo.JobId.Value, taskInfo.InstanceId)
 	buffer, err := json.Marshal(taskInfo)
 
@@ -601,7 +602,7 @@ func (m *Store) getTasks(filters map[string]interface{}) (map[uint32]*task.TaskI
 }
 
 //SetMesosStreamID stores the mesos stream id for a framework name
-func (m *Store) SetMesosStreamID(frameworkName string, mesosStreamID string) error {
+func (m *Store) SetMesosStreamID(ctx context.Context, frameworkName string, mesosStreamID string) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Errorf("os.HostName() failed with err=%v", err)
@@ -615,7 +616,7 @@ func (m *Store) SetMesosStreamID(frameworkName string, mesosStreamID string) err
 }
 
 //SetMesosFrameworkID stores the mesos framework id for a framework name
-func (m *Store) SetMesosFrameworkID(frameworkName string, frameworkID string) error {
+func (m *Store) SetMesosFrameworkID(ctx context.Context, frameworkName string, frameworkID string) error {
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Errorf("os.HostName() failed with err=%v", err)
@@ -629,7 +630,7 @@ func (m *Store) SetMesosFrameworkID(frameworkName string, frameworkID string) er
 }
 
 //GetMesosStreamID reads the mesos stream id for a framework name
-func (m *Store) GetMesosStreamID(frameworkName string) (string, error) {
+func (m *Store) GetMesosStreamID(ctx context.Context, frameworkName string) (string, error) {
 	var records = []MesosFrameworkInfo{}
 	q, args := getQueryAndArgs(frameworksTable, map[string]interface{}{"framework_name=": frameworkName}, []string{"*"})
 	err := m.DB.Select(&records, q, args...)
@@ -644,7 +645,7 @@ func (m *Store) GetMesosStreamID(frameworkName string) (string, error) {
 }
 
 // GetFrameworkID reads the framework id for a framework name
-func (m *Store) GetFrameworkID(frameworkName string) (string, error) {
+func (m *Store) GetFrameworkID(ctx context.Context, frameworkName string) (string, error) {
 	var records = []MesosFrameworkInfo{}
 	q, args := getQueryAndArgs(frameworksTable, map[string]interface{}{"framework_name=": frameworkName}, []string{"*"})
 	err := m.DB.Select(&records, q, args...)
@@ -659,13 +660,13 @@ func (m *Store) GetFrameworkID(frameworkName string) (string, error) {
 }
 
 // GetAllJobs returns all jobs
-func (m *Store) GetAllJobs() (map[string]*job.JobConfig, error) {
+func (m *Store) GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, error) {
 	return m.getJobs(map[string]interface{}{})
 }
 
 // CreateResourcePool creates a resource pool with the resource pool id and the config value
 // TODO: Need to create test case
-func (m *Store) CreateResourcePool(id *respool.ResourcePoolID, respoolConfig *respool.ResourcePoolConfig, createdBy string) error {
+func (m *Store) CreateResourcePool(ctx context.Context, id *respool.ResourcePoolID, respoolConfig *respool.ResourcePoolConfig, createdBy string) error {
 	buffer, err := json.Marshal(respoolConfig)
 	if err != nil {
 		log.Errorf("error = %v", err)
@@ -688,22 +689,22 @@ func (m *Store) CreateResourcePool(id *respool.ResourcePoolID, respoolConfig *re
 }
 
 // GetResourcePool gets a resource pool info object
-func (m *Store) GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
+func (m *Store) GetResourcePool(ctx context.Context, id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
 	return nil, errors.New("unimplemented")
 }
 
 // DeleteResourcePool Deletes the resource pool
-func (m *Store) DeleteResourcePool(id *respool.ResourcePoolID) error {
+func (m *Store) DeleteResourcePool(ctx context.Context, id *respool.ResourcePoolID) error {
 	return errors.New("unimplemented")
 }
 
 // UpdateResourcePool Update the resource pool
-func (m *Store) UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
+func (m *Store) UpdateResourcePool(ctx context.Context, id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
 	return errors.New("unimplemented")
 }
 
 // GetResourcePoolsByOwner gets resource pool(s) by owner
-func (m *Store) GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error) {
+func (m *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[string]*respool.ResourcePoolConfig, error) {
 	var records = []ResourcePoolRecord{}
 	var result = make(map[string]*respool.ResourcePoolConfig)
 	q, args := getQueryAndArgs(resourcePoolTable, map[string]interface{}{"created_by=": owner}, []string{"*"})
@@ -738,7 +739,7 @@ func (m *Store) GetResourcePoolsByOwner(owner string) (map[string]*respool.Resou
 }
 
 // GetAllResourcePools Get all the resource pool
-func (m *Store) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error) {
+func (m *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
 	var records = []ResourcePoolRecord{}
 	var result = make(map[string]*respool.ResourcePoolConfig)
 	q, args := getQueryAndArgs(resourcePoolTable, map[string]interface{}{}, []string{"*"})
@@ -773,7 +774,7 @@ func (m *Store) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, e
 }
 
 // GetJobRuntime returns the job runtime info
-func (m *Store) GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error) {
+func (m *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error) {
 	var records = []JobRuntimeRecord{}
 
 	q, args := getQueryAndArgs(jobRuntimeTable, map[string]interface{}{"row_key=": id.Value}, []string{"runtime"})
@@ -804,7 +805,7 @@ func (m *Store) GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error) {
 }
 
 // GetJobsByState returns the jobID by job state
-func (m *Store) GetJobsByState(state job.JobState) ([]peloton.JobID, error) {
+func (m *Store) GetJobsByState(ctx context.Context, state job.JobState) ([]peloton.JobID, error) {
 	var records = []JobRuntimeRecord{}
 	var result []peloton.JobID
 
@@ -830,7 +831,7 @@ func (m *Store) GetJobsByState(state job.JobState) ([]peloton.JobID, error) {
 }
 
 // UpdateJobRuntime updates the job runtime info
-func (m *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) error {
+func (m *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error {
 	buffer, err := json.Marshal(runtime)
 	if err != nil {
 		log.WithError(err).Error("Failed to marshal job runtime")
@@ -851,7 +852,7 @@ func (m *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) er
 }
 
 // QueryTasks returns all tasks in the given [offset...offset+limit) range.
-func (m *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
+func (m *Store) QueryTasks(ctx context.Context, id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
 	// First fetch total count.
 	var total uint32
 	if err := m.DB.QueryRow(getTasksCountForJobStmt, id.Value).Scan(&total); err != nil {
@@ -887,29 +888,26 @@ func (m *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*t
 }
 
 // CreatePersistentVolume creates a persistent volume entry.
-func (m *Store) CreatePersistentVolume(
-	volume *pb_volume.PersistentVolumeInfo) error {
+func (m *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.PersistentVolumeInfo) error {
 	return errors.New("Not implemented")
 }
 
 // UpdatePersistentVolume update state for a persistent volume.
-func (m *Store) UpdatePersistentVolume(
-	volumeID string, state pb_volume.VolumeState) error {
+func (m *Store) UpdatePersistentVolume(ctx context.Context, volumeID string, state pb_volume.VolumeState) error {
 	return errors.New("Not implemented")
 }
 
 // GetPersistentVolume gets the persistent volume object.
-func (m *Store) GetPersistentVolume(
-	volumeID string) (*pb_volume.PersistentVolumeInfo, error) {
+func (m *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_volume.PersistentVolumeInfo, error) {
 	return nil, errors.New("Not implemented")
 }
 
 // DeletePersistentVolume delete persistent volume entry.
-func (m *Store) DeletePersistentVolume(volumeID string) error {
+func (m *Store) DeletePersistentVolume(ctx context.Context, volumeID string) error {
 	return errors.New("Not implemented")
 }
 
 // GetJobsByRespoolID returns jobIDs in a respool
-func (m *Store) GetJobsByRespoolID(respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error) {
+func (m *Store) GetJobsByRespoolID(ctx context.Context, respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error) {
 	return nil, errors.New("Not implemented")
 }

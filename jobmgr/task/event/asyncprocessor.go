@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -13,7 +14,7 @@ import (
 
 // StatusProcessor is the interface to process a task status update
 type StatusProcessor interface {
-	ProcessStatusUpdate(event *pb_eventstream.Event) error
+	ProcessStatusUpdate(ctx context.Context, event *pb_eventstream.Event) error
 }
 
 // asyncEventProcessor maps events to a list of buckets; and each bucket would be consumed by a single go routine
@@ -66,7 +67,7 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 			for {
 				select {
 				case event := <-bucket.eventChannel:
-					err := t.ProcessStatusUpdate(event)
+					err := t.ProcessStatusUpdate(context.Background(), event)
 					if err != nil {
 						log.WithError(err).
 							WithField("bucket_num", bucket.index).

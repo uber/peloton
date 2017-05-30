@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -24,25 +25,25 @@ type mockTaskStore struct {
 	updates map[string][]*task.TaskInfo
 }
 
-func (m *mockTaskStore) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
+func (m *mockTaskStore) CreateTask(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
 	return nil
 }
-func (m *mockTaskStore) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
+func (m *mockTaskStore) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
 	return nil
 }
-func (m *mockTaskStore) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }
-func (m *mockTaskStore) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }
-func (m *mockTaskStore) GetTasksForJobByRange(id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }
-func (m *mockTaskStore) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }
-func (m *mockTaskStore) UpdateTask(taskInfo *task.TaskInfo) error {
+func (m *mockTaskStore) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	mesosTaskID := *(taskInfo.Runtime.TaskId.Value)
@@ -53,7 +54,7 @@ func (m *mockTaskStore) UpdateTask(taskInfo *task.TaskInfo) error {
 	m.updates[mesosTaskID] = append(m.updates[mesosTaskID], taskInfo)
 	return nil
 }
-func (m *mockTaskStore) GetTaskByID(taskID string) (*task.TaskInfo, error) {
+func (m *mockTaskStore) GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error) {
 	jobID, instanceID, _ := util.ParseTaskID(taskID)
 	mesosTaskID := taskID + "-" + uuidStr
 	return &task.TaskInfo{
@@ -146,6 +147,6 @@ func TestBucketEventProcessor(t *testing.T) {
 	applier.shutdown()
 
 }
-func (m *mockTaskStore) QueryTasks(id *peloton.JobID, offset, limit uint32) ([]*task.TaskInfo, uint32, error) {
+func (m *mockTaskStore) QueryTasks(ctx context.Context, id *peloton.JobID, offset, limit uint32) ([]*task.TaskInfo, uint32, error) {
 	return nil, 0, nil
 }

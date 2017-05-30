@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -33,12 +34,12 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	gomock.InOrder(
 		mockResPoolStore.EXPECT().
-			GetAllResourcePools().Return(suite.getResPools(), nil).AnyTimes(),
+			GetAllResourcePools(context.Background()).Return(suite.getResPools(), nil).AnyTimes(),
 	)
 	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
 	gomock.InOrder(
-		mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).AnyTimes(),
+		mockJobStore.EXPECT().GetAllJobs(context.Background()).Return(nil, nil).AnyTimes(),
 	)
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 

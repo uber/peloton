@@ -1,6 +1,7 @@
 package job
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -144,11 +145,11 @@ func formatTime(timestamp float64, layout string) string {
 }
 
 // UpdateJob updates the job runtime synchronously
-func (j *RuntimeUpdater) UpdateJob(jobID *peloton.JobID) error {
+func (j *RuntimeUpdater) UpdateJob(ctx context.Context, jobID *peloton.JobID) error {
 	j.Lock()
 	defer j.Unlock()
 	if j.started.Load() {
-		err := j.updateJobRuntime(jobID)
+		err := j.updateJobRuntime(ctx, jobID)
 		if err == nil {
 			j.metrics.JobRuntimeUpdated.Inc(1)
 			return err
@@ -159,12 +160,12 @@ func (j *RuntimeUpdater) UpdateJob(jobID *peloton.JobID) error {
 	return errors.New("RuntimeUpdater has not started")
 }
 
-func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
+func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.JobID) error {
 	log.WithField("job_id", jobID).
 		Info("JobRuntimeUpdater updateJobRuntime")
 
 	// Read the job config and job runtime
-	jobConfig, err := j.jobStore.GetJobConfig(jobID)
+	jobConfig, err := j.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -178,7 +179,7 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 		return fmt.Errorf("Cannot find jobConfig for %s", jobID.Value)
 	}
 
-	jobRuntime, err := j.jobStore.GetJobRuntime(jobID)
+	jobRuntime, err := j.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -200,7 +201,7 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 	for _, stateVal := range task.TaskState_value {
 		var state = task.TaskState(stateVal)
 		// TODO: update GetTasksForJobAndState to return instanceID only
-		tasks, err := j.taskStore.GetTasksForJobAndState(jobID, state.String())
+		tasks, err := j.taskStore.GetTasksForJobAndState(ctx, jobID, state.String())
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", jobID).
@@ -262,7 +263,7 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 	jobRuntime.TaskStats = stateCounts
 
 	// Update the job runtime
-	err = j.jobStore.UpdateJobRuntime(jobID, jobRuntime)
+	err = j.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -272,14 +273,14 @@ func (j *RuntimeUpdater) updateJobRuntime(jobID *peloton.JobID) error {
 	return nil
 }
 
-func (j *RuntimeUpdater) updateJobsRuntime() {
+func (j *RuntimeUpdater) updateJobsRuntime(ctx context.Context) {
 	j.Lock()
 	defer j.Unlock()
 
 	log.Debug("JobRuntimeUpdater updateJobsRuntime")
 	for jobID, taskUpdated := range j.taskUpdatedFlags {
 		if taskUpdated && j.started.Load() {
-			j.updateJobRuntime(&peloton.JobID{Value: jobID})
+			j.updateJobRuntime(ctx, &peloton.JobID{Value: jobID})
 			delete(j.taskUpdatedFlags, jobID)
 			delete(j.firstTaskUpdateTime, jobID)
 			delete(j.lastTaskUpdateTime, jobID)
@@ -289,7 +290,7 @@ func (j *RuntimeUpdater) updateJobsRuntime() {
 
 // checkAllJobs would check and update all jobs that is not in terminal state
 // every checkAllJobsInterval time
-func (j *RuntimeUpdater) checkAllJobs() {
+func (j *RuntimeUpdater) checkAllJobs(ctx context.Context) {
 	j.Lock()
 	defer j.Unlock()
 
@@ -305,7 +306,7 @@ func (j *RuntimeUpdater) checkAllJobs() {
 		job.JobState_UNKNOWN,
 	}
 	for _, state := range nonTerminatedStates {
-		jobIDs, err := j.jobStore.GetJobsByState(state)
+		jobIDs, err := j.jobStore.GetJobsByState(ctx, state)
 		if err != nil {
 			log.WithError(err).
 				WithField("state", state).
@@ -313,7 +314,7 @@ func (j *RuntimeUpdater) checkAllJobs() {
 			continue
 		}
 		for _, jobID := range jobIDs {
-			err := j.updateJobRuntime(&jobID)
+			err := j.updateJobRuntime(ctx, &jobID)
 			if err == nil {
 				j.metrics.JobRuntimeUpdated.Inc(1)
 			} else {
@@ -336,15 +337,15 @@ func (j *RuntimeUpdater) updateJobStateLoop(c <-chan time.Time) {
 	for range c {
 		if j.started.Load() {
 			// update job runtime based on taskUpdatedFlags
-			j.updateJobsRuntime()
+			j.updateJobsRuntime(context.Background())
 			// Also scan all jobs and see if their runtime state need to be
 			// updated, in case some task updates are lost
-			j.checkAllJobs()
+			j.checkAllJobs(context.Background())
 			// jobRecovery is ran from time to time on the leader JobManager.
 			// This is because all JM can fail and leave partially created jobs.
 			// Thus the leader need to check from time to time to recover the
 			// partially created jobs
-			j.jobRecovery.recoverJobs()
+			j.jobRecovery.recoverJobs(context.Background())
 		}
 	}
 }

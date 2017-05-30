@@ -180,7 +180,7 @@ type taskStateManager struct {
 }
 
 // Update is the Mesos callback on mesos state updates
-func (m *taskStateManager) Update(body *sched.Event) error {
+func (m *taskStateManager) Update(ctx context.Context, body *sched.Event) error {
 	var err error
 	taskUpdate := body.GetUpdate()
 	log.WithField("task_update", taskUpdate).
@@ -241,18 +241,15 @@ func (m *taskStateManager) updateCounters() {
 func (m *taskStateManager) startAsyncProcessTaskUpdates() {
 	for i := 0; i < m.updateAckConcurrency; i++ {
 		go func() {
-			for {
-				select {
-				case taskUpdate := <-m.ackChannel:
-					if len(taskUpdate.GetStatus().GetUuid()) == 0 {
-						log.WithField("status_update", taskUpdate).Debug("Skipping acknowledging update with empty uuid")
-					} else {
-						err := m.acknowledgeTaskUpdate(taskUpdate)
-						if err != nil {
-							log.WithField("task_status", *taskUpdate).
-								WithError(err).
-								Error("Failed to acknowledgeTaskUpdate")
-						}
+			for taskUpdate := range m.ackChannel {
+				if len(taskUpdate.GetStatus().GetUuid()) == 0 {
+					log.WithField("status_update", taskUpdate).Debug("Skipping acknowledging update with empty uuid")
+				} else {
+					err := m.acknowledgeTaskUpdate(context.Background(), taskUpdate)
+					if err != nil {
+						log.WithField("task_status", *taskUpdate).
+							WithError(err).
+							Error("Failed to acknowledgeTaskUpdate")
 					}
 				}
 			}
@@ -260,12 +257,12 @@ func (m *taskStateManager) startAsyncProcessTaskUpdates() {
 	}
 }
 
-func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *sched.Event_Update) error {
+func (m *taskStateManager) acknowledgeTaskUpdate(ctx context.Context, taskUpdate *sched.Event_Update) error {
 	atomic.AddInt64(m.taskAckCount, 1)
 	atomic.AddInt32(m.statusChannelCount, -1)
 	callType := sched.Call_ACKNOWLEDGE
 	msg := &sched.Call{
-		FrameworkId: hostmgr_mesos.GetSchedulerDriver().GetFrameworkID(),
+		FrameworkId: hostmgr_mesos.GetSchedulerDriver().GetFrameworkID(ctx),
 		Type:        &callType,
 		Acknowledge: &sched.Call_Acknowledge{
 			AgentId: taskUpdate.Status.AgentId,
@@ -273,7 +270,7 @@ func (m *taskStateManager) acknowledgeTaskUpdate(taskUpdate *sched.Event_Update)
 			Uuid:    taskUpdate.Status.Uuid,
 		},
 	}
-	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID()
+	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID(ctx)
 	err := m.schedulerclient.Call(msid, msg)
 	if err != nil {
 		log.WithField("task_status", *taskUpdate).

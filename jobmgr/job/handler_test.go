@@ -223,27 +223,27 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.handler.runtimeUpdater = updater
 
 	mockJobStore.EXPECT().
-		GetJobConfig(jobID).
+		GetJobConfig(context.Background(), jobID).
 		Return(&oldJobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobRuntime(jobID).
+		GetJobRuntime(context.Background(), jobID).
 		Return(&jobRuntime, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobConfig(jobID, gomock.Any()).
+		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		CreateTasks(jobID, gomock.Any(), "peloton").
+		CreateTasks(context.Background(), jobID, gomock.Any(), "peloton").
 		Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(jobID, gomock.Any()).
+		GetTasksForJobAndState(context.Background(), jobID, gomock.Any()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), gomock.Any()).
@@ -268,7 +268,7 @@ func (suite *JobHandlerTestSuite) TestJobQuery() {
 
 	// TODO: add more inputs
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
-	mockJobStore.EXPECT().Query(nil, nil)
+	mockJobStore.EXPECT().Query(context.Background(), nil, nil)
 	suite.handler.jobStore = mockJobStore
 
 	req := &job.QueryRequest{}

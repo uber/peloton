@@ -79,18 +79,19 @@ func TestValidatorWithStore(t *testing.T) {
 		DefaultConfig: &taskConfig,
 		InstanceCount: 10,
 	}
-	err := csStore.CreateJob(jobID, &jobConfig, "gsg9")
+	err := csStore.CreateJob(context.Background(), jobID, &jobConfig, "gsg9")
 	assert.Nil(t, err)
 
 	// Create a job with instanceCount 10 but only 5 tasks
 	// validate that after recovery, all tasks are created and
 	// the job state is update to pending.
-	jobRuntime, err := csStore.GetJobRuntime(jobID)
+	jobRuntime, err := csStore.GetJobRuntime(context.Background(), jobID)
 	assert.Nil(t, err)
 	jobRuntime.CreationTime = (time.Now().Add(-10 * time.Hour)).String()
 
 	for i := uint32(0); i < uint32(3); i++ {
 		_, err := createTaskForJob(
+			context.Background(),
 			csStore,
 			jobID,
 			i,
@@ -100,23 +101,24 @@ func TestValidatorWithStore(t *testing.T) {
 
 	for i := uint32(7); i < uint32(9); i++ {
 		_, err := createTaskForJob(
+			context.Background(),
 			csStore,
 			jobID,
 			i,
 			&jobConfig)
 		assert.Nil(t, err)
 	}
-	err = csStore.UpdateJobRuntime(jobID, jobRuntime)
+	err = csStore.UpdateJobRuntime(context.Background(), jobID, jobRuntime)
 	assert.Nil(t, err)
 
 	validator := NewJobRecovery(csStore, csStore, mockClient, tally.NoopScope)
-	validator.recoverJob(jobID)
+	validator.recoverJob(context.Background(), jobID)
 
-	jobRuntime, err = csStore.GetJobRuntime(jobID)
+	jobRuntime, err = csStore.GetJobRuntime(context.Background(), jobID)
 	assert.Nil(t, err)
 	assert.Equal(t, job.JobState_PENDING, jobRuntime.State)
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
-		_, err := csStore.GetTaskForJob(jobID, i)
+		_, err := csStore.GetTaskForJob(context.Background(), jobID, i)
 		assert.Nil(t, err)
 		assert.True(t, sentTasks[int(i)])
 	}
@@ -150,37 +152,37 @@ func TestValidator(t *testing.T) {
 	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
 
 	mockJobStore.EXPECT().
-		GetJobsByState(job.JobState_INITIALIZED).
+		GetJobsByState(context.Background(), job.JobState_INITIALIZED).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobConfig(gomock.Any()).
+		GetJobConfig(context.Background(), gomock.Any()).
 		Return(&jobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobRuntime(gomock.Any()).
+		GetJobRuntime(context.Background(), gomock.Any()).
 		Return(&jobRuntime, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 
 	mockTaskStore.EXPECT().
-		CreateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Do(func(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, _ string) {
+		CreateTask(context.Background(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, _ string) {
 			createdTasks = append(createdTasks, taskInfo)
 		}).Return(nil)
 	mockTaskStore.EXPECT().
-		GetTaskForJob(gomock.Any(), uint32(1)).
+		GetTaskForJob(context.Background(), gomock.Any(), uint32(1)).
 		Return(nil, &storage.TaskNotFoundError{TaskID: ""})
 	mockTaskStore.EXPECT().
-		GetTaskForJob(gomock.Any(), uint32(0)).
+		GetTaskForJob(context.Background(), gomock.Any(), uint32(0)).
 		Return(map[uint32]*task.TaskInfo{
 			uint32(0): createTaskInfo(jobID, uint32(0), task.TaskState_RUNNING),
 		}, nil)
 	mockTaskStore.EXPECT().
-		GetTaskForJob(gomock.Any(), uint32(2)).
+		GetTaskForJob(context.Background(), gomock.Any(), uint32(2)).
 		Return(map[uint32]*task.TaskInfo{
 			uint32(2): tasks[1],
 		}, nil)
@@ -200,7 +202,7 @@ func TestValidator(t *testing.T) {
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
 	validator := NewJobRecovery(mockJobStore, mockTaskStore, mockClient, tally.NoopScope)
-	validator.recoverJobs()
+	validator.recoverJobs(context.Background())
 
 	// jobRuntime create time is long ago, thus after validateJobs(),
 	// job runtime state should be pending and task 1 and task 2 are sent by resmgr client
@@ -213,7 +215,7 @@ func TestValidator(t *testing.T) {
 	jobRuntime.CreationTime = time.Now().String()
 	sentTasks = make(map[int]bool)
 
-	validator.recoverJobs()
+	validator.recoverJobs(context.Background())
 
 	assert.Equal(t, job.JobState_INITIALIZED, jobRuntime.State)
 	assert.False(t, sentTasks[1])
@@ -248,45 +250,45 @@ func TestValidatorFailures(t *testing.T) {
 	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
 
 	mockJobStore.EXPECT().
-		GetJobsByState(job.JobState_INITIALIZED).
+		GetJobsByState(context.Background(), job.JobState_INITIALIZED).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobConfig(gomock.Any()).
+		GetJobConfig(context.Background(), gomock.Any()).
 		Return(&jobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobRuntime(gomock.Any()).
+		GetJobRuntime(context.Background(), gomock.Any()).
 		Return(&jobRuntime, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(errors.New("Mock error")).
 		MinTimes(1).
 		MaxTimes(1)
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 
 	mockTaskStore.EXPECT().
-		CreateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Do(func(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, _ string) {
+		CreateTask(context.Background(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, _ string) {
 			createdTasks = append(createdTasks, taskInfo)
 		}).Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTaskForJob(gomock.Any(), uint32(1)).
+		GetTaskForJob(context.Background(), gomock.Any(), uint32(1)).
 		Return(nil, &storage.TaskNotFoundError{TaskID: ""}).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTaskForJob(gomock.Any(), uint32(0)).
+		GetTaskForJob(context.Background(), gomock.Any(), uint32(0)).
 		Return(map[uint32]*task.TaskInfo{
 			uint32(0): createTaskInfo(jobID, uint32(0), task.TaskState_RUNNING),
 		}, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTaskForJob(gomock.Any(), uint32(2)).
+		GetTaskForJob(context.Background(), gomock.Any(), uint32(2)).
 		Return(map[uint32]*task.TaskInfo{
 			uint32(2): tasks[1],
 		}, nil).
@@ -314,7 +316,7 @@ func TestValidatorFailures(t *testing.T) {
 		AnyTimes()
 
 	validator := NewJobRecovery(mockJobStore, mockTaskStore, mockClient, tally.NoopScope)
-	validator.recoverJobs()
+	validator.recoverJobs(context.Background())
 
 	// First call would fail as the client would fail once, nothing changed to the job
 	assert.Equal(t, job.JobState_INITIALIZED, jobRuntime.State)
@@ -324,7 +326,7 @@ func TestValidatorFailures(t *testing.T) {
 	// Second call would fail as the jobstore updateJobRuntime would fail once,
 	// nothing changed to the job but tasks sent
 	validator = NewJobRecovery(mockJobStore, mockTaskStore, mockClient, tally.NoopScope)
-	validator.recoverJobs()
+	validator.recoverJobs(context.Background())
 	assert.Equal(t, job.JobState_PENDING, jobRuntime.State)
 	assert.True(t, sentTasks[1])
 	assert.True(t, sentTasks[2])
@@ -332,7 +334,7 @@ func TestValidatorFailures(t *testing.T) {
 	// jobRuntime create time is long ago, thus after validateJobs(),
 	// job runtime state should be pending and task 1 and task 2 are sent by resmgr client
 	validator = NewJobRecovery(mockJobStore, mockTaskStore, mockClient, tally.NoopScope)
-	validator.recoverJobs()
+	validator.recoverJobs(context.Background())
 	assert.Equal(t, job.JobState_PENDING, jobRuntime.State)
 	assert.True(t, sentTasks[1])
 	assert.True(t, sentTasks[2])

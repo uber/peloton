@@ -1,6 +1,7 @@
 package offer
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -24,7 +25,7 @@ import (
 // currently only instantiated at the leader of Peloton masters.
 type Pool interface {
 	// Add offers to the pool
-	AddOffers([]*mesos.Offer)
+	AddOffers(context.Context, []*mesos.Offer)
 
 	// Rescind a offer from the pool.
 	// Returns whether the offer is found in the pool.
@@ -37,7 +38,7 @@ type Pool interface {
 	Clear()
 
 	// Decline offers
-	DeclineOffers(offerIds []*mesos.OfferID) error
+	DeclineOffers(ctx context.Context, offerIds []*mesos.OfferID) error
 
 	// ClaimForPlace obtains offers from pool conforming to given constraint
 	// for placement purposes. Results are grouped by hostname as key.
@@ -214,7 +215,7 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 // tryAddOffer acquires read lock of the offerPool.
 // If the offerPool does not have the hostName, returns false; otherwise,
 // add offer with its expiration time to the agent and returns true.
-func (p *offerPool) tryAddOffer(offer *mesos.Offer, expiration time.Time) bool {
+func (p *offerPool) tryAddOffer(ctx context.Context, offer *mesos.Offer, expiration time.Time) bool {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -222,7 +223,7 @@ func (p *offerPool) tryAddOffer(offer *mesos.Offer, expiration time.Time) bool {
 	if _, ok := p.hostOfferIndex[hostName]; !ok {
 		return false
 	}
-	status := p.hostOfferIndex[hostName].AddMesosOffer(offer)
+	status := p.hostOfferIndex[hostName].AddMesosOffer(ctx, offer)
 
 	delta := scalar.FromOffer(offer)
 	switch status {
@@ -239,7 +240,7 @@ func (p *offerPool) tryAddOffer(offer *mesos.Offer, expiration time.Time) bool {
 
 // addOffer acquires the write lock. It would guarantee that the hostName
 // correspond to the offer is added, then add the offer to the agent.
-func (p *offerPool) addOffer(offer *mesos.Offer, expiration time.Time) {
+func (p *offerPool) addOffer(ctx context.Context, offer *mesos.Offer, expiration time.Time) {
 	p.Lock()
 	defer p.Unlock()
 
@@ -248,7 +249,7 @@ func (p *offerPool) addOffer(offer *mesos.Offer, expiration time.Time) {
 	if !ok {
 		p.hostOfferIndex[hostName] = summary.New(p.volumeStore)
 	}
-	status := p.hostOfferIndex[hostName].AddMesosOffer(offer)
+	status := p.hostOfferIndex[hostName].AddMesosOffer(ctx, offer)
 
 	delta := scalar.FromOffer(offer)
 	switch status {
@@ -262,12 +263,12 @@ func (p *offerPool) addOffer(offer *mesos.Offer, expiration time.Time) {
 	}
 }
 
-func (p *offerPool) AddOffers(offers []*mesos.Offer) {
+func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) {
 	expiration := time.Now().Add(p.offerHoldTime)
 	for _, offer := range offers {
-		result := p.tryAddOffer(offer, expiration)
+		result := p.tryAddOffer(ctx, offer, expiration)
 		if !result {
-			p.addOffer(offer, expiration)
+			p.addOffer(ctx, offer, expiration)
 		}
 	}
 
@@ -387,17 +388,17 @@ func (p *offerPool) Clear() {
 }
 
 // DeclineOffers calls mesos master to decline list of offers
-func (p *offerPool) DeclineOffers(offerIDs []*mesos.OfferID) error {
+func (p *offerPool) DeclineOffers(ctx context.Context, offerIDs []*mesos.OfferID) error {
 	log.WithField("offer_ids", offerIDs).Debug("Decline offers")
 	callType := sched.Call_DECLINE
 	msg := &sched.Call{
-		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkID(),
+		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkID(ctx),
 		Type:        &callType,
 		Decline: &sched.Call_Decline{
 			OfferIds: offerIDs,
 		},
 	}
-	msid := p.mesosFrameworkInfoProvider.GetMesosStreamID()
+	msid := p.mesosFrameworkInfoProvider.GetMesosStreamID(ctx)
 	err := p.mSchedulerClient.Call(msid, msg)
 	if err != nil {
 		// Ideally, we assume that Mesos has offer_timeout configured,

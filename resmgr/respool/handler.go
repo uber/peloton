@@ -154,11 +154,7 @@ func (h *serviceHandler) CreateResourcePool(
 	// already has tasks added running, drain, distinguish?
 
 	// insert persistent store
-	if err := h.store.CreateResourcePool(
-		resPoolID,
-		resPoolConfig,
-		"peloton",
-	); err != nil {
+	if err := h.store.CreateResourcePool(ctx, resPoolID, resPoolConfig, "peloton"); err != nil {
 		h.metrics.CreateResourcePoolFail.Inc(1)
 		log.WithError(err).Infof(
 			"Error creating respoolID: %s in store",
@@ -186,14 +182,8 @@ func (h *serviceHandler) CreateResourcePool(
 			resPoolID.Value,
 		)
 
-		if err := h.store.DeleteResourcePool(resPoolID); err != nil {
-			log.WithError(
-				err,
-			).Infof(
-				`Error rolling back respoolID:
-				%s in store`,
-				resPoolID.Value,
-			)
+		if err := h.store.DeleteResourcePool(ctx, resPoolID); err != nil {
+			log.WithError(err).Infof("Error rolling back respoolID: %s in store", resPoolID.Value)
 			h.metrics.CreateResourcePoolRollbackFail.Inc(1)
 			return &respool.CreateResponse{}, err
 		}
@@ -355,7 +345,7 @@ func (h *serviceHandler) UpdateResourcePool(
 	}
 
 	// update persistent store
-	if err := h.store.UpdateResourcePool(resPoolID, resPoolConfig); err != nil {
+	if err := h.store.UpdateResourcePool(ctx, resPoolID, resPoolConfig); err != nil {
 		h.metrics.UpdateResourcePoolFail.Inc(1)
 		log.WithError(
 			err,
@@ -387,17 +377,8 @@ func (h *serviceHandler) UpdateResourcePool(
 		)
 
 		// update with existing
-		if err := h.store.UpdateResourcePool(
-			resPoolID,
-			existingResPool.ResourcePoolConfig(),
-		); err != nil {
-			log.WithError(
-				err,
-			).Infof(
-				`Error rolling back respoolID:
-				%s in store`,
-				resPoolID.Value,
-			)
+		if err := h.store.UpdateResourcePool(ctx, resPoolID, existingResPool.ResourcePoolConfig()); err != nil {
+			log.WithError(err).Infof("Error rolling back respoolID: %s in store", resPoolID.Value)
 			h.metrics.UpdateResourcePoolRollbackFail.Inc(1)
 			return &respool.UpdateResponse{}, err
 		}

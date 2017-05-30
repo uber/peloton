@@ -1,6 +1,7 @@
 package summary
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -353,11 +354,11 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	volumeInfo := &volume.PersistentVolumeInfo{}
 
 	suite.mockVolumeStore.EXPECT().
-		GetPersistentVolume(gomock.Any()).
+		GetPersistentVolume(context.Background(), gomock.Any()).
 		AnyTimes().
 		Return(volumeInfo, nil)
 	suite.mockVolumeStore.EXPECT().
-		UpdatePersistentVolume(gomock.Any(), volume.VolumeState_CREATED).
+		UpdatePersistentVolume(context.Background(), gomock.Any(), volume.VolumeState_CREATED).
 		AnyTimes().
 		Return(nil)
 
@@ -365,7 +366,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 		go func(offer *mesos.Offer) {
 			defer wg.Done()
 
-			status := hybridSummary.AddMesosOffer(offer)
+			status := hybridSummary.AddMesosOffer(context.Background(), offer)
 			suite.Equal(ReadyOffer, status)
 		}(offer)
 	}
@@ -464,7 +465,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 
 		s := New(suite.mockVolumeStore).(*hostSummary)
 		s.status = tt.initialStatus
-		suite.Equal(tt.initialStatus, s.AddMesosOffer(offer))
+		suite.Equal(tt.initialStatus, s.AddMesosOffer(context.Background(), offer))
 		constraint := &hostsvc.Constraint{
 			SchedulingConstraint: &task.Constraint{
 				Type: task.Constraint_LABEL_CONSTRAINT,

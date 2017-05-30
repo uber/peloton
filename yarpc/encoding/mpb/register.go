@@ -75,9 +75,9 @@ func verifySignature(n string, t reflect.Type) {
 		))
 	}
 
-	if t.NumIn() != 1 {
+	if t.NumIn() != 2 {
 		panic(fmt.Sprintf(
-			"expected handler for %q to have 1 arguments but it had %v",
+			"expected handler for %q to have 2 arguments but it had %v",
 			n, t.NumIn(),
 		))
 	}
@@ -97,7 +97,7 @@ func verifySignature(n string, t reflect.Type) {
 		))
 	}
 
-	reqBodyType := t.In(0)
+	reqBodyType := t.In(1)
 
 	if !isValidReqResType(reqBodyType) {
 		panic(fmt.Sprintf(
@@ -106,7 +106,6 @@ func verifySignature(n string, t reflect.Type) {
 			n, reqBodyType,
 		))
 	}
-
 }
 
 // isValidReqResType checks if the given type is a pointer to a

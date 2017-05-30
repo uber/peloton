@@ -107,7 +107,7 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 }
 
 // CreateJob creates a job with the job id and the config value
-func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
+func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
 	jobID := id.Value
 	configBuffer, err := json.Marshal(jobConfig)
 	if err != nil {
@@ -147,7 +147,7 @@ func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner str
 			jobConfig.GetRespoolID().GetValue()).
 		IfNotExist()
 
-	err = s.applyStatement(stmt, jobID)
+	err = s.applyStatement(ctx, stmt, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
@@ -157,7 +157,7 @@ func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner str
 	}
 
 	// Create the initial job runtime record
-	err = s.UpdateJobRuntime(id, &initialJobRuntime)
+	err = s.UpdateJobRuntime(ctx, id, &initialJobRuntime)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
@@ -170,7 +170,7 @@ func (s *Store) CreateJob(id *peloton.JobID, jobConfig *job.JobConfig, owner str
 }
 
 // UpdateJobConfig updates a job with the job id and the config value
-func (s *Store) UpdateJobConfig(id *peloton.JobID, jobConfig *job.JobConfig) error {
+func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
 	jobID := id.Value
 	configBuffer, err := json.Marshal(jobConfig)
 	if err != nil {
@@ -182,7 +182,7 @@ func (s *Store) UpdateJobConfig(id *peloton.JobID, jobConfig *job.JobConfig) err
 	stmt := queryBuilder.Update(jobsTable).
 		Set("JobConfig", string(configBuffer)).
 		Where(qb.Eq{"JobID": jobID})
-	err = s.applyStatement(stmt, id.Value)
+	err = s.applyStatement(ctx, stmt, id.Value)
 	if err != nil {
 		log.WithField("job_id", id.Value).
 			WithError(err).
@@ -195,19 +195,19 @@ func (s *Store) UpdateJobConfig(id *peloton.JobID, jobConfig *job.JobConfig) err
 }
 
 // GetJobConfig returns a job config given the job id
-func (s *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
+func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobConfig").From(jobsTable).
 		Where(qb.Eq{"JobID": jobID})
 	stmtString, _, _ := stmt.ToSQL()
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to execute stmt %v, err=%v", stmtString, err)
 		s.metrics.JobGetFail.Inc(1)
 		return nil, err
 	}
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.Errorf("Fail to get all results for stmt %v, err=%v", stmtString, err)
 		s.metrics.JobGetFail.Inc(1)
@@ -234,7 +234,7 @@ func (s *Store) GetJobConfig(id *peloton.JobID) (*job.JobConfig, error) {
 }
 
 // Query returns all jobs that contains the Labels.
-func (s *Store) Query(labels *mesos.Labels, keywords []string) (map[string]*job.JobConfig, error) {
+func (s *Store) Query(ctx context.Context, labels *mesos.Labels, keywords []string) (map[string]*job.JobConfig, error) {
 	// Query is based on stratio lucene index on jobs.
 	// See https://github.com/Stratio/cassandra-lucene-index
 	// We are using "must" for the labels and only return the jobs that contains all
@@ -243,7 +243,7 @@ func (s *Store) Query(labels *mesos.Labels, keywords []string) (map[string]*job.
 	var resultMap = make(map[string]*job.JobConfig)
 	if (labels == nil || len(labels.GetLabels()) == 0) &&
 		(keywords == nil || len(keywords) == 0) {
-		return s.GetAllJobs()
+		return s.GetAllJobs(ctx)
 	}
 	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["
 	// Labels field must contain value of the specified labels
@@ -272,7 +272,7 @@ func (s *Store) Query(labels *mesos.Labels, keywords []string) (map[string]*job.
 	where = where + "]}}')"
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable).Where(where)
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithField("labels", labels).
 			WithError(err).
@@ -280,7 +280,7 @@ func (s *Store) Query(labels *mesos.Labels, keywords []string) (map[string]*job.
 		s.metrics.JobQueryFail.Inc(1)
 		return nil, err
 	}
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.WithField("labels", labels).
 			WithError(err).
@@ -313,18 +313,18 @@ func (s *Store) Query(labels *mesos.Labels, keywords []string) (map[string]*job.
 }
 
 // GetJobsByOwner returns jobs by owner
-func (s *Store) GetJobsByOwner(owner string) (map[string]*job.JobConfig, error) {
+func (s *Store) GetJobsByOwner(ctx context.Context, owner string) (map[string]*job.JobConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobOwnerView).
 		Where(qb.Eq{"Owner": owner})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetJobsByOwner %v, err=%v", owner, err)
 		s.metrics.JobGetFail.Inc(1)
 		return nil, err
 	}
 	var resultMap = make(map[string]*job.JobConfig)
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.Errorf("Fail to get all results for GetJobsByOwner %v, err=%v", owner, err)
 		s.metrics.JobGetFail.Inc(1)
@@ -352,7 +352,7 @@ func (s *Store) GetJobsByOwner(owner string) (map[string]*job.JobConfig, error) 
 
 // GetAllJobs returns all jobs
 // TODO: introduce jobstate and add GetJobsByState
-func (s *Store) GetAllJobs() (map[string]*job.JobConfig, error) {
+func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, error) {
 	// TODO: Get jobs from  all edge respools
 	var resultMap = make(map[string]*job.JobConfig)
 	queryBuilder := s.DataStore.NewQuery()
@@ -395,7 +395,7 @@ func (s *Store) GetAllJobs() (map[string]*job.JobConfig, error) {
 
 // CreateTask creates a task for a peloton job
 // TODO: remove this in favor of CreateTasks
-func (s *Store) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, owner string) error {
+func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, owner string) error {
 	jobID := id.Value
 	if taskInfo.InstanceId != instanceID || taskInfo.JobId.Value != jobID {
 		errMsg := fmt.Sprintf("Task has instance id %v, different than the instanceID %d expected, jobID %v, task JobId %v",
@@ -418,14 +418,14 @@ func (s *Store) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.
 							Values(taskID, jobID, taskInfo.Runtime.State.String(), time.Now(), string(buffer)).
 							IfNotExist()
 
-	err = s.applyStatement(stmt, taskID)
+	err = s.applyStatement(ctx, stmt, taskID)
 	if err != nil {
 		s.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
 	s.metrics.TaskCreate.Inc(1)
 	// Track the task events
-	err = s.logTaskStateChange(taskID, taskInfo)
+	err = s.logTaskStateChange(ctx, taskID, taskInfo)
 	if err != nil {
 		log.Errorf("Unable to log task state changes for job ID %v instance %v, error = %v", jobID, taskID, err)
 		return err
@@ -434,7 +434,7 @@ func (s *Store) CreateTask(id *peloton.JobID, instanceID uint32, taskInfo *task.
 }
 
 // CreateTasks creates tasks for the given slice of task infos, instances 0..n
-func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner string) error {
+func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, owner string) error {
 	maxBatchSize := int64(s.Conf.MaxBatchSize)
 	if maxBatchSize == 0 {
 		maxBatchSize = math.MaxInt64
@@ -495,7 +495,7 @@ func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner
 
 				insertStatements = append(insertStatements, stmt)
 			}
-			err := s.applyStatements(insertStatements, jobID)
+			err := s.applyStatements(ctx, insertStatements, jobID)
 			if err != nil {
 				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 					Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
@@ -507,7 +507,7 @@ func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner
 				Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
 			s.metrics.TaskCreate.Inc(nTasks)
 
-			err = s.logTaskStateChanges(idsToTaskInfos)
+			err = s.logTaskStateChanges(ctx, idsToTaskInfos)
 			if err != nil {
 				log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
 			}
@@ -526,7 +526,7 @@ func (s *Store) CreateTasks(id *peloton.JobID, taskInfos []*task.TaskInfo, owner
 }
 
 // logTaskStateChange logs the task state change events
-func (s *Store) logTaskStateChange(taskID string, taskInfo *task.TaskInfo) error {
+func (s *Store) logTaskStateChange(ctx context.Context, taskID string, taskInfo *task.TaskInfo) error {
 	var stateChange = TaskStateChangeRecord{
 		TaskID:    taskID,
 		TaskState: taskInfo.Runtime.State.String(),
@@ -543,7 +543,7 @@ func (s *Store) logTaskStateChange(taskID string, taskInfo *task.TaskInfo) error
 	stmt := queryBuilder.Update(taskStateChangesTable).
 		Add("Events", stateChangePart).
 		Where(qb.Eq{"TaskID": taskID})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if result != nil {
 		defer result.Close()
 	}
@@ -556,7 +556,7 @@ func (s *Store) logTaskStateChange(taskID string, taskInfo *task.TaskInfo) error
 
 // logTaskStateChanges logs multiple task state change events in a batch operation (one RPC, separate statements)
 // taskIDToTaskInfos is a map of task ID to task info
-func (s *Store) logTaskStateChanges(taskIDToTaskInfos map[string]*task.TaskInfo) error {
+func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[string]*task.TaskInfo) error {
 	statements := []api.Statement{}
 	for taskID, taskInfo := range taskIDToTaskInfos {
 		var stateChange = TaskStateChangeRecord{
@@ -578,7 +578,7 @@ func (s *Store) logTaskStateChanges(taskIDToTaskInfos map[string]*task.TaskInfo)
 			Where(qb.Eq{"TaskID": taskID})
 		statements = append(statements, stmt)
 	}
-	err := s.DataStore.ExecuteBatch(context.Background(), statements)
+	err := s.DataStore.ExecuteBatch(ctx, statements)
 	if err != nil {
 		log.Errorf("Fail to logTaskStateChanges for %d tasks, err=%v", len(taskIDToTaskInfos), err)
 		return err
@@ -587,11 +587,11 @@ func (s *Store) logTaskStateChanges(taskIDToTaskInfos map[string]*task.TaskInfo)
 }
 
 // GetTaskStateChanges returns the state changes for a task
-func (s *Store) GetTaskStateChanges(taskID string) ([]*TaskStateChangeRecord, error) {
+func (s *Store) GetTaskStateChanges(ctx context.Context, taskID string) ([]*TaskStateChangeRecord, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskStateChangesTable).
 		Where(qb.Eq{"TaskID": taskID})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTaskStateChanges by taskID %v, err=%v", taskID, err)
 		return nil, err
@@ -599,7 +599,7 @@ func (s *Store) GetTaskStateChanges(taskID string) ([]*TaskStateChangeRecord, er
 	if result != nil {
 		defer result.Close()
 	}
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.Errorf("Fail to GetTaskStateChanges by taskID %v, err=%v", taskID, err)
 		return nil, err
@@ -618,12 +618,12 @@ func (s *Store) GetTaskStateChanges(taskID string) ([]*TaskStateChangeRecord, er
 
 // GetTasksForJobResultSet returns the result set that can be used to iterate each task in a job
 // Caller need to call result.Close()
-func (s *Store) GetTasksForJobResultSet(id *peloton.JobID) (api.ResultSet, error) {
+func (s *Store) GetTasksForJobResultSet(ctx context.Context, id *peloton.JobID) (api.ResultSet, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskJobStateView).
 		Where(qb.Eq{"JobID": jobID})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobResultSet by jobId %v, err=%v", jobID, err)
 		return nil, err
@@ -632,8 +632,8 @@ func (s *Store) GetTasksForJobResultSet(id *peloton.JobID) (api.ResultSet, error
 }
 
 // GetTasksForJob returns all the tasks (tasks.TaskInfo) for a peloton job
-func (s *Store) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
-	result, err := s.GetTasksForJobResultSet(id)
+func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
+	result, err := s.GetTasksForJobResultSet(ctx, id)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJob by jobId %v, err=%v", id.Value, err)
 		s.metrics.TaskGetFail.Inc(1)
@@ -643,7 +643,7 @@ func (s *Store) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, er
 		defer result.Close()
 	}
 	resultMap := make(map[uint32]*task.TaskInfo)
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.Errorf("Fail to get all results for GetTasksForJob by jobId %v, err=%v", id.Value, err)
 		s.metrics.TaskGetFail.Inc(1)
@@ -671,12 +671,12 @@ func (s *Store) GetTasksForJob(id *peloton.JobID) (map[uint32]*task.TaskInfo, er
 
 // GetTasksForJobAndState returns the tasks for a peloton job with certain state.
 // result map key is TaskID, value is TaskHost
-func (s *Store) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("TaskID", "TaskInfo").From(taskJobStateView).
 		Where(qb.Eq{"JobID": jobID, "TaskState": state})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobAndState by jobId %v state %v, err=%v", jobID, state, err)
 		s.metrics.TaskGetFail.Inc(1)
@@ -686,7 +686,7 @@ func (s *Store) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uin
 		defer result.Close()
 	}
 	resultMap := make(map[uint32]*task.TaskInfo)
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	for _, value := range allResults {
 		var record TaskRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -710,12 +710,12 @@ func (s *Store) GetTasksForJobAndState(id *peloton.JobID, state string) (map[uin
 
 // GetTasksOnHost returns the tasks running on a host,
 // result map key is taskID, value is taskState
-func (s *Store) GetTasksOnHost(host string) (map[string]string, error) {
+func (s *Store) GetTasksOnHost(ctx context.Context, host string) (map[string]string, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskHostView).
 		Where(qb.Eq{"TaskHost": host})
 
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksOnHost by host %v, err=%v", host, err)
 		s.metrics.TaskGetFail.Inc(1)
@@ -725,7 +725,7 @@ func (s *Store) GetTasksOnHost(host string) (map[string]string, error) {
 		defer result.Close()
 	}
 	resultMap := make(map[string]string)
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	for _, value := range allResults {
 		var record TaskRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -741,12 +741,12 @@ func (s *Store) GetTasksOnHost(host string) (map[string]string, error) {
 }
 
 // GetTasksForJobAndState returns the task count for a peloton job with certain state
-func (s *Store) getTaskStateCount(id *peloton.JobID, state string) (int, error) {
+func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state string) (int, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("count (*)").From(taskJobStateView).
 		Where(qb.Eq{"JobID": jobID, "TaskState": state})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to getTaskStateCount by jobId %v state %v, err=%v", jobID, state, err)
 		return 0, err
@@ -754,7 +754,7 @@ func (s *Store) getTaskStateCount(id *peloton.JobID, state string) (int, error) 
 	if result != nil {
 		defer result.Close()
 	}
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	log.Debugf("counts: %v", allResults)
 	for _, value := range allResults {
 		for _, count := range value {
@@ -766,10 +766,10 @@ func (s *Store) getTaskStateCount(id *peloton.JobID, state string) (int, error) 
 }
 
 // GetTaskStateSummaryForJob returns the tasks count (runtime_config) for a peloton job with certain state
-func (s *Store) GetTaskStateSummaryForJob(id *peloton.JobID) (map[string]int, error) {
+func (s *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]int, error) {
 	resultMap := make(map[string]int)
 	for _, state := range task.TaskState_name {
-		count, err := s.getTaskStateCount(id, state)
+		count, err := s.getTaskStateCount(ctx, id, state)
 		if err != nil {
 			return nil, err
 		}
@@ -779,13 +779,13 @@ func (s *Store) GetTaskStateSummaryForJob(id *peloton.JobID) (map[string]int, er
 }
 
 // GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job given instance id range
-func (s *Store) GetTasksForJobByRange(id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.Value
 	result := make(map[uint32]*task.TaskInfo)
 	var i uint32
 	for i = instanceRange.From; i < instanceRange.To; i++ {
 		taskID := fmt.Sprintf(taskIDFmt, jobID, i)
-		task, err := s.GetTaskByID(taskID)
+		task, err := s.GetTaskByID(ctx, taskID)
 		if err != nil {
 			log.Errorf("Failed to retrieve job %v instance %d, err= %v", jobID, i, err)
 			s.metrics.TaskGetFail.Inc(1)
@@ -798,7 +798,7 @@ func (s *Store) GetTasksForJobByRange(id *peloton.JobID, instanceRange *task.Ins
 }
 
 // UpdateTask updates a task for a peloton job
-func (s *Store) UpdateTask(taskInfo *task.TaskInfo) error {
+func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 	taskID := getTaskID(taskInfo)
 	buffer, err := json.Marshal(taskInfo)
 	if err != nil {
@@ -810,20 +810,20 @@ func (s *Store) UpdateTask(taskInfo *task.TaskInfo) error {
 	stmt := queryBuilder.Insert(tasksTable). // TODO: runtime conf and task conf
 							Columns("TaskID", "JobID", "TaskState", "TaskHost", "CreateTime", "TaskInfo").
 							Values(taskID, taskInfo.JobId.Value, taskInfo.GetRuntime().State.String(), taskInfo.GetRuntime().Host, time.Now(), string(buffer))
-	err = s.applyStatement(stmt, taskID)
+	err = s.applyStatement(ctx, stmt, taskID)
 	if err != nil {
 		s.metrics.TaskUpdateFail.Inc(1)
 		return err
 	}
 	s.metrics.TaskUpdate.Inc(1)
-	s.logTaskStateChange(taskID, taskInfo)
+	s.logTaskStateChange(ctx, taskID, taskInfo)
 	return nil
 }
 
 // GetTaskForJob returns a task by jobID and instanceID
-func (s *Store) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	taskID := fmt.Sprintf(taskIDFmt, id.Value, int(instanceID))
-	taskInfo, err := s.GetTaskByID(taskID)
+	taskInfo, err := s.GetTaskByID(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -834,16 +834,16 @@ func (s *Store) GetTaskForJob(id *peloton.JobID, instanceID uint32) (map[uint32]
 
 // DeleteJob deletes a job by id
 // TODO: decide if DeleteJob() should be removed from API
-func (s *Store) DeleteJob(id *peloton.JobID) error {
+func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 	return nil
 }
 
 // GetTaskByID returns the tasks (tasks.TaskInfo) for a peloton job
-func (s *Store) GetTaskByID(taskID string) (*task.TaskInfo, error) {
+func (s *Store) GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(tasksTable).
 		Where(qb.Eq{"TaskID": taskID})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTaskByID by taskID %v, err=%v", taskID, err)
 		s.metrics.TaskGetFail.Inc(1)
@@ -852,7 +852,7 @@ func (s *Store) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 	if result != nil {
 		defer result.Close()
 	}
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	for _, value := range allResults {
 		var record TaskRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -869,16 +869,16 @@ func (s *Store) GetTaskByID(taskID string) (*task.TaskInfo, error) {
 }
 
 //SetMesosStreamID stores the mesos framework id for a framework name
-func (s *Store) SetMesosStreamID(frameworkName string, mesosStreamID string) error {
-	return s.updateFrameworkTable(map[string]interface{}{"FrameworkName": frameworkName, "MesosStreamID": mesosStreamID})
+func (s *Store) SetMesosStreamID(ctx context.Context, frameworkName string, mesosStreamID string) error {
+	return s.updateFrameworkTable(ctx, map[string]interface{}{"FrameworkName": frameworkName, "MesosStreamID": mesosStreamID})
 }
 
 //SetMesosFrameworkID stores the mesos framework id for a framework name
-func (s *Store) SetMesosFrameworkID(frameworkName string, frameworkID string) error {
-	return s.updateFrameworkTable(map[string]interface{}{"FrameworkName": frameworkName, "FrameworkID": frameworkID})
+func (s *Store) SetMesosFrameworkID(ctx context.Context, frameworkName string, frameworkID string) error {
+	return s.updateFrameworkTable(ctx, map[string]interface{}{"FrameworkName": frameworkName, "FrameworkID": frameworkID})
 }
 
-func (s *Store) updateFrameworkTable(content map[string]interface{}) error {
+func (s *Store) updateFrameworkTable(ctx context.Context, content map[string]interface{}) error {
 	hostName, err := os.Hostname()
 	if err != nil {
 		return err
@@ -896,12 +896,12 @@ func (s *Store) updateFrameworkTable(content map[string]interface{}) error {
 	stmt := queryBuilder.Insert(frameworksTable).
 		Columns(columns...).
 		Values(values...)
-	return s.applyStatement(stmt, frameworksTable)
+	return s.applyStatement(ctx, stmt, frameworksTable)
 }
 
 //GetMesosStreamID reads the mesos stream id for a framework name
-func (s *Store) GetMesosStreamID(frameworkName string) (string, error) {
-	frameworkInfoRecord, err := s.getFrameworkInfo(frameworkName)
+func (s *Store) GetMesosStreamID(ctx context.Context, frameworkName string) (string, error) {
+	frameworkInfoRecord, err := s.getFrameworkInfo(ctx, frameworkName)
 	if err != nil {
 		s.metrics.StreamIDGetFail.Inc(1)
 		return "", err
@@ -912,8 +912,8 @@ func (s *Store) GetMesosStreamID(frameworkName string) (string, error) {
 }
 
 //GetFrameworkID reads the framework id for a framework name
-func (s *Store) GetFrameworkID(frameworkName string) (string, error) {
-	frameworkInfoRecord, err := s.getFrameworkInfo(frameworkName)
+func (s *Store) GetFrameworkID(ctx context.Context, frameworkName string) (string, error) {
+	frameworkInfoRecord, err := s.getFrameworkInfo(ctx, frameworkName)
 	if err != nil {
 		s.metrics.FrameworkIDGetFail.Inc(1)
 		return "", err
@@ -923,11 +923,11 @@ func (s *Store) GetFrameworkID(frameworkName string) (string, error) {
 	return frameworkInfoRecord.FrameworkID, nil
 }
 
-func (s *Store) getFrameworkInfo(frameworkName string) (*FrameworkInfoRecord, error) {
+func (s *Store) getFrameworkInfo(ctx context.Context, frameworkName string) (*FrameworkInfoRecord, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(frameworksTable).
 		Where(qb.Eq{"FrameworkName": frameworkName})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to getFrameworkInfo by frameworkName %v, err=%v", frameworkName, err)
 		return nil, err
@@ -935,7 +935,7 @@ func (s *Store) getFrameworkInfo(frameworkName string) (*FrameworkInfoRecord, er
 	if result != nil {
 		defer result.Close()
 	}
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	for _, value := range allResults {
 		var record FrameworkInfoRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -948,8 +948,8 @@ func (s *Store) getFrameworkInfo(frameworkName string) (*FrameworkInfoRecord, er
 	return nil, fmt.Errorf("FrameworkInfo not found for framework %v", frameworkName)
 }
 
-func (s *Store) applyStatements(stmts []api.Statement, jobID string) error {
-	err := s.DataStore.ExecuteBatch(context.Background(), stmts)
+func (s *Store) applyStatements(ctx context.Context, stmts []api.Statement, jobID string) error {
+	err := s.DataStore.ExecuteBatch(ctx, stmts)
 	if err != nil {
 		log.Errorf("Fail to execute %d insert statements for job %v, err=%v", len(stmts), jobID, err)
 		return err
@@ -957,10 +957,10 @@ func (s *Store) applyStatements(stmts []api.Statement, jobID string) error {
 	return nil
 }
 
-func (s *Store) applyStatement(stmt api.Statement, itemName string) error {
+func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName string) error {
 	stmtString, _, _ := stmt.ToSQL()
 	log.Debugf("stmt=%v", stmtString)
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to execute stmt for %v %v, err=%v", itemName, stmtString, err)
 		return err
@@ -979,7 +979,7 @@ func (s *Store) applyStatement(stmt api.Statement, itemName string) error {
 }
 
 // CreateResourcePool creates a resource pool with the resource pool id and the config value
-func (s *Store) CreateResourcePool(id *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig, owner string) error {
+func (s *Store) CreateResourcePool(ctx context.Context, id *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig, owner string) error {
 	resourcePoolID := id.Value
 	configBuffer, err := json.Marshal(resPoolConfig)
 	if err != nil {
@@ -994,7 +994,7 @@ func (s *Store) CreateResourcePool(id *respool.ResourcePoolID, resPoolConfig *re
 		Values(resourcePoolID, string(configBuffer), owner, time.Now(), time.Now()).
 		IfNotExist()
 
-	err = s.applyStatement(stmt, resourcePoolID)
+	err = s.applyStatement(ctx, stmt, resourcePoolID)
 	if err != nil {
 		s.metrics.ResourcePoolCreateFail.Inc(1)
 		return err
@@ -1004,32 +1004,32 @@ func (s *Store) CreateResourcePool(id *respool.ResourcePoolID, resPoolConfig *re
 }
 
 // GetResourcePool gets a resource pool info object
-func (s *Store) GetResourcePool(id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
+func (s *Store) GetResourcePool(ctx context.Context, id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
 	return nil, errors.New("unimplemented")
 }
 
 // DeleteResourcePool Deletes the resource pool
-func (s *Store) DeleteResourcePool(id *respool.ResourcePoolID) error {
+func (s *Store) DeleteResourcePool(ctx context.Context, id *respool.ResourcePoolID) error {
 	return errors.New("unimplemented")
 }
 
 // UpdateResourcePool Update the resource pool
-func (s *Store) UpdateResourcePool(id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
+func (s *Store) UpdateResourcePool(ctx context.Context, id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
 	return errors.New("unimplemented")
 }
 
 // GetAllResourcePools Get all the resource pool configs
-func (s *Store) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, error) {
+func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("ID", "Owner", "ResourcePoolConfig", "CreateTime", "UpdateTime").From(resPools)
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetAllResourcePools, err=%v", err)
 		s.metrics.ResourcePoolGetFail.Inc(1)
 		return nil, err
 	}
 	var resultMap = make(map[string]*respool.ResourcePoolConfig)
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.Errorf("Fail to get all results for GetAllResourcePools, err=%v", err)
 		s.metrics.ResourcePoolGetFail.Inc(1)
@@ -1056,18 +1056,18 @@ func (s *Store) GetAllResourcePools() (map[string]*respool.ResourcePoolConfig, e
 }
 
 // GetResourcePoolsByOwner Get all the resource pool b owner
-func (s *Store) GetResourcePoolsByOwner(owner string) (map[string]*respool.ResourcePoolConfig, error) {
+func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[string]*respool.ResourcePoolConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("ID", "Owner", "ResourcePoolConfig", "CreateTime", "UpdateTime").From(resPoolsOwnerView).
 		Where(qb.Eq{"Owner": owner})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetResourcePoolsByOwner %v, err=%v", owner, err)
 		s.metrics.ResourcePoolGetFail.Inc(1)
 		return nil, err
 	}
 	var resultMap = make(map[string]*respool.ResourcePoolConfig)
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.Errorf("Fail to get all results for GetResourcePoolsByOwner %v, err=%v", owner, err)
 		s.metrics.ResourcePoolGetFail.Inc(1)
@@ -1100,11 +1100,11 @@ func getTaskID(taskInfo *task.TaskInfo) string {
 }
 
 // GetJobRuntime returns the job runtime info
-func (s *Store) GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error) {
+func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobRuntime").From(jobRuntimeTable).
 		Where(qb.Eq{"JobID": id.Value})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
@@ -1113,7 +1113,7 @@ func (s *Store) GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error) {
 		return nil, err
 	}
 
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
@@ -1141,11 +1141,11 @@ func (s *Store) GetJobRuntime(id *peloton.JobID) (*job.RuntimeInfo, error) {
 }
 
 // GetJobsByState returns the jobID by job state
-func (s *Store) GetJobsByState(state job.JobState) ([]peloton.JobID, error) {
+func (s *Store) GetJobsByState(ctx context.Context, state job.JobState) ([]peloton.JobID, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobID").From(jobByStateView).
 		Where(qb.Eq{"JobState": state.String()})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_state", state).
@@ -1154,7 +1154,7 @@ func (s *Store) GetJobsByState(state job.JobState) ([]peloton.JobID, error) {
 		return nil, err
 	}
 
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_state", state).
@@ -1181,7 +1181,7 @@ func (s *Store) GetJobsByState(state job.JobState) ([]peloton.JobID, error) {
 }
 
 // UpdateJobRuntime updates the job runtime info
-func (s *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) error {
+func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error {
 	buffer, err := json.Marshal(runtime)
 	if err != nil {
 		log.WithField("job_id", id.Value).
@@ -1195,7 +1195,7 @@ func (s *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) er
 	stmt := queryBuilder.Insert(jobRuntimeTable).
 		Columns("JobID", "JobState", "UpdateTime", "JobRuntime").
 		Values(id.Value, runtime.State.String(), time.Now(), string(buffer))
-	err = s.applyStatement(stmt, id.Value)
+	err = s.applyStatement(ctx, stmt, id.Value)
 	if err != nil {
 		log.WithField("job_id", id.Value).
 			WithError(err).
@@ -1208,8 +1208,8 @@ func (s *Store) UpdateJobRuntime(id *peloton.JobID, runtime *job.RuntimeInfo) er
 }
 
 // QueryTasks returns all tasks in the given offset..offset+limit range.
-func (s *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
-	jobConfig, err := s.GetJobConfig(id)
+func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
+	jobConfig, err := s.GetJobConfig(ctx, id)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.GetValue()).
@@ -1224,7 +1224,7 @@ func (s *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*t
 	if end > jobConfig.InstanceCount-1 {
 		end = jobConfig.InstanceCount - 1
 	}
-	tasks, err := s.GetTasksForJobByRange(id, &task.InstanceRange{
+	tasks, err := s.GetTasksForJobByRange(ctx, id, &task.InstanceRange{
 		From: offset,
 		To:   end,
 	})
@@ -1239,8 +1239,7 @@ func (s *Store) QueryTasks(id *peloton.JobID, offset uint32, limit uint32) ([]*t
 }
 
 // CreatePersistentVolume creates a persistent volume entry.
-func (s *Store) CreatePersistentVolume(
-	volume *pb_volume.PersistentVolumeInfo) error {
+func (s *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.PersistentVolumeInfo) error {
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(volumeTable).
@@ -1258,7 +1257,7 @@ func (s *Store) CreatePersistentVolume(
 			time.Now()).
 		IfNotExist()
 
-	err := s.applyStatement(stmt, volume.GetId().GetValue())
+	err := s.applyStatement(ctx, stmt, volume.GetId().GetValue())
 	if err != nil {
 		s.metrics.VolumeCreateFail.Inc(1)
 		return err
@@ -1269,8 +1268,7 @@ func (s *Store) CreatePersistentVolume(
 }
 
 // UpdatePersistentVolume update state for a persistent volume.
-func (s *Store) UpdatePersistentVolume(
-	volumeID string, state pb_volume.VolumeState) error {
+func (s *Store) UpdatePersistentVolume(ctx context.Context, volumeID string, state pb_volume.VolumeState) error {
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.
@@ -1279,7 +1277,7 @@ func (s *Store) UpdatePersistentVolume(
 		Set("UpdateTime", time.Now()).
 		Where(qb.Eq{"ID": volumeID})
 
-	err := s.applyStatement(stmt, volumeID)
+	err := s.applyStatement(ctx, stmt, volumeID)
 	if err != nil {
 		s.metrics.VolumeUpdateFail.Inc(1)
 		return err
@@ -1290,15 +1288,14 @@ func (s *Store) UpdatePersistentVolume(
 }
 
 // GetPersistentVolume gets the persistent volume object.
-func (s *Store) GetPersistentVolume(
-	volumeID string) (*pb_volume.PersistentVolumeInfo, error) {
+func (s *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_volume.PersistentVolumeInfo, error) {
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.
 		Select("*").
 		From(volumeTable).
 		Where(qb.Eq{"ID": volumeID})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("volume_id", volumeID).
@@ -1310,7 +1307,7 @@ func (s *Store) GetPersistentVolume(
 		defer result.Close()
 	}
 
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	for _, value := range allResults {
 		var record PersistentVolumeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -1345,11 +1342,11 @@ func (s *Store) GetPersistentVolume(
 }
 
 // DeletePersistentVolume delete persistent volume entry.
-func (s *Store) DeletePersistentVolume(volumeID string) error {
+func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID string) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Delete(volumeTable).Where(qb.Eq{"ID": volumeID})
 
-	err := s.applyStatement(stmt, volumeID)
+	err := s.applyStatement(ctx, stmt, volumeID)
 	if err != nil {
 		s.metrics.VolumeDeleteFail.Inc(1)
 		return err
@@ -1360,7 +1357,7 @@ func (s *Store) DeletePersistentVolume(volumeID string) error {
 }
 
 // GetJobsByRespoolID returns jobIDs in a respool
-func (s *Store) GetJobsByRespoolID(respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error) {
+func (s *Store) GetJobsByRespoolID(ctx context.Context, respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error) {
 	if respoolID == nil || respoolID.Value == "" {
 		return nil, errors.New("respoolID is null / empty")
 	}
@@ -1369,7 +1366,7 @@ func (s *Store) GetJobsByRespoolID(respoolID *respool.ResourcePoolID) (map[strin
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsByRespoolView).
 		Where(qb.Eq{"RespoolID": respoolID.Value})
-	result, err := s.DataStore.Execute(context.Background(), stmt)
+	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("respool_id", respoolIDVal).
@@ -1378,7 +1375,7 @@ func (s *Store) GetJobsByRespoolID(respoolID *respool.ResourcePoolID) (map[strin
 		return nil, err
 	}
 
-	allResults, err := result.All(context.Background())
+	allResults, err := result.All(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("respool_id", respoolIDVal).

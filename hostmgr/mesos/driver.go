@@ -1,6 +1,7 @@
 package mesos
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -36,8 +37,8 @@ type SchedulerDriver interface {
 
 // FrameworkInfoProvider can be used to retrieve mesosStreamID and frameworkID.
 type FrameworkInfoProvider interface {
-	GetMesosStreamID() string
-	GetFrameworkID() *mesos.FrameworkID
+	GetMesosStreamID(ctx context.Context) string
+	GetFrameworkID(ctx context.Context) *mesos.FrameworkID
 }
 
 // schedulerDriver implements the Mesos Driver API
@@ -74,11 +75,11 @@ func GetSchedulerDriver() SchedulerDriver {
 
 // GetFrameworkID returns the frameworkID.
 // Implements FrameworkInfoProvider.GetFrameworkID().
-func (d *schedulerDriver) GetFrameworkID() *mesos.FrameworkID {
+func (d *schedulerDriver) GetFrameworkID(ctx context.Context) *mesos.FrameworkID {
 	if d.frameworkID != nil {
 		return d.frameworkID
 	}
-	frameworkIDVal, err := d.store.GetFrameworkID(d.cfg.Name)
+	frameworkIDVal, err := d.store.GetFrameworkID(ctx, d.cfg.Name)
 	if err != nil {
 		log.WithError(err).
 			WithField("framework_name", d.cfg.Name).
@@ -102,8 +103,8 @@ func (d *schedulerDriver) GetFrameworkID() *mesos.FrameworkID {
 
 // GetMesosStreamID reads DB for the Mesos stream ID.
 // Implements FrameworkInfoProvider.GetMesosStreamID().
-func (d *schedulerDriver) GetMesosStreamID() string {
-	id, err := d.store.GetMesosStreamID(d.cfg.Name)
+func (d *schedulerDriver) GetMesosStreamID(ctx context.Context) string {
+	id, err := d.store.GetMesosStreamID(ctx, d.cfg.Name)
 	if err != nil {
 		log.WithError(err).
 			WithField("framework_name", d.cfg.Name).
@@ -142,7 +143,7 @@ func (d *schedulerDriver) EventDataType() reflect.Type {
 	return reflect.TypeOf(sched.Event{})
 }
 
-func (d *schedulerDriver) prepareSubscribe() (*sched.Call, error) {
+func (d *schedulerDriver) prepareSubscribe(ctx context.Context) (*sched.Call, error) {
 	// TODO: Inject capabilities based on config.
 	gpuSupported := mesos.FrameworkInfo_Capability_GPU_RESOURCES
 	capabilities := []*mesos.FrameworkInfo_Capability{
@@ -180,7 +181,7 @@ func (d *schedulerDriver) prepareSubscribe() (*sched.Call, error) {
 	// the framework id has already failed over timeout.
 	// Although we have set the timeout to a very long time in the config.
 	// In this case we need to use an empty framework id and subscribe again
-	d.frameworkID = d.GetFrameworkID()
+	d.frameworkID = d.GetFrameworkID(ctx)
 	callType := sched.Call_SUBSCRIBE
 	msg := &sched.Call{
 		FrameworkId: d.frameworkID,
@@ -213,14 +214,14 @@ func (d *schedulerDriver) prepareSubscribe() (*sched.Call, error) {
 // PrepareSubscribeRequest returns a HTTP post request that can be used to
 // initiate subscription to mesos master.
 // Implements mhttp.MesosDriver.PrepareSubscribeRequest().
-func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (
+func (d *schedulerDriver) PrepareSubscribeRequest(ctx context.Context, mesosMasterHostPort string) (
 	*http.Request, error) {
 
 	if len(mesosMasterHostPort) == 0 {
 		return nil, errors.New("No active leader detected")
 	}
 
-	subscribe, err := d.prepareSubscribe()
+	subscribe, err := d.prepareSubscribe(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed prepareSubscribe")
 	}
@@ -244,8 +245,8 @@ func (d *schedulerDriver) PrepareSubscribeRequest(mesosMasterHostPort string) (
 
 // Invoked after the subscription to Mesos is done
 // Implements mhttp.MesosDriver.PostSubscribe().
-func (d *schedulerDriver) PostSubscribe(mesosStreamID string) {
-	err := d.store.SetMesosStreamID(d.cfg.Name, mesosStreamID)
+func (d *schedulerDriver) PostSubscribe(ctx context.Context, mesosStreamID string) {
+	err := d.store.SetMesosStreamID(ctx, d.cfg.Name, mesosStreamID)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{

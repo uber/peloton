@@ -1,6 +1,7 @@
 package summary
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -77,7 +78,7 @@ type HostSummary interface {
 	) (MatchResult, []*mesos.Offer)
 
 	// AddMesosOffer adds a Mesos offer to the current HostSummary.
-	AddMesosOffer(offer *mesos.Offer) CacheStatus
+	AddMesosOffer(ctx context.Context, offer *mesos.Offer) CacheStatus
 
 	// RemoveMesosOffer removes the given Mesos offer by its id, and returns
 	// CacheStatus and possibly removed offer for tracking purpose.
@@ -254,7 +255,7 @@ func (a *hostSummary) TryMatch(
 
 // AddMesosOffer adds a Mesos offer to the current hostSummary and returns
 // its status for tracking purpose.
-func (a *hostSummary) AddMesosOffer(offer *mesos.Offer) CacheStatus {
+func (a *hostSummary) AddMesosOffer(ctx context.Context, offer *mesos.Offer) CacheStatus {
 	a.Lock()
 	defer a.Unlock()
 
@@ -272,7 +273,7 @@ func (a *hostSummary) AddMesosOffer(offer *mesos.Offer) CacheStatus {
 		}
 		a.reservedResources = reservation.GetLabeledReservedResources(
 			reservedOffers)
-		a.updatePersistentVolumes()
+		a.updatePersistentVolumes(ctx)
 		log.WithFields(log.Fields{
 			"offer":                    offer,
 			"total_reserved_resources": a.reservedResources,
@@ -284,7 +285,7 @@ func (a *hostSummary) AddMesosOffer(offer *mesos.Offer) CacheStatus {
 
 // storePersistentVolumes iterates reserved resources and write volume info into
 // the db if not exist.
-func (a *hostSummary) updatePersistentVolumes() error {
+func (a *hostSummary) updatePersistentVolumes(ctx context.Context) error {
 	for labels, res := range a.reservedResources {
 		// TODO(mu): unreserve resources without persistent volume.
 		if len(res.Volumes) == 0 {
@@ -299,7 +300,7 @@ func (a *hostSummary) updatePersistentVolumes() error {
 
 		// TODO(mu): Add cache for created volumes to avoid repeated db read/write.
 		for _, v := range res.Volumes {
-			pv, err := a.volumeStore.GetPersistentVolume(v)
+			pv, err := a.volumeStore.GetPersistentVolume(ctx, v)
 			if err != nil || pv == nil {
 				log.WithFields(
 					log.Fields{
@@ -324,7 +325,7 @@ func (a *hostSummary) updatePersistentVolumes() error {
 					"labels":            labels,
 					"volume":            pv}).
 				Info("updating persistent volume table")
-			err = a.volumeStore.UpdatePersistentVolume(v, volume.VolumeState_CREATED)
+			err = a.volumeStore.UpdatePersistentVolume(ctx, v, volume.VolumeState_CREATED)
 			if err != nil {
 				log.WithFields(
 					log.Fields{

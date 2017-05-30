@@ -104,13 +104,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
-			GetTaskByID(pelotonTaskID).
+			GetTaskByID(context.Background(), pelotonTaskID).
 			Return(taskInfo, nil),
 		suite.mockTaskStore.EXPECT().
-			UpdateTask(updateTaskInfo).
+			UpdateTask(context.Background(), updateTaskInfo).
 			Return(nil),
 	)
-	suite.NoError(suite.updater.ProcessStatusUpdate(event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
 // Test processing task failure status update w/ retry.
@@ -170,10 +170,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 	gangs := jm_task.ConvertToResMgrGangs(tasks, jobConfig)
 	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
 	suite.mockTaskStore.EXPECT().
-		GetTaskByID(pelotonTaskID).
+		GetTaskByID(context.Background(), pelotonTaskID).
 		Return(taskInfo, nil)
 	suite.mockJobStore.EXPECT().
-		GetJobConfig(pelotonJobID).
+		GetJobConfig(context.Background(), pelotonJobID).
 		Return(jobConfig, nil)
 	suite.mockResmgrClient.EXPECT().
 		EnqueueGangs(
@@ -183,8 +183,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 			})).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 	suite.mockTaskStore.EXPECT().
-		UpdateTask(gomock.Any()).
-		Do(func(updateTask *task.TaskInfo) {
+		UpdateTask(context.Background(), gomock.Any()).
+		Do(func(ctx context.Context, updateTask *task.TaskInfo) {
 			suite.Equal(updateTask.JobId, pelotonJobID)
 			suite.Equal(
 				updateTask.Runtime.State,
@@ -204,7 +204,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 			)
 		}).
 		Return(nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	time.Sleep(_waitTime)
 }
 
@@ -249,13 +249,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
-			GetTaskByID(pelotonTaskID).
+			GetTaskByID(context.Background(), pelotonTaskID).
 			Return(taskInfo, nil),
 		suite.mockTaskStore.EXPECT().
-			UpdateTask(updateTaskInfo).
+			UpdateTask(context.Background(), updateTaskInfo).
 			Return(nil),
 	)
-	suite.NoError(suite.updater.ProcessStatusUpdate(event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
 // Test processing task failure status update w/ retry.
@@ -319,14 +319,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
 	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
 
 	suite.mockTaskStore.EXPECT().
-		GetTaskByID(pelotonTaskID).
+		GetTaskByID(context.Background(), pelotonTaskID).
 		Return(taskInfo, nil)
 	suite.mockJobStore.EXPECT().
-		GetJobConfig(pelotonJobID).
+		GetJobConfig(context.Background(), pelotonJobID).
 		Return(jobConfig, errors.New("testError"))
 	suite.mockTaskStore.EXPECT().
-		UpdateTask(gomock.Any()).
-		Do(func(updateTask *task.TaskInfo) {
+		UpdateTask(context.Background(), gomock.Any()).
+		Do(func(ctx context.Context, updateTask *task.TaskInfo) {
 			suite.Equal(updateTask.JobId, pelotonJobID)
 			suite.Equal(
 				updateTask.Runtime.State,
@@ -346,7 +346,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
 			)
 		}).
 		Return(nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(event))
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	time.Sleep(_waitTime)
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -202,7 +203,7 @@ func createTask(taskStore storage.TaskStore, jobIDVal string, instance uint32, r
 		JobId:      jobID,
 	}
 	t := time.Now()
-	err := taskStore.CreateTask(jobID, instance, taskInfo, "test")
+	err := taskStore.CreateTask(context.Background(), jobID, instance, taskInfo, "test")
 	d := time.Since(t)
 	rootScope.Timer("CreateTask").Record(d)
 	if err != nil {
@@ -215,7 +216,7 @@ func createTask(taskStore storage.TaskStore, jobIDVal string, instance uint32, r
 func updateTaskState(taskStore storage.TaskStore, jobIDVal string, instance uint32, state task.TaskState, rootScope tally.Scope) error {
 	var jobID = &peloton.JobID{Value: jobIDVal}
 	t := time.Now()
-	taskInfo, err := taskStore.GetTaskForJob(jobID, instance)
+	taskInfo, err := taskStore.GetTaskForJob(context.Background(), jobID, instance)
 	d := time.Since(t)
 	rootScope.Timer("GetTask").Record(d)
 	if err != nil {
@@ -224,7 +225,7 @@ func updateTaskState(taskStore storage.TaskStore, jobIDVal string, instance uint
 	}
 	taskInfo[instance].GetRuntime().State = state
 	t = time.Now()
-	err = taskStore.UpdateTask(taskInfo[instance])
+	err = taskStore.UpdateTask(context.Background(), taskInfo[instance])
 	d = time.Since(t)
 	rootScope.Timer("UpdateTask").Record(d)
 	if err != nil {
@@ -232,7 +233,7 @@ func updateTaskState(taskStore storage.TaskStore, jobIDVal string, instance uint
 		return err
 	}
 	if *validateUpdate == true {
-		taskInfo, err = taskStore.GetTaskForJob(jobID, instance)
+		taskInfo, err = taskStore.GetTaskForJob(context.Background(), jobID, instance)
 		if err != nil {
 			log.WithError(err).Error("Get task failed")
 			return err
@@ -246,7 +247,7 @@ func updateTaskState(taskStore storage.TaskStore, jobIDVal string, instance uint
 				Error("Task state not updated")
 
 			time.Sleep(100 * time.Millisecond)
-			taskInfo, err = taskStore.GetTaskForJob(jobID, instance)
+			taskInfo, err = taskStore.GetTaskForJob(context.Background(), jobID, instance)
 			if err != nil {
 				log.WithError(err).Error("Get task failed")
 				return err

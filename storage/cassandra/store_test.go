@@ -103,7 +103,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 			Description:   fmt.Sprintf("A test job with awesome keyword%v keytest%v", i, i),
 		}
 		originalJobs = append(originalJobs, &jobConfig)
-		err := jobStore.CreateJob(&jobID, &jobConfig, "uber")
+		err := jobStore.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
 		suite.NoError(err)
 	}
 	// Run the following query to trigger rebuild the lucene index
@@ -113,7 +113,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.NoError(err)
 
 	// query by common label should return all jobs
-	result1, err := jobStore.Query(&mesos.Labels{
+	result1, err := jobStore.Query(context.Background(), &mesos.Labels{
 		Labels: []*mesos.Label{
 			{Key: &keyCommon, Value: &valCommon},
 		},
@@ -126,7 +126,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 	// query by specific label returns one job
 	for i := 0; i < records; i++ {
-		result1, err := jobStore.Query(&mesos.Labels{
+		result1, err := jobStore.Query(context.Background(), &mesos.Labels{
 			Labels: []*mesos.Label{
 				{Key: &keys0[i], Value: &vals0[i]},
 				{Key: &keys1[i], Value: &vals1[i]},
@@ -139,7 +139,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 	// query for non-exist label return nothing
 	var other = "other"
-	result1, err = jobStore.Query(&mesos.Labels{
+	result1, err = jobStore.Query(context.Background(), &mesos.Labels{
 		Labels: []*mesos.Label{
 			{Key: &keys0[0], Value: &other},
 			{Key: &keys1[1], Value: &vals1[0]},
@@ -149,20 +149,20 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.Equal(0, len(result1))
 
 	// Test query with keyword
-	result1, err = jobStore.Query(nil, []string{"team6", "test", "awesome"})
+	result1, err = jobStore.Query(context.Background(), nil, []string{"team6", "test", "awesome"})
 	suite.NoError(err)
 	suite.Equal(3, len(result1))
 
-	result1, err = jobStore.Query(nil, []string{"team6", "test", "awesome", "keytest1"})
+	result1, err = jobStore.Query(context.Background(), nil, []string{"team6", "test", "awesome", "keytest1"})
 	suite.NoError(err)
 	suite.Equal(1, len(result1))
 
-	result1, err = jobStore.Query(nil, []string{"team6", "test", "awesome", "nonexistkeyword"})
+	result1, err = jobStore.Query(context.Background(), nil, []string{"team6", "test", "awesome", "nonexistkeyword"})
 	suite.NoError(err)
 	suite.Equal(0, len(result1))
 
 	// Query with both labels and keyword
-	result1, err = jobStore.Query(&mesos.Labels{
+	result1, err = jobStore.Query(context.Background(), &mesos.Labels{
 		Labels: []*mesos.Label{
 			{Key: &keys0[0], Value: &vals0[0]},
 		},
@@ -220,17 +220,17 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 			Labels:        &labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
-		err := jobStore.CreateJob(&jobID, &jobconfig, "uber")
+		err := jobStore.CreateJob(context.Background(), &jobID, &jobconfig, "uber")
 		suite.NoError(err)
 
 		// Create job with same job id would be no op
 		jobconfig.Labels = nil
 		jobconfig.Name = "random"
-		err = jobStore.CreateJob(&jobID, &jobconfig, "uber2")
+		err = jobStore.CreateJob(context.Background(), &jobID, &jobconfig, "uber2")
 		suite.Error(err)
 
 		var jobconf *job.JobConfig
-		jobconf, err = jobStore.GetJobConfig(&jobID)
+		jobconf, err = jobStore.GetJobConfig(context.Background(), &jobID)
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
 		suite.Equal(len((*(jobconf.Labels)).Labels), 4)
@@ -240,24 +240,24 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 func (suite *CassandraStoreTestSuite) TestFrameworkInfo() {
 	var frameworkStore storage.FrameworkInfoStore
 	frameworkStore = store
-	err := frameworkStore.SetMesosFrameworkID("framework1", "12345")
+	err := frameworkStore.SetMesosFrameworkID(context.Background(), "framework1", "12345")
 	suite.NoError(err)
 	var frameworkID string
-	frameworkID, err = frameworkStore.GetFrameworkID("framework1")
+	frameworkID, err = frameworkStore.GetFrameworkID(context.Background(), "framework1")
 	suite.NoError(err)
 	suite.Equal(frameworkID, "12345")
 
-	frameworkID, err = frameworkStore.GetFrameworkID("framework2")
+	frameworkID, err = frameworkStore.GetFrameworkID(context.Background(), "framework2")
 	suite.Error(err)
 
-	err = frameworkStore.SetMesosStreamID("framework1", "s-12345")
+	err = frameworkStore.SetMesosStreamID(context.Background(), "framework1", "s-12345")
 	suite.NoError(err)
 
-	frameworkID, err = frameworkStore.GetFrameworkID("framework1")
+	frameworkID, err = frameworkStore.GetFrameworkID(context.Background(), "framework1")
 	suite.NoError(err)
 	suite.Equal(frameworkID, "12345")
 
-	frameworkID, err = frameworkStore.GetMesosStreamID("framework1")
+	frameworkID, err = frameworkStore.GetMesosStreamID(context.Background(), "framework1")
 	suite.NoError(err)
 	suite.Equal(frameworkID, "s-12345")
 }
@@ -277,25 +277,25 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 		jobConfig := createJobConfig()
 		jobConfig.Name = fmt.Sprintf("TestAddTasks_%d", i)
 		jobs = append(jobs, jobConfig)
-		err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+		err := jobStore.CreateJob(context.Background(), &jobID, jobConfig, "uber")
 		suite.NoError(err)
 
 		// For each job, create 3 tasks
 		for j := uint32(0); j < nTasks; j++ {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
 			taskInfo.Runtime.State = task.TaskState(j)
-			err = taskStore.CreateTask(&jobID, j, taskInfo, "test")
+			err = taskStore.CreateTask(context.Background(), &jobID, j, taskInfo, "test")
 			suite.NoError(err)
 			// Create same task should error
-			err = taskStore.CreateTask(&jobID, j, taskInfo, "test")
+			err = taskStore.CreateTask(context.Background(), &jobID, j, taskInfo, "test")
 			suite.Error(err)
-			err = taskStore.UpdateTask(taskInfo)
+			err = taskStore.UpdateTask(context.Background(), taskInfo)
 			suite.NoError(err)
 		}
 	}
 	// List all tasks by job
 	for i := 0; i < nJobs; i++ {
-		tasks, err := taskStore.GetTasksForJob(jobIDs[i])
+		tasks, err := taskStore.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
@@ -309,17 +309,17 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 	// Update task
 	// List all tasks by job
 	for i := 0; i < nJobs; i++ {
-		tasks, err := taskStore.GetTasksForJob(jobIDs[i])
+		tasks, err := taskStore.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
 			task.Runtime.Host = fmt.Sprintf("compute_%d", i)
-			err := store.UpdateTask(task)
+			err := store.UpdateTask(context.Background(), task)
 			suite.NoError(err)
 		}
 	}
 	for i := 0; i < nJobs; i++ {
-		tasks, err := taskStore.GetTasksForJob(jobIDs[i])
+		tasks, err := taskStore.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
 		for _, task := range tasks {
@@ -330,13 +330,13 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 	for i := 0; i < nJobs; i++ {
 		for j := 0; j < int(nTasks); j++ {
 			taskID := fmt.Sprintf("%s-%d", jobIDs[i].Value, j)
-			taskInfo, err := taskStore.GetTaskByID(taskID)
+			taskInfo, err := taskStore.GetTaskByID(context.Background(), taskID)
 			suite.NoError(err)
 			suite.Equal(taskInfo.JobId.Value, jobIDs[i].Value)
 			suite.Equal(taskInfo.InstanceId, uint32(j))
 
 			var taskMap map[uint32]*task.TaskInfo
-			taskMap, err = taskStore.GetTaskForJob(jobIDs[i], uint32(j))
+			taskMap, err = taskStore.GetTaskForJob(context.Background(), jobIDs[i], uint32(j))
 			suite.NoError(err)
 			taskInfo = taskMap[uint32(j)]
 			suite.Equal(taskInfo.JobId.Value, jobIDs[i].Value)
@@ -344,7 +344,7 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 		}
 		// TaskID does not exist
 	}
-	task, err := taskStore.GetTaskByID("taskdoesnotexist")
+	task, err := taskStore.GetTaskByID(context.Background(), "taskdoesnotexist")
 	suite.Error(err)
 	suite.Nil(task)
 }
@@ -378,7 +378,7 @@ func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 			Sla:           &sla,
 			DefaultConfig: &taskConfig,
 		}
-		err := store.CreateJob(&jobID, &jobConfig, "uber")
+		err := store.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
 		suite.NoError(err)
 
 		// now, create a mess of tasks
@@ -396,7 +396,7 @@ func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 			}
 			taskInfos = append(taskInfos, &taskInfo)
 		}
-		err = store.CreateTasks(&jobID, taskInfos, "test")
+		err = store.CreateTasks(context.Background(), &jobID, taskInfos, "test")
 		suite.NoError(err)
 	}
 
@@ -404,7 +404,7 @@ func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 	// have the right parent
 	for jobID, nTasks := range jobTasks {
 		job := peloton.JobID{Value: jobID}
-		tasks, err := store.GetTasksForJob(&job)
+		tasks, err := store.GetTasksForJob(context.Background(), &job)
 		suite.NoError(err)
 		suite.Equal(nTasks, len(tasks))
 		for _, task := range tasks {
@@ -426,23 +426,22 @@ func (suite *CassandraStoreTestSuite) TestGetTasksByHostState() {
 		jobConfig := createJobConfig()
 		jobConfig.InstanceCount = uint32(nTasks)
 		jobs = append(jobs, jobConfig)
-		err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+		err := jobStore.CreateJob(context.Background(), &jobID, jobConfig, "uber")
 		suite.NoError(err)
 		for j := uint32(0); j < nTasks; j++ {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
-			err = taskStore.CreateTask(&jobID, j, taskInfo, "test")
+			err = taskStore.CreateTask(context.Background(), &jobID, j, taskInfo, "test")
 			suite.NoError(err)
 			taskInfo.Runtime.State = task.TaskState(j)
 			taskInfo.Runtime.Host = fmt.Sprintf("compute2-%d", j)
-			err = taskStore.UpdateTask(taskInfo)
+			err = taskStore.UpdateTask(context.Background(), taskInfo)
 			suite.NoError(err)
 		}
 	}
 	// GetTaskByState
 	for j := 0; j < int(nTasks); j++ {
 		jobID := peloton.JobID{Value: "TestGetTasksByHostState0"}
-		tasks, err := store.GetTasksForJobAndState(
-			&jobID, task.TaskState(j).String())
+		tasks, err := store.GetTasksForJobAndState(context.Background(), &jobID, task.TaskState(j).String())
 		suite.NoError(err)
 		suite.Equal(len(tasks), 1)
 
@@ -452,8 +451,7 @@ func (suite *CassandraStoreTestSuite) TestGetTasksByHostState() {
 		}
 
 		jobID = peloton.JobID{Value: "TestGetTasksByHostState1"}
-		tasks, err = store.GetTasksForJobAndState(
-			&jobID, task.TaskState(j).String())
+		tasks, err = store.GetTasksForJobAndState(context.Background(), &jobID, task.TaskState(j).String())
 		suite.NoError(err)
 
 		for tid, taskInfo := range tasks {
@@ -465,7 +463,7 @@ func (suite *CassandraStoreTestSuite) TestGetTasksByHostState() {
 	// GetTaskByHost
 	for j := 0; j < int(nTasks); j++ {
 		host := fmt.Sprintf("compute2-%d", j)
-		tasks, err := store.GetTasksOnHost(host)
+		tasks, err := store.GetTasksOnHost(context.Background(), host)
 		suite.NoError(err)
 
 		suite.Equal(len(tasks), 2)
@@ -487,40 +485,40 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	var jobID = peloton.JobID{Value: "TestGetTaskStateChanges"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(nTasks)
-	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+	err := jobStore.CreateJob(context.Background(), &jobID, jobConfig, "uber")
 	suite.NoError(err)
 
 	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
-	err = taskStore.CreateTask(&jobID, 0, taskInfo, "test")
+	err = taskStore.CreateTask(context.Background(), &jobID, 0, taskInfo, "test")
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PENDING
-	err = taskStore.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(context.Background(), taskInfo)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host1
-	err = taskStore.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(context.Background(), taskInfo)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PREEMPTING
 	taskInfo.Runtime.Host = ""
-	err = taskStore.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(context.Background(), taskInfo)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host2
-	err = taskStore.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(context.Background(), taskInfo)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_SUCCEEDED
 	taskInfo.Runtime.Host = host2
-	err = taskStore.UpdateTask(taskInfo)
+	err = taskStore.UpdateTask(context.Background(), taskInfo)
 	suite.NoError(err)
 
 	taskID := fmt.Sprintf("%s-%d", jobID.Value, 0)
 
-	stateRecords, err := store.GetTaskStateChanges(taskID)
+	stateRecords, err := store.GetTaskStateChanges(context.Background(), taskID)
 	suite.NoError(err)
 
 	suite.Equal(stateRecords[0].TaskState, task.TaskState_INITIALIZED.String())
@@ -537,7 +535,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	suite.Equal(stateRecords[4].TaskHost, host2)
 	suite.Equal(stateRecords[5].TaskHost, host2)
 
-	stateRecords, err = store.GetTaskStateChanges("taskdoesnotexist")
+	stateRecords, err = store.GetTaskStateChanges(context.Background(), "taskdoesnotexist")
 	suite.Error(err)
 
 }
@@ -549,7 +547,7 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByOwner() {
 		var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
 		jobConfig := createJobConfig()
 		jobConfig.Name = jobID.Value
-		err := store.CreateJob(&jobID, jobConfig, owner)
+		err := store.CreateJob(context.Background(), &jobID, jobConfig, owner)
 		suite.Nil(err)
 	}
 
@@ -558,23 +556,23 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByOwner() {
 		var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
 		jobConfig := createJobConfig()
 		jobConfig.Name = jobID.Value
-		err := store.CreateJob(&jobID, jobConfig, owner)
+		err := store.CreateJob(context.Background(), &jobID, jobConfig, owner)
 		suite.Nil(err)
 	}
 
-	jobs, err := store.GetJobsByOwner("uberx")
+	jobs, err := store.GetJobsByOwner(context.Background(), "uberx")
 	suite.Nil(err)
 	suite.Equal(len(jobs), 2)
 	suite.Equal(jobs["uberx0"].Name, "uberx0")
 	suite.Equal(jobs["uberx1"].Name, "uberx1")
 
-	jobs, err = store.GetJobsByOwner("team6s")
+	jobs, err = store.GetJobsByOwner(context.Background(), "team6s")
 	suite.Nil(err)
 	suite.Equal(len(jobs), 2)
 	suite.Equal(jobs["team6s0"].Name, "team6s0")
 	suite.Equal(jobs["team6s1"].Name, "team6s1")
 
-	jobs, err = store.GetJobsByOwner("teamdoesnotexist")
+	jobs, err = store.GetJobsByOwner(context.Background(), "teamdoesnotexist")
 	suite.Nil(err)
 	suite.Equal(len(jobs), 0)
 }
@@ -590,7 +588,7 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByRespoolID() {
 		jobConfig.RespoolID = &respool.ResourcePoolID{
 			Value: fmt.Sprintf("%s%d", respoolBase, i),
 		}
-		err := store.CreateJob(&jobID, jobConfig, owner)
+		err := store.CreateJob(context.Background(), &jobID, jobConfig, owner)
 		suite.Nil(err)
 	}
 
@@ -602,24 +600,24 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByRespoolID() {
 		jobConfig.RespoolID = &respool.ResourcePoolID{
 			Value: fmt.Sprintf("%s%d", respoolBase, i),
 		}
-		err := store.CreateJob(&jobID, jobConfig, owner)
+		err := store.CreateJob(context.Background(), &jobID, jobConfig, owner)
 		suite.Nil(err)
 	}
 
-	jobs, err := store.GetJobsByRespoolID(&respool.ResourcePoolID{Value: respoolBase + "0"})
+	jobs, err := store.GetJobsByRespoolID(context.Background(), &respool.ResourcePoolID{Value: respoolBase + "0"})
 	suite.Nil(err)
 	suite.Equal(len(jobs), 2)
 	suite.Equal(respoolBase+"0", jobs["TestGetJobsByRespoolID0"].RespoolID.GetValue())
 	suite.Equal(respoolBase+"0", jobs["TestGetJobsByRespoolID20"].RespoolID.GetValue())
 
-	jobs, err = store.GetJobsByRespoolID(&respool.ResourcePoolID{Value: respoolBase + "1"})
+	jobs, err = store.GetJobsByRespoolID(context.Background(), &respool.ResourcePoolID{Value: respoolBase + "1"})
 	suite.Nil(err)
 	suite.Equal(len(jobs), 2)
 
 	suite.Equal(respoolBase+"1", jobs["TestGetJobsByRespoolID1"].RespoolID.GetValue())
 	suite.Equal(respoolBase+"1", jobs["TestGetJobsByRespoolID21"].RespoolID.GetValue())
 
-	jobs, err = store.GetJobsByRespoolID(&respool.ResourcePoolID{Value: "pooldoesnotexist"})
+	jobs, err = store.GetJobsByRespoolID(context.Background(), &respool.ResourcePoolID{Value: "pooldoesnotexist"})
 	suite.Nil(err)
 	suite.Equal(len(jobs), 0)
 }
@@ -636,11 +634,11 @@ func (suite *CassandraStoreTestSuite) TestGetAllJobs() {
 			jobConfig.RespoolID = &respool.ResourcePoolID{
 				Value: fmt.Sprintf("%s%d", respoolBase, i),
 			}
-			err := store.CreateJob(&jobID, jobConfig, owner)
+			err := store.CreateJob(context.Background(), &jobID, jobConfig, owner)
 			suite.Nil(err)
 		}
 	}
-	jobs, err := store.GetAllJobs()
+	jobs, err := store.GetAllJobs(context.Background())
 	suite.Nil(err)
 	for _, owner := range owners {
 		for i := 0; i < nJobs; i++ {
@@ -655,19 +653,19 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 	var jobID = peloton.JobID{Value: "TestGetTaskStateSummary"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(2 * len(task.TaskState_name))
-	err := store.CreateJob(&jobID, jobConfig, "user1")
+	err := store.CreateJob(context.Background(), &jobID, jobConfig, "user1")
 	suite.Nil(err)
 
 	for i := uint32(0); i < uint32(2*len(task.TaskState_name)); i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
-		err := taskStore.CreateTask(&jobID, i, taskInfo, "user1")
+		err := taskStore.CreateTask(context.Background(), &jobID, i, taskInfo, "user1")
 		suite.Nil(err)
 		taskInfo.Runtime.State = task.TaskState(i / 2)
-		err = taskStore.UpdateTask(taskInfo)
+		err = taskStore.UpdateTask(context.Background(), taskInfo)
 		suite.Nil(err)
 	}
 
-	taskStateSummary, err := store.GetTaskStateSummaryForJob(&jobID)
+	taskStateSummary, err := store.GetTaskStateSummaryForJob(context.Background(), &jobID)
 	suite.Nil(err)
 	suite.Equal(len(taskStateSummary), len(task.TaskState_name))
 	for _, state := range task.TaskState_name {
@@ -681,12 +679,12 @@ func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 	var jobID = peloton.JobID{Value: "TestGetTaskByRange"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(100)
-	err := store.CreateJob(&jobID, jobConfig, "user1")
+	err := store.CreateJob(context.Background(), &jobID, jobConfig, "user1")
 	suite.Nil(err)
 
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
-		err := taskStore.CreateTask(&jobID, i, taskInfo, "user1")
+		err := taskStore.CreateTask(context.Background(), &jobID, i, taskInfo, "user1")
 		suite.Nil(err)
 	}
 	suite.validateRange(&jobID, 0, 30)
@@ -699,7 +697,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to int) {
 	var taskStore storage.TaskStore
 	taskStore = store
-	jobConfig, err := store.GetJobConfig(jobID)
+	jobConfig, err := store.GetJobConfig(context.Background(), jobID)
 	suite.NoError(err)
 
 	if to > int(jobConfig.InstanceCount) {
@@ -710,7 +708,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 		To:   uint32(to),
 	}
 	var taskInRange map[uint32]*task.TaskInfo
-	taskInRange, err = taskStore.GetTasksForJobByRange(jobID, r)
+	taskInRange, err = taskStore.GetTasksForJobByRange(context.Background(), jobID, r)
 	suite.NoError(err)
 
 	suite.Equal(to-from, len(taskInRange))
@@ -720,7 +718,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 	}
 
 	var tasks []*task.TaskInfo
-	tasks, n, err := taskStore.QueryTasks(jobID, uint32(from), uint32(to-from+1))
+	tasks, n, err := taskStore.QueryTasks(context.Background(), jobID, uint32(from), uint32(to-from+1))
 	suite.NoError(err)
 	suite.Equal(n, uint32(to-from))
 
@@ -771,7 +769,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetResourcePoolConfig() {
 	}
 
 	for _, tc := range testCases {
-		actualErr := resourcePoolStore.CreateResourcePool(&respool.ResourcePoolID{Value: tc.resourcePoolID},
+		actualErr := resourcePoolStore.CreateResourcePool(context.Background(), &respool.ResourcePoolID{Value: tc.resourcePoolID},
 			tc.config, tc.owner)
 		if tc.expectedErr == nil {
 			suite.Nil(actualErr, tc.msg)
@@ -791,11 +789,11 @@ func (suite *CassandraStoreTestSuite) GetAllResourcePools() {
 		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
-		err := resourcePoolStore.CreateResourcePool(resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, _resPoolOwner)
 		suite.Nil(err)
 	}
 
-	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools()
+	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools(context.Background())
 	suite.NoError(actualErr)
 	suite.Len(resourcePools, nResourcePools)
 
@@ -805,7 +803,7 @@ func (suite *CassandraStoreTestSuite) GetAllResourcePoolsEmptyResourcePool() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
 	nResourcePools := 0
-	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools()
+	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools(context.Background())
 	suite.NoError(actualErr)
 	suite.Len(resourcePools, nResourcePools)
 }
@@ -820,7 +818,7 @@ func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
-		err := resourcePoolStore.CreateResourcePool(resourcePoolID, resourcePoolConfig, _resPoolOwner)
+		err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, _resPoolOwner)
 		suite.Nil(err)
 	}
 
@@ -845,7 +843,7 @@ func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 	}
 
 	for _, tc := range testCases {
-		resourcePools, actualErr := resourcePoolStore.GetResourcePoolsByOwner(tc.owner)
+		resourcePools, actualErr := resourcePoolStore.GetResourcePoolsByOwner(context.Background(), tc.owner)
 		if tc.expectedErr == nil {
 			suite.Nil(actualErr, tc.msg)
 			suite.Len(resourcePools, tc.nResourcePools, tc.msg)
@@ -863,10 +861,10 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	var jobID = peloton.JobID{Value: "TestJobRuntime"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(nTasks)
-	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+	err := jobStore.CreateJob(context.Background(), &jobID, jobConfig, "uber")
 	suite.NoError(err)
 
-	runtime, err := jobStore.GetJobRuntime(&jobID)
+	runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(job.JobState_INITIALIZED, runtime.State)
 	suite.Equal(0, len(runtime.TaskStats))
@@ -878,15 +876,15 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	runtime.TaskStats[task.TaskState_RUNNING.String()] = 5
 	runtime.TaskStats[task.TaskState_SUCCEEDED.String()] = 5
 
-	err = jobStore.UpdateJobRuntime(&jobID, runtime)
+	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
 	suite.NoError(err)
 
-	runtime, err = jobStore.GetJobRuntime(&jobID)
+	runtime, err = jobStore.GetJobRuntime(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(job.JobState_RUNNING, runtime.State)
 	suite.Equal(4, len(runtime.TaskStats))
 
-	jobIds, err := store.GetJobsByState(job.JobState_RUNNING)
+	jobIds, err := store.GetJobsByState(context.Background(), job.JobState_RUNNING)
 	suite.NoError(err)
 	idFound := false
 	for _, id := range jobIds {
@@ -896,7 +894,7 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	}
 	suite.True(idFound)
 
-	jobIds, err = store.GetJobsByState(120)
+	jobIds, err = store.GetJobsByState(context.Background(), 120)
 	suite.NoError(err)
 	suite.Equal(0, len(jobIds))
 }
@@ -910,19 +908,19 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	var jobID = peloton.JobID{Value: "TestJobConfig"}
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(oldInstanceCount)
-	err := jobStore.CreateJob(&jobID, jobConfig, "uber")
+	err := jobStore.CreateJob(context.Background(), &jobID, jobConfig, "uber")
 	suite.NoError(err)
 
-	jobConfig, err = jobStore.GetJobConfig(&jobID)
+	jobConfig, err = jobStore.GetJobConfig(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(uint32(oldInstanceCount), jobConfig.InstanceCount)
 
 	// update instance count
 	jobConfig.InstanceCount = uint32(newInstanceCount)
-	err = jobStore.UpdateJobConfig(&jobID, jobConfig)
+	err = jobStore.UpdateJobConfig(context.Background(), &jobID, jobConfig)
 	suite.NoError(err)
 
-	jobConfig, err = jobStore.GetJobConfig(&jobID)
+	jobConfig, err = jobStore.GetJobConfig(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
 }
@@ -944,10 +942,10 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 		SizeMB:        uint32(10),
 		ContainerPath: "testpath",
 	}
-	err := volumeStore.CreatePersistentVolume(pv)
+	err := volumeStore.CreatePersistentVolume(context.Background(), pv)
 	suite.NoError(err)
 
-	rpv, err := volumeStore.GetPersistentVolume("volume1")
+	rpv, err := volumeStore.GetPersistentVolume(context.Background(), "volume1")
 	suite.NoError(err)
 	suite.Equal(rpv.Id.Value, "volume1")
 	suite.Equal(rpv.State.String(), "INITIALIZED")
@@ -959,14 +957,14 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	suite.Equal(rpv.ContainerPath, "testpath")
 
 	// Verify get non-existent volume returns error.
-	_, err = volumeStore.GetPersistentVolume("volume2")
+	_, err = volumeStore.GetPersistentVolume(context.Background(), "volume2")
 	suite.Error(err)
 
-	err = volumeStore.UpdatePersistentVolume("volume1", volume.VolumeState_CREATED)
+	err = volumeStore.UpdatePersistentVolume(context.Background(), "volume1", volume.VolumeState_CREATED)
 	suite.NoError(err)
 
 	// Verfy updated persistent volume info.
-	rpv, err = volumeStore.GetPersistentVolume("volume1")
+	rpv, err = volumeStore.GetPersistentVolume(context.Background(), "volume1")
 	suite.NoError(err)
 	suite.Equal(rpv.Id.Value, "volume1")
 	suite.Equal(rpv.State.String(), "CREATED")
@@ -977,11 +975,11 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	suite.Equal(rpv.SizeMB, uint32(10))
 	suite.Equal(rpv.ContainerPath, "testpath")
 
-	err = volumeStore.DeletePersistentVolume("volume1")
+	err = volumeStore.DeletePersistentVolume(context.Background(), "volume1")
 	suite.NoError(err)
 
 	// Verify volume has been deleted.
-	_, err = volumeStore.GetPersistentVolume("volume1")
+	_, err = volumeStore.GetPersistentVolume(context.Background(), "volume1")
 	suite.Error(err)
 }
 

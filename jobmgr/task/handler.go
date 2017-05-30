@@ -36,7 +36,6 @@ func InitServiceHandler(
 		taskStore:     taskStore,
 		jobStore:      jobStore,
 		metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
-		rootCtx:       context.Background(),
 		hostmgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostmgrClientName)),
 		httpClient:    &http.Client{Timeout: httpClientTimeout},
 	}
@@ -49,7 +48,6 @@ type serviceHandler struct {
 	taskStore     storage.TaskStore
 	jobStore      storage.JobStore
 	metrics       *Metrics
-	rootCtx       context.Context
 	hostmgrClient hostsvc.InternalHostServiceYarpcClient
 	httpClient    *http.Client
 }
@@ -60,7 +58,7 @@ func (m *serviceHandler) Get(
 
 	log.Infof("TaskManager.Get called: %v", body)
 	m.metrics.TaskAPIGet.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(body.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
@@ -71,7 +69,7 @@ func (m *serviceHandler) Get(
 		}, nil
 	}
 
-	result, err := m.taskStore.GetTaskForJob(body.JobId, body.InstanceId)
+	result, err := m.taskStore.GetTaskForJob(ctx, body.JobId, body.InstanceId)
 	for _, taskInfo := range result {
 		log.Infof("found task %v", taskInfo)
 		m.metrics.TaskGet.Inc(1)
@@ -95,7 +93,7 @@ func (m *serviceHandler) List(
 
 	log.Infof("TaskManager.List called: %v", body)
 	m.metrics.TaskAPIList.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(body.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskListFail.Inc(1)
@@ -108,7 +106,7 @@ func (m *serviceHandler) List(
 	}
 	var result map[uint32]*task.TaskInfo
 	if body.Range == nil {
-		result, err = m.taskStore.GetTasksForJob(body.JobId)
+		result, err = m.taskStore.GetTasksForJob(ctx, body.JobId)
 	} else {
 		// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
 		// and  C* store would error out if it cannot find a instance id. A separate
@@ -116,7 +114,7 @@ func (m *serviceHandler) List(
 		if body.Range.To > jobConfig.InstanceCount {
 			body.Range.To = jobConfig.InstanceCount
 		}
-		result, err = m.taskStore.GetTasksForJobByRange(body.JobId, body.Range)
+		result, err = m.taskStore.GetTasksForJobByRange(ctx, body.JobId, body.Range)
 	}
 	if err != nil || len(result) == 0 {
 		m.metrics.TaskListFail.Inc(1)
@@ -154,12 +152,12 @@ func (m *serviceHandler) Stop(
 	log.WithField("request", body).Info("TaskManager.Stop called")
 	m.metrics.TaskAPIStop.Inc(1)
 	ctx, cancelFunc := context.WithTimeout(
-		m.rootCtx,
+		ctx,
 		stopRequestTimeoutSecs*time.Second,
 	)
 	defer cancelFunc()
 
-	jobConfig, err := m.jobStore.GetJobConfig(body.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.StopResponse{
@@ -188,11 +186,11 @@ func (m *serviceHandler) Stop(
 	// TODO: refactor the ranges code to peloton/range subpackage.
 	if body.GetRanges() == nil {
 		// If no ranges specified, then stop all instances in the given job.
-		taskInfos, err = m.taskStore.GetTasksForJob(body.JobId)
+		taskInfos, err = m.taskStore.GetTasksForJob(ctx, body.JobId)
 	} else {
 		for _, instance := range instanceIds {
 			var tasks = make(map[uint32]*task.TaskInfo)
-			tasks, err = m.taskStore.GetTaskForJob(body.JobId, instance)
+			tasks, err = m.taskStore.GetTaskForJob(ctx, body.JobId, instance)
 			if err != nil || len(tasks) != 1 {
 				// Do not continue if task db query got error.
 				invalidInstanceIds = append(invalidInstanceIds, instance)
@@ -231,7 +229,7 @@ func (m *serviceHandler) Stop(
 		// Skip update task goalstate if it is already KILLED.
 		if taskInfo.GetRuntime().GoalState != task.TaskState_KILLED {
 			taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
-			err = m.taskStore.UpdateTask(taskInfo)
+			err = m.taskStore.UpdateTask(ctx, taskInfo)
 			if err != nil {
 				// Skip remaining tasks killing if db update error occurs.
 				log.WithError(err).
@@ -298,7 +296,7 @@ func (m *serviceHandler) Query(
 
 	log.Infof("TaskManager.Query called: %v", body)
 	m.metrics.TaskAPIQuery.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(body.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskQueryFail.Inc(1)
@@ -313,7 +311,7 @@ func (m *serviceHandler) Query(
 	}
 
 	// TODO: Support filter and order arguments.
-	result, total, err := m.taskStore.QueryTasks(body.JobId, body.Offset, body.Limit)
+	result, total, err := m.taskStore.QueryTasks(ctx, body.JobId, body.Offset, body.Limit)
 	if err != nil {
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
@@ -341,7 +339,7 @@ func (m *serviceHandler) BrowseSandbox(
 
 	log.WithField("req", req).Info("taskmanager getlogurls called")
 	m.metrics.TaskAPIListLogs.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(req.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil || jobConfig == nil {
 		log.WithField("job_id", req.JobId).
 			WithError(err).
@@ -357,7 +355,7 @@ func (m *serviceHandler) BrowseSandbox(
 		}, nil
 	}
 
-	result, err := m.taskStore.GetTaskForJob(req.JobId, req.InstanceId)
+	result, err := m.taskStore.GetTaskForJob(ctx, req.JobId, req.InstanceId)
 	if err != nil || len(result) != 1 {
 		log.WithField("req", req).
 			WithField("result", result).

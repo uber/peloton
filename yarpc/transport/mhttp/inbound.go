@@ -2,6 +2,7 @@ package mhttp
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -35,7 +36,7 @@ const (
 type Inbound interface {
 	transport.Inbound
 
-	StartMesosLoop(newHostPort string) (chan error, error)
+	StartMesosLoop(ctx context.Context, newHostPort string) (chan error, error)
 }
 
 // InboundOption is an option for an Mesos HTTP inbound.
@@ -85,7 +86,7 @@ func (i *inbound) Start() error {
 // go-routine to dispatch the mesos callbacks.
 // The call can be called multiple times to start/stop talking to Mesos master,
 // or can be used to switch new Mesos master leader after a fail over.
-func (i *inbound) StartMesosLoop(hostPort string) (chan error, error) {
+func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) (chan error, error) {
 	log.WithField("hostport", hostPort).Info("StartMesosLoop called")
 
 	if len(hostPort) == 0 {
@@ -115,7 +116,7 @@ func (i *inbound) StartMesosLoop(hostPort string) (chan error, error) {
 		Info("Starting the inbound for mesos master")
 	i.hostPort = hostPort
 
-	req, err := i.driver.PrepareSubscribeRequest(hostPort)
+	req, err := i.driver.PrepareSubscribeRequest(ctx, hostPort)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"Failed to PrepareSubscribeRequest: %v", err)
@@ -143,7 +144,7 @@ func (i *inbound) StartMesosLoop(hostPort string) (chan error, error) {
 			"Failed to obtain stream id from values: %v",
 			values)
 	}
-	i.driver.PostSubscribe(values[0])
+	i.driver.PostSubscribe(ctx, values[0])
 
 	started := make(chan interface{}, 1)
 	end := make(chan error, 1)

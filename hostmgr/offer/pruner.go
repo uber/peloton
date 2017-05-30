@@ -1,6 +1,7 @@
 package offer
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -88,7 +89,7 @@ func (p *offerPruner) Start() {
 						})
 					}
 					log.WithField("offers", offerIDs).Debug("Offers to decline")
-					if err := p.pool.DeclineOffers(offerIDs); err != nil {
+					if err := p.pool.DeclineOffers(context.Background(), offerIDs); err != nil {
 						log.WithError(err).Error("Failed to decline offers")
 					}
 				}

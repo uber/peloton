@@ -1,6 +1,7 @@
 package job
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -92,35 +93,35 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	}
 
 	mockJobStore.EXPECT().
-		GetJobConfig(jobID).
+		GetJobConfig(context.Background(), jobID).
 		Return(&jobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(job.JobState_PENDING).
+		GetJobsByState(context.Background(), job.JobState_PENDING).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(gomock.Any()).
+		GetJobsByState(context.Background(), gomock.Any()).
 		Return([]peloton.JobID{}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobRuntime(jobID).
+		GetJobRuntime(context.Background(), jobID).
 		Return(&jobRuntime, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), task.TaskState_SUCCEEDED.String()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_SUCCEEDED.String()).
 		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil}, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), task.TaskState_RUNNING.String()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_RUNNING.String()).
 		Return(map[uint32]*task.TaskInfo{uint32(2): nil}, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), gomock.Any()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), gomock.Any()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 
@@ -143,7 +144,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
 	updater.Start()
 	updater.OnEvents(events)
-	updater.checkAllJobs()
+	updater.checkAllJobs(context.Background())
 
 	assert.Equal(t, job.JobState_RUNNING, jobRuntime.State)
 	assert.Equal(t, uint32(2), jobRuntime.TaskStats[task.TaskState_SUCCEEDED.String()])
@@ -155,15 +156,15 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	// state. Process another task event and verify the job completion
 	// time is as expected.
 	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), task.TaskState_SUCCEEDED.String()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_SUCCEEDED.String()).
 		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil, uint32(2): nil}, nil).
 		AnyTimes()
 	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), task.TaskState_RUNNING.String()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_RUNNING.String()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
 	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), gomock.Any()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), gomock.Any()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
 
@@ -182,7 +183,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	}
 	updater.OnEvents(events)
 	assert.Equal(t, eventTimeUnix, updater.lastTaskUpdateTime["job0"])
-	updater.updateJobsRuntime()
+	updater.updateJobsRuntime(context.Background())
 
 	assert.Equal(t, job.JobState_SUCCEEDED, jobRuntime.State)
 	assert.Equal(t, uint32(3), jobRuntime.TaskStats[task.TaskState_SUCCEEDED.String()])
@@ -219,60 +220,60 @@ func TestUpdateJobRuntime_SynchronousJobUpdate(t *testing.T) {
 	}
 
 	mockJobStore.EXPECT().
-		GetJobConfig(jobID).
+		GetJobConfig(context.Background(), jobID).
 		Return(&jobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(job.JobState_PENDING).
+		GetJobsByState(context.Background(), job.JobState_PENDING).
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobsByState(gomock.Any()).
+		GetJobsByState(context.Background(), gomock.Any()).
 		Return([]peloton.JobID{}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobRuntime(jobID).
+		GetJobRuntime(context.Background(), jobID).
 		Return(&jobRuntime, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), task.TaskState_SUCCEEDED.String()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_SUCCEEDED.String()).
 		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil}, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), task.TaskState_RUNNING.String()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_RUNNING.String()).
 		Return(map[uint32]*task.TaskInfo{uint32(2): nil}, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), gomock.Any()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), gomock.Any()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 
 	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
 	updater.Start()
-	updater.UpdateJob(jobID)
+	updater.UpdateJob(context.Background(), jobID)
 
 	assert.Equal(t, job.JobState_RUNNING, jobRuntime.State)
 	assert.Equal(t, uint32(2), jobRuntime.TaskStats[task.TaskState_SUCCEEDED.String()])
 	assert.Equal(t, uint32(1), jobRuntime.TaskStats[task.TaskState_RUNNING.String()])
 
 	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), task.TaskState_SUCCEEDED.String()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_SUCCEEDED.String()).
 		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil, uint32(2): nil}, nil).
 		AnyTimes()
 	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), task.TaskState_RUNNING.String()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_RUNNING.String()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
 	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(gomock.Any(), gomock.Any()).
+		GetTasksForJobAndState(context.Background(), gomock.Any(), gomock.Any()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
 	updater.taskStore = mockTaskStore2
-	updater.UpdateJob(jobID)
+	updater.UpdateJob(context.Background(), jobID)
 
 	assert.Equal(t, job.JobState_SUCCEEDED, jobRuntime.State)
 	assert.Equal(t, uint32(3), jobRuntime.TaskStats[task.TaskState_SUCCEEDED.String()])

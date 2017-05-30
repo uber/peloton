@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"context"
 	"strconv"
 	"sync"
 	"time"
@@ -113,7 +114,7 @@ func (r *taskReconciler) Start() {
 			log.Debug("Initial delay passed")
 		}
 
-		r.reconcile()
+		r.reconcile(context.Background())
 
 		ticker := time.NewTicker(r.reconcileInterval)
 		defer ticker.Stop()
@@ -125,20 +126,20 @@ func (r *taskReconciler) Start() {
 			case t := <-ticker.C:
 				log.WithField("tick", t).
 					Info("periodical task reconciliation triggered.")
-				r.reconcile()
+				r.reconcile(context.Background())
 			}
 		}
 	}()
 }
 
 // reconcile kicks off actual explicit or implicit reconcile run.
-func (r *taskReconciler) reconcile() {
+func (r *taskReconciler) reconcile(ctx context.Context) {
 	// Explicit and implicit reconcile might overlap if we have more than 360K
 	// tasks to reconcile.
 	if r.isExplicitReconcileTurn.Toggle() {
-		go r.reconcileExplicitly()
+		go r.reconcileExplicitly(ctx)
 	} else {
-		go r.reconcileImplicitly()
+		go r.reconcileImplicitly(ctx)
 	}
 }
 
@@ -163,11 +164,11 @@ func (r *taskReconciler) Stop() {
 	log.Info("Task reconciler stop returned.")
 }
 
-func (r *taskReconciler) reconcileImplicitly() {
+func (r *taskReconciler) reconcileImplicitly(ctx context.Context) {
 	log.Info("Reconcile tasks implicitly called.")
 
-	frameworkID := r.frameworkInfoProvider.GetFrameworkID()
-	streamID := r.frameworkInfoProvider.GetMesosStreamID()
+	frameworkID := r.frameworkInfoProvider.GetFrameworkID(ctx)
+	streamID := r.frameworkInfoProvider.GetMesosStreamID(ctx)
 
 	callType := sched.Call_RECONCILE
 
@@ -188,7 +189,7 @@ func (r *taskReconciler) reconcileImplicitly() {
 	log.Debug("Reconcile tasks implicitly returned.")
 }
 
-func (r *taskReconciler) reconcileExplicitly() {
+func (r *taskReconciler) reconcileExplicitly(ctx context.Context) {
 	log.Info("Reconcile tasks explicitly called.")
 	if r.isExplicitReconcileRunning.Swap(true) {
 		log.Info("Reconcile tasks explicit is already running, no-op.")
@@ -196,7 +197,7 @@ func (r *taskReconciler) reconcileExplicitly() {
 	}
 	defer r.isExplicitReconcileRunning.Store(false)
 
-	reconcileTasks, err := r.getReconcileTasks()
+	reconcileTasks, err := r.getReconcileTasks(ctx)
 	reconcileTasksLen := len(reconcileTasks)
 	if err != nil {
 		log.Error("Explicit reconcile failed due to tasks query error.")
@@ -206,8 +207,8 @@ func (r *taskReconciler) reconcileExplicitly() {
 	log.WithField("total_reconcile_tasks", reconcileTasksLen).
 		Debug("Total number of tasks to reconcile explicitly.")
 
-	frameworkID := r.frameworkInfoProvider.GetFrameworkID()
-	streamID := r.frameworkInfoProvider.GetMesosStreamID()
+	frameworkID := r.frameworkInfoProvider.GetFrameworkID(ctx)
+	streamID := r.frameworkInfoProvider.GetMesosStreamID(ctx)
 	callType := sched.Call_RECONCILE
 	explicitTasksPerRun := 0
 	for i := 0; i < reconcileTasksLen; i += r.explicitReconcileBatchSize {
@@ -252,11 +253,11 @@ func (r *taskReconciler) reconcileExplicitly() {
 
 // getReconcileTasks queries datastore and get all the RUNNING tasks.
 // TODO(mu): Revisit all the non-terminal state in Peloton.
-func (r *taskReconciler) getReconcileTasks() (
+func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	[]*sched.Call_Reconcile_Task, error) {
 
 	var reconcileTasks []*sched.Call_Reconcile_Task
-	allJobs, err := r.jobStore.GetAllJobs()
+	allJobs, err := r.jobStore.GetAllJobs(ctx)
 	if err != nil {
 		log.WithField("error", err).Error("Failed to get all jobs.")
 		return reconcileTasks, err
@@ -267,6 +268,7 @@ func (r *taskReconciler) getReconcileTasks() (
 	// in memory.
 	for jobID := range allJobs {
 		nonTerminalTasks, getTasksErr := r.taskStore.GetTasksForJobAndState(
+			ctx,
 			&peloton.JobID{Value: jobID},
 			strconv.Itoa(int(task.TaskState_value["RUNNING"])),
 		)

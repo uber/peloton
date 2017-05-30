@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -37,11 +38,11 @@ const (
 // A mock implementation of FrameworkInfoProvider
 type mockFrameworkInfoProvider struct{}
 
-func (m *mockFrameworkInfoProvider) GetMesosStreamID() string {
+func (m *mockFrameworkInfoProvider) GetMesosStreamID(ctx context.Context) string {
 	return streamID
 }
 
-func (m *mockFrameworkInfoProvider) GetFrameworkID() *mesos.FrameworkID {
+func (m *mockFrameworkInfoProvider) GetFrameworkID(ctx context.Context) *mesos.FrameworkID {
 	tmp := frameworkID
 	return &mesos.FrameworkID{Value: &tmp}
 }
@@ -126,9 +127,9 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs().Return(suite.allJobConfigs, nil),
+			GetAllJobs(context.Background()).Return(suite.allJobConfigs, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(suite.testJobID, runningStateStr).
+			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -190,9 +191,9 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs().Return(suite.allJobConfigs, nil),
+			GetAllJobs(context.Background()).Return(suite.allJobConfigs, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(suite.testJobID, runningStateStr).
+			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -240,9 +241,9 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs().Return(suite.allJobConfigs, nil),
+			GetAllJobs(context.Background()).Return(suite.allJobConfigs, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(suite.testJobID, runningStateStr).
+			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(

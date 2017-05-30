@@ -1,6 +1,7 @@
 package hostmgr
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -174,7 +175,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.detector.EXPECT().HostPort().Return(_hostPort),
 		suite.mInbound.
 			EXPECT().
-			StartMesosLoop(gomock.Eq(_hostPort)).
+			StartMesosLoop(context.Background(), gomock.Eq(_hostPort)).
 			Return(nil, nil),
 
 		// Connected, now start handlers.
@@ -222,7 +223,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 		suite.detector.EXPECT().HostPort().Return(_hostPort),
 		suite.mInbound.
 			EXPECT().
-			StartMesosLoop(gomock.Eq(_hostPort)).
+			StartMesosLoop(context.Background(), gomock.Eq(_hostPort)).
 			Return(nil, nil),
 
 		// Connected, now start handlers.
@@ -264,7 +265,7 @@ func (suite *ServerTestSuite) TestBackoffOnMesosConnectFailure() {
 		// StartMesosLoop returns an error.
 		suite.mInbound.
 			EXPECT().
-			StartMesosLoop(gomock.Eq(_hostPort)).
+			StartMesosLoop(context.Background(), gomock.Eq(_hostPort)).
 			Return(nil, errFoo),
 
 		// For stats gathering.
@@ -311,7 +312,7 @@ func (suite *ServerTestSuite) TestDoubleBackoff() {
 		// StartMesosLoop returns an error.
 		suite.mInbound.
 			EXPECT().
-			StartMesosLoop(gomock.Eq(_hostPort)).
+			StartMesosLoop(context.Background(), gomock.Eq(_hostPort)).
 			Return(nil, errFoo),
 
 		// For stats gathering.
@@ -358,7 +359,7 @@ func (suite *ServerTestSuite) TestMaxBackoff() {
 		// StartMesosLoop returns an error.
 		suite.mInbound.
 			EXPECT().
-			StartMesosLoop(gomock.Eq(_hostPort)).
+			StartMesosLoop(context.Background(), gomock.Eq(_hostPort)).
 			Return(nil, errFoo),
 
 		// For stats gathering.

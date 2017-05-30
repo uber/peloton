@@ -118,7 +118,7 @@ func (p *statusUpdate) GetEventProgress() uint64 {
 }
 
 // ProcessStatusUpdate processes the actual task status
-func (p *statusUpdate) ProcessStatusUpdate(event *pb_eventstream.Event) error {
+func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_eventstream.Event) error {
 	var taskID string
 	var err error
 	var mesosTaskID string
@@ -159,7 +159,7 @@ func (p *statusUpdate) ProcessStatusUpdate(event *pb_eventstream.Event) error {
 		return errors.New("Unknown Event ")
 	}
 
-	taskInfo, err := p.taskStore.GetTaskByID(taskID)
+	taskInfo, err := p.taskStore.GetTaskByID(ctx, taskID)
 	if err != nil {
 		log.WithError(err).
 			WithField("task_id", taskID).
@@ -185,7 +185,7 @@ func (p *statusUpdate) ProcessStatusUpdate(event *pb_eventstream.Event) error {
 		// TODO: check for failing reason and do backoff before
 		// rescheduling.
 		retryTaskInfo := proto.Clone(taskInfo).(*pb_task.TaskInfo)
-		go p.retrySchedulingTask(retryTaskInfo)
+		go p.retrySchedulingTask(ctx, retryTaskInfo)
 	} else {
 		// TODO: figure out on what cases state updates should not be persisted
 		// TODO: depends on the state, may need to put the task back to
@@ -206,7 +206,7 @@ func (p *statusUpdate) ProcessStatusUpdate(event *pb_eventstream.Event) error {
 			Debug("Received unexpected update for task")
 	}
 
-	err = p.taskStore.UpdateTask(taskInfo)
+	err = p.taskStore.UpdateTask(ctx, taskInfo)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
@@ -219,8 +219,8 @@ func (p *statusUpdate) ProcessStatusUpdate(event *pb_eventstream.Event) error {
 }
 
 // retrySchedulingTask overwrites new mesos taskID then retries scheduling task.
-func (p *statusUpdate) retrySchedulingTask(taskInfo *pb_task.TaskInfo) {
-	jobConfig, err := p.jobStore.GetJobConfig(taskInfo.GetJobId())
+func (p *statusUpdate) retrySchedulingTask(ctx context.Context, taskInfo *pb_task.TaskInfo) {
+	jobConfig, err := p.jobStore.GetJobConfig(ctx, taskInfo.GetJobId())
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,

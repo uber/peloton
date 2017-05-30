@@ -36,7 +36,6 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	mtx := NewMetrics(tally.NoopScope)
 	suite.handler = &serviceHandler{
 		metrics: mtx,
-		rootCtx: context.Background(),
 	}
 	suite.testJobID = &peloton.JobID{
 		Value: "test_job",
@@ -96,11 +95,11 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJob(suite.testJobID).Return(suite.taskInfos, nil),
+			GetTasksForJob(gomock.Any(), suite.testJobID).Return(suite.taskInfos, nil),
 		mockTaskStore.EXPECT().
-			UpdateTask(gomock.Any()).Times(testInstanceCount).Return(nil),
+			UpdateTask(gomock.Any(), gomock.Any()).Times(testInstanceCount).Return(nil),
 		mockHostmgrClient.EXPECT().
 			KillTasks(
 				gomock.Any(),
@@ -119,7 +118,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 		JobId: suite.testJobID,
 	}
 	resp, err := suite.handler.Stop(
-		suite.handler.rootCtx,
+		context.Background(),
 		request,
 	)
 	suite.NoError(err)
@@ -145,11 +144,11 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTaskForJob(suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
+			GetTaskForJob(gomock.Any(), suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
-			UpdateTask(gomock.Any()).Times(1).Return(nil),
+			UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
 		mockHostmgrClient.EXPECT().
 			KillTasks(
 				gomock.Any(),
@@ -169,7 +168,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 		Ranges: taskRanges,
 	}
 	resp, err := suite.handler.Stop(
-		suite.handler.rootCtx,
+		context.Background(),
 		request,
 	)
 	suite.NoError(err)
@@ -197,13 +196,13 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTaskForJob(suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
+			GetTaskForJob(gomock.Any(), suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
-			GetTaskForJob(suite.testJobID, uint32(2)).Return(failedTaskInfo, nil),
+			GetTaskForJob(gomock.Any(), suite.testJobID, uint32(2)).Return(failedTaskInfo, nil),
 		mockTaskStore.EXPECT().
-			UpdateTask(gomock.Any()).Times(2).Return(nil),
+			UpdateTask(gomock.Any(), gomock.Any()).Times(2).Return(nil),
 		mockHostmgrClient.EXPECT().
 			KillTasks(
 				gomock.Any(),
@@ -225,7 +224,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 		Ranges: taskRanges,
 	}
 	resp, err := suite.handler.Stop(
-		suite.handler.rootCtx,
+		context.Background(),
 		request,
 	)
 	suite.NoError(err)
@@ -249,11 +248,11 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 	emptyTaskInfo := make(map[uint32]*task.TaskInfo)
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTaskForJob(suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
+			GetTaskForJob(gomock.Any(), suite.testJobID, uint32(1)).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
-			GetTaskForJob(suite.testJobID, uint32(3)).Return(emptyTaskInfo, nil),
+			GetTaskForJob(gomock.Any(), suite.testJobID, uint32(3)).Return(emptyTaskInfo, nil),
 	)
 
 	taskRanges := []*task.InstanceRange{
@@ -271,7 +270,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 		Ranges: taskRanges,
 	}
 	resp, err := suite.handler.Stop(
-		suite.handler.rootCtx,
+		context.Background(),
 		request,
 	)
 	suite.NoError(err)
@@ -298,14 +297,14 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidJobID() {
 	singleTaskInfo[1] = suite.taskInfos[1]
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJobConfig(suite.testJobID).Return(nil, nil),
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(nil, nil),
 	)
 
 	var request = &task.StopRequest{
 		JobId: suite.testJobID,
 	}
 	resp, err := suite.handler.Stop(
-		suite.handler.rootCtx,
+		context.Background(),
 		request,
 	)
 	suite.NoError(err)
@@ -327,18 +326,18 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithTaskUpdateFailure() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJob(suite.testJobID).Return(suite.taskInfos, nil),
+			GetTasksForJob(gomock.Any(), suite.testJobID).Return(suite.taskInfos, nil),
 		mockTaskStore.EXPECT().
-			UpdateTask(gomock.Any()).AnyTimes().Return(fmt.Errorf("db update failure")),
+			UpdateTask(gomock.Any(), gomock.Any()).AnyTimes().Return(fmt.Errorf("db update failure")),
 	)
 
 	var request = &task.StopRequest{
 		JobId: suite.testJobID,
 	}
 	resp, err := suite.handler.Stop(
-		suite.handler.rootCtx,
+		context.Background(),
 		request,
 	)
 	suite.NoError(err)
@@ -361,16 +360,16 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithoutHostname() {
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
-			GetJobConfig(suite.testJobID).Return(suite.testJobConfig, nil),
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTaskForJob(suite.testJobID, uint32(0)).Return(singleTaskInfo, nil),
+			GetTaskForJob(gomock.Any(), suite.testJobID, uint32(0)).Return(singleTaskInfo, nil),
 	)
 
 	var request = &task.BrowseSandboxRequest{
 		JobId:      suite.testJobID,
 		InstanceId: 0,
 	}
-	resp, err := suite.handler.BrowseSandbox(suite.handler.rootCtx, request)
+	resp, err := suite.handler.BrowseSandbox(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(resp.GetError())
 }

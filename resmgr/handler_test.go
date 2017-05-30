@@ -43,14 +43,14 @@ type HandlerTestSuite struct {
 func (suite *HandlerTestSuite) SetupSuite() {
 	suite.ctrl = gomock.NewController(suite.T())
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.ctrl)
-	mockResPoolStore.EXPECT().GetAllResourcePools().
+	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(suite.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(suite.ctrl)
 
 	// commenting it out for removing loadfromdb from resmgr for now
 	// until we fix it
 	//gomock.InOrder(
-	//	mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).Times(5),
+	//	mockJobStore.EXPECT().GetAllJobs(context.Background()).Return(nil, nil).Times(5),
 	//)
 
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.ctrl)

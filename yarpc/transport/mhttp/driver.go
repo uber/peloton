@@ -1,6 +1,7 @@
 package mhttp
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -21,11 +22,10 @@ type MesosDriver interface {
 
 	// Returns a subscribe Call message to be sent to Mesos for
 	// setting up an event stream connection
-	PrepareSubscribeRequest(
-		mesosMasterHostPort string) (*http.Request, error)
+	PrepareSubscribeRequest(ctx context.Context, mesosMasterHostPort string) (*http.Request, error)
 
 	// Invoked after the subscription to Mesos is done
-	PostSubscribe(mesosStreamID string)
+	PostSubscribe(ctx context.Context, mesosStreamID string)
 
 	// GetContentEncoding returns the http content encoding of the Mesos
 	// HTTP traffic
