@@ -36,7 +36,6 @@ type calculator struct {
 	calculationPeriod time.Duration
 	stopChan          chan struct{}
 	hostMgrClient     hostsvc.InternalHostServiceYarpcClient
-	rootCtx           context.Context
 	clusterCapacity   map[string]float64
 	// This atomic boolean helps to identify if previous run is
 	// complete or still not done
@@ -65,7 +64,6 @@ func InitCalculator(
 		hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(
 			d.ClientConfig(
 				common.PelotonHostManager)),
-		rootCtx:         context.Background(),
 		clusterCapacity: make(map[string]float64),
 	}
 }
@@ -104,8 +102,9 @@ func (c *calculator) Start() error {
 				log.Info("Exiting Task Scheduler")
 				return
 			case <-timer.C:
-				err := c.calculateEntitlement()
-				log.Error(err)
+				if err := c.calculateEntitlement(context.Background()); err != nil {
+					log.Error(err)
+				}
 			}
 			timer.Stop()
 		}
@@ -116,8 +115,7 @@ func (c *calculator) Start() error {
 }
 
 // calculateEntitlement calculates the entitlement
-func (c *calculator) calculateEntitlement() error {
-
+func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	// Checking is previous transitions are complete
 	inRunning := c.isRunning.Load()
 	if inRunning {
@@ -143,7 +141,7 @@ func (c *calculator) calculateEntitlement() error {
 	}
 
 	// Updating cluster capacity
-	err = c.updateClusterCapacity(rootResPool)
+	err = c.updateClusterCapacity(ctx, rootResPool)
 	if err != nil {
 		return err
 	}
@@ -241,11 +239,9 @@ func (c *calculator) getTotalFreeResources(
 	return freeResources
 }
 
-func (c *calculator) updateClusterCapacity(
-	rootResPool respool.ResPool) error {
-
+func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool respool.ResPool) error {
 	// Calling the hostmgr for getting total capacity of the cluster
-	totalResources, err := c.getTotalCapacity()
+	totalResources, err := c.getTotalCapacity(ctx)
 	if err != nil {
 		return err
 	}
@@ -299,10 +295,9 @@ func (c *calculator) updateClusterCapacity(
 }
 
 // getTotalCapacity returns the total capacity if the cluster
-func (c *calculator) getTotalCapacity() ([]*hostsvc.Resource, error) {
-
-	ctx, cancelFunc := context.WithTimeout(c.rootCtx, 10*time.Second)
-	defer cancelFunc()
+func (c *calculator) getTotalCapacity(ctx context.Context) ([]*hostsvc.Resource, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
 	request := &hostsvc.ClusterCapacityRequest{}
 

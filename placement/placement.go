@@ -3,7 +3,6 @@ package placement
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -431,15 +430,6 @@ func (s *placementEngine) placeRound() time.Duration {
 // getTasks deques tasks from task queue in resource manager
 func (s *placementEngine) getTasks(limit int) (
 	taskInfos []*resmgr.Task, err error) {
-	// It could happen that the work loop is started before the
-	// peloton master inbound is started.  In such case it could
-	// panic. This we capture the panic, return error, wait then
-	// resume
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("Recovered from panic %v", r)
-		}
-	}()
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()

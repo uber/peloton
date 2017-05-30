@@ -53,7 +53,6 @@ func (suite *EntitlementCalculatorTestSuite) SetupSuite() {
 		calculationPeriod: time.Duration(1) * time.Second,
 		stopChan:          make(chan struct{}, 1),
 		clusterCapacity:   make(map[string]float64),
-		rootCtx:           context.Background(),
 		hostMgrClient:     suite.mockHostMgr,
 	}
 }
@@ -191,7 +190,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 			}, nil).
 			Times(1),
 	)
-	suite.calculator.calculateEntitlement()
+	suite.calculator.calculateEntitlement(context.Background())
 
 	ResPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool11"})
 	suite.NoError(err)
@@ -228,7 +227,7 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 			}, nil).
 			Times(1),
 	)
-	suite.calculator.calculateEntitlement()
+	suite.calculator.calculateEntitlement(context.Background())
 	RootResPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "root"})
 	suite.NoError(err)
 	suite.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
