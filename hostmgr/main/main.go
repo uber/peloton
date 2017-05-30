@@ -10,6 +10,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr"
@@ -318,6 +319,9 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
+
+	// we can *honestly* say the server is booted up now
+	health.InitHeartbeat(rootScope, cfg.Health)
 
 	select {}
 }

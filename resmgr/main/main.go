@@ -8,6 +8,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 
@@ -230,6 +231,9 @@ func main() {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 	log.Infof("Started Resource Manager on port %v", cfg.ResManager.Port)
+
+	// we can *honestly* say the server is booted up now
+	health.InitHeartbeat(rootScope, cfg.Health)
 
 	select {}
 }

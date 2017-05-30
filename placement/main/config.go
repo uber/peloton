@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/leader"
@@ -13,4 +14,5 @@ type Config struct {
 	Placement placement.Config      `yaml:"placement"`
 	Election  leader.ElectionConfig `yaml:"election"`
 	Mesos     mesos.Config          `yaml:"mesos"`
+	Health    health.Config         `yaml:"health"`
 }

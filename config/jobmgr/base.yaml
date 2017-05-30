@@ -32,3 +32,6 @@ job_manager:
 
 election:
   root: "/peloton"
+
+health:
+  heartbeat_interval: 5s

@@ -9,6 +9,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/placement"
@@ -182,8 +183,9 @@ func main() {
 	)
 	placementEngine.Start()
 	defer placementEngine.Stop()
+
 	// we can *honestly* say the server is booted up now
-	rootScope.Counter("boot").Inc(1)
+	health.InitHeartbeat(rootScope, cfg.Health)
 
 	select {}
 }

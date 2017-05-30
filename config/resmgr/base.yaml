@@ -29,6 +29,8 @@ resmgr:
   task_scheduling_period: 100ms
   entitlement_calculation_period: 60s
 
-
 election:
   root: "/peloton"
+
+health:
+  heartbeat_interval: 5s

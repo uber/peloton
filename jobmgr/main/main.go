@@ -8,6 +8,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
+	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/jobmgr"
@@ -303,6 +304,9 @@ func main() {
 	defer launcher.GetLauncher().Stop()
 
 	log.WithField("Port", cfg.JobManager.Port).Info("Started Peloton job manager")
+
+	// we can *honestly* say the server is booted up now
+	health.InitHeartbeat(rootScope, cfg.Health)
 
 	select {}
 }

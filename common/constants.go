@@ -15,8 +15,6 @@ const (
 	PelotonResourceManager = "peloton-resmgr"
 	// PelotonHostManager service name
 	PelotonHostManager = "peloton-hostmgr"
-	// PelotonMaster service name
-	PelotonMaster = "peloton-master"
 	// PelotonPlacement service name
 	PelotonPlacement = "peloton-placement"
 	// PelotonClient is client name for cli

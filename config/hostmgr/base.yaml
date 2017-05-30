@@ -50,3 +50,6 @@ mesos:
 
 election:
   root: "/peloton"
+
+health:
+  heartbeat_interval: 5s

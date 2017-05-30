@@ -1,6 +1,7 @@
 package main
 
 import (
+	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr"
@@ -13,4 +14,5 @@ type Config struct {
 	Storage    storage.Config        `yaml:"storage"`
 	ResManager resmgr.Config         `yaml:"resmgr"`
 	Election   leader.ElectionConfig `yaml:"election"`
+	Health     health.Config         `yaml:"health"`
 }
