@@ -12,6 +12,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/encoding/json"
 
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
@@ -229,8 +230,16 @@ func (p *statusUpdate) retrySchedulingTask(taskInfo *pb_task.TaskInfo) {
 		}).Error("jobstore getjobconfig failed")
 		return
 	}
-	taskInfos := []*pb_task.TaskInfo{taskInfo}
-	task.EnqueueTasks(taskInfos, jobConfig, p.resmgrClient)
+	p.enqueueTask(taskInfo, jobConfig)
+}
+
+// enqueueTask enqueues given task to respool in resmgr.
+func (p *statusUpdate) enqueueTask(
+	taskInfo *pb_task.TaskInfo,
+	jobConfig *pb_job.JobConfig) {
+
+	tasks := []*pb_task.TaskInfo{taskInfo}
+	task.EnqueueGangs(p.rootCtx, tasks, jobConfig, p.resmgrClient)
 }
 
 // isUnexpected tells if taskState is unexpected or not

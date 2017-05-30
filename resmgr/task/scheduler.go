@@ -115,7 +115,7 @@ func (s *scheduler) Start() error {
 	return nil
 }
 
-// scheduleTasks moves scheduling unit tasks to ready queue in every scheduling cycle
+// scheduleTasks moves gang tasks to ready queue in every scheduling cycle
 func (s *scheduler) scheduleTasks() {
 	// TODO: consider add DequeueTasks to respool.Tree interface
 	// instead of returning all leaf nodes.
@@ -123,7 +123,7 @@ func (s *scheduler) scheduleTasks() {
 	// TODO: we need to check the entitlement first
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		tlist, err := n.DequeueSchedulingUnitList(dequeueTaskLimit)
+		tlist, err := n.DequeueGangList(dequeueTaskLimit)
 		if err != nil {
 			log.WithField("respool", n.ID()).Debug("No Items found")
 			continue

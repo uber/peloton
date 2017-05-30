@@ -16,21 +16,22 @@ import "peloton/private/eventstream/eventstream.proto";
 /**
  * ResourceManagerService describes the internal interface of
  * Resource Manager to other Peloton applications such as Job Manager
- * and Placement Engine. This includes the EnqueueTasks and GetPlacements
+ * and Placement Engine. This includes the EnqueueGangs and GetPlacements
  * APIs called by Job Manager, and DequeueTasks and SetPlacements APIs
  * called by Placement Engine.
  */
 service ResourceManagerService {
 
   /**
-   *  Enqueue a list of tasks to a given leaf resource pool for
-   *  scheduling. The tasks will be in PENDING state first and then
+   *  Enqueue a list of Gangs, each of which is a list of
+   *  one or more tasks, to a given leaf resource pool for
+   *  scheduling. The Gangs will be in PENDING state first and then
    *  transit to READY state when the resource pool has available
    *  resources. This method will be called by Job Manager when a new
-   *  job is created or new tasks are added. If there is any tasks that
-   *  are failed to enqueue, Job Manager should retry those failed tasks.
+   *  job is created or new Gangs are added. If any Gangs
+   *  fail to enqueue, Job Manager should retry those failed Gangs.
    */
-  rpc EnqueueTasks(EnqueueTasksRequest) returns (EnqueueTasksResponse);
+  rpc EnqueueGangs(EnqueueGangsRequest) returns (EnqueueGangsResponse);
 
   /**
    *  Dequeue a list of tasks that are in READY state for placement.
@@ -84,7 +85,7 @@ message ResourcePoolNoPermission {
   string message = 2;
 }
 
-message EnqueueTasksFailure {
+message EnqueueGangsFailure {
   message FailedTask {
     resmgr.Task task = 1;
     string message = 2;
@@ -93,19 +94,24 @@ message EnqueueTasksFailure {
   repeated FailedTask failed = 1;
 }
 
-message EnqueueTasksRequest {
+message Gang {
+  // List of tasks to be scheduled together
+  repeated resmgr.Task tasks = 1;
+}
+
+message EnqueueGangsRequest {
   // ResourcePool
   api.respool.ResourcePoolID resPool = 1;
 
-  // The list of tasks to enqueue
-  repeated resmgr.Task tasks = 2;
+  // The list of gangs to enqueue
+  repeated Gang gangs = 2;
 }
 
-message EnqueueTasksResponse {
+message EnqueueGangsResponse {
   message Error {
     ResourcePoolNotFound notFound = 1;
     ResourcePoolNoPermission noPermission = 2;
-    EnqueueTasksFailure failure = 3;
+    EnqueueGangsFailure failure = 3;
   }
   Error error = 1;
 }

@@ -12,26 +12,26 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/util"
 )
 
-// EnqueueTasks enqueues all tasks to respool in resmgr.
-func EnqueueTasks(tasks []*task.TaskInfo, config *job.JobConfig, client json.Client) error {
-	rootCtx := context.Background()
-	ctx, cancelFunc := context.WithTimeout(rootCtx, 10*time.Second)
+// EnqueueGangs enqueues all tasks organized in gangs to respool in resmgr.
+func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobConfig, client json.Client) error {
+	ctxWithTimeout, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelFunc()
-	resmgrTasks := ConvertToResMgrTask(tasks, config)
-	var response resmgrsvc.EnqueueTasksResponse
-	var request = &resmgrsvc.EnqueueTasksRequest{
-		Tasks:   resmgrTasks,
+
+	gangs := ConvertToResMgrGangs(tasks, config)
+	var request = &resmgrsvc.EnqueueGangsRequest{
+		Gangs:   gangs,
 		ResPool: config.RespoolID,
 	}
+	var response resmgrsvc.EnqueueGangsResponse
+
 	_, err := client.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks"),
+		ctxWithTimeout,
+		yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs"),
 		request,
 		&response,
 	)
@@ -49,22 +49,43 @@ func EnqueueTasks(tasks []*task.TaskInfo, config *job.JobConfig, client json.Cli
 		}).Error("Resource Manager Enqueue Failed")
 		return er.New(response.Error.String())
 	}
-	log.WithField("Count", len(resmgrTasks)).Debug("Enqueued tasks to " +
+	log.WithField("Count", len(tasks)).Debug("Enqueued tasks as gangs to " +
 		"Resource Manager")
 	return nil
 }
 
-// ConvertToResMgrTask converts taskinfo to resmgr task
-func ConvertToResMgrTask(
+// ConvertToResMgrGangs converts the taskinfo for the tasks comprising
+// the config job to resmgr tasks and organizes them into gangs, each
+// of which is a set of 1+ tasks to be admitted and placed as a group.
+func ConvertToResMgrGangs(
 	tasks []*task.TaskInfo,
-	config *job.JobConfig) []*resmgr.Task {
+	config *job.JobConfig) []*resmgrsvc.Gang {
+	var gangs []*resmgrsvc.Gang
 
-	var resmgrtasks []*resmgr.Task
+	// Gangs of multiple tasks are placed at the front of the returned list for
+	// preferential treatment, since they are expected to be both more important
+	// and harder to place than gangs comprising a single task.
+	var multiTaskGangs []*resmgrsvc.Gang
+
 	for _, t := range tasks {
-		resmgrtasks = append(
-			resmgrtasks,
-			util.ConvertTaskToResMgrTask(t, config),
-		)
+		resmgrtask := util.ConvertTaskToResMgrTask(t, config)
+		// Currently a job has at most 1 gang comprising multiple tasks;
+		// those tasks have their MinInstances field set > 1.
+		if resmgrtask.MinInstances > 1 {
+			if len(multiTaskGangs) == 0 {
+				var multiTaskGang resmgrsvc.Gang
+				multiTaskGangs = append(multiTaskGangs, &multiTaskGang)
+			}
+			multiTaskGangs[0].Tasks = append(multiTaskGangs[0].Tasks, resmgrtask)
+		} else {
+			// Gang comprising one task
+			var gang resmgrsvc.Gang
+			gang.Tasks = append(gang.Tasks, resmgrtask)
+			gangs = append(gangs, &gang)
+		}
 	}
-	return resmgrtasks
+	if len(multiTaskGangs) > 0 {
+		gangs = append(multiTaskGangs, gangs...)
+	}
+	return gangs
 }

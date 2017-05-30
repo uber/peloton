@@ -145,7 +145,7 @@ func (s *ResPoolSuite) TestResPoolEnqueue() {
 	s.NoError(err)
 
 	for _, task := range s.getTasks() {
-		resPoolNode.EnqueueSchedulingUnit(resPoolNode.MakeTaskSchedulingUnit(task))
+		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(task))
 	}
 
 	resPool, ok := resPoolNode.(*resPool)
@@ -173,11 +173,11 @@ func (s *ResPoolSuite) TestResPoolEnqueueError() {
 	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
 	s.NoError(err)
 
-	err = resPoolNode.EnqueueSchedulingUnit(nil)
+	err = resPoolNode.EnqueueGang(nil)
 
 	s.EqualError(
 		err,
-		"scheduling unit has no elements",
+		"gang has no elements",
 	)
 }
 
@@ -195,12 +195,12 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 	s.NoError(err)
 
 	for _, task := range s.getTasks() {
-		resPoolNode.EnqueueSchedulingUnit(resPoolNode.MakeTaskSchedulingUnit(task))
+		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(task))
 	}
 
-	dequeuedSchedulingUnits, err := resPoolNode.DequeueSchedulingUnitList(1)
+	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedSchedulingUnits.Len())
+	s.Equal(1, dequeuedGangs.Len())
 
 	resPool, ok := resPoolNode.(*resPool)
 	s.True(ok)
@@ -212,9 +212,9 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 	// 1 task should've been deququeued
 	s.Equal(1, priorityQueue.Len(2))
 
-	dequeuedSchedulingUnits, err = resPoolNode.DequeueSchedulingUnitList(1)
+	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedSchedulingUnits.Len())
+	s.Equal(1, dequeuedGangs.Len())
 
 	// 1 task should've been deququeued
 	s.Equal(0, priorityQueue.Len(2))
@@ -234,10 +234,10 @@ func (s *ResPoolSuite) TestResPoolDequeueError() {
 	s.NoError(err)
 
 	for _, task := range s.getTasks() {
-		resPoolNode.EnqueueSchedulingUnit(resPoolNode.MakeTaskSchedulingUnit(task))
+		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(task))
 	}
 
-	_, err = resPoolNode.DequeueSchedulingUnitList(0)
+	_, err = resPoolNode.DequeueGangList(0)
 	s.EqualError(
 		err,
 		"limit 0 is not valid",

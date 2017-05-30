@@ -18,11 +18,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	jtask "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
@@ -114,28 +114,28 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	tasks := jtask.ConvertToResMgrTask(tasksInfo, suite.testJobConfig)
-	var expectedTasks []*resmgr.Task
+	gangs := jtask.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
 			Call(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
-				gomock.Eq(&resmgrsvc.EnqueueTasksRequest{
-					Tasks: tasks,
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
+				gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
+					Gangs: gangs,
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
-				req := reqBody.(*resmgrsvc.EnqueueTasksRequest)
-				for _, t := range req.Tasks {
-					expectedTasks = append(expectedTasks, t)
+				req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
+				for _, g := range req.Gangs {
+					expectedGangs = append(expectedGangs, g)
 				}
 			}).
 			Return(nil, nil),
 	)
 
-	jtask.EnqueueTasks(tasksInfo, suite.testJobConfig, suite.handler.client)
-	suite.Equal(tasks, expectedTasks)
+	jtask.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, suite.handler.client)
+	suite.Equal(gangs, expectedGangs)
 }
 
 func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
@@ -148,28 +148,28 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	tasks := jtask.ConvertToResMgrTask(tasksInfo, suite.testJobConfig)
-	var expectedTasks []*resmgr.Task
+	gangs := jtask.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	var expectedGangs []*resmgrsvc.Gang
 	var err error
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
 			Call(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
-				gomock.Eq(&resmgrsvc.EnqueueTasksRequest{
-					Tasks: tasks,
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
+				gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
+					Gangs: gangs,
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
-				req := reqBody.(*resmgrsvc.EnqueueTasksRequest)
-				for _, t := range req.Tasks {
-					expectedTasks = append(expectedTasks, t)
+				req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
+				for _, g := range req.Gangs {
+					expectedGangs = append(expectedGangs, g)
 				}
 				err = errors.New("Resmgr Error")
 			}).
 			Return(nil, err),
 	)
-	jtask.EnqueueTasks(tasksInfo, suite.testJobConfig, suite.handler.client)
+	jtask.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, suite.handler.client)
 	suite.Error(err)
 }
 
@@ -261,11 +261,11 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		GetTasksForJobAndState(jobID, gomock.Any()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
-	var response resmgrsvc.EnqueueTasksResponse
+	var response resmgrsvc.EnqueueGangsResponse
 	mockResmgrClient.EXPECT().
 		Call(
 			gomock.Any(),
-			gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
+			gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
 			gomock.Any(),
 			&response).
 		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {}).

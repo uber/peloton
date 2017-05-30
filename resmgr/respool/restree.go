@@ -254,8 +254,8 @@ func (t *tree) requeueTasksInRange(
 			// Requeue the tasks with these states into the queue again
 			ta.Runtime.State = task.TaskState_PENDING
 			task := util.ConvertTaskToResMgrTask(ta, jobConfig)
-			err := t.resPools[jobConfig.RespoolID.Value].EnqueueSchedulingUnit(
-				t.resPools[jobConfig.RespoolID.Value].MakeTaskSchedulingUnit(task))
+			err := t.resPools[jobConfig.RespoolID.Value].EnqueueGang(
+				t.resPools[jobConfig.RespoolID.Value].MakeTaskGang(task))
 			if err != nil {
 				log.WithField("task", ta.JobId.Value+"-"+
 					fmt.Sprint(ta.InstanceId)).Error(
@@ -314,7 +314,7 @@ func (t *tree) requeueGang(
 	}
 
 	// Enqueue gang tasks
-	err = t.resPools[jobConfig.RespoolID.Value].EnqueueSchedulingUnit(tlist)
+	err = t.resPools[jobConfig.RespoolID.Value].EnqueueGang(tlist)
 	if err != nil {
 		log.WithField("jobID", jobID).Error("Not able to recover/enqueue gang tasks in job")
 		return nil

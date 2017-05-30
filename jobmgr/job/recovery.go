@@ -1,6 +1,7 @@
 package job
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -174,7 +175,7 @@ func (j *Recovery) recoverJob(jobID *peloton.JobID) error {
 		if len(tasksToRequeue) > 0 {
 			// requeue the tasks into resgmr
 			// TODO: retry policy
-			err := jtask.EnqueueTasks(tasksToRequeue, jobConfig, j.resmgrClient)
+			err := jtask.EnqueueGangs(context.Background(), tasksToRequeue, jobConfig, j.resmgrClient)
 			if err != nil {
 				log.WithError(err).
 					WithField("job_id", jobID.Value).

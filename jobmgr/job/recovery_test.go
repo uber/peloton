@@ -46,15 +46,17 @@ func TestValidatorWithStore(t *testing.T) {
 	var sentTasks = make(map[int]bool)
 	mockClient.EXPECT().Call(
 		gomock.Any(),
-		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
+		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
 		gomock.Any(),
 		gomock.Any()).
 		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
-			req := reqBody.(*resmgrsvc.EnqueueTasksRequest)
-			for _, task := range req.Tasks {
-				_, instance, err := util.ParseTaskID(task.Id.Value)
-				assert.Nil(t, err)
-				sentTasks[instance] = true
+			req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
+			for _, gang := range req.GetGangs() {
+				for _, task := range gang.GetTasks() {
+					_, instance, err := util.ParseTaskID(task.Id.Value)
+					assert.Nil(t, err)
+					sentTasks[instance] = true
+				}
 			}
 		}).
 		Return(nil, nil).AnyTimes()
@@ -187,15 +189,17 @@ func TestValidator(t *testing.T) {
 		}, nil)
 	mockClient.EXPECT().Call(
 		gomock.Any(),
-		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
+		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
 		gomock.Any(),
 		gomock.Any()).
 		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
-			req := reqBody.(*resmgrsvc.EnqueueTasksRequest)
-			for _, task := range req.Tasks {
-				_, instance, err := util.ParseTaskID(task.Id.Value)
-				assert.Nil(t, err)
-				sentTasks[instance] = true
+			req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
+			for _, gang := range req.GetGangs() {
+				for _, task := range gang.GetTasks() {
+					_, instance, err := util.ParseTaskID(task.Id.Value)
+					assert.Nil(t, err)
+					sentTasks[instance] = true
+				}
 			}
 		}).
 		Return(nil, nil)
@@ -294,7 +298,7 @@ func TestValidatorFailures(t *testing.T) {
 		AnyTimes()
 	mockClient.EXPECT().Call(
 		gomock.Any(),
-		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
+		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
 		gomock.Any(),
 		gomock.Any()).
 		Return(nil, errors.New("Mock client error")).
@@ -302,15 +306,17 @@ func TestValidatorFailures(t *testing.T) {
 		MaxTimes(1)
 	mockClient.EXPECT().Call(
 		gomock.Any(),
-		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
+		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
 		gomock.Any(),
 		gomock.Any()).
 		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
-			req := reqBody.(*resmgrsvc.EnqueueTasksRequest)
-			for _, task := range req.Tasks {
-				_, instance, err := util.ParseTaskID(task.Id.Value)
-				assert.Nil(t, err)
-				sentTasks[instance] = true
+			req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
+			for _, gang := range req.GetGangs() {
+				for _, task := range gang.GetTasks() {
+					_, instance, err := util.ParseTaskID(task.Id.Value)
+					assert.Nil(t, err)
+					sentTasks[instance] = true
+				}
 			}
 		}).
 		Return(nil, nil).

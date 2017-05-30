@@ -43,12 +43,12 @@ type ResPool interface {
 	ToResourcePoolInfo() *respool.ResourcePoolInfo
 	// Aggregates the child reservations by resource type
 	AggregatedChildrenReservations() (map[string]float64, error)
-	// Forms a scheduling unit from a single task
-	MakeTaskSchedulingUnit(task *resmgr.Task) *list.List
-	// Enqueues scheduling unit (task list) into resource pool pending queue
-	EnqueueSchedulingUnit(tlist *list.List) error
-	// Dequeues scheduling unit (task list) list from the resource pool
-	DequeueSchedulingUnitList(int) (*list.List, error)
+	// Forms a gang from a single task
+	MakeTaskGang(task *resmgr.Task) *list.List
+	// Enqueues gang (task list) into resource pool pending queue
+	EnqueueGang(tlist *list.List) error
+	// Dequeues gang (task list) list from the resource pool
+	DequeueGangList(int) (*list.List, error)
 	// SetEntitlement sets the entitlement for the resource pool
 	// input is map[ResourceKind]->EntitledCapacity
 	SetEntitlement(map[string]float64)
@@ -188,18 +188,18 @@ func (n *resPool) IsLeaf() bool {
 	return n.isLeaf()
 }
 
-// MakeTaskSchedulingUnit forms a scheduling unit from a single task
-func (n *resPool) MakeTaskSchedulingUnit(task *resmgr.Task) *list.List {
+// MakeTaskGang forms a gang from a single task
+func (n *resPool) MakeTaskGang(task *resmgr.Task) *list.List {
 	tlist := new(list.List)
 	tlist.PushBack(task)
 	return tlist
 }
 
-// EnqueueSchedulingUnit inserts a scheduling unit, which is a task list
+// EnqueueGang inserts a gang, which is a task list
 // representing a gang of 1 or more (same priority) tasks, into pending queue
-func (n *resPool) EnqueueSchedulingUnit(tlist *list.List) error {
+func (n *resPool) EnqueueGang(tlist *list.List) error {
 	if (tlist == nil) || (tlist.Len() <= 0) {
-		err := errors.Errorf("scheduling unit has no elements")
+		err := errors.Errorf("gang has no elements")
 		return err
 	}
 	if n.isLeaf() {
@@ -210,10 +210,10 @@ func (n *resPool) EnqueueSchedulingUnit(tlist *list.List) error {
 	return err
 }
 
-// DequeueSchedulingUnitList dequeues a list of scheduling units from the
-// pending queue.  Each scheduling unit is a task list representing a gang
+// DequeueGangList dequeues a list of gangs from the
+// pending queue.  Each gang is a task list representing a gang
 // of 1 or more (same priority) tasks, from the pending queue.
-func (n *resPool) DequeueSchedulingUnitList(limit int) (*list.List, error) {
+func (n *resPool) DequeueGangList(limit int) (*list.List, error) {
 	if n.isLeaf() {
 		if limit <= 0 {
 			err := errors.Errorf("limit %d is not valid", limit)

@@ -255,7 +255,7 @@ func (suite *resTreeTestSuite) TestPendingQueueError() {
 		JobId:    jobID1,
 		Id:       taskID1,
 	}
-	err := rt.resPools["respool1"].EnqueueSchedulingUnit(rt.resPools["respool11"].MakeTaskSchedulingUnit(taskItem1))
+	err := rt.resPools["respool1"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem1))
 	suite.EqualError(
 		err,
 		"Respool respool1 is not a leaf node",
@@ -278,7 +278,7 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 		JobId:    jobID1,
 		Id:       taskID1,
 	}
-	rt.resPools["respool11"].EnqueueSchedulingUnit(rt.resPools["respool11"].MakeTaskSchedulingUnit(taskItem1))
+	rt.resPools["respool11"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem1))
 
 	// Task -2
 	jobID2 := &peloton.JobID{
@@ -293,35 +293,35 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 		JobId:    jobID2,
 		Id:       taskID2,
 	}
-	rt.resPools["respool11"].EnqueueSchedulingUnit(rt.resPools["respool11"].MakeTaskSchedulingUnit(taskItem2))
+	rt.resPools["respool11"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem2))
 
-	tlist3, err := rt.resPools["respool11"].DequeueSchedulingUnitList(1)
+	tlist3, err := rt.resPools["respool11"].DequeueGangList(1)
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 	if tlist3.Len() != 1 {
-		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+		assert.Fail(suite.T(), "Dequeue should return single task gang")
 	}
-	schedunit := tlist3.Front().Value.(*list.List)
-	if schedunit.Len() != 1 {
-		assert.Fail(suite.T(), "Dequeue single task scheduling unit should be length 1")
+	gang := tlist3.Front().Value.(*list.List)
+	if gang.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue single task gang should be length 1")
 	}
-	t1 := schedunit.Front().Value.(*resmgr.Task)
+	t1 := gang.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), t1.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
-	tlist4, err2 := rt.resPools["respool11"].DequeueSchedulingUnitList(1)
+	tlist4, err2 := rt.resPools["respool11"].DequeueGangList(1)
 	if err2 != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 	if tlist4.Len() != 1 {
-		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+		assert.Fail(suite.T(), "Dequeue should return single task gang")
 	}
-	schedunit = tlist4.Front().Value.(*list.List)
-	if schedunit.Len() != 1 {
-		assert.Fail(suite.T(), "Dequeue single task scheduling unit should be length 1")
+	gang = tlist4.Front().Value.(*list.List)
+	if gang.Len() != 1 {
+		assert.Fail(suite.T(), "Dequeue single task gang should be length 1")
 	}
-	t2 := schedunit.Front().Value.(*resmgr.Task)
+	t2 := gang.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), t2.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), t2.Id.GetValue(), "job1-2", "Should get Job-1 and Task-1")
 }
@@ -538,13 +538,13 @@ func (suite *resTreeTestSuite) getQueueContent(
 	var result = make(map[string]map[string]bool)
 	for {
 		tlist, err := suite.resourceTree.(*tree).
-			resPools[respoolID.Value].DequeueSchedulingUnitList(1)
+			resPools[respoolID.Value].DequeueGangList(1)
 		if err != nil {
 			fmt.Printf("Failed to dequeue item: %v", err)
 			break
 		}
 		if tlist.Len() != 1 {
-			assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+			assert.Fail(suite.T(), "Dequeue should return single task gang")
 		}
 		rmTask := tlist.Front().Value.(*list.List)
 		if rmTask != nil {

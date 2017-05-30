@@ -119,7 +119,7 @@ func (suite *FifoQueueTestSuite) TestDequeue() {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 	if tlist.Len() != 1 {
-		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+		assert.Fail(suite.T(), "Dequeue should return single task gang")
 	}
 	dqRes := tlist.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job2", "Should get Job-2")
@@ -129,7 +129,7 @@ func (suite *FifoQueueTestSuite) TestDequeue() {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 	if tlist.Len() != 1 {
-		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+		assert.Fail(suite.T(), "Dequeue should return single task gang")
 	}
 	dqRes = tlist.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job2", "Should get Job-2")
@@ -140,7 +140,7 @@ func (suite *FifoQueueTestSuite) TestDequeue() {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 	if tlist.Len() != 1 {
-		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+		assert.Fail(suite.T(), "Dequeue should return single task gang")
 	}
 	dqRes = tlist.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job1", "Should get Job-1")
@@ -151,7 +151,7 @@ func (suite *FifoQueueTestSuite) TestDequeue() {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
 	if tlist.Len() != 1 {
-		assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
+		assert.Fail(suite.T(), "Dequeue should return single task gang")
 	}
 	dqRes = tlist.Front().Value.(*resmgr.Task)
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job1", "Should get Job-1")

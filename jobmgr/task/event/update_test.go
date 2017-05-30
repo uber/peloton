@@ -22,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
@@ -166,12 +167,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 		},
 	}
 
-	var resmgrTasks []*resmgr.Task
-	resmgrTasks = append(
-		resmgrTasks,
-		util.ConvertTaskToResMgrTask(taskInfo, jobConfig),
-	)
-	enqueueTasksStr := "ResourceManagerService.EnqueueTasks"
+	tasks := []*task.TaskInfo{taskInfo}
+	gangs := jm_task.ConvertToResMgrGangs(tasks, jobConfig)
+	enqueueGangsStr := "ResourceManagerService.EnqueueGangs"
 	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(pelotonTaskID).
@@ -182,9 +180,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 	suite.mockResmgrClient.EXPECT().
 		Call(
 			gomock.Any(),
-			gomock.Eq(yarpc.NewReqMeta().Procedure(enqueueTasksStr)),
-			gomock.Eq(&resmgrsvc.EnqueueTasksRequest{
-				Tasks: resmgrTasks,
+			gomock.Eq(yarpc.NewReqMeta().Procedure(enqueueGangsStr)),
+			gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
+				Gangs: gangs,
 			}),
 			gomock.Any()).
 		Return(nil, nil)

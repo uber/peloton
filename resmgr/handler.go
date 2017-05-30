@@ -3,6 +3,7 @@ package resmgr
 import (
 	"container/list"
 	"context"
+	"errors"
 	"reflect"
 	"time"
 
@@ -20,6 +21,10 @@ import (
 	t "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+)
+
+var (
+	errFailingGangMemberTask = errors.New("task fail because other gang member failed")
 )
 
 // serviceHandler implements peloton.private.resmgr.ResourceManagerService
@@ -77,8 +82,8 @@ func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int, parentScope tall
 func (h *serviceHandler) EnqueueTasks(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
-	req *resmgrsvc.EnqueueTasksRequest,
-) (*resmgrsvc.EnqueueTasksResponse, yarpc.ResMeta, error) {
+	req *resmgrsvc.EnqueueGangsRequest,
+) (*resmgrsvc.EnqueueGangsResponse, yarpc.ResMeta, error) {
 
 	log.WithField("request", req).Info("EnqueueTasks called.")
 	h.metrics.APIEnqueueTasks.Inc(1)
@@ -88,8 +93,8 @@ func (h *serviceHandler) EnqueueTasks(
 	respool, err := respool.GetTree().Get(respoolID)
 	if err != nil {
 		h.metrics.EnqueueTaskFail.Inc(1)
-		return &resmgrsvc.EnqueueTasksResponse{
-			Error: &resmgrsvc.EnqueueTasksResponse_Error{
+		return &resmgrsvc.EnqueueGangsResponse{
+			Error: &resmgrsvc.EnqueueGangsResponse_Error{
 				NotFound: &resmgrsvc.ResourcePoolNotFound{
 					Id:      respoolID,
 					Message: err.Error(),
@@ -100,74 +105,52 @@ func (h *serviceHandler) EnqueueTasks(
 	// TODO: check if the user has permission to run tasks in the
 	// respool
 
-	// Enqueue the tasks sent in an API call to the pending queue of the respool.
-	// First enqueue the tasks forming a gang and then the non-gang (singleton) tasks.
-	// Note: jobmgr currently makes exactly 1 API call for each job; if jobmgr were
-	// to instead combine jobs in one API call, the code should change to form separate
-	// gangs per job and to retain job order for enqueueing, i.e., it should enqueue
-	// job1-gang, job1-singletons, job2-gang, job2-singletons
-	var failed []*resmgrsvc.EnqueueTasksFailure_FailedTask
-	gangTasks := new(list.List)
-	singletonTasks := new(list.List)
-	for _, task := range req.GetTasks() {
-		// Adding task to state machine
-		err := h.rmTracker.AddTask(
-			task,
-			h.eventStreamHandler,
-			respool,
-		)
-		if err != nil {
-			failed = append(
-				failed,
-				&resmgrsvc.EnqueueTasksFailure_FailedTask{
-					Task:    task,
-					Message: err.Error(),
-				},
+	// Enqueue the gangs sent in an API call to the pending queue of the respool.
+	// For each gang, add its tasks to the state machine, enqueue the gang, and
+	// return per-task success/failure.
+	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
+	for _, gang := range req.GetGangs() {
+		gangTasks := new(list.List)
+		for _, task := range gang.GetTasks() {
+			// Adding task to state machine
+			err := h.rmTracker.AddTask(
+				task,
+				h.eventStreamHandler,
+				respool,
 			)
-			h.metrics.EnqueueTaskFail.Inc(1)
-			continue
-		}
-		if h.rmTracker.GetTask(task.Id) != nil {
-			err = h.rmTracker.GetTask(task.Id).TransitTo(
-				t.TaskState_PENDING.String())
-			if err != nil {
-				log.Error(err)
-			}
-		}
-		if task.MinInstances > 1 {
-			gangTasks.PushBack(task)
-		} else {
-			singletonTasks.PushBack(task)
-		}
-	}
-
-	if gangTasks.Len() > 0 {
-		err = respool.EnqueueSchedulingUnit(gangTasks) // enqueue gang
-		// Report success/failure for all gang tasks
-		for gangTask := gangTasks.Front(); gangTask != nil; gangTask = gangTask.Next() {
 			if err != nil {
 				failed = append(
 					failed,
-					&resmgrsvc.EnqueueTasksFailure_FailedTask{
-						Task:    gangTask.Value.(*resmgr.Task),
+					&resmgrsvc.EnqueueGangsFailure_FailedTask{
+						Task:    task,
 						Message: err.Error(),
 					},
 				)
 				h.metrics.EnqueueTaskFail.Inc(1)
-			} else {
-				h.metrics.EnqueueTaskSuccess.Inc(1)
+				continue
+			}
+			if h.rmTracker.GetTask(task.Id) != nil {
+				err = h.rmTracker.GetTask(task.Id).TransitTo(
+					t.TaskState_PENDING.String())
+				if err != nil {
+					log.Error(err)
+				} else {
+					gangTasks.PushBack(task)
+				}
 			}
 		}
-	}
-	if singletonTasks.Len() > 0 {
-		for singletonItem := singletonTasks.Front(); singletonItem != nil; singletonItem = singletonItem.Next() {
-			singletonTask := singletonItem.Value.(*resmgr.Task)
-			err = respool.EnqueueSchedulingUnit(respool.MakeTaskSchedulingUnit(singletonTask))
+		if len(failed) == 0 {
+			err = respool.EnqueueGang(gangTasks)
+		} else {
+			err = errFailingGangMemberTask
+		}
+		// Report per-task success/failure for all tasks in gang
+		for gangTask := gangTasks.Front(); gangTask != nil; gangTask = gangTask.Next() {
 			if err != nil {
 				failed = append(
 					failed,
-					&resmgrsvc.EnqueueTasksFailure_FailedTask{
-						Task:    singletonTask,
+					&resmgrsvc.EnqueueGangsFailure_FailedTask{
+						Task:    gangTask.Value.(*resmgr.Task),
 						Message: err.Error(),
 					},
 				)
@@ -179,16 +162,16 @@ func (h *serviceHandler) EnqueueTasks(
 	}
 
 	if len(failed) > 0 {
-		return &resmgrsvc.EnqueueTasksResponse{
-			Error: &resmgrsvc.EnqueueTasksResponse_Error{
-				Failure: &resmgrsvc.EnqueueTasksFailure{
+		return &resmgrsvc.EnqueueGangsResponse{
+			Error: &resmgrsvc.EnqueueGangsResponse_Error{
+				Failure: &resmgrsvc.EnqueueGangsFailure{
 					Failed: failed,
 				},
 			},
 		}, nil, nil
 	}
 
-	response := resmgrsvc.EnqueueTasksResponse{}
+	response := resmgrsvc.EnqueueGangsResponse{}
 	log.Debug("Enqueue Returned")
 	return &response, nil, nil
 }

@@ -16,7 +16,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
@@ -89,7 +88,7 @@ func (suite *TaskUtilTestSuite) createTestTaskInfo(
 	}
 }
 
-func (suite *TaskUtilTestSuite) TestEnqueueTasks() {
+func (suite *TaskUtilTestSuite) TestEnqueueGangs() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
@@ -98,31 +97,31 @@ func (suite *TaskUtilTestSuite) TestEnqueueTasks() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	tasks := ConvertToResMgrTask(tasksInfo, suite.testJobConfig)
-	var expectedTasks []*resmgr.Task
+	gangs := ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
 			Call(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
-				gomock.Eq(&resmgrsvc.EnqueueTasksRequest{
-					Tasks: tasks,
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
+				gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
+					Gangs: gangs,
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
-				req := reqBody.(*resmgrsvc.EnqueueTasksRequest)
-				for _, t := range req.Tasks {
-					expectedTasks = append(expectedTasks, t)
+				req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
+				for _, g := range req.Gangs {
+					expectedGangs = append(expectedGangs, g)
 				}
 			}).
 			Return(nil, nil),
 	)
 
-	EnqueueTasks(tasksInfo, suite.testJobConfig, mockResmgrClient)
-	suite.Equal(tasks, expectedTasks)
+	EnqueueGangs(context.Background(), tasksInfo, suite.testJobConfig, mockResmgrClient)
+	suite.Equal(gangs, expectedGangs)
 }
 
-func (suite *TaskUtilTestSuite) TestEnqueueTasksFailure() {
+func (suite *TaskUtilTestSuite) TestEnqueueGangsFailure() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
@@ -131,27 +130,27 @@ func (suite *TaskUtilTestSuite) TestEnqueueTasksFailure() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	tasks := ConvertToResMgrTask(tasksInfo, suite.testJobConfig)
-	var expectedTasks []*resmgr.Task
+	gangs := ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	var expectedGangs []*resmgrsvc.Gang
 	var err error
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
 			Call(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueTasks")),
-				gomock.Eq(&resmgrsvc.EnqueueTasksRequest{
-					Tasks: tasks,
+				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
+				gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
+					Gangs: gangs,
 				}),
 				gomock.Any()).
 			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
-				req := reqBody.(*resmgrsvc.EnqueueTasksRequest)
-				for _, t := range req.Tasks {
-					expectedTasks = append(expectedTasks, t)
+				req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
+				for _, g := range req.Gangs {
+					expectedGangs = append(expectedGangs, g)
 				}
 				err = errors.New("Resmgr Error")
 			}).
 			Return(nil, err),
 	)
-	EnqueueTasks(tasksInfo, suite.testJobConfig, mockResmgrClient)
+	EnqueueGangs(context.Background(), tasksInfo, suite.testJobConfig, mockResmgrClient)
 	suite.Error(err)
 }

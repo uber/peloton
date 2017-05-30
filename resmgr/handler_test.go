@@ -190,20 +190,35 @@ func (suite *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePool
 	}
 }
 
-func (suite *HandlerTestSuite) pendingTasks() []*resmgr.Task {
-	return []*resmgr.Task{
+func (suite *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job1-1",
 			Priority: 0,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-1"},
 		},
+	}
+	return &gang
+}
+
+func (suite *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job1-1",
 			Priority: 1,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-2"},
 		},
+	}
+	return &gang
+}
+
+func (suite *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	gang.Tasks = []*resmgr.Task{
 		{
 			Name:         "job2-1",
 			Priority:     2,
@@ -219,6 +234,15 @@ func (suite *HandlerTestSuite) pendingTasks() []*resmgr.Task {
 			Id:           &peloton.TaskID{Value: "job2-2"},
 		},
 	}
+	return &gang
+}
+
+func (suite *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
+	gangs := make([]*resmgrsvc.Gang, 3)
+	gangs[0] = suite.pendingGang0()
+	gangs[1] = suite.pendingGang1()
+	gangs[2] = suite.pendingGang2()
+	return gangs
 }
 
 func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
@@ -255,9 +279,9 @@ func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
 func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 	log.Info("TestEnqueueDequeueTasksOneResPool called")
 
-	enqReq := &resmgrsvc.EnqueueTasksRequest{
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
-		Tasks:   suite.pendingTasks(),
+		Gangs:   suite.pendingGangs(),
 	}
 	enqResp, _, err := suite.handler.EnqueueTasks(suite.context, nil, enqReq)
 	suite.NoError(err)
@@ -280,9 +304,9 @@ func (suite *HandlerTestSuite) TestEnqueueTasksResPoolNotFound() {
 	respool.InitTree(tally.NoopScope, nil, nil, nil)
 
 	respoolID := &pb_respool.ResourcePoolID{Value: "respool10"}
-	enqReq := &resmgrsvc.EnqueueTasksRequest{
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: respoolID,
-		Tasks:   suite.pendingTasks(),
+		Gangs:   suite.pendingGangs(),
 	}
 	enqResp, _, err := suite.handler.EnqueueTasks(suite.context, nil, enqReq)
 	suite.NoError(err)

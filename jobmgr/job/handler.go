@@ -173,7 +173,7 @@ func (h *serviceHandler) Create(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jtask.EnqueueTasks(tasks, jobConfig, h.client)
+	err = jtask.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.client)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -307,7 +307,7 @@ func (h *serviceHandler) Update(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jtask.EnqueueTasks(tasks, newConfig, h.client)
+	err = jtask.EnqueueGangs(h.rootCtx, tasks, newConfig, h.client)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).

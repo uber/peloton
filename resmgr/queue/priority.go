@@ -28,7 +28,7 @@ func NewPriorityQueue(limit int64) *PriorityQueue {
 	return &fq
 }
 
-// Enqueue queues a scheduling unit (task list gang) based on its priority into FIFO queue
+// Enqueue queues a gang (task list gang) based on its priority into FIFO queue
 func (f *PriorityQueue) Enqueue(tlist *list.List) error {
 	f.Lock()
 	defer f.Unlock()
@@ -47,7 +47,7 @@ func (f *PriorityQueue) Enqueue(tlist *list.List) error {
 	return nil
 }
 
-// Dequeue dequeues the scheduling unit (task list gang) based on the priority and order
+// Dequeue dequeues the gang (task list gang) based on the priority and order
 // they came into the queue
 func (f *PriorityQueue) Dequeue() (*list.List, error) {
 	// TODO: optimize the write lock here with potential read lock
