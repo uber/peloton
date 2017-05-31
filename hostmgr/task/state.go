@@ -10,7 +10,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
@@ -26,7 +25,7 @@ var errorWaitInterval = 10 * time.Second
 
 // InitTaskStateManager init the task state manager
 func InitTaskStateManager(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	updateBufferSize int,
 	updateAckConcurrency int,
 	eventDestinationRole string,
@@ -79,17 +78,17 @@ func InitTaskStateManager(
 // resource manager. It implements eventstream.EventHandler and it
 // forwards the events to remote in the OnEvents function.
 type eventForwarder struct {
-	// jsonClient to send NotifyTaskUpdatesRequest
-	jsonClient json.Client
+	// client to send NotifyTaskUpdatesRequest
+	client resmgrsvc.ResourceManagerServiceYarpcClient
 	// Tracking the progress returned from remote side
 	progress *uint64
 }
 
-func newEventForwarder(d yarpc.Dispatcher, eventDestinationRole string) eventstream.EventHandler {
+func newEventForwarder(d *yarpc.Dispatcher, eventDestinationRole string) eventstream.EventHandler {
 	var progress uint64
 	return &eventForwarder{
-		jsonClient: json.New(d.ClientConfig(eventDestinationRole)),
-		progress:   &progress,
+		client:   resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(eventDestinationRole)),
+		progress: &progress,
 	}
 }
 
@@ -108,14 +107,10 @@ func (f *eventForwarder) OnEvents(events []*pb_eventstream.Event) {
 		request := &resmgrsvc.NotifyTaskUpdatesRequest{
 			Events: events,
 		}
-		var response resmgrsvc.NotifyTaskUpdatesResponse
+		var response *resmgrsvc.NotifyTaskUpdatesResponse
 		for {
-			_, err := f.jsonClient.Call(
-				ctx,
-				yarpc.NewReqMeta().Procedure("ResourceManager.NotifyTaskUpdates"),
-				request,
-				&response,
-			)
+			var err error
+			response, err = f.client.NotifyTaskUpdates(ctx, request)
 			if err == nil {
 				break
 			} else {
@@ -139,7 +134,7 @@ func (f *eventForwarder) GetEventProgress() uint64 {
 }
 
 func initResMgrEventForwarder(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	eventStreamHandler *eventstream.Handler,
 	eventDestinationRole string,
 	scope tally.Scope) {
@@ -151,15 +146,16 @@ func initResMgrEventForwarder(
 	)
 }
 
-func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int, scope tally.Scope) *eventstream.Handler {
+func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, scope tally.Scope) *eventstream.Handler {
 	eventStreamHandler := eventstream.NewEventStreamHandler(
 		bufferSize,
 		[]string{common.PelotonJobManager, common.PelotonResourceManager},
 		nil,
 		scope,
 	)
-	json.Register(d, json.Procedure("EventStream.InitStream", eventStreamHandler.InitStream))
-	json.Register(d, json.Procedure("EventStream.WaitForEvents", eventStreamHandler.WaitForEvents))
+
+	d.Register(pb_eventstream.BuildEventStreamServiceYarpcProcedures(eventStreamHandler))
+
 	return eventStreamHandler
 }
 
@@ -184,8 +180,7 @@ type taskStateManager struct {
 }
 
 // Update is the Mesos callback on mesos state updates
-func (m *taskStateManager) Update(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (m *taskStateManager) Update(body *sched.Event) error {
 	var err error
 	taskUpdate := body.GetUpdate()
 	log.WithField("task_update", taskUpdate).

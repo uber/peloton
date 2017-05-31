@@ -11,16 +11,14 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
-	"go.uber.org/yarpc"
-
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
 type EntitlementCalculatorTestSuite struct {
@@ -29,12 +27,12 @@ type EntitlementCalculatorTestSuite struct {
 	resTree     respool.Tree
 	calculator  *calculator
 	mockCtrl    *gomock.Controller
-	mockHostMgr *yarpc_mocks.MockClient
+	mockHostMgr *host_mocks.MockInternalHostServiceYarpcClient
 }
 
 func (suite *EntitlementCalculatorTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostMgr = yarpc_mocks.NewMockClient(suite.mockCtrl)
+	suite.mockHostMgr = host_mocks.NewMockInternalHostServiceYarpcClient(suite.mockCtrl)
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	gomock.InOrder(
 		mockResPoolStore.EXPECT().
@@ -168,13 +166,11 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	// Mock LaunchTasks call.
 	gomock.InOrder(
 		suite.mockHostMgr.EXPECT().
-			Call(
-				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.ClusterCapacity")),
+			ClusterCapacity(
 				gomock.Any(),
 				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, resBodyOut interface{}) {
-				resources := []*hostsvc.Resource{
+			Return(&hostsvc.ClusterCapacityResponse{
+				Resources: []*hostsvc.Resource{
 					{
 						Kind:     common.CPU,
 						Capacity: 100,
@@ -191,15 +187,8 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 						Kind:     common.DISK,
 						Capacity: 6000,
 					},
-				}
-				response := hostsvc.ClusterCapacityResponse{
-					Resources: resources,
-				}
-
-				o := resBodyOut.(*hostsvc.ClusterCapacityResponse)
-				*o = response
-			}).
-			Return(nil, nil).
+				},
+			}, nil).
 			Times(1),
 	)
 	suite.calculator.calculateEntitlement()
@@ -216,14 +205,9 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	// Mock LaunchTasks call.
 	gomock.InOrder(
-		suite.mockHostMgr.EXPECT().
-			Call(
-				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.ClusterCapacity")),
-				gomock.Any(),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, resBodyOut interface{}) {
-				resources := []*hostsvc.Resource{
+		suite.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+			Return(&hostsvc.ClusterCapacityResponse{
+				Resources: []*hostsvc.Resource{
 					{
 						Kind:     common.CPU,
 						Capacity: 100,
@@ -240,15 +224,8 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 						Kind:     common.DISK,
 						Capacity: 6000,
 					},
-				}
-				response := hostsvc.ClusterCapacityResponse{
-					Resources: resources,
-				}
-
-				o := resBodyOut.(*hostsvc.ClusterCapacityResponse)
-				*o = response
-			}).
-			Return(nil, nil).
+				},
+			}, nil).
 			Times(1),
 	)
 	suite.calculator.calculateEntitlement()

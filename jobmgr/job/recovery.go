@@ -9,13 +9,12 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 
-	"go.uber.org/yarpc/encoding/json"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	jtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/storage"
@@ -36,7 +35,7 @@ const (
 type Recovery struct {
 	jobStore         storage.JobStore
 	taskStore        storage.TaskStore
-	resmgrClient     json.Client
+	resmgrClient     resmgrsvc.ResourceManagerServiceYarpcClient
 	lastRecoveryTime time.Time
 	metrics          *RecoveryMetrics
 }
@@ -45,7 +44,7 @@ type Recovery struct {
 func NewJobRecovery(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	resmgrClient json.Client,
+	resmgrClient resmgrsvc.ResourceManagerServiceYarpcClient,
 	parentScope tally.Scope) *Recovery {
 
 	return &Recovery{

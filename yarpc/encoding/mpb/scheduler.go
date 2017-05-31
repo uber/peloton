@@ -5,8 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 	"golang.org/x/net/context"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
@@ -33,7 +32,7 @@ type schedulerClient struct {
 }
 
 func (c *schedulerClient) Call(mesosStreamID string, msg *mesos_v1_scheduler.Call) error {
-	headers := yarpc.NewHeaders().
+	headers := transport.NewHeaders().
 		With("Mesos-Stream-Id", mesosStreamID).
 		With("Content-Type", fmt.Sprintf("application/%s", c.contentType)).
 		With("Accept", fmt.Sprintf("application/%s", c.contentType))

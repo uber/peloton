@@ -13,7 +13,7 @@ import (
 // MarshalPbMessage marshal a protobuf message to string based on given
 // content type.
 func MarshalPbMessage(msg proto.Message, contentType string) (string, error) {
-	if contentType == ContentTypeJson {
+	if contentType == ContentTypeJSON {
 		encoder := jsonpb.Marshaler{
 			EnumsAsInts: false,
 			OrigName:    true,
@@ -44,7 +44,7 @@ func MarshalPbMessage(msg proto.Message, contentType string) (string, error) {
 func UnmarshalPbMessage(
 	data []byte, event reflect.Value, contentType string) error {
 
-	if contentType == ContentTypeJson {
+	if contentType == ContentTypeJSON {
 		return json.NewDecoder(bytes.NewReader(data)).
 			Decode(event.Interface())
 	} else if contentType == ContentTypeProtobuf {

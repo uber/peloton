@@ -11,7 +11,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -40,7 +39,7 @@ type Engine interface {
 
 // New creates a new placement engine
 func New(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	cfg *Config,
 	resMgrClientName string,
@@ -48,8 +47,8 @@ func New(
 
 	s := placementEngine{
 		cfg:           cfg,
-		resMgrClient:  json.New(d.ClientConfig(resMgrClientName)),
-		hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
+		resMgrClient:  resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resMgrClientName)),
+		hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostMgrClientName)),
 		rootCtx:       context.Background(),
 		metrics:       NewMetrics(parent.SubScope("placement")),
 		pool:          async.NewPool(async.PoolOptions{}),
@@ -59,8 +58,8 @@ func New(
 
 type placementEngine struct {
 	cfg           *Config
-	resMgrClient  json.Client
-	hostMgrClient json.Client
+	resMgrClient  resmgrsvc.ResourceManagerServiceYarpcClient
+	hostMgrClient hostsvc.InternalHostServiceYarpcClient
 	rootCtx       context.Context
 	started       int32
 	shutdown      int32
@@ -175,17 +174,11 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 func (s *placementEngine) returnUnused(hostOffers []*hostsvc.HostOffer) error {
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var response hostsvc.ReleaseHostOffersResponse
 	var request = &hostsvc.ReleaseHostOffersRequest{
 		HostOffers: hostOffers,
 	}
-	_, err := s.hostMgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("InternalHostService.ReleaseHostOffers"),
-		request,
-		&response,
-	)
 
+	response, err := s.hostMgrClient.ReleaseHostOffers(ctx, request)
 	if err != nil {
 		log.WithField("error", err).Error("ReleaseHostOffers failed")
 		return err
@@ -216,19 +209,13 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOf
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var response hostsvc.AcquireHostOffersResponse
 	var request = &hostsvc.AcquireHostOffersRequest{
 		Constraint: constraint,
 	}
 
 	log.WithField("request", request).Debug("Calling AcquireHostOffers")
 
-	_, err := s.hostMgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("InternalHostService.AcquireHostOffers"),
-		request,
-		&response,
-	)
+	response, err := s.hostMgrClient.AcquireHostOffers(ctx, request)
 
 	if err != nil {
 		log.WithField("error", err).Error("AcquireHostOffers failed")
@@ -336,19 +323,13 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var response resmgrsvc.SetPlacementsResponse
 	var request = &resmgrsvc.SetPlacementsRequest{
 		Placements: placements,
 	}
 	log.WithField("request", request).Debug("Calling SetPlacements")
 
 	setPlacementStart := time.Now()
-	_, err := s.resMgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements"),
-		request,
-		&response,
-	)
+	response, err := s.resMgrClient.SetPlacements(ctx, request)
 	setPlacementDuration := time.Since(setPlacementStart)
 	s.metrics.SetPlacementDuration.Record(setPlacementDuration)
 
@@ -365,7 +346,7 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 
 	log.WithField("response", response).Debug("SetPlacements returned")
 
-	if response.Error != nil {
+	if response.GetError() != nil {
 		log.WithFields(log.Fields{
 			"num_placements": len(placements),
 			"error":          response.Error.String(),
@@ -462,28 +443,21 @@ func (s *placementEngine) getTasks(limit int) (
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var response resmgrsvc.DequeueTasksResponse
 	var request = &resmgrsvc.DequeueTasksRequest{
 		Limit:   uint32(limit),
 		Timeout: uint32(s.cfg.TaskDequeueTimeOut),
 	}
 
 	log.WithField("request", request).Debug("Dequeuing tasks")
-
-	_, err = s.resMgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks"),
-		request,
-		&response,
-	)
+	response, err := s.resMgrClient.DequeueTasks(ctx, request)
 	if err != nil {
 		log.WithField("error", err).Error("Dequeue failed")
 		return nil, err
 	}
 
-	log.WithField("tasks", response.Tasks).Debug("Dequeued tasks")
+	log.WithField("tasks", response.GetTasks()).Debug("Dequeued tasks")
 
-	return response.Tasks, nil
+	return response.GetTasks(), nil
 }
 
 type taskGroup struct {

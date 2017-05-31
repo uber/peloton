@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/uber-go/atomic"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 	"golang.org/x/net/context/ctxhttp"
 
 	"code.uber.internal/infra/peloton/yarpc/internal/errors"
@@ -78,7 +78,7 @@ func NewOutbound(
 
 	// TODO: Use option pattern with varargs instead
 	return transport.Outbounds{
-		Unary: outbound{
+		Unary: &outbound{
 			Client:      client,
 			detector:    detector,
 			started:     atomic.NewBool(false),
@@ -94,21 +94,21 @@ type outbound struct {
 	urlTemplate url.URL
 }
 
-func (o outbound) Start(d transport.Deps) error {
+func (o *outbound) Start() error {
 	if o.started.Swap(true) {
 		return errOutboundAlreadyStarted
 	}
 	return nil
 }
 
-func (o outbound) Stop() error {
+func (o *outbound) Stop() error {
 	if !o.started.Swap(false) {
 		return errOutboundNotStarted
 	}
 	return nil
 }
 
-func (o outbound) Call(
+func (o *outbound) Call(
 	ctx context.Context,
 	req *transport.Request) (*transport.Response, error) {
 
@@ -192,4 +192,14 @@ func (o outbound) Call(
 	}
 
 	return nil, errors.RemoteUnexpectedError(message)
+}
+
+// IsRunning returns the running state.
+func (o *outbound) IsRunning() bool {
+	return o.started.Load()
+}
+
+// Transports returns the transports used by the Outbound.
+func (o *outbound) Transports() []transport.Transport {
+	return nil
 }

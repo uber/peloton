@@ -5,20 +5,23 @@ import (
 	"fmt"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/leader"
 
 	"code.uber.internal/infra/peloton/common"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
 )
 
 // Client is a JSON Client with associated dispatcher and context
 type Client struct {
-	jobClient  json.Client
-	resClient  json.Client
-	dispatcher yarpc.Dispatcher
+	jobClient  job.JobManagerYarpcClient
+	taskClient task.TaskManagerYarpcClient
+	resClient  respool.ResourceManagerYarpcClient
+	dispatcher *yarpc.Dispatcher
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 	// Debug is whether debug output is enabled
@@ -41,14 +44,16 @@ func New(
 		return nil, err
 	}
 
+	t := http.NewTransport()
+
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
 		Name: common.PelotonClient,
 		Outbounds: yarpc.Outbounds{
 			common.PelotonJobManager: transport.Outbounds{
-				Unary: http.NewOutbound(jobmgrURL.String()),
+				Unary: t.NewSingleOutbound(jobmgrURL.String()),
 			},
 			common.PelotonResourceManager: transport.Outbounds{
-				Unary: http.NewOutbound(resmgrURL.String()),
+				Unary: t.NewSingleOutbound(resmgrURL.String()),
 			},
 		},
 	})
@@ -60,8 +65,9 @@ func New(
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	client := Client{
 		Debug:      debug,
-		jobClient:  json.New(dispatcher.ClientConfig(common.PelotonJobManager)),
-		resClient:  json.New(dispatcher.ClientConfig(common.PelotonResourceManager)),
+		jobClient:  job.NewJobManagerYarpcClient(dispatcher.ClientConfig(common.PelotonJobManager)),
+		taskClient: task.NewTaskManagerYarpcClient(dispatcher.ClientConfig(common.PelotonJobManager)),
+		resClient:  respool.NewResourceManagerYarpcClient(dispatcher.ClientConfig(common.PelotonResourceManager)),
 		dispatcher: dispatcher,
 		ctx:        ctx,
 		cancelFunc: cancelFunc,

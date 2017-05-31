@@ -169,7 +169,7 @@ service InternalHostService
   rpc LaunchTasks(LaunchTasksRequest) returns (LaunchTasksResponse);
 
   // Kill tasks that are running on Mesos cluster
-  rpc KillTasks(KillTasksRequest) returns (KillTasksRequest);
+  rpc KillTasks(KillTasksRequest) returns (KillTasksResponse);
 
   // Reserve resources on a host
   rpc ReserveResources(ReserveResourcesRequest) returns (ReserveResourcesResponse);
@@ -188,8 +188,9 @@ service InternalHostService
   // ClusterCapacity fetches the allocated resources to the framework`
   rpc ClusterCapacity(ClusterCapacityRequest) returns (ClusterCapacityResponse);
 
+  // TODO: Enable again when implemented.
   // Performs batch offer operations.
-  rpc OfferOperations(OfferOperationsRequest) returns (OfferOperationsResponse);
+  // rpc OfferOperations(OfferOperationsRequest) returns (OfferOperationsResponse);
 }
 
 /**

@@ -2,7 +2,6 @@ package eventstream
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,8 +12,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
-	"go.uber.org/yarpc/transport"
 )
 
 var (
@@ -42,7 +39,7 @@ type EventHandler interface {
 type Client struct {
 	sync.RWMutex
 	// The rpc client to pull events from event stream handler
-	rpcClient json.Client
+	rpcClient pb_eventstream.EventStreamServiceYarpcClient
 	// the client name
 	clientName string
 	// the stream id of the event stream
@@ -64,7 +61,7 @@ type Client struct {
 // NewEventStreamClient creates a client that
 // consumes from remote event stream handler
 func NewEventStreamClient(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	clientName string,
 	server string,
 	taskUpdateHandler EventHandler,
@@ -74,7 +71,7 @@ func NewEventStreamClient(
 	var runningState int32
 	client := &Client{
 		clientName:   clientName,
-		rpcClient:    json.New(d.ClientConfig(server)),
+		rpcClient:    pb_eventstream.NewEventStreamServiceYarpcClient(d.ClientConfig(server)),
 		shutdownFlag: &flag,
 		runningState: &runningState,
 		eventHandler: taskUpdateHandler,
@@ -106,50 +103,33 @@ func NewLocalEventStreamClient(
 	return client
 }
 
-func newLocalClient(h *Handler) json.Client {
+func newLocalClient(h *Handler) pb_eventstream.EventStreamServiceYarpcClient {
 	return &localClient{
 		handler: h,
 	}
 }
 
-// Local client implements json.Client interface. It is a client
+// Local client implements EventStreamService client interface. It is a client
 // adaptor on an event stream handler, it takes a event stream
 // handler and consume event from it. Events from HM->RM would need this.
 type localClient struct {
 	handler *Handler
 }
 
-// Call simply use the underlying handler to handle the request then
-// return the response
-func (c *localClient) Call(
+// InitStream forwards the call to the handler, dropping the options.
+func (c *localClient) InitStream(
 	ctx context.Context,
-	reqMeta yarpc.CallReqMeta,
-	reqBody interface{},
-	resBodyOut interface{}) (yarpc.CallResMeta, error) {
-	initStreamRequest, ok := reqBody.(*pb_eventstream.InitStreamRequest)
-	if ok {
-		response, _, err := c.handler.InitStream(ctx, nil, initStreamRequest)
-		responsePtr, _ := resBodyOut.(*pb_eventstream.InitStreamResponse)
-		*responsePtr = *response
-		return nil, err
-	}
-
-	waitEventsRequest, ok := reqBody.(*pb_eventstream.WaitForEventsRequest)
-	if ok {
-		response, _, err := c.handler.WaitForEvents(ctx, nil, waitEventsRequest)
-		responsePtr, _ := resBodyOut.(*pb_eventstream.WaitForEventsResponse)
-		*responsePtr = *response
-		resBodyOut = response
-		return nil, err
-	}
-	return nil, errors.New("Unexpected request type")
+	request *pb_eventstream.InitStreamRequest,
+	opts ...yarpc.CallOption) (*pb_eventstream.InitStreamResponse, error) {
+	return c.handler.InitStream(ctx, request)
 }
 
-func (c *localClient) CallOneway(
+// WaitForEvents forwards the call to the handler, dropping the options.
+func (c *localClient) WaitForEvents(
 	ctx context.Context,
-	reqMeta yarpc.CallReqMeta,
-	reqBody interface{}) (transport.Ack, error) {
-	return nil, errors.New("Not implemented")
+	request *pb_eventstream.WaitForEventsRequest,
+	opts ...yarpc.CallOption) (*pb_eventstream.WaitForEventsResponse, error) {
+	return c.handler.WaitForEvents(ctx, request)
 }
 
 func (c *Client) sendInitStreamRequest(clientName string) (*pb_eventstream.InitStreamResponse, error) {
@@ -159,13 +139,7 @@ func (c *Client) sendInitStreamRequest(clientName string) (*pb_eventstream.InitS
 	request := &pb_eventstream.InitStreamRequest{
 		ClientName: clientName,
 	}
-	var response pb_eventstream.InitStreamResponse
-	_, err := c.rpcClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("EventStream.InitStream"),
-		request,
-		&response,
-	)
+	response, err := c.rpcClient.InitStream(ctx, request)
 	if err != nil {
 		log.WithError(err).Error("sendInitStreamRequest failed")
 		c.metrics.InitStreamFail.Inc(1)
@@ -174,7 +148,7 @@ func (c *Client) sendInitStreamRequest(clientName string) (*pb_eventstream.InitS
 	c.metrics.InitStreamSuccess.Inc(1)
 	c.metrics.StreamIDChange.Inc(1)
 	log.WithField("InitStreamResponse", response).Infoln()
-	return &response, nil
+	return response, nil
 }
 
 func (c *Client) initStream(clientName string) {
@@ -225,13 +199,7 @@ func (c *Client) sendWaitEventRequest(
 		ClientName:  c.clientName,
 		Limit:       int32(maxEventSize),
 	}
-	var response pb_eventstream.WaitForEventsResponse
-	_, err := c.rpcClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("EventStream.WaitForEvents"),
-		request,
-		&response,
-	)
+	response, err := c.rpcClient.WaitForEvents(ctx, request)
 	if err != nil {
 		log.WithError(err).Error("sendWaitForEventsRequest failed")
 		c.metrics.WaitForEventsFailed.Inc(1)
@@ -239,7 +207,7 @@ func (c *Client) sendWaitEventRequest(
 	}
 	c.metrics.WaitForEventsSuccess.Inc(1)
 	log.WithField("WaitForEventsResponse", response).Debugln()
-	return &response, nil
+	return response, nil
 }
 
 func (c *Client) waitEventsLoop() {
@@ -252,7 +220,7 @@ func (c *Client) waitEventsLoop() {
 			time.Sleep(errorRetrySleep)
 			continue
 		}
-		if response.Error != nil {
+		if response.GetError() != nil {
 			log.WithField("waitforEventsError", response.Error).Error("sendWaitEventRequest returns error")
 			// If client is unsupported / streamID is invalid, Return and the outside loop should call InitStream
 			// again
@@ -261,22 +229,21 @@ func (c *Client) waitEventsLoop() {
 			}
 			// Note: InvalidPurgeOffset should never happen if the client does the right thing. For now, just log it
 		}
-		log.WithField("Number of events", len(response.Events)).Debug("event received")
-		if len(response.Events) == 0 {
+		log.WithField("Number of events", len(response.GetEvents())).Debug("event received")
+		if len(response.GetEvents()) == 0 {
 			time.Sleep(noEventSleep)
 			continue
 		}
-		if len(response.Events) > 0 {
-			for _, event := range response.Events {
-				log.WithField("event offset", event.GetOffset()).Debug("Processing event")
-				if c.eventHandler != nil {
-					c.eventHandler.OnEvent(event)
-				}
-				c.beginOffset = event.GetOffset() + 1
+
+		for _, event := range response.Events {
+			log.WithField("event offset", event.GetOffset()).Debug("Processing event")
+			if c.eventHandler != nil {
+				c.eventHandler.OnEvent(event)
 			}
-			c.eventHandler.OnEvents(response.Events)
-			c.metrics.EventsConsumed.Inc(int64(len(response.Events)))
+			c.beginOffset = event.GetOffset() + 1
 		}
+		c.eventHandler.OnEvents(response.Events)
+		c.metrics.EventsConsumed.Inc(int64(len(response.Events)))
 	}
 	log.Info("waitEventsLoop returned due to shutdown")
 }

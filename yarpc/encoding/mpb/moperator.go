@@ -10,8 +10,7 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
@@ -47,7 +46,7 @@ func NewMasterOperatorClient(
 func (mo *masterOperatorClient) call(ctx context.Context, msg *mesos_master.Call) (
 	*mesos_master.Response, error) {
 	// Create Headers
-	headers := yarpc.NewHeaders().
+	headers := transport.NewHeaders().
 		With("Content-Type", fmt.Sprintf("application/%s", mo.contentType)).
 		With("Accept", fmt.Sprintf("application/%s", mo.contentType))
 

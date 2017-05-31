@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
-	"go.uber.org/yarpc"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -22,9 +20,10 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/util"
-	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
 // TODO: load from test configs
@@ -65,7 +64,7 @@ func createTestTask(instanceID int) *resmgr.Task {
 			Value: testJobName,
 		},
 		Id: &peloton.TaskID{
-			Value: fmt.Sprintf("%s-%v", testJobName, instanceID),
+			Value: fmt.Sprintf("%s-%d", testJobName, instanceID),
 		},
 		Resource: resCfg,
 		Priority: uint32(1),
@@ -141,8 +140,8 @@ func TestEmptyTaskToPlace(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := yarpc_mocks.NewMockClient(ctrl)
-	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -162,20 +161,13 @@ func TestEmptyTaskToPlace(t *testing.T) {
 
 	gomock.InOrder(
 		mockRes.EXPECT().
-			Call(
+			DequeueTasks(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks")),
 				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
 					Limit:   uint32(10),
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				var empty resmgrsvc.DequeueTasksResponse
-				o := resBodyOut.(*resmgrsvc.DequeueTasksResponse)
-				*o = empty
-			}).
-			Return(nil, nil),
+				})).
+			Return(&resmgrsvc.DequeueTasksResponse{}, nil),
 	)
 
 	pe.placeRound()
@@ -186,8 +178,8 @@ func TestNoHostOfferReturned(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := yarpc_mocks.NewMockClient(ctrl)
-	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -215,27 +207,20 @@ func TestNoHostOfferReturned(t *testing.T) {
 	gomock.InOrder(
 		// Call to resmgr for getting task.
 		mockRes.EXPECT().
-			Call(
+			DequeueTasks(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks")),
 				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
 					Limit:   uint32(10),
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*resmgrsvc.DequeueTasksResponse)
-				*o = resmgrsvc.DequeueTasksResponse{
-					Tasks: []*resmgr.Task{t1},
-					Error: nil,
-				}
-			}).
-			Return(nil, nil),
+				})).
+			Return(&resmgrsvc.DequeueTasksResponse{
+				Tasks: []*resmgr.Task{t1},
+				Error: nil,
+			}, nil),
 		// Mock AcquireHostOffers with empty response.
 		mockHostMgr.EXPECT().
-			Call(
+			AcquireHostOffers(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.AcquireHostOffers")),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
 					Constraint: &hostsvc.Constraint{
 						HostLimit: uint32(1),
@@ -244,9 +229,8 @@ func TestNoHostOfferReturned(t *testing.T) {
 							NumPorts: t1.NumPorts,
 						},
 					},
-				}),
-				gomock.Any()).
-			Return(nil, nil).
+				})).
+			Return(&hostsvc.AcquireHostOffersResponse{}, nil).
 			MinTimes(1),
 	)
 
@@ -266,8 +250,8 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := yarpc_mocks.NewMockClient(ctrl)
-	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -309,27 +293,20 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	gomock.InOrder(
 		mockRes.EXPECT().
-			Call(
+			DequeueTasks(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks")),
 				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
 					Limit:   uint32(10),
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*resmgrsvc.DequeueTasksResponse)
-				*o = resmgrsvc.DequeueTasksResponse{
-					Tasks: testTasks,
-					Error: nil,
-				}
-			}).
-			Return(nil, nil),
+				})).
+			Return(&resmgrsvc.DequeueTasksResponse{
+				Tasks: testTasks,
+				Error: nil,
+			}, nil),
 		// Mock AcquireHostOffers call.
 		mockHostMgr.EXPECT().
-			Call(
+			AcquireHostOffers(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.AcquireHostOffers")),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
 					Constraint: &hostsvc.Constraint{
 						HostLimit: uint32(10), // OfferDequeueLimit
@@ -338,23 +315,16 @@ func TestMultipleTasksPlaced(t *testing.T) {
 							NumPorts: testTasks[0].NumPorts,
 						},
 					},
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*hostsvc.AcquireHostOffersResponse)
-				*o = hostsvc.AcquireHostOffersResponse{
-					HostOffers: hostOffers,
-				}
-			}).
-			Return(nil, nil),
+				})).
+			Return(&hostsvc.AcquireHostOffersResponse{
+				HostOffers: hostOffers,
+			}, nil),
 		// Mock PlaceTasks call.
 		mockRes.EXPECT().
-			Call(
-				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements")),
+			SetPlacements(
 				gomock.Any(),
 				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+			Do(func(_ context.Context, reqBody interface{}) {
 				// No need to unmarksnal output: empty means success.
 				// Capture call since we don't know ordering of tasks.
 				lock.Lock()
@@ -369,17 +339,15 @@ func TestMultipleTasksPlaced(t *testing.T) {
 					assert.Len(t, p.GetPorts(), len(p.GetTasks())*2)
 				}
 			}).
-			Return(nil, nil),
+			Return(&resmgrsvc.SetPlacementsResponse{}, nil),
 		// Mock ReleaseHostOffers call, which should return the last two host offers back because they are not used.
 		mockHostMgr.EXPECT().
-			Call(
+			ReleaseHostOffers(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.ReleaseHostOffers")),
 				gomock.Eq(&hostsvc.ReleaseHostOffersRequest{
 					HostOffers: hostOffers[3:],
-				}),
-				gomock.Any()).
-			Return(nil, nil),
+				})).
+			Return(&hostsvc.ReleaseHostOffersResponse{}, nil),
 	)
 
 	pe.placeRound()
@@ -403,8 +371,8 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := yarpc_mocks.NewMockClient(ctrl)
-	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -448,27 +416,20 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 
 	gomock.InOrder(
 		mockRes.EXPECT().
-			Call(
+			DequeueTasks(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.DequeueTasks")),
 				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
 					Limit:   uint32(10),
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*resmgrsvc.DequeueTasksResponse)
-				*o = resmgrsvc.DequeueTasksResponse{
-					Tasks: testTasks,
-					Error: nil,
-				}
-			}).
-			Return(nil, nil),
+				})).
+			Return(&resmgrsvc.DequeueTasksResponse{
+				Tasks: testTasks,
+				Error: nil,
+			}, nil),
 		// Mock AcquireHostOffers call.
 		mockHostMgr.EXPECT().
-			Call(
+			AcquireHostOffers(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.AcquireHostOffers")),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
 					Constraint: &hostsvc.Constraint{
 						HostLimit: uint32(10), // OfferDequeueLimit
@@ -477,23 +438,16 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 							NumPorts: testTasks[0].NumPorts,
 						},
 					},
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*hostsvc.AcquireHostOffersResponse)
-				*o = hostsvc.AcquireHostOffersResponse{
-					HostOffers: hostOffers,
-				}
-			}).
-			Return(nil, nil),
+				})).
+			Return(&hostsvc.AcquireHostOffersResponse{
+				HostOffers: hostOffers,
+			}, nil),
 		// Mock PlaceTasks call.
 		mockRes.EXPECT().
-			Call(
-				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.SetPlacements")),
+			SetPlacements(
 				gomock.Any(),
 				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+			Do(func(_ context.Context, reqBody interface{}) {
 				// No need to unmarksnal output: empty means success.
 				// Capture call since we don't know ordering of tasks.
 				lock.Lock()
@@ -509,7 +463,7 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 					assert.Len(t, p.GetPorts(), 20)
 				}
 			}).
-			Return(nil, nil),
+			Return(&resmgrsvc.SetPlacementsResponse{}, nil),
 	)
 
 	pe.placeRound()

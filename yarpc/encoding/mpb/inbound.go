@@ -6,8 +6,7 @@ import (
 
 	"context"
 
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 )
 
 const _getTypeMethod = "GetType"
@@ -87,36 +86,11 @@ func (h mpbHandler) Handle(
 	rw transport.ResponseWriter) error {
 
 	reader := treq.Body.(*MesosEventReader)
-	meta := reflect.ValueOf(reqMeta{req: treq})
-	results := h.handler.Call([]reflect.Value{meta, reader.Event})
+	results := h.handler.Call([]reflect.Value{reader.Event})
 
 	if err := results[0].Interface(); err != nil {
 		return err.(error)
 	}
 
 	return nil
-}
-
-type reqMeta struct {
-	req *transport.Request
-}
-
-func (r reqMeta) Caller() string {
-	return r.req.Caller
-}
-
-func (r reqMeta) Encoding() transport.Encoding {
-	return r.req.Encoding
-}
-
-func (r reqMeta) Headers() yarpc.Headers {
-	return yarpc.Headers(r.req.Headers)
-}
-
-func (r reqMeta) Procedure() string {
-	return r.req.Procedure
-}
-
-func (r reqMeta) Service() string {
-	return r.req.Service
 }

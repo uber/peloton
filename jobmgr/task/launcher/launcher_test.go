@@ -11,18 +11,18 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
-	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
 const (
@@ -93,8 +93,8 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := yarpc_mocks.NewMockClient(ctrl)
-	mockHostMgr := yarpc_mocks.NewMockClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
@@ -153,18 +153,10 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	gomock.InOrder(
 		mockRes.EXPECT().
-			Call(
-				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.GetPlacements")),
+			GetPlacements(
 				gomock.Any(),
 				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*resmgrsvc.GetPlacementsResponse)
-				*o = resmgrsvc.GetPlacementsResponse{
-					Placements: placements,
-				}
-			}).
-			Return(nil, nil),
+			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
 
 		// Mock Task Store GetTaskByID
 		mockTaskStore.EXPECT().GetTaskByID(taskIDs[0].Value).Return(testTasks[0], nil),
@@ -174,12 +166,10 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
-			Call(
-				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks")),
+			LaunchTasks(
 				gomock.Any(),
 				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+			Do(func(_ context.Context, reqBody interface{}) {
 				// No need to unmarksnal output: empty means success.
 				// Capture call since we don't know ordering of tasks.
 				lock.Lock()
@@ -190,7 +180,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 					launchedTasks[lt.TaskId.GetValue()] = lt.Config
 				}
 			}).
-			Return(nil, nil).
+			Return(&hostsvc.LaunchTasksResponse{}, nil).
 			Times(1),
 	)
 

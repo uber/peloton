@@ -131,6 +131,9 @@ service ResourceManager
 
   // Lookup the resource pool ID for a given resource pool path
   rpc LookupResourcePoolID(LookupRequest) returns (LookupResponse);
+
+  // Query the resource pool.
+  rpc Query(QueryRequest) returns (QueryResponse);
 }
 
 message ResourcePoolAlreadyExists {

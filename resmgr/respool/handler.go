@@ -11,7 +11,6 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
@@ -33,7 +32,7 @@ type serviceHandler struct {
 	sync.Mutex
 	store                  storage.ResourcePoolStore
 	metrics                *Metrics
-	dispatcher             yarpc.Dispatcher
+	dispatcher             *yarpc.Dispatcher
 	runningState           int32
 	resPoolTree            Tree
 	resPoolConfigValidator Validator
@@ -46,7 +45,7 @@ var handler *serviceHandler
 
 // InitServiceHandler initializes the handler for ResourcePoolService
 func InitServiceHandler(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	store storage.ResourcePoolStore,
 	jobStore storage.JobStore,
@@ -106,10 +105,8 @@ func GetServiceHandler() ServiceHandler {
 // CreateResourcePool will create resource pool
 func (h *serviceHandler) CreateResourcePool(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *respool.CreateRequest) (
 	*respool.CreateResponse,
-	yarpc.ResMeta,
 	error) {
 
 	h.Lock()
@@ -150,7 +147,7 @@ func (h *serviceHandler) CreateResourcePool(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	// TODO T808419 - handle parent of the new_resource_pool_config
@@ -175,7 +172,7 @@ func (h *serviceHandler) CreateResourcePool(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	// update the in-memory data structure
@@ -198,21 +195,20 @@ func (h *serviceHandler) CreateResourcePool(
 				resPoolID.Value,
 			)
 			h.metrics.CreateResourcePoolRollbackFail.Inc(1)
-			return &respool.CreateResponse{}, nil, err
+			return &respool.CreateResponse{}, err
 		}
 	}
 
 	h.metrics.CreateResourcePoolSuccess.Inc(1)
 	return &respool.CreateResponse{
 		Result: resPoolID,
-	}, nil, nil
+	}, nil
 }
 
 // GetResourcePool will get resource pool
 func (h *serviceHandler) GetResourcePool(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *respool.GetRequest) (*respool.GetResponse, yarpc.ResMeta, error) {
+	req *respool.GetRequest) (*respool.GetResponse, error) {
 
 	h.metrics.APIGetResourcePool.Inc(1)
 	log.WithField("request", req).Info("GetResourcePool called")
@@ -238,7 +234,7 @@ func (h *serviceHandler) GetResourcePool(
 					Message: "resource pool not found",
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	resPoolInfo := resPool.ToResourcePoolInfo()
@@ -260,7 +256,7 @@ func (h *serviceHandler) GetResourcePool(
 							Message: "resource pool not found",
 						},
 					},
-				}, nil, nil
+				}, nil
 
 			}
 			childPoolInfos = append(childPoolInfos, childPool.ToResourcePoolInfo())
@@ -271,16 +267,14 @@ func (h *serviceHandler) GetResourcePool(
 	return &respool.GetResponse{
 		Poolinfo:   resPool.ToResourcePoolInfo(),
 		ChildPools: childPoolInfos,
-	}, nil, nil
+	}, nil
 }
 
 // DeleteResourcePool will delete resource pool
 func (h *serviceHandler) DeleteResourcePool(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *respool.DeleteRequest) (
 	*respool.DeleteResponse,
-	yarpc.ResMeta,
 	error) {
 
 	h.Lock()
@@ -293,16 +287,14 @@ func (h *serviceHandler) DeleteResourcePool(
 	).Info("DeleteResourcePool called")
 
 	log.Fatal("Not implemented")
-	return &respool.DeleteResponse{}, nil, nil
+	return &respool.DeleteResponse{}, nil
 }
 
 // UpdateResourcePool will update resource pool
 func (h *serviceHandler) UpdateResourcePool(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *respool.UpdateRequest) (
 	*respool.UpdateResponse,
-	yarpc.ResMeta,
 	error) {
 
 	h.Lock()
@@ -338,7 +330,7 @@ func (h *serviceHandler) UpdateResourcePool(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	// needed for rollback
@@ -359,7 +351,7 @@ func (h *serviceHandler) UpdateResourcePool(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	// update persistent store
@@ -380,7 +372,7 @@ func (h *serviceHandler) UpdateResourcePool(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	// update the in-memory data structure
@@ -407,20 +399,18 @@ func (h *serviceHandler) UpdateResourcePool(
 				resPoolID.Value,
 			)
 			h.metrics.UpdateResourcePoolRollbackFail.Inc(1)
-			return &respool.UpdateResponse{}, nil, err
+			return &respool.UpdateResponse{}, err
 		}
 	}
 
 	h.metrics.UpdateResourcePoolSuccess.Inc(1)
-	return &respool.UpdateResponse{}, nil, nil
+	return &respool.UpdateResponse{}, nil
 }
 
 // LookupResourcePoolID returns the resource pool ID for a given resource pool path
 func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *respool.LookupRequest) (
 	*respool.LookupResponse,
-	yarpc.ResMeta,
 	error) {
 
 	h.metrics.APILookupResourcePoolID.Inc(1)
@@ -455,7 +445,7 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	resPool, err := h.resPoolTree.GetByPath(path)
@@ -470,7 +460,7 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 					Message: "resource pool not found",
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	h.metrics.LookupResourcePoolIDSuccess.Inc(1)
@@ -479,16 +469,14 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 		Id: &respool.ResourcePoolID{
 			Value: resPool.ID(),
 		},
-	}, nil, nil
+	}, nil
 }
 
 // Query returns the matching resource pools by default returns all
 func (h *serviceHandler) Query(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *respool.QueryRequest) (
 	*respool.QueryResponse,
-	yarpc.ResMeta,
 	error) {
 
 	h.metrics.APIQueryResourcePools.Inc(1)
@@ -514,47 +502,12 @@ func (h *serviceHandler) Query(
 	h.metrics.QueryResourcePoolsSuccess.Inc(1)
 	return &respool.QueryResponse{
 		ResourcePools: resourcePoolInfos,
-	}, nil, nil
+	}, nil
 }
 
 // registerProcs will register all API's for end points
-func (h *serviceHandler) registerProcs(d yarpc.Dispatcher) {
-	d.Register(
-		json.Procedure(
-			"ResourceManager.CreateResourcePool",
-			h.CreateResourcePool,
-		),
-	)
-	d.Register(
-		json.Procedure(
-			"ResourceManager.GetResourcePool",
-			h.GetResourcePool,
-		),
-	)
-	d.Register(
-		json.Procedure(
-			"ResourceManager.DeleteResourcePool",
-			h.DeleteResourcePool,
-		),
-	)
-	d.Register(
-		json.Procedure(
-			"ResourceManager.UpdateResourcePool",
-			h.UpdateResourcePool,
-		),
-	)
-	d.Register(
-		json.Procedure(
-			"ResourceManager.LookupResourcePoolID",
-			h.LookupResourcePoolID,
-		),
-	)
-	d.Register(
-		json.Procedure(
-			"ResourceManager.Query",
-			h.Query,
-		),
-	)
+func (h *serviceHandler) registerProcs(d *yarpc.Dispatcher) {
+	d.Register(respool.BuildResourceManagerYarpcProcedures(h))
 }
 
 // Start will start resource manager

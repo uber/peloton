@@ -192,9 +192,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolEmptyID(
 	// form request
 	getReq := &pb_respool.GetRequest{}
 
-	getResp, _, err := suite.handler.GetResourcePool(
+	getResp, err := suite.handler.GetResourcePool(
 		suite.context,
-		nil,
 		getReq,
 	)
 
@@ -216,9 +215,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLeafNode
 		Id: mockResourcePoolID,
 	}
 
-	getResp, _, err := suite.handler.GetResourcePool(
+	getResp, err := suite.handler.GetResourcePool(
 		suite.context,
-		nil,
 		getReq,
 	)
 
@@ -241,9 +239,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolWithChil
 		IncludeChildPools: true,
 	}
 
-	getResp, _, err := suite.handler.GetResourcePool(
+	getResp, err := suite.handler.GetResourcePool(
 		suite.context,
-		nil,
 		getReq,
 	)
 
@@ -266,9 +263,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolError() 
 		Id: mockResourcePoolID,
 	}
 
-	getResp, _, err := suite.handler.GetResourcePool(
+	getResp, err := suite.handler.GetResourcePool(
 		suite.context,
-		nil,
 		getReq,
 	)
 
@@ -310,9 +306,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
 		gomock.Eq(mockResourcePoolConfig),
 		"peloton").Return(nil)
 
-	createResp, _, err := suite.handler.CreateResourcePool(
+	createResp, err := suite.handler.CreateResourcePool(
 		suite.context,
-		nil,
 		createReq)
 
 	suite.NoError(err)
@@ -346,9 +341,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolValid
 		Config: mockResourcePoolConfig,
 	}
 
-	createResp, _, err := suite.handler.CreateResourcePool(
+	createResp, err := suite.handler.CreateResourcePool(
 		suite.context,
-		nil,
 		createReq)
 
 	suite.NoError(err)
@@ -390,9 +384,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlrea
 		"peloton",
 	).Return(errors.New(expectedErrMsg))
 
-	createResp, _, err := suite.handler.CreateResourcePool(
+	createResp, err := suite.handler.CreateResourcePool(
 		suite.context,
-		nil,
 		createReq)
 
 	actualErrResourcePoolID := createResp.Error.AlreadyExists.Id.Value
@@ -437,9 +430,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePool() {
 		gomock.Eq(mockResourcePoolID),
 		gomock.Eq(mockResourcePoolConfig)).Return(nil)
 
-	updateResp, _, err := suite.handler.UpdateResourcePool(
+	updateResp, err := suite.handler.UpdateResourcePool(
 		suite.context,
-		nil,
 		updateReq)
 
 	suite.NoError(err)
@@ -476,9 +468,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolValid
 		Config: mockResourcePoolConfig,
 	}
 
-	updateResp, _, err := suite.handler.UpdateResourcePool(
+	updateResp, err := suite.handler.UpdateResourcePool(
 		suite.context,
-		nil,
 		updateReq)
 
 	suite.NoError(err)
@@ -518,9 +509,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotEx
 
 	expectedErrMsg := "Resource pool (respool105) not found"
 
-	updateResp, _, err := suite.handler.UpdateResourcePool(
+	updateResp, err := suite.handler.UpdateResourcePool(
 		suite.context,
-		nil,
 		updateReq)
 
 	actualErrResourcePoolID := updateResp.Error.NotFound.Id.Value
@@ -534,9 +524,8 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotEx
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_Query() {
 	// query request
 	queryReq := &pb_respool.QueryRequest{}
-	updateResp, _, err := suite.handler.Query(
+	updateResp, err := suite.handler.Query(
 		suite.context,
-		nil,
 		queryReq,
 	)
 
@@ -556,21 +545,21 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolID() 
 		},
 	}
 
-	lookupResponse, _, err := suite.handler.LookupResourcePoolID(suite.context, nil, lookupRequest)
+	lookupResponse, err := suite.handler.LookupResourcePoolID(suite.context, lookupRequest)
 	suite.NoError(err)
 	suite.NotNil(lookupResponse)
 	suite.Equal("root", lookupResponse.Id.Value)
 
 	// /respool1/respool11
 	lookupRequest.Path.Value = "/respool1/respool11"
-	lookupResponse, _, err = suite.handler.LookupResourcePoolID(suite.context, nil, lookupRequest)
+	lookupResponse, err = suite.handler.LookupResourcePoolID(suite.context, lookupRequest)
 	suite.NoError(err)
 	suite.NotNil(lookupResponse)
 	suite.Equal("respool11", lookupResponse.Id.Value)
 
 	// /respool2/respool22/
 	lookupRequest.Path.Value = "/respool2/respool22/"
-	lookupResponse, _, err = suite.handler.LookupResourcePoolID(suite.context, nil, lookupRequest)
+	lookupResponse, err = suite.handler.LookupResourcePoolID(suite.context, lookupRequest)
 	suite.NoError(err)
 	suite.NotNil(lookupResponse)
 	suite.Equal("respool22", lookupResponse.Id.Value)
@@ -586,8 +575,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolPathD
 		},
 	}
 
-	lookupResponse, _, err := suite.handler.LookupResourcePoolID(suite.context,
-		nil,
+	lookupResponse, err := suite.handler.LookupResourcePoolID(suite.context,
 		lookupRequest,
 	)
 
@@ -608,10 +596,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolInval
 		},
 	}
 
-	lookupResponse, _, err := suite.handler.LookupResourcePoolID(suite.context,
-		nil,
-		lookupRequest,
-	)
+	lookupResponse, err := suite.handler.LookupResourcePoolID(suite.context, lookupRequest)
 
 	suite.NoError(err)
 	suite.NotNil(lookupResponse)

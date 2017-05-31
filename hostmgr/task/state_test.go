@@ -2,65 +2,65 @@ package task
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"go.uber.org/yarpc"
 
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
 )
 
-type MockJSONClient struct {
+type MockClient struct {
 	sync.Mutex
 	events      []*pb_eventstream.Event
 	returnError bool
 }
 
-func (c *MockJSONClient) Call(
-	ctx context.Context,
-	reqMeta yarpc.CallReqMeta,
-	reqBody interface{},
-	resBodyOut interface{}) (yarpc.CallResMeta, error) {
+func (c *MockClient) EnqueueGangs(context.Context, *resmgrsvc.EnqueueGangsRequest, ...yarpc.CallOption) (*resmgrsvc.EnqueueGangsResponse, error) {
+	return nil, nil
+}
+
+func (c *MockClient) DequeueTasks(context.Context, *resmgrsvc.DequeueTasksRequest, ...yarpc.CallOption) (*resmgrsvc.DequeueTasksResponse, error) {
+	return nil, nil
+}
+
+func (c *MockClient) SetPlacements(context.Context, *resmgrsvc.SetPlacementsRequest, ...yarpc.CallOption) (*resmgrsvc.SetPlacementsResponse, error) {
+	return nil, nil
+}
+
+func (c *MockClient) GetPlacements(context.Context, *resmgrsvc.GetPlacementsRequest, ...yarpc.CallOption) (*resmgrsvc.GetPlacementsResponse, error) {
+	return nil, nil
+}
+
+func (c *MockClient) NotifyTaskUpdates(ctx context.Context, request *resmgrsvc.NotifyTaskUpdatesRequest, opts ...yarpc.CallOption) (*resmgrsvc.NotifyTaskUpdatesResponse, error) {
 	c.Lock()
 	defer c.Unlock()
 	if c.returnError {
 		return nil, errors.New("Mocked RPC server error")
 	}
-	request, ok := reqBody.(*resmgrsvc.NotifyTaskUpdatesRequest)
-	if ok {
-		c.events = append(c.events, request.Events...)
-		var response resmgrsvc.NotifyTaskUpdatesResponse
-		response.PurgeOffset = c.events[len(c.events)-1].Offset
-		resBodyOut = &response
-	}
-	return nil, nil
+	c.events = append(c.events, request.Events...)
+	response := &resmgrsvc.NotifyTaskUpdatesResponse{}
+	response.PurgeOffset = c.events[len(c.events)-1].Offset
+	return response, nil
 }
 
-func (c *MockJSONClient) CallOneway(
-	ctx context.Context,
-	reqMeta yarpc.CallReqMeta,
-	reqBody interface{}) (transport.Ack, error) {
-	return nil, nil
-}
-
-func (c *MockJSONClient) setError(errorFlag bool) {
+func (c *MockClient) setError(errorFlag bool) {
 	c.Lock()
 	defer c.Unlock()
 	c.returnError = errorFlag
 }
 
-func (c *MockJSONClient) validateData(t *testing.T, nEvents int) {
+func (c *MockClient) validateData(t *testing.T, nEvents int) {
 	c.Lock()
 	defer c.Unlock()
 	assert.Equal(t, nEvents, len(c.events))
@@ -72,10 +72,10 @@ func (c *MockJSONClient) validateData(t *testing.T, nEvents int) {
 func TestEventForwarder(t *testing.T) {
 	errorWaitInterval = 10 * time.Millisecond
 	var progress uint64
-	c := &MockJSONClient{}
+	c := &MockClient{}
 	forwarder := &eventForwarder{
-		jsonClient: c,
-		progress:   &progress,
+		client:   c,
+		progress: &progress,
 	}
 	eventStreamHandler := eventstream.NewEventStreamHandler(
 		400,

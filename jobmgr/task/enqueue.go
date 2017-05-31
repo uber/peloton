@@ -7,9 +7,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	er "github.com/pkg/errors"
 
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -18,7 +15,7 @@ import (
 )
 
 // EnqueueGangs enqueues all tasks organized in gangs to respool in resmgr.
-func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobConfig, client json.Client) error {
+func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobConfig, client resmgrsvc.ResourceManagerServiceYarpcClient) error {
 	ctxWithTimeout, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelFunc()
 
@@ -27,14 +24,8 @@ func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobCo
 		Gangs:   gangs,
 		ResPool: config.RespoolID,
 	}
-	var response resmgrsvc.EnqueueGangsResponse
 
-	_, err := client.Call(
-		ctxWithTimeout,
-		yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs"),
-		request,
-		&response,
-	)
+	response, err := client.EnqueueGangs(ctxWithTimeout, request)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -42,7 +33,7 @@ func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobCo
 		}).Error("Resource Manager Enqueue Failed")
 		return err
 	}
-	if response.Error != nil {
+	if response.GetError() != nil {
 		log.WithFields(log.Fields{
 			"error": response.Error,
 			"tasks": tasks,

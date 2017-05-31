@@ -12,7 +12,7 @@ import (
 
 // InitManager initializes the mesosManager
 func InitManager(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	mesosConfig *Config,
 	store storage.FrameworkInfoStore) {
 
@@ -32,7 +32,7 @@ type mesosManager struct {
 	frameworkName string
 }
 
-type schedulerEventCallback func(yarpc.ReqMeta, *sched.Event) error
+type schedulerEventCallback func(*sched.Event) error
 
 // getCallbacks returns a map from name to usable callbacks
 // which can be registered to yarpc.Dispatcher.
@@ -53,8 +53,7 @@ func getCallbacks(m *mesosManager) map[string]schedulerEventCallback {
 	return procedures
 }
 
-func (m *mesosManager) Subscribed(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (m *mesosManager) Subscribed(body *sched.Event) error {
 
 	subscribed := body.GetSubscribed()
 	log.WithField("subscribed", subscribed).
@@ -70,39 +69,34 @@ func (m *mesosManager) Subscribed(
 	return err
 }
 
-func (m *mesosManager) Message(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (m *mesosManager) Message(body *sched.Event) error {
 
 	msg := body.GetMessage()
 	log.WithField("msg", msg).Debug("mesosManager: message called")
 	return nil
 }
 
-func (m *mesosManager) Failure(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (m *mesosManager) Failure(body *sched.Event) error {
 
 	failure := body.GetFailure()
 	log.WithField("failure", failure).Debug("mesosManager: failure called")
 	return nil
 }
 
-func (m *mesosManager) Error(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (m *mesosManager) Error(body *sched.Event) error {
 
 	err := body.GetError()
 	log.WithField("error", err).Debug("mesosManager: error called")
 	return nil
 }
 
-func (m *mesosManager) Heartbeat(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (m *mesosManager) Heartbeat(body *sched.Event) error {
 
 	log.Debug("mesosManager: heartbeat called")
 	return nil
 }
 
-func (m *mesosManager) Unknown(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (m *mesosManager) Unknown(body *sched.Event) error {
 
 	log.WithField("event", body).Info("mesosManager: unknown event called")
 	return nil

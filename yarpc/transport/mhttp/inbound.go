@@ -16,7 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 )
 
 const (
@@ -36,7 +36,6 @@ type Inbound interface {
 	transport.Inbound
 
 	StartMesosLoop(newHostPort string) (chan error, error)
-	IsRunning() bool
 }
 
 // InboundOption is an option for an Mesos HTTP inbound.
@@ -60,22 +59,18 @@ type inbound struct {
 
 	metrics *Metrics
 
-	hostPort      string
-	driver        MesosDriver
-	stopFlag      atomic.Bool
-	serviceDetail transport.ServiceDetail
-	deps          transport.Deps
-	client        *http.Client
-	runningState  atomic.Bool
-	ticker        *time.Ticker
+	hostPort     string
+	driver       MesosDriver
+	stopFlag     atomic.Bool
+	router       transport.Router
+	client       *http.Client
+	runningState atomic.Bool
+	ticker       *time.Ticker
 }
 
 // Start would initialize some variables, actual mesos communication would be
 // started by StartMesosLoop(...)
-func (i *inbound) Start(
-	service transport.ServiceDetail,
-	d transport.Deps) error {
-
+func (i *inbound) Start() error {
 	transport := &http.Transport{
 		Dial: (&net.Dialer{
 			Timeout:   MesosHTTPConnTimeout,
@@ -83,8 +78,6 @@ func (i *inbound) Start(
 		}).Dial,
 	}
 	i.client = &http.Client{Transport: transport}
-	i.serviceDetail = service
-	i.deps = d
 	return nil
 }
 
@@ -172,7 +165,7 @@ func (i *inbound) processUntilEnd(
 	defer resp.Body.Close()
 
 	hdl := handler{
-		ServiceDetail: i.serviceDetail,
+		Router:        i.router,
 		Service:       i.driver.Name(),
 		Caller:        i.hostPort,
 		EventDataType: i.driver.EventDataType(),
@@ -273,4 +266,14 @@ func (i *inbound) Stop() error {
 // IsRunning returns the running state.
 func (i *inbound) IsRunning() bool {
 	return i.runningState.Load()
+}
+
+// SetRouter sets the router associated with the inbound.
+func (i *inbound) SetRouter(r transport.Router) {
+	i.router = r
+}
+
+// Transports returns the transports used by the Inbound.
+func (i *inbound) Transports() []transport.Transport {
+	return nil
 }

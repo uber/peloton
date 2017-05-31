@@ -6,12 +6,12 @@ import (
 	"io/ioutil"
 	"testing"
 
-	client_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
+	job_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/job/mocks"
+	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
-	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -23,14 +23,16 @@ const testJobConfig = "../example/testjob.yaml"
 
 type jobActionsTestSuite struct {
 	suite.Suite
-	mockCtrl       *gomock.Controller
-	mockBaseClient *client_mocks.MockClient
-	ctx            context.Context
+	mockCtrl    *gomock.Controller
+	mockJob     *job_mocks.MockJobManagerYarpcClient
+	mockRespool *respool_mocks.MockResourceManagerYarpcClient
+	ctx         context.Context
 }
 
 func (suite *jobActionsTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockBaseClient = client_mocks.NewMockClient(suite.mockCtrl)
+	suite.mockJob = job_mocks.NewMockJobManagerYarpcClient(suite.mockCtrl)
+	suite.mockRespool = respool_mocks.NewMockResourceManagerYarpcClient(suite.mockCtrl)
 	suite.ctx = context.Background()
 }
 
@@ -51,8 +53,8 @@ func (suite *jobActionsTestSuite) getConfig() *job.JobConfig {
 func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 	c := Client{
 		Debug:      false,
-		resClient:  suite.mockBaseClient,
-		jobClient:  suite.mockBaseClient,
+		resClient:  suite.mockRespool,
+		jobClient:  suite.mockJob,
 		dispatcher: nil,
 		ctx:        suite.ctx,
 	}
@@ -164,8 +166,8 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 func (suite *jobActionsTestSuite) TestClient_JobUpdateAction() {
 	c := Client{
 		Debug:      false,
-		resClient:  suite.mockBaseClient,
-		jobClient:  suite.mockBaseClient,
+		resClient:  suite.mockRespool,
+		jobClient:  suite.mockJob,
 		dispatcher: nil,
 		ctx:        suite.ctx,
 	}
@@ -218,17 +220,7 @@ func (suite *jobActionsTestSuite) withMockJobUpdateResponse(
 	resp *job.UpdateResponse,
 	err error,
 ) {
-	suite.mockBaseClient.EXPECT().Call(
-		suite.ctx,
-		gomock.Eq(
-			yarpc.NewReqMeta().Procedure("JobManager.Update"),
-		),
-		gomock.Eq(req),
-		gomock.Eq(&job.UpdateResponse{}),
-	).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-		o := resBodyOut.(*job.UpdateResponse)
-		*o = *resp
-	}).Return(nil, err)
+	suite.mockJob.EXPECT().Update(suite.ctx, gomock.Eq(req)).Return(resp, err)
 }
 
 func (suite *jobActionsTestSuite) withMockJobCreateResponse(
@@ -236,34 +228,18 @@ func (suite *jobActionsTestSuite) withMockJobCreateResponse(
 	resp *job.CreateResponse,
 	err error,
 ) {
-	suite.mockBaseClient.EXPECT().Call(
-		suite.ctx,
-		gomock.Eq(
-			yarpc.NewReqMeta().Procedure("JobManager.Create"),
-		),
-		gomock.Eq(req),
-		gomock.Eq(&job.CreateResponse{}),
-	).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-		o := resBodyOut.(*job.CreateResponse)
-		*o = *resp
-	}).Return(nil, err)
+	suite.mockJob.EXPECT().
+		Create(suite.ctx, gomock.Eq(req)).
+		Return(resp, err)
 }
 
 func (suite *jobActionsTestSuite) withMockResourcePoolLookup(
 	req *respool.LookupRequest,
 	resp *respool.LookupResponse,
 ) {
-	suite.mockBaseClient.EXPECT().Call(
-		suite.ctx,
-		gomock.Eq(
-			yarpc.NewReqMeta().Procedure("ResourceManager.LookupResourcePoolID"),
-		),
-		gomock.Eq(req),
-		gomock.Eq(&respool.LookupResponse{}),
-	).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-		o := resBodyOut.(*respool.LookupResponse)
-		*o = *resp
-	}).Return(nil, nil)
+	suite.mockRespool.EXPECT().
+		LookupResourcePoolID(suite.ctx, gomock.Eq(req)).
+		Return(resp, nil)
 }
 
 func TestJobActions(t *testing.T) {

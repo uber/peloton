@@ -11,7 +11,6 @@ import (
 	"github.com/uber-go/tally"
 
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
@@ -19,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 	jtask "code.uber.internal/infra/peloton/jobmgr/task"
@@ -28,33 +28,32 @@ import (
 
 // InitServiceHandler initalizes the job manager
 func InitServiceHandler(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	runtimeUpdater *RuntimeUpdater,
 	clientName string) {
 
-	handler := serviceHandler{
+	handler := &serviceHandler{
 		jobStore:       jobStore,
 		taskStore:      taskStore,
-		client:         json.New(d.ClientConfig(clientName)),
+		respoolClient:  respool.NewResourceManagerYarpcClient(d.ClientConfig(clientName)),
+		resmgrClient:   resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(clientName)),
 		rootCtx:        context.Background(),
 		runtimeUpdater: runtimeUpdater,
 		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
 	}
-	d.Register(json.Procedure("JobManager.Create", handler.Create))
-	d.Register(json.Procedure("JobManager.Get", handler.Get))
-	d.Register(json.Procedure("JobManager.Query", handler.Query))
-	d.Register(json.Procedure("JobManager.Delete", handler.Delete))
-	d.Register(json.Procedure("JobManager.Update", handler.Update))
+
+	d.Register(job.BuildJobManagerYarpcProcedures(handler))
 }
 
 // serviceHandler implements peloton.api.job.JobManager
 type serviceHandler struct {
 	jobStore       storage.JobStore
 	taskStore      storage.TaskStore
-	client         json.Client
+	respoolClient  respool.ResourceManagerYarpcClient
+	resmgrClient   resmgrsvc.ResourceManagerServiceYarpcClient
 	runtimeUpdater *RuntimeUpdater
 	rootCtx        context.Context
 	metrics        *Metrics
@@ -64,8 +63,7 @@ type serviceHandler struct {
 // enqueues the tasks for scheduling
 func (h *serviceHandler) Create(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *job.CreateRequest) (*job.CreateResponse, yarpc.ResMeta, error) {
+	req *job.CreateRequest) (*job.CreateResponse, error) {
 
 	jobID := req.Id
 	// It is possible that jobId is nil since protobuf doesn't enforce it
@@ -86,7 +84,7 @@ func (h *serviceHandler) Create(
 						Message: "JobID must be valid UUID",
 					},
 				},
-			}, nil, nil
+			}, nil
 		}
 	}
 	jobConfig := req.Config
@@ -100,7 +98,7 @@ func (h *serviceHandler) Create(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	log.WithField("config", jobConfig).Infof("JobManager.Create called")
@@ -116,7 +114,7 @@ func (h *serviceHandler) Create(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	err = h.jobStore.CreateJob(jobID, jobConfig, "peloton")
@@ -129,7 +127,7 @@ func (h *serviceHandler) Create(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 	h.metrics.JobCreate.Inc(1)
 	// NOTE: temp work to make task creation concurrent for mysql store.
@@ -156,7 +154,7 @@ func (h *serviceHandler) Create(
 						Message: err.Error(),
 					},
 				},
-			}, nil, nil
+			}, nil
 		}
 		t := getTaskInfo(mesosTaskID, taskConfig, instanceID, jobID)
 		tasks[i] = &t
@@ -169,17 +167,17 @@ func (h *serviceHandler) Create(
 			nTasks, jobID.Value, err)
 		h.metrics.TaskCreateFail.Inc(nTasks)
 		// FIXME: Add a new Error type for this
-		return nil, nil, err
+		return nil, err
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jtask.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.client)
+	err = jtask.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
 			Error("Failed to enqueue tasks to RM")
 		h.metrics.JobCreateFail.Inc(1)
-		return nil, nil, err
+		return nil, err
 	}
 
 	jobRuntime, err := h.jobStore.GetJobRuntime(jobID)
@@ -188,7 +186,7 @@ func (h *serviceHandler) Create(
 			WithField("job_id", jobID).
 			Error("Failed to GetJobRuntime")
 		h.metrics.JobCreateFail.Inc(1)
-		return nil, nil, err
+		return nil, err
 	}
 	jobRuntime.State = job.JobState_PENDING
 	err = h.jobStore.UpdateJobRuntime(jobID, jobRuntime)
@@ -197,7 +195,7 @@ func (h *serviceHandler) Create(
 			WithField("job_id", jobID).
 			Error("Failed to UpdateJobRuntime")
 		h.metrics.JobCreateFail.Inc(1)
-		return nil, nil, err
+		return nil, err
 	}
 
 	log.Infof("Job %v all %v tasks created, time spent: %v",
@@ -205,15 +203,14 @@ func (h *serviceHandler) Create(
 
 	return &job.CreateResponse{
 		JobId: jobID,
-	}, nil, nil
+	}, nil
 }
 
 // Update updates a job object for a given job configuration and
 // performs the appropriate action based on the change
 func (h *serviceHandler) Update(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *job.UpdateRequest) (*job.UpdateResponse, yarpc.ResMeta, error) {
+	req *job.UpdateRequest) (*job.UpdateResponse, error) {
 
 	jobID := req.Id
 	jobRuntime, err := h.jobStore.GetJobRuntime(jobID)
@@ -222,7 +219,7 @@ func (h *serviceHandler) Update(
 			WithField("job_id", jobID.Value).
 			Error("Failed to GetJobRuntime")
 		h.metrics.JobUpdateFail.Inc(1)
-		return nil, nil, err
+		return nil, err
 	}
 
 	if !NonTerminatedStates[jobRuntime.State] {
@@ -235,7 +232,7 @@ func (h *serviceHandler) Update(
 					Message: msg,
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	newConfig := req.Config
@@ -250,7 +247,7 @@ func (h *serviceHandler) Update(
 			WithField("job_id", jobID.Value).
 			Error("Failed to GetJobConfig")
 		h.metrics.JobUpdateFail.Inc(1)
-		return nil, nil, err
+		return nil, err
 	}
 
 	diff, err := updater.CalculateJobDiff(jobID, oldConfig, newConfig)
@@ -263,13 +260,13 @@ func (h *serviceHandler) Update(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	if diff.IsNoop() {
 		log.WithField("job_id", jobID).
 			Info("update is a noop")
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	err = h.jobStore.UpdateJobConfig(jobID, newConfig)
@@ -282,7 +279,7 @@ func (h *serviceHandler) Update(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	log.WithField("job_id", jobID.Value).
@@ -303,17 +300,17 @@ func (h *serviceHandler) Update(
 			nTasks, jobID.Value, err)
 		h.metrics.TaskCreateFail.Inc(nTasks)
 		// FIXME: Add a new Error type for this
-		return nil, nil, err
+		return nil, err
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jtask.EnqueueGangs(h.rootCtx, tasks, newConfig, h.client)
+	err = jtask.EnqueueGangs(h.rootCtx, tasks, newConfig, h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
 			Error("Failed to enqueue tasks to RM")
 		h.metrics.JobUpdateFail.Inc(1)
-		return nil, nil, err
+		return nil, err
 	}
 
 	err = h.runtimeUpdater.UpdateJob(jobID)
@@ -322,14 +319,14 @@ func (h *serviceHandler) Update(
 			WithField("job_id", jobID).
 			Error("Failed to update job runtime")
 		h.metrics.JobUpdateFail.Inc(1)
-		return nil, nil, err
+		return nil, err
 	}
 
 	msg := fmt.Sprintf("added %d instances", len(diff.InstancesToAdd))
 	return &job.UpdateResponse{
 		Id:      jobID,
 		Message: msg,
-	}, nil, nil
+	}, nil
 }
 
 func getTaskInfo(mesosTaskID string, taskConfig *task.TaskConfig, instanceID uint32, jobID *peloton.JobID) task.TaskInfo {
@@ -353,8 +350,7 @@ func getTaskInfo(mesosTaskID string, taskConfig *task.TaskConfig, instanceID uin
 // Get returns a job config for a given job ID
 func (h *serviceHandler) Get(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *job.GetRequest) (*job.GetResponse, yarpc.ResMeta, error) {
+	req *job.GetRequest) (*job.GetResponse, error) {
 
 	log.Infof("JobManager.Get called: %v", req)
 	h.metrics.JobAPIGet.Inc(1)
@@ -372,7 +368,7 @@ func (h *serviceHandler) Get(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 	jobRuntime, err := h.jobStore.GetJobRuntime(req.Id)
 	if err != nil {
@@ -387,20 +383,19 @@ func (h *serviceHandler) Get(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 	h.metrics.JobGet.Inc(1)
 	return &job.GetResponse{
 		Config:  jobConfig,
 		Runtime: jobRuntime,
-	}, nil, nil
+	}, nil
 }
 
 // Query returns a list of jobs matching the given query
 func (h *serviceHandler) Query(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *job.QueryRequest) (*job.QueryResponse, yarpc.ResMeta, error) {
+	req *job.QueryRequest) (*job.QueryResponse, error) {
 
 	log.WithField("request", req).Info("JobManager.Query called")
 	h.metrics.JobAPIQuery.Inc(1)
@@ -427,7 +422,7 @@ func (h *serviceHandler) Query(
 						Message: err.Error(),
 					},
 				},
-			}, nil, nil
+			}, nil
 		}
 		// if both labels and respool ID is specified, query then filter by respool id
 		if req.GetRespoolID() != nil {
@@ -449,7 +444,7 @@ func (h *serviceHandler) Query(
 						Message: err.Error(),
 					},
 				},
-			}, nil, nil
+			}, nil
 		}
 	} else {
 		// query all jobs if neither label nor respool is provided
@@ -464,18 +459,17 @@ func (h *serviceHandler) Query(
 						Message: err.Error(),
 					},
 				},
-			}, nil, nil
+			}, nil
 		}
 	}
 	h.metrics.JobQuery.Inc(1)
-	return &job.QueryResponse{Result: jobConfigs}, nil, nil
+	return &job.QueryResponse{Result: jobConfigs}, nil
 }
 
 // Delete kills all running tasks in a job
 func (h *serviceHandler) Delete(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *job.DeleteRequest) (*job.DeleteResponse, yarpc.ResMeta, error) {
+	req *job.DeleteRequest) (*job.DeleteResponse, error) {
 
 	log.Infof("JobManager.Delete called: %v", req)
 	h.metrics.JobAPIDelete.Inc(1)
@@ -491,10 +485,10 @@ func (h *serviceHandler) Delete(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 	h.metrics.JobDelete.Inc(1)
-	return &job.DeleteResponse{}, nil, nil
+	return &job.DeleteResponse{}, nil
 }
 
 // validateResourcePool validates the resource pool before submitting job
@@ -507,16 +501,10 @@ func (h *serviceHandler) validateResourcePool(
 		return er.New("Resource Pool Id is null")
 	}
 
-	var response respool.GetResponse
 	var request = &respool.GetRequest{
 		Id: respoolID,
 	}
-	_, err := h.client.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManager.GetResourcePool"),
-		request,
-		&response,
-	)
+	response, err := h.respoolClient.GetResourcePool(ctx, request)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":     err,
@@ -524,7 +512,7 @@ func (h *serviceHandler) validateResourcePool(
 		}).Error("Failed to get Resource Pool")
 		return err
 	}
-	if response.Error != nil {
+	if response.GetError() != nil {
 		log.WithFields(log.Fields{
 			"error":     err,
 			"respoolID": respoolID.Value,

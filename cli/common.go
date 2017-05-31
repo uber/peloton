@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"go.uber.org/yarpc"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
@@ -14,13 +12,7 @@ func (client *Client) LookupResourcePoolID(resourcePoolPath string) (*respool.Re
 		},
 	}
 
-	var response respool.LookupResponse
-	_, err := client.resClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManager.LookupResourcePoolID"),
-		request,
-		&response,
-	)
+	response, err := client.resClient.LookupResourcePoolID(client.ctx, request)
 	if err != nil {
 		return nil, err
 	}

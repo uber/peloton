@@ -12,7 +12,6 @@ import (
 	uat "github.com/uber-go/atomic"
 
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	res "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -36,7 +35,7 @@ type calculator struct {
 	resPoolTree       respool.Tree
 	calculationPeriod time.Duration
 	stopChan          chan struct{}
-	hostMgrClient     json.Client
+	hostMgrClient     hostsvc.InternalHostServiceYarpcClient
 	rootCtx           context.Context
 	clusterCapacity   map[string]float64
 	// This atomic boolean helps to identify if previous run is
@@ -49,7 +48,7 @@ var calc *calculator
 
 // InitCalculator initializes the entitlement calculator
 func InitCalculator(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	calculationPeriod time.Duration) {
 
 	if calc != nil {
@@ -63,7 +62,7 @@ func InitCalculator(
 		runningState:      runningStateNotStarted,
 		calculationPeriod: calculationPeriod,
 		stopChan:          make(chan struct{}, 1),
-		hostMgrClient: json.New(
+		hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(
 			d.ClientConfig(
 				common.PelotonHostManager)),
 		rootCtx:         context.Background(),
@@ -305,15 +304,9 @@ func (c *calculator) getTotalCapacity() ([]*hostsvc.Resource, error) {
 	ctx, cancelFunc := context.WithTimeout(c.rootCtx, 10*time.Second)
 	defer cancelFunc()
 
-	var response hostsvc.ClusterCapacityResponse
 	request := &hostsvc.ClusterCapacityRequest{}
 
-	_, err := c.hostMgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("InternalHostService.ClusterCapacity"),
-		request,
-		&response,
-	)
+	response, err := c.hostMgrClient.ClusterCapacity(ctx, request)
 	if err != nil {
 		log.WithField("error", err).Error("ClusterCapacity failed")
 		return nil, err

@@ -54,11 +54,11 @@ func TestInitStream(t *testing.T) {
 		tally.NoopScope,
 	)
 	// Unexpected client
-	response, _, _ := eventStreamHandler.InitStream(context.Background(), nil, makeInitStreamRequest("test"))
+	response, _ := eventStreamHandler.InitStream(context.Background(), makeInitStreamRequest("test"))
 	assert.NotNil(t, response.Error.ClientUnsupported)
 
 	// expected client
-	response, _, _ = eventStreamHandler.InitStream(context.Background(), nil, makeInitStreamRequest("jobMgr"))
+	response, _ = eventStreamHandler.InitStream(context.Background(), makeInitStreamRequest("jobMgr"))
 	assert.Nil(t, response.Error)
 	assert.Equal(t, uint64(0), response.MinOffset)
 	assert.Equal(t, eventStreamHandler.streamID, response.StreamID)
@@ -72,13 +72,13 @@ func TestInitStream(t *testing.T) {
 	eventStreamHandler.circularBuffer.MoveTail(6)
 
 	// MinOffset correctly passed
-	response, _, _ = eventStreamHandler.InitStream(context.Background(), nil, makeInitStreamRequest("jobMgr"))
+	response, _ = eventStreamHandler.InitStream(context.Background(), makeInitStreamRequest("jobMgr"))
 	assert.Nil(t, response.Error)
 	assert.Equal(t, uint64(6), response.MinOffset)
 	assert.Equal(t, eventStreamHandler.streamID, response.StreamID)
 
 	// Unexpected client
-	response, _, _ = eventStreamHandler.InitStream(context.Background(), nil, makeInitStreamRequest("Hostmgr"))
+	response, _ = eventStreamHandler.InitStream(context.Background(), makeInitStreamRequest("Hostmgr"))
 	assert.NotNil(t, response.Error.ClientUnsupported)
 }
 
@@ -102,7 +102,7 @@ func TestWaitForEvent(t *testing.T) {
 	}
 	// start and end within head tail range
 	request := makeWaitForEventsRequest("jobMgr", streamID, uint64(10), int32(23), uint64(10))
-	response, _, _ := eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ := eventStreamHandler.WaitForEvents(context.Background(), request)
 	events := response.Events
 	assert.Equal(t, 23, len(events))
 	for i := 0; i < len(events); i++ {
@@ -113,18 +113,18 @@ func TestWaitForEvent(t *testing.T) {
 
 	// request with beginOffset and end offset out of buffer range
 	request = makeWaitForEventsRequest("jobMgr", streamID, uint64(10), int32(2), uint64(10))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	events = response.Events
 	assert.Equal(t, 0, len(events))
 
 	request = makeWaitForEventsRequest("jobMgr", streamID, uint64(1000), int32(2), uint64(10))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	events = response.Events
 	assert.Equal(t, 0, len(events))
 
 	// request with beginOffset less than buffer tail
 	request = makeWaitForEventsRequest("jobMgr", streamID, uint64(10), int32(25), uint64(9))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	events = response.Events
 	assert.Equal(t, 15, len(events))
 	for i := 0; i < len(events); i++ {
@@ -133,7 +133,7 @@ func TestWaitForEvent(t *testing.T) {
 
 	// request with endOffset larger than buffer head
 	request = makeWaitForEventsRequest("jobMgr", streamID, uint64(35), int32(25), uint64(22))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	events = response.Events
 	assert.Equal(t, 8, len(events))
 	for i := 0; i < len(events); i++ {
@@ -142,12 +142,12 @@ func TestWaitForEvent(t *testing.T) {
 
 	// Unsupported client
 	request = makeWaitForEventsRequest("test", streamID, uint64(35), int32(25), uint64(22))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	assert.NotNil(t, response.Error.ClientUnsupported)
 
 	// Invalid stream id
 	request = makeWaitForEventsRequest("jobMgr", "InvalidStreamID", uint64(35), int32(25), uint64(22))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	assert.NotNil(t, response.Error.InvalidStreamID)
 
 }
@@ -174,7 +174,7 @@ func TestPurgeData(t *testing.T) {
 
 	// jobMgr consumes some data, with purgeOffset 120
 	request := makeWaitForEventsRequest("jobMgr", streamID, uint64(120), int32(50), uint64(120))
-	response, _, _ := eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ := eventStreamHandler.WaitForEvents(context.Background(), request)
 	events := response.Events
 	assert.Equal(t, 50, len(events))
 	for i := 0; i < len(events); i++ {
@@ -187,7 +187,7 @@ func TestPurgeData(t *testing.T) {
 
 	// regMgr consumes some data
 	request = makeWaitForEventsRequest("resMgr", streamID, uint64(130), int32(40), uint64(130))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	events = response.Events
 	assert.Equal(t, 40, len(events))
 	for i := 0; i < len(events); i++ {
@@ -200,7 +200,7 @@ func TestPurgeData(t *testing.T) {
 
 	// jobMgr consumes more data
 	request = makeWaitForEventsRequest("jobMgr", streamID, uint64(170), int32(20), uint64(170))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	events = response.Events
 	assert.Equal(t, 20, len(events))
 	for i := 0; i < len(events); i++ {
@@ -223,7 +223,7 @@ func TestPurgeData(t *testing.T) {
 
 	// Both resMgr and jobMgr consumes all data
 	request = makeWaitForEventsRequest("resMgr", streamID, uint64(299), int32(20), uint64(299))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	events = response.Events
 	assert.Equal(t, 1, len(events))
 
@@ -232,7 +232,7 @@ func TestPurgeData(t *testing.T) {
 	assert.Equal(t, 170, int(tail))
 
 	request = makeWaitForEventsRequest("jobMgr", streamID, uint64(299), int32(20), uint64(299))
-	response, _, _ = eventStreamHandler.WaitForEvents(context.Background(), nil, request)
+	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	events = response.Events
 	assert.Equal(t, 1, len(events))
 	head, tail = eventStreamHandler.circularBuffer.GetRange()
@@ -243,5 +243,4 @@ func TestPurgeData(t *testing.T) {
 	for i := 0; i < len(collector.data); i++ {
 		assert.Equal(t, i, int(collector.data[i].SequenceID))
 	}
-
 }

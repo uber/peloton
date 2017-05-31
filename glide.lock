@@ -1,5 +1,5 @@
-hash: ffee48d86ad7a7a8e21bf6b29b57aa434acca57ef98810735e0e3cff36159689
-updated: 2017-05-23T16:35:58.518403899-07:00
+hash: 388ed1a9c11839a578da3fb1372304ae2e99e3d67fa5761749e83aaed32b6ec0
+updated: 2017-05-31T11:52:31.573598858+02:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -8,7 +8,9 @@ imports:
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
 - name: github.com/apache/thrift
-  version: 9549b25c77587b29be4e0b5c258221a4ed85d37a
+  version: b2a4d4ae21c789b689dd162deb819665567f481c
+  repo: git://git.apache.org/thrift.git
+  vcs: git
   subpackages:
   - lib/go/thrift
 - name: github.com/beorn7/perks
@@ -150,50 +152,64 @@ imports:
   - multi
   - prometheus
   - statsd
+- name: github.com/uber/tchannel-go
+  version: 0b7f160817553b0bacb5b108dd84a5022dbdd1c4
+  subpackages:
+  - internal/argreader
+  - relay
+  - tnet
+  - trand
+  - typed
 - name: go.uber.org/atomic
   version: 4e336646b2ef9fc6e47be8e21594178f98e5ebcf
-- name: go.uber.org/yarpc
-  version: b8e8c0ff7b690926285c2d87d5ea222700310457
+- name: go.uber.org/multierr
+  version: a3d1fc1f1316d4132fc61f4ea1159ae0613fb474
+- name: go.uber.org/thriftrw
+  version: dde90c2a40f45fb2b6361d13c1b4bf09465401c0
   subpackages:
-  - encoding/json
-  - encoding/thrift
-  - encoding/thrift/internal
+  - internal/semver
+  - version
+- name: go.uber.org/yarpc
+  version: 6b9245d126758870690c44f27f695cc7e811f913
+  subpackages:
+  - api/encoding
+  - api/middleware
+  - api/peer
+  - api/transport
+  - api/transport/transporttest
   - internal
-  - internal
-  - internal/baggage
   - internal/clientconfig
-  - internal/encoding
-  - internal/encoding
   - internal/errors
-  - internal/errors
-  - internal/filter
   - internal/inboundmiddleware
-  - internal/interceptor
-  - internal/meta
-  - internal/meta
+  - internal/introspection
+  - internal/iopool
   - internal/net
-  - internal/net
+  - internal/observability
   - internal/outboundmiddleware
+  - internal/pally
+  - internal/protoplugin
   - internal/request
-  - internal/request
-  - internal/sync
   - internal/sync
   - peer
   - peer/hostport
-  - peer/single
-  - transport
   - transport/http
-  - transport/internal
-  - transport/tchannel
-  - transport/tchannel/internal
-  - transport/transporttest
+- name: go.uber.org/zap
+  version: fab453050a7a08c35f31fc5fff6f2dbd962285ab
+  subpackages:
+  - buffer
+  - internal/bufferpool
+  - internal/color
+  - internal/exit
+  - internal/multierror
+  - zapcore
 - name: golang.org/x/net
   version: 45e771701b814666a7eb299e6c7a57d0b1799e91
   subpackages:
   - context
   - context/ctxhttp
 - name: golang.org/x/sys
-  version: d75a52659825e75fff6158388dddc6a5b04f9ba5
+  version: 98b5b1e7e80eb60271c8dc4eba6521ec2c3e811e
+  repo: https://github.com/golang/sys
   subpackages:
   - unix
   - windows

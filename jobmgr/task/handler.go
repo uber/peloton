@@ -9,7 +9,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
@@ -27,27 +26,22 @@ const (
 
 // InitServiceHandler initializes the TaskManager
 func InitServiceHandler(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	hostmgrClientName string) {
 
-	handler := serviceHandler{
+	handler := &serviceHandler{
 		taskStore:     taskStore,
 		jobStore:      jobStore,
 		metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		rootCtx:       context.Background(),
-		hostmgrClient: json.New(d.ClientConfig(hostmgrClientName)),
+		hostmgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostmgrClientName)),
 		httpClient:    &http.Client{Timeout: httpClientTimeout},
 	}
-	json.Register(d, json.Procedure("TaskManager.Get", handler.Get))
-	json.Register(d, json.Procedure("TaskManager.List", handler.List))
-	json.Register(d, json.Procedure("TaskManager.Start", handler.Start))
-	json.Register(d, json.Procedure("TaskManager.Stop", handler.Stop))
-	json.Register(d, json.Procedure("TaskManager.Restart", handler.Restart))
-	json.Register(d, json.Procedure("TaskManager.Query", handler.Query))
-	json.Register(d, json.Procedure("TaskManager.BrowseSandbox", handler.BrowseSandbox))
+
+	d.Register(task.BuildTaskManagerYarpcProcedures(handler))
 }
 
 // serviceHandler implements peloton.api.task.TaskManager
@@ -56,14 +50,13 @@ type serviceHandler struct {
 	jobStore      storage.JobStore
 	metrics       *Metrics
 	rootCtx       context.Context
-	hostmgrClient json.Client
+	hostmgrClient hostsvc.InternalHostServiceYarpcClient
 	httpClient    *http.Client
 }
 
 func (m *serviceHandler) Get(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	body *task.GetRequest) (*task.GetResponse, yarpc.ResMeta, error) {
+	body *task.GetRequest) (*task.GetResponse, error) {
 
 	log.Infof("TaskManager.Get called: %v", body)
 	m.metrics.TaskAPIGet.Inc(1)
@@ -75,7 +68,7 @@ func (m *serviceHandler) Get(
 				Id:      body.JobId,
 				Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	result, err := m.taskStore.GetTaskForJob(body.JobId, body.InstanceId)
@@ -84,7 +77,7 @@ func (m *serviceHandler) Get(
 		m.metrics.TaskGet.Inc(1)
 		return &task.GetResponse{
 			Result: taskInfo,
-		}, nil, nil
+		}, nil
 	}
 
 	m.metrics.TaskGetFail.Inc(1)
@@ -93,13 +86,12 @@ func (m *serviceHandler) Get(
 			JobId:         body.JobId,
 			InstanceCount: jobConfig.InstanceCount,
 		},
-	}, nil, nil
+	}, nil
 }
 
 func (m *serviceHandler) List(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	body *task.ListRequest) (*task.ListResponse, yarpc.ResMeta, error) {
+	body *task.ListRequest) (*task.ListResponse, error) {
 
 	log.Infof("TaskManager.List called: %v", body)
 	m.metrics.TaskAPIList.Inc(1)
@@ -112,7 +104,7 @@ func (m *serviceHandler) List(
 				Id:      body.JobId,
 				Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
 			},
-		}, nil, nil
+		}, nil
 	}
 	var result map[uint32]*task.TaskInfo
 	if body.Range == nil {
@@ -133,7 +125,7 @@ func (m *serviceHandler) List(
 				Id:      body.JobId,
 				Message: fmt.Sprintf("err= %v", err),
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	m.metrics.TaskList.Inc(1)
@@ -141,25 +133,23 @@ func (m *serviceHandler) List(
 		Result: &task.ListResponse_Result{
 			Value: result,
 		},
-	}, nil, nil
+	}, nil
 }
 
 func (m *serviceHandler) Start(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	body *task.StartRequest) (*task.StartResponse, yarpc.ResMeta, error) {
+	body *task.StartRequest) (*task.StartResponse, error) {
 
 	log.Infof("TaskManager.Start called: %v", body)
 	m.metrics.TaskAPIStart.Inc(1)
 	m.metrics.TaskStart.Inc(1)
-	return &task.StartResponse{}, nil, nil
+	return &task.StartResponse{}, nil
 }
 
 // Stop implements TaskManager.Stop, tries to stop tasks in a given job.
 func (m *serviceHandler) Stop(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	body *task.StopRequest) (*task.StopResponse, yarpc.ResMeta, error) {
+	body *task.StopRequest) (*task.StopResponse, error) {
 
 	log.WithField("request", body).Info("TaskManager.Stop called")
 	m.metrics.TaskAPIStop.Inc(1)
@@ -179,7 +169,7 @@ func (m *serviceHandler) Stop(
 					Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	var instanceIds []uint32
@@ -229,7 +219,7 @@ func (m *serviceHandler) Stop(
 				},
 			},
 			InvalidInstanceIds: invalidInstanceIds,
-		}, nil, nil
+		}, nil
 	}
 
 	// tasksToKill only includes taks ids whose goal state update succeeds.
@@ -264,18 +254,12 @@ func (m *serviceHandler) Stop(
 	// TODO(mu): Add kill retry module since the kill msg to mesos could get lost.
 	if len(tasksToKill) > 0 {
 		log.WithField("tasks_to_kill", tasksToKill).Info("Call HM to kill tasks.")
-		var response hostsvc.KillTasksResponse
 		var request = &hostsvc.KillTasksRequest{
 			TaskIds: tasksToKill,
 		}
-		_, killTasksInHostmgrErr := m.hostmgrClient.Call(
-			ctx,
-			yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks"),
-			request,
-			&response,
-		)
-		if killTasksInHostmgrErr != nil {
-			log.WithError(killTasksInHostmgrErr).
+		_, err := m.hostmgrClient.KillTasks(ctx, request)
+		if err != nil {
+			log.WithError(err).
 				WithField("tasks", tasksToKill).
 				Error("Failed to kill tasks on host manager")
 		}
@@ -290,29 +274,27 @@ func (m *serviceHandler) Stop(
 			},
 			InvalidInstanceIds: invalidInstanceIds,
 			StoppedInstanceIds: stoppedInstanceIds,
-		}, nil, nil
+		}, nil
 	}
 	return &task.StopResponse{
 		InvalidInstanceIds: invalidInstanceIds,
 		StoppedInstanceIds: stoppedInstanceIds,
-	}, nil, nil
+	}, nil
 }
 
 func (m *serviceHandler) Restart(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	body *task.RestartRequest) (*task.RestartResponse, yarpc.ResMeta, error) {
+	body *task.RestartRequest) (*task.RestartResponse, error) {
 
 	log.Infof("TaskManager.Restart called: %v", body)
 	m.metrics.TaskAPIRestart.Inc(1)
 	m.metrics.TaskRestart.Inc(1)
-	return &task.RestartResponse{}, nil, nil
+	return &task.RestartResponse{}, nil
 }
 
 func (m *serviceHandler) Query(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	body *task.QueryRequest) (*task.QueryResponse, yarpc.ResMeta, error) {
+	body *task.QueryRequest) (*task.QueryResponse, error) {
 
 	log.Infof("TaskManager.Query called: %v", body)
 	m.metrics.TaskAPIQuery.Inc(1)
@@ -327,7 +309,7 @@ func (m *serviceHandler) Query(
 					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	// TODO: Support filter and order arguments.
@@ -341,7 +323,7 @@ func (m *serviceHandler) Query(
 					Message: fmt.Sprintf("err= %v", err),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	m.metrics.TaskQuery.Inc(1)
@@ -350,13 +332,12 @@ func (m *serviceHandler) Query(
 		Offset:  body.Offset,
 		Limit:   body.Limit,
 		Total:   total,
-	}, nil, nil
+	}, nil
 }
 
 func (m *serviceHandler) BrowseSandbox(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *task.BrowseSandboxRequest) (*task.BrowseSandboxResponse, yarpc.ResMeta, error) {
+	req *task.BrowseSandboxRequest) (*task.BrowseSandboxResponse, error) {
 
 	log.WithField("req", req).Info("taskmanager getlogurls called")
 	m.metrics.TaskAPIListLogs.Inc(1)
@@ -373,7 +354,7 @@ func (m *serviceHandler) BrowseSandbox(
 					Message: fmt.Sprintf("job %v not found, %v", req.JobId, err),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	result, err := m.taskStore.GetTaskForJob(req.JobId, req.InstanceId)
@@ -390,7 +371,7 @@ func (m *serviceHandler) BrowseSandbox(
 					InstanceCount: jobConfig.InstanceCount,
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	var taskInfo *task.TaskInfo
@@ -407,7 +388,7 @@ func (m *serviceHandler) BrowseSandbox(
 					Message: "taskinfo does not have hostname",
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	logManager := logmanager.NewLogManager(m.httpClient)
@@ -431,7 +412,7 @@ func (m *serviceHandler) BrowseSandbox(
 					),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	m.metrics.TaskListLogs.Inc(1)
@@ -439,5 +420,5 @@ func (m *serviceHandler) BrowseSandbox(
 		Hostname: hostname,
 		Port:     "5051",
 		Paths:    logPaths,
-	}, nil, nil
+	}, nil
 }

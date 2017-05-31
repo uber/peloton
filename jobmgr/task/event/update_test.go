@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -22,10 +21,10 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	jm_task "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
-	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
 const (
@@ -38,7 +37,7 @@ type TaskUpdaterTestSuite struct {
 	updater          *statusUpdate
 	ctrl             *gomock.Controller
 	testScope        tally.TestScope
-	mockResmgrClient *yarpc_mocks.MockClient
+	mockResmgrClient *res_mocks.MockResourceManagerServiceYarpcClient
 	mockJobStore     *store_mocks.MockJobStore
 	mockTaskStore    *store_mocks.MockTaskStore
 }
@@ -46,7 +45,7 @@ type TaskUpdaterTestSuite struct {
 func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
-	suite.mockResmgrClient = yarpc_mocks.NewMockClient(suite.ctrl)
+	suite.mockResmgrClient = res_mocks.NewMockResourceManagerServiceYarpcClient(suite.ctrl)
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
 	suite.testScope = tally.NewTestScope("", map[string]string{})
@@ -169,7 +168,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 
 	tasks := []*task.TaskInfo{taskInfo}
 	gangs := jm_task.ConvertToResMgrGangs(tasks, jobConfig)
-	enqueueGangsStr := "ResourceManagerService.EnqueueGangs"
 	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(pelotonTaskID).
@@ -178,14 +176,12 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 		GetJobConfig(pelotonJobID).
 		Return(jobConfig, nil)
 	suite.mockResmgrClient.EXPECT().
-		Call(
+		EnqueueGangs(
 			gomock.Any(),
-			gomock.Eq(yarpc.NewReqMeta().Procedure(enqueueGangsStr)),
 			gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
 				Gangs: gangs,
-			}),
-			gomock.Any()).
-		Return(nil, nil)
+			})).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 	suite.mockTaskStore.EXPECT().
 		UpdateTask(gomock.Any()).
 		Do(func(updateTask *task.TaskInfo) {

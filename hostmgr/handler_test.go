@@ -187,9 +187,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 	suite.checkResourcesGauges(0, "placing")
 
 	// Empty constraint.
-	acquiredResp, _, err := suite.handler.AcquireHostOffers(
+	acquiredResp, err := suite.handler.AcquireHostOffers(
 		rootCtx,
-		nil,
 		&hostsvc.AcquireHostOffersRequest{},
 	)
 
@@ -213,9 +212,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 			},
 		},
 	}
-	acquiredResp, _, err = suite.handler.AcquireHostOffers(
+	acquiredResp, err = suite.handler.AcquireHostOffers(
 		rootCtx,
-		nil,
 		acquireReq,
 	)
 
@@ -233,9 +231,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 	suite.checkResourcesGauges(numHosts, "placing")
 
 	// Call AcquireHostOffers again should not give us anything.
-	acquiredResp, _, err = suite.handler.AcquireHostOffers(
+	acquiredResp, err = suite.handler.AcquireHostOffers(
 		rootCtx,
-		nil,
 		acquireReq,
 	)
 
@@ -253,9 +250,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 		HostOffers: acquiredHostOffers,
 	}
 
-	releaseResp, _, err := suite.handler.ReleaseHostOffers(
+	releaseResp, err := suite.handler.ReleaseHostOffers(
 		rootCtx,
-		nil,
 		releaseReq,
 	)
 
@@ -271,9 +267,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 		suite.testScope.Snapshot().Counters()["release_host_offers+"].Value())
 
 	// Acquire again should return non empty result.
-	acquiredResp, _, err = suite.handler.AcquireHostOffers(
+	acquiredResp, err = suite.handler.AcquireHostOffers(
 		rootCtx,
-		nil,
 		acquireReq,
 	)
 
@@ -308,9 +303,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 			},
 		},
 	}
-	acquiredResp, _, err := suite.handler.AcquireHostOffers(
+	acquiredResp, err := suite.handler.AcquireHostOffers(
 		rootCtx,
-		nil,
 		acquireReq,
 	)
 
@@ -334,9 +328,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 		Tasks:    []*hostsvc.LaunchableTask{},
 	}
 
-	launchResp, _, err := suite.handler.LaunchTasks(
+	launchResp, err := suite.handler.LaunchTasks(
 		rootCtx,
-		nil,
 		launchReq,
 	)
 
@@ -387,9 +380,8 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 			Return(nil),
 	)
 
-	launchResp, _, err = suite.handler.LaunchTasks(
+	launchResp, err = suite.handler.LaunchTasks(
 		rootCtx,
-		nil,
 		launchReq,
 	)
 
@@ -449,7 +441,7 @@ func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 		Return(nil).
 		Times(2)
 
-	resp, _, err := suite.handler.KillTasks(rootCtx, nil, killReq)
+	resp, err := suite.handler.KillTasks(rootCtx, killReq)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
 	suite.Equal(
@@ -528,7 +520,7 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 		}).
 		Return(nil)
 
-	resp, _, err := suite.handler.KillTasks(rootCtx, nil, killReq)
+	resp, err := suite.handler.KillTasks(rootCtx, killReq)
 	suite.NoError(err)
 	suite.NotNil(resp.GetError().GetKillFailure())
 
@@ -597,9 +589,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 		}
 
 		// Make the cluster capacity API request
-		resp, _, _ := suite.handler.ClusterCapacity(
+		resp, _ := suite.handler.ClusterCapacity(
 			rootCtx,
-			nil,
 			clusterCapacityReq,
 		)
 

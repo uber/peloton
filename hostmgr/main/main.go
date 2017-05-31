@@ -24,7 +24,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
 
 	"code.uber.internal/infra/peloton/storage/stores"
@@ -152,10 +152,11 @@ func main() {
 		logging.LevelOverwrite,
 		logging.LevelOverwriteHandler(initialLevel))
 
+	t := http.NewTransport()
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
 	// mux in other HTTP handlers
 	inbounds := []transport.Inbound{
-		http.NewInbound(
+		t.NewInbound(
 			fmt.Sprintf(":%d", cfg.HostManager.Port),
 			http.Mux(common.PelotonEndpointPath, mux),
 		),
@@ -205,17 +206,15 @@ func main() {
 		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
 			Fatal("Could not create smart peer chooser")
 	}
-	if err := resmgrPeerChooser.Start(); err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
-			Fatal("Could not start smart peer chooser")
-	}
 	defer resmgrPeerChooser.Stop()
-	resmgrOutbound := http.NewChooserOutbound(
+
+	resmgrOutbound := t.NewOutbound(
 		resmgrPeerChooser,
-		&url.URL{
-			Scheme: "http",
-			Path:   common.PelotonEndpointPath,
-		})
+		http.URLTemplate(
+			(&url.URL{
+				Scheme: "http",
+				Path:   common.PelotonEndpointPath,
+			}).String()))
 
 	outbounds := yarpc.Outbounds{
 		common.MesosMasterScheduler: mOutbound,

@@ -42,7 +42,7 @@ var handler *eventHandler
 
 // InitEventHandler initializes the event handler for offers
 func InitEventHandler(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	offerHoldTime time.Duration,
 	offerPruningPeriod time.Duration,
@@ -92,8 +92,7 @@ func GetEventHandler() EventHandler {
 }
 
 // Offers is the mesos callback that sends the offers from master
-func (h *eventHandler) Offers(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (h *eventHandler) Offers(body *sched.Event) error {
 
 	event := body.GetOffers()
 	log.WithField("event", event).Debug("OfferManager: processing Offers event")
@@ -105,8 +104,7 @@ func (h *eventHandler) Offers(
 }
 
 // InverseOffers is the mesos callback that sends the InverseOffers from master
-func (h *eventHandler) InverseOffers(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (h *eventHandler) InverseOffers(body *sched.Event) error {
 
 	event := body.GetInverseOffers()
 	log.WithField("event", event).
@@ -119,8 +117,7 @@ func (h *eventHandler) InverseOffers(
 }
 
 // Rescind offers
-func (h *eventHandler) Rescind(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (h *eventHandler) Rescind(body *sched.Event) error {
 
 	event := body.GetRescind()
 	log.WithField("event", event).Debug("OfferManager: processing Rescind event")
@@ -132,8 +129,7 @@ func (h *eventHandler) Rescind(
 }
 
 // RescindInverseOffer rescinds a inverse offer
-func (h *eventHandler) RescindInverseOffer(
-	reqMeta yarpc.ReqMeta, body *sched.Event) error {
+func (h *eventHandler) RescindInverseOffer(body *sched.Event) error {
 
 	event := body.GetRescindInverseOffer()
 	log.WithField("event", event).

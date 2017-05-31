@@ -5,11 +5,9 @@ import (
 	"io/ioutil"
 	"testing"
 
-	client_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
+	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-
-	"go.uber.org/yarpc"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -22,14 +20,14 @@ const _defaultResPoolConfig = "../example/default_respool.yaml"
 
 type resPoolActions struct {
 	suite.Suite
-	mockCtrl       *gomock.Controller
-	mockBaseClient *client_mocks.MockClient
-	ctx            context.Context
+	mockCtrl    *gomock.Controller
+	mockRespool *respool_mocks.MockResourceManagerYarpcClient
+	ctx         context.Context
 }
 
 func (suite *resPoolActions) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockBaseClient = client_mocks.NewMockClient(suite.mockCtrl)
+	suite.mockRespool = respool_mocks.NewMockResourceManagerYarpcClient(suite.mockCtrl)
 	suite.ctx = context.Background()
 }
 
@@ -98,7 +96,7 @@ func (suite *resPoolActions) getRespoolInfos() []*respool.ResourcePoolInfo {
 func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 	client := Client{
 		Debug:      false,
-		resClient:  suite.mockBaseClient,
+		resClient:  suite.mockRespool,
 		dispatcher: nil,
 		ctx:        suite.ctx,
 	}
@@ -128,17 +126,10 @@ func (suite *resPoolActions) TestClient_ResPoolDumpAction() {
 		},
 	} {
 		// Set expectations
-		suite.mockBaseClient.EXPECT().Call(
+		suite.mockRespool.EXPECT().Query(
 			suite.ctx,
-			gomock.Eq(
-				yarpc.NewReqMeta().Procedure("ResourceManager.Query"),
-			),
-			gomock.Eq(tt.request),
-			gomock.Eq(&respool.QueryResponse{}),
-		).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-			o := resBodyOut.(*respool.QueryResponse)
-			*o = *tt.response
-		}).Return(nil, nil)
+			gomock.Eq(tt.request)).
+			Return(tt.response, tt.err)
 
 		err := client.ResPoolDumpAction(tt.format)
 		if tt.err != nil {
@@ -161,7 +152,7 @@ func (suite *resPoolActions) getConfig() *respool.ResourcePoolConfig {
 func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 	c := Client{
 		Debug:      false,
-		resClient:  suite.mockBaseClient,
+		resClient:  suite.mockRespool,
 		dispatcher: nil,
 		ctx:        suite.ctx,
 	}
@@ -237,34 +228,18 @@ func (suite *resPoolActions) withMockCreateResponse(
 	resp *respool.CreateResponse,
 	err error,
 ) {
-	suite.mockBaseClient.EXPECT().Call(
-		suite.ctx,
-		gomock.Eq(
-			yarpc.NewReqMeta().Procedure("ResourceManager.CreateResourcePool"),
-		),
-		gomock.Eq(req),
-		gomock.Eq(&respool.CreateResponse{}),
-	).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-		o := resBodyOut.(*respool.CreateResponse)
-		*o = *resp
-	}).Return(nil, err)
+	suite.mockRespool.EXPECT().
+		CreateResourcePool(suite.ctx, gomock.Eq(req)).
+		Return(resp, err)
 }
 
 func (suite *resPoolActions) withMockResourcePoolLookup(
 	req *respool.LookupRequest,
 	resp *respool.LookupResponse,
 ) {
-	suite.mockBaseClient.EXPECT().Call(
-		suite.ctx,
-		gomock.Eq(
-			yarpc.NewReqMeta().Procedure("ResourceManager.LookupResourcePoolID"),
-		),
-		gomock.Eq(req),
-		gomock.Eq(&respool.LookupResponse{}),
-	).Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-		o := resBodyOut.(*respool.LookupResponse)
-		*o = *resp
-	}).Return(nil, nil)
+	suite.mockRespool.EXPECT().
+		LookupResourcePoolID(suite.ctx, gomock.Eq(req)).
+		Return(resp, nil)
 }
 
 func (suite *resPoolActions) TestParseResourcePath() {

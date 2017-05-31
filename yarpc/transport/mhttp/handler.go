@@ -1,15 +1,16 @@
 package mhttp
 
 import (
-	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
-	"go.uber.org/yarpc/transport"
-	"golang.org/x/net/context"
 	"reflect"
+
+	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
+	"go.uber.org/yarpc/api/transport"
+	"golang.org/x/net/context"
 )
 
 // handler adapts a transport.Handler into a handler for net/http.
 type handler struct {
-	ServiceDetail transport.ServiceDetail
+	Router        transport.Router
 	Service       string
 	Caller        string
 	EventDataType reflect.Type
@@ -45,10 +46,11 @@ func (h handler) HandleRecordIO(data []byte) error {
 	//	  return err
 	// }
 	var handlerSpec transport.HandlerSpec
-	handlerSpec, err = h.ServiceDetail.Registry.Choose(ctx, treq)
+	handlerSpec, err = h.Router.Choose(ctx, treq)
 	if err != nil {
 		return err
 	}
+
 	// TODO: capture and handle panic
 	return handlerSpec.Unary().Handle(ctx, treq, newResponseWriter())
 }

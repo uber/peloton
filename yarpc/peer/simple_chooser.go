@@ -6,9 +6,9 @@ import (
 	"sync"
 
 	log "github.com/Sirupsen/logrus"
-	"go.uber.org/yarpc/peer"
+	"go.uber.org/yarpc/api/peer"
+	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/peer/hostport"
-	"go.uber.org/yarpc/transport"
 	"go.uber.org/yarpc/transport/http"
 )
 
@@ -39,12 +39,17 @@ func (c *simpleChooser) Stop() error {
 	return nil
 }
 
+// IsRunning interface method. No-op
+func (c *simpleChooser) IsRunning() bool {
+	return true
+}
+
 // Choose is called when a request is sent. See go.uber.org/yarpc/transport/http/outbound.
 // Here it returns the current peer (the leader peloton master).
-func (c *simpleChooser) Choose(context.Context, *transport.Request) (peer.Peer, error) {
+func (c *simpleChooser) Choose(context.Context, *transport.Request) (peer.Peer, func(error), error) {
 	c.Lock()
 	defer c.Unlock()
-	return c.p, nil
+	return c.p, func(error) {}, nil
 }
 
 // UpdatePeer updates the current url for app

@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"testing"
 
-	"go.uber.org/yarpc"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -84,7 +82,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -104,29 +102,24 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 		mockTaskStore.EXPECT().
 			UpdateTask(gomock.Any()).Times(testInstanceCount).Return(nil),
 		mockHostmgrClient.EXPECT().
-			Call(
-				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks")),
+			KillTasks(
 				gomock.Any(),
 				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, resBodyOut interface{}) {
+			Do(func(_ context.Context, reqBody interface{}) {
 				killTaskReq := reqBody.(*hostsvc.KillTasksRequest)
 				for _, tid := range killTaskReq.TaskIds {
 					_, ok := expectedTaskIds[tid]
 					assert.Equal(suite.T(), ok, true)
 				}
-				o := resBodyOut.(*hostsvc.KillTasksResponse)
-				*o = hostsvc.KillTasksResponse{}
 			}).
-			Return(nil, nil),
+			Return(&hostsvc.KillTasksResponse{}, nil),
 	)
 
 	var request = &task.StopRequest{
 		JobId: suite.testJobID,
 	}
-	resp, _, err := suite.handler.Stop(
+	resp, err := suite.handler.Stop(
 		suite.handler.rootCtx,
-		nil,
 		request,
 	)
 	suite.NoError(err)
@@ -138,7 +131,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -158,18 +151,11 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 		mockTaskStore.EXPECT().
 			UpdateTask(gomock.Any()).Times(1).Return(nil),
 		mockHostmgrClient.EXPECT().
-			Call(
+			KillTasks(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks")),
 				gomock.Eq(&hostsvc.KillTasksRequest{
 					TaskIds: expectedTaskIds,
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*hostsvc.KillTasksResponse)
-				*o = hostsvc.KillTasksResponse{}
-			}).
-			Return(nil, nil),
+				})).Return(&hostsvc.KillTasksResponse{}, nil),
 	)
 
 	taskRanges := []*task.InstanceRange{
@@ -182,9 +168,8 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 		JobId:  suite.testJobID,
 		Ranges: taskRanges,
 	}
-	resp, _, err := suite.handler.Stop(
+	resp, err := suite.handler.Stop(
 		suite.handler.rootCtx,
-		nil,
 		request,
 	)
 	suite.NoError(err)
@@ -196,7 +181,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -220,19 +205,13 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 		mockTaskStore.EXPECT().
 			UpdateTask(gomock.Any()).Times(2).Return(nil),
 		mockHostmgrClient.EXPECT().
-			Call(
+			KillTasks(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("InternalHostService.KillTasks")),
 				gomock.Eq(&hostsvc.KillTasksRequest{
 					TaskIds: expectedTaskIds,
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, _ interface{}, resBodyOut interface{}) {
-				o := resBodyOut.(*hostsvc.KillTasksResponse)
-				*o = hostsvc.KillTasksResponse{}
-			}).
+				})).
 			Times(1).
-			Return(nil, nil),
+			Return(&hostsvc.KillTasksResponse{}, nil),
 	)
 
 	taskRanges := []*task.InstanceRange{
@@ -245,9 +224,8 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 		JobId:  suite.testJobID,
 		Ranges: taskRanges,
 	}
-	resp, _, err := suite.handler.Stop(
+	resp, err := suite.handler.Stop(
 		suite.handler.rootCtx,
-		nil,
 		request,
 	)
 	suite.NoError(err)
@@ -259,7 +237,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -292,9 +270,8 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 		JobId:  suite.testJobID,
 		Ranges: taskRanges,
 	}
-	resp, _, err := suite.handler.Stop(
+	resp, err := suite.handler.Stop(
 		suite.handler.rootCtx,
-		nil,
 		request,
 	)
 	suite.NoError(err)
@@ -310,7 +287,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidJobID() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -327,9 +304,8 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidJobID() {
 	var request = &task.StopRequest{
 		JobId: suite.testJobID,
 	}
-	resp, _, err := suite.handler.Stop(
+	resp, err := suite.handler.Stop(
 		suite.handler.rootCtx,
-		nil,
 		request,
 	)
 	suite.NoError(err)
@@ -342,7 +318,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithTaskUpdateFailure() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := yarpc_mocks.NewMockClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -361,9 +337,8 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithTaskUpdateFailure() {
 	var request = &task.StopRequest{
 		JobId: suite.testJobID,
 	}
-	resp, _, err := suite.handler.Stop(
+	resp, err := suite.handler.Stop(
 		suite.handler.rootCtx,
-		nil,
 		request,
 	)
 	suite.NoError(err)
@@ -395,11 +370,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithoutHostname() {
 		JobId:      suite.testJobID,
 		InstanceId: 0,
 	}
-	resp, _, err := suite.handler.BrowseSandbox(
-		suite.handler.rootCtx,
-		nil,
-		request,
-	)
+	resp, err := suite.handler.BrowseSandbox(suite.handler.rootCtx, request)
 	suite.NoError(err)
 	suite.NotNil(resp.GetError())
 }

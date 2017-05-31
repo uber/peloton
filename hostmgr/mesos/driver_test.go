@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	_encoding      = mpb.ContentTypeJson
+	_encoding      = mpb.ContentTypeJSON
 	_zkPath        = "zkpath"
 	_frameworkID   = "framework-id"
 	_frameworkName = "framework-name"

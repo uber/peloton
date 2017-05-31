@@ -11,7 +11,6 @@ import (
 	"github.com/uber-go/tally"
 
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -45,8 +44,8 @@ type Launcher interface {
 type launcher struct {
 	sync.Mutex
 
-	resMgrClient  json.Client
-	hostMgrClient json.Client
+	resMgrClient  resmgrsvc.ResourceManagerServiceYarpcClient
+	hostMgrClient hostsvc.InternalHostServiceYarpcClient
 	rootCtx       context.Context
 	started       int32
 	shutdown      int32
@@ -65,7 +64,7 @@ var onceInitTaskLauncher sync.Once
 
 // InitTaskLauncher initializes a Task Launcher
 func InitTaskLauncher(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	resMgrClientName string,
 	hostMgrClientName string,
 	taskStore storage.TaskStore,
@@ -79,8 +78,8 @@ func InitTaskLauncher(
 		}
 
 		taskLauncher = &launcher{
-			resMgrClient:  json.New(d.ClientConfig(resMgrClientName)),
-			hostMgrClient: json.New(d.ClientConfig(hostMgrClientName)),
+			resMgrClient:  resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resMgrClientName)),
+			hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostMgrClientName)),
 			rootCtx:       context.Background(),
 			taskStore:     taskStore,
 			config:        config,
@@ -129,19 +128,13 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 	ctx, cancelFunc := context.WithTimeout(l.rootCtx, timeoutFunctionCall)
 	defer cancelFunc()
 
-	var response resmgrsvc.GetPlacementsResponse
-	request := resmgrsvc.GetPlacementsRequest{
+	request := &resmgrsvc.GetPlacementsRequest{
 		Limit:   uint32(l.config.PlacementDequeueLimit),
 		Timeout: uint32(l.config.GetPlacementsTimeout),
 	}
 
 	callStart := time.Now()
-	_, err := l.resMgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManagerService.GetPlacements"),
-		request,
-		&response,
-	)
+	response, err := l.resMgrClient.GetPlacements(ctx, request)
 	callDuration := time.Since(callStart)
 
 	if err != nil {
@@ -150,7 +143,7 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 		return nil, err
 	}
 
-	if response.Error != nil {
+	if response.GetError() != nil {
 		log.WithFields(log.Fields{
 			"num_placements": len(response.Placements),
 			"error":          response.Error.String(),
@@ -159,7 +152,7 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 		return nil, err
 	}
 
-	if len(response.Placements) != 0 {
+	if len(response.GetPlacements()) != 0 {
 		log.WithFields(log.Fields{
 			"num_placements": len(response.Placements),
 			"duration":       callDuration.Seconds(),
@@ -168,9 +161,9 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 
 	// TODO: turn getplacement metric into gauge so we can
 	//       get the current get_placements counts
-	l.metrics.GetPlacement.Inc(int64(len(response.Placements)))
+	l.metrics.GetPlacement.Inc(int64(len(response.GetPlacements())))
 	l.metrics.GetPlacementsCallDuration.Record(callDuration)
-	return response.Placements, nil
+	return response.GetPlacements(), nil
 }
 
 func (l *launcher) isRunning() bool {
@@ -322,7 +315,6 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 	log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
 	ctx, cancelFunc := context.WithTimeout(l.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var response hostsvc.LaunchTasksResponse
 	var request = &hostsvc.LaunchTasksRequest{
 		Hostname: placement.GetHostname(),
 		Tasks:    selectedTasks,
@@ -332,12 +324,7 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 	log.WithField("request", request).Debug("LaunchTasks Called")
 
 	callStart := time.Now()
-	_, err := l.hostMgrClient.Call(
-		ctx,
-		yarpc.NewReqMeta().Procedure("InternalHostService.LaunchTasks"),
-		request,
-		&response,
-	)
+	response, err := l.hostMgrClient.LaunchTasks(ctx, request)
 	callDuration := time.Since(callStart)
 
 	if err != nil {
@@ -351,7 +338,7 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 
 	log.WithField("response", response).Debug("LaunchTasks returned")
 
-	if response.Error != nil {
+	if response.GetError() != nil {
 		log.WithFields(log.Fields{
 			"num_tasks": len(selectedTasks),
 			"placement": placement,

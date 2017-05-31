@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
-	"go.uber.org/yarpc"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -20,10 +18,10 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
+	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	jtask "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
-	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 )
 
 const (
@@ -108,8 +106,8 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := yarpc_mocks.NewMockClient(ctrl)
-	suite.handler.client = mockResmgrClient
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	suite.handler.resmgrClient = mockResmgrClient
 	var tasksInfo []*task.TaskInfo
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
@@ -118,23 +116,21 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
-			Call(
+			EnqueueGangs(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
 				gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
 					Gangs: gangs,
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+				})).
+			Do(func(_ context.Context, reqBody interface{}) {
 				req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
 				for _, g := range req.Gangs {
 					expectedGangs = append(expectedGangs, g)
 				}
 			}).
-			Return(nil, nil),
+			Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	jtask.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, suite.handler.client)
+	jtask.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
 	suite.Equal(gangs, expectedGangs)
 }
 
@@ -142,34 +138,30 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := yarpc_mocks.NewMockClient(ctrl)
-	suite.handler.client = mockResmgrClient
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	suite.handler.resmgrClient = mockResmgrClient
 	var tasksInfo []*task.TaskInfo
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
 	gangs := jtask.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
 	var expectedGangs []*resmgrsvc.Gang
-	var err error
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
-			Call(
+			EnqueueGangs(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
 				gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
 					Gangs: gangs,
-				}),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+				})).
+			Do(func(_ context.Context, reqBody interface{}) {
 				req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
 				for _, g := range req.Gangs {
 					expectedGangs = append(expectedGangs, g)
 				}
-				err = errors.New("Resmgr Error")
 			}).
-			Return(nil, err),
+			Return(nil, errors.New("Resmgr Error")),
 	)
-	jtask.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, suite.handler.client)
+	err := jtask.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
 	suite.Error(err)
 }
 
@@ -177,8 +169,8 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := yarpc_mocks.NewMockClient(ctrl)
-	suite.handler.client = mockResmgrClient
+	mockRespoolClient := respool_mocks.NewMockResourceManagerYarpcClient(ctrl)
+	suite.handler.respoolClient = mockRespoolClient
 	respoolID := &respool.ResourcePoolID{
 		Value: "respool11",
 	}
@@ -186,19 +178,12 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool() {
 		Id: respoolID,
 	}
 
-	var err error
 	gomock.InOrder(
-		mockResmgrClient.EXPECT().
-			Call(
+		mockRespoolClient.EXPECT().
+			GetResourcePool(
 				gomock.Any(),
-				gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManager.GetResourcePool")),
-				gomock.Eq(request),
-				gomock.Any()).
-			Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
-				req := reqBody.(*respool.GetRequest)
-				err = errors.New("Respool Not found " + req.Id.Value)
-			}).
-			Return(nil, err),
+				gomock.Eq(request)).
+			Return(nil, errors.New("Respool Not found")),
 	)
 	errResponse := suite.handler.validateResourcePool(respoolID)
 	suite.Error(errResponse)
@@ -229,8 +214,8 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
-	mockResmgrClient := yarpc_mocks.NewMockClient(ctrl)
-	suite.handler.client = mockResmgrClient
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	suite.handler.resmgrClient = mockResmgrClient
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore
 	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
@@ -261,15 +246,8 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		GetTasksForJobAndState(jobID, gomock.Any()).
 		Return(map[uint32]*task.TaskInfo{}, nil).
 		AnyTimes()
-	var response resmgrsvc.EnqueueGangsResponse
-	mockResmgrClient.EXPECT().
-		Call(
-			gomock.Any(),
-			gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
-			gomock.Any(),
-			&response).
-		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {}).
-		Return(nil, nil).
+	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil).
 		AnyTimes()
 
 	req := &job.UpdateRequest{
@@ -277,7 +255,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		Config: &newJobConfig,
 	}
 
-	resp, _, err := suite.handler.Update(suite.context, nil, req)
+	resp, err := suite.handler.Update(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
 	suite.Equal(jobID, resp.Id)
@@ -294,7 +272,7 @@ func (suite *JobHandlerTestSuite) TestJobQuery() {
 	suite.handler.jobStore = mockJobStore
 
 	req := &job.QueryRequest{}
-	resp, _, err := suite.handler.Query(suite.context, nil, req)
+	resp, err := suite.handler.Query(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
 }

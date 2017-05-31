@@ -8,9 +8,8 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
-	transport_mocks "go.uber.org/yarpc/transport/transporttest"
+	"go.uber.org/yarpc/api/transport"
+	transport_mocks "go.uber.org/yarpc/api/transport/transporttest"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gogo/protobuf/proto"
@@ -92,7 +91,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 		frameworkID string
 		encoding    string
 		callResp    proto.Message
-		headers     yarpc.Headers
+		headers     transport.Headers
 		errMsg      string
 		callErr     bool
 	}{
@@ -138,7 +137,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 					},
 				},
 			},
-			headers: yarpc.NewHeaders().With("a", "b"),
+			headers: transport.NewHeaders().With("a", "b"),
 			errMsg:  "",
 			callErr: false,
 		},
@@ -165,7 +164,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 					},
 				},
 			},
-			headers: yarpc.NewHeaders().With("a", "b"),
+			headers: transport.NewHeaders().With("a", "b"),
 			errMsg:  "no resources configured",
 			callErr: false,
 		},
@@ -176,7 +175,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			callResp: &mesos_master.Response{
 				GetRoles: nil,
 			},
-			headers: yarpc.NewHeaders().With("a", "b"),
+			headers: transport.NewHeaders().With("a", "b"),
 			errMsg:  "no resources fetched",
 			callErr: false,
 		},

@@ -10,12 +10,11 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/jobmgr/task"
@@ -45,7 +44,7 @@ type statusUpdate struct {
 	applier           *asyncEventProcessor
 	jobRuntimeUpdater Listener
 	rootCtx           context.Context
-	resmgrClient      json.Client
+	resmgrClient      resmgrsvc.ResourceManagerServiceYarpcClient
 	metrics           *Metrics
 }
 
@@ -55,7 +54,7 @@ var onceInitStatusUpdate sync.Once
 
 // InitTaskStatusUpdate creates a statusUpdate
 func InitTaskStatusUpdate(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	server string,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
@@ -71,7 +70,7 @@ func InitTaskStatusUpdate(
 			jobStore:     jobStore,
 			taskStore:    taskStore,
 			rootCtx:      context.Background(),
-			resmgrClient: json.New(d.ClientConfig(resmgrClientName)),
+			resmgrClient: resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resmgrClientName)),
 			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
 			eventClients: make(map[string]*eventstream.Client),
 		}
@@ -93,7 +92,6 @@ func InitTaskStatusUpdate(
 			statusUpdater,
 			parentScope.SubScope("ResmgrEventStreamClient"))
 		statusUpdater.eventClients[common.PelotonResourceManager] = eventClientRM
-
 		statusUpdater.jobRuntimeUpdater = jobRuntimeUpdater
 	})
 }

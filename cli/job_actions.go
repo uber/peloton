@@ -12,7 +12,6 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
-	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
 )
 
@@ -50,19 +49,13 @@ func (client *Client) JobCreateAction(jobID string, respoolPath string, cfg stri
 	// set the resource pool ID
 	jobConfig.RespoolID = respoolID
 
-	var response job.CreateResponse
 	var request = &job.CreateRequest{
 		Id: &peloton.JobID{
 			Value: jobID,
 		},
 		Config: &jobConfig,
 	}
-	_, err = client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("JobManager.Create"),
-		request,
-		&response,
-	)
+	response, err := client.jobClient.Create(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -72,18 +65,12 @@ func (client *Client) JobCreateAction(jobID string, respoolPath string, cfg stri
 
 // JobDeleteAction is the action for deleting a job
 func (client *Client) JobDeleteAction(jobName string) error {
-	var response job.DeleteResponse
 	var request = &job.DeleteRequest{
 		Id: &peloton.JobID{
 			Value: jobName,
 		},
 	}
-	_, err := client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("JobManager.Delete"),
-		request,
-		&response,
-	)
+	response, err := client.jobClient.Delete(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -93,18 +80,12 @@ func (client *Client) JobDeleteAction(jobName string) error {
 
 // JobGetAction is the action for getting a job
 func (client *Client) JobGetAction(jobName string) error {
-	var response job.GetResponse
 	var request = &job.GetRequest{
 		Id: &peloton.JobID{
 			Value: jobName,
 		},
 	}
-	_, err := client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("JobManager.Get"),
-		request,
-		&response,
-	)
+	response, err := client.jobClient.Get(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -137,18 +118,12 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 			return err
 		}
 	}
-	var response job.QueryResponse
 	var request = &job.QueryRequest{
 		RespoolID: respoolID,
 		Labels:    &mesosLabels,
 		Keywords:  strings.Split(keywords, labelSeparator),
 	}
-	_, err = client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("JobManager.Query"),
-		request,
-		&response,
-	)
+	response, err := client.jobClient.Query(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -167,19 +142,13 @@ func (client *Client) JobUpdateAction(jobName string, cfg string) error {
 		return fmt.Errorf("Unable to parse file %s: %v", cfg, err)
 	}
 
-	var response job.UpdateResponse
 	var request = &job.UpdateRequest{
 		Id: &peloton.JobID{
 			Value: jobName,
 		},
 		Config: &jobConfig,
 	}
-	_, err = client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("JobManager.Update"),
-		request,
-		&response,
-	)
+	response, err := client.jobClient.Update(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -188,7 +157,7 @@ func (client *Client) JobUpdateAction(jobName string, cfg string) error {
 	return nil
 }
 
-func printJobUpdateResponse(r job.UpdateResponse, debug bool) {
+func printJobUpdateResponse(r *job.UpdateResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -207,7 +176,7 @@ func printJobUpdateResponse(r job.UpdateResponse, debug bool) {
 	}
 }
 
-func printJobCreateResponse(r job.CreateResponse, debug bool) {
+func printJobCreateResponse(r *job.CreateResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -232,7 +201,7 @@ func printJobCreateResponse(r job.CreateResponse, debug bool) {
 	}
 }
 
-func printJobDeleteResponse(r job.DeleteResponse, debug bool) {
+func printJobDeleteResponse(r *job.DeleteResponse, debug bool) {
 	// TODO: when DeleteResponse has useful fields in it, fill me in!
 	// Right now, its completely empty
 	if debug {
@@ -243,7 +212,7 @@ func printJobDeleteResponse(r job.DeleteResponse, debug bool) {
 	}
 }
 
-func printJobGetResponse(r job.GetResponse, debug bool) {
+func printJobGetResponse(r *job.GetResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -260,7 +229,7 @@ func printJobGetResponse(r job.GetResponse, debug bool) {
 	}
 }
 
-func printJobQueryResponse(r job.QueryResponse, debug bool) {
+func printJobQueryResponse(r *job.QueryResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {

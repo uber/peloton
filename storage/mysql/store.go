@@ -81,7 +81,7 @@ type Config struct {
 	Password     string `yaml:"password"`
 	Host         string `yaml:"host"`
 	Port         int    `yaml:"port"`
-	Database     string `yaml:"database",validate:"nonzero"`
+	Database     string `yaml:"database" validate:"nonzero"`
 	Migrations   string `yaml:"migrations"`
 	ReadOnly     bool
 	Conn         *sqlx.DB

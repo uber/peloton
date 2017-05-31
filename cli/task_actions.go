@@ -6,8 +6,6 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-
-	"go.uber.org/yarpc"
 )
 
 const (
@@ -25,19 +23,13 @@ func (a SortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].
 
 // TaskGetAction is the action to get a task instance
 func (client *Client) TaskGetAction(jobName string, instanceID uint32) error {
-	var response task.GetResponse
 	var request = &task.GetRequest{
 		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		InstanceId: instanceID,
 	}
-	_, err := client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("TaskManager.Get"),
-		request,
-		&response,
-	)
+	response, err := client.taskClient.Get(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -53,13 +45,7 @@ func (client *Client) TaskListAction(jobName string, instanceRange *task.Instanc
 		},
 		Range: instanceRange,
 	}
-	var response task.ListResponse
-	_, err := client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("TaskManager.List"),
-		request,
-		&response,
-	)
+	response, err := client.taskClient.List(client.ctx, request)
 
 	if err != nil {
 		return err
@@ -70,19 +56,13 @@ func (client *Client) TaskListAction(jobName string, instanceRange *task.Instanc
 
 // TaskStartAction is the action to start a task
 func (client *Client) TaskStartAction(jobName string, instanceRanges []*task.InstanceRange) error {
-	var response task.StartResponse
 	var request = &task.StartRequest{
 		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		Ranges: instanceRanges,
 	}
-	_, err := client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("TaskManager.Start"),
-		request,
-		&response,
-	)
+	response, err := client.taskClient.Start(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -92,19 +72,13 @@ func (client *Client) TaskStartAction(jobName string, instanceRanges []*task.Ins
 
 // TaskStopAction is the action to stop a task
 func (client *Client) TaskStopAction(jobName string, instanceRanges []*task.InstanceRange) error {
-	var response task.StopResponse
 	var request = &task.StopRequest{
 		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		Ranges: instanceRanges,
 	}
-	_, err := client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("TaskManager.Stop"),
-		request,
-		&response,
-	)
+	response, err := client.taskClient.Stop(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -114,19 +88,13 @@ func (client *Client) TaskStopAction(jobName string, instanceRanges []*task.Inst
 
 // TaskRestartAction is the action to restart a task
 func (client *Client) TaskRestartAction(jobName string, instanceRanges []*task.InstanceRange) error {
-	var response task.RestartResponse
 	var request = &task.RestartRequest{
 		JobId: &peloton.JobID{
 			Value: jobName,
 		},
 		Ranges: instanceRanges,
 	}
-	_, err := client.jobClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("TaskManager.Restart"),
-		request,
-		&response,
-	)
+	response, err := client.taskClient.Restart(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -134,7 +102,7 @@ func (client *Client) TaskRestartAction(jobName string, instanceRanges []*task.I
 	return nil
 }
 
-func printTaskGetResponse(r task.GetResponse, debug bool) {
+func printTaskGetResponse(r *task.GetResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -172,7 +140,7 @@ func printTaskGetResponse(r task.GetResponse, debug bool) {
 	tabWriter.Flush()
 }
 
-func printTaskListResponse(r task.ListResponse, debug bool) {
+func printTaskListResponse(r *task.ListResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -215,7 +183,7 @@ func printTaskListResponse(r task.ListResponse, debug bool) {
 	tabWriter.Flush()
 }
 
-func printTaskStartResponse(r task.StartResponse, debug bool) {
+func printTaskStartResponse(r *task.StartResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -232,7 +200,7 @@ func printTaskStartResponse(r task.StartResponse, debug bool) {
 	tabWriter.Flush()
 }
 
-func printTaskStopResponse(r task.StopResponse, debug bool) {
+func printTaskStopResponse(r *task.StopResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
@@ -247,7 +215,7 @@ func printTaskStopResponse(r task.StopResponse, debug bool) {
 			} else if r.GetError().GetOutOfRange() != nil {
 				fmt.Fprintf(
 					tabWriter,
-					"Requested instances:%v of job %s is not within "+
+					"Requested instances:%d of job %s is not within "+
 						"the range of valid instances (0...%d)\n",
 					r.GetInvalidInstanceIds(),
 					r.GetError().GetOutOfRange().GetJobId().GetValue(),
@@ -273,7 +241,7 @@ func printTaskStopResponse(r task.StopResponse, debug bool) {
 	tabWriter.Flush()
 }
 
-func printTaskRestartResponse(r task.RestartResponse, debug bool) {
+func printTaskRestartResponse(r *task.RestartResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {

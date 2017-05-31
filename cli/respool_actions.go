@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"go.uber.org/yarpc"
 	"gopkg.in/yaml.v2"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
@@ -50,16 +49,10 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 	// set parent ID
 	respoolConfig.Parent = parentID
 
-	var response respool.CreateResponse
 	var request = &respool.CreateRequest{
 		Config: &respoolConfig,
 	}
-	_, err = client.resClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManager.CreateResourcePool"),
-		request,
-		&response,
-	)
+	response, err := client.resClient.CreateResourcePool(client.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -81,23 +74,15 @@ func readResourcePoolConfig(cfgFile string) (respool.ResourcePoolConfig, error) 
 
 // ResPoolDumpAction dumps the resource pool tree
 func (client *Client) ResPoolDumpAction(resPoolDumpFormat string) error {
-	var response respool.QueryResponse
-	request := &respool.QueryRequest{}
-	_, err := client.resClient.Call(
-		client.ctx,
-		yarpc.NewReqMeta().Procedure("ResourceManager.Query"),
-		request,
-		&response,
-	)
+	response, err := client.resClient.Query(client.ctx, &respool.QueryRequest{})
 	if err != nil {
 		return err
 	}
 
-	err = printResPoolDumpResponse(resPoolDumpFormat, response)
-	return err
+	return printResPoolDumpResponse(resPoolDumpFormat, response)
 }
 
-func printResPoolDumpResponse(resPoolDumpFormat string, r respool.QueryResponse) error {
+func printResPoolDumpResponse(resPoolDumpFormat string, r *respool.QueryResponse) error {
 	if r.Error != nil {
 		return errors.New("error dumping resource pools")
 	}
@@ -146,7 +131,7 @@ func parseParentPath(resourcePoolPath string) string {
 	return parentPath
 }
 
-func printResPoolCreateResponse(r respool.CreateResponse, respoolPath string, debug bool) {
+func printResPoolCreateResponse(r *respool.CreateResponse, respoolPath string, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {

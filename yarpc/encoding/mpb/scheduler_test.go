@@ -8,10 +8,8 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
-
-	transport_mocks "go.uber.org/yarpc/transport/transporttest"
+	"go.uber.org/yarpc/api/transport"
+	transport_mocks "go.uber.org/yarpc/api/transport/transporttest"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
@@ -61,7 +59,7 @@ func (suite *schedulerClientTestSuite) TestSchedulerClient_Call() {
 		callErr  bool
 		encoding string
 		errMsg   string
-		headers  yarpc.Headers
+		headers  transport.Headers
 	}{
 		{
 			callMsg: &sched.Call{
@@ -75,7 +73,7 @@ func (suite *schedulerClientTestSuite) TestSchedulerClient_Call() {
 			callErr:  true,
 			encoding: suite.defaultEncoding,
 			errMsg:   "connection error",
-			headers:  yarpc.NewHeaders().With("a", "b"),
+			headers:  transport.NewHeaders().With("a", "b"),
 		},
 		{
 			callMsg: &sched.Call{
@@ -88,7 +86,7 @@ func (suite *schedulerClientTestSuite) TestSchedulerClient_Call() {
 			call:     true,
 			callErr:  false,
 			encoding: suite.defaultEncoding,
-			headers:  yarpc.NewHeaders().With("a", "b"),
+			headers:  transport.NewHeaders().With("a", "b"),
 		},
 		{
 			callMsg:  nil,
@@ -97,7 +95,7 @@ func (suite *schedulerClientTestSuite) TestSchedulerClient_Call() {
 			errMsg: "failed to marshal subscribe call to contentType x-protobuf " +
 				"Failed to marshal subscribe call to x-protobuf: proto: Marshal " +
 				"called with nil",
-			headers: yarpc.NewHeaders().With("a", "b"),
+			headers: transport.NewHeaders().With("a", "b"),
 		},
 	}
 

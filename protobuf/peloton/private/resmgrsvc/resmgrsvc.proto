@@ -72,7 +72,8 @@ service ResourceManagerService {
    * needed from the placement engines to find out what are the tasks running on
    * which hosts by that they can place tasks accordingly
    */
-  rpc GetTasksByHosts(GetTasksByHostsRequest) returns (GetTasksByHostsResponse);
+  // TODO: Reintroduce if needed.
+  // rpc GetTasksByHosts(GetTasksByHostsRequest) returns (GetTasksByHostsResponse);
 }
 
 message ResourcePoolNotFound {

@@ -5,12 +5,12 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"sync/atomic"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
@@ -19,6 +19,7 @@ import (
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 
 	t "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 )
@@ -35,15 +36,17 @@ type serviceHandler struct {
 	placements         queue.Queue
 	eventStreamHandler *eventstream.Handler
 	rmTracker          rmtask.Tracker
+	maxOffset          *uint64
 }
 
 // InitServiceHandler initializes the handler for ResourceManagerService
 func InitServiceHandler(
-	d yarpc.Dispatcher,
+	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	rmTracker rmtask.Tracker) {
 
-	handler := serviceHandler{
+	var maxOffset uint64
+	handler := &serviceHandler{
 		metrics:     NewMetrics(parent.SubScope("resmgr")),
 		resPoolTree: respool.GetTree(),
 		placements: queue.NewQueue(
@@ -52,17 +55,15 @@ func InitServiceHandler(
 			maxPlacementQueueSize,
 		),
 		rmTracker: rmTracker,
+		maxOffset: &maxOffset,
 	}
 	// TODO: move eventStreamHandler buffer size into config
 	handler.eventStreamHandler = initEventStreamHandler(d, 1000, parent.SubScope("resmgr"))
 
-	json.Register(d, json.Procedure("ResourceManagerService.EnqueueGangs", handler.EnqueueGangs))
-	json.Register(d, json.Procedure("ResourceManagerService.DequeueTasks", handler.DequeueTasks))
-	json.Register(d, json.Procedure("ResourceManagerService.SetPlacements", handler.SetPlacements))
-	json.Register(d, json.Procedure("ResourceManagerService.GetPlacements", handler.GetPlacements))
+	d.Register(resmgrsvc.BuildResourceManagerServiceYarpcProcedures(handler))
 }
 
-func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int, parentScope tally.Scope) *eventstream.Handler {
+func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, parentScope tally.Scope) *eventstream.Handler {
 	eventStreamHandler := eventstream.NewEventStreamHandler(
 		bufferSize,
 		[]string{
@@ -71,19 +72,17 @@ func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int, parentScope tall
 		},
 		nil,
 		parentScope)
-	json.Register(d, json.Procedure("EventStream.InitStream",
-		eventStreamHandler.InitStream))
-	json.Register(d, json.Procedure("EventStream.WaitForEvents",
-		eventStreamHandler.WaitForEvents))
+
+	d.Register(pb_eventstream.BuildEventStreamServiceYarpcProcedures(eventStreamHandler))
+
 	return eventStreamHandler
 }
 
 // EnqueueGangs implements ResourceManagerService.EnqueueGangs
 func (h *serviceHandler) EnqueueGangs(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *resmgrsvc.EnqueueGangsRequest,
-) (*resmgrsvc.EnqueueGangsResponse, yarpc.ResMeta, error) {
+) (*resmgrsvc.EnqueueGangsResponse, error) {
 
 	log.WithField("request", req).Info("EnqueueGangs called.")
 	h.metrics.APIEnqueueGangs.Inc(1)
@@ -100,7 +99,7 @@ func (h *serviceHandler) EnqueueGangs(
 					Message: err.Error(),
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 	// TODO: check if the user has permission to run tasks in the
 	// respool
@@ -168,20 +167,19 @@ func (h *serviceHandler) EnqueueGangs(
 					Failed: failed,
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 
 	response := resmgrsvc.EnqueueGangsResponse{}
 	log.Debug("Enqueue Returned")
-	return &response, nil, nil
+	return &response, nil
 }
 
 // DequeueTasks implements ResourceManagerService.DequeueTasks
 func (h *serviceHandler) DequeueTasks(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *resmgrsvc.DequeueTasksRequest,
-) (*resmgrsvc.DequeueTasksResponse, yarpc.ResMeta, error) {
+) (*resmgrsvc.DequeueTasksResponse, error) {
 
 	h.metrics.APIDequeueTasks.Inc(1)
 
@@ -216,15 +214,14 @@ func (h *serviceHandler) DequeueTasks(
 	// TODO: handle the dequeue errors better
 	response := resmgrsvc.DequeueTasksResponse{Tasks: tasks}
 	log.WithField("response", response).Debug("DequeueTasks succeeded")
-	return &response, nil, nil
+	return &response, nil
 }
 
 // SetPlacements implements ResourceManagerService.SetPlacements
 func (h *serviceHandler) SetPlacements(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *resmgrsvc.SetPlacementsRequest,
-) (*resmgrsvc.SetPlacementsResponse, yarpc.ResMeta, error) {
+) (*resmgrsvc.SetPlacementsResponse, error) {
 
 	log.WithField("request", req).Debug("SetPlacements called.")
 	h.metrics.APISetPlacements.Inc(1)
@@ -267,20 +264,19 @@ func (h *serviceHandler) SetPlacements(
 					Failed: failed,
 				},
 			},
-		}, nil, nil
+		}, nil
 	}
 	response := resmgrsvc.SetPlacementsResponse{}
 	h.metrics.PlacementQueueLen.Update(float64(h.placements.Length()))
 	log.Debug("Set Placement Returned")
-	return &response, nil, nil
+	return &response, nil
 }
 
 // GetPlacements implements ResourceManagerService.GetPlacements
 func (h *serviceHandler) GetPlacements(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
 	req *resmgrsvc.GetPlacementsRequest,
-) (*resmgrsvc.GetPlacementsResponse, yarpc.ResMeta, error) {
+) (*resmgrsvc.GetPlacementsResponse, error) {
 
 	log.WithField("request", req).Debug("GetPlacements called.")
 	h.metrics.APIGetPlacements.Inc(1)
@@ -305,5 +301,26 @@ func (h *serviceHandler) GetPlacements(
 	h.metrics.PlacementQueueLen.Update(float64(h.placements.Length()))
 	log.Debug("Get Placement Returned")
 
-	return &response, nil, nil
+	return &response, nil
+}
+
+func (h *serviceHandler) NotifyTaskUpdates(
+	ctx context.Context,
+	req *resmgrsvc.NotifyTaskUpdatesRequest) (*resmgrsvc.NotifyTaskUpdatesResponse, error) {
+	var response resmgrsvc.NotifyTaskUpdatesResponse
+
+	if len(req.Events) > 0 {
+		for _, event := range req.Events {
+			// NOTE: hookup future task status update handling logic here
+			log.WithField("Offset", event.Offset).
+				Debug("Event received by resource manager")
+			if event.Offset > atomic.LoadUint64(h.maxOffset) {
+				atomic.StoreUint64(h.maxOffset, event.Offset)
+			}
+		}
+		response.PurgeOffset = atomic.LoadUint64(h.maxOffset)
+	} else {
+		log.Warn("Empty events received by resource manager")
+	}
+	return &response, nil
 }

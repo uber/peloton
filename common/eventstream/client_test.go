@@ -8,70 +8,76 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/yarpc"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 )
 
 var addEventSleepInterval = 2 * time.Millisecond
 var waitEventConsumedInterval = 100 * time.Millisecond
 
-type testJSONClient struct {
+type testClient struct {
 	sync.Mutex
 	localClient *localClient
 	returnError bool
 }
 
 // Controls if the client would error out the mock RPC call
-func (c *testJSONClient) setErrorFlag(errorFlag bool) {
+func (c *testClient) setErrorFlag(errorFlag bool) {
 	c.Lock()
 	defer c.Unlock()
 	c.returnError = errorFlag
 }
 
-func (c *testJSONClient) changeStreamID(streamID string) {
+func (c *testClient) changeStreamID(streamID string) {
 	c.Lock()
 	defer c.Unlock()
 	c.localClient.handler.streamID = streamID
 }
 
-func (c *testJSONClient) Call(
+func (c *testClient) InitStream(
 	ctx context.Context,
-	reqMeta yarpc.CallReqMeta,
-	reqBody interface{},
-	resBodyOut interface{}) (yarpc.CallResMeta, error) {
+	request *eventstream.InitStreamRequest,
+	opts ...yarpc.CallOption) (*eventstream.InitStreamResponse, error) {
 	c.Lock()
 	defer c.Unlock()
 	if c.returnError {
 		return nil, errors.New("Mocked RPC server error")
 	}
 
-	return c.localClient.Call(ctx, reqMeta, reqBody, resBodyOut)
+	return c.localClient.InitStream(ctx, request, opts...)
 }
 
-func (c *testJSONClient) CallOneway(
+// WaitForEvents forwards the call to the handler, dropping the options.
+func (c *testClient) WaitForEvents(
 	ctx context.Context,
-	reqMeta yarpc.CallReqMeta,
-	reqBody interface{}) (transport.Ack, error) {
-	return nil, nil
+	request *eventstream.WaitForEventsRequest,
+	opts ...yarpc.CallOption) (*eventstream.WaitForEventsResponse, error) {
+	c.Lock()
+	defer c.Unlock()
+	if c.returnError {
+		return nil, errors.New("Mocked RPC server error")
+	}
+
+	return c.localClient.WaitForEvents(ctx, request, opts...)
 }
 
 type TestEventProcessor struct {
 	sync.Mutex
-	events []*pb_eventstream.Event
+	events []*eventstream.Event
 }
 
-func (p *TestEventProcessor) OnEvent(event *pb_eventstream.Event) {
+func (p *TestEventProcessor) OnEvent(event *eventstream.Event) {
 	p.Lock()
 	defer p.Unlock()
 	p.events = append(p.events, event)
 }
 
-func (p *TestEventProcessor) OnEvents(events []*pb_eventstream.Event) {
+func (p *TestEventProcessor) OnEvents(events []*eventstream.Event) {
 
 }
 
@@ -84,7 +90,7 @@ func (p *TestEventProcessor) GetEventProgress() uint64 {
 	return uint64(0)
 }
 
-func makeStreamClient(clientName string, client *testJSONClient) (*Client, *TestEventProcessor) {
+func makeStreamClient(clientName string, client *testClient) (*Client, *TestEventProcessor) {
 	eventProcessor := &TestEventProcessor{}
 	var shutdownFlag int32
 	var runningState int32
@@ -111,15 +117,15 @@ func TestHappycase(t *testing.T) {
 		purgedEventCollector,
 		tally.NoopScope,
 	)
-	jsonClient := &testJSONClient{
+	client := &testClient{
 		localClient: &localClient{
 			handler: handler,
 		},
 	}
-	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, jsonClient)
+	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, client)
 	eventStreamClient1.Start()
 
-	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, jsonClient)
+	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, client)
 	eventStreamClient2.Start()
 
 	batches := 20
@@ -127,8 +133,8 @@ func TestHappycase(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", i*batchSize+j)
-			handler.AddEvent(&pb_eventstream.Event{
-				Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+			handler.AddEvent(&eventstream.Event{
+				Type: eventstream.Event_MESOS_TASK_STATUS,
 				MesosTaskStatus: &mesos.TaskStatus{
 					TaskId: &mesos.TaskID{
 						Value: &id,
@@ -176,15 +182,15 @@ func TestStreamIDChange(t *testing.T) {
 		purgedEventCollector,
 		tally.NoopScope,
 	)
-	jsonClient := &testJSONClient{
+	client := &testClient{
 		localClient: &localClient{
 			handler: handler,
 		},
 	}
-	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, jsonClient)
+	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, client)
 	eventStreamClient1.Start()
 
-	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, jsonClient)
+	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, client)
 	eventStreamClient2.Start()
 	count := 0
 
@@ -193,8 +199,8 @@ func TestStreamIDChange(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&pb_eventstream.Event{
-				Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+			handler.AddEvent(&eventstream.Event{
+				Type: eventstream.Event_MESOS_TASK_STATUS,
 				MesosTaskStatus: &mesos.TaskStatus{
 					TaskId: &mesos.TaskID{
 						Value: &id,
@@ -206,13 +212,13 @@ func TestStreamIDChange(t *testing.T) {
 	}
 	time.Sleep(waitEventConsumedInterval)
 
-	jsonClient.changeStreamID("23456")
+	client.changeStreamID("23456")
 
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&pb_eventstream.Event{
-				Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+			handler.AddEvent(&eventstream.Event{
+				Type: eventstream.Event_MESOS_TASK_STATUS,
 				MesosTaskStatus: &mesos.TaskStatus{
 					TaskId: &mesos.TaskID{
 						Value: &id,
@@ -263,16 +269,16 @@ func TestMockRPCError(t *testing.T) {
 		purgedEventCollector,
 		tally.NoopScope,
 	)
-	jsonClient := &testJSONClient{
+	client := &testClient{
 		localClient: &localClient{
 			handler: handler,
 		},
 	}
 
-	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, jsonClient)
+	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, client)
 	eventStreamClient1.Start()
 
-	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, jsonClient)
+	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, client)
 	eventStreamClient2.Start()
 
 	count := 0
@@ -281,8 +287,8 @@ func TestMockRPCError(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&pb_eventstream.Event{
-				Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+			handler.AddEvent(&eventstream.Event{
+				Type: eventstream.Event_MESOS_TASK_STATUS,
 				MesosTaskStatus: &mesos.TaskStatus{
 					TaskId: &mesos.TaskID{
 						Value: &id,
@@ -294,13 +300,13 @@ func TestMockRPCError(t *testing.T) {
 	}
 	time.Sleep(waitEventConsumedInterval)
 
-	jsonClient.setErrorFlag(true)
+	client.setErrorFlag(true)
 	delta := 10
 
 	for i := 0; i < delta; i++ {
 		id := fmt.Sprintf("%d", count)
-		handler.AddEvent(&pb_eventstream.Event{
-			Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+		handler.AddEvent(&eventstream.Event{
+			Type: eventstream.Event_MESOS_TASK_STATUS,
 			MesosTaskStatus: &mesos.TaskStatus{
 				TaskId: &mesos.TaskID{
 					Value: &id,
@@ -310,14 +316,14 @@ func TestMockRPCError(t *testing.T) {
 		time.Sleep(addEventSleepInterval)
 	}
 	time.Sleep(waitEventConsumedInterval)
-	jsonClient.setErrorFlag(false)
+	client.setErrorFlag(false)
 	time.Sleep(waitEventConsumedInterval)
 
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&pb_eventstream.Event{
-				Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+			handler.AddEvent(&eventstream.Event{
+				Type: eventstream.Event_MESOS_TASK_STATUS,
 				MesosTaskStatus: &mesos.TaskStatus{
 					TaskId: &mesos.TaskID{
 						Value: &id,
@@ -370,16 +376,16 @@ func TestClientFailover(t *testing.T) {
 		purgedEventCollector,
 		tally.NoopScope,
 	)
-	jsonClient := &testJSONClient{
+	client := &testClient{
 		localClient: &localClient{
 			handler: handler,
 		},
 	}
 
-	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, jsonClient)
+	eventStreamClient1, eventProcessor1 := makeStreamClient(clientName1, client)
 	eventStreamClient1.Start()
 
-	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, jsonClient)
+	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, client)
 	eventStreamClient2.Start()
 
 	count := 0
@@ -388,8 +394,8 @@ func TestClientFailover(t *testing.T) {
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&pb_eventstream.Event{
-				Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+			handler.AddEvent(&eventstream.Event{
+				Type: eventstream.Event_MESOS_TASK_STATUS,
 				MesosTaskStatus: &mesos.TaskStatus{
 					TaskId: &mesos.TaskID{
 						Value: &id,
@@ -407,8 +413,8 @@ func TestClientFailover(t *testing.T) {
 	delta := 20
 	for i := 0; i < delta; i++ {
 		id := fmt.Sprintf("%d", count)
-		handler.AddEvent(&pb_eventstream.Event{
-			Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+		handler.AddEvent(&eventstream.Event{
+			Type: eventstream.Event_MESOS_TASK_STATUS,
 			MesosTaskStatus: &mesos.TaskStatus{
 				TaskId: &mesos.TaskID{
 					Value: &id,
@@ -419,15 +425,15 @@ func TestClientFailover(t *testing.T) {
 	}
 
 	// Create eventStreamClient3 with the same clientName
-	eventStreamClient3, _ := makeStreamClient(clientName1, jsonClient)
+	eventStreamClient3, _ := makeStreamClient(clientName1, client)
 	eventStreamClient3.eventHandler = eventProcessor1
 	eventStreamClient3.Start()
 
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {
 			id := fmt.Sprintf("%d", count)
-			handler.AddEvent(&pb_eventstream.Event{
-				Type: pb_eventstream.Event_MESOS_TASK_STATUS,
+			handler.AddEvent(&eventstream.Event{
+				Type: eventstream.Event_MESOS_TASK_STATUS,
 				MesosTaskStatus: &mesos.TaskStatus{
 					TaskId: &mesos.TaskID{
 						Value: &id,

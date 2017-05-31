@@ -5,11 +5,10 @@ import (
 	"reflect"
 
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 )
 
 var (
-	_reqMetaType        = reflect.TypeOf((*yarpc.ReqMeta)(nil)).Elem()
 	_errorType          = reflect.TypeOf((*error)(nil)).Elem()
 	_interfaceEmptyType = reflect.TypeOf((*interface{})(nil)).Elem()
 )
@@ -53,13 +52,13 @@ func Procedure(name string, handler interface{}) Registrant {
 //
 // Where $reqBody and $resBody are a map[string]interface{} or pointers to
 // structs.
-func Register(reg transport.Registrar, svc string, registrant Registrant) {
+func Register(d *yarpc.Dispatcher, svc string, registrant Registrant) {
 	for name, handler := range registrant.getHandlers() {
 		verifySignature(name, reflect.TypeOf(handler))
-		reg.Register([]transport.Registrant{
+		d.Register([]transport.Procedure{
 			{
+				Name:        name,
 				Service:     svc,
-				Procedure:   name,
 				HandlerSpec: transport.NewUnaryHandlerSpec(mpbHandler{handler: reflect.ValueOf(handler)}),
 			}})
 	}
@@ -76,9 +75,9 @@ func verifySignature(n string, t reflect.Type) {
 		))
 	}
 
-	if t.NumIn() != 2 {
+	if t.NumIn() != 1 {
 		panic(fmt.Sprintf(
-			"expected handler for %q to have 2 arguments but it had %v",
+			"expected handler for %q to have 1 arguments but it had %v",
 			n, t.NumIn(),
 		))
 	}
@@ -90,13 +89,6 @@ func verifySignature(n string, t reflect.Type) {
 		))
 	}
 
-	if t.In(0) != _reqMetaType {
-		panic(fmt.Sprintf(
-			"the first argument of the handler for %q must be of type "+
-				"yarpc.ReqMeta, and not: %v", n, t.In(0),
-		))
-	}
-
 	if t.Out(0) != _errorType {
 		panic(fmt.Sprintf(
 			"the last resultsof the handler for %q must be of type error, "+
@@ -105,7 +97,7 @@ func verifySignature(n string, t reflect.Type) {
 		))
 	}
 
-	reqBodyType := t.In(1)
+	reqBodyType := t.In(0)
 
 	if !isValidReqResType(reqBodyType) {
 		panic(fmt.Sprintf(

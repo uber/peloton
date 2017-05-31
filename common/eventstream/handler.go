@@ -14,7 +14,6 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
 )
 
 // PurgedEventsProcessor is the interface to handle the purged data
@@ -97,8 +96,7 @@ func (h *Handler) AddEvent(event *pb_eventstream.Event) error {
 // InitStream handles the initstream request
 func (h *Handler) InitStream(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *pb_eventstream.InitStreamRequest) (*pb_eventstream.InitStreamResponse, yarpc.ResMeta, error) {
+	req *pb_eventstream.InitStreamRequest) (*pb_eventstream.InitStreamResponse, error) {
 	h.Lock()
 	defer h.Unlock()
 	log.WithField("InitStream request", req).Debug("request")
@@ -113,7 +111,7 @@ func (h *Handler) InitStream(
 			},
 		}
 		h.metrics.InitStreamFail.Inc(1)
-		return &response, nil, nil
+		return &response, nil
 	}
 	response.StreamID = h.streamID
 	_, tail := h.circularBuffer.GetRange()
@@ -121,15 +119,14 @@ func (h *Handler) InitStream(
 	response.PreviousPurgeOffset = h.clientPurgeOffsets[clientName]
 	log.WithField("InitStream response", response).Debug("")
 	h.metrics.InitStreamSuccess.Inc(1)
-	return &response, nil, nil
+	return &response, nil
 
 }
 
 // WaitForEvents handles the WaitForEvents request
 func (h *Handler) WaitForEvents(
 	ctx context.Context,
-	reqMeta yarpc.ReqMeta,
-	req *pb_eventstream.WaitForEventsRequest) (*pb_eventstream.WaitForEventsResponse, yarpc.ResMeta, error) {
+	req *pb_eventstream.WaitForEventsRequest) (*pb_eventstream.WaitForEventsResponse, error) {
 
 	h.Lock()
 	defer h.Unlock()
@@ -145,7 +142,7 @@ func (h *Handler) WaitForEvents(
 			},
 		}
 		h.metrics.WaitForEventsFailed.Inc(1)
-		return &response, nil, nil
+		return &response, nil
 	}
 	// Validate stream id
 	streamID := req.StreamID
@@ -160,7 +157,7 @@ func (h *Handler) WaitForEvents(
 		}
 		h.metrics.WaitForEventsFailed.Inc(1)
 		h.metrics.InvalidStreamIDError.Inc(1)
-		return &response, nil, nil
+		return &response, nil
 	}
 	// Get and return data
 	head, tail := h.circularBuffer.GetRange()
@@ -177,7 +174,7 @@ func (h *Handler) WaitForEvents(
 			},
 		}
 		h.metrics.WaitForEventsFailed.Inc(1)
-		return &response, nil, nil
+		return &response, nil
 	}
 	var events []*pb_eventstream.Event
 	for _, item := range items {
@@ -207,7 +204,7 @@ func (h *Handler) WaitForEvents(
 		}
 	}
 	h.purgeEvents(clientName, req.PurgeOffset)
-	return &response, nil, nil
+	return &response, nil
 }
 
 // purgeData scans the min of the purgeOffset for each client, and move the buffer tail

@@ -8,8 +8,8 @@ import (
 	"code.uber.internal/infra/peloton/leader"
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
-	"go.uber.org/yarpc/peer"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/peer"
+	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
 )
 
@@ -80,12 +80,19 @@ func (c *smartChooser) Stop() error {
 	return nil
 }
 
+// IsRunning interface method will return true if it's running.
+func (c *smartChooser) IsRunning() bool {
+	c.Lock()
+	defer c.Unlock()
+	return c.running
+}
+
 // Choose is called when a request is sent. See
 // go.uber.org/yarpc/transport/http/outbound. Here it returns the current peer
 // (the leader peloton master).
 func (c *smartChooser) Choose(
 	ctx context.Context,
-	req *transport.Request) (peer.Peer, error) {
+	req *transport.Request) (peer.Peer, func(error), error) {
 	return c.chooser.Choose(ctx, req)
 }
 

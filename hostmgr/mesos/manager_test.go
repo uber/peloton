@@ -104,7 +104,7 @@ func (suite *managerTestSuite) TestCallbacks() {
 
 		tmp := tt.eventType
 		tt.body.Type = &tmp
-		err := c(nil, tt.body)
+		err := c(tt.body)
 		suite.NoError(err)
 	}
 }

@@ -1,14 +1,14 @@
 package mpb
 
-import "go.uber.org/yarpc/transport"
+import "go.uber.org/yarpc/api/transport"
 
 // Encoding is the name of this encoding.
 const (
 	Encoding transport.Encoding = "json"
 
-	// ContentTypeApplicationJson header
-	ContentTypeJson = "json"
+	// ContentTypeJSON header
+	ContentTypeJSON = "json"
 
-	// ContentTypeApplicationProtobuf header
+	// ContentTypeProtobuf header
 	ContentTypeProtobuf = "x-protobuf"
 )

@@ -14,13 +14,12 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/yarpc"
 
+	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
-	yarpc_mocks "code.uber.internal/infra/peloton/vendor_mocks/go.uber.org/yarpc/encoding/json/mocks"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
@@ -41,15 +40,13 @@ func init() {
 func TestValidatorWithStore(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	var mockClient = yarpc_mocks.NewMockClient(ctrl)
+	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
 
 	var sentTasks = make(map[int]bool)
-	mockClient.EXPECT().Call(
-		gomock.Any(),
-		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
+	mockClient.EXPECT().EnqueueGangs(
 		gomock.Any(),
 		gomock.Any()).
-		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+		Do(func(_ context.Context, reqBody interface{}) {
 			req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
 			for _, gang := range req.GetGangs() {
 				for _, task := range gang.GetTasks() {
@@ -59,7 +56,7 @@ func TestValidatorWithStore(t *testing.T) {
 				}
 			}
 		}).
-		Return(nil, nil).AnyTimes()
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil).AnyTimes()
 
 	var jobID = &peloton.JobID{Value: "TestValidatorWithStore"}
 	var sla = job.SlaConfig{
@@ -150,7 +147,7 @@ func TestValidator(t *testing.T) {
 	var sentTasks = make(map[int]bool)
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
-	var mockClient = yarpc_mocks.NewMockClient(ctrl)
+	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
 
 	mockJobStore.EXPECT().
 		GetJobsByState(job.JobState_INITIALIZED).
@@ -187,12 +184,10 @@ func TestValidator(t *testing.T) {
 		Return(map[uint32]*task.TaskInfo{
 			uint32(2): tasks[1],
 		}, nil)
-	mockClient.EXPECT().Call(
-		gomock.Any(),
-		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
+	mockClient.EXPECT().EnqueueGangs(
 		gomock.Any(),
 		gomock.Any()).
-		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+		Do(func(_ context.Context, reqBody interface{}) {
 			req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
 			for _, gang := range req.GetGangs() {
 				for _, task := range gang.GetTasks() {
@@ -202,7 +197,7 @@ func TestValidator(t *testing.T) {
 				}
 			}
 		}).
-		Return(nil, nil)
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
 	validator := NewJobRecovery(mockJobStore, mockTaskStore, mockClient, tally.NoopScope)
 	validator.recoverJobs()
@@ -250,7 +245,7 @@ func TestValidatorFailures(t *testing.T) {
 	var sentTasks = make(map[int]bool)
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
-	var mockClient = yarpc_mocks.NewMockClient(ctrl)
+	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
 
 	mockJobStore.EXPECT().
 		GetJobsByState(job.JobState_INITIALIZED).
@@ -296,20 +291,16 @@ func TestValidatorFailures(t *testing.T) {
 			uint32(2): tasks[1],
 		}, nil).
 		AnyTimes()
-	mockClient.EXPECT().Call(
-		gomock.Any(),
-		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
+	mockClient.EXPECT().EnqueueGangs(
 		gomock.Any(),
 		gomock.Any()).
 		Return(nil, errors.New("Mock client error")).
 		MinTimes(1).
 		MaxTimes(1)
-	mockClient.EXPECT().Call(
-		gomock.Any(),
-		gomock.Eq(yarpc.NewReqMeta().Procedure("ResourceManagerService.EnqueueGangs")),
+	mockClient.EXPECT().EnqueueGangs(
 		gomock.Any(),
 		gomock.Any()).
-		Do(func(_ context.Context, _ yarpc.CallReqMeta, reqBody interface{}, _ interface{}) {
+		Do(func(_ context.Context, reqBody interface{}) {
 			req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
 			for _, gang := range req.GetGangs() {
 				for _, task := range gang.GetTasks() {
@@ -319,7 +310,7 @@ func TestValidatorFailures(t *testing.T) {
 				}
 			}
 		}).
-		Return(nil, nil).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil).
 		AnyTimes()
 
 	validator := NewJobRecovery(mockJobStore, mockTaskStore, mockClient, tally.NoopScope)

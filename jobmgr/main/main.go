@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
@@ -20,8 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/encoding/json"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 
@@ -161,8 +161,11 @@ func main() {
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
 	jobStore, taskStore, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
+
+	t := http.NewTransport()
+
 	inbounds := []transport.Inbound{
-		http.NewInbound(
+		t.NewInbound(
 			fmt.Sprintf(":%d", cfg.JobManager.Port),
 			http.Mux(common.PelotonEndpointPath, mux),
 		),
@@ -182,17 +185,15 @@ func main() {
 		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
 			Fatal("Could not create smart peer chooser")
 	}
-	if err := resmgrPeerChooser.Start(); err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
-			Fatal("Could not start smart peer chooser")
-	}
 	defer resmgrPeerChooser.Stop()
-	resmgrOutbound := http.NewChooserOutbound(
+
+	resmgrOutbound := t.NewOutbound(
 		resmgrPeerChooser,
-		&url.URL{
-			Scheme: "http",
-			Path:   common.PelotonEndpointPath,
-		})
+		http.URLTemplate(
+			(&url.URL{
+				Scheme: "http",
+				Path:   common.PelotonEndpointPath,
+			}).String()))
 
 	// setup the discovery service to detect hostmgr leaders and
 	// configure the YARPC Peer dynamically
@@ -205,17 +206,15 @@ func main() {
 		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
 			Fatal("Could not create smart peer chooser")
 	}
-	if err := hostmgrPeerChooser.Start(); err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
-			Fatal("Could not start smart peer chooser")
-	}
 	defer hostmgrPeerChooser.Stop()
-	hostmgrOutbound := http.NewChooserOutbound(
+
+	hostmgrOutbound := t.NewOutbound(
 		hostmgrPeerChooser,
-		&url.URL{
-			Scheme: "http",
-			Path:   common.PelotonEndpointPath,
-		})
+		http.URLTemplate(
+			(&url.URL{
+				Scheme: "http",
+				Path:   common.PelotonEndpointPath,
+			}).String()))
 
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{
@@ -237,7 +236,8 @@ func main() {
 	runtimeUpdater := job.NewJobRuntimeUpdater(
 		jobStore,
 		taskStore,
-		json.New(dispatcher.ClientConfig(common.PelotonResourceManager)),
+		resmgrsvc.NewResourceManagerServiceYarpcClient(
+			dispatcher.ClientConfig(common.PelotonResourceManager)),
 		rootScope)
 	job.InitServiceHandler(
 		dispatcher,

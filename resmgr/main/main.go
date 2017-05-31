@@ -17,13 +17,12 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/resmgr/taskupdate"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -144,10 +143,12 @@ func main() {
 
 	jobStore, taskStore, respoolStore, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
 
+	t := http.NewTransport()
+
 	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
 	// mux in other HTTP handlers
 	inbounds := []transport.Inbound{
-		http.NewInbound(
+		t.NewInbound(
 			fmt.Sprintf(":%d", cfg.ResManager.Port),
 			http.Mux(common.PelotonEndpointPath, mux),
 		),
@@ -167,17 +168,15 @@ func main() {
 		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
 			Fatal("Could not create smart peer chooser")
 	}
-	if err := hostmgrPeerChooser.Start(); err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
-			Fatal("Could not start smart peer chooser")
-	}
 	defer hostmgrPeerChooser.Stop()
-	hostmgrOutbound := http.NewChooserOutbound(
+
+	hostmgrOutbound := t.NewOutbound(
 		hostmgrPeerChooser,
-		&url.URL{
-			Scheme: "http",
-			Path:   common.PelotonEndpointPath,
-		})
+		http.URLTemplate(
+			(&url.URL{
+				Scheme: "http",
+				Path:   common.PelotonEndpointPath,
+			}).String()))
 
 	outbounds := yarpc.Outbounds{
 		common.PelotonHostManager: transport.Outbounds{
@@ -204,8 +203,6 @@ func main() {
 		dispatcher,
 		cfg.ResManager.EntitlementCaculationPeriod,
 	)
-
-	taskupdate.InitServiceHandler(dispatcher)
 
 	resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker())
 

@@ -7,8 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
@@ -19,6 +22,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -46,7 +50,7 @@ func (suite *HandlerTestSuite) SetupSuite() {
 	// commenting it out for removing loadfromdb from resmgr for now
 	// until we fix it
 	//gomock.InOrder(
-	//	mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).Times(4),
+	//	mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).Times(5),
 	//)
 
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.ctrl)
@@ -286,7 +290,7 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
 		Gangs:   suite.pendingGangs(),
 	}
-	enqResp, _, err := suite.handler.EnqueueGangs(suite.context, nil, enqReq)
+	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
 	suite.NoError(err)
 	suite.Nil(enqResp.GetError())
 
@@ -294,7 +298,7 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 		Limit:   10,
 		Timeout: 2 * 1000, // 2 sec
 	}
-	deqResp, _, err := suite.handler.DequeueTasks(suite.context, nil, deqReq)
+	deqResp, err := suite.handler.DequeueTasks(suite.context, deqReq)
 	suite.NoError(err)
 	suite.Nil(deqResp.GetError())
 	suite.Equal(suite.expectedTasks(), deqResp.GetTasks())
@@ -311,7 +315,7 @@ func (suite *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
 		ResPool: respoolID,
 		Gangs:   suite.pendingGangs(),
 	}
-	enqResp, _, err := suite.handler.EnqueueGangs(suite.context, nil, enqReq)
+	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
 	suite.NoError(err)
 	log.Infof("%v", enqResp)
 	notFound := &resmgrsvc.ResourcePoolNotFound{
@@ -362,7 +366,7 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
 		Placements: suite.getPlacements(),
 	}
-	setResp, _, err := handler.SetPlacements(suite.context, nil, setReq)
+	setResp, err := handler.SetPlacements(suite.context, setReq)
 	suite.NoError(err)
 	suite.Nil(setResp.GetError())
 
@@ -370,8 +374,30 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 		Limit:   10,
 		Timeout: 1 * 1000, // 1 sec
 	}
-	getResp, _, err := handler.GetPlacements(suite.context, nil, getReq)
+	getResp, err := handler.GetPlacements(suite.context, getReq)
 	suite.NoError(err)
 	suite.Nil(getResp.GetError())
 	suite.Equal(suite.getPlacements(), getResp.GetPlacements())
+}
+
+func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
+	var c uint64
+	handler := &serviceHandler{
+		metrics:   NewMetrics(tally.NoopScope),
+		maxOffset: &c,
+	}
+	var events []*pb_eventstream.Event
+	for i := 0; i < 100; i++ {
+		event := pb_eventstream.Event{
+			Offset:          uint64(1000 + i),
+			MesosTaskStatus: &mesos_v1.TaskStatus{},
+		}
+		events = append(events, &event)
+	}
+	req := &resmgrsvc.NotifyTaskUpdatesRequest{
+		Events: events,
+	}
+	response, _ := handler.NotifyTaskUpdates(context.Background(), req)
+	assert.Equal(suite.T(), uint64(1099), response.PurgeOffset)
+	assert.Nil(suite.T(), response.Error)
 }

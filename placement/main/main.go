@@ -17,7 +17,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/transport"
+	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
 )
 
@@ -110,17 +110,15 @@ func main() {
 		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
 			Fatal("Could not create smart peer chooser")
 	}
-	if err := hostmgrPeerChooser.Start(); err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
-			Fatal("Could not start smart peer chooser")
-	}
 	defer hostmgrPeerChooser.Stop()
-	hostmgrOutbound := http.NewChooserOutbound(
+
+	hostmgrOutbound := http.NewOutbound(
 		hostmgrPeerChooser,
-		&url.URL{
-			Scheme: "http",
-			Path:   common.PelotonEndpointPath,
-		},
+		http.URLTemplate(
+			(&url.URL{
+				Scheme: "http",
+				Path:   common.PelotonEndpointPath,
+			}).String()),
 	)
 
 	resmgrPeerChooser, err := peer.NewSmartChooser(
@@ -132,17 +130,15 @@ func main() {
 		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
 			Fatal("Could not create smart peer chooser")
 	}
-	if err := resmgrPeerChooser.Start(); err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
-			Fatal("Could not start smart peer chooser")
-	}
 	defer resmgrPeerChooser.Stop()
-	resmgrOutbound := http.NewChooserOutbound(
+
+	resmgrOutbound := http.NewOutbound(
 		resmgrPeerChooser,
-		&url.URL{
-			Scheme: "http",
-			Path:   common.PelotonEndpointPath,
-		},
+		http.URLTemplate(
+			(&url.URL{
+				Scheme: "http",
+				Path:   common.PelotonEndpointPath,
+			}).String()),
 	)
 
 	// Now attempt to setup the dispatcher
@@ -155,8 +151,9 @@ func main() {
 		},
 	}
 
+	t := http.NewTransport()
 	inbounds := []transport.Inbound{
-		http.NewInbound(
+		t.NewInbound(
 			fmt.Sprintf(":%d", cfg.Placement.Port),
 			http.Mux(common.PelotonEndpointPath, mux)),
 	}

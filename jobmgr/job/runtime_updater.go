@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -17,7 +18,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
-	"go.uber.org/yarpc/encoding/json"
 )
 
 // jobStateUpdateInterval is the interval at which the job update is checked
@@ -51,7 +51,7 @@ var NonTerminatedStates = map[job.JobState]bool{
 func NewJobRuntimeUpdater(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	resmgrClient json.Client,
+	resmgrClient resmgrsvc.ResourceManagerServiceYarpcClient,
 	parentScope tally.Scope) *RuntimeUpdater {
 	// TODO: load firstTaskUpdateTime from DB after restart
 	updater := RuntimeUpdater{

@@ -68,6 +68,7 @@ cover:
 	go tool cover -html=cover.out -o cover.html
 
 pbgens:
+	go get ./vendor/go.uber.org/yarpc/encoding/x/protobuf/protoc-gen-yarpc-go
 	@mkdir -p $(PBGEN_DIR)
 	./scripts/generate-protobuf.py
 
@@ -117,6 +118,11 @@ define vendor_mockgen
 endef
 
 mockgens: pbgens $(GOMOCK)
+	$(call local_mockgen,.gen/peloton/api/job,JobManagerYarpcClient)
+	$(call local_mockgen,.gen/peloton/api/respool,ResourceManagerYarpcClient)
+	$(call local_mockgen,.gen/peloton/api/task,TaskManagerYarpcClient)
+	$(call local_mockgen,.gen/peloton/private/hostmgr/hostsvc,InternalHostServiceYarpcClient)
+	$(call local_mockgen,.gen/peloton/private/resmgrsvc,ResourceManagerServiceYarpcClient)
 	$(call local_mockgen,common/constraints,Evaluator)
 	$(call local_mockgen,hostmgr/mesos,MasterDetector;FrameworkInfoProvider)
 	$(call local_mockgen,hostmgr/offer,EventHandler)
