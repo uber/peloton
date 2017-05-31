@@ -136,6 +136,7 @@ def run_mesos():
                 config['local_zk_port']),
             'MESOS_QUORUM=' + repr(config['quorum']),
             'MESOS_REGISTRY=' + config['registry'],
+            'MESOS_WORK_DIR=' + config['work_dir'],
             'MESOS_ADVERTISE_IP={}'.format(host_ip),
         ],
         image=config['mesos_master_image'],

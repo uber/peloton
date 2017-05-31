@@ -18,7 +18,7 @@ num_agents: 3
 # Mesos master configs
 master_port: 5050
 quorum: 1
-registry: in_memory
+registry: replicated_log
 
 # Mesos slave configs
 default_agent_port: 5051
