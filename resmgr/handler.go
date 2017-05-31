@@ -202,11 +202,15 @@ func (h *serviceHandler) DequeueTasks(
 		h.metrics.DequeueTaskSuccess.Inc(1)
 
 		// Moving task to Placing state
-		err = h.rmTracker.GetTask(task.Id).TransitTo(
-			t.TaskState_PLACING.String())
-		if err != nil {
-			log.WithError(err).WithField("taskID", task.Id.Value).
-				Error("Failed to transit state for task")
+		if h.rmTracker.GetTask(task.Id) != nil {
+			err = h.rmTracker.GetTask(task.Id).TransitTo(
+				t.TaskState_PLACING.String())
+			if err != nil {
+				log.WithError(err).WithField(
+					"taskID", task.Id.Value).
+					Error("Failed to transit state " +
+						"for task")
+			}
 		}
 	}
 	// TODO: handle the dequeue errors better

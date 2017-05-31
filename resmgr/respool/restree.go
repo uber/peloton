@@ -109,7 +109,8 @@ func (t *tree) Start() error {
 	}
 	//Loading the jobs/tasks from DB and enquing it back to respool
 	// Pending queue.
-	t.loadFromDB()
+	// commenting it till we fix it in next diff
+	//t.loadFromDB()
 	return nil
 }
 
