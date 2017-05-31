@@ -56,7 +56,7 @@ func InitServiceHandler(
 	// TODO: move eventStreamHandler buffer size into config
 	handler.eventStreamHandler = initEventStreamHandler(d, 1000, parent.SubScope("resmgr"))
 
-	json.Register(d, json.Procedure("ResourceManagerService.EnqueueTasks", handler.EnqueueTasks))
+	json.Register(d, json.Procedure("ResourceManagerService.EnqueueGangs", handler.EnqueueGangs))
 	json.Register(d, json.Procedure("ResourceManagerService.DequeueTasks", handler.DequeueTasks))
 	json.Register(d, json.Procedure("ResourceManagerService.SetPlacements", handler.SetPlacements))
 	json.Register(d, json.Procedure("ResourceManagerService.GetPlacements", handler.GetPlacements))
@@ -78,21 +78,21 @@ func initEventStreamHandler(d yarpc.Dispatcher, bufferSize int, parentScope tall
 	return eventStreamHandler
 }
 
-// EnqueueTasks implements ResourceManagerService.EnqueueTasks
-func (h *serviceHandler) EnqueueTasks(
+// EnqueueGangs implements ResourceManagerService.EnqueueGangs
+func (h *serviceHandler) EnqueueGangs(
 	ctx context.Context,
 	reqMeta yarpc.ReqMeta,
 	req *resmgrsvc.EnqueueGangsRequest,
 ) (*resmgrsvc.EnqueueGangsResponse, yarpc.ResMeta, error) {
 
-	log.WithField("request", req).Info("EnqueueTasks called.")
-	h.metrics.APIEnqueueTasks.Inc(1)
+	log.WithField("request", req).Info("EnqueueGangs called.")
+	h.metrics.APIEnqueueGangs.Inc(1)
 
 	// Lookup respool from the resource pool tree
 	respoolID := req.GetResPool()
 	respool, err := respool.GetTree().Get(respoolID)
 	if err != nil {
-		h.metrics.EnqueueTaskFail.Inc(1)
+		h.metrics.EnqueueGangFail.Inc(1)
 		return &resmgrsvc.EnqueueGangsResponse{
 			Error: &resmgrsvc.EnqueueGangsResponse_Error{
 				NotFound: &resmgrsvc.ResourcePoolNotFound{
@@ -126,7 +126,7 @@ func (h *serviceHandler) EnqueueTasks(
 						Message: err.Error(),
 					},
 				)
-				h.metrics.EnqueueTaskFail.Inc(1)
+				h.metrics.EnqueueGangFail.Inc(1)
 				continue
 			}
 			if h.rmTracker.GetTask(task.Id) != nil {
@@ -154,9 +154,9 @@ func (h *serviceHandler) EnqueueTasks(
 						Message: err.Error(),
 					},
 				)
-				h.metrics.EnqueueTaskFail.Inc(1)
+				h.metrics.EnqueueGangFail.Inc(1)
 			} else {
-				h.metrics.EnqueueTaskSuccess.Inc(1)
+				h.metrics.EnqueueGangSuccess.Inc(1)
 			}
 		}
 	}

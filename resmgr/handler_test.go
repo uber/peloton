@@ -283,7 +283,7 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
 		Gangs:   suite.pendingGangs(),
 	}
-	enqResp, _, err := suite.handler.EnqueueTasks(suite.context, nil, enqReq)
+	enqResp, _, err := suite.handler.EnqueueGangs(suite.context, nil, enqReq)
 	suite.NoError(err)
 	suite.Nil(enqResp.GetError())
 
@@ -299,8 +299,8 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 	log.Info("TestEnqueueDequeueTasksOneResPool returned")
 }
 
-func (suite *HandlerTestSuite) TestEnqueueTasksResPoolNotFound() {
-	log.Info("TestEnqueueTasksResPoolNotFound called")
+func (suite *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
+	log.Info("TestEnqueueGangsResPoolNotFound called")
 	respool.InitTree(tally.NoopScope, nil, nil, nil)
 
 	respoolID := &pb_respool.ResourcePoolID{Value: "respool10"}
@@ -308,7 +308,7 @@ func (suite *HandlerTestSuite) TestEnqueueTasksResPoolNotFound() {
 		ResPool: respoolID,
 		Gangs:   suite.pendingGangs(),
 	}
-	enqResp, _, err := suite.handler.EnqueueTasks(suite.context, nil, enqReq)
+	enqResp, _, err := suite.handler.EnqueueGangs(suite.context, nil, enqReq)
 	suite.NoError(err)
 	log.Infof("%v", enqResp)
 	notFound := &resmgrsvc.ResourcePoolNotFound{
@@ -316,10 +316,10 @@ func (suite *HandlerTestSuite) TestEnqueueTasksResPoolNotFound() {
 		Message: "Resource pool (respool10) not found",
 	}
 	suite.Equal(notFound, enqResp.GetError().GetNotFound())
-	log.Info("TestEnqueueTasksResPoolNotFound returned")
+	log.Info("TestEnqueueGangsResPoolNotFound returned")
 }
 
-func (suite *HandlerTestSuite) TestEnqueueTasksFailure() {
+func (suite *HandlerTestSuite) TestEnqueueGangsFailure() {
 	// TODO: Mock ResPool.Enqueue task to simulate task enqueue failures
 	suite.True(true)
 }

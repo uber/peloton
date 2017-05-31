@@ -4,9 +4,9 @@ import "github.com/uber-go/tally"
 
 // Metrics is a placeholder for all metrics in hostmgr.
 type Metrics struct {
-	APIEnqueueTasks    tally.Counter
-	EnqueueTaskSuccess tally.Counter
-	EnqueueTaskFail    tally.Counter
+	APIEnqueueGangs    tally.Counter
+	EnqueueGangSuccess tally.Counter
+	EnqueueGangFail    tally.Counter
 
 	APIDequeueTasks    tally.Counter
 	DequeueTaskSuccess tally.Counter
@@ -33,9 +33,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	placement := scope.SubScope("placement")
 
 	return &Metrics{
-		APIEnqueueTasks:    apiScope.Counter("enqueue_tasks"),
-		EnqueueTaskSuccess: successScope.Counter("enqueue_tasks"),
-		EnqueueTaskFail:    failScope.Counter("enqueue_tasks"),
+		APIEnqueueGangs:    apiScope.Counter("enqueue_gangs"),
+		EnqueueGangSuccess: successScope.Counter("enqueue_gang"),
+		EnqueueGangFail:    failScope.Counter("enqueue_gang"),
 
 		APIDequeueTasks:    apiScope.Counter("dequeue_tasks"),
 		DequeueTaskSuccess: successScope.Counter("dequeue_tasks"),
