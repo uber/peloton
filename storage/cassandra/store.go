@@ -243,8 +243,7 @@ func (s *Store) Query(labels *mesos.Labels, keywords []string) (map[string]*job.
 	var resultMap = make(map[string]*job.JobConfig)
 	if (labels == nil || len(labels.GetLabels()) == 0) &&
 		(keywords == nil || len(keywords) == 0) {
-		// TODO: call getAllJobs(...)
-		return resultMap, nil
+		return s.GetAllJobs()
 	}
 	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["
 	// Labels field must contain value of the specified labels
@@ -354,7 +353,44 @@ func (s *Store) GetJobsByOwner(owner string) (map[string]*job.JobConfig, error) 
 // GetAllJobs returns all jobs
 // TODO: introduce jobstate and add GetJobsByState
 func (s *Store) GetAllJobs() (map[string]*job.JobConfig, error) {
-	return nil, nil
+	// TODO: Get jobs from  all edge respools
+	var resultMap = make(map[string]*job.JobConfig)
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable)
+	result, err := s.DataStore.Execute(context.Background(), stmt)
+	if err != nil {
+		log.WithError(err).
+			Error("Fail to Query all jobs")
+		s.metrics.JobQueryFail.Inc(1)
+		return nil, err
+	}
+	allResults, err := result.All(context.Background())
+	if err != nil {
+		log.WithError(err).
+			Error("Fail to Query jobs")
+		s.metrics.JobQueryFail.Inc(1)
+		return nil, err
+	}
+	for _, value := range allResults {
+		var record JobRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				Error("Fail to Query jobs")
+			s.metrics.JobQueryFail.Inc(1)
+			return nil, err
+		}
+		jobConfig, err := record.GetJobConfig()
+		if err != nil {
+			log.WithError(err).
+				Error("Fail to Query jobs")
+			s.metrics.JobQueryFail.Inc(1)
+			return nil, err
+		}
+		resultMap[record.JobID] = jobConfig
+	}
+	s.metrics.JobQueryAll.Inc(1)
+	return resultMap, nil
 }
 
 // CreateTask creates a task for a peloton job

@@ -283,3 +283,18 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.Equal(jobID, resp.Id)
 	suite.Equal("added 1 instances", resp.Message)
 }
+
+func (suite *JobHandlerTestSuite) TestJobQuery() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	// TODO: add more inputs
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockJobStore.EXPECT().Query(nil, nil)
+	suite.handler.jobStore = mockJobStore
+
+	req := &job.QueryRequest{}
+	resp, _, err := suite.handler.Query(suite.context, nil, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+}

@@ -437,21 +437,34 @@ func (h *serviceHandler) Query(
 				}
 			}
 		}
-	} else {
+	} else if req.GetRespoolID() != nil {
 		// Query by respool id directly
-		if req.GetRespoolID() != nil {
-			jobConfigs, err = h.jobStore.GetJobsByRespoolID(req.GetRespoolID())
-			if err != nil {
-				h.metrics.JobQueryFail.Inc(1)
-				log.WithError(err).Error("Query job failed with error")
-				return &job.QueryResponse{
-					Error: &job.QueryResponse_Error{
-						Err: &errors.UnknownError{
-							Message: err.Error(),
-						},
+		jobConfigs, err = h.jobStore.GetJobsByRespoolID(req.GetRespoolID())
+		if err != nil {
+			h.metrics.JobQueryFail.Inc(1)
+			log.WithError(err).Error("Query job failed with error")
+			return &job.QueryResponse{
+				Error: &job.QueryResponse_Error{
+					Err: &errors.UnknownError{
+						Message: err.Error(),
 					},
-				}, nil, nil
-			}
+				},
+			}, nil, nil
+		}
+	} else {
+		// query all jobs if neither label nor respool is provided
+		// TODO: add pagination support
+		jobConfigs, err = h.jobStore.Query(nil, nil)
+		if err != nil {
+			h.metrics.JobQueryFail.Inc(1)
+			log.WithError(err).Error("Query job failed with error")
+			return &job.QueryResponse{
+				Error: &job.QueryResponse_Error{
+					Err: &errors.UnknownError{
+						Message: err.Error(),
+					},
+				},
+			}, nil, nil
 		}
 	}
 	h.metrics.JobQuery.Inc(1)

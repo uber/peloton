@@ -5,6 +5,7 @@ package cassandra
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -621,6 +622,31 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByRespoolID() {
 	jobs, err = store.GetJobsByRespoolID(&respool.ResourcePoolID{Value: "pooldoesnotexist"})
 	suite.Nil(err)
 	suite.Equal(len(jobs), 0)
+}
+
+func (suite *CassandraStoreTestSuite) TestGetAllJobs() {
+	nJobs := 2
+	owners := []string{"TestGetAllJobsID1", "TestGetAllJobsID2"}
+	respoolBase := "respool_alljobs"
+	for _, owner := range owners {
+		for i := 0; i < nJobs; i++ {
+			var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
+			jobConfig := createJobConfig()
+			jobConfig.Name = jobID.Value
+			jobConfig.RespoolID = &respool.ResourcePoolID{
+				Value: fmt.Sprintf("%s%d", respoolBase, i),
+			}
+			err := store.CreateJob(&jobID, jobConfig, owner)
+			suite.Nil(err)
+		}
+	}
+	jobs, err := store.GetAllJobs()
+	suite.Nil(err)
+	for _, owner := range owners {
+		for i := 0; i < nJobs; i++ {
+			suite.Equal(respoolBase+strconv.Itoa(i), jobs[owner+strconv.Itoa(i)].RespoolID.GetValue())
+		}
+	}
 }
 
 func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
