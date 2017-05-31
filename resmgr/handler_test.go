@@ -42,9 +42,12 @@ func (suite *HandlerTestSuite) SetupSuite() {
 	mockResPoolStore.EXPECT().GetAllResourcePools().
 		Return(suite.getResPools(), nil).AnyTimes()
 	mockJobStore := store_mocks.NewMockJobStore(suite.ctrl)
-	gomock.InOrder(
-		mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).Times(4),
-	)
+
+	// commenting it out for removing loadfromdb from resmgr for now
+	// until we fix it
+	//gomock.InOrder(
+	//	mockJobStore.EXPECT().GetAllJobs().Return(nil, nil).Times(4),
+	//)
 
 	mockTaskStore := store_mocks.NewMockTaskStore(suite.ctrl)
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
