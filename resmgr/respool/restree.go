@@ -466,6 +466,10 @@ func (t *tree) GetByPath(path *respool.ResourcePoolPath) (ResPool, error) {
 	t.RLock()
 	defer t.RUnlock()
 
+	if t.root == nil {
+		return nil, errors.Errorf("resource pool is not initialized")
+	}
+
 	if path.Value == ResourcePoolPathDelimiter {
 		return t.root, nil
 	}

@@ -444,6 +444,13 @@ func (suite *resTreeTestSuite) TestTree_GetByPath() {
 		Value: "/respool1/respool11/doesnotexist",
 	})
 	suite.Error(err)
+
+	// Get on uninitialized tree fails.
+	suite.resourceTree.(*tree).root = nil
+	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+		Value: "/",
+	})
+	suite.Error(err)
 }
 
 func (suite *resTreeTestSuite) TestRefillTaskQueue() {
