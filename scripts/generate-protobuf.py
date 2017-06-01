@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import click
 import glob
 import os
 import string
@@ -8,8 +9,6 @@ import sys
 
 # peloton_proto = './vendor/code.uber.internal/infra/peloton/protobuf/'
 peloton_proto = './protobuf/'
-go_loc = 'code.uber.internal/infra/peloton/.gen/'
-gen_dir = '.gen'
 protoc_cmd = (
     'protoc --proto_path={proto_path} --{generator}_out={mflag}:{gen_dir}'
     ' {file}'
@@ -24,7 +23,7 @@ def protos():
     return f
 
 
-def mflags(files):
+def mflags(files, go_loc):
     pfiles = [string.replace(f, peloton_proto, '') for f in files]
     pfiles.remove('peloton/api/peloton.proto')
     m = string.join(['M' + f + '=' + go_loc +
@@ -33,7 +32,7 @@ def mflags(files):
     return m
 
 
-def generate(generator, f, m):
+def generate(generator, f, m, gen_dir):
     print protoc_cmd.format(proto_path=peloton_proto, mflag='${mflag}',
                             gen_dir=gen_dir, file=f, generator=generator)
     cmd = protoc_cmd.format(proto_path=peloton_proto, mflag=m,
@@ -44,14 +43,16 @@ def generate(generator, f, m):
         sys.exit(retval)
 
 
-def main():
-
+@click.command()
+@click.option('--go-loc', default='code.uber.internal/infra/peloton/.gen/')
+@click.option('-o', '--out', default='.gen')
+def main(go_loc, out):
     files = protos()
-    m = mflags(files)
+    m = mflags(files, go_loc)
 
     # For every .proto file in peloton generate us a golang file
     for f in files:
-        generate("go", f, m)
+        generate("go", f, m, out)
 
         # Generate yarpc-go files for all files with a service. The yarpc
         # plugin generates bad output for files without any services.
@@ -60,7 +61,7 @@ def main():
 
             for l in lines:
                 if l.startswith('service '):
-                    generate("yarpc-go", f, m)
+                    generate("yarpc-go", f, m, out)
                     break
 
 

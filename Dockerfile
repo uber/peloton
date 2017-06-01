@@ -13,7 +13,8 @@ RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
   vim \
   gdb \
   util-linux \
-  python-dev
+  python-dev \
+  python-pip
 
 # Install protoc
 RUN wget https://github.com/google/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-x86_64.zip \
