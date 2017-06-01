@@ -149,16 +149,16 @@ def run_mesos():
     cli.pull(config['mesos_slave_image'])
     for i in range(0, config['num_agents']):
         agent = config['mesos_agent_container'] + repr(i)
-        port = config['agent_port'] + i
+        port = config['local_agent_port'] + i
         remove_existing_container(agent)
         container = cli.create_container(
             name=agent,
             hostname=agent,
             volumes=['/scripts', '/var/run/docker.sock'],
-            ports=[repr(config['agent_port'])],
+            ports=[repr(config['default_agent_port'])],
             host_config=cli.create_host_config(
                 port_bindings={
-                    config['agent_port']: port,
+                    config['default_agent_port']: port,
                 },
                 binds=[
                     work_dir + '/scripts:/scripts',
@@ -306,7 +306,10 @@ def run_peloton_master():
                 'CONFIG_DIR=config',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
-                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'ELECTION_ZK_SERVERS={0}:{1}'.format(
+                    host_ip,
+                    config['local_zk_port']
+                ),
                 'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
                     host_ip,
                     config['local_zk_port']
@@ -372,7 +375,10 @@ def run_peloton_resmgr():
                 'APP=resmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
-                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'ELECTION_ZK_SERVERS={0}:{1}'.format(
+                    host_ip,
+                    config['local_zk_port']
+                ),
                 'CASSANDRA_HOSTS={0}'.format(
                     host_ip,
                 ),
@@ -413,7 +419,10 @@ def run_peloton_hostmgr():
                 'APP=hostmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
-                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'ELECTION_ZK_SERVERS={0}:{1}'.format(
+                    host_ip,
+                    config['local_zk_port']
+                ),
                 'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
                     host_ip,
                     config['local_zk_port']
@@ -458,7 +467,10 @@ def run_peloton_jobmgr():
                 'APP=jobmgr',
                 'PORT=' + repr(port),
                 'DB_HOST=' + host_ip,
-                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'ELECTION_ZK_SERVERS={0}:{1}'.format(
+                    host_ip,
+                    config['local_zk_port']
+                ),
                 'CASSANDRA_HOSTS={0}'.format(
                     host_ip,
                 ),
@@ -503,7 +515,10 @@ def run_peloton_placement():
                     host_ip,
                     config['local_zk_port']
                 ),
-                'ELECTION_ZK_SERVERS={0}:8192'.format(host_ip),
+                'ELECTION_ZK_SERVERS={0}:{1}'.format(
+                    host_ip,
+                    config['local_zk_port']
+                ),
                 'ENABLE_DEBUG_LOGGING=' + config['debug'],
             ],
             host_config=cli.create_host_config(
