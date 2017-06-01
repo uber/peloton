@@ -7,13 +7,18 @@ mesos_zk_path = 'zk://' + ','.join([
 election_zk_servers = '\n'.join([
     'zookeeper-mesos-devel01-sjc1.uber.internal:2181',
 ])
-docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.1.0-185-g47f26b5'
+docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.1.0-225-gaf2dafd'
 mysql_host = 'compute74-sjc1'
 # TODO: remove the host pin once peloton is hooked up with uns
 resmgr_host = 'compute75-sjc1'
 hostmgr_host = 'compute76-sjc1'
-jobmgr_host = 'compute74-sjc1'
+jobmgr_host = 'compute76-sjc1'
 placement_host = 'compute311-sjc1'
+cassandra_hosts = '\n'.join([
+                  'compute74-sjc1',
+                  ])
+use_cassandra = 'true'
+cassandra_store = cluster.replace('-', '_')
 
 PROFILES = [
   Profile(
@@ -25,6 +30,9 @@ PROFILES = [
     mysql_host = mysql_host,
     docker_image = docker_image,
     pinned_hosts = resmgr_host,
+    use_cassandra = use_cassandra,
+    cassandra_hosts = cassandra_hosts,
+    cassandra_store = cassandra_store,
   ),
   Profile(
     cluster = cluster,
@@ -35,6 +43,9 @@ PROFILES = [
     mysql_host = mysql_host,
     docker_image = docker_image,
     pinned_hosts = hostmgr_host,
+    use_cassandra = use_cassandra,
+    cassandra_hosts = cassandra_hosts,
+    cassandra_store = cassandra_store,
   ),
   Profile(
     cluster = cluster,
@@ -45,6 +56,9 @@ PROFILES = [
     mysql_host = mysql_host,
     docker_image = docker_image,
     pinned_hosts = jobmgr_host,
+    use_cassandra = use_cassandra,
+    cassandra_hosts = cassandra_hosts,
+    cassandra_store = cassandra_store,
   ),
   Profile(
     cluster = cluster,
@@ -55,6 +69,9 @@ PROFILES = [
     mysql_host = mysql_host,
     docker_image = docker_image,
     pinned_hosts = placement_host,
+    use_cassandra = use_cassandra,
+    cassandra_hosts = cassandra_hosts,
+    cassandra_store = cassandra_store,
   )
 ]
 
