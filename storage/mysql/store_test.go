@@ -326,6 +326,10 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 	suite.NoError(err)
 	suite.Equal(len(jobs), 10)
 
+	jobs, err = suite.store.Query(nil, nil)
+	suite.NoError(err)
+	suite.Equal(len(jobs), 10)
+
 	jobs, err = suite.store.GetJobsByOwner("team6")
 	suite.NoError(err)
 	suite.Equal(len(jobs), records-2)
