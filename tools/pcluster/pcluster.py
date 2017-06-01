@@ -92,13 +92,13 @@ def run_mesos():
     container = cli.create_container(
         name=config['zk_container'],
         hostname=config['zk_container'],
-        volumes=['/scripts'],
+        volumes=['/files'],
         host_config=cli.create_host_config(
             port_bindings={
                 config['default_zk_port']: config['local_zk_port'],
             },
             binds=[
-                work_dir + '/scripts:/scripts',
+                work_dir + '/files:/files',
             ]),
         image=config['zk_image'],
         detach=True
@@ -116,14 +116,14 @@ def run_mesos():
     container = cli.create_container(
         name=config['mesos_master_container'],
         hostname=config['mesos_master_container'],
-        volumes=['/scripts'],
+        volumes=['/files'],
         ports=[repr(config['master_port'])],
         host_config=cli.create_host_config(
             port_bindings={
                 config['master_port']: config['master_port'],
             },
             binds=[
-                work_dir + '/scripts:/scripts',
+                work_dir + '/files:/files',
                 work_dir + '/mesos_config/etc_mesos-master:/etc/mesos-master'
             ],
             privileged=True
@@ -140,7 +140,7 @@ def run_mesos():
             'MESOS_ADVERTISE_IP={}'.format(host_ip),
         ],
         image=config['mesos_master_image'],
-        entrypoint='bash /scripts/run_mesos_master.sh',
+        entrypoint='bash /files/run_mesos_master.sh',
         detach=True,
     )
     cli.start(container=container.get('Id'))
@@ -155,14 +155,14 @@ def run_mesos():
         container = cli.create_container(
             name=agent,
             hostname=agent,
-            volumes=['/scripts', '/var/run/docker.sock'],
+            volumes=['/files', '/var/run/docker.sock'],
             ports=[repr(config['default_agent_port'])],
             host_config=cli.create_host_config(
                 port_bindings={
                     config['default_agent_port']: port,
                 },
                 binds=[
-                    work_dir + '/scripts:/scripts',
+                    work_dir + '/files:/files',
                     work_dir +
                     '/mesos_config/etc_mesos-slave:/etc/mesos-slave',
                     '/var/run/docker.sock:/var/run/docker.sock',
@@ -190,7 +190,7 @@ def run_mesos():
                 'MESOS_RESOURCE_ESTIMATOR=' + config['resource_estimator'],
             ],
             image=config['mesos_slave_image'],
-            entrypoint='bash /scripts/run_mesos_slave.sh',
+            entrypoint='bash /files/run_mesos_slave.sh',
             detach=True,
         )
         cli.start(container=container.get('Id'))
@@ -244,12 +244,12 @@ def run_cassandra():
                     config['cassandra_thrift_port'],
             },
             binds=[
-                work_dir + '/scripts:/scripts',
+                work_dir + '/files:/files',
             ],
         ),
         image=config['cassandra_image'],
         detach=True,
-        entrypoint='bash /scripts/run_cassandra_with_stratio_index.sh',
+        entrypoint='bash /files/run_cassandra_with_stratio_index.sh',
     )
     cli.start(container=container.get('Id'))
     print 'started container %s' % config['cassandra_container']
@@ -267,7 +267,7 @@ def create_cassandra_store():
         time.sleep(sleep_time_secs)
         setup_exe = cli.exec_create(
             container=config['cassandra_container'],
-            cmd='/scripts/setup_cassandra.sh',
+            cmd='/files/setup_cassandra.sh',
         )
         show_exe = cli.exec_create(
             container=config['cassandra_container'],
@@ -290,51 +290,7 @@ def create_cassandra_store():
 
 
 #
-# Run peloton master
-#
-def run_peloton_master():
-    print 'docker image "uber/peloton" has to be built first locally by ' \
-          'running IMAGE=uber/peloton make docker'
-
-    for i in range(0, config['peloton_master_instance_count']):
-        port = config['peloton_master_port'] + i
-        name = config['peloton_master_container'] + repr(i)
-        remove_existing_container(name)
-        container = cli.create_container(
-            name=name,
-            hostname=name,
-            environment=[
-                'CONFIG_DIR=config',
-                'PORT=' + repr(port),
-                'DB_HOST=' + host_ip,
-                'ELECTION_ZK_SERVERS={0}:{1}'.format(
-                    host_ip,
-                    config['local_zk_port']
-                ),
-                'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
-                    host_ip,
-                    config['local_zk_port']
-                ),
-                'CASSANDRA_HOSTS={0}'.format(
-                    host_ip,
-                ),
-            ],
-            host_config=cli.create_host_config(
-                port_bindings={
-                    port: port,
-                },
-            ),
-            # pull or build peloton image if not exists
-            image=config['peloton_image'],
-            detach=True,
-        )
-        cli.start(container=container.get('Id'))
-        print 'started container %s' % name
-        time.sleep(1)
-
-
-#
-# Run peloton apps
+# Run peloton
 #
 def run_peloton(disable_peloton_resmgr=False,
                 disable_peloton_hostmgr=False,
@@ -574,8 +530,7 @@ def wait_for_up(app, port):
 #
 # Set up a personal cluster
 #
-def setup(enable_peloton_master=False,
-          enable_peloton=False,
+def setup(enable_peloton=False,
           disable_peloton_resmgr=False,
           disable_peloton_hostmgr=False,
           disable_peloton_jobmgr=False,
@@ -585,11 +540,7 @@ def setup(enable_peloton_master=False,
     run_mysql()
     run_mesos()
 
-    if enable_peloton_master:
-        run_peloton_master()
-
-    # single master mode and 4-app mode should be exclusive
-    if not enable_peloton_master and enable_peloton:
+    if enable_peloton:
         run_peloton(
             disable_peloton_resmgr,
             disable_peloton_hostmgr,
@@ -614,10 +565,6 @@ def teardown():
     remove_existing_container(config['mysql_container'])
 
     remove_existing_container(config['cassandra_container'])
-
-    for i in range(0, config['peloton_master_instance_count']):
-        name = config['peloton_master_container'] + repr(i)
-        remove_existing_container(name)
 
     for i in range(0, config['peloton_resmgr_instance_count']):
         name = config['peloton_resmgr_container'] + repr(i)
@@ -658,21 +605,12 @@ USAGE
         'setup',
         help='set up a personal cluster')
     parser_setup.add_argument(
-        "-m",
-        "--enable-peloton-master",
-        dest="enable_peloton_master",
-        action='store_true',
-        default=False,
-        help="enable peloton in master mode"
-    )
-    parser_setup.add_argument(
         "-a",
         "--enable-peloton",
         dest="enable_peloton",
         action='store_true',
         default=False,
-        help="enable peloton in multi app mode, if enable_peloton_master " +
-             "is specified this will be False"
+        help="enable peloton",
     )
     parser_setup.add_argument(
         "--no-resmgr",
@@ -713,7 +651,6 @@ USAGE
 
     if command == 'setup':
         setup(
-            enable_peloton_master=args.enable_peloton_master,
             enable_peloton=args.enable_peloton,
             disable_peloton_hostmgr=args.disable_peloton_hostmgr,
             disable_peloton_resmgr=args.disable_peloton_resmgr,

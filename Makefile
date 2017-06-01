@@ -150,18 +150,13 @@ unit-test: $(GOCOV) $(PBGENS) mockgens
 integ-test:
 	@./tests/run-integration-tests.sh
 
-# launch peloton with PELOTON={app}, default to none
-# TODO: clean up the make rule when cleaning up pcluster
+# launch peloton with PELOTON={any value}, default to none
 pcluster:
 # installaltion of docker-py is required, see "bootstrap.sh" or ""tools/pcluster/README.md" for more info
 ifndef PELOTON
 	@./tools/pcluster/pcluster.py setup
 else
-ifeq ($(PELOTON),app)
 	@./tools/pcluster/pcluster.py setup -a
-else
-	@echo "Unknown Peloton mode: "$(PELOTON)
-endif
 endif
 
 pcluster-teardown:
