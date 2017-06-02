@@ -60,6 +60,10 @@ type ResPool interface {
 	// GetChildReservation returns the total reservation of all
 	// the childs by kind
 	GetChildReservation() (map[string]float64, error)
+	// GetUsage returns the current Usage
+	GetUsage() map[string]float64
+	// SetUsage sets the usage
+	SetUsage(map[string]float64)
 }
 
 // resPool implements ResPool interface
@@ -73,6 +77,7 @@ type resPool struct {
 	poolConfig      *respool.ResourcePoolConfig
 	pendingQueue    queue.Queue
 	entitlement     map[string]float64
+	usage           map[string]float64
 }
 
 // NewRespool will initialize the resource pool node and return that
@@ -103,6 +108,7 @@ func NewRespool(
 		poolConfig:      config,
 		pendingQueue:    q,
 		entitlement:     make(map[string]float64),
+		usage:           make(map[string]float64),
 	}
 
 	result.initResources(config)
@@ -287,7 +293,22 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 		Parent:   parentResPoolID,
 		Config:   n.poolConfig,
 		Children: childrenResourcePoolIDs,
+		Usage:    n.createRespoolUsage(n.GetUsage()),
 	}
+}
+
+func (n *resPool) createRespoolUsage(usage map[string]float64) []*respool.ResourceUsage {
+	resUsage := make([]*respool.ResourceUsage, 0, len(usage))
+	for k, v := range usage {
+		ru := &respool.ResourceUsage{
+			Kind:       k,
+			Allocation: v,
+			// Hardcoding until we have real slack
+			Slack: float64(0),
+		}
+		resUsage = append(resUsage, ru)
+	}
+	return resUsage
 }
 
 func (n *resPool) isLeaf() bool {
@@ -380,4 +401,14 @@ func (n *resPool) GetChildReservation() (map[string]float64, error) {
 		}
 	}
 	return totalReservation, nil
+}
+
+// GetUsage gets the current Usage for the resource pool
+func (n *resPool) GetUsage() map[string]float64 {
+	return n.usage
+}
+
+// SetUsage sets the usage for the resource pool
+func (n *resPool) SetUsage(usage map[string]float64) {
+	n.usage = usage
 }

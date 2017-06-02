@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/common"
 )
 
 type ResPoolSuite struct {
@@ -243,4 +244,37 @@ func (s *ResPoolSuite) TestResPoolDequeueError() {
 		"limit 0 is not valid",
 	)
 	s.Error(err)
+}
+
+func (s *ResPoolSuite) TestUsage() {
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+
+	poolConfig := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	s.NoError(err)
+	usage := make(map[string]float64)
+	usage[common.CPU] = 100
+	usage[common.GPU] = 10
+	usage[common.DISK] = 1000
+	usage[common.MEMORY] = 64
+	resPoolNode.SetUsage(usage)
+	info := resPoolNode.ToResourcePoolInfo()
+	for _, val := range info.Usage {
+		switch val.Kind {
+		case common.CPU:
+			s.Equal(val.Allocation, float64(100))
+		case common.GPU:
+			s.Equal(val.Allocation, float64(10))
+		case common.DISK:
+			s.Equal(val.Allocation, float64(1000))
+		case common.MEMORY:
+			s.Equal(val.Allocation, float64(64))
+		}
+	}
 }

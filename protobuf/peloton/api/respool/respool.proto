@@ -110,6 +110,9 @@ message ResourcePoolInfo {
 
   // Resource Pool's children
   repeated ResourcePoolID children = 4;
+
+  // Resource usage for each resource kind
+  repeated ResourceUsage usage = 5;
 }
 
 /**
@@ -245,4 +248,15 @@ message QueryResponse {
   }
   Error error = 1;
   repeated ResourcePoolInfo resourcePools = 2;
+}
+
+message ResourceUsage {
+  // Type of the resource
+  string kind = 1;
+  // Allocation of the resource
+  double allocation = 2;
+  // slack is the resource which is allocated
+  // but not used and mesos will give those resources as
+  // revocable offers
+  double slack = 3;
 }

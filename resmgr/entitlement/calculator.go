@@ -246,8 +246,8 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 		return err
 	}
 
-	rootResources := rootResPool.ResourcePoolConfig()
-	if rootResources == nil {
+	rootResourcePoolConfig := rootResPool.ResourcePoolConfig()
+	if rootResourcePoolConfig == nil {
 		log.Error("root resource pool have invalid config")
 		return errors.New("root resource pool have invalid config")
 	}
@@ -258,7 +258,7 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 		c.clusterCapacity[res.Kind] = res.Capacity
 	}
 
-	rootres := rootResources.Resources
+	rootres := rootResourcePoolConfig.Resources
 	if rootres == nil {
 		log.WithField("root", rootResPool).Info("res pool have nil resource config")
 		rootres = []*res.ResourceConfig{
@@ -279,18 +279,15 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 				Reservation: c.clusterCapacity[common.MEMORY],
 			},
 		}
-		rootResources.Resources = rootres
+		rootResourcePoolConfig.Resources = rootres
 	} else {
 		for _, resource := range rootres {
 			resource.Reservation =
 				c.clusterCapacity[resource.Kind]
 		}
 	}
-	rootResPool.SetResourcePoolConfig(rootResources)
+	rootResPool.SetResourcePoolConfig(rootResourcePoolConfig)
 	log.WithField(" root resource ", rootres).Info("Updating root resources")
-	for _, r := range rootres {
-		rootResPool.SetResourceConfig(r)
-	}
 	return nil
 }
 

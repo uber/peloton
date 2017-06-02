@@ -227,7 +227,17 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 			}, nil).
 			Times(1),
 	)
+
+	rootres, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "root"})
+	suite.NoError(err)
+	rootres.SetResourcePoolConfig(suite.getResPools()["root"])
+	suite.Equal(rootres.Resources()[common.CPU].Reservation, float64(10))
+	suite.Equal(rootres.Resources()[common.GPU].Reservation, float64(1))
+	suite.Equal(rootres.Resources()[common.MEMORY].Reservation, float64(100))
+	suite.Equal(rootres.Resources()[common.DISK].Reservation, float64(1000))
+
 	suite.calculator.calculateEntitlement(context.Background())
+
 	RootResPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "root"})
 	suite.NoError(err)
 	suite.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
