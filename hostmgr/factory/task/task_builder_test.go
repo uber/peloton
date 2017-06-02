@@ -1,4 +1,4 @@
-package hostmgr
+package task
 
 import (
 	"fmt"
@@ -10,7 +10,9 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -31,13 +33,13 @@ const (
 // - sufficient scalar resources for multiple tasks w/ multiple ports, some exports to envs while some doesn't;
 // - sufficient scalar resources for multiple tasks but insufficient multiple ports;
 
-type TaskBuilderTestSuite struct {
+type BuilderTestSuite struct {
 	suite.Suite
 }
 
 // helper function to build resources which fits exactly numTasks
 // default tasks.
-func (suite *TaskBuilderTestSuite) getResources(
+func (suite *BuilderTestSuite) getResources(
 	numTasks int) []*mesos.Resource {
 
 	resources := []*mesos.Resource{
@@ -58,7 +60,7 @@ func (suite *TaskBuilderTestSuite) getResources(
 }
 
 // helper function for creating test task ids
-func (suite *TaskBuilderTestSuite) createTestTaskIDs(
+func (suite *BuilderTestSuite) createTestTaskIDs(
 	numTasks int) []*mesos.TaskID {
 
 	var tids []*mesos.TaskID
@@ -76,11 +78,14 @@ const (
 )
 
 var (
-	defaultResourceConfig = task.ResourceConfig{
+	_defaultResourceConfig = task.ResourceConfig{
 		CpuLimit:    _cpu,
 		MemLimitMb:  _mem,
 		DiskLimitMb: _disk,
 	}
+
+	_tmpLabelKey   = "label_key"
+	_tmpLabelValue = "label_value"
 )
 
 // helper function to create a no-port task
@@ -90,7 +95,7 @@ func createTestTaskConfigs(numTasks int) []*task.TaskConfig {
 	for i := 0; i < numTasks; i++ {
 		configs = append(configs, &task.TaskConfig{
 			Name:     fmt.Sprintf("name-%d", i),
-			Resource: &defaultResourceConfig,
+			Resource: &_defaultResourceConfig,
 			Command: &mesos.CommandInfo{
 				Value: &tmpCmd,
 			},
@@ -101,10 +106,10 @@ func createTestTaskConfigs(numTasks int) []*task.TaskConfig {
 
 // This tests several copies of simple tasks without any port can be
 // created as long as there are enough resources.
-func (suite *TaskBuilderTestSuite) TestNoPortTasks() {
+func (suite *BuilderTestSuite) TestNoPortTasks() {
 	numTasks := 4
 	resources := suite.getResources(numTasks)
-	builder := newTaskBuilder(resources)
+	builder := NewBuilder(resources)
 	suite.Equal(
 		map[string]scalar.Resources{
 			"*": {
@@ -119,7 +124,7 @@ func (suite *TaskBuilderTestSuite) TestNoPortTasks() {
 	configs := createTestTaskConfigs(numTasks)
 
 	for i := 0; i < numTasks; i++ {
-		info, err := builder.build(tids[i], configs[i], nil)
+		info, err := builder.Build(tids[i], configs[i], nil, nil, nil)
 		suite.NoError(err)
 		suite.Equal(tids[i], info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
@@ -133,13 +138,13 @@ func (suite *TaskBuilderTestSuite) TestNoPortTasks() {
 	}
 
 	// next build call will return an error due to insufficient resource.
-	info, err := builder.build(tids[0], configs[0], nil)
+	info, err := builder.Build(tids[0], configs[0], nil, nil, nil)
 	suite.Nil(info)
 	suite.EqualError(err, "Not enough resources left to run task")
 }
 
 // This tests several tasks requiring ports can be created.
-func (suite *TaskBuilderTestSuite) TestPortTasks() {
+func (suite *BuilderTestSuite) TestPortTasks() {
 	portSet := map[uint32]bool{
 		1000: true,
 		1002: true,
@@ -157,7 +162,7 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 			WithRanges(util.CreatePortRanges(portSet)).
 			Build())
 
-	builder := newTaskBuilder(resources)
+	builder := NewBuilder(resources)
 	suite.Equal(
 		map[string]scalar.Resources{
 			"*": {
@@ -188,13 +193,11 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 			EnvName: "DYNAMIC_ENV_PORT",
 		},
 	}
-	tmpLabelKey := "label_key"
-	tmpLabelValue := "label_value"
 	taskConfig.Labels = &mesos.Labels{
 		Labels: []*mesos.Label{
 			{
-				Key:   &tmpLabelKey,
-				Value: &tmpLabelValue,
+				Key:   &_tmpLabelKey,
+				Value: &_tmpLabelValue,
 			},
 		},
 	}
@@ -211,8 +214,8 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 
 	discoveryPortSet := make(map[uint32]bool)
 	for i := 0; i < numTasks; i++ {
-		info, err := builder.build(
-			tid, taskConfig, selectedDynamicPorts[i])
+		info, err := builder.Build(
+			tid, taskConfig, selectedDynamicPorts[i], nil, nil)
 		suite.NoError(err)
 		suite.Equal(tid, info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
@@ -266,8 +269,8 @@ func (suite *TaskBuilderTestSuite) TestPortTasks() {
 	suite.Equal(portSet, discoveryPortSet)
 }
 
-// TestTaskBuilderPickPorts tests pickPorts call and its return value.
-func (suite *TaskBuilderTestSuite) TestTaskBuilderPickPorts() {
+// TestBuilderPickPorts tests pickPorts call and its return value.
+func (suite *BuilderTestSuite) TestBuilderPickPorts() {
 	portSet := map[uint32]bool{
 		1000: true,
 		1002: true,
@@ -284,7 +287,7 @@ func (suite *TaskBuilderTestSuite) TestTaskBuilderPickPorts() {
 			WithRanges(util.CreatePortRanges(portSet)).
 			Build())
 
-	builder := newTaskBuilder(resources)
+	builder := NewBuilder(resources)
 	taskConfig := createTestTaskConfigs(1)[0]
 	// Requires 3 ports, 1 static and 2 dynamic ones.
 	taskConfig.Ports = []*task.PortConfig{
@@ -314,10 +317,10 @@ func (suite *TaskBuilderTestSuite) TestTaskBuilderPickPorts() {
 }
 
 // This tests task with command health can be created.
-func (suite *TaskBuilderTestSuite) TestCommandHealthCheck() {
+func (suite *BuilderTestSuite) TestCommandHealthCheck() {
 	numTasks := 1
 	resources := suite.getResources(numTasks)
-	builder := newTaskBuilder(resources)
+	builder := NewBuilder(resources)
 	tid := suite.createTestTaskIDs(numTasks)[0]
 	c := createTestTaskConfigs(numTasks)[0]
 
@@ -329,7 +332,7 @@ func (suite *TaskBuilderTestSuite) TestCommandHealthCheck() {
 		Type:         task.HealthCheckConfig_COMMAND,
 		CommandCheck: cmdCfg,
 	}
-	info, err := builder.build(tid, c, nil)
+	info, err := builder.Build(tid, c, nil, nil, nil)
 	suite.NoError(err)
 	suite.Equal(tid, info.GetTaskId())
 	hc := info.GetHealthCheck().GetCommand()
@@ -340,7 +343,7 @@ func (suite *TaskBuilderTestSuite) TestCommandHealthCheck() {
 }
 
 // This tests various combination of populating health check.
-func (suite *TaskBuilderTestSuite) TestPopulateHealthCheck() {
+func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 	cmdType := mesos.HealthCheck_COMMAND
 	command := "hello world"
 	tmpTrue := true
@@ -362,7 +365,7 @@ func (suite *TaskBuilderTestSuite) TestPopulateHealthCheck() {
 	}
 
 	var testCases = []struct {
-		builder  *taskBuilder
+		builder  *Builder
 		taskInfo *mesos.TaskInfo
 		input    *task.HealthCheckConfig
 		output   *mesos.HealthCheck
@@ -442,7 +445,7 @@ func (suite *TaskBuilderTestSuite) TestPopulateHealthCheck() {
 		builder := tt.builder
 		if builder == nil {
 			var empty []*mesos.Resource
-			builder = newTaskBuilder(empty)
+			builder = NewBuilder(empty)
 		}
 		taskInfo := tt.taskInfo
 		if taskInfo == nil {
@@ -453,6 +456,38 @@ func (suite *TaskBuilderTestSuite) TestPopulateHealthCheck() {
 	}
 }
 
-func TestTaskBuilderTestSuite(t *testing.T) {
-	suite.Run(t, new(TaskBuilderTestSuite))
+// TestPopulateReservationVolumeInfo tests populateReservationInfo.
+func (suite *BuilderTestSuite) TestPopulateReservationVolumeInfo() {
+	numTasks := 1
+	resources := suite.getResources(numTasks)
+	labels := &mesos.Labels{
+		Labels: []*mesos.Label{
+			{
+				Key:   &_tmpLabelKey,
+				Value: &_tmpLabelValue,
+			},
+		},
+	}
+
+	testContainerPath := "testContainerPath"
+	testVolumeID := "testVolumeID"
+	volumeInfo := &hostsvc.Volume{
+		Id: &peloton.VolumeID{
+			Value: testVolumeID,
+		},
+		ContainerPath: testContainerPath,
+	}
+	populateReservationVolumeInfo(resources, labels, volumeInfo)
+	for _, res := range resources {
+		suite.Equal(res.GetRole(), _pelotonRole)
+		suite.Equal(res.GetReservation().GetLabels(), labels)
+		if res.GetName() == "disk" {
+			suite.Equal(res.GetDisk().GetVolume().GetContainerPath(), testContainerPath)
+			suite.Equal(res.GetDisk().GetPersistence().GetId(), testVolumeID)
+		}
+	}
+}
+
+func TestBuilderTestSuite(t *testing.T) {
+	suite.Run(t, new(BuilderTestSuite))
 }

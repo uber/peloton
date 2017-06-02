@@ -48,7 +48,7 @@ type Pool interface {
 	// function are considered used and sent back to Mesos master in a Launch
 	// operation, while result in `ClaimForPlace` are still considered part
 	// of peloton apps.
-	ClaimForLaunch(hostname string) (map[string]*mesos.Offer, error)
+	ClaimForLaunch(hostname string, useReservedOffers bool) (map[string]*mesos.Offer, error)
 
 	// ReturnUnusedOffers returns previously placed offers on hostname back
 	// to current offer pool so they can be used by future launch actions.
@@ -168,7 +168,7 @@ func (p *offerPool) ClaimForPlace(constraint *hostsvc.Constraint) (
 }
 
 // ClaimForLaunch takes offers from pool for launch.
-func (p *offerPool) ClaimForLaunch(hostname string) (
+func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 	map[string]*mesos.Offer, error) {
 	// TODO: This is very similar to RemoveExpiredOffers, maybe refactor it.
 	p.RLock()
@@ -176,12 +176,19 @@ func (p *offerPool) ClaimForLaunch(hostname string) (
 	p.timedOffersLock.Lock()
 	defer p.timedOffersLock.Unlock()
 
-	offerMap, err := p.hostOfferIndex[hostname].ClaimForLaunch()
+	var offerMap map[string]*mesos.Offer
+	var err error
+	if useReservedOffers {
+		offerMap, err = p.hostOfferIndex[hostname].ClaimReservedOffersForLaunch()
+	} else {
+		offerMap, err = p.hostOfferIndex[hostname].ClaimForLaunch()
+	}
 	if err != nil {
 		log.WithFields(log.Fields{
-			"host":  hostname,
-			"error": err,
-		}).Error("ClaimForLaunch error")
+			"host":              hostname,
+			"error":             err,
+			"useReservedOffers": useReservedOffers,
+		}).Error("claim offers for launch error")
 		return nil, err
 	}
 
@@ -196,8 +203,10 @@ func (p *offerPool) ClaimForLaunch(hostname string) (
 		}
 	}
 
-	delta := scalar.FromOfferMap(offerMap)
-	decQuantity(&p.placingResources, delta, p.metrics.placing)
+	if !useReservedOffers {
+		delta := scalar.FromOfferMap(offerMap)
+		decQuantity(&p.placingResources, delta, p.metrics.placing)
+	}
 
 	return offerMap, nil
 }

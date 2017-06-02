@@ -83,7 +83,11 @@ type HostSummary interface {
 	// CacheStatus and possibly removed offer for tracking purpose.
 	RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offer)
 
+	// ClaimForLaunch releases offers for task launch.
 	ClaimForLaunch() (map[string]*mesos.Offer, error)
+
+	// ClaimReservedOffersForLaunch release reserved offers for task launch.
+	ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, error)
 
 	// CasStatus atomically sets the status to new value if current value is old,
 	// otherwise returns error.
@@ -357,6 +361,21 @@ func (a *hostSummary) ClaimForLaunch() (map[string]*mesos.Offer, error) {
 	// as ready.
 	a.status = ReadyOffer
 	a.readyCount.Store(0)
+	return result, nil
+}
+
+// ClaimReservedOffersForLaunch atomically releases and returns reserved offers
+// on current host.
+func (a *hostSummary) ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, error) {
+	a.Lock()
+	defer a.Unlock()
+
+	result := make(map[string]*mesos.Offer)
+	for id, offer := range a.reservedOffers {
+		result[id] = offer
+		delete(a.reservedOffers, id)
+	}
+
 	return result, nil
 }
 

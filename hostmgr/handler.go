@@ -16,6 +16,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
+	"code.uber.internal/infra/peloton/hostmgr/factory/task"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
@@ -146,6 +148,194 @@ func (h *serviceHandler) ReleaseHostOffers(
 	return &response, nil
 }
 
+var (
+	errEmptyOfferOperations              = errors.New("empty operations in OfferOperationsRequest")
+	errLaunchOperationIsNotLastOperation = errors.New("launch operation is not the last operation")
+	errLaunchOperationWithEmptyTasks     = errors.New("launch operation with empty task list")
+	errOfferOperationNotSupported        = errors.New("offer operation not supported")
+	errInvalidOfferOperatoin             = errors.New("invalid offer operation")
+	errHostnameMissing                   = errors.New("hostname is required")
+)
+
+// validateOfferOperation ensures offer operations sequences are valid.
+func validateOfferOperationsRequest(
+	request *hostsvc.OfferOperationsRequest) error {
+
+	operations := request.GetOperations()
+	if len(operations) == 0 {
+		return errEmptyOfferOperations
+	}
+
+	for index, op := range operations {
+		if op.GetType() == hostsvc.OfferOperation_LAUNCH {
+			if index != len(operations)-1 {
+				return errLaunchOperationIsNotLastOperation
+			} else if len(op.GetLaunch().GetTasks()) == 0 {
+				return errLaunchOperationWithEmptyTasks
+			}
+		} else if op.GetType() != hostsvc.OfferOperation_CREATE &&
+			op.GetType() != hostsvc.OfferOperation_RESERVE {
+			return errOfferOperationNotSupported
+		} else {
+			// Reservation label must be specified for RESERVE/CREATE operation.
+			if op.GetReservationLabels() == nil {
+				return errInvalidOfferOperatoin
+			}
+		}
+	}
+
+	if len(request.GetHostname()) == 0 {
+		return errHostnameMissing
+	}
+
+	return nil
+}
+
+// extractReserveationLabels checks if operations on reserved offers, if yes,
+// returns reservation labels, otherwise nil.
+func (h *serviceHandler) extractReserveationLabels(req *hostsvc.OfferOperationsRequest) *mesos.Labels {
+	reqOps := req.GetOperations()
+	if len(reqOps) == 1 &&
+		reqOps[0].GetType() == hostsvc.OfferOperation_LAUNCH {
+		return reqOps[0].GetReservationLabels()
+	}
+
+	if len(reqOps) == 2 &&
+		reqOps[0].GetType() == hostsvc.OfferOperation_CREATE &&
+		reqOps[1].GetType() == hostsvc.OfferOperation_LAUNCH {
+		return reqOps[0].GetReservationLabels()
+	}
+
+	return nil
+}
+
+// OfferOperations implements InternalHostService.OfferOperations.
+func (h *serviceHandler) OfferOperations(
+	ctx context.Context,
+	req *hostsvc.OfferOperationsRequest) (
+	*hostsvc.OfferOperationsResponse,
+	error) {
+	log.WithField("request", req).Debug("Offer operations called.")
+
+	if err := validateOfferOperationsRequest(req); err != nil {
+		h.metrics.OfferOperationsInvalid.Inc(1)
+		return &hostsvc.OfferOperationsResponse{
+			Error: &hostsvc.OfferOperationsResponse_Error{
+				InvalidArgument: &hostsvc.InvalidArgument{
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	reservedOfferLabels := h.extractReserveationLabels(req)
+	offers, err := h.offerPool.ClaimForLaunch(
+		req.GetHostname(),
+		reservedOfferLabels != nil, /* useReservedOffers */
+	)
+	if err != nil {
+		log.WithError(err).
+			WithField("request", req).
+			WithField("offers", offers).
+			Error("claim offer for operations failed.")
+		h.metrics.OfferOperationsInvalidOffers.Inc(1)
+		return &hostsvc.OfferOperationsResponse{
+			Error: &hostsvc.OfferOperationsResponse_Error{
+				InvalidOffers: &hostsvc.InvalidOffers{
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	// TODO: Use `offers` so we can support reservation, port picking, etc.
+	log.WithField("offers", offers).Debug("Offers found for launch")
+
+	var offerIds []*mesos.OfferID
+	var mesosResources []*mesos.Resource
+	var agentID *mesos.AgentID
+	for _, offer := range offers {
+		offerIds = append(offerIds, offer.GetId())
+		agentID = offer.GetAgentId()
+		for _, res := range offer.GetResources() {
+			if reservedOfferLabels == nil ||
+				reservedOfferLabels.String() == res.GetReservation().GetLabels().String() {
+				mesosResources = append(mesosResources, res)
+			}
+		}
+	}
+
+	factory := operation.NewOfferOperationsFactory(
+		req.GetOperations(),
+		mesosResources,
+		req.GetHostname(),
+		agentID,
+	)
+	offerOperations, err := factory.GetOfferOperations()
+	if err != nil {
+		log.WithError(err).
+			WithField("request", req).
+			WithField("offers", offers).
+			Error("get offer operations failed.")
+		// For now, decline all offers to Mesos in the hope that next
+		// call to pool will select some different host.
+		// An alternative is to mark offers on the host as ready.
+		if reservedOfferLabels == nil {
+			if err := h.offerPool.DeclineOffers(offerIds); err != nil {
+				log.WithError(err).
+					WithField("offers", offerIds).
+					Warn("Cannot decline offers task building error")
+			}
+		}
+
+		h.metrics.OfferOperationsInvalid.Inc(1)
+		return &hostsvc.OfferOperationsResponse{
+			Error: &hostsvc.OfferOperationsResponse_Error{
+				InvalidArgument: &hostsvc.InvalidArgument{
+					Message: "Cannot get offer operations: " + err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	callType := sched.Call_ACCEPT
+	msg := &sched.Call{
+		FrameworkId: h.frameworkInfoProvider.GetFrameworkID(),
+		Type:        &callType,
+		Accept: &sched.Call_Accept{
+			OfferIds:   offerIds,
+			Operations: offerOperations,
+		},
+	}
+
+	log.WithFields(log.Fields{
+		"call": msg,
+	}).Debug("Accepting offer with operations.")
+
+	// TODO: add retry / put back offer and tasks in failure scenarios
+	msid := h.frameworkInfoProvider.GetMesosStreamID()
+	err = h.schedulerClient.Call(msid, msg)
+	if err != nil {
+		h.metrics.OfferOperationsFail.Inc(1)
+		log.WithError(err).WithFields(log.Fields{
+			"operations": offerOperations,
+			"offers":     offerIds,
+			"error":      err,
+		}).Warn("Offer operations failure")
+
+		return &hostsvc.OfferOperationsResponse{
+			Error: &hostsvc.OfferOperationsResponse_Error{
+				Failure: &hostsvc.OperationsFailure{
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	h.metrics.OfferOperations.Inc(1)
+	return &hostsvc.OfferOperationsResponse{}, nil
+}
+
 // LaunchTasks implements InternalHostService.LaunchTasks.
 func (h *serviceHandler) LaunchTasks(
 	ctx context.Context,
@@ -165,7 +355,7 @@ func (h *serviceHandler) LaunchTasks(
 		}, nil
 	}
 
-	offers, err := h.offerPool.ClaimForLaunch(body.GetHostname())
+	offers, err := h.offerPool.ClaimForLaunch(body.GetHostname(), false)
 	if err != nil {
 		h.metrics.LaunchTasksInvalidOffers.Inc(1)
 		return &hostsvc.LaunchTasksResponse{
@@ -190,11 +380,11 @@ func (h *serviceHandler) LaunchTasks(
 	var mesosTasks []*mesos.TaskInfo
 	var mesosTaskIds []string
 
-	builder := newTaskBuilder(mesosResources)
+	builder := task.NewBuilder(mesosResources)
 
 	for _, t := range body.Tasks {
-		mesosTask, err := builder.build(
-			t.GetTaskId(), t.GetConfig(), t.GetPorts())
+		mesosTask, err := builder.Build(
+			t.GetTaskId(), t.GetConfig(), t.GetPorts(), nil, nil)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"error":   err,

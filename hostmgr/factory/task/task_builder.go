@@ -1,4 +1,4 @@
-package hostmgr
+package task
 
 import (
 	"errors"
@@ -12,11 +12,17 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
 
-// taskBuilder helps to build launchable Mesos TaskInfo from offers and
+var (
+	_pelotonRole      = "peloton"
+	_pelotonPrinciple = "peloton"
+)
+
+// Builder helps to build launchable Mesos TaskInfo from offers and
 // peloton task configs.
-type taskBuilder struct {
+type Builder struct {
 	// A map from role -> scalar resources.
 	scalars map[string]scalar.Resources
 
@@ -24,9 +30,9 @@ type taskBuilder struct {
 	portSets map[string]map[uint32]bool
 }
 
-// newTaskBuilder creates a new instance of taskBuilder, which caller can use to
+// NewBuilder creates a new instance of Builder, which caller can use to
 // build Mesos tasks from the cached resources.
-func newTaskBuilder(resources []*mesos.Resource) *taskBuilder {
+func NewBuilder(resources []*mesos.Resource) *Builder {
 	scalars := make(map[string]scalar.Resources)
 	portSets := make(map[string]map[uint32]bool)
 	for _, rs := range resources {
@@ -49,7 +55,7 @@ func newTaskBuilder(resources []*mesos.Resource) *taskBuilder {
 
 	// TODO: Look into whether we need to prefer reserved (non-* role)
 	// or unreserved (* role).
-	return &taskBuilder{
+	return &Builder{
 		scalars:  scalars,
 		portSets: portSets,
 	}
@@ -74,7 +80,7 @@ type portPickResult struct {
 // pickPorts inspects the given taskConfig, picks dynamic ports from
 // available resources, and return selected static and dynamic ports
 // as well as necessary environment variables and resources.
-func (tb *taskBuilder) pickPorts(
+func (tb *Builder) pickPorts(
 	taskConfig *task.TaskConfig,
 	selectedDynamicPorts map[string]uint32) (*portPickResult, error) {
 
@@ -126,15 +132,17 @@ func (tb *taskBuilder) pickPorts(
 	return result, nil
 }
 
-// build is used to build a `mesos.TaskInfo` from cached resources.
+// Build is used to build a `mesos.TaskInfo` from cached resources.
 // Caller can keep calling this function to build more tasks.
 // This returns error if the current
 // instance does not have enough resources leftover (scalar, port or
 // even volume in future), or the taskConfig is not correct.
-func (tb *taskBuilder) build(
+func (tb *Builder) Build(
 	taskID *mesos.TaskID,
 	taskConfig *task.TaskConfig,
 	selectedDynamicPorts map[string]uint32,
+	reservationLabels *mesos.Labels,
+	volume *hostsvc.Volume,
 ) (*mesos.TaskInfo, error) {
 
 	// Validation of input.
@@ -180,6 +188,10 @@ func (tb *taskBuilder) build(
 		lres = append(lres, pick.portResources...)
 	}
 
+	if reservationLabels != nil {
+		populateReservationVolumeInfo(lres, reservationLabels, volume)
+	}
+
 	mesosTask := &mesos.TaskInfo{
 		Name:      &jobID,
 		TaskId:    taskID,
@@ -200,9 +212,50 @@ func (tb *taskBuilder) build(
 	return mesosTask, nil
 }
 
+// populateReservationVolumeInfo sets up the reservation and volume fields on
+// mesos resources.
+func populateReservationVolumeInfo(
+	resources []*mesos.Resource,
+	labels *mesos.Labels,
+	volume *hostsvc.Volume) {
+
+	if labels == nil || volume == nil {
+		log.WithField("labels", labels).
+			Error("volume is required to populate volume info")
+		return
+	}
+	for _, res := range resources {
+		if len(res.GetRole()) == 0 || res.GetRole() == "*" {
+			// Setup the reservation if it is not reserved.
+			res.Role = &_pelotonRole
+			res.Reservation = &mesos.Resource_ReservationInfo{
+				Principal: &_pelotonPrinciple,
+				Labels:    proto.Clone(labels).(*mesos.Labels),
+			}
+		}
+		if res.GetName() != "disk" || res.GetDisk() != nil {
+			continue
+		}
+		// Setup the disk volume field.
+		volumeID := volume.GetId().GetValue()
+		containerPath := volume.GetContainerPath()
+		volumeRWMode := mesos.Volume_RW
+		res.Disk = &mesos.Resource_DiskInfo{
+			Persistence: &mesos.Resource_DiskInfo_Persistence{
+				Id:        &volumeID,
+				Principal: &_pelotonPrinciple,
+			},
+			Volume: &mesos.Volume{
+				ContainerPath: &containerPath,
+				Mode:          &volumeRWMode,
+			},
+		}
+	}
+}
+
 // populateCommandInfo properly sets up the CommandInfo of a Mesos task
 // and populates any optional environment variables in envMap.
-func (tb *taskBuilder) populateCommandInfo(
+func (tb *Builder) populateCommandInfo(
 	mesosTask *mesos.TaskInfo,
 	command *mesos.CommandInfo,
 	envMap map[string]string,
@@ -244,7 +297,7 @@ func (tb *taskBuilder) populateCommandInfo(
 }
 
 // populateContainerInfo properly sets up the `ContainerInfo` field of a task.
-func (tb *taskBuilder) populateContainerInfo(
+func (tb *Builder) populateContainerInfo(
 	mesosTask *mesos.TaskInfo,
 	container *mesos.ContainerInfo,
 ) {
@@ -256,7 +309,7 @@ func (tb *taskBuilder) populateContainerInfo(
 }
 
 // populateLabels properly sets up the `Labels` field of a mesos task.
-func (tb *taskBuilder) populateLabels(
+func (tb *Builder) populateLabels(
 	mesosTask *mesos.TaskInfo,
 	labels *mesos.Labels,
 ) {
@@ -268,7 +321,7 @@ func (tb *taskBuilder) populateLabels(
 
 // populateDiscoveryInfo populates the `DiscoveryInfo` field of the task
 // so service discovery integration can find which ports the task is using.
-func (tb *taskBuilder) populateDiscoveryInfo(
+func (tb *Builder) populateDiscoveryInfo(
 	mesosTask *mesos.TaskInfo,
 	selectedPorts map[string]uint32,
 	jobID string,
@@ -307,7 +360,7 @@ func (tb *taskBuilder) populateDiscoveryInfo(
 }
 
 // populateHealthCheck properly sets up the health check part of a Mesos task.
-func (tb *taskBuilder) populateHealthCheck(
+func (tb *Builder) populateHealthCheck(
 	mesosTask *mesos.TaskInfo, health *task.HealthCheckConfig) {
 	if health == nil {
 		return
@@ -368,7 +421,7 @@ func (tb *taskBuilder) populateHealthCheck(
 // extractScalarResources takes necessary scalar resources from cached resources
 // of this instance to construct a task, and returns error if not enough
 // resources are left.
-func (tb *taskBuilder) extractScalarResources(
+func (tb *Builder) extractScalarResources(
 	taskResources *task.ResourceConfig) ([]*mesos.Resource, error) {
 
 	if taskResources == nil {
