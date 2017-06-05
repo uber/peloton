@@ -77,6 +77,17 @@ func InitTaskStatusUpdate(
 		// TODO: add config for BucketEventProcessor
 		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
 
+		statusUpdaterRM := &statusUpdate{
+			jobStore:     jobStore,
+			taskStore:    taskStore,
+			rootCtx:      context.Background(),
+			resmgrClient: resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resmgrClientName)),
+			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
+			eventClients: make(map[string]*eventstream.Client),
+		}
+		// TODO: add config for BucketEventProcessor
+		statusUpdaterRM.applier = newBucketEventProcessor(statusUpdaterRM, 100, 10000)
+
 		eventClient := eventstream.NewEventStreamClient(
 			d,
 			common.PelotonJobManager,
@@ -89,10 +100,12 @@ func InitTaskStatusUpdate(
 			d,
 			common.PelotonJobManager,
 			common.PelotonResourceManager,
-			statusUpdater,
+			statusUpdaterRM,
 			parentScope.SubScope("ResmgrEventStreamClient"))
-		statusUpdater.eventClients[common.PelotonResourceManager] = eventClientRM
+		statusUpdaterRM.eventClients[common.PelotonResourceManager] = eventClientRM
+
 		statusUpdater.jobRuntimeUpdater = jobRuntimeUpdater
+		statusUpdaterRM.jobRuntimeUpdater = jobRuntimeUpdater
 	})
 }
 

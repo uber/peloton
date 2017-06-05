@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
 
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 )
@@ -56,14 +57,14 @@ type ResPool interface {
 	// by kind
 	SetEntitlementByKind(kind string, entitlement float64)
 	//GetEntitlement gets the entitlement for the resource pool
-	GetEntitlement() map[string]float64
+	GetEntitlement() *scalar.Resources
 	// GetChildReservation returns the total reservation of all
 	// the childs by kind
 	GetChildReservation() (map[string]float64, error)
-	// GetUsage returns the current Usage
-	GetUsage() map[string]float64
-	// SetUsage sets the usage
-	SetUsage(map[string]float64)
+	//GetUsage gets the usage for the resource pool
+	GetUsage() *scalar.Resources
+	// MarkItDone recaptures the resources from task
+	MarkItDone(res *scalar.Resources) error
 }
 
 // resPool implements ResPool interface
@@ -76,8 +77,8 @@ type resPool struct {
 	resourceConfigs map[string]*respool.ResourceConfig
 	poolConfig      *respool.ResourcePoolConfig
 	pendingQueue    queue.Queue
-	entitlement     map[string]float64
-	usage           map[string]float64
+	entitlement     *scalar.Resources
+	usage           *scalar.Resources
 }
 
 // NewRespool will initialize the resource pool node and return that
@@ -107,8 +108,8 @@ func NewRespool(
 		resourceConfigs: make(map[string]*respool.ResourceConfig),
 		poolConfig:      config,
 		pendingQueue:    q,
-		entitlement:     make(map[string]float64),
-		usage:           make(map[string]float64),
+		entitlement:     &scalar.Resources{},
+		usage:           &scalar.Resources{},
 	}
 
 	result.initResources(config)
@@ -219,27 +220,86 @@ func (n *resPool) EnqueueGang(tlist *list.List) error {
 // DequeueGangList dequeues a list of gangs from the
 // pending queue.  Each gang is a task list representing a gang
 // of 1 or more (same priority) tasks, from the pending queue.
+// If there is no gang present then its a error if any one present
+// then it will return all the gangs within limit without error
 func (n *resPool) DequeueGangList(limit int) (*list.List, error) {
-	if n.isLeaf() {
-		if limit <= 0 {
-			err := errors.Errorf("limit %d is not valid", limit)
-			return nil, err
+	if limit <= 0 {
+		err := errors.Errorf("limit %d is not valid", limit)
+		return nil, err
+	}
+	if !n.isLeaf() {
+		err := errors.Errorf("Respool %s is not a leaf node", n.id)
+		return nil, err
+	}
+
+	l := new(list.List)
+	for i := 1; i <= limit; i++ {
+		// First peek the gang and see if that can be
+		// dequeued from the list
+		gang, err := n.pendingQueue.Peek()
+
+		if err != nil {
+			if l.Len() == 0 {
+				return nil, err
+			}
+			break
 		}
-		l := new(list.List)
-		for i := 1; i <= limit; i++ {
-			resList, err := n.pendingQueue.Dequeue()
+		if n.canBeAdmitted(gang) {
+			log.WithField("gang", gang.Front().Value.(*resmgr.Task).Id).
+				Debug("Can be admitted")
+			err := n.pendingQueue.Remove(gang)
 			if err != nil {
 				if l.Len() == 0 {
 					return nil, err
 				}
 				break
 			}
-			l.PushBack(resList)
+			log.WithField("gang", gang).Debug("Deleted")
+			l.PushBack(gang)
+			// Need to lock the usage before updating it
+			n.Lock()
+			n.usage = n.usage.Add(n.getGangResources(gang))
+			n.Unlock()
+		} else {
+			if l.Len() <= 0 {
+				log.WithField(
+					"gang", gang).Debug("Need more" +
+					" resources then available")
+				return nil, errors.Errorf("Queue %s is already full", n.id)
+			}
 		}
-		return l, nil
 	}
-	err := errors.Errorf("Respool %s is not a leaf node", n.id)
-	return nil, err
+	return l, nil
+}
+
+func (n *resPool) canBeAdmitted(schedUnit *list.List) bool {
+	n.RLock()
+	defer n.RUnlock()
+
+	currentEntitlement := n.GetEntitlement()
+	log.WithField("entitlement", currentEntitlement).Debug("Current Entitlement")
+	currentUsage := n.GetUsage()
+	log.WithField("usage", currentUsage).Debug("Current Usage")
+	neededResources := n.getGangResources(schedUnit)
+	log.WithField("neededResources", neededResources).Debug("Current neededResources")
+
+	return currentUsage.
+		Add(neededResources).
+		LessThanOrEqual(currentEntitlement)
+}
+
+func (n *resPool) getGangResources(
+	schedUnit *list.List,
+) *scalar.Resources {
+	if schedUnit == nil {
+		return nil
+	}
+	totalRes := &scalar.Resources{}
+	for e := schedUnit.Front(); e != nil; e = e.Next() {
+		totalRes = totalRes.Add(
+			scalar.ConvertToResmgrResource(e.Value.(*resmgr.Task).GetResource()))
+	}
+	return totalRes
 }
 
 // AggregatedChildrenReservations returns aggregated child reservations by resource kind
@@ -297,17 +357,36 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 	}
 }
 
-func (n *resPool) createRespoolUsage(usage map[string]float64) []*respool.ResourceUsage {
-	resUsage := make([]*respool.ResourceUsage, 0, len(usage))
-	for k, v := range usage {
-		ru := &respool.ResourceUsage{
-			Kind:       k,
-			Allocation: v,
-			// Hardcoding until we have real slack
-			Slack: float64(0),
-		}
-		resUsage = append(resUsage, ru)
+func (n *resPool) createRespoolUsage(usage *scalar.Resources) []*respool.ResourceUsage {
+	resUsage := make([]*respool.ResourceUsage, 0, 4)
+	ru := &respool.ResourceUsage{
+		Kind:       common.CPU,
+		Allocation: usage.CPU,
+		// Hardcoding until we have real slack
+		Slack: float64(0),
 	}
+	resUsage = append(resUsage, ru)
+	ru = &respool.ResourceUsage{
+		Kind:       common.GPU,
+		Allocation: usage.GPU,
+		// Hardcoding until we have real slack
+		Slack: float64(0),
+	}
+	resUsage = append(resUsage, ru)
+	ru = &respool.ResourceUsage{
+		Kind:       common.MEMORY,
+		Allocation: usage.MEMORY,
+		// Hardcoding until we have real slack
+		Slack: float64(0),
+	}
+	resUsage = append(resUsage, ru)
+	ru = &respool.ResourceUsage{
+		Kind:       common.DISK,
+		Allocation: usage.DISK,
+		// Hardcoding until we have real slack
+		Slack: float64(0),
+	}
+	resUsage = append(resUsage, ru)
 	return resUsage
 }
 
@@ -348,26 +427,39 @@ func (n *resPool) SetEntitlement(entitlement map[string]float64) {
 
 	for kind, capacity := range entitlement {
 		switch kind {
-		case
-			common.CPU,
-			common.DISK,
-			common.GPU,
-			common.MEMORY:
-			n.entitlement[kind] = capacity
-			log.WithFields(log.Fields{
-				"ID":       n.ID(),
-				"Kind":     kind,
-				"Capacity": capacity,
-			}).Debug("Setting Entitlement")
+		case common.CPU:
+			n.entitlement.CPU = capacity
+		case common.DISK:
+			n.entitlement.DISK = capacity
+		case common.GPU:
+			n.entitlement.GPU = capacity
+		case common.MEMORY:
+			n.entitlement.MEMORY = capacity
 		}
+		log.WithFields(log.Fields{
+			"ID":     n.ID(),
+			"CPU":    n.entitlement.CPU,
+			"DISK":   n.entitlement.DISK,
+			"MEMORY": n.entitlement.MEMORY,
+			"GPU":    n.entitlement.GPU,
+		}).Debug("Setting Usage for Respool")
 	}
 }
 
-// SetEntitlement sets the entitlement for the resource pool
+// SetEntitlementByKind sets the entitlement for the resource pool
 func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
 	n.Lock()
 	defer n.Unlock()
-	n.entitlement[kind] = entitlement
+	switch kind {
+	case common.CPU:
+		n.entitlement.CPU = entitlement
+	case common.DISK:
+		n.entitlement.DISK = entitlement
+	case common.GPU:
+		n.entitlement.GPU = entitlement
+	case common.MEMORY:
+		n.entitlement.MEMORY = entitlement
+	}
 	log.WithFields(log.Fields{
 		"ID":       n.ID(),
 		"Kind":     kind,
@@ -376,7 +468,7 @@ func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
 }
 
 // GetEntitlement gets the entitlement for the resource pool
-func (n *resPool) GetEntitlement() map[string]float64 {
+func (n *resPool) GetEntitlement() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
 	return n.entitlement
@@ -403,12 +495,25 @@ func (n *resPool) GetChildReservation() (map[string]float64, error) {
 	return totalReservation, nil
 }
 
-// GetUsage gets the current Usage for the resource pool
-func (n *resPool) GetUsage() map[string]float64 {
+// GetUsage gets the usage for the resource pool
+func (n *resPool) GetUsage() *scalar.Resources {
+	n.RLock()
+	defer n.RUnlock()
 	return n.usage
 }
 
-// SetUsage sets the usage for the resource pool
-func (n *resPool) SetUsage(usage map[string]float64) {
-	n.usage = usage
+// MarkItDone updates the usage for the resource pool
+func (n *resPool) MarkItDone(res *scalar.Resources) error {
+	n.Lock()
+	defer n.Unlock()
+
+	newUsage := n.usage.Subtract(res)
+
+	if newUsage == nil {
+		return errors.Errorf("Couldn't update the resources")
+	}
+	n.usage = newUsage
+
+	log.WithField("usage", n.usage).Debug("Current Usage after Done Task")
+	return nil
 }

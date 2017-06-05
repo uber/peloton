@@ -254,6 +254,11 @@ func (h *serviceHandler) GetResourcePool(
 	}
 
 	h.metrics.GetResourcePoolSuccess.Inc(1)
+	log.WithFields(log.Fields{
+		"PoolInfo":   resPool.ToResourcePoolInfo(),
+		"Childpools": childPoolInfos,
+	}).Debug("GetResourcePool Response")
+
 	return &respool.GetResponse{
 		Poolinfo:   resPool.ToResourcePoolInfo(),
 		ChildPools: childPoolInfos,

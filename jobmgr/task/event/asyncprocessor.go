@@ -102,6 +102,8 @@ func (t *asyncEventProcessor) addEvent(event *pb_eventstream.Event) {
 		}
 	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
 		taskID = event.PelotonTaskEvent.TaskId.Value
+		log.WithField("Task ID", taskID).Debug("Received Event " +
+			"from resmgr")
 	}
 
 	_, instanceID, _ := util.ParseTaskID(taskID)

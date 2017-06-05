@@ -195,10 +195,10 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	ResPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool11"})
 	suite.NoError(err)
 	res := ResPool.GetEntitlement()
-	suite.Equal(res[common.CPU], float64(24))
-	suite.Equal(res[common.GPU], float64(1))
-	suite.Equal(res[common.MEMORY], float64(240))
-	suite.Equal(res[common.DISK], float64(1600))
+	suite.Equal(res.CPU, float64(24))
+	suite.Equal(res.GPU, float64(1))
+	suite.Equal(res.MEMORY, float64(240))
+	suite.Equal(res.DISK, float64(1600))
 }
 
 func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {

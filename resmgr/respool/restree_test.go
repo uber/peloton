@@ -25,6 +25,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/common"
 
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
@@ -278,6 +279,12 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 		Priority: 0,
 		JobId:    jobID1,
 		Id:       taskID1,
+		Resource: &task.ResourceConfig{
+			CpuLimit:    1,
+			DiskLimitMb: 10,
+			GpuLimit:    0,
+			MemLimitMb:  100,
+		},
 	}
 	rt.resPools["respool11"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem1))
 
@@ -293,7 +300,14 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 		Priority: 0,
 		JobId:    jobID2,
 		Id:       taskID2,
+		Resource: &task.ResourceConfig{
+			CpuLimit:    1,
+			DiskLimitMb: 10,
+			GpuLimit:    0,
+			MemLimitMb:  100,
+		},
 	}
+	rt.resPools["respool11"].SetEntitlement(suite.getEntitlement())
 	rt.resPools["respool11"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem2))
 
 	tlist3, err := rt.resPools["respool11"].DequeueGangList(1)
@@ -542,7 +556,8 @@ func (suite *resTreeTestSuite) createJob(
 
 func (suite *resTreeTestSuite) getQueueContent(
 	respoolID respool.ResourcePoolID) map[string]map[string]bool {
-
+	suite.resourceTree.(*tree).resPools[respoolID.Value].
+		SetEntitlement(suite.getEntitlement())
 	var result = make(map[string]map[string]bool)
 	for {
 		tlist, err := suite.resourceTree.(*tree).
@@ -605,4 +620,13 @@ func (suite *resTreeTestSuite) TestConvertTask() {
 	suite.NotNil(rmtask)
 	suite.EqualValues(rmtask.Priority, 0)
 	suite.EqualValues(rmtask.Preemptible, false)
+}
+
+func (suite *resTreeTestSuite) getEntitlement() map[string]float64 {
+	mapEntitlement := make(map[string]float64)
+	mapEntitlement[common.CPU] = float64(100)
+	mapEntitlement[common.MEMORY] = float64(1000)
+	mapEntitlement[common.DISK] = float64(100)
+	mapEntitlement[common.GPU] = float64(2)
+	return mapEntitlement
 }

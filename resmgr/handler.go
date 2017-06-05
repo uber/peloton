@@ -3,13 +3,14 @@ package resmgr
 import (
 	"container/list"
 	"context"
-	"errors"
 	"reflect"
 	"sync/atomic"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
+
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -17,7 +18,9 @@ import (
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
+	"code.uber.internal/infra/peloton/util"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	t "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
@@ -249,9 +252,11 @@ func (h *serviceHandler) SetPlacements(
 					err := h.rmTracker.GetTask(taskID).
 						TransitTo(t.TaskState_PLACED.String())
 					if err != nil {
-						log.WithError(err).Error("Not able " +
-							"to transition to placed " +
-							"for task " + taskID.Value)
+						log.WithError(
+							errors.WithStack(err)).
+							Error("Not able " +
+								"to transition to placed " +
+								"for task " + taskID.Value)
 					}
 				}
 			}
@@ -304,6 +309,7 @@ func (h *serviceHandler) GetPlacements(
 	return &response, nil
 }
 
+// NotifyTaskUpdates is called by HM to notify task updates
 func (h *serviceHandler) NotifyTaskUpdates(
 	ctx context.Context,
 	req *resmgrsvc.NotifyTaskUpdatesRequest) (*resmgrsvc.NotifyTaskUpdatesResponse, error) {
@@ -311,7 +317,27 @@ func (h *serviceHandler) NotifyTaskUpdates(
 
 	if len(req.Events) > 0 {
 		for _, event := range req.Events {
-			// NOTE: hookup future task status update handling logic here
+			taskState := util.MesosStateToPelotonState(
+				event.MesosTaskStatus.GetState())
+			if !util.IsPelotonStateTerminal(taskState) {
+				continue
+			}
+
+			ptID, err := util.ParseTaskIDFromMesosTaskID(
+				*(event.MesosTaskStatus.TaskId.Value))
+			if err != nil {
+				log.WithField("event", event).Error("Could not parse mesos ID")
+				continue
+			}
+			// TODO: We probably want to terminate all the tasks in gang
+			err = rmtask.GetTracker().MarkItDone(&peloton.TaskID{
+				Value: ptID,
+			})
+
+			if err != nil {
+				log.WithField("event", event).Error("Could not be updated")
+			}
+
 			log.WithField("Offset", event.Offset).
 				Debug("Event received by resource manager")
 			if event.Offset > atomic.LoadUint64(h.maxOffset) {

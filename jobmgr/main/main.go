@@ -272,6 +272,18 @@ func main() {
 		rootScope,
 	)
 
+	// Init the Task status update which pulls task update events
+	// from HM once started after gaining leadership
+	event.InitTaskStatusUpdateRM(
+		dispatcher,
+		common.PelotonHostManager,
+		jobStore,
+		taskStore,
+		runtimeUpdater,
+		common.PelotonResourceManager,
+		rootScope,
+	)
+
 	server := jobmgr.NewServer(
 		cfg.JobManager.Port,
 	)

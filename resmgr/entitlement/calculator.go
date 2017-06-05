@@ -217,6 +217,7 @@ func (c *calculator) setEntitlementforType(
 				"reservation": res.Reservation,
 				"fareshare":   fareShare,
 				"Entitlement": entitlement,
+				"Kind":        resourceKind,
 			}).Debug("Reservation and fare share for node")
 			n.SetEntitlementByKind(resourceKind, entitlement)
 		}

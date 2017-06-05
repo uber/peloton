@@ -13,6 +13,7 @@ import (
 
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"github.com/pkg/errors"
 )
 
 // Scheduler defines the interface of task scheduler which schedules
@@ -126,18 +127,21 @@ func (s *scheduler) scheduleTasks() {
 		tlist, err := n.DequeueGangList(dequeueTaskLimit)
 		if err != nil {
 			log.WithField("respool", n.ID()).Debug("No Items found")
+			log.WithError(err).Error()
 			continue
 		}
 		for tl := tlist.Front(); tl != nil; tl = tl.Next() {
 			tle := tl.Value.(*list.List)
 			for t := tle.Front(); t != nil; t = t.Next() {
 				task := t.Value.(*resmgr.Task)
+				log.WithField("task ", task).Debug("Adding " +
+					"task to ready queue")
 				s.readyQueue.Enqueue(task)
 				if s.rmTaskTracker.GetTask(task.Id) != nil {
 					err := s.rmTaskTracker.GetTask(task.Id).
 						TransitTo(pt.TaskState_READY.String())
 					if err != nil {
-						log.WithError(err).Error("Error while " +
+						log.WithError(errors.WithStack(err)).Error("Error while " +
 							"tranistioning to Ready state")
 					}
 				} else {

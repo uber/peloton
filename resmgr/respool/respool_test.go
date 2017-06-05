@@ -11,6 +11,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/common"
 )
@@ -34,7 +35,7 @@ func (s *ResPoolSuite) getResources() []*pb_respool.ResourceConfig {
 		{
 			Share:       1,
 			Kind:        "memory",
-			Reservation: 100,
+			Reservation: 1000,
 			Limit:       1000,
 		},
 		{
@@ -59,24 +60,48 @@ func (s *ResPoolSuite) getTasks() []*resmgr.Task {
 			Priority: 0,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:     "job1-1",
 			Priority: 1,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:     "job2-1",
 			Priority: 2,
 			JobId:    &peloton.JobID{Value: "job2"},
 			Id:       &peloton.TaskID{Value: "job2-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:     "job2-2",
 			Priority: 2,
 			JobId:    &peloton.JobID{Value: "job2"},
 			Id:       &peloton.TaskID{Value: "job2-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 	}
 }
@@ -182,6 +207,15 @@ func (s *ResPoolSuite) TestResPoolEnqueueError() {
 	)
 }
 
+func (s *ResPoolSuite) getEntitlement() map[string]float64 {
+	mapEntitlement := make(map[string]float64)
+	mapEntitlement[common.CPU] = float64(100)
+	mapEntitlement[common.MEMORY] = float64(1000)
+	mapEntitlement[common.DISK] = float64(100)
+	mapEntitlement[common.GPU] = float64(2)
+	return mapEntitlement
+}
+
 func (s *ResPoolSuite) TestResPoolDequeue() {
 	rootID := pb_respool.ResourcePoolID{Value: "root"}
 
@@ -194,6 +228,7 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 
 	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
 	s.NoError(err)
+	resPoolNode.SetEntitlement(s.getEntitlement())
 
 	for _, task := range s.getTasks() {
 		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(task))
@@ -221,6 +256,105 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 	s.Equal(0, priorityQueue.Len(2))
 }
 
+func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+
+	poolConfig := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	s.NoError(err)
+	resPoolNode.SetEntitlement(s.getEntitlement())
+
+	for _, task := range s.getTasks() {
+		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(task))
+	}
+
+	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
+	s.NoError(err)
+	s.Equal(1, dequeuedGangs.Len())
+
+	resPool, ok := resPoolNode.(*resPool)
+	s.True(ok)
+
+	// SchedulingPolicy_PriorityFIFO uses PriorityQueue
+	priorityQueue, ok := resPool.pendingQueue.(*queue.PriorityQueue)
+	s.True(ok)
+
+	// 1 task should've been deququeued
+	s.Equal(1, priorityQueue.Len(2))
+
+	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
+	s.NoError(err)
+	s.Equal(1, dequeuedGangs.Len())
+
+	// 1 task should've been deququeued
+	s.Equal(0, priorityQueue.Len(2))
+
+	// Adding task which has more resources then resource pool
+	bigtask := &resmgr.Task{
+		Name:     "job3-1",
+		Priority: 3,
+		JobId:    &peloton.JobID{Value: "job3"},
+		Id:       &peloton.TaskID{Value: "job3-1"},
+		Resource: &task.ResourceConfig{
+			CpuLimit:    200,
+			DiskLimitMb: 10,
+			GpuLimit:    0,
+			MemLimitMb:  100,
+		},
+	}
+	resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(bigtask))
+	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
+	s.Error(err)
+	s.Nil(dequeuedGangs)
+	resPoolNode.SetEntitlementByKind(common.CPU, float64(500))
+	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
+	s.NoError(err)
+	s.Equal(1, dequeuedGangs.Len())
+}
+
+func (s *ResPoolSuite) TestUsage() {
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+
+	poolConfig := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	s.NoError(err)
+	resPoolNode.SetEntitlement(s.getEntitlement())
+
+	for _, task := range s.getTasks() {
+		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(task))
+	}
+	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
+	s.NoError(err)
+	s.Equal(1, dequeuedGangs.Len())
+	usage := resPoolNode.GetUsage()
+	s.NotNil(usage)
+	s.Equal(float64(1), usage.CPU)
+	s.Equal(float64(100), usage.MEMORY)
+	s.Equal(float64(10), usage.DISK)
+	s.Equal(float64(0), usage.GPU)
+
+	err = resPoolNode.MarkItDone(usage)
+	s.NoError(err)
+	usage = resPoolNode.GetUsage()
+	s.NotNil(usage)
+	s.Equal(float64(0), usage.CPU)
+	s.Equal(float64(0), usage.MEMORY)
+	s.Equal(float64(0), usage.DISK)
+	s.Equal(float64(0), usage.GPU)
+}
+
 func (s *ResPoolSuite) TestResPoolDequeueError() {
 	rootID := pb_respool.ResourcePoolID{Value: "root"}
 
@@ -244,37 +378,4 @@ func (s *ResPoolSuite) TestResPoolDequeueError() {
 		"limit 0 is not valid",
 	)
 	s.Error(err)
-}
-
-func (s *ResPoolSuite) TestUsage() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
-
-	poolConfig := &pb_respool.ResourcePoolConfig{
-		Name:      "respool1",
-		Parent:    &rootID,
-		Resources: s.getResources(),
-		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
-	}
-
-	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
-	s.NoError(err)
-	usage := make(map[string]float64)
-	usage[common.CPU] = 100
-	usage[common.GPU] = 10
-	usage[common.DISK] = 1000
-	usage[common.MEMORY] = 64
-	resPoolNode.SetUsage(usage)
-	info := resPoolNode.ToResourcePoolInfo()
-	for _, val := range info.Usage {
-		switch val.Kind {
-		case common.CPU:
-			s.Equal(val.Allocation, float64(100))
-		case common.GPU:
-			s.Equal(val.Allocation, float64(10))
-		case common.DISK:
-			s.Equal(val.Allocation, float64(1000))
-		case common.MEMORY:
-			s.Equal(val.Allocation, float64(64))
-		}
-	}
 }

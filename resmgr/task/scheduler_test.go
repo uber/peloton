@@ -13,8 +13,10 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -180,31 +182,56 @@ func (suite *TaskSchedulerTestSuite) AddTasks() {
 			Priority: 0,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:     "job1-1",
 			Priority: 1,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:     "job2-1",
 			Priority: 2,
 			JobId:    &peloton.JobID{Value: "job2"},
 			Id:       &peloton.TaskID{Value: "job2-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:     "job2-2",
 			Priority: 2,
 			JobId:    &peloton.JobID{Value: "job2"},
 			Id:       &peloton.TaskID{Value: "job2-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 	}
+	resPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{
+		Value: "respool11",
+	})
+	resPool.SetEntitlement(suite.getEntitlement())
 
 	for _, task := range tasks {
-		resPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{
-			Value: "respool11",
-		})
 		suite.NoError(err)
 		resPool.EnqueueGang(resPool.MakeTaskGang(task))
 	}
@@ -233,4 +260,13 @@ func (suite *TaskSchedulerTestSuite) TestMovingToReadyQueue() {
 func (suite *TaskSchedulerTestSuite) TestMovingTasks() {
 	suite.taskSched.scheduleTasks()
 	suite.validateReadyQueue()
+}
+
+func (suite *TaskSchedulerTestSuite) getEntitlement() map[string]float64 {
+	mapEntitlement := make(map[string]float64)
+	mapEntitlement[common.CPU] = float64(100)
+	mapEntitlement[common.MEMORY] = float64(1000)
+	mapEntitlement[common.DISK] = float64(100)
+	mapEntitlement[common.GPU] = float64(2)
+	return mapEntitlement
 }

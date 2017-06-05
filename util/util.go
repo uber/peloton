@@ -277,6 +277,18 @@ func MesosStateToPelotonState(mstate mesos.TaskState) task.TaskState {
 	}
 }
 
+// IsPelotonStateTerminal returns true if state is terminal
+// otherwise false
+func IsPelotonStateTerminal(state task.TaskState) bool {
+	switch state {
+	case task.TaskState_SUCCEEDED, task.TaskState_FAILED,
+		task.TaskState_KILLED, task.TaskState_LOST:
+		return true
+	default:
+		return false
+	}
+}
+
 // ParseTaskID parses the jobID and instanceID from taskID
 func ParseTaskID(taskID string) (string, int, error) {
 	pos := strings.LastIndex(taskID, "-")

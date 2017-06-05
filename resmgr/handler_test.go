@@ -11,6 +11,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -22,6 +23,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -205,6 +207,12 @@ func (suite *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 			Priority: 0,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 	}
 	return &gang
@@ -218,6 +226,12 @@ func (suite *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 			Priority: 1,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 	}
 	return &gang
@@ -232,6 +246,12 @@ func (suite *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 			MinInstances: 2,
 			JobId:        &peloton.JobID{Value: "job2"},
 			Id:           &peloton.TaskID{Value: "job2-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:         "job2-2",
@@ -239,6 +259,12 @@ func (suite *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 			MinInstances: 2,
 			JobId:        &peloton.JobID{Value: "job2"},
 			Id:           &peloton.TaskID{Value: "job2-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 	}
 	return &gang
@@ -260,6 +286,12 @@ func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
 			MinInstances: 2,
 			JobId:        &peloton.JobID{Value: "job2"},
 			Id:           &peloton.TaskID{Value: "job2-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:         "job2-2",
@@ -267,18 +299,36 @@ func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
 			MinInstances: 2,
 			JobId:        &peloton.JobID{Value: "job2"},
 			Id:           &peloton.TaskID{Value: "job2-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:     "job1-1",
 			Priority: 1,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 		{
 			Name:     "job1-1",
 			Priority: 0,
 			JobId:    &peloton.JobID{Value: "job1"},
 			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
 		},
 	}
 }
@@ -290,7 +340,11 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
 		Gangs:   suite.pendingGangs(),
 	}
+	node, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool3"})
+	suite.NoError(err)
+	node.SetEntitlement(suite.getEntitlement())
 	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
+
 	suite.NoError(err)
 	suite.Nil(enqResp.GetError())
 
@@ -386,11 +440,22 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 		metrics:   NewMetrics(tally.NoopScope),
 		maxOffset: &c,
 	}
+	jobID := "test"
+	rm_task.InitTaskTracker()
+	uuidStr := uuid.NewUUID().String()
 	var events []*pb_eventstream.Event
 	for i := 0; i < 100; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
+		state := mesos_v1.TaskState_TASK_FINISHED
+		status := &mesos_v1.TaskStatus{
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			State: &state,
+		}
 		event := pb_eventstream.Event{
 			Offset:          uint64(1000 + i),
-			MesosTaskStatus: &mesos_v1.TaskStatus{},
+			MesosTaskStatus: status,
 		}
 		events = append(events, &event)
 	}
@@ -400,4 +465,13 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	response, _ := handler.NotifyTaskUpdates(context.Background(), req)
 	assert.Equal(suite.T(), uint64(1099), response.PurgeOffset)
 	assert.Nil(suite.T(), response.Error)
+}
+
+func (suite *HandlerTestSuite) getEntitlement() map[string]float64 {
+	mapEntitlement := make(map[string]float64)
+	mapEntitlement[common.CPU] = float64(100)
+	mapEntitlement[common.MEMORY] = float64(1000)
+	mapEntitlement[common.DISK] = float64(100)
+	mapEntitlement[common.GPU] = float64(2)
+	return mapEntitlement
 }

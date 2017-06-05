@@ -146,7 +146,6 @@ func (rmTask *RMTask) transitionCallBack(t *state.Transition) error {
 
 // updateStatus creates and send the task event to event stream
 func (rmTask *RMTask) updateStatus(status string) {
-
 	// Commentig it for now to not publish yet
 	// Until we have Solution for event race
 	// T936171
@@ -170,4 +169,11 @@ func (rmTask *RMTask) updateStatus(status string) {
 	//	log.WithError(err).WithField("Event", event).
 	//		Error("Cannot add status update")
 	//}
+}
+
+// GetCurrentState returns the current state
+func (rmTask *RMTask) GetCurrentState() task.TaskState {
+	return task.TaskState(
+		task.TaskState_value[string(
+			rmTask.stateMachine.GetCurrentState())])
 }

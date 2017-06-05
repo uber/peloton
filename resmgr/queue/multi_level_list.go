@@ -86,6 +86,19 @@ func (p *MultiLevelList) Pop(level int) (interface{}, error) {
 	return nil, err
 }
 
+// PeekItem method returns the the Front Item for the given Level
+// It will not remove the item from the list
+func (p *MultiLevelList) PeekItem(level int) (interface{}, error) {
+	p.Lock()
+	defer p.Unlock()
+	if val, ok := p.mapLists[level]; ok {
+		e := val.Front().Value
+		return e, nil
+	}
+	err := fmt.Errorf("No items found in queue for priority %d", level)
+	return nil, err
+}
+
 // Remove method removes the specified item from multilevel list
 // It takes level and the value as the input parameter
 // If we have duplicate entry added we will be removing the first entry in the list
