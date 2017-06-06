@@ -1,7 +1,6 @@
 package task
 
 import (
-	"container/list"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -10,10 +9,16 @@ import (
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"github.com/pkg/errors"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+)
+
+var (
+	errEnqueueEmptySchedUnit   = errors.New("empty gang to to ready queue enqueue")
+	errReadyQueueDequeueFailed = errors.New("dequeue gang from ready queue failed")
+	errReadyQueueTaskMissing   = errors.New("task missed tracking in enqueue ready queue")
 )
 
 // Scheduler defines the interface of task scheduler which schedules
@@ -24,9 +29,10 @@ type Scheduler interface {
 	Start() error
 	// Stop stops the task scheduler goroutines
 	Stop() error
-	// GetReadyQueue returns the Ready queue in which all tasks which
-	// are ready to be placed
-	GetReadyQueue() queue.Queue
+	// Enqueues gang (task list) into resource pool ready queue
+	EnqueueGang(gang *resmgrsvc.Gang) error
+	// Dequeues gang (task list) from the resource pool ready queue
+	DequeueGang(maxWaitTime time.Duration) (*resmgrsvc.Gang, error)
 }
 
 // scheduler implements the TaskScheduler interface
@@ -52,6 +58,7 @@ func InitScheduler(
 		log.Warning("Task scheduler has already been initialized")
 		return
 	}
+	var gang resmgrsvc.Gang
 
 	sched = &scheduler{
 		resPoolTree:      respool.GetTree(),
@@ -61,7 +68,7 @@ func InitScheduler(
 		// TODO: initialize ready queue elsewhere
 		readyQueue: queue.NewQueue(
 			"ready-queue",
-			reflect.TypeOf(resmgr.Task{}),
+			reflect.TypeOf(gang),
 			maxReadyQueueSize,
 		),
 		rmTaskTracker: rmTaskTracker,
@@ -118,35 +125,34 @@ func (s *scheduler) Start() error {
 
 // scheduleTasks moves gang tasks to ready queue in every scheduling cycle
 func (s *scheduler) scheduleTasks() {
-	// TODO: consider add DequeueTasks to respool.Tree interface
+	// TODO: consider add DequeueGangs to respool.Tree interface
 	// instead of returning all leaf nodes.
 	nodes := s.resPoolTree.GetAllNodes(true)
 	// TODO: we need to check the entitlement first
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		tlist, err := n.DequeueGangList(dequeueTaskLimit)
+		gangList, err := n.DequeueGangList(dequeueGangLimit)
 		if err != nil {
 			log.WithField("respool", n.ID()).Debug("No Items found")
 			log.WithError(err).Error()
 			continue
 		}
-		for tl := tlist.Front(); tl != nil; tl = tl.Next() {
-			tle := tl.Value.(*list.List)
-			for t := tle.Front(); t != nil; t = t.Next() {
-				task := t.Value.(*resmgr.Task)
+		for _, gang := range gangList {
+			s.EnqueueGang(gang)
+			for _, task := range gang.GetTasks() {
 				log.WithField("task ", task).Debug("Adding " +
 					"task to ready queue")
-				s.readyQueue.Enqueue(task)
 				if s.rmTaskTracker.GetTask(task.Id) != nil {
 					err := s.rmTaskTracker.GetTask(task.Id).
 						TransitTo(pt.TaskState_READY.String())
 					if err != nil {
 						log.WithError(errors.WithStack(err)).Error("Error while " +
-							"tranistioning to Ready state")
+							"transitioning to Ready state")
 					}
 				} else {
+					err := errReadyQueueTaskMissing
 					log.WithError(err).Error("Error while " +
-						"tranistioning to Ready state")
+						"transitioning to Ready state")
 				}
 			}
 		}
@@ -179,8 +185,30 @@ func (s *scheduler) Stop() error {
 	return nil
 }
 
-// GetReadyQueue returns the Ready queue in which all tasks which are
-// ready to be placed
-func (s *scheduler) GetReadyQueue() queue.Queue {
-	return s.readyQueue
+// EnqueueGang inserts a gang, which is a task list of 1 or more (same priority)
+// tasks, into the ready queue.
+func (s *scheduler) EnqueueGang(gang *resmgrsvc.Gang) error {
+	if (gang == nil) || (len(gang.Tasks) == 0) {
+		return errEnqueueEmptySchedUnit
+	}
+	err := s.readyQueue.Enqueue(gang)
+	if err != nil {
+		log.WithError(err).Error("error in EnqueueGang")
+	}
+	return err
+}
+
+// DequeueGang dequeues a gang, which is a task list of 1 or more (same priority)
+// tasks, from the ready queue.
+func (s *scheduler) DequeueGang(maxWaitTime time.Duration) (*resmgrsvc.Gang, error) {
+	item, err := s.readyQueue.Dequeue(maxWaitTime)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, errReadyQueueDequeueFailed
+	}
+
+	res := item.(*resmgrsvc.Gang)
+	return res, nil
 }

@@ -433,21 +433,26 @@ func (s *placementEngine) getTasks(limit int) (
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var request = &resmgrsvc.DequeueTasksRequest{
+	var request = &resmgrsvc.DequeueGangsRequest{
 		Limit:   uint32(limit),
 		Timeout: uint32(s.cfg.TaskDequeueTimeOut),
 	}
 
 	log.WithField("request", request).Debug("Dequeuing tasks")
-	response, err := s.resMgrClient.DequeueTasks(ctx, request)
+	response, err := s.resMgrClient.DequeueGangs(ctx, request)
 	if err != nil {
 		log.WithField("error", err).Error("Dequeue failed")
 		return nil, err
 	}
+	for _, gang := range response.GetGangs() {
+		for _, task := range gang.GetTasks() {
+			taskInfos = append(taskInfos, task)
+		}
+	}
 
-	log.WithField("tasks", response.GetTasks()).Debug("Dequeued tasks")
+	log.WithField("tasks", taskInfos).Debug("Dequeued tasks")
 
-	return response.GetTasks(), nil
+	return taskInfos, nil
 }
 
 type taskGroup struct {

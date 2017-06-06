@@ -1,25 +1,25 @@
 package queue
 
 import (
-	"container/list"
 	"errors"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 )
 
 // Queue is the interface implemented by all the the queues
 type Queue interface {
 	// Enqueue queues a gang (task list gang) based on its priority into FIFO queue
-	Enqueue(tlist *list.List) error
+	Enqueue(gang *resmgrsvc.Gang) error
 	// Dequeue dequeues the gang (task list gang) based on the priority and order
 	// they came into the queue
-	Dequeue() (*list.List, error)
+	Dequeue() (*resmgrsvc.Gang, error)
 	// Peek peeks the gang(list) based on the priority and order
 	// they came into the queue
 	// It will return an error if there is no gang in the queue
-	Peek() (*list.List, error)
+	Peek() (*resmgrsvc.Gang, error)
 	// Remove removes the item from the queue
-	Remove(item *list.List) error
+	Remove(item *resmgrsvc.Gang) error
 }
 
 // CreateQueue is factory method to create the specified queue

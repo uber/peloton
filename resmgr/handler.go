@@ -143,7 +143,7 @@ func (h *ServiceHandler) EnqueueGangs(
 			}
 		}
 		if len(failed) == 0 {
-			err = respool.EnqueueGang(gangTasks)
+			err = respool.EnqueueGang(gang)
 		} else {
 			err = errFailingGangMemberTask
 		}
@@ -179,45 +179,46 @@ func (h *ServiceHandler) EnqueueGangs(
 	return &response, nil
 }
 
-// DequeueTasks implements ResourceManagerService.DequeueTasks
-func (h *ServiceHandler) DequeueTasks(
+// DequeueGangs implements ResourceManagerService.DequeueGangs
+func (h *ServiceHandler) DequeueGangs(
 	ctx context.Context,
-	req *resmgrsvc.DequeueTasksRequest,
-) (*resmgrsvc.DequeueTasksResponse, error) {
+	req *resmgrsvc.DequeueGangsRequest,
+) (*resmgrsvc.DequeueGangsResponse, error) {
 
-	h.metrics.APIDequeueTasks.Inc(1)
+	h.metrics.APIDequeueGangs.Inc(1)
 
 	limit := req.GetLimit()
 	timeout := time.Duration(req.GetTimeout())
-	readyQueue := rmtask.GetScheduler().GetReadyQueue()
+	sched := rmtask.GetScheduler()
 
-	var tasks []*resmgr.Task
+	var gangs []*resmgrsvc.Gang
 	for i := uint32(0); i < limit; i++ {
-		item, err := readyQueue.Dequeue(timeout * time.Millisecond)
+		gang, err := sched.DequeueGang(timeout * time.Millisecond)
 		if err != nil {
-			log.Debug("Timeout to dequeue task from ready queue")
-			h.metrics.DequeueTaskTimeout.Inc(1)
+			log.Debug("Timeout to dequeue gang from ready queue")
+			h.metrics.DequeueGangTimeout.Inc(1)
 			break
 		}
-		task := item.(*resmgr.Task)
-		tasks = append(tasks, task)
-		h.metrics.DequeueTaskSuccess.Inc(1)
+		gangs = append(gangs, gang)
+		for _, task := range gang.GetTasks() {
+			h.metrics.DequeueGangSuccess.Inc(1)
 
-		// Moving task to Placing state
-		if h.rmTracker.GetTask(task.Id) != nil {
-			err = h.rmTracker.GetTask(task.Id).TransitTo(
-				t.TaskState_PLACING.String())
-			if err != nil {
-				log.WithError(err).WithField(
-					"taskID", task.Id.Value).
-					Error("Failed to transit state " +
-						"for task")
+			// Moving task to Placing state
+			if h.rmTracker.GetTask(task.Id) != nil {
+				err = h.rmTracker.GetTask(task.Id).TransitTo(
+					t.TaskState_PLACING.String())
+				if err != nil {
+					log.WithError(err).WithField(
+						"taskID", task.Id.Value).
+						Error("Failed to transit state " +
+							"for task")
+				}
 			}
 		}
 	}
 	// TODO: handle the dequeue errors better
-	response := resmgrsvc.DequeueTasksResponse{Tasks: tasks}
-	log.WithField("response", response).Debug("DequeueTasks succeeded")
+	response := resmgrsvc.DequeueGangsResponse{Gangs: gangs}
+	log.WithField("response", response).Debug("DequeueGangs succeeded")
 	return &response, nil
 }
 

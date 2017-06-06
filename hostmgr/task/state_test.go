@@ -30,7 +30,7 @@ func (c *MockClient) EnqueueGangs(context.Context, *resmgrsvc.EnqueueGangsReques
 	return nil, nil
 }
 
-func (c *MockClient) DequeueTasks(context.Context, *resmgrsvc.DequeueTasksRequest, ...yarpc.CallOption) (*resmgrsvc.DequeueTasksResponse, error) {
+func (c *MockClient) DequeueGangs(context.Context, *resmgrsvc.DequeueGangsRequest, ...yarpc.CallOption) (*resmgrsvc.DequeueGangsResponse, error) {
 	return nil, nil
 }
 

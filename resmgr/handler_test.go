@@ -272,6 +272,15 @@ func (suite *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
 	return gangs
 }
 
+func (suite *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
+	gangs := make([]*resmgrsvc.Gang, 3)
+	gangs[0] = suite.pendingGang2()
+	gangs[1] = suite.pendingGang1()
+	gangs[2] = suite.pendingGang0()
+	return gangs
+}
+
+/*
 func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
 	return []*resmgr.Task{
 		{
@@ -326,9 +335,10 @@ func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
 		},
 	}
 }
+*/
 
-func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
-	log.Info("TestEnqueueDequeueTasksOneResPool called")
+func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
+	log.Info("TestEnqueueDequeueGangsOneResPool called")
 
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
@@ -342,16 +352,16 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueTasksOneResPool() {
 	suite.NoError(err)
 	suite.Nil(enqResp.GetError())
 
-	deqReq := &resmgrsvc.DequeueTasksRequest{
+	deqReq := &resmgrsvc.DequeueGangsRequest{
 		Limit:   10,
 		Timeout: 2 * 1000, // 2 sec
 	}
-	deqResp, err := suite.handler.DequeueTasks(suite.context, deqReq)
+	deqResp, err := suite.handler.DequeueGangs(suite.context, deqReq)
 	suite.NoError(err)
 	suite.Nil(deqResp.GetError())
-	suite.Equal(suite.expectedTasks(), deqResp.GetTasks())
+	suite.Equal(suite.expectedGangs(), deqResp.GetGangs())
 
-	log.Info("TestEnqueueDequeueTasksOneResPool returned")
+	log.Info("TestEnqueueDequeueGangsOneResPool returned")
 }
 
 func (suite *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {

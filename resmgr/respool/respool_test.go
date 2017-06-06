@@ -236,7 +236,7 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 
 	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedGangs.Len())
+	s.Equal(1, len(dequeuedGangs))
 
 	resPool, ok := resPoolNode.(*resPool)
 	s.True(ok)
@@ -250,7 +250,7 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 
 	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedGangs.Len())
+	s.Equal(1, len(dequeuedGangs))
 
 	// 1 task should've been deququeued
 	s.Equal(0, priorityQueue.Len(2))
@@ -276,7 +276,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 
 	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedGangs.Len())
+	s.Equal(1, len(dequeuedGangs))
 
 	resPool, ok := resPoolNode.(*resPool)
 	s.True(ok)
@@ -290,7 +290,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 
 	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedGangs.Len())
+	s.Equal(1, len(dequeuedGangs))
 
 	// 1 task should've been deququeued
 	s.Equal(0, priorityQueue.Len(2))
@@ -315,7 +315,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 	resPoolNode.SetEntitlementByKind(common.CPU, float64(500))
 	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedGangs.Len())
+	s.Equal(1, len(dequeuedGangs))
 }
 
 func (s *ResPoolSuite) TestUsage() {
@@ -337,7 +337,7 @@ func (s *ResPoolSuite) TestUsage() {
 	}
 	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
 	s.NoError(err)
-	s.Equal(1, dequeuedGangs.Len())
+	s.Equal(1, len(dequeuedGangs))
 	usage := resPoolNode.GetUsage()
 	s.NotNil(usage)
 	s.Equal(float64(1), usage.CPU)

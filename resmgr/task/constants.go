@@ -7,6 +7,6 @@ const (
 	runningStateNotStarted = 0
 	// Running state of task scheduler
 	runningStateRunning = 1
-	// dequeueTaskLimit is the max number of pending tasks to dequeue
-	dequeueTaskLimit = 1000
+	// dequeueGangLimit is the max number of pending gangs to dequeue
+	dequeueGangLimit = 1000
 )

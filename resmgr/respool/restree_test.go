@@ -5,7 +5,6 @@
 package respool
 
 import (
-	"container/list"
 	"context"
 	"fmt"
 	"testing"
@@ -309,33 +308,33 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 	rt.resPools["respool11"].SetEntitlement(suite.getEntitlement())
 	rt.resPools["respool11"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem2))
 
-	tlist3, err := rt.resPools["respool11"].DequeueGangList(1)
+	gangList3, err := rt.resPools["respool11"].DequeueGangList(1)
 	if err != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
-	if tlist3.Len() != 1 {
+	if len(gangList3) != 1 {
 		assert.Fail(suite.T(), "Dequeue should return single task gang")
 	}
-	gang := tlist3.Front().Value.(*list.List)
-	if gang.Len() != 1 {
+	gang := gangList3[0]
+	if len(gang.Tasks) != 1 {
 		assert.Fail(suite.T(), "Dequeue single task gang should be length 1")
 	}
-	t1 := gang.Front().Value.(*resmgr.Task)
+	t1 := gang.Tasks[0]
 	assert.Equal(suite.T(), t1.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
-	tlist4, err2 := rt.resPools["respool11"].DequeueGangList(1)
+	gangList4, err2 := rt.resPools["respool11"].DequeueGangList(1)
 	if err2 != nil {
 		assert.Fail(suite.T(), "Dequeue should not fail")
 	}
-	if tlist4.Len() != 1 {
+	if len(gangList4) != 1 {
 		assert.Fail(suite.T(), "Dequeue should return single task gang")
 	}
-	gang = tlist4.Front().Value.(*list.List)
-	if gang.Len() != 1 {
+	gang = gangList4[0]
+	if len(gang.Tasks) != 1 {
 		assert.Fail(suite.T(), "Dequeue single task gang should be length 1")
 	}
-	t2 := gang.Front().Value.(*resmgr.Task)
+	t2 := gang.Tasks[0]
 	assert.Equal(suite.T(), t2.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), t2.Id.GetValue(), "job1-2", "Should get Job-1 and Task-1")
 }

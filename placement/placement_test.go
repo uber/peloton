@@ -76,6 +76,12 @@ func createTestTask(instanceID int) *resmgr.Task {
 	}
 }
 
+func createTestGang(task *resmgr.Task) *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	gang.Tasks = append(gang.Tasks, task)
+	return &gang
+}
+
 // createPortRanges create Mesos Ranges type from given port set.
 func createPortRanges(portSet map[uint32]bool) *mesos.Value_Ranges {
 	var sorted []int
@@ -161,13 +167,13 @@ func TestEmptyTaskToPlace(t *testing.T) {
 
 	gomock.InOrder(
 		mockRes.EXPECT().
-			DequeueTasks(
+			DequeueGangs(
 				gomock.Any(),
-				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
+				gomock.Eq(&resmgrsvc.DequeueGangsRequest{
 					Limit:   uint32(10),
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				})).
-			Return(&resmgrsvc.DequeueTasksResponse{}, nil),
+			Return(&resmgrsvc.DequeueGangsResponse{}, nil),
 	)
 
 	pe.placeRound()
@@ -203,18 +209,19 @@ func TestNoHostOfferReturned(t *testing.T) {
 		testScope.Snapshot().Counters()["offer_starved+"].Value())
 
 	t1 := createTestTask(0)
+	g1 := createTestGang(t1)
 
 	gomock.InOrder(
 		// Call to resmgr for getting task.
 		mockRes.EXPECT().
-			DequeueTasks(
+			DequeueGangs(
 				gomock.Any(),
-				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
+				gomock.Eq(&resmgrsvc.DequeueGangsRequest{
 					Limit:   uint32(10),
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				})).
-			Return(&resmgrsvc.DequeueTasksResponse{
-				Tasks: []*resmgr.Task{t1},
+			Return(&resmgrsvc.DequeueGangsResponse{
+				Gangs: []*resmgrsvc.Gang{g1},
 				Error: nil,
 			}, nil),
 		// Mock AcquireHostOffers with empty response.
@@ -272,11 +279,14 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	numTasks := 25
 	var testTasks []*resmgr.Task
 	taskIds := make(map[string]*peloton.TaskID)
+	var testGangs []*resmgrsvc.Gang
 
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		testTasks = append(testTasks, tmp)
 		taskIds[tmp.Id.Value] = tmp.Id
+		tmpGang := createTestGang(tmp)
+		testGangs = append(testGangs, tmpGang)
 	}
 
 	// generate 5 host offers, each can hold 10 tasks.
@@ -293,14 +303,14 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	gomock.InOrder(
 		mockRes.EXPECT().
-			DequeueTasks(
+			DequeueGangs(
 				gomock.Any(),
-				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
+				gomock.Eq(&resmgrsvc.DequeueGangsRequest{
 					Limit:   uint32(10),
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				})).
-			Return(&resmgrsvc.DequeueTasksResponse{
-				Tasks: testTasks,
+			Return(&resmgrsvc.DequeueGangsResponse{
+				Gangs: testGangs,
 				Error: nil,
 			}, nil),
 		// Mock AcquireHostOffers call.
@@ -393,12 +403,15 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 	numTasks := 25
 	var testTasks []*resmgr.Task
 	taskIds := make(map[string]*peloton.TaskID)
+	var testGangs []*resmgrsvc.Gang
 
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		tmp.NumPorts = uint32(10)
 		testTasks = append(testTasks, tmp)
 		taskIds[tmp.Id.Value] = tmp.Id
+		tmpGang := createTestGang(tmp)
+		testGangs = append(testGangs, tmpGang)
 	}
 
 	// generate 5 host offers, each can only hold 2 tasks as each task
@@ -416,14 +429,14 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 
 	gomock.InOrder(
 		mockRes.EXPECT().
-			DequeueTasks(
+			DequeueGangs(
 				gomock.Any(),
-				gomock.Eq(&resmgrsvc.DequeueTasksRequest{
+				gomock.Eq(&resmgrsvc.DequeueGangsRequest{
 					Limit:   uint32(10),
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				})).
-			Return(&resmgrsvc.DequeueTasksResponse{
-				Tasks: testTasks,
+			Return(&resmgrsvc.DequeueGangsResponse{
+				Gangs: testGangs,
 				Error: nil,
 			}, nil),
 		// Mock AcquireHostOffers call.

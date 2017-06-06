@@ -15,6 +15,7 @@ import (
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/queue"
@@ -47,9 +48,10 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 
 	suite.resTree = respool.GetTree()
+	var gang resmgrsvc.Gang
 	suite.readyQueue = queue.NewQueue(
 		"ready-queue",
-		reflect.TypeOf(resmgr.Task{}),
+		reflect.TypeOf(gang),
 		maxReadyQueueSize,
 	)
 	// Initializing the resmgr state machine
@@ -248,7 +250,8 @@ func (suite *TaskSchedulerTestSuite) validateReadyQueue() {
 	for i := 0; i < 4; i++ {
 		item, err := suite.readyQueue.Dequeue(1 * time.Millisecond)
 		suite.NoError(err)
-		task := item.(*resmgr.Task)
+		gang := item.(*resmgrsvc.Gang)
+		task := gang.Tasks[0]
 		suite.Equal(expectedTaskIDs[i], task.Id.Value)
 	}
 }

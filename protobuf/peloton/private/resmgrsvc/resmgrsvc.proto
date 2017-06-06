@@ -17,7 +17,7 @@ import "peloton/private/eventstream/eventstream.proto";
  * ResourceManagerService describes the internal interface of
  * Resource Manager to other Peloton applications such as Job Manager
  * and Placement Engine. This includes the EnqueueGangs and GetPlacements
- * APIs called by Job Manager, and DequeueTasks and SetPlacements APIs
+ * APIs called by Job Manager, and DequeueGangs and SetPlacements APIs
  * called by Placement Engine.
  */
 service ResourceManagerService {
@@ -34,15 +34,15 @@ service ResourceManagerService {
   rpc EnqueueGangs(EnqueueGangsRequest) returns (EnqueueGangsResponse);
 
   /**
-   *  Dequeue a list of tasks that are in READY state for placement.
-   *  The tasks will transit from READY to PLACING state after the
-   *  return of this method. This method will be called by Placement
-   *  Engine to retrieve a list of tasks for computing placement. If
-   *  tasks are in PLACING state for too long in case of Placement
+   *  Dequeue a list of Gangs, each comprised of tasks that are in READY
+   *  state for placement.  The tasks will transit from READY to PLACING
+   *  state after the return of this method. This method will be called by
+   *  Placement Engine to retrieve a list of gangs for computing placement.
+   *  If tasks are in PLACING state for too long in case of Placement
    *  Engine failures, the tasks will be timed out and transit back
    *  to READY state.
    */
-  rpc DequeueTasks(DequeueTasksRequest) returns (DequeueTasksResponse);
+  rpc DequeueGangs(DequeueGangsRequest) returns (DequeueGangsResponse);
 
   /**
    *  Set the placement information for a list of tasks. The tasks will
@@ -121,30 +121,30 @@ message RequestTimedout {
   string message = 1;
 }
 
-message DequeueTasksFailure {
+message DequeueGangsFailure {
   string message = 1;
 }
 
-message DequeueTasksRequest {
-  // Max number of ready tasks to dequeue
+message DequeueGangsRequest {
+  // Max number of ready gangs to dequeue
   uint32 limit = 1;
 
-  // Timeout in milliseconds if no tasks are ready
+  // Timeout in milliseconds if no gangs are ready
   uint32 timeout = 2;
 
   // Task Type to identify which kind of tasks need to be dequeued
   TaskType type = 3;
 }
 
-message DequeueTasksResponse {
+message DequeueGangsResponse {
   message Error {
     RequestTimedout timedout = 1;
-    DequeueTasksFailure failure = 2;
+    DequeueGangsFailure failure = 2;
   }
   Error error = 1;
 
-  // The list of tasks that have been dequeued
-  repeated resmgr.Task tasks = 2;
+  // The list of gangs that have been dequeued
+  repeated Gang gangs = 2;
 }
 
 message SetPlacementsFailure {

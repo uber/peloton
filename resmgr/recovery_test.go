@@ -1,7 +1,6 @@
 package resmgr
 
 import (
-	"container/list"
 	"context"
 	"fmt"
 	"reflect"
@@ -202,7 +201,7 @@ func (suite *recoveryTestSuite) TearDownSuite() {
 	suite.ctrl.Finish()
 }
 
-func (s *recoveryTestSuite) getEntitlement() map[string]float64 {
+func (suite *recoveryTestSuite) getEntitlement() map[string]float64 {
 	mapEntitlement := make(map[string]float64)
 	mapEntitlement[common.CPU] = float64(100)
 	mapEntitlement[common.MEMORY] = float64(1000)
@@ -219,18 +218,18 @@ func (suite *recoveryTestSuite) getQueueContent(
 		node, err := suite.resourceTree.Get(&respoolID)
 		suite.NoError(err)
 		node.SetEntitlement(suite.getEntitlement())
-		tlist, err := node.DequeueGangList(1)
+		dequeuedGangs, err := node.DequeueGangList(1)
 		if err != nil {
 			fmt.Printf("Failed to dequeue item: %v", err)
 			break
 		}
-		if tlist.Len() != 1 {
+		if len(dequeuedGangs) != 1 {
 			assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
 		}
-		rmTask := tlist.Front().Value.(*list.List)
-		if rmTask != nil {
-			jobID := rmTask.Front().Value.(*resmgr.Task).JobId.Value
-			taskID := rmTask.Front().Value.(*resmgr.Task).Id.Value
+		gang := dequeuedGangs[0]
+		if gang != nil {
+			jobID := gang.Tasks[0].JobId.Value
+			taskID := gang.Tasks[0].Id.Value
 			_, ok := result[jobID]
 			if !ok {
 				result[jobID] = make(map[string]bool)

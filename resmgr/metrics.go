@@ -8,9 +8,9 @@ type Metrics struct {
 	EnqueueGangSuccess tally.Counter
 	EnqueueGangFail    tally.Counter
 
-	APIDequeueTasks    tally.Counter
-	DequeueTaskSuccess tally.Counter
-	DequeueTaskTimeout tally.Counter
+	APIDequeueGangs    tally.Counter
+	DequeueGangSuccess tally.Counter
+	DequeueGangTimeout tally.Counter
 
 	APISetPlacements    tally.Counter
 	SetPlacementSuccess tally.Counter
@@ -37,9 +37,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		EnqueueGangSuccess: successScope.Counter("enqueue_gang"),
 		EnqueueGangFail:    failScope.Counter("enqueue_gang"),
 
-		APIDequeueTasks:    apiScope.Counter("dequeue_tasks"),
-		DequeueTaskSuccess: successScope.Counter("dequeue_tasks"),
-		DequeueTaskTimeout: timeoutScope.Counter("dequeue_tasks"),
+		APIDequeueGangs:    apiScope.Counter("dequeue_gangs"),
+		DequeueGangSuccess: successScope.Counter("dequeue_tasks"),
+		DequeueGangTimeout: timeoutScope.Counter("dequeue_tasks"),
 
 		APISetPlacements:    apiScope.Counter("set_placements"),
 		SetPlacementSuccess: successScope.Counter("set_placements"),

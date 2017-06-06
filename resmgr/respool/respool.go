@@ -7,6 +7,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
@@ -45,11 +46,11 @@ type ResPool interface {
 	// Aggregates the child reservations by resource type
 	AggregatedChildrenReservations() (map[string]float64, error)
 	// Forms a gang from a single task
-	MakeTaskGang(task *resmgr.Task) *list.List
+	MakeTaskGang(task *resmgr.Task) *resmgrsvc.Gang
 	// Enqueues gang (task list) into resource pool pending queue
-	EnqueueGang(tlist *list.List) error
+	EnqueueGang(gang *resmgrsvc.Gang) error
 	// Dequeues gang (task list) list from the resource pool
-	DequeueGangList(int) (*list.List, error)
+	DequeueGangList(int) ([]*resmgrsvc.Gang, error)
 	// SetEntitlement sets the entitlement for the resource pool
 	// input is map[ResourceKind]->EntitledCapacity
 	SetEntitlement(map[string]float64)
@@ -196,21 +197,21 @@ func (n *resPool) IsLeaf() bool {
 }
 
 // MakeTaskGang forms a gang from a single task
-func (n *resPool) MakeTaskGang(task *resmgr.Task) *list.List {
-	tlist := new(list.List)
-	tlist.PushBack(task)
-	return tlist
+func (n *resPool) MakeTaskGang(task *resmgr.Task) *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	gang.Tasks = append(gang.Tasks, task)
+	return &gang
 }
 
-// EnqueueGang inserts a gang, which is a task list
-// representing a gang of 1 or more (same priority) tasks, into pending queue
-func (n *resPool) EnqueueGang(tlist *list.List) error {
-	if (tlist == nil) || (tlist.Len() <= 0) {
+// EnqueueGang inserts a gang, which is a task list representing a gang
+// of 1 or more (same priority) tasks, into pending queue.
+func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
+	if (gang == nil) || (len(gang.Tasks) == 0) {
 		err := errors.Errorf("gang has no elements")
 		return err
 	}
 	if n.isLeaf() {
-		err := n.pendingQueue.Enqueue(tlist)
+		err := n.pendingQueue.Enqueue(gang)
 		return err
 	}
 	err := errors.Errorf("Respool %s is not a leaf node", n.id)
@@ -222,7 +223,7 @@ func (n *resPool) EnqueueGang(tlist *list.List) error {
 // of 1 or more (same priority) tasks, from the pending queue.
 // If there is no gang present then its a error if any one present
 // then it will return all the gangs within limit without error
-func (n *resPool) DequeueGangList(limit int) (*list.List, error) {
+func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	if limit <= 0 {
 		err := errors.Errorf("limit %d is not valid", limit)
 		return nil, err
@@ -232,36 +233,36 @@ func (n *resPool) DequeueGangList(limit int) (*list.List, error) {
 		return nil, err
 	}
 
-	l := new(list.List)
+	var gangList []*resmgrsvc.Gang
 	for i := 1; i <= limit; i++ {
 		// First peek the gang and see if that can be
 		// dequeued from the list
 		gang, err := n.pendingQueue.Peek()
 
 		if err != nil {
-			if l.Len() == 0 {
+			if len(gangList) == 0 {
 				return nil, err
 			}
 			break
 		}
 		if n.canBeAdmitted(gang) {
-			log.WithField("gang", gang.Front().Value.(*resmgr.Task).Id).
+			log.WithField("gang", gang.Tasks[0].Id).
 				Debug("Can be admitted")
 			err := n.pendingQueue.Remove(gang)
 			if err != nil {
-				if l.Len() == 0 {
+				if len(gangList) == 0 {
 					return nil, err
 				}
 				break
 			}
 			log.WithField("gang", gang).Debug("Deleted")
-			l.PushBack(gang)
+			gangList = append(gangList, gang)
 			// Need to lock the usage before updating it
 			n.Lock()
 			n.usage = n.usage.Add(n.getGangResources(gang))
 			n.Unlock()
 		} else {
-			if l.Len() <= 0 {
+			if len(gangList) <= 0 {
 				log.WithField(
 					"gang", gang).Debug("Need more" +
 					" resources then available")
@@ -269,10 +270,10 @@ func (n *resPool) DequeueGangList(limit int) (*list.List, error) {
 			}
 		}
 	}
-	return l, nil
+	return gangList, nil
 }
 
-func (n *resPool) canBeAdmitted(schedUnit *list.List) bool {
+func (n *resPool) canBeAdmitted(gang *resmgrsvc.Gang) bool {
 	n.RLock()
 	defer n.RUnlock()
 
@@ -280,7 +281,7 @@ func (n *resPool) canBeAdmitted(schedUnit *list.List) bool {
 	log.WithField("entitlement", currentEntitlement).Debug("Current Entitlement")
 	currentUsage := n.GetUsage()
 	log.WithField("usage", currentUsage).Debug("Current Usage")
-	neededResources := n.getGangResources(schedUnit)
+	neededResources := n.getGangResources(gang)
 	log.WithField("neededResources", neededResources).Debug("Current neededResources")
 
 	return currentUsage.
@@ -289,15 +290,15 @@ func (n *resPool) canBeAdmitted(schedUnit *list.List) bool {
 }
 
 func (n *resPool) getGangResources(
-	schedUnit *list.List,
+	gang *resmgrsvc.Gang,
 ) *scalar.Resources {
-	if schedUnit == nil {
+	if gang == nil {
 		return nil
 	}
 	totalRes := &scalar.Resources{}
-	for e := schedUnit.Front(); e != nil; e = e.Next() {
+	for _, task := range gang.GetTasks() {
 		totalRes = totalRes.Add(
-			scalar.ConvertToResmgrResource(e.Value.(*resmgr.Task).GetResource()))
+			scalar.ConvertToResmgrResource(task.GetResource()))
 	}
 	return totalRes
 }
