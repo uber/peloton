@@ -3,6 +3,7 @@ package resmgr
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -13,7 +14,6 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
-	"sync"
 )
 
 // RecoveryHandler defines the interface to

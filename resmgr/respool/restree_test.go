@@ -17,7 +17,6 @@ import (
 
 	"go.uber.org/yarpc"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
@@ -27,41 +26,40 @@ import (
 
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
-	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
 
 type resTreeTestSuite struct {
 	suite.Suite
-	resourceTree Tree
-	mockCtrl     *gomock.Controller
-	store        *cassandra.Store
-	dispatcher   yarpc.Dispatcher
-	resPools     map[string]*respool.ResourcePoolConfig
-	allNodes     map[string]*ResPool
-	root         *ResPool
-	newRoot      *ResPool
+	resourceTree     Tree
+	dispatcher       yarpc.Dispatcher
+	resPools         map[string]*respool.ResourcePoolConfig
+	allNodes         map[string]*ResPool
+	root             *ResPool
+	newRoot          *ResPool
+	mockCtrl         *gomock.Controller
+	mockResPoolStore *store_mocks.MockResourcePoolStore
+	mockJobStore     *store_mocks.MockJobStore
+	mockTaskStore    *store_mocks.MockTaskStore
 }
 
 func (suite *resTreeTestSuite) SetupSuite() {
 	fmt.Println("setting up resTreeTestSuite")
 	suite.mockCtrl = gomock.NewController(suite.T())
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
-	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+	suite.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(suite.getResPools(), nil).AnyTimes()
+	suite.mockJobStore = store_mocks.NewMockJobStore(suite.mockCtrl)
+	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
 
-	conf := cassandra.MigrateForTest()
-	store, err := cassandra.NewStore(conf, tally.NoopScope)
-	suite.NoError(err)
-	suite.store = store
 	suite.resourceTree = &tree{
-		store:     mockResPoolStore,
+		store:     suite.mockResPoolStore,
 		root:      nil,
 		metrics:   NewMetrics(tally.NoopScope),
 		resPools:  make(map[string]ResPool),
-		jobStore:  suite.store,
-		taskStore: suite.store,
+		jobStore:  suite.mockJobStore,
+		taskStore: suite.mockTaskStore,
 	}
 }
 
@@ -464,53 +462,6 @@ func (suite *resTreeTestSuite) TestTree_GetByPath() {
 		Value: "/",
 	})
 	suite.Error(err)
-}
-
-func (suite *resTreeTestSuite) createJob(
-	jobID *peloton.JobID,
-	numTasks uint32,
-	instanceCount uint32,
-	minInstances uint32,
-	taskState task.TaskState) {
-
-	sla := job.SlaConfig{
-		Preemptible:             false,
-		Priority:                1,
-		MinimumRunningInstances: minInstances,
-	}
-	var resPoolID respool.ResourcePoolID
-	resPoolID.Value = "respool11"
-
-	var jobConfig = job.JobConfig{
-		Name:          jobID.Value,
-		Sla:           &sla,
-		InstanceCount: instanceCount,
-		RespoolID:     &resPoolID,
-	}
-
-	var err = suite.store.CreateJob(context.Background(), jobID, &jobConfig, "uber")
-	suite.NoError(err)
-	for i := uint32(0); i < numTasks; i++ {
-		var taskID = fmt.Sprintf("%s-%d", jobID.Value, i)
-		taskConf := task.TaskConfig{
-			Name: fmt.Sprintf("%s-%d", jobID.Value, i),
-			Resource: &task.ResourceConfig{
-				CpuLimit:   1,
-				MemLimitMb: 20,
-			},
-		}
-		var taskInfo = task.TaskInfo{
-			Runtime: &task.RuntimeInfo{
-				TaskId: &mesos.TaskID{Value: &taskID},
-				State:  taskState,
-			},
-			Config:     &taskConf,
-			InstanceId: i,
-			JobId:      jobID,
-		}
-		err = suite.store.CreateTask(context.Background(), jobID, i, &taskInfo, "test")
-		suite.NoError(err)
-	}
 }
 
 func (suite *resTreeTestSuite) TestConvertTask() {

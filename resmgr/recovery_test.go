@@ -19,7 +19,6 @@ import (
 	"code.uber.internal/infra/peloton/common/queue"
 	rp "code.uber.internal/infra/peloton/resmgr/respool"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -30,26 +29,26 @@ import (
 
 type recoveryTestSuite struct {
 	suite.Suite
-	resourceTree  rp.Tree
-	store         *cassandra.Store
-	ctrl          *gomock.Controller
-	rmTaskTracker rm_task.Tracker
-	handler       *ServiceHandler
-	taskScheduler rm_task.Scheduler
-	recovery      recoveryHandler
+	resourceTree     rp.Tree
+	rmTaskTracker    rm_task.Tracker
+	handler          *ServiceHandler
+	taskScheduler    rm_task.Scheduler
+	recovery         recoveryHandler
+	mockCtrl         *gomock.Controller
+	mockResPoolStore *store_mocks.MockResourcePoolStore
+	mockJobStore     *store_mocks.MockJobStore
+	mockTaskStore    *store_mocks.MockTaskStore
 }
 
 func (suite *recoveryTestSuite) SetupSuite() {
-	suite.ctrl = gomock.NewController(suite.T())
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.ctrl)
-	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+	suite.mockCtrl = gomock.NewController(suite.T())
+	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+	suite.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(suite.getResPools(), nil).AnyTimes()
-	conf := cassandra.MigrateForTest()
-	store, err := cassandra.NewStore(conf, tally.NoopScope)
-	suite.NoError(err)
-	suite.store = store
+	suite.mockJobStore = store_mocks.NewMockJobStore(suite.mockCtrl)
+	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
 
-	rp.InitTree(tally.NoopScope, mockResPoolStore, suite.store, suite.store)
+	rp.InitTree(tally.NoopScope, suite.mockResPoolStore, suite.mockJobStore, suite.mockTaskStore)
 	suite.resourceTree = rp.GetTree()
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker()
@@ -83,7 +82,6 @@ func (suite *recoveryTestSuite) SetupTest() {
 
 	err = suite.taskScheduler.Start()
 	suite.NoError(err)
-
 }
 
 // Returns resource pools
@@ -148,19 +146,6 @@ func (suite *recoveryTestSuite) getResPools() map[string]*respool.ResourcePoolCo
 			},
 			Policy: policy,
 		},
-		"respool99": {
-			Name:   "respool99",
-			Parent: &respool.ResourcePoolID{Value: "respool21"},
-			Resources: []*respool.ResourceConfig{
-				{
-					Kind:        "cpu",
-					Reservation: 50,
-					Limit:       100,
-					Share:       1,
-				},
-			},
-			Policy: policy,
-		},
 	}
 }
 
@@ -198,7 +183,7 @@ func (suite *recoveryTestSuite) getResourceConfig() []*respool.ResourceConfig {
 
 func (suite *recoveryTestSuite) TearDownSuite() {
 	suite.resourceTree.Stop()
-	suite.ctrl.Finish()
+	suite.mockCtrl.Finish()
 }
 
 func (suite *recoveryTestSuite) getEntitlement() map[string]float64 {
@@ -242,31 +227,23 @@ func (suite *recoveryTestSuite) getQueueContent(
 	return result
 }
 
-func (suite *recoveryTestSuite) createJob(
-	jobID *peloton.JobID,
-	numTasks uint32,
-	instanceCount uint32,
-	minInstances uint32,
-	taskState task.TaskState,
-	jobState job.JobState) {
-
-	sla := job.SlaConfig{
-		Preemptible:             false,
-		Priority:                1,
-		MinimumRunningInstances: minInstances,
-	}
-	var resPoolID respool.ResourcePoolID
-	resPoolID.Value = "respool21"
-
-	var jobConfig = job.JobConfig{
-		Name:          jobID.Value,
-		Sla:           &sla,
+func (suite *recoveryTestSuite) createJob(jobID *peloton.JobID, instanceCount uint32, minInstances uint32) *job.JobConfig {
+	return &job.JobConfig{
+		Name: jobID.Value,
+		Sla: &job.SlaConfig{
+			Preemptible:             false,
+			Priority:                1,
+			MinimumRunningInstances: minInstances,
+		},
 		InstanceCount: instanceCount,
-		RespoolID:     &resPoolID,
+		RespoolID: &respool.ResourcePoolID{
+			Value: "respool21",
+		},
 	}
+}
 
-	var err = suite.store.CreateJob(context.Background(), jobID, &jobConfig, "uber")
-	suite.NoError(err)
+func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint32, taskState task.TaskState) map[uint32]*task.TaskInfo {
+	tasks := map[uint32]*task.TaskInfo{}
 	for i := uint32(0); i < numTasks; i++ {
 		var taskID = fmt.Sprintf("%s-%d", jobID.Value, i)
 		taskConf := task.TaskConfig{
@@ -276,7 +253,7 @@ func (suite *recoveryTestSuite) createJob(
 				MemLimitMb: 20,
 			},
 		}
-		var taskInfo = task.TaskInfo{
+		tasks[i] = &task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
 				TaskId: &mesos.TaskID{Value: &taskID},
 				State:  taskState,
@@ -285,51 +262,50 @@ func (suite *recoveryTestSuite) createJob(
 			InstanceId: i,
 			JobId:      jobID,
 		}
-		err = suite.store.CreateTask(context.Background(), jobID, i, &taskInfo, "test")
-		suite.NoError(err)
 	}
 
-	runtime, err := suite.store.GetJobRuntime(context.Background(), jobID)
-	suite.NoError(err)
-	runtime.State = jobState
-	err = suite.store.UpdateJobRuntime(context.Background(), jobID, runtime)
-	suite.NoError(err)
+	return tasks
 }
 
 func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	// Create jobs. each with different number of tasks
-	jobs := [4]peloton.JobID{}
-	for i := 0; i < 4; i++ {
+	jobs := make([]peloton.JobID, 2)
+	for i := 0; i < 2; i++ {
 		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
 
 	// create 4 jobs ( 2 JobState_SUCCEEDED, 1 JobState_INITIALIZED, 1 JobState_PENDING)
-	suite.createJob(&jobs[0], 10, 10, 10,
-		task.TaskState_SUCCEEDED, job.JobState_SUCCEEDED)
-	suite.createJob(&jobs[1], 10, 10, 1,
-		task.TaskState_SUCCEEDED, job.JobState_SUCCEEDED)
-	suite.createJob(&jobs[2], 10, 10, 1,
-		task.TaskState_INITIALIZED, job.JobState_INITIALIZED)
-	suite.createJob(&jobs[3], 10, 10, 1,
-		task.TaskState_PENDING, job.JobState_PENDING)
+	fmt.Println(suite.mockJobStore, suite.mockCtrl)
+	suite.mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Eq([]job.JobState{
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+		job.JobState_UNKNOWN,
+		job.JobState_INITIALIZED,
+	})).Return(jobs, nil)
+
+	suite.mockJobStore.EXPECT().
+		GetJobConfig(context.Background(), &jobs[0]).
+		Return(suite.createJob(&jobs[0], 10, 1), nil)
+	suite.mockTaskStore.EXPECT().
+		GetTasksForJobByRange(context.Background(), &jobs[0], &task.InstanceRange{
+			From: 0,
+			To:   10,
+		}).
+		Return(suite.createTasks(&jobs[0], 10, task.TaskState_INITIALIZED), nil)
+
+	suite.mockJobStore.EXPECT().
+		GetJobConfig(context.Background(), &jobs[1]).
+		Return(suite.createJob(&jobs[1], 10, 1), nil)
+	suite.mockTaskStore.EXPECT().
+		GetTasksForJobByRange(context.Background(), &jobs[1], &task.InstanceRange{
+			From: 0,
+			To:   10,
+		}).
+		Return(suite.createTasks(&jobs[1], 10, task.TaskState_PENDING), nil)
 
 	// Perform recovery
-	InitRecovery(suite.store, suite.store, suite.handler)
+	InitRecovery(suite.mockJobStore, suite.mockTaskStore, suite.handler)
 	GetRecoveryHandler().Start()
-
-	// 1. All jobs should have 10 tasks in DB
-	tasks, err := suite.store.GetTasksForJob(context.Background(), &jobs[0])
-	suite.NoError(err)
-	suite.Equal(len(tasks), 10)
-	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[1])
-	suite.NoError(err)
-	suite.Equal(len(tasks), 10)
-	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[2])
-	suite.NoError(err)
-	suite.Equal(len(tasks), 10)
-	tasks, err = suite.store.GetTasksForJob(context.Background(), &jobs[3])
-	suite.NoError(err)
-	suite.Equal(len(tasks), 10)
 
 	// 2. check the queue content
 	var resPoolID respool.ResourcePoolID
@@ -337,12 +313,10 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	contentSummary := suite.getQueueContent(resPoolID)
 
 	// Job2 and Job3 should be recovered and should have 10 tasks in the pending queue
-	suite.Equal(len(contentSummary), 2)
+	suite.Equal(2, len(contentSummary))
 
-	suite.Equal(len(contentSummary["TestJob_0"]), 0)
-	suite.Equal(len(contentSummary["TestJob_1"]), 0)
-	suite.Equal(len(contentSummary["TestJob_2"]), 10)
-	suite.Equal(len(contentSummary["TestJob_3"]), 10)
+	suite.Equal(10, len(contentSummary["TestJob_0"]))
+	suite.Equal(10, len(contentSummary["TestJob_1"]))
 }
 
 func TestResmgrRecovery(t *testing.T) {
