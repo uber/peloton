@@ -11,6 +11,7 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
@@ -111,54 +112,115 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.NoError(err)
 
 	// query by common label should return all jobs
-	result1, err := jobStore.Query(context.Background(), []*peloton.Label{
-		{Key: keyCommon, Value: valCommon},
-	}, nil)
+	result1, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Labels: []*peloton.Label{
+			{Key: keyCommon, Value: valCommon},
+		},
+	})
 	suite.NoError(err)
 	suite.Equal(records, len(result1))
+	suite.Equal(records, int(total))
+
+	asMap := map[string]*job.JobInfo{}
+	for _, r := range result1 {
+		asMap[r.Id.Value] = r
+	}
+
 	for i := 0; i < records; i++ {
-		suite.Equal(fmt.Sprintf("TestJob_%d", i), result1[jobIDs[i].Value].Name)
+		suite.Equal(fmt.Sprintf("TestJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
 	}
 
 	// query by specific label returns one job
 	for i := 0; i < records; i++ {
-		result1, err := jobStore.Query(context.Background(), []*peloton.Label{
-			{Key: keys0[i], Value: vals0[i]},
-			{Key: keys1[i], Value: vals1[i]},
-		}, nil)
+		result1, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+			Labels: []*peloton.Label{
+				{Key: keys0[i], Value: vals0[i]},
+				{Key: keys1[i], Value: vals1[i]},
+			},
+		})
 		suite.NoError(err)
 		suite.Equal(1, len(result1))
-		suite.Equal(fmt.Sprintf("TestJob_%d", i), result1[jobIDs[i].Value].Name)
+		suite.Equal(1, int(total))
+		suite.Equal(fmt.Sprintf("TestJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
 	}
 
 	// query for non-exist label return nothing
 	var other = "other"
-	result1, err = jobStore.Query(context.Background(), []*peloton.Label{
-		{Key: keys0[0], Value: other},
-		{Key: keys1[1], Value: vals1[0]},
-	}, nil)
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Labels: []*peloton.Label{
+			{Key: keys0[0], Value: other},
+			{Key: keys1[1], Value: vals1[0]},
+		},
+	})
 	suite.NoError(err)
 	suite.Equal(0, len(result1))
+	suite.Equal(0, int(total))
 
 	// Test query with keyword
-	result1, err = jobStore.Query(context.Background(), nil, []string{"team6", "test", "awesome"})
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"team6", "test", "awesome"},
+	})
 	suite.NoError(err)
 	suite.Equal(3, len(result1))
+	suite.Equal(3, int(total))
 
-	result1, err = jobStore.Query(context.Background(), nil, []string{"team6", "test", "awesome", "keytest1"})
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"team6", "test", "awesome", "keytest1"},
+	})
 	suite.NoError(err)
 	suite.Equal(1, len(result1))
+	suite.Equal(1, int(total))
 
-	result1, err = jobStore.Query(context.Background(), nil, []string{"team6", "test", "awesome", "nonexistkeyword"})
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"team6", "test", "awesome", "nonexistkeyword"},
+	})
 	suite.NoError(err)
 	suite.Equal(0, len(result1))
+	suite.Equal(0, int(total))
 
 	// Query with both labels and keyword
-	result1, err = jobStore.Query(context.Background(), []*peloton.Label{
-		{Key: keys0[0], Value: vals0[0]},
-	}, []string{"team6", "test", "awesome"})
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Labels: []*peloton.Label{
+			{Key: keys0[0], Value: vals0[0]},
+		},
+		Keywords: []string{"team6", "test", "awesome"},
+	})
 	suite.NoError(err)
 	suite.Equal(1, len(result1))
+	suite.Equal(1, int(total))
+
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"team6", "test", "awesome"},
+		Pagination: &query.PaginationSpec{
+			Offset: 0,
+			Limit:  0,
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(0, len(result1))
+	suite.Equal(3, int(total))
+
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"team6", "test", "awesome"},
+		Pagination: &query.PaginationSpec{
+			Offset: 1,
+			Limit:  0,
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(0, len(result1))
+	suite.Equal(3, int(total))
+
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"team6", "test", "awesome"},
+		Pagination: &query.PaginationSpec{
+			Offset: 0,
+			Limit:  1,
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(1, len(result1))
+	suite.Equal(3, int(total))
 }
 
 func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
@@ -567,13 +629,13 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByOwner() {
 func (suite *CassandraStoreTestSuite) TestGetJobsByRespoolID() {
 	nJobs := 2
 	owner := "TestGetJobsByRespoolID"
-	respoolBase := "respool"
+	respoolPagination := "respool"
 	for i := 0; i < nJobs; i++ {
 		var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
 		jobConfig := createJobConfig()
 		jobConfig.Name = jobID.Value
 		jobConfig.RespoolID = &respool.ResourcePoolID{
-			Value: fmt.Sprintf("%s%d", respoolBase, i),
+			Value: fmt.Sprintf("%s%d", respoolPagination, i),
 		}
 		err := store.CreateJob(context.Background(), &jobID, jobConfig, owner)
 		suite.Nil(err)
@@ -585,24 +647,24 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByRespoolID() {
 		jobConfig := createJobConfig()
 		jobConfig.Name = jobID.Value
 		jobConfig.RespoolID = &respool.ResourcePoolID{
-			Value: fmt.Sprintf("%s%d", respoolBase, i),
+			Value: fmt.Sprintf("%s%d", respoolPagination, i),
 		}
 		err := store.CreateJob(context.Background(), &jobID, jobConfig, owner)
 		suite.Nil(err)
 	}
 
-	jobs, err := store.GetJobsByRespoolID(context.Background(), &respool.ResourcePoolID{Value: respoolBase + "0"})
+	jobs, err := store.GetJobsByRespoolID(context.Background(), &respool.ResourcePoolID{Value: respoolPagination + "0"})
 	suite.Nil(err)
 	suite.Equal(len(jobs), 2)
-	suite.Equal(respoolBase+"0", jobs["TestGetJobsByRespoolID0"].RespoolID.GetValue())
-	suite.Equal(respoolBase+"0", jobs["TestGetJobsByRespoolID20"].RespoolID.GetValue())
+	suite.Equal(respoolPagination+"0", jobs["TestGetJobsByRespoolID0"].RespoolID.GetValue())
+	suite.Equal(respoolPagination+"0", jobs["TestGetJobsByRespoolID20"].RespoolID.GetValue())
 
-	jobs, err = store.GetJobsByRespoolID(context.Background(), &respool.ResourcePoolID{Value: respoolBase + "1"})
+	jobs, err = store.GetJobsByRespoolID(context.Background(), &respool.ResourcePoolID{Value: respoolPagination + "1"})
 	suite.Nil(err)
 	suite.Equal(len(jobs), 2)
 
-	suite.Equal(respoolBase+"1", jobs["TestGetJobsByRespoolID1"].RespoolID.GetValue())
-	suite.Equal(respoolBase+"1", jobs["TestGetJobsByRespoolID21"].RespoolID.GetValue())
+	suite.Equal(respoolPagination+"1", jobs["TestGetJobsByRespoolID1"].RespoolID.GetValue())
+	suite.Equal(respoolPagination+"1", jobs["TestGetJobsByRespoolID21"].RespoolID.GetValue())
 
 	jobs, err = store.GetJobsByRespoolID(context.Background(), &respool.ResourcePoolID{Value: "pooldoesnotexist"})
 	suite.Nil(err)
@@ -612,14 +674,14 @@ func (suite *CassandraStoreTestSuite) TestGetJobsByRespoolID() {
 func (suite *CassandraStoreTestSuite) TestGetAllJobs() {
 	nJobs := 2
 	owners := []string{"TestGetAllJobsID1", "TestGetAllJobsID2"}
-	respoolBase := "respool_alljobs"
+	respoolPagination := "respool_alljobs"
 	for _, owner := range owners {
 		for i := 0; i < nJobs; i++ {
 			var jobID = peloton.JobID{Value: fmt.Sprintf("%s%d", owner, i)}
 			jobConfig := createJobConfig()
 			jobConfig.Name = jobID.Value
 			jobConfig.RespoolID = &respool.ResourcePoolID{
-				Value: fmt.Sprintf("%s%d", respoolBase, i),
+				Value: fmt.Sprintf("%s%d", respoolPagination, i),
 			}
 			err := store.CreateJob(context.Background(), &jobID, jobConfig, owner)
 			suite.Nil(err)
@@ -629,7 +691,7 @@ func (suite *CassandraStoreTestSuite) TestGetAllJobs() {
 	suite.Nil(err)
 	for _, owner := range owners {
 		for i := 0; i < nJobs; i++ {
-			suite.Equal(respoolBase+strconv.Itoa(i), jobs[owner+strconv.Itoa(i)].RespoolID.GetValue())
+			suite.Equal(respoolPagination+strconv.Itoa(i), jobs[owner+strconv.Itoa(i)].RespoolID.GetValue())
 		}
 	}
 }
@@ -705,7 +767,12 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 	}
 
 	var tasks []*task.TaskInfo
-	tasks, n, err := taskStore.QueryTasks(context.Background(), jobID, uint32(from), uint32(to-from+1))
+	tasks, n, err := taskStore.QueryTasks(context.Background(), jobID, &task.QuerySpec{
+		Pagination: &query.PaginationSpec{
+			Offset: uint32(from),
+			Limit:  uint32(to - from + 1),
+		},
+	})
 	suite.NoError(err)
 	suite.Equal(n, uint32(to-from))
 

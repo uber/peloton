@@ -11,6 +11,8 @@ option go_package = "peloton/api/task";
 import "mesos/v1/mesos.proto";
 import "peloton/api/peloton.proto";
 import "peloton/api/errors/errors.proto";
+import "peloton/api/query/query.proto";
+
 
 /**
  *  Resource configuration for a task.
@@ -490,54 +492,27 @@ message RestartResponse {
   InstanceIdOutOfRange outOfRange = 2;
 }
 
+message QuerySpec {
+  // All indexed fields should be part of this message.
+  query.PaginationSpec pagination = 1;
+}
+
 message QueryRequest {
   peloton.JobID jobId = 1;
-  uint32 offset = 2;
-  uint32 limit = 3;
 
-  message OrderBy {
-    enum Order {
-      UNKNOWN = 0;
-      ASC = 1;
-      DESC = 2;
-    }
-
-    Order order = 1;
-    string field = 2;
-  }
-
-  repeated OrderBy orderBy = 4;
-
-  message QueryFilter {
-    // TODO: Should we call this property?
-    string field = 1;
-
-    enum Operator {
-      EQUAL = 0;
-      NOT_EQUAL = 1;
-      CONTAINS = 2;
-    }
-
-    Operator operator = 2;
-
-    string value = 3;
-  }
-
-  repeated QueryFilter queryFilters = 5;
-
+  QuerySpec spec = 2;
 }
 
 message QueryResponse {
-  repeated TaskInfo records = 1;
-  uint32 offset = 2;
-  uint32 limit = 3;
-  uint32 total = 4;
-
   message Error {
     errors.JobNotFound notFound = 1;
   }
 
-  Error error = 5;
+  Error error = 1;
+  
+  repeated TaskInfo records = 2;
+
+  query.Pagination pagination = 3;
 }
 
 message TaskEvent {

@@ -118,8 +118,10 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 	}
 	var request = &job.QueryRequest{
 		RespoolID: respoolID,
-		Labels:    apiLabels,
-		Keywords:  strings.Split(keywords, labelSeparator),
+		Spec: &job.QuerySpec{
+			Labels:   apiLabels,
+			Keywords: strings.Split(keywords, labelSeparator),
+		},
 	}
 	response, err := client.jobClient.Query(client.ctx, request)
 	if err != nil {
@@ -214,14 +216,15 @@ func printJobGetResponse(r *job.GetResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		if r.GetConfig() == nil {
+		c := r.GetJobInfo().GetConfig()
+		if c != nil {
 			fmt.Fprint(tabWriter, "Unable to get job config\n")
 		} else {
-			rs := r.Config.DefaultConfig.Resource
+			rs := c.DefaultConfig.Resource
 			fmt.Fprintf(tabWriter, jobListFormatHeader)
 			fmt.Fprintf(tabWriter, jobListFormatBody,
-				r.Config.Name, rs.CpuLimit, rs.MemLimitMb, rs.DiskLimitMb,
-				r.Config.InstanceCount, r.Config.DefaultConfig.Command)
+				c.Name, rs.CpuLimit, rs.MemLimitMb, rs.DiskLimitMb,
+				c.InstanceCount, c.DefaultConfig.Command)
 		}
 		tabWriter.Flush()
 	}
@@ -233,10 +236,10 @@ func printJobQueryResponse(r *job.QueryResponse, debug bool) {
 	} else {
 		if r.Error != nil {
 			fmt.Fprintf(tabWriter, "Error: %v\n", r.GetError().String())
-		} else if len(r.Result) == 0 {
+		} else if len(r.Records) == 0 {
 			fmt.Fprint(tabWriter, "No jobs found.\n", r.GetError().String())
 		} else {
-			for jobID := range r.Result {
+			for _, jobID := range r.Records {
 				fmt.Fprintf(tabWriter, "%s\n", jobID)
 			}
 		}

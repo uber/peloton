@@ -105,23 +105,6 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 		}
 	}
 
-	// Paganate through the job tasks
-	for i := 0; i < nJobs; i++ {
-		var offset uint32
-		for {
-			tasks, total, err := suite.store.QueryTasks(context.Background(), jobIDs[i], offset, 1)
-			suite.NoError(err)
-			if len(tasks) == 0 {
-				break
-			}
-			suite.Equal(uint32(3), total)
-			suite.Equal(1, len(tasks))
-			suite.Equal(jobIDs[i].Value, tasks[0].JobId.Value)
-			offset++
-		}
-		suite.Equal(uint32(3), offset)
-	}
-
 	// List tasks for a job in certain state
 	// TODO: change the task.runtime.State to string type
 
@@ -275,50 +258,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 			originalJobs[i].Sla.MaximumRunningInstances)
 	}
 
-	// Query by owner
-	var jobs map[string]*job.JobConfig
-	var err error
-	var labelQuery = []*peloton.Label{
-		{Key: keys[0], Value: vals[0]},
-		{Key: keys[1], Value: vals[1]},
-	}
-	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
-	suite.NoError(err)
-	suite.Equal(len(jobs), len(originalJobs))
-
-	labelQuery = []*peloton.Label{
-		{Key: keys[0], Value: vals[0]},
-		{Key: keys[1], Value: vals[1]},
-		{Key: keys[3], Value: vals[3]},
-	}
-	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
-	suite.NoError(err)
-	suite.Equal(len(jobs), 2)
-	labelQuery = []*peloton.Label{
-		{Key: keys[3], Value: vals[3]},
-	}
-	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
-	suite.NoError(err)
-	suite.Equal(len(jobs), 2)
-
-	labelQuery = []*peloton.Label{
-		{Key: keys[2], Value: vals[3]},
-	}
-	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
-	suite.NoError(err)
-	suite.Equal(len(jobs), 0)
-
-	labelQuery = []*peloton.Label{}
-	// test get all jobs if no labels
-	jobs, err = suite.store.Query(context.Background(), labelQuery, nil)
-	suite.NoError(err)
-	suite.Equal(len(jobs), 10)
-
-	jobs, err = suite.store.Query(context.Background(), nil, nil)
-	suite.NoError(err)
-	suite.Equal(len(jobs), 10)
-
-	jobs, err = suite.store.GetJobsByOwner(context.Background(), "team6")
+	jobs, err := suite.store.GetJobsByOwner(context.Background(), "team6")
 	suite.NoError(err)
 	suite.Equal(len(jobs), records-2)
 

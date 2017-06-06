@@ -24,7 +24,7 @@ func (e *TaskNotFoundError) Error() string {
 type JobStore interface {
 	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error
 	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
-	Query(ctx context.Context, labels []*peloton.Label, keywords []string) (map[string]*job.JobConfig, error)
+	QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error)
 	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
 	GetJobsByOwner(ctx context.Context, owner string) (map[string]*job.JobConfig, error)
@@ -46,7 +46,7 @@ type TaskStore interface {
 	GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error)
 	UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
-	QueryTasks(ctx context.Context, id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error)
+	QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error)
 }
 
 // FrameworkInfoStore is the interface to store mesosStreamID for peloton frameworks

@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -387,82 +388,41 @@ func (h *serviceHandler) Get(
 	}
 	h.metrics.JobGet.Inc(1)
 	return &job.GetResponse{
-		Config:  jobConfig,
-		Runtime: jobRuntime,
+		JobInfo: &job.JobInfo{
+			Id:      req.GetId(),
+			Config:  jobConfig,
+			Runtime: jobRuntime,
+		},
 	}, nil
 }
 
 // Query returns a list of jobs matching the given query
-func (h *serviceHandler) Query(
-	ctx context.Context,
-	req *job.QueryRequest) (*job.QueryResponse, error) {
-
+func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job.QueryResponse, error) {
 	log.WithField("request", req).Info("JobManager.Query called")
 	h.metrics.JobAPIQuery.Inc(1)
-	var jobConfigs map[string]*job.JobConfig
-	var err error
-	// Default keywords may contain empty string. They need to be filtered out
-	// Otherwise nothing would be returned
-	var keywords []string
-	for _, w := range req.GetKeywords() {
-		if w != "" {
-			keywords = append(keywords, w)
-		}
+
+	jobConfigs, total, err := h.jobStore.QueryJobs(ctx, req.GetRespoolID(), req.GetSpec())
+	if err != nil {
+		h.metrics.JobQueryFail.Inc(1)
+		log.WithError(err).Error("Query job failed with error")
+		return &job.QueryResponse{
+			Error: &job.QueryResponse_Error{
+				Err: &errors.UnknownError{
+					Message: err.Error(),
+				},
+			},
+		}, nil
 	}
 
-	if len(req.GetLabels()) > 0 || len(keywords) > 0 {
-		jobConfigs, err = h.jobStore.Query(ctx, req.GetLabels(), keywords)
-		if err != nil {
-			h.metrics.JobQueryFail.Inc(1)
-			log.WithError(err).Error("Query job failed with error")
-			return &job.QueryResponse{
-				Error: &job.QueryResponse_Error{
-					Err: &errors.UnknownError{
-						Message: err.Error(),
-					},
-				},
-			}, nil
-		}
-		// if both labels and respool ID is specified, query then filter by respool id
-		if req.GetRespoolID() != nil {
-			for jobID, jobConfig := range jobConfigs {
-				if jobConfig.RespoolID.GetValue() != req.GetRespoolID().Value {
-					delete(jobConfigs, jobID)
-				}
-			}
-		}
-	} else if req.GetRespoolID() != nil {
-		// Query by respool id directly
-		jobConfigs, err = h.jobStore.GetJobsByRespoolID(ctx, req.GetRespoolID())
-		if err != nil {
-			h.metrics.JobQueryFail.Inc(1)
-			log.WithError(err).Error("Query job failed with error")
-			return &job.QueryResponse{
-				Error: &job.QueryResponse_Error{
-					Err: &errors.UnknownError{
-						Message: err.Error(),
-					},
-				},
-			}, nil
-		}
-	} else {
-		// query all jobs if neither label nor respool is provided
-		// TODO: add pagination support
-		jobConfigs, err = h.jobStore.Query(ctx, nil, nil)
-		if err != nil {
-			h.metrics.JobQueryFail.Inc(1)
-			log.WithError(err).Error("Query job failed with error")
-			return &job.QueryResponse{
-				Error: &job.QueryResponse_Error{
-					Err: &errors.UnknownError{
-						Message: err.Error(),
-					},
-				},
-			}, nil
-		}
-	}
 	h.metrics.JobQuery.Inc(1)
-	return &job.QueryResponse{Result: jobConfigs}, nil
+	return &job.QueryResponse{
+		Records: jobConfigs,
+		Pagination: &query.Pagination{
+			Offset: req.GetSpec().GetPagination().GetOffset(),
+			Limit:  req.GetSpec().GetPagination().GetLimit(),
+			Total:  total,
+		},
+	}, nil
 }
 
 // Delete kills all running tasks in a job

@@ -13,6 +13,7 @@ import "peloton/api/peloton.proto";
 import "peloton/api/errors/errors.proto";
 import "peloton/api/task/task.proto";
 import "peloton/api/respool/respool.proto";
+import "peloton/api/query/query.proto";
 
 /**
  *  Job type definition such as batch, service and infra agent.
@@ -171,6 +172,21 @@ message RuntimeInfo
 
 
 /**
+ *  Information of a job, such as job config and runtime
+ */
+message JobInfo
+{
+  // Job ID
+  peloton.JobID id = 1;
+
+  // Job configuration
+  JobConfig config = 2;
+
+  // Job runtime information
+  RuntimeInfo runtime = 3;
+}
+
+/**
  *  Job Manager service interface
  */
 service JobManager {
@@ -255,17 +271,25 @@ message GetResponse {
   }
 
   Error error = 1;
-  JobConfig config = 2;
-  RuntimeInfo runtime = 3;
+
+  JobInfo jobInfo = 2;
+}
+
+message QuerySpec {
+  // All indexed fields should be part of this message.
+  query.PaginationSpec pagination = 1;
+
+  repeated peloton.Label labels = 2;
+
+  repeated string keywords = 3;
+
+  JobState jobState = 4;
 }
 
 message QueryRequest {
-  // Both labels/respoolID/keywords fields are optional,
-  // and while query is executed, the fields are
-  // in "AND" relationship if they are both specified.
-  repeated peloton.Label labels = 1;
-  respool.ResourcePoolID respoolID = 2;
-  repeated string keywords = 3;
+  respool.ResourcePoolID respoolID = 1;
+
+  QuerySpec spec = 2;
 }
 
 message QueryResponse {
@@ -273,9 +297,11 @@ message QueryResponse {
     errors.UnknownError err = 1;
     errors.InvalidRespool invalidRespool = 2;
   }
+  Error error = 1;
 
-  map<string, JobConfig> result = 1;
-  Error error = 2;
+  repeated JobInfo records = 2;
+
+  query.Pagination pagination = 3;
 }
 
 message DeleteRequest {

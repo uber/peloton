@@ -238,50 +238,13 @@ func (m *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 	return nil, fmt.Errorf("GetJobConfig cannot find JobConfig for jobID %v", id.Value)
 }
 
-// Query returns all jobs that contains the Labels.
+// QueryJobs returns all jobs that contains the Labels.
 //
 // In the tasks table, the "Labels" field are compacted (all whitespaces and " are removed for each label),
 // then stored as the "labels_summary" row. Mysql fulltext index are also set on this field.
 // When a query comes, the query labels are compacted in the same way then queried against the fulltext index.
-func (m *Store) Query(ctx context.Context, labels []*peloton.Label, keywords []string) (map[string]*job.JobConfig, error) {
-	if len(labels) == 0 {
-		log.Debug("Labels is empty, return all jobs")
-		return m.GetAllJobs(ctx)
-	}
-
-	var queryLabels = ""
-	records := []JobRecord{}
-	var result = make(map[string]*job.JobConfig)
-	for _, label := range labels {
-		buffer, err := json.Marshal(label)
-		if err != nil {
-			log.Errorf("%v error %v", label, err)
-			return nil, err
-		}
-		// Remove all the " and spaces. This will help when searching by subset of labels
-		text := strings.Replace(strings.Replace(string(buffer), "\"", "", -1), " ", "", -1)
-		queryLabels = queryLabels + "+\"" + text + "\""
-	}
-
-	log.Debugf("Querying using labels %v, text (%v)", labels, queryLabels)
-	err := m.DB.Select(&records, queryJobsForLabelStmt, queryLabels)
-	if err == sql.ErrNoRows {
-		log.Warnf("Query for Label %v returns no rows", labels)
-		return nil, nil
-	}
-	if err != nil {
-		log.Errorf("Query for labels %v failed with error %v", queryLabels, err)
-		return nil, err
-	}
-	for _, record := range records {
-		jobConfig, err := record.GetJobConfig()
-		if err != nil {
-			log.Errorf("Query jobs %v failed with error %v", queryLabels, err)
-			continue
-		}
-		result[record.RowKey] = jobConfig
-	}
-	return result, nil
+func (m *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error) {
+	return nil, 0, fmt.Errorf("unsupported storage backend")
 }
 
 // DeleteJob deletes a job by id
@@ -856,39 +819,8 @@ func (m *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime
 }
 
 // QueryTasks returns all tasks in the given [offset...offset+limit) range.
-func (m *Store) QueryTasks(ctx context.Context, id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
-	// First fetch total count.
-	var total uint32
-	if err := m.DB.QueryRow(getTasksCountForJobStmt, id.Value).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	// Now fetch the requested range.
-	q := getTasksForJobStmt + " LIMIT ?, ?"
-	rows, err := m.DB.Queryx(q, id.Value, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var tasks []*task.TaskInfo
-	for rows.Next() {
-		var taskRecord TaskRecord
-		if err := rows.StructScan(&taskRecord); err != nil {
-			return nil, 0, err
-		}
-
-		taskInfo, err := taskRecord.GetTaskInfo()
-		if err != nil {
-			log.Errorf("taskRecord %v GetTaskInfo failed, err=%v", taskRecord, err)
-			m.metrics.TaskGetFail.Inc(1)
-			return nil, 0, err
-		}
-
-		tasks = append(tasks, taskInfo)
-	}
-
-	return tasks, total, rows.Err()
+func (m *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error) {
+	return nil, 0, fmt.Errorf("unsupported storage backend")
 }
 
 // CreatePersistentVolume creates a persistent volume entry.

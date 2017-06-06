@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
@@ -290,34 +291,30 @@ func (m *serviceHandler) Restart(
 	return &task.RestartResponse{}, nil
 }
 
-func (m *serviceHandler) Query(
-	ctx context.Context,
-	body *task.QueryRequest) (*task.QueryResponse, error) {
-
-	log.Infof("TaskManager.Query called: %v", body)
+func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*task.QueryResponse, error) {
+	log.Infof("TaskManager.Query called: %v", req)
 	m.metrics.TaskAPIQuery.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil || jobConfig == nil {
-		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
+		log.Errorf("Failed to find job with id %v, err=%v", req.JobId, err)
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
 			Error: &task.QueryResponse_Error{
 				NotFound: &errors.JobNotFound{
-					Id:      body.JobId,
-					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
+					Id:      req.JobId,
+					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", req.JobId, err),
 				},
 			},
 		}, nil
 	}
 
-	// TODO: Support filter and order arguments.
-	result, total, err := m.taskStore.QueryTasks(ctx, body.JobId, body.Offset, body.Limit)
+	result, total, err := m.taskStore.QueryTasks(ctx, req.JobId, req.GetSpec())
 	if err != nil {
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
 			Error: &task.QueryResponse_Error{
 				NotFound: &errors.JobNotFound{
-					Id:      body.JobId,
+					Id:      req.JobId,
 					Message: fmt.Sprintf("err= %v", err),
 				},
 			},
@@ -327,9 +324,11 @@ func (m *serviceHandler) Query(
 	m.metrics.TaskQuery.Inc(1)
 	return &task.QueryResponse{
 		Records: result,
-		Offset:  body.Offset,
-		Limit:   body.Limit,
-		Total:   total,
+		Pagination: &query.Pagination{
+			Offset: req.GetSpec().GetPagination().GetOffset(),
+			Limit:  req.GetSpec().GetPagination().GetLimit(),
+			Total:  total,
+		},
 	}, nil
 }
 

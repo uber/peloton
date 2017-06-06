@@ -269,9 +269,9 @@ func (suite *JobHandlerTestSuite) TestJobQuery() {
 
 	// TODO: add more inputs
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
-	mockJobStore.EXPECT().Query(context.Background(), nil, nil)
 	suite.handler.jobStore = mockJobStore
 
+	mockJobStore.EXPECT().QueryJobs(context.Background(), nil, nil)
 	req := &job.QueryRequest{}
 	resp, err := suite.handler.Query(suite.context, req)
 	suite.NoError(err)

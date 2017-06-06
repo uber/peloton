@@ -45,6 +45,8 @@ const (
 	resPoolsOwnerView     = "mv_respools_by_owner"
 	volumeTable           = "persistent_volumes"
 	jobsByRespoolView     = "mv_jobs_by_respool"
+
+	_defaultQueryLimit uint32 = 100
 )
 
 // Config is the config for cassandra Store
@@ -232,82 +234,111 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", jobID)
 }
 
-// Query returns all jobs that contains the Labels.
-func (s *Store) Query(ctx context.Context, labels []*peloton.Label, keywords []string) (map[string]*job.JobConfig, error) {
+// QueryJobs returns all jobs in the resource pool that matches the spec.
+func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error) {
 	// Query is based on stratio lucene index on jobs.
 	// See https://github.com/Stratio/cassandra-lucene-index
 	// We are using "must" for the labels and only return the jobs that contains all
 	// label values
 	// TODO: investigate if there are any golang library that can build lucene query
-	var resultMap = make(map[string]*job.JobConfig)
-	if len(labels) == 0 && len(keywords) == 0 {
-		return s.GetAllJobs(ctx)
-	}
-	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["
+	// TODO: Apply sort order.
+
+	var clauses []string
+
 	// Labels field must contain value of the specified labels
-	hasLabels := false
-	if labels != nil && len(labels) > 0 {
-		hasLabels = true
-		for i, label := range labels {
-			where = where + fmt.Sprintf("{type: \"contains\", field:\"labels\", values:\"%s\"}", label.Value)
-			if i < len(labels)-1 {
-				where = where + ","
-			}
-		}
+	for _, label := range spec.GetLabels() {
+		clauses = append(clauses, fmt.Sprintf("{type: \"contains\", field:\"labels\", values:\"%s\"}", label.Value))
 	}
+
 	// jobconfig field must contain all specified keywords
-	if keywords != nil && len(keywords) > 0 {
-		if hasLabels {
-			where = where + ","
-		}
-		for i, word := range keywords {
-			where = where + fmt.Sprintf("{type: \"contains\", field:\"jobconfig\", values:\"%s\"}", word)
-			if i < len(keywords)-1 {
-				where = where + ","
-			}
-		}
+	for _, word := range spec.GetKeywords() {
+		clauses = append(clauses, fmt.Sprintf("{type: \"contains\", field:\"jobconfig\", values:\"%s\"}", word))
 	}
-	where = where + "]}}')"
+
+	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["
+	for i, c := range clauses {
+		if i > 0 {
+			where += ", "
+		}
+		where += c
+	}
+	where += "]}}')"
+
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable).Where(where)
+	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable)
+	if len(clauses) > 0 {
+		stmt = stmt.Where(where)
+	}
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
-		log.WithField("labels", labels).
+		log.WithField("labels", spec.GetLabels()).
 			WithError(err).
 			Error("Fail to Query jobs")
 		s.metrics.JobQueryFail.Inc(1)
-		return nil, err
+		return nil, 0, err
 	}
 	allResults, err := result.All(ctx)
 	if err != nil {
-		log.WithField("labels", labels).
+		log.WithField("labels", spec.GetLabels()).
 			WithError(err).
 			Error("Fail to Query jobs")
 		s.metrics.JobQueryFail.Inc(1)
-		return nil, err
+		return nil, 0, err
 	}
+
+	total := uint32(len(allResults))
+
+	// Apply offset and limit.
+	begin := spec.GetPagination().GetOffset()
+	if begin > total {
+		begin = total
+	}
+	allResults = allResults[begin:]
+
+	end := _defaultQueryLimit
+	if spec.GetPagination() != nil {
+		end = spec.GetPagination().GetLimit()
+	}
+	if end > uint32(len(allResults)) {
+		end = uint32(len(allResults))
+	}
+	allResults = allResults[:end]
+
+	var results []*job.JobInfo
 	for _, value := range allResults {
 		var record JobRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
-			log.WithField("labels", labels).
+			log.WithField("labels", spec.GetLabels()).
 				WithError(err).
 				Error("Fail to Query jobs")
 			s.metrics.JobQueryFail.Inc(1)
-			return nil, err
+			return nil, 0, err
 		}
 		jobConfig, err := record.GetJobConfig()
 		if err != nil {
-			log.WithField("labels", labels).
+			log.WithField("labels", spec.GetLabels()).
 				WithError(err).
 				Error("Fail to Query jobs")
 			s.metrics.JobQueryFail.Inc(1)
-			return nil, err
+			return nil, 0, err
 		}
-		resultMap[record.JobID] = jobConfig
+
+		// TODO: Add to view and move to cassandra where clause.
+		if respoolID != nil && jobConfig.GetRespoolID().GetValue() != respoolID.GetValue() {
+			continue
+		}
+
+		results = append(results, &job.JobInfo{
+			Id: &peloton.JobID{
+				Value: record.JobID,
+			},
+			Config: jobConfig,
+		})
 	}
+
 	s.metrics.JobQuery.Inc(1)
-	return resultMap, nil
+	return results, total, nil
 }
 
 // GetJobsByStates returns all Jobs which belong one of the states
@@ -1209,7 +1240,7 @@ func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime
 }
 
 // QueryTasks returns all tasks in the given offset..offset+limit range.
-func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, offset uint32, limit uint32) ([]*task.TaskInfo, uint32, error) {
+func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error) {
 	jobConfig, err := s.GetJobConfig(ctx, id)
 	if err != nil {
 		log.WithError(err).
@@ -1218,8 +1249,13 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, offset uint32
 		s.metrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
+	offset := spec.GetPagination().GetOffset()
 	if offset >= jobConfig.InstanceCount {
 		return nil, 0, errors.New("offset larger than job instances")
+	}
+	limit := _defaultQueryLimit
+	if spec.GetPagination() != nil {
+		limit = spec.GetPagination().GetLimit()
 	}
 	end := offset + limit - 1
 	if end > jobConfig.InstanceCount-1 {
