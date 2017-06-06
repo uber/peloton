@@ -110,7 +110,7 @@ func TestPelotonFifoQueue(t *testing.T) {
 func (suite *FifoQueueTestSuite) TestLength() {
 	assert.Equal(suite.T(), suite.fq.Len(0), 1, "Length should be 1")
 	assert.Equal(suite.T(), suite.fq.Len(1), 1, "Length should be 1")
-	assert.Equal(suite.T(), suite.fq.Len(2), 2, "Length should be 1")
+	assert.Equal(suite.T(), suite.fq.Len(2), 2, "Length should be 2")
 }
 
 func (suite *FifoQueueTestSuite) TestDequeue() {
@@ -156,4 +156,31 @@ func (suite *FifoQueueTestSuite) TestDequeue() {
 	dqRes = gang.Tasks[0]
 	assert.Equal(suite.T(), dqRes.JobId.Value, "job1", "Should get Job-1")
 	assert.Equal(suite.T(), dqRes.Id.GetValue(), "job1-1", "Should get Job-1 and instance 1")
+}
+
+func (suite *FifoQueueTestSuite) TestPeek() {
+	gang, err := suite.fq.Peek()
+	suite.NoError(err)
+	suite.Equal(len(gang.Tasks), 1)
+	dqRes := gang.Tasks[0]
+	suite.Equal(dqRes.JobId.Value, "job2", "Should get Job-2")
+	suite.Equal(suite.fq.Len(2), 2, "Length should be 2")
+}
+
+func (suite *FifoQueueTestSuite) TestRemove() {
+	gang, err := suite.fq.Peek()
+	suite.NoError(err)
+	suite.Equal(len(gang.Tasks), 1)
+	err = suite.fq.Remove(gang)
+	suite.NoError(err)
+	suite.Equal(suite.fq.Len(2), 1, "Length should be 1")
+
+	gang, err = suite.fq.Peek()
+	suite.NoError(err)
+	err = suite.fq.Remove(gang)
+	suite.NoError(err)
+	suite.Equal(suite.fq.Len(2), 0, "Length should be 0")
+
+	err = suite.fq.Remove(nil)
+	suite.Error(err)
 }

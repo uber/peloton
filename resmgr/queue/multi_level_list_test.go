@@ -1,13 +1,13 @@
 package queue
 
 import (
+	"container/list"
 	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -39,7 +39,7 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 
 	suite.mll.Push(0, taskItem1)
 	suite.mapTasks["job1-1"] = taskItem1
-	assert.Equal(suite.T(), suite.mll.GetHighestLevel(), 0, "Highest Level should be 0")
+	suite.Equal(suite.mll.GetHighestLevel(), 0, "Highest Level should be 0")
 
 	jobID0 := &peloton.JobID{
 		Value: "job2",
@@ -56,7 +56,7 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 
 	suite.mll.Push(1, taskItem0)
 	suite.mapTasks["job2-1"] = taskItem0
-	assert.Equal(suite.T(), suite.mll.GetHighestLevel(), 1, "Highest Level should be 1")
+	suite.Equal(suite.mll.GetHighestLevel(), 1, "Highest Level should be 1")
 
 	jobID2 := &peloton.JobID{
 		Value: "job1",
@@ -83,28 +83,28 @@ func TestPelotonPriorityMap(t *testing.T) {
 }
 
 func (suite *MultiLevelListTestSuite) TestLength() {
-	assert.Equal(suite.T(), suite.mll.Len(0), 2, "Length should be 2")
+	suite.Equal(suite.mll.Len(0), 2, "Length should be 2")
 }
 
 func (suite *MultiLevelListTestSuite) TestPop() {
 	t, _ := suite.mll.Pop(0)
-	assert.Equal(suite.T(), t.(*resmgr.Task).JobId.Value, "job1", "Job 1 should be out")
-	assert.Equal(suite.T(), t.(*resmgr.Task).Id.Value, "job1-1", "Job 1 , Instance 1 should be out")
-	assert.Equal(suite.T(), suite.mll.Len(0), 1, "Length should be 1")
+	suite.Equal(t.(*resmgr.Task).JobId.Value, "job1", "Job 1 should be out")
+	suite.Equal(t.(*resmgr.Task).Id.Value, "job1-1", "Job 1 , Instance 1 should be out")
+	suite.Equal(suite.mll.Len(0), 1, "Length should be 1")
 }
 
 func (suite *MultiLevelListTestSuite) TestRemove() {
-	assert.Equal(suite.T(), suite.mll.Len(0), 2, "Length should be 2")
+	suite.Equal(suite.mll.Len(0), 2, "Length should be 2")
 	taskItem := suite.mapTasks["job1-2"]
 	res := suite.mll.Remove(0, taskItem)
 
-	assert.Equal(suite.T(), res, nil, "Should be able to remove item")
-	assert.Equal(suite.T(), suite.mll.Len(0), 1, "Length should be 0")
+	suite.Equal(res, nil, "Should be able to remove item")
+	suite.Equal(suite.mll.Len(0), 1, "Length should be 0")
 }
 
 func (suite *MultiLevelListTestSuite) TestRemoveTasks() {
-	assert.Equal(suite.T(), suite.mll.Len(0), 2, "Length should be 2")
-	assert.Equal(suite.T(), suite.mll.Len(1), 1, "Length should be 1")
+	suite.Equal(suite.mll.Len(0), 2, "Length should be 2")
+	suite.Equal(suite.mll.Len(1), 1, "Length should be 1")
 	mapValues := make(map[interface{}]bool)
 	for _, v := range suite.mapTasks {
 		if v.Priority == 0 {
@@ -113,12 +113,61 @@ func (suite *MultiLevelListTestSuite) TestRemoveTasks() {
 	}
 
 	res, _, _ := suite.mll.RemoveItems(mapValues, 0)
-	assert.Equal(suite.T(), res, true, "Should be able to remove item")
-	assert.Equal(suite.T(), suite.mll.Len(0), 0, "Length should be 0")
+	suite.Equal(res, true, "Should be able to remove item")
+	suite.Equal(suite.mll.Len(0), 0, "Length should be 0")
 }
 
 func (suite *MultiLevelListTestSuite) PriorityMapTestSuite() {
 	suite.mll.Pop(0)
 	suite.mll.Pop(0)
-	assert.Equal(suite.T(), suite.mll.IsEmpty(0), true, "Should be empty")
+	suite.Equal(suite.mll.IsEmpty(0), true, "Should be empty")
+}
+
+func (suite *MultiLevelListTestSuite) TestPushList() {
+	newList := list.New()
+	jobID := &peloton.JobID{
+		Value: "job3",
+	}
+	taskID := &peloton.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID.Value, 1),
+	}
+	taskItem := &resmgr.Task{
+		Name:     "job3-1",
+		Priority: 2,
+		JobId:    jobID,
+		Id:       taskID,
+	}
+	newList.PushBack(taskItem)
+
+	taskID = &peloton.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID.Value, 2),
+	}
+	taskItem = &resmgr.Task{
+		Name:     "job3-2",
+		Priority: 2,
+		JobId:    jobID,
+		Id:       taskID,
+	}
+	newList.PushBack(taskItem)
+	suite.mll.PushList(2, newList)
+	suite.Equal(suite.mll.GetHighestLevel(), 2,
+		"Highest Level should be 2")
+	e, err := suite.mll.Pop(2)
+	suite.NoError(err)
+	retTask := e.(*resmgr.Task)
+	suite.Equal(retTask.Id.Value, "job3-1")
+	suite.Equal(suite.mll.IsEmpty(2), false,
+		"Should Not be empty")
+	e, err = suite.mll.Pop(2)
+	suite.NoError(err)
+	retTask = e.(*resmgr.Task)
+	suite.Equal(retTask.Id.Value, "job3-2")
+	suite.Equal(suite.mll.IsEmpty(2), true, "Should be empty")
+}
+
+func (suite *MultiLevelListTestSuite) TestPeek() {
+	e, err := suite.mll.PeekItem(1)
+	suite.NoError(err)
+	retTask := e.(*resmgr.Task)
+	suite.Equal(retTask.Id.Value, "job2-1")
 }

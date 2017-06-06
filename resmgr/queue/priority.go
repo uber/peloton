@@ -115,12 +115,13 @@ func (f *PriorityQueue) Remove(gang *resmgrsvc.Gang) error {
 	if gang == nil || len(gang.Tasks) <= 0 {
 		return errors.New("removal of empty list")
 	}
+
 	firstItem := gang.Tasks[0]
 	priority := firstItem.Priority
 	log.WithFields(log.Fields{
 		"ITEM ":    firstItem,
 		"Priority": priority,
-	}).Info("Trying to remove")
+	}).Debug("Trying to remove")
 	return f.list.Remove(int(priority), gang)
 }
 
