@@ -2,6 +2,8 @@ package hostmgr
 
 import (
 	"github.com/uber-go/tally"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
 
 // Metrics is a placeholder for all metrics in hostmgr.
@@ -30,6 +32,8 @@ type Metrics struct {
 	OfferOperationsFail          tally.Counter
 	OfferOperationsInvalid       tally.Counter
 	OfferOperationsInvalidOffers tally.Counter
+
+	scope tally.Scope
 }
 
 // NewMetrics returns a new instance of hostmgr.Metrics.
@@ -60,5 +64,18 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		ClusterCapacity:     scope.Counter("cluster_capacity"),
 		ClusterCapacityFail: scope.Counter("cluster_capacity_fail"),
+
+		scope: scope,
+	}
+}
+
+func (m *Metrics) refreshClusterCapacityGauges(response *hostsvc.ClusterCapacityResponse) {
+	for _, resource := range response.GetResources() {
+		if len(resource.GetKind()) == 0 {
+			continue
+		}
+
+		gauge := m.scope.Gauge("cluster_capacity_" + resource.GetKind())
+		gauge.Update(resource.GetCapacity())
 	}
 }

@@ -229,8 +229,10 @@ func TestNoHostOfferReturned(t *testing.T) {
 			AcquireHostOffers(
 				gomock.Any(),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
-					Constraint: &hostsvc.Constraint{
-						HostLimit: uint32(1),
+					Filter: &hostsvc.HostFilter{
+						Quantity: &hostsvc.QuantityControl{
+							MaxHosts: uint32(10),
+						},
 						ResourceConstraint: &hostsvc.ResourceConstraint{
 							Minimum:  t1.Resource,
 							NumPorts: t1.NumPorts,
@@ -318,8 +320,10 @@ func TestMultipleTasksPlaced(t *testing.T) {
 			AcquireHostOffers(
 				gomock.Any(),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
-					Constraint: &hostsvc.Constraint{
-						HostLimit: uint32(10), // OfferDequeueLimit
+					Filter: &hostsvc.HostFilter{
+						Quantity: &hostsvc.QuantityControl{
+							MaxHosts: uint32(10), // OfferDequeueLimit
+						},
 						ResourceConstraint: &hostsvc.ResourceConstraint{
 							Minimum:  testTasks[0].Resource,
 							NumPorts: testTasks[0].NumPorts,
@@ -444,8 +448,10 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 			AcquireHostOffers(
 				gomock.Any(),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
-					Constraint: &hostsvc.Constraint{
-						HostLimit: uint32(10), // OfferDequeueLimit
+					Filter: &hostsvc.HostFilter{
+						Quantity: &hostsvc.QuantityControl{
+							MaxHosts: uint32(10), // OfferDequeueLimit
+						},
 						ResourceConstraint: &hostsvc.ResourceConstraint{
 							Minimum:  testTasks[0].Resource,
 							NumPorts: testTasks[0].NumPorts,
@@ -494,7 +500,7 @@ func TestGroupTasks(t *testing.T) {
 	t2 := createTestTask(1)
 	result := groupTasks([]*resmgr.Task{t1, t2})
 	assert.Equal(t, 1, len(result))
-	tmp1 := getHostSvcConstraint(t1)
+	tmp1 := getHostFilter(t1)
 	key1 := tmp1.String()
 	assert.Contains(t, result, key1)
 	group1 := result[key1]
@@ -520,7 +526,7 @@ func TestGroupTasks(t *testing.T) {
 	result = groupTasks([]*resmgr.Task{t1, t2, t3, t4, t5, t6})
 	assert.Equal(t, 5, len(result))
 
-	tmp1 = getHostSvcConstraint(t1)
+	tmp1 = getHostFilter(t1)
 	key1 = tmp1.String()
 	assert.Contains(t, result, key1)
 	group1 = result[key1]
@@ -528,7 +534,7 @@ func TestGroupTasks(t *testing.T) {
 	assert.Equal(t, 2, len(group1.tasks))
 	assert.Equal(t, t1.GetResource(), group1.getResourceConfig())
 
-	tmp3 := getHostSvcConstraint(t3)
+	tmp3 := getHostFilter(t3)
 	key3 := tmp3.String()
 	assert.Contains(t, result, key3)
 	group3 := result[key3]
@@ -536,7 +542,7 @@ func TestGroupTasks(t *testing.T) {
 	assert.Equal(t, 1, len(group3.tasks))
 	assert.Equal(t, t3.GetResource(), group3.getResourceConfig())
 
-	tmp4 := getHostSvcConstraint(t4)
+	tmp4 := getHostFilter(t4)
 	key4 := tmp4.String()
 	assert.Contains(t, result, key4)
 	group4 := result[key4]
@@ -544,7 +550,7 @@ func TestGroupTasks(t *testing.T) {
 	assert.Equal(t, 1, len(group4.tasks))
 	assert.Nil(t, group4.getResourceConfig())
 
-	tmp5 := getHostSvcConstraint(t5)
+	tmp5 := getHostFilter(t5)
 	key5 := tmp5.String()
 	assert.Contains(t, result, key5)
 	group5 := result[key5]
@@ -552,7 +558,7 @@ func TestGroupTasks(t *testing.T) {
 	assert.Equal(t, 1, len(group5.tasks))
 	assert.Equal(t, t5.GetResource(), group5.getResourceConfig())
 
-	tmp6 := getHostSvcConstraint(t6)
+	tmp6 := getHostFilter(t6)
 	key6 := tmp6.String()
 	assert.Contains(t, result, key6)
 	group6 := result[key6]
@@ -586,28 +592,28 @@ func TestGroupTasksWithPorts(t *testing.T) {
 	result := groupTasks([]*resmgr.Task{t1, t2, t3, t4, t5, t6})
 	assert.Equal(t, 4, len(result))
 
-	tmp1 := getHostSvcConstraint(t1)
+	tmp1 := getHostFilter(t1)
 	key1 := tmp1.String()
 	assert.Contains(t, result, key1)
 	group1 := result[key1]
 	assert.NotNil(t, group1)
 	assert.Equal(t, 1, len(group1.tasks))
 
-	tmp3 := getHostSvcConstraint(t3)
+	tmp3 := getHostFilter(t3)
 	key3 := tmp3.String()
 	assert.Contains(t, result, key3)
 	group3 := result[key3]
 	assert.NotNil(t, group3)
 	assert.Equal(t, 2, len(group3.tasks))
 
-	tmp4 := getHostSvcConstraint(t4)
+	tmp4 := getHostFilter(t4)
 	key4 := tmp4.String()
 	assert.Contains(t, result, key4)
 	group4 := result[key4]
 	assert.NotNil(t, group4)
 	assert.Equal(t, 1, len(group4.tasks))
 
-	tmp5 := getHostSvcConstraint(t5)
+	tmp5 := getHostFilter(t5)
 	key5 := tmp5.String()
 	assert.Contains(t, result, key5)
 	group5 := result[key5]

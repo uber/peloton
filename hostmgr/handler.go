@@ -53,13 +53,13 @@ func InitServiceHandler(
 	d.Register(hostsvc.BuildInternalHostServiceYarpcProcedures(handler))
 }
 
-func validateConstraint(
-	req *hostsvc.AcquireHostOffersRequest) *hostsvc.InvalidConstraint {
+func validateHostFilter(
+	req *hostsvc.AcquireHostOffersRequest) *hostsvc.InvalidHostFilter {
 
-	if req.GetConstraint() == nil {
-		log.WithField("request", req).Warn("Empty constraint")
-		return &hostsvc.InvalidConstraint{
-			Message: "Empty constraint",
+	if req.GetFilter() == nil {
+		log.WithField("request", req).Warn("Empty host constraint")
+		return &hostsvc.InvalidHostFilter{
+			Message: "Empty host filter",
 		}
 	}
 
@@ -74,16 +74,16 @@ func (h *serviceHandler) AcquireHostOffers(
 
 	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
-	if invalid := validateConstraint(body); invalid != nil {
+	if invalid := validateHostFilter(body); invalid != nil {
 		h.metrics.AcquireHostOffersInvalid.Inc(1)
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
-				InvalidConstraint: invalid,
+				InvalidHostFilter: invalid,
 			},
 		}, nil
 	}
 
-	hostOffers, err := h.offerPool.ClaimForPlace(body.GetConstraint())
+	hostOffers, resultCount, err := h.offerPool.ClaimForPlace(body.GetFilter())
 	if err != nil {
 		log.WithError(err).Warn("ClaimForPlace failed")
 		return &hostsvc.AcquireHostOffersResponse{
@@ -96,7 +96,8 @@ func (h *serviceHandler) AcquireHostOffers(
 	}
 
 	response := hostsvc.AcquireHostOffersResponse{
-		HostOffers: []*hostsvc.HostOffer{},
+		HostOffers:         []*hostsvc.HostOffer{},
+		FilterResultCounts: resultCount,
 	}
 
 	for hostname, offers := range hostOffers {
@@ -638,7 +639,7 @@ func (h *serviceHandler) ClusterCapacity(
 	tAllocatedResources := scalar.FromMesosResources(allocatedResources)
 
 	h.metrics.ClusterCapacity.Inc(1)
-	return &hostsvc.ClusterCapacityResponse{
+	clusterCapacityResponse := &hostsvc.ClusterCapacityResponse{
 		Resources: []*hostsvc.Resource{
 			{
 				Kind:     common.CPU,
@@ -654,5 +655,8 @@ func (h *serviceHandler) ClusterCapacity(
 				Capacity: tAllocatedResources.Mem,
 			},
 		},
-	}, nil
+	}
+
+	h.metrics.refreshClusterCapacityGauges(clusterCapacityResponse)
+	return clusterCapacityResponse, nil
 }

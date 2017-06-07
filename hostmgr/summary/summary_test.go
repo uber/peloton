@@ -93,15 +93,17 @@ func (suite *HostOfferSummaryTestSuite) SetupTest() {
 func (suite *HostOfferSummaryTestSuite) TestConstraintMatchForResources() {
 
 	testTable := []struct {
-		expected   MatchResult
-		constraint *hostsvc.Constraint
-		offer      *mesos.Offer
-		msg        string
+		expected hostsvc.HostFilterResult
+		filter   *hostsvc.HostFilter
+		offer    *mesos.Offer
+		msg      string
 	}{
 		{
-			expected: Matched,
-			constraint: &hostsvc.Constraint{
-				HostLimit: 1,
+			expected: hostsvc.HostFilterResult_MATCH,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					NumPorts: uint32(2),
 					Minimum: &task.ResourceConfig{
@@ -124,9 +126,11 @@ func (suite *HostOfferSummaryTestSuite) TestConstraintMatchForResources() {
 			msg: "Enough resource with GPU",
 		},
 		{
-			expected: InsufficientResources,
-			constraint: &hostsvc.Constraint{
-				HostLimit: 1,
+			expected: hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					Minimum: &task.ResourceConfig{
 						CpuLimit:    1.0,
@@ -147,9 +151,11 @@ func (suite *HostOfferSummaryTestSuite) TestConstraintMatchForResources() {
 			msg: "Not enough memory",
 		},
 		{
-			expected: InsufficientResources,
-			constraint: &hostsvc.Constraint{
-				HostLimit: 1,
+			expected: hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					NumPorts: uint32(3),
 					Minimum: &task.ResourceConfig{
@@ -170,9 +176,11 @@ func (suite *HostOfferSummaryTestSuite) TestConstraintMatchForResources() {
 			msg: "Not enough ports",
 		},
 		{
-			expected: Matched,
-			constraint: &hostsvc.Constraint{
-				HostLimit: 1,
+			expected: hostsvc.HostFilterResult_MATCH,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					Minimum: &task.ResourceConfig{
 						CpuLimit:    1.0,
@@ -191,9 +199,11 @@ func (suite *HostOfferSummaryTestSuite) TestConstraintMatchForResources() {
 			msg: "Enough resource without GPU",
 		},
 		{
-			expected: MismatchGPU,
-			constraint: &hostsvc.Constraint{
-				HostLimit: 1,
+			expected: hostsvc.HostFilterResult_MISMATCH_GPU,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					Minimum: &task.ResourceConfig{
 						CpuLimit:    1.0,
@@ -213,9 +223,11 @@ func (suite *HostOfferSummaryTestSuite) TestConstraintMatchForResources() {
 			msg: "GPU machines are exclusive",
 		},
 		{
-			expected: MismatchStatus,
-			constraint: &hostsvc.Constraint{
-				HostLimit: 1,
+			expected: hostsvc.HostFilterResult_MISMATCH_STATUS,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					Minimum: &task.ResourceConfig{
 						CpuLimit:    1.0,
@@ -238,9 +250,9 @@ func (suite *HostOfferSummaryTestSuite) TestConstraintMatchForResources() {
 
 		suite.Equal(
 			tt.expected,
-			matchConstraint(
+			matchHostFilter(
 				offerMap,
-				tt.constraint,
+				tt.filter,
 				nil),
 			tt.msg,
 		)
@@ -421,7 +433,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 	offer := suite.createUnreservedMesosOffer("offer-id")
 
 	testTable := []struct {
-		match  MatchResult
+		match  hostsvc.HostFilterResult
 		offers []*mesos.Offer
 
 		evaluateRes   constraints.EvaluateResult
@@ -430,30 +442,30 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 		noMock        bool
 	}{
 		{
-			match:         Matched,
+			match:         hostsvc.HostFilterResult_MATCH,
 			offers:        []*mesos.Offer{offer},
 			evaluateRes:   constraints.EvaluateResultMatch,
 			initialStatus: ReadyOffer,
 		},
 		{
-			match:         Matched,
+			match:         hostsvc.HostFilterResult_MATCH,
 			offers:        []*mesos.Offer{offer},
 			evaluateRes:   constraints.EvaluateResultNotApplicable,
 			initialStatus: ReadyOffer,
 		},
 
 		{
-			match:         MismatchAttributes,
+			match:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
 			evaluateRes:   constraints.EvaluateResultMismatch,
 			initialStatus: ReadyOffer,
 		},
 		{
-			match:         MismatchAttributes,
+			match:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
 			evaluateErr:   errors.New("some error"),
 			initialStatus: ReadyOffer,
 		},
 		{
-			match:         MismatchStatus,
+			match:         hostsvc.HostFilterResult_MISMATCH_STATUS,
 			initialStatus: PlacingOffer,
 			noMock:        true,
 		},
@@ -466,7 +478,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 		s := New(suite.mockVolumeStore).(*hostSummary)
 		s.status = tt.initialStatus
 		suite.Equal(tt.initialStatus, s.AddMesosOffer(context.Background(), offer))
-		constraint := &hostsvc.Constraint{
+		filter := &hostsvc.HostFilter{
 			SchedulingConstraint: &task.Constraint{
 				Type: task.Constraint_LABEL_CONSTRAINT,
 				LabelConstraint: &task.LabelConstraint{
@@ -481,12 +493,12 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 			mockEvaluator.
 				EXPECT().
 				Evaluate(
-					gomock.Eq(constraint.SchedulingConstraint),
+					gomock.Eq(filter.SchedulingConstraint),
 					gomock.Eq(lv)).
 				Return(tt.evaluateRes, tt.evaluateErr)
 		}
 
-		match, offers := s.TryMatch(constraint, mockEvaluator)
+		match, offers := s.TryMatch(filter, mockEvaluator)
 		suite.Equal(tt.match, match, "test case is %v", tt)
 		suite.Equal(tt.offers, offers)
 		ctrl.Finish()

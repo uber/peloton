@@ -105,7 +105,7 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 			return
 		}
 
-		hostOffers, err := s.AcquireHostOffers(group)
+		hostOffers, resultCounts, err := s.AcquireHostOffers(group)
 		// TODO: Add a stopping condition so this does not loop forever.
 		if err != nil {
 			log.WithField("error", err).Error("Failed to dequeue offer")
@@ -116,7 +116,8 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 
 		if len(hostOffers) == 0 {
 			s.metrics.OfferStarved.Inc(1)
-			log.Warn("Empty hostOffers received")
+			log.WithField("filter_result_counts", resultCounts).
+				Warn("Empty hostOffers received")
 			time.Sleep(GetOfferTimeout)
 			continue
 		}
@@ -194,22 +195,25 @@ func (s *placementEngine) returnUnused(hostOffers []*hostsvc.HostOffer) error {
 }
 
 // AcquireHostOffers calls hostmgr and obtain HostOffers for given task group.
-func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOffer, error) {
-	// Right now, this limits number of hosts to request from hostsvc.
-	// In the longer term, we should consider converting this to total resources necessary.
-	limit := s.cfg.OfferDequeueLimit
-	if len(group.tasks) < limit {
-		limit = len(group.tasks)
-	}
-
+func (s *placementEngine) AcquireHostOffers(group *taskGroup) (
+	[]*hostsvc.HostOffer,
+	map[string]uint32,
+	error,
+) {
 	// Make a deep copy because we are modifying this struct here.
-	constraint := proto.Clone(&group.constraint).(*hostsvc.Constraint)
-	constraint.HostLimit = uint32(limit)
+	filter := proto.Clone(&group.hostFilter).(*hostsvc.HostFilter)
+	// Right now, this limits number of hosts to request from hostsvc.
+	// In the longer term, we should consider converting this to total
+	// resources necessary.
+	filter.Quantity = &hostsvc.QuantityControl{
+		// NumPlacements: uint32(len(group.tasks)),
+		MaxHosts: uint32(s.cfg.OfferDequeueLimit),
+	}
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
 	var request = &hostsvc.AcquireHostOffersRequest{
-		Constraint: constraint,
+		Filter: filter,
 	}
 
 	log.WithField("request", request).Debug("Calling AcquireHostOffers")
@@ -218,7 +222,7 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOf
 
 	if err != nil {
 		log.WithField("error", err).Error("AcquireHostOffers failed")
-		return nil, err
+		return nil, nil, err
 	}
 
 	log.WithField("response", response).Debug("AcquireHostOffers returned")
@@ -226,11 +230,10 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) ([]*hostsvc.HostOf
 	if respErr := response.GetError(); respErr != nil {
 		log.WithField("error", respErr).Error("AcquireHostOffers error")
 		// TODO: Differentiate known error types by metrics and logs.
-		return nil, errors.New(respErr.String())
+		return nil, nil, errors.New(respErr.String())
 	}
 
-	result := response.GetHostOffers()
-	return result, nil
+	return response.GetHostOffers(), response.GetFilterResultCounts(), nil
 }
 
 // placeTasks takes the tasks and convert them to placements
@@ -456,16 +459,16 @@ func (s *placementEngine) getTasks(limit int) (
 }
 
 type taskGroup struct {
-	constraint hostsvc.Constraint
+	hostFilter hostsvc.HostFilter
 	tasks      []*resmgr.Task
 }
 
 func (g *taskGroup) getResourceConfig() *task.ResourceConfig {
-	return g.constraint.GetResourceConstraint().GetMinimum()
+	return g.hostFilter.GetResourceConstraint().GetMinimum()
 }
 
-func getHostSvcConstraint(t *resmgr.Task) hostsvc.Constraint {
-	result := hostsvc.Constraint{
+func getHostFilter(t *resmgr.Task) hostsvc.HostFilter {
+	result := hostsvc.HostFilter{
 		// HostLimit will be later determined by number of tasks.
 		ResourceConstraint: &hostsvc.ResourceConstraint{
 			Minimum:  t.Resource,
@@ -483,12 +486,12 @@ func getHostSvcConstraint(t *resmgr.Task) hostsvc.Constraint {
 func groupTasks(tasks []*resmgr.Task) map[string]*taskGroup {
 	groups := make(map[string]*taskGroup)
 	for _, t := range tasks {
-		c := getHostSvcConstraint(t)
+		filter := getHostFilter(t)
 		// String() function on protobuf message should be nil-safe.
-		s := c.String()
+		s := filter.String()
 		if _, ok := groups[s]; !ok {
 			groups[s] = &taskGroup{
-				constraint: c,
+				hostFilter: filter,
 				tasks:      []*resmgr.Task{},
 			}
 		}

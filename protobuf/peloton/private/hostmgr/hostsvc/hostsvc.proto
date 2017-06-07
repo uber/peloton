@@ -42,24 +42,78 @@ message LaunchableTask {
   Volume volume = 4;
 }
 
+/** QuantityControl includes input from placement engine to control how many
+ * host offers need to be returned.
+ */
+message QuantityControl {
+  // Optinoal maximum number of hosts to return. Default zero value is no-op.
+  uint32 maxHosts = 1;
+
+  // TODO(zhitao): Enable the following two fields.
+  // Optional minimum number of hosts to return. This can be used to make sure
+  // tasks can be well spread.
+  // Default zero value is no-op.
+  // Note that there is not guarantee hostmgr can return so many hosts, but
+  // caller can use HostFilterResult included in response to understand.
+  // uint32 minHosts = 2;
+
+  // Original number of placements requested by PE. This cannot
+  // be zero, otherwise hostmgr may return empty result.
+  // uint32 numPlacements = 3;
+}
+
 
 /**
- * Constraint describes a condition for which offers from a certain host must
- * meet in order to return to placement engine to use.
+ * HostFilter can be used to control whether offers from a given host should
+ * be returned to placement engine to use.
  */
-message Constraint {
-  // Maximum number of hosts which need to satisfy the given constraint.
-  // Default value of zero means no repeat and this applies to one host.
-  // TODO(zhitao): Consider adding `minimumHosts` which can be useful for
-  // gang-scheduling.
-  uint32 hostLimit = 1;
-
+message HostFilter {
+  // Resource constraint which must be satisfied.
   ResourceConstraint resourceConstraint = 2;
 
   // Attribute based affinity/anti-affinity scheduling constraints, which is
   // typically copied from original task scheduling constraint.
   // Only constraint with kind == HOST will be considered.
   api.task.Constraint schedulingConstraint = 3;
+
+  // Extra quantity control message which can be used to influence how many
+  // host offers are returned.
+  QuantityControl quantity = 4;
+}
+
+/**
+ * HostFilterResult describes result of filtering hosts.
+ */
+enum HostFilterResult {
+    // Reserved in case new result is unrecognized.
+    UNKNOWN = 0;
+
+    // Host is matched by filter and returned in HostOffer.
+    MATCH = 1;
+
+    // Host has enough total resources but offered resources
+    // is insufficient (signal for fragmentation).
+    INSUFFICIENT_OFFER_RESOURCES = 2;
+
+    // Host is filtered out because of mismatched task -> host constraint.
+    MISMATCH_CONSTRAINTS = 3;
+
+    // Host has GPU so reserved for GPU only task.
+    MISMATCH_GPU = 4;
+
+    // Host is in mismatch status (i.e, another placement engine)
+    // has a hold of the host.
+    MISMATCH_STATUS = 5;
+
+    // Host is filtered out because maxHosts limit is reached.
+    MISMATCH_MAX_HOST_LIMIT = 6;
+
+    // Host is filtered out because numPlacements * resourceConstraint
+    // can already to satisfied.
+    // MISMATCH_SUFFICIENT_TASKS = 7;
+
+    // Host has not enough total resources.
+    // INSUFFICIENT_TOTAL_RESOURCES = 8;
 }
 
 /**
@@ -123,13 +177,13 @@ message KillFailure {
 }
 
 /**
- * Error for invalid constraint.
+ * Error for invalid filter.
  */
-message InvalidConstraint {
+message InvalidHostFilter {
   string message = 1;
 
-  // Invalid constraint from input.
-  Constraint invalid = 2;
+  // Invalid filter from input.
+  HostFilter invalid = 2;
 }
 
 /**
@@ -270,19 +324,21 @@ message OfferOperationsResponse {
 }
 
 message AcquireHostOffersRequest {
-  // Required constraint.
-  Constraint constraint = 1;
+  HostFilter filter = 1;
 }
 
 message AcquireHostOffersResponse {
   message Error {
-    InvalidConstraint invalidConstraint = 1;
+    InvalidHostFilter invalidHostFilter = 1;
     AcquireHostOffersFailure failure = 2;
   }
 
   Error error = 1;
   // The list of host offers that have been returned
   repeated HostOffer hostOffers = 2;
+
+  // key: HostFilterResult's string form, value: count. used for debugging purpose.
+  map<string, uint32> filterResultCounts = 3;
 }
 
 message ReleaseHostOffersRequest {

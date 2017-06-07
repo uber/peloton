@@ -40,9 +40,12 @@ type Pool interface {
 	// Decline offers
 	DeclineOffers(ctx context.Context, offerIds []*mesos.OfferID) error
 
-	// ClaimForPlace obtains offers from pool conforming to given constraint
-	// for placement purposes. Results are grouped by hostname as key.
-	ClaimForPlace(constraint *hostsvc.Constraint) (map[string][]*mesos.Offer, error)
+	// ClaimForPlace obtains offers from pool conforming to given HostFilter
+	// for placement purposes.
+	// First return value is returned offers, grouped by hostname as key,
+	// Second return value is a map from hostsvc.HostFilterResult to count.
+	ClaimForPlace(constraint *hostsvc.HostFilter) (
+		map[string][]*mesos.Offer, map[string]uint32, error)
 
 	// ClaimForLaunch finds offers previously for placement on given host.
 	// The difference from ClaimForPlace is that offers claimed from this
@@ -124,18 +127,18 @@ type offerPool struct {
 // ClaimForPlace obtains offers from pool conforming to given constraints.
 // Results are grouped by hostname as key.
 // This implements Pool.ClaimForPlace.
-func (p *offerPool) ClaimForPlace(constraint *hostsvc.Constraint) (
-	map[string][]*mesos.Offer, error) {
+func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
+	map[string][]*mesos.Offer, map[string]uint32, error) {
 
-	if constraint == nil {
-		return nil, errors.New("empty constraints passed in")
+	if hostFilter == nil {
+		return nil, nil, errors.New("empty HostFilter passed in")
 	}
 
 	p.RLock()
 	defer p.RUnlock()
 
 	matcher := NewMatcher(
-		constraint,
+		hostFilter,
 		constraints.NewEvaluator(task.LabelConstraint_HOST))
 
 	for hostname, summary := range p.hostOfferIndex {
@@ -145,12 +148,9 @@ func (p *offerPool) ClaimForPlace(constraint *hostsvc.Constraint) (
 		}
 	}
 
-	if !matcher.HasEnoughHosts() {
-		// Still proceed to return something.
-		log.Warn("Not enough offers are matched to given constraints")
-	}
+	hasEnoughHosts := matcher.HasEnoughHosts()
 
-	hostOffers := matcher.getHostOffers()
+	hostOffers, resultCount := matcher.getHostOffers()
 
 	var delta scalar.Resources
 	for _, offers := range hostOffers {
@@ -162,10 +162,15 @@ func (p *offerPool) ClaimForPlace(constraint *hostsvc.Constraint) (
 	incQuantity(&p.placingResources, delta, p.metrics.placing)
 	decQuantity(&p.readyResources, delta, p.metrics.ready)
 
+	if !hasEnoughHosts {
+		// Still proceed to return something.
+		log.WithField("match_result_counts", resultCount).
+			Warn("Not enough offers are matched to given constraints")
+	}
 	// NOTE: we should not clear the entries for the selected offers in p.offers
 	// because we still need to visit corresponding offers, when these offers
 	// are returned or used.
-	return hostOffers, nil
+	return hostOffers, resultCount, nil
 }
 
 // ClaimForLaunch takes offers from pool for launch.

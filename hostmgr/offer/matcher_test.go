@@ -1,6 +1,7 @@
 package offer
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -15,16 +16,18 @@ type ConstraintTestSuite struct {
 func (suite *ConstraintTestSuite) TestEffectiveHostLimit() {
 	// this deprecated semantic is equivalent to a single constraints
 	// with same limit.
-	c := &hostsvc.Constraint{
-		HostLimit: 0,
+	c := &hostsvc.HostFilter{
+		Quantity: &hostsvc.QuantityControl{
+			MaxHosts: 0,
+		},
 	}
 
+	suite.Equal(uint32(math.MaxUint32), effectiveHostLimit(c))
+
+	c.Quantity.MaxHosts = 1
 	suite.Equal(uint32(1), effectiveHostLimit(c))
 
-	c.HostLimit = 1
-	suite.Equal(uint32(1), effectiveHostLimit(c))
-
-	c.HostLimit = 10
+	c.Quantity.MaxHosts = 10
 	suite.Equal(uint32(10), effectiveHostLimit(c))
 }
 

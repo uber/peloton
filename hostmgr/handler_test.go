@@ -207,7 +207,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 	)
 
 	suite.NoError(err)
-	suite.NotNil(acquiredResp.GetError().GetInvalidConstraint())
+	suite.NotNil(acquiredResp.GetError().GetInvalidHostFilter())
 
 	suite.Equal(
 		int64(1),
@@ -215,8 +215,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
-		Constraint: &hostsvc.Constraint{
-			HostLimit: uint32(numHosts * 2),
+		Filter: &hostsvc.HostFilter{
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(numHosts * 2),
+			},
 			ResourceConstraint: &hostsvc.ResourceConstraint{
 				Minimum: &task.ResourceConfig{
 					CpuLimit:    _perHostCPU,
@@ -306,8 +308,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunch() {
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
-		Constraint: &hostsvc.Constraint{
-			HostLimit: uint32(1),
+		Filter: &hostsvc.HostFilter{
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(1),
+			},
 			ResourceConstraint: &hostsvc.ResourceConstraint{
 				Minimum: &task.ResourceConfig{
 					CpuLimit:    _perHostCPU,
@@ -424,8 +428,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOperation() {
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
-		Constraint: &hostsvc.Constraint{
-			HostLimit: uint32(1),
+		Filter: &hostsvc.HostFilter{
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(1),
+			},
 			ResourceConstraint: &hostsvc.ResourceConstraint{
 				Minimum: &task.ResourceConfig{
 					CpuLimit:    _perHostCPU,
@@ -886,8 +892,10 @@ func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperation() {
 
 	// Matching constraint.
 	acquireReq := &hostsvc.AcquireHostOffersRequest{
-		Constraint: &hostsvc.Constraint{
-			HostLimit: uint32(1),
+		Filter: &hostsvc.HostFilter{
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(1),
+			},
 			ResourceConstraint: &hostsvc.ResourceConstraint{
 				Minimum: &task.ResourceConfig{
 					CpuLimit:    _perHostCPU,

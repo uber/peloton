@@ -161,10 +161,12 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	wg.Add(nClients)
 	for i := 0; i < nClients; i++ {
 		go func(i int) {
-			constraint := &hostsvc.Constraint{
-				HostLimit: limit,
+			filter := &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: limit,
+				},
 			}
-			hostOffers, err := pool.ClaimForPlace(constraint)
+			hostOffers, _, err := pool.ClaimForPlace(filter)
 			assert.NoError(t, err)
 			assert.Equal(t, int(limit), len(hostOffers))
 			mutex.Lock()

@@ -31,28 +31,6 @@ func (e InvalidCacheStatus) Error() string {
 	return fmt.Sprintf("Invalid status %v", e.status)
 }
 
-// MatchResult is an enum type describing why a constraint is not matched.
-type MatchResult int
-
-const (
-	// Matched indicates that offers on a host is matched
-	// to given constraint and will be used.
-	Matched MatchResult = iota + 1
-	// InsufficientResources due to insufficient scalar resources.
-	InsufficientResources
-	// MismatchAttributes indicates attributes mismatches
-	// to task-host scheduling constraint.
-	MismatchAttributes
-	// MismatchGPU indicates host is reserved for GPU tasks while task not
-	// using GPU.
-	MismatchGPU
-	// MismatchStatus indicates that host is not in ready status.
-	MismatchStatus
-	// HostLimitExceeded indicates host offers matched so far already
-	// exceeded host limit.
-	HostLimitExceeded
-)
-
 // CacheStatus represents status of the offer in offer pool's cache.
 type CacheStatus int
 
@@ -73,9 +51,9 @@ type HostSummary interface {
 	// TryMatch atomically tries to match offers from the current host with given
 	// constraint.
 	TryMatch(
-		c *hostsvc.Constraint,
+		hostFilter *hostsvc.HostFilter,
 		evaluator constraints.Evaluator,
-	) (MatchResult, []*mesos.Offer)
+	) (hostsvc.HostFilterResult, []*mesos.Offer)
 
 	// AddMesosOffer adds a Mesos offer to the current HostSummary.
 	AddMesosOffer(ctx context.Context, offer *mesos.Offer) CacheStatus
@@ -136,16 +114,16 @@ func (a *hostSummary) HasOffer() bool {
 	return a.readyCount.Load() > 0
 }
 
-// matchConstraint determines whether given constraint matches
+// matchConstraint determines whether given HostFilter matches
 // the given map of offers.
-func matchConstraint(
+func matchHostFilter(
 	offerMap map[string]*mesos.Offer,
-	c *hostsvc.Constraint,
+	c *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
-) MatchResult {
+) hostsvc.HostFilterResult {
 
 	if len(offerMap) == 0 {
-		return MismatchStatus
+		return hostsvc.HostFilterResult_MISMATCH_STATUS
 	}
 
 	min := c.GetResourceConstraint().GetMinimum()
@@ -153,19 +131,19 @@ func matchConstraint(
 		scalarRes := scalar.FromOfferMap(offerMap)
 		scalarMin := scalar.FromResourceConfig(min)
 		if !scalarRes.Contains(&scalarMin) {
-			return InsufficientResources
+			return hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES
 		}
 
 		// Special handling for GPU: GPU hosts are only for GPU tasks.
 		if scalarRes.HasGPU() != scalarMin.HasGPU() {
-			return MismatchGPU
+			return hostsvc.HostFilterResult_MISMATCH_GPU
 		}
 	}
 
 	// Match ports resources.
 	numPorts := c.GetResourceConstraint().GetNumPorts()
 	if numPorts > util.GetPortsNumFromOfferMap(offerMap) {
-		return InsufficientResources
+		return hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES
 	}
 
 	// Only try to get first offer in this host because all the offers have
@@ -186,7 +164,7 @@ func matchConstraint(
 		if err != nil {
 			log.WithError(err).
 				Error("Error when evaluating input constraint")
-			return MismatchAttributes
+			return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
 		}
 
 		switch result {
@@ -203,30 +181,30 @@ func matchConstraint(
 				"hostname":   hostname,
 				"constraint": hc,
 			}).Debug("Attributes do not match constraint")
-			return MismatchAttributes
+			return hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS
 		}
 	}
 
-	return Matched
+	return hostsvc.HostFilterResult_MATCH
 }
 
 // TryMatch atomically tries to match offers from the current host with given
-// constraint.
-// If current hostSummary can satisfy given constraints, the first return
+// HostFilter.
+// If current hostSummary is matched by given HostFilter, the first return
 // value is true and unreserved offer status this instance will be marked as
 // `READY`, which will not be used by another placement engine until released.
-// If current instance cannot satisfy given constraints, return value will be
-// (false, empty-slice) and status will remain unchanged.
+// If current instance is not matched by given HostFilter, return value will be
+// (actual reason, empty-slice) and status will remain unchanged.
 func (a *hostSummary) TryMatch(
-	c *hostsvc.Constraint,
+	filter *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
-) (MatchResult, []*mesos.Offer) {
+) (hostsvc.HostFilterResult, []*mesos.Offer) {
 
 	a.Lock()
 	defer a.Unlock()
 
 	if !a.HasOffer() || a.status != ReadyOffer {
-		return MismatchStatus, nil
+		return hostsvc.HostFilterResult_MISMATCH_STATUS, nil
 	}
 
 	readyOffers := make(map[string]*mesos.Offer)
@@ -234,8 +212,8 @@ func (a *hostSummary) TryMatch(
 		readyOffers[id] = offer
 	}
 
-	match := matchConstraint(readyOffers, c, evaluator)
-	if match == Matched {
+	match := matchHostFilter(readyOffers, filter, evaluator)
+	if match == hostsvc.HostFilterResult_MATCH {
 		var result []*mesos.Offer
 		for _, offer := range readyOffers {
 			result = append(result, offer)
