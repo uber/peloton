@@ -188,6 +188,9 @@ func main() {
 		Name:      common.PelotonResourceManager,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
+		Metrics: yarpc.MetricsConfig{
+			Tally: rootScope,
+		},
 	})
 
 	// Initialize service handlers

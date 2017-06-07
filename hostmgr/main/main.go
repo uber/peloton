@@ -228,6 +228,9 @@ func main() {
 		Name:      common.PelotonHostManager,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
+		Metrics: yarpc.MetricsConfig{
+			Tally: rootScope,
+		},
 	})
 
 	// Init the managers driven by the mesos callbacks.

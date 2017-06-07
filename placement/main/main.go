@@ -163,6 +163,9 @@ func main() {
 		Name:      common.PelotonPlacement,
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
+		Metrics: yarpc.MetricsConfig{
+			Tally: rootScope,
+		},
 	})
 
 	log.Debug("Starting YARPC dispatcher")
