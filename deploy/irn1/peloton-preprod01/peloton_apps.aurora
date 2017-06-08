@@ -1,18 +1,10 @@
 include('../../template/peloton-template.aurora')
 
 cluster = 'peloton_preprod01'
-mesos_zk_path = 'zk://' + ','.join([
-    'zookeeper-peloton-preprod01.pit-irn-1.uberatc.net:2181',
-]) + '/mesos/peloton_preprod01'
-election_zk_servers = 'zookeeper-peloton-preprod01.pit-irn-1.uberatc.net:2181'
-docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-225-gaf2dafd'
-mysql_host = 'ms-239b82f5'
+election_zk_servers='zookeeper-peloton-devel01.pit-irn-1.uberatc.net:2181'
+mesos_zk_path = 'zk://%s/mesos/peloton_devel01' % election_zk_servers
+docker_image = 'docker.int.uberatc.com/uber-usi/infra/peloton:0.1.0-250-ge82abd4'
 
-# TODO: remove the host pin once peloton is hooked up with uns
-resmgr_host = 'ms-855e1d32'
-hostmgr_host = 'ms-0b77de41'
-jobmgr_host = 'ms-3d7345d5'
-placement_host = 'ms-7263d89b'
 cassandra_hosts = '\n'.join([
                   'ms-7ab279a1.pit-irn-1.uberatc.net',
                   'ms-3162c292.pit-irn-1.uberatc.net',
@@ -30,10 +22,7 @@ PROFILES = [
     instances = 1,
     mesos_zk_path = mesos_zk_path,
     election_zk_servers = election_zk_servers,
-    mysql_host = mysql_host,
     docker_image = docker_image,
-    pinned_attribute = 'hostname',
-    pinned_hosts = resmgr_host,
     use_cassandra = use_cassandra,
     cassandra_hosts = cassandra_hosts,
     cassandra_store = cassandra_store,
@@ -44,10 +33,7 @@ PROFILES = [
     instances = 1,
     mesos_zk_path = mesos_zk_path,
     election_zk_servers = election_zk_servers,
-    mysql_host = mysql_host,
     docker_image = docker_image,
-    pinned_attribute = 'hostname',
-    pinned_hosts = hostmgr_host,
     use_cassandra = use_cassandra,
     cassandra_hosts = cassandra_hosts,
     cassandra_store = cassandra_store,
@@ -58,10 +44,7 @@ PROFILES = [
     instances = 1,
     mesos_zk_path = mesos_zk_path,
     election_zk_servers = election_zk_servers,
-    mysql_host = mysql_host,
     docker_image = docker_image,
-    pinned_attribute = 'hostname',
-    pinned_hosts = jobmgr_host,
     use_cassandra = use_cassandra,
     cassandra_hosts = cassandra_hosts,
     cassandra_store = cassandra_store,
@@ -72,10 +55,7 @@ PROFILES = [
     instances = 1,
     mesos_zk_path = mesos_zk_path,
     election_zk_servers = election_zk_servers,
-    mysql_host = mysql_host,
     docker_image = docker_image,
-    pinned_attribute = 'hostname',
-    pinned_hosts = placement_host,
     use_cassandra = use_cassandra,
     cassandra_hosts = cassandra_hosts,
     cassandra_store = cassandra_store,
