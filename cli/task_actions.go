@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"sort"
+	"strings"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -34,6 +38,59 @@ func (client *Client) TaskGetAction(jobName string, instanceID uint32) error {
 		return err
 	}
 	printTaskGetResponse(response, client.Debug)
+	return nil
+}
+
+// TaskLogsGetAction is the action to get logs files for given job instance.
+func (client *Client) TaskLogsGetAction(fileName string, jobName string, instanceID uint32) error {
+	var request = &task.BrowseSandboxRequest{
+		JobId: &peloton.JobID{
+			Value: jobName,
+		},
+		InstanceId: instanceID,
+	}
+	response, err := client.taskClient.BrowseSandbox(client.ctx, request)
+	if err != nil {
+		return err
+	}
+
+	if response.GetError() != nil {
+		return errors.New(response.Error.String())
+	}
+
+	var filePath string
+
+	for _, path := range response.GetPaths() {
+		if strings.HasSuffix(path, fileName) {
+			filePath = path
+		}
+	}
+
+	if len(filePath) == 0 {
+		return fmt.Errorf(
+			"filename:%s not found in sandbox files: %s",
+			fileName,
+			response.GetPaths())
+	}
+
+	logFileDownloadURL := fmt.Sprintf(
+		"http://%s:%s/files/download?path=%s",
+		response.GetHostname(),
+		response.GetPort(),
+		filePath)
+
+	resp, err := http.Get(logFileDownloadURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("\n\n%s", body)
+
 	return nil
 }
 

@@ -103,6 +103,11 @@ var (
 	taskGetJobName    = taskGet.Arg("job", "job identifier").Required().String()
 	taskGetInstanceID = taskGet.Arg("instance", "job instance id").Required().Uint32()
 
+	taskLogsGet           = task.Command("logs", "show task logs")
+	taskLogsGetFileName   = taskLogsGet.Flag("filename", "log filename to browse").Default("stdout").Short('f').String()
+	taskLogsGetJobName    = taskLogsGet.Arg("job", "job identifier").Required().String()
+	taskLogsGetInstanceID = taskLogsGet.Arg("instance", "job instance id").Required().Uint32()
+
 	taskList              = task.Command("list", "show tasks of a job")
 	taskListJobName       = taskList.Arg("job", "job identifier").Required().String()
 	taskListInstanceRange = taskRangeFlag(taskList.Flag("range", "show range of instances (from:to syntax)").Default(":").Short('r'))
@@ -261,6 +266,8 @@ func main() {
 		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig)
 	case taskGet.FullCommand():
 		err = client.TaskGetAction(*taskGetJobName, *taskGetInstanceID)
+	case taskLogsGet.FullCommand():
+		err = client.TaskLogsGetAction(*taskLogsGetFileName, *taskLogsGetJobName, *taskLogsGetInstanceID)
 	case taskList.FullCommand():
 		err = client.TaskListAction(*taskListJobName, taskListInstanceRange)
 	case taskStart.FullCommand():
