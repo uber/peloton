@@ -63,7 +63,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	var records = 3
 
 	var keys0 = []string{"test0", "test1", "test2", "test3"}
-	var vals0 = []string{"testValue0", "testValue1", "testValue2", "testValue3"}
+	var vals0 = []string{"testValue0", "testValue1", `"testValue2"`, "testValue3"}
 
 	var keys1 = []string{"key0", "key1", "key2", "key3"}
 	var vals1 = []string{"valX0", "valX1", "valX2", "valX3"}
@@ -221,6 +221,17 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.NoError(err)
 	suite.Equal(1, len(result1))
 	suite.Equal(3, int(total))
+
+	// Search for label with quote.
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Labels: []*peloton.Label{{
+			Key:   keys0[2],
+			Value: vals0[2],
+		}},
+	})
+	suite.NoError(err)
+	suite.Equal(1, len(result1))
+	suite.Equal(1, int(total))
 }
 
 func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {

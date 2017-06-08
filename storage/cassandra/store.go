@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -247,15 +248,15 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 
 	// Labels field must contain value of the specified labels
 	for _, label := range spec.GetLabels() {
-		clauses = append(clauses, fmt.Sprintf("{type: \"contains\", field:\"labels\", values:\"%s\"}", label.Value))
+		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"labels", values:%s}`, strconv.Quote(label.Value)))
 	}
 
 	// jobconfig field must contain all specified keywords
 	for _, word := range spec.GetKeywords() {
-		clauses = append(clauses, fmt.Sprintf("{type: \"contains\", field:\"jobconfig\", values:\"%s\"}", word))
+		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"jobconfig", values:%s}`, strconv.Quote(word)))
 	}
 
-	where := "expr(jobs_index, '{query: {type: \"boolean\", must: ["
+	where := `expr(jobs_index, '{query: {type: "boolean", must: [`
 	for i, c := range clauses {
 		if i > 0 {
 			where += ", "
