@@ -116,11 +116,17 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 			return err
 		}
 	}
+	var apiKeywords []string
+	for _, k := range strings.Split(keywords, labelSeparator) {
+		if k != "" {
+			apiKeywords = append(apiKeywords, k)
+		}
+	}
 	var request = &job.QueryRequest{
 		RespoolID: respoolID,
 		Spec: &job.QuerySpec{
 			Labels:   apiLabels,
-			Keywords: strings.Split(keywords, labelSeparator),
+			Keywords: apiKeywords,
 		},
 	}
 	response, err := client.jobClient.Query(client.ctx, request)
@@ -234,9 +240,9 @@ func printJobQueryResponse(r *job.QueryResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		if r.Error != nil {
+		if r.GetError() != nil {
 			fmt.Fprintf(tabWriter, "Error: %v\n", r.GetError().String())
-		} else if len(r.Records) == 0 {
+		} else if len(r.GetRecords()) == 0 {
 			fmt.Fprint(tabWriter, "No jobs found.\n", r.GetError().String())
 		} else {
 			for _, jobID := range r.Records {

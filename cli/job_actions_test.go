@@ -245,3 +245,25 @@ func (suite *jobActionsTestSuite) withMockResourcePoolLookup(
 func TestJobActions(t *testing.T) {
 	suite.Run(t, new(jobActionsTestSuite))
 }
+
+func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		jobClient:  suite.mockJob,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	suite.mockJob.EXPECT().Query(gomock.Any(), &job.QueryRequest{
+		Spec: &job.QuerySpec{
+			Keywords: []string{"keyword"},
+			Labels: []*peloton.Label{{
+				Key:   "key",
+				Value: "value",
+			}},
+		},
+	}).Return(nil, nil)
+
+	suite.NoError(c.JobQueryAction("key:value", "", "keyword,"))
+}
