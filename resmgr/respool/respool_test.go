@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"testing"
 
-	"code.uber.internal/infra/peloton/resmgr/queue"
-
-	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/suite"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/resmgr/queue"
+
+	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 type ResPoolSuite struct {
@@ -117,7 +118,7 @@ func (s *ResPoolSuite) TestResPool() {
 	}
 
 	id := uuid.New()
-	resPool, err := NewRespool(id, nil, poolConfig)
+	resPool, err := NewRespool(tally.NoopScope, id, nil, poolConfig)
 	s.NoError(err)
 
 	s.Equal(id, resPool.ID())
@@ -127,11 +128,11 @@ func (s *ResPoolSuite) TestResPool() {
 	s.Equal(poolConfig, resPool.ResourcePoolConfig())
 	s.Equal("respool1", resPool.Name())
 
-	resPool, err = NewRespool(id, nil, nil)
+	resPool, err = NewRespool(tally.NoopScope, id, nil, nil)
 	s.Error(err)
 
 	poolConfig.Policy = pb_respool.SchedulingPolicy_UNKNOWN
-	resPool, err = NewRespool(id, nil, poolConfig)
+	resPool, err = NewRespool(tally.NoopScope, id, nil, poolConfig)
 	s.Error(err)
 }
 
@@ -145,7 +146,7 @@ func (s *ResPoolSuite) TestResPoolError() {
 	}
 
 	id := uuid.New()
-	resPool, err := NewRespool(id, nil, poolConfig)
+	resPool, err := NewRespool(tally.NoopScope, id, nil, poolConfig)
 
 	s.EqualError(
 		err,
@@ -167,7 +168,7 @@ func (s *ResPoolSuite) TestResPoolEnqueue() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), nil, poolConfig)
 	s.NoError(err)
 
 	for _, task := range s.getTasks() {
@@ -196,7 +197,7 @@ func (s *ResPoolSuite) TestResPoolEnqueueError() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), nil, poolConfig)
 	s.NoError(err)
 
 	err = resPoolNode.EnqueueGang(nil)
@@ -226,7 +227,7 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), nil, poolConfig)
 	s.NoError(err)
 	resPoolNode.SetEntitlement(s.getEntitlement())
 
@@ -266,7 +267,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), nil, poolConfig)
 	s.NoError(err)
 	resPoolNode.SetEntitlement(s.getEntitlement())
 
@@ -318,7 +319,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 	s.Equal(1, len(dequeuedGangs))
 }
 
-func (s *ResPoolSuite) TestUsage() {
+func (s *ResPoolSuite) TestAllocation() {
 	rootID := pb_respool.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
@@ -328,7 +329,7 @@ func (s *ResPoolSuite) TestUsage() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), nil, poolConfig)
 	s.NoError(err)
 	resPoolNode.SetEntitlement(s.getEntitlement())
 
@@ -338,21 +339,21 @@ func (s *ResPoolSuite) TestUsage() {
 	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
-	usage := resPoolNode.GetUsage()
-	s.NotNil(usage)
-	s.Equal(float64(1), usage.CPU)
-	s.Equal(float64(100), usage.MEMORY)
-	s.Equal(float64(10), usage.DISK)
-	s.Equal(float64(0), usage.GPU)
+	allocation := resPoolNode.GetAllocation()
+	s.NotNil(allocation)
+	s.Equal(float64(1), allocation.CPU)
+	s.Equal(float64(100), allocation.MEMORY)
+	s.Equal(float64(10), allocation.DISK)
+	s.Equal(float64(0), allocation.GPU)
 
-	err = resPoolNode.MarkItDone(usage)
+	err = resPoolNode.MarkItDone(allocation)
 	s.NoError(err)
-	usage = resPoolNode.GetUsage()
-	s.NotNil(usage)
-	s.Equal(float64(0), usage.CPU)
-	s.Equal(float64(0), usage.MEMORY)
-	s.Equal(float64(0), usage.DISK)
-	s.Equal(float64(0), usage.GPU)
+	allocation = resPoolNode.GetAllocation()
+	s.NotNil(allocation)
+	s.Equal(float64(0), allocation.CPU)
+	s.Equal(float64(0), allocation.MEMORY)
+	s.Equal(float64(0), allocation.DISK)
+	s.Equal(float64(0), allocation.GPU)
 }
 
 func (s *ResPoolSuite) TestResPoolDequeueError() {
@@ -365,7 +366,7 @@ func (s *ResPoolSuite) TestResPoolDequeueError() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode, err := NewRespool(uuid.New(), nil, poolConfig)
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), nil, poolConfig)
 	s.NoError(err)
 
 	for _, task := range s.getTasks() {
@@ -378,4 +379,43 @@ func (s *ResPoolSuite) TestResPoolDequeueError() {
 		"limit 0 is not valid",
 	)
 	s.Error(err)
+}
+
+func (s *ResPoolSuite) TestGetLimits() {
+	resourceConfigs := make(map[string]*pb_respool.ResourceConfig)
+	for _, config := range s.getResources() {
+		resourceConfigs[config.Kind] = config
+	}
+
+	resources := getLimits(resourceConfigs)
+	s.Equal(float64(1000), resources.GetCPU())
+	s.Equal(float64(4), resources.GetGPU())
+	s.Equal(float64(1000), resources.GetDisk())
+	s.Equal(float64(1000), resources.GetMem())
+}
+
+func (s *ResPoolSuite) TestGetReservation() {
+	resourceConfigs := make(map[string]*pb_respool.ResourceConfig)
+	for _, config := range s.getResources() {
+		resourceConfigs[config.Kind] = config
+	}
+
+	resources := getReservations(resourceConfigs)
+	s.Equal(float64(100), resources.GetCPU())
+	s.Equal(float64(2), resources.GetGPU())
+	s.Equal(float64(100), resources.GetDisk())
+	s.Equal(float64(1000), resources.GetMem())
+}
+
+func (s *ResPoolSuite) TestGetShare() {
+	resourceConfigs := make(map[string]*pb_respool.ResourceConfig)
+	for _, config := range s.getResources() {
+		resourceConfigs[config.Kind] = config
+	}
+
+	resources := getShare(resourceConfigs)
+	s.Equal(float64(1), resources.GetCPU())
+	s.Equal(float64(1), resources.GetGPU())
+	s.Equal(float64(1), resources.GetDisk())
+	s.Equal(float64(1), resources.GetMem())
 }

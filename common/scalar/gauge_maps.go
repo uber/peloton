@@ -27,8 +27,8 @@ func NewGaugeMaps(scope tally.Scope) GaugeMaps {
 
 // Update updates all gauges from given resources.
 func (g GaugeMaps) Update(resources Resources) {
-	g[cpu].Update(resources.CPU)
-	g[mem].Update(resources.Mem)
-	g[disk].Update(resources.Disk)
-	g[gpu].Update(resources.GPU)
+	g[cpu].Update(resources.GetCPU())
+	g[mem].Update(resources.GetMem())
+	g[disk].Update(resources.GetDisk())
+	g[gpu].Update(resources.GetGPU())
 }

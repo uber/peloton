@@ -65,6 +65,7 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 		stopChan:         make(chan struct{}, 1),
 		readyQueue:       suite.readyQueue,
 		rmTaskTracker:    suite.rmTaskTracker,
+		metrics:          NewMetrics(tally.NoopScope),
 	}
 }
 

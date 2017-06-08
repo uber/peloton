@@ -1,6 +1,10 @@
 package respool
 
-import "github.com/uber-go/tally"
+import (
+	"code.uber.internal/infra/peloton/common/scalar"
+
+	"github.com/uber-go/tally"
+)
 
 // Metrics is a placeholder for all metrics in respool.
 type Metrics struct {
@@ -29,6 +33,16 @@ type Metrics struct {
 	APIQueryResourcePools     tally.Counter
 	QueryResourcePoolsSuccess tally.Counter
 	QueryResourcePoolsFail    tally.Counter
+
+	PendingQueueLen tally.Gauge
+
+	ResourcePoolAllocation  scalar.GaugeMaps
+	ResourcePoolEntitlement scalar.GaugeMaps
+	ResourcePoolAvailable   scalar.GaugeMaps
+
+	ResourcePoolReservation scalar.GaugeMaps
+	ResourcePoolLimit       scalar.GaugeMaps
+	ResourcePoolShare       scalar.GaugeMaps
 }
 
 // NewMetrics returns a new instance of respool.Metrics.
@@ -37,6 +51,15 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	failScope := scope.Tagged(map[string]string{"type": "fail"})
 	apiScope := scope.SubScope("api")
 
+	pendingScope := scope.SubScope("pending")
+
+	usageScope := scope.SubScope("allocation")
+	entitlementScope := scope.SubScope("entitlement")
+	availableScope := scope.SubScope("available")
+
+	reservationScope := scope.SubScope("reservation")
+	limitScope := scope.SubScope("limit")
+	shareScope := scope.SubScope("share")
 	return &Metrics{
 		APICreateResourcePool:          apiScope.Counter("create_resource_pool"),
 		CreateResourcePoolSuccess:      successScope.Counter("create_resource_pool"),
@@ -63,5 +86,15 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		APIQueryResourcePools:     apiScope.Counter("query_resource_pools"),
 		QueryResourcePoolsSuccess: successScope.Counter("query_resource_pools"),
 		QueryResourcePoolsFail:    failScope.Counter("query_resource_pools"),
+
+		PendingQueueLen: pendingScope.Gauge("pending_queue_length"),
+
+		ResourcePoolAllocation:  scalar.NewGaugeMaps(usageScope),
+		ResourcePoolEntitlement: scalar.NewGaugeMaps(entitlementScope),
+		ResourcePoolAvailable:   scalar.NewGaugeMaps(availableScope),
+
+		ResourcePoolReservation: scalar.NewGaugeMaps(reservationScope),
+		ResourcePoolLimit:       scalar.NewGaugeMaps(limitScope),
+		ResourcePoolShare:       scalar.NewGaugeMaps(shareScope),
 	}
 }

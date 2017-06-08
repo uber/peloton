@@ -8,11 +8,13 @@ import (
 
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
-	log "github.com/Sirupsen/logrus"
-	"github.com/pkg/errors"
 
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
+	"github.com/uber-go/tally"
 )
 
 var (
@@ -44,12 +46,14 @@ type scheduler struct {
 	stopChan         chan struct{}
 	readyQueue       queue.Queue
 	rmTaskTracker    Tracker
+	metrics          *Metrics
 }
 
 var sched *scheduler
 
 // InitScheduler initializes a Task Scheduler
 func InitScheduler(
+	parent tally.Scope,
 	taskSchedulingPeriod time.Duration,
 	rmTaskTracker Tracker,
 ) {
@@ -72,6 +76,7 @@ func InitScheduler(
 			maxReadyQueueSize,
 		),
 		rmTaskTracker: rmTaskTracker,
+		metrics:       NewMetrics(parent.SubScope("task_scheduler")),
 	}
 }
 
@@ -106,7 +111,7 @@ func (s *scheduler) Start() error {
 			// For three cases
 			// 1. When there is new Item in empty list
 			// 2. When there is new Entitlement calculation
-			// 3. When there is chamge in resources in resource pool
+			// 3. When there is change in resources in resource pool
 			timer := time.NewTimer(s.schedulingPeriod)
 			select {
 			case <-s.stopChan:
@@ -195,6 +200,7 @@ func (s *scheduler) EnqueueGang(gang *resmgrsvc.Gang) error {
 	if err != nil {
 		log.WithError(err).Error("error in EnqueueGang")
 	}
+	s.metrics.ReadyQueueLen.Update(float64(s.readyQueue.Length()))
 	return err
 }
 
@@ -208,7 +214,7 @@ func (s *scheduler) DequeueGang(maxWaitTime time.Duration) (*resmgrsvc.Gang, err
 	if item == nil {
 		return nil, errReadyQueueDequeueFailed
 	}
-
 	res := item.(*resmgrsvc.Gang)
+	s.metrics.ReadyQueueLen.Update(float64(s.readyQueue.Length()))
 	return res, nil
 }

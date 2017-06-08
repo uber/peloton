@@ -34,6 +34,26 @@ func lessThanOrEqual(f1, f2 float64) bool {
 	return v < 0
 }
 
+// GetCPU returns the CPU resource
+func (r *Resources) GetCPU() float64 {
+	return r.CPU
+}
+
+// GetDisk returns the Disk resource
+func (r *Resources) GetDisk() float64 {
+	return r.Disk
+}
+
+// GetMem returns the Memory resource
+func (r *Resources) GetMem() float64 {
+	return r.Mem
+}
+
+// GetGPU returns the GPU resource
+func (r *Resources) GetGPU() float64 {
+	return r.GPU
+}
+
 // HasGPU is a special condition to ensure exclusive protection for GPU.
 func (r *Resources) HasGPU() bool {
 	return math.Abs(r.GPU) > util.ResourceEspilon

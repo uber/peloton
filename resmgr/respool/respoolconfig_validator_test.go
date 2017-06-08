@@ -39,6 +39,7 @@ func (suite *resPoolConfigValidatorSuite) SetupSuite() {
 		resPools:  make(map[string]ResPool),
 		jobStore:  mockJobStore,
 		taskStore: mockTaskStore,
+		scope:     tally.NoopScope,
 	}
 }
 

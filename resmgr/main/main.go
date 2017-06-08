@@ -199,7 +199,7 @@ func main() {
 	// Initializing the resmgr state machine
 	task.InitTaskTracker()
 
-	task.InitScheduler(cfg.ResManager.TaskSchedulingPeriod,
+	task.InitScheduler(rootScope, cfg.ResManager.TaskSchedulingPeriod,
 		task.GetTracker())
 
 	entitlement.InitCalculator(
@@ -209,9 +209,9 @@ func main() {
 
 	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker())
 
-	resmgr.InitRecovery(jobStore, taskStore, serviceHandler)
+	resmgr.InitRecovery(rootScope, jobStore, taskStore, serviceHandler)
 
-	server := resmgr.NewServer(cfg.ResManager.Port)
+	server := resmgr.NewServer(rootScope, cfg.ResManager.Port)
 	candidate, err := leader.NewCandidate(
 		cfg.Election,
 		rootScope,

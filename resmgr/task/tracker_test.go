@@ -39,7 +39,7 @@ func (suite *StateMachineTestSuite) SetupTest() {
 		nil,
 		tally.Scope(tally.NoopScope))
 	suite.task = suite.createTask()
-	resp, _ := respool.NewRespool("respool-1", nil, nil)
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
 	suite.tracker.AddTask(suite.task, suite.eventStreamHandler, resp)
 }
 

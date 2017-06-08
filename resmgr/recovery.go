@@ -9,11 +9,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/uber-go/tally"
 )
 
 // RecoveryHandler defines the interface to
@@ -31,6 +33,7 @@ var recovery *recoveryHandler
 // This is performed when the resource manager gains leadership
 type recoveryHandler struct {
 	sync.Mutex
+	metrics   *Metrics
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
 	handler   *ServiceHandler
@@ -45,14 +48,18 @@ var jobStates = []job.JobState{
 }
 
 // InitRecovery initializes the recoveryHandler
-func InitRecovery(jobStore storage.JobStore,
+func InitRecovery(
+	parent tally.Scope,
+	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	handler *ServiceHandler) {
+	handler *ServiceHandler,
+) {
 	once.Do(func() {
 		recovery = &recoveryHandler{
 			jobStore:  jobStore,
 			taskStore: taskStore,
 			handler:   handler,
+			metrics:   NewMetrics(parent),
 		}
 	})
 }
@@ -84,6 +91,7 @@ func (r *recoveryHandler) Start() error {
 	log.Info("Starting jobs recovery on startup")
 	jobsIDs, err := r.jobStore.GetJobsByStates(ctx, jobStates)
 	if err != nil {
+		r.metrics.RecoveryFail.Inc(1)
 		log.WithError(err).Error("failed to read job IDs for recovery")
 		return err
 	}
@@ -94,6 +102,7 @@ func (r *recoveryHandler) Start() error {
 	for _, jobID := range jobsIDs {
 		jobConfig, err := r.jobStore.GetJobConfig(ctx, &jobID)
 		if err != nil {
+			r.metrics.RecoveryFail.Inc(1)
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
 				Error("failed to get jobconfig")
@@ -107,9 +116,11 @@ func (r *recoveryHandler) Start() error {
 		}
 	}
 	if isError {
+		r.metrics.RecoveryFail.Inc(1)
 		return errors.Errorf("failed to requeue jobsIDs %s", jobstring)
 	}
 	log.Info("Job recoveryHandler complete")
+	r.metrics.RecoverySuccess.Inc(1)
 	return nil
 }
 
@@ -136,6 +147,7 @@ func (r *recoveryHandler) requeueJob(
 			err = r.requeueTasksInRange(ctx, jobID, jobConfig, from, to)
 
 			if err != nil {
+				r.metrics.RecoveryFailCount.Inc(int64(to - from))
 				log.Errorf("Failed to requeue tasks for job %v in [%v, %v)",
 					jobID, from, to)
 				errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]", jobID, from, to)
@@ -147,6 +159,7 @@ func (r *recoveryHandler) requeueJob(
 	if isError {
 		return errors.Errorf("Not able to requeue tasks %s", errString)
 	}
+	r.metrics.RecoverySuccessCount.Inc(int64(numSingleInstances))
 	return nil
 }
 

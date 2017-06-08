@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"
+	common_scalar "code.uber.internal/infra/peloton/common/scalar"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
@@ -88,8 +89,7 @@ func NewOfferPool(
 	}
 
 	// Initialize gauges.
-	p.metrics.ready.Update(p.readyResources.Get())
-	p.metrics.placing.Update(p.placingResources.Get())
+	p.updateMetrics(p.readyResources.Get(), p.placingResources.Get())
 
 	return p
 }
@@ -215,6 +215,11 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 	}
 
 	return offerMap, nil
+}
+
+func (p *offerPool) updateMetrics(ready scalar.Resources, placing scalar.Resources) {
+	p.metrics.ready.Update(&ready)
+	p.metrics.placing.Update(&placing)
 }
 
 // tryAddOffer acquires read lock of the offerPool.
@@ -388,8 +393,7 @@ func (p *offerPool) Clear() {
 	p.hostOfferIndex = map[string]summary.HostSummary{}
 	p.readyResources = scalar.AtomicResources{}
 	p.placingResources = scalar.AtomicResources{}
-	p.metrics.ready.Update(p.readyResources.Get())
-	p.metrics.placing.Update(p.readyResources.Get())
+	p.updateMetrics(p.readyResources.Get(), p.readyResources.Get())
 }
 
 // DeclineOffers calls mesos master to decline list of offers
@@ -454,18 +458,18 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 func incQuantity(
 	resources *scalar.AtomicResources,
 	delta scalar.Resources,
-	gaugeMaps scalar.GaugeMaps,
+	gaugeMaps common_scalar.GaugeMaps,
 ) {
 	tmp := resources.Get()
 	tmp = *(tmp.Add(&delta))
 	resources.Set(tmp)
-	gaugeMaps.Update(tmp)
+	gaugeMaps.Update(&tmp)
 }
 
 func decQuantity(
 	resources *scalar.AtomicResources,
 	delta scalar.Resources,
-	gaugeMaps scalar.GaugeMaps,
+	gaugeMaps common_scalar.GaugeMaps,
 ) {
 	curr := resources.Get()
 	if !(&curr).Contains(&delta) {
@@ -480,5 +484,5 @@ func decQuantity(
 	}
 	tmp := *(curr.Subtract(&delta))
 	resources.Set(tmp)
-	gaugeMaps.Update(tmp)
+	gaugeMaps.Update(&tmp)
 }

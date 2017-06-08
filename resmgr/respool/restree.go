@@ -52,6 +52,7 @@ type tree struct {
 	resPools  map[string]ResPool
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
+	scope     tally.Scope
 }
 
 // Singleton resource pool tree
@@ -77,6 +78,7 @@ func InitTree(
 		resPools:  make(map[string]ResPool),
 		jobStore:  jobStore,
 		taskStore: taskStore,
+		scope:     scope.SubScope("restree"),
 	}
 }
 
@@ -156,7 +158,7 @@ func (t *tree) buildTree(
 	parent ResPool,
 	resPoolConfigs map[string]*respool.ResourcePoolConfig,
 ) (ResPool, error) {
-	node, err := NewRespool(ID, parent, resPoolConfigs[ID])
+	node, err := NewRespool(t.scope, ID, parent, resPoolConfigs[ID])
 	if err != nil {
 		log.WithError(err).Error("Error creating resource pool")
 		return nil, err
@@ -310,7 +312,7 @@ func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.Resourc
 			"Id": ID.Value,
 		}).Debug("Adding resource pool")
 
-		resourcePool, err = NewRespool(ID.Value, parent, resPoolConfig)
+		resourcePool, err = NewRespool(t.scope, ID.Value, parent, resPoolConfig)
 
 		if err != nil {
 			return errors.Wrapf(

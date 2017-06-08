@@ -11,10 +11,11 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
-
 	"code.uber.internal/infra/peloton/resmgr/scalar"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/uber-go/tally"
 )
 
 // ResPool is a node in a resource tree
@@ -62,8 +63,8 @@ type ResPool interface {
 	// GetChildReservation returns the total reservation of all
 	// the childs by kind
 	GetChildReservation() (map[string]float64, error)
-	//GetUsage gets the usage for the resource pool
-	GetUsage() *scalar.Resources
+	//GetAllocation returns the resource allocation for the resource pool
+	GetAllocation() *scalar.Resources
 	// MarkItDone recaptures the resources from task
 	MarkItDone(res *scalar.Resources) error
 }
@@ -79,11 +80,13 @@ type resPool struct {
 	poolConfig      *respool.ResourcePoolConfig
 	pendingQueue    queue.Queue
 	entitlement     *scalar.Resources
-	usage           *scalar.Resources
+	allocation      *scalar.Resources
+	metrics         *Metrics
 }
 
 // NewRespool will initialize the resource pool node and return that
 func NewRespool(
+	scope tally.Scope,
 	ID string,
 	parent ResPool,
 	config *respool.ResourcePoolConfig) (ResPool, error) {
@@ -102,7 +105,13 @@ func NewRespool(
 		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
 	}
 
-	result := resPool{
+	// tag metrics scope with the resource pool ID
+	poolScope := scope.SubScope("respool_node")
+	poolScope.Tagged(map[string]string{
+		"respool_id": ID,
+	})
+
+	pool := resPool{
 		id:              ID,
 		children:        list.New(),
 		parent:          parent,
@@ -110,11 +119,13 @@ func NewRespool(
 		poolConfig:      config,
 		pendingQueue:    q,
 		entitlement:     &scalar.Resources{},
-		usage:           &scalar.Resources{},
+		allocation:      &scalar.Resources{},
+		metrics:         NewMetrics(poolScope),
 	}
 
-	result.initResources(config)
-	return &result, nil
+	pool.initResources(config.GetResources())
+	pool.updateDynamicResourceMetrics()
+	return &pool, nil
 }
 
 // ID returns the resource pool UUID
@@ -161,10 +172,7 @@ func (n *resPool) Children() *list.List {
 func (n *resPool) SetResourceConfig(resources *respool.ResourceConfig) {
 	n.Lock()
 	defer n.Unlock()
-	if resources == nil {
-		return
-	}
-	n.resourceConfigs[resources.Kind] = resources
+	n.initResources([]*respool.ResourceConfig{resources})
 }
 
 // Resources returns the resource configs
@@ -179,7 +187,7 @@ func (n *resPool) SetResourcePoolConfig(config *respool.ResourcePoolConfig) {
 	n.Lock()
 	defer n.Unlock()
 	n.poolConfig = config
-	n.initResources(config)
+	n.initResources(config.GetResources())
 }
 
 // ResourcePoolConfig returns the resource pool config
@@ -259,8 +267,9 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 			gangList = append(gangList, gang)
 			// Need to lock the usage before updating it
 			n.Lock()
-			n.usage = n.usage.Add(n.getGangResources(gang))
+			n.allocation = n.allocation.Add(n.getGangResources(gang))
 			n.Unlock()
+			n.updateDynamicResourceMetrics()
 		} else {
 			if len(gangList) <= 0 {
 				log.WithField(
@@ -277,14 +286,13 @@ func (n *resPool) canBeAdmitted(gang *resmgrsvc.Gang) bool {
 	n.RLock()
 	defer n.RUnlock()
 
-	currentEntitlement := n.GetEntitlement()
+	currentEntitlement := n.entitlement
 	log.WithField("entitlement", currentEntitlement).Debug("Current Entitlement")
-	currentUsage := n.GetUsage()
-	log.WithField("usage", currentUsage).Debug("Current Usage")
+	currentAllocation := n.allocation
+	log.WithField("allocation", currentAllocation).Debug("Current Allocation")
 	neededResources := n.getGangResources(gang)
-	log.WithField("neededResources", neededResources).Debug("Current neededResources")
-
-	return currentUsage.
+	log.WithField("neededResources", neededResources).Debug("Current Resources needed")
+	return currentAllocation.
 		Add(neededResources).
 		LessThanOrEqual(currentEntitlement)
 }
@@ -354,36 +362,36 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 		Parent:   parentResPoolID,
 		Config:   n.poolConfig,
 		Children: childrenResourcePoolIDs,
-		Usage:    n.createRespoolUsage(n.GetUsage()),
+		Usage:    n.createRespoolUsage(n.GetAllocation()),
 	}
 }
 
-func (n *resPool) createRespoolUsage(usage *scalar.Resources) []*respool.ResourceUsage {
+func (n *resPool) createRespoolUsage(allocation *scalar.Resources) []*respool.ResourceUsage {
 	resUsage := make([]*respool.ResourceUsage, 0, 4)
 	ru := &respool.ResourceUsage{
 		Kind:       common.CPU,
-		Allocation: usage.CPU,
+		Allocation: allocation.CPU,
 		// Hardcoding until we have real slack
 		Slack: float64(0),
 	}
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.GPU,
-		Allocation: usage.GPU,
+		Allocation: allocation.GPU,
 		// Hardcoding until we have real slack
 		Slack: float64(0),
 	}
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.MEMORY,
-		Allocation: usage.MEMORY,
+		Allocation: allocation.MEMORY,
 		// Hardcoding until we have real slack
 		Slack: float64(0),
 	}
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.DISK,
-		Allocation: usage.DISK,
+		Allocation: allocation.DISK,
 		// Hardcoding until we have real slack
 		Slack: float64(0),
 	}
@@ -397,11 +405,11 @@ func (n *resPool) isLeaf() bool {
 
 // initResources will initializing the resource poolConfig under resource pool
 // NB: The function calling initResources should acquire the lock
-func (n *resPool) initResources(config *respool.ResourcePoolConfig) {
-	resList := config.GetResources()
+func (n *resPool) initResources(resList []*respool.ResourceConfig) {
 	for _, res := range resList {
 		n.resourceConfigs[res.Kind] = res
 	}
+	n.updateStaticResourceMetrics()
 }
 
 // logNodeResources will be printing the resources for the resource pool
@@ -443,8 +451,9 @@ func (n *resPool) SetEntitlement(entitlement map[string]float64) {
 			"DISK":   n.entitlement.DISK,
 			"MEMORY": n.entitlement.MEMORY,
 			"GPU":    n.entitlement.GPU,
-		}).Debug("Setting Usage for Respool")
+		}).Debug("Setting Entitlement for Respool")
 	}
+	n.updateDynamicResourceMetrics()
 }
 
 // SetEntitlementByKind sets the entitlement for the resource pool
@@ -466,6 +475,7 @@ func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
 		"Kind":     kind,
 		"Capacity": entitlement,
 	}).Debug("Setting Entitlement")
+	n.updateDynamicResourceMetrics()
 }
 
 // GetEntitlement gets the entitlement for the resource pool
@@ -475,7 +485,7 @@ func (n *resPool) GetEntitlement() *scalar.Resources {
 	return n.entitlement
 }
 
-// GetChildReservation returns the reservation of all the childs
+// GetChildReservation returns the reservation of all the children
 func (n *resPool) GetChildReservation() (map[string]float64, error) {
 	nodes := n.Children()
 	if nodes == nil || nodes.Len() == 0 {
@@ -496,25 +506,92 @@ func (n *resPool) GetChildReservation() (map[string]float64, error) {
 	return totalReservation, nil
 }
 
-// GetUsage gets the usage for the resource pool
-func (n *resPool) GetUsage() *scalar.Resources {
+// GetAllocation gets the resource allocation for the pool
+func (n *resPool) GetAllocation() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
-	return n.usage
+	return n.allocation
 }
 
-// MarkItDone updates the usage for the resource pool
+// MarkItDone updates the allocation for the resource pool
 func (n *resPool) MarkItDone(res *scalar.Resources) error {
 	n.Lock()
 	defer n.Unlock()
 
-	newUsage := n.usage.Subtract(res)
+	newAllocation := n.allocation.Subtract(res)
 
-	if newUsage == nil {
+	if newAllocation == nil {
 		return errors.Errorf("Couldn't update the resources")
 	}
-	n.usage = newUsage
+	n.allocation = newAllocation
 
-	log.WithField("usage", n.usage).Debug("Current Usage after Done Task")
+	log.WithField("allocation", n.allocation).Debug("Current Allocation after Done Task")
 	return nil
+}
+
+// updates static metrics(Share, Limit and Reservation) which depend on the config
+func (n *resPool) updateStaticResourceMetrics() {
+	n.metrics.ResourcePoolShare.Update(getShare(n.resourceConfigs))
+	n.metrics.ResourcePoolLimit.Update(getLimits(n.resourceConfigs))
+	n.metrics.ResourcePoolReservation.Update(getReservations(n.resourceConfigs))
+}
+
+// updates dynamic metrics(Allocation, Entitlement, Available) which change based on
+// usage and entitlement calculation
+func (n *resPool) updateDynamicResourceMetrics() {
+	n.metrics.ResourcePoolEntitlement.Update(n.entitlement)
+	n.metrics.ResourcePoolAllocation.Update(n.allocation)
+	n.metrics.ResourcePoolAvailable.Update(n.entitlement.Subtract(n.allocation))
+	//TODO pool.metrics.PendingQueueLen.Update(len(pool.pendingQueue))
+}
+
+func getLimits(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {
+	var resources scalar.Resources
+	for kind, res := range resourceConfigs {
+		switch kind {
+		case common.CPU:
+			resources.CPU = res.Limit
+		case common.GPU:
+			resources.GPU = res.Limit
+		case common.MEMORY:
+			resources.MEMORY = res.Limit
+		case common.DISK:
+			resources.DISK = res.Limit
+		}
+	}
+	return &resources
+}
+
+func getReservations(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {
+	var resources scalar.Resources
+	for kind, res := range resourceConfigs {
+		switch kind {
+		case common.CPU:
+			resources.CPU = res.Reservation
+		case common.GPU:
+			resources.GPU = res.Reservation
+		case common.MEMORY:
+			resources.MEMORY = res.Reservation
+		case common.DISK:
+			resources.DISK = res.Reservation
+		}
+	}
+	return &resources
+}
+
+func getShare(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {
+	var resources scalar.Resources
+	for kind, res := range resourceConfigs {
+		switch kind {
+		case common.CPU:
+			resources.CPU = res.Share
+		case common.GPU:
+			resources.GPU = res.Share
+		case common.MEMORY:
+			resources.MEMORY = res.Share
+		case common.DISK:
+			resources.DISK = res.Share
+		}
+	}
+	return &resources
 }

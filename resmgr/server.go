@@ -3,13 +3,14 @@ package resmgr
 import (
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
-
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/tally"
 )
 
 // Server struct for handling the zk election
@@ -17,6 +18,7 @@ type Server struct {
 	sync.Mutex
 	ID                       string
 	role                     string
+	metrics                  *Metrics
 	getResPoolHandler        func() respool.ServiceHandler
 	getTaskScheduler         func() task.Scheduler
 	getEntitlementCalculator func() entitlement.Calculator
@@ -24,7 +26,7 @@ type Server struct {
 }
 
 // NewServer will create the elect handle object
-func NewServer(port int) *Server {
+func NewServer(parent tally.Scope, port int) *Server {
 	server := Server{
 		ID:                       leader.NewID(port),
 		role:                     common.ResourceManagerRole,
@@ -32,6 +34,7 @@ func NewServer(port int) *Server {
 		getTaskScheduler:         task.GetScheduler,
 		getEntitlementCalculator: entitlement.GetCalculator,
 		getRecoveryHandler:       GetRecoveryHandler,
+		metrics:                  NewMetrics(parent),
 	}
 	return &server
 }
@@ -43,6 +46,7 @@ func (s *Server) GainedLeadershipCallback() error {
 	defer s.Unlock()
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
+	s.metrics.Elected.Update(1.0)
 
 	err := s.getResPoolHandler().Start()
 	if err != nil {
@@ -76,6 +80,7 @@ func (s *Server) LostLeadershipCallback() error {
 	defer s.Unlock()
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Lost leadership")
+	s.metrics.Elected.Update(0.0)
 
 	err := s.getResPoolHandler().Stop()
 	if err != nil {

@@ -41,6 +41,7 @@ func (suite *resPoolHandlerTestSuite) SetupSuite() {
 		resPools:  make(map[string]ResPool),
 		jobStore:  mockJobStore,
 		taskStore: mockTaskStore,
+		scope:     tally.NoopScope,
 	}
 	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(suite.resourceTree)
 	suite.NoError(err)

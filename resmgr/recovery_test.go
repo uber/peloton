@@ -53,7 +53,7 @@ func (suite *recoveryTestSuite) SetupSuite() {
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker()
 	suite.rmTaskTracker = rm_task.GetTracker()
-	rm_task.InitScheduler(100*time.Second, suite.rmTaskTracker)
+	rm_task.InitScheduler(tally.NoopScope, 100*time.Second, suite.rmTaskTracker)
 	suite.taskScheduler = rm_task.GetScheduler()
 
 	suite.handler = &ServiceHandler{
@@ -304,7 +304,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		Return(suite.createTasks(&jobs[1], 10, task.TaskState_PENDING), nil)
 
 	// Perform recovery
-	InitRecovery(suite.mockJobStore, suite.mockTaskStore, suite.handler)
+	InitRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore, suite.handler)
 	GetRecoveryHandler().Start()
 
 	// 2. check the queue content

@@ -5,6 +5,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/util"
+
 	log "github.com/Sirupsen/logrus"
 )
 
@@ -14,6 +15,26 @@ type Resources struct {
 	MEMORY float64
 	DISK   float64
 	GPU    float64
+}
+
+// GetCPU returns the CPU resource
+func (r *Resources) GetCPU() float64 {
+	return r.CPU
+}
+
+// GetDisk returns the disk resource
+func (r *Resources) GetDisk() float64 {
+	return r.DISK
+}
+
+// GetMem returns the memory resource
+func (r *Resources) GetMem() float64 {
+	return r.MEMORY
+}
+
+// GetGPU returns the GPU resource
+func (r *Resources) GetGPU() float64 {
+	return r.GPU
 }
 
 // Add atomically add another scalar resources onto current one.
@@ -48,7 +69,7 @@ func ConvertToResmgrResource(resource *task.ResourceConfig) *Resources {
 	return &Resources{
 		CPU:    resource.GetCpuLimit(),
 		DISK:   resource.GetDiskLimitMb(),
-		GPU:    resource.GpuLimit,
+		GPU:    resource.GetGpuLimit(),
 		MEMORY: resource.GetMemLimitMb(),
 	}
 }
@@ -59,8 +80,8 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 	if r.CPU < other.CPU {
 		log.WithFields(log.Fields{
 			"Subtracted From CPU ": r.CPU,
-			"Subracted Value ":     other.CPU,
-		}).Warn("Subracted value is Greater")
+			"Subtracted Value ":    other.CPU,
+		}).Warn("Subtracted value is Greater")
 		result.CPU = float64(0)
 	} else {
 		result.CPU = r.CPU - other.CPU
@@ -69,8 +90,8 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 	if r.GPU < other.GPU {
 		log.WithFields(log.Fields{
 			"Subtracted From GPU ": r.GPU,
-			"Subracted Value ":     other.GPU,
-		}).Warn("Subracted value is Greater")
+			"Subtracted Value ":    other.GPU,
+		}).Warn("Subtracted value is Greater")
 		result.GPU = float64(0)
 	} else {
 		result.GPU = r.GPU - other.GPU
@@ -79,8 +100,8 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 	if r.MEMORY < other.MEMORY {
 		log.WithFields(log.Fields{
 			"Subtracted From Memory ": r.MEMORY,
-			"Subracted Value ":        other.MEMORY,
-		}).Warn("Subracted value is Greater")
+			"Subtracted Value ":       other.MEMORY,
+		}).Warn("Subtracted value is Greater")
 		result.MEMORY = float64(0)
 	} else {
 		result.MEMORY = r.MEMORY - other.MEMORY
@@ -89,8 +110,8 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 	if r.DISK < other.DISK {
 		log.WithFields(log.Fields{
 			"Subtracted From DISK ": r.DISK,
-			"Subracted Value ":      other.DISK,
-		}).Warn("Subracted value is Greater")
+			"Subtracted Value ":     other.DISK,
+		}).Warn("Subtracted value is Greater")
 		result.DISK = float64(0)
 	} else {
 		result.DISK = r.DISK - other.DISK

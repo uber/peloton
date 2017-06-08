@@ -146,7 +146,7 @@ func (rmTask *RMTask) transitionCallBack(t *state.Transition) error {
 
 // updateStatus creates and send the task event to event stream
 func (rmTask *RMTask) updateStatus(status string) {
-	// Commentig it for now to not publish yet
+	// TODO : Commenting it for now to not publish yet
 	// Until we have Solution for event race
 	// T936171
 

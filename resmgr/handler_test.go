@@ -55,7 +55,7 @@ func (suite *HandlerTestSuite) SetupSuite() {
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker()
 	suite.rmTaskTracker = rm_task.GetTracker()
-	rm_task.InitScheduler(1*time.Second, suite.rmTaskTracker)
+	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, suite.rmTaskTracker)
 	suite.taskScheduler = rm_task.GetScheduler()
 
 	suite.handler = &ServiceHandler{
@@ -279,63 +279,6 @@ func (suite *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
 	gangs[2] = suite.pendingGang0()
 	return gangs
 }
-
-/*
-func (suite *HandlerTestSuite) expectedTasks() []*resmgr.Task {
-	return []*resmgr.Task{
-		{
-			Name:         "job2-1",
-			Priority:     2,
-			MinInstances: 2,
-			JobId:        &peloton.JobID{Value: "job2"},
-			Id:           &peloton.TaskID{Value: "job2-1"},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-		},
-		{
-			Name:         "job2-2",
-			Priority:     2,
-			MinInstances: 2,
-			JobId:        &peloton.JobID{Value: "job2"},
-			Id:           &peloton.TaskID{Value: "job2-2"},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-		},
-		{
-			Name:     "job1-1",
-			Priority: 1,
-			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: "job1-2"},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-		},
-		{
-			Name:     "job1-1",
-			Priority: 0,
-			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: "job1-1"},
-			Resource: &task.ResourceConfig{
-				CpuLimit:    1,
-				DiskLimitMb: 10,
-				GpuLimit:    0,
-				MemLimitMb:  100,
-			},
-		},
-	}
-}
-*/
 
 func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	log.Info("TestEnqueueDequeueGangsOneResPool called")

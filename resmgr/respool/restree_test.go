@@ -60,6 +60,7 @@ func (suite *resTreeTestSuite) SetupSuite() {
 		resPools:  make(map[string]ResPool),
 		jobStore:  suite.mockJobStore,
 		taskStore: suite.mockTaskStore,
+		scope:     tally.NoopScope,
 	}
 }
 
