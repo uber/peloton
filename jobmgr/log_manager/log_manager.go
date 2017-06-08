@@ -33,11 +33,14 @@ type executorInfo struct {
 }
 
 type slaveStateResponse struct {
-	Frameworks []struct {
-		Role               string         `json:"role"`
-		Executors          []executorInfo `json:"executors"`
-		CompletedExecutors []executorInfo `json:"completed_executors"`
-	} `json:"frameworks"`
+	Frameworks          []framework `json:"frameworks"`
+	CompletedFrameworks []framework `json:"completed_frameworks"`
+}
+
+type framework struct {
+	Role               string         `json:"role"`
+	Executors          []executorInfo `json:"executors"`
+	CompletedExecutors []executorInfo `json:"completed_executors"`
 }
 
 type filePath struct {
@@ -109,29 +112,10 @@ func (l *LogManager) getTaskSandboxDirectory(stateURL string, taskID string) (st
 		return result, fmt.Errorf("slave query response decode failure: %v", resp)
 	}
 
-	var taskExecutor *executorInfo
-	for _, framework := range slaveResp.Frameworks {
-		if framework.Role != pelotonRole {
-			continue
-		}
-
-		for _, executor := range framework.Executors {
-			if executor.ID == taskID {
-				taskExecutor = &executor
-				break
-			}
-		}
-
-		if taskExecutor == nil {
-			for _, executor := range framework.CompletedExecutors {
-				if executor.ID == taskID {
-					taskExecutor = &executor
-					break
-				}
-			}
-		}
+	taskExecutor := l.getTaskExecutor(slaveResp.Frameworks, taskID)
+	if taskExecutor == nil {
+		taskExecutor = l.getTaskExecutor(slaveResp.CompletedFrameworks, taskID)
 	}
-
 	if taskExecutor == nil {
 		log.WithField("url", stateURL).
 			WithField("task_id", taskID).
@@ -140,4 +124,33 @@ func (l *LogManager) getTaskSandboxDirectory(stateURL string, taskID string) (st
 	}
 
 	return taskExecutor.Directory, nil
+}
+
+// getTaskExecutor iterates given frameworks and returns matched executorInfo,
+// if not found, return nil.
+func (l *LogManager) getTaskExecutor(
+	frameworks []framework, taskID string) *executorInfo {
+	var taskExecutor *executorInfo
+	for _, _framework := range frameworks {
+		if _framework.Role != pelotonRole {
+			continue
+		}
+
+		for _, executor := range _framework.Executors {
+			if executor.ID == taskID {
+				taskExecutor = &executor
+				break
+			}
+		}
+
+		if taskExecutor == nil {
+			for _, executor := range _framework.CompletedExecutors {
+				if executor.ID == taskID {
+					taskExecutor = &executor
+					break
+				}
+			}
+		}
+	}
+	return taskExecutor
 }

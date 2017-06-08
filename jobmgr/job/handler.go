@@ -353,7 +353,6 @@ func (h *serviceHandler) Get(
 	ctx context.Context,
 	req *job.GetRequest) (*job.GetResponse, error) {
 
-	log.Infof("JobManager.Get called: %v", req)
 	h.metrics.JobAPIGet.Inc(1)
 
 	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.Id)
@@ -430,7 +429,6 @@ func (h *serviceHandler) Delete(
 	ctx context.Context,
 	req *job.DeleteRequest) (*job.DeleteResponse, error) {
 
-	log.Infof("JobManager.Delete called: %v", req)
 	h.metrics.JobAPIDelete.Inc(1)
 
 	err := h.jobStore.DeleteJob(ctx, req.Id)

@@ -42,6 +42,15 @@ func (suite *LogManagerTestSuite) TestGetTaskSandboxDirectory() {
 	suite.Equal(sandboxDir, "/var/lib/test")
 }
 
+func (suite *LogManagerTestSuite) TestGetTaskSandboxDirectoryInCompletedFrameworks() {
+	ts := httptest.NewServer(slaveMux())
+	defer ts.Close()
+
+	sandboxDir, err := suite.logManager.getTaskSandboxDirectory(ts.URL+"/state", "testTaskID2")
+	suite.NoError(err)
+	suite.Equal(sandboxDir, "/var/lib/test2")
+}
+
 func (suite *LogManagerTestSuite) TestGetTaskSandboxDirectoryNotFound() {
 	ts := httptest.NewServer(slaveMux())
 	defer ts.Close()
@@ -61,7 +70,8 @@ func (suite *LogManagerTestSuite) TestListTaskLogFiles() {
 }
 
 var (
-	slaveStateStr      = `{"frameworks": [{"role": "peloton", "executors": [{"id": "testTaskID", "directory": "/var/lib/test"}]}]}`
+	slaveStateStr = `{"frameworks": [{"role": "peloton", "executors": [{"id": "testTaskID", "directory": "/var/lib/test"}]}],
+	"completed_frameworks": [{"role": "peloton", "executors": [{"id": "testTaskID2", "directory": "/var/lib/test2"}]}]}`
 	slaveFileBrowseStr = `[{"path": "/var/lib/path1"}, {"path": "/var/lib/path2"}]`
 )
 

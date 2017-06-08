@@ -57,7 +57,6 @@ func (m *serviceHandler) Get(
 	ctx context.Context,
 	body *task.GetRequest) (*task.GetResponse, error) {
 
-	log.Infof("TaskManager.Get called: %v", body)
 	m.metrics.TaskAPIGet.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil || jobConfig == nil {
@@ -92,7 +91,6 @@ func (m *serviceHandler) List(
 	ctx context.Context,
 	body *task.ListRequest) (*task.ListResponse, error) {
 
-	log.Infof("TaskManager.List called: %v", body)
 	m.metrics.TaskAPIList.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil {
@@ -139,7 +137,6 @@ func (m *serviceHandler) Start(
 	ctx context.Context,
 	body *task.StartRequest) (*task.StartResponse, error) {
 
-	log.Infof("TaskManager.Start called: %v", body)
 	m.metrics.TaskAPIStart.Inc(1)
 	m.metrics.TaskStart.Inc(1)
 	return &task.StartResponse{}, nil
@@ -285,14 +282,12 @@ func (m *serviceHandler) Restart(
 	ctx context.Context,
 	body *task.RestartRequest) (*task.RestartResponse, error) {
 
-	log.Infof("TaskManager.Restart called: %v", body)
 	m.metrics.TaskAPIRestart.Inc(1)
 	m.metrics.TaskRestart.Inc(1)
 	return &task.RestartResponse{}, nil
 }
 
 func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*task.QueryResponse, error) {
-	log.Infof("TaskManager.Query called: %v", req)
 	m.metrics.TaskAPIQuery.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil || jobConfig == nil {
