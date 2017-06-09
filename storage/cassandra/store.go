@@ -130,6 +130,8 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 		CreationTime: time.Now().Format(time.RFC3339Nano),
 		TaskStats:    make(map[string]uint32),
 	}
+	// Init the task stats to reflect that all tasks are in initialized state
+	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(jobsTable).

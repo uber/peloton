@@ -933,7 +933,8 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(job.JobState_INITIALIZED, runtime.State)
-	suite.Equal(0, len(runtime.TaskStats))
+	suite.Equal(1, len(runtime.TaskStats))
+	suite.Equal(jobConfig.InstanceCount, runtime.TaskStats[task.TaskState_INITIALIZED.String()])
 
 	// update job runtime
 	runtime.State = job.JobState_RUNNING
@@ -948,7 +949,7 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	runtime, err = jobStore.GetJobRuntime(context.Background(), &jobID)
 	suite.NoError(err)
 	suite.Equal(job.JobState_RUNNING, runtime.State)
-	suite.Equal(4, len(runtime.TaskStats))
+	suite.Equal(5, len(runtime.TaskStats))
 
 	jobIds, err := store.GetJobsByStates(context.Background(), []job.JobState{job.JobState_RUNNING})
 	suite.NoError(err)
@@ -976,6 +977,10 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	jobConfig.InstanceCount = uint32(oldInstanceCount)
 	err := jobStore.CreateJob(context.Background(), &jobID, jobConfig, "uber")
 	suite.NoError(err)
+
+	jobRuntime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+	suite.NoError(err)
+	suite.Equal(jobConfig.InstanceCount, jobRuntime.TaskStats[task.TaskState_INITIALIZED.String()])
 
 	jobConfig, err = jobStore.GetJobConfig(context.Background(), &jobID)
 	suite.NoError(err)
