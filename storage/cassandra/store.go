@@ -325,16 +325,24 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 			return nil, 0, err
 		}
 
+		jobID := &peloton.JobID{
+			Value: record.JobID,
+		}
+
+		jobRuntime, err := s.GetJobRuntime(ctx, jobID)
+		if err != nil {
+			log.Warnf("no job runtime found for job `%v` when executing jobs query", jobID)
+		}
+
 		// TODO: Add to view and move to cassandra where clause.
 		if respoolID != nil && jobConfig.GetRespoolID().GetValue() != respoolID.GetValue() {
 			continue
 		}
 
 		results = append(results, &job.JobInfo{
-			Id: &peloton.JobID{
-				Value: record.JobID,
-			},
-			Config: jobConfig,
+			Id:      jobID,
+			Config:  jobConfig,
+			Runtime: jobRuntime,
 		})
 	}
 

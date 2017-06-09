@@ -141,6 +141,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		suite.NoError(err)
 		suite.Equal(1, len(result1))
 		suite.Equal(1, int(total))
+		suite.Equal(job.JobState_INITIALIZED, result1[0].Runtime.State)
 		suite.Equal(fmt.Sprintf("TestJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
 	}
 
