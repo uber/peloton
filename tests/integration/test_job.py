@@ -56,7 +56,8 @@ def test_create_job():
             id=peloton.JobID(value=job_id),
         )
         resp = client.job_svc.get(request)
-        state = job.JobState.Name(resp.runtime.state)
+        runtime = resp.jobInfo.runtime
+        state = job.JobState.Name(runtime.state)
         if state == goal_state:
             print 'job goal state %s is reached' % goal_state
             break
@@ -68,4 +69,4 @@ def test_create_job():
         attempts += 1
 
     assert state == goal_state
-    assert resp.runtime.taskStats[state] == job_config.instanceCount
+    assert runtime.taskStats[state] == job_config.instanceCount

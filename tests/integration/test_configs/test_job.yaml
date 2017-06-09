@@ -7,13 +7,12 @@ ldapGroups:
 - otto
 description: "A dummy test job for peloton integration tests"
 labels:
-  labels:
-  - key: testKey0
-    value: testVal0
-  - key: testKey1
-    value: testVal1
-  - key: testKey2
-    value: testVal2
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
 instanceCount: 3
 sla:
   priority: 22
