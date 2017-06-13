@@ -7,6 +7,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/uber-go/atomic"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
@@ -105,6 +106,10 @@ type offerPool struct {
 
 	// hostOfferIndex -- key: hostname, value: HostSummary
 	hostOfferIndex map[string]summary.HostSummary
+
+	// number of hosts that has any offers, i.e. both reserved and unreserved
+	// offers. It includes both READY and PLACING state hosts.
+	availableHosts atomic.Uint32
 
 	// Map from id to hostname and expiration.
 	// Used when offer is rescinded or pruned.
@@ -214,6 +219,10 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 		decQuantity(&p.placingResources, delta, p.metrics.placing)
 	}
 
+	if !p.hostOfferIndex[hostname].HasAnyOffer() {
+		p.metrics.AvailableHosts.Update(float64(p.availableHosts.Dec()))
+	}
+
 	return offerMap, nil
 }
 
@@ -232,6 +241,9 @@ func (p *offerPool) tryAddOffer(ctx context.Context, offer *mesos.Offer, expirat
 	hostName := *offer.Hostname
 	if _, ok := p.hostOfferIndex[hostName]; !ok {
 		return false
+	}
+	if !p.hostOfferIndex[hostName].HasAnyOffer() {
+		p.metrics.AvailableHosts.Update(float64(p.availableHosts.Inc()))
 	}
 	status := p.hostOfferIndex[hostName].AddMesosOffer(ctx, offer)
 
@@ -259,6 +271,11 @@ func (p *offerPool) addOffer(ctx context.Context, offer *mesos.Offer, expiration
 	if !ok {
 		p.hostOfferIndex[hostName] = summary.New(p.volumeStore)
 	}
+
+	if !p.hostOfferIndex[hostName].HasAnyOffer() {
+		p.metrics.AvailableHosts.Update(float64(p.availableHosts.Inc()))
+	}
+
 	status := p.hostOfferIndex[hostName].AddMesosOffer(ctx, offer)
 
 	delta := scalar.FromOffer(offer)
@@ -336,6 +353,10 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
 		}
 	}
 
+	if !p.hostOfferIndex[hostName].HasAnyOffer() {
+		p.metrics.AvailableHosts.Update(float64(p.availableHosts.Dec()))
+	}
+
 	return true
 }
 
@@ -375,6 +396,10 @@ func (p *offerPool) RemoveExpiredOffers() (map[string]*TimedOffer, int) {
 					log.WithField("status", status).
 						Error("Unknown CacheStatus")
 				}
+			}
+
+			if !p.hostOfferIndex[hostName].HasAnyOffer() {
+				p.metrics.AvailableHosts.Update(float64(p.availableHosts.Dec()))
 			}
 		}
 	}

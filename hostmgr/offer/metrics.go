@@ -24,12 +24,16 @@ type Metrics struct {
 	// metrics for pruner
 	Pruned      tally.Counter
 	PrunerValid tally.Gauge
+
+	// metrics for total number of available hosts in the cluster.
+	AvailableHosts tally.Gauge
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized
 // and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
 	poolScope := scope.SubScope("pool")
+	hostScope := scope.SubScope("hosts")
 	readyScope := poolScope.SubScope("ready")
 	placingScope := poolScope.SubScope("placing")
 	poolFailScope := poolScope.SubScope("fail")
@@ -56,5 +60,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		Pruned:      prunerScope.Counter("pruned"),
 		PrunerValid: prunerScope.Gauge("valid"),
+
+		AvailableHosts: hostScope.Gauge("available_total"),
 	}
 }

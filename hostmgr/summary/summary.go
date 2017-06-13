@@ -45,8 +45,13 @@ const (
 // data structure. It keeps track of offers in various state,
 // launching cycles and reservation information.
 type HostSummary interface {
-	// HasOffer provides a quick heuristic about if HostSummary has any offer.
+	// HasOffer provides a quick heuristic about if HostSummary has any
+	// unreserved READY offer.
 	HasOffer() bool
+
+	// HasAnyOffer returns true if host has any offer, including both reserved
+	// and unreserved offer.
+	HasAnyOffer() bool
 
 	// TryMatch atomically tries to match offers from the current host with given
 	// constraint.
@@ -112,6 +117,13 @@ func New(
 // otherwise remove it!
 func (a *hostSummary) HasOffer() bool {
 	return a.readyCount.Load() > 0
+}
+
+// HasAnyOffer returns true if host has any offer.
+func (a *hostSummary) HasAnyOffer() bool {
+	a.Lock()
+	defer a.Unlock()
+	return len(a.unreservedOffers) > 0 || len(a.reservedOffers) > 0
 }
 
 // matchConstraint determines whether given HostFilter matches

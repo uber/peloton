@@ -352,6 +352,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	hybridSummary := New(suite.mockVolumeStore).(*hostSummary)
 
 	suite.False(hybridSummary.HasOffer())
+	suite.False(hybridSummary.HasAnyOffer())
 
 	var offers []*mesos.Offer
 	for i := 0; i < reservedOffers; i++ {
@@ -402,6 +403,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 
 	// Verify resources for unreserved part.
 	suite.True(hybridSummary.HasOffer())
+	suite.True(hybridSummary.HasAnyOffer())
 	unreservedAmount := hybridSummary.UnreservedAmount()
 	suite.Equal(5.0, unreservedAmount.CPU)
 	suite.Equal(5.0, unreservedAmount.Mem)
