@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import click
+import argparse
 import glob
 import os
 import string
@@ -42,17 +42,24 @@ def generate(generator, f, m, gen_dir):
     if retval != 0:
         sys.exit(retval)
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Generate types and yarpc stubs from Peloton protobuf files')
+    parser.add_argument('-l', '--go-loc', help='go location of generated code',
+                        default='code.uber.internal/infra/peloton/.gen/')
+    parser.add_argument('-o', '--out', help='output dir of generated code',
+                        default='.gen')
+    args = parser.parse_args()
+    return args
 
-@click.command()
-@click.option('--go-loc', default='code.uber.internal/infra/peloton/.gen/')
-@click.option('-o', '--out', default='.gen')
-def main(go_loc, out):
+def main():
+    args = parse_args()
     files = protos()
-    m = mflags(files, go_loc)
+    m = mflags(files, args.go_loc)
 
     # For every .proto file in peloton generate us a golang file
     for f in files:
-        generate("go", f, m, out)
+        generate("go", f, m, args.out)
 
         # Generate yarpc-go files for all files with a service. The yarpc
         # plugin generates bad output for files without any services.
@@ -61,7 +68,7 @@ def main(go_loc, out):
 
             for l in lines:
                 if l.startswith('service '):
-                    generate("yarpc-go", f, m, out)
+                    generate("yarpc-go", f, m, args.out)
                     break
 
 
