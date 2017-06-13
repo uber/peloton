@@ -86,6 +86,10 @@ func (suite *MultiLevelListTestSuite) TestLength() {
 	suite.Equal(suite.mll.Len(0), 2, "Length should be 2")
 }
 
+func (suite *MultiLevelListTestSuite) TestSize() {
+	suite.Equal(3, suite.mll.Size(), "Size should be 3")
+}
+
 func (suite *MultiLevelListTestSuite) TestPop() {
 	t, _ := suite.mll.Pop(0)
 	suite.Equal(t.(*resmgr.Task).JobId.Value, "job1", "Job 1 should be out")

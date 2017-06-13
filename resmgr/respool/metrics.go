@@ -34,7 +34,7 @@ type Metrics struct {
 	QueryResourcePoolsSuccess tally.Counter
 	QueryResourcePoolsFail    tally.Counter
 
-	PendingQueueLen tally.Gauge
+	PendingQueueSize tally.Gauge
 
 	ResourcePoolAllocation  scalar.GaugeMaps
 	ResourcePoolEntitlement scalar.GaugeMaps
@@ -87,7 +87,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		QueryResourcePoolsSuccess: successScope.Counter("query_resource_pools"),
 		QueryResourcePoolsFail:    failScope.Counter("query_resource_pools"),
 
-		PendingQueueLen: pendingScope.Gauge("pending_queue_length"),
+		PendingQueueSize: pendingScope.Gauge("pending_queue_size"),
 
 		ResourcePoolAllocation:  scalar.NewGaugeMaps(usageScope),
 		ResourcePoolEntitlement: scalar.NewGaugeMaps(entitlementScope),

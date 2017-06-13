@@ -113,6 +113,10 @@ func (suite *FifoQueueTestSuite) TestLength() {
 	assert.Equal(suite.T(), suite.fq.Len(2), 2, "Length should be 2")
 }
 
+func (suite *FifoQueueTestSuite) TestSize() {
+	suite.Equal(4, suite.fq.Size())
+}
+
 func (suite *FifoQueueTestSuite) TestDequeue() {
 	gang, err := suite.fq.Dequeue()
 	if err != nil {

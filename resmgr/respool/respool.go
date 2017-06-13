@@ -111,7 +111,7 @@ func NewRespool(
 		"respool_id": ID,
 	})
 
-	pool := resPool{
+	pool := &resPool{
 		id:              ID,
 		children:        list.New(),
 		parent:          parent,
@@ -123,9 +123,12 @@ func NewRespool(
 		metrics:         NewMetrics(poolScope),
 	}
 
+	// Initialize
 	pool.initResources(config.GetResources())
 	pool.updateDynamicResourceMetrics()
-	return &pool, nil
+	pool.metrics.PendingQueueSize.Update(float64(pool.pendingQueue.Size()))
+
+	return pool, nil
 }
 
 // ID returns the resource pool UUID
@@ -222,6 +225,7 @@ func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
 		err := n.pendingQueue.Enqueue(gang)
 		return err
 	}
+	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
 	err := errors.Errorf("Respool %s is not a leaf node", n.id)
 	return err
 }
@@ -279,6 +283,7 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 			}
 		}
 	}
+	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
 	return gangList, nil
 }
 
@@ -542,7 +547,6 @@ func (n *resPool) updateDynamicResourceMetrics() {
 	n.metrics.ResourcePoolEntitlement.Update(n.entitlement)
 	n.metrics.ResourcePoolAllocation.Update(n.allocation)
 	n.metrics.ResourcePoolAvailable.Update(n.entitlement.Subtract(n.allocation))
-	//TODO pool.metrics.PendingQueueLen.Update(len(pool.pendingQueue))
 }
 
 func getLimits(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {

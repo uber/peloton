@@ -20,6 +20,8 @@ type Queue interface {
 	Peek() (*resmgrsvc.Gang, error)
 	// Remove removes the item from the queue
 	Remove(item *resmgrsvc.Gang) error
+	// Size returns the total number of items in the queue
+	Size() int
 }
 
 // CreateQueue is factory method to create the specified queue

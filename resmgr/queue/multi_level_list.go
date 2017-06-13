@@ -191,6 +191,15 @@ func (p *MultiLevelList) Len(level int) int {
 	return 0
 }
 
+// Size returns the total number of items in multilevel list for all levels
+func (p *MultiLevelList) Size() int {
+	len := 0
+	for _, val := range p.mapLists {
+		len += val.Len()
+	}
+	return len
+}
+
 // calculateHighestLevel returns highest level in the multilevel list
 func (p *MultiLevelList) calculateHighestLevel() int {
 	// TODO: we also can use heap for index to scan it Which can help getting the highest level in in O(1)

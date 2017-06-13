@@ -129,3 +129,8 @@ func (f *PriorityQueue) Remove(gang *resmgrsvc.Gang) error {
 func (f *PriorityQueue) Len(priority int) int {
 	return f.list.Len(priority)
 }
+
+// Size returns the number of elements in the PriorityQueue
+func (f *PriorityQueue) Size() int {
+	return f.list.Size()
+}
