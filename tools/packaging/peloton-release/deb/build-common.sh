@@ -11,7 +11,7 @@ install_golang() {
     tar -xvf go$GO_VERSION.linux-amd64.tar.gz
     mv go /usr/local
     export GOROOT=/usr/local/go
-    export PATH=$PATH:$GOROOT/bin
+    export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 }
 
 install_protoc () {
@@ -25,8 +25,6 @@ install_protoc () {
 
     # install protoc-gen-go plugin
     go get -u github.com/golang/protobuf/{proto,protoc-gen-go}
-    cp $GOPATH/bin/protoc-gen-go /usr/bin
-    chmod 755 /usr/bin/protoc-gen-go
 }
 
 build_peloton() {

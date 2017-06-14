@@ -42,15 +42,17 @@ def generate(generator, f, m, gen_dir):
     if retval != 0:
         sys.exit(retval)
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Generate types and yarpc stubs from Peloton protobuf files')
+        description='Generate types and yarpc stubs from protobuf files')
     parser.add_argument('-l', '--go-loc', help='go location of generated code',
                         default='code.uber.internal/infra/peloton/.gen/')
     parser.add_argument('-o', '--out', help='output dir of generated code',
                         default='.gen')
     args = parser.parse_args()
     return args
+
 
 def main():
     args = parse_args()
