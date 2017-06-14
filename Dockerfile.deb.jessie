@@ -11,7 +11,8 @@ RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
         make \
         unzip \
         ruby-dev \
-        rubygems
+        rubygems \
+        python-dev
 
 RUN gem install fpm
 

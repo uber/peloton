@@ -70,7 +70,6 @@ cover:
 pbgens:
 	go get ./vendor/go.uber.org/yarpc/encoding/x/protobuf/protoc-gen-yarpc-go
 	@mkdir -p $(PBGEN_DIR)
-	pip install click
 	./scripts/generate-protobuf.py
 
 clean:

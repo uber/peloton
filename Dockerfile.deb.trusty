@@ -12,7 +12,8 @@ RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
         unzip \
         ruby-dev \
         rubygems-integration \
-        software-properties-common
+        software-properties-common \
+        python-dev
 
 RUN gem install fpm
 
