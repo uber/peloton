@@ -18,15 +18,31 @@ import (
 	"github.com/uber-go/tally"
 )
 
+var (
+	once     sync.Once
+	recovery *recoveryHandler
+
+	// jobStates represents the job states which need recovery
+	jobStates = []job.JobState{
+		job.JobState_PENDING,
+		job.JobState_RUNNING,
+		job.JobState_UNKNOWN,
+		job.JobState_INITIALIZED,
+	}
+	// taskStatesToSkip represents the task states which need to be skipped when doing recovery
+	taskStatesToSkip = map[task.TaskState]bool{
+		task.TaskState_SUCCEEDED: true,
+		task.TaskState_FAILED:    true,
+		task.TaskState_KILLED:    true,
+	}
+)
+
 // RecoveryHandler defines the interface to
 // be called by leader election callbacks.
 type RecoveryHandler interface {
 	Start() error
 	Stop() error
 }
-
-var once sync.Once
-var recovery *recoveryHandler
 
 // recoveryHandler performs recovery of jobs which are in non-terminated
 // states and requeues the tasks in the pending queue.
@@ -37,14 +53,6 @@ type recoveryHandler struct {
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
 	handler   *ServiceHandler
-}
-
-// jobStates represents the states which need recovery
-var jobStates = []job.JobState{
-	job.JobState_PENDING,
-	job.JobState_RUNNING,
-	job.JobState_UNKNOWN,
-	job.JobState_INITIALIZED,
 }
 
 // InitRecovery initializes the recoveryHandler
@@ -133,7 +141,6 @@ func (r *recoveryHandler) requeueJob(
 	jobConfig *job.JobConfig) error {
 
 	// TODO optimize this function
-	var err error
 	numSingleInstances := jobConfig.InstanceCount
 	initialSingleInstance := uint32(0)
 	var errString string
@@ -144,14 +151,18 @@ func (r *recoveryHandler) requeueJob(
 		for i := initialSingleInstance; i <= rangevar; i++ {
 			from := i * RequeueBatchSize
 			to := util.Min((i+1)*RequeueBatchSize, numSingleInstances)
-			err = r.requeueTasksInRange(ctx, jobID, jobConfig, from, to)
-
+			count, err := r.requeueTasksInRange(ctx, jobID, jobConfig, from, to)
 			if err != nil {
-				r.metrics.RecoveryFailCount.Inc(int64(to - from))
-				log.Errorf("Failed to requeue tasks for job %v in [%v, %v)",
+				r.metrics.RecoveryFailCount.Inc(int64(count))
+				log.WithFields(log.Fields{
+					"JobID": jobID,
+					"from":  from,
+					"to":    to}).Error("Failed to requeue tasks for")
+				errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]",
 					jobID, from, to)
-				errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]", jobID, from, to)
 				isError = true
+			} else {
+				r.metrics.RecoverySuccessCount.Inc(int64(count))
 			}
 		}
 	}
@@ -159,19 +170,19 @@ func (r *recoveryHandler) requeueJob(
 	if isError {
 		return errors.Errorf("Not able to requeue tasks %s", errString)
 	}
-	r.metrics.RecoverySuccessCount.Inc(int64(numSingleInstances))
 	return nil
 }
 
+// returns the number of tasks which were attempted to reqeueue
 func (r *recoveryHandler) requeueTasksInRange(
 	ctx context.Context,
 	jobID string,
 	jobConfig *job.JobConfig,
-	from, to uint32) error {
+	from, to uint32) (int, error) {
 
 	tasks, err := r.loadTasksInRange(ctx, jobID, from, to)
 	if err != nil {
-		return err
+		return len(tasks), err
 	}
 	log.WithField("Count", len(tasks)).
 		WithField("jobID", jobID).
@@ -184,9 +195,10 @@ func (r *recoveryHandler) requeueTasksInRange(
 	}
 	resp, err := r.handler.EnqueueGangs(ctx, request)
 	if resp.GetError() != nil {
-		return errors.Errorf("failed to requeue tasks %s", getEnqueueGangErrorMessage(resp.GetError()))
+		return len(tasks), errors.Errorf("failed to requeue tasks %s",
+			getEnqueueGangErrorMessage(resp.GetError()))
 	}
-	return err
+	return len(tasks), err
 }
 
 func getEnqueueGangErrorMessage(err *resmgrsvc.EnqueueGangsResponse_Error) string {
@@ -230,8 +242,14 @@ func (r *recoveryHandler) loadTasksInRange(
 			From: from,
 			To:   to,
 		})
-	for _, taskInfo := range taskInfoMap {
-		tasks = append(tasks, taskInfo)
+	for taskID, taskInfo := range taskInfoMap {
+		if _, ok := taskStatesToSkip[taskInfo.GetRuntime().GetState()]; !ok {
+			log.WithFields(log.Fields{
+				"JobID":  jobID,
+				"TaskID": taskID,
+			}).Debugf("found task for recovery")
+			tasks = append(tasks, taskInfo)
+		}
 	}
 	return tasks, err
 }

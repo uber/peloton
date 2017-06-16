@@ -244,7 +244,8 @@ func (suite *recoveryTestSuite) createJob(jobID *peloton.JobID, instanceCount ui
 
 func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint32, taskState task.TaskState) map[uint32]*task.TaskInfo {
 	tasks := map[uint32]*task.TaskInfo{}
-	for i := uint32(0); i < numTasks; i++ {
+	var i uint32
+	for i = uint32(0); i < numTasks; i++ {
 		var taskID = fmt.Sprintf("%s-%d", jobID.Value, i)
 		taskConf := task.TaskConfig{
 			Name: fmt.Sprintf("%s-%d", jobID.Value, i),
@@ -264,6 +265,24 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 		}
 	}
 
+	// Add 1 tasks in SUCCESS state
+	var taskID = fmt.Sprintf("%s-%d", jobID.Value, i+1)
+	taskConf := task.TaskConfig{
+		Name: fmt.Sprintf("%s-%d", jobID.Value, i+1),
+		Resource: &task.ResourceConfig{
+			CpuLimit:   1,
+			MemLimitMb: 20,
+		},
+	}
+	tasks[i+1] = &task.TaskInfo{
+		Runtime: &task.RuntimeInfo{
+			TaskId: &mesos.TaskID{Value: &taskID},
+			State:  task.TaskState_SUCCEEDED,
+		},
+		Config:     &taskConf,
+		InstanceId: i,
+		JobId:      jobID,
+	}
 	return tasks
 }
 
@@ -291,7 +310,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			From: 0,
 			To:   10,
 		}).
-		Return(suite.createTasks(&jobs[0], 10, task.TaskState_INITIALIZED), nil)
+		Return(suite.createTasks(&jobs[0], 9, task.TaskState_INITIALIZED), nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[1]).
@@ -301,7 +320,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			From: 0,
 			To:   10,
 		}).
-		Return(suite.createTasks(&jobs[1], 10, task.TaskState_PENDING), nil)
+		Return(suite.createTasks(&jobs[1], 9, task.TaskState_PENDING), nil)
 
 	// Perform recovery
 	InitRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore, suite.handler)
@@ -315,8 +334,8 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	// Job2 and Job3 should be recovered and should have 10 tasks in the pending queue
 	suite.Equal(2, len(contentSummary))
 
-	suite.Equal(10, len(contentSummary["TestJob_0"]))
-	suite.Equal(10, len(contentSummary["TestJob_1"]))
+	suite.Equal(9, len(contentSummary["TestJob_0"]))
+	suite.Equal(9, len(contentSummary["TestJob_1"]))
 }
 
 func TestResmgrRecovery(t *testing.T) {
