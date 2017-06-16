@@ -119,7 +119,7 @@ func (suite *BuilderTestSuite) TestNoPortTasks() {
 			},
 		},
 		builder.scalars)
-	suite.Empty(builder.portSets)
+	suite.Empty(builder.portToRoles)
 	tids := suite.createTestTaskIDs(numTasks)
 	configs := createTestTaskConfigs(numTasks)
 
@@ -145,22 +145,18 @@ func (suite *BuilderTestSuite) TestNoPortTasks() {
 
 // This tests several tasks requiring ports can be created.
 func (suite *BuilderTestSuite) TestPortTasks() {
-	portSet := map[uint32]bool{
-		1000: true,
-		1002: true,
-		1004: true,
-		1006: true,
+	portToRole := map[uint32]string{
+		1000: "*",
+		1002: "*",
+		1004: "role",
+		1006: "role",
 	}
+
 	numTasks := 2
 	// add more scalar resource to make sure we are only bound by ports.
 	resourceTasks := 4
 	resources := suite.getResources(resourceTasks)
-	resources = append(resources,
-		util.NewMesosResourceBuilder().
-			WithName("ports").
-			WithType(mesos.Value_RANGES).
-			WithRanges(util.CreatePortRanges(portSet)).
-			Build())
+	resources = append(resources, util.CreatePortResources(portToRole)...)
 
 	builder := NewBuilder(resources)
 	suite.Equal(
@@ -173,8 +169,13 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 		},
 		builder.scalars)
 	suite.Equal(
-		map[string]map[uint32]bool{"*": portSet},
-		builder.portSets)
+		map[uint32]string{
+			1000: "*",
+			1002: "*",
+			1004: "role",
+			1006: "role",
+		},
+		builder.portToRoles)
 	tid := suite.createTestTaskIDs(1)[0]
 	taskConfig := createTestTaskConfigs(1)[0]
 	// Requires 3 ports, 1 static and 2 dynamic ones.
@@ -253,7 +254,7 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 		suite.Contains(envMap, "DYNAMIC_ENV_PORT")
 		p, err := strconv.Atoi(envMap["DYNAMIC_ENV_PORT"])
 		suite.NoError(err)
-		suite.Contains(portSet, uint32(p))
+		suite.Contains(portToRole, uint32(p))
 		suite.Contains(envMap, "STATIC_PORT")
 		suite.Equal("80", envMap["STATIC_PORT"])
 
@@ -271,7 +272,7 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 		}, info.Labels)
 	}
 
-	suite.Equal(portSet, discoveryPortSet)
+	suite.Len(discoveryPortSet, 4)
 }
 
 // TestBuilderPickPorts tests pickPorts call and its return value.
@@ -318,7 +319,7 @@ func (suite *BuilderTestSuite) TestBuilderPickPorts() {
 	suite.NoError(err)
 	suite.Equal(len(result.selectedPorts), 3)
 	suite.Equal(len(result.portEnvs), 2)
-	suite.Equal(len(result.portResources), 1)
+	suite.Equal(len(result.portResources), 2)
 }
 
 // This tests task with command health can be created.

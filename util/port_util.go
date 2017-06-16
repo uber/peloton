@@ -47,22 +47,6 @@ func GetPortsNumFromOfferMap(offerMap map[string]*mesos.Offer) uint32 {
 	return uint32(numPorts)
 }
 
-// MergePortSets merges two portset map into one.
-func MergePortSets(m1, m2 map[uint32]bool) map[uint32]bool {
-	m := make(map[uint32]bool)
-	for i1, ok := range m1 {
-		if ok {
-			m[i1] = true
-		}
-	}
-	for i2, ok := range m2 {
-		if ok {
-			m[i2] = true
-		}
-	}
-	return m
-}
-
 // CreatePortRanges create Mesos Ranges type from given port set.
 func CreatePortRanges(portSet map[uint32]bool) *mesos.Value_Ranges {
 	var sorted []int
@@ -84,4 +68,25 @@ func CreatePortRanges(portSet map[uint32]bool) *mesos.Value_Ranges {
 		)
 	}
 	return &res
+}
+
+// CreatePortResources create a list of Mesos resources suitable for launching
+// from a map from port number to role name.
+func CreatePortResources(portSet map[uint32]string) []*mesos.Resource {
+	resources := []*mesos.Resource{}
+	for port, role := range portSet {
+		tmp := uint64(port)
+		rs := NewMesosResourceBuilder().
+			WithName("ports").
+			WithType(mesos.Value_RANGES).
+			WithRole(role).
+			WithRanges(&mesos.Value_Ranges{
+				Range: []*mesos.Value_Range{
+					{Begin: &tmp, End: &tmp},
+				},
+			}).
+			Build()
+		resources = append(resources, rs)
+	}
+	return resources
 }

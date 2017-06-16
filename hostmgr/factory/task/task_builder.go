@@ -19,6 +19,9 @@ import (
 var (
 	_pelotonRole      = "peloton"
 	_pelotonPrinciple = "peloton"
+
+	// ErrPortMismatch represents port not matching.
+	ErrPortMismatch = errors.New("port in launch not in offer")
 )
 
 // Builder helps to build launchable Mesos TaskInfo from offers and
@@ -27,38 +30,40 @@ type Builder struct {
 	// A map from role -> scalar resources.
 	scalars map[string]scalar.Resources
 
-	// A map from role -> available ports
-	portSets map[string]map[uint32]bool
+	// A map from available port number to role name.
+	portToRoles map[uint32]string
 }
 
 // NewBuilder creates a new instance of Builder, which caller can use to
 // build Mesos tasks from the cached resources.
 func NewBuilder(resources []*mesos.Resource) *Builder {
 	scalars := make(map[string]scalar.Resources)
-	portSets := make(map[string]map[uint32]bool)
+	portToRoles := make(map[uint32]string)
 	for _, rs := range resources {
 		tmp := scalar.FromMesosResource(rs)
 		role := rs.GetRole()
-		prev := scalars[role]
-		scalars[role] = *(prev.Add(&tmp))
 
-		ports := util.ExtractPortSet(rs)
-		if len(ports) == 0 {
-			continue
-		}
-
-		if _, ok := portSets[role]; !ok {
-			portSets[role] = ports
+		if !tmp.Empty() {
+			prev := scalars[role]
+			scalars[role] = *(prev.Add(&tmp))
 		} else {
-			portSets[role] = util.MergePortSets(portSets[role], ports)
+
+			ports := util.ExtractPortSet(rs)
+			if len(ports) == 0 {
+				continue
+			}
+
+			for p := range ports {
+				portToRoles[p] = role
+			}
 		}
 	}
 
 	// TODO: Look into whether we need to prefer reserved (non-* role)
 	// or unreserved (* role).
 	return &Builder{
-		scalars:  scalars,
-		portSets: portSets,
+		scalars:     scalars,
+		portToRoles: portToRoles,
 	}
 }
 
@@ -97,18 +102,20 @@ func (tb *Builder) pickPorts(
 
 	// Populates dynamic ports and build Mesos resources objects,
 	// which will be used later to launch the task.
-	dynamicPorts := make(map[uint32]bool)
+	dynamicPorts := make(map[uint32]string)
 	for name, port := range selectedDynamicPorts {
-		dynamicPorts[port] = true
+		role, ok := tb.portToRoles[port]
+		if !ok {
+			return nil, ErrPortMismatch
+		}
+		delete(tb.portToRoles, port)
+		dynamicPorts[port] = role
 		result.selectedPorts[name] = port
 	}
-	ranges := util.CreatePortRanges(dynamicPorts)
-	rs := util.NewMesosResourceBuilder().
-		WithName("ports").
-		WithType(mesos.Value_RANGES).
-		WithRanges(ranges).
-		Build()
-	result.portResources = append(result.portResources, rs)
+
+	result.portResources = append(
+		result.portResources,
+		util.CreatePortResources(dynamicPorts)...)
 
 	// Populate static ports and extra environment variables, which will be
 	// added to `CommandInfo` to launch the task.
