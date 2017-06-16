@@ -155,8 +155,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"taskID": taskID,
 			"state":  state.String(),
 		}).Debug("Adding Mesos Event ")
-
 	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
+		// Peloton task event is used for task status update from resmgr.
 		taskID = event.PelotonTaskEvent.TaskId.Value
 		state = event.PelotonTaskEvent.State
 		statusMsg = event.PelotonTaskEvent.Message
@@ -180,25 +180,33 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return err
 	}
 
+	dbTaskID := taskInfo.GetRuntime().GetTaskId().GetValue()
+	if isMesosStatus && dbTaskID != mesosTaskID {
+		p.metrics.SkipOrphanTasksTotal.Inc(1)
+		log.WithFields(log.Fields{
+			"orphan_task_id":    mesosTaskID,
+			"db_task_id":        dbTaskID,
+			"db_task_info":      taskInfo,
+			"task_status_event": event.MesosTaskStatus,
+		}).Warn("skip status update for orphan mesos task")
+		return nil
+	}
+
+	needRetrySchedulingTask := false
 	if state == pb_task.TaskState_FAILED && (taskInfo.GetRuntime().GetFailuresCount() <
 		taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()) {
-
 		p.metrics.RetryFailedTasksTotal.Inc(1)
 		statusMsg = "Rescheduled due to task failure status: " + statusMsg
-
-		newMesosTaskID := fmt.Sprintf(
-			"%s-%d-%s",
-			taskInfo.GetJobId().GetValue(),
-			taskInfo.GetInstanceId(),
-			uuid.NewUUID().String())
-		taskInfo.GetRuntime().GetTaskId().Value = &newMesosTaskID
-		taskInfo.GetRuntime().State = pb_task.TaskState_INITIALIZED
+		p.regenerateMesosTaskID(taskInfo)
 		taskInfo.GetRuntime().FailuresCount++
-		log.WithField("taskInfo", taskInfo).Debug("Reschedule failed task.")
 		// TODO: check for failing reason and do backoff before
 		// rescheduling.
-		retryTaskInfo := proto.Clone(taskInfo).(*pb_task.TaskInfo)
-		go p.retrySchedulingTask(ctx, retryTaskInfo)
+		needRetrySchedulingTask = true
+	} else if state == pb_task.TaskState_LOST {
+		p.metrics.RetryLostTasksTotal.Inc(1)
+		statusMsg = "Rescheduled due to task LOST: " + statusMsg
+		p.regenerateMesosTaskID(taskInfo)
+		needRetrySchedulingTask = true
 	} else {
 		// TODO: figure out on what cases state updates should not be persisted
 		// TODO: depends on the state, may need to put the task back to
@@ -228,10 +236,25 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			Error("Fail to update taskInfo for taskID")
 		return err
 	}
+
+	if needRetrySchedulingTask {
+		go p.retrySchedulingTask(ctx, proto.Clone(taskInfo).(*pb_task.TaskInfo))
+	}
 	return nil
 }
 
-// retrySchedulingTask overwrites new mesos taskID then retries scheduling task.
+// regenerateMesosTaskID generates a new mesos task ID and update task info.
+func (p *statusUpdate) regenerateMesosTaskID(taskInfo *pb_task.TaskInfo) {
+	newMesosTaskID := fmt.Sprintf(
+		"%s-%d-%s",
+		taskInfo.GetJobId().GetValue(),
+		taskInfo.GetInstanceId(),
+		uuid.NewUUID().String())
+	taskInfo.GetRuntime().GetTaskId().Value = &newMesosTaskID
+	taskInfo.GetRuntime().State = pb_task.TaskState_INITIALIZED
+}
+
+// retrySchedulingTask retries scheduling task by enqueue task to resmgr.
 func (p *statusUpdate) retrySchedulingTask(ctx context.Context, taskInfo *pb_task.TaskInfo) {
 	jobConfig, err := p.jobStore.GetJobConfig(ctx, taskInfo.GetJobId())
 	if err != nil {

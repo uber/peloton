@@ -8,6 +8,9 @@ import (
 // internal state of the task updater.
 type Metrics struct {
 	RetryFailedTasksTotal tally.Counter
+	RetryLostTasksTotal   tally.Counter
+
+	SkipOrphanTasksTotal tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -17,5 +20,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 	return &Metrics{
 		RetryFailedTasksTotal: subScope.Counter("retry_failed_total"),
+		RetryLostTasksTotal:   subScope.Counter("retry_lost_total"),
+
+		SkipOrphanTasksTotal: subScope.Counter("skip_orphan_task_total"),
 	}
 }
