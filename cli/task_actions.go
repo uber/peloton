@@ -7,15 +7,16 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
 const (
-	taskListFormatHeader = "Instance\tJob\tCPU Limit\tMem Limit\tDisk Limit\tState\tGoalState\tStarted At" +
-		"\tTask ID\tHost\tMessage\tReason\t\n"
-	taskListFormatBody = "%d\t%s\t%.1f\t%.0f MB\t%.0f MB\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+	taskListFormatHeader = "Instance\tName\tState\tStart Time\tRun Time\t" +
+		"Host\tMessage\tReason\t\n"
+	taskListFormatBody = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // SortedTaskInfoList makes TaskInfo implement sortable interface
@@ -26,10 +27,10 @@ func (a SortedTaskInfoList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a SortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].InstanceId }
 
 // TaskGetAction is the action to get a task instance
-func (client *Client) TaskGetAction(jobName string, instanceID uint32) error {
+func (client *Client) TaskGetAction(jobID string, instanceID uint32) error {
 	var request = &task.GetRequest{
 		JobId: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 		InstanceId: instanceID,
 	}
@@ -42,10 +43,10 @@ func (client *Client) TaskGetAction(jobName string, instanceID uint32) error {
 }
 
 // TaskLogsGetAction is the action to get logs files for given job instance.
-func (client *Client) TaskLogsGetAction(fileName string, jobName string, instanceID uint32) error {
+func (client *Client) TaskLogsGetAction(fileName string, jobID string, instanceID uint32) error {
 	var request = &task.BrowseSandboxRequest{
 		JobId: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 		InstanceId: instanceID,
 	}
@@ -95,10 +96,10 @@ func (client *Client) TaskLogsGetAction(fileName string, jobName string, instanc
 }
 
 // TaskListAction is the action to list tasks
-func (client *Client) TaskListAction(jobName string, instanceRange *task.InstanceRange) error {
+func (client *Client) TaskListAction(jobID string, instanceRange *task.InstanceRange) error {
 	var request = &task.ListRequest{
 		JobId: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 		Range: instanceRange,
 	}
@@ -112,10 +113,10 @@ func (client *Client) TaskListAction(jobName string, instanceRange *task.Instanc
 }
 
 // TaskStartAction is the action to start a task
-func (client *Client) TaskStartAction(jobName string, instanceRanges []*task.InstanceRange) error {
+func (client *Client) TaskStartAction(jobID string, instanceRanges []*task.InstanceRange) error {
 	var request = &task.StartRequest{
 		JobId: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 		Ranges: instanceRanges,
 	}
@@ -128,10 +129,10 @@ func (client *Client) TaskStartAction(jobName string, instanceRanges []*task.Ins
 }
 
 // TaskStopAction is the action to stop a task
-func (client *Client) TaskStopAction(jobName string, instanceRanges []*task.InstanceRange) error {
+func (client *Client) TaskStopAction(jobID string, instanceRanges []*task.InstanceRange) error {
 	var request = &task.StopRequest{
 		JobId: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 		Ranges: instanceRanges,
 	}
@@ -144,10 +145,10 @@ func (client *Client) TaskStopAction(jobName string, instanceRanges []*task.Inst
 }
 
 // TaskRestartAction is the action to restart a task
-func (client *Client) TaskRestartAction(jobName string, instanceRanges []*task.InstanceRange) error {
+func (client *Client) TaskRestartAction(jobID string, instanceRanges []*task.InstanceRange) error {
 	var request = &task.RestartRequest{
 		JobId: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 		Ranges: instanceRanges,
 	}
@@ -157,6 +158,47 @@ func (client *Client) TaskRestartAction(jobName string, instanceRanges []*task.I
 	}
 	printTaskRestartResponse(response, client.Debug)
 	return nil
+}
+
+// printTask print the single row output of the task
+func printTask(t *task.TaskInfo) {
+	cfg := t.GetConfig()
+	runtime := t.GetRuntime()
+
+	// Calcuate the start time and run time of the task
+	startTimeStr := ""
+	durationStr := ""
+	startTime, err := time.Parse(time.RFC3339Nano, runtime.GetStartTime())
+	if err == nil {
+		startTimeStr = startTime.Format(time.RFC3339)
+		completionTime, err := time.Parse(time.RFC3339Nano, runtime.GetCompletionTime())
+		var duration time.Duration
+		if err == nil {
+			duration = completionTime.Sub(startTime)
+		} else {
+			duration = time.Now().Sub(startTime)
+		}
+		durationStr = fmt.Sprintf(
+			"%02d:%02d:%02d",
+			uint(duration.Hours()),
+			uint(duration.Minutes())%60,
+			uint(duration.Seconds())%60,
+		)
+	}
+
+	// Print the task record
+	fmt.Fprintf(
+		tabWriter,
+		taskListFormatBody,
+		t.GetInstanceId(),
+		cfg.GetName(),
+		runtime.GetState().String(),
+		startTimeStr,
+		durationStr,
+		runtime.GetHost(),
+		runtime.GetMessage(),
+		runtime.GetReason(),
+	)
 }
 
 func printTaskGetResponse(r *task.GetResponse, debug bool) {
@@ -172,24 +214,8 @@ func printTaskGetResponse(r *task.GetResponse, debug bool) {
 					"instances (0...%d)\n",
 				r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
 		} else if r.GetResult() != nil {
-			cfg := r.Result.Config
-			rt := r.Result.Runtime
 			fmt.Fprintf(tabWriter, taskListFormatHeader)
-			fmt.Fprintf(
-				tabWriter,
-				taskListFormatBody,
-				r.Result.InstanceId,
-				cfg.Name,
-				cfg.Resource.CpuLimit,
-				cfg.Resource.MemLimitMb,
-				cfg.Resource.DiskLimitMb,
-				rt.State.String(),
-				rt.GoalState.String(),
-				rt.StartedAt,
-				rt.GetTaskId().GetValue(),
-				rt.Host,
-				rt.Message,
-				rt.Reason)
+			printTask(r.GetResult())
 		} else {
 			fmt.Fprintf(tabWriter, "Unexpected error, no results in response.\n")
 		}
@@ -208,32 +234,16 @@ func printTaskListResponse(r *task.ListResponse, debug bool) {
 			fmt.Fprintf(tabWriter, taskListFormatHeader)
 
 			// we want to show tasks in sorted order
-			tasks := make(SortedTaskInfoList, len(r.Result.Value))
+			tasks := make(SortedTaskInfoList, len(r.GetResult().GetValue()))
 			i := 0
-			for _, k := range r.Result.Value {
+			for _, k := range r.GetResult().GetValue() {
 				tasks[i] = k
 				i++
 			}
 			sort.Sort(tasks)
 
 			for _, t := range tasks {
-				cfg := t.Config
-				rt := t.Runtime
-				fmt.Fprintf(
-					tabWriter,
-					taskListFormatBody,
-					t.InstanceId,
-					cfg.Name,
-					cfg.Resource.CpuLimit,
-					cfg.Resource.MemLimitMb,
-					cfg.Resource.DiskLimitMb,
-					rt.State.String(),
-					rt.GoalState.String(),
-					rt.StartedAt,
-					rt.GetTaskId().GetValue(),
-					rt.Host,
-					rt.Message,
-					rt.Reason)
+				printTask(t)
 			}
 		}
 	}

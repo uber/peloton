@@ -67,9 +67,9 @@ func (suite *TaskHandlerTestSuite) createTestTaskInfo(
 	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId:    &mesos.TaskID{Value: &taskID},
-			State:     state,
-			GoalState: task.TaskState_SUCCEEDED,
+			MesosTaskId: &mesos.TaskID{Value: &taskID},
+			State:       state,
+			GoalState:   task.TaskState_SUCCEEDED,
 		},
 		Config:     suite.testJobConfig.GetDefaultConfig(),
 		InstanceId: instanceID,
@@ -90,7 +90,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
-		expectedTaskIds[taskInfo.GetRuntime().GetTaskId()] = true
+		expectedTaskIds[taskInfo.GetRuntime().GetMesosTaskId()] = true
 	}
 
 	gomock.InOrder(
@@ -140,7 +140,9 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
 
-	expectedTaskIds := []*mesos.TaskID{suite.taskInfos[1].GetRuntime().GetTaskId()}
+	expectedTaskIds := []*mesos.TaskID{
+		suite.taskInfos[1].GetRuntime().GetMesosTaskId(),
+	}
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
@@ -192,7 +194,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	failedTaskInfo := make(map[uint32]*task.TaskInfo)
 	failedTaskInfo[2] = suite.createTestTaskInfo(task.TaskState_FAILED, uint32(2))
 
-	expectedTaskIds := []*mesos.TaskID{singleTaskInfo[1].GetRuntime().GetTaskId()}
+	expectedTaskIds := []*mesos.TaskID{singleTaskInfo[1].GetRuntime().GetMesosTaskId()}
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().

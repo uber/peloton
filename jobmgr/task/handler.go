@@ -223,7 +223,7 @@ func (m *serviceHandler) Stop(
 	var stoppedInstanceIds []uint32
 	// Persist KILLED goalstate for tasks in db.
 	for instID, taskInfo := range taskInfos {
-		taskID := taskInfo.GetRuntime().GetTaskId()
+		taskID := taskInfo.GetRuntime().GetMesosTaskId()
 		// Skip update task goalstate if it is already KILLED.
 		if taskInfo.GetRuntime().GoalState != task.TaskState_KILLED {
 			taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
@@ -371,7 +371,7 @@ func (m *serviceHandler) BrowseSandbox(
 		taskInfo = t
 	}
 	hostname := taskInfo.GetRuntime().GetHost()
-	taskID := taskInfo.GetRuntime().GetTaskId().GetValue()
+	taskID := taskInfo.GetRuntime().GetMesosTaskId().GetValue()
 	if len(hostname) == 0 {
 		m.metrics.TaskListLogsFail.Inc(1)
 		return &task.BrowseSandboxResponse{

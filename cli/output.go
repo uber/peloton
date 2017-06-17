@@ -8,7 +8,9 @@ import (
 )
 
 var (
-	tabWriter = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight|tabwriter.Debug)
+	tabWriter = tabwriter.NewWriter(
+		os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight|tabwriter.Debug,
+	)
 )
 
 func printResponseJSON(response interface{}) {

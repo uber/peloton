@@ -256,8 +256,8 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 		}
 		tasks[i] = &task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				TaskId: &mesos.TaskID{Value: &taskID},
-				State:  taskState,
+				MesosTaskId: &mesos.TaskID{Value: &taskID},
+				State:       taskState,
 			},
 			Config:     &taskConf,
 			InstanceId: i,
@@ -276,8 +276,8 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 	}
 	tasks[i+1] = &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId: &mesos.TaskID{Value: &taskID},
-			State:  task.TaskState_SUCCEEDED,
+			MesosTaskId: &mesos.TaskID{Value: &taskID},
+			State:       task.TaskState_SUCCEEDED,
 		},
 		Config:     &taskConf,
 		InstanceId: i,

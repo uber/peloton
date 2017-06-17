@@ -62,10 +62,10 @@ func (client *Client) JobCreateAction(jobID string, respoolPath string, cfg stri
 }
 
 // JobDeleteAction is the action for deleting a job
-func (client *Client) JobDeleteAction(jobName string) error {
+func (client *Client) JobDeleteAction(jobID string) error {
 	var request = &job.DeleteRequest{
 		Id: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 	}
 	response, err := client.jobClient.Delete(client.ctx, request)
@@ -77,10 +77,10 @@ func (client *Client) JobDeleteAction(jobName string) error {
 }
 
 // JobGetAction is the action for getting a job
-func (client *Client) JobGetAction(jobName string) error {
+func (client *Client) JobGetAction(jobID string) error {
 	var request = &job.GetRequest{
 		Id: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 	}
 	response, err := client.jobClient.Get(client.ctx, request)
@@ -138,7 +138,7 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 }
 
 // JobUpdateAction is the action of updating a job
-func (client *Client) JobUpdateAction(jobName string, cfg string) error {
+func (client *Client) JobUpdateAction(jobID string, cfg string) error {
 	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
@@ -150,7 +150,7 @@ func (client *Client) JobUpdateAction(jobName string, cfg string) error {
 
 	var request = &job.UpdateRequest{
 		Id: &peloton.JobID{
-			Value: jobName,
+			Value: jobID,
 		},
 		Config: &jobConfig,
 	}

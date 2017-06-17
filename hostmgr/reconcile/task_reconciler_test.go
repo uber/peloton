@@ -109,9 +109,9 @@ func (suite *TaskReconcilerTestSuite) createTestTaskInfo(
 	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId:    &mesos.TaskID{Value: &taskID},
-			State:     state,
-			GoalState: task.TaskState_SUCCEEDED,
+			MesosTaskId: &mesos.TaskID{Value: &taskID},
+			State:       state,
+			GoalState:   task.TaskState_SUCCEEDED,
 		},
 		Config:     suite.testJobConfig.GetDefaultConfig(),
 		InstanceId: instanceID,

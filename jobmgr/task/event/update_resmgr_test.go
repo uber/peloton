@@ -81,16 +81,16 @@ func (suite *TaskUpdaterRMTestSuite) TestProcessStatusUpdate() {
 
 	taskInfo := &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId:    &mesos.TaskID{Value: &mesosTaskID},
-			State:     task.TaskState_INITIALIZED,
-			GoalState: task.TaskState_SUCCEEDED,
+			MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
+			State:       task.TaskState_INITIALIZED,
+			GoalState:   task.TaskState_SUCCEEDED,
 		},
 	}
 	updateTaskInfo := &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId:    &mesos.TaskID{Value: &mesosTaskID},
-			State:     task.TaskState_RUNNING,
-			GoalState: task.TaskState_SUCCEEDED,
+			MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
+			State:       task.TaskState_RUNNING,
+			GoalState:   task.TaskState_SUCCEEDED,
 		},
 	}
 

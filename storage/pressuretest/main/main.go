@@ -194,9 +194,9 @@ func createTask(taskStore storage.TaskStore, jobIDVal string, instance uint32, r
 	tid := fmt.Sprintf("%s-%s", jobID, uuid.NewUUID().String())
 	var taskInfo = &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId: &mesos.TaskID{Value: &tid},
-			State:  task.TaskState_INITIALIZED,
-			Host:   fmt.Sprintf("host-%v", instance),
+			MesosTaskId: &mesos.TaskID{Value: &tid},
+			State:       task.TaskState_INITIALIZED,
+			Host:        fmt.Sprintf("host-%v", instance),
 		},
 		Config:     jobConfig.GetDefaultConfig(),
 		InstanceId: instance,

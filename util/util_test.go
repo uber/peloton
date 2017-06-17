@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
 	"github.com/pborman/uuid"
@@ -35,53 +32,6 @@ func TestGetOfferScalarResourceSummary(t *testing.T) {
 	assert.Equal(t, result["*"]["disk"], 2000.0)
 	assert.Equal(t, result["*"]["cpu"], 44.5)
 	assert.Equal(t, result["aurora"]["disk"], 1000.0)
-}
-
-func TestCanTakeTask(t *testing.T) {
-	var offer = &mesos_v1.Offer{
-		Resources: []*mesos_v1.Resource{
-			NewMesosResourceBuilder().WithName("cpus").WithRole("*").WithValue(3.5).Build(),
-			NewMesosResourceBuilder().WithName("mem").WithRole("peloton").WithValue(300.0).Build(),
-			NewMesosResourceBuilder().WithName("mem").WithRole("*").WithValue(800.0).Build(),
-			NewMesosResourceBuilder().WithName("mem").WithRole("*").WithValue(400.0).Build(),
-			NewMesosResourceBuilder().WithName("cpus").WithValue(44.5).Build(),
-			NewMesosResourceBuilder().WithName("disk").WithRole("*").WithValue(2000.0).Build(),
-			NewMesosResourceBuilder().WithName("disk").WithRole("aurora").WithValue(1000.0).Build(),
-		},
-	}
-	var jobID = peloton.JobID{Value: "TestJob_0"}
-	var taskConfig = task.TaskConfig{
-		Resource: &task.ResourceConfig{
-			CpuLimit:    25,
-			MemLimitMb:  700,
-			DiskLimitMb: 200,
-			FdLimit:     100,
-		},
-	}
-	taskID := fmt.Sprintf("%s-%d-%s", jobID, 20, uuid.NewUUID().String())
-	var taskInfo = task.TaskInfo{
-		Config:     &taskConfig,
-		InstanceId: 20,
-		JobId:      &jobID,
-		Runtime: &task.RuntimeInfo{
-			TaskId: &mesos_v1.TaskID{
-				Value: &taskID,
-			},
-		},
-	}
-	offerSummary := GetOfferScalarResourceSummary(offer)
-	ok := CanTakeTask(&offerSummary, &taskInfo)
-	assert.True(t, ok)
-
-	assert.Equal(t, len(offerSummary), 3)
-	assert.Equal(t, offerSummary["peloton"]["mem"], 300.0)
-	assert.Equal(t, offerSummary["*"]["mem"], 500.0)
-	assert.Equal(t, offerSummary["*"]["disk"], 1800.0)
-	assert.Equal(t, offerSummary["*"]["cpus"], 23.0)
-	assert.Equal(t, offerSummary["aurora"]["disk"], 1000.0)
-
-	ok = CanTakeTask(&offerSummary, &taskInfo)
-	assert.False(t, ok)
 }
 
 func TestParseTaskID(t *testing.T) {

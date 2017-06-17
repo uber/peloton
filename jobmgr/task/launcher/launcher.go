@@ -268,7 +268,7 @@ func (l *launcher) createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.Laun
 	var launchableTasks []*hostsvc.LaunchableTask
 	for _, task := range tasks {
 		launchableTask := hostsvc.LaunchableTask{
-			TaskId: task.GetRuntime().GetTaskId(),
+			TaskId: task.GetRuntime().GetMesosTaskId(),
 			Config: task.GetConfig(),
 			Ports:  task.GetRuntime().GetPorts(),
 		}

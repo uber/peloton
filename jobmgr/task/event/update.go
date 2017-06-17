@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
@@ -22,6 +23,9 @@ import (
 	"code.uber.internal/infra/peloton/util"
 	"github.com/pkg/errors"
 )
+
+// Declare a Now function so that we can mock it in unit tests.
+var now = time.Now
 
 // StatusUpdate is the interface for task status updates
 type StatusUpdate interface {
@@ -180,7 +184,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return err
 	}
 
-	dbTaskID := taskInfo.GetRuntime().GetTaskId().GetValue()
+	runtime := taskInfo.GetRuntime()
+	dbTaskID := runtime.GetMesosTaskId().GetValue()
 	if isMesosStatus && dbTaskID != mesosTaskID {
 		p.metrics.SkipOrphanTasksTotal.Inc(1)
 		log.WithFields(log.Fields{
@@ -193,12 +198,15 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	needRetrySchedulingTask := false
-	if state == pb_task.TaskState_FAILED && (taskInfo.GetRuntime().GetFailuresCount() <
-		taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()) {
+	maxFailures := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
+	if state == pb_task.TaskState_FAILED &&
+		runtime.GetFailureCount() < maxFailures {
+
 		p.metrics.RetryFailedTasksTotal.Inc(1)
 		statusMsg = "Rescheduled due to task failure status: " + statusMsg
 		p.regenerateMesosTaskID(taskInfo)
-		taskInfo.GetRuntime().FailuresCount++
+		runtime.FailureCount++
+
 		// TODO: check for failing reason and do backoff before
 		// rescheduling.
 		needRetrySchedulingTask = true
@@ -211,13 +219,23 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		// TODO: figure out on what cases state updates should not be persisted
 		// TODO: depends on the state, may need to put the task back to
 		// the queue, or clear the pending task record from taskqueue
-		taskInfo.GetRuntime().State = state
+		runtime.State = state
 	}
 
-	// persist error message to help end user figure out root cause
+	// Update task start and completion timestamps
+	switch runtime.State {
+	case pb_task.TaskState_RUNNING:
+		runtime.StartTime = now().UTC().Format(time.RFC3339Nano)
+	case pb_task.TaskState_SUCCEEDED,
+		pb_task.TaskState_FAILED,
+		pb_task.TaskState_KILLED:
+		runtime.CompletionTime = now().UTC().Format(time.RFC3339Nano)
+	}
+
+	// Persist error message to help end user figure out root cause
 	if isUnexpected(state) && isMesosStatus {
-		taskInfo.GetRuntime().Message = statusMsg
-		taskInfo.GetRuntime().Reason = event.MesosTaskStatus.GetReason().String()
+		runtime.Message = statusMsg
+		runtime.Reason = event.MesosTaskStatus.GetReason().String()
 		// TODO: Add metrics for unexpected task updates
 		log.WithFields(log.Fields{
 			"task_id": taskID,
@@ -250,7 +268,7 @@ func (p *statusUpdate) regenerateMesosTaskID(taskInfo *pb_task.TaskInfo) {
 		taskInfo.GetJobId().GetValue(),
 		taskInfo.GetInstanceId(),
 		uuid.NewUUID().String())
-	taskInfo.GetRuntime().GetTaskId().Value = &newMesosTaskID
+	taskInfo.GetRuntime().GetMesosTaskId().Value = &newMesosTaskID
 	taskInfo.GetRuntime().State = pb_task.TaskState_INITIALIZED
 }
 

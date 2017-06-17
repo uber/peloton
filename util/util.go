@@ -2,7 +2,6 @@ package util
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -69,13 +68,6 @@ func GetOfferScalarResourceSummary(offer *mesos.Offer) map[string]map[string]flo
 	return result
 }
 
-// ConvertToMesosTaskInfo converts a task.TaskInfo into mesos TaskInfo
-func ConvertToMesosTaskInfo(taskInfo *task.TaskInfo) (*mesos.TaskInfo, error) {
-	taskConfig := taskInfo.GetConfig()
-	taskID := taskInfo.GetRuntime().GetTaskId()
-	return GetMesosTaskInfo(taskID, taskConfig)
-}
-
 // CreateMesosScalarResources is a helper function to convert resource values into Mesos resources.
 func CreateMesosScalarResources(values map[string]float64, role string) []*mesos.Resource {
 	var rs []*mesos.Resource
@@ -89,89 +81,6 @@ func CreateMesosScalarResources(values map[string]float64, role string) []*mesos
 	}
 
 	return rs
-}
-
-// GetMesosTaskInfo converts TaskID and TaskConfig into mesos TaskInfo.
-func GetMesosTaskInfo(
-	taskID *mesos.TaskID,
-	taskConfig *task.TaskConfig) (*mesos.TaskInfo, error) {
-	if taskConfig == nil {
-		return nil, errors.New("TaskConfig cannot be nil")
-	}
-
-	if taskID == nil {
-		return nil, errors.New("taskID cannot be nil")
-	}
-
-	taskResources := taskConfig.Resource
-
-	if taskResources == nil {
-		return nil, errors.New("TaskConfig.Resource cannot be nil")
-	}
-
-	rs := CreateMesosScalarResources(map[string]float64{
-		"cpus": taskResources.CpuLimit,
-		"mem":  taskResources.MemLimitMb,
-		"disk": taskResources.DiskLimitMb,
-		"gpus": taskResources.GpuLimit,
-	}, "*")
-
-	tid, err := ParseTaskIDFromMesosTaskID(taskID.GetValue())
-	if err != nil {
-		return nil, err
-	}
-
-	jobID, _, err := ParseTaskID(tid)
-	if err != nil {
-		return nil, err
-	}
-
-	mesosTask := &mesos.TaskInfo{
-		Name:      &jobID,
-		TaskId:    taskID,
-		Resources: rs,
-		Command:   taskConfig.GetCommand(),
-		Container: taskConfig.GetContainer(),
-	}
-	return mesosTask, nil
-}
-
-// CanTakeTask takes an offer and a taskInfo and check if the offer can be used to run the task.
-// If yes, the resources for the task would be substracted from the offer
-func CanTakeTask(offerScalaSummary *map[string]map[string]float64, nextTask *task.TaskInfo) bool {
-	nextMesosTask, err := ConvertToMesosTaskInfo(nextTask)
-	if err != nil {
-		log.Error(err)
-		return false
-	}
-
-	log.Debugf("resources -- %v", nextMesosTask.Resources)
-	log.Debugf("summary -- %v", offerScalaSummary)
-	for _, resource := range nextMesosTask.Resources {
-		// Check if all scalar resource requirements are met
-		// TODO: check range and items
-		if *resource.Type == mesos.Value_SCALAR {
-			role := "*"
-			if resource.Role != nil {
-				role = *resource.Role
-			}
-			if _, ok := (*offerScalaSummary)[role]; ok {
-				if (*offerScalaSummary)[role][*resource.Name] < *resource.Scalar.Value {
-					return false
-				}
-			} else {
-				return false
-			}
-		}
-	}
-	for _, resource := range nextMesosTask.Resources {
-		role := *resource.Role
-		if role == "" {
-			role = "*"
-		}
-		(*offerScalaSummary)[role][*resource.Name] = (*offerScalaSummary)[role][*resource.Name] - *resource.Scalar.Value
-	}
-	return true
 }
 
 // MesosResourceBuilder is the helper to build a mesos resource
@@ -419,7 +328,7 @@ func ConvertTaskToResMgrTask(
 	return &resmgr.Task{
 		Id:           taskID,
 		JobId:        taskInfo.GetJobId(),
-		TaskId:       taskInfo.GetRuntime().GetTaskId(),
+		TaskId:       taskInfo.GetRuntime().GetMesosTaskId(),
 		Name:         taskInfo.GetConfig().GetName(),
 		Preemptible:  jobConfig.GetSla().GetPreemptible(),
 		Priority:     jobConfig.GetSla().GetPriority(),

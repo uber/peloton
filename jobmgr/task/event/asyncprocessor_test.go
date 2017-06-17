@@ -46,7 +46,7 @@ func (m *mockTaskStore) GetTaskForJob(ctx context.Context, id *peloton.JobID, in
 func (m *mockTaskStore) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	mesosTaskID := *(taskInfo.Runtime.TaskId.Value)
+	mesosTaskID := *(taskInfo.Runtime.MesosTaskId.Value)
 	_, ok := m.updates[mesosTaskID]
 	if !ok {
 		m.updates[mesosTaskID] = []*task.TaskInfo{}
@@ -59,7 +59,7 @@ func (m *mockTaskStore) GetTaskByID(ctx context.Context, taskID string) (*task.T
 	mesosTaskID := taskID + "-" + uuidStr
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId: &mesos.TaskID{
+			MesosTaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 		},

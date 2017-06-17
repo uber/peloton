@@ -60,7 +60,7 @@ func createTestTask(instanceID int) *task.TaskInfo {
 			},
 		},
 		Runtime: &task.RuntimeInfo{
-			TaskId: &mesos.TaskID{
+			MesosTaskId: &mesos.TaskID{
 				Value: &tid,
 			},
 		},
@@ -123,7 +123,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 		}
 		taskIDs[i] = taskID
 		testTasks[i] = tmp
-		taskConfigs[tmp.GetRuntime().GetTaskId().GetValue()] = tmp.Config
+		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
 		taskIds[taskID.Value] = taskID
 	}
 

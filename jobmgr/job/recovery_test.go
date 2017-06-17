@@ -344,8 +344,8 @@ func createTaskInfo(jobID *peloton.JobID, i uint32, state task.TaskState) *task.
 	var tID = fmt.Sprintf("%s-%d-%s", jobID.Value, i, uuid.NewUUID().String())
 	var taskInfo = task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId: &mesos.TaskID{Value: &tID},
-			State:  state,
+			MesosTaskId: &mesos.TaskID{Value: &tID},
+			State:       state,
 		},
 		Config: &task.TaskConfig{
 			Name: tID,

@@ -286,7 +286,7 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 				reconcileTasks = append(
 					reconcileTasks,
 					&sched.Call_Reconcile_Task{
-						TaskId: taskInfo.GetRuntime().TaskId,
+						TaskId: taskInfo.GetRuntime().GetMesosTaskId(),
 					},
 				)
 			}

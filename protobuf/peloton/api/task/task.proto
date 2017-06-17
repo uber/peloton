@@ -301,28 +301,40 @@ message RuntimeInfo {
   TaskState state = 1;
 
   // The mesos task ID for this instance
-  mesos.v1.TaskID taskId = 2;
+  mesos.v1.TaskID mesosTaskId = 2;
 
-  // The start time of the instance. The instance is stopped when unset
-  mesos.v1.TimeInfo startedAt = 3;
+  // The time when the instance starts to run. Will be unset if the
+  // instance hasn't started running yet. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string startTime = 3;
+
+  // The time when the instance is completed. Will be unset if the
+  // instance hasn't completed yet. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string completionTime = 4;
 
   // The name of the host where the instance is running
-  string host = 4;
+  string host = 5;
 
   // Dynamic ports reserved on the host while this instance is running
-  map<string, uint32> ports = 5;
+  map<string, uint32> ports = 6;
 
-  // Goalstate of the task
-  TaskState goalState = 6;
+  // The desired state of the task which should be eventually reached
+  // by the system.
+  TaskState goalState = 7;
 
-  // The message about task updates
-  string message = 7;
+  // The message that explains the current state of a task such as why
+  // the task is failed. Only track the latest one if the task has been
+  // retried and failed multiple times.
+  string message = 8;
 
-  // The reason for task updates
-  string reason = 8;
+  // The reason that explains the current state of a task. Only track
+  // the latest one if the task has been retried and failed multiple times.
+  // See Mesos TaskStatus.Reason for more details.
+  string reason = 9;
 
-  // number of task failures
-  uint32 failuresCount = 9;
+  // The number of times the task has failed after retries.
+  uint32 failureCount = 10;
 }
 
 

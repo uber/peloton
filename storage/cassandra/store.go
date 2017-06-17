@@ -642,12 +642,13 @@ func (s *Store) logTaskStateChange(ctx context.Context, taskID string, taskInfo 
 func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[string]*task.TaskInfo) error {
 	statements := []api.Statement{}
 	for taskID, taskInfo := range taskIDToTaskInfos {
-		var stateChange = TaskStateChangeRecord{
+		runtime := taskInfo.GetRuntime()
+		stateChange := TaskStateChangeRecord{
 			TaskID:      taskID,
-			TaskState:   taskInfo.Runtime.State.String(),
-			TaskHost:    taskInfo.Runtime.Host,
+			TaskState:   runtime.GetState().String(),
+			TaskHost:    runtime.GetHost(),
 			EventTime:   time.Now(),
-			MesosTaskID: taskInfo.Runtime.TaskId.GetValue(),
+			MesosTaskID: runtime.GetMesosTaskId().GetValue(),
 		}
 		buffer, err := json.Marshal(stateChange)
 		if err != nil {

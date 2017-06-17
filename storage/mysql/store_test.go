@@ -84,8 +84,8 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
-					TaskId: &mesos.TaskID{Value: &tID},
-					State:  task.TaskState(j),
+					MesosTaskId: &mesos.TaskID{Value: &tID},
+					State:       task.TaskState(j),
 				},
 				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
@@ -169,8 +169,8 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
-					TaskId: &mesos.TaskID{Value: &tID},
-					State:  task.TaskState(j),
+					MesosTaskId: &mesos.TaskID{Value: &tID},
+					State:       task.TaskState(j),
 				},
 				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),

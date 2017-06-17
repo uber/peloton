@@ -48,8 +48,14 @@ var (
 	_pelotonJobID = &peloton.JobID{
 		Value: _jobID,
 	}
-	_failureMsg = "testFailure"
+	_failureMsg  = "testFailure"
+	_currentTime = "2017-01-02T15:04:05.456789016Z"
 )
+
+var nowMock = func() time.Time {
+	now, _ := time.Parse(time.RFC3339Nano, _currentTime)
+	return now
+}
 
 type TaskUpdaterTestSuite struct {
 	suite.Suite
@@ -106,9 +112,9 @@ func createTestTaskUpdateEvent(state mesos.TaskState) *pb_eventstream.Event {
 func createTestTaskInfo(state task.TaskState) *task.TaskInfo {
 	taskInfo := &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId:    &mesos.TaskID{Value: &_mesosTaskID},
-			State:     state,
-			GoalState: task.TaskState_SUCCEEDED,
+			MesosTaskId: &mesos.TaskID{Value: &_mesosTaskID},
+			State:       state,
+			GoalState:   task.TaskState_SUCCEEDED,
 		},
 		Config: &task.TaskConfig{
 			Name: _jobID,
@@ -129,6 +135,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
 	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
 	updateTaskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	updateTaskInfo.GetRuntime().StartTime = _currentTime
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -138,6 +145,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 			UpdateTask(context.Background(), updateTaskInfo).
 			Return(nil),
 	)
+
+	now = nowMock
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
@@ -181,7 +190,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 				rescheduleMsg,
 			)
 			suite.Equal(
-				updateTask.Runtime.FailuresCount,
+				updateTask.Runtime.FailureCount,
 				uint32(1),
 			)
 		}).
@@ -202,6 +211,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 	updateTaskInfo.GetConfig().GetRestartPolicy().MaxFailures = 0
 	updateTaskInfo.GetRuntime().Reason = _mesosReason.String()
 	updateTaskInfo.GetRuntime().Message = _failureMsg
+	updateTaskInfo.GetRuntime().CompletionTime = _currentTime
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -211,6 +221,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 			UpdateTask(context.Background(), updateTaskInfo).
 			Return(nil),
 	)
+
+	now = nowMock
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
@@ -251,7 +263,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
 				rescheduleMsg,
 			)
 			suite.Equal(
-				updateTask.Runtime.FailuresCount,
+				updateTask.Runtime.FailureCount,
 				uint32(1),
 			)
 		}).
@@ -310,7 +322,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
 	// generates new mesos task id that is different with the one in the
 	// task status update.
 	dbMesosTaskID := fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, uuid.NewUUID().String())
-	taskInfo.GetRuntime().TaskId = &mesos.TaskID{Value: &dbMesosTaskID}
+	taskInfo.GetRuntime().MesosTaskId = &mesos.TaskID{Value: &dbMesosTaskID}
 
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).

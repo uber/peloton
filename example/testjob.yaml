@@ -30,20 +30,20 @@ defaultconfig:
   container: null
   command:
     shell: true
-    value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID:  $PELOTON_TASK_ID"'
+    value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID: $PELOTON_TASK_ID" && sleep 10'
 instanceconfig:
   0:
     name: instance0
     command:
       shell: true
-      value: 'echo Hello instance 0'
+      value: 'echo Hello instance 0 && sleep 5'
   1:
     name: instance1
     command:
       shell: true
-      value: 'echo Hello instance 1'
+      value: 'echo Hello instance 0 && sleep 15'
   2:
     name: instance2
     command:
       shell: true
-      value: 'echo Hello instance 2'
+      value: 'echo Hello instance 0 && sleep 20'

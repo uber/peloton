@@ -448,8 +448,8 @@ func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
-					TaskId: &mesos.TaskID{Value: &tID},
-					State:  task.TaskState(j),
+					MesosTaskId: &mesos.TaskID{Value: &tID},
+					State:       task.TaskState(j),
 				},
 				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
@@ -775,7 +775,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 	suite.Equal(to-from, len(taskInRange))
 	for i := from; i < to; i++ {
 		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
-		suite.Equal(tID, *(taskInRange[uint32(i)].Runtime.TaskId.Value))
+		suite.Equal(tID, *(taskInRange[uint32(i)].Runtime.MesosTaskId.Value))
 	}
 
 	var tasks []*task.TaskInfo
@@ -790,7 +790,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 
 	for i := from; i < to; i++ {
 		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
-		suite.Equal(tID, *(tasks[uint32(i-from)].Runtime.TaskId.Value))
+		suite.Equal(tID, *(tasks[uint32(i-from)].Runtime.MesosTaskId.Value))
 	}
 }
 
@@ -1075,7 +1075,7 @@ func createTaskInfo(
 	var tID = fmt.Sprintf("%s-%d", jobID.Value, i)
 	var taskInfo = task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			TaskId: &mesos.TaskID{Value: &tID},
+			MesosTaskId: &mesos.TaskID{Value: &tID},
 		},
 		Config:     jobConfig.GetDefaultConfig(),
 		InstanceId: uint32(i),

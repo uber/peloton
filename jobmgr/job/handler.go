@@ -337,7 +337,7 @@ func getTaskInfo(mesosTaskID string, taskConfig *task.TaskConfig, instanceID uin
 			// New task is by default treated as batch task and get SUCCEEDED goalstate.
 			// TODO(mu): Long running tasks need RUNNING as default goalstate.
 			GoalState: task.TaskState_SUCCEEDED,
-			TaskId: &mesos.TaskID{
+			MesosTaskId: &mesos.TaskID{
 				Value: &mesosTaskID,
 			},
 		},
