@@ -1,5 +1,5 @@
-hash: 388ed1a9c11839a578da3fb1372304ae2e99e3d67fa5761749e83aaed32b6ec0
-updated: 2017-05-31T11:52:31.573598858+02:00
+hash: 4bc74570a84920f2a5a14f52868700c9d98f19393d91d33ee56ec18debc040f0
+updated: 2017-06-17T22:20:41.877996192+02:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -142,6 +142,10 @@ imports:
   version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
 - name: github.com/uber-go/atomic
   version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
+- name: github.com/uber-go/mapdecode
+  version: 2d8ecd5e64c88634bd7dfcbc9fd2a9e813830e8d
+  subpackages:
+  - internal/mapstructure
 - name: github.com/uber-go/tally
   version: e9b601813b0be4771b1b3995390567b67ab2b3fc
   subpackages:
@@ -153,24 +157,25 @@ imports:
   - prometheus
   - statsd
 - name: github.com/uber/tchannel-go
-  version: 0b7f160817553b0bacb5b108dd84a5022dbdd1c4
+  version: b99c1d7cecb0fdc882bed0098e7cae6ec7459059
   subpackages:
   - internal/argreader
   - relay
   - tnet
+  - tos
   - trand
   - typed
 - name: go.uber.org/atomic
   version: 4e336646b2ef9fc6e47be8e21594178f98e5ebcf
 - name: go.uber.org/multierr
-  version: a3d1fc1f1316d4132fc61f4ea1159ae0613fb474
+  version: ef109dc7f883f3a99db2d89edc701c25cac40571
 - name: go.uber.org/thriftrw
   version: dde90c2a40f45fb2b6361d13c1b4bf09465401c0
   subpackages:
   - internal/semver
   - version
 - name: go.uber.org/yarpc
-  version: 6b9245d126758870690c44f27f695cc7e811f913
+  version: 25be6398200bcad9f7194ae09ba79d9f20289412
   subpackages:
   - api/encoding
   - api/middleware
@@ -180,7 +185,9 @@ imports:
   - internal
   - internal/clientconfig
   - internal/errors
+  - internal/humanize
   - internal/inboundmiddleware
+  - internal/interpolate
   - internal/introspection
   - internal/iopool
   - internal/net
@@ -193,8 +200,9 @@ imports:
   - peer
   - peer/hostport
   - transport/http
+  - x/config
 - name: go.uber.org/zap
-  version: fab453050a7a08c35f31fc5fff6f2dbd962285ab
+  version: 9cabc84638b70e564c3dab2766efcb1ded2aac9f
   subpackages:
   - buffer
   - internal/bufferpool
@@ -203,10 +211,16 @@ imports:
   - internal/multierror
   - zapcore
 - name: golang.org/x/net
-  version: 45e771701b814666a7eb299e6c7a57d0b1799e91
+  version: 59a0b19b5533c7977ddeb86b017bf507ed407b12
+  repo: https://github.com/golang/net
   subpackages:
+  - bpf
   - context
   - context/ctxhttp
+  - internal/iana
+  - internal/socket
+  - ipv4
+  - ipv6
 - name: golang.org/x/sys
   version: 98b5b1e7e80eb60271c8dc4eba6521ec2c3e811e
   repo: https://github.com/golang/sys
