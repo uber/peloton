@@ -65,10 +65,7 @@ JOB_TEMPLATE = Service(
         Parameter(name='env', value='M3_ENV={{profile.m3_env}}'),
       ]
     )
-  ),
-  constraints = {
-     '{{profile.pinned_attribute}}': '{{profile.pinned_hosts}}'
-  }
+  )
 )
 
 #

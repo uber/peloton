@@ -3,7 +3,7 @@ include('../../template/peloton-template.aurora')
 cluster = 'sjc1-devel01'
 election_zk_servers = 'zookeeper-mesos-devel01-sjc1.uber.internal:2181'
 mesos_zk_path = 'zk://%s/mesos' % election_zk_servers
-docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.1.0-250-ge82abd4'
+docker_image = 'docker-registry01-sjc1:5055/uber-usi/infra/peloton:0.2.2'
 
 cassandra_hosts = '\n'.join([
                   'compute74-sjc1',
