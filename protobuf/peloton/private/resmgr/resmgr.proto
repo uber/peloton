@@ -18,7 +18,8 @@ import "peloton/api/task/task.proto";
  */
 enum TaskType {
 
-  // This is unknown type
+  // This is unknown type, this is also used in DequeueGangsRequest to
+  // indicate that we want tasks of any task type back.
   UNKNOWN = 0;
 
   // Normal batch task

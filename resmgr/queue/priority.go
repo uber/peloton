@@ -12,18 +12,12 @@ import (
 type PriorityQueue struct {
 	sync.RWMutex
 	list *MultiLevelList
-	// limt is the limit of the priority queue
-	limit int64
-	// count is the running count of the items
-	count int64
 }
 
 // NewPriorityQueue intializes the fifo queue and returns the pointer
 func NewPriorityQueue(limit int64) *PriorityQueue {
 	fq := PriorityQueue{
-		list:  NewMultiLevelList(),
-		limit: limit,
-		count: 0,
+		list: NewMultiLevelList("list", limit),
 	}
 	return &fq
 }
@@ -33,18 +27,13 @@ func (f *PriorityQueue) Enqueue(gang *resmgrsvc.Gang) error {
 	f.Lock()
 	defer f.Unlock()
 
-	if f.count >= f.limit {
-		return errors.New("queue Limit is reached")
-	}
 	if (gang == nil) || (len(gang.Tasks) == 0) {
 		return errors.New("enqueue of empty list")
 	}
 
 	tasks := gang.GetTasks()
 	priority := tasks[0].Priority
-	f.list.Push(int(priority), gang)
-	f.count++
-	return nil
+	return f.list.Push(int(priority), gang)
 }
 
 // Dequeue dequeues the gang (task list gang) based on the priority and order
@@ -74,7 +63,6 @@ func (f *PriorityQueue) Dequeue() (*resmgrsvc.Gang, error) {
 	}
 
 	res := item.(*resmgrsvc.Gang)
-	f.count--
 	return res, nil
 }
 

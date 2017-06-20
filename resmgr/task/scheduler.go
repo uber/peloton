@@ -1,17 +1,19 @@
 package task
 
 import (
-	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"math/rand"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/resmgr/queue"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
@@ -34,7 +36,7 @@ type Scheduler interface {
 	// Enqueues gang (task list) into resource pool ready queue
 	EnqueueGang(gang *resmgrsvc.Gang) error
 	// Dequeues gang (task list) from the resource pool ready queue
-	DequeueGang(maxWaitTime time.Duration) (*resmgrsvc.Gang, error)
+	DequeueGang(maxWaitTime time.Duration, taskType resmgr.TaskType) (*resmgrsvc.Gang, error)
 }
 
 // scheduler implements the TaskScheduler interface
@@ -44,9 +46,10 @@ type scheduler struct {
 	resPoolTree      respool.Tree
 	schedulingPeriod time.Duration
 	stopChan         chan struct{}
-	readyQueue       queue.Queue
+	readyQueue       *queue.MultiLevelList
 	rmTaskTracker    Tracker
 	metrics          *Metrics
+	random           *rand.Rand
 }
 
 var sched *scheduler
@@ -62,21 +65,16 @@ func InitScheduler(
 		log.Warning("Task scheduler has already been initialized")
 		return
 	}
-	var gang resmgrsvc.Gang
-
 	sched = &scheduler{
 		resPoolTree:      respool.GetTree(),
 		runningState:     runningStateNotStarted,
 		schedulingPeriod: taskSchedulingPeriod,
 		stopChan:         make(chan struct{}, 1),
 		// TODO: initialize ready queue elsewhere
-		readyQueue: queue.NewQueue(
-			"ready-queue",
-			reflect.TypeOf(gang),
-			maxReadyQueueSize,
-		),
+		readyQueue:    queue.NewMultiLevelList("ready-queue", maxReadyQueueSize),
 		rmTaskTracker: rmTaskTracker,
 		metrics:       NewMetrics(parent.SubScope("task_scheduler")),
+		random:        rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -196,18 +194,27 @@ func (s *scheduler) EnqueueGang(gang *resmgrsvc.Gang) error {
 	if (gang == nil) || (len(gang.Tasks) == 0) {
 		return errEnqueueEmptySchedUnit
 	}
-	err := s.readyQueue.Enqueue(gang)
+	level := gang.Tasks[0].Type
+	err := s.readyQueue.Push(int(level), gang)
 	if err != nil {
 		log.WithError(err).Error("error in EnqueueGang")
 	}
-	s.metrics.ReadyQueueLen.Update(float64(s.readyQueue.Length()))
+	s.metrics.ReadyQueueLen.Update(float64(s.readyQueue.Size()))
 	return err
 }
 
 // DequeueGang dequeues a gang, which is a task list of 1 or more (same priority)
-// tasks, from the ready queue.
-func (s *scheduler) DequeueGang(maxWaitTime time.Duration) (*resmgrsvc.Gang, error) {
-	item, err := s.readyQueue.Dequeue(maxWaitTime)
+// tasks of type task type, from the ready queue. If task type is UNKNOWN then
+// gangs with tasks of any task type will be returned.
+func (s *scheduler) DequeueGang(maxWaitTime time.Duration, taskType resmgr.TaskType) (*resmgrsvc.Gang, error) {
+	level := int(taskType)
+	if taskType == resmgr.TaskType_UNKNOWN {
+		levels := s.readyQueue.Levels()
+		if len(levels) > 0 {
+			level = levels[s.random.Intn(len(levels))]
+		}
+	}
+	item, err := s.readyQueue.Pop(level)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +222,6 @@ func (s *scheduler) DequeueGang(maxWaitTime time.Duration) (*resmgrsvc.Gang, err
 		return nil, errReadyQueueDequeueFailed
 	}
 	res := item.(*resmgrsvc.Gang)
-	s.metrics.ReadyQueueLen.Update(float64(s.readyQueue.Length()))
+	s.metrics.ReadyQueueLen.Update(float64(s.readyQueue.Size()))
 	return res, nil
 }

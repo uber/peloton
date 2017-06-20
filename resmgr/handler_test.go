@@ -299,6 +299,10 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 		Limit:   10,
 		Timeout: 2 * 1000, // 2 sec
 	}
+	// There is a race condition in the test due to the Scheduler.scheduleTasks
+	// method is run asynchronously.
+	time.Sleep(2 * time.Second)
+
 	deqResp, err := suite.handler.DequeueGangs(suite.context, deqReq)
 	suite.NoError(err)
 	suite.Nil(deqResp.GetError())

@@ -202,7 +202,7 @@ endif
 LINT_SKIP_ERRORF=grep -v -e "not a string in call to Errorf"
 FILTER_LINT := $(if $(LINT_EXCLUDES), grep -v $(foreach file, $(LINT_EXCLUDES),-e $(file)),cat) | $(LINT_SKIP_ERRORF)
 # Runs all Go code through "go vet", "golint", and ensures files are formatted using "gofmt"
-lint: devtools
+lint: format
 	@echo "Running lint"
 	@# Skip the last line of the vet output if it contains "exit status"
 	@go vet $(ALL_PKGS) 2>&1 | sed '/exit status 1/d' | $(FILTER_LINT) > vet.log || true

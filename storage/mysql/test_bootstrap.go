@@ -2,10 +2,11 @@ package mysql
 
 import (
 	"fmt"
-	"github.com/gemnasium/migrate/migrate"
 	"os"
 	"path"
 	"strings"
+
+	"github.com/gemnasium/migrate/migrate"
 
 	log "github.com/Sirupsen/logrus"
 )

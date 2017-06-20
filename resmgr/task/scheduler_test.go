@@ -3,7 +3,6 @@ package task
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/queue"
+	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
@@ -26,7 +25,7 @@ import (
 type TaskSchedulerTestSuite struct {
 	suite.Suite
 	resTree       respool.Tree
-	readyQueue    queue.Queue
+	readyQueue    *queue.MultiLevelList
 	taskSched     *scheduler
 	mockCtrl      *gomock.Controller
 	rmTaskTracker Tracker
@@ -48,12 +47,7 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 
 	suite.resTree = respool.GetTree()
-	var gang resmgrsvc.Gang
-	suite.readyQueue = queue.NewQueue(
-		"ready-queue",
-		reflect.TypeOf(gang),
-		maxReadyQueueSize,
-	)
+	suite.readyQueue = queue.NewMultiLevelList("ready-queue", maxReadyQueueSize)
 	// Initializing the resmgr state machine
 	InitTaskTracker()
 	suite.rmTaskTracker = GetTracker()
@@ -249,7 +243,7 @@ func (suite *TaskSchedulerTestSuite) validateReadyQueue() {
 		"job1-1",
 	}
 	for i := 0; i < 4; i++ {
-		item, err := suite.readyQueue.Dequeue(1 * time.Millisecond)
+		item, err := suite.readyQueue.Pop(suite.readyQueue.Levels()[0])
 		suite.NoError(err)
 		gang := item.(*resmgrsvc.Gang)
 		task := gang.Tasks[0]

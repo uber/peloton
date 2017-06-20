@@ -8,6 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -18,7 +19,7 @@ type MultiLevelListTestSuite struct {
 }
 
 func (suite *MultiLevelListTestSuite) SetupTest() {
-	suite.mll = NewMultiLevelList()
+	suite.mll = NewMultiLevelList("multi-level-list", -1)
 	suite.mapTasks = make(map[string]*resmgr.Task)
 	suite.AddTasks()
 }
@@ -37,7 +38,8 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 		Id:       taskID1,
 	}
 
-	suite.mll.Push(0, taskItem1)
+	err := suite.mll.Push(0, taskItem1)
+	suite.Nil(err)
 	suite.mapTasks["job1-1"] = taskItem1
 	suite.Equal(suite.mll.GetHighestLevel(), 0, "Highest Level should be 0")
 
@@ -54,7 +56,8 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 		Id:       taskID0,
 	}
 
-	suite.mll.Push(1, taskItem0)
+	err = suite.mll.Push(1, taskItem0)
+	suite.Nil(err)
 	suite.mapTasks["job2-1"] = taskItem0
 	suite.Equal(suite.mll.GetHighestLevel(), 1, "Highest Level should be 1")
 
@@ -70,7 +73,8 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 		JobId:    jobID2,
 		Id:       taskID2,
 	}
-	suite.mll.Push(0, taskItem2)
+	err = suite.mll.Push(0, taskItem2)
+	suite.Nil(err)
 	suite.mapTasks["job1-2"] = taskItem2
 }
 
@@ -88,6 +92,13 @@ func (suite *MultiLevelListTestSuite) TestLength() {
 
 func (suite *MultiLevelListTestSuite) TestSize() {
 	suite.Equal(3, suite.mll.Size(), "Size should be 3")
+}
+
+func (suite *MultiLevelListTestSuite) TestLevels() {
+	levels := suite.mll.Levels()
+	suite.Equal(2, len(levels))
+	suite.Equal(0, levels[0])
+	suite.Equal(1, levels[1])
 }
 
 func (suite *MultiLevelListTestSuite) TestPop() {
@@ -127,6 +138,28 @@ func (suite *MultiLevelListTestSuite) PriorityMapTestSuite() {
 	suite.Equal(suite.mll.IsEmpty(0), true, "Should be empty")
 }
 
+func TestMultiLevelList_Push(t *testing.T) {
+	list := NewMultiLevelList("multi-level-list", 3)
+	err := list.Push(0, 0)
+	assert.NoError(t, err)
+	err = list.Push(0, 1)
+	assert.NoError(t, err)
+	err = list.Push(0, 2)
+	assert.NoError(t, err)
+
+	val, err := list.Pop(0)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, val.(int))
+
+	val, err = list.Pop(0)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, val.(int))
+
+	val, err = list.Pop(0)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, val.(int))
+}
+
 func (suite *MultiLevelListTestSuite) TestPushList() {
 	newList := list.New()
 	jobID := &peloton.JobID{
@@ -153,20 +186,28 @@ func (suite *MultiLevelListTestSuite) TestPushList() {
 		Id:       taskID,
 	}
 	newList.PushBack(taskItem)
-	suite.mll.PushList(2, newList)
-	suite.Equal(suite.mll.GetHighestLevel(), 2,
-		"Highest Level should be 2")
+	err := suite.mll.PushList(2, newList)
+	suite.Nil(err)
+	suite.Equal(2, suite.mll.GetHighestLevel(), "Highest Level should be 2")
 	e, err := suite.mll.Pop(2)
 	suite.NoError(err)
 	retTask := e.(*resmgr.Task)
-	suite.Equal(retTask.Id.Value, "job3-1")
-	suite.Equal(suite.mll.IsEmpty(2), false,
-		"Should Not be empty")
+	suite.Equal("job3-1", retTask.Id.Value)
+	suite.Equal(false, suite.mll.IsEmpty(2), "Should Not be empty")
 	e, err = suite.mll.Pop(2)
 	suite.NoError(err)
 	retTask = e.(*resmgr.Task)
-	suite.Equal(retTask.Id.Value, "job3-2")
-	suite.Equal(suite.mll.IsEmpty(2), true, "Should be empty")
+	suite.Equal("job3-2", retTask.Id.Value)
+	suite.Equal(true, suite.mll.IsEmpty(2), "Should be empty")
+}
+
+func TestMultiLevelList_PushList_at_max_capacity(t *testing.T) {
+	list := NewMultiLevelList("multi-level-list", 1)
+	err := list.Push(0, 1)
+	assert.NoError(t, err)
+	err = list.Push(0, 1)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "list size limit reached")
 }
 
 func (suite *MultiLevelListTestSuite) TestPeek() {

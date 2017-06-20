@@ -193,7 +193,7 @@ func (h *ServiceHandler) DequeueGangs(
 
 	var gangs []*resmgrsvc.Gang
 	for i := uint32(0); i < limit; i++ {
-		gang, err := sched.DequeueGang(timeout * time.Millisecond)
+		gang, err := sched.DequeueGang(timeout*time.Millisecond, req.Type)
 		if err != nil {
 			log.Debug("Timeout to dequeue gang from ready queue")
 			h.metrics.DequeueGangTimeout.Inc(1)
