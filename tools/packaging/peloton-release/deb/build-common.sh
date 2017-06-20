@@ -53,7 +53,7 @@ package() {(
     os="$(lsb_release -si)"
     codename="$(lsb_release -sc)"
     release="$(lsb_release -sr)"
-    pkg="/$OUTPUT_DIR/peloton-$version-${os}-${release}-${codename}.deb"
+    pkg="$OUTPUT_DIR/peloton-$version-${codename}.deb"
     local opts=(
         -s dir
         -n peloton
