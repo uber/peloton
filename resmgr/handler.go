@@ -234,23 +234,20 @@ func (h *ServiceHandler) SetPlacements(
 	var failed []*resmgrsvc.SetPlacementsFailure_FailedPlacement
 	var err error
 	for _, placement := range req.GetPlacements() {
-		err = h.placements.Enqueue(placement)
-		if err != nil {
-			log.WithField("placement", placement).
-				WithError(err).Error("Failed to enqueue placement")
-			failed = append(
-				failed,
-				&resmgrsvc.SetPlacementsFailure_FailedPlacement{
-					Placement: placement,
-					Message:   err.Error(),
-				},
-			)
-			h.metrics.SetPlacementFail.Inc(1)
-		} else {
-			h.metrics.SetPlacementSuccess.Inc(1)
-			// Transitioning tasks from Placing to Placed
-			for _, taskID := range placement.Tasks {
-				if h.rmTracker.GetTask(taskID) != nil {
+		var notValidTasks []*peloton.TaskID
+		// Transitioning tasks from Placing to Placed
+		for _, taskID := range placement.Tasks {
+			if h.rmTracker.GetTask(taskID) != nil {
+				log.WithFields(log.Fields{
+					"Current state": h.rmTracker.
+						GetTask(taskID).
+						GetCurrentState().
+						String(),
+					"Task": taskID.Value,
+				}).Info("Set Placement for task")
+				if h.rmTracker.GetTask(taskID).GetCurrentState() == t.TaskState_PLACED {
+					notValidTasks = append(notValidTasks, taskID)
+				} else {
 					err := h.rmTracker.GetTask(taskID).
 						TransitTo(t.TaskState_PLACED.String())
 					if err != nil {
@@ -261,9 +258,36 @@ func (h *ServiceHandler) SetPlacements(
 								"for task " + taskID.Value)
 					}
 				}
+				log.WithFields(log.Fields{
+					"Task":  taskID.Value,
+					"State": h.rmTracker.GetTask(taskID).GetCurrentState().String(),
+				}).Debug("Latest state in Set Placement")
+			} else {
+				notValidTasks = append(notValidTasks, taskID)
+				log.WithFields(log.Fields{
+					"Task": taskID.Value,
+				}).Debug("Task is not present in tracker, " +
+					"Removing it from placement")
 			}
 		}
+		newplacement := h.removeTasksFromPlacements(placement, notValidTasks)
+		err = h.placements.Enqueue(newplacement)
+		if err != nil {
+			log.WithField("placement", newplacement).
+				WithError(err).Error("Failed to enqueue placement")
+			failed = append(
+				failed,
+				&resmgrsvc.SetPlacementsFailure_FailedPlacement{
+					Placement: newplacement,
+					Message:   err.Error(),
+				},
+			)
+			h.metrics.SetPlacementFail.Inc(1)
+		} else {
+			h.metrics.SetPlacementSuccess.Inc(1)
+		}
 	}
+
 	if len(failed) > 0 {
 		return &resmgrsvc.SetPlacementsResponse{
 			Error: &resmgrsvc.SetPlacementsResponse_Error{
@@ -277,6 +301,34 @@ func (h *ServiceHandler) SetPlacements(
 	h.metrics.PlacementQueueLen.Update(float64(h.placements.Length()))
 	log.Debug("Set Placement Returned")
 	return &response, nil
+}
+
+func (h *ServiceHandler) removeTasksFromPlacements(
+	placement *resmgr.Placement,
+	tasks []*peloton.TaskID,
+) *resmgr.Placement {
+	if tasks == nil || len(tasks) == 0 {
+		return placement
+	}
+	var newTasks []*peloton.TaskID
+	log.WithFields(log.Fields{
+		"Removed Tasks":  tasks,
+		"Original Tasks": placement.GetTasks(),
+	}).Debug("Removing Tasks")
+
+	for _, pt := range placement.GetTasks() {
+		match := false
+		for _, t := range tasks {
+			if pt.Value == t.Value {
+				match = true
+			}
+		}
+		if !match {
+			newTasks = append(newTasks, pt)
+		}
+	}
+	placement.Tasks = newTasks
+	return placement
 }
 
 // GetPlacements implements ResourceManagerService.GetPlacements

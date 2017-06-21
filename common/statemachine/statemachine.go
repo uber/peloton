@@ -28,11 +28,11 @@ type Rule struct {
 // state will automatically move to "to" state after the timeout
 type TimeoutRule struct {
 	// from is the source state
-	from State
+	From State
 	// to is the destination state
-	to State
+	To State
 	// timeout for transition to "to" state
-	timeout time.Duration
+	Timeout time.Duration
 	// callback is transition function which defines 1:1 mapping
 	// of callbacks
 	Callback func(*Transition) error
@@ -234,8 +234,8 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	// Checking if this STATE is timeout state
 	if rule, ok := sm.timeoutRules[to]; ok {
 		log.Info("Starting from state " + to)
-		if rule.timeout != 0 {
-			sm.timer.Start(rule.timeout)
+		if rule.Timeout != 0 {
+			sm.timer.Start(rule.Timeout)
 		}
 	}
 	return nil
@@ -292,7 +292,7 @@ func (sm *statemachine) rollbackState() error {
 
 	rule := sm.timeoutRules[sm.current]
 
-	if time.Now().Sub(sm.lastUpdatedTime) <= rule.timeout {
+	if time.Now().Sub(sm.lastUpdatedTime) <= rule.Timeout {
 		return nil
 	}
 
@@ -301,13 +301,13 @@ func (sm *statemachine) rollbackState() error {
 	if linTransition {
 		return errors.Errorf("transition to  %s not able to "+
 			"transition, previous transition is not "+
-			"finished yet", fmt.Sprint(rule.to))
+			"finished yet", fmt.Sprint(rule.To))
 	}
 	//  Creating Transition to pass to callbacks
 	t := &Transition{
 		StateMachine: sm,
 		From:         sm.current,
-		To:           rule.to,
+		To:           rule.To,
 		Params:       nil,
 	}
 
@@ -315,10 +315,15 @@ func (sm *statemachine) rollbackState() error {
 	// of the transitions
 	sm.inTransition.Swap(true)
 
-	// Doing actual transition
-	sm.current = rule.to
-	sm.lastUpdatedTime = time.Now()
+	log.WithFields(log.Fields{
+		"Task ": t.StateMachine.GetName(),
+		"From":  sm.current,
+		"TO":    rule.To,
+	}).Debug("Transitioning from Timeout")
 
+	// Doing actual transition
+	sm.current = rule.To
+	sm.lastUpdatedTime = time.Now()
 	swapTransition := func() {
 		// Locking it again as we need it for transition
 		sm.Lock()
@@ -335,8 +340,8 @@ func (sm *statemachine) rollbackState() error {
 		err := rule.Callback(t)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"Current State ": rule.from,
-				"To State":       rule.to}).
+				"Current State ": rule.From,
+				"To State":       rule.To}).
 				Error("Error in call back")
 			return err
 		}

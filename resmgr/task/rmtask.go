@@ -1,10 +1,15 @@
 package task
 
 import (
-	log "github.com/Sirupsen/logrus"
+	"time"
 
+	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common/eventstream"
 	state "code.uber.internal/infra/peloton/common/statemachine"
@@ -54,6 +59,10 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 					To: []state.State{
 						state.State(task.TaskState_READY.String()),
 						state.State(task.TaskState_KILLED.String()),
+						// It may happen that placement engine returns
+						// just after resmgr recovery and task is still
+						// in pending
+						state.State(task.TaskState_PLACED.String()),
 					},
 					Callback: nil,
 				}).
@@ -62,6 +71,10 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 					From: state.State(task.TaskState_READY.String()),
 					To: []state.State{
 						state.State(task.TaskState_PLACING.String()),
+						// It may happen that placement engine returns
+						// just after resmgr timeout and task is still
+						// in ready
+						state.State(task.TaskState_PLACED.String()),
 						state.State(task.TaskState_KILLED.String()),
 					},
 					Callback: nil,
@@ -124,6 +137,13 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 					},
 					Callback: nil,
 				}).
+			AddTimeoutRule(
+				&state.TimeoutRule{
+					From:     state.State(task.TaskState_PLACING.String()),
+					To:       state.State(task.TaskState_READY.String()),
+					Timeout:  10 * time.Minute,
+					Callback: rmTask.placingToReadyCallBack,
+				}).
 			Build()
 	if err != nil {
 		log.WithField("task", rmTask.task.GetTaskId().Value).Error(err)
@@ -141,6 +161,29 @@ func (rmTask *RMTask) TransitTo(stateTo string, args ...interface{}) error {
 func (rmTask *RMTask) transitionCallBack(t *state.Transition) error {
 	// Sending State change event to Ready
 	rmTask.updateStatus(string(t.To))
+	return nil
+}
+
+// placingToReadyCallBack is the callback for the resource manager task
+// which moving after timeout from placing state to ready state
+func (rmTask *RMTask) placingToReadyCallBack(t *state.Transition) error {
+	pTaskID := &peloton.TaskID{Value: t.StateMachine.GetName()}
+	task := GetTracker().GetTask(pTaskID)
+	if task == nil {
+		return errors.Errorf("Task is not present in statemachine "+
+			"tracker %s ", t.StateMachine.GetName())
+	}
+	var tasks []*resmgr.Task
+	gang := &resmgrsvc.Gang{
+		Tasks: append(tasks, task.task),
+	}
+	err := GetScheduler().EnqueueGang(gang)
+	if err != nil {
+		log.WithField("Gang", gang).Error("Could not enqueue " +
+			"gang to ready after timeout")
+		return err
+	}
+	log.WithField("Gang", gang).Debug("Enqueue again due to timeout")
 	return nil
 }
 

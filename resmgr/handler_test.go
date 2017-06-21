@@ -334,6 +334,7 @@ func (suite *HandlerTestSuite) TestEnqueueGangsFailure() {
 
 func (suite *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	var placements []*resmgr.Placement
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
 	for i := 0; i < 10; i++ {
 		var tasks []*peloton.TaskID
 		for j := 0; j < 5; j++ {
@@ -341,7 +342,11 @@ func (suite *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 				Value: fmt.Sprintf("task-%d-%d", i, j),
 			}
 			tasks = append(tasks, task)
+			suite.rmTaskTracker.AddTask(&resmgr.Task{
+				Id: task,
+			}, nil, resp)
 		}
+
 		placement := &resmgr.Placement{
 			Tasks:    tasks,
 			Hostname: fmt.Sprintf("host-%d", i),
@@ -379,6 +384,45 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	suite.NoError(err)
 	suite.Nil(getResp.GetError())
 	suite.Equal(suite.getPlacements(), getResp.GetPlacements())
+}
+
+func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
+	handler := &ServiceHandler{
+		metrics:     NewMetrics(tally.NoopScope),
+		resPoolTree: nil,
+		placements: queue.NewQueue(
+			"placement-queue",
+			reflect.TypeOf(resmgr.Placement{}),
+			maxPlacementQueueSize,
+		),
+		rmTracker: suite.rmTaskTracker,
+	}
+	var tasks []*peloton.TaskID
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
+	for j := 0; j < 5; j++ {
+		task := &peloton.TaskID{
+			Value: fmt.Sprintf("task-1-%d", j),
+		}
+		tasks = append(tasks, task)
+		suite.rmTaskTracker.AddTask(&resmgr.Task{
+			Id: task,
+		}, nil, resp)
+	}
+	placement := &resmgr.Placement{
+		Tasks:    tasks,
+		Hostname: fmt.Sprintf("host-%d", 1),
+	}
+	suite.Equal(len(placement.Tasks), 5)
+	var taskstoremove []*peloton.TaskID
+	for j := 0; j < 2; j++ {
+		taskID := &peloton.TaskID{
+			Value: fmt.Sprintf("task-1-%d", j),
+		}
+		taskstoremove = append(taskstoremove, taskID)
+	}
+	newPlacement := handler.removeTasksFromPlacements(placement, taskstoremove)
+	suite.NotNil(newPlacement)
+	suite.Equal(len(newPlacement.Tasks), 3)
 }
 
 func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {

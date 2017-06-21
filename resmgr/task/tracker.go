@@ -3,7 +3,7 @@ package task
 import (
 	"sync"
 
-	"github.com/prometheus/common/log"
+	log "github.com/Sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
@@ -111,6 +111,7 @@ func (tr *tracker) MarkItDone(
 	if err != nil {
 		return errors.Errorf("Not able to update task %s ", tID)
 	}
+	log.WithField("Task", tID.Value).Info("Deleting the task from Tracker")
 	tr.DeleteTask(tID)
 	return nil
 }

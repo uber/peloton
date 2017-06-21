@@ -74,17 +74,17 @@ func (suite *StateMachineTestSuite) SetupTest() {
 			}).
 		AddTimeoutRule(
 			&TimeoutRule{
-				from:     "killed",
-				to:       "running",
-				timeout:  2 * time.Second,
+				From:     "killed",
+				To:       "running",
+				Timeout:  2 * time.Second,
 				Callback: suite.callbackTimeout,
 			},
 		).
 		AddTimeoutRule(
 			&TimeoutRule{
-				from:    "placing",
-				to:      "killed",
-				timeout: 2 * time.Second,
+				From:    "placing",
+				To:      "killed",
+				Timeout: 2 * time.Second,
 			},
 		).
 		Build()

@@ -43,7 +43,7 @@ func (b *Builder) AddRule(rule *Rule) *Builder {
 
 // AddTimeoutRule adds the rule for state machine
 func (b *Builder) AddTimeoutRule(timeoutRule *TimeoutRule) *Builder {
-	b.timeoutrules[timeoutRule.from] = timeoutRule
+	b.timeoutrules[timeoutRule.From] = timeoutRule
 	return b
 }
 
