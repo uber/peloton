@@ -26,7 +26,7 @@ fi
 
 export PYTHONPATH
 
-pytest -vsrx tests/integration
+pytest -vsrx tests/integration --junit-xml=integration-test-report.xml
 
 deactivate
 
