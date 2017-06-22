@@ -63,8 +63,10 @@ type ResPool interface {
 	// GetChildReservation returns the total reservation of all
 	// the childs by kind
 	GetChildReservation() (map[string]float64, error)
-	//GetAllocation returns the resource allocation for the resource pool
+	// GetAllocation returns the resource allocation for the resource pool
 	GetAllocation() *scalar.Resources
+	// SetAllocation sets the resource allocation for the resource pool
+	SetAllocation(res *scalar.Resources)
 	// MarkItDone recaptures the resources from task
 	MarkItDone(res *scalar.Resources) error
 }
@@ -367,8 +369,25 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 		Parent:   parentResPoolID,
 		Config:   n.poolConfig,
 		Children: childrenResourcePoolIDs,
-		Usage:    n.createRespoolUsage(n.GetAllocation()),
+		Usage:    n.createRespoolUsage(n.calculateAllocation()),
 	}
+}
+
+// calculateAllocation calculates the allocation recursively for
+// all the children.
+// TODO: we need to do entitlement calc from leaf to root
+func (n *resPool) calculateAllocation() *scalar.Resources {
+	if n.IsLeaf() {
+		return n.allocation
+	}
+	allocation := &scalar.Resources{}
+	for child := n.children.Front(); child != nil; child = child.Next() {
+		if childResPool, ok := child.Value.(*resPool); ok {
+			allocation = allocation.Add(
+				childResPool.calculateAllocation())
+		}
+	}
+	return allocation
 }
 
 func (n *resPool) createRespoolUsage(allocation *scalar.Resources) []*respool.ResourceUsage {
@@ -515,7 +534,14 @@ func (n *resPool) GetChildReservation() (map[string]float64, error) {
 func (n *resPool) GetAllocation() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
-	return n.allocation
+	return n.calculateAllocation()
+}
+
+// SetAllocation sets the resource allocation for the pool
+func (n *resPool) SetAllocation(res *scalar.Resources) {
+	n.Lock()
+	defer n.Unlock()
+	n.allocation = res
 }
 
 // MarkItDone updates the allocation for the resource pool

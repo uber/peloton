@@ -1,6 +1,7 @@
 package respool
 
 import (
+	"container/list"
 	"fmt"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
@@ -354,6 +356,133 @@ func (s *ResPoolSuite) TestAllocation() {
 	s.Equal(float64(0), allocation.MEMORY)
 	s.Equal(float64(0), allocation.DISK)
 	s.Equal(float64(0), allocation.GPU)
+}
+
+func (s *ResPoolSuite) TestCalculateAllocation() {
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	respool1ID := pb_respool.ResourcePoolID{Value: "respool1"}
+	respool2ID := pb_respool.ResourcePoolID{Value: "respool2"}
+	respool11ID := pb_respool.ResourcePoolID{Value: "respool11"}
+	respool12ID := pb_respool.ResourcePoolID{Value: "respool12"}
+	respool21ID := pb_respool.ResourcePoolID{Value: "respool21"}
+
+	poolConfigroot := &pb_respool.ResourcePoolConfig{
+		Name:      "root",
+		Parent:    nil,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolroot, err := NewRespool(tally.NoopScope, rootID.Value, nil, poolConfigroot)
+	s.NoError(err)
+
+	poolConfig1 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value, resPoolroot, poolConfig1)
+	s.NoError(err)
+	resPoolNode1.SetEntitlement(s.getEntitlement())
+
+	poolConfig2 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool2",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value, resPoolroot, poolConfig2)
+	s.NoError(err)
+	resPoolNode2.SetEntitlement(s.getEntitlement())
+
+	rootChildrenList := list.New()
+	rootChildrenList.PushBack(resPoolNode1)
+	rootChildrenList.PushBack(resPoolNode2)
+	resPoolroot.SetChildren(rootChildrenList)
+
+	poolConfig11 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool11",
+		Parent:    &respool1ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value, resPoolNode1, poolConfig11)
+	s.NoError(err)
+	resPoolNode11.SetEntitlement(s.getEntitlement())
+	resPoolNode11.SetAllocation(s.getAllocation())
+
+	poolConfig12 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool12",
+		Parent:    &respool1ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value, resPoolNode1, poolConfig12)
+	s.NoError(err)
+	resPoolNode12.SetEntitlement(s.getEntitlement())
+	resPoolNode12.SetAllocation(s.getAllocation())
+
+	node1ChildrenList := list.New()
+	node1ChildrenList.PushBack(resPoolNode11)
+	node1ChildrenList.PushBack(resPoolNode12)
+	resPoolNode1.SetChildren(node1ChildrenList)
+
+	poolConfig21 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool21",
+		Parent:    &respool2ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value, resPoolNode2, poolConfig21)
+	s.NoError(err)
+	resPoolNode21.SetEntitlement(s.getEntitlement())
+	resPoolNode21.SetAllocation(s.getAllocation())
+	node2ChildrenList := list.New()
+	node2ChildrenList.PushBack(resPoolNode21)
+	resPoolNode2.SetChildren(node2ChildrenList)
+
+	allocationroot := resPoolroot.GetAllocation()
+	s.NotNil(allocationroot)
+	s.Equal(float64(300), allocationroot.CPU)
+	s.Equal(float64(300), allocationroot.MEMORY)
+	s.Equal(float64(3000), allocationroot.DISK)
+	s.Equal(float64(3), allocationroot.GPU)
+
+	allocation1 := resPoolNode1.GetAllocation()
+	s.NotNil(allocation1)
+	s.Equal(float64(200), allocation1.CPU)
+	s.Equal(float64(200), allocation1.MEMORY)
+	s.Equal(float64(2000), allocation1.DISK)
+	s.Equal(float64(2), allocation1.GPU)
+
+	allocation2 := resPoolNode2.GetAllocation()
+	s.NotNil(allocation2)
+	s.Equal(float64(100), allocation2.CPU)
+	s.Equal(float64(100), allocation2.MEMORY)
+	s.Equal(float64(1000), allocation2.DISK)
+	s.Equal(float64(1), allocation2.GPU)
+
+	allocation11 := resPoolNode11.GetAllocation()
+	s.NotNil(allocation11)
+	s.Equal(float64(100), allocation11.CPU)
+	s.Equal(float64(100), allocation11.MEMORY)
+	s.Equal(float64(1000), allocation11.DISK)
+	s.Equal(float64(1), allocation11.GPU)
+}
+
+func (s *ResPoolSuite) getAllocation() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    float64(100),
+		GPU:    float64(1),
+		MEMORY: float64(100),
+		DISK:   float64(1000),
+	}
 }
 
 func (s *ResPoolSuite) TestResPoolDequeueError() {
