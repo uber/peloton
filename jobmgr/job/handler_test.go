@@ -79,7 +79,7 @@ func (suite *JobHandlerTestSuite) TearDownTest() {
 	log.Debug("tearing down")
 }
 
-func TestPelotonJobHanlder(t *testing.T) {
+func TestPelotonJobHandler(t *testing.T) {
 	suite.Run(t, new(JobHandlerTestSuite))
 }
 
@@ -276,4 +276,31 @@ func (suite *JobHandlerTestSuite) TestJobQuery() {
 	resp, err := suite.handler.Query(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
+}
+
+func (suite *JobHandlerTestSuite) TestJobDelete() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	id := &peloton.JobID{
+		Value: "my-job",
+	}
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+
+	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+		Return(&job.RuntimeInfo{State: job.JobState_SUCCEEDED}, nil)
+	mockJobStore.EXPECT().DeleteJob(context.Background(), id).Return(nil)
+
+	res, err := suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
+	suite.Equal(&job.DeleteResponse{}, res)
+	suite.NoError(err)
+
+	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil)
+
+	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
+	suite.Nil(res)
+	suite.EqualError(err, "Job is not in a terminal state: PENDING")
 }

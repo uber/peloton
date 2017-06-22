@@ -330,6 +330,20 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
 		suite.Equal(len(jobconf.Labels), 4)
+
+		suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
+
+		jobconf, err = jobStore.GetJobConfig(context.Background(), &jobID)
+		suite.EqualError(err, "Cannot find job wth jobID TestCreateGetJobConfig0")
+		suite.Nil(jobconf)
+
+		jobRuntime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+		suite.EqualError(err, "Cannot find job wth jobID TestCreateGetJobConfig0")
+		suite.Nil(jobRuntime)
+
+		tasks, err := store.GetTasksForJob(context.Background(), &jobID)
+		suite.Len(tasks, 0)
+		suite.NoError(err)
 	}
 }
 

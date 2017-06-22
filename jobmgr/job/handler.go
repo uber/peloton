@@ -431,8 +431,21 @@ func (h *serviceHandler) Delete(
 
 	h.metrics.JobAPIDelete.Inc(1)
 
-	err := h.jobStore.DeleteJob(ctx, req.Id)
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetId())
 	if err != nil {
+		log.WithError(err).
+			WithField("job_id", req.GetId().GetValue()).
+			Error("Failed to GetJobRuntime")
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, err
+	}
+
+	if NonTerminatedStates[jobRuntime.State] {
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, fmt.Errorf("Job is not in a terminal state: %s", jobRuntime.State)
+	}
+
+	if err := h.jobStore.DeleteJob(ctx, req.Id); err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)
 		return &job.DeleteResponse{

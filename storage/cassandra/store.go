@@ -916,9 +916,40 @@ func (s *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID
 	return result, nil
 }
 
-// DeleteJob deletes a job by id
-// TODO: decide if DeleteJob() should be removed from API
+// DeleteJob deletes a job and associated tasks, by job id.
+// TODO: This implementation is not perfect, as if it's getting an transient
+// error, the job or some tasks may not be fully deleted.
 func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
+	tasks, err := s.GetTasksForJob(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	for _, t := range tasks {
+		stmt := queryBuilder.Delete(tasksTable).
+			Where(qb.Eq{"TaskID": getTaskID(t)}).
+			Where(qb.Eq{"JobID": id.GetValue()})
+		if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+			return err
+		}
+
+		stmt = queryBuilder.Delete(taskStateChangesTable).Where(qb.Eq{"TaskID": getTaskID(t)})
+		if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+			return err
+		}
+	}
+
+	stmt := queryBuilder.Delete(jobsTable).Where(qb.Eq{"JobID": id.GetValue()})
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		return err
+	}
+
+	stmt = queryBuilder.Delete(jobRuntimeTable).Where(qb.Eq{"JobID": id.GetValue()})
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		return err
+	}
+
 	return nil
 }
 
