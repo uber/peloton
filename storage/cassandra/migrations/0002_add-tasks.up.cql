@@ -4,11 +4,12 @@
 CREATE TABLE IF NOT EXISTS tasks (
   TaskID         text,
   JobID          text,
+  InstanceID     int,
   TaskInfo       text,
   TaskHost       text,
   TaskState      text,
   CreateTime     timestamp,
   UpdateTime     timestamp,
-  PRIMARY KEY (TaskID, JobID)
+  PRIMARY KEY (JobID, InstanceID)
 );
 
