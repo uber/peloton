@@ -1354,16 +1354,13 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.Qu
 		return nil, 0, err
 	}
 	offset := spec.GetPagination().GetOffset()
-	if offset >= jobConfig.InstanceCount {
-		return nil, 0, errors.New("offset larger than job instances")
-	}
 	limit := _defaultQueryLimit
 	if spec.GetPagination() != nil {
 		limit = spec.GetPagination().GetLimit()
 	}
-	end := offset + limit - 1
-	if end > jobConfig.InstanceCount-1 {
-		end = jobConfig.InstanceCount - 1
+	end := offset + limit
+	if end > jobConfig.InstanceCount {
+		end = jobConfig.InstanceCount
 	}
 	tasks, err := s.GetTasksForJobByRange(ctx, id, &task.InstanceRange{
 		From: offset,
@@ -1372,11 +1369,12 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.Qu
 	if err != nil {
 		return nil, 0, err
 	}
+
 	var result []*task.TaskInfo
 	for i := offset; i < end; i++ {
 		result = append(result, tasks[i])
 	}
-	return result, uint32(len(result)), nil
+	return result, jobConfig.InstanceCount, nil
 }
 
 // CreatePersistentVolume creates a persistent volume entry.

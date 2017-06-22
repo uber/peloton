@@ -841,11 +841,21 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 		},
 	})
 	suite.NoError(err)
-	suite.Equal(n, uint32(to-from))
+	suite.Equal(n, jobConfig.InstanceCount)
 
 	for i := from; i < to; i++ {
 		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
 		suite.Equal(tID, *(tasks[uint32(i-from)].Runtime.MesosTaskId.Value))
+	}
+
+	tasks, n, err = taskStore.QueryTasks(context.Background(), jobID, &task.QuerySpec{})
+	suite.NoError(err)
+	suite.Equal(jobConfig.InstanceCount, n)
+	suite.Equal(int(jobConfig.InstanceCount), len(tasks))
+
+	for i, t := range tasks {
+		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
+		suite.Equal(tID, *(t.Runtime.MesosTaskId.Value))
 	}
 }
 
