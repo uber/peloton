@@ -5,6 +5,7 @@ package cassandra
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -17,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/storage"
+	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
@@ -52,6 +54,39 @@ func init() {
 
 func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
+}
+
+func (suite *CassandraStoreTestSuite) TestTaskInfo_is_available_on_the_task_host_view() {
+	var jobID = peloton.JobID{Value: "TestTaskHostView"}
+	jobConfig := createJobConfig()
+	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+	taskInfo.Runtime.Host = "host"
+	suite.NotNil(taskInfo)
+	suite.NoError(store.CreateJob(context.Background(), &jobID, jobConfig, "test"))
+	suite.NoError(store.CreateTasks(context.Background(), &jobID, []*task.TaskInfo{taskInfo}, "test"))
+	suite.NoError(store.UpdateTask(context.Background(), taskInfo))
+
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.
+		Select("*").
+		From(taskHostView).
+		Where(qb.Eq{"TaskHost": taskInfo.Runtime.Host})
+	result, err := store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+	suite.NotNil(result)
+
+	allResults, err := result.All(context.Background())
+	suite.NoError(err)
+	suite.Equal(1, len(allResults))
+	for _, value := range allResults {
+		var record TaskRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		suite.NoError(err)
+		task, err := record.GetTaskInfo()
+		suite.NotNil(task)
+		suite.NoError(err)
+		suite.Equal(taskInfo, task)
+	}
 }
 
 func (suite *CassandraStoreTestSuite) TestQueryJob() {
