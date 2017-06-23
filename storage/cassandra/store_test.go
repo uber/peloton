@@ -570,17 +570,23 @@ func (suite *CassandraStoreTestSuite) TestGetTasksByHostState() {
 		}
 	}
 
-	// GetTaskByHost
+	// GetTasksForHosts
 	for j := 0; j < int(nTasks); j++ {
 		host := fmt.Sprintf("compute2-%d", j)
-		tasks, err := store.GetTasksOnHost(context.Background(), host)
+		hostsToTasks, err := store.GetTasksForHosts(context.Background(), []string{host})
 		suite.NoError(err)
 
-		suite.Equal(len(tasks), 2)
-		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState0-%d", j)],
-			task.TaskState(j).String())
-		suite.Equal(tasks[fmt.Sprintf("TestGetTasksByHostState1-%d", j)],
-			task.TaskState(j).String())
+		taskIDToState := map[string]string{}
+		for _, tasks := range hostsToTasks {
+			for _, task := range tasks {
+				taskIDToState[*task.Runtime.MesosTaskId.Value] = task.Runtime.State.String()
+			}
+		}
+
+		suite.Equal(2, len(hostsToTasks[host]))
+		expectedTaskState := task.TaskState(j).String()
+		suite.Equal(expectedTaskState, taskIDToState[fmt.Sprintf("TestGetTasksByHostState0-%d", j)])
+		suite.Equal(expectedTaskState, taskIDToState[fmt.Sprintf("TestGetTasksByHostState1-%d", j)])
 	}
 }
 

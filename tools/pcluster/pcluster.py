@@ -476,6 +476,9 @@ def run_peloton_placement():
                     host_ip,
                     config['local_zk_port']
                 ),
+                'CASSANDRA_HOSTS={0}'.format(
+                    host_ip,
+                ),
                 'ENABLE_DEBUG_LOGGING=' + config['debug'],
             ],
             host_config=cli.create_host_config(

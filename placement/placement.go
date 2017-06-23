@@ -19,6 +19,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -42,12 +43,13 @@ func New(
 	parent tally.Scope,
 	cfg *Config,
 	resMgrClientName string,
-	hostMgrClientName string) Engine {
-
+	hostMgrClientName string,
+	taskStore storage.TaskStore) Engine {
 	s := placementEngine{
 		cfg:           cfg,
 		resMgrClient:  resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resMgrClientName)),
 		hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostMgrClientName)),
+		taskStore:     taskStore,
 		rootCtx:       context.Background(),
 		metrics:       NewMetrics(parent.SubScope("placement")),
 		pool:          async.NewPool(async.PoolOptions{}),
@@ -59,6 +61,7 @@ type placementEngine struct {
 	cfg           *Config
 	resMgrClient  resmgrsvc.ResourceManagerServiceYarpcClient
 	hostMgrClient hostsvc.InternalHostServiceYarpcClient
+	taskStore     storage.TaskStore
 	rootCtx       context.Context
 	started       int32
 	shutdown      int32

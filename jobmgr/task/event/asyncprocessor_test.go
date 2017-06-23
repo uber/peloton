@@ -31,6 +31,9 @@ func (m *mockTaskStore) CreateTask(ctx context.Context, id *peloton.JobID, insta
 func (m *mockTaskStore) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
 	return nil
 }
+func (m *mockTaskStore) GetTasksForHosts(ctx context.Context, hosts []string) (map[string][]*task.TaskInfo, error) {
+	return nil, nil
+}
 func (m *mockTaskStore) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	return nil, nil
 }

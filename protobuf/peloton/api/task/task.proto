@@ -368,7 +368,7 @@ service TaskManager
 
   // List all task info in a job.
   rpc List(ListRequest) returns (ListResponse);
-  
+
   // Start a set of tasks for a job. Will be no-op for tasks that
   // are currently running.
   rpc Start(StartRequest) returns (StartResponse);

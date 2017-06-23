@@ -5,6 +5,10 @@ import (
 	"net/url"
 	"os"
 
+	log "github.com/Sirupsen/logrus"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"code.uber.internal/infra/peloton/common"
@@ -13,12 +17,8 @@ import (
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/placement"
+	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
-
-	log "github.com/Sirupsen/logrus"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/transport/http"
 )
 
 var (
@@ -43,6 +43,23 @@ var (
 		"zk-path",
 		"Zookeeper path (mesos.zk_host override) (set $MESOS_ZK_PATH to override)").
 		Envar("MESOS_ZK_PATH").
+		String()
+
+	useCassandra = app.Flag(
+		"use-cassandra", "Use cassandra storage implementation").
+		Default("true").
+		Envar("USE_CASSANDRA").
+		Bool()
+
+	cassandraHosts = app.Flag(
+		"cassandra-hosts", "Cassandra hosts").
+		Envar("CASSANDRA_HOSTS").
+		Strings()
+
+	cassandraStore = app.Flag(
+		"cassandra-store", "Cassandra store name").
+		Default("").
+		Envar("CASSANDRA_STORE").
 		String()
 
 	electionZkServers = app.Flag(
@@ -88,6 +105,18 @@ func main() {
 	}
 	log.WithField("config", cfg).Info("Loaded Placement Engine config")
 
+	if !*useCassandra {
+		cfg.Storage.UseCassandra = false
+	}
+
+	if *cassandraHosts != nil && len(*cassandraHosts) > 0 {
+		cfg.Storage.Cassandra.CassandraConn.ContactPoints = *cassandraHosts
+	}
+
+	if *cassandraStore != "" {
+		cfg.Storage.Cassandra.StoreName = *cassandraStore
+	}
+
 	if *placementPort != 0 {
 		cfg.Placement.Port = *placementPort
 	}
@@ -101,6 +130,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
+	log.Info("Connecting to HostManager")
 	hostmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
 		rootScope,
@@ -121,6 +151,7 @@ func main() {
 			}).String()),
 	)
 
+	log.Info("Connecting to ResourceManager")
 	resmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
 		rootScope,
@@ -141,6 +172,7 @@ func main() {
 			}).String()),
 	)
 
+	log.Info("Setup the PlacementEngine server")
 	// Now attempt to setup the dispatcher
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{
@@ -173,6 +205,9 @@ func main() {
 		log.Fatalf("Unable to start dispatcher: %v", err)
 	}
 
+	log.Info("Connect to the TaskStore")
+	_, taskStore, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
+
 	// Initialize and start placement engine
 	placementEngine := placement.New(
 		dispatcher,
@@ -180,10 +215,13 @@ func main() {
 		&cfg.Placement,
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
+		taskStore,
 	)
+	log.Info("Start the PlacementEngine")
 	placementEngine.Start()
 	defer placementEngine.Stop()
 
+	log.Info("Initialize the Heartbeat process")
 	// we can *honestly* say the server is booted up now
 	health.InitHeartbeat(rootScope, cfg.Health)
 

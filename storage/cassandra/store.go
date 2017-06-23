@@ -792,33 +792,51 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 	return resultMap, nil
 }
 
-// GetTasksOnHost returns the tasks running on a host,
-// result map key is taskID, value is taskState
-func (s *Store) GetTasksOnHost(ctx context.Context, host string) (map[string]string, error) {
+// GetTasksForHosts returns the tasks running on a host,
+// result map key is hostname, value is taskInfo
+func (s *Store) GetTasksForHosts(ctx context.Context, hosts []string) (map[string][]*task.TaskInfo, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(taskHostView).
-		Where(qb.Eq{"TaskHost": host})
+	condition := qb.Or{}
+	for _, host := range hosts {
+		condition = append(condition, qb.Eq{"TaskHost": host})
+	}
+	stmt := queryBuilder.Select("*").From(taskHostView).Where(condition)
 
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
-		log.Errorf("Fail to GetTasksOnHost by host %v, err=%v", host, err)
+		log.WithField("hosts", hosts).
+			WithField("error", err).
+			Errorf("failed to GetTasksForHosts")
 		s.metrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
 	if result != nil {
 		defer result.Close()
 	}
-	resultMap := make(map[string]string)
+	resultMap := make(map[string][]*task.TaskInfo)
 	allResults, err := result.All(ctx)
 	for _, value := range allResults {
 		var record TaskRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
-			log.Errorf("Failed to Fill into TaskRecord, val = %v err= %v", value, err)
+			log.WithField("value", value).
+				WithField("error", err).
+				Errorf("failed to Fill into TaskRecord")
 			s.metrics.TaskGetFail.Inc(1)
-			continue
+			return nil, err
 		}
-		resultMap[record.TaskID] = record.TaskState
+		taskInfo, err := record.GetTaskInfo()
+		if err != nil {
+			log.WithField("value", value).
+				WithField("error", err).
+				Errorf("failed to Get TaskRecord")
+			s.metrics.TaskGetFail.Inc(1)
+			return nil, err
+		}
+		if _, exists := resultMap[taskInfo.Runtime.Host]; !exists {
+			resultMap[taskInfo.Runtime.Host] = []*task.TaskInfo{}
+		}
+		resultMap[taskInfo.Runtime.Host] = append(resultMap[taskInfo.Runtime.Host], taskInfo)
 		s.metrics.TaskGet.Inc(1)
 	}
 	return resultMap, nil

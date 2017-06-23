@@ -6,6 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/placement"
+	"code.uber.internal/infra/peloton/storage/config"
 )
 
 // Config holds all configs to run a placement engine.
@@ -15,4 +16,5 @@ type Config struct {
 	Election  leader.ElectionConfig `yaml:"election"`
 	Mesos     mesos.Config          `yaml:"mesos"`
 	Health    health.Config         `yaml:"health"`
+	Storage   config.Config         `yaml:"storage"`
 }

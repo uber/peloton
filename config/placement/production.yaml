@@ -27,4 +27,5 @@ placement:
   offer_dequeue_limit: 30
 
 storage:
+  db_write_concurrency: 400
   use_cassandra: true

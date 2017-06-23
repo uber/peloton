@@ -1,6 +1,13 @@
 logging:
   level: info
 
+storage:
+  db_write_concurrency: 40
+  use_cassandra: true
+
+election:
+  zk_servers: ["localhost:8192"]
+
 metrics:
   multi_reporter: true
   prometheus:
@@ -8,6 +15,3 @@ metrics:
   #statsd:
   #  enable: true
   #  endpoint: localhost:1234
-
-election:
-  zk_servers: ["localhost:8192"]

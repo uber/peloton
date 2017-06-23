@@ -16,6 +16,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -23,6 +24,19 @@ import (
 const (
 	_resPoolOwner = "teamPeloton"
 )
+
+func Test_getQueryAndArgs(t *testing.T) {
+	filters := Filters{
+		"key1=": {"value1", "value2"},
+		"key2=": {"value3", "value4"},
+	}
+	fields := []string{"field1", "field2"}
+	query, values := getQueryAndArgs("table", filters, fields)
+	expectedQuery := "SELECT field1 field2 FROM table WHERE (key1= ? or key1= ?) and (key2= ? or key2= ?)"
+	expectedValues := []interface{}{"value1", "value2", "value3", "value4"}
+	assert.Equal(t, expectedQuery, query)
+	assert.Equal(t, expectedValues, values)
+}
 
 type mySQLStoreTestSuite struct {
 	suite.Suite
@@ -48,17 +62,19 @@ func TestMysqlStore(t *testing.T) {
 }
 
 func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
-	// Insert 2 jobs
+	// Insert 3 jobs
 	var nJobs = 3
+	// With 3 tasks each
+	var nTasks = 3
 	var jobIDs []*peloton.JobID
 	var jobs []*job.JobConfig
 	for i := 0; i < nJobs; i++ {
-		var jobID = peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
-		jobIDs = append(jobIDs, &jobID)
-		var sla = job.SlaConfig{
+		var jobID = &peloton.JobID{Value: "TestJob_" + strconv.Itoa(i)}
+		jobIDs = append(jobIDs, jobID)
+		var sla = &job.SlaConfig{
 			Priority:                22,
 			Preemptible:             false,
-			MaximumRunningInstances: 3 + uint32(i),
+			MaximumRunningInstances: uint32(nTasks) + uint32(i),
 		}
 		var taskConfig = task.TaskConfig{
 			Resource: &task.ResourceConfig{
@@ -68,30 +84,31 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 				FdLimit:     1000,
 			},
 		}
-		var jobConfig = job.JobConfig{
+		var jobConfig = &job.JobConfig{
 			Name:          "TestJob_" + strconv.Itoa(i),
 			OwningTeam:    "team6",
 			LdapGroups:    []string{"money", "team6", "otto"},
-			Sla:           &sla,
+			Sla:           sla,
 			DefaultConfig: &taskConfig,
 		}
-		jobs = append(jobs, &jobConfig)
-		err := suite.store.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
+		jobs = append(jobs, jobConfig)
+		err := suite.store.CreateJob(context.Background(), jobID, jobConfig, "uber")
 		suite.NoError(err)
 
 		// For each job, create 3 tasks
-		for j := uint32(0); j < 3; j++ {
+		for j := uint32(0); j < uint32(nTasks); j++ {
 			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
 					MesosTaskId: &mesos.TaskID{Value: &tID},
 					State:       task.TaskState(j),
+					Host:        "testhost",
 				},
 				Config:     jobConfig.GetDefaultConfig(),
 				InstanceId: uint32(j),
-				JobId:      &jobID,
+				JobId:      jobID,
 			}
-			err = suite.store.CreateTask(context.Background(), &jobID, j, &taskInfo, "test")
+			err = suite.store.CreateTask(context.Background(), jobID, j, &taskInfo, "test")
 			suite.NoError(err)
 		}
 	}
@@ -99,11 +116,17 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 	for i := 0; i < nJobs; i++ {
 		tasks, err := suite.store.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
-		suite.Equal(len(tasks), 3)
+		suite.Equal(len(tasks), nTasks)
 		for _, task := range tasks {
 			suite.Equal(task.JobId.Value, jobIDs[i].Value)
 		}
 	}
+
+	// List all tasks for host
+	tasks, err := suite.store.GetTasksForHosts(context.Background(), []string{"testhost"})
+	suite.NoError(err)
+	suite.Equal(len(tasks), 1)
+	suite.Equal(nJobs*nTasks, len(tasks["testhost"]))
 
 	// List tasks for a job in certain state
 	// TODO: change the task.runtime.State to string type
@@ -113,7 +136,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 	for i := 0; i < nJobs; i++ {
 		tasks, err := suite.store.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
-		suite.Equal(len(tasks), 3)
+		suite.Equal(len(tasks), nTasks)
 		for _, task := range tasks {
 			task.Runtime.Host = fmt.Sprintf("compute-%d", i)
 			err := suite.store.UpdateTask(context.Background(), task)
@@ -123,7 +146,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 	for i := 0; i < nJobs; i++ {
 		tasks, err := suite.store.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
-		suite.Equal(len(tasks), 3)
+		suite.Equal(len(tasks), nTasks)
 		for _, task := range tasks {
 			suite.Equal(task.Runtime.Host, fmt.Sprintf("compute-%d", i))
 		}
