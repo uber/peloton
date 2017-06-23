@@ -2,7 +2,8 @@
   "linters": {
     "flake8": {
       "type": "flake8",
-      "include": "(\\.py$)"
+      "include": "(\\.py$)",
+      "exclude": ["(tools/deploy/aurora/api)", "(tools/deploy/aurora/schema)"]
     },
     "gofmt": {
       "type": "gofmt",
