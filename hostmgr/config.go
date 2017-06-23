@@ -33,4 +33,6 @@ type Config struct {
 	TaskUpdateBufferSize int `yaml:"taskupdate_buffer_size"`
 
 	TaskReconcilerConfig *reconcile.TaskReconcilerConfig `yaml:"task_reconciler"`
+
+	HostmapRefreshInterval time.Duration `yaml:"hostmap_refresh_interval"`
 }

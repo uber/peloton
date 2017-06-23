@@ -5,17 +5,17 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/hostmgr/mesos"
-	"code.uber.internal/infra/peloton/hostmgr/offer"
-	"code.uber.internal/infra/peloton/hostmgr/reconcile"
-	"code.uber.internal/infra/peloton/leader"
-	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
-
 	log "github.com/Sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
 	"go.uber.org/yarpc/api/transport"
+
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/background"
+	"code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
 )
 
 const (
@@ -34,7 +34,7 @@ type Server struct {
 	ID                   string
 	role                 string
 	getOfferEventHandler func() offer.EventHandler
-	getTaskReconciler    func() reconcile.TaskReconciler
+	backgroundManager    background.Manager
 
 	// TODO: move Mesos related fields into hostmgr.ServiceHandler
 	mesosDetector mesos.MasterDetector
@@ -56,6 +56,7 @@ type Server struct {
 // NewServer creates a host manager Server instance.
 func NewServer(
 	parent tally.Scope,
+	backgroundManager background.Manager,
 	port int,
 	mesosDetector mesos.MasterDetector,
 	mesosInbound mhttp.Inbound,
@@ -65,7 +66,7 @@ func NewServer(
 		ID:                   leader.NewID(port),
 		role:                 common.HostManagerRole,
 		getOfferEventHandler: offer.GetEventHandler,
-		getTaskReconciler:    reconcile.GetTaskReconciler,
+		backgroundManager:    backgroundManager,
 		mesosDetector:        mesosDetector,
 		mesosInbound:         mesosInbound,
 		mesosOutbound:        mesosOutbound,
@@ -229,7 +230,7 @@ func (s *Server) stopHandlers() {
 	defer s.Unlock()
 
 	if s.handlersRunning.Swap(false) {
-		s.getTaskReconciler().Stop()
+		s.backgroundManager.Stop()
 		s.getOfferEventHandler().Stop()
 	}
 
@@ -242,7 +243,7 @@ func (s *Server) startHandlers() {
 	defer s.Unlock()
 
 	if !s.handlersRunning.Swap(true) {
-		s.getTaskReconciler().Start()
+		s.backgroundManager.Start()
 		s.getOfferEventHandler().Start()
 	}
 }

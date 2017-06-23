@@ -24,6 +24,7 @@ const (
 
 // MasterOperatorClient makes Mesos JSON requests to Mesos Master endpoint(s)
 type MasterOperatorClient interface {
+	Agents() (*mesos_master.Response_GetAgents, error)
 	AllocatedResources(ID string) ([]*mesos.Resource, error)
 }
 
@@ -95,6 +96,39 @@ func (mo *masterOperatorClient) call(ctx context.Context, msg *mesos_master.Call
 
 	return respMsg, nil
 
+}
+
+// Agents returns all agents from Mesos master with the `GetAgents` API.
+func (mo *masterOperatorClient) Agents() (
+	*mesos_master.Response_GetAgents, error) {
+	// Set the CALL TYPE
+	callType := mesos_master.Call_GET_AGENTS
+
+	masterMsg := &mesos_master.Call{
+		Type: &callType,
+	}
+
+	// Create context to cancel automatically when Timeout expires
+	ctx, cancel := context.WithTimeout(
+		context.Background(), _timeout,
+	)
+
+	defer cancel()
+
+	// Make Call
+	response, err := mo.call(ctx, masterMsg)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	// Fetch GetAgents result
+	getAgents := response.GetGetAgents()
+
+	if getAgents == nil {
+		return nil, errors.New("no agents returned from get agents call")
+	}
+
+	return getAgents, nil
 }
 
 // AllocatedResources returns the roles information from the Master Operator API

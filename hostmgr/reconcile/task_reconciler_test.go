@@ -10,6 +10,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -29,8 +30,6 @@ const (
 	testJobID                      = "testJob0"
 	testBatchSize                  = 3
 	explicitReconcileBatchInterval = 100 * time.Millisecond
-	initialReconcileDelay          = 300 * time.Millisecond
-	reconcileInterval              = 300 * time.Millisecond
 	runningStateStr                = "8"
 	oneExplicitReconcileRunDelay   = 350 * time.Millisecond
 )
@@ -50,6 +49,7 @@ func (m *mockFrameworkInfoProvider) GetFrameworkID(ctx context.Context) *mesos.F
 type TaskReconcilerTestSuite struct {
 	suite.Suite
 
+	running         atomic.Bool
 	ctrl            *gomock.Controller
 	testScope       tally.TestScope
 	schedulerClient *mock_mpb.MockSchedulerClient
@@ -89,11 +89,8 @@ func (suite *TaskReconcilerTestSuite) SetupTest() {
 		frameworkInfoProvider:          &mockFrameworkInfoProvider{},
 		jobStore:                       suite.mockJobStore,
 		taskStore:                      suite.mockTaskStore,
-		initialReconcileDelay:          initialReconcileDelay,
-		reconcileInterval:              reconcileInterval,
 		explicitReconcileBatchInterval: explicitReconcileBatchInterval,
 		explicitReconcileBatchSize:     testBatchSize,
-		stopChan:                       make(chan struct{}, 1),
 	}
 	suite.reconciler.isExplicitReconcileTurn.Store(true)
 }
@@ -171,20 +168,21 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 			Return(nil),
 	)
 
-	suite.Equal(suite.reconciler.Running.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
-	suite.reconciler.Start()
-	time.Sleep(oneExplicitReconcileRunDelay)
-	suite.Equal(suite.reconciler.Running.Load(), true)
+	suite.running.Store(true)
+	// Run in a different goroutine.
+	go suite.reconciler.Reconcile(&suite.running)
+	time.Sleep(explicitReconcileBatchInterval)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), true)
-	time.Sleep(reconcileInterval)
-	suite.Equal(suite.reconciler.Running.Load(), true)
+	time.Sleep(oneExplicitReconcileRunDelay)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.reconciler.Reconcile(&suite.running)
+	time.Sleep(explicitReconcileBatchInterval)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
-	suite.reconciler.Stop()
-	suite.Equal(suite.reconciler.Running.Load(), false)
 }
 
 func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
@@ -221,20 +219,18 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 			Return(nil),
 	)
 
-	suite.Equal(suite.reconciler.Running.Load(), false)
+	suite.running.Store(true)
+
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
-	suite.reconciler.Start()
+	go suite.reconciler.Reconcile(&suite.running)
 	time.Sleep(oneExplicitReconcileRunDelay)
-	suite.Equal(suite.reconciler.Running.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
-	time.Sleep(reconcileInterval)
-	suite.Equal(suite.reconciler.Running.Load(), true)
+	suite.reconciler.Reconcile(&suite.running)
+	time.Sleep(oneExplicitReconcileRunDelay)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
-	suite.reconciler.Stop()
-	suite.Equal(suite.reconciler.Running.Load(), false)
 }
 
 func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
@@ -259,19 +255,19 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 			Return(nil),
 	)
 
-	suite.Equal(suite.reconciler.Running.Load(), false)
+	suite.running.Store(true)
+
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
-	suite.reconciler.Stop()
-	suite.reconciler.Start()
-	suite.reconciler.Start()
-	time.Sleep(oneExplicitReconcileRunDelay)
-	suite.Equal(suite.reconciler.Running.Load(), true)
+
+	suite.reconciler.Reconcile(&suite.running)
+	time.Sleep(explicitReconcileBatchInterval / 2)
+
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), true)
-	suite.reconciler.Stop()
-	suite.reconciler.Stop()
-	time.Sleep(reconcileInterval)
-	suite.Equal(suite.reconciler.Running.Load(), false)
+
+	suite.running.Store(false)
+	time.Sleep(oneExplicitReconcileRunDelay)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
 }

@@ -3,7 +3,6 @@ package reconcile
 import (
 	"context"
 	"strconv"
-	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -21,25 +20,18 @@ import (
 
 // TaskReconciler is the interface to initiate task reconciliation to mesos master.
 type TaskReconciler interface {
-	Start()
-	Stop()
+	Reconcile(running *atomic.Bool)
 }
 
 // taskReconciler implements TaskReconciler.
 type taskReconciler struct {
-	sync.Mutex
-
-	Running  atomic.Bool
-	stopChan chan struct{}
-	metrics  *Metrics
+	metrics *Metrics
 
 	schedulerClient       mpb.SchedulerClient
 	jobStore              storage.JobStore
 	taskStore             storage.TaskStore
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 
-	initialReconcileDelay          time.Duration
-	reconcileInterval              time.Duration
 	explicitReconcileBatchInterval time.Duration
 	explicitReconcileBatchSize     int
 
@@ -48,120 +40,39 @@ type taskReconciler struct {
 	isExplicitReconcileTurn atomic.Bool
 }
 
-// Singleton task reconciler in hostmgr.
-var reconciler *taskReconciler
-
-// InitTaskReconciler initialize the task reconciler.
-func InitTaskReconciler(
+// NewTaskReconciler initialize the task reconciler.
+func NewTaskReconciler(
 	client mpb.SchedulerClient,
 	parent tally.Scope,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	cfg *TaskReconcilerConfig) {
+	cfg *TaskReconcilerConfig) TaskReconciler {
 
-	if reconciler != nil {
-		log.Warn("Task reconciler has already been initialized")
-		return
-	}
-
-	reconciler = &taskReconciler{
+	reconciler := &taskReconciler{
 		schedulerClient:       client,
 		jobStore:              jobStore,
 		taskStore:             taskStore,
 		metrics:               NewMetrics(parent.SubScope("reconcile")),
 		frameworkInfoProvider: frameworkInfoProvider,
-		initialReconcileDelay: time.Duration(
-			cfg.InitialReconcileDelaySec) * time.Second,
-		reconcileInterval: time.Duration(
-			cfg.ReconcileIntervalSec) * time.Second,
 		explicitReconcileBatchInterval: time.Duration(
 			cfg.ExplicitReconcileBatchIntervalSec) * time.Second,
 		explicitReconcileBatchSize: cfg.ExplicitReconcileBatchSize,
-		stopChan:                   make(chan struct{}, 1),
 	}
 	reconciler.isExplicitReconcileTurn.Store(true)
-}
-
-// GetTaskReconciler returns the singleton task reconciler.
-func GetTaskReconciler() TaskReconciler {
-	if reconciler == nil {
-		log.Fatal("Task reconciler is not initialized")
-	}
 	return reconciler
 }
 
-// Start initiates explicit task reconciliation.
-func (r *taskReconciler) Start() {
-	log.Info("Task reconciler start called.")
-	r.Lock()
-	defer r.Unlock()
-	if r.Running.Swap(true) {
-		log.Info("Task reconciler is already running, no-op.")
-		return
-	}
-
-	// TODO: add stats for # of reconciliation updates.
-	go func() {
-		defer r.Running.Store(false)
-
-		initialTimer := time.NewTimer(r.initialReconcileDelay)
-		select {
-		case <-r.stopChan:
-			log.Info("Periodic reconcile stopped before first run.")
-			return
-		case <-initialTimer.C:
-			log.Debug("Initial delay passed")
-		}
-
-		r.reconcile(context.Background())
-
-		ticker := time.NewTicker(r.reconcileInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-r.stopChan:
-				log.Info("periodical task reconciliation stopped.")
-				return
-			case t := <-ticker.C:
-				log.WithField("tick", t).
-					Info("periodical task reconciliation triggered.")
-				r.reconcile(context.Background())
-			}
-		}
-	}()
-}
-
-// reconcile kicks off actual explicit or implicit reconcile run.
-func (r *taskReconciler) reconcile(ctx context.Context) {
+// Reconcile kicks off actual explicit or implicit reconcile run.
+func (r *taskReconciler) Reconcile(running *atomic.Bool) {
 	// Explicit and implicit reconcile might overlap if we have more than 360K
 	// tasks to reconcile.
+	ctx := context.Background()
 	if r.isExplicitReconcileTurn.Toggle() {
-		go r.reconcileExplicitly(ctx)
+		go r.reconcileExplicitly(ctx, running)
 	} else {
 		go r.reconcileImplicitly(ctx)
 	}
-}
-
-// Stop stops explicit task reconciliation.
-func (r *taskReconciler) Stop() {
-	log.Info("Task reconciler stop called.")
-
-	if !r.Running.Load() {
-		log.Warn("Task reconciler is not running, no-op.")
-		return
-	}
-
-	r.Lock()
-	defer r.Unlock()
-
-	log.Info("Stopping task reconciler.")
-	r.stopChan <- struct{}{}
-
-	for r.Running.Load() {
-		time.Sleep(1 * time.Millisecond)
-	}
-	log.Info("Task reconciler stop returned.")
 }
 
 func (r *taskReconciler) reconcileImplicitly(ctx context.Context) {
@@ -189,7 +100,7 @@ func (r *taskReconciler) reconcileImplicitly(ctx context.Context) {
 	log.Debug("Reconcile tasks implicitly returned.")
 }
 
-func (r *taskReconciler) reconcileExplicitly(ctx context.Context) {
+func (r *taskReconciler) reconcileExplicitly(ctx context.Context, running *atomic.Bool) {
 	log.Info("Reconcile tasks explicitly called.")
 	if r.isExplicitReconcileRunning.Swap(true) {
 		log.Info("Reconcile tasks explicit is already running, no-op.")
@@ -212,7 +123,7 @@ func (r *taskReconciler) reconcileExplicitly(ctx context.Context) {
 	callType := sched.Call_RECONCILE
 	explicitTasksPerRun := 0
 	for i := 0; i < reconcileTasksLen; i += r.explicitReconcileBatchSize {
-		if !r.Running.Load() {
+		if !running.Load() {
 			r.metrics.ExplicitTasksPerRun.Update(float64(explicitTasksPerRun))
 			r.metrics.ReconcileExplicitlyAbort.Inc(1)
 			log.WithField("offset", i).
@@ -242,7 +153,6 @@ func (r *taskReconciler) reconcileExplicitly(ctx context.Context) {
 				Error("Abort explicit reconcile due to mesos CALL failed.")
 			return
 		}
-
 		time.Sleep(r.explicitReconcileBatchInterval)
 	}
 

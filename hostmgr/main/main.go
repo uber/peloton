@@ -6,29 +6,29 @@ import (
 	"os"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/background"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/hostmgr"
+	"code.uber.internal/infra/peloton/hostmgr/hostmap"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/reconcile"
 	"code.uber.internal/infra/peloton/hostmgr/task"
 	"code.uber.internal/infra/peloton/leader"
+	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"code.uber.internal/infra/peloton/yarpc/transport/mhttp"
-
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/transport/http"
-
-	"code.uber.internal/infra/peloton/storage/stores"
-	log "github.com/Sirupsen/logrus"
 )
 
 var (
@@ -285,7 +285,7 @@ func main() {
 		rootScope,
 	)
 
-	reconcile.InitTaskReconciler(
+	reconciler := reconcile.NewTaskReconciler(
 		schedulerClient,
 		rootScope,
 		driver,
@@ -294,8 +294,33 @@ func main() {
 		cfg.HostManager.TaskReconcilerConfig,
 	)
 
+	loader := hostmap.Loader{
+		OperatorClient: masterOperatorClient,
+		Scope:          rootScope.SubScope("hostmap"),
+	}
+
+	backgroundManager, err := background.New(
+		background.Work{
+			Name:   "hostmap",
+			Func:   loader.Load,
+			Period: cfg.HostManager.HostmapRefreshInterval,
+		},
+		background.Work{
+			Name: "reconciler",
+			Func: reconciler.Reconcile,
+			Period: time.Duration(
+				cfg.HostManager.TaskReconcilerConfig.ReconcileIntervalSec) * time.Second,
+			InitialDelay: time.Duration(
+				cfg.HostManager.TaskReconcilerConfig.InitialReconcileDelaySec) * time.Second,
+		},
+	)
+	if err != nil {
+		log.WithError(err).Fatal("Cannot initialize background.Refresher")
+	}
+
 	server := hostmgr.NewServer(
 		rootScope,
+		backgroundManager,
 		cfg.HostManager.Port,
 		mesosMasterDetector,
 		mInbound,

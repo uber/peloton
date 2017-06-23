@@ -11,11 +11,10 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
+	backgound_mocks "code.uber.internal/infra/peloton/common/background/mocks"
 	hm_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	offer_mocks "code.uber.internal/infra/peloton/hostmgr/offer/mocks"
-	"code.uber.internal/infra/peloton/hostmgr/reconcile"
-	reconcile_mocks "code.uber.internal/infra/peloton/hostmgr/reconcile/mocks"
 	mhttp_mocks "code.uber.internal/infra/peloton/yarpc/transport/mhttp/mocks"
 )
 
@@ -37,10 +36,10 @@ type ServerTestSuite struct {
 
 	testScope tally.TestScope
 
-	eventHandler *offer_mocks.MockEventHandler
-	reconciler   *reconcile_mocks.MockTaskReconciler
-	detector     *hm_mocks.MockMasterDetector
-	mInbound     *mhttp_mocks.MockInbound
+	eventHandler      *offer_mocks.MockEventHandler
+	backgroundManager *backgound_mocks.MockManager
+	detector          *hm_mocks.MockMasterDetector
+	mInbound          *mhttp_mocks.MockInbound
 
 	server *Server
 }
@@ -49,7 +48,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.eventHandler = offer_mocks.NewMockEventHandler(suite.ctrl)
-	suite.reconciler = reconcile_mocks.NewMockTaskReconciler(suite.ctrl)
+	suite.backgroundManager = backgound_mocks.NewMockManager(suite.ctrl)
 	suite.detector = hm_mocks.NewMockMasterDetector(suite.ctrl)
 	suite.mInbound = mhttp_mocks.NewMockInbound(suite.ctrl)
 
@@ -61,9 +60,7 @@ func (suite *ServerTestSuite) SetupTest() {
 			return suite.eventHandler
 		},
 
-		getTaskReconciler: func() reconcile.TaskReconciler {
-			return suite.reconciler
-		},
+		backgroundManager: suite.backgroundManager,
 
 		mesosDetector: suite.detector,
 		mesosInbound:  suite.mInbound,
@@ -116,7 +113,7 @@ func (suite *ServerTestSuite) TestUnelectedStopHandler() {
 	suite.server.handlersRunning.Store(true)
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(false),
-		suite.reconciler.EXPECT().Stop(),
+		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false),
 	)
@@ -134,7 +131,7 @@ func (suite *ServerTestSuite) TestUnelectedStopConnectionAndHandler() {
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(true),
 		suite.mInbound.EXPECT().Stop(),
-		suite.reconciler.EXPECT().Stop(),
+		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false),
 	)
@@ -168,7 +165,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.mInbound.EXPECT().IsRunning().Return(false),
 
 		// Stop handlers.
-		suite.reconciler.EXPECT().Stop(),
+		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
 
 		// Detect leader and start loop successfully.
@@ -180,7 +177,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 
 		// Connected, now start handlers.
 		suite.mInbound.EXPECT().IsRunning().Return(true),
-		suite.reconciler.EXPECT().Start(),
+		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 
 		// Last check for connected, used in gauge reporting.
@@ -199,7 +196,7 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 	suite.server.handlersRunning.Store(false)
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(true).Times(2),
-		suite.reconciler.EXPECT().Start(),
+		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 		suite.mInbound.EXPECT().IsRunning().Return(true),
 	)
@@ -228,7 +225,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 
 		// Connected, now start handlers.
 		suite.mInbound.EXPECT().IsRunning().Return(true),
-		suite.reconciler.EXPECT().Start(),
+		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 
 		// Last check for connected, used in gauge reporting.

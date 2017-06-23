@@ -249,7 +249,7 @@ func (a *hostSummary) AddMesosOffer(ctx context.Context, offer *mesos.Offer) Cac
 	a.Lock()
 	defer a.Unlock()
 
-	offerID := *offer.Id.Value
+	offerID := offer.GetId().GetValue()
 	if !reservation.HasLabeledReservedResources(offer) {
 		a.unreservedOffers[offerID] = offer
 		if a.status == ReadyOffer {

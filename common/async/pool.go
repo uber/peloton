@@ -26,7 +26,7 @@ type Pool struct {
 	jobs       sync.WaitGroup
 }
 
-// NewPool returns a new pool, prodvided the PoolOptions.
+// NewPool returns a new pool, provided the PoolOptions.
 func NewPool(o PoolOptions) *Pool {
 	if o.MaxWorkers <= 0 {
 		o.MaxWorkers = DefaultMaxWorkers
