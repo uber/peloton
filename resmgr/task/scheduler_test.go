@@ -20,6 +20,10 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"github.com/stretchr/testify/assert"
+	"math/rand"
+	"sync"
+	"sync/atomic"
 )
 
 type TaskSchedulerTestSuite struct {
@@ -53,11 +57,12 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 	suite.rmTaskTracker = GetTracker()
 
 	suite.taskSched = &scheduler{
+		condition:        sync.NewCond(&sync.Mutex{}),
 		resPoolTree:      suite.resTree,
 		runningState:     runningStateNotStarted,
 		schedulingPeriod: time.Duration(1) * time.Second,
 		stopChan:         make(chan struct{}, 1),
-		readyQueue:       suite.readyQueue,
+		queue:            suite.readyQueue,
 		rmTaskTracker:    suite.rmTaskTracker,
 		metrics:          NewMetrics(tally.NoopScope),
 	}
@@ -116,7 +121,6 @@ func (suite *TaskSchedulerTestSuite) getResourceConfig() []*pb_respool.ResourceC
 
 // Returns resource pools
 func (suite *TaskSchedulerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
-
 	rootID := pb_respool.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
@@ -173,7 +177,6 @@ func (suite *TaskSchedulerTestSuite) getResPools() map[string]*pb_respool.Resour
 }
 
 func (suite *TaskSchedulerTestSuite) AddTasks() {
-
 	tasks := []*resmgr.Task{
 		{
 			Name:     "job1-1",
@@ -268,4 +271,188 @@ func (suite *TaskSchedulerTestSuite) getEntitlement() map[string]float64 {
 	mapEntitlement[common.DISK] = float64(100)
 	mapEntitlement[common.GPU] = float64(2)
 	return mapEntitlement
+}
+
+func setupScheduler(limit int64) *scheduler {
+	return &scheduler{
+		condition: sync.NewCond(&sync.Mutex{}),
+		queue:     queue.NewMultiLevelList("ready-queue", limit),
+		random:    rand.New(rand.NewSource(time.Now().UnixNano())),
+		metrics:   NewMetrics(tally.NoopScope),
+	}
+}
+
+func createGangs(count int, taskType resmgr.TaskType) []*resmgrsvc.Gang {
+	result := make([]*resmgrsvc.Gang, 0, count)
+	for i := 0; i < count; i++ {
+		result = append(result, &resmgrsvc.Gang{
+			Tasks: []*resmgr.Task{
+				{
+					Type: taskType,
+				},
+			},
+		})
+	}
+	return result
+}
+
+func TestScheduler_EnqueueGang_enqueues_until_the_queue_is_full(t *testing.T) {
+	scheduler := setupScheduler(2)
+	gangs := createGangs(3, resmgr.TaskType_BATCH)
+	for i, gang := range gangs {
+		err := scheduler.EnqueueGang(gang)
+		if i < 2 {
+			assert.NoError(t, err)
+		} else {
+			assert.EqualError(t, err, "list size limit reached")
+		}
+	}
+}
+
+func TestScheduler_DequeueGang_blocks_until_a_gang_is_added(t *testing.T) {
+	scheduler := setupScheduler(3)
+	gangs := createGangs(1, resmgr.TaskType_BATCH)
+	start := time.Now()
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		scheduler.EnqueueGang(gangs[0])
+	}()
+	gang, err := scheduler.DequeueGang(50*time.Millisecond, resmgr.TaskType_BATCH)
+	end := time.Now()
+	timeSpent := end.Sub(start)
+	assert.True(t, timeSpent < 50*time.Millisecond)
+	assert.True(t, timeSpent > 20*time.Millisecond)
+	assert.NoError(t, err)
+	assert.NotNil(t, gang)
+}
+
+func TestScheduler_DequeueGang_of_different_types_at_the_same_time(t *testing.T) {
+	scheduler := setupScheduler(4)
+	waitGroup := sync.WaitGroup{}
+	waitGroup.Add(4)
+	maxWaitTime := 10 * time.Millisecond
+	dequeueType := resmgr.TaskType_STATELESS
+	type state struct {
+		dequeued bool
+		used     time.Duration
+	}
+	states := make([]*state, 4)
+	types := []resmgr.TaskType{
+		resmgr.TaskType_BATCH, resmgr.TaskType_STATELESS, resmgr.TaskType_DAEMON, resmgr.TaskType_STATEFUL,
+	}
+	for i := range states {
+		go func(index int) {
+			start := time.Now()
+			gang, err := scheduler.DequeueGang(maxWaitTime, types[index])
+			end := time.Now()
+			used := end.Sub(start)
+			states[index] = &state{
+				used: used,
+			}
+			if gang != nil && err == nil {
+				states[index].dequeued = true
+			}
+			waitGroup.Done()
+		}(i)
+	}
+
+	gangs := createGangs(1, dequeueType)
+	for _, gang := range gangs {
+		scheduler.EnqueueGang(gang)
+	}
+	waitGroup.Wait()
+	for i, tt := range types {
+		if tt == dequeueType {
+			assert.True(t, states[i].dequeued)
+			assert.True(t, states[i].used < maxWaitTime)
+		} else {
+			assert.False(t, states[i].dequeued)
+			assert.True(t, states[i].used >= maxWaitTime)
+		}
+	}
+}
+
+func TestScheduler_EnqueueGang_and_DequeueGang_multiple_times(t *testing.T) {
+	size := 100
+	gangs := createGangs(size, resmgr.TaskType_BATCH)
+	scheduler := setupScheduler(5)
+	dequeued := uint32(0)
+	join := sync.WaitGroup{}
+	join.Add(2 * size)
+	for _, gang := range gangs {
+		go func() {
+			for {
+				result, err := scheduler.DequeueGang(time.Duration(50)*time.Millisecond, resmgr.TaskType_BATCH)
+				if err == nil {
+					assert.NotNil(t, result, "result should not be nil")
+					if result != nil {
+						atomic.AddUint32(&dequeued, 1)
+					}
+					break
+				}
+			}
+			join.Done()
+		}()
+		go func(g *resmgrsvc.Gang) {
+			for {
+				err := scheduler.EnqueueGang(g)
+				if err == nil {
+					break
+				}
+			}
+			join.Done()
+		}(gang)
+	}
+	join.Wait()
+	assert.Equal(t, size, int(dequeued))
+}
+
+func createMixedGangs(groupSizes map[resmgr.TaskType]int) []*resmgrsvc.Gang {
+	total := 0
+	for _, size := range groupSizes {
+		total += size
+	}
+	result := make([]*resmgrsvc.Gang, 0, total)
+	for taskType, size := range groupSizes {
+		result = append(result, createGangs(size, taskType)...)
+	}
+	return result
+}
+
+func BenchmarkScheduler_EnqueueGang(b *testing.B) {
+	share := b.N / 4
+	gangs := createMixedGangs(map[resmgr.TaskType]int{
+		resmgr.TaskType_BATCH:     share,
+		resmgr.TaskType_STATELESS: share,
+		resmgr.TaskType_DAEMON:    share,
+		resmgr.TaskType_STATEFUL:  b.N - 3*share,
+	})
+	scheduler := setupScheduler(int64(b.N))
+
+	b.ResetTimer()
+	for _, gang := range gangs {
+		scheduler.EnqueueGang(gang)
+	}
+}
+
+func BenchmarkScheduler_DequeueGang(b *testing.B) {
+	share := b.N / 4
+	groupSizes := map[resmgr.TaskType]int{
+		resmgr.TaskType_BATCH:     share,
+		resmgr.TaskType_STATELESS: share,
+		resmgr.TaskType_DAEMON:    share,
+		resmgr.TaskType_STATEFUL:  b.N - 3*share,
+	}
+	gangs := createMixedGangs(groupSizes)
+	scheduler := setupScheduler(int64(b.N))
+	for _, gang := range gangs {
+		scheduler.EnqueueGang(gang)
+	}
+
+	b.ResetTimer()
+	for taskType, size := range groupSizes {
+		for i := 0; i < size; i++ {
+			scheduler.DequeueGang(10*time.Millisecond, taskType)
+		}
+	}
 }

@@ -14,15 +14,17 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/queue"
+	"context"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 )
 
 var (
-	errEnqueueEmptySchedUnit   = errors.New("empty gang to to ready queue enqueue")
-	errReadyQueueDequeueFailed = errors.New("dequeue gang from ready queue failed")
-	errReadyQueueTaskMissing   = errors.New("task missed tracking in enqueue ready queue")
+	errEnqueueEmptySchedUnit    = errors.New("empty gang to to ready queue enqueue")
+	errReadyQueueDequeueFailed  = errors.New("dequeue gang from ready queue failed")
+	errReadyQueueTaskMissing    = errors.New("task missed tracking in enqueue ready queue")
+	errReadyQueueDequeueTimeout = errors.New("dequeue gang from ready queue timed out")
 )
 
 // Scheduler defines the interface of task scheduler which schedules
@@ -41,12 +43,13 @@ type Scheduler interface {
 
 // scheduler implements the TaskScheduler interface
 type scheduler struct {
-	sync.Mutex
+	lock             sync.Mutex
+	condition        *sync.Cond
 	runningState     int32
 	resPoolTree      respool.Tree
 	schedulingPeriod time.Duration
 	stopChan         chan struct{}
-	readyQueue       *queue.MultiLevelList
+	queue            *queue.MultiLevelList
 	rmTaskTracker    Tracker
 	metrics          *Metrics
 	random           *rand.Rand
@@ -66,12 +69,13 @@ func InitScheduler(
 		return
 	}
 	sched = &scheduler{
+		condition:        sync.NewCond(&sync.Mutex{}),
 		resPoolTree:      respool.GetTree(),
 		runningState:     runningStateNotStarted,
 		schedulingPeriod: taskSchedulingPeriod,
 		stopChan:         make(chan struct{}, 1),
 		// TODO: initialize ready queue elsewhere
-		readyQueue:    queue.NewMultiLevelList("ready-queue", maxReadyQueueSize),
+		queue:         queue.NewMultiLevelList("ready-queue", maxReadyQueueSize),
 		rmTaskTracker: rmTaskTracker,
 		metrics:       NewMetrics(parent.SubScope("task_scheduler")),
 		random:        rand.New(rand.NewSource(time.Now().UnixNano())),
@@ -88,8 +92,8 @@ func GetScheduler() Scheduler {
 
 // Start starts the Task Scheduler in a goroutine
 func (s *scheduler) Start() error {
-	defer s.Unlock()
-	s.Lock()
+	defer s.lock.Unlock()
+	s.lock.Lock()
 
 	if s.runningState == runningStateRunning {
 		log.Warn("Task Scheduler is already running, no action will be performed")
@@ -163,8 +167,8 @@ func (s *scheduler) scheduleTasks() {
 
 // Stop stops Task Scheduler process
 func (s *scheduler) Stop() error {
-	defer s.Unlock()
-	s.Lock()
+	defer s.lock.Unlock()
+	s.lock.Lock()
 
 	if s.runningState == runningStateNotStarted {
 		log.Warn("Task Scheduler is already stopped, no action will be performed")
@@ -194,11 +198,14 @@ func (s *scheduler) EnqueueGang(gang *resmgrsvc.Gang) error {
 		return errEnqueueEmptySchedUnit
 	}
 	level := gang.Tasks[0].Type
-	err := s.readyQueue.Push(int(level), gang)
+	err := s.queue.Push(int(level), gang)
 	if err != nil {
 		log.WithError(err).Error("error in EnqueueGang")
 	}
-	s.metrics.ReadyQueueLen.Update(float64(s.readyQueue.Size()))
+	s.metrics.ReadyQueueLen.Update(float64(s.queue.Size()))
+	if err == nil {
+		s.condition.Broadcast()
+	}
 	return err
 }
 
@@ -208,19 +215,43 @@ func (s *scheduler) EnqueueGang(gang *resmgrsvc.Gang) error {
 func (s *scheduler) DequeueGang(maxWaitTime time.Duration, taskType resmgr.TaskType) (*resmgrsvc.Gang, error) {
 	level := int(taskType)
 	if taskType == resmgr.TaskType_UNKNOWN {
-		levels := s.readyQueue.Levels()
+		levels := s.queue.Levels()
 		if len(levels) > 0 {
 			level = levels[s.random.Intn(len(levels))]
 		}
 	}
-	item, err := s.readyQueue.Pop(level)
-	if err != nil {
-		return nil, err
+	s.condition.L.Lock()
+	defer s.condition.L.Unlock()
+	pastDeadline := uint32(0)
+	timer := time.NewTimer(maxWaitTime)
+	defer timer.Stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-timer.C:
+			atomic.StoreUint32(&pastDeadline, 1)
+			s.condition.Broadcast()
+		}
+	}()
+	var item interface{}
+	var err error
+	for {
+		item, err = s.queue.Pop(level)
+		_, isEmpty := err.(queue.ErrorQueueEmpty)
+		if atomic.LoadUint32(&pastDeadline) == 1 || err == nil || !isEmpty {
+			break
+		}
+		s.condition.Wait()
 	}
 	if item == nil {
+		if atomic.LoadUint32(&pastDeadline) == 1 {
+			return nil, errReadyQueueDequeueTimeout
+		}
 		return nil, errReadyQueueDequeueFailed
 	}
 	res := item.(*resmgrsvc.Gang)
-	s.metrics.ReadyQueueLen.Update(float64(s.readyQueue.Size()))
+	s.metrics.ReadyQueueLen.Update(float64(s.queue.Size()))
 	return res, nil
 }

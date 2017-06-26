@@ -8,6 +8,13 @@ import (
 	"sync"
 )
 
+// ErrorQueueEmpty represents the error that the queue is empty.
+type ErrorQueueEmpty string
+
+func (err ErrorQueueEmpty) Error() string {
+	return string(err)
+}
+
 // MultiLevelList struct holds all the lists with different Level, and a limit
 // on total size of the list. If the limit is negative there is no size limit
 // on the list.
@@ -103,7 +110,7 @@ func (p *MultiLevelList) Pop(level int) (interface{}, error) {
 		}
 		return e, nil
 	}
-	err := fmt.Errorf("No items found in queue for priority %d", level)
+	err := ErrorQueueEmpty(fmt.Sprintf("No items found in queue for priority %d", level))
 	return nil, err
 }
 
@@ -116,7 +123,7 @@ func (p *MultiLevelList) PeekItem(level int) (interface{}, error) {
 		e := val.Front().Value
 		return e, nil
 	}
-	err := fmt.Errorf("No items found in queue for priority %d", level)
+	err := ErrorQueueEmpty(fmt.Sprintf("No items found in queue for priority %d", level))
 	return nil, err
 }
 
@@ -142,7 +149,7 @@ func (p *MultiLevelList) Remove(
 	}
 
 	if itemRemoved == false {
-		err := fmt.Errorf("No items found in queue %s", value)
+		err := ErrorQueueEmpty(fmt.Sprintf("No items found in queue %s", value))
 		return err
 	}
 	if p.mapLists[level].Len() == 0 {
@@ -180,7 +187,7 @@ func (p *MultiLevelList) RemoveItems(
 	}
 
 	if len(newValuesMap) != 0 {
-		err := fmt.Errorf("No items found in queue for given level")
+		err := ErrorQueueEmpty("No items found in queue for given level")
 		return false, newValuesMap, err
 	}
 	if p.mapLists[level].Len() == 0 {
