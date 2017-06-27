@@ -260,6 +260,7 @@ def run_cassandra():
                 work_dir + '/files:/files',
             ],
         ),
+        environment=['MAX_HEAP_SIZE=1G', 'HEAP_NEWSIZE=256M'],
         image=config['cassandra_image'],
         detach=True,
         entrypoint='bash /files/run_cassandra_with_stratio_index.sh',
