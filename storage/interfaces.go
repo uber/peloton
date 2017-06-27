@@ -20,6 +20,15 @@ func (e *TaskNotFoundError) Error() string {
 	return fmt.Sprintf("%v is not found", e.TaskID)
 }
 
+// VolumeNotFoundError indicates that persistent volume is not found
+type VolumeNotFoundError struct {
+	VolumeID string
+}
+
+func (e *VolumeNotFoundError) Error() string {
+	return fmt.Sprintf("volume %v is not found", e.VolumeID)
+}
+
 // JobStore is the interface to store job states
 type JobStore interface {
 	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error

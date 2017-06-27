@@ -242,9 +242,8 @@ service InternalHostService
   // ClusterCapacity fetches the allocated resources to the framework`
   rpc ClusterCapacity(ClusterCapacityRequest) returns (ClusterCapacityResponse);
 
-  // TODO: Enable again when implemented.
   // Performs batch offer operations.
-  // rpc OfferOperations(OfferOperationsRequest) returns (OfferOperationsResponse);
+  rpc OfferOperations(OfferOperationsRequest) returns (OfferOperationsResponse);
 }
 
 /**

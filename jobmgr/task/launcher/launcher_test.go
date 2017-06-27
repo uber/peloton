@@ -15,6 +15,7 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
@@ -26,7 +27,7 @@ import (
 )
 
 const (
-	taskIDFmt   = "testjob-%d-abcdefgh-abcd-1234-5678-1234567890ab"
+	taskIDFmt   = "testjob-%d"
 	testJobName = "testjob"
 	testPort    = uint32(100)
 )
@@ -199,6 +200,236 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	defer lock.Unlock()
 	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
 	assert.Equal(t, taskConfigs, launchedTasks)
+}
+
+func TestLaunchStatefulTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
+
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	taskLauncher := launcher{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:  mockRes,
+		hostMgrClient: mockHostMgr,
+		taskStore:     mockTaskStore,
+		volumeStore:   mockVolumeStore,
+		rootCtx:       context.Background(),
+		metrics:       metrics,
+	}
+
+	numTasks := 1
+	testTasks := make([]*task.TaskInfo, numTasks)
+	taskIDs := make([]*peloton.TaskID, numTasks)
+	placements := make([]*resmgr.Placement, numTasks)
+	taskConfigs := make(map[string]*task.TaskConfig)
+	taskIds := make(map[string]*peloton.TaskID)
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
+			ContainerPath: "testpath",
+			SizeMB:        10,
+		}
+		taskID := &peloton.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		}
+		taskIDs[i] = taskID
+		testTasks[i] = tmp
+		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
+		taskIds[taskID.Value] = taskID
+	}
+
+	// generate 1 host offer, each can hold 1 tasks.
+	numHostOffers := 1
+	rs := createResources(1)
+	var hostOffers []*hostsvc.HostOffer
+	for i := 0; i < numHostOffers; i++ {
+		hostOffers = append(hostOffers, createHostOffer(i, rs))
+	}
+
+	// Generate Placements per host offer
+	for i := 0; i < numHostOffers; i++ {
+		p := createPlacements(testTasks[i], hostOffers[i])
+		p.Type = resmgr.TaskType_STATEFUL
+		placements[i] = p
+	}
+
+	// Capture OfferOperation calls
+	hostsLaunchedOn := make(map[string]bool)
+
+	volumeInfo := &volume.PersistentVolumeInfo{}
+	gomock.InOrder(
+		mockRes.EXPECT().
+			GetPlacements(
+				gomock.Any(),
+				gomock.Any()).
+			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
+
+		// Mock Task Store GetTaskByID
+		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
+
+		// Mock Task Store UpdateTask
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+
+		mockVolumeStore.EXPECT().
+			GetPersistentVolume(gomock.Any(), gomock.Any()).
+			Return(volumeInfo, nil),
+
+		// Mock OfferOperation call.
+		mockHostMgr.EXPECT().
+			OfferOperations(
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, reqBody interface{}) {
+				// No need to unmarksnal output: empty means success.
+				// Capture call since we don't know ordering of tasks.
+				lock.Lock()
+				defer lock.Unlock()
+				req := reqBody.(*hostsvc.OfferOperationsRequest)
+				hostsLaunchedOn[req.Hostname] = true
+				assert.Equal(t, 3, len(req.Operations))
+			}).
+			Return(&hostsvc.OfferOperationsResponse{}, nil).
+			Times(1),
+	)
+
+	placements, err := taskLauncher.getPlacements()
+
+	if err != nil {
+		assert.Error(t, err)
+	}
+	taskLauncher.processPlacements(context.Background(), placements)
+
+	time.Sleep(1 * time.Second)
+	expectedLaunchedHosts := map[string]bool{
+		"hostname-0": true,
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
+}
+
+func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
+
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	taskLauncher := launcher{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:  mockRes,
+		hostMgrClient: mockHostMgr,
+		taskStore:     mockTaskStore,
+		volumeStore:   mockVolumeStore,
+		rootCtx:       context.Background(),
+		metrics:       metrics,
+	}
+
+	numTasks := 1
+	testTasks := make([]*task.TaskInfo, numTasks)
+	taskIDs := make([]*peloton.TaskID, numTasks)
+	placements := make([]*resmgr.Placement, numTasks)
+	taskConfigs := make(map[string]*task.TaskConfig)
+	taskIds := make(map[string]*peloton.TaskID)
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
+			ContainerPath: "testpath",
+			SizeMB:        10,
+		}
+		taskID := &peloton.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		}
+		taskIDs[i] = taskID
+		testTasks[i] = tmp
+		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
+		taskIds[taskID.Value] = taskID
+	}
+
+	// generate 1 host offer, each can hold 1 tasks.
+	numHostOffers := 1
+	rs := createResources(1)
+	var hostOffers []*hostsvc.HostOffer
+	for i := 0; i < numHostOffers; i++ {
+		hostOffers = append(hostOffers, createHostOffer(i, rs))
+	}
+
+	// Generate Placements per host offer
+	for i := 0; i < numHostOffers; i++ {
+		p := createPlacements(testTasks[i], hostOffers[i])
+		p.Type = resmgr.TaskType_STATEFUL
+		placements[i] = p
+	}
+
+	// Capture OfferOperation calls
+	hostsLaunchedOn := make(map[string]bool)
+
+	volumeInfo := &volume.PersistentVolumeInfo{
+		State: volume.VolumeState_CREATED,
+	}
+	gomock.InOrder(
+		mockRes.EXPECT().
+			GetPlacements(
+				gomock.Any(),
+				gomock.Any()).
+			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
+
+		// Mock Task Store GetTaskByID
+		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
+
+		// Mock Task Store UpdateTask
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+
+		mockVolumeStore.EXPECT().
+			GetPersistentVolume(gomock.Any(), gomock.Any()).
+			Return(volumeInfo, nil),
+
+		// Mock OfferOperation call.
+		mockHostMgr.EXPECT().
+			OfferOperations(
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, reqBody interface{}) {
+				// No need to unmarksnal output: empty means success.
+				// Capture call since we don't know ordering of tasks.
+				lock.Lock()
+				defer lock.Unlock()
+				req := reqBody.(*hostsvc.OfferOperationsRequest)
+				hostsLaunchedOn[req.Hostname] = true
+				assert.Equal(t, 1, len(req.Operations))
+			}).
+			Return(&hostsvc.OfferOperationsResponse{}, nil).
+			Times(1),
+	)
+
+	placements, err := taskLauncher.getPlacements()
+
+	if err != nil {
+		assert.Error(t, err)
+	}
+	taskLauncher.processPlacements(context.Background(), placements)
+
+	time.Sleep(1 * time.Second)
+	expectedLaunchedHosts := map[string]bool{
+		"hostname-0": true,
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
 }
 
 // createPlacements creates the placement

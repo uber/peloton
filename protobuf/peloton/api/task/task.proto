@@ -335,6 +335,9 @@ message RuntimeInfo {
 
   // The number of times the task has failed after retries.
   uint32 failureCount = 10;
+
+  // persistent volume id
+  peloton.VolumeID volumeID = 11;
 }
 
 

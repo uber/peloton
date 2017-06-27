@@ -1436,7 +1436,7 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_v
 			UpdateTime:    record.UpdateTime.String(),
 		}, nil
 	}
-	return nil, fmt.Errorf("PersistentVolume not found for ID %s", volumeID)
+	return nil, &storage.VolumeNotFoundError{VolumeID: volumeID}
 }
 
 // DeletePersistentVolume delete persistent volume entry.

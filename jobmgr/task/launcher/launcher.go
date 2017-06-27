@@ -8,16 +8,20 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 
 	"go.uber.org/yarpc"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // Config is Task launcher specific config
@@ -50,13 +54,15 @@ type launcher struct {
 	started       int32
 	shutdown      int32
 	taskStore     storage.TaskStore
+	volumeStore   storage.PersistentVolumeStore
 	config        *Config
 	metrics       *Metrics
 }
 
 const (
 	// Time out for the function to time out
-	timeoutFunctionCall = 120 * time.Second
+	_timeoutFunctionCall = 120 * time.Second
+	_rpcTimeout          = 10 * time.Second
 )
 
 var taskLauncher *launcher
@@ -68,6 +74,7 @@ func InitTaskLauncher(
 	resMgrClientName string,
 	hostMgrClientName string,
 	taskStore storage.TaskStore,
+	volumeStore storage.PersistentVolumeStore,
 	config *Config,
 	parent tally.Scope,
 ) {
@@ -82,6 +89,7 @@ func InitTaskLauncher(
 			hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostMgrClientName)),
 			rootCtx:       context.Background(),
 			taskStore:     taskStore,
+			volumeStore:   volumeStore,
 			config:        config,
 			metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		}
@@ -124,7 +132,7 @@ func (l *launcher) Start() error {
 }
 
 func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
-	ctx, cancelFunc := context.WithTimeout(l.rootCtx, timeoutFunctionCall)
+	ctx, cancelFunc := context.WithTimeout(l.rootCtx, _timeoutFunctionCall)
 	defer cancelFunc()
 
 	request := &resmgrsvc.GetPlacementsRequest{
@@ -239,6 +247,17 @@ func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Pla
 			portsIndex++
 		}
 
+		// Generate volume ID if not set for stateful task.
+		if taskInfo.GetConfig().GetVolume() != nil {
+			if taskInfo.GetRuntime().GetVolumeID() == nil {
+				// Generates volume ID if first time launch the stateful task.
+				// TODO: we need to generate new volume ID for replacing task on a different host.
+				taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
+					Value: uuid.NewUUID().String(),
+				}
+			}
+		}
+
 		// Writes the hostname and ports information back to db.
 		err = l.taskStore.UpdateTask(ctx, taskInfo)
 		if err != nil {
@@ -259,18 +278,37 @@ func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Pla
 
 	l.metrics.GetDBTaskInfo.Record(getTaskInfoDuration)
 
-	launchableTasks := l.createLaunchableTasks(tasksInfo)
+	launchableTasks := createLaunchableTasks(tasksInfo)
 	return launchableTasks, nil
 }
 
 // createLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
-func (l *launcher) createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.LaunchableTask {
+func createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.LaunchableTask {
 	var launchableTasks []*hostsvc.LaunchableTask
 	for _, task := range tasks {
-		launchableTask := hostsvc.LaunchableTask{
-			TaskId: task.GetRuntime().GetMesosTaskId(),
-			Config: task.GetConfig(),
-			Ports:  task.GetRuntime().GetPorts(),
+		var launchableTask hostsvc.LaunchableTask
+		// Add volume info into launchable task if task config has volume.
+		if task.GetConfig().GetVolume() != nil {
+			diskResource := util.NewMesosResourceBuilder().
+				WithName("disk").
+				WithValue(float64(task.GetConfig().GetVolume().GetSizeMB())).
+				Build()
+			launchableTask = hostsvc.LaunchableTask{
+				TaskId: task.GetRuntime().GetMesosTaskId(),
+				Config: task.GetConfig(),
+				Ports:  task.GetRuntime().GetPorts(),
+				Volume: &hostsvc.Volume{
+					Id:            task.GetRuntime().GetVolumeID(),
+					ContainerPath: task.GetConfig().GetVolume().GetContainerPath(),
+					Resource:      diskResource,
+				},
+			}
+		} else {
+			launchableTask = hostsvc.LaunchableTask{
+				TaskId: task.GetRuntime().GetMesosTaskId(),
+				Config: task.GetConfig(),
+				Ports:  task.GetRuntime().GetPorts(),
+			}
 		}
 		launchableTasks = append(launchableTasks, &launchableTask)
 	}
@@ -301,16 +339,71 @@ func (l *launcher) Stop() error {
 	return nil
 }
 
-func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
+func (l *launcher) launchStatefulTasks(
+	selectedTasks []*hostsvc.LaunchableTask,
 	placement *resmgr.Placement) error {
-	// TODO: Add retry Logic for tasks launching failure
-	if len(selectedTasks) == 0 {
-		log.Debug("No task is selected to launch")
-		return errors.New("No task is selected to launch")
+	ctx, cancelFunc := context.WithTimeout(l.rootCtx, _rpcTimeout)
+	defer cancelFunc()
+
+	volumeID := selectedTasks[0].GetVolume().GetId().GetValue()
+	createVolume := false
+	pv, err := l.volumeStore.GetPersistentVolume(ctx, volumeID)
+	if err != nil {
+		_, ok := err.(*storage.VolumeNotFoundError)
+		if !ok {
+			// volume store db read error.
+			return err
+		}
+		// First time launch stateful task and create volume.
+		createVolume = true
+	} else if pv.GetState() != volume.VolumeState_CREATED {
+		// Retry launch task but volume is not created.
+		createVolume = true
 	}
 
-	log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
-	ctx, cancelFunc := context.WithTimeout(l.rootCtx, 10*time.Second)
+	var operations []*hostsvc.OfferOperation
+	hostOperationFactory := NewHostOperationsFactory(selectedTasks, placement)
+	if createVolume {
+		// Reserve, Create and Launch the task.
+		operations, err = hostOperationFactory.GetHostOperations(
+			[]hostsvc.OfferOperation_Type{
+				hostsvc.OfferOperation_RESERVE,
+				hostsvc.OfferOperation_CREATE,
+				hostsvc.OfferOperation_LAUNCH,
+			})
+	} else {
+		// Launch using the volume.
+		operations, err = hostOperationFactory.GetHostOperations(
+			[]hostsvc.OfferOperation_Type{
+				hostsvc.OfferOperation_LAUNCH,
+			})
+	}
+
+	if err != nil {
+		return err
+	}
+
+	var request = &hostsvc.OfferOperationsRequest{
+		Hostname:   placement.GetHostname(),
+		Operations: operations,
+	}
+
+	log.WithField("request", request).Debug("OfferOperations Called")
+
+	response, err := l.hostMgrClient.OfferOperations(ctx, request)
+	if err != nil {
+		return err
+	}
+	if response.GetError() != nil {
+		return errors.New(response.Error.String())
+	}
+	return nil
+}
+
+func (l *launcher) launchBatchTasks(
+	selectedTasks []*hostsvc.LaunchableTask,
+	placement *resmgr.Placement) error {
+	ctx, cancelFunc := context.WithTimeout(l.rootCtx, _rpcTimeout)
 	defer cancelFunc()
 	var request = &hostsvc.LaunchTasksRequest{
 		Hostname: placement.GetHostname(),
@@ -320,8 +413,34 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 
 	log.WithField("request", request).Debug("LaunchTasks Called")
 
-	callStart := time.Now()
 	response, err := l.hostMgrClient.LaunchTasks(ctx, request)
+	if err != nil {
+		return err
+	}
+	if response.GetError() != nil {
+		return errors.New(response.Error.String())
+	}
+	return nil
+}
+
+func (l *launcher) launchTasks(
+	selectedTasks []*hostsvc.LaunchableTask,
+	placement *resmgr.Placement) error {
+	// TODO: Add retry Logic for tasks launching failure
+	if len(selectedTasks) == 0 {
+		log.Debug("No task is selected to launch")
+		return errors.New("No task is selected to launch")
+	}
+
+	log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
+
+	callStart := time.Now()
+	var err error
+	if placement.Type != resmgr.TaskType_STATEFUL {
+		err = l.launchBatchTasks(selectedTasks, placement)
+	} else {
+		err = l.launchStatefulTasks(selectedTasks, placement)
+	}
 	callDuration := time.Since(callStart)
 
 	if err != nil {
@@ -333,24 +452,13 @@ func (l *launcher) launchTasks(selectedTasks []*hostsvc.LaunchableTask,
 		return err
 	}
 
-	log.WithField("response", response).Debug("LaunchTasks returned")
-
-	if response.GetError() != nil {
-		log.WithFields(log.Fields{
-			"num_tasks": len(selectedTasks),
-			"placement": placement,
-			"error":     response.Error.String(),
-		}).Error("Failed to launch tasks")
-		l.metrics.TaskLaunchFail.Inc(1)
-		return errors.New(response.Error.String())
-	}
 	l.metrics.TaskLaunch.Inc(int64(len(selectedTasks)))
 
 	log.WithFields(log.Fields{
 		"num_tasks": len(selectedTasks),
 		"hostname":  placement.GetHostname(),
 		"duration":  callDuration.Seconds(),
-	}).Info("Launched tasks")
+	}).Debug("Launched tasks")
 	l.metrics.LaunchTasksCallDuration.Record(callDuration)
 	return nil
 }

@@ -160,7 +160,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	jobStore, taskStore, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
+	jobStore, taskStore, _, _, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
 
 	t := http.NewTransport()
 
@@ -312,6 +312,7 @@ func main() {
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
 		taskStore,
+		volumeStore,
 		&cfg.JobManager.TaskLauncher,
 		rootScope,
 	)
