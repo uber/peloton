@@ -34,6 +34,10 @@ message UpgradeOptions {
 
   // Whether or not to stop all instance before upgrade
   bool stopBeforeUpgrade = 3;
+
+  // startPaused indicates if the workflow should start in the paused state,
+  // requiring an explicit resume to initiate.
+  bool startPaused = 4;
 }
 
 
@@ -46,7 +50,7 @@ message UpgradeSpec {
 
   // New configuration of the job to be upgraded. The new job config
   // will be applied to all instances in a rolling upgrade fashion without
-  // voilating the job SLA
+  // violating the job SLA
   job.JobConfig jobConfig = 2;
 
   // The options of the rolling upgrade
@@ -76,7 +80,7 @@ message UpgradeInfo {
 
     // The upgrade workflow is aborted
     ABORTED         = 5;
-  } 
+  }
 
   // Workflow ID of the job upgrade
   WorkflowID workflowId = 1;
@@ -111,13 +115,12 @@ service UpgradeManager
 
   // Resume a paused upgrade workflow
   rpc Resume(ResumeRequest) returns (ResumeResponse);
-  
+
   // Rollback an upgrade workflow
   rpc Rollback(RollbackRequest) returns (RollbackResponse);
 
   // Abort an upgrade workflow
   rpc Abort(AbortRequest) returns (AbortResponse);
-  
 }
 
 /**
@@ -174,7 +177,7 @@ message ListRequest {
 message ListResponse {
   message Result {
     repeated UpgradeInfo value = 1;
-  }  
+  }
   oneof response {
     Result result = 1;
   }

@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/upgrade"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -257,6 +258,7 @@ func main() {
 		taskStore,
 		common.PelotonHostManager, // TODO: to be removed
 	)
+	upgrade.InitServiceHandler(dispatcher, jobStore)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
