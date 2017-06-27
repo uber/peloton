@@ -42,6 +42,10 @@ func (c *MockClient) GetPlacements(context.Context, *resmgrsvc.GetPlacementsRequ
 	return nil, nil
 }
 
+func (c *MockClient) GetTasksByHosts(context.Context, *resmgrsvc.GetTasksByHostsRequest, ...yarpc.CallOption) (*resmgrsvc.GetTasksByHostsResponse, error) {
+	return nil, nil
+}
+
 func (c *MockClient) NotifyTaskUpdates(ctx context.Context, request *resmgrsvc.NotifyTaskUpdatesRequest, opts ...yarpc.CallOption) (*resmgrsvc.NotifyTaskUpdatesResponse, error) {
 	c.Lock()
 	defer c.Unlock()

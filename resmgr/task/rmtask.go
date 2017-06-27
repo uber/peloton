@@ -219,6 +219,11 @@ func (rmTask *RMTask) updateStatus(status string) {
 	//}
 }
 
+// Task returns the task of the RMTask.
+func (rmTask *RMTask) Task() *resmgr.Task {
+	return rmTask.task
+}
+
 // GetCurrentState returns the current state
 func (rmTask *RMTask) GetCurrentState() task.TaskState {
 	return task.TaskState(

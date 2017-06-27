@@ -68,12 +68,12 @@ service ResourceManagerService {
   rpc NotifyTaskUpdates(NotifyTaskUpdatesRequest) returns (NotifyTaskUpdatesResponse);
 
   /**
-   * Get the list of Tasks running on the the list of host provided. This information
-   * needed from the placement engines to find out what are the tasks running on
-   * which hosts by that they can place tasks accordingly
+   * Get the list of Tasks running on the the list of host provided. This
+   * information is needed from the placement engines to find out which tasks
+   * are running on which hosts so the placement engine can place tasks taking
+   * this information into account.
    */
-  // TODO: Reintroduce if needed.
-  // rpc GetTasksByHosts(GetTasksByHostsRequest) returns (GetTasksByHostsResponse);
+  rpc GetTasksByHosts(GetTasksByHostsRequest) returns (GetTasksByHostsResponse);
 }
 
 message ResourcePoolNotFound {
@@ -207,7 +207,7 @@ message NotifyTaskUpdatesResponse {
 
 // GetTasksByHostsRequest will always returns the currently running tasks
 message GetTasksByHostsRequest {
-  repeated string hostname = 1;
+  repeated string hostnames = 1;
 
   // Task Type to identify which kind of tasks need to
   // be dequeued, if this is left out all tasks wil be returned.
@@ -223,8 +223,6 @@ message GetTasksByHostsResponse {
     string message = 1;
   }
   Error error = 1;
-  // This will return the list of tasks running on the host
-  // If there is no tasks running on that host it will return
-  // empty list
+  // This will return a map from hostname to a list of tasks running on the host.
   map <string,TaskList> hostTasksMap = 2;
 }

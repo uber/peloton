@@ -28,12 +28,18 @@ type Tracker interface {
 	// GetTask gets the RM task for taskID
 	GetTask(t *peloton.TaskID) *RMTask
 
+	// Sets the hostname where the task is placed.
+	SetPlacement(t *peloton.TaskID, hostname string)
+
 	// DeleteTask deletes the task from the map
 	DeleteTask(t *peloton.TaskID)
 
 	// MarkItDone marks the task done and add back those
 	// resources to respool
 	MarkItDone(taskID *peloton.TaskID) error
+
+	// TasksByHosts returns all tasks of the given type running on the given hosts.
+	TasksByHosts(hosts []string, taskType resmgr.TaskType) map[string][]*RMTask
 
 	// AddResources adds the task resources to respool
 	AddResources(taskID *peloton.TaskID) error
@@ -50,7 +56,12 @@ type Tracker interface {
 type tracker struct {
 	sync.Mutex
 
-	tasks   map[string]*RMTask
+	// Maps task id -> rm task
+	tasks map[string]*RMTask
+
+	// Maps hostname -> task type -> task id -> rm task
+	placements map[string]map[resmgr.TaskType]map[string]*RMTask
+
 	metrics *Metrics
 }
 
@@ -59,14 +70,14 @@ var rmtracker *tracker
 
 // InitTaskTracker initialize the task tracker
 func InitTaskTracker(parent tally.Scope) {
-
 	if rmtracker != nil {
 		log.Info("Resource Manager Tracker is already initialized")
 		return
 	}
 	rmtracker = &tracker{
-		tasks:   make(map[string]*RMTask),
-		metrics: NewMetrics(parent.SubScope("tracker")),
+		tasks:      make(map[string]*RMTask),
+		placements: map[string]map[resmgr.TaskType]map[string]*RMTask{},
+		metrics:    NewMetrics(parent.SubScope("tracker")),
 	}
 }
 
@@ -90,6 +101,9 @@ func (tr *tracker) AddTask(
 		return err
 	}
 	tr.tasks[rmTask.task.Id.Value] = rmTask
+	if rmTask.task.Hostname != "" {
+		tr.setPlacement(rmTask.task.Id, rmTask.task.Hostname)
+	}
 	tr.metrics.TaskLeninTracker.Update(float64(tr.GetSize()))
 	return nil
 }
@@ -104,10 +118,52 @@ func (tr *tracker) GetTask(t *peloton.TaskID) *RMTask {
 	return nil
 }
 
+func (tr *tracker) setPlacement(t *peloton.TaskID, hostname string) {
+	rmTask, ok := tr.tasks[t.Value]
+	if !ok {
+		return
+	}
+	tr.clearPlacement(rmTask)
+	rmTask.task.Hostname = hostname
+	if _, exists := tr.placements[hostname]; !exists {
+		tr.placements[hostname] = map[resmgr.TaskType]map[string]*RMTask{}
+	}
+	if _, exists := tr.placements[hostname][rmTask.task.Type]; !exists {
+		tr.placements[hostname][rmTask.task.Type] = map[string]*RMTask{}
+	}
+	if _, exists := tr.placements[hostname][rmTask.task.Type][t.Value]; !exists {
+		tr.placements[hostname][rmTask.task.Type][t.Value] = rmTask
+	}
+}
+
+// clearPlacement will remove the task from the placements map.
+func (tr *tracker) clearPlacement(rmTask *RMTask) {
+	if rmTask.task.Hostname == "" {
+		return
+	}
+	delete(tr.placements[rmTask.task.Hostname][rmTask.task.Type], rmTask.task.Id.Value)
+	if len(tr.placements[rmTask.task.Hostname][rmTask.task.Type]) == 0 {
+		delete(tr.placements[rmTask.task.Hostname], rmTask.task.Type)
+	}
+	if len(tr.placements[rmTask.task.Hostname]) == 0 {
+		delete(tr.placements, rmTask.task.Hostname)
+	}
+}
+
+// SetPlacement will set the hostname that the task is currently placed on.
+func (tr *tracker) SetPlacement(t *peloton.TaskID, hostname string) {
+	tr.Lock()
+	defer tr.Unlock()
+	tr.setPlacement(t, hostname)
+}
+
 // DeleteTask deletes the task from the map
 func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 	tr.Lock()
 	defer tr.Unlock()
+	if rmTask, exists := tr.tasks[t.Value]; exists {
+		tr.clearPlacement(rmTask)
+	}
 	delete(tr.tasks, t.Value)
 	tr.metrics.TaskLeninTracker.Update(float64(tr.GetSize()))
 }
@@ -128,6 +184,27 @@ func (tr *tracker) MarkItDone(
 	log.WithField("Task", tID.Value).Info("Deleting the task from Tracker")
 	tr.DeleteTask(tID)
 	return nil
+}
+
+// TasksByHosts returns all tasks of the given type running on the given hosts.
+func (tr *tracker) TasksByHosts(hosts []string, taskType resmgr.TaskType) map[string][]*RMTask {
+	result := map[string][]*RMTask{}
+	types := []resmgr.TaskType{}
+	if taskType == resmgr.TaskType_UNKNOWN {
+		for t := range resmgr.TaskType_name {
+			types = append(types, resmgr.TaskType(t))
+		}
+	} else {
+		types = append(types, taskType)
+	}
+	for _, hostname := range hosts {
+		for _, tType := range types {
+			for _, rmTask := range tr.placements[hostname][tType] {
+				result[hostname] = append(result[hostname], rmTask)
+			}
+		}
+	}
+	return result
 }
 
 // AddResources adds the task resources to respool

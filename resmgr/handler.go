@@ -253,8 +253,8 @@ func (h *ServiceHandler) SetPlacements(
 				if h.rmTracker.GetTask(taskID).GetCurrentState() == t.TaskState_PLACED {
 					notValidTasks = append(notValidTasks, taskID)
 				} else {
-					err := h.rmTracker.GetTask(taskID).
-						TransitTo(t.TaskState_PLACED.String())
+					h.rmTracker.SetPlacement(taskID, placement.Hostname)
+					err := h.rmTracker.GetTask(taskID).TransitTo(t.TaskState_PLACED.String())
 					if err != nil {
 						log.WithError(
 							errors.WithStack(err)).
@@ -306,6 +306,26 @@ func (h *ServiceHandler) SetPlacements(
 	h.metrics.PlacementQueueLen.Update(float64(h.placements.Length()))
 	log.Debug("Set Placement Returned")
 	return &response, nil
+}
+
+// GetTasksByHosts returns all tasks of the given task type running on the given list of hosts.
+func (h *ServiceHandler) GetTasksByHosts(ctx context.Context,
+	req *resmgrsvc.GetTasksByHostsRequest) (*resmgrsvc.GetTasksByHostsResponse, error) {
+	hostTasksMap := map[string]*resmgrsvc.TaskList{}
+	for hostname, tasks := range h.rmTracker.TasksByHosts(req.Hostnames, req.Type) {
+		if _, exists := hostTasksMap[hostname]; !exists {
+			hostTasksMap[hostname] = &resmgrsvc.TaskList{
+				Tasks: make([]*resmgr.Task, 0, len(tasks)),
+			}
+		}
+		for _, task := range tasks {
+			hostTasksMap[hostname].Tasks = append(hostTasksMap[hostname].Tasks, task.Task())
+		}
+	}
+	res := &resmgrsvc.GetTasksByHostsResponse{
+		HostTasksMap: hostTasksMap,
+	}
+	return res, nil
 }
 
 func (h *ServiceHandler) removeTasksFromPlacements(

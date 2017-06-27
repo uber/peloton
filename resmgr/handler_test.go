@@ -63,7 +63,7 @@ func (suite *HandlerTestSuite) SetupSuite() {
 		resPoolTree: respool.GetTree(),
 		placements: queue.NewQueue(
 			"placement-queue",
-			reflect.TypeOf(&resmgr.Placement{}),
+			reflect.TypeOf(resmgr.Placement{}),
 			maxPlacementQueueSize,
 		),
 		rmTracker: suite.rmTaskTracker,
@@ -377,6 +377,14 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
 		Placements: suite.getPlacements(),
 	}
+	for _, placement := range setReq.Placements {
+		for _, taskID := range placement.Tasks {
+			rmTask := handler.rmTracker.GetTask(taskID)
+			rmTask.TransitTo(task.TaskState_PENDING.String())
+			rmTask.TransitTo(task.TaskState_READY.String())
+			rmTask.TransitTo(task.TaskState_PLACING.String())
+		}
+	}
 	setResp, err := handler.SetPlacements(suite.context, setReq)
 	suite.NoError(err)
 	suite.Nil(setResp.GetError())
@@ -389,6 +397,40 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	suite.NoError(err)
 	suite.Nil(getResp.GetError())
 	suite.Equal(suite.getPlacements(), getResp.GetPlacements())
+}
+
+func (suite *HandlerTestSuite) TestGetTasksByHosts() {
+	setReq := &resmgrsvc.SetPlacementsRequest{
+		Placements: suite.getPlacements(),
+	}
+	hostnames := make([]string, 0, len(setReq.Placements))
+	for _, placement := range setReq.Placements {
+		hostnames = append(hostnames, placement.Hostname)
+		for _, taskID := range placement.Tasks {
+			rmTask := suite.handler.rmTracker.GetTask(taskID)
+			rmTask.TransitTo(task.TaskState_PENDING.String())
+			rmTask.TransitTo(task.TaskState_READY.String())
+			rmTask.TransitTo(task.TaskState_PLACING.String())
+		}
+	}
+	setResp, err := suite.handler.SetPlacements(suite.context, setReq)
+	suite.NoError(err)
+	suite.Nil(setResp.GetError())
+
+	req := &resmgrsvc.GetTasksByHostsRequest{
+		Hostnames: hostnames,
+	}
+	res, err := suite.handler.GetTasksByHosts(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(res)
+	suite.Equal(len(hostnames), len(res.HostTasksMap))
+	for _, hostname := range hostnames {
+		_, exists := res.HostTasksMap[hostname]
+		suite.True(exists)
+	}
+	for _, placement := range setReq.Placements {
+		suite.Equal(len(placement.Tasks), len(res.HostTasksMap[placement.Hostname].Tasks))
+	}
 }
 
 func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
