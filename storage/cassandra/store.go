@@ -37,6 +37,7 @@ const (
 	taskIDFmt             = "%s-%d"
 	jobsTable             = "jobs"
 	jobRuntimeTable       = "job_runtime"
+	jobIndexTable         = "job_index"
 	tasksTable            = "tasks"
 	taskStateChangesTable = "task_state_changes"
 	upgradesTable         = "upgrades"
@@ -144,14 +145,16 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 			"Owner",
 			"Labels",
 			"CreateTime",
-			"RespoolID").
+			"RespoolID",
+		).
 		Values(
 			jobID,
 			string(configBuffer),
 			owner,
 			string(labelBuffer),
 			time.Now(),
-			jobConfig.GetRespoolID().GetValue()).
+			jobConfig.GetRespoolID().GetValue(),
+		).
 		IfNotExist()
 
 	err = s.applyStatement(ctx, stmt, jobID)
@@ -163,6 +166,27 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 		return err
 	}
 
+	queryBuilder = s.DataStore.NewQuery()
+	jobInfoStmt := queryBuilder.Update(jobIndexTable).
+		Set("Labels", labelBuffer).
+		Set("CreateTime", time.Now()).
+		Where(qb.Eq{"JobID": id.GetValue()})
+	err = s.applyStatement(ctx, jobInfoStmt, id.Value)
+	if err != nil {
+		log.WithField("job_id", id.Value).
+			WithError(err).
+			Error("Failed to create job info record")
+		s.metrics.JobCreateFail.Inc(1)
+		return err
+	}
+	err = s.updateJobIndexWithJobConfig(ctx, id, jobConfig, configBuffer)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("updateJobInfoWithJobConfig failed")
+		s.metrics.JobCreateFail.Inc(1)
+		return err
+	}
 	// Create the initial job runtime record
 	err = s.UpdateJobRuntime(ctx, id, &initialJobRuntime)
 	if err != nil {
@@ -194,6 +218,15 @@ func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 		log.WithField("job_id", id.Value).
 			WithError(err).
 			Error("Failed to update job config")
+		s.metrics.JobUpdateFail.Inc(1)
+		return err
+	}
+	// Create the initial job runtime record
+	err = s.updateJobIndexWithJobConfig(ctx, id, jobConfig, configBuffer)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("updateJobInfoWithJobConfig failed")
 		s.metrics.JobUpdateFail.Inc(1)
 		return err
 	}
@@ -261,7 +294,12 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"jobconfig", values:%s}`, strconv.Quote(word)))
 	}
 
-	where := `expr(jobs_index, '{query: {type: "boolean", must: [`
+	// Add support on query by job state
+	if spec.JobState != job.JobState_UNKNOWN {
+		clauses = append(clauses, fmt.Sprintf(`{type: "match", field:"jobstate", value:%s}`, strconv.Quote(spec.JobState.String())))
+	}
+
+	where := `expr(job_index_lucene, '{query: {type: "boolean", must: [`
 	for i, c := range clauses {
 		if i > 0 {
 			where += ", "
@@ -271,7 +309,8 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 	where += "]}}')"
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable)
+	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobIndexTable)
+
 	if len(clauses) > 0 {
 		stmt = stmt.Where(where)
 	}
@@ -1318,6 +1357,68 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.Value)
 }
 
+// updateJobIndexWithJobConfig updates the job index table with jobConfig
+func (s *Store) updateJobIndexWithJobConfig(
+	ctx context.Context,
+	id *peloton.JobID,
+	jobConfig *job.JobConfig,
+	configBuffer []byte) error {
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(jobIndexTable).
+		Set("JobConfig", configBuffer).
+		Set("Owner", jobConfig.GetOwningTeam()).
+		Set("RespoolID", jobConfig.GetRespoolID().GetValue()).
+		Set("UpdateTime", time.Now()).
+		Where(qb.Eq{"JobID": id.GetValue()})
+	err := s.applyStatement(ctx, stmt, id.Value)
+	if err != nil {
+		log.WithField("job_id", id.Value).
+			WithError(err).
+			Error("Failed to update job info table")
+		s.metrics.JobUpdateInfoFail.Inc(1)
+		return err
+	}
+	s.metrics.JobUpdateInfo.Inc(1)
+	return nil
+}
+
+// updateJobIndexWithJobRuntime updates the job index table with job runtime
+func (s *Store) updateJobIndexWithJobRuntime(
+	ctx context.Context,
+	id *peloton.JobID,
+	runtime *job.RuntimeInfo,
+	runtimeBuffer []byte) error {
+
+	completeTime := time.Time{}
+	var err error
+	if runtime.GetCompletionTime() != "" {
+		completeTime, err = time.Parse(time.RFC3339Nano, runtime.GetCompletionTime())
+		if err != nil {
+			log.WithField("runtime", runtime).
+				WithError(err).
+				Warn("Fail to parse completeTime")
+		}
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(jobIndexTable).
+		Set("JobState", runtime.GetState().String()).
+		Set("UpdateTime", time.Now()).
+		Set("CompleteTime", completeTime).
+		Where(qb.Eq{"JobID": id.GetValue()})
+	err = s.applyStatement(ctx, stmt, id.Value)
+	if err != nil {
+		log.WithField("job_id", id.Value).
+			WithError(err).
+			Error("Failed to update job runtime")
+		s.metrics.JobUpdateInfoFail.Inc(1)
+		return err
+	}
+	s.metrics.JobUpdateInfo.Inc(1)
+	return nil
+}
+
 // UpdateJobRuntime updates the job runtime info
 func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error {
 	buffer, err := json.Marshal(runtime)
@@ -1339,6 +1440,14 @@ func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime
 			WithError(err).
 			Error("Failed to update job runtime")
 		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		return err
+	}
+	// Create the initial job runtime record
+	err = s.updateJobIndexWithJobRuntime(ctx, id, runtime, buffer)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("updateJobInfoWithJobRuntime failed")
 		return err
 	}
 	s.metrics.JobUpdateRuntime.Inc(1)

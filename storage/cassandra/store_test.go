@@ -140,10 +140,19 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		originalJobs = append(originalJobs, &jobConfig)
 		err := jobStore.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
 		suite.NoError(err)
+
+		// Update job runtime to different values
+		runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+		suite.NoError(err)
+
+		runtime.State = job.JobState(i + 1)
+		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+		suite.NoError(err)
+
 	}
 	// Run the following query to trigger rebuild the lucene index
 	queryBuilder := store.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobsTable).Where("expr(jobs_index, '{refresh:true}')")
+	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene, '{refresh:true}')")
 	_, err := store.DataStore.Execute(context.Background(), stmt)
 	suite.NoError(err)
 
@@ -166,7 +175,21 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		suite.Equal(fmt.Sprintf("TestJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
 	}
 
-	// query by specific label returns one job
+	// query by specific state returns one job
+	for i := 0; i < records; i++ {
+		result1, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+			Labels: []*peloton.Label{
+				{Key: keyCommon, Value: valCommon},
+			},
+			JobState: job.JobState(i + 1),
+		})
+		suite.NoError(err)
+		suite.Equal(1, len(result1))
+		suite.Equal(1, int(total))
+		suite.Equal(i+1, int(result1[0].Runtime.State))
+		suite.Equal(fmt.Sprintf("TestJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
+	}
+	// Update tasks to different states, and query by state
 	for i := 0; i < records; i++ {
 		result1, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
 			Labels: []*peloton.Label{
@@ -177,7 +200,6 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		suite.NoError(err)
 		suite.Equal(1, len(result1))
 		suite.Equal(1, int(total))
-		suite.Equal(job.JobState_INITIALIZED, result1[0].Runtime.State)
 		suite.Equal(fmt.Sprintf("TestJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
 	}
 
