@@ -1157,26 +1157,26 @@ func (suite *CassandraStoreTestSuite) TestUpgrade() {
 	suite.NoError(err)
 
 	// Cannot process task 2.
-	suite.EqualError(store.StartTaskUpgrade(context.Background(), id, 2), "my-upgrade is not applied, item could exist already")
+	suite.EqualError(store.AddTaskToProcessing(context.Background(), id, 2), "my-upgrade is not applied, item could exist already")
 	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
 	suite.Empty(processing)
 	suite.Equal(uint32(0), progress)
 	suite.NoError(err)
 
 	// Processing task 2 should succeed..
-	suite.NoError(store.StartTaskUpgrade(context.Background(), id, 0))
+	suite.NoError(store.AddTaskToProcessing(context.Background(), id, 0))
 	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
 	suite.Equal([]uint32{0}, processing)
 	suite.Equal(uint32(1), progress)
 	suite.NoError(err)
 
-	suite.NoError(store.CompleteTaskUpgrade(context.Background(), id, 2))
+	suite.NoError(store.RemoveTaskFromProcessing(context.Background(), id, 2))
 	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
 	suite.Equal([]uint32{0}, processing)
 	suite.Equal(uint32(1), progress)
 	suite.NoError(err)
 
-	suite.NoError(store.CompleteTaskUpgrade(context.Background(), id, 0))
+	suite.NoError(store.RemoveTaskFromProcessing(context.Background(), id, 0))
 	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
 	suite.Empty(processing)
 	suite.Equal(uint32(1), progress)

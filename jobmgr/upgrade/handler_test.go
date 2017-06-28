@@ -21,22 +21,24 @@ func TestCreate(t *testing.T) {
 	defer ctrl.Finish()
 
 	jobStoreMock := store_mocks.NewMockJobStore(ctrl)
+	upgradeStoreMock := store_mocks.NewMockUpgradeStore(ctrl)
 
 	h := &serviceHandler{
-		jobStore: jobStoreMock,
+		jobStore:     jobStoreMock,
+		upgradeStore: upgradeStoreMock,
 	}
 
-	id := &peloton.JobID{
-		Value: "job-id",
+	jobID := &peloton.JobID{
+		Value: "123e4567-e89b-12d3-a456-426655440000",
 	}
 
 	// Return error if job was not found.
-	jobStoreMock.EXPECT().GetJobRuntime(context.Background(), id).
+	jobStoreMock.EXPECT().GetJobRuntime(context.Background(), jobID).
 		Return(nil, fmt.Errorf("job not found"))
 
 	res, err := h.Create(context.Background(), &upgrade.CreateRequest{
 		Spec: &upgrade.UpgradeSpec{
-			JobId: id,
+			JobId: jobID,
 		},
 	})
 	assert.Equal(t, &upgrade.CreateResponse{
@@ -49,14 +51,14 @@ func TestCreate(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Return error if job is not running.
-	jobStoreMock.EXPECT().GetJobRuntime(context.Background(), id).
+	jobStoreMock.EXPECT().GetJobRuntime(context.Background(), jobID).
 		Return(&job.RuntimeInfo{
 			State: job.JobState_SUCCEEDED,
 		}, nil)
 
 	res, err = h.Create(context.Background(), &upgrade.CreateRequest{
 		Spec: &upgrade.UpgradeSpec{
-			JobId: id,
+			JobId: jobID,
 		},
 	})
 	assert.Equal(t, &upgrade.CreateResponse{
@@ -64,6 +66,27 @@ func TestCreate(t *testing.T) {
 			NotFound: &errors.JobNotFound{
 				Message: "cannot upgrade terminated job",
 			},
+		},
+	}, res)
+	assert.NoError(t, err)
+
+	// CreateUpgrade is called if job is valid.
+	jobStoreMock.EXPECT().GetJobRuntime(context.Background(), jobID).
+		Return(&job.RuntimeInfo{
+			State: job.JobState_RUNNING,
+		}, nil)
+	id := &upgrade.WorkflowID{Value: "8e3e40d2-5149-53f3-8eb6-e7ae5ad1938c"}
+	upgradeStoreMock.EXPECT().CreateUpgrade(context.Background(), id, &upgrade.UpgradeSpec{JobId: jobID}).
+		Return(nil)
+
+	res, err = h.Create(context.Background(), &upgrade.CreateRequest{
+		Spec: &upgrade.UpgradeSpec{
+			JobId: jobID,
+		},
+	})
+	assert.Equal(t, &upgrade.CreateResponse{
+		Response: &upgrade.CreateResponse_Result{
+			Result: id,
 		},
 	}, res)
 	assert.NoError(t, err)

@@ -162,7 +162,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	jobStore, taskStore, _, _, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
+	jobStore, taskStore, upgradeStore, _, _, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
 
 	t := http.NewTransport()
 
@@ -259,7 +259,7 @@ func main() {
 		taskStore,
 		runtimeUpdater,
 	)
-	upgrade.InitServiceHandler(dispatcher, jobStore)
+	upgrade.InitServiceHandler(dispatcher, jobStore, upgradeStore)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {

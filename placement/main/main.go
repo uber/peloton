@@ -206,7 +206,7 @@ func main() {
 	}
 
 	log.Info("Connect to the TaskStore")
-	_, taskStore, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
+	_, taskStore, _, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
 
 	// Initialize and start placement engine
 	placementEngine := placement.New(

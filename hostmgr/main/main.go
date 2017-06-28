@@ -172,7 +172,7 @@ func main() {
 
 	rootScope.Counter("boot").Inc(1)
 
-	jobStore, taskStore, _, frameworkInfoStore, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
+	jobStore, taskStore, _, _, frameworkInfoStore, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
 
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(&cfg.Mesos, frameworkInfoStore)

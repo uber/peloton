@@ -14,12 +14,14 @@ func CreateStores(
 	cfg *storage_config.Config, rootScope tally.Scope) (
 	storage.JobStore,
 	storage.TaskStore,
+	storage.UpgradeStore,
 	storage.ResourcePoolStore,
 	storage.FrameworkInfoStore,
 	storage.PersistentVolumeStore) {
 
 	var jobStore storage.JobStore
 	var taskStore storage.TaskStore
+	var upgradeStore storage.UpgradeStore
 	var resourcePoolStore storage.ResourcePoolStore
 	var frameworkInfoStore storage.FrameworkInfoStore
 	var volumeStore storage.PersistentVolumeStore
@@ -61,9 +63,10 @@ func CreateStores(
 
 		jobStore = store
 		taskStore = store
+		upgradeStore = store
 		resourcePoolStore = store
 		frameworkInfoStore = store
 		volumeStore = store
 	}
-	return jobStore, taskStore, resourcePoolStore, frameworkInfoStore, volumeStore
+	return jobStore, taskStore, upgradeStore, resourcePoolStore, frameworkInfoStore, volumeStore
 }

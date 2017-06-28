@@ -141,7 +141,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	jobStore, taskStore, respoolStore, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
+	jobStore, taskStore, _, respoolStore, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
 
 	t := http.NewTransport()
 

@@ -1703,9 +1703,10 @@ func (s *Store) CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec 
 	return nil
 }
 
-// StartTaskUpgrade marks task with instanceID as being currently processed
-// by the Upgrade.
-func (s *Store) StartTaskUpgrade(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
+// AddTaskToProcessing adds instanceID to the set of processing instances, and
+// incrementing the progress by one. It's an error if instanceID is not the
+// next instance in line to be upgraded.
+func (s *Store) AddTaskToProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(upgradesTable).
 		Add("Instances", []uint32{instanceID}).
@@ -1723,8 +1724,10 @@ func (s *Store) StartTaskUpgrade(ctx context.Context, id *upgrade.WorkflowID, in
 	return nil
 }
 
-// CompleteTaskUpgrade marks task with instanceID as being completed by the Upgrade.
-func (s *Store) CompleteTaskUpgrade(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
+// RemoveTaskFromProcessing removes the instanceID from the set of processing
+// instances. This function is a no-op if the instanceID is not in the list
+// of processing tasks.
+func (s *Store) RemoveTaskFromProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(upgradesTable).
 		Remove("Instances", []uint32{instanceID}).
