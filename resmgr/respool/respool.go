@@ -69,6 +69,10 @@ type ResPool interface {
 	SetAllocation(res *scalar.Resources)
 	// MarkItDone recaptures the resources from task
 	MarkItDone(res *scalar.Resources) error
+	// GetPath returns the resource pool path
+	GetPath() string
+	// IsRoot returns true if the node is the root of the resource tree
+	IsRoot() bool
 }
 
 // resPool implements ResPool interface
@@ -76,6 +80,7 @@ type resPool struct {
 	sync.RWMutex
 
 	id              string
+	path            string
 	children        *list.List
 	parent          ResPool
 	resourceConfigs map[string]*respool.ResourceConfig
@@ -107,12 +112,6 @@ func NewRespool(
 		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
 	}
 
-	// tag metrics scope with the resource pool ID
-	poolScope := scope.SubScope("respool_node")
-	poolScope.Tagged(map[string]string{
-		"respool_id": ID,
-	})
-
 	pool := &resPool{
 		id:              ID,
 		children:        list.New(),
@@ -122,10 +121,15 @@ func NewRespool(
 		pendingQueue:    q,
 		entitlement:     &scalar.Resources{},
 		allocation:      &scalar.Resources{},
-		metrics:         NewMetrics(poolScope),
 	}
 
-	// Initialize
+	// Initialize metrics
+	poolScope := scope.Tagged(map[string]string{
+		"path": pool.GetPath(),
+	})
+	pool.metrics = NewMetrics(poolScope)
+
+	// Initialize resources
 	pool.initResources(config.GetResources())
 	pool.updateDynamicResourceMetrics()
 	pool.metrics.PendingQueueSize.Update(float64(pool.pendingQueue.Size()))
@@ -156,6 +160,8 @@ func (n *resPool) Parent() ResPool {
 func (n *resPool) SetParent(parent ResPool) {
 	n.Lock()
 	n.parent = parent
+	// reset path to be calculated again
+	n.path = ""
 	n.Unlock()
 }
 
@@ -558,6 +564,39 @@ func (n *resPool) MarkItDone(res *scalar.Resources) error {
 
 	log.WithField("allocation", n.allocation).Debug("Current Allocation after Done Task")
 	return nil
+}
+
+// IsRoot returns true if the node is the root in the resource
+// pool hierarchy
+func (n *resPool) IsRoot() bool {
+	return n.ID() == RootResPoolID
+}
+
+// GetPath returns the fully qualified path of the resource pool
+// in the resource pool hierarchy
+// For the below resource hierarchy ; the "compute" resource pool would be
+// designated by path: /infrastructure/compute
+//             root
+//               ├─ infrastructure
+//               │  └─ compute
+//               └─ marketplace
+func (n *resPool) GetPath() string {
+	n.RLock()
+	n.RUnlock()
+	if n.path == "" {
+		n.path = n.calculatePath()
+	}
+	return n.path
+}
+
+func (n *resPool) calculatePath() string {
+	if n.IsRoot() {
+		return ResourcePoolPathDelimiter
+	}
+	if n.parent.IsRoot() {
+		return ResourcePoolPathDelimiter + n.Name()
+	}
+	return n.parent.GetPath() + ResourcePoolPathDelimiter + n.Name()
 }
 
 // updates static metrics(Share, Limit and Reservation) which depend on the config

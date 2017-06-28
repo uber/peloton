@@ -421,13 +421,15 @@ func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfigError() {
 	)
 }
 
-func (suite *resTreeTestSuite) TestTree_GetByPath() {
+func (suite *resTreeTestSuite) TestTree_ResourcePoolPath() {
 	// Get Root
 	resPool, err := suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
 		Value: "/",
 	})
 	suite.NoError(err)
 	suite.Equal(resPool.Name(), "root")
+	suite.Equal(resPool.GetPath(), "/")
+	suite.True(resPool.IsRoot())
 
 	// Get respool1
 	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
@@ -435,7 +437,9 @@ func (suite *resTreeTestSuite) TestTree_GetByPath() {
 	})
 	suite.NoError(err)
 	suite.Equal(resPool.Name(), "respool1")
+	suite.Equal(resPool.GetPath(), "/respool1")
 	suite.Equal(resPool.Parent().Name(), "root")
+	suite.False(resPool.IsRoot())
 
 	// Get respool11
 	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
@@ -443,7 +447,10 @@ func (suite *resTreeTestSuite) TestTree_GetByPath() {
 	})
 	suite.NoError(err)
 	suite.Equal(resPool.Name(), "respool11")
+	suite.Equal(resPool.GetPath(), "/respool1/respool11")
+	suite.Equal(resPool.GetPath(), "/respool1/respool11")
 	suite.Equal(resPool.Parent().Name(), "respool1")
+	suite.False(resPool.IsRoot())
 
 	// Get non-existent pool
 	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
