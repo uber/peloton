@@ -9,7 +9,7 @@ type Job interface {
 	Run(ctx context.Context)
 }
 
-// JobFunc is an convenient type for easily converting function literals
+// JobFunc is an convenience type for easily converting function literals
 // to a Job compatible object.
 type JobFunc func(context.Context)
 

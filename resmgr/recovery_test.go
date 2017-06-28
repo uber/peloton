@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
@@ -196,10 +197,11 @@ func (suite *recoveryTestSuite) getEntitlement() map[string]float64 {
 	return mapEntitlement
 }
 
+// returns a map of JobID -> array of gangs
 func (suite *recoveryTestSuite) getQueueContent(
-	respoolID respool.ResourcePoolID) map[string]map[string]bool {
+	respoolID respool.ResourcePoolID) map[string][]*resmgrsvc.Gang {
 
-	var result = make(map[string]map[string]bool)
+	var result = make(map[string][]*resmgrsvc.Gang)
 	for {
 		node, err := suite.resourceTree.Get(&respoolID)
 		suite.NoError(err)
@@ -215,12 +217,13 @@ func (suite *recoveryTestSuite) getQueueContent(
 		gang := dequeuedGangs[0]
 		if gang != nil {
 			jobID := gang.Tasks[0].JobId.Value
-			taskID := gang.Tasks[0].Id.Value
 			_, ok := result[jobID]
 			if !ok {
-				result[jobID] = make(map[string]bool)
+				var gang []*resmgrsvc.Gang
+				result[jobID] = gang
 			}
-			result[jobID][taskID] = true
+			result[jobID] = append(result[jobID], gang)
+
 		} else {
 			break
 		}
@@ -315,7 +318,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[1]).
-		Return(suite.createJob(&jobs[1], 10, 1), nil)
+		Return(suite.createJob(&jobs[1], 10, 10), nil)
 	suite.mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), &jobs[1], &task.InstanceRange{
 			From: 0,
@@ -350,16 +353,31 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	// 2. check the queue content
 	var resPoolID respool.ResourcePoolID
 	resPoolID.Value = "respool21"
-	contentSummary := suite.getQueueContent(resPoolID)
+	gangsSummary := suite.getQueueContent(resPoolID)
 
-	// Job2 and Job3 should be recovered and should have 10 tasks in the pending queue
-	suite.Equal(3, len(contentSummary))
+	suite.Equal(3, len(gangsSummary))
 
-	suite.Equal(9, len(contentSummary["TestJob_0"]))
-	suite.Equal(9, len(contentSummary["TestJob_1"]))
-	suite.Equal(9, len(contentSummary["TestJob_3"]))
+	// Job0 and Job3 should be recovered and should have 9 gangs(1 task per gang) in the pending queue
+	gangs := gangsSummary["TestJob_0"]
+	suite.Equal(9, len(gangs))
+	for _, gang := range gangs {
+		suite.Equal(1, len(gang.GetTasks()))
+	}
+	gangs = gangsSummary["TestJob_3"]
+	suite.Equal(9, len(gangs))
+	for _, gang := range gangs {
+		suite.Equal(1, len(gang.GetTasks()))
+	}
 
-	// checking
+	// Job1 should be recovered and should have 1 gang(9 tasks per gang) in the pending queue
+	gangs = gangsSummary["TestJob_1"]
+	suite.Equal(1, len(gangs))
+	for _, gang := range gangs {
+		suite.Equal(9, len(gang.GetTasks()))
+	}
+
+	// Checking total number of tasks in the tracker(9*4=36)
+	// This includes tasks from TestJob_2 which are not re queued but are inserted in the tracker
 	suite.Equal(suite.rmTaskTracker.GetSize(), int64(36))
 }
 

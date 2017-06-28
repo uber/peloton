@@ -148,6 +148,26 @@ func (r *recoveryHandler) requeueJob(
 	var errString string
 	var isError = false
 
+	// Handle gang scheduled tasks if any
+	minInstances := jobConfig.GetSla().GetMinimumRunningInstances()
+	if minInstances > 1 {
+		count, err := r.requeueTasksInRange(ctx, jobID, jobConfig, 0, minInstances)
+		if err != nil {
+			r.metrics.RecoveryFailCount.Inc(int64(count))
+			log.WithFields(log.Fields{
+				"JobID": jobID,
+				"from":  0,
+				"to":    minInstances}).Error("Failed to requeue gang tasks for")
+			errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]", jobID, 0, minInstances)
+			isError = true
+		} else {
+			r.metrics.RecoverySuccessCount.Inc(int64(count))
+		}
+		numSingleInstances -= minInstances
+		initialSingleInstance += minInstances
+	}
+
+	// Handle singleton tasks
 	if numSingleInstances > 0 {
 		rangevar := numSingleInstances / RequeueBatchSize
 		for i := initialSingleInstance; i <= rangevar; i++ {
