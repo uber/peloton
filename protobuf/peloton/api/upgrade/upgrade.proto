@@ -57,31 +57,31 @@ message UpgradeSpec {
   UpgradeOptions options = 3;
 }
 
+// Runtime state of a job upgrade workflow
+enum State {
+  // The upgrade workflow is rolling forward
+  ROLLING_FORWARD = 0;
+
+  // The upgrade workflow is rolling back
+  ROLLING_BACK    = 1;
+
+  // The upgrade workflow is paused
+  PAUSED          = 2;
+
+  // The upgrade workflow completed successfully
+  SUCCEEDED       = 3;
+
+  // The upgrade workflow is rolled back
+  ROLLED_BACK     = 4;
+
+  // The upgrade workflow is aborted
+  ABORTED         = 5;
+}
+
 /**
  *  Runtime info of an upgrade workflow
  */
 message UpgradeInfo {
-  // Runtime state of a job upgrade workflow
-  enum WorkflowState {
-    // The upgrade workflow is rolling forward
-    ROLLING_FORWARD = 0;
-
-    // The upgrade workflow is rolling back
-    ROLLING_BACK    = 1;
-
-    // The upgrade workflow is paused
-    PAUSED          = 2;
-
-    // The upgrade workflow completed successfully
-    SUCCEEDED       = 3;
-
-    // The upgrade workflow is rolled back
-    ROLLED_BACK     = 4;
-
-    // The upgrade workflow is aborted
-    ABORTED         = 5;
-  }
-
   // Workflow ID of the job upgrade
   WorkflowID workflowId = 1;
 
@@ -92,7 +92,7 @@ message UpgradeInfo {
   int32 numTasksRemaining = 3;
 
   // Runtime state of the upgrade workflow
-  WorkflowState state = 4;
+  State state = 4;
 }
 
 
@@ -133,7 +133,7 @@ message InvalidWorkflowState
   WorkflowID workflowId = 1;
 
   // Invalid state of the workflow
-  UpgradeInfo.WorkflowState invalidState = 2;
+  State invalidState = 2;
 }
 
 

@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -38,6 +39,7 @@ const (
 	jobRuntimeTable       = "job_runtime"
 	tasksTable            = "tasks"
 	taskStateChangesTable = "task_state_changes"
+	upgradesTable         = "upgrades"
 	frameworksTable       = "frameworks"
 	jobOwnerView          = "mv_jobs_by_owner"
 	taskJobStateView      = "mv_task_by_job_state"
@@ -1546,4 +1548,116 @@ func (s *Store) GetJobsByRespoolID(ctx context.Context, respoolID *respool.Resou
 	}
 	s.metrics.JobGetByRespoolID.Inc(1)
 	return results, nil
+}
+
+// CreateUpgrade creates a new entry in Cassandra, if it doesn't already exist.
+func (s *Store) CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec *upgrade.UpgradeSpec) error {
+	optionsBuffer, err := json.Marshal(spec.GetOptions())
+	if err != nil {
+		log.Errorf("Failed to marshal options, error = %v", err)
+		return err
+	}
+
+	configBuffer, err := json.Marshal(spec.GetJobConfig())
+	if err != nil {
+		log.Errorf("Failed to marshal jobConfig, error = %v", err)
+		return err
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(upgradesTable).
+		Columns(
+			"ID",
+			"Options",
+			"State",
+			"Progress",
+			"Instances",
+			"JobID",
+			"JobConfig").
+		Values(
+			id.GetValue(),
+			string(optionsBuffer),
+			upgrade.State_ROLLING_FORWARD,
+			0,
+			[]int{},
+			spec.GetJobId().GetValue(),
+			configBuffer).
+		IfNotExist()
+
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		log.WithError(err).
+			WithField("workflow_id", id.GetValue()).
+			Error("CreateUpgrade failed")
+		return err
+	}
+
+	return nil
+}
+
+// StartTaskUpgrade marks task with instanceID as being currently processed
+// by the Upgrade.
+func (s *Store) StartTaskUpgrade(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(upgradesTable).
+		Add("Instances", []uint32{instanceID}).
+		Set("Progress", instanceID+1).
+		Where(qb.Eq{"ID": id.GetValue()}).
+		IfOnly(fmt.Sprintf("Progress = %d", instanceID))
+
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		log.WithError(err).
+			WithField("workflow_id", id.GetValue()).
+			Error("StartTaskUpgrade failed")
+		return err
+	}
+
+	return nil
+}
+
+// CompleteTaskUpgrade marks task with instanceID as being completed by the Upgrade.
+func (s *Store) CompleteTaskUpgrade(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(upgradesTable).
+		Remove("Instances", []uint32{instanceID}).
+		Where(qb.Eq{"ID": id.GetValue()})
+
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		log.WithError(err).
+			WithField("workflow_id", id.GetValue()).
+			Error("CompleteTaskUpgrade failed")
+		return err
+	}
+
+	return nil
+}
+
+// GetWorkflowProgress returns the list of tasks being process as well as the
+// overall progress of the upgrade.
+func (s *Store) GetWorkflowProgress(ctx context.Context, id *upgrade.WorkflowID) ([]uint32, uint32, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("Instances", "Progress").From(upgradesTable).Where(qb.Eq{"ID": id.GetValue()})
+	result, err := s.DataStore.Execute(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("GetJobRuntime failed")
+		return nil, 0, err
+	}
+
+	allResults, err := result.All(ctx)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("GetJobRuntime Get all results failed")
+		return nil, 0, err
+	}
+
+	for _, value := range allResults {
+		var record UpgradeRecord
+		if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
+			return nil, 0, err
+		}
+		return record.GetProcessingInstances(), uint32(record.Progress), nil
+	}
+	return nil, 0, fmt.Errorf("Cannot find workflow with ID %v", id.Value)
 }

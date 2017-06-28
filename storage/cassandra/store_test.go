@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -1117,6 +1118,47 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	// Verify volume has been deleted.
 	_, err = volumeStore.GetPersistentVolume(context.Background(), "volume1")
 	suite.Error(err)
+}
+
+func (suite *CassandraStoreTestSuite) TestUpgrade() {
+	id := &upgrade.WorkflowID{
+		Value: "my-upgrade",
+	}
+	suite.NoError(store.CreateUpgrade(context.Background(), id, &upgrade.UpgradeSpec{
+		JobId: &peloton.JobID{
+			Value: "my-job",
+		},
+	}))
+	processing, progress, err := store.GetWorkflowProgress(context.Background(), id)
+	suite.Empty(processing)
+	suite.Equal(uint32(0), progress)
+	suite.NoError(err)
+
+	// Cannot process task 2.
+	suite.EqualError(store.StartTaskUpgrade(context.Background(), id, 2), "my-upgrade is not applied, item could exist already")
+	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
+	suite.Empty(processing)
+	suite.Equal(uint32(0), progress)
+	suite.NoError(err)
+
+	// Processing task 2 should succeed..
+	suite.NoError(store.StartTaskUpgrade(context.Background(), id, 0))
+	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
+	suite.Equal([]uint32{0}, processing)
+	suite.Equal(uint32(1), progress)
+	suite.NoError(err)
+
+	suite.NoError(store.CompleteTaskUpgrade(context.Background(), id, 2))
+	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
+	suite.Equal([]uint32{0}, processing)
+	suite.Equal(uint32(1), progress)
+	suite.NoError(err)
+
+	suite.NoError(store.CompleteTaskUpgrade(context.Background(), id, 0))
+	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
+	suite.Empty(processing)
+	suite.Equal(uint32(1), progress)
+	suite.NoError(err)
 }
 
 func createJobConfig() *job.JobConfig {

@@ -96,6 +96,21 @@ type FrameworkInfoRecord struct {
 
 // Resource pool (to be added)
 
+// UpgradeRecord tracks the upgrade info
+type UpgradeRecord struct {
+	Instances []int
+	Progress  int
+}
+
+// GetProcessingInstances returns a list of tasks currently being upgraded.
+func (r *UpgradeRecord) GetProcessingInstances() []uint32 {
+	p := make([]uint32, len(r.Instances))
+	for i, v := range r.Instances {
+		p[i] = uint32(v)
+	}
+	return p
+}
+
 // SetObjectField sets a field in object with the fieldname with the value
 func SetObjectField(object interface{}, fieldName string, value interface{}) error {
 	objValue := reflect.ValueOf(object).Elem()
