@@ -136,8 +136,7 @@ func (s *scheduler) scheduleTasks() {
 		n := e.Value.(respool.ResPool)
 		gangList, err := n.DequeueGangList(dequeueGangLimit)
 		if err != nil {
-			log.WithField("respool", n.ID()).Debug("No Items found")
-			log.WithError(err).Error()
+			log.WithField("respool", n.ID()).WithError(err).Debug("No Items found")
 			continue
 		}
 		for _, gang := range gangList {
