@@ -2,22 +2,19 @@ package launcher
 
 import (
 	"errors"
-	"strconv"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/common/reservation"
 	"code.uber.internal/infra/peloton/util"
 )
 
 var (
-	_jobKey      = "job"
-	_instanceKey = "instance"
-	_hostnameKey = "hostname"
-	_disk        = "disk"
-	_mem         = "mem"
-	_cpus        = "cpus"
-	_ports       = "ports"
+	_disk  = "disk"
+	_mem   = "mem"
+	_cpus  = "cpus"
+	_ports = "ports"
 )
 
 // HostOperationsFactory returns operations for hostmgr offeroperation rpc.
@@ -78,7 +75,8 @@ func (h *HostOperationsFactory) getHostReserveOperation() (*hostsvc.OfferOperati
 		Reserve: &hostsvc.OfferOperation_Reserve{
 			Resources: h.getMesosResources(),
 		},
-		ReservationLabels: h.getReservationLabels(jobID, instanceID),
+		ReservationLabels: reservation.CreateReservationLabels(
+			jobID, instanceID, h.placement.GetHostname()),
 	}
 	return reserveOperation, nil
 }
@@ -94,7 +92,8 @@ func (h *HostOperationsFactory) getHostCreateOperation() (*hostsvc.OfferOperatio
 		Create: &hostsvc.OfferOperation_Create{
 			Volume: h.tasks[0].GetVolume(),
 		},
-		ReservationLabels: h.getReservationLabels(jobID, instanceID),
+		ReservationLabels: reservation.CreateReservationLabels(
+			jobID, instanceID, h.placement.GetHostname()),
 	}
 	return createOperation, nil
 }
@@ -110,7 +109,8 @@ func (h *HostOperationsFactory) getHostLaunchOperation() (*hostsvc.OfferOperatio
 		Launch: &hostsvc.OfferOperation_Launch{
 			Tasks: h.tasks,
 		},
-		ReservationLabels: h.getReservationLabels(jobID, instanceID),
+		ReservationLabels: reservation.CreateReservationLabels(
+			jobID, instanceID, h.placement.GetHostname()),
 	}
 	return launchOperation, nil
 }
@@ -163,24 +163,4 @@ func (h *HostOperationsFactory) getMesosResources() []*mesos.Resource {
 				Build())
 	}
 	return resources
-}
-
-func (h *HostOperationsFactory) getReservationLabels(
-	jobID string, instanceID int) *mesos.Labels {
-	return &mesos.Labels{
-		Labels: []*mesos.Label{
-			{
-				Key:   &_jobKey,
-				Value: &jobID,
-			},
-			{
-				Key:   &_instanceKey,
-				Value: util.PtrPrintf(strconv.Itoa(instanceID)),
-			},
-			{
-				Key:   &_hostnameKey,
-				Value: util.PtrPrintf(h.placement.GetHostname()),
-			},
-		},
-	}
 }

@@ -270,6 +270,7 @@ func main() {
 		schedulerClient,
 		masterOperatorClient,
 		driver,
+		volumeStore,
 	)
 
 	// Initializing TaskStateManager will start to record task status

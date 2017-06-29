@@ -13,19 +13,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
-const (
-	_perHostCPU         = 10.0
-	_perHostMem         = 20.0
-	_perHostReserveMem  = 11.0
-	_perHostDisk        = 30.0
-	_perHostReserveDisk = 12.0
-)
-
-var (
-	_testKey   = "testKey"
-	_testValue = "testValue"
-)
-
 type HostOperationTestSuite struct {
 	suite.Suite
 

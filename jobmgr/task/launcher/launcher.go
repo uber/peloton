@@ -225,6 +225,17 @@ func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Pla
 			continue
 		}
 
+		// Generate volume ID if not set for stateful task.
+		if taskInfo.GetConfig().GetVolume() != nil {
+			if taskInfo.GetRuntime().GetVolumeID() == nil || hostname != taskInfo.GetRuntime().GetHost() {
+				// Generates volume ID if first time launch the stateful task,
+				// OR task is being launched to a different host.
+				taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
+					Value: uuid.NewUUID().String(),
+				}
+			}
+		}
+
 		taskInfo.GetRuntime().Host = hostname
 		taskInfo.GetRuntime().State = task.TaskState_LAUNCHING
 		// Assign selected dynamic port to task per port config.
@@ -245,17 +256,6 @@ func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Pla
 			}
 			taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
 			portsIndex++
-		}
-
-		// Generate volume ID if not set for stateful task.
-		if taskInfo.GetConfig().GetVolume() != nil {
-			if taskInfo.GetRuntime().GetVolumeID() == nil {
-				// Generates volume ID if first time launch the stateful task.
-				// TODO: we need to generate new volume ID for replacing task on a different host.
-				taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
-					Value: uuid.NewUUID().String(),
-				}
-			}
 		}
 
 		// Writes the hostname and ports information back to db.

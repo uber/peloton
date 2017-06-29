@@ -208,3 +208,13 @@ func (o *OfferOperationsFactory) getLaunchOperation(
 		},
 	}, nil
 }
+
+// GetOfferCreateOperation returns create operation from given list of operations.
+func GetOfferCreateOperation(operations []*mesos.Offer_Operation) *mesos.Offer_Operation {
+	for _, operation := range operations {
+		if operation.GetType() == mesos.Offer_Operation_CREATE {
+			return operation
+		}
+	}
+	return nil
+}

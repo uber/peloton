@@ -13,14 +13,18 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
 	"code.uber.internal/infra/peloton/hostmgr/factory/task"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
 
@@ -31,6 +35,7 @@ type serviceHandler struct {
 	metrics               *Metrics
 	offerPool             offer.Pool
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
+	volumeStore           storage.PersistentVolumeStore
 }
 
 // InitServiceHandler initialize serviceHandler.
@@ -40,6 +45,7 @@ func InitServiceHandler(
 	schedulerClient mpb.SchedulerClient,
 	masterOperatorClient mpb.MasterOperatorClient,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
+	volumeStore storage.PersistentVolumeStore,
 ) {
 
 	handler := &serviceHandler{
@@ -48,6 +54,7 @@ func InitServiceHandler(
 		metrics:               NewMetrics(parent),
 		offerPool:             offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider: frameworkInfoProvider,
+		volumeStore:           volumeStore,
 	}
 
 	d.Register(hostsvc.BuildInternalHostServiceYarpcProcedures(handler))
@@ -273,6 +280,10 @@ func (h *serviceHandler) OfferOperations(
 		agentID,
 	)
 	offerOperations, err := factory.GetOfferOperations()
+	if err == nil {
+		// write the volume info into db if no error.
+		err = h.persistVolumeInfo(ctx, offerOperations, req.GetHostname())
+	}
 	if err != nil {
 		log.WithError(err).
 			WithField("request", req).
@@ -335,6 +346,67 @@ func (h *serviceHandler) OfferOperations(
 
 	h.metrics.OfferOperations.Inc(1)
 	return &hostsvc.OfferOperationsResponse{}, nil
+}
+
+// persistVolumeInfo write volume information into db.
+func (h *serviceHandler) persistVolumeInfo(
+	ctx context.Context,
+	offerOperations []*mesos.Offer_Operation,
+	hostname string) error {
+	createOperation := operation.GetOfferCreateOperation(offerOperations)
+	// Skip creating volume if no create operation.
+	if createOperation == nil {
+		return nil
+	}
+
+	volumeRes := createOperation.GetCreate().GetVolumes()[0]
+	volumeID := volumeRes.GetDisk().GetPersistence().GetId()
+
+	pv, err := h.volumeStore.GetPersistentVolume(ctx, volumeID)
+	if err != nil {
+		_, ok := err.(*storage.VolumeNotFoundError)
+		if !ok {
+			// volume store db read error.
+			return err
+		}
+	}
+
+	if pv != nil {
+		switch pv.GetState() {
+		case volume.VolumeState_CREATED, volume.VolumeState_DELETED:
+			log.WithFields(log.Fields{
+				"volume":           pv,
+				"offer_operations": offerOperations,
+				"hostname":         hostname,
+			}).Error("try create to create volume that already exists")
+		}
+		// TODO(mu): Volume info already exist in db and check if we need to update hostname
+		return nil
+	}
+
+	jobID, instanceID, err := reservation.ParseReservationLabels(
+		volumeRes.GetReservation().GetLabels())
+	if err != nil {
+		return err
+	}
+
+	volumeInfo := &volume.PersistentVolumeInfo{
+		Id: &peloton.VolumeID{
+			Value: volumeID,
+		},
+		JobId: &peloton.JobID{
+			Value: jobID,
+		},
+		InstanceId:    instanceID,
+		Hostname:      hostname,
+		State:         volume.VolumeState_INITIALIZED,
+		GoalState:     volume.VolumeState_CREATED,
+		SizeMB:        uint32(volumeRes.GetScalar().GetValue()),
+		ContainerPath: volumeRes.GetDisk().GetVolume().GetContainerPath(),
+	}
+
+	err = h.volumeStore.CreatePersistentVolume(ctx, volumeInfo)
+	return err
 }
 
 // LaunchTasks implements InternalHostService.LaunchTasks.
