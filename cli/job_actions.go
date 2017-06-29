@@ -14,13 +14,11 @@ import (
 )
 
 const (
-	// TODO: use something like ColumnBuilder for the header and
-	// format string by taking a list of (header, formatString) pairs
-	jobListFormatHeader = "Name\tCPU Limit\tMem Limit\tDisk Limit\t" +
-		"Instances\tCommand\t\n"
-	jobListFormatBody = "%s\t%.1f\t%.0f MB\t%.0f MB\t%d\t%s\t\n"
-	labelSeparator    = ","
-	keyValSeparator   = ":"
+	labelSeparator  = ","
+	keyValSeparator = ":"
+
+	defaultResponseFormat = "yaml"
+	jsonResponseFormat    = "json"
 )
 
 // JobCreateAction is the action for creating a job
@@ -30,7 +28,7 @@ func (client *Client) JobCreateAction(jobID string, respoolPath string, cfg stri
 		return err
 	}
 	if respoolID == nil {
-		return fmt.Errorf("unable to find resource pool ID for "+
+		return fmt.Errorf("Unable to find resource pool ID for "+
 			":%s", respoolPath)
 	}
 
@@ -88,6 +86,21 @@ func (client *Client) JobGetAction(jobID string) error {
 		return err
 	}
 	printJobGetResponse(response, client.Debug)
+	return nil
+}
+
+// JobStatusAction is the action for getting status of a job
+func (client *Client) JobStatusAction(jobID string) error {
+	var request = &job.GetRequest{
+		Id: &peloton.JobID{
+			Value: jobID,
+		},
+	}
+	response, err := client.jobClient.Get(client.ctx, request)
+	if err != nil {
+		return err
+	}
+	printJobStatusResponse(response, client.Debug)
 	return nil
 }
 
@@ -163,8 +176,8 @@ func (client *Client) JobUpdateAction(jobID string, cfg string) error {
 	return nil
 }
 
-func printJobUpdateResponse(r *job.UpdateResponse, debug bool) {
-	if debug {
+func printJobUpdateResponse(r *job.UpdateResponse, jsonFormat bool) {
+	if jsonFormat {
 		printResponseJSON(r)
 	} else {
 		if r.Error != nil {
@@ -177,13 +190,13 @@ func printJobUpdateResponse(r *job.UpdateResponse, debug bool) {
 			}
 		} else if r.Id != nil {
 			fmt.Fprintf(tabWriter, "Job %s updated\n", r.Id.Value)
-			fmt.Fprint(tabWriter, "message:", r.Message)
+			fmt.Fprint(tabWriter, "Message:", r.Message)
 		}
 	}
 }
 
-func printJobCreateResponse(r *job.CreateResponse, debug bool) {
-	if debug {
+func printJobCreateResponse(r *job.CreateResponse, jsonFormat bool) {
+	if jsonFormat {
 		printResponseJSON(r)
 	} else {
 		if r.Error != nil {
@@ -207,10 +220,10 @@ func printJobCreateResponse(r *job.CreateResponse, debug bool) {
 	}
 }
 
-func printJobDeleteResponse(r *job.DeleteResponse, debug bool) {
+func printJobDeleteResponse(r *job.DeleteResponse, jsonFormat bool) {
 	// TODO: when DeleteResponse has useful fields in it, fill me in!
 	// Right now, its completely empty
-	if debug {
+	if jsonFormat {
 		printResponseJSON(r)
 	} else {
 		fmt.Fprintf(tabWriter, "Job deleted\n")
@@ -218,26 +231,47 @@ func printJobDeleteResponse(r *job.DeleteResponse, debug bool) {
 	}
 }
 
-func printJobGetResponse(r *job.GetResponse, debug bool) {
-	if debug {
-		printResponseJSON(r)
+func printJobGetResponse(r *job.GetResponse, jsonFormat bool) {
+	if r.GetJobInfo() == nil {
+		fmt.Fprint(tabWriter, "Unable to get job \n")
 	} else {
-		c := r.GetJobInfo().GetConfig()
-		if c != nil {
-			fmt.Fprint(tabWriter, "Unable to get job config\n")
-		} else {
-			rs := c.DefaultConfig.Resource
-			fmt.Fprintf(tabWriter, jobListFormatHeader)
-			fmt.Fprintf(tabWriter, jobListFormatBody,
-				c.Name, rs.CpuLimit, rs.MemLimitMb, rs.DiskLimitMb,
-				c.InstanceCount, c.DefaultConfig.Command)
+		format := defaultResponseFormat
+		if jsonFormat {
+			format = jsonResponseFormat
 		}
-		tabWriter.Flush()
+		out, err := marshallResponse(format, r)
+		if err != nil {
+			fmt.Fprint(tabWriter, "Unable to marshall response \n")
+		}
+
+		fmt.Printf("%v\n", string(out))
 	}
+	tabWriter.Flush()
 }
 
-func printJobQueryResponse(r *job.QueryResponse, debug bool) {
-	if debug {
+func printJobStatusResponse(r *job.GetResponse, jsonFormat bool) {
+	if r.GetJobInfo() == nil || r.GetJobInfo().GetRuntime() == nil {
+		fmt.Fprint(tabWriter, "Unable to get job status\n")
+	} else {
+		ri := r.GetJobInfo().GetRuntime()
+		format := defaultResponseFormat
+		if jsonFormat {
+			format = jsonResponseFormat
+		}
+		out, err := marshallResponse(format, ri)
+
+		if err != nil {
+			fmt.Fprint(tabWriter, "Unable to marshall response\n")
+			return
+		}
+
+		fmt.Printf("%v\n", string(out))
+	}
+	tabWriter.Flush()
+}
+
+func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
+	if jsonFormat {
 		printResponseJSON(r)
 	} else {
 		if r.GetError() != nil {

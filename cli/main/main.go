@@ -24,10 +24,10 @@ var (
 	app = kingpin.New("peloton", "CLI for interacting with peloton")
 
 	// Global CLI flags
-	debug = app.Flag(
-		"debug",
-		"enable debug mode (print full json responses)").
-		Short('d').
+	jsonFormat = app.Flag(
+		"json",
+		"print full json responses").
+		Short('j').
 		Default("false").
 		Bool()
 
@@ -69,6 +69,7 @@ var (
 		"timeout",
 		"default RPC timeout (set $TIMEOUT to override)").
 		Default("20s").
+		Short('t').
 		OverrideDefaultFromEnvar("TIMEOUT").
 		Duration()
 
@@ -86,6 +87,9 @@ var (
 
 	jobGet     = job.Command("get", "get a job")
 	jobGetName = jobGet.Arg("job", "job identifier").Required().String()
+
+	jobStatus     = job.Command("status", "get job status")
+	jobStatusName = jobStatus.Arg("job", "job identifier").Required().String()
 
 	jobQuery            = job.Command("query", "query jobs by mesos label / respool")
 	jobQueryLabels      = jobQuery.Arg("labels", "labels").Default("").String()
@@ -247,7 +251,7 @@ func main() {
 		app.FatalIfError(err, "Fail to initialize service discovery")
 	}
 
-	client, err := pc.New(discovery, *timeout, *debug)
+	client, err := pc.New(discovery, *timeout, *jsonFormat)
 	if err != nil {
 		app.FatalIfError(err, "Fail to initialize client")
 	}
@@ -260,6 +264,8 @@ func main() {
 		err = client.JobDeleteAction(*jobDeleteName)
 	case jobGet.FullCommand():
 		err = client.JobGetAction(*jobGetName)
+	case jobStatus.FullCommand():
+		err = client.JobStatusAction(*jobStatusName)
 	case jobQuery.FullCommand():
 		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords)
 	case jobUpdate.FullCommand():

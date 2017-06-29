@@ -10,6 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	testJobID = "481d565e-28da-457d-8434-f6bb7faa0e95"
+)
+
 func TestParseJobCreate(t *testing.T) {
 	cfg := "../../example/testjob.yaml"
 	path := "/infra/compute"
@@ -88,4 +92,20 @@ func TestParseTaskStartWithRanges(t *testing.T) {
 	assert.Equal(t, taskStart.FullCommand(), cmd)
 	assert.Equal(t, *taskStartJobName, job)
 	assert.Equal(t, fmt.Sprintf("%v", expected), fmt.Sprintf("%v", *taskStartInstanceRanges))
+}
+
+func TestParseJobGet(t *testing.T) {
+	jobID := testJobID
+	cmd, err := app.Parse([]string{"job", "get", jobID})
+	assert.Nil(t, err)
+	assert.Equal(t, cmd, jobGet.FullCommand())
+	assert.Equal(t, *jobGetName, jobID)
+}
+
+func TestParseJobStatus(t *testing.T) {
+	jobID := testJobID
+	cmd, err := app.Parse([]string{"job", "status", jobID})
+	assert.Nil(t, err)
+	assert.Equal(t, cmd, jobStatus.FullCommand())
+	assert.Equal(t, *jobStatusName, jobID)
 }

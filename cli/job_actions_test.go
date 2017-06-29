@@ -19,7 +19,10 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
-const testJobConfig = "../example/testjob.yaml"
+const (
+	testJobConfig = "../example/testjob.yaml"
+	testJobID     = "481d565e-28da-457d-8434-f6bb7faa0e95"
+)
 
 type jobActionsTestSuite struct {
 	suite.Suite
@@ -266,4 +269,40 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 	}).Return(nil, nil)
 
 	suite.NoError(c.JobQueryAction("key:value", "", "keyword,"))
+}
+
+func (suite *jobActionsTestSuite) TestClient_JobGetAction() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		jobClient:  suite.mockJob,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: &peloton.JobID{
+			Value: testJobID,
+		},
+	}).Return(nil, nil)
+
+	suite.NoError(c.JobGetAction(testJobID))
+}
+
+func (suite *jobActionsTestSuite) TestClient_JobStatusAction() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		jobClient:  suite.mockJob,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	suite.mockJob.EXPECT().Get(gomock.Any(), &job.GetRequest{
+		Id: &peloton.JobID{
+			Value: testJobID,
+		},
+	}).Return(nil, nil)
+
+	suite.NoError(c.JobStatusAction(testJobID))
 }
