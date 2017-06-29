@@ -29,29 +29,32 @@ import (
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/uber-go/tally"
 )
 
 const (
 	taskIDFmt             = "%s-%d"
-	jobsTable             = "jobs"
+	jobConfigTable        = "job_config"
 	jobRuntimeTable       = "job_runtime"
 	jobIndexTable         = "job_index"
-	tasksTable            = "tasks"
+	taskConfigTable       = "task_config"
+	taskRuntimeTable      = "task_runtime"
 	taskStateChangesTable = "task_state_changes"
 	upgradesTable         = "upgrades"
 	frameworksTable       = "frameworks"
-	jobOwnerView          = "mv_jobs_by_owner"
-	taskJobStateView      = "mv_task_by_job_state"
-	jobByStateView        = "mv_jobs_by_state"
-	taskHostView          = "mv_task_by_host"
+	taskJobStateView      = "mv_task_by_state"
+	jobByStateView        = "mv_job_by_state"
 	resPools              = "respools"
 	resPoolsOwnerView     = "mv_respools_by_owner"
 	volumeTable           = "persistent_volumes"
-	jobsByRespoolView     = "mv_jobs_by_respool"
 
 	_defaultQueryLimit uint32 = 100
+
+	// _defaultTaskConfigID is used for storing, and retrieving, the default
+	// task configuration, when no specific is available.
+	_defaultTaskConfigID = -1
 )
 
 // Config is the config for cassandra Store
@@ -112,83 +115,94 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 	}, nil
 }
 
-// CreateJob creates a job with the job id and the config value
-func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
+func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, version int64, owner string) error {
 	jobID := id.Value
-	configBuffer, err := json.Marshal(jobConfig)
+	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
 		log.Errorf("Failed to marshal jobConfig, error = %v", err)
 		s.metrics.JobCreateFail.Inc(1)
 		return err
 	}
-	labels := jobConfig.Labels
-	var labelBuffer []byte
-	labelBuffer, err = json.Marshal(labels)
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(jobConfigTable).
+		Columns(
+			"job_id",
+			"version",
+			"creation_time",
+			"config").
+		Values(
+			jobID,
+			version,
+			time.Now().UTC(),
+			configBuffer).
+		IfNotExist()
+	err = s.applyStatement(ctx, stmt, jobID)
 	if err != nil {
-		log.Errorf("Failed to marshal labels, error = %v", err)
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("createJobConfig failed")
 		s.metrics.JobCreateFail.Inc(1)
 		return err
 	}
+
+	// TODO: Create TaskConfig here. This requires the task configs to be
+	// flattened at this point, see jobmgr.
+
+	return nil
+}
+
+func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int, taskConfig *task.TaskConfig) error {
+	configBuffer, err := proto.Marshal(taskConfig)
+	if err != nil {
+		log.Errorf("Failed to marshal taskConfig, error = %v", err)
+		return err
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(taskConfigTable).
+		Columns(
+			"job_id",
+			"version",
+			"instance_id",
+			"creation_time",
+			"config").
+		Values(
+			id.GetValue(),
+			version,
+			instanceID,
+			time.Now().UTC(),
+			configBuffer).
+		IfNotExist()
+	err = s.applyStatement(ctx, stmt, id.GetValue())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id.Value).
+			Error("createTaskConfig failed")
+		s.metrics.JobCreateFail.Inc(1)
+		return err
+	}
+
+	return nil
+}
+
+// CreateJob creates a job with the job id and the config value
+func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
+	// Create version 0 of the job config.
+	if err := s.createJobConfig(ctx, id, jobConfig, 0, owner); err != nil {
+		return err
+	}
+
 	initialJobRuntime := job.RuntimeInfo{
 		State:        job.JobState_INITIALIZED,
-		CreationTime: time.Now().Format(time.RFC3339Nano),
+		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
 		TaskStats:    make(map[string]uint32),
 	}
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
 
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(jobsTable).
-		Columns(
-			"JobID",
-			"JobConfig",
-			"Owner",
-			"Labels",
-			"CreateTime",
-			"RespoolID",
-		).
-		Values(
-			jobID,
-			string(configBuffer),
-			owner,
-			string(labelBuffer),
-			time.Now(),
-			jobConfig.GetRespoolID().GetValue(),
-		).
-		IfNotExist()
-
-	err = s.applyStatement(ctx, stmt, jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.Value).
-			Error("CreateJob failed")
-		s.metrics.JobCreateFail.Inc(1)
-		return err
-	}
-
-	queryBuilder = s.DataStore.NewQuery()
-	jobInfoStmt := queryBuilder.Update(jobIndexTable).
-		Set("Labels", labelBuffer).
-		Set("CreateTime", time.Now()).
-		Where(qb.Eq{"JobID": id.GetValue()})
-	err = s.applyStatement(ctx, jobInfoStmt, id.Value)
-	if err != nil {
-		log.WithField("job_id", id.Value).
-			WithError(err).
-			Error("Failed to create job info record")
-		s.metrics.JobCreateFail.Inc(1)
-		return err
-	}
-	err = s.updateJobIndexWithJobConfig(ctx, id, jobConfig, configBuffer)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.Value).
-			Error("updateJobInfoWithJobConfig failed")
-		s.metrics.JobCreateFail.Inc(1)
-		return err
-	}
 	// Create the initial job runtime record
-	err = s.UpdateJobRuntime(ctx, id, &initialJobRuntime)
+	err := s.UpdateJobRuntime(ctx, id, &initialJobRuntime)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
@@ -200,46 +214,65 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	return nil
 }
 
+func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (int64, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("MAX(version)").From(jobConfigTable).
+		Where(qb.Eq{"job_id": id.GetValue()})
+
+	result, err := s.DataStore.Execute(ctx, stmt)
+	if err != nil {
+		log.Errorf("Fail to get max version of job %v: %v", id.GetValue(), err)
+		return 0, err
+	}
+	if result != nil {
+		defer result.Close()
+	}
+	allResults, err := result.All(ctx)
+	log.Debugf("max version: %v", allResults)
+	for _, value := range allResults {
+		for _, max := range value {
+			return max.(int64), nil
+		}
+	}
+	return 0, nil
+}
+
 // UpdateJobConfig updates a job with the job id and the config value
 func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
-	jobID := id.Value
-	configBuffer, err := json.Marshal(jobConfig)
+	version, err := s.getMaxJobVersion(ctx, id)
 	if err != nil {
-		log.Errorf("Failed to marshal jobConfig, error = %v", err)
-		s.metrics.JobUpdateFail.Inc(1)
 		return err
 	}
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(jobsTable).
-		Set("JobConfig", string(configBuffer)).
-		Where(qb.Eq{"JobID": jobID})
-	err = s.applyStatement(ctx, stmt, id.Value)
-	if err != nil {
-		log.WithField("job_id", id.Value).
-			WithError(err).
-			Error("Failed to update job config")
-		s.metrics.JobUpdateFail.Inc(1)
+
+	// Increment version.
+	version++
+
+	if err := s.createJobConfig(ctx, id, jobConfig, version, "<missing owner>"); err != nil {
 		return err
 	}
-	// Create the initial job runtime record
-	err = s.updateJobIndexWithJobConfig(ctx, id, jobConfig, configBuffer)
+
+	r, err := s.GetJobRuntime(ctx, id)
 	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.Value).
-			Error("updateJobInfoWithJobConfig failed")
-		s.metrics.JobUpdateFail.Inc(1)
 		return err
 	}
-	s.metrics.JobUpdate.Inc(1)
-	return nil
+
+	// Update to use new version.
+	r.ConfigVersion = version
+
+	return s.UpdateJobRuntime(ctx, id, r)
 }
 
 // GetJobConfig returns a job config given the job id
 func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error) {
+	r, err := s.GetJobRuntime(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobConfig").From(jobsTable).
-		Where(qb.Eq{"JobID": jobID})
+	stmt := queryBuilder.Select("config").From(jobConfigTable).
+		Where(qb.Eq{"job_id": jobID, "version": r.ConfigVersion})
 	stmtString, _, _ := stmt.ToSQL()
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
@@ -259,7 +292,7 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 		return nil, fmt.Errorf("found %d jobs %v for job id %v", len(allResults), allResults, jobID)
 	}
 	for _, value := range allResults {
-		var record JobRecord
+		var record JobConfigRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.Errorf("Failed to Fill into JobRecord, err= %v", err)
@@ -291,12 +324,12 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 
 	// jobconfig field must contain all specified keywords
 	for _, word := range spec.GetKeywords() {
-		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"jobconfig", values:%s}`, strconv.Quote(word)))
+		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"config", values:%s}`, strconv.Quote(word)))
 	}
 
 	// Add support on query by job state
 	if spec.JobState != job.JobState_UNKNOWN {
-		clauses = append(clauses, fmt.Sprintf(`{type: "match", field:"jobstate", value:%s}`, strconv.Quote(spec.JobState.String())))
+		clauses = append(clauses, fmt.Sprintf(`{type: "match", field:"state", value:%s}`, strconv.Quote(spec.JobState.String())))
 	}
 
 	where := `expr(job_index_lucene, '{query: {type: "boolean", must: [`
@@ -309,7 +342,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 	where += "]}}')"
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobIndexTable)
+	stmt := queryBuilder.Select("job_id", "config").From(jobIndexTable)
 
 	if len(clauses) > 0 {
 		stmt = stmt.Where(where)
@@ -351,31 +384,31 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 
 	var results []*job.JobInfo
 	for _, value := range allResults {
-		var record JobRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
+		id, ok := value["job_id"].(qb.UUID)
+		if !ok {
 			log.WithField("labels", spec.GetLabels()).
 				WithError(err).
 				Error("Fail to Query jobs")
 			s.metrics.JobQueryFail.Inc(1)
-			return nil, 0, err
-		}
-		jobConfig, err := record.GetJobConfig()
-		if err != nil {
-			log.WithField("labels", spec.GetLabels()).
-				WithError(err).
-				Error("Fail to Query jobs")
-			s.metrics.JobQueryFail.Inc(1)
-			return nil, 0, err
+			return nil, 0, fmt.Errorf("got invalid response from cassandra")
 		}
 
 		jobID := &peloton.JobID{
-			Value: record.JobID,
+			Value: id.String(),
 		}
 
 		jobRuntime, err := s.GetJobRuntime(ctx, jobID)
 		if err != nil {
 			log.Warnf("no job runtime found for job `%v` when executing jobs query", jobID)
+			continue
+		}
+
+		jobConfig, err := s.GetJobConfig(ctx, jobID)
+		if err != nil {
+			log.WithField("labels", spec.GetLabels()).
+				WithError(err).
+				Error("Fail to Query jobs")
+			continue
 		}
 
 		// TODO: Add to view and move to cassandra where clause.
@@ -403,8 +436,8 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 		jobStates = append(jobStates, state.String())
 	}
 
-	stmt := queryBuilder.Select("JobID").From(jobByStateView).
-		Where(qb.Eq{"JobState": jobStates})
+	stmt := queryBuilder.Select("job_id").From(jobByStateView).
+		Where(qb.Eq{"state": jobStates})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
@@ -423,65 +456,27 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 
 	var jobs []peloton.JobID
 	for _, value := range allResults {
-		var record JobRecord
+		var record JobRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.WithError(err).
-				Error("Failed to get JobRecord from record")
+				Error("Failed to get JobRuntimeRecord from record")
 			s.metrics.JobGetByStatesFail.Inc(1)
 			return nil, err
 		}
-		jobs = append(jobs, peloton.JobID{Value: record.JobID})
+		jobs = append(jobs, peloton.JobID{Value: record.JobID.String()})
 	}
 	s.metrics.JobGetByStates.Inc(1)
 	return jobs, nil
 }
 
-// GetJobsByOwner returns jobs by owner
-func (s *Store) GetJobsByOwner(ctx context.Context, owner string) (map[string]*job.JobConfig, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobOwnerView).
-		Where(qb.Eq{"Owner": owner})
-	result, err := s.DataStore.Execute(ctx, stmt)
-	if err != nil {
-		log.Errorf("Fail to GetJobsByOwner %v, err=%v", owner, err)
-		s.metrics.JobGetFail.Inc(1)
-		return nil, err
-	}
-	var resultMap = make(map[string]*job.JobConfig)
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.Errorf("Fail to get all results for GetJobsByOwner %v, err=%v", owner, err)
-		s.metrics.JobGetFail.Inc(1)
-		return nil, err
-	}
-	for _, value := range allResults {
-		var record JobRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.Errorf("Failed to Fill into JobRecord, err= %v", err)
-			s.metrics.JobGetFail.Inc(1)
-			return nil, err
-		}
-		jobConfig, err := record.GetJobConfig()
-		if err != nil {
-			log.Errorf("Failed to get jobConfig from record, err= %v", err)
-			s.metrics.JobGetFail.Inc(1)
-			return nil, err
-		}
-		resultMap[record.JobID] = jobConfig
-		s.metrics.JobGet.Inc(1)
-	}
-	return resultMap, nil
-}
-
 // GetAllJobs returns all jobs
 // TODO: introduce jobstate and add GetJobsByState
-func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, error) {
+func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error) {
 	// TODO: Get jobs from  all edge respools
-	var resultMap = make(map[string]*job.JobConfig)
+	var resultMap = make(map[string]*job.RuntimeInfo)
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsTable)
+	stmt := queryBuilder.Select("*").From(jobRuntimeTable)
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
@@ -497,7 +492,7 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, erro
 		return nil, err
 	}
 	for _, value := range allResults {
-		var record JobRecord
+		var record JobRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.WithError(err).
@@ -505,14 +500,14 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, erro
 			s.metrics.JobQueryFail.Inc(1)
 			return nil, err
 		}
-		jobConfig, err := record.GetJobConfig()
+		jobRuntime, err := record.GetJobRuntime()
 		if err != nil {
 			log.WithError(err).
 				Error("Fail to Query jobs")
 			s.metrics.JobQueryFail.Inc(1)
 			return nil, err
 		}
-		resultMap[record.JobID] = jobConfig
+		resultMap[record.JobID.String()] = jobRuntime
 	}
 	s.metrics.JobQueryAll.Inc(1)
 	return resultMap, nil
@@ -529,30 +524,50 @@ func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 		s.metrics.TaskCreateFail.Inc(1)
 		return fmt.Errorf(errMsg)
 	}
-	buffer, err := json.Marshal(taskInfo)
-	if err != nil {
-		log.Errorf("Failed to marshal taskInfo, error = %v", err)
+
+	// TODO: Set correct version.
+	if err := s.createTaskConfig(ctx, id, instanceID, 0, taskInfo.GetConfig()); err != nil {
 		s.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
-	taskInfo.Runtime.State = task.TaskState_INITIALIZED
-	taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(tasksTable). // TODO: runtime conf and task conf
-							Columns("TaskID", "JobID", "TaskState", "CreateTime", "TaskInfo", "InstanceID").
-							Values(taskID, jobID, taskInfo.Runtime.State.String(), time.Now(), string(buffer), instanceID).
-							IfNotExist()
 
-	err = s.applyStatement(ctx, stmt, taskID)
+	runtimeBuffer, err := proto.Marshal(taskInfo.Runtime)
 	if err != nil {
+		log.WithField("job_id", taskInfo.JobId.Value).
+			WithField("instance_id", taskInfo.InstanceId).
+			WithError(err).
+			Error("Failed to create task runtime")
+		s.metrics.TaskCreateFail.Inc(1)
+		return err
+	}
+
+	taskInfo.Runtime.State = task.TaskState_INITIALIZED
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(taskRuntimeTable).
+		Columns(
+			"job_id",
+			"instance_id",
+			"update_time",
+			"state",
+			"runtime_info").
+		Values(
+			jobID,
+			instanceID,
+			time.Now().UTC(),
+			taskInfo.GetRuntime().GetState().String(),
+			runtimeBuffer).
+		IfNotExist()
+
+	taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
+	if err := s.applyStatement(ctx, stmt, taskID); err != nil {
 		s.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
 	s.metrics.TaskCreate.Inc(1)
 	// Track the task events
-	err = s.logTaskStateChange(ctx, taskID, taskInfo)
+	err = s.logTaskStateChange(ctx, id, instanceID, taskInfo)
 	if err != nil {
-		log.Errorf("Unable to log task state changes for job ID %v instance %v, error = %v", jobID, taskID, err)
+		log.Errorf("Unable to log task state changes for job ID %v instance %v, error = %v", jobID, instanceID, err)
 		return err
 	}
 	return nil
@@ -597,9 +612,11 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 				Debug("creating tasks")
 			for i := start; i < end; i++ {
 				t := taskInfos[i]
-				buffer, err := json.Marshal(t)
-				if err != nil {
-					log.Errorf("Failed to marshal taskInfo for job ID %v and instance %d, error = %v", jobID, t.InstanceId, err)
+
+				// TODO: Write task config as part of writing job config..
+				if err := s.createTaskConfig(ctx, id, t.InstanceId, 0, t.GetConfig()); err != nil {
+					log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
+						Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
 					s.metrics.TaskCreateFail.Inc(nTasks)
 					atomic.AddInt64(&tasksNotCreated, batchSize)
 					return
@@ -610,10 +627,31 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 
 				idsToTaskInfos[taskID] = t
 
+				runtimeBuffer, err := proto.Marshal(t.Runtime)
+				if err != nil {
+					log.WithField("job_id", t.JobId.Value).
+						WithField("instance_id", t.InstanceId).
+						WithError(err).
+						Error("Failed to create task runtime")
+					s.metrics.TaskCreateFail.Inc(nTasks)
+					atomic.AddInt64(&tasksNotCreated, batchSize)
+					return
+				}
+
 				queryBuilder := s.DataStore.NewQuery()
-				stmt := queryBuilder.Insert(tasksTable).
-					Columns("TaskID", "JobID", "TaskState", "CreateTime", "TaskInfo", "InstanceID").
-					Values(taskID, jobID, t.Runtime.State.String(), time.Now(), string(buffer), t.InstanceId)
+				stmt := queryBuilder.Insert(taskRuntimeTable).
+					Columns(
+						"job_id",
+						"instance_id",
+						"update_time",
+						"state",
+						"runtime_info").
+					Values(
+						jobID,
+						t.InstanceId,
+						time.Now().UTC(),
+						t.GetRuntime().GetState().String(),
+						runtimeBuffer)
 
 				// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
 				// Batch with conditions cannot span multiple partitions. For now, drop the IfNotExist()
@@ -651,12 +689,13 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 }
 
 // logTaskStateChange logs the task state change events
-func (s *Store) logTaskStateChange(ctx context.Context, taskID string, taskInfo *task.TaskInfo) error {
+func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo) error {
 	var stateChange = TaskStateChangeRecord{
-		TaskID:    taskID,
-		TaskState: taskInfo.Runtime.State.String(),
-		TaskHost:  taskInfo.Runtime.Host,
-		EventTime: time.Now(),
+		JobID:      jobID.GetValue(),
+		InstanceID: instanceID,
+		TaskState:  taskInfo.Runtime.State.String(),
+		TaskHost:   taskInfo.Runtime.Host,
+		EventTime:  time.Now().UTC(),
 	}
 	buffer, err := json.Marshal(stateChange)
 	if err != nil {
@@ -666,14 +705,14 @@ func (s *Store) logTaskStateChange(ctx context.Context, taskID string, taskInfo 
 	stateChangePart := []string{string(buffer)}
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(taskStateChangesTable).
-		Add("Events", stateChangePart).
-		Where(qb.Eq{"TaskID": taskID})
+		Add("events", stateChangePart).
+		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if result != nil {
 		defer result.Close()
 	}
 	if err != nil {
-		log.Errorf("Fail to logTaskStateChange by taskID %v %v, err=%v", taskID, stateChangePart, err)
+		log.Errorf("Fail to logTaskStateChange by jobID %v, instanceID %v %v, err=%v", jobID, instanceID, stateChangePart, err)
 		return err
 	}
 	return nil
@@ -684,12 +723,20 @@ func (s *Store) logTaskStateChange(ctx context.Context, taskID string, taskInfo 
 func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[string]*task.TaskInfo) error {
 	statements := []api.Statement{}
 	for taskID, taskInfo := range taskIDToTaskInfos {
+		jobID, instanceID, err := util.ParseTaskID(taskID)
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", taskID).
+				Error("Invalid task id")
+			return err
+		}
 		runtime := taskInfo.GetRuntime()
 		stateChange := TaskStateChangeRecord{
-			TaskID:      taskID,
+			JobID:       jobID,
+			InstanceID:  uint32(instanceID),
 			TaskState:   runtime.GetState().String(),
 			TaskHost:    runtime.GetHost(),
-			EventTime:   time.Now(),
+			EventTime:   time.Now().UTC(),
 			MesosTaskID: runtime.GetMesosTaskId().GetValue(),
 		}
 		buffer, err := json.Marshal(stateChange)
@@ -700,8 +747,8 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[s
 		stateChangePart := []string{string(buffer)}
 		queryBuilder := s.DataStore.NewQuery()
 		stmt := queryBuilder.Update(taskStateChangesTable).
-			Add("Events", stateChangePart).
-			Where(qb.Eq{"TaskID": taskID})
+			Add("events", stateChangePart).
+			Where(qb.Eq{"job_id": jobID, "instance_id": instanceID})
 		statements = append(statements, stmt)
 	}
 	err := s.DataStore.ExecuteBatch(ctx, statements)
@@ -713,13 +760,13 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[s
 }
 
 // GetTaskStateChanges returns the state changes for a task
-func (s *Store) GetTaskStateChanges(ctx context.Context, taskID string) ([]*TaskStateChangeRecord, error) {
+func (s *Store) GetTaskStateChanges(ctx context.Context, jobID *peloton.JobID, instanceID uint32) ([]*TaskStateChangeRecord, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskStateChangesTable).
-		Where(qb.Eq{"TaskID": taskID})
+		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
-		log.Errorf("Fail to GetTaskStateChanges by taskID %v, err=%v", taskID, err)
+		log.Errorf("Fail to GetTaskStateChanges by jobID %v, instanceID %v, err=%v", jobID, instanceID, err)
 		return nil, err
 	}
 	if result != nil {
@@ -727,7 +774,7 @@ func (s *Store) GetTaskStateChanges(ctx context.Context, taskID string) ([]*Task
 	}
 	allResults, err := result.All(ctx)
 	if err != nil {
-		log.Errorf("Fail to GetTaskStateChanges by taskID %v, err=%v", taskID, err)
+		log.Errorf("Fail to GetTaskStateChanges by jobID %v, instanceID %v, err=%v", jobID, instanceID, err)
 		return nil, err
 	}
 	for _, value := range allResults {
@@ -739,7 +786,7 @@ func (s *Store) GetTaskStateChanges(ctx context.Context, taskID string) ([]*Task
 		}
 		return stateChangeRecords.GetStateChangeRecords()
 	}
-	return nil, fmt.Errorf("No state change records found for taskID %v", taskID)
+	return nil, fmt.Errorf("No state change records found for jobID %v, instanceID %v", jobID, instanceID)
 }
 
 // GetTasksForJobResultSet returns the result set that can be used to iterate each task in a job
@@ -747,8 +794,8 @@ func (s *Store) GetTaskStateChanges(ctx context.Context, taskID string) ([]*Task
 func (s *Store) GetTasksForJobResultSet(ctx context.Context, id *peloton.JobID) (api.ResultSet, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(tasksTable).
-		Where(qb.Eq{"JobID": jobID})
+	stmt := queryBuilder.Select("*").From(taskRuntimeTable).
+		Where(qb.Eq{"job_id": jobID})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobResultSet by jobId %v, err=%v", jobID, err)
@@ -776,23 +823,93 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 		return nil, err
 	}
 	for _, value := range allResults {
-		var record TaskRecord
+		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
-			log.Errorf("Failed to Fill into TaskRecord, val = %v err= %v", value, err)
+			log.Errorf("Failed to Fill into TaskRuntimeRecord, val = %v err= %v", value, err)
 			s.metrics.TaskGetFail.Inc(1)
 			continue
 		}
-		taskInfo, err := record.GetTaskInfo()
+		runtime, err := record.GetTaskRuntime()
 		if err != nil {
-			log.Errorf("Failed to parse task Info from record, val = %v err= %v", taskInfo, err)
+			log.Errorf("Failed to parse task runtime from record, val = %v err= %v", record, err)
 			s.metrics.TaskGetFail.Inc(1)
 			continue
 		}
+
+		taskInfo := &task.TaskInfo{
+			Runtime:    runtime,
+			InstanceId: uint32(record.InstanceID),
+			JobId:      id,
+		}
+
 		s.metrics.TaskGet.Inc(1)
 		resultMap[taskInfo.InstanceId] = taskInfo
 	}
 	return resultMap, nil
+}
+
+func (s *Store) getTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int64) (*task.TaskConfig, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(taskConfigTable).
+		Where(
+			qb.Eq{
+				"job_id":      id.GetValue(),
+				"version":     version,
+				"instance_id": []interface{}{instanceID, _defaultTaskConfigID},
+			})
+	result, err := s.DataStore.Execute(ctx, stmt)
+	if err != nil {
+		log.WithField("job_id", id.GetValue()).
+			WithField("instance_id", instanceID).
+			WithField("version", version).
+			WithError(err).
+			Error("Fail to getTaskConfig")
+		s.metrics.TaskGetFail.Inc(1)
+		return nil, err
+	}
+	if result != nil {
+		defer result.Close()
+	}
+	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
+	allResults, err := result.All(ctx)
+	if len(allResults) == 0 {
+		return nil, &storage.TaskNotFoundError{TaskID: taskID}
+	}
+
+	// Use last result (the most specific).
+	value := allResults[len(allResults)-1]
+	var record TaskConfigRecord
+	if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
+		log.WithField("task_id", taskID).
+			WithError(err).
+			Error("Failed to Fill into TaskRecord")
+		s.metrics.TaskGetFail.Inc(1)
+		return nil, err
+	}
+
+	s.metrics.TaskGet.Inc(1)
+	return record.GetTaskConfig()
+}
+
+func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.JobID, record *TaskRuntimeRecord) (*task.TaskInfo, error) {
+	runtime, err := record.GetTaskRuntime()
+	if err != nil {
+		log.Errorf("Failed to parse task runtime from record, val = %v err= %v", record, err)
+		return nil, err
+	}
+
+	config, err := s.getTaskConfig(ctx, id, uint32(record.InstanceID), runtime.ConfigVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	return &task.TaskInfo{
+		Runtime:    runtime,
+		Config:     config,
+		InstanceId: uint32(record.InstanceID),
+		JobId:      id,
+	}, nil
 }
 
 // GetTasksForJobAndState returns the tasks for a peloton job with certain state.
@@ -800,8 +917,8 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("TaskID", "TaskInfo").From(taskJobStateView).
-		Where(qb.Eq{"JobID": jobID, "TaskState": state})
+	stmt := queryBuilder.Select("instance_id").From(taskJobStateView).
+		Where(qb.Eq{"job_id": jobID, "state": state})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobAndState by jobId %v state %v, err=%v", jobID, state, err)
@@ -814,71 +931,19 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 	resultMap := make(map[uint32]*task.TaskInfo)
 	allResults, err := result.All(ctx)
 	for _, value := range allResults {
-		var record TaskRecord
+		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.Errorf("Failed to Fill into TaskRecord, val = %v err= %v", value, err)
 			s.metrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
-		var taskInfo *task.TaskInfo
-		taskInfo, err = record.GetTaskInfo()
+		resultMap[uint32(record.InstanceID)], err = s.GetTask(ctx, id.GetValue(), uint32(record.InstanceID))
 		if err != nil {
-			log.Errorf("Failed to parse taskInfo from TaskRecord, val = %v err= %v", value, err)
+			log.Errorf("Failed to get taskInfo from task, val = %v err= %v", value, err)
 			s.metrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
-		resultMap[taskInfo.InstanceId] = taskInfo
-		s.metrics.TaskGet.Inc(1)
-	}
-	return resultMap, nil
-}
-
-// GetTasksForHosts returns the tasks running on a host,
-// result map key is hostname, value is taskInfo
-func (s *Store) GetTasksForHosts(ctx context.Context, hosts []string) (map[string][]*task.TaskInfo, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	condition := qb.Or{}
-	for _, host := range hosts {
-		condition = append(condition, qb.Eq{"TaskHost": host})
-	}
-	stmt := queryBuilder.Select("*").From(taskHostView).Where(condition)
-
-	result, err := s.DataStore.Execute(ctx, stmt)
-	if err != nil {
-		log.WithField("hosts", hosts).
-			WithField("error", err).
-			Errorf("failed to GetTasksForHosts")
-		s.metrics.TaskGetFail.Inc(1)
-		return nil, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	resultMap := make(map[string][]*task.TaskInfo)
-	allResults, err := result.All(ctx)
-	for _, value := range allResults {
-		var record TaskRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.WithField("value", value).
-				WithField("error", err).
-				Errorf("failed to Fill into TaskRecord")
-			s.metrics.TaskGetFail.Inc(1)
-			return nil, err
-		}
-		taskInfo, err := record.GetTaskInfo()
-		if err != nil {
-			log.WithField("value", value).
-				WithField("error", err).
-				Errorf("failed to Get TaskRecord")
-			s.metrics.TaskGetFail.Inc(1)
-			return nil, err
-		}
-		if _, exists := resultMap[taskInfo.Runtime.Host]; !exists {
-			resultMap[taskInfo.Runtime.Host] = []*task.TaskInfo{}
-		}
-		resultMap[taskInfo.Runtime.Host] = append(resultMap[taskInfo.Runtime.Host], taskInfo)
 		s.metrics.TaskGet.Inc(1)
 	}
 	return resultMap, nil
@@ -889,7 +954,7 @@ func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state 
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("count (*)").From(taskJobStateView).
-		Where(qb.Eq{"JobID": jobID, "TaskState": state})
+		Where(qb.Eq{"job_id": jobID, "state": state})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to getTaskStateCount by jobId %v state %v, err=%v", jobID, state, err)
@@ -928,10 +993,10 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 	result := make(map[uint32]*task.TaskInfo)
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").
-		From(tasksTable).
-		Where(qb.Eq{"JobID": jobID}).
-		Where("instanceID >= ?", instanceRange.From).
-		Where("instanceID < ?", instanceRange.To)
+		From(taskRuntimeTable).
+		Where(qb.Eq{"job_id": jobID}).
+		Where("instance_id >= ?", instanceRange.From).
+		Where("instance_id < ?", instanceRange.To)
 
 	resultSet, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
@@ -943,7 +1008,7 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 	}
 	allResults, err := resultSet.All(ctx)
 	for _, value := range allResults {
-		var record TaskRecord
+		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.WithField("job_id", id.Value).
@@ -952,14 +1017,7 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 			s.metrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
-		taskInfo, err := record.GetTaskInfo()
-		if err != nil {
-			log.WithField("job_id", id.Value).
-				WithError(err).
-				Error("Failed to GetTaskInfo from TaskRecord")
-			s.metrics.TaskGetFail.Inc(1)
-			return nil, err
-		}
+		taskInfo, err := s.getTaskInfoFromRuntimeRecord(ctx, id, &record)
 		result[taskInfo.InstanceId] = taskInfo
 		s.metrics.TaskGet.Inc(1)
 	}
@@ -968,24 +1026,29 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 
 // UpdateTask updates a task for a peloton job
 func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
-	taskID := getTaskID(taskInfo)
-	buffer, err := json.Marshal(taskInfo)
+	runtimeBuffer, err := proto.Marshal(taskInfo.Runtime)
 	if err != nil {
-		log.Errorf("error = %v", err)
-		s.metrics.TaskUpdateFail.Inc(1)
+		log.WithField("job_id", taskInfo.JobId.Value).
+			WithField("instance_id", taskInfo.InstanceId).
+			WithError(err).
+			Error("Failed to update task runtime")
+		s.metrics.JobUpdateRuntimeFail.Inc(1)
 		return err
 	}
+
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(tasksTable). // TODO: runtime conf and task conf
-							Columns("TaskID", "JobID", "TaskState", "TaskHost", "UpdateTime", "TaskInfo", "InstanceID").
-							Values(taskID, taskInfo.JobId.Value, taskInfo.GetRuntime().State.String(), taskInfo.GetRuntime().Host, time.Now(), string(buffer), taskInfo.InstanceId)
-	err = s.applyStatement(ctx, stmt, taskID)
-	if err != nil {
+	stmt := queryBuilder.Update(taskRuntimeTable).
+		Set("update_time", time.Now().UTC()).
+		Set("state", taskInfo.GetRuntime().GetState().String()).
+		Set("runtime_info", runtimeBuffer).
+		Where(qb.Eq{"job_id": taskInfo.GetJobId().GetValue(), "instance_id": taskInfo.InstanceId})
+
+	if err := s.applyStatement(ctx, stmt, getTaskID(taskInfo)); err != nil {
 		s.metrics.TaskUpdateFail.Inc(1)
 		return err
 	}
 	s.metrics.TaskUpdate.Inc(1)
-	s.logTaskStateChange(ctx, taskID, taskInfo)
+	s.logTaskStateChange(ctx, taskInfo.GetJobId(), taskInfo.InstanceId, taskInfo)
 	return nil
 }
 
@@ -1005,32 +1068,23 @@ func (s *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID
 // TODO: This implementation is not perfect, as if it's getting an transient
 // error, the job or some tasks may not be fully deleted.
 func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
-	tasks, err := s.GetTasksForJob(ctx, id)
-	if err != nil {
-		return err
-	}
-
 	queryBuilder := s.DataStore.NewQuery()
-	for _, t := range tasks {
-		stmt := queryBuilder.Delete(tasksTable).
-			Where(qb.Eq{"TaskID": getTaskID(t)}).
-			Where(qb.Eq{"JobID": id.GetValue()})
-		if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-			return err
-		}
-
-		stmt = queryBuilder.Delete(taskStateChangesTable).Where(qb.Eq{"TaskID": getTaskID(t)})
-		if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-			return err
-		}
-	}
-
-	stmt := queryBuilder.Delete(jobsTable).Where(qb.Eq{"JobID": id.GetValue()})
+	stmt := queryBuilder.Delete(taskRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
 		return err
 	}
 
-	stmt = queryBuilder.Delete(jobRuntimeTable).Where(qb.Eq{"JobID": id.GetValue()})
+	stmt = queryBuilder.Delete(taskConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		return err
+	}
+
+	stmt = queryBuilder.Delete(jobRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		return err
+	}
+
+	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
 		return err
 	}
@@ -1054,8 +1108,8 @@ func (s *Store) GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo,
 func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*task.TaskInfo, error) {
 	taskID := fmt.Sprintf(taskIDFmt, jobID, int(instanceID))
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(tasksTable).
-		Where(qb.Eq{"JobID": jobID, "InstanceID": instanceID})
+	stmt := queryBuilder.Select("*").From(taskRuntimeTable).
+		Where(qb.Eq{"job_id": jobID, "instance_id": instanceID})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithField("task_id", taskID).
@@ -1069,7 +1123,7 @@ func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*
 	}
 	allResults, err := result.All(ctx)
 	for _, value := range allResults {
-		var record TaskRecord
+		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.WithField("task_id", taskID).
@@ -1078,8 +1132,9 @@ func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*
 			s.metrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
+
 		s.metrics.TaskGet.Inc(1)
-		return record.GetTaskInfo()
+		return s.getTaskInfoFromRuntimeRecord(ctx, &peloton.JobID{Value: jobID}, &record)
 	}
 	s.metrics.TaskNotFound.Inc(1)
 	return nil, &storage.TaskNotFoundError{TaskID: taskID}
@@ -1087,12 +1142,12 @@ func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*
 
 //SetMesosStreamID stores the mesos framework id for a framework name
 func (s *Store) SetMesosStreamID(ctx context.Context, frameworkName string, mesosStreamID string) error {
-	return s.updateFrameworkTable(ctx, map[string]interface{}{"FrameworkName": frameworkName, "MesosStreamID": mesosStreamID})
+	return s.updateFrameworkTable(ctx, map[string]interface{}{"framework_name": frameworkName, "mesos_stream_id": mesosStreamID})
 }
 
 //SetMesosFrameworkID stores the mesos framework id for a framework name
 func (s *Store) SetMesosFrameworkID(ctx context.Context, frameworkName string, frameworkID string) error {
-	return s.updateFrameworkTable(ctx, map[string]interface{}{"FrameworkName": frameworkName, "FrameworkID": frameworkID})
+	return s.updateFrameworkTable(ctx, map[string]interface{}{"framework_name": frameworkName, "framework_id": frameworkID})
 }
 
 func (s *Store) updateFrameworkTable(ctx context.Context, content map[string]interface{}) error {
@@ -1101,8 +1156,8 @@ func (s *Store) updateFrameworkTable(ctx context.Context, content map[string]int
 		return err
 	}
 	queryBuilder := s.DataStore.NewQuery()
-	content["UpdateHost"] = hostName
-	content["UpdateTime"] = time.Now()
+	content["update_host"] = hostName
+	content["update_time"] = time.Now().UTC()
 
 	var columns []string
 	var values []interface{}
@@ -1143,7 +1198,7 @@ func (s *Store) GetFrameworkID(ctx context.Context, frameworkName string) (strin
 func (s *Store) getFrameworkInfo(ctx context.Context, frameworkName string) (*FrameworkInfoRecord, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(frameworksTable).
-		Where(qb.Eq{"FrameworkName": frameworkName})
+		Where(qb.Eq{"framework_name": frameworkName})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to getFrameworkInfo by frameworkName %v, err=%v", frameworkName, err)
@@ -1207,8 +1262,8 @@ func (s *Store) CreateResourcePool(ctx context.Context, id *respool.ResourcePool
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(resPools).
-		Columns("ID", "ResourcePoolConfig", "Owner", "CreateTime", "UpdateTime").
-		Values(resourcePoolID, string(configBuffer), owner, time.Now(), time.Now()).
+		Columns("respool_id", "respool_config", "owner", "creation_time", "update_time").
+		Values(resourcePoolID, string(configBuffer), owner, time.Now().UTC(), time.Now().UTC()).
 		IfNotExist()
 
 	err = s.applyStatement(ctx, stmt, resourcePoolID)
@@ -1238,7 +1293,7 @@ func (s *Store) UpdateResourcePool(ctx context.Context, id *respool.ResourcePool
 // GetAllResourcePools Get all the resource pool configs
 func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("ID", "Owner", "ResourcePoolConfig", "CreateTime", "UpdateTime").From(resPools)
+	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPools)
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetAllResourcePools, err=%v", err)
@@ -1266,7 +1321,7 @@ func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.Re
 			s.metrics.ResourcePoolGetFail.Inc(1)
 			return nil, err
 		}
-		resultMap[record.ID] = resourcePoolConfig
+		resultMap[record.RespoolID] = resourcePoolConfig
 		s.metrics.ResourcePoolGet.Inc(1)
 	}
 	return resultMap, nil
@@ -1275,8 +1330,8 @@ func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.Re
 // GetResourcePoolsByOwner Get all the resource pool b owner
 func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[string]*respool.ResourcePoolConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("ID", "Owner", "ResourcePoolConfig", "CreateTime", "UpdateTime").From(resPoolsOwnerView).
-		Where(qb.Eq{"Owner": owner})
+	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPoolsOwnerView).
+		Where(qb.Eq{"owner": owner})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetResourcePoolsByOwner %v, err=%v", owner, err)
@@ -1305,7 +1360,7 @@ func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[
 			s.metrics.ResourcePoolGetFail.Inc(1)
 			return nil, err
 		}
-		resultMap[record.ID] = resourcePoolConfig
+		resultMap[record.RespoolID] = resourcePoolConfig
 		s.metrics.ResourcePoolGet.Inc(1)
 	}
 	return resultMap, nil
@@ -1319,8 +1374,8 @@ func getTaskID(taskInfo *task.TaskInfo) string {
 // GetJobRuntime returns the job runtime info
 func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobRuntime").From(jobRuntimeTable).
-		Where(qb.Eq{"JobID": id.Value})
+	stmt := queryBuilder.Select("*").From(jobRuntimeTable).
+		Where(qb.Eq{"job_id": id.Value})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
@@ -1350,48 +1405,47 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 			s.metrics.JobGetRuntimeFail.Inc(1)
 			return nil, err
 		}
-		s.metrics.JobGetRuntime.Inc(1)
 		return record.GetJobRuntime()
 	}
 	s.metrics.JobNotFound.Inc(1)
-	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.Value)
-}
-
-// updateJobIndexWithJobConfig updates the job index table with jobConfig
-func (s *Store) updateJobIndexWithJobConfig(
-	ctx context.Context,
-	id *peloton.JobID,
-	jobConfig *job.JobConfig,
-	configBuffer []byte) error {
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(jobIndexTable).
-		Set("JobConfig", configBuffer).
-		Set("Owner", jobConfig.GetOwningTeam()).
-		Set("RespoolID", jobConfig.GetRespoolID().GetValue()).
-		Set("UpdateTime", time.Now()).
-		Where(qb.Eq{"JobID": id.GetValue()})
-	err := s.applyStatement(ctx, stmt, id.Value)
-	if err != nil {
-		log.WithField("job_id", id.Value).
-			WithError(err).
-			Error("Failed to update job info table")
-		s.metrics.JobUpdateInfoFail.Inc(1)
-		return err
-	}
-	s.metrics.JobUpdateInfo.Inc(1)
-	return nil
+	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.GetValue())
 }
 
 // updateJobIndexWithJobRuntime updates the job index table with job runtime
 func (s *Store) updateJobIndexWithJobRuntime(
 	ctx context.Context,
 	id *peloton.JobID,
-	runtime *job.RuntimeInfo,
-	runtimeBuffer []byte) error {
+	runtime *job.RuntimeInfo) error {
+
+	config, err := s.GetJobConfig(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	runtimeBuffer, err := json.Marshal(runtime)
+	if err != nil {
+		log.WithField("job_id", id.Value).
+			WithError(err).
+			Error("Failed to marshal job runtime")
+		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		return err
+	}
+
+	configBuffer, err := json.Marshal(config)
+	if err != nil {
+		log.Errorf("Failed to marshal jobConfig, error = %v", err)
+		s.metrics.JobCreateFail.Inc(1)
+		return err
+	}
+
+	labelBuffer, err := json.Marshal(config.Labels)
+	if err != nil {
+		log.Errorf("Failed to marshal labels, error = %v", err)
+		s.metrics.JobCreateFail.Inc(1)
+		return err
+	}
 
 	completeTime := time.Time{}
-	var err error
 	if runtime.GetCompletionTime() != "" {
 		completeTime, err = time.Parse(time.RFC3339Nano, runtime.GetCompletionTime())
 		if err != nil {
@@ -1403,10 +1457,16 @@ func (s *Store) updateJobIndexWithJobRuntime(
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(jobIndexTable).
-		Set("JobState", runtime.GetState().String()).
-		Set("UpdateTime", time.Now()).
-		Set("CompleteTime", completeTime).
-		Where(qb.Eq{"JobID": id.GetValue()})
+		Set("config", configBuffer).
+		Set("runtime_info", runtimeBuffer).
+		Set("state", runtime.GetState().String()).
+		Set("respool_id", config.GetRespoolID().GetValue()).
+		Set("owner", config.GetOwningTeam()).
+		Set("labels", labelBuffer).
+		Set("creation_time", parseTime(runtime.GetCreationTime())).
+		Set("update_time", time.Now()).
+		Set("completion_time", completeTime).
+		Where(qb.Eq{"job_id": id.GetValue()})
 	err = s.applyStatement(ctx, stmt, id.Value)
 	if err != nil {
 		log.WithField("job_id", id.Value).
@@ -1421,20 +1481,7 @@ func (s *Store) updateJobIndexWithJobRuntime(
 
 // UpdateJobRuntime updates the job runtime info
 func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error {
-	buffer, err := json.Marshal(runtime)
-	if err != nil {
-		log.WithField("job_id", id.Value).
-			WithError(err).
-			Error("Failed to marshal job runtime")
-		s.metrics.JobUpdateRuntimeFail.Inc(1)
-		return err
-	}
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(jobRuntimeTable).
-		Columns("JobID", "JobState", "UpdateTime", "JobRuntime").
-		Values(id.Value, runtime.State.String(), time.Now(), string(buffer))
-	err = s.applyStatement(ctx, stmt, id.Value)
+	runtimeBuffer, err := proto.Marshal(runtime)
 	if err != nil {
 		log.WithField("job_id", id.Value).
 			WithError(err).
@@ -1442,8 +1489,23 @@ func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime
 		s.metrics.JobUpdateRuntimeFail.Inc(1)
 		return err
 	}
-	// Create the initial job runtime record
-	err = s.updateJobIndexWithJobRuntime(ctx, id, runtime, buffer)
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(jobRuntimeTable).
+		Set("state", runtime.GetState().String()).
+		Set("update_time", time.Now().UTC()).
+		Set("runtime_info", runtimeBuffer).
+		Where(qb.Eq{"job_id": id.GetValue()})
+
+	if err := s.applyStatement(ctx, stmt, id.Value); err != nil {
+		log.WithField("job_id", id.Value).
+			WithError(err).
+			Error("Failed to update job runtime")
+		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		return err
+	}
+
+	err = s.updateJobIndexWithJobRuntime(ctx, id, runtime)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
@@ -1493,7 +1555,7 @@ func (s *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(volumeTable).
-		Columns("ID", "State", "GoalState", "JobID", "InstanceID", "Hostname", "SizeMb", "ContainerPath", "CreateTime", "UpdateTime").
+		Columns("volume_id", "state", "goal_state", "job_id", "instance_id", "hostname", "size_mb", "container_path", "creation_time", "update_time").
 		Values(
 			volume.GetId().GetValue(),
 			volume.State.String(),
@@ -1503,8 +1565,8 @@ func (s *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 			volume.Hostname,
 			volume.SizeMB,
 			volume.ContainerPath,
-			time.Now(),
-			time.Now()).
+			time.Now().UTC(),
+			time.Now().UTC()).
 		IfNotExist()
 
 	err := s.applyStatement(ctx, stmt, volume.GetId().GetValue())
@@ -1523,9 +1585,9 @@ func (s *Store) UpdatePersistentVolume(ctx context.Context, volumeID string, sta
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.
 		Update(volumeTable).
-		Set("State", state.String()).
-		Set("UpdateTime", time.Now()).
-		Where(qb.Eq{"ID": volumeID})
+		Set("state", state.String()).
+		Set("update_time", time.Now().UTC()).
+		Where(qb.Eq{"volume_id": volumeID})
 
 	err := s.applyStatement(ctx, stmt, volumeID)
 	if err != nil {
@@ -1544,7 +1606,7 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_v
 	stmt := queryBuilder.
 		Select("*").
 		From(volumeTable).
-		Where(qb.Eq{"ID": volumeID})
+		Where(qb.Eq{"volume_id": volumeID})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
@@ -1571,7 +1633,7 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_v
 		s.metrics.VolumeGet.Inc(1)
 		return &pb_volume.PersistentVolumeInfo{
 			Id: &peloton.VolumeID{
-				Value: record.ID,
+				Value: record.VolumeID,
 			},
 			State: pb_volume.VolumeState(
 				pb_volume.VolumeState_value[record.State]),
@@ -1594,7 +1656,7 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_v
 // DeletePersistentVolume delete persistent volume entry.
 func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID string) error {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Delete(volumeTable).Where(qb.Eq{"ID": volumeID})
+	stmt := queryBuilder.Delete(volumeTable).Where(qb.Eq{"volume_id": volumeID})
 
 	err := s.applyStatement(ctx, stmt, volumeID)
 	if err != nil {
@@ -1604,59 +1666,6 @@ func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID string) err
 
 	s.metrics.VolumeDelete.Inc(1)
 	return nil
-}
-
-// GetJobsByRespoolID returns jobIDs in a respool
-func (s *Store) GetJobsByRespoolID(ctx context.Context, respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error) {
-	if respoolID == nil || respoolID.Value == "" {
-		return nil, errors.New("respoolID is null / empty")
-	}
-	respoolIDVal := respoolID.Value
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("JobID", "JobConfig").From(jobsByRespoolView).
-		Where(qb.Eq{"RespoolID": respoolID.Value})
-	result, err := s.DataStore.Execute(ctx, stmt)
-	if err != nil {
-		log.WithError(err).
-			WithField("respool_id", respoolIDVal).
-			Error("GetJobIDsByRespoolID failed")
-		s.metrics.JobGetByRespoolIDFail.Inc(1)
-		return nil, err
-	}
-
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("respool_id", respoolIDVal).
-			Error("GetJobIDsByRespoolID get all results failed")
-		s.metrics.JobGetByRespoolIDFail.Inc(1)
-		return nil, err
-	}
-
-	results := make(map[string]*job.JobConfig)
-	for _, value := range allResults {
-		var record JobRecord
-		err := FillObject(value, &record, reflect.TypeOf(record))
-		if err != nil {
-			log.WithError(err).
-				WithField("respool_id", respoolIDVal).
-				Error("Failed to get JobRecord from record")
-			s.metrics.JobGetByRespoolIDFail.Inc(1)
-			return nil, err
-		}
-		jobConfig, err := record.GetJobConfig()
-		if err != nil {
-			log.WithError(err).
-				WithField("respool_id", respoolIDVal).
-				Error("Failed to get jobConfig from record")
-			s.metrics.JobGetByRespoolIDFail.Inc(1)
-			return nil, err
-		}
-		results[record.JobID] = jobConfig
-	}
-	s.metrics.JobGetByRespoolID.Inc(1)
-	return results, nil
 }
 
 // CreateUpgrade creates a new entry in Cassandra, if it doesn't already exist.
@@ -1676,13 +1685,13 @@ func (s *Store) CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(upgradesTable).
 		Columns(
-			"ID",
-			"Options",
-			"State",
-			"Progress",
-			"Instances",
-			"JobID",
-			"JobConfig").
+			"upgrade_id",
+			"options",
+			"state",
+			"progress",
+			"instances",
+			"job_id",
+			"job_config").
 		Values(
 			id.GetValue(),
 			string(optionsBuffer),
@@ -1709,10 +1718,10 @@ func (s *Store) CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec 
 func (s *Store) AddTaskToProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(upgradesTable).
-		Add("Instances", []uint32{instanceID}).
-		Set("Progress", instanceID+1).
-		Where(qb.Eq{"ID": id.GetValue()}).
-		IfOnly(fmt.Sprintf("Progress = %d", instanceID))
+		Add("instances", []uint32{instanceID}).
+		Set("progress", instanceID+1).
+		Where(qb.Eq{"upgrade_id": id.GetValue()}).
+		IfOnly(fmt.Sprintf("progress = %d", instanceID))
 
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
 		log.WithError(err).
@@ -1730,8 +1739,8 @@ func (s *Store) AddTaskToProcessing(ctx context.Context, id *upgrade.WorkflowID,
 func (s *Store) RemoveTaskFromProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(upgradesTable).
-		Remove("Instances", []uint32{instanceID}).
-		Where(qb.Eq{"ID": id.GetValue()})
+		Remove("instances", []uint32{instanceID}).
+		Where(qb.Eq{"upgrade_id": id.GetValue()})
 
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
 		log.WithError(err).
@@ -1747,7 +1756,7 @@ func (s *Store) RemoveTaskFromProcessing(ctx context.Context, id *upgrade.Workfl
 // overall progress of the upgrade.
 func (s *Store) GetWorkflowProgress(ctx context.Context, id *upgrade.WorkflowID) ([]uint32, uint32, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("Instances", "Progress").From(upgradesTable).Where(qb.Eq{"ID": id.GetValue()})
+	stmt := queryBuilder.Select("instances", "progress").From(upgradesTable).Where(qb.Eq{"upgrade_id": id.GetValue()})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
@@ -1772,4 +1781,12 @@ func (s *Store) GetWorkflowProgress(ctx context.Context, id *upgrade.WorkflowID)
 		return record.GetProcessingInstances(), uint32(record.Progress), nil
 	}
 	return nil, 0, fmt.Errorf("Cannot find workflow with ID %v", id.Value)
+}
+
+func parseTime(v string) time.Time {
+	r, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		return time.Time{}
+	}
+	return r
 }

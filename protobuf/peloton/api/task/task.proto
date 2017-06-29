@@ -338,6 +338,12 @@ message RuntimeInfo {
 
   // persistent volume id
   peloton.VolumeID volumeID = 11;
+
+  // The config version currently used by the runtime.
+  int64 configVersion = 12;
+
+  // The desired config version that should be used by the runtime.
+  int64 desiredConfigVersion = 13;
 }
 
 

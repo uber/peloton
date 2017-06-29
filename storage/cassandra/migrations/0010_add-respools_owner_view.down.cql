@@ -1,1 +1,0 @@
-DROP MATERIALIZED VIEW IF EXISTS mv_respools_by_owner;

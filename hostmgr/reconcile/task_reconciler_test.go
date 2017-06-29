@@ -58,7 +58,7 @@ type TaskReconcilerTestSuite struct {
 	mockTaskStore   *store_mocks.MockTaskStore
 	testJobID       *peloton.JobID
 	testJobConfig   *job.JobConfig
-	allJobConfigs   map[string]*job.JobConfig
+	allJobRuntime   map[string]*job.RuntimeInfo
 	taskInfos       map[uint32]*task.TaskInfo
 }
 
@@ -75,8 +75,8 @@ func (suite *TaskReconcilerTestSuite) SetupTest() {
 		Name:          suite.testJobID.Value,
 		InstanceCount: testInstanceCount,
 	}
-	suite.allJobConfigs = make(map[string]*job.JobConfig)
-	suite.allJobConfigs[testJobID] = suite.testJobConfig
+	suite.allJobRuntime = make(map[string]*job.RuntimeInfo)
+	suite.allJobRuntime[testJobID] = &job.RuntimeInfo{}
 	suite.taskInfos = make(map[uint32]*task.TaskInfo)
 	for i := uint32(0); i < testInstanceCount; i++ {
 		suite.taskInfos[i] = suite.createTestTaskInfo(
@@ -124,7 +124,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs(context.Background()).Return(suite.allJobConfigs, nil),
+			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),
@@ -189,7 +189,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs(context.Background()).Return(suite.allJobConfigs, nil),
+			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),
@@ -237,7 +237,7 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs(context.Background()).Return(suite.allJobConfigs, nil),
+			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
 		suite.mockTaskStore.EXPECT().
 			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
 			Return(suite.taskInfos, nil),

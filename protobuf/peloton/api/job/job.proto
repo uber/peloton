@@ -168,6 +168,10 @@ message RuntimeInfo
   // the task.TaskState in string format and the map value is the number
   // of tasks in the particular state.
   map<string, uint32> taskStats = 5;
+
+  // The version reflects the version of the JobConfig, that's currently
+  // used by the job.
+  int64 configVersion = 6;
 }
 
 

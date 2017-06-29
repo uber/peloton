@@ -37,12 +37,10 @@ type JobStore interface {
 	QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error)
 	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
-	GetJobsByOwner(ctx context.Context, owner string) (map[string]*job.JobConfig, error)
-	GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, error)
+	GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error)
 	GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error)
 	GetJobsByStates(ctx context.Context, state []job.JobState) ([]peloton.JobID, error)
 	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error
-	GetJobsByRespoolID(ctx context.Context, respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error)
 }
 
 // TaskStore is the interface to store task states
@@ -50,7 +48,6 @@ type TaskStore interface {
 	// TODO: remove CreateTask as it should be deprecated for CreateTasks
 	CreateTask(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error
 	CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error
-	GetTasksForHosts(ctx context.Context, hosts []string) (map[string][]*task.TaskInfo, error)
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)
 	GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error)
 	GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)

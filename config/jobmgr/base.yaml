@@ -13,8 +13,7 @@ storage:
     max_batch_size_rows: 500
     conn_lifetime: 30s
   cassandra:
-    # FIXME: need to increase batch size limit in cassandra (T968823)
-    max_batch_size_rows: 1
+    max_batch_size_rows: 500
     connection:
       contactPoints: ["127.0.0.1"]
       port: 9042
