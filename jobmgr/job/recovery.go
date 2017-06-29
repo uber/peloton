@@ -24,9 +24,6 @@ import (
 const (
 	batchRows        = uint32(1000)
 	recoveryInterval = 15 * time.Minute
-	// Use the same layout string in time.Time.String().
-	// See https://golang.org/pkg/time/#String
-	timeLayout = "2006-01-02 15:04:05.999999999 -0700 MST"
 )
 
 // Recovery scans jobs and make sure that all tasks are created and
@@ -100,9 +97,8 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID) error {
 			Error("Failed to GetJobRuntime")
 		return err
 	}
-	// Using the same layout string as used in time.Time.String()
-	// see https://golang.org/pkg/time/#String
-	createTime, err := time.Parse(timeLayout, jobRuntime.CreationTime)
+
+	createTime, err := time.Parse(time.RFC3339Nano, jobRuntime.CreationTime)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).

@@ -674,8 +674,8 @@ func (m *Store) GetFrameworkID(ctx context.Context, frameworkName string) (strin
 }
 
 // GetAllJobs returns all jobs
-func (m *Store) GetAllJobs(ctx context.Context) (map[string]*job.JobConfig, error) {
-	return m.getJobs(Filters{})
+func (m *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error) {
+	return nil, errors.New("unimplemented")
 }
 
 // CreateResourcePool creates a resource pool with the resource pool id and the config value
