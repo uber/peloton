@@ -199,7 +199,7 @@ func IsPelotonStateTerminal(state task.TaskState) bool {
 	}
 }
 
-// ParseTaskID parses the jobID and instanceID from taskID
+// ParseTaskID parses the jobID and instanceID from peloton taskID
 func ParseTaskID(taskID string) (string, int, error) {
 	pos := strings.LastIndex(taskID, "-")
 	if pos == -1 {
@@ -230,6 +230,15 @@ func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
 		return "", err
 	}
 	return pelotonTaskID, nil
+}
+
+// ParseJobAndInstanceID return jobID and instanceID from given mesos task id.
+func ParseJobAndInstanceID(mesosTaskID string) (string, int, error) {
+	pelotonTaskID, err := ParseTaskIDFromMesosTaskID(mesosTaskID)
+	if err != nil {
+		return "", 0, err
+	}
+	return ParseTaskID(pelotonTaskID)
 }
 
 // UnmarshalToType unmarshal a string to a typed interface{}

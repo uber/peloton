@@ -65,7 +65,7 @@ func (h *HostOperationsFactory) getHostOperation(
 }
 
 func (h *HostOperationsFactory) getHostReserveOperation() (*hostsvc.OfferOperation, error) {
-	jobID, instanceID, err := util.ParseTaskID(h.tasks[0].GetTaskId().GetValue())
+	jobID, instanceID, err := util.ParseJobAndInstanceID(h.tasks[0].GetTaskId().GetValue())
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (h *HostOperationsFactory) getHostReserveOperation() (*hostsvc.OfferOperati
 }
 
 func (h *HostOperationsFactory) getHostCreateOperation() (*hostsvc.OfferOperation, error) {
-	jobID, instanceID, err := util.ParseTaskID(h.tasks[0].GetTaskId().GetValue())
+	jobID, instanceID, err := util.ParseJobAndInstanceID(h.tasks[0].GetTaskId().GetValue())
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (h *HostOperationsFactory) getHostCreateOperation() (*hostsvc.OfferOperatio
 }
 
 func (h *HostOperationsFactory) getHostLaunchOperation() (*hostsvc.OfferOperation, error) {
-	jobID, instanceID, err := util.ParseTaskID(h.tasks[0].GetTaskId().GetValue())
+	jobID, instanceID, err := util.ParseJobAndInstanceID(h.tasks[0].GetTaskId().GetValue())
 	if err != nil {
 		return nil, err
 	}

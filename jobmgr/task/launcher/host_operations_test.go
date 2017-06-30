@@ -13,6 +13,10 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+const (
+	_testPelotonTaskIDFmt = "testjob-%d"
+)
+
 type HostOperationTestSuite struct {
 	suite.Suite
 
@@ -71,9 +75,10 @@ func (suite *HostOperationTestSuite) TestGetHostOperations() {
 	launch := launchOp.GetLaunch()
 	suite.NotNil(launch)
 	suite.Equal(1, len(launch.GetTasks()))
+	pelotonTaskID, err := util.ParseTaskIDFromMesosTaskID(launch.GetTasks()[0].GetTaskId().GetValue())
 	suite.Equal(
-		fmt.Sprintf(taskIDFmt, 0),
-		launch.GetTasks()[0].GetTaskId().GetValue())
+		fmt.Sprintf(_testPelotonTaskIDFmt, 0),
+		pelotonTaskID)
 }
 
 func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
@@ -102,9 +107,10 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
 	launch := launchOp.GetLaunch()
 	suite.NotNil(launch)
 	suite.Equal(1, len(launch.GetTasks()))
+	pelotonTaskID, err := util.ParseTaskIDFromMesosTaskID(launch.GetTasks()[0].GetTaskId().GetValue())
 	suite.Equal(
-		fmt.Sprintf(taskIDFmt, 0),
-		launch.GetTasks()[0].GetTaskId().GetValue())
+		fmt.Sprintf(_testPelotonTaskIDFmt, 0),
+		pelotonTaskID)
 }
 
 func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
@@ -149,9 +155,32 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
 	launch := launchOp.GetLaunch()
 	suite.NotNil(launch)
 	suite.Equal(1, len(launch.GetTasks()))
+	pelotonTaskID, err := util.ParseTaskIDFromMesosTaskID(launch.GetTasks()[0].GetTaskId().GetValue())
 	suite.Equal(
-		fmt.Sprintf(taskIDFmt, 0),
-		launch.GetTasks()[0].GetTaskId().GetValue())
+		fmt.Sprintf(_testPelotonTaskIDFmt, 0),
+		pelotonTaskID)
+}
+
+func (suite *HostOperationTestSuite) TestGetHostOperationsIncorrectMesosTaskIDFormat() {
+	operationTypes := []hostsvc.OfferOperation_Type{
+		hostsvc.OfferOperation_LAUNCH,
+	}
+	testTask := createStatefulTask(0)
+	testTask.GetRuntime().GetMesosTaskId().Value = util.PtrPrintf("test-format")
+	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
+	hostOffer := &hostsvc.HostOffer{
+		Hostname: fmt.Sprintf("hostname-%d", "host0"),
+		AgentId: &mesos.AgentID{
+			Value: util.PtrPrintf(fmt.Sprintf("agent-%d", "host0")),
+		},
+	}
+	placement := createPlacements(testTask, hostOffer)
+	operationsFactory := NewHostOperationsFactory(launchableTasks, placement)
+
+	hostOperations, err := operationsFactory.GetHostOperations(operationTypes)
+
+	suite.Error(err)
+	suite.Equal(0, len(hostOperations))
 }
 
 func createStatefulTask(instanceID int) *task.TaskInfo {

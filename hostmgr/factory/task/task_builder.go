@@ -167,12 +167,7 @@ func (tb *Builder) Build(
 		return nil, errors.New("TaskConfig.Resource cannot be nil")
 	}
 
-	tid, err := util.ParseTaskIDFromMesosTaskID(taskID.GetValue())
-	if err != nil {
-		return nil, err
-	}
-
-	jobID, _, err := util.ParseTaskID(tid)
+	jobID, _, err := util.ParseJobAndInstanceID(taskID.GetValue())
 	if err != nil {
 		return nil, err
 	}

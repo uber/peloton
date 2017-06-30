@@ -9,6 +9,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
@@ -27,7 +28,7 @@ import (
 )
 
 const (
-	taskIDFmt   = "testjob-%d"
+	taskIDFmt   = "testjob-%d-%s"
 	testJobName = "testjob"
 	testPort    = uint32(100)
 )
@@ -43,7 +44,7 @@ var (
 )
 
 func createTestTask(instanceID int) *task.TaskInfo {
-	var tid = fmt.Sprintf(taskIDFmt, instanceID)
+	var tid = fmt.Sprintf(taskIDFmt, instanceID, uuid.NewUUID().String())
 
 	return &task.TaskInfo{
 		JobId: &peloton.JobID{

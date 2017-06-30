@@ -108,18 +108,11 @@ func (j *RuntimeUpdater) OnEvents(events []*pb_eventstream.Event) {
 
 	for _, event := range events {
 		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
-		taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+		jobID, _, err := util.ParseJobAndInstanceID(mesosTaskID)
 		if err != nil {
 			log.WithError(err).
 				WithField("mesos_task_id", mesosTaskID).
-				Error("Failed to ParseTaskIDFromMesosTaskID")
-			continue
-		}
-		jobID, _, err := util.ParseTaskID(taskID)
-		if err != nil {
-			log.WithError(err).
-				WithField("task_id", taskID).
-				Error("Failed to ParseTaskID")
+				Error("Failed to ParseJobAndInstanceID")
 			continue
 		}
 		// Mark the corresponding job as "taskUpdated", and track the update time
