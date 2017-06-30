@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"github.com/pkg/errors"
+	"github.com/uber-go/tally"
 )
 
 // Tracker is the interface for resource manager to
@@ -33,6 +34,15 @@ type Tracker interface {
 	// MarkItDone marks the task done and add back those
 	// resources to respool
 	MarkItDone(taskID *peloton.TaskID) error
+
+	// AddResources adds the task resources to respool
+	AddResources(taskID *peloton.TaskID) error
+
+	// GetSize returns the number of the tasks in tracker
+	GetSize() int64
+
+	// Clear cleans the tracker with all the tasks
+	Clear()
 }
 
 // tracker is the rmtask tracker
@@ -40,21 +50,23 @@ type Tracker interface {
 type tracker struct {
 	sync.Mutex
 
-	tasks map[string]*RMTask
+	tasks   map[string]*RMTask
+	metrics *Metrics
 }
 
 // singleton object
 var rmtracker *tracker
 
 // InitTaskTracker initialize the task tracker
-func InitTaskTracker() {
+func InitTaskTracker(parent tally.Scope) {
 
 	if rmtracker != nil {
 		log.Info("Resource Manager Tracker is already initialized")
 		return
 	}
 	rmtracker = &tracker{
-		tasks: make(map[string]*RMTask),
+		tasks:   make(map[string]*RMTask),
+		metrics: NewMetrics(parent.SubScope("tracker")),
 	}
 }
 
@@ -78,6 +90,7 @@ func (tr *tracker) AddTask(
 		return err
 	}
 	tr.tasks[rmTask.task.Id.Value] = rmTask
+	tr.metrics.TaskLeninTracker.Update(float64(tr.GetSize()))
 	return nil
 }
 
@@ -96,6 +109,7 @@ func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 	tr.Lock()
 	defer tr.Unlock()
 	delete(tr.tasks, t.Value)
+	tr.metrics.TaskLeninTracker.Update(float64(tr.GetSize()))
 }
 
 // MarkItDone updates the resources in resmgr
@@ -114,4 +128,38 @@ func (tr *tracker) MarkItDone(
 	log.WithField("Task", tID.Value).Info("Deleting the task from Tracker")
 	tr.DeleteTask(tID)
 	return nil
+}
+
+// AddResources adds the task resources to respool
+func (tr *tracker) AddResources(
+	tID *peloton.TaskID) error {
+	task := tr.GetTask(tID)
+	if task == nil {
+		return errors.Errorf("task %s is not in tracker", tID)
+	}
+	res := scalar.ConvertToResmgrResource(task.task.GetResource())
+	err := task.respool.AddToAllocation(res)
+	if err != nil {
+		return errors.Errorf("Not able to add resources for "+
+			"task %s for respool %s ", tID, task.respool.Name())
+	}
+	log.WithFields(log.Fields{
+		"Respool":   task.respool.Name(),
+		"Resources": res,
+	}).Debug("Added resources to Respool")
+	return nil
+}
+
+// GetSize gets the number of tasks in tracker
+func (tr *tracker) GetSize() int64 {
+	return int64(len(tr.tasks))
+}
+
+// Clear cleans the tracker with all the existing tasks
+func (tr *tracker) Clear() {
+	tr.Lock()
+	defer tr.Unlock()
+	for k := range tr.tasks {
+		delete(tr.tasks, k)
+	}
 }

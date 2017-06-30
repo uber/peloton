@@ -49,7 +49,7 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 	suite.resTree = respool.GetTree()
 	suite.readyQueue = queue.NewMultiLevelList("ready-queue", maxReadyQueueSize)
 	// Initializing the resmgr state machine
-	InitTaskTracker()
+	InitTaskTracker(tally.NoopScope)
 	suite.rmTaskTracker = GetTracker()
 
 	suite.taskSched = &scheduler{

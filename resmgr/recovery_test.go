@@ -51,7 +51,7 @@ func (suite *recoveryTestSuite) SetupSuite() {
 	rp.InitTree(tally.NoopScope, suite.mockResPoolStore, suite.mockJobStore, suite.mockTaskStore)
 	suite.resourceTree = rp.GetTree()
 	// Initializing the resmgr state machine
-	rm_task.InitTaskTracker()
+	rm_task.InitTaskTracker(tally.NoopScope)
 	suite.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 100*time.Second, suite.rmTaskTracker)
 	suite.taskScheduler = rm_task.GetScheduler()
@@ -183,6 +183,7 @@ func (suite *recoveryTestSuite) getResourceConfig() []*respool.ResourceConfig {
 
 func (suite *recoveryTestSuite) TearDownSuite() {
 	suite.resourceTree.Stop()
+	suite.rmTaskTracker.Clear()
 	suite.mockCtrl.Finish()
 }
 
@@ -288,8 +289,8 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 
 func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	// Create jobs. each with different number of tasks
-	jobs := make([]peloton.JobID, 2)
-	for i := 0; i < 2; i++ {
+	jobs := make([]peloton.JobID, 4)
+	for i := 0; i < 4; i++ {
 		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
 
@@ -322,6 +323,26 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		}).
 		Return(suite.createTasks(&jobs[1], 9, task.TaskState_PENDING), nil)
 
+	suite.mockJobStore.EXPECT().
+		GetJobConfig(context.Background(), &jobs[2]).
+		Return(suite.createJob(&jobs[2], 10, 1), nil)
+	suite.mockTaskStore.EXPECT().
+		GetTasksForJobByRange(context.Background(), &jobs[2], &task.InstanceRange{
+			From: 0,
+			To:   10,
+		}).
+		Return(suite.createTasks(&jobs[2], 9, task.TaskState_RUNNING), nil)
+
+	suite.mockJobStore.EXPECT().
+		GetJobConfig(context.Background(), &jobs[3]).
+		Return(suite.createJob(&jobs[3], 10, 1), nil)
+	suite.mockTaskStore.EXPECT().
+		GetTasksForJobByRange(context.Background(), &jobs[3], &task.InstanceRange{
+			From: 0,
+			To:   10,
+		}).
+		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHING), nil)
+
 	// Perform recovery
 	InitRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore, suite.handler)
 	GetRecoveryHandler().Start()
@@ -332,10 +353,14 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	contentSummary := suite.getQueueContent(resPoolID)
 
 	// Job2 and Job3 should be recovered and should have 10 tasks in the pending queue
-	suite.Equal(2, len(contentSummary))
+	suite.Equal(3, len(contentSummary))
 
 	suite.Equal(9, len(contentSummary["TestJob_0"]))
 	suite.Equal(9, len(contentSummary["TestJob_1"]))
+	suite.Equal(9, len(contentSummary["TestJob_3"]))
+
+	// checking
+	suite.Equal(suite.rmTaskTracker.GetSize(), int64(36))
 }
 
 func TestResmgrRecovery(t *testing.T) {

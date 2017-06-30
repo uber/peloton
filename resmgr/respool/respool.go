@@ -73,6 +73,9 @@ type ResPool interface {
 	GetPath() string
 	// IsRoot returns true if the node is the root of the resource tree
 	IsRoot() bool
+	// AddToAllocation adds resources to current allocation
+	// for the resource pool
+	AddToAllocation(res *scalar.Resources) error
 }
 
 // resPool implements ResPool interface
@@ -593,10 +596,29 @@ func (n *resPool) calculatePath() string {
 	if n.IsRoot() {
 		return ResourcePoolPathDelimiter
 	}
-	if n.parent.IsRoot() {
+	if n.parent == nil || n.parent.IsRoot() {
 		return ResourcePoolPathDelimiter + n.Name()
 	}
 	return n.parent.GetPath() + ResourcePoolPathDelimiter + n.Name()
+}
+
+// AddToAllocation adds resources to the allocation
+// for the resource pool
+func (n *resPool) AddToAllocation(res *scalar.Resources) error {
+	n.Lock()
+	defer n.Unlock()
+
+	newAllocation := n.allocation.Add(res)
+
+	if newAllocation == nil {
+		return errors.Errorf("Couldn't update the resources")
+	}
+	n.allocation = newAllocation
+
+	log.WithField("allocation", n.allocation).Debug("Current Allocation " +
+		"after Adding resources")
+	return nil
+
 }
 
 // updates static metrics(Share, Limit and Reservation) which depend on the config

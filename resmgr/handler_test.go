@@ -53,7 +53,7 @@ func (suite *HandlerTestSuite) SetupSuite() {
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 	suite.resTree = respool.GetTree()
 	// Initializing the resmgr state machine
-	rm_task.InitTaskTracker()
+	rm_task.InitTaskTracker(tally.NoopScope)
 	suite.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, suite.rmTaskTracker)
 	suite.taskScheduler = rm_task.GetScheduler()
@@ -80,6 +80,7 @@ func (suite *HandlerTestSuite) SetupSuite() {
 
 func (suite *HandlerTestSuite) TearDownSuite() {
 	suite.ctrl.Finish()
+	suite.rmTaskTracker.Clear()
 }
 
 func (suite *HandlerTestSuite) SetupTest() {
@@ -436,7 +437,7 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 		maxOffset: &c,
 	}
 	jobID := "test"
-	rm_task.InitTaskTracker()
+	rm_task.InitTaskTracker(tally.NoopScope)
 	uuidStr := uuid.NewUUID().String()
 	var events []*pb_eventstream.Event
 	for i := 0; i < 100; i++ {

@@ -197,7 +197,7 @@ func main() {
 	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore, taskStore)
 
 	// Initializing the resmgr state machine
-	task.InitTaskTracker()
+	task.InitTaskTracker(rootScope)
 
 	task.InitScheduler(rootScope, cfg.ResManager.TaskSchedulingPeriod,
 		task.GetTracker())

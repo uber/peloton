@@ -101,14 +101,14 @@ func (f *eventForwarder) OnEvent(event *pb_eventstream.Event) {
 // resource manager.
 func (f *eventForwarder) OnEvents(events []*pb_eventstream.Event) {
 	if len(events) > 0 {
-		ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancelFunc()
 		// Forward events
 		request := &resmgrsvc.NotifyTaskUpdatesRequest{
 			Events: events,
 		}
 		var response *resmgrsvc.NotifyTaskUpdatesResponse
 		for {
+			ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancelFunc()
 			var err error
 			response, err = f.client.NotifyTaskUpdates(ctx, request)
 			if err == nil {

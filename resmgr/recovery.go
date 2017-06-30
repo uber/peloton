@@ -10,6 +10,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/resmgr/respool"
+	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
@@ -180,14 +182,14 @@ func (r *recoveryHandler) requeueTasksInRange(
 	jobConfig *job.JobConfig,
 	from, to uint32) (int, error) {
 
-	tasks, err := r.loadTasksInRange(ctx, jobID, from, to)
+	notRunningTasks, runningTasks, err := r.loadTasksInRange(ctx, jobID, from, to)
 	if err != nil {
-		return len(tasks), err
+		return len(notRunningTasks) + len(runningTasks), err
 	}
-	log.WithField("Count", len(tasks)).
+	log.WithField("Count", len(notRunningTasks)).
 		WithField("jobID", jobID).
 		Debug("Tasks count to recover")
-	resmgrTasks := util.ConvertToResMgrGangs(tasks, jobConfig)
+	resmgrTasks := util.ConvertToResMgrGangs(notRunningTasks, jobConfig)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
 		Gangs:   resmgrTasks,
@@ -195,10 +197,53 @@ func (r *recoveryHandler) requeueTasksInRange(
 	}
 	resp, err := r.handler.EnqueueGangs(ctx, request)
 	if resp.GetError() != nil {
-		return len(tasks), errors.Errorf("failed to requeue tasks %s",
+		return len(notRunningTasks), errors.Errorf("failed to requeue tasks %s",
 			getEnqueueGangErrorMessage(resp.GetError()))
 	}
-	return len(tasks), err
+
+	// enqueuing running tasks
+	runningTasksLen, err := r.addRunningTasks(runningTasks, jobConfig)
+
+	return len(notRunningTasks) + runningTasksLen, err
+}
+
+func (r *recoveryHandler) addRunningTasks(
+	tasks []*task.TaskInfo,
+	config *job.JobConfig) (int, error) {
+
+	respool, err := respool.GetTree().Get(config.RespoolID)
+	if err != nil {
+		return 0, errors.Errorf("Respool %s does not exist",
+			config.RespoolID.Value)
+	}
+
+	runningTasks := 0
+	for _, taskInfo := range tasks {
+		rmTask := util.ConvertTaskToResMgrTask(taskInfo, config)
+		err := rmtask.GetTracker().AddTask(
+			rmTask,
+			r.handler.GetStreamHandler(),
+			respool)
+		if err != nil {
+			log.WithField("Task", rmTask.Id.Value).Warn(
+				"Running Task can not be enqueued")
+			continue
+		}
+
+		err = rmtask.GetTracker().AddResources(rmTask.Id)
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		runningTasks++
+
+		err = rmtask.GetTracker().GetTask(rmTask.Id).
+			TransitTo(task.TaskState_PLACED.String())
+		if err != nil {
+			log.Error(err)
+		}
+	}
+	return runningTasks, nil
 }
 
 func getEnqueueGangErrorMessage(err *resmgrsvc.EnqueueGangsResponse_Error) string {
@@ -219,7 +264,7 @@ func getEnqueueGangErrorMessage(err *resmgrsvc.EnqueueGangsResponse_Error) strin
 func (r *recoveryHandler) loadTasksInRange(
 	ctx context.Context,
 	jobID string,
-	from, to uint32) ([]*task.TaskInfo, error) {
+	from, to uint32) ([]*task.TaskInfo, []*task.TaskInfo, error) {
 
 	log.WithFields(log.Fields{
 		"JobID": jobID,
@@ -228,13 +273,14 @@ func (r *recoveryHandler) loadTasksInRange(
 	}).Info("Checking job instance range")
 
 	if from > to {
-		return nil, fmt.Errorf("Invalid job instance range [%v, %v)", from, to)
+		return nil, nil, fmt.Errorf("Invalid job instance range [%v, %v)", from, to)
 	} else if from == to {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	pbJobID := &peloton.JobID{Value: jobID}
-	var tasks []*task.TaskInfo
+	var notRunningtasks []*task.TaskInfo
+	var runningTasks []*task.TaskInfo
 	taskInfoMap, err := r.taskStore.GetTasksForJobByRange(
 		ctx,
 		pbJobID,
@@ -248,8 +294,12 @@ func (r *recoveryHandler) loadTasksInRange(
 				"JobID":  jobID,
 				"TaskID": taskID,
 			}).Debugf("found task for recovery")
-			tasks = append(tasks, taskInfo)
+			if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
+				runningTasks = append(runningTasks, taskInfo)
+			} else {
+				notRunningtasks = append(notRunningtasks, taskInfo)
+			}
 		}
 	}
-	return tasks, err
+	return notRunningtasks, runningTasks, err
 }

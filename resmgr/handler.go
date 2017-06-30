@@ -82,6 +82,11 @@ func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, parentScope tal
 	return eventStreamHandler
 }
 
+// GetStreamHandler returns the stream handler
+func (h *ServiceHandler) GetStreamHandler() *eventstream.Handler {
+	return h.eventStreamHandler
+}
+
 // EnqueueGangs implements ResourceManagerService.EnqueueGangs
 func (h *ServiceHandler) EnqueueGangs(
 	ctx context.Context,
