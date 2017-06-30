@@ -60,19 +60,28 @@ func (suite *EntitlementCalculatorTestSuite) SetupSuite() {
 func (suite *EntitlementCalculatorTestSuite) SetupTest() {
 	fmt.Println("setting up")
 	suite.resTree.Start()
-	suite.calculator.Start()
 }
 
 func (suite *EntitlementCalculatorTestSuite) TearDownTest() {
 	fmt.Println("tearing down")
 	err := suite.resTree.Stop()
 	suite.NoError(err)
-	suite.calculator.Stop()
 	suite.mockCtrl.Finish()
 }
 
 func TestEntitlementCalculator(t *testing.T) {
 	suite.Run(t, new(EntitlementCalculatorTestSuite))
+}
+
+func (suite *EntitlementCalculatorTestSuite) TestStartStop() {
+	suite.mockHostMgr.EXPECT().
+		ClusterCapacity(
+			gomock.Any(),
+			gomock.Any()).
+		Return(&hostsvc.ClusterCapacityResponse{}, nil)
+
+	suite.NoError(suite.calculator.Start())
+	suite.NoError(suite.calculator.Stop())
 }
 
 func (suite *EntitlementCalculatorTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {

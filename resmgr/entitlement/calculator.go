@@ -95,18 +95,19 @@ func (c *calculator) Start() error {
 		log.Info("Starting Entitlement Calculation")
 		started <- 0
 
+		timer := time.NewTimer(c.calculationPeriod)
+		defer timer.Stop()
 		for {
-			timer := time.NewTimer(c.calculationPeriod)
+			if err := c.calculateEntitlement(context.Background()); err != nil {
+				log.Error(err)
+			}
+
 			select {
 			case <-c.stopChan:
 				log.Info("Exiting Task Scheduler")
 				return
 			case <-timer.C:
-				if err := c.calculateEntitlement(context.Background()); err != nil {
-					log.Error(err)
-				}
 			}
-			timer.Stop()
 		}
 	}()
 	// Wait until go routine is started
