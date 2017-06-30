@@ -471,8 +471,22 @@ message StartRequest {
 }
 
 message StartResponse {
-  errors.JobNotFound notFound = 1;
-  InstanceIdOutOfRange outOfRange = 2;
+   message Error {
+    errors.JobNotFound notFound = 1;
+    InstanceIdOutOfRange outOfRange = 2;
+    TaskStartFailure failure = 3;
+  }
+
+  Error error = 1;
+  repeated uint32 startedInstanceIds = 2;
+  repeated uint32 invalidInstanceIds = 3;
+}
+
+/**
+ * Error when TaskStart failed.
+ */
+message TaskStartFailure {
+  string message = 1;
 }
 
 // If no ranges specified, then stop all the tasks in the job.

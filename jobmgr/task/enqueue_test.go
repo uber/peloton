@@ -20,6 +20,10 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+const (
+	testInstanceCount = 2
+)
+
 var (
 	defaultResourceConfig = task.ResourceConfig{
 		CpuLimit:    10,

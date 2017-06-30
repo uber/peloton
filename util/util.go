@@ -339,3 +339,14 @@ func ConvertTaskToResMgrTask(
 		Type:         taskType,
 	}
 }
+
+// RegenerateMesosTaskID generates a new mesos task ID and update task info.
+func RegenerateMesosTaskID(taskInfo *task.TaskInfo) {
+	newMesosTaskID := fmt.Sprintf(
+		"%s-%d-%s",
+		taskInfo.GetJobId().GetValue(),
+		taskInfo.GetInstanceId(),
+		uuid.NewUUID().String())
+	taskInfo.GetRuntime().GetMesosTaskId().Value = &newMesosTaskID
+	taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
+}

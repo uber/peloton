@@ -13,9 +13,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	jtask "code.uber.internal/infra/peloton/jobmgr/task"
+
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -171,7 +171,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID) error {
 		if len(tasksToRequeue) > 0 {
 			// requeue the tasks into resgmr
 			// TODO: retry policy
-			err := jtask.EnqueueGangs(context.Background(), tasksToRequeue, jobConfig, j.resmgrClient)
+			err := jobmgr_task.EnqueueGangs(context.Background(), tasksToRequeue, jobConfig, j.resmgrClient)
 			if err != nil {
 				log.WithError(err).
 					WithField("job_id", jobID.Value).

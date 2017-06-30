@@ -1,4 +1,4 @@
-package job
+package jobsvc
 
 import (
 	"context"
@@ -15,12 +15,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-
-	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-	jtask "code.uber.internal/infra/peloton/jobmgr/task"
+
+	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -131,7 +132,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 			Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	jtask.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
+	jobmgr_task.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
 	suite.Equal(gangs, expectedGangs)
 }
 
@@ -162,7 +163,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 			}).
 			Return(nil, errors.New("Resmgr Error")),
 	)
-	err := jtask.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
+	err := jobmgr_task.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
 	suite.Error(err)
 }
 
@@ -219,7 +220,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.handler.resmgrClient = mockResmgrClient
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore
-	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
 

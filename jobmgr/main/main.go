@@ -14,9 +14,10 @@ import (
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
-	"code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/tasksvc"
 	"code.uber.internal/infra/peloton/jobmgr/upgrade"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/stores"
@@ -243,7 +244,7 @@ func main() {
 		resmgrsvc.NewResourceManagerServiceYarpcClient(
 			dispatcher.ClientConfig(common.PelotonResourceManager)),
 		rootScope)
-	job.InitServiceHandler(
+	jobsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
 		jobStore,
@@ -251,12 +252,12 @@ func main() {
 		runtimeUpdater,
 		common.PelotonResourceManager, // TODO: to be removed
 	)
-	task.InitServiceHandler(
+	tasksvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
 		jobStore,
 		taskStore,
-		common.PelotonHostManager, // TODO: to be removed
+		runtimeUpdater,
 	)
 	upgrade.InitServiceHandler(dispatcher, jobStore)
 

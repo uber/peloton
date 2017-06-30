@@ -254,14 +254,40 @@ func printTaskStartResponse(r *task.StartResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		if r.GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n", r.NotFound.Id.Value, r.NotFound.Message)
-		} else if r.GetOutOfRange() != nil {
-			fmt.Fprintf(tabWriter, "Requested instance of job %s is not within "+
-				"the range of valid instances (0...%d)\n",
-				r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
+		respError := r.GetError()
+		if respError != nil {
+			respNotFound := respError.GetNotFound()
+			if respNotFound != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"Job %s was not found: %s\n",
+					respNotFound.GetId().GetValue(),
+					respNotFound.GetMessage(),
+				)
+			} else if respError.GetOutOfRange() != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"Requested instances:%d of job %s is not within "+
+						"the range of valid instances (0...%d)\n",
+					r.GetInvalidInstanceIds(),
+					respError.GetOutOfRange().GetJobId().GetValue(),
+					respError.GetOutOfRange().GetInstanceCount(),
+				)
+			} else if r.GetError().GetFailure() != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"Tasks stop goalstate update in DB got error: %s\n",
+					respError.GetFailure().GetMessage(),
+				)
+			}
 		} else {
-			fmt.Fprintf(tabWriter, "Job started\n")
+			fmt.Fprintf(
+				tabWriter,
+				"Tasks started successfully for instances: %v and "+
+					"invalid instances are: %v",
+				r.GetStartedInstanceIds(),
+				r.GetInvalidInstanceIds(),
+			)
 		}
 	}
 	tabWriter.Flush()
@@ -271,28 +297,29 @@ func printTaskStopResponse(r *task.StopResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
 	} else {
-		if r.GetError() != nil {
-			if r.GetError().GetNotFound() != nil {
+		respError := r.GetError()
+		if respError != nil {
+			if respError.GetNotFound() != nil {
 				fmt.Fprintf(
 					tabWriter,
 					"Job %s was not found: %s\n",
-					r.GetError().GetNotFound().GetId().GetValue(),
-					r.GetError().GetNotFound().GetMessage(),
+					respError.GetNotFound().GetId().GetValue(),
+					respError.GetNotFound().GetMessage(),
 				)
-			} else if r.GetError().GetOutOfRange() != nil {
+			} else if respError.GetOutOfRange() != nil {
 				fmt.Fprintf(
 					tabWriter,
 					"Requested instances:%d of job %s is not within "+
 						"the range of valid instances (0...%d)\n",
 					r.GetInvalidInstanceIds(),
-					r.GetError().GetOutOfRange().GetJobId().GetValue(),
-					r.GetError().GetOutOfRange().GetInstanceCount(),
+					respError.GetOutOfRange().GetJobId().GetValue(),
+					respError.GetOutOfRange().GetInstanceCount(),
 				)
-			} else if r.GetError().GetUpdateError() != nil {
+			} else if respError.GetUpdateError() != nil {
 				fmt.Fprintf(
 					tabWriter,
 					"Tasks stop goalstate update in DB got error: %s\n",
-					r.GetError().GetUpdateError(),
+					respError.GetUpdateError(),
 				)
 			}
 		} else {

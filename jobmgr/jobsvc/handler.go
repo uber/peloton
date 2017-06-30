@@ -1,4 +1,4 @@
-package job
+package jobsvc
 
 import (
 	"context"
@@ -21,8 +21,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
-	jtask "code.uber.internal/infra/peloton/jobmgr/task"
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/storage"
 )
@@ -33,7 +34,7 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	runtimeUpdater *RuntimeUpdater,
+	runtimeUpdater *jobmgr_job.RuntimeUpdater,
 	clientName string) {
 
 	handler := &serviceHandler{
@@ -55,7 +56,7 @@ type serviceHandler struct {
 	taskStore      storage.TaskStore
 	respoolClient  respool.ResourceManagerYarpcClient
 	resmgrClient   resmgrsvc.ResourceManagerServiceYarpcClient
-	runtimeUpdater *RuntimeUpdater
+	runtimeUpdater *jobmgr_job.RuntimeUpdater
 	rootCtx        context.Context
 	metrics        *Metrics
 }
@@ -172,7 +173,7 @@ func (h *serviceHandler) Create(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jtask.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.resmgrClient)
+	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -223,7 +224,7 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
-	if !NonTerminatedStates[jobRuntime.State] {
+	if !jobmgr_job.NonTerminatedStates[jobRuntime.State] {
 		msg := fmt.Sprintf("Job is in a terminal state:%s", jobRuntime.State)
 		h.metrics.JobUpdateFail.Inc(1)
 		return &job.UpdateResponse{
@@ -305,7 +306,7 @@ func (h *serviceHandler) Update(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jtask.EnqueueGangs(h.rootCtx, tasks, newConfig, h.resmgrClient)
+	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, newConfig, h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID).
@@ -440,7 +441,7 @@ func (h *serviceHandler) Delete(
 		return nil, err
 	}
 
-	if NonTerminatedStates[jobRuntime.State] {
+	if jobmgr_job.NonTerminatedStates[jobRuntime.State] {
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, fmt.Errorf("Job is not in a terminal state: %s", jobRuntime.State)
 	}

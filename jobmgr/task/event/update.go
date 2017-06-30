@@ -2,13 +2,11 @@ package event
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
-	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
@@ -18,7 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
-	"code.uber.internal/infra/peloton/jobmgr/task"
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"github.com/pkg/errors"
@@ -204,7 +202,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 		p.metrics.RetryFailedTasksTotal.Inc(1)
 		statusMsg = "Rescheduled due to task failure status: " + statusMsg
-		p.regenerateMesosTaskID(taskInfo)
+		util.RegenerateMesosTaskID(taskInfo)
 		runtime.FailureCount++
 
 		// TODO: check for failing reason and do backoff before
@@ -213,7 +211,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	} else if state == pb_task.TaskState_LOST {
 		p.metrics.RetryLostTasksTotal.Inc(1)
 		statusMsg = "Rescheduled due to task LOST: " + statusMsg
-		p.regenerateMesosTaskID(taskInfo)
+		util.RegenerateMesosTaskID(taskInfo)
 		needRetrySchedulingTask = true
 	} else {
 		// TODO: figure out on what cases state updates should not be persisted
@@ -261,17 +259,6 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	return nil
 }
 
-// regenerateMesosTaskID generates a new mesos task ID and update task info.
-func (p *statusUpdate) regenerateMesosTaskID(taskInfo *pb_task.TaskInfo) {
-	newMesosTaskID := fmt.Sprintf(
-		"%s-%d-%s",
-		taskInfo.GetJobId().GetValue(),
-		taskInfo.GetInstanceId(),
-		uuid.NewUUID().String())
-	taskInfo.GetRuntime().GetMesosTaskId().Value = &newMesosTaskID
-	taskInfo.GetRuntime().State = pb_task.TaskState_INITIALIZED
-}
-
 // retrySchedulingTask retries scheduling task by enqueue task to resmgr.
 func (p *statusUpdate) retrySchedulingTask(ctx context.Context, taskInfo *pb_task.TaskInfo) {
 	jobConfig, err := p.jobStore.GetJobConfig(ctx, taskInfo.GetJobId())
@@ -291,7 +278,7 @@ func (p *statusUpdate) enqueueTask(
 	jobConfig *pb_job.JobConfig) {
 
 	tasks := []*pb_task.TaskInfo{taskInfo}
-	task.EnqueueGangs(p.rootCtx, tasks, jobConfig, p.resmgrClient)
+	jobmgr_task.EnqueueGangs(p.rootCtx, tasks, jobConfig, p.resmgrClient)
 }
 
 // isUnexpected tells if taskState is unexpected or not

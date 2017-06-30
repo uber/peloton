@@ -1,4 +1,4 @@
-package task
+package tasksvc
 
 import (
 	"github.com/uber-go/tally"

@@ -1,4 +1,4 @@
-package task
+package tasksvc
 
 import (
 	"context"
@@ -11,18 +11,25 @@ import (
 	"go.uber.org/yarpc"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/jobmgr/log_manager"
-	"code.uber.internal/infra/peloton/storage"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/jobmgr/job"
+	"code.uber.internal/infra/peloton/jobmgr/log_manager"
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 )
 
 const (
-	stopRequestTimeoutSecs = 10
-	httpClientTimeout      = 10 * time.Second
+	_rpcTimeout        = 15 * time.Second
+	_httpClientTimeout = 15 * time.Second
 )
 
 // InitServiceHandler initializes the TaskManager
@@ -31,26 +38,29 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	hostmgrClientName string) {
+	runtimeUpdater *job.RuntimeUpdater) {
 
 	handler := &serviceHandler{
-		taskStore:     taskStore,
-		jobStore:      jobStore,
-		metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
-		hostmgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostmgrClientName)),
-		httpClient:    &http.Client{Timeout: httpClientTimeout},
+		taskStore:      taskStore,
+		jobStore:       jobStore,
+		runtimeUpdater: runtimeUpdater,
+		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		hostmgrClient:  hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(common.PelotonHostManager)),
+		resmgrClient:   resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(common.PelotonResourceManager)),
+		httpClient:     &http.Client{Timeout: _httpClientTimeout},
 	}
-
 	d.Register(task.BuildTaskManagerYarpcProcedures(handler))
 }
 
 // serviceHandler implements peloton.api.task.TaskManager
 type serviceHandler struct {
-	taskStore     storage.TaskStore
-	jobStore      storage.JobStore
-	metrics       *Metrics
-	hostmgrClient hostsvc.InternalHostServiceYarpcClient
-	httpClient    *http.Client
+	taskStore      storage.TaskStore
+	jobStore       storage.JobStore
+	runtimeUpdater *job.RuntimeUpdater
+	metrics        *Metrics
+	hostmgrClient  hostsvc.InternalHostServiceYarpcClient
+	resmgrClient   resmgrsvc.ResourceManagerServiceYarpcClient
+	httpClient     *http.Client
 }
 
 func (m *serviceHandler) Get(
@@ -133,13 +143,150 @@ func (m *serviceHandler) List(
 	}, nil
 }
 
+// getTaskInfosByRangesFromDB get all the tasks infos for given job and ranges.
+func (m *serviceHandler) getTaskInfosByRangesFromDB(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	ranges []*task.InstanceRange,
+	jobConfig *pb_job.JobConfig) (map[uint32]*task.TaskInfo, error) {
+
+	taskInfos := make(map[uint32]*task.TaskInfo)
+	var err error
+	if len(ranges) == 0 {
+		// If no ranges specified, then start all instances in the given job.
+		taskInfos, err = m.taskStore.GetTasksForJob(ctx, jobID)
+	} else {
+		var tmpTaskInfos map[uint32]*task.TaskInfo
+		for _, taskRange := range ranges {
+			// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
+			// and  C* store would error out if it cannot find a instance id. A separate
+			// task is filed on the CLI side.
+			if taskRange.GetTo() > jobConfig.InstanceCount {
+				taskRange.To = jobConfig.InstanceCount
+			}
+			tmpTaskInfos, err = m.taskStore.GetTasksForJobByRange(ctx, jobID, taskRange)
+			if err != nil {
+				return taskInfos, err
+			}
+			for inst := range tmpTaskInfos {
+				taskInfos[inst] = tmpTaskInfos[inst]
+			}
+		}
+	}
+
+	return taskInfos, nil
+}
+
+// Start implements TaskManager.Start, tries to start terminal tasks in a given job.
 func (m *serviceHandler) Start(
 	ctx context.Context,
 	body *task.StartRequest) (*task.StartResponse, error) {
 
 	m.metrics.TaskAPIStart.Inc(1)
+	ctx, cancelFunc := context.WithTimeout(
+		ctx,
+		_rpcTimeout,
+	)
+	defer cancelFunc()
+
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+	if err != nil || jobConfig == nil {
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("failed to get job from db")
+		return &task.StartResponse{
+			Error: &task.StartResponse_Error{
+				NotFound: &errors.JobNotFound{
+					Id:      body.JobId,
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	taskInfos, err := m.getTaskInfosByRangesFromDB(
+		ctx, body.GetJobId(), body.GetRanges(), jobConfig)
+	if err != nil {
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("failed to get tasks for job in db")
+		return &task.StartResponse{
+			Error: &task.StartResponse_Error{
+				OutOfRange: &task.InstanceIdOutOfRange{
+					JobId:         body.JobId,
+					InstanceCount: jobConfig.InstanceCount,
+				},
+			},
+		}, nil
+	}
+
+	// tasksToStart includes tasks need to be enqueued to resmgr.
+	var tasksToStart []*task.TaskInfo
+	var startedInstanceIds []uint32
+	for instID, taskInfo := range taskInfos {
+		taskRuntime := taskInfo.GetRuntime()
+		// Skip start task if current state is not terminal state.
+		// TODO(mu): LAUNCHING state is exception here because task occasionally
+		// stuck at LAUNCHING state but we don't have good retry module yet.
+		if !util.IsPelotonStateTerminal(taskRuntime.GetState()) {
+			if taskRuntime.GetState() != task.TaskState_LAUNCHING {
+				continue
+			}
+			// for LAUNCHING state task, do not generate new mesos task
+			// id but only update runtime state.
+			taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
+		} else {
+			// Only regenerate mesos task id for terminated task.
+			util.RegenerateMesosTaskID(taskInfo)
+		}
+
+		// First change goalstate if it is KILLED.
+		if taskInfo.GetRuntime().GoalState == task.TaskState_KILLED {
+			if jobConfig.GetType() == pb_job.JobType_SERVICE {
+				taskInfo.GetRuntime().GoalState = task.TaskState_RUNNING
+			} else {
+				taskInfo.GetRuntime().GoalState = task.TaskState_SUCCEEDED
+			}
+		}
+
+		err = m.taskStore.UpdateTask(ctx, taskInfo)
+		if err != nil {
+			// Skip remaining tasks starting if db update error occurs.
+			log.WithError(err).
+				WithField("task", taskInfo).
+				Error("Failed to update task to INITIALIZED state")
+			break
+		}
+
+		tasksToStart = append(tasksToStart, taskInfo)
+		startedInstanceIds = append(startedInstanceIds, instID)
+	}
+
+	if len(tasksToStart) > 0 {
+		err = jobmgr_task.EnqueueGangs(ctx, tasksToStart, jobConfig, m.resmgrClient)
+		if err == nil {
+			err = m.runtimeUpdater.UpdateJob(ctx, body.GetJobId())
+		}
+		if err != nil {
+			log.WithError(err).
+				WithField("tasks", tasksToStart).
+				Error("failed to start tasks")
+			m.metrics.TaskStartFail.Inc(1)
+			return &task.StartResponse{
+				Error: &task.StartResponse_Error{
+					Failure: &task.TaskStartFailure{
+						Message: fmt.Sprintf("tasks start failed for %v", err),
+					},
+				},
+				StartedInstanceIds: startedInstanceIds,
+			}, nil
+		}
+	}
+
 	m.metrics.TaskStart.Inc(1)
-	return &task.StartResponse{}, nil
+	return &task.StartResponse{
+		StartedInstanceIds: startedInstanceIds,
+	}, nil
 }
 
 // Stop implements TaskManager.Stop, tries to stop tasks in a given job.
@@ -151,56 +298,39 @@ func (m *serviceHandler) Stop(
 	m.metrics.TaskAPIStop.Inc(1)
 	ctx, cancelFunc := context.WithTimeout(
 		ctx,
-		stopRequestTimeoutSecs*time.Second,
+		_rpcTimeout,
 	)
 	defer cancelFunc()
 
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
-	if err != nil || jobConfig == nil {
-		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+	if err != nil {
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("failed to get job from db")
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
 				NotFound: &errors.JobNotFound{
 					Id:      body.JobId,
-					Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
+					Message: err.Error(),
 				},
 			},
 		}, nil
 	}
 
-	var instanceIds []uint32
-	for _, taskRange := range body.GetRanges() {
-		// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
-		// and  C* store would error out if it cannot find a instance id. A separate
-		// task is filed on the CLI side.
-		from := taskRange.GetFrom()
-		for from < taskRange.GetTo() {
-			instanceIds = append(instanceIds, from)
-			from++
-		}
-	}
-	taskInfos := make(map[uint32]*task.TaskInfo)
-	var invalidInstanceIds []uint32
-	// TODO: refactor the ranges code to peloton/range subpackage.
-	if body.GetRanges() == nil {
-		// If no ranges specified, then stop all instances in the given job.
-		taskInfos, err = m.taskStore.GetTasksForJob(ctx, body.JobId)
-	} else {
-		for _, instance := range instanceIds {
-			var tasks = make(map[uint32]*task.TaskInfo)
-			tasks, err = m.taskStore.GetTaskForJob(ctx, body.JobId, instance)
-			if err != nil || len(tasks) != 1 {
-				// Do not continue if task db query got error.
-				invalidInstanceIds = append(invalidInstanceIds, instance)
-				for k := range taskInfos {
-					delete(taskInfos, k)
-				}
-				break
-			}
-			for inst := range tasks {
-				taskInfos[inst] = tasks[inst]
-			}
-		}
+	taskInfos, err := m.getTaskInfosByRangesFromDB(
+		ctx, body.GetJobId(), body.GetRanges(), jobConfig)
+	if err != nil {
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("failed to get tasks for job in db")
+		return &task.StopResponse{
+			Error: &task.StopResponse_Error{
+				OutOfRange: &task.InstanceIdOutOfRange{
+					JobId:         body.JobId,
+					InstanceCount: jobConfig.InstanceCount,
+				},
+			},
+		}, nil
 	}
 
 	if err != nil || len(taskInfos) == 0 {
@@ -214,7 +344,6 @@ func (m *serviceHandler) Stop(
 					InstanceCount: jobConfig.InstanceCount,
 				},
 			},
-			InvalidInstanceIds: invalidInstanceIds,
 		}, nil
 	}
 
@@ -268,12 +397,10 @@ func (m *serviceHandler) Stop(
 					Message: fmt.Sprintf("Goalstate update failed for %v", err),
 				},
 			},
-			InvalidInstanceIds: invalidInstanceIds,
 			StoppedInstanceIds: stoppedInstanceIds,
 		}, nil
 	}
 	return &task.StopResponse{
-		InvalidInstanceIds: invalidInstanceIds,
 		StoppedInstanceIds: stoppedInstanceIds,
 	}, nil
 }
