@@ -107,6 +107,7 @@ func (c *calculator) Start() error {
 				log.Info("Exiting Task Scheduler")
 				return
 			case <-timer.C:
+			case <-c.resPoolTree.UpdatedChannel():
 			}
 		}
 	}()

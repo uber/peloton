@@ -54,13 +54,14 @@ func (suite *resTreeTestSuite) SetupSuite() {
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
 
 	suite.resourceTree = &tree{
-		store:     suite.mockResPoolStore,
-		root:      nil,
-		metrics:   NewMetrics(tally.NoopScope),
-		resPools:  make(map[string]ResPool),
-		jobStore:  suite.mockJobStore,
-		taskStore: suite.mockTaskStore,
-		scope:     tally.NoopScope,
+		store:       suite.mockResPoolStore,
+		root:        nil,
+		metrics:     NewMetrics(tally.NoopScope),
+		resPools:    make(map[string]ResPool),
+		jobStore:    suite.mockJobStore,
+		taskStore:   suite.mockTaskStore,
+		scope:       tally.NoopScope,
+		updatedChan: make(chan struct{}, 1),
 	}
 }
 
@@ -339,6 +340,12 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 }
 
 func (suite *resTreeTestSuite) TestTree_UpsertExistingResourcePoolConfig() {
+	select {
+	default:
+	case <-suite.resourceTree.UpdatedChannel():
+		suite.Fail("update channel should be empty")
+	}
+
 	mockExistingResourcePoolID := &respool.ResourcePoolID{
 		Value: "respool23",
 	}
@@ -363,6 +370,8 @@ func (suite *resTreeTestSuite) TestTree_UpsertExistingResourcePoolConfig() {
 
 	err := suite.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
 	suite.NoError(err)
+
+	<-suite.resourceTree.UpdatedChannel()
 }
 
 func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfig() {

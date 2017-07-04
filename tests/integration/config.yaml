@@ -9,3 +9,4 @@ client:
     peloton-preprod01: zookeeper-peloton-preprod01.pit-irn-1.uberatc.net
     sjc1-devel01: zookeeper-mesos-devel01-sjc1.uber.internal
     dca1-devel01: zookeeper-mesos-devel01-dca1.uber.internal
+    local: localhost:8192

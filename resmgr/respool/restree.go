@@ -39,6 +39,12 @@ type Tree interface {
 
 	// Upsert add/update a resource pool poolConfig to the tree
 	Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error
+
+	// UpdatedChannel is written to whenever the resource tree is changed. There
+	// may be only one event for multiple updates.
+	// TODO: Redo package imports, such that a method Calculator.SuggestRefresh
+	// can be used instead, without breaking circular imports.
+	UpdatedChannel() <-chan struct{}
 }
 
 // tree implements the Tree interface
@@ -49,10 +55,11 @@ type tree struct {
 	metrics *Metrics
 	root    ResPool
 	// map of [ID] = ResPool
-	resPools  map[string]ResPool
-	jobStore  storage.JobStore
-	taskStore storage.TaskStore
-	scope     tally.Scope
+	resPools    map[string]ResPool
+	jobStore    storage.JobStore
+	taskStore   storage.TaskStore
+	scope       tally.Scope
+	updatedChan chan struct{}
 }
 
 // Singleton resource pool tree
@@ -72,13 +79,14 @@ func InitTree(
 	}
 
 	respoolTree = &tree{
-		store:     store,
-		root:      nil,
-		metrics:   NewMetrics(scope),
-		resPools:  make(map[string]ResPool),
-		jobStore:  jobStore,
-		taskStore: taskStore,
-		scope:     scope.SubScope("restree"),
+		store:       store,
+		root:        nil,
+		metrics:     NewMetrics(scope),
+		resPools:    make(map[string]ResPool),
+		jobStore:    jobStore,
+		taskStore:   taskStore,
+		scope:       scope.SubScope("restree"),
+		updatedChan: make(chan struct{}, 1),
 	}
 }
 
@@ -119,6 +127,10 @@ func (t *tree) Stop() error {
 	t.resPools = make(map[string]ResPool)
 	log.Info("Resource Pool Tree Stopped")
 	return nil
+}
+
+func (t *tree) UpdatedChannel() <-chan struct{} {
+	return t.updatedChan
 }
 
 // initTree will initialize all the resource pools from Storage
@@ -327,6 +339,12 @@ func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.Resourc
 	}
 
 	t.resPools[ID.Value] = resourcePool
+
+	select {
+	case t.updatedChan <- struct{}{}:
+	default:
+	}
+
 	return nil
 }
 
