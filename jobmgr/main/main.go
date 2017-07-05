@@ -311,6 +311,11 @@ func main() {
 		goalstateEngine,
 		*mesosAgentWorkDir,
 	)
+
+	upgradeManager := upgrade.NewManager(jobStore, cfg.JobManager.Upgrade)
+	upgradeManager.Start()
+	defer upgradeManager.Stop()
+
 	upgrade.InitServiceHandler(dispatcher, jobStore, upgradeStore)
 
 	// Start dispatch loop

@@ -3,6 +3,7 @@ package jobmgr
 import (
 	"code.uber.internal/infra/peloton/jobmgr/task/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/upgrade"
 )
 
 // Config is JobManager specific configuration
@@ -24,4 +25,7 @@ type Config struct {
 
 	// GoalState configuration
 	GoalState goalstate.Config `yaml:"goal_state"`
+
+	// Upgrade specific configuration.
+	Upgrade upgrade.Config
 }
