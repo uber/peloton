@@ -1,3 +1,3 @@
-DROP index if exists job_info_index;
+DROP index if exists job_index_lucene;
 
-DROP TABLE IF EXISTS job_info;
+DROP TABLE IF EXISTS job_index;

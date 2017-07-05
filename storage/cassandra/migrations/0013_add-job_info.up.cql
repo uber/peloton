@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS job_index (
 /*
   create lucene index in cassandra store for job_index table
  */
-CREATE CUSTOM INDEX job_index_lucene ON job_index ()
+CREATE CUSTOM INDEX IF NOT EXISTS job_index_lucene ON job_index ()
 USING 'com.stratio.cassandra.lucene.Index'
 WITH OPTIONS = {
    'refresh_seconds': '10',
