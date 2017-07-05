@@ -51,7 +51,7 @@ func (suite *EntitlementCalculatorTestSuite) SetupSuite() {
 	suite.calculator = &calculator{
 		resPoolTree:       suite.resTree,
 		runningState:      runningStateNotStarted,
-		calculationPeriod: time.Duration(1) * time.Second,
+		calculationPeriod: 10 * time.Millisecond,
 		stopChan:          make(chan struct{}, 1),
 		clusterCapacity:   make(map[string]float64),
 		hostMgrClient:     suite.mockHostMgr,
@@ -73,14 +73,25 @@ func TestEntitlementCalculator(t *testing.T) {
 	suite.Run(t, new(EntitlementCalculatorTestSuite))
 }
 
-func (suite *EntitlementCalculatorTestSuite) TestStartStop() {
+func (suite *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
+	var wg sync.WaitGroup
+	wg.Add(5)
+
 	suite.mockHostMgr.EXPECT().
 		ClusterCapacity(
 			gomock.Any(),
 			gomock.Any()).
-		Return(&hostsvc.ClusterCapacityResponse{}, nil)
+		Do(func(_, _ interface{}) {
+			wg.Done()
+		}).
+		Return(&hostsvc.ClusterCapacityResponse{}, nil).
+		Times(5)
 
 	suite.NoError(suite.calculator.Start())
+
+	// Wait for 5 calculations, and then stop.
+	wg.Wait()
+
 	suite.NoError(suite.calculator.Stop())
 }
 

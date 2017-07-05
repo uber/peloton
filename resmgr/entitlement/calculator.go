@@ -95,8 +95,8 @@ func (c *calculator) Start() error {
 		log.Info("Starting Entitlement Calculation")
 		started <- 0
 
-		timer := time.NewTimer(c.calculationPeriod)
-		defer timer.Stop()
+		ticker := time.NewTicker(c.calculationPeriod)
+		defer ticker.Stop()
 		for {
 			if err := c.calculateEntitlement(context.Background()); err != nil {
 				log.Error(err)
@@ -106,7 +106,7 @@ func (c *calculator) Start() error {
 			case <-c.stopChan:
 				log.Info("Exiting Task Scheduler")
 				return
-			case <-timer.C:
+			case <-ticker.C:
 			case <-c.resPoolTree.UpdatedChannel():
 			}
 		}
