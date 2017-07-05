@@ -176,7 +176,7 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			1006: "role",
 		},
 		builder.portToRoles)
-	tid := suite.createTestTaskIDs(1)[0]
+	tid := suite.createTestTaskIDs(2)
 	taskConfig := createTestTaskConfigs(1)[0]
 	// Requires 3 ports, 1 static and 2 dynamic ones.
 	taskConfig.Ports = []*task.PortConfig{
@@ -214,9 +214,9 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 	discoveryPortSet := make(map[uint32]bool)
 	for i := 0; i < numTasks; i++ {
 		info, err := builder.Build(
-			tid, taskConfig, selectedDynamicPorts[i], nil, nil)
+			tid[i], taskConfig, selectedDynamicPorts[i], nil, nil)
 		suite.NoError(err)
-		suite.Equal(tid, info.GetTaskId())
+		suite.Equal(tid[i], info.GetTaskId())
 		sc := scalar.FromMesosResources(info.GetResources())
 		suite.Equal(
 			scalar.Resources{CPU: _cpu, Mem: _mem, Disk: _disk},
@@ -244,13 +244,13 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			"static port is not found in %v", mesosPorts)
 
 		envVars := info.GetCommand().GetEnvironment().GetVariables()
-		suite.Equal(3, len(envVars))
+		suite.Equal(6, len(envVars))
 
 		envMap := make(map[string]string)
 		for _, envVar := range envVars {
 			envMap[envVar.GetName()] = envVar.GetValue()
 		}
-		suite.Equal(3, len(envMap))
+		suite.Equal(6, len(envMap))
 		suite.Contains(envMap, "DYNAMIC_ENV_PORT")
 		p, err := strconv.Atoi(envMap["DYNAMIC_ENV_PORT"])
 		suite.NoError(err)
@@ -261,6 +261,10 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 		suite.Equal(
 			strconv.Itoa(int(portsInDiscovery["dynamic_env"])),
 			envMap["DYNAMIC_ENV"])
+
+		suite.Equal("testjob", envMap[PelotonJobID])
+		suite.Equal(fmt.Sprint(i), envMap[PelotonInstanceID])
+		suite.Equal(fmt.Sprint("testjob-", i), envMap[PelotonTaskID])
 
 		suite.Equal(&mesos.Labels{
 			Labels: []*mesos.Label{

@@ -16,6 +16,15 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 )
 
+const (
+	// PelotonJobID is the environment variable name for job ID
+	PelotonJobID = "PELOTON_JOB_ID"
+	// PelotonInstanceID is the environment variable name for instance ID
+	PelotonInstanceID = "PELOTON_INSTANCE_ID"
+	// PelotonTaskID is the environment variable name for task ID
+	PelotonTaskID = "PELOTON_TASK_ID"
+)
+
 var (
 	_pelotonRole      = "peloton"
 	_pelotonPrinciple = "peloton"
@@ -167,7 +176,7 @@ func (tb *Builder) Build(
 		return nil, errors.New("TaskConfig.Resource cannot be nil")
 	}
 
-	jobID, _, err := util.ParseJobAndInstanceID(taskID.GetValue())
+	jobID, instanceID, err := util.ParseJobAndInstanceID(taskID.GetValue())
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +215,8 @@ func (tb *Builder) Build(
 		mesosTask,
 		taskConfig.GetCommand(),
 		pick.portEnvs,
+		jobID,
+		instanceID,
 	)
 	tb.populateContainerInfo(mesosTask, taskConfig.GetContainer())
 	tb.populateLabels(mesosTask, taskConfig.GetLabels())
@@ -262,6 +273,8 @@ func (tb *Builder) populateCommandInfo(
 	mesosTask *mesos.TaskInfo,
 	command *mesos.CommandInfo,
 	envMap map[string]string,
+	jobID string,
+	instanceID int,
 ) {
 
 	if command == nil {
@@ -284,6 +297,24 @@ func (tb *Builder) populateCommandInfo(
 			Variables: []*mesos.Environment_Variable{},
 		}
 	}
+
+	pelotonEnvs := []*mesos.Environment_Variable{
+		{
+			Name:  util.PtrPrintf(PelotonJobID),
+			Value: &jobID,
+		},
+		{
+			Name:  util.PtrPrintf(PelotonInstanceID),
+			Value: util.PtrPrintf("%d", instanceID),
+		},
+		{
+			Name:  util.PtrPrintf(PelotonTaskID),
+			Value: util.PtrPrintf("%s-%d", jobID, instanceID),
+		},
+	}
+
+	// Add peloton specific environtment variables.
+	mesosTask.Command.Environment.Variables = append(mesosTask.Command.Environment.Variables, pelotonEnvs...)
 
 	for name, value := range envMap {
 		// Make a copy since taking address of key/value in map

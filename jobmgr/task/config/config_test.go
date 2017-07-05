@@ -326,24 +326,7 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigWithoutExistingEnviron() {
 	for i := uint32(0); i < 10; i++ {
 		taskConfig, err := GetTaskConfig(suite.jobID, &jobConfig, i)
 		suite.NoError(err)
-		suite.Equal(*taskConfig.Command.Environment,
-			mesos.Environment{
-				Variables: []*mesos.Environment_Variable{
-					{
-						Name:  util.PtrPrintf(PelotonJobID),
-						Value: &suite.jobID.Value,
-					},
-					{
-						Name:  util.PtrPrintf(PelotonInstanceID),
-						Value: util.PtrPrintf("%d", i),
-					},
-					{
-						Name:  util.PtrPrintf(PelotonTaskID),
-						Value: util.PtrPrintf("%s-%d", suite.jobID.Value, i),
-					},
-				},
-			},
-		)
+		suite.Nil(taskConfig.Command.Environment)
 	}
 }
 
@@ -375,18 +358,6 @@ func (suite *TaskConfigTestSuite) TestGetTaskConfigWithExistingEnviron() {
 					{
 						Name:  util.PtrPrintf("PATH"),
 						Value: util.PtrPrintf("/usr/bin;/usr/sbin"),
-					},
-					{
-						Name:  util.PtrPrintf(PelotonJobID),
-						Value: &suite.jobID.Value,
-					},
-					{
-						Name:  util.PtrPrintf(PelotonInstanceID),
-						Value: util.PtrPrintf("%d", i),
-					},
-					{
-						Name:  util.PtrPrintf(PelotonTaskID),
-						Value: util.PtrPrintf("%s-%d", suite.jobID.Value, i),
 					},
 				},
 			},

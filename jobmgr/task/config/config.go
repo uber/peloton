@@ -7,21 +7,9 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-
-	"code.uber.internal/infra/peloton/util"
-)
-
-const (
-	// PelotonJobID is the environment variable name for job ID
-	PelotonJobID = "PELOTON_JOB_ID"
-	// PelotonInstanceID is the environment variable name for instance ID
-	PelotonInstanceID = "PELOTON_INSTANCE_ID"
-	// PelotonTaskID is the environment variable name for task ID
-	PelotonTaskID = "PELOTON_TASK_ID"
 )
 
 var (
@@ -47,11 +35,6 @@ func GetTaskConfig(
 	}
 
 	result := task.TaskConfig{}
-
-	// Update the task environment with Peloton specific variables
-	// such as jobID, instanceID and taskID before returning the task
-	// config
-	defer updateEnvironment(&result, jobID, instanceID)
 
 	// Shallow copy the default task config
 	if jobConfig.GetDefaultConfig() != nil {
@@ -95,46 +78,6 @@ func GetTaskConfig(
 	}
 
 	return &result, nil
-}
-
-// updateEnvironment adds the Peloton specific environment variables
-// such as jobID, instanceID and taskID so that the command can access
-// those information.
-func updateEnvironment(
-	taskConfig *task.TaskConfig,
-	jobID *peloton.JobID,
-	instanceID uint32) {
-
-	// Check if the task config has command or not
-	if taskConfig.GetCommand() == nil {
-		log.WithField("config", taskConfig).
-			Errorf("Missing command info in task config")
-		return
-	}
-
-	// Add JobID, TaskID and InstanceID as environment variables
-	variables := []*mesos.Environment_Variable{
-		{
-			Name:  util.PtrPrintf(PelotonJobID),
-			Value: &jobID.Value,
-		},
-		{
-			Name:  util.PtrPrintf(PelotonInstanceID),
-			Value: util.PtrPrintf("%d", instanceID),
-		},
-		{
-			Name:  util.PtrPrintf(PelotonTaskID),
-			Value: util.PtrPrintf("%s-%d", jobID.Value, instanceID),
-		},
-	}
-
-	// Make a shallow copy of the CommandInfo so that we can change
-	// the environment
-	cmd := *taskConfig.GetCommand()
-	cmd.Environment = &mesos.Environment{
-		Variables: append(cmd.GetEnvironment().GetVariables(), variables...),
-	}
-	taskConfig.Command = &cmd
 }
 
 // validatePortConfig checks port name and port env name exists for dynamic port.
