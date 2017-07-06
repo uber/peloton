@@ -6,107 +6,61 @@ import (
 	"strings"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/storage/querybuilder"
 
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/Sirupsen/logrus"
 )
 
-// JobConfigRecord correspond to a peloton job config.
-type JobConfigRecord struct {
-	JobID       querybuilder.UUID `cql:"job_id"`
-	Version     int
-	CreatedTime time.Time         `cql:"created_time"`
-	RespoolID   querybuilder.UUID `cql:"repool_id"`
-	Labels      string
-	Owner       string
-	Config      string
+// JobRecord correspond to a peloton job
+type JobRecord struct {
+	JobID        string
+	JobConfig    string
+	Owner        string
+	CreatedTime  time.Time
+	Labels       string
+	CompleteTime time.Time
+	RespoolID    string
 }
 
 // GetJobConfig returns the unmarshaled job.JobConfig
-func (j *JobConfigRecord) GetJobConfig() (*job.JobConfig, error) {
-	result, err := util.UnmarshalToType(j.Config, reflect.TypeOf(job.JobConfig{}))
+func (j *JobRecord) GetJobConfig() (*job.JobConfig, error) {
+	result, err := util.UnmarshalToType(j.JobConfig, reflect.TypeOf(job.JobConfig{}))
 	if err != nil {
 		return nil, err
 	}
 	return result.(*job.JobConfig), err
 }
 
-// TaskRuntimeRecord correspond to a peloton task
-type TaskRuntimeRecord struct {
-	JobID          querybuilder.UUID `cql:"job_id"`
-	InstanceID     int               `cql:"instance_id"`
-	UpdateTime     time.Time         `cql:"update_time"`
-	CurrentVersion int               `cql:"current_version"`
-	GoalVersion    int               `cql:"goal_version"`
-	CurrentState   string            `cql:"current_state"`
-	MesosTaskID    string            `cql:"mesos_task_id"`
-	GoalState      string            `cql:"goal_state"`
-	StartTime      time.Time         `cql:"start_time"`
-	CompletionTime time.Time         `cql:"completion_time"`
-	Host           string
-	Ports          map[string]int
-	Message        string
-	Reason         string
-	FailureCount   int    `cql:"failure_count"`
-	VolumeID       string `cql:"volume_id"`
+// TaskRecord correspond to a peloton task
+type TaskRecord struct {
+	TaskID        string
+	JobID         string
+	TaskGoalState string
+	TaskState     string
+	TaskHost      string
+	InstanceID    int
+	TaskInfo      string
+	CreateTime    time.Time
+	UpdateTime    time.Time
 }
 
-// GetTaskRuntime returns the unmarshaled task.TaskInfo
-func (t *TaskRuntimeRecord) GetTaskRuntime() (*task.RuntimeInfo, error) {
-	ports := map[string]uint32{}
-	for n, p := range t.Ports {
-		ports[n] = uint32(p)
-	}
-	var mesosID *mesos_v1.TaskID
-	if t.MesosTaskID != "" {
-		mesosID = &mesos_v1.TaskID{
-			Value: &t.MesosTaskID,
-		}
-	}
-	return &task.RuntimeInfo{
-		State:          task.TaskState(task.TaskState_value[t.CurrentState]),
-		MesosTaskId:    mesosID,
-		StartTime:      formatTime(t.StartTime),
-		CompletionTime: formatTime(t.CompletionTime),
-		Host:           t.Host,
-		Ports:          ports,
-		GoalState:      task.TaskState(task.TaskState_value[t.GoalState]),
-		Message:        t.Message,
-		Reason:         t.Reason,
-		FailureCount:   uint32(t.FailureCount),
-		VolumeID:       &peloton.VolumeID{Value: t.VolumeID},
-	}, nil
-}
-
-// TaskConfigRecord correspond to a peloton task config
-type TaskConfigRecord struct {
-	JobID      querybuilder.UUID `cql:"job_id"`
-	Version    int
-	InstanceID int `cql:"instance_id"`
-	Config     string
-}
-
-// GetTaskConfig returns the unmarshaled task.TaskInfo
-func (t *TaskConfigRecord) GetTaskConfig() (*task.TaskConfig, error) {
-	result, err := util.UnmarshalToType(t.Config, reflect.TypeOf(task.TaskConfig{}))
+// GetTaskInfo returns the unmarshaled task.TaskInfo
+func (t *TaskRecord) GetTaskInfo() (*task.TaskInfo, error) {
+	result, err := util.UnmarshalToType(t.TaskInfo, reflect.TypeOf(task.TaskInfo{}))
 	if err != nil {
 		return nil, err
 	}
-	return result.(*task.TaskConfig), err
+	return result.(*task.TaskInfo), err
 }
 
 // TaskStateChangeRecords tracks a peloton task's state transition events
 type TaskStateChangeRecords struct {
-	JobID      querybuilder.UUID `cql:"job_id"`
-	InstanceID int               `cql:"instance_id"`
-	Events     []string
+	TaskID string
+	Events []string
 }
 
 // GetStateChangeRecords returns the TaskStateChangeRecord array
@@ -124,21 +78,20 @@ func (t *TaskStateChangeRecords) GetStateChangeRecords() ([]*TaskStateChangeReco
 
 // TaskStateChangeRecord tracks a peloton task state transition
 type TaskStateChangeRecord struct {
-	TaskState   string    `cql:"task_state"`
-	EventTime   time.Time `cql:"event_time"`
-	TaskHost    string    `cql:"task_host"`
-	JobID       string    `cql:"job_id"`
-	InstanceID  uint32    `cql:"instance_id"`
-	MesosTaskID string    `cql:"mesos_task_id"`
+	TaskState   string
+	EventTime   time.Time
+	TaskHost    string
+	TaskID      string
+	MesosTaskID string
 }
 
 // FrameworkInfoRecord tracks the framework info
 type FrameworkInfoRecord struct {
-	FrameworkName string    `cql:"framework_name"`
-	FrameworkID   string    `cql:"framework_id"`
-	MesosStreamID string    `cql:"mesos_stream_id"`
-	UpdateTime    time.Time `cql:"update_time"`
-	UpdateHost    string    `cql:"update_host"`
+	FrameworkName string
+	FrameworkID   string
+	MesosStreamID string
+	UpdateTime    time.Time
+	UpdateHost    string
 }
 
 // Resource pool (to be added)
@@ -201,27 +154,23 @@ func FillObject(data map[string]interface{}, object interface{}, objType reflect
 func getAllFieldInLowercase(objType reflect.Type) map[string]string {
 	var result = make(map[string]string)
 	for i := 0; i < objType.NumField(); i++ {
-		t := objType.Field(i).Tag.Get("cql")
-		if t == "" {
-			t = strings.ToLower(objType.Field(i).Name)
-		}
-		result[t] = objType.Field(i).Name
+		result[strings.ToLower(objType.Field(i).Name)] = objType.Field(i).Name
 	}
 	return result
 }
 
 // ResourcePoolRecord corresponds to a peloton resource pool
 type ResourcePoolRecord struct {
-	RespoolID     string `cql:"respool_id"`
-	RespoolConfig string `cql:"respool_config"`
-	Owner         string
-	CreationTime  time.Time `cql:"creation_time"`
-	UpdateTime    time.Time `cql:"update_time"`
+	ID                 string
+	ResourcePoolConfig string
+	Owner              string
+	CreateTime         time.Time
+	UpdateTime         time.Time
 }
 
 // GetResourcePoolConfig returns the unmarshaled respool.ResourceConfig
 func (r *ResourcePoolRecord) GetResourcePoolConfig() (*respool.ResourcePoolConfig, error) {
-	result, err := util.UnmarshalToType(r.RespoolConfig, reflect.TypeOf(respool.ResourcePoolConfig{}))
+	result, err := util.UnmarshalToType(r.ResourcePoolConfig, reflect.TypeOf(respool.ResourcePoolConfig{}))
 	if err != nil {
 		return nil, err
 	}
@@ -230,48 +179,39 @@ func (r *ResourcePoolRecord) GetResourcePoolConfig() (*respool.ResourcePoolConfi
 
 // JobRuntimeRecord contains job runtime info
 type JobRuntimeRecord struct {
-	JobID          querybuilder.UUID `cql:"job_id"`
-	JobState       string            `cql:"job_state"`
-	CurrentVersion int               `cql:"current_version"`
-	CreationTime   time.Time         `cql:"creation_time"`
-	StartTime      time.Time         `cql:"start_time"`
-	CompletionTime time.Time         `cql:"completion_time"`
-	UpdateTime     time.Time         `cql:"update_time"`
-	TaskStats      map[string]int    `cql:"task_stats"`
+	JobID       string
+	JobRuntime  string
+	CreatedTime time.Time
+	UpdateTime  time.Time
+	JobState    string
 }
 
 // GetJobRuntime returns the job.Runtime from a JobRecord table record
 func (t *JobRuntimeRecord) GetJobRuntime() (*job.RuntimeInfo, error) {
-	stats := map[string]uint32{}
-	for s, c := range t.TaskStats {
-		stats[s] = uint32(c)
+	val, err := util.UnmarshalToType(t.JobRuntime, reflect.TypeOf(job.RuntimeInfo{}))
+	if err != nil {
+		log.WithError(err).
+			WithField("JobRuntime", t.JobRuntime).
+			Error("Unmarshal to RuntimeInfo failed")
+		return nil, err
 	}
-	return &job.RuntimeInfo{
-		State:          job.JobState(job.JobState_value[t.JobState]),
-		CreationTime:   formatTime(t.CreationTime),
-		StartTime:      formatTime(t.StartTime),
-		CompletionTime: formatTime(t.CompletionTime),
-		TaskStats:      stats,
-	}, nil
+	result := val.(*job.RuntimeInfo)
+	if result.TaskStats == nil {
+		result.TaskStats = make(map[string]uint32)
+	}
+	return result, err
 }
 
 // PersistentVolumeRecord contains persistent volume info.
 type PersistentVolumeRecord struct {
-	VolumeID      string `cql:"volume_id"`
-	JobID         string `cql:"job_id"`
-	InstanceID    int    `cql:"instance_id"`
+	ID            string
+	JobID         string
+	InstanceID    int
 	Hostname      string
 	State         string
-	GoalState     string    `cql:"goal_state"`
-	SizeMB        int       `cql:"size_mb"`
-	ContainerPath string    `cql:"container_path"`
-	CreateTime    time.Time `cql:"creation_time"`
-	UpdateTime    time.Time `cql:"update_time"`
-}
-
-func formatTime(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.Format(time.RFC3339Nano)
+	GoalState     string
+	SizeMB        int
+	ContainerPath string
+	CreateTime    time.Time
+	UpdateTime    time.Time
 }

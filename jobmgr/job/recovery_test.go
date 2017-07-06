@@ -58,7 +58,7 @@ func TestValidatorWithStore(t *testing.T) {
 		}).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil).AnyTimes()
 
-	var jobID = &peloton.JobID{Value: uuid.New()}
+	var jobID = &peloton.JobID{Value: "TestValidatorWithStore"}
 	var sla = job.SlaConfig{
 		Priority:                22,
 		MaximumRunningInstances: 3,
@@ -87,7 +87,7 @@ func TestValidatorWithStore(t *testing.T) {
 	// the job state is update to pending.
 	jobRuntime, err := csStore.GetJobRuntime(context.Background(), jobID)
 	assert.Nil(t, err)
-	jobRuntime.CreationTime = (time.Now().Add(-10 * time.Hour)).Format(time.RFC3339Nano)
+	jobRuntime.CreationTime = (time.Now().Add(-10 * time.Hour)).String()
 
 	for i := uint32(0); i < uint32(3); i++ {
 		_, err := createTaskForJob(
@@ -139,7 +139,7 @@ func TestValidator(t *testing.T) {
 	}
 	var jobRuntime = job.RuntimeInfo{
 		State:        job.JobState_INITIALIZED,
-		CreationTime: (time.Now().Add(-10 * time.Hour)).Format(time.RFC3339Nano),
+		CreationTime: (time.Now().Add(-10 * time.Hour)).String(),
 	}
 	var tasks = []*task.TaskInfo{
 		createTaskInfo(jobID, uint32(1), task.TaskState_INITIALIZED),
@@ -212,7 +212,7 @@ func TestValidator(t *testing.T) {
 
 	// jobRuntime create time is recent, thus validateJobs() should skip the validation
 	jobRuntime.State = job.JobState_INITIALIZED
-	jobRuntime.CreationTime = time.Now().Format(time.RFC3339Nano)
+	jobRuntime.CreationTime = time.Now().String()
 	sentTasks = make(map[int]bool)
 
 	validator.recoverJobs(context.Background())
@@ -237,7 +237,7 @@ func TestValidatorFailures(t *testing.T) {
 	}
 	var jobRuntime = job.RuntimeInfo{
 		State:        job.JobState_INITIALIZED,
-		CreationTime: (time.Now().Add(-10 * time.Hour)).Format(time.RFC3339Nano),
+		CreationTime: (time.Now().Add(-10 * time.Hour)).String(),
 	}
 	var tasks = []*task.TaskInfo{
 		createTaskInfo(jobID, uint32(1), task.TaskState_INITIALIZED),

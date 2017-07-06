@@ -1,0 +1,3 @@
+DROP MATERIALIZED VIEW IF EXISTS mv_jobs_by_respool;
+
+ALTER TABLE jobs DROP respoolID;

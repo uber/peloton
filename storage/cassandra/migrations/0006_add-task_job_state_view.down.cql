@@ -1,0 +1,1 @@
+DROP MATERIALIZED VIEW IF EXISTS mv_task_by_job_state;
