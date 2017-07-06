@@ -132,10 +132,26 @@ func (h *serviceHandler) Create(
 		}, nil
 	}
 	h.metrics.JobCreate.Inc(1)
-	// NOTE: temp work to make task creation concurrent for mysql store.
-	// mysql store will be deprecated soon and we are moving on the C* store
-	// As of now, only create one job with many tasks at a time
-	instances := req.Config.InstanceCount
+
+	// Detach a new goroutine, for creating tasks and enqueue, as the job is now
+	// fully persisted in the store and there are no reason for blocking the
+	// client.
+	// Note the use of a new context, as we no longer want to honor the request
+	// deadline.
+	go h.createAndEnqueueTasks(context.Background(), jobID, jobConfig)
+
+	return &job.CreateResponse{
+		JobId: jobID,
+	}, nil
+}
+
+// TODO: Merge with recovery, such that it will use same path for creating/
+// recovering.
+func (h *serviceHandler) createAndEnqueueTasks(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	jobConfig *job.JobConfig) error {
+	instances := jobConfig.InstanceCount
 	startAddTaskTime := time.Now()
 
 	tasks := make([]*task.TaskInfo, instances)
@@ -148,28 +164,20 @@ func (h *serviceHandler) Create(
 		if err != nil {
 			log.Errorf("Failed to get task config (%d) for job %v: %v",
 				i, jobID.Value, err)
-			h.metrics.JobCreateFail.Inc(1)
-			return &job.CreateResponse{
-				Error: &job.CreateResponse_Error{
-					InvalidConfig: &job.InvalidJobConfig{
-						Id:      jobID,
-						Message: err.Error(),
-					},
-				},
-			}, nil
+			return err
 		}
 		t := getTaskInfo(mesosTaskID, taskConfig, instanceID, jobID)
 		tasks[i] = &t
 	}
+
 	// TODO: use the username of current session for createBy param
-	err = h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
+	err := h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
 	nTasks := int64(len(tasks))
 	if err != nil {
 		log.Errorf("Failed to create tasks (%d) for job %v: %v",
 			nTasks, jobID.Value, err)
 		h.metrics.TaskCreateFail.Inc(nTasks)
-		// FIXME: Add a new Error type for this
-		return nil, err
+		return err
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
@@ -178,8 +186,7 @@ func (h *serviceHandler) Create(
 		log.WithError(err).
 			WithField("job_id", jobID).
 			Error("Failed to enqueue tasks to RM")
-		h.metrics.JobCreateFail.Inc(1)
-		return nil, err
+		return err
 	}
 
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
@@ -187,8 +194,7 @@ func (h *serviceHandler) Create(
 		log.WithError(err).
 			WithField("job_id", jobID).
 			Error("Failed to GetJobRuntime")
-		h.metrics.JobCreateFail.Inc(1)
-		return nil, err
+		return err
 	}
 	jobRuntime.State = job.JobState_PENDING
 	err = h.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
@@ -196,16 +202,13 @@ func (h *serviceHandler) Create(
 		log.WithError(err).
 			WithField("job_id", jobID).
 			Error("Failed to UpdateJobRuntime")
-		h.metrics.JobCreateFail.Inc(1)
-		return nil, err
+		return err
 	}
 
 	log.Infof("Job %v all %v tasks created, time spent: %v",
 		jobID.Value, instances, time.Since(startAddTaskTime))
 
-	return &job.CreateResponse{
-		JobId: jobID,
-	}, nil
+	return nil
 }
 
 // Update updates a job object for a given job configuration and

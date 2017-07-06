@@ -218,5 +218,6 @@ lint: format
 
 jenkins: devtools lint pbgens mockgens
 	@chmod -R 777 $(dir $(PBGEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
+	go test -race -i $(ALL_PKGS)
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'
 	gocov-xml < coverage.json > coverage.xml

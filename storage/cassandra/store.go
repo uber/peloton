@@ -677,13 +677,20 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 		}()
 	}
 	wg.Wait()
+
 	if tasksNotCreated != 0 {
-		// TODO: should we propogate this error up the stack? Should we fire logTaskStateChanges before doing so?
-		log.Errorf("Wrote %d tasks for %v, and was unable to write %d tasks to Cassandra in %v", nTasks-tasksNotCreated, id, tasksNotCreated, time.Since(timeStart))
-	} else {
-		log.WithField("duration_s", time.Since(timeStart).Seconds()).
-			Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, id, time.Since(timeStart))
+		msg := fmt.Sprintf(
+			"Wrote %d tasks for %v, and was unable to write %d tasks to Cassandra in %v",
+			nTasks-tasksNotCreated,
+			id,
+			tasksNotCreated,
+			time.Since(timeStart))
+		log.Errorf(msg)
+		return fmt.Errorf(msg)
 	}
+
+	log.WithField("duration_s", time.Since(timeStart).Seconds()).
+		Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, id, time.Since(timeStart))
 	return nil
 
 }
