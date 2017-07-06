@@ -8,20 +8,20 @@ ldapGroups:
 description: "A dummy test respool for peloton integration tests job creation"
 resources:
 - kind: cpu
-  reservation: 100
-  limit: 1000
+  reservation: 200
+  limit: 2000
   share: 1
 - kind: memory
-  reservation: 50
-  limit: 100
+  reservation: 1000
+  limit: 20000
   share: 2
 - kind: disk
-  reservation: 250
-  limit: 1000
+  reservation: 5000
+  limit: 20000
   share: 1
 - kind: gpu
-  reservation: 2
-  limit: 4
+  reservation: 400
+  limit: 8000
   share: 1
 parent:
   value: root

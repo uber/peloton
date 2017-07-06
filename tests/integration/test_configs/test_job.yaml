@@ -21,9 +21,9 @@ sla:
 defaultConfig:
   resource:
     cpuLimit: 0.1
-    memLimitMb: 2.0
-    diskLimitMb: 10
-    fdLimit: 10
+    memLimitMb: 0.1
+    diskLimitMb: 0.1
+    fdLimit: 2
   healthCheck: null
   ports: []
   container:
