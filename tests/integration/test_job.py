@@ -98,15 +98,14 @@ def create_job(config=None):
 
 def test_create_batch_job():
     config = IntegrationTestConfig(max_retry_attempts=100, sleep_time_sec=10)
-    config.job_config.instanceCount = 1000
+    config.job_config.instanceCount = 50
     # We want maximal concurrency, so we remove the maximumRunningInstances
     # limit
     config.job_config.sla.maximumRunningInstances = 0
-    config.job_config.defaultConfig.command.value = 'echo batch lol'
+    config.job_config.defaultConfig.command.value = 'echo batch'
     # We do not want two instances to run a different command, as in the
     # standard job
-    del config.job_config.instanceConfig[0]
-    del config.job_config.instanceConfig[1]
+    config.job_config.instanceConfig.clear()
     create_job(config)
 
 
