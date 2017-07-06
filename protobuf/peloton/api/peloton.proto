@@ -8,6 +8,7 @@ syntax = "proto3";
 package peloton.api.peloton;
 
 option go_package = "peloton/api/peloton";
+option java_package = "peloton.api";
 
 
 /**

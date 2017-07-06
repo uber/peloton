@@ -8,6 +8,7 @@ syntax = "proto3";
 package peloton.api.respool;
 
 option go_package = "peloton/api/respool";
+option java_package = "peloton.api.respool";
 
 import "peloton/api/changelog/changelog.proto";
 

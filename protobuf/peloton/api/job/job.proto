@@ -8,6 +8,7 @@ syntax = "proto3";
 package peloton.api.job;
 
 option go_package = "peloton/api/job";
+option java_package = "peloton.api.job";
 
 import "peloton/api/peloton.proto";
 import "peloton/api/errors/errors.proto";

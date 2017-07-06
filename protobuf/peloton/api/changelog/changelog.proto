@@ -4,7 +4,8 @@ syntax = "proto3";
 package peloton.api.changelog;
 
 option go_package = "peloton/api/changelog";
-	
+option java_package = "peloton.api.changelog";
+
 /**
  *  Change log of the entity info
  */

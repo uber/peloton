@@ -7,6 +7,7 @@ syntax = "proto3";
 package peloton.api.upgrade;
 
 option go_package = "peloton/api/upgrade";
+option java_package = "peloton.api.upgrade";
 
 import "peloton/api/peloton.proto";
 import "peloton/api/errors/errors.proto";
