@@ -83,11 +83,26 @@ def remove_existing_container(name):
 
 
 #
+# Teardown mesos related containers.
+#
+def teardown_mesos():
+    remove_existing_container(config['zk_container'])
+
+    remove_existing_container(config['mesos_master_container'])
+
+    for i in range(0, config['num_agents']):
+        agent = config['mesos_agent_container'] + repr(i)
+        remove_existing_container(agent)
+
+
+#
 # Run mesos cluster
 #
 def run_mesos():
+    # Remove existing containers first.
+    teardown_mesos()
+
     # Run zk
-    remove_existing_container(config['zk_container'])
     cli.pull(config['zk_image'])
     container = cli.create_container(
         name=config['zk_container'],
@@ -111,7 +126,6 @@ def run_mesos():
     time.sleep(20)
 
     # Run mesos master
-    remove_existing_container(config['mesos_master_container'])
     cli.pull(config['mesos_master_image'])
     container = cli.create_container(
         name=config['mesos_master_container'],
@@ -151,7 +165,6 @@ def run_mesos():
     for i in range(0, config['num_agents']):
         agent = config['mesos_agent_container'] + repr(i)
         port = config['local_agent_port'] + i
-        remove_existing_container(agent)
         container = cli.create_container(
             name=agent,
             hostname=agent,
@@ -557,13 +570,7 @@ def setup(enable_peloton=False,
 # TODO (wu): use docker labels when launching containers
 #            and then remove all containers with that label
 def teardown():
-    remove_existing_container(config['zk_container'])
-
-    remove_existing_container(config['mesos_master_container'])
-
-    for i in range(0, config['num_agents']):
-        agent = config['mesos_agent_container'] + repr(i)
-        remove_existing_container(agent)
+    teardown_mesos()
 
     remove_existing_container(config['mysql_container'])
 
