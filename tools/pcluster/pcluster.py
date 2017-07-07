@@ -94,6 +94,10 @@ def teardown_mesos():
         agent = config['mesos_agent_container'] + repr(i)
         remove_existing_container(agent)
 
+    # Remove orphaned mesos containers.
+    for c in cli.containers(filters={'name': '^/mesos-'}, all=True):
+        remove_existing_container(c.get("Id"))
+
 
 #
 # Run mesos cluster
