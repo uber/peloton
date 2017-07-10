@@ -172,6 +172,7 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 				}).Debug("return unused offers after set placement")
 				s.returnUnused(unused)
 			}
+			log.WithField("num_placements", len(placements)).Info("set placements succeeded")
 		}
 
 		log.WithFields(log.Fields{
@@ -224,9 +225,13 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) (
 	// Right now, this limits number of hosts to request from hostsvc.
 	// In the longer term, we should consider converting this to total
 	// resources necessary.
+	maxHosts := s.cfg.OfferDequeueLimit
+	if maxHosts > len(group.tasks) {
+		// only require up to #tasks in the group.
+		maxHosts = len(group.tasks)
+	}
 	filter.Quantity = &hostsvc.QuantityControl{
-		// NumPlacements: uint32(len(group.tasks)),
-		MaxHosts: uint32(s.cfg.OfferDequeueLimit),
+		MaxHosts: uint32(maxHosts),
 	}
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
@@ -430,6 +435,8 @@ func (s *placementEngine) placeRound() time.Duration {
 		log.Debug("No task to place in workLoop")
 		return _getTaskTimeout
 	}
+
+	log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
 
 	taskGroups := groupTasks(tasks)
 	for _, tg := range taskGroups {

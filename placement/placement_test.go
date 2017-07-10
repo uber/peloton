@@ -231,7 +231,8 @@ func TestNoHostOfferReturned(t *testing.T) {
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
 					Filter: &hostsvc.HostFilter{
 						Quantity: &hostsvc.QuantityControl{
-							MaxHosts: uint32(10),
+							// only one task so expect 1 instead of default offer limit 10.
+							MaxHosts: uint32(1),
 						},
 						ResourceConstraint: &hostsvc.ResourceConstraint{
 							Minimum:  t1.Resource,
