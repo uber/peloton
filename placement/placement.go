@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	// GetOfferTimeout is the timeout value for get offer request
-	GetOfferTimeout = 1 * time.Second
-	// GetTaskTimeout is the timeout value for get task request
-	GetTaskTimeout = 1 * time.Second
+	// _getOfferTimeout is the timeout value for get offer request
+	_getOfferTimeout = 1 * time.Second
+	// _getTaskTimeout is the timeout value for get task request
+	_getTaskTimeout = 1 * time.Second
 )
 
 // Engine is an interface implementing a way to Start and Stop the
@@ -97,7 +97,10 @@ func (s *placementEngine) Stop() {
 // placeTaskGroup is the internal loop that makes placement decisions on a group of tasks
 // with same grouping constraint.
 func (s *placementEngine) placeTaskGroup(group *taskGroup) {
-	log.WithField("group", group).Debug("Placing task group")
+	log.WithFields(log.Fields{
+		"tasks":  group.tasks,
+		"filter": group.hostFilter,
+	}).Debug("Placing task group")
 	totalTasks := len(group.tasks)
 	// TODO: move this loop out to the call site of current function,
 	//       so we don't need to loop in the test code.
@@ -111,9 +114,9 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		hostOffers, resultCounts, err := s.AcquireHostOffers(group)
 		// TODO: Add a stopping condition so this does not loop forever.
 		if err != nil {
-			log.WithField("error", err).Error("Failed to dequeue offer")
+			log.WithError(err).Error("Failed to acquire host offer")
 			s.metrics.OfferGetFail.Inc(1)
-			time.Sleep(GetOfferTimeout)
+			time.Sleep(_getOfferTimeout)
 			continue
 		}
 
@@ -121,10 +124,16 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 			s.metrics.OfferStarved.Inc(1)
 			log.WithField("filter_result_counts", resultCounts).
 				Warn("Empty hostOffers received")
-			time.Sleep(GetOfferTimeout)
+			time.Sleep(_getOfferTimeout)
 			continue
 		}
 		s.metrics.OfferGet.Inc(1)
+
+		log.WithFields(log.Fields{
+			"tasks":               group.tasks,
+			"host_offers":         hostOffers,
+			"filter_result_count": resultCounts,
+		}).Debug("acquired host offers for tasks")
 
 		// Creating the placements for all the host offers
 		var placements []*resmgr.Placement
@@ -147,29 +156,38 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		err = s.setPlacements(placements)
 
 		if err != nil {
+			log.WithFields(log.Fields{
+				"placements":        placements,
+				"total_host_offers": hostOffers,
+			}).WithError(err).Error("set placements failed")
 			// If there is error in placement returning all the host offer
 			s.returnUnused(hostOffers)
 		} else {
 			unused := hostOffers[index:]
 			if len(unused) > 0 {
+				log.WithFields(log.Fields{
+					"placements":         placements,
+					"unused_host_offers": unused,
+					"total_host_offers":  hostOffers,
+				}).Debug("return unused offers after set placement")
 				s.returnUnused(unused)
 			}
 		}
 
-		log.WithField("remaining_tasks", group.tasks).
-			Debug("Tasks remaining for next placeTaskGroup")
+		log.WithFields(log.Fields{
+			"acquired_host_offers": hostOffers,
+			"placements":           placements,
+			"remaining_tasks":      group.tasks,
+		}).Debug("Tasks remaining for next placeTaskGroup")
 	}
 	if len(group.tasks) > 0 {
 		log.WithFields(log.Fields{
-			"Tasks Remaining": len(group.tasks),
-			"Tasks Total":     totalTasks,
-		}).Warn("Could not place Tasks due to insufficiant Offers")
-
-		log.WithField("task_group", group.tasks).
-			Debug("Task group still has remaining tasks " +
-				"after allowed duration")
+			"tasks_remaining":       group.tasks,
+			"tasks_remaining_total": len(group.tasks),
+			"tasks_total":           totalTasks,
+		}).Warn("Could not place tasks due to insufficiant offers and placement timeout")
 		// TODO: add metrics for this
-		// TODO: send unplaced tasks back to correct state (READY).
+		// TODO(mu): send unplaced tasks back to correct state (READY) per T1028631.
 	}
 }
 
@@ -183,12 +201,10 @@ func (s *placementEngine) returnUnused(hostOffers []*hostsvc.HostOffer) error {
 
 	response, err := s.hostMgrClient.ReleaseHostOffers(ctx, request)
 	if err != nil {
-		log.WithField("error", err).Error("ReleaseHostOffers failed")
 		return err
 	}
 
 	if respErr := response.GetError(); respErr != nil {
-		log.WithField("error", respErr).Error("ReleaseHostOffers error")
 		// TODO: Differentiate known error types by metrics and logs.
 		return errors.New(respErr.String())
 	}
@@ -222,16 +238,16 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) (
 	log.WithField("request", request).Debug("Calling AcquireHostOffers")
 
 	response, err := s.hostMgrClient.AcquireHostOffers(ctx, request)
-
 	if err != nil {
-		log.WithField("error", err).Error("AcquireHostOffers failed")
 		return nil, nil, err
 	}
 
-	log.WithField("response", response).Debug("AcquireHostOffers returned")
+	log.WithFields(log.Fields{
+		"request":  request,
+		"response": response,
+	}).Debug("AcquireHostOffers returned")
 
 	if respErr := response.GetError(); respErr != nil {
-		log.WithField("error", respErr).Error("AcquireHostOffers error")
 		// TODO: Differentiate known error types by metrics and logs.
 		return nil, nil, errors.New(respErr.String())
 	}
@@ -246,7 +262,6 @@ func (s *placementEngine) placeTasks(
 	hostOffer *hostsvc.HostOffer) (*resmgr.Placement, []*resmgr.Task) {
 
 	if len(tasks) == 0 {
-		log.Debug("No task to place")
 		return nil, tasks
 	}
 
@@ -292,8 +307,11 @@ func (s *placementEngine) placeTasks(
 	tasks = tasks[len(selectedTasks):]
 
 	log.WithFields(log.Fields{
-		"selected_tasks":  selectedTasks,
-		"remaining_tasks": tasks,
+		"selected_tasks":        selectedTasks,
+		"selected_tasks_total":  len(selectedTasks),
+		"remaining_tasks":       tasks,
+		"remaining_tasks_total": len(tasks),
+		"host_offer":            hostOffer,
 	}).Debug("Selected tasks to place")
 
 	numSelectedTasks := len(selectedTasks)
@@ -321,7 +339,6 @@ func (s *placementEngine) placeTasks(
 
 func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 	if len(placements) == 0 {
-		log.Debug("No task to place")
 		err := errors.New("No placements to set")
 		return err
 	}
@@ -340,22 +357,11 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 
 	// TODO: add retry / put back offer and tasks in failure scenarios
 	if err != nil {
-		log.WithFields(log.Fields{
-			"num_placements": len(placements),
-			"error":          err.Error(),
-		}).WithError(errors.New("Failed to set placements"))
-
 		s.metrics.SetPlacementFail.Inc(1)
 		return err
 	}
 
-	log.WithField("response", response).Debug("SetPlacements returned")
-
 	if response.GetError() != nil {
-		log.WithFields(log.Fields{
-			"num_placements": len(placements),
-			"error":          response.Error.String(),
-		}).Error("Failed to place tasks")
 		s.metrics.SetPlacementFail.Inc(1)
 		return errors.New("Failed to place tasks")
 	}
@@ -367,8 +373,10 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 
 	log.WithFields(log.Fields{
 		"num_placements": len(placements),
+		"placements":     placements,
+		"response":       response,
 		"duration":       setPlacementDuration.Seconds(),
-	}).Info("Set placements")
+	}).Debug("Set placements call returned")
 	return nil
 }
 
@@ -397,8 +405,10 @@ func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
 	}
 
 	log.WithFields(log.Fields{
-		"num_tasks": len(tasksIds),
-	}).Info("Create Placements")
+		"tasks":      tasks,
+		"host_offer": hostOffer,
+		"num_tasks":  len(tasksIds),
+	}).Debug("created placement")
 
 	s.metrics.CreatePlacementDuration.Record(createPlacementDuration)
 	return placement
@@ -413,14 +423,14 @@ func (s *placementEngine) isRunning() bool {
 func (s *placementEngine) placeRound() time.Duration {
 	tasks, err := s.getTasks(s.cfg.TaskDequeueLimit)
 	if err != nil {
-		log.WithField("error", err).Error("Failed to dequeue tasks")
-		return GetTaskTimeout
+		log.WithError(err).Error("Failed to dequeue tasks")
+		return _getTaskTimeout
 	}
 	if len(tasks) == 0 {
 		log.Debug("No task to place in workLoop")
-		return GetTaskTimeout
+		return _getTaskTimeout
 	}
-	log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
+
 	taskGroups := groupTasks(tasks)
 	for _, tg := range taskGroups {
 		// Enqueue per task group.
@@ -444,19 +454,19 @@ func (s *placementEngine) getTasks(limit int) (
 		Timeout: uint32(s.cfg.TaskDequeueTimeOut),
 	}
 
-	log.WithField("request", request).Debug("Dequeuing tasks")
+	log.WithField("request", request).Debug("Dequeuing tasks from resmgr")
 	response, err := s.resMgrClient.DequeueGangs(ctx, request)
 	if err != nil {
-		log.WithField("error", err).Error("Dequeue failed")
 		return nil, err
 	}
+
 	for _, gang := range response.GetGangs() {
 		for _, task := range gang.GetTasks() {
 			taskInfos = append(taskInfos, task)
 		}
 	}
 
-	log.WithField("tasks", taskInfos).Debug("Dequeued tasks")
+	log.WithField("tasks", taskInfos).Debug("Dequeued tasks from resmgr")
 
 	return taskInfos, nil
 }
