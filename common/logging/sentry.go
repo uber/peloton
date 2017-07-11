@@ -1,11 +1,17 @@
 package logging
 
 import (
+	"os"
+
 	"github.com/evalphobia/logrus_sentry"
 	log "github.com/sirupsen/logrus"
 )
 
-// SentryConfig is sentry logging specific
+const (
+	_clusterEnv = "CLUSTER"
+)
+
+// SentryConfig is sentry logging specific configuration.
 type SentryConfig struct {
 	Enabled bool `yaml:"enabled"`
 	// DSN is the sentry DSN name.
@@ -26,6 +32,10 @@ func ConfigureSentry(cfg *SentryConfig) {
 	if cfg.Tags == nil {
 		cfg.Tags = make(map[string]string)
 	}
+	if v := os.Getenv(_clusterEnv); v != "" {
+		log.WithField("cluster_tag", v).Info("tag cluster in sentry event.")
+		cfg.Tags[_clusterEnv] = v
+	}
 
 	levels := []log.Level{
 		log.PanicLevel,
@@ -38,6 +48,6 @@ func ConfigureSentry(cfg *SentryConfig) {
 		log.WithError(err).Fatal("Failed to create Sentry hook")
 	}
 
-	log.Debug("sentry hook added successfully")
+	log.Info("sentry hook added successfully")
 	log.AddHook(hook)
 }
