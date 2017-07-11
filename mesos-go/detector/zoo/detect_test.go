@@ -10,9 +10,9 @@ import (
 	"code.uber.internal/infra/peloton/mesos-go/detector"
 	mock_zkdetector "code.uber.internal/infra/peloton/mesos-go/detector/zoo/mock"
 	util "code.uber.internal/infra/peloton/mesos-go/mesosutil"
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/samuel/go-zookeeper/zk"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
 	. "code.uber.internal/infra/peloton/mesos-go/detector/zoo"

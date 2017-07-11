@@ -9,9 +9,9 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"

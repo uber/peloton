@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
 	er "github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 
 	"go.uber.org/yarpc"

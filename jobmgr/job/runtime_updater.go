@@ -15,8 +15,8 @@ import (
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
-	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
 )

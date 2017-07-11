@@ -9,7 +9,7 @@ import (
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/util"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // StatusProcessor is the interface to process a task status update

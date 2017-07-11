@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strconv"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gogo/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/util"

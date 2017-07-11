@@ -14,12 +14,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/mysql" // Pull in MySQL driver for migrate
 	"github.com/gemnasium/migrate/migrate"
 	_ "github.com/go-sql-driver/mysql" // Pull in MySQL driver for sqlx
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"

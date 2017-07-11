@@ -19,9 +19,9 @@ import (
 
 	"code.uber.internal/infra/peloton/storage"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )

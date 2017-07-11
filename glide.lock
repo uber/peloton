@@ -1,5 +1,5 @@
-hash: 4bc74570a84920f2a5a14f52868700c9d98f19393d91d33ee56ec18debc040f0
-updated: 2017-06-17T22:20:41.877996192+02:00
+hash: 1612ebded719050e80668e1a6d45afdaa1fea19594797a91571600bb02ba839b
+updated: 2017-07-10T21:58:13.646537505-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -33,6 +33,8 @@ imports:
   - store
   - store/mock
   - store/zookeeper
+- name: github.com/evalphobia/logrus_sentry
+  version: 9f8f2d05a621e616d9341ac75374eb8402ae0630
 - name: github.com/facebookgo/clock
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
 - name: github.com/gemnasium/migrate
@@ -61,7 +63,7 @@ imports:
   - sortkeys
   - types
 - name: github.com/golang/mock
-  version: bd3c8e81be01eef76d4b503f5e687d2d1354d2d9
+  version: 93f6609a15b7de76bd49259f1f9a6b58df358936
   subpackages:
   - gomock
 - name: github.com/golang/protobuf
@@ -96,7 +98,7 @@ imports:
   - ext
   - log
 - name: github.com/pborman/uuid
-  version: 1b00554d822231195d1babd97ff4a781231955c9
+  version: e790cca94e6cc75c7064b1332e63811d4aae1a53
 - name: github.com/pkg/errors
   version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
 - name: github.com/pmezard/go-difflib
@@ -117,7 +119,6 @@ imports:
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
-  - log
   - model
 - name: github.com/prometheus/procfs
   version: fcdb11ccb4389efb1b210b7ffb623ab71c5fdd60
@@ -127,7 +128,7 @@ imports:
   vcs: git
   subpackages:
   - zk
-- name: github.com/Sirupsen/logrus
+- name: github.com/sirupsen/logrus
   version: ba1b36c82c5e05c4f912a88eab0dcd91a171688f
 - name: github.com/stretchr/objx
   version: 1a9d0bb9f541897e62256577b352fdbc1fb4fd94
@@ -147,7 +148,7 @@ imports:
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: e9b601813b0be4771b1b3995390567b67ab2b3fc
+  version: 88e9c75b0cfc84139ad1bae3b7f123786cfd0770
   subpackages:
   - m3
   - m3/customtransports
@@ -168,9 +169,9 @@ imports:
 - name: go.uber.org/atomic
   version: 4e336646b2ef9fc6e47be8e21594178f98e5ebcf
 - name: go.uber.org/multierr
-  version: ef109dc7f883f3a99db2d89edc701c25cac40571
+  version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/thriftrw
-  version: dde90c2a40f45fb2b6361d13c1b4bf09465401c0
+  version: 37e6aee10c94fcca3b08944e4dc1f346b052e66f
   subpackages:
   - internal/semver
   - version
@@ -211,7 +212,7 @@ imports:
   - internal/multierror
   - zapcore
 - name: golang.org/x/net
-  version: 59a0b19b5533c7977ddeb86b017bf507ed407b12
+  version: 054b33e6527139ad5b1ec2f6232c3b175bd9a30c
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -226,9 +227,6 @@ imports:
   repo: https://github.com/golang/sys
   subpackages:
   - unix
-  - windows
-  - windows/registry
-  - windows/svc/eventlog
 - name: gopkg.in/alecthomas/kingpin.v2
   version: 7f0871f2e17818990e4eed73f9b5c2f429501228
 - name: gopkg.in/inf.v0

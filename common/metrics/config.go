@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/cactus/go-statsd-client/statsd"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/uber-go/tally"
 	tallym3 "github.com/uber-go/tally/m3"

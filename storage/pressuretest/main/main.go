@@ -14,8 +14,8 @@ import (
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	"code.uber.internal/infra/peloton/storage/cassandra/impl"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"gopkg.in/alecthomas/kingpin.v2"
 

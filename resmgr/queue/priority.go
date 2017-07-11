@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // PriorityQueue is FIFO queue which remove the highest priority task item entered first in the queue

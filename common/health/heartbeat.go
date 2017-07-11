@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 )

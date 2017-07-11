@@ -5,8 +5,8 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 // ResourcePoolConfigValidatorFunc validator func for registering custom validator

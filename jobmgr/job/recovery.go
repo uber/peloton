@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"

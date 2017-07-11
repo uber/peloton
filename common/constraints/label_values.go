@@ -3,7 +3,7 @@ package constraints
 import (
 	"strconv"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 )

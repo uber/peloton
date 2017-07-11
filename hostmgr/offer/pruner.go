@@ -8,7 +8,7 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 const (

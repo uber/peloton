@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"

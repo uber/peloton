@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"

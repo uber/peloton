@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	er "github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"

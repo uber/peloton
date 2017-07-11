@@ -12,9 +12,9 @@ import (
 
 	"go.uber.org/yarpc/api/transport"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 const (

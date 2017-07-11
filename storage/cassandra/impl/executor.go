@@ -8,7 +8,7 @@ import (
 
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // Executor interface. execution sequence is Allowed->{Execute, ExecuteBatch}->PostExecute

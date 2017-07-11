@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"

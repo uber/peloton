@@ -5,7 +5,7 @@ import (
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	storage_config "code.uber.internal/infra/peloton/storage/config"
 	"code.uber.internal/infra/peloton/storage/mysql"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
 

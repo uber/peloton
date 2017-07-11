@@ -26,11 +26,11 @@ import (
 
 	"code.uber.internal/infra/peloton/storage/cassandra/impl"
 	"code.uber.internal/infra/peloton/util"
-	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
 

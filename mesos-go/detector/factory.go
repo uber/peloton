@@ -13,8 +13,8 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	util "code.uber.internal/infra/peloton/mesos-go/mesosutil"
 	"code.uber.internal/infra/peloton/mesos-go/upid"
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 )
 
 var (

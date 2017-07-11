@@ -3,7 +3,7 @@ package mesos
 import (
 	"context"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
 
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"

@@ -9,9 +9,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/config"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 var _updateNotSupported = "updating %s not supported"

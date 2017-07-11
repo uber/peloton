@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	uat "github.com/uber-go/atomic"
 
 	"go.uber.org/yarpc"

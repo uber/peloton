@@ -27,7 +27,7 @@ import (
 	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 var (

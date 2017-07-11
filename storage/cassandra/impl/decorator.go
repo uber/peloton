@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	"github.com/opentracing/opentracing-go"

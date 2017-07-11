@@ -11,10 +11,10 @@ import (
 	"go.uber.org/yarpc/api/transport"
 	transport_mocks "go.uber.org/yarpc/api/transport/transporttest"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 )
 

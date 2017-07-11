@@ -3,8 +3,8 @@ package operation
 import (
 	"errors"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gogo/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"

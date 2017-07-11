@@ -3,7 +3,7 @@ package reservation
 import (
 	"testing"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"

@@ -3,7 +3,7 @@ package hostmap
 import (
 	"sync/atomic"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	uatomic "github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
 

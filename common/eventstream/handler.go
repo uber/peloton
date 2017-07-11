@@ -10,9 +10,9 @@ import (
 
 	"code.uber.internal/infra/peloton/common/cirbuf"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
 

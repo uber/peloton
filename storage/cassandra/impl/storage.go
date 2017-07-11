@@ -3,8 +3,8 @@ package impl
 import (
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gocql/gocql"
+	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	"github.com/uber-go/tally"

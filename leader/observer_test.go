@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/docker/leadership"
 	"github.com/docker/libkv/store"
 	libkvmock "github.com/docker/libkv/store/mock"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/uber-go/tally"

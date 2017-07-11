@@ -8,7 +8,7 @@ import (
 
 	"github.com/gemnasium/migrate/migrate"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 func downSync(cfg *Config) []error {

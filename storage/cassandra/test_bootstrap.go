@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"code.uber.internal/infra/peloton/storage/cassandra/impl"
-	log "github.com/Sirupsen/logrus"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
+	log "github.com/sirupsen/logrus"
 )
 
 func downSync(cfg *Config) []error {

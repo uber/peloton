@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // NewID returns a ID for a server to implement leader.Nomination

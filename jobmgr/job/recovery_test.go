@@ -20,9 +20,9 @@ import (
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
-	log "github.com/Sirupsen/logrus"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
 

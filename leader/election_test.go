@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/docker/leadership"
 	libkvmock "github.com/docker/libkv/store/mock"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/uber-go/tally"

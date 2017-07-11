@@ -3,8 +3,8 @@ package impl
 import (
 	"context"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gocql/gocql"
+	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"

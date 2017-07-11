@@ -13,8 +13,8 @@ import (
 
 	"code.uber.internal/infra/peloton/util"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gogo/protobuf/proto"
+	log "github.com/sirupsen/logrus"
 )
 
 // JobConfigRecord correspond to a peloton job config.
