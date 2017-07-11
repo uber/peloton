@@ -19,8 +19,10 @@ metrics:
   #   prefix: peloton
 
 sentry:
-  dsn: http://fill:mein@sentry.local.uber.internal/123
-  enable: false
+  dsn: http://87d77e2cfdb0472caa1b3543f52f458f:2064b09aab624f899f40389018224dee@usentry.local.uber.internal/3318
+  enabled: true
+  tags:
+    component: placement
 
 placement:
   task_dequeue_limit: 1000

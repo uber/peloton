@@ -10,4 +10,7 @@ metrics:
     prefix: peloton
 
 sentry:
-  dsn: http://fill:mein@sentry.local.uber.internal/fillmein
+  dsn: http://87d77e2cfdb0472caa1b3543f52f458f:2064b09aab624f899f40389018224dee@usentry.local.uber.internal/3318
+  enabled: false
+  tags:
+    component: executor

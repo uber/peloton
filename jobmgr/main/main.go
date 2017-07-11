@@ -119,6 +119,8 @@ func main() {
 		log.WithField("error", err).Fatal("Cannot parse yaml config")
 	}
 
+	logging.ConfigureSentry(&cfg.SentryConfig)
+
 	// now, override any CLI flags in the loaded config.Config
 	if *jobmgrPort != 0 {
 		cfg.JobManager.Port = *jobmgrPort

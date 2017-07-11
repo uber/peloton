@@ -1,5 +1,5 @@
 hash: 1612ebded719050e80668e1a6d45afdaa1fea19594797a91571600bb02ba839b
-updated: 2017-07-10T21:58:13.646537505-07:00
+updated: 2017-07-10T22:25:46.641754921-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -21,6 +21,8 @@ imports:
   version: 91c326c3f7bd20f0226d3d1c289dd9f8ce28d33d
   subpackages:
   - statsd
+- name: github.com/certifi/gocertifi
+  version: a9c833d2837d3b16888d55d5aafa9ffe9afb22b0
 - name: github.com/davecgh/go-spew
   version: 346938d642f2ec3594ed81d874461961cd0faa76
   subpackages:
@@ -47,6 +49,8 @@ imports:
   - migrate
   - migrate/direction
   - pipe
+- name: github.com/getsentry/raven-go
+  version: d175f85701dfbf44cb0510114c9943e665e60907
 - name: github.com/go-sql-driver/mysql
   version: 2e00b5cd70399450106cec6431c2e2ce3cae5034
 - name: github.com/gocql/gocql
