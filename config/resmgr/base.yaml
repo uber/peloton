@@ -13,7 +13,8 @@ storage:
     max_batch_size_rows: 500
     conn_lifetime: 30s
   cassandra:
-    max_batch_size_rows: 500
+    # FIXME: need to increase batch size limit dynamically in cassandra (T968823)
+    max_batch_size_rows: 1
     connection:
       contactPoints: ["127.0.0.1"]
       port: 9042

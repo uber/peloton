@@ -172,8 +172,12 @@ func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanc
 			version,
 			instanceID,
 			time.Now().UTC(),
-			configBuffer).
-		IfNotExist()
+			configBuffer)
+
+	// IfNotExist() will cause Writing task configs to Cassandra concurrently
+	// failed with Operation timed out issue when batch size is small, e.g. 1.
+	// For now, we have to drop the IfNotExist()
+
 	err = s.applyStatement(ctx, stmt, id.GetValue())
 	if err != nil {
 		log.WithError(err).
