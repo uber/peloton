@@ -22,7 +22,7 @@ def setup_cluster(request):
         setup(enable_peloton=True)
 
     def teardown_cluster():
-        log.info('teardown cluster')
+        log.info('\nteardown cluster')
         if os.getenv('CLUSTER', ''):
             log.info('cluster mode, no teardown actions')
         elif os.getenv('NO_TEARDOWN', ''):
