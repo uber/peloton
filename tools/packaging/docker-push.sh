@@ -34,11 +34,8 @@ for dc in $DC ; do
       version="latest"
     fi
     push_target="${registry}/${new_image}:${version}"
-    push_target_latest="${registry}/${new_image}:latest"
     $docker_cmd tag "${image}" "${push_target}"
     $docker_cmd push "${push_target}"
-    $docker_cmd tag "${image}" "${push_target_latest}"
-    $docker_cmd push "${push_target_latest}"
-    echo "The image can now be pulled from docker registry at ${push_target} and ${push_target_latest}"
+    echo "The image can now be pulled from docker registry at ${push_target}"
   done
 done
