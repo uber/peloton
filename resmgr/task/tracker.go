@@ -79,6 +79,7 @@ func InitTaskTracker(parent tally.Scope) {
 		placements: map[string]map[resmgr.TaskType]map[string]*RMTask{},
 		metrics:    NewMetrics(parent.SubScope("tracker")),
 	}
+	log.Info("Resource Manager Tracker is initialized")
 }
 
 // GetTracker gets the singelton object of the tracker
@@ -175,7 +176,7 @@ func (tr *tracker) MarkItDone(
 	if task == nil {
 		return errors.Errorf("task %s is not in tracker", tID)
 	}
-	err := task.respool.MarkItDone(
+	err := task.respool.SubtractFromAllocation(
 		scalar.ConvertToResmgrResource(
 			task.task.GetResource()))
 	if err != nil {

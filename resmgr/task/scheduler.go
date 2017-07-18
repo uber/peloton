@@ -1,20 +1,20 @@
 package task
 
 import (
+	"context"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
-	"math/rand"
-
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/resmgr/queue"
-	"context"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -80,6 +80,7 @@ func InitScheduler(
 		metrics:       NewMetrics(parent.SubScope("task_scheduler")),
 		random:        rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
+	log.Info("Task scheduler is initialized")
 }
 
 // GetScheduler returns the task scheduler instance
@@ -144,7 +145,10 @@ func (s *scheduler) scheduleTasks() {
 			continue
 		}
 		for _, gang := range gangList {
-			s.EnqueueGang(gang)
+			err = s.EnqueueGang(gang)
+			if err != nil {
+				continue
+			}
 			for _, task := range gang.GetTasks() {
 				log.WithField("task ", task).Debug("Adding " +
 					"task to ready queue")
@@ -155,6 +159,13 @@ func (s *scheduler) scheduleTasks() {
 						log.WithError(errors.WithStack(err)).Error("Error while " +
 							"transitioning to Ready state")
 					}
+					// We have to remove demand as we admitted task to
+					// ready queue.
+					err = n.SubtractFromDemand(
+						scalar.ConvertToResmgrResource(
+							task.GetResource()))
+					log.WithError(err).Errorf("Error while "+
+						"subtracting demand for task %s ", task.Id.Value)
 				} else {
 					err := errReadyQueueTaskMissing
 					log.WithError(err).Error("Error while " +

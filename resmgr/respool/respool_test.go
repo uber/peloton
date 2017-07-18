@@ -365,7 +365,7 @@ func (s *ResPoolSuite) TestAllocation() {
 	s.Equal(float64(10), allocation.DISK)
 	s.Equal(float64(0), allocation.GPU)
 
-	err = resPoolNode.MarkItDone(allocation)
+	err = resPoolNode.SubtractFromAllocation(allocation)
 	s.NoError(err)
 	allocation = resPoolNode.GetAllocation()
 	s.NotNil(allocation)
@@ -463,6 +463,7 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	node2ChildrenList := list.New()
 	node2ChildrenList.PushBack(resPoolNode21)
 	resPoolNode2.SetChildren(node2ChildrenList)
+	resPoolroot.CalculateAllocation()
 
 	allocationroot := resPoolroot.GetAllocation()
 	s.NotNil(allocationroot)
@@ -494,6 +495,176 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 }
 
 func (s *ResPoolSuite) getAllocation() *scalar.Resources {
+	return &scalar.Resources{
+		CPU:    float64(100),
+		GPU:    float64(1),
+		MEMORY: float64(100),
+		DISK:   float64(1000),
+	}
+}
+
+func (s *ResPoolSuite) TestCalculateDemand() {
+	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	respool1ID := pb_respool.ResourcePoolID{Value: "respool1"}
+	respool2ID := pb_respool.ResourcePoolID{Value: "respool2"}
+	respool11ID := pb_respool.ResourcePoolID{Value: "respool11"}
+	respool12ID := pb_respool.ResourcePoolID{Value: "respool12"}
+	respool21ID := pb_respool.ResourcePoolID{Value: "respool21"}
+
+	poolConfigroot := &pb_respool.ResourcePoolConfig{
+		Name:      "root",
+		Parent:    nil,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolroot, err := NewRespool(tally.NoopScope, rootID.Value, nil, poolConfigroot)
+	s.NoError(err)
+
+	poolConfig1 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value, resPoolroot, poolConfig1)
+	s.NoError(err)
+	resPoolNode1.SetEntitlement(s.getEntitlement())
+
+	poolConfig2 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool2",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value, resPoolroot, poolConfig2)
+	s.NoError(err)
+	resPoolNode2.SetEntitlement(s.getEntitlement())
+
+	rootChildrenList := list.New()
+	rootChildrenList.PushBack(resPoolNode1)
+	rootChildrenList.PushBack(resPoolNode2)
+	resPoolroot.SetChildren(rootChildrenList)
+
+	poolConfig11 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool11",
+		Parent:    &respool1ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value, resPoolNode1, poolConfig11)
+	s.NoError(err)
+	resPoolNode11.SetEntitlement(s.getEntitlement())
+	resPoolNode11.SetAllocation(s.getAllocation())
+	resPoolNode11.AddToDemand(s.getDemand())
+
+	poolConfig12 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool12",
+		Parent:    &respool1ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value, resPoolNode1, poolConfig12)
+	s.NoError(err)
+	resPoolNode12.SetEntitlement(s.getEntitlement())
+	resPoolNode12.SetAllocation(s.getAllocation())
+	resPoolNode12.AddToDemand(s.getDemand())
+
+	node1ChildrenList := list.New()
+	node1ChildrenList.PushBack(resPoolNode11)
+	node1ChildrenList.PushBack(resPoolNode12)
+	resPoolNode1.SetChildren(node1ChildrenList)
+
+	poolConfig21 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool21",
+		Parent:    &respool2ID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value, resPoolNode2, poolConfig21)
+	s.NoError(err)
+	resPoolNode21.SetEntitlement(s.getEntitlement())
+	resPoolNode21.SetAllocation(s.getAllocation())
+	resPoolNode21.AddToDemand(s.getDemand())
+	node2ChildrenList := list.New()
+	node2ChildrenList.PushBack(resPoolNode21)
+	resPoolNode2.SetChildren(node2ChildrenList)
+
+	resPoolroot.CalculateDemand()
+
+	demandRoot := resPoolroot.GetDemand()
+	s.NotNil(demandRoot)
+	s.Equal(float64(300), demandRoot.CPU)
+	s.Equal(float64(300), demandRoot.MEMORY)
+	s.Equal(float64(3000), demandRoot.DISK)
+	s.Equal(float64(3), demandRoot.GPU)
+
+	demand1 := resPoolNode1.GetDemand()
+	s.NotNil(demand1)
+	s.Equal(float64(200), demand1.CPU)
+	s.Equal(float64(200), demand1.MEMORY)
+	s.Equal(float64(2000), demand1.DISK)
+	s.Equal(float64(2), demand1.GPU)
+
+	demand2 := resPoolNode2.GetDemand()
+	s.NotNil(demand2)
+	s.Equal(float64(100), demand2.CPU)
+	s.Equal(float64(100), demand2.MEMORY)
+	s.Equal(float64(1000), demand2.DISK)
+	s.Equal(float64(1), demand2.GPU)
+
+	demand11 := resPoolNode11.GetDemand()
+	s.NotNil(demand11)
+	s.Equal(float64(100), demand11.CPU)
+	s.Equal(float64(100), demand11.MEMORY)
+	s.Equal(float64(1000), demand11.DISK)
+	s.Equal(float64(1), demand11.GPU)
+
+	demand12 := resPoolNode12.GetDemand()
+	s.NotNil(demand12)
+	s.Equal(float64(100), demand12.CPU)
+	s.Equal(float64(100), demand12.MEMORY)
+	s.Equal(float64(1000), demand12.DISK)
+	s.Equal(float64(1), demand12.GPU)
+
+	err = resPoolNode11.SubtractFromDemand(demand11)
+	s.NoError(err)
+	resPoolroot.CalculateDemand()
+	demand11 = resPoolNode11.GetDemand()
+	s.NotNil(demand11)
+	s.Equal(float64(0), demand11.CPU)
+	s.Equal(float64(0), demand11.MEMORY)
+	s.Equal(float64(0), demand11.DISK)
+	s.Equal(float64(0), demand11.GPU)
+
+	demandRoot = resPoolroot.GetDemand()
+	s.NotNil(demandRoot)
+	s.Equal(float64(200), demandRoot.CPU)
+	s.Equal(float64(200), demandRoot.MEMORY)
+	s.Equal(float64(2000), demandRoot.DISK)
+	s.Equal(float64(2), demandRoot.GPU)
+
+	demand1 = resPoolNode1.GetDemand()
+	s.NotNil(demand1)
+	s.Equal(float64(100), demand1.CPU)
+	s.Equal(float64(100), demand1.MEMORY)
+	s.Equal(float64(1000), demand1.DISK)
+	s.Equal(float64(1), demand1.GPU)
+
+	demand2 = resPoolNode2.GetDemand()
+	s.NotNil(demand2)
+	s.Equal(float64(100), demand2.CPU)
+	s.Equal(float64(100), demand2.MEMORY)
+	s.Equal(float64(1000), demand2.DISK)
+	s.Equal(float64(1), demand2.GPU)
+}
+
+func (s *ResPoolSuite) getDemand() *scalar.Resources {
 	return &scalar.Resources{
 		CPU:    float64(100),
 		GPU:    float64(1),

@@ -207,6 +207,7 @@ func main() {
 	entitlement.InitCalculator(
 		dispatcher,
 		cfg.ResManager.EntitlementCaculationPeriod,
+		rootScope,
 	)
 
 	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker())

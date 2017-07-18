@@ -16,6 +16,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -209,17 +210,103 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 					},
 				},
 			}, nil).
-			Times(1),
+			Times(3),
 	)
-	suite.calculator.calculateEntitlement(context.Background())
-
 	ResPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool11"})
 	suite.NoError(err)
+	demand := &scalar.Resources{
+		CPU:    20,
+		MEMORY: 200,
+		DISK:   2000,
+		GPU:    0,
+	}
+	ResPool.AddToDemand(demand)
+	suite.calculator.calculateEntitlement(context.Background())
+
 	res := ResPool.GetEntitlement()
-	suite.Equal(res.CPU, float64(24))
-	suite.Equal(res.GPU, float64(1))
-	suite.Equal(res.MEMORY, float64(240))
-	suite.Equal(res.DISK, float64(1600))
+	suite.Equal(res.CPU, float64(100))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(1000))
+	suite.Equal(res.DISK, float64(6000))
+
+	ResPool21, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool21"})
+	suite.NoError(err)
+	ResPool21.AddToDemand(demand)
+
+	suite.calculator.calculateEntitlement(context.Background())
+
+	res = ResPool.GetEntitlement()
+	suite.Equal(res.CPU, float64(50))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(500))
+	suite.Equal(res.DISK, float64(3000))
+
+	res = ResPool21.GetEntitlement()
+	suite.Equal(res.CPU, float64(50))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(500))
+	suite.Equal(res.DISK, float64(3000))
+
+	ResPool22, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool22"})
+	suite.NoError(err)
+	ResPool22.AddToDemand(demand)
+
+	suite.calculator.calculateEntitlement(context.Background())
+
+	res = ResPool.GetEntitlement()
+	suite.Equal(res.CPU, float64(50))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(500))
+	suite.Equal(res.DISK, float64(3000))
+
+	res = ResPool21.GetEntitlement()
+	suite.Equal(res.CPU, float64(25))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(250))
+	suite.Equal(res.DISK, float64(1500))
+
+	res = ResPool22.GetEntitlement()
+	suite.Equal(res.CPU, float64(25))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(250))
+	suite.Equal(res.DISK, float64(1500))
+
+	ResPool2, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool2"})
+	suite.NoError(err)
+
+	res = ResPool2.GetEntitlement()
+	suite.Equal(res.CPU, float64(50))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(500))
+	suite.Equal(res.DISK, float64(3000))
+
+	ResPool3, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool3"})
+	suite.NoError(err)
+
+	res = ResPool3.GetEntitlement()
+	suite.Equal(res.CPU, float64(0))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(0))
+	suite.Equal(res.DISK, float64(0))
+
+	ResPool1, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool1"})
+	suite.NoError(err)
+
+	res = ResPool1.GetEntitlement()
+	suite.Equal(res.CPU, float64(50))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(500))
+	suite.Equal(res.DISK, float64(3000))
+
+	ResPoolRoot, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "root"})
+	suite.NoError(err)
+
+	res = ResPoolRoot.GetEntitlement()
+	suite.Equal(res.CPU, float64(100))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(1000))
+	suite.Equal(res.DISK, float64(6000))
+
 }
 
 func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {

@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
+	"code.uber.internal/infra/peloton/common"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -106,4 +109,38 @@ func TestConvertToResmgrResource(t *testing.T) {
 	assert.EqualValues(t, 5.0, res.DISK)
 	assert.EqualValues(t, 1.0, res.GPU)
 	assert.EqualValues(t, 10.0, res.MEMORY)
+}
+
+func TestGet(t *testing.T) {
+	r1 := Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	assert.EqualValues(t, float64(1.0), r1.Get(common.CPU))
+	assert.EqualValues(t, float64(4.0), r1.Get(common.GPU))
+	assert.EqualValues(t, float64(2.0), r1.Get(common.MEMORY))
+	assert.EqualValues(t, float64(3.0), r1.Get(common.DISK))
+}
+
+func TestSet(t *testing.T) {
+	r1 := Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	assert.EqualValues(t, float64(1.0), r1.Get(common.CPU))
+	assert.EqualValues(t, float64(4.0), r1.Get(common.GPU))
+	assert.EqualValues(t, float64(2.0), r1.Get(common.MEMORY))
+	assert.EqualValues(t, float64(3.0), r1.Get(common.DISK))
+	r1.Set(common.CPU, float64(2.0))
+	r1.Set(common.MEMORY, float64(3.0))
+	r1.Set(common.DISK, float64(4.0))
+	r1.Set(common.GPU, float64(5.0))
+	assert.EqualValues(t, float64(2.0), r1.Get(common.CPU))
+	assert.EqualValues(t, float64(5.0), r1.Get(common.GPU))
+	assert.EqualValues(t, float64(3.0), r1.Get(common.MEMORY))
+	assert.EqualValues(t, float64(4.0), r1.Get(common.DISK))
 }

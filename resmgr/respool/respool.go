@@ -55,6 +55,9 @@ type ResPool interface {
 	// SetEntitlement sets the entitlement for the resource pool
 	// input is map[ResourceKind]->EntitledCapacity
 	SetEntitlement(map[string]float64)
+	// SetEntitlementResources sets the entitlement for
+	// the resource pool based on the resources
+	SetEntitlementResources(res *scalar.Resources)
 	// SetEntitlementByKind sets the entitlement of the respool
 	// by kind
 	SetEntitlementByKind(kind string, entitlement float64)
@@ -67,8 +70,8 @@ type ResPool interface {
 	GetAllocation() *scalar.Resources
 	// SetAllocation sets the resource allocation for the resource pool
 	SetAllocation(res *scalar.Resources)
-	// MarkItDone recaptures the resources from task
-	MarkItDone(res *scalar.Resources) error
+	// SubtractFromAllocation recaptures the resources from task
+	SubtractFromAllocation(res *scalar.Resources) error
 	// GetPath returns the resource pool path
 	GetPath() string
 	// IsRoot returns true if the node is the root of the resource tree
@@ -76,6 +79,20 @@ type ResPool interface {
 	// AddToAllocation adds resources to current allocation
 	// for the resource pool
 	AddToAllocation(res *scalar.Resources) error
+	// AddToDemand adds resources to current demand
+	// for the resource pool
+	AddToDemand(res *scalar.Resources) error
+	// SubtractFromDemand subtracts resources from current demand
+	// for the resource pool
+	SubtractFromDemand(res *scalar.Resources) error
+	// GetDemand returns the resource demand for the resource pool
+	GetDemand() *scalar.Resources
+	// CalculateAndSetDemand calculates and sets the resource demand
+	// for the resource pool recursively for the subtree
+	CalculateDemand() *scalar.Resources
+	// CalculateAllocation calculates the allocation recursively for
+	// all the children.
+	CalculateAllocation() *scalar.Resources
 }
 
 // resPool implements ResPool interface
@@ -91,6 +108,7 @@ type resPool struct {
 	pendingQueue    queue.Queue
 	entitlement     *scalar.Resources
 	allocation      *scalar.Resources
+	demand          *scalar.Resources
 	metrics         *Metrics
 }
 
@@ -124,6 +142,7 @@ func NewRespool(
 		pendingQueue:    q,
 		entitlement:     &scalar.Resources{},
 		allocation:      &scalar.Resources{},
+		demand:          &scalar.Resources{},
 	}
 
 	// Initialize metrics
@@ -147,8 +166,6 @@ func (n *resPool) ID() string {
 
 // Name returns the resource pool name
 func (n *resPool) Name() string {
-	n.RLock()
-	defer n.RUnlock()
 	return n.poolConfig.Name
 }
 
@@ -378,14 +395,13 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 		Parent:   parentResPoolID,
 		Config:   n.poolConfig,
 		Children: childrenResourcePoolIDs,
-		Usage:    n.createRespoolUsage(n.calculateAllocation()),
+		Usage:    n.createRespoolUsage(n.CalculateAllocation()),
 	}
 }
 
 // calculateAllocation calculates the allocation recursively for
 // all the children.
-// TODO: we need to do entitlement calc from leaf to root
-func (n *resPool) calculateAllocation() *scalar.Resources {
+func (n *resPool) CalculateAllocation() *scalar.Resources {
 	if n.IsLeaf() {
 		return n.allocation
 	}
@@ -393,10 +409,28 @@ func (n *resPool) calculateAllocation() *scalar.Resources {
 	for child := n.children.Front(); child != nil; child = child.Next() {
 		if childResPool, ok := child.Value.(*resPool); ok {
 			allocation = allocation.Add(
-				childResPool.calculateAllocation())
+				childResPool.CalculateAllocation())
 		}
 	}
+	n.allocation = allocation
 	return allocation
+}
+
+// CalculateAndSetDemand calculates and sets the resource demand
+// for the resource pool recursively for the subtree
+func (n *resPool) CalculateDemand() *scalar.Resources {
+	if n.IsLeaf() {
+		return n.demand
+	}
+	demand := &scalar.Resources{}
+	for child := n.children.Front(); child != nil; child = child.Next() {
+		if childResPool, ok := child.Value.(*resPool); ok {
+			demand = demand.Add(
+				childResPool.CalculateDemand())
+		}
+	}
+	n.demand = demand
+	return demand
 }
 
 func (n *resPool) createRespoolUsage(allocation *scalar.Resources) []*respool.ResourceUsage {
@@ -478,14 +512,14 @@ func (n *resPool) SetEntitlement(entitlement map[string]float64) {
 		case common.MEMORY:
 			n.entitlement.MEMORY = capacity
 		}
-		log.WithFields(log.Fields{
-			"ID":     n.ID(),
-			"CPU":    n.entitlement.CPU,
-			"DISK":   n.entitlement.DISK,
-			"MEMORY": n.entitlement.MEMORY,
-			"GPU":    n.entitlement.GPU,
-		}).Debug("Setting Entitlement for Respool")
 	}
+	log.WithFields(log.Fields{
+		"ID":     n.ID(),
+		"CPU":    n.entitlement.CPU,
+		"DISK":   n.entitlement.DISK,
+		"MEMORY": n.entitlement.MEMORY,
+		"GPU":    n.entitlement.GPU,
+	}).Debug("Setting Entitlement for Respool")
 	n.updateDynamicResourceMetrics()
 }
 
@@ -507,6 +541,17 @@ func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
 		"ID":       n.ID(),
 		"Kind":     kind,
 		"Capacity": entitlement,
+	}).Debug("Setting Entitlement")
+	n.updateDynamicResourceMetrics()
+}
+
+func (n *resPool) SetEntitlementResources(res *scalar.Resources) {
+	n.Lock()
+	defer n.Unlock()
+	n.entitlement = res
+	log.WithFields(log.Fields{
+		"Name":     n.Name(),
+		"Capacity": res,
 	}).Debug("Setting Entitlement")
 	n.updateDynamicResourceMetrics()
 }
@@ -543,7 +588,7 @@ func (n *resPool) GetChildReservation() (map[string]float64, error) {
 func (n *resPool) GetAllocation() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
-	return n.calculateAllocation()
+	return n.allocation
 }
 
 // SetAllocation sets the resource allocation for the pool
@@ -553,8 +598,15 @@ func (n *resPool) SetAllocation(res *scalar.Resources) {
 	n.allocation = res
 }
 
-// MarkItDone updates the allocation for the resource pool
-func (n *resPool) MarkItDone(res *scalar.Resources) error {
+// GetDemand gets the resource allocation for the pool
+func (n *resPool) GetDemand() *scalar.Resources {
+	n.RLock()
+	defer n.RUnlock()
+	return n.demand
+}
+
+// SubtractFromAllocation updates the allocation for the resource pool
+func (n *resPool) SubtractFromAllocation(res *scalar.Resources) error {
 	n.Lock()
 	defer n.Unlock()
 
@@ -608,17 +660,47 @@ func (n *resPool) AddToAllocation(res *scalar.Resources) error {
 	n.Lock()
 	defer n.Unlock()
 
-	newAllocation := n.allocation.Add(res)
+	n.allocation = n.allocation.Add(res)
 
-	if newAllocation == nil {
-		return errors.Errorf("Couldn't update the resources")
-	}
-	n.allocation = newAllocation
-
-	log.WithField("allocation", n.allocation).Debug("Current Allocation " +
-		"after Adding resources")
+	log.WithFields(log.Fields{
+		"respool":    n.Name(),
+		"allocation": n.allocation,
+	}).Debug("Current Allocation after Adding resources")
 	return nil
 
+}
+
+// AddToDemand adds resources to the demand
+// for the resource pool
+func (n *resPool) AddToDemand(res *scalar.Resources) error {
+	n.Lock()
+	defer n.Unlock()
+
+	n.demand = n.demand.Add(res)
+
+	log.WithFields(log.Fields{
+		"respool": n.Name(),
+		"demand":  n.demand,
+	}).Debug("Current Demand after Adding resources")
+
+	return nil
+}
+
+// SubtractFromDemand subtracts resources from demand
+// for the resource pool
+func (n *resPool) SubtractFromDemand(res *scalar.Resources) error {
+	n.Lock()
+	defer n.Unlock()
+
+	newDemand := n.demand.Subtract(res)
+	if newDemand == nil {
+		return errors.Errorf("Couldn't update the resources")
+	}
+	n.demand = newDemand
+
+	log.WithField("demand", n.demand).Debug("Current Demand " +
+		"after removing resources")
+	return nil
 }
 
 // updates static metrics(Share, Limit and Reservation) which depend on the config

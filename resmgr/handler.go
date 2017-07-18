@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/util"
 
@@ -119,6 +120,8 @@ func (h *ServiceHandler) EnqueueGangs(
 	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	for _, gang := range req.GetGangs() {
 		gangTasks := new(list.List)
+		totalGangResources := &scalar.Resources{}
+
 		for _, task := range gang.GetTasks() {
 			// Adding task to state machine
 			err := h.rmTracker.AddTask(
@@ -137,6 +140,10 @@ func (h *ServiceHandler) EnqueueGangs(
 				h.metrics.EnqueueGangFail.Inc(1)
 				continue
 			}
+			totalGangResources = totalGangResources.Add(
+				scalar.ConvertToResmgrResource(
+					task.GetResource()))
+
 			if h.rmTracker.GetTask(task.Id) != nil {
 				err = h.rmTracker.GetTask(task.Id).TransitTo(
 					t.TaskState_PENDING.String())
@@ -149,6 +156,16 @@ func (h *ServiceHandler) EnqueueGangs(
 		}
 		if len(failed) == 0 {
 			err = respool.EnqueueGang(gang)
+			if err == nil {
+				err = respool.AddToDemand(totalGangResources)
+				log.WithFields(log.Fields{
+					"TotalResourcesAdded": totalGangResources,
+					"Respool":             respool.Name(),
+				}).Debug("Resources added for Gang")
+				if err != nil {
+					log.Error(err)
+				}
+			}
 		} else {
 			err = errFailingGangMemberTask
 		}

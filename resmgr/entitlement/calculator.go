@@ -1,8 +1,8 @@
 package entitlement
 
 import (
-	"container/list"
 	"context"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	uat "github.com/uber-go/atomic"
+	"github.com/uber-go/tally"
 
 	"go.uber.org/yarpc"
 
@@ -18,6 +19,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 )
 
 // Calculator defines the interface of Entitlement calculator
@@ -40,6 +42,7 @@ type calculator struct {
 	// This atomic boolean helps to identify if previous run is
 	// complete or still not done
 	isRunning uat.Bool
+	metrics   *Metrics
 }
 
 // Singleton object for calculator
@@ -48,7 +51,8 @@ var calc *calculator
 // InitCalculator initializes the entitlement calculator
 func InitCalculator(
 	d *yarpc.Dispatcher,
-	calculationPeriod time.Duration) {
+	calculationPeriod time.Duration,
+	parent tally.Scope) {
 
 	if calc != nil {
 		log.Warning("entitlement calculator has already " +
@@ -65,7 +69,9 @@ func InitCalculator(
 			d.ClientConfig(
 				common.PelotonHostManager)),
 		clusterCapacity: make(map[string]float64),
+		metrics:         NewMetrics(parent.SubScope("calculator")),
 	}
+	log.Info("entitlement calculator is initialized")
 }
 
 // GetCalculator returns the Calculator instance
@@ -84,6 +90,7 @@ func (c *calculator) Start() error {
 	if c.runningState == runningStateRunning {
 		log.Warn("Entitlement calculator is already running, " +
 			"no action will be performed")
+		c.metrics.EntitlementCalculationMissed.Inc(1)
 		return nil
 	}
 
@@ -119,8 +126,8 @@ func (c *calculator) Start() error {
 // calculateEntitlement calculates the entitlement
 func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	// Checking is previous transitions are complete
-	inRunning := c.isRunning.Load()
-	if inRunning {
+	isRunning := c.isRunning.Load()
+	if isRunning {
 		log.Debug("previous instance of entitlement " +
 			"calculator is running, skipping this run")
 		return errors.New("previous instance of entitlement " +
@@ -147,99 +154,91 @@ func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	// We need to find out the reservation for the children for root
-	// That will be equal to cluster's reservation in total
-	totalReservation, err := rootResPool.GetChildReservation()
-	if err != nil {
-		log.Errorf("GetChildReservation failed err: %v", err)
-		return err
-	}
-
-	log.WithField("total_reservation", totalReservation).Debug("Total reservation")
-
-	totalFreeResources := c.getTotalFreeResources(totalReservation)
-
-	log.WithField("free_resources", totalFreeResources).Debug("Free Resources")
-
-	//TODO: getting only child nodes , need to travel to hierarichy
-	childNodes := c.resPoolTree.GetAllNodes(true)
-	// Calculating the entitlement and setting to each resource pool
-	err = c.setEntitlementforNodes(childNodes, totalFreeResources)
-	if err != nil {
-		return err
-	}
+	// Invoking the demand calculation
+	rootResPool.CalculateDemand()
+	// Invoking the Allocation calculation
+	rootResPool.CalculateAllocation()
+	// Setting Entitlement for root respool's children
+	c.setEntitlementForChildren(rootResPool)
 
 	return nil
 }
 
-// setEntitlementforNodes calculates and set the entitlement for nodes
-func (c *calculator) setEntitlementforNodes(
-	nodes *list.List,
-	freeResources map[string]float64) error {
-	if nodes == nil {
-		return errors.New("nodes list is nil, nothing to set")
+func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
+	if resp == nil {
+		return
 	}
 
-	// Traversing for getting the total share for each resource type
-	for _, kind := range []string{common.CPU, common.GPU,
-		common.MEMORY, common.DISK} {
-		c.setEntitlementforType(nodes, freeResources[kind], kind)
-	}
-	return nil
-}
+	childs := resp.Children()
 
-func (c *calculator) setEntitlementforType(
-	nodes *list.List,
-	freeResources float64,
-	resourceKind string) error {
-	var totalShare float64
-	for e := nodes.Front(); e != nil; e = e.Next() {
+	entitlement := resp.GetEntitlement()
+	assignments := make(map[string]*scalar.Resources)
+	totalShare := make(map[string]float64)
+	demands := make(map[string]*scalar.Resources)
+
+	// In the first pass of children we get the demand recursively
+	// calculated And then compare with respool reservation and
+	// choose the min of these two
+	// assignment := min(demand,reservation)
+	// We also measure the free entitlement by that we can distribute
+	// it with fair share. We also need to keep track of the total share
+	// of the kind of resources which demand is more then the resrevation
+	// As we can ignore the other whose demands are reached as they dont
+	// need to get the fare share
+	for e := childs.Front(); e != nil; e = e.Next() {
+		assignment := new(scalar.Resources)
 		n := e.Value.(respool.ResPool)
-		for kind, res := range n.Resources() {
-			if kind == resourceKind {
-				totalShare += res.Share
+
+		// Demand is pending tasks + already allocated
+		demand := n.GetDemand()
+		allocation := n.GetAllocation()
+		demand = demand.Add(allocation)
+		demands[n.ID()] = demand
+
+		resConfig := n.Resources()
+		for kind, res := range resConfig {
+			assignment.Set(kind, math.Min(demand.Get(kind), res.Reservation))
+			if demand.Get(kind) > res.Reservation {
+				totalShare[kind] += res.Share
+			}
+		}
+
+		entitlement = entitlement.Subtract(assignment)
+		assignments[n.ID()] = assignment
+		log.WithFields(log.Fields{
+			"Respool":     n.Name(),
+			"Assignement": assignment,
+			"Entitlement": entitlement,
+		}).Debug("Assignment and Entitlement before fare share")
+	}
+
+	// In this pass we will distribute the rest of the resources to
+	// the resource pools which have high demand then reservation
+	for e := childs.Front(); e != nil; e = e.Next() {
+		n := e.Value.(respool.ResPool)
+
+		for _, kind := range []string{common.CPU, common.GPU,
+			common.MEMORY, common.DISK} {
+			// TODO: we need to fix caping entitlement to demand
+			if assignments[n.ID()].Get(kind) < demands[n.ID()].Get(kind) {
+				value := n.Resources()[kind].Share * entitlement.Get(kind)
+				value = value / totalShare[kind]
+				value += assignments[n.ID()].Get(kind)
+				assignments[n.ID()].Set(kind, value)
 			}
 		}
 	}
-
-	// calculating pernode entitlement and setting it
-	for e := nodes.Front(); e != nil; e = e.Next() {
+	// Now setting entitlement for all the children and call
+	// for their children recursively
+	for e := childs.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		var entitlement float64
-		for kind, res := range n.Resources() {
-			if kind != resourceKind {
-				continue
-			}
-			fareShare := freeResources * res.Share
-			fareShare = fareShare / totalShare
-			entitlement = res.Reservation + fareShare
-			log.WithFields(log.Fields{
-				"Node":        n.ID(),
-				"reservation": res.Reservation,
-				"fareshare":   fareShare,
-				"Entitlement": entitlement,
-				"Kind":        resourceKind,
-			}).Debug("Reservation and fare share for node")
-			n.SetEntitlementByKind(resourceKind, entitlement)
-		}
+		n.SetEntitlementResources(assignments[n.ID()])
+		log.WithFields(log.Fields{
+			"Respool":     n.Name(),
+			"Entitlement": assignments[n.ID()],
+		}).Debug("Setting the entitlement")
+		c.setEntitlementForChildren(n)
 	}
-	return nil
-}
-
-// getTotalFreeResources gets the free resources in cluster
-func (c *calculator) getTotalFreeResources(
-	reservation map[string]float64,
-) map[string]float64 {
-	freeResources := make(map[string]float64)
-	for kind, val := range reservation {
-		free := c.clusterCapacity[kind] - val
-		if free < 0 {
-			free = 0
-		}
-		freeResources[kind] = free
-	}
-	return freeResources
 }
 
 func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool respool.ResPool) error {
@@ -290,6 +289,7 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 		}
 	}
 	rootResPool.SetResourcePoolConfig(rootResourcePoolConfig)
+	rootResPool.SetEntitlement(c.clusterCapacity)
 	log.WithField(" root resource ", rootres).Info("Updating root resources")
 	return nil
 }

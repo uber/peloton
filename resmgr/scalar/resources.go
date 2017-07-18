@@ -4,6 +4,8 @@ import (
 	"math"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
@@ -35,6 +37,35 @@ func (r *Resources) GetMem() float64 {
 // GetGPU returns the GPU resource
 func (r *Resources) GetGPU() float64 {
 	return r.GPU
+}
+
+// Get returns the kind of resource
+func (r *Resources) Get(kind string) float64 {
+	switch kind {
+	case common.CPU:
+		return r.GetCPU()
+	case common.GPU:
+		return r.GetGPU()
+	case common.MEMORY:
+		return r.GetMem()
+	case common.DISK:
+		return r.GetDisk()
+	}
+	return float64(0)
+}
+
+// Set sets the kind of resource with the value
+func (r *Resources) Set(kind string, value float64) {
+	switch kind {
+	case common.CPU:
+		r.CPU = value
+	case common.GPU:
+		r.GPU = value
+	case common.MEMORY:
+		r.MEMORY = value
+	case common.DISK:
+		r.DISK = value
+	}
 }
 
 // Add atomically add another scalar resources onto current one.
