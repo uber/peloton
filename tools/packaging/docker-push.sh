@@ -18,7 +18,7 @@ fi
 for dc in $DC ; do
   for image in "${@}" ; do
     echo "Pushing $image to $dc..."
-    new_image="uber-usi/infra/peloton"
+    new_image="uber-usi/peloton"
     if [[ $dc == atg ]] ; then
       registry="docker.int.uberatc.com"
       #TODO this is interactive; use login flags to automate?
