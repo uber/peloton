@@ -13,4 +13,3 @@
 #
 
 from .schema_base import *  # noqa
-from .schema_helpers import *  # noqa

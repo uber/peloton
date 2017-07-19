@@ -1,0 +1,33 @@
+name: peloton_devel01
+
+version: 0.2.3-54-g9ba8b0d
+
+mesos_zk_path: mesos/peloton_devel01
+
+docker_registry: docker.int.uberatc.com
+
+zookeeper: zookeeper-peloton-devel01.pit-irn-1.uberatc.net:2181
+
+cassandra:
+  - ms-7ab279a1.pit-irn-1.uberatc.net
+  - ms-3162c292.pit-irn-1.uberatc.net
+  - ms-82ef95a4.pit-irn-1.uberatc.net
+  - ms-46d5ed57.pit-irn-1.uberatc.net
+  - ms-a8975ddc.pit-irn-1.uberatc.net
+
+jobmgr:
+  num_instances: 3
+  enable_debug_logging: false
+
+resmgr:
+  num_instances: 3
+  enable_debug_logging: false
+
+placement:
+  num_instances: 3
+  enable_debug_logging: false
+
+hostmgr:
+  num_instances: 3
+  enable_debug_logging: false
+  

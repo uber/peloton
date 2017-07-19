@@ -17,7 +17,8 @@
 
 from pystachio import Choice
 
-from apache.thermos.config.schema import *
+from aurora.schema.thermos.schema import *
+
 
 
 # TODO(wickman) Bind {{mesos.instance}} to %shard_id%
