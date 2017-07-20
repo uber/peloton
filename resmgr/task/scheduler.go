@@ -164,8 +164,10 @@ func (s *scheduler) scheduleTasks() {
 					err = n.SubtractFromDemand(
 						scalar.ConvertToResmgrResource(
 							task.GetResource()))
-					log.WithError(err).Errorf("Error while "+
-						"subtracting demand for task %s ", task.Id.Value)
+					if err != nil {
+						log.WithError(err).Errorf("Error while "+
+							"subtracting demand for task %s ", task.Id.Value)
+					}
 				} else {
 					err := errReadyQueueTaskMissing
 					log.WithError(err).Error("Error while " +
