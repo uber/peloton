@@ -230,3 +230,8 @@ func (rmTask *RMTask) GetCurrentState() task.TaskState {
 		task.TaskState_value[string(
 			rmTask.stateMachine.GetCurrentState())])
 }
+
+// Respool returns the respool of the RMTask.
+func (rmTask *RMTask) Respool() respool.ResPool {
+	return rmTask.respool
+}

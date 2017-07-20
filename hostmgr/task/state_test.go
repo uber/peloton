@@ -58,6 +58,10 @@ func (c *MockClient) NotifyTaskUpdates(ctx context.Context, request *resmgrsvc.N
 	return response, nil
 }
 
+func (c *MockClient) GetActiveTasks(context.Context, *resmgrsvc.GetActiveTasksRequest, ...yarpc.CallOption) (*resmgrsvc.GetActiveTasksResponse, error) {
+	return nil, nil
+}
+
 func (c *MockClient) setError(errorFlag bool) {
 	c.Lock()
 	defer c.Unlock()

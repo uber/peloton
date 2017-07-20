@@ -513,3 +513,26 @@ func (suite *HandlerTestSuite) getEntitlement() map[string]float64 {
 	mapEntitlement[common.GPU] = float64(2)
 	return mapEntitlement
 }
+
+func (suite *HandlerTestSuite) TestGetActiveTasks() {
+	setReq := &resmgrsvc.SetPlacementsRequest{
+		Placements: suite.getPlacements(),
+	}
+	for _, placement := range setReq.Placements {
+		for _, taskID := range placement.Tasks {
+			rmTask := suite.handler.rmTracker.GetTask(taskID)
+			rmTask.TransitTo(task.TaskState_PENDING.String())
+			rmTask.TransitTo(task.TaskState_READY.String())
+			rmTask.TransitTo(task.TaskState_PLACING.String())
+		}
+	}
+	setResp, err := suite.handler.SetPlacements(suite.context, setReq)
+	suite.NoError(err)
+	suite.Nil(setResp.GetError())
+
+	req := &resmgrsvc.GetActiveTasksRequest{}
+	res, err := suite.handler.GetActiveTasks(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(res)
+	suite.Equal(54, len(res.TaskStatesMap))
+}

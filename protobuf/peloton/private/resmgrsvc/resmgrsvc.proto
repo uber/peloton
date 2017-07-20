@@ -74,6 +74,11 @@ service ResourceManagerService {
    * this information into account.
    */
   rpc GetTasksByHosts(GetTasksByHostsRequest) returns (GetTasksByHostsResponse);
+
+  /**
+   * Get task to state map. This information is helpful for debug purpose.
+   */
+  rpc GetActiveTasks(GetActiveTasksRequest) returns (GetActiveTasksResponse);
 }
 
 message ResourcePoolNotFound {
@@ -225,4 +230,21 @@ message GetTasksByHostsResponse {
   Error error = 1;
   // This will return a map from hostname to a list of tasks running on the host.
   map <string,TaskList> hostTasksMap = 2;
+}
+
+message GetActiveTasksRequest {
+  // optional jobID to filter out tasks
+  string jobID = 1;
+
+  // optional respoolID to filter out tasks
+  string respoolID = 2;
+}
+
+message GetActiveTasksResponse {
+  message Error {
+    string message = 1;
+  }
+  Error error = 1;
+  // This will return a map from task id to state.
+  map <string,string> taskStatesMap = 2;
 }

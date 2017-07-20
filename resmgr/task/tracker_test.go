@@ -158,3 +158,11 @@ func (suite *StateMachineTestSuite) TestAddResources() {
 	res = suite.respool.GetAllocation()
 	suite.Equal(res.GetCPU(), float64(1))
 }
+
+func (suite *StateMachineTestSuite) TestGetTaskStates() {
+	result := suite.tracker.GetActiveTasks("", "")
+	suite.Equal(1, len(result))
+
+	result = suite.tracker.GetActiveTasks("foo", "")
+	suite.Equal(0, len(result))
+}

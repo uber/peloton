@@ -446,3 +446,12 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 	}
 	return &response, nil
 }
+
+// GetActiveTasks returns task to state map
+func (h *ServiceHandler) GetActiveTasks(
+	ctx context.Context,
+	req *resmgrsvc.GetActiveTasksRequest,
+) (*resmgrsvc.GetActiveTasksResponse, error) {
+	taskStates := h.rmTracker.GetActiveTasks(req.GetJobID(), req.GetRespoolID())
+	return &resmgrsvc.GetActiveTasksResponse{TaskStatesMap: taskStates}, nil
+}

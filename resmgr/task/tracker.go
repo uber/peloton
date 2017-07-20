@@ -49,6 +49,9 @@ type Tracker interface {
 
 	// Clear cleans the tracker with all the tasks
 	Clear()
+
+	// GetActiveTasks returns task states map
+	GetActiveTasks(jobID string, respoolID string) map[string]string
 }
 
 // tracker is the rmtask tracker
@@ -240,4 +243,25 @@ func (tr *tracker) Clear() {
 	for k := range tr.tasks {
 		delete(tr.tasks, k)
 	}
+}
+
+// GetActiveTasks returns task to states map, if jobID or respoolID is provided,
+// only tasks for that job or respool will be returned
+func (tr *tracker) GetActiveTasks(jobID string, respoolID string) map[string]string {
+	var taskStates = map[string]string{}
+	for id, task := range tr.tasks {
+		if jobID == "" && respoolID == "" {
+			taskStates[id] = task.GetCurrentState().String()
+		} else {
+			// TODO: make it handle jobID 'AND' respoolID if there is a usecase
+			if task.Task().GetJobId().GetValue() == jobID {
+				taskStates[id] = task.GetCurrentState().String()
+			}
+
+			if task.Respool().ID() == respoolID {
+				taskStates[id] = task.GetCurrentState().String()
+			}
+		}
+	}
+	return taskStates
 }
