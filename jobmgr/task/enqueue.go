@@ -15,7 +15,7 @@ import (
 )
 
 // EnqueueGangs enqueues all tasks organized in gangs to respool in resmgr.
-func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobConfig, client resmgrsvc.ResourceManagerServiceYarpcClient) error {
+func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobConfig, client resmgrsvc.ResourceManagerServiceYARPCClient) error {
 	ctxWithTimeout, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelFunc()
 

@@ -183,7 +183,7 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 
 	for _, tt := range tests {
 
-		// Check Yarpc call is needed
+		// Check YARPC call is needed
 		if tt.call {
 			mockUnaryOutbound := transport_mocks.NewMockUnaryOutbound(suite.ctrl)
 			// Set expectations

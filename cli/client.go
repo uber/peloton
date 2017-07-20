@@ -18,9 +18,9 @@ import (
 
 // Client is a JSON Client with associated dispatcher and context
 type Client struct {
-	jobClient  job.JobManagerYarpcClient
-	taskClient task.TaskManagerYarpcClient
-	resClient  respool.ResourceManagerYarpcClient
+	jobClient  job.JobManagerYARPCClient
+	taskClient task.TaskManagerYARPCClient
+	resClient  respool.ResourceManagerYARPCClient
 	dispatcher *yarpc.Dispatcher
 	ctx        context.Context
 	cancelFunc context.CancelFunc
@@ -65,9 +65,9 @@ func New(
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	client := Client{
 		Debug:      debug,
-		jobClient:  job.NewJobManagerYarpcClient(dispatcher.ClientConfig(common.PelotonJobManager)),
-		taskClient: task.NewTaskManagerYarpcClient(dispatcher.ClientConfig(common.PelotonJobManager)),
-		resClient:  respool.NewResourceManagerYarpcClient(dispatcher.ClientConfig(common.PelotonResourceManager)),
+		jobClient:  job.NewJobManagerYARPCClient(dispatcher.ClientConfig(common.PelotonJobManager)),
+		taskClient: task.NewTaskManagerYARPCClient(dispatcher.ClientConfig(common.PelotonJobManager)),
+		resClient:  respool.NewResourceManagerYARPCClient(dispatcher.ClientConfig(common.PelotonResourceManager)),
 		dispatcher: dispatcher,
 		ctx:        ctx,
 		cancelFunc: cancelFunc,

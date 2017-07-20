@@ -39,7 +39,7 @@ type statusUpdateRM struct {
 	applier           *asyncEventProcessor
 	jobRuntimeUpdater StatusUpdateListenerRM
 	rootCtx           context.Context
-	resmgrClient      resmgrsvc.ResourceManagerServiceYarpcClient
+	resmgrClient      resmgrsvc.ResourceManagerServiceYARPCClient
 	metrics           *Metrics
 }
 
@@ -65,7 +65,7 @@ func InitTaskStatusUpdateRM(
 			jobStore:     jobStore,
 			taskStore:    taskStore,
 			rootCtx:      context.Background(),
-			resmgrClient: resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resmgrClientName)),
+			resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resmgrClientName)),
 			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
 			eventClients: make(map[string]*eventstream.Client),
 		}

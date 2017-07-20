@@ -146,8 +146,8 @@ func TestEmptyTaskToPlace(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -184,8 +184,8 @@ func TestNoHostOfferReturned(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -260,8 +260,8 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -386,8 +386,8 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 

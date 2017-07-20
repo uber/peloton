@@ -79,7 +79,7 @@ func InitTaskStateManager(
 // forwards the events to remote in the OnEvents function.
 type eventForwarder struct {
 	// client to send NotifyTaskUpdatesRequest
-	client resmgrsvc.ResourceManagerServiceYarpcClient
+	client resmgrsvc.ResourceManagerServiceYARPCClient
 	// Tracking the progress returned from remote side
 	progress *uint64
 }
@@ -87,7 +87,7 @@ type eventForwarder struct {
 func newEventForwarder(d *yarpc.Dispatcher, eventDestinationRole string) eventstream.EventHandler {
 	var progress uint64
 	return &eventForwarder{
-		client:   resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(eventDestinationRole)),
+		client:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(eventDestinationRole)),
 		progress: &progress,
 	}
 }
@@ -154,7 +154,7 @@ func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, scope tally.Sco
 		scope,
 	)
 
-	d.Register(pb_eventstream.BuildEventStreamServiceYarpcProcedures(eventStreamHandler))
+	d.Register(pb_eventstream.BuildEventStreamServiceYARPCProcedures(eventStreamHandler))
 
 	return eventStreamHandler
 }

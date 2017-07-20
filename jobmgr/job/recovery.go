@@ -32,7 +32,7 @@ const (
 type Recovery struct {
 	jobStore         storage.JobStore
 	taskStore        storage.TaskStore
-	resmgrClient     resmgrsvc.ResourceManagerServiceYarpcClient
+	resmgrClient     resmgrsvc.ResourceManagerServiceYARPCClient
 	lastRecoveryTime time.Time
 	metrics          *RecoveryMetrics
 }
@@ -41,7 +41,7 @@ type Recovery struct {
 func NewJobRecovery(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	resmgrClient resmgrsvc.ResourceManagerServiceYarpcClient,
+	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient,
 	parentScope tally.Scope) *Recovery {
 
 	return &Recovery{

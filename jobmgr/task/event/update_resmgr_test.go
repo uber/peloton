@@ -26,7 +26,7 @@ type TaskUpdaterRMTestSuite struct {
 	updater          *statusUpdateRM
 	ctrl             *gomock.Controller
 	testScope        tally.TestScope
-	mockResmgrClient *res_mocks.MockResourceManagerServiceYarpcClient
+	mockResmgrClient *res_mocks.MockResourceManagerServiceYARPCClient
 	mockJobStore     *store_mocks.MockJobStore
 	mockTaskStore    *store_mocks.MockTaskStore
 }
@@ -34,7 +34,7 @@ type TaskUpdaterRMTestSuite struct {
 func (suite *TaskUpdaterRMTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
-	suite.mockResmgrClient = res_mocks.NewMockResourceManagerServiceYarpcClient(suite.ctrl)
+	suite.mockResmgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
 	suite.testScope = tally.NewTestScope("", map[string]string{})

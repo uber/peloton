@@ -48,8 +48,8 @@ type Launcher interface {
 type launcher struct {
 	sync.Mutex
 
-	resMgrClient  resmgrsvc.ResourceManagerServiceYarpcClient
-	hostMgrClient hostsvc.InternalHostServiceYarpcClient
+	resMgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient
 	rootCtx       context.Context
 	started       int32
 	shutdown      int32
@@ -85,8 +85,8 @@ func InitTaskLauncher(
 		}
 
 		taskLauncher = &launcher{
-			resMgrClient:  resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resMgrClientName)),
-			hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostMgrClientName)),
+			resMgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
+			hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
 			rootCtx:       context.Background(),
 			taskStore:     taskStore,
 			volumeStore:   volumeStore,

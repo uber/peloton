@@ -95,8 +95,8 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
@@ -207,8 +207,8 @@ func TestLaunchStatefulTask(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
 
@@ -321,8 +321,8 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
 

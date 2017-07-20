@@ -28,12 +28,12 @@ type EntitlementCalculatorTestSuite struct {
 	resTree     respool.Tree
 	calculator  *calculator
 	mockCtrl    *gomock.Controller
-	mockHostMgr *host_mocks.MockInternalHostServiceYarpcClient
+	mockHostMgr *host_mocks.MockInternalHostServiceYARPCClient
 }
 
 func (suite *EntitlementCalculatorTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostMgr = host_mocks.NewMockInternalHostServiceYarpcClient(suite.mockCtrl)
+	suite.mockHostMgr = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	gomock.InOrder(
 		mockResPoolStore.EXPECT().

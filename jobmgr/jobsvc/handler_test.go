@@ -108,7 +108,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	var tasksInfo []*task.TaskInfo
 	for _, v := range suite.taskInfos {
@@ -140,7 +140,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	var tasksInfo []*task.TaskInfo
 	for _, v := range suite.taskInfos {
@@ -171,7 +171,7 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockRespoolClient := respool_mocks.NewMockResourceManagerYarpcClient(ctrl)
+	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
 	suite.handler.respoolClient = mockRespoolClient
 	respoolID := &respool.ResourcePoolID{
 		Value: "respool11",
@@ -216,7 +216,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore

@@ -95,7 +95,7 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangs() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	var tasksInfo []*task.TaskInfo
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
@@ -125,7 +125,7 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangsFailure() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	var tasksInfo []*task.TaskInfo
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)

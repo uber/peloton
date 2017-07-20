@@ -40,7 +40,7 @@ func init() {
 func TestValidatorWithStore(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 
 	var sentTasks = make(map[int]bool)
 	mockClient.EXPECT().EnqueueGangs(
@@ -149,7 +149,7 @@ func TestValidator(t *testing.T) {
 	var sentTasks = make(map[int]bool)
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
-	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 
 	mockJobStore.EXPECT().
 		GetJobsByStates(context.Background(), []job.JobState{job.JobState_INITIALIZED}).
@@ -247,7 +247,7 @@ func TestValidatorFailures(t *testing.T) {
 	var sentTasks = make(map[int]bool)
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
-	mockClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 
 	mockJobStore.EXPECT().
 		GetJobsByStates(context.Background(), []job.JobState{job.JobState_INITIALIZED}).

@@ -40,22 +40,22 @@ func InitServiceHandler(
 	handler := &serviceHandler{
 		jobStore:       jobStore,
 		taskStore:      taskStore,
-		respoolClient:  respool.NewResourceManagerYarpcClient(d.ClientConfig(clientName)),
-		resmgrClient:   resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(clientName)),
+		respoolClient:  respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
+		resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
 		rootCtx:        context.Background(),
 		runtimeUpdater: runtimeUpdater,
 		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
 	}
 
-	d.Register(job.BuildJobManagerYarpcProcedures(handler))
+	d.Register(job.BuildJobManagerYARPCProcedures(handler))
 }
 
 // serviceHandler implements peloton.api.job.JobManager
 type serviceHandler struct {
 	jobStore       storage.JobStore
 	taskStore      storage.TaskStore
-	respoolClient  respool.ResourceManagerYarpcClient
-	resmgrClient   resmgrsvc.ResourceManagerServiceYarpcClient
+	respoolClient  respool.ResourceManagerYARPCClient
+	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
 	runtimeUpdater *jobmgr_job.RuntimeUpdater
 	rootCtx        context.Context
 	metrics        *Metrics

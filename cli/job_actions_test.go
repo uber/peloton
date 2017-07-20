@@ -27,15 +27,15 @@ const (
 type jobActionsTestSuite struct {
 	suite.Suite
 	mockCtrl    *gomock.Controller
-	mockJob     *job_mocks.MockJobManagerYarpcClient
-	mockRespool *respool_mocks.MockResourceManagerYarpcClient
+	mockJob     *job_mocks.MockJobManagerYARPCClient
+	mockRespool *respool_mocks.MockResourceManagerYARPCClient
 	ctx         context.Context
 }
 
 func (suite *jobActionsTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockJob = job_mocks.NewMockJobManagerYarpcClient(suite.mockCtrl)
-	suite.mockRespool = respool_mocks.NewMockResourceManagerYarpcClient(suite.mockCtrl)
+	suite.mockJob = job_mocks.NewMockJobManagerYARPCClient(suite.mockCtrl)
+	suite.mockRespool = respool_mocks.NewMockResourceManagerYARPCClient(suite.mockCtrl)
 	suite.ctx = context.Background()
 }
 

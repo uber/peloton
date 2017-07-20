@@ -52,7 +52,7 @@ var NonTerminatedStates = map[job.JobState]bool{
 func NewJobRuntimeUpdater(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	resmgrClient resmgrsvc.ResourceManagerServiceYarpcClient,
+	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient,
 	parentScope tally.Scope) *RuntimeUpdater {
 	// TODO: load firstTaskUpdateTime from DB after restart
 	updater := RuntimeUpdater{

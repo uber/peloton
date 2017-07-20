@@ -23,7 +23,7 @@ const (
 type taskActionsTestSuite struct {
 	suite.Suite
 	mockCtrl *gomock.Controller
-	mockTask *task_mocks.MockTaskManagerYarpcClient
+	mockTask *task_mocks.MockTaskManagerYARPCClient
 	ctx      context.Context
 }
 
@@ -33,7 +33,7 @@ func TestTaskActions(t *testing.T) {
 
 func (suite *taskActionsTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockTask = task_mocks.NewMockTaskManagerYarpcClient(suite.mockCtrl)
+	suite.mockTask = task_mocks.NewMockTaskManagerYARPCClient(suite.mockCtrl)
 	suite.ctx = context.Background()
 }
 

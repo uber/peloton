@@ -23,7 +23,7 @@ func InitServiceHandler(
 		upgradeStore: upgradeStore,
 	}
 
-	d.Register(upgrade.BuildUpgradeManagerYarpcProcedures(handler))
+	d.Register(upgrade.BuildUpgradeManagerYARPCProcedures(handler))
 }
 
 // serviceHandler implements peloton.api.upgrade.UpgradeManager

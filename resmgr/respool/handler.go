@@ -493,7 +493,7 @@ func (h *serviceHandler) Query(
 
 // registerProcs will register all API's for end points
 func (h *serviceHandler) registerProcs(d *yarpc.Dispatcher) {
-	d.Register(respool.BuildResourceManagerYarpcProcedures(h))
+	d.Register(respool.BuildResourceManagerYARPCProcedures(h))
 }
 
 // Start will start resource manager

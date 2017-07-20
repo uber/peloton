@@ -37,7 +37,7 @@ type calculator struct {
 	resPoolTree       respool.Tree
 	calculationPeriod time.Duration
 	stopChan          chan struct{}
-	hostMgrClient     hostsvc.InternalHostServiceYarpcClient
+	hostMgrClient     hostsvc.InternalHostServiceYARPCClient
 	clusterCapacity   map[string]float64
 	// This atomic boolean helps to identify if previous run is
 	// complete or still not done
@@ -65,7 +65,7 @@ func InitCalculator(
 		runningState:      runningStateNotStarted,
 		calculationPeriod: calculationPeriod,
 		stopChan:          make(chan struct{}, 1),
-		hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(
+		hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(
 			d.ClientConfig(
 				common.PelotonHostManager)),
 		clusterCapacity: make(map[string]float64),

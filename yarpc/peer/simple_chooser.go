@@ -62,7 +62,15 @@ func (c *simpleChooser) UpdatePeer(urlString string) error {
 		log.Errorf("Failed to parse url %v, err = %v", urlString, err)
 		return err
 	}
-	c.p = hostport.NewPeer(hostport.PeerIdentifier(url.Host), c.transport)
+	if c.p != nil {
+		c.transport.ReleasePeer(hostport.PeerIdentifier(c.p.Identifier()), c)
+	}
+
+	if c.p, err = c.transport.RetainPeer(hostport.PeerIdentifier(url.Host), c); err != nil {
+		return err
+	}
 	log.Infof("New %v peer is %v", c.role, c.p)
 	return nil
 }
+
+func (c *simpleChooser) NotifyStatusChanged(id peer.Identifier) {}

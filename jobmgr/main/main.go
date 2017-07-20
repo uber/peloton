@@ -244,7 +244,7 @@ func main() {
 	runtimeUpdater := job.NewJobRuntimeUpdater(
 		jobStore,
 		taskStore,
-		resmgrsvc.NewResourceManagerServiceYarpcClient(
+		resmgrsvc.NewResourceManagerServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonResourceManager)),
 		rootScope)
 	jobsvc.InitServiceHandler(

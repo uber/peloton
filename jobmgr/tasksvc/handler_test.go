@@ -86,7 +86,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -135,7 +135,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -188,7 +188,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -242,7 +242,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -298,7 +298,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidJobID() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -329,7 +329,7 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithTaskUpdateFailure() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYarpcClient(ctrl)
+	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -362,7 +362,7 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -432,7 +432,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -508,7 +508,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
@@ -564,7 +564,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchingTask() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYarpcClient(ctrl)
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore

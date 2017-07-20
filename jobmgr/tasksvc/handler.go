@@ -45,11 +45,11 @@ func InitServiceHandler(
 		jobStore:       jobStore,
 		runtimeUpdater: runtimeUpdater,
 		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
-		hostmgrClient:  hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(common.PelotonHostManager)),
-		resmgrClient:   resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(common.PelotonResourceManager)),
+		hostmgrClient:  hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
+		resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		httpClient:     &http.Client{Timeout: _httpClientTimeout},
 	}
-	d.Register(task.BuildTaskManagerYarpcProcedures(handler))
+	d.Register(task.BuildTaskManagerYARPCProcedures(handler))
 }
 
 // serviceHandler implements peloton.api.task.TaskManager
@@ -58,8 +58,8 @@ type serviceHandler struct {
 	jobStore       storage.JobStore
 	runtimeUpdater *job.RuntimeUpdater
 	metrics        *Metrics
-	hostmgrClient  hostsvc.InternalHostServiceYarpcClient
-	resmgrClient   resmgrsvc.ResourceManagerServiceYarpcClient
+	hostmgrClient  hostsvc.InternalHostServiceYARPCClient
+	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
 	httpClient     *http.Client
 }
 

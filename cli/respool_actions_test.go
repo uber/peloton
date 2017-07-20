@@ -21,13 +21,13 @@ const _defaultResPoolConfig = "../example/default_respool.yaml"
 type resPoolActions struct {
 	suite.Suite
 	mockCtrl    *gomock.Controller
-	mockRespool *respool_mocks.MockResourceManagerYarpcClient
+	mockRespool *respool_mocks.MockResourceManagerYARPCClient
 	ctx         context.Context
 }
 
 func (suite *resPoolActions) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockRespool = respool_mocks.NewMockResourceManagerYarpcClient(suite.mockCtrl)
+	suite.mockRespool = respool_mocks.NewMockResourceManagerYARPCClient(suite.mockCtrl)
 	suite.ctx = context.Background()
 }
 

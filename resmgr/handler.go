@@ -64,7 +64,7 @@ func InitServiceHandler(
 	// TODO: move eventStreamHandler buffer size into config
 	handler.eventStreamHandler = initEventStreamHandler(d, 1000, parent.SubScope("resmgr"))
 
-	d.Register(resmgrsvc.BuildResourceManagerServiceYarpcProcedures(handler))
+	d.Register(resmgrsvc.BuildResourceManagerServiceYARPCProcedures(handler))
 	return handler
 }
 
@@ -78,7 +78,7 @@ func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, parentScope tal
 		nil,
 		parentScope)
 
-	d.Register(pb_eventstream.BuildEventStreamServiceYarpcProcedures(eventStreamHandler))
+	d.Register(pb_eventstream.BuildEventStreamServiceYARPCProcedures(eventStreamHandler))
 
 	return eventStreamHandler
 }

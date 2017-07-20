@@ -39,7 +39,7 @@ type EventHandler interface {
 type Client struct {
 	sync.RWMutex
 	// The rpc client to pull events from event stream handler
-	rpcClient pb_eventstream.EventStreamServiceYarpcClient
+	rpcClient pb_eventstream.EventStreamServiceYARPCClient
 	// the client name
 	clientName string
 	// the stream id of the event stream
@@ -71,7 +71,7 @@ func NewEventStreamClient(
 	var runningState int32
 	client := &Client{
 		clientName:   clientName,
-		rpcClient:    pb_eventstream.NewEventStreamServiceYarpcClient(d.ClientConfig(server)),
+		rpcClient:    pb_eventstream.NewEventStreamServiceYARPCClient(d.ClientConfig(server)),
 		shutdownFlag: &flag,
 		runningState: &runningState,
 		eventHandler: taskUpdateHandler,
@@ -103,7 +103,7 @@ func NewLocalEventStreamClient(
 	return client
 }
 
-func newLocalClient(h *Handler) pb_eventstream.EventStreamServiceYarpcClient {
+func newLocalClient(h *Handler) pb_eventstream.EventStreamServiceYARPCClient {
 	return &localClient{
 		handler: h,
 	}

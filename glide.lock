@@ -1,5 +1,5 @@
-hash: 1612ebded719050e80668e1a6d45afdaa1fea19594797a91571600bb02ba839b
-updated: 2017-07-10T22:25:46.641754921-07:00
+hash: 22bc73d05a66fd6b61a3059a1aaa40c48365d96a42876b19a96d2b0e23351eeb
+updated: 2017-07-19T19:21:55.711809804-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -67,7 +67,7 @@ imports:
   - sortkeys
   - types
 - name: github.com/golang/mock
-  version: 93f6609a15b7de76bd49259f1f9a6b58df358936
+  version: dbe9dea30dbc5b4b6d54c9ecf9a3b8f9b8e6556c
   subpackages:
   - gomock
 - name: github.com/golang/protobuf
@@ -180,16 +180,20 @@ imports:
   - internal/semver
   - version
 - name: go.uber.org/yarpc
-  version: 25be6398200bcad9f7194ae09ba79d9f20289412
+  version: 062152f3a77d322b48fae157d18015ecf53e1535
   subpackages:
+  - api/backoff
   - api/encoding
   - api/middleware
   - api/peer
   - api/transport
   - api/transport/transporttest
   - internal
+  - internal/backoff
+  - internal/bufferpool
   - internal/clientconfig
-  - internal/errors
+  - internal/config
+  - internal/errorsync
   - internal/humanize
   - internal/inboundmiddleware
   - internal/interpolate
@@ -201,11 +205,13 @@ imports:
   - internal/pally
   - internal/protoplugin
   - internal/request
-  - internal/sync
   - peer
   - peer/hostport
+  - pkg/errors
+  - pkg/lifecycle
   - transport/http
   - x/config
+  - yarpcerrors
 - name: go.uber.org/zap
   version: 9cabc84638b70e564c3dab2766efcb1ded2aac9f
   subpackages:
@@ -216,7 +222,7 @@ imports:
   - internal/multierror
   - zapcore
 - name: golang.org/x/net
-  version: 054b33e6527139ad5b1ec2f6232c3b175bd9a30c
+  version: 02ac38e2528ff4adea90f184d71a3faa04b4b1b0
   repo: https://github.com/golang/net
   subpackages:
   - bpf

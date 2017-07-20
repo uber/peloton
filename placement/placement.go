@@ -47,8 +47,8 @@ func New(
 	taskStore storage.TaskStore) Engine {
 	s := placementEngine{
 		cfg:           cfg,
-		resMgrClient:  resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resMgrClientName)),
-		hostMgrClient: hostsvc.NewInternalHostServiceYarpcClient(d.ClientConfig(hostMgrClientName)),
+		resMgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
+		hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
 		taskStore:     taskStore,
 		rootCtx:       context.Background(),
 		metrics:       NewMetrics(parent.SubScope("placement")),
@@ -59,8 +59,8 @@ func New(
 
 type placementEngine struct {
 	cfg           *Config
-	resMgrClient  resmgrsvc.ResourceManagerServiceYarpcClient
-	hostMgrClient hostsvc.InternalHostServiceYarpcClient
+	resMgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient
 	taskStore     storage.TaskStore
 	rootCtx       context.Context
 	started       int32

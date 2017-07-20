@@ -57,7 +57,7 @@ func InitServiceHandler(
 		volumeStore:           volumeStore,
 	}
 
-	d.Register(hostsvc.BuildInternalHostServiceYarpcProcedures(handler))
+	d.Register(hostsvc.BuildInternalHostServiceYARPCProcedures(handler))
 }
 
 func validateHostFilter(
