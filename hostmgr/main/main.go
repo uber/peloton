@@ -302,7 +302,7 @@ func main() {
 		Scope:          rootScope.SubScope("hostmap"),
 	}
 
-	backgroundManager, err := background.New(
+	backgroundManager, err := background.NewManager(
 		background.Work{
 			Name:   "hostmap",
 			Func:   loader.Load,

@@ -37,8 +37,13 @@ type Manager interface {
 	Stop()
 }
 
-// New creates a new instance of Manager after register background works.
-func New(works ...Work) (Manager, error) {
+// manager implements Manager interface.
+type manager struct {
+	runners map[string]*runner
+}
+
+// NewManager creates a new instance of Manager with registered background works.
+func NewManager(works ...Work) (Manager, error) {
 	r := &manager{
 		runners: make(map[string]*runner),
 	}
@@ -58,6 +63,20 @@ func New(works ...Work) (Manager, error) {
 		}
 	}
 	return r, nil
+}
+
+// Start all registered works.
+func (r *manager) Start() {
+	for _, runner := range r.runners {
+		runner.start()
+	}
+}
+
+// Stop all registered runners.
+func (r *manager) Stop() {
+	for _, runner := range r.runners {
+		runner.stop()
+	}
 }
 
 type runner struct {
@@ -138,23 +157,4 @@ func (r *runner) stop() {
 		time.Sleep(_stopRetryInterval)
 	}
 	log.WithField("name", r.work.Name).Info("Background work stop confirmed.")
-}
-
-// manager implements Manager.
-type manager struct {
-	runners map[string]*runner
-}
-
-// Start all registered works.
-func (r *manager) Start() {
-	for _, runner := range r.runners {
-		runner.start()
-	}
-}
-
-// Stop all registered runners.
-func (r *manager) Stop() {
-	for _, runner := range r.runners {
-		runner.stop()
-	}
 }

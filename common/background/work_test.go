@@ -21,7 +21,7 @@ func (suite *WorkManagerTestSuite) TestMultipleWorksStartStop() {
 	v1 := atomic.Int64{}
 	v2 := atomic.Int64{}
 
-	manager, err := New(
+	manager, err := NewManager(
 		Work{
 			Name:   "update_v1",
 			Period: time.Millisecond,
