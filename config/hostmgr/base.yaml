@@ -22,8 +22,8 @@ storage:
       timeout: 10s
     store_name: peloton_test
     migrations: storage/cassandra/migrations/
-  use_cassandra: false
-  db_write_concurrency: 40
+  use_cassandra: true
+  auto_migrate: true
 
 host_manager:
   port: 5291

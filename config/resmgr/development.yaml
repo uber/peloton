@@ -3,7 +3,6 @@ logging:
 
 storage:
   db_write_concurrency: 40
-  use_cassandra: true
 
 election:
   zk_servers: ["localhost:8192"]

@@ -10,10 +10,10 @@ from thrift.protocol.TJSONProtocol import TSimpleJSONProtocolFactory
 from aurora.client import AuroraClientZK
 from app import App
 
-# Currently DB schema migration is executed only in resmgr so we have
-# to update resmgr first.
+# Currently DB schema migration is executed only in hostmgr so we have
+# to update hostmgr first.
 # TODO: use a separate binary for DB migration
-PELOTON_APPS = ['resmgr', 'hostmgr', 'placement', 'jobmgr']
+PELOTON_APPS = ['hostmgr', 'resmgr', 'placement', 'jobmgr']
 
 
 def update_callback(app):

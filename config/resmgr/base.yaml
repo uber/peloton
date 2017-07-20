@@ -23,7 +23,6 @@ storage:
     store_name: peloton_test
     migrations: storage/cassandra/migrations/
   use_cassandra: true
-  auto_migrate: true
 
 resmgr:
   port: 5290

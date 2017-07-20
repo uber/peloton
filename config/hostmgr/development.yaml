@@ -19,4 +19,4 @@ metrics:
   #  endpoint: localhost:1234
 
 storage:
-  use_cassandra: true
+  db_write_concurrency: 40

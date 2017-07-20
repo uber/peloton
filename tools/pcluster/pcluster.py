@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-'''
+"""
  -- Locally run and manage a personal cluster in containers.
 
 This script can be used to manage (setup, teardown) a personal
@@ -11,7 +11,7 @@ master or apps can be specified to run in containers as well.
 @license:    license
 
 @contact:    peloton-dev@uber.com
-'''
+"""
 
 import os
 import requests
@@ -20,16 +20,40 @@ import time
 import yaml
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
+from collections import OrderedDict
 from docker import Client
 
 __date__ = '2016-12-08'
 __author__ = 'wu'
 
-
 max_retry_attempts = 20
 sleep_time_secs = 5
 healthcheck_path = '/health'
 default_host = '127.0.0.1'
+
+
+class bcolors:
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    FAIL = '\033[91m'
+    WARNING = '\033[93m'
+    ENDC = '\033[0m'
+
+
+def print_okblue(message):
+    print bcolors.OKBLUE + message + bcolors.ENDC
+
+
+def print_okgreen(message):
+    print bcolors.OKGREEN + message + bcolors.ENDC
+
+
+def print_fail(message):
+    print bcolors.FAIL + message + bcolors.ENDC
+
+
+def print_warn(message):
+    print bcolors.WARNING + message + bcolors.ENDC
 
 
 #
@@ -75,7 +99,7 @@ config = load_config()
 def remove_existing_container(name):
     try:
         cli.remove_container(name, force=True)
-        print 'removed container %s' % name
+        print_okblue('removed container %s' % name)
     except Exception, e:
         if 'No such container' in str(e):
             return
@@ -123,10 +147,10 @@ def run_mesos():
         detach=True
     )
     cli.start(container=container.get('Id'))
-    print 'started container %s' % config['zk_container']
+    print_okgreen('started container %s' % config['zk_container'])
 
     # TODO: add retry
-    print 'sleep 20 secs for zk to come up'
+    print_okblue('sleep 20 secs for zk to come up')
     time.sleep(20)
 
     # Run mesos master
@@ -162,7 +186,7 @@ def run_mesos():
         detach=True,
     )
     cli.start(container=container.get('Id'))
-    print 'started container %s' % config['mesos_master_container']
+    print_okgreen('started container %s' % config['mesos_master_container'])
 
     # Run mesos slaves
     cli.pull(config['mesos_slave_image'])
@@ -211,7 +235,7 @@ def run_mesos():
             detach=True,
         )
         cli.start(container=container.get('Id'))
-        print 'started container %s' % agent
+        print_okgreen('started container %s' % agent)
 
 
 #
@@ -239,9 +263,9 @@ def run_mysql():
         detach=True,
     )
     cli.start(container=container.get('Id'))
-    print 'started container %s' % config['mysql_container']
+    print_okgreen('started container %s' % config['mysql_container'])
 
-    print 'sleep 10 secs for mysql to come up'
+    print_okblue('sleep 10 secs for mysql to come up')
     time.sleep(10)
 
 
@@ -270,7 +294,7 @@ def run_cassandra():
         entrypoint='bash /files/run_cassandra_with_stratio_index.sh',
     )
     cli.start(container=container.get('Id'))
-    print 'started container %s' % config['cassandra_container']
+    print_okgreen('started container %s' % config['cassandra_container'])
 
     # Create cassandra store
     create_cassandra_store()
@@ -297,37 +321,72 @@ def create_cassandra_store():
         if resp is "":
             resp = cli.exec_start(exec_id=show_exe)
             if "CREATE KEYSPACE peloton_test WITH" in resp:
-                print 'cassandra store is created'
+                print_okgreen('cassandra store is created')
                 return
-        print 'failed to create cassandra store, retrying...'
+        print_warn('failed to create cassandra store, retrying...')
         retry_attempts += 1
 
-    print ('Failed to create cassandra store after %d attempts, aborting...'
-           % max_retry_attempts)
+    print_fail('Failed to create cassandra store after %d attempts, '
+               'aborting...'
+               % max_retry_attempts)
     sys.exit(1)
 
 
 #
 # Run peloton
 #
-def run_peloton(disable_peloton_resmgr=False,
-                disable_peloton_hostmgr=False,
-                disable_peloton_jobmgr=False,
-                disable_peloton_placement=False):
-    print 'docker image "uber/peloton" has to be built first locally by ' \
-          'running IMAGE=uber/peloton make docker'
+def run_peloton(applications):
+    print_okblue('docker image "uber/peloton" has to be built first '
+                 'locally by running IMAGE=uber/peloton make docker')
 
-    if not disable_peloton_resmgr:
-        run_peloton_resmgr()
+    for app, func in APP_START_ORDER.iteritems():
+        if app in applications:
+            should_disable = applications[app]
+            if should_disable:
+                continue
+        APP_START_ORDER[app]()
 
-    if not disable_peloton_hostmgr:
-        run_peloton_hostmgr()
 
-    if not disable_peloton_placement:
-        run_peloton_placement()
-
-    if not disable_peloton_jobmgr:
-        run_peloton_jobmgr()
+#
+# Starts a container and waits for it to come up
+#
+def start_and_wait(application_name, container_name, port):
+    container = cli.create_container(
+        name=container_name,
+        hostname=container_name,
+        ports=[repr(port)],
+        environment=[
+            'CONFIG_DIR=config',
+            'APP=%s' % application_name,
+            'PORT=' + repr(port),
+            'DB_HOST=' + host_ip,
+            'ELECTION_ZK_SERVERS={0}:{1}'.format(
+                host_ip,
+                config['local_zk_port']
+            ),
+            'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
+                host_ip,
+                config['local_zk_port']
+            ),
+            'CASSANDRA_HOSTS={0}'.format(
+                host_ip,
+            ),
+            'ENABLE_DEBUG_LOGGING=' + config['debug'],
+        ],
+        host_config=cli.create_host_config(
+            port_bindings={
+                port: port,
+            },
+        ),
+        # pull or build peloton image if not exists
+        image=config['peloton_image'],
+        detach=True,
+    )
+    cli.start(container=container.get('Id'))
+    wait_for_up(
+        container_name,
+        port,
+    )
 
 
 #
@@ -338,41 +397,10 @@ def run_peloton_resmgr():
     for i in range(0, config['peloton_resmgr_instance_count']):
         # to not cause port conflicts among apps, increase port by 10
         # for each instance
-        port = config['peloton_resmgr_port'] + i*10
+        port = config['peloton_resmgr_port'] + i * 10
         name = config['peloton_resmgr_container'] + repr(i)
         remove_existing_container(name)
-        container = cli.create_container(
-            name=name,
-            hostname=name,
-            ports=[repr(port)],
-            environment=[
-                'CONFIG_DIR=config',
-                'APP=resmgr',
-                'PORT=' + repr(port),
-                'DB_HOST=' + host_ip,
-                'ELECTION_ZK_SERVERS={0}:{1}'.format(
-                    host_ip,
-                    config['local_zk_port']
-                ),
-                'CASSANDRA_HOSTS={0}'.format(
-                    host_ip,
-                ),
-                'ENABLE_DEBUG_LOGGING=' + config['debug'],
-            ],
-            host_config=cli.create_host_config(
-                port_bindings={
-                    port: port,
-                },
-            ),
-            # pull or build peloton image if not exists
-            image=config['peloton_image'],
-            detach=True,
-        )
-        cli.start(container=container.get('Id'))
-        wait_for_up(
-            name,
-            port,
-        )
+        start_and_wait('resmgr', name, port)
 
 
 #
@@ -382,45 +410,10 @@ def run_peloton_hostmgr():
     for i in range(0, config['peloton_hostmgr_instance_count']):
         # to not cause port conflicts among apps, increase port
         # by 10 for each instance
-        port = config['peloton_hostmgr_port'] + i*10
+        port = config['peloton_hostmgr_port'] + i * 10
         name = config['peloton_hostmgr_container'] + repr(i)
         remove_existing_container(name)
-        container = cli.create_container(
-            name=name,
-            hostname=name,
-            ports=[repr(port)],
-            environment=[
-                'CONFIG_DIR=config',
-                'APP=hostmgr',
-                'PORT=' + repr(port),
-                'DB_HOST=' + host_ip,
-                'ELECTION_ZK_SERVERS={0}:{1}'.format(
-                    host_ip,
-                    config['local_zk_port']
-                ),
-                'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
-                    host_ip,
-                    config['local_zk_port']
-                ),
-                'CASSANDRA_HOSTS={0}'.format(
-                    host_ip,
-                ),
-                'ENABLE_DEBUG_LOGGING=' + config['debug'],
-            ],
-            host_config=cli.create_host_config(
-                port_bindings={
-                    port: port,
-                },
-            ),
-            # pull or build peloton image if not exists
-            image=config['peloton_image'],
-            detach=True,
-        )
-        cli.start(container=container.get('Id'))
-        wait_for_up(
-            name,
-            port,
-        )
+        start_and_wait('hostmgr', name, port)
 
 
 #
@@ -430,41 +423,10 @@ def run_peloton_jobmgr():
     for i in range(0, config['peloton_jobmgr_instance_count']):
         # to not cause port conflicts among apps, increase port by 10
         #  for each instance
-        port = config['peloton_jobmgr_port'] + i*10
+        port = config['peloton_jobmgr_port'] + i * 10
         name = config['peloton_jobmgr_container'] + repr(i)
         remove_existing_container(name)
-        container = cli.create_container(
-            name=name,
-            hostname=name,
-            ports=[repr(port)],
-            environment=[
-                'CONFIG_DIR=config',
-                'APP=jobmgr',
-                'PORT=' + repr(port),
-                'DB_HOST=' + host_ip,
-                'ELECTION_ZK_SERVERS={0}:{1}'.format(
-                    host_ip,
-                    config['local_zk_port']
-                ),
-                'CASSANDRA_HOSTS={0}'.format(
-                    host_ip,
-                ),
-                'ENABLE_DEBUG_LOGGING=' + config['debug'],
-            ],
-            host_config=cli.create_host_config(
-                port_bindings={
-                    port: port,
-                },
-            ),
-            # pull or build peloton image if not exists
-            image=config['peloton_image'],
-            detach=True,
-        )
-        cli.start(container=container.get('Id'))
-        wait_for_up(
-            name,
-            port,
-        )
+        start_and_wait('jobmgr', name, port)
 
 
 #
@@ -474,45 +436,10 @@ def run_peloton_placement():
     for i in range(0, config['peloton_placement_instance_count']):
         # to not cause port conflicts among apps, increase port by 10
         # for each instance
-        port = config['peloton_placement_port'] + i*10
+        port = config['peloton_placement_port'] + i * 10
         name = config['peloton_placement_container'] + repr(i)
         remove_existing_container(name)
-        container = cli.create_container(
-            name=name,
-            hostname=name,
-            ports=[repr(port)],
-            environment=[
-                'CONFIG_DIR=config',
-                'APP=placement',
-                'PORT=' + repr(port),
-                'DB_HOST=' + host_ip,
-                'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
-                    host_ip,
-                    config['local_zk_port']
-                ),
-                'ELECTION_ZK_SERVERS={0}:{1}'.format(
-                    host_ip,
-                    config['local_zk_port']
-                ),
-                'CASSANDRA_HOSTS={0}'.format(
-                    host_ip,
-                ),
-                'ENABLE_DEBUG_LOGGING=' + config['debug'],
-            ],
-            host_config=cli.create_host_config(
-                port_bindings={
-                    port: port,
-                },
-            ),
-            # pull or build peloton image if not exists
-            image=config['peloton_image'],
-            detach=True,
-        )
-        cli.start(container=container.get('Id'))
-        wait_for_up(
-            name,
-            port,
-        )
+        start_and_wait('placement', name, port)
 
 
 #
@@ -522,18 +449,18 @@ def wait_for_up(app, port):
     count = 0
     error = ''
     url = 'http://%s:%s/%s' % (
-            default_host,
-            port,
-            healthcheck_path,
+        default_host,
+        port,
+        healthcheck_path,
     )
     while count < max_retry_attempts:
         try:
             r = requests.get(url)
             if r.status_code == 200:
-                print 'started %s' % app
+                print_okgreen('started %s' % app)
                 return
         except Exception, e:
-            print ('app %s is not up yet, retrying...' % app)
+            print_warn('app %s is not up yet, retrying...' % app)
             error = str(e)
             time.sleep(sleep_time_secs)
             count += 1
@@ -551,22 +478,14 @@ def wait_for_up(app, port):
 #
 # Set up a personal cluster
 #
-def setup(enable_peloton=False,
-          disable_peloton_resmgr=False,
-          disable_peloton_hostmgr=False,
-          disable_peloton_jobmgr=False,
-          disable_peloton_placement=False):
-
+def setup(applications={}, enable_peloton=False):
     run_cassandra()
     run_mysql()
     run_mesos()
 
     if enable_peloton:
         run_peloton(
-            disable_peloton_resmgr,
-            disable_peloton_hostmgr,
-            disable_peloton_jobmgr,
-            disable_peloton_placement
+            applications
         )
 
 
@@ -598,7 +517,7 @@ def teardown():
         remove_existing_container(name)
 
 
-def main(argv):
+def parse_arguments():
     program_shortdesc = __import__('__main__').__doc__.split("\n")[1]
     program_license = '''%s
 
@@ -607,14 +526,11 @@ def main(argv):
 
 USAGE
 ''' % (program_shortdesc, __author__, str(__date__))
-
     # Setup argument parser
     parser = ArgumentParser(
         description=program_license,
         formatter_class=RawDescriptionHelpFormatter)
-
     subparsers = parser.add_subparsers(help='command help', dest='command')
-
     # Subparser for the 'setup' command
     parser_setup = subparsers.add_parser(
         'setup',
@@ -655,30 +571,56 @@ USAGE
         default=False,
         help="disable peloton placement engine app"
     )
-
     # Subparser for the 'teardown' command
     subparsers.add_parser('teardown', help='tear down a personal cluster')
-
     # Process arguments
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+class App:
+    """
+    Represents the peloton apps
+    """
+    RESOURCE_MANAGER = 1
+    HOST_MANAGER = 2
+    PLACEMENT_ENGINE = 3
+    JOB_MANAGER = 4
+
+
+# Defines the order in which the apps are started
+# NB: HOST_MANAGER is tied to database migrations so should be started first
+APP_START_ORDER = OrderedDict([
+    (App.HOST_MANAGER, run_peloton_hostmgr),
+    (App.RESOURCE_MANAGER, run_peloton_resmgr),
+    (App.PLACEMENT_ENGINE, run_peloton_placement),
+    (App.JOB_MANAGER, run_peloton_jobmgr)]
+)
+
+
+def main():
+    args = parse_arguments()
 
     command = args.command
+
+    applications = {
+        App.HOST_MANAGER: args.disable_peloton_hostmgr,
+        App.RESOURCE_MANAGER: args.disable_peloton_resmgr,
+        App.PLACEMENT_ENGINE: args.disable_peloton_placement,
+        App.JOB_MANAGER: args.disable_peloton_jobmgr
+    }
 
     if command == 'setup':
         setup(
             enable_peloton=args.enable_peloton,
-            disable_peloton_hostmgr=args.disable_peloton_hostmgr,
-            disable_peloton_resmgr=args.disable_peloton_resmgr,
-            disable_peloton_jobmgr=args.disable_peloton_jobmgr,
-            disable_peloton_placement=args.disable_peloton_placement,
+            applications=applications
         )
     elif command == 'teardown':
         teardown()
     else:
         # Should never get here.  argparser should prevent it.
-        print 'Unknown command: %s' % command
+        print_fail('Unknown command: %s' % command)
         return 1
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()
