@@ -7,10 +7,12 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // NewKeeper creates a new TaskGoalstateKeeper.
@@ -19,10 +21,10 @@ func NewKeeper(
 	taskStore storage.TaskStore,
 	parentScope tally.Scope) *Keeper {
 	return &Keeper{
-		jobStore:    jobStore,
-		taskStore:   taskStore,
-		metrics:     NewMetrics(parentScope.SubScope("goalstate_keeper")),
-		taskTracker: NewTracker(),
+		jobStore:  jobStore,
+		taskStore: taskStore,
+		metrics:   NewMetrics(parentScope.SubScope("goalstate_keeper")),
+		tracker:   NewTracker(),
 	}
 }
 
@@ -35,7 +37,7 @@ type Keeper struct {
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
 
-	taskTracker Tracker
+	tracker Tracker
 
 	progress atomic.Uint64
 	started  atomic.Bool
@@ -55,7 +57,25 @@ func (k *Keeper) OnEvent(event *pb_eventstream.Event) {
 
 // OnEvents is the implementation of the event stream handler callback
 func (k *Keeper) OnEvents(events []*pb_eventstream.Event) {
-	log.Error("Not implemented")
+	for _, event := range events {
+		mesosTaskID := event.GetMesosTaskStatus().GetTaskId().GetValue()
+		taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+		if err != nil {
+			log.WithError(err).
+				WithField("mesos_task_id", mesosTaskID).
+				Error("Failed to ParseTaskIDFromMesosTaskID")
+			continue
+		}
+
+		trackerTask := k.tracker.GetTask(&peloton.TaskID{
+			Value: taskID,
+		})
+		if trackerTask != nil {
+			trackerTask.ProcessStatusUpdate(event.GetMesosTaskStatus())
+		}
+
+		k.progress.Store(event.Offset)
+	}
 }
 
 // GetEventProgress returns the progress
@@ -70,7 +90,6 @@ func (k *Keeper) Start() {
 
 	log.Info("TaskGoalstateKeeper started")
 	k.started.Store(true)
-	k.metrics.IsLeader.Update(1.0)
 }
 
 // Stop stops processing status update events
@@ -80,5 +99,4 @@ func (k *Keeper) Stop() {
 
 	log.Info("TaskGoalstateKeeper stopped")
 	k.started.Store(false)
-	k.metrics.IsLeader.Update(0.0)
 }

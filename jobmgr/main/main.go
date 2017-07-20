@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
+	"code.uber.internal/infra/peloton/jobmgr/task/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/tasksvc"
 	"code.uber.internal/infra/peloton/jobmgr/upgrade"
@@ -268,6 +269,8 @@ func main() {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
 
+	taskGoalStateKeeper := goalstate.NewKeeper(jobStore, taskStore, rootScope)
+
 	// Init the Task status update which pulls task update events
 	// from HM once started after gaining leadership
 	event.InitTaskStatusUpdate(
@@ -275,7 +278,7 @@ func main() {
 		common.PelotonHostManager,
 		jobStore,
 		taskStore,
-		runtimeUpdater,
+		[]event.Listener{runtimeUpdater, taskGoalStateKeeper},
 		common.PelotonResourceManager,
 		rootScope,
 	)

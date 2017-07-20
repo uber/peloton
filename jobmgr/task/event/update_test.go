@@ -20,8 +20,9 @@ import (
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+
+	event_mocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -66,6 +67,8 @@ type TaskUpdaterTestSuite struct {
 	mockResmgrClient *res_mocks.MockResourceManagerServiceYarpcClient
 	mockJobStore     *store_mocks.MockJobStore
 	mockTaskStore    *store_mocks.MockTaskStore
+	mockListener1    *event_mocks.MockListener
+	mockListener2    *event_mocks.MockListener
 }
 
 func (suite *TaskUpdaterTestSuite) SetupTest() {
@@ -75,10 +78,13 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
 	suite.testScope = tally.NewTestScope("", map[string]string{})
+	suite.mockListener1 = event_mocks.NewMockListener(suite.ctrl)
+	suite.mockListener2 = event_mocks.NewMockListener(suite.ctrl)
 
 	suite.updater = &statusUpdate{
 		jobStore:     suite.mockJobStore,
 		taskStore:    suite.mockTaskStore,
+		listeners:    []Listener{suite.mockListener1, suite.mockListener2},
 		rootCtx:      context.Background(),
 		resmgrClient: suite.mockResmgrClient,
 		metrics:      NewMetrics(suite.testScope),
@@ -328,6 +334,24 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+}
+
+func (suite *TaskUpdaterTestSuite) TestUpdaterOnEvents() {
+	defer suite.ctrl.Finish()
+
+	suite.mockListener1.EXPECT().OnEvents(nil)
+	suite.mockListener2.EXPECT().OnEvents(nil)
+
+	suite.updater.OnEvents(nil)
+}
+
+func (suite *TaskUpdaterTestSuite) TestUpdaterStart() {
+	defer suite.ctrl.Finish()
+
+	suite.mockListener1.EXPECT().Start()
+	suite.mockListener2.EXPECT().Start()
+
+	suite.updater.Start()
 }
 
 func (suite *TaskUpdaterTestSuite) TestIsErrorState() {

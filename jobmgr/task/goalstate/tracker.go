@@ -15,7 +15,7 @@ type Tracker interface {
 	AddTask(taskInfo *task.TaskInfo) error
 
 	// GetTask gets the JM task for taskID
-	GetTask(taskID *peloton.TaskID) *JMTask
+	GetTask(taskID *peloton.TaskID) JMTask
 
 	// DeleteTask removes the task from the map
 	DeleteTask(taskID *peloton.TaskID) error
@@ -27,7 +27,7 @@ type Tracker interface {
 // NewTracker returns a new task tracker.
 func NewTracker() Tracker {
 	return &tracker{
-		taskMap: make(map[string]*JMTask),
+		taskMap: make(map[string]JMTask),
 	}
 }
 
@@ -36,7 +36,7 @@ type tracker struct {
 	sync.Mutex
 
 	// taskMap is map from peloton task id -> jmtask.
-	taskMap map[string]*JMTask
+	taskMap map[string]JMTask
 }
 
 // AddTask adds task to task tracker
@@ -63,7 +63,7 @@ func (tr *tracker) AddTask(taskInfo *task.TaskInfo) error {
 }
 
 // GetTask gets the JM task for taskID
-func (tr *tracker) GetTask(t *peloton.TaskID) *JMTask {
+func (tr *tracker) GetTask(t *peloton.TaskID) JMTask {
 	tr.Lock()
 	defer tr.Unlock()
 	return tr.taskMap[t.Value]

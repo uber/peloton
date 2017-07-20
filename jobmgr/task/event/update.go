@@ -33,21 +33,22 @@ type StatusUpdate interface {
 
 // Listener is the interface for StatusUpdate listener
 type Listener interface {
+	eventstream.EventHandler
+
 	Start()
 	Stop()
-	eventstream.EventHandler
 }
 
 // StatusUpdate reads and processes the task state change events from HM
 type statusUpdate struct {
-	jobStore          storage.JobStore
-	taskStore         storage.TaskStore
-	eventClients      map[string]*eventstream.Client
-	applier           *asyncEventProcessor
-	jobRuntimeUpdater Listener
-	rootCtx           context.Context
-	resmgrClient      resmgrsvc.ResourceManagerServiceYarpcClient
-	metrics           *Metrics
+	jobStore     storage.JobStore
+	taskStore    storage.TaskStore
+	eventClients map[string]*eventstream.Client
+	applier      *asyncEventProcessor
+	listeners    []Listener
+	rootCtx      context.Context
+	resmgrClient resmgrsvc.ResourceManagerServiceYarpcClient
+	metrics      *Metrics
 }
 
 // Singleton task status updater
@@ -60,7 +61,7 @@ func InitTaskStatusUpdate(
 	server string,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	jobRuntimeUpdater Listener,
+	listeners []Listener,
 	resmgrClientName string,
 	parentScope tally.Scope) {
 	onceInitStatusUpdate.Do(func() {
@@ -75,6 +76,7 @@ func InitTaskStatusUpdate(
 			resmgrClient: resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resmgrClientName)),
 			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
 			eventClients: make(map[string]*eventstream.Client),
+			listeners:    listeners,
 		}
 		// TODO: add config for BucketEventProcessor
 		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
@@ -86,6 +88,7 @@ func InitTaskStatusUpdate(
 			resmgrClient: resmgrsvc.NewResourceManagerServiceYarpcClient(d.ClientConfig(resmgrClientName)),
 			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
 			eventClients: make(map[string]*eventstream.Client),
+			listeners:    listeners,
 		}
 		// TODO: add config for BucketEventProcessor
 		statusUpdaterRM.applier = newBucketEventProcessor(statusUpdaterRM, 100, 10000)
@@ -105,9 +108,6 @@ func InitTaskStatusUpdate(
 			statusUpdaterRM,
 			parentScope.SubScope("ResmgrEventStreamClient"))
 		statusUpdaterRM.eventClients[common.PelotonResourceManager] = eventClientRM
-
-		statusUpdater.jobRuntimeUpdater = jobRuntimeUpdater
-		statusUpdaterRM.jobRuntimeUpdater = jobRuntimeUpdater
 	})
 }
 
@@ -295,7 +295,9 @@ func isUnexpected(taskState pb_task.TaskState) bool {
 
 // OnEvents is the callback function notifying a batch of events
 func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {
-	p.jobRuntimeUpdater.OnEvents(events)
+	for _, listener := range p.listeners {
+		listener.OnEvents(events)
+	}
 }
 
 // Start starts processing status update events
@@ -304,8 +306,8 @@ func (p *statusUpdate) Start() {
 		client.Start()
 	}
 	log.Info("Task status updater started")
-	if p.jobRuntimeUpdater != nil {
-		p.jobRuntimeUpdater.Start()
+	for _, listener := range p.listeners {
+		listener.Start()
 	}
 }
 
@@ -315,8 +317,7 @@ func (p *statusUpdate) Stop() {
 		client.Stop()
 	}
 	log.Info("Task status updater stopped")
-	if p.jobRuntimeUpdater != nil {
-		p.jobRuntimeUpdater.Stop()
+	for _, listener := range p.listeners {
+		listener.Stop()
 	}
-
 }
