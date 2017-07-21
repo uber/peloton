@@ -247,6 +247,16 @@ func main() {
 		resmgrsvc.NewResourceManagerServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonResourceManager)),
 		rootScope)
+	// TODO: We need to cleanup the client names
+	launcher.InitTaskLauncher(
+		dispatcher,
+		common.PelotonResourceManager,
+		common.PelotonHostManager,
+		taskStore,
+		volumeStore,
+		&cfg.JobManager.TaskLauncher,
+		rootScope,
+	)
 	jobsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
@@ -260,6 +270,7 @@ func main() {
 		rootScope,
 		jobStore,
 		taskStore,
+		volumeStore,
 		runtimeUpdater,
 	)
 	upgrade.InitServiceHandler(dispatcher, jobStore, upgradeStore)
@@ -314,16 +325,6 @@ func main() {
 	}
 	defer candidate.Stop()
 
-	// TODO: We need to cleanup the client names
-	launcher.InitTaskLauncher(
-		dispatcher,
-		common.PelotonResourceManager,
-		common.PelotonHostManager,
-		taskStore,
-		volumeStore,
-		&cfg.JobManager.TaskLauncher,
-		rootScope,
-	)
 	launcher.GetLauncher().Start()
 	defer launcher.GetLauncher().Stop()
 

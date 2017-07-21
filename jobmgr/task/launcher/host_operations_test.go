@@ -52,7 +52,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperations() {
 		},
 	}
 	placement := createPlacements(testTask, hostOffer)
-	operationsFactory := NewHostOperationsFactory(launchableTasks, placement)
+	operationsFactory := NewHostOperationsFactory(launchableTasks, placement.GetHostname(), placement.GetPorts())
 
 	hostOperations, err := operationsFactory.GetHostOperations(operationTypes)
 
@@ -94,7 +94,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
 		},
 	}
 	placement := createPlacements(testTask, hostOffer)
-	operationsFactory := NewHostOperationsFactory(launchableTasks, placement)
+	operationsFactory := NewHostOperationsFactory(launchableTasks, placement.GetHostname(), placement.GetPorts())
 
 	hostOperations, err := operationsFactory.GetHostOperations(operationTypes)
 
@@ -129,7 +129,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
 	}
 	placement := createPlacements(testTask, hostOffer)
 	placement.Ports = []uint32{}
-	operationsFactory := NewHostOperationsFactory(launchableTasks, placement)
+	operationsFactory := NewHostOperationsFactory(launchableTasks, placement.GetHostname(), placement.GetPorts())
 
 	hostOperations, err := operationsFactory.GetHostOperations(operationTypes)
 
@@ -175,7 +175,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsIncorrectMesosTaskIDFo
 		},
 	}
 	placement := createPlacements(testTask, hostOffer)
-	operationsFactory := NewHostOperationsFactory(launchableTasks, placement)
+	operationsFactory := NewHostOperationsFactory(launchableTasks, placement.GetHostname(), placement.GetPorts())
 
 	hostOperations, err := operationsFactory.GetHostOperations(operationTypes)
 

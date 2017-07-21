@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -23,6 +24,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -38,16 +40,19 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	volumeStore storage.PersistentVolumeStore,
 	runtimeUpdater *job.RuntimeUpdater) {
 
 	handler := &serviceHandler{
 		taskStore:      taskStore,
 		jobStore:       jobStore,
+		volumeStore:    volumeStore,
 		runtimeUpdater: runtimeUpdater,
 		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		hostmgrClient:  hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		httpClient:     &http.Client{Timeout: _httpClientTimeout},
+		taskLauncher:   launcher.GetLauncher(),
 	}
 	d.Register(task.BuildTaskManagerYARPCProcedures(handler))
 }
@@ -56,11 +61,13 @@ func InitServiceHandler(
 type serviceHandler struct {
 	taskStore      storage.TaskStore
 	jobStore       storage.JobStore
+	volumeStore    storage.PersistentVolumeStore
 	runtimeUpdater *job.RuntimeUpdater
 	metrics        *Metrics
 	hostmgrClient  hostsvc.InternalHostServiceYARPCClient
 	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
 	httpClient     *http.Client
+	taskLauncher   launcher.Launcher
 }
 
 func (m *serviceHandler) Get(
@@ -222,6 +229,7 @@ func (m *serviceHandler) Start(
 
 	// tasksToStart includes tasks need to be enqueued to resmgr.
 	var tasksToStart []*task.TaskInfo
+	var statefulTasksToStart []*task.TaskInfo
 	var startedInstanceIds []uint32
 	for instID, taskInfo := range taskInfos {
 		taskRuntime := taskInfo.GetRuntime()
@@ -258,11 +266,32 @@ func (m *serviceHandler) Start(
 			break
 		}
 
-		tasksToStart = append(tasksToStart, taskInfo)
 		startedInstanceIds = append(startedInstanceIds, instID)
+		if taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) > 0 {
+			pv, err := m.volumeStore.GetPersistentVolume(
+				ctx, taskInfo.GetRuntime().GetVolumeID().GetValue())
+			if err != nil {
+				_, ok := err.(*storage.VolumeNotFoundError)
+				if !ok {
+					// volume store db read error.
+					log.WithError(err).
+						WithField("task", taskInfo).
+						Error("failed to read volume information from db")
+					break
+				}
+				// volume not exist so treat as normal task going through placement.
+			} else if pv.GetState() == volume.VolumeState_CREATED {
+				// volume is in CREATED state so that launch the task directly to hostmgr.
+				statefulTasksToStart = append(statefulTasksToStart, taskInfo)
+				continue
+			}
+		}
+		tasksToStart = append(tasksToStart, taskInfo)
 	}
 
 	if len(tasksToStart) > 0 {
+		// For batch/stateless tasks, enqueue them to resmgr to go through
+		// placement to get offers/host to launch.
 		err = jobmgr_task.EnqueueGangs(ctx, tasksToStart, jobConfig, m.resmgrClient)
 		if err == nil {
 			err = m.runtimeUpdater.UpdateJob(ctx, body.GetJobId())
@@ -280,6 +309,27 @@ func (m *serviceHandler) Start(
 				},
 				StartedInstanceIds: startedInstanceIds,
 			}, nil
+		}
+	}
+
+	if len(statefulTasksToStart) > 0 {
+		// for stateful task with volume created, we should launch task directly to hostmgr.
+		for _, taskInfo := range statefulTasksToStart {
+			err = m.taskLauncher.LaunchTaskWithReservedResource(ctx, taskInfo)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"task_info": taskInfo,
+				}).Error("Failed to launch stateful tasks")
+				m.metrics.TaskStartFail.Inc(1)
+				return &task.StartResponse{
+					Error: &task.StartResponse_Error{
+						Failure: &task.TaskStartFailure{
+							Message: fmt.Sprintf("stateful tasks start failed for %v", err),
+						},
+					},
+					StartedInstanceIds: startedInstanceIds,
+				}, nil
+			}
 		}
 	}
 

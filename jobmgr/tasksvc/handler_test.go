@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -16,17 +17,23 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
+	launcher_mocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
 const (
 	testInstanceCount = 4
+)
+
+var (
+	lock = sync.RWMutex{}
 )
 
 type TaskHandlerTestSuite struct {
@@ -76,7 +83,11 @@ func (suite *TaskHandlerTestSuite) createTestTaskInfo(
 			State:       state,
 			GoalState:   task.TaskState_SUCCEEDED,
 		},
-		Config:     suite.testJobConfig.GetDefaultConfig(),
+		Config: &task.TaskConfig{
+			RestartPolicy: &task.RestartPolicy{
+				MaxFailures: 3,
+			},
+		},
 		InstanceId: instanceID,
 		JobId:      suite.testJobID,
 	}
@@ -627,6 +638,171 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchingTask() {
 	)
 	suite.Len(expectedGangs, 1)
 	suite.Equal(
+		expectedGangs[0].GetTasks()[0].GetTaskId().GetValue(),
+		mesosTaskID)
+	suite.Equal(singleTaskInfo[1].GetRuntime().GetState(), task.TaskState_INITIALIZED)
+	suite.NoError(err)
+	suite.Nil(resp.GetError())
+	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
+	suite.Equal(resp.GetStartedInstanceIds(), []uint32{1})
+}
+
+func (suite *TaskHandlerTestSuite) TestStartStatefulTasksWithRanges() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
+	suite.handler.volumeStore = mockVolumeStore
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater.Start()
+	suite.handler.runtimeUpdater = updater
+	defer updater.Stop()
+
+	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
+	suite.handler.taskLauncher = mockTaskLauncher
+
+	expectedTaskIds := make(map[*mesos.TaskID]bool)
+	for _, taskInfo := range suite.taskInfos {
+		expectedTaskIds[taskInfo.GetRuntime().GetMesosTaskId()] = true
+	}
+
+	singleTaskInfo := make(map[uint32]*task.TaskInfo)
+	singleTaskInfo[1] = suite.createTestTaskInfo(
+		task.TaskState_FAILED, 1)
+	singleTaskInfo[1].GetConfig().Volume = &task.PersistentVolumeConfig{
+		ContainerPath: "testpath",
+		SizeMB:        10,
+	}
+	singleTaskInfo[1].GetRuntime().VolumeID = &peloton.VolumeID{
+		Value: "testvolumeid",
+	}
+
+	taskRanges := []*task.InstanceRange{
+		{
+			From: 1,
+			To:   2,
+		},
+	}
+
+	volumeInfo := &volume.PersistentVolumeInfo{
+		State: volume.VolumeState_CREATED,
+	}
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
+		mockTaskStore.EXPECT().
+			UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+
+		mockVolumeStore.EXPECT().
+			GetPersistentVolume(gomock.Any(), gomock.Any()).
+			Return(volumeInfo, nil),
+		mockTaskLauncher.EXPECT().
+			LaunchTaskWithReservedResource(gomock.Any(), singleTaskInfo[1]).
+			Return(nil),
+	)
+
+	var request = &task.StartRequest{
+		JobId:  suite.testJobID,
+		Ranges: taskRanges,
+	}
+	resp, err := suite.handler.Start(
+		context.Background(),
+		request,
+	)
+	suite.Equal(singleTaskInfo[1].GetRuntime().GetState(), task.TaskState_INITIALIZED)
+	suite.NoError(err)
+	suite.Nil(resp.GetError())
+	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
+	suite.Equal(resp.GetStartedInstanceIds(), []uint32{1})
+}
+
+func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesNoVolumeCreated() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	suite.handler.resmgrClient = mockResmgrClient
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
+	suite.handler.volumeStore = mockVolumeStore
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater.Start()
+	suite.handler.runtimeUpdater = updater
+	defer updater.Stop()
+
+	expectedTaskIds := make(map[*mesos.TaskID]bool)
+	for _, taskInfo := range suite.taskInfos {
+		expectedTaskIds[taskInfo.GetRuntime().GetMesosTaskId()] = true
+	}
+
+	singleTaskInfo := make(map[uint32]*task.TaskInfo)
+	singleTaskInfo[1] = suite.createTestTaskInfo(
+		task.TaskState_FAILED, 1)
+	singleTaskInfo[1].GetConfig().Volume = &task.PersistentVolumeConfig{
+		ContainerPath: "testpath",
+		SizeMB:        10,
+	}
+	singleTaskInfo[1].GetRuntime().VolumeID = &peloton.VolumeID{
+		Value: "testvolumeid",
+	}
+	mesosTaskID := singleTaskInfo[1].GetRuntime().GetMesosTaskId().GetValue()
+	var expectedGangs []*resmgrsvc.Gang
+
+	taskRanges := []*task.InstanceRange{
+		{
+			From: 1,
+			To:   2,
+		},
+	}
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
+		mockTaskStore.EXPECT().
+			UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+
+		mockVolumeStore.EXPECT().
+			GetPersistentVolume(gomock.Any(), gomock.Any()).
+			Return(nil, nil),
+		mockResmgrClient.EXPECT().
+			EnqueueGangs(
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, reqBody interface{}) {
+				req := reqBody.(*resmgrsvc.EnqueueGangsRequest)
+				for _, g := range req.Gangs {
+					expectedGangs = append(expectedGangs, g)
+				}
+			}).
+			Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
+		mockJobStore.EXPECT().
+			GetJobConfig(gomock.Any(), suite.testJobID).
+			Return(nil, errors.New("test error")).
+			AnyTimes(),
+	)
+
+	var request = &task.StartRequest{
+		JobId:  suite.testJobID,
+		Ranges: taskRanges,
+	}
+	resp, err := suite.handler.Start(
+		context.Background(),
+		request,
+	)
+	suite.Len(expectedGangs, 1)
+	suite.NotEqual(
 		expectedGangs[0].GetTasks()[0].GetTaskId().GetValue(),
 		mesosTaskID)
 	suite.Equal(singleTaskInfo[1].GetRuntime().GetState(), task.TaskState_INITIALIZED)

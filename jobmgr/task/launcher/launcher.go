@@ -3,6 +3,7 @@ package launcher
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,6 +43,9 @@ type Launcher interface {
 	Start() error
 	// Stop stops the task Launcher goroutines
 	Stop() error
+	// LaunchTaskWithReservedResource launches task with reserved resource
+	// to hostmgr directly.
+	LaunchTaskWithReservedResource(ctx context.Context, taskInfo *task.TaskInfo) error
 }
 
 // launcher implements the Launcher interface
@@ -63,6 +67,10 @@ const (
 	// Time out for the function to time out
 	_timeoutFunctionCall = 120 * time.Second
 	_rpcTimeout          = 10 * time.Second
+)
+
+var (
+	errEmptyTasks = errors.New("empty tasks infos")
 )
 
 var taskLauncher *launcher
@@ -178,16 +186,43 @@ func (l *launcher) isRunning() bool {
 	return shutdown == 0
 }
 
+// LaunchTaskWithReservedResource launch a task to hostmgr directly as the resource
+// is already reserved.
+func (l *launcher) LaunchTaskWithReservedResource(ctx context.Context, taskInfo *task.TaskInfo) error {
+	pelotonTaskID := &peloton.TaskID{
+		Value: fmt.Sprintf("%s-%d", taskInfo.GetJobId().GetValue(), taskInfo.GetInstanceId()),
+	}
+	taskRuntime := taskInfo.GetRuntime()
+	launchableTasks, err := l.getLaunchableTasks(
+		ctx, []*peloton.TaskID{pelotonTaskID},
+		taskRuntime.GetHost(),
+		nil)
+	if err != nil {
+		return err
+	}
+	runtimePorts := taskInfo.GetRuntime().GetPorts()
+	var selectedPorts []uint32
+	for _, port := range runtimePorts {
+		selectedPorts = append(selectedPorts, port)
+	}
+	err = l.launchStatefulTasks(
+		launchableTasks, taskRuntime.GetHost(), selectedPorts, false)
+	return err
+}
+
 // launchTasks launches tasks to host manager
 func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.Placement) error {
 	log.WithField("placements", placements).Debug("Start processing placements")
 	for _, placement := range placements {
 		go func(placement *resmgr.Placement) {
-			tasks, err := l.getLaunchableTasks(ctx, placement)
+			tasks, err := l.getLaunchableTasks(
+				ctx,
+				placement.GetTasks(),
+				placement.GetHostname(),
+				placement.GetPorts())
 			if err != nil {
-				log.WithFields(log.Fields{
+				log.WithError(err).WithFields(log.Fields{
 					"placement": placement,
-					"error":     err.Error(),
 				}).Error("Failed to get launchable tasks")
 				return
 			}
@@ -201,16 +236,17 @@ func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.P
 				// TODO: We need to enqueue tasks to resmgr after updating staus
 				// TODO: to db for the ones which are failed to launch
 			}
-
 		}(placement)
 	}
 	return nil
 }
 
-func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Placement) ([]*hostsvc.LaunchableTask, error) {
-	tasks := placement.GetTasks()
-	hostname := placement.GetHostname()
-	selectedPorts := placement.GetPorts()
+func (l *launcher) getLaunchableTasks(
+	ctx context.Context,
+	tasks []*peloton.TaskID,
+	hostname string,
+	selectedPorts []uint32) ([]*hostsvc.LaunchableTask, error) {
+
 	portsIndex := 0
 
 	var tasksInfo []*task.TaskInfo
@@ -219,9 +255,10 @@ func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Pla
 	for _, taskID := range tasks {
 		// TODO: we need to check goal state before we can launch tasks
 		// TODO: We need to add batch api's for getting all tasks in one shot
-		taskInfo, err := l.taskStore.GetTaskByID(ctx, taskID.Value)
+		taskInfo, err := l.taskStore.GetTaskByID(ctx, taskID.GetValue())
 		if err != nil {
-			log.WithField("Task Id", taskID.Value).Error("Not able to get Task")
+			log.WithError(err).WithField("Task Id", taskID.Value).
+				Error("Not able to get Task")
 			continue
 		}
 
@@ -238,30 +275,32 @@ func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Pla
 
 		taskInfo.GetRuntime().Host = hostname
 		taskInfo.GetRuntime().State = task.TaskState_LAUNCHING
-		// Assign selected dynamic port to task per port config.
-		for _, portConfig := range taskInfo.GetConfig().GetPorts() {
-			if portConfig.GetValue() != 0 {
-				// Skip static port.
-				continue
+		if selectedPorts != nil {
+			// Reset runtime ports to get new ports assignment if placement has ports.
+			taskInfo.GetRuntime().Ports = make(map[string]uint32)
+			// Assign selected dynamic port to task per port config.
+			for _, portConfig := range taskInfo.GetConfig().GetPorts() {
+				if portConfig.GetValue() != 0 {
+					// Skip static port.
+					continue
+				}
+				if portsIndex >= len(selectedPorts) {
+					// This should never happen.
+					log.WithFields(log.Fields{
+						"selected_ports": selectedPorts,
+						"task_info":      taskInfo,
+					}).Error("placement contains less selected ports than required.")
+					return nil, errors.New("invalid placement")
+				}
+				taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
+				portsIndex++
 			}
-			if portsIndex >= len(selectedPorts) {
-				// This should never happen.
-				log.WithField("placement", placement).
-					Error("placement contains less ports than required.")
-				return nil, errors.New("invalid placement")
-			}
-			// Make sure runtime ports is not nil.
-			if taskInfo.GetRuntime().GetPorts() == nil {
-				taskInfo.GetRuntime().Ports = make(map[string]uint32)
-			}
-			taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
-			portsIndex++
 		}
 
 		// Writes the hostname and ports information back to db.
 		err = l.taskStore.UpdateTask(ctx, taskInfo)
 		if err != nil {
-			log.WithField("task_info", taskInfo).
+			log.WithError(err).WithField("task_info", taskInfo).
 				Error("Not able to update Task")
 			continue
 		}
@@ -269,17 +308,20 @@ func (l *launcher) getLaunchableTasks(ctx context.Context, placement *resmgr.Pla
 		tasksInfo = append(tasksInfo, taskInfo)
 	}
 
+	if len(tasksInfo) == 0 {
+		return nil, errEmptyTasks
+	}
+
 	getTaskInfoDuration := time.Since(getTaskInfoStart)
 
 	log.WithFields(log.Fields{
 		"num_tasks": len(tasks),
 		"duration":  getTaskInfoDuration.Seconds(),
-	}).Info("GetTaskInfo")
+	}).Debug("GetTaskInfo")
 
 	l.metrics.GetDBTaskInfo.Record(getTaskInfoDuration)
 
-	launchableTasks := createLaunchableTasks(tasksInfo)
-	return launchableTasks, nil
+	return createLaunchableTasks(tasksInfo), nil
 }
 
 // createLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
@@ -341,28 +383,33 @@ func (l *launcher) Stop() error {
 
 func (l *launcher) launchStatefulTasks(
 	selectedTasks []*hostsvc.LaunchableTask,
-	placement *resmgr.Placement) error {
+	hostname string,
+	selectedPorts []uint32,
+	checkVolume bool) error {
 	ctx, cancelFunc := context.WithTimeout(l.rootCtx, _rpcTimeout)
 	defer cancelFunc()
 
 	volumeID := selectedTasks[0].GetVolume().GetId().GetValue()
 	createVolume := false
-	pv, err := l.volumeStore.GetPersistentVolume(ctx, volumeID)
-	if err != nil {
-		_, ok := err.(*storage.VolumeNotFoundError)
-		if !ok {
-			// volume store db read error.
-			return err
+	if checkVolume {
+		pv, err := l.volumeStore.GetPersistentVolume(ctx, volumeID)
+		if err != nil {
+			_, ok := err.(*storage.VolumeNotFoundError)
+			if !ok {
+				// volume store db read error.
+				return err
+			}
+			// First time launch stateful task and create volume.
+			createVolume = true
+		} else if pv.GetState() != volume.VolumeState_CREATED {
+			// Retry launch task but volume is not created.
+			createVolume = true
 		}
-		// First time launch stateful task and create volume.
-		createVolume = true
-	} else if pv.GetState() != volume.VolumeState_CREATED {
-		// Retry launch task but volume is not created.
-		createVolume = true
 	}
 
+	var err error
 	var operations []*hostsvc.OfferOperation
-	hostOperationFactory := NewHostOperationsFactory(selectedTasks, placement)
+	hostOperationFactory := NewHostOperationsFactory(selectedTasks, hostname, selectedPorts)
 	if createVolume {
 		// Reserve, Create and Launch the task.
 		operations, err = hostOperationFactory.GetHostOperations(
@@ -384,7 +431,7 @@ func (l *launcher) launchStatefulTasks(
 	}
 
 	var request = &hostsvc.OfferOperationsRequest{
-		Hostname:   placement.GetHostname(),
+		Hostname:   hostname,
 		Operations: operations,
 	}
 
@@ -439,7 +486,12 @@ func (l *launcher) launchTasks(
 	if placement.Type != resmgr.TaskType_STATEFUL {
 		err = l.launchBatchTasks(selectedTasks, placement)
 	} else {
-		err = l.launchStatefulTasks(selectedTasks, placement)
+		err = l.launchStatefulTasks(
+			selectedTasks,
+			placement.GetHostname(),
+			placement.GetPorts(),
+			true,
+		)
 	}
 	callDuration := time.Since(callStart)
 

@@ -5,7 +5,6 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/common/reservation"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -19,18 +18,21 @@ var (
 
 // HostOperationsFactory returns operations for hostmgr offeroperation rpc.
 type HostOperationsFactory struct {
-	tasks     []*hostsvc.LaunchableTask
-	placement *resmgr.Placement
+	tasks         []*hostsvc.LaunchableTask
+	hostname      string
+	selectedPorts []uint32
 }
 
 // NewHostOperationsFactory returns a new HostOperationsFactory instance.
 func NewHostOperationsFactory(
 	tasks []*hostsvc.LaunchableTask,
-	placement *resmgr.Placement) *HostOperationsFactory {
+	hostname string,
+	selectedPorts []uint32) *HostOperationsFactory {
 
 	return &HostOperationsFactory{
-		tasks:     tasks,
-		placement: placement,
+		tasks:         tasks,
+		hostname:      hostname,
+		selectedPorts: selectedPorts,
 	}
 }
 
@@ -76,7 +78,7 @@ func (h *HostOperationsFactory) getHostReserveOperation() (*hostsvc.OfferOperati
 			Resources: h.getMesosResources(),
 		},
 		ReservationLabels: reservation.CreateReservationLabels(
-			jobID, instanceID, h.placement.GetHostname()),
+			jobID, instanceID, h.hostname),
 	}
 	return reserveOperation, nil
 }
@@ -93,7 +95,7 @@ func (h *HostOperationsFactory) getHostCreateOperation() (*hostsvc.OfferOperatio
 			Volume: h.tasks[0].GetVolume(),
 		},
 		ReservationLabels: reservation.CreateReservationLabels(
-			jobID, instanceID, h.placement.GetHostname()),
+			jobID, instanceID, h.hostname),
 	}
 	return createOperation, nil
 }
@@ -110,7 +112,7 @@ func (h *HostOperationsFactory) getHostLaunchOperation() (*hostsvc.OfferOperatio
 			Tasks: h.tasks,
 		},
 		ReservationLabels: reservation.CreateReservationLabels(
-			jobID, instanceID, h.placement.GetHostname()),
+			jobID, instanceID, h.hostname),
 	}
 	return launchOperation, nil
 }
@@ -148,7 +150,7 @@ func (h *HostOperationsFactory) getMesosResources() []*mesos.Resource {
 				WithValue(diskSize).
 				Build())
 	}
-	ports := h.placement.GetPorts()
+	ports := h.selectedPorts
 	if len(ports) > 0 {
 		portSet := make(map[uint32]bool, len(ports))
 		for _, port := range ports {
