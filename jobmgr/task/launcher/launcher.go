@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -57,6 +58,7 @@ type launcher struct {
 	rootCtx       context.Context
 	started       int32
 	shutdown      int32
+	jobStore      storage.JobStore
 	taskStore     storage.TaskStore
 	volumeStore   storage.PersistentVolumeStore
 	config        *Config
@@ -70,7 +72,8 @@ const (
 )
 
 var (
-	errEmptyTasks = errors.New("empty tasks infos")
+	errEmptyTasks         = errors.New("empty tasks infos")
+	errLaunchInvalidOffer = errors.New("invalid offer to launch tasks")
 )
 
 var taskLauncher *launcher
@@ -81,6 +84,7 @@ func InitTaskLauncher(
 	d *yarpc.Dispatcher,
 	resMgrClientName string,
 	hostMgrClientName string,
+	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
 	config *Config,
@@ -96,6 +100,7 @@ func InitTaskLauncher(
 			resMgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
 			hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
 			rootCtx:       context.Background(),
+			jobStore:      jobStore,
 			taskStore:     taskStore,
 			volumeStore:   volumeStore,
 			config:        config,
@@ -193,7 +198,7 @@ func (l *launcher) LaunchTaskWithReservedResource(ctx context.Context, taskInfo 
 		Value: fmt.Sprintf("%s-%d", taskInfo.GetJobId().GetValue(), taskInfo.GetInstanceId()),
 	}
 	taskRuntime := taskInfo.GetRuntime()
-	launchableTasks, err := l.getLaunchableTasks(
+	launchableTasks, _, err := l.getLaunchableTasks(
 		ctx, []*peloton.TaskID{pelotonTaskID},
 		taskRuntime.GetHost(),
 		nil)
@@ -215,38 +220,67 @@ func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.P
 	log.WithField("placements", placements).Debug("Start processing placements")
 	for _, placement := range placements {
 		go func(placement *resmgr.Placement) {
-			tasks, err := l.getLaunchableTasks(
+			tasks, taskInfos, err := l.getLaunchableTasks(
 				ctx,
 				placement.GetTasks(),
 				placement.GetHostname(),
 				placement.GetPorts())
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
-					"placement": placement,
+					"placement":   placement,
+					"tasks_total": len(tasks),
 				}).Error("Failed to get launchable tasks")
 				return
 			}
 			l.metrics.LauncherGoRoutines.Inc(1)
 			err = l.launchTasks(tasks, placement)
 			if err != nil {
-				log.WithFields(log.Fields{
-					"placement": placement,
-					"error":     err.Error(),
-				}).Error("Failed to launch tasks")
-				// TODO: We need to enqueue tasks to resmgr after updating staus
-				// TODO: to db for the ones which are failed to launch
+				log.WithError(err).WithFields(log.Fields{
+					"placement":   placement,
+					"tasks_total": len(tasks),
+				}).Error("failed to launch tasks to hostmgr")
+
+				if err == errLaunchInvalidOffer {
+					// enqueue tasks to resmgr upon launch failure due to invalid offer.
+					l.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(tasks)))
+					if l.enqueueTasks(ctx, taskInfos) != nil {
+						log.WithFields(log.Fields{
+							"tasks":       taskInfos,
+							"tasks_total": len(taskInfos),
+						}).Error("failed to enqueue tasks back to resmgr")
+					}
+				}
 			}
 		}(placement)
 	}
 	return nil
 }
 
+// enqueueTask enqueues given task to resmgr to launch again.
+func (l *launcher) enqueueTasks(ctx context.Context, tasks []*task.TaskInfo) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	for _, t := range tasks {
+		util.RegenerateMesosTaskID(t)
+		err := l.taskStore.UpdateTask(ctx, t)
+		if err != nil {
+			return err
+		}
+	}
+	jobConfig, err := l.jobStore.GetJobConfig(ctx, tasks[0].GetJobId())
+	if err == nil {
+		err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, l.resMgrClient)
+	}
+	return err
+}
+
 func (l *launcher) getLaunchableTasks(
 	ctx context.Context,
 	tasks []*peloton.TaskID,
 	hostname string,
-	selectedPorts []uint32) ([]*hostsvc.LaunchableTask, error) {
-
+	selectedPorts []uint32) ([]*hostsvc.LaunchableTask, []*task.TaskInfo, error) {
 	portsIndex := 0
 
 	var tasksInfo []*task.TaskInfo
@@ -290,7 +324,7 @@ func (l *launcher) getLaunchableTasks(
 						"selected_ports": selectedPorts,
 						"task_info":      taskInfo,
 					}).Error("placement contains less selected ports than required.")
-					return nil, errors.New("invalid placement")
+					return nil, nil, errors.New("invalid placement")
 				}
 				taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
 				portsIndex++
@@ -309,7 +343,7 @@ func (l *launcher) getLaunchableTasks(
 	}
 
 	if len(tasksInfo) == 0 {
-		return nil, errEmptyTasks
+		return nil, nil, errEmptyTasks
 	}
 
 	getTaskInfoDuration := time.Since(getTaskInfoStart)
@@ -321,7 +355,8 @@ func (l *launcher) getLaunchableTasks(
 
 	l.metrics.GetDBTaskInfo.Record(getTaskInfoDuration)
 
-	return createLaunchableTasks(tasksInfo), nil
+	launchableTasks := createLaunchableTasks(tasksInfo)
+	return launchableTasks, tasksInfo, nil
 }
 
 // createLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
@@ -465,6 +500,13 @@ func (l *launcher) launchBatchTasks(
 		return err
 	}
 	if response.GetError() != nil {
+		log.WithFields(log.Fields{
+			"response":  response,
+			"placement": placement,
+		}).Error("hostmgr launch tasks got error resp")
+		if response.GetError().GetInvalidOffers() != nil {
+			return errLaunchInvalidOffer
+		}
 		return errors.New(response.Error.String())
 	}
 	return nil
@@ -475,7 +517,6 @@ func (l *launcher) launchTasks(
 	placement *resmgr.Placement) error {
 	// TODO: Add retry Logic for tasks launching failure
 	if len(selectedTasks) == 0 {
-		log.Debug("No task is selected to launch")
 		return errors.New("No task is selected to launch")
 	}
 
@@ -496,10 +537,6 @@ func (l *launcher) launchTasks(
 	callDuration := time.Since(callStart)
 
 	if err != nil {
-		log.WithFields(log.Fields{
-			"tasks":     len(selectedTasks),
-			"placement": placement,
-		}).WithError(err).Error("Failed to launch tasks")
 		l.metrics.TaskLaunchFail.Inc(1)
 		return err
 	}
@@ -508,6 +545,7 @@ func (l *launcher) launchTasks(
 
 	log.WithFields(log.Fields{
 		"num_tasks": len(selectedTasks),
+		"placement": placement,
 		"hostname":  placement.GetHostname(),
 		"duration":  callDuration.Seconds(),
 	}).Debug("Launched tasks")

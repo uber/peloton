@@ -14,6 +14,7 @@ import (
 	"github.com/uber-go/tally"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
@@ -34,11 +35,20 @@ const (
 )
 
 var (
-	defaultResourceConfig = task.ResourceConfig{
+	_defaultResourceConfig = task.ResourceConfig{
 		CpuLimit:    10,
 		MemLimitMb:  10,
 		DiskLimitMb: 10,
 		FdLimit:     10,
+	}
+	_jobID = uuid.NewUUID().String()
+	_sla   = &job.SlaConfig{
+		Preemptible: false,
+	}
+	_jobConfig = &job.JobConfig{
+		Name:          _jobID,
+		Sla:           _sla,
+		InstanceCount: 1,
 	}
 	lock = sync.RWMutex{}
 )
@@ -53,7 +63,7 @@ func createTestTask(instanceID int) *task.TaskInfo {
 		InstanceId: uint32(instanceID),
 		Config: &task.TaskConfig{
 			Name:     testJobName,
-			Resource: &defaultResourceConfig,
+			Resource: &_defaultResourceConfig,
 			Ports: []*task.PortConfig{
 				{
 					Name:    "port",
@@ -71,10 +81,10 @@ func createTestTask(instanceID int) *task.TaskInfo {
 
 func createResources(defaultMultiplier float64) []*mesos.Resource {
 	values := map[string]float64{
-		"cpus": defaultMultiplier * defaultResourceConfig.CpuLimit,
-		"mem":  defaultMultiplier * defaultResourceConfig.MemLimitMb,
-		"disk": defaultMultiplier * defaultResourceConfig.DiskLimitMb,
-		"gpus": defaultMultiplier * defaultResourceConfig.GpuLimit,
+		"cpus": defaultMultiplier * _defaultResourceConfig.CpuLimit,
+		"mem":  defaultMultiplier * _defaultResourceConfig.MemLimitMb,
+		"disk": defaultMultiplier * _defaultResourceConfig.DiskLimitMb,
+		"gpus": defaultMultiplier * _defaultResourceConfig.GpuLimit,
 	}
 	return util.CreateMesosScalarResources(values, "*")
 }
@@ -184,6 +194,138 @@ func TestMultipleTasksPlaced(t *testing.T) {
 			}).
 			Return(&hostsvc.LaunchTasksResponse{}, nil).
 			Times(1),
+	)
+
+	placements, err := taskLauncher.getPlacements()
+
+	if err != nil {
+		assert.Error(t, err)
+	}
+	taskLauncher.processPlacements(context.Background(), placements)
+
+	time.Sleep(1 * time.Second)
+	expectedLaunchedHosts := map[string]bool{
+		"hostname-0": true,
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
+	assert.Equal(t, taskConfigs, launchedTasks)
+}
+
+// This test ensures that tasks got rescheduled when launched got invalid offer resp.
+func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	taskLauncher := launcher{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:  mockRes,
+		hostMgrClient: mockHostMgr,
+		jobStore:      mockJobStore,
+		taskStore:     mockTaskStore,
+		rootCtx:       context.Background(),
+		metrics:       metrics,
+	}
+
+	numTasks := 1
+	testTasks := make([]*task.TaskInfo, numTasks)
+	taskIDs := make([]*peloton.TaskID, numTasks)
+	placements := make([]*resmgr.Placement, numTasks)
+	taskConfigs := make(map[string]*task.TaskConfig)
+	taskIds := make(map[string]*peloton.TaskID)
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		taskID := &peloton.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		}
+		taskIDs[i] = taskID
+		testTasks[i] = tmp
+		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
+		taskIds[taskID.Value] = taskID
+	}
+
+	// generate 1 host offer, each can hold 1 tasks.
+	numHostOffers := 1
+	rs := createResources(1)
+	var hostOffers []*hostsvc.HostOffer
+	for i := 0; i < numHostOffers; i++ {
+		hostOffers = append(hostOffers, createHostOffer(i, rs))
+	}
+
+	// Generate Placements per host offer
+	for i := 0; i < numHostOffers; i++ {
+		p := createPlacements(testTasks[i], hostOffers[i])
+		placements[i] = p
+	}
+
+	// Capture LaunchTasks calls
+	hostsLaunchedOn := make(map[string]bool)
+	launchedTasks := make(map[string]*task.TaskConfig)
+
+	updatedTaskInfo := proto.Clone(testTasks[0]).(*task.TaskInfo)
+	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
+	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
+	updatedTaskInfo.Runtime.Ports["port"] = testPort
+	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHING
+
+	initializedTaskInfo := proto.Clone(updatedTaskInfo).(*task.TaskInfo)
+	initializedTaskInfo.Runtime.State = task.TaskState_INITIALIZED
+
+	gomock.InOrder(
+		mockRes.EXPECT().
+			GetPlacements(
+				gomock.Any(),
+				gomock.Any()).
+			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
+
+		// Mock Task Store GetTaskByID
+		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
+
+		// Mock Task Store UpdateTask
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), updatedTaskInfo).Return(nil),
+
+		// Mock LaunchTasks call.
+		mockHostMgr.EXPECT().
+			LaunchTasks(
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, reqBody interface{}) {
+				// No need to unmarksnal output: empty means success.
+				// Capture call since we don't know ordering of tasks.
+				lock.Lock()
+				defer lock.Unlock()
+				req := reqBody.(*hostsvc.LaunchTasksRequest)
+				hostsLaunchedOn[req.Hostname] = true
+				for _, lt := range req.Tasks {
+					launchedTasks[lt.TaskId.GetValue()] = lt.Config
+				}
+			}).
+			Return(&hostsvc.LaunchTasksResponse{
+				Error: &hostsvc.LaunchTasksResponse_Error{
+					InvalidOffers: &hostsvc.InvalidOffers{
+						Message: "invalid offer failure",
+					},
+				},
+			}, nil).
+			Times(1),
+
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+
+		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), initializedTaskInfo.GetJobId()).Return(_jobConfig, nil),
+
+		mockRes.EXPECT().EnqueueGangs(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
 	placements, err := taskLauncher.getPlacements()

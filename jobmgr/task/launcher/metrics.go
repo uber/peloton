@@ -10,6 +10,8 @@ type Metrics struct {
 	TaskLaunch     tally.Counter
 	TaskLaunchFail tally.Counter
 
+	TaskRequeuedOnLaunchFail tally.Counter
+
 	GetPlacement              tally.Counter
 	GetPlacementFail          tally.Counter
 	GetDBTaskInfo             tally.Timer
@@ -31,6 +33,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	return &Metrics{
 		TaskLaunch:                taskSuccessScope.Counter("launch"),
 		TaskLaunchFail:            taskFailScope.Counter("launch"),
+		TaskRequeuedOnLaunchFail:  taskFailScope.Counter("launch_fail_requeued_total"),
 		GetPlacement:              taskAPIScope.Counter("get_placement"),
 		GetPlacementFail:          taskFailScope.Counter("get_placement"),
 		GetDBTaskInfo:             functionCallScope.Timer("get_taskinfo"),

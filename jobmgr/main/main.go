@@ -252,6 +252,7 @@ func main() {
 		dispatcher,
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
+		jobStore,
 		taskStore,
 		volumeStore,
 		&cfg.JobManager.TaskLauncher,
