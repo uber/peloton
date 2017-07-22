@@ -239,7 +239,7 @@ class App(object):
         )
 
         host_limit = Constraint(
-            name='hostname',
+            name=self.cluster.constraint,
             constraint=TaskConstraint(
                 limit=LimitConstraint(
                     limit=1,
@@ -463,8 +463,8 @@ class App(object):
 
             status = result.updateSummaries[0].state.status
             print 'Updating %s instances %s (status=%s)' % (
-                    self.name, instance_ids,
-                    JobUpdateStatus._VALUES_TO_NAMES[status])
+                self.name, instance_ids,
+                JobUpdateStatus._VALUES_TO_NAMES[status])
 
             if status == JobUpdateStatus.ROLLED_FORWARD:
                 return True

@@ -3,3 +3,5 @@ kazoo==2.2.1
 pystachio==0.8.1
 prompter==0.3.10
 json-delta==2.0
+pyyaml==3.12
+enum34==1.1.2

@@ -38,7 +38,7 @@ class Cluster(object):
 
         host, port = self.zookeeper.split(':')
         self.client = AuroraClientZK.create(
-            host, port, zk_path='/aurora/%s/scheduler' % self.name)
+            host, port, zk_path=self.aurora_zk_path)
 
         self.apps = {}
         for app in PELOTON_APPS:
@@ -59,18 +59,23 @@ class Cluster(object):
 
         return Cluster(**cfg)
 
-    def diff_config(self, current_config, desired_config, verbose=False):
+    def diff_config(self, app, verbose=False):
         """
         Print the diff between current and desired job config
         """
+        print '>>>>>>>> Job config diff for %s <<<<<<<<' % app.name
         cfg_dicts = []
         factory = TSimpleJSONProtocolFactory()
-        for cfg in current_config, desired_config:
-            cfg_json = TSerialization.serialize(cfg, protocol_factory=factory)
-            cfg_dict = json.loads(cfg_json)
+        for cfg in app.current_job_config, app.desired_job_config:
+            if cfg:
+                cfg_json = TSerialization.serialize(
+                    cfg, protocol_factory=factory)
+                cfg_dict = json.loads(cfg_json)
 
-            # Unset task resources to avoid confusing the job config differ.
-            cfg_dict['taskConfig']['resources'] = None
+                # Unset task resources to avoid confusing the job config differ
+                cfg_dict['taskConfig']['resources'] = None
+            else:
+                cfg_dict = {}
             cfg_dicts.append(cfg_dict)
 
         if verbose:
@@ -89,10 +94,7 @@ class Cluster(object):
         print 'Update Peloton cluster "%s" to new config: ' % self.name
         for name in PELOTON_APPS:
             app = self.apps[name]
-            print '>>>>>>>> Job config diff for %s <<<<<<<<' % app.name
-            self.diff_config(
-                app.current_job_config, app.desired_job_config, verbose
-            )
+            self.diff_config(app, verbose)
 
         if not force and not yesno('Proceed with the update ?'):
             return
