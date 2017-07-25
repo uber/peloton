@@ -156,7 +156,7 @@ func (s *scheduler) scheduleTasks() {
 					err := s.rmTaskTracker.GetTask(task.Id).
 						TransitTo(pt.TaskState_READY.String())
 					if err != nil {
-						log.WithError(errors.WithStack(err)).Error("Error while " +
+						log.WithError(errors.WithStack(err)).Error("error while " +
 							"transitioning to Ready state")
 					}
 					// We have to remove demand as we admitted task to
@@ -166,7 +166,8 @@ func (s *scheduler) scheduleTasks() {
 							task.GetResource()))
 					if err != nil {
 						log.WithError(err).Errorf("Error while "+
-							"subtracting demand for task %s ", task.Id.Value)
+							"subtracting demand for task %s ",
+							task.Id.Value)
 					}
 				} else {
 					err := errReadyQueueTaskMissing

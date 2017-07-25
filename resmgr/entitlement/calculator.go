@@ -176,7 +176,7 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 	totalShare := make(map[string]float64)
 	demands := make(map[string]*scalar.Resources)
 
-	// In the first pass of children we get the demand recursively
+	// First Pass: In the first pass of children we get the demand recursively
 	// calculated And then compare with respool reservation and
 	// choose the min of these two
 	// assignment := min(demand,reservation)
@@ -200,45 +200,123 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 			assignment.Set(kind, math.Min(demand.Get(kind), res.Reservation))
 			if demand.Get(kind) > res.Reservation {
 				totalShare[kind] += res.Share
+				demand.Set(kind, demand.Get(kind)-res.Reservation)
+			} else {
+				demand.Set(kind, 0)
 			}
 		}
 
 		entitlement = entitlement.Subtract(assignment)
 		assignments[n.ID()] = assignment
-		log.WithFields(log.Fields{
-			"Respool":     n.Name(),
-			"Assignement": assignment,
-			"Entitlement": entitlement,
-		}).Debug("Assignment and Entitlement before fare share")
+		demands[n.ID()] = demand
 	}
 
-	// In this pass we will distribute the rest of the resources to
-	// the resource pools which have high demand then reservation
-	for e := childs.Front(); e != nil; e = e.Next() {
-		n := e.Value.(respool.ResPool)
+	for _, kind := range []string{common.CPU, common.GPU,
+		common.MEMORY, common.DISK} {
+		var remaining scalar.Resources = *entitlement
 
-		for _, kind := range []string{common.CPU, common.GPU,
-			common.MEMORY, common.DISK} {
-			// TODO: we need to fix caping entitlement to demand
-			if assignments[n.ID()].Get(kind) < demands[n.ID()].Get(kind) {
-				value := n.Resources()[kind].Share * entitlement.Get(kind)
-				value = value / totalShare[kind]
+		// Second Pass: In the second pass we will distribute the
+		// rest of the resources to the resource pools which have
+		// higher demand then reservation
+		// It will also cap the fair share to demand and redistribute the
+		// rest of the entitlement to others.
+		for remaining.Get(kind) > 0 && c.isDemandExist(demands, kind) {
+			remainingShare := totalShare[kind]
+			for e := childs.Front(); e != nil; e = e.Next() {
+				n := e.Value.(respool.ResPool)
+
+				if demands[n.ID()].Get(kind) <= 0 {
+					continue
+				}
+
+				value := float64(n.Resources()[kind].Share * entitlement.Get(kind))
+				value = float64(value / totalShare[kind])
+
+				// Checking if demand is less then the current share
+				// if yes then cap it to demand and distribute rest
+				// to others
+				if value > demands[n.ID()].Get(kind) {
+					value = demands[n.ID()].Get(kind)
+					remainingShare = remainingShare - n.Resources()[kind].Share
+					demands[n.ID()].Set(kind, 0)
+				} else {
+					demands[n.ID()].Set(
+						kind, float64(demands[n.ID()].Get(kind)-value))
+				}
+				if remaining.Get(kind) > value {
+					remaining.Set(kind, float64(remaining.Get(kind)-value))
+				} else {
+					remaining.Set(kind, float64(0))
+				}
+				value += assignments[n.ID()].Get(kind)
+				assignments[n.ID()].Set(kind, value)
+
+			}
+			*entitlement = remaining
+			totalShare[kind] = remainingShare
+		}
+
+		// Third pass : Now all the demand is been satisfied
+		// we need to distribute the rest of the entitlement
+		// to all the nodes for the anticipation of some work
+		// load and not starve everybody till next cycle
+		if entitlement.Get(kind) > 0 {
+			totalChildShare := c.getChildShare(resp, kind)
+			for e := childs.Front(); e != nil; e = e.Next() {
+				n := e.Value.(respool.ResPool)
+				value := float64(n.Resources()[kind].Share *
+					entitlement.Get(kind))
+				value = float64(value / totalChildShare)
 				value += assignments[n.ID()].Get(kind)
 				assignments[n.ID()].Set(kind, value)
 			}
 		}
 	}
+
 	// Now setting entitlement for all the children and call
 	// for their children recursively
 	for e := childs.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
+
 		n.SetEntitlementResources(assignments[n.ID()])
 		log.WithFields(log.Fields{
 			"Respool":     n.Name(),
 			"Entitlement": assignments[n.ID()],
-		}).Debug("Setting the entitlement")
+		}).Info("Setting the entitlement for ResPool")
+
+		// Calling the function recursively
+		// for all the children for the respool passed
+		// to this function
 		c.setEntitlementForChildren(n)
 	}
+}
+
+// getChildShare returns the combined share of the childrens
+func (c *calculator) getChildShare(resp respool.ResPool, kind string) float64 {
+	if resp == nil {
+		return 0
+	}
+
+	childs := resp.Children()
+
+	totalshare := float64(0)
+	for e := childs.Front(); e != nil; e = e.Next() {
+		n := e.Value.(respool.ResPool)
+		totalshare += n.Resources()[kind].Share
+	}
+	return totalshare
+}
+
+// isDemandExist returns true if demand exists for particular kind
+func (c *calculator) isDemandExist(
+	demands map[string]*scalar.Resources,
+	kind string) bool {
+	for _, res := range demands {
+		if res.Get(kind) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool respool.ResPool) error {
