@@ -140,7 +140,7 @@ func (suite *BuilderTestSuite) TestNoPortTasks() {
 	// next build call will return an error due to insufficient resource.
 	info, err := builder.Build(tids[0], configs[0], nil, nil, nil)
 	suite.Nil(info)
-	suite.EqualError(err, "Not enough resources left to run task")
+	suite.Equal(err, ErrNotEnoughResource)
 }
 
 // This tests several tasks requiring ports can be created.

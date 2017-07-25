@@ -31,6 +31,8 @@ var (
 
 	// ErrPortMismatch represents port not matching.
 	ErrPortMismatch = errors.New("port in launch not in offer")
+	// ErrNotEnoughResource means resource is not enough to match given task.
+	ErrNotEnoughResource = errors.New("Not enough resources left to run task")
 )
 
 // Builder helps to build launchable Mesos TaskInfo from offers and
@@ -523,8 +525,11 @@ func (tb *Builder) extractScalarResources(
 	}
 
 	if !requiredScalar.Empty() {
-		// TODO: return which resources are not sufficient.
-		return nil, errors.New("Not enough resources left to run task")
+		log.WithFields(log.Fields{
+			"not_matched_resource": requiredScalar,
+			"task_resource":        taskResources,
+		}).Error("not enough resources to match current task")
+		return nil, ErrNotEnoughResource
 	}
 	return launchResources, nil
 }

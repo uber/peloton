@@ -455,25 +455,41 @@ func (h *serviceHandler) LaunchTasks(
 
 	builder := task.NewBuilder(mesosResources)
 
-	for _, t := range body.Tasks {
+	for _, t := range body.GetTasks() {
 		mesosTask, err := builder.Build(
 			t.GetTaskId(), t.GetConfig(), t.GetPorts(), nil, nil)
 		if err != nil {
-			log.WithFields(log.Fields{
-				"error":   err,
-				"task_id": t.TaskId,
+			log.WithError(err).WithFields(log.Fields{
+				"task_id":             t.TaskId,
+				"tasks_total":         len(body.GetTasks()),
+				"tasks":               body.GetTasks(),
+				"matched_tasks":       mesosTasks,
+				"matched_task_ids":    mesosTaskIds,
+				"matched_tasks_total": len(mesosTasks),
+				"offers":              offers,
+				"hostname":            body.GetHostname(),
 			}).Warn("Fail to get correct Mesos TaskInfo")
 			h.metrics.LaunchTasksInvalid.Inc(1)
 
 			// For now, decline all offers to Mesos in the hope that next
 			// call to pool will select some different host.
 			// An alternative is to mark offers on the host as ready.
-			if err := h.offerPool.DeclineOffers(ctx, offerIds); err != nil {
-				log.WithError(err).
-					WithField("offers", offerIds).
-					Warn("Cannot decline offers task building error")
+			if derr := h.offerPool.DeclineOffers(ctx, offerIds); derr != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"offers":   offerIds,
+					"hostname": body.GetHostname(),
+				}).Warn("Cannot decline offers task building error")
 			}
 
+			if err == task.ErrNotEnoughResource {
+				return &hostsvc.LaunchTasksResponse{
+					Error: &hostsvc.LaunchTasksResponse_Error{
+						InvalidOffers: &hostsvc.InvalidOffers{
+							Message: "not enough resource to run task: " + err.Error(),
+						},
+					},
+				}, nil
+			}
 			return &hostsvc.LaunchTasksResponse{
 				Error: &hostsvc.LaunchTasksResponse_Error{
 					InvalidArgument: &hostsvc.InvalidArgument{
