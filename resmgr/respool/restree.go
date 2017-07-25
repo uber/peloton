@@ -144,7 +144,7 @@ func (t *tree) initTree(
 
 	if len(resPoolConfigs) == 0 {
 		// We should not return from here
-		log.Warnf("There are no resource pools existing")
+		log.Warn("There are no existing resource pools")
 	}
 
 	// initialize root resource pool config

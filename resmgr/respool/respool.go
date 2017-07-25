@@ -64,8 +64,8 @@ type ResPool interface {
 	//GetEntitlement gets the entitlement for the resource pool
 	GetEntitlement() *scalar.Resources
 	// GetChildReservation returns the total reservation of all
-	// the childs by kind
-	GetChildReservation() (map[string]float64, error)
+	// the children by kind
+	GetChildReservation() map[string]float64
 	// GetAllocation returns the resource allocation for the resource pool
 	GetAllocation() *scalar.Resources
 	// SetAllocation sets the resource allocation for the resource pool
@@ -87,7 +87,7 @@ type ResPool interface {
 	SubtractFromDemand(res *scalar.Resources) error
 	// GetDemand returns the resource demand for the resource pool
 	GetDemand() *scalar.Resources
-	// CalculateAndSetDemand calculates and sets the resource demand
+	// CalculateDemand calculates the resource demand
 	// for the resource pool recursively for the subtree
 	CalculateDemand() *scalar.Resources
 	// CalculateAllocation calculates the allocation recursively for
@@ -564,14 +564,9 @@ func (n *resPool) GetEntitlement() *scalar.Resources {
 }
 
 // GetChildReservation returns the reservation of all the children
-func (n *resPool) GetChildReservation() (map[string]float64, error) {
-	nodes := n.Children()
-	if nodes == nil || nodes.Len() == 0 {
-		return nil, errors.Errorf("respool %s does not have "+
-			"children", n.id)
-	}
-
+func (n *resPool) GetChildReservation() map[string]float64 {
 	totalReservation := make(map[string]float64)
+	nodes := n.Children()
 	// We need to find out the total reservation
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(ResPool)
@@ -581,7 +576,7 @@ func (n *resPool) GetChildReservation() (map[string]float64, error) {
 				totalReservation[kind] + resource.Reservation
 		}
 	}
-	return totalReservation, nil
+	return totalReservation
 }
 
 // GetAllocation gets the resource allocation for the pool
