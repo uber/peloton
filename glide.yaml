@@ -67,3 +67,7 @@ import:
   version: v1.0.1
 - package: github.com/evalphobia/logrus_sentry
   version: ^0.4.1
+- package: github.com/golang/mock
+  version: ^v1.0.0
+  subpackages:
+    - mockgen

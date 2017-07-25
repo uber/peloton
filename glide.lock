@@ -1,5 +1,5 @@
-hash: 22bc73d05a66fd6b61a3059a1aaa40c48365d96a42876b19a96d2b0e23351eeb
-updated: 2017-07-19T19:21:55.711809804-07:00
+hash: 2aa4cffe8c5cbc07b6a1e3592d214be6622b5192665e1d2318296e888ded234a
+updated: 2017-07-25T11:40:47.416211103-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -8,7 +8,7 @@ imports:
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
 - name: github.com/apache/thrift
-  version: b2a4d4ae21c789b689dd162deb819665567f481c
+  version: 0dd823580c78a79ae9696eb9b3650e400fff140f
   repo: git://git.apache.org/thrift.git
   vcs: git
   subpackages:
@@ -67,9 +67,10 @@ imports:
   - sortkeys
   - types
 - name: github.com/golang/mock
-  version: dbe9dea30dbc5b4b6d54c9ecf9a3b8f9b8e6556c
+  version: 13f360950a79f5864a972c786a10a50e44b69541
   subpackages:
   - gomock
+  - mockgen
 - name: github.com/golang/protobuf
   version: 8ee79997227bf9b34611aee7946ae64735e6fd93
   subpackages:
@@ -175,12 +176,12 @@ imports:
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/thriftrw
-  version: 37e6aee10c94fcca3b08944e4dc1f346b052e66f
+  version: 2081b57630642a126a29d3be66c6a507524f9e70
   subpackages:
   - internal/semver
   - version
 - name: go.uber.org/yarpc
-  version: 062152f3a77d322b48fae157d18015ecf53e1535
+  version: 1db20555ecf9de8710ab84810374fcdcb30e8ffd
   subpackages:
   - api/backoff
   - api/encoding
@@ -213,16 +214,15 @@ imports:
   - x/config
   - yarpcerrors
 - name: go.uber.org/zap
-  version: 9cabc84638b70e564c3dab2766efcb1ded2aac9f
+  version: 9d9d6135afe89b6fc4a05e9a8552526caba38048
   subpackages:
   - buffer
   - internal/bufferpool
   - internal/color
   - internal/exit
-  - internal/multierror
   - zapcore
 - name: golang.org/x/net
-  version: 02ac38e2528ff4adea90f184d71a3faa04b4b1b0
+  version: ab5485076ff3407ad2d02db054635913f017b0ed
   repo: https://github.com/golang/net
   subpackages:
   - bpf
