@@ -35,6 +35,8 @@ type Manager interface {
 	Start()
 	// Stop starts all registered background works.
 	Stop()
+	// RegisterWork registers a background work against the Manager
+	RegisterWork(work Work) error
 }
 
 // manager implements Manager interface.
@@ -49,20 +51,30 @@ func NewManager(works ...Work) (Manager, error) {
 	}
 
 	for _, work := range works {
-		if work.Name == "" {
-			return nil, errEmptyName
-		}
-
-		if _, ok := r.runners[work.Name]; ok {
-			return nil, errDuplicateName
-		}
-
-		r.runners[work.Name] = &runner{
-			work:     work,
-			stopChan: make(chan struct{}, 1),
+		if err := r.RegisterWork(work); err != nil {
+			return nil, err
 		}
 	}
+
 	return r, nil
+}
+
+// RegisterWork registers a background work against the Manager
+func (r *manager) RegisterWork(work Work) error {
+	if work.Name == "" {
+		return errEmptyName
+	}
+
+	if _, ok := r.runners[work.Name]; ok {
+		return errDuplicateName
+	}
+
+	r.runners[work.Name] = &runner{
+		work:     work,
+		stopChan: make(chan struct{}, 1),
+	}
+
+	return nil
 }
 
 // Start all registered works.
