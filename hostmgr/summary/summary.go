@@ -2,10 +2,10 @@ package summary
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
 
@@ -406,9 +406,11 @@ func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offe
 		a.readyCount.Dec()
 	default:
 		// This could trigger INVALID_OFFER error later.
-		log.WithField("offer", offerID).
-			WithField("status", a.status).
-			Warn("Offer removed while not in ready status")
+		log.WithFields(log.Fields{
+			"offer":      unreserved,
+			"all_offers": a.unreservedOffers,
+			"status":     a.status,
+		}).Warn("Offer removed while not in ready status")
 	}
 
 	delete(a.unreservedOffers, offerID)

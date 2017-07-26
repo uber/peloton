@@ -92,5 +92,5 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 	m.ReportCapacityMetrics(loader.Scope)
 
 	log.WithField("num_agents", len(m.RegisteredAgents)).
-		Info("Refreshed agent map")
+		Debug("Refreshed agent map")
 }

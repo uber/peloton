@@ -148,7 +148,7 @@ func (h *serviceHandler) ReleaseHostOffers(
 	for _, hostOffer := range body.GetHostOffers() {
 		hostname := hostOffer.GetHostname()
 		if err := h.offerPool.ReturnUnusedOffers(hostname); err != nil {
-			log.WithField("host", hostname).
+			log.WithError(err).WithField("hostoffer", hostOffer).
 				Warn("Cannot return unused offer on host.")
 		}
 	}

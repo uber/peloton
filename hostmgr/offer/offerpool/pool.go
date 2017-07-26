@@ -2,10 +2,10 @@ package offerpool
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
 
@@ -169,8 +169,11 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 
 	if !hasEnoughHosts {
 		// Still proceed to return something.
-		log.WithField("match_result_counts", resultCount).
-			Warn("Not enough offers are matched to given constraints")
+		log.WithFields(log.Fields{
+			"host_filter":         hostFilter,
+			"matched_host_offers": hostOffers,
+			"match_result_counts": resultCount,
+		}).Debug("Not enough offers are matched to given constraints")
 	}
 	// NOTE: we should not clear the entries for the selected offers in p.offers
 	// because we still need to visit corresponding offers, when these offers
@@ -195,11 +198,6 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 		offerMap, err = p.hostOfferIndex[hostname].ClaimForLaunch()
 	}
 	if err != nil {
-		log.WithFields(log.Fields{
-			"host":              hostname,
-			"error":             err,
-			"useReservedOffers": useReservedOffers,
-		}).Error("claim offers for launch error")
 		return nil, err
 	}
 
@@ -456,22 +454,19 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 
 	hostOffers, ok := p.hostOfferIndex[hostname]
 	if !ok {
-		log.WithFields(log.Fields{
-			"host": hostname,
-		}).Info("Offers returned to pool but not found, maybe pruned?")
+		log.WithField("host", hostname).
+			Warn("Offers returned to pool but not found, maybe pruned?")
 		return nil
 	}
 
 	err := hostOffers.CasStatus(summary.PlacingOffer, summary.ReadyOffer)
 	if err != nil {
-		log.WithError(err).
-			Error("Incorrect status in ReturnUnusedOffers")
 		return err
 	}
 
 	log.WithFields(log.Fields{
 		"host": hostname,
-	}).Info("Returned offers to Ready state.")
+	}).Debug("Returned offers to Ready state.")
 
 	delta := hostOffers.UnreservedAmount()
 	decQuantity(&p.placingResources, delta, p.metrics.placing)
