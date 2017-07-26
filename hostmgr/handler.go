@@ -23,6 +23,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/factory/task"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -33,7 +34,7 @@ type serviceHandler struct {
 	schedulerClient       mpb.SchedulerClient
 	operatorMasterClient  mpb.MasterOperatorClient
 	metrics               *Metrics
-	offerPool             offer.Pool
+	offerPool             offerpool.Pool
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 	volumeStore           storage.PersistentVolumeStore
 }

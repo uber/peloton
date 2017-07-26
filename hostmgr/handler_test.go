@@ -24,7 +24,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/reservation"
 	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
-	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
@@ -112,7 +112,7 @@ type HostMgrHandlerTestSuite struct {
 	masterOperatorClient *mpb_mocks.MockMasterOperatorClient
 	provider             *hostmgr_mesos_mocks.MockFrameworkInfoProvider
 	volumeStore          *storage_mocks.MockPersistentVolumeStore
-	pool                 offer.Pool
+	pool                 offerpool.Pool
 	handler              *serviceHandler
 	frameworkID          *mesos.FrameworkID
 }
@@ -133,10 +133,10 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 
 	suite.frameworkID = mockValidFrameWorkID
 
-	suite.pool = offer.NewOfferPool(
+	suite.pool = offerpool.NewOfferPool(
 		_offerHoldTime,
 		suite.schedulerClient,
-		offer.NewMetrics(suite.testScope.SubScope("offer")),
+		offerpool.NewMetrics(suite.testScope.SubScope("offer")),
 		nil,               /* frameworkInfoProvider */
 		suite.volumeStore, /* volumeStore */
 	)

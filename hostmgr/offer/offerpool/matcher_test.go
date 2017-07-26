@@ -1,4 +1,4 @@
-package offer
+package offerpool
 
 import (
 	"math"

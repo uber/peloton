@@ -7,6 +7,7 @@ import (
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
+	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
@@ -28,14 +29,14 @@ type EventHandler interface {
 	Stop() error
 
 	// GetOfferPool returns the underlying Pool holding the offers.
-	GetOfferPool() Pool
+	GetOfferPool() offerpool.Pool
 }
 
 // eventHandler is the handler for Mesos Offer events
 type eventHandler struct {
-	offerPool   Pool
+	offerPool   offerpool.Pool
 	offerPruner Pruner
-	metrics     *Metrics
+	metrics     *offerpool.Metrics
 }
 
 // Singleton event handler for offers
@@ -54,8 +55,8 @@ func InitEventHandler(
 		log.Warning("Offer event handler has already been initialized")
 		return
 	}
-	metrics := NewMetrics(parent)
-	pool := NewOfferPool(
+	metrics := offerpool.NewMetrics(parent)
+	pool := offerpool.NewOfferPool(
 		offerHoldTime,
 		schedulerClient,
 		metrics,
@@ -140,7 +141,7 @@ func (h *eventHandler) RescindInverseOffer(ctx context.Context, body *sched.Even
 }
 
 // Pool returns the underlying OfferPool.
-func (h *eventHandler) GetOfferPool() Pool {
+func (h *eventHandler) GetOfferPool() offerpool.Pool {
 	return h.offerPool
 }
 

@@ -1,4 +1,4 @@
-package offer
+package offerpool
 
 import (
 	"github.com/uber-go/tally"

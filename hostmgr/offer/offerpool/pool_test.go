@@ -1,4 +1,4 @@
-package offer
+package offerpool
 
 import (
 	"context"
@@ -90,10 +90,10 @@ func TestRemoveExpiredOffers(t *testing.T) {
 	assert.Equal(t, 2, valid)
 
 	/*
-		assert.Equal(t, 1, len(pool.hostOfferIndex[hostName1].unreservedOffers))
-		offer := pool.hostOfferIndex[hostName1].unreservedOffers[offerID3]
-		assert.Equal(t, offerID3, *offer.Id.Value)
-		assert.Empty(t, len(pool.hostOfferIndex[hostName4].unreservedOffers))
+	   assert.Equal(t, 1, len(pool.hostOfferIndex[hostName1].unreservedOffers))
+	   offer := pool.hostOfferIndex[hostName1].unreservedOffers[offerID3]
+	   assert.Equal(t, offerID3, *offer.Id.Value)
+	   assert.Empty(t, len(pool.hostOfferIndex[hostName4].unreservedOffers))
 	*/
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -24,9 +25,9 @@ type Pruner interface {
 
 // NewOfferPruner initiates an instance of OfferPruner
 func NewOfferPruner(
-	pool Pool,
+	pool offerpool.Pool,
 	offerPruningPeriod time.Duration,
-	metrics *Metrics,
+	metrics *offerpool.Metrics,
 ) Pruner {
 	pruner := &offerPruner{
 		pool:               pool,
@@ -43,10 +44,10 @@ type offerPruner struct {
 	sync.Mutex
 
 	runningState       int32
-	pool               Pool
+	pool               offerpool.Pool
 	offerPruningPeriod time.Duration
 	stopPrunerChan     chan struct{}
-	metrics            *Metrics
+	metrics            *offerpool.Metrics
 }
 
 // Start starts offer pruning process
