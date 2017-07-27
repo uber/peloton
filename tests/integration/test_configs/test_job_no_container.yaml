@@ -4,9 +4,10 @@ description: "A dummy test batch job for peloton integration tests"
 instanceCount: 100
 defaultConfig:
   resource:
-    cpuLimit: 0.1
-    memLimitMb: 0.1
-    diskLimitMb: 0.1
+    # Keep resource limits not too low to avoid potentially hitting quota limit
+    cpuLimit: 1.0
+    memLimitMb: 24.0
+    diskLimitMb: 24.0
     fdLimit: 2
   healthCheck: null
   ports: []

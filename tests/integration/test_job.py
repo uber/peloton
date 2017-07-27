@@ -1,3 +1,4 @@
+import pytest
 import time
 
 from client import Client
@@ -6,6 +7,10 @@ from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
 from peloton_client.pbgen.peloton.api.job import job_pb2 as job
 from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
 from util import load_test_config
+
+
+# Mark test module so that we can run tests by tags
+pytestmark = [pytest.mark.default, pytest.mark.job]
 
 
 respool_root = '/'
@@ -69,6 +74,7 @@ def create_job(config=None):
     print 'created job %s' % job_id
 
     goal_state = 'SUCCEEDED'
+    failed_state = 'FAILED'
     state = ''
     attempts = 0
     while attempts < config.max_retry_attempts:
@@ -82,6 +88,7 @@ def create_job(config=None):
             print 'job goal state %s is reached' % goal_state
             break
         print format_stats(runtime.taskStats)
+        assert state != failed_state
         print 'current job state %s != goal state %s, retrying' % (
             state,
             goal_state

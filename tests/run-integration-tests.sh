@@ -26,7 +26,12 @@ fi
 
 export PYTHONPATH
 
-pytest -vsrx tests/integration --junit-xml=integration-test-report.xml
+if [[ -z "${TAGS}" ]]; then
+  TAGS='default'
+fi
+
+# If TAGS is not set, all tests from default group will run
+pytest -vsrx tests/integration --junit-xml=integration-test-report.xml -m "$TAGS"
 
 deactivate
 
