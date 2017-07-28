@@ -165,7 +165,7 @@ class App(object):
         """
         Returns the docker image path for a Peloton app
         """
-        return '%s/uber-usi/peloton:%s' % (
+        return '%s/vendor/peloton:%s' % (
             self.cluster.docker_registry, self.cluster.version
         )
 
