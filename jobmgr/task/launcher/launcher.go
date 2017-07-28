@@ -308,7 +308,7 @@ func (l *launcher) getLaunchableTasks(
 		}
 
 		taskInfo.GetRuntime().Host = hostname
-		taskInfo.GetRuntime().State = task.TaskState_LAUNCHING
+		taskInfo.GetRuntime().State = task.TaskState_LAUNCHED
 		if selectedPorts != nil {
 			// Reset runtime ports to get new ports assignment if placement has ports.
 			taskInfo.GetRuntime().Ports = make(map[string]uint32)

@@ -210,9 +210,9 @@ func main() {
 		rootScope,
 	)
 
-	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker())
+	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker(), cfg.ResManager)
 
-	resmgr.InitRecovery(rootScope, jobStore, taskStore, serviceHandler)
+	resmgr.InitRecovery(rootScope, jobStore, taskStore, serviceHandler, cfg.ResManager)
 
 	server := resmgr.NewServer(rootScope, cfg.ResManager.Port)
 	candidate, err := leader.NewCandidate(

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -16,7 +17,6 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/respool"
-	"fmt"
 )
 
 type StateMachineTestSuite struct {
@@ -52,7 +52,7 @@ func (suite *StateMachineTestSuite) SetupTest() {
 		Policy:    policy,
 	}
 	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1", nil, respoolConfig)
-	suite.tracker.AddTask(suite.task, suite.eventStreamHandler, suite.respool)
+	suite.tracker.AddTask(suite.task, suite.eventStreamHandler, suite.respool, &Config{})
 }
 
 // Returns resource configs

@@ -41,13 +41,15 @@ type ServiceHandler struct {
 	eventStreamHandler *eventstream.Handler
 	rmTracker          rmtask.Tracker
 	maxOffset          *uint64
+	config             Config
 }
 
 // InitServiceHandler initializes the handler for ResourceManagerService
 func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
-	rmTracker rmtask.Tracker) *ServiceHandler {
+	rmTracker rmtask.Tracker,
+	conf Config) *ServiceHandler {
 
 	var maxOffset uint64
 	handler := &ServiceHandler{
@@ -60,6 +62,7 @@ func InitServiceHandler(
 		),
 		rmTracker: rmTracker,
 		maxOffset: &maxOffset,
+		config:    conf,
 	}
 	// TODO: move eventStreamHandler buffer size into config
 	handler.eventStreamHandler = initEventStreamHandler(d, 1000, parent.SubScope("resmgr"))
@@ -128,6 +131,7 @@ func (h *ServiceHandler) EnqueueGangs(
 				task,
 				h.eventStreamHandler,
 				respool,
+				h.config.RmTaskConfig,
 			)
 			if err != nil {
 				failed = append(
@@ -395,14 +399,59 @@ func (h *ServiceHandler) GetPlacements(
 			break
 		}
 		placement := item.(*resmgr.Placement)
-		placements = append(placements, placement)
+		newPlacement := h.transitTasksInPlacement(placement)
+		placements = append(placements, newPlacement)
 		h.metrics.GetPlacementSuccess.Inc(1)
 	}
+
 	response := resmgrsvc.GetPlacementsResponse{Placements: placements}
 	h.metrics.PlacementQueueLen.Update(float64(h.placements.Length()))
 	log.Debug("Get Placement Returned")
 
 	return &response, nil
+}
+
+// transitTasksInPlacement transition to Launching upon getplacement
+// or remove tasks from placement which are not in placed state.
+func (h *ServiceHandler) transitTasksInPlacement(
+	placement *resmgr.Placement) *resmgr.Placement {
+	var invalidTasks []*peloton.TaskID
+	for _, taskID := range placement.Tasks {
+		rmTask := h.rmTracker.GetTask(taskID)
+		if rmTask == nil {
+			invalidTasks = append(invalidTasks, taskID)
+			log.WithFields(log.Fields{
+				"Task": taskID.Value,
+			}).Debug("Task is not present in tracker, " +
+				"Removing it from placement")
+			continue
+		}
+		state := rmTask.GetCurrentState()
+		log.WithFields(log.Fields{
+			"Current state": state.String(),
+			"Task":          taskID.Value,
+		}).Debug("Get Placement for task")
+		if state != t.TaskState_PLACED {
+			log.Error("Task is not in placed state " + taskID.Value)
+			invalidTasks = append(invalidTasks, taskID)
+
+		} else {
+			err := rmTask.TransitTo(t.TaskState_LAUNCHING.String())
+			if err != nil {
+				log.WithError(
+					errors.WithStack(err)).
+					Error("not able " +
+						"to transition to launching " +
+						"for task " + taskID.Value)
+				invalidTasks = append(invalidTasks, taskID)
+			}
+		}
+		log.WithFields(log.Fields{
+			"Task":  taskID.Value,
+			"State": state.String(),
+		}).Debug("Latest state in Get Placement")
+	}
+	return h.removeTasksFromPlacements(placement, invalidTasks)
 }
 
 // NotifyTaskUpdates is called by HM to notify task updates
@@ -415,25 +464,40 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 		for _, event := range req.Events {
 			taskState := util.MesosStateToPelotonState(
 				event.MesosTaskStatus.GetState())
-			if !util.IsPelotonStateTerminal(taskState) {
+
+			if taskState != t.TaskState_RUNNING &&
+				!util.IsPelotonStateTerminal(taskState) {
 				continue
 			}
-
 			ptID, err := util.ParseTaskIDFromMesosTaskID(
 				*(event.MesosTaskStatus.TaskId.Value))
 			if err != nil {
 				log.WithField("event", event).Error("Could not parse mesos ID")
 				continue
 			}
-			// TODO: We probably want to terminate all the tasks in gang
-			err = rmtask.GetTracker().MarkItDone(&peloton.TaskID{
+			taskID := &peloton.TaskID{
 				Value: ptID,
-			})
-
-			if err != nil {
-				log.WithField("event", event).Error("Could not be updated")
 			}
-
+			rmTask := h.rmTracker.GetTask(taskID)
+			if rmTask == nil {
+				continue
+			}
+			if taskState == t.TaskState_RUNNING {
+				err = rmTask.TransitTo(t.TaskState_RUNNING.String())
+				if err != nil {
+					log.WithError(
+						errors.WithStack(err)).
+						Error("Not able " +
+							"to transition to running " +
+							"for task " + taskID.Value)
+				}
+			} else {
+				// TODO: We probably want to terminate all the tasks in gang
+				err = rmtask.GetTracker().MarkItDone(taskID)
+				if err != nil {
+					log.WithField("event", event).Error("Could not be updated")
+				}
+			}
 			log.WithField("Offset", event.Offset).
 				Debug("Event received by resource manager")
 			if event.Offset > atomic.LoadUint64(h.maxOffset) {

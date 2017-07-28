@@ -66,6 +66,12 @@ func (suite *recoveryTestSuite) SetupSuite() {
 			maxPlacementQueueSize,
 		),
 		rmTracker: suite.rmTaskTracker,
+		config: Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+			},
+		},
 	}
 	suite.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -347,7 +353,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHING), nil)
 
 	// Perform recovery
-	InitRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore, suite.handler)
+	InitRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore, suite.handler,
+		Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+			},
+		})
 	GetRecoveryHandler().Start()
 
 	// 2. check the queue content

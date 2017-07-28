@@ -28,6 +28,9 @@ resmgr:
   port: 5290
   task_scheduling_period: 100ms
   entitlement_calculation_period: 60s
+  task:
+    placing_timeout: 10m
+    launching_timeout: 20m
 
 election:
   root: "/peloton"

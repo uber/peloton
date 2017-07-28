@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -30,7 +31,6 @@ const (
 	testJobID                      = "testJob0"
 	testBatchSize                  = 3
 	explicitReconcileBatchInterval = 100 * time.Millisecond
-	runningStateStr                = "8"
 	oneExplicitReconcileRunDelay   = 350 * time.Millisecond
 )
 
@@ -126,7 +126,8 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 		suite.mockJobStore.EXPECT().
 			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
+			GetTasksForJobAndState(context.Background(), suite.testJobID,
+				strconv.Itoa(int(task.TaskState_value[task.TaskState_RUNNING.String()]))).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -191,7 +192,8 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 		suite.mockJobStore.EXPECT().
 			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
+			GetTasksForJobAndState(context.Background(), suite.testJobID,
+				strconv.Itoa(int(task.TaskState_value[task.TaskState_RUNNING.String()]))).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -239,7 +241,8 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 		suite.mockJobStore.EXPECT().
 			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(context.Background(), suite.testJobID, runningStateStr).
+			GetTasksForJobAndState(context.Background(), suite.testJobID,
+				strconv.Itoa(int(task.TaskState_value[task.TaskState_RUNNING.String()]))).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(

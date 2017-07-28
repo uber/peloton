@@ -67,6 +67,12 @@ func (suite *HandlerTestSuite) SetupSuite() {
 			maxPlacementQueueSize,
 		),
 		rmTracker: suite.rmTaskTracker,
+		config: Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+			},
+		},
 	}
 	suite.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -349,7 +355,10 @@ func (suite *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 			tasks = append(tasks, task)
 			suite.rmTaskTracker.AddTask(&resmgr.Task{
 				Id: task,
-			}, nil, resp)
+			}, nil, resp, &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+			})
 		}
 
 		placement := &resmgr.Placement{
@@ -453,7 +462,10 @@ func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
 		tasks = append(tasks, task)
 		suite.rmTaskTracker.AddTask(&resmgr.Task{
 			Id: task,
-		}, nil, resp)
+		}, nil, resp, &rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
 	}
 	placement := &resmgr.Placement{
 		Tasks:    tasks,
@@ -474,14 +486,23 @@ func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
 
 func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
+	rm_task.InitTaskTracker(tally.NoopScope)
 	handler := &ServiceHandler{
 		metrics:   NewMetrics(tally.NoopScope),
 		maxOffset: &c,
+		rmTracker: rm_task.GetTracker(),
 	}
 	jobID := "test"
 	rm_task.InitTaskTracker(tally.NoopScope)
 	uuidStr := uuid.NewUUID().String()
 	var events []*pb_eventstream.Event
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
+		&pb_respool.ResourcePoolConfig{
+			Name:      "respool1",
+			Parent:    nil,
+			Resources: suite.getResourceConfig(),
+			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		})
 	for i := 0; i < 100; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
 		state := mesos_v1.TaskState_TASK_FINISHED
@@ -496,6 +517,22 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 			MesosTaskStatus: status,
 		}
 		events = append(events, &event)
+		ptask := &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", jobID, i),
+		}
+
+		handler.rmTracker.AddTask(&resmgr.Task{
+			Id: ptask,
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+		}, nil, resp, &rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
 	}
 	req := &resmgrsvc.NotifyTaskUpdatesRequest{
 		Events: events,

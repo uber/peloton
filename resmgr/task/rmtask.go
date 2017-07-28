@@ -1,8 +1,6 @@
 package task
 
 import (
-	"time"
-
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
@@ -22,17 +20,20 @@ type RMTask struct {
 	stateMachine        state.StateMachine
 	respool             respool.ResPool
 	statusUpdateHandler *eventstream.Handler
+	config              *Config
 }
 
 // CreateRMTask creates the RM task from resmgr.task
 func CreateRMTask(
 	t *resmgr.Task,
 	handler *eventstream.Handler,
-	respool respool.ResPool) (*RMTask, error) {
+	respool respool.ResPool,
+	config *Config) (*RMTask, error) {
 	r := RMTask{
 		task:                t,
 		statusUpdateHandler: handler,
 		respool:             respool,
+		config:              config,
 	}
 	var err error
 	r.stateMachine, err = r.createStateMachine()
@@ -110,6 +111,7 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 						state.State(task.TaskState_RUNNING.String()),
 						state.State(task.TaskState_READY.String()),
 						state.State(task.TaskState_KILLED.String()),
+						state.State(task.TaskState_LAUNCHED.String()),
 					},
 					Callback: nil,
 				}).
@@ -146,7 +148,14 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 				&state.TimeoutRule{
 					From:     state.State(task.TaskState_PLACING.String()),
 					To:       state.State(task.TaskState_READY.String()),
-					Timeout:  10 * time.Minute,
+					Timeout:  rmTask.config.PlacingTimeout,
+					Callback: rmTask.placingToReadyCallBack,
+				}).
+			AddTimeoutRule(
+				&state.TimeoutRule{
+					From:     state.State(task.TaskState_LAUNCHING.String()),
+					To:       state.State(task.TaskState_READY.String()),
+					Timeout:  rmTask.config.LaunchingTimeout,
 					Callback: rmTask.placingToReadyCallBack,
 				}).
 			Build()

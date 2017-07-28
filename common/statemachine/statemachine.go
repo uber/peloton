@@ -194,6 +194,10 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	// Try to stop state recovery if its transitioning
 	// from timeout state
 	if _, ok := sm.timeoutRules[curState]; ok {
+		log.WithFields(log.Fields{
+			"State": curState,
+			"Task":  sm.name,
+		}).Debug("Stopping Timer")
 		sm.timer.Stop()
 	}
 

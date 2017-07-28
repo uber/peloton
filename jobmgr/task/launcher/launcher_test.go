@@ -161,7 +161,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
 	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
 	updatedTaskInfo.Runtime.Ports["port"] = testPort
-	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHING
+	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHED
 
 	gomock.InOrder(
 		mockRes.EXPECT().
@@ -275,7 +275,7 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
 	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
 	updatedTaskInfo.Runtime.Ports["port"] = testPort
-	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHING
+	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHED
 
 	initializedTaskInfo := proto.Clone(updatedTaskInfo).(*task.TaskInfo)
 	initializedTaskInfo.Runtime.State = task.TaskState_INITIALIZED

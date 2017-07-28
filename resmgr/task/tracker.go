@@ -23,7 +23,8 @@ type Tracker interface {
 	AddTask(
 		t *resmgr.Task,
 		handler *eventstream.Handler,
-		respool respool.ResPool) error
+		respool respool.ResPool,
+		config *Config) error
 
 	// GetTask gets the RM task for taskID
 	GetTask(t *peloton.TaskID) *RMTask
@@ -97,10 +98,11 @@ func GetTracker() Tracker {
 func (tr *tracker) AddTask(
 	t *resmgr.Task,
 	handler *eventstream.Handler,
-	respool respool.ResPool) error {
+	respool respool.ResPool,
+	config *Config) error {
 	tr.Lock()
 	defer tr.Unlock()
-	rmTask, err := CreateRMTask(t, handler, respool)
+	rmTask, err := CreateRMTask(t, handler, respool, config)
 	if err != nil {
 		return err
 	}

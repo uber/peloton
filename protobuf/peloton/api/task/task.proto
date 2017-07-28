@@ -266,8 +266,12 @@ enum TaskState {
   // requirements and constraints
   PLACED      = 5;
 
-  // The task is being launched Mesos master
+  // The task is taken from resmgr to be launched
   LAUNCHING   = 6;
+
+  // The task is being launched in Job manager
+  // TODO: We need to correct the numbering
+  LAUNCHED    = 15;
 
   // The task is being started by Mesos agent
   STARTING    = 7;

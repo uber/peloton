@@ -55,6 +55,7 @@ type recoveryHandler struct {
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
 	handler   *ServiceHandler
+	config    Config
 }
 
 // InitRecovery initializes the recoveryHandler
@@ -63,6 +64,7 @@ func InitRecovery(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	handler *ServiceHandler,
+	config Config,
 ) {
 	once.Do(func() {
 		recovery = &recoveryHandler{
@@ -70,6 +72,7 @@ func InitRecovery(
 			taskStore: taskStore,
 			handler:   handler,
 			metrics:   NewMetrics(parent),
+			config:    config,
 		}
 	})
 }
@@ -243,7 +246,8 @@ func (r *recoveryHandler) addRunningTasks(
 		err := rmtask.GetTracker().AddTask(
 			rmTask,
 			r.handler.GetStreamHandler(),
-			respool)
+			respool,
+			r.config.RmTaskConfig)
 		if err != nil {
 			log.WithField("Task", rmTask.Id.Value).Warn(
 				"Running Task can not be enqueued")
