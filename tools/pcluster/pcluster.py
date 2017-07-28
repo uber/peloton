@@ -602,14 +602,14 @@ def main():
 
     command = args.command
 
-    applications = {
-        App.HOST_MANAGER: args.disable_peloton_hostmgr,
-        App.RESOURCE_MANAGER: args.disable_peloton_resmgr,
-        App.PLACEMENT_ENGINE: args.disable_peloton_placement,
-        App.JOB_MANAGER: args.disable_peloton_jobmgr
-    }
-
     if command == 'setup':
+        applications = {
+            App.HOST_MANAGER: args.disable_peloton_hostmgr,
+            App.RESOURCE_MANAGER: args.disable_peloton_resmgr,
+            App.PLACEMENT_ENGINE: args.disable_peloton_placement,
+            App.JOB_MANAGER: args.disable_peloton_jobmgr
+        }
+
         setup(
             enable_peloton=args.enable_peloton,
             applications=applications
