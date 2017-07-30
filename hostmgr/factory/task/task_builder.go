@@ -288,10 +288,6 @@ func (tb *Builder) populateCommandInfo(
 	// Make a deep copy of pass through fields to avoid changing input.
 	mesosTask.Command = proto.Clone(command).(*mesos.CommandInfo)
 
-	if len(envMap) == 0 {
-		return
-	}
-
 	// Populate optional environment variables.
 	// Make sure `Environment` field is initialized.
 	if mesosTask.Command.GetEnvironment().GetVariables() == nil {

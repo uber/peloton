@@ -349,7 +349,7 @@ func (suite *BuilderTestSuite) TestCommandHealthCheck() {
 	suite.NotNil(hc)
 	suite.Equal(hcCmd, hc.GetValue())
 	suite.True(hc.GetShell())
-	suite.Empty(hc.GetEnvironment().GetVariables())
+	suite.Len(hc.GetEnvironment().GetVariables(), 3)
 }
 
 // This tests various combination of populating health check.
