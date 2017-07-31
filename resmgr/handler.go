@@ -519,3 +519,11 @@ func (h *ServiceHandler) GetActiveTasks(
 	taskStates := h.rmTracker.GetActiveTasks(req.GetJobID(), req.GetRespoolID())
 	return &resmgrsvc.GetActiveTasksResponse{TaskStatesMap: taskStates}, nil
 }
+
+// KillTasks kills the task
+func (h *ServiceHandler) KillTasks(
+	ctx context.Context,
+	req *resmgrsvc.KillTasksRequest,
+) (*resmgrsvc.KillTasksResponse, error) {
+	return nil, nil
+}

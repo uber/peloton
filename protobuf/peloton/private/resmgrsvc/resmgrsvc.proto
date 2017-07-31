@@ -8,6 +8,7 @@ package peloton.private.resmgr;
 
 option go_package = "peloton/private/resmgrsvc";
 
+import "peloton/api/peloton.proto";
 import "peloton/api/respool/respool.proto";
 import "peloton/private/resmgr/resmgr.proto";
 import "peloton/private/eventstream/eventstream.proto";
@@ -79,6 +80,11 @@ service ResourceManagerService {
    * Get task to state map. This information is helpful for debug purpose.
    */
   rpc GetActiveTasks(GetActiveTasksRequest) returns (GetActiveTasksResponse);
+
+  /**
+   * Kill Tasks kills/Delete the tasks in Resource Manager
+   */
+  rpc KillTasks(KillTasksRequest) returns (KillTasksResponse);
 }
 
 message ResourcePoolNotFound {
@@ -247,4 +253,16 @@ message GetActiveTasksResponse {
   Error error = 1;
   // This will return a map from task id to state.
   map <string,string> taskStatesMap = 2;
+}
+
+message KillTasksRequest {
+  // Peloton Task Ids for
+  repeated api.peloton.TaskID tasks = 1;
+}
+
+message KillTasksResponse {
+  message Error {
+    string message = 1;
+  }
+  Error error = 1;
 }
