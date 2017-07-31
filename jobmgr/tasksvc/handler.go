@@ -11,20 +11,19 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pb_errors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -49,19 +48,20 @@ func InitServiceHandler(
 	frameworkInfoStore storage.FrameworkInfoStore,
 	volumeStore storage.PersistentVolumeStore,
 	runtimeUpdater *job.RuntimeUpdater,
+	goalstateKeeper goalstate.Keeper,
 	mesosAgentWorkDir string) {
 
 	handler := &serviceHandler{
 		taskStore:          taskStore,
 		jobStore:           jobStore,
-		frameworkInfoStore: frameworkInfoStore,
 		volumeStore:        volumeStore,
+		frameworkInfoStore: frameworkInfoStore,
 		runtimeUpdater:     runtimeUpdater,
 		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
-		hostmgrClient:      hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		httpClient:         &http.Client{Timeout: _httpClientTimeout},
 		taskLauncher:       launcher.GetLauncher(),
+		goalstateKeeper:    goalstateKeeper,
 		mesosAgentWorkDir:  mesosAgentWorkDir,
 	}
 	d.Register(task.BuildTaskManagerYARPCProcedures(handler))
@@ -71,14 +71,14 @@ func InitServiceHandler(
 type serviceHandler struct {
 	taskStore          storage.TaskStore
 	jobStore           storage.JobStore
-	frameworkInfoStore storage.FrameworkInfoStore
 	volumeStore        storage.PersistentVolumeStore
+	frameworkInfoStore storage.FrameworkInfoStore
 	runtimeUpdater     *job.RuntimeUpdater
 	metrics            *Metrics
-	hostmgrClient      hostsvc.InternalHostServiceYARPCClient
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	httpClient         *http.Client
 	taskLauncher       launcher.Launcher
+	goalstateKeeper    goalstate.Keeper
 	mesosAgentWorkDir  string
 }
 
@@ -410,46 +410,33 @@ func (m *serviceHandler) Stop(
 	}
 
 	// tasksToKill only includes taks ids whose goal state update succeeds.
-	var tasksToKill []*mesos.TaskID
 	var stoppedInstanceIds []uint32
 	// Persist KILLED goalstate for tasks in db.
 	for instID, taskInfo := range taskInfos {
 		taskID := taskInfo.GetRuntime().GetMesosTaskId()
 		// Skip update task goalstate if it is already KILLED.
-		if taskInfo.GetRuntime().GoalState != task.TaskState_KILLED {
-			taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
-			err = m.taskStore.UpdateTask(ctx, taskInfo)
-			if err != nil {
-				// Skip remaining tasks killing if db update error occurs.
-				log.WithError(err).
-					WithField("task_id", taskID).
-					Error("Failed to update KILLED goalstate")
-				break
-			}
+		if taskInfo.GetRuntime().GoalState == task.TaskState_KILLED {
+			continue
 		}
-		curState := taskInfo.GetRuntime().GetState()
-		// Only kill tasks that is actively starting/running.
-		switch curState {
-		case task.TaskState_LAUNCHING, task.TaskState_RUNNING:
-			tasksToKill = append(tasksToKill, taskID)
+
+		taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
+		err = m.taskStore.UpdateTask(ctx, taskInfo)
+		if err != nil {
+			// Skip remaining tasks killing if db update error occurs.
+			log.WithError(err).
+				WithField("task_id", taskID).
+				Error("Failed to update KILLED goalstate")
+			break
 		}
+
+		if err := m.goalstateKeeper.UpdateTaskGoalState(ctx, taskInfo); err != nil {
+			log.WithError(err).
+				WithField("task_id", taskID).
+				Error("failed to immediatly process new goalstate")
+		}
+
 		stoppedInstanceIds = append(stoppedInstanceIds, instID)
 		m.metrics.TaskStop.Inc(1)
-	}
-
-	// TODO(mu): Notify RM to also remove these tasks from task queue.
-	// TODO(mu): Add kill retry module since the kill msg to mesos could get lost.
-	if len(tasksToKill) > 0 {
-		log.WithField("tasks_to_kill", tasksToKill).Info("Call HM to kill tasks.")
-		var request = &hostsvc.KillTasksRequest{
-			TaskIds: tasksToKill,
-		}
-		_, err := m.hostmgrClient.KillTasks(ctx, request)
-		if err != nil {
-			log.WithError(err).
-				WithField("tasks", tasksToKill).
-				Error("Failed to kill tasks on host manager")
-		}
 	}
 
 	if err != nil {

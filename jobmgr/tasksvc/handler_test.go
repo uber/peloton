@@ -8,7 +8,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
@@ -17,13 +16,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	launcher_mocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
+
+	"code.uber.internal/infra/peloton/jobmgr/task/goalstate/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -93,12 +91,12 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
+	keeperMock := mocks.NewMockKeeper(ctrl)
+	suite.handler.goalstateKeeper = keeperMock
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -110,20 +108,14 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(suite.taskInfos, nil),
-		mockTaskStore.EXPECT().
-			UpdateTask(gomock.Any(), gomock.Any()).Times(testInstanceCount).Return(nil),
-		mockHostmgrClient.EXPECT().
-			KillTasks(
-				gomock.Any(),
-				gomock.Any()).
-			Do(func(_ context.Context, reqBody interface{}) {
-				killTaskReq := reqBody.(*hostsvc.KillTasksRequest)
-				for _, tid := range killTaskReq.TaskIds {
-					_, ok := expectedTaskIds[tid]
-					assert.Equal(suite.T(), ok, true)
-				}
-			}).
-			Return(&hostsvc.KillTasksResponse{}, nil),
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
 	)
 
 	var request = &task.StopRequest{
@@ -142,19 +134,15 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
+	keeperMock := mocks.NewMockKeeper(ctrl)
+	suite.handler.goalstateKeeper = keeperMock
 
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
-
-	expectedTaskIds := []*mesos.TaskID{
-		suite.taskInfos[1].GetRuntime().GetMesosTaskId(),
-	}
 
 	taskRanges := []*task.InstanceRange{
 		{
@@ -170,12 +158,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
 			UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
-		mockHostmgrClient.EXPECT().
-			KillTasks(
-				gomock.Any(),
-				gomock.Eq(&hostsvc.KillTasksRequest{
-					TaskIds: expectedTaskIds,
-				})).Return(&hostsvc.KillTasksResponse{}, nil),
+		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), suite.taskInfos[1]).Times(1).Return(nil),
 	)
 
 	var request = &task.StopRequest{
@@ -195,18 +178,16 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
+	keeperMock := mocks.NewMockKeeper(ctrl)
+	suite.handler.goalstateKeeper = keeperMock
 
 	taskInfos := make(map[uint32]*task.TaskInfo)
 	taskInfos[1] = suite.taskInfos[1]
 	taskInfos[2] = suite.createTestTaskInfo(task.TaskState_FAILED, uint32(2))
-
-	expectedTaskIds := []*mesos.TaskID{taskInfos[1].GetRuntime().GetMesosTaskId()}
 
 	taskRanges := []*task.InstanceRange{
 		{
@@ -220,16 +201,10 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(taskInfos, nil),
-		mockTaskStore.EXPECT().
-			UpdateTask(gomock.Any(), gomock.Any()).Times(2).Return(nil),
-		mockHostmgrClient.EXPECT().
-			KillTasks(
-				gomock.Any(),
-				gomock.Eq(&hostsvc.KillTasksRequest{
-					TaskIds: expectedTaskIds,
-				})).
-			Times(1).
-			Return(&hostsvc.KillTasksResponse{}, nil),
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Times(1).Return(nil),
 	)
 
 	var request = &task.StopRequest{
@@ -249,8 +224,6 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
@@ -305,8 +278,6 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidJobID() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
@@ -336,8 +307,6 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithTaskUpdateFailure() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockHostmgrClient := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	suite.handler.hostmgrClient = mockHostmgrClient
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)

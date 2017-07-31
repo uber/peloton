@@ -12,7 +12,7 @@ import (
 // state machines for state/goalstate convergence.
 type Tracker interface {
 	// AddTask adds the task to state machine
-	AddTask(taskInfo *task.TaskInfo) error
+	AddTask(taskInfo *task.TaskInfo) (JMTask, error)
 
 	// GetTask gets the JM task for taskID
 	GetTask(taskID *peloton.TaskID) JMTask
@@ -40,7 +40,7 @@ type tracker struct {
 }
 
 // AddTask adds task to task tracker
-func (tr *tracker) AddTask(taskInfo *task.TaskInfo) error {
+func (tr *tracker) AddTask(taskInfo *task.TaskInfo) (JMTask, error) {
 	tr.Lock()
 	defer tr.Unlock()
 
@@ -48,18 +48,18 @@ func (tr *tracker) AddTask(taskInfo *task.TaskInfo) error {
 		"%s-%d",
 		taskInfo.GetJobId().GetValue(), taskInfo.GetInstanceId())
 
-	if _, ok := tr.taskMap[pelotonTaskID]; ok {
+	if t, ok := tr.taskMap[pelotonTaskID]; ok {
 		// TODO(mu): need to check if state/goalstate has changed if
 		// task is already in tracker.
-		return nil
+		return t, nil
 	}
 
-	jmTask, err := CreateJMTask(taskInfo)
+	t, err := CreateJMTask(taskInfo)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	tr.taskMap[pelotonTaskID] = jmTask
-	return nil
+	tr.taskMap[pelotonTaskID] = t
+	return t, nil
 }
 
 // GetTask gets the JM task for taskID

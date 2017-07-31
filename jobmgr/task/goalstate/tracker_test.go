@@ -38,11 +38,12 @@ func (suite *TrackerTestSuite) TestTrackerTasks() {
 		Value: fmt.Sprintf("%s-%d", _testJobID, 0),
 	}
 
-	err := suite.tracker.AddTask(testTaskInfo)
+	t, err := suite.tracker.AddTask(testTaskInfo)
 	suite.NoError(err)
 
 	taskInfo := suite.tracker.GetTask(pelotonTaskID)
 	suite.NotNil(taskInfo)
+	suite.Equal(t, taskInfo)
 
 	err = suite.tracker.DeleteTask(pelotonTaskID)
 	suite.NoError(err)

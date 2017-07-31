@@ -270,6 +270,9 @@ func main() {
 		},
 	})
 
+	taskOperator := goalstate.NewTaskOperator(dispatcher)
+	taskGoalStateKeeper := goalstate.NewKeeper(jobStore, taskStore, taskOperator, rootScope)
+
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
 	runtimeUpdater := job.NewJobRuntimeUpdater(
@@ -305,6 +308,7 @@ func main() {
 		frameworkInfoStore,
 		volumeStore,
 		runtimeUpdater,
+		taskGoalStateKeeper,
 		*mesosAgentWorkDir,
 	)
 	upgrade.InitServiceHandler(dispatcher, jobStore, upgradeStore)
@@ -313,8 +317,6 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
-
-	taskGoalStateKeeper := goalstate.NewKeeper(jobStore, taskStore, rootScope)
 
 	// Init the Task status update which pulls task update events
 	// from HM once started after gaining leadership
