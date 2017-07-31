@@ -159,6 +159,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 
 	updatedTaskInfo := proto.Clone(testTasks[0]).(*task.TaskInfo)
 	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
+	updatedTaskInfo.Runtime.AgentID = hostOffers[0].GetAgentId()
 	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
 	updatedTaskInfo.Runtime.Ports["port"] = testPort
 	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHED
@@ -273,6 +274,7 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 
 	updatedTaskInfo := proto.Clone(testTasks[0]).(*task.TaskInfo)
 	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
+	updatedTaskInfo.Runtime.AgentID = hostOffers[0].GetAgentId()
 	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
 	updatedTaskInfo.Runtime.Ports["port"] = testPort
 	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHED

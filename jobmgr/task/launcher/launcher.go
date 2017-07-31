@@ -14,6 +14,7 @@ import (
 
 	"go.uber.org/yarpc"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
@@ -201,6 +202,7 @@ func (l *launcher) LaunchTaskWithReservedResource(ctx context.Context, taskInfo 
 	launchableTasks, _, err := l.getLaunchableTasks(
 		ctx, []*peloton.TaskID{pelotonTaskID},
 		taskRuntime.GetHost(),
+		taskRuntime.GetAgentID(),
 		nil)
 	if err != nil {
 		return err
@@ -224,6 +226,7 @@ func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.P
 				ctx,
 				placement.GetTasks(),
 				placement.GetHostname(),
+				placement.GetAgentId(),
 				placement.GetPorts())
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
@@ -280,6 +283,7 @@ func (l *launcher) getLaunchableTasks(
 	ctx context.Context,
 	tasks []*peloton.TaskID,
 	hostname string,
+	agentID *mesos.AgentID,
 	selectedPorts []uint32) ([]*hostsvc.LaunchableTask, []*task.TaskInfo, error) {
 	portsIndex := 0
 
@@ -308,6 +312,7 @@ func (l *launcher) getLaunchableTasks(
 		}
 
 		taskInfo.GetRuntime().Host = hostname
+		taskInfo.GetRuntime().AgentID = agentID
 		taskInfo.GetRuntime().State = task.TaskState_LAUNCHED
 		if selectedPorts != nil {
 			// Reset runtime ports to get new ports assignment if placement has ports.

@@ -349,6 +349,9 @@ message RuntimeInfo {
 
   // The desired config version that should be used by the runtime.
   int64 desiredConfigVersion = 13;
+
+  // the id of mesos agent on the host to be launched.
+  mesos.v1.AgentID agentID = 14;
 }
 
 
