@@ -2,7 +2,9 @@ package peer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 
 	"code.uber.internal/infra/peloton/leader"
@@ -96,7 +98,19 @@ func (c *smartChooser) Choose(
 	return c.chooser.Choose(ctx, req)
 }
 
-// UpdatePeer updates the current url
-func (c *smartChooser) UpdatePeer(urlString string) error {
-	return c.chooser.UpdatePeer(urlString)
+// UpdatePeer updates the current peer address of leader
+func (c *smartChooser) UpdatePeer(peer string) error {
+
+	id := leader.ID{}
+	if err := json.Unmarshal([]byte(peer), &id); err != nil {
+		log.WithField("leader", peer).Error("Failed to parse leader json")
+		return err
+	}
+	log.WithFields(log.Fields{
+		"role": c.role,
+		"peer": id,
+	}).Info("Updating peer with the new leader address")
+
+	hostPort := fmt.Sprintf("%s:%d", id.IP, id.HTTPPort)
+	return c.chooser.UpdatePeer(hostPort)
 }

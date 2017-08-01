@@ -1,18 +1,23 @@
 package leader
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/url"
 
 	"code.uber.internal/infra/peloton/common"
 
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/zookeeper"
+	log "github.com/sirupsen/logrus"
 )
 
-// Discovery is the service discovery interface for Peloton CLI
+// Discovery is the service discovery interface for Peloton clients
 type Discovery interface {
-	GetJobMgrURL() (*url.URL, error)
-	GetResMgrURL() (*url.URL, error)
+
+	// Returns the app URL for a given Peloton role such as
+	// peloton-jobmgr or peloton-resmgr etc.
+	GetAppURL(role string) (*url.URL, error)
 }
 
 // NewStaticServiceDiscovery creates a staticDiscovery object
@@ -37,14 +42,16 @@ type staticDiscovery struct {
 	resmgrURL *url.URL
 }
 
-// GetJobMgrURL returns jobmgrURL
-func (s *staticDiscovery) GetJobMgrURL() (*url.URL, error) {
-	return s.jobmgrURL, nil
-}
-
-// GetResMgrURL returns resmgrURL
-func (s *staticDiscovery) GetResMgrURL() (*url.URL, error) {
-	return s.resmgrURL, nil
+// GetAppURL returns the app URL for a given Peloton role
+func (s *staticDiscovery) GetAppURL(role string) (*url.URL, error) {
+	switch role {
+	case common.JobManagerRole:
+		return s.jobmgrURL, nil
+	case common.ResourceManagerRole:
+		return s.resmgrURL, nil
+	default:
+		return nil, fmt.Errorf("invalid Peloton role %s", role)
+	}
 }
 
 // NewZkServiceDiscovery creates a zkDiscovery object
@@ -73,46 +80,22 @@ type zkDiscovery struct {
 	zkRoot   string
 }
 
-// GetJobMgrURL reads jobmgr leader url from zk and returns jobmgrURL
-func (s *zkDiscovery) GetJobMgrURL() (*url.URL, error) {
-	zkPath := leaderZkPath(s.zkRoot, common.JobManagerRole)
+// GetAppURL reads app URL from Zookeeper for a given Peloton role
+func (s *zkDiscovery) GetAppURL(role string) (*url.URL, error) {
+	zkPath := leaderZkPath(s.zkRoot, role)
 	leader, err := s.zkClient.Get(zkPath)
 	if err != nil {
 		return nil, err
 	}
 
-	jobmgrURL, err := parseURL(string(leader.Value))
-	if err != nil {
+	id := ID{}
+	if err := json.Unmarshal([]byte(leader.Value), &id); err != nil {
+		log.WithField("leader", leader.Value).Error("Failed to parse leader json")
 		return nil, err
 	}
-
-	return jobmgrURL, nil
-}
-
-// GetResMgrURL reads resmgr leader url from zk and returns resmgrURL
-func (s *zkDiscovery) GetResMgrURL() (*url.URL, error) {
-	zkPath := leaderZkPath(s.zkRoot, common.ResourceManagerRole)
-	leader, err := s.zkClient.Get(zkPath)
-	if err != nil {
-		return nil, err
-	}
-
-	resmgrURL, err := parseURL(string(leader.Value))
-	if err != nil {
-		return nil, err
-	}
-
-	return resmgrURL, nil
-}
-
-// parseURL generates url.URL from urlStr and sets path
-func parseURL(urlStr string) (*url.URL, error) {
-	url, err := url.Parse(urlStr)
-	if err != nil {
-		return nil, err
-	}
-
-	url.Path = common.PelotonEndpointPath
-
-	return url, nil
+	return &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s:%d", id.IP, id.HTTPPort),
+		Path:   common.PelotonEndpointPath,
+	}, nil
 }

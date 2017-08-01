@@ -1,5 +1,5 @@
 pytest==3.0.7
-peloton-client==0.2.3
+peloton-client==0.3.1
 docker-py==1.7.2
 pyyaml
 enum

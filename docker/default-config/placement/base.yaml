@@ -3,6 +3,8 @@ logging:
   stdout: true
 
 placement:
+   http_port: 5293
+   grpc_port: 5393
    task_dequeue_limit: 20
    offer_dequeue_limit: 10
 

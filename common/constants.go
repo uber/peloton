@@ -9,30 +9,30 @@ const (
 	MesosMasterOperatorEndPoint = "/api/v1"
 	// PelotonEndpointPath is the path for Peloton mux endpoint
 	PelotonEndpointPath = "/api/v1"
-	// PelotonJobManager service name
+
+	// PelotonJobManager application name
 	PelotonJobManager = "peloton-jobmgr"
-	// PelotonResourceManager service name
+	// PelotonResourceManager application name
 	PelotonResourceManager = "peloton-resmgr"
-	// PelotonHostManager service name
+	// PelotonHostManager application name
 	PelotonHostManager = "peloton-hostmgr"
-	// PelotonPlacement service name
+	// PelotonPlacement application name
 	PelotonPlacement = "peloton-placement"
-	// PelotonClient is client name for cli
-	PelotonClient = "peloton-client"
-	// MasterRole is the leadership election role for master process
-	MasterRole = "master"
+	// PelotonCLI application name
+	PelotonCLI = "peloton-cli"
+
 	// PlacementRole is the leadership election role for placement engine
 	PlacementRole = "placement"
 	// HostManagerRole is the leadership election role for hostmgr
 	HostManagerRole = "hostmanager"
 	// JobManagerRole is the leadership election role for jobmgr
 	JobManagerRole = "jobmanager"
-	// TaskManagerRole is the leadership election role for taskmgr
-	TaskManagerRole = "taskmanager"
 	// ResourceManagerRole is the leadership election role for resmgr
 	ResourceManagerRole = "resourcemanager"
+
 	// DefaultLeaderElectionRoot is the default leader election root path
 	DefaultLeaderElectionRoot = "/peloton"
+
 	// CPU resource type
 	CPU = "cpu"
 	// GPU resource type

@@ -34,12 +34,12 @@ func New(
 	timeout time.Duration,
 	debug bool) (*Client, error) {
 
-	jobmgrURL, err := discovery.GetJobMgrURL()
+	jobmgrURL, err := discovery.GetAppURL(common.JobManagerRole)
 	if err != nil {
 		return nil, err
 	}
 
-	resmgrURL, err := discovery.GetResMgrURL()
+	resmgrURL, err := discovery.GetAppURL(common.ResourceManagerRole)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func New(
 	t := http.NewTransport()
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name: common.PelotonClient,
+		Name: common.PelotonCLI,
 		Outbounds: yarpc.Outbounds{
 			common.PelotonJobManager: transport.Outbounds{
 				Unary: t.NewSingleOutbound(jobmgrURL.String()),
@@ -64,10 +64,16 @@ func New(
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	client := Client{
-		Debug:      debug,
-		jobClient:  job.NewJobManagerYARPCClient(dispatcher.ClientConfig(common.PelotonJobManager)),
-		taskClient: task.NewTaskManagerYARPCClient(dispatcher.ClientConfig(common.PelotonJobManager)),
-		resClient:  respool.NewResourceManagerYARPCClient(dispatcher.ClientConfig(common.PelotonResourceManager)),
+		Debug: debug,
+		jobClient: job.NewJobManagerYARPCClient(
+			dispatcher.ClientConfig(common.PelotonJobManager),
+		),
+		taskClient: task.NewTaskManagerYARPCClient(
+			dispatcher.ClientConfig(common.PelotonJobManager),
+		),
+		resClient: respool.NewResourceManagerYARPCClient(
+			dispatcher.ClientConfig(common.PelotonResourceManager),
+		),
 		dispatcher: dispatcher,
 		ctx:        ctx,
 		cancelFunc: cancelFunc,

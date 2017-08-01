@@ -1,6 +1,7 @@
 package leader
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -8,13 +9,31 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// ID defines the json struct to be encoded in leader node
+type ID struct {
+	Hostname string `json:"hostname"`
+	IP       string `json:"ip"`
+	HTTPPort int    `json:"http"`
+	GRPCPort int    `json:"grpc"`
+	Version  string `json:"version"`
+}
+
 // NewID returns a ID for a server to implement leader.Nomination
-func NewID(port int) string {
+func NewID(httpPort int, grpcPort int) string {
 	ip, err := listenIP()
 	if err != nil {
 		log.Fatalf("Failed to get ip, err=%v", err)
 	}
-	return fmt.Sprintf("http://%s:%d", ip, port)
+	// TODO: Populate the hostname and version in ID
+	id := &ID{
+		Hostname: "",
+		IP:       fmt.Sprintf("%s", ip),
+		HTTPPort: httpPort,
+		GRPCPort: grpcPort,
+		Version:  "",
+	}
+	idString, _ := json.Marshal(id)
+	return string(idString)
 }
 
 // scoreAddr scores how likely the given addr is to be a remote

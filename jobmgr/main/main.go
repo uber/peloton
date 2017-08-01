@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 	"runtime"
@@ -12,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
@@ -62,9 +62,16 @@ var (
 		Envar("ELECTION_ZK_SERVERS").
 		Strings()
 
-	jobmgrPort = app.Flag(
-		"port", "Job manager port (jobmgr.port override) (set $PORT to override)").
-		Envar("PORT").
+	httpPort = app.Flag(
+		"http-port", "Job manager HTTP port (jobmgr.http_port override) "+
+			"(set $PORT to override)").
+		Envar("HTTP_PORT").
+		Int()
+
+	grpcPort = app.Flag(
+		"grpc-port", "Job manager gRPC port (jobmgr.grpc_port override) "+
+			"(set $PORT to override)").
+		Envar("GRPC_PORT").
 		Int()
 
 	placementDequeLimit = app.Flag(
@@ -123,8 +130,12 @@ func main() {
 	logging.ConfigureSentry(&cfg.SentryConfig)
 
 	// now, override any CLI flags in the loaded config.Config
-	if *jobmgrPort != 0 {
-		cfg.JobManager.Port = *jobmgrPort
+	if *httpPort != 0 {
+		cfg.JobManager.HTTPPort = *httpPort
+	}
+
+	if *grpcPort != 0 {
+		cfg.JobManager.GRPCPort = *grpcPort
 	}
 
 	if *dbHost != "" {
@@ -160,21 +171,24 @@ func main() {
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
 		common.PelotonJobManager,
-		metrics.TallyFlushInterval)
+		metrics.TallyFlushInterval,
+	)
 	defer scopeCloser.Close()
 
-	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
+	mux.HandleFunc(
+		logging.LevelOverwrite,
+		logging.LevelOverwriteHandler(initialLevel),
+	)
 
-	jobStore, taskStore, upgradeStore, _, _, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
+	jobStore, taskStore, upgradeStore, _, _, volumeStore :=
+		stores.CreateStores(&cfg.Storage, rootScope)
 
-	t := http.NewTransport()
-
-	inbounds := []transport.Inbound{
-		t.NewInbound(
-			fmt.Sprintf(":%d", cfg.JobManager.Port),
-			http.Mux(common.PelotonEndpointPath, mux),
-		),
-	}
+	// Create both HTTP and GRPC inbounds
+	inbounds := rpc.NewInbounds(
+		cfg.JobManager.HTTPPort,
+		cfg.JobManager.GRPCPort,
+		mux,
+	)
 
 	// all leader discovery metrics share a scope (and will be tagged
 	// with role={role})
@@ -192,7 +206,8 @@ func main() {
 	}
 	defer resmgrPeerChooser.Stop()
 
-	resmgrOutbound := t.NewOutbound(
+	ht := http.NewTransport()
+	resmgrOutbound := ht.NewOutbound(
 		resmgrPeerChooser,
 		http.URLTemplate(
 			(&url.URL{
@@ -213,7 +228,7 @@ func main() {
 	}
 	defer hostmgrPeerChooser.Stop()
 
-	hostmgrOutbound := t.NewOutbound(
+	hostmgrOutbound := ht.NewOutbound(
 		hostmgrPeerChooser,
 		http.URLTemplate(
 			(&url.URL{
@@ -308,7 +323,8 @@ func main() {
 	)
 
 	server := jobmgr.NewServer(
-		cfg.JobManager.Port,
+		cfg.JobManager.HTTPPort,
+		cfg.JobManager.GRPCPort,
 	)
 
 	candidate, err := leader.NewCandidate(
@@ -329,7 +345,10 @@ func main() {
 	launcher.GetLauncher().Start()
 	defer launcher.GetLauncher().Stop()
 
-	log.WithField("Port", cfg.JobManager.Port).Info("Started Peloton job manager")
+	log.WithFields(log.Fields{
+		"httpPort": cfg.JobManager.HTTPPort,
+		"grpcPort": cfg.JobManager.GRPCPort,
+	}).Info("Started job manager")
 
 	// we can *honestly* say the server is booted up now
 	health.InitHeartbeat(rootScope, cfg.Health)

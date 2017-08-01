@@ -358,7 +358,7 @@ def start_and_wait(application_name, container_name, port):
         environment=[
             'CONFIG_DIR=config',
             'APP=%s' % application_name,
-            'PORT=' + repr(port),
+            'HTTP_PORT=' + repr(port),
             'DB_HOST=' + host_ip,
             'ELECTION_ZK_SERVERS={0}:{1}'.format(
                 host_ip,

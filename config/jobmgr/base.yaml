@@ -26,7 +26,8 @@ storage:
   db_write_concurrency: 40
 
 job_manager:
-  port: 5292
+  http_port: 5292
+  grpc_port: 5392
   task_launcher:
     placement_dequeue_limit: 10
     get_placements_timeout_ms: 100

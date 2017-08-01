@@ -26,9 +26,9 @@ type Server struct {
 }
 
 // NewServer will create the elect handle object
-func NewServer(parent tally.Scope, port int) *Server {
+func NewServer(parent tally.Scope, httpPort, grpcPort int) *Server {
 	server := Server{
-		ID:                       leader.NewID(port),
+		ID:                       leader.NewID(httpPort, grpcPort),
 		role:                     common.ResourceManagerRole,
 		getResPoolHandler:        respool.GetServiceHandler,
 		getTaskScheduler:         task.GetScheduler,

@@ -24,4 +24,5 @@ storage:
   use_cassandra: false
 
 resmgr:
-  port: 5290
+  http_port: 5290
+  grpc_port: 5390

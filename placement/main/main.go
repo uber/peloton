@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 
@@ -16,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/placement"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -69,10 +69,18 @@ var (
 		Envar("ELECTION_ZK_SERVERS").
 		Strings()
 
-	placementPort = app.Flag(
-		"port",
-		"Placement engine port (placement.port override) (set $PORT to override)").
-		Envar("PORT").
+	httpPort = app.Flag(
+		"http-port",
+		"Placement engine HTTP port (placement.http_port override) "+
+			"(set $HTTP_PORT to override)").
+		Envar("HTTP_PORT").
+		Int()
+
+	grpcPort = app.Flag(
+		"grpc-port",
+		"Placement engine GRPC port (placement.grpc_port override) "+
+			"(set $GRPC_PORT to override)").
+		Envar("GRPC_PORT").
 		Int()
 )
 
@@ -119,8 +127,12 @@ func main() {
 		cfg.Storage.Cassandra.StoreName = *cassandraStore
 	}
 
-	if *placementPort != 0 {
-		cfg.Placement.Port = *placementPort
+	if *httpPort != 0 {
+		cfg.Placement.HTTPPort = *httpPort
+	}
+
+	if *grpcPort != 0 {
+		cfg.Placement.GRPCPort = *grpcPort
 	}
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
@@ -185,12 +197,12 @@ func main() {
 		},
 	}
 
-	t := http.NewTransport()
-	inbounds := []transport.Inbound{
-		t.NewInbound(
-			fmt.Sprintf(":%d", cfg.Placement.Port),
-			http.Mux(common.PelotonEndpointPath, mux)),
-	}
+	// Create both HTTP and GRPC inbounds
+	inbounds := rpc.NewInbounds(
+		cfg.Placement.HTTPPort,
+		cfg.Placement.GRPCPort,
+		mux,
+	)
 
 	log.Debug("Creating new YARPC dispatcher")
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{

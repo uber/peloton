@@ -162,7 +162,7 @@ var (
 	errLaunchOperationIsNotLastOperation = errors.New("launch operation is not the last operation")
 	errLaunchOperationWithEmptyTasks     = errors.New("launch operation with empty task list")
 	errOfferOperationNotSupported        = errors.New("offer operation not supported")
-	errInvalidOfferOperatoin             = errors.New("invalid offer operation")
+	errInvalidOfferOperation             = errors.New("invalid offer operation")
 	errHostnameMissing                   = errors.New("hostname is required")
 )
 
@@ -188,7 +188,7 @@ func validateOfferOperationsRequest(
 		} else {
 			// Reservation label must be specified for RESERVE/CREATE operation.
 			if op.GetReservationLabels() == nil {
-				return errInvalidOfferOperatoin
+				return errInvalidOfferOperation
 			}
 		}
 	}

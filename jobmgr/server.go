@@ -24,10 +24,10 @@ type Server struct {
 }
 
 // NewServer creates a job manager Server instance.
-func NewServer(port int) *Server {
+func NewServer(httpPort, grpcPort int) *Server {
 
 	return &Server{
-		ID:                leader.NewID(port),
+		ID:                leader.NewID(httpPort, grpcPort),
 		role:              common.JobManagerRole,
 		getStatusUpdate:   event.GetStatusUpdater,
 		getStatusUpdateRM: event.GetStatusUpdaterRM,

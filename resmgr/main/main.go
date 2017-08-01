@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 	"runtime"
@@ -11,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/common/rpc"
 
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr"
@@ -58,9 +58,16 @@ var (
 		Envar("ELECTION_ZK_SERVERS").
 		Strings()
 
-	resmgrPort = app.Flag(
-		"port", "Resource manager port (resmgr.port override) (set $PORT to override)").
-		Envar("PORT").
+	httpPort = app.Flag(
+		"http-port", "Resource manager HTTP port (resmgr.http_port override) "+
+			"(set $HTTP_PORT to override)").
+		Envar("HTTP_PORT").
+		Int()
+
+	grpcPort = app.Flag(
+		"grpc-port", "Resource manager GRPC port (resmgr.grpc_port override) "+
+			"(set $GRPC_PORT to override)").
+		Envar("GRPC_PORT").
 		Int()
 
 	useCassandra = app.Flag(
@@ -115,8 +122,12 @@ func main() {
 		cfg.Election.ZKServers = *electionZkServers
 	}
 
-	if *resmgrPort != 0 {
-		cfg.ResManager.Port = *resmgrPort
+	if *httpPort != 0 {
+		cfg.ResManager.HTTPPort = *httpPort
+	}
+
+	if *grpcPort != 0 {
+		cfg.ResManager.GRPCPort = *grpcPort
 	}
 
 	if !*useCassandra {
@@ -145,16 +156,12 @@ func main() {
 
 	jobStore, taskStore, _, respoolStore, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
 
-	t := http.NewTransport()
-
-	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
-	// mux in other HTTP handlers
-	inbounds := []transport.Inbound{
-		t.NewInbound(
-			fmt.Sprintf(":%d", cfg.ResManager.Port),
-			http.Mux(common.PelotonEndpointPath, mux),
-		),
-	}
+	// Create both HTTP and GRPC inbounds
+	inbounds := rpc.NewInbounds(
+		cfg.ResManager.HTTPPort,
+		cfg.ResManager.GRPCPort,
+		mux,
+	)
 
 	// all leader discovery metrics share a scope (and will be tagged
 	// with role={role})
@@ -172,13 +179,15 @@ func main() {
 	}
 	defer hostmgrPeerChooser.Stop()
 
-	hostmgrOutbound := t.NewOutbound(
+	hostmgrOutbound := http.NewTransport().NewOutbound(
 		hostmgrPeerChooser,
 		http.URLTemplate(
 			(&url.URL{
 				Scheme: "http",
 				Path:   common.PelotonEndpointPath,
-			}).String()))
+			}).String(),
+		),
+	)
 
 	outbounds := yarpc.Outbounds{
 		common.PelotonHostManager: transport.Outbounds{
@@ -214,7 +223,12 @@ func main() {
 
 	resmgr.InitRecovery(rootScope, jobStore, taskStore, serviceHandler, cfg.ResManager)
 
-	server := resmgr.NewServer(rootScope, cfg.ResManager.Port)
+	server := resmgr.NewServer(
+		rootScope,
+		cfg.ResManager.HTTPPort,
+		cfg.ResManager.GRPCPort,
+	)
+
 	candidate, err := leader.NewCandidate(
 		cfg.Election,
 		rootScope,
@@ -235,7 +249,11 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
-	log.Infof("Started Resource Manager on port %v", cfg.ResManager.Port)
+
+	log.WithFields(log.Fields{
+		"httpPort": cfg.ResManager.HTTPPort,
+		"grpcPort": cfg.ResManager.GRPCPort,
+	}).Info("Started resource manager")
 
 	// we can *honestly* say the server is booted up now
 	health.InitHeartbeat(rootScope, cfg.Health)

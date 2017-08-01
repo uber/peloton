@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
+	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/hostmap"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
@@ -62,9 +62,16 @@ var (
 		Envar("ELECTION_ZK_SERVERS").
 		Strings()
 
-	hostmgrPort = app.Flag(
-		"port", "Host manager port (hostmgr.port override) (set $PORT to override)").
-		Envar("PORT").
+	httpPort = app.Flag(
+		"http-port", "Host manager HTTP port (hostmgr.http_port override) "+
+			"(set $HTTP_PORT to override)").
+		Envar("HTTP_PORT").
+		Int()
+
+	grpcPort = app.Flag(
+		"grpc-port", "Host manager GRPC port (hostmgr.grpc_port override) "+
+			"(set $GRPC_PORT to override)").
+		Envar("GRPC_PORT").
 		Int()
 
 	zkPath = app.Flag(
@@ -113,8 +120,12 @@ func main() {
 	logging.ConfigureSentry(&cfg.SentryConfig)
 
 	// now, override any CLI flags in the loaded config.Config
-	if *hostmgrPort != 0 {
-		cfg.HostManager.Port = *hostmgrPort
+	if *httpPort != 0 {
+		cfg.HostManager.HTTPPort = *httpPort
+	}
+
+	if *grpcPort != 0 {
+		cfg.HostManager.GRPCPort = *grpcPort
 	}
 
 	if *zkPath != "" {
@@ -154,15 +165,12 @@ func main() {
 		logging.LevelOverwrite,
 		logging.LevelOverwriteHandler(initialLevel))
 
-	t := http.NewTransport()
-	// NOTE: we "mount" the YARPC endpoints under /yarpc, so we can
-	// mux in other HTTP handlers
-	inbounds := []transport.Inbound{
-		t.NewInbound(
-			fmt.Sprintf(":%d", cfg.HostManager.Port),
-			http.Mux(common.PelotonEndpointPath, mux),
-		),
-	}
+	// Create both HTTP and GRPC inbounds
+	inbounds := rpc.NewInbounds(
+		cfg.HostManager.HTTPPort,
+		cfg.HostManager.GRPCPort,
+		mux,
+	)
 
 	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
 	if err != nil {
@@ -194,10 +202,14 @@ func main() {
 			Path:   common.MesosMasterOperatorEndPoint,
 		})
 
-	// all leader discovery metrics share a scope (and will be tagged
+	// All leader discovery metrics share a scope (and will be tagged
 	// with role={role})
 	discoveryScope := rootScope.SubScope("discovery")
-	// setup the discovery service to detect resmgr leaders and
+
+	// TODO: Delete the outbounds from hostmgr to resmgr after switch
+	// eventstream from push to pull (T1014913)
+
+	// Setup the discovery service to detect resmgr leaders and
 	// configure the YARPC Peer dynamically
 	resmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
@@ -210,7 +222,7 @@ func main() {
 	}
 	defer resmgrPeerChooser.Stop()
 
-	resmgrOutbound := t.NewOutbound(
+	resmgrOutbound := http.NewTransport().NewOutbound(
 		resmgrPeerChooser,
 		http.URLTemplate(
 			(&url.URL{
@@ -252,8 +264,8 @@ func main() {
 	mesos.InitManager(dispatcher, &cfg.Mesos, frameworkInfoStore)
 
 	log.WithFields(log.Fields{
-		"port":     cfg.HostManager.Port,
-		"url_path": common.PelotonEndpointPath,
+		"http_port": cfg.HostManager.HTTPPort,
+		"url_path":  common.PelotonEndpointPath,
 	}).Info("HostService initialized")
 
 	offer.InitEventHandler(
@@ -324,7 +336,8 @@ func main() {
 	server := hostmgr.NewServer(
 		rootScope,
 		backgroundManager,
-		cfg.HostManager.Port,
+		cfg.HostManager.HTTPPort,
+		cfg.HostManager.GRPCPort,
 		mesosMasterDetector,
 		mInbound,
 		mOutbound,
@@ -349,6 +362,11 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
+
+	log.WithFields(log.Fields{
+		"httpPort": cfg.HostManager.HTTPPort,
+		"grpcPort": cfg.HostManager.GRPCPort,
+	}).Info("Started host manager")
 
 	// we can *honestly* say the server is booted up now
 	health.InitHeartbeat(rootScope, cfg.Health)

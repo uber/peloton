@@ -57,13 +57,13 @@ type Server struct {
 func NewServer(
 	parent tally.Scope,
 	backgroundManager background.Manager,
-	port int,
+	httpPort, grpcPort int,
 	mesosDetector mesos.MasterDetector,
 	mesosInbound mhttp.Inbound,
 	mesosOutbound transport.Outbounds) *Server {
 
 	s := &Server{
-		ID:                   leader.NewID(port),
+		ID:                   leader.NewID(httpPort, grpcPort),
 		role:                 common.HostManagerRole,
 		getOfferEventHandler: offer.GetEventHandler,
 		backgroundManager:    backgroundManager,

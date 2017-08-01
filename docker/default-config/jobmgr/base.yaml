@@ -24,7 +24,8 @@ storage:
   use_cassandra: false
 
 job_manager:
-  port: 5292
+  http_port: 5292
+  grpc_port: 5392
   db_write_concurrency: 40
 
 election:

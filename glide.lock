@@ -1,5 +1,5 @@
-hash: 2aa4cffe8c5cbc07b6a1e3592d214be6622b5192665e1d2318296e888ded234a
-updated: 2017-07-25T11:40:47.416211103-07:00
+hash: 22bc73d05a66fd6b61a3059a1aaa40c48365d96a42876b19a96d2b0e23351eeb
+updated: 2017-07-19T20:47:29.762876603-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -77,6 +77,7 @@ imports:
   - proto
   - protoc
   - protoc-gen-go
+  - ptypes/any
 - name: github.com/golang/snappy
   version: d9eb7a3d35ec988b8585d4a0068e462c27d28380
 - name: github.com/hailocab/go-hostpool
@@ -210,7 +211,10 @@ imports:
   - peer/hostport
   - pkg/errors
   - pkg/lifecycle
+  - pkg/procedure
   - transport/http
+  - transport/x/grpc
+  - transport/x/grpc/grpcheader
   - x/config
   - yarpcerrors
 - name: go.uber.org/zap
@@ -228,15 +232,49 @@ imports:
   - bpf
   - context
   - context/ctxhttp
+  - http2
+  - http2/hpack
+  - idna
   - internal/iana
   - internal/socket
+  - internal/timeseries
   - ipv4
   - ipv6
+  - lex/httplex
+  - trace
 - name: golang.org/x/sys
   version: 98b5b1e7e80eb60271c8dc4eba6521ec2c3e811e
   repo: https://github.com/golang/sys
   subpackages:
   - unix
+- name: golang.org/x/text
+  version: 836efe42bb4aa16aaa17b9c155d8813d336ed720
+  subpackages:
+  - secure/bidirule
+  - transform
+  - unicode/bidi
+  - unicode/norm
+- name: google.golang.org/genproto
+  version: b0a3dcfcd1a9bd48e63634bd8802960804cf8315
+  subpackages:
+  - googleapis/rpc/status
+- name: google.golang.org/grpc
+  version: d2e1b51f33ff8c5e4a15560ff049d200e83726c5
+  repo: https://github.com/grpc/grpc-go
+  subpackages:
+  - codes
+  - credentials
+  - grpclb/grpc_lb_v1
+  - grpclog
+  - internal
+  - keepalive
+  - metadata
+  - naming
+  - peer
+  - stats
+  - status
+  - tap
+  - transport
 - name: gopkg.in/alecthomas/kingpin.v2
   version: 7f0871f2e17818990e4eed73f9b5c2f429501228
 - name: gopkg.in/inf.v0

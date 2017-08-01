@@ -24,7 +24,8 @@ storage:
   use_cassandra: false
 
 host_manager:
-  port: 5291
+  http_port: 5291
+  grpc_port: 5391
   offer_hold_time_sec: 300
   offer_pruning_period_sec: 900
   db_write_concurrency: 40
