@@ -56,6 +56,111 @@ func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
 }
 
+func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
+	var jobStore storage.JobStore
+	jobStore = store
+
+	var originalJobs []*job.JobConfig
+	var jobIDs []*peloton.JobID
+	var records = 300
+
+	var keys0 = []string{"test0", "test1", "test2", "test3"}
+	var vals0 = []string{"testValue0", "testValue1", `"testValue2"`, "testValue3"}
+
+	for i := 0; i < records; i++ {
+		var jobID = peloton.JobID{Value: uuid.New()} // fmt.Sprintf("TestQueryJob%d", i)}
+		jobIDs = append(jobIDs, &jobID)
+		var sla = job.SlaConfig{
+			Priority:                22,
+			MaximumRunningInstances: 3,
+			Preemptible:             false,
+		}
+		var taskConfig = task.TaskConfig{
+			Resource: &task.ResourceConfig{
+				CpuLimit:    0.8,
+				MemLimitMb:  800,
+				DiskLimitMb: 1500,
+				FdLimit:     1000 + uint32(i),
+			},
+		}
+		var labels = []*peloton.Label{
+			{Key: keys0[i%len(keys0)], Value: vals0[i%len(keys0)]},
+		}
+		var jobConfig = job.JobConfig{
+			Name:          fmt.Sprintf("TestJob_%d", i),
+			OwningTeam:    fmt.Sprintf("owner_%d", 1000+i),
+			LdapGroups:    []string{"TestQueryJobPaging", "team6", "gign"},
+			Sla:           &sla,
+			DefaultConfig: &taskConfig,
+			Labels:        labels,
+			Description:   fmt.Sprintf("A test job with awesome keyword%v keytest%v", i, i),
+		}
+		originalJobs = append(originalJobs, &jobConfig)
+		err := jobStore.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
+		suite.NoError(err)
+
+		// Update job runtime to different values
+		runtime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+		suite.NoError(err)
+
+		runtime.State = job.JobState(i + 1)
+		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+		suite.NoError(err)
+	}
+	// Run the following query to trigger rebuild the lucene index
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene, '{refresh:true}')")
+	_, err := store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+
+	result1, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"TestQueryJobPaging", "test", "awesome"},
+		Pagination: &query.PaginationSpec{
+			Offset: 10,
+			Limit:  25,
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(25, len(result1))
+	suite.Equal(records, int(total))
+
+	var owner = query.PropertyPath{Value: "owner"}
+	var orderByOwner = query.OrderBy{
+		Property: &owner,
+		Order:    query.OrderBy_ASC,
+	}
+
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"TestQueryJobPaging", "test", "awesome"},
+		Pagination: &query.PaginationSpec{
+			Offset: 10,
+			Limit:  25,
+			OrderBy: []*query.OrderBy{
+				&orderByOwner,
+			},
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(25, len(result1))
+	suite.Equal(records, int(total))
+
+	orderByOwner.Order = query.OrderBy_DESC
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"TestQueryJobPaging", "test", "awesome"},
+		Pagination: &query.PaginationSpec{
+			Offset: 10,
+			Limit:  25,
+			OrderBy: []*query.OrderBy{
+				&orderByOwner,
+			},
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(25, len(result1))
+	suite.Equal(records, int(total))
+
+}
+
 func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	var jobStore storage.JobStore
 	jobStore = store

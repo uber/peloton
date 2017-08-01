@@ -15,6 +15,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
@@ -343,7 +344,28 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 		}
 		where += c
 	}
-	where += "]}}')"
+	where += "]}}"
+
+	// add sorter into the query in case orderby is specified in the query spec
+	var orderBy = spec.GetPagination().GetOrderBy()
+	if orderBy != nil && len(orderBy) > 0 {
+		where += ",{ sort:["
+		count := 0
+		for _, order := range orderBy {
+			where += fmt.Sprintf("{field: \"%s\"", order.Property.GetValue())
+			if order.Order == query.OrderBy_DESC {
+				where += ", reverse: true"
+			}
+			where += "}"
+			if count < len(orderBy)-1 {
+				where += ","
+			}
+		}
+		where += "]}"
+	}
+	where += "')"
+
+	log.WithField("where", where).Debug("query string")
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("job_id", "config").From(jobIndexTable)
