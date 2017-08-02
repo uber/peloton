@@ -443,30 +443,7 @@ func (suite *HandlerTestSuite) TestGetTasksByHosts() {
 }
 
 func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
-	handler := &ServiceHandler{
-		metrics:     NewMetrics(tally.NoopScope),
-		resPoolTree: nil,
-		placements: queue.NewQueue(
-			"placement-queue",
-			reflect.TypeOf(resmgr.Placement{}),
-			maxPlacementQueueSize,
-		),
-		rmTracker: suite.rmTaskTracker,
-	}
-	var tasks []*peloton.TaskID
-	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
-	for j := 0; j < 5; j++ {
-		task := &peloton.TaskID{
-			Value: fmt.Sprintf("task-1-%d", j),
-		}
-		tasks = append(tasks, task)
-		suite.rmTaskTracker.AddTask(&resmgr.Task{
-			Id: task,
-		}, nil, resp, &rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-		})
-	}
+	_, tasks := suite.createRMTasks()
 	placement := &resmgr.Placement{
 		Tasks:    tasks,
 		Hostname: fmt.Sprintf("host-%d", 1),
@@ -479,9 +456,92 @@ func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
 		}
 		taskstoremove = append(taskstoremove, taskID)
 	}
-	newPlacement := handler.removeTasksFromPlacements(placement, taskstoremove)
+	newPlacement := suite.handler.removeTasksFromPlacements(placement, taskstoremove)
 	suite.NotNil(newPlacement)
 	suite.Equal(len(newPlacement.Tasks), 3)
+}
+
+func (suite *HandlerTestSuite) TestRemoveTasksFromGang() {
+	rmtasks, _ := suite.createRMTasks()
+	gang := &resmgrsvc.Gang{
+		Tasks: rmtasks,
+	}
+	suite.Equal(len(gang.Tasks), 5)
+	var taskstoremove []*resmgr.Task
+	taskstoremove = append(taskstoremove, rmtasks[0])
+	taskstoremove = append(taskstoremove, rmtasks[1])
+	newGang := suite.handler.removeFromGang(gang, taskstoremove)
+	suite.NotNil(newGang)
+	suite.Equal(len(newGang.Tasks), 3)
+}
+
+func (suite *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
+	var tasks []*peloton.TaskID
+	var rmTasks []*resmgr.Task
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
+		&pb_respool.ResourcePoolConfig{
+			Name:      "respool1",
+			Parent:    nil,
+			Resources: suite.getResourceConfig(),
+			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		})
+	for j := 0; j < 5; j++ {
+		taskid := &peloton.TaskID{
+			Value: fmt.Sprintf("task-1-%d", j),
+		}
+		tasks = append(tasks, taskid)
+		rmTask := &resmgr.Task{
+			Id: taskid,
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+		}
+		suite.rmTaskTracker.AddTask(rmTask, nil, resp,
+			&rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+			})
+		rmTasks = append(rmTasks, rmTask)
+	}
+	return rmTasks, tasks
+}
+
+func (suite *HandlerTestSuite) TestKillTasks() {
+	suite.rmTaskTracker.Clear()
+	_, tasks := suite.createRMTasks()
+
+	var killedtasks []*peloton.TaskID
+	killedtasks = append(killedtasks, tasks[0])
+	killedtasks = append(killedtasks, tasks[1])
+
+	killReq := &resmgrsvc.KillTasksRequest{
+		Tasks: killedtasks,
+	}
+	// This is a valid list tasks should be deleted
+	// Result is no error and tracker should have remaining 3 tasks
+	res, err := suite.handler.KillTasks(suite.context, killReq)
+	suite.NoError(err)
+	suite.Nil(res.Error)
+	suite.Equal(suite.rmTaskTracker.GetSize(), int64(3))
+	var notValidkilledtasks []*peloton.TaskID
+	killReq = &resmgrsvc.KillTasksRequest{
+		Tasks: notValidkilledtasks,
+	}
+	// This list does not have any tasks in the list
+	// this should return error.
+	res, err = suite.handler.KillTasks(suite.context, killReq)
+	suite.NotNil(res.Error)
+	notValidkilledtasks = append(notValidkilledtasks, tasks[0])
+	killReq = &resmgrsvc.KillTasksRequest{
+		Tasks: notValidkilledtasks,
+	}
+	// This list have invalid task in the list which should be not
+	// present in the tracker and should return error
+	res, err = suite.handler.KillTasks(suite.context, killReq)
+	suite.NotNil(res.Error)
 }
 
 func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {

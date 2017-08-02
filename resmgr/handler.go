@@ -225,7 +225,7 @@ func (h *ServiceHandler) DequeueGangs(
 			h.metrics.DequeueGangTimeout.Inc(1)
 			break
 		}
-		gangs = append(gangs, gang)
+		var tasksToRemoved []*resmgr.Task
 		for _, task := range gang.GetTasks() {
 			h.metrics.DequeueGangSuccess.Inc(1)
 
@@ -239,13 +239,39 @@ func (h *ServiceHandler) DequeueGangs(
 						Error("Failed to transit state " +
 							"for task")
 				}
+			} else {
+				tasksToRemoved = append(tasksToRemoved, task)
 			}
 		}
+		gang = h.removeFromGang(gang, tasksToRemoved)
+		gangs = append(gangs, gang)
 	}
 	// TODO: handle the dequeue errors better
 	response := resmgrsvc.DequeueGangsResponse{Gangs: gangs}
 	log.WithField("response", response).Debug("DequeueGangs succeeded")
 	return &response, nil
+}
+
+func (h *ServiceHandler) removeFromGang(
+	gang *resmgrsvc.Gang,
+	tasksToRemove []*resmgr.Task) *resmgrsvc.Gang {
+	if len(tasksToRemove) == 0 {
+		return gang
+	}
+	var newTasks []*resmgr.Task
+	for _, gt := range gang.GetTasks() {
+		match := false
+		for _, t := range tasksToRemove {
+			if gt.Id.Value == t.Id.Value {
+				match = true
+			}
+		}
+		if !match {
+			newTasks = append(newTasks, gt)
+		}
+	}
+	gang.Tasks = newTasks
+	return gang
 }
 
 // SetPlacements implements ResourceManagerService.SetPlacements
@@ -525,5 +551,37 @@ func (h *ServiceHandler) KillTasks(
 	ctx context.Context,
 	req *resmgrsvc.KillTasksRequest,
 ) (*resmgrsvc.KillTasksResponse, error) {
-	return nil, nil
+	listTasks := req.GetTasks()
+	if len(listTasks) == 0 {
+		return &resmgrsvc.KillTasksResponse{
+			Error: &resmgrsvc.KillTasksResponse_Error{
+				Message: "Killed tasks called with no tasks",
+			},
+		}, nil
+	}
+	var tasksNotKilled string
+	for _, killedTask := range listTasks {
+		killedRmTask := h.rmTracker.GetTask(killedTask)
+
+		if killedRmTask == nil {
+			tasksNotKilled += killedTask.Value + " , "
+			continue
+		}
+
+		err := h.rmTracker.MarkItDone(killedTask)
+		if err != nil {
+			tasksNotKilled += killedTask.Value + " , "
+		}
+	}
+	if tasksNotKilled == "" {
+		return &resmgrsvc.KillTasksResponse{}, nil
+
+	}
+	log.WithField("Tasks", tasksNotKilled).Error("tasks can't be killed")
+	return &resmgrsvc.KillTasksResponse{
+		Error: &resmgrsvc.KillTasksResponse_Error{
+			Message: "tasks can't be killed " +
+				tasksNotKilled,
+		},
+	}, nil
 }

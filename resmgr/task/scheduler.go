@@ -159,20 +159,18 @@ func (s *scheduler) scheduleTasks() {
 						log.WithError(errors.WithStack(err)).Error("error while " +
 							"transitioning to Ready state")
 					}
-					// We have to remove demand as we admitted task to
-					// ready queue.
-					err = n.SubtractFromDemand(
-						scalar.ConvertToResmgrResource(
-							task.GetResource()))
-					if err != nil {
-						log.WithError(err).Errorf("Error while "+
-							"subtracting demand for task %s ",
-							task.Id.Value)
-					}
 				} else {
-					err := errReadyQueueTaskMissing
-					log.WithError(err).Error("Error while " +
-						"transitioning to Ready state")
+					log.Error(errReadyQueueTaskMissing)
+				}
+				// We have to remove demand as we admitted task to
+				// ready queue.
+				err = n.SubtractFromDemand(
+					scalar.ConvertToResmgrResource(
+						task.GetResource()))
+				if err != nil {
+					log.WithError(err).Errorf("Error while "+
+						"subtracting demand for task %s ",
+						task.Id.Value)
 				}
 			}
 		}
