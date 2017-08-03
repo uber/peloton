@@ -225,7 +225,7 @@ func (h *ServiceHandler) DequeueGangs(
 			h.metrics.DequeueGangTimeout.Inc(1)
 			break
 		}
-		var tasksToRemoved []*resmgr.Task
+		tasksToRemove := make(map[string]*resmgr.Task)
 		for _, task := range gang.GetTasks() {
 			h.metrics.DequeueGangSuccess.Inc(1)
 
@@ -240,10 +240,10 @@ func (h *ServiceHandler) DequeueGangs(
 							"for task")
 				}
 			} else {
-				tasksToRemoved = append(tasksToRemoved, task)
+				tasksToRemove[task.Id.Value] = task
 			}
 		}
-		gang = h.removeFromGang(gang, tasksToRemoved)
+		gang = h.removeFromGang(gang, tasksToRemove)
 		gangs = append(gangs, gang)
 	}
 	// TODO: handle the dequeue errors better
@@ -254,19 +254,13 @@ func (h *ServiceHandler) DequeueGangs(
 
 func (h *ServiceHandler) removeFromGang(
 	gang *resmgrsvc.Gang,
-	tasksToRemove []*resmgr.Task) *resmgrsvc.Gang {
+	tasksToRemove map[string]*resmgr.Task) *resmgrsvc.Gang {
 	if len(tasksToRemove) == 0 {
 		return gang
 	}
 	var newTasks []*resmgr.Task
 	for _, gt := range gang.GetTasks() {
-		match := false
-		for _, t := range tasksToRemove {
-			if gt.Id.Value == t.Id.Value {
-				match = true
-			}
-		}
-		if !match {
+		if _, ok := tasksToRemove[gt.Id.Value]; !ok {
 			newTasks = append(newTasks, gt)
 		}
 	}
@@ -286,22 +280,21 @@ func (h *ServiceHandler) SetPlacements(
 	var failed []*resmgrsvc.SetPlacementsFailure_FailedPlacement
 	var err error
 	for _, placement := range req.GetPlacements() {
-		var notValidTasks []*peloton.TaskID
+		notValidTasks := make(map[string]*peloton.TaskID)
 		// Transitioning tasks from Placing to Placed
 		for _, taskID := range placement.Tasks {
-			if h.rmTracker.GetTask(taskID) != nil {
+			rmTask := h.rmTracker.GetTask(taskID)
+			if rmTask != nil {
+				rmTaskState := rmTask.GetCurrentState()
 				log.WithFields(log.Fields{
-					"Current state": h.rmTracker.
-						GetTask(taskID).
-						GetCurrentState().
-						String(),
-					"Task": taskID.Value,
+					"Current state": rmTaskState.String(),
+					"Task":          taskID.Value,
 				}).Info("Set Placement for task")
-				if h.rmTracker.GetTask(taskID).GetCurrentState() == t.TaskState_PLACED {
-					notValidTasks = append(notValidTasks, taskID)
+				if rmTaskState == t.TaskState_PLACED {
+					notValidTasks[taskID.Value] = taskID
 				} else {
 					h.rmTracker.SetPlacement(taskID, placement.Hostname)
-					err := h.rmTracker.GetTask(taskID).TransitTo(t.TaskState_PLACED.String())
+					err := rmTask.TransitTo(t.TaskState_PLACED.String())
 					if err != nil {
 						log.WithError(
 							errors.WithStack(err)).
@@ -312,10 +305,10 @@ func (h *ServiceHandler) SetPlacements(
 				}
 				log.WithFields(log.Fields{
 					"Task":  taskID.Value,
-					"State": h.rmTracker.GetTask(taskID).GetCurrentState().String(),
+					"State": rmTaskState.String(),
 				}).Debug("Latest state in Set Placement")
 			} else {
-				notValidTasks = append(notValidTasks, taskID)
+				notValidTasks[taskID.Value] = taskID
 				log.WithFields(log.Fields{
 					"Task": taskID.Value,
 				}).Debug("Task is not present in tracker, " +
@@ -377,25 +370,20 @@ func (h *ServiceHandler) GetTasksByHosts(ctx context.Context,
 
 func (h *ServiceHandler) removeTasksFromPlacements(
 	placement *resmgr.Placement,
-	tasks []*peloton.TaskID,
+	tasks map[string]*peloton.TaskID,
 ) *resmgr.Placement {
-	if tasks == nil || len(tasks) == 0 {
+	if len(tasks) == 0 {
 		return placement
 	}
 	var newTasks []*peloton.TaskID
+
 	log.WithFields(log.Fields{
 		"Removed Tasks":  tasks,
 		"Original Tasks": placement.GetTasks(),
 	}).Debug("Removing Tasks")
 
 	for _, pt := range placement.GetTasks() {
-		match := false
-		for _, t := range tasks {
-			if pt.Value == t.Value {
-				match = true
-			}
-		}
-		if !match {
+		if _, ok := tasks[pt.Value]; !ok {
 			newTasks = append(newTasks, pt)
 		}
 	}
@@ -441,11 +429,11 @@ func (h *ServiceHandler) GetPlacements(
 // or remove tasks from placement which are not in placed state.
 func (h *ServiceHandler) transitTasksInPlacement(
 	placement *resmgr.Placement) *resmgr.Placement {
-	var invalidTasks []*peloton.TaskID
+	invalidTasks := make(map[string]*peloton.TaskID)
 	for _, taskID := range placement.Tasks {
 		rmTask := h.rmTracker.GetTask(taskID)
 		if rmTask == nil {
-			invalidTasks = append(invalidTasks, taskID)
+			invalidTasks[taskID.Value] = taskID
 			log.WithFields(log.Fields{
 				"Task": taskID.Value,
 			}).Debug("Task is not present in tracker, " +
@@ -459,7 +447,7 @@ func (h *ServiceHandler) transitTasksInPlacement(
 		}).Debug("Get Placement for task")
 		if state != t.TaskState_PLACED {
 			log.Error("Task is not in placed state " + taskID.Value)
-			invalidTasks = append(invalidTasks, taskID)
+			invalidTasks[taskID.Value] = taskID
 
 		} else {
 			err := rmTask.TransitTo(t.TaskState_LAUNCHING.String())
@@ -469,7 +457,7 @@ func (h *ServiceHandler) transitTasksInPlacement(
 					Error("not able " +
 						"to transition to launching " +
 						"for task " + taskID.Value)
-				invalidTasks = append(invalidTasks, taskID)
+				invalidTasks[taskID.Value] = taskID
 			}
 		}
 		log.WithFields(log.Fields{

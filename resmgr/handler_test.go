@@ -449,12 +449,12 @@ func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
 		Hostname: fmt.Sprintf("host-%d", 1),
 	}
 	suite.Equal(len(placement.Tasks), 5)
-	var taskstoremove []*peloton.TaskID
+	taskstoremove := make(map[string]*peloton.TaskID)
 	for j := 0; j < 2; j++ {
 		taskID := &peloton.TaskID{
 			Value: fmt.Sprintf("task-1-%d", j),
 		}
-		taskstoremove = append(taskstoremove, taskID)
+		taskstoremove[taskID.Value] = taskID
 	}
 	newPlacement := suite.handler.removeTasksFromPlacements(placement, taskstoremove)
 	suite.NotNil(newPlacement)
@@ -467,10 +467,10 @@ func (suite *HandlerTestSuite) TestRemoveTasksFromGang() {
 		Tasks: rmtasks,
 	}
 	suite.Equal(len(gang.Tasks), 5)
-	var taskstoremove []*resmgr.Task
-	taskstoremove = append(taskstoremove, rmtasks[0])
-	taskstoremove = append(taskstoremove, rmtasks[1])
-	newGang := suite.handler.removeFromGang(gang, taskstoremove)
+	tasksToRemove := make(map[string]*resmgr.Task)
+	tasksToRemove[rmtasks[0].Id.Value] = rmtasks[0]
+	tasksToRemove[rmtasks[1].Id.Value] = rmtasks[1]
+	newGang := suite.handler.removeFromGang(gang, tasksToRemove)
 	suite.NotNil(newGang)
 	suite.Equal(len(newGang.Tasks), 3)
 }
