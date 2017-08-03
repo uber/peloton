@@ -32,6 +32,9 @@ type Tracker interface {
 	// Sets the hostname where the task is placed.
 	SetPlacement(t *peloton.TaskID, hostname string)
 
+	// SetPlacementHost Sets the hostname for the placement
+	SetPlacementHost(placement *resmgr.Placement, hostname string)
+
 	// DeleteTask deletes the task from the map
 	DeleteTask(t *peloton.TaskID)
 
@@ -163,6 +166,15 @@ func (tr *tracker) SetPlacement(t *peloton.TaskID, hostname string) {
 	tr.setPlacement(t, hostname)
 }
 
+// SetPlacementHost will set the hostname that the task is currently placed on.
+func (tr *tracker) SetPlacementHost(placement *resmgr.Placement, hostname string) {
+	tr.Lock()
+	defer tr.Unlock()
+	for _, t := range placement.GetTasks() {
+		tr.setPlacement(t, hostname)
+	}
+}
+
 // DeleteTask deletes the task from the map
 func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 	tr.Lock()
@@ -242,8 +254,13 @@ func (tr *tracker) GetSize() int64 {
 func (tr *tracker) Clear() {
 	tr.Lock()
 	defer tr.Unlock()
+	// Cleaning the tasks
 	for k := range tr.tasks {
 		delete(tr.tasks, k)
+	}
+	// Cleaning the placements
+	for k := range tr.placements {
+		delete(tr.placements, k)
 	}
 }
 

@@ -280,42 +280,10 @@ func (h *ServiceHandler) SetPlacements(
 	var failed []*resmgrsvc.SetPlacementsFailure_FailedPlacement
 	var err error
 	for _, placement := range req.GetPlacements() {
-		notValidTasks := make(map[string]*peloton.TaskID)
-		// Transitioning tasks from Placing to Placed
-		for _, taskID := range placement.Tasks {
-			rmTask := h.rmTracker.GetTask(taskID)
-			if rmTask != nil {
-				rmTaskState := rmTask.GetCurrentState()
-				log.WithFields(log.Fields{
-					"Current state": rmTaskState.String(),
-					"Task":          taskID.Value,
-				}).Info("Set Placement for task")
-				if rmTaskState == t.TaskState_PLACED {
-					notValidTasks[taskID.Value] = taskID
-				} else {
-					h.rmTracker.SetPlacement(taskID, placement.Hostname)
-					err := rmTask.TransitTo(t.TaskState_PLACED.String())
-					if err != nil {
-						log.WithError(
-							errors.WithStack(err)).
-							Error("Not able " +
-								"to transition to placed " +
-								"for task " + taskID.Value)
-					}
-				}
-				log.WithFields(log.Fields{
-					"Task":  taskID.Value,
-					"State": rmTaskState.String(),
-				}).Debug("Latest state in Set Placement")
-			} else {
-				notValidTasks[taskID.Value] = taskID
-				log.WithFields(log.Fields{
-					"Task": taskID.Value,
-				}).Debug("Task is not present in tracker, " +
-					"Removing it from placement")
-			}
-		}
-		newplacement := h.removeTasksFromPlacements(placement, notValidTasks)
+		newplacement := h.transitTasksInPlacement(placement,
+			t.TaskState_PLACING,
+			t.TaskState_PLACED)
+		h.rmTracker.SetPlacementHost(newplacement, newplacement.Hostname)
 		err = h.placements.Enqueue(newplacement)
 		if err != nil {
 			log.WithField("placement", newplacement).
@@ -413,7 +381,9 @@ func (h *ServiceHandler) GetPlacements(
 			break
 		}
 		placement := item.(*resmgr.Placement)
-		newPlacement := h.transitTasksInPlacement(placement)
+		newPlacement := h.transitTasksInPlacement(placement,
+			t.TaskState_PLACED,
+			t.TaskState_LAUNCHING)
 		placements = append(placements, newPlacement)
 		h.metrics.GetPlacementSuccess.Inc(1)
 	}
@@ -428,7 +398,9 @@ func (h *ServiceHandler) GetPlacements(
 // transitTasksInPlacement transition to Launching upon getplacement
 // or remove tasks from placement which are not in placed state.
 func (h *ServiceHandler) transitTasksInPlacement(
-	placement *resmgr.Placement) *resmgr.Placement {
+	placement *resmgr.Placement,
+	oldState t.TaskState,
+	newState t.TaskState) *resmgr.Placement {
 	invalidTasks := make(map[string]*peloton.TaskID)
 	for _, taskID := range placement.Tasks {
 		rmTask := h.rmTracker.GetTask(taskID)
@@ -445,12 +417,12 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			"Current state": state.String(),
 			"Task":          taskID.Value,
 		}).Debug("Get Placement for task")
-		if state != t.TaskState_PLACED {
+		if state != oldState {
 			log.Error("Task is not in placed state " + taskID.Value)
 			invalidTasks[taskID.Value] = taskID
 
 		} else {
-			err := rmTask.TransitTo(t.TaskState_LAUNCHING.String())
+			err := rmTask.TransitTo(newState.String())
 			if err != nil {
 				log.WithError(
 					errors.WithStack(err)).

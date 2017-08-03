@@ -42,7 +42,11 @@ func (suite *StateMachineTestSuite) SetupTest() {
 		nil,
 		tally.Scope(tally.NoopScope))
 	suite.hostname = "hostname"
-	suite.task = suite.createTask()
+	suite.task = suite.createTask(1)
+	suite.addTasktotracker(suite.task)
+}
+
+func (suite *StateMachineTestSuite) addTasktotracker(task *resmgr.Task) {
 	rootID := resp.ResourcePoolID{Value: respool.RootResPoolID}
 	policy := resp.SchedulingPolicy_PriorityFIFO
 	respoolConfig := &resp.ResourcePoolConfig{
@@ -52,7 +56,7 @@ func (suite *StateMachineTestSuite) SetupTest() {
 		Policy:    policy,
 	}
 	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1", nil, respoolConfig)
-	suite.tracker.AddTask(suite.task, suite.eventStreamHandler, suite.respool, &Config{})
+	suite.tracker.AddTask(task, suite.eventStreamHandler, suite.respool, &Config{})
 }
 
 // Returns resource configs
@@ -87,12 +91,13 @@ func (suite *StateMachineTestSuite) getResourceConfig() []*resp.ResourceConfig {
 	return resConfigs
 }
 
-func (suite *StateMachineTestSuite) createTask() *resmgr.Task {
+func (suite *StateMachineTestSuite) createTask(instance int) *resmgr.Task {
+	taskID := fmt.Sprintf("job1-%d", instance)
 	return &resmgr.Task{
-		Name:     "job1-1",
+		Name:     taskID,
 		Priority: 0,
 		JobId:    &peloton.JobID{Value: "job1"},
-		Id:       &peloton.TaskID{Value: "job1-1"},
+		Id:       &peloton.TaskID{Value: taskID},
 		Hostname: suite.hostname,
 		Resource: &task.ResourceConfig{
 			CpuLimit:    1,
@@ -136,6 +141,23 @@ func (suite *StateMachineTestSuite) TestSetPlacement() {
 		result = suite.tracker.TasksByHosts([]string{oldHostname}, suite.task.Type)
 		suite.Equal(0, len(result))
 	}
+}
+
+func (suite *StateMachineTestSuite) TestSetPlacementHost() {
+	suite.tracker.Clear()
+	placement := &resmgr.Placement{}
+	var tasks []*peloton.TaskID
+	for i := 0; i < 5; i++ {
+		taskID := fmt.Sprintf("job1-%d", i)
+		task := &peloton.TaskID{Value: taskID}
+		tasks = append(tasks, task)
+		suite.addTasktotracker(suite.createTask(i))
+	}
+	placement.Tasks = tasks
+	suite.tracker.SetPlacementHost(placement, suite.hostname)
+	result := suite.tracker.TasksByHosts([]string{suite.hostname}, suite.task.Type)
+	suite.Equal(5, len(result[suite.hostname]))
+	suite.tracker.Clear()
 }
 
 func (suite *StateMachineTestSuite) TestDelete() {
