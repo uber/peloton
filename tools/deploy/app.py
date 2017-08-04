@@ -144,6 +144,7 @@ class App(object):
             'CASSANDRA_STORE': self.cluster.name.replace('-', '_'),
             'CLUSTER': self.cluster.name,
             'DATACENTER': getattr(self.cluster, 'datacenter', ''),
+            'MESOS_AGENT_WORK_DIR': self.cluster.mesos_agent_work_dir,
         }
 
         params = [
