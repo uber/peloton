@@ -143,6 +143,7 @@ class App(object):
             'CASSANDRA_HOSTS': '\n'.join(self.cluster.cassandra),
             'CASSANDRA_STORE': self.cluster.name.replace('-', '_'),
             'CLUSTER': self.cluster.name,
+            'DATACENTER': getattr(self.cluster, 'datacenter', ''),
         }
 
         params = [

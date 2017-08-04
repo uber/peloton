@@ -96,6 +96,12 @@ var (
 		Default("").
 		Envar("CASSANDRA_STORE").
 		String()
+
+	datacenter = app.Flag(
+		"datacenter", "Datacenter name").
+		Default("").
+		Envar("DATACENTER").
+		String()
 )
 
 func main() {
@@ -150,6 +156,10 @@ func main() {
 
 	if *cassandraStore != "" {
 		cfg.Storage.Cassandra.StoreName = *cassandraStore
+	}
+
+	if *datacenter != "" {
+		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
 	}
 
 	log.WithField("config", cfg).Info("Loaded Host Manager config")

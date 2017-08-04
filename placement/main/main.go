@@ -45,6 +45,13 @@ var (
 		Envar("MESOS_ZK_PATH").
 		String()
 
+	electionZkServers = app.Flag(
+		"election-zk-server",
+		"Election Zookeeper servers. Specify multiple times for multiple servers "+
+			"(election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
+		Envar("ELECTION_ZK_SERVERS").
+		Strings()
+
 	useCassandra = app.Flag(
 		"use-cassandra", "Use cassandra storage implementation").
 		Default("true").
@@ -62,13 +69,6 @@ var (
 		Envar("CASSANDRA_STORE").
 		String()
 
-	electionZkServers = app.Flag(
-		"election-zk-server",
-		"Election Zookeeper servers. Specify multiple times for multiple servers "+
-			"(election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
-		Envar("ELECTION_ZK_SERVERS").
-		Strings()
-
 	httpPort = app.Flag(
 		"http-port",
 		"Placement engine HTTP port (placement.http_port override) "+
@@ -82,6 +82,12 @@ var (
 			"(set $GRPC_PORT to override)").
 		Envar("GRPC_PORT").
 		Int()
+
+	datacenter = app.Flag(
+		"datacenter", "Datacenter name").
+		Default("").
+		Envar("DATACENTER").
+		String()
 )
 
 func main() {
@@ -113,7 +119,6 @@ func main() {
 	if len(*electionZkServers) > 0 {
 		cfg.Election.ZKServers = *electionZkServers
 	}
-	log.WithField("config", cfg).Info("Loaded Placement Engine config")
 
 	if !*useCassandra {
 		cfg.Storage.UseCassandra = false
@@ -134,6 +139,12 @@ func main() {
 	if *grpcPort != 0 {
 		cfg.Placement.GRPCPort = *grpcPort
 	}
+
+	if *datacenter != "" {
+		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
+	}
+
+	log.WithField("config", cfg).Info("Loaded Placement Engine config")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,

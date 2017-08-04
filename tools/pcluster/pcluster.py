@@ -372,6 +372,7 @@ def start_and_wait(application_name, container_name, port):
                 host_ip,
             ),
             'ENABLE_DEBUG_LOGGING=' + config['debug'],
+            'DATACENTER=' + '',
         ],
         host_config=cli.create_host_config(
             port_bindings={
