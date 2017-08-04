@@ -44,6 +44,7 @@ PROFILES = [
     use_cassandra = use_cassandra,
     cassandra_hosts = cassandra_hosts,
     cassandra_store = cassandra_store,
+    mesos_agent_work_dir = '/var/lib/mesos',
   ),
   Profile(
     cluster = cluster,

@@ -36,7 +36,8 @@ PROFILES = [
     mesos_zk_path = mesos_zk_path,
     election_zk_servers = election_zk_servers,
     docker_image = docker_image,
-    mysql_host = mysql_host
+    mysql_host = mysql_host,
+    mesos_agent_work_dir = '/mnt/01/mesos_work',
   ),
   Profile(
     cluster = cluster,

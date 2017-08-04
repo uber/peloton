@@ -45,6 +45,7 @@ PROFILES = [
     mysql_host = mysql_host,
     docker_image = docker_image,
     pinned_hosts = jobmgr_host,
+    mesos_agent_work_dir = '/var/lib/mesos',
   ),
   Profile(
     cluster = cluster,

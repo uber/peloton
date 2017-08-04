@@ -67,6 +67,7 @@ PROFILES = [
     pinned_hosts = jobmgr_host,
     use_cassandra = use_cassandra,
     cassandra_hosts = cassandra_hosts,
+    mesos_agent_work_dir = '/var/lib/mesos/agent',
   ),
   Profile(
     cluster = cluster,

@@ -63,6 +63,7 @@ JOB_TEMPLATE = Service(
         Parameter(name='env', value='CLUSTER={{profile.cluster}}'),
         Parameter(name='env', value='M3_HOSTPORT={{profile.m3_hostport}}'),
         Parameter(name='env', value='M3_ENV={{profile.m3_env}}'),
+        Parameter(name='env', value='MESOS_AGENT_WORK_DIR={{profile.mesos_agent_work_dir}}'),
       ]
     )
   )
