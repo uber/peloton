@@ -11,6 +11,13 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+const (
+	_testFrameworkID = "test-framework-id"
+	_testAgentID     = "test-agent-id"
+	_testTaskID      = "test-task-id"
+	_testHostname    = "test-hostname"
+)
+
 type LogManagerTestSuite struct {
 	suite.Suite
 
@@ -33,33 +40,6 @@ func TestLogManager(t *testing.T) {
 	suite.Run(t, new(LogManagerTestSuite))
 }
 
-func (suite *LogManagerTestSuite) TestGetTaskSandboxDirectory() {
-	ts := httptest.NewServer(slaveMux())
-	defer ts.Close()
-
-	sandboxDir, err := suite.logManager.getTaskSandboxDirectory(ts.URL+"/state", "testTaskID")
-	suite.NoError(err)
-	suite.Equal(sandboxDir, "/var/lib/test")
-}
-
-func (suite *LogManagerTestSuite) TestGetTaskSandboxDirectoryInCompletedFrameworks() {
-	ts := httptest.NewServer(slaveMux())
-	defer ts.Close()
-
-	sandboxDir, err := suite.logManager.getTaskSandboxDirectory(ts.URL+"/state", "testTaskID2")
-	suite.NoError(err)
-	suite.Equal(sandboxDir, "/var/lib/test2")
-}
-
-func (suite *LogManagerTestSuite) TestGetTaskSandboxDirectoryNotFound() {
-	ts := httptest.NewServer(slaveMux())
-	defer ts.Close()
-
-	sandboxDir, err := suite.logManager.getTaskSandboxDirectory(ts.URL+"/state", "notExistTaskID")
-	suite.Equal(err, errTaskExecutorNotFound)
-	suite.Empty(sandboxDir, "")
-}
-
 func (suite *LogManagerTestSuite) TestListTaskLogFiles() {
 	ts := httptest.NewServer(slaveMux())
 	defer ts.Close()
@@ -69,24 +49,23 @@ func (suite *LogManagerTestSuite) TestListTaskLogFiles() {
 	suite.Equal(filePaths, []string{"/var/lib/path1", "/var/lib/path2"})
 }
 
+func (suite *LogManagerTestSuite) TestGetSlaveFileBrowseEndpointURL() {
+	sandboxDir := getSlaveFileBrowseEndpointURL("/var/lib/mesos/agent", _testFrameworkID, _testHostname, _testAgentID, _testTaskID)
+	suite.Equal(
+		sandboxDir,
+		"http://test-hostname:5051/files/browse?path=/var/lib/mesos/agent/slaves/test-agent-id/frameworks/test-framework-id/executors/test-task-id/runs/latest")
+}
+
 var (
-	slaveStateStr = `{"frameworks": [{"role": "peloton", "executors": [{"id": "testTaskID", "directory": "/var/lib/test"}]}],
-	"completed_frameworks": [{"role": "peloton", "executors": [{"id": "testTaskID2", "directory": "/var/lib/test2"}]}]}`
-	slaveFileBrowseStr = `[{"path": "/var/lib/path1"}, {"path": "/var/lib/path2"}]`
+	_slaveFileBrowseStr = `[{"path": "/var/lib/path1"}, {"path": "/var/lib/path2"}]`
 )
 
 func slaveMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, slaveStateStr)
-		return
-	})
-
 	mux.HandleFunc("/files/browse", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, slaveFileBrowseStr)
+		fmt.Fprintf(w, _slaveFileBrowseStr)
 		return
 	})
 

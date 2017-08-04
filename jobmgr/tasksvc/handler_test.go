@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -26,14 +25,11 @@ import (
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	launcher_mocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 )
 
 const (
 	testInstanceCount = 4
-)
-
-var (
-	lock = sync.RWMutex{}
 )
 
 type TaskHandlerTestSuite struct {
@@ -837,5 +833,40 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithoutHostname() {
 	}
 	resp, err := suite.handler.BrowseSandbox(context.Background(), request)
 	suite.NoError(err)
-	suite.NotNil(resp.GetError())
+	suite.NotNil(resp.GetError().GetNotRunning())
+}
+
+func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithEmptyFrameworkID() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	mockFrameworkStore := store_mocks.NewMockFrameworkInfoStore(ctrl)
+	suite.handler.frameworkInfoStore = mockFrameworkStore
+
+	singleTaskInfo := make(map[uint32]*task.TaskInfo)
+	singleTaskInfo[0] = suite.taskInfos[0]
+	singleTaskInfo[0].GetRuntime().Host = "host-0"
+	singleTaskInfo[0].GetRuntime().AgentID = &mesos.AgentID{
+		Value: util.PtrPrintf("host-agent-0"),
+	}
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().
+			GetTaskForJob(gomock.Any(), suite.testJobID, uint32(0)).Return(singleTaskInfo, nil),
+		mockFrameworkStore.EXPECT().GetFrameworkID(gomock.Any(), _frameworkName).Return("", nil),
+	)
+
+	var request = &task.BrowseSandboxRequest{
+		JobId:      suite.testJobID,
+		InstanceId: 0,
+	}
+	resp, err := suite.handler.BrowseSandbox(context.Background(), request)
+	suite.NoError(err)
+	suite.NotNil(resp.GetError().GetFailure())
 }

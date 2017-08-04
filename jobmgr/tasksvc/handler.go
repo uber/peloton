@@ -6,12 +6,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
+	pb_errors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
@@ -32,6 +33,11 @@ import (
 const (
 	_rpcTimeout        = 15 * time.Second
 	_httpClientTimeout = 15 * time.Second
+	_frameworkName     = "Peloton"
+)
+
+var (
+	errEmptyFrameworkID = errors.New("framework id is empty")
 )
 
 // InitServiceHandler initializes the TaskManager
@@ -40,34 +46,40 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	frameworkInfoStore storage.FrameworkInfoStore,
 	volumeStore storage.PersistentVolumeStore,
-	runtimeUpdater *job.RuntimeUpdater) {
+	runtimeUpdater *job.RuntimeUpdater,
+	mesosAgentWorkDir string) {
 
 	handler := &serviceHandler{
-		taskStore:      taskStore,
-		jobStore:       jobStore,
-		volumeStore:    volumeStore,
-		runtimeUpdater: runtimeUpdater,
-		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
-		hostmgrClient:  hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
-		resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
-		httpClient:     &http.Client{Timeout: _httpClientTimeout},
-		taskLauncher:   launcher.GetLauncher(),
+		taskStore:          taskStore,
+		jobStore:           jobStore,
+		frameworkInfoStore: frameworkInfoStore,
+		volumeStore:        volumeStore,
+		runtimeUpdater:     runtimeUpdater,
+		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		hostmgrClient:      hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
+		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
+		httpClient:         &http.Client{Timeout: _httpClientTimeout},
+		taskLauncher:       launcher.GetLauncher(),
+		mesosAgentWorkDir:  mesosAgentWorkDir,
 	}
 	d.Register(task.BuildTaskManagerYARPCProcedures(handler))
 }
 
 // serviceHandler implements peloton.api.task.TaskManager
 type serviceHandler struct {
-	taskStore      storage.TaskStore
-	jobStore       storage.JobStore
-	volumeStore    storage.PersistentVolumeStore
-	runtimeUpdater *job.RuntimeUpdater
-	metrics        *Metrics
-	hostmgrClient  hostsvc.InternalHostServiceYARPCClient
-	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
-	httpClient     *http.Client
-	taskLauncher   launcher.Launcher
+	taskStore          storage.TaskStore
+	jobStore           storage.JobStore
+	frameworkInfoStore storage.FrameworkInfoStore
+	volumeStore        storage.PersistentVolumeStore
+	runtimeUpdater     *job.RuntimeUpdater
+	metrics            *Metrics
+	hostmgrClient      hostsvc.InternalHostServiceYARPCClient
+	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
+	httpClient         *http.Client
+	taskLauncher       launcher.Launcher
+	mesosAgentWorkDir  string
 }
 
 func (m *serviceHandler) Get(
@@ -79,7 +91,7 @@ func (m *serviceHandler) Get(
 	if err != nil || jobConfig == nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
-			NotFound: &errors.JobNotFound{
+			NotFound: &pb_errors.JobNotFound{
 				Id:      body.JobId,
 				Message: fmt.Sprintf("job %v not found, %v", body.JobId, err),
 			},
@@ -114,7 +126,7 @@ func (m *serviceHandler) List(
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
-			NotFound: &errors.JobNotFound{
+			NotFound: &pb_errors.JobNotFound{
 				Id:      body.JobId,
 				Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
 			},
@@ -135,7 +147,7 @@ func (m *serviceHandler) List(
 	if err != nil || len(result) == 0 {
 		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
-			NotFound: &errors.JobNotFound{
+			NotFound: &pb_errors.JobNotFound{
 				Id:      body.JobId,
 				Message: fmt.Sprintf("err= %v", err),
 			},
@@ -203,7 +215,7 @@ func (m *serviceHandler) Start(
 			Error("failed to get job from db")
 		return &task.StartResponse{
 			Error: &task.StartResponse_Error{
-				NotFound: &errors.JobNotFound{
+				NotFound: &pb_errors.JobNotFound{
 					Id:      body.JobId,
 					Message: err.Error(),
 				},
@@ -359,7 +371,7 @@ func (m *serviceHandler) Stop(
 			Error("failed to get job from db")
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
-				NotFound: &errors.JobNotFound{
+				NotFound: &pb_errors.JobNotFound{
 					Id:      body.JobId,
 					Message: err.Error(),
 				},
@@ -472,7 +484,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
 			Error: &task.QueryResponse_Error{
-				NotFound: &errors.JobNotFound{
+				NotFound: &pb_errors.JobNotFound{
 					Id:      req.JobId,
 					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", req.JobId, err),
 				},
@@ -485,7 +497,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
 			Error: &task.QueryResponse_Error{
-				NotFound: &errors.JobNotFound{
+				NotFound: &pb_errors.JobNotFound{
 					Id:      req.JobId,
 					Message: fmt.Sprintf("err= %v", err),
 				},
@@ -518,7 +530,7 @@ func (m *serviceHandler) BrowseSandbox(
 		m.metrics.TaskListLogsFail.Inc(1)
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
-				NotFound: &errors.JobNotFound{
+				NotFound: &pb_errors.JobNotFound{
 					Id:      req.JobId,
 					Message: fmt.Sprintf("job %v not found, %v", req.JobId, err),
 				},
@@ -547,14 +559,32 @@ func (m *serviceHandler) BrowseSandbox(
 	for _, t := range result {
 		taskInfo = t
 	}
-	hostname := taskInfo.GetRuntime().GetHost()
+
+	hostname, agentID := taskInfo.GetRuntime().GetHost(), taskInfo.GetRuntime().GetAgentID().GetValue()
 	taskID := taskInfo.GetRuntime().GetMesosTaskId().GetValue()
-	if len(hostname) == 0 {
+	if len(agentID) == 0 {
 		m.metrics.TaskListLogsFail.Inc(1)
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
 				NotRunning: &task.TaskNotRunning{
-					Message: "taskinfo does not have hostname",
+					Message: "taskinfo does not have agentID",
+				},
+			},
+		}, nil
+	}
+
+	// get framework ID.
+	frameworkID, err := m.getFrameworkID(ctx)
+	if err != nil {
+		m.metrics.TaskListLogsFail.Inc(1)
+		log.WithError(err).WithFields(log.Fields{
+			"req":       req,
+			"task_info": taskInfo,
+		}).Error("failed to get framework id")
+		return &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				Failure: &task.BrowseSandboxFailure{
+					Message: err.Error(),
 				},
 			},
 		}, nil
@@ -562,15 +592,14 @@ func (m *serviceHandler) BrowseSandbox(
 
 	logManager := logmanager.NewLogManager(m.httpClient)
 	var logPaths []string
-	logPaths, err = logManager.ListSandboxFilesPaths(hostname, taskID)
+	logPaths, err = logManager.ListSandboxFilesPaths(m.mesosAgentWorkDir, frameworkID, hostname, agentID, taskID)
 
 	if err != nil {
 		m.metrics.TaskListLogsFail.Inc(1)
-		log.WithField("req", req).
-			WithField("hostname", hostname).
-			WithField("task_id", taskID).
-			WithError(err).
-			Error("failed to list slave logs files paths")
+		log.WithError(err).WithFields(log.Fields{
+			"req":       req,
+			"task_info": taskInfo,
+		}).Error("failed to list slave logs files paths")
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
 				Failure: &task.BrowseSandboxFailure{
@@ -590,4 +619,16 @@ func (m *serviceHandler) BrowseSandbox(
 		Port:     "5051",
 		Paths:    logPaths,
 	}, nil
+}
+
+// GetFrameworkID returns the frameworkID.
+func (m *serviceHandler) getFrameworkID(ctx context.Context) (string, error) {
+	frameworkIDVal, err := m.frameworkInfoStore.GetFrameworkID(ctx, _frameworkName)
+	if err != nil {
+		return frameworkIDVal, err
+	}
+	if frameworkIDVal == "" {
+		return frameworkIDVal, errEmptyFrameworkID
+	}
+	return frameworkIDVal, nil
 }

@@ -104,6 +104,12 @@ var (
 		Default("").
 		Envar("CASSANDRA_STORE").
 		String()
+
+	mesosAgentWorkDir = app.Flag(
+		"mesos-agent-work-dir", "Mesos agent work dir").
+		Default("/var/lib/mesos/agent").
+		Envar("MESOS_AGENT_WORK_DIR").
+		String()
 )
 
 func main() {
@@ -180,7 +186,7 @@ func main() {
 		logging.LevelOverwriteHandler(initialLevel),
 	)
 
-	jobStore, taskStore, upgradeStore, _, _, volumeStore :=
+	jobStore, taskStore, upgradeStore, _, frameworkInfoStore, volumeStore :=
 		stores.CreateStores(&cfg.Storage, rootScope)
 
 	// Create both HTTP and GRPC inbounds
@@ -286,8 +292,10 @@ func main() {
 		rootScope,
 		jobStore,
 		taskStore,
+		frameworkInfoStore,
 		volumeStore,
 		runtimeUpdater,
+		*mesosAgentWorkDir,
 	)
 	upgrade.InitServiceHandler(dispatcher, jobStore, upgradeStore)
 
