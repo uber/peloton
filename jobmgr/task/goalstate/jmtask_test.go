@@ -42,15 +42,13 @@ func TestSuggestAction(t *testing.T) {
 }
 
 func TestJMTaskUpdateGoalState(t *testing.T) {
-	jmti, err := CreateJMTask(nil)
-	assert.NotNil(t, jmti)
+	jmt, err := newJMTask(nil)
+	assert.NotNil(t, jmt)
 	assert.NoError(t, err)
-
-	jmt := jmti.(*jmTask)
 
 	before := time.Now()
 
-	jmt.UpdateGoalState(&task.TaskInfo{
+	jmt.updateGoalState(&task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			GoalState:            task.TaskState_RUNNING,
 			DesiredConfigVersion: 7,
@@ -62,16 +60,14 @@ func TestJMTaskUpdateGoalState(t *testing.T) {
 }
 
 func TestJMTaskProcessState(t *testing.T) {
-	jmti, err := CreateJMTask(nil)
-	assert.NotNil(t, jmti)
+	jmt, err := newJMTask(nil)
+	assert.NotNil(t, jmt)
 	assert.NoError(t, err)
-
-	jmt := jmti.(*jmTask)
 
 	before := time.Now()
 
 	s := State{task.TaskState_RUNNING, 0}
-	assert.NoError(t, jmt.ProcessState(context.Background(), nil, s))
+	assert.NoError(t, jmt.processState(context.Background(), nil, s))
 
 	assert.Equal(t, s, jmt.lastState)
 	assert.Equal(t, jmt.lastAction, _noAction)
@@ -79,6 +75,6 @@ func TestJMTaskProcessState(t *testing.T) {
 
 	// Ensure no action attempted due to retry timeout.
 	lt := jmt.lastActionTime
-	assert.NoError(t, jmt.ProcessState(context.Background(), nil, State{task.TaskState_RUNNING, 0}))
+	assert.NoError(t, jmt.processState(context.Background(), nil, State{task.TaskState_RUNNING, 0}))
 	assert.Equal(t, lt, jmt.lastActionTime)
 }

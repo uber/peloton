@@ -8,26 +8,10 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
-// Tracker is the interface for job manager to track/manage peloton task
-// state machines for state/goalstate convergence.
-type Tracker interface {
-	// AddTask adds the task to state machine
-	AddTask(taskInfo *task.TaskInfo) (JMTask, error)
-
-	// GetTask gets the JM task for taskID
-	GetTask(taskID *peloton.TaskID) JMTask
-
-	// DeleteTask removes the task from the map
-	DeleteTask(taskID *peloton.TaskID) error
-
-	// Clean up all the tasks that have state successfully transited to goalstate.
-	RemoveAllDoneTasks() error
-}
-
 // NewTracker returns a new task tracker.
-func NewTracker() Tracker {
+func newTracker() *tracker {
 	return &tracker{
-		taskMap: make(map[string]JMTask),
+		taskMap: make(map[string]*jmTask),
 	}
 }
 
@@ -36,11 +20,11 @@ type tracker struct {
 	sync.Mutex
 
 	// taskMap is map from peloton task id -> jmtask.
-	taskMap map[string]JMTask
+	taskMap map[string]*jmTask
 }
 
-// AddTask adds task to task tracker
-func (tr *tracker) AddTask(taskInfo *task.TaskInfo) (JMTask, error) {
+// addTask adds task to task tracker
+func (tr *tracker) addTask(taskInfo *task.TaskInfo) (*jmTask, error) {
 	tr.Lock()
 	defer tr.Unlock()
 
@@ -54,7 +38,7 @@ func (tr *tracker) AddTask(taskInfo *task.TaskInfo) (JMTask, error) {
 		return t, nil
 	}
 
-	t, err := CreateJMTask(taskInfo)
+	t, err := newJMTask(taskInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -62,22 +46,22 @@ func (tr *tracker) AddTask(taskInfo *task.TaskInfo) (JMTask, error) {
 	return t, nil
 }
 
-// GetTask gets the JM task for taskID
-func (tr *tracker) GetTask(t *peloton.TaskID) JMTask {
+// getTask gets the JM task for taskID
+func (tr *tracker) getTask(t *peloton.TaskID) *jmTask {
 	tr.Lock()
 	defer tr.Unlock()
 	return tr.taskMap[t.Value]
 }
 
-// DeleteTask removes the task from the map
-func (tr *tracker) DeleteTask(taskID *peloton.TaskID) error {
+// deleteTask removes the task from the map
+func (tr *tracker) deleteTask(taskID *peloton.TaskID) error {
 	tr.Lock()
 	defer tr.Unlock()
 	delete(tr.taskMap, taskID.Value)
 	return nil
 }
 
-// RemoveAllDoneTasks removes all the tasks with state converged to goalstate.
-func (tr *tracker) RemoveAllDoneTasks() error {
-	return nil
+// removeAllDoneTasks removes all the tasks with state converged to goalstate.
+func (tr *tracker) removeAllDoneTasks() error {
+	return fmt.Errorf("unimplemented tracker.removeAllDoneTasks")
 }

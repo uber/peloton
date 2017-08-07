@@ -21,11 +21,11 @@ type TrackerTestSuite struct {
 	suite.Suite
 
 	mockCtrl *gomock.Controller
-	tracker  Tracker
+	tracker  *tracker
 }
 
 func (suite *TrackerTestSuite) SetupTest() {
-	suite.tracker = NewTracker()
+	suite.tracker = newTracker()
 }
 
 func TestTrackerTestSuite(t *testing.T) {
@@ -38,17 +38,17 @@ func (suite *TrackerTestSuite) TestTrackerTasks() {
 		Value: fmt.Sprintf("%s-%d", _testJobID, 0),
 	}
 
-	t, err := suite.tracker.AddTask(testTaskInfo)
+	t, err := suite.tracker.addTask(testTaskInfo)
 	suite.NoError(err)
 
-	taskInfo := suite.tracker.GetTask(pelotonTaskID)
+	taskInfo := suite.tracker.getTask(pelotonTaskID)
 	suite.NotNil(taskInfo)
 	suite.Equal(t, taskInfo)
 
-	err = suite.tracker.DeleteTask(pelotonTaskID)
+	err = suite.tracker.deleteTask(pelotonTaskID)
 	suite.NoError(err)
 
-	taskInfo = suite.tracker.GetTask(pelotonTaskID)
+	taskInfo = suite.tracker.getTask(pelotonTaskID)
 	suite.Nil(taskInfo)
 }
 

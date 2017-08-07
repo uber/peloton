@@ -18,16 +18,16 @@ import (
 
 func TestEngineOnEvents(t *testing.T) {
 	e := &engine{
-		tracker: NewTracker(),
+		tracker: newTracker(),
 	}
 
-	jmti, err := e.tracker.AddTask(&task.TaskInfo{
+	jmt, err := e.tracker.addTask(&task.TaskInfo{
 		JobId: &peloton.JobID{
 			Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c",
 		},
 		InstanceId: 1,
 	})
-	assert.NotNil(t, jmti)
+	assert.NotNil(t, jmt)
 	assert.NoError(t, err)
 
 	before := time.Now()
@@ -42,21 +42,21 @@ func TestEngineOnEvents(t *testing.T) {
 	}})
 
 	assert.Equal(t, uint64(5), e.progress.Load())
-	assert.True(t, jmti.(*jmTask).lastActionTime.After(before))
+	assert.True(t, jmt.lastActionTime.After(before))
 }
 
 func TestEngineUpdateTaskGoalState(t *testing.T) {
 	e := &engine{
-		tracker: NewTracker(),
+		tracker: newTracker(),
 	}
 
-	jmti, err := e.tracker.AddTask(&task.TaskInfo{
+	jmt, err := e.tracker.addTask(&task.TaskInfo{
 		JobId: &peloton.JobID{
 			Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c",
 		},
 		InstanceId: 1,
 	})
-	assert.NotNil(t, jmti)
+	assert.NotNil(t, jmt)
 	assert.NoError(t, err)
 
 	before := time.Now()
@@ -73,8 +73,8 @@ func TestEngineUpdateTaskGoalState(t *testing.T) {
 		},
 	}))
 
-	assert.True(t, jmti.(*jmTask).goalStateTime.After(before))
-	assert.Equal(t, State{task.TaskState_PREEMPTING, 42}, jmti.(*jmTask).goalState)
+	assert.True(t, jmt.goalStateTime.After(before))
+	assert.Equal(t, State{task.TaskState_PREEMPTING, 42}, jmt.goalState)
 }
 
 func TestEngineSyncFromDB(t *testing.T) {
@@ -84,7 +84,7 @@ func TestEngineSyncFromDB(t *testing.T) {
 	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
 
 	e := &engine{
-		tracker:   NewTracker(),
+		tracker:   newTracker(),
 		jobStore:  jobstoreMock,
 		taskStore: taskstoreMock,
 	}
@@ -113,7 +113,7 @@ func TestEngineSyncFromDB(t *testing.T) {
 
 	e.Start()
 
-	jm := e.tracker.GetTask(&peloton.TaskID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-1"})
+	jm := e.tracker.getTask(&peloton.TaskID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-1"})
 
-	assert.Equal(t, State{task.TaskState_RUNNING, 42}, jm.(*jmTask).goalState)
+	assert.Equal(t, State{task.TaskState_RUNNING, 42}, jm.goalState)
 }

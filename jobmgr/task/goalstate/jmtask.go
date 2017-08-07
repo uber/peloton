@@ -35,18 +35,10 @@ type State struct {
 	ConfigVersion int64
 }
 
-// JMTask provides an interface to converge actual state to goal state.
-type JMTask interface {
-	UpdateGoalState(taskInfo *task.TaskInfo)
-
-	ProcessState(ctx context.Context, taskOperator TaskOperator, state State) error
-}
-
-// CreateJMTask creates the JM task from task info.
-func CreateJMTask(taskInfo *task.TaskInfo) (JMTask, error) {
+func newJMTask(taskInfo *task.TaskInfo) (*jmTask, error) {
 	task := &jmTask{}
 
-	task.UpdateGoalState(taskInfo)
+	task.updateGoalState(taskInfo)
 
 	return task, nil
 }
@@ -68,7 +60,7 @@ type jmTask struct {
 	lastActionTime time.Time
 }
 
-func (j *jmTask) UpdateGoalState(taskInfo *task.TaskInfo) {
+func (j *jmTask) updateGoalState(taskInfo *task.TaskInfo) {
 	// TODO: Reject update if older than current version.
 	j.task = taskInfo
 
@@ -79,7 +71,7 @@ func (j *jmTask) UpdateGoalState(taskInfo *task.TaskInfo) {
 
 // ProcessStatusUpdate takes latest status update then derives actions to converge
 // task state to goalstate.
-func (j *jmTask) ProcessState(ctx context.Context, taskOperator TaskOperator, state State) error {
+func (j *jmTask) processState(ctx context.Context, taskOperator TaskOperator, state State) error {
 	a := suggestAction(state, j.goalState)
 
 	since := time.Now().Sub(j.lastActionTime)

@@ -51,7 +51,7 @@ func NewEngine(
 		taskStore:    taskStore,
 		taskOperator: taskOperator,
 		metrics:      NewMetrics(parentScope.SubScope("goalstate_engine")),
-		tracker:      NewTracker(),
+		tracker:      newTracker(),
 	}
 }
 
@@ -63,7 +63,7 @@ type engine struct {
 
 	taskOperator TaskOperator
 
-	tracker Tracker
+	tracker *tracker
 
 	progress atomic.Uint64
 	started  atomic.Bool
@@ -94,13 +94,13 @@ func (e *engine) OnEvents(events []*pb_eventstream.Event) {
 			continue
 		}
 
-		if t := e.tracker.GetTask(&peloton.TaskID{Value: taskID}); t != nil {
+		if t := e.tracker.getTask(&peloton.TaskID{Value: taskID}); t != nil {
 			state := State{
 				State:         event.GetPelotonTaskEvent().GetState(),
 				ConfigVersion: UnknownVersion,
 			}
 			ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
-			if err := t.ProcessState(ctx, e.taskOperator, state); err != nil {
+			if err := t.processState(ctx, e.taskOperator, state); err != nil {
 				log.
 					WithError(err).
 					WithField("mesos_task_id", mesosTaskID).
@@ -146,14 +146,14 @@ func (e *engine) Stop() {
 }
 
 func (e *engine) updateTask(ctx context.Context, info *task.TaskInfo) error {
-	t, err := e.tracker.AddTask(info)
+	t, err := e.tracker.addTask(info)
 	if err != nil {
 		return err
 	}
 
-	t.UpdateGoalState(info)
+	t.updateGoalState(info)
 
-	return t.ProcessState(ctx, e.taskOperator, State{
+	return t.processState(ctx, e.taskOperator, State{
 		State:         info.GetRuntime().GetState(),
 		ConfigVersion: info.GetRuntime().GetConfigVersion(),
 	})
