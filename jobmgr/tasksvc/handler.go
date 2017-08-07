@@ -48,7 +48,7 @@ func InitServiceHandler(
 	frameworkInfoStore storage.FrameworkInfoStore,
 	volumeStore storage.PersistentVolumeStore,
 	runtimeUpdater *job.RuntimeUpdater,
-	goalstateKeeper goalstate.Keeper,
+	goalstateEngine goalstate.Engine,
 	mesosAgentWorkDir string) {
 
 	handler := &serviceHandler{
@@ -61,7 +61,7 @@ func InitServiceHandler(
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		httpClient:         &http.Client{Timeout: _httpClientTimeout},
 		taskLauncher:       launcher.GetLauncher(),
-		goalstateKeeper:    goalstateKeeper,
+		goalstateEngine:    goalstateEngine,
 		mesosAgentWorkDir:  mesosAgentWorkDir,
 	}
 	d.Register(task.BuildTaskManagerYARPCProcedures(handler))
@@ -78,7 +78,7 @@ type serviceHandler struct {
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	httpClient         *http.Client
 	taskLauncher       launcher.Launcher
-	goalstateKeeper    goalstate.Keeper
+	goalstateEngine    goalstate.Engine
 	mesosAgentWorkDir  string
 }
 
@@ -429,7 +429,7 @@ func (m *serviceHandler) Stop(
 			break
 		}
 
-		if err := m.goalstateKeeper.UpdateTaskGoalState(ctx, taskInfo); err != nil {
+		if err := m.goalstateEngine.UpdateTaskGoalState(ctx, taskInfo); err != nil {
 			log.WithError(err).
 				WithField("task_id", taskID).
 				Error("failed to immediatly process new goalstate")

@@ -17,10 +17,10 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
-// Keeper manages task state -> goalstate convergence. For every task it tracks,
+// Engine manages task state -> goalstate convergence. For every task it tracks,
 // it will derive actions based on state/goalstate difference. Eventually it tries
 // to converge state to goalstate. It will only run on jobmgr leader instance.
-type Keeper interface {
+type Engine interface {
 	// UpdateTaskGoalState update task goalstate.
 	UpdateTaskGoalState(ctx context.Context, info *task.TaskInfo) error
 
@@ -40,22 +40,22 @@ type Keeper interface {
 	Stop()
 }
 
-// NewKeeper creates a new TaskGoalstateKeeper.
-func NewKeeper(
+// NewEngine creates a new task goalstate Engine.
+func NewEngine(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	taskOperator TaskOperator,
-	parentScope tally.Scope) Keeper {
-	return &keeper{
+	parentScope tally.Scope) Engine {
+	return &engine{
 		jobStore:     jobStore,
 		taskStore:    taskStore,
 		taskOperator: taskOperator,
-		metrics:      NewMetrics(parentScope.SubScope("goalstate_keeper")),
+		metrics:      NewMetrics(parentScope.SubScope("goalstate_engine")),
 		tracker:      NewTracker(),
 	}
 }
 
-type keeper struct {
+type engine struct {
 	sync.Mutex
 
 	jobStore  storage.JobStore
@@ -72,18 +72,18 @@ type keeper struct {
 }
 
 // UpdateTaskGoalState update task goalstate.
-func (k *keeper) UpdateTaskGoalState(ctx context.Context, info *task.TaskInfo) error {
+func (e *engine) UpdateTaskGoalState(ctx context.Context, info *task.TaskInfo) error {
 	// TODO: It could be cleaner if this function persisted the goal state.
-	return k.updateTask(ctx, info)
+	return e.updateTask(ctx, info)
 }
 
 // OnEvent callback
-func (k *keeper) OnEvent(event *pb_eventstream.Event) {
+func (e *engine) OnEvent(event *pb_eventstream.Event) {
 	log.Error("Not implemented")
 }
 
 // OnEvents is the implementation of the event stream handler callback
-func (k *keeper) OnEvents(events []*pb_eventstream.Event) {
+func (e *engine) OnEvents(events []*pb_eventstream.Event) {
 	for _, event := range events {
 		mesosTaskID := event.GetMesosTaskStatus().GetTaskId().GetValue()
 		taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
@@ -94,13 +94,13 @@ func (k *keeper) OnEvents(events []*pb_eventstream.Event) {
 			continue
 		}
 
-		if t := k.tracker.GetTask(&peloton.TaskID{Value: taskID}); t != nil {
+		if t := e.tracker.GetTask(&peloton.TaskID{Value: taskID}); t != nil {
 			state := State{
 				State:         event.GetPelotonTaskEvent().GetState(),
 				ConfigVersion: UnknownVersion,
 			}
 			ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
-			if err := t.ProcessState(ctx, k.taskOperator, state); err != nil {
+			if err := t.ProcessState(ctx, e.taskOperator, state); err != nil {
 				log.
 					WithError(err).
 					WithField("mesos_task_id", mesosTaskID).
@@ -109,42 +109,42 @@ func (k *keeper) OnEvents(events []*pb_eventstream.Event) {
 			cancel()
 		}
 
-		k.progress.Store(event.Offset)
+		e.progress.Store(event.Offset)
 	}
 }
 
 // GetEventProgress returns the progress
-func (k *keeper) GetEventProgress() uint64 {
-	return k.progress.Load()
+func (e *engine) GetEventProgress() uint64 {
+	return e.progress.Load()
 }
 
 // Start starts processing status update events
-func (k *keeper) Start() {
-	k.Lock()
-	defer k.Unlock()
+func (e *engine) Start() {
+	e.Lock()
+	defer e.Unlock()
 
-	log.Info("TaskGoalstateKeeper started")
-	k.started.Store(true)
+	log.Info("goalstate.Engine started")
+	e.started.Store(true)
 }
 
 // Stop stops processing status update events
-func (k *keeper) Stop() {
-	k.Lock()
-	defer k.Unlock()
+func (e *engine) Stop() {
+	e.Lock()
+	defer e.Unlock()
 
-	log.Info("TaskGoalstateKeeper stopped")
-	k.started.Store(false)
+	log.Info("goalstate.Engine stopped")
+	e.started.Store(false)
 }
 
-func (k *keeper) updateTask(ctx context.Context, info *task.TaskInfo) error {
-	t, err := k.tracker.AddTask(info)
+func (e *engine) updateTask(ctx context.Context, info *task.TaskInfo) error {
+	t, err := e.tracker.AddTask(info)
 	if err != nil {
 		return err
 	}
 
 	t.UpdateGoalState(info)
 
-	return t.ProcessState(ctx, k.taskOperator, State{
+	return t.ProcessState(ctx, e.taskOperator, State{
 		State:         info.GetRuntime().GetState(),
 		ConfigVersion: info.GetRuntime().GetConfigVersion(),
 	})

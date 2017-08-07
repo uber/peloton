@@ -95,8 +95,8 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	keeperMock := mocks.NewMockKeeper(ctrl)
-	suite.handler.goalstateKeeper = keeperMock
+	engineMock := mocks.NewMockEngine(ctrl)
+	suite.handler.goalstateEngine = engineMock
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -109,13 +109,13 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 		mockTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(suite.taskInfos, nil),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
-		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
-		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
-		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
-		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
 	)
 
 	var request = &task.StopRequest{
@@ -138,8 +138,8 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	keeperMock := mocks.NewMockKeeper(ctrl)
-	suite.handler.goalstateKeeper = keeperMock
+	engineMock := mocks.NewMockEngine(ctrl)
+	suite.handler.goalstateEngine = engineMock
 
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
@@ -158,7 +158,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
 			UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
-		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), suite.taskInfos[1]).Times(1).Return(nil),
+		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), suite.taskInfos[1]).Times(1).Return(nil),
 	)
 
 	var request = &task.StopRequest{
@@ -182,8 +182,8 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	keeperMock := mocks.NewMockKeeper(ctrl)
-	suite.handler.goalstateKeeper = keeperMock
+	engineMock := mocks.NewMockEngine(ctrl)
+	suite.handler.goalstateEngine = engineMock
 
 	taskInfos := make(map[uint32]*task.TaskInfo)
 	taskInfos[1] = suite.taskInfos[1]
@@ -202,9 +202,9 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(taskInfos, nil),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
-		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Times(1).Return(nil),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
-		keeperMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Times(1).Return(nil),
 	)
 
 	var request = &task.StopRequest{

@@ -271,7 +271,7 @@ func main() {
 	})
 
 	taskOperator := goalstate.NewTaskOperator(dispatcher)
-	taskGoalStateKeeper := goalstate.NewKeeper(jobStore, taskStore, taskOperator, rootScope)
+	goalstateEngine := goalstate.NewEngine(jobStore, taskStore, taskOperator, rootScope)
 
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
@@ -308,7 +308,7 @@ func main() {
 		frameworkInfoStore,
 		volumeStore,
 		runtimeUpdater,
-		taskGoalStateKeeper,
+		goalstateEngine,
 		*mesosAgentWorkDir,
 	)
 	upgrade.InitServiceHandler(dispatcher, jobStore, upgradeStore)
@@ -325,7 +325,7 @@ func main() {
 		common.PelotonHostManager,
 		jobStore,
 		taskStore,
-		[]event.Listener{runtimeUpdater, taskGoalStateKeeper},
+		[]event.Listener{runtimeUpdater, goalstateEngine},
 		common.PelotonResourceManager,
 		rootScope,
 	)
