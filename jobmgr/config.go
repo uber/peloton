@@ -1,6 +1,7 @@
 package jobmgr
 
 import (
+	"code.uber.internal/infra/peloton/jobmgr/task/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 )
 
@@ -20,4 +21,7 @@ type Config struct {
 
 	// Task launcher specific configs
 	TaskLauncher launcher.Config `yaml:"task_launcher"`
+
+	// GoalState configuration
+	GoalState goalstate.Config `yaml:"goal_state"`
 }

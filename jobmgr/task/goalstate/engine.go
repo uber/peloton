@@ -42,11 +42,14 @@ type Engine interface {
 
 // NewEngine creates a new task goalstate Engine.
 func NewEngine(
+	config Config,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	taskOperator TaskOperator,
 	parentScope tally.Scope) Engine {
+	config.normalize()
 	return &engine{
+		config:       config,
 		jobStore:     jobStore,
 		taskStore:    taskStore,
 		taskOperator: taskOperator,
@@ -57,6 +60,8 @@ func NewEngine(
 
 type engine struct {
 	sync.Mutex
+
+	config Config
 
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore

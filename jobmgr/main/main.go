@@ -271,7 +271,7 @@ func main() {
 	})
 
 	taskOperator := goalstate.NewTaskOperator(dispatcher)
-	goalstateEngine := goalstate.NewEngine(jobStore, taskStore, taskOperator, rootScope)
+	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, jobStore, taskStore, taskOperator, rootScope)
 
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
