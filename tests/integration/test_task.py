@@ -3,7 +3,7 @@ import pytest
 from job import Job
 
 
-pytestmark = [pytest.mark.task]
+pytestmark = [pytest.mark.default, pytest.mark.task]
 
 
 def test__stop_all_tasks_kills_tasks_and_job():

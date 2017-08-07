@@ -11,7 +11,6 @@ func TestConfigNormalize(t *testing.T) {
 
 	c.normalize()
 
-	assert.Equal(t, _defaultMinRetryDelay, c.MinRetryDelay)
 	assert.Equal(t, _defaultMaxRetryDelay, c.MaxRetryDelay)
 	assert.Equal(t, _defaultSuccessRetryDelay, c.SuccessRetryDelay)
 	assert.Equal(t, _defaultFailureRetryDelay, c.FailureRetryDelay)

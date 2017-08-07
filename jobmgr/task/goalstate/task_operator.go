@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"fmt"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -34,6 +35,19 @@ func (o *taskOperator) StopTask(ctx context.Context, taskInfo *task.TaskInfo) er
 	req := &hostsvc.KillTasksRequest{
 		TaskIds: []*mesos_v1.TaskID{taskInfo.GetRuntime().GetMesosTaskId()},
 	}
-	_, err := o.hostmgrClient.KillTasks(ctx, req)
-	return err
+	res, err := o.hostmgrClient.KillTasks(ctx, req)
+	if err != nil {
+		return err
+	} else if e := res.GetError(); e != nil {
+		switch {
+		case e.KillFailure != nil:
+			return fmt.Errorf(e.KillFailure.Message)
+		case e.InvalidTaskIDs != nil:
+			return fmt.Errorf(e.InvalidTaskIDs.Message)
+		default:
+			return fmt.Errorf(e.String())
+		}
+	}
+
+	return nil
 }

@@ -7,3 +7,7 @@ metrics:
 
 storage:
   use_cassandra: true
+
+job_manager:
+  goal_state:
+    max_retry_delay: 1s

@@ -77,7 +77,7 @@ class Job(object):
             runtime = resp.jobInfo.runtime
             new_state = job.JobState.Name(runtime.state)
             if state != new_state:
-                log.info(' - transitioned to state %s', new_state)
+                log.info('transitioned to state %s', new_state)
             state = new_state
             if state == goal_state:
                 break
@@ -88,7 +88,7 @@ class Job(object):
 
         end = time.time()
         elapsed = end - start
-        log.info(' - state transition took %s seconds', elapsed)
+        log.info('state transition took %s seconds', elapsed)
         assert state == goal_state
         assert runtime.taskStats[state] == self.job_config.instanceCount
 

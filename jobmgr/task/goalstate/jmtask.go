@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -36,22 +34,25 @@ type State struct {
 }
 
 func newJMTask(taskInfo *task.TaskInfo) (*jmTask, error) {
-	task := &jmTask{}
+	task := &jmTask{
+		queueIndex: -1,
+	}
 
-	task.updateGoalState(taskInfo)
+	task.updateTask(taskInfo)
 
 	return task, nil
 }
 
 // jmTask is the wrapper around task info for state machine
-// TODO: It's currently not thread safe to process a JMTask. We should consider
-// adding a lock and spawning go-routines for the subsequent actions to not
-// block event processing.
 type jmTask struct {
 	task *task.TaskInfo
 
+	// queueTimeout and index is used by the timeout queue to schedule workload.
+	queueTimeout time.Time
+	queueIndex   int
+
 	// goalState along with the time the goal state was updated.
-	goalState     State
+	stateTime     time.Time
 	goalStateTime time.Time
 
 	// lastState set, the resulting action and when that action was last tried.
@@ -60,31 +61,55 @@ type jmTask struct {
 	lastActionTime time.Time
 }
 
-func (j *jmTask) updateGoalState(taskInfo *task.TaskInfo) {
+func (j *jmTask) timeout() time.Time {
+	return j.queueTimeout
+}
+
+func (j *jmTask) setTimeout(t time.Time) {
+	j.queueTimeout = t
+}
+
+func (j *jmTask) index() int {
+	return j.queueIndex
+}
+
+func (j *jmTask) setIndex(i int) {
+	j.queueIndex = i
+}
+
+func (j *jmTask) updateTask(taskInfo *task.TaskInfo) {
 	// TODO: Reject update if older than current version.
 	j.task = taskInfo
 
-	j.goalState.State = taskInfo.GetRuntime().GetGoalState()
-	j.goalState.ConfigVersion = taskInfo.GetRuntime().GetDesiredConfigVersion()
-	j.goalStateTime = time.Now()
+	t := time.Now()
+	j.goalStateTime = t
+	j.stateTime = t
 }
 
-// ProcessStatusUpdate takes latest status update then derives actions to converge
-// task state to goalstate.
-func (j *jmTask) processState(ctx context.Context, taskOperator TaskOperator, state State) error {
-	a := suggestAction(state, j.goalState)
+func (j *jmTask) updateState(currentState task.TaskState) {
+	// TODO: Should we set version to unknown?
+	j.task.Runtime.State = currentState
+	j.stateTime = time.Now()
+}
 
-	since := time.Now().Sub(j.lastActionTime)
-	if a == j.lastAction && since < _retryDelay {
-		log.Debugf("skipping state action, last action was tasken only %s ago", since)
-		return nil
+func (j *jmTask) currentState() State {
+	return State{
+		State:         j.task.GetRuntime().GetState(),
+		ConfigVersion: j.task.GetRuntime().GetConfigVersion(),
 	}
+}
 
-	j.lastState = state
+func (j *jmTask) goalState() State {
+	return State{
+		State:         j.task.GetRuntime().GetGoalState(),
+		ConfigVersion: j.task.GetRuntime().GetDesiredConfigVersion(),
+	}
+}
+
+func (j *jmTask) updateLastAction(a action, s State) {
 	j.lastAction = a
+	j.lastState = s
 	j.lastActionTime = time.Now()
-
-	return j.applyAction(ctx, taskOperator, a)
 }
 
 func (j *jmTask) applyAction(ctx context.Context, taskOperator TaskOperator, a action) error {

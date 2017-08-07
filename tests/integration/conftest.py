@@ -40,11 +40,11 @@ class Container(object):
         self._name = name
 
     def start(self):
-        self._cli.start(self.name)
+        self._cli.start(self._name)
         log.info('%s started', self._name)
 
     def stop(self):
-        self._cli.stop(self.name, timeout=0)
+        self._cli.stop(self._name, timeout=0)
         log.info('%s stopped', self._name)
 
 

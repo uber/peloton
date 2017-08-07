@@ -14,3 +14,7 @@ storage:
 
 election:
   zk_servers: ["localhost:8192"]
+
+job_manager:
+  goal_state:
+    max_retry_delay: 1s
