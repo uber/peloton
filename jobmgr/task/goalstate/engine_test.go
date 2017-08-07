@@ -5,12 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
 func TestEngineOnEvents(t *testing.T) {
@@ -72,4 +75,45 @@ func TestEngineUpdateTaskGoalState(t *testing.T) {
 
 	assert.True(t, jmti.(*jmTask).goalStateTime.After(before))
 	assert.Equal(t, State{task.TaskState_PREEMPTING, 42}, jmti.(*jmTask).goalState)
+}
+
+func TestEngineSyncFromDB(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	jobstoreMock := store_mocks.NewMockJobStore(ctrl)
+	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
+
+	e := &engine{
+		tracker:   NewTracker(),
+		jobStore:  jobstoreMock,
+		taskStore: taskstoreMock,
+	}
+
+	jobstoreMock.EXPECT().GetAllJobs(gomock.Any()).Return(map[string]*job.RuntimeInfo{
+		"3c8a3c3e-71e3-49c5-9aed-2929823f595c": nil,
+	}, nil)
+
+	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+	taskstoreMock.EXPECT().GetTasksForJob(gomock.Any(), jobID).
+		Return(map[uint32]*task.TaskInfo{
+			0: &task.TaskInfo{
+				JobId:      jobID,
+				InstanceId: 0,
+			},
+			1: &task.TaskInfo{
+				JobId:      jobID,
+				InstanceId: 1,
+				Runtime: &task.RuntimeInfo{
+					GoalState:            task.TaskState_RUNNING,
+					DesiredConfigVersion: 42,
+					ConfigVersion:        42,
+				},
+			},
+		}, nil)
+
+	e.Start()
+
+	jm := e.tracker.GetTask(&peloton.TaskID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-1"})
+
+	assert.Equal(t, State{task.TaskState_RUNNING, 42}, jm.(*jmTask).goalState)
 }

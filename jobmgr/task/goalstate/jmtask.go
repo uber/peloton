@@ -69,6 +69,7 @@ type jmTask struct {
 }
 
 func (j *jmTask) UpdateGoalState(taskInfo *task.TaskInfo) {
+	// TODO: Reject update if older than current version.
 	j.task = taskInfo
 
 	j.goalState.State = taskInfo.GetRuntime().GetGoalState()

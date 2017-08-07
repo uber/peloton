@@ -124,7 +124,16 @@ func (e *engine) Start() {
 	defer e.Unlock()
 
 	log.Info("goalstate.Engine started")
-	e.started.Store(true)
+
+	if !e.started.Swap(true) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// TODO: Should this be non-blocking?
+		if err := e.syncFromDB(ctx); err != nil {
+			log.WithError(err).Warn("failed to sync with DB in goalstate engine")
+		}
+	}
 }
 
 // Stop stops processing status update events
@@ -148,4 +157,28 @@ func (e *engine) updateTask(ctx context.Context, info *task.TaskInfo) error {
 		State:         info.GetRuntime().GetState(),
 		ConfigVersion: info.GetRuntime().GetConfigVersion(),
 	})
+}
+
+func (e *engine) syncFromDB(ctx context.Context) error {
+	log.Info("syncing goalstate engine with DB goalstates")
+
+	jobs, err := e.jobStore.GetAllJobs(ctx)
+	if err != nil {
+		return err
+	}
+
+	for id := range jobs {
+		tasks, err := e.taskStore.GetTasksForJob(ctx, &peloton.JobID{Value: id})
+		if err != nil {
+			return err
+		}
+
+		for _, task := range tasks {
+			if err := e.updateTask(ctx, task); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
