@@ -165,6 +165,15 @@ endif
 pcluster-teardown:
 	@./tools/pcluster/pcluster.py teardown
 
+# Clone the newest mimir-lib code. Do not manually edit anything under mimir-lib/*
+update-mimir:
+	@rm -rf mimir-lib
+	@git clone gitolite@code.uber.internal:infra/mimir-lib
+	@rm -rf mimir-lib/.arcconfig mimir-lib/.arclint mimir-lib/.git mimir-lib/.gitignore \
+	 mimir-lib/glide.yaml mimir-lib/glide.lock mimir-lib/Makefile mimir-lib/README.md
+	@chmod u+x ./mimir-transform.sh
+	@./mimir-transform.sh
+
 devtools:
 	@echo "Installing tools"
 	go get github.com/axw/gocov/gocov
