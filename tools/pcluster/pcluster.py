@@ -29,7 +29,7 @@ __author__ = 'wu'
 max_retry_attempts = 20
 sleep_time_secs = 5
 healthcheck_path = '/health'
-default_host = '127.0.0.1'
+default_host = 'localhost'
 
 
 class bcolors:
@@ -350,15 +350,17 @@ def run_peloton(applications):
 #
 # Starts a container and waits for it to come up
 #
-def start_and_wait(application_name, container_name, port):
+def start_and_wait(application_name, container_name, ports):
+    # TODO: It's very implicit that the first port is the HTTP port, perhaps we
+    # should split it out even more.
     container = cli.create_container(
         name=container_name,
         hostname=container_name,
-        ports=[repr(port)],
+        ports=[repr(port) for port in ports],
         environment=[
             'CONFIG_DIR=config',
             'APP=%s' % application_name,
-            'HTTP_PORT=' + repr(port),
+            'HTTP_PORT=' + repr(ports[0]),
             'DB_HOST=' + host_ip,
             'ELECTION_ZK_SERVERS={0}:{1}'.format(
                 host_ip,
@@ -376,7 +378,8 @@ def start_and_wait(application_name, container_name, port):
         ],
         host_config=cli.create_host_config(
             port_bindings={
-                port: port,
+                port: port
+                for port in ports
             },
         ),
         # pull or build peloton image if not exists
@@ -386,7 +389,7 @@ def start_and_wait(application_name, container_name, port):
     cli.start(container=container.get('Id'))
     wait_for_up(
         container_name,
-        port,
+        ports[0],  # use the first port as primary
     )
 
 
@@ -398,10 +401,10 @@ def run_peloton_resmgr():
     for i in range(0, config['peloton_resmgr_instance_count']):
         # to not cause port conflicts among apps, increase port by 10
         # for each instance
-        port = config['peloton_resmgr_port'] + i * 10
+        ports = [port + i * 10 for port in config['peloton_resmgr_ports']]
         name = config['peloton_resmgr_container'] + repr(i)
         remove_existing_container(name)
-        start_and_wait('resmgr', name, port)
+        start_and_wait('resmgr', name, ports)
 
 
 #
@@ -411,10 +414,10 @@ def run_peloton_hostmgr():
     for i in range(0, config['peloton_hostmgr_instance_count']):
         # to not cause port conflicts among apps, increase port
         # by 10 for each instance
-        port = config['peloton_hostmgr_port'] + i * 10
+        ports = [port + i * 10 for port in config['peloton_hostmgr_ports']]
         name = config['peloton_hostmgr_container'] + repr(i)
         remove_existing_container(name)
-        start_and_wait('hostmgr', name, port)
+        start_and_wait('hostmgr', name, ports)
 
 
 #
@@ -424,10 +427,10 @@ def run_peloton_jobmgr():
     for i in range(0, config['peloton_jobmgr_instance_count']):
         # to not cause port conflicts among apps, increase port by 10
         #  for each instance
-        port = config['peloton_jobmgr_port'] + i * 10
+        ports = [port + i * 10 for port in config['peloton_jobmgr_ports']]
         name = config['peloton_jobmgr_container'] + repr(i)
         remove_existing_container(name)
-        start_and_wait('jobmgr', name, port)
+        start_and_wait('jobmgr', name, ports)
 
 
 #
@@ -437,10 +440,10 @@ def run_peloton_placement():
     for i in range(0, config['peloton_placement_instance_count']):
         # to not cause port conflicts among apps, increase port by 10
         # for each instance
-        port = config['peloton_placement_port'] + i * 10
+        ports = [port + i * 10 for port in config['peloton_placement_ports']]
         name = config['peloton_placement_container'] + repr(i)
         remove_existing_container(name)
-        start_and_wait('placement', name, port)
+        start_and_wait('placement', name, ports)
 
 
 #

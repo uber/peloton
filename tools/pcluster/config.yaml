@@ -64,19 +64,27 @@ peloton_image: uber/peloton
 
 # Peloton app specific configs
 peloton_resmgr_container: peloton-resmgr
-peloton_resmgr_port: 5290
+peloton_resmgr_ports:
+  - 5290
+  - 5390
 peloton_resmgr_instance_count: 2
 
 peloton_hostmgr_container: peloton-hostmgr
-peloton_hostmgr_port: 5291
+peloton_hostmgr_ports:
+  - 5291
+  - 5391
 peloton_hostmgr_instance_count: 2
 
 peloton_jobmgr_container: peloton-jobmgr
-peloton_jobmgr_port: 5292
+peloton_jobmgr_ports:
+  - 5292
+  - 5392
 peloton_jobmgr_instance_count: 2
 
 peloton_placement_container: peloton-placement
-peloton_placement_port: 5293
+peloton_placement_ports:
+  - 5293
+  - 5393
 peloton_placement_instance_count: 2
 
 # log verbose level, set to true for debug
