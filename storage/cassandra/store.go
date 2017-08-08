@@ -333,8 +333,15 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID
 	}
 
 	// Add support on query by job state
-	if spec.JobState != job.JobState_UNKNOWN {
-		clauses = append(clauses, fmt.Sprintf(`{type: "match", field:"state", value:%s}`, strconv.Quote(spec.JobState.String())))
+	if len(spec.JobStates) > 0 {
+		values := ""
+		for i, s := range spec.JobStates {
+			values = values + strconv.Quote(s.String())
+			if i < len(spec.JobStates)-1 {
+				values = values + ","
+			}
+		}
+		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"state", values:[%s]}`, values))
 	}
 
 	where := `expr(job_index_lucene, '{query: {type: "boolean", must: [`
