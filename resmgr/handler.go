@@ -453,12 +453,14 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 
 			if taskState != t.TaskState_RUNNING &&
 				!util.IsPelotonStateTerminal(taskState) {
+				h.acknowledgeEvent(event.Offset)
 				continue
 			}
 			ptID, err := util.ParseTaskIDFromMesosTaskID(
 				*(event.MesosTaskStatus.TaskId.Value))
 			if err != nil {
 				log.WithField("event", event).Error("Could not parse mesos ID")
+				h.acknowledgeEvent(event.Offset)
 				continue
 			}
 			taskID := &peloton.TaskID{
@@ -466,6 +468,7 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 			}
 			rmTask := h.rmTracker.GetTask(taskID)
 			if rmTask == nil {
+				h.acknowledgeEvent(event.Offset)
 				continue
 			}
 			if taskState == t.TaskState_RUNNING {
@@ -484,17 +487,21 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 					log.WithField("event", event).Error("Could not be updated")
 				}
 			}
-			log.WithField("Offset", event.Offset).
-				Debug("Event received by resource manager")
-			if event.Offset > atomic.LoadUint64(h.maxOffset) {
-				atomic.StoreUint64(h.maxOffset, event.Offset)
-			}
+			h.acknowledgeEvent(event.Offset)
 		}
 		response.PurgeOffset = atomic.LoadUint64(h.maxOffset)
 	} else {
 		log.Warn("Empty events received by resource manager")
 	}
 	return &response, nil
+}
+
+func (h *ServiceHandler) acknowledgeEvent(offset uint64) {
+	log.WithField("Offset", offset).
+		Debug("Event received by resource manager")
+	if offset > atomic.LoadUint64(h.maxOffset) {
+		atomic.StoreUint64(h.maxOffset, offset)
+	}
 }
 
 // GetActiveTasks returns task to state map
