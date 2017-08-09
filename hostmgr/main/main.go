@@ -379,7 +379,7 @@ func main() {
 	}).Info("Started host manager")
 
 	// we can *honestly* say the server is booted up now
-	health.InitHeartbeat(rootScope, cfg.Health)
+	health.InitHeartbeat(rootScope, cfg.Health, candidate)
 
 	select {}
 }

@@ -248,7 +248,7 @@ func main() {
 
 	log.Info("Initialize the Heartbeat process")
 	// we can *honestly* say the server is booted up now
-	health.InitHeartbeat(rootScope, cfg.Health)
+	health.InitHeartbeat(rootScope, cfg.Health, nil)
 
 	select {}
 }

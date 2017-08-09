@@ -7,6 +7,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
 	"github.com/uber-go/tally"
+
+	"code.uber.internal/infra/peloton/leader"
 )
 
 // Heartbeat is the heartbeat interface
@@ -23,6 +25,7 @@ type heartbeat struct {
 
 	metrics           *Metrics
 	heartbeatInterval time.Duration
+	candidate         leader.Candidate
 }
 
 var hb *heartbeat
@@ -31,11 +34,13 @@ var onceInitHeartbeat sync.Once
 // InitHeartbeat inits heartbeat
 func InitHeartbeat(
 	parent tally.Scope,
-	config Config) {
+	config Config,
+	candidate leader.Candidate) {
 	onceInitHeartbeat.Do(func() {
 		hb = &heartbeat{
 			metrics:           NewMetrics(parent.SubScope("health")),
 			heartbeatInterval: config.HeartbeatInterval,
+			candidate:         candidate,
 		}
 		hb.metrics.Init.Inc(1)
 		hb.Start()
@@ -66,6 +71,12 @@ func (*heartbeat) Start() {
 				log.WithField("tick", t).
 					Debug("Emitting heartbeat.")
 				hb.metrics.Heartbeat.Update(1)
+
+				if hb.candidate != nil && hb.candidate.IsLeader() {
+					log.WithField("tick", t).
+						Debug("Emitting leader metric.")
+					hb.metrics.Leader.Update(1)
+				}
 			}
 			ticker.Stop()
 		}
