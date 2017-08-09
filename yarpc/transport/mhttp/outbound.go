@@ -17,9 +17,8 @@ import (
 
 	"github.com/uber-go/atomic"
 	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/yarpcerrors"
 	"golang.org/x/net/context/ctxhttp"
-
-	"code.uber.internal/infra/peloton/yarpc/internal/errors"
 )
 
 // ErrNoLeader represents no leader is available for outbound.
@@ -30,9 +29,9 @@ func (e ErrNoLeader) Error() string {
 }
 
 var (
-	errOutboundAlreadyStarted = errors.ErrOutboundAlreadyStarted("http.Outbound")
-	errOutboundNotStarted     = errors.ErrOutboundNotStarted("http.Outbound")
-	errNoLeader               = errors.ErrOutboundNotStarted("http.Outbound")
+	errOutboundAlreadyStarted = yarpcerrors.InternalErrorf("Outbound already started")
+	errOutboundNotStarted     = yarpcerrors.InternalErrorf("Outbound not started")
+	errNoLeader               = yarpcerrors.InternalErrorf("No leader available for outbound")
 )
 
 type outboundConfig struct {
@@ -151,7 +150,8 @@ func (o *outbound) Call(
 	response, err := ctxhttp.Do(ctx, o.Client, request)
 	if err != nil {
 		if err == context.DeadlineExceeded {
-			return nil, errors.ClientTimeoutError(
+			return nil, yarpcerrors.DeadlineExceededErrorf(
+				"Outbound service timeout: service: %s, procedure: %s, timeout: %v",
 				req.Service,
 				req.Procedure,
 				deadline.Sub(start))
@@ -183,15 +183,19 @@ func (o *outbound) Call(
 		response.StatusCode,
 		strings.TrimSuffix(string(contents), "\n"))
 
+	if response.StatusCode == 401 {
+		return nil, yarpcerrors.UnauthenticatedErrorf(message)
+	}
+
 	if response.StatusCode >= 400 && response.StatusCode < 500 {
-		return nil, errors.RemoteBadRequestError(message)
+		return nil, yarpcerrors.InternalErrorf(message)
 	}
 
 	if response.StatusCode == http.StatusGatewayTimeout {
-		return nil, errors.RemoteTimeoutError(message)
+		return nil, yarpcerrors.DeadlineExceededErrorf(message)
 	}
 
-	return nil, errors.RemoteUnexpectedError(message)
+	return nil, yarpcerrors.UnknownErrorf(message)
 }
 
 // IsRunning returns the running state.
