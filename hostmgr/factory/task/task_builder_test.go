@@ -486,16 +486,51 @@ func (suite *BuilderTestSuite) TestPopulateReservationVolumeInfo() {
 			Value: testVolumeID,
 		},
 		ContainerPath: testContainerPath,
+		Resource: util.NewMesosResourceBuilder().
+			WithName("disk").
+			WithValue(float64(3 * numTasks * _disk)).
+			Build(),
 	}
-	populateReservationVolumeInfo(resources, labels, volumeInfo)
+	var err error
+	resources, err = populateReservationVolumeInfo(resources, labels, volumeInfo)
+	suite.NoError(err)
+
+	var sandboxDiskRes, persistentDiskRes *mesos.Resource
 	for _, res := range resources {
 		suite.Equal(res.GetRole(), _pelotonRole)
 		suite.Equal(res.GetReservation().GetLabels(), labels)
-		if res.GetName() == "disk" {
-			suite.Equal(res.GetDisk().GetVolume().GetContainerPath(), testContainerPath)
-			suite.Equal(res.GetDisk().GetPersistence().GetId(), testVolumeID)
+		if res.GetName() == "disk" && res.GetDisk() != nil {
+			persistentDiskRes = res
+
+		} else if res.GetName() == "disk" {
+			sandboxDiskRes = res
 		}
 	}
+
+	suite.NotNil(persistentDiskRes)
+	suite.Equal(persistentDiskRes.GetScalar().GetValue(), float64(3*numTasks*_disk))
+	suite.Equal(persistentDiskRes.GetDisk().GetVolume().GetContainerPath(), testContainerPath)
+	suite.Equal(persistentDiskRes.GetDisk().GetPersistence().GetId(), testVolumeID)
+
+	suite.NotNil(sandboxDiskRes)
+	suite.Equal(sandboxDiskRes.GetScalar().GetValue(), float64(numTasks*_disk))
+}
+
+// TestPopulateReservationVolumeInfo tests populateReservationInfo.
+func (suite *BuilderTestSuite) TestPopulateReservationVolumeInfoNoVolume() {
+	numTasks := 1
+	resources := suite.getResources(numTasks)
+	labels := &mesos.Labels{
+		Labels: []*mesos.Label{
+			{
+				Key:   &_tmpLabelKey,
+				Value: &_tmpLabelValue,
+			},
+		},
+	}
+	var err error
+	resources, err = populateReservationVolumeInfo(resources, labels, nil)
+	suite.Error(err)
 }
 
 func TestBuilderTestSuite(t *testing.T) {

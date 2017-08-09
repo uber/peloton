@@ -1,10 +1,10 @@
 package task
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
@@ -203,7 +203,10 @@ func (tb *Builder) Build(
 	}
 
 	if reservationLabels != nil {
-		populateReservationVolumeInfo(lres, reservationLabels, volume)
+		lres, err = populateReservationVolumeInfo(lres, reservationLabels, volume)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	mesosTask := &mesos.TaskInfo{
@@ -233,40 +236,40 @@ func (tb *Builder) Build(
 func populateReservationVolumeInfo(
 	resources []*mesos.Resource,
 	labels *mesos.Labels,
-	volume *hostsvc.Volume) {
+	volume *hostsvc.Volume) ([]*mesos.Resource, error) {
 
-	if labels == nil || volume == nil {
-		log.WithField("labels", labels).
-			Error("volume is required to populate volume info")
-		return
+	if labels == nil || volume == nil || volume.GetResource() == nil {
+		return resources, errors.Errorf(
+			"volume is required to populate volume info: %v and %v", labels, volume)
 	}
+
+	// Populate the disk volume field for persistent disk resource.
+	volumeID := volume.GetId().GetValue()
+	containerPath := volume.GetContainerPath()
+	volumeRWMode := mesos.Volume_RW
+	persistentDiskResource := proto.Clone(volume.GetResource()).(*mesos.Resource)
+	persistentDiskResource.Disk = &mesos.Resource_DiskInfo{
+		Persistence: &mesos.Resource_DiskInfo_Persistence{
+			Id:        &volumeID,
+			Principal: &_pelotonPrinciple,
+		},
+		Volume: &mesos.Volume{
+			ContainerPath: &containerPath,
+			Mode:          &volumeRWMode,
+		},
+	}
+
+	// Populate reservation and Role info for all the resources.
+	resources = append(resources, persistentDiskResource)
 	for _, res := range resources {
-		if len(res.GetRole()) == 0 || res.GetRole() == "*" {
-			// Setup the reservation if it is not reserved.
-			res.Role = &_pelotonRole
-			res.Reservation = &mesos.Resource_ReservationInfo{
-				Principal: &_pelotonPrinciple,
-				Labels:    proto.Clone(labels).(*mesos.Labels),
-			}
-		}
-		if res.GetName() != "disk" || res.GetDisk() != nil {
-			continue
-		}
-		// Setup the disk volume field.
-		volumeID := volume.GetId().GetValue()
-		containerPath := volume.GetContainerPath()
-		volumeRWMode := mesos.Volume_RW
-		res.Disk = &mesos.Resource_DiskInfo{
-			Persistence: &mesos.Resource_DiskInfo_Persistence{
-				Id:        &volumeID,
-				Principal: &_pelotonPrinciple,
-			},
-			Volume: &mesos.Volume{
-				ContainerPath: &containerPath,
-				Mode:          &volumeRWMode,
-			},
+		res.Role = &_pelotonRole
+		res.Reservation = &mesos.Resource_ReservationInfo{
+			Principal: &_pelotonPrinciple,
+			Labels:    proto.Clone(labels).(*mesos.Labels),
 		}
 	}
+
+	return resources, nil
 }
 
 // populateCommandInfo properly sets up the CommandInfo of a Mesos task

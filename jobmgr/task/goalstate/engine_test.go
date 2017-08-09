@@ -96,11 +96,11 @@ func TestEngineSyncFromDB(t *testing.T) {
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
 	taskstoreMock.EXPECT().GetTasksForJob(gomock.Any(), jobID).
 		Return(map[uint32]*task.TaskInfo{
-			0: &task.TaskInfo{
+			0: {
 				JobId:      jobID,
 				InstanceId: 0,
 			},
-			1: &task.TaskInfo{
+			1: {
 				JobId:      jobID,
 				InstanceId: 1,
 				Runtime: &task.RuntimeInfo{

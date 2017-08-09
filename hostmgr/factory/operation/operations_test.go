@@ -293,6 +293,16 @@ func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {
 					Value: &tmpCmd,
 				},
 			},
+			Volume: &hostsvc.Volume{
+				Resource: util.NewMesosResourceBuilder().
+					WithName("disk").
+					WithValue(1.0).
+					Build(),
+				ContainerPath: "test",
+				Id: &peloton.VolumeID{
+					Value: "volumeid",
+				},
+			},
 		})
 	}
 	return tasks
