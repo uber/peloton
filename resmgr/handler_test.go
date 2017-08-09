@@ -32,6 +32,10 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 )
 
+const (
+	timeout = 1 * time.Second
+)
+
 type HandlerTestSuite struct {
 	suite.Suite
 	handler       *ServiceHandler
@@ -202,17 +206,24 @@ func (suite *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePool
 
 func (suite *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
+	uuidStr := "uuidstr-1"
+	jobID := "job1"
+	instance := 1
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job1-1",
 			Priority: 0,
 			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: "job1-1"},
+			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
 			Resource: &task.ResourceConfig{
 				CpuLimit:    1,
 				DiskLimitMb: 10,
 				GpuLimit:    0,
 				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
 			},
 		},
 	}
@@ -316,6 +327,77 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	suite.Equal(suite.expectedGangs(), deqResp.GetGangs())
 
 	log.Info("TestEnqueueDequeueGangsOneResPool returned")
+}
+
+func (suite *HandlerTestSuite) TestRequeue() {
+	log.Info("TestRequeue called")
+	node, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool3"})
+	suite.NoError(err)
+	var gangs []*resmgrsvc.Gang
+	gangs = append(gangs, suite.pendingGang0())
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
+		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
+		Gangs:   gangs,
+	}
+
+	suite.rmTaskTracker.AddTask(
+		suite.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
+	rmtask := suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	suite.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	suite.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
+	suite.NoError(err)
+
+	// Testing to see if we can send same task in the enqueue
+	// request then it should error out
+	node.SetEntitlement(suite.getEntitlement())
+	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
+	suite.NoError(err)
+	suite.NotNil(enqResp.GetError())
+	log.Error(err)
+	log.Error(enqResp.GetError())
+	// Testing to see if we can send different Mesos taskID
+	// in the enqueue request then it should move task to
+	// ready state and ready queue
+	uuidStr := "uuidstr-2"
+	jobID := "job1"
+	instance := 1
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
+		Value: &mesosTaskID,
+	}
+	enqResp, err = suite.handler.EnqueueGangs(suite.context, enqReq)
+	suite.NoError(err)
+	suite.NotNil(enqResp.GetError())
+
+	rmtask = suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
+	suite.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
+
+	deqReq := &resmgrsvc.DequeueGangsRequest{
+		Limit:   10,
+		Timeout: 2 * 1000, // 2 sec
+	}
+	// Scheduler.scheduleTasks method is run asynchronously.
+	// We need to wait here
+	time.Sleep(timeout)
+	// Checking whether we get the task from ready queue
+	deqResp, err := suite.handler.DequeueGangs(suite.context, deqReq)
+	suite.NoError(err)
+	suite.Nil(deqResp.GetError())
+	log.Info(*deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
+	suite.Equal(mesosTaskID, *deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
 }
 
 func (suite *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
@@ -588,6 +670,9 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 				DiskLimitMb: 10,
 				GpuLimit:    0,
 				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
 			},
 		}, nil, resp, &rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,

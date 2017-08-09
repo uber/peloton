@@ -1,7 +1,6 @@
 package resmgr
 
 import (
-	"container/list"
 	"context"
 	"reflect"
 	"sync/atomic"
@@ -30,6 +29,9 @@ import (
 
 var (
 	errFailingGangMemberTask = errors.New("task fail because other gang member failed")
+	errSameTaskPresent       = errors.New("same task present in tracker, Ignoring new task")
+	errGangNotEnqueued       = errors.New("Could not enqueue gang to ready after retry")
+	errEnqueuedAgain         = errors.New("enqueued again after retry")
 )
 
 // ServiceHandler implements peloton.private.resmgr.ResourceManagerService
@@ -122,64 +124,14 @@ func (h *ServiceHandler) EnqueueGangs(
 	// return per-task success/failure.
 	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	for _, gang := range req.GetGangs() {
-		gangTasks := new(list.List)
-		totalGangResources := &scalar.Resources{}
-
+		failed, err = h.enqueueGang(gang, respool)
+		// Report per-task success/failure for all tasks in gang
 		for _, task := range gang.GetTasks() {
-			// Adding task to state machine
-			err := h.rmTracker.AddTask(
-				task,
-				h.eventStreamHandler,
-				respool,
-				h.config.RmTaskConfig,
-			)
 			if err != nil {
 				failed = append(
 					failed,
 					&resmgrsvc.EnqueueGangsFailure_FailedTask{
 						Task:    task,
-						Message: err.Error(),
-					},
-				)
-				h.metrics.EnqueueGangFail.Inc(1)
-				continue
-			}
-			totalGangResources = totalGangResources.Add(
-				scalar.ConvertToResmgrResource(
-					task.GetResource()))
-
-			if h.rmTracker.GetTask(task.Id) != nil {
-				err = h.rmTracker.GetTask(task.Id).TransitTo(
-					t.TaskState_PENDING.String())
-				if err != nil {
-					log.Error(err)
-				} else {
-					gangTasks.PushBack(task)
-				}
-			}
-		}
-		if len(failed) == 0 {
-			err = respool.EnqueueGang(gang)
-			if err == nil {
-				err = respool.AddToDemand(totalGangResources)
-				log.WithFields(log.Fields{
-					"TotalResourcesAdded": totalGangResources,
-					"Respool":             respool.Name(),
-				}).Debug("Resources added for Gang")
-				if err != nil {
-					log.Error(err)
-				}
-			}
-		} else {
-			err = errFailingGangMemberTask
-		}
-		// Report per-task success/failure for all tasks in gang
-		for gangTask := gangTasks.Front(); gangTask != nil; gangTask = gangTask.Next() {
-			if err != nil {
-				failed = append(
-					failed,
-					&resmgrsvc.EnqueueGangsFailure_FailedTask{
-						Task:    gangTask.Value.(*resmgr.Task),
 						Message: err.Error(),
 					},
 				)
@@ -203,6 +155,125 @@ func (h *ServiceHandler) EnqueueGangs(
 	response := resmgrsvc.EnqueueGangsResponse{}
 	log.Debug("Enqueue Returned")
 	return &response, nil
+}
+
+func (h *ServiceHandler) enqueueGang(
+	gang *resmgrsvc.Gang,
+	respool respool.ResPool) (
+	[]*resmgrsvc.EnqueueGangsFailure_FailedTask,
+	error) {
+	totalGangResources := &scalar.Resources{}
+	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
+	var err error
+	for _, task := range gang.GetTasks() {
+		err := h.requeueTask(task)
+		if err != nil {
+			failed = append(
+				failed,
+				&resmgrsvc.EnqueueGangsFailure_FailedTask{
+					Task:    task,
+					Message: err.Error(),
+				},
+			)
+			continue
+		}
+
+		// Adding task to state machine
+		err = h.rmTracker.AddTask(
+			task,
+			h.eventStreamHandler,
+			respool,
+			h.config.RmTaskConfig,
+		)
+		if err != nil {
+			failed = append(
+				failed,
+				&resmgrsvc.EnqueueGangsFailure_FailedTask{
+					Task:    task,
+					Message: err.Error(),
+				},
+			)
+			continue
+		}
+		totalGangResources = totalGangResources.Add(
+			scalar.ConvertToResmgrResource(
+				task.GetResource()))
+
+		if h.rmTracker.GetTask(task.Id) != nil {
+			err = h.rmTracker.GetTask(task.Id).TransitTo(
+				t.TaskState_PENDING.String())
+			if err != nil {
+				log.Error(err)
+			}
+		}
+	}
+	if len(failed) == 0 {
+		err = respool.EnqueueGang(gang)
+		if err == nil {
+			err = respool.AddToDemand(totalGangResources)
+			log.WithFields(log.Fields{
+				"TotalResourcesAdded": totalGangResources,
+				"Respool":             respool.Name(),
+			}).Debug("Resources added for Gang")
+			if err != nil {
+				log.Error(err)
+			}
+		} else {
+			// We need to remove gang tasks from tracker
+			h.removeTasksFromTracker(gang)
+		}
+	} else {
+		err = errFailingGangMemberTask
+	}
+	return failed, err
+}
+
+// removeTasksFromTracker removes the  task from the tracker
+func (h *ServiceHandler) removeTasksFromTracker(gang *resmgrsvc.Gang) {
+	for _, task := range gang.Tasks {
+		h.rmTracker.DeleteTask(task.Id)
+	}
+}
+
+// requeueTask validates the enqueued task has the same mesos task id or not
+// If task has same mesos task id => return error
+// If task has different mesos task id then check state and based on the state
+// act accordingly
+func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) error {
+	rmTask := h.rmTracker.GetTask(requeuedTask.Id)
+	if rmTask == nil {
+		return nil
+	}
+
+	if *requeuedTask.TaskId.Value == *rmTask.Task().TaskId.Value {
+		return errSameTaskPresent
+	}
+
+	currentTaskState := rmTask.GetCurrentState()
+
+	// If state is Launching or Running then only
+	// put task to ready queue with update of
+	// mesos task id otherwise ignore
+	if currentTaskState == t.TaskState_LAUNCHING ||
+		currentTaskState == t.TaskState_RUNNING {
+		// Updating the New Mesos Task ID
+		rmTask.Task().TaskId = requeuedTask.TaskId
+		// Transitioning back to Ready State
+		rmTask.TransitTo(t.TaskState_READY.String())
+		// Adding to ready Queue
+		var tasks []*resmgr.Task
+		gang := &resmgrsvc.Gang{
+			Tasks: append(tasks, rmTask.Task()),
+		}
+		err := rmtask.GetScheduler().EnqueueGang(gang)
+		if err != nil {
+			log.WithField("Gang", gang).Error(errGangNotEnqueued.Error())
+			return err
+		}
+		log.WithField("Gang", gang).Debug(errEnqueuedAgain.Error())
+		return errEnqueuedAgain
+	}
+	return errSameTaskPresent
 }
 
 // DequeueGangs implements ResourceManagerService.DequeueGangs
@@ -446,53 +517,64 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 	req *resmgrsvc.NotifyTaskUpdatesRequest) (*resmgrsvc.NotifyTaskUpdatesResponse, error) {
 	var response resmgrsvc.NotifyTaskUpdatesResponse
 
-	if len(req.Events) > 0 {
-		for _, event := range req.Events {
-			taskState := util.MesosStateToPelotonState(
-				event.MesosTaskStatus.GetState())
-
-			if taskState != t.TaskState_RUNNING &&
-				!util.IsPelotonStateTerminal(taskState) {
-				h.acknowledgeEvent(event.Offset)
-				continue
-			}
-			ptID, err := util.ParseTaskIDFromMesosTaskID(
-				*(event.MesosTaskStatus.TaskId.Value))
-			if err != nil {
-				log.WithField("event", event).Error("Could not parse mesos ID")
-				h.acknowledgeEvent(event.Offset)
-				continue
-			}
-			taskID := &peloton.TaskID{
-				Value: ptID,
-			}
-			rmTask := h.rmTracker.GetTask(taskID)
-			if rmTask == nil {
-				h.acknowledgeEvent(event.Offset)
-				continue
-			}
-			if taskState == t.TaskState_RUNNING {
-				err = rmTask.TransitTo(t.TaskState_RUNNING.String())
-				if err != nil {
-					log.WithError(
-						errors.WithStack(err)).
-						Error("Not able " +
-							"to transition to running " +
-							"for task " + taskID.Value)
-				}
-			} else {
-				// TODO: We probably want to terminate all the tasks in gang
-				err = rmtask.GetTracker().MarkItDone(taskID)
-				if err != nil {
-					log.WithField("event", event).Error("Could not be updated")
-				}
-			}
-			h.acknowledgeEvent(event.Offset)
-		}
-		response.PurgeOffset = atomic.LoadUint64(h.maxOffset)
-	} else {
+	if len(req.Events) == 0 {
 		log.Warn("Empty events received by resource manager")
+		return &response, nil
 	}
+
+	for _, event := range req.Events {
+		taskState := util.MesosStateToPelotonState(
+			event.MesosTaskStatus.GetState())
+		if taskState != t.TaskState_RUNNING &&
+			!util.IsPelotonStateTerminal(taskState) {
+			h.acknowledgeEvent(event.Offset)
+			continue
+		}
+		ptID, err := util.ParseTaskIDFromMesosTaskID(
+			*(event.MesosTaskStatus.TaskId.Value))
+		if err != nil {
+			log.WithField("event", event).Error("Could not parse mesos ID")
+			h.acknowledgeEvent(event.Offset)
+			continue
+		}
+		taskID := &peloton.TaskID{
+			Value: ptID,
+		}
+		rmTask := h.rmTracker.GetTask(taskID)
+		if rmTask == nil {
+			h.acknowledgeEvent(event.Offset)
+			continue
+		}
+
+		if *(rmTask.Task().TaskId.Value) !=
+			*(event.MesosTaskStatus.TaskId.Value) {
+			log.WithFields(log.Fields{
+				"event": event,
+				"Task":  rmTask.Task().Id,
+			}).Error("could not be updated due to" +
+				"different mesos taskID")
+			h.acknowledgeEvent(event.Offset)
+			continue
+		}
+		if taskState == t.TaskState_RUNNING {
+			err = rmTask.TransitTo(t.TaskState_RUNNING.String())
+			if err != nil {
+				log.WithError(
+					errors.WithStack(err)).
+					Error("Not able " +
+						"to transition to running " +
+						"for task " + taskID.Value)
+			}
+		} else {
+			// TODO: We probably want to terminate all the tasks in gang
+			err = rmtask.GetTracker().MarkItDone(taskID)
+			if err != nil {
+				log.WithField("event", event).Error("Could not be updated")
+			}
+		}
+		h.acknowledgeEvent(event.Offset)
+	}
+	response.PurgeOffset = atomic.LoadUint64(h.maxOffset)
 	return &response, nil
 }
 

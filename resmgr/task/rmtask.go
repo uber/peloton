@@ -125,6 +125,7 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 						state.State(task.TaskState_KILLING.String()),
 						state.State(task.TaskState_FAILED.String()),
 						state.State(task.TaskState_KILLED.String()),
+						state.State(task.TaskState_READY.String()),
 					},
 					Callback: nil,
 				}).
