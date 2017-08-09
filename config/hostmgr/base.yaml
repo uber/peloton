@@ -42,6 +42,7 @@ host_manager:
 mesos:
   encoding: "x-protobuf"
   framework:
+    gpu_supported: true
     user: "root"
     name: "Peloton"
     # TODO : add roles for other components

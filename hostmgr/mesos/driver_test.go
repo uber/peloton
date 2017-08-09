@@ -3,7 +3,10 @@ package mesos
 import (
 	"context"
 	"errors"
+	"io/ioutil"
+	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"testing"
 
@@ -49,12 +52,48 @@ func (suite *schedulerDriverTestSuite) SetupTest() {
 			Encoding: _encoding,
 		},
 		suite.store,
+		http.Header{},
 	).(*schedulerDriver)
 }
 
 func (suite *schedulerDriverTestSuite) TearDownTest() {
 	log.Debug("tearing down")
 	suite.ctrl.Finish()
+}
+
+func (suite *schedulerDriverTestSuite) TestGetAuthHeader() {
+	testSecret := "test-secret"
+	content := []byte(testSecret)
+	tmpfile, err := ioutil.TempFile("", "secret")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer os.Remove(tmpfile.Name()) // clean up
+
+	if _, err := tmpfile.Write(content); err != nil {
+		log.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	// No secret file name.
+	config := Config{
+		Framework: &FrameworkConfig{
+			Principal: "test-principal",
+		},
+	}
+
+	header, err := GetAuthHeader(&config)
+	suite.NoError(err)
+	suite.Empty(header.Get("Authorization"))
+
+	config.SecretFile = tmpfile.Name()
+	header, err = GetAuthHeader(&config)
+	suite.NoError(err)
+	encoded := "Basic dGVzdC1wcmluY2lwYWw6dGVzdC1zZWNyZXQ="
+	suite.Equal(encoded, header.Get("Authorization"))
 }
 
 func (suite *schedulerDriverTestSuite) TestGetInstance() {

@@ -64,6 +64,7 @@ type LeaderDetector interface {
 func NewOutbound(
 	detector LeaderDetector,
 	urlTemplate url.URL,
+	defaultHeaders http.Header,
 	opts ...OutboundOption) transport.Outbounds {
 
 	cfg := defaultConfig
@@ -82,6 +83,8 @@ func NewOutbound(
 			detector:    detector,
 			started:     atomic.NewBool(false),
 			urlTemplate: urlTemplate,
+
+			defaultHeaders: defaultHeaders,
 		},
 	}
 }
@@ -91,6 +94,8 @@ type outbound struct {
 	detector    LeaderDetector
 	started     *atomic.Bool
 	urlTemplate url.URL
+
+	defaultHeaders http.Header
 }
 
 func (o *outbound) Start() error {
@@ -134,6 +139,11 @@ func (o *outbound) Call(
 	}
 
 	request.Header = http.Header{}
+	for k, v := range o.defaultHeaders {
+		for _, vv := range v {
+			request.Header.Set(k, vv)
+		}
+	}
 	for k, v := range req.Headers.Items() {
 		request.Header.Set(k, v)
 	}

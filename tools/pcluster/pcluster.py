@@ -171,6 +171,12 @@ def run_mesos():
             privileged=True
         ),
         environment=[
+            'MESOS_AUTHENTICATE_HTTP_READWRITE=true',
+            'MESOS_AUTHENTICATE_FRAMEWORKS=true',
+            # TODO: Enable following flags for fully authentication.
+            'MESOS_AUTHENTICATE_HTTP_FRAMEWORKS=true',
+            'MESOS_HTTP_FRAMEWORK_AUTHENTICATORS=basic',
+            'MESOS_CREDENTIALS=/etc/mesos-master/credentials',
             'MESOS_LOG_DIR=' + config['log_dir'],
             'MESOS_PORT=' + repr(config['master_port']),
             'MESOS_ZK=zk://{0}:{1}/mesos'.format(
@@ -381,6 +387,9 @@ def start_and_wait(application_name, container_name, ports):
                 port: port
                 for port in ports
             },
+            binds=[
+                work_dir + '/files:/files',
+            ],
         ),
         # pull or build peloton image if not exists
         image=config['peloton_image'],

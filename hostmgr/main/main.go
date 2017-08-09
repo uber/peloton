@@ -194,15 +194,28 @@ func main() {
 
 	jobStore, taskStore, _, _, frameworkInfoStore, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
 
+	authHeader, err := mesos.GetAuthHeader(&cfg.Mesos)
+	if err != nil {
+		log.WithError(err).Fatal("Cannot initialize auth header")
+	}
+
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
-	driver := mesos.InitSchedulerDriver(&cfg.Mesos, frameworkInfoStore)
+	driver := mesos.InitSchedulerDriver(
+		&cfg.Mesos,
+		frameworkInfoStore,
+		authHeader,
+	)
 
 	// Active host manager needs a Mesos inbound
 	var mInbound = mhttp.NewInbound(rootScope, driver)
 	inbounds = append(inbounds, mInbound)
 
-	// TODO: update mesos url when leading mesos master changes
-	mOutbound := mhttp.NewOutbound(mesosMasterDetector, driver.Endpoint())
+	// TODO: update Mesos url when leading mesos master changes
+	mOutbound := mhttp.NewOutbound(
+		mesosMasterDetector,
+		driver.Endpoint(),
+		authHeader,
+	)
 
 	// MasterOperatorClient API outbound
 	mOperatorOutbound := mhttp.NewOutbound(
@@ -210,7 +223,9 @@ func main() {
 		url.URL{
 			Scheme: "http",
 			Path:   common.MesosMasterOperatorEndPoint,
-		})
+		},
+		authHeader,
+	)
 
 	// All leader discovery metrics share a scope (and will be tagged
 	// with role={role})

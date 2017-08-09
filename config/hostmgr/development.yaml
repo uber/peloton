@@ -4,8 +4,9 @@ logging:
 mesos:
   host_port: "localhost:5050"
   zk_path: "zk://localhost:8192/mesos"
-  framework:
-    gpu_supported: true
+  # The follow files maps to `tools/pcluster/files/hostmgr_mesos_secret`
+  # in pcluste setup.
+  secret_file: "/files/hostmgr_mesos_secret"
 
 election:
   zk_servers: ["localhost:8192"]

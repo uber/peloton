@@ -2,7 +2,9 @@ package mesos
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -48,6 +50,8 @@ type schedulerDriver struct {
 	mesosStreamID string
 	cfg           *FrameworkConfig
 	encoding      string
+
+	defaultHeaders http.Header
 }
 
 var instance *schedulerDriver
@@ -56,7 +60,9 @@ var instance *schedulerDriver
 // HTTP API.
 func InitSchedulerDriver(
 	cfg *Config,
-	store storage.FrameworkInfoStore) SchedulerDriver {
+	store storage.FrameworkInfoStore,
+	defaultHeaders http.Header,
+) SchedulerDriver {
 	// TODO: load framework ID from ZK or DB
 	instance = &schedulerDriver{
 		store:         store,
@@ -64,6 +70,8 @@ func InitSchedulerDriver(
 		mesosStreamID: "",
 		cfg:           cfg.Framework,
 		encoding:      cfg.Encoding,
+
+		defaultHeaders: defaultHeaders,
 	}
 	return instance
 }
@@ -238,6 +246,13 @@ func (d *schedulerDriver) PrepareSubscribeRequest(ctx context.Context, mesosMast
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed HTTP request")
 	}
+
+	for k, v := range d.defaultHeaders {
+		for _, vv := range v {
+			req.Header.Set(k, vv)
+		}
+	}
+
 	req.Header.Set("Content-Type", fmt.Sprintf("application/%s", d.encoding))
 	req.Header.Set("Accept", fmt.Sprintf("application/%s", d.encoding))
 	return req, nil
@@ -261,4 +276,39 @@ func (d *schedulerDriver) PostSubscribe(ctx context.Context, mesosStreamID strin
 // Implements mhttp.MesosDriver.GetContentEncoding().
 func (d *schedulerDriver) GetContentEncoding() string {
 	return d.encoding
+}
+
+// GetAuthHeader returns necessary auth header used for HTTP request.
+func GetAuthHeader(config *Config) (http.Header, error) {
+	header := http.Header{}
+	username := config.Framework.Principal
+	if len(username) == 0 {
+		log.Info("No Mesos princpial is provided to framework")
+		return header, nil
+	}
+
+	if len(config.SecretFile) == 0 {
+		log.Info("No secret file is provided to framework")
+		return header, nil
+	}
+
+	log.WithFields(log.Fields{
+		"secret_file": config.SecretFile,
+		"principal":   username,
+	}).Info("Loading Mesos Authorization header from secret file")
+
+	buf, err := ioutil.ReadFile(config.SecretFile)
+	if err != nil {
+		return nil, err
+	}
+	password := strings.TrimSpace(string(buf))
+	auth := username + ":" + password
+	basicAuth := base64.StdEncoding.EncodeToString([]byte(auth))
+	header.Add("Authorization", "Basic "+basicAuth)
+
+	log.WithFields(log.Fields{
+		"secret_file": config.SecretFile,
+		"principal":   username,
+	}).Info("Mesos Authorization header loaded for principal")
+	return header, nil
 }
