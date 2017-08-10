@@ -433,7 +433,8 @@ func (s *placementEngine) placeRound() time.Duration {
 	}
 	if len(tasks) == 0 {
 		log.Debug("No task to place in workLoop")
-		return _getTaskTimeout
+		// Retry immediately.
+		return 0
 	}
 
 	log.WithField("tasks", len(tasks)).Info("Dequeued from task queue")
