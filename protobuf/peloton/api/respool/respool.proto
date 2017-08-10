@@ -165,6 +165,16 @@ message InvalidResourcePoolPath {
   string message = 2;
 }
 
+message ResourcePoolIsBusy {
+  ResourcePoolID id = 1;
+  string message = 2;
+}
+
+message ResourcePoolIsNotLeaf {
+  ResourcePoolID id = 1;
+  string message = 2;
+}
+
 message CreateRequest {
   ResourcePoolConfig config = 2;
 }
@@ -200,12 +210,14 @@ message GetResponse {
 }
 
 message DeleteRequest {
-  ResourcePoolID id = 1;
+  ResourcePoolPath path = 1;
 }
 
 message DeleteResponse {
   message Error {
-    ResourcePoolNotFound notFound = 1;
+    ResourcePoolPathNotFound notFound = 1;
+    ResourcePoolIsBusy isBusy = 2;
+    ResourcePoolIsNotLeaf isNotLeaf = 3;
   }
 
   Error error = 1;

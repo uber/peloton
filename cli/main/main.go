@@ -144,6 +144,10 @@ var (
 		"format",
 		"Dump resource pool(s) in a format - default (yaml)",
 	).Default("yaml").Enum("yaml", "yml", "json")
+
+	resPoolDelete     = resPool.Command("delete", "delete a resource pool")
+	resPoolDeletePath = resPoolDelete.Arg("respool", "complete path of the "+
+		"resource pool starting from the root").Required().String()
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -286,6 +290,8 @@ func main() {
 		err = client.ResPoolCreateAction(*resPoolCreatePath, *resPoolCreateConfig)
 	case resPoolDump.FullCommand():
 		err = client.ResPoolDumpAction(*resPoolDumpFormat)
+	case resPoolDelete.FullCommand():
+		err = client.ResPoolDeleteAction(*resPoolDeletePath)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

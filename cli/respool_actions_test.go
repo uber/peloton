@@ -223,6 +223,51 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 	}
 }
 
+func (suite *resPoolActions) TestClient_ResPoolDeleteAction() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	path := "/DefaultResPool"
+
+	testCases := []struct {
+		deleteRequest  *respool.DeleteRequest
+		deleteResponse *respool.DeleteResponse
+		err            error
+	}{
+		{
+			deleteRequest: &respool.DeleteRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			deleteResponse: &respool.DeleteResponse{},
+		},
+		{
+			deleteRequest: &respool.DeleteRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			deleteResponse: &respool.DeleteResponse{},
+			err:            errors.New("cannot delete resource pool"),
+		},
+	}
+
+	for _, t := range testCases {
+		suite.withMockDeleteResponse(t.deleteRequest, t.deleteResponse, t.err)
+		err := c.ResPoolDeleteAction(path)
+		if t.err != nil {
+			suite.EqualError(err, t.err.Error())
+		} else {
+			suite.NoError(err)
+		}
+	}
+}
+
 func (suite *resPoolActions) withMockCreateResponse(
 	req *respool.CreateRequest,
 	resp *respool.CreateResponse,
@@ -230,6 +275,16 @@ func (suite *resPoolActions) withMockCreateResponse(
 ) {
 	suite.mockRespool.EXPECT().
 		CreateResourcePool(suite.ctx, gomock.Eq(req)).
+		Return(resp, err)
+}
+
+func (suite *resPoolActions) withMockDeleteResponse(
+	req *respool.DeleteRequest,
+	resp *respool.DeleteResponse,
+	err error,
+) {
+	suite.mockRespool.EXPECT().
+		DeleteResourcePool(suite.ctx, gomock.Eq(req)).
 		Return(resp, err)
 }
 

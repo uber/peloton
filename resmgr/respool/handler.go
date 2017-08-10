@@ -281,8 +281,15 @@ func (h *serviceHandler) DeleteResourcePool(
 		req,
 	).Info("DeleteResourcePool called")
 
-	log.Fatal("Not implemented")
-	return &respool.DeleteResponse{}, nil
+	log.Info("Not implemented")
+	return &respool.DeleteResponse{
+		Error: &respool.DeleteResponse_Error{
+			NotFound: &respool.ResourcePoolPathNotFound{
+				Path:    req.Path,
+				Message: "API Not implemented",
+			},
+		},
+	}, nil
 }
 
 // UpdateResourcePool will update resource pool

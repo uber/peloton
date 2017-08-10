@@ -60,6 +60,25 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 	return nil
 }
 
+// ResPoolDeleteAction is the action for deleting a resource pool
+func (client *Client) ResPoolDeleteAction(respoolPath string) error {
+	if respoolPath == ResourcePoolPathDelim {
+		return errors.New("cannot delete root resource pool")
+	}
+
+	var request = &respool.DeleteRequest{
+		Path: &respool.ResourcePoolPath{
+			Value: respoolPath,
+		},
+	}
+	response, err := client.resClient.DeleteResourcePool(client.ctx, request)
+	if err != nil {
+		return err
+	}
+	printResPoolDeleteResponse(response, respoolPath, client.Debug)
+	return nil
+}
+
 func readResourcePoolConfig(cfgFile string) (respool.ResourcePoolConfig, error) {
 	var respoolConfig respool.ResourcePoolConfig
 	buffer, err := ioutil.ReadFile(cfgFile)
@@ -151,6 +170,38 @@ func printResPoolCreateResponse(r *respool.CreateResponse, respoolPath string, d
 		} else {
 			fmt.Fprintf(tabWriter, "Resource Pool %s created at %s\n",
 				r.Result.GetValue(), respoolPath)
+		}
+		tabWriter.Flush()
+	}
+}
+
+func printResPoolDeleteResponse(r *respool.DeleteResponse, respoolPath string, debug bool) {
+	if debug {
+		printResponseJSON(r)
+	} else {
+		if r.Error != nil {
+			if r.Error.NotFound != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"ResPool Not Found: %s\n",
+					r.Error.NotFound.Message,
+				)
+			} else if r.Error.IsBusy != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"ResPool is busy: %s\n",
+					r.Error.IsBusy.Message,
+				)
+			} else if r.Error.IsNotLeaf != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"ResPool is not leaf: %s\n",
+					r.Error.IsNotLeaf.Message,
+				)
+			}
+		} else {
+			fmt.Fprintf(tabWriter, "Resource Pool %s is deleted \n",
+				respoolPath)
 		}
 		tabWriter.Flush()
 	}
