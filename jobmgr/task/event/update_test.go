@@ -77,7 +77,6 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.mockResmgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
-	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.mockListener1 = event_mocks.NewMockListener(suite.ctrl)
 	suite.mockListener2 = event_mocks.NewMockListener(suite.ctrl)
 
@@ -87,7 +86,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 		listeners:    []Listener{suite.mockListener1, suite.mockListener2},
 		rootCtx:      context.Background(),
 		resmgrClient: suite.mockResmgrClient,
-		metrics:      NewMetrics(suite.testScope),
+		metrics:      NewMetrics(suite.testScope.SubScope("status_updater")),
 	}
 }
 
@@ -154,6 +153,29 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 
 	now = nowMock
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
+}
+
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameState() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+	)
+
+	now = nowMock
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.Equal(
+		int64(0),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
 }
 
 // Test processing task failure status update w/ retry.
@@ -202,6 +224,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 		}).
 		Return(nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_failed_total+"].Value())
 	time.Sleep(_waitTime)
 }
 

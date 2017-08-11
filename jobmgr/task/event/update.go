@@ -10,6 +10,7 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
@@ -195,6 +196,30 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return nil
 	}
 
+	if state == runtime.GetState() {
+		log.WithFields(log.Fields{
+			"db_task_info":      taskInfo,
+			"task_status_event": event.MesosTaskStatus,
+		}).Debug("skip same status update for mesos task")
+		return nil
+	}
+
+	// Update task state counter for non-reconcilication update.
+	if isMesosStatus && event.GetMesosTaskStatus().GetReason() != mesos_v1.TaskStatus_REASON_RECONCILIATION {
+		switch state {
+		case pb_task.TaskState_RUNNING:
+			p.metrics.TasksRunningTotal.Inc(1)
+		case pb_task.TaskState_SUCCEEDED:
+			p.metrics.TasksSucceededTotal.Inc(1)
+		case pb_task.TaskState_FAILED:
+			p.metrics.TasksFailedTotal.Inc(1)
+		case pb_task.TaskState_KILLED:
+			p.metrics.TasksKilledTotal.Inc(1)
+		case pb_task.TaskState_LOST:
+			p.metrics.TasksLostTotal.Inc(1)
+		}
+	}
+
 	needRetrySchedulingTask := false
 	maxFailures := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
 	if state == pb_task.TaskState_FAILED &&
@@ -210,6 +235,10 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		needRetrySchedulingTask = true
 	} else if state == pb_task.TaskState_LOST {
 		p.metrics.RetryLostTasksTotal.Inc(1)
+		log.WithFields(log.Fields{
+			"db_task_info":      taskInfo,
+			"task_status_event": event.GetMesosTaskStatus(),
+		}).Info("reschedule lost task")
 		statusMsg = "Rescheduled due to task LOST: " + statusMsg
 		util.RegenerateMesosTaskID(taskInfo)
 		needRetrySchedulingTask = true
@@ -233,14 +262,14 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	// Persist error message to help end user figure out root cause
 	if isUnexpected(state) && isMesosStatus {
 		runtime.Message = statusMsg
-		runtime.Reason = event.MesosTaskStatus.GetReason().String()
+		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
 		// TODO: Add metrics for unexpected task updates
 		log.WithFields(log.Fields{
-			"task_id": taskID,
-			"state":   state,
-			"message": statusMsg,
-			"reason":  event.MesosTaskStatus.GetReason().String()}).
-			Debug("Received unexpected update for task")
+			"task_status_event": event.GetMesosTaskStatus(),
+			"task_id":           taskID,
+			"state":             state,
+			"runtime":           runtime},
+		).Debug("Received unexpected update for task")
 	}
 
 	err = p.taskStore.UpdateTask(ctx, taskInfo)

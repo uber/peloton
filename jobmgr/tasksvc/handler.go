@@ -369,6 +369,7 @@ func (m *serviceHandler) Stop(
 		log.WithField("job", body.JobId).
 			WithError(err).
 			Error("failed to get job from db")
+		m.metrics.TaskStopFail.Inc(1)
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
 				NotFound: &pb_errors.JobNotFound{
@@ -385,20 +386,7 @@ func (m *serviceHandler) Stop(
 		log.WithField("job", body.JobId).
 			WithError(err).
 			Error("failed to get tasks for job in db")
-		return &task.StopResponse{
-			Error: &task.StopResponse_Error{
-				OutOfRange: &task.InstanceIdOutOfRange{
-					JobId:         body.JobId,
-					InstanceCount: jobConfig.InstanceCount,
-				},
-			},
-		}, nil
-	}
-
-	if err != nil || len(taskInfos) == 0 {
-		log.WithField("job", body.JobId).
-			WithError(err).
-			Error("Failed to get tasks to stop for job")
+		m.metrics.TaskStopFail.Inc(1)
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
 				OutOfRange: &task.InstanceIdOutOfRange{
@@ -426,6 +414,7 @@ func (m *serviceHandler) Stop(
 			log.WithError(err).
 				WithField("task_id", taskID).
 				Error("Failed to update KILLED goalstate")
+			m.metrics.TaskStopFail.Inc(1)
 			break
 		}
 

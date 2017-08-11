@@ -11,17 +11,27 @@ type Metrics struct {
 	RetryLostTasksTotal   tally.Counter
 
 	SkipOrphanTasksTotal tally.Counter
+
+	TasksFailedTotal    tally.Counter
+	TasksLostTotal      tally.Counter
+	TasksKilledTotal    tally.Counter
+	TasksSucceededTotal tally.Counter
+	TasksRunningTotal   tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
 // initialized and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
-	subScope := scope.SubScope("status_update")
-
 	return &Metrics{
-		RetryFailedTasksTotal: subScope.Counter("retry_failed_total"),
-		RetryLostTasksTotal:   subScope.Counter("retry_lost_total"),
+		RetryFailedTasksTotal: scope.Counter("retry_failed_total"),
+		RetryLostTasksTotal:   scope.Counter("retry_lost_total"),
 
-		SkipOrphanTasksTotal: subScope.Counter("skip_orphan_task_total"),
+		SkipOrphanTasksTotal: scope.Counter("skip_orphan_task_total"),
+
+		TasksFailedTotal:    scope.Counter("tasks_failed_total"),
+		TasksLostTotal:      scope.Counter("tasks_lost_total"),
+		TasksSucceededTotal: scope.Counter("tasks_succeeded_total"),
+		TasksKilledTotal:    scope.Counter("tasks_killed_total"),
+		TasksRunningTotal:   scope.Counter("tasks_running_total"),
 	}
 }
