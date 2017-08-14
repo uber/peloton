@@ -364,7 +364,7 @@ func (h *serviceHandler) Get(
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
 			WithField("job_id", req.Id).
-			Errorf("GetJobConfig failed")
+			Info("GetJobConfig failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
 				NotFound: &errors.JobNotFound{
