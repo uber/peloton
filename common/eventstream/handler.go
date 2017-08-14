@@ -74,17 +74,20 @@ func (h *Handler) AddEvent(event *pb_eventstream.Event) error {
 	if event == nil {
 		return errors.New("event is nil")
 	}
+	h.metrics.AddEventAPI.Inc(1)
 	log.WithFields(log.Fields{
 		"Type": event.Type,
 	}).Debug("Adding eventstream event")
 	item, err := h.circularBuffer.AddItem(event)
 	if err != nil {
+		h.metrics.AddEventFail.Inc(1)
 		log.WithFields(log.Fields{
 			"Type":  event.Type,
 			"error": err}).
 			Error("Adding event failed")
 		return err
 	}
+	h.metrics.AddEventSuccess.Inc(1)
 	head, tail := h.circularBuffer.GetRange()
 	h.metrics.Head.Update(float64(head))
 	h.metrics.Tail.Update(float64(tail))
