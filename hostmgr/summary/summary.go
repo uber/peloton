@@ -407,9 +407,9 @@ func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offe
 	default:
 		// This could trigger INVALID_OFFER error later.
 		log.WithFields(log.Fields{
-			"offer":      unreserved,
-			"all_offers": a.unreservedOffers,
-			"status":     a.status,
+			"offer":              unreserved,
+			"all_offers_noindex": a.unreservedOffers,
+			"status":             a.status,
 		}).Warn("Offer removed while not in ready status")
 	}
 
