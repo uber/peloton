@@ -42,5 +42,4 @@ mesos:
     principal: "peloton"
     # ~100 weeks to failover
     failover_timeout: 60000000
-    checkpoint: false
 

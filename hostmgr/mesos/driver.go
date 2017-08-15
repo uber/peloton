@@ -166,11 +166,14 @@ func (d *schedulerDriver) prepareSubscribe(ctx context.Context) (*sched.Call, er
 		return nil, errors.Wrap(err, msg)
 	}
 
+	// Peloton has no reason to run as non-checkpoint framework.
+	checkpoint := true
+
 	info := &mesos.FrameworkInfo{
 		User:            &d.cfg.User,
 		Name:            &d.cfg.Name,
 		FailoverTimeout: &d.cfg.FailoverTimeout,
-		Checkpoint:      &d.cfg.Checkpoint,
+		Checkpoint:      &checkpoint,
 		Capabilities:    capabilities,
 		Hostname:        &host,
 		Principal:       &d.cfg.Principal,
