@@ -45,6 +45,9 @@ type Tree interface {
 	// TODO: Redo package imports, such that a method Calculator.SuggestRefresh
 	// can be used instead, without breaking circular imports.
 	UpdatedChannel() <-chan struct{}
+
+	// Delete deletes the resource pool from the tree
+	Delete(ID *respool.ResourcePoolID) error
 }
 
 // tree implements the Tree interface
@@ -373,4 +376,37 @@ func (t *tree) walkTree(root ResPool, nodes []string) (ResPool, error) {
 	}
 
 	return nil, errors.Errorf("Resource pool (%s) not found", nodes)
+}
+
+func (t *tree) Delete(ID *respool.ResourcePoolID) error {
+	// acquire RW lock
+	t.Lock()
+	defer t.Unlock()
+
+	// Lookup the resource pool
+	resPool, err := t.lookupResPool(ID)
+	if err != nil {
+		return err
+	}
+	// Get the parent
+	parent := resPool.Parent()
+
+	if parent == nil {
+		return fmt.Errorf("parent is nil")
+	}
+	children := parent.Children()
+	newChildren := list.New()
+
+	for e := children.Front(); e != nil; e = e.Next() {
+		child, _ := e.Value.(ResPool)
+		if child.ID() != ID.Value {
+			newChildren.PushBack(child)
+		}
+	}
+	// Setting the new children removed from chil list
+	parent.SetChildren(newChildren)
+
+	// Deleting from the list
+	delete(t.resPools, ID.Value)
+	return nil
 }

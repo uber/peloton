@@ -1322,7 +1322,12 @@ func (s *Store) GetResourcePool(ctx context.Context, id *respool.ResourcePoolID)
 
 // DeleteResourcePool Deletes the resource pool
 func (s *Store) DeleteResourcePool(ctx context.Context, id *respool.ResourcePoolID) error {
-	return errors.New("unimplemented")
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Delete(resPools).Where(qb.Eq{"respool_id": id.GetValue()})
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		return err
+	}
+	return nil
 }
 
 // UpdateResourcePool Update the resource pool

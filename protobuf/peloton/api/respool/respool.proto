@@ -175,6 +175,11 @@ message ResourcePoolIsNotLeaf {
   string message = 2;
 }
 
+message ResourcePoolNotDeleted {
+  ResourcePoolID id = 1;
+  string message = 2;
+}
+
 message CreateRequest {
   ResourcePoolConfig config = 2;
 }
@@ -218,6 +223,7 @@ message DeleteResponse {
     ResourcePoolPathNotFound notFound = 1;
     ResourcePoolIsBusy isBusy = 2;
     ResourcePoolIsNotLeaf isNotLeaf = 3;
+    ResourcePoolNotDeleted notDeleted = 4;
   }
 
   Error error = 1;

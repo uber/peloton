@@ -963,6 +963,18 @@ func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 	}
 }
 
+func (suite *CassandraStoreTestSuite) TestDeleteResourcePool() {
+	var resourcePoolStore storage.ResourcePoolStore
+	resourcePoolStore = store
+	resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", "DeleteRespool", 1)}
+	resourcePoolConfig := createResourcePoolConfig()
+	resourcePoolConfig.Name = resourcePoolID.Value
+	err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, "Delete")
+	suite.Nil(err)
+	err = resourcePoolStore.DeleteResourcePool(context.Background(), resourcePoolID)
+	suite.Nil(err)
+}
+
 func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	var jobStore = store
 	nTasks := 20

@@ -5,14 +5,15 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"code.uber.internal/infra/peloton/storage"
-
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+
+	"code.uber.internal/infra/peloton/resmgr/scalar"
+	"code.uber.internal/infra/peloton/storage"
 )
 
 const (
@@ -274,21 +275,127 @@ func (h *serviceHandler) DeleteResourcePool(
 
 	h.Lock()
 	defer h.Unlock()
-
 	h.metrics.APIDeleteResourcePool.Inc(1)
-	log.WithField(
-		"request",
-		req,
-	).Info("DeleteResourcePool called")
-
-	log.Info("Not implemented")
-	return &respool.DeleteResponse{
-		Error: &respool.DeleteResponse_Error{
-			NotFound: &respool.ResourcePoolPathNotFound{
-				Path:    req.Path,
-				Message: "API Not implemented",
-			},
+	lookupReq := &respool.LookupRequest{
+		Path: &respool.ResourcePoolPath{
+			Value: req.Path.Value,
 		},
+	}
+	lookupRes, err := h.LookupResourcePoolID(ctx, lookupReq)
+
+	if err != nil || lookupRes.GetError() != nil {
+		h.metrics.DeleteResourcePoolFail.Inc(1)
+		return &respool.DeleteResponse{
+			Error: &respool.DeleteResponse_Error{
+				NotFound: &respool.ResourcePoolPathNotFound{
+					Path: &respool.ResourcePoolPath{
+						Value: req.Path.Value,
+					},
+					Message: "Resource Pool not Found",
+				},
+			},
+		}, nil
+	}
+
+	resPoolID := lookupRes.GetId()
+
+	if resPoolID == nil {
+		h.metrics.DeleteResourcePoolFail.Inc(1)
+		return &respool.DeleteResponse{
+			Error: &respool.DeleteResponse_Error{
+				NotFound: &respool.ResourcePoolPathNotFound{
+					Path: &respool.ResourcePoolPath{
+						Value: req.Path.Value,
+					},
+					Message: "Resource Pool not Found",
+				},
+			},
+		}, nil
+	}
+
+	resPool, err := h.resPoolTree.Get(resPoolID)
+	if err != nil {
+		h.metrics.DeleteResourcePoolFail.Inc(1)
+		return &respool.DeleteResponse{
+			Error: &respool.DeleteResponse_Error{
+				NotFound: &respool.ResourcePoolPathNotFound{
+					Path: &respool.ResourcePoolPath{
+						Value: req.Path.Value,
+					},
+					Message: "Resource Pool not Found",
+				},
+			},
+		}, nil
+	}
+
+	if !resPool.IsLeaf() {
+		h.metrics.DeleteResourcePoolFail.Inc(1)
+		return &respool.DeleteResponse{
+			Error: &respool.DeleteResponse_Error{
+				IsNotLeaf: &respool.ResourcePoolIsNotLeaf{
+					Id:      resPoolID,
+					Message: "Resource Pool is not leaf",
+				},
+			},
+		}, nil
+	}
+
+	zeroResource := &scalar.Resources{
+		CPU:    float64(0),
+		GPU:    float64(0),
+		DISK:   float64(0),
+		MEMORY: float64(0),
+	}
+	// Get the allocation of the resource pool
+	allocation := resPool.GetAllocation()
+	// Get the resource pool demand
+	demand := resPool.GetDemand()
+
+	// We need to check if any tasks are running in the resource pool
+	// by looking demand or allocation
+	if !(allocation.LessThanOrEqual(zeroResource)) ||
+		!(demand.LessThanOrEqual(zeroResource)) {
+		return &respool.DeleteResponse{
+			Error: &respool.DeleteResponse_Error{
+				IsBusy: &respool.ResourcePoolIsBusy{
+					Id:      resPoolID,
+					Message: "Resource Pool is busy",
+				},
+			},
+		}, nil
+	}
+	// Deleting the respool from In memory tree
+	if err := h.resPoolTree.Delete(resPoolID); err != nil {
+		h.metrics.DeleteResourcePoolFail.Inc(1)
+		return &respool.DeleteResponse{
+			Error: &respool.DeleteResponse_Error{
+				NotDeleted: &respool.ResourcePoolNotDeleted{
+					Id: resPoolID,
+					Message: err.Error() +
+						"Resource Pool could not be deleted",
+				},
+			},
+		}, nil
+	}
+
+	// Deleting the resourcepool fromt he DB
+	if err := h.store.DeleteResourcePool(ctx, resPoolID); err != nil {
+		h.metrics.DeleteResourcePoolFail.Inc(1)
+		log.Errorf("Delete Respool failed with error %v", err)
+		return &respool.DeleteResponse{
+			Error: &respool.DeleteResponse_Error{
+				NotDeleted: &respool.ResourcePoolNotDeleted{
+					Id: resPoolID,
+					Message: err.Error() +
+						"Resource Pool could not be deleted",
+				},
+			},
+		}, nil
+	}
+	h.metrics.DeleteResourcePoolSuccess.Inc(1)
+
+	return &respool.DeleteResponse{
+		Error: nil,
 	}, nil
 }
 

@@ -606,3 +606,54 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolInval
 	suite.Equal("does/not/begin/with/slash", lookupResponse.Error.InvalidPath.Path.Value)
 	suite.Equal("path should begin with /", lookupResponse.Error.InvalidPath.Message)
 }
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_DeleteResourcePool() {
+	log.Info("TestServiceHandler_DeleteResourcePool called")
+
+	mockResourcePoolName := "respool11"
+	mockResourcePoolID := &pb_respool.ResourcePoolID{
+		Value: mockResourcePoolName,
+	}
+	mockResPoolPath := &pb_respool.ResourcePoolPath{
+		Value: "/respool1/respool11",
+	}
+
+	// delete request
+	deleteReq := &pb_respool.DeleteRequest{
+		Path: mockResPoolPath,
+	}
+
+	// set expectations
+	suite.mockResPoolStore.EXPECT().DeleteResourcePool(
+		context.Background(),
+		gomock.Eq(mockResourcePoolID)).Return(nil)
+
+	deleteResp, err := suite.handler.DeleteResourcePool(
+		suite.context,
+		deleteReq)
+
+	suite.NoError(err)
+	suite.NotNil(deleteResp)
+	suite.Nil(deleteResp.Error)
+}
+
+func (suite *resPoolHandlerTestSuite) TestServiceHandler_DeleteResourcePoolIsNotLeaf() {
+	log.Info("TestServiceHandler_DeleteResourcePoolIsNotLeaf called")
+
+	mockResPoolPath := &pb_respool.ResourcePoolPath{
+		Value: "/respool1",
+	}
+
+	// delete request
+	deleteReq := &pb_respool.DeleteRequest{
+		Path: mockResPoolPath,
+	}
+
+	deleteResp, err := suite.handler.DeleteResourcePool(
+		suite.context,
+		deleteReq)
+
+	suite.NoError(err)
+	suite.NotNil(deleteResp)
+	suite.Equal("Resource Pool is not leaf", deleteResp.Error.IsNotLeaf.Message)
+}
