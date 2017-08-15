@@ -183,6 +183,7 @@ devtools:
 	go get github.com/golang/mock/gomock
 	go get github.com/golang/mock/mockgen
 	go get golang.org/x/tools/cmd/goimports
+	go get github.com/gemnasium/migrate
 
 version:
 	@echo $(PACKAGE_VERSION)
