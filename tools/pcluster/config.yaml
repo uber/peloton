@@ -66,7 +66,7 @@ peloton_image: uber/peloton
 peloton_resmgr_container: peloton-resmgr
 peloton_resmgr_ports:
   - 5290
-  - 5390
+  - 5394
 peloton_resmgr_instance_count: 2
 
 peloton_hostmgr_container: peloton-hostmgr

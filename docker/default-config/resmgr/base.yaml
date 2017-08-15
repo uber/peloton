@@ -25,4 +25,4 @@ storage:
 
 resmgr:
   http_port: 5290
-  grpc_port: 5390
+  grpc_port: 5394

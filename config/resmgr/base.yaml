@@ -26,7 +26,7 @@ storage:
 
 resmgr:
   http_port: 5290
-  grpc_port: 5390
+  grpc_port: 5394
   task_scheduling_period: 100ms
   entitlement_calculation_period: 60s
   task:
