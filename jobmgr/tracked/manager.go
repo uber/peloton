@@ -57,10 +57,10 @@ type Manager interface {
 	RunTaskAction(ctx context.Context, id *peloton.JobID, instanceID uint32, action TaskAction) error
 
 	// Start syncs jobs and tasks from DB, starts emitting metrics.
-	Start()
+	Start() error
 
 	// Stop clears the current tracked jobs and tasks, stops metrics.
-	Stop()
+	Stop() error
 }
 
 // NewManager returns a new tracked manager.
@@ -109,7 +109,11 @@ type manager struct {
 }
 
 func (m *manager) GetJob(id *peloton.JobID) Job {
-	return m.getJob(id)
+	if j := m.getJob(id); j != nil {
+		return j
+	}
+
+	return nil
 }
 
 func (m *manager) getJob(id *peloton.JobID) *job {
@@ -258,6 +262,9 @@ func (m *manager) runTaskAction(ctx context.Context, id *peloton.JobID, instance
 	case StopAction:
 		err = t.stop(ctx)
 
+	case UseGoalConfigVersionAction:
+		err = t.useGoalConfigVersion(ctx)
+
 	default:
 		err = fmt.Errorf("no command configured for running task action `%v`", action)
 	}
@@ -299,12 +306,12 @@ func (m *manager) clearTask(t *task) {
 }
 
 // Start syncs jobs and tasks from DB, starts emitting metrics.
-func (m *manager) Start() {
+func (m *manager) Start() error {
 	m.Lock()
 	defer m.Unlock()
 
 	if m.running {
-		return
+		return nil
 	}
 	m.running = true
 
@@ -321,15 +328,16 @@ func (m *manager) Start() {
 	go m.runPublishMetrics(m.stopChan)
 
 	log.Info("tracked.Manager started")
+	return nil
 }
 
 // Stop clears the current tracked jobs and tasks, stops emitting metrics.
-func (m *manager) Stop() {
+func (m *manager) Stop() error {
 	m.Lock()
 	defer m.Unlock()
 
 	if !m.running {
-		return
+		return nil
 	}
 	m.running = false
 
@@ -344,6 +352,7 @@ func (m *manager) Stop() {
 	close(m.stopChan)
 
 	log.Info("tracked.Manager stopped")
+	return nil
 }
 
 func (m *manager) syncFromDB(ctx context.Context) error {
@@ -355,7 +364,12 @@ func (m *manager) syncFromDB(ctx context.Context) error {
 		return err
 	}
 
-	for id := range jobs {
+	for id, runtime := range jobs {
+		// Job recovery path will read in initialized jobs.
+		if runtime.GetState() == pb_job.JobState_INITIALIZED {
+			continue
+		}
+
 		jobID := &peloton.JobID{Value: id}
 		tasks, err := m.taskStore.GetTasksForJob(ctx, jobID)
 		if err != nil {

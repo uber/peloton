@@ -22,10 +22,14 @@ func TestCreate(t *testing.T) {
 	defer ctrl.Finish()
 
 	jobStoreMock := store_mocks.NewMockJobStore(ctrl)
+	taskStoreMock := store_mocks.NewMockTaskStore(ctrl)
 	upgradeStoreMock := store_mocks.NewMockUpgradeStore(ctrl)
+	m := NewManager(nil, nil, nil, nil, Config{}).(*manager)
 
 	h := &serviceHandler{
+		manager:      m,
 		jobStore:     jobStoreMock,
+		taskStore:    taskStoreMock,
 		upgradeStore: upgradeStoreMock,
 	}
 
@@ -62,6 +66,11 @@ func TestCreate(t *testing.T) {
 			State: job.JobState_RUNNING,
 		}, nil)
 
+	cfg := &job.JobConfig{}
+
+	jobStoreMock.EXPECT().CreateJobConfig(context.Background(), jobID, cfg).Return(nil)
+	taskStoreMock.EXPECT().CreateTaskConfigs(context.Background(), jobID, cfg).Return(nil)
+
 	id := &peloton.UpgradeID{Value: "8e3e40d2-5149-53f3-8eb6-e7ae5ad1938c"}
 
 	upgradeStoreMock.EXPECT().CreateUpgrade(context.Background(), id, &upgrade.Status{
@@ -71,8 +80,11 @@ func TestCreate(t *testing.T) {
 	}, nil, uint64(0), uint64(0)).Return(nil)
 
 	res, err = h.Create(context.Background(), &svc.CreateRequest{
-		JobId: jobID,
+		JobId:     jobID,
+		JobConfig: cfg,
 	})
 	assert.Equal(t, &svc.CreateResponse{Id: id}, res)
 	assert.NoError(t, err)
+
+	assert.Contains(t, m.upgrades, id.Value)
 }

@@ -20,3 +20,5 @@ job_manager:
     state_update_interval: 1s
   goal_state:
     max_retry_delay: 1s
+  upgrade:
+    progress_interval: 1s

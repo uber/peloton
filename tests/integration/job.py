@@ -6,8 +6,11 @@ from task import Task
 from google.protobuf import json_format
 from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
 from peloton_client.pbgen.peloton.api.job import job_pb2 as job
-from peloton_client.pbgen.peloton.api.task import task_pb2 as task
 from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
+from peloton_client.pbgen.peloton.api.task import task_pb2 as task
+from peloton_client.pbgen.peloton.api.upgrade import upgrade_pb2 as upgrade
+from peloton_client.pbgen.peloton.api.upgrade.svc import (
+    upgrade_svc_pb2 as upgrade_svc)
 from util import load_test_config
 
 
@@ -170,6 +173,20 @@ class Job(object):
         )
         assert not resp.HasField('error')
         self.job_config = config
+
+    def upgrade(self, config):
+        request = upgrade_svc.CreateRequest(
+            jobId=peloton.JobID(value=self.job_id),
+            jobConfig=config,
+            options=upgrade.Options()
+        )
+        res = self.client.upgrade_svc.Create(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        ).id
+        log.info('started upgrade of job %s', self.job_id)
+        return res
 
     def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED',
                        task_count=None):

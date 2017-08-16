@@ -322,11 +322,9 @@ func main() {
 		*mesosAgentWorkDir,
 	)
 
-	upgradeManager := upgrade.NewManager(jobStore, cfg.JobManager.Upgrade)
-	upgradeManager.Start()
-	defer upgradeManager.Stop()
+	upgradeManager := upgrade.NewManager(trackedManager, jobStore, taskStore, upgradeStore, cfg.JobManager.Upgrade)
 
-	upgrade.InitServiceHandler(dispatcher, jobStore, upgradeStore)
+	upgrade.InitServiceHandler(dispatcher, jobStore, taskStore, upgradeStore, upgradeManager)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
@@ -373,6 +371,7 @@ func main() {
 		goalstateEngine,
 		trackedManager,
 		taskPreemptor,
+		upgradeManager,
 	)
 
 	candidate, err := leader.NewCandidate(

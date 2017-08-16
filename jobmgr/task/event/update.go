@@ -216,7 +216,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	switch state {
 	case pb_task.TaskState_FAILED, pb_task.TaskState_KILLED:
 		// If the stop was not user provoked, count it as a failure.
-		if runtime.GoalState != pb_task.TaskGoalState_RESTART {
+		if runtime.GoalState != pb_task.TaskGoalState_RESTART &&
+			runtime.ConfigVersion == runtime.DesiredConfigVersion {
 			runtime.FailureCount++
 		}
 

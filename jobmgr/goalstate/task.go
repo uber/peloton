@@ -152,7 +152,7 @@ func (e *engine) suggestTaskAction(t tracked.Task) tracked.TaskAction {
 			// Ignore versions if version is unknown.
 
 		case util.IsPelotonStateTerminal(currentState.State):
-			return tracked.UseGoalVersionAction
+			return tracked.UseGoalConfigVersionAction
 
 		default:
 			return tracked.StopAction

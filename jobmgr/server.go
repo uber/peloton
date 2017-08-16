@@ -4,13 +4,19 @@ import (
 	"sync"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
-	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/leader"
 	log "github.com/sirupsen/logrus"
 )
+
+// LeaderLifeCycle implementations is called to follow the leader start and
+// stop calles.
+type LeaderLifeCycle interface {
+	// Start the life cycle as the leadership was gained.
+	Start() error
+	// Stop the life cycle as the leadership was lost.
+	Stop() error
+}
 
 // Server contains all structs necessary to run a jobmgr server.
 // This struct also implements leader.Node interface so that it can
@@ -25,17 +31,13 @@ type Server struct {
 	getStatusUpdate   func() event.StatusUpdate
 	getStatusUpdateRM func() event.StatusUpdateRM
 
-	taskPreemptor   preemptor.Preemptor
-	goalstateEngine goalstate.Engine
-	trackedManager  tracked.Manager
+	llcs []LeaderLifeCycle
 }
 
 // NewServer creates a job manager Server instance.
 func NewServer(
 	httpPort, grpcPort int,
-	goalstateEngine goalstate.Engine,
-	trackedManager tracked.Manager,
-	taskPreemptor preemptor.Preemptor,
+	llcs ...LeaderLifeCycle,
 ) *Server {
 
 	return &Server{
@@ -43,9 +45,7 @@ func NewServer(
 		role:              common.JobManagerRole,
 		getStatusUpdate:   event.GetStatusUpdater,
 		getStatusUpdateRM: event.GetStatusUpdaterRM,
-		taskPreemptor:     taskPreemptor,
-		goalstateEngine:   goalstateEngine,
-		trackedManager:    trackedManager,
+		llcs:              llcs,
 	}
 }
 
@@ -57,9 +57,10 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	s.getStatusUpdate().Start()
 	s.getStatusUpdateRM().Start()
-	s.taskPreemptor.Start()
-	s.goalstateEngine.Start()
-	s.trackedManager.Start()
+
+	for _, l := range s.llcs {
+		l.Start()
+	}
 
 	return nil
 }
@@ -72,9 +73,10 @@ func (s *Server) LostLeadershipCallback() error {
 
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
-	s.taskPreemptor.Stop()
-	s.goalstateEngine.Stop()
-	s.trackedManager.Stop()
+
+	for _, l := range s.llcs {
+		l.Stop()
+	}
 
 	return nil
 }
@@ -86,9 +88,10 @@ func (s *Server) ShutDownCallback() error {
 
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
-	s.taskPreemptor.Stop()
-	s.goalstateEngine.Stop()
-	s.trackedManager.Stop()
+
+	for _, l := range s.llcs {
+		l.Stop()
+	}
 
 	return nil
 }

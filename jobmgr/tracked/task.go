@@ -24,6 +24,10 @@ type Task interface {
 	// Job the task belongs to.
 	Job() Job
 
+	// RuntimeInfo of the task. This is a best effort cached valued of what's
+	// currently stored in the DB.
+	Runtime() *pb_task.RuntimeInfo
+
 	// CurrentState of the task.
 	CurrentState() State
 
@@ -51,13 +55,13 @@ type TaskAction string
 
 // Actions available to be performed on the task.
 const (
-	NoAction             TaskAction = "no_action"
-	ReloadRuntime        TaskAction = "reload_runtime"
-	UntrackAction        TaskAction = "untrack"
-	InitializeAction     TaskAction = "initialize_task"
-	StartAction          TaskAction = "start_task"
-	StopAction           TaskAction = "stop_task"
-	UseGoalVersionAction TaskAction = "use_goal_state"
+	NoAction                   TaskAction = "no_action"
+	ReloadRuntime              TaskAction = "reload_runtime"
+	UntrackAction              TaskAction = "untrack"
+	InitializeAction           TaskAction = "initialize_task"
+	StartAction                TaskAction = "start_task"
+	StopAction                 TaskAction = "stop_task"
+	UseGoalConfigVersionAction TaskAction = "use_goal_config_version"
 )
 
 func newTask(job *job, id uint32) *task {
@@ -95,6 +99,10 @@ func (t *task) ID() uint32 {
 
 func (t *task) Job() Job {
 	return t.job
+}
+
+func (t *task) Runtime() *pb_task.RuntimeInfo {
+	return t.runtime
 }
 
 func (t *task) CurrentState() State {

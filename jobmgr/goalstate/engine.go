@@ -21,10 +21,10 @@ const (
 // on the jobmgr leader instance.
 type Engine interface {
 	// Start starts processing status update events
-	Start()
+	Start() error
 
 	// Stop stops processing status update events
-	Stop()
+	Stop() error
 }
 
 // NewEngine creates a new task goalstate Engine.
@@ -52,33 +52,35 @@ type engine struct {
 }
 
 // Start starts processing status update events
-func (e *engine) Start() {
+func (e *engine) Start() error {
 	e.Lock()
 	defer e.Unlock()
 
 	if e.stopChan != nil {
-		return
+		return nil
 	}
 
 	e.stopChan = make(chan struct{})
 	go e.run(e.stopChan)
 
 	log.Info("goalstate.Engine started")
+	return nil
 }
 
 // Stop stops processing status update events
-func (e *engine) Stop() {
+func (e *engine) Stop() error {
 	e.Lock()
 	defer e.Unlock()
 
 	if e.stopChan == nil {
-		return
+		return nil
 	}
 
 	close(e.stopChan)
 	e.stopChan = nil
 
 	log.Info("goalstate.Engine stopped")
+	return nil
 }
 
 func (e *engine) run(stopChan <-chan struct{}) {

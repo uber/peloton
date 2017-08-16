@@ -25,7 +25,7 @@ func TestManagerAddAndGet(t *testing.T) {
 		jobs: map[string]*job{},
 	}
 
-	assert.Nil(t, m.GetJob(jobID))
+	assert.True(t, m.GetJob(jobID) == nil)
 
 	j := m.addJob(jobID, nil)
 	assert.NotNil(t, j)

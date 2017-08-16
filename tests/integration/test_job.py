@@ -52,7 +52,7 @@ def test_create_job_and_update_with_new_instance_count():
 
     config = job.get_config()
     assert config.instanceCount == 1
-    assert config.changeLog.version == 1
+    assert config.revision.version == 1
 
     config.instanceCount = 2
     job.update(config)
@@ -63,4 +63,4 @@ def test_create_job_and_update_with_new_instance_count():
     job.wait_for_state(goal_state='KILLED')
 
     config = job.get_config()
-    assert config.changeLog.version == 2
+    assert config.revision.version == 2

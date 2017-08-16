@@ -19,10 +19,14 @@ import (
 func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	jobStore storage.JobStore,
-	upgradeStore storage.UpgradeStore) {
+	taskStore storage.TaskStore,
+	upgradeStore storage.UpgradeStore,
+	manager Manager) {
 	handler := &serviceHandler{
 		jobStore:     jobStore,
+		taskStore:    taskStore,
 		upgradeStore: upgradeStore,
+		manager:      manager,
 	}
 
 	d.Register(svc.BuildUpgradeServiceYARPCProcedures(handler))
@@ -31,19 +35,30 @@ func InitServiceHandler(
 // serviceHandler implements peloton.api.upgrade.UpgradeManager
 type serviceHandler struct {
 	jobStore     storage.JobStore
+	taskStore    storage.TaskStore
 	upgradeStore storage.UpgradeStore
+	manager      Manager
 }
 
 // Create creates a upgrade workflow for a given job ID.
 func (h *serviceHandler) Create(ctx context.Context, req *svc.CreateRequest) (*svc.CreateResponse, error) {
 	jobID := req.GetJobId()
-	jr, err := h.jobStore.GetJobRuntime(ctx, jobID)
+	runtime, err := h.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		return nil, err
 	}
 
-	if !job.NonTerminatedStates[jr.GetState()] {
+	if !job.NonTerminatedStates[runtime.GetState()] {
 		return nil, yarpcerrors.InvalidArgumentErrorf("cannot upgrade terminated job")
+	}
+
+	newConfig := req.GetJobConfig()
+	if err := h.jobStore.CreateJobConfig(ctx, jobID, newConfig); err != nil {
+		return nil, err
+	}
+
+	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, newConfig); err != nil {
+		return nil, err
 	}
 
 	jobUUID := uuid.Parse(jobID.GetValue())
@@ -62,9 +77,11 @@ func (h *serviceHandler) Create(ctx context.Context, req *svc.CreateRequest) (*s
 		NumTasksDone: 0,
 	}
 
-	if err := h.upgradeStore.CreateUpgrade(ctx, id, status, req.Options, 0, 0); err != nil {
+	if err := h.upgradeStore.CreateUpgrade(ctx, id, status, req.Options, uint64(runtime.ConfigVersion), newConfig.GetRevision().GetVersion()); err != nil {
 		return nil, err
 	}
+
+	h.manager.TrackUpgrade(status)
 
 	return &svc.CreateResponse{Id: id}, nil
 }
