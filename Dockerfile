@@ -1,4 +1,4 @@
-FROM golang:1.7
+FROM golang:1.8
 
 ENV CONFIG_DIR /etc/peloton
 ENV ENVIRONMENT development
