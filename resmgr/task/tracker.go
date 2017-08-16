@@ -6,6 +6,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/eventstream"
@@ -56,6 +57,9 @@ type Tracker interface {
 
 	// GetActiveTasks returns task states map
 	GetActiveTasks(jobID string, respoolID string) map[string]string
+
+	// UpdateCounters updates the counters for each state
+	UpdateCounters(from string, to string)
 }
 
 // tracker is the rmtask tracker
@@ -70,6 +74,8 @@ type tracker struct {
 	placements map[string]map[resmgr.TaskType]map[string]*RMTask
 
 	metrics *Metrics
+
+	counters map[string]float64
 }
 
 // singleton object
@@ -85,6 +91,7 @@ func InitTaskTracker(parent tally.Scope) {
 		tasks:      make(map[string]*RMTask),
 		placements: map[string]map[resmgr.TaskType]map[string]*RMTask{},
 		metrics:    NewMetrics(parent.SubScope("tracker")),
+		counters:   make(map[string]float64),
 	}
 	log.Info("Resource Manager Tracker is initialized")
 }
@@ -283,4 +290,50 @@ func (tr *tracker) GetActiveTasks(jobID string, respoolID string) map[string]str
 		}
 	}
 	return taskStates
+}
+
+// UpdateCounters updates the counters for each state
+func (tr *tracker) UpdateCounters(from string, to string) {
+	tr.Lock()
+	defer tr.Unlock()
+	// Reducing the count from state
+	if val, ok := tr.counters[from]; ok {
+		tr.counters[from] = val - 1
+	}
+	// Incementing the state couter to +1
+	if val, ok := tr.counters[to]; ok {
+		tr.counters[to] = val + 1
+	} else {
+		tr.counters[to] = 1
+	}
+	// publishing the counters
+	tr.publishCounters()
+}
+
+// publishcounters publishes the counters for all task states
+func (tr *tracker) publishCounters() {
+	for state, counter := range tr.counters {
+		switch state {
+		case task.TaskState_PENDING.String():
+			tr.metrics.pendingTasks.Update(counter)
+		case task.TaskState_READY.String():
+			tr.metrics.readyTasks.Update(counter)
+		case task.TaskState_PLACING.String():
+			tr.metrics.placingTasks.Update(counter)
+		case task.TaskState_PLACED.String():
+			tr.metrics.placedTasks.Update(counter)
+		case task.TaskState_LAUNCHING.String():
+			tr.metrics.launchingTasks.Update(counter)
+		case task.TaskState_RUNNING.String():
+			tr.metrics.runningTasks.Update(counter)
+		case task.TaskState_SUCCEEDED.String():
+			tr.metrics.succeededTasks.Update(counter)
+		case task.TaskState_FAILED.String():
+			tr.metrics.failedTasks.Update(counter)
+		case task.TaskState_LOST.String():
+			tr.metrics.lostTasks.Update(counter)
+		case task.TaskState_KILLED.String():
+			tr.metrics.killedTasks.Update(counter)
+		}
+	}
 }

@@ -571,6 +571,8 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 			if err != nil {
 				log.WithField("event", event).Error("Could not be updated")
 			}
+			rmtask.GetTracker().UpdateCounters(
+				t.TaskState_RUNNING.String(), taskState.String())
 		}
 		h.acknowledgeEvent(event.Offset)
 	}
@@ -621,6 +623,10 @@ func (h *ServiceHandler) KillTasks(
 		if err != nil {
 			tasksNotKilled += killedTask.Value + " , "
 		}
+		h.rmTracker.UpdateCounters(
+			killedRmTask.GetCurrentState().String(),
+			t.TaskState_KILLED.String(),
+		)
 	}
 	if tasksNotKilled == "" {
 		return &resmgrsvc.KillTasksResponse{}, nil
