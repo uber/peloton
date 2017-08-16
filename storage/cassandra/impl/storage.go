@@ -27,6 +27,7 @@ func CreateStore(storeConfig *CassandraConn, keySpace string, scope tally.Scope)
 		concurrency:    0,
 		maxBatch:       50,
 		maxConcurrency: int32(storeConfig.MaxGoRoutines),
+		metrics:        NewMetrics(storeScope),
 	}
 	log.WithFields(log.Fields{
 		"keySpace": keySpace,

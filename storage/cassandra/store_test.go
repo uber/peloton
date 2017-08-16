@@ -22,6 +22,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -42,11 +43,12 @@ type CassandraStoreTestSuite struct {
 // for this is found
 
 var store *Store
+var testScope = tally.NewTestScope("", map[string]string{})
 
 func init() {
 	conf := MigrateForTest()
 	var err error
-	store, err = NewStore(conf, tally.NoopScope)
+	store, err = NewStore(conf, testScope)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -54,6 +56,8 @@ func init() {
 
 func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
+	assert.True(t, testScope.Snapshot().Counters()["execute.execute+store=peloton_test,type=success"].Value() > 0)
+	assert.True(t, testScope.Snapshot().Counters()["executeBatch.executeBatch+store=peloton_test,type=success"].Value() > 0)
 }
 
 func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {

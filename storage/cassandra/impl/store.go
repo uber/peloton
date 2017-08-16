@@ -25,6 +25,38 @@ type Store struct {
 	concurrency    int32
 	maxBatch       int
 	maxConcurrency int32
+	metrics        Metrics
+}
+
+// Metrics is a struct for tracking execute statement / executeBatch statements
+// failure / success counters
+type Metrics struct {
+	ExecuteSuccess tally.Counter
+	ExecuteFail    tally.Counter
+
+	ExecuteBatchSuccess tally.Counter
+	ExecuteBatchFail    tally.Counter
+}
+
+// NewMetrics function creates a Metrics struct
+func NewMetrics(scope tally.Scope) Metrics {
+
+	executeScope := scope.SubScope(executeName)
+	executeSuccessScope := executeScope.Tagged(map[string]string{"type": "success"})
+	executeFailScope := executeScope.Tagged(map[string]string{"type": "fail"})
+
+	executeBatchScope := scope.SubScope(executeBatchName)
+	executeBatchSuccessScope := executeBatchScope.Tagged(map[string]string{"type": "success"})
+	executeBatchFailScope := executeBatchScope.Tagged(map[string]string{"type": "fail"})
+
+	metrics := Metrics{
+		ExecuteSuccess: executeSuccessScope.Counter(executeName),
+		ExecuteFail:    executeFailScope.Counter(executeName),
+
+		ExecuteBatchSuccess: executeBatchSuccessScope.Counter(executeBatchName),
+		ExecuteBatchFail:    executeBatchFailScope.Counter(executeBatchName),
+	}
+	return metrics
 }
 
 const (
@@ -82,8 +114,11 @@ func (s *Store) Execute(ctx context.Context, stmt api.Statement) (api.ResultSet,
 		return err
 	}
 	err = f()
-	// TODO: slu figure out if instrumantation can be done without go-common
-	//err = Decorate(f, Safeguard(s), Trace(ctx, executeName), Instrument(ctx, s, executeName))()
+	if err == nil {
+		s.metrics.ExecuteSuccess.Inc(1)
+	} else {
+		s.metrics.ExecuteFail.Inc(1)
+	}
 
 	return rs, err
 }
@@ -102,9 +137,13 @@ func (s *Store) ExecuteBatch(ctx context.Context, stmts []api.Statement) error {
 		rs, err = executor.ExecuteBatch(ctx, stmts)
 		return err
 	}
-	return f()
-	// TODO: slu figure out if instrumantation can be done without go-common
-	// return Decorate(f, Safeguard(s), Trace(ctx, executeBatchName), Instrument(ctx, s, executeBatchName))()
+	err := f()
+	if err == nil {
+		s.metrics.ExecuteBatchSuccess.Inc(1)
+	} else {
+		s.metrics.ExecuteBatchFail.Inc(1)
+	}
+	return err
 }
 
 // NewQuery creates a QueryBuilder object
