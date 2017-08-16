@@ -55,8 +55,6 @@ func NewEngine(
 		taskOperator: taskOperator,
 		metrics:      NewMetrics(parentScope.SubScope("goalstate_engine")),
 		tracker:      newTracker(),
-		queue:        newTimerQueue(),
-		queueChanged: make(chan struct{}, 1),
 	}
 }
 
@@ -72,11 +70,7 @@ type engine struct {
 
 	tracker *tracker
 
-	queue        *timeoutQueue
-	queueChanged chan struct{}
-
 	progress atomic.Uint64
-	started  atomic.Bool
 	stopChan chan struct{}
 
 	metrics *Metrics
@@ -97,7 +91,7 @@ func (e *engine) OnEvent(event *pb_eventstream.Event) {
 func (e *engine) OnEvents(events []*pb_eventstream.Event) {
 	for _, event := range events {
 		mesosTaskID := event.GetMesosTaskStatus().GetTaskId().GetValue()
-		taskID, err := util.ParseTaskIDFromMesosTaskID(mesosTaskID)
+		jobID, instanceID, err := util.ParseJobAndInstanceID(mesosTaskID)
 		if err != nil {
 			log.WithError(err).
 				WithField("mesos_task_id", mesosTaskID).
@@ -105,11 +99,8 @@ func (e *engine) OnEvents(events []*pb_eventstream.Event) {
 			continue
 		}
 
-		if t := e.tracker.getTask(&peloton.TaskID{Value: taskID}); t != nil {
-			e.Lock()
-			t.updateState(event.GetPelotonTaskEvent().GetState())
-			e.scheduleTask(t, time.Now())
-			e.Unlock()
+		if j := e.tracker.getJob(&peloton.JobID{Value: jobID}); j != nil {
+			j.updateTaskState(uint32(instanceID), event.GetPelotonTaskEvent().GetState())
 		}
 
 		e.progress.Store(event.Offset)
@@ -126,22 +117,22 @@ func (e *engine) Start() {
 	e.Lock()
 	defer e.Unlock()
 
-	log.Info("goalstate.Engine started")
+	if e.stopChan != nil {
+		return
+	}
 
 	e.stopChan = make(chan struct{})
 
-	go e.run()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 
-	if !e.started.Swap(true) {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
+		if err := e.syncFromDB(ctx); err != nil {
+			log.WithError(err).Warn("failed to sync with DB in goalstate engine")
+		}
+	}()
 
-			if err := e.syncFromDB(ctx); err != nil {
-				log.WithError(err).Warn("failed to sync with DB in goalstate engine")
-			}
-		}()
-	}
+	log.Info("goalstate.Engine started")
 }
 
 // Stop stops processing status update events
@@ -149,119 +140,34 @@ func (e *engine) Stop() {
 	e.Lock()
 	defer e.Unlock()
 
-	log.Info("goalstate.Engine stopped")
-	if e.started.Swap(false) {
-		close(e.stopChan)
-	}
-}
-
-func (e *engine) updateTask(ctx context.Context, info *task.TaskInfo) error {
-	t, err := e.tracker.addTask(info)
-	if err != nil {
-		return err
-	}
-
-	e.Lock()
-	t.updateTask(info)
-	e.scheduleTask(t, time.Now())
-	e.Unlock()
-
-	return nil
-}
-
-func (e *engine) scheduleTask(t *jmTask, timeout time.Time) {
-	t.setTimeout(timeout)
-	e.queue.update(t)
-	select {
-	case e.queueChanged <- struct{}{}:
-	default:
-	}
-}
-
-func (e *engine) run() {
-	for {
-		e.Lock()
-		t := e.queue.nextTimeout()
-		e.Unlock()
-
-		var tc <-chan time.Time
-		if !t.IsZero() {
-			tc = time.After(t.Sub(time.Now()))
-		}
-
-		select {
-		case <-tc:
-			e.processNextTask()
-
-		case <-e.queueChanged:
-
-		case <-e.stopChan:
-			return
-		}
-	}
-}
-
-func (e *engine) processNextTask() {
-	e.Lock()
-	defer e.Unlock()
-
-	i := e.queue.popIfReady()
-	if i == nil {
+	if e.stopChan == nil {
 		return
 	}
 
-	t := i.(*jmTask)
+	close(e.stopChan)
+	e.stopChan = nil
 
-	currentState := t.currentState()
-	a := suggestAction(currentState, t.goalState())
-
-	// TODO: Use async.Pool to control number of workers.
-	go e.runTask(a, t)
+	log.Info("goalstate.Engine stopping")
 }
 
-// runTask by provided action and scheduling potential retry.
-func (e *engine) runTask(a action, t *jmTask) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	err := t.applyAction(ctx, e.taskOperator, a)
-	if err != nil {
-		log.WithError(err).Error("failed to execute goalstate action")
-	}
-	cancel()
-
-	// Update and reschedule the task, based on the result.
+func (e *engine) updateTask(ctx context.Context, info *task.TaskInfo) error {
 	e.Lock()
 	defer e.Unlock()
 
-	var timeout time.Time
-	switch {
-	case a == _noAction:
-		// No need to reschedule.
-
-	case a != t.lastAction:
-		// First time we see this, trigger default timeout.
-		if err != nil {
-			timeout = time.Now().Add(e.cfg.FailureRetryDelay)
-		} else {
-			timeout = time.Now().Add(e.cfg.SuccessRetryDelay)
-		}
-
-	case a == t.lastAction:
-		// Not the first time we see this, apply backoff.
-		delay := time.Since(t.lastActionTime) * 2
-		if delay > e.cfg.MaxRetryDelay {
-			delay = e.cfg.MaxRetryDelay
-		}
-		timeout = time.Now().Add(delay)
+	j := e.tracker.addOrGetJob(info.GetJobId(), e)
+	if e.stopChan != nil {
+		j.start(e.stopChan)
 	}
 
-	t.updateLastAction(a, t.currentState())
-	e.scheduleTask(t, timeout)
+	j.updateTask(info.GetInstanceId(), info.GetRuntime())
+
+	return nil
 }
 
 func (e *engine) syncFromDB(ctx context.Context) error {
 	log.Info("syncing goalstate engine with DB goalstates")
 
-	// TODO: Skip completed jobs?
+	// TODO: Skip completed jobs.
 	jobs, err := e.jobStore.GetAllJobs(ctx)
 	if err != nil {
 		return err
@@ -273,7 +179,6 @@ func (e *engine) syncFromDB(ctx context.Context) error {
 			return err
 		}
 
-		// TODO: Skip completed tasks.
 		for _, task := range tasks {
 			if err := e.updateTask(ctx, task); err != nil {
 				return err

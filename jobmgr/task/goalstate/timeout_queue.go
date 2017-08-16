@@ -10,7 +10,7 @@ const (
 )
 
 type queueItem interface {
-	timeout() time.Time
+	deadline() time.Time
 
 	setIndex(index int)
 	index() int
@@ -30,12 +30,12 @@ type timeoutQueue struct {
 	pq *priorityQueue
 }
 
-func (q *timeoutQueue) nextTimeout() time.Time {
+func (q *timeoutQueue) nextDeadline() time.Time {
 	if q.pq.Len() == 0 {
 		return time.Time{}
 	}
 
-	return (*q.pq)[0].timeout()
+	return (*q.pq)[0].deadline()
 }
 
 func (q *timeoutQueue) popIfReady() queueItem {
@@ -49,7 +49,7 @@ func (q *timeoutQueue) popIfReady() queueItem {
 func (q *timeoutQueue) update(item queueItem) {
 	// Check if it's not in the queue.
 	if item.index() == -1 {
-		if item.timeout().IsZero() {
+		if item.deadline().IsZero() {
 			// Should not be scheduled.
 			return
 		}
@@ -59,7 +59,7 @@ func (q *timeoutQueue) update(item queueItem) {
 	}
 
 	// It's in the queue. Remove if it should not be scheduled.
-	if item.timeout().IsZero() {
+	if item.deadline().IsZero() {
 		heap.Remove(q.pq, item.index())
 		return
 	}
@@ -75,7 +75,7 @@ type priorityQueue []queueItem
 func (pq priorityQueue) Len() int { return len(pq) }
 
 func (pq priorityQueue) Less(i, j int) bool {
-	return pq[i].timeout().Before(pq[j].timeout())
+	return pq[i].deadline().Before(pq[j].deadline())
 }
 
 func (pq priorityQueue) Swap(i, j int) {

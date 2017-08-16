@@ -33,23 +33,26 @@ type State struct {
 	ConfigVersion int64
 }
 
-func newJMTask(taskInfo *task.TaskInfo) (*jmTask, error) {
-	task := &jmTask{
+func newTrackedTask(job *trackedJob, id uint32) *trackedTask {
+	task := &trackedTask{
+		job:        job,
+		id:         id,
 		queueIndex: -1,
 	}
 
-	task.updateTask(taskInfo)
-
-	return task, nil
+	return task
 }
 
-// jmTask is the wrapper around task info for state machine
-type jmTask struct {
-	task *task.TaskInfo
+// trackedTask is the wrapper around task info for state machine
+type trackedTask struct {
+	job *trackedJob
+	id  uint32
 
-	// queueTimeout and index is used by the timeout queue to schedule workload.
-	queueTimeout time.Time
-	queueIndex   int
+	runtime *task.RuntimeInfo
+
+	// queueDeadline and index is used by the timeout queue to schedule workload.
+	queueDeadline time.Time
+	queueIndex    int
 
 	// goalState along with the time the goal state was updated.
 	stateTime     time.Time
@@ -61,64 +64,64 @@ type jmTask struct {
 	lastActionTime time.Time
 }
 
-func (j *jmTask) timeout() time.Time {
-	return j.queueTimeout
+func (t *trackedTask) deadline() time.Time {
+	return t.queueDeadline
 }
 
-func (j *jmTask) setTimeout(t time.Time) {
-	j.queueTimeout = t
+func (t *trackedTask) setDeadline(deadline time.Time) {
+	t.queueDeadline = deadline
 }
 
-func (j *jmTask) index() int {
-	return j.queueIndex
+func (t *trackedTask) index() int {
+	return t.queueIndex
 }
 
-func (j *jmTask) setIndex(i int) {
-	j.queueIndex = i
+func (t *trackedTask) setIndex(i int) {
+	t.queueIndex = i
 }
 
-func (j *jmTask) updateTask(taskInfo *task.TaskInfo) {
-	// TODO: Reject update if older than current version.
-	j.task = taskInfo
+func (t *trackedTask) updateRuntime(runtime *task.RuntimeInfo) {
+	// TODO: Reject update if older than current revision.
+	t.runtime = runtime
 
-	t := time.Now()
-	j.goalStateTime = t
-	j.stateTime = t
+	now := time.Now()
+	t.goalStateTime = now
+	t.stateTime = now
 }
 
-func (j *jmTask) updateState(currentState task.TaskState) {
+func (t *trackedTask) updateState(currentState task.TaskState) {
 	// TODO: Should we set version to unknown?
-	j.task.Runtime.State = currentState
-	j.stateTime = time.Now()
+	t.runtime.State = currentState
+	t.stateTime = time.Now()
 }
 
-func (j *jmTask) currentState() State {
+func (t *trackedTask) currentState() State {
 	return State{
-		State:         j.task.GetRuntime().GetState(),
-		ConfigVersion: j.task.GetRuntime().GetConfigVersion(),
+		State:         t.runtime.GetState(),
+		ConfigVersion: t.runtime.GetConfigVersion(),
 	}
 }
 
-func (j *jmTask) goalState() State {
+func (t *trackedTask) goalState() State {
 	return State{
-		State:         j.task.GetRuntime().GetGoalState(),
-		ConfigVersion: j.task.GetRuntime().GetDesiredConfigVersion(),
+		State:         t.runtime.GetGoalState(),
+		ConfigVersion: t.runtime.GetDesiredConfigVersion(),
 	}
 }
 
-func (j *jmTask) updateLastAction(a action, s State) {
-	j.lastAction = a
-	j.lastState = s
-	j.lastActionTime = time.Now()
+func (t *trackedTask) updateLastAction(a action, s State) {
+	t.lastAction = a
+	t.lastState = s
+	t.lastActionTime = time.Now()
 }
 
-func (j *jmTask) applyAction(ctx context.Context, taskOperator TaskOperator, a action) error {
+func (t *trackedTask) applyAction(ctx context.Context, taskOperator TaskOperator, a action) error {
 	switch a {
 	case _noAction:
 		return nil
 
 	case _stopAction:
-		return taskOperator.StopTask(ctx, j.task)
+		return taskOperator.StopTask(ctx, t.runtime)
 
 	default:
 		return fmt.Errorf("unhandled action `%v` in goalstate engine", a)

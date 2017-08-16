@@ -35,19 +35,27 @@ def setup_cluster(request):
 
 
 class Container(object):
-    def __init__(self, name):
+    def __init__(self, names):
         self._cli = Client(base_url='unix://var/run/docker.sock')
-        self._name = name
+        self._names = names
 
     def start(self):
-        self._cli.start(self._name)
-        log.info('%s started', self._name)
+        for name in self._names:
+            self._cli.start(name)
+            log.info('%s started', name)
 
     def stop(self):
-        self._cli.stop(self._name, timeout=0)
-        log.info('%s stopped', self._name)
+        for name in self._names:
+            self._cli.stop(name, timeout=0)
+            log.info('%s stopped', name)
 
 
 @pytest.fixture()
 def mesos_master():
-    return Container('peloton-mesos-master')
+    return Container(['peloton-mesos-master'])
+
+
+@pytest.fixture()
+def jobmgr():
+    # TODO: We need to pick up the count dynamically.
+    return Container(['peloton-jobmgr0', 'peloton-jobmgr1'])

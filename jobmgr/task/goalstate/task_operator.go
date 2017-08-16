@@ -16,7 +16,7 @@ import (
 type TaskOperator interface {
 	// StopTask by issueing a kill request. Even if the call is succesfull, the
 	// task is not guaranteed to be killed.
-	StopTask(ctx context.Context, taskInfo *task.TaskInfo) error
+	StopTask(ctx context.Context, runtime *task.RuntimeInfo) error
 }
 
 // NewTaskOperator from the set of arguments..
@@ -30,10 +30,10 @@ type taskOperator struct {
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient
 }
 
-func (o *taskOperator) StopTask(ctx context.Context, taskInfo *task.TaskInfo) error {
+func (o *taskOperator) StopTask(ctx context.Context, runtime *task.RuntimeInfo) error {
 	// TODO(mu): Notify RM to also remove these tasks from task queue.
 	req := &hostsvc.KillTasksRequest{
-		TaskIds: []*mesos_v1.TaskID{taskInfo.GetRuntime().GetMesosTaskId()},
+		TaskIds: []*mesos_v1.TaskID{runtime.GetMesosTaskId()},
 	}
 	res, err := o.hostmgrClient.KillTasks(ctx, req)
 	if err != nil {

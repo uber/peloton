@@ -28,9 +28,7 @@ func TestTaskOperatorStop(t *testing.T) {
 		TaskIds: []*mesos_v1.TaskID{taskID},
 	}).Return(nil, nil)
 
-	assert.NoError(t, to.StopTask(context.Background(), &task.TaskInfo{
-		Runtime: &task.RuntimeInfo{
-			MesosTaskId: taskID,
-		},
+	assert.NoError(t, to.StopTask(context.Background(), &task.RuntimeInfo{
+		MesosTaskId: taskID,
 	}))
 }
