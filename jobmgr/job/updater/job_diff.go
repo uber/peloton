@@ -66,7 +66,7 @@ func validateNewConfig(oldConfig *job.JobConfig,
 			fmt.Errorf(_updateNotSupported, "OwningTeam"))
 	}
 
-	if oldConfig.RespoolID != newConfig.RespoolID {
+	if oldConfig.RespoolID.GetValue() != newConfig.RespoolID.GetValue() {
 		errs = multierror.Append(errs,
 			fmt.Errorf(_updateNotSupported, "RespoolID"))
 	}
