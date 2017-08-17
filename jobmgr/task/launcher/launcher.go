@@ -22,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/common/backoff"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -64,6 +65,7 @@ type launcher struct {
 	volumeStore   storage.PersistentVolumeStore
 	config        *Config
 	metrics       *Metrics
+	retryPolicy   backoff.RetryPolicy
 }
 
 const (
@@ -106,6 +108,8 @@ func InitTaskLauncher(
 			volumeStore:   volumeStore,
 			config:        config,
 			metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+			// TODO: make launch retry policy config.
+			retryPolicy: backoff.NewRetryPolicy(3, 15*time.Second),
 		}
 	})
 }
@@ -215,6 +219,18 @@ func (l *launcher) LaunchTaskWithReservedResource(ctx context.Context, taskInfo 
 	err = l.launchStatefulTasks(
 		launchableTasks, taskRuntime.GetHost(), selectedPorts, false)
 	return err
+}
+
+func (l *launcher) isLauncherRetryableError(err error) bool {
+	switch err {
+	case errLaunchInvalidOffer:
+		return false
+	}
+
+	log.WithError(err).Warn("task launch need to be retried")
+	l.metrics.TaskLaunchRetry.Inc(1)
+	// s.InternalServiceError
+	return true
 }
 
 // launchTasks launches tasks to host manager
@@ -530,7 +546,10 @@ func (l *launcher) launchTasks(
 	callStart := time.Now()
 	var err error
 	if placement.Type != resmgr.TaskType_STATEFUL {
-		err = l.launchBatchTasks(selectedTasks, placement)
+		err = backoff.Retry(
+			func() error {
+				return l.launchBatchTasks(selectedTasks, placement)
+			}, l.retryPolicy, l.isLauncherRetryableError)
 	} else {
 		err = l.launchStatefulTasks(
 			selectedTasks,

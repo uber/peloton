@@ -24,6 +24,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
+	"code.uber.internal/infra/peloton/common/backoff"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -119,6 +120,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 		taskStore:     mockTaskStore,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
 	// generate 25 test tasks
@@ -235,6 +237,7 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 		taskStore:     mockTaskStore,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
 	numTasks := 1
@@ -345,6 +348,138 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 	defer lock.Unlock()
 	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
 	assert.Equal(t, taskConfigs, launchedTasks)
+	assert.Equal(
+		t,
+		int64(0),
+		testScope.Snapshot().Counters()["launch_tasks.retry+"].Value())
+}
+
+func TestLaunchTasksRetryWithError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	taskLauncher := launcher{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:  mockRes,
+		hostMgrClient: mockHostMgr,
+		jobStore:      mockJobStore,
+		taskStore:     mockTaskStore,
+		rootCtx:       context.Background(),
+		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
+	}
+
+	numTasks := 1
+	testTasks := make([]*task.TaskInfo, numTasks)
+	taskIDs := make([]*peloton.TaskID, numTasks)
+	placements := make([]*resmgr.Placement, numTasks)
+	taskConfigs := make(map[string]*task.TaskConfig)
+	taskIds := make(map[string]*peloton.TaskID)
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		taskID := &peloton.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		}
+		taskIDs[i] = taskID
+		testTasks[i] = tmp
+		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
+		taskIds[taskID.Value] = taskID
+	}
+
+	// generate 1 host offer, each can hold 1 tasks.
+	numHostOffers := 1
+	rs := createResources(1)
+	var hostOffers []*hostsvc.HostOffer
+	for i := 0; i < numHostOffers; i++ {
+		hostOffers = append(hostOffers, createHostOffer(i, rs))
+	}
+
+	// Generate Placements per host offer
+	for i := 0; i < numHostOffers; i++ {
+		p := createPlacements(testTasks[i], hostOffers[i])
+		placements[i] = p
+	}
+
+	// Capture LaunchTasks calls
+	hostsLaunchedOn := make(map[string]bool)
+	launchedTasks := make(map[string]*task.TaskConfig)
+
+	updatedTaskInfo := proto.Clone(testTasks[0]).(*task.TaskInfo)
+	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
+	updatedTaskInfo.Runtime.AgentID = hostOffers[0].GetAgentId()
+	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
+	updatedTaskInfo.Runtime.Ports["port"] = testPort
+	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHED
+
+	initializedTaskInfo := proto.Clone(updatedTaskInfo).(*task.TaskInfo)
+	initializedTaskInfo.Runtime.State = task.TaskState_INITIALIZED
+
+	gomock.InOrder(
+		mockRes.EXPECT().
+			GetPlacements(
+				gomock.Any(),
+				gomock.Any()).
+			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
+
+		// Mock Task Store GetTaskByID
+		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
+
+		// Mock Task Store UpdateTask
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), updatedTaskInfo).Return(nil),
+
+		// Mock LaunchTasks call.
+		mockHostMgr.EXPECT().
+			LaunchTasks(
+				gomock.Any(),
+				gomock.Any()).
+			Do(func(_ context.Context, reqBody interface{}) {
+				// No need to unmarksnal output: empty means success.
+				// Capture call since we don't know ordering of tasks.
+				lock.Lock()
+				defer lock.Unlock()
+				req := reqBody.(*hostsvc.LaunchTasksRequest)
+				hostsLaunchedOn[req.Hostname] = true
+				for _, lt := range req.Tasks {
+					launchedTasks[lt.TaskId.GetValue()] = lt.Config
+				}
+			}).
+			Return(&hostsvc.LaunchTasksResponse{
+				Error: &hostsvc.LaunchTasksResponse_Error{
+					InvalidArgument: &hostsvc.InvalidArgument{
+						Message: "invalid argument failure",
+					},
+				},
+			}, nil).
+			Times(5),
+	)
+
+	placements, err := taskLauncher.getPlacements()
+
+	if err != nil {
+		assert.Error(t, err)
+	}
+	taskLauncher.processPlacements(context.Background(), placements)
+
+	time.Sleep(1 * time.Second)
+	expectedLaunchedHosts := map[string]bool{
+		"hostname-0": true,
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
+	assert.Equal(t, taskConfigs, launchedTasks)
+	assert.Equal(
+		t,
+		int64(4),
+		testScope.Snapshot().Counters()["launch_tasks.retry+"].Value())
 }
 
 func TestLaunchStatefulTask(t *testing.T) {
@@ -368,6 +503,7 @@ func TestLaunchStatefulTask(t *testing.T) {
 		volumeStore:   mockVolumeStore,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
 	numTasks := 1
@@ -482,6 +618,7 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 		volumeStore:   mockVolumeStore,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
 	numTasks := 1
@@ -598,6 +735,7 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceDirectly(t *testing.T) {
 		volumeStore:   mockVolumeStore,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
 	numTasks := 1
@@ -699,6 +837,7 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceWithDBReadErr(t *testing.T)
 		volumeStore:   mockVolumeStore,
 		rootCtx:       context.Background(),
 		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
 	numTasks := 1

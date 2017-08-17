@@ -32,7 +32,7 @@ func (s *RetryTestSuite) TestRetrySuccess() {
 		return errTest
 	}
 	policy := NewRetryPolicy(5, 5*time.Millisecond)
-	err := Retry(op, policy)
+	err := Retry(op, policy, nil)
 	s.NoError(err)
 	s.Equal(5, i)
 }
@@ -49,6 +49,31 @@ func (s *RetryTestSuite) TestRetryFailed() {
 		return errTest
 	}
 	policy := NewRetryPolicy(4, 5*time.Millisecond)
-	err := Retry(op, policy)
+	err := Retry(op, policy, nil)
 	s.Equal(err, errTest)
+	s.Equal(i, 4)
+}
+
+func (s *RetryTestSuite) TestRetryExitWithNotRetryable() {
+	i := 0
+	op := func() error {
+		i++
+
+		if i == 5 {
+			return nil
+		}
+
+		return errTest
+	}
+	isRetryable := func(err error) bool {
+		switch err {
+		case errTest:
+			return false
+		}
+		return true
+	}
+	policy := NewRetryPolicy(4, 5*time.Millisecond)
+	err := Retry(op, policy, isRetryable)
+	s.Equal(err, errTest)
+	s.Equal(i, 1)
 }
