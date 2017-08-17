@@ -38,6 +38,7 @@ host_manager:
     explicit_reconcile_batch_interval_sec: 5
     explicit_reconcile_batch_size: 1000
   hostmap_refresh_interval: 10s
+  host_pruning_period_sec: 600s
 
 mesos:
   encoding: "x-protobuf"

@@ -293,6 +293,42 @@ func main() {
 		"url_path":  common.PelotonEndpointPath,
 	}).Info("HostService initialized")
 
+	// Declare background works
+	reconciler := reconcile.NewTaskReconciler(
+		schedulerClient,
+		rootScope,
+		driver,
+		jobStore,
+		taskStore,
+		cfg.HostManager.TaskReconcilerConfig,
+	)
+
+	loader := hostmap.Loader{
+		OperatorClient: masterOperatorClient,
+		Scope:          rootScope.SubScope("hostmap"),
+	}
+
+	// Declare background manager
+	backgroundManager := background.NewManager()
+
+	if err := backgroundManager.RegisterWorks(
+		background.Work{
+			Name:   "hostmap",
+			Func:   loader.Load,
+			Period: cfg.HostManager.HostmapRefreshInterval,
+		},
+		background.Work{
+			Name: "reconciler",
+			Func: reconciler.Reconcile,
+			Period: time.Duration(
+				cfg.HostManager.TaskReconcilerConfig.ReconcileIntervalSec) * time.Second,
+			InitialDelay: time.Duration(
+				cfg.HostManager.TaskReconcilerConfig.InitialReconcileDelaySec) * time.Second,
+		},
+	); err != nil {
+		log.WithError(err).Fatal("Cannot register background works")
+	}
+
 	offer.InitEventHandler(
 		dispatcher,
 		rootScope,
@@ -300,6 +336,8 @@ func main() {
 		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
 		schedulerClient,
 		volumeStore,
+		backgroundManager,
+		cfg.HostManager.HostPruningPeriodSec,
 	)
 
 	// Init service handler.
@@ -324,39 +362,6 @@ func main() {
 		common.PelotonResourceManager,
 		rootScope,
 	)
-
-	reconciler := reconcile.NewTaskReconciler(
-		schedulerClient,
-		rootScope,
-		driver,
-		jobStore,
-		taskStore,
-		cfg.HostManager.TaskReconcilerConfig,
-	)
-
-	loader := hostmap.Loader{
-		OperatorClient: masterOperatorClient,
-		Scope:          rootScope.SubScope("hostmap"),
-	}
-
-	backgroundManager, err := background.NewManager(
-		background.Work{
-			Name:   "hostmap",
-			Func:   loader.Load,
-			Period: cfg.HostManager.HostmapRefreshInterval,
-		},
-		background.Work{
-			Name: "reconciler",
-			Func: reconciler.Reconcile,
-			Period: time.Duration(
-				cfg.HostManager.TaskReconcilerConfig.ReconcileIntervalSec) * time.Second,
-			InitialDelay: time.Duration(
-				cfg.HostManager.TaskReconcilerConfig.InitialReconcileDelaySec) * time.Second,
-		},
-	)
-	if err != nil {
-		log.WithError(err).Fatal("Cannot initialize background.Refresher")
-	}
 
 	server := hostmgr.NewServer(
 		rootScope,

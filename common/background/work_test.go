@@ -21,7 +21,8 @@ func (suite *WorkManagerTestSuite) TestMultipleWorksStartStop() {
 	v1 := atomic.Int64{}
 	v2 := atomic.Int64{}
 
-	manager, err := NewManager(
+	manager := NewManager()
+	err := manager.RegisterWorks(
 		Work{
 			Name:   "update_v1",
 			Period: time.Millisecond,
@@ -60,40 +61,4 @@ func (suite *WorkManagerTestSuite) TestMultipleWorksStartStop() {
 	time.Sleep(time.Millisecond * 30)
 	suite.Equal(stop1, v1.Load())
 	suite.Equal(stop2, v2.Load())
-}
-
-func (suite *WorkManagerTestSuite) TestRegisterWork() {
-	v1 := atomic.Int64{}
-	v2 := atomic.Int64{}
-
-	manager, err := NewManager(
-		Work{
-			Name:   "update_v1",
-			Period: time.Millisecond,
-			Func: func(_ *atomic.Bool) {
-				v1.Inc()
-			},
-		},
-	)
-	suite.NoError(err)
-	err = manager.RegisterWork(
-		Work{
-			Name:   "update_v2",
-			Period: time.Millisecond,
-			Func: func(_ *atomic.Bool) {
-				v2.Inc()
-			},
-			InitialDelay: time.Millisecond * 100,
-		},
-	)
-	suite.NoError(err)
-
-	time.Sleep(time.Millisecond * 30)
-	suite.Zero(v1.Load())
-	suite.Zero(v2.Load())
-
-	manager.Start()
-	time.Sleep(time.Millisecond * 30)
-	suite.NotZero(v1.Load())
-	suite.Zero(v2.Load())
 }

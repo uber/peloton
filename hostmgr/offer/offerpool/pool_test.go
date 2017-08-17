@@ -7,15 +7,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/golang/protobuf/proto"
+	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
+
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
 	"code.uber.internal/infra/peloton/hostmgr/summary"
-	"github.com/golang/protobuf/proto"
-	"github.com/stretchr/testify/assert"
-	"github.com/uber-go/tally"
+	hostmgr_summary_mocks "code.uber.internal/infra/peloton/hostmgr/summary/mocks"
 )
 
 type mockJSONClient struct {
@@ -223,6 +226,82 @@ func TestAddGetRemoveOffers(t *testing.T) {
 	}
 	wg.Wait()
 	assert.Equal(t, len(pool.timedOffers), 0)
+}
+
+func TestResetExpiredHostSummaries(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	type mockHelper struct {
+		mockResetExpiredPlacingOfferStatus bool
+		hostname                           string
+	}
+
+	testTable := []struct {
+		helpers                 []mockHelper
+		expectedPrunedHostnames []string
+		msg                     string
+	}{
+		{
+			helpers:                 []mockHelper{},
+			expectedPrunedHostnames: []string{},
+			msg: "Pool with no host",
+		}, {
+			helpers: []mockHelper{
+				{
+					mockResetExpiredPlacingOfferStatus: false,
+					hostname: "host0",
+				},
+			},
+			expectedPrunedHostnames: []string{},
+			msg: "Pool with 1 host, 0 pruned",
+		}, {
+			helpers: []mockHelper{
+				{
+					mockResetExpiredPlacingOfferStatus: false,
+					hostname: "host0",
+				},
+				{
+					mockResetExpiredPlacingOfferStatus: true,
+					hostname: "host1",
+				},
+			},
+			expectedPrunedHostnames: []string{"host1"},
+			msg: "Pool with 2 hosts, 1 pruned",
+		}, {
+			helpers: []mockHelper{
+				{
+					mockResetExpiredPlacingOfferStatus: true,
+					hostname: "host0",
+				},
+				{
+					mockResetExpiredPlacingOfferStatus: true,
+					hostname: "host1",
+				},
+			},
+			expectedPrunedHostnames: []string{"host0", "host1"},
+			msg: "Pool with 2 hosts, 2 pruned",
+		},
+	}
+
+	now := time.Now()
+
+	for _, tt := range testTable {
+		hostOfferIndex := make(map[string]summary.HostSummary)
+		for _, helper := range tt.helpers {
+			mhs := hostmgr_summary_mocks.NewMockHostSummary(ctrl)
+			mhs.EXPECT().ResetExpiredPlacingOfferStatus(now).Return(helper.mockResetExpiredPlacingOfferStatus)
+			hostOfferIndex[helper.hostname] = mhs
+		}
+		pool := &offerPool{
+			hostOfferIndex: hostOfferIndex,
+		}
+		resetHostnames := pool.ResetExpiredHostSummaries(now)
+		assert.Equal(t, len(tt.expectedPrunedHostnames), len(resetHostnames), tt.msg)
+		for _, hostname := range resetHostnames {
+			assert.Contains(t, tt.expectedPrunedHostnames, hostname)
+		}
+	}
 }
 
 // TODO: Add test case covering:

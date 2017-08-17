@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
@@ -504,6 +505,46 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 		suite.Equal(tt.match, match, "test case is %v", tt)
 		suite.Equal(tt.offers, offers)
 		ctrl.Finish()
+	}
+}
+
+func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
+	defer suite.ctrl.Finish()
+
+	now := time.Now()
+
+	testTable := []struct {
+		initialStatus                CacheStatus
+		statusPlacingOfferExpiration time.Time
+		resetExpected                bool
+		msg                          string
+	}{
+		{
+			initialStatus:                ReadyOffer,
+			statusPlacingOfferExpiration: now,
+			resetExpected:                false,
+			msg:                          "HostSummary in ReadyOffer status",
+		},
+		{
+			initialStatus:                PlacingOffer,
+			statusPlacingOfferExpiration: now.Add(10 * time.Minute),
+			resetExpected:                false,
+			msg:                          "HostSummary in PlacingOffer status, has not timed out",
+		},
+		{
+			initialStatus:                PlacingOffer,
+			statusPlacingOfferExpiration: now.Add(-10 * time.Minute),
+			resetExpected:                true,
+			msg:                          "HostSummary in PlacingOffer status, has timed out",
+		},
+	}
+
+	for _, tt := range testTable {
+		s := &hostSummary{
+			status: tt.initialStatus,
+			statusPlacingOfferExpiration: tt.statusPlacingOfferExpiration,
+		}
+		suite.Equal(tt.resetExpected, s.ResetExpiredPlacingOfferStatus(now), tt.msg)
 	}
 }
 

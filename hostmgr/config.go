@@ -35,4 +35,7 @@ type Config struct {
 	TaskReconcilerConfig *reconcile.TaskReconcilerConfig `yaml:"task_reconciler"`
 
 	HostmapRefreshInterval time.Duration `yaml:"hostmap_refresh_interval"`
+
+	// Period in sec for running host pruning
+	HostPruningPeriodSec time.Duration `yaml:"host_pruning_period_sec"`
 }

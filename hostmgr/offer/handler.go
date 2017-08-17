@@ -6,14 +6,20 @@ import (
 
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
+	"code.uber.internal/infra/peloton/common/background"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
+	"code.uber.internal/infra/peloton/hostmgr/prune"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+)
+
+const (
+	hostPrunerName = "hostpruner"
 )
 
 // EventHandler defines the interface for offer event handler that is
@@ -49,7 +55,9 @@ func InitEventHandler(
 	offerHoldTime time.Duration,
 	offerPruningPeriod time.Duration,
 	schedulerClient mpb.SchedulerClient,
-	volumeStore storage.PersistentVolumeStore) {
+	volumeStore storage.PersistentVolumeStore,
+	backgroundMgr background.Manager,
+	hostPruningPeriodSec time.Duration) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -63,6 +71,18 @@ func InitEventHandler(
 		hostmgr_mesos.GetSchedulerDriver(),
 		volumeStore,
 	)
+	hostPruner := prune.NewHostPruner(
+		pool,
+		parent.SubScope(hostPrunerName),
+	)
+	backgroundMgr.RegisterWorks(
+		background.Work{
+			Name:   hostPrunerName,
+			Func:   hostPruner.Prune,
+			Period: hostPruningPeriodSec,
+		},
+	)
+	//TODO: refactor OfferPruner as a background worker
 	handler = &eventHandler{
 		offerPool:   pool,
 		offerPruner: NewOfferPruner(pool, offerPruningPeriod, metrics),

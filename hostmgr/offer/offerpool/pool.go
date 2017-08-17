@@ -63,6 +63,11 @@ type Pool interface {
 	// TODO: Add following API for viewing offers, and optionally expose
 	//  this in a debugging endpoint.
 	// View() (map[string][]*mesos.Offer, err)
+
+	// ResetExpiredHostSummaries resets the status of each hostSummary of the offerPool
+	// from PlacingOffer to ReadyOffer if the PlacingOffer status has expired
+	// and returns the hostnames which got reset
+	ResetExpiredHostSummaries(now time.Time) []string
 }
 
 // NewOfferPool creates a offerPool object and registers the
@@ -505,4 +510,19 @@ func decQuantity(
 	tmp := *(curr.Subtract(&delta))
 	resources.Set(tmp)
 	gaugeMaps.Update(&tmp)
+}
+
+// ResetExpiredHostSummaries resets the status of each hostSummary of the offerPool
+// from PlacingOffer to ReadyOffer if the PlacingOffer status has expired
+// and returns the hostnames which got reset
+func (p *offerPool) ResetExpiredHostSummaries(now time.Time) []string {
+	p.RLock()
+	defer p.RUnlock()
+	var resetHostnames []string
+	for hostname, summary := range p.hostOfferIndex {
+		if summary.ResetExpiredPlacingOfferStatus(now) {
+			resetHostnames = append(resetHostnames, hostname)
+		}
+	}
+	return resetHostnames
 }

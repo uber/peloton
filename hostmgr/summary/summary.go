@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -39,6 +40,10 @@ const (
 	ReadyOffer CacheStatus = iota + 1
 	// PlacingOffer represents an offer being used by placement engine.
 	PlacingOffer
+
+	// hostPlacingOfferStatusTimeout is a timeout for resetting
+	// PlacingOffer status
+	hostPlacingOfferStatusTimeout time.Duration = 5 * time.Minute
 )
 
 // HostSummary is the core component of host manager's internal
@@ -78,6 +83,11 @@ type HostSummary interface {
 	CasStatus(old, new CacheStatus) error
 
 	UnreservedAmount() scalar.Resources
+
+	// ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
+	// to ReadyOffer if the PlacingOffer status has expired, and returns
+	// wether the hostSummary got reset
+	ResetExpiredPlacingOfferStatus(now time.Time) bool
 }
 
 // hostSummary is a data struct holding offers on a particular host.
@@ -85,9 +95,10 @@ type hostSummary struct {
 	sync.Mutex
 
 	// offerID -> unreserved offer
-	unreservedOffers map[string]*mesos.Offer
-	status           CacheStatus
-	readyCount       atomic.Int32
+	unreservedOffers             map[string]*mesos.Offer
+	status                       CacheStatus
+	statusPlacingOfferExpiration time.Time
+	readyCount                   atomic.Int32
 
 	// offerID -> reserved offer
 	reservedOffers map[string]*mesos.Offer
@@ -236,6 +247,7 @@ func (a *hostSummary) TryMatch(
 		// this host will not be sent to another `AcquireHostOffers`
 		// call before released.
 		a.status = PlacingOffer
+		a.statusPlacingOfferExpiration = time.Now().Add(hostPlacingOfferStatusTimeout)
 		a.readyCount.Store(0)
 		return match, result
 	}
@@ -422,6 +434,13 @@ func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offe
 func (a *hostSummary) CasStatus(old, new CacheStatus) error {
 	a.Lock()
 	defer a.Unlock()
+	return a.casStatusLockFree(old, new)
+}
+
+// casStatus atomically and lock-freely sets the status to new value
+// if current value is old, otherwise returns error. This should wrapped
+// around locking
+func (a *hostSummary) casStatusLockFree(old, new CacheStatus) error {
 	if a.status != old {
 		return InvalidCacheStatus{a.status}
 	}
@@ -439,4 +458,21 @@ func (a *hostSummary) UnreservedAmount() scalar.Resources {
 	defer a.Unlock()
 
 	return scalar.FromOfferMap(a.unreservedOffers)
+}
+
+// ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
+// to ReadyOffer if the PlacingOffer status has expired, and returns
+// wether the hostSummary got reset
+func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) bool {
+	if !a.HasOffer() {
+		a.Lock()
+		defer a.Unlock()
+		if a.status == PlacingOffer {
+			if now.After(a.statusPlacingOfferExpiration) {
+				a.casStatusLockFree(PlacingOffer, ReadyOffer)
+				return true
+			}
+		}
+	}
+	return false
 }
