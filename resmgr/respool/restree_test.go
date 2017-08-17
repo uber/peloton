@@ -114,7 +114,7 @@ func (suite *resTreeTestSuite) getResourceConfig() []*respool.ResourceConfig {
 // Returns resource pools
 func (suite *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
 
-	rootID := respool.ResourcePoolID{Value: RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: RootResPoolID}
 	policy := respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*respool.ResourcePoolConfig{
@@ -139,31 +139,31 @@ func (suite *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolCon
 		},
 		"respool11": {
 			Name:      "respool11",
-			Parent:    &respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
-			Parent:    &respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
-			Parent:    &respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
-			Parent:    &respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool23": {
 			Name:   "respool23",
-			Parent: &respool.ResourcePoolID{Value: "respool22"},
+			Parent: &peloton.ResourcePoolID{Value: "respool22"},
 			Resources: []*respool.ResourceConfig{
 				{
 					Kind:        "cpu",
@@ -176,7 +176,7 @@ func (suite *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolCon
 		},
 		"respool99": {
 			Name:   "respool99",
-			Parent: &respool.ResourcePoolID{Value: "respool21"},
+			Parent: &peloton.ResourcePoolID{Value: "respool21"},
 			Resources: []*respool.ResourceConfig{
 				{
 					Kind:        "cpu",
@@ -346,11 +346,11 @@ func (suite *resTreeTestSuite) TestTree_UpsertExistingResourcePoolConfig() {
 		suite.Fail("update channel should be empty")
 	}
 
-	mockExistingResourcePoolID := &respool.ResourcePoolID{
+	mockExistingResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool23",
 	}
 
-	mockParentPoolID := &respool.ResourcePoolID{
+	mockParentPoolID := &peloton.ResourcePoolID{
 		Value: "respool22",
 	}
 
@@ -375,11 +375,11 @@ func (suite *resTreeTestSuite) TestTree_UpsertExistingResourcePoolConfig() {
 }
 
 func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfig() {
-	mockExistingResourcePoolID := &respool.ResourcePoolID{
+	mockExistingResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool24",
 	}
 
-	mockParentPoolID := &respool.ResourcePoolID{
+	mockParentPoolID := &peloton.ResourcePoolID{
 		Value: "respool23",
 	}
 
@@ -402,11 +402,11 @@ func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfig() {
 }
 
 func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfigError() {
-	mockExistingResourcePoolID := &pb_respool.ResourcePoolID{
+	mockExistingResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool200",
 	}
 
-	mockParentPoolID := &pb_respool.ResourcePoolID{
+	mockParentPoolID := &peloton.ResourcePoolID{
 		Value: "respool23",
 	}
 

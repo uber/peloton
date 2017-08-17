@@ -10,14 +10,8 @@ package peloton.api.respool;
 option go_package = "peloton/api/respool";
 option java_package = "peloton.api.respool";
 
+import "peloton/api/peloton.proto";
 import "peloton/api/changelog/changelog.proto";
-
-/**
- *  A unique ID assigned to a Resource Pool.
- */
-message ResourcePoolID {
-  string value = 1;
-}
 
 /**
  *   A fully qualified path to a resource pool in a resource pool hierrarchy.
@@ -92,7 +86,7 @@ message ResourcePoolConfig {
   repeated ResourceConfig resources = 6;
 
   // Resource Pool's parent
-  ResourcePoolID parent = 7;
+  peloton.ResourcePoolID parent = 7;
 
   // Task Scheduling policy
   SchedulingPolicy policy = 8;
@@ -100,17 +94,17 @@ message ResourcePoolConfig {
 
 message ResourcePoolInfo {
   // Resource Pool Id
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
 
   // ResourcePool config
   ResourcePoolConfig config = 2;
 
   // Resource Pool's parent
   //TODO: parent duplicated from ResourcePoolConfig
-  ResourcePoolID parent = 3;
+  peloton.ResourcePoolID parent = 3;
 
   // Resource Pool's children
-  repeated ResourcePoolID children = 4;
+  repeated peloton.ResourcePoolID children = 4;
 
   // Resource usage for each resource kind
   repeated ResourceUsage usage = 5;
@@ -141,17 +135,17 @@ service ResourceManager
 }
 
 message ResourcePoolAlreadyExists {
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
 message InvalidResourcePoolConfig {
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
 message ResourcePoolNotFound {
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
@@ -166,17 +160,17 @@ message InvalidResourcePoolPath {
 }
 
 message ResourcePoolIsBusy {
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
 message ResourcePoolIsNotLeaf {
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
 message ResourcePoolNotDeleted {
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
@@ -191,13 +185,13 @@ message CreateResponse {
   }
 
   Error error = 1;
-  ResourcePoolID result = 2;
+  peloton.ResourcePoolID result = 2;
 
 }
 
 message GetRequest {
   // The ID of the resource pool to get
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
 
   // Whether or not to include the resource pool info of the direct
   // children
@@ -230,7 +224,7 @@ message DeleteResponse {
 }
 
 message UpdateRequest {
-  ResourcePoolID id = 1;
+  peloton.ResourcePoolID id = 1;
   ResourcePoolConfig config = 2;
 }
 
@@ -254,7 +248,7 @@ message LookupResponse {
   }
 
   Error error = 1;
-  ResourcePoolID id = 2;
+  peloton.ResourcePoolID id = 2;
 }
 
 message QueryRequest {

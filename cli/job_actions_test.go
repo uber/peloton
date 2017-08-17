@@ -64,7 +64,7 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 	id := uuid.New()
 	path := "/a/b/c/d"
 	config := suite.getConfig()
-	config.RespoolID = &respool.ResourcePoolID{
+	config.RespoolID = &peloton.ResourcePoolID{
 		Value: id,
 	}
 
@@ -95,7 +95,7 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 				},
 			},
 			respoolLookupResponse: &respool.LookupResponse{
-				Id: &respool.ResourcePoolID{
+				Id: &peloton.ResourcePoolID{
 					Value: id,
 				},
 			},
@@ -120,7 +120,7 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 				},
 			},
 			respoolLookupResponse: &respool.LookupResponse{
-				Id: &respool.ResourcePoolID{
+				Id: &peloton.ResourcePoolID{
 					Value: id,
 				},
 			},
@@ -145,7 +145,7 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 				},
 			},
 			respoolLookupResponse: &respool.LookupResponse{
-				Id: &respool.ResourcePoolID{
+				Id: &peloton.ResourcePoolID{
 					Value: id,
 				},
 			},

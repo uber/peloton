@@ -10,6 +10,7 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	"code.uber.internal/infra/peloton/resmgr/scalar"
@@ -120,7 +121,7 @@ func (h *serviceHandler) CreateResourcePool(
 	).Info("CreateResourcePool called")
 
 	resPoolConfig := req.GetConfig()
-	resPoolID := &respool.ResourcePoolID{
+	resPoolID := &peloton.ResourcePoolID{
 		Value: uuid.New(),
 	}
 
@@ -210,7 +211,7 @@ func (h *serviceHandler) GetResourcePool(
 	if resPoolID == nil {
 		//TODO temporary solution to unblock,
 		// fix with new naming convention
-		resPoolID = &respool.ResourcePoolID{
+		resPoolID = &peloton.ResourcePoolID{
 			Value: RootResPoolID,
 		}
 	}
@@ -566,7 +567,7 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 	h.metrics.LookupResourcePoolIDSuccess.Inc(1)
 
 	return &respool.LookupResponse{
-		Id: &respool.ResourcePoolID{
+		Id: &peloton.ResourcePoolID{
 			Value: resPool.ID(),
 		},
 	}, nil

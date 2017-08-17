@@ -125,7 +125,7 @@ func (s *ResPoolSuite) getTasks() []*resmgr.Task {
 }
 
 func (s *ResPoolSuite) TestResPool() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "respool1",
@@ -156,7 +156,7 @@ func (s *ResPoolSuite) TestResPool() {
 }
 
 func (s *ResPoolSuite) TestResPoolError() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "respool1",
@@ -178,7 +178,7 @@ func (s *ResPoolSuite) TestResPoolError() {
 }
 
 func (s *ResPoolSuite) TestResPoolEnqueue() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "respool1",
@@ -207,7 +207,7 @@ func (s *ResPoolSuite) TestResPoolEnqueue() {
 }
 
 func (s *ResPoolSuite) TestResPoolEnqueueError() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "respool1",
@@ -237,7 +237,7 @@ func (s *ResPoolSuite) getEntitlement() map[string]float64 {
 }
 
 func (s *ResPoolSuite) TestResPoolDequeue() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "respool1",
@@ -277,7 +277,7 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 }
 
 func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "respool1",
@@ -339,7 +339,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 }
 
 func (s *ResPoolSuite) TestAllocation() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "respool1",
@@ -376,12 +376,12 @@ func (s *ResPoolSuite) TestAllocation() {
 }
 
 func (s *ResPoolSuite) TestCalculateAllocation() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
-	respool1ID := pb_respool.ResourcePoolID{Value: "respool1"}
-	respool2ID := pb_respool.ResourcePoolID{Value: "respool2"}
-	respool11ID := pb_respool.ResourcePoolID{Value: "respool11"}
-	respool12ID := pb_respool.ResourcePoolID{Value: "respool12"}
-	respool21ID := pb_respool.ResourcePoolID{Value: "respool21"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
+	respool1ID := peloton.ResourcePoolID{Value: "respool1"}
+	respool2ID := peloton.ResourcePoolID{Value: "respool2"}
+	respool11ID := peloton.ResourcePoolID{Value: "respool11"}
+	respool12ID := peloton.ResourcePoolID{Value: "respool12"}
+	respool21ID := peloton.ResourcePoolID{Value: "respool21"}
 
 	poolConfigroot := &pb_respool.ResourcePoolConfig{
 		Name:      "root",
@@ -504,12 +504,12 @@ func (s *ResPoolSuite) getAllocation() *scalar.Resources {
 }
 
 func (s *ResPoolSuite) TestCalculateDemand() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
-	respool1ID := pb_respool.ResourcePoolID{Value: "respool1"}
-	respool2ID := pb_respool.ResourcePoolID{Value: "respool2"}
-	respool11ID := pb_respool.ResourcePoolID{Value: "respool11"}
-	respool12ID := pb_respool.ResourcePoolID{Value: "respool12"}
-	respool21ID := pb_respool.ResourcePoolID{Value: "respool21"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
+	respool1ID := peloton.ResourcePoolID{Value: "respool1"}
+	respool2ID := peloton.ResourcePoolID{Value: "respool2"}
+	respool11ID := peloton.ResourcePoolID{Value: "respool11"}
+	respool12ID := peloton.ResourcePoolID{Value: "respool12"}
+	respool21ID := peloton.ResourcePoolID{Value: "respool21"}
 
 	poolConfigroot := &pb_respool.ResourcePoolConfig{
 		Name:      "root",
@@ -674,7 +674,7 @@ func (s *ResPoolSuite) getDemand() *scalar.Resources {
 }
 
 func (s *ResPoolSuite) TestResPoolDequeueError() {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 
 	poolConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "respool1",

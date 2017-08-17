@@ -330,7 +330,7 @@ func (suite *mySQLStoreTestSuite) TestGetResourcePoolsByOwner() {
 
 	// todo move to setup once ^^^ issue resolves
 	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
 		err := suite.store.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, _resPoolOwner)

@@ -88,12 +88,12 @@ service ResourceManagerService {
 }
 
 message ResourcePoolNotFound {
-  api.respool.ResourcePoolID id = 1;
+  api.peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
 message ResourcePoolNoPermission {
-  api.respool.ResourcePoolID id = 1;
+  api.peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
@@ -113,7 +113,7 @@ message Gang {
 
 message EnqueueGangsRequest {
   // ResourcePool
-  api.respool.ResourcePoolID resPool = 1;
+  api.peloton.ResourcePoolID resPool = 1;
 
   // The list of gangs to enqueue
   repeated Gang gangs = 2;

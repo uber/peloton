@@ -725,7 +725,7 @@ func (suite *CassandraStoreTestSuite) TestGetAllJobs() {
 		var jobID = peloton.JobID{Value: job}
 		jobConfig := createJobConfig()
 		jobConfig.Name = jobID.Value
-		jobConfig.RespoolID = &respool.ResourcePoolID{
+		jobConfig.RespoolID = &peloton.ResourcePoolID{
 			Value: fmt.Sprintf("%s%d", respoolPagination, i),
 		}
 		err := store.CreateJob(context.Background(), &jobID, jobConfig, "uber")
@@ -879,7 +879,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetResourcePoolConfig() {
 	}
 
 	for _, tc := range testCases {
-		actualErr := resourcePoolStore.CreateResourcePool(context.Background(), &respool.ResourcePoolID{Value: tc.resourcePoolID},
+		actualErr := resourcePoolStore.CreateResourcePool(context.Background(), &peloton.ResourcePoolID{Value: tc.resourcePoolID},
 			tc.config, tc.owner)
 		if tc.expectedErr == nil {
 			suite.Nil(actualErr, tc.msg)
@@ -896,7 +896,7 @@ func (suite *CassandraStoreTestSuite) GetAllResourcePools() {
 
 	// todo move to setup once ^^^ issue resolves
 	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
 		err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, _resPoolOwner)
@@ -925,7 +925,7 @@ func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 
 	// todo move to setup once ^^^ issue resolves
 	for i := 0; i < nResourcePools; i++ {
-		resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
+		resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d", _resPoolOwner, i)}
 		resourcePoolConfig := createResourcePoolConfig()
 		resourcePoolConfig.Name = resourcePoolID.Value
 		err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, _resPoolOwner)
@@ -966,7 +966,7 @@ func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 func (suite *CassandraStoreTestSuite) TestDeleteResourcePool() {
 	var resourcePoolStore storage.ResourcePoolStore
 	resourcePoolStore = store
-	resourcePoolID := &respool.ResourcePoolID{Value: fmt.Sprintf("%s%d", "DeleteRespool", 1)}
+	resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d", "DeleteRespool", 1)}
 	resourcePoolConfig := createResourcePoolConfig()
 	resourcePoolConfig.Name = resourcePoolID.Value
 	err := resourcePoolStore.CreateResourcePool(context.Background(), resourcePoolID, resourcePoolConfig, "Delete")

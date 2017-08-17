@@ -12,6 +12,7 @@ import (
 
 	"github.com/uber-go/tally"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -29,7 +30,7 @@ type Tree interface {
 	Stop() error
 
 	// Get returns a respool node by the given ID
-	Get(ID *respool.ResourcePoolID) (ResPool, error)
+	Get(ID *peloton.ResourcePoolID) (ResPool, error)
 
 	// GetByPath returns the respool node by the given path
 	GetByPath(path *respool.ResourcePoolPath) (ResPool, error)
@@ -38,7 +39,7 @@ type Tree interface {
 	GetAllNodes(leafOnly bool) *list.List
 
 	// Upsert add/update a resource pool poolConfig to the tree
-	Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error
+	Upsert(ID *peloton.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error
 
 	// UpdatedChannel is written to whenever the resource tree is changed. There
 	// may be only one event for multiple updates.
@@ -47,7 +48,7 @@ type Tree interface {
 	UpdatedChannel() <-chan struct{}
 
 	// Delete deletes the resource pool from the tree
-	Delete(ID *respool.ResourcePoolID) error
+	Delete(ID *peloton.ResourcePoolID) error
 }
 
 // tree implements the Tree interface
@@ -257,7 +258,7 @@ func (t *tree) SetAllNodes(nodes *map[string]ResPool) {
 }
 
 // Get returns resource pool config for the given resource pool
-func (t *tree) Get(ID *respool.ResourcePoolID) (ResPool, error) {
+func (t *tree) Get(ID *peloton.ResourcePoolID) (ResPool, error) {
 	t.RLock()
 	defer t.RUnlock()
 	return t.lookupResPool(ID)
@@ -296,7 +297,7 @@ func (t *tree) trimPath(path *respool.ResourcePoolPath) string {
 }
 
 // Upsert adds/updates a resource pool config to the tree
-func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error {
+func (t *tree) Upsert(ID *peloton.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig) error {
 	// acquire RW lock
 	t.Lock()
 	defer t.Unlock()
@@ -352,7 +353,7 @@ func (t *tree) Upsert(ID *respool.ResourcePoolID, resPoolConfig *respool.Resourc
 }
 
 // Returns the resource pool for the given resource pool ID
-func (t *tree) lookupResPool(ID *respool.ResourcePoolID) (ResPool, error) {
+func (t *tree) lookupResPool(ID *peloton.ResourcePoolID) (ResPool, error) {
 	if val, ok := t.resPools[ID.Value]; ok {
 		return val, nil
 	}
@@ -378,7 +379,7 @@ func (t *tree) walkTree(root ResPool, nodes []string) (ResPool, error) {
 	return nil, errors.Errorf("Resource pool (%s) not found", nodes)
 }
 
-func (t *tree) Delete(ID *respool.ResourcePoolID) error {
+func (t *tree) Delete(ID *peloton.ResourcePoolID) error {
 	// acquire RW lock
 	t.Lock()
 	defer t.Unlock()

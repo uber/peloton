@@ -3,6 +3,9 @@ package task
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,9 +24,6 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"github.com/stretchr/testify/assert"
-	"math/rand"
-	"sync"
-	"sync/atomic"
 )
 
 type TaskSchedulerTestSuite struct {
@@ -121,7 +121,7 @@ func (suite *TaskSchedulerTestSuite) getResourceConfig() []*pb_respool.ResourceC
 
 // Returns resource pools
 func (suite *TaskSchedulerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*pb_respool.ResourcePoolConfig{
@@ -151,25 +151,25 @@ func (suite *TaskSchedulerTestSuite) getResPools() map[string]*pb_respool.Resour
 		},
 		"respool11": {
 			Name:      "respool11",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
@@ -227,7 +227,7 @@ func (suite *TaskSchedulerTestSuite) AddTasks() {
 			},
 		},
 	}
-	resPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{
+	resPool, err := suite.resTree.Get(&peloton.ResourcePoolID{
 		Value: "respool11",
 	})
 	resPool.SetEntitlement(suite.getEntitlement())

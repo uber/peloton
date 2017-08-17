@@ -14,6 +14,7 @@ import (
 
 	"go.uber.org/yarpc"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	res "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
@@ -140,7 +141,7 @@ func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	// Making calculator done
 	defer c.isRunning.Swap(false)
 
-	rootResPool, err := c.resPoolTree.Get(&res.ResourcePoolID{
+	rootResPool, err := c.resPoolTree.Get(&peloton.ResourcePoolID{
 		Value: respool.RootResPoolID,
 	})
 	if err != nil {

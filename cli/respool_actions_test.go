@@ -7,6 +7,7 @@ import (
 
 	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	"github.com/golang/mock/gomock"
@@ -39,10 +40,10 @@ func (suite *resPoolActions) TearDownSuite() {
 func (suite *resPoolActions) getRespoolInfos() []*respool.ResourcePoolInfo {
 	return []*respool.ResourcePoolInfo{
 		{
-			Id: &respool.ResourcePoolID{
+			Id: &peloton.ResourcePoolID{
 				Value: "root",
 			},
-			Children: []*respool.ResourcePoolID{
+			Children: []*peloton.ResourcePoolID{
 				{
 					Value: "respool1",
 				},
@@ -51,10 +52,10 @@ func (suite *resPoolActions) getRespoolInfos() []*respool.ResourcePoolInfo {
 			Parent: nil,
 		},
 		{
-			Id: &respool.ResourcePoolID{
+			Id: &peloton.ResourcePoolID{
 				Value: "respool1",
 			},
-			Children: []*respool.ResourcePoolID{
+			Children: []*peloton.ResourcePoolID{
 				{
 					Value: "respool2",
 				},
@@ -70,23 +71,23 @@ func (suite *resPoolActions) getRespoolInfos() []*respool.ResourcePoolInfo {
 					},
 				},
 				Policy: respool.SchedulingPolicy_PriorityFIFO,
-				Parent: &respool.ResourcePoolID{
+				Parent: &peloton.ResourcePoolID{
 					Value: "root",
 				},
 				Description: "respool1 desc",
 				LdapGroups:  []string{"g1", "g2"},
 				OwningTeam:  "t1",
 			},
-			Parent: &respool.ResourcePoolID{
+			Parent: &peloton.ResourcePoolID{
 				Value: "root",
 			},
 		},
 		{
-			Id: &respool.ResourcePoolID{
+			Id: &peloton.ResourcePoolID{
 				Value: "respool2",
 			},
 			Config: nil,
-			Parent: &respool.ResourcePoolID{
+			Parent: &peloton.ResourcePoolID{
 				Value: "respool1",
 			},
 		},
@@ -160,7 +161,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 	parentID := uuid.New()
 	path := "/DefaultResPool"
 	config := suite.getConfig()
-	config.Parent = &respool.ResourcePoolID{
+	config.Parent = &peloton.ResourcePoolID{
 		Value: parentID,
 	}
 	for _, t := range []struct {
@@ -175,7 +176,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 				Config: config,
 			},
 			createResponse: &respool.CreateResponse{
-				Result: &respool.ResourcePoolID{
+				Result: &peloton.ResourcePoolID{
 					Value: ID,
 				},
 			},
@@ -185,7 +186,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 				},
 			},
 			lookupResponse: &respool.LookupResponse{
-				Id: &respool.ResourcePoolID{
+				Id: &peloton.ResourcePoolID{
 					Value: parentID,
 				},
 			},
@@ -195,7 +196,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 				Config: config,
 			},
 			createResponse: &respool.CreateResponse{
-				Result: &respool.ResourcePoolID{
+				Result: &peloton.ResourcePoolID{
 					Value: ID,
 				},
 			},
@@ -205,7 +206,7 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 				},
 			},
 			lookupResponse: &respool.LookupResponse{
-				Id: &respool.ResourcePoolID{
+				Id: &peloton.ResourcePoolID{
 					Value: parentID,
 				},
 			},

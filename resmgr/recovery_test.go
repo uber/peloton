@@ -93,7 +93,7 @@ func (suite *recoveryTestSuite) SetupTest() {
 
 // Returns resource pools
 func (suite *recoveryTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
-	rootID := respool.ResourcePoolID{Value: rp.RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: rp.RootResPoolID}
 	policy := respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*respool.ResourcePoolConfig{
@@ -118,31 +118,31 @@ func (suite *recoveryTestSuite) getResPools() map[string]*respool.ResourcePoolCo
 		},
 		"respool11": {
 			Name:      "respool11",
-			Parent:    &respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
-			Parent:    &respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
-			Parent:    &respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
-			Parent:    &respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool23": {
 			Name:   "respool23",
-			Parent: &respool.ResourcePoolID{Value: "respool22"},
+			Parent: &peloton.ResourcePoolID{Value: "respool22"},
 			Resources: []*respool.ResourceConfig{
 				{
 					Kind:        "cpu",
@@ -205,7 +205,7 @@ func (suite *recoveryTestSuite) getEntitlement() map[string]float64 {
 
 // returns a map of JobID -> array of gangs
 func (suite *recoveryTestSuite) getQueueContent(
-	respoolID respool.ResourcePoolID) map[string][]*resmgrsvc.Gang {
+	respoolID peloton.ResourcePoolID) map[string][]*resmgrsvc.Gang {
 
 	var result = make(map[string][]*resmgrsvc.Gang)
 	for {
@@ -246,7 +246,7 @@ func (suite *recoveryTestSuite) createJob(jobID *peloton.JobID, instanceCount ui
 			MinimumRunningInstances: minInstances,
 		},
 		InstanceCount: instanceCount,
-		RespoolID: &respool.ResourcePoolID{
+		RespoolID: &peloton.ResourcePoolID{
 			Value: "respool21",
 		},
 	}
@@ -363,7 +363,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	GetRecoveryHandler().Start()
 
 	// 2. check the queue content
-	var resPoolID respool.ResourcePoolID
+	var resPoolID peloton.ResourcePoolID
 	resPoolID.Value = "respool21"
 	gangsSummary := suite.getQueueContent(resPoolID)
 

@@ -8,7 +8,6 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	"gopkg.in/yaml.v2"
 )
@@ -121,7 +120,7 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 			})
 		}
 	}
-	var respoolID *respool.ResourcePoolID
+	var respoolID *peloton.ResourcePoolID
 	var err error
 	if len(respoolPath) > 0 {
 		respoolID, err = client.LookupResourcePoolID(respoolPath)

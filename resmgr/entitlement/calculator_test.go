@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
@@ -128,7 +129,7 @@ func (suite *EntitlementCalculatorTestSuite) getResourceConfig() []*pb_respool.R
 
 // Returns resource pools
 func (suite *EntitlementCalculatorTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*pb_respool.ResourcePoolConfig{
@@ -158,25 +159,25 @@ func (suite *EntitlementCalculatorTestSuite) getResPools() map[string]*pb_respoo
 		},
 		"respool11": {
 			Name:      "respool11",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
@@ -212,7 +213,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 			}, nil).
 			Times(3),
 	)
-	ResPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool11"})
+	ResPool, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
 	suite.NoError(err)
 	demand := &scalar.Resources{
 		CPU:    20,
@@ -229,7 +230,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(int64(res.MEMORY), int64(333))
 	suite.Equal(int64(res.DISK), int64(2666))
 
-	ResPool21, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool21"})
+	ResPool21, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
 	suite.NoError(err)
 	ResPool21.AddToDemand(demand)
 
@@ -247,7 +248,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(int64(res.MEMORY), int64(300))
 	suite.Equal(int64(res.DISK), int64(2333))
 
-	ResPool22, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool22"})
+	ResPool22, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
 	suite.NoError(err)
 	ResPool22.AddToDemand(demand)
 	suite.calculator.calculateEntitlement(context.Background())
@@ -270,7 +271,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(int64(res.MEMORY), int64(266))
 	suite.Equal(int64(res.DISK), int64(2000))
 
-	ResPool2, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool2"})
+	ResPool2, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool2"})
 	suite.NoError(err)
 
 	res = ResPool2.GetEntitlement()
@@ -279,7 +280,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(int64(res.MEMORY), int64(533))
 	suite.Equal(int64(res.DISK), int64(4000))
 
-	ResPool3, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool3"})
+	ResPool3, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	suite.NoError(err)
 
 	res = ResPool3.GetEntitlement()
@@ -288,7 +289,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(int64(res.MEMORY), int64(133))
 	suite.Equal(int64(res.DISK), int64(0))
 
-	ResPool1, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool1"})
+	ResPool1, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool1"})
 	suite.NoError(err)
 
 	res = ResPool1.GetEntitlement()
@@ -297,7 +298,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(int64(res.MEMORY), int64(333))
 	suite.Equal(int64(res.DISK), int64(2000))
 
-	ResPoolRoot, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "root"})
+	ResPoolRoot, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	suite.NoError(err)
 
 	res = ResPoolRoot.GetEntitlement()
@@ -335,7 +336,7 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 			Times(1),
 	)
 
-	rootres, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "root"})
+	rootres, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	suite.NoError(err)
 	rootres.SetResourcePoolConfig(suite.getResPools()["root"])
 	suite.Equal(rootres.Resources()[common.CPU].Reservation, float64(10))
@@ -345,7 +346,7 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 
 	suite.calculator.calculateEntitlement(context.Background())
 
-	RootResPool, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "root"})
+	RootResPool, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	suite.NoError(err)
 	suite.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
 	suite.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(0))

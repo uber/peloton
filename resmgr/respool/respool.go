@@ -5,6 +5,7 @@ import (
 	"math"
 	"sync"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -372,24 +373,24 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 	n.RLock()
 	defer n.RUnlock()
 	childrenResPools := n.children
-	childrenResourcePoolIDs := make([]*respool.ResourcePoolID, 0, childrenResPools.Len())
+	childrenResourcePoolIDs := make([]*peloton.ResourcePoolID, 0, childrenResPools.Len())
 	for child := childrenResPools.Front(); child != nil; child = child.Next() {
-		childrenResourcePoolIDs = append(childrenResourcePoolIDs, &respool.ResourcePoolID{
+		childrenResourcePoolIDs = append(childrenResourcePoolIDs, &peloton.ResourcePoolID{
 			Value: child.Value.(*resPool).id,
 		})
 	}
 
-	var parentResPoolID *respool.ResourcePoolID
+	var parentResPoolID *peloton.ResourcePoolID
 
 	// handle Root's parent == nil
 	if n.parent != nil {
-		parentResPoolID = &respool.ResourcePoolID{
+		parentResPoolID = &peloton.ResourcePoolID{
 			Value: n.parent.ID(),
 		}
 	}
 
 	return &respool.ResourcePoolInfo{
-		Id: &respool.ResourcePoolID{
+		Id: &peloton.ResourcePoolID{
 			Value: n.id,
 		},
 		Parent:   parentResPoolID,

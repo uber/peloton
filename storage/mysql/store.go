@@ -252,7 +252,7 @@ func (m *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 // In the tasks table, the "Labels" field are compacted (all whitespaces and " are removed for each label),
 // then stored as the "labels_summary" row. Mysql fulltext index are also set on this field.
 // When a query comes, the query labels are compacted in the same way then queried against the fulltext index.
-func (m *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error) {
+func (m *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error) {
 	return nil, 0, fmt.Errorf("unsupported storage backend")
 }
 
@@ -680,7 +680,7 @@ func (m *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, er
 
 // CreateResourcePool creates a resource pool with the resource pool id and the config value
 // TODO: Need to create test case
-func (m *Store) CreateResourcePool(ctx context.Context, id *respool.ResourcePoolID, respoolConfig *respool.ResourcePoolConfig, createdBy string) error {
+func (m *Store) CreateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, respoolConfig *respool.ResourcePoolConfig, createdBy string) error {
 	buffer, err := json.Marshal(respoolConfig)
 	if err != nil {
 		log.Errorf("error = %v", err)
@@ -703,17 +703,17 @@ func (m *Store) CreateResourcePool(ctx context.Context, id *respool.ResourcePool
 }
 
 // GetResourcePool gets a resource pool info object
-func (m *Store) GetResourcePool(ctx context.Context, id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
+func (m *Store) GetResourcePool(ctx context.Context, id *peloton.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
 	return nil, errors.New("unimplemented")
 }
 
 // DeleteResourcePool Deletes the resource pool
-func (m *Store) DeleteResourcePool(ctx context.Context, id *respool.ResourcePoolID) error {
+func (m *Store) DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error {
 	return errors.New("unimplemented")
 }
 
 // UpdateResourcePool Update the resource pool
-func (m *Store) UpdateResourcePool(ctx context.Context, id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
+func (m *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
 	return errors.New("unimplemented")
 }
 
@@ -896,6 +896,6 @@ func (m *Store) DeletePersistentVolume(ctx context.Context, volumeID string) err
 }
 
 // GetJobsByRespoolID returns jobIDs in a respool
-func (m *Store) GetJobsByRespoolID(ctx context.Context, respoolID *respool.ResourcePoolID) (map[string]*job.JobConfig, error) {
+func (m *Store) GetJobsByRespoolID(ctx context.Context, respoolID *peloton.ResourcePoolID) (map[string]*job.JobConfig, error) {
 	return nil, errors.New("Not implemented")
 }

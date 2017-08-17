@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -115,7 +116,7 @@ func (suite *resPoolHandlerTestSuite) getResourceConfig() []*pb_respool.Resource
 // Returns resource pools
 func (suite *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*pb_respool.ResourcePoolConfig{
@@ -145,31 +146,31 @@ func (suite *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.Resou
 		},
 		"respool11": {
 			Name:      "respool11",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool23": {
 			Name:   "respool23",
-			Parent: &pb_respool.ResourcePoolID{Value: "respool22"},
+			Parent: &peloton.ResourcePoolID{Value: "respool22"},
 			Resources: []*pb_respool.ResourceConfig{
 				{
 					Kind:        "cpu",
@@ -204,7 +205,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolEmptyID(
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLeafNode() {
 	log.Info("TestServiceHandler_GetResourcePoolLeafNode called")
 
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
+	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool21",
 	}
 
@@ -227,7 +228,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLeafNode
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolWithChildNodes() {
 	log.Info("TestServiceHandler_GetResourcePoolWithChildNodes called")
 
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
+	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool2",
 	}
 
@@ -252,7 +253,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolWithChil
 func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolError() {
 	log.Info("TestServiceHandler_GetResourcePoolError called")
 
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
+	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "non_exist",
 	}
 
@@ -281,7 +282,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
-		Parent: &pb_respool.ResourcePoolID{Value: "respool23"},
+		Parent: &peloton.ResourcePoolID{Value: "respool23"},
 		Resources: []*pb_respool.ResourceConfig{
 			{
 				Reservation: 1,
@@ -322,7 +323,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolValid
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
-		Parent: &pb_respool.ResourcePoolID{Value: "respool23"},
+		Parent: &peloton.ResourcePoolID{Value: "respool23"},
 		Resources: []*pb_respool.ResourceConfig{
 			{
 				// reservation exceed limit,  should fail
@@ -358,7 +359,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlrea
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
-		Parent: &pb_respool.ResourcePoolID{Value: "respool23"},
+		Parent: &peloton.ResourcePoolID{Value: "respool23"},
 		Resources: []*pb_respool.ResourceConfig{
 			{
 				Kind:        "cpu",
@@ -404,7 +405,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePool() {
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
-		Parent: &pb_respool.ResourcePoolID{Value: "respool22"},
+		Parent: &peloton.ResourcePoolID{Value: "respool22"},
 		Resources: []*pb_respool.ResourceConfig{
 			{
 				Reservation: 1,
@@ -415,7 +416,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePool() {
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
+	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: mockResourcePoolName,
 	}
 
@@ -447,7 +448,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolValid
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
-		Parent: &pb_respool.ResourcePoolID{Value: "respool2"},
+		Parent: &peloton.ResourcePoolID{Value: "respool2"},
 		Resources: []*pb_respool.ResourceConfig{
 			{
 				// reservation exceed limit,  should fail
@@ -459,7 +460,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolValid
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
+	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: mockResourcePoolName,
 	}
 
@@ -487,7 +488,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotEx
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
-		Parent: &pb_respool.ResourcePoolID{Value: "respool23"},
+		Parent: &peloton.ResourcePoolID{Value: "respool23"},
 		Resources: []*pb_respool.ResourceConfig{
 			{
 				Kind:        "cpu",
@@ -498,7 +499,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotEx
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
+	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: mockResourcePoolName,
 	}
 
@@ -611,7 +612,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_DeleteResourcePool() {
 	log.Info("TestServiceHandler_DeleteResourcePool called")
 
 	mockResourcePoolName := "respool11"
-	mockResourcePoolID := &pb_respool.ResourcePoolID{
+	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: mockResourcePoolName,
 	}
 	mockResPoolPath := &pb_respool.ResourcePoolPath{

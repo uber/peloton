@@ -47,7 +47,7 @@ func (suite *StateMachineTestSuite) SetupTest() {
 }
 
 func (suite *StateMachineTestSuite) addTasktotracker(task *resmgr.Task) {
-	rootID := resp.ResourcePoolID{Value: respool.RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: respool.RootResPoolID}
 	policy := resp.SchedulingPolicy_PriorityFIFO
 	respoolConfig := &resp.ResourcePoolConfig{
 		Name:      "respool-1",

@@ -3,6 +3,7 @@ package respool
 import (
 	"strings"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	"github.com/pkg/errors"
@@ -14,7 +15,7 @@ type ResourcePoolConfigValidatorFunc func(resTree Tree, resourcePoolConfigData R
 
 // ResourcePoolConfigData holds the data that needs to be validated
 type ResourcePoolConfigData struct {
-	ID                                *respool.ResourcePoolID     // Resource Pool Config ID
+	ID                                *peloton.ResourcePoolID     // Resource Pool Config ID
 	Path                              *respool.ResourcePoolPath   // Resource Pool path
 	ResourcePoolConfig                *respool.ResourcePoolConfig // Resource Pool Configuration
 	SkipRootChildResourceConfigChecks bool                        // TODO Skip child resource config checks for Parent Root T799105

@@ -34,7 +34,7 @@ func (e *VolumeNotFoundError) Error() string {
 type JobStore interface {
 	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error
 	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
-	QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error)
+	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error)
 	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
 	GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error)
@@ -97,10 +97,10 @@ type FrameworkInfoStore interface {
 
 // ResourcePoolStore is the interface to store all the resource pool information
 type ResourcePoolStore interface {
-	CreateResourcePool(ctx context.Context, id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig, createdBy string) error
-	GetResourcePool(ctx context.Context, id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error)
-	DeleteResourcePool(ctx context.Context, id *respool.ResourcePoolID) error
-	UpdateResourcePool(ctx context.Context, id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error
+	CreateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig, createdBy string) error
+	GetResourcePool(ctx context.Context, id *peloton.ResourcePoolID) (*respool.ResourcePoolInfo, error)
+	DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error
+	UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig) error
 	// TODO change to return ResourcePoolInfo
 	GetResourcePoolsByOwner(ctx context.Context, owner string) (map[string]*respool.ResourcePoolConfig, error)
 	GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error)

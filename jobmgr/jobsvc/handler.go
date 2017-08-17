@@ -467,7 +467,7 @@ func (h *serviceHandler) Delete(
 
 // validateResourcePool validates the resource pool before submitting job
 func (h *serviceHandler) validateResourcePool(
-	respoolID *respool.ResourcePoolID,
+	respoolID *peloton.ResourcePoolID,
 ) error {
 	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
 	defer cancelFunc()

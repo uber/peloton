@@ -149,7 +149,7 @@ func (suite *HandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig 
 
 func (suite *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 
-	rootID := pb_respool.ResourcePoolID{Value: "root"}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*pb_respool.ResourcePoolConfig{
@@ -179,25 +179,25 @@ func (suite *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePool
 		},
 		"respool11": {
 			Name:      "respool11",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool1"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
-			Parent:    &pb_respool.ResourcePoolID{Value: "respool2"},
+			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
 		},
@@ -302,10 +302,10 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	log.Info("TestEnqueueDequeueGangsOneResPool called")
 
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
-		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
+		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
 		Gangs:   suite.pendingGangs(),
 	}
-	node, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool3"})
+	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	suite.NoError(err)
 	node.SetEntitlement(suite.getEntitlement())
 	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
@@ -331,12 +331,12 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 
 func (suite *HandlerTestSuite) TestRequeue() {
 	log.Info("TestRequeue called")
-	node, err := suite.resTree.Get(&pb_respool.ResourcePoolID{Value: "respool3"})
+	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	suite.NoError(err)
 	var gangs []*resmgrsvc.Gang
 	gangs = append(gangs, suite.pendingGang0())
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
-		ResPool: &pb_respool.ResourcePoolID{Value: "respool3"},
+		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
 		Gangs:   gangs,
 	}
 
@@ -404,7 +404,7 @@ func (suite *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
 	log.Info("TestEnqueueGangsResPoolNotFound called")
 	respool.InitTree(tally.NoopScope, nil, nil, nil)
 
-	respoolID := &pb_respool.ResourcePoolID{Value: "respool10"}
+	respoolID := &peloton.ResourcePoolID{Value: "respool10"}
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: respoolID,
 		Gangs:   suite.pendingGangs(),

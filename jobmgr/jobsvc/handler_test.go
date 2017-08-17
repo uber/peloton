@@ -173,7 +173,7 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool() {
 
 	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
 	suite.handler.respoolClient = mockRespoolClient
-	respoolID := &respool.ResourcePoolID{
+	respoolID := &peloton.ResourcePoolID{
 		Value: "respool11",
 	}
 	var request = &respool.GetRequest{

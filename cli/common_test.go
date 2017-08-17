@@ -9,6 +9,7 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
 )
@@ -53,7 +54,7 @@ func (suite *commonTestSuite) TestClient_LookupResourcePoolID() {
 				},
 			},
 			response: &respool.LookupResponse{
-				Id: &respool.ResourcePoolID{
+				Id: &peloton.ResourcePoolID{
 					Value: id,
 				},
 				Error: nil,

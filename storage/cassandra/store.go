@@ -312,7 +312,7 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 }
 
 // QueryJobs returns all jobs in the resource pool that matches the spec.
-func (s *Store) QueryJobs(ctx context.Context, respoolID *respool.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error) {
+func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error) {
 	// Query is based on stratio lucene index on jobs.
 	// See https://github.com/Stratio/cassandra-lucene-index
 	// We are using "must" for the labels and only return the jobs that contains all
@@ -1291,7 +1291,7 @@ func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName
 }
 
 // CreateResourcePool creates a resource pool with the resource pool id and the config value
-func (s *Store) CreateResourcePool(ctx context.Context, id *respool.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig, owner string) error {
+func (s *Store) CreateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, resPoolConfig *respool.ResourcePoolConfig, owner string) error {
 	resourcePoolID := id.Value
 	configBuffer, err := json.Marshal(resPoolConfig)
 	if err != nil {
@@ -1316,12 +1316,12 @@ func (s *Store) CreateResourcePool(ctx context.Context, id *respool.ResourcePool
 }
 
 // GetResourcePool gets a resource pool info object
-func (s *Store) GetResourcePool(ctx context.Context, id *respool.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
+func (s *Store) GetResourcePool(ctx context.Context, id *peloton.ResourcePoolID) (*respool.ResourcePoolInfo, error) {
 	return nil, errors.New("unimplemented")
 }
 
 // DeleteResourcePool Deletes the resource pool
-func (s *Store) DeleteResourcePool(ctx context.Context, id *respool.ResourcePoolID) error {
+func (s *Store) DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Delete(resPools).Where(qb.Eq{"respool_id": id.GetValue()})
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
@@ -1331,7 +1331,7 @@ func (s *Store) DeleteResourcePool(ctx context.Context, id *respool.ResourcePool
 }
 
 // UpdateResourcePool Update the resource pool
-func (s *Store) UpdateResourcePool(ctx context.Context, id *respool.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
+func (s *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
 	return errors.New("unimplemented")
 }
 
