@@ -32,6 +32,9 @@ import (
 
 func setupTwoGroupsAndEntity() (*placement.Group, *placement.Group, *placement.Entity) {
 	metrics1 := metrics.NewMetricSet()
+	metrics1.Set(metrics.MemoryTotal, 128*metrics.GiB)
+	metrics1.Set(metrics.MemoryUsed, 32*metrics.GiB)
+	metrics1.Set(metrics.MemoryFree, 96*metrics.GiB)
 	metrics1.Set(metrics.DiskTotal, 2*metrics.TiB)
 	metrics1.Set(metrics.DiskUsed, 1*metrics.TiB)
 	metrics1.Set(metrics.DiskFree, 1*metrics.TiB)
@@ -48,6 +51,9 @@ func setupTwoGroupsAndEntity() (*placement.Group, *placement.Group, *placement.E
 	}
 
 	metrics2 := metrics.NewMetricSet()
+	metrics2.Set(metrics.MemoryTotal, 128*metrics.GiB)
+	metrics2.Set(metrics.MemoryUsed, 64*metrics.GiB)
+	metrics2.Set(metrics.MemoryFree, 64*metrics.GiB)
 	metrics2.Set(metrics.DiskTotal, 2*metrics.TiB)
 	metrics2.Set(metrics.DiskUsed, 0.5*metrics.TiB)
 	metrics2.Set(metrics.DiskFree, 1.5*metrics.TiB)
@@ -112,8 +118,8 @@ func TestCustomByInverse(t *testing.T) {
 
 func TestCustomByInverseDivisionByZero(t *testing.T) {
 	custom := Inverse(
-		// The groups have no memory metrics so we divide by zero
-		Metric(GroupSource, metrics.MemoryFree))
+		// The groups have no network metrics so we divide by zero
+		Metric(GroupSource, metrics.NetworkFree))
 	group1, group2, entity := setupTwoGroupsAndEntity()
 
 	assert.Equal(t, math.Inf(1), custom.Tuple(group1, entity)[0])
@@ -204,4 +210,21 @@ func TestOrderByRelationThenReverseFreeDisk(t *testing.T) {
 	group1, group2, entity := setupTwoGroupsAndEntity()
 
 	assert.True(t, ordering.Less(group2, group1, entity))
+}
+
+func TestOrderBySummationOfFreeMemoryAndDisk(t *testing.T) {
+	custom := Negate(
+		Summation(
+			Metric(GroupSource, metrics.MemoryFree),
+			Metric(GroupSource, metrics.DiskFree),
+		),
+	)
+	ordering := NewCustomOrdering(custom)
+	group1, group2, entity := setupTwoGroupsAndEntity()
+
+	assert.True(t, ordering.Less(group2, group1, entity))
+	expected1 := group1.Metrics.Get(metrics.MemoryFree) + group1.Metrics.Get(metrics.DiskFree)
+	assert.Equal(t, -expected1, custom.Tuple(group1, entity)[0])
+	expected2 := group2.Metrics.Get(metrics.MemoryFree) + group2.Metrics.Get(metrics.DiskFree)
+	assert.Equal(t, -expected2, custom.Tuple(group2, entity)[0])
 }

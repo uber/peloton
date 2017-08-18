@@ -123,6 +123,22 @@ var (
 		Name: "file_descriptors_free",
 		Unit: "#",
 	}
+
+	// PortsTotal represents the total number of ports available for a group.
+	PortsTotal = MetricType{
+		Name: "ports_total",
+		Unit: "#",
+	}
+	// PortsUsed represents the used number of ports for a group.
+	PortsUsed = MetricType{
+		Name: "ports_used",
+		Unit: "#",
+	}
+	// PortsFree represents the free number of ports for a group.
+	PortsFree = MetricType{
+		Name: "ports_free",
+		Unit: "#",
+	}
 )
 
 const (

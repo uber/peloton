@@ -47,9 +47,15 @@ func (entity *Entity) Fulfilled(group *Group, transcript *requirements.Transcrip
 		}
 	}
 	if entity.AffinityRequirement != nil {
-		if !entity.AffinityRequirement.Fulfilled(group.Labels, group.Relations, transcript) {
+		if !entity.AffinityRequirement.Fulfilled(
+			group.Labels, group.Relations, transcript.Subscript(entity.AffinityRequirement)) {
 			passed = false
 		}
+	}
+	if passed {
+		transcript.IncPassed()
+	} else {
+		transcript.IncFailed()
 	}
 	return passed
 }

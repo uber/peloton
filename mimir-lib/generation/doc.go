@@ -19,42 +19,24 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package requirements
+/*
+Package generation provides builders to easily build groups, entities and their resource and affinity requirements and
+placement orderings. All builders have methods to set each specific field of the type being build and a generate method
+which will then create an instance of the type from the specifications given to the builder.
 
-import (
-	"github.com/stretchr/testify/assert"
-	"testing"
-)
-
-func TestTranscript_IncFailed(t *testing.T) {
-	transcript := NewTranscript("transcript")
-	transcript.IncFailed()
-
-	assert.Equal(t, 1, transcript.GroupsFailed)
-}
-
-func TestTranscript_IncPassed(t *testing.T) {
-	transcript := NewTranscript("transcript")
-	transcript.IncPassed()
-
-	assert.Equal(t, 1, transcript.GroupsPassed)
-}
-
-func TestTranscript_Subscript(t *testing.T) {
-	transcript := NewTranscript("transcript")
-
-	assert.Equal(t, 0, len(transcript.Subscripts))
-	requirement := NewAndRequirement()
-	subscript := transcript.Subscript(requirement)
-	assert.Equal(t, 1, len(transcript.Subscripts))
-	assert.Equal(t, subscript, transcript.Subscripts[requirement])
-}
-
-func TestTranscript_Print(t *testing.T) {
-	requirement := NewAndRequirement()
-	transcript := NewTranscript("transcript")
-	transcript.Subscript(requirement)
-	result := transcript.String()
-	assert.Contains(t, result, "transcript passed 0 times and failed 0 times")
-	assert.Contains(t, result, "and passed 0 times and failed 0 times")
-}
+Building a group can look like this:
+	random := rand.New(rand.NewSource(42))
+	// Create a template for the group name
+	nameTemplate := labels.NewLabelTemplate("schemadock$id$-$dc$")
+	// Create the builder
+	builder := NewGroupBuilder().
+		Name(nameTemplate)
+	// Bind values to the names in the template, this makes reusing the builder to generate groups with different
+	// names easy.
+	nameTemplate.
+		Bind("id", "42").
+		Bind("dc", "dc1")
+	// Generate a group with name "schemadock42-dc1"
+	group := builder.Generate(random, time.Now())
+*/
+package generation

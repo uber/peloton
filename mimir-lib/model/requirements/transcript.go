@@ -21,6 +21,11 @@
 
 package requirements
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Transcript represents a transcript of which requirements passed and failed when evaluating groups for an entity.
 type Transcript struct {
 	Requirement  string
@@ -68,4 +73,19 @@ func (transcript *Transcript) IncFailed() {
 		return
 	}
 	transcript.GroupsFailed++
+}
+
+func (transcript *Transcript) string(indent int) string {
+	space := strings.Repeat(" ", indent)
+	result := fmt.Sprintf("%v%v passed %v times and failed %v times\n",
+		space, transcript.Requirement, transcript.GroupsPassed, transcript.GroupsFailed)
+	for _, subTranscript := range transcript.Subscripts {
+		result += subTranscript.string(indent + 1)
+	}
+	return result
+}
+
+// String will create a human readable representation of the transcript.
+func (transcript *Transcript) String() string {
+	return transcript.string(0)
 }

@@ -46,9 +46,9 @@ func (suite *HostOperationTestSuite) TestGetHostOperations() {
 	testTask := createStatefulTask(0)
 	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
 	hostOffer := &hostsvc.HostOffer{
-		Hostname: fmt.Sprintf("hostname-%d", "host0"),
+		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
-			Value: util.PtrPrintf(fmt.Sprintf("agent-%d", "host0")),
+			Value: util.PtrPrintf(fmt.Sprintf("agent-%v", "host0")),
 		},
 	}
 	placement := createPlacements(testTask, hostOffer)
@@ -88,9 +88,9 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
 	testTask := createStatefulTask(0)
 	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
 	hostOffer := &hostsvc.HostOffer{
-		Hostname: fmt.Sprintf("hostname-%d", "host0"),
+		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
-			Value: util.PtrPrintf(fmt.Sprintf("agent-%d", "host0")),
+			Value: util.PtrPrintf(fmt.Sprintf("agent-%v", "host0")),
 		},
 	}
 	placement := createPlacements(testTask, hostOffer)
@@ -122,9 +122,9 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
 	testTask := createStatefulTask(0)
 	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
 	hostOffer := &hostsvc.HostOffer{
-		Hostname: fmt.Sprintf("hostname-%d", "host0"),
+		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
-			Value: util.PtrPrintf(fmt.Sprintf("agent-%d", "host0")),
+			Value: util.PtrPrintf(fmt.Sprintf("agent-%v", "host0")),
 		},
 	}
 	placement := createPlacements(testTask, hostOffer)
@@ -169,9 +169,9 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsIncorrectMesosTaskIDFo
 	testTask.GetRuntime().GetMesosTaskId().Value = util.PtrPrintf("test-format")
 	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
 	hostOffer := &hostsvc.HostOffer{
-		Hostname: fmt.Sprintf("hostname-%d", "host0"),
+		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
-			Value: util.PtrPrintf(fmt.Sprintf("agent-%d", "host0")),
+			Value: util.PtrPrintf(fmt.Sprintf("agent-%v", "host0")),
 		},
 	}
 	placement := createPlacements(testTask, hostOffer)

@@ -73,6 +73,15 @@ func Inverse(subExpression Custom) Custom {
 	}
 }
 
+// Summation will take the tuples of the sub expressions and return a tuple which will have the length of the smallest
+// tuple returned from the sub expressions where each entry is the summation of the corresponding entry in the
+// tuple from the sub expressions.
+func Summation(subExpressions ...Custom) Custom {
+	return &bySummation{
+		subExpressions: subExpressions,
+	}
+}
+
 // Multiply will take the tuples of the sub expressions and return a tuple which will have the length of the smallest
 // tuple returned from the sub expressions where each entry is the multiplication of the corresponding entry in the
 // tuple from the sub expressions.
@@ -163,6 +172,35 @@ func (by *byInverse) Tuple(group *placement.Group, entity *placement.Entity) []f
 		tuple[i] = 1.0 / tuple[i]
 	}
 	return tuple
+}
+
+type bySummation struct {
+	subExpressions []Custom
+}
+
+func (by *bySummation) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
+	tuples := make([][]float64, 0, len(by.subExpressions))
+	minLength := math.MaxInt64
+	for _, subExpression := range by.subExpressions {
+		t := subExpression.Tuple(group, entity)
+		if len(t) < minLength {
+			minLength = len(t)
+		}
+		tuples = append(tuples, t)
+	}
+	var result []float64
+	if len(by.subExpressions) > 0 {
+		result = make([]float64, minLength)
+	}
+	for i := range result {
+		result[i] = 0.0
+	}
+	for _, tuple := range tuples {
+		for i := range result {
+			result[i] += tuple[i]
+		}
+	}
+	return result
 }
 
 type byMultiply struct {
