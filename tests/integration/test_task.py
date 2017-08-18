@@ -38,8 +38,7 @@ def test__stop_tasks_when_mesos_master_down_and_jobmgr_restarts(
 
     mesos_master.stop()
     job.stop()
-    jobmgr.stop()
-
+    jobmgr.restart()
     mesos_master.start()
-    jobmgr.start()
+
     job.wait_for_state(goal_state='KILLED')

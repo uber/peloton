@@ -1,4 +1,4 @@
-package goalstate
+package tracked
 
 import (
 	"container/heap"
@@ -16,8 +16,22 @@ type queueItem interface {
 	index() int
 }
 
-func newTimerQueue() *timeoutQueue {
-	q := &timeoutQueue{
+type queueItemMixin struct {
+	queueIndex    int
+	queueDeadline time.Time
+}
+
+func (i *queueItemMixin) index() int                     { return i.queueIndex }
+func (i *queueItemMixin) setIndex(index int)             { i.queueIndex = index }
+func (i *queueItemMixin) deadline() time.Time            { return i.queueDeadline }
+func (i *queueItemMixin) setDeadline(deadline time.Time) { i.queueDeadline = deadline }
+
+func newQueueItemMixing() queueItemMixin {
+	return queueItemMixin{queueIndex: -1}
+}
+
+func newDeadlineQueue() *deadlineQueue {
+	q := &deadlineQueue{
 		pq: &priorityQueue{},
 	}
 
@@ -26,11 +40,11 @@ func newTimerQueue() *timeoutQueue {
 	return q
 }
 
-type timeoutQueue struct {
+type deadlineQueue struct {
 	pq *priorityQueue
 }
 
-func (q *timeoutQueue) nextDeadline() time.Time {
+func (q *deadlineQueue) nextDeadline() time.Time {
 	if q.pq.Len() == 0 {
 		return time.Time{}
 	}
@@ -38,7 +52,7 @@ func (q *timeoutQueue) nextDeadline() time.Time {
 	return (*q.pq)[0].deadline()
 }
 
-func (q *timeoutQueue) popIfReady() queueItem {
+func (q *deadlineQueue) popIfReady() queueItem {
 	if q.pq.Len() == 0 {
 		return nil
 	}
@@ -46,7 +60,7 @@ func (q *timeoutQueue) popIfReady() queueItem {
 	return heap.Pop(q.pq).(queueItem)
 }
 
-func (q *timeoutQueue) update(item queueItem) {
+func (q *deadlineQueue) update(item queueItem) {
 	// Check if it's not in the queue.
 	if item.index() == -1 {
 		if item.deadline().IsZero() {

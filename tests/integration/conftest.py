@@ -25,10 +25,16 @@ def setup_cluster(request):
         log.info('teardown cluster')
         if os.getenv('CLUSTER', ''):
             log.info('cluster mode, no teardown actions')
+        elif os.getenv('NO_TEARDOWN', ''):
+            log.info('skip teardown')
         else:
-            if os.getenv('NO_TEARDOWN', ''):
-                log.info('skip teardown')
-                return
+            log.info('teardown, writing logs')
+            try:
+                cli = Client(base_url='unix://var/run/docker.sock')
+                log.info(cli.logs('peloton-jobmgr0'))
+                log.info(cli.logs('peloton-jobmgr1'))
+            except Exception as e:
+                log.info(e)
             teardown()
 
     request.addfinalizer(teardown_cluster)
@@ -48,6 +54,11 @@ class Container(object):
         for name in self._names:
             self._cli.stop(name, timeout=0)
             log.info('%s stopped', name)
+
+    def restart(self):
+        for name in self._names:
+            self._cli.restart(name, timeout=0)
+            log.info('%s restarted', name)
 
 
 @pytest.fixture()

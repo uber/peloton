@@ -23,8 +23,8 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/jobmgr/task/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -48,7 +48,7 @@ func InitServiceHandler(
 	frameworkInfoStore storage.FrameworkInfoStore,
 	volumeStore storage.PersistentVolumeStore,
 	runtimeUpdater *job.RuntimeUpdater,
-	goalstateEngine goalstate.Engine,
+	trackedManager tracked.Manager,
 	mesosAgentWorkDir string) {
 
 	handler := &serviceHandler{
@@ -61,7 +61,7 @@ func InitServiceHandler(
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		httpClient:         &http.Client{Timeout: _httpClientTimeout},
 		taskLauncher:       launcher.GetLauncher(),
-		goalstateEngine:    goalstateEngine,
+		trackedManager:     trackedManager,
 		mesosAgentWorkDir:  mesosAgentWorkDir,
 	}
 	d.Register(task.BuildTaskManagerYARPCProcedures(handler))
@@ -78,7 +78,7 @@ type serviceHandler struct {
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	httpClient         *http.Client
 	taskLauncher       launcher.Launcher
-	goalstateEngine    goalstate.Engine
+	trackedManager     tracked.Manager
 	mesosAgentWorkDir  string
 }
 
@@ -418,11 +418,7 @@ func (m *serviceHandler) Stop(
 			break
 		}
 
-		if err := m.goalstateEngine.UpdateTaskGoalState(ctx, taskInfo); err != nil {
-			log.WithError(err).
-				WithField("task_id", taskID).
-				Error("failed to immediatly process new goalstate")
-		}
+		m.trackedManager.AddJob(taskInfo.GetJobId()).UpdateTask(instID, taskInfo.GetRuntime())
 
 		stoppedInstanceIds = append(stoppedInstanceIds, instID)
 		m.metrics.TaskStop.Inc(1)

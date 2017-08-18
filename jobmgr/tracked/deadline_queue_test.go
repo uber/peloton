@@ -1,4 +1,4 @@
-package goalstate
+package tracked
 
 import (
 	"testing"
@@ -22,8 +22,7 @@ func (i *testQueueItem) deadline() time.Time {
 }
 
 func TestTimeoutQueueOrdering(t *testing.T) {
-
-	q := newTimerQueue()
+	q := newDeadlineQueue()
 
 	i1 := &testQueueItem{1, -1}
 	i2 := &testQueueItem{2, -1}

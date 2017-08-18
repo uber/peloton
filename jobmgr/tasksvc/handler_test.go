@@ -21,7 +21,7 @@ import (
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	launcher_mocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 
-	"code.uber.internal/infra/peloton/jobmgr/task/goalstate/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -95,8 +95,9 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	engineMock := mocks.NewMockEngine(ctrl)
-	suite.handler.goalstateEngine = engineMock
+	trackedMock := mocks.NewMockManager(ctrl)
+	suite.handler.trackedManager = trackedMock
+	jobMock := mocks.NewMockJob(ctrl)
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -109,13 +110,17 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 		mockTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(suite.taskInfos, nil),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
-		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
+		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
-		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
+		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
-		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
+		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
-		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
+		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(),
 	)
 
 	var request = &task.StopRequest{
@@ -138,8 +143,9 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	engineMock := mocks.NewMockEngine(ctrl)
-	suite.handler.goalstateEngine = engineMock
+	trackedMock := mocks.NewMockManager(ctrl)
+	suite.handler.trackedManager = trackedMock
+	jobMock := mocks.NewMockJob(ctrl)
 
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
@@ -158,7 +164,8 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
 			UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
-		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), suite.taskInfos[1]).Times(1).Return(nil),
+		trackedMock.EXPECT().AddJob(suite.taskInfos[1].GetJobId()).Return(jobMock),
+		jobMock.EXPECT().UpdateTask(gomock.Any(), suite.taskInfos[1].GetRuntime()).Return(),
 	)
 
 	var request = &task.StopRequest{
@@ -182,8 +189,9 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	engineMock := mocks.NewMockEngine(ctrl)
-	suite.handler.goalstateEngine = engineMock
+	trackedMock := mocks.NewMockManager(ctrl)
+	suite.handler.trackedManager = trackedMock
+	jobMock := mocks.NewMockJob(ctrl)
 
 	taskInfos := make(map[uint32]*task.TaskInfo)
 	taskInfos[1] = suite.taskInfos[1]
@@ -202,9 +210,11 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(taskInfos, nil),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
-		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
+		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(),
 		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Times(1).Return(nil),
-		engineMock.EXPECT().UpdateTaskGoalState(gomock.Any(), gomock.Any()).Times(1).Return(nil),
+		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
+		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(),
 	)
 
 	var request = &task.StopRequest{

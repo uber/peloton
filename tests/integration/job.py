@@ -17,7 +17,7 @@ RESPOOL_ROOT = '/'
 
 
 class IntegrationTestConfig(object):
-    def __init__(self, pool_file='test_respool.yaml', max_retry_attempts=40,
+    def __init__(self, pool_file='test_respool.yaml', max_retry_attempts=60,
                  sleep_time_sec=1):
         respool_config_dump = load_test_config(pool_file)
         respool_config = respool.ResourcePoolConfig()
@@ -70,21 +70,25 @@ class Job(object):
         start = time.time()
         log.info('waiting for state %s', goal_state)
         while attempts < self.config.max_retry_attempts:
-            request = job.GetRequest(
-                id=peloton.JobID(value=self.job_id),
-            )
-            resp = self.client.job_svc.get(request)
-            runtime = resp.jobInfo.runtime
-            new_state = job.JobState.Name(runtime.state)
-            if state != new_state:
-                log.info('transitioned to state %s', new_state)
-            state = new_state
-            if state == goal_state:
-                break
-            log.debug(format_stats(runtime.taskStats))
-            assert state != failed_state
-            time.sleep(self.config.sleep_time_sec)
-            attempts += 1
+            try:
+                request = job.GetRequest(
+                    id=peloton.JobID(value=self.job_id),
+                )
+                resp = self.client.job_svc.get(request)
+                runtime = resp.jobInfo.runtime
+                new_state = job.JobState.Name(runtime.state)
+                if state != new_state:
+                    log.info('transitioned to state %s', new_state)
+                state = new_state
+                if state == goal_state:
+                    break
+                log.debug(format_stats(runtime.taskStats))
+                assert state != failed_state
+            except Exception as e:
+                log.warn(e)
+            finally:
+                time.sleep(self.config.sleep_time_sec)
+                attempts += 1
 
         end = time.time()
         elapsed = end - start

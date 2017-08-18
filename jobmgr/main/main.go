@@ -13,12 +13,13 @@ import (
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/jobmgr"
+	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
-	"code.uber.internal/infra/peloton/jobmgr/task/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/tasksvc"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/upgrade"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/stores"
@@ -270,8 +271,8 @@ func main() {
 		},
 	})
 
-	taskOperator := goalstate.NewTaskOperator(dispatcher)
-	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, jobStore, taskStore, taskOperator, rootScope)
+	trackedManager := tracked.NewManager(dispatcher)
+	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, jobStore, taskStore, rootScope)
 
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
@@ -308,7 +309,7 @@ func main() {
 		frameworkInfoStore,
 		volumeStore,
 		runtimeUpdater,
-		goalstateEngine,
+		trackedManager,
 		*mesosAgentWorkDir,
 	)
 

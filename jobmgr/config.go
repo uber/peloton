@@ -1,7 +1,7 @@
 package jobmgr
 
 import (
-	"code.uber.internal/infra/peloton/jobmgr/task/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/upgrade"
 )
