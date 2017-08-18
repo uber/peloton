@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/common/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
 	"code.uber.internal/infra/peloton/hostmgr/factory/task"
+	"code.uber.internal/infra/peloton/hostmgr/hostmap"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
@@ -727,6 +728,19 @@ func (h *serviceHandler) ClusterCapacity(
 	// Get scalar resource from Mesos resources
 	tAllocatedResources := scalar.FromMesosResources(allocatedResources)
 
+	agentMap := hostmap.GetAgentMap()
+	if agentMap == nil {
+		h.metrics.ClusterCapacityFail.Inc(1)
+		log.Error("error getting host agentmap")
+		return &hostsvc.ClusterCapacityResponse{
+			Error: &hostsvc.ClusterCapacityResponse_Error{
+				ClusterUnavailable: &hostsvc.ClusterUnavailable{
+					Message: "error getting host agentmap",
+				},
+			},
+		}, nil
+	}
+
 	h.metrics.ClusterCapacity.Inc(1)
 	clusterCapacityResponse := &hostsvc.ClusterCapacityResponse{
 		Resources: []*hostsvc.Resource{
@@ -742,6 +756,21 @@ func (h *serviceHandler) ClusterCapacity(
 			}, {
 				Kind:     common.MEMORY,
 				Capacity: tAllocatedResources.Mem,
+			},
+		},
+		PhysicalResources: []*hostsvc.Resource{
+			{
+				Kind:     common.CPU,
+				Capacity: agentMap.Capacity.CPU,
+			}, {
+				Kind:     common.DISK,
+				Capacity: agentMap.Capacity.Disk,
+			}, {
+				Kind:     common.GPU,
+				Capacity: agentMap.Capacity.GPU,
+			}, {
+				Kind:     common.MEMORY,
+				Capacity: agentMap.Capacity.Mem,
 			},
 		},
 	}

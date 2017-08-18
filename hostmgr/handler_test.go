@@ -16,6 +16,7 @@ import (
 	"github.com/uber-go/tally"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -23,6 +24,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/reservation"
+	"code.uber.internal/infra/peloton/hostmgr/hostmap"
 	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -43,6 +45,13 @@ const (
 
 	_taskIDFmt  = "testjob-%d-abcdef12-abcd-1234-5678-1234567890ab"
 	_defaultCmd = "/bin/sh"
+
+	_cpuName  = "cpus"
+	_memName  = "mem"
+	_diskName = "disk"
+	_gpuName  = "gpus"
+
+	_defaultResourceValue = 1
 )
 
 var (
@@ -699,6 +708,16 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	scalerVal := 200.0
 	name := "cpus"
 
+	loader := &hostmap.Loader{
+		OperatorClient: suite.masterOperatorClient,
+		Scope:          suite.testScope,
+	}
+	numAgents := 2
+	response := makeAgentsResponse(numAgents)
+	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+
+	loader.Load(nil)
+
 	tests := []struct {
 		err         error
 		response    []*mesos.Resource
@@ -757,9 +776,14 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 				resp.Error.ClusterUnavailable.Message,
 			)
 			suite.Nil(resp.Resources)
+			suite.Nil(resp.PhysicalResources)
 		} else {
 			suite.Nil(resp.Error)
 			suite.NotNil(resp.Resources)
+			suite.Equal(4, len(resp.PhysicalResources))
+			for _, v := range resp.PhysicalResources {
+				suite.Equal(v.Capacity, float64(numAgents))
+			}
 		}
 	}
 }
@@ -1169,6 +1193,45 @@ func createHostLaunchOperation() *hostsvc.OfferOperation {
 
 func createReservationLabels() *mesos.Labels {
 	return reservation.CreateReservationLabels("testjob", 0, "hostname-0")
+}
+
+func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
+	response := &mesos_master.Response_GetAgents{
+		Agents: []*mesos_master.Response_GetAgents_Agent{},
+	}
+	for i := 0; i < numAgents; i++ {
+		resVal := float64(_defaultResourceValue)
+		tmpID := fmt.Sprintf("id-%d", i)
+		resources := []*mesos.Resource{
+			util.NewMesosResourceBuilder().
+				WithName(_cpuName).
+				WithValue(resVal).
+				Build(),
+			util.NewMesosResourceBuilder().
+				WithName(_memName).
+				WithValue(resVal).
+				Build(),
+			util.NewMesosResourceBuilder().
+				WithName(_diskName).
+				WithValue(resVal).
+				Build(),
+			util.NewMesosResourceBuilder().
+				WithName(_gpuName).
+				WithValue(resVal).
+				Build(),
+		}
+		getAgent := &mesos_master.Response_GetAgents_Agent{
+			AgentInfo: &mesos.AgentInfo{
+				Id: &mesos.AgentID{
+					Value: &tmpID,
+				},
+				Resources: resources,
+			},
+		}
+		response.Agents = append(response.Agents, getAgent)
+	}
+
+	return response
 }
 
 func TestHostManagerTestSuite(t *testing.T) {

@@ -434,4 +434,7 @@ message ClusterCapacityResponse {
 
   // Resources allocated
   repeated Resource resources = 2;
+
+  // Resources for total physical capacity.
+  repeated Resource physicalResources = 3;
 }
