@@ -214,23 +214,30 @@ func main() {
 		},
 	})
 
-	// Initialize service handlers
+	// Initialize resource pool service handlers
 	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore, taskStore)
 
 	// Initializing the resmgr state machine
 	task.InitTaskTracker(rootScope)
 
+	// Initializing the task scheduler
 	task.InitScheduler(rootScope, cfg.ResManager.TaskSchedulingPeriod,
 		task.GetTracker())
 
+	// Initializing the entitlement calculator
 	entitlement.InitCalculator(
 		dispatcher,
 		cfg.ResManager.EntitlementCaculationPeriod,
 		rootScope,
 	)
 
+	// Initializing the task reconciler
+	task.InitReconciler(task.GetTracker(), taskStore, rootScope, cfg.ResManager.TaskReconciliationPeriod)
+
+	// Initialize resource manager service handlers
 	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker(), cfg.ResManager)
 
+	// Initialize recovery
 	resmgr.InitRecovery(rootScope, jobStore, taskStore, serviceHandler, cfg.ResManager)
 
 	server := resmgr.NewServer(

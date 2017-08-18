@@ -23,6 +23,7 @@ type Server struct {
 	getTaskScheduler         func() task.Scheduler
 	getEntitlementCalculator func() entitlement.Calculator
 	getRecoveryHandler       func() RecoveryHandler
+	getReconciler            func() task.Reconciler
 }
 
 // NewServer will create the elect handle object
@@ -34,6 +35,7 @@ func NewServer(parent tally.Scope, httpPort, grpcPort int) *Server {
 		getTaskScheduler:         task.GetScheduler,
 		getEntitlementCalculator: entitlement.GetCalculator,
 		getRecoveryHandler:       GetRecoveryHandler,
+		getReconciler:            task.GetReconciler,
 		metrics:                  NewMetrics(parent),
 	}
 	return &server
@@ -68,9 +70,16 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	err = s.getEntitlementCalculator().Start()
 	if err != nil {
-		log.Errorf("Failed to start entitlement Calculator")
+		log.Errorf("Failed to start entitlement calculator")
 		return err
 	}
+
+	err = s.getReconciler().Start()
+	if err != nil {
+		log.Errorf("Failed to start task reconciler")
+		return err
+	}
+
 	return nil
 }
 
@@ -102,7 +111,13 @@ func (s *Server) LostLeadershipCallback() error {
 
 	err = s.getEntitlementCalculator().Stop()
 	if err != nil {
-		log.Errorf("Failed to stop entitlement Calculator")
+		log.Errorf("Failed to stop entitlement calculator")
+		return err
+	}
+
+	err = s.getReconciler().Stop()
+	if err != nil {
+		log.Errorf("Failed to stop task reconciler")
 		return err
 	}
 

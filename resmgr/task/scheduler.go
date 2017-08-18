@@ -105,25 +105,26 @@ func (s *scheduler) Start() error {
 	go func() {
 		defer atomic.StoreInt32(&s.runningState, runningStateNotStarted)
 		atomic.StoreInt32(&s.runningState, runningStateRunning)
+		ticker := time.NewTicker(s.schedulingPeriod)
+		defer ticker.Stop()
 
 		log.Info("Starting Task Scheduler")
 		started <- 0
 
 		for {
-			// TODO: we need to remove timer and use chanel for signaling
+			// TODO: we need to remove ticker and use chanel for signaling
 			// For three cases
 			// 1. When there is new Item in empty list
 			// 2. When there is new Entitlement calculation
 			// 3. When there is change in resources in resource pool
-			timer := time.NewTimer(s.schedulingPeriod)
+
 			select {
 			case <-s.stopChan:
 				log.Info("Exiting Task Scheduler")
 				return
-			case <-timer.C:
+			case <-ticker.C:
 				s.scheduleTasks()
 			}
-			timer.Stop()
 		}
 	}()
 	// Wait until go routine is started

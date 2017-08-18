@@ -29,6 +29,7 @@ resmgr:
   grpc_port: 5394
   task_scheduling_period: 100ms
   entitlement_calculation_period: 60s
+  task_reconciliation_period: 1h
   task:
     placing_timeout: 10m
     launching_timeout: 20m

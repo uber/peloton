@@ -112,7 +112,7 @@ func (c *calculator) Start() error {
 
 			select {
 			case <-c.stopChan:
-				log.Info("Exiting Task Scheduler")
+				log.Info("Exiting Entitlement calculator")
 				return
 			case <-ticker.C:
 			case <-c.resPoolTree.UpdatedChannel():

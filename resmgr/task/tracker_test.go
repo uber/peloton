@@ -19,7 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 )
 
-type StateMachineTestSuite struct {
+type TrackerTestSuite struct {
 	suite.Suite
 	mockCtrl *gomock.Controller
 
@@ -30,7 +30,7 @@ type StateMachineTestSuite struct {
 	hostname           string
 }
 
-func (suite *StateMachineTestSuite) SetupTest() {
+func (suite *TrackerTestSuite) SetupTest() {
 	InitTaskTracker(tally.NoopScope)
 	suite.tracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
@@ -46,7 +46,7 @@ func (suite *StateMachineTestSuite) SetupTest() {
 	suite.addTasktotracker(suite.task)
 }
 
-func (suite *StateMachineTestSuite) addTasktotracker(task *resmgr.Task) {
+func (suite *TrackerTestSuite) addTasktotracker(task *resmgr.Task) {
 	rootID := peloton.ResourcePoolID{Value: respool.RootResPoolID}
 	policy := resp.SchedulingPolicy_PriorityFIFO
 	respoolConfig := &resp.ResourcePoolConfig{
@@ -60,7 +60,7 @@ func (suite *StateMachineTestSuite) addTasktotracker(task *resmgr.Task) {
 }
 
 // Returns resource configs
-func (suite *StateMachineTestSuite) getResourceConfig() []*resp.ResourceConfig {
+func (suite *TrackerTestSuite) getResourceConfig() []*resp.ResourceConfig {
 
 	resConfigs := []*resp.ResourceConfig{
 		{
@@ -91,7 +91,7 @@ func (suite *StateMachineTestSuite) getResourceConfig() []*resp.ResourceConfig {
 	return resConfigs
 }
 
-func (suite *StateMachineTestSuite) createTask(instance int) *resmgr.Task {
+func (suite *TrackerTestSuite) createTask(instance int) *resmgr.Task {
 	taskID := fmt.Sprintf("job1-%d", instance)
 	return &resmgr.Task{
 		Name:     taskID,
@@ -108,18 +108,18 @@ func (suite *StateMachineTestSuite) createTask(instance int) *resmgr.Task {
 	}
 }
 
-func TestStateMachine(t *testing.T) {
-	suite.Run(t, new(StateMachineTestSuite))
+func TestTracker(t *testing.T) {
+	suite.Run(t, new(TrackerTestSuite))
 }
 
-func (suite *StateMachineTestSuite) TestTasksByHosts() {
+func (suite *TrackerTestSuite) TestTasksByHosts() {
 	result := suite.tracker.TasksByHosts([]string{suite.hostname}, suite.task.Type)
 	suite.Equal(1, len(result))
 	suite.Equal(1, len(result[suite.hostname]))
 	suite.Equal(suite.task, result[suite.hostname][0].task)
 }
 
-func (suite *StateMachineTestSuite) TestTransition() {
+func (suite *TrackerTestSuite) TestTransition() {
 	rmTask := suite.tracker.GetTask(suite.task.Id)
 	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
@@ -127,7 +127,7 @@ func (suite *StateMachineTestSuite) TestTransition() {
 	suite.NoError(err)
 }
 
-func (suite *StateMachineTestSuite) TestSetPlacement() {
+func (suite *TrackerTestSuite) TestSetPlacement() {
 	oldHostname := suite.hostname
 	for i := 0; i < 5; i++ {
 		newHostname := fmt.Sprintf("new-hostname-%v", i)
@@ -143,7 +143,7 @@ func (suite *StateMachineTestSuite) TestSetPlacement() {
 	}
 }
 
-func (suite *StateMachineTestSuite) TestSetPlacementHost() {
+func (suite *TrackerTestSuite) TestSetPlacementHost() {
 	suite.tracker.Clear()
 	placement := &resmgr.Placement{}
 	var tasks []*peloton.TaskID
@@ -160,7 +160,7 @@ func (suite *StateMachineTestSuite) TestSetPlacementHost() {
 	suite.tracker.Clear()
 }
 
-func (suite *StateMachineTestSuite) TestDelete() {
+func (suite *TrackerTestSuite) TestDelete() {
 	suite.tracker.DeleteTask(suite.task.Id)
 	rmTask := suite.tracker.GetTask(suite.task.Id)
 	suite.Nil(rmTask)
@@ -168,12 +168,12 @@ func (suite *StateMachineTestSuite) TestDelete() {
 	suite.Equal(0, len(result))
 }
 
-func (suite *StateMachineTestSuite) TestClear() {
+func (suite *TrackerTestSuite) TestClear() {
 	suite.tracker.Clear()
 	suite.Equal(suite.tracker.GetSize(), int64(0))
 }
 
-func (suite *StateMachineTestSuite) TestAddResources() {
+func (suite *TrackerTestSuite) TestAddResources() {
 	res := suite.respool.GetAllocation()
 	suite.Equal(res.GetCPU(), float64(0))
 	suite.tracker.AddResources(&peloton.TaskID{Value: "job1-1"})
@@ -181,7 +181,7 @@ func (suite *StateMachineTestSuite) TestAddResources() {
 	suite.Equal(res.GetCPU(), float64(1))
 }
 
-func (suite *StateMachineTestSuite) TestGetTaskStates() {
+func (suite *TrackerTestSuite) TestGetTaskStates() {
 	result := suite.tracker.GetActiveTasks("", "")
 	suite.Equal(1, len(result))
 

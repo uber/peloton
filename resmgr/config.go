@@ -20,6 +20,9 @@ type Config struct {
 	// Period to run entitlement calculator
 	EntitlementCaculationPeriod time.Duration `yaml:"entitlement_calculation_period"`
 
+	// Period to run task reconciliation
+	TaskReconciliationPeriod time.Duration `yaml:"task_reconciliation_period"`
+
 	// RM Task Config
 	RmTaskConfig *task.Config `yaml:"task"`
 }

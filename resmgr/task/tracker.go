@@ -96,7 +96,7 @@ func InitTaskTracker(parent tally.Scope) {
 	log.Info("Resource Manager Tracker is initialized")
 }
 
-// GetTracker gets the singelton object of the tracker
+// GetTracker gets the singleton object of the tracker
 func GetTracker() Tracker {
 	if rmtracker == nil {
 		log.Fatal("Tracker is not initialized")
