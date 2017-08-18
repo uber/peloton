@@ -3,6 +3,8 @@
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
 
+VENDOR = vendor
+
 # all .go files that don't exist in hidden directories
 ALL_SRC := $(shell find . -name "*.go" | grep -v -e Godeps -e vendor -e go-build \
 	-e ".*/\..*" \
@@ -60,6 +62,8 @@ install:
 	glide --version || go get github.com/Masterminds/glide
 	rm -rf vendor && glide install
 
+$(VENDOR): install
+
 cli:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cli/main/*.go
 
@@ -67,7 +71,7 @@ cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
 	go tool cover -html=cover.out -o cover.html
 
-pbgens:
+pbgens: $(VENDOR)
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
 	@mkdir -p $(PBGEN_DIR)
 	./scripts/generate-protobuf.py

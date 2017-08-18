@@ -2,7 +2,6 @@ package placement
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +18,9 @@ import (
 
 	"code.uber.internal/infra/peloton/common/async"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/placement/models"
+	"code.uber.internal/infra/peloton/placement/offers"
+	"code.uber.internal/infra/peloton/placement/tasks"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -45,32 +47,34 @@ func New(
 	resMgrClientName string,
 	hostMgrClientName string,
 	taskStore storage.TaskStore) Engine {
+	resourceManager := resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName))
+	hostManager := hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName))
 	s := placementEngine{
-		cfg:           cfg,
-		resMgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
-		hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
-		taskStore:     taskStore,
-		rootCtx:       context.Background(),
-		metrics:       NewMetrics(parent.SubScope("placement")),
-		pool:          async.NewPool(async.PoolOptions{}),
+		cfg:          cfg,
+		offerManager: offers.NewManager(hostManager, resourceManager),
+		taskManager:  tasks.NewManager(resourceManager),
+		taskStore:    taskStore,
+		rootCtx:      context.Background(),
+		metrics:      NewMetrics(parent.SubScope("placement")),
+		pool:         async.NewPool(async.PoolOptions{}),
 	}
 	return &s
 }
 
 type placementEngine struct {
-	cfg           *Config
-	resMgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
-	hostMgrClient hostsvc.InternalHostServiceYARPCClient
-	taskStore     storage.TaskStore
-	rootCtx       context.Context
-	started       int32
-	shutdown      int32
-	metrics       *Metrics
-	tick          <-chan time.Time
-	pool          *async.Pool
+	cfg          *Config
+	offerManager offers.Manager
+	taskManager  tasks.Manager
+	taskStore    storage.TaskStore
+	rootCtx      context.Context
+	started      int32
+	shutdown     int32
+	metrics      *Metrics
+	tick         <-chan time.Time
+	pool         *async.Pool
 }
 
-// Start starts placement engine
+// Start will start the placement engine.
 func (s *placementEngine) Start() {
 	if atomic.CompareAndSwapInt32(&s.started, 0, 1) {
 		log.Info("Placement Engine starting")
@@ -87,7 +91,7 @@ func (s *placementEngine) Start() {
 	log.Info("Placement Engine started")
 }
 
-// Stop stops placement engine
+// Stop will stop the placement engine.
 func (s *placementEngine) Stop() {
 	log.Info("Placement Engine stopping")
 	s.metrics.Running.Update(0)
@@ -111,7 +115,7 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 			return
 		}
 
-		hostOffers, resultCounts, err := s.AcquireHostOffers(group)
+		offers, resultCounts, err := s.acquireHostOffers(group)
 		// TODO: Add a stopping condition so this does not loop forever.
 		if err != nil {
 			log.WithError(err).Error("Failed to acquire host offer")
@@ -120,10 +124,10 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 			continue
 		}
 
-		if len(hostOffers) == 0 {
+		if len(offers) == 0 {
 			s.metrics.OfferStarved.Inc(1)
 			log.WithField("filter_result_counts", resultCounts).
-				Warn("Empty hostOffers received")
+				Warn("Empty offers received")
 			time.Sleep(_getOfferTimeout)
 			continue
 		}
@@ -131,7 +135,7 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 
 		log.WithFields(log.Fields{
 			"tasks":               group.tasks,
-			"host_offers":         hostOffers,
+			"host_offers":         offers,
 			"filter_result_count": resultCounts,
 		}).Debug("acquired host offers for tasks")
 
@@ -139,14 +143,14 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		var placements []*resmgr.Placement
 		var placement *resmgr.Placement
 		index := 0
-		for _, hostOffer := range hostOffers {
+		for _, offer := range offers {
 			if len(group.tasks) <= 0 {
 				break
 			}
 			placement, group.tasks = s.placeTasks(
 				group.tasks,
 				group.getResourceConfig(),
-				hostOffer,
+				offer,
 			)
 			placements = append(placements, placement)
 			index++
@@ -158,17 +162,17 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"placements":        placements,
-				"total_host_offers": hostOffers,
+				"total_host_offers": offers,
 			}).WithError(err).Error("set placements failed")
 			// If there is error in placement returning all the host offer
-			s.returnUnused(hostOffers)
+			s.returnUnused(offers)
 		} else {
-			unused := hostOffers[index:]
+			unused := offers[index:]
 			if len(unused) > 0 {
 				log.WithFields(log.Fields{
 					"placements":         placements,
 					"unused_host_offers": unused,
-					"total_host_offers":  hostOffers,
+					"total_host_offers":  offers,
 				}).Debug("return unused offers after set placement")
 				s.returnUnused(unused)
 			}
@@ -176,7 +180,7 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 		}
 
 		log.WithFields(log.Fields{
-			"acquired_host_offers": hostOffers,
+			"acquired_host_offers": offers,
 			"placements":           placements,
 			"remaining_tasks":      group.tasks,
 		}).Debug("Tasks remaining for next placeTaskGroup")
@@ -193,30 +197,15 @@ func (s *placementEngine) placeTaskGroup(group *taskGroup) {
 }
 
 // returnUnused returns unused host offers back to host manager.
-func (s *placementEngine) returnUnused(hostOffers []*hostsvc.HostOffer) error {
+func (s *placementEngine) returnUnused(offers []*models.Offer) error {
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var request = &hostsvc.ReleaseHostOffersRequest{
-		HostOffers: hostOffers,
-	}
-
-	response, err := s.hostMgrClient.ReleaseHostOffers(ctx, request)
-	if err != nil {
-		return err
-	}
-
-	if respErr := response.GetError(); respErr != nil {
-		// TODO: Differentiate known error types by metrics and logs.
-		return errors.New(respErr.String())
-	}
-
-	log.WithField("host_offers", hostOffers).Debug("Returned unused host offers")
-	return nil
+	return s.offerManager.Release(ctx, offers)
 }
 
-// AcquireHostOffers calls hostmgr and obtain HostOffers for given task group.
-func (s *placementEngine) AcquireHostOffers(group *taskGroup) (
-	[]*hostsvc.HostOffer,
+// acquireHostOffers calls hostmgr and obtain HostOffers for given task group.
+func (s *placementEngine) acquireHostOffers(group *taskGroup) (
+	[]*models.Offer,
 	map[string]uint32,
 	error,
 ) {
@@ -236,42 +225,25 @@ func (s *placementEngine) AcquireHostOffers(group *taskGroup) (
 
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var request = &hostsvc.AcquireHostOffersRequest{
-		Filter: filter,
-	}
-
-	log.WithField("request", request).Debug("Calling AcquireHostOffers")
-
-	response, err := s.hostMgrClient.AcquireHostOffers(ctx, request)
+	offers, filterResults, err := s.offerManager.Acquire(ctx, false, resmgr.TaskType_UNKNOWN, filter)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	log.WithFields(log.Fields{
-		"request":  request,
-		"response": response,
-	}).Debug("AcquireHostOffers returned")
-
-	if respErr := response.GetError(); respErr != nil {
-		// TODO: Differentiate known error types by metrics and logs.
-		return nil, nil, errors.New(respErr.String())
-	}
-
-	return response.GetHostOffers(), response.GetFilterResultCounts(), nil
+	return offers, filterResults, nil
 }
 
 // placeTasks takes the tasks and convert them to placements
 func (s *placementEngine) placeTasks(
 	tasks []*resmgr.Task,
 	resourceConfig *task.ResourceConfig,
-	hostOffer *hostsvc.HostOffer) (*resmgr.Placement, []*resmgr.Task) {
+	offer *models.Offer) (*resmgr.Placement, []*resmgr.Task) {
 
 	if len(tasks) == 0 {
 		return nil, tasks
 	}
 
 	usage := scalar.FromResourceConfig(resourceConfig)
-	remain := scalar.FromMesosResources(hostOffer.GetResources())
+	remain := scalar.FromMesosResources(offer.Offer.GetResources())
 
 	numTotalTasks := uint32(len(tasks))
 	// Assuming all tasks within the same taskgroup have the same ports num
@@ -280,7 +252,7 @@ func (s *placementEngine) placeTasks(
 	availablePorts := make(map[uint32]bool)
 	if numPortsPerTask > 0 {
 		availablePorts = util.GetPortsSetFromResources(
-			hostOffer.GetResources())
+			offer.Offer.GetResources())
 		numAvailablePorts := len(availablePorts)
 		numTasksByAvailablePorts := uint32(numAvailablePorts) / numPortsPerTask
 		if numTasksByAvailablePorts < numTotalTasks {
@@ -316,7 +288,7 @@ func (s *placementEngine) placeTasks(
 		"selected_tasks_total":  len(selectedTasks),
 		"remaining_tasks":       tasks,
 		"remaining_tasks_total": len(tasks),
-		"host_offer":            hostOffer,
+		"host_offer":            offer,
 	}).Debug("Selected tasks to place")
 
 	numSelectedTasks := len(selectedTasks)
@@ -335,7 +307,7 @@ func (s *placementEngine) placeTasks(
 
 	placement := s.createTasksPlacement(
 		selectedTasks,
-		hostOffer,
+		offer,
 		selectedPorts,
 	)
 
@@ -343,43 +315,20 @@ func (s *placementEngine) placeTasks(
 }
 
 func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
-	if len(placements) == 0 {
-		err := errors.New("No placements to set")
-		return err
-	}
-
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var request = &resmgrsvc.SetPlacementsRequest{
-		Placements: placements,
-	}
-	log.WithField("request", request).Debug("Calling SetPlacements")
-
 	setPlacementStart := time.Now()
-	response, err := s.resMgrClient.SetPlacements(ctx, request)
+	err := s.taskManager.SetPlacements(ctx, placements)
 	setPlacementDuration := time.Since(setPlacementStart)
 	s.metrics.SetPlacementDuration.Record(setPlacementDuration)
-
-	// TODO: add retry / put back offer and tasks in failure scenarios
 	if err != nil {
 		s.metrics.SetPlacementFail.Inc(1)
 		return err
 	}
-
-	if response.GetError() != nil {
-		s.metrics.SetPlacementFail.Inc(1)
-		return errors.New("Failed to place tasks")
-	}
-	lenTasks := 0
-	for _, p := range placements {
-		lenTasks += len(p.Tasks)
-	}
 	s.metrics.SetPlacementSuccess.Inc(int64(len(placements)))
-
 	log.WithFields(log.Fields{
 		"num_placements": len(placements),
 		"placements":     placements,
-		"response":       response,
 		"duration":       setPlacementDuration.Seconds(),
 	}).Debug("Set placements call returned")
 	return nil
@@ -388,7 +337,7 @@ func (s *placementEngine) setPlacements(placements []*resmgr.Placement) error {
 // createTasksPlacement creates the placement for resource manager
 // It also returns the list of tasks which can not be placed
 func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
-	hostOffer *hostsvc.HostOffer,
+	offer *models.Offer,
 	selectedPorts []uint32) *resmgr.Placement {
 
 	createPlacementStart := time.Now()
@@ -400,8 +349,8 @@ func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
 	}
 
 	placement := &resmgr.Placement{
-		AgentId:  hostOffer.AgentId,
-		Hostname: hostOffer.Hostname,
+		AgentId:  offer.Offer.AgentId,
+		Hostname: offer.Offer.Hostname,
 		Tasks:    tasksIds,
 		Ports:    selectedPorts,
 		Type:     tasks[0].Type,
@@ -411,7 +360,7 @@ func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
 
 	log.WithFields(log.Fields{
 		"tasks":      tasks,
-		"host_offer": hostOffer,
+		"host_offer": offer,
 		"num_tasks":  len(tasksIds),
 	}).Debug("created placement")
 
@@ -454,21 +403,13 @@ func (s *placementEngine) placeRound() time.Duration {
 // getTasks deques tasks from task queue in resource manager
 func (s *placementEngine) getTasks(limit int) (
 	taskInfos []*resmgr.Task, err error) {
-
 	ctx, cancelFunc := context.WithTimeout(s.rootCtx, 10*time.Second)
 	defer cancelFunc()
-	var request = &resmgrsvc.DequeueGangsRequest{
-		Limit:   uint32(limit),
-		Timeout: uint32(s.cfg.TaskDequeueTimeOut),
-	}
-
-	log.WithField("request", request).Debug("Dequeuing tasks from resmgr")
-	response, err := s.resMgrClient.DequeueGangs(ctx, request)
+	gangs, err := s.taskManager.Dequeue(ctx, resmgr.TaskType_UNKNOWN, s.cfg.TaskDequeueLimit, s.cfg.TaskDequeueTimeOut)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, gang := range response.GetGangs() {
+	for _, gang := range gangs {
 		for _, task := range gang.GetTasks() {
 			taskInfos = append(taskInfos, task)
 		}

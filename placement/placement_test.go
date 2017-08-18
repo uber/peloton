@@ -23,6 +23,8 @@ import (
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"code.uber.internal/infra/peloton/common/async"
+	"code.uber.internal/infra/peloton/placement/offers"
+	"code.uber.internal/infra/peloton/placement/tasks"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -146,8 +148,8 @@ func TestEmptyTaskToPlace(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockResourceManager := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostManager := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -158,19 +160,20 @@ func TestEmptyTaskToPlace(t *testing.T) {
 			MaxPlacementDuration: maxPlacementDuration,
 			TaskDequeueTimeOut:   taskDequeueTimeout,
 		},
-		resMgrClient:  mockRes,
-		hostMgrClient: mockHostMgr,
-		rootCtx:       context.Background(),
-		metrics:       metrics,
-		pool:          async.NewPool(async.PoolOptions{}),
+		offerManager: offers.NewManager(mockHostManager, mockResourceManager),
+		taskManager:  tasks.NewManager(mockResourceManager),
+		rootCtx:      context.Background(),
+		metrics:      metrics,
+		pool:         async.NewPool(async.PoolOptions{}),
 	}
 
 	gomock.InOrder(
-		mockRes.EXPECT().
+		mockResourceManager.EXPECT().
 			DequeueGangs(
 				gomock.Any(),
 				gomock.Eq(&resmgrsvc.DequeueGangsRequest{
 					Limit:   uint32(10),
+					Type:    resmgr.TaskType_UNKNOWN,
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				})).
 			Return(&resmgrsvc.DequeueGangsResponse{}, nil),
@@ -184,8 +187,8 @@ func TestNoHostOfferReturned(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockResourceManager := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostManager := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -194,13 +197,14 @@ func TestNoHostOfferReturned(t *testing.T) {
 		cfg: &Config{
 			TaskDequeueLimit:     10,
 			OfferDequeueLimit:    10,
+			TaskDequeueTimeOut:   taskDequeueTimeout,
 			MaxPlacementDuration: 100 * time.Millisecond,
 		},
-		resMgrClient:  mockRes,
-		hostMgrClient: mockHostMgr,
-		rootCtx:       context.Background(),
-		metrics:       metrics,
-		pool:          async.NewPool(async.PoolOptions{}),
+		offerManager: offers.NewManager(mockHostManager, mockResourceManager),
+		taskManager:  tasks.NewManager(mockResourceManager),
+		rootCtx:      context.Background(),
+		metrics:      metrics,
+		pool:         async.NewPool(async.PoolOptions{}),
 	}
 
 	assert.Equal(
@@ -213,11 +217,12 @@ func TestNoHostOfferReturned(t *testing.T) {
 
 	gomock.InOrder(
 		// Call to resmgr for getting task.
-		mockRes.EXPECT().
+		mockResourceManager.EXPECT().
 			DequeueGangs(
 				gomock.Any(),
 				gomock.Eq(&resmgrsvc.DequeueGangsRequest{
 					Limit:   uint32(10),
+					Type:    resmgr.TaskType_UNKNOWN,
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				})).
 			Return(&resmgrsvc.DequeueGangsResponse{
@@ -225,7 +230,7 @@ func TestNoHostOfferReturned(t *testing.T) {
 				Error: nil,
 			}, nil),
 		// Mock AcquireHostOffers with empty response.
-		mockHostMgr.EXPECT().
+		mockHostManager.EXPECT().
 			AcquireHostOffers(
 				gomock.Any(),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
@@ -260,8 +265,8 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockResourceManager := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostManager := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -269,13 +274,14 @@ func TestMultipleTasksPlaced(t *testing.T) {
 		cfg: &Config{
 			TaskDequeueLimit:     10,
 			OfferDequeueLimit:    10,
+			TaskDequeueTimeOut:   taskDequeueTimeout,
 			MaxPlacementDuration: maxPlacementDuration,
 		},
-		resMgrClient:  mockRes,
-		hostMgrClient: mockHostMgr,
-		rootCtx:       context.Background(),
-		metrics:       metrics,
-		pool:          async.NewPool(async.PoolOptions{}),
+		offerManager: offers.NewManager(mockHostManager, mockResourceManager),
+		taskManager:  tasks.NewManager(mockResourceManager),
+		rootCtx:      context.Background(),
+		metrics:      metrics,
+		pool:         async.NewPool(async.PoolOptions{}),
 	}
 
 	// generate 25 test tasks
@@ -305,11 +311,12 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	launchedTasks := make(map[string]*peloton.TaskID)
 
 	gomock.InOrder(
-		mockRes.EXPECT().
+		mockResourceManager.EXPECT().
 			DequeueGangs(
 				gomock.Any(),
 				gomock.Eq(&resmgrsvc.DequeueGangsRequest{
 					Limit:   uint32(10),
+					Type:    resmgr.TaskType_UNKNOWN,
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				})).
 			Return(&resmgrsvc.DequeueGangsResponse{
@@ -317,7 +324,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 				Error: nil,
 			}, nil),
 		// Mock AcquireHostOffers call.
-		mockHostMgr.EXPECT().
+		mockHostManager.EXPECT().
 			AcquireHostOffers(
 				gomock.Any(),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
@@ -335,7 +342,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 				HostOffers: hostOffers,
 			}, nil),
 		// Mock PlaceTasks call.
-		mockRes.EXPECT().
+		mockResourceManager.EXPECT().
 			SetPlacements(
 				gomock.Any(),
 				gomock.Any()).
@@ -356,7 +363,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 			}).
 			Return(&resmgrsvc.SetPlacementsResponse{}, nil),
 		// Mock ReleaseHostOffers call, which should return the last two host offers back because they are not used.
-		mockHostMgr.EXPECT().
+		mockHostManager.EXPECT().
 			ReleaseHostOffers(
 				gomock.Any(),
 				gomock.Eq(&hostsvc.ReleaseHostOffersRequest{
@@ -386,8 +393,8 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockResourceManager := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockHostManager := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 
@@ -395,13 +402,14 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 		cfg: &Config{
 			TaskDequeueLimit:     10,
 			OfferDequeueLimit:    10,
+			TaskDequeueTimeOut:   taskDequeueTimeout,
 			MaxPlacementDuration: 1 * time.Microsecond,
 		},
-		resMgrClient:  mockRes,
-		hostMgrClient: mockHostMgr,
-		rootCtx:       context.Background(),
-		metrics:       metrics,
-		pool:          async.NewPool(async.PoolOptions{}),
+		offerManager: offers.NewManager(mockHostManager, mockResourceManager),
+		taskManager:  tasks.NewManager(mockResourceManager),
+		rootCtx:      context.Background(),
+		metrics:      metrics,
+		pool:         async.NewPool(async.PoolOptions{}),
 	}
 
 	// generate 25 test tasks
@@ -433,11 +441,12 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 	launchedTasks := make(map[string]*peloton.TaskID)
 
 	gomock.InOrder(
-		mockRes.EXPECT().
+		mockResourceManager.EXPECT().
 			DequeueGangs(
 				gomock.Any(),
 				gomock.Eq(&resmgrsvc.DequeueGangsRequest{
 					Limit:   uint32(10),
+					Type:    resmgr.TaskType_UNKNOWN,
 					Timeout: uint32(pe.cfg.TaskDequeueTimeOut),
 				})).
 			Return(&resmgrsvc.DequeueGangsResponse{
@@ -445,7 +454,7 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 				Error: nil,
 			}, nil),
 		// Mock AcquireHostOffers call.
-		mockHostMgr.EXPECT().
+		mockHostManager.EXPECT().
 			AcquireHostOffers(
 				gomock.Any(),
 				gomock.Eq(&hostsvc.AcquireHostOffersRequest{
@@ -463,7 +472,7 @@ func TestSubsetTasksPlacedDueToInsufficientPorts(t *testing.T) {
 				HostOffers: hostOffers,
 			}, nil),
 		// Mock PlaceTasks call.
-		mockRes.EXPECT().
+		mockResourceManager.EXPECT().
 			SetPlacements(
 				gomock.Any(),
 				gomock.Any()).
