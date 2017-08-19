@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	er "github.com/pkg/errors"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -27,20 +27,19 @@ func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobCo
 
 	response, err := client.EnqueueGangs(ctxWithTimeout, request)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-			"tasks": tasks,
-		}).Error("Resource Manager Enqueue Failed")
+		log.WithError(err).WithFields(log.Fields{
+			"request": request,
+		}).Error("resource manager enqueue gangs failed")
 		return err
 	}
 	if response.GetError() != nil {
 		log.WithFields(log.Fields{
-			"error": response.Error,
-			"tasks": tasks,
-		}).Error("Resource Manager Enqueue Failed")
-		return er.New(response.Error.String())
+			"resp_error": response.GetError().String(),
+			"request":    request,
+		}).Error("resource manager enqueue gangs response error")
+		return errors.New(response.GetError().String())
 	}
-	log.WithField("Count", len(tasks)).Debug("Enqueued tasks as gangs to " +
-		"Resource Manager")
+	log.WithField("count", len(tasks)).
+		Debug("Enqueued tasks as gangs to Resource Manager")
 	return nil
 }

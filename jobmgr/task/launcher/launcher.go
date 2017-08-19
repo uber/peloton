@@ -2,13 +2,13 @@ package launcher
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 
@@ -130,7 +130,7 @@ func (l *launcher) Start() error {
 			for l.isRunning() {
 				placements, err := l.getPlacements()
 				if err != nil {
-					log.Error("Failed to get placements")
+					log.WithError(err).Error("jobmgr failed to dequeue placements")
 					continue
 				}
 
@@ -163,18 +163,13 @@ func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
 	callDuration := time.Since(callStart)
 
 	if err != nil {
-		log.WithError(err).Error("GetPlacements failed")
 		l.metrics.GetPlacementFail.Inc(1)
 		return nil, err
 	}
 
 	if response.GetError() != nil {
-		log.WithFields(log.Fields{
-			"num_placements": len(response.Placements),
-			"error":          response.Error.String(),
-		}).Error("Failed to get placements")
 		l.metrics.GetPlacementFail.Inc(1)
-		return nil, err
+		return nil, errors.New(response.GetError().String())
 	}
 
 	if len(response.GetPlacements()) != 0 {
@@ -262,9 +257,9 @@ func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.P
 				if err == errLaunchInvalidOffer {
 					// enqueue tasks to resmgr upon launch failure due to invalid offer.
 					l.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(tasks)))
-					if l.enqueueTasks(ctx, taskInfos) != nil {
-						log.WithFields(log.Fields{
-							"tasks":       taskInfos,
+					if err = l.enqueueTasks(ctx, taskInfos); err != nil {
+						log.WithError(err).WithFields(log.Fields{
+							"task_infos":  taskInfos,
 							"tasks_total": len(taskInfos),
 						}).Error("failed to enqueue tasks back to resmgr")
 					}
