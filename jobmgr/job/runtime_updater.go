@@ -233,11 +233,13 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
 		jobState = job.JobState_SUCCEEDED
 		jobRuntime.CompletionTime = completionTime
+		delete(j.lastTaskUpdateTime, jobID.Value)
 		j.metrics.JobSucceeded.Inc(1)
 	} else if stateCounts[task.TaskState_SUCCEEDED.String()]+
 		stateCounts[task.TaskState_FAILED.String()] == instances {
 		jobState = job.JobState_FAILED
 		jobRuntime.CompletionTime = completionTime
+		delete(j.lastTaskUpdateTime, jobID.Value)
 		j.metrics.JobFailed.Inc(1)
 	} else if stateCounts[task.TaskState_KILLED.String()] > 0 &&
 		(stateCounts[task.TaskState_SUCCEEDED.String()]+
@@ -245,6 +247,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 			stateCounts[task.TaskState_KILLED.String()] == instances) {
 		jobState = job.JobState_KILLED
 		jobRuntime.CompletionTime = completionTime
+		delete(j.lastTaskUpdateTime, jobID.Value)
 		j.metrics.JobKilled.Inc(1)
 	} else if stateCounts[task.TaskState_RUNNING.String()] > 0 {
 		jobState = job.JobState_RUNNING
@@ -276,7 +279,6 @@ func (j *RuntimeUpdater) updateJobsRuntime(ctx context.Context) {
 			j.updateJobRuntime(ctx, &peloton.JobID{Value: jobID})
 			delete(j.taskUpdatedFlags, jobID)
 			delete(j.firstTaskUpdateTime, jobID)
-			delete(j.lastTaskUpdateTime, jobID)
 		}
 	}
 }
