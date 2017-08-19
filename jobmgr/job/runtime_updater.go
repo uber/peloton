@@ -26,7 +26,7 @@ import (
 var jobStateUpdateInterval = 15 * time.Second
 
 // checkAllJobsInterval is the interval at which all non-terminal jobs are checked
-var checkAllJobsInterval = 1 * time.Hour
+var checkAllJobsInterval = 10 * time.Minute
 
 // taskStatesAfterStart is the set of Peloton task states which
 // indicate a task is being or has already been started.
