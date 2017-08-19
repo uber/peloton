@@ -36,5 +36,7 @@ func (h *hostPruner) Prune(_ *atomic.Bool) {
 	log.Debug("Running host pruning")
 	prunedHostnames := h.offerPool.ResetExpiredHostSummaries(time.Now())
 	h.scope.Counter("pruned").Inc(int64(len(prunedHostnames)))
-	log.WithField("hosts", prunedHostnames).Warn("Hosts pruned")
+	if len(prunedHostnames) > 0 {
+		log.WithField("hosts", prunedHostnames).Warn("Hosts pruned")
+	}
 }

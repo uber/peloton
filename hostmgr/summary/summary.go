@@ -469,6 +469,16 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) bool {
 		defer a.Unlock()
 		if a.status == PlacingOffer {
 			if now.After(a.statusPlacingOfferExpiration) {
+				var offers []*mesos.Offer
+				for _, o := range a.unreservedOffers {
+					offers = append(offers, o)
+				}
+				log.WithFields(log.Fields{
+					"time":        now,
+					"curr_status": a.status,
+					"ready_count": a.readyCount.Load(),
+					"offers":      offers,
+				}).Warn("pruning hostoffer")
 				a.casStatusLockFree(PlacingOffer, ReadyOffer)
 				return true
 			}
