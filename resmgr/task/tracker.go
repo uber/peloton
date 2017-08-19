@@ -196,15 +196,20 @@ func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 // MarkItDone updates the resources in resmgr
 func (tr *tracker) MarkItDone(
 	tID *peloton.TaskID) error {
-	task := tr.GetTask(tID)
-	if task == nil {
+	t := tr.GetTask(tID)
+	if t == nil {
 		return errors.Errorf("task %s is not in tracker", tID)
 	}
-	err := task.respool.SubtractFromAllocation(
-		scalar.ConvertToResmgrResource(
-			task.task.GetResource()))
-	if err != nil {
-		return errors.Errorf("Not able to update task %s ", tID)
+	// We need to skip the tasks from resource counting which are in pending and
+	// and initialized state
+	if tr.GetTask(tID).GetCurrentState().String() != task.TaskState_PENDING.String() ||
+		tr.GetTask(tID).GetCurrentState().String() != task.TaskState_INITIALIZED.String() {
+		err := t.respool.SubtractFromAllocation(
+			scalar.ConvertToResmgrResource(
+				t.task.GetResource()))
+		if err != nil {
+			return errors.Errorf("Not able to update task %s ", tID)
+		}
 	}
 	log.WithField("Task", tID.Value).Info("Deleting the task from Tracker")
 	tr.DeleteTask(tID)
