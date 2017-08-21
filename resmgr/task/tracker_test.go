@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 )
 
 type TrackerTestSuite struct {
@@ -187,4 +188,92 @@ func (suite *TrackerTestSuite) TestGetTaskStates() {
 
 	result = suite.tracker.GetActiveTasks("foo", "")
 	suite.Equal(0, len(result))
+}
+
+func (suite *TrackerTestSuite) TestMarkItDone() {
+	suite.tracker.Clear()
+	for i := 0; i < 5; i++ {
+		suite.addTasktotracker(suite.createTask(i))
+	}
+	// Task 1
+	// Trying to remove the first Task which is in initialized state
+	// As initialized task can not be subtracted from allocation so
+	// no change in respool allocation
+	taskID := fmt.Sprintf("job1-%d", 1)
+	t := &peloton.TaskID{Value: taskID}
+
+	rmTask := suite.tracker.GetTask(t)
+
+	resources := &scalar.Resources{
+		CPU:    float64(1),
+		DISK:   float64(10),
+		GPU:    float64(0),
+		MEMORY: float64(100),
+	}
+	rmTask.respool.AddToAllocation(resources)
+
+	res := rmTask.respool.GetAllocation()
+
+	suite.Equal(res, resources)
+
+	deleteTask := &peloton.TaskID{Value: taskID}
+	suite.tracker.MarkItDone(deleteTask)
+
+	res = rmTask.respool.GetAllocation()
+	suite.Equal(res, resources)
+
+	// FOR TASK 2
+	// Trying to remove the Second Task which is in Pending state
+	// As pending task can not be subtracted from allocation so
+	// no change in respool allocation
+	taskID = fmt.Sprintf("job1-%d", 2)
+	t = &peloton.TaskID{Value: taskID}
+
+	rmTask = suite.tracker.GetTask(t)
+
+	rmTask.respool.AddToAllocation(resources)
+
+	res = rmTask.respool.GetAllocation()
+
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+
+	deleteTask = &peloton.TaskID{Value: taskID}
+	suite.tracker.MarkItDone(deleteTask)
+
+	res = rmTask.respool.GetAllocation()
+
+	suite.Equal(res, resources)
+
+	// TASK 3
+	// Trying to remove the Third Task which is in Ready state
+	// As READ task should subtracted from allocation so
+	// so respool allocation is zero
+	taskID = fmt.Sprintf("job1-%d", 3)
+	t = &peloton.TaskID{Value: taskID}
+	rmTask = suite.tracker.GetTask(t)
+	rmTask.respool.AddToAllocation(resources)
+
+	res = rmTask.respool.GetAllocation()
+
+	err = rmTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+
+	err = rmTask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+
+	deleteTask = &peloton.TaskID{Value: taskID}
+	suite.tracker.MarkItDone(deleteTask)
+
+	res = rmTask.respool.GetAllocation()
+
+	zeroResource := &scalar.Resources{
+		CPU:    float64(0),
+		DISK:   float64(0),
+		GPU:    float64(0),
+		MEMORY: float64(0),
+	}
+	suite.Equal(res, zeroResource)
+
+	suite.tracker.Clear()
 }

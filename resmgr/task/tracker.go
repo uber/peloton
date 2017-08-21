@@ -202,8 +202,8 @@ func (tr *tracker) MarkItDone(
 	}
 	// We need to skip the tasks from resource counting which are in pending and
 	// and initialized state
-	if tr.GetTask(tID).GetCurrentState().String() != task.TaskState_PENDING.String() ||
-		tr.GetTask(tID).GetCurrentState().String() != task.TaskState_INITIALIZED.String() {
+	if !(tr.GetTask(tID).GetCurrentState().String() == task.TaskState_PENDING.String() ||
+		tr.GetTask(tID).GetCurrentState().String() == task.TaskState_INITIALIZED.String()) {
 		err := t.respool.SubtractFromAllocation(
 			scalar.ConvertToResmgrResource(
 				t.task.GetResource()))
