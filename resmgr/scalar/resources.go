@@ -112,7 +112,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"Subtracted From CPU ": r.CPU,
 			"Subtracted Value ":    other.CPU,
-		}).Warn("Subtracted value is Greater")
+		}).Info("Subtracted value is Greater")
 		result.CPU = float64(0)
 	} else {
 		result.CPU = r.CPU - other.CPU
@@ -122,7 +122,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"Subtracted From GPU ": r.GPU,
 			"Subtracted Value ":    other.GPU,
-		}).Warn("Subtracted value is Greater")
+		}).Info("Subtracted value is Greater")
 		result.GPU = float64(0)
 	} else {
 		result.GPU = r.GPU - other.GPU
@@ -132,7 +132,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"Subtracted From Memory ": r.MEMORY,
 			"Subtracted Value ":       other.MEMORY,
-		}).Warn("Subtracted value is Greater")
+		}).Info("Subtracted value is Greater")
 		result.MEMORY = float64(0)
 	} else {
 		result.MEMORY = r.MEMORY - other.MEMORY
@@ -142,7 +142,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"Subtracted From DISK ": r.DISK,
 			"Subtracted Value ":     other.DISK,
-		}).Warn("Subtracted value is Greater")
+		}).Info("Subtracted value is Greater")
 		result.DISK = float64(0)
 	} else {
 		result.DISK = r.DISK - other.DISK
