@@ -495,11 +495,8 @@ func (h *ServiceHandler) transitTasksInPlacement(
 		} else {
 			err := rmTask.TransitTo(newState.String())
 			if err != nil {
-				log.WithError(
-					errors.WithStack(err)).
-					Error("not able " +
-						"to transition to launching " +
-						"for task " + taskID.Value)
+				log.WithError(errors.WithStack(err)).
+					Info("not able to transition to launching for task " + taskID.Value)
 				invalidTasks[taskID.Value] = taskID
 			}
 		}
@@ -559,11 +556,8 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 		if taskState == t.TaskState_RUNNING {
 			err = rmTask.TransitTo(t.TaskState_RUNNING.String())
 			if err != nil {
-				log.WithError(
-					errors.WithStack(err)).
-					Error("Not able " +
-						"to transition to running " +
-						"for task " + taskID.Value)
+				log.WithError(errors.WithStack(err)).
+					Info("Not able to transition to running for task " + taskID.Value)
 			}
 		} else {
 			// TODO: We probably want to terminate all the tasks in gang
