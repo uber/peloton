@@ -1,7 +1,7 @@
 client:
-  jobmgr_url: grpc://localhost:5392
+  jobmgr_url: http://localhost:5292/api/v1
   jobmgr_service_name: peloton-jobmgr
-  resmgr_url: grpc://localhost:5390
+  resmgr_url: http://localhost:5290/api/v1
   resmgr_service_name: peloton-resmgr
   name: peloton-integration-test
   cluster_zk_servers:

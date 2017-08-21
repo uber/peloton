@@ -17,9 +17,6 @@ virtualenv env
 
 . env/bin/activate
 
-# grpcio requires the latest pip to be installed
-pip install --upgrade pip==9.0.1
-
 pip install -r tests/integration/requirements.txt
 
 # Allow python path override so we can test any local changes in python client

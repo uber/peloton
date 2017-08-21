@@ -18,7 +18,7 @@ RESPOOL_ROOT = '/'
 
 class IntegrationTestConfig(object):
     def __init__(self, pool_file='test_respool.yaml', max_retry_attempts=40,
-                 sleep_time_sec=1, rpc_timeout_sec=10):
+                 sleep_time_sec=1):
         respool_config_dump = load_test_config(pool_file)
         respool_config = respool.ResourcePoolConfig()
         json_format.ParseDict(respool_config_dump, respool_config)
@@ -26,14 +26,18 @@ class IntegrationTestConfig(object):
 
         self.max_retry_attempts = max_retry_attempts
         self.sleep_time_sec = sleep_time_sec
-        self.rpc_timeout_sec = rpc_timeout_sec
 
 
 class Job(object):
     def __init__(self, job_file='test_job.yaml', client=None, config=None):
+        if config is None:
+            config = IntegrationTestConfig()
 
-        self.config = config or IntegrationTestConfig()
-        self.client = client or Client()
+        if client is None:
+            client = Client()
+
+        self.config = config
+        self.client = client
         self.job_id = None
 
         job_config_dump = load_test_config(job_file)
@@ -48,11 +52,7 @@ class Job(object):
         request = job.CreateRequest(
             config=self.job_config,
         )
-        resp = self.client.job_svc.Create(
-            request,
-            metadata=self.client.jobmgr_metadata,
-            timeout=self.config.rpc_timeout_sec,
-        )
+        resp = self.client.job_svc.create(request)
         assert resp.jobId.value
         self.job_id = resp.jobId.value
         log.info('created job %s', self.job_id)
@@ -61,11 +61,7 @@ class Job(object):
         request = task.StopRequest(
             jobId=peloton.JobID(value=self.job_id),
         )
-        self.client.task_svc.Stop(
-            request,
-            metadata=self.client.jobmgr_metadata,
-            timeout=self.config.rpc_timeout_sec,
-        )
+        self.client.task_svc.stop(request)
         log.info('stopping all tasks in job %s', self.job_id)
 
     def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED'):
@@ -77,11 +73,7 @@ class Job(object):
             request = job.GetRequest(
                 id=peloton.JobID(value=self.job_id),
             )
-            resp = self.client.job_svc.Get(
-                request,
-                metadata=self.client.jobmgr_metadata,
-                timeout=self.config.rpc_timeout_sec,
-            )
+            resp = self.client.job_svc.get(request)
             runtime = resp.jobInfo.runtime
             new_state = job.JobState.Name(runtime.state)
             if state != new_state:
@@ -105,20 +97,12 @@ class Job(object):
             config=self.config.respool_config,
         )
         respool_name = request.config.name
-        self.client.respool_svc.CreateResourcePool(
-            request,
-            metadata=self.client.resmgr_metadata,
-            timeout=self.config.rpc_timeout_sec,
-        )
+        self.client.respool_svc.create(request)
 
         request = respool.LookupRequest(
             path=respool.ResourcePoolPath(value=RESPOOL_ROOT + respool_name),
         )
-        resp = self.client.respool_svc.LookupResourcePoolID(
-            request,
-            metadata=self.client.resmgr_metadata,
-            timeout=self.config.rpc_timeout_sec,
-        )
+        resp = self.client.respool_svc.lookup(request)
         assert resp.id.value
         assert not resp.error.notFound.message
         assert not resp.error.invalidPath.message
