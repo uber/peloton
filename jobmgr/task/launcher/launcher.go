@@ -57,7 +57,6 @@ type launcher struct {
 
 	resMgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
 	hostMgrClient hostsvc.InternalHostServiceYARPCClient
-	rootCtx       context.Context
 	started       int32
 	shutdown      int32
 	jobStore      storage.JobStore
@@ -102,7 +101,6 @@ func InitTaskLauncher(
 		taskLauncher = &launcher{
 			resMgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
 			hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
-			rootCtx:       context.Background(),
 			jobStore:      jobStore,
 			taskStore:     taskStore,
 			volumeStore:   volumeStore,
@@ -150,7 +148,7 @@ func (l *launcher) Start() error {
 }
 
 func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
-	ctx, cancelFunc := context.WithTimeout(l.rootCtx, _timeoutFunctionCall)
+	ctx, cancelFunc := context.WithTimeout(context.Background(), _timeoutFunctionCall)
 	defer cancelFunc()
 
 	request := &resmgrsvc.GetPlacementsRequest{
@@ -212,7 +210,7 @@ func (l *launcher) LaunchTaskWithReservedResource(ctx context.Context, taskInfo 
 		selectedPorts = append(selectedPorts, port)
 	}
 	err = l.launchStatefulTasks(
-		launchableTasks, taskRuntime.GetHost(), selectedPorts, false)
+		ctx, launchableTasks, taskRuntime.GetHost(), selectedPorts, false)
 	return err
 }
 
@@ -240,14 +238,18 @@ func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.P
 				placement.GetAgentId(),
 				placement.GetPorts())
 			if err != nil {
-				log.WithError(err).WithFields(log.Fields{
-					"placement":   placement,
-					"tasks_total": len(tasks),
-				}).Error("Failed to get launchable tasks")
+				err = l.tryReturnOffers(ctx, err, placement)
+				if err != nil {
+					log.WithError(err).WithFields(log.Fields{
+						"placement":   placement,
+						"tasks_total": len(tasks),
+					}).Error("Failed to get launchable tasks")
+				}
 				return
 			}
 			l.metrics.LauncherGoRoutines.Inc(1)
-			err = l.launchTasks(tasks, placement)
+			err = l.launchTasks(ctx, tasks, placement)
+			err = l.tryReturnOffers(ctx, err, placement)
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
 					"placement":   placement,
@@ -302,12 +304,16 @@ func (l *launcher) getLaunchableTasks(
 	getTaskInfoStart := time.Now()
 
 	for _, taskID := range tasks {
-		// TODO: we need to check goal state before we can launch tasks
 		// TODO: We need to add batch api's for getting all tasks in one shot
 		taskInfo, err := l.taskStore.GetTaskByID(ctx, taskID.GetValue())
 		if err != nil {
 			log.WithError(err).WithField("Task Id", taskID.Value).
 				Error("Not able to get Task")
+			continue
+		}
+
+		if taskInfo.GetRuntime().GetGoalState() == task.TaskState_KILLED {
+			log.WithField("task_id", taskID.Value).Info("skipping launch of killed task")
 			continue
 		}
 
@@ -433,12 +439,13 @@ func (l *launcher) Stop() error {
 }
 
 func (l *launcher) launchStatefulTasks(
+	ctx context.Context,
 	selectedTasks []*hostsvc.LaunchableTask,
 	hostname string,
 	selectedPorts []uint32,
 	checkVolume bool) error {
-	ctx, cancelFunc := context.WithTimeout(l.rootCtx, _rpcTimeout)
-	defer cancelFunc()
+	ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)
+	defer cancel()
 
 	volumeID := &peloton.VolumeID{
 		Value: selectedTasks[0].GetVolume().GetId().GetValue(),
@@ -501,10 +508,11 @@ func (l *launcher) launchStatefulTasks(
 }
 
 func (l *launcher) launchBatchTasks(
+	ctx context.Context,
 	selectedTasks []*hostsvc.LaunchableTask,
 	placement *resmgr.Placement) error {
-	ctx, cancelFunc := context.WithTimeout(l.rootCtx, _rpcTimeout)
-	defer cancelFunc()
+	ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)
+	defer cancel()
 	var request = &hostsvc.LaunchTasksRequest{
 		Hostname: placement.GetHostname(),
 		Tasks:    selectedTasks,
@@ -531,11 +539,12 @@ func (l *launcher) launchBatchTasks(
 }
 
 func (l *launcher) launchTasks(
+	ctx context.Context,
 	selectedTasks []*hostsvc.LaunchableTask,
 	placement *resmgr.Placement) error {
 	// TODO: Add retry Logic for tasks launching failure
 	if len(selectedTasks) == 0 {
-		return errors.New("No task is selected to launch")
+		return errEmptyTasks
 	}
 
 	log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
@@ -545,10 +554,11 @@ func (l *launcher) launchTasks(
 	if placement.Type != resmgr.TaskType_STATEFUL {
 		err = backoff.Retry(
 			func() error {
-				return l.launchBatchTasks(selectedTasks, placement)
+				return l.launchBatchTasks(ctx, selectedTasks, placement)
 			}, l.retryPolicy, l.isLauncherRetryableError)
 	} else {
 		err = l.launchStatefulTasks(
+			ctx,
 			selectedTasks,
 			placement.GetHostname(),
 			placement.GetPorts(),
@@ -572,4 +582,19 @@ func (l *launcher) launchTasks(
 	}).Debug("Launched tasks")
 	l.metrics.LaunchTasksCallDuration.Record(callDuration)
 	return nil
+}
+
+func (l *launcher) tryReturnOffers(ctx context.Context, err error, placement *resmgr.Placement) error {
+	if err == errEmptyTasks {
+		request := &hostsvc.ReleaseHostOffersRequest{
+			HostOffers: []*hostsvc.HostOffer{{
+				Hostname: placement.Hostname,
+				AgentId:  placement.AgentId,
+			}},
+		}
+		ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)
+		defer cancel()
+		_, err = l.hostMgrClient.ReleaseHostOffers(ctx, request)
+	}
+	return err
 }

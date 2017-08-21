@@ -113,7 +113,6 @@ class Job(object):
         elapsed = end - start
         log.info('state transition took %s seconds', elapsed)
         assert state == goal_state
-        assert runtime.taskStats[state] == self.job_config.instanceCount
 
     def ensure_respool(self):
         request = respool.CreateRequest(

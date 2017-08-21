@@ -118,7 +118,6 @@ func TestMultipleTasksPlaced(t *testing.T) {
 		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
-		rootCtx:       context.Background(),
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
@@ -235,7 +234,6 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 		hostMgrClient: mockHostMgr,
 		jobStore:      mockJobStore,
 		taskStore:     mockTaskStore,
-		rootCtx:       context.Background(),
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
@@ -372,7 +370,6 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 		hostMgrClient: mockHostMgr,
 		jobStore:      mockJobStore,
 		taskStore:     mockTaskStore,
-		rootCtx:       context.Background(),
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
@@ -501,7 +498,6 @@ func TestLaunchStatefulTask(t *testing.T) {
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		volumeStore:   mockVolumeStore,
-		rootCtx:       context.Background(),
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
@@ -616,7 +612,6 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		volumeStore:   mockVolumeStore,
-		rootCtx:       context.Background(),
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
@@ -714,6 +709,37 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
 }
 
+func TestProcessPlacementsWithNoTasksReleasesOffers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	taskLauncher := launcher{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		hostMgrClient: mockHostMgr,
+		metrics:       NewMetrics(tally.NoopScope),
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
+	}
+
+	// Mock OfferOperation call.
+	mockHostMgr.EXPECT().ReleaseHostOffers(gomock.Any(), &hostsvc.ReleaseHostOffersRequest{
+		HostOffers: []*hostsvc.HostOffer{{
+			Hostname: "hostname-0",
+			AgentId:  &mesos.AgentID{},
+		}},
+	}).
+		Return(&hostsvc.ReleaseHostOffersResponse{}, nil)
+
+	taskLauncher.processPlacements(context.Background(), []*resmgr.Placement{{
+		Hostname: "hostname-0",
+		AgentId:  &mesos.AgentID{},
+	}})
+
+	time.Sleep(1 * time.Second)
+}
+
 func TestLaunchStatefulTaskLaunchWithReservedResourceDirectly(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -733,7 +759,6 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceDirectly(t *testing.T) {
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		volumeStore:   mockVolumeStore,
-		rootCtx:       context.Background(),
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
@@ -835,7 +860,6 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceWithDBReadErr(t *testing.T)
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		volumeStore:   mockVolumeStore,
-		rootCtx:       context.Background(),
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
