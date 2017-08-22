@@ -87,7 +87,7 @@ type HostSummary interface {
 	// ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
 	// to ReadyOffer if the PlacingOffer status has expired, and returns
 	// wether the hostSummary got reset
-	ResetExpiredPlacingOfferStatus(now time.Time) bool
+	ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources)
 }
 
 // hostSummary is a data struct holding offers on a particular host.
@@ -463,7 +463,7 @@ func (a *hostSummary) UnreservedAmount() scalar.Resources {
 // ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
 // to ReadyOffer if the PlacingOffer status has expired, and returns
 // wether the hostSummary got reset
-func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) bool {
+func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources) {
 	if !a.HasOffer() {
 		a.Lock()
 		defer a.Unlock()
@@ -480,9 +480,9 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) bool {
 					"offers":      offers,
 				}).Warn("pruning hostoffer")
 				a.casStatusLockFree(PlacingOffer, ReadyOffer)
-				return true
+				return true, scalar.FromOfferMap(a.unreservedOffers)
 			}
 		}
 	}
-	return false
+	return false, scalar.Resources{}
 }

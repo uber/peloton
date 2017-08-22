@@ -169,15 +169,25 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 			delta = *(delta.Add(&tmp))
 		}
 	}
-	incQuantity(&p.placingResources, delta, p.metrics.placing)
-	decQuantity(&p.readyResources, delta, p.metrics.ready)
+	if len(hostOffers) > 0 {
+		incQuantity(&p.placingResources, delta, p.metrics.placing)
+		decQuantity(&p.readyResources, delta, p.metrics.ready)
+		log.WithFields(log.Fields{
+			"host_filter":         hostFilter,
+			"host_offers_noindex": hostOffers,
+			"result_count":        resultCount,
+			"delta":               delta,
+			"placing_resources":   p.placingResources.Get(),
+			"ready_resources":     p.readyResources.Get(),
+		}).Debug("Claim offers for place.")
+	}
 
 	if !hasEnoughHosts {
 		// Still proceed to return something.
 		log.WithFields(log.Fields{
-			"host_filter":         hostFilter,
-			"matched_host_offers": hostOffers,
-			"match_result_counts": resultCount,
+			"host_filter":                 hostFilter,
+			"matched_host_offers_noindex": hostOffers,
+			"match_result_counts":         resultCount,
 		}).Debug("Not enough offers are matched to given constraints")
 	}
 	// NOTE: we should not clear the entries for the selected offers in p.offers
@@ -220,6 +230,13 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 	if !useReservedOffers {
 		delta := scalar.FromOfferMap(offerMap)
 		decQuantity(&p.placingResources, delta, p.metrics.placing)
+		log.WithFields(log.Fields{
+			"hostname":               hostname,
+			"claimed_offers_noindex": offerMap,
+			"delta":                  delta,
+			"placing_resources":      p.placingResources.Get(),
+			"ready_resources":        p.readyResources.Get(),
+		}).Debug("Claiming offer for launch")
 	}
 
 	if !p.hostOfferIndex[hostname].HasAnyOffer() {
@@ -354,6 +371,14 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
 			log.WithField("status", status).
 				Error("Unknown CacheStatus")
 		}
+		log.WithFields(log.Fields{
+			"hostname":          hostName,
+			"host_status":       status,
+			"removed_offers":    removed,
+			"delta":             delta,
+			"placing_resources": p.placingResources.Get(),
+			"ready_resources":   p.readyResources.Get(),
+		}).Debug("Remove rescinded offer.")
 	}
 
 	if !p.hostOfferIndex[hostName].HasAnyOffer() {
@@ -399,6 +424,14 @@ func (p *offerPool) RemoveExpiredOffers() (map[string]*TimedOffer, int) {
 					log.WithField("status", status).
 						Error("Unknown CacheStatus")
 				}
+				log.WithFields(log.Fields{
+					"host":              hostName,
+					"host_status":       status,
+					"removed_offers":    removed,
+					"delta":             delta,
+					"placing_resources": p.placingResources.Get(),
+					"ready_resources":   p.readyResources.Get(),
+				}).Debug("remove expired offer.")
 			}
 
 			if !p.hostOfferIndex[hostName].HasAnyOffer() {
@@ -469,13 +502,17 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 		return err
 	}
 
-	log.WithFields(log.Fields{
-		"host": hostname,
-	}).Debug("Returned offers to Ready state.")
-
 	delta := hostOffers.UnreservedAmount()
+
 	decQuantity(&p.placingResources, delta, p.metrics.placing)
 	incQuantity(&p.readyResources, delta, p.metrics.ready)
+
+	log.WithFields(log.Fields{
+		"host":              hostname,
+		"delta":             delta,
+		"placing_resources": p.placingResources.Get(),
+		"ready_resources":   p.readyResources.Get(),
+	}).Debug("Returned offers to Ready state.")
 
 	return nil
 }
@@ -520,8 +557,17 @@ func (p *offerPool) ResetExpiredHostSummaries(now time.Time) []string {
 	defer p.RUnlock()
 	var resetHostnames []string
 	for hostname, summary := range p.hostOfferIndex {
-		if summary.ResetExpiredPlacingOfferStatus(now) {
+		if reset, res := summary.ResetExpiredPlacingOfferStatus(now); reset {
 			resetHostnames = append(resetHostnames, hostname)
+			incQuantity(&p.readyResources, res, p.metrics.ready)
+			decQuantity(&p.placingResources, res, p.metrics.placing)
+			log.WithFields(log.Fields{
+				"host":              hostname,
+				"summary":           summary,
+				"delta":             res,
+				"placing_resources": p.placingResources.Get(),
+				"ready_resources":   p.readyResources.Get(),
+			}).Debug("reset expired host summaries.")
 		}
 	}
 	return resetHostnames

@@ -544,7 +544,8 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 			status: tt.initialStatus,
 			statusPlacingOfferExpiration: tt.statusPlacingOfferExpiration,
 		}
-		suite.Equal(tt.resetExpected, s.ResetExpiredPlacingOfferStatus(now), tt.msg)
+		reset, _ := s.ResetExpiredPlacingOfferStatus(now)
+		suite.Equal(tt.resetExpected, reset, tt.msg)
 	}
 }
 

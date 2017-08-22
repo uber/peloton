@@ -17,6 +17,7 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
 	hostmgr_summary_mocks "code.uber.internal/infra/peloton/hostmgr/summary/mocks"
 )
@@ -285,16 +286,18 @@ func TestResetExpiredHostSummaries(t *testing.T) {
 	}
 
 	now := time.Now()
+	scope := tally.NewTestScope("", map[string]string{})
 
 	for _, tt := range testTable {
 		hostOfferIndex := make(map[string]summary.HostSummary)
 		for _, helper := range tt.helpers {
 			mhs := hostmgr_summary_mocks.NewMockHostSummary(ctrl)
-			mhs.EXPECT().ResetExpiredPlacingOfferStatus(now).Return(helper.mockResetExpiredPlacingOfferStatus)
+			mhs.EXPECT().ResetExpiredPlacingOfferStatus(now).Return(helper.mockResetExpiredPlacingOfferStatus, scalar.Resources{})
 			hostOfferIndex[helper.hostname] = mhs
 		}
 		pool := &offerPool{
 			hostOfferIndex: hostOfferIndex,
+			metrics:        NewMetrics(scope),
 		}
 		resetHostnames := pool.ResetExpiredHostSummaries(now)
 		assert.Equal(t, len(tt.expectedPrunedHostnames), len(resetHostnames), tt.msg)
