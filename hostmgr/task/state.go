@@ -11,11 +11,13 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/cirbuf"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -45,7 +47,7 @@ func InitTaskStateManager(
 			mpb.ContentTypeProtobuf,
 		),
 		updateAckConcurrency: updateAckConcurrency,
-		ackChannel:           make(chan *sched.Event_Update, updateBufferSize),
+		ackChannel:           make(chan *mesos.TaskStatus, updateBufferSize),
 		taskUpdateCount:      &taskUpdateCount,
 		prevUpdateCount:      &prevUpdateCount,
 		taskAckCount:         &taskUpdateAckCount,
@@ -65,6 +67,7 @@ func InitTaskStateManager(
 	handler.startAsyncProcessTaskUpdates()
 	handler.eventStreamHandler = initEventStreamHandler(
 		d,
+		&handler,
 		updateBufferSize,
 		handler.scope.SubScope("EventStreamHandler"))
 	// initialize the status update event forwarder for resmgr
@@ -146,11 +149,14 @@ func initResMgrEventForwarder(
 	)
 }
 
-func initEventStreamHandler(d *yarpc.Dispatcher, bufferSize int, scope tally.Scope) *eventstream.Handler {
+func initEventStreamHandler(d *yarpc.Dispatcher,
+	purgedEventProcessor eventstream.PurgedEventsProcessor,
+	bufferSize int,
+	scope tally.Scope) *eventstream.Handler {
 	eventStreamHandler := eventstream.NewEventStreamHandler(
 		bufferSize,
 		[]string{common.PelotonJobManager, common.PelotonResourceManager},
-		nil,
+		purgedEventProcessor,
 		scope,
 	)
 
@@ -163,7 +169,7 @@ type taskStateManager struct {
 	schedulerclient      mpb.SchedulerClient
 	updateAckConcurrency int
 	// Buffers the status updates to ack
-	ackChannel chan *sched.Event_Update
+	ackChannel chan *mesos.TaskStatus
 
 	taskUpdateCount *int64
 	prevUpdateCount *int64
@@ -195,8 +201,6 @@ func (m *taskStateManager) Update(ctx context.Context, body *sched.Event) error 
 		log.WithError(err).
 			WithField("status_update", taskUpdate.GetStatus()).
 			Error("Cannot add status update")
-	} else {
-		m.ackChannel <- taskUpdate
 	}
 	m.updateCounters()
 	// If buffer is full, AddStatusUpdate would fail and peloton would not
@@ -241,13 +245,13 @@ func (m *taskStateManager) updateCounters() {
 func (m *taskStateManager) startAsyncProcessTaskUpdates() {
 	for i := 0; i < m.updateAckConcurrency; i++ {
 		go func() {
-			for taskUpdate := range m.ackChannel {
-				if len(taskUpdate.GetStatus().GetUuid()) == 0 {
-					log.WithField("status_update", taskUpdate).Debug("Skipping acknowledging update with empty uuid")
+			for taskStatus := range m.ackChannel {
+				if len(taskStatus.GetUuid()) == 0 {
+					log.WithField("status_update", taskStatus).Debug("Skipping acknowledging update with empty uuid")
 				} else {
-					err := m.acknowledgeTaskUpdate(context.Background(), taskUpdate)
+					err := m.acknowledgeTaskUpdate(context.Background(), taskStatus)
 					if err != nil {
-						log.WithField("task_status", *taskUpdate).
+						log.WithField("task_status", *taskStatus).
 							WithError(err).
 							Error("Failed to acknowledgeTaskUpdate")
 					}
@@ -257,7 +261,7 @@ func (m *taskStateManager) startAsyncProcessTaskUpdates() {
 	}
 }
 
-func (m *taskStateManager) acknowledgeTaskUpdate(ctx context.Context, taskUpdate *sched.Event_Update) error {
+func (m *taskStateManager) acknowledgeTaskUpdate(ctx context.Context, taskStatus *mesos.TaskStatus) error {
 	atomic.AddInt64(m.taskAckCount, 1)
 	atomic.AddInt32(m.statusChannelCount, -1)
 	callType := sched.Call_ACKNOWLEDGE
@@ -265,19 +269,31 @@ func (m *taskStateManager) acknowledgeTaskUpdate(ctx context.Context, taskUpdate
 		FrameworkId: hostmgr_mesos.GetSchedulerDriver().GetFrameworkID(ctx),
 		Type:        &callType,
 		Acknowledge: &sched.Call_Acknowledge{
-			AgentId: taskUpdate.Status.AgentId,
-			TaskId:  taskUpdate.Status.TaskId,
-			Uuid:    taskUpdate.Status.Uuid,
+			AgentId: taskStatus.AgentId,
+			TaskId:  taskStatus.TaskId,
+			Uuid:    taskStatus.Uuid,
 		},
 	}
 	msid := hostmgr_mesos.GetSchedulerDriver().GetMesosStreamID(ctx)
 	err := m.schedulerclient.Call(msid, msg)
 	if err != nil {
-		log.WithField("task_status", *taskUpdate).
+		log.WithField("task_status", *taskStatus).
 			WithError(err).
 			Error("Failed to ack task update")
 		return err
 	}
-	log.WithField("task_status", *taskUpdate).Debug("Acked task update")
+	log.WithField("task_status", *taskStatus).Debug("Acked task update")
 	return nil
+}
+
+// EventPurged function is for implementing PurgedEventsProcessor interface
+func (m *taskStateManager) EventPurged(events []*cirbuf.CircularBufferItem) {
+	for _, e := range events {
+		event, ok := e.Value.(*pb_eventstream.Event)
+		if ok {
+			if len(event.GetMesosTaskStatus().GetUuid()) > 0 {
+				m.ackChannel <- event.GetMesosTaskStatus()
+			}
+		}
+	}
 }

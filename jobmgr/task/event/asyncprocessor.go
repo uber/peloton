@@ -2,7 +2,6 @@ package event
 
 import (
 	"context"
-	"math"
 	"sync"
 	"sync/atomic"
 
@@ -119,18 +118,18 @@ func (t *asyncEventProcessor) shutdown() {
 	}
 }
 
-// GetEventProgress returns the current safe progress among all buckets
+// GetEventProgress returns the current max progress among all buckets
 // This value is used to purge data on the event stream server side.
 func (t *asyncEventProcessor) GetEventProgress() uint64 {
 	t.RLock()
 	defer t.RUnlock()
-	var minOffset uint64
-	minOffset = math.MaxUint64
+	var maxOffset uint64
+	maxOffset = uint64(0)
 	for _, bucket := range t.eventBuckets {
 		offset := atomic.LoadUint64(bucket.processedOffset)
-		if offset < minOffset {
-			minOffset = offset
+		if offset > maxOffset {
+			maxOffset = offset
 		}
 	}
-	return minOffset
+	return maxOffset
 }
