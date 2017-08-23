@@ -117,14 +117,16 @@ func (h *serviceHandler) AcquireHostOffers(
 		}
 
 		var resources []*mesos.Resource
+		var attributes []*mesos.Attribute
 		for _, offer := range offers {
 			resources = append(resources, offer.GetResources()...)
+			attributes = append(attributes, offer.GetAttributes()...)
 		}
 
 		hostOffer := hostsvc.HostOffer{
 			Hostname:   hostname,
 			AgentId:    offers[0].GetAgentId(),
-			Attributes: offers[0].GetAttributes(),
+			Attributes: attributes,
 			Resources:  resources,
 		}
 

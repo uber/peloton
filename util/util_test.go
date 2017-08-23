@@ -6,6 +6,7 @@ import (
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -32,6 +33,21 @@ func TestGetOfferScalarResourceSummary(t *testing.T) {
 	assert.Equal(t, result["*"]["disk"], 2000.0)
 	assert.Equal(t, result["*"]["cpu"], 44.5)
 	assert.Equal(t, result["aurora"]["disk"], 1000.0)
+}
+
+func TestConvertLabels(t *testing.T) {
+	pelotonLabels := []*peloton.Label{
+		{
+			Key:   "key",
+			Value: "value",
+		},
+	}
+
+	mesosLabels := ConvertLabels(pelotonLabels)
+
+	assert.Equal(t, len(pelotonLabels), len(mesosLabels.GetLabels()))
+	assert.Equal(t, pelotonLabels[0].GetKey(), mesosLabels.GetLabels()[0].GetKey())
+	assert.Equal(t, pelotonLabels[0].GetValue(), mesosLabels.GetLabels()[0].GetValue())
 }
 
 func TestParseTaskID(t *testing.T) {

@@ -31,7 +31,8 @@ image_providers: appc,docker
 image_provisioner_backend: copy
 appc_store_dir: /tmp/mesos/images/appc
 work_dir: /var/lib/mesos
-resources: cpus(peloton):0.5;cpus(*):3.5;mem(peloton):1024;disk(*):20000;mem(*):1024;ports(peloton):[31000-32000]
+resources: cpus(peloton):0.5;cpus(*):3.5;mem(peloton):1024;disk(*):20000;mem(*):1024;ports(peloton):[31000-32000];fds(*):20
+attributes: zone(peloton):dca1;zone(*):dca1
 modules: file:///etc/mesos-slave/modules
 resource_estimator: org_apache_mesos_FixedResourceEstimator
 

@@ -5,7 +5,7 @@ instanceCount: 1
 defaultConfig:
   resource:
     # Keep resource limits not too low to avoid potentially hitting quota limit
-    cpuLimit: 1.0
+    cpuLimit: 0.1
     memLimitMb: 24.0
     diskLimitMb: 24.0
     fdLimit: 2

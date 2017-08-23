@@ -167,8 +167,8 @@ func MesosStateToPelotonState(mstate mesos.TaskState) task.TaskState {
 		return task.TaskState_STARTING
 	case mesos.TaskState_TASK_RUNNING:
 		return task.TaskState_RUNNING
-	// NOTE: This should only be sent when the framework has
-	// the TASK_KILLING_STATE capability.
+		// NOTE: This should only be sent when the framework has
+		// the TASK_KILLING_STATE capability.
 	case mesos.TaskState_TASK_KILLING:
 		return task.TaskState_RUNNING
 	case mesos.TaskState_TASK_FINISHED:
@@ -346,7 +346,23 @@ func ConvertTaskToResMgrTask(
 		Constraint:   taskInfo.GetConfig().GetConstraint(),
 		NumPorts:     uint32(numPorts),
 		Type:         taskType,
+		Labels:       ConvertLabels(taskInfo.GetConfig().GetLabels()),
 	}
+}
+
+// ConvertLabels will convert Peloton labels to Mesos labels.
+func ConvertLabels(pelotonLabels []*peloton.Label) *mesos.Labels {
+	mesosLabels := &mesos.Labels{
+		Labels: make([]*mesos.Label, 0, len(pelotonLabels)),
+	}
+	for _, label := range pelotonLabels {
+		mesosLabel := &mesos.Label{
+			Key:   &label.Key,
+			Value: &label.Value,
+		}
+		mesosLabels.Labels = append(mesosLabels.Labels, mesosLabel)
+	}
+	return mesosLabels
 }
 
 // RegenerateMesosTaskID generates a new mesos task ID and update task info.

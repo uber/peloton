@@ -233,6 +233,7 @@ def run_mesos():
                 'MESOS_APPC_STORE_DIR=' + config['appc_store_dir'],
                 'MESOS_WORK_DIR=' + config['work_dir'],
                 'MESOS_RESOURCES=' + config['resources'],
+                'MESOS_ATTRIBUTES=' + config['attributes'],
                 'MESOS_MODULES=' + config['modules'],
                 'MESOS_RESOURCE_ESTIMATOR=' + config['resource_estimator'],
             ],

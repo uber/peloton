@@ -19,6 +19,13 @@ sla:
   maximumRunningInstances: 1
   preemptible: false
 defaultConfig:
+  labels:
+  - key: testKey3
+    value: testVal3
+  - key: testKey4
+    value: testVal4
+  - key: testKey5
+    value: testVal5
   resource:
     cpuLimit: 0.1
     memLimitMb: 0.1
