@@ -23,11 +23,11 @@ func (e *TaskNotFoundError) Error() string {
 
 // VolumeNotFoundError indicates that persistent volume is not found
 type VolumeNotFoundError struct {
-	VolumeID string
+	VolumeID *peloton.VolumeID
 }
 
 func (e *VolumeNotFoundError) Error() string {
-	return fmt.Sprintf("volume %v is not found", e.VolumeID)
+	return fmt.Sprintf("volume %v is not found", e.VolumeID.GetValue())
 }
 
 // JobStore is the interface to store job states
@@ -109,7 +109,7 @@ type ResourcePoolStore interface {
 // PersistentVolumeStore is the interface to store all the persistent volume info
 type PersistentVolumeStore interface {
 	CreatePersistentVolume(ctx context.Context, volumeInfo *volume.PersistentVolumeInfo) error
-	UpdatePersistentVolume(ctx context.Context, volumeID string, state volume.VolumeState) error
-	GetPersistentVolume(ctx context.Context, volumeID string) (*volume.PersistentVolumeInfo, error)
-	DeletePersistentVolume(ctx context.Context, volumeID string) error
+	UpdatePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID, state volume.VolumeState) error
+	GetPersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) (*volume.PersistentVolumeInfo, error)
+	DeletePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) error
 }

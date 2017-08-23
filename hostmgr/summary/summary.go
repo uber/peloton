@@ -13,6 +13,7 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
@@ -302,7 +303,10 @@ func (a *hostSummary) updatePersistentVolumes(ctx context.Context) error {
 
 		// TODO(mu): Add cache for created volumes to avoid repeated db read/write.
 		for _, v := range res.Volumes {
-			pv, err := a.volumeStore.GetPersistentVolume(ctx, v)
+			volumeID := &peloton.VolumeID{
+				Value: v,
+			}
+			pv, err := a.volumeStore.GetPersistentVolume(ctx, volumeID)
 			if err != nil || pv == nil {
 				log.WithFields(
 					log.Fields{
@@ -327,7 +331,7 @@ func (a *hostSummary) updatePersistentVolumes(ctx context.Context) error {
 					"labels":            labels,
 					"volume":            pv}).
 				Info("updating persistent volume table")
-			err = a.volumeStore.UpdatePersistentVolume(ctx, v, volume.VolumeState_CREATED)
+			err = a.volumeStore.UpdatePersistentVolume(ctx, volumeID, volume.VolumeState_CREATED)
 			if err != nil {
 				log.WithFields(
 					log.Fields{

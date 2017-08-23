@@ -881,17 +881,17 @@ func (m *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 }
 
 // UpdatePersistentVolume update state for a persistent volume.
-func (m *Store) UpdatePersistentVolume(ctx context.Context, volumeID string, state pb_volume.VolumeState) error {
+func (m *Store) UpdatePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID, state pb_volume.VolumeState) error {
 	return errors.New("Not implemented")
 }
 
 // GetPersistentVolume gets the persistent volume object.
-func (m *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_volume.PersistentVolumeInfo, error) {
+func (m *Store) GetPersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) (*pb_volume.PersistentVolumeInfo, error) {
 	return nil, errors.New("Not implemented")
 }
 
 // DeletePersistentVolume delete persistent volume entry.
-func (m *Store) DeletePersistentVolume(ctx context.Context, volumeID string) error {
+func (m *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) error {
 	return errors.New("Not implemented")
 }
 

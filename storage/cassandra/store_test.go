@@ -1076,7 +1076,10 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	err := volumeStore.CreatePersistentVolume(context.Background(), pv)
 	suite.NoError(err)
 
-	rpv, err := volumeStore.GetPersistentVolume(context.Background(), "volume1")
+	volumeID1 := &peloton.VolumeID{
+		Value: "volume1",
+	}
+	rpv, err := volumeStore.GetPersistentVolume(context.Background(), volumeID1)
 	suite.NoError(err)
 	suite.Equal(rpv.Id.Value, "volume1")
 	suite.Equal(rpv.State.String(), "INITIALIZED")
@@ -1088,14 +1091,17 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	suite.Equal(rpv.ContainerPath, "testpath")
 
 	// Verify get non-existent volume returns error.
-	_, err = volumeStore.GetPersistentVolume(context.Background(), "volume2")
+	volumeID2 := &peloton.VolumeID{
+		Value: "volume2",
+	}
+	_, err = volumeStore.GetPersistentVolume(context.Background(), volumeID2)
 	suite.Error(err)
 
-	err = volumeStore.UpdatePersistentVolume(context.Background(), "volume1", volume.VolumeState_CREATED)
+	err = volumeStore.UpdatePersistentVolume(context.Background(), volumeID1, volume.VolumeState_CREATED)
 	suite.NoError(err)
 
 	// Verfy updated persistent volume info.
-	rpv, err = volumeStore.GetPersistentVolume(context.Background(), "volume1")
+	rpv, err = volumeStore.GetPersistentVolume(context.Background(), volumeID1)
 	suite.NoError(err)
 	suite.Equal(rpv.Id.Value, "volume1")
 	suite.Equal(rpv.State.String(), "CREATED")
@@ -1106,11 +1112,11 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	suite.Equal(rpv.SizeMB, uint32(10))
 	suite.Equal(rpv.ContainerPath, "testpath")
 
-	err = volumeStore.DeletePersistentVolume(context.Background(), "volume1")
+	err = volumeStore.DeletePersistentVolume(context.Background(), volumeID1)
 	suite.NoError(err)
 
 	// Verify volume has been deleted.
-	_, err = volumeStore.GetPersistentVolume(context.Background(), "volume1")
+	_, err = volumeStore.GetPersistentVolume(context.Background(), volumeID1)
 	suite.Error(err)
 }
 

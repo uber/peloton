@@ -1625,16 +1625,16 @@ func (s *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 }
 
 // UpdatePersistentVolume update state for a persistent volume.
-func (s *Store) UpdatePersistentVolume(ctx context.Context, volumeID string, state pb_volume.VolumeState) error {
+func (s *Store) UpdatePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID, state pb_volume.VolumeState) error {
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.
 		Update(volumeTable).
 		Set("state", state.String()).
 		Set("update_time", time.Now().UTC()).
-		Where(qb.Eq{"volume_id": volumeID})
+		Where(qb.Eq{"volume_id": volumeID.GetValue()})
 
-	err := s.applyStatement(ctx, stmt, volumeID)
+	err := s.applyStatement(ctx, stmt, volumeID.GetValue())
 	if err != nil {
 		s.metrics.VolumeUpdateFail.Inc(1)
 		return err
@@ -1645,13 +1645,13 @@ func (s *Store) UpdatePersistentVolume(ctx context.Context, volumeID string, sta
 }
 
 // GetPersistentVolume gets the persistent volume object.
-func (s *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_volume.PersistentVolumeInfo, error) {
+func (s *Store) GetPersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) (*pb_volume.PersistentVolumeInfo, error) {
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.
 		Select("*").
 		From(volumeTable).
-		Where(qb.Eq{"volume_id": volumeID})
+		Where(qb.Eq{"volume_id": volumeID.GetValue()})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
@@ -1699,11 +1699,11 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID string) (*pb_v
 }
 
 // DeletePersistentVolume delete persistent volume entry.
-func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID string) error {
+func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) error {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Delete(volumeTable).Where(qb.Eq{"volume_id": volumeID})
+	stmt := queryBuilder.Delete(volumeTable).Where(qb.Eq{"volume_id": volumeID.GetValue()})
 
-	err := s.applyStatement(ctx, stmt, volumeID)
+	err := s.applyStatement(ctx, stmt, volumeID.GetValue())
 	if err != nil {
 		s.metrics.VolumeDeleteFail.Inc(1)
 		return err

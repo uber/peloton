@@ -362,7 +362,9 @@ func (h *serviceHandler) persistVolumeInfo(
 	}
 
 	volumeRes := createOperation.GetCreate().GetVolumes()[0]
-	volumeID := volumeRes.GetDisk().GetPersistence().GetId()
+	volumeID := &peloton.VolumeID{
+		Value: volumeRes.GetDisk().GetPersistence().GetId(),
+	}
 
 	pv, err := h.volumeStore.GetPersistentVolume(ctx, volumeID)
 	if err != nil {
@@ -393,9 +395,7 @@ func (h *serviceHandler) persistVolumeInfo(
 	}
 
 	volumeInfo := &volume.PersistentVolumeInfo{
-		Id: &peloton.VolumeID{
-			Value: volumeID,
-		},
+		Id: volumeID,
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},

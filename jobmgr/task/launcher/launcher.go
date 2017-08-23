@@ -440,7 +440,9 @@ func (l *launcher) launchStatefulTasks(
 	ctx, cancelFunc := context.WithTimeout(l.rootCtx, _rpcTimeout)
 	defer cancelFunc()
 
-	volumeID := selectedTasks[0].GetVolume().GetId().GetValue()
+	volumeID := &peloton.VolumeID{
+		Value: selectedTasks[0].GetVolume().GetId().GetValue(),
+	}
 	createVolume := false
 	if checkVolume {
 		pv, err := l.volumeStore.GetPersistentVolume(ctx, volumeID)

@@ -280,8 +280,10 @@ func (m *serviceHandler) Start(
 
 		startedInstanceIds = append(startedInstanceIds, instID)
 		if taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) > 0 {
-			pv, err := m.volumeStore.GetPersistentVolume(
-				ctx, taskInfo.GetRuntime().GetVolumeID().GetValue())
+			volumeID := &peloton.VolumeID{
+				Value: taskInfo.GetRuntime().GetVolumeID().GetValue(),
+			}
+			pv, err := m.volumeStore.GetPersistentVolume(ctx, volumeID)
 			if err != nil {
 				_, ok := err.(*storage.VolumeNotFoundError)
 				if !ok {
