@@ -392,7 +392,7 @@ func (c *calculator) getTotalCapacity(ctx context.Context) ([]*hostsvc.Resource,
 		log.WithField("error", respErr).Error("ClusterCapacity error")
 		return nil, errors.New(respErr.String())
 	}
-	return response.Resources, nil
+	return response.PhysicalResources, nil
 }
 
 // Stop stops Entitlement process

@@ -192,7 +192,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 				gomock.Any(),
 				gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				Resources: []*hostsvc.Resource{
+				PhysicalResources: []*hostsvc.Resource{
 					{
 						Kind:     common.CPU,
 						Capacity: 100,
@@ -314,7 +314,7 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	gomock.InOrder(
 		suite.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				Resources: []*hostsvc.Resource{
+				PhysicalResources: []*hostsvc.Resource{
 					{
 						Kind:     common.CPU,
 						Capacity: 100,
