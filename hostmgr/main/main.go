@@ -103,6 +103,12 @@ var (
 		Envar("CASSANDRA_STORE").
 		String()
 
+	autoMigrate = app.Flag(
+		"auto-migrate", "Automatically update storage schemas.").
+		Default("true").
+		Envar("AUTO_MIGRATE").
+		Bool()
+
 	datacenter = app.Flag(
 		"datacenter", "Datacenter name").
 		Default("").
@@ -164,6 +170,10 @@ func main() {
 
 	if *cassandraStore != "" {
 		cfg.Storage.Cassandra.StoreName = *cassandraStore
+	}
+
+	if !*autoMigrate {
+		cfg.Storage.AutoMigrate = false
 	}
 
 	if *datacenter != "" {
