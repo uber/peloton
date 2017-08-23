@@ -93,14 +93,14 @@ func (suite *resPoolConfigValidatorSuite) getResourceConfig() []*pb_respool.Reso
 // Returns resource pools
 func (suite *resPoolConfigValidatorSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 
-	rootID := peloton.ResourcePoolID{Value: RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*pb_respool.ResourcePoolConfig{
-		RootResPoolID: {
-			Name:      RootResPoolID,
+		"root": {
+			Name:      "root",
 			Parent:    nil,
-			Resources: suite.getResourceConfig(),
+			Resources: nil,
 			Policy:    policy,
 		},
 		"respool1": {
@@ -382,7 +382,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 	suite.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "resource cpu, limit 99999 exceeds parent limit 1000")
+	suite.EqualError(err, "resource cpu, limit 99999 exceeds parent limit 1")
 }
 
 func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateInvalidResourceKind() {
@@ -458,26 +458,19 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 	)
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootValidationReservations() {
+func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_SkipRootValidation() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
-		Value: "respool3",
+		Value: "respool34",
 	}
-
 	mockParentPoolID := &peloton.ResourcePoolID{
 		Value: RootResPoolID,
 	}
-	rootResPool, err := suite.resourceTree.Get(mockParentPoolID)
-	suite.NoError(err)
-	resourcePoolConfig := rootResPool.ResourcePoolConfig()
-	resourcePoolConfig.Resources = suite.getResourceConfig()
-	rootResPool.SetResourcePoolConfig(resourcePoolConfig)
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Parent: mockParentPoolID,
 		Resources: []*pb_respool.ResourceConfig{
 			{
-				// child.Reservations > parent.Reservation
-				Reservation: 100,
+				Reservation: 51,
 				Kind:        "cpu",
 				Limit:       100,
 				Share:       2,
@@ -488,13 +481,15 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootVa
 	}
 
 	resourcePoolConfigData := ResourcePoolConfigData{
-		ID:                 mockResourcePoolID,
-		ResourcePoolConfig: mockResourcePoolConfig,
+		ID:                                mockResourcePoolID,
+		ResourcePoolConfig:                mockResourcePoolConfig,
+		SkipRootChildResourceConfigChecks: true,
 	}
 
 	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
-	_, err = rv.Register(
+	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{
+			ValidateParent,
 			ValidateChildrenReservations,
 		},
 	)
@@ -502,56 +497,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootVa
 	suite.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.Error(err)
-	suite.Equal(err.Error(), "Aggregated child reservation 300 of kind `cpu` exceed parent `root` reservations 100")
-}
-
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootValidationParent() {
-	mockResourcePoolID := &peloton.ResourcePoolID{
-		Value: "respool3",
-	}
-
-	mockParentPoolID := &peloton.ResourcePoolID{
-		Value: RootResPoolID,
-	}
-	rootResPool, err := suite.resourceTree.Get(mockParentPoolID)
 	suite.NoError(err)
-	resourcePoolConfig := rootResPool.ResourcePoolConfig()
-	resourcePoolConfig.Resources = suite.getResourceConfig()
-	rootResPool.SetResourcePoolConfig(resourcePoolConfig)
-
-	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
-		Parent: mockParentPoolID,
-		Resources: []*pb_respool.ResourceConfig{
-			{
-				// child.Limit > parent.Limit
-				Reservation: 100,
-				Kind:        "cpu",
-				Limit:       10001,
-				Share:       2,
-			},
-		},
-		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
-		Name:   mockParentPoolID.Value,
-	}
-
-	resourcePoolConfigData := ResourcePoolConfigData{
-		ID:                 mockResourcePoolID,
-		ResourcePoolConfig: mockResourcePoolConfig,
-	}
-
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
-	_, err = rv.Register(
-		[]ResourcePoolConfigValidatorFunc{
-			ValidateParent,
-		},
-	)
-
-	suite.NoError(err)
-
-	err = rv.Validate(resourcePoolConfigData)
-	suite.Error(err)
-	suite.Equal(err.Error(), "resource cpu, limit 10001 exceeds parent limit 1000")
 }
 
 func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_NoPolicy() {
@@ -576,8 +522,9 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_NoPoli
 	}
 
 	resourcePoolConfigData := ResourcePoolConfigData{
-		ID:                 mockResourcePoolID,
-		ResourcePoolConfig: mockResourcePoolConfig,
+		ID:                                mockResourcePoolID,
+		ResourcePoolConfig:                mockResourcePoolConfig,
+		SkipRootChildResourceConfigChecks: true,
 	}
 
 	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}

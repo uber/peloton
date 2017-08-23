@@ -126,8 +126,9 @@ func (h *serviceHandler) CreateResourcePool(
 	}
 
 	resourcePoolConfigData := ResourcePoolConfigData{
-		ID:                 resPoolID,
-		ResourcePoolConfig: resPoolConfig,
+		ID:                                resPoolID,
+		ResourcePoolConfig:                resPoolConfig,
+		SkipRootChildResourceConfigChecks: true,
 	}
 
 	// perform validation on resource pool resPoolConfig
