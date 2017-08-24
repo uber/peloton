@@ -204,12 +204,3 @@ func (t *task) updateRuntime(runtime *pb_task.RuntimeInfo) {
 	t.goalStateTime = now
 	t.stateTime = now
 }
-
-func (t *task) updateState(currentState pb_task.TaskState) {
-	t.Lock()
-	defer t.Unlock()
-
-	// TODO: Should we set version to unknown?
-	t.runtime.State = currentState
-	t.stateTime = time.Now()
-}

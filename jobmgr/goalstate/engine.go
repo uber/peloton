@@ -8,32 +8,21 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
-	"go.uber.org/atomic"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
 )
 
 const (
 	_indefDelay time.Duration = math.MaxInt64
 )
 
-// Engine manages task state -> goalstate convergence. For every task it tracks,
-// it will derive actions based on state/goalstate difference. Eventually it tries
-// to converge state to goalstate. It will only run on jobmgr leader instance.
+// Engine manages current state -> goalstate convergence. For every task in the
+// tracked Manager, it will derive actions based on state/goalstate difference.
+// Eventually it tries to converge current state to goalstate. It will only run
+// on the jobmgr leader instance.
 type Engine interface {
-	// OnEvent callback
-	OnEvent(event *pb_eventstream.Event)
-
-	// OnEvents is the implementation of the event stream handler callback
-	OnEvents(events []*pb_eventstream.Event)
-
-	// GetEventProgress returns the progress
-	GetEventProgress() uint64
-
 	// Start starts processing status update events
 	Start()
 
@@ -67,48 +56,9 @@ type engine struct {
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
 
-	progress atomic.Uint64
 	stopChan chan struct{}
 
 	metrics *Metrics
-}
-
-// OnEvent callback
-func (e *engine) OnEvent(event *pb_eventstream.Event) {
-	log.Error("Not implemented")
-}
-
-// OnEvents is the implementation of the event stream handler callback
-func (e *engine) OnEvents(events []*pb_eventstream.Event) {
-	for _, event := range events {
-		if event.GetType() != pb_eventstream.Event_MESOS_TASK_STATUS {
-			e.progress.Store(event.Offset)
-			log.WithField("type", event.GetType()).
-				Warn("unhandled event type in goalstate engine")
-			continue
-		}
-
-		mesosTaskID := event.GetMesosTaskStatus().GetTaskId().GetValue()
-		jobID, instanceID, err := util.ParseJobAndInstanceID(mesosTaskID)
-		if err != nil {
-			e.progress.Store(event.Offset)
-			log.WithError(err).
-				WithField("mesos_task_id", mesosTaskID).
-				Error("Failed to ParseTaskIDFromMesosTaskID")
-			continue
-		}
-
-		if j := e.trackedManager.GetJob(&peloton.JobID{Value: jobID}); j != nil {
-			j.UpdateTaskState(uint32(instanceID), util.MesosStateToPelotonState(event.GetMesosTaskStatus().GetState()))
-		}
-
-		e.progress.Store(event.Offset)
-	}
-}
-
-// GetEventProgress returns the progress
-func (e *engine) GetEventProgress() uint64 {
-	return e.progress.Load()
 }
 
 // Start starts processing status update events
@@ -167,7 +117,7 @@ func (e *engine) syncFromDB(ctx context.Context) error {
 		}
 
 		for instanceID, task := range tasks {
-			e.trackedManager.AddJob(jobID).UpdateTask(instanceID, task.GetRuntime())
+			e.trackedManager.AddJob(jobID).SetTask(instanceID, task.GetRuntime())
 		}
 	}
 

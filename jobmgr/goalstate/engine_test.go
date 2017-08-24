@@ -7,45 +7,12 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
-
-func TestEngineOnEvents(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	tmMock := mocks.NewMockManager(ctrl)
-	jobMock := mocks.NewMockJob(ctrl)
-
-	e := &engine{
-		trackedManager: tmMock,
-	}
-
-	jobID := &peloton.JobID{
-		Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c",
-	}
-
-	tmMock.EXPECT().GetJob(jobID).Return(jobMock)
-	jobMock.EXPECT().UpdateTaskState(uint32(1), pb_task.TaskState_RUNNING)
-
-	e.OnEvents([]*pb_eventstream.Event{{
-		Type: pb_eventstream.Event_MESOS_TASK_STATUS,
-		MesosTaskStatus: &mesos_v1.TaskStatus{
-			TaskId: &mesos_v1.TaskID{
-				Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
-			},
-			State: &[]mesos_v1.TaskState{mesos_v1.TaskState_TASK_RUNNING}[0],
-		},
-		Offset: 5,
-	}})
-}
 
 func TestEngineSyncFromDB(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -80,7 +47,7 @@ func TestEngineSyncFromDB(t *testing.T) {
 			},
 		}, nil)
 
-	jobMock.EXPECT().UpdateTask(uint32(1), &task.RuntimeInfo{
+	jobMock.EXPECT().SetTask(uint32(1), &task.RuntimeInfo{
 		GoalState:            task.TaskState_RUNNING,
 		DesiredConfigVersion: 42,
 		ConfigVersion:        42,

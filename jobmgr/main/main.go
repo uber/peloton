@@ -279,7 +279,7 @@ func main() {
 		},
 	})
 
-	trackedManager := tracked.NewManager(dispatcher)
+	trackedManager := tracked.NewManager(dispatcher, taskStore)
 	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, jobStore, taskStore, rootScope)
 
 	// Init service handler.
@@ -340,7 +340,7 @@ func main() {
 		common.PelotonHostManager,
 		jobStore,
 		taskStore,
-		[]event.Listener{runtimeUpdater, goalstateEngine},
+		[]event.Listener{runtimeUpdater, trackedManager},
 		common.PelotonResourceManager,
 		rootScope,
 	)
@@ -360,6 +360,7 @@ func main() {
 	server := jobmgr.NewServer(
 		cfg.JobManager.HTTPPort,
 		cfg.JobManager.GRPCPort,
+		goalstateEngine,
 	)
 
 	candidate, err := leader.NewCandidate(

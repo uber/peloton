@@ -410,7 +410,8 @@ func (m *serviceHandler) Stop(
 		}
 
 		taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
-		err = m.taskStore.UpdateTask(ctx, taskInfo)
+		// TODO: We can retry here in case of conflict.
+		err = m.trackedManager.AddJob(taskInfo.GetJobId()).UpdateTask(ctx, instID, taskInfo)
 		if err != nil {
 			// Skip remaining tasks killing if db update error occurs.
 			log.WithError(err).
@@ -419,8 +420,6 @@ func (m *serviceHandler) Stop(
 			m.metrics.TaskStopFail.Inc(1)
 			break
 		}
-
-		m.trackedManager.AddJob(taskInfo.GetJobId()).UpdateTask(instID, taskInfo.GetRuntime())
 
 		stoppedInstanceIds = append(stoppedInstanceIds, instID)
 		m.metrics.TaskStop.Inc(1)

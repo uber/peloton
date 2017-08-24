@@ -1,12 +1,12 @@
 package tracked
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	log "github.com/sirupsen/logrus"
 )
 
 // Job tracked by the system, serving as a best effort view of what's stored
@@ -20,15 +20,16 @@ type Job interface {
 	// GetTask from the task id.
 	GetTask(id uint32) Task
 
-	// UpdateTask with the new runtime info. This will also schedule the task for
+	// SetTask to the new runtime info. This will also schedule the task for
 	// immediate evaluation.
-	UpdateTask(id uint32, runtime *pb_task.RuntimeInfo)
+	SetTask(id uint32, runtime *pb_task.RuntimeInfo)
 
-	// UpdateTask with the new state. This will also schedule the task for
-	// immediate evaluation.
-	// TODO: Ideally, we should only have UpdateTask, as the state should be
-	// persisted before we evalute it.
-	UpdateTaskState(id uint32, state pb_task.TaskState)
+	// UpdateTask with the new runtime info, by first attempting to persit it.
+	// If it fail in persisting the change due to a data race, an AlreadyExists
+	// error is returned.
+	// If succesfull, this will also schedule the task for immediate evaluation.
+	// TODO: Should only take the task runtime, not info.
+	UpdateTask(ctx context.Context, id uint32, info *pb_task.TaskInfo) error
 }
 
 func newJob(id *peloton.JobID, m *manager) *job {
@@ -64,7 +65,7 @@ func (j *job) GetTask(id uint32) Task {
 	return nil
 }
 
-func (j *job) UpdateTask(id uint32, runtime *pb_task.RuntimeInfo) {
+func (j *job) SetTask(id uint32, runtime *pb_task.RuntimeInfo) {
 	j.Lock()
 
 	t, ok := j.tasks[id]
@@ -79,21 +80,12 @@ func (j *job) UpdateTask(id uint32, runtime *pb_task.RuntimeInfo) {
 	j.m.ScheduleTask(t, time.Now())
 }
 
-func (j *job) UpdateTaskState(id uint32, state pb_task.TaskState) {
-	j.Lock()
-
-	t, ok := j.tasks[id]
-	if !ok {
-		log.
-			WithField("job", j.id.GetValue()).
-			WithField("id", id).
-			Warnf("failed updating state of untracked task")
-		j.Unlock()
-		return
+func (j *job) UpdateTask(ctx context.Context, id uint32, info *pb_task.TaskInfo) error {
+	if err := j.m.taskStore.UpdateTask(ctx, info); err != nil {
+		return err
 	}
 
-	t.updateState(state)
-	j.Unlock()
+	j.SetTask(id, info.GetRuntime())
 
-	j.m.ScheduleTask(t, time.Now())
+	return nil
 }
