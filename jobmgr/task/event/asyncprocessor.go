@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go.uber.org/yarpc/yarpcerrors"
+
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/util"
@@ -24,7 +26,7 @@ type asyncEventProcessor struct {
 	eventBuckets []*eventBucket
 }
 
-// taskUpdateBucket is a bucket of task updates. All updates for one task would end up in one bucket in order; a bucket
+// eventBucket is a bucket of task updates. All updates for one task would end up in one bucket in order; a bucket
 // can hold status updates for multiple tasks.
 type eventBucket struct {
 	eventChannel    chan *pb_eventstream.Event
@@ -66,12 +68,17 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 			for {
 				select {
 				case event := <-bucket.eventChannel:
-					err := t.ProcessStatusUpdate(context.Background(), event)
-					if err != nil {
-						log.WithError(err).
-							WithField("bucket_num", bucket.index).
-							WithField("event", event).
-							Error("Error applying taskSatus")
+					for {
+						// Retry while getting AlreadyExists error.
+						if err := t.ProcessStatusUpdate(context.Background(), event); err == nil {
+							break
+						} else if !yarpcerrors.IsAlreadyExists(err) {
+							log.WithError(err).
+								WithField("bucket_num", bucket.index).
+								WithField("event", event).
+								Error("Error applying taskSatus")
+							break
+						}
 					}
 					atomic.AddInt32(bucket.processedCount, 1)
 					atomic.StoreUint64(bucket.processedOffset, event.Offset)

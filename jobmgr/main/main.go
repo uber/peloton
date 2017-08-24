@@ -340,7 +340,8 @@ func main() {
 		common.PelotonHostManager,
 		jobStore,
 		taskStore,
-		[]event.Listener{runtimeUpdater, trackedManager},
+		trackedManager,
+		[]event.Listener{runtimeUpdater},
 		common.PelotonResourceManager,
 		rootScope,
 	)

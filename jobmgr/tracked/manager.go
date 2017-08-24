@@ -2,36 +2,24 @@ package tracked
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"go.uber.org/atomic"
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
 )
 
 // Manager for tracking jobs and tasks. The manager has built in scheduler,
 // for marking tasks as dirty and ready for being processed by the goal state
 // engine.
 type Manager interface {
-	eventstream.EventHandler
-
-	// Noop functions to implement the event.Listener (this should only be a
-	// eventstream.EventHandler).
-	Start()
-	Stop()
-
 	// GetJob will return the current tracked Job, nil if currently not tracked.
 	GetJob(id *peloton.JobID) Job
 
@@ -181,59 +169,4 @@ func (m *manager) WaitForScheduledTask(stopChan <-chan struct{}) Task {
 			timer.Stop()
 		}
 	}
-}
-
-// OnEvent callback.
-func (m *manager) OnEvent(event *pb_eventstream.Event) {
-	log.Error("Not implemented")
-}
-
-// OnEvents is the implementation of the event stream handler callback.
-func (m *manager) OnEvents(events []*pb_eventstream.Event) {
-	for _, event := range events {
-		m.processEvent(event)
-		// TODO: We want to retry the event later on, if processing failed.
-		m.progress.Store(event.Offset)
-	}
-}
-
-func (m *manager) processEvent(event *pb_eventstream.Event) {
-	if event.GetType() != pb_eventstream.Event_MESOS_TASK_STATUS {
-		log.WithField("type", event.GetType()).
-			Warn("unhandled event type in goalstate engine")
-		return
-	}
-
-	mesosTaskID := event.GetMesosTaskStatus().GetTaskId().GetValue()
-	jobID, instanceID, err := util.ParseJobAndInstanceID(mesosTaskID)
-	if err != nil {
-		log.WithError(err).
-			WithField("mesos_task_id", mesosTaskID).
-			Error("Failed to ParseTaskIDFromMesosTaskID")
-		return
-	}
-
-	// TODO: Only read runtime.
-	taskInfo, err := m.taskStore.GetTaskByID(context.Background(), fmt.Sprintf("%s-%d", jobID, instanceID))
-	if err != nil {
-		log.WithError(err).
-			WithField("mesos_task_id", mesosTaskID).
-			Error("failed reading task info when updating with mesos event")
-		return
-	}
-
-	newState := util.MesosStateToPelotonState(event.GetMesosTaskStatus().GetState())
-	if newState == taskInfo.Runtime.State {
-		log.WithField("mesos_task_id", mesosTaskID).Debug("skip status update for mesos task with unchagned state")
-		return
-	}
-	taskInfo.Runtime.State = newState
-
-	// TODO: Use UpdateTask when TaskUpdater doesn't update the task.
-	m.SetTask(&peloton.JobID{Value: jobID}, uint32(instanceID), taskInfo.Runtime)
-}
-
-// GetEventProgress returns the progress.
-func (m *manager) GetEventProgress() uint64 {
-	return m.progress.Load()
 }

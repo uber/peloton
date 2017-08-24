@@ -23,6 +23,7 @@ import (
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	event_mocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -61,14 +62,15 @@ var nowMock = func() time.Time {
 type TaskUpdaterTestSuite struct {
 	suite.Suite
 
-	updater          *statusUpdate
-	ctrl             *gomock.Controller
-	testScope        tally.TestScope
-	mockResmgrClient *res_mocks.MockResourceManagerServiceYARPCClient
-	mockJobStore     *store_mocks.MockJobStore
-	mockTaskStore    *store_mocks.MockTaskStore
-	mockListener1    *event_mocks.MockListener
-	mockListener2    *event_mocks.MockListener
+	updater            *statusUpdate
+	ctrl               *gomock.Controller
+	testScope          tally.TestScope
+	mockResmgrClient   *res_mocks.MockResourceManagerServiceYARPCClient
+	mockJobStore       *store_mocks.MockJobStore
+	mockTaskStore      *store_mocks.MockTaskStore
+	mockTrackedManager *mocks.MockManager
+	mockListener1      *event_mocks.MockListener
+	mockListener2      *event_mocks.MockListener
 }
 
 func (suite *TaskUpdaterTestSuite) SetupTest() {
@@ -77,16 +79,18 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.mockResmgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
+	suite.mockTrackedManager = mocks.NewMockManager(suite.ctrl)
 	suite.mockListener1 = event_mocks.NewMockListener(suite.ctrl)
 	suite.mockListener2 = event_mocks.NewMockListener(suite.ctrl)
 
 	suite.updater = &statusUpdate{
-		jobStore:     suite.mockJobStore,
-		taskStore:    suite.mockTaskStore,
-		listeners:    []Listener{suite.mockListener1, suite.mockListener2},
-		rootCtx:      context.Background(),
-		resmgrClient: suite.mockResmgrClient,
-		metrics:      NewMetrics(suite.testScope.SubScope("status_updater")),
+		jobStore:       suite.mockJobStore,
+		taskStore:      suite.mockTaskStore,
+		listeners:      []Listener{suite.mockListener1, suite.mockListener2},
+		trackedManager: suite.mockTrackedManager,
+		rootCtx:        context.Background(),
+		resmgrClient:   suite.mockResmgrClient,
+		metrics:        NewMetrics(suite.testScope.SubScope("status_updater")),
 	}
 }
 
@@ -146,8 +150,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		suite.mockTaskStore.EXPECT().
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil),
-		suite.mockTaskStore.EXPECT().
-			UpdateTask(context.Background(), updateTaskInfo).
+		suite.mockTrackedManager.EXPECT().
+			UpdateTask(context.Background(), updateTaskInfo.JobId, updateTaskInfo.InstanceId, updateTaskInfo).
 			Return(nil),
 	)
 
@@ -201,9 +205,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 				Gangs: gangs,
 			})).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
-	suite.mockTaskStore.EXPECT().
-		UpdateTask(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, updateTask *task.TaskInfo) {
+	suite.mockTrackedManager.EXPECT().
+		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
 			suite.Equal(updateTask.JobId, _pelotonJobID)
 			suite.Equal(
 				updateTask.Runtime.State,
@@ -243,13 +247,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 	updateTaskInfo.GetRuntime().Reason = _mesosReason.String()
 	updateTaskInfo.GetRuntime().Message = _failureMsg
 	updateTaskInfo.GetRuntime().CompletionTime = _currentTime
+	updateTaskInfo.GetRuntime().GoalState = task.TaskState_FAILED
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil),
-		suite.mockTaskStore.EXPECT().
-			UpdateTask(context.Background(), updateTaskInfo).
+		suite.mockTrackedManager.EXPECT().
+			UpdateTask(context.Background(), updateTaskInfo.JobId, updateTaskInfo.InstanceId, updateTaskInfo).
 			Return(nil),
 	)
 
@@ -277,9 +282,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), _pelotonJobID).
 		Return(_jobConfig, errors.New("testError"))
-	suite.mockTaskStore.EXPECT().
-		UpdateTask(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, updateTask *task.TaskInfo) {
+	suite.mockTrackedManager.EXPECT().
+		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
 			suite.Equal(updateTask.JobId, _pelotonJobID)
 			suite.Equal(
 				updateTask.Runtime.State,
@@ -326,10 +331,9 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 				Gangs: gangs,
 			})).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
-	suite.mockTaskStore.EXPECT().
-		UpdateTask(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, updateTask *task.TaskInfo) {
-			suite.Equal(updateTask.JobId, _pelotonJobID)
+	suite.mockTrackedManager.EXPECT().
+		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
 			suite.Equal(
 				updateTask.Runtime.State,
 				task.TaskState_INITIALIZED,

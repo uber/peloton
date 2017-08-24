@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"github.com/pkg/errors"
@@ -42,14 +43,15 @@ type Listener interface {
 
 // StatusUpdate reads and processes the task state change events from HM
 type statusUpdate struct {
-	jobStore     storage.JobStore
-	taskStore    storage.TaskStore
-	eventClients map[string]*eventstream.Client
-	applier      *asyncEventProcessor
-	listeners    []Listener
-	rootCtx      context.Context
-	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient
-	metrics      *Metrics
+	jobStore       storage.JobStore
+	taskStore      storage.TaskStore
+	eventClients   map[string]*eventstream.Client
+	applier        *asyncEventProcessor
+	trackedManager tracked.Manager
+	listeners      []Listener
+	rootCtx        context.Context
+	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
+	metrics        *Metrics
 }
 
 // Singleton task status updater
@@ -62,6 +64,7 @@ func InitTaskStatusUpdate(
 	server string,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	trackedManager tracked.Manager,
 	listeners []Listener,
 	resmgrClientName string,
 	parentScope tally.Scope) {
@@ -71,13 +74,14 @@ func InitTaskStatusUpdate(
 			return
 		}
 		statusUpdater = &statusUpdate{
-			jobStore:     jobStore,
-			taskStore:    taskStore,
-			rootCtx:      context.Background(),
-			resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resmgrClientName)),
-			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
-			eventClients: make(map[string]*eventstream.Client),
-			listeners:    listeners,
+			jobStore:       jobStore,
+			taskStore:      taskStore,
+			rootCtx:        context.Background(),
+			resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resmgrClientName)),
+			metrics:        NewMetrics(parentScope.SubScope("status_updater")),
+			eventClients:   make(map[string]*eventstream.Client),
+			trackedManager: trackedManager,
+			listeners:      listeners,
 		}
 		// TODO: add config for BucketEventProcessor
 		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
@@ -222,8 +226,14 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	needRetrySchedulingTask := false
 	maxFailures := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
-	if state == pb_task.TaskState_FAILED &&
-		runtime.GetFailureCount() < maxFailures {
+	switch state {
+	case pb_task.TaskState_FAILED:
+		if runtime.GetFailureCount() >= maxFailures {
+			// Stop scheduling the task, max failures reached.
+			runtime.GoalState = pb_task.TaskState_FAILED
+			runtime.State = state
+			break
+		}
 
 		p.metrics.RetryFailedTasksTotal.Inc(1)
 		statusMsg = "Rescheduled due to task failure status: " + statusMsg
@@ -233,7 +243,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		// TODO: check for failing reason and do backoff before
 		// rescheduling.
 		needRetrySchedulingTask = true
-	} else if state == pb_task.TaskState_LOST {
+
+	case pb_task.TaskState_LOST:
 		p.metrics.RetryLostTasksTotal.Inc(1)
 		log.WithFields(log.Fields{
 			"db_task_info":      taskInfo,
@@ -242,7 +253,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		statusMsg = "Rescheduled due to task LOST: " + statusMsg
 		util.RegenerateMesosTaskID(taskInfo)
 		needRetrySchedulingTask = true
-	} else {
+
+	default:
 		// TODO: figure out on what cases state updates should not be persisted
 		// TODO: depends on the state, may need to put the task back to
 		// the queue, or clear the pending task record from taskqueue
@@ -272,7 +284,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		).Debug("Received unexpected update for task")
 	}
 
-	err = p.taskStore.UpdateTask(ctx, taskInfo)
+	err = p.trackedManager.UpdateTask(ctx, taskInfo.GetJobId(), taskInfo.GetInstanceId(), taskInfo)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
