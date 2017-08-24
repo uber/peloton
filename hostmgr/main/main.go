@@ -42,6 +42,12 @@ var (
 		Envar("ENABLE_DEBUG_LOGGING").
 		Bool()
 
+	enableSentry = app.Flag(
+		"enable-sentry", "enable logging hook up to sentry").
+		Default("false").
+		Envar("ENABLE_SENTRY_LOGGING").
+		Bool()
+
 	configFiles = app.Flag(
 		"config",
 		"YAML config files (can be provided multiple times to merge configs)").
@@ -123,7 +129,9 @@ func main() {
 		log.WithField("error", err).Fatal("Cannot parse yaml config")
 	}
 
-	logging.ConfigureSentry(&cfg.SentryConfig)
+	if *enableSentry {
+		logging.ConfigureSentry(&cfg.SentryConfig)
+	}
 
 	// now, override any CLI flags in the loaded config.Config
 	if *httpPort != 0 {

@@ -9,6 +9,7 @@ class Profile(Struct):
   election_zk_servers = Required(String)
   mysql_host = Default(String, '')
   enable_debug_logging = Default(Boolean, 'false')
+  enable_sentry_logging = Default(Boolean, 'false')
   use_cassandra = Default(Boolean, 'false')
   cassandra_hosts = Default(String, '')
   cassandra_store = Default(String, '')
@@ -56,6 +57,7 @@ JOB_TEMPLATE = Service(
         Parameter(name='env', value='MESOS_ZK_PATH={{profile.mesos_zk_path}}'),
         Parameter(name='env', value='DB_HOST={{profile.mysql_host}}'),
         Parameter(name='env', value='ENABLE_DEBUG_LOGGING={{profile.enable_debug_logging}}'),
+        Parameter(name='env', value='ENABLE_SENTRY_LOGGING={{profile.enable_sentry_logging}}'),
         Parameter(name='env', value='ELECTION_ZK_SERVERS={{profile.election_zk_servers}}'),
         Parameter(name='env', value='USE_CASSANDRA={{profile.use_cassandra}}'),
         Parameter(name='env', value='CASSANDRA_HOSTS={{profile.cassandra_hosts}}'),

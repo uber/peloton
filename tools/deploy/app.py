@@ -145,6 +145,7 @@ class App(object):
             'CLUSTER': self.cluster.name,
             'DATACENTER': getattr(self.cluster, 'datacenter', ''),
             'MESOS_AGENT_WORK_DIR': self.cluster.mesos_agent_work_dir,
+            'ENABLE_SENTRY_LOGGING': self.cluster.enable_sentry_logging,
         }
 
         params = [
