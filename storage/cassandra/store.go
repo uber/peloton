@@ -848,7 +848,9 @@ func (s *Store) GetTasksForJobResultSet(ctx context.Context, id *peloton.JobID) 
 func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	result, err := s.GetTasksForJobResultSet(ctx, id)
 	if err != nil {
-		log.Errorf("Fail to GetTasksForJob by jobId %v, err=%v", id.Value, err)
+		log.WithField("job_id", id.GetValue()).
+			WithError(err).
+			Error("Fail to GetTasksForJob")
 		s.metrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
@@ -858,7 +860,9 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 	resultMap := make(map[uint32]*task.TaskInfo)
 	allResults, err := result.All(ctx)
 	if err != nil {
-		log.Errorf("Fail to get all results for GetTasksForJob by jobId %v, err=%v", id.Value, err)
+		log.WithField("job_id", id.GetValue()).
+			WithError(err).
+			Errorf("Fail to get all results for GetTasksForJob")
 		s.metrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
@@ -866,13 +870,17 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
-			log.Errorf("Failed to Fill into TaskRuntimeRecord, val = %v err= %v", value, err)
+			log.WithField("value", value).
+				WithError(err).
+				Error("Failed to Fill into TaskRuntimeRecord")
 			s.metrics.TaskGetFail.Inc(1)
 			continue
 		}
 		runtime, err := record.GetTaskRuntime()
 		if err != nil {
-			log.Errorf("Failed to parse task runtime from record, val = %v err= %v", record, err)
+			log.WithField("record", record).
+				WithError(err).
+				Error("Failed to parse task runtime from record")
 			s.metrics.TaskGetFail.Inc(1)
 			continue
 		}
