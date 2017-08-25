@@ -2,21 +2,17 @@ package job
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
-	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/jobmgr/task/config"
+	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -116,7 +112,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID) error {
 	}
 
 	for batch := uint32(0); batch < jobConfig.InstanceCount/batchRows+1; batch++ {
-		var tasksToRequeue []*task.TaskInfo
+		var tasksToRequeue []*pb_task.TaskInfo
 		start := batch * batchRows
 		end := util.Min((batch+1)*batchRows, jobConfig.InstanceCount)
 		log.WithField("start", start).
@@ -150,11 +146,11 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID) error {
 				tasksToRequeue = append(tasksToRequeue, task)
 			} else {
 				//Task exists, check if task is in initialized state, if yes then requeue to RM
-				var taskState task.TaskState
+				var taskState pb_task.TaskState
 				for _, taskInfo := range t {
 					taskState = taskInfo.Runtime.State
 					// Task state in initialized need to be requeued to RM
-					if taskState == task.TaskState_INITIALIZED {
+					if taskState == pb_task.TaskState_INITIALIZED {
 						tasksToRequeue = append(tasksToRequeue, taskInfo)
 						log.WithField("job_id", jobID.Value).
 							WithField("task_instance", i).
@@ -167,7 +163,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID) error {
 		if len(tasksToRequeue) > 0 {
 			// requeue the tasks into resgmr
 			// TODO: retry policy
-			err := jobmgr_task.EnqueueGangs(context.Background(), tasksToRequeue, jobConfig, j.resmgrClient)
+			err := task.EnqueueGangs(context.Background(), tasksToRequeue, jobConfig, j.resmgrClient)
 			if err != nil {
 				log.WithError(err).
 					WithField("job_id", jobID.Value).
@@ -193,32 +189,20 @@ func createTaskForJob(
 	ctx context.Context,
 	taskStore storage.TaskStore,
 	jobID *peloton.JobID,
-	i uint32,
-	jobConfig *job.JobConfig) (*task.TaskInfo, error) {
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, i,
-		uuid.NewUUID().String())
-	taskConfig, _ := config.GetTaskConfig(jobID, jobConfig, i)
-	task := task.TaskInfo{
-		Runtime: &task.RuntimeInfo{
-			State: task.TaskState_INITIALIZED,
-			// New task is by default treated as batch task and get SUCCEEDED goalstate.
-			// TODO(mu): Long running tasks need RUNNING as default goalstate.
-			GoalState: task.TaskState_SUCCEEDED,
-			MesosTaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
-			},
-		},
-		Config:     taskConfig,
-		InstanceId: i,
-		JobId:      jobID,
-	}
-	err := taskStore.CreateTask(ctx, jobID, i, &task, jobConfig.OwningTeam)
+	id uint32,
+	jobConfig *job.JobConfig) (*pb_task.TaskInfo, error) {
+	taskInfo, err := task.CreateInitializingTask(jobID, id, jobConfig)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := taskStore.CreateTask(ctx, jobID, id, taskInfo, jobConfig.OwningTeam); err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
-			WithField("id", i).
+			WithField("id", id).
 			Error("Failed to CreateTask")
 		return nil, err
 	}
-	return &task, nil
+
+	return taskInfo, nil
 }

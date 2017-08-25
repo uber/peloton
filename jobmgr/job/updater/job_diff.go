@@ -6,8 +6,8 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/jobmgr/task/config"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/jobmgr/task"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
@@ -18,8 +18,8 @@ var _updateNotSupported = "updating %s not supported"
 
 // JobDiff holds the difference between two job states
 type JobDiff struct {
-	// instanceID->task config
-	InstancesToAdd map[uint32]*task.TaskConfig
+	// instanceID->task info
+	InstancesToAdd map[uint32]*pb_task.TaskInfo
 }
 
 // CalculateJobDiff returns the difference between 2 jobs
@@ -90,9 +90,9 @@ func validateNewConfig(oldConfig *job.JobConfig,
 func getInstancesToAdd(
 	jobID *peloton.JobID,
 	oldConfig *job.JobConfig,
-	newConfig *job.JobConfig) (map[uint32]*task.TaskConfig, error) {
+	newConfig *job.JobConfig) (map[uint32]*pb_task.TaskInfo, error) {
 
-	instancesToAdd := make(map[uint32]*task.TaskConfig)
+	instancesToAdd := make(map[uint32]*pb_task.TaskInfo)
 	if oldConfig.InstanceCount == newConfig.InstanceCount {
 		return instancesToAdd, nil
 	}
@@ -102,13 +102,11 @@ func getInstancesToAdd(
 	}
 
 	for i := oldConfig.InstanceCount; i < newConfig.InstanceCount; i++ {
-		instanceID := i
-		taskConfig, err := config.GetTaskConfig(jobID, newConfig, i)
+		taskInfo, err := task.CreateInitializingTask(jobID, i, newConfig)
 		if err != nil {
-			log.Errorf("Failed to get task config (%d) for job %v: %v",
-				i, jobID.Value, err)
+			log.Errorf("Failed to get task (%d) for job %v: %v", i, jobID.Value, err)
 		}
-		instancesToAdd[instanceID] = taskConfig
+		instancesToAdd[i] = taskInfo
 	}
 	return instancesToAdd, nil
 }

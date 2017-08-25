@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 const (
 	// UnknownVersion is used by the goalstate engine, when either the current
 	// or desired config version is unknown.
-	UnknownVersion = -1
+	UnknownVersion = math.MaxUint64
 )
 
 // Task tracked by the system, serving as a best effort view of what's stored
@@ -48,7 +49,7 @@ type Task interface {
 // state.
 type State struct {
 	State         pb_task.TaskState
-	ConfigVersion int64
+	ConfigVersion uint64
 }
 
 // TaskAction that can be given to the Task.RunAction method.

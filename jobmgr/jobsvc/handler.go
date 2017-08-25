@@ -12,7 +12,6 @@ import (
 
 	"go.uber.org/yarpc"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -156,18 +155,13 @@ func (h *serviceHandler) createAndEnqueueTasks(
 
 	tasks := make([]*task.TaskInfo, instances)
 	for i := uint32(0); i < instances; i++ {
-		// Populate taskInfos
-		instanceID := i
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instanceID,
-			uuid.NewUUID().String())
-		taskConfig, err := task_config.GetTaskConfig(jobID, jobConfig, i)
+		t, err := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
 		if err != nil {
 			log.Errorf("Failed to get task config (%d) for job %v: %v",
 				i, jobID.Value, err)
 			return err
 		}
-		t := getTaskInfo(mesosTaskID, taskConfig, instanceID, jobID)
-		tasks[i] = &t
+		tasks[i] = t
 	}
 
 	// TODO: use the username of current session for createBy param
@@ -291,11 +285,8 @@ func (h *serviceHandler) Update(
 		Infof("adding %d instances", len(diff.InstancesToAdd))
 
 	var tasks []*task.TaskInfo
-	for instanceID, taskConfig := range diff.InstancesToAdd {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instanceID,
-			uuid.NewUUID().String())
-		t := getTaskInfo(mesosTaskID, taskConfig, instanceID, jobID)
-		tasks = append(tasks, &t)
+	for _, taskInfo := range diff.InstancesToAdd {
+		tasks = append(tasks, taskInfo)
 	}
 
 	err = h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
@@ -332,24 +323,6 @@ func (h *serviceHandler) Update(
 		Id:      jobID,
 		Message: msg,
 	}, nil
-}
-
-func getTaskInfo(mesosTaskID string, taskConfig *task.TaskConfig, instanceID uint32, jobID *peloton.JobID) task.TaskInfo {
-	t := task.TaskInfo{
-		Runtime: &task.RuntimeInfo{
-			State: task.TaskState_INITIALIZED,
-			// New task is by default treated as batch task and get SUCCEEDED goalstate.
-			// TODO(mu): Long running tasks need RUNNING as default goalstate.
-			GoalState: task.TaskState_SUCCEEDED,
-			MesosTaskId: &mesos.TaskID{
-				Value: &mesosTaskID,
-			},
-		},
-		Config:     taskConfig,
-		InstanceId: instanceID,
-		JobId:      jobID,
-	}
-	return t
 }
 
 // Get returns a job config for a given job ID

@@ -947,7 +947,7 @@ func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.Jo
 		return nil, err
 	}
 
-	config, err := s.getTaskConfig(ctx, id, uint32(record.InstanceID), runtime.ConfigVersion)
+	config, err := s.getTaskConfig(ctx, id, uint32(record.InstanceID), int64(runtime.ConfigVersion))
 	if err != nil {
 		return nil, err
 	}

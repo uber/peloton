@@ -345,10 +345,10 @@ message RuntimeInfo {
   peloton.VolumeID volumeID = 11;
 
   // The config version currently used by the runtime.
-  int64 configVersion = 12;
+  uint64 configVersion = 12;
 
   // The desired config version that should be used by the runtime.
-  int64 desiredConfigVersion = 13;
+  uint64 desiredConfigVersion = 13;
 
   // the id of mesos agent on the host to be launched.
   mesos.v1.AgentID agentID = 14;
