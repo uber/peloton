@@ -220,7 +220,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.handler.resmgrClient = mockResmgrClient
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore
-	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, jobmgr_job.Config{}, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
 

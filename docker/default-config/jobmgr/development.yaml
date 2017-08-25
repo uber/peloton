@@ -9,5 +9,7 @@ storage:
   use_cassandra: true
 
 job_manager:
+  job:
+    state_update_interval: 1s
   goal_state:
     max_retry_delay: 1s

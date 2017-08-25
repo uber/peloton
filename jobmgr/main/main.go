@@ -289,6 +289,7 @@ func main() {
 		taskStore,
 		resmgrsvc.NewResourceManagerServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonResourceManager)),
+		cfg.JobManager.Job,
 		rootScope)
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(

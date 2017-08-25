@@ -16,5 +16,7 @@ election:
   zk_servers: ["localhost:8192"]
 
 job_manager:
+  job:
+    state_update_interval: 1s
   goal_state:
     max_retry_delay: 1s

@@ -354,7 +354,7 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, jobmgr_job.Config{}, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
 	defer updater.Stop()
@@ -424,7 +424,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, jobmgr_job.Config{}, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
 	defer updater.Stop()
@@ -556,7 +556,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchingTask() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, jobmgr_job.Config{}, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
 	defer updater.Stop()
@@ -632,7 +632,7 @@ func (suite *TaskHandlerTestSuite) TestStartStatefulTasksWithRanges() {
 	suite.handler.taskStore = mockTaskStore
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
 	suite.handler.volumeStore = mockVolumeStore
-	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, jobmgr_job.Config{}, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
 	defer updater.Stop()
@@ -710,7 +710,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesNoVolumeCreated() {
 	suite.handler.taskStore = mockTaskStore
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
 	suite.handler.volumeStore = mockVolumeStore
-	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, tally.NoopScope)
+	updater := jobmgr_job.NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, jobmgr_job.Config{}, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
 	defer updater.Stop()

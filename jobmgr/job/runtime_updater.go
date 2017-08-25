@@ -21,10 +21,6 @@ import (
 	"go.uber.org/atomic"
 )
 
-// jobStateUpdateInterval is the interval at which the job update is checked
-// and persisted
-var jobStateUpdateInterval = 15 * time.Second
-
 // checkAllJobsInterval is the interval at which all non-terminal jobs are checked
 var checkAllJobsInterval = 10 * time.Minute
 
@@ -53,9 +49,13 @@ func NewJobRuntimeUpdater(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient,
+	cfg Config,
 	parentScope tally.Scope) *RuntimeUpdater {
+	cfg.normalize()
+
 	// TODO: load firstTaskUpdateTime from DB after restart
 	updater := RuntimeUpdater{
+		cfg:                 cfg,
 		jobStore:            jobStore,
 		taskStore:           taskStore,
 		firstTaskUpdateTime: make(map[string]float64),
@@ -68,7 +68,7 @@ func NewJobRuntimeUpdater(
 			resmgrClient,
 			parentScope),
 	}
-	t := time.NewTicker(jobStateUpdateInterval)
+	t := time.NewTicker(cfg.StateUpdateInterval)
 	go updater.updateJobStateLoop(t.C)
 	return &updater
 }
@@ -76,6 +76,8 @@ func NewJobRuntimeUpdater(
 // RuntimeUpdater updates the job runtime states
 type RuntimeUpdater struct {
 	sync.Mutex
+
+	cfg Config
 
 	// jobID -> first task update time
 	firstTaskUpdateTime map[string]float64

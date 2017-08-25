@@ -2,6 +2,7 @@ package jobmgr
 
 import (
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/upgrade"
 )
@@ -19,6 +20,9 @@ type Config struct {
 	// the storage namespace, and made clearer what this controls
 	// (threads? rows? statements?)
 	DbWriteConcurrency int `yaml:"db_write_concurrency"`
+
+	// Job general configuration.
+	Job job.Config
 
 	// Task launcher specific configs
 	TaskLauncher launcher.Config `yaml:"task_launcher"`
