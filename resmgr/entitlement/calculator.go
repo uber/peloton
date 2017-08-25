@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
+	"code.uber.internal/infra/peloton/util"
 )
 
 // Calculator defines the interface of Entitlement calculator
@@ -195,6 +196,10 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 		allocation := n.GetAllocation()
 		demand = demand.Add(allocation)
 		demands[n.ID()] = demand
+		log.WithFields(log.Fields{
+			"Respool": n.Name(),
+			"Demand":  demand,
+		}).Info("Demand for resource pool")
 
 		resConfig := n.Resources()
 		for kind, res := range resConfig {
@@ -221,12 +226,16 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 		// higher demand then reservation
 		// It will also cap the fair share to demand and redistribute the
 		// rest of the entitlement to others.
-		for remaining.Get(kind) > 0 && c.isDemandExist(demands, kind) {
+		for remaining.Get(kind) > util.ResourceEspilon && c.isDemandExist(demands, kind) {
 			remainingShare := totalShare[kind]
 			for e := childs.Front(); e != nil; e = e.Next() {
 				n := e.Value.(respool.ResPool)
 
-				if demands[n.ID()].Get(kind) <= 0 {
+				if remaining.Get(kind) < util.ResourceEspilon {
+					break
+				}
+
+				if demands[n.ID()].Get(kind) < util.ResourceEspilon {
 					continue
 				}
 
@@ -247,11 +256,13 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 				if remaining.Get(kind) > value {
 					remaining.Set(kind, float64(remaining.Get(kind)-value))
 				} else {
+					// Caping the fare share with the remaining
+					// resources for resource kind
+					value = remaining.Get(kind)
 					remaining.Set(kind, float64(0))
 				}
 				value += assignments[n.ID()].Get(kind)
 				assignments[n.ID()].Set(kind, value)
-
 			}
 			*entitlement = remaining
 			totalShare[kind] = remainingShare

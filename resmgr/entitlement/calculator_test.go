@@ -230,6 +230,13 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(int64(res.MEMORY), int64(333))
 	suite.Equal(int64(res.DISK), int64(2666))
 
+	ResPool12, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
+	res = ResPool12.GetEntitlement()
+	suite.Equal(int64(res.CPU), int64(13))
+	suite.Equal(int64(res.GPU), int64(0))
+	suite.Equal(int64(res.MEMORY), int64(133))
+	suite.Equal(int64(res.DISK), int64(666))
+
 	ResPool21, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
 	suite.NoError(err)
 	ResPool21.AddToDemand(demand)
@@ -306,7 +313,6 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	suite.Equal(res.GPU, float64(0))
 	suite.Equal(res.MEMORY, float64(1000))
 	suite.Equal(res.DISK, float64(6000))
-
 }
 
 func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
@@ -352,4 +358,114 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	suite.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(0))
 	suite.Equal(RootResPool.Resources()[common.MEMORY].Reservation, float64(1000))
 	suite.Equal(RootResPool.Resources()[common.DISK].Reservation, float64(6000))
+}
+
+func (suite *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
+	// Mock LaunchTasks call.
+	gomock.InOrder(
+		suite.mockHostMgr.EXPECT().
+			ClusterCapacity(
+				gomock.Any(),
+				gomock.Any()).
+			Return(&hostsvc.ClusterCapacityResponse{
+				PhysicalResources: []*hostsvc.Resource{
+					{
+						Kind:     common.CPU,
+						Capacity: 100,
+					},
+					{
+						Kind:     common.GPU,
+						Capacity: 0,
+					},
+					{
+						Kind:     common.MEMORY,
+						Capacity: 1000,
+					},
+					{
+						Kind:     common.DISK,
+						Capacity: 6000,
+					},
+				},
+			}, nil).
+			Times(1),
+	)
+	ResPoolRoot, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
+	suite.NoError(err)
+
+	ResPool1, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool1"})
+	suite.NoError(err)
+	ResPool2, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool2"})
+	suite.NoError(err)
+	ResPool3, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	suite.NoError(err)
+	ResPool11, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
+	suite.NoError(err)
+	ResPool12, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
+	suite.NoError(err)
+	ResPool21, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
+	suite.NoError(err)
+	ResPool22, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
+	suite.NoError(err)
+	demand := &scalar.Resources{
+		CPU:    40,
+		MEMORY: 400,
+		DISK:   4000,
+		GPU:    0,
+	}
+
+	ResPool11.AddToDemand(demand)
+	ResPool12.AddToDemand(demand)
+	ResPool21.AddToDemand(demand)
+	ResPool22.AddToDemand(demand)
+	ResPool3.AddToDemand(demand)
+
+	suite.calculator.calculateEntitlement(context.Background())
+
+	res := ResPoolRoot.GetEntitlement()
+	suite.Equal(res.CPU, float64(100))
+	suite.Equal(res.GPU, float64(0))
+	suite.Equal(res.MEMORY, float64(1000))
+	suite.Equal(res.DISK, float64(6000))
+
+	res = ResPool1.GetEntitlement()
+	suite.Equal(int64(res.CPU), int64(33))
+	suite.Equal(int64(res.GPU), int64(0))
+	suite.Equal(int64(res.MEMORY), int64(333))
+	suite.Equal(int64(res.DISK), int64(2000))
+
+	res = ResPool2.GetEntitlement()
+	suite.Equal(int64(res.CPU), int64(33))
+	suite.Equal(int64(res.GPU), int64(0))
+	suite.Equal(int64(res.MEMORY), int64(333))
+	suite.Equal(int64(res.DISK), int64(2000))
+
+	res = ResPool3.GetEntitlement()
+	suite.Equal(int64(res.CPU), int64(33))
+	suite.Equal(int64(res.GPU), int64(0))
+	suite.Equal(int64(res.MEMORY), int64(333))
+	suite.Equal(int64(res.DISK), int64(2000))
+
+	res = ResPool11.GetEntitlement()
+	suite.Equal(int64(res.CPU), int64(16))
+	suite.Equal(int64(res.GPU), int64(0))
+	suite.Equal(int64(res.MEMORY), int64(166))
+	suite.Equal(int64(res.DISK), int64(1000))
+
+	res = ResPool12.GetEntitlement()
+	suite.Equal(int64(res.CPU), int64(16))
+	suite.Equal(int64(res.GPU), int64(0))
+	suite.Equal(int64(res.MEMORY), int64(166))
+	suite.Equal(int64(res.DISK), int64(1000))
+
+	res = ResPool21.GetEntitlement()
+	suite.Equal(int64(res.CPU), int64(16))
+	suite.Equal(int64(res.GPU), int64(0))
+	suite.Equal(int64(res.MEMORY), int64(166))
+	suite.Equal(int64(res.DISK), int64(1000))
+
+	res = ResPool22.GetEntitlement()
+	suite.Equal(int64(res.CPU), int64(16))
+	suite.Equal(int64(res.GPU), int64(0))
+	suite.Equal(int64(res.MEMORY), int64(166))
+	suite.Equal(int64(res.DISK), int64(1000))
 }
