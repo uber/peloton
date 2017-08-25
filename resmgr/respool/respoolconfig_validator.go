@@ -15,10 +15,9 @@ type ResourcePoolConfigValidatorFunc func(resTree Tree, resourcePoolConfigData R
 
 // ResourcePoolConfigData holds the data that needs to be validated
 type ResourcePoolConfigData struct {
-	ID                                *peloton.ResourcePoolID     // Resource Pool Config ID
-	Path                              *respool.ResourcePoolPath   // Resource Pool path
-	ResourcePoolConfig                *respool.ResourcePoolConfig // Resource Pool Configuration
-	SkipRootChildResourceConfigChecks bool                        // TODO Skip child resource config checks for Parent Root T799105
+	ID                 *peloton.ResourcePoolID     // Resource Pool Config ID
+	Path               *respool.ResourcePoolPath   // Resource Pool path
+	ResourcePoolConfig *respool.ResourcePoolConfig // Resource Pool Configuration
 }
 
 // Implements Validator
@@ -75,7 +74,6 @@ func ValidateParent(resTree Tree, resourcePoolConfigData ResourcePoolConfigData)
 
 	resPoolConfig := resourcePoolConfigData.ResourcePoolConfig
 	ID := resourcePoolConfigData.ID
-	skipRootChildResourceConfigChecks := resourcePoolConfigData.SkipRootChildResourceConfigChecks
 
 	cResources := resPoolConfig.Resources
 
@@ -103,12 +101,6 @@ func ValidateParent(resTree Tree, resourcePoolConfigData ResourcePoolConfigData)
 		}
 	}
 
-	// bypass check if parent is root
-	if newParentID.Value == RootResPoolID && skipRootChildResourceConfigChecks {
-		log.WithField("respool_id", ID.Value).Info("skipping parent limit check")
-		return nil
-	}
-
 	// get parent resources
 	pResources := parent.Resources()
 
@@ -121,7 +113,7 @@ func ValidateParent(resTree Tree, resourcePoolConfigData ResourcePoolConfigData)
 					"resource %s, limit %v exceeds parent limit %v",
 					cResource.Kind,
 					cResource.Limit,
-					pResource.Share,
+					pResource.Limit,
 				)
 			}
 		} else {
@@ -176,17 +168,9 @@ func ValidateChildrenReservations(resTree Tree, resourcePoolConfigData ResourceP
 
 	resPoolConfig := resourcePoolConfigData.ResourcePoolConfig
 	ID := resourcePoolConfigData.ID
-	skipRootChildResourceConfigChecks := resourcePoolConfigData.SkipRootChildResourceConfigChecks
 
 	// get parent ID
 	parentID := resPoolConfig.Parent
-
-	// bypass check if parent is root
-	if parentID.Value == RootResPoolID && skipRootChildResourceConfigChecks {
-		log.WithField("respool_id", ID.Value).Info("skipping child reservations check")
-		return nil
-	}
-
 	cResources := resPoolConfig.Resources
 
 	// lookup parent

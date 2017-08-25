@@ -127,6 +127,7 @@ func (c *calculator) Start() error {
 
 // calculateEntitlement calculates the entitlement
 func (c *calculator) calculateEntitlement(ctx context.Context) error {
+	log.Info("calculating entitlement")
 	// Checking is previous transitions are complete
 	isRunning := c.isRunning.Load()
 	if isRunning {
@@ -357,18 +358,22 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 			{
 				Kind:        common.CPU,
 				Reservation: c.clusterCapacity[common.CPU],
+				Limit:       c.clusterCapacity[common.CPU],
 			},
 			{
 				Kind:        common.GPU,
 				Reservation: c.clusterCapacity[common.GPU],
+				Limit:       c.clusterCapacity[common.GPU],
 			},
 			{
 				Kind:        common.DISK,
 				Reservation: c.clusterCapacity[common.DISK],
+				Limit:       c.clusterCapacity[common.DISK],
 			},
 			{
 				Kind:        common.MEMORY,
 				Reservation: c.clusterCapacity[common.MEMORY],
+				Limit:       c.clusterCapacity[common.MEMORY],
 			},
 		}
 		rootResourcePoolConfig.Resources = rootres

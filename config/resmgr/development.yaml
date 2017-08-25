@@ -19,3 +19,4 @@ resmgr:
   task:
     placing_timeout: 5s
     launching_timeout: 10s
+  entitlement_calculation_period: 5s

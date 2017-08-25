@@ -115,16 +115,8 @@ class Job(object):
         assert state == goal_state
 
     def ensure_respool(self):
-        request = respool.CreateRequest(
-            config=self.config.respool_config,
-        )
-        respool_name = request.config.name
-        self.client.respool_svc.CreateResourcePool(
-            request,
-            metadata=self.client.resmgr_metadata,
-            timeout=self.config.rpc_timeout_sec,
-        )
-
+        # lookup respool
+        respool_name = self.config.respool_config.name
         request = respool.LookupRequest(
             path=respool.ResourcePoolPath(value=RESPOOL_ROOT + respool_name),
         )
@@ -133,10 +125,21 @@ class Job(object):
             metadata=self.client.resmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        assert resp.id.value
-        assert not resp.error.notFound.message
-        assert not resp.error.invalidPath.message
-        return resp.id.value
+        if resp.id.value is None or resp.id.value == u'':
+            request = respool.CreateRequest(
+                config=self.config.respool_config,
+            )
+            resp = self.client.respool_svc.CreateResourcePool(
+                request,
+                metadata=self.client.resmgr_metadata,
+                timeout=self.config.rpc_timeout_sec,
+            )
+            id = resp.result.value
+        else:
+            id = resp.id.value
+
+        assert id
+        return id
 
 
 def format_stats(stats):
