@@ -33,3 +33,5 @@ fi
 # is compatible with docker 1.9.1 (jenkins box) and 1.12.x (Laptop).
 pip install docker-py==1.7.2
 pip install pyyaml
+pip install peloton-client
+pip install cqlsh
