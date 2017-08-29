@@ -58,7 +58,8 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	err = s.getRecoveryHandler().Start()
 	if err != nil {
-		log.Errorf("Failed to start recovery handler")
+		// If we can not recover then we need to do suicide
+		log.WithError(err).Fatal("Failed to start recovery handler")
 		return err
 	}
 
