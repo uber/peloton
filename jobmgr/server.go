@@ -46,6 +46,7 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	s.getStatusUpdate().Start()
 	s.getStatusUpdateRM().Start()
+	s.goalstateEngine.Start()
 
 	return nil
 }
@@ -58,7 +59,7 @@ func (s *Server) LostLeadershipCallback() error {
 
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
-	s.goalstateEngine.Start()
+	s.goalstateEngine.Stop()
 
 	return nil
 }

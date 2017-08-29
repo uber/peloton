@@ -30,3 +30,15 @@ def test__stop_long_running_batch_job_immediately(
 
     job.stop()
     job.wait_for_state(goal_state='KILLED')
+
+
+def test__create_batch_job_and_restart_jobmgr_completes_jobs(jobmgr):
+    job = Job(job_file='test_job_no_container.yaml',
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.create()
+
+    # Restart immediately. That will lave some fraction unallocated and another
+    # fraction initialized.
+    jobmgr.restart()
+
+    job.wait_for_state()

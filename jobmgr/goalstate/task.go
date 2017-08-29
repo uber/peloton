@@ -33,6 +33,11 @@ var (
 			task.TaskState_SUCCEEDED:   tracked.UntrackAction,
 			task.TaskState_FAILED:      tracked.UntrackAction,
 		},
+		task.TaskState_FAILED: {
+			task.TaskState_FAILED:    tracked.UntrackAction,
+			task.TaskState_SUCCEEDED: tracked.UntrackAction,
+			task.TaskState_KILLED:    tracked.UntrackAction,
+		},
 	}
 )
 

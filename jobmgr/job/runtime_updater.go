@@ -11,7 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -46,9 +46,9 @@ var NonTerminatedStates = map[job.JobState]bool{
 
 // NewJobRuntimeUpdater creates a new JobRuntimeUpdater
 func NewJobRuntimeUpdater(
+	trackedManager tracked.Manager,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient,
 	cfg Config,
 	parentScope tally.Scope) *RuntimeUpdater {
 	cfg.normalize()
@@ -64,9 +64,9 @@ func NewJobRuntimeUpdater(
 		taskUpdateRunning:   make(map[string]chan struct{}),
 		metrics:             NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
 		jobRecovery: NewJobRecovery(
+			trackedManager,
 			jobStore,
 			taskStore,
-			resmgrClient,
 			parentScope),
 	}
 	t := time.NewTicker(cfg.StateUpdateInterval)

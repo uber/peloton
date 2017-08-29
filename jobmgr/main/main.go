@@ -5,7 +5,6 @@ import (
 	"os"
 	"runtime"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
@@ -279,15 +278,6 @@ func main() {
 		},
 	})
 
-	// Init service handler.
-	// TODO: change to updated jobmgr.Config
-	runtimeUpdater := job.NewJobRuntimeUpdater(
-		jobStore,
-		taskStore,
-		resmgrsvc.NewResourceManagerServiceYARPCClient(
-			dispatcher.ClientConfig(common.PelotonResourceManager)),
-		cfg.JobManager.Job,
-		rootScope)
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(
 		dispatcher,
@@ -302,6 +292,15 @@ func main() {
 
 	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher(), rootScope)
 	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, jobStore, taskStore, rootScope)
+
+	// Init service handler.
+	// TODO: change to updated jobmgr.Config
+	runtimeUpdater := job.NewJobRuntimeUpdater(
+		trackedManager,
+		jobStore,
+		taskStore,
+		cfg.JobManager.Job,
+		rootScope)
 
 	jobsvc.InitServiceHandler(
 		dispatcher,
@@ -343,7 +342,6 @@ func main() {
 		taskStore,
 		trackedManager,
 		[]event.Listener{runtimeUpdater},
-		common.PelotonResourceManager,
 		rootScope,
 	)
 

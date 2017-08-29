@@ -35,7 +35,7 @@ func TestUpdateJobRuntime_Events(t *testing.T) {
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
 
-	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, Config{}, tally.NoopScope)
+	updater := NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
 
 	var events []*pb_eventstream.Event
 
@@ -146,7 +146,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	// Initialize a new job runtime updater and expect to load three
 	// tasks (two succeded and one running) from DB. Also process one
 	// task event and verify the job start time is as expected.
-	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, Config{}, tally.NoopScope)
+	updater := NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
 	updater.Start()
 	updater.OnEvents(events)
 	updater.checkAllJobs(context.Background())
@@ -257,7 +257,7 @@ func TestUpdateJobRuntime_SynchronousJobUpdate(t *testing.T) {
 		Return(nil).
 		AnyTimes()
 
-	updater := NewJobRuntimeUpdater(mockJobStore, mockTaskStore, nil, Config{}, tally.NoopScope)
+	updater := NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
 	updater.Start()
 	updater.UpdateJob(context.Background(), jobID)
 

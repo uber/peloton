@@ -5,19 +5,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
-	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -50,7 +46,6 @@ type statusUpdate struct {
 	trackedManager tracked.Manager
 	listeners      []Listener
 	rootCtx        context.Context
-	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
 	metrics        *Metrics
 }
 
@@ -66,7 +61,6 @@ func InitTaskStatusUpdate(
 	taskStore storage.TaskStore,
 	trackedManager tracked.Manager,
 	listeners []Listener,
-	resmgrClientName string,
 	parentScope tally.Scope) {
 	onceInitStatusUpdate.Do(func() {
 		if statusUpdater != nil {
@@ -77,7 +71,6 @@ func InitTaskStatusUpdate(
 			jobStore:       jobStore,
 			taskStore:      taskStore,
 			rootCtx:        context.Background(),
-			resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resmgrClientName)),
 			metrics:        NewMetrics(parentScope.SubScope("status_updater")),
 			eventClients:   make(map[string]*eventstream.Client),
 			trackedManager: trackedManager,
@@ -90,7 +83,6 @@ func InitTaskStatusUpdate(
 			jobStore:     jobStore,
 			taskStore:    taskStore,
 			rootCtx:      context.Background(),
-			resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resmgrClientName)),
 			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
 			eventClients: make(map[string]*eventstream.Client),
 			listeners:    listeners,
@@ -224,7 +216,6 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 	}
 
-	needRetrySchedulingTask := false
 	maxFailures := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
 	switch state {
 	case pb_task.TaskState_FAILED:
@@ -240,9 +231,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		util.RegenerateMesosTaskID(taskInfo)
 		runtime.FailureCount++
 
-		// TODO: check for failing reason and do backoff before
-		// rescheduling.
-		needRetrySchedulingTask = true
+		// TODO: check for failing reason before rescheduling.
 
 	case pb_task.TaskState_LOST:
 		p.metrics.RetryLostTasksTotal.Inc(1)
@@ -252,7 +241,6 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}).Info("reschedule lost task")
 		statusMsg = "Rescheduled due to task LOST: " + statusMsg
 		util.RegenerateMesosTaskID(taskInfo)
-		needRetrySchedulingTask = true
 
 	default:
 		// TODO: figure out on what cases state updates should not be persisted
@@ -294,32 +282,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return err
 	}
 
-	if needRetrySchedulingTask {
-		go p.retrySchedulingTask(ctx, proto.Clone(taskInfo).(*pb_task.TaskInfo))
-	}
 	return nil
-}
-
-// retrySchedulingTask retries scheduling task by enqueue task to resmgr.
-func (p *statusUpdate) retrySchedulingTask(ctx context.Context, taskInfo *pb_task.TaskInfo) {
-	jobConfig, err := p.jobStore.GetJobConfig(ctx, taskInfo.GetJobId())
-	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-			"task":  taskInfo,
-		}).Error("jobstore getjobconfig failed")
-		return
-	}
-	p.enqueueTask(taskInfo, jobConfig)
-}
-
-// enqueueTask enqueues given task to respool in resmgr.
-func (p *statusUpdate) enqueueTask(
-	taskInfo *pb_task.TaskInfo,
-	jobConfig *pb_job.JobConfig) {
-
-	tasks := []*pb_task.TaskInfo{taskInfo}
-	jobmgr_task.EnqueueGangs(p.rootCtx, tasks, jobConfig, p.resmgrClient)
 }
 
 // isUnexpected tells if taskState is unexpected or not

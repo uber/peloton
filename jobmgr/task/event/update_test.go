@@ -8,7 +8,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -18,14 +17,10 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	event_mocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/util"
 )
 
 const (
@@ -65,7 +60,6 @@ type TaskUpdaterTestSuite struct {
 	updater            *statusUpdate
 	ctrl               *gomock.Controller
 	testScope          tally.TestScope
-	mockResmgrClient   *res_mocks.MockResourceManagerServiceYARPCClient
 	mockJobStore       *store_mocks.MockJobStore
 	mockTaskStore      *store_mocks.MockTaskStore
 	mockTrackedManager *mocks.MockManager
@@ -76,7 +70,6 @@ type TaskUpdaterTestSuite struct {
 func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
-	suite.mockResmgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
 	suite.mockTrackedManager = mocks.NewMockManager(suite.ctrl)
@@ -89,7 +82,6 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 		listeners:      []Listener{suite.mockListener1, suite.mockListener2},
 		trackedManager: suite.mockTrackedManager,
 		rootCtx:        context.Background(),
-		resmgrClient:   suite.mockResmgrClient,
 		metrics:        NewMetrics(suite.testScope.SubScope("status_updater")),
 	}
 }
@@ -189,22 +181,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
-	tasks := []*task.TaskInfo{taskInfo}
-	gangs := util.ConvertToResMgrGangs(tasks, _jobConfig)
 	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), _pelotonJobID).
-		Return(_jobConfig, nil)
-	suite.mockResmgrClient.EXPECT().
-		EnqueueGangs(
-			gomock.Any(),
-			gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
-				Gangs: gangs,
-			})).
-		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 	suite.mockTrackedManager.EXPECT().
 		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
 		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
@@ -262,52 +242,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
-// Test processing task failure status update w/ retry.
-func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedRetryDBFailure() {
-	defer suite.ctrl.Finish()
-
-	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
-	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
-
-	var resmgrTasks []*resmgr.Task
-	resmgrTasks = append(
-		resmgrTasks,
-		util.ConvertTaskToResMgrTask(taskInfo, _jobConfig),
-	)
-	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
-
-	suite.mockTaskStore.EXPECT().
-		GetTaskByID(context.Background(), _pelotonTaskID).
-		Return(taskInfo, nil)
-	suite.mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), _pelotonJobID).
-		Return(_jobConfig, errors.New("testError"))
-	suite.mockTrackedManager.EXPECT().
-		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
-		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
-			suite.Equal(updateTask.JobId, _pelotonJobID)
-			suite.Equal(
-				updateTask.Runtime.State,
-				task.TaskState_INITIALIZED,
-			)
-			suite.Equal(
-				updateTask.Runtime.Reason,
-				_mesosReason.String(),
-			)
-			suite.Equal(
-				updateTask.Runtime.Message,
-				rescheduleMsg,
-			)
-			suite.Equal(
-				updateTask.Runtime.FailureCount,
-				uint32(1),
-			)
-		}).
-		Return(nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
-	time.Sleep(_waitTime)
-}
-
 // Test processing task LOST status update w/ retry.
 func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 	defer suite.ctrl.Finish()
@@ -315,22 +249,10 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
-	tasks := []*task.TaskInfo{taskInfo}
-	gangs := util.ConvertToResMgrGangs(tasks, _jobConfig)
 	rescheduleMsg := "Rescheduled due to task LOST: testFailure"
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), _pelotonJobID).
-		Return(_jobConfig, nil)
-	suite.mockResmgrClient.EXPECT().
-		EnqueueGangs(
-			gomock.Any(),
-			gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
-				Gangs: gangs,
-			})).
-		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 	suite.mockTrackedManager.EXPECT().
 		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
 		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
