@@ -36,9 +36,8 @@ class Cluster(object):
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
 
-        host, port = self.zookeeper.split(':')
         self.client = AuroraClientZK.create(
-            host, port, zk_path=self.aurora_zk_path)
+            zk_endpoints = self.zookeeper, zk_path=self.aurora_zk_path)
 
         self.apps = {}
         for app in PELOTON_APPS:

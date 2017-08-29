@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -e
+cd $(dirname "${BASH_SOURCE[0]}")/..
+
 # Setup virtualenv if not exists
 if [ ! -d env ]; then
     virtualenv env

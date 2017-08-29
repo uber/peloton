@@ -129,8 +129,8 @@ class App(object):
         Returns the docker params for a given Peloton application
         """
         mesos_zk_path = 'zk://%s/%s' % (
-            self.cluster.zookeeper, self.cluster.mesos_zk_path)
-
+            ','.join(self.cluster.zookeeper), self.cluster.mesos_zk_path)
+        peloton_zk_endpoints = '\n'.join(self.cluster.zookeeper)
         env_vars = {
             'ENVIRONMENT': 'production',
             'CONFIG_DIR': './config',
@@ -138,13 +138,14 @@ class App(object):
             # TODO: fix Peloton code to only take self.cluster.mesos_zk_path
             'MESOS_ZK_PATH': mesos_zk_path,
             'ENABLE_DEBUG_LOGGING': self.enable_debug_logging,
-            'ELECTION_ZK_SERVERS': self.cluster.zookeeper,
-            'USE_CASSANDRA': self.cluster.cassandra is not None,
-            'CASSANDRA_HOSTS': '\n'.join(self.cluster.cassandra),
-            'CASSANDRA_STORE': self.cluster.name.replace('-', '_'),
+            'ELECTION_ZK_SERVERS': peloton_zk_endpoints,
+            'USE_CASSANDRA': self.cluster.cassandra_contact_points is not None,
+            'CASSANDRA_HOSTS': '\n'.join(self.cluster.cassandra_contact_points),
+            'CASSANDRA_STORE': self.cluster.cassandra_keyspace,
             'CLUSTER': self.cluster.name,
             'DATACENTER': getattr(self.cluster, 'datacenter', ''),
             'MESOS_AGENT_WORK_DIR': self.cluster.mesos_agent_work_dir,
+            'AUTO_MIGRATE': self.cluster.auto_migrate,
             'ENABLE_SENTRY_LOGGING': self.cluster.enable_sentry_logging,
         }
 
@@ -168,8 +169,8 @@ class App(object):
         """
         Returns the docker image path for a Peloton app
         """
-        return '%s/vendor/peloton:%s' % (
-            self.cluster.docker_registry, self.cluster.version
+        return '%s/%s:%s' % (
+            self.cluster.docker_registry, self.cluster.docker_repository, self.cluster.version
         )
 
     def get_executor_config(self):

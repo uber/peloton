@@ -11,7 +11,6 @@ from aurora.api.AuroraSchedulerManager import Client
 
 log = logging.getLogger(__name__)
 
-DEFAULT_ZK_PORT = 2181
 MEMBER_PREFIX = 'member_'
 DEFAULT_AURORA_PORT = 8081
 
@@ -75,8 +74,7 @@ class AuroraClientZK(object):
 
     """
     @classmethod
-    def create(cls, host, port=DEFAULT_ZK_PORT, encoding='json',
-               zk_path='/aurora/scheduler'):
+    def create(cls, zk_endpoints, encoding='json', zk_path='/aurora/scheduler'):
         """
            Parses a host name and port to a ZK cluster, resolve the current
            Aurora master, and sets up Thrift client for Aurora scheduler.
@@ -112,7 +110,7 @@ class AuroraClientZK(object):
         """
 
         # Resolve the Aurora master from Zookeeper
-        zk_client = KazooClient('%s:%s' % (host, port))
+        zk_client = KazooClient(','.join(zk_endpoints))
         leader_node_name = None
         try:
             zk_client.start()
@@ -121,8 +119,7 @@ class AuroraClientZK(object):
                     leader_node_name = znode_name
 
             if not leader_node_name:
-                raise AuroraClientZKError('leader name is not defined %s:%s'
-                                          % (host, port))
+                raise AuroraClientZKError('leader name is not defined %s' % zk_endpoints)
 
             leader_node_info = zk_client.get(
                 '%s/%s' % (zk_path, leader_node_name)
@@ -138,7 +135,7 @@ class AuroraClientZK(object):
                         return AuroraClient.create(host, port, encoding)
 
             raise AuroraClientZKError(
-                'Failed to resolve Aurora endpoint from %s:%s' % (host, port)
+                'Failed to resolve Aurora endpoint from %s' % zk_endpoints
             )
         finally:
             zk_client.stop()
