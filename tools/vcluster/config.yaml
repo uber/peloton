@@ -1,0 +1,123 @@
+zookeeper:
+  image: library/zookeeper:3.4.10
+  ports:
+    - ZOO_PORT
+  volume:
+    - '/files'
+  static_env:
+    - name: 'ZOO_MAX_CLIENT_CNXNS'
+      value: '30000'
+  start_command: 'bash /docker-entrypoint.sh zkServer.sh start-foreground'
+  resource:
+    cpuLimit: 4.0
+    memLimitMb: 10000.0
+    diskLimitMb: 10000.0
+
+mesos-master:
+  image: mesosphere/mesos-master:1.2.0-rc2
+  ports:
+    - MESOS_PORT
+  resource:
+    cpuLimit: 4.0
+    memLimitMb: 10240.0
+    diskLimitMb: 10240.0
+  static_env:
+    - name: 'MESOS_AUTHENTICATE_HTTP_READWRITE'
+      value: 'true'
+    - name: 'MESOS_AUTHENTICATE_FRAMEWORKS'
+      value: 'true'
+    - name: 'MESOS_AUTHENTICATE_HTTP_FRAMEWORKS'
+      value: 'true'
+    - name: 'MESOS_HTTP_FRAMEWORK_AUTHENTICATORS'
+      value: 'basic'
+    - name: 'MESOS_CREDENTIALS'
+      value: '/mnt/mesos/sandbox/credentials.json'
+    - name: 'MESOS_LOG_DIR'
+      value: '/var/log/mesos'
+    - name: 'MESOS_QUORUM'
+      value: '1'
+    - name: 'MESOS_REGISTRY'
+      value: 'replicated_log'
+    - name: 'MESOS_WORK_DIR'
+      value: '/var/lib/mesos'
+  dynamic_env: 'MESOS_ZK'
+  start_command: 'mesos-master'
+  fetch_files:
+    - source: 'https://gist.githubusercontent.com/scy0208/57b36a3b76144f5102246733579be53d/raw/9c65580d5d3b58bd8226678c60c9ae4e97c5a863/credentials.json'
+      name: 'credentials.json'
+
+mesos-slave:
+  image: mesosphere/mesos-slave:1.2.0-rc2
+  ports:
+    - MESOS_PORT
+    - MESOS_HOSTNAME
+  resource:
+    cpuLimit: 0.1
+    memLimitMb: 128
+    diskLimitMb: 128
+  static_env:
+    - name: 'MESOS_SWITCH_USER'
+      value: '0'
+    - name: 'MESOS_CONTAINERIZERS'
+      value: 'mesos'
+    - name: 'MESOS_LOG_DIR'
+      value: '/var/log/mesos'
+    - name: 'MESOS_ISOLATION'
+      value: 'posix/cpu,posix/mem'
+    - name: 'MESOS_LAUNCHER'
+      value: 'posix'
+    - name: 'MESOS_WORK_DIR'
+      value: '/var/lib/mesos'
+    - name: 'MESOS_RESOURCES'
+      value: 'cpus(*):3.5;mem(*):1024;disk(*):20000;ports(*):[31000-32000]'
+  dynamic_env: 'MESOS_MASTER'
+  start_command: 'rm -rf /var/lib/mesos/meta/slaves/latest && mesos-slave'
+  fetch_files:
+    - source: 'https://gist.githubusercontent.com/scy0208/8aac814650845e778de9a8cb6e744645/raw/294bb7c6b0a788cea68013b55e359be9699b95ad/modules.json'
+      name: 'modules.json'
+
+
+cassandra:
+  cli: 'cqlsh'
+  host: 'ms-82ef95a4.pit-irn-1.uberatc.net'
+  version: '--cqlversion=3.4.0'
+  migrate_cli: '%s/bin/migrate'
+  path: 'storage/cassandra/migrations'
+  cmd:
+    create: "CREATE KEYSPACE IF NOT EXISTS %s with replication={ 'class' : 'SimpleStrategy', 'replication_factor' : 1 };"
+    drop: "DROP KEYSPACE IF EXISTS %s"
+    migrate: "cassandra://%s/%s?protocol=4&consistency=all&disable_init_host_lookup"
+
+
+peloton:
+  image: docker-registry.pit-irn-1.uberatc.net/vendor/peloton:0.3.1-17-g68c09b5
+  ports:
+    - HTTP_PORT
+    - GRPC_PORT
+  resource:
+    cpuLimit: 1.0
+    memLimitMb: 128
+    diskLimitMb: 128
+  dynamic_env:
+    - APP
+    - DB_HOST
+    - ELECTION_ZK_SERVERS
+    - MESOS_ZK_PATH
+  static_env:
+    - name: 'CASSANDRA_HOSTS'
+      value: 'ms-82ef95a4.pit-irn-1.uberatc.net'
+    - name: 'CONFIG_DIR'
+      value: 'config'
+    - name: 'AUTO_MIGRATE'
+      value: 'false'
+  start_command: 'bash /bin/entrypoint.sh'
+  hostmgr:
+    instance_count: 2
+  resmgr:
+    instance_count: 2
+  jobmgr:
+    instance_count: 2
+  placement:
+    instance_count: 2
+
+
