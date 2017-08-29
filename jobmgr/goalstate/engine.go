@@ -117,7 +117,7 @@ func (e *engine) syncFromDB(ctx context.Context) error {
 		}
 
 		for instanceID, task := range tasks {
-			e.trackedManager.AddJob(jobID).SetTask(instanceID, task.GetRuntime())
+			e.trackedManager.SetTask(jobID, instanceID, task.GetRuntime())
 		}
 	}
 

@@ -97,7 +97,6 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	suite.handler.taskStore = mockTaskStore
 	trackedMock := mocks.NewMockManager(ctrl)
 	suite.handler.trackedManager = trackedMock
-	jobMock := mocks.NewMockJob(ctrl)
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -109,14 +108,10 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(suite.taskInfos, nil),
-		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
-		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
-		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
-		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
-		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 	)
 
 	var request = &task.StopRequest{
@@ -141,7 +136,6 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	suite.handler.taskStore = mockTaskStore
 	trackedMock := mocks.NewMockManager(ctrl)
 	suite.handler.trackedManager = trackedMock
-	jobMock := mocks.NewMockJob(ctrl)
 
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
@@ -158,8 +152,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
-		trackedMock.EXPECT().AddJob(suite.taskInfos[1].GetJobId()).Return(jobMock),
-		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), suite.taskInfos[1]).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), suite.taskInfos[1].GetJobId(), uint32(1), suite.taskInfos[1]).Return(nil),
 	)
 
 	var request = &task.StopRequest{
@@ -185,7 +178,6 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	suite.handler.taskStore = mockTaskStore
 	trackedMock := mocks.NewMockManager(ctrl)
 	suite.handler.trackedManager = trackedMock
-	jobMock := mocks.NewMockJob(ctrl)
 
 	taskInfos := make(map[uint32]*task.TaskInfo)
 	taskInfos[1] = suite.taskInfos[1]
@@ -203,10 +195,8 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(taskInfos, nil),
-		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
-		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
-		jobMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 	)
 
 	var request = &task.StopRequest{
@@ -315,16 +305,14 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithTaskUpdateFailure() {
 	suite.handler.taskStore = mockTaskStore
 	trackedMock := mocks.NewMockManager(ctrl)
 	suite.handler.trackedManager = trackedMock
-	jobMock := mocks.NewMockJob(ctrl)
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(suite.taskInfos, nil),
-		trackedMock.EXPECT().AddJob(gomock.Any()).Return(jobMock),
-		jobMock.EXPECT().
-			UpdateTask(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(fmt.Errorf("db update failure")),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			AnyTimes().Return(fmt.Errorf("db update failure")),
 	)
 
 	var request = &task.StopRequest{

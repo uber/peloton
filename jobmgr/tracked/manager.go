@@ -11,6 +11,7 @@ import (
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -31,12 +32,19 @@ type Manager interface {
 	Start()
 	Stop()
 
-	// AddJob will create the job in the manger if it doesn't already exist, and
-	// return the job.
-	AddJob(id *peloton.JobID) Job
-
 	// GetJob will return the current tracked Job, nil if currently not tracked.
 	GetJob(id *peloton.JobID) Job
+
+	// SetTask to the new runtime info. This will also schedule the task for
+	// immediate evaluation.
+	SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo)
+
+	// UpdateTask with the new runtime info, by first attempting to persit it.
+	// If it fail in persisting the change due to a data race, an AlreadyExists
+	// error is returned.
+	// If succesfull, this will also schedule the task for immediate evaluation.
+	// TODO: Should only take the task runtime, not info.
+	UpdateTask(ctx context.Context, jobID *peloton.JobID, instanceID uint32, info *pb_task.TaskInfo) error
 
 	// ScheduleTask to be evaluated by the goal state engine, at deadline.
 	ScheduleTask(t Task, deadline time.Time)
@@ -77,7 +85,7 @@ type manager struct {
 func (m *manager) Start() {}
 func (m *manager) Stop()  {}
 
-func (m *manager) AddJob(id *peloton.JobID) Job {
+func (m *manager) addJob(id *peloton.JobID) Job {
 	m.Lock()
 	defer m.Unlock()
 
@@ -98,6 +106,21 @@ func (m *manager) GetJob(id *peloton.JobID) Job {
 		return j
 	}
 
+	return nil
+}
+
+func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) {
+	j := m.addJob(jobID).(*job)
+	t := j.setTask(instanceID, runtime)
+	m.ScheduleTask(t, time.Now())
+}
+
+func (m *manager) UpdateTask(ctx context.Context, jobID *peloton.JobID, instanceID uint32, info *pb_task.TaskInfo) error {
+	if err := m.taskStore.UpdateTask(ctx, info); err != nil {
+		return err
+	}
+
+	m.SetTask(jobID, instanceID, info.GetRuntime())
 	return nil
 }
 
@@ -190,8 +213,6 @@ func (m *manager) processEvent(event *pb_eventstream.Event) {
 		return
 	}
 
-	j := m.AddJob(&peloton.JobID{Value: jobID})
-
 	// TODO: Only read runtime.
 	taskInfo, err := m.taskStore.GetTaskByID(context.Background(), fmt.Sprintf("%s-%d", jobID, instanceID))
 	if err != nil {
@@ -209,7 +230,7 @@ func (m *manager) processEvent(event *pb_eventstream.Event) {
 	taskInfo.Runtime.State = newState
 
 	// TODO: Use UpdateTask when TaskUpdater doesn't update the task.
-	j.SetTask(uint32(instanceID), taskInfo.Runtime)
+	m.SetTask(&peloton.JobID{Value: jobID}, uint32(instanceID), taskInfo.Runtime)
 }
 
 // GetEventProgress returns the progress.

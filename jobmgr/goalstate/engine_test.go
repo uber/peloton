@@ -21,7 +21,6 @@ func TestEngineSyncFromDB(t *testing.T) {
 	jobstoreMock := store_mocks.NewMockJobStore(ctrl)
 	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
 	tmMock := mocks.NewMockManager(ctrl)
-	jobMock := mocks.NewMockJob(ctrl)
 
 	e := &engine{
 		trackedManager: tmMock,
@@ -47,12 +46,11 @@ func TestEngineSyncFromDB(t *testing.T) {
 			},
 		}, nil)
 
-	jobMock.EXPECT().SetTask(uint32(1), &task.RuntimeInfo{
+	tmMock.EXPECT().SetTask(jobID, uint32(1), &task.RuntimeInfo{
 		GoalState:            task.TaskState_RUNNING,
 		DesiredConfigVersion: 42,
 		ConfigVersion:        42,
 	})
-	tmMock.EXPECT().AddJob(jobID).Return(jobMock)
 
 	e.syncFromDB(context.Background())
 }

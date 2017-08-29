@@ -411,7 +411,7 @@ func (m *serviceHandler) Stop(
 
 		taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
 		// TODO: We can retry here in case of conflict.
-		err = m.trackedManager.AddJob(taskInfo.GetJobId()).UpdateTask(ctx, instID, taskInfo)
+		err = m.trackedManager.UpdateTask(ctx, taskInfo.GetJobId(), instID, taskInfo)
 		if err != nil {
 			// Skip remaining tasks killing if db update error occurs.
 			log.WithError(err).

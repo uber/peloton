@@ -25,11 +25,11 @@ func TestManagerAddAndGet(t *testing.T) {
 
 	assert.Nil(t, m.GetJob(jobID))
 
-	j := m.AddJob(jobID)
+	j := m.addJob(jobID)
 	assert.NotNil(t, j)
 
 	assert.Equal(t, j, m.GetJob(jobID))
-	assert.Equal(t, j, m.AddJob(jobID))
+	assert.Equal(t, j, m.addJob(jobID))
 }
 
 func TestManagerScheduleAndDequeueTasks(t *testing.T) {
@@ -41,7 +41,7 @@ func TestManagerScheduleAndDequeueTasks(t *testing.T) {
 		taskQueueChanged: make(chan struct{}, 1),
 	}
 
-	j := m.AddJob(jobID)
+	j := m.addJob(jobID)
 
 	c := 100
 	var wg sync.WaitGroup
@@ -57,7 +57,7 @@ func TestManagerScheduleAndDequeueTasks(t *testing.T) {
 
 	go func() {
 		for i := 0; i < c; i++ {
-			j.SetTask(uint32(i), nil)
+			m.SetTask(jobID, uint32(i), nil)
 			m.ScheduleTask(j.GetTask(uint32(i)), time.Now())
 		}
 	}()
