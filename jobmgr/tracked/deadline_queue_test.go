@@ -12,8 +12,9 @@ type testQueueItem struct {
 	i     int
 }
 
-func (i *testQueueItem) index() int     { return i.i }
-func (i *testQueueItem) setIndex(v int) { i.i = v }
+func (i *testQueueItem) index() int                     { return i.i }
+func (i *testQueueItem) setIndex(v int)                 { i.i = v }
+func (i *testQueueItem) setDeadline(deadline time.Time) {}
 func (i *testQueueItem) deadline() time.Time {
 	if i.value == 0 {
 		return time.Time{}

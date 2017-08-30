@@ -21,24 +21,23 @@ var (
 		},
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
+			task.TaskState_SUCCEEDED:   tracked.UntrackAction,
+			task.TaskState_KILLED:      tracked.UntrackAction,
 		},
 		task.TaskState_KILLED: {
 			task.TaskState_LAUNCHING: tracked.StopAction,
 			task.TaskState_LAUNCHED:  tracked.StopAction,
 			task.TaskState_RUNNING:   tracked.StopAction,
+			task.TaskState_KILLED:    tracked.UntrackAction,
+			task.TaskState_SUCCEEDED: tracked.UntrackAction,
+			task.TaskState_FAILED:    tracked.UntrackAction,
 		},
 	}
 )
 
 func (e *engine) processTask(t tracked.Task) {
-	j := t.Job()
-
-	// Take job lock only while we evaluate state. That ensures we have a
-	// consistent view across the entire job, while we decide the action.
-	j.Lock()
 	action := e.suggestTaskAction(t)
 	lastAction, lastActionTime := t.LastAction()
-	j.Unlock()
 
 	// Now run the action, to reflect the decision taken above.
 	success := e.runTaskAction(action, t)
@@ -46,7 +45,7 @@ func (e *engine) processTask(t tracked.Task) {
 	// Update and reschedule the task, based on the result.
 	delay := _indefDelay
 	switch {
-	case action == tracked.NoAction:
+	case action == tracked.NoAction || action == tracked.UntrackAction:
 		// No need to reschedule.
 
 	case action != lastAction:
@@ -86,8 +85,8 @@ func (e *engine) runTaskAction(action tracked.TaskAction, t tracked.Task) bool {
 
 	if err != nil {
 		log.
-			WithField("job", t.Job().ID().GetValue()).
-			WithField("task", t.ID()).
+			WithField("job_id", t.Job().ID().GetValue()).
+			WithField("instance_id", t.ID()).
 			WithField("action", action).
 			WithError(err).
 			Error("failed to execute goalstate action")

@@ -82,19 +82,6 @@ type manager struct {
 func (m *manager) Start() {}
 func (m *manager) Stop()  {}
 
-func (m *manager) addJob(id *peloton.JobID) Job {
-	m.Lock()
-	defer m.Unlock()
-
-	j, ok := m.jobs[id.GetValue()]
-	if !ok {
-		j = newJob(id, m)
-		m.jobs[id.GetValue()] = j
-	}
-
-	return j
-}
-
 func (m *manager) GetJob(id *peloton.JobID) Job {
 	m.RLock()
 	defer m.RUnlock()
@@ -107,9 +94,12 @@ func (m *manager) GetJob(id *peloton.JobID) Job {
 }
 
 func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) {
-	j := m.addJob(jobID).(*job)
+	m.Lock()
+	defer m.Unlock()
+
+	j := m.addJob(jobID)
 	t := j.setTask(instanceID, runtime)
-	m.ScheduleTask(t, time.Now())
+	m.scheduleTask(t, time.Now())
 }
 
 func (m *manager) UpdateTask(ctx context.Context, jobID *peloton.JobID, instanceID uint32, info *pb_task.TaskInfo) error {
@@ -125,19 +115,7 @@ func (m *manager) ScheduleTask(t Task, deadline time.Time) {
 	m.Lock()
 	defer m.Unlock()
 
-	it := t.(*task)
-	it.Lock()
-	defer it.Unlock()
-
-	// Override if newer.
-	if it.deadline().IsZero() || deadline.Before(it.deadline()) {
-		it.setDeadline(deadline)
-		m.taskQueue.update(it)
-		select {
-		case m.taskQueueChanged <- struct{}{}:
-		default:
-		}
-	}
+	m.scheduleTask(t.(*task), deadline)
 }
 
 func (m *manager) WaitForScheduledTask(stopChan <-chan struct{}) Task {
@@ -160,12 +138,7 @@ func (m *manager) WaitForScheduledTask(stopChan <-chan struct{}) Task {
 			m.Unlock()
 
 			if r != nil {
-				it := r.(*task)
-				// Clear deadline.
-				it.Lock()
-				it.setDeadline(time.Time{})
-				it.Unlock()
-				return it
+				return r.(*task)
 			}
 
 		case <-m.taskQueueChanged:
@@ -176,6 +149,52 @@ func (m *manager) WaitForScheduledTask(stopChan <-chan struct{}) Task {
 
 		if timer != nil {
 			timer.Stop()
+		}
+	}
+}
+
+// addJob to the manager, if missing. The manager lock must be hold when called.
+func (m *manager) addJob(id *peloton.JobID) *job {
+	j, ok := m.jobs[id.GetValue()]
+	if !ok {
+		j = newJob(id, m)
+		m.jobs[id.GetValue()] = j
+	}
+
+	return j
+}
+
+// clearTask from the manager, and remove job if needed.
+func (m *manager) clearTask(t *task) {
+	// Take both locks to ensure we don't clear job while concurrently adding to
+	// it, but also ensuring we never take the manager lock while holding a job
+	// lock, to avoid deadlocks.
+	m.Lock()
+	defer m.Unlock()
+
+	// First check if the task is already scheduled. If it is, ignore.
+	if t.index() != -1 {
+		return
+	}
+
+	t.job.Lock()
+	defer t.job.Unlock()
+
+	delete(t.job.tasks, t.id)
+	if len(t.job.tasks) == 0 {
+		delete(m.jobs, t.job.id.GetValue())
+	}
+}
+
+// scheduleTask to deadline. The manager lock must be hold when called.
+func (m *manager) scheduleTask(t *task, deadline time.Time) {
+	// Override if newer.
+	if t.deadline().IsZero() || deadline.Before(t.deadline()) {
+		t.setDeadline(deadline)
+		m.taskQueue.update(t)
+		select {
+		case m.taskQueueChanged <- struct{}{}:
+		default:
 		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 func TestTaskRunAction(t *testing.T) {
 	tt := &task{
+		job:        &job{},
 		lastAction: StopAction,
 	}
 

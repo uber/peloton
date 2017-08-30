@@ -11,6 +11,7 @@ const (
 
 type queueItem interface {
 	deadline() time.Time
+	setDeadline(deadline time.Time)
 
 	setIndex(index int)
 	index() int
@@ -109,8 +110,9 @@ func (pq *priorityQueue) Pop() interface{} {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
-	// Clear index.
+	// Clear index and deadline.
 	item.setIndex(-1)
+	item.setDeadline(time.Time{})
 	*pq = old[0 : n-1]
 	// TODO: Down-size if len(pq) < cap(pq) / 2.
 	return item

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
@@ -51,6 +53,7 @@ type TaskAction string
 // Actions available to be performed on the task.
 const (
 	NoAction             TaskAction = "no_action"
+	UntrackAction        TaskAction = "untrack"
 	StartAction          TaskAction = "start_task"
 	StopAction           TaskAction = "stop_task"
 	UseGoalVersionAction TaskAction = "use_goal_state"
@@ -121,24 +124,43 @@ func (t *task) LastAction() (TaskAction, time.Time) {
 }
 
 func (t *task) RunAction(ctx context.Context, action TaskAction) error {
+	// TODO: Move to Manager, such that the following holds:
+	// Take job lock only while we evaluate action. That ensure we have a
+	// consistent view across the entire job, while we decide if we can apply
+	// the action.
+
 	t.Lock()
 	t.lastAction = action
 	t.lastActionTime = time.Now()
 	t.Unlock()
 
+	log.WithField("action", action).
+		WithField("current_state", t.CurrentState().State.String()).
+		WithField("current_config", t.CurrentState().ConfigVersion).
+		WithField("goal_state", t.GoalState().State.String()).
+		WithField("goal_version", t.GoalState().ConfigVersion).
+		WithField("job_id", t.job.id.GetValue()).
+		WithField("instance_id", t.id).
+		Info("running action for task")
+
+	var err error
 	switch action {
 	case NoAction:
-		return nil
+
+	case UntrackAction:
+		t.job.m.clearTask(t)
 
 	case StartAction:
-		return t.start(ctx)
+		err = t.start(ctx)
 
 	case StopAction:
-		return t.stop(ctx)
+		err = t.stop(ctx)
 
 	default:
-		return fmt.Errorf("no command configured for running task action `%v`", action)
+		err = fmt.Errorf("no command configured for running task action `%v`", action)
 	}
+
+	return err
 }
 
 func (t *task) updateRuntime(runtime *pb_task.RuntimeInfo) {

@@ -10,8 +10,6 @@ import (
 // Job tracked by the system, serving as a best effort view of what's stored
 // in the database.
 type Job interface {
-	sync.Locker
-
 	// ID of the job.
 	ID() *peloton.JobID
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -57,4 +58,38 @@ func TestManagerScheduleAndDequeueTasks(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func TestManagerClearTask(t *testing.T) {
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	m := &manager{
+		jobs:             map[string]*job{},
+		taskQueue:        newDeadlineQueue(),
+		taskQueueChanged: make(chan struct{}, 1),
+	}
+
+	j := m.addJob(jobID)
+	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+	m.SetTask(jobID, 1, &pb_task.RuntimeInfo{})
+	t0 := j.GetTask(0)
+	t1 := j.GetTask(1)
+	assert.Equal(t, 1, len(m.jobs))
+	assert.Equal(t, 2, len(j.tasks))
+
+	m.clearTask(t0.(*task))
+	assert.Equal(t, 1, len(m.jobs))
+	assert.Equal(t, 2, len(j.tasks))
+
+	m.WaitForScheduledTask(nil)
+	m.WaitForScheduledTask(nil)
+	m.clearTask(t0.(*task))
+	assert.Equal(t, 1, len(m.jobs))
+	assert.Equal(t, 1, len(j.tasks))
+
+	m.clearTask(t1.(*task))
+	assert.Equal(t, 0, len(m.jobs))
+	assert.Equal(t, 0, len(j.tasks))
+
+	m.clearTask(t1.(*task))
 }
