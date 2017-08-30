@@ -318,7 +318,6 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	// We are using "must" for the labels and only return the jobs that contains all
 	// label values
 	// TODO: investigate if there are any golang library that can build lucene query
-	// TODO: Apply sort order.
 
 	var clauses []string
 
@@ -351,12 +350,12 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		}
 		where += c
 	}
-	where += "]}}"
+	where += "]}"
 
 	// add sorter into the query in case orderby is specified in the query spec
 	var orderBy = spec.GetPagination().GetOrderBy()
 	if orderBy != nil && len(orderBy) > 0 {
-		where += ",{ sort:["
+		where += ", sort:{fields:["
 		count := 0
 		for _, order := range orderBy {
 			where += fmt.Sprintf("{field: \"%s\"", order.Property.GetValue())
@@ -370,7 +369,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		}
 		where += "]}"
 	}
-	where += "')"
+	where += "}')"
 
 	log.WithField("where", where).Debug("query string")
 
@@ -380,6 +379,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	if len(clauses) > 0 {
 		stmt = stmt.Where(where)
 	}
+
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithField("labels", spec.GetLabels()).
@@ -388,6 +388,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		s.metrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
+
 	allResults, err := result.All(ctx)
 	if err != nil {
 		log.WithField("labels", spec.GetLabels()).

@@ -146,6 +146,9 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	})
 	suite.NoError(err)
 	suite.Equal(25, len(result1))
+	for i, c := range result1 {
+		suite.Equal(fmt.Sprintf("owner_%d", 1010+i), c.Config.OwningTeam)
+	}
 	suite.Equal(records, int(total))
 
 	orderByOwner.Order = query.OrderBy_DESC
@@ -161,6 +164,9 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	})
 	suite.NoError(err)
 	suite.Equal(25, len(result1))
+	for i, c := range result1 {
+		suite.Equal(fmt.Sprintf("owner_%d", 1289-i), c.Config.OwningTeam)
+	}
 	suite.Equal(records, int(total))
 }
 
