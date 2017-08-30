@@ -219,7 +219,7 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 
 	for _, kind := range []string{common.CPU, common.GPU,
 		common.MEMORY, common.DISK} {
-		var remaining scalar.Resources = *entitlement
+		remaining := *entitlement
 
 		// Second Pass: In the second pass we will distribute the
 		// rest of the resources to the resource pools which have
