@@ -197,7 +197,7 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 		log.WithFields(log.Fields{
 			"State": curState,
 			"Task":  sm.name,
-		}).Debug("Stopping Timer")
+		}).Info("Stopping State Recovery")
 		sm.timer.Stop()
 	}
 
@@ -237,7 +237,10 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	}
 	// Checking if this STATE is timeout state
 	if rule, ok := sm.timeoutRules[to]; ok {
-		log.Info("Starting from state " + to)
+		log.WithFields(log.Fields{
+			"Task": sm.name,
+			"From": to,
+		}).Info("Task Starting from state")
 		if rule.Timeout != 0 {
 			sm.timer.Start(rule.Timeout)
 		}

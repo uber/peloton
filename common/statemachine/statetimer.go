@@ -58,7 +58,7 @@ func (st *statetimer) Stop() error {
 		return errors.New("State Timer is not running")
 	}
 
-	log.Info("Stopping State Recovery")
+	log.Debug("Stopping State Recovery")
 	st.stopChan <- struct{}{}
 
 	// Wait for State recovery to be stopped
