@@ -10,6 +10,7 @@ import (
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
 func TestTaskStop(t *testing.T) {
@@ -20,6 +21,7 @@ func TestTaskStop(t *testing.T) {
 		job: &job{
 			m: &manager{
 				hostmgrClient: hostMock,
+				mtx:           newMetrics(tally.NoopScope),
 			},
 		},
 	}

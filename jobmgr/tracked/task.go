@@ -124,6 +124,8 @@ func (t *task) LastAction() (TaskAction, time.Time) {
 }
 
 func (t *task) RunAction(ctx context.Context, action TaskAction) error {
+	defer t.job.m.mtx.taskTimer[action].Start().Stop()
+
 	// TODO: Move to Manager, such that the following holds:
 	// Take job lock only while we evaluate action. That ensure we have a
 	// consistent view across the entire job, while we decide if we can apply

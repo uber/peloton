@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"fmt"
+
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	job2 "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -16,9 +18,9 @@ import (
 	"code.uber.internal/infra/peloton/storage"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
-	"fmt"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
 func TestTaskStartStateless(t *testing.T) {
@@ -39,6 +41,7 @@ func TestTaskStartStateless(t *testing.T) {
 				jobStore:      mockJobStore,
 				taskStore:     mockTaskStore,
 				resmgrClient:  mockResmgrClient,
+				mtx:           newMetrics(tally.NoopScope),
 			},
 		},
 		runtime: &pb_task.RuntimeInfo{},
@@ -93,6 +96,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 				volumeStore:   mockVolumeStore,
 				resmgrClient:  mockResmgrClient,
 				taskLauncher:  mockTaskLauncher,
+				mtx:           newMetrics(tally.NoopScope),
 			},
 		},
 		runtime: &pb_task.RuntimeInfo{
@@ -154,6 +158,7 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 				volumeStore:   mockVolumeStore,
 				resmgrClient:  mockResmgrClient,
 				taskLauncher:  mockTaskLauncher,
+				mtx:           newMetrics(tally.NoopScope),
 			},
 		},
 		runtime: &pb_task.RuntimeInfo{

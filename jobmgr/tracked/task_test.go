@@ -6,12 +6,17 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
 func TestTaskRunAction(t *testing.T) {
 	tt := &task{
-		job:        &job{},
 		lastAction: StopAction,
+		job: &job{
+			m: &manager{
+				mtx: newMetrics(tally.NoopScope),
+			},
+		},
 	}
 
 	before := time.Now()

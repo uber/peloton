@@ -31,9 +31,10 @@ func newQueueItemMixing() queueItemMixin {
 	return queueItemMixin{queueIndex: -1}
 }
 
-func newDeadlineQueue() *deadlineQueue {
+func newDeadlineQueue(mtx *metrics) *deadlineQueue {
 	q := &deadlineQueue{
-		pq: &priorityQueue{},
+		pq:  &priorityQueue{},
+		mtx: mtx,
 	}
 
 	heap.Init(q.pq)
@@ -42,7 +43,8 @@ func newDeadlineQueue() *deadlineQueue {
 }
 
 type deadlineQueue struct {
-	pq *priorityQueue
+	pq  *priorityQueue
+	mtx *metrics
 }
 
 func (q *deadlineQueue) nextDeadline() time.Time {
@@ -58,7 +60,9 @@ func (q *deadlineQueue) popIfReady() queueItem {
 		return nil
 	}
 
-	return heap.Pop(q.pq).(queueItem)
+	qi := heap.Pop(q.pq).(queueItem)
+	q.mtx.queuePopDelay.Record(time.Since(qi.deadline()))
+	return qi
 }
 
 func (q *deadlineQueue) update(item queueItem) {
@@ -70,12 +74,14 @@ func (q *deadlineQueue) update(item queueItem) {
 		}
 
 		heap.Push(q.pq, item)
+		q.mtx.queueLength.Update(float64(q.pq.Len()))
 		return
 	}
 
 	// It's in the queue. Remove if it should not be scheduled.
 	if item.deadline().IsZero() {
 		heap.Remove(q.pq, item.index())
+		q.mtx.queueLength.Update(float64(q.pq.Len()))
 		return
 	}
 

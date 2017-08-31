@@ -9,6 +9,7 @@ import (
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
 func TestManagerAddAndGet(t *testing.T) {
@@ -29,10 +30,10 @@ func TestManagerAddAndGet(t *testing.T) {
 
 func TestManagerScheduleAndDequeueTasks(t *testing.T) {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
+	mtx := newMetrics(tally.NoopScope)
 	m := &manager{
 		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(),
+		taskQueue:        newDeadlineQueue(mtx),
 		taskQueueChanged: make(chan struct{}, 1),
 	}
 
@@ -65,7 +66,7 @@ func TestManagerClearTask(t *testing.T) {
 
 	m := &manager{
 		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(),
+		taskQueue:        newDeadlineQueue(newMetrics(tally.NoopScope)),
 		taskQueueChanged: make(chan struct{}, 1),
 	}
 

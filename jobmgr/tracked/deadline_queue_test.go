@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
 type testQueueItem struct {
@@ -23,7 +24,8 @@ func (i *testQueueItem) deadline() time.Time {
 }
 
 func TestTimeoutQueueOrdering(t *testing.T) {
-	q := newDeadlineQueue()
+	mtx := newMetrics(tally.NoopScope)
+	q := newDeadlineQueue(mtx)
 
 	i1 := &testQueueItem{1, -1}
 	i2 := &testQueueItem{2, -1}

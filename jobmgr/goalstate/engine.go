@@ -43,7 +43,7 @@ func NewEngine(
 		trackedManager: trackedManager,
 		jobStore:       jobStore,
 		taskStore:      taskStore,
-		metrics:        NewMetrics(parentScope.SubScope("goalstate_engine")),
+		metrics:        NewMetrics(parentScope.SubScope("goalstate").SubScope("engine")),
 	}
 }
 

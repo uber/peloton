@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
+	"github.com/uber-go/tally"
 )
 
 // Manager for tracking jobs and tasks. The manager has built in scheduler,
@@ -44,10 +45,17 @@ type Manager interface {
 }
 
 // NewManager returns a new tracked manager.
-func NewManager(d *yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, volumeStore storage.PersistentVolumeStore, taskLauncher launcher.Launcher) Manager {
+func NewManager(
+	d *yarpc.Dispatcher,
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore,
+	volumeStore storage.PersistentVolumeStore,
+	taskLauncher launcher.Launcher,
+	parentScope tally.Scope) Manager {
+	mtx := newMetrics(parentScope.SubScope("tracked"))
 	return &manager{
 		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(),
+		taskQueue:        newDeadlineQueue(mtx),
 		taskQueueChanged: make(chan struct{}, 1),
 		hostmgrClient:    hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient:     resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
@@ -55,6 +63,7 @@ func NewManager(d *yarpc.Dispatcher, jobStore storage.JobStore, taskStore storag
 		taskStore:        taskStore,
 		volumeStore:      volumeStore,
 		taskLauncher:     taskLauncher,
+		mtx:              mtx,
 	}
 }
 
@@ -77,6 +86,8 @@ type manager struct {
 	volumeStore storage.PersistentVolumeStore
 
 	taskLauncher launcher.Launcher
+
+	mtx *metrics
 }
 
 func (m *manager) Start() {}

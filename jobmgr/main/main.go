@@ -300,7 +300,7 @@ func main() {
 		rootScope,
 	)
 
-	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher())
+	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher(), rootScope)
 	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, jobStore, taskStore, rootScope)
 
 	jobsvc.InitServiceHandler(
