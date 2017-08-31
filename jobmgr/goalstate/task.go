@@ -11,17 +11,36 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+var (
+	// _isoVersionsTaskRules maps current states to action, given a goal state:
+	// goal-state -> current-state -> action.
+	// It assumes task's runtime and goal are at the same version
+	_isoVersionsTaskRules = map[task.TaskState]map[task.TaskState]tracked.TaskAction{
+		task.TaskState_RUNNING: {
+			task.TaskState_INITIALIZED: tracked.StartAction,
+		},
+		task.TaskState_SUCCEEDED: {
+			task.TaskState_INITIALIZED: tracked.StartAction,
+		},
+		task.TaskState_KILLED: {
+			task.TaskState_LAUNCHING: tracked.StopAction,
+			task.TaskState_LAUNCHED:  tracked.StopAction,
+			task.TaskState_RUNNING:   tracked.StopAction,
+		},
+	}
+)
+
 func (e *engine) processTask(t tracked.Task) {
 	j := t.Job()
 
-	// Take job lock only while we evaluate state. That ensure we have a
+	// Take job lock only while we evaluate state. That ensures we have a
 	// consistent view across the entire job, while we decide the action.
 	j.Lock()
 	action := e.suggestTaskAction(t)
 	lastAction, lastActionTime := t.LastAction()
 	j.Unlock()
 
-	// Now runt he action, to reflect the decision taken above.
+	// Now run the action, to reflect the decision taken above.
 	success := e.runTaskAction(action, t)
 
 	// Update and reschedule the task, based on the result.
@@ -97,17 +116,11 @@ func (e *engine) suggestTaskAction(t tracked.Task) tracked.TaskAction {
 		}
 	}
 
-	// At this point the job has the correct version. Now test for goal state.
-	if currentState.State == goalState.State {
-		return tracked.NoAction
-	}
-
-	// TODO: Make this rules based.
-	switch goalState.State {
-	case task.TaskState_KILLED:
-		switch currentState.State {
-		case task.TaskState_LAUNCHING, task.TaskState_RUNNING:
-			return tracked.StopAction
+	// At this point the job has the correct version.
+	// Find action to reach goal state from current state.
+	if tr, ok := _isoVersionsTaskRules[goalState.State]; ok {
+		if a, ok := tr[currentState.State]; ok {
+			return a
 		}
 	}
 

@@ -16,13 +16,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
-	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
@@ -88,7 +86,7 @@ func (m *serviceHandler) Get(
 
 	m.metrics.TaskAPIGet.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
-	if err != nil || jobConfig == nil {
+	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
 			NotFound: &pb_errors.JobNotFound{
@@ -209,7 +207,7 @@ func (m *serviceHandler) Start(
 	defer cancelFunc()
 
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
-	if err != nil || jobConfig == nil {
+	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
 			Error("failed to get job from db")
@@ -239,9 +237,6 @@ func (m *serviceHandler) Start(
 		}, nil
 	}
 
-	// tasksToStart includes tasks need to be enqueued to resmgr.
-	var tasksToStart []*task.TaskInfo
-	var statefulTasksToStart []*task.TaskInfo
 	var startedInstanceIds []uint32
 	for instID, taskInfo := range taskInfos {
 		taskRuntime := taskInfo.GetRuntime()
@@ -269,7 +264,7 @@ func (m *serviceHandler) Start(
 			}
 		}
 
-		err = m.taskStore.UpdateTask(ctx, taskInfo)
+		err = m.trackedManager.UpdateTask(ctx, taskInfo.GetJobId(), instID, taskInfo)
 		if err != nil {
 			// Skip remaining tasks starting if db update error occurs.
 			log.WithError(err).
@@ -279,75 +274,20 @@ func (m *serviceHandler) Start(
 		}
 
 		startedInstanceIds = append(startedInstanceIds, instID)
-		if taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) > 0 {
-			volumeID := &peloton.VolumeID{
-				Value: taskInfo.GetRuntime().GetVolumeID().GetValue(),
-			}
-			pv, err := m.volumeStore.GetPersistentVolume(ctx, volumeID)
-			if err != nil {
-				_, ok := err.(*storage.VolumeNotFoundError)
-				if !ok {
-					// volume store db read error.
-					log.WithError(err).
-						WithField("task", taskInfo).
-						Error("failed to read volume information from db")
-					break
-				}
-				// volume not exist so treat as normal task going through placement.
-			} else if pv.GetState() == volume.VolumeState_CREATED {
-				// volume is in CREATED state so that launch the task directly to hostmgr.
-				statefulTasksToStart = append(statefulTasksToStart, taskInfo)
-				continue
-			}
-		}
-		tasksToStart = append(tasksToStart, taskInfo)
+		m.metrics.TaskStart.Inc(1)
 	}
 
-	if len(tasksToStart) > 0 {
-		// For batch/stateless tasks, enqueue them to resmgr to go through
-		// placement to get offers/host to launch.
-		err = jobmgr_task.EnqueueGangs(ctx, tasksToStart, jobConfig, m.resmgrClient)
-		if err == nil {
-			err = m.runtimeUpdater.UpdateJob(ctx, body.GetJobId())
-		}
-		if err != nil {
-			log.WithError(err).
-				WithField("tasks", tasksToStart).
-				Error("failed to start tasks")
-			m.metrics.TaskStartFail.Inc(1)
-			return &task.StartResponse{
-				Error: &task.StartResponse_Error{
-					Failure: &task.TaskStartFailure{
-						Message: fmt.Sprintf("tasks start failed for %v", err),
-					},
+	if err != nil {
+		return &task.StartResponse{
+			Error: &task.StartResponse_Error{
+				Failure: &task.TaskStartFailure{
+					Message: fmt.Sprintf("Goalstate update failed for %v", err),
 				},
-				StartedInstanceIds: startedInstanceIds,
-			}, nil
-		}
+			},
+			StartedInstanceIds: startedInstanceIds,
+		}, nil
 	}
 
-	if len(statefulTasksToStart) > 0 {
-		// for stateful task with volume created, we should launch task directly to hostmgr.
-		for _, taskInfo := range statefulTasksToStart {
-			err = m.taskLauncher.LaunchTaskWithReservedResource(ctx, taskInfo)
-			if err != nil {
-				log.WithError(err).WithFields(log.Fields{
-					"task_info": taskInfo,
-				}).Error("Failed to launch stateful tasks")
-				m.metrics.TaskStartFail.Inc(1)
-				return &task.StartResponse{
-					Error: &task.StartResponse_Error{
-						Failure: &task.TaskStartFailure{
-							Message: fmt.Sprintf("stateful tasks start failed for %v", err),
-						},
-					},
-					StartedInstanceIds: startedInstanceIds,
-				}, nil
-			}
-		}
-	}
-
-	m.metrics.TaskStart.Inc(1)
 	return &task.StartResponse{
 		StartedInstanceIds: startedInstanceIds,
 	}, nil
@@ -399,7 +339,7 @@ func (m *serviceHandler) Stop(
 		}, nil
 	}
 
-	// tasksToKill only includes taks ids whose goal state update succeeds.
+	// tasksToKill only includes task ids whose goal state update succeeds.
 	var stoppedInstanceIds []uint32
 	// Persist KILLED goalstate for tasks in db.
 	for instID, taskInfo := range taskInfos {
@@ -451,8 +391,8 @@ func (m *serviceHandler) Restart(
 
 func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*task.QueryResponse, error) {
 	m.metrics.TaskAPIQuery.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
-	if err != nil || jobConfig == nil {
+	_, err := m.jobStore.GetJobConfig(ctx, req.JobId)
+	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", req.JobId, err)
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
@@ -496,7 +436,7 @@ func (m *serviceHandler) BrowseSandbox(
 	log.WithField("req", req).Info("taskmanager getlogurls called")
 	m.metrics.TaskAPIListLogs.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
-	if err != nil || jobConfig == nil {
+	if err != nil {
 		log.WithField("job_id", req.JobId).
 			WithError(err).
 			Error("failed to find job with id")

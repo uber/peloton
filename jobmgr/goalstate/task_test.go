@@ -1,7 +1,6 @@
 package goalstate
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -10,11 +9,43 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 
+	"fmt"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
-func TestEngineSuggestAction(t *testing.T) {
+func TestEngineSuggestActionGoalKilled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	e := NewEngine(Config{}, nil, nil, nil, tally.NoopScope).(*engine)
+
+	taskMock := mocks.NewMockTask(ctrl)
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 1})
+	assert.Equal(t, tracked.UseGoalVersionAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: tracked.UnknownVersion})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 1})
+	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 10})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: tracked.UnknownVersion})
+	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
+}
+
+func TestEngineSuggestActionGoalRunning(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -30,20 +61,20 @@ func TestEngineSuggestAction(t *testing.T) {
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 1})
 	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 
-	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
-
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 1})
 	assert.Equal(t, tracked.UseGoalVersionAction, e.suggestTaskAction(taskMock))
 
-	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: tracked.UnknownVersion})
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_INITIALIZED, ConfigVersion: tracked.UnknownVersion})
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
+	assert.Equal(t, tracked.StartAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_INITIALIZED, ConfigVersion: 123})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 123})
+	assert.Equal(t, tracked.StartAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: tracked.UnknownVersion})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
 	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
 }
 
@@ -64,9 +95,9 @@ func TestEngineProcessTask(t *testing.T) {
 	jobMock.EXPECT().Lock()
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	jobMock.EXPECT().Unlock()
 	taskMock.EXPECT().LastAction().Return(tracked.NoAction, time.Time{})
 	taskMock.EXPECT().RunAction(gomock.Any(), tracked.NoAction).Return(nil)
-	jobMock.EXPECT().Unlock()
 	managerMock.EXPECT().ScheduleTask(taskMock, time.Time{})
 
 	e.processTask(taskMock)
@@ -75,9 +106,9 @@ func TestEngineProcessTask(t *testing.T) {
 	jobMock.EXPECT().Lock()
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	jobMock.EXPECT().Unlock()
 	taskMock.EXPECT().LastAction().Return(tracked.NoAction, time.Time{})
 	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(nil)
-	jobMock.EXPECT().Unlock()
 	managerMock.EXPECT().ScheduleTask(taskMock, gomock.Any())
 
 	e.processTask(taskMock)
@@ -86,12 +117,12 @@ func TestEngineProcessTask(t *testing.T) {
 	jobMock.EXPECT().Lock()
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	jobMock.EXPECT().Unlock()
 	taskMock.EXPECT().LastAction().Return(tracked.StopAction, time.Time{})
 	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(fmt.Errorf("my error"))
 	taskMock.EXPECT().Job().Return(jobMock)
 	jobMock.EXPECT().ID().Return(&peloton.JobID{})
 	taskMock.EXPECT().ID().Return(uint32(0))
-	jobMock.EXPECT().Unlock()
 	managerMock.EXPECT().ScheduleTask(taskMock, gomock.Any())
 
 	e.processTask(taskMock)

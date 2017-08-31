@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
 )
 
@@ -43,14 +44,17 @@ type Manager interface {
 }
 
 // NewManager returns a new tracked manager.
-func NewManager(d *yarpc.Dispatcher, taskStore storage.TaskStore) Manager {
+func NewManager(d *yarpc.Dispatcher, jobStore storage.JobStore, taskStore storage.TaskStore, volumeStore storage.PersistentVolumeStore, taskLauncher launcher.Launcher) Manager {
 	return &manager{
 		jobs:             map[string]*job{},
 		taskQueue:        newDeadlineQueue(),
 		taskQueueChanged: make(chan struct{}, 1),
 		hostmgrClient:    hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient:     resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
+		jobStore:         jobStore,
 		taskStore:        taskStore,
+		volumeStore:      volumeStore,
+		taskLauncher:     taskLauncher,
 	}
 }
 
@@ -67,7 +71,12 @@ type manager struct {
 
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient
 	resmgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
-	taskStore     storage.TaskStore
+
+	jobStore    storage.JobStore
+	taskStore   storage.TaskStore
+	volumeStore storage.PersistentVolumeStore
+
+	taskLauncher launcher.Launcher
 }
 
 func (m *manager) Start() {}

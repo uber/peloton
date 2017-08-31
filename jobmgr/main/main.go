@@ -279,9 +279,6 @@ func main() {
 		},
 	})
 
-	trackedManager := tracked.NewManager(dispatcher, taskStore)
-	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, jobStore, taskStore, rootScope)
-
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
 	runtimeUpdater := job.NewJobRuntimeUpdater(
@@ -302,6 +299,10 @@ func main() {
 		&cfg.JobManager.TaskLauncher,
 		rootScope,
 	)
+
+	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher())
+	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, jobStore, taskStore, rootScope)
+
 	jobsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,

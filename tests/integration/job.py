@@ -57,6 +57,17 @@ class Job(object):
         self.job_id = resp.jobId.value
         log.info('created job %s', self.job_id)
 
+    def start(self):
+        request = task.StartRequest(
+            jobId=peloton.JobID(value=self.job_id),
+        )
+        self.client.task_svc.Start(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        log.info('starting all tasks in job %s', self.job_id)
+
     def stop(self):
         request = task.StopRequest(
             jobId=peloton.JobID(value=self.job_id),
