@@ -20,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -28,11 +29,12 @@ import (
 
 type TaskSchedulerTestSuite struct {
 	suite.Suite
-	resTree       respool.Tree
-	readyQueue    *queue.MultiLevelList
-	taskSched     *scheduler
-	mockCtrl      *gomock.Controller
-	rmTaskTracker Tracker
+	resTree            respool.Tree
+	readyQueue         *queue.MultiLevelList
+	taskSched          *scheduler
+	mockCtrl           *gomock.Controller
+	rmTaskTracker      Tracker
+	eventStreamHandler *eventstream.Handler
 }
 
 func (suite *TaskSchedulerTestSuite) SetupSuite() {
@@ -55,7 +57,14 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 	// Initializing the resmgr state machine
 	InitTaskTracker(tally.NoopScope)
 	suite.rmTaskTracker = GetTracker()
-
+	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
+		1000,
+		[]string{
+			common.PelotonJobManager,
+			common.PelotonResourceManager,
+		},
+		nil,
+		tally.Scope(tally.NoopScope))
 	suite.taskSched = &scheduler{
 		condition:        sync.NewCond(&sync.Mutex{}),
 		resPoolTree:      suite.resTree,
@@ -232,9 +241,13 @@ func (suite *TaskSchedulerTestSuite) AddTasks() {
 	})
 	resPool.SetEntitlement(suite.getEntitlement())
 
-	for _, task := range tasks {
+	for _, t := range tasks {
 		suite.NoError(err)
-		resPool.EnqueueGang(resPool.MakeTaskGang(task))
+		suite.addTasktotracker(t)
+		rmTask := suite.rmTaskTracker.GetTask(t.Id)
+		err = rmTask.TransitTo(task.TaskState_PENDING.String())
+		suite.NoError(err)
+		resPool.EnqueueGang(resPool.MakeTaskGang(t))
 	}
 }
 
@@ -262,6 +275,18 @@ func (suite *TaskSchedulerTestSuite) TestMovingToReadyQueue() {
 func (suite *TaskSchedulerTestSuite) TestMovingTasks() {
 	suite.taskSched.scheduleTasks()
 	suite.validateReadyQueue()
+}
+
+func (suite *TaskSchedulerTestSuite) TestTaskStates() {
+	suite.taskSched.scheduleTasks()
+	for i := 0; i < 4; i++ {
+		item, err := suite.readyQueue.Pop(suite.readyQueue.Levels()[0])
+		suite.NoError(err)
+		gang := item.(*resmgrsvc.Gang)
+		task := gang.Tasks[0]
+		rmTask := suite.rmTaskTracker.GetTask(task.Id)
+		suite.Equal(rmTask.GetCurrentState().String(), "READY")
+	}
 }
 
 func (suite *TaskSchedulerTestSuite) getEntitlement() map[string]float64 {
@@ -455,4 +480,11 @@ func BenchmarkScheduler_DequeueGang(b *testing.B) {
 			scheduler.DequeueGang(10*time.Millisecond, taskType)
 		}
 	}
+}
+
+func (suite *TaskSchedulerTestSuite) addTasktotracker(task *resmgr.Task) {
+	resPool, _ := suite.resTree.Get(&peloton.ResourcePoolID{
+		Value: "respool11",
+	})
+	suite.rmTaskTracker.AddTask(task, suite.eventStreamHandler, resPool, &Config{})
 }

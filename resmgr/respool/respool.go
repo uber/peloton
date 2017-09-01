@@ -300,7 +300,7 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 			gangList = append(gangList, gang)
 			// Need to lock the usage before updating it
 			n.Lock()
-			n.allocation = n.allocation.Add(n.getGangResources(gang))
+			n.allocation = n.allocation.Add(GetGangResources(gang))
 			n.Unlock()
 			n.updateDynamicResourceMetrics()
 		} else {
@@ -324,16 +324,15 @@ func (n *resPool) canBeAdmitted(gang *resmgrsvc.Gang) bool {
 	log.WithField("entitlement", currentEntitlement).Debug("Current Entitlement")
 	currentAllocation := n.allocation
 	log.WithField("allocation", currentAllocation).Debug("Current Allocation")
-	neededResources := n.getGangResources(gang)
+	neededResources := GetGangResources(gang)
 	log.WithField("neededResources", neededResources).Debug("Current Resources needed")
 	return currentAllocation.
 		Add(neededResources).
 		LessThanOrEqual(currentEntitlement)
 }
 
-func (n *resPool) getGangResources(
-	gang *resmgrsvc.Gang,
-) *scalar.Resources {
+// GetGangResources aggregates gang resources to resmgr resources
+func GetGangResources(gang *resmgrsvc.Gang) *scalar.Resources {
 	if gang == nil {
 		return nil
 	}

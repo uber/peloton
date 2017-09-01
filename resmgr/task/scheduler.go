@@ -134,35 +134,42 @@ func (s *scheduler) Start() error {
 
 // scheduleTasks moves gang tasks to ready queue in every scheduling cycle
 func (s *scheduler) scheduleTasks() {
-	// TODO: consider add DequeueGangs to respool.Tree interface
-	// instead of returning all leaf nodes.
+	// We need to iterate for all the leaf nodes in the list
 	nodes := s.resPoolTree.GetAllNodes(true)
-	// TODO: we need to check the entitlement first
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
+		// DequeueGangList checks the entitlement for the
+		// resource pool and takes the decision if we can
+		// dequeue gang or not based on resource avalability
 		gangList, err := n.DequeueGangList(dequeueGangLimit)
 		if err != nil {
 			log.WithField("respool", n.ID()).WithError(err).Debug("No Items found")
 			continue
 		}
+		var invalidGangs []*resmgrsvc.Gang
 		for _, gang := range gangList {
-			err = s.EnqueueGang(gang)
+
+			err = s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY)
 			if err != nil {
+				// we can not dequeue this gang and have to
+				// enqueue in the pending queue back, putting
+				// them into invalid gangs by that we can
+				// enqueue them later
+				invalidGangs = append(invalidGangs, gang)
 				continue
 			}
+			// Once the transition is done to ready state for all
+			// the tasks in the gang , we are enqueuing the gang to
+			// ready queue.
+			err = s.EnqueueGang(gang)
+			if err != nil {
+				invalidGangs = append(invalidGangs, gang)
+				continue
+			}
+			// Once the gang is enqueued in ready queue, removing it
+			// removing it from from demand for the next entitlement
+			// cycle
 			for _, task := range gang.GetTasks() {
-				log.WithField("task ", task).Debug("Adding " +
-					"task to ready queue")
-				if s.rmTaskTracker.GetTask(task.Id) != nil {
-					err := s.rmTaskTracker.GetTask(task.Id).
-						TransitTo(pt.TaskState_READY.String())
-					if err != nil {
-						log.WithError(errors.WithStack(err)).Error("error while " +
-							"transitioning to Ready state")
-					}
-				} else {
-					log.Error(errReadyQueueTaskMissing)
-				}
 				// We have to remove demand as we admitted task to
 				// ready queue.
 				err = n.SubtractFromDemand(
@@ -175,7 +182,63 @@ func (s *scheduler) scheduleTasks() {
 				}
 			}
 		}
+		// We need to requeue those gangs back
+		// which can not be admitted to ready queue
+		// for the placement
+		for _, invalidGang := range invalidGangs {
+			err = s.transitGang(invalidGang, pt.TaskState_READY, pt.TaskState_PENDING)
+			if err != nil {
+				log.WithError(err).Error("Not able to transit back " +
+					"to Pending")
+			}
+			err = n.EnqueueGang(invalidGang)
+			if err != nil {
+				log.WithError(err).Error("Not able to enqueue" +
+					"gang back to pending queue")
+			}
+			err = n.SubtractFromAllocation(respool.GetGangResources(invalidGang))
+			if err != nil {
+				log.WithError(err).WithField(
+					"Gang", invalidGang).
+					Error("Not able to remove allocation from respool")
+			}
+		}
 	}
+}
+
+// transitGang tries to transit to ready state for all the tasks
+// in the gang and if anyone fails sends error
+func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, toState pt.TaskState) error {
+	isInvalidTaskInGang := false
+	invalidTasks := ""
+	for _, task := range gang.GetTasks() {
+		if s.rmTaskTracker.GetTask(task.Id) != nil {
+			if s.rmTaskTracker.GetTask(task.Id).GetCurrentState() == fromState {
+				err := s.rmTaskTracker.GetTask(task.Id).
+					TransitTo(toState.String())
+				if err != nil {
+					isInvalidTaskInGang = true
+					log.WithError(errors.WithStack(err)).Errorf("error while "+
+						"transitioning to %s state", toState.String())
+
+					invalidTasks = invalidTasks + " , " + task.Id.Value
+				}
+			} else {
+				isInvalidTaskInGang = true
+				log.Errorf("Task %s is already in %s state",
+					task.Id.Value, fromState.String())
+				invalidTasks = invalidTasks + " , " + task.Id.Value
+			}
+		} else {
+			isInvalidTaskInGang = true
+			log.Error(errReadyQueueTaskMissing)
+			invalidTasks = invalidTasks + " , " + task.Id.Value
+		}
+	}
+	if isInvalidTaskInGang {
+		return errors.Errorf("Invalid Tasks in gang %s", invalidTasks)
+	}
+	return nil
 }
 
 // Stop stops Task Scheduler process

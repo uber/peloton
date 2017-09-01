@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -735,4 +736,29 @@ func (s *ResPoolSuite) TestGetShare() {
 	s.Equal(float64(1), resources.GetGPU())
 	s.Equal(float64(1), resources.GetDisk())
 	s.Equal(float64(1), resources.GetMem())
+}
+
+func (s *ResPoolSuite) TestGetGangResources() {
+	rmTasks := []*resmgr.Task{
+		{
+			Name:     "job2-1",
+			Priority: 2,
+			JobId:    &peloton.JobID{Value: "job2"},
+			Id:       &peloton.TaskID{Value: "job2-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+		},
+	}
+	gang := &resmgrsvc.Gang{
+		Tasks: rmTasks,
+	}
+	res := GetGangResources(gang)
+	s.Equal(float64(1), res.CPU)
+	s.Equal(float64(0), res.GPU)
+	s.Equal(float64(100), res.MEMORY)
+	s.Equal(float64(10), res.DISK)
 }

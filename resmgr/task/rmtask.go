@@ -82,6 +82,10 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 						// in ready
 						state.State(task.TaskState_PLACED.String()),
 						state.State(task.TaskState_KILLED.String()),
+						// This transition we need, to put back ready
+						// state to pending state for in transitions
+						// tasks which could not reach to ready queue
+						state.State(task.TaskState_PENDING.String()),
 					},
 					Callback: nil,
 				}).
