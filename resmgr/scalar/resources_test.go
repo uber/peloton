@@ -80,6 +80,27 @@ func TestSubtract(t *testing.T) {
 	assert.InEpsilon(t, 0.0, res.GPU, zeroEpsilon)
 }
 
+func TestSubtractLessThanEpsilon(t *testing.T) {
+	r1 := Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	r2 := Resources{
+		CPU:    1.00009,
+		MEMORY: 2.00009,
+		DISK:   3.00009,
+		GPU:    4.00009,
+	}
+	res := r2.Subtract(&r1)
+	assert.NotNil(t, res)
+	assert.Equal(t, float64(0), res.CPU)
+	assert.Equal(t, float64(0), res.MEMORY)
+	assert.Equal(t, float64(0), res.DISK)
+	assert.Equal(t, float64(0), res.GPU)
+}
+
 func TestLessThanOrEqual(t *testing.T) {
 	r1 := Resources{
 		CPU:    1.0,

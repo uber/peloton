@@ -116,6 +116,9 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		result.CPU = float64(0)
 	} else {
 		result.CPU = r.CPU - other.CPU
+		if result.CPU < util.ResourceEspilon {
+			result.CPU = float64(0)
+		}
 	}
 
 	if r.GPU < other.GPU {
@@ -126,6 +129,9 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		result.GPU = float64(0)
 	} else {
 		result.GPU = r.GPU - other.GPU
+		if result.GPU < util.ResourceEspilon {
+			result.GPU = float64(0)
+		}
 	}
 
 	if r.MEMORY < other.MEMORY {
@@ -136,6 +142,9 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		result.MEMORY = float64(0)
 	} else {
 		result.MEMORY = r.MEMORY - other.MEMORY
+		if result.MEMORY < util.ResourceEspilon {
+			result.MEMORY = float64(0)
+		}
 	}
 
 	if r.DISK < other.DISK {
@@ -146,6 +155,9 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		result.DISK = float64(0)
 	} else {
 		result.DISK = r.DISK - other.DISK
+		if result.DISK < util.ResourceEspilon {
+			result.DISK = float64(0)
+		}
 	}
 	return &result
 }
