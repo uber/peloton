@@ -61,6 +61,7 @@ func NewJobRuntimeUpdater(
 		firstTaskUpdateTime: make(map[string]float64),
 		lastTaskUpdateTime:  make(map[string]float64),
 		taskUpdatedFlags:    make(map[string]bool),
+		taskUpdateRunning:   make(map[string]chan struct{}),
 		metrics:             NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
 		jobRecovery: NewJobRecovery(
 			jobStore,
@@ -84,9 +85,10 @@ type RuntimeUpdater struct {
 	// jobID -> last task update time
 	lastTaskUpdateTime map[string]float64
 	// jobID -> if task has updated
-	taskUpdatedFlags map[string]bool
-	started          atomic.Bool
-	progress         atomic.Uint64
+	taskUpdatedFlags  map[string]bool
+	taskUpdateRunning map[string]chan struct{}
+	started           atomic.Bool
+	progress          atomic.Uint64
 
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
@@ -142,7 +144,10 @@ func formatTime(timestamp float64, layout string) string {
 // UpdateJob updates the job runtime synchronously
 func (j *RuntimeUpdater) UpdateJob(ctx context.Context, jobID *peloton.JobID) error {
 	j.Lock()
-	defer j.Unlock()
+	// Ensure we mark it for eventual evaluation.
+	j.taskUpdatedFlags[jobID.GetValue()] = true
+	j.Unlock()
+
 	if j.started.Load() {
 		err := j.updateJobRuntime(ctx, jobID)
 		if err == nil {
@@ -155,7 +160,32 @@ func (j *RuntimeUpdater) UpdateJob(ctx context.Context, jobID *peloton.JobID) er
 	return errors.New("RuntimeUpdater has not started")
 }
 
+// updateJobRuntime for the given job ID.
 func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.JobID) error {
+	// Ensure this is the only job update running for this job.
+	j.Lock()
+	if c, ok := j.taskUpdateRunning[jobID.GetValue()]; ok {
+		// If already running, wait for the existing execution to finish.
+		j.Unlock()
+		<-c
+		return nil
+	}
+
+	// Clear taskUpdatedFlags for job, to allow being set again.
+	delete(j.taskUpdatedFlags, jobID.GetValue())
+	c := make(chan struct{})
+	j.taskUpdateRunning[jobID.GetValue()] = c
+	j.Unlock()
+
+	// Always clean up by marking the task as run.
+	defer func() {
+		j.Lock()
+		defer j.Unlock()
+
+		delete(j.taskUpdateRunning, jobID.GetValue())
+		close(c)
+	}()
+
 	log.WithField("job_id", jobID).
 		Info("JobRuntimeUpdater updateJobRuntime")
 
@@ -214,6 +244,8 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 		return nil
 	}
 
+	j.Lock()
+
 	// Update job start time if necessary
 	firstTaskUpdateTime, ok := j.firstTaskUpdateTime[jobID.Value]
 	if ok && jobRuntime.StartTime == "" {
@@ -257,6 +289,8 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 		jobState = job.JobState_PENDING
 	}
 
+	j.Unlock()
+
 	jobRuntime.State = jobState
 	jobRuntime.TaskStats = stateCounts
 
@@ -273,15 +307,21 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 
 func (j *RuntimeUpdater) updateJobsRuntime(ctx context.Context) {
 	j.Lock()
-	defer j.Unlock()
 
 	log.Debug("JobRuntimeUpdater updateJobsRuntime")
+
+	var jobsToRun []*peloton.JobID
 	for jobID, taskUpdated := range j.taskUpdatedFlags {
 		if taskUpdated && j.started.Load() {
-			j.updateJobRuntime(ctx, &peloton.JobID{Value: jobID})
-			delete(j.taskUpdatedFlags, jobID)
+			jobsToRun = append(jobsToRun, &peloton.JobID{Value: jobID})
 			delete(j.firstTaskUpdateTime, jobID)
 		}
+	}
+
+	j.Unlock()
+
+	for _, jobID := range jobsToRun {
+		j.updateJobRuntime(ctx, jobID)
 	}
 }
 
@@ -289,13 +329,14 @@ func (j *RuntimeUpdater) updateJobsRuntime(ctx context.Context) {
 // every checkAllJobsInterval time
 func (j *RuntimeUpdater) checkAllJobs(ctx context.Context) {
 	j.Lock()
-	defer j.Unlock()
 
 	if time.Since(j.lastCheckAllJobsTime) < checkAllJobsInterval {
+		j.Unlock()
 		return
 	}
 	log.Info("JobRuntimeUpdater checkAllJobs")
 	j.lastCheckAllJobsTime = time.Now()
+	j.Unlock()
 
 	nonTerminatedStates := []job.JobState{
 		job.JobState_PENDING,
