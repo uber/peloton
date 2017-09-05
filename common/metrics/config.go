@@ -195,6 +195,6 @@ func loadM3Configs(cfg *tallym3.Configuration) {
 	if v := os.Getenv(m3Cluster); v != "" {
 		log.WithField("tag.cluster", v).
 			Info("Load m3 config")
-		cfg.CommonTags[m3Cluster] = v
+		cfg.CommonTags[strings.ToLower(m3Cluster)] = v
 	}
 }
