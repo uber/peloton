@@ -321,7 +321,12 @@ func (j *RuntimeUpdater) updateJobsRuntime(ctx context.Context) {
 	j.Unlock()
 
 	for _, jobID := range jobsToRun {
-		j.updateJobRuntime(ctx, jobID)
+		err := j.updateJobRuntime(ctx, jobID)
+		if err == nil {
+			j.metrics.JobRuntimeUpdated.Inc(1)
+		} else {
+			j.metrics.JobRuntimeUpdateFailed.Inc(1)
+		}
 	}
 }
 
