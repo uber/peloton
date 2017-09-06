@@ -83,6 +83,21 @@ func (suite *TaskHandlerTestSuite) createTestTaskInfo(
 	}
 }
 
+func (suite *TaskHandlerTestSuite) TestGetTaskInfosByRangesFromDBReturnsError() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+
+	jobID := &peloton.JobID{}
+
+	mockTaskStore.EXPECT().GetTasksForJob(gomock.Any(), jobID).Return(nil, errors.New("my-error"))
+	_, err := suite.handler.getTaskInfosByRangesFromDB(context.Background(), jobID, nil, nil)
+
+	suite.EqualError(err, "my-error")
+}
+
 func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()

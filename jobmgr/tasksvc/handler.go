@@ -191,7 +191,7 @@ func (m *serviceHandler) getTaskInfosByRangesFromDB(
 		}
 	}
 
-	return taskInfos, nil
+	return taskInfos, err
 }
 
 // Start implements TaskManager.Start, tries to start terminal tasks in a given job.
