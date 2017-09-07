@@ -220,6 +220,9 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 		err = sm.rules[curState].Callback(t)
 		if err != nil {
 			log.WithFields(log.Fields{
+				"Task": sm.GetName(),
+			}).Info("Callback failed for task")
+			log.WithFields(log.Fields{
 				"Current State ": curState,
 				"To State":       to,
 			}).Error("Error in call back")
@@ -231,7 +234,13 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	if sm.transitionCallback != nil {
 		err = sm.transitionCallback(t)
 		if err != nil {
-			log.Error("Error in transition callback ")
+			log.WithFields(log.Fields{
+				"Task": sm.GetName(),
+			}).Info("Transition Callback failed for task")
+			log.WithFields(log.Fields{
+				"Current State ": curState,
+				"To State":       to,
+			}).Error("error in transition call back")
 			return err
 		}
 	}

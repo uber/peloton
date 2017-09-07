@@ -568,6 +568,10 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 			if err != nil {
 				log.WithField("event", event).Error("Could not be updated")
 			}
+			log.WithFields(log.Fields{
+				"Task":  taskID,
+				"State": taskState.String(),
+			}).Info("Task is completed and removed from tracker")
 			rmtask.GetTracker().UpdateCounters(
 				t.TaskState_RUNNING.String(), taskState.String())
 		}
@@ -607,6 +611,8 @@ func (h *ServiceHandler) KillTasks(
 			},
 		}, nil
 	}
+	log.WithField("Tasks", listTasks).Info("tasks to be killed")
+
 	var tasksNotKilled string
 	for _, killedTask := range listTasks {
 		killedRmTask := h.rmTracker.GetTask(killedTask)
@@ -620,6 +626,10 @@ func (h *ServiceHandler) KillTasks(
 		if err != nil {
 			tasksNotKilled += killedTask.Value + " , "
 		}
+		log.WithFields(log.Fields{
+			"Task":  killedTask.Value,
+			"State": killedRmTask.GetCurrentState().String(),
+		}).Info("Task is Killed and removed from tracker")
 		h.rmTracker.UpdateCounters(
 			killedRmTask.GetCurrentState().String(),
 			t.TaskState_KILLED.String(),
