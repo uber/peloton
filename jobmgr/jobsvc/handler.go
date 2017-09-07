@@ -66,6 +66,8 @@ func (h *serviceHandler) Create(
 	ctx context.Context,
 	req *job.CreateRequest) (*job.CreateResponse, error) {
 
+	h.metrics.JobAPICreate.Inc(1)
+
 	jobID := req.Id
 	// It is possible that jobId is nil since protobuf doesn't enforce it
 	if jobID == nil {
@@ -103,7 +105,6 @@ func (h *serviceHandler) Create(
 	}
 
 	log.WithField("config", jobConfig).Infof("JobManager.Create called")
-	h.metrics.JobAPICreate.Inc(1)
 
 	// Validate job config with default task configs
 	err = task_config.ValidateTaskConfig(jobConfig)
@@ -210,6 +211,8 @@ func (h *serviceHandler) createAndEnqueueTasks(
 func (h *serviceHandler) Update(
 	ctx context.Context,
 	req *job.UpdateRequest) (*job.UpdateResponse, error) {
+
+	h.metrics.JobAPIUpdate.Inc(1)
 
 	jobID := req.Id
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
@@ -318,6 +321,7 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
+	h.metrics.JobUpdate.Inc(1)
 	msg := fmt.Sprintf("added %d instances", len(diff.InstancesToAdd))
 	return &job.UpdateResponse{
 		Id:      jobID,
@@ -362,6 +366,7 @@ func (h *serviceHandler) Get(
 			},
 		}, nil
 	}
+
 	h.metrics.JobGet.Inc(1)
 	return &job.GetResponse{
 		JobInfo: &job.JobInfo{
@@ -434,6 +439,7 @@ func (h *serviceHandler) Delete(
 			},
 		}, nil
 	}
+
 	h.metrics.JobDelete.Inc(1)
 	return &job.DeleteResponse{}, nil
 }
