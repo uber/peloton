@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/atomic"
+	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -42,6 +42,12 @@ type Manager interface {
 	// WaitForScheduledTask blocked until a scheduled task is ready or the
 	// stopChan is closed.
 	WaitForScheduledTask(stopChan <-chan struct{}) Task
+
+	// Start syncs jobs and tasks from DB.
+	Start()
+
+	// Stop clears the current tracked jobs and tasks.
+	Stop()
 }
 
 // NewManager returns a new tracked manager.
@@ -73,7 +79,7 @@ type manager struct {
 	// jobs maps from from peloton job id -> tracked job.
 	jobs map[string]*job
 
-	progress atomic.Uint64
+	running bool
 
 	taskQueue        *deadlineQueue
 	taskQueueChanged chan struct{}
@@ -90,9 +96,6 @@ type manager struct {
 	mtx *metrics
 }
 
-func (m *manager) Start() {}
-func (m *manager) Stop()  {}
-
 func (m *manager) GetJob(id *peloton.JobID) Job {
 	m.RLock()
 	defer m.RUnlock()
@@ -108,12 +111,18 @@ func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_t
 	m.Lock()
 	defer m.Unlock()
 
+	if !m.running {
+		return
+	}
+
 	j := m.addJob(jobID)
 	t := j.setTask(instanceID, runtime)
 	m.scheduleTask(t, time.Now())
 }
 
 func (m *manager) UpdateTask(ctx context.Context, jobID *peloton.JobID, instanceID uint32, info *pb_task.TaskInfo) error {
+	// TODO: We need to figure out how to handle this case, where we modify in
+	// the non-leader.
 	if err := m.taskStore.UpdateTask(ctx, info); err != nil {
 		return err
 	}
@@ -125,6 +134,10 @@ func (m *manager) UpdateTask(ctx context.Context, jobID *peloton.JobID, instance
 func (m *manager) ScheduleTask(t Task, deadline time.Time) {
 	m.Lock()
 	defer m.Unlock()
+
+	if !m.running {
+		return
+	}
 
 	m.scheduleTask(t.(*task), deadline)
 }
@@ -208,4 +221,71 @@ func (m *manager) scheduleTask(t *task, deadline time.Time) {
 		default:
 		}
 	}
+}
+
+// Start syncs jobs and tasks from DB.
+func (m *manager) Start() {
+	m.Lock()
+	defer m.Unlock()
+
+	if m.running {
+		return
+	}
+	m.running = true
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		if err := m.syncFromDB(ctx); err != nil {
+			log.WithError(err).Warn("failed to sync with DB in tracked manager")
+		}
+	}()
+
+	log.Info("tracked.Manager started")
+}
+
+// Stop clears the current tracked jobs and tasks.
+func (m *manager) Stop() {
+	m.Lock()
+	defer m.Unlock()
+
+	if !m.running {
+		return
+	}
+	m.running = false
+
+	for _, job := range m.jobs {
+		for _, t := range job.tasks {
+			m.scheduleTask(t, time.Time{})
+		}
+	}
+
+	m.jobs = map[string]*job{}
+
+	log.Info("tracked.Manager stopped")
+}
+
+func (m *manager) syncFromDB(ctx context.Context) error {
+	log.Info("syncing tracked manager with DB goalstates")
+
+	// TODO: Skip completed jobs.
+	jobs, err := m.jobStore.GetAllJobs(ctx)
+	if err != nil {
+		return err
+	}
+
+	for id := range jobs {
+		jobID := &peloton.JobID{Value: id}
+		tasks, err := m.taskStore.GetTasksForJob(ctx, jobID)
+		if err != nil {
+			return err
+		}
+
+		for instanceID, task := range tasks {
+			m.SetTask(jobID, instanceID, task.GetRuntime())
+		}
+	}
+
+	return nil
 }

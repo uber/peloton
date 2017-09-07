@@ -6,6 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/leader"
 	log "github.com/sirupsen/logrus"
 )
@@ -24,10 +25,14 @@ type Server struct {
 	getStatusUpdateRM func() event.StatusUpdateRM
 
 	goalstateEngine goalstate.Engine
+	trackedManager  tracked.Manager
 }
 
 // NewServer creates a job manager Server instance.
-func NewServer(httpPort, grpcPort int, goalstateEngine goalstate.Engine) *Server {
+func NewServer(
+	httpPort, grpcPort int,
+	goalstateEngine goalstate.Engine,
+	trackedManager tracked.Manager) *Server {
 
 	return &Server{
 		ID:                leader.NewID(httpPort, grpcPort),
@@ -35,6 +40,7 @@ func NewServer(httpPort, grpcPort int, goalstateEngine goalstate.Engine) *Server
 		getStatusUpdate:   event.GetStatusUpdater,
 		getStatusUpdateRM: event.GetStatusUpdaterRM,
 		goalstateEngine:   goalstateEngine,
+		trackedManager:    trackedManager,
 	}
 }
 
@@ -47,6 +53,7 @@ func (s *Server) GainedLeadershipCallback() error {
 	s.getStatusUpdate().Start()
 	s.getStatusUpdateRM().Start()
 	s.goalstateEngine.Start()
+	s.trackedManager.Start()
 
 	return nil
 }
@@ -60,6 +67,7 @@ func (s *Server) LostLeadershipCallback() error {
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
 	s.goalstateEngine.Stop()
+	s.trackedManager.Stop()
 
 	return nil
 }
@@ -72,6 +80,7 @@ func (s *Server) ShutDownCallback() error {
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
 	s.goalstateEngine.Stop()
+	s.trackedManager.Stop()
 
 	return nil
 }

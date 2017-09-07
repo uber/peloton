@@ -40,7 +40,7 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 	taskID := fmt.Sprintf("%s-%d", t.job.ID().GetValue(), t.ID())
 	req := &resmgrsvc.KillTasksRequest{
 		Tasks: []*peloton.TaskID{
-			&peloton.TaskID{
+			{
 				Value: taskID,
 			},
 		},

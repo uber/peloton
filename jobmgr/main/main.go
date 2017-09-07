@@ -291,7 +291,7 @@ func main() {
 	)
 
 	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher(), rootScope)
-	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, jobStore, taskStore, rootScope)
+	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, rootScope)
 
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
@@ -361,6 +361,7 @@ func main() {
 		cfg.JobManager.HTTPPort,
 		cfg.JobManager.GRPCPort,
 		goalstateEngine,
+		trackedManager,
 	)
 
 	candidate, err := leader.NewCandidate(

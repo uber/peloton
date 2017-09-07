@@ -61,6 +61,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		taskStore:        mockTaskStore,
 		resmgrClient:     mockResmgr,
 		mtx:              newMetrics(tally.NoopScope),
+		running:          true,
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
@@ -71,7 +72,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 
 	mockResmgr.EXPECT().KillTasks(context.Background(), &resmgrsvc.KillTasksRequest{
 		Tasks: []*peloton.TaskID{
-			&peloton.TaskID{
+			{
 				Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-7",
 			},
 		},

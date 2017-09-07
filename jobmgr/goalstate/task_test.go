@@ -20,7 +20,7 @@ func TestEngineSuggestActionGoalKilled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	e := NewEngine(Config{}, nil, nil, nil, tally.NoopScope).(*engine)
+	e := NewEngine(Config{}, nil, tally.NoopScope).(*engine)
 
 	taskMock := mocks.NewMockTask(ctrl)
 
