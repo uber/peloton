@@ -303,9 +303,11 @@ func (tr *tracker) UpdateCounters(from string, to string) {
 	defer tr.Unlock()
 	// Reducing the count from state
 	if val, ok := tr.counters[from]; ok {
-		tr.counters[from] = val - 1
+		if val > 0 {
+			tr.counters[from] = val - 1
+		}
 	}
-	// Incementing the state couter to +1
+	// Incrementing the state counter to +1
 	if val, ok := tr.counters[to]; ok {
 		tr.counters[to] = val + 1
 	} else {

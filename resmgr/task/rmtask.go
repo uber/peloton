@@ -173,8 +173,11 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 
 // TransitTo transitions to the target state
 func (rmTask *RMTask) TransitTo(stateTo string, args ...interface{}) error {
-	GetTracker().UpdateCounters(rmTask.GetCurrentState().String(), stateTo)
-	return rmTask.stateMachine.TransitTo(state.State(stateTo), args)
+	err := rmTask.stateMachine.TransitTo(state.State(stateTo), args)
+	if err == nil {
+		GetTracker().UpdateCounters(rmTask.GetCurrentState().String(), stateTo)
+	}
+	return err
 }
 
 // transitionCallBack is the global callback for the resource manager task
