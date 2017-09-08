@@ -47,7 +47,7 @@ AURORA_ENVIRONMENT = 'production'
 AURORA_USER = 'peloton'
 
 
-MAX_WAIT_TIME_SECONDS = 300
+MAX_WAIT_TIME_SECONDS = 600
 WAIT_INTERVAL_SECONDS = 10
 
 
@@ -140,7 +140,8 @@ class App(object):
             'ENABLE_DEBUG_LOGGING': self.enable_debug_logging,
             'ELECTION_ZK_SERVERS': peloton_zk_endpoints,
             'USE_CASSANDRA': self.cluster.cassandra_contact_points is not None,
-            'CASSANDRA_HOSTS': '\n'.join(self.cluster.cassandra_contact_points),
+            'CASSANDRA_HOSTS': '\n'.join(
+                self.cluster.cassandra_contact_points),
             'CASSANDRA_STORE': self.cluster.cassandra_keyspace,
             'CLUSTER': self.cluster.name,
             'DATACENTER': getattr(self.cluster, 'datacenter', ''),
@@ -170,7 +171,9 @@ class App(object):
         Returns the docker image path for a Peloton app
         """
         return '%s/%s:%s' % (
-            self.cluster.docker_registry, self.cluster.docker_repository, self.cluster.version
+            self.cluster.docker_registry,
+            self.cluster.docker_repository,
+            self.cluster.version
         )
 
     def get_executor_config(self):
@@ -384,6 +387,7 @@ class App(object):
             instanceCount=self.num_instances,
             settings=JobUpdateSettings(
                 updateGroupSize=1,
+                maxPerInstanceFailures=3
             ),
         )
         if instance_ids:
