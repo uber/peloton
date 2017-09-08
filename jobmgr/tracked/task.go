@@ -124,7 +124,7 @@ func (t *task) LastAction() (TaskAction, time.Time) {
 }
 
 func (t *task) RunAction(ctx context.Context, action TaskAction) error {
-	defer t.job.m.mtx.taskTimer[action].Start().Stop()
+	defer t.job.m.mtx.scope.Tagged(map[string]string{"action": string(action)}).Timer("run_duration").Start().Stop()
 
 	// TODO: Move to Manager, such that the following holds:
 	// Take job lock only while we evaluate action. That ensure we have a

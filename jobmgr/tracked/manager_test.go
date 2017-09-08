@@ -148,6 +148,7 @@ func TestManagerStopClearsTasks(t *testing.T) {
 		taskQueue:        newDeadlineQueue(newMetrics(tally.NoopScope)),
 		taskQueueChanged: make(chan struct{}, 1),
 		running:          true,
+		stopChan:         make(chan struct{}),
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}

@@ -62,6 +62,7 @@ func (q *deadlineQueue) popIfReady() queueItem {
 
 	qi := heap.Pop(q.pq).(queueItem)
 	q.mtx.queuePopDelay.Record(time.Since(qi.deadline()))
+	q.mtx.queueLength.Update(float64(q.pq.Len()))
 	return qi
 }
 

@@ -18,6 +18,10 @@ import (
 	"github.com/uber-go/tally"
 )
 
+const (
+	_defaultMetricsUpdateTick = 10 * time.Second
+)
+
 // Manager for tracking jobs and tasks. The manager has built in scheduler,
 // for marking tasks as dirty and ready for being processed by the goal state
 // engine.
@@ -43,10 +47,10 @@ type Manager interface {
 	// stopChan is closed.
 	WaitForScheduledTask(stopChan <-chan struct{}) Task
 
-	// Start syncs jobs and tasks from DB.
+	// Start syncs jobs and tasks from DB, starts emitting metrics.
 	Start()
 
-	// Stop clears the current tracked jobs and tasks.
+	// Stop clears the current tracked jobs and tasks, stops metrics.
 	Stop()
 }
 
@@ -93,7 +97,8 @@ type manager struct {
 
 	taskLauncher launcher.Launcher
 
-	mtx *metrics
+	mtx      *metrics
+	stopChan chan struct{}
 }
 
 func (m *manager) GetJob(id *peloton.JobID) Job {
@@ -223,7 +228,7 @@ func (m *manager) scheduleTask(t *task, deadline time.Time) {
 	}
 }
 
-// Start syncs jobs and tasks from DB.
+// Start syncs jobs and tasks from DB, starts emitting metrics.
 func (m *manager) Start() {
 	m.Lock()
 	defer m.Unlock()
@@ -242,10 +247,13 @@ func (m *manager) Start() {
 		}
 	}()
 
+	m.stopChan = make(chan struct{})
+	go m.runPublishMetrics(m.stopChan)
+
 	log.Info("tracked.Manager started")
 }
 
-// Stop clears the current tracked jobs and tasks.
+// Stop clears the current tracked jobs and tasks, stops emitting metrics.
 func (m *manager) Stop() {
 	m.Lock()
 	defer m.Unlock()
@@ -262,6 +270,8 @@ func (m *manager) Stop() {
 	}
 
 	m.jobs = map[string]*job{}
+
+	close(m.stopChan)
 
 	log.Info("tracked.Manager stopped")
 }
@@ -288,4 +298,51 @@ func (m *manager) syncFromDB(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (m *manager) runPublishMetrics(stopChan <-chan struct{}) {
+	ticker := time.NewTicker(_defaultMetricsUpdateTick)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			m.publishMetrics()
+		case <-stopChan:
+			return
+		}
+	}
+}
+
+func (m *manager) publishMetrics() {
+	// Initialise tasks count map for all possible pairs of (state, goal_state)
+	tCount := map[pb_task.TaskState]map[pb_task.TaskState]float64{}
+	for s := range pb_task.TaskState_name {
+		tCount[pb_task.TaskState(s)] = map[pb_task.TaskState]float64{}
+		for gs := range pb_task.TaskState_name {
+			tCount[pb_task.TaskState(s)][pb_task.TaskState(gs)] = 0.0
+		}
+	}
+
+	// Iterate through jobs, tasks and count
+	m.RLock()
+	jCount := float64(len(m.jobs))
+	for _, j := range m.jobs {
+		j.RLock()
+		for _, t := range j.tasks {
+			t.RLock()
+			tCount[t.runtime.State][t.runtime.GoalState]++
+			t.RUnlock()
+		}
+		j.RUnlock()
+	}
+	m.RUnlock()
+
+	// Publish
+	m.mtx.scope.Gauge("jobs_count").Update(jCount)
+	for s, sm := range tCount {
+		for gs, tc := range sm {
+			m.mtx.scope.Tagged(map[string]string{"state": s.String(), "goal_state": gs.String()}).Gauge("tasks_count").Update(tc)
+		}
+	}
 }
