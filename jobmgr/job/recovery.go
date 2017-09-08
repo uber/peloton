@@ -17,8 +17,14 @@ import (
 )
 
 const (
-	batchRows        = uint32(1000)
+	batchRows = uint32(1000)
+	// recoveryInterval represents the minimal time interval between two
+	// attempts of jobs recovery.
 	recoveryInterval = 15 * time.Minute
+	// jobRecoveryGracePeriod represents the minimal age of any job to
+	// be recovered. This prevents race between recovery and normal job state
+	// transition at creation.
+	jobRecoveryGracePeriod = 15 * time.Minute
 )
 
 // Recovery scans jobs and make sure that all tasks are created and
@@ -105,9 +111,9 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 				Error("Failed to Parse job create time")
 			return err
 		}
-		// Only recover job that still in Initialized state after recoveryInterval
+		// Only recover job that still in Initialized state after jobRecoveryGracePeriod
 		// this is for avoiding collision with jobs being created right now
-		if time.Since(createTime) < recoveryInterval {
+		if time.Since(createTime) < jobRecoveryGracePeriod {
 			log.WithField("job_id", jobID).
 				WithField("create_time", createTime).
 				Info("Job created recently, skip")
