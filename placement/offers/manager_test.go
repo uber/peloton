@@ -3,6 +3,7 @@ package offers
 import (
 	"context"
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
@@ -63,8 +64,8 @@ func TestOfferManager_Dequeue(t *testing.T) {
 	offers, _, err := manager.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(offers))
-	assert.Equal(t, "hostname", offers[0].Offer.Hostname)
-	assert.Equal(t, 1, len(offers[0].Tasks))
+	assert.Equal(t, "hostname", offers[0].Offer().Hostname)
+	assert.Equal(t, 1, len(offers[0].Tasks()))
 }
 
 func TestOfferManager_Return(t *testing.T) {
@@ -81,9 +82,7 @@ func TestOfferManager_Return(t *testing.T) {
 		hostOffer,
 	}
 	offers := []*models.Offer{
-		{
-			Offer: hostOffer,
-		},
+		models.NewOffer(hostOffer, nil, time.Now()),
 	}
 	gomock.InOrder(
 		mockHostManager.EXPECT().

@@ -243,7 +243,7 @@ func (s *placementEngine) placeTasks(
 	}
 
 	usage := scalar.FromResourceConfig(resourceConfig)
-	remain := scalar.FromMesosResources(offer.Offer.GetResources())
+	remain := scalar.FromMesosResources(offer.Offer().GetResources())
 
 	numTotalTasks := uint32(len(tasks))
 	// Assuming all tasks within the same taskgroup have the same ports num
@@ -252,7 +252,7 @@ func (s *placementEngine) placeTasks(
 	availablePorts := make(map[uint32]bool)
 	if numPortsPerTask > 0 {
 		availablePorts = util.GetPortsSetFromResources(
-			offer.Offer.GetResources())
+			offer.Offer().GetResources())
 		numAvailablePorts := len(availablePorts)
 		numTasksByAvailablePorts := uint32(numAvailablePorts) / numPortsPerTask
 		if numTasksByAvailablePorts < numTotalTasks {
@@ -349,8 +349,8 @@ func (s *placementEngine) createTasksPlacement(tasks []*resmgr.Task,
 	}
 
 	placement := &resmgr.Placement{
-		AgentId:  offer.Offer.AgentId,
-		Hostname: offer.Offer.Hostname,
+		AgentId:  offer.Offer().AgentId,
+		Hostname: offer.Offer().Hostname,
 		Tasks:    tasksIds,
 		Ports:    selectedPorts,
 		Type:     tasks[0].Type,

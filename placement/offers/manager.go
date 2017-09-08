@@ -3,6 +3,7 @@ package offers
 import (
 	"context"
 	"errors"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
@@ -86,10 +87,7 @@ func (manager *offerManager) convertOffers(hostOffers []*hostsvc.HostOffer,
 		if tasks != nil && tasks[hostOffer.Hostname] != nil {
 			taskList = tasks[hostOffer.Hostname].Tasks
 		}
-		offers = append(offers, &models.Offer{
-			Offer: hostOffer,
-			Tasks: taskList,
-		})
+		offers = append(offers, models.NewOffer(hostOffer, taskList, time.Now()))
 	}
 	return offers
 }
@@ -119,7 +117,7 @@ func (manager *offerManager) Acquire(ctx context.Context, fetchTasks bool, taskT
 func (manager *offerManager) Release(ctx context.Context, offers []*models.Offer) error {
 	hostOffers := make([]*hostsvc.HostOffer, 0, len(offers))
 	for _, offer := range offers {
-		hostOffers = append(hostOffers, offer.Offer)
+		hostOffers = append(hostOffers, offer.Offer())
 	}
 	request := &hostsvc.ReleaseHostOffersRequest{
 		HostOffers: hostOffers,
