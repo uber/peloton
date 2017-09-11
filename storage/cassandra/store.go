@@ -999,14 +999,18 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 }
 
 // GetTasksForJobAndState returns the task count for a peloton job with certain state
-func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state string) (int, error) {
+func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state string) (uint32, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("count (*)").From(taskJobStateView).
 		Where(qb.Eq{"job_id": jobID, "state": state})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
-		log.Errorf("Fail to getTaskStateCount by jobId %v state %v, err=%v", jobID, state, err)
+		log.
+			WithField("job_id", jobID).
+			WithField("state", state).
+			WithError(err).
+			Error("Fail to getTaskStateCount by jobId")
 		return 0, err
 	}
 	if result != nil {
@@ -1017,15 +1021,15 @@ func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state 
 	for _, value := range allResults {
 		for _, count := range value {
 			val := count.(int64)
-			return int(val), nil
+			return uint32(val), nil
 		}
 	}
 	return 0, nil
 }
 
 // GetTaskStateSummaryForJob returns the tasks count (runtime_config) for a peloton job with certain state
-func (s *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]int, error) {
-	resultMap := make(map[string]int)
+func (s *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error) {
+	resultMap := make(map[string]uint32)
 	for _, state := range task.TaskState_name {
 		count, err := s.getTaskStateCount(ctx, id, state)
 		if err != nil {

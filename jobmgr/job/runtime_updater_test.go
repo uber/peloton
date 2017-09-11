@@ -114,16 +114,8 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		Return(&jobRuntime, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_SUCCEEDED.String()).
-		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil}, nil).
-		AnyTimes()
-	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_RUNNING.String()).
-		Return(map[uint32]*task.TaskInfo{uint32(2): nil}, nil).
-		AnyTimes()
-	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), gomock.Any()).
-		Return(map[uint32]*task.TaskInfo{}, nil).
+		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
+		Return(map[string]uint32{task.TaskState_SUCCEEDED.String(): 2, task.TaskState_RUNNING.String(): 1}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
 		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
@@ -161,17 +153,8 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	// state. Process another task event and verify the job completion
 	// time is as expected.
 	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_SUCCEEDED.String()).
-		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil, uint32(2): nil}, nil).
-		AnyTimes()
-	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_RUNNING.String()).
-		Return(map[uint32]*task.TaskInfo{}, nil).
-		AnyTimes()
-	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), gomock.Any()).
-		Return(map[uint32]*task.TaskInfo{}, nil).
-		AnyTimes()
+		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
+		Return(map[string]uint32{task.TaskState_SUCCEEDED.String(): 3}, nil)
 
 	updater.taskStore = mockTaskStore2
 	eventTime, _ = time.Parse(time.RFC3339Nano, jobCompletionTime)
@@ -241,16 +224,8 @@ func TestUpdateJobRuntime_SynchronousJobUpdate(t *testing.T) {
 		Return(&jobRuntime, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_SUCCEEDED.String()).
-		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil}, nil).
-		AnyTimes()
-	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_RUNNING.String()).
-		Return(map[uint32]*task.TaskInfo{uint32(2): nil}, nil).
-		AnyTimes()
-	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), gomock.Any()).
-		Return(map[uint32]*task.TaskInfo{}, nil).
+		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
+		Return(map[string]uint32{task.TaskState_SUCCEEDED.String(): 2, task.TaskState_RUNNING.String(): 1}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
 		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
@@ -266,16 +241,8 @@ func TestUpdateJobRuntime_SynchronousJobUpdate(t *testing.T) {
 	assert.Equal(t, uint32(1), jobRuntime.TaskStats[task.TaskState_RUNNING.String()])
 
 	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_SUCCEEDED.String()).
-		Return(map[uint32]*task.TaskInfo{uint32(0): nil, uint32(1): nil, uint32(2): nil}, nil).
-		AnyTimes()
-	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), task.TaskState_RUNNING.String()).
-		Return(map[uint32]*task.TaskInfo{}, nil).
-		AnyTimes()
-	mockTaskStore2.EXPECT().
-		GetTasksForJobAndState(context.Background(), gomock.Any(), gomock.Any()).
-		Return(map[uint32]*task.TaskInfo{}, nil).
+		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
+		Return(map[string]uint32{task.TaskState_SUCCEEDED.String(): 3}, nil).
 		AnyTimes()
 	updater.taskStore = mockTaskStore2
 	updater.UpdateJob(context.Background(), jobID)

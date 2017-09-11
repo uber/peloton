@@ -245,8 +245,8 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobAndState(context.Background(), jobID, gomock.Any()).
-		Return(map[uint32]*task.TaskInfo{}, nil).
+		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
+		Return(map[string]uint32{}, nil).
 		AnyTimes()
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil).

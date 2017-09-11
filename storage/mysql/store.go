@@ -475,6 +475,11 @@ func (m *Store) GetTasksForHosts(ctx context.Context, hosts []string) (map[strin
 	return result, nil
 }
 
+// GetTaskStateSummaryForJob returns the tasks count (runtime_config) for a peloton job with certain state.
+func (m *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error) {
+	return nil, fmt.Errorf("unimplemented GetTaskStateSummaryForJob")
+}
+
 // GetTasksForJobAndState returns the tasks (runtime_config) for a peloton job with certain state
 func (m *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "task_state=": {state}})

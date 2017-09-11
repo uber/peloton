@@ -774,7 +774,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 	suite.Nil(err)
 	suite.Equal(len(taskStateSummary), len(task.TaskState_name))
 	for _, state := range task.TaskState_name {
-		suite.Equal(taskStateSummary[state], 2)
+		suite.Equal(taskStateSummary[state], uint32(2))
 	}
 }
 

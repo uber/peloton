@@ -220,21 +220,13 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 
 	var jobState job.JobState
 	var instances = jobConfig.InstanceCount
-	var stateCounts = make(map[string]uint32)
 
-	// Build the per-task-state task count map for the job
-	for _, stateVal := range task.TaskState_value {
-		var state = task.TaskState(stateVal)
-		// TODO: update GetTasksForJobAndState to return instanceID only
-		tasks, err := j.taskStore.GetTasksForJobAndState(ctx, jobID, state.String())
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", jobID).
-				WithField("state", state).
-				Error("Failed to GetTasksForJobAndState")
-			return err
-		}
-		stateCounts[state.String()] = uint32(len(tasks))
+	stateCounts, err := j.taskStore.GetTaskStateSummaryForJob(ctx, jobID)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			Error("Failed to GetTaskStateSummaryForJob")
+		return err
 	}
 
 	if reflect.DeepEqual(stateCounts, jobRuntime.TaskStats) {
