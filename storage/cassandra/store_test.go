@@ -6,7 +6,11 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"testing"
+	"time"
+
+	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -621,6 +625,83 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 	suite.Nil(task)
 }
 
+func (suite *CassandraStoreTestSuite) TestUpdateTaskConcurrently() {
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	before := time.Now()
+
+	suite.NoError(store.CreateTask(context.Background(), jobID, 0, &task.TaskInfo{
+		JobId:   jobID,
+		Runtime: &task.RuntimeInfo{},
+		Config:  &task.TaskConfig{},
+	}, ""))
+
+	c := 25
+
+	var wg sync.WaitGroup
+	wg.Add(c)
+	// Let `c` number of go-routines race around updating the jobID, and see that
+	// eventually exactly `c` writes was done.
+	for i := 0; i < c; i++ {
+		go func() {
+			for {
+				info, err := store.GetTask(context.Background(), jobID.GetValue(), 0)
+				suite.NoError(err)
+				if err := store.UpdateTask(context.Background(), info); err == nil {
+					wg.Done()
+					return
+				} else if !yarpcerrors.IsAlreadyExists(err) {
+					suite.Fail(err.Error())
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	info, err := store.GetTask(context.Background(), jobID.GetValue(), 0)
+	suite.NoError(err)
+
+	suite.Equal(uint64(c), info.GetRuntime().GetRevision().GetVersion())
+	suite.True(info.GetRuntime().GetRevision().UpdatedAt >= uint64(before.UnixNano()))
+}
+
+func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	// Create legacy task with missing version field.
+	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, 0, &task.TaskConfig{}))
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(taskRuntimeTable).
+		Columns(
+			"job_id",
+			"instance_id").
+		Values(
+			jobID.GetValue(),
+			0).
+		IfNotExist()
+	suite.NoError(store.applyStatement(context.Background(), stmt, ""))
+
+	info, err := store.GetTask(context.Background(), jobID.GetValue(), 0)
+	suite.NoError(err)
+	suite.Equal(uint64(0), info.GetRuntime().GetRevision().GetVersion())
+	suite.Equal(uint64(0), info.GetRuntime().GetRevision().GetCreatedAt())
+	suite.Equal(uint64(0), info.GetRuntime().GetRevision().GetUpdatedAt())
+
+	before := time.Now()
+	suite.NoError(store.UpdateTask(context.Background(), info))
+
+	info, err = store.GetTask(context.Background(), jobID.GetValue(), 0)
+	suite.NoError(err)
+	suite.Equal(uint64(1), info.GetRuntime().GetRevision().GetVersion())
+	suite.True(info.GetRuntime().GetRevision().UpdatedAt >= uint64(before.UnixNano()))
+
+	suite.NoError(store.UpdateTask(context.Background(), info))
+
+	info, err = store.GetTask(context.Background(), jobID.GetValue(), 0)
+	suite.NoError(err)
+	suite.Equal(uint64(2), info.GetRuntime().GetRevision().GetVersion())
+}
+
 // TestCreateTasks ensures mysql task create batching works as expected.
 func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 	jobTasks := map[string]int{
@@ -904,7 +985,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetResourcePoolConfig() {
 			resourcePoolID: "first",
 			owner:          "team1",
 			config:         createResourcePoolConfig(),
-			expectedErr:    errors.New("first is not applied, item could exist already"),
+			expectedErr:    errors.New("code:already-exists message:first is not applied, item could exist already"),
 			msg:            "testcase: create resource pool, duplicate ID",
 		},
 	}
@@ -1162,13 +1243,14 @@ func (suite *CassandraStoreTestSuite) TestUpgrade() {
 	suite.NoError(err)
 
 	// Cannot process task 2.
-	suite.EqualError(store.AddTaskToProcessing(context.Background(), id, 2), fmt.Sprintf("%v is not applied, item could exist already", id.Value))
+	suite.EqualError(store.AddTaskToProcessing(context.Background(), id, 2),
+		fmt.Sprintf("code:already-exists message:%v is not applied, item could exist already", id.Value))
 	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
 	suite.Empty(processing)
 	suite.Equal(uint32(0), progress)
 	suite.NoError(err)
 
-	// Processing task 2 should succeed..
+	// Processing task 2 should succeed.
 	suite.NoError(store.AddTaskToProcessing(context.Background(), id, 0))
 	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
 	suite.Equal([]uint32{0}, processing)

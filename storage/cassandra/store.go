@@ -33,6 +33,7 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -564,6 +565,13 @@ func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 		return err
 	}
 
+	now := time.Now()
+	taskInfo.Runtime.Revision = &peloton.ChangeLog{
+		CreatedAt: uint64(now.UnixNano()),
+		UpdatedAt: uint64(now.UnixNano()),
+		Version:   0,
+	}
+
 	runtimeBuffer, err := proto.Marshal(taskInfo.Runtime)
 	if err != nil {
 		log.WithField("job_id", taskInfo.JobId.Value).
@@ -580,12 +588,14 @@ func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 		Columns(
 			"job_id",
 			"instance_id",
+			"version",
 			"update_time",
 			"state",
 			"runtime_info").
 		Values(
 			jobID,
 			instanceID,
+			taskInfo.GetRuntime().GetRevision().GetVersion(),
 			time.Now().UTC(),
 			taskInfo.GetRuntime().GetState().String(),
 			runtimeBuffer).
@@ -655,6 +665,13 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 					return
 				}
 
+				now := time.Now()
+				t.Runtime.Revision = &peloton.ChangeLog{
+					CreatedAt: uint64(now.UnixNano()),
+					UpdatedAt: uint64(now.UnixNano()),
+					Version:   0,
+				}
+
 				t.Runtime.State = task.TaskState_INITIALIZED
 				taskID := fmt.Sprintf(taskIDFmt, jobID, t.InstanceId)
 
@@ -676,12 +693,14 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 					Columns(
 						"job_id",
 						"instance_id",
+						"version",
 						"update_time",
 						"state",
 						"runtime_info").
 					Values(
 						jobID,
 						t.InstanceId,
+						t.GetRuntime().GetRevision().GetVersion(),
 						time.Now().UTC(),
 						t.GetRuntime().GetState().String(),
 						runtimeBuffer)
@@ -1078,6 +1097,15 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 
 // UpdateTask updates a task for a peloton job
 func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
+	// Bump version of task.
+	if taskInfo.Runtime.Revision == nil {
+		taskInfo.Runtime.Revision = &peloton.ChangeLog{}
+	}
+	currentVersion := taskInfo.Runtime.Revision.Version
+
+	taskInfo.Runtime.Revision.Version++
+	taskInfo.Runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
+
 	runtimeBuffer, err := proto.Marshal(taskInfo.Runtime)
 	if err != nil {
 		log.WithField("job_id", taskInfo.JobId.Value).
@@ -1088,12 +1116,20 @@ func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 		return err
 	}
 
+	vc := strconv.FormatUint(currentVersion, 10)
+	if currentVersion == 0 {
+		vc += ", null"
+	}
+	condition := "version IN (" + vc + ")"
+
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(taskRuntimeTable).
+		Set("version", taskInfo.Runtime.Revision.Version).
 		Set("update_time", time.Now().UTC()).
 		Set("state", taskInfo.GetRuntime().GetState().String()).
 		Set("runtime_info", runtimeBuffer).
-		Where(qb.Eq{"job_id": taskInfo.GetJobId().GetValue(), "instance_id": taskInfo.InstanceId})
+		Where(qb.Eq{"job_id": taskInfo.GetJobId().GetValue(), "instance_id": taskInfo.InstanceId}).
+		IfOnly(condition)
 
 	if err := s.applyStatement(ctx, stmt, getTaskID(taskInfo)); err != nil {
 		s.metrics.TaskUpdateFail.Inc(1)
@@ -1297,7 +1333,7 @@ func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName
 	if result != nil && !result.Applied() {
 		errMsg := fmt.Sprintf("%v is not applied, item could exist already", itemName)
 		log.Error(errMsg)
-		return fmt.Errorf(errMsg)
+		return yarpcerrors.AlreadyExistsErrorf(errMsg)
 	}
 	return nil
 }

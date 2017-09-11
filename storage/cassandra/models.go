@@ -35,7 +35,8 @@ func (j *JobConfigRecord) GetJobConfig() (*job.JobConfig, error) {
 type TaskRuntimeRecord struct {
 	JobID       querybuilder.UUID `cql:"job_id"`
 	InstanceID  int               `cql:"instance_id"`
-	UpdateTime  time.Time         `cql:"update_time"`
+	Version     int64
+	UpdateTime  time.Time `cql:"update_time"`
 	State       string
 	RuntimeInfo []byte `cql:"runtime_info"`
 }

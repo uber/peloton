@@ -352,6 +352,9 @@ message RuntimeInfo {
 
   // the id of mesos agent on the host to be launched.
   mesos.v1.AgentID agentID = 14;
+
+  // Revision of the current task info.
+  peloton.ChangeLog revision = 15;
 }
 
 
