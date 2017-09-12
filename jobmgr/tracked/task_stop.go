@@ -2,7 +2,6 @@ package tracked
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -10,6 +9,8 @@ import (
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func (t *task) stop(ctx context.Context) error {
@@ -52,7 +53,18 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 	}
 
 	if e := res.GetError(); e != nil {
-		return errors.New(e.Message)
+		// TODO: As of now this function supports one task
+		// We need to do it for batch
+		if e[0].GetNotFound() != nil {
+			log.WithFields(log.Fields{
+				"Task":  e[0].GetNotFound().Task.Value,
+				"Error": e[0].GetNotFound().Message,
+			}).Info("Task not found in resmgr")
+		} else {
+			return fmt.Errorf("Task %s can not be killed due to %s",
+				e[0].GetKillError().Task.Value,
+				e[0].GetKillError().Message)
+		}
 	}
 
 	taskInfo, err := t.job.m.taskStore.GetTaskByID(ctx, taskID)

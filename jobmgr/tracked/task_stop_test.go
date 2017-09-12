@@ -69,14 +69,25 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		State: pb_task.TaskState_INITIALIZED,
 	})
 	tt := m.GetJob(jobID).GetTask(7).(*task)
-
+	taskID := &peloton.TaskID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-7"}
+	var killResponseErr []*resmgrsvc.KillTasksResponse_Error
+	killResponseErr = append(killResponseErr,
+		&resmgrsvc.KillTasksResponse_Error{
+			NotFound: &resmgrsvc.TasksNotFound{
+				Message: "Tasks Not Found",
+				Task:    taskID,
+			},
+		})
+	res := &resmgrsvc.KillTasksResponse{
+		Error: killResponseErr,
+	}
 	mockResmgr.EXPECT().KillTasks(context.Background(), &resmgrsvc.KillTasksRequest{
 		Tasks: []*peloton.TaskID{
 			{
 				Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-7",
 			},
 		},
-	}).Return(nil, nil)
+	}).Return(res, nil)
 
 	taskInfo := &pb_task.TaskInfo{
 		InstanceId: 7,

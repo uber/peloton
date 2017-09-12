@@ -260,9 +260,21 @@ message KillTasksRequest {
   repeated api.peloton.TaskID tasks = 1;
 }
 
+message TasksNotFound {
+  api.peloton.TaskID task = 1;
+  string message = 2;
+}
+
+message KillTasksError {
+  api.peloton.TaskID task = 1;
+  string message = 2;
+}
+
 message KillTasksResponse {
   message Error {
-    string message = 1;
+   TasksNotFound notFound = 1;
+   KillTasksError killError =2;
   }
-  Error error = 1;
+  repeated Error error = 1;
 }
+

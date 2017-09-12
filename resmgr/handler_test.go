@@ -624,6 +624,9 @@ func (suite *HandlerTestSuite) TestKillTasks() {
 	// present in the tracker and should return error
 	res, err = suite.handler.KillTasks(suite.context, killReq)
 	suite.NotNil(res.Error)
+	suite.NotNil(res.Error[0].NotFound)
+	suite.Nil(res.Error[0].KillError)
+	suite.Equal(res.Error[0].NotFound.Task.Value, tasks[0].Value)
 }
 
 func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
