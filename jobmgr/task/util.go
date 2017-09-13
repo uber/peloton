@@ -1,15 +1,12 @@
 package task
 
 import (
-	"fmt"
-
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/jobmgr/task/config"
+	"code.uber.internal/infra/peloton/util"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"github.com/pborman/uuid"
 )
 
 // CreateInitializingTask for insertion into the storage layer, before being
@@ -21,13 +18,7 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 		return nil, err
 	}
 
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instanceID, uuid.NewUUID().String())
-
 	runtime := &task.RuntimeInfo{
-		State: task.TaskState_INITIALIZED,
-		MesosTaskId: &mesos_v1.TaskID{
-			Value: &mesosTaskID,
-		},
 		ConfigVersion:        jobConfig.GetChangeLog().GetVersion(),
 		DesiredConfigVersion: jobConfig.GetChangeLog().GetVersion(),
 	}
@@ -41,10 +32,12 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 		runtime.GoalState = task.TaskState_SUCCEEDED
 	}
 
-	return &task.TaskInfo{
+	t := &task.TaskInfo{
 		Runtime:    runtime,
 		Config:     taskConfig,
 		InstanceId: instanceID,
 		JobId:      jobID,
-	}, nil
+	}
+	util.RegenerateMesosTaskID(t)
+	return t, nil
 }

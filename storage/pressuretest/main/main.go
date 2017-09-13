@@ -133,7 +133,7 @@ func runTest(conf *cassandra.Config, rootScope tally.Scope, workers int, batchSi
 	if err != nil {
 		panic(fmt.Sprintf("%v", err))
 	}
-	jobID := uuid.NewUUID().String()
+	jobID := uuid.New()
 	wg := &sync.WaitGroup{}
 	lock := &sync.Mutex{}
 	lock.Lock()
@@ -191,7 +191,7 @@ func createTask(taskStore storage.TaskStore, jobIDVal string, instance uint32, r
 		Sla:           &sla,
 		DefaultConfig: taskConfig,
 	}
-	tid := fmt.Sprintf("%s-%s", jobID, uuid.NewUUID().String())
+	tid := fmt.Sprintf("%s-%s", jobID, uuid.New())
 	var taskInfo = &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			MesosTaskId: &mesos.TaskID{Value: &tid},

@@ -25,7 +25,7 @@ const (
 	ResourceEspilon float64 = 0.0009
 )
 
-var uuidLength = len(uuid.NewUUID().String())
+var uuidLength = len(uuid.New())
 
 // Min returns the minimum value of x, y
 func Min(x, y uint32) uint32 {
@@ -367,11 +367,14 @@ func ConvertLabels(pelotonLabels []*peloton.Label) *mesos.Labels {
 
 // RegenerateMesosTaskID generates a new mesos task ID and update task info.
 func RegenerateMesosTaskID(taskInfo *task.TaskInfo) {
-	newMesosTaskID := fmt.Sprintf(
+	// The mesos task id must end with an UUID1, to encode in a timestamp.
+	mesosTaskID := fmt.Sprintf(
 		"%s-%d-%s",
 		taskInfo.GetJobId().GetValue(),
 		taskInfo.GetInstanceId(),
-		uuid.NewUUID().String())
-	taskInfo.GetRuntime().GetMesosTaskId().Value = &newMesosTaskID
+		uuid.New())
+	taskInfo.GetRuntime().MesosTaskId = &mesos.TaskID{
+		Value: &mesosTaskID,
+	}
 	taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
 }

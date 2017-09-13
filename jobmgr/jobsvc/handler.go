@@ -75,7 +75,7 @@ func (h *serviceHandler) Create(
 	}
 
 	if len(jobID.Value) == 0 {
-		jobID.Value = uuid.NewUUID().String()
+		jobID.Value = uuid.New()
 		log.WithField("jobID", jobID).Info("Genarating UUID ID for empty job ID")
 	} else {
 		if uuid.Parse(jobID.Value) == nil {

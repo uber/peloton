@@ -44,7 +44,7 @@ func NewEventStreamHandler(
 	purgedEventProcessor PurgedEventsProcessor,
 	parentScope tally.Scope) *Handler {
 	handler := Handler{
-		streamID:             uuid.NewUUID().String(),
+		streamID:             uuid.New(),
 		circularBuffer:       cirbuf.NewCircularBuffer(bufferSize),
 		clientPurgeOffsets:   make(map[string]uint64),
 		purgedEventProcessor: purgedEventProcessor,

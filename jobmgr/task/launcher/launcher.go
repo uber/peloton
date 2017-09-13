@@ -323,7 +323,7 @@ func (l *launcher) getLaunchableTasks(
 				// Generates volume ID if first time launch the stateful task,
 				// OR task is being launched to a different host.
 				taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
-					Value: uuid.NewUUID().String(),
+					Value: uuid.New(),
 				}
 			}
 		}
