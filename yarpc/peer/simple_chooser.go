@@ -8,7 +8,6 @@ import (
 	"go.uber.org/yarpc/api/peer"
 	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/peer/hostport"
-	"go.uber.org/yarpc/transport/http"
 )
 
 type simpleChooser struct {
@@ -21,10 +20,10 @@ type simpleChooser struct {
 // NewSimpleChooser creates a new Chooser, with no bells and whistles. Just a
 // peer that can be updated manually.
 // role is the string identifier for what this peer represents (mesos-master, hostmgr, etc)
-func NewSimpleChooser(role string, opts ...http.TransportOption) Chooser {
+func NewSimpleChooser(role string, transport peer.Transport) Chooser {
 	return &simpleChooser{
 		role:      role,
-		transport: http.NewTransport(opts...),
+		transport: transport,
 	}
 }
 

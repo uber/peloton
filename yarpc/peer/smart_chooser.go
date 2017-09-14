@@ -12,7 +12,6 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc/api/peer"
 	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/transport/http"
 )
 
 type smartChooser struct {
@@ -30,9 +29,9 @@ func NewSmartChooser(
 	cfg leader.ElectionConfig,
 	scope tally.Scope,
 	role string,
-	opts ...http.TransportOption) (Chooser, error) {
+	transport peer.Transport) (Chooser, error) {
 	sc := smartChooser{
-		chooser:  NewSimpleChooser(role, opts...),
+		chooser:  NewSimpleChooser(role, transport),
 		role:     role,
 		observer: nil,
 	}
@@ -100,7 +99,6 @@ func (c *smartChooser) Choose(
 
 // UpdatePeer updates the current peer address of leader
 func (c *smartChooser) UpdatePeer(peer string) error {
-
 	id := leader.ID{}
 	if err := json.Unmarshal([]byte(peer), &id); err != nil {
 		log.WithField("leader", peer).Error("Failed to parse leader json")
@@ -111,6 +109,6 @@ func (c *smartChooser) UpdatePeer(peer string) error {
 		"peer": id,
 	}).Info("Updating peer with the new leader address")
 
-	hostPort := fmt.Sprintf("%s:%d", id.IP, id.HTTPPort)
+	hostPort := fmt.Sprintf("%s:%d", id.IP, id.GRPCPort)
 	return c.chooser.UpdatePeer(hostPort)
 }

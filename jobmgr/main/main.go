@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net/url"
 	"os"
 	"runtime"
 
@@ -25,7 +24,6 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/peer"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	log "github.com/sirupsen/logrus"
@@ -219,10 +217,12 @@ func main() {
 	discoveryScope := rootScope.SubScope("discovery")
 	// setup the discovery service to detect resmgr leaders and
 	// configure the YARPC Peer dynamically
+	t := rpc.NewTransport()
 	resmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
 		discoveryScope,
 		common.ResourceManagerRole,
+		t,
 	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
@@ -230,14 +230,7 @@ func main() {
 	}
 	defer resmgrPeerChooser.Stop()
 
-	ht := http.NewTransport()
-	resmgrOutbound := ht.NewOutbound(
-		resmgrPeerChooser,
-		http.URLTemplate(
-			(&url.URL{
-				Scheme: "http",
-				Path:   common.PelotonEndpointPath,
-			}).String()))
+	resmgrOutbound := t.NewOutbound(resmgrPeerChooser)
 
 	// setup the discovery service to detect hostmgr leaders and
 	// configure the YARPC Peer dynamically
@@ -245,6 +238,7 @@ func main() {
 		cfg.Election,
 		discoveryScope,
 		common.HostManagerRole,
+		t,
 	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
@@ -252,13 +246,7 @@ func main() {
 	}
 	defer hostmgrPeerChooser.Stop()
 
-	hostmgrOutbound := ht.NewOutbound(
-		hostmgrPeerChooser,
-		http.URLTemplate(
-			(&url.URL{
-				Scheme: "http",
-				Path:   common.PelotonEndpointPath,
-			}).String()))
+	hostmgrOutbound := t.NewOutbound(hostmgrPeerChooser)
 
 	outbounds := yarpc.Outbounds{
 		common.PelotonResourceManager: transport.Outbounds{

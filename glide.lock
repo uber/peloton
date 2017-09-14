@@ -1,5 +1,5 @@
 hash: b7ad6d4b5966ee815ce97c11441feb0482131556e2827734cc29e9e5847414ce
-updated: 2017-09-15T22:36:41.547313985-07:00
+updated: 2017-09-19T06:40:01.657941711+02:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -185,7 +185,7 @@ imports:
   - internal/semver
   - version
 - name: go.uber.org/yarpc
-  version: 39c4c5b067e1aeec98b2ff926245a64ee8e805b7
+  version: fe97992d7ceca33392987b80e3eb926c392ccdd3
   subpackages:
   - api/backoff
   - api/encoding
@@ -229,7 +229,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: 1c05540f6879653db88113bc4a2b70aec4bd491f
+  version: 8351a756f30f1297fe94bbf4b767ec589c6ea6d0
   repo: https://github.com/golang/net
   subpackages:
   - bpf

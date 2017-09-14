@@ -1,13 +1,11 @@
 package main
 
 import (
-	"net/url"
 	"os"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"code.uber.internal/infra/peloton/common"
@@ -164,10 +162,12 @@ func main() {
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
 	log.Info("Connecting to HostManager")
+	t := rpc.NewTransport()
 	hostmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
 		rootScope,
 		common.HostManagerRole,
+		t,
 	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
@@ -175,20 +175,14 @@ func main() {
 	}
 	defer hostmgrPeerChooser.Stop()
 
-	hostmgrOutbound := http.NewOutbound(
-		hostmgrPeerChooser,
-		http.URLTemplate(
-			(&url.URL{
-				Scheme: "http",
-				Path:   common.PelotonEndpointPath,
-			}).String()),
-	)
+	hostmgrOutbound := t.NewOutbound(hostmgrPeerChooser)
 
 	log.Info("Connecting to ResourceManager")
 	resmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
 		rootScope,
 		common.ResourceManagerRole,
+		t,
 	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
@@ -196,14 +190,7 @@ func main() {
 	}
 	defer resmgrPeerChooser.Stop()
 
-	resmgrOutbound := http.NewOutbound(
-		resmgrPeerChooser,
-		http.URLTemplate(
-			(&url.URL{
-				Scheme: "http",
-				Path:   common.PelotonEndpointPath,
-			}).String()),
-	)
+	resmgrOutbound := t.NewOutbound(resmgrPeerChooser)
 
 	log.Info("Setup the PlacementEngine server")
 	// Now attempt to setup the dispatcher

@@ -8,7 +8,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
-	"go.uber.org/yarpc/transport/http"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"code.uber.internal/infra/peloton/common"
@@ -254,10 +253,12 @@ func main() {
 
 	// Setup the discovery service to detect resmgr leaders and
 	// configure the YARPC Peer dynamically
+	t := rpc.NewTransport()
 	resmgrPeerChooser, err := peer.NewSmartChooser(
 		cfg.Election,
 		discoveryScope,
 		common.ResourceManagerRole,
+		t,
 	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
@@ -265,13 +266,7 @@ func main() {
 	}
 	defer resmgrPeerChooser.Stop()
 
-	resmgrOutbound := http.NewTransport().NewOutbound(
-		resmgrPeerChooser,
-		http.URLTemplate(
-			(&url.URL{
-				Scheme: "http",
-				Path:   common.PelotonEndpointPath,
-			}).String()))
+	resmgrOutbound := t.NewOutbound(resmgrPeerChooser)
 
 	outbounds := yarpc.Outbounds{
 		common.MesosMasterScheduler: mOutbound,

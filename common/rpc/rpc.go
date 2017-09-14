@@ -18,6 +18,14 @@ const (
 	MaxRecvMsgSize = 64 * 1024 * 1024 // 64MB
 )
 
+// NewTransport returns a new transport, using the default transport layer.
+func NewTransport() *grpc.Transport {
+	return grpc.NewTransport(
+		grpc.ClientMaxRecvMsgSize(MaxRecvMsgSize),
+		grpc.ServerMaxRecvMsgSize(MaxRecvMsgSize),
+	)
+}
+
 // NewInbounds creates both HTTP and gRPC inbounds for the given ports
 func NewInbounds(
 	httpPort int,
@@ -26,10 +34,7 @@ func NewInbounds(
 
 	// Create both HTTP and gRPC transport
 	ht := http.NewTransport()
-	gt := grpc.NewTransport(
-		grpc.ClientMaxRecvMsgSize(MaxRecvMsgSize),
-		grpc.ServerMaxRecvMsgSize(MaxRecvMsgSize),
-	)
+	gt := NewTransport()
 
 	gl, err := net.Listen("tcp", fmt.Sprintf(":%d", grpcPort))
 	if err != nil {
