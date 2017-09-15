@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
@@ -87,7 +88,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 	jobConfig, err := j.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to get jobConfig")
 		return err
 	}
@@ -95,7 +96,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 	jobRuntime, err := j.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to GetJobRuntime")
 		return err
 	}
@@ -106,7 +107,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		createTime, err := time.Parse(time.RFC3339Nano, jobRuntime.CreationTime)
 		if err != nil {
 			log.WithError(err).
-				WithField("job_id", jobID).
+				WithField("job_id", jobID.Value).
 				WithField("create_time", jobRuntime.CreationTime).
 				Error("Failed to Parse job create time")
 			return err
@@ -114,7 +115,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		// Only recover job that still in Initialized state after jobRecoveryGracePeriod
 		// this is for avoiding collision with jobs being created right now
 		if time.Since(createTime) < jobRecoveryGracePeriod {
-			log.WithField("job_id", jobID).
+			log.WithField("job_id", jobID.Value).
 				WithField("create_time", createTime).
 				Info("Job created recently, skip")
 			return nil
@@ -127,39 +128,41 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		log.WithField("start", start).
 			WithField("end", end).
 			Debug("Validating task range")
+		taskInfos, err := j.taskStore.GetTasksForJobByRange(ctx, jobID, &pb_task.InstanceRange{From: start, To: end})
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", jobID.Value).
+				WithField("start", start).
+				WithField("end", end).
+				Error("Failed to GetTasksForJobByRange")
+			return err
+		}
 		for i := start; i < end; i++ {
-			_, err := j.taskStore.GetTaskForJob(ctx, jobID, i)
-			if err != nil {
-				_, ok := err.(*storage.TaskNotFoundError)
-				if !ok {
-					log.WithError(err).
-						WithField("job_id", jobID.Value).
-						WithField("id", i).
-						Error("Failed to GetTaskForJob")
-					continue
-				}
-				// Task does not exist in DB
-				log.WithField("job_id", jobID.Value).
-					WithField("task_instance", i).
-					Info("Creating missing task")
-				err := createTaskForJob(ctx, j.trackedManager, j.taskStore, jobID, i, jobConfig)
-				if err != nil {
-					log.WithError(err).
-						WithField("job_id", jobID.Value).
-						WithField("id", i).
-						Error("Failed to CreateTask")
-					j.metrics.TaskRecoverFailed.Inc(1)
-					return err
-				}
-				j.metrics.TaskRecovered.Inc(1)
+			if _, ok := taskInfos[i]; ok {
+				continue
 			}
+			// Task does not exist in taskStore.
+			log.WithField("job_id", jobID.Value).
+				WithField("task_instance", i).
+				Info("Creating missing task")
+			err := createTaskForJob(ctx, j.trackedManager, j.taskStore, jobID, i, jobConfig)
+			if err != nil {
+				log.WithError(err).
+					WithField("job_id", jobID.Value).
+					WithField("id", i).
+					Error("Failed to CreateTask")
+				j.metrics.TaskRecoverFailed.Inc(1)
+				return err
+			}
+			j.metrics.TaskRecovered.Inc(1)
 		}
 	}
+
 	jobRuntime.State = job.JobState_PENDING
 	err = j.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to UpdateJobRuntime")
 		return err
 	}

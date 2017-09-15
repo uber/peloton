@@ -15,7 +15,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 
-	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"github.com/pborman/uuid"
@@ -134,9 +133,9 @@ func TestValidator(t *testing.T) {
 		State:        job.JobState_INITIALIZED,
 		CreationTime: (time.Now().Add(-10 * time.Hour)).Format(time.RFC3339Nano),
 	}
-	var tasks = []*task.TaskInfo{
-		createTaskInfo(jobID, uint32(1), task.TaskState_INITIALIZED),
-		createTaskInfo(jobID, uint32(2), task.TaskState_INITIALIZED),
+	var tasks = map[uint32]*task.TaskInfo{
+		0: createTaskInfo(jobID, uint32(0), task.TaskState_INITIALIZED),
+		2: createTaskInfo(jobID, uint32(2), task.TaskState_INITIALIZED),
 	}
 	var createdTasks []*task.TaskInfo
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
@@ -160,24 +159,14 @@ func TestValidator(t *testing.T) {
 		AnyTimes()
 
 	mockTaskStore.EXPECT().
-		CreateTask(context.Background(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		CreateTask(context.Background(), gomock.Any(), uint32(1), gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, _ string) {
 			createdTasks = append(createdTasks, taskInfo)
 		}).Return(nil)
 	mockTrackedManager.EXPECT().SetTask(jobID, gomock.Any(), gomock.Any())
 	mockTaskStore.EXPECT().
-		GetTaskForJob(context.Background(), gomock.Any(), uint32(1)).
-		Return(nil, &storage.TaskNotFoundError{TaskID: ""})
-	mockTaskStore.EXPECT().
-		GetTaskForJob(context.Background(), gomock.Any(), uint32(0)).
-		Return(map[uint32]*task.TaskInfo{
-			uint32(0): createTaskInfo(jobID, uint32(0), task.TaskState_RUNNING),
-		}, nil)
-	mockTaskStore.EXPECT().
-		GetTaskForJob(context.Background(), gomock.Any(), uint32(2)).
-		Return(map[uint32]*task.TaskInfo{
-			uint32(2): tasks[1],
-		}, nil)
+		GetTasksForJobByRange(context.Background(), jobID, &task.InstanceRange{From: 0, To: 3}).
+		Return(tasks, nil)
 
 	validator := NewJobRecovery(mockTrackedManager, mockJobStore, mockTaskStore, tally.NoopScope)
 	validator.recoverJobs(context.Background())
@@ -186,10 +175,17 @@ func TestValidator(t *testing.T) {
 	// job runtime state should be pending
 	assert.Equal(t, job.JobState_PENDING, jobRuntime.State)
 
-	// jobRuntime create time is recent, thus validateJobs() should skip the validation
+	// Calling recoverJobs a second time, before recoveryInterval, should skip
+	// the recovery
 	jobRuntime.State = job.JobState_INITIALIZED
-	jobRuntime.CreationTime = time.Now().Format(time.RFC3339Nano)
+	validator.recoverJobs(context.Background())
 
+	assert.Equal(t, job.JobState_INITIALIZED, jobRuntime.State)
+
+	// jobRuntime create time is recent, thus validateJobs() should skip the
+	// validation
+	jobRuntime.CreationTime = time.Now().Format(time.RFC3339Nano)
+	validator.lastRecoveryTime = time.Now().Add(-recoveryInterval - 1)
 	validator.recoverJobs(context.Background())
 
 	assert.Equal(t, job.JobState_INITIALIZED, jobRuntime.State)
@@ -214,9 +210,9 @@ func TestValidatorFailures(t *testing.T) {
 		State:        job.JobState_INITIALIZED,
 		CreationTime: (time.Now().Add(-10 * time.Hour)).Format(time.RFC3339Nano),
 	}
-	var tasks = []*task.TaskInfo{
-		createTaskInfo(jobID, uint32(1), task.TaskState_INITIALIZED),
-		createTaskInfo(jobID, uint32(2), task.TaskState_INITIALIZED),
+	var tasks = map[uint32]*task.TaskInfo{
+		0: createTaskInfo(jobID, uint32(0), task.TaskState_INITIALIZED),
+		2: createTaskInfo(jobID, uint32(2), task.TaskState_INITIALIZED),
 	}
 	var createdTasks []*task.TaskInfo
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
@@ -252,20 +248,8 @@ func TestValidatorFailures(t *testing.T) {
 		AnyTimes()
 	mockTrackedManager.EXPECT().SetTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTaskForJob(context.Background(), gomock.Any(), uint32(1)).
-		Return(nil, &storage.TaskNotFoundError{TaskID: ""}).
-		AnyTimes()
-	mockTaskStore.EXPECT().
-		GetTaskForJob(context.Background(), gomock.Any(), uint32(0)).
-		Return(map[uint32]*task.TaskInfo{
-			uint32(0): createTaskInfo(jobID, uint32(0), task.TaskState_RUNNING),
-		}, nil).
-		AnyTimes()
-	mockTaskStore.EXPECT().
-		GetTaskForJob(context.Background(), gomock.Any(), uint32(2)).
-		Return(map[uint32]*task.TaskInfo{
-			uint32(2): tasks[1],
-		}, nil).
+		GetTasksForJobByRange(context.Background(), jobID, &task.InstanceRange{From: 0, To: 3}).
+		Return(tasks, nil).
 		AnyTimes()
 
 	validator := NewJobRecovery(mockTrackedManager, mockJobStore, mockTaskStore, tally.NoopScope)
