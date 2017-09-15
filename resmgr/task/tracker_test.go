@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/uber-go/tally"
@@ -22,7 +21,6 @@ import (
 
 type TrackerTestSuite struct {
 	suite.Suite
-	mockCtrl *gomock.Controller
 
 	tracker            Tracker
 	eventStreamHandler *eventstream.Handler

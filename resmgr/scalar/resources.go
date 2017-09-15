@@ -11,6 +11,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// ZeroResource represents the minimum value of a resource
+var ZeroResource = &Resources{
+	CPU:    float64(0),
+	GPU:    float64(0),
+	DISK:   float64(0),
+	MEMORY: float64(0),
+}
+
 // Resources is a non-thread safe helper struct holding recognized resources.
 type Resources struct {
 	CPU    float64

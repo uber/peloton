@@ -1,8 +1,7 @@
 package task
 
 import (
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -12,7 +11,15 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	state "code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
+
+// RunTimeStats is the container for run time stats of the res mgr task
+type RunTimeStats struct {
+	StartTime time.Time
+}
 
 // RMTask is the wrapper around resmgr.task for state machine
 type RMTask struct {
@@ -20,6 +27,7 @@ type RMTask struct {
 	stateMachine        state.StateMachine
 	respool             respool.ResPool
 	statusUpdateHandler *eventstream.Handler
+	runTimeStats        *RunTimeStats
 	config              *Config
 }
 
@@ -34,6 +42,9 @@ func CreateRMTask(
 		statusUpdateHandler: handler,
 		respool:             respool,
 		config:              config,
+		runTimeStats: &RunTimeStats{
+			StartTime: time.Time{},
+		},
 	}
 	var err error
 	r.stateMachine, err = r.createStateMachine()
@@ -252,4 +263,14 @@ func (rmTask *RMTask) GetCurrentState() task.TaskState {
 // Respool returns the respool of the RMTask.
 func (rmTask *RMTask) Respool() respool.ResPool {
 	return rmTask.respool
+}
+
+// RunTimeStats returns the runtime stats of the RMTask
+func (rmTask *RMTask) RunTimeStats() *RunTimeStats {
+	return rmTask.runTimeStats
+}
+
+// UpdateStartTime updates the start time of the RMTask
+func (rmTask *RMTask) UpdateStartTime(startTime time.Time) {
+	rmTask.runTimeStats.StartTime = startTime
 }

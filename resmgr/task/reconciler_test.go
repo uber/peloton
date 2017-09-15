@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"github.com/golang/mock/gomock"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
@@ -43,7 +44,7 @@ func (suite *ReconcilerTestSuite) SetupTest() {
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
 
 	suite.reconciler = &reconciler{
-		runningState:         runningStateNotStarted,
+		runningState:         res_common.RunningStateNotStarted,
 		tracker:              suite.tracker,
 		taskStore:            suite.mockTaskStore,
 		reconciliationPeriod: time.Hour * 1,
@@ -224,5 +225,5 @@ func (suite *ReconcilerTestSuite) TestReconciler_Start() {
 	defer suite.reconciler.Stop()
 	err := suite.reconciler.Start()
 	suite.NoError(err)
-	suite.Equal(suite.reconciler.runningState, int32(runningStateRunning))
+	suite.Equal(suite.reconciler.runningState, int32(res_common.RunningStateRunning))
 }

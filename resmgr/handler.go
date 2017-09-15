@@ -562,6 +562,8 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 					WithField("task_id", taskID.Value).
 					Info("Not able to transition to RUNNING for task")
 			}
+			// update the start time
+			rmTask.UpdateStartTime(time.Now().UTC())
 		} else {
 			// TODO: We probably want to terminate all the tasks in gang
 			err = rmtask.GetTracker().MarkItDone(taskID)

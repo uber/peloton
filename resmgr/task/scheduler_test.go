@@ -21,13 +21,15 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
 	"github.com/stretchr/testify/assert"
 )
 
-type TaskSchedulerTestSuite struct {
+type SchedulerTestSuite struct {
 	suite.Suite
 	resTree            respool.Tree
 	readyQueue         *queue.MultiLevelList
@@ -37,7 +39,7 @@ type TaskSchedulerTestSuite struct {
 	eventStreamHandler *eventstream.Handler
 }
 
-func (suite *TaskSchedulerTestSuite) SetupSuite() {
+func (suite *SchedulerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
 	gomock.InOrder(
@@ -68,7 +70,7 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 	suite.taskSched = &scheduler{
 		condition:        sync.NewCond(&sync.Mutex{}),
 		resPoolTree:      suite.resTree,
-		runningState:     runningStateNotStarted,
+		runningState:     res_common.RunningStateNotStarted,
 		schedulingPeriod: time.Duration(1) * time.Second,
 		stopChan:         make(chan struct{}, 1),
 		queue:            suite.readyQueue,
@@ -77,14 +79,14 @@ func (suite *TaskSchedulerTestSuite) SetupSuite() {
 	}
 }
 
-func (suite *TaskSchedulerTestSuite) SetupTest() {
+func (suite *SchedulerTestSuite) SetupTest() {
 	fmt.Println("setting up")
 	suite.resTree.Start()
 	suite.taskSched.Start()
 	suite.AddTasks()
 }
 
-func (suite *TaskSchedulerTestSuite) TearDownTest() {
+func (suite *SchedulerTestSuite) TearDownTest() {
 	fmt.Println("tearing down")
 	err := suite.resTree.Stop()
 	suite.NoError(err)
@@ -94,10 +96,10 @@ func (suite *TaskSchedulerTestSuite) TearDownTest() {
 }
 
 func TestTaskScheduler(t *testing.T) {
-	suite.Run(t, new(TaskSchedulerTestSuite))
+	suite.Run(t, new(SchedulerTestSuite))
 }
 
-func (suite *TaskSchedulerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
+func (suite *SchedulerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
 
 	resConfigs := []*pb_respool.ResourceConfig{
 		{
@@ -129,7 +131,7 @@ func (suite *TaskSchedulerTestSuite) getResourceConfig() []*pb_respool.ResourceC
 }
 
 // Returns resource pools
-func (suite *TaskSchedulerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+func (suite *SchedulerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
@@ -185,7 +187,7 @@ func (suite *TaskSchedulerTestSuite) getResPools() map[string]*pb_respool.Resour
 	}
 }
 
-func (suite *TaskSchedulerTestSuite) AddTasks() {
+func (suite *SchedulerTestSuite) AddTasks() {
 	tasks := []*resmgr.Task{
 		{
 			Name:     "job1-1",
@@ -251,7 +253,7 @@ func (suite *TaskSchedulerTestSuite) AddTasks() {
 	}
 }
 
-func (suite *TaskSchedulerTestSuite) validateReadyQueue() {
+func (suite *SchedulerTestSuite) validateReadyQueue() {
 	expectedTaskIDs := []string{
 		"job2-1",
 		"job2-2",
@@ -267,17 +269,17 @@ func (suite *TaskSchedulerTestSuite) validateReadyQueue() {
 	}
 }
 
-func (suite *TaskSchedulerTestSuite) TestMovingToReadyQueue() {
+func (suite *SchedulerTestSuite) TestMovingToReadyQueue() {
 	time.Sleep(2000 * time.Millisecond)
 	suite.validateReadyQueue()
 }
 
-func (suite *TaskSchedulerTestSuite) TestMovingTasks() {
+func (suite *SchedulerTestSuite) TestMovingTasks() {
 	suite.taskSched.scheduleTasks()
 	suite.validateReadyQueue()
 }
 
-func (suite *TaskSchedulerTestSuite) TestTaskStates() {
+func (suite *SchedulerTestSuite) TestTaskStates() {
 	suite.taskSched.scheduleTasks()
 	for i := 0; i < 4; i++ {
 		item, err := suite.readyQueue.Pop(suite.readyQueue.Levels()[0])
@@ -289,7 +291,7 @@ func (suite *TaskSchedulerTestSuite) TestTaskStates() {
 	}
 }
 
-func (suite *TaskSchedulerTestSuite) getEntitlement() map[string]float64 {
+func (suite *SchedulerTestSuite) getEntitlement() map[string]float64 {
 	mapEntitlement := make(map[string]float64)
 	mapEntitlement[common.CPU] = float64(100)
 	mapEntitlement[common.MEMORY] = float64(1000)
@@ -482,7 +484,7 @@ func BenchmarkScheduler_DequeueGang(b *testing.B) {
 	}
 }
 
-func (suite *TaskSchedulerTestSuite) addTasktotracker(task *resmgr.Task) {
+func (suite *SchedulerTestSuite) addTasktotracker(task *resmgr.Task) {
 	resPool, _ := suite.resTree.Get(&peloton.ResourcePoolID{
 		Value: "respool11",
 	})

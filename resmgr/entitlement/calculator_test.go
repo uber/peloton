@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 
@@ -52,7 +53,7 @@ func (suite *EntitlementCalculatorTestSuite) SetupSuite() {
 
 	suite.calculator = &calculator{
 		resPoolTree:       suite.resTree,
-		runningState:      runningStateNotStarted,
+		runningState:      res_common.RunningStateNotStarted,
 		calculationPeriod: 10 * time.Millisecond,
 		stopChan:          make(chan struct{}, 1),
 		clusterCapacity:   make(map[string]float64),
@@ -213,7 +214,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 			}, nil).
 			Times(3),
 	)
-	ResPool, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
+	resPool, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
 	suite.NoError(err)
 	demand := &scalar.Resources{
 		CPU:    20,
@@ -221,10 +222,10 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 		DISK:   2000,
 		GPU:    0,
 	}
-	ResPool.AddToDemand(demand)
+	resPool.AddToDemand(demand)
 	suite.calculator.calculateEntitlement(context.Background())
 
-	res := ResPool.GetEntitlement()
+	res := resPool.GetEntitlement()
 	suite.Equal(int64(res.CPU), int64(33))
 	suite.Equal(int64(res.GPU), int64(0))
 	suite.Equal(int64(res.MEMORY), int64(333))
@@ -243,7 +244,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 
 	suite.calculator.calculateEntitlement(context.Background())
 
-	res = ResPool.GetEntitlement()
+	res = resPool.GetEntitlement()
 	suite.Equal(int64(res.CPU), int64(30))
 	suite.Equal(int64(res.GPU), int64(0))
 	suite.Equal(int64(res.MEMORY), int64(300))
@@ -260,7 +261,7 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 	ResPool22.AddToDemand(demand)
 	suite.calculator.calculateEntitlement(context.Background())
 
-	res = ResPool.GetEntitlement()
+	res = resPool.GetEntitlement()
 	suite.Equal(int64(res.CPU), int64(26))
 	suite.Equal(int64(res.GPU), int64(0))
 	suite.Equal(int64(res.MEMORY), int64(266))

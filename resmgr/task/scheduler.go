@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/resmgr/common"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -71,7 +72,7 @@ func InitScheduler(
 	sched = &scheduler{
 		condition:        sync.NewCond(&sync.Mutex{}),
 		resPoolTree:      respool.GetTree(),
-		runningState:     runningStateNotStarted,
+		runningState:     common.RunningStateNotStarted,
 		schedulingPeriod: taskSchedulingPeriod,
 		stopChan:         make(chan struct{}, 1),
 		// TODO: initialize ready queue elsewhere
@@ -96,15 +97,15 @@ func (s *scheduler) Start() error {
 	defer s.lock.Unlock()
 	s.lock.Lock()
 
-	if s.runningState == runningStateRunning {
+	if s.runningState == common.RunningStateRunning {
 		log.Warn("Task Scheduler is already running, no action will be performed")
 		return nil
 	}
 
 	started := make(chan int, 1)
 	go func() {
-		defer atomic.StoreInt32(&s.runningState, runningStateNotStarted)
-		atomic.StoreInt32(&s.runningState, runningStateRunning)
+		defer atomic.StoreInt32(&s.runningState, common.RunningStateNotStarted)
+		atomic.StoreInt32(&s.runningState, common.RunningStateRunning)
 		ticker := time.NewTicker(s.schedulingPeriod)
 		defer ticker.Stop()
 
@@ -246,7 +247,7 @@ func (s *scheduler) Stop() error {
 	defer s.lock.Unlock()
 	s.lock.Lock()
 
-	if s.runningState == runningStateNotStarted {
+	if s.runningState == common.RunningStateNotStarted {
 		log.Warn("Task Scheduler is already stopped, no action will be performed")
 		return nil
 	}
@@ -257,7 +258,7 @@ func (s *scheduler) Stop() error {
 	// Wait for task scheduler to be stopped
 	for {
 		runningState := atomic.LoadInt32(&s.runningState)
-		if runningState == runningStateRunning {
+		if runningState == common.RunningStateRunning {
 			time.Sleep(10 * time.Millisecond)
 		} else {
 			break

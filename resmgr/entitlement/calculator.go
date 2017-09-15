@@ -19,6 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"code.uber.internal/infra/peloton/util"
@@ -64,7 +65,7 @@ func InitCalculator(
 
 	calc = &calculator{
 		resPoolTree:       respool.GetTree(),
-		runningState:      runningStateNotStarted,
+		runningState:      res_common.RunningStateNotStarted,
 		calculationPeriod: calculationPeriod,
 		stopChan:          make(chan struct{}, 1),
 		hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(
@@ -89,7 +90,7 @@ func (c *calculator) Start() error {
 	c.Lock()
 	defer c.Unlock()
 
-	if c.runningState == runningStateRunning {
+	if c.runningState == res_common.RunningStateRunning {
 		log.Warn("Entitlement calculator is already running, " +
 			"no action will be performed")
 		c.metrics.EntitlementCalculationMissed.Inc(1)
@@ -98,8 +99,8 @@ func (c *calculator) Start() error {
 
 	started := make(chan int, 1)
 	go func() {
-		defer atomic.StoreInt32(&c.runningState, runningStateNotStarted)
-		atomic.StoreInt32(&c.runningState, runningStateRunning)
+		defer atomic.StoreInt32(&c.runningState, res_common.RunningStateNotStarted)
+		atomic.StoreInt32(&c.runningState, res_common.RunningStateRunning)
 
 		log.Info("Starting Entitlement Calculation")
 		started <- 0
@@ -416,7 +417,7 @@ func (c *calculator) Stop() error {
 	c.Lock()
 	defer c.Unlock()
 
-	if c.runningState == runningStateNotStarted {
+	if c.runningState == res_common.RunningStateNotStarted {
 		log.Warn("Entitlement calculator is already stopped, no" +
 			" action will be performed")
 		return nil
@@ -428,7 +429,7 @@ func (c *calculator) Stop() error {
 	// Wait for entitlement calculator to be stopped
 	for {
 		runningState := atomic.LoadInt32(&c.runningState)
-		if runningState == runningStateRunning {
+		if runningState == res_common.RunningStateRunning {
 			time.Sleep(10 * time.Millisecond)
 		} else {
 			break

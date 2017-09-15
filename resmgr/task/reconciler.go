@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"code.uber.internal/infra/peloton/storage"
 
+	"code.uber.internal/infra/peloton/resmgr/common"
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -55,7 +56,7 @@ func InitReconciler(tracker Tracker, taskStore storage.TaskStore,
 ) {
 	once.Do(func() {
 		instance = &reconciler{
-			runningState:         runningStateNotStarted,
+			runningState:         common.RunningStateNotStarted,
 			tracker:              tracker,
 			taskStore:            taskStore,
 			stopChan:             make(chan struct{}, 1),
@@ -77,7 +78,7 @@ func (t *reconciler) Start() error {
 	t.Lock()
 	defer t.Unlock()
 
-	if t.runningState == runningStateRunning {
+	if t.runningState == common.RunningStateRunning {
 		log.Warn("Task Reconciler is already running, no action will be " +
 			"performed")
 		return nil
@@ -85,8 +86,8 @@ func (t *reconciler) Start() error {
 
 	started := make(chan int, 1)
 	go func() {
-		defer atomic.StoreInt32(&t.runningState, runningStateNotStarted)
-		atomic.StoreInt32(&t.runningState, runningStateRunning)
+		defer atomic.StoreInt32(&t.runningState, common.RunningStateNotStarted)
+		atomic.StoreInt32(&t.runningState, common.RunningStateRunning)
 
 		ticker := time.NewTicker(t.reconciliationPeriod)
 		defer ticker.Stop()
@@ -121,7 +122,7 @@ func (t *reconciler) Stop() error {
 	t.Lock()
 	defer t.Unlock()
 
-	if t.runningState == runningStateNotStarted {
+	if t.runningState == common.RunningStateNotStarted {
 		log.Warn("Task Reconciler is already stopped, no" +
 			" action will be performed")
 		return nil
@@ -133,7 +134,7 @@ func (t *reconciler) Stop() error {
 	// Wait for task instance to be stopped
 	for {
 		runningState := atomic.LoadInt32(&t.runningState)
-		if runningState == runningStateRunning {
+		if runningState == common.RunningStateRunning {
 			time.Sleep(10 * time.Millisecond)
 		} else {
 			break

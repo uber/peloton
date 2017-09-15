@@ -340,12 +340,6 @@ func (h *serviceHandler) DeleteResourcePool(
 		}, nil
 	}
 
-	zeroResource := &scalar.Resources{
-		CPU:    float64(0),
-		GPU:    float64(0),
-		DISK:   float64(0),
-		MEMORY: float64(0),
-	}
 	// Get the allocation of the resource pool
 	allocation := resPool.GetAllocation()
 	// Get the resource pool demand
@@ -353,8 +347,8 @@ func (h *serviceHandler) DeleteResourcePool(
 
 	// We need to check if any tasks are running in the resource pool
 	// by looking demand or allocation
-	if !(allocation.LessThanOrEqual(zeroResource)) ||
-		!(demand.LessThanOrEqual(zeroResource)) {
+	if !(allocation.LessThanOrEqual(scalar.ZeroResource)) ||
+		!(demand.LessThanOrEqual(scalar.ZeroResource)) {
 		return &respool.DeleteResponse{
 			Error: &respool.DeleteResponse_Error{
 				IsBusy: &respool.ResourcePoolIsBusy{
