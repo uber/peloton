@@ -1,5 +1,5 @@
-hash: 22bc73d05a66fd6b61a3059a1aaa40c48365d96a42876b19a96d2b0e23351eeb
-updated: 2017-07-19T20:47:29.762876603-07:00
+hash: b7ad6d4b5966ee815ce97c11441feb0482131556e2827734cc29e9e5847414ce
+updated: 2017-09-15T22:36:41.547313985-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -8,7 +8,7 @@ imports:
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
 - name: github.com/apache/thrift
-  version: 0dd823580c78a79ae9696eb9b3650e400fff140f
+  version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
   repo: git://git.apache.org/thrift.git
   vcs: git
   subpackages:
@@ -36,7 +36,7 @@ imports:
   - store/mock
   - store/zookeeper
 - name: github.com/evalphobia/logrus_sentry
-  version: 9f8f2d05a621e616d9341ac75374eb8402ae0630
+  version: 13ba9278e2adf1537fd94143a6b6a1c0dc008ac7
 - name: github.com/facebookgo/clock
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
 - name: github.com/gemnasium/migrate
@@ -77,7 +77,10 @@ imports:
   - proto
   - protoc
   - protoc-gen-go
+  - ptypes
   - ptypes/any
+  - ptypes/duration
+  - ptypes/timestamp
 - name: github.com/golang/snappy
   version: d9eb7a3d35ec988b8585d4a0068e462c27d28380
 - name: github.com/hailocab/go-hostpool
@@ -150,11 +153,11 @@ imports:
 - name: github.com/uber-go/atomic
   version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
 - name: github.com/uber-go/mapdecode
-  version: 2d8ecd5e64c88634bd7dfcbc9fd2a9e813830e8d
+  version: 718b4994083e432669f44a00174c5f1bcdb1434d
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: 88e9c75b0cfc84139ad1bae3b7f123786cfd0770
+  version: be9e53c77349ae2dd4b8c03a6dc20ed9a88b9927
   subpackages:
   - m3
   - m3/customtransports
@@ -164,7 +167,7 @@ imports:
   - prometheus
   - statsd
 - name: github.com/uber/tchannel-go
-  version: b99c1d7cecb0fdc882bed0098e7cae6ec7459059
+  version: a7ad9ecb640b5f10a0395b38d6319175172b3ab2
   subpackages:
   - internal/argreader
   - relay
@@ -177,12 +180,12 @@ imports:
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/thriftrw
-  version: 2081b57630642a126a29d3be66c6a507524f9e70
+  version: b032111262f3c4a5c8027c349ca4645aced173bb
   subpackages:
   - internal/semver
   - version
 - name: go.uber.org/yarpc
-  version: 1db20555ecf9de8710ab84810374fcdcb30e8ffd
+  version: 39c4c5b067e1aeec98b2ff926245a64ee8e805b7
   subpackages:
   - api/backoff
   - api/encoding
@@ -195,6 +198,7 @@ imports:
   - internal/bufferpool
   - internal/clientconfig
   - internal/config
+  - internal/digester
   - internal/errorsync
   - internal/humanize
   - internal/inboundmiddleware
@@ -214,11 +218,10 @@ imports:
   - pkg/procedure
   - transport/http
   - transport/x/grpc
-  - transport/x/grpc/grpcheader
-  - x/config
+  - yarpcconfig
   - yarpcerrors
 - name: go.uber.org/zap
-  version: 9d9d6135afe89b6fc4a05e9a8552526caba38048
+  version: 3216c4c73e8ebbafff73c456dd27143f4a7c1f94
   subpackages:
   - buffer
   - internal/bufferpool
@@ -226,7 +229,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: ab5485076ff3407ad2d02db054635913f017b0ed
+  version: 1c05540f6879653db88113bc4a2b70aec4bd491f
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -259,12 +262,13 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: d2e1b51f33ff8c5e4a15560ff049d200e83726c5
+  version: f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - codes
+  - connectivity
   - credentials
-  - grpclb/grpc_lb_v1
+  - grpclb/grpc_lb_v1/messages
   - grpclog
   - internal
   - keepalive
@@ -276,7 +280,7 @@ imports:
   - tap
   - transport
 - name: gopkg.in/alecthomas/kingpin.v2
-  version: 7f0871f2e17818990e4eed73f9b5c2f429501228
+  version: 1087e65c9441605df944fb12c33f0fe7072d18ca
 - name: gopkg.in/inf.v0
   version: 3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4
 - name: gopkg.in/validator.v2

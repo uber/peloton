@@ -30,7 +30,7 @@ import:
 - package: gopkg.in/alecthomas/kingpin.v2
   version: ^2.2.3
 - package: go.uber.org/yarpc
-  version: ^1.10
+  version: ^1.15
   subpackages:
   - internal/protoplugin
 - package: github.com/cactus/go-statsd-client
