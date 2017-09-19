@@ -2,7 +2,6 @@ package job
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -189,37 +188,17 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	log.WithField("job_id", jobID.Value).
 		Info("JobRuntimeUpdater updateJobRuntime")
 
-	// Read the job config and job runtime
-	jobConfig, err := j.jobStore.GetJobConfig(ctx, jobID)
+	// Read the job info
+	info, err := j.jobStore.GetJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
 			Error("Failed to get jobConfig")
 		return err
 	}
-	if jobConfig == nil {
-		log.WithError(err).
-			WithField("job_id", jobID.Value).
-			Error("Cannot find jobConfig")
-		return fmt.Errorf("Cannot find jobConfig for %s", jobID.Value)
-	}
-
-	jobRuntime, err := j.jobStore.GetJobRuntime(ctx, jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.Value).
-			Error("Failed to get jobRuntime")
-		return err
-	}
-	if jobRuntime == nil {
-		log.WithError(err).
-			WithField("job_id", jobID.Value).
-			Error("Cannot find jobRuntime")
-		return fmt.Errorf("Cannot find jobRuntime for %s", jobID.Value)
-	}
 
 	var jobState job.JobState
-	var instances = jobConfig.InstanceCount
+	var instances = info.Config.InstanceCount
 
 	stateCounts, err := j.taskStore.GetTaskStateSummaryForJob(ctx, jobID)
 	if err != nil {
@@ -229,7 +208,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 		return err
 	}
 
-	if reflect.DeepEqual(stateCounts, jobRuntime.TaskStats) {
+	if reflect.DeepEqual(stateCounts, info.Runtime.TaskStats) {
 		log.WithField("job_id", jobID.Value).
 			WithField("task_stats", stateCounts).
 			Debug("Task stats did not change, return")
@@ -240,13 +219,13 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 
 	// Update job start time if necessary
 	firstTaskUpdateTime, ok := j.firstTaskUpdateTime[*jobID]
-	if ok && jobRuntime.StartTime == "" {
+	if ok && info.Runtime.StartTime == "" {
 		count := uint32(0)
 		for _, state := range taskStatesAfterStart {
 			count += stateCounts[state.String()]
 		}
 		if count > 0 {
-			jobRuntime.StartTime = formatTime(firstTaskUpdateTime, time.RFC3339Nano)
+			info.Runtime.StartTime = formatTime(firstTaskUpdateTime, time.RFC3339Nano)
 		}
 	}
 
@@ -258,13 +237,13 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	}
 	if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
 		jobState = job.JobState_SUCCEEDED
-		jobRuntime.CompletionTime = completionTime
+		info.Runtime.CompletionTime = completionTime
 		delete(j.lastTaskUpdateTime, *jobID)
 		j.metrics.JobSucceeded.Inc(1)
 	} else if stateCounts[task.TaskState_SUCCEEDED.String()]+
 		stateCounts[task.TaskState_FAILED.String()] == instances {
 		jobState = job.JobState_FAILED
-		jobRuntime.CompletionTime = completionTime
+		info.Runtime.CompletionTime = completionTime
 		delete(j.lastTaskUpdateTime, *jobID)
 		j.metrics.JobFailed.Inc(1)
 	} else if stateCounts[task.TaskState_KILLED.String()] > 0 &&
@@ -272,7 +251,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 			stateCounts[task.TaskState_FAILED.String()]+
 			stateCounts[task.TaskState_KILLED.String()] == instances) {
 		jobState = job.JobState_KILLED
-		jobRuntime.CompletionTime = completionTime
+		info.Runtime.CompletionTime = completionTime
 		delete(j.lastTaskUpdateTime, *jobID)
 		j.metrics.JobKilled.Inc(1)
 	} else if stateCounts[task.TaskState_RUNNING.String()] > 0 {
@@ -283,11 +262,11 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 
 	j.Unlock()
 
-	jobRuntime.State = jobState
-	jobRuntime.TaskStats = stateCounts
+	info.Runtime.State = jobState
+	info.Runtime.TaskStats = stateCounts
 
 	// Update the job runtime
-	err = j.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
+	err = j.jobStore.UpdateJobRuntime(ctx, jobID, info.Runtime, nil)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).

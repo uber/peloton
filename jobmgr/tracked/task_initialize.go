@@ -22,7 +22,7 @@ func (t *task) initialize(ctx context.Context) error {
 	m := t.job.m
 
 	// Retrieves job config and task info from data stores.
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, t.job.id)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, t.job.id, runtime.GetConfigVersion())
 	if err != nil {
 		return fmt.Errorf("job config not found for %v", t.job.id)
 	}

@@ -87,7 +87,7 @@ func (m *serviceHandler) Get(
 	body *task.GetRequest) (*task.GetResponse, error) {
 
 	m.metrics.TaskAPIGet.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
+	info, err := m.jobStore.GetJob(ctx, body.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		return &task.GetResponse{
@@ -111,7 +111,7 @@ func (m *serviceHandler) Get(
 	return &task.GetResponse{
 		OutOfRange: &task.InstanceIdOutOfRange{
 			JobId:         body.JobId,
-			InstanceCount: jobConfig.InstanceCount,
+			InstanceCount: info.Config.InstanceCount,
 		},
 	}, nil
 }
@@ -123,7 +123,7 @@ func (m *serviceHandler) List(
 	log.WithField("request", body).Debug("TaskSVC.List called")
 
 	m.metrics.TaskAPIList.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
+	info, err := m.jobStore.GetJob(ctx, body.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskListFail.Inc(1)
@@ -141,8 +141,8 @@ func (m *serviceHandler) List(
 		// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
 		// and  C* store would error out if it cannot find a instance id. A separate
 		// task is filed on the CLI side.
-		if body.Range.To > jobConfig.InstanceCount {
-			body.Range.To = jobConfig.InstanceCount
+		if body.Range.To > info.Config.InstanceCount {
+			body.Range.To = info.Config.InstanceCount
 		}
 		result, err = m.taskStore.GetTasksForJobByRange(ctx, body.JobId, body.Range)
 	}
@@ -212,7 +212,7 @@ func (m *serviceHandler) Start(
 	)
 	defer cancelFunc()
 
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+	info, err := m.jobStore.GetJob(ctx, body.GetJobId())
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -228,7 +228,7 @@ func (m *serviceHandler) Start(
 	}
 
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
-		ctx, body.GetJobId(), body.GetRanges(), jobConfig)
+		ctx, body.GetJobId(), body.GetRanges(), info.Config)
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -237,7 +237,7 @@ func (m *serviceHandler) Start(
 			Error: &task.StartResponse_Error{
 				OutOfRange: &task.InstanceIdOutOfRange{
 					JobId:         body.JobId,
-					InstanceCount: jobConfig.InstanceCount,
+					InstanceCount: info.Config.InstanceCount,
 				},
 			},
 		}, nil
@@ -264,7 +264,7 @@ func (m *serviceHandler) Start(
 
 		// First change goalstate if it is KILLED.
 		if taskInfo.GetRuntime().GoalState == task.TaskGoalState_KILL {
-			taskInfo.GetRuntime().GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
+			taskInfo.GetRuntime().GoalState = jobmgr_task.GetDefaultGoalState(info.Config.GetType())
 		}
 
 		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskRuntime)
@@ -309,7 +309,7 @@ func (m *serviceHandler) Stop(
 	)
 	defer cancelFunc()
 
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+	info, err := m.jobStore.GetJob(ctx, body.GetJobId())
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -326,7 +326,7 @@ func (m *serviceHandler) Stop(
 	}
 
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
-		ctx, body.GetJobId(), body.GetRanges(), jobConfig)
+		ctx, body.GetJobId(), body.GetRanges(), info.Config)
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -336,7 +336,7 @@ func (m *serviceHandler) Stop(
 			Error: &task.StopResponse_Error{
 				OutOfRange: &task.InstanceIdOutOfRange{
 					JobId:         body.JobId,
-					InstanceCount: jobConfig.InstanceCount,
+					InstanceCount: info.Config.InstanceCount,
 				},
 			},
 		}, nil
@@ -400,7 +400,7 @@ func (m *serviceHandler) Restart(
 	ctx, cancelFunc := context.WithTimeout(ctx, _rpcTimeout)
 	defer cancelFunc()
 
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+	info, err := m.jobStore.GetJob(ctx, body.GetJobId())
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -414,7 +414,7 @@ func (m *serviceHandler) Restart(
 		}, nil
 	}
 
-	taskInfos, err := m.getTaskInfosByRangesFromDB(ctx, body.GetJobId(), body.GetRanges(), jobConfig)
+	taskInfos, err := m.getTaskInfosByRangesFromDB(ctx, body.GetJobId(), body.GetRanges(), info.GetConfig())
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -423,7 +423,7 @@ func (m *serviceHandler) Restart(
 		return &task.RestartResponse{
 			OutOfRange: &task.InstanceIdOutOfRange{
 				JobId:         body.JobId,
-				InstanceCount: jobConfig.InstanceCount,
+				InstanceCount: info.GetConfig().InstanceCount,
 			},
 		}, nil
 	}
@@ -452,7 +452,7 @@ func (m *serviceHandler) Restart(
 func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*task.QueryResponse, error) {
 	log.WithField("request", req).Info("TaskSVC.Query called")
 	m.metrics.TaskAPIQuery.Inc(1)
-	_, err := m.jobStore.GetJobConfig(ctx, req.JobId)
+	_, err := m.jobStore.GetJobRuntime(ctx, req.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", req.JobId, err)
 		m.metrics.TaskQueryFail.Inc(1)
@@ -498,7 +498,7 @@ func (m *serviceHandler) BrowseSandbox(
 
 	log.WithField("req", req).Info("TaskSVC.BrowseSandbox called")
 	m.metrics.TaskAPIListLogs.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
+	info, err := m.jobStore.GetJob(ctx, req.JobId)
 	if err != nil {
 		log.WithField("job_id", req.JobId.Value).
 			WithError(err).
@@ -525,7 +525,7 @@ func (m *serviceHandler) BrowseSandbox(
 			Error: &task.BrowseSandboxResponse_Error{
 				OutOfRange: &task.InstanceIdOutOfRange{
 					JobId:         req.JobId,
-					InstanceCount: jobConfig.InstanceCount,
+					InstanceCount: info.Config.InstanceCount,
 				},
 			},
 		}, nil

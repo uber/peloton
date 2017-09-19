@@ -284,11 +284,12 @@ func (l *launcher) enqueueTasks(ctx context.Context, tasks []*task.TaskInfo) err
 			return err
 		}
 	}
-	jobConfig, err := l.jobStore.GetJobConfig(ctx, tasks[0].GetJobId())
-	if err == nil {
-		err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, l.resMgrClient)
+	j, err := l.jobStore.GetJob(ctx, tasks[0].GetJobId())
+	if err != nil {
+		return err
 	}
-	return err
+
+	return jobmgr_task.EnqueueGangs(ctx, tasks, j.GetConfig(), l.resMgrClient)
 }
 
 func (l *launcher) getLaunchableTasks(

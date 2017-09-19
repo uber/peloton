@@ -63,7 +63,20 @@ func TestCassandraStore(t *testing.T) {
 }
 
 func (suite *CassandraStoreTestSuite) createJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
-	if err := store.CreateJob(ctx, id, jobConfig, owner); err != nil {
+	err := store.CreateJobConfig(ctx, id, jobConfig)
+	if err != nil {
+		return err
+	}
+
+	runtime := &job.RuntimeInfo{
+		State:        job.JobState_INITIALIZED,
+		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
+		// Init the task stats to reflect that all tasks are in initialized state.
+		TaskStats:     map[string]uint32{task.TaskState_INITIALIZED.String(): jobConfig.InstanceCount},
+		ConfigVersion: jobConfig.GetRevision().GetVersion(),
+	}
+
+	if err := store.CreateJobRuntime(ctx, id, runtime, jobConfig); err != nil {
 		return err
 	}
 
@@ -120,7 +133,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 		suite.NoError(err)
 
 		runtime.State = job.JobState(i + 1)
-		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime, &jobConfig)
 		suite.NoError(err)
 	}
 	// Run the following query to trigger rebuild the lucene index
@@ -260,7 +273,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		suite.NoError(err)
 
 		runtime.State = job.JobState(i + 1)
-		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime, &jobConfig)
 		suite.NoError(err)
 	}
 
@@ -412,7 +425,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		runtime, err := jobStore.GetJobRuntime(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		runtime.State = job.JobState(i)
-		store.UpdateJobRuntime(context.Background(), jobIDs[i], runtime)
+		store.UpdateJobRuntime(context.Background(), jobIDs[i], runtime, originalJobs[i])
 	}
 	queryBuilder = store.DataStore.NewQuery()
 	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene, '{refresh:true}')")
@@ -500,15 +513,14 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		err = suite.createJob(context.Background(), &jobID, &jobconfig, "uber2")
 		suite.Error(err)
 
-		var jobconf *job.JobConfig
-		jobconf, err = jobStore.GetJobConfig(context.Background(), &jobID)
+		info, err := jobStore.GetJob(context.Background(), &jobID)
 		suite.NoError(err)
-		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
-		suite.Equal(len(jobconf.Labels), 4)
+		suite.Equal(info.Config.Name, fmt.Sprintf("TestJob_%d", i))
+		suite.Equal(len(info.Config.Labels), 4)
 
 		suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
 
-		jobconf, err = jobStore.GetJobConfig(context.Background(), &jobID)
+		jobconf, err := jobStore.GetJobConfig(context.Background(), &jobID, 0)
 		suite.EqualError(err, fmt.Sprintf("Cannot find job wth jobID %s", jobID.Value))
 		suite.Nil(jobconf)
 
@@ -854,9 +866,9 @@ func (suite *CassandraStoreTestSuite) TestGetAllJobs() {
 	for i, job := range jobs {
 		r := all[job]
 		suite.NotNil(r)
-		cfg, err := store.GetJobConfig(context.Background(), &peloton.JobID{Value: job})
+		info, err := store.GetJob(context.Background(), &peloton.JobID{Value: job})
 		suite.NoError(err)
-		suite.Equal(respoolPagination+strconv.Itoa(i), cfg.RespoolID.GetValue())
+		suite.Equal(respoolPagination+strconv.Itoa(i), info.Config.RespoolID.GetValue())
 	}
 }
 
@@ -910,11 +922,11 @@ func (suite *CassandraStoreTestSuite) TestGetTaskByRange() {
 func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, to uint32) {
 	var taskStore storage.TaskStore
 	taskStore = store
-	jobConfig, err := store.GetJobConfig(context.Background(), jobID)
+	info, err := store.GetJob(context.Background(), jobID)
 	suite.NoError(err)
 
-	if to > jobConfig.InstanceCount {
-		to = jobConfig.InstanceCount - 1
+	if to > info.Config.InstanceCount {
+		to = info.Config.InstanceCount - 1
 	}
 	r := &task.InstanceRange{
 		From: from,
@@ -938,7 +950,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 		},
 	})
 	suite.NoError(err)
-	suite.Equal(n, jobConfig.InstanceCount)
+	suite.Equal(n, info.Config.InstanceCount)
 
 	for i := from; i < to; i++ {
 		tID := util.BuildTaskID(jobID, i)
@@ -947,7 +959,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 
 	tasks, n, err = taskStore.QueryTasks(context.Background(), jobID, &task.QuerySpec{})
 	suite.NoError(err)
-	suite.Equal(jobConfig.InstanceCount, n)
+	suite.Equal(info.Config.InstanceCount, n)
 	suite.Equal(int(_defaultQueryLimit), len(tasks))
 
 	for i, t := range tasks {
@@ -1117,7 +1129,7 @@ func (suite *CassandraStoreTestSuite) TestJobRuntime() {
 	runtime.TaskStats[task.TaskState_RUNNING.String()] = 5
 	runtime.TaskStats[task.TaskState_SUCCEEDED.String()] = 5
 
-	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
+	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime, nil)
 	suite.NoError(err)
 
 	runtime, err = jobStore.GetJobRuntime(context.Background(), &jobID)
@@ -1156,16 +1168,16 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	suite.NoError(err)
 	suite.Equal(jobConfig.InstanceCount, jobRuntime.TaskStats[task.TaskState_INITIALIZED.String()])
 
-	jobConfig, err = jobStore.GetJobConfig(context.Background(), &jobID)
+	info, err := jobStore.GetJob(context.Background(), &jobID)
 	suite.NoError(err)
-	suite.Equal(uint32(oldInstanceCount), jobConfig.InstanceCount)
+	suite.Equal(uint32(oldInstanceCount), info.Config.InstanceCount)
 
 	// update instance count
 	jobConfig.InstanceCount = uint32(newInstanceCount)
-	err = jobStore.UpdateJobConfig(context.Background(), &jobID, jobConfig)
+	err = jobStore.CreateJobConfig(context.Background(), &jobID, jobConfig)
 	suite.NoError(err)
 
-	jobConfig, err = jobStore.GetJobConfig(context.Background(), &jobID)
+	jobConfig, err = jobStore.GetJobConfig(context.Background(), &jobID, jobConfig.GetRevision().GetVersion())
 	suite.NoError(err)
 	suite.Equal(uint32(newInstanceCount), jobConfig.InstanceCount)
 }
@@ -1298,8 +1310,9 @@ func createTaskInfo(
 	var tID = util.BuildTaskID(jobID, i)
 	var taskInfo = task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &tID.Value},
-			State:       task.TaskState_INITIALIZED,
+			MesosTaskId:   &mesos.TaskID{Value: &tID.Value},
+			State:         task.TaskState_INITIALIZED,
+			ConfigVersion: jobConfig.GetRevision().GetVersion(),
 		},
 		Config:     jobConfig.GetDefaultConfig(),
 		InstanceId: uint32(i),

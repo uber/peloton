@@ -15,16 +15,16 @@ import (
 func (t *task) start(ctx context.Context) error {
 	m := t.job.m
 
-	// Retrieves job config and task info from data stores.
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, t.job.id)
-	if err != nil {
-		return fmt.Errorf("job config not found for %v", t.job.id)
-	}
-
 	taskID := util.BuildTaskID(t.job.ID(), t.ID())
 	taskInfo, err := m.taskStore.GetTaskByID(ctx, taskID)
-	if err != nil || taskInfo == nil {
-		return fmt.Errorf("task info not found for %v", taskID.GetValue())
+	if err != nil {
+		return err
+	}
+
+	// Retrieves job config and task info from data stores.
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, t.job.id, taskInfo.GetRuntime().GetConfigVersion())
+	if err != nil {
+		return err
 	}
 
 	stateful := taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) > 0
@@ -37,7 +37,7 @@ func (t *task) start(ctx context.Context) error {
 		if err != nil {
 			_, ok := err.(*storage.VolumeNotFoundError)
 			if !ok {
-				return fmt.Errorf("failed to read volume %v for task %v", volumeID, t.id)
+				return fmt.Errorf("failed to read volume %v for task %v: %v", volumeID, t.id, err)
 			}
 			// Volume not exist so enqueue as normal task going through placement.
 		} else if pv.GetState() == volume.VolumeState_CREATED {

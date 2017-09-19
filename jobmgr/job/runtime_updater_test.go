@@ -98,8 +98,11 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	}
 
 	mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), jobID).
-		Return(&jobConfig, nil).
+		GetJob(context.Background(), gomock.Any()).
+		Return(&job.JobInfo{
+			Config:  &jobConfig,
+			Runtime: &jobRuntime,
+		}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
 		GetJobsByStates(context.Background(), nonTerminatedStates).
@@ -109,16 +112,12 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		GetJobsByStates(context.Background(), gomock.Any()).
 		Return([]peloton.JobID{}, nil).
 		AnyTimes()
-	mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), jobID).
-		Return(&jobRuntime, nil).
-		AnyTimes()
 	mockTaskStore.EXPECT().
 		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
 		Return(map[string]uint32{task.TaskState_SUCCEEDED.String(): 2, task.TaskState_RUNNING.String(): 1}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any(), nil).
 		Return(nil).
 		AnyTimes()
 
@@ -208,8 +207,11 @@ func TestUpdateJobRuntime_SynchronousJobUpdate(t *testing.T) {
 	}
 
 	mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), jobID).
-		Return(&jobConfig, nil).
+		GetJob(context.Background(), gomock.Any()).
+		Return(&job.JobInfo{
+			Config:  &jobConfig,
+			Runtime: &jobRuntime,
+		}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
 		GetJobsByStates(context.Background(), []job.JobState{job.JobState_PENDING}).
@@ -219,16 +221,12 @@ func TestUpdateJobRuntime_SynchronousJobUpdate(t *testing.T) {
 		GetJobsByStates(context.Background(), gomock.Any()).
 		Return([]peloton.JobID{}, nil).
 		AnyTimes()
-	mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), jobID).
-		Return(&jobRuntime, nil).
-		AnyTimes()
 	mockTaskStore.EXPECT().
 		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
 		Return(map[string]uint32{task.TaskState_SUCCEEDED.String(): 2, task.TaskState_RUNNING.String(): 1}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any(), nil).
 		Return(nil).
 		AnyTimes()
 

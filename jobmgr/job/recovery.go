@@ -85,30 +85,22 @@ func (j *Recovery) recoverJobs(ctx context.Context) {
 func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup bool) error {
 	log.WithField("job_id", jobID.Value).Info("recovering job")
 
-	jobConfig, err := j.jobStore.GetJobConfig(ctx, jobID)
+	info, err := j.jobStore.GetJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
-			Error("Failed to get jobConfig")
-		return err
-	}
-
-	jobRuntime, err := j.jobStore.GetJobRuntime(ctx, jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.Value).
-			Error("Failed to GetJobRuntime")
+			Error("Failed to get job")
 		return err
 	}
 
 	// If this not the first time we recover (startup), we check the age of the job
 	// before trying to recover.
 	if !startup {
-		createTime, err := time.Parse(time.RFC3339Nano, jobRuntime.CreationTime)
+		createTime, err := time.Parse(time.RFC3339Nano, info.Runtime.CreationTime)
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", jobID.Value).
-				WithField("create_time", jobRuntime.CreationTime).
+				WithField("create_time", info.Runtime.CreationTime).
 				Error("Failed to Parse job create time")
 			return err
 		}
@@ -122,16 +114,16 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		}
 	}
 
-	if err := j.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
+	if err := j.taskStore.CreateTaskConfigs(ctx, jobID, info.Config); err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
-			Error("Failed to create task configs")
+			Errorf("Failed to create tasks configs")
 		return err
 	}
 
-	for batch := uint32(0); batch < jobConfig.InstanceCount/batchRows+1; batch++ {
+	for batch := uint32(0); batch < info.Config.InstanceCount/batchRows+1; batch++ {
 		start := batch * batchRows
-		end := util.Min((batch+1)*batchRows, jobConfig.InstanceCount)
+		end := util.Min((batch+1)*batchRows, info.Config.InstanceCount)
 		log.WithField("start", start).
 			WithField("end", end).
 			Debug("Validating task range")
@@ -156,7 +148,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 			log.WithField("job_id", jobID.Value).
 				WithField("task_instance", i).
 				Info("Creating missing task")
-			err := createTaskForJob(ctx, j.trackedManager, j.taskStore, jobID, i, jobConfig)
+			err := createTaskForJob(ctx, j.trackedManager, j.taskStore, jobID, i, info.Config)
 			if err != nil {
 				log.WithError(err).
 					WithField("job_id", jobID.Value).
@@ -169,8 +161,8 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		}
 	}
 
-	jobRuntime.State = job.JobState_PENDING
-	err = j.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
+	info.Runtime.State = job.JobState_PENDING
+	err = j.jobStore.UpdateJobRuntime(ctx, jobID, info.Runtime, nil)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).

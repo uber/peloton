@@ -60,8 +60,10 @@ func TestValidatorWithStore(t *testing.T) {
 		DefaultConfig: &taskConfig,
 		InstanceCount: 10,
 	}
-	err := csStore.CreateJob(context.Background(), jobID, &jobConfig, "gsg9")
-	assert.Nil(t, err)
+	assert.Nil(t, csStore.CreateJobConfig(context.Background(), jobID, &jobConfig))
+	assert.Nil(t, csStore.CreateJobRuntime(context.Background(), jobID, &job.RuntimeInfo{
+		ConfigVersion: jobConfig.GetRevision().GetVersion(),
+	}, &jobConfig))
 
 	// Create a job with instanceCount 10 but only 5 tasks
 	// validate that after recovery, all tasks are created and
@@ -93,7 +95,7 @@ func TestValidatorWithStore(t *testing.T) {
 			&jobConfig)
 		assert.Nil(t, err)
 	}
-	err = csStore.UpdateJobRuntime(context.Background(), jobID, jobRuntime)
+	err = csStore.UpdateJobRuntime(context.Background(), jobID, jobRuntime, nil)
 	assert.Nil(t, err)
 
 	validator := NewJobRecovery(mockTrackedManager, csStore, csStore, tally.NoopScope)
@@ -143,19 +145,18 @@ func TestValidator(t *testing.T) {
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), gomock.Any()).
-		Return(&jobConfig, nil).
-		AnyTimes()
-	mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), gomock.Any()).
-		Return(&jobRuntime, nil).
+		GetJob(context.Background(), gomock.Any()).
+		Return(&job.JobInfo{
+			Config:  &jobConfig,
+			Runtime: &jobRuntime,
+		}, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
 		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any(), nil).
 		Return(nil).
 		AnyTimes()
 
@@ -221,24 +222,23 @@ func TestValidatorFailures(t *testing.T) {
 		Return([]peloton.JobID{*jobID}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), gomock.Any()).
-		Return(&jobConfig, nil).
-		AnyTimes()
-	mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), gomock.Any()).
-		Return(&jobRuntime, nil).
+		GetJob(context.Background(), gomock.Any()).
+		Return(&job.JobInfo{
+			Config:  &jobConfig,
+			Runtime: &jobRuntime,
+		}, nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
 		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any(), nil).
 		Return(errors.New("Mock error")).
 		MinTimes(1).
 		MaxTimes(1)
 	mockJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any(), nil).
 		Return(nil).
 		AnyTimes()
 

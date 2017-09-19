@@ -59,10 +59,10 @@ func TestTaskStartStateless(t *testing.T) {
 		Runtime: tt.runtime,
 	}
 
-	mockJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
 	mockTaskStore.EXPECT().
 		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
 		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig),
@@ -121,10 +121,10 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 		Runtime: tt.runtime,
 	}
 
-	mockJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
 	mockTaskStore.EXPECT().
 		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
 	mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(&volume.PersistentVolumeInfo{
 		State: volume.VolumeState_CREATED,
@@ -184,10 +184,10 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 		Runtime: tt.runtime,
 	}
 
-	mockJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
 	mockTaskStore.EXPECT().
 		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
 	mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(nil, &storage.VolumeNotFoundError{})
 

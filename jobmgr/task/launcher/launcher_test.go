@@ -320,7 +320,7 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 
 		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 
-		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), testTasks[0].JobId).Return(_jobConfig, nil),
+		mockJobStore.EXPECT().GetJob(gomock.Any(), testTasks[0].JobId).Return(&job.JobInfo{Config: _jobConfig}, nil),
 
 		mockRes.EXPECT().EnqueueGangs(
 			gomock.Any(),

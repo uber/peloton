@@ -32,15 +32,18 @@ func (e *VolumeNotFoundError) Error() string {
 
 // JobStore is the interface to store job states
 type JobStore interface {
-	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error
-	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
-	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error)
-	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
+	CreateJobConfig(ctx context.Context, id *peloton.JobID, config *job.JobConfig) error
+	GetJobConfig(ctx context.Context, id *peloton.JobID, version uint64) (*job.JobConfig, error)
+
+	CreateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo, config *job.JobConfig) error
+	GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error)
+	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo, config *job.JobConfig) error
+
+	GetJob(ctx context.Context, id *peloton.JobID) (*job.JobInfo, error)
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
 	GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error)
-	GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error)
 	GetJobsByStates(ctx context.Context, state []job.JobState) ([]peloton.JobID, error)
-	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error
+	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error)
 }
 
 // TaskStore is the interface to store task states

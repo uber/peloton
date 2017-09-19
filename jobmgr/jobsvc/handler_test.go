@@ -227,19 +227,18 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.handler.runtimeUpdater = updater
 
 	mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), jobID).
-		Return(&oldJobConfig, nil).
+		GetJob(context.Background(), jobID).
+		Return(&job.JobInfo{
+			Runtime: &jobRuntime,
+			Config:  &oldJobConfig,
+		}, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), jobID).
-		Return(&jobRuntime, nil).
-		AnyTimes()
-	mockJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
+		CreateJobConfig(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
-		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().

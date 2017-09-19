@@ -40,7 +40,7 @@ func TestTaskStartInitialized(t *testing.T) {
 	}
 
 	mockJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
+		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
 	mockTaskStore.EXPECT().
 		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, gomock.Any()).
 		Do(func(_, _, _ interface{}, runtime *pb_task.RuntimeInfo) {

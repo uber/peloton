@@ -128,8 +128,28 @@ func (h *serviceHandler) Create(
 		}, nil
 	}
 
-	err = h.jobStore.CreateJob(ctx, jobID, jobConfig, "peloton")
-	if err != nil {
+	// First persist the job configuration, to get a unique version.
+	if err := h.jobStore.CreateJobConfig(ctx, jobID, jobConfig); err != nil {
+		h.metrics.JobCreateFail.Inc(1)
+		return &job.CreateResponse{
+			Error: &job.CreateResponse_Error{
+				AlreadyExists: &job.JobAlreadyExists{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	// Create the runtime, pointing to the newly create config.
+	runtime := &job.RuntimeInfo{
+		State:        job.JobState_INITIALIZED,
+		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
+		// Init the task stats to reflect that all tasks are in initialized state.
+		TaskStats:     map[string]uint32{task.TaskState_INITIALIZED.String(): jobConfig.InstanceCount},
+		ConfigVersion: jobConfig.GetRevision().GetVersion(),
+	}
+	if h.jobStore.CreateJobRuntime(ctx, jobID, runtime, jobConfig); err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
@@ -212,7 +232,7 @@ func (h *serviceHandler) createAndEnqueueTasks(
 		return err
 	}
 	jobRuntime.State = job.JobState_PENDING
-	err = h.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
+	err = h.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime, nil)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
@@ -235,17 +255,17 @@ func (h *serviceHandler) Update(
 	h.metrics.JobAPIUpdate.Inc(1)
 
 	jobID := req.Id
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
+	info, err := h.jobStore.GetJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
-			Error("Failed to GetJobRuntime")
+			Error("Failed to GetJob")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
 
-	if !jobmgr_job.NonTerminatedStates[jobRuntime.State] {
-		msg := fmt.Sprintf("Job is in a terminal state:%s", jobRuntime.State)
+	if !jobmgr_job.NonTerminatedStates[info.Runtime.State] {
+		msg := fmt.Sprintf("Job is in a terminal state:%s", info.Runtime.State)
 		h.metrics.JobUpdateFail.Inc(1)
 		return &job.UpdateResponse{
 			Error: &job.UpdateResponse_Error{
@@ -258,18 +278,10 @@ func (h *serviceHandler) Update(
 	}
 
 	newConfig := req.Config
-	oldConfig, err := h.jobStore.GetJobConfig(ctx, jobID)
+	oldConfig := info.Config
 
 	if newConfig.RespoolID == nil {
 		newConfig.RespoolID = oldConfig.RespoolID
-	}
-
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.Value).
-			Error("Failed to GetJobConfig")
-		h.metrics.JobUpdateFail.Inc(1)
-		return nil, err
 	}
 
 	diff, err := updater.CalculateJobDiff(jobID, oldConfig, newConfig)
@@ -291,8 +303,20 @@ func (h *serviceHandler) Update(
 		return nil, nil
 	}
 
-	err = h.jobStore.UpdateJobConfig(ctx, jobID, newConfig)
-	if err != nil {
+	if err = h.jobStore.CreateJobConfig(ctx, jobID, newConfig); err != nil {
+		h.metrics.JobUpdateFail.Inc(1)
+		return &job.UpdateResponse{
+			Error: &job.UpdateResponse_Error{
+				JobNotFound: &job.JobNotFound{
+					Id:      req.Id,
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+	info.Runtime.ConfigVersion = newConfig.GetRevision().GetVersion()
+
+	if err = h.jobStore.UpdateJobRuntime(ctx, jobID, info.Runtime, newConfig); err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return &job.UpdateResponse{
 			Error: &job.UpdateResponse_Error{
@@ -312,6 +336,7 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
+	// TODO: Update goal state version of existing tasks to the new version.
 	for id, runtime := range diff.InstancesToAdd {
 		if err := h.taskStore.CreateTaskRuntime(ctx, jobID, id, runtime, "peloton"); err != nil {
 			log.Errorf("Failed to create task for job %v: %v", jobID.Value, err)
@@ -319,8 +344,8 @@ func (h *serviceHandler) Update(
 			// FIXME: Add a new Error type for this
 			return nil, err
 		}
-		h.metrics.TaskCreate.Inc(1)
 
+		h.metrics.TaskCreate.Inc(1)
 		h.trackedManager.SetTask(jobID, id, runtime)
 	}
 
@@ -349,12 +374,12 @@ func (h *serviceHandler) Get(
 	log.WithField("request", req).Debug("JobManager.Get called")
 	h.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.Id)
+	info, err := h.jobStore.GetJob(ctx, req.Id)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
 			WithField("job_id", req.Id.Value).
-			Info("GetJobConfig failed")
+			Info("GetJob failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
 				NotFound: &errors.JobNotFound{
@@ -364,30 +389,11 @@ func (h *serviceHandler) Get(
 			},
 		}, nil
 	}
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.Id)
-	if err != nil {
-		h.metrics.JobGetFail.Inc(1)
-		log.WithError(err).
-			WithField("job_id", req.Id.Value).
-			Error("Get jobRuntime failed")
-		return &job.GetResponse{
-			Error: &job.GetResponse_Error{
-				GetRuntimeFail: &errors.JobGetRuntimeFail{
-					Id:      req.Id,
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
 
-	h.metrics.JobGet.Inc(1)
 	resp := &job.GetResponse{
-		JobInfo: &job.JobInfo{
-			Id:      req.GetId(),
-			Config:  jobConfig,
-			Runtime: jobRuntime,
-		},
+		JobInfo: info,
 	}
+	h.metrics.JobGet.Inc(1)
 	log.WithField("response", resp).Debug("JobManager.Get returned")
 	return resp, nil
 }

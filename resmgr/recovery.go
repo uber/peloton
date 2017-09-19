@@ -113,15 +113,15 @@ func (r *recoveryHandler) Start() error {
 	var jobstring string
 	var isError = false
 	for _, jobID := range jobsIDs {
-		jobConfig, err := r.jobStore.GetJobConfig(ctx, &jobID)
+		info, err := r.jobStore.GetJob(ctx, &jobID)
 		if err != nil {
 			r.metrics.RecoveryFail.Inc(1)
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
-				Error("failed to get jobconfig")
+				Error("failed to get job")
 			return err
 		}
-		err = r.requeueJob(ctx, jobID.Value, jobConfig)
+		err = r.requeueJob(ctx, jobID.Value, info.Config)
 		if err != nil {
 			log.WithError(err).WithField("Not able to requeue jobStates ", jobID).Error()
 			jobstring = jobstring + jobID.Value + " , "

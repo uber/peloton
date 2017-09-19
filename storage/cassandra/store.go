@@ -118,7 +118,7 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 	}, nil
 }
 
-func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, version uint64, owner string) error {
+func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
 	jobID := id.Value
 	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
@@ -136,7 +136,7 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 			"config").
 		Values(
 			jobID,
-			version,
+			jobConfig.GetRevision().GetVersion(),
 			time.Now().UTC(),
 			configBuffer).
 		IfNotExist()
@@ -148,9 +148,6 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 		s.metrics.JobCreateFail.Inc(1)
 		return err
 	}
-
-	// TODO: Create TaskConfig here. This requires the task configs to be
-	// flattened at this point, see jobmgr.
 
 	return nil
 }
@@ -193,10 +190,6 @@ func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanc
 			time.Now().UTC(),
 			configBuffer)
 
-	// IfNotExist() will cause Writing task configs to Cassandra concurrently
-	// failed with Operation timed out issue when batch size is small, e.g. 1.
-	// For now, we have to drop the IfNotExist()
-
 	err = s.applyStatement(ctx, stmt, id.GetValue())
 	if err != nil {
 		log.WithError(err).
@@ -209,27 +202,14 @@ func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanc
 	return nil
 }
 
-// CreateJob creates a job with the job id and the config value
-func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
-	// Create version 0 of the job config.
-	if err := s.createJobConfig(ctx, id, jobConfig, 0, owner); err != nil {
-		return err
-	}
-
-	initialJobRuntime := job.RuntimeInfo{
-		State:        job.JobState_INITIALIZED,
-		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
-		TaskStats:    make(map[string]uint32),
-	}
-	// Init the task stats to reflect that all tasks are in initialized state
-	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
-
+// CreateJobRuntime creates a job with the job id and the config value
+func (s *Store) CreateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo, config *job.JobConfig) error {
 	// Create the initial job runtime record
-	err := s.updateJobRuntimeWithConfig(ctx, id, &initialJobRuntime, jobConfig)
+	err := s.updateJobRuntimeWithConfig(ctx, id, runtime, config, false)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
-			Error("UpdateJobRuntime failed")
+			Error("CreateJobRuntime failed")
 		s.metrics.JobCreateFail.Inc(1)
 		return err
 	}
@@ -260,42 +240,30 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (uint64
 	return 0, nil
 }
 
-// UpdateJobConfig updates a job with the job id and the config value
-func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
-	version, err := s.getMaxJobVersion(ctx, id)
+// CreateJobConfig for a given job config. The new job config version is returned.
+func (s *Store) CreateJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
+	maxVersion, err := s.getMaxJobVersion(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// Increment version.
-	version++
-
-	if err := s.createJobConfig(ctx, id, jobConfig, version, "<missing owner>"); err != nil {
-		return err
+	now := time.Now()
+	jobConfig.Revision = &peloton.Revision{
+		CreatedAt: uint64(now.UnixNano()),
+		UpdatedAt: uint64(now.UnixNano()),
+		// Increment version.
+		Version: maxVersion + 1,
 	}
 
-	r, err := s.GetJobRuntime(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	// Update to use new version.
-	r.ConfigVersion = version
-
-	return s.updateJobRuntimeWithConfig(ctx, id, r, jobConfig)
+	return s.createJobConfig(ctx, id, jobConfig, "peloton")
 }
 
-// GetJobConfig returns a job config given the job id
-func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error) {
-	r, err := s.GetJobRuntime(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
+// GetJobConfig returns the job config given the job id and the config version.
+func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID, version uint64) (*job.JobConfig, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("config").From(jobConfigTable).
-		Where(qb.Eq{"job_id": jobID, "version": r.ConfigVersion})
+		Where(qb.Eq{"job_id": jobID, "version": version})
 	stmtString, _, _ := stmt.ToSQL()
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
@@ -453,29 +421,17 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			Value: id.String(),
 		}
 
-		jobRuntime, err := s.GetJobRuntime(ctx, jobID)
+		jobInfo, err := s.GetJob(ctx, jobID)
 		if err != nil {
-			log.WithError(err).WithField("job_id", id.String()).Warnf("no job runtime found when executing jobs query")
-			continue
-		}
-
-		jobConfig, err := s.GetJobConfig(ctx, jobID)
-		if err != nil {
-			log.WithField("labels", spec.GetLabels()).
-				WithError(err).
-				Error("Fail to Query jobs")
+			log.WithError(err).WithField("job_id", id.String()).Warnf("no job found when executing jobs query")
 			continue
 		}
 
 		// Unset instance config as its size can be huge as a workaround for UI query.
 		// We should figure out long term support for grpc size limit.
-		jobConfig.InstanceConfig = nil
+		jobInfo.Config.InstanceConfig = nil
 
-		results = append(results, &job.JobInfo{
-			Id:      jobID,
-			Config:  jobConfig,
-			Runtime: jobRuntime,
-		})
+		results = append(results, jobInfo)
 	}
 
 	s.metrics.JobQuery.Inc(1)
@@ -910,7 +866,7 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 	return resultMap, nil
 }
 
-func (s *Store) getTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int64) (*task.TaskConfig, error) {
+func (s *Store) getTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version uint64) (*task.TaskConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskConfigTable).
 		Where(
@@ -960,7 +916,7 @@ func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.Jo
 		return nil, err
 	}
 
-	config, err := s.getTaskConfig(ctx, id, uint32(record.InstanceID), int64(runtime.ConfigVersion))
+	config, err := s.getTaskConfig(ctx, id, uint32(record.InstanceID), runtime.ConfigVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -1493,6 +1449,25 @@ func getTaskID(taskInfo *task.TaskInfo) string {
 	return util.BuildTaskID(taskInfo.JobId, taskInfo.InstanceId).Value
 }
 
+// GetJob returns the combined job runtime and config in a job info struct.
+func (s *Store) GetJob(ctx context.Context, id *peloton.JobID) (*job.JobInfo, error) {
+	runtime, err := s.GetJobRuntime(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := s.GetJobConfig(ctx, id, runtime.ConfigVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	return &job.JobInfo{
+		Runtime: runtime,
+		Config:  config,
+		Id:      id,
+	}, nil
+}
+
 // GetJobRuntime returns the job runtime info
 func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error) {
 	queryBuilder := s.DataStore.NewQuery()
@@ -1603,13 +1578,13 @@ func (s *Store) updateJobIndex(
 }
 
 // UpdateJobRuntime updates the job runtime info
-func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error {
-	return s.updateJobRuntimeWithConfig(ctx, id, runtime, nil)
+func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo, config *job.JobConfig) error {
+	return s.updateJobRuntimeWithConfig(ctx, id, runtime, config, true)
 }
 
-// UpdateJobRuntimeWithConfig updates the job runtime info
+// updateJobRuntimeWithConfig updates the job runtime info
 // including the config (if not nil) in the job_index
-func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo, config *job.JobConfig) error {
+func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo, config *job.JobConfig, ifExists bool) error {
 	runtimeBuffer, err := proto.Marshal(runtime)
 	if err != nil {
 		log.WithField("job_id", id.Value).
@@ -1620,11 +1595,19 @@ func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobI
 	}
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(jobRuntimeTable).
-		Set("state", runtime.GetState().String()).
-		Set("update_time", time.Now().UTC()).
-		Set("runtime_info", runtimeBuffer).
-		Where(qb.Eq{"job_id": id.GetValue()})
+	var stmt api.Statement
+	if ifExists {
+		stmt = queryBuilder.Update(jobRuntimeTable).
+			Set("state", runtime.GetState().String()).
+			Set("update_time", time.Now().UTC()).
+			Set("runtime_info", runtimeBuffer).
+			Where(qb.Eq{"job_id": id.GetValue()}).
+			IfOnly("EXISTS")
+	} else {
+		stmt = queryBuilder.Insert(jobRuntimeTable).
+			Columns("job_id", "state", "update_time", "runtime_info").
+			Values(id.GetValue(), runtime.GetState().String(), time.Now().UTC(), runtimeBuffer).IfNotExist()
+	}
 
 	if err := s.applyStatement(ctx, stmt, id.Value); err != nil {
 		log.WithField("job_id", id.Value).
@@ -1647,11 +1630,11 @@ func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobI
 
 // QueryTasks returns all tasks in the given offset..offset+limit range.
 func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error) {
-	jobConfig, err := s.GetJobConfig(ctx, id)
+	info, err := s.GetJob(ctx, id)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.GetValue()).
-			Error("Failed to get jobConfig")
+			Error("Failed to get job")
 		s.metrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
@@ -1661,8 +1644,8 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.Qu
 		limit = spec.GetPagination().GetLimit()
 	}
 	end := offset + limit
-	if end > jobConfig.InstanceCount {
-		end = jobConfig.InstanceCount
+	if end > info.Config.InstanceCount {
+		end = info.Config.InstanceCount
 	}
 	tasks, err := s.GetTasksForJobByRange(ctx, id, &task.InstanceRange{
 		From: offset,
@@ -1676,7 +1659,7 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.Qu
 	for i := offset; i < end; i++ {
 		result = append(result, tasks[i])
 	}
-	return result, jobConfig.InstanceCount, nil
+	return result, info.Config.InstanceCount, nil
 }
 
 // CreatePersistentVolume creates a persistent volume entry.
