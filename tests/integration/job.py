@@ -41,6 +41,11 @@ class Job(object):
         json_format.ParseDict(job_config_dump, job_config)
         self.job_config = job_config
 
+    def create_per_task_configs(self):
+        for i in xrange(self.job_config.instanceCount):
+            self.job_config.instanceConfig[i].CopyFrom(
+                self.job_config.defaultConfig)
+
     def create(self):
         respool_id = self.ensure_respool()
 
