@@ -343,19 +343,23 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"state", values:[%s]}`, values))
 	}
 
-	where := `expr(job_index_lucene, '{query: {type: "boolean", must: [`
+	if respoolID != nil {
+		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"respool_id", values:%s}`, strconv.Quote(respoolID.GetValue())))
+	}
+
+	where := `expr(job_index_lucene, '{filter: [`
 	for i, c := range clauses {
 		if i > 0 {
 			where += ", "
 		}
 		where += c
 	}
-	where += "]}"
+	where += "]"
 
 	// add sorter into the query in case orderby is specified in the query spec
 	var orderBy = spec.GetPagination().GetOrderBy()
 	if orderBy != nil && len(orderBy) > 0 {
-		where += ", sort:{fields:["
+		where += ", sort:["
 		count := 0
 		for _, order := range orderBy {
 			where += fmt.Sprintf("{field: \"%s\"", order.Property.GetValue())
@@ -367,14 +371,14 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 				where += ","
 			}
 		}
-		where += "]}"
+		where += "]"
 	}
 	where += "}')"
 
 	log.WithField("where", where).Debug("query string")
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("job_id", "config").From(jobIndexTable)
+	stmt := queryBuilder.Select("job_id").From(jobIndexTable)
 
 	if len(clauses) > 0 {
 		stmt = stmt.Where(where)
@@ -433,7 +437,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 
 		jobRuntime, err := s.GetJobRuntime(ctx, jobID)
 		if err != nil {
-			log.Warnf("no job runtime found for job `%v` when executing jobs query", jobID)
+			log.WithError(err).WithField("job_id", id.String()).Warnf("no job runtime found when executing jobs query")
 			continue
 		}
 
@@ -442,11 +446,6 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			log.WithField("labels", spec.GetLabels()).
 				WithError(err).
 				Error("Fail to Query jobs")
-			continue
-		}
-
-		// TODO: Add to view and move to cassandra where clause.
-		if respoolID != nil && jobConfig.GetRespoolID().GetValue() != respoolID.GetValue() {
 			continue
 		}
 

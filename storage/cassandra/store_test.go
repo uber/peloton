@@ -67,12 +67,13 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	var originalJobs []*job.JobConfig
 	var jobIDs []*peloton.JobID
 	var records = 300
+	respool := &peloton.ResourcePoolID{Value: uuid.New()}
 
 	var keys0 = []string{"test0", "test1", "test2", "test3"}
 	var vals0 = []string{"testValue0", "testValue1", `"testValue2"`, "testValue3"}
 
 	for i := 0; i < records; i++ {
-		var jobID = peloton.JobID{Value: uuid.New()} // fmt.Sprintf("TestQueryJob%d", i)}
+		var jobID = peloton.JobID{Value: uuid.New()}
 		jobIDs = append(jobIDs, &jobID)
 		var sla = job.SlaConfig{
 			Priority:                22,
@@ -98,6 +99,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 			DefaultConfig: &taskConfig,
 			Labels:        labels,
 			Description:   fmt.Sprintf("A test job with awesome keyword%v keytest%v", i, i),
+			RespoolID:     respool,
 		}
 		originalJobs = append(originalJobs, &jobConfig)
 		err := jobStore.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
@@ -167,6 +169,25 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	for i, c := range result1 {
 		suite.Equal(fmt.Sprintf("owner_%d", 1289-i), c.Config.OwningTeam)
 	}
+	suite.Equal(records, int(total))
+
+	result1, total, err = jobStore.QueryJobs(context.Background(), respool, &job.QuerySpec{})
+	suite.NoError(err)
+	suite.Equal(100, len(result1))
+	suite.Equal(records, int(total))
+
+	result1, total, err = jobStore.QueryJobs(context.Background(), &peloton.ResourcePoolID{Value: uuid.New()}, &job.QuerySpec{})
+	suite.NoError(err)
+	suite.Equal(0, len(result1))
+	suite.Equal(0, int(total))
+
+	result1, total, err = jobStore.QueryJobs(context.Background(), respool, &job.QuerySpec{
+		Pagination: &query.PaginationSpec{
+			Limit: 1000,
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(records, len(result1))
 	suite.Equal(records, int(total))
 }
 
