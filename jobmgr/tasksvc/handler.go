@@ -437,7 +437,7 @@ func (m *serviceHandler) BrowseSandbox(
 	m.metrics.TaskAPIListLogs.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil {
-		log.WithField("job_id", req.JobId).
+		log.WithField("job_id", req.JobId.Value).
 			WithError(err).
 			Error("failed to find job with id")
 		m.metrics.TaskListLogsFail.Inc(1)

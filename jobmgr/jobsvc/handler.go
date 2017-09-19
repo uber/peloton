@@ -179,7 +179,7 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to enqueue tasks to RM")
 		return err
 	}
@@ -187,7 +187,7 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to GetJobRuntime")
 		return err
 	}
@@ -195,7 +195,7 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	err = h.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to UpdateJobRuntime")
 		return err
 	}
@@ -266,7 +266,7 @@ func (h *serviceHandler) Update(
 	}
 
 	if diff.IsNoop() {
-		log.WithField("job_id", jobID).
+		log.WithField("job_id", jobID.Value).
 			Info("update is a noop")
 		return nil, nil
 	}
@@ -306,7 +306,7 @@ func (h *serviceHandler) Update(
 	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, newConfig, h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to enqueue tasks to RM")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
@@ -315,7 +315,7 @@ func (h *serviceHandler) Update(
 	err = h.runtimeUpdater.UpdateJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to update job runtime")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
@@ -340,7 +340,7 @@ func (h *serviceHandler) Get(
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
-			WithField("job_id", req.Id).
+			WithField("job_id", req.Id.Value).
 			Info("GetJobConfig failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
@@ -355,7 +355,7 @@ func (h *serviceHandler) Get(
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
-			WithField("job_id", req.Id).
+			WithField("job_id", req.Id.Value).
 			Error("Get jobRuntime failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{

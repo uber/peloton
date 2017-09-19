@@ -186,20 +186,20 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 		close(c)
 	}()
 
-	log.WithField("job_id", jobID).
+	log.WithField("job_id", jobID.Value).
 		Info("JobRuntimeUpdater updateJobRuntime")
 
 	// Read the job config and job runtime
 	jobConfig, err := j.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to get jobConfig")
 		return err
 	}
 	if jobConfig == nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Cannot find jobConfig")
 		return fmt.Errorf("Cannot find jobConfig for %s", jobID.Value)
 	}
@@ -207,13 +207,13 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	jobRuntime, err := j.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to get jobRuntime")
 		return err
 	}
 	if jobRuntime == nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Cannot find jobRuntime")
 		return fmt.Errorf("Cannot find jobRuntime for %s", jobID.Value)
 	}
@@ -224,13 +224,13 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	stateCounts, err := j.taskStore.GetTaskStateSummaryForJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to GetTaskStateSummaryForJob")
 		return err
 	}
 
 	if reflect.DeepEqual(stateCounts, jobRuntime.TaskStats) {
-		log.WithField("job_id", jobID).
+		log.WithField("job_id", jobID.Value).
 			WithField("task_stats", stateCounts).
 			Debug("Task stats did not change, return")
 		return nil
@@ -290,7 +290,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	err = j.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID).
+			WithField("job_id", jobID.Value).
 			Error("Failed to update jobRuntime")
 		return err
 	}
