@@ -51,7 +51,9 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      &peloton.JobID{Value: jobID},
 		}, nil)
 		mockTrackedManager.EXPECT().UpdateTask(context.Background(), &peloton.JobID{Value: jobID}, uint32(i), gomock.Any()).Return(nil)
-
+	}
+	for i := 0; i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
 		state := mesos.TaskState_TASK_STARTING
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
@@ -59,6 +61,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			},
 			State: &state,
 		}
+
 		offset++
 		applier.addEvent(&pb_eventstream.Event{
 			Offset:          offset,
@@ -66,6 +69,8 @@ func TestBucketEventProcessor(t *testing.T) {
 			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 		})
 	}
+
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
@@ -79,7 +84,9 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      &peloton.JobID{Value: jobID},
 		}, nil)
 		mockTrackedManager.EXPECT().UpdateTask(context.Background(), &peloton.JobID{Value: jobID}, uint32(i), gomock.Any()).Return(nil)
-
+	}
+	for i := 0; i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
 		state := mesos.TaskState_TASK_RUNNING
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
@@ -87,6 +94,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			},
 			State: &state,
 		}
+
 		offset++
 		applier.addEvent(&pb_eventstream.Event{
 			Offset:          offset,
@@ -94,6 +102,8 @@ func TestBucketEventProcessor(t *testing.T) {
 			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
 		})
 	}
+
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
@@ -107,7 +117,9 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      &peloton.JobID{Value: jobID},
 		}, nil)
 		mockTrackedManager.EXPECT().UpdateTask(context.Background(), &peloton.JobID{Value: jobID}, uint32(i), gomock.Any()).Return(nil)
-
+	}
+	for i := 0; i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
 		state := mesos.TaskState_TASK_FINISHED
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
@@ -115,6 +127,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			},
 			State: &state,
 		}
+
 		offset++
 		applier.addEvent(&pb_eventstream.Event{
 			Offset:          offset,
@@ -123,7 +136,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		})
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	for _, bucket := range applier.eventBuckets {
 		assert.True(t, bucket.getProcessedCount() > 0)
