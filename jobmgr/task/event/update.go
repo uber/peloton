@@ -129,7 +129,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				Error("Fail to parse taskID for mesostaskID")
 			return err
 		}
-		state = util.MesosStateToPelotonState(event.MesosTaskStatus.GetState())
+		state = util.MesosStateToPelotonState(event.MesosTaskStatus)
 		statusMsg = event.MesosTaskStatus.GetMessage()
 		log.WithFields(log.Fields{
 			"task_id": taskID.Value,
@@ -168,6 +168,25 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return nil
 	}
 
+	// TODO: Once https://issues.apache.org/jira/browse/MESOS-6417 is fixed, we
+	// don't have to read the config.
+	config, err := p.taskStore.GetTaskConfig(ctx, jobID, instanceID, runtime.GetConfigVersion())
+	if err != nil {
+		log.WithError(err).
+			WithField("task_id", taskID).
+			Error("Fail to find task config")
+		return err
+	}
+
+	// If it's running and we have a health check configured, but no health check
+	// status is available, we're waiting for the first health check to be
+	// processed.
+	// TODO: Move to util.MesosStateToPelotonState when
+	// https://issues.apache.org/jira/browse/MESOS-6417 is fixed.
+	if state == pb_task.TaskState_RUNNING && config.GetHealthCheck() != nil && event.GetMesosTaskStatus().Healthy == nil {
+		state = pb_task.TaskState_PENDING_HEALTH
+	}
+
 	if state == runtime.GetState() {
 		log.WithFields(log.Fields{
 			"db_runtime":        runtime,
@@ -193,19 +212,13 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	switch state {
-	case pb_task.TaskState_FAILED:
-		// TODO: Read task config only.
-		taskInfo, err := p.taskStore.GetTaskByID(ctx, taskID)
-		if err != nil {
-			log.WithError(err).
-				WithField("task_id", taskID.Value).
-				Error("Fail to find taskInfo for taskID")
-			return err
+	case pb_task.TaskState_FAILED, pb_task.TaskState_KILLED:
+		// If the stop was not user provoked, count it as a failure.
+		if runtime.GoalState != pb_task.TaskGoalState_RESTART {
+			runtime.FailureCount++
 		}
 
-		runtime.FailureCount++
-		maxFailures := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
-		if runtime.GetFailureCount() >= maxFailures {
+		if runtime.GetFailureCount() > config.GetRestartPolicy().GetMaxFailures() {
 			// Stop scheduling the task, max failures reached.
 			runtime.GoalState = pb_task.TaskGoalState_KILL
 			runtime.State = state

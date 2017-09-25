@@ -137,6 +137,9 @@ class Job(object):
     def get_config(self):
         return self.get_info().config
 
+    def get_task(self, iid):
+        return Task(self, iid)
+
     def get_tasks(self, one_range=None):
         config = self.get_config()
         return {iid: Task(self, iid) for iid in xrange(config.instanceCount)}

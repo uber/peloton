@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"testing"
 
@@ -361,7 +362,7 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 	delaySeconds := float64(1)
 	timeoutSeconds := float64(2)
 	intervalSeconds := float64(3)
-	consecutiveFailures := uint32(4)
+	gracePeriodSeconds := float64(4)
 
 	envName := "name"
 	envValue := "value"
@@ -395,6 +396,8 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 					Shell: &tmpTrue,
 					Value: &command,
 				},
+				ConsecutiveFailures: &[]uint32{math.MaxUint32}[0],
+				GracePeriodSeconds:  &[]float64{0.0}[0],
 			},
 		},
 		// custom values w/ environment variables.
@@ -404,10 +407,10 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 				CommandCheck: &task.HealthCheckConfig_CommandCheck{
 					Command: command,
 				},
-				InitialIntervalSecs:    uint32(delaySeconds),
-				TimeoutSecs:            uint32(timeoutSeconds),
-				IntervalSecs:           uint32(intervalSeconds),
-				MaxConsecutiveFailures: uint32(consecutiveFailures),
+				InitialIntervalSecs: uint32(delaySeconds),
+				TimeoutSecs:         uint32(timeoutSeconds),
+				IntervalSecs:        uint32(intervalSeconds),
+				GracePeriodSecs:     uint32(gracePeriodSeconds),
 			},
 			output: &mesos.HealthCheck{
 				Type: &cmdType,
@@ -416,10 +419,11 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 					Value:       &command,
 					Environment: environment,
 				},
-				ConsecutiveFailures: &consecutiveFailures,
 				DelaySeconds:        &delaySeconds,
 				TimeoutSeconds:      &timeoutSeconds,
 				IntervalSeconds:     &intervalSeconds,
+				GracePeriodSeconds:  &gracePeriodSeconds,
+				ConsecutiveFailures: &[]uint32{math.MaxUint32}[0],
 			},
 			taskInfo: &mesos.TaskInfo{
 				Command: &mesos.CommandInfo{
@@ -442,6 +446,8 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 					Shell: &tmpTrue,
 					Value: &command,
 				},
+				ConsecutiveFailures: &[]uint32{math.MaxUint32}[0],
+				GracePeriodSeconds:  &[]float64{0.0}[0],
 			},
 			taskInfo: &mesos.TaskInfo{
 				Command: &mesos.CommandInfo{

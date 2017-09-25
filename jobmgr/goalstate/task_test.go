@@ -60,6 +60,10 @@ func TestEngineSuggestActionGoalKilled(t *testing.T) {
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_FAILED, ConfigVersion: 10})
 	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: tracked.UnknownVersion})
 	assert.Equal(t, tracked.UntrackAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_UNHEALTHY, ConfigVersion: 10})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: tracked.UnknownVersion})
+	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 }
 
 func TestEngineSuggestActionGoalRunning(t *testing.T) {
@@ -105,6 +109,10 @@ func TestEngineSuggestActionGoalRunning(t *testing.T) {
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_SUCCEEDED, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
 	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_UNHEALTHY, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
+	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 }
 
 func TestEngineSuggestActionGoalSucceeded(t *testing.T) {
@@ -134,6 +142,10 @@ func TestEngineSuggestActionGoalSucceeded(t *testing.T) {
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_LOST, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_SUCCEED, ConfigVersion: 0})
 	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_UNHEALTHY, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_SUCCEED, ConfigVersion: 0})
+	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 }
 
 func TestEngineSuggestActionGoalRestart(t *testing.T) {
@@ -160,6 +172,8 @@ func TestEngineSuggestActionGoalRestart(t *testing.T) {
 		{pb_task.TaskState_PREEMPTING, tracked.NoAction},
 		{pb_task.TaskState_KILLING, tracked.NoAction},
 		{pb_task.TaskState_KILLED, tracked.InitializeAction},
+		{pb_task.TaskState_UNHEALTHY, tracked.StopAction},
+		{pb_task.TaskState_PENDING_HEALTH, tracked.StopAction},
 	}
 
 	e := &engine{}
@@ -192,6 +206,8 @@ func TestEngineSuggestActionGoalPreempting(t *testing.T) {
 		{pb_task.TaskState_RUNNING, tracked.StopAction},
 		{pb_task.TaskState_LOST, tracked.InitializeAction},
 		{pb_task.TaskState_KILLED, tracked.InitializeAction},
+		{pb_task.TaskState_UNHEALTHY, tracked.StopAction},
+		{pb_task.TaskState_PENDING_HEALTH, tracked.StopAction},
 	}
 
 	for _, test := range tt {

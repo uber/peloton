@@ -16,6 +16,7 @@ import (
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	mocks2 "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -62,9 +63,11 @@ func TestBucketEventProcessor(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockTrackedManager := mocks.NewMockManager(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 
 	handler := &statusUpdate{
 		trackedManager: mockTrackedManager,
+		taskStore:      mockTaskStore,
 		metrics:        NewMetrics(tally.NoopScope),
 	}
 	var offset uint64
@@ -78,6 +81,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		mockTrackedManager.EXPECT().GetTaskRuntime(context.Background(), jobID, i).Return(&task.RuntimeInfo{
 			MesosTaskId: mesosTaskID,
 		}, nil)
+		mockTaskStore.EXPECT().GetTaskConfig(context.Background(), jobID, i, uint64(0)).Return(&task.TaskConfig{}, nil)
 		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {
@@ -103,6 +107,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		mockTrackedManager.EXPECT().GetTaskRuntime(context.Background(), jobID, i).Return(&task.RuntimeInfo{
 			MesosTaskId: mesosTaskID,
 		}, nil)
+		mockTaskStore.EXPECT().GetTaskConfig(context.Background(), jobID, i, uint64(0)).Return(&task.TaskConfig{}, nil)
 		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {
@@ -128,6 +133,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		mockTrackedManager.EXPECT().GetTaskRuntime(context.Background(), jobID, i).Return(&task.RuntimeInfo{
 			MesosTaskId: mesosTaskID,
 		}, nil)
+		mockTaskStore.EXPECT().GetTaskConfig(context.Background(), jobID, i, uint64(0)).Return(&task.TaskConfig{}, nil)
 		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {

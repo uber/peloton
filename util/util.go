@@ -159,13 +159,16 @@ func (o *MesosResourceBuilder) Build() *mesos.Resource {
 
 // MesosStateToPelotonState translates mesos task state to peloton task state
 // TODO: adjust in case there are additional peloton states
-func MesosStateToPelotonState(mstate mesos.TaskState) task.TaskState {
-	switch mstate {
+func MesosStateToPelotonState(status *mesos.TaskStatus) task.TaskState {
+	switch status.GetState() {
 	case mesos.TaskState_TASK_STAGING:
 		return task.TaskState_LAUNCHING
 	case mesos.TaskState_TASK_STARTING:
 		return task.TaskState_STARTING
 	case mesos.TaskState_TASK_RUNNING:
+		if status.Healthy != nil && !status.GetHealthy() {
+			return task.TaskState_UNHEALTHY
+		}
 		return task.TaskState_RUNNING
 		// NOTE: This should only be sent when the framework has
 		// the TASK_KILLING_STATE capability.
@@ -182,7 +185,7 @@ func MesosStateToPelotonState(mstate mesos.TaskState) task.TaskState {
 	case mesos.TaskState_TASK_ERROR:
 		return task.TaskState_FAILED
 	default:
-		log.Errorf("Unknown mesos taskState %v", mstate)
+		log.Errorf("Unknown mesos taskState %v", status.GetState())
 		return task.TaskState_INITIALIZED
 	}
 }

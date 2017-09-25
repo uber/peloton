@@ -1,6 +1,7 @@
 package task
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
@@ -431,10 +432,12 @@ func (tb *Builder) populateHealthCheck(
 		mh.TimeoutSeconds = &tmp
 	}
 
-	if t := health.GetMaxConsecutiveFailures(); t > 0 {
-		tmp := uint32(t)
-		mh.ConsecutiveFailures = &tmp
-	}
+	grace := float64(health.GetGracePeriodSecs())
+	mh.GracePeriodSeconds = &grace
+
+	// Disable mesos reaction to health checks.
+	var maxFailures uint32 = math.MaxUint32
+	mh.ConsecutiveFailures = &maxFailures
 
 	switch health.GetType() {
 	case task.HealthCheckConfig_COMMAND:

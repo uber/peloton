@@ -55,6 +55,7 @@ message HealthCheckConfig {
 
   // Max number of consecutive failures before failing health check.
   // Zero or empty value would use default value of 3 from Mesos.
+  // DEPRECATED: This flag is not honored anymore.
   uint32 maxConsecutiveFailures = 4;
 
   // Health check command timeout in seconds.
@@ -86,6 +87,12 @@ message HealthCheckConfig {
 
   // Only applicable when type is `COMMAND`.
   CommandCheck commandCheck = 7;
+
+  // Amount of time after the task is launched during which health check
+  // failures are ignored. Once a check succeeds for the first time,
+  // the grace period does not apply anymore.
+  // Default is 0 seconds.
+  uint32 gracePeriodSecs = 8;
 }
 
 
@@ -296,6 +303,12 @@ enum TaskState {
 
   // Execution of the task was terminated by the system
   KILLED      = 14;
+
+  // The task has started but is pending health check.
+  PENDING_HEALTH = 16;
+
+  // The task is running but health check failed.
+  UNHEALTHY   = 17;
 }
 
 /**

@@ -882,7 +882,7 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID
 			WithField("instance_id", instanceID).
 			WithField("version", configVersion).
 			WithError(err).
-			Error("Fail to getTaskConfig")
+			Error("Fail to GetTaskConfig")
 		s.metrics.TaskGetFail.Inc(1)
 		return nil, err
 	}

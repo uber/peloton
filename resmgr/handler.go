@@ -530,8 +530,7 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 	}
 
 	for _, event := range req.Events {
-		taskState := util.MesosStateToPelotonState(
-			event.MesosTaskStatus.GetState())
+		taskState := util.MesosStateToPelotonState(event.MesosTaskStatus)
 		if taskState != t.TaskState_RUNNING &&
 			!util.IsPelotonStateTerminal(taskState) {
 			h.acknowledgeEvent(event.Offset)

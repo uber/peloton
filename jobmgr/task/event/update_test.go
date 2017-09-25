@@ -141,6 +141,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		suite.mockTrackedManager.EXPECT().
 			GetTaskRuntime(context.Background(), _pelotonJobID, _instanceID).
 			Return(taskInfo.Runtime, nil),
+		suite.mockTaskStore.EXPECT().
+			GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil),
 		suite.mockTrackedManager.EXPECT().
 			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime()).
 			Return(nil),
@@ -164,6 +166,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameState() {
 		suite.mockTrackedManager.EXPECT().
 			GetTaskRuntime(context.Background(), _pelotonJobID, _instanceID).
 			Return(taskInfo.Runtime, nil),
+		suite.mockTaskStore.EXPECT().
+			GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil),
 	)
 
 	now = nowMock
@@ -185,8 +189,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 		GetTaskRuntime(context.Background(), _pelotonJobID, _instanceID).
 		Return(taskInfo.Runtime, nil)
 	suite.mockTaskStore.EXPECT().
-		GetTaskByID(context.Background(), _pelotonTaskID).
-		Return(taskInfo, nil)
+		GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil)
 	suite.mockTrackedManager.EXPECT().
 		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
 		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo) {
@@ -236,8 +239,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 			GetTaskRuntime(context.Background(), _pelotonJobID, _instanceID).
 			Return(taskInfo.Runtime, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTaskByID(context.Background(), _pelotonTaskID).
-			Return(taskInfo, nil),
+			GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil),
 		suite.mockTrackedManager.EXPECT().
 			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime()).
 			Return(nil),
@@ -258,6 +260,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 	suite.mockTrackedManager.EXPECT().
 		GetTaskRuntime(context.Background(), _pelotonJobID, _instanceID).
 		Return(taskInfo.Runtime, nil)
+	suite.mockTaskStore.EXPECT().
+		GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil)
 	suite.mockTrackedManager.EXPECT().
 		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
 		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo) {
