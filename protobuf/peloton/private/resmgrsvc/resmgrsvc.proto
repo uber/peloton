@@ -9,7 +9,6 @@ package peloton.private.resmgr;
 option go_package = "peloton/private/resmgrsvc";
 
 import "peloton/api/peloton.proto";
-import "peloton/api/respool/respool.proto";
 import "peloton/private/resmgr/resmgr.proto";
 import "peloton/private/eventstream/eventstream.proto";
 

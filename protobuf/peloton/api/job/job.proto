@@ -1,5 +1,5 @@
 /**
- *  Job Manager API
+ *  This file defines the Job related messages in Peloton API
  */
 
 
@@ -14,6 +14,7 @@ import "peloton/api/peloton.proto";
 import "peloton/api/errors/errors.proto";
 import "peloton/api/task/task.proto";
 import "peloton/api/query/query.proto";
+import "peloton/api/respool/respool.proto";
 
 /**
  *  Job type definition such as batch, service and infra agent.
@@ -174,7 +175,6 @@ message RuntimeInfo
   int64 configVersion = 6;
 }
 
-
 /**
  *  Information of a job, such as job config and runtime
  */
@@ -191,6 +191,34 @@ message JobInfo
 }
 
 /**
+ *  QuerySpec specifies the list of query criteria for jobs. All
+ *  indexed fields should be part of this message. And all fields
+ *  in this message have to be indexed too.
+ */
+message QuerySpec {
+  // DEPRECATED: use QueryJobRequest.pagination instead.
+  // The spec of how to do pagination for the query results.
+  query.PaginationSpec pagination = 1;
+
+  // List of labels to query the jobs. Will match all jobs if the
+  // list is empty.
+  repeated peloton.Label labels = 2;
+
+  // List of keywords to query the jobs. Will match all jobs if
+  // the list is empty.
+  repeated string keywords = 3;
+
+  // List of job states to query the jobs. Will match all jobs if
+  // the list is empty.
+  repeated JobState jobStates = 4;
+
+  // The resource pool to query the jobs. Will match jobs from all
+  // resource pools if unset.
+  respool.ResourcePoolPath respool = 5;
+}
+
+/**
+ *  DEPRECATED by peloton.api.job.svc.JobService
  *  Job Manager service interface
  */
 service JobManager {
@@ -211,32 +239,37 @@ service JobManager {
   rpc Update(UpdateRequest) returns (UpdateResponse);
 }
 
+// DEPRECATED by google.rpc.ALREADY_EXISTS error
 message JobAlreadyExists {
   peloton.JobID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.NOT_FOUND error
 message JobNotFound {
   peloton.JobID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.INVALID_ARGUMENT error
 message InvalidJobId {
   peloton.JobID id = 1;
   string message = 2;
 }
 
-
+// DEPRECATED by google.rpc.INVALID_ARGUMENT error
 message InvalidJobConfig {
   peloton.JobID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by peloton.api.job.svc.CreateJobRequest
 message CreateRequest {
   peloton.JobID id = 1;
   JobConfig config = 2;
 }
 
+// DEPRECATED by peloton.api.job.svc.CreateJobResponse
 message CreateResponse {
   message Error {
     JobAlreadyExists alreadyExists = 1;
@@ -248,11 +281,13 @@ message CreateResponse {
   peloton.JobID jobId = 2;
 }
 
+// DEPRECATED by peloton.api.job.svc.UpdateJobRequest
 message UpdateRequest {
   peloton.JobID id = 1;
   JobConfig config = 2;
 }
 
+// DEPRECATED by peloton.api.job.svc.UpdateJobResponse
 message UpdateResponse {
   message Error {
     JobNotFound jobNotFound = 1;
@@ -264,10 +299,12 @@ message UpdateResponse {
   string message = 3;
 }
 
+// DEPRECATED by peloton.api.job.svc.GetJobRequest
 message GetRequest {
   peloton.JobID id = 1;
 }
 
+// DEPRECATED by peloton.api.job.svc.GetJobResponse
 message GetResponse {
   message Error {
     errors.JobNotFound notFound = 1;
@@ -279,23 +316,14 @@ message GetResponse {
   JobInfo jobInfo = 2;
 }
 
-message QuerySpec {
-  // All indexed fields should be part of this message.
-  query.PaginationSpec pagination = 1;
-
-  repeated peloton.Label labels = 2;
-
-  repeated string keywords = 3;
-
-  repeated JobState jobStates = 4;
-}
-
+// DEPRECATED by peloton.api.job.svc.QueryJobsRequest
 message QueryRequest {
   peloton.ResourcePoolID respoolID = 1;
 
   QuerySpec spec = 2;
 }
 
+// DEPRECATED by peloton.api.job.svc.QueryJobsResponse
 message QueryResponse {
    message Error {
     errors.UnknownError err = 1;
@@ -308,10 +336,12 @@ message QueryResponse {
   query.Pagination pagination = 3;
 }
 
+// DEPRECATED by peloton.api.job.svc.DeleteRequest
 message DeleteRequest {
   peloton.JobID id = 1;
 }
 
+// DEPRECATED by peloton.api.job.svc.DeleteResponse
 message DeleteResponse {
   message Error {
     errors.JobNotFound notFound = 1;

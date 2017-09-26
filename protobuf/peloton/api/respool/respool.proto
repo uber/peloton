@@ -92,6 +92,19 @@ message ResourcePoolConfig {
   SchedulingPolicy policy = 8;
 }
 
+message ResourceUsage {
+  // Type of the resource
+  string kind = 1;
+
+  // Allocation of the resource
+  double allocation = 2;
+
+  // slack is the resource which is allocated
+  // but not used and mesos will give those resources as
+  // revocable offers
+  double slack = 3;
+}
+
 message ResourcePoolInfo {
   // Resource Pool Id
   peloton.ResourcePoolID id = 1;
@@ -111,6 +124,7 @@ message ResourcePoolInfo {
 }
 
 /**
+ *  DEPRECATED by peloton.api.respool.svc.ResourcePoolService
  *  Resource Manager service interface
  */
 service ResourceManager
@@ -134,50 +148,60 @@ service ResourceManager
   rpc Query(QueryRequest) returns (QueryResponse);
 }
 
+// DEPRECATED by google.rpc.ALREADY_EXISTS error
 message ResourcePoolAlreadyExists {
   peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.ALREADY_EXISTS error
 message InvalidResourcePoolConfig {
   peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.NOT_FOUND error
 message ResourcePoolNotFound {
   peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.NOT_FOUND error
 message ResourcePoolPathNotFound {
   ResourcePoolPath path = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.INVALID_ARGUMENT error
 message InvalidResourcePoolPath {
   ResourcePoolPath path = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.FAILED_PRECONDITION error
 message ResourcePoolIsBusy {
   peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.INVALID_ARGUMENT error
 message ResourcePoolIsNotLeaf {
   peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by google.rpc.INTERNAL error
 message ResourcePoolNotDeleted {
   peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
+// DEPRECATED by peloton.api.respool.svc.CreateResourcePoolRequest
 message CreateRequest {
   ResourcePoolConfig config = 2;
 }
 
+// DEPRECATED by peloton.api.respool.svc.CreateResourcePoolResponse
 message CreateResponse {
   message Error {
     ResourcePoolAlreadyExists alreadyExists = 1;
@@ -189,6 +213,7 @@ message CreateResponse {
 
 }
 
+// DEPRECATED by peloton.api.respool.svc.GetResourcePoolRequest
 message GetRequest {
   // The ID of the resource pool to get
   peloton.ResourcePoolID id = 1;
@@ -198,6 +223,7 @@ message GetRequest {
   bool includeChildPools = 2;
 }
 
+// DEPRECATED by peloton.api.respool.svc.GetResourcePoolRequest
 message GetResponse {
   message Error {
     ResourcePoolNotFound notFound = 1;
@@ -208,10 +234,12 @@ message GetResponse {
   repeated ResourcePoolInfo childPools = 3;
 }
 
+// DEPRECATED by peloton.api.respool.svc.DeleteResourcePoolRequest
 message DeleteRequest {
   ResourcePoolPath path = 1;
 }
 
+// DEPRECATED by peloton.api.respool.svc.DeleteResourcePoolResponse
 message DeleteResponse {
   message Error {
     ResourcePoolPathNotFound notFound = 1;
@@ -223,11 +251,13 @@ message DeleteResponse {
   Error error = 1;
 }
 
+// DEPRECATED by peloton.api.respool.svc.UpdateResourcePoolRequest
 message UpdateRequest {
   peloton.ResourcePoolID id = 1;
   ResourcePoolConfig config = 2;
 }
 
+// DEPRECATED by peloton.api.respool.svc.UpdateResourcePoolResponse
 message UpdateResponse {
   message Error {
     ResourcePoolNotFound notFound = 1;
@@ -237,10 +267,12 @@ message UpdateResponse {
   Error error = 1;
 }
 
+// DEPRECATED by peloton.api.respool.svc.LookupResourcePoolIDRequest
 message LookupRequest {
   ResourcePoolPath path = 1;
 }
 
+// DEPRECATED by peloton.api.respool.svc.LookupResourcePoolIDResponse
 message LookupResponse {
   message Error {
     ResourcePoolPathNotFound notFound = 1;
@@ -251,25 +283,16 @@ message LookupResponse {
   peloton.ResourcePoolID id = 2;
 }
 
+// DEPRECATED by peloton.api.respool.svc.QueryResourcePoolRequest
 message QueryRequest {
   // TODO Filters
 }
 
+// DEPRECATED by peloton.api.respool.svc.QueryResourcePoolResponse
 message QueryResponse {
   message Error {
     // TODO add error types
   }
   Error error = 1;
   repeated ResourcePoolInfo resourcePools = 2;
-}
-
-message ResourceUsage {
-  // Type of the resource
-  string kind = 1;
-  // Allocation of the resource
-  double allocation = 2;
-  // slack is the resource which is allocated
-  // but not used and mesos will give those resources as
-  // revocable offers
-  double slack = 3;
 }

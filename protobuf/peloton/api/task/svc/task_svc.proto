@@ -1,0 +1,250 @@
+/**
+ *  This file defines the Task Service in Peloton API
+ */
+
+syntax = "proto3";
+
+package peloton.api.task.svc;
+
+option go_package = "peloton/api/task/svc";
+option java_package = "peloton.api.job.svc";
+
+import "peloton/api/peloton.proto";
+import "peloton/api/query/query.proto";
+import "peloton/api/task/task.proto";
+
+
+/**
+ *  Task service defines the task related methods such as get, list,
+ *  start, stop and restart tasks.
+ */
+service TaskService
+{
+  // Get the info of a task in job.
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+
+  // List a set of tasks in a job for a given range of instance IDs.
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+
+  // Start a set of tasks for a job. Will be no-op for tasks that
+  // are currently running.
+  rpc StartTasks(StartTasksRequest) returns (StartTasksResponse);
+
+  // Stop a set of tasks for a job. Will be no-op for tasks that
+  // are currently stopped.
+  rpc StopTasks(StopTasksRequest) returns (StopTasksResponse);
+
+  // Restart a set of tasks for a job. Will start tasks that are
+  // currently stopped.
+  rpc RestartTasks(RestartTasksRequest) returns (RestartTasksResponse);
+
+  // Query task info in a job, using a set of filters.
+  rpc QueryTasks(QueryTasksRequest) returns (QueryTasksResponse);
+
+  // BrowseSandbox returns list of file paths inside sandbox. The
+  // client can use the Mesos Agent HTTP endpoints to read and download
+  // the files. http://mesos.apache.org/documentation/latest/endpoints/
+  rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
+}
+
+
+/**
+ *  Request message for TaskService.GetTask method.
+ */
+message GetTaskRequest {
+  // The job ID of the task to get.
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task to get.
+  uint32 instanceId = 2;
+}
+
+
+/**
+ *  Response message for TaskService.GetTask method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job or task not found.
+ *    OUT_OF_RANGE:  if the instance ID is out of range.
+ */
+message GetTaskResponse {
+  // The task info of the task.
+  TaskInfo result = 1;
+}
+
+
+/**
+ *  Request message for TaskService.ListTasks method.
+ */
+message ListTasksRequest {
+  // The job ID of the tasks to list.
+  peloton.JobID jobId = 1;
+
+  // The instance ID range of the tasks to list.
+  task.InstanceRange range = 2;
+}
+
+
+/**
+ *  Response message for TaskService.GetTask method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:  if the job ID is not found.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ */
+message ListTasksResponse {
+  // The map of instance ID to task info for all matching tasks.
+  map<uint32, TaskInfo> tasks = 1;
+}
+
+
+/**
+ *  Request message for TaskService.StartTasks method.
+ */
+message StartTasksRequest {
+  // The job ID of the tasks to start.
+  peloton.JobID jobId = 1;
+
+  // The instance ID ranges of the tasks to start.
+  repeated task.InstanceRange ranges = 2;
+}
+
+
+/**
+ *  Response message for TaskService.StartTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ *    INTERNAL:      if the tasks fail to start for internal errors.
+ */
+message StartTasksResponse {
+  // The set of instance IDs that have been started.
+  repeated uint32 started = 1;
+
+  // The set of instance IDs that are failed to start.
+  repeated uint32 failed = 2;
+}
+
+
+/**
+ *  Request message for TaskService.StopTasks method.
+ */
+message StopTasksRequest {
+  // The job ID of the tasks to stop.
+  peloton.JobID jobId = 1;
+
+  // The instance ID ranges of the tasks to stop.
+  repeated task.InstanceRange ranges = 2;
+}
+
+
+/**
+ *  Response message for TaskService.StopTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found in Peloton.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ *    INTERNAL:      if the tasks fail to stop for internal errors.
+ */
+message StopTasksResponse {
+  // The set of instance IDs that have been stopped.
+  repeated uint32 stopped = 1;
+
+  // The set of instance IDs that are failed to stop.
+  repeated uint32 failed = 2;
+}
+
+
+/**
+ *  Request message for TaskService.RestartTasks method.
+ */
+message RestartTasksRequest {
+  // The job ID of the tasks to restart.
+  peloton.JobID jobId = 1;
+
+  // The instance ID ranges of the tasks to restart.
+  repeated task.InstanceRange ranges = 2;
+}
+
+
+/**
+ *  Response message for TaskService.RestartTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ *    INTERNAL:      if the tasks fail to restart for internal errors.
+ */
+message RestartTasksResponse {
+  // The set of instance IDs that have been stopped.
+  repeated uint32 stopped = 1;
+
+  // The set of instance IDs that are failed to stop.
+  repeated uint32 failed = 2;
+}
+
+
+/**
+ *  Request message for TaskService.QueryTasks method.
+ */
+message QueryTasksRequest {
+  // The job ID of the tasks to query.
+  peloton.JobID jobId = 1;
+
+  // The spec of query criteria for the tasks.
+  task.QuerySpec spec = 2;
+
+  // The spec of how to do pagination for the query results.
+  query.PaginationSpec pagination = 3;
+}
+
+
+/**
+ *  Response message for TaskService.QueryTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found.
+ *    INTERNAL:      if fail to query the tasks for internal errors.
+ */
+message QueryTasksResponse {
+  // List of tasks that match the task query criteria.
+  repeated TaskInfo records = 1;
+
+  // Pagination result of the task query.
+  query.Pagination pagination = 2;
+}
+
+
+/**
+ *  Request message for TaskService.BrowseSandbox method.
+ */
+message BrowseSandboxRequest {
+  // The job ID of the task to browse the sandbox.
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task to browse the sandbox.
+  uint32 instanceId = 2;
+}
+
+
+/**
+ *  Response message for TaskService.BrowseSandbox method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:     if the job ID is not found.
+ *    OUT_OF_RANGE:  if the instance IDs are out of range.
+ *    INTERNAL:      if fail to browse the sandbox for internal errors.
+ *    FAILED_PRECONDITION:  if the task has not been run yet.
+ */
+message BrowseSandboxResponse {
+  // The hostname of the sandbox.
+  string hostname = 2;
+
+  // The port of the sandbox.
+  string port = 3;
+
+  // The list of sandbox file paths.
+  // TODO: distinguish files and directories in the sandbox
+  repeated string paths = 4;
+}

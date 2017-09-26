@@ -379,6 +379,64 @@ message TaskInfo {
 
 
 /**
+ *  Task InstanceID range [from, to)
+ */
+message InstanceRange {
+  uint32 from = 1;
+  uint32 to = 2;
+}
+
+
+/**
+ *  QuerySpec specifies the list of query criteria for tasks. All
+ *  indexed fields should be part of this message. And all fields
+ *  in this message have to be indexed too.
+ */
+message QuerySpec {
+  // DEPRECATED: use QueryJobRequest.pagination instead.
+  // The spec of how to do pagination for the query results.
+  query.PaginationSpec pagination = 1;
+
+  // List of task states to query the tasks. Will match all tasks if
+  // the list is empty.
+  repeated TaskState taskStates = 2;
+}
+
+
+/**
+ *  Task event of a Peloton task instance.
+ */
+message TaskEvent {
+  // Describes the source of the task event
+  enum Source {
+    SOURCE_UNKNOWN = 0;
+    SOURCE_JOBMGR = 1;
+    SOURCE_RESMGR = 2;
+    SOURCE_HOSTMGR = 3;
+  }
+
+  // TODO add reason
+  // with detailed reason for the task event
+
+  // The task ID of the task event.
+  peloton.TaskID taskId = 1;
+
+  // The task state of the task event.
+  TaskState state = 2;
+
+  // Short human friendly message explaining state.
+  string message = 3;
+
+  // The time when the event was created. The time is represented in
+  // RFC3339 form with UTC timezone.
+  string timestamp = 4;
+
+  // The source that generated the task event.
+  Source source = 5;
+}
+
+// DEPRECATED by peloton.api.task.svc.TaskService.
+/**
  *  Task manager interface
  */
 service TaskManager
@@ -408,6 +466,7 @@ service TaskManager
   rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
 }
 
+// DEPRECATED by google.rpc.INTERNAL error.
 /**
  *  Failures for browsing sandbox files requests to mesos call.
  */
@@ -415,6 +474,7 @@ message BrowseSandboxFailure {
   string message = 1;
 }
 
+// DEPRECATED by google.rpc.FAILED_PRECONDITION error.
 /**
  *  Task not running error.
  */
@@ -422,11 +482,13 @@ message TaskNotRunning {
   string message = 1;
 }
 
+// DEPRECATED by peloton.api.task.svc.BrowseSandboxRequest.
 message BrowseSandboxRequest {
   peloton.JobID jobId = 1;
   uint32 instanceId = 2;
 }
 
+// DEPRECATED by peloton.api.task.svc.BrowseSandboxResponse.
 message BrowseSandboxResponse {
   message Error {
     errors.JobNotFound notFound = 1;
@@ -441,6 +503,7 @@ message BrowseSandboxResponse {
   repeated string paths = 4;
 }
 
+// DEPRECATED by google.rpc.OUT_OF_RANGE error.
 message InstanceIdOutOfRange
 {
   // Entity ID of the job
@@ -450,30 +513,26 @@ message InstanceIdOutOfRange
   uint32 instanceCount = 2;
 }
 
+// DEPRECATED by peloton.api.task.svc.GetTaskRequest.
 message GetRequest {
   peloton.JobID jobId = 1;
   uint32 instanceId = 2;
 }
 
+// DEPRECATED by peloton.api.task.svc.GetTaskResponse.
 message GetResponse {
   TaskInfo result = 1;
   errors.JobNotFound notFound = 2;
   InstanceIdOutOfRange outOfRange = 3;
 }
 
-/**
- *  Task InstanceID range [from, to)
- */
-message InstanceRange {
-  uint32 from = 1;
-  uint32 to = 2;
-}
-
+// DEPRECATED by peloton.api.task.svc.ListTasksRequest.
 message ListRequest {
   peloton.JobID jobId = 1;
   InstanceRange range = 2;
 }
 
+// DEPRECATED by peloton.api.task.svc.ListTasksResponse.
 message ListResponse {
   message Result {
     map<uint32, TaskInfo> value = 1;
@@ -482,11 +541,13 @@ message ListResponse {
   errors.JobNotFound notFound = 2;
 }
 
+// DEPRECATED by peloton.api.task.svc.StartTasksRequest.
 message StartRequest {
   peloton.JobID jobId = 1;
   repeated InstanceRange ranges = 2;
 }
 
+// DEPRECATED by peloton.api.task.svc.StartTasksResponse.
 message StartResponse {
    message Error {
     errors.JobNotFound notFound = 1;
@@ -499,6 +560,7 @@ message StartResponse {
   repeated uint32 invalidInstanceIds = 3;
 }
 
+// DEPRECATED by google.rpc.INTERNAL error.
 /**
  * Error when TaskStart failed.
  */
@@ -506,16 +568,19 @@ message TaskStartFailure {
   string message = 1;
 }
 
+// DEPRECATED by peloton.api.task.svc.StopTasksRequest.
 // If no ranges specified, then stop all the tasks in the job.
 message StopRequest {
   peloton.JobID jobId = 1;
   repeated InstanceRange ranges = 2;
 }
 
+// DEPRECATED by google.rpc.INTERNAL error.
 message TaskUpdateError {
   string message = 1;
 }
 
+// DEPRECATED by peloton.api.task.svc.StopTasksResponse.
 message StopResponse {
   message Error {
     errors.JobNotFound notFound = 1;
@@ -528,58 +593,34 @@ message StopResponse {
   repeated uint32 invalidInstanceIds = 3;
 }
 
+// DEPRECATED by peloton.api.task.svc.RestartTasksRequest.
 message RestartRequest {
   peloton.JobID jobId = 1;
   repeated InstanceRange ranges = 2;
 }
 
+// DEPRECATED by peloton.api.task.svc.RestartTasksResponse.
 message RestartResponse {
   errors.JobNotFound notFound = 1;
   InstanceIdOutOfRange outOfRange = 2;
 }
 
-message QuerySpec {
-  // All indexed fields should be part of this message.
-  query.PaginationSpec pagination = 1;
-}
-
+// DEPRECATED by peloton.api.task.svc.QueryTasksRequest.
 message QueryRequest {
   peloton.JobID jobId = 1;
 
   QuerySpec spec = 2;
 }
 
+// DEPRECATED by peloton.api.task.svc.QueryTasksResponse.
 message QueryResponse {
   message Error {
     errors.JobNotFound notFound = 1;
   }
 
   Error error = 1;
-  
+
   repeated TaskInfo records = 2;
 
   query.Pagination pagination = 3;
-}
-
-message TaskEvent {
-
-  // Describes the source of the task event
-  enum Source {
-    SOURCE_UNKNOWN = 0;
-    SOURCE_JOBMGR = 1;
-    SOURCE_RESMGR = 2;
-    SOURCE_HOSTMGR = 3;
-  }
-
-  // TODO add reason
-  // with detailed reason for the task event
-
-  peloton.TaskID task_id = 1;
-  TaskState state = 2;
-  // Short human friendly message explaining state.
-  string message = 3;
-  // The time when the event was created. The time is represented in
-  // RFC3339 form with UTC timezone.
-  string timestamp = 4;
-  Source source = 5;
 }
