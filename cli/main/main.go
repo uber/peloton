@@ -91,10 +91,14 @@ var (
 	jobStatus     = job.Command("status", "get job status")
 	jobStatusName = jobStatus.Arg("job", "job identifier").Required().String()
 
+	// peloton -z zookeeper-peloton-devel01 job query --labels="x=y,a=b" --respool=xx --keywords=k1,k2 --states=running,killed --limit=1
 	jobQuery            = job.Command("query", "query jobs by mesos label / respool")
-	jobQueryLabels      = jobQuery.Arg("labels", "labels").Default("").String()
-	jobQueryRespoolPath = jobQuery.Arg("respool", "respool path").Default("").String()
-	jobQueryKeywords    = jobQuery.Arg("keywords", "keywords").Default("").String()
+	jobQueryLabels      = jobQuery.Flag("labels", "labels").Default("").Short('l').String()
+	jobQueryRespoolPath = jobQuery.Flag("respool", "respool path").Default("").Short('r').String()
+	jobQueryKeywords    = jobQuery.Flag("keywords", "keywords").Default("").Short('k').String()
+	jobQueryStates      = jobQuery.Flag("states", "job states").Default("").Short('s').String()
+	jobQueryLimit       = jobQuery.Flag("limit", "limit").Default("100").Short('n').Uint32()
+	jobQueryOffset      = jobQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
 
 	jobUpdate       = job.Command("update", "update a job")
 	jobUpdateID     = jobUpdate.Arg("job", "job identifier").Required().String()
@@ -271,7 +275,7 @@ func main() {
 	case jobStatus.FullCommand():
 		err = client.JobStatusAction(*jobStatusName)
 	case jobQuery.FullCommand():
-		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords)
+		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryLimit, *jobQueryOffset)
 	case jobUpdate.FullCommand():
 		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig)
 	case taskGet.FullCommand():

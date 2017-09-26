@@ -5,19 +5,27 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strings"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 
 	"gopkg.in/yaml.v2"
 )
 
 const (
 	labelSeparator  = ","
-	keyValSeparator = ":"
+	keyValSeparator = "="
 
 	defaultResponseFormat = "yaml"
 	jsonResponseFormat    = "json"
+)
+
+const (
+	jobQueryFormatHeader = "ID\tName\tOwner\tState\tCreate Time\tInstance Total\t" +
+		"Instance Running\t\n"
+	jobQueryFormatBody = "%s\t%s\t%s\t%s\t%s\t%d\t%d\t\n"
 )
 
 // JobCreateAction is the action for creating a job
@@ -104,7 +112,13 @@ func (client *Client) JobStatusAction(jobID string) error {
 }
 
 // JobQueryAction is the action for getting job ids by labels and respool path
-func (client *Client) JobQueryAction(labels string, respoolPath string, keywords string) error {
+func (client *Client) JobQueryAction(
+	labels string,
+	respoolPath string,
+	keywords string,
+	states string,
+	limit uint32,
+	offset uint32) error {
 	var apiLabels []*peloton.Label
 	if len(labels) > 0 {
 		labelPairs := strings.Split(labels, labelSeparator)
@@ -134,11 +148,23 @@ func (client *Client) JobQueryAction(labels string, respoolPath string, keywords
 			apiKeywords = append(apiKeywords, k)
 		}
 	}
+
+	var apiStates []job.JobState
+	for _, k := range strings.Split(states, labelSeparator) {
+		if k != "" {
+			apiStates = append(apiStates, job.JobState(job.JobState_value[k]))
+		}
+	}
 	var request = &job.QueryRequest{
 		RespoolID: respoolID,
 		Spec: &job.QuerySpec{
-			Labels:   apiLabels,
-			Keywords: apiKeywords,
+			Labels:    apiLabels,
+			Keywords:  apiKeywords,
+			JobStates: apiStates,
+			Pagination: &query.PaginationSpec{
+				Limit:  limit,
+				Offset: offset,
+			},
 		},
 	}
 	response, err := client.jobClient.Query(client.ctx, request)
@@ -269,6 +295,25 @@ func printJobStatusResponse(r *job.GetResponse, jsonFormat bool) {
 	tabWriter.Flush()
 }
 
+func printJobQueryRecord(j *job.JobInfo) {
+	startTime, err := time.Parse(time.RFC3339Nano, j.GetRuntime().GetCreationTime())
+	startTimeStr := ""
+	if err == nil {
+		startTimeStr = startTime.Format(time.RFC3339)
+	}
+	fmt.Fprintf(
+		tabWriter,
+		jobQueryFormatBody,
+		j.GetId().GetValue(),
+		j.GetConfig().GetName(),
+		j.GetConfig().GetOwningTeam(),
+		j.GetRuntime().GetState().String(),
+		startTimeStr,
+		j.GetConfig().GetInstanceCount(),
+		j.GetRuntime().GetTaskStats()["RUNNING"],
+	)
+}
+
 func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
 	if jsonFormat {
 		printResponseJSON(r)
@@ -278,8 +323,9 @@ func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
 		} else if len(r.GetRecords()) == 0 {
 			fmt.Fprint(tabWriter, "No jobs found.\n", r.GetError().String())
 		} else {
-			for _, jobID := range r.Records {
-				fmt.Fprintf(tabWriter, "%s\n", jobID)
+			fmt.Fprintf(tabWriter, jobQueryFormatHeader)
+			for _, k := range r.GetRecords() {
+				printJobQueryRecord(k)
 			}
 		}
 		tabWriter.Flush()

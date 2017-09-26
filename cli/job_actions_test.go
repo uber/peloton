@@ -16,6 +16,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 )
 
@@ -265,10 +266,17 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 				Key:   "key",
 				Value: "value",
 			}},
+			JobStates: []job.JobState{
+				job.JobState_RUNNING,
+			},
+			Pagination: &query.PaginationSpec{
+				Limit:  10,
+				Offset: 0,
+			},
 		},
 	}).Return(nil, nil)
 
-	suite.NoError(c.JobQueryAction("key:value", "", "keyword,"))
+	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", 10, 0))
 }
 
 func (suite *jobActionsTestSuite) TestClient_JobGetAction() {
