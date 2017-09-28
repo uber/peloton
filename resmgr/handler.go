@@ -630,7 +630,7 @@ func (h *ServiceHandler) KillTasks(
 			continue
 		}
 
-		err := h.rmTracker.MarkItDone(taskTobeKilled)
+		err := h.rmTracker.MarkItInvalid(taskTobeKilled)
 		if err != nil {
 			tasksNotKilled = append(tasksNotKilled, taskTobeKilled)
 			continue

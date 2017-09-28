@@ -762,3 +762,37 @@ func (s *ResPoolSuite) TestGetGangResources() {
 	s.Equal(float64(100), res.MEMORY)
 	s.Equal(float64(10), res.DISK)
 }
+
+func (s *ResPoolSuite) TestTaskValidation() {
+	rootID := peloton.ResourcePoolID{Value: "root"}
+	respool1ID := peloton.ResourcePoolID{Value: "respool1"}
+	poolConfigroot := &pb_respool.ResourcePoolConfig{
+		Name:      "root",
+		Parent:    nil,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolroot, err := NewRespool(tally.NoopScope, rootID.Value, nil, poolConfigroot)
+	s.NoError(err)
+
+	poolConfig1 := &pb_respool.ResourcePoolConfig{
+		Name:      "respool1",
+		Parent:    &rootID,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value, resPoolroot, poolConfig1)
+	s.NoError(err)
+	resPoolNode1.SetEntitlement(s.getEntitlement())
+
+	for _, task := range s.getTasks() {
+		resPoolNode1.EnqueueGang(resPoolNode1.MakeTaskGang(task))
+		resPoolNode1.AddInvalidTask(task.Id)
+	}
+
+	gangs, err := resPoolNode1.DequeueGangList(4)
+	s.NoError(err)
+	s.Equal(0, len(gangs))
+}

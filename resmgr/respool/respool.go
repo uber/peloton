@@ -94,6 +94,9 @@ type ResPool interface {
 	// CalculateAllocation calculates the allocation recursively for
 	// all the children.
 	CalculateAllocation() *scalar.Resources
+	// AddInvalidTask will add the killed tasks to respool
+	// By that respool can discard those tasks asynchronously
+	AddInvalidTask(task *peloton.TaskID)
 }
 
 // resPool implements ResPool interface
@@ -111,6 +114,7 @@ type resPool struct {
 	allocation      *scalar.Resources
 	demand          *scalar.Resources
 	metrics         *Metrics
+	invalidTasks    map[string]bool
 }
 
 // NewRespool will initialize the resource pool node and return that
@@ -144,6 +148,7 @@ func NewRespool(
 		entitlement:     &scalar.Resources{},
 		allocation:      &scalar.Resources{},
 		demand:          &scalar.Resources{},
+		invalidTasks:    make(map[string]bool),
 	}
 
 	// Initialize metrics
@@ -286,6 +291,14 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 			}
 			break
 		}
+
+		// checking if the gang is stil valid
+		// before admission control
+		err = n.validateGang(gang)
+		if err != nil {
+			continue
+		}
+
 		if n.canBeAdmitted(gang) {
 			log.WithField("gang", gang.Tasks[0].Id).
 				Debug("Can be admitted")
@@ -314,6 +327,69 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	}
 	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
 	return gangList, nil
+}
+
+// validateGang checks for all/some tasks been deleted. This function will delete that
+// gang from pending queue if all tasks are deleted or enqueue gang back with rest of
+// the tasks in the gang
+func (n *resPool) validateGang(gang *resmgrsvc.Gang) error {
+	n.Lock()
+	defer n.Unlock()
+	var invalidateGang bool
+
+	if gang == nil {
+		invalidateGang = true
+	}
+	var newTasks []*resmgr.Task
+
+	// Check if gang is not nil
+	if !invalidateGang {
+		for _, task := range gang.GetTasks() {
+			if _, exists := n.invalidTasks[task.Id.Value]; !exists {
+				newTasks = append(newTasks, task)
+			} else {
+				delete(n.invalidTasks, task.Id.Value)
+				invalidateGang = true
+			}
+		}
+	}
+
+	// Gang is validated so ready for admission control
+	if !invalidateGang {
+		return nil
+	}
+
+	// remove it from the pending queue
+	log.WithFields(log.Fields{
+		"Gang": gang,
+	}).Info("Tasks are deleted for this gang")
+	// Removing the gang from pending queue as tasks are deleted
+	// from this gang
+	err := n.pendingQueue.Remove(gang)
+	if err != nil {
+		log.WithError(err).Error("Not able to delete" +
+			"gang from pending queue")
+		return err
+	}
+
+	// We need to enqueue the gang if all the tasks are not
+	// deleted from the gang
+	if gang != nil && len(newTasks) != 0 {
+		gang.Tasks = newTasks
+		err = n.pendingQueue.Enqueue(gang)
+		if err != nil {
+			log.WithError(err).WithField("newGang", gang).
+				Error("Not able to enqueue" +
+					"gang to pending queue")
+		}
+		return err
+	}
+	// All the tasks in this gang is been deleted
+	// sending error for the validation by that ignore this gang
+	// for admission control
+	log.WithField("gang", gang).Info("All tasks are killed " +
+		"for gang")
+	return errors.New("All tasks are killed for gang")
 }
 
 func (n *resPool) canBeAdmitted(gang *resmgrsvc.Gang) bool {
@@ -711,6 +787,14 @@ func (n *resPool) updateDynamicResourceMetrics() {
 	n.metrics.ResourcePoolEntitlement.Update(n.entitlement)
 	n.metrics.ResourcePoolAllocation.Update(n.allocation)
 	n.metrics.ResourcePoolAvailable.Update(n.entitlement.Subtract(n.allocation))
+}
+
+// AddInvalidTask adds the invalid task by that it can
+// remove them from the respool later
+func (n *resPool) AddInvalidTask(task *peloton.TaskID) {
+	n.Lock()
+	defer n.Unlock()
+	n.invalidTasks[task.Value] = true
 }
 
 func getLimits(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {

@@ -43,6 +43,10 @@ type Tracker interface {
 	// resources to respool
 	MarkItDone(taskID *peloton.TaskID) error
 
+	// MarkItInvalid marks the task done and invalidate them
+	// in to respool by that they can be removed from the queue
+	MarkItInvalid(taskID *peloton.TaskID) error
+
 	// TasksByHosts returns all tasks of the given type running on the given hosts.
 	TasksByHosts(hosts []string, taskType resmgr.TaskType) map[string][]*RMTask
 
@@ -213,6 +217,21 @@ func (tr *tracker) MarkItDone(
 	}
 	log.WithField("Task", tID.Value).Info("Deleting the task from Tracker")
 	tr.DeleteTask(tID)
+	return nil
+}
+
+// MarkItInvalid marks the task done and invalidate them
+// in to respool by that they can be removed from the queue
+func (tr *tracker) MarkItInvalid(tID *peloton.TaskID) error {
+	t := tr.GetTask(tID)
+	if t == nil {
+		return errors.Errorf("task %s is not in tracker", tID)
+	}
+	err := tr.MarkItDone(tID)
+	if err != nil {
+		return err
+	}
+	t.respool.AddInvalidTask(tID)
 	return nil
 }
 
