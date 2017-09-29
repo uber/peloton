@@ -1120,7 +1120,8 @@ func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 	if currentVersion == 0 {
 		vc += ", null"
 	}
-	condition := "version IN (" + vc + ")"
+	// Comment out the condition as we are seeing perf issue with CAS writes in C* in pit-prod01
+	// condition := "version IN (" + vc + ")"
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(taskRuntimeTable).
@@ -1128,8 +1129,8 @@ func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 		Set("update_time", time.Now().UTC()).
 		Set("state", taskInfo.GetRuntime().GetState().String()).
 		Set("runtime_info", runtimeBuffer).
-		Where(qb.Eq{"job_id": taskInfo.GetJobId().GetValue(), "instance_id": taskInfo.InstanceId}).
-		IfOnly(condition)
+		Where(qb.Eq{"job_id": taskInfo.GetJobId().GetValue(), "instance_id": taskInfo.InstanceId}) //.
+		//IfOnly(condition)
 
 	if err := s.applyStatement(ctx, stmt, getTaskID(taskInfo)); err != nil {
 		s.metrics.TaskUpdateFail.Inc(1)

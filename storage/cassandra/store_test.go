@@ -6,11 +6,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
-
-	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -625,6 +622,8 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 	suite.Nil(task)
 }
 
+/* Disable the test as we need to temporary disable LWT for C* writes. See T1176379
+
 func (suite *CassandraStoreTestSuite) TestUpdateTaskConcurrently() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	before := time.Now()
@@ -664,6 +663,7 @@ func (suite *CassandraStoreTestSuite) TestUpdateTaskConcurrently() {
 	suite.Equal(uint64(c), info.GetRuntime().GetRevision().GetVersion())
 	suite.True(info.GetRuntime().GetRevision().UpdatedAt >= uint64(before.UnixNano()))
 }
+*/
 
 func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
