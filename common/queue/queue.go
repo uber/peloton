@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+// DequeueTimeOutError represents the error that the dequeue max wait time expired.
+type DequeueTimeOutError time.Duration
+
+func (d DequeueTimeOutError) Error() string {
+	return fmt.Sprintf("Dequeue max wait time expired: %v", d)
+}
+
 // Queue defines the interface of an item queue
 type Queue interface {
 	GetName() string
@@ -70,9 +77,8 @@ func (q *queue) Dequeue(maxWaitTime time.Duration) (interface{}, error) {
 	case item := <-q.channel:
 		return item, nil
 	case <-timeout:
-		return nil, fmt.Errorf("Dequeue timed out after %v", maxWaitTime)
+		return nil, DequeueTimeOutError(maxWaitTime)
 	}
-
 }
 
 // Length returns the length of the queue at any time

@@ -84,6 +84,36 @@ service ResourceManagerService {
    * Kill Tasks kills/Delete the tasks in Resource Manager
    */
   rpc KillTasks(KillTasksRequest) returns (KillTasksResponse);
+
+  /**
+  * Get the list of tasks to preempt. The tasks will transition from RUNNING to PREEMPTING
+  * state after the return of this method. This method will be called by the
+  * job manager to kill the tasks and re-enqueue them.
+  */
+  rpc GetPreemptibleTasks(GetPreemptibleTasksRequest) returns (GetPreemptibleTasksResponse);
+}
+
+message GetPreemptibleTasksFailure {
+  string message = 1;
+}
+
+message GetPreemptibleTasksRequest {
+  // Max number of running tasks to dequeue
+  uint32 limit = 1;
+
+  // Timeout in milliseconds if no tasks are ready
+  uint32 timeout = 2;
+}
+
+message GetPreemptibleTasksResponse {
+  message Error {
+    RequestTimedout timedout = 1;
+    GetPreemptibleTasksFailure failure = 2;
+  }
+  Error error = 1;
+
+  // The list of tasks that have been dequeued
+  repeated resmgr.Task tasks = 2;
 }
 
 message ResourcePoolNotFound {

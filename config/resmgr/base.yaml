@@ -33,6 +33,10 @@ resmgr:
   task:
     placing_timeout: 10m
     launching_timeout: 20m
+  preemption:
+    task_preemption_period: 60s
+    sustained_over_allocation_count: 5
+    enabled: true
 
 election:
   root: "/peloton"

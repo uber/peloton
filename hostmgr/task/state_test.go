@@ -46,6 +46,10 @@ func (c *MockClient) GetTasksByHosts(context.Context, *resmgrsvc.GetTasksByHosts
 	return nil, nil
 }
 
+func (c *MockClient) GetPreemptibleTasks(context.Context, *resmgrsvc.GetPreemptibleTasksRequest, ...yarpc.CallOption) (*resmgrsvc.GetPreemptibleTasksResponse, error) {
+	return nil, nil
+}
+
 func (c *MockClient) NotifyTaskUpdates(ctx context.Context, request *resmgrsvc.NotifyTaskUpdatesRequest, opts ...yarpc.CallOption) (*resmgrsvc.NotifyTaskUpdatesResponse, error) {
 	c.Lock()
 	defer c.Unlock()

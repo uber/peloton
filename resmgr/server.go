@@ -6,6 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
+	"code.uber.internal/infra/peloton/resmgr/preemption"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
 
@@ -24,6 +25,7 @@ type Server struct {
 	getEntitlementCalculator func() entitlement.Calculator
 	getRecoveryHandler       func() RecoveryHandler
 	getReconciler            func() task.Reconciler
+	getPreemptor             func() preemption.Preemptor
 }
 
 // NewServer will create the elect handle object
@@ -36,6 +38,7 @@ func NewServer(parent tally.Scope, httpPort, grpcPort int) *Server {
 		getEntitlementCalculator: entitlement.GetCalculator,
 		getRecoveryHandler:       GetRecoveryHandler,
 		getReconciler:            task.GetReconciler,
+		getPreemptor:             preemption.GetPreemptor,
 		metrics:                  NewMetrics(parent),
 	}
 	return &server
@@ -81,6 +84,12 @@ func (s *Server) GainedLeadershipCallback() error {
 		return err
 	}
 
+	err = s.getPreemptor().Start()
+	if err != nil {
+		log.Errorf("Failed to start task preemptor")
+		return err
+	}
+
 	return nil
 }
 
@@ -119,6 +128,12 @@ func (s *Server) LostLeadershipCallback() error {
 	err = s.getReconciler().Stop()
 	if err != nil {
 		log.Errorf("Failed to stop task reconciler")
+		return err
+	}
+
+	err = s.getPreemptor().Stop()
+	if err != nil {
+		log.Errorf("Failed to stop task preemptor")
 		return err
 	}
 

@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
+	"code.uber.internal/infra/peloton/resmgr/preemption"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/storage/stores"
@@ -234,8 +235,11 @@ func main() {
 	// Initializing the task reconciler
 	task.InitReconciler(task.GetTracker(), taskStore, rootScope, cfg.ResManager.TaskReconciliationPeriod)
 
+	// Initializing the task preemptor
+	preemption.InitPreemptor(rootScope, cfg.ResManager.PreemptionConfig, task.GetTracker())
+
 	// Initialize resource manager service handlers
-	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker(), cfg.ResManager)
+	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker(), preemption.GetPreemptor(), cfg.ResManager)
 
 	// Initialize recovery
 	resmgr.InitRecovery(rootScope, jobStore, taskStore, serviceHandler, cfg.ResManager)

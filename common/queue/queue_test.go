@@ -131,5 +131,7 @@ func (suite *QueueTestSuite) TestDequeueTimedout() {
 
 	item, err := q.Dequeue(100 * time.Millisecond)
 	suite.Error(err)
+	_, timedOut := err.(DequeueTimeOutError)
+	suite.True(timedOut)
 	suite.Equal(item, nil)
 }

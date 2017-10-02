@@ -3,6 +3,7 @@ package resmgr
 import (
 	"time"
 
+	"code.uber.internal/infra/peloton/resmgr/preemption"
 	"code.uber.internal/infra/peloton/resmgr/task"
 )
 
@@ -25,4 +26,7 @@ type Config struct {
 
 	// RM Task Config
 	RmTaskConfig *task.Config `yaml:"task"`
+
+	// Config for task preemption
+	PreemptionConfig *preemption.Config `yaml:"preemption"`
 }

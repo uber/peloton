@@ -20,7 +20,10 @@ const testConfig = `
   task:
     placing_timeout: 10m
     launching_timeout: 20m
-
+  preemption:
+    task_preemption_period: 60s
+    sustained_over_allocation_count: 5
+    enabled: true
 `
 
 func writeFile(t *testing.T, contents string) string {
@@ -37,7 +40,8 @@ func TestResourceManagerConfig(t *testing.T) {
 	cfgFile := writeFile(t, testConfig)
 	defer os.Remove(cfgFile)
 	var testConfig Config
-	config.Parse(&testConfig, cfgFile)
+	err := config.Parse(&testConfig, cfgFile)
+	assert.NoError(t, err)
 
 	assert.Equal(t, 5290, testConfig.HTTPPort)
 	assert.Equal(t, 5394, testConfig.GRPCPort)
@@ -46,4 +50,7 @@ func TestResourceManagerConfig(t *testing.T) {
 	assert.Equal(t, 1*time.Hour, testConfig.TaskReconciliationPeriod)
 	assert.Equal(t, 10*time.Minute, testConfig.RmTaskConfig.PlacingTimeout)
 	assert.Equal(t, 20*time.Minute, testConfig.RmTaskConfig.LaunchingTimeout)
+	assert.Equal(t, 1*time.Minute, testConfig.PreemptionConfig.TaskPreemptionPeriod)
+	assert.Equal(t, 5, testConfig.PreemptionConfig.SustainedOverAllocationCount)
+	assert.Equal(t, true, testConfig.PreemptionConfig.Enabled)
 }

@@ -137,6 +137,7 @@ mockgens: pbgens $(GOMOCK)
 	$(call local_mockgen,jobmgr/task/launcher,Launcher)
 	$(call local_mockgen,jobmgr/tracked,Manager;Job;Task)
 	$(call local_mockgen,resmgr/respool,ResPool;Tree)
+	$(call local_mockgen,resmgr/preemption,Preemptor)
 	$(call local_mockgen,storage,JobStore;TaskStore;UpgradeStore;FrameworkInfoStore;ResourcePoolStore;PersistentVolumeStore)
 	$(call local_mockgen,yarpc/encoding/mpb,SchedulerClient;MasterOperatorClient)
 	$(call local_mockgen,yarpc/transport/mhttp,Inbound)
@@ -190,8 +191,8 @@ devtools:
 	go get github.com/golang/mock/gomock
 	go get github.com/golang/mock/mockgen
 	go get golang.org/x/tools/cmd/goimports
-# temp removing: https://github.com/gemnasium/migrate/issues/26
-# go get github.com/gemnasium/migrate
+    # temp removing: https://github.com/gemnasium/migrate/issues/26
+    # go get github.com/gemnasium/migrate
 
 version:
 	@echo $(PACKAGE_VERSION)

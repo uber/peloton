@@ -12,6 +12,10 @@ type Metrics struct {
 	DequeueGangSuccess tally.Counter
 	DequeueGangTimeout tally.Counter
 
+	APIGetPreemptibleTasks     tally.Counter
+	GetPreemptibleTasksSuccess tally.Counter
+	GetPreemptibleTasksTimeout tally.Counter
+
 	APISetPlacements    tally.Counter
 	SetPlacementSuccess tally.Counter
 	SetPlacementFail    tally.Counter
@@ -45,8 +49,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		EnqueueGangFail:    failScope.Counter("enqueue_gang"),
 
 		APIDequeueGangs:    apiScope.Counter("dequeue_gangs"),
-		DequeueGangSuccess: successScope.Counter("dequeue_tasks"),
-		DequeueGangTimeout: timeoutScope.Counter("dequeue_tasks"),
+		DequeueGangSuccess: successScope.Counter("dequeue_gangs"),
+		DequeueGangTimeout: timeoutScope.Counter("dequeue_gangs"),
+
+		APIGetPreemptibleTasks:     apiScope.Counter("get_preemptible_tasks"),
+		GetPreemptibleTasksSuccess: successScope.Counter("get_preemptible_tasks"),
+		GetPreemptibleTasksTimeout: timeoutScope.Counter("get_preemptible_tasks"),
 
 		APISetPlacements:    apiScope.Counter("set_placements"),
 		SetPlacementSuccess: successScope.Counter("set_placements"),

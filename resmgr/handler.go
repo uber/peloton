@@ -6,25 +6,25 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-
-	"go.uber.org/yarpc"
-
-	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/eventstream"
-	"code.uber.internal/infra/peloton/common/queue"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	rmtask "code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/util"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	t "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/common/queue"
+	"code.uber.internal/infra/peloton/resmgr/preemption"
+	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
+	rmtask "code.uber.internal/infra/peloton/resmgr/task"
+	"code.uber.internal/infra/peloton/util"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
 var (
@@ -42,6 +42,7 @@ type ServiceHandler struct {
 	placements         queue.Queue
 	eventStreamHandler *eventstream.Handler
 	rmTracker          rmtask.Tracker
+	preemptor          preemption.Preemptor
 	maxOffset          *uint64
 	config             Config
 }
@@ -51,6 +52,7 @@ func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
 	rmTracker rmtask.Tracker,
+	preemptor preemption.Preemptor,
 	conf Config) *ServiceHandler {
 
 	var maxOffset uint64
@@ -63,6 +65,7 @@ func InitServiceHandler(
 			maxPlacementQueueSize,
 		),
 		rmTracker: rmTracker,
+		preemptor: preemptor,
 		maxOffset: &maxOffset,
 		config:    conf,
 	}
@@ -676,5 +679,52 @@ func (h *ServiceHandler) KillTasks(
 
 	return &resmgrsvc.KillTasksResponse{
 		Error: killResponseErr,
+	}, nil
+}
+
+// GetPreemptibleTasks returns tasks which need to be preempted from the resource pool
+func (h *ServiceHandler) GetPreemptibleTasks(
+	ctx context.Context,
+	req *resmgrsvc.GetPreemptibleTasksRequest) (*resmgrsvc.GetPreemptibleTasksResponse, error) {
+
+	log.WithField("request", req).Debug("GetPreemptibleTasks called.")
+	h.metrics.APIGetPreemptibleTasks.Inc(1)
+
+	limit := req.GetLimit()
+	timeout := time.Duration(req.GetTimeout())
+	var tasks []*resmgr.Task
+	for i := 0; i < int(limit); i++ {
+		task, err := h.preemptor.DequeueTask(timeout * time.Millisecond)
+		if err != nil {
+			// no more tasks
+			h.metrics.GetPreemptibleTasksTimeout.Inc(1)
+			break
+		}
+
+		// Transit task state machine to PREEMPTING
+		if rmTask := h.rmTracker.GetTask(task.Id); rmTask != nil {
+			err = rmTask.TransitTo(
+				t.TaskState_PREEMPTING.String())
+			if err != nil {
+				// the task could have moved from RUNNING state
+				log.WithError(err).
+					WithField("task_ID", task.Id.Value).
+					Error("failed to transit state for task")
+				continue
+			}
+		} else {
+			log.WithError(err).
+				WithField("task_ID", task.Id.Value).
+				Error("failed to find task in the tracker")
+			continue
+		}
+		tasks = append(tasks, task)
+	}
+
+	log.WithField("preemptible_tasks", tasks).
+		Info("GetPreemptibleTasks returned")
+	h.metrics.GetPreemptibleTasksSuccess.Inc(1)
+	return &resmgrsvc.GetPreemptibleTasksResponse{
+		Tasks: tasks,
 	}, nil
 }

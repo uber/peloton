@@ -114,6 +114,11 @@ class Job(object):
                 time.sleep(self.config.sleep_time_sec)
                 attempts += 1
 
+        if attempts == self.config.max_retry_attempts:
+            log.info('max attempts reached to wait for goal state')
+            log.info('goal_state:%s current_state:%s', goal_state, state)
+            assert False
+
         end = time.time()
         elapsed = end - start
         log.info('state transition took %s seconds', elapsed)

@@ -30,6 +30,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/resmgr/preemption/mocks"
 )
 
 const (
@@ -720,4 +721,51 @@ func (suite *HandlerTestSuite) TestGetActiveTasks() {
 	suite.NoError(err)
 	suite.NotNil(res)
 	suite.Equal(54, len(res.TaskStatesMap))
+}
+
+func (suite *HandlerTestSuite) TestGetPreemptibleTasks() {
+	defer suite.handler.rmTracker.Clear()
+
+	mockPreemptor := mocks.NewMockPreemptor(suite.ctrl)
+	suite.handler.preemptor = mockPreemptor
+
+	// Mock tasks in RUNNING state
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
+	var expectedTasks []*resmgr.Task
+	for j := 1; j <= 5; j++ {
+		taskID := &peloton.TaskID{
+			Value: fmt.Sprintf("task-test-dequque-preempt-%d-%d", j, j),
+		}
+		expectedTasks = append(expectedTasks, &resmgr.Task{
+			Id: taskID,
+		})
+		suite.rmTaskTracker.AddTask(&resmgr.Task{
+			Id: taskID,
+		}, nil, resp,
+			&rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+			})
+		rmTask := suite.handler.rmTracker.GetTask(taskID)
+		rmTask.TransitTo(task.TaskState_PENDING.String())
+		rmTask.TransitTo(task.TaskState_PLACED.String())
+		rmTask.TransitTo(task.TaskState_LAUNCHING.String())
+		rmTask.TransitTo(task.TaskState_RUNNING.String())
+	}
+
+	var calls []*gomock.Call
+	for _, et := range expectedTasks {
+		calls = append(calls, mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(et, nil))
+	}
+	gomock.InOrder(calls...)
+
+	// Make RPC request
+	req := &resmgrsvc.GetPreemptibleTasksRequest{
+		Timeout: 100,
+		Limit:   5,
+	}
+	res, err := suite.handler.GetPreemptibleTasks(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(res)
+	suite.Equal(5, len(res.Tasks))
 }
