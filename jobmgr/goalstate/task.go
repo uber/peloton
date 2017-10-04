@@ -59,7 +59,7 @@ func (e *engine) processTask(t tracked.Task) {
 	// Update and reschedule the task, based on the result.
 	delay := _indefDelay
 	switch {
-	case action == tracked.NoAction || action == tracked.UntrackAction:
+	case action == tracked.NoAction || action == tracked.UntrackAction || (success && action == tracked.StartAction):
 		// No need to reschedule.
 
 	case action != lastAction:

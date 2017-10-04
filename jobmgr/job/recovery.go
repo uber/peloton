@@ -139,6 +139,10 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		}
 		for i := start; i < end; i++ {
 			if _, ok := taskInfos[i]; ok {
+				if taskInfos[i].Runtime.State == pb_task.TaskState_INITIALIZED {
+					j.trackedManager.SetTask(jobID, i, taskInfos[i].Runtime)
+					j.metrics.TaskRecovered.Inc(1)
+				}
 				continue
 			}
 			// Task does not exist in taskStore.
