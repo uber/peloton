@@ -2,11 +2,7 @@ package main
 
 import (
 	"os"
-
-	log "github.com/sirupsen/logrus"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/api/transport"
-	"gopkg.in/alecthomas/kingpin.v2"
+	"time"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
@@ -17,6 +13,11 @@ import (
 	"code.uber.internal/infra/peloton/placement"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
+
+	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -105,7 +106,9 @@ func main() {
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	log.SetFormatter(&log.JSONFormatter{})
+	log.SetFormatter(&log.JSONFormatter{
+		TimestampFormat: time.RFC3339Nano,
+	})
 
 	initialLevel := log.InfoLevel
 	if *debug {
