@@ -118,6 +118,29 @@ func TestLessThanOrEqual(t *testing.T) {
 	assert.EqualValues(t, false, r2.LessThanOrEqual(&r1))
 }
 
+func TestEqual(t *testing.T) {
+	r1 := Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	r2 := Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	r3 := Resources{
+		CPU:    0.0,
+		MEMORY: 2.2,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	assert.EqualValues(t, true, r1.Equal(&r2))
+	assert.EqualValues(t, false, r2.Equal(&r3))
+}
+
 func TestConvertToResmgrResource(t *testing.T) {
 	taskConfig := &task.ResourceConfig{
 		CpuLimit:    4.0,

@@ -86,35 +86,90 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState() {
 	mockResTree := mocks.NewMockTree(suite.mockCtrl)
 	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
 
-	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
-	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
-		CPU:    20,
-		MEMORY: 200,
-		DISK:   2000,
-		GPU:    0,
-	}).AnyTimes()
-	mockResPool.EXPECT().GetAllocation().Return(&scalar.Resources{
-		CPU:    20,
-		MEMORY: 200,
-		DISK:   2000,
-		GPU:    0,
-	}).AnyTimes()
+	tt := []struct {
+		entitlement          *scalar.Resources
+		allocation           *scalar.Resources
+		eligibleRespoolCount int
+	}{
+		{ // allocation > entitlement
+			entitlement: &scalar.Resources{
+				CPU:    20,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			},
+			allocation: &scalar.Resources{
+				CPU:    21,
+				MEMORY: 220,
+				DISK:   2300,
+				GPU:    0,
+			},
+			eligibleRespoolCount: 1,
+		},
+		{ // Only 1 resource (CPU) is more than entitlement
+			entitlement: &scalar.Resources{
+				CPU:    20,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			},
+			allocation: &scalar.Resources{
+				CPU:    21,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			},
+			eligibleRespoolCount: 1,
+		},
+		{ // entitlement = allocation
+			entitlement: &scalar.Resources{
+				CPU:    20,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			},
+			allocation: &scalar.Resources{
+				CPU:    20,
+				MEMORY: 200,
+				DISK:   2000,
+				GPU:    0,
+			},
+			eligibleRespoolCount: 0,
+		},
+	}
 
+	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
 	l := list.New()
 	l.PushBack(mockResPool)
 	mockResTree.EXPECT().GetAllNodes(true).Return(
 		l,
 	).AnyTimes()
-
 	suite.preemptor.resTree = mockResTree
 	suite.preemptor.sustainedOverAllocationCount = 5
-	for i := 0; i < 6; i++ {
-		suite.preemptor.updateResourcePoolsState()
-	}
 
-	respools := suite.preemptor.getEligibleResPools()
-	suite.Equal(1, len(respools))
-	suite.Equal("respool-1", respools[0])
+	for _, t := range tt {
+		mockResPool.EXPECT().GetEntitlement().Return(t.entitlement).
+			Times(6)
+		mockResPool.EXPECT().GetAllocation().Return(t.allocation).
+			Times(6)
+
+		for i := 0; i < 6; i++ {
+			suite.preemptor.updateResourcePoolsState()
+		}
+
+		respools := suite.preemptor.getEligibleResPools()
+		suite.Equal(t.eligibleRespoolCount, len(respools))
+		if len(respools) == 1 {
+			suite.Equal("respool-1", respools[0])
+		}
+	}
+}
+
+func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState_MarkProcessed() {
+	respoolID := "respool-1"
+	p.respoolState[respoolID] = 1
+	p.markProcessed(respoolID)
+	suite.Equal(0, p.respoolState[respoolID])
 }
 
 func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState_Reset() {
@@ -215,6 +270,8 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 	suite.NoError(err)
 	// there should be 3 tasks in the preemption queue
 	suite.Equal(numRunningTasks, suite.preemptor.preemptionQueue.Length())
+
+	suite.Equal(0, p.respoolState["respool-1"])
 }
 
 func (suite *PreemptorTestSuite) TestPreemptor_Init() {

@@ -56,6 +56,7 @@ const (
 	UntrackAction        TaskAction = "untrack"
 	StartAction          TaskAction = "start_task"
 	StopAction           TaskAction = "stop_task"
+	InitializeAction     TaskAction = "initialize_task"
 	UseGoalVersionAction TaskAction = "use_goal_state"
 )
 
@@ -157,6 +158,9 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) error {
 
 	case StopAction:
 		err = t.stop(ctx)
+
+	case InitializeAction:
+		err = t.initialize(ctx)
 
 	default:
 		err = fmt.Errorf("no command configured for running task action `%v`", action)

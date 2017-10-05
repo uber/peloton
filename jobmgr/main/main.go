@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
 	"code.uber.internal/infra/peloton/jobmgr/tasksvc"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/upgrade"
@@ -345,11 +346,22 @@ func main() {
 		rootScope,
 	)
 
+	// Create a new task preemptor
+	taskPreemptor := preemptor.New(
+		dispatcher,
+		common.PelotonResourceManager,
+		taskStore,
+		trackedManager,
+		&cfg.JobManager.Preemptor,
+		rootScope,
+	)
+
 	server := jobmgr.NewServer(
 		cfg.JobManager.HTTPPort,
 		cfg.JobManager.GRPCPort,
 		goalstateEngine,
 		trackedManager,
+		taskPreemptor,
 	)
 
 	candidate, err := leader.NewCandidate(

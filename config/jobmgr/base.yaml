@@ -31,6 +31,10 @@ job_manager:
   task_launcher:
     placement_dequeue_limit: 10
     get_placements_timeout_ms: 100
+  task_preemptor:
+    preemption_period: 60s
+    preemption_dequeue_limit: 100
+    preemption_dequeue_timeout_ms: 100
 
 election:
   root: "/peloton"

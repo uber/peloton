@@ -78,6 +78,51 @@ func TestEngineSuggestActionGoalRunning(t *testing.T) {
 	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
 }
 
+func TestEngineSuggestActionGoalPreempting(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	e := &engine{}
+
+	taskMock := mocks.NewMockTask(ctrl)
+
+	tt := []struct {
+		currentState pb_task.TaskState
+		action       tracked.TaskAction
+	}{
+		{
+			currentState: pb_task.TaskState_INITIALIZED,
+			action:       tracked.StopAction,
+		},
+		{
+			currentState: pb_task.TaskState_LAUNCHING,
+			action:       tracked.StopAction,
+		},
+		{
+			currentState: pb_task.TaskState_LAUNCHED,
+			action:       tracked.StopAction,
+		},
+		{
+			currentState: pb_task.TaskState_RUNNING,
+			action:       tracked.StopAction,
+		},
+		{
+			currentState: pb_task.TaskState_LOST,
+			action:       tracked.InitializeAction,
+		},
+		{
+			currentState: pb_task.TaskState_KILLED,
+			action:       tracked.InitializeAction,
+		},
+	}
+
+	for _, test := range tt {
+		taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_PREEMPTING, ConfigVersion: 0})
+		taskMock.EXPECT().CurrentState().Return(tracked.State{State: test.currentState, ConfigVersion: 0})
+		assert.Equal(t, test.action, e.suggestTaskAction(taskMock))
+	}
+}
+
 func TestEngineProcessTask(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

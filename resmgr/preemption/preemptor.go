@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"code.uber.internal/infra/peloton/resmgr/task"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -67,7 +68,7 @@ func InitPreemptor(
 			stopChan: make(chan struct{}, 1),
 			preemptionQueue: queue.NewQueue(
 				"preemption-queue",
-				reflect.TypeOf(&resmgr.Task{}),
+				reflect.TypeOf(resmgr.Task{}),
 				maxPreemptionQueueSize,
 			),
 			respoolState: make(map[string]int),
@@ -185,17 +186,24 @@ func (p *preemptor) updateResourcePoolsState() {
 	nodes := p.resTree.GetAllNodes(true)
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		if n.GetEntitlement().LessThanOrEqual(n.GetAllocation()) {
-			if count, ok := p.respoolState[n.ID()]; ok {
-				p.respoolState[n.ID()] = count + 1
-			} else {
-				p.respoolState[n.ID()] = 0
-			}
-		} else {
+		resourcesAboveEntitlement := n.GetAllocation().Subtract(n.GetEntitlement())
+		if scalar.ZeroResource.Equal(resourcesAboveEntitlement) {
 			// reset counter to zero
 			p.respoolState[n.ID()] = 0
+		} else {
+			// increment the count
+			count, ok := p.respoolState[n.ID()]
+			if !ok {
+				count = 0
+			}
+			p.respoolState[n.ID()] = count + 1
 		}
 	}
+}
+
+// Resets the state of the resource pool
+func (p *preemptor) markProcessed(respoolID string) {
+	p.respoolState[respoolID] = 0
 }
 
 // processResourcePool takes a resource pool ID and performs actions
@@ -206,12 +214,21 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 		return errors.Wrap(err, "unable to get resource pool")
 	}
 	resourcesToFree := resourcePool.GetAllocation().Subtract(resourcePool.GetEntitlement())
+	log.
+		WithField("respool_ID", respoolID).
+		WithField("resource_to_free", resourcesToFree).
+		Debug("resource to free from resource pool")
+
 	tasks := p.ranker.GetTasksToEvict(respoolID, resourcesToFree)
 
 	var errs error
 	for _, t := range tasks {
 		switch t.GetCurrentState() {
 		case peloton_task.TaskState_RUNNING:
+			log.
+				WithField("task_ID", t.Task().Id.Value).
+				WithField("respool_ID", respoolID).
+				Debug("adding task to preemption queue")
 			err := p.preemptionQueue.Enqueue(t.Task())
 			if err != nil {
 				log.
@@ -223,6 +240,8 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 			}
 		}
 	}
+	// we've processed the pool
+	p.markProcessed(respoolID)
 	return errs
 }
 

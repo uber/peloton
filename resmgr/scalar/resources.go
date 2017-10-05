@@ -94,13 +94,26 @@ func lessThanOrEqual(f1, f2 float64) bool {
 	return v < 0
 }
 
-// LessThanOrEqual determines current Resources is LessThanOrEqual
+// LessThanOrEqual determines current Resources is less than or equal
 // the other one.
 func (r *Resources) LessThanOrEqual(other *Resources) bool {
 	return lessThanOrEqual(r.CPU, other.CPU) &&
 		lessThanOrEqual(r.MEMORY, other.MEMORY) &&
 		lessThanOrEqual(r.DISK, other.DISK) &&
 		lessThanOrEqual(r.GPU, other.GPU)
+}
+
+func equal(f1, f2 float64) bool {
+	return f1 == f2
+}
+
+// Equal determines current Resources is equal to
+// the other one.
+func (r *Resources) Equal(other *Resources) bool {
+	return equal(r.CPU, other.CPU) &&
+		equal(r.MEMORY, other.MEMORY) &&
+		equal(r.DISK, other.DISK) &&
+		equal(r.GPU, other.GPU)
 }
 
 // ConvertToResmgrResource converts task resource config to scalar.Resources
@@ -120,7 +133,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"Subtracted From CPU ": r.CPU,
 			"Subtracted Value ":    other.CPU,
-		}).Info("Subtracted value is Greater")
+		}).Debug("Subtracted value is Greater")
 		result.CPU = float64(0)
 	} else {
 		result.CPU = r.CPU - other.CPU
@@ -133,7 +146,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"Subtracted From GPU ": r.GPU,
 			"Subtracted Value ":    other.GPU,
-		}).Info("Subtracted value is Greater")
+		}).Debug("Subtracted value is Greater")
 		result.GPU = float64(0)
 	} else {
 		result.GPU = r.GPU - other.GPU
@@ -146,7 +159,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"Subtracted From Memory ": r.MEMORY,
 			"Subtracted Value ":       other.MEMORY,
-		}).Info("Subtracted value is Greater")
+		}).Debug("Subtracted value is Greater")
 		result.MEMORY = float64(0)
 	} else {
 		result.MEMORY = r.MEMORY - other.MEMORY
@@ -159,7 +172,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"Subtracted From DISK ": r.DISK,
 			"Subtracted Value ":     other.DISK,
-		}).Info("Subtracted value is Greater")
+		}).Debug("Subtracted value is Greater")
 		result.DISK = float64(0)
 	} else {
 		result.DISK = r.DISK - other.DISK

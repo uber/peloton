@@ -38,6 +38,14 @@ var (
 			task.TaskState_SUCCEEDED: tracked.UntrackAction,
 			task.TaskState_KILLED:    tracked.UntrackAction,
 		},
+		task.TaskState_PREEMPTING: {
+			task.TaskState_INITIALIZED: tracked.StopAction,
+			task.TaskState_LAUNCHING:   tracked.StopAction,
+			task.TaskState_LAUNCHED:    tracked.StopAction,
+			task.TaskState_RUNNING:     tracked.StopAction,
+			task.TaskState_LOST:        tracked.InitializeAction,
+			task.TaskState_KILLED:      tracked.InitializeAction,
+		},
 	}
 )
 
