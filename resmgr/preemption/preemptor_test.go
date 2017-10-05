@@ -37,7 +37,16 @@ type PreemptorTestSuite struct {
 	eventStreamHandler *eventstream.Handler
 }
 
-func (suite *PreemptorTestSuite) SetupTest() {
+var (
+	_taskResources = &task.ResourceConfig{
+		CpuLimit:    2,
+		DiskLimitMb: 150,
+		GpuLimit:    1,
+		MemLimitMb:  100,
+	}
+)
+
+func (suite *PreemptorTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 
 	rm_task.InitTaskTracker(tally.NoopScope)
@@ -63,7 +72,12 @@ func (suite *PreemptorTestSuite) SetupTest() {
 		),
 		respoolState: make(map[string]int),
 		ranker:       newStatePriorityRuntimeRanker(rm_task.GetTracker()),
+		tracker:      rm_task.GetTracker(),
 	}
+}
+
+func (suite *PreemptorTestSuite) TearDownTest() {
+	suite.tracker.Clear()
 }
 
 func (suite *PreemptorTestSuite) TestPreemptor_StartEnabled() {
@@ -258,10 +272,13 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
 
 	numRunningTasks := 3
-	tasks := suite.createTasks(numRunningTasks)
+	tasks := suite.createTasks(numRunningTasks, mockResPool)
+	for _, task := range tasks {
+		suite.transitToRunning(task.Id)
+	}
 
 	suite.preemptor.resTree = mockResTree
-	suite.preemptor.ranker = suite.getMockRanker(mockResPool, tasks)
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
 	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
@@ -272,6 +289,65 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 	suite.Equal(numRunningTasks, suite.preemptor.preemptionQueue.Length())
 
 	suite.Equal(0, p.respoolState["respool-1"])
+}
+
+func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks() {
+	mockResTree := mocks.NewMockTree(suite.mockCtrl)
+	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
+
+	// Mocks
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
+		CPU:    20,
+		MEMORY: 200,
+		DISK:   2000,
+		GPU:    1,
+	}).AnyTimes()
+	allocation := &scalar.Resources{
+		CPU:    25,
+		MEMORY: 500,
+		DISK:   2450,
+		GPU:    1,
+	}
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
+		func(res *scalar.Resources) {
+			allocation = allocation.Subtract(res)
+		}).Return(nil).AnyTimes()
+	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
+	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
+
+	demand := scalar.ZeroResource
+	mockResPool.EXPECT().AddToDemand(gomock.Any()).Do(
+		func(res *scalar.Resources) {
+			demand = demand.Add(res)
+		}).Return(nil).AnyTimes()
+
+	numReadyTasks := 3
+	tasks := suite.createTasks(numReadyTasks, mockResPool)
+	for _, task := range tasks {
+		suite.transitToReady(task.Id)
+	}
+	suite.preemptor.resTree = mockResTree
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
+
+	// Check allocation > entitlement before
+	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	// Check demand is zero
+	suite.Equal(demand, scalar.ZeroResource)
+
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.NoError(err)
+
+	// Check allocation <= entitlement after
+	suite.True(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	// Check demand includes resources for all READY tasks
+	suite.Equal(demand, &scalar.Resources{
+		CPU:    _taskResources.CpuLimit * float64(numReadyTasks),
+		MEMORY: _taskResources.MemLimitMb * float64(numReadyTasks),
+		DISK:   _taskResources.DiskLimitMb * float64(numReadyTasks),
+		GPU:    _taskResources.GpuLimit * float64(numReadyTasks),
+	}, demand)
 }
 
 func (suite *PreemptorTestSuite) TestPreemptor_Init() {
@@ -340,10 +416,12 @@ func (suite *PreemptorTestSuite) getResPools() map[string]*pb_respool.ResourcePo
 	}
 }
 
-func (suite *PreemptorTestSuite) createTasks(numTasks int) []*resmgr.Task {
+func (suite *PreemptorTestSuite) createTasks(numTasks int, mockResPool *mocks.MockResPool) []*resmgr.Task {
 	var tasks []*resmgr.Task
 	for i := 0; i < numTasks; i++ {
-		tasks = append(tasks, suite.createTask(i, uint32(i)))
+		task := suite.createTask(i, uint32(i))
+		tasks = append(tasks, task)
+		suite.tracker.AddTask(task, suite.eventStreamHandler, mockResPool, &rm_task.Config{})
 	}
 	return tasks
 }
@@ -356,12 +434,7 @@ func (suite *PreemptorTestSuite) createTask(instance int, priority uint32) *resm
 		JobId:    &peloton.JobID{Value: "job1"},
 		Id:       &peloton.TaskID{Value: taskID},
 		Hostname: "hostname",
-		Resource: &task.ResourceConfig{
-			CpuLimit:    2,
-			DiskLimitMb: 150,
-			GpuLimit:    1,
-			MemLimitMb:  100,
-		},
+		Resource: _taskResources,
 	}
 }
 
@@ -380,18 +453,26 @@ func (mr *mockRanker) GetTasksToEvict(respoolID string, resourcesLimit *scalar.R
 }
 
 // Returns a mock ranker with the tasks to evict
-func (suite *PreemptorTestSuite) getMockRanker(mockResPool *mocks.MockResPool, tasks []*resmgr.Task) ranker {
+func (suite *PreemptorTestSuite) getMockRanker(tasks []*resmgr.Task) ranker {
 	var tasksToEvict []*rm_task.RMTask
 	for _, task := range tasks {
-		suite.tracker.AddTask(task, suite.eventStreamHandler, mockResPool, &rm_task.Config{})
-		suite.transitToRunning(task.Id)
 		tasksToEvict = append(tasksToEvict, suite.tracker.GetTask(task.Id))
 	}
 	return newMockRanker(tasksToEvict)
 }
 
+func (suite *PreemptorTestSuite) transitToReady(taskID *peloton.TaskID) {
+	rmTask := suite.tracker.GetTask(taskID)
+	suite.NotNil(rmTask)
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+}
+
 func (suite *PreemptorTestSuite) transitToRunning(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
+	suite.NotNil(rmTask)
 	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
 	err = rmTask.TransitTo(task.TaskState_PLACED.String())
