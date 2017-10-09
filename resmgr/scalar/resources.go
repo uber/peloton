@@ -1,6 +1,7 @@
 package scalar
 
 import (
+	"fmt"
 	"math"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -124,6 +125,11 @@ func ConvertToResmgrResource(resource *task.ResourceConfig) *Resources {
 		GPU:    resource.GetGpuLimit(),
 		MEMORY: resource.GetMemLimitMb(),
 	}
+}
+
+func (r *Resources) String() string {
+	return fmt.Sprintf("CPU:%f, Mem:%f, Disk:%f, GPU:%f", r.CPU, r.MEMORY,
+		r.DISK, r.GPU)
 }
 
 // Subtract another scalar resources from current one and return a new copy of result.

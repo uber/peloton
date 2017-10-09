@@ -51,8 +51,9 @@ def test__preemption_tasks_reschedules_task():
     def task_preempted():
         count = 0
         for t in job_1.get_tasks().values():
-            # INITIALIZED
-            if t.state == 1:
+            # tasks should be enqueued back by the jobmanager and once
+            # enqueued they should transition to PENDING state
+            if t.state == 2:
                 count += 1
         return count == 6
 

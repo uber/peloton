@@ -182,7 +182,7 @@ class Job(object):
 
         if attempts == self.config.max_retry_attempts:
             log.info('max attempts reached to wait for condition')
-            log.info('confition: %s', condition.__name__)
+            log.info('condition: %s', condition.__name__)
             assert False
 
         end = time.time()

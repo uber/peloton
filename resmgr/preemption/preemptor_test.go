@@ -2,12 +2,14 @@ package preemption
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
@@ -15,14 +17,12 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
+	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"context"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -59,6 +59,7 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 		},
 		nil,
 		tally.Scope(tally.NoopScope))
+
 	suite.preemptor = preemptor{
 		resTree:                      nil,
 		runningState:                 res_common.RunningStateNotStarted,
@@ -73,6 +74,8 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 		respoolState: make(map[string]int),
 		ranker:       newStatePriorityRuntimeRanker(rm_task.GetTracker()),
 		tracker:      rm_task.GetTracker(),
+		scope:        tally.NoopScope,
+		m:            make(map[string]*Metrics),
 	}
 }
 
@@ -270,11 +273,12 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 		GPU:    1,
 	}
 	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
+	mockResPool.EXPECT().GetPath().Return("/respool-1")
 
 	numRunningTasks := 3
 	tasks := suite.createTasks(numRunningTasks, mockResPool)
-	for _, task := range tasks {
-		suite.transitToRunning(task.Id)
+	for _, t := range tasks {
+		suite.transitToRunning(t.Id)
 	}
 
 	suite.preemptor.resTree = mockResTree
@@ -310,11 +314,11 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks
 		DISK:   2450,
 		GPU:    1,
 	}
+	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
 	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
 		func(res *scalar.Resources) {
 			allocation = allocation.Subtract(res)
 		}).Return(nil).AnyTimes()
-	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
 
 	demand := scalar.ZeroResource
@@ -325,8 +329,67 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks
 
 	numReadyTasks := 3
 	tasks := suite.createTasks(numReadyTasks, mockResPool)
-	for _, task := range tasks {
-		suite.transitToReady(task.Id)
+	for _, t := range tasks {
+		suite.transitToReady(t.Id)
+	}
+	suite.preemptor.resTree = mockResTree
+	suite.preemptor.ranker = suite.getMockRanker(tasks)
+
+	// Check allocation > entitlement before
+	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	// Check demand is zero
+	suite.Equal(demand, scalar.ZeroResource)
+
+	err := suite.preemptor.processResourcePool("respool-1")
+	suite.NoError(err)
+
+	// Check allocation <= entitlement after
+	suite.True(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	// Check demand includes resources for all READY tasks
+	suite.Equal(demand, &scalar.Resources{
+		CPU:    _taskResources.CpuLimit * float64(numReadyTasks),
+		MEMORY: _taskResources.MemLimitMb * float64(numReadyTasks),
+		DISK:   _taskResources.DiskLimitMb * float64(numReadyTasks),
+		GPU:    _taskResources.GpuLimit * float64(numReadyTasks),
+	}, demand)
+}
+
+func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForPlacingTasks() {
+	mockResTree := mocks.NewMockTree(suite.mockCtrl)
+	mockResPool := mocks.NewMockResPool(suite.mockCtrl)
+
+	// Mocks
+	mockResTree.EXPECT().Get(&peloton.ResourcePoolID{Value: "respool-1"}).Return(mockResPool, nil)
+	mockResPool.EXPECT().ID().Return("respool-1").AnyTimes()
+	mockResPool.EXPECT().GetEntitlement().Return(&scalar.Resources{
+		CPU:    20,
+		MEMORY: 200,
+		DISK:   2000,
+		GPU:    1,
+	}).AnyTimes()
+	allocation := &scalar.Resources{
+		CPU:    25,
+		MEMORY: 500,
+		DISK:   2450,
+		GPU:    1,
+	}
+	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
+		func(res *scalar.Resources) {
+			allocation = allocation.Subtract(res)
+		}).Return(nil).AnyTimes()
+	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
+
+	demand := scalar.ZeroResource
+	mockResPool.EXPECT().AddToDemand(gomock.Any()).Do(
+		func(res *scalar.Resources) {
+			demand = demand.Add(res)
+		}).Return(nil).AnyTimes()
+
+	numReadyTasks := 3
+	tasks := suite.createTasks(numReadyTasks, mockResPool)
+	for _, t := range tasks {
+		suite.transitToPlacing(t.Id)
 	}
 	suite.preemptor.resTree = mockResTree
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
@@ -416,12 +479,14 @@ func (suite *PreemptorTestSuite) getResPools() map[string]*pb_respool.ResourcePo
 	}
 }
 
-func (suite *PreemptorTestSuite) createTasks(numTasks int, mockResPool *mocks.MockResPool) []*resmgr.Task {
+func (suite *PreemptorTestSuite) createTasks(numTasks int,
+	mockResPool *mocks.MockResPool) []*resmgr.Task {
 	var tasks []*resmgr.Task
 	for i := 0; i < numTasks; i++ {
-		task := suite.createTask(i, uint32(i))
-		tasks = append(tasks, task)
-		suite.tracker.AddTask(task, suite.eventStreamHandler, mockResPool, &rm_task.Config{})
+		t := suite.createTask(i, uint32(i))
+		tasks = append(tasks, t)
+		suite.tracker.AddTask(t, suite.eventStreamHandler, mockResPool,
+			&rm_task.Config{})
 	}
 	return tasks
 }
@@ -448,17 +513,29 @@ func newMockRanker(tasks []*rm_task.RMTask) ranker {
 	}
 }
 
-func (mr *mockRanker) GetTasksToEvict(respoolID string, resourcesLimit *scalar.Resources) []*rm_task.RMTask {
+func (mr *mockRanker) GetTasksToEvict(respoolID string,
+	resourcesLimit *scalar.Resources) []*rm_task.RMTask {
 	return mr.tasks
 }
 
 // Returns a mock ranker with the tasks to evict
 func (suite *PreemptorTestSuite) getMockRanker(tasks []*resmgr.Task) ranker {
 	var tasksToEvict []*rm_task.RMTask
-	for _, task := range tasks {
-		tasksToEvict = append(tasksToEvict, suite.tracker.GetTask(task.Id))
+	for _, t := range tasks {
+		tasksToEvict = append(tasksToEvict, suite.tracker.GetTask(t.Id))
 	}
 	return newMockRanker(tasksToEvict)
+}
+
+func (suite *PreemptorTestSuite) transitToPlacing(taskID *peloton.TaskID) {
+	rmTask := suite.tracker.GetTask(taskID)
+	suite.NotNil(rmTask)
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_PLACING.String())
+	suite.NoError(err)
 }
 
 func (suite *PreemptorTestSuite) transitToReady(taskID *peloton.TaskID) {

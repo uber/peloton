@@ -109,6 +109,12 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 						state.State(task.TaskState_READY.String()),
 						state.State(task.TaskState_PLACED.String()),
 						state.State(task.TaskState_KILLED.String()),
+						// This transition is required when the task is
+						// preempted while its being placed by the Placement
+						// engine. If preempted it'll go back to PENDING
+						// state and relinquish its resource allocation from
+						// the resource pool.
+						state.State(task.TaskState_PENDING.String()),
 					},
 					Callback: nil,
 				}).

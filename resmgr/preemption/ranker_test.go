@@ -110,7 +110,7 @@ func (suite *RankerTestSuite) createTask(instance int, priority uint32) *resmgr.
 		Hostname: "hostname",
 		Resource: &task.ResourceConfig{
 			CpuLimit:    1,
-			DiskLimitMb: 10,
+			DiskLimitMb: 9,
 			GpuLimit:    0,
 			MemLimitMb:  100,
 		},
@@ -118,7 +118,7 @@ func (suite *RankerTestSuite) createTask(instance int, priority uint32) *resmgr.
 }
 
 func (suite *RankerTestSuite) addTasks() {
-	// Add 10 tasks to tracker(3 READY, 6 RUNNING, 1 PENDING)
+	// Add 13 tasks to tracker(3 READY, 6 RUNNING, 1 PENDING, 3 PLACING)
 	// 3 READY with different priorities
 	for i := 0; i < 3; i++ {
 		suite.addTaskToTracker(suite.createTask(i, uint32(i)))
@@ -149,6 +149,14 @@ func (suite *RankerTestSuite) addTasks() {
 	taskIDStr := fmt.Sprintf("job1-%d", 9)
 	taskID := &peloton.TaskID{Value: taskIDStr}
 	suite.transitToPending(taskID)
+
+	// 3 PLACING with different priorities
+	for i := 10; i < 13; i++ {
+		suite.addTaskToTracker(suite.createTask(i, uint32(i)))
+		taskIDStr := fmt.Sprintf("job1-%d", i)
+		taskID := &peloton.TaskID{Value: taskIDStr}
+		suite.transitToPlacing(taskID)
+	}
 }
 
 func (suite *RankerTestSuite) transitToPending(taskID *peloton.TaskID) {
@@ -177,6 +185,17 @@ func (suite *RankerTestSuite) transitToRunning(taskID *peloton.TaskID) {
 	suite.NoError(err)
 }
 
+func (suite *RankerTestSuite) transitToPlacing(taskID *peloton.TaskID) {
+	rmTask := suite.tracker.GetTask(taskID)
+	suite.NotNil(rmTask)
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+	err = rmTask.TransitTo(task.TaskState_PLACING.String())
+	suite.NoError(err)
+}
+
 func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvict() {
 	suite.addTasks()
 
@@ -187,13 +206,18 @@ func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvict() {
 		GPU:    0,
 		DISK:   100,
 	})
-	suite.Equal(9, len(tasksToEvict))
+	suite.Equal(12, len(tasksToEvict))
 
 	expectedTasks := []string{
 		// READY TASKS sorted by priority
 		"job1-0",
 		"job1-1",
 		"job1-2",
+
+		// PLACING tasks sorted by priority
+		"job1-10",
+		"job1-11",
+		"job1-12",
 
 		// RUNNING tasks sorted by priority
 		"job1-3",
@@ -259,18 +283,21 @@ func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvictLimi
 		DISK:   55,
 	})
 
-	// should only contain 6 tasks since resource limit is met by those tasks
-	suite.Equal(6, len(tasksToEvict))
+	// should only contain 7 tasks since resource limit is met by those tasks
+	suite.Equal(7, len(tasksToEvict))
 	expectedTasks := []string{
 		// READY TASKS sorted by priority
 		"job1-0",
 		"job1-1",
 		"job1-2",
 
+		// PLACING tasks sorted by priority
+		"job1-10",
+		"job1-11",
+		"job1-12",
+
 		// RUNNING tasks sorted by priority
 		"job1-3",
-		"job1-4",
-		"job1-5",
 	}
 
 	for i, taskToEvict := range tasksToEvict {

@@ -150,11 +150,10 @@ func NewRespool(
 		invalidTasks:    make(map[string]bool),
 	}
 
-	// Initialize metrics.
-	poolScope := scope.Tagged(map[string]string{
+	// Initialize metrics
+	pool.metrics = NewMetrics(scope.Tagged(map[string]string{
 		"path": pool.GetPath(),
-	})
-	pool.metrics = NewMetrics(poolScope)
+	}))
 
 	// Initialize resources.
 	pool.initResources(config.GetResources())

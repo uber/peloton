@@ -15,7 +15,7 @@ labels:
 instanceCount: 12
 sla:
   priority: 22
-  maximumRunningInstances: 1
+  maximumRunningInstances: 12
 defaultConfig:
   labels:
   - key: testKey3

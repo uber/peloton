@@ -93,7 +93,7 @@ func (suite *TaskHandlerTestSuite) createTestTaskEvents() []*task.TaskEvent {
 	var taskID0 = fmt.Sprintf("%s-%d", suite.testJobID.Value, 0)
 	var taskID1 = fmt.Sprintf("%s-%d", suite.testJobID.Value, 1)
 	return []*task.TaskEvent{
-		&task.TaskEvent{
+		{
 			TaskId: &peloton.TaskID{
 				Value: taskID0,
 			},
@@ -103,7 +103,7 @@ func (suite *TaskHandlerTestSuite) createTestTaskEvents() []*task.TaskEvent {
 			Hostname:  "peloton-test-host",
 			Reason:    "",
 		},
-		&task.TaskEvent{
+		{
 			TaskId: &peloton.TaskID{
 				Value: taskID1,
 			},
@@ -113,7 +113,7 @@ func (suite *TaskHandlerTestSuite) createTestTaskEvents() []*task.TaskEvent {
 			Hostname:  "peloton-test-host-1",
 			Reason:    "",
 		},
-		&task.TaskEvent{
+		{
 			TaskId: &peloton.TaskID{
 				Value: taskID0,
 			},
@@ -123,7 +123,7 @@ func (suite *TaskHandlerTestSuite) createTestTaskEvents() []*task.TaskEvent {
 			Hostname:  "peloton-test-host",
 			Reason:    "",
 		},
-		&task.TaskEvent{
+		{
 			TaskId: &peloton.TaskID{
 				Value: taskID1,
 			},
@@ -133,7 +133,7 @@ func (suite *TaskHandlerTestSuite) createTestTaskEvents() []*task.TaskEvent {
 			Hostname:  "peloton-test-host-1",
 			Reason:    "",
 		},
-		&task.TaskEvent{
+		{
 			TaskId: &peloton.TaskID{
 				Value: taskID1,
 			},
@@ -569,7 +569,7 @@ func (suite *TaskHandlerTestSuite) TestGetEvents() {
 	suite.Equal(len(task1Events), 3)
 	taskID1 := fmt.Sprintf("%s-%d", suite.testJobID.Value, 1)
 	expectedTask1Events := []*task.TaskEvent{
-		&task.TaskEvent{
+		{
 			TaskId: &peloton.TaskID{
 				Value: taskID1,
 			},
@@ -579,7 +579,7 @@ func (suite *TaskHandlerTestSuite) TestGetEvents() {
 			Hostname:  "peloton-test-host-1",
 			Reason:    "",
 		},
-		&task.TaskEvent{
+		{
 			TaskId: &peloton.TaskID{
 				Value: taskID1,
 			},
@@ -589,7 +589,7 @@ func (suite *TaskHandlerTestSuite) TestGetEvents() {
 			Hostname:  "peloton-test-host-1",
 			Reason:    "",
 		},
-		&task.TaskEvent{
+		{
 			TaskId: &peloton.TaskID{
 				Value: taskID1,
 			},

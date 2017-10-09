@@ -17,16 +17,17 @@ import (
 // TODO PLACED, LAUNCHING, LAUNCHED
 var taskStatesPreemptionOrder = []task.TaskState{
 	task.TaskState_READY,
+	task.TaskState_PLACING,
 	task.TaskState_RUNNING,
 }
 
-// ranker sorts the tasks in eviction order such that the requiredResources is satisfied
+// ranker sorts the tasks in eviction order such that the resourcesLimit is satisfied
 type ranker interface {
 	GetTasksToEvict(respoolID string, requiredResources *scalar.Resources) []*rm_task.RMTask
 }
 
 // statePriorityRuntimeRanker sorts the tasks in the following order
-// * Task State : READY > RUNNING
+// * Task State : READY > PLACING > RUNNING
 // * If task state is the same it sorts on the task Priority
 // * If the priority is the same it sorts on the task runtime(how long the task has been running)
 type statePriorityRuntimeRanker struct {

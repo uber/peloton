@@ -543,7 +543,7 @@ func (h *ServiceHandler) GetPlacements(
 // or remove tasks from placement which are not in placed state.
 func (h *ServiceHandler) transitTasksInPlacement(
 	placement *resmgr.Placement,
-	oldState t.TaskState,
+	expectedState t.TaskState,
 	newState t.TaskState) *resmgr.Placement {
 	invalidTasks := make(map[string]*peloton.TaskID)
 	for _, taskID := range placement.Tasks {
@@ -561,9 +561,13 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			"task_ID":       taskID.Value,
 			"current_state": state.String(),
 		}).Debug("Get Placement for task")
-		if state != oldState {
-			log.WithField("task_ID", taskID.GetValue()).
-				Error("Task is not in placed state")
+		if state != expectedState {
+			log.WithFields(log.Fields{
+				"task_id":        taskID.GetValue(),
+				"expected_state": expectedState.String(),
+				"actual_state":   state.String(),
+			}).Error("Unable to transit tasks in placement: " +
+				"task is not in expected state")
 			invalidTasks[taskID.Value] = taskID
 
 		} else {
