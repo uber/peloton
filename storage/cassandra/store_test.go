@@ -250,7 +250,6 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		runtime.State = job.JobState(i + 1)
 		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
 		suite.NoError(err)
-
 	}
 
 	// Run the following query to trigger rebuild the lucene index

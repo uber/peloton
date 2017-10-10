@@ -208,7 +208,7 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
 
 	// Create the initial job runtime record
-	err := s.UpdateJobRuntime(ctx, id, &initialJobRuntime)
+	err := s.updateJobRuntimeWithConfig(ctx, id, &initialJobRuntime, jobConfig)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
@@ -265,7 +265,7 @@ func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 	// Update to use new version.
 	r.ConfigVersion = version
 
-	return s.UpdateJobRuntime(ctx, id, r)
+	return s.updateJobRuntimeWithConfig(ctx, id, r, jobConfig)
 }
 
 // GetJobConfig returns a job config given the job id
@@ -1505,16 +1505,13 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.GetValue())
 }
 
-// updateJobIndexWithJobRuntime updates the job index table with job runtime
-func (s *Store) updateJobIndexWithJobRuntime(
+// updateJobIndex updates the job index table with job runtime
+// and config (if not nil)
+func (s *Store) updateJobIndex(
 	ctx context.Context,
 	id *peloton.JobID,
-	runtime *job.RuntimeInfo) error {
-
-	config, err := s.GetJobConfig(ctx, id)
-	if err != nil {
-		return err
-	}
+	runtime *job.RuntimeInfo,
+	config *job.JobConfig) error {
 
 	runtimeBuffer, err := json.Marshal(runtime)
 	if err != nil {
@@ -1522,20 +1519,6 @@ func (s *Store) updateJobIndexWithJobRuntime(
 			WithError(err).
 			Error("Failed to marshal job runtime")
 		s.metrics.JobUpdateRuntimeFail.Inc(1)
-		return err
-	}
-
-	configBuffer, err := json.Marshal(config)
-	if err != nil {
-		log.Errorf("Failed to marshal jobConfig, error = %v", err)
-		s.metrics.JobCreateFail.Inc(1)
-		return err
-	}
-
-	labelBuffer, err := json.Marshal(config.Labels)
-	if err != nil {
-		log.Errorf("Failed to marshal labels, error = %v", err)
-		s.metrics.JobCreateFail.Inc(1)
 		return err
 	}
 
@@ -1551,16 +1534,34 @@ func (s *Store) updateJobIndexWithJobRuntime(
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(jobIndexTable).
-		Set("config", configBuffer).
 		Set("runtime_info", runtimeBuffer).
 		Set("state", runtime.GetState().String()).
-		Set("respool_id", config.GetRespoolID().GetValue()).
-		Set("owner", config.GetOwningTeam()).
-		Set("labels", labelBuffer).
 		Set("creation_time", parseTime(runtime.GetCreationTime())).
-		Set("update_time", time.Now()).
 		Set("completion_time", completeTime).
+		Set("update_time", time.Now()).
 		Where(qb.Eq{"job_id": id.GetValue()})
+
+	if config != nil {
+		configBuffer, err := json.Marshal(config)
+		if err != nil {
+			log.Errorf("Failed to marshal jobConfig, error = %v", err)
+			s.metrics.JobCreateFail.Inc(1)
+			return err
+		}
+
+		labelBuffer, err := json.Marshal(config.Labels)
+		if err != nil {
+			log.Errorf("Failed to marshal labels, error = %v", err)
+			s.metrics.JobCreateFail.Inc(1)
+			return err
+		}
+
+		stmt = stmt.Set("config", configBuffer).
+			Set("respool_id", config.GetRespoolID().GetValue()).
+			Set("owner", config.GetOwningTeam()).
+			Set("labels", labelBuffer)
+	}
+
 	err = s.applyStatement(ctx, stmt, id.Value)
 	if err != nil {
 		log.WithField("job_id", id.Value).
@@ -1575,6 +1576,12 @@ func (s *Store) updateJobIndexWithJobRuntime(
 
 // UpdateJobRuntime updates the job runtime info
 func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error {
+	return s.updateJobRuntimeWithConfig(ctx, id, runtime, nil)
+}
+
+// UpdateJobRuntimeWithConfig updates the job runtime info
+// including the config (if not nil) in the job_index
+func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo, config *job.JobConfig) error {
 	runtimeBuffer, err := proto.Marshal(runtime)
 	if err != nil {
 		log.WithField("job_id", id.Value).
@@ -1599,7 +1606,7 @@ func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime
 		return err
 	}
 
-	err = s.updateJobIndexWithJobRuntime(ctx, id, runtime)
+	err = s.updateJobIndex(ctx, id, runtime, config)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
