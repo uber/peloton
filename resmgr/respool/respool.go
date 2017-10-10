@@ -372,6 +372,15 @@ func (n *resPool) validateGang(gang *resmgrsvc.Gang) error {
 		return err
 	}
 
+	// We need to remove it from the demand
+	for _, task := range gang.GetTasks() {
+		// We have to remove demand as we removed task from
+		// pending queue.
+		n.demand = n.demand.Subtract(
+			scalar.ConvertToResmgrResource(
+				task.GetResource()))
+	}
+
 	// We need to enqueue the gang if all the tasks are not
 	// deleted from the gang
 	if gang != nil && len(newTasks) != 0 {
@@ -382,8 +391,16 @@ func (n *resPool) validateGang(gang *resmgrsvc.Gang) error {
 				Error("Not able to enqueue" +
 					"gang to pending queue")
 		}
+		for _, task := range gang.GetTasks() {
+			// We have to add demand as we admitted task to
+			// pending queue.
+			n.demand = n.demand.Add(
+				scalar.ConvertToResmgrResource(
+					task.GetResource()))
+		}
 		return err
 	}
+
 	// All the tasks in this gang is been deleted
 	// sending error for the validation by that ignore this gang
 	// for admission control

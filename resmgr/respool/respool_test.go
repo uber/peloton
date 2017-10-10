@@ -790,9 +790,23 @@ func (s *ResPoolSuite) TestTaskValidation() {
 	for _, task := range s.getTasks() {
 		resPoolNode1.EnqueueGang(resPoolNode1.MakeTaskGang(task))
 		resPoolNode1.AddInvalidTask(task.Id)
+		resPoolNode1.AddToDemand(scalar.ConvertToResmgrResource(
+			task.GetResource()))
 	}
+	demand := resPoolNode1.GetDemand()
+	s.NotNil(demand)
+	s.Equal(float64(4), demand.CPU)
+	s.Equal(float64(400), demand.MEMORY)
+	s.Equal(float64(40), demand.DISK)
+	s.Equal(float64(0), demand.GPU)
 
 	gangs, err := resPoolNode1.DequeueGangList(4)
 	s.NoError(err)
 	s.Equal(0, len(gangs))
+	newdemand := resPoolNode1.GetDemand()
+	s.NotNil(newdemand)
+	s.Equal(float64(0), newdemand.CPU)
+	s.Equal(float64(0), newdemand.MEMORY)
+	s.Equal(float64(0), newdemand.DISK)
+	s.Equal(float64(0), newdemand.GPU)
 }
