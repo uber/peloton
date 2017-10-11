@@ -31,3 +31,7 @@ storage:
     host: compute841-dca1
     port: 3306
   db_write_concurrency: 400
+
+resmgr:
+  preemption:
+    enabled: false
