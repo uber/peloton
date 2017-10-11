@@ -12,9 +12,17 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ranker sorts the tasks in eviction order such that the resourcesLimit is satisfied
+// Represents the task states in the order in which they should be
+// evaluated for preemption.
+// TODO PLACED, LAUNCHING, LAUNCHED
+var taskStatesPreemptionOrder = []task.TaskState{
+	task.TaskState_READY,
+	task.TaskState_RUNNING,
+}
+
+// ranker sorts the tasks in eviction order such that the requiredResources is satisfied
 type ranker interface {
-	GetTasksToEvict(respoolID string, resourcesLimit *scalar.Resources) []*rm_task.RMTask
+	GetTasksToEvict(respoolID string, requiredResources *scalar.Resources) []*rm_task.RMTask
 }
 
 // statePriorityRuntimeRanker sorts the tasks in the following order
@@ -31,41 +39,66 @@ func newStatePriorityRuntimeRanker(tracker rm_task.Tracker) ranker {
 	return &statePriorityRuntimeRanker{
 		tracker: tracker,
 		sorter: taskSorter{
-			cmpFuncs: []cmpFunc{priorityCmp, startTimeCmp},
+			cmpFuncs: []cmpFunc{
+				priorityCmp,
+				startTimeCmp,
+			},
 		},
 	}
 }
 
 // GetTasksToEvict returns the tasks in the order in which they should be evicted from
-// the resource pool such that the cumulative resources of those tasks >= resourcesLimit
-func (r *statePriorityRuntimeRanker) GetTasksToEvict(respoolID string, resourcesLimit *scalar.Resources) []*rm_task.RMTask {
+// the resource pool such that the cumulative resources of those tasks >= requiredResources
+func (r *statePriorityRuntimeRanker) GetTasksToEvict(respoolID string, requiredResources *scalar.Resources) []*rm_task.RMTask {
+	// get all the tasks in preemption order
+	allTasks := r.rankAllTasks(respoolID)
+
+	// filter tasks based on the resource limit
+	tasksToEvict := filterTasks(requiredResources, allTasks)
+	return tasksToEvict
+}
+
+// rankAllTasks returns all active tasks in the resource pool in the preemption order
+func (r *statePriorityRuntimeRanker) rankAllTasks(respoolID string) []*rm_task.RMTask {
 	stateTaskMap := r.toStateTaskMap(r.tracker.GetActiveTasks("", respoolID))
-
-	//TODO PLACING, PLACED, LAUNCHING, LAUNCHED
-	readyTasks := stateTaskMap[task.TaskState_READY.String()]
-	runningTasks := stateTaskMap[task.TaskState_RUNNING.String()]
-
-	r.sorter.Sort(readyTasks)
-	r.sorter.Sort(runningTasks)
-
 	var allTasks []*rm_task.RMTask
-	allTasks = append(append(allTasks, readyTasks...), runningTasks...)
+	for _, taskState := range taskStatesPreemptionOrder {
+		tasksInState := stateTaskMap[taskState.String()]
+		r.sorter.Sort(tasksInState)
+		allTasks = append(allTasks, tasksInState...)
+	}
+	return allTasks
+}
 
+// filterTasks filters tasks which satisfy the resourcesLimit
+// This method assumes the list of tasks supplied is already sorted in the preferred order
+func filterTasks(resourcesLimit *scalar.Resources, allTasks []*rm_task.RMTask) []*rm_task.RMTask {
 	var tasksToEvict []*rm_task.RMTask
-	taskResource := scalar.ZeroResource
+	resourceRunningCount := scalar.ZeroResource
 	for _, task := range allTasks {
-		if taskResource.LessThanOrEqual(resourcesLimit) {
-			// we can add more tasks
-			taskResource = taskResource.Add(scalar.ConvertToResmgrResource(task.Task().Resource))
-			tasksToEvict = append(tasksToEvict, task)
-		} else {
+		// Check how many resource we need to free
+		resourceToFree := resourcesLimit.Subtract(resourceRunningCount)
+		if resourceToFree.Equal(scalar.ZeroResource) {
 			// we have enough tasks
 			break
 		}
+		// get task resources
+		taskResources := scalar.ConvertToResmgrResource(task.Task().Resource)
+		// check if the task resource helps in satisfying resourceToFree
+		newResourceToFree := resourcesLimit.Subtract(taskResources)
+		if newResourceToFree.Equal(resourcesLimit) {
+			// this task doesn't help with meeting the resourcesLimit
+			continue
+		}
+		// we can add more tasks
+		tasksToEvict = append(tasksToEvict, task)
+		// Add the task resource to the running count
+		resourceRunningCount = resourceRunningCount.Add(taskResources)
 	}
 	return tasksToEvict
 }
 
+// Returns a map or TaskState->TaskID
 func (r *statePriorityRuntimeRanker) toStateTaskMap(taskToStateMap map[string]string) map[string][]*rm_task.RMTask {
 	stateTaskMap := make(map[string][]*rm_task.RMTask)
 	for taskeID, state := range taskToStateMap {
