@@ -31,7 +31,7 @@ type RankerTestSuite struct {
 	respool            respool.ResPool
 }
 
-func (suite *RankerTestSuite) SetupTest() {
+func (suite *RankerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 
 	rm_task.InitTaskTracker(tally.NoopScope)
@@ -46,11 +46,15 @@ func (suite *RankerTestSuite) SetupTest() {
 		tally.Scope(tally.NoopScope))
 }
 
+func (suite *RankerTestSuite) TearDownTest() {
+	suite.tracker.Clear()
+}
+
 func TestRanker(t *testing.T) {
 	suite.Run(t, new(RankerTestSuite))
 }
 
-func (suite *RankerTestSuite) addTasktotracker(task *resmgr.Task) {
+func (suite *RankerTestSuite) addTaskToTracker(task *resmgr.Task) {
 	rootID := peloton.ResourcePoolID{Value: respool.RootResPoolID}
 	policy :=
 		peloton_respool.SchedulingPolicy_PriorityFIFO
@@ -117,14 +121,14 @@ func (suite *RankerTestSuite) addTasks() {
 	// Add 10 tasks to tracker(3 READY, 6 RUNNING, 1 PENDING)
 	// 3 READY with different priorities
 	for i := 0; i < 3; i++ {
-		suite.addTasktotracker(suite.createTask(i, uint32(i)))
+		suite.addTaskToTracker(suite.createTask(i, uint32(i)))
 		taskIDStr := fmt.Sprintf("job1-%d", i)
 		taskID := &peloton.TaskID{Value: taskIDStr}
 		suite.transitToReady(taskID)
 	}
 	// 3 RUNNING with different priorities
 	for i := 3; i < 6; i++ {
-		suite.addTasktotracker(suite.createTask(i, uint32(i)))
+		suite.addTaskToTracker(suite.createTask(i, uint32(i)))
 		taskIDStr := fmt.Sprintf("job1-%d", i)
 		taskID := &peloton.TaskID{Value: taskIDStr}
 		suite.transitToRunning(taskID)
@@ -132,7 +136,7 @@ func (suite *RankerTestSuite) addTasks() {
 	// 3 RUNNING with same priority and different start times
 	priority := uint32(6)
 	for i := 6; i < 9; i++ {
-		suite.addTasktotracker(suite.createTask(i, priority))
+		suite.addTaskToTracker(suite.createTask(i, priority))
 		taskIDStr := fmt.Sprintf("job1-%d", i)
 		taskID := &peloton.TaskID{Value: taskIDStr}
 		suite.transitToRunning(taskID)
@@ -141,7 +145,7 @@ func (suite *RankerTestSuite) addTasks() {
 		time.Sleep(1 * time.Second)
 	}
 	// 1 PENDING Tasks which should be ignored
-	suite.addTasktotracker(suite.createTask(9, 1))
+	suite.addTaskToTracker(suite.createTask(9, 1))
 	taskIDStr := fmt.Sprintf("job1-%d", 9)
 	taskID := &peloton.TaskID{Value: taskIDStr}
 	suite.transitToPending(taskID)
@@ -205,6 +209,43 @@ func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvict() {
 	for i, taskToEvict := range tasksToEvict {
 		suite.Equal(expectedTasks[i], taskToEvict.Task().GetId().Value)
 	}
+}
+
+func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_FilterTasks() {
+	// create CPU tasks
+	var tasks []*rm_task.RMTask
+	for i := 0; i < 3; i++ {
+		taskIDStr := fmt.Sprintf("job1-%d", i)
+		task := suite.createTask(i, 1)
+		suite.addTaskToTracker(task)
+		tasks = append(tasks, suite.tracker.GetTask(&peloton.TaskID{Value: taskIDStr}))
+	}
+
+	// create GPU task
+	task := suite.createTask(3, 2)
+	gpuTaskIDStr := fmt.Sprintf("job1-%d", 3)
+	task.Resource.GpuLimit = 3
+	suite.addTaskToTracker(task)
+	tasks = append(tasks, suite.tracker.GetTask(&peloton.TaskID{Value: gpuTaskIDStr}))
+
+	// Create CPU task
+	task = suite.createTask(4, 3)
+	taskIDStr := fmt.Sprintf("job1-%d", 3)
+	suite.addTaskToTracker(task)
+	tasks = append(tasks, suite.tracker.GetTask(&peloton.TaskID{Value: taskIDStr}))
+
+	// Only GPU is required to be freed
+	resourceLimit := &scalar.Resources{
+		CPU:    0,
+		GPU:    3,
+		MEMORY: 0,
+		DISK:   0,
+	}
+
+	// should only contain the GPU task
+	tasksToEvict := filterTasks(resourceLimit, tasks)
+	suite.Equal(1, len(tasksToEvict))
+	suite.Equal(gpuTaskIDStr, tasksToEvict[0].Task().GetId().Value)
 }
 
 func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvictLimitResource() {
