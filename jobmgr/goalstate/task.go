@@ -16,6 +16,10 @@ var (
 	// goal-state -> current-state -> action.
 	// It assumes task's runtime and goal are at the same version
 	_isoVersionsTaskRules = map[task.TaskGoalState]map[task.TaskState]tracked.TaskAction{
+		task.TaskGoalState_UNKNOWN_GOAL_STATE: {
+			// When runtime is missing, reload it.
+			task.TaskState_UNKNOWN: tracked.ReloadRuntime,
+		},
 		task.TaskGoalState_RUN: {
 			task.TaskState_LOST:        tracked.InitializeAction,
 			task.TaskState_FAILED:      tracked.InitializeAction,

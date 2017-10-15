@@ -2,6 +2,7 @@ package tracked
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -208,4 +209,35 @@ func TestPublishMetrics(t *testing.T) {
 	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
 
 	m.publishMetrics()
+}
+
+func TestUpdateTaskRuntimeWithError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
+
+	m := &manager{
+		jobs:             map[string]*job{},
+		taskStore:        taskstoreMock,
+		taskQueue:        newDeadlineQueue(newMetrics(tally.NoopScope)),
+		taskQueueChanged: make(chan struct{}, 1),
+		running:          true,
+	}
+
+	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+
+	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+	assert.NotNil(t, m.jobs[jobID.Value].tasks[0].runtime)
+	assert.NotNil(t, m.WaitForScheduledTask(nil))
+
+	taskstoreMock.EXPECT().
+		UpdateTaskRuntime(context.Background(), jobID, uint32(0), &pb_task.RuntimeInfo{}).
+		Return(errors.New("some error"))
+
+	err := m.UpdateTaskRuntime(context.Background(), jobID, 0, &pb_task.RuntimeInfo{})
+	assert.EqualError(t, err, "some error")
+
+	assert.Nil(t, m.jobs[jobID.Value].tasks[0].runtime)
+	assert.NotNil(t, m.WaitForScheduledTask(nil))
 }

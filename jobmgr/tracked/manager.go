@@ -132,6 +132,8 @@ func (m *manager) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, i
 	// TODO: We need to figure out how to handle this case, where we modify in
 	// the non-leader.
 	if err := m.taskStore.UpdateTaskRuntime(ctx, jobID, instanceID, runtime); err != nil {
+		// If update failed, clear runtime so latest will be read.
+		m.SetTask(jobID, instanceID, nil)
 		return err
 	}
 

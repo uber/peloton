@@ -2,6 +2,7 @@ package tracked
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -58,6 +59,7 @@ type TaskAction string
 // Actions available to be performed on the task.
 const (
 	NoAction             TaskAction = "no_action"
+	ReloadRuntime        TaskAction = "reload_runtime"
 	UntrackAction        TaskAction = "untrack"
 	InitializeAction     TaskAction = "initialize_task"
 	StartAction          TaskAction = "start_task"
@@ -155,6 +157,9 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) error {
 	switch action {
 	case NoAction:
 
+	case ReloadRuntime:
+		_, err = t.job.m.GetTaskRuntime(ctx, t.job.id, t.id)
+
 	case UntrackAction:
 		t.job.m.clearTask(t)
 
@@ -180,7 +185,7 @@ func (t *task) getRuntime() (*pb_task.RuntimeInfo, error) {
 	defer t.RUnlock()
 
 	if t.runtime == nil {
-		return nil, fmt.Errorf("tracked task has no runtime info assigned")
+		return nil, errors.New("missing task runtime")
 	}
 
 	// Shallow copy of the runtime.

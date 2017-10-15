@@ -16,6 +16,19 @@ import (
 	"github.com/uber-go/tally"
 )
 
+func TestEngineSuggestActionMissingRuntime(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	e := NewEngine(Config{}, nil, tally.NoopScope).(*engine)
+
+	taskMock := mocks.NewMockTask(ctrl)
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_UNKNOWN, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_UNKNOWN_GOAL_STATE, ConfigVersion: 0})
+	assert.Equal(t, tracked.ReloadRuntime, e.suggestTaskAction(taskMock))
+}
+
 func TestEngineSuggestActionGoalKilled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

@@ -27,7 +27,6 @@ func (t *task) initialize(ctx context.Context) error {
 		return fmt.Errorf("job config not found for %v", t.job.id)
 	}
 
-	// Shallow copy of the runtime.
 	runtime.State = pb_task.TaskState_INITIALIZED
 	runtime.GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
 	util.RegenerateMesosTaskID(t.job.id, t.id, runtime)
