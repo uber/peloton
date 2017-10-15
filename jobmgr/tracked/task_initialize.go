@@ -14,12 +14,9 @@ import (
 // 2. Sets the goal state depending on the JobType
 // 3. Regenerates a new mesos task ID
 func (t *task) initialize(ctx context.Context) error {
-	t.Lock()
-	runtime := t.runtime
-	t.Unlock()
-
-	if runtime == nil {
-		return fmt.Errorf("tracked task has no runtime info assigned")
+	runtime, err := t.getRuntime()
+	if err != nil {
+		return err
 	}
 
 	m := t.job.m
@@ -31,9 +28,8 @@ func (t *task) initialize(ctx context.Context) error {
 	}
 
 	// Shallow copy of the runtime.
-	newRuntime := *runtime
-	newRuntime.State = pb_task.TaskState_INITIALIZED
-	newRuntime.GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
-	util.RegenerateMesosTaskID(t.job.id, t.id, &newRuntime)
-	return m.UpdateTaskRuntime(ctx, t.job.id, t.id, &newRuntime)
+	runtime.State = pb_task.TaskState_INITIALIZED
+	runtime.GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
+	util.RegenerateMesosTaskID(t.job.id, t.id, runtime)
+	return m.UpdateTaskRuntime(ctx, t.job.id, t.id, runtime)
 }

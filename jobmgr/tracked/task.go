@@ -174,6 +174,25 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) error {
 	return err
 }
 
+// getRuntime returns a shallow copy of the runtime, or an error if's not set.
+func (t *task) getRuntime() (*pb_task.RuntimeInfo, error) {
+	t.RLock()
+	defer t.RUnlock()
+
+	if t.runtime == nil {
+		return nil, fmt.Errorf("tracked task has no runtime info assigned")
+	}
+
+	// Shallow copy of the runtime.
+	runtime := *t.runtime
+	// Also do a copy of the revision, to ensure storage doesn't change it.
+	if runtime.Revision != nil {
+		revision := *runtime.Revision
+		runtime.Revision = &revision
+	}
+	return &runtime, nil
+}
+
 func (t *task) updateRuntime(runtime *pb_task.RuntimeInfo) {
 	t.Lock()
 	defer t.Unlock()

@@ -1112,9 +1112,9 @@ func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 		}
 	}
 
-	// Bump version of task.
 	currentVersion := runtime.Revision.Version
 
+	// Bump version of task.
 	runtime.Revision.Version++
 	runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
 

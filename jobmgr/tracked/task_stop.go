@@ -15,17 +15,14 @@ import (
 )
 
 func (t *task) stop(ctx context.Context) error {
-	t.Lock()
-	runtime := t.runtime
-	t.Unlock()
-
-	if runtime == nil {
-		return fmt.Errorf("tracked task has no runtime info assigned")
+	runtime, err := t.getRuntime()
+	if err != nil {
+		return err
 	}
 
 	switch {
 	case runtime.GetState() == pb_task.TaskState_INITIALIZED:
-		return t.stopInitializedTask(ctx)
+		return t.stopInitializedTask(ctx, runtime)
 
 	case runtime.GetMesosTaskId() != nil:
 		return t.stopMesosTask(ctx, runtime)
@@ -34,7 +31,7 @@ func (t *task) stop(ctx context.Context) error {
 	return nil
 }
 
-func (t *task) stopInitializedTask(ctx context.Context) error {
+func (t *task) stopInitializedTask(ctx context.Context, runtime *pb_task.RuntimeInfo) error {
 	// If initializing, store state as killed and remove from resmgr.
 	// TODO: Due to missing atomic updates in DB, there is a race
 	// where we accidentially may start off the task, even though we
@@ -64,18 +61,7 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 		}
 	}
 
-	runtime, err := t.job.m.GetTaskRuntime(ctx, t.Job().ID(), t.ID())
-	if err != nil {
-		return err
-	}
-
-	// If it had changed, update to current and abort.
-	if runtime.State != pb_task.TaskState_INITIALIZED {
-		return nil
-	}
-
 	runtime.State = pb_task.TaskState_KILLED
-
 	return t.job.m.UpdateTaskRuntime(ctx, t.job.id, t.id, runtime)
 }
 

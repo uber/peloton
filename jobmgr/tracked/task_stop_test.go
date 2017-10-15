@@ -69,6 +69,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		State: pb_task.TaskState_INITIALIZED,
 	})
 	tt := m.GetJob(jobID).GetTask(7).(*task)
+
 	taskID := util.BuildTaskID(jobID, tt.id)
 	var killResponseErr []*resmgrsvc.KillTasksResponse_Error
 	killResponseErr = append(killResponseErr,
@@ -86,10 +87,8 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	}).Return(res, nil)
 
 	runtime := &pb_task.RuntimeInfo{
-		State: pb_task.TaskState_INITIALIZED,
+		State: pb_task.TaskState_KILLED,
 	}
-	mockTaskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), tt.job.id, tt.id).Return(runtime, nil)
 	mockTaskStore.EXPECT().
 		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, runtime).Return(nil)
 
