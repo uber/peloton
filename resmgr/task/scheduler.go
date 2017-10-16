@@ -152,11 +152,28 @@ func (s *scheduler) scheduleTasks() {
 
 			err = s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY)
 			if err != nil {
-				// we can not dequeue this gang and have to
-				// enqueue in the pending queue back, putting
-				// them into invalid gangs by that we can
-				// enqueue them later
-				invalidGangs = append(invalidGangs, gang)
+				// we can not dequeue this gang Dropping them
+				// As they can block the whole resource pool.
+				// It could happen that the tasks have bene killed
+				// (Since the time they have been deququed) and
+				// removed from the tracker, so we need to drop
+				// them from scheduling and remove their resources
+				// from the resource pool allocation.
+				log.WithError(err).WithFields(log.Fields{
+					"Gang": gang,
+					"From": pt.TaskState_PENDING.String(),
+					"To":   pt.TaskState_READY.String(),
+				}).Error("Gang could not be transitioned to Ready " +
+					"due to invalid tasks, " +
+					"Dropping it")
+				// We need to remove the allocation from the resource pool
+				err = n.SubtractFromAllocation(respool.GetGangResources(gang))
+				if err != nil {
+					log.WithError(err).WithField(
+						"Gang", gang).
+						Error("Not able to remove allocation " +
+							"from respool")
+				}
 				continue
 			}
 			// Once the transition is done to ready state for all
@@ -167,7 +184,7 @@ func (s *scheduler) scheduleTasks() {
 				invalidGangs = append(invalidGangs, gang)
 				continue
 			}
-			// Once the gang is enqueued in ready queue, removing it
+			// Once the gang is enqueued in ready queue,
 			// removing it from from demand for the next entitlement
 			// cycle
 			for _, task := range gang.GetTasks() {
@@ -207,7 +224,7 @@ func (s *scheduler) scheduleTasks() {
 	}
 }
 
-// transitGang tries to transit to ready state for all the tasks
+// transitGang tries to transit to "TO" state for all the tasks
 // in the gang and if anyone fails sends error
 func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, toState pt.TaskState) error {
 	isInvalidTaskInGang := false
@@ -227,12 +244,15 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 			} else {
 				isInvalidTaskInGang = true
 				log.Errorf("Task %s is already in %s state",
-					task.Id.Value, fromState.String())
+					task.Id.Value, toState.String())
 				invalidTasks = invalidTasks + " , " + task.Id.Value
 			}
 		} else {
 			isInvalidTaskInGang = true
-			log.Error(errReadyQueueTaskMissing)
+			log.WithError(errReadyQueueTaskMissing).WithFields(log.Fields{
+				"From": fromState.String(),
+				"To":   toState.String(),
+			}).Error("error in transit task")
 			invalidTasks = invalidTasks + " , " + task.Id.Value
 		}
 	}

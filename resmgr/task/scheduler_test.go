@@ -253,14 +253,8 @@ func (suite *SchedulerTestSuite) AddTasks() {
 	}
 }
 
-func (suite *SchedulerTestSuite) validateReadyQueue() {
-	expectedTaskIDs := []string{
-		"job2-1",
-		"job2-2",
-		"job1-2",
-		"job1-1",
-	}
-	for i := 0; i < 4; i++ {
+func (suite *SchedulerTestSuite) validateReadyQueue(expectedTaskIDs []string) {
+	for i := 0; i < len(expectedTaskIDs); i++ {
 		item, err := suite.readyQueue.Pop(suite.readyQueue.Levels()[0])
 		suite.NoError(err)
 		gang := item.(*resmgrsvc.Gang)
@@ -271,12 +265,24 @@ func (suite *SchedulerTestSuite) validateReadyQueue() {
 
 func (suite *SchedulerTestSuite) TestMovingToReadyQueue() {
 	time.Sleep(2000 * time.Millisecond)
-	suite.validateReadyQueue()
+	expectedTaskIDs := []string{
+		"job2-1",
+		"job2-2",
+		"job1-2",
+		"job1-1",
+	}
+	suite.validateReadyQueue(expectedTaskIDs)
 }
 
 func (suite *SchedulerTestSuite) TestMovingTasks() {
 	suite.taskSched.scheduleTasks()
-	suite.validateReadyQueue()
+	expectedTaskIDs := []string{
+		"job2-1",
+		"job2-2",
+		"job1-2",
+		"job1-1",
+	}
+	suite.validateReadyQueue(expectedTaskIDs)
 }
 
 func (suite *SchedulerTestSuite) TestTaskStates() {
@@ -489,4 +495,15 @@ func (suite *SchedulerTestSuite) addTasktotracker(task *resmgr.Task) {
 		Value: "respool11",
 	})
 	suite.rmTaskTracker.AddTask(task, suite.eventStreamHandler, resPool, &Config{})
+}
+
+func (suite *SchedulerTestSuite) TestUntrackedTasks() {
+	suite.rmTaskTracker.DeleteTask(&peloton.TaskID{Value: "job1-1"})
+	suite.taskSched.scheduleTasks()
+	expectedTaskIDs := []string{
+		"job2-1",
+		"job2-2",
+		"job1-2",
+	}
+	suite.validateReadyQueue(expectedTaskIDs)
 }
