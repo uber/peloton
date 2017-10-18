@@ -32,7 +32,9 @@ defaultConfig:
     diskLimitMb: 0.1
     fdLimit: 2
   healthCheck: null
-  ports: []
+  ports:
+  - name: http
+    envName: UBER_PORT_HTTP
   container:
     type: 1
     docker:

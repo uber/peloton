@@ -193,7 +193,7 @@ func (suite *ReconcilerTestSuite) TestReconcile() {
 
 	for _, tt := range reconcilerTests {
 		gomock.InOrder(
-			suite.mockTaskStore.EXPECT().GetTaskByID(context.Background(), tt.pelotonTaskID).Return(
+			suite.mockTaskStore.EXPECT().GetTaskByID(context.Background(), &peloton.TaskID{Value: tt.pelotonTaskID}).Return(
 				&task.TaskInfo{
 					Runtime: &task.RuntimeInfo{
 						State: tt.stateInDB,

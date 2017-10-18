@@ -22,6 +22,7 @@ import (
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"code.uber.internal/infra/peloton/util"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -241,9 +242,9 @@ func (suite *recoveryTestSuite) createJob(jobID *peloton.JobID, instanceCount ui
 	return &job.JobConfig{
 		Name: jobID.Value,
 		Sla: &job.SlaConfig{
-			Preemptible:             false,
-			Priority:                1,
-			MinimumRunningInstances: minInstances,
+			Preemptible:               false,
+			Priority:                  1,
+			MinimumSchedulingUnitSize: minInstances,
 		},
 		InstanceCount: instanceCount,
 		RespoolID: &peloton.ResourcePoolID{
@@ -256,9 +257,9 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 	tasks := map[uint32]*task.TaskInfo{}
 	var i uint32
 	for i = uint32(0); i < numTasks; i++ {
-		var taskID = fmt.Sprintf("%s-%d", jobID.Value, i)
+		taskID := util.BuildTaskID(jobID, i)
 		taskConf := task.TaskConfig{
-			Name: fmt.Sprintf("%s-%d", jobID.Value, i),
+			Name: taskID.Value,
 			Resource: &task.ResourceConfig{
 				CpuLimit:   1,
 				MemLimitMb: 20,
@@ -266,7 +267,7 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 		}
 		tasks[i] = &task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{Value: &taskID},
+				MesosTaskId: &mesos.TaskID{Value: &taskID.Value},
 				State:       taskState,
 			},
 			Config:     &taskConf,
@@ -276,9 +277,9 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 	}
 
 	// Add 1 tasks in SUCCESS state
-	var taskID = fmt.Sprintf("%s-%d", jobID.Value, i+1)
+	taskID := util.BuildTaskID(jobID, i+1)
 	taskConf := task.TaskConfig{
-		Name: fmt.Sprintf("%s-%d", jobID.Value, i+1),
+		Name: taskID.Value,
 		Resource: &task.ResourceConfig{
 			CpuLimit:   1,
 			MemLimitMb: 20,
@@ -286,7 +287,7 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 	}
 	tasks[i+1] = &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &taskID},
+			MesosTaskId: &mesos.TaskID{Value: &taskID.Value},
 			State:       task.TaskState_SUCCEEDED,
 		},
 		Config:     &taskConf,
@@ -390,7 +391,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 
 	// Checking total number of tasks in the tracker(9*4=36)
 	// This includes tasks from TestJob_2 which are not re queued but are inserted in the tracker
-	suite.Equal(suite.rmTaskTracker.GetSize(), int64(36))
+	suite.Equal(int64(36), suite.rmTaskTracker.GetSize())
 }
 
 func TestResmgrRecovery(t *testing.T) {

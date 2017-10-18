@@ -20,7 +20,6 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
@@ -171,39 +170,14 @@ func runTest(conf *cassandra.Config, rootScope tally.Scope, workers int, batchSi
 
 func createTask(taskStore storage.TaskStore, jobIDVal string, instance uint32, rootScope tally.Scope) error {
 	var jobID = &peloton.JobID{Value: jobIDVal}
-	var sla = job.SlaConfig{
-		Priority:                22,
-		MaximumRunningInstances: 3,
-		Preemptible:             false,
-	}
-	var taskConfig = &task.TaskConfig{
-		Resource: &task.ResourceConfig{
-			CpuLimit:    0.8,
-			MemLimitMb:  800,
-			DiskLimitMb: 1500,
-			FdLimit:     1000,
-		},
-	}
-	var jobConfig = job.JobConfig{
-		Name:          jobID.Value,
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"money", "team6", "otto"},
-		Sla:           &sla,
-		DefaultConfig: taskConfig,
-	}
 	tid := fmt.Sprintf("%s-%s", jobID, uuid.New())
-	var taskInfo = &task.TaskInfo{
-		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &tid},
-			State:       task.TaskState_INITIALIZED,
-			Host:        fmt.Sprintf("host-%v", instance),
-		},
-		Config:     jobConfig.GetDefaultConfig(),
-		InstanceId: instance,
-		JobId:      jobID,
+	runtime := &task.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{Value: &tid},
+		State:       task.TaskState_INITIALIZED,
+		Host:        fmt.Sprintf("host-%v", instance),
 	}
 	t := time.Now()
-	err := taskStore.CreateTask(context.Background(), jobID, instance, taskInfo, "test")
+	err := taskStore.CreateTaskRuntime(context.Background(), jobID, instance, runtime, "test")
 	d := time.Since(t)
 	rootScope.Timer("CreateTask").Record(d)
 	if err != nil {
@@ -225,7 +199,7 @@ func updateTaskState(taskStore storage.TaskStore, jobIDVal string, instance uint
 	}
 	taskInfo[instance].GetRuntime().State = state
 	t = time.Now()
-	err = taskStore.UpdateTask(context.Background(), taskInfo[instance])
+	err = taskStore.UpdateTaskRuntime(context.Background(), &peloton.JobID{Value: jobIDVal}, instance, taskInfo[instance].Runtime)
 	d = time.Since(t)
 	rootScope.Timer("UpdateTask").Record(d)
 	if err != nil {

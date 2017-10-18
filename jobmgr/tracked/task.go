@@ -31,7 +31,7 @@ type Task interface {
 	CurrentState() State
 
 	// GoalState of the task.
-	GoalState() State
+	GoalState() GoalState
 
 	// LastAction performed by the task, as well as when it was performed.
 	LastAction() (TaskAction, time.Time)
@@ -40,10 +40,15 @@ type Task interface {
 	RunAction(ctx context.Context, action TaskAction) error
 }
 
-// State of a job. This can encapsulate either the actual state or the goal
-// state.
+// State of a task. This encapsulate the actual state.
 type State struct {
 	State         pb_task.TaskState
+	ConfigVersion uint64
+}
+
+// GoalState of a task. This encapsulate the goal state.
+type GoalState struct {
+	State         pb_task.TaskGoalState
 	ConfigVersion uint64
 }
 
@@ -54,9 +59,9 @@ type TaskAction string
 const (
 	NoAction             TaskAction = "no_action"
 	UntrackAction        TaskAction = "untrack"
+	InitializeAction     TaskAction = "initialize_task"
 	StartAction          TaskAction = "start_task"
 	StopAction           TaskAction = "stop_task"
-	InitializeAction     TaskAction = "initialize_task"
 	UseGoalVersionAction TaskAction = "use_goal_state"
 )
 
@@ -107,11 +112,11 @@ func (t *task) CurrentState() State {
 	}
 }
 
-func (t *task) GoalState() State {
+func (t *task) GoalState() GoalState {
 	t.RLock()
 	defer t.RUnlock()
 
-	return State{
+	return GoalState{
 		State:         t.runtime.GetGoalState(),
 		ConfigVersion: t.runtime.GetDesiredConfigVersion(),
 	}
@@ -153,14 +158,14 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) error {
 	case UntrackAction:
 		t.job.m.clearTask(t)
 
+	case InitializeAction:
+		err = t.initialize(ctx)
+
 	case StartAction:
 		err = t.start(ctx)
 
 	case StopAction:
 		err = t.stop(ctx)
-
-	case InitializeAction:
-		err = t.initialize(ctx)
 
 	default:
 		err = fmt.Errorf("no command configured for running task action `%v`", action)
@@ -173,7 +178,11 @@ func (t *task) updateRuntime(runtime *pb_task.RuntimeInfo) {
 	t.Lock()
 	defer t.Unlock()
 
-	// TODO: Reject update if older than current revision.
+	// Ignore older revisions of the task runtime.
+	if runtime.GetRevision().GetVersion() < t.runtime.GetRevision().GetVersion() {
+		return
+	}
+
 	t.runtime = runtime
 
 	now := time.Now()

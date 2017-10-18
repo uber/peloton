@@ -17,18 +17,19 @@ import (
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
 type TaskUpdaterRMTestSuite struct {
 	suite.Suite
 
-	updater          *statusUpdateRM
-	ctrl             *gomock.Controller
-	testScope        tally.TestScope
-	mockResmgrClient *res_mocks.MockResourceManagerServiceYARPCClient
-	mockJobStore     *store_mocks.MockJobStore
-	mockTaskStore    *store_mocks.MockTaskStore
+	updater            *statusUpdateRM
+	ctrl               *gomock.Controller
+	testScope          tally.TestScope
+	mockResmgrClient   *res_mocks.MockResourceManagerServiceYARPCClient
+	mockJobStore       *store_mocks.MockJobStore
+	mockTrackedManager *mocks.MockManager
 }
 
 func (suite *TaskUpdaterRMTestSuite) SetupTest() {
@@ -36,15 +37,15 @@ func (suite *TaskUpdaterRMTestSuite) SetupTest() {
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.mockResmgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
-	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
+	suite.mockTrackedManager = mocks.NewMockManager(suite.ctrl)
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 
 	suite.updater = &statusUpdateRM{
-		jobStore:     suite.mockJobStore,
-		taskStore:    suite.mockTaskStore,
-		rootCtx:      context.Background(),
-		resmgrClient: suite.mockResmgrClient,
-		metrics:      NewMetrics(suite.testScope),
+		jobStore:       suite.mockJobStore,
+		trackedManager: suite.mockTrackedManager,
+		rootCtx:        context.Background(),
+		resmgrClient:   suite.mockResmgrClient,
+		metrics:        NewMetrics(suite.testScope),
 	}
 }
 
@@ -60,11 +61,11 @@ func TestPelotonTaskUpdaterRM(t *testing.T) {
 func (suite *TaskUpdaterRMTestSuite) TestProcessStatusUpdate() {
 	defer suite.ctrl.Finish()
 
-	jobID := uuid.NewUUID().String()
+	jobID := &peloton.JobID{Value: uuid.NewUUID().String()}
 	uuidStr := uuid.NewUUID().String()
-	instanceID := 0
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instanceID, uuidStr)
-	pelotonTaskID := fmt.Sprintf("%s-%d", jobID, instanceID)
+	instanceID := uint32(0)
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.Value, instanceID, uuidStr)
+	pelotonTaskID := fmt.Sprintf("%s-%d", jobID.Value, instanceID)
 
 	pelotonState := task.TaskState_RUNNING
 	pelotonEvent := &task.TaskEvent{
@@ -79,27 +80,23 @@ func (suite *TaskUpdaterRMTestSuite) TestProcessStatusUpdate() {
 		Type:             pb_eventstream.Event_PELOTON_TASK_EVENT,
 	}
 
-	taskInfo := &task.TaskInfo{
-		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
-			State:       task.TaskState_INITIALIZED,
-			GoalState:   task.TaskState_SUCCEEDED,
-		},
+	runtime := &task.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
+		State:       task.TaskState_INITIALIZED,
+		GoalState:   task.TaskGoalState_SUCCEED,
 	}
-	updateTaskInfo := &task.TaskInfo{
-		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
-			State:       task.TaskState_RUNNING,
-			GoalState:   task.TaskState_SUCCEEDED,
-		},
+	updateRuntime := &task.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
+		State:       task.TaskState_RUNNING,
+		GoalState:   task.TaskGoalState_SUCCEED,
 	}
 
 	gomock.InOrder(
-		suite.mockTaskStore.EXPECT().
-			GetTaskByID(context.Background(), pelotonTaskID).
-			Return(taskInfo, nil),
-		suite.mockTaskStore.EXPECT().
-			UpdateTask(context.Background(), updateTaskInfo).
+		suite.mockTrackedManager.EXPECT().
+			GetTaskRuntime(context.Background(), jobID, instanceID).
+			Return(runtime, nil),
+		suite.mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(context.Background(), jobID, instanceID, updateRuntime).
 			Return(nil),
 	)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))

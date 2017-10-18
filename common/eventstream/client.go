@@ -19,7 +19,6 @@ var (
 	maxEventSize    = 100
 	requestTimeout  = 10 * time.Second
 	errorRetrySleep = 10 * time.Second
-	noEventSleep    = 100 * time.Millisecond
 )
 
 // EventHandler is the interface for handling task update events
@@ -231,7 +230,6 @@ func (c *Client) waitEventsLoop() {
 		}
 		log.WithField("Number of events", len(response.GetEvents())).Debug("event received")
 		if len(response.GetEvents()) == 0 {
-			time.Sleep(noEventSleep)
 			continue
 		}
 

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
@@ -210,12 +211,12 @@ func (tb *Builder) Build(
 	}
 
 	mesosTask := &mesos.TaskInfo{
-		Name:      &jobID,
+		Name:      &jobID.Value,
 		TaskId:    taskID,
 		Resources: lres,
 	}
 
-	tb.populateDiscoveryInfo(mesosTask, pick.selectedPorts, jobID)
+	tb.populateDiscoveryInfo(mesosTask, pick.selectedPorts, jobID.Value)
 	tb.populateCommandInfo(
 		mesosTask,
 		taskConfig.GetCommand(),
@@ -278,8 +279,8 @@ func (tb *Builder) populateCommandInfo(
 	mesosTask *mesos.TaskInfo,
 	command *mesos.CommandInfo,
 	envMap map[string]string,
-	jobID string,
-	instanceID int,
+	jobID *peloton.JobID,
+	instanceID uint32,
 ) {
 
 	if command == nil {
@@ -299,10 +300,12 @@ func (tb *Builder) populateCommandInfo(
 		}
 	}
 
+	taskID := util.BuildTaskID(jobID, instanceID)
+
 	pelotonEnvs := []*mesos.Environment_Variable{
 		{
 			Name:  util.PtrPrintf(PelotonJobID),
-			Value: &jobID,
+			Value: &jobID.Value,
 		},
 		{
 			Name:  util.PtrPrintf(PelotonInstanceID),
@@ -310,7 +313,7 @@ func (tb *Builder) populateCommandInfo(
 		},
 		{
 			Name:  util.PtrPrintf(PelotonTaskID),
-			Value: util.PtrPrintf("%s-%d", jobID, instanceID),
+			Value: &taskID.Value,
 		},
 	}
 
@@ -431,6 +434,11 @@ func (tb *Builder) populateHealthCheck(
 
 	if t := health.GetMaxConsecutiveFailures(); t > 0 {
 		tmp := uint32(t)
+		mh.ConsecutiveFailures = &tmp
+	} else if t < 0 {
+		// TODO: Mesos only honors `0` if it's http or tcp checks. Use 0 when fixed
+		// in mesos: https://issues.apache.org/jira/browse/MESOS-6833.
+		var tmp uint32 = math.MaxUint32
 		mh.ConsecutiveFailures = &tmp
 	}
 

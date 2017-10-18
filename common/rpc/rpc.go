@@ -7,8 +7,8 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"go.uber.org/yarpc/api/transport"
+	"go.uber.org/yarpc/transport/grpc"
 	"go.uber.org/yarpc/transport/http"
-	"go.uber.org/yarpc/transport/x/grpc"
 
 	log "github.com/sirupsen/logrus"
 )

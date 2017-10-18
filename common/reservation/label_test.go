@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -32,7 +33,7 @@ func TestOperationTestSuite(t *testing.T) {
 }
 
 func (suite *LabelTestSuite) TestCreateParseReservationLabel() {
-	reservationLabels := CreateReservationLabels(_testJob, _testInstance, _testHostname)
+	reservationLabels := CreateReservationLabels(&peloton.JobID{Value: _testJob}, _testInstance, _testHostname)
 	jobID, instanceID, err := ParseReservationLabels(reservationLabels)
 	suite.NoError(err)
 	suite.Equal(jobID, _testJob)

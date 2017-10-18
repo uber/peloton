@@ -25,24 +25,28 @@ func TestEngineSuggestActionGoalKilled(t *testing.T) {
 	taskMock := mocks.NewMockTask(ctrl)
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: 0})
 	assert.Equal(t, tracked.UntrackAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 1})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: 1})
 	assert.Equal(t, tracked.UseGoalVersionAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: tracked.UnknownVersion})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 1})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: 1})
 	assert.Equal(t, tracked.UntrackAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: 0})
 	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 10})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: tracked.UnknownVersion})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: tracked.UnknownVersion})
 	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_FAILED, ConfigVersion: 10})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: tracked.UnknownVersion})
+	assert.Equal(t, tracked.UntrackAction, e.suggestTaskAction(taskMock))
 }
 
 func TestEngineSuggestActionGoalRunning(t *testing.T) {
@@ -54,28 +58,107 @@ func TestEngineSuggestActionGoalRunning(t *testing.T) {
 	taskMock := mocks.NewMockTask(ctrl)
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
 	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 1})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 1})
 	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 1})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 1})
 	assert.Equal(t, tracked.UseGoalVersionAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_INITIALIZED, ConfigVersion: tracked.UnknownVersion})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
 	assert.Equal(t, tracked.StartAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_INITIALIZED, ConfigVersion: 123})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 123})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 123})
 	assert.Equal(t, tracked.StartAction, e.suggestTaskAction(taskMock))
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
+	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_LOST, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
+	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_FAILED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
+	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_SUCCEEDED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
+	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+}
+
+func TestEngineSuggestActionGoalSucceeded(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	e := &engine{}
+
+	taskMock := mocks.NewMockTask(ctrl)
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_SUCCEED, ConfigVersion: 0})
 	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_INITIALIZED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_SUCCEED, ConfigVersion: 0})
+	assert.Equal(t, tracked.StartAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_SUCCEED, ConfigVersion: 0})
+	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_FAILED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_SUCCEED, ConfigVersion: 0})
+	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_LOST, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_SUCCEED, ConfigVersion: 0})
+	assert.Equal(t, tracked.InitializeAction, e.suggestTaskAction(taskMock))
+}
+
+func TestEngineSuggestActionGoalRestart(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tests := []struct {
+		actual pb_task.TaskState
+		action tracked.TaskAction
+	}{
+		{pb_task.TaskState_UNKNOWN, tracked.NoAction},
+		{pb_task.TaskState_INITIALIZED, tracked.StopAction},
+		{pb_task.TaskState_PENDING, tracked.NoAction},
+		{pb_task.TaskState_READY, tracked.NoAction},
+		{pb_task.TaskState_PLACING, tracked.NoAction},
+		{pb_task.TaskState_PLACED, tracked.NoAction},
+		{pb_task.TaskState_LAUNCHING, tracked.StopAction},
+		{pb_task.TaskState_LAUNCHED, tracked.StopAction},
+		{pb_task.TaskState_STARTING, tracked.NoAction},
+		{pb_task.TaskState_RUNNING, tracked.StopAction},
+		{pb_task.TaskState_SUCCEEDED, tracked.InitializeAction},
+		{pb_task.TaskState_FAILED, tracked.InitializeAction},
+		{pb_task.TaskState_LOST, tracked.InitializeAction},
+		{pb_task.TaskState_PREEMPTING, tracked.NoAction},
+		{pb_task.TaskState_KILLING, tracked.NoAction},
+		{pb_task.TaskState_KILLED, tracked.InitializeAction},
+	}
+
+	e := &engine{}
+	taskMock := mocks.NewMockTask(ctrl)
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%v -> RESTART: %v", tt.actual, tt.action), func(t *testing.T) {
+			taskMock.EXPECT().CurrentState().Return(tracked.State{State: tt.actual, ConfigVersion: 0})
+			taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RESTART, ConfigVersion: 0})
+			assert.Equal(t, tt.action, e.suggestTaskAction(taskMock))
+		})
+	}
 }
 
 func TestEngineSuggestActionGoalPreempting(t *testing.T) {
@@ -90,34 +173,16 @@ func TestEngineSuggestActionGoalPreempting(t *testing.T) {
 		currentState pb_task.TaskState
 		action       tracked.TaskAction
 	}{
-		{
-			currentState: pb_task.TaskState_INITIALIZED,
-			action:       tracked.StopAction,
-		},
-		{
-			currentState: pb_task.TaskState_LAUNCHING,
-			action:       tracked.StopAction,
-		},
-		{
-			currentState: pb_task.TaskState_LAUNCHED,
-			action:       tracked.StopAction,
-		},
-		{
-			currentState: pb_task.TaskState_RUNNING,
-			action:       tracked.StopAction,
-		},
-		{
-			currentState: pb_task.TaskState_LOST,
-			action:       tracked.InitializeAction,
-		},
-		{
-			currentState: pb_task.TaskState_KILLED,
-			action:       tracked.InitializeAction,
-		},
+		{pb_task.TaskState_INITIALIZED, tracked.StopAction},
+		{pb_task.TaskState_LAUNCHING, tracked.StopAction},
+		{pb_task.TaskState_LAUNCHED, tracked.StopAction},
+		{pb_task.TaskState_RUNNING, tracked.StopAction},
+		{pb_task.TaskState_LOST, tracked.InitializeAction},
+		{pb_task.TaskState_KILLED, tracked.InitializeAction},
 	}
 
 	for _, test := range tt {
-		taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_PREEMPTING, ConfigVersion: 0})
+		taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_PREEMPT, ConfigVersion: 0})
 		taskMock.EXPECT().CurrentState().Return(tracked.State{State: test.currentState, ConfigVersion: 0})
 		assert.Equal(t, test.action, e.suggestTaskAction(taskMock))
 	}
@@ -137,7 +202,7 @@ func TestEngineProcessTask(t *testing.T) {
 	e.cfg.normalize()
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_RUN, ConfigVersion: 0})
 	taskMock.EXPECT().LastAction().Return(tracked.NoAction, time.Time{})
 	taskMock.EXPECT().RunAction(gomock.Any(), tracked.NoAction).Return(nil)
 	managerMock.EXPECT().ScheduleTask(taskMock, time.Time{})
@@ -145,7 +210,7 @@ func TestEngineProcessTask(t *testing.T) {
 	e.processTask(taskMock)
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: 0})
 	taskMock.EXPECT().LastAction().Return(tracked.NoAction, time.Time{})
 	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(nil)
 	managerMock.EXPECT().ScheduleTask(taskMock, gomock.Any())
@@ -153,7 +218,7 @@ func TestEngineProcessTask(t *testing.T) {
 	e.processTask(taskMock)
 
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.GoalState{State: pb_task.TaskGoalState_KILL, ConfigVersion: 0})
 	taskMock.EXPECT().LastAction().Return(tracked.StopAction, time.Time{})
 	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(fmt.Errorf("my error"))
 	taskMock.EXPECT().Job().Return(jobMock)

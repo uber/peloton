@@ -64,12 +64,23 @@ message SlaConfig {
   uint32 maximumRunningInstances = 4;
 
   //
+  // Minimum number of instances to pass scheduling before being launched.
+  // If specified, should <= instanceCount; default value is 1.
+  // Admission requires the corresponding resource pool
+  // has enough reserved resources for the full set of minimum number of
+  // instances.
+  //
+  uint32 minimumSchedulingUnitSize = 5;
+
+  //
   // Minimum number of instances to admit and run at any point in time.
   // If specified, should be <= maximumRunningInstances <= instanceCount;
-  // default value is 1.  Admission requires the corresponding resource pool
-  // has enough reserved resources for the full set of minimum number of instances.
+  // default value is 0. Upgrades, restarts and rescheduling all take this
+  // value into account.
+  // WARNING: Setting this equal to instanceCount will block all restarts and
+  // upgrades from making progress.
   //
-  uint32 minimumRunningInstances = 5;
+  uint32 minimumRunningInstances = 6;
 }
 
 
@@ -78,8 +89,8 @@ message SlaConfig {
  */
 message JobConfig {
 
-  // Change log entry of the job config
-  peloton.ChangeLog changeLog = 1;
+  // Revision entry of the job config
+  peloton.Revision revision = 1;
 
   // Name of the job
   string name = 2;
@@ -172,7 +183,7 @@ message RuntimeInfo
 
   // The version reflects the version of the JobConfig, that's currently
   // used by the job.
-  int64 configVersion = 6;
+  uint64 configVersion = 6;
 }
 
 /**

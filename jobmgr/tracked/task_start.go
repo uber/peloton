@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 )
 
 func (t *task) start(ctx context.Context) error {
@@ -20,10 +21,8 @@ func (t *task) start(ctx context.Context) error {
 		return fmt.Errorf("job config not found for %v", t.job.id)
 	}
 
-	taskID := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", t.job.ID().GetValue(), t.ID()),
-	}
-	taskInfo, err := m.taskStore.GetTaskByID(ctx, taskID.GetValue())
+	taskID := util.BuildTaskID(t.job.ID(), t.ID())
+	taskInfo, err := m.taskStore.GetTaskByID(ctx, taskID)
 	if err != nil || taskInfo == nil {
 		return fmt.Errorf("task info not found for %v", taskID.GetValue())
 	}

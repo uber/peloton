@@ -2,7 +2,6 @@ package launcher
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/common/backoff"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
@@ -192,9 +192,7 @@ func (l *launcher) isRunning() bool {
 // LaunchTaskWithReservedResource launch a task to hostmgr directly as the resource
 // is already reserved.
 func (l *launcher) LaunchTaskWithReservedResource(ctx context.Context, taskInfo *task.TaskInfo) error {
-	pelotonTaskID := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", taskInfo.GetJobId().GetValue(), taskInfo.GetInstanceId()),
-	}
+	pelotonTaskID := util.BuildTaskID(taskInfo.GetJobId(), taskInfo.GetInstanceId())
 	taskRuntime := taskInfo.GetRuntime()
 	launchableTasks, _, err := l.getLaunchableTasks(
 		ctx, []*peloton.TaskID{pelotonTaskID},
@@ -279,8 +277,9 @@ func (l *launcher) enqueueTasks(ctx context.Context, tasks []*task.TaskInfo) err
 	}
 
 	for _, t := range tasks {
-		util.RegenerateMesosTaskID(t)
-		err := l.taskStore.UpdateTask(ctx, t)
+		t.Runtime.State = task.TaskState_INITIALIZED
+		util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.Runtime)
+		err := l.taskStore.UpdateTaskRuntime(ctx, t.JobId, t.InstanceId, t.Runtime)
 		if err != nil {
 			return err
 		}
@@ -304,64 +303,67 @@ func (l *launcher) getLaunchableTasks(
 	getTaskInfoStart := time.Now()
 
 	for _, taskID := range tasks {
-		// TODO: We need to add batch api's for getting all tasks in one shot
-		taskInfo, err := l.taskStore.GetTaskByID(ctx, taskID.GetValue())
-		if err != nil {
-			log.WithError(err).WithField("Task Id", taskID.Value).
-				Error("Not able to get Task")
-			continue
-		}
+		for {
+			// TODO: We need to add batch api's for getting all tasks in one shot
+			taskInfo, err := l.taskStore.GetTaskByID(ctx, taskID)
+			if err != nil {
+				log.WithError(err).WithField("Task Id", taskID.Value).
+					Error("Not able to get Task")
+				break
+			}
 
-		if taskInfo.GetRuntime().GetGoalState() == task.TaskState_KILLED {
-			log.WithField("task_id", taskID.Value).Info("skipping launch of killed task")
-			continue
-		}
+			if taskInfo.GetRuntime().GetGoalState() == task.TaskGoalState_KILL {
+				log.WithField("task_id", taskID.Value).Info("skipping launch of killed task")
+				break
+			}
 
-		// Generate volume ID if not set for stateful task.
-		if taskInfo.GetConfig().GetVolume() != nil {
-			if taskInfo.GetRuntime().GetVolumeID() == nil || hostname != taskInfo.GetRuntime().GetHost() {
-				// Generates volume ID if first time launch the stateful task,
-				// OR task is being launched to a different host.
-				taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
-					Value: uuid.New(),
+			// Generate volume ID if not set for stateful task.
+			if taskInfo.GetConfig().GetVolume() != nil {
+				if taskInfo.GetRuntime().GetVolumeID() == nil || hostname != taskInfo.GetRuntime().GetHost() {
+					// Generates volume ID if first time launch the stateful task,
+					// OR task is being launched to a different host.
+					taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
+						Value: uuid.New(),
+					}
 				}
 			}
-		}
 
-		taskInfo.GetRuntime().Host = hostname
-		taskInfo.GetRuntime().AgentID = agentID
-		taskInfo.GetRuntime().State = task.TaskState_LAUNCHED
-		if selectedPorts != nil {
-			// Reset runtime ports to get new ports assignment if placement has ports.
-			taskInfo.GetRuntime().Ports = make(map[string]uint32)
-			// Assign selected dynamic port to task per port config.
-			for _, portConfig := range taskInfo.GetConfig().GetPorts() {
-				if portConfig.GetValue() != 0 {
-					// Skip static port.
-					continue
+			taskInfo.GetRuntime().Host = hostname
+			taskInfo.GetRuntime().AgentID = agentID
+			taskInfo.GetRuntime().State = task.TaskState_LAUNCHED
+			if selectedPorts != nil {
+				// Reset runtime ports to get new ports assignment if placement has ports.
+				taskInfo.GetRuntime().Ports = make(map[string]uint32)
+				// Assign selected dynamic port to task per port config.
+				for _, portConfig := range taskInfo.GetConfig().GetPorts() {
+					if portConfig.GetValue() != 0 {
+						// Skip static port.
+						continue
+					}
+					if portsIndex >= len(selectedPorts) {
+						// This should never happen.
+						log.WithFields(log.Fields{
+							"selected_ports": selectedPorts,
+							"task_info":      taskInfo,
+						}).Error("placement contains less selected ports than required.")
+						return nil, nil, errors.New("invalid placement")
+					}
+					taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
+					portsIndex++
 				}
-				if portsIndex >= len(selectedPorts) {
-					// This should never happen.
-					log.WithFields(log.Fields{
-						"selected_ports": selectedPorts,
-						"task_info":      taskInfo,
-					}).Error("placement contains less selected ports than required.")
-					return nil, nil, errors.New("invalid placement")
-				}
-				taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
-				portsIndex++
+			}
+
+			// Writes the hostname and ports information back to db.
+			err = l.taskStore.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
+			if err == nil {
+				tasksInfo = append(tasksInfo, taskInfo)
+				break
+			} else if !common.IsTransientError(err) {
+				log.WithError(err).WithField("task_info", taskInfo).
+					Error("Not able to update Task")
+				break
 			}
 		}
-
-		// Writes the hostname and ports information back to db.
-		err = l.taskStore.UpdateTask(ctx, taskInfo)
-		if err != nil {
-			log.WithError(err).WithField("task_info", taskInfo).
-				Error("Not able to update Task")
-			continue
-		}
-
-		tasksInfo = append(tasksInfo, taskInfo)
 	}
 
 	if len(tasksInfo) == 0 {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"fmt"
-
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	job2 "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -53,6 +51,7 @@ func TestTaskStartStateless(t *testing.T) {
 		},
 	}
 	taskInfo := &pb_task.TaskInfo{
+		JobId:      tt.job.id,
 		InstanceId: tt.id,
 		Config: &pb_task.TaskConfig{
 			Volume: &pb_task.PersistentVolumeConfig{},
@@ -63,7 +62,7 @@ func TestTaskStartStateless(t *testing.T) {
 	mockJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
 	mockTaskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", tt.job.id.Value, tt.id)).Return(taskInfo, nil)
+		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
 		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig),
@@ -125,7 +124,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 	mockJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
 	mockTaskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", tt.job.id.Value, tt.id)).Return(taskInfo, nil)
+		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
 	mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(&volume.PersistentVolumeInfo{
 		State: volume.VolumeState_CREATED,
@@ -177,6 +176,7 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 		},
 	}
 	taskInfo := &pb_task.TaskInfo{
+		JobId:      tt.job.id,
 		InstanceId: tt.id,
 		Config: &pb_task.TaskConfig{
 			Volume: &pb_task.PersistentVolumeConfig{},
@@ -187,7 +187,7 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 	mockJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
 	mockTaskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", tt.job.id.Value, tt.id)).Return(taskInfo, nil)
+		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
 	mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(nil, &storage.VolumeNotFoundError{})
 

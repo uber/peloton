@@ -45,9 +45,9 @@ message ResourcePoolID {
 
 
 /**
- *  Change log of an entity info, such as Job config etc.
+ *  Revision of an entity info, such as Job and Task config etc.
  */
-message ChangeLog {
+message Revision {
 
   /**
    *  Version number of the entity info which is monotonically increasing.

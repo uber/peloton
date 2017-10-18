@@ -40,11 +40,17 @@ func GetPortsSetFromResources(resources []*mesos.Resource) map[uint32]bool {
 // GetPortsNumFromOfferMap is helper function to get number of available ports
 // from given id to offer map.
 func GetPortsNumFromOfferMap(offerMap map[string]*mesos.Offer) uint32 {
-	numPorts := 0
+	var numPorts uint32
 	for _, offer := range offerMap {
-		numPorts += len(GetPortsSetFromResources(offer.GetResources()))
+		for _, rs := range offer.GetResources() {
+			for _, r := range rs.GetRanges().GetRange() {
+				// Remember that end is inclusive.
+				// Remember that ranges from offers are disjoints.
+				numPorts += uint32((r.GetEnd() + 1) - r.GetBegin())
+			}
+		}
 	}
-	return uint32(numPorts)
+	return numPorts
 }
 
 // CreatePortRanges create Mesos Ranges type from given port set.

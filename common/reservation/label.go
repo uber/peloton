@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 
 	"code.uber.internal/infra/peloton/util"
 )
@@ -17,16 +18,16 @@ var (
 
 // CreateReservationLabels creates reservation labels for stateful task.
 func CreateReservationLabels(
-	jobID string, instanceID int, hostname string) *mesos.Labels {
+	jobID *peloton.JobID, instanceID uint32, hostname string) *mesos.Labels {
 	return &mesos.Labels{
 		Labels: []*mesos.Label{
 			{
 				Key:   &_jobKey,
-				Value: &jobID,
+				Value: &jobID.Value,
 			},
 			{
 				Key:   &_instanceKey,
-				Value: util.PtrPrintf(strconv.Itoa(instanceID)),
+				Value: util.PtrPrintf(strconv.Itoa(int(instanceID))),
 			},
 			{
 				Key:   &_hostnameKey,

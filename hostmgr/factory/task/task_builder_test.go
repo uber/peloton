@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"testing"
 
@@ -358,6 +359,7 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 	command := "hello world"
 	tmpTrue := true
 
+	uint32Max := uint32(math.MaxUint32)
 	delaySeconds := float64(1)
 	timeoutSeconds := float64(2)
 	intervalSeconds := float64(3)
@@ -407,7 +409,7 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 				InitialIntervalSecs:    uint32(delaySeconds),
 				TimeoutSecs:            uint32(timeoutSeconds),
 				IntervalSecs:           uint32(intervalSeconds),
-				MaxConsecutiveFailures: uint32(consecutiveFailures),
+				MaxConsecutiveFailures: int32(consecutiveFailures),
 			},
 			output: &mesos.HealthCheck{
 				Type: &cmdType,
@@ -442,6 +444,30 @@ func (suite *BuilderTestSuite) TestPopulateHealthCheck() {
 					Shell: &tmpTrue,
 					Value: &command,
 				},
+			},
+			taskInfo: &mesos.TaskInfo{
+				Command: &mesos.CommandInfo{
+					Environment: environment,
+				},
+			},
+		},
+		// negative consecutive failures gives indef.
+		{
+			input: &task.HealthCheckConfig{
+				Type: task.HealthCheckConfig_COMMAND,
+				CommandCheck: &task.HealthCheckConfig_CommandCheck{
+					Command: command,
+				},
+				MaxConsecutiveFailures: -1,
+			},
+			output: &mesos.HealthCheck{
+				Type: &cmdType,
+				Command: &mesos.CommandInfo{
+					Shell:       &tmpTrue,
+					Value:       &command,
+					Environment: environment,
+				},
+				ConsecutiveFailures: &uint32Max,
 			},
 			taskInfo: &mesos.TaskInfo{
 				Command: &mesos.CommandInfo{

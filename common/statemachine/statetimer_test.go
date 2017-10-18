@@ -38,10 +38,7 @@ func TestPelotonStateTimer(t *testing.T) {
 
 func (suite *StateTimerTestSuite) TestTimer() {
 	suite.statetimer.Start(4 * time.Second)
-	suite.EqualValues(suite.statetimer.runningState, runningStateRunning)
+	suite.NotNil(suite.statetimer.stopChan)
 	suite.statetimer.Stop()
-	suite.EqualValues(suite.statetimer.runningState, runningStateNotStarted)
-	err := suite.statetimer.Stop()
-	suite.Error(err)
-	suite.EqualValues(suite.statetimer.runningState, runningStateNotStarted)
+	suite.Nil(suite.statetimer.stopChan)
 }

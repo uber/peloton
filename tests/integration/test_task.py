@@ -1,4 +1,5 @@
 import pytest
+import time
 
 from job import Job
 from peloton_client.pbgen.peloton.api.job import job_pb2
@@ -67,5 +68,31 @@ def test__kill_mesos_agent_makes_task_resume(mesos_agent):
 
     mesos_agent.restart()
 
+    time.sleep(1.0)
+
+    job.wait_for_state(goal_state='RUNNING')
+    job.stop()
+
+
+def test__task_restart_stops_and_starts_tasks_with_new_mesos_ids():
+    job = Job(job_file='long_running_job.yaml')
+    job.job_config.type = job_pb2.SERVICE
+
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+    tasks = job.get_tasks().values()
+
+    # Save original mesos ids
+    mesos_ids = {t.instance_id: t.mesos_task_id for t in tasks}
+    job.restart()
+
+    # Wait until mesos ids change for all the tasks
+    def all_mesos_ids_are_updated():
+        return all(mesos_ids[t.instance_id] != t.mesos_task_id for t in tasks)
+
+    # Tasks shall be stopped before mesos id is changed
+    job.wait_for_condition(all_mesos_ids_are_updated)
+
+    # Make sure that tasks are running again
     job.wait_for_state(goal_state='RUNNING')
     job.stop()

@@ -4,12 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/util"
-
-	"github.com/pkg/errors"
 )
 
 // Initialize action does the following:
@@ -17,32 +14,26 @@ import (
 // 2. Sets the goal state depending on the JobType
 // 3. Regenerates a new mesos task ID
 func (t *task) initialize(ctx context.Context) error {
+	t.Lock()
+	runtime := t.runtime
+	t.Unlock()
+
+	if runtime == nil {
+		return fmt.Errorf("tracked task has no runtime info assigned")
+	}
+
 	m := t.job.m
 
-	taskID := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", t.job.ID().GetValue(), t.ID()),
-	}
-
-	taskInfo, err := m.taskStore.GetTaskByID(ctx, taskID.GetValue())
-	if err != nil || taskInfo == nil {
-		return fmt.Errorf("task info not found for %v", taskID.GetValue())
-	}
-
+	// Retrieves job config and task info from data stores.
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, t.job.id)
 	if err != nil {
 		return fmt.Errorf("job config not found for %v", t.job.id)
 	}
 
-	util.RegenerateMesosTaskID(taskInfo)
-
-	// update task runtime
-	taskInfo.Runtime.GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
-	taskInfo.Runtime.StartTime = ""
-	taskInfo.Runtime.CompletionTime = ""
-
-	err = m.UpdateTask(ctx, t.job.ID(), taskInfo.GetInstanceId(), taskInfo)
-	if err != nil {
-		return errors.Wrapf(err, "unable to update task")
-	}
-	return nil
+	// Shallow copy of the runtime.
+	newRuntime := *runtime
+	newRuntime.State = pb_task.TaskState_INITIALIZED
+	newRuntime.GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
+	util.RegenerateMesosTaskID(t.job.id, t.id, &newRuntime)
+	return m.UpdateTaskRuntime(ctx, t.job.id, t.id, &newRuntime)
 }

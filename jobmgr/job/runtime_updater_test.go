@@ -58,10 +58,10 @@ func TestUpdateJobRuntime_Events(t *testing.T) {
 	updater.OnEvents(events)
 
 	for i := 0; i < 10; i++ {
-		assert.True(t, updater.taskUpdatedFlags[fmt.Sprintf("job%d", i)])
-		assert.Equal(t, updater.firstTaskUpdateTime[fmt.Sprintf("job%d", i)],
+		assert.True(t, updater.taskUpdatedFlags[peloton.JobID{Value: fmt.Sprintf("job%d", i)}])
+		assert.Equal(t, updater.firstTaskUpdateTime[peloton.JobID{Value: fmt.Sprintf("job%d", i)}],
 			times[i][0])
-		assert.Equal(t, updater.lastTaskUpdateTime[fmt.Sprintf("job%d", i)],
+		assert.Equal(t, updater.lastTaskUpdateTime[peloton.JobID{Value: fmt.Sprintf("job%d", i)}],
 			times[i][numTasks-1])
 	}
 
@@ -170,7 +170,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 		},
 	}
 	updater.OnEvents(events)
-	assert.Equal(t, eventTimeUnix, updater.lastTaskUpdateTime["job0"])
+	assert.Equal(t, eventTimeUnix, updater.lastTaskUpdateTime[peloton.JobID{Value: "job0"}])
 	updater.updateJobsRuntime(context.Background())
 
 	assert.Equal(t, job.JobState_SUCCEEDED, jobRuntime.State)

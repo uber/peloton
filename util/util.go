@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	// ResourceEspilon is the minimum espilon mesos resource;
+	// ResourceEpsilon is the minimum epsilon mesos resource;
 	// This is because Mesos internally uses a fixed point precision. See MESOS-4687 for details.
-	ResourceEspilon float64 = 0.0009
+	ResourceEpsilon float64 = 0.0009
 )
 
 var uuidLength = len(uuid.New())
@@ -72,8 +72,8 @@ func GetOfferScalarResourceSummary(offer *mesos.Offer) map[string]map[string]flo
 func CreateMesosScalarResources(values map[string]float64, role string) []*mesos.Resource {
 	var rs []*mesos.Resource
 	for name, value := range values {
-		// Skip any value smaller than Espilon.
-		if math.Abs(value) < ResourceEspilon {
+		// Skip any value smaller than Epsilon.
+		if math.Abs(value) < ResourceEpsilon {
 			continue
 		}
 
@@ -199,11 +199,18 @@ func IsPelotonStateTerminal(state task.TaskState) bool {
 	}
 }
 
+// BuildTaskID builds a TaskID from a jobID and instanceID
+func BuildTaskID(jobID *peloton.JobID, instanceID uint32) *peloton.TaskID {
+	return &peloton.TaskID{
+		Value: fmt.Sprintf("%s-%d", jobID.Value, instanceID),
+	}
+}
+
 // ParseTaskID parses the jobID and instanceID from peloton taskID
-func ParseTaskID(taskID string) (string, int, error) {
+func ParseTaskID(taskID string) (*peloton.JobID, uint32, error) {
 	pos := strings.LastIndex(taskID, "-")
 	if pos == -1 {
-		return taskID, 0, fmt.Errorf("Invalid task ID %v", taskID)
+		return nil, 0, fmt.Errorf("Invalid task ID %v", taskID)
 	}
 	jobID := taskID[0:pos]
 	ins := taskID[pos+1:]
@@ -212,33 +219,33 @@ func ParseTaskID(taskID string) (string, int, error) {
 	if err != nil {
 		log.Errorf("Failed to parse taskID %v err=%v", taskID, err)
 	}
-	return jobID, instanceID, err
+	return &peloton.JobID{Value: jobID}, uint32(instanceID), err
 }
 
 // ParseTaskIDFromMesosTaskID parses the taskID from mesosTaskID
-func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
+func ParseTaskIDFromMesosTaskID(mesosTaskID string) (*peloton.TaskID, error) {
 	// mesos task id would be "(jobID)-(instanceID)-(GUID)" form
 	if len(mesosTaskID) < uuidLength+1 {
-		return "", fmt.Errorf("Invalid mesos task ID %v, not ending with uuid", mesosTaskID)
+		return nil, fmt.Errorf("Invalid mesos task ID %v, not ending with uuid", mesosTaskID)
 	}
 	pelotonTaskID := mesosTaskID[:len(mesosTaskID)-(uuidLength+1)]
-	_, _, err := ParseTaskID(pelotonTaskID)
+	jobID, instanceID, err := ParseTaskID(pelotonTaskID)
 	if err != nil {
 		log.WithError(err).
 			WithField("mesos_task_id", mesosTaskID).
 			Error("Invalid mesos task ID, cannot parse jobID / instance")
-		return "", err
+		return nil, err
 	}
-	return pelotonTaskID, nil
+	return BuildTaskID(jobID, instanceID), nil
 }
 
 // ParseJobAndInstanceID return jobID and instanceID from given mesos task id.
-func ParseJobAndInstanceID(mesosTaskID string) (string, int, error) {
+func ParseJobAndInstanceID(mesosTaskID string) (*peloton.JobID, uint32, error) {
 	pelotonTaskID, err := ParseTaskIDFromMesosTaskID(mesosTaskID)
 	if err != nil {
-		return "", 0, err
+		return nil, 0, err
 	}
-	return ParseTaskID(pelotonTaskID)
+	return ParseTaskID(pelotonTaskID.Value)
 }
 
 // UnmarshalToType unmarshal a string to a typed interface{}
@@ -306,16 +313,12 @@ func ConvertTaskToResMgrTask(
 	taskInfo *task.TaskInfo,
 	jobConfig *job.JobConfig) *resmgr.Task {
 	instanceID := taskInfo.GetInstanceId()
-	taskID := &peloton.TaskID{
-		Value: fmt.Sprintf(
-			"%s-%d",
-			taskInfo.GetJobId().GetValue(),
-			instanceID),
-	}
+	taskID := BuildTaskID(taskInfo.GetJobId(), instanceID)
 
-	// If minInstances > 1, instances w/instanceID between 0..minInstances-1 should be gang-scheduled;
-	// only pass MinInstances value > 1 for those tasks.
-	minInstances := jobConfig.GetSla().GetMinimumRunningInstances()
+	// If minSchedulingUnit size > 1, instances w/instanceID between
+	// 0..minSchedulingUnit-1 should be gang-scheduled;
+	// only pass minSchedulingUnit value > 1 for those tasks.
+	minInstances := jobConfig.GetSla().GetMinimumSchedulingUnitSize()
 	if (minInstances <= 1) || (instanceID >= minInstances) {
 		minInstances = 1
 	}
@@ -365,16 +368,16 @@ func ConvertLabels(pelotonLabels []*peloton.Label) *mesos.Labels {
 	return mesosLabels
 }
 
-// RegenerateMesosTaskID generates a new mesos task ID and update task info.
-func RegenerateMesosTaskID(taskInfo *task.TaskInfo) {
-	// The mesos task id must end with an UUID1, to encode in a timestamp.
-	mesosTaskID := fmt.Sprintf(
-		"%s-%d-%s",
-		taskInfo.GetJobId().GetValue(),
-		taskInfo.GetInstanceId(),
-		uuid.New())
-	taskInfo.GetRuntime().MesosTaskId = &mesos.TaskID{
-		Value: &mesosTaskID,
+// BuildMesosTaskID builds a mesos task id from a task id and a uuid
+func BuildMesosTaskID(taskID *peloton.TaskID, strUUID string) *mesos.TaskID {
+	return &mesos.TaskID{
+		Value: &[]string{fmt.Sprintf("%s-%s", taskID.Value, strUUID)}[0],
 	}
-	taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
+}
+
+// RegenerateMesosTaskID generates a new mesos task ID and update task runtime.
+func RegenerateMesosTaskID(jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) {
+	// The mesos task id must end with an UUID1, to encode in a timestamp.
+	strUUID := uuid.NewUUID().String()
+	runtime.MesosTaskId = BuildMesosTaskID(BuildTaskID(jobID, instanceID), strUUID)
 }

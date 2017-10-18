@@ -1,5 +1,5 @@
-hash: b7ad6d4b5966ee815ce97c11441feb0482131556e2827734cc29e9e5847414ce
-updated: 2017-09-19T06:40:01.657941711+02:00
+hash: 714e2304df50428ae510961825988c22d47cc53f4160a99aa7ae8a6ab87266f7
+updated: 2017-10-13T12:49:13.988312173+02:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -157,7 +157,7 @@ imports:
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: be9e53c77349ae2dd4b8c03a6dc20ed9a88b9927
+  version: 95078a8f10668bd1fa73ae46761cdc58d25436b8
   subpackages:
   - m3
   - m3/customtransports
@@ -180,12 +180,12 @@ imports:
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/thriftrw
-  version: b032111262f3c4a5c8027c349ca4645aced173bb
+  version: bce7fd589d505915f56a7901d8c143e1625e085c
   subpackages:
   - internal/semver
   - version
 - name: go.uber.org/yarpc
-  version: fe97992d7ceca33392987b80e3eb926c392ccdd3
+  version: b5c16862c4aa25571ad662cf051eb2335bf9dda9
   subpackages:
   - api/backoff
   - api/encoding
@@ -216,12 +216,12 @@ imports:
   - pkg/errors
   - pkg/lifecycle
   - pkg/procedure
+  - transport/grpc
   - transport/http
-  - transport/x/grpc
   - yarpcconfig
   - yarpcerrors
 - name: go.uber.org/zap
-  version: 3216c4c73e8ebbafff73c456dd27143f4a7c1f94
+  version: 35aad584952c3e7020db7b839f6b102de6271f89
   subpackages:
   - buffer
   - internal/bufferpool
@@ -262,9 +262,10 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3
+  version: f7bf885db0b7479a537ec317c6e48ce53145f3db
   repo: https://github.com/grpc/grpc-go
   subpackages:
+  - balancer
   - codes
   - connectivity
   - credentials
@@ -275,6 +276,7 @@ imports:
   - metadata
   - naming
   - peer
+  - resolver
   - stats
   - status
   - tap

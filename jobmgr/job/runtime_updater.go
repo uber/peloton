@@ -58,10 +58,10 @@ func NewJobRuntimeUpdater(
 		cfg:                 cfg,
 		jobStore:            jobStore,
 		taskStore:           taskStore,
-		firstTaskUpdateTime: make(map[string]float64),
-		lastTaskUpdateTime:  make(map[string]float64),
-		taskUpdatedFlags:    make(map[string]bool),
-		taskUpdateRunning:   make(map[string]chan struct{}),
+		firstTaskUpdateTime: make(map[peloton.JobID]float64),
+		lastTaskUpdateTime:  make(map[peloton.JobID]float64),
+		taskUpdatedFlags:    make(map[peloton.JobID]bool),
+		taskUpdateRunning:   make(map[peloton.JobID]chan struct{}),
 		metrics:             NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
 		jobRecovery: NewJobRecovery(
 			trackedManager,
@@ -81,12 +81,12 @@ type RuntimeUpdater struct {
 	cfg Config
 
 	// jobID -> first task update time
-	firstTaskUpdateTime map[string]float64
+	firstTaskUpdateTime map[peloton.JobID]float64
 	// jobID -> last task update time
-	lastTaskUpdateTime map[string]float64
+	lastTaskUpdateTime map[peloton.JobID]float64
 	// jobID -> if task has updated
-	taskUpdatedFlags  map[string]bool
-	taskUpdateRunning map[string]chan struct{}
+	taskUpdatedFlags  map[peloton.JobID]bool
+	taskUpdateRunning map[peloton.JobID]chan struct{}
 	started           atomic.Bool
 	progress          atomic.Uint64
 
@@ -120,10 +120,10 @@ func (j *RuntimeUpdater) OnEvents(events []*pb_eventstream.Event) {
 			continue
 		}
 		// Mark the corresponding job as "taskUpdated", and track the update time
-		j.taskUpdatedFlags[jobID] = true
-		j.lastTaskUpdateTime[jobID] = *event.MesosTaskStatus.Timestamp
-		if _, ok := j.firstTaskUpdateTime[jobID]; !ok {
-			j.firstTaskUpdateTime[jobID] = *event.MesosTaskStatus.Timestamp
+		j.taskUpdatedFlags[*jobID] = true
+		j.lastTaskUpdateTime[*jobID] = *event.MesosTaskStatus.Timestamp
+		if _, ok := j.firstTaskUpdateTime[*jobID]; !ok {
+			j.firstTaskUpdateTime[*jobID] = *event.MesosTaskStatus.Timestamp
 		}
 		j.progress.Store(event.Offset)
 	}
@@ -145,7 +145,7 @@ func formatTime(timestamp float64, layout string) string {
 func (j *RuntimeUpdater) UpdateJob(ctx context.Context, jobID *peloton.JobID) error {
 	j.Lock()
 	// Ensure we mark it for eventual evaluation.
-	j.taskUpdatedFlags[jobID.GetValue()] = true
+	j.taskUpdatedFlags[*jobID] = true
 	j.Unlock()
 
 	if j.started.Load() {
@@ -164,7 +164,7 @@ func (j *RuntimeUpdater) UpdateJob(ctx context.Context, jobID *peloton.JobID) er
 func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.JobID) error {
 	// Ensure this is the only job update running for this job.
 	j.Lock()
-	if c, ok := j.taskUpdateRunning[jobID.GetValue()]; ok {
+	if c, ok := j.taskUpdateRunning[*jobID]; ok {
 		// If already running, wait for the existing execution to finish.
 		j.Unlock()
 		<-c
@@ -172,9 +172,9 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	}
 
 	// Clear taskUpdatedFlags for job, to allow being set again.
-	delete(j.taskUpdatedFlags, jobID.GetValue())
+	delete(j.taskUpdatedFlags, *jobID)
 	c := make(chan struct{})
-	j.taskUpdateRunning[jobID.GetValue()] = c
+	j.taskUpdateRunning[*jobID] = c
 	j.Unlock()
 
 	// Always clean up by marking the task as run.
@@ -182,7 +182,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 		j.Lock()
 		defer j.Unlock()
 
-		delete(j.taskUpdateRunning, jobID.GetValue())
+		delete(j.taskUpdateRunning, *jobID)
 		close(c)
 	}()
 
@@ -239,7 +239,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	j.Lock()
 
 	// Update job start time if necessary
-	firstTaskUpdateTime, ok := j.firstTaskUpdateTime[jobID.Value]
+	firstTaskUpdateTime, ok := j.firstTaskUpdateTime[*jobID]
 	if ok && jobRuntime.StartTime == "" {
 		count := uint32(0)
 		for _, state := range taskStatesAfterStart {
@@ -251,7 +251,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	}
 
 	// Decide the new job state from the task state counts
-	lastTaskUpdateTime, ok := j.lastTaskUpdateTime[jobID.Value]
+	lastTaskUpdateTime, ok := j.lastTaskUpdateTime[*jobID]
 	completionTime := ""
 	if ok {
 		completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
@@ -259,13 +259,13 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
 		jobState = job.JobState_SUCCEEDED
 		jobRuntime.CompletionTime = completionTime
-		delete(j.lastTaskUpdateTime, jobID.Value)
+		delete(j.lastTaskUpdateTime, *jobID)
 		j.metrics.JobSucceeded.Inc(1)
 	} else if stateCounts[task.TaskState_SUCCEEDED.String()]+
 		stateCounts[task.TaskState_FAILED.String()] == instances {
 		jobState = job.JobState_FAILED
 		jobRuntime.CompletionTime = completionTime
-		delete(j.lastTaskUpdateTime, jobID.Value)
+		delete(j.lastTaskUpdateTime, *jobID)
 		j.metrics.JobFailed.Inc(1)
 	} else if stateCounts[task.TaskState_KILLED.String()] > 0 &&
 		(stateCounts[task.TaskState_SUCCEEDED.String()]+
@@ -273,7 +273,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 			stateCounts[task.TaskState_KILLED.String()] == instances) {
 		jobState = job.JobState_KILLED
 		jobRuntime.CompletionTime = completionTime
-		delete(j.lastTaskUpdateTime, jobID.Value)
+		delete(j.lastTaskUpdateTime, *jobID)
 		j.metrics.JobKilled.Inc(1)
 	} else if stateCounts[task.TaskState_RUNNING.String()] > 0 {
 		jobState = job.JobState_RUNNING
@@ -305,7 +305,7 @@ func (j *RuntimeUpdater) updateJobsRuntime(ctx context.Context) {
 	var jobsToRun []*peloton.JobID
 	for jobID, taskUpdated := range j.taskUpdatedFlags {
 		if taskUpdated && j.started.Load() {
-			jobsToRun = append(jobsToRun, &peloton.JobID{Value: jobID})
+			jobsToRun = append(jobsToRun, &jobID)
 			delete(j.firstTaskUpdateTime, jobID)
 		}
 	}
@@ -359,9 +359,9 @@ func (j *RuntimeUpdater) checkAllJobs(ctx context.Context) {
 func (j *RuntimeUpdater) clear() {
 	log.Info("jobRuntimeUpdater cleared")
 
-	j.taskUpdatedFlags = make(map[string]bool)
-	j.firstTaskUpdateTime = make(map[string]float64)
-	j.lastTaskUpdateTime = make(map[string]float64)
+	j.taskUpdatedFlags = make(map[peloton.JobID]bool)
+	j.firstTaskUpdateTime = make(map[peloton.JobID]float64)
+	j.lastTaskUpdateTime = make(map[peloton.JobID]float64)
 
 }
 

@@ -54,10 +54,8 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	task := &resmgr.Task{
 		Id: taskID,
 	}
-	taskInfo := &peloton_task.TaskInfo{
-		Runtime: &peloton_task.RuntimeInfo{
-			State: peloton_task.TaskState_RUNNING,
-		},
+	runtime := &peloton_task.RuntimeInfo{
+		State: peloton_task.TaskState_RUNNING,
 	}
 
 	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(
@@ -66,12 +64,12 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 			Error: nil,
 		}, nil,
 	)
-	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskID.Value).Return(taskInfo, nil)
-	suite.mockTrackedManager.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), taskInfo).Return(nil)
+	suite.mockTrackedManager.EXPECT().GetTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any()).Return(runtime, nil)
+	suite.mockTrackedManager.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), runtime).Return(nil)
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)
-	suite.Equal(peloton_task.TaskState_PREEMPTING, taskInfo.GetRuntime().GoalState)
+	suite.Equal(peloton_task.TaskGoalState_PREEMPT, runtime.GoalState)
 }
 
 func (suite *PreemptorTestSuite) TestReconciler_StartStop() {

@@ -41,3 +41,21 @@ def test__create_a_batch_job_and_restart_jobmgr_completes_jobs(jobmgr):
     jobmgr.restart()
 
     job.wait_for_state()
+
+
+def test_create_job_and_update_with_new_instance_count():
+    job = Job(job_file='long_running_job.yaml')
+    job.job_config.instanceCount = 1
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    config = job.get_config()
+    assert config.instanceCount == 1
+
+    config.instanceCount = 2
+    job.update(config)
+
+    job.wait_for_state(goal_state='RUNNING', task_count=2)
+
+    job.stop()
+    job.wait_for_state(goal_state='KILLED')

@@ -4,59 +4,52 @@ import (
 	"context"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	peloton_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-
-	"code.uber.internal/infra/peloton/storage/mocks"
-
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"github.com/golang/mock/gomock"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 )
 
-func TestTaskInitialize(t *testing.T) {
+func TestTaskStartInitialized(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	oldMesosTaskID := uuid.New()
-	taskInfo := &peloton_task.TaskInfo{
-		InstanceId: 1,
-		JobId:      &peloton.JobID{Value: uuid.New()},
-		Runtime: &peloton_task.RuntimeInfo{
-			State: peloton_task.TaskState_KILLED,
-			MesosTaskId: &mesos_v1.TaskID{
-				Value: &oldMesosTaskID,
-			},
-		},
-	}
-	mockTaskStore := mocks.NewMockTaskStore(ctrl)
-	mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), gomock.Any()).Return(taskInfo, nil)
-	mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Do(
-		func(_ context.Context, updatedTaskInfo *peloton_task.TaskInfo) {
-			taskInfo = updatedTaskInfo
-		}).Return(nil)
-
-	jobConfig := &pb_job.JobConfig{
-		Type: pb_job.JobType_BATCH,
-	}
-	mockJobStore := mocks.NewMockJobStore(ctrl)
-	mockJobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
+	mockJobStore := storage_mocks.NewMockJobStore(ctrl)
+	mockTaskStore := storage_mocks.NewMockTaskStore(ctrl)
 
 	tt := &task{
+		id: 12345,
 		job: &job{
-			m: &manager{
-				mtx:       newMetrics(tally.NoopScope),
-				taskStore: mockTaskStore,
-				jobStore:  mockJobStore,
+			id: &peloton.JobID{
+				Value: "my-job-id",
 			},
+			m: &manager{
+				jobStore:  mockJobStore,
+				taskStore: mockTaskStore,
+				mtx:       newMetrics(tally.NoopScope),
+			},
+		},
+		runtime: &pb_task.RuntimeInfo{},
+	}
+
+	jobConfig := &pb_job.JobConfig{
+		RespoolID: &peloton.ResourcePoolID{
+			Value: "my-respool-id",
 		},
 	}
 
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
+	mockTaskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, gomock.Any()).
+		Do(func(_, _, _ interface{}, runtime *pb_task.RuntimeInfo) {
+			assert.Equal(t, pb_task.TaskGoalState_SUCCEED, runtime.GoalState)
+			assert.Equal(t, pb_task.TaskState_INITIALIZED, runtime.State)
+			assert.NotNil(t, runtime.MesosTaskId)
+		}).
+		Return(nil)
+
 	assert.NoError(t, tt.RunAction(context.Background(), InitializeAction))
-	assert.NotEqual(t, oldMesosTaskID, taskInfo.Runtime.MesosTaskId)
-	assert.Equal(t, peloton_task.TaskState_INITIALIZED, taskInfo.Runtime.State)
-	assert.Equal(t, peloton_task.TaskState_SUCCEEDED, taskInfo.Runtime.GoalState)
+	assert.Nil(t, tt.runtime.MesosTaskId)
 }

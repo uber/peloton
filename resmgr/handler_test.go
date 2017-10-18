@@ -31,6 +31,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/preemption/mocks"
+	"code.uber.internal/infra/peloton/util"
 )
 
 const (
@@ -208,24 +209,22 @@ func (suite *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePool
 func (suite *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	uuidStr := "uuidstr-1"
-	jobID := "job1"
-	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	jobID := &peloton.JobID{Value: "job1"}
+	instance := uint32(1)
+	mesosTaskID := util.BuildMesosTaskID(util.BuildTaskID(jobID, instance), uuidStr)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job1-1",
 			Priority: 0,
-			JobId:    &peloton.JobID{Value: "job1"},
-			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
+			JobId:    jobID,
+			Id:       util.BuildTaskID(jobID, instance),
 			Resource: &task.ResourceConfig{
 				CpuLimit:    1,
 				DiskLimitMb: 10,
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
+			TaskId: mesosTaskID,
 		},
 	}
 	return &gang
@@ -373,12 +372,10 @@ func (suite *HandlerTestSuite) TestRequeue() {
 	// in the enqueue request then it should move task to
 	// ready state and ready queue
 	uuidStr := "uuidstr-2"
-	jobID := "job1"
-	instance := 1
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
-	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
-		Value: &mesosTaskID,
-	}
+	jobID := &peloton.JobID{Value: "job1"}
+	instance := uint32(1)
+	mesosTaskID := util.BuildMesosTaskID(util.BuildTaskID(jobID, instance), uuidStr)
+	enqReq.Gangs[0].Tasks[0].TaskId = mesosTaskID
 	enqResp, err = suite.handler.EnqueueGangs(suite.context, enqReq)
 	suite.NoError(err)
 	suite.NotNil(enqResp.GetError())
@@ -398,7 +395,7 @@ func (suite *HandlerTestSuite) TestRequeue() {
 	suite.NoError(err)
 	suite.Nil(deqResp.GetError())
 	log.Info(*deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
-	suite.Equal(mesosTaskID, *deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
+	suite.Equal(mesosTaskID, deqResp.GetGangs()[0].Tasks[0].TaskId)
 }
 
 func (suite *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
@@ -638,7 +635,7 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 		maxOffset: &c,
 		rmTracker: rm_task.GetTracker(),
 	}
-	jobID := "test"
+	jobID := &peloton.JobID{Value: "test"}
 	rm_task.InitTaskTracker(tally.NoopScope)
 	uuidStr := uuid.NewUUID().String()
 	var events []*pb_eventstream.Event
@@ -649,23 +646,19 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 			Resources: suite.getResourceConfig(),
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 		})
-	for i := 0; i < 100; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
+	for i := uint32(0); i < uint32(100); i++ {
+		mesosTaskID := util.BuildMesosTaskID(util.BuildTaskID(jobID, i), uuidStr)
 		state := mesos_v1.TaskState_TASK_FINISHED
 		status := &mesos_v1.TaskStatus{
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
-			State: &state,
+			TaskId: mesosTaskID,
+			State:  &state,
 		}
 		event := pb_eventstream.Event{
 			Offset:          uint64(1000 + i),
 			MesosTaskStatus: status,
 		}
 		events = append(events, &event)
-		ptask := &peloton.TaskID{
-			Value: fmt.Sprintf("%s-%d", jobID, i),
-		}
+		ptask := util.BuildTaskID(jobID, i)
 
 		handler.rmTracker.AddTask(&resmgr.Task{
 			Id: ptask,
@@ -675,9 +668,7 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
-			TaskId: &mesos_v1.TaskID{
-				Value: &mesosTaskID,
-			},
+			TaskId: mesosTaskID,
 		}, nil, resp, &rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,

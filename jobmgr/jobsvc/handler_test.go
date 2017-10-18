@@ -2,7 +2,6 @@ package jobsvc
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -11,7 +10,6 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
@@ -19,11 +17,13 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
+	"github.com/pborman/uuid"
 )
 
 const (
@@ -52,7 +52,6 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 	mtx := NewMetrics(tally.NoopScope)
 	suite.handler = &serviceHandler{
 		metrics: mtx,
-		rootCtx: context.Background(),
 	}
 	suite.testJobID = &peloton.JobID{
 		Value: "test_job",
@@ -61,10 +60,10 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 		Name:          suite.testJobID.Value,
 		InstanceCount: testInstanceCount,
 		Sla: &job.SlaConfig{
-			Preemptible:             true,
-			Priority:                22,
-			MaximumRunningInstances: 2,
-			MinimumRunningInstances: 1,
+			Preemptible:               true,
+			Priority:                  22,
+			MaximumRunningInstances:   2,
+			MinimumSchedulingUnitSize: 1,
 		},
 	}
 	var taskInfos = make(map[uint32]*task.TaskInfo)
@@ -88,12 +87,13 @@ func (suite *JobHandlerTestSuite) createTestTaskInfo(
 	state task.TaskState,
 	instanceID uint32) *task.TaskInfo {
 
-	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
+	mtID := util.BuildMesosTaskID(util.BuildTaskID(suite.testJobID, instanceID), uuid.NewUUID().String())
+
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &taskID},
+			MesosTaskId: mtID,
 			State:       state,
-			GoalState:   task.TaskState_SUCCEEDED,
+			GoalState:   task.TaskGoalState_SUCCEED,
 		},
 		Config: &task.TaskConfig{
 			Name:     suite.testJobConfig.Name,
@@ -132,7 +132,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 			Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	jobmgr_task.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
+	jobmgr_task.EnqueueGangs(context.Background(), tasksInfo, suite.testJobConfig, mockResmgrClient)
 	suite.Equal(gangs, expectedGangs)
 }
 
@@ -163,7 +163,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 			}).
 			Return(nil, errors.New("Resmgr Error")),
 	)
-	err := jobmgr_task.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
+	err := jobmgr_task.EnqueueGangs(context.Background(), tasksInfo, suite.testJobConfig, mockResmgrClient)
 	suite.Error(err)
 }
 
@@ -187,7 +187,7 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool() {
 				gomock.Eq(request)).
 			Return(nil, errors.New("Respool Not found")),
 	)
-	errResponse := suite.handler.validateResourcePool(respoolID)
+	errResponse := suite.handler.validateResourcePool(context.Background(), respoolID)
 	suite.Error(errResponse)
 }
 
@@ -217,9 +217,11 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore
+	suite.handler.trackedManager = mockTrackedManager
 	updater := jobmgr_job.NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, jobmgr_job.Config{}, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
@@ -241,15 +243,17 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		CreateTasks(context.Background(), jobID, gomock.Any(), "peloton").
+		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
+		CreateTaskRuntime(context.Background(), jobID, uint32(3), gomock.Any(), "peloton").
+		Return(nil).
+		AnyTimes()
+	mockTrackedManager.EXPECT().SetTask(jobID, uint32(3), gomock.Any()).AnyTimes()
+	mockTaskStore.EXPECT().
 		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
 		Return(map[string]uint32{}, nil).
-		AnyTimes()
-	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), gomock.Any()).
-		Return(&resmgrsvc.EnqueueGangsResponse{}, nil).
 		AnyTimes()
 
 	req := &job.UpdateRequest{

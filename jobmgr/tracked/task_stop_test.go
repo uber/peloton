@@ -2,7 +2,6 @@ package tracked
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -13,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
@@ -69,7 +69,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		State: pb_task.TaskState_INITIALIZED,
 	})
 	tt := m.GetJob(jobID).GetTask(7).(*task)
-	taskID := &peloton.TaskID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-7"}
+	taskID := util.BuildTaskID(jobID, tt.id)
 	var killResponseErr []*resmgrsvc.KillTasksResponse_Error
 	killResponseErr = append(killResponseErr,
 		&resmgrsvc.KillTasksResponse_Error{
@@ -82,23 +82,16 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		Error: killResponseErr,
 	}
 	mockResmgr.EXPECT().KillTasks(context.Background(), &resmgrsvc.KillTasksRequest{
-		Tasks: []*peloton.TaskID{
-			{
-				Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-7",
-			},
-		},
+		Tasks: []*peloton.TaskID{taskID},
 	}).Return(res, nil)
 
-	taskInfo := &pb_task.TaskInfo{
-		InstanceId: 7,
-		Runtime: &pb_task.RuntimeInfo{
-			State: pb_task.TaskState_INITIALIZED,
-		},
+	runtime := &pb_task.RuntimeInfo{
+		State: pb_task.TaskState_INITIALIZED,
 	}
 	mockTaskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", tt.job.id.Value, tt.id)).Return(taskInfo, nil)
+		GetTaskRuntime(gomock.Any(), tt.job.id, tt.id).Return(runtime, nil)
 	mockTaskStore.EXPECT().
-		UpdateTask(gomock.Any(), taskInfo).Return(nil)
+		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, runtime).Return(nil)
 
 	assert.NoError(t, tt.RunAction(context.Background(), StopAction))
 

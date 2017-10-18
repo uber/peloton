@@ -2,6 +2,7 @@ import logging
 import time
 
 from client import Client
+from task import Task
 from google.protobuf import json_format
 from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
 from peloton_client.pbgen.peloton.api.job import job_pb2 as job
@@ -59,70 +60,169 @@ class Job(object):
             timeout=self.config.rpc_timeout_sec,
         )
         assert resp.jobId.value
+        assert not resp.HasField('error')
         self.job_id = resp.jobId.value
         log.info('created job %s', self.job_id)
 
-    def start(self):
+    def start(self, tasks=None):
+        ranges = compose_instance_ranges(tasks)
         request = task.StartRequest(
             jobId=peloton.JobID(value=self.job_id),
+            ranges=ranges,
         )
-        self.client.task_svc.Start(
+        resp = self.client.task_svc.Start(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        log.info('starting all tasks in job %s', self.job_id)
+        assert not resp.HasField('error')
+        if tasks:
+            log.info('starting tasks %s in job %s',
+                     get_tasks_instance_ids(tasks), self.job_id)
+        else:
+            log.info('starting all tasks in job %s', self.job_id)
 
-    def stop(self):
+    def stop(self, tasks=None):
+        ranges = compose_instance_ranges(tasks)
         request = task.StopRequest(
             jobId=peloton.JobID(value=self.job_id),
+            ranges=ranges,
         )
-        self.client.task_svc.Stop(
+        resp = self.client.task_svc.Stop(
             request,
             metadata=self.client.jobmgr_metadata,
             timeout=self.config.rpc_timeout_sec,
         )
-        log.info('stopping all tasks in job %s', self.job_id)
+        assert not resp.HasField('error')
+        if tasks:
+            log.info('stopping tasks %s in job %s',
+                     get_tasks_instance_ids(tasks), self.job_id)
+        else:
+            log.info('stopping all tasks in job %s', self.job_id)
 
-    def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED'):
-        state = ''
+    def restart(self, tasks=None):
+        ranges = compose_instance_ranges(tasks)
+        request = task.RestartRequest(
+            jobId=peloton.JobID(value=self.job_id),
+            ranges=ranges,
+        )
+        resp = self.client.task_svc.Restart(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('notFound')
+        assert not resp.HasField('outOfRange')
+        if tasks:
+            log.info('restarting tasks %s in job %s',
+                     get_tasks_instance_ids(tasks), self.job_id)
+        else:
+            log.info('restarting all tasks in job %s', self.job_id)
+
+    def get_info(self):
+        request = job.GetRequest(
+            id=peloton.JobID(value=self.job_id),
+        )
+        resp = self.client.job_svc.Get(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('error')
+        return resp.jobInfo
+
+    def get_runtime(self):
+        return self.get_info().runtime
+
+    def get_config(self):
+        return self.get_info().config
+
+    def get_tasks(self, one_range=None):
+        config = self.get_config()
+        return {iid: Task(self, iid) for iid in xrange(config.instanceCount)}
+
+    def get_task_info(self, instance_id):
+        request = task.GetRequest(
+            jobId=peloton.JobID(value=self.job_id),
+            instanceId=instance_id,
+        )
+        resp = self.client.task_svc.Get(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('notFound')
+        assert not resp.HasField('outOfRange')
+        return resp.result
+
+    def update(self, config):
+        request = job.UpdateRequest(
+            id=peloton.JobID(value=self.job_id),
+            config=config,
+        )
+        resp = self.client.job_svc.Update(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('error')
+        self.job_config = config
+
+    def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED',
+                       task_count=None):
+        def make_state(s, c):
+            return {'state': s, 'count': c}
+
+        state = make_state('', 0)
+
+        def check_state():
+            runtime = self.get_runtime()
+            new_state = make_state(job.JobState.Name(runtime.state),
+                                   runtime.taskStats[goal_state])
+            log.debug(format_stats(runtime.taskStats))
+
+            if state != new_state:
+                log.info('transitioned to state %s(%d)',
+                         new_state['state'], new_state['count'])
+                state.update(new_state)
+
+            if state == make_state(goal_state, task_count or state['count']):
+                return True
+
+            assert state['state'] != failed_state
+            return False
+
+        check_state.__name__ = 'state {}({})'.format(
+            goal_state, task_count or 'any')
+        self.wait_for_condition(check_state)
+        assert state['state'] == goal_state
+
+    def wait_for_condition(self, condition):
         attempts = 0
         start = time.time()
-        log.info('waiting for state %s', goal_state)
+        log.info('waiting for condition %s', condition.__name__)
+        result = False
         while attempts < self.config.max_retry_attempts:
             try:
-                request = job.GetRequest(
-                    id=peloton.JobID(value=self.job_id),
-                )
-                resp = self.client.job_svc.Get(
-                    request,
-                    metadata=self.client.jobmgr_metadata,
-                    timeout=self.config.rpc_timeout_sec,
-                )
-                runtime = resp.jobInfo.runtime
-                new_state = job.JobState.Name(runtime.state)
-                if state != new_state:
-                    log.info('transitioned to state %s', new_state)
-                state = new_state
-                if state == goal_state:
+                result = condition()
+                if result:
                     break
-                log.debug(format_stats(runtime.taskStats))
-                assert state != failed_state
             except Exception as e:
                 log.warn(e)
-            finally:
-                time.sleep(self.config.sleep_time_sec)
-                attempts += 1
+
+            time.sleep(self.config.sleep_time_sec)
+            attempts += 1
 
         if attempts == self.config.max_retry_attempts:
-            log.info('max attempts reached to wait for goal state')
-            log.info('goal_state:%s current_state:%s', goal_state, state)
+            log.info('max attempts reached to wait for condition')
+            log.info('confition: %s', condition.__name__)
             assert False
 
         end = time.time()
         elapsed = end - start
-        log.info('state transition took %s seconds', elapsed)
-        assert state == goal_state
+        log.info('waited on condition %s for %s seconds',
+                 condition.__name__, elapsed)
+        assert result
 
     def ensure_respool(self):
         # lookup respool
@@ -157,3 +257,49 @@ def format_stats(stats):
         '%s: %s' % (name.lower(), stats[name])
         for name in job.JobState.keys()
     ))
+
+
+def get_tasks_instance_ids(tasks):
+    """Extract all unique tasks ids and sort them"""
+    if not tasks:
+        return None
+
+    # Normalize to sequence
+    if isinstance(tasks, dict):
+        tasks = tasks.values()
+    elif not isinstance(tasks, (list, tuple, set)):
+        tasks = (tasks,)
+
+    # Make sure that all objects are of proper type
+    assert all(isinstance(t, Task) for t in tasks)
+    return sorted(set(t.instance_id for t in tasks))
+
+
+def create_instance_range(first, last):
+    """Create instance range [first, last]"""
+    return task.InstanceRange(**{'from': first, 'to': last+1})
+
+
+def compose_instance_ranges(tasks):
+    """Compose continuous instance ranges from a task set"""
+    if not tasks:
+        return None
+
+    # Create a list of instance ranges
+    start, end, ranges = -1, -1, []
+    for i, instance_id in enumerate(get_tasks_instance_ids(tasks)):
+        if i == 0:
+            start, end = instance_id, instance_id
+            continue
+
+        if end + 1 != instance_id:
+            # Append new range
+            ranges.append(create_instance_range(start, end))
+            start, end = instance_id, instance_id
+        else:
+            # Extend the range
+            end = instance_id
+
+    # Append the last range
+    ranges.append(create_instance_range(start, end))
+    return ranges

@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/util"
 )
 
 type FifoQueueTestSuite struct {
@@ -30,11 +31,9 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 	jobID1 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID1 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
-	}
+	taskID1 := util.BuildTaskID(jobID1, 1)
 	enq1 := resmgr.Task{
-		Name:     "job1-1",
+		Name:     taskID1.Value,
 		Priority: 0,
 		JobId:    jobID1,
 		Id:       taskID1,
@@ -48,11 +47,9 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 	jobID2 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID2 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
-	}
+	taskID2 := util.BuildTaskID(jobID2, 2)
 	enq2 := resmgr.Task{
-		Name:     "job1-2",
+		Name:     taskID2.Value,
 		Priority: 1,
 		JobId:    jobID2,
 		Id:       taskID2,
@@ -66,11 +63,9 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 	jobID3 := &peloton.JobID{
 		Value: "job2",
 	}
-	taskID3 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID3.Value, 1),
-	}
+	taskID3 := util.BuildTaskID(jobID3, 1)
 	enq3 := resmgr.Task{
-		Name:     "job2-1",
+		Name:     taskID3.Value,
 		Priority: 2,
 		JobId:    jobID3,
 		Id:       taskID3,
@@ -84,11 +79,9 @@ func (suite *FifoQueueTestSuite) AddTasks() {
 	jobID4 := &peloton.JobID{
 		Value: "job2",
 	}
-	taskID4 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID4.Value, 2),
-	}
+	taskID4 := util.BuildTaskID(jobID4, 2)
 	enq4 := resmgr.Task{
-		Name:     "job2-2",
+		Name:     taskID4.Value,
 		Priority: 2,
 		JobId:    jobID4,
 		Id:       taskID4,

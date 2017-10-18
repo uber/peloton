@@ -15,16 +15,22 @@ var (
 	// _isoVersionsTaskRules maps current states to action, given a goal state:
 	// goal-state -> current-state -> action.
 	// It assumes task's runtime and goal are at the same version
-	_isoVersionsTaskRules = map[task.TaskState]map[task.TaskState]tracked.TaskAction{
-		task.TaskState_RUNNING: {
+	_isoVersionsTaskRules = map[task.TaskGoalState]map[task.TaskState]tracked.TaskAction{
+		task.TaskGoalState_RUN: {
+			task.TaskState_LOST:        tracked.InitializeAction,
+			task.TaskState_FAILED:      tracked.InitializeAction,
+			task.TaskState_SUCCEEDED:   tracked.InitializeAction,
+			task.TaskState_KILLED:      tracked.InitializeAction,
 			task.TaskState_INITIALIZED: tracked.StartAction,
 		},
-		task.TaskState_SUCCEEDED: {
+		task.TaskGoalState_SUCCEED: {
+			task.TaskState_LOST:        tracked.InitializeAction,
+			task.TaskState_FAILED:      tracked.InitializeAction,
+			task.TaskState_KILLED:      tracked.InitializeAction,
 			task.TaskState_INITIALIZED: tracked.StartAction,
 			task.TaskState_SUCCEEDED:   tracked.UntrackAction,
-			task.TaskState_KILLED:      tracked.UntrackAction,
 		},
-		task.TaskState_KILLED: {
+		task.TaskGoalState_KILL: {
 			task.TaskState_INITIALIZED: tracked.StopAction,
 			task.TaskState_LAUNCHING:   tracked.StopAction,
 			task.TaskState_LAUNCHED:    tracked.StopAction,
@@ -33,12 +39,17 @@ var (
 			task.TaskState_SUCCEEDED:   tracked.UntrackAction,
 			task.TaskState_FAILED:      tracked.UntrackAction,
 		},
-		task.TaskState_FAILED: {
-			task.TaskState_FAILED:    tracked.UntrackAction,
-			task.TaskState_SUCCEEDED: tracked.UntrackAction,
-			task.TaskState_KILLED:    tracked.UntrackAction,
+		task.TaskGoalState_RESTART: {
+			task.TaskState_INITIALIZED: tracked.StopAction,
+			task.TaskState_LAUNCHING:   tracked.StopAction,
+			task.TaskState_LAUNCHED:    tracked.StopAction,
+			task.TaskState_RUNNING:     tracked.StopAction,
+			task.TaskState_LOST:        tracked.InitializeAction,
+			task.TaskState_FAILED:      tracked.InitializeAction,
+			task.TaskState_SUCCEEDED:   tracked.InitializeAction,
+			task.TaskState_KILLED:      tracked.InitializeAction,
 		},
-		task.TaskState_PREEMPTING: {
+		task.TaskGoalState_PREEMPT: {
 			task.TaskState_INITIALIZED: tracked.StopAction,
 			task.TaskState_LAUNCHING:   tracked.StopAction,
 			task.TaskState_LAUNCHED:    tracked.StopAction,

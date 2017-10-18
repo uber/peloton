@@ -19,12 +19,18 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/common/taskconfig"
 
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
+)
+
+const (
+	_defaultRPCTimeout = 10 * time.Second
 )
 
 // InitServiceHandler initalizes the job manager
@@ -33,6 +39,7 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	trackedManager tracked.Manager,
 	runtimeUpdater *jobmgr_job.RuntimeUpdater,
 	clientName string) {
 
@@ -41,7 +48,7 @@ func InitServiceHandler(
 		taskStore:      taskStore,
 		respoolClient:  respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
 		resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
-		rootCtx:        context.Background(),
+		trackedManager: trackedManager,
 		runtimeUpdater: runtimeUpdater,
 		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
 	}
@@ -55,8 +62,8 @@ type serviceHandler struct {
 	taskStore      storage.TaskStore
 	respoolClient  respool.ResourceManagerYARPCClient
 	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
+	trackedManager tracked.Manager
 	runtimeUpdater *jobmgr_job.RuntimeUpdater
-	rootCtx        context.Context
 	metrics        *Metrics
 }
 
@@ -92,7 +99,7 @@ func (h *serviceHandler) Create(
 	}
 	jobConfig := req.Config
 
-	err := h.validateResourcePool(jobConfig.RespoolID)
+	err := h.validateResourcePool(ctx, jobConfig.RespoolID)
 	if err != nil {
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
@@ -154,19 +161,30 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	instances := jobConfig.InstanceCount
 	startAddTaskTime := time.Now()
 
+	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.Value).
+			Error("Failed to create task configs")
+		return err
+	}
+
 	tasks := make([]*task.TaskInfo, instances)
+	runtimes := make([]*task.RuntimeInfo, instances)
 	for i := uint32(0); i < instances; i++ {
-		t, err := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
-		if err != nil {
-			log.Errorf("Failed to get task config (%d) for job %v: %v",
-				i, jobID.Value, err)
-			return err
+		runtime := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
+		runtimes[i] = runtime
+
+		// TODO: Remove once tracker can handle enqueueing of gangs.
+		tasks[i] = &task.TaskInfo{
+			JobId:      jobID,
+			InstanceId: i,
+			Runtime:    runtime,
+			Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
 		}
-		tasks[i] = t
 	}
 
 	// TODO: use the username of current session for createBy param
-	err := h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
+	err := h.taskStore.CreateTaskRuntimes(ctx, jobID, runtimes, "peloton")
 	nTasks := int64(len(tasks))
 	if err != nil {
 		log.Errorf("Failed to create tasks (%d) for job %v: %v",
@@ -176,7 +194,7 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.resmgrClient)
+	err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
@@ -287,29 +305,21 @@ func (h *serviceHandler) Update(
 	log.WithField("job_id", jobID.Value).
 		Infof("adding %d instances", len(diff.InstancesToAdd))
 
-	var tasks []*task.TaskInfo
-	for _, taskInfo := range diff.InstancesToAdd {
-		tasks = append(tasks, taskInfo)
-	}
-
-	err = h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
-	nTasks := int64(len(tasks))
-	if err != nil {
-		log.Errorf("Failed to create tasks (%d) for job %v: %v",
-			nTasks, jobID.Value, err)
-		h.metrics.TaskCreateFail.Inc(nTasks)
-		// FIXME: Add a new Error type for this
-		return nil, err
-	}
-	h.metrics.TaskCreate.Inc(nTasks)
-
-	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, newConfig, h.resmgrClient)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.Value).
-			Error("Failed to enqueue tasks to RM")
+	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, newConfig); err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
+	}
+
+	for id, runtime := range diff.InstancesToAdd {
+		if err := h.taskStore.CreateTaskRuntime(ctx, jobID, id, runtime, "peloton"); err != nil {
+			log.Errorf("Failed to create task for job %v: %v", jobID.Value, err)
+			h.metrics.TaskCreateFail.Inc(1)
+			// FIXME: Add a new Error type for this
+			return nil, err
+		}
+		h.metrics.TaskCreate.Inc(1)
+
+		h.trackedManager.SetTask(jobID, id, runtime)
 	}
 
 	err = h.runtimeUpdater.UpdateJob(ctx, jobID)
@@ -446,9 +456,10 @@ func (h *serviceHandler) Delete(
 
 // validateResourcePool validates the resource pool before submitting job
 func (h *serviceHandler) validateResourcePool(
+	ctx context.Context,
 	respoolID *peloton.ResourcePoolID,
 ) error {
-	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
+	ctx, cancelFunc := context.WithTimeout(ctx, _defaultRPCTimeout)
 	defer cancelFunc()
 	if respoolID == nil {
 		return er.New("Resource Pool Id is null")

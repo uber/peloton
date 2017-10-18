@@ -246,11 +246,9 @@ func (suite *resTreeTestSuite) TestPendingQueueError() {
 	jobID1 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID1 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
-	}
+	taskID1 := util.BuildTaskID(jobID1, 1)
 	taskItem1 := &resmgr.Task{
-		Name:     "job1-1",
+		Name:     taskID1.Value,
 		Priority: 0,
 		JobId:    jobID1,
 		Id:       taskID1,
@@ -269,11 +267,9 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 	jobID1 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID1 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
-	}
+	taskID1 := util.BuildTaskID(jobID1, 1)
 	taskItem1 := &resmgr.Task{
-		Name:     "job1-1",
+		Name:     taskID1.Value,
 		Priority: 0,
 		JobId:    jobID1,
 		Id:       taskID1,
@@ -290,11 +286,9 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 	jobID2 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID2 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
-	}
+	taskID2 := util.BuildTaskID(jobID2, 2)
 	taskItem2 := &resmgr.Task{
-		Name:     "job1-2",
+		Name:     taskID2.Value,
 		Priority: 0,
 		JobId:    jobID2,
 		Id:       taskID2,

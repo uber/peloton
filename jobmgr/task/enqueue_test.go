@@ -3,14 +3,12 @@ package task
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -18,6 +16,7 @@ import (
 
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"code.uber.internal/infra/peloton/util"
+	"github.com/pborman/uuid"
 )
 
 const (
@@ -49,10 +48,10 @@ func (suite *TaskUtilTestSuite) SetupTest() {
 		Name:          suite.testJobID.Value,
 		InstanceCount: testInstanceCount,
 		Sla: &job.SlaConfig{
-			Preemptible:             true,
-			Priority:                22,
-			MaximumRunningInstances: 2,
-			MinimumRunningInstances: 1,
+			Preemptible:               true,
+			Priority:                  22,
+			MaximumRunningInstances:   2,
+			MinimumSchedulingUnitSize: 1,
 		},
 	}
 	var taskInfos = make(map[uint32]*task.TaskInfo)
@@ -75,12 +74,12 @@ func (suite *TaskUtilTestSuite) createTestTaskInfo(
 	state task.TaskState,
 	instanceID uint32) *task.TaskInfo {
 
-	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
+	mtID := util.BuildMesosTaskID(util.BuildTaskID(suite.testJobID, instanceID), uuid.NewUUID().String())
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &taskID},
+			MesosTaskId: mtID,
 			State:       state,
-			GoalState:   task.TaskState_SUCCEEDED,
+			GoalState:   task.TaskGoalState_SUCCEED,
 		},
 		Config: &task.TaskConfig{
 			Name:     suite.testJobConfig.Name,

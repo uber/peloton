@@ -5,10 +5,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go.uber.org/yarpc/yarpcerrors"
-
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/common"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/sirupsen/logrus"
 )
@@ -16,6 +16,7 @@ import (
 // StatusProcessor is the interface to process a task status update
 type StatusProcessor interface {
 	ProcessStatusUpdate(ctx context.Context, event *pb_eventstream.Event) error
+	ProcessListeners(event *pb_eventstream.Event)
 }
 
 // asyncEventProcessor maps events to a list of buckets; and each bucket would be consumed by a single go routine
@@ -43,7 +44,7 @@ func newEventBucket(size int, index int) *eventBucket {
 	var processedOffset uint64
 	return &eventBucket{
 		eventChannel:    updates,
-		shutdownChannel: make(chan struct{}, 10),
+		shutdownChannel: make(chan struct{}, 1),
 		index:           index,
 		processedCount:  &processedCount,
 		processedOffset: &processedOffset,
@@ -52,7 +53,10 @@ func newEventBucket(size int, index int) *eventBucket {
 
 func (t *eventBucket) shutdown() {
 	log.WithField("bucket_index", t.index).Info("Shutting down bucket")
-	t.shutdownChannel <- struct{}{}
+	select {
+	case t.shutdownChannel <- struct{}{}:
+	default:
+	}
 }
 
 func (t *eventBucket) getProcessedCount() int32 {
@@ -72,14 +76,18 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 						// Retry while getting AlreadyExists error.
 						if err := t.ProcessStatusUpdate(context.Background(), event); err == nil {
 							break
-						} else if !yarpcerrors.IsAlreadyExists(err) {
+						} else if !common.IsTransientError(err) {
 							log.WithError(err).
 								WithField("bucket_num", bucket.index).
 								WithField("event", event).
-								Error("Error applying taskSatus")
+								Error("Error applying taskStatus")
 							break
 						}
 					}
+
+					// Process listeners after handling the event.
+					t.ProcessListeners(event)
+
 					atomic.AddInt32(bucket.processedCount, 1)
 					atomic.StoreUint64(bucket.processedOffset, event.Offset)
 				case <-bucket.shutdownChannel:
@@ -95,7 +103,7 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 }
 
 func (t *asyncEventProcessor) addEvent(event *pb_eventstream.Event) {
-	var taskID string
+	var taskID *peloton.TaskID
 	var err error
 	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
 		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
@@ -107,13 +115,19 @@ func (t *asyncEventProcessor) addEvent(event *pb_eventstream.Event) {
 			return
 		}
 	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
-		taskID = event.PelotonTaskEvent.TaskId.Value
-		log.WithField("Task ID", taskID).Debug("Received Event " +
+		taskID = event.PelotonTaskEvent.TaskId
+		log.WithField("task_id", taskID.Value).Debug("Received Event " +
 			"from resmgr")
 	}
 
-	_, instanceID, _ := util.ParseTaskID(taskID)
-	index := instanceID % len(t.eventBuckets)
+	_, instanceID, err := util.ParseTaskID(taskID.Value)
+	if err != nil {
+		log.WithError(err).
+			WithField("task_id", taskID.Value).
+			Error("Failed to ParseTaskID")
+		return
+	}
+	index := int(instanceID) % len(t.eventBuckets)
 	t.eventBuckets[index].eventChannel <- event
 }
 

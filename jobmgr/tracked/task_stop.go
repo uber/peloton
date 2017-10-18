@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/util"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -38,13 +39,9 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 	// TODO: Due to missing atomic updates in DB, there is a race
 	// where we accidentially may start off the task, even though we
 	// have marked it as KILLED.
-	taskID := fmt.Sprintf("%s-%d", t.job.ID().GetValue(), t.ID())
+	taskID := util.BuildTaskID(t.job.ID(), t.ID())
 	req := &resmgrsvc.KillTasksRequest{
-		Tasks: []*peloton.TaskID{
-			{
-				Value: taskID,
-			},
-		},
+		Tasks: []*peloton.TaskID{taskID},
 	}
 	// Calling resmgr Kill API
 	res, err := t.job.m.resmgrClient.KillTasks(ctx, req)
@@ -67,20 +64,19 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 		}
 	}
 
-	taskInfo, err := t.job.m.taskStore.GetTaskByID(ctx, taskID)
+	runtime, err := t.job.m.GetTaskRuntime(ctx, t.Job().ID(), t.ID())
 	if err != nil {
 		return err
 	}
 
 	// If it had changed, update to current and abort.
-	if taskInfo.Runtime.State != pb_task.TaskState_INITIALIZED {
-		t.job.m.SetTask(t.job.id, t.id, taskInfo.Runtime)
+	if runtime.State != pb_task.TaskState_INITIALIZED {
 		return nil
 	}
 
-	taskInfo.Runtime.State = pb_task.TaskState_KILLED
+	runtime.State = pb_task.TaskState_KILLED
 
-	return t.job.m.UpdateTask(ctx, t.job.id, t.id, taskInfo)
+	return t.job.m.UpdateTaskRuntime(ctx, t.job.id, t.id, runtime)
 }
 
 func (t *task) stopMesosTask(ctx context.Context, runtime *pb_task.RuntimeInfo) error {

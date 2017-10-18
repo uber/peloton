@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
@@ -16,6 +17,10 @@ import (
 	"github.com/uber-go/tally"
 )
 
+const (
+	_maxWaitForEventsIdle = 200 * time.Millisecond
+)
+
 // PurgedEventsProcessor is the interface to handle the purged data
 type PurgedEventsProcessor interface {
 	EventPurged(events []*cirbuf.CircularBufferItem)
@@ -25,6 +30,7 @@ type PurgedEventsProcessor interface {
 // This component is used in hostmgr and resmgr
 type Handler struct {
 	sync.RWMutex
+
 	// streamID is created to identify this stream lifecycle
 	streamID string
 	// clients that the stream expects them to consume
@@ -35,6 +41,8 @@ type Handler struct {
 	purgedEventProcessor PurgedEventsProcessor
 
 	metrics *HandlerMetrics
+
+	cond *sync.Cond
 }
 
 // NewEventStreamHandler creates an EventStreamHandler
@@ -43,7 +51,7 @@ func NewEventStreamHandler(
 	expectedClients []string,
 	purgedEventProcessor PurgedEventsProcessor,
 	parentScope tally.Scope) *Handler {
-	handler := Handler{
+	handler := &Handler{
 		streamID:             uuid.New(),
 		circularBuffer:       cirbuf.NewCircularBuffer(bufferSize),
 		clientPurgeOffsets:   make(map[string]uint64),
@@ -51,11 +59,12 @@ func NewEventStreamHandler(
 		expectedClients:      expectedClients,
 		metrics:              NewHandlerMetrics(parentScope.SubScope("EventStreamHandler")),
 	}
+	handler.cond = sync.NewCond(handler)
 	handler.metrics.Capacity.Update(float64(handler.circularBuffer.Capacity()))
 	for _, client := range expectedClients {
 		handler.clientPurgeOffsets[client] = uint64(0)
 	}
-	return &handler
+	return handler
 }
 
 // Check if the client is expected
@@ -78,7 +87,10 @@ func (h *Handler) AddEvent(event *pb_eventstream.Event) error {
 	log.WithFields(log.Fields{
 		"Type": event.Type,
 	}).Debug("Adding eventstream event")
+	h.Lock()
 	item, err := h.circularBuffer.AddItem(event)
+	h.cond.Broadcast()
+	h.Unlock()
 	if err != nil {
 		h.metrics.AddEventFail.Inc(1)
 		log.WithFields(log.Fields{
@@ -131,8 +143,18 @@ func (h *Handler) WaitForEvents(
 	ctx context.Context,
 	req *pb_eventstream.WaitForEventsRequest) (*pb_eventstream.WaitForEventsResponse, error) {
 
+	running := true
+	timer := time.AfterFunc(_maxWaitForEventsIdle, func() {
+		h.Lock()
+		running = false
+		h.cond.Broadcast()
+		h.Unlock()
+	})
+	defer timer.Stop()
+
 	h.Lock()
 	defer h.Unlock()
+
 	h.metrics.WaitForEventsAPI.Inc(1)
 	var response pb_eventstream.WaitForEventsResponse
 	// Validate client
@@ -162,42 +184,11 @@ func (h *Handler) WaitForEvents(
 		h.metrics.InvalidStreamIDError.Inc(1)
 		return &response, nil
 	}
-	// Get and return data
-	head, tail := h.circularBuffer.GetRange()
-	beginOffset := req.BeginOffset
-	limit := req.Limit
-	items, err := h.circularBuffer.GetItemsByRange(beginOffset, beginOffset+uint64(limit)-1)
-	if err != nil {
-		response.Error = &pb_eventstream.WaitForEventsResponse_Error{
-			OutOfRange: &pb_eventstream.OffsetOutOfRange{
-				MinOffset:       tail,
-				MaxOffset:       head - 1,
-				StreamID:        h.streamID,
-				OffsetRequested: beginOffset,
-			},
-		}
-		h.metrics.WaitForEventsFailed.Inc(1)
-		return &response, nil
-	}
-	var events []*pb_eventstream.Event
-	for _, item := range items {
-		if event, ok := item.Value.(*pb_eventstream.Event); ok {
-			e := &pb_eventstream.Event{
-				Type:             event.Type,
-				MesosTaskStatus:  event.MesosTaskStatus,
-				PelotonTaskEvent: event.PelotonTaskEvent,
-				Offset:           item.SequenceID,
-			}
-			events = append(events, e)
-		}
-	}
-	h.metrics.WaitForEventsSuccess.Inc(1)
-	response.Events = events
+
 	// Purge old data if specified
 	if req.PurgeOffset > req.BeginOffset {
 		log.WithFields(log.Fields{
-			"purgeOffset":          req.PurgeOffset,
-			"request begin offset": tail}).
+			"purgeOffset": req.PurgeOffset}).
 			Error("Invalid purgeOffset")
 		response.Error = &pb_eventstream.WaitForEventsResponse_Error{
 			InvalidPurgeOffset: &pb_eventstream.InvalidPurgeOffset{
@@ -205,8 +196,52 @@ func (h *Handler) WaitForEvents(
 				BeginOffset: req.BeginOffset,
 			},
 		}
+		return &response, nil
 	}
 	h.purgeEvents(clientName, req.PurgeOffset)
+
+	beginOffset := req.BeginOffset
+	limit := req.Limit
+
+	for running {
+		// Get and return data
+		head, tail := h.circularBuffer.GetRange()
+		items, err := h.circularBuffer.GetItemsByRange(beginOffset, beginOffset+uint64(limit)-1)
+		if err != nil {
+			response.Error = &pb_eventstream.WaitForEventsResponse_Error{
+				OutOfRange: &pb_eventstream.OffsetOutOfRange{
+					MinOffset:       tail,
+					MaxOffset:       head - 1,
+					StreamID:        h.streamID,
+					OffsetRequested: beginOffset,
+				},
+			}
+			h.metrics.WaitForEventsFailed.Inc(1)
+			return &response, nil
+		}
+
+		// Wait until events are available.
+		if len(items) == 0 {
+			h.cond.Wait()
+			continue
+		}
+
+		var events []*pb_eventstream.Event
+		for _, item := range items {
+			if event, ok := item.Value.(*pb_eventstream.Event); ok {
+				e := &pb_eventstream.Event{
+					Type:             event.Type,
+					MesosTaskStatus:  event.MesosTaskStatus,
+					PelotonTaskEvent: event.PelotonTaskEvent,
+					Offset:           item.SequenceID,
+				}
+				events = append(events, e)
+			}
+		}
+		h.metrics.WaitForEventsSuccess.Inc(1)
+		response.Events = events
+		break
+	}
 	return &response, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 
 	pb_errors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -21,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
@@ -252,19 +254,16 @@ func (m *serviceHandler) Start(
 			taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
 		} else {
 			// Only regenerate mesos task id for terminated task.
-			util.RegenerateMesosTaskID(taskInfo)
+			util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
+			taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
 		}
 
 		// First change goalstate if it is KILLED.
-		if taskInfo.GetRuntime().GoalState == task.TaskState_KILLED {
-			if jobConfig.GetType() == pb_job.JobType_SERVICE {
-				taskInfo.GetRuntime().GoalState = task.TaskState_RUNNING
-			} else {
-				taskInfo.GetRuntime().GoalState = task.TaskState_SUCCEEDED
-			}
+		if taskInfo.GetRuntime().GoalState == task.TaskGoalState_KILL {
+			taskInfo.GetRuntime().GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
 		}
 
-		err = m.trackedManager.UpdateTask(ctx, taskInfo.GetJobId(), instID, taskInfo)
+		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskRuntime)
 		if err != nil {
 			// Skip remaining tasks starting if db update error occurs.
 			log.WithError(err).
@@ -343,49 +342,106 @@ func (m *serviceHandler) Stop(
 	var stoppedInstanceIds []uint32
 	// Persist KILLED goalstate for tasks in db.
 	for instID, taskInfo := range taskInfos {
-		taskID := taskInfo.GetRuntime().GetMesosTaskId()
-		// Skip update task goalstate if it is already KILLED.
-		if taskInfo.GetRuntime().GoalState == task.TaskState_KILLED {
-			continue
-		}
-
-		taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
-		// TODO: We can retry here in case of conflict.
-		err = m.trackedManager.UpdateTask(ctx, taskInfo.GetJobId(), instID, taskInfo)
+		stopped, err := m.setGoalState(ctx, taskInfo.GetJobId(), instID, taskInfo.GetRuntime(), task.TaskGoalState_KILL)
 		if err != nil {
 			// Skip remaining tasks killing if db update error occurs.
 			log.WithError(err).
-				WithField("task_id", taskID).
+				WithField("task_id", taskInfo.Runtime.GetMesosTaskId()).
 				Error("Failed to update KILLED goalstate")
 			m.metrics.TaskStopFail.Inc(1)
-			break
-		}
-
-		stoppedInstanceIds = append(stoppedInstanceIds, instID)
-		m.metrics.TaskStop.Inc(1)
-	}
-
-	if err != nil {
-		return &task.StopResponse{
-			Error: &task.StopResponse_Error{
-				UpdateError: &task.TaskUpdateError{
-					Message: fmt.Sprintf("Goalstate update failed for %v", err),
+			return &task.StopResponse{
+				Error: &task.StopResponse_Error{
+					UpdateError: &task.TaskUpdateError{
+						Message: fmt.Sprintf("Goalstate update failed for %v", err),
+					},
 				},
-			},
-			StoppedInstanceIds: stoppedInstanceIds,
-		}, nil
+				StoppedInstanceIds: stoppedInstanceIds,
+			}, nil
+		} else if stopped {
+			stoppedInstanceIds = append(stoppedInstanceIds, instID)
+			m.metrics.TaskStop.Inc(1)
+		}
 	}
+
 	return &task.StopResponse{
 		StoppedInstanceIds: stoppedInstanceIds,
 	}, nil
+}
+
+func (m *serviceHandler) setGoalState(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, goalState task.TaskGoalState) (bool, error) {
+	for {
+		// Skip update task goalstate if already set.
+		if runtime.GoalState == goalState {
+			return false, nil
+		}
+
+		runtime.GoalState = goalState
+		err := m.trackedManager.UpdateTaskRuntime(ctx, jobID, instanceID, runtime)
+		if !yarpcerrors.IsAlreadyExists(err) {
+			return true, err
+		}
+
+		if runtime, err = m.trackedManager.GetTaskRuntime(ctx, jobID, instanceID); err != nil {
+			return true, err
+		}
+	}
 }
 
 func (m *serviceHandler) Restart(
 	ctx context.Context,
 	body *task.RestartRequest) (*task.RestartResponse, error) {
 
+	log.WithField("request", body).Info("TaskManager.Restart called")
 	m.metrics.TaskAPIRestart.Inc(1)
-	m.metrics.TaskRestart.Inc(1)
+	ctx, cancelFunc := context.WithTimeout(ctx, _rpcTimeout)
+	defer cancelFunc()
+
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+	if err != nil {
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("failed to get job from db")
+		m.metrics.TaskRestartFail.Inc(1)
+		return &task.RestartResponse{
+			NotFound: &pb_errors.JobNotFound{
+				Id:      body.JobId,
+				Message: err.Error(),
+			},
+		}, nil
+	}
+
+	taskInfos, err := m.getTaskInfosByRangesFromDB(ctx, body.GetJobId(), body.GetRanges(), jobConfig)
+	if err != nil {
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("failed to get tasks for job in db")
+		m.metrics.TaskRestartFail.Inc(1)
+		return &task.RestartResponse{
+			OutOfRange: &task.InstanceIdOutOfRange{
+				JobId:         body.JobId,
+				InstanceCount: jobConfig.InstanceCount,
+			},
+		}, nil
+	}
+
+	// Persist RESTART goalstate in the selected tasks
+	for instID, taskInfo := range taskInfos {
+		restarted, err := m.setGoalState(ctx, taskInfo.GetJobId(), instID, taskInfo.GetRuntime(), task.TaskGoalState_RESTART)
+		if err != nil {
+			// Report error and proceed
+			log.WithError(err).
+				WithField("task_id", taskInfo.Runtime.GetMesosTaskId()).
+				Error("Failed to update RESTART goalstate, continued...")
+
+			m.metrics.TaskRestartFail.Inc(1)
+			// TODO: extend RestartResponse with new error fields
+
+		} else if restarted {
+			// TODO: return restarted instance ids
+			m.metrics.TaskRestart.Inc(1)
+		}
+	}
+
 	return &task.RestartResponse{}, nil
 }
 

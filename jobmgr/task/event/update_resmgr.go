@@ -11,6 +11,8 @@ import (
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	"code.uber.internal/infra/peloton/util"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
@@ -34,7 +36,7 @@ type StatusUpdateListenerRM interface {
 // StatusUpdate reads and processes the task state change events from HM
 type statusUpdateRM struct {
 	jobStore          storage.JobStore
-	taskStore         storage.TaskStore
+	trackedManager    tracked.Manager
 	eventClients      map[string]*eventstream.Client
 	applier           *asyncEventProcessor
 	jobRuntimeUpdater StatusUpdateListenerRM
@@ -52,7 +54,7 @@ func InitTaskStatusUpdateRM(
 	d *yarpc.Dispatcher,
 	server string,
 	jobStore storage.JobStore,
-	taskStore storage.TaskStore,
+	trackedManager tracked.Manager,
 	jobRuntimeUpdater StatusUpdateListenerRM,
 	resmgrClientName string,
 	parentScope tally.Scope) {
@@ -62,12 +64,12 @@ func InitTaskStatusUpdateRM(
 			return
 		}
 		statusUpdaterRM = &statusUpdateRM{
-			jobStore:     jobStore,
-			taskStore:    taskStore,
-			rootCtx:      context.Background(),
-			resmgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resmgrClientName)),
-			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
-			eventClients: make(map[string]*eventstream.Client),
+			jobStore:       jobStore,
+			trackedManager: trackedManager,
+			rootCtx:        context.Background(),
+			resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resmgrClientName)),
+			metrics:        NewMetrics(parentScope.SubScope("status_updater")),
+			eventClients:   make(map[string]*eventstream.Client),
 		}
 		// TODO: add config for BucketEventProcessor
 		statusUpdaterRM.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
@@ -126,23 +128,28 @@ func (p *statusUpdateRM) ProcessStatusUpdate(ctx context.Context, event *pb_even
 		return errors.New("Unknown Event ")
 	}
 
-	taskInfo, err := p.taskStore.GetTaskByID(ctx, taskID)
+	jobID, instanceID, err := util.ParseTaskID(taskID)
 	if err != nil {
-		log.WithError(err).
-			WithField("task_id", taskID).
-			Error("Fail to find taskInfo for taskID")
 		return err
 	}
 
-	taskInfo.GetRuntime().State = state
+	runtime, err := p.trackedManager.GetTaskRuntime(ctx, jobID, instanceID)
+	if err != nil {
+		log.WithError(err).
+			WithField("task_id", taskID).
+			Error("Fail to find runtime for taskID")
+		return err
+	}
 
-	err = p.taskStore.UpdateTask(ctx, taskInfo)
+	runtime.State = state
+
+	err = p.trackedManager.UpdateTaskRuntime(ctx, jobID, instanceID, runtime)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
 				"task_id": taskID,
 				"State":   state}).
-			Error("Fail to update taskInfo for taskID")
+			Error("Fail to update runtime for taskID")
 		return err
 	}
 	return nil

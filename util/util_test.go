@@ -5,8 +5,9 @@ import (
 	"testing"
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -50,20 +51,26 @@ func TestConvertLabels(t *testing.T) {
 	assert.Equal(t, pelotonLabels[0].GetValue(), mesosLabels.GetLabels()[0].GetValue())
 }
 
+func TestBuildTaskID(t *testing.T) {
+	jobID := &peloton.JobID{Value: "myjob"}
+	taskID := BuildTaskID(jobID, 0)
+	assert.Equal(t, &peloton.TaskID{Value: "myjob-0"}, taskID)
+}
+
 func TestParseTaskID(t *testing.T) {
 	jobID, instanceID, err := ParseTaskID("Test-1234")
-	assert.Equal(t, jobID, "Test")
-	assert.Equal(t, instanceID, 1234)
+	assert.Equal(t, jobID.Value, "Test")
+	assert.Equal(t, instanceID, uint32(1234))
 	assert.Nil(t, err)
 
 	jobID, instanceID, err = ParseTaskID("a2342-Test_3-52344")
-	assert.Equal(t, jobID, "a2342-Test_3")
-	assert.Equal(t, instanceID, 52344)
+	assert.Equal(t, jobID.Value, "a2342-Test_3")
+	assert.Equal(t, instanceID, uint32(52344))
 	assert.Nil(t, err)
 
 	jobID, instanceID, err = ParseTaskID("a234Test_3_52344")
-	assert.Equal(t, jobID, "a234Test_3_52344")
-	assert.Equal(t, instanceID, 0)
+	assert.Nil(t, jobID)
+	assert.Equal(t, instanceID, uint32(0))
 	assert.NotNil(t, err)
 
 	jobID, instanceID, err = ParseTaskID("a234Test_3-52344qw")
@@ -72,30 +79,32 @@ func TestParseTaskID(t *testing.T) {
 
 func TestParseTaskIDFromMesosTaskID(t *testing.T) {
 	taskID, err := ParseTaskIDFromMesosTaskID("Test-1234-11da214")
-	assert.Equal(t, taskID, "")
 	assert.NotNil(t, err)
+	assert.Equal(t, (*peloton.TaskID)(nil), taskID)
 
 	taskID, err = ParseTaskIDFromMesosTaskID("a2342-Test_3-" + uuid.NewUUID().String())
 	assert.NotNil(t, err)
-	assert.Equal(t, taskID, "")
+	assert.Equal(t, (*peloton.TaskID)(nil), taskID)
 
 	taskID, err = ParseTaskIDFromMesosTaskID("a2342-Test-3-" + uuid.NewUUID().String())
 	assert.Nil(t, err)
-	assert.Equal(t, taskID, "a2342-Test-3")
+	assert.Equal(t, "a2342-Test-3", taskID.Value)
 
 	taskID, err = ParseTaskIDFromMesosTaskID("Test-0")
-	assert.Equal(t, taskID, "")
 	assert.NotNil(t, err)
+	assert.Equal(t, (*peloton.TaskID)(nil), taskID)
 
 	taskID, err = ParseTaskIDFromMesosTaskID("Test_1234-223_wde2")
 	assert.NotNil(t, err)
+	assert.Equal(t, (*peloton.TaskID)(nil), taskID)
 
 	taskID, err = ParseTaskIDFromMesosTaskID("Test_123a")
 	assert.NotNil(t, err)
+	assert.Equal(t, (*peloton.TaskID)(nil), taskID)
 
 	taskID, err = ParseTaskIDFromMesosTaskID("test1006-170-057fbf96-e7f1-11e6-943a-a45e60eeffd5")
-	assert.Equal(t, taskID, "test1006-170")
 	assert.Nil(t, err)
+	assert.Equal(t, "test1006-170", taskID.Value)
 }
 
 func TestNonGPUResources(t *testing.T) {
@@ -109,12 +118,12 @@ func TestNonGPUResources(t *testing.T) {
 	assert.Equal(t, 3, len(rs))
 }
 
-func TestLowerThanEspilonResources(t *testing.T) {
+func TestLowerThanEpsilonResources(t *testing.T) {
 	rs := CreateMesosScalarResources(map[string]float64{
 		"cpus": 1.0,
 		"mem":  2.0,
 		"disk": 3.0,
-		"gpus": ResourceEspilon / 2.0,
+		"gpus": ResourceEpsilon / 2.0,
 	}, "*")
 
 	assert.Equal(t, 3, len(rs))
@@ -129,4 +138,27 @@ func TestGPUResources(t *testing.T) {
 	}, "*")
 
 	assert.Equal(t, 4, len(rs))
+}
+
+func TestBuildMesosTaskID(t *testing.T) {
+	mtID := BuildMesosTaskID(BuildTaskID(&peloton.JobID{
+		Value: "my-job",
+	}, 123), "my-uuid")
+	assert.Equal(t, "my-job-123-my-uuid", *mtID.Value)
+}
+
+func TestRegenerateMesosTaskID(t *testing.T) {
+	jobID := &peloton.JobID{
+		Value: "my-job",
+	}
+	instanceID := uint32(123)
+
+	runtime := &task.RuntimeInfo{
+		MesosTaskId: &mesos_v1.TaskID{
+			Value: &[]string{"initial-value"}[0],
+		},
+	}
+	assert.Equal(t, "initial-value", *runtime.MesosTaskId.Value)
+	RegenerateMesosTaskID(jobID, instanceID, runtime)
+	assert.NotEqual(t, "initial-value", *runtime.MesosTaskId.Value)
 }

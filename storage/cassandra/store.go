@@ -20,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	"code.uber.internal/infra/peloton/common/taskconfig"
 
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
@@ -29,6 +30,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
+	"github.com/gocql/gocql"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -37,7 +39,6 @@ import (
 )
 
 const (
-	taskIDFmt             = "%s-%d"
 	jobConfigTable        = "job_config"
 	jobRuntimeTable       = "job_runtime"
 	jobIndexTable         = "job_index"
@@ -117,7 +118,7 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 	}, nil
 }
 
-func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, version int64, owner string) error {
+func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, version uint64, owner string) error {
 	jobID := id.Value
 	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
@@ -154,7 +155,23 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 	return nil
 }
 
-func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int, taskConfig *task.TaskConfig) error {
+// CreateTaskConfigs from the job config.
+func (s *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
+	if err := s.createTaskConfig(ctx, id, _defaultTaskConfigID, jobConfig.GetDefaultConfig(), jobConfig.GetRevision().GetVersion()); err != nil {
+		return err
+	}
+
+	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
+		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
+		if err := s.createTaskConfig(ctx, id, int64(instanceID), merged, jobConfig.GetRevision().GetVersion()); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanceID int64, taskConfig *task.TaskConfig, version uint64) error {
 	configBuffer, err := proto.Marshal(taskConfig)
 	if err != nil {
 		log.Errorf("Failed to marshal taskConfig, error = %v", err)
@@ -208,7 +225,7 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
 
 	// Create the initial job runtime record
-	err := s.UpdateJobRuntime(ctx, id, &initialJobRuntime)
+	err := s.updateJobRuntimeWithConfig(ctx, id, &initialJobRuntime, jobConfig)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
@@ -220,7 +237,7 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	return nil
 }
 
-func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (int64, error) {
+func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (uint64, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("MAX(version)").From(jobConfigTable).
 		Where(qb.Eq{"job_id": id.GetValue()})
@@ -237,7 +254,7 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (int64,
 	log.Debugf("max version: %v", allResults)
 	for _, value := range allResults {
 		for _, max := range value {
-			return max.(int64), nil
+			return uint64(max.(int64)), nil
 		}
 	}
 	return 0, nil
@@ -265,7 +282,7 @@ func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 	// Update to use new version.
 	r.ConfigVersion = version
 
-	return s.UpdateJobRuntime(ctx, id, r)
+	return s.updateJobRuntimeWithConfig(ctx, id, r, jobConfig)
 }
 
 // GetJobConfig returns a job config given the job id
@@ -547,42 +564,26 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, er
 	return resultMap, nil
 }
 
-// CreateTask creates a task for a peloton job
+// CreateTaskRuntime creates a task runtime for a peloton job
 // TODO: remove this in favor of CreateTasks
-func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, owner string) error {
-	jobID := id.Value
-	if taskInfo.InstanceId != instanceID || taskInfo.JobId.Value != jobID {
-		errMsg := fmt.Sprintf("Task has instance id %v, different than the instanceID %d expected, jobID %v, task JobId %v",
-			instanceID, taskInfo.InstanceId, jobID, taskInfo.JobId.Value)
-		log.Errorf(errMsg)
-		s.metrics.TaskCreateFail.Inc(1)
-		return fmt.Errorf(errMsg)
-	}
-
-	// TODO: Set correct version.
-	if err := s.createTaskConfig(ctx, id, instanceID, 0, taskInfo.GetConfig()); err != nil {
-		s.metrics.TaskCreateFail.Inc(1)
-		return err
-	}
-
+func (s *Store) CreateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, owner string) error {
 	now := time.Now()
-	taskInfo.Runtime.Revision = &peloton.ChangeLog{
+	runtime.Revision = &peloton.Revision{
 		CreatedAt: uint64(now.UnixNano()),
 		UpdatedAt: uint64(now.UnixNano()),
 		Version:   0,
 	}
 
-	runtimeBuffer, err := proto.Marshal(taskInfo.Runtime)
+	runtimeBuffer, err := proto.Marshal(runtime)
 	if err != nil {
-		log.WithField("job_id", taskInfo.JobId.Value).
-			WithField("instance_id", taskInfo.InstanceId).
+		log.WithField("job_id", jobID.Value).
+			WithField("instance_id", instanceID).
 			WithError(err).
 			Error("Failed to create task runtime")
 		s.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
 
-	taskInfo.Runtime.State = task.TaskState_INITIALIZED
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Insert(taskRuntimeTable).
 		Columns(
@@ -593,45 +594,44 @@ func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 			"state",
 			"runtime_info").
 		Values(
-			jobID,
+			jobID.Value,
 			instanceID,
-			taskInfo.GetRuntime().GetRevision().GetVersion(),
+			runtime.GetRevision().GetVersion(),
 			time.Now().UTC(),
-			taskInfo.GetRuntime().GetState().String(),
+			runtime.GetState().String(),
 			runtimeBuffer).
 		IfNotExist()
 
-	taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
-	if err := s.applyStatement(ctx, stmt, taskID); err != nil {
+	taskID := util.BuildTaskID(jobID, instanceID)
+	if err := s.applyStatement(ctx, stmt, taskID.Value); err != nil {
 		s.metrics.TaskCreateFail.Inc(1)
 		return err
 	}
 	s.metrics.TaskCreate.Inc(1)
 	// Track the task events
-	err = s.logTaskStateChange(ctx, id, instanceID, taskInfo)
+	err = s.logTaskStateChange(ctx, jobID, instanceID, runtime)
 	if err != nil {
-		log.Errorf("Unable to log task state changes for job ID %v instance %v, error = %v", jobID, instanceID, err)
+		log.Errorf("Unable to log task state changes for job ID %v instance %v, error = %v", jobID.Value, instanceID, err)
 		return err
 	}
 	return nil
 }
 
-// CreateTasks creates tasks for the given slice of task infos, instances 0..n
-func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, owner string) error {
-	maxBatchSize := int64(s.Conf.MaxBatchSize)
+// CreateTaskRuntimes creates task runtimes for the given slice of task runtimes, instances 0..n
+func (s *Store) CreateTaskRuntimes(ctx context.Context, jobID *peloton.JobID, runtimes []*task.RuntimeInfo, owner string) error {
+	maxBatchSize := uint32(s.Conf.MaxBatchSize)
 	if maxBatchSize == 0 {
-		maxBatchSize = math.MaxInt64
+		maxBatchSize = math.MaxUint32
 	}
-	jobID := id.Value
-	nTasks := int64(len(taskInfos))
-	tasksNotCreated := int64(0)
+	nTasks := uint32(len(runtimes))
+	tasksNotCreated := uint32(0)
 	timeStart := time.Now()
 	nBatches := nTasks/maxBatchSize + 1
 	wg := new(sync.WaitGroup)
 	log.WithField("batches", nBatches).
 		WithField("tasks", nTasks).
 		Debug("Creating tasks")
-	for batch := int64(0); batch < nBatches; batch++ {
+	for batch := uint32(0); batch < nBatches; batch++ {
 		// do batching by rows, up to s.Conf.MaxBatchSize
 		start := batch * maxBatchSize // the starting instance ID
 		end := nTasks                 // the end bounds (noninclusive)
@@ -647,44 +647,35 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 		go func() {
 			batchTimeStart := time.Now()
 			insertStatements := []api.Statement{}
-			idsToTaskInfos := map[string]*task.TaskInfo{}
+			idsToTaskRuntimes := map[string]*task.RuntimeInfo{}
 			defer wg.Done()
-			log.WithField("id", id.Value).
+			log.WithField("id", jobID.Value).
 				WithField("start", start).
 				WithField("end", end).
 				Debug("creating tasks")
-			for i := start; i < end; i++ {
-				t := taskInfos[i]
-
-				// TODO: Write task config as part of writing job config..
-				if err := s.createTaskConfig(ctx, id, t.InstanceId, 0, t.GetConfig()); err != nil {
-					log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-						Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
-					s.metrics.TaskCreateFail.Inc(nTasks)
-					atomic.AddInt64(&tasksNotCreated, batchSize)
-					return
+			for instanceID := start; instanceID < end; instanceID++ {
+				runtime := runtimes[instanceID]
+				if runtime == nil {
+					continue
 				}
 
 				now := time.Now()
-				t.Runtime.Revision = &peloton.ChangeLog{
+				runtime.Revision = &peloton.Revision{
 					CreatedAt: uint64(now.UnixNano()),
 					UpdatedAt: uint64(now.UnixNano()),
 					Version:   0,
 				}
 
-				t.Runtime.State = task.TaskState_INITIALIZED
-				taskID := fmt.Sprintf(taskIDFmt, jobID, t.InstanceId)
+				idsToTaskRuntimes[util.BuildTaskID(jobID, instanceID).Value] = runtime
 
-				idsToTaskInfos[taskID] = t
-
-				runtimeBuffer, err := proto.Marshal(t.Runtime)
+				runtimeBuffer, err := proto.Marshal(runtime)
 				if err != nil {
-					log.WithField("job_id", t.JobId.Value).
-						WithField("instance_id", t.InstanceId).
+					log.WithField("job_id", jobID.Value).
+						WithField("instance_id", instanceID).
 						WithError(err).
 						Error("Failed to create task runtime")
-					s.metrics.TaskCreateFail.Inc(nTasks)
-					atomic.AddInt64(&tasksNotCreated, batchSize)
+					s.metrics.TaskCreateFail.Inc(int64(nTasks))
+					atomic.AddUint32(&tasksNotCreated, batchSize)
 					return
 				}
 
@@ -698,11 +689,11 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 						"state",
 						"runtime_info").
 					Values(
-						jobID,
-						t.InstanceId,
-						t.GetRuntime().GetRevision().GetVersion(),
+						jobID.Value,
+						instanceID,
+						runtime.GetRevision().GetVersion(),
 						time.Now().UTC(),
-						t.GetRuntime().GetState().String(),
+						runtime.GetState().String(),
 						runtimeBuffer)
 
 				// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
@@ -710,21 +701,21 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 
 				insertStatements = append(insertStatements, stmt)
 			}
-			err := s.applyStatements(ctx, insertStatements, jobID)
+			err := s.applyStatements(ctx, insertStatements, jobID.Value)
 			if err != nil {
 				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-					Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
-				s.metrics.TaskCreateFail.Inc(nTasks)
-				atomic.AddInt64(&tasksNotCreated, batchSize)
+					Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, jobID.Value, time.Since(batchTimeStart), err)
+				s.metrics.TaskCreateFail.Inc(int64(nTasks))
+				atomic.AddUint32(&tasksNotCreated, batchSize)
 				return
 			}
 			log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-				Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
-			s.metrics.TaskCreate.Inc(nTasks)
+				Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, jobID.Value, time.Since(batchTimeStart))
+			s.metrics.TaskCreate.Inc(int64(nTasks))
 
-			err = s.logTaskStateChanges(ctx, idsToTaskInfos)
+			err = s.logTaskStateChanges(ctx, idsToTaskRuntimes)
 			if err != nil {
-				log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
+				log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID.Value, start, end-1, err)
 			}
 		}()
 	}
@@ -734,7 +725,7 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 		msg := fmt.Sprintf(
 			"Wrote %d tasks for %v, and was unable to write %d tasks to Cassandra in %v",
 			nTasks-tasksNotCreated,
-			id,
+			jobID.Value,
 			tasksNotCreated,
 			time.Since(timeStart))
 		log.Errorf(msg)
@@ -742,18 +733,18 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 	}
 
 	log.WithField("duration_s", time.Since(timeStart).Seconds()).
-		Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, id, time.Since(timeStart))
+		Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, jobID.Value, time.Since(timeStart))
 	return nil
 
 }
 
 // logTaskStateChange logs the task state change events
-func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo) error {
+func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
 	var stateChange = TaskStateChangeRecord{
 		JobID:      jobID.GetValue(),
 		InstanceID: instanceID,
-		TaskState:  taskInfo.Runtime.State.String(),
-		TaskHost:   taskInfo.Runtime.Host,
+		TaskState:  runtime.State.String(),
+		TaskHost:   runtime.Host,
 		EventTime:  time.Now().UTC(),
 	}
 	buffer, err := json.Marshal(stateChange)
@@ -778,10 +769,10 @@ func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, in
 }
 
 // logTaskStateChanges logs multiple task state change events in a batch operation (one RPC, separate statements)
-// taskIDToTaskInfos is a map of task ID to task info
-func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[string]*task.TaskInfo) error {
+// taskIDToTaskRuntimes is a map of task ID to task runtime
+func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskRuntimes map[string]*task.RuntimeInfo) error {
 	statements := []api.Statement{}
-	for taskID, taskInfo := range taskIDToTaskInfos {
+	for taskID, runtime := range taskIDToTaskRuntimes {
 		jobID, instanceID, err := util.ParseTaskID(taskID)
 		if err != nil {
 			log.WithError(err).
@@ -789,9 +780,8 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[s
 				Error("Invalid task id")
 			return err
 		}
-		runtime := taskInfo.GetRuntime()
 		stateChange := TaskStateChangeRecord{
-			JobID:       jobID,
+			JobID:       jobID.Value,
 			InstanceID:  uint32(instanceID),
 			TaskState:   runtime.GetState().String(),
 			TaskHost:    runtime.GetHost(),
@@ -807,12 +797,12 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[s
 		queryBuilder := s.DataStore.NewQuery()
 		stmt := queryBuilder.Update(taskStateChangesTable).
 			Add("events", stateChangePart).
-			Where(qb.Eq{"job_id": jobID, "instance_id": instanceID})
+			Where(qb.Eq{"job_id": jobID.Value, "instance_id": instanceID})
 		statements = append(statements, stmt)
 	}
 	err := s.DataStore.ExecuteBatch(ctx, statements)
 	if err != nil {
-		log.Errorf("Fail to logTaskStateChanges for %d tasks, err=%v", len(taskIDToTaskInfos), err)
+		log.Errorf("Fail to logTaskStateChanges for %d tasks, err=%v", len(taskIDToTaskRuntimes), err)
 		return err
 	}
 	return nil
@@ -938,17 +928,17 @@ func (s *Store) getTaskConfig(ctx context.Context, id *peloton.JobID, instanceID
 	if result != nil {
 		defer result.Close()
 	}
-	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
+	taskID := util.BuildTaskID(id, instanceID)
 	allResults, err := result.All(ctx)
 	if len(allResults) == 0 {
-		return nil, &storage.TaskNotFoundError{TaskID: taskID}
+		return nil, &storage.TaskNotFoundError{TaskID: taskID.Value}
 	}
 
 	// Use last result (the most specific).
 	value := allResults[len(allResults)-1]
 	var record TaskConfigRecord
 	if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
-		log.WithField("task_id", taskID).
+		log.WithField("task_id", taskID.Value).
 			WithError(err).
 			Error("Failed to Fill into TaskRecord")
 		s.metrics.TaskGetFail.Inc(1)
@@ -1005,7 +995,7 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 			s.metrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
-		resultMap[uint32(record.InstanceID)], err = s.GetTask(ctx, id.GetValue(), uint32(record.InstanceID))
+		resultMap[uint32(record.InstanceID)], err = s.getTask(ctx, id, uint32(record.InstanceID))
 		if err != nil {
 			log.Errorf("Failed to get taskInfo from task, val = %v err= %v", value, err)
 			s.metrics.TaskGetFail.Inc(1)
@@ -1095,21 +1085,43 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 	return result, nil
 }
 
-// UpdateTask updates a task for a peloton job
-func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
-	// Bump version of task.
-	if taskInfo.Runtime.Revision == nil {
-		taskInfo.Runtime.Revision = &peloton.ChangeLog{}
-	}
-	currentVersion := taskInfo.Runtime.Revision.Version
-
-	taskInfo.Runtime.Revision.Version++
-	taskInfo.Runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
-
-	runtimeBuffer, err := proto.Marshal(taskInfo.Runtime)
+// GetTaskRuntime for a job and instance id.
+func (s *Store) GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.RuntimeInfo, error) {
+	record, err := s.getTaskRecord(ctx, jobID, instanceID)
 	if err != nil {
-		log.WithField("job_id", taskInfo.JobId.Value).
-			WithField("instance_id", taskInfo.InstanceId).
+		return nil, err
+	}
+
+	runtime, err := record.GetTaskRuntime()
+	if err != nil {
+		log.WithError(err).
+			WithField("record", record).
+			Errorf("failed to parse task runtime from record")
+		return nil, err
+	}
+
+	return runtime, err
+}
+
+// UpdateTaskRuntime updates a task for a peloton job
+func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
+	// Default to version 0.
+	if runtime.Revision == nil {
+		runtime.Revision = &peloton.Revision{
+			Version: 0,
+		}
+	}
+
+	// Bump version of task.
+	currentVersion := runtime.Revision.Version
+
+	runtime.Revision.Version++
+	runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
+
+	runtimeBuffer, err := proto.Marshal(runtime)
+	if err != nil {
+		log.WithField("job_id", jobID.GetValue()).
+			WithField("instance_id", instanceID).
 			WithError(err).
 			Error("Failed to update task runtime")
 		s.metrics.JobUpdateRuntimeFail.Inc(1)
@@ -1120,30 +1132,29 @@ func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 	if currentVersion == 0 {
 		vc += ", null"
 	}
-	// Comment out the condition as we are seeing perf issue with CAS writes in C* in pit-prod01
-	// condition := "version IN (" + vc + ")"
+	condition := "version IN (" + vc + ")"
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(taskRuntimeTable).
-		Set("version", taskInfo.Runtime.Revision.Version).
+		Set("version", runtime.Revision.Version).
 		Set("update_time", time.Now().UTC()).
-		Set("state", taskInfo.GetRuntime().GetState().String()).
+		Set("state", runtime.GetState().String()).
 		Set("runtime_info", runtimeBuffer).
-		Where(qb.Eq{"job_id": taskInfo.GetJobId().GetValue(), "instance_id": taskInfo.InstanceId}) //.
-		//IfOnly(condition)
+		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID}).
+		IfOnly(condition)
 
-	if err := s.applyStatement(ctx, stmt, getTaskID(taskInfo)); err != nil {
+	if err := s.applyStatement(ctx, stmt, util.BuildTaskID(jobID, instanceID).Value); err != nil {
 		s.metrics.TaskUpdateFail.Inc(1)
 		return err
 	}
 	s.metrics.TaskUpdate.Inc(1)
-	s.logTaskStateChange(ctx, taskInfo.GetJobId(), taskInfo.InstanceId, taskInfo)
+	s.logTaskStateChange(ctx, jobID, instanceID, runtime)
 	return nil
 }
 
 // GetTaskForJob returns a task by jobID and instanceID
 func (s *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
-	taskID := fmt.Sprintf(taskIDFmt, id.Value, int(instanceID))
+	taskID := util.BuildTaskID(id, instanceID)
 	taskInfo, err := s.GetTaskByID(ctx, taskID)
 	if err != nil {
 		return nil, err
@@ -1182,26 +1193,35 @@ func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 }
 
 // GetTaskByID returns the tasks (tasks.TaskInfo) for a peloton job
-func (s *Store) GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error) {
-	jobID, instanceID, err := util.ParseTaskID(taskID)
+func (s *Store) GetTaskByID(ctx context.Context, taskID *peloton.TaskID) (*task.TaskInfo, error) {
+	jobID, instanceID, err := util.ParseTaskID(taskID.Value)
 	if err != nil {
 		log.WithError(err).
 			WithField("task_id", taskID).
 			Error("Invalid task id")
 		return nil, err
 	}
-	return s.GetTask(ctx, jobID, uint32(instanceID))
+	return s.getTask(ctx, jobID, instanceID)
 }
 
-// GetTask returns the tasks (tasks.TaskInfo) for a peloton job
-func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*task.TaskInfo, error) {
-	taskID := fmt.Sprintf(taskIDFmt, jobID, int(instanceID))
+func (s *Store) getTask(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.TaskInfo, error) {
+	record, err := s.getTaskRecord(ctx, jobID, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.getTaskInfoFromRuntimeRecord(ctx, jobID, record)
+}
+
+// getTaskRecord returns the runtime record for a peloton task
+func (s *Store) getTaskRecord(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*TaskRuntimeRecord, error) {
+	taskID := util.BuildTaskID(jobID, instanceID)
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskRuntimeTable).
-		Where(qb.Eq{"job_id": jobID, "instance_id": instanceID})
+		Where(qb.Eq{"job_id": jobID.Value, "instance_id": instanceID})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
-		log.WithField("task_id", taskID).
+		log.WithField("task_id", taskID.Value).
 			WithError(err).
 			Error("Fail to GetTask")
 		s.metrics.TaskGetFail.Inc(1)
@@ -1215,7 +1235,7 @@ func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
-			log.WithField("task_id", taskID).
+			log.WithField("task_id", taskID.Value).
 				WithError(err).
 				Error("Failed to Fill into TaskRecord")
 			s.metrics.TaskGetFail.Inc(1)
@@ -1223,10 +1243,11 @@ func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*
 		}
 
 		s.metrics.TaskGet.Inc(1)
-		return s.getTaskInfoFromRuntimeRecord(ctx, &peloton.JobID{Value: jobID}, &record)
+		return &record, nil
 	}
+
 	s.metrics.TaskNotFound.Inc(1)
-	return nil, &storage.TaskNotFoundError{TaskID: taskID}
+	return nil, &storage.TaskNotFoundError{TaskID: taskID.Value}
 }
 
 //SetMesosStreamID stores the mesos framework id for a framework name
@@ -1324,6 +1345,10 @@ func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to execute stmt for %v %v, err=%v", itemName, stmtString, err)
+		switch err.(type) {
+		case *gocql.RequestErrReadTimeout, *gocql.RequestErrWriteTimeout:
+			err = yarpcerrors.DeadlineExceededErrorf("timeout while processing statement %v: %v", strconv.Quote(stmtString), err.Error())
+		}
 		return err
 	}
 	if result != nil {
@@ -1461,8 +1486,7 @@ func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[
 }
 
 func getTaskID(taskInfo *task.TaskInfo) string {
-	jobID := taskInfo.JobId.Value
-	return fmt.Sprintf(taskIDFmt, jobID, taskInfo.InstanceId)
+	return util.BuildTaskID(taskInfo.JobId, taskInfo.InstanceId).Value
 }
 
 // GetJobRuntime returns the job runtime info
@@ -1505,16 +1529,13 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.GetValue())
 }
 
-// updateJobIndexWithJobRuntime updates the job index table with job runtime
-func (s *Store) updateJobIndexWithJobRuntime(
+// updateJobIndex updates the job index table with job runtime
+// and config (if not nil)
+func (s *Store) updateJobIndex(
 	ctx context.Context,
 	id *peloton.JobID,
-	runtime *job.RuntimeInfo) error {
-
-	config, err := s.GetJobConfig(ctx, id)
-	if err != nil {
-		return err
-	}
+	runtime *job.RuntimeInfo,
+	config *job.JobConfig) error {
 
 	runtimeBuffer, err := json.Marshal(runtime)
 	if err != nil {
@@ -1522,20 +1543,6 @@ func (s *Store) updateJobIndexWithJobRuntime(
 			WithError(err).
 			Error("Failed to marshal job runtime")
 		s.metrics.JobUpdateRuntimeFail.Inc(1)
-		return err
-	}
-
-	configBuffer, err := json.Marshal(config)
-	if err != nil {
-		log.Errorf("Failed to marshal jobConfig, error = %v", err)
-		s.metrics.JobCreateFail.Inc(1)
-		return err
-	}
-
-	labelBuffer, err := json.Marshal(config.Labels)
-	if err != nil {
-		log.Errorf("Failed to marshal labels, error = %v", err)
-		s.metrics.JobCreateFail.Inc(1)
 		return err
 	}
 
@@ -1551,16 +1558,34 @@ func (s *Store) updateJobIndexWithJobRuntime(
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(jobIndexTable).
-		Set("config", configBuffer).
 		Set("runtime_info", runtimeBuffer).
 		Set("state", runtime.GetState().String()).
-		Set("respool_id", config.GetRespoolID().GetValue()).
-		Set("owner", config.GetOwningTeam()).
-		Set("labels", labelBuffer).
 		Set("creation_time", parseTime(runtime.GetCreationTime())).
-		Set("update_time", time.Now()).
 		Set("completion_time", completeTime).
+		Set("update_time", time.Now()).
 		Where(qb.Eq{"job_id": id.GetValue()})
+
+	if config != nil {
+		configBuffer, err := json.Marshal(config)
+		if err != nil {
+			log.Errorf("Failed to marshal jobConfig, error = %v", err)
+			s.metrics.JobCreateFail.Inc(1)
+			return err
+		}
+
+		labelBuffer, err := json.Marshal(config.Labels)
+		if err != nil {
+			log.Errorf("Failed to marshal labels, error = %v", err)
+			s.metrics.JobCreateFail.Inc(1)
+			return err
+		}
+
+		stmt = stmt.Set("config", configBuffer).
+			Set("respool_id", config.GetRespoolID().GetValue()).
+			Set("owner", config.GetOwningTeam()).
+			Set("labels", labelBuffer)
+	}
+
 	err = s.applyStatement(ctx, stmt, id.Value)
 	if err != nil {
 		log.WithField("job_id", id.Value).
@@ -1575,6 +1600,12 @@ func (s *Store) updateJobIndexWithJobRuntime(
 
 // UpdateJobRuntime updates the job runtime info
 func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error {
+	return s.updateJobRuntimeWithConfig(ctx, id, runtime, nil)
+}
+
+// UpdateJobRuntimeWithConfig updates the job runtime info
+// including the config (if not nil) in the job_index
+func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo, config *job.JobConfig) error {
 	runtimeBuffer, err := proto.Marshal(runtime)
 	if err != nil {
 		log.WithField("job_id", id.Value).
@@ -1599,7 +1630,7 @@ func (s *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime
 		return err
 	}
 
-	err = s.updateJobIndexWithJobRuntime(ctx, id, runtime)
+	err = s.updateJobIndex(ctx, id, runtime, config)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).

@@ -78,7 +78,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperations() {
 	pelotonTaskID, err := util.ParseTaskIDFromMesosTaskID(launch.GetTasks()[0].GetTaskId().GetValue())
 	suite.Equal(
 		fmt.Sprintf(_testPelotonTaskIDFmt, 0),
-		pelotonTaskID)
+		pelotonTaskID.Value)
 }
 
 func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
@@ -110,7 +110,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
 	pelotonTaskID, err := util.ParseTaskIDFromMesosTaskID(launch.GetTasks()[0].GetTaskId().GetValue())
 	suite.Equal(
 		fmt.Sprintf(_testPelotonTaskIDFmt, 0),
-		pelotonTaskID)
+		pelotonTaskID.Value)
 }
 
 func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
@@ -158,7 +158,7 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
 	pelotonTaskID, err := util.ParseTaskIDFromMesosTaskID(launch.GetTasks()[0].GetTaskId().GetValue())
 	suite.Equal(
 		fmt.Sprintf(_testPelotonTaskIDFmt, 0),
-		pelotonTaskID)
+		pelotonTaskID.Value)
 }
 
 func (suite *HostOperationTestSuite) TestGetHostOperationsIncorrectMesosTaskIDFormat() {

@@ -122,6 +122,13 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		}
 	}
 
+	if err := j.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.Value).
+			Error("Failed to create task configs")
+		return err
+	}
+
 	for batch := uint32(0); batch < jobConfig.InstanceCount/batchRows+1; batch++ {
 		start := batch * batchRows
 		end := util.Min((batch+1)*batchRows, jobConfig.InstanceCount)
@@ -140,9 +147,9 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		for i := start; i < end; i++ {
 			if _, ok := taskInfos[i]; ok {
 				if taskInfos[i].Runtime.State == pb_task.TaskState_INITIALIZED {
-					j.trackedManager.SetTask(jobID, i, taskInfos[i].Runtime)
 					j.metrics.TaskRecovered.Inc(1)
 				}
+				j.trackedManager.SetTask(jobID, i, taskInfos[i].GetRuntime())
 				continue
 			}
 			// Task does not exist in taskStore.
@@ -180,20 +187,17 @@ func createTaskForJob(
 	jobID *peloton.JobID,
 	id uint32,
 	jobConfig *job.JobConfig) error {
-	taskInfo, err := task.CreateInitializingTask(jobID, id, jobConfig)
-	if err != nil {
-		return err
-	}
+	runtime := task.CreateInitializingTask(jobID, id, jobConfig)
 
-	if err := taskStore.CreateTask(ctx, jobID, id, taskInfo, jobConfig.OwningTeam); err != nil {
+	if err := taskStore.CreateTaskRuntime(ctx, jobID, id, runtime, jobConfig.OwningTeam); err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).
 			WithField("id", id).
-			Error("Failed to CreateTask")
+			Error("Failed to CreateTaskRuntime")
 		return err
 	}
 
-	trackedManager.SetTask(jobID, id, taskInfo.Runtime)
+	trackedManager.SetTask(jobID, id, runtime)
 
 	return nil
 }

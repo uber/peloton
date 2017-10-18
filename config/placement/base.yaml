@@ -9,6 +9,9 @@ placement:
    task_dequeue_timeout: 100
    offer_dequeue_limit: 10
    max_placement_duration: 300s
+   coordinator:
+    task_type: 0
+    fetch_offer_tasks: false
 
 election:
   root: "/peloton"
@@ -40,5 +43,5 @@ storage:
       timeout: 10s
     store_name: peloton_test
     migrations: storage/cassandra/migrations/
-  use_cassandra: false
+  use_cassandra: true
   db_write_concurrency: 40

@@ -34,8 +34,8 @@ func (c *testClient) setErrorFlag(errorFlag bool) {
 }
 
 func (c *testClient) changeStreamID(streamID string) {
-	c.Lock()
-	defer c.Unlock()
+	c.localClient.handler.Lock()
+	defer c.localClient.handler.Unlock()
 	c.localClient.handler.streamID = streamID
 }
 
@@ -44,10 +44,11 @@ func (c *testClient) InitStream(
 	request *eventstream.InitStreamRequest,
 	opts ...yarpc.CallOption) (*eventstream.InitStreamResponse, error) {
 	c.Lock()
-	defer c.Unlock()
 	if c.returnError {
+		c.Unlock()
 		return nil, errors.New("Mocked RPC server error")
 	}
+	c.Unlock()
 
 	return c.localClient.InitStream(ctx, request, opts...)
 }
@@ -58,10 +59,11 @@ func (c *testClient) WaitForEvents(
 	request *eventstream.WaitForEventsRequest,
 	opts ...yarpc.CallOption) (*eventstream.WaitForEventsResponse, error) {
 	c.Lock()
-	defer c.Unlock()
 	if c.returnError {
+		c.Unlock()
 		return nil, errors.New("Mocked RPC server error")
 	}
+	c.Unlock()
 
 	return c.localClient.WaitForEvents(ctx, request, opts...)
 }
@@ -192,6 +194,7 @@ func TestStreamIDChange(t *testing.T) {
 
 	eventStreamClient2, eventProcessor2 := makeStreamClient(clientName2, client)
 	eventStreamClient2.Start()
+
 	count := 0
 
 	batches := 20
@@ -213,6 +216,9 @@ func TestStreamIDChange(t *testing.T) {
 	time.Sleep(waitEventConsumedInterval)
 
 	client.changeStreamID("23456")
+
+	// Drain existing calls.
+	time.Sleep(_maxWaitForEventsIdle)
 
 	for i := 0; i < batches; i++ {
 		for j := 0; j < batchSize; j++ {

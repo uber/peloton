@@ -1192,7 +1192,7 @@ func createHostLaunchOperation() *hostsvc.OfferOperation {
 }
 
 func createReservationLabels() *mesos.Labels {
-	return reservation.CreateReservationLabels("testjob", 0, "hostname-0")
+	return reservation.CreateReservationLabels(&peloton.JobID{Value: "testjob"}, 0, "hostname-0")
 }
 
 func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {

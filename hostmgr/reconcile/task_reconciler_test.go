@@ -21,7 +21,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 	mock_mpb "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
+	"github.com/pborman/uuid"
 )
 
 const (
@@ -103,12 +105,13 @@ func (suite *TaskReconcilerTestSuite) createTestTaskInfo(
 	state task.TaskState,
 	instanceID uint32) *task.TaskInfo {
 
-	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
+	mtID := util.BuildMesosTaskID(util.BuildTaskID(suite.testJobID, instanceID), uuid.NewUUID().String())
+
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &taskID},
+			MesosTaskId: mtID,
 			State:       state,
-			GoalState:   task.TaskState_SUCCEEDED,
+			GoalState:   task.TaskGoalState_SUCCEED,
 		},
 		Config:     suite.testJobConfig.GetDefaultConfig(),
 		InstanceId: instanceID,

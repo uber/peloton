@@ -228,16 +228,16 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 		// higher demand then reservation
 		// It will also cap the fair share to demand and redistribute the
 		// rest of the entitlement to others.
-		for remaining.Get(kind) > util.ResourceEspilon && c.isDemandExist(demands, kind) {
+		for remaining.Get(kind) > util.ResourceEpsilon && c.isDemandExist(demands, kind) {
 			remainingShare := totalShare[kind]
 			for e := childs.Front(); e != nil; e = e.Next() {
 				n := e.Value.(respool.ResPool)
 
-				if remaining.Get(kind) < util.ResourceEspilon {
+				if remaining.Get(kind) < util.ResourceEpsilon {
 					break
 				}
 
-				if demands[n.ID()].Get(kind) < util.ResourceEspilon {
+				if demands[n.ID()].Get(kind) < util.ResourceEpsilon {
 					continue
 				}
 

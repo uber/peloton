@@ -128,7 +128,7 @@ func TestManagerSyncFromDB(t *testing.T) {
 				JobId:      jobID,
 				InstanceId: 1,
 				Runtime: &pb_task.RuntimeInfo{
-					GoalState:            pb_task.TaskState_RUNNING,
+					GoalState:            pb_task.TaskGoalState_RUN,
 					DesiredConfigVersion: 42,
 					ConfigVersion:        42,
 				},
@@ -194,4 +194,18 @@ func TestManagerStartStop(t *testing.T) {
 	m.Stop()
 
 	wg.Wait()
+}
+
+func TestPublishMetrics(t *testing.T) {
+	m := &manager{
+		jobs:      map[string]*job{},
+		mtx:       newMetrics(tally.NoopScope),
+		taskQueue: newDeadlineQueue(newMetrics(tally.NoopScope)),
+		running:   true,
+	}
+
+	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+
+	m.publishMetrics()
 }

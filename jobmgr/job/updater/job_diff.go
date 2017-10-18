@@ -11,15 +11,14 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 )
 
 var _updateNotSupported = "updating %s not supported"
 
 // JobDiff holds the difference between two job states
 type JobDiff struct {
-	// instanceID->task info
-	InstancesToAdd map[uint32]*pb_task.TaskInfo
+	// instanceID->runtime info
+	InstancesToAdd map[uint32]*pb_task.RuntimeInfo
 }
 
 // CalculateJobDiff returns the difference between 2 jobs
@@ -90,9 +89,9 @@ func validateNewConfig(oldConfig *job.JobConfig,
 func getInstancesToAdd(
 	jobID *peloton.JobID,
 	oldConfig *job.JobConfig,
-	newConfig *job.JobConfig) (map[uint32]*pb_task.TaskInfo, error) {
+	newConfig *job.JobConfig) (map[uint32]*pb_task.RuntimeInfo, error) {
 
-	instancesToAdd := make(map[uint32]*pb_task.TaskInfo)
+	instancesToAdd := make(map[uint32]*pb_task.RuntimeInfo)
 	if oldConfig.InstanceCount == newConfig.InstanceCount {
 		return instancesToAdd, nil
 	}
@@ -102,11 +101,7 @@ func getInstancesToAdd(
 	}
 
 	for i := oldConfig.InstanceCount; i < newConfig.InstanceCount; i++ {
-		taskInfo, err := task.CreateInitializingTask(jobID, i, newConfig)
-		if err != nil {
-			log.Errorf("Failed to get task (%d) for job %v: %v", i, jobID.Value, err)
-		}
-		instancesToAdd[i] = taskInfo
+		instancesToAdd[i] = task.CreateInitializingTask(jobID, i, newConfig)
 	}
 	return instancesToAdd, nil
 }

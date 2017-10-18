@@ -9,6 +9,7 @@ import (
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/util"
 
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
@@ -130,16 +131,23 @@ func (p *preemptor) preemptTasks(ctx context.Context, tasks []*resmgr.Task) erro
 		log.WithField("task_ID", task.Id.Value).
 			Info("preempting running task")
 
-		taskInfo, err := p.taskStore.GetTaskByID(ctx, task.Id.Value)
+		_, instanceID, err := util.ParseTaskID(task.Id.Value)
 		if err != nil {
 			errs = multierror.Append(errs, err)
+			continue
 		}
 
-		// set goal state to TaskState_PREEMPTING
-		taskInfo.GetRuntime().GoalState = pb_task.TaskState_PREEMPTING
+		runtime, err := p.trackedManager.GetTaskRuntime(ctx, task.JobId, instanceID)
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			continue
+		}
+
+		// set goal state to TaskState_PREEMPT
+		runtime.GoalState = pb_task.TaskGoalState_PREEMPT
 
 		// update the task in the tracked manager
-		err = p.trackedManager.UpdateTask(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo)
+		err = p.trackedManager.UpdateTaskRuntime(ctx, task.JobId, instanceID, runtime)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		}

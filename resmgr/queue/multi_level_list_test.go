@@ -8,6 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
+	"code.uber.internal/infra/peloton/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -28,11 +29,9 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 	jobID1 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID1 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
-	}
+	taskID1 := util.BuildTaskID(jobID1, 1)
 	taskItem1 := &resmgr.Task{
-		Name:     "job1-1",
+		Name:     taskID1.Value,
 		Priority: 0,
 		JobId:    jobID1,
 		Id:       taskID1,
@@ -46,11 +45,9 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 	jobID0 := &peloton.JobID{
 		Value: "job2",
 	}
-	taskID0 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID0.Value, 1),
-	}
+	taskID0 := util.BuildTaskID(jobID0, 1)
 	taskItem0 := &resmgr.Task{
-		Name:     "job2-1",
+		Name:     taskID0.Value,
 		Priority: 1,
 		JobId:    jobID0,
 		Id:       taskID0,
@@ -64,11 +61,9 @@ func (suite *MultiLevelListTestSuite) AddTasks() {
 	jobID2 := &peloton.JobID{
 		Value: "job1",
 	}
-	taskID2 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
-	}
+	taskID2 := util.BuildTaskID(jobID2, 2)
 	taskItem2 := &resmgr.Task{
-		Name:     "job1-2",
+		Name:     taskID2.Value,
 		Priority: 0,
 		JobId:    jobID2,
 		Id:       taskID2,
@@ -165,22 +160,18 @@ func (suite *MultiLevelListTestSuite) TestPushList() {
 	jobID := &peloton.JobID{
 		Value: "job3",
 	}
-	taskID := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID.Value, 1),
-	}
+	taskID := util.BuildTaskID(jobID, 1)
 	taskItem := &resmgr.Task{
-		Name:     "job3-1",
+		Name:     taskID.Value,
 		Priority: 2,
 		JobId:    jobID,
 		Id:       taskID,
 	}
 	newList.PushBack(taskItem)
 
-	taskID = &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID.Value, 2),
-	}
+	taskID = util.BuildTaskID(jobID, 2)
 	taskItem = &resmgr.Task{
-		Name:     "job3-2",
+		Name:     taskID.Value,
 		Priority: 2,
 		JobId:    jobID,
 		Id:       taskID,

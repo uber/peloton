@@ -55,7 +55,9 @@ message HealthCheckConfig {
 
   // Max number of consecutive failures before failing health check.
   // Zero or empty value would use default value of 3 from Mesos.
-  uint32 maxConsecutiveFailures = 4;
+  // Negative value will disable automatic killing of tasks based on
+  // number of failures.
+  int32 maxConsecutiveFailures = 4;
 
   // Health check command timeout in seconds.
   // Zero or empty value would use default value of 20 from Mesos.
@@ -299,6 +301,29 @@ enum TaskState {
 }
 
 /**
+ *  Runtime goal states of a task instance
+ */
+enum TaskGoalState {
+  // Reserved for future compatibility of new states.
+  UNKNOWN_GOAL_STATE     = 0;
+
+  // The task should be always running.
+  RUN       = 8;
+
+  // The task should be run to end.
+  SUCCEED   = 9;
+
+  // The task should be preempted.
+  PREEMPT   = 12;
+
+  // The task should be killed.
+  KILL      = 14;
+
+  // Task should be restarted
+  RESTART   = 16;
+}
+
+/**
  *  Runtime info of an task instance in a Job
  */
 message RuntimeInfo {
@@ -326,7 +351,7 @@ message RuntimeInfo {
 
   // The desired state of the task which should be eventually reached
   // by the system.
-  TaskState goalState = 7;
+  TaskGoalState goalState = 7;
 
   // The message that explains the current state of a task such as why
   // the task is failed. Only track the latest one if the task has been
@@ -354,7 +379,7 @@ message RuntimeInfo {
   mesos.v1.AgentID agentID = 14;
 
   // Revision of the current task info.
-  peloton.ChangeLog revision = 15;
+  peloton.Revision revision = 15;
 }
 
 

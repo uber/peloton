@@ -59,10 +59,17 @@ db-pressure:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/dbpressure storage/pressuretest/main/*.go
 
 install:
-	glide --version || go get github.com/Masterminds/glide
-	rm -rf vendor && glide install
-
-$(VENDOR): install
+	@if [ ! -d "$(VENDOR)" ]; then \
+		echo "Fetching dependencies"; \
+		glide --version || go get github.com/Masterminds/glide; \
+		rm -rf vendor && glide install; \
+	fi
+	@if [ ! -d "env" ]; then \
+		virtualenv env ; \
+		. env/bin/activate ; \
+		pip install -r tests/integration/requirements.txt ; \
+		deactivate ; \
+	fi
 
 cli:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton cli/main/*.go
@@ -71,17 +78,14 @@ cover:
 	./scripts/cover.sh $(shell go list $(PACKAGES))
 	go tool cover -html=cover.out -o cover.html
 
-pbgens: $(VENDOR)
+pbgens: install
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
 	@mkdir -p $(PBGEN_DIR)
 	./scripts/generate-protobuf.py
 
 clean:
-	rm -rf vendor/mesos vendor/peloton pbgen
-	rm -rf vendor_mocks
+	rm -rf vendor pbgen vendor_mocks $(BIN_DIR) .gen env
 	find . -path "*/mocks/*.go" | grep -v "./vendor" | xargs rm -f {}
-	rm -rf $(BIN_DIR)
-	rm -rf .gen
 
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 	@gofmt -s -w $(FMT_SRC)
@@ -133,11 +137,11 @@ mockgens: pbgens $(GOMOCK)
 	$(call local_mockgen,hostmgr/offer,EventHandler)
 	$(call local_mockgen,hostmgr/offer/offerpool,Pool)
 	$(call local_mockgen,hostmgr/summary,HostSummary)
-	$(call local_mockgen,jobmgr/task/event,Listener)
+	$(call local_mockgen,jobmgr/task/event,Listener;StatusProcessor)
 	$(call local_mockgen,jobmgr/task/launcher,Launcher)
 	$(call local_mockgen,jobmgr/tracked,Manager;Job;Task)
-	$(call local_mockgen,resmgr/respool,ResPool;Tree)
 	$(call local_mockgen,resmgr/preemption,Preemptor)
+	$(call local_mockgen,resmgr/respool,ResPool;Tree)
 	$(call local_mockgen,storage,JobStore;TaskStore;UpgradeStore;FrameworkInfoStore;ResourcePoolStore;PersistentVolumeStore)
 	$(call local_mockgen,yarpc/encoding/mpb,SchedulerClient;MasterOperatorClient)
 	$(call local_mockgen,yarpc/transport/mhttp,Inbound)
@@ -148,7 +152,7 @@ test-containers:
 	bash docker/run_test_mysql.sh
 	bash docker/run_test_cassandra.sh
 
-test: $(GOCOV) pbgens mockgens test-containers
+test: $(GOCOV) mockgens test-containers
 	gocov test -race $(ALL_PKGS) | gocov report
 
 test_pkg: $(GOCOV) $(PBGENS) mockgens test-containers
@@ -191,8 +195,8 @@ devtools:
 	go get github.com/golang/mock/gomock
 	go get github.com/golang/mock/mockgen
 	go get golang.org/x/tools/cmd/goimports
-    # temp removing: https://github.com/gemnasium/migrate/issues/26
-    # go get github.com/gemnasium/migrate
+	# temp removing: https://github.com/gemnasium/migrate/issues/26
+	# go get github.com/gemnasium/migrate
 
 version:
 	@echo $(PACKAGE_VERSION)
@@ -238,7 +242,7 @@ lint: format
 	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
 	fi;
 
-jenkins: devtools lint pbgens mockgens
+jenkins: devtools lint mockgens
 	@chmod -R 777 $(dir $(PBGEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
 	go test -race -i $(ALL_PKGS)
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'

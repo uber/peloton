@@ -2,11 +2,9 @@ package job
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -17,6 +15,7 @@ import (
 
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -72,7 +71,7 @@ func TestValidatorWithStore(t *testing.T) {
 	jobRuntime.CreationTime = (time.Now().Add(-10 * time.Hour)).Format(time.RFC3339Nano)
 
 	for i := uint32(0); i < uint32(3); i++ {
-		mockTrackedManager.EXPECT().SetTask(jobID, i, gomock.Any()).AnyTimes()
+		mockTrackedManager.EXPECT().SetTask(jobID, i, gomock.Any())
 		err := createTaskForJob(
 			context.Background(),
 			mockTrackedManager,
@@ -84,7 +83,7 @@ func TestValidatorWithStore(t *testing.T) {
 	}
 
 	for i := uint32(7); i < uint32(9); i++ {
-		mockTrackedManager.EXPECT().SetTask(jobID, i, gomock.Any()).AnyTimes()
+		mockTrackedManager.EXPECT().SetTask(jobID, i, gomock.Any())
 		err := createTaskForJob(
 			context.Background(),
 			mockTrackedManager,
@@ -99,10 +98,9 @@ func TestValidatorWithStore(t *testing.T) {
 
 	validator := NewJobRecovery(mockTrackedManager, csStore, csStore, tally.NoopScope)
 
-	for i := uint32(3); i < uint32(7); i++ {
+	for i := uint32(0); i < uint32(10); i++ {
 		mockTrackedManager.EXPECT().SetTask(jobID, i, gomock.Any())
 	}
-	mockTrackedManager.EXPECT().SetTask(jobID, uint32(9), gomock.Any())
 	validator.recoverJob(context.Background(), jobID, false)
 
 	jobRuntime, err = csStore.GetJobRuntime(context.Background(), jobID)
@@ -137,7 +135,6 @@ func TestValidator(t *testing.T) {
 		0: createTaskInfo(jobID, uint32(0), task.TaskState_INITIALIZED),
 		2: createTaskInfo(jobID, uint32(2), task.TaskState_INITIALIZED),
 	}
-	var createdTasks []*task.TaskInfo
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
 
@@ -153,17 +150,18 @@ func TestValidator(t *testing.T) {
 		GetJobRuntime(context.Background(), gomock.Any()).
 		Return(&jobRuntime, nil).
 		AnyTimes()
+	mockTaskStore.EXPECT().
+		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
 	mockJobStore.EXPECT().
 		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
 
 	mockTaskStore.EXPECT().
-		CreateTask(context.Background(), gomock.Any(), uint32(1), gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, _ string) {
-			createdTasks = append(createdTasks, taskInfo)
-			tasks[instanceID] = taskInfo
-		}).Return(nil)
+		CreateTaskRuntime(context.Background(), gomock.Any(), uint32(1), gomock.Any(), gomock.Any()).
+		Return(nil)
 	mockTrackedManager.EXPECT().SetTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
 	mockTaskStore.EXPECT().
 		GetTasksForJobByRange(context.Background(), jobID, &task.InstanceRange{From: 0, To: 3}).
@@ -215,7 +213,6 @@ func TestValidatorFailures(t *testing.T) {
 		0: createTaskInfo(jobID, uint32(0), task.TaskState_INITIALIZED),
 		2: createTaskInfo(jobID, uint32(2), task.TaskState_INITIALIZED),
 	}
-	var createdTasks []*task.TaskInfo
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
 
@@ -231,6 +228,10 @@ func TestValidatorFailures(t *testing.T) {
 		GetJobRuntime(context.Background(), gomock.Any()).
 		Return(&jobRuntime, nil).
 		AnyTimes()
+	mockTaskStore.EXPECT().
+		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
 	mockJobStore.EXPECT().
 		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(errors.New("Mock error")).
@@ -242,11 +243,8 @@ func TestValidatorFailures(t *testing.T) {
 		AnyTimes()
 
 	mockTaskStore.EXPECT().
-		CreateTask(context.Background(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, _ string) {
-			createdTasks = append(createdTasks, taskInfo)
-			tasks[instanceID] = taskInfo
-		}).Return(nil).
+		CreateTaskRuntime(context.Background(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).
 		AnyTimes()
 	mockTrackedManager.EXPECT().SetTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
 	mockTaskStore.EXPECT().
@@ -273,14 +271,14 @@ func TestValidatorFailures(t *testing.T) {
 }
 
 func createTaskInfo(jobID *peloton.JobID, i uint32, state task.TaskState) *task.TaskInfo {
-	var tID = fmt.Sprintf("%s-%d-%s", jobID.Value, i, uuid.NewUUID().String())
+	var mtID = util.BuildMesosTaskID(util.BuildTaskID(jobID, i), uuid.NewUUID().String())
 	var taskInfo = task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
-			MesosTaskId: &mesos.TaskID{Value: &tID},
+			MesosTaskId: mtID,
 			State:       state,
 		},
 		Config: &task.TaskConfig{
-			Name: tID,
+			Name: *mtID.Value,
 		},
 		InstanceId: uint32(i),
 		JobId:      jobID,

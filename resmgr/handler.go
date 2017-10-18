@@ -292,7 +292,7 @@ func (h *ServiceHandler) DequeueGangs(
 	sched := rmtask.GetScheduler()
 
 	var gangs []*resmgrsvc.Gang
-	for i := uint32(0); i < limit; i++ {
+	for len(gangs) < int(limit) {
 		gang, err := sched.DequeueGang(timeout*time.Millisecond, req.Type)
 		if err != nil {
 			log.Debug("Timeout to dequeue gang from ready queue")
@@ -319,6 +319,9 @@ func (h *ServiceHandler) DequeueGangs(
 		}
 		gang = h.removeFromGang(gang, tasksToRemove)
 		gangs = append(gangs, gang)
+		// Once we have one, cancel blocking-until-timeout on dequeue: only dequeue
+		// if immediately available.
+		timeout = 0
 	}
 	// TODO: handle the dequeue errors better
 	response := resmgrsvc.DequeueGangsResponse{Gangs: gangs}
@@ -447,9 +450,8 @@ func (h *ServiceHandler) GetPlacements(
 
 	h.metrics.APIGetPlacements.Inc(1)
 	var placements []*resmgr.Placement
-	for i := 0; i < int(limit); i++ {
+	for len(placements) < int(limit) {
 		item, err := h.placements.Dequeue(timeout * time.Millisecond)
-
 		if err != nil {
 			h.metrics.GetPlacementFail.Inc(1)
 			break
@@ -460,6 +462,9 @@ func (h *ServiceHandler) GetPlacements(
 			t.TaskState_LAUNCHING)
 		placements = append(placements, newPlacement)
 		h.metrics.GetPlacementSuccess.Inc(1)
+		// Once we have one, cancel blocking-until-timeout on dequeue: only dequeue
+		// if immediately available.
+		timeout = 0
 	}
 
 	response := resmgrsvc.GetPlacementsResponse{Placements: placements}
@@ -532,15 +537,15 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 			h.acknowledgeEvent(event.Offset)
 			continue
 		}
-		ptID, err := util.ParseTaskIDFromMesosTaskID(
+		taskID, err := util.ParseTaskIDFromMesosTaskID(
 			*(event.MesosTaskStatus.TaskId.Value))
 		if err != nil {
-			log.WithField("event", event).Error("Could not parse mesos ID")
+			log.WithFields(log.Fields{
+				"event":         event,
+				"mesos_task_id": *(event.MesosTaskStatus.TaskId.Value),
+			}).Error("Could not parse mesos ID")
 			h.acknowledgeEvent(event.Offset)
 			continue
-		}
-		taskID := &peloton.TaskID{
-			Value: ptID,
 		}
 		rmTask := h.rmTracker.GetTask(taskID)
 		if rmTask == nil {
