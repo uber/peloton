@@ -49,6 +49,7 @@ type JobStore interface {
 // TaskStore is the interface to store task states
 type TaskStore interface {
 	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error
+	GetTaskConfig(ctx context.Context, jobID *peloton.JobID, instanceID uint32, configVersion uint64) (*task.TaskConfig, error)
 
 	// TODO: remove CreateTask as it should be deprecated for CreateTasks
 	CreateTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, createdBy string) error

@@ -99,7 +99,7 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangs() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSla())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().EnqueueGangs(
@@ -116,7 +116,7 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangs() {
 			Return(nil, nil),
 	)
 
-	EnqueueGangs(context.Background(), tasksInfo, suite.testJobConfig, mockResmgrClient)
+	EnqueueGangs(context.Background(), tasksInfo, suite.testJobConfig.GetRespoolID(), suite.testJobConfig.GetSla(), mockResmgrClient)
 	suite.Equal(gangs, expectedGangs)
 }
 
@@ -129,7 +129,7 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangsFailure() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSla())
 	var expectedGangs []*resmgrsvc.Gang
 	var err error
 	gomock.InOrder(
@@ -146,6 +146,6 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangsFailure() {
 			}).
 			Return(nil, errors.New("Resmgr Error")),
 	)
-	err = EnqueueGangs(context.Background(), tasksInfo, suite.testJobConfig, mockResmgrClient)
+	err = EnqueueGangs(context.Background(), tasksInfo, suite.testJobConfig.GetRespoolID(), suite.testJobConfig.GetSla(), mockResmgrClient)
 	suite.Error(err)
 }

@@ -216,7 +216,7 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, h.resmgrClient)
+	err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig.GetRespoolID(), jobConfig.GetSla(), h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.Value).

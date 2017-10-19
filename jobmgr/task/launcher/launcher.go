@@ -289,7 +289,7 @@ func (l *launcher) enqueueTasks(ctx context.Context, tasks []*task.TaskInfo) err
 		return err
 	}
 
-	return jobmgr_task.EnqueueGangs(ctx, tasks, j.GetConfig(), l.resMgrClient)
+	return jobmgr_task.EnqueueGangs(ctx, tasks, j.GetConfig().GetRespoolID(), j.GetConfig().GetSla(), l.resMgrClient)
 }
 
 func (l *launcher) getLaunchableTasks(

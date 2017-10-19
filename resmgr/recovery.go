@@ -212,7 +212,7 @@ func (r *recoveryHandler) requeueTasksInRange(
 	log.WithField("Count", len(notRunningTasks)).
 		WithField("jobID", jobID).
 		Debug("Tasks count to recover")
-	resmgrTasks := util.ConvertToResMgrGangs(notRunningTasks, jobConfig)
+	resmgrTasks := util.ConvertToResMgrGangs(notRunningTasks, jobConfig.GetSla())
 
 	request := &resmgrsvc.EnqueueGangsRequest{
 		Gangs:   resmgrTasks,
@@ -242,7 +242,7 @@ func (r *recoveryHandler) addRunningTasks(
 
 	runningTasks := 0
 	for _, taskInfo := range tasks {
-		rmTask := util.ConvertTaskToResMgrTask(taskInfo, config)
+		rmTask := util.ConvertTaskToResMgrTask(taskInfo, config.GetSla())
 		err := rmtask.GetTracker().AddTask(
 			rmTask,
 			r.handler.GetStreamHandler(),

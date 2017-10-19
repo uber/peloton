@@ -60,12 +60,12 @@ func TestTaskStartStateless(t *testing.T) {
 	}
 
 	mockTaskStore.EXPECT().
-		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
+		GetTaskConfig(gomock.Any(), tt.job.id, tt.id, uint64(0)).Return(taskInfo.Config, nil)
 	mockJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig),
+		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig.GetSla()),
 		ResPool: jobConfig.RespoolID,
 	}
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
@@ -115,6 +115,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 	}
 	taskInfo := &pb_task.TaskInfo{
 		InstanceId: tt.id,
+		JobId:      tt.job.id,
 		Config: &pb_task.TaskConfig{
 			Volume: &pb_task.PersistentVolumeConfig{},
 		},
@@ -122,9 +123,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 	}
 
 	mockTaskStore.EXPECT().
-		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
-	mockJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
+		GetTaskConfig(gomock.Any(), tt.job.id, tt.id, uint64(0)).Return(taskInfo.Config, nil)
 	mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(&volume.PersistentVolumeInfo{
 		State: volume.VolumeState_CREATED,
@@ -185,14 +184,14 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 	}
 
 	mockTaskStore.EXPECT().
-		GetTaskByID(gomock.Any(), util.BuildTaskID(tt.job.id, tt.id)).Return(taskInfo, nil)
+		GetTaskConfig(gomock.Any(), tt.job.id, tt.id, uint64(0)).Return(taskInfo.Config, nil)
 	mockJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
 	mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(nil, &storage.VolumeNotFoundError{})
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig),
+		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig.GetSla()),
 		ResPool: jobConfig.RespoolID,
 	}
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)

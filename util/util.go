@@ -277,7 +277,7 @@ func UnmarshalStringArray(jsonStrings []string, resultType reflect.Type) ([]inte
 // of which is a set of 1+ tasks to be admitted and placed as a group.
 func ConvertToResMgrGangs(
 	tasks []*task.TaskInfo,
-	config *job.JobConfig) []*resmgrsvc.Gang {
+	sla *job.SlaConfig) []*resmgrsvc.Gang {
 	var gangs []*resmgrsvc.Gang
 
 	// Gangs of multiple tasks are placed at the front of the returned list for
@@ -286,7 +286,7 @@ func ConvertToResMgrGangs(
 	var multiTaskGangs []*resmgrsvc.Gang
 
 	for _, t := range tasks {
-		resmgrtask := ConvertTaskToResMgrTask(t, config)
+		resmgrtask := ConvertTaskToResMgrTask(t, sla)
 		// Currently a job has at most 1 gang comprising multiple tasks;
 		// those tasks have their MinInstances field set > 1.
 		if resmgrtask.MinInstances > 1 {
@@ -311,14 +311,14 @@ func ConvertToResMgrGangs(
 // ConvertTaskToResMgrTask converts taskinfo to resmgr task.
 func ConvertTaskToResMgrTask(
 	taskInfo *task.TaskInfo,
-	jobConfig *job.JobConfig) *resmgr.Task {
+	sla *job.SlaConfig) *resmgr.Task {
 	instanceID := taskInfo.GetInstanceId()
 	taskID := BuildTaskID(taskInfo.GetJobId(), instanceID)
 
 	// If minSchedulingUnit size > 1, instances w/instanceID between
 	// 0..minSchedulingUnit-1 should be gang-scheduled;
 	// only pass minSchedulingUnit value > 1 for those tasks.
-	minInstances := jobConfig.GetSla().GetMinimumSchedulingUnitSize()
+	minInstances := sla.GetMinimumSchedulingUnitSize()
 	if (minInstances <= 1) || (instanceID >= minInstances) {
 		minInstances = 1
 	}
@@ -342,8 +342,8 @@ func ConvertTaskToResMgrTask(
 		JobId:        taskInfo.GetJobId(),
 		TaskId:       taskInfo.GetRuntime().GetMesosTaskId(),
 		Name:         taskInfo.GetConfig().GetName(),
-		Preemptible:  jobConfig.GetSla().GetPreemptible(),
-		Priority:     jobConfig.GetSla().GetPriority(),
+		Preemptible:  sla.GetPreemptible(),
+		Priority:     sla.GetPriority(),
 		MinInstances: minInstances,
 		Resource:     taskInfo.GetConfig().GetResource(),
 		Constraint:   taskInfo.GetConfig().GetConstraint(),

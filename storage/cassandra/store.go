@@ -866,20 +866,21 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 	return resultMap, nil
 }
 
-func (s *Store) getTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version uint64) (*task.TaskConfig, error) {
+// GetTaskConfig for the given config version.
+func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, configVersion uint64) (*task.TaskConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskConfigTable).
 		Where(
 			qb.Eq{
 				"job_id":      id.GetValue(),
-				"version":     version,
+				"version":     configVersion,
 				"instance_id": []interface{}{instanceID, _defaultTaskConfigID},
 			})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithField("job_id", id.GetValue()).
 			WithField("instance_id", instanceID).
-			WithField("version", version).
+			WithField("version", configVersion).
 			WithError(err).
 			Error("Fail to getTaskConfig")
 		s.metrics.TaskGetFail.Inc(1)
@@ -916,7 +917,7 @@ func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.Jo
 		return nil, err
 	}
 
-	config, err := s.getTaskConfig(ctx, id, uint32(record.InstanceID), runtime.ConfigVersion)
+	config, err := s.GetTaskConfig(ctx, id, uint32(record.InstanceID), runtime.ConfigVersion)
 	if err != nil {
 		return nil, err
 	}

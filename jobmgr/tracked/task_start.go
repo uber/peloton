@@ -9,29 +9,25 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
 )
 
 func (t *task) start(ctx context.Context) error {
+	runtime, err := t.getRuntime()
+	if err != nil {
+		return err
+	}
+
 	m := t.job.m
-
-	taskID := util.BuildTaskID(t.job.ID(), t.ID())
-	taskInfo, err := m.taskStore.GetTaskByID(ctx, taskID)
+	// Fetch corresponding task config.
+	config, err := m.taskStore.GetTaskConfig(ctx, t.job.id, t.id, runtime.GetConfigVersion())
 	if err != nil {
 		return err
 	}
 
-	// Retrieves job config and task info from data stores.
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, t.job.id, taskInfo.GetRuntime().GetConfigVersion())
-	if err != nil {
-		return err
-	}
-
-	stateful := taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) > 0
-
-	if stateful {
+	hasVolume := config.GetVolume() != nil && len(runtime.GetVolumeID().GetValue()) > 0
+	if hasVolume {
 		volumeID := &peloton.VolumeID{
-			Value: taskInfo.GetRuntime().GetVolumeID().GetValue(),
+			Value: runtime.GetVolumeID().GetValue(),
 		}
 		pv, err := m.volumeStore.GetPersistentVolume(ctx, volumeID)
 		if err != nil {
@@ -45,10 +41,25 @@ func (t *task) start(ctx context.Context) error {
 			if m.taskLauncher == nil {
 				return fmt.Errorf("task launcher not available")
 			}
-			return m.taskLauncher.LaunchTaskWithReservedResource(ctx, taskInfo)
+			return m.taskLauncher.LaunchTaskWithReservedResource(ctx, &pb_task.TaskInfo{
+				JobId:      t.job.id,
+				InstanceId: t.id,
+				Runtime:    runtime,
+				Config:     config,
+			})
 		}
 	}
 
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, t.job.id, runtime.GetConfigVersion())
+	if err != nil {
+		return fmt.Errorf("job config not found for %v", t.job.id)
+	}
+
 	// TODO: Investigate how to create proper gangs for scheduling (currently, task are treat independently)
-	return jobmgr_task.EnqueueGangs(ctx, []*pb_task.TaskInfo{taskInfo}, jobConfig, m.resmgrClient)
+	return jobmgr_task.EnqueueGangs(ctx, []*pb_task.TaskInfo{{
+		JobId:      t.job.id,
+		InstanceId: t.id,
+		Runtime:    runtime,
+		Config:     config,
+	}}, jobConfig.GetRespoolID(), jobConfig.GetSla(), m.resmgrClient)
 }

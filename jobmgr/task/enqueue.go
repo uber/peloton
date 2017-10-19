@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
@@ -15,17 +16,17 @@ import (
 )
 
 // EnqueueGangs enqueues all tasks organized in gangs to respool in resmgr.
-func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, config *job.JobConfig, client resmgrsvc.ResourceManagerServiceYARPCClient) error {
-	ctxWithTimeout, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
+func EnqueueGangs(ctx context.Context, tasks []*task.TaskInfo, respoolID *peloton.ResourcePoolID, sla *job.SlaConfig, client resmgrsvc.ResourceManagerServiceYARPCClient) error {
+	ctx, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelFunc()
 
-	gangs := util.ConvertToResMgrGangs(tasks, config)
+	gangs := util.ConvertToResMgrGangs(tasks, sla)
 	var request = &resmgrsvc.EnqueueGangsRequest{
 		Gangs:   gangs,
-		ResPool: config.RespoolID,
+		ResPool: respoolID,
 	}
 
-	response, err := client.EnqueueGangs(ctxWithTimeout, request)
+	response, err := client.EnqueueGangs(ctx, request)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"request": request,
