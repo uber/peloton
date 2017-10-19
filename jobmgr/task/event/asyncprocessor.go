@@ -5,9 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go.uber.org/yarpc/yarpcerrors"
-
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/sirupsen/logrus"
@@ -73,11 +72,11 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 						// Retry while getting AlreadyExists error.
 						if err := t.ProcessStatusUpdate(context.Background(), event); err == nil {
 							break
-						} else if !yarpcerrors.IsAlreadyExists(err) {
+						} else if !common.IsTransientError(err) {
 							log.WithError(err).
 								WithField("bucket_num", bucket.index).
 								WithField("event", event).
-								Error("Error applying taskSatus")
+								Error("Error applying taskStatus")
 							break
 						}
 					}

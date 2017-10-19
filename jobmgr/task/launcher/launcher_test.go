@@ -456,6 +456,20 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 				},
 			}, nil).
 			Times(5),
+
+		// Mock ReleaseOffer call.
+		mockHostMgr.EXPECT().ReleaseHostOffers(gomock.Any(), gomock.Any()).
+			Return(&hostsvc.ReleaseHostOffersResponse{}, nil),
+
+		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+
+		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), initializedTaskInfo.GetJobId()).Return(_jobConfig, nil),
+
+		// Mock EnqueueGangs call.
+		mockRes.EXPECT().EnqueueGangs(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
 	placements, err := taskLauncher.getPlacements()

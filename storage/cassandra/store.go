@@ -29,6 +29,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
+	"github.com/gocql/gocql"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -1358,6 +1359,10 @@ func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to execute stmt for %v %v, err=%v", itemName, stmtString, err)
+		switch err.(type) {
+		case *gocql.RequestErrReadTimeout, *gocql.RequestErrWriteTimeout:
+			err = yarpcerrors.DeadlineExceededErrorf("timeout while processing statement %v: %v", strconv.Quote(stmtString), err.Error())
+		}
 		return err
 	}
 	if result != nil {
