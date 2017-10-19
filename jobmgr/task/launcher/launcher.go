@@ -124,6 +124,7 @@ func GetLauncher() Launcher {
 func (l *launcher) Start() error {
 	if atomic.CompareAndSwapInt32(&l.started, 0, 1) {
 		log.Info("Starting Task Launcher")
+		atomic.StoreInt32(&l.shutdown, 0)
 		go func() {
 			for l.isRunning() {
 				placements, err := l.getPlacements()
@@ -247,22 +248,20 @@ func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.P
 			}
 			l.metrics.LauncherGoRoutines.Inc(1)
 			err = l.launchTasks(ctx, tasks, placement)
-			err = l.tryReturnOffers(ctx, err, placement)
+			l.tryReturnOffers(ctx, err, placement)
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
 					"placement":   placement,
 					"tasks_total": len(tasks),
 				}).Error("failed to launch tasks to hostmgr")
 
-				if err == errLaunchInvalidOffer {
-					// enqueue tasks to resmgr upon launch failure due to invalid offer.
-					l.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(tasks)))
-					if err = l.enqueueTasks(ctx, taskInfos); err != nil {
-						log.WithError(err).WithFields(log.Fields{
-							"task_infos":  taskInfos,
-							"tasks_total": len(taskInfos),
-						}).Error("failed to enqueue tasks back to resmgr")
-					}
+				// On launch failure, re-enqueue the tasks to resource manager.
+				l.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(tasks)))
+				if err = l.enqueueTasks(ctx, taskInfos); err != nil {
+					log.WithError(err).WithFields(log.Fields{
+						"task_infos":  taskInfos,
+						"tasks_total": len(taskInfos),
+					}).Error("failed to enqueue tasks back to resmgr")
 				}
 			}
 		}(placement)
@@ -279,9 +278,19 @@ func (l *launcher) enqueueTasks(ctx context.Context, tasks []*task.TaskInfo) err
 	for _, t := range tasks {
 		t.Runtime.State = task.TaskState_INITIALIZED
 		util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.Runtime)
-		err := l.taskStore.UpdateTaskRuntime(ctx, t.JobId, t.InstanceId, t.Runtime)
-		if err != nil {
-			return err
+		for {
+			err := l.taskStore.UpdateTaskRuntime(ctx, t.JobId, t.InstanceId, t.Runtime)
+			if err == nil {
+				break
+			}
+			if common.IsTransientError(err) {
+				log.WithError(err).WithFields(log.Fields{
+					"job_id":      t.JobId,
+					"instance_id": t.InstanceId,
+				}).Warn("retrying update task runtime on transient error")
+			} else {
+				return err
+			}
 		}
 	}
 	j, err := l.jobStore.GetJob(ctx, tasks[0].GetJobId())
@@ -588,7 +597,7 @@ func (l *launcher) launchTasks(
 }
 
 func (l *launcher) tryReturnOffers(ctx context.Context, err error, placement *resmgr.Placement) error {
-	if err == errEmptyTasks {
+	if err != nil && err != errLaunchInvalidOffer {
 		request := &hostsvc.ReleaseHostOffersRequest{
 			HostOffers: []*hostsvc.HostOffer{{
 				Hostname: placement.Hostname,
@@ -598,6 +607,12 @@ func (l *launcher) tryReturnOffers(ctx context.Context, err error, placement *re
 		ctx, cancel := context.WithTimeout(ctx, _rpcTimeout)
 		defer cancel()
 		_, err = l.hostMgrClient.ReleaseHostOffers(ctx, request)
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{
+				"hostname": placement.Hostname,
+				"agentid":  placement.AgentId,
+			}).Error("failed to release host offers")
+		}
 	}
 	return err
 }
