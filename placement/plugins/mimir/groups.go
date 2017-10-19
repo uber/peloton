@@ -1,4 +1,4 @@
-package models
+package mimir
 
 import (
 	"fmt"

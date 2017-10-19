@@ -1,9 +1,8 @@
 package models
 
 import (
-	"time"
-
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -11,7 +10,9 @@ import (
 )
 
 func setupTaskVariables() (time.Time, *resmgrsvc.Gang, *resmgr.Task, *Task) {
-	resmgrTask := setupEntityMapperVariables()
+	resmgrTask := &resmgr.Task{
+		Name: "task",
+	}
 	resmgrGang := &resmgrsvc.Gang{
 		Tasks: []*resmgr.Task{
 			resmgrTask,
@@ -32,10 +33,11 @@ func TestTask_Task(t *testing.T) {
 	assert.Equal(t, resmgrTask, task.Task())
 }
 
-func TestTask_Entity(t *testing.T) {
+func TestTask_DataAndSetData(t *testing.T) {
 	_, _, _, task := setupTaskVariables()
-	assert.NotNil(t, task.Entity())
-	assert.NotNil(t, task.Entity())
+	assert.Nil(t, task.Data())
+	task.SetData(42)
+	assert.NotNil(t, task.Data())
 }
 
 func TestTask_PastMaxRounds(t *testing.T) {

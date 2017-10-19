@@ -3,10 +3,28 @@ logging:
   stdout: true
 
 placement:
-   http_port: 5293
-   grpc_port: 5393
-   task_dequeue_limit: 20
-   offer_dequeue_limit: 10
+  http_port: 5293
+  grpc_port: 5393
+  task_dequeue_limit: 20
+  task_dequeue_timeout: 100
+  offer_dequeue_limit: 10
+  max_placement_duration: 300s
+  task_type: 0
+  fetch_offer_tasks: false
+  strategy: batch
+  concurrency: 4
+  max_rounds:
+    unknown: 1
+    batch: 1
+    stateless: 5
+    daemon: 5
+    stateless: 0  # 0 Means no limit
+  max_durations:
+    unknown: 5m
+    batch: 5m
+    stateless: 5m
+    daemon: 5m
+    stateless: 5m
 
 election:
   zk_servers: ["zookeeper:2181"]

@@ -3,20 +3,45 @@ package tasks
 import (
 	"context"
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resource_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	"code.uber.internal/infra/peloton/placement/config"
+	"code.uber.internal/infra/peloton/placement/metrics"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
-func TestTaskManager_Dequeue(t *testing.T) {
+func setupService(t *testing.T) (Service, *resource_mocks.MockResourceManagerServiceYARPCClient, *gomock.Controller) {
 	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
 	mockResourceManager := resource_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	manager := NewManager(mockResourceManager)
+	metrics := metrics.NewMetrics(tally.NoopScope)
+	config := &config.PlacementConfig{
+		MaxRounds: config.MaxRoundsConfig{
+			Unknown:   1,
+			Batch:     1,
+			Stateless: 5,
+			Daemon:    5,
+			Stateful:  0,
+		},
+		MaxDurations: config.MaxDurationsConfig{
+			Unknown:   5 * time.Second,
+			Batch:     5 * time.Second,
+			Stateless: 10 * time.Second,
+			Daemon:    15 * time.Second,
+			Stateful:  25 * time.Second,
+		},
+	}
+	return NewService(mockResourceManager, config, metrics), mockResourceManager, ctrl
+}
+
+func TestTaskService_Dequeue(t *testing.T) {
+	service, mockResourceManager, ctrl := setupService(t)
+	defer ctrl.Finish()
 
 	gomock.InOrder(
 		mockResourceManager.EXPECT().
@@ -31,7 +56,11 @@ func TestTaskManager_Dequeue(t *testing.T) {
 			&resmgrsvc.DequeueGangsResponse{
 				Gangs: []*resmgrsvc.Gang{
 					{
-						Tasks: []*resmgr.Task{},
+						Tasks: []*resmgr.Task{
+							{
+								Name: "task",
+							},
+						},
 					},
 				},
 			},
@@ -39,19 +68,15 @@ func TestTaskManager_Dequeue(t *testing.T) {
 		),
 	)
 	ctx := context.Background()
-	gangs, err := manager.Dequeue(ctx, resmgr.TaskType_UNKNOWN, 10, 100)
+	assignments := service.Dequeue(ctx, resmgr.TaskType_UNKNOWN, 10, 100)
 
-	assert.NoError(t, err)
-	assert.NoError(t, err)
-	assert.NotNil(t, gangs)
-	assert.Equal(t, 1, len(gangs))
+	assert.NotNil(t, assignments)
+	assert.Equal(t, 1, len(assignments))
 }
 
-func TestTaskManager_SetPlacements(t *testing.T) {
-	ctrl := gomock.NewController(t)
+func TestTaskService_SetPlacements(t *testing.T) {
+	service, mockResourceManager, ctrl := setupService(t)
 	defer ctrl.Finish()
-	mockResourceManager := resource_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	manager := NewManager(mockResourceManager)
 
 	ctx := context.Background()
 	placements := []*resmgr.Placement{
@@ -78,6 +103,5 @@ func TestTaskManager_SetPlacements(t *testing.T) {
 			),
 	)
 
-	err := manager.SetPlacements(ctx, placements)
-	assert.NoError(t, err)
+	service.SetPlacements(ctx, placements)
 }
