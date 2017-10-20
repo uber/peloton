@@ -174,7 +174,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 
 	result1, total, err = jobStore.QueryJobs(context.Background(), respool, &job.QuerySpec{})
 	suite.NoError(err)
-	suite.Equal(100, len(result1))
+	suite.Equal(int(_defaultQueryLimit), len(result1))
 	suite.Equal(records, int(total))
 
 	result1, total, err = jobStore.QueryJobs(context.Background(), &peloton.ResourcePoolID{Value: uuid.New()}, &job.QuerySpec{})
@@ -225,19 +225,22 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 				FdLimit:     1000 + uint32(i),
 			},
 		}
+		instanceConfig := make(map[uint32]*task.TaskConfig)
+		instanceConfig[0] = &taskConfig
 		var labels = []*peloton.Label{
 			{Key: keys0[i], Value: vals0[i]},
 			{Key: keys1[i], Value: vals1[i]},
 			{Key: keyCommon, Value: valCommon},
 		}
 		var jobConfig = job.JobConfig{
-			Name:          fmt.Sprintf("TestQueryJob_%d", i),
-			OwningTeam:    "owner",
-			LdapGroups:    []string{"money", "team6", "gign"},
-			Sla:           &sla,
-			DefaultConfig: &taskConfig,
-			Labels:        labels,
-			Description:   fmt.Sprintf("A test job with awesome keyword%v keytest%v", i, i),
+			Name:           fmt.Sprintf("TestQueryJob_%d", i),
+			OwningTeam:     "owner",
+			LdapGroups:     []string{"money", "team6", "gign"},
+			Sla:            &sla,
+			DefaultConfig:  &taskConfig,
+			Labels:         labels,
+			Description:    fmt.Sprintf("A test job with awesome keyword%v keytest%v", i, i),
+			InstanceConfig: instanceConfig,
 		}
 		originalJobs = append(originalJobs, &jobConfig)
 		err := jobStore.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
@@ -289,6 +292,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		suite.Equal(1, len(result1))
 		suite.Equal(1, int(total))
 		suite.Equal(i+1, int(result1[0].Runtime.State))
+		suite.Nil(result1[0].GetConfig().GetInstanceConfig())
 		suite.Equal(fmt.Sprintf("TestQueryJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
 	}
 	// Update tasks to different states, and query by state
@@ -941,7 +945,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 	tasks, n, err = taskStore.QueryTasks(context.Background(), jobID, &task.QuerySpec{})
 	suite.NoError(err)
 	suite.Equal(jobConfig.InstanceCount, n)
-	suite.Equal(int(jobConfig.InstanceCount), len(tasks))
+	suite.Equal(int(_defaultQueryLimit), len(tasks))
 
 	for i, t := range tasks {
 		tID := fmt.Sprintf("%s-%d", jobID.Value, i)
