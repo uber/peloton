@@ -73,6 +73,8 @@ func (h *serviceHandler) Create(
 	ctx context.Context,
 	req *job.CreateRequest) (*job.CreateResponse, error) {
 
+	log.WithField("request", req).Debug("JobManager.Create called")
+
 	h.metrics.JobAPICreate.Inc(1)
 
 	jobID := req.Id
@@ -344,6 +346,7 @@ func (h *serviceHandler) Get(
 	ctx context.Context,
 	req *job.GetRequest) (*job.GetResponse, error) {
 
+	log.WithField("request", req).Debug("JobManager.Get called")
 	h.metrics.JobAPIGet.Inc(1)
 
 	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.Id)
@@ -378,13 +381,15 @@ func (h *serviceHandler) Get(
 	}
 
 	h.metrics.JobGet.Inc(1)
-	return &job.GetResponse{
+	resp := &job.GetResponse{
 		JobInfo: &job.JobInfo{
 			Id:      req.GetId(),
 			Config:  jobConfig,
 			Runtime: jobRuntime,
 		},
-	}, nil
+	}
+	log.WithField("response", resp).Debug("JobManager.Get returned")
+	return resp, nil
 }
 
 // Query returns a list of jobs matching the given query
@@ -406,14 +411,16 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 	}
 
 	h.metrics.JobQuery.Inc(1)
-	return &job.QueryResponse{
+	resp := &job.QueryResponse{
 		Records: jobConfigs,
 		Pagination: &query.Pagination{
 			Offset: req.GetSpec().GetPagination().GetOffset(),
 			Limit:  req.GetSpec().GetPagination().GetLimit(),
 			Total:  total,
 		},
-	}, nil
+	}
+	log.WithField("response", resp).Debug("JobManager.Query returned")
+	return resp, nil
 }
 
 // Delete kills all running tasks in a job

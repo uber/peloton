@@ -594,9 +594,11 @@ func (h *serviceHandler) Query(
 	}
 
 	h.metrics.QueryResourcePoolsSuccess.Inc(1)
-	return &respool.QueryResponse{
+	resp := &respool.QueryResponse{
 		ResourcePools: resourcePoolInfos,
-	}, nil
+	}
+	log.WithField("response", resp).Debug("Query returned")
+	return resp, nil
 }
 
 // registerProcs will register all API's for end points
