@@ -119,6 +119,8 @@ func (m *serviceHandler) List(
 	ctx context.Context,
 	body *task.ListRequest) (*task.ListResponse, error) {
 
+	log.WithField("request", body).Debug("TaskSVC.List called")
+
 	m.metrics.TaskAPIList.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil {
@@ -154,11 +156,13 @@ func (m *serviceHandler) List(
 	}
 
 	m.metrics.TaskList.Inc(1)
-	return &task.ListResponse{
+	resp := &task.ListResponse{
 		Result: &task.ListResponse_Result{
 			Value: result,
 		},
-	}, nil
+	}
+	log.WithField("response", resp).Debug("TaskSVC.List returned")
+	return resp, nil
 }
 
 // getTaskInfosByRangesFromDB get all the tasks infos for given job and ranges.
@@ -394,6 +398,7 @@ func (m *serviceHandler) Restart(
 }
 
 func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*task.QueryResponse, error) {
+	log.WithField("request", req).Info("TaskSVC.Query called")
 	m.metrics.TaskAPIQuery.Inc(1)
 	_, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil {
@@ -423,21 +428,23 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 	}
 
 	m.metrics.TaskQuery.Inc(1)
-	return &task.QueryResponse{
+	resp := &task.QueryResponse{
 		Records: result,
 		Pagination: &query.Pagination{
 			Offset: req.GetSpec().GetPagination().GetOffset(),
 			Limit:  req.GetSpec().GetPagination().GetLimit(),
 			Total:  total,
 		},
-	}, nil
+	}
+	log.WithField("response", resp).Debug("TaskSVC.Query returned")
+	return resp, nil
 }
 
 func (m *serviceHandler) BrowseSandbox(
 	ctx context.Context,
 	req *task.BrowseSandboxRequest) (*task.BrowseSandboxResponse, error) {
 
-	log.WithField("req", req).Info("taskmanager getlogurls called")
+	log.WithField("req", req).Info("TaskSVC.BrowseSandbox called")
 	m.metrics.TaskAPIListLogs.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil {
@@ -531,11 +538,13 @@ func (m *serviceHandler) BrowseSandbox(
 	}
 
 	m.metrics.TaskListLogs.Inc(1)
-	return &task.BrowseSandboxResponse{
+	resp := &task.BrowseSandboxResponse{
 		Hostname: hostname,
 		Port:     "5051",
 		Paths:    logPaths,
-	}, nil
+	}
+	log.WithField("response", resp).Info("TaskSVC.BrowseSandbox returned")
+	return resp, nil
 }
 
 // GetFrameworkID returns the frameworkID.
