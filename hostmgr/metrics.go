@@ -25,6 +25,8 @@ type Metrics struct {
 	MesosConnected  tally.Gauge
 	HandlersRunning tally.Gauge
 
+	StartMesosLoopFail tally.Counter
+
 	ClusterCapacity     tally.Counter
 	ClusterCapacityFail tally.Counter
 
@@ -61,6 +63,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		Elected:         serverScope.Gauge("elected"),
 		MesosConnected:  serverScope.Gauge("mesos_connected"),
 		HandlersRunning: serverScope.Gauge("handlers_running"),
+
+		StartMesosLoopFail: scope.Counter("start_mesos_loop_fail"),
 
 		ClusterCapacity:     scope.Counter("cluster_capacity"),
 		ClusterCapacityFail: scope.Counter("cluster_capacity_fail"),

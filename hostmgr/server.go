@@ -273,8 +273,10 @@ func (s *Server) reconnect(ctx context.Context) bool {
 		return false
 	}
 
-	if _, err := s.mesosInbound.StartMesosLoop(ctx, hostPort); err != nil {
-		log.WithError(err).Error("Failed to StartMesosLoop")
+	if err := s.mesosInbound.StartMesosLoop(ctx, hostPort); err != nil {
+		s.metrics.StartMesosLoopFail.Inc(1)
+		log.WithError(err).WithField("host_port", hostPort).
+			Error("Failed to StartMesosLoop")
 		return true
 	}
 

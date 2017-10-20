@@ -36,7 +36,7 @@ const (
 type Inbound interface {
 	transport.Inbound
 
-	StartMesosLoop(ctx context.Context, newHostPort string) (chan error, error)
+	StartMesosLoop(ctx context.Context, newHostPort string) error
 }
 
 // InboundOption is an option for an Mesos HTTP inbound.
@@ -86,11 +86,11 @@ func (i *inbound) Start() error {
 // go-routine to dispatch the mesos callbacks.
 // The call can be called multiple times to start/stop talking to Mesos master,
 // or can be used to switch new Mesos master leader after a fail over.
-func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) (chan error, error) {
+func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) error {
 	log.WithField("hostport", hostPort).Info("StartMesosLoop called")
 
 	if len(hostPort) == 0 {
-		return nil, errors.New("Empty hostport when starting Mesos loop")
+		return errors.New("Empty hostport when starting Mesos loop")
 	}
 
 	i.Lock()
@@ -118,20 +118,20 @@ func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) (chan err
 
 	req, err := i.driver.PrepareSubscribeRequest(ctx, hostPort)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"Failed to PrepareSubscribeRequest: %v", err)
 	}
 
 	resp, err := i.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"Failed to POST subscribe request to master: %v", err)
 	}
 
 	if resp.StatusCode != 200 {
 		defer resp.Body.Close()
 		respBody, _ := ioutil.ReadAll(resp.Body)
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"Failed to subscribe to master (Status=%d): %s",
 			resp.StatusCode,
 			respBody)
@@ -140,7 +140,7 @@ func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) (chan err
 	// Invoke the post subscribe callback on Mesos driver
 	values := resp.Header["Mesos-Stream-Id"]
 	if len(values) != 1 {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"Failed to obtain stream id from values: %v",
 			values)
 	}
@@ -153,8 +153,17 @@ func (i *inbound) StartMesosLoop(ctx context.Context, hostPort string) (chan err
 		end <- i.processUntilEnd(started, resp)
 	}()
 
-	<-started
-	return end, nil
+	// block until either the loop started or error returned or conn timeout.
+	select {
+	case <-started:
+		log.Info("StartMesosLoop returned")
+		return nil
+	case e := <-end:
+		return e
+	case <-time.After(MesosHTTPConnTimeout):
+		return errors.New(
+			"StartMesosLoop connection timeout waiting for first byte from event stream")
+	}
 }
 
 func (i *inbound) processUntilEnd(
@@ -175,8 +184,8 @@ func (i *inbound) processUntilEnd(
 
 	i.runningState.Store(true)
 	i.metrics.Running.Update(1)
-	started <- nil
 	reader := bufio.NewReader(resp.Body)
+	isFirstLine := true
 	for {
 		if stopped := i.stopFlag.Load(); stopped {
 			log.Info("mInbound go routine stopped")
@@ -193,6 +202,13 @@ func (i *inbound) processUntilEnd(
 			log.WithError(err).Error("Failed to read line")
 			i.metrics.ReadLineError.Inc(1)
 			return err
+		}
+
+		// Mark the subscription loop started after receiving first byte from stream.
+		if isFirstLine {
+			log.Info("Mesos subscription loop started")
+			started <- nil
+			isFirstLine = !isFirstLine
 		}
 
 		framelen, err := strconv.ParseUint(string(line), 10, 64)

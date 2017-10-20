@@ -172,9 +172,11 @@ func (h *Handler) WaitForEvents(
 	// Validate stream id
 	streamID := req.StreamID
 	if streamID != h.streamID {
-		log.WithField("request_streamID", streamID).
-			WithField("client_name", clientName).
-			Warn("Invalid streamID")
+		log.WithFields(log.Fields{
+			"request_streamID": streamID,
+			"wait_request":     h.streamID,
+			"client_name":      clientName,
+		}).Warn("Invalid streamID")
 		response.Error = &pb_eventstream.WaitForEventsResponse_Error{
 			InvalidStreamID: &pb_eventstream.InvalidStreamID{
 				CurrentStreamID: h.streamID,
@@ -269,9 +271,12 @@ func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 		}
 	} else {
 		log.WithFields(log.Fields{
-			"minPurgeOffset": minPurgeOffset,
-			"tail":           tail,
-			"head":           head,
+			"client_name":      clientName,
+			"purget_offset":    purgeOffset,
+			"min_purge_offset": minPurgeOffset,
+			"tail":             tail,
+			"head":             head,
+			"all_purge_offset_noindex": h.clientPurgeOffsets,
 		}).Error("minPurgeOffset incorrect")
 		h.metrics.PurgeEventError.Inc(1)
 	}
