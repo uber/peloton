@@ -342,6 +342,9 @@ message QueryResponse {
   }
   Error error = 1;
 
+  // NOTE: instanceConfig is not returned as part of jobConfig inside jobInfo
+  // as it can be so huge that exceeds grpc limit size. Use Job.Get() API to get
+  // instanceConfig for job.
   repeated JobInfo records = 2;
 
   query.Pagination pagination = 3;

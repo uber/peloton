@@ -53,7 +53,7 @@ const (
 	resPoolsOwnerView     = "mv_respools_by_owner"
 	volumeTable           = "persistent_volumes"
 
-	_defaultQueryLimit uint32 = 100
+	_defaultQueryLimit uint32 = 10
 
 	// _defaultTaskConfigID is used for storing, and retrieving, the default
 	// task configuration, when no specific is available.
@@ -466,6 +466,10 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 				Error("Fail to Query jobs")
 			continue
 		}
+
+		// Unset instance config as its size can be huge as a workaround for UI query.
+		// We should figure out long term support for grpc size limit.
+		jobConfig.InstanceConfig = nil
 
 		results = append(results, &job.JobInfo{
 			Id:      jobID,
