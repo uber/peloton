@@ -73,7 +73,7 @@ func (suite *CassandraStoreTestSuite) createJob(ctx context.Context, id *peloton
 		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
 		// Init the task stats to reflect that all tasks are in initialized state.
 		TaskStats:     map[string]uint32{task.TaskState_INITIALIZED.String(): jobConfig.InstanceCount},
-		ConfigVersion: jobConfig.GetRevision().GetVersion(),
+		ConfigVersion: int64(jobConfig.GetRevision().GetVersion()),
 	}
 
 	if err := store.CreateJobRuntime(ctx, id, runtime, jobConfig); err != nil {

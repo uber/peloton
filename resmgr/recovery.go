@@ -152,7 +152,7 @@ func (r *recoveryHandler) requeueJob(
 	var isError = false
 
 	// Handle gang scheduled tasks if any
-	minInstances := jobConfig.GetSla().GetMinimumSchedulingUnitSize()
+	minInstances := jobConfig.GetSla().GetMinimumRunningInstances()
 	if minInstances > 1 {
 		count, err := r.requeueTasksInRange(ctx, jobID, jobConfig, 0, minInstances)
 		if err != nil {

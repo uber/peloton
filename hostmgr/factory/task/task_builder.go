@@ -1,7 +1,6 @@
 package task
 
 import (
-	"math"
 	"strconv"
 
 	"github.com/gogo/protobuf/proto"
@@ -434,11 +433,6 @@ func (tb *Builder) populateHealthCheck(
 
 	if t := health.GetMaxConsecutiveFailures(); t > 0 {
 		tmp := uint32(t)
-		mh.ConsecutiveFailures = &tmp
-	} else if t < 0 {
-		// TODO: Mesos only honors `0` if it's http or tcp checks. Use 0 when fixed
-		// in mesos: https://issues.apache.org/jira/browse/MESOS-6833.
-		var tmp uint32 = math.MaxUint32
 		mh.ConsecutiveFailures = &tmp
 	}
 

@@ -9,11 +9,10 @@ import (
 )
 
 var (
-	errPortNameMissing         = errors.New("port name is missing")
-	errPortEnvNameMissing      = errors.New("env name is missing for dynamic port")
-	errMaxInstancesTooBig      = errors.New("job specified MaximumRunningInstances > InstanceCount")
-	errMinInstancesTooBig      = errors.New("job specified MinimumRunningInstances > MaximumRunningInstances")
-	errMinSchedulingUnitTooBig = errors.New("job specified MinimumSchedulingUnitSize > InstanceCount")
+	errPortNameMissing    = errors.New("port name is missing")
+	errPortEnvNameMissing = errors.New("env name is missing for dynamic port")
+	errMaxInstancesTooBig = errors.New("job specified MaximumRunningInstances > InstanceCount")
+	errMinInstancesTooBig = errors.New("job specified MinimumRunningInstances > MaximumRunningInstances")
 )
 
 // validatePortConfig checks port name and port env name exists for dynamic port.
@@ -75,8 +74,8 @@ func ValidateTaskConfig(jobConfig *job.JobConfig) error {
 		return errMinInstancesTooBig
 	}
 
-	if jobConfig.GetSla().GetMinimumSchedulingUnitSize() > instanceCount {
-		return errMinSchedulingUnitTooBig
+	if jobConfig.GetSla().GetMinimumRunningInstances() > instanceCount {
+		return errMinInstancesTooBig
 	}
 
 	return nil

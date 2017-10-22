@@ -242,9 +242,9 @@ func (suite *recoveryTestSuite) createJob(jobID *peloton.JobID, instanceCount ui
 	return &job.JobConfig{
 		Name: jobID.Value,
 		Sla: &job.SlaConfig{
-			Preemptible:               false,
-			Priority:                  1,
-			MinimumSchedulingUnitSize: minInstances,
+			Preemptible:             false,
+			Priority:                1,
+			MinimumRunningInstances: minInstances,
 		},
 		InstanceCount: instanceCount,
 		RespoolID: &peloton.ResourcePoolID{

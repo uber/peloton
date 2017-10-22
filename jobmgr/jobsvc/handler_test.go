@@ -60,10 +60,10 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 		Name:          suite.testJobID.Value,
 		InstanceCount: testInstanceCount,
 		Sla: &job.SlaConfig{
-			Preemptible:               true,
-			Priority:                  22,
-			MaximumRunningInstances:   2,
-			MinimumSchedulingUnitSize: 1,
+			Preemptible:             true,
+			Priority:                22,
+			MaximumRunningInstances: 2,
+			MinimumRunningInstances: 1,
 		},
 	}
 	var taskInfos = make(map[uint32]*task.TaskInfo)

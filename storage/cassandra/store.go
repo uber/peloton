@@ -1457,7 +1457,7 @@ func (s *Store) GetJob(ctx context.Context, id *peloton.JobID) (*job.JobInfo, er
 		return nil, err
 	}
 
-	config, err := s.GetJobConfig(ctx, id, runtime.ConfigVersion)
+	config, err := s.GetJobConfig(ctx, id, uint64(runtime.ConfigVersion))
 	if err != nil {
 		return nil, err
 	}

@@ -62,7 +62,7 @@ func TestValidatorWithStore(t *testing.T) {
 	}
 	assert.Nil(t, csStore.CreateJobConfig(context.Background(), jobID, &jobConfig))
 	assert.Nil(t, csStore.CreateJobRuntime(context.Background(), jobID, &job.RuntimeInfo{
-		ConfigVersion: jobConfig.GetRevision().GetVersion(),
+		ConfigVersion: int64(jobConfig.GetRevision().GetVersion()),
 	}, &jobConfig))
 
 	// Create a job with instanceCount 10 but only 5 tasks

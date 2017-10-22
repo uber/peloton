@@ -64,23 +64,27 @@ message SlaConfig {
   uint32 maximumRunningInstances = 4;
 
   //
-  // Minimum number of instances to pass scheduling before being launched.
+  // Minimum number of instances to pass admission before being launched.
   // If specified, should <= instanceCount; default value is 1.
   // Admission requires the corresponding resource pool
   // has enough reserved resources for the full set of minimum number of
   // instances.
+  // TODO: Should be renamed minimumSchedulingUnitSize when a breaking change
+  // can be applied to the protobuf layer.
   //
-  uint32 minimumSchedulingUnitSize = 5;
+  uint32 minimumRunningInstances = 5;
 
   //
-  // Minimum number of instances to admit and run at any point in time.
+  // Minimum number of instances to run at any point in time.
   // If specified, should be <= maximumRunningInstances <= instanceCount;
   // default value is 0. Upgrades, restarts and rescheduling all take this
   // value into account.
   // WARNING: Setting this equal to instanceCount will block all restarts and
   // upgrades from making progress.
+  // TODO: Should be renamed minimumRunningInstances when a breaking change can
+  // be applied to the protobuf layer.
   //
-  uint32 minimumRunningInstances = 6;
+  uint32 realMinimumRunningInstances = 6;
 }
 
 
@@ -183,7 +187,7 @@ message RuntimeInfo
 
   // The version reflects the version of the JobConfig, that's currently
   // used by the job.
-  uint64 configVersion = 6;
+  int64 configVersion = 6;
 }
 
 /**

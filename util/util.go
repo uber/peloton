@@ -318,7 +318,7 @@ func ConvertTaskToResMgrTask(
 	// If minSchedulingUnit size > 1, instances w/instanceID between
 	// 0..minSchedulingUnit-1 should be gang-scheduled;
 	// only pass minSchedulingUnit value > 1 for those tasks.
-	minInstances := sla.GetMinimumSchedulingUnitSize()
+	minInstances := sla.GetMinimumRunningInstances()
 	if (minInstances <= 1) || (instanceID >= minInstances) {
 		minInstances = 1
 	}

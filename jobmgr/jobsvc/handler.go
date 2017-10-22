@@ -147,7 +147,7 @@ func (h *serviceHandler) Create(
 		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
 		// Init the task stats to reflect that all tasks are in initialized state.
 		TaskStats:     map[string]uint32{task.TaskState_INITIALIZED.String(): jobConfig.InstanceCount},
-		ConfigVersion: jobConfig.GetRevision().GetVersion(),
+		ConfigVersion: int64(jobConfig.GetRevision().GetVersion()),
 	}
 	if h.jobStore.CreateJobRuntime(ctx, jobID, runtime, jobConfig); err != nil {
 		h.metrics.JobCreateFail.Inc(1)
@@ -314,7 +314,7 @@ func (h *serviceHandler) Update(
 			},
 		}, nil
 	}
-	info.Runtime.ConfigVersion = newConfig.GetRevision().GetVersion()
+	info.Runtime.ConfigVersion = int64(newConfig.GetRevision().GetVersion())
 
 	if err = h.jobStore.UpdateJobRuntime(ctx, jobID, info.Runtime, newConfig); err != nil {
 		h.metrics.JobUpdateFail.Inc(1)

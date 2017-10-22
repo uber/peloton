@@ -55,9 +55,7 @@ message HealthCheckConfig {
 
   // Max number of consecutive failures before failing health check.
   // Zero or empty value would use default value of 3 from Mesos.
-  // Negative value will disable automatic killing of tasks based on
-  // number of failures.
-  int32 maxConsecutiveFailures = 4;
+  uint32 maxConsecutiveFailures = 4;
 
   // Health check command timeout in seconds.
   // Zero or empty value would use default value of 20 from Mesos.
