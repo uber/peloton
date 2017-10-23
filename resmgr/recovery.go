@@ -36,6 +36,7 @@ var (
 		task.TaskState_SUCCEEDED: true,
 		task.TaskState_FAILED:    true,
 		task.TaskState_KILLED:    true,
+		task.TaskState_LOST:      true,
 	}
 )
 
@@ -242,32 +243,52 @@ func (r *recoveryHandler) addRunningTasks(
 
 	runningTasks := 0
 	for _, taskInfo := range tasks {
-		rmTask := util.ConvertTaskToResMgrTask(taskInfo, config)
-		err := rmtask.GetTracker().AddTask(
-			rmTask,
-			r.handler.GetStreamHandler(),
-			respool,
-			r.config.RmTaskConfig)
+		err = r.addTaskToTracker(taskInfo, config, respool)
 		if err != nil {
-			log.WithField("Task", rmTask.Id.Value).Warn(
-				"Running Task can not be enqueued")
-			continue
-		}
-
-		err = rmtask.GetTracker().AddResources(rmTask.Id)
-		if err != nil {
-			log.Error(err)
+			log.WithError(err).WithFields(log.Fields{
+				"job":      taskInfo.JobId,
+				"instance": taskInfo.InstanceId,
+			}).Error("couldn't add to tracker")
 			continue
 		}
 		runningTasks++
-
-		err = rmtask.GetTracker().GetTask(rmTask.Id).
-			TransitTo(task.TaskState_PLACED.String())
-		if err != nil {
-			log.Error(err)
-		}
 	}
 	return runningTasks, nil
+}
+
+func (r *recoveryHandler) addTaskToTracker(
+	taskInfo *task.TaskInfo,
+	config *job.JobConfig,
+	respool respool.ResPool) error {
+	rmTask := util.ConvertTaskToResMgrTask(taskInfo, config)
+	err := rmtask.GetTracker().AddTask(
+		rmTask,
+		r.handler.GetStreamHandler(),
+		respool,
+		r.config.RmTaskConfig)
+	if err != nil {
+		errors.Wrap(err, "Running Task can not be enqueued")
+		return err
+	}
+	err = rmtask.GetTracker().AddResources(rmTask.Id)
+	if err != nil {
+		errors.Wrap(err, "could not add resources")
+		return err
+	}
+	if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
+		err = rmtask.GetTracker().GetTask(rmTask.Id).
+			TransitTo(task.TaskState_RUNNING.String())
+	} else if taskInfo.GetRuntime().GetState() == task.TaskState_LAUNCHED {
+		// There is no Launched state in resmgr we have only launching
+		// and after launching state is running.
+		err = rmtask.GetTracker().GetTask(rmTask.Id).
+			TransitTo(task.TaskState_LAUNCHING.String())
+	}
+	if err != nil {
+		errors.Wrap(err, "Transition Failed")
+		return err
+	}
+	return nil
 }
 
 func getEnqueueGangErrorMessage(err *resmgrsvc.EnqueueGangsResponse_Error) string {
@@ -315,10 +336,12 @@ func (r *recoveryHandler) loadTasksInRange(
 	for taskID, taskInfo := range taskInfoMap {
 		if _, ok := taskStatesToSkip[taskInfo.GetRuntime().GetState()]; !ok {
 			log.WithFields(log.Fields{
-				"JobID":  jobID,
-				"TaskID": taskID,
+				"jobID":  jobID,
+				"taskID": taskID,
+				"state":  taskInfo.GetRuntime().GetState().String(),
 			}).Debugf("found task for recovery")
-			if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
+			if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING ||
+				taskInfo.GetRuntime().GetState() == task.TaskState_LAUNCHED {
 				runningTasks = append(runningTasks, taskInfo)
 			} else {
 				notRunningtasks = append(notRunningtasks, taskInfo)

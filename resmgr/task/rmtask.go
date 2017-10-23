@@ -65,8 +65,10 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 					To: []state.State{
 						state.State(task.TaskState_PENDING.String()),
 						// We need this transition when we want to place
-						// running task back to resmgr as placed
-						state.State(task.TaskState_PLACED.String()),
+						// running/launched task back to resmgr
+						// as running/launching
+						state.State(task.TaskState_RUNNING.String()),
+						state.State(task.TaskState_LAUNCHING.String()),
 					},
 					Callback: nil,
 				}).
