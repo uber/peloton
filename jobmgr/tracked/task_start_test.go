@@ -108,11 +108,6 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 		},
 	}
 
-	jobConfig := &job2.JobConfig{
-		RespoolID: &peloton.ResourcePoolID{
-			Value: "my-respool-id",
-		},
-	}
 	taskInfo := &pb_task.TaskInfo{
 		InstanceId: tt.id,
 		JobId:      tt.job.id,
