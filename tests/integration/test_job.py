@@ -31,6 +31,7 @@ def test__stop_long_running_batch_job_immediately(
     job.wait_for_state(goal_state='KILLED')
 
 
+@pytest.mark.pcluster
 def test__create_a_batch_job_and_restart_jobmgr_completes_jobs(jobmgr):
     job = Job(job_file='test_job_no_container.yaml',
               config=IntegrationTestConfig(max_retry_attempts=100))
