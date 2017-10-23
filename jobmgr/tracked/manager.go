@@ -65,18 +65,17 @@ func NewManager(
 	volumeStore storage.PersistentVolumeStore,
 	taskLauncher launcher.Launcher,
 	parentScope tally.Scope) Manager {
-	mtx := newMetrics(parentScope.SubScope("tracked"))
+	scope := parentScope.SubScope("tracked")
 	return &manager{
-		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(mtx),
-		taskQueueChanged: make(chan struct{}, 1),
-		hostmgrClient:    hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
-		resmgrClient:     resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
-		jobStore:         jobStore,
-		taskStore:        taskStore,
-		volumeStore:      volumeStore,
-		taskLauncher:     taskLauncher,
-		mtx:              mtx,
+		jobs:          map[string]*job{},
+		taskScheduler: newScheduler(newMetrics(scope.SubScope("tasks"))),
+		hostmgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
+		resmgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
+		jobStore:      jobStore,
+		taskStore:     taskStore,
+		volumeStore:   volumeStore,
+		taskLauncher:  taskLauncher,
+		mtx:           newMetrics(scope),
 	}
 }
 
@@ -88,8 +87,7 @@ type manager struct {
 
 	running bool
 
-	taskQueue        *deadlineQueue
-	taskQueueChanged chan struct{}
+	taskScheduler *scheduler
 
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient
 	resmgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
@@ -125,7 +123,7 @@ func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_t
 
 	j := m.addJob(jobID)
 	t := j.setTask(instanceID, runtime)
-	m.scheduleTask(t, time.Now())
+	m.taskScheduler.schedule(t, time.Now())
 }
 
 func (m *manager) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) error {
@@ -161,42 +159,16 @@ func (m *manager) ScheduleTask(t Task, deadline time.Time) {
 		return
 	}
 
-	m.scheduleTask(t.(*task), deadline)
+	m.taskScheduler.schedule(t.(*task), deadline)
 }
 
 func (m *manager) WaitForScheduledTask(stopChan <-chan struct{}) Task {
-	for {
-		m.RLock()
-		deadline := m.taskQueue.nextDeadline()
-		m.RUnlock()
-
-		var timer *time.Timer
-		var timerChan <-chan time.Time
-		if !deadline.IsZero() {
-			timer = time.NewTimer(time.Until(deadline))
-			timerChan = timer.C
-		}
-
-		select {
-		case <-timerChan:
-			m.Lock()
-			r := m.taskQueue.popIfReady()
-			m.Unlock()
-
-			if r != nil {
-				return r.(*task)
-			}
-
-		case <-m.taskQueueChanged:
-
-		case <-stopChan:
-			return nil
-		}
-
-		if timer != nil {
-			timer.Stop()
-		}
+	r := m.taskScheduler.waitForReady(stopChan)
+	if r == nil {
+		return nil
 	}
+
+	return r.(*task)
 }
 
 // addJob to the manager, if missing. The manager lock must be hold when called.
@@ -229,19 +201,6 @@ func (m *manager) clearTask(t *task) {
 	delete(t.job.tasks, t.id)
 	if len(t.job.tasks) == 0 {
 		delete(m.jobs, t.job.id.GetValue())
-	}
-}
-
-// scheduleTask to deadline. The manager lock must be hold when called.
-func (m *manager) scheduleTask(t *task, deadline time.Time) {
-	// Override if newer.
-	if t.deadline().IsZero() || deadline.Before(t.deadline()) {
-		t.setDeadline(deadline)
-		m.taskQueue.update(t)
-		select {
-		case m.taskQueueChanged <- struct{}{}:
-		default:
-		}
 	}
 }
 
@@ -282,7 +241,7 @@ func (m *manager) Stop() {
 
 	for _, job := range m.jobs {
 		for _, t := range job.tasks {
-			m.scheduleTask(t, time.Time{})
+			m.taskScheduler.schedule(t, time.Time{})
 		}
 	}
 

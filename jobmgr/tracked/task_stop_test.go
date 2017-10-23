@@ -55,13 +55,12 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	mockTaskStore := storage_mocks.NewMockTaskStore(ctrl)
 
 	m := &manager{
-		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(newMetrics(tally.NoopScope)),
-		taskQueueChanged: make(chan struct{}, 1),
-		taskStore:        mockTaskStore,
-		resmgrClient:     mockResmgr,
-		mtx:              newMetrics(tally.NoopScope),
-		running:          true,
+		jobs:          map[string]*job{},
+		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		taskStore:     mockTaskStore,
+		resmgrClient:  mockResmgr,
+		mtx:           newMetrics(tally.NoopScope),
+		running:       true,
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
