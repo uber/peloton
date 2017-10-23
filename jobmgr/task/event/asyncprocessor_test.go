@@ -70,7 +70,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		})
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	for i := 0; i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
@@ -103,7 +103,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		})
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	for i := 0; i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
@@ -136,7 +136,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		})
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	for _, bucket := range applier.eventBuckets {
 		assert.True(t, bucket.getProcessedCount() > 0)

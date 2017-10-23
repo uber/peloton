@@ -16,6 +16,7 @@ import (
 // StatusProcessor is the interface to process a task status update
 type StatusProcessor interface {
 	ProcessStatusUpdate(ctx context.Context, event *pb_eventstream.Event) error
+	ProcessListeners(event *pb_eventstream.Event)
 }
 
 // asyncEventProcessor maps events to a list of buckets; and each bucket would be consumed by a single go routine
@@ -80,6 +81,10 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 							break
 						}
 					}
+
+					// Process listeners after handling the event.
+					t.ProcessListeners(event)
+
 					atomic.AddInt32(bucket.processedCount, 1)
 					atomic.StoreUint64(bucket.processedOffset, event.Offset)
 				case <-bucket.shutdownChannel:

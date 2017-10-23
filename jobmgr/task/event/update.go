@@ -285,6 +285,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	return nil
 }
 
+func (p *statusUpdate) ProcessListeners(event *pb_eventstream.Event) {
+	for _, listener := range p.listeners {
+		listener.OnEvents([]*pb_eventstream.Event{event})
+	}
+}
+
 // isUnexpected tells if taskState is unexpected or not
 func isUnexpected(taskState pb_task.TaskState) bool {
 	switch taskState {
@@ -298,11 +304,7 @@ func isUnexpected(taskState pb_task.TaskState) bool {
 }
 
 // OnEvents is the callback function notifying a batch of events
-func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {
-	for _, listener := range p.listeners {
-		listener.OnEvents(events)
-	}
-}
+func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {}
 
 // Start starts processing status update events
 func (p *statusUpdate) Start() {

@@ -287,13 +287,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
-func (suite *TaskUpdaterTestSuite) TestUpdaterOnEvents() {
+func (suite *TaskUpdaterTestSuite) TestUpdaterProcessListeners() {
 	defer suite.ctrl.Finish()
 
-	suite.mockListener1.EXPECT().OnEvents(nil)
-	suite.mockListener2.EXPECT().OnEvents(nil)
+	suite.mockListener1.EXPECT().OnEvents([]*pb_eventstream.Event{nil})
+	suite.mockListener2.EXPECT().OnEvents([]*pb_eventstream.Event{nil})
 
-	suite.updater.OnEvents(nil)
+	suite.updater.ProcessListeners(nil)
 }
 
 func (suite *TaskUpdaterTestSuite) TestUpdaterStart() {
