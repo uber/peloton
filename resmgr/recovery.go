@@ -267,14 +267,13 @@ func (r *recoveryHandler) addTaskToTracker(
 		respool,
 		r.config.RmTaskConfig)
 	if err != nil {
-		errors.Wrap(err, "Running Task can not be enqueued")
-		return err
+		return errors.Wrap(err, "unable to add running task to tracker")
 	}
-	err = rmtask.GetTracker().AddResources(rmTask.Id)
-	if err != nil {
-		errors.Wrap(err, "could not add resources")
-		return err
+
+	if err = rmtask.GetTracker().AddResources(rmTask.Id); err != nil {
+		return errors.Wrap(err, "could not add resources")
 	}
+
 	if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
 		err = rmtask.GetTracker().GetTask(rmTask.Id).
 			TransitTo(task.TaskState_RUNNING.String())
@@ -285,8 +284,7 @@ func (r *recoveryHandler) addTaskToTracker(
 			TransitTo(task.TaskState_LAUNCHING.String())
 	}
 	if err != nil {
-		errors.Wrap(err, "Transition Failed")
-		return err
+		return errors.Wrap(err, "transition failed in task state machine")
 	}
 	return nil
 }
