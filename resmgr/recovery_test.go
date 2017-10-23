@@ -351,7 +351,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			From: 0,
 			To:   10,
 		}).
-		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHING), nil)
+		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHED), nil)
 
 	// Perform recovery
 	InitRecovery(tally.NoopScope, suite.mockJobStore, suite.mockTaskStore, suite.handler,
@@ -368,15 +368,10 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	resPoolID.Value = "respool21"
 	gangsSummary := suite.getQueueContent(resPoolID)
 
-	suite.Equal(3, len(gangsSummary))
+	suite.Equal(2, len(gangsSummary))
 
 	// Job0 and Job3 should be recovered and should have 9 gangs(1 task per gang) in the pending queue
 	gangs := gangsSummary["TestJob_0"]
-	suite.Equal(9, len(gangs))
-	for _, gang := range gangs {
-		suite.Equal(1, len(gang.GetTasks()))
-	}
-	gangs = gangsSummary["TestJob_3"]
 	suite.Equal(9, len(gangs))
 	for _, gang := range gangs {
 		suite.Equal(1, len(gang.GetTasks()))
