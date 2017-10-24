@@ -215,8 +215,8 @@ func (h *ServiceHandler) enqueueGang(
 		if err == nil {
 			err = respool.AddToDemand(totalGangResources)
 			log.WithFields(log.Fields{
-				"TotalResourcesAdded": totalGangResources,
-				"Respool":             respool.Name(),
+				"respool_ID":           respool.ID(),
+				"total_gang_resources": totalGangResources,
 			}).Debug("Resources added for Gang")
 			if err != nil {
 				log.Error(err)
@@ -270,10 +270,10 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) error {
 		}
 		err := rmtask.GetScheduler().EnqueueGang(gang)
 		if err != nil {
-			log.WithField("Gang", gang).Error(errGangNotEnqueued.Error())
+			log.WithField("gang", gang).Error(errGangNotEnqueued.Error())
 			return err
 		}
-		log.WithField("Gang", gang).Debug(errEnqueuedAgain.Error())
+		log.WithField("gang", gang).Debug(errEnqueuedAgain.Error())
 		return errEnqueuedAgain
 	}
 	return errSameTaskPresent
@@ -309,7 +309,7 @@ func (h *ServiceHandler) DequeueGangs(
 					t.TaskState_PLACING.String())
 				if err != nil {
 					log.WithError(err).WithField(
-						"taskID", task.Id.Value).
+						"task_ID", task.Id.Value).
 						Error("Failed to transit state " +
 							"for task")
 				}
@@ -423,8 +423,8 @@ func (h *ServiceHandler) removeTasksFromPlacements(
 	var newTasks []*peloton.TaskID
 
 	log.WithFields(log.Fields{
-		"Removed Tasks":  tasks,
-		"Original Tasks": placement.GetTasks(),
+		"tasks_to_remove": tasks,
+		"orig_tasks":      placement.GetTasks(),
 	}).Debug("Removing Tasks")
 
 	for _, pt := range placement.GetTasks() {
@@ -486,18 +486,18 @@ func (h *ServiceHandler) transitTasksInPlacement(
 		if rmTask == nil {
 			invalidTasks[taskID.Value] = taskID
 			log.WithFields(log.Fields{
-				"Task": taskID.Value,
+				"task_ID": taskID.Value,
 			}).Debug("Task is not present in tracker, " +
 				"Removing it from placement")
 			continue
 		}
 		state := rmTask.GetCurrentState()
 		log.WithFields(log.Fields{
-			"Current state": state.String(),
-			"Task":          taskID.Value,
+			"task_ID":       taskID.Value,
+			"current_state": state.String(),
 		}).Debug("Get Placement for task")
 		if state != oldState {
-			log.WithField("task_id", taskID.GetValue()).
+			log.WithField("task_ID", taskID.GetValue()).
 				Error("Task is not in placed state")
 			invalidTasks[taskID.Value] = taskID
 
@@ -505,14 +505,14 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			err := rmTask.TransitTo(newState.String())
 			if err != nil {
 				log.WithError(errors.WithStack(err)).
-					WithField("task_id", taskID.GetValue()).
+					WithField("task_ID", taskID.GetValue()).
 					Info("not able to transition to launching for task")
 				invalidTasks[taskID.Value] = taskID
 			}
 		}
 		log.WithFields(log.Fields{
-			"Task":  taskID.Value,
-			"State": state.String(),
+			"task_ID":       taskID.Value,
+			"current_state": state.String(),
 		}).Debug("Latest state in Get Placement")
 	}
 	return h.removeTasksFromPlacements(placement, invalidTasks)
@@ -542,7 +542,7 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 		if err != nil {
 			log.WithFields(log.Fields{
 				"event":         event,
-				"mesos_task_id": *(event.MesosTaskStatus.TaskId.Value),
+				"mesos_task_ID": *(event.MesosTaskStatus.TaskId.Value),
 			}).Error("Could not parse mesos ID")
 			h.acknowledgeEvent(event.Offset)
 			continue
@@ -556,8 +556,8 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 		if *(rmTask.Task().TaskId.Value) !=
 			*(event.MesosTaskStatus.TaskId.Value) {
 			log.WithFields(log.Fields{
-				"event": event,
-				"Task":  rmTask.Task().Id,
+				"task_ID": rmTask.Task().Id,
+				"event":   event,
 			}).Error("could not be updated due to" +
 				"different mesos taskID")
 			h.acknowledgeEvent(event.Offset)
@@ -567,7 +567,7 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 			err = rmTask.TransitTo(t.TaskState_RUNNING.String())
 			if err != nil {
 				log.WithError(errors.WithStack(err)).
-					WithField("task_id", taskID.Value).
+					WithField("task_ID", taskID.Value).
 					Info("Not able to transition to RUNNING for task")
 			}
 			// update the start time
@@ -579,8 +579,8 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 				log.WithField("event", event).Error("Could not be updated")
 			}
 			log.WithFields(log.Fields{
-				"Task":  taskID,
-				"State": taskState.String(),
+				"task_ID":       taskID,
+				"current_state": taskState.String(),
 			}).Info("Task is completed and removed from tracker")
 			rmtask.GetTracker().UpdateCounters(
 				t.TaskState_RUNNING.String(), taskState.String())
@@ -592,7 +592,7 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 }
 
 func (h *ServiceHandler) acknowledgeEvent(offset uint64) {
-	log.WithField("Offset", offset).
+	log.WithField("offset", offset).
 		Debug("Event received by resource manager")
 	if offset > atomic.LoadUint64(h.maxOffset) {
 		atomic.StoreUint64(h.maxOffset, offset)
@@ -626,7 +626,7 @@ func (h *ServiceHandler) KillTasks(
 		}, nil
 	}
 
-	log.WithField("Tasks", listTasks).Info("tasks to be killed")
+	log.WithField("tasks", listTasks).Info("tasks to be killed")
 
 	var tasksNotFound []*peloton.TaskID
 	var tasksNotKilled []*peloton.TaskID
@@ -644,8 +644,8 @@ func (h *ServiceHandler) KillTasks(
 			continue
 		}
 		log.WithFields(log.Fields{
-			"Task":  taskTobeKilled.Value,
-			"State": killedRmTask.GetCurrentState().String(),
+			"task_ID":       taskTobeKilled.Value,
+			"current_state": killedRmTask.GetCurrentState().String(),
 		}).Info("Task is Killed and removed from tracker")
 		h.rmTracker.UpdateCounters(
 			killedRmTask.GetCurrentState().String(),
@@ -659,7 +659,7 @@ func (h *ServiceHandler) KillTasks(
 	var killResponseErr []*resmgrsvc.KillTasksResponse_Error
 
 	if len(tasksNotFound) != 0 {
-		log.WithField("Tasks", tasksNotFound).Error("tasks can't be found")
+		log.WithField("tasks", tasksNotFound).Error("tasks can't be found")
 		for _, t := range tasksNotFound {
 			killResponseErr = append(killResponseErr,
 				&resmgrsvc.KillTasksResponse_Error{
@@ -670,7 +670,7 @@ func (h *ServiceHandler) KillTasks(
 				})
 		}
 	} else {
-		log.WithField("Tasks", tasksNotKilled).Error("tasks can't be killed")
+		log.WithField("tasks", tasksNotKilled).Error("tasks can't be killed")
 		for _, t := range tasksNotKilled {
 			killResponseErr = append(killResponseErr,
 				&resmgrsvc.KillTasksResponse_Error{

@@ -125,14 +125,16 @@ func NewRespool(
 	config *respool.ResourcePoolConfig) (ResPool, error) {
 
 	if config == nil {
-		log.WithField("ResPool: ", ID).Error("resource config is empty")
+		log.
+			WithField("respool_ID: ", ID).
+			Error("resource config is empty")
 		return nil, errors.Errorf("error creating resource pool %s; "+
 			"ResourcePoolConfig is nil", ID)
 	}
 
 	q, err := queue.CreateQueue(config.Policy, math.MaxInt64)
 	if err != nil {
-		log.WithField("ResPool: ", ID).
+		log.WithField("respool_ID: ", ID).
 			WithError(err).
 			Error("Error creating resource pool pending queue")
 		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
@@ -361,7 +363,7 @@ func (n *resPool) validateGang(gang *resmgrsvc.Gang) error {
 
 	// remove it from the pending queue
 	log.WithFields(log.Fields{
-		"Gang": gang,
+		"gang": gang,
 	}).Info("Tasks are deleted for this gang")
 	// Removing the gang from pending queue as tasks are deleted
 	// from this gang
@@ -387,7 +389,7 @@ func (n *resPool) validateGang(gang *resmgrsvc.Gang) error {
 		gang.Tasks = newTasks
 		err = n.pendingQueue.Enqueue(gang)
 		if err != nil {
-			log.WithError(err).WithField("newGang", gang).
+			log.WithError(err).WithField("new_gang", gang).
 				Error("Not able to enqueue" +
 					"gang to pending queue")
 		}
@@ -578,10 +580,10 @@ func (n *resPool) logNodeResources() {
 	defer n.RLock()
 	for kind, res := range n.resourceConfigs {
 		log.WithFields(log.Fields{
-			"Kind":        kind,
-			"Limit":       res.Limit,
-			"Reservation": res.Reservation,
-			"Share":       res.Share,
+			"kind":        kind,
+			"limit":       res.Limit,
+			"reservation": res.Reservation,
+			"share":       res.Share,
 		}).Info("ResPool Resources for ResPool", n.id)
 	}
 }
@@ -607,11 +609,11 @@ func (n *resPool) SetEntitlement(entitlement map[string]float64) {
 		}
 	}
 	log.WithFields(log.Fields{
-		"ID":     n.ID(),
-		"CPU":    n.entitlement.CPU,
-		"DISK":   n.entitlement.DISK,
-		"MEMORY": n.entitlement.MEMORY,
-		"GPU":    n.entitlement.GPU,
+		"respool_ID": n.ID(),
+		"cpu":        n.entitlement.CPU,
+		"disk":       n.entitlement.DISK,
+		"memory":     n.entitlement.MEMORY,
+		"gpu":        n.entitlement.GPU,
 	}).Debug("Setting Entitlement for Respool")
 	n.updateDynamicResourceMetrics()
 }
@@ -631,9 +633,9 @@ func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
 		n.entitlement.MEMORY = entitlement
 	}
 	log.WithFields(log.Fields{
-		"ID":       n.ID(),
-		"Kind":     kind,
-		"Capacity": entitlement,
+		"respool_ID":  n.ID(),
+		"kind":        kind,
+		"entitlement": entitlement,
 	}).Debug("Setting Entitlement")
 	n.updateDynamicResourceMetrics()
 }
@@ -643,8 +645,8 @@ func (n *resPool) SetEntitlementResources(res *scalar.Resources) {
 	defer n.Unlock()
 	n.entitlement = res
 	log.WithFields(log.Fields{
-		"Name":     n.Name(),
-		"Capacity": res,
+		"respool_ID":  n.ID(),
+		"entitlement": res,
 	}).Debug("Setting Entitlement")
 	n.updateDynamicResourceMetrics()
 }
@@ -705,7 +707,10 @@ func (n *resPool) SubtractFromAllocation(res *scalar.Resources) error {
 	}
 	n.allocation = newAllocation
 
-	log.WithField("allocation", n.allocation).Debug("Current Allocation after Done Task")
+	log.
+		WithField("respool_ID", n.ID()).
+		WithField("allocation", n.allocation).
+		Debug("Current Allocation after Done Task")
 	return nil
 }
 
@@ -751,7 +756,7 @@ func (n *resPool) AddToAllocation(res *scalar.Resources) error {
 	n.allocation = n.allocation.Add(res)
 
 	log.WithFields(log.Fields{
-		"respool":    n.Name(),
+		"respool_ID": n.ID(),
 		"allocation": n.allocation,
 	}).Debug("Current Allocation after Adding resources")
 	return nil
@@ -767,8 +772,8 @@ func (n *resPool) AddToDemand(res *scalar.Resources) error {
 	n.demand = n.demand.Add(res)
 
 	log.WithFields(log.Fields{
-		"respool": n.Name(),
-		"demand":  n.demand,
+		"respool_ID": n.ID(),
+		"demand":     n.demand,
 	}).Debug("Current Demand after Adding resources")
 
 	return nil
@@ -786,8 +791,11 @@ func (n *resPool) SubtractFromDemand(res *scalar.Resources) error {
 	}
 	n.demand = newDemand
 
-	log.WithField("demand", n.demand).Debug("Current Demand " +
-		"after removing resources")
+	log.
+		WithField("respool_ID", n.ID()).
+		WithField("demand", n.demand).
+		Debug("Current Demand " +
+			"after removing resources")
 	return nil
 }
 

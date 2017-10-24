@@ -107,8 +107,8 @@ func (f *PriorityQueue) Remove(gang *resmgrsvc.Gang) error {
 	firstItem := gang.Tasks[0]
 	priority := firstItem.Priority
 	log.WithFields(log.Fields{
-		"ITEM ":    firstItem,
-		"Priority": priority,
+		"item ":    firstItem,
+		"priority": priority,
 	}).Debug("Trying to remove")
 	return f.list.Remove(int(priority), gang)
 }
