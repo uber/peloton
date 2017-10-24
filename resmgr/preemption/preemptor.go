@@ -253,8 +253,8 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 func (p *preemptor) evictReadyTask(rmTask *task.RMTask, respool respool.ResPool) error {
 	task := rmTask.Task()
 	log.
-		WithField("task_id", task.Id.Value).
-		WithField("respool_id", respool.ID()).
+		WithField("task_ID", task.Id.Value).
+		WithField("respool_ID", respool.ID()).
 		Infof("evicting ready task from resource pool")
 
 	trackedTask := p.tracker.GetTask(task.Id)
@@ -266,8 +266,8 @@ func (p *preemptor) evictReadyTask(rmTask *task.RMTask, respool respool.ResPool)
 	if err := trackedTask.TransitTo(peloton_task.TaskState_PENDING.String()); err != nil {
 		// The task could have transited to another state
 		log.
-			WithField("task_id", task.Id.Value).
-			WithField("respool_id", respool.ID()).
+			WithField("task_ID", task.Id.Value).
+			WithField("respool_ID", respool.ID()).
 			Debugf("task not in READY state")
 		return nil
 	}
@@ -294,8 +294,8 @@ func (p *preemptor) evictReadyTask(rmTask *task.RMTask, respool respool.ResPool)
 	}
 
 	log.
-		WithField("task_id", task.Id.Value).
-		WithField("respool_id", respool.ID()).
+		WithField("task_ID", task.Id.Value).
+		WithField("respool_ID", respool.ID()).
 		Debug("evicted task from resource pool")
 
 	return nil

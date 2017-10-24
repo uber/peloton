@@ -118,14 +118,16 @@ type cmpFunc func(t1, t2 *rm_task.RMTask) int
 
 // compares tasks based on their priority
 func priorityCmp(t1, t2 *rm_task.RMTask) int {
-	log.WithField("task_1_id", t1.Task().Id.Value).WithField("task_2_id", t2.Task().Id.Value).
+	log.WithField("task_1_ID", t1.Task().Id.Value).
+		WithField("task_2_ID", t2.Task().Id.Value).
 		Debug("comparing priority of tasks")
 	return int(t1.Task().GetPriority()) - int(t2.Task().GetPriority())
 }
 
 // startTimeCmp compares tasks based on their start time
 func startTimeCmp(t1, t2 *rm_task.RMTask) int {
-	log.WithField("task_1_id", t1.Task().Id.Value).WithField("task_2_id", t2.Task().Id.Value).
+	log.WithField("task_1_ID", t1.Task().Id.Value).
+		WithField("task_2_ID", t2.Task().Id.Value).
 		Debug("comparing start times of tasks")
 
 	if t1.GetCurrentState() == task.TaskState_READY ||

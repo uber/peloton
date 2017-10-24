@@ -119,7 +119,7 @@ func main() {
 	log.WithField("files", *cfgFiles).Info("Loading Resource Manager config")
 	var cfg Config
 	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
-		log.WithField("error", err).Fatal("Cannot parse yaml config")
+		log.WithError(err).Fatal("Cannot parse yaml config")
 	}
 
 	if *enableSentry {
@@ -193,7 +193,9 @@ func main() {
 		t,
 	)
 	if err != nil {
-		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
+		log.
+			WithError(err).
+			WithField("role", common.HostManagerRole).
 			Fatal("Could not create smart peer chooser")
 	}
 	defer hostmgrPeerChooser.Stop()

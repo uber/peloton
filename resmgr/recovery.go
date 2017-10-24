@@ -310,9 +310,9 @@ func (r *recoveryHandler) loadTasksInRange(
 	from, to uint32) ([]*task.TaskInfo, []*task.TaskInfo, error) {
 
 	log.WithFields(log.Fields{
-		"JobID": jobID,
-		"from":  from,
-		"to":    to,
+		"job_ID": jobID,
+		"from":   from,
+		"to":     to,
 	}).Info("Checking job instance range")
 
 	if from > to {
@@ -334,7 +334,7 @@ func (r *recoveryHandler) loadTasksInRange(
 	for taskID, taskInfo := range taskInfoMap {
 		if _, ok := taskStatesToSkip[taskInfo.GetRuntime().GetState()]; !ok {
 			log.WithFields(log.Fields{
-				"jobID":  jobID,
+				"job_ID": jobID,
 				"taskID": taskID,
 				"state":  taskInfo.GetRuntime().GetState().String(),
 			}).Debugf("found task for recovery")

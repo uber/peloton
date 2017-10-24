@@ -199,8 +199,9 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 		demand = demand.Add(allocation)
 		demands[n.ID()] = demand
 		log.WithFields(log.Fields{
-			"Respool": n.Name(),
-			"Demand":  demand,
+			"respool_ID":   n.ID(),
+			"respool_name": n.Name(),
+			"demand":       demand,
 		}).Info("Demand for resource pool")
 
 		resConfig := n.Resources()
@@ -294,8 +295,9 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 
 		n.SetEntitlementResources(assignments[n.ID()])
 		log.WithFields(log.Fields{
-			"Respool":     n.Name(),
-			"Entitlement": assignments[n.ID()],
+			"respool_ID":   n.ID(),
+			"respool_name": n.Name(),
+			"entitlement":  assignments[n.ID()],
 		}).Info("Setting the entitlement for ResPool")
 
 		// Calling the function recursively

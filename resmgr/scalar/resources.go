@@ -131,8 +131,8 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 	var result Resources
 	if r.CPU < other.CPU {
 		log.WithFields(log.Fields{
-			"Subtracted From CPU ": r.CPU,
-			"Subtracted Value ":    other.CPU,
+			"from_cpu ": r.CPU,
+			"value_cpu": other.CPU,
 		}).Debug("Subtracted value is Greater")
 		result.CPU = float64(0)
 	} else {
@@ -144,8 +144,8 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 
 	if r.GPU < other.GPU {
 		log.WithFields(log.Fields{
-			"Subtracted From GPU ": r.GPU,
-			"Subtracted Value ":    other.GPU,
+			"from_gpu ": r.GPU,
+			"value_gpu": other.GPU,
 		}).Debug("Subtracted value is Greater")
 		result.GPU = float64(0)
 	} else {
@@ -157,8 +157,8 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 
 	if r.MEMORY < other.MEMORY {
 		log.WithFields(log.Fields{
-			"Subtracted From Memory ": r.MEMORY,
-			"Subtracted Value ":       other.MEMORY,
+			"from_memory ": r.MEMORY,
+			"value_memory": other.MEMORY,
 		}).Debug("Subtracted value is Greater")
 		result.MEMORY = float64(0)
 	} else {
@@ -170,8 +170,8 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 
 	if r.DISK < other.DISK {
 		log.WithFields(log.Fields{
-			"Subtracted From DISK ": r.DISK,
-			"Subtracted Value ":     other.DISK,
+			"from_disk":  r.DISK,
+			"value_disk": other.DISK,
 		}).Debug("Subtracted value is Greater")
 		result.DISK = float64(0)
 	} else {

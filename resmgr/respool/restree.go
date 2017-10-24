@@ -207,7 +207,7 @@ func (t *tree) printTree(root ResPool) {
 		n := queue.Front()
 		queue.Remove(n)
 		nodeVar := n.Value.(*resPool)
-		log.WithField("ResPool", nodeVar.ID).Info()
+		log.WithField("respool_ID", nodeVar.ID).Info()
 		nodeVar.logNodeResources()
 		children := nodeVar.Children()
 		for e := children.Front(); e != nil; e = e.Next() {
@@ -318,7 +318,7 @@ func (t *tree) Upsert(ID *peloton.ResourcePoolID, resPoolConfig *respool.Resourc
 	if resourcePool != nil {
 		// update existing respool
 		log.WithFields(log.Fields{
-			"Id": ID.Value,
+			"respool_ID": ID.Value,
 		}).Debug("Updating resource pool")
 
 		// TODO update only if leaf node ???
@@ -326,7 +326,7 @@ func (t *tree) Upsert(ID *peloton.ResourcePoolID, resPoolConfig *respool.Resourc
 	} else {
 		// add resource pool
 		log.WithFields(log.Fields{
-			"Id": ID.Value,
+			"respool_ID": ID.Value,
 		}).Debug("Adding resource pool")
 
 		resourcePool, err = NewRespool(t.scope, ID.Value, parent, resPoolConfig)
