@@ -77,3 +77,22 @@ func (s *RetryTestSuite) TestRetryExitWithNotRetryable() {
 	s.Equal(err, errTest)
 	s.Equal(i, 1)
 }
+
+func (s *RetryTestSuite) TestCheckRetry() {
+	expectedCount := 5
+	count := 0
+	policy := NewRetryPolicy(expectedCount, 5*time.Millisecond)
+	r := NewRetrier(policy)
+	for {
+		count++
+		if !CheckRetry(r) {
+			s.Equal(count, expectedCount)
+			return
+		}
+		// Prevent infinite loop in case of failure
+		if count > (expectedCount + 1) {
+			s.Equal(count, expectedCount)
+			return
+		}
+	}
+}

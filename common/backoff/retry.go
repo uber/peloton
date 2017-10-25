@@ -34,3 +34,16 @@ func Retry(f Retryable, p RetryPolicy, isRetryable IsErrorRetryable) error {
 		time.Sleep(backoff)
 	}
 }
+
+// CheckRetry checks if retry is allowed, and if it is allowed,
+// it will sleep for the backoff duration. It is used when the
+// function to be retried takes in arguments or returns a result.
+func CheckRetry(r Retrier) bool {
+	var backoff time.Duration
+
+	if backoff = r.NextBackOff(); backoff == done {
+		return false
+	}
+	time.Sleep(backoff)
+	return true
+}
