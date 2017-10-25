@@ -58,8 +58,9 @@ func init() {
 
 func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
-	assert.True(t, testScope.Snapshot().Counters()["execute.execute+store=peloton_test,type=success"].Value() > 0)
-	assert.True(t, testScope.Snapshot().Counters()["executeBatch.executeBatch+store=peloton_test,type=success"].Value() > 0)
+	log.Errorf("got some counters to be %s", testScope.Snapshot().Counters())
+	assert.True(t, testScope.Snapshot().Counters()["execute.execute+result=success,store=peloton_test"].Value() > 0)
+	assert.True(t, testScope.Snapshot().Counters()["executeBatch.executeBatch+result=success,store=peloton_test"].Value() > 0)
 }
 
 func (suite *CassandraStoreTestSuite) createJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
