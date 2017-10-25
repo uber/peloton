@@ -73,6 +73,21 @@ type Metrics struct {
 	VolumeGetFail    tally.Counter
 	VolumeDelete     tally.Counter
 	VolumeDeleteFail tally.Counter
+
+	ReadFailure        tally.Counter
+	WriteFailure       tally.Counter
+	AlreadyExists      tally.Counter
+	ReadTimeout        tally.Counter
+	WriteTimeout       tally.Counter
+	RequestUnavailable tally.Counter
+	TooManyTimeouts    tally.Counter
+	ConnUnavailable    tally.Counter
+	SessionClosed      tally.Counter
+	NoConnections      tally.Counter
+	ConnectionClosed   tally.Counter
+	NoStreams          tally.Counter
+	NotTransient       tally.Counter
+	CASNotApplied      tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics initialized and rooted at the given tally.Scope
@@ -110,6 +125,8 @@ func NewMetrics(scope tally.Scope) Metrics {
 	volumeScope := scope.SubScope("persistent_volume")
 	volumeSuccessScope := volumeScope.Tagged(map[string]string{"type": "success"})
 	volumeFailScope := volumeScope.Tagged(map[string]string{"type": "fail"})
+
+	storageErrorScope := scope.SubScope("storage_error")
 
 	metrics := Metrics{
 		JobCreate:     jobSuccessScope.Counter("create"),
@@ -167,6 +184,21 @@ func NewMetrics(scope tally.Scope) Metrics {
 		VolumeUpdateFail: volumeFailScope.Counter("update"),
 		VolumeDelete:     volumeSuccessScope.Counter("delete"),
 		VolumeDeleteFail: volumeFailScope.Counter("delete"),
+
+		ReadFailure:        storageErrorScope.Counter("read_failure"),
+		WriteFailure:       storageErrorScope.Counter("write_failure"),
+		AlreadyExists:      storageErrorScope.Counter("already_exists"),
+		ReadTimeout:        storageErrorScope.Counter("read_timeout"),
+		WriteTimeout:       storageErrorScope.Counter("write_timeout"),
+		RequestUnavailable: storageErrorScope.Counter("request_unavailable"),
+		TooManyTimeouts:    storageErrorScope.Counter("too_many_timeouts"),
+		ConnUnavailable:    storageErrorScope.Counter("conn_unavailable"),
+		SessionClosed:      storageErrorScope.Counter("session_closed"),
+		NoConnections:      storageErrorScope.Counter("no_connections"),
+		ConnectionClosed:   storageErrorScope.Counter("connection_closed"),
+		NoStreams:          storageErrorScope.Counter("no_streams"),
+		NotTransient:       storageErrorScope.Counter("not_transient"),
+		CASNotApplied:      storageErrorScope.Counter("cas_not_applied"),
 	}
 
 	return metrics

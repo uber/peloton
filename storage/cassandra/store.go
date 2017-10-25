@@ -21,6 +21,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
 
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
@@ -111,9 +113,10 @@ func (c *Config) MigrateString() string {
 
 // Store implements JobStore using a cassandra backend
 type Store struct {
-	DataStore api.DataStore
-	metrics   storage.Metrics
-	Conf      *Config
+	DataStore   api.DataStore
+	metrics     storage.Metrics
+	Conf        *Config
+	retryPolicy backoff.RetryPolicy
 }
 
 // NewStore creates a Store
@@ -124,10 +127,136 @@ func NewStore(config *Config, scope tally.Scope) (*Store, error) {
 		return nil, err
 	}
 	return &Store{
-		DataStore: dataStore,
-		metrics:   storage.NewMetrics(scope.SubScope("storage")),
-		Conf:      config,
+		DataStore:   dataStore,
+		metrics:     storage.NewMetrics(scope.SubScope("storage")),
+		Conf:        config,
+		retryPolicy: backoff.NewRetryPolicy(5, 50*time.Millisecond),
 	}, nil
+}
+
+func (s *Store) handleDataStoreError(err error, p backoff.Retrier) error {
+	retry := false
+	newErr := err
+
+	switch err.(type) {
+	// TBD handle errOverloaded and errBootstrapping after error types added in gocql
+	case *gocql.RequestErrReadFailure:
+		s.metrics.ReadFailure.Inc(1)
+		return yarpcerrors.AbortedErrorf("read failure during statement execution %v", err.Error())
+	case *gocql.RequestErrWriteFailure:
+		s.metrics.WriteFailure.Inc(1)
+		return yarpcerrors.AbortedErrorf("write failure during statement execution %v", err.Error())
+	case *gocql.RequestErrAlreadyExists:
+		s.metrics.AlreadyExists.Inc(1)
+		return yarpcerrors.AlreadyExistsErrorf("already exists error during statement execution %v", err.Error())
+	case *gocql.RequestErrReadTimeout:
+		s.metrics.ReadTimeout.Inc(1)
+		return yarpcerrors.DeadlineExceededErrorf("read timeout during statement execution: %v", err.Error())
+	case *gocql.RequestErrWriteTimeout:
+		s.metrics.WriteTimeout.Inc(1)
+		return yarpcerrors.DeadlineExceededErrorf("write timeout during statement execution: %v", err.Error())
+	case *gocql.RequestErrUnavailable:
+		s.metrics.RequestUnavailable.Inc(1)
+		retry = true
+		newErr = yarpcerrors.UnavailableErrorf("request unavailable during statement execution: %v", err.Error())
+	}
+
+	switch err {
+	case gocql.ErrTooManyTimeouts:
+		s.metrics.TooManyTimeouts.Inc(1)
+		return yarpcerrors.DeadlineExceededErrorf("too many timeouts during statement execution: %v", err.Error())
+	case gocql.ErrUnavailable:
+		s.metrics.ConnUnavailable.Inc(1)
+		retry = true
+		newErr = yarpcerrors.UnavailableErrorf("unavailable error during statement execution: %v", err.Error())
+	case gocql.ErrSessionClosed:
+		s.metrics.SessionClosed.Inc(1)
+		retry = true
+		newErr = yarpcerrors.UnavailableErrorf("session closed during statement execution: %v", err.Error())
+	case gocql.ErrNoConnections:
+		s.metrics.NoConnections.Inc(1)
+		retry = true
+		newErr = yarpcerrors.UnavailableErrorf("no connections during statement execution: %v", err.Error())
+	case gocql.ErrConnectionClosed:
+		s.metrics.ConnectionClosed.Inc(1)
+		retry = true
+		newErr = yarpcerrors.UnavailableErrorf("connections closed during statement execution: %v", err.Error())
+	case gocql.ErrNoStreams:
+		s.metrics.NoStreams.Inc(1)
+		retry = true
+		newErr = yarpcerrors.UnavailableErrorf("no streams during statement execution: %v", err.Error())
+	}
+
+	if retry {
+		if backoff.CheckRetry(p) {
+			return nil
+		}
+		return newErr
+	}
+
+	return newErr
+}
+
+func (s *Store) executeWrite(ctx context.Context, stmt api.Statement) (api.ResultSet, error) {
+	p := backoff.NewRetrier(s.retryPolicy)
+	for {
+		result, err := s.DataStore.Execute(ctx, stmt)
+		if err == nil {
+			return result, err
+		}
+		err = s.handleDataStoreError(err, p)
+
+		if err != nil {
+			if !common.IsTransientError(err) {
+				s.metrics.NotTransient.Inc(1)
+			}
+			return result, err
+		}
+	}
+}
+
+func (s *Store) executeRead(ctx context.Context, stmt api.Statement) ([]map[string]interface{}, error) {
+	p := backoff.NewRetrier(s.retryPolicy)
+	for {
+		result, err := s.DataStore.Execute(ctx, stmt)
+		if err == nil {
+			if result != nil {
+				defer result.Close()
+			}
+			allResults, nErr := result.All(ctx)
+			if nErr == nil {
+				return allResults, nErr
+			}
+			result.Close()
+			err = nErr
+		}
+		err = s.handleDataStoreError(err, p)
+
+		if err != nil {
+			if !common.IsTransientError(err) {
+				s.metrics.NotTransient.Inc(1)
+			}
+			return nil, err
+		}
+	}
+}
+
+func (s *Store) executeBatch(ctx context.Context, stmts []api.Statement) error {
+	p := backoff.NewRetrier(s.retryPolicy)
+	for {
+		err := s.DataStore.ExecuteBatch(ctx, stmts)
+		if err == nil {
+			return err
+		}
+		err = s.handleDataStoreError(err, p)
+
+		if err != nil {
+			if !common.IsTransientError(err) {
+				s.metrics.NotTransient.Inc(1)
+			}
+			return err
+		}
+	}
 }
 
 func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
@@ -234,16 +363,9 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (uint64
 	stmt := queryBuilder.Select("MAX(version)").From(jobConfigTable).
 		Where(qb.Eq{"job_id": id.GetValue()})
 
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to get max version of job %v: %v", id.GetValue(), err)
-		return 0, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	allResults, err := result.All(ctx)
-	if err != nil {
 		return 0, err
 	}
 	log.Debugf("max version: %v", allResults)
@@ -280,18 +402,13 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID, version uin
 	stmt := queryBuilder.Select("config").From(jobConfigTable).
 		Where(qb.Eq{"job_id": jobID, "version": version})
 	stmtString, _, _ := stmt.ToSQL()
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to execute stmt %v, err=%v", stmtString, err)
 		s.metrics.JobGetFail.Inc(1)
 		return nil, err
 	}
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.Errorf("Fail to get all results for stmt %v, err=%v", stmtString, err)
-		s.metrics.JobGetFail.Inc(1)
-		return nil, err
-	}
+
 	log.Debugf("all result = %v", allResults)
 	if len(allResults) > 1 {
 		s.metrics.JobGetFail.Inc(1)
@@ -391,16 +508,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		stmt = stmt.Where(where)
 	}
 
-	result, err := s.DataStore.Execute(ctx, stmt)
-	if err != nil {
-		log.WithField("labels", spec.GetLabels()).
-			WithError(err).
-			Error("Fail to Query jobs")
-		s.metrics.JobQueryFail.Inc(1)
-		return nil, 0, err
-	}
-
-	allResults, err := result.All(ctx)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithField("labels", spec.GetLabels()).
 			WithError(err).
@@ -470,18 +578,10 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 
 	stmt := queryBuilder.Select("job_id").From(jobByStateView).
 		Where(qb.Eq{"state": jobStates})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			Error("GetJobsByStates failed")
-		s.metrics.JobGetByStatesFail.Inc(1)
-		return nil, err
-	}
-
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.WithError(err).
-			Error("GetJobsByStates get all results failed")
 		s.metrics.JobGetByStatesFail.Inc(1)
 		return nil, err
 	}
@@ -509,20 +609,14 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, er
 	var resultMap = make(map[string]*job.RuntimeInfo)
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(jobRuntimeTable)
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			Error("Fail to Query all jobs")
 		s.metrics.JobQueryFail.Inc(1)
 		return nil, err
 	}
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.WithError(err).
-			Error("Fail to Query jobs")
-		s.metrics.JobQueryFail.Inc(1)
-		return nil, err
-	}
+
 	for _, value := range allResults {
 		var record JobRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -758,7 +852,7 @@ func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, in
 	stmt := queryBuilder.Update(taskStateChangesTable).
 		Add("events", stateChangePart).
 		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	result, err := s.executeWrite(ctx, stmt)
 	if result != nil {
 		defer result.Close()
 	}
@@ -801,7 +895,7 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskRuntimes ma
 			Where(qb.Eq{"job_id": jobID.Value, "instance_id": instanceID})
 		statements = append(statements, stmt)
 	}
-	err := s.DataStore.ExecuteBatch(ctx, statements)
+	err := s.executeBatch(ctx, statements)
 	if err != nil {
 		log.Errorf("Fail to logTaskStateChanges for %d tasks, err=%v", len(taskIDToTaskRuntimes), err)
 		return err
@@ -814,15 +908,7 @@ func (s *Store) GetTaskStateChanges(ctx context.Context, jobID *peloton.JobID, i
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskStateChangesTable).
 		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
-	result, err := s.DataStore.Execute(ctx, stmt)
-	if err != nil {
-		log.Errorf("Fail to GetTaskStateChanges by jobID %v, instanceID %v, err=%v", jobID, instanceID, err)
-		return nil, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	allResults, err := result.All(ctx)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTaskStateChanges by jobID %v, instanceID %v, err=%v", jobID, instanceID, err)
 		return nil, err
@@ -841,12 +927,12 @@ func (s *Store) GetTaskStateChanges(ctx context.Context, jobID *peloton.JobID, i
 
 // GetTasksForJobResultSet returns the result set that can be used to iterate each task in a job
 // Caller need to call result.Close()
-func (s *Store) GetTasksForJobResultSet(ctx context.Context, id *peloton.JobID) (api.ResultSet, error) {
+func (s *Store) GetTasksForJobResultSet(ctx context.Context, id *peloton.JobID) ([]map[string]interface{}, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskRuntimeTable).
 		Where(qb.Eq{"job_id": jobID})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	result, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobResultSet by jobId %v, err=%v", jobID, err)
 		return nil, err
@@ -856,7 +942,7 @@ func (s *Store) GetTasksForJobResultSet(ctx context.Context, id *peloton.JobID) 
 
 // GetTasksForJob returns all the tasks (tasks.TaskInfo) for a peloton job
 func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
-	result, err := s.GetTasksForJobResultSet(ctx, id)
+	allResults, err := s.GetTasksForJobResultSet(ctx, id)
 	if err != nil {
 		log.WithField("job_id", id.GetValue()).
 			WithError(err).
@@ -864,18 +950,7 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 		s.metrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
-	if result != nil {
-		defer result.Close()
-	}
 	resultMap := make(map[uint32]*task.TaskInfo)
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.WithField("job_id", id.GetValue()).
-			WithError(err).
-			Errorf("Fail to get all results for GetTasksForJob")
-		s.metrics.TaskGetFail.Inc(1)
-		return nil, err
-	}
 	for _, value := range allResults {
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -917,7 +992,7 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID
 				"version":     configVersion,
 				"instance_id": []interface{}{instanceID, _defaultTaskConfigID},
 			})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithField("job_id", id.GetValue()).
 			WithField("instance_id", instanceID).
@@ -927,14 +1002,7 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID
 		s.metrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
-	if result != nil {
-		defer result.Close()
-	}
 	taskID := util.BuildTaskID(id, instanceID)
-	allResults, err := result.All(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	if len(allResults) == 0 {
 		return nil, &storage.TaskNotFoundError{TaskID: taskID.Value}
@@ -982,20 +1050,13 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("instance_id").From(taskJobStateView).
 		Where(qb.Eq{"job_id": jobID, "state": state})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobAndState by jobId %v state %v, err=%v", jobID, state, err)
 		s.metrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
-	if result != nil {
-		defer result.Close()
-	}
 	resultMap := make(map[uint32]*task.TaskInfo)
-	allResults, err := result.All(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	for _, value := range allResults {
 		var record TaskRuntimeRecord
@@ -1022,20 +1083,13 @@ func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("count (*)").From(taskJobStateView).
 		Where(qb.Eq{"job_id": jobID, "state": state})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.
 			WithField("job_id", jobID).
 			WithField("state", state).
 			WithError(err).
 			Error("Fail to getTaskStateCount by jobId")
-		return 0, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	allResults, err := result.All(ctx)
-	if err != nil {
 		return 0, err
 	}
 
@@ -1073,15 +1127,11 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 		Where("instance_id >= ?", instanceRange.From).
 		Where("instance_id < ?", instanceRange.To)
 
-	resultSet, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobByRange by jobId %v range %v, err=%v", jobID, instanceRange, err)
 		return nil, err
 	}
-	if resultSet != nil {
-		defer resultSet.Close()
-	}
-	allResults, err := resultSet.All(ctx)
 	for _, value := range allResults {
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -1238,19 +1288,12 @@ func (s *Store) getTaskRecord(ctx context.Context, jobID *peloton.JobID, instanc
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskRuntimeTable).
 		Where(qb.Eq{"job_id": jobID.Value, "instance_id": instanceID})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithField("task_id", taskID.Value).
 			WithError(err).
 			Error("Fail to GetTask")
 		s.metrics.TaskGetFail.Inc(1)
-		return nil, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	allResults, err := result.All(ctx)
-	if err != nil {
 		return nil, err
 	}
 
@@ -1332,16 +1375,9 @@ func (s *Store) getFrameworkInfo(ctx context.Context, frameworkName string) (*Fr
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(frameworksTable).
 		Where(qb.Eq{"framework_name": frameworkName})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to getFrameworkInfo by frameworkName %v, err=%v", frameworkName, err)
-		return nil, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	allResults, err := result.All(ctx)
-	if err != nil {
 		return nil, err
 	}
 
@@ -1358,7 +1394,7 @@ func (s *Store) getFrameworkInfo(ctx context.Context, frameworkName string) (*Fr
 }
 
 func (s *Store) applyStatements(ctx context.Context, stmts []api.Statement, jobID string) error {
-	err := s.DataStore.ExecuteBatch(ctx, stmts)
+	err := s.executeBatch(ctx, stmts)
 	if err != nil {
 		log.Errorf("Fail to execute %d insert statements for job %v, err=%v", len(stmts), jobID, err)
 		return err
@@ -1369,13 +1405,9 @@ func (s *Store) applyStatements(ctx context.Context, stmts []api.Statement, jobI
 func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName string) error {
 	stmtString, _, _ := stmt.ToSQL()
 	log.Debugf("stmt=%v", stmtString)
-	result, err := s.DataStore.Execute(ctx, stmt)
+	result, err := s.executeWrite(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to execute stmt for %v %v, err=%v", itemName, stmtString, err)
-		switch err.(type) {
-		case *gocql.RequestErrReadTimeout, *gocql.RequestErrWriteTimeout:
-			err = yarpcerrors.DeadlineExceededErrorf("timeout while processing statement %v: %v", strconv.Quote(stmtString), err.Error())
-		}
 		return err
 	}
 	if result != nil {
@@ -1385,6 +1417,7 @@ func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName
 	// the underlying job/task already exists
 	if result != nil && !result.Applied() {
 		errMsg := fmt.Sprintf("%v is not applied, item could exist already", itemName)
+		s.metrics.CASNotApplied.Inc(1)
 		log.Error(errMsg)
 		return yarpcerrors.AlreadyExistsErrorf(errMsg)
 	}
@@ -1438,19 +1471,13 @@ func (s *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePool
 func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPools)
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetAllResourcePools, err=%v", err)
 		s.metrics.ResourcePoolGetFail.Inc(1)
 		return nil, err
 	}
 	var resultMap = make(map[string]*respool.ResourcePoolConfig)
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.Errorf("Fail to get all results for GetAllResourcePools, err=%v", err)
-		s.metrics.ResourcePoolGetFail.Inc(1)
-		return nil, err
-	}
 	for _, value := range allResults {
 		var record ResourcePoolRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -1476,19 +1503,13 @@ func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPoolsOwnerView).
 		Where(qb.Eq{"owner": owner})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetResourcePoolsByOwner %v, err=%v", owner, err)
 		s.metrics.ResourcePoolGetFail.Inc(1)
 		return nil, err
 	}
 	var resultMap = make(map[string]*respool.ResourcePoolConfig)
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.Errorf("Fail to get all results for GetResourcePoolsByOwner %v, err=%v", owner, err)
-		s.metrics.ResourcePoolGetFail.Inc(1)
-		return nil, err
-	}
 
 	for _, value := range allResults {
 		var record ResourcePoolRecord
@@ -1538,20 +1559,11 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(jobRuntimeTable).
 		Where(qb.Eq{"job_id": id.Value})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
 			Error("GetJobRuntime failed")
-		s.metrics.JobGetRuntimeFail.Inc(1)
-		return nil, err
-	}
-
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.Value).
-			Error("GetJobRuntime Get all results failed")
 		s.metrics.JobGetRuntimeFail.Inc(1)
 		return nil, err
 	}
@@ -1784,20 +1796,12 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID *peloton.Volum
 		Select("*").
 		From(volumeTable).
 		Where(qb.Eq{"volume_id": volumeID.GetValue()})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
 			WithField("volume_id", volumeID).
 			Error("Fail to GetPersistentVolume by volumeID.")
 		s.metrics.VolumeGetFail.Inc(1)
-		return nil, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-
-	allResults, err := result.All(ctx)
-	if err != nil {
 		return nil, err
 	}
 
@@ -1895,16 +1899,9 @@ func (s *Store) CreateUpgrade(ctx context.Context, id *peloton.UpgradeID, status
 func (s *Store) GetUpgradeStatus(ctx context.Context, id *peloton.UpgradeID) (*upgrade.Status, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("status").From(upgradesTable).Where(qb.Eq{"upgrade_id": id.Value})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithField("upgrade_id", id.Value).WithError(err).Error("fail to GetUpgradeStatus")
-		return nil, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	allResults, err := result.All(ctx)
-	if err != nil {
 		return nil, err
 	}
 
@@ -1950,16 +1947,9 @@ func (s *Store) UpdateUpgradeStatus(ctx context.Context, id *peloton.UpgradeID, 
 func (s *Store) GetUpgradeOptions(ctx context.Context, id *peloton.UpgradeID) (options *upgrade.Options, fromConfigVersion, toConfigVersion uint64, err error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("options, to_config_version, from_config_version").From(upgradesTable).Where(qb.Eq{"upgrade_id": id.Value})
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithField("upgrade_id", id.Value).WithError(err).Error("fail to GetUpgradeOptions")
-		return nil, 0, 0, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	allResults, err := result.All(ctx)
-	if err != nil {
 		return nil, 0, 0, err
 	}
 
@@ -1982,16 +1972,9 @@ func (s *Store) GetUpgradeOptions(ctx context.Context, id *peloton.UpgradeID) (o
 func (s *Store) GetUpgrades(ctx context.Context) ([]*upgrade.Status, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("status").From(upgradesTable)
-	result, err := s.DataStore.Execute(ctx, stmt)
+	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).Error("fail to GetUpgrades")
-		return nil, err
-	}
-	if result != nil {
-		defer result.Close()
-	}
-	allResults, err := result.All(ctx)
-	if err != nil {
 		return nil, err
 	}
 
