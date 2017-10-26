@@ -10,221 +10,57 @@ option go_package = "peloton/api/upgrade";
 option java_package = "peloton.api.upgrade";
 
 import "peloton/api/peloton.proto";
-import "peloton/api/errors/errors.proto";
-import "peloton/api/job/job.proto";
-
-
-/**
- *  A unique ID assigned to a workflow.
- */
-message WorkflowID {
-  string value = 1;
-}
 
 
 /**
  *  Upgrade options for a job rolling upgrade
  */
-message UpgradeOptions {
-  // Upgrade batch size of the deployment
-  int32 batchSize = 1;
-
-  // Upgrade batch percentage of the deployment. If present,
-  // will take precedence over batchSize
-  double batchPercentage = 2;
-
-  // Whether or not to stop all instance before upgrade
-  bool stopBeforeUpgrade = 3;
-
+message Options {
   // startPaused indicates if the workflow should start in the paused state,
   // requiring an explicit resume to initiate.
-  bool startPaused = 4;
+  bool startPaused = 1;
 }
 
 
 /**
- *  Configuration spec of an upgrade workflow
+ *  Runtime state of a job upgrade workflow.
  */
-message UpgradeSpec {
-  // Entity id of the job to be upgraded
-  peloton.JobID jobId = 1;
-
-  // New configuration of the job to be upgraded. The new job config
-  // will be applied to all instances in a rolling upgrade fashion without
-  // violating the job SLA
-  job.JobConfig jobConfig = 2;
-
-  // The options of the rolling upgrade
-  UpgradeOptions options = 3;
-}
-
-// Runtime state of a job upgrade workflow
 enum State {
-  // The upgrade workflow is rolling forward
-  ROLLING_FORWARD = 0;
+  UNKNOWN         = 0;
 
-  // The upgrade workflow is rolling back
-  ROLLING_BACK    = 1;
+  // The upgrade workflow is rolling forward.
+  ROLLING_FORWARD = 1;
 
-  // The upgrade workflow is paused
-  PAUSED          = 2;
+  // The upgrade workflow is rolling back.
+  ROLLING_BACK    = 2;
 
-  // The upgrade workflow completed successfully
-  SUCCEEDED       = 3;
+  // The upgrade workflow is paused.
+  PAUSED          = 3;
 
-  // The upgrade workflow is rolled back
-  ROLLED_BACK     = 4;
+  // The upgrade workflow completed successfully.
+  SUCCEEDED       = 4;
 
-  // The upgrade workflow is aborted
-  ABORTED         = 5;
-}
+  // The upgrade workflow is rolled back.
+  ROLLED_BACK     = 5;
 
-/**
- *  Runtime info of an upgrade workflow
- */
-message UpgradeInfo {
-  // Workflow ID of the job upgrade
-  WorkflowID workflowId = 1;
-
-  // Number of tasks that have been upgraded
-  int32 numTasksDone = 2;
-
-  // Number of tasks to be upgraded
-  int32 numTasksRemaining = 3;
-
-  // Runtime state of the upgrade workflow
-  State state = 4;
+  // The upgrade workflow is aborted by the user.
+  ABORTED         = 6;
 }
 
 
 /**
- *  Upgrade Manager interface
+ *  Status of an upgrade workflow.
  */
-service UpgradeManager
-{
-  // Create a new rolling upgrade workflow for a job
-  rpc Create(CreateRequest) returns (CreateResponse);
+message Status {
+  // Workflow ID of the job upgrade.
+  peloton.UpgradeID id = 1;
 
-  // Get the upgrade workflow of a job
-  rpc Get(GetRequest) returns (GetResponse);
+  // Workflow ID of the job upgrade.
+  peloton.JobID jobId = 2;
 
-  // List all upgrade workflows that are currently running
-  rpc List(ListRequest) returns (ListResponse);
+  // Runtime state of the upgrade workflow.
+  State state = 3;
 
-  // Pause a running upgrade workflow
-  rpc Pause(PauseRequest) returns (PauseResponse);
-
-  // Resume a paused upgrade workflow
-  rpc Resume(ResumeRequest) returns (ResumeResponse);
-
-  // Rollback an upgrade workflow
-  rpc Rollback(RollbackRequest) returns (RollbackResponse);
-
-  // Abort an upgrade workflow
-  rpc Abort(AbortRequest) returns (AbortResponse);
-}
-
-/**
- *  Raised when an operation is performed on an upgrade workflow
- *  with invalid state
- */
-message InvalidWorkflowState
-{
-  // Entity ID of the workflow
-  WorkflowID workflowId = 1;
-
-  // Invalid state of the workflow
-  State invalidState = 2;
-}
-
-
-message WorkflowAlreadyExists {
-  WorkflowID id = 1;
-  string message = 2;
-}
-
-message WorkflowNotFound {
-  WorkflowID id = 1;
-  string message = 2;
-}
-
-message CreateRequest {
-  UpgradeSpec spec = 1;
-}
-
-message CreateResponse {
-  oneof response {
-    WorkflowID result = 1;
-    errors.JobNotFound notFound = 2;
-    WorkflowAlreadyExists alreadyExists = 3;
-  }
-}
-
-message GetRequest {
-  WorkflowID workflowId = 1;
-}
-
-message GetResponse {
-  oneof response {
-    UpgradeInfo result = 1;
-    WorkflowNotFound notFound = 2;
-  }
-}
-
-message ListRequest {
-  int32 limit = 1;
-}
-
-message ListResponse {
-  message Result {
-    repeated UpgradeInfo value = 1;
-  }
-  oneof response {
-    Result result = 1;
-  }
-}
-
-message PauseRequest {
-  WorkflowID workflowId = 1;
-}
-
-message PauseResponse {
-  oneof response {
-    WorkflowNotFound notFound = 1;
-    InvalidWorkflowState invalidState = 2;
-  }
-}
-
-message ResumeRequest {
-  WorkflowID workflowId = 1;
-}
-
-message ResumeResponse {
-  oneof response {
-    WorkflowNotFound notFound = 1;
-    InvalidWorkflowState invalidState = 2;
-  }
-}
-
-message RollbackRequest {
-  WorkflowID workflowId = 1;
-}
-
-message RollbackResponse {
-  oneof response {
-    WorkflowNotFound notFound = 1;
-    InvalidWorkflowState invalidState = 2;
-  }
-}
-
-message AbortRequest {
-  WorkflowID workflowId = 1;
-  bool softAbort = 2;
-}
-
-message AbortResponse {
-  oneof response {
-    WorkflowNotFound notFound = 1;
-    InvalidWorkflowState invalidState = 2;
-  }
+  // Number of tasks that have been upgraded.
+  uint32 numTasksDone = 4;
 }

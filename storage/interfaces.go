@@ -66,34 +66,19 @@ type TaskStore interface {
 	GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error)
 }
 
-// UpgradeStore is the interface to store upgrades and upgrade progress.
+// UpgradeStore is the interface to store upgrade options and status.
 type UpgradeStore interface {
 	// CreateUpgrade by creating a new workflow in the storage. It's an error
 	// if the worklfow already exists.
-	CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec *upgrade.UpgradeSpec) error
+	CreateUpgrade(ctx context.Context, id *peloton.UpgradeID, status *upgrade.Status, options *upgrade.Options, fromConfigVersion, toConfigVersion uint64) error
 
-	// AddTaskToProcessing adds instanceID to the set of processing instances, and
-	// incrementing the progress by one. It's an error if instanceID is not the
-	// next instance in line to be upgraded.
-	AddTaskToProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error
+	GetUpgradeStatus(ctx context.Context, id *peloton.UpgradeID) (*upgrade.Status, error)
+	UpdateUpgradeStatus(ctx context.Context, id *peloton.UpgradeID, status *upgrade.Status) error
 
-	// RemoveTaskFromProcessing removes the instanceID from the set of processing
-	// instances. This function is a no-op if the instanceID is not in the list
-	// of processing tasks.
-	RemoveTaskFromProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error
+	GetUpgradeOptions(ctx context.Context, id *peloton.UpgradeID) (options *upgrade.Options, fromConfigVersion, toConfigVersion uint64, err error)
 
-	// GetWorkflowProgress returns the progress of the workflow.
-	//
-	// The overall state of the upgrade can be explained by `instances` and
-	// `progress`:
-	// - An upgrade can start the next task, if `len(processing) < batch_size`.
-	// - An upgrade has completed `progress - len(processing)` tasks.
-	// - An upgrade is done if
-	//   `progress == InstanceCount && len(processing) == 0`.
-	// - A task has been upgraded if
-	//  `InstanceID < progress && !processing.Contains(InstanceID)`.
-	// TODO: Create UpgradeProgress struct for carrying this state.
-	GetWorkflowProgress(ctx context.Context, id *upgrade.WorkflowID) (processing []uint32, progress uint32, err error)
+	// TODO: Do by state?
+	GetUpgrades(ctx context.Context) ([]*upgrade.Status, error)
 }
 
 // FrameworkInfoStore is the interface to store mesosStreamID for peloton frameworks

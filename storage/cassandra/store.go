@@ -231,6 +231,9 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (uint64
 		defer result.Close()
 	}
 	allResults, err := result.All(ctx)
+	if err != nil {
+		return 0, err
+	}
 	log.Debugf("max version: %v", allResults)
 	for _, value := range allResults {
 		for _, max := range value {
@@ -891,6 +894,10 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID
 	}
 	taskID := util.BuildTaskID(id, instanceID)
 	allResults, err := result.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(allResults) == 0 {
 		return nil, &storage.TaskNotFoundError{TaskID: taskID.Value}
 	}
@@ -948,6 +955,10 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 	}
 	resultMap := make(map[uint32]*task.TaskInfo)
 	allResults, err := result.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, value := range allResults {
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -986,6 +997,10 @@ func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state 
 		defer result.Close()
 	}
 	allResults, err := result.All(ctx)
+	if err != nil {
+		return 0, err
+	}
+
 	log.Debugf("counts: %v", allResults)
 	for _, value := range allResults {
 		for _, count := range value {
@@ -1192,6 +1207,10 @@ func (s *Store) getTaskRecord(ctx context.Context, jobID *peloton.JobID, instanc
 		defer result.Close()
 	}
 	allResults, err := result.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, value := range allResults {
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -1279,6 +1298,10 @@ func (s *Store) getFrameworkInfo(ctx context.Context, frameworkName string) (*Fr
 		defer result.Close()
 	}
 	allResults, err := result.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, value := range allResults {
 		var record FrameworkInfoRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -1733,6 +1756,10 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID *peloton.Volum
 	}
 
 	allResults, err := result.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, value := range allResults {
 		var record PersistentVolumeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -1782,16 +1809,16 @@ func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 }
 
 // CreateUpgrade creates a new entry in Cassandra, if it doesn't already exist.
-func (s *Store) CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec *upgrade.UpgradeSpec) error {
-	optionsBuffer, err := json.Marshal(spec.GetOptions())
+func (s *Store) CreateUpgrade(ctx context.Context, id *peloton.UpgradeID, status *upgrade.Status, options *upgrade.Options, fromConfigVersion, toConfigVersion uint64) error {
+	statusBuffer, err := proto.Marshal(status)
 	if err != nil {
-		log.Errorf("Failed to marshal options, error = %v", err)
+		log.WithError(err).Errorf("failed to marshal upgrade status")
 		return err
 	}
 
-	configBuffer, err := json.Marshal(spec.GetJobConfig())
+	optionsBuffer, err := proto.Marshal(options)
 	if err != nil {
-		log.Errorf("Failed to marshal jobConfig, error = %v", err)
+		log.WithError(err).Errorf("failed to marshal upgrade options")
 		return err
 	}
 
@@ -1800,19 +1827,17 @@ func (s *Store) CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec 
 		Columns(
 			"upgrade_id",
 			"options",
-			"state",
-			"progress",
-			"instances",
-			"job_id",
-			"job_config").
+			"status",
+			"from_config_version",
+			"to_config_version",
+			"state").
 		Values(
 			id.GetValue(),
-			string(optionsBuffer),
-			upgrade.State_ROLLING_FORWARD,
-			0,
-			[]int{},
-			spec.GetJobId().GetValue(),
-			configBuffer).
+			optionsBuffer,
+			statusBuffer,
+			fromConfigVersion,
+			toConfigVersion,
+			status.State).
 		IfNotExist()
 
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
@@ -1825,75 +1850,128 @@ func (s *Store) CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec 
 	return nil
 }
 
-// AddTaskToProcessing adds instanceID to the set of processing instances, and
-// incrementing the progress by one. It's an error if instanceID is not the
-// next instance in line to be upgraded.
-func (s *Store) AddTaskToProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
+// GetUpgradeStatus returns the status of an upgrade.
+func (s *Store) GetUpgradeStatus(ctx context.Context, id *peloton.UpgradeID) (*upgrade.Status, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(upgradesTable).
-		Add("instances", []uint32{instanceID}).
-		Set("progress", instanceID+1).
-		Where(qb.Eq{"upgrade_id": id.GetValue()}).
-		IfOnly(fmt.Sprintf("progress = %d", instanceID))
+	stmt := queryBuilder.Select("status").From(upgradesTable).Where(qb.Eq{"upgrade_id": id.Value})
+	result, err := s.DataStore.Execute(ctx, stmt)
+	if err != nil {
+		log.WithField("upgrade_id", id.Value).WithError(err).Error("fail to GetUpgradeStatus")
+		return nil, err
+	}
+	if result != nil {
+		defer result.Close()
+	}
+	allResults, err := result.All(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		log.WithError(err).
-			WithField("workflow_id", id.GetValue()).
-			Error("StartTaskUpgrade failed")
+	for _, value := range allResults {
+		var record UpgradeRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithField("upgrade_id", id.Value).WithError(err).Error("fail to fill UpgradeRecord")
+			return nil, err
+		}
+
+		return record.getStatus()
+	}
+
+	return nil, yarpcerrors.NotFoundErrorf("upgrade %v not found", id.Value)
+}
+
+// UpdateUpgradeStatus with a new status object.
+func (s *Store) UpdateUpgradeStatus(ctx context.Context, id *peloton.UpgradeID, status *upgrade.Status) error {
+	statusBuffer, err := proto.Marshal(status)
+	if err != nil {
+		log.WithError(err).Errorf("failed to marshal upgrade status")
 		return err
 	}
 
-	return nil
-}
-
-// RemoveTaskFromProcessing removes the instanceID from the set of processing
-// instances. This function is a no-op if the instanceID is not in the list
-// of processing tasks.
-func (s *Store) RemoveTaskFromProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Update(upgradesTable).
-		Remove("instances", []uint32{instanceID}).
+		Set("status", statusBuffer).
+		Set("state", status.State).
 		Where(qb.Eq{"upgrade_id": id.GetValue()})
 
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
 		log.WithError(err).
 			WithField("workflow_id", id.GetValue()).
-			Error("CompleteTaskUpgrade failed")
+			Error("UpdateUpgradeStatus failed")
 		return err
 	}
 
 	return nil
 }
 
-// GetWorkflowProgress returns the list of tasks being process as well as the
-// overall progress of the upgrade.
-func (s *Store) GetWorkflowProgress(ctx context.Context, id *upgrade.WorkflowID) ([]uint32, uint32, error) {
+// GetUpgradeOptions returns the static options of an upgrade.
+func (s *Store) GetUpgradeOptions(ctx context.Context, id *peloton.UpgradeID) (options *upgrade.Options, fromConfigVersion, toConfigVersion uint64, err error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("instances", "progress").From(upgradesTable).Where(qb.Eq{"upgrade_id": id.GetValue()})
+	stmt := queryBuilder.Select("options, to_config_version, from_config_version").From(upgradesTable).Where(qb.Eq{"upgrade_id": id.Value})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.Value).
-			Error("GetJobRuntime failed")
-		return nil, 0, err
+		log.WithField("upgrade_id", id.Value).WithError(err).Error("fail to GetUpgradeOptions")
+		return nil, 0, 0, err
 	}
-
+	if result != nil {
+		defer result.Close()
+	}
 	allResults, err := result.All(ctx)
 	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.Value).
-			Error("GetJobRuntime Get all results failed")
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 
 	for _, value := range allResults {
 		var record UpgradeRecord
-		if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
-			return nil, 0, err
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithField("upgrade_id", id.Value).WithError(err).Error("fail to fill UpgradeRecord")
+			return nil, 0, 0, err
 		}
-		return record.GetProcessingInstances(), uint32(record.Progress), nil
+
+		options, err := record.getOptions()
+		return options, uint64(record.FromConfigVersion), uint64(record.ToConfigVersion), err
 	}
-	return nil, 0, fmt.Errorf("Cannot find workflow with ID %v", id.Value)
+
+	return nil, 0, 0, yarpcerrors.NotFoundErrorf("upgrade %v not found", id.Value)
+}
+
+// GetUpgrades statuses known to Cassandra.
+func (s *Store) GetUpgrades(ctx context.Context) ([]*upgrade.Status, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("status").From(upgradesTable)
+	result, err := s.DataStore.Execute(ctx, stmt)
+	if err != nil {
+		log.WithError(err).Error("fail to GetUpgrades")
+		return nil, err
+	}
+	if result != nil {
+		defer result.Close()
+	}
+	allResults, err := result.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	statuses := make([]*upgrade.Status, 0, len(allResults))
+	for _, value := range allResults {
+		var record UpgradeRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).Error("fail to fill UpgradeRecord")
+			return nil, err
+		}
+
+		status, err := record.getStatus()
+		if err != nil {
+			return nil, err
+		}
+
+		statuses = append(statuses, status)
+	}
+
+	return statuses, nil
 }
 
 func parseTime(v string) time.Time {

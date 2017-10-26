@@ -43,6 +43,14 @@ message ResourcePoolID {
   string value = 1;
 }
 
+/**
+ *  A unique ID assigned to the upgrade. This is a UUID in RFC4122 format.
+ */
+message UpgradeID {
+  string value = 1;
+}
+
+
 
 /**
  *  Revision of an entity info, such as Job and Task config etc.

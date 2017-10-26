@@ -18,7 +18,7 @@ import (
 type Manager interface {
 	// AddUpgrade to the upgrade manager. When added to the manager, it will
 	// process the upgrade until terminated.
-	AddUpgrade(upgrade *upgrade.UpgradeInfo) error
+	AddUpgrade(status *upgrade.Status) error
 
 	// Start the upgrade manager.
 	Start() error
@@ -57,17 +57,17 @@ type manager struct {
 	upgrades       map[string]*upgradeState
 }
 
-func (m *manager) AddUpgrade(info *upgrade.UpgradeInfo) error {
+func (m *manager) AddUpgrade(status *upgrade.Status) error {
 	m.Lock()
 	defer m.Unlock()
 
-	id := info.GetWorkflowId().GetValue()
+	id := status.GetId().GetValue()
 	if _, ok := m.upgrades[id]; ok {
 		return fmt.Errorf("upgrade already in progress")
 	}
 
 	m.upgrades[id] = &upgradeState{
-		info: info,
+		status: status,
 	}
 
 	return nil
@@ -119,14 +119,15 @@ func (m *manager) progressUpgrades() {
 	defer m.Unlock()
 
 	for id, us := range m.upgrades {
-		switch us.info.State {
+		switch us.status.State {
 		default:
 			log.WithField("upgrade_id", id).
-				Warnf("unhandled upgrade state %v", us.info.State)
+				WithField("state", us.status.State.String()).
+				Warnf("unhandled upgrade state")
 		}
 	}
 }
 
 type upgradeState struct {
-	info *upgrade.UpgradeInfo
+	status *upgrade.Status
 }

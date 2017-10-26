@@ -1,0 +1,214 @@
+/**
+ *  This file defines the Upgrade Service in Peloton API.
+ */
+
+syntax = "proto3";
+
+package peloton.api.upgrade.svc;
+
+option go_package = "peloton/api/upgrade/svc";
+option java_package = "peloton.api.upgrade.svc";
+
+import "peloton/api/job/job.proto";
+import "peloton/api/peloton.proto";
+import "peloton/api/upgrade/upgrade.proto";
+
+
+/**
+ *  Upgrade Service interface
+ *
+ *  UNSTABLE: This api is not yet stable.
+ */
+service Service {
+  /*
+   * Create a new rolling upgrade workflow for a job. Only one upgrade can
+   * exist for a job, at any point in time.
+   *
+   *  Return errors:
+   *    INVALpeloton.UpgradeID_ARGUMENT:  if the job config or upgrade options is invalid.
+   *    NOT_FOUND:         if the job peloton.UpgradeID is not found.
+   */
+  rpc Create(CreateRequest) returns (CreateResponse);
+
+  /*
+   * Get the status of an upgrade workflow.
+   *
+   *  Return errors:
+   *    NOT_FOUND:         if the upgrade peloton.UpgradeID is not found.
+   */
+  rpc Get(GetRequest) returns (GetResponse);
+
+  /*
+   * List all upgrade workflows that are currently running.
+   *
+   *  Return errors:
+   *    NOT_FOUND:         if the upgrade peloton.UpgradeID is not found.
+   */
+  rpc List(ListRequest) returns (ListResponse);
+
+  /*
+   * Pause a running upgrade workflow.
+   *
+   *  Return errors:
+   *    NOT_FOUND:         if the upgrade peloton.UpgradeID is not found.
+   */
+  rpc Pause(PauseRequest) returns (PauseResponse);
+
+  /*
+   * Resume a paused upgrade workflow.
+   *
+   *  Return errors:
+   *    NOT_FOUND:         if the upgrade peloton.UpgradeID is not found.
+   */
+  rpc Resume(ResumeRequest) returns (ResumeResponse);
+
+  /*
+   * Rollback an upgrade workflow.
+   *
+   *  Return errors:
+   *    NOT_FOUND:         if the upgrade peloton.UpgradeID is not found.
+   */
+  rpc Rollback(RollbackRequest) returns (RollbackResponse);
+
+  /*
+   * Abort an upgrade workflow.
+   *
+   *  Return errors:
+   *    NOT_FOUND:         if the upgrade peloton.UpgradeID is not found.
+   */
+  rpc Abort(AbortRequest) returns (AbortResponse);
+
+  /*
+   * Delete an upgrade workflow.
+   *
+   *  Return errors:
+   *    NOT_FOUND:         if the upgrade peloton.UpgradeID is not found.
+   */
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+}
+
+
+/**
+ *  Request message for UpgradeService.CreateRequest method.
+ */
+message CreateRequest {
+  // Entity id of the job to be upgraded.
+  peloton.JobID jobId= 1;
+
+  // New configuration of the job to be upgraded. The new job config
+  // will be applied to all instances in a rolling upgrade fashion without
+  // violating the job SLA.
+  job.JobConfig jobConfig = 2;
+
+  // The options of the rolling upgrade.
+  upgrade.Options options = 3;
+}
+
+
+/**
+ *  Response message for UpgradeService.CreateResponse method.
+ */
+message CreateResponse {
+  peloton.UpgradeID id = 1;
+}
+
+
+/**
+ *  Request message for UpgradeService.GetRequest method.
+ */
+message GetRequest {
+  peloton.UpgradeID id = 1;
+}
+
+
+/**
+ *  Response message for UpgradeService.GetResponse method.
+ */
+message GetResponse {
+  Status status = 1;
+}
+
+
+/**
+ *  Request message for UpgradeService.ListRequest method.
+ */
+message ListRequest {}
+
+
+/**
+ *  Response message for UpgradeService.ListResponse method.
+ */
+message ListResponse {
+  repeated Status statuses = 1;
+}
+
+
+/**
+ *  Request message for UpgradeService.PauseRequest method.
+ */
+message PauseRequest {
+  peloton.UpgradeID id = 1;
+}
+
+
+/**
+ *  Response message for UpgradeService.PauseResponse method.
+ */
+message PauseResponse {}
+
+
+/**
+ *  Request message for UpgradeService.ResumeRequest method.
+ */
+message ResumeRequest {
+  peloton.UpgradeID id = 1;
+}
+
+
+/**
+ *  Response message for UpgradeService.ResumeResponse method.
+ */
+message ResumeResponse {}
+
+
+/**
+ *  Request message for UpgradeService.RollbackRequest method.
+ */
+message RollbackRequest {
+  peloton.UpgradeID id = 1;
+}
+
+
+/**
+ *  Response message for UpgradeService.RollbackResponse method.
+ */
+message RollbackResponse {}
+
+
+/**
+ *  Request message for UpgradeService.AbortRequest method.
+ */
+message AbortRequest {
+  peloton.UpgradeID id = 1;
+  bool softAbort = 2;
+}
+
+
+/**
+ *  Response message for UpgradeService.AbortResponse method.
+ */
+message AbortResponse {}
+
+
+/**
+ *  Request message for UpgradeService.DeleteRequest method.
+ */
+message DeleteRequest {
+  peloton.UpgradeID id = 1;
+}
+
+
+/**
+ *  Response message for UpgradeService.DeleteResponse method.
+ */
+message DeleteResponse {}

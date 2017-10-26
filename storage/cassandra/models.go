@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
 	"code.uber.internal/infra/peloton/storage/querybuilder"
 
 	"code.uber.internal/infra/peloton/util"
@@ -105,17 +106,20 @@ type FrameworkInfoRecord struct {
 
 // UpgradeRecord tracks the upgrade info
 type UpgradeRecord struct {
-	Instances []int
-	Progress  int
+	Status            []byte
+	Options           []byte
+	FromConfigVersion int64 `cql:"from_config_version"`
+	ToConfigVersion   int64 `cql:"to_config_version"`
 }
 
-// GetProcessingInstances returns a list of tasks currently being upgraded.
-func (r *UpgradeRecord) GetProcessingInstances() []uint32 {
-	p := make([]uint32, len(r.Instances))
-	for i, v := range r.Instances {
-		p[i] = uint32(v)
-	}
-	return p
+func (r *UpgradeRecord) getStatus() (*upgrade.Status, error) {
+	status := &upgrade.Status{}
+	return status, proto.Unmarshal(r.Status, status)
+}
+
+func (r *UpgradeRecord) getOptions() (*upgrade.Options, error) {
+	options := &upgrade.Options{}
+	return options, proto.Unmarshal(r.Options, options)
 }
 
 // SetObjectField sets a field in object with the fieldname with the value

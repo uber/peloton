@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/yarpc/yarpcerrors"
+
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -1248,44 +1250,48 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 }
 
 func (suite *CassandraStoreTestSuite) TestUpgrade() {
-	id := &upgrade.WorkflowID{
+	id := &peloton.UpgradeID{
 		Value: uuid.New(),
 	}
-	suite.NoError(store.CreateUpgrade(context.Background(), id, &upgrade.UpgradeSpec{
-		JobId: &peloton.JobID{
-			Value: uuid.New(),
-		},
-	}))
-	processing, progress, err := store.GetWorkflowProgress(context.Background(), id)
-	suite.Empty(processing)
-	suite.Equal(uint32(0), progress)
+
+	status := &upgrade.Status{
+		Id: id,
+	}
+	options := &upgrade.Options{
+		StartPaused: true,
+	}
+
+	suite.NoError(store.CreateUpgrade(context.Background(), id, status, options, 2, 4))
+
+	s, err := store.GetUpgradeStatus(context.Background(), id)
+	suite.Equal(status, s)
 	suite.NoError(err)
 
-	// Cannot process task 2.
-	suite.EqualError(store.AddTaskToProcessing(context.Background(), id, 2),
-		fmt.Sprintf("code:already-exists message:%v is not applied, item could exist already", id.Value))
-	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
-	suite.Empty(processing)
-	suite.Equal(uint32(0), progress)
+	s, err = store.GetUpgradeStatus(context.Background(), &peloton.UpgradeID{Value: uuid.New()})
+	suite.Nil(s)
+	suite.True(yarpcerrors.IsNotFound(err))
+
+	o, from, to, err := store.GetUpgradeOptions(context.Background(), id)
+	suite.Equal(options, o)
+	suite.Equal(uint64(2), from)
+	suite.Equal(uint64(4), to)
 	suite.NoError(err)
 
-	// Processing task 2 should succeed.
-	suite.NoError(store.AddTaskToProcessing(context.Background(), id, 0))
-	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
-	suite.Equal([]uint32{0}, processing)
-	suite.Equal(uint32(1), progress)
+	o, _, _, err = store.GetUpgradeOptions(context.Background(), &peloton.UpgradeID{Value: uuid.New()})
+	suite.Nil(s)
+	suite.True(yarpcerrors.IsNotFound(err))
+
+	status.NumTasksDone = 5
+	status.State = upgrade.State_SUCCEEDED
+
+	suite.NoError(store.UpdateUpgradeStatus(context.Background(), id, status))
+
+	s, err = store.GetUpgradeStatus(context.Background(), id)
+	suite.Equal(status, s)
 	suite.NoError(err)
 
-	suite.NoError(store.RemoveTaskFromProcessing(context.Background(), id, 2))
-	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
-	suite.Equal([]uint32{0}, processing)
-	suite.Equal(uint32(1), progress)
-	suite.NoError(err)
-
-	suite.NoError(store.RemoveTaskFromProcessing(context.Background(), id, 0))
-	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
-	suite.Empty(processing)
-	suite.Equal(uint32(1), progress)
+	ss, err := store.GetUpgrades(context.Background())
+	suite.Contains(ss, status)
 	suite.NoError(err)
 }
 
