@@ -203,7 +203,7 @@ func (t *task) updateRuntime(runtime *pb_task.RuntimeInfo) {
 	defer t.Unlock()
 
 	// Ignore older revisions of the task runtime.
-	if runtime.GetRevision().GetVersion() < t.runtime.GetRevision().GetVersion() {
+	if runtime != nil && runtime.GetRevision().GetVersion() < t.runtime.GetRevision().GetVersion() {
 		return
 	}
 

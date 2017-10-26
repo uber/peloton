@@ -54,6 +54,18 @@ func TestTaskRunActionReloadRuntime(t *testing.T) {
 	assert.NoError(t, tt.RunAction(context.Background(), ReloadRuntime))
 }
 
+func TestTaskUpdateRuntimeToNilAlwaysOverrides(t *testing.T) {
+	tt := &task{
+		runtime: &pb_task.RuntimeInfo{
+			Revision: &peloton.Revision{Version: 42},
+		},
+	}
+
+	tt.updateRuntime(nil)
+
+	assert.Nil(t, tt.runtime)
+}
+
 func TestTaskGetRuntime(t *testing.T) {
 	tt := &task{}
 
