@@ -307,7 +307,7 @@ func (m *manager) publishMetrics() {
 		j.RLock()
 		for _, t := range j.tasks {
 			t.RLock()
-			tCount[t.runtime.State][t.runtime.GoalState]++
+			tCount[t.runtime.GetState()][t.runtime.GetGoalState()]++
 			t.RUnlock()
 		}
 		j.RUnlock()
