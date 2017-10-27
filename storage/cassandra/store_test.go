@@ -57,7 +57,6 @@ func init() {
 
 func TestCassandraStore(t *testing.T) {
 	suite.Run(t, new(CassandraStoreTestSuite))
-	log.Errorf("got some counters to be %s", testScope.Snapshot().Counters())
 	assert.True(t, testScope.Snapshot().Counters()["execute.execute+result=success,store=peloton_test"].Value() > 0)
 	assert.True(t, testScope.Snapshot().Counters()["executeBatch.executeBatch+result=success,store=peloton_test"].Value() > 0)
 }
