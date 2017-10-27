@@ -1120,6 +1120,14 @@ func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 		IfOnly(condition)
 
 	if err := s.applyStatement(ctx, stmt, util.BuildTaskID(jobID, instanceID).Value); err != nil {
+		if yarpcerrors.IsAlreadyExists(err) {
+			log.WithField("job_id", jobID.GetValue()).
+				WithField("instance_id", instanceID).
+				WithField("version", runtime.Revision.Version).
+				WithField("state", runtime.GetState().String()).
+				WithField("goalstate", runtime.GetGoalState().String()).
+				Info("already exists error during update task run time")
+		}
 		s.metrics.TaskUpdateFail.Inc(1)
 		return err
 	}
@@ -1161,11 +1169,8 @@ func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 	}
 
 	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		return err
-	}
-
-	return nil
+	err := s.applyStatement(ctx, stmt, id.GetValue())
+	return err
 }
 
 // GetTaskByID returns the tasks (tasks.TaskInfo) for a peloton job
@@ -1382,10 +1387,8 @@ func (s *Store) GetResourcePool(ctx context.Context, id *peloton.ResourcePoolID)
 func (s *Store) DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Delete(resPools).Where(qb.Eq{"respool_id": id.GetValue()})
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		return err
-	}
-	return nil
+	err := s.applyStatement(ctx, stmt, id.GetValue())
+	return err
 }
 
 // UpdateResourcePool Update the resource pool
