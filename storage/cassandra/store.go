@@ -1169,11 +1169,12 @@ func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 
 	if err := s.applyStatement(ctx, stmt, getTaskID(taskInfo)); err != nil {
 		if yarpcerrors.IsAlreadyExists(err) {
-			log.WithField("job_id", jobID.GetValue()).
-				WithField("instance_id", instanceID).
-				WithField("version", runtime.Revision.Version).
-				WithField("state", runtime.GetState().String()).
-				WithField("goalstate", runtime.GetGoalState().String()).
+
+			log.WithField("job_id", taskInfo.JobId.GetValue()).
+				WithField("instance_id", taskInfo.InstanceId).
+				WithField("version", taskInfo.Runtime.Revision.Version).
+				WithField("state", taskInfo.GetRuntime().GetState().String()).
+				WithField("goalstate", taskInfo.GetRuntime().GetGoalState().String()).
 				Info("already exists error during update task run time")
 		}
 		s.metrics.TaskUpdateFail.Inc(1)
