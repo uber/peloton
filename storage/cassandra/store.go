@@ -25,10 +25,10 @@ import (
 	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
-	qb "code.uber.internal/infra/peloton/storage/querybuilder"
-
 	"code.uber.internal/infra/peloton/storage/cassandra/impl"
+	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 	"code.uber.internal/infra/peloton/util"
+
 	_ "github.com/gemnasium/migrate/driver/cassandra" // Pull in C* driver for migrate
 	"github.com/gemnasium/migrate/migrate"
 	"github.com/gocql/gocql"
@@ -79,11 +79,11 @@ type Config struct {
 // AutoMigrate migrates the db schemas for cassandra
 func (c *Config) AutoMigrate() []error {
 	connString := c.MigrateString()
-	errors, ok := migrate.UpSync(connString, c.Migrations)
+	errs, ok := migrate.UpSync(connString, c.Migrations)
 	log.Infof("UpSync complete")
 	if !ok {
-		log.Errorf("UpSync failed with errors: %v", errors)
-		return errors
+		log.Errorf("UpSync failed with errors: %v", errs)
+		return errs
 	}
 	return nil
 }

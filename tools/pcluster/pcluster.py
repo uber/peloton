@@ -382,6 +382,8 @@ def start_and_wait(application_name, container_name, ports):
             ),
             'ENABLE_DEBUG_LOGGING=' + config['debug'],
             'DATACENTER=' + '',
+            # used to migrate the schema;used inside host manager
+            'AUTO_MIGRATE=' + config['auto_migrate'],
         ],
         host_config=cli.create_host_config(
             port_bindings={

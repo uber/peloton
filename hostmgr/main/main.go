@@ -104,7 +104,7 @@ var (
 
 	autoMigrate = app.Flag(
 		"auto-migrate", "Automatically update storage schemas.").
-		Default("true").
+		Default("false").
 		Envar("AUTO_MIGRATE").
 		Bool()
 
