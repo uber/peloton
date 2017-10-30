@@ -283,7 +283,8 @@ func (t *tree) GetByPath(path *respool.ResourcePoolPath) (ResPool, error) {
 
 	resPool, err := t.walkTree(t.root, nodes)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unbale to find resource pool with path:%s", path.Value)
+		return nil, errors.Wrapf(err, "unable to find resource pool with "+
+			"path:%s", path.Value)
 	}
 	return resPool, nil
 }

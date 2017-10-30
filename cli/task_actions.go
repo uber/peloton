@@ -27,30 +27,30 @@ func (a SortedTaskInfoList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a SortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].InstanceId }
 
 // TaskGetAction is the action to get a task instance
-func (client *Client) TaskGetAction(jobID string, instanceID uint32) error {
+func (c *Client) TaskGetAction(jobID string, instanceID uint32) error {
 	var request = &task.GetRequest{
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
 		InstanceId: instanceID,
 	}
-	response, err := client.taskClient.Get(client.ctx, request)
+	response, err := c.taskClient.Get(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printTaskGetResponse(response, client.Debug)
+	printTaskGetResponse(response, c.Debug)
 	return nil
 }
 
 // TaskLogsGetAction is the action to get logs files for given job instance.
-func (client *Client) TaskLogsGetAction(fileName string, jobID string, instanceID uint32) error {
+func (c *Client) TaskLogsGetAction(fileName string, jobID string, instanceID uint32) error {
 	var request = &task.BrowseSandboxRequest{
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
 		InstanceId: instanceID,
 	}
-	response, err := client.taskClient.BrowseSandbox(client.ctx, request)
+	response, err := c.taskClient.BrowseSandbox(c.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -96,67 +96,67 @@ func (client *Client) TaskLogsGetAction(fileName string, jobID string, instanceI
 }
 
 // TaskListAction is the action to list tasks
-func (client *Client) TaskListAction(jobID string, instanceRange *task.InstanceRange) error {
+func (c *Client) TaskListAction(jobID string, instanceRange *task.InstanceRange) error {
 	var request = &task.ListRequest{
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
 		Range: instanceRange,
 	}
-	response, err := client.taskClient.List(client.ctx, request)
+	response, err := c.taskClient.List(c.ctx, request)
 
 	if err != nil {
 		return err
 	}
-	printTaskListResponse(response, client.Debug)
+	printTaskListResponse(response, c.Debug)
 	return nil
 }
 
 // TaskStartAction is the action to start a task
-func (client *Client) TaskStartAction(jobID string, instanceRanges []*task.InstanceRange) error {
+func (c *Client) TaskStartAction(jobID string, instanceRanges []*task.InstanceRange) error {
 	var request = &task.StartRequest{
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
 		Ranges: instanceRanges,
 	}
-	response, err := client.taskClient.Start(client.ctx, request)
+	response, err := c.taskClient.Start(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printTaskStartResponse(response, client.Debug)
+	printTaskStartResponse(response, c.Debug)
 	return nil
 }
 
 // TaskStopAction is the action to stop a task
-func (client *Client) TaskStopAction(jobID string, instanceRanges []*task.InstanceRange) error {
+func (c *Client) TaskStopAction(jobID string, instanceRanges []*task.InstanceRange) error {
 	var request = &task.StopRequest{
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
 		Ranges: instanceRanges,
 	}
-	response, err := client.taskClient.Stop(client.ctx, request)
+	response, err := c.taskClient.Stop(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printTaskStopResponse(response, client.Debug)
+	printTaskStopResponse(response, c.Debug)
 	return nil
 }
 
 // TaskRestartAction is the action to restart a task
-func (client *Client) TaskRestartAction(jobID string, instanceRanges []*task.InstanceRange) error {
+func (c *Client) TaskRestartAction(jobID string, instanceRanges []*task.InstanceRange) error {
 	var request = &task.RestartRequest{
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
 		Ranges: instanceRanges,
 	}
-	response, err := client.taskClient.Restart(client.ctx, request)
+	response, err := c.taskClient.Restart(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printTaskRestartResponse(response, client.Debug)
+	printTaskRestartResponse(response, c.Debug)
 	return nil
 }
 

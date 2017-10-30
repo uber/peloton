@@ -48,7 +48,7 @@ const (
 	frameworksTable       = "frameworks"
 	taskJobStateView      = "mv_task_by_state"
 	jobByStateView        = "mv_job_by_state"
-	resPools              = "respools"
+	resPoolsTable         = "respools"
 	resPoolsOwnerView     = "mv_respools_by_owner"
 	volumeTable           = "persistent_volumes"
 
@@ -1383,7 +1383,7 @@ func (s *Store) CreateResourcePool(ctx context.Context, id *peloton.ResourcePool
 	}
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(resPools).
+	stmt := queryBuilder.Insert(resPoolsTable).
 		Columns("respool_id", "respool_config", "owner", "creation_time", "update_time").
 		Values(resourcePoolID, string(configBuffer), owner, time.Now().UTC(), time.Now().UTC()).
 		IfNotExist()
@@ -1405,22 +1405,50 @@ func (s *Store) GetResourcePool(ctx context.Context, id *peloton.ResourcePoolID)
 // DeleteResourcePool Deletes the resource pool
 func (s *Store) DeleteResourcePool(ctx context.Context, id *peloton.ResourcePoolID) error {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Delete(resPools).Where(qb.Eq{"respool_id": id.GetValue()})
+	stmt := queryBuilder.Delete(resPoolsTable).Where(qb.Eq{"respool_id": id.GetValue()})
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
 		return err
 	}
 	return nil
 }
 
-// UpdateResourcePool Update the resource pool
-func (s *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, Config *respool.ResourcePoolConfig) error {
-	return errors.New("unimplemented")
+// UpdateResourcePool Updates the resource pool config for a give resource pool
+// ID
+func (s *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePoolID,
+	resPoolConfig *respool.ResourcePoolConfig) error {
+	resourcePoolID := id.GetValue()
+	configBuffer, err := json.Marshal(resPoolConfig)
+	if err != nil {
+		log.
+			WithField("respool_ID", resourcePoolID).
+			WithError(err).
+			Error("Failed to unmarshal resource pool config")
+		s.metrics.ResourcePoolUpdateFail.Inc(1)
+		return err
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(resPoolsTable).
+		Set("respool_config", configBuffer).
+		Set("update_time", time.Now().UTC()).
+		Where(qb.Eq{"respool_id": resourcePoolID}).
+		IfOnly("EXISTS")
+
+	if err := s.applyStatement(ctx, stmt, id.Value); err != nil {
+		log.WithField("respool_ID", resourcePoolID).
+			WithError(err).
+			Error("Failed to update resource pool config")
+		s.metrics.ResourcePoolUpdateFail.Inc(1)
+		return err
+	}
+	s.metrics.ResourcePoolUpdate.Inc(1)
+	return nil
 }
 
 // GetAllResourcePools Get all the resource pool configs
 func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPools)
+	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPoolsTable)
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetAllResourcePools, err=%v", err)

@@ -1038,7 +1038,6 @@ func (suite *CassandraStoreTestSuite) GetAllResourcePools() {
 	resourcePools, actualErr := resourcePoolStore.GetAllResourcePools(context.Background())
 	suite.NoError(actualErr)
 	suite.Len(resourcePools, nResourcePools)
-
 }
 
 func (suite *CassandraStoreTestSuite) GetAllResourcePoolsEmptyResourcePool() {
@@ -1093,6 +1092,29 @@ func (suite *CassandraStoreTestSuite) TestGetResourcePoolsByOwner() {
 			suite.EqualError(actualErr, tc.expectedErr.Error(), tc.msg)
 		}
 	}
+}
+
+func (suite *CassandraStoreTestSuite) TestUpdateResourcePool() {
+	var resourcePoolStore storage.ResourcePoolStore
+	resourcePoolStore = store
+	resourcePoolID := &peloton.ResourcePoolID{Value: fmt.Sprintf("%s%d",
+		"UpdateRespool", 1)}
+	resourcePoolConfig := createResourcePoolConfig()
+
+	resourcePoolConfig.Name = resourcePoolID.Value
+	err := resourcePoolStore.CreateResourcePool(context.Background(),
+		resourcePoolID, resourcePoolConfig, "Update")
+	suite.NoError(err)
+
+	resourcePoolConfig.Description = "Updated description"
+	err = resourcePoolStore.UpdateResourcePool(context.Background(),
+		resourcePoolID, resourcePoolConfig)
+	suite.NoError(err)
+
+	resourcePools, err := resourcePoolStore.GetResourcePoolsByOwner(context.Background(),
+		"Update")
+	suite.NoError(err)
+	suite.Equal("Updated description", resourcePools[resourcePoolID.Value].Description)
 }
 
 func (suite *CassandraStoreTestSuite) TestDeleteResourcePool() {

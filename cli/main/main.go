@@ -38,7 +38,7 @@ var (
 		"name of the jobmgr address to use (http/tchannel) (set $JOBMGR_URL to override)").
 		Short('m').
 		Default("http://localhost:5292").
-		OverrideDefaultFromEnvar("JOBMGR_URL").
+		Envar("JOBMGR_URL").
 		URL()
 
 	resMgrURL = app.Flag(
@@ -46,7 +46,7 @@ var (
 		"name of the resource manager address to use (http/tchannel) (set $RESMGR_URL to override)").
 		Short('e').
 		Default("http://localhost:5290").
-		OverrideDefaultFromEnvar("RESMGR_URL").
+		Envar("RESMGR_URL").
 		URL()
 
 	zkServers = app.Flag(
@@ -55,14 +55,14 @@ var (
 			"Specify multiple times for multiple servers"+
 			"(set $ZK_SERVERS to override with '\n' as delimiter)").
 		Short('z').
-		OverrideDefaultFromEnvar("ZK_SERVERS").
+		Envar("ZK_SERVERS").
 		Strings()
 
 	zkRoot = app.Flag(
 		"zkroot",
 		"zookeeper root path for peloton service discovery(set $ZK_ROOT to override)").
 		Default(common.DefaultLeaderElectionRoot).
-		OverrideDefaultFromEnvar("ZK_ROOT").
+		Envar("ZK_ROOT").
 		String()
 
 	timeout = app.Flag(
@@ -70,7 +70,7 @@ var (
 		"default RPC timeout (set $TIMEOUT to override)").
 		Default("20s").
 		Short('t').
-		OverrideDefaultFromEnvar("TIMEOUT").
+		Envar("TIMEOUT").
 		Duration()
 
 	// Top level job command
@@ -134,11 +134,17 @@ var (
 	taskRestartInstanceRanges = taskRangeListFlag(taskRestart.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
 
 	// Top level resource pool command
-	resPool           = app.Command("respool", "manage resource pools")
+	resPool = app.Command("respool", "manage resource pools")
+
 	resPoolCreate     = resPool.Command("create", "create a resource pool")
 	resPoolCreatePath = resPoolCreate.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
 	resPoolCreateConfig = resPoolCreate.Arg("config", "YAML Resource Pool configuration").Required().ExistingFile()
+
+	respoolUpdate     = resPool.Command("update", "update an existing resource pool")
+	respoolUpdatePath = respoolUpdate.Arg("respool", "complete path of the "+
+		"resource pool starting from the root").Required().String()
+	respoolUpdateConfig = respoolUpdate.Arg("config", "YAML Resource Pool configuration").Required().ExistingFile()
 
 	resPoolDump = resPool.Command(
 		"dump",
@@ -292,6 +298,8 @@ func main() {
 		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
 	case resPoolCreate.FullCommand():
 		err = client.ResPoolCreateAction(*resPoolCreatePath, *resPoolCreateConfig)
+	case respoolUpdate.FullCommand():
+		err = client.ResPoolUpdateAction(*respoolUpdatePath, *respoolUpdateConfig)
 	case resPoolDump.FullCommand():
 		err = client.ResPoolDumpAction(*resPoolDumpFormat)
 	case resPoolDelete.FullCommand():
