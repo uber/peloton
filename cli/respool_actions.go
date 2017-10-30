@@ -16,7 +16,7 @@ import (
 const ResourcePoolPathDelim = "/"
 
 // ResPoolCreateAction is the action for creating a resource pool
-func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) error {
+func (c *Client) ResPoolCreateAction(respoolPath string, cfgFile string) error {
 	if respoolPath == ResourcePoolPathDelim {
 		return errors.New("cannot create root resource pool")
 	}
@@ -37,7 +37,7 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 	}
 
 	parentPath := parseParentPath(respoolPath)
-	parentID, err := client.LookupResourcePoolID(parentPath)
+	parentID, err := c.LookupResourcePoolID(parentPath)
 	if err != nil {
 		return err
 	}
@@ -52,16 +52,68 @@ func (client *Client) ResPoolCreateAction(respoolPath string, cfgFile string) er
 	var request = &respool.CreateRequest{
 		Config: &respoolConfig,
 	}
-	response, err := client.resClient.CreateResourcePool(client.ctx, request)
+	response, err := c.resClient.CreateResourcePool(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printResPoolCreateResponse(response, respoolPath, client.Debug)
+	printResPoolCreateResponse(response, respoolPath, c.Debug)
+	return nil
+}
+
+// ResPoolUpdateAction is the action for updating an existing resource pool
+func (c *Client) ResPoolUpdateAction(respoolPath string, cfgFile string) error {
+	if respoolPath == ResourcePoolPathDelim {
+		return errors.New("cannot update root resource pool")
+	}
+
+	respoolConfig, err := readResourcePoolConfig(cfgFile)
+	if err != nil {
+		return err
+	}
+
+	if respoolConfig.GetParent() != nil {
+		return errors.New("parent should not be supplied in the config")
+	}
+
+	respoolName := parseRespoolName(respoolPath)
+	if respoolName != respoolConfig.Name {
+		return fmt.Errorf("resource pool name in path:%s and "+
+			"config:%s don't match", respoolName, respoolConfig.Name)
+	}
+
+	parentPath := parseParentPath(respoolPath)
+	parentID, err := c.LookupResourcePoolID(parentPath)
+	if err != nil {
+		return err
+	}
+	if parentID == nil {
+		return errors.Errorf("unable to find resource pool ID "+
+			"for parent:%s", parentPath)
+	}
+	// set parent ID
+	respoolConfig.Parent = parentID
+
+	respoolID, err := c.LookupResourcePoolID(respoolPath)
+	if err != nil {
+		return err
+	}
+	if respoolID == nil {
+		return errors.Errorf("unable to lookup resource pool ID")
+	}
+	var request = &respool.UpdateRequest{
+		Id:     respoolID,
+		Config: &respoolConfig,
+	}
+	response, err := c.resClient.UpdateResourcePool(c.ctx, request)
+	if err != nil {
+		return err
+	}
+	printResPoolUpdateResponse(response, respoolPath, c.Debug)
 	return nil
 }
 
 // ResPoolDeleteAction is the action for deleting a resource pool
-func (client *Client) ResPoolDeleteAction(respoolPath string) error {
+func (c *Client) ResPoolDeleteAction(respoolPath string) error {
 	if respoolPath == ResourcePoolPathDelim {
 		return errors.New("cannot delete root resource pool")
 	}
@@ -71,11 +123,11 @@ func (client *Client) ResPoolDeleteAction(respoolPath string) error {
 			Value: respoolPath,
 		},
 	}
-	response, err := client.resClient.DeleteResourcePool(client.ctx, request)
+	response, err := c.resClient.DeleteResourcePool(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printResPoolDeleteResponse(response, respoolPath, client.Debug)
+	printResPoolDeleteResponse(response, respoolPath, c.Debug)
 	return nil
 }
 
@@ -92,8 +144,8 @@ func readResourcePoolConfig(cfgFile string) (respool.ResourcePoolConfig, error) 
 }
 
 // ResPoolDumpAction dumps the resource pool tree
-func (client *Client) ResPoolDumpAction(resPoolDumpFormat string) error {
-	response, err := client.resClient.Query(client.ctx, &respool.QueryRequest{})
+func (c *Client) ResPoolDumpAction(resPoolDumpFormat string) error {
+	response, err := c.resClient.Query(c.ctx, &respool.QueryRequest{})
 	if err != nil {
 		return err
 	}
@@ -170,6 +222,31 @@ func printResPoolCreateResponse(r *respool.CreateResponse, respoolPath string, d
 		} else {
 			fmt.Fprintf(tabWriter, "Resource Pool %s created at %s\n",
 				r.Result.GetValue(), respoolPath)
+		}
+		tabWriter.Flush()
+	}
+}
+
+func printResPoolUpdateResponse(r *respool.UpdateResponse, respoolPath string, debug bool) {
+	if debug {
+		printResponseJSON(r)
+	} else {
+		if r.Error != nil {
+
+			if r.Error.NotFound != nil {
+				fmt.Fprintf(
+					tabWriter,
+					"Resource pool not found: %s\n",
+					r.Error.NotFound.Message,
+				)
+			} else if r.Error.InvalidResourcePoolConfig != nil {
+				fmt.Fprintf(tabWriter, "Invalid resource pool config: %s\n",
+					r.Error.InvalidResourcePoolConfig.Message,
+				)
+			}
+		} else {
+			fmt.Fprintf(tabWriter, "Resource Pool %s updated\n",
+				respoolPath)
 		}
 		tabWriter.Flush()
 	}

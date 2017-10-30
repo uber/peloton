@@ -164,7 +164,8 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 	config.Parent = &peloton.ResourcePoolID{
 		Value: parentID,
 	}
-	for _, t := range []struct {
+
+	tt := []struct {
 		createRequest  *respool.CreateRequest
 		createResponse *respool.CreateResponse
 		lookupRequest  *respool.LookupRequest
@@ -212,10 +213,131 @@ func (suite *resPoolActions) TestClient_ResPoolCreateAction() {
 			},
 			err: errors.New("cannot create root resource pool"),
 		},
-	} {
+	}
+
+	withMockCreateResponse := func(
+		req *respool.CreateRequest,
+		resp *respool.CreateResponse,
+		err error,
+	) {
+		suite.mockRespool.EXPECT().
+			CreateResourcePool(suite.ctx, gomock.Eq(req)).
+			Return(resp, err)
+	}
+
+	for _, t := range tt {
 		suite.withMockResourcePoolLookup(t.lookupRequest, t.lookupResponse)
-		suite.withMockCreateResponse(t.createRequest, t.createResponse, t.err)
+		withMockCreateResponse(t.createRequest, t.createResponse, t.err)
 		err := c.ResPoolCreateAction(path, _defaultResPoolConfig)
+		if t.err != nil {
+			suite.EqualError(err, t.err.Error())
+		} else {
+			suite.NoError(err)
+		}
+	}
+}
+
+func (suite *resPoolActions) TestClient_ResPoolUpdateAction() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	respoolID := uuid.New()
+	parentID := uuid.New()
+	path := "/DefaultResPool"
+	config := suite.getConfig()
+	config.Parent = &peloton.ResourcePoolID{
+		Value: parentID,
+	}
+
+	tt := []struct {
+		updateRequest         *respool.UpdateRequest
+		updateResponse        *respool.UpdateResponse
+		parentLookupRequest   *respool.LookupRequest
+		parentLookupResponse  *respool.LookupResponse
+		resPoolLookupRequest  *respool.LookupRequest
+		resPoolLookupResponse *respool.LookupResponse
+		err                   error
+	}{
+		{
+			updateRequest: &respool.UpdateRequest{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+				Config: config,
+			},
+			updateResponse: &respool.UpdateResponse{},
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			resPoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			resPoolLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+			},
+		},
+		{
+			updateRequest: &respool.UpdateRequest{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+				Config: config,
+			},
+			updateResponse: &respool.UpdateResponse{},
+			parentLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: "/",
+				},
+			},
+			parentLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: parentID,
+				},
+			},
+			resPoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			resPoolLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: respoolID,
+				},
+			},
+			err: errors.New("cannot update root resource pool"),
+		},
+	}
+
+	withMockUpdateResponse := func(
+		req *respool.UpdateRequest,
+		resp *respool.UpdateResponse,
+		err error,
+	) {
+		suite.mockRespool.EXPECT().
+			UpdateResourcePool(suite.ctx, gomock.Eq(req)).
+			Return(resp, err)
+	}
+
+	for _, t := range tt {
+		suite.withMockResourcePoolLookup(t.parentLookupRequest, t.parentLookupResponse)
+		suite.withMockResourcePoolLookup(t.resPoolLookupRequest, t.resPoolLookupResponse)
+		withMockUpdateResponse(t.updateRequest, t.updateResponse, t.err)
+		err := c.ResPoolUpdateAction(path, _defaultResPoolConfig)
 		if t.err != nil {
 			suite.EqualError(err, t.err.Error())
 		} else {
@@ -267,6 +389,16 @@ func (suite *resPoolActions) TestClient_ResPoolDeleteAction() {
 			suite.NoError(err)
 		}
 	}
+}
+
+func (suite *resPoolActions) withMockUpdateResponse(
+	req *respool.UpdateRequest,
+	resp *respool.UpdateResponse,
+	err error,
+) {
+	suite.mockRespool.EXPECT().
+		UpdateResourcePool(suite.ctx, gomock.Eq(req)).
+		Return(resp, err)
 }
 
 func (suite *resPoolActions) withMockCreateResponse(

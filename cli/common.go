@@ -6,14 +6,14 @@ import (
 )
 
 // LookupResourcePoolID returns the resource pool ID for a given path
-func (client *Client) LookupResourcePoolID(resourcePoolPath string) (*peloton.ResourcePoolID, error) {
+func (c *Client) LookupResourcePoolID(resourcePoolPath string) (*peloton.ResourcePoolID, error) {
 	request := &respool.LookupRequest{
 		Path: &respool.ResourcePoolPath{
 			Value: resourcePoolPath,
 		},
 	}
 
-	response, err := client.resClient.LookupResourcePoolID(client.ctx, request)
+	response, err := c.resClient.LookupResourcePoolID(c.ctx, request)
 	if err != nil {
 		return nil, err
 	}

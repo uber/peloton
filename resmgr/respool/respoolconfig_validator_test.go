@@ -682,8 +682,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 	}
 	err = rv.Validate(resourcePoolConfigData)
 	suite.Error(err)
-	suite.Equal("resource pool name respool1 should be unique "+
-		"amongst siblings for parent root",
+	suite.Equal("resource pool:respool1 already exists",
 		err.Error())
 }
 
@@ -714,8 +713,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 	}
 	err = rv.Validate(resourcePoolConfigData)
 	suite.Error(err)
-	suite.Equal("resource pool name respool1 should be unique "+
-		"amongst siblings for parent root",
+	suite.Equal("resource pool:respool1 already exists",
 		err.Error())
 }
 

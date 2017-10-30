@@ -56,6 +56,9 @@ type Metrics struct {
 	ResourcePoolCreate     tally.Counter
 	ResourcePoolCreateFail tally.Counter
 
+	ResourcePoolUpdate     tally.Counter
+	ResourcePoolUpdateFail tally.Counter
+
 	ResourcePoolGet     tally.Counter
 	ResourcePoolGetFail tally.Counter
 
@@ -167,6 +170,8 @@ func NewMetrics(scope tally.Scope) Metrics {
 
 		ResourcePoolCreate:     resourcePoolSuccessScope.Counter("create"),
 		ResourcePoolCreateFail: resourcePoolFailScope.Counter("create"),
+		ResourcePoolUpdate:     resourcePoolSuccessScope.Counter("update"),
+		ResourcePoolUpdateFail: resourcePoolFailScope.Counter("update"),
 		ResourcePoolGet:        resourcePoolSuccessScope.Counter("get"),
 		ResourcePoolGetFail:    resourcePoolFailScope.Counter("get"),
 

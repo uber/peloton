@@ -29,8 +29,8 @@ const (
 )
 
 // JobCreateAction is the action for creating a job
-func (client *Client) JobCreateAction(jobID string, respoolPath string, cfg string) error {
-	respoolID, err := client.LookupResourcePoolID(respoolPath)
+func (c *Client) JobCreateAction(jobID string, respoolPath string, cfg string) error {
+	respoolID, err := c.LookupResourcePoolID(respoolPath)
 	if err != nil {
 		return err
 	}
@@ -58,22 +58,22 @@ func (client *Client) JobCreateAction(jobID string, respoolPath string, cfg stri
 		},
 		Config: &jobConfig,
 	}
-	response, err := client.jobClient.Create(client.ctx, request)
+	response, err := c.jobClient.Create(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printJobCreateResponse(response, client.Debug)
+	printJobCreateResponse(response, c.Debug)
 	return nil
 }
 
 // JobDeleteAction is the action for deleting a job
-func (client *Client) JobDeleteAction(jobID string) error {
+func (c *Client) JobDeleteAction(jobID string) error {
 	var request = &job.DeleteRequest{
 		Id: &peloton.JobID{
 			Value: jobID,
 		},
 	}
-	response, err := client.jobClient.Delete(client.ctx, request)
+	response, err := c.jobClient.Delete(c.ctx, request)
 	if err != nil {
 		return err
 	}
@@ -82,37 +82,37 @@ func (client *Client) JobDeleteAction(jobID string) error {
 }
 
 // JobGetAction is the action for getting a job
-func (client *Client) JobGetAction(jobID string) error {
+func (c *Client) JobGetAction(jobID string) error {
 	var request = &job.GetRequest{
 		Id: &peloton.JobID{
 			Value: jobID,
 		},
 	}
-	response, err := client.jobClient.Get(client.ctx, request)
+	response, err := c.jobClient.Get(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printJobGetResponse(response, client.Debug)
+	printJobGetResponse(response, c.Debug)
 	return nil
 }
 
 // JobStatusAction is the action for getting status of a job
-func (client *Client) JobStatusAction(jobID string) error {
+func (c *Client) JobStatusAction(jobID string) error {
 	var request = &job.GetRequest{
 		Id: &peloton.JobID{
 			Value: jobID,
 		},
 	}
-	response, err := client.jobClient.Get(client.ctx, request)
+	response, err := c.jobClient.Get(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printJobStatusResponse(response, client.Debug)
+	printJobStatusResponse(response, c.Debug)
 	return nil
 }
 
 // JobQueryAction is the action for getting job ids by labels and respool path
-func (client *Client) JobQueryAction(
+func (c *Client) JobQueryAction(
 	labels string,
 	respoolPath string,
 	keywords string,
@@ -137,7 +137,7 @@ func (client *Client) JobQueryAction(
 	var respoolID *peloton.ResourcePoolID
 	var err error
 	if len(respoolPath) > 0 {
-		respoolID, err = client.LookupResourcePoolID(respoolPath)
+		respoolID, err = c.LookupResourcePoolID(respoolPath)
 		if err != nil {
 			return err
 		}
@@ -167,16 +167,16 @@ func (client *Client) JobQueryAction(
 			},
 		},
 	}
-	response, err := client.jobClient.Query(client.ctx, request)
+	response, err := c.jobClient.Query(c.ctx, request)
 	if err != nil {
 		return err
 	}
-	printJobQueryResponse(response, client.Debug)
+	printJobQueryResponse(response, c.Debug)
 	return nil
 }
 
 // JobUpdateAction is the action of updating a job
-func (client *Client) JobUpdateAction(jobID string, cfg string) error {
+func (c *Client) JobUpdateAction(jobID string, cfg string) error {
 	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
@@ -192,12 +192,12 @@ func (client *Client) JobUpdateAction(jobID string, cfg string) error {
 		},
 		Config: &jobConfig,
 	}
-	response, err := client.jobClient.Update(client.ctx, request)
+	response, err := c.jobClient.Update(c.ctx, request)
 	if err != nil {
 		return err
 	}
 
-	printJobUpdateResponse(response, client.Debug)
+	printJobUpdateResponse(response, c.Debug)
 	return nil
 }
 

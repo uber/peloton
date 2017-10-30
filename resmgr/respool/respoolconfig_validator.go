@@ -16,7 +16,7 @@ type ResourcePoolConfigValidatorFunc func(resTree Tree, resourcePoolConfigData R
 
 // ResourcePoolConfigData holds the data that needs to be validated
 type ResourcePoolConfigData struct {
-	ID                 *peloton.ResourcePoolID     // Resource Pool Config ID
+	ID                 *peloton.ResourcePoolID     // Resource Pool ID
 	Path               *respool.ResourcePoolPath   // Resource Pool path
 	ResourcePoolConfig *respool.ResourcePoolConfig // Resource Pool Configuration
 }
@@ -127,40 +127,38 @@ func ValidateParent(resTree Tree, resourcePoolConfigData ResourcePoolConfigData)
 	return nil
 }
 
-// ValidateSiblings validates the siblings of a parent
+// ValidateSiblings validates the resource pool name is unique amongst its
+// siblings
 func ValidateSiblings(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
 	name := resourcePoolConfigData.ResourcePoolConfig.Name
 	parentID := resourcePoolConfigData.ResourcePoolConfig.Parent
-	ID := resourcePoolConfigData.ID
+	resourcePoolID := resourcePoolConfigData.ID
 
 	parentResPool, err := resTree.Get(parentID)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	existingResPool, _ := resTree.Get(ID)
-
 	siblings := parentResPool.Children()
-	if existingResPool != nil {
-		// update
-		for e := siblings.Front(); e != nil; e = e.Next() {
-			sibling := e.Value.(ResPool)
-			if sibling.ID() == existingResPool.ID() {
-				// remove self from siblings
-				siblings.Remove(e)
-				break
-			}
-		}
-	}
+	siblingNames := make(map[string]bool)
 
 	for e := siblings.Front(); e != nil; e = e.Next() {
 		sibling := e.Value.(ResPool)
-		if sibling.Name() == name {
-			return errors.Errorf("resource pool name %s should "+
-				"be unique amongst siblings for parent %s", name, parentID.Value)
-		}
+		siblingNames[sibling.Name()] = true
 	}
+	existingResPool, _ := resTree.Get(resourcePoolID)
+	if existingResPool != nil {
+		// In case of update API, we need to remove the existing node before
+		// performing the check
+		delete(siblingNames, existingResPool.Name())
+	}
+	log.WithField("siblingNames", siblingNames).
+		WithField("name", name).
+		Info("siblings to check")
 
+	if _, ok := siblingNames[name]; ok {
+		return errors.Errorf("resource pool:%s already exists", name)
+	}
 	return nil
 }
 
