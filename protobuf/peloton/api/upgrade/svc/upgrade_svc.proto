@@ -19,7 +19,7 @@ import "peloton/api/upgrade/upgrade.proto";
  *
  *  UNSTABLE: This api is not yet stable.
  */
-service Service {
+service UpgradeService {
   /*
    * Create a new rolling upgrade workflow for a job. Only one upgrade can
    * exist for a job, at any point in time.
