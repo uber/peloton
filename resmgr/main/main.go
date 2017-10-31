@@ -92,6 +92,12 @@ var (
 		Envar("CASSANDRA_STORE").
 		String()
 
+	cassandraPort = app.Flag(
+		"cassandra-port", "Cassandra port to connect").
+		Default("0").
+		Envar("CASSANDRA_PORT").
+		Int()
+
 	datacenter = app.Flag(
 		"datacenter", "Datacenter name").
 		Default("").
@@ -153,6 +159,10 @@ func main() {
 
 	if *cassandraStore != "" {
 		cfg.Storage.Cassandra.StoreName = *cassandraStore
+	}
+
+	if *cassandraPort != 0 {
+		cfg.Storage.Cassandra.CassandraConn.Port = *cassandraPort
 	}
 
 	if *datacenter != "" {

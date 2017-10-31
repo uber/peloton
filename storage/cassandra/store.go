@@ -97,6 +97,15 @@ func (c *Config) MigrateString() string {
 		c.CassandraConn.ContactPoints[0],
 		c.CassandraConn.Port,
 		c.StoreName)
+
+	if len(c.CassandraConn.Username) != 0 {
+		connStr = fmt.Sprintf("cassandra://%v:%v@%v:%v/%v",
+			c.CassandraConn.Username,
+			c.CassandraConn.Password,
+			c.CassandraConn.ContactPoints[0],
+			c.CassandraConn.Port,
+			c.StoreName)
+	}
 	connStr = strings.Replace(connStr, " ", "", -1)
 	log.Infof("Cassandra migration string %v", connStr)
 	return connStr

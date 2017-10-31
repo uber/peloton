@@ -102,6 +102,12 @@ var (
 		Envar("CASSANDRA_STORE").
 		String()
 
+	cassandraPort = app.Flag(
+		"cassandra-port", "Cassandra port to connect").
+		Default("0").
+		Envar("CASSANDRA_PORT").
+		Int()
+
 	autoMigrate = app.Flag(
 		"auto-migrate", "Automatically update storage schemas.").
 		Default("false").
@@ -171,15 +177,19 @@ func main() {
 		cfg.Storage.Cassandra.StoreName = *cassandraStore
 	}
 
-	if !*autoMigrate {
-		cfg.Storage.AutoMigrate = false
+	if *cassandraPort != 0 {
+		cfg.Storage.Cassandra.CassandraConn.Port = *cassandraPort
+	}
+
+	if *autoMigrate {
+		cfg.Storage.AutoMigrate = *autoMigrate
 	}
 
 	if *datacenter != "" {
 		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
 	}
 
-	log.WithField("config", cfg).Info("Loaded Host Manager config")
+	log.WithField("config", cfg).Debug("Loaded Host Manager config")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,

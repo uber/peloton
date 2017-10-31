@@ -144,11 +144,14 @@ class App(object):
             'CASSANDRA_HOSTS': '\n'.join(
                 self.cluster.cassandra_contact_points),
             'CASSANDRA_STORE': self.cluster.cassandra_keyspace,
+            'CASSANDRA_PORT': self.cluster.cassandra_port,
             'CLUSTER': self.cluster.name,
             'DATACENTER': getattr(self.cluster, 'datacenter', ''),
             'MESOS_AGENT_WORK_DIR': self.cluster.mesos_agent_work_dir,
             'AUTO_MIGRATE': self.cluster.auto_migrate,
             'ENABLE_SENTRY_LOGGING': self.cluster.enable_sentry_logging,
+            'SECRET_CONFIG_DIR': self.cluster.secret_config_dir,
+            'MESOS_SECRET_FILE': self.cluster.mesos_secret_file,
         }
 
         params = [
@@ -159,6 +162,14 @@ class App(object):
         volumes = [
             ('/var/log/peloton', '/var/log/peloton', 'rw')
         ]
+
+        # Mount langley secrets if secret dir is specified.
+        if self.cluster.secret_config_dir is not None:
+            volumes.append((
+                self.cluster.secret_config_dir,
+                self.cluster.secret_config_dir,
+                'ro'
+            ))
 
         params.extend(
             DockerParameter(name='volume', value='%s:%s:%s' % (src, dst, mode))

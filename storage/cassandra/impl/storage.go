@@ -14,6 +14,14 @@ import (
 func CreateStore(storeConfig *CassandraConn, keySpace string, scope tally.Scope) (*Store, error) {
 	cluster := newCluster(storeConfig)
 	cluster.Keyspace = keySpace
+
+	if len(storeConfig.Username) != 0 {
+		cluster.Authenticator = gocql.PasswordAuthenticator{
+			Username: storeConfig.Username,
+			Password: storeConfig.Password,
+		}
+	}
+
 	cSession, err := cluster.CreateSession()
 	if err != nil {
 		log.Error("Fail to create session: ", err.Error())
@@ -30,8 +38,9 @@ func CreateStore(storeConfig *CassandraConn, keySpace string, scope tally.Scope)
 		metrics:        NewMetrics(storeScope),
 	}
 	log.WithFields(log.Fields{
-		"keySpace": keySpace,
-		"store":    cb.String(),
+		"key_space":      keySpace,
+		"store":          cb.String(),
+		"cassandra_port": storeConfig.Port,
 	}).Info("C* Session Created.")
 	return &cb, nil
 }
