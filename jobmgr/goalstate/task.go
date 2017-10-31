@@ -11,6 +11,10 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
+const (
+	_defaultTaskActionTimeout = 5 * time.Second
+)
+
 var (
 	// _isoVersionsTaskRules maps current states to action, given a goal state:
 	// goal-state -> current-state -> action.
@@ -116,10 +120,10 @@ func (e *engine) processTask(t tracked.Task) {
 }
 
 func (e *engine) runTaskAction(action tracked.TaskAction, t tracked.Task) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	err := t.RunAction(ctx, action)
-	cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), _defaultTaskActionTimeout)
+	defer cancel()
 
+	err := e.trackedManager.RunTaskAction(ctx, t.Job().ID(), t.ID(), action)
 	if err != nil {
 		log.
 			WithField("job_id", t.Job().ID().GetValue()).

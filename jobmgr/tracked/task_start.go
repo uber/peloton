@@ -55,7 +55,6 @@ func (t *task) start(ctx context.Context) error {
 		return fmt.Errorf("job config not found for %v", t.job.id)
 	}
 
-	// TODO: Investigate how to create proper gangs for scheduling (currently, task are treat independently)
 	return jobmgr_task.EnqueueGangs(ctx, []*pb_task.TaskInfo{{
 		JobId:      t.job.id,
 		InstanceId: t.id,

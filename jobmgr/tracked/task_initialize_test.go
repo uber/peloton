@@ -50,6 +50,6 @@ func TestTaskStartInitialized(t *testing.T) {
 		}).
 		Return(nil)
 
-	assert.NoError(t, tt.RunAction(context.Background(), InitializeAction))
+	assert.NoError(t, tt.initialize(context.Background()))
 	assert.Nil(t, tt.runtime.MesosTaskId)
 }

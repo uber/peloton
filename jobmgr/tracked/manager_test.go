@@ -5,11 +5,13 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
@@ -25,11 +27,13 @@ func TestManagerAddAndGet(t *testing.T) {
 
 	assert.Nil(t, m.GetJob(jobID))
 
-	j := m.addJob(jobID)
+	j := m.addJob(jobID, nil)
 	assert.NotNil(t, j)
 
 	assert.Equal(t, j, m.GetJob(jobID))
-	assert.Equal(t, j, m.addJob(jobID))
+
+	jj := m.addJob(jobID, nil)
+	assert.Equal(t, j, jj)
 }
 
 func TestManagerClearTask(t *testing.T) {
@@ -41,7 +45,7 @@ func TestManagerClearTask(t *testing.T) {
 		running:       true,
 	}
 
-	j := m.addJob(jobID)
+	j := m.addJob(jobID, nil)
 	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
 	m.SetTask(jobID, 1, &pb_task.RuntimeInfo{})
 	t0 := j.GetTask(0)
@@ -107,6 +111,9 @@ func TestManagerSyncFromDB(t *testing.T) {
 }
 
 func TestManagerStopClearsTasks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
 	m := &manager{
 		jobs:          map[string]*job{},
 		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
@@ -115,11 +122,13 @@ func TestManagerStopClearsTasks(t *testing.T) {
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+
 	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
 	m.SetTask(jobID, 1, &pb_task.RuntimeInfo{})
 	m.SetTask(jobID, 2, &pb_task.RuntimeInfo{})
 
-	assert.Len(t, m.addJob(jobID).tasks, 3)
+	j := m.addJob(jobID, nil)
+	assert.Len(t, j.tasks, 3)
 	assert.Len(t, *m.taskScheduler.queue.pq, 3)
 
 	m.Stop()
@@ -170,6 +179,50 @@ func TestPublishMetrics(t *testing.T) {
 	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
 
 	m.publishMetrics()
+}
+
+func TestManagerRunTaskAction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+
+	m := &manager{
+		jobs:          map[string]*job{},
+		mtx:           newMetrics(tally.NoopScope),
+		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		jobStore:      mockJobStore,
+		taskStore:     mockTaskStore,
+		running:       true,
+	}
+
+	jobID := &peloton.JobID{
+		Value: "my-job-id",
+	}
+	j := m.addJob(jobID, nil)
+	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+	tt := j.tasks[0]
+	jobConfig := &pb_job.JobConfig{
+		RespoolID: &peloton.ResourcePoolID{
+			Value: "my-respool-id",
+		},
+	}
+
+	mockJobStore.EXPECT().GetJobConfig(context.Background(), jobID, uint64(0)).AnyTimes().Return(jobConfig, nil)
+
+	before := time.Now()
+
+	assert.NoError(t, m.RunTaskAction(context.Background(), jobID, uint32(0), NoAction))
+
+	la, lt := tt.LastAction()
+	assert.Equal(t, NoAction, la)
+	assert.True(t, lt.After(before))
+
+	mockTaskStore.EXPECT().GetTaskRuntime(context.Background(), gomock.Any(), gomock.Any()).Return(&pb_task.RuntimeInfo{
+		ConfigVersion: 0,
+	}, nil)
+	assert.NoError(t, m.RunTaskAction(context.Background(), jobID, uint32(0), ReloadRuntime))
 }
 
 func TestUpdateTaskRuntimeWithError(t *testing.T) {

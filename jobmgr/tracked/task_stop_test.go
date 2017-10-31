@@ -13,6 +13,7 @@ import (
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
@@ -33,7 +34,7 @@ func TestTaskStop(t *testing.T) {
 		},
 	}
 
-	assert.EqualError(t, tt.RunAction(context.Background(), StopAction), "missing task runtime")
+	assert.EqualError(t, tt.stop(context.Background()), "missing task runtime")
 
 	taskID := &mesos_v1.TaskID{
 		Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
@@ -44,7 +45,7 @@ func TestTaskStop(t *testing.T) {
 	}).Return(nil, nil)
 
 	tt.runtime = &pb_task.RuntimeInfo{MesosTaskId: taskID}
-	assert.NoError(t, tt.RunAction(context.Background(), StopAction))
+	assert.NoError(t, tt.stop(context.Background()))
 }
 
 func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
@@ -53,11 +54,13 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 
 	mockResmgr := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockTaskStore := storage_mocks.NewMockTaskStore(ctrl)
+	jobstoreMock := storage_mocks.NewMockJobStore(ctrl)
 
 	m := &manager{
 		jobs:          map[string]*job{},
 		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
 		taskStore:     mockTaskStore,
+		jobStore:      jobstoreMock,
 		resmgrClient:  mockResmgr,
 		mtx:           newMetrics(tally.NoopScope),
 		running:       true,
@@ -91,7 +94,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	mockTaskStore.EXPECT().
 		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, runtime).Return(nil)
 
-	assert.NoError(t, tt.RunAction(context.Background(), StopAction))
+	assert.NoError(t, tt.stop(context.Background()))
 
 	// Test that it's rescheduled immediatly as we updated the state.
 	assert.Equal(t, tt, tt.job.m.WaitForScheduledTask(nil))

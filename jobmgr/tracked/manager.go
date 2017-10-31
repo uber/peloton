@@ -2,12 +2,11 @@ package tracked
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-	"go.uber.org/yarpc"
-
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -15,7 +14,10 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
+
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
 const (
@@ -49,6 +51,10 @@ type Manager interface {
 	// WaitForScheduledTask blocked until a scheduled task is ready or the
 	// stopChan is closed.
 	WaitForScheduledTask(stopChan <-chan struct{}) Task
+
+	// RunTaskAction runs the action on the task id, maintaining the job SLA.
+	// As a consequence of the SLA, the action may be buffered, or ignored.
+	RunTaskAction(ctx context.Context, id *peloton.JobID, instanceID uint32, action TaskAction) error
 
 	// Start syncs jobs and tasks from DB, starts emitting metrics.
 	Start()
@@ -103,14 +109,14 @@ type manager struct {
 }
 
 func (m *manager) GetJob(id *peloton.JobID) Job {
+	return m.getJob(id)
+}
+
+func (m *manager) getJob(id *peloton.JobID) *job {
 	m.RLock()
 	defer m.RUnlock()
 
-	if j, ok := m.jobs[id.GetValue()]; ok {
-		return j
-	}
-
-	return nil
+	return m.jobs[id.GetValue()]
 }
 
 func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) {
@@ -121,7 +127,18 @@ func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_t
 		return
 	}
 
-	j := m.addJob(jobID)
+	cv := UnknownVersion
+	if runtime != nil {
+		cv = runtime.ConfigVersion
+	}
+
+	// TODO: the job state should actually be set and maintained by the job GSE.
+	// We set here a default state in case this is the first time we see the
+	// job.
+	j := m.addJob(jobID, &jobState{
+		state:         pb_job.JobState_UNKNOWN,
+		configVersion: cv,
+	})
 	t := j.setTask(instanceID, runtime)
 	m.taskScheduler.schedule(t, time.Now())
 }
@@ -171,11 +188,88 @@ func (m *manager) WaitForScheduledTask(stopChan <-chan struct{}) Task {
 	return r.(*task)
 }
 
+func (m *manager) RunTaskAction(ctx context.Context, id *peloton.JobID, instanceID uint32, action TaskAction) error {
+	defer m.mtx.scope.Tagged(map[string]string{"action": string(action)}).Timer("run_duration").Start().Stop()
+
+	log.WithFields(log.Fields{
+		"jobID":      id.Value,
+		"instanceID": instanceID,
+		"action":     action,
+	}).Info("RunTaskAction")
+
+	j := m.getJob(id)
+	if j == nil {
+		return nil
+	}
+
+	var err error
+	switch action {
+	case StartAction:
+		err = j.tryStartTask(ctx, instanceID)
+	default:
+		err = m.runTaskAction(ctx, id, instanceID, action)
+	}
+
+	return err
+}
+
+func (m *manager) runTaskAction(ctx context.Context, id *peloton.JobID, instanceID uint32, action TaskAction) error {
+	j := m.getJob(id)
+	if j == nil {
+		return nil
+	}
+
+	j.Lock()
+	t := j.tasks[instanceID]
+	j.Unlock()
+	if t == nil {
+		return nil
+	}
+
+	t.Lock()
+	t.lastAction = action
+	t.lastActionTime = time.Now()
+	t.Unlock()
+
+	cs := t.CurrentState()
+	gs := t.GoalState()
+	log.WithField("action", action).
+		WithField("current_state", cs.State.String()).
+		WithField("current_config", cs.ConfigVersion).
+		WithField("goal_state", gs.State.String()).
+		WithField("goal_version", gs.ConfigVersion).
+		WithField("job_id", t.job.id.GetValue()).
+		WithField("instance_id", t.id).
+		Info("running action for task")
+
+	var err error
+	switch action {
+	case NoAction:
+
+	case UntrackAction:
+		m.clearTask(t)
+
+	case ReloadRuntime:
+		_, err = t.job.m.GetTaskRuntime(ctx, t.job.id, t.id)
+
+	case InitializeAction:
+		err = t.initialize(ctx)
+
+	case StopAction:
+		err = t.stop(ctx)
+
+	default:
+		err = fmt.Errorf("no command configured for running task action `%v`", action)
+	}
+
+	return err
+}
+
 // addJob to the manager, if missing. The manager lock must be hold when called.
-func (m *manager) addJob(id *peloton.JobID) *job {
+func (m *manager) addJob(id *peloton.JobID, state *jobState) *job {
 	j, ok := m.jobs[id.GetValue()]
 	if !ok {
-		j = newJob(id, m)
+		j = newJob(id, m, state)
 		m.jobs[id.GetValue()] = j
 	}
 

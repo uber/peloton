@@ -1,14 +1,10 @@
 package tracked
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"math"
 	"sync"
 	"time"
-
-	log "github.com/sirupsen/logrus"
 
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
@@ -16,7 +12,7 @@ import (
 const (
 	// UnknownVersion is used by the goalstate engine, when either the current
 	// or desired config version is unknown.
-	UnknownVersion = math.MaxUint64
+	UnknownVersion uint64 = math.MaxUint64
 )
 
 // Task tracked by the system, serving as a best effort view of what's stored
@@ -36,9 +32,6 @@ type Task interface {
 
 	// LastAction performed by the task, as well as when it was performed.
 	LastAction() (TaskAction, time.Time)
-
-	// RunAction on the task.
-	RunAction(ctx context.Context, action TaskAction) error
 }
 
 // State of a task. This encapsulate the actual state.
@@ -129,54 +122,6 @@ func (t *task) LastAction() (TaskAction, time.Time) {
 	defer t.RUnlock()
 
 	return t.lastAction, t.lastActionTime
-}
-
-func (t *task) RunAction(ctx context.Context, action TaskAction) error {
-	defer t.job.m.mtx.scope.Tagged(map[string]string{"action": string(action)}).Timer("run_duration").Start().Stop()
-
-	// TODO: Move to Manager, such that the following holds:
-	// Take job lock only while we evaluate action. That ensure we have a
-	// consistent view across the entire job, while we decide if we can apply
-	// the action.
-
-	t.Lock()
-	t.lastAction = action
-	t.lastActionTime = time.Now()
-	t.Unlock()
-
-	log.WithField("action", action).
-		WithField("current_state", t.CurrentState().State.String()).
-		WithField("current_config", t.CurrentState().ConfigVersion).
-		WithField("goal_state", t.GoalState().State.String()).
-		WithField("goal_version", t.GoalState().ConfigVersion).
-		WithField("job_id", t.job.id.GetValue()).
-		WithField("instance_id", t.id).
-		Info("running action for task")
-
-	var err error
-	switch action {
-	case NoAction:
-
-	case ReloadRuntime:
-		_, err = t.job.m.GetTaskRuntime(ctx, t.job.id, t.id)
-
-	case UntrackAction:
-		t.job.m.clearTask(t)
-
-	case InitializeAction:
-		err = t.initialize(ctx)
-
-	case StartAction:
-		err = t.start(ctx)
-
-	case StopAction:
-		err = t.stop(ctx)
-
-	default:
-		err = fmt.Errorf("no command configured for running task action `%v`", action)
-	}
-
-	return err
 }
 
 // getRuntime returns a shallow copy of the runtime, or an error if's not set.

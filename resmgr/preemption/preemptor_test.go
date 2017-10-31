@@ -2,27 +2,26 @@ package preemption
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
+	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
-	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"context"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"

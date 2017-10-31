@@ -3,6 +3,7 @@ package tracked
 import (
 	"sync"
 
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
@@ -17,10 +18,18 @@ type Job interface {
 	GetTask(id uint32) Task
 }
 
-func newJob(id *peloton.JobID, m *manager) *job {
+// State of a job. This encapsulate the actual state.
+type jobState struct {
+	state         pb_job.JobState
+	configVersion uint64
+	sla           *pb_job.SlaConfig
+}
+
+func newJob(id *peloton.JobID, m *manager, state *jobState) *job {
 	return &job{
 		id:    id,
 		m:     m,
+		state: state,
 		tasks: map[uint32]*task{},
 	}
 }
@@ -33,6 +42,8 @@ type job struct {
 
 	// TODO: Use list as we expect to always track tasks 0..n-1.
 	tasks map[uint32]*task
+	// TODO: Maintain the state from Mesos events.
+	state *jobState
 }
 
 func (j *job) ID() *peloton.JobID {

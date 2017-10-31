@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	job2 "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
@@ -22,7 +22,7 @@ import (
 	"github.com/uber-go/tally"
 )
 
-func TestTaskStartStateless(t *testing.T) {
+func TestGangTaskStartStateless(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -51,7 +51,7 @@ func TestTaskStartStateless(t *testing.T) {
 		runtime: &pb_task.RuntimeInfo{},
 	}
 
-	jobConfig := &job2.JobConfig{
+	jobConfig := &pb_job.JobConfig{
 		RespoolID: &peloton.ResourcePoolID{
 			Value: "my-respool-id",
 		},
@@ -66,21 +66,30 @@ func TestTaskStartStateless(t *testing.T) {
 	}
 
 	mockTaskStore.EXPECT().
-		GetTaskConfig(context.Background(), tt.job.id, tt.id, tt.job.state.configVersion).Return(taskInfo.Config, nil)
+		GetTasksForJobByRange(context.Background(), tt.job.id, &pb_task.InstanceRange{
+			From: tt.id,
+			To:   tt.id + 2,
+		}).Return(map[uint32]*pb_task.TaskInfo{
+		tt.id:     taskInfo,
+		tt.id + 1: taskInfo,
+	}, nil)
 
 	mockJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig.GetSla()),
+		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo, taskInfo}, jobConfig.GetSla()),
 		ResPool: jobConfig.RespoolID,
 	}
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
 
-	assert.NoError(t, tt.start(context.Background()))
+	assert.NoError(t, tt.job.startGang(context.Background(), &pb_task.InstanceRange{
+		From: tt.id,
+		To:   tt.id + 2,
+	}))
 }
 
-func TestTaskStartStatefullWithVolume(t *testing.T) {
+func TestGangTaskStartStatefullWithVolume(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -97,9 +106,6 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 			id: &peloton.JobID{
 				Value: "my-job-id",
 			},
-			state: &jobState{
-				configVersion: 0,
-			},
 			m: &manager{
 				hostmgrClient: mockHost,
 				jobStore:      mockJobStore,
@@ -130,7 +136,13 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 	}
 
 	mockTaskStore.EXPECT().
-		GetTaskConfig(context.Background(), tt.job.id, tt.id, tt.job.state.configVersion).Return(taskInfo.Config, nil)
+		GetTasksForJobByRange(context.Background(), tt.job.id, &pb_task.InstanceRange{
+			From: tt.id,
+			To:   tt.id + 2,
+		}).Return(map[uint32]*pb_task.TaskInfo{
+		tt.id:     taskInfo,
+		tt.id + 1: taskInfo,
+	}, nil)
 	mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(&volume.PersistentVolumeInfo{
 		State: volume.VolumeState_CREATED,
@@ -138,10 +150,13 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 	mockTaskLauncher.EXPECT().
 		LaunchTaskWithReservedResource(gomock.Any(), taskInfo).Return(nil)
 
-	assert.NoError(t, tt.start(context.Background()))
+	assert.NoError(t, tt.job.startGang(context.Background(), &pb_task.InstanceRange{
+		From: tt.id,
+		To:   tt.id + 2,
+	}))
 }
 
-func TestTaskStartStatefullWithoutVolume(t *testing.T) {
+func TestGangTaskStartStatefullWithoutVolume(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockHost := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockJobStore := storage_mocks.NewMockJobStore(ctrl)
@@ -179,7 +194,7 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 		},
 	}
 
-	jobConfig := &job2.JobConfig{
+	jobConfig := &pb_job.JobConfig{
 		RespoolID: &peloton.ResourcePoolID{
 			Value: "my-respool-id",
 		},
@@ -194,17 +209,28 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 	}
 
 	mockTaskStore.EXPECT().
-		GetTaskConfig(context.Background(), tt.job.id, tt.id, tt.job.state.configVersion).Return(taskInfo.Config, nil)
+		GetTasksForJobByRange(context.Background(), tt.job.id, &pb_task.InstanceRange{
+			From: tt.id,
+			To:   tt.id + 2,
+		}).Return(map[uint32]*pb_task.TaskInfo{
+		tt.id:     taskInfo,
+		tt.id + 1: taskInfo,
+	}, nil)
 	mockJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), tt.job.id, uint64(0)).Return(jobConfig, nil)
 	mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(nil, &storage.VolumeNotFoundError{})
+	mockVolumeStore.EXPECT().
+		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(nil, &storage.VolumeNotFoundError{})
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig.GetSla()),
+		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo, taskInfo}, jobConfig.GetSla()),
 		ResPool: jobConfig.RespoolID,
 	}
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
 
-	assert.NoError(t, tt.start(context.Background()))
+	assert.NoError(t, tt.job.startGang(context.Background(), &pb_task.InstanceRange{
+		From: tt.id,
+		To:   tt.id + 2,
+	}))
 }
