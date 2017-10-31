@@ -6,10 +6,6 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -19,11 +15,15 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
+
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
-// Declare a Now function so that we can mock it in unit tests.
-var now = time.Now
+// NowFunc returns time.Time so that we can mock it in unit tests.
+type NowFunc func() time.Time
 
 // StatusUpdate is the interface for task status updates
 type StatusUpdate interface {
@@ -49,6 +49,7 @@ type statusUpdate struct {
 	listeners      []Listener
 	rootCtx        context.Context
 	metrics        *Metrics
+	now            NowFunc
 }
 
 // Singleton task status updater
@@ -77,6 +78,7 @@ func InitTaskStatusUpdate(
 			eventClients:   make(map[string]*eventstream.Client),
 			trackedManager: trackedManager,
 			listeners:      listeners,
+			now:            time.Now,
 		}
 		// TODO: add config for BucketEventProcessor
 		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
@@ -247,11 +249,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	// Update task start and completion timestamps
 	switch runtime.State {
 	case pb_task.TaskState_RUNNING:
-		runtime.StartTime = now().UTC().Format(time.RFC3339Nano)
+		runtime.StartTime = p.now().UTC().Format(time.RFC3339Nano)
 	case pb_task.TaskState_SUCCEEDED,
 		pb_task.TaskState_FAILED,
 		pb_task.TaskState_KILLED:
-		runtime.CompletionTime = now().UTC().Format(time.RFC3339Nano)
+		runtime.CompletionTime = p.now().UTC().Format(time.RFC3339Nano)
 	}
 
 	// Persist error message to help end user figure out root cause

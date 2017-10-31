@@ -6,22 +6,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
-	"github.com/pborman/uuid"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
-
 	event_mocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
+
+	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 const (
@@ -84,6 +83,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 		trackedManager: suite.mockTrackedManager,
 		rootCtx:        context.Background(),
 		metrics:        NewMetrics(suite.testScope.SubScope("status_updater")),
+		now:            nowMock,
 	}
 }
 
@@ -148,7 +148,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 			Return(nil),
 	)
 
-	now = nowMock
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 
 	suite.Equal(
@@ -170,7 +169,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameState() {
 			GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil),
 	)
 
-	now = nowMock
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	suite.Equal(
 		int64(0),
@@ -245,7 +243,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 			Return(nil),
 	)
 
-	now = nowMock
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
