@@ -1,0 +1,19 @@
+name: TestPelotonLargeGangJob_integration
+owningTeam: peloton
+description: "A dummy test job with a too large gang requirement for peloton integration tests"
+instanceCount: 110
+sla:
+  minimumRunningInstances: 100
+defaultConfig:
+  resource:
+    # Keep resource limits not too low to ensure gang placement cannot be done
+    # in pcluster (minimumRunningInstances * cpuLimit > agentCount * cores)
+    cpuLimit: 1.0
+    memLimitMb: 24.0
+    diskLimitMb: 24.0
+    fdLimit: 2
+  healthCheck: null
+  ports: []
+  command:
+    shell: true
+    value: 'false'
