@@ -19,7 +19,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	"code.uber.internal/infra/peloton/common/taskconfig"
 
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
@@ -190,24 +189,14 @@ func (h *serviceHandler) createAndEnqueueTasks(
 		return err
 	}
 
-	tasks := make([]*task.TaskInfo, instances)
 	runtimes := make([]*task.RuntimeInfo, instances)
 	for i := uint32(0); i < instances; i++ {
-		runtime := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
-		runtimes[i] = runtime
-
-		// TODO: Remove once tracker can handle enqueueing of gangs.
-		tasks[i] = &task.TaskInfo{
-			JobId:      jobID,
-			InstanceId: i,
-			Runtime:    runtime,
-			Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
-		}
+		runtimes[i] = jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
 	}
 
 	// TODO: use the username of current session for createBy param
 	err := h.taskStore.CreateTaskRuntimes(ctx, jobID, runtimes, "peloton")
-	nTasks := int64(len(tasks))
+	nTasks := int64(len(runtimes))
 	if err != nil {
 		log.Errorf("Failed to create tasks (%d) for job %v: %v",
 			nTasks, jobID.Value, err)
@@ -216,12 +205,8 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	}
 	h.metrics.TaskCreate.Inc(nTasks)
 
-	err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig.GetRespoolID(), jobConfig.GetSla(), h.resmgrClient)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.Value).
-			Error("Failed to enqueue tasks to RM")
-		return err
+	for i := uint32(0); i < instances; i++ {
+		h.trackedManager.SetTask(jobID, i, runtimes[i])
 	}
 
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
