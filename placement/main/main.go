@@ -73,6 +73,12 @@ var (
 		Envar("CASSANDRA_STORE").
 		String()
 
+	cassandraPort = app.Flag(
+		"cassandra-port", "Cassandra port to connect").
+		Default("0").
+		Envar("CASSANDRA_PORT").
+		Int()
+
 	httpPort = app.Flag(
 		"http-port",
 		"Placement engine HTTP port (placement.http_port override) "+
@@ -148,6 +154,10 @@ func main() {
 
 	if *datacenter != "" {
 		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
+	}
+
+	if *cassandraPort != 0 {
+		cfg.Storage.Cassandra.CassandraConn.Port = *cassandraPort
 	}
 
 	log.WithField("config", cfg).Info("Loaded Placement Engine config")

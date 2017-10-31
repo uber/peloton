@@ -9,6 +9,7 @@ fi
 app="${APP}"
 env="${ENVIRONMENT:-development}"
 cfgdir="${CONFIG_DIR:-/etc/peloton}"
+secretcfgdir="${SECRET_CONFIG_DIR}"
 dir="${BUILD_DIR:-/go/src/code.uber.internal/infra/peloton}"
 # make sure to cd into the BUILD_DIR, because aurora chainses us by changing into
 # the sandbox
@@ -16,6 +17,12 @@ cd "${dir}"
 
 if [[ $app == "client" ]] ; then
   exec peloton "$@"
+elif [ ! -z "$secretcfgdir" ]; then
+  exec "peloton-${app}" \
+    -c "${cfgdir}/${app}/base.yaml" \
+    -c "${cfgdir}/${app}/${env}.yaml" \
+    -c "/langley/udocker/peloton/current/secrets.yaml" \
+    "$@"
 else
   exec "peloton-${app}" \
     -c "${cfgdir}/${app}/base.yaml" \

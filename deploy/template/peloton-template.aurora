@@ -13,6 +13,7 @@ class Profile(Struct):
   use_cassandra = Default(Boolean, 'false')
   cassandra_hosts = Default(String, '')
   cassandra_store = Default(String, '')
+  cassandra_port = Default(Integer, 0)
   m3_hostport = Default(String, '')
   m3_env = Default(String, '')
 
@@ -62,6 +63,7 @@ JOB_TEMPLATE = Service(
         Parameter(name='env', value='USE_CASSANDRA={{profile.use_cassandra}}'),
         Parameter(name='env', value='CASSANDRA_HOSTS={{profile.cassandra_hosts}}'),
         Parameter(name='env', value='CASSANDRA_STORE={{profile.cassandra_store}}'),
+        Parameter(name='env', value='CASSANDRA_PORT={{profile.cassandra_port}}'),
         Parameter(name='env', value='CLUSTER={{profile.cluster}}'),
         Parameter(name='env', value='M3_HOSTPORT={{profile.m3_hostport}}'),
         Parameter(name='env', value='M3_ENV={{profile.m3_env}}'),
