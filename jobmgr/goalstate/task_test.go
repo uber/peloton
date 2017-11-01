@@ -227,6 +227,7 @@ func TestEngineProcessTask(t *testing.T) {
 
 	e := &engine{
 		trackedManager: managerMock,
+		metrics:        NewMetrics(tally.NoopScope),
 	}
 	e.cfg.normalize()
 

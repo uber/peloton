@@ -123,14 +123,17 @@ func (e *engine) runTaskAction(action tracked.TaskAction, t tracked.Task) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), _defaultTaskActionTimeout)
 	defer cancel()
 
+	e.metrics.TaskActions.Inc(1)
+
 	err := e.trackedManager.RunTaskAction(ctx, t.Job().ID(), t.ID(), action)
 	if err != nil {
+		e.metrics.TaskActionErrors.Inc(1)
 		log.
 			WithField("job_id", t.Job().ID().GetValue()).
 			WithField("instance_id", t.ID()).
 			WithField("action", action).
 			WithError(err).
-			Error("failed to execute goalstate action")
+			Info("failed to execute goalstate action")
 	}
 
 	return err == nil
