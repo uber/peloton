@@ -119,6 +119,13 @@ var (
 		Default("").
 		Envar("DATACENTER").
 		String()
+
+	mesosSecretFile = app.Flag(
+		"mesos-secret-file",
+		"Secret file containing one-liner password to connect to Mesos master").
+		Default("").
+		Envar("MESOS_SECRET_FILE").
+		String()
 )
 
 func main() {
@@ -221,7 +228,7 @@ func main() {
 
 	jobStore, taskStore, _, _, frameworkInfoStore, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
 
-	authHeader, err := mesos.GetAuthHeader(&cfg.Mesos)
+	authHeader, err := mesos.GetAuthHeader(&cfg.Mesos, *mesosSecretFile)
 	if err != nil {
 		log.WithError(err).Fatal("Cannot initialize auth header")
 	}

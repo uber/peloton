@@ -377,6 +377,7 @@ def start_and_wait(application_name, container_name, ports):
                 host_ip,
                 config['local_zk_port']
             ),
+            'MESOS_SECRET_FILE=/files/hostmgr_mesos_secret',
             'CASSANDRA_HOSTS={0}'.format(
                 host_ip,
             ),
