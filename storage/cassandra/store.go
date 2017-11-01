@@ -1554,7 +1554,7 @@ func (s *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePool
 func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.ResourcePoolConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("respool_id", "owner", "respool_config", "creation_time", "update_time").From(resPoolsTable)
-	
+
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetAllResourcePools, err=%v", err)

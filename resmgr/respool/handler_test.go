@@ -4,17 +4,18 @@ import (
 	"context"
 	"testing"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+
+	"code.uber.internal/infra/peloton/common"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
 type resPoolHandlerTestSuite struct {
@@ -198,7 +199,7 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolEmptyID(
 
 	suite.NoError(err)
 	suite.NotNil(getResp)
-	suite.Equal(RootResPoolID, getResp.Poolinfo.Id.Value)
+	suite.Equal(common.RootResPoolID, getResp.Poolinfo.Id.Value)
 	suite.Nil(getResp.Poolinfo.Parent)
 }
 

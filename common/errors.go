@@ -22,5 +22,5 @@ func IsTransientError(err error) bool {
 		return true
 	}
 
-  return false
+	return false
 }

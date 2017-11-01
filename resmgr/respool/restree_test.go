@@ -9,25 +9,22 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
-
-	"github.com/golang/mock/gomock"
-	"github.com/uber-go/tally"
-
-	"go.uber.org/yarpc"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+
 	"code.uber.internal/infra/peloton/common"
-
-	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
 type resTreeTestSuite struct {
@@ -114,7 +111,7 @@ func (suite *resTreeTestSuite) getResourceConfig() []*respool.ResourceConfig {
 // Returns resource pools
 func (suite *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
 
-	rootID := peloton.ResourcePoolID{Value: RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*respool.ResourcePoolConfig{

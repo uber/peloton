@@ -5,14 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pborman/uuid"
-	er "github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-
-	"go.uber.org/yarpc"
-
-	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
+	api_errors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
@@ -20,14 +13,33 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/common"
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/storage"
+
+	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
-// InitServiceHandler initalizes the job manager
+const (
+	_defaultRPCTimeout = 10 * time.Second
+)
+
+var (
+	errNullResourcePoolID   = errors.New("resource pool ID is null")
+	errResourcePoolNotFound = errors.New("resource pool not found")
+	errRootResourcePoolID   = errors.New("cannot submit jobs to the `root` resource pool")
+	errNonLeafResourcePool  = errors.New("cannot submit jobs to a non leaf " +
+		"resource pool")
+)
+
+// InitServiceHandler initializes the job manager
 func InitServiceHandler(
 	d *yarpc.Dispatcher,
 	parent tally.Scope,
@@ -348,7 +360,7 @@ func (h *serviceHandler) Get(
 			Info("GetJobConfig failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
-				NotFound: &errors.JobNotFound{
+				NotFound: &api_errors.JobNotFound{
 					Id:      req.Id,
 					Message: err.Error(),
 				},
@@ -363,7 +375,7 @@ func (h *serviceHandler) Get(
 			Error("Get jobRuntime failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
-				GetRuntimeFail: &errors.JobGetRuntimeFail{
+				GetRuntimeFail: &api_errors.JobGetRuntimeFail{
 					Id:      req.Id,
 					Message: err.Error(),
 				},
@@ -392,7 +404,7 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 		log.WithError(err).Error("Query job failed with error")
 		return &job.QueryResponse{
 			Error: &job.QueryResponse_Error{
-				Err: &errors.UnknownError{
+				Err: &api_errors.UnknownError{
 					Message: err.Error(),
 				},
 			},
@@ -436,7 +448,7 @@ func (h *serviceHandler) Delete(
 		log.Errorf("Delete job failed with error %v", err)
 		return &job.DeleteResponse{
 			Error: &job.DeleteResponse_Error{
-				NotFound: &errors.JobNotFound{
+				NotFound: &api_errors.JobNotFound{
 					Id:      req.Id,
 					Message: err.Error(),
 				},
@@ -454,8 +466,13 @@ func (h *serviceHandler) validateResourcePool(
 ) error {
 	ctx, cancelFunc := context.WithTimeout(h.rootCtx, 10*time.Second)
 	defer cancelFunc()
+
 	if respoolID == nil {
-		return er.New("Resource Pool Id is null")
+		return errNullResourcePoolID
+	}
+
+	if respoolID.GetValue() == common.RootResPoolID {
+		return errRootResourcePoolID
 	}
 
 	var request = &respool.GetRequest{
@@ -463,26 +480,23 @@ func (h *serviceHandler) validateResourcePool(
 	}
 	response, err := h.respoolClient.GetResourcePool(ctx, request)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error":     err,
-			"respoolID": respoolID.Value,
-		}).Error("Failed to get Resource Pool")
 		return err
 	}
+
 	if response.GetError() != nil {
-		log.WithFields(log.Fields{
-			"error":     err,
-			"respoolID": respoolID.Value,
-		}).Info("Resource Pool Not Found")
-		return er.New(response.Error.String())
+		return errResourcePoolNotFound
 	}
 
 	if response.GetPoolinfo() != nil && response.GetPoolinfo().Id != nil {
 		if response.GetPoolinfo().Id.Value != respoolID.Value {
-			return er.New("Resource Pool Not Found")
+			return errResourcePoolNotFound
 		}
 	} else {
-		return er.New("Resource Pool Not Found")
+		return errResourcePoolNotFound
+	}
+
+	if len(response.GetPoolinfo().GetChildren()) > 0 {
+		return errNonLeafResourcePool
 	}
 
 	return nil

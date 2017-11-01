@@ -93,7 +93,7 @@ func (suite *recoveryTestSuite) SetupTest() {
 
 // Returns resource pools
 func (suite *recoveryTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
-	rootID := peloton.ResourcePoolID{Value: rp.RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*respool.ResourcePoolConfig{

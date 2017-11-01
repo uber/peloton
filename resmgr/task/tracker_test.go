@@ -4,10 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-
-	"github.com/uber-go/tally"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	resp "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -17,6 +13,9 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
+
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 type TrackerTestSuite struct {
@@ -46,7 +45,7 @@ func (suite *TrackerTestSuite) SetupTest() {
 }
 
 func (suite *TrackerTestSuite) addTasktotracker(task *resmgr.Task) {
-	rootID := peloton.ResourcePoolID{Value: respool.RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := resp.SchedulingPolicy_PriorityFIFO
 	respoolConfig := &resp.ResourcePoolConfig{
 		Name:      "respool-1",

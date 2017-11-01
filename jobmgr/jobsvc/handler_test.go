@@ -5,12 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/golang/mock/gomock"
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -20,10 +14,17 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
+	"code.uber.internal/infra/peloton/common"
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
+
+	"github.com/golang/mock/gomock"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 const (
@@ -167,28 +168,72 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	suite.Error(err)
 }
 
-func (suite *JobHandlerTestSuite) TestValidateResourcePool() {
+func (suite *JobHandlerTestSuite) TestValidateResourcePool_Failure() {
+
+	tt := []struct {
+		respoolID          string
+		getRespoolResponse *respool.GetResponse
+		getRespoolError    error
+		errMsg             string
+	}{
+		{
+			// tests resource pool not found in resource manager
+			respoolID:          "respool11",
+			getRespoolResponse: nil,
+			getRespoolError:    errors.New("resource pool not found"),
+			errMsg:             "resource pool not found",
+		},
+		{
+			// tests submitting job to root resource pool
+			respoolID:          common.RootResPoolID,
+			getRespoolResponse: nil,
+			getRespoolError:    nil,
+			errMsg:             "cannot submit jobs to the `root` resource pool",
+		},
+		{
+			// tests submitting job to a non leaf resource pool
+			respoolID: "respool11",
+			getRespoolResponse: &respool.GetResponse{
+				Poolinfo: &respool.ResourcePoolInfo{
+					Id: &peloton.ResourcePoolID{
+						Value: "respool11",
+					},
+					Children: []*peloton.ResourcePoolID{
+						{
+							Value: "respool111",
+						},
+					},
+				},
+			},
+			getRespoolError: nil,
+			errMsg:          "cannot submit jobs to a non leaf resource pool",
+		},
+	}
+
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
-	suite.handler.respoolClient = mockRespoolClient
-	respoolID := &peloton.ResourcePoolID{
-		Value: "respool11",
-	}
-	var request = &respool.GetRequest{
-		Id: respoolID,
-	}
+	for _, t := range tt {
+		mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
+		suite.handler.respoolClient = mockRespoolClient
 
-	gomock.InOrder(
+		respoolID := &peloton.ResourcePoolID{
+			Value: t.respoolID,
+		}
+		var request = &respool.GetRequest{
+			Id: respoolID,
+		}
+
 		mockRespoolClient.EXPECT().
 			GetResourcePool(
 				gomock.Any(),
 				gomock.Eq(request)).
-			Return(nil, errors.New("Respool Not found")),
-	)
-	errResponse := suite.handler.validateResourcePool(respoolID)
-	suite.Error(errResponse)
+			Return(t.getRespoolResponse, t.getRespoolError).AnyTimes()
+
+		errResponse := suite.handler.validateResourcePool(respoolID)
+		suite.Error(errResponse)
+		suite.Equal(t.errMsg, errResponse.Error())
+	}
 }
 
 func (suite *JobHandlerTestSuite) TestJobScaleUp() {

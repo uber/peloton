@@ -7,15 +7,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-
-	"github.com/uber-go/tally"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/storage"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
 )
 
 // Tree defines the interface for a Resource Pool Tree
@@ -152,13 +152,13 @@ func (t *tree) initTree(
 	}
 
 	// initialize root resource pool config
-	resPoolConfigs[RootResPoolID] = &respool.ResourcePoolConfig{
-		Name:   RootResPoolID,
+	resPoolConfigs[common.RootResPoolID] = &respool.ResourcePoolConfig{
+		Name:   common.RootResPoolID,
 		Parent: nil,
 		Policy: respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	root, err := t.buildTree(RootResPoolID, nil, resPoolConfigs)
+	root, err := t.buildTree(common.RootResPoolID, nil, resPoolConfigs)
 	if err != nil {
 		return nil, errors.Wrap(
 			err,

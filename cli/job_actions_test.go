@@ -273,7 +273,7 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 				Limit:  10,
 				Offset: 0,
 				OrderBy: []*query.OrderBy{
-					&query.OrderBy{
+					{
 						Order:    query.OrderBy_DESC,
 						Property: &query.PropertyPath{Value: "creation_time"},
 					},

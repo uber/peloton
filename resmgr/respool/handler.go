@@ -5,16 +5,17 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
+	"code.uber.internal/infra/peloton/storage"
+
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
-
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-	"code.uber.internal/infra/peloton/storage"
 )
 
 const (
@@ -211,7 +212,7 @@ func (h *serviceHandler) GetResourcePool(
 		//TODO temporary solution to unblock,
 		// fix with new naming convention
 		resPoolID = &peloton.ResourcePoolID{
-			Value: RootResPoolID,
+			Value: common.RootResPoolID,
 		}
 	}
 
