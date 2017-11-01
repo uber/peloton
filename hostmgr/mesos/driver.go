@@ -282,7 +282,7 @@ func (d *schedulerDriver) GetContentEncoding() string {
 }
 
 // GetAuthHeader returns necessary auth header used for HTTP request.
-func GetAuthHeader(config *Config) (http.Header, error) {
+func GetAuthHeader(config *Config, secretPath string) (http.Header, error) {
 	header := http.Header{}
 	username := config.Framework.Principal
 	if len(username) == 0 {
@@ -290,17 +290,17 @@ func GetAuthHeader(config *Config) (http.Header, error) {
 		return header, nil
 	}
 
-	if len(config.SecretFile) == 0 {
+	if len(secretPath) == 0 {
 		log.Info("No secret file is provided to framework")
 		return header, nil
 	}
 
 	log.WithFields(log.Fields{
-		"secret_file": config.SecretFile,
+		"secret_path": secretPath,
 		"principal":   username,
 	}).Info("Loading Mesos Authorization header from secret file")
 
-	buf, err := ioutil.ReadFile(config.SecretFile)
+	buf, err := ioutil.ReadFile(secretPath)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +310,7 @@ func GetAuthHeader(config *Config) (http.Header, error) {
 	header.Add("Authorization", "Basic "+basicAuth)
 
 	log.WithFields(log.Fields{
-		"secret_file": config.SecretFile,
+		"secret_path": secretPath,
 		"principal":   username,
 	}).Info("Mesos Authorization header loaded for principal")
 	return header, nil

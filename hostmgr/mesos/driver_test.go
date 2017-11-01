@@ -84,12 +84,11 @@ func (suite *schedulerDriverTestSuite) TestGetAuthHeader() {
 		},
 	}
 
-	header, err := GetAuthHeader(&config)
+	header, err := GetAuthHeader(&config, "")
 	suite.NoError(err)
 	suite.Empty(header.Get("Authorization"))
 
-	config.SecretFile = tmpfile.Name()
-	header, err = GetAuthHeader(&config)
+	header, err = GetAuthHeader(&config, tmpfile.Name())
 	suite.NoError(err)
 	encoded := "Basic dGVzdC1wcmluY2lwYWw6dGVzdC1zZWNyZXQ="
 	suite.Equal(encoded, header.Get("Authorization"))
