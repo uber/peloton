@@ -145,7 +145,7 @@ func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	defer c.isRunning.Swap(false)
 
 	rootResPool, err := c.resPoolTree.Get(&peloton.ResourcePoolID{
-		Value: respool.RootResPoolID,
+		Value: common.RootResPoolID,
 	})
 	if err != nil {
 		log.WithError(err)

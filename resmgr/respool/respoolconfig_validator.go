@@ -6,6 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
+	"code.uber.internal/infra/peloton/common"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
@@ -242,8 +243,8 @@ func ValidateResourcePool(resTree Tree, resourcePoolConfigData ResourcePoolConfi
 	}
 
 	// root override check
-	if ID.Value == RootResPoolID {
-		return errors.Errorf("cannot override %s", RootResPoolID)
+	if ID.Value == common.RootResPoolID {
+		return errors.Errorf("cannot override %s", common.RootResPoolID)
 	}
 
 	// use default if scheduling policy is SchedulingPolicy_UNKNOWN (not set)

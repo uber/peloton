@@ -8,6 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
+	"code.uber.internal/infra/peloton/common"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -93,12 +94,12 @@ func (suite *resPoolConfigValidatorSuite) getResourceConfig() []*pb_respool.Reso
 // Returns resource pools
 func (suite *resPoolConfigValidatorSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 
-	rootID := peloton.ResourcePoolID{Value: RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
 	return map[string]*pb_respool.ResourcePoolConfig{
-		RootResPoolID: {
-			Name:      RootResPoolID,
+		common.RootResPoolID: {
+			Name:      common.RootResPoolID,
 			Parent:    nil,
 			Resources: suite.getResourceConfig(),
 			Policy:    policy,
@@ -209,7 +210,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 }
 
 func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateOverrideRoot() {
-	mockResourcePoolID := &peloton.ResourcePoolID{Value: RootResPoolID}
+	mockResourcePoolID := &peloton.ResourcePoolID{Value: common.RootResPoolID}
 	mockParentPoolID := &peloton.ResourcePoolID{Value: "respool11"}
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
@@ -239,7 +240,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 
 	err = rv.Validate(resourcePoolConfigData)
 
-	suite.EqualError(err, fmt.Sprintf("cannot override %s", RootResPoolID))
+	suite.EqualError(err, fmt.Sprintf("cannot override %s", common.RootResPoolID))
 }
 
 func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateCycle() {
@@ -464,7 +465,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootVa
 	}
 
 	mockParentPoolID := &peloton.ResourcePoolID{
-		Value: RootResPoolID,
+		Value: common.RootResPoolID,
 	}
 	rootResPool, err := suite.resourceTree.Get(mockParentPoolID)
 	suite.NoError(err)
@@ -512,7 +513,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootVa
 	}
 
 	mockParentPoolID := &peloton.ResourcePoolID{
-		Value: RootResPoolID,
+		Value: common.RootResPoolID,
 	}
 	rootResPool, err := suite.resourceTree.Get(mockParentPoolID)
 	suite.NoError(err)
@@ -559,7 +560,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_NoPoli
 		Value: "respool99",
 	}
 	mockParentPoolID := &peloton.ResourcePoolID{
-		Value: RootResPoolID,
+		Value: common.RootResPoolID,
 	}
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
@@ -668,7 +669,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		Value: uuid.New(),
 	}
 	mockParentPoolID := &peloton.ResourcePoolID{
-		Value: RootResPoolID,
+		Value: common.RootResPoolID,
 	}
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Parent: mockParentPoolID,
@@ -700,7 +701,7 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		Value: "respool2", // existing ID
 	}
 	mockParentPoolID := &peloton.ResourcePoolID{
-		Value: RootResPoolID,
+		Value: common.RootResPoolID,
 	}
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Parent: mockParentPoolID,

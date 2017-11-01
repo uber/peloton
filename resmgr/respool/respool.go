@@ -717,7 +717,7 @@ func (n *resPool) SubtractFromAllocation(res *scalar.Resources) error {
 // IsRoot returns true if the node is the root in the resource
 // pool hierarchy
 func (n *resPool) IsRoot() bool {
-	return n.ID() == RootResPoolID
+	return n.ID() == common.RootResPoolID
 }
 
 // GetPath returns the fully qualified path of the resource pool

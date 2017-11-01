@@ -33,7 +33,8 @@ func (s *ResPoolSuite) SetupSuite() {
 		Resources: s.getResources(),
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
-	rootResPool, err := NewRespool(tally.NoopScope, RootResPoolID, nil, rootConfig)
+	rootResPool, err := NewRespool(tally.NoopScope, common.RootResPoolID, nil,
+		rootConfig)
 	s.NoError(err)
 	s.True(rootResPool.IsRoot())
 	s.root = rootResPool

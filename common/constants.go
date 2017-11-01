@@ -41,4 +41,7 @@ const (
 	MEMORY = "memory"
 	// DISK resource type
 	DISK = "disk"
+
+	// RootResPoolID is the ID for Root node
+	RootResPoolID = "root"
 )

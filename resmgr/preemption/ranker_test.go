@@ -55,7 +55,7 @@ func TestRanker(t *testing.T) {
 }
 
 func (suite *RankerTestSuite) addTaskToTracker(task *resmgr.Task) {
-	rootID := peloton.ResourcePoolID{Value: respool.RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy :=
 		peloton_respool.SchedulingPolicy_PriorityFIFO
 	respoolConfig := &peloton_respool.ResourcePoolConfig{

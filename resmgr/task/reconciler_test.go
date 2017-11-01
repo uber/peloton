@@ -66,7 +66,7 @@ func (suite *ReconcilerTestSuite) SetupTest() {
 
 func (suite *ReconcilerTestSuite) addTaskToTracker(pelotonTaskID string, trackerMesosTaskID string) {
 	rmTask := suite.createTask(pelotonTaskID, trackerMesosTaskID)
-	rootID := peloton.ResourcePoolID{Value: respool.RootResPoolID}
+	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := resp.SchedulingPolicy_PriorityFIFO
 	respoolConfig := &resp.ResourcePoolConfig{
 		Name:      "respool-1",
