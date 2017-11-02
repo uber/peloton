@@ -14,7 +14,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/taskconfig"
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
@@ -97,6 +96,7 @@ func (h *serviceHandler) Create(
 	} else {
 		if uuid.Parse(jobID.Value) == nil {
 			log.WithField("job_id", jobID.Value).Warn("JobID is not valid UUID")
+			h.metrics.JobCreateFail.Inc(1)
 			return &job.CreateResponse{
 				Error: &job.CreateResponse_Error{
 					InvalidJobId: &job.InvalidJobId{
@@ -111,6 +111,7 @@ func (h *serviceHandler) Create(
 
 	err := h.validateResourcePool(ctx, jobConfig.RespoolID)
 	if err != nil {
+		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
 				InvalidConfig: &job.InvalidJobConfig{
@@ -126,6 +127,7 @@ func (h *serviceHandler) Create(
 	// Validate job config with default task configs
 	err = task_config.ValidateTaskConfig(jobConfig)
 	if err != nil {
+		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
 				InvalidConfig: &job.InvalidJobConfig{
@@ -335,6 +337,7 @@ func (h *serviceHandler) Update(
 		if err := h.taskStore.CreateTaskRuntime(ctx, jobID, id, runtime, "peloton"); err != nil {
 			log.Errorf("Failed to create task for job %v: %v", jobID.Value, err)
 			h.metrics.TaskCreateFail.Inc(1)
+			h.metrics.JobUpdateFail.Inc(1)
 			// FIXME: Add a new Error type for this
 			return nil, err
 		}
@@ -435,12 +438,12 @@ func (h *serviceHandler) Delete(
 		log.WithError(err).
 			WithField("job_id", req.GetId().GetValue()).
 			Error("Failed to GetJobRuntime")
-		h.metrics.JobUpdateFail.Inc(1)
+		h.metrics.JobDeleteFail.Inc(1)
 		return nil, err
 	}
 
 	if jobmgr_job.NonTerminatedStates[jobRuntime.State] {
-		h.metrics.JobUpdateFail.Inc(1)
+		h.metrics.JobDeleteFail.Inc(1)
 		return nil, fmt.Errorf("Job is not in a terminal state: %s", jobRuntime.State)
 	}
 
