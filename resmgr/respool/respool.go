@@ -495,7 +495,7 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 // calculateAllocation calculates the allocation recursively for
 // all the children.
 func (n *resPool) CalculateAllocation() *scalar.Resources {
-	if n.IsLeaf() {
+	if n.isLeaf() {
 		return n.allocation
 	}
 	allocation := &scalar.Resources{}
@@ -512,7 +512,7 @@ func (n *resPool) CalculateAllocation() *scalar.Resources {
 // CalculateAndSetDemand calculates and sets the resource demand
 // for the resource pool recursively for the subtree
 func (n *resPool) CalculateDemand() *scalar.Resources {
-	if n.IsLeaf() {
+	if n.isLeaf() {
 		return n.demand
 	}
 	demand := &scalar.Resources{}
