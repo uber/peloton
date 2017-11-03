@@ -33,9 +33,10 @@ func MigrateForTest() *Config {
 			CQLVersion:    "3.4.2",
 			MaxGoRoutines: 1000,
 		},
-		StoreName:    "peloton_test",
-		Migrations:   "migrations",
-		MaxBatchSize: 20,
+		StoreName:          "peloton_test",
+		Migrations:         "migrations",
+		MaxBatchSize:       20,
+		MaxParallelBatches: 10,
 	}
 	dir, err := os.Getwd()
 	if err != nil {

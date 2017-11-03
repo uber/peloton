@@ -711,6 +711,9 @@ func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 		uuid.New(): 10,
 		uuid.New(): store.Conf.MaxBatchSize,
 		uuid.New(): store.Conf.MaxBatchSize*3 + 10,
+		uuid.New(): store.Conf.MaxParallelBatches*store.Conf.MaxBatchSize + 4,
+		uuid.New(): store.Conf.MaxParallelBatches*store.Conf.MaxBatchSize - 4,
+		uuid.New(): store.Conf.MaxParallelBatches * store.Conf.MaxBatchSize,
 	}
 	for jobID, nTasks := range jobTasks {
 		var jobID = peloton.JobID{Value: jobID}

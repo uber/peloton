@@ -105,9 +105,10 @@ func migrateSchemas() *cassandra.Config {
 			Timeout:       10 * time.Second,
 			Consistency:   *consistency,
 		},
-		StoreName:    *storeName,
-		Migrations:   "migrations",
-		MaxBatchSize: 20,
+		StoreName:          *storeName,
+		Migrations:         "migrations",
+		MaxBatchSize:       20,
+		MaxParallelBatches: 10,
 	}
 
 	dir, err := os.Getwd()

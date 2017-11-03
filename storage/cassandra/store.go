@@ -68,6 +68,8 @@ type Config struct {
 	// http://docs.datastax.com/en/archived/cassandra/3.x/cassandra/configuration/configCassandra_yaml.html#configCassandra_yaml__batch_size_fail_threshold_in_kb
 	// This value is the number of records that are included in a single transaction/commit RPC request
 	MaxBatchSize int `yaml:"max_batch_size_rows"`
+	// MaxParallelBatches controls the maximum number of go routines run to create tasks
+	MaxParallelBatches int `yaml:"max_parallel_batches"`
 }
 
 // AutoMigrate migrates the db schemas for cassandra
@@ -622,113 +624,133 @@ func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 
 // CreateTasks creates tasks for the given slice of task infos, instances 0..n
 func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, owner string) error {
-	maxBatchSize := int64(s.Conf.MaxBatchSize)
+	maxBatchSize := uint32(s.Conf.MaxBatchSize)
+	maxParallelBatches := uint32(s.Conf.MaxParallelBatches)
 	if maxBatchSize == 0 {
-		maxBatchSize = math.MaxInt64
+		maxBatchSize = math.MaxUint32
 	}
 	jobID := id.Value
-	nTasks := int64(len(taskInfos))
-	tasksNotCreated := int64(0)
+	nTasks := uint32(len(taskInfos))
+	tasksNotCreated := uint32(0)
 	timeStart := time.Now()
-	nBatches := nTasks/maxBatchSize + 1
+	nBatches := nTasks / maxBatchSize
+	if (nTasks % maxBatchSize) > 0 {
+		nBatches = nBatches + 1
+	}
+	increment := uint32(0)
+	if (nBatches % maxParallelBatches) > 0 {
+		increment = 1
+	}
 	wg := new(sync.WaitGroup)
+	prevEnd := uint32(0)
 	log.WithField("batches", nBatches).
 		WithField("tasks", nTasks).
 		Debug("Creating tasks")
-	for batch := int64(0); batch < nBatches; batch++ {
-		// do batching by rows, up to s.Conf.MaxBatchSize
-		start := batch * maxBatchSize // the starting instance ID
-		end := nTasks                 // the end bounds (noninclusive)
-		if nTasks >= (batch+1)*maxBatchSize {
-			end = (batch + 1) * maxBatchSize
+	for i := uint32(0); i < maxParallelBatches; i++ {
+		batchStart := prevEnd
+		batchEnd := batchStart + (nBatches / maxParallelBatches) + increment
+		if batchEnd > nTasks {
+			batchEnd = nTasks
 		}
-		batchSize := end - start // how many tasks in this batch
-		if batchSize < 1 {
-			// skip if it overflows
+		prevEnd = batchEnd
+		if batchStart == batchEnd {
 			continue
 		}
 		wg.Add(1)
 		go func() {
-			batchTimeStart := time.Now()
-			insertStatements := []api.Statement{}
-			idsToTaskInfos := map[string]*task.TaskInfo{}
 			defer wg.Done()
-			log.WithField("id", id.Value).
-				WithField("start", start).
-				WithField("end", end).
-				Debug("creating tasks")
-			for i := start; i < end; i++ {
-				t := taskInfos[i]
+			for batch := batchStart; batch < batchEnd; batch++ {
+				// do batching by rows, up to s.Conf.MaxBatchSize
+				start := batch * maxBatchSize // the starting instance ID
+				end := nTasks                 // the end bounds (noninclusive)
+				if nTasks >= (batch+1)*maxBatchSize {
+					end = (batch + 1) * maxBatchSize
+				}
+				batchSize := end - start // how many tasks in this batch
+				if batchSize < 1 {
+					// skip if it overflows
+					continue
+				}
+				batchTimeStart := time.Now()
+				insertStatements := []api.Statement{}
+				idsToTaskInfos := map[string]*task.TaskInfo{}
+				log.WithField("id", id.Value).
+					WithField("start", start).
+					WithField("end", end).
+					Debug("creating tasks")
+				for i := start; i < end; i++ {
+					t := taskInfos[i]
 
-				// TODO: Write task config as part of writing job config..
-				if err := s.createTaskConfig(ctx, id, t.InstanceId, 0, t.GetConfig()); err != nil {
+					// TODO: Write task config as part of writing job config..
+					if err := s.createTaskConfig(ctx, id, t.InstanceId, 0, t.GetConfig()); err != nil {
+						log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
+							Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
+						s.metrics.TaskCreateFail.Inc(int64(nTasks))
+						atomic.AddUint32(&tasksNotCreated, batchSize)
+						return
+					}
+
+					now := time.Now()
+					t.Runtime.Revision = &peloton.ChangeLog{
+						CreatedAt: uint64(now.UnixNano()),
+						UpdatedAt: uint64(now.UnixNano()),
+						Version:   0,
+					}
+
+					t.Runtime.State = task.TaskState_INITIALIZED
+					taskID := fmt.Sprintf(taskIDFmt, jobID, t.InstanceId)
+
+					idsToTaskInfos[taskID] = t
+
+					runtimeBuffer, err := proto.Marshal(t.Runtime)
+					if err != nil {
+						log.WithField("job_id", t.JobId.Value).
+							WithField("instance_id", t.InstanceId).
+							WithError(err).
+							Error("Failed to create task runtime")
+						s.metrics.TaskCreateFail.Inc(int64(nTasks))
+						atomic.AddUint32(&tasksNotCreated, batchSize)
+						return
+					}
+
+					queryBuilder := s.DataStore.NewQuery()
+					stmt := queryBuilder.Insert(taskRuntimeTable).
+						Columns(
+							"job_id",
+							"instance_id",
+							"version",
+							"update_time",
+							"state",
+							"runtime_info").
+						Values(
+							jobID,
+							t.InstanceId,
+							t.GetRuntime().GetRevision().GetVersion(),
+							time.Now().UTC(),
+							t.GetRuntime().GetState().String(),
+							runtimeBuffer)
+
+					// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
+					// Batch with conditions cannot span multiple partitions. For now, drop the IfNotExist()
+
+					insertStatements = append(insertStatements, stmt)
+				}
+				err := s.applyStatements(ctx, insertStatements, jobID)
+				if err != nil {
 					log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 						Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
-					s.metrics.TaskCreateFail.Inc(nTasks)
-					atomic.AddInt64(&tasksNotCreated, batchSize)
+					s.metrics.TaskCreateFail.Inc(int64(nTasks))
+					atomic.AddUint32(&tasksNotCreated, batchSize)
 					return
 				}
-
-				now := time.Now()
-				t.Runtime.Revision = &peloton.ChangeLog{
-					CreatedAt: uint64(now.UnixNano()),
-					UpdatedAt: uint64(now.UnixNano()),
-					Version:   0,
-				}
-
-				t.Runtime.State = task.TaskState_INITIALIZED
-				taskID := fmt.Sprintf(taskIDFmt, jobID, t.InstanceId)
-
-				idsToTaskInfos[taskID] = t
-
-				runtimeBuffer, err := proto.Marshal(t.Runtime)
-				if err != nil {
-					log.WithField("job_id", t.JobId.Value).
-						WithField("instance_id", t.InstanceId).
-						WithError(err).
-						Error("Failed to create task runtime")
-					s.metrics.TaskCreateFail.Inc(nTasks)
-					atomic.AddInt64(&tasksNotCreated, batchSize)
-					return
-				}
-
-				queryBuilder := s.DataStore.NewQuery()
-				stmt := queryBuilder.Insert(taskRuntimeTable).
-					Columns(
-						"job_id",
-						"instance_id",
-						"version",
-						"update_time",
-						"state",
-						"runtime_info").
-					Values(
-						jobID,
-						t.InstanceId,
-						t.GetRuntime().GetRevision().GetVersion(),
-						time.Now().UTC(),
-						t.GetRuntime().GetState().String(),
-						runtimeBuffer)
-
-				// IfNotExist() will cause Writing 20 tasks (0:19) for TestJob2 to Cassandra failed in 8.756852ms with
-				// Batch with conditions cannot span multiple partitions. For now, drop the IfNotExist()
-
-				insertStatements = append(insertStatements, stmt)
-			}
-			err := s.applyStatements(ctx, insertStatements, jobID)
-			if err != nil {
 				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-					Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
-				s.metrics.TaskCreateFail.Inc(nTasks)
-				atomic.AddInt64(&tasksNotCreated, batchSize)
-				return
-			}
-			log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
-				Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
-			s.metrics.TaskCreate.Inc(nTasks)
+					Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
+				s.metrics.TaskCreate.Inc(int64(nTasks))
 
-			err = s.logTaskStateChanges(ctx, idsToTaskInfos)
-			if err != nil {
-				log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
+				err = s.logTaskStateChanges(ctx, idsToTaskInfos)
+				if err != nil {
+					log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
+				}
 			}
 		}()
 	}
