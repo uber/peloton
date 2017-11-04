@@ -42,11 +42,14 @@ message PaginationSpec {
   // Offset of the query for pagination
   uint32 offset = 1;
 
-  // Limit of the query for pagination
+  // Limit per page of the query for pagination
   uint32 limit = 3;
 
   // List of fields to be order by in sequence
   repeated OrderBy orderBy = 4;
+
+  // Max limit of the pagination result.
+  uint32 maxLimit = 5;
 }
 
 
