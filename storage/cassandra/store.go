@@ -53,7 +53,8 @@ const (
 	resPoolsOwnerView     = "mv_respools_by_owner"
 	volumeTable           = "persistent_volumes"
 
-	_defaultQueryLimit uint32 = 10
+	_defaultQueryLimit    uint32 = 10
+	_defaultQueryMaxLimit uint32 = 100
 
 	// _defaultTaskConfigID is used for storing, and retrieving, the default
 	// task configuration, when no specific is available.
@@ -374,6 +375,12 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		where += "]"
 	}
 	where += "}')"
+
+	maxLimit := _defaultQueryMaxLimit
+	if spec.GetPagination().GetMaxLimit() != 0 {
+		maxLimit = spec.GetPagination().GetMaxLimit()
+	}
+	where += fmt.Sprintf(" Limit %d", maxLimit)
 
 	log.WithField("where", where).Debug("query string")
 

@@ -153,7 +153,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	})
 	suite.NoError(err)
 	suite.Equal(25, len(result1))
-	suite.Equal(records, int(total))
+	suite.Equal(_defaultQueryMaxLimit, uint32(total))
 
 	var owner = query.PropertyPath{Value: "owner"}
 	var orderByOwner = query.OrderBy{
@@ -176,7 +176,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	for i, c := range result1 {
 		suite.Equal(fmt.Sprintf("owner_%d", 1010+i), c.Config.OwningTeam)
 	}
-	suite.Equal(records, int(total))
+	suite.Equal(_defaultQueryMaxLimit, uint32(total))
 
 	orderByOwner.Order = query.OrderBy_DESC
 	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
@@ -194,12 +194,12 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	for i, c := range result1 {
 		suite.Equal(fmt.Sprintf("owner_%d", 1289-i), c.Config.OwningTeam)
 	}
-	suite.Equal(records, int(total))
+	suite.Equal(_defaultQueryMaxLimit, uint32(total))
 
 	result1, total, err = jobStore.QueryJobs(context.Background(), respool, &job.QuerySpec{})
 	suite.NoError(err)
 	suite.Equal(int(_defaultQueryLimit), len(result1))
-	suite.Equal(records, int(total))
+	suite.Equal(_defaultQueryMaxLimit, uint32(total))
 
 	result1, total, err = jobStore.QueryJobs(context.Background(), &peloton.ResourcePoolID{Value: uuid.New()}, &job.QuerySpec{})
 	suite.NoError(err)
@@ -212,8 +212,8 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 		},
 	})
 	suite.NoError(err)
-	suite.Equal(records, len(result1))
-	suite.Equal(records, int(total))
+	suite.Equal(_defaultQueryMaxLimit, uint32(len(result1)))
+	suite.Equal(_defaultQueryMaxLimit, uint32(total))
 }
 
 func (suite *CassandraStoreTestSuite) TestQueryJob() {
@@ -410,6 +410,20 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.NoError(err)
 	suite.Equal(1, len(result1))
 	suite.Equal(records, int(total))
+
+	// Test max limit should cap total returned.
+	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		Keywords: []string{"team6", "test", "awesome"},
+		Pagination: &query.PaginationSpec{
+			Offset:   0,
+			Limit:    1,
+			MaxLimit: 2,
+		},
+	})
+	suite.NoError(err)
+	suite.Equal(1, len(result1))
+	// Total should be 2, same as MaxLimit, instead of 5.
+	suite.Equal(2, int(total))
 
 	// Search for label with quote.
 	result1, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
