@@ -3,3 +3,4 @@ peloton-client==0.4.1
 docker-py==1.7.2
 pyyaml
 enum
+m3>=3.0.0

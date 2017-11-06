@@ -35,7 +35,8 @@ from aurora.schema.aurora.base import (
     MesosJob as ThermosJob,
     HealthCheckConfig,
     HealthCheckerConfig,
-    HttpHealthChecker
+    HttpHealthChecker,
+    DisableLifecycle,
 )
 
 KB = 1024
@@ -578,3 +579,160 @@ class App(object):
             return
 
         self.update_instances([], self.current_job_config)
+
+
+class CronApp(App):
+    """
+    Representation of a CRON job
+    """
+
+    def __init__(self, **kwargs):
+        """
+        Initializes Cron job
+        """
+        # Default attributes
+        self.enable_debug_logging = False
+        self.working_dir = None
+        self.cmdline = None
+        self.cron_schedule = "\*/5 * * * *"
+        self.num_instances = 1
+        super(CronApp, self).__init__(**kwargs)
+        self.cpu_limit = 1.0
+        self.mem_limit = 1 * GB
+        self.disk_limit = 16 * GB
+
+    def get_executor_config(self):
+        """
+        Returns the Thermos executor config for a Peloton app
+        """
+        if self.working_dir is not None:
+            cmd = ' && '.join([
+                'cd ' + self.working_dir,
+                self.cmdline])
+        else:
+            cmd = self.cmdline
+
+        entrypoint_process = ThermosProcess(
+            name=self.name,
+            cmdline=cmd,
+        )
+        thermos_task = ThermosTask(
+            name=self.name,
+            processes=[entrypoint_process],
+            resources=Resources(
+                cpu=self.cpu_limit,
+                ram=self.mem_limit,
+                disk=self.disk_limit,
+            ),
+        )
+        thermos_job = ThermosJob(
+            name=self.name,
+            role=AURORA_ROLE,
+            cluster=self.cluster.name,
+            environment=AURORA_ENVIRONMENT,
+            task=thermos_task,
+            production=False,
+            lifecycle=DisableLifecycle,
+            cron_schedule=self.cron_schedule[1:],
+        )
+        executor_config = ExecutorConfig(
+            name=AURORA_EXECUTOR_NAME,
+            data=thermos_job.json_dumps()
+        )
+        return executor_config
+
+    def get_desired_job_config(self):
+        """
+        Return the Aurora job configuration defined in Thrift API so that
+        we can create a job via Aurora API.
+        """
+
+        # Add docker container
+        container = Container(
+            mesos=None,
+            docker=DockerContainer(
+                image=self.get_docker_image(),
+                parameters=self.get_docker_params()
+            )
+        )
+
+        host_limit = Constraint(
+            name=self.cluster.constraint,
+            constraint=TaskConstraint(
+                limit=LimitConstraint(
+                    limit=1,
+                )
+            )
+        )
+
+        task_config = TaskConfig(
+            job=self.job_key,
+            owner=Identity(user=AURORA_USER),
+            isService=False,
+            numCpus=self.cpu_limit,
+            ramMb=self.mem_limit / MB,
+            diskMb=self.disk_limit / MB,
+            priority=0,
+            maxTaskFailures=0,
+            production=False,
+            tier='preemptible',
+            resources=set([
+                Resource(numCpus=self.cpu_limit),
+                Resource(ramMb=self.mem_limit / MB),
+                Resource(diskMb=self.disk_limit / MB),
+            ]),
+            contactEmail='peloton-oncall-group@uber.com',
+            executorConfig=self.get_executor_config(),
+            container=container,
+            constraints=set([host_limit]),
+            requestedPorts=set(),
+            mesosFetcherUris=set(),
+            taskLinks={},
+            metadata=set(),
+        )
+
+        job_config = JobConfiguration(
+            key=self.job_key,
+            owner=Identity(user=AURORA_USER),
+            taskConfig=task_config,
+            instanceCount=self.num_instances,
+            cronSchedule=self.cron_schedule[1:],
+        )
+        return job_config
+
+    def get_current_job_config(self):
+        """
+        Return the current job config by querying the Aurora API
+        """
+        resp = self.client.getJobSummary(AURORA_ROLE)
+        if resp.responseCode != ResponseCode.OK:
+            raise Exception(combine_messages(resp))
+
+        job_config = None
+        for s in resp.result.jobSummaryResult.summaries:
+            if s.job.key == self.job_key:
+                job_config = s.job
+                break
+
+        return job_config
+
+    def update_or_create_job(self, callback):
+        """
+        Update the current cron-job for a Peloton app.
+        Create a new cron-job if the job does not exist yet.
+        """
+        resp = self.client.scheduleCronJob(self.desired_job_config)
+        if resp.responseCode != ResponseCode.OK:
+            raise Exception(combine_messages(resp))
+        return True
+
+    def rollback_job(self):
+        """
+        Rollback the job config of a cron-job in case of failures
+        """
+        if self.current_job_config is None:
+            # Nothing to do if the job doesn't exist before
+            return
+        resp = self.client.scheduleCronJob(self.current_job_config)
+        if resp.responseCode != ResponseCode.OK:
+            print "Failed to rollback watchdog configuration (%s)" % (resp)

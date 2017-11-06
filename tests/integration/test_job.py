@@ -6,6 +6,7 @@ from job import IntegrationTestConfig, Job
 pytestmark = [pytest.mark.default, pytest.mark.job]
 
 
+@pytest.mark.smoketest
 def test__create_batch_job():
     job = Job(job_file='test_job_no_container.yaml',
               config=IntegrationTestConfig(max_retry_attempts=100))
@@ -13,12 +14,14 @@ def test__create_batch_job():
     job.wait_for_state()
 
 
+@pytest.mark.smoketest
 def test__create_job():
     job = Job()
     job.create()
     job.wait_for_state()
 
 
+@pytest.mark.smoketest
 def test__stop_long_running_batch_job_immediately(
         mesos_master, jobmgr):
     job = Job(job_file='long_running_job.yaml',
@@ -44,6 +47,7 @@ def test__create_a_batch_job_and_restart_jobmgr_completes_jobs(jobmgr):
     job.wait_for_state()
 
 
+@pytest.mark.smoketest
 def test_create_job_and_update_with_new_instance_count():
     job = Job(job_file='long_running_job.yaml')
     job.job_config.instanceCount = 1

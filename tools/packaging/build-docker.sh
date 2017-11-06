@@ -26,7 +26,8 @@ fi
 
 # TODO(gabe) always do a glide install on the host before building an image
 make install
-
+cp ~/.pip/pip.conf ./docker/.
+rm -rf env
 ${docker_cmd} build --no-cache -t "${image_name}" .
 echo "Built ${image_name}"
 
