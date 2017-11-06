@@ -110,10 +110,8 @@ func (f *eventForwarder) OnEvents(events []*pb_eventstream.Event) {
 		}
 		var response *resmgrsvc.NotifyTaskUpdatesResponse
 		for {
-			ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancelFunc()
 			var err error
-			response, err = f.client.NotifyTaskUpdates(ctx, request)
+			response, err = f.notifyResourceManager(request)
 			if err == nil {
 				break
 			} else {
@@ -126,9 +124,18 @@ func (f *eventForwarder) OnEvents(events []*pb_eventstream.Event) {
 			atomic.StoreUint64(f.progress, response.PurgeOffset)
 		}
 		if response.Error != nil {
-			log.WithField("NotifyTaskUpdatesResponse_Error", response.Error).Error("NotifyTaskUpdatesRequest failed")
+			log.WithField("notify_task_updates_response_error",
+				response.Error).Error("NotifyTaskUpdatesRequest failed")
 		}
 	}
+}
+
+func (f *eventForwarder) notifyResourceManager(
+	request *resmgrsvc.NotifyTaskUpdatesRequest) (
+	*resmgrsvc.NotifyTaskUpdatesResponse, error) {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelFunc()
+	return f.client.NotifyTaskUpdates(ctx, request)
 }
 
 // GetEventProgress returns the event forward progress
