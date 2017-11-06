@@ -5,9 +5,29 @@ import time
 
 from docker import Client
 from tools.pcluster.pcluster import setup, teardown
+from m3.client import M3
+from m3.emitter import BatchedEmitter
 
 
 log = logging.getLogger(__name__)
+
+
+class TestMetrics(object):
+    def __init__(self):
+        self.failed = 0
+        self.passed = 0
+        self.duration = 0.0
+
+    def increment_passed(self, duration):
+        self.passed += 1
+        self.duration += duration
+
+    def increment_failed(self, duration):
+        self.failed += 1
+        self.duration += duration
+
+
+collect_metrics = TestMetrics()
 
 
 #
@@ -40,6 +60,35 @@ def setup_cluster(request):
             teardown()
 
     request.addfinalizer(teardown_cluster)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    global collect_metrics
+    outcome = yield
+    rep = outcome.get_result()
+    if rep.outcome == "passed" and rep.when == "call":
+        collect_metrics.increment_passed(rep.duration)
+    if rep.outcome == "failed" and rep.when == "call":
+        collect_metrics.increment_failed(rep.duration)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    emitter = BatchedEmitter()
+    m3 = M3(application_identifier='peloton',
+            emitter=emitter,
+            environment='production',
+            default_tags={
+                'result': 'watchdog', 'cluster': os.getenv('CLUSTER')},
+            )
+    if collect_metrics.failed > 0:
+        m3.gauge('watchdog_result', 1)
+    else:
+        m3.gauge('watchdog_result', 0)
+    m3.gauge('total_tests', collect_metrics.failed + collect_metrics.passed)
+    m3.gauge('failed_tests', collect_metrics.failed)
+    m3.gauge('passed_tests', collect_metrics.passed)
+    m3.gauge('duration_tests', collect_metrics.duration)
 
 
 class Container(object):

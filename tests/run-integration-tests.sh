@@ -13,7 +13,11 @@ if [[ -z "${CLUSTER}" ]] && [[ -z "${SKIP_BUILD}" ]]; then
   IMAGE=uber/peloton make docker
 fi
 
-virtualenv env
+pip install virtualenv
+
+if [ ! -d env ]; then
+  virtualenv env
+fi
 
 . env/bin/activate
 

@@ -8,12 +8,16 @@ from thrift import TSerialization
 from thrift.protocol.TJSONProtocol import TSimpleJSONProtocolFactory
 
 from aurora.client import AuroraClientZK
-from app import App
+from app import (
+    App,
+    CronApp
+)
 
 # Currently DB schema migration is executed only in hostmgr so we have
 # to update hostmgr first.
 # TODO: use a separate binary for DB migration
 PELOTON_APPS = ['hostmgr', 'resmgr', 'placement', 'jobmgr']
+CRON_APPS = ['watchdog']
 
 
 def update_callback(app):
@@ -44,6 +48,9 @@ class Cluster(object):
         for app in PELOTON_APPS:
             app_cfg = getattr(self, app)
             self.apps[app] = App(name=app, cluster=self, **app_cfg)
+        for app in CRON_APPS:
+            app_cfg = getattr(self, app)
+            self.apps[app] = CronApp(name=app, cluster=self, **app_cfg)
 
     @staticmethod
     def load(cfg_file):
@@ -92,7 +99,7 @@ class Cluster(object):
 
         # Print the job config diffs
         print 'Update Peloton cluster "%s" to new config: ' % self.name
-        for name in PELOTON_APPS:
+        for name in PELOTON_APPS + CRON_APPS:
             app = self.apps[name]
             self.diff_config(app, verbose)
 
@@ -100,7 +107,7 @@ class Cluster(object):
             return
 
         updated_apps = []
-        for name in PELOTON_APPS:
+        for name in PELOTON_APPS + CRON_APPS:
             app = self.apps[name]
 
             updated_apps.append(app)

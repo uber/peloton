@@ -61,6 +61,14 @@ db-pressure:
 install:
 	glide --version || go get github.com/Masterminds/glide
 	rm -rf vendor && glide install
+	@if [ ! -d "env" ]; then \
+		pip install virtualenv ; \
+		virtualenv env ; \
+		. env/bin/activate ; \
+		pip install --upgrade pip ; \
+		pip install -r tests/integration/requirements.txt ; \
+		deactivate ; \
+	fi
 
 $(VENDOR): install
 

@@ -12,11 +12,15 @@ class Client(object):
             config = load_config('config.yaml')['client']
             if os.getenv('CLUSTER', ''):
                 cluster = os.getenv('CLUSTER')
-                if cluster not in config['cluster_zk_servers']:
+                if os.getenv('ELECTION_ZK_SERVERS', ''):
+                    zk_servers = os.getenv('ELECTION_ZK_SERVERS').split(":")[0]
+                elif cluster in config['cluster_zk_servers']:
+                    zk_servers = config['cluster_zk_servers'][cluster]
+                else:
                     raise Exception('Unsupported cluster %s' % cluster)
                 _client = PelotonClient(
                     name=config['name'],
-                    zk_servers=config['cluster_zk_servers'][cluster],
+                    zk_servers=zk_servers,
                 )
             else:
                 # TODO: remove url overrides once T839783 is resolved

@@ -14,6 +14,7 @@ RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
   gdb \
   util-linux \
   python-dev \
+  python-setuptools \
   python-pip
 
 # Install protoc
@@ -25,10 +26,12 @@ RUN wget https://github.com/google/protobuf/releases/download/v$PROTOC_VERSION/p
     && go get -u github.com/golang/protobuf/proto \
     && go get -u github.com/golang/protobuf/protoc-gen-go
 
-
 # TODO(gabe) update this path when we get a public namespace
 COPY . /go/src/code.uber.internal/infra/peloton
 WORKDIR /go/src/code.uber.internal/infra/peloton
+# Copy pip.conf to be able to install internal packages
+RUN mkdir /root/.pip
+COPY ./docker/pip.conf /root/.pip/pip.conf
 
 # TODO(gabe): reenable me when we have no more closed source dependencies, and
 # readd vendor/ to .dockerignore. For now, this relies on having an updated

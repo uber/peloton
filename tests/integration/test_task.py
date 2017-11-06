@@ -7,6 +7,7 @@ from peloton_client.pbgen.peloton.api.job import job_pb2
 pytestmark = [pytest.mark.default, pytest.mark.task]
 
 
+@pytest.mark.smoketest
 def test__stop_start_all_tasks_kills_tasks_and_job():
     job = Job(job_file='long_running_job.yaml')
     job.create()
