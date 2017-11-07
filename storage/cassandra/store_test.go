@@ -457,6 +457,8 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 	var records = 1
 	var keys = []string{"testKey0", "testKey1", "testKey2", "key0"}
 	var vals = []string{"testVal0", "testVal1", "testVal2", "val0"}
+	// Wait for 5 * 50ms for DB to be cleaned up
+	var maxAttempts = 5
 	for i := 0; i < records; i++ {
 		var jobID = peloton.JobID{Value: uuid.New()}
 		var sla = job.SlaConfig{
@@ -513,11 +515,24 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 
 		suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
 
-		jobconf, err = jobStore.GetJobConfig(context.Background(), &jobID)
+		for i := 0; i < maxAttempts; i++ {
+			jobconf, err = jobStore.GetJobConfig(context.Background(), &jobID)
+			if err != nil {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
 		suite.EqualError(err, fmt.Sprintf("Cannot find job wth jobID %s", jobID.Value))
 		suite.Nil(jobconf)
 
-		jobRuntime, err := jobStore.GetJobRuntime(context.Background(), &jobID)
+		var jobRuntime *job.RuntimeInfo
+		for i = 0; i < maxAttempts; i++ {
+			jobRuntime, err = jobStore.GetJobRuntime(context.Background(), &jobID)
+			if err != nil {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
 		suite.EqualError(err, fmt.Sprintf("Cannot find job wth jobID %s", jobID.Value))
 		suite.Nil(jobRuntime)
 

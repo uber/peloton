@@ -105,7 +105,7 @@ func (c *Config) MigrateString() string {
 // Store implements JobStore using a cassandra backend
 type Store struct {
 	DataStore   api.DataStore
-	metrics     storage.Metrics
+	metrics     *storage.Metrics
 	Conf        *Config
 	retryPolicy backoff.RetryPolicy
 }
@@ -132,48 +132,48 @@ func (s *Store) handleDataStoreError(err error, p backoff.Retrier) error {
 	switch err.(type) {
 	// TBD handle errOverloaded and errBootstrapping after error types added in gocql
 	case *gocql.RequestErrReadFailure:
-		s.metrics.ReadFailure.Inc(1)
+		s.metrics.ErrorMetrics.ReadFailure.Inc(1)
 		return yarpcerrors.AbortedErrorf("read failure during statement execution %v", err.Error())
 	case *gocql.RequestErrWriteFailure:
-		s.metrics.WriteFailure.Inc(1)
+		s.metrics.ErrorMetrics.WriteFailure.Inc(1)
 		return yarpcerrors.AbortedErrorf("write failure during statement execution %v", err.Error())
 	case *gocql.RequestErrAlreadyExists:
-		s.metrics.AlreadyExists.Inc(1)
+		s.metrics.ErrorMetrics.AlreadyExists.Inc(1)
 		return yarpcerrors.AlreadyExistsErrorf("already exists error during statement execution %v", err.Error())
 	case *gocql.RequestErrReadTimeout:
-		s.metrics.ReadTimeout.Inc(1)
+		s.metrics.ErrorMetrics.ReadTimeout.Inc(1)
 		return yarpcerrors.DeadlineExceededErrorf("read timeout during statement execution: %v", err.Error())
 	case *gocql.RequestErrWriteTimeout:
-		s.metrics.WriteTimeout.Inc(1)
+		s.metrics.ErrorMetrics.WriteTimeout.Inc(1)
 		return yarpcerrors.DeadlineExceededErrorf("write timeout during statement execution: %v", err.Error())
 	case *gocql.RequestErrUnavailable:
-		s.metrics.RequestUnavailable.Inc(1)
+		s.metrics.ErrorMetrics.RequestUnavailable.Inc(1)
 		retry = true
 		newErr = yarpcerrors.UnavailableErrorf("request unavailable during statement execution: %v", err.Error())
 	}
 
 	switch err {
 	case gocql.ErrTooManyTimeouts:
-		s.metrics.TooManyTimeouts.Inc(1)
+		s.metrics.ErrorMetrics.TooManyTimeouts.Inc(1)
 		return yarpcerrors.DeadlineExceededErrorf("too many timeouts during statement execution: %v", err.Error())
 	case gocql.ErrUnavailable:
-		s.metrics.ConnUnavailable.Inc(1)
+		s.metrics.ErrorMetrics.ConnUnavailable.Inc(1)
 		retry = true
 		newErr = yarpcerrors.UnavailableErrorf("unavailable error during statement execution: %v", err.Error())
 	case gocql.ErrSessionClosed:
-		s.metrics.SessionClosed.Inc(1)
+		s.metrics.ErrorMetrics.SessionClosed.Inc(1)
 		retry = true
 		newErr = yarpcerrors.UnavailableErrorf("session closed during statement execution: %v", err.Error())
 	case gocql.ErrNoConnections:
-		s.metrics.NoConnections.Inc(1)
+		s.metrics.ErrorMetrics.NoConnections.Inc(1)
 		retry = true
 		newErr = yarpcerrors.UnavailableErrorf("no connections during statement execution: %v", err.Error())
 	case gocql.ErrConnectionClosed:
-		s.metrics.ConnectionClosed.Inc(1)
+		s.metrics.ErrorMetrics.ConnectionClosed.Inc(1)
 		retry = true
 		newErr = yarpcerrors.UnavailableErrorf("connections closed during statement execution: %v", err.Error())
 	case gocql.ErrNoStreams:
-		s.metrics.NoStreams.Inc(1)
+		s.metrics.ErrorMetrics.NoStreams.Inc(1)
 		retry = true
 		newErr = yarpcerrors.UnavailableErrorf("no streams during statement execution: %v", err.Error())
 	}
@@ -199,7 +199,7 @@ func (s *Store) executeWrite(ctx context.Context, stmt api.Statement) (api.Resul
 
 		if err != nil {
 			if !common.IsTransientError(err) {
-				s.metrics.NotTransient.Inc(1)
+				s.metrics.ErrorMetrics.NotTransient.Inc(1)
 			}
 			return result, err
 		}
@@ -225,7 +225,7 @@ func (s *Store) executeRead(ctx context.Context, stmt api.Statement) ([]map[stri
 
 		if err != nil {
 			if !common.IsTransientError(err) {
-				s.metrics.NotTransient.Inc(1)
+				s.metrics.ErrorMetrics.NotTransient.Inc(1)
 			}
 			return nil, err
 		}
@@ -243,7 +243,7 @@ func (s *Store) executeBatch(ctx context.Context, stmts []api.Statement) error {
 
 		if err != nil {
 			if !common.IsTransientError(err) {
-				s.metrics.NotTransient.Inc(1)
+				s.metrics.ErrorMetrics.NotTransient.Inc(1)
 			}
 			return err
 		}
@@ -255,7 +255,7 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
 		log.Errorf("Failed to marshal jobConfig, error = %v", err)
-		s.metrics.JobCreateFail.Inc(1)
+		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
 		return err
 	}
 
@@ -277,9 +277,10 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 		log.WithError(err).
 			WithField("job_id", id.Value).
 			Error("createJobConfig failed")
-		s.metrics.JobCreateFail.Inc(1)
+		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
 		return err
 	}
+	s.metrics.JobMetrics.JobCreateConfig.Inc(1)
 
 	// TODO: Create TaskConfig here. This requires the task configs to be
 	// flattened at this point, see jobmgr.
@@ -290,6 +291,7 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int, taskConfig *task.TaskConfig) error {
 	configBuffer, err := proto.Marshal(taskConfig)
 	if err != nil {
+		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
 		log.Errorf("Failed to marshal taskConfig, error = %v", err)
 		return err
 	}
@@ -318,9 +320,10 @@ func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanc
 		log.WithError(err).
 			WithField("job_id", id.Value).
 			Error("createTaskConfig failed")
-		s.metrics.JobCreateFail.Inc(1)
+		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
 		return err
 	}
+	s.metrics.TaskMetrics.TaskCreateConfig.Inc(1)
 
 	return nil
 }
@@ -345,11 +348,11 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.Value).
-			Error("UpdateJobRuntime failed")
-		s.metrics.JobCreateFail.Inc(1)
+			Error("CreateJobRuntime failed")
+		s.metrics.JobMetrics.JobCreateRuntimeFail.Inc(1)
 		return err
 	}
-	s.metrics.JobCreate.Inc(1)
+	s.metrics.JobMetrics.JobCreateRuntime.Inc(1)
 	return nil
 }
 
@@ -377,6 +380,7 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (int64,
 func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
 	version, err := s.getMaxJobVersion(ctx, id)
 	if err != nil {
+		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
 		return err
 	}
 
@@ -413,13 +417,13 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to execute stmt %v, err=%v", stmtString, err)
-		s.metrics.JobGetFail.Inc(1)
+		s.metrics.JobMetrics.JobGetFail.Inc(1)
 		return nil, err
 	}
 
 	log.Debugf("all result = %v", allResults)
 	if len(allResults) > 1 {
-		s.metrics.JobGetFail.Inc(1)
+		s.metrics.JobMetrics.JobGetFail.Inc(1)
 		return nil, fmt.Errorf("found %d jobs %v for job id %v", len(allResults), allResults, jobID)
 	}
 	for _, value := range allResults {
@@ -427,13 +431,13 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.Errorf("Failed to Fill into JobRecord, err= %v", err)
-			s.metrics.JobGetFail.Inc(1)
+			s.metrics.JobMetrics.JobGetFail.Inc(1)
 			return nil, err
 		}
-		s.metrics.JobGet.Inc(1)
+		s.metrics.JobMetrics.JobGet.Inc(1)
 		return record.GetJobConfig()
 	}
-	s.metrics.JobNotFound.Inc(1)
+	s.metrics.JobMetrics.JobNotFound.Inc(1)
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", jobID)
 }
 
@@ -522,7 +526,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		log.WithField("labels", spec.GetLabels()).
 			WithError(err).
 			Error("Fail to Query jobs")
-		s.metrics.JobQueryFail.Inc(1)
+		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
 
@@ -551,7 +555,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			log.WithField("labels", spec.GetLabels()).
 				WithError(err).
 				Error("Fail to Query jobs")
-			s.metrics.JobQueryFail.Inc(1)
+			s.metrics.JobMetrics.JobQueryFail.Inc(1)
 			return nil, 0, fmt.Errorf("got invalid response from cassandra")
 		}
 
@@ -584,7 +588,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		})
 	}
 
-	s.metrics.JobQuery.Inc(1)
+	s.metrics.JobMetrics.JobQuery.Inc(1)
 	return results, total, nil
 }
 
@@ -603,7 +607,7 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 	if err != nil {
 		log.WithError(err).
 			Error("GetJobsByStates failed")
-		s.metrics.JobGetByStatesFail.Inc(1)
+		s.metrics.JobMetrics.JobGetByStatesFail.Inc(1)
 		return nil, err
 	}
 
@@ -614,12 +618,12 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 		if err != nil {
 			log.WithError(err).
 				Error("Failed to get JobRuntimeRecord from record")
-			s.metrics.JobGetByStatesFail.Inc(1)
+			s.metrics.JobMetrics.JobGetByStatesFail.Inc(1)
 			return nil, err
 		}
 		jobs = append(jobs, peloton.JobID{Value: record.JobID.String()})
 	}
-	s.metrics.JobGetByStates.Inc(1)
+	s.metrics.JobMetrics.JobGetByStates.Inc(1)
 	return jobs, nil
 }
 
@@ -634,7 +638,7 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, er
 	if err != nil {
 		log.WithError(err).
 			Error("Fail to Query all jobs")
-		s.metrics.JobQueryFail.Inc(1)
+		s.metrics.JobMetrics.JobGetAllFail.Inc(1)
 		return nil, err
 	}
 
@@ -644,19 +648,19 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, er
 		if err != nil {
 			log.WithError(err).
 				Error("Fail to Query jobs")
-			s.metrics.JobQueryFail.Inc(1)
+			s.metrics.JobMetrics.JobGetAllFail.Inc(1)
 			return nil, err
 		}
 		jobRuntime, err := record.GetJobRuntime()
 		if err != nil {
 			log.WithError(err).
 				Error("Fail to Query jobs")
-			s.metrics.JobQueryFail.Inc(1)
+			s.metrics.JobMetrics.JobGetAllFail.Inc(1)
 			return nil, err
 		}
 		resultMap[record.JobID.String()] = jobRuntime
 	}
-	s.metrics.JobQueryAll.Inc(1)
+	s.metrics.JobMetrics.JobGetAll.Inc(1)
 	return resultMap, nil
 }
 
@@ -668,13 +672,13 @@ func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 		errMsg := fmt.Sprintf("Task has instance id %v, different than the instanceID %d expected, jobID %v, task JobId %v",
 			instanceID, taskInfo.InstanceId, jobID, taskInfo.JobId.Value)
 		log.Errorf(errMsg)
-		s.metrics.TaskCreateFail.Inc(1)
+		s.metrics.TaskMetrics.TaskCreateFail.Inc(1)
 		return fmt.Errorf(errMsg)
 	}
 
 	// TODO: Set correct version.
 	if err := s.createTaskConfig(ctx, id, instanceID, 0, taskInfo.GetConfig()); err != nil {
-		s.metrics.TaskCreateFail.Inc(1)
+		s.metrics.TaskMetrics.TaskCreateFail.Inc(1)
 		return err
 	}
 
@@ -691,7 +695,7 @@ func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 			WithField("instance_id", taskInfo.InstanceId).
 			WithError(err).
 			Error("Failed to create task runtime")
-		s.metrics.TaskCreateFail.Inc(1)
+		s.metrics.TaskMetrics.TaskCreateFail.Inc(1)
 		return err
 	}
 
@@ -716,10 +720,10 @@ func (s *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 
 	taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
 	if err := s.applyStatement(ctx, stmt, taskID); err != nil {
-		s.metrics.TaskCreateFail.Inc(1)
+		s.metrics.TaskMetrics.TaskCreateFail.Inc(1)
 		return err
 	}
-	s.metrics.TaskCreate.Inc(1)
+	s.metrics.TaskMetrics.TaskCreate.Inc(1)
 	// Track the task events
 	err = s.logTaskStateChange(ctx, id, instanceID, taskInfo)
 	if err != nil {
@@ -792,7 +796,7 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 					if err := s.createTaskConfig(ctx, id, t.InstanceId, 0, t.GetConfig()); err != nil {
 						log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 							Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
-						s.metrics.TaskCreateFail.Inc(int64(nTasks))
+						s.metrics.TaskMetrics.TaskCreateFail.Inc(int64(nTasks))
 						atomic.AddUint32(&tasksNotCreated, batchSize)
 						return
 					}
@@ -815,7 +819,7 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 							WithField("instance_id", t.InstanceId).
 							WithError(err).
 							Error("Failed to create task runtime")
-						s.metrics.TaskCreateFail.Inc(int64(nTasks))
+						s.metrics.TaskMetrics.TaskCreateFail.Inc(int64(nTasks))
 						atomic.AddUint32(&tasksNotCreated, batchSize)
 						return
 					}
@@ -846,13 +850,13 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 				if err != nil {
 					log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 						Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart), err)
-					s.metrics.TaskCreateFail.Inc(int64(nTasks))
+					s.metrics.TaskMetrics.TaskCreateFail.Inc(int64(nTasks))
 					atomic.AddUint32(&tasksNotCreated, batchSize)
 					return
 				}
 				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 					Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.Value, time.Since(batchTimeStart))
-				s.metrics.TaskCreate.Inc(int64(nTasks))
+				s.metrics.TaskMetrics.TaskCreate.Inc(int64(nTasks))
 
 				err = s.logTaskStateChanges(ctx, idsToTaskInfos)
 				if err != nil {
@@ -892,6 +896,7 @@ func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, in
 	buffer, err := json.Marshal(stateChange)
 	if err != nil {
 		log.Errorf("Failed to marshal stateChange, error = %v", err)
+		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
 		return err
 	}
 	stateChangePart := []string{string(buffer)}
@@ -905,8 +910,10 @@ func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, in
 	}
 	if err != nil {
 		log.Errorf("Fail to logTaskStateChange by jobID %v, instanceID %v %v, err=%v", jobID, instanceID, stateChangePart, err)
+		s.metrics.TaskMetrics.TaskLogStateFail.Inc(1)
 		return err
 	}
+	s.metrics.TaskMetrics.TaskLogState.Inc(1)
 	return nil
 }
 
@@ -914,6 +921,7 @@ func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, in
 // taskIDToTaskInfos is a map of task ID to task info
 func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[string]*task.TaskInfo) error {
 	statements := []api.Statement{}
+	nTasks := int64(0)
 	for taskID, taskInfo := range taskIDToTaskInfos {
 		jobID, instanceID, err := util.ParseTaskID(taskID)
 		if err != nil {
@@ -942,12 +950,15 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[s
 			Add("events", stateChangePart).
 			Where(qb.Eq{"job_id": jobID, "instance_id": instanceID})
 		statements = append(statements, stmt)
+		nTasks++
 	}
 	err := s.executeBatch(ctx, statements)
 	if err != nil {
 		log.Errorf("Fail to logTaskStateChanges for %d tasks, err=%v", len(taskIDToTaskInfos), err)
+		s.metrics.TaskMetrics.TaskLogStateFail.Inc(nTasks)
 		return err
 	}
+	s.metrics.TaskMetrics.TaskLogState.Inc(nTasks)
 	return nil
 }
 
@@ -959,6 +970,7 @@ func (s *Store) GetTaskStateChanges(ctx context.Context, jobID *peloton.JobID, i
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTaskStateChanges by jobID %v, instanceID %v, err=%v", jobID, instanceID, err)
+		s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
 		return nil, err
 	}
 	for _, value := range allResults {
@@ -966,10 +978,13 @@ func (s *Store) GetTaskStateChanges(ctx context.Context, jobID *peloton.JobID, i
 		err = FillObject(value, &stateChangeRecords, reflect.TypeOf(stateChangeRecords))
 		if err != nil {
 			log.Errorf("Failed to Fill into TaskStateChangeRecords, val = %v err= %v", value, err)
+			s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
 			return nil, err
 		}
+		s.metrics.TaskMetrics.TaskGetLogState.Inc(1)
 		return stateChangeRecords.GetStateChangeRecords()
 	}
+	s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
 	return nil, fmt.Errorf("No state change records found for jobID %v, instanceID %v", jobID, instanceID)
 }
 
@@ -995,10 +1010,11 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 		log.WithField("job_id", id.GetValue()).
 			WithError(err).
 			Error("Fail to GetTasksForJob")
-		s.metrics.TaskGetFail.Inc(1)
+		s.metrics.TaskMetrics.TaskGetForJobFail.Inc(1)
 		return nil, err
 	}
 	resultMap := make(map[uint32]*task.TaskInfo)
+
 	for _, value := range allResults {
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
@@ -1006,7 +1022,7 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 			log.WithField("value", value).
 				WithError(err).
 				Error("Failed to Fill into TaskRuntimeRecord")
-			s.metrics.TaskGetFail.Inc(1)
+			s.metrics.TaskMetrics.TaskGetForJobFail.Inc(1)
 			continue
 		}
 		runtime, err := record.GetTaskRuntime()
@@ -1014,7 +1030,7 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 			log.WithField("record", record).
 				WithError(err).
 				Error("Failed to parse task runtime from record")
-			s.metrics.TaskGetFail.Inc(1)
+			s.metrics.TaskMetrics.TaskGetForJobFail.Inc(1)
 			continue
 		}
 
@@ -1024,7 +1040,7 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 			JobId:      id,
 		}
 
-		s.metrics.TaskGet.Inc(1)
+		s.metrics.TaskMetrics.TaskGetForJob.Inc(1)
 		resultMap[taskInfo.InstanceId] = taskInfo
 	}
 	return resultMap, nil
@@ -1046,7 +1062,7 @@ func (s *Store) getTaskConfig(ctx context.Context, id *peloton.JobID, instanceID
 			WithField("version", version).
 			WithError(err).
 			Error("Fail to getTaskConfig")
-		s.metrics.TaskGetFail.Inc(1)
+		s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
 		return nil, err
 	}
 	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
@@ -1062,11 +1078,11 @@ func (s *Store) getTaskConfig(ctx context.Context, id *peloton.JobID, instanceID
 		log.WithField("task_id", taskID).
 			WithError(err).
 			Error("Failed to Fill into TaskRecord")
-		s.metrics.TaskGetFail.Inc(1)
+		s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
 		return nil, err
 	}
 
-	s.metrics.TaskGet.Inc(1)
+	s.metrics.TaskMetrics.TaskGetConfig.Inc(1)
 	return record.GetTaskConfig()
 }
 
@@ -1100,7 +1116,7 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobAndState by jobId %v state %v, err=%v", jobID, state, err)
-		s.metrics.TaskGetFail.Inc(1)
+		s.metrics.TaskMetrics.TaskGetForJobAndStateFail.Inc(1)
 		return nil, err
 	}
 	resultMap := make(map[uint32]*task.TaskInfo)
@@ -1110,21 +1126,21 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.Errorf("Failed to Fill into TaskRecord, val = %v err= %v", value, err)
-			s.metrics.TaskGetFail.Inc(1)
+			s.metrics.TaskMetrics.TaskGetForJobAndStateFail.Inc(1)
 			return nil, err
 		}
 		resultMap[uint32(record.InstanceID)], err = s.GetTask(ctx, id.GetValue(), uint32(record.InstanceID))
 		if err != nil {
 			log.Errorf("Failed to get taskInfo from task, val = %v err= %v", value, err)
-			s.metrics.TaskGetFail.Inc(1)
+			s.metrics.TaskMetrics.TaskGetForJobAndStateFail.Inc(1)
 			return nil, err
 		}
-		s.metrics.TaskGet.Inc(1)
+		s.metrics.TaskMetrics.TaskGetForJobAndState.Inc(1)
 	}
 	return resultMap, nil
 }
 
-// GetTasksForJobAndState returns the task count for a peloton job with certain state
+// getTaskStateCount returns the task count for a peloton job with certain state
 func (s *Store) getTaskStateCount(ctx context.Context, id *peloton.JobID, state string) (uint32, error) {
 	jobID := id.Value
 	queryBuilder := s.DataStore.NewQuery()
@@ -1156,10 +1172,12 @@ func (s *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID
 	for _, state := range task.TaskState_name {
 		count, err := s.getTaskStateCount(ctx, id, state)
 		if err != nil {
+			s.metrics.TaskMetrics.TaskSummaryForJobFail.Inc(1)
 			return nil, err
 		}
 		resultMap[state] = count
 	}
+	s.metrics.TaskMetrics.TaskSummaryForJob.Inc(1)
 	return resultMap, nil
 }
 
@@ -1177,6 +1195,7 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetTasksForJobByRange by jobId %v range %v, err=%v", jobID, instanceRange, err)
+		s.metrics.TaskMetrics.TaskGetForJobRangeFail.Inc(1)
 		return nil, err
 	}
 	for _, value := range allResults {
@@ -1186,12 +1205,12 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 			log.WithField("job_id", id.Value).
 				WithError(err).
 				Error("Failed to Fill into TaskRecord")
-			s.metrics.TaskGetFail.Inc(1)
+			s.metrics.TaskMetrics.TaskGetForJobRangeFail.Inc(1)
 			return nil, err
 		}
 		taskInfo, err := s.getTaskInfoFromRuntimeRecord(ctx, id, &record)
 		result[taskInfo.InstanceId] = taskInfo
-		s.metrics.TaskGet.Inc(1)
+		s.metrics.TaskMetrics.TaskGetForJobRange.Inc(1)
 	}
 	return result, nil
 }
@@ -1213,7 +1232,7 @@ func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 			WithField("instance_id", taskInfo.InstanceId).
 			WithError(err).
 			Error("Failed to update task runtime")
-		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		s.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
 		return err
 	}
 
@@ -1243,10 +1262,10 @@ func (s *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 				WithField("goalstate", taskInfo.GetRuntime().GetGoalState().String()).
 				Info("already exists error during update task run time")
 		}
-		s.metrics.TaskUpdateFail.Inc(1)
+		s.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
 		return err
 	}
-	s.metrics.TaskUpdate.Inc(1)
+	s.metrics.TaskMetrics.TaskUpdate.Inc(1)
 	s.logTaskStateChange(ctx, taskInfo.GetJobId(), taskInfo.InstanceId, taskInfo)
 	return nil
 }
@@ -1270,21 +1289,29 @@ func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Delete(taskRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
 	stmt = queryBuilder.Delete(taskConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
 	stmt = queryBuilder.Delete(jobRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
 	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
 	err := s.applyStatement(ctx, stmt, id.GetValue())
+	if err != nil {
+		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
+	} else {
+		s.metrics.JobMetrics.JobDelete.Inc(1)
+	}
 	return err
 }
 
@@ -1311,7 +1338,7 @@ func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*
 		log.WithField("task_id", taskID).
 			WithError(err).
 			Error("Fail to GetTask")
-		s.metrics.TaskGetFail.Inc(1)
+		s.metrics.TaskMetrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
 
@@ -1322,14 +1349,14 @@ func (s *Store) GetTask(ctx context.Context, jobID string, instanceID uint32) (*
 			log.WithField("task_id", taskID).
 				WithError(err).
 				Error("Failed to Fill into TaskRecord")
-			s.metrics.TaskGetFail.Inc(1)
+			s.metrics.TaskMetrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
 
-		s.metrics.TaskGet.Inc(1)
+		s.metrics.TaskMetrics.TaskGet.Inc(1)
 		return s.getTaskInfoFromRuntimeRecord(ctx, &peloton.JobID{Value: jobID}, &record)
 	}
-	s.metrics.TaskNotFound.Inc(1)
+	s.metrics.TaskMetrics.TaskNotFound.Inc(1)
 	return nil, &storage.TaskNotFoundError{TaskID: taskID}
 }
 
@@ -1361,18 +1388,24 @@ func (s *Store) updateFrameworkTable(ctx context.Context, content map[string]int
 	stmt := queryBuilder.Insert(frameworksTable).
 		Columns(columns...).
 		Values(values...)
-	return s.applyStatement(ctx, stmt, frameworksTable)
+	err = s.applyStatement(ctx, stmt, frameworksTable)
+	if err != nil {
+		s.metrics.FrameworkStoreMetrics.FrameworkUpdateFail.Inc(1)
+		return err
+	}
+	s.metrics.FrameworkStoreMetrics.FrameworkUpdate.Inc(1)
+	return nil
 }
 
 //GetMesosStreamID reads the mesos stream id for a framework name
 func (s *Store) GetMesosStreamID(ctx context.Context, frameworkName string) (string, error) {
 	frameworkInfoRecord, err := s.getFrameworkInfo(ctx, frameworkName)
 	if err != nil {
-		s.metrics.StreamIDGetFail.Inc(1)
+		s.metrics.FrameworkStoreMetrics.StreamIDGetFail.Inc(1)
 		return "", err
 	}
 
-	s.metrics.StreamIDGet.Inc(1)
+	s.metrics.FrameworkStoreMetrics.StreamIDGet.Inc(1)
 	return frameworkInfoRecord.MesosStreamID, nil
 }
 
@@ -1380,11 +1413,11 @@ func (s *Store) GetMesosStreamID(ctx context.Context, frameworkName string) (str
 func (s *Store) GetFrameworkID(ctx context.Context, frameworkName string) (string, error) {
 	frameworkInfoRecord, err := s.getFrameworkInfo(ctx, frameworkName)
 	if err != nil {
-		s.metrics.FrameworkIDGetFail.Inc(1)
+		s.metrics.FrameworkStoreMetrics.FrameworkIDGetFail.Inc(1)
 		return "", err
 	}
 
-	s.metrics.FrameworkIDGet.Inc(1)
+	s.metrics.FrameworkStoreMetrics.FrameworkIDGet.Inc(1)
 	return frameworkInfoRecord.FrameworkID, nil
 }
 
@@ -1434,7 +1467,7 @@ func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName
 	// the underlying job/task already exists
 	if result != nil && !result.Applied() {
 		errMsg := fmt.Sprintf("%v is not applied, item could exist already", itemName)
-		s.metrics.CASNotApplied.Inc(1)
+		s.metrics.ErrorMetrics.CASNotApplied.Inc(1)
 		log.Error(errMsg)
 		return yarpcerrors.AlreadyExistsErrorf(errMsg)
 	}
@@ -1447,7 +1480,7 @@ func (s *Store) CreateResourcePool(ctx context.Context, id *peloton.ResourcePool
 	configBuffer, err := json.Marshal(resPoolConfig)
 	if err != nil {
 		log.Errorf("error = %v", err)
-		s.metrics.ResourcePoolCreateFail.Inc(1)
+		s.metrics.ResourcePoolMetrics.ResourcePoolCreateFail.Inc(1)
 		return err
 	}
 
@@ -1459,10 +1492,10 @@ func (s *Store) CreateResourcePool(ctx context.Context, id *peloton.ResourcePool
 
 	err = s.applyStatement(ctx, stmt, resourcePoolID)
 	if err != nil {
-		s.metrics.ResourcePoolCreateFail.Inc(1)
+		s.metrics.ResourcePoolMetrics.ResourcePoolCreateFail.Inc(1)
 		return err
 	}
-	s.metrics.ResourcePoolCreate.Inc(1)
+	s.metrics.ResourcePoolMetrics.ResourcePoolCreate.Inc(1)
 	return nil
 }
 
@@ -1476,7 +1509,12 @@ func (s *Store) DeleteResourcePool(ctx context.Context, id *peloton.ResourcePool
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Delete(resPoolsTable).Where(qb.Eq{"respool_id": id.GetValue()})
 	err := s.applyStatement(ctx, stmt, id.GetValue())
-	return err
+	if err != nil {
+		s.metrics.ResourcePoolMetrics.ResourcePoolDeleteFail.Inc(1)
+		return err
+	}
+	s.metrics.ResourcePoolMetrics.ResourcePoolDelete.Inc(1)
+	return nil
 }
 
 // UpdateResourcePool Updates the resource pool config for a give resource pool
@@ -1490,7 +1528,7 @@ func (s *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePool
 			WithField("respool_ID", resourcePoolID).
 			WithError(err).
 			Error("Failed to unmarshal resource pool config")
-		s.metrics.ResourcePoolUpdateFail.Inc(1)
+		s.metrics.ResourcePoolMetrics.ResourcePoolUpdateFail.Inc(1)
 		return err
 	}
 
@@ -1505,10 +1543,10 @@ func (s *Store) UpdateResourcePool(ctx context.Context, id *peloton.ResourcePool
 		log.WithField("respool_ID", resourcePoolID).
 			WithError(err).
 			Error("Failed to update resource pool config")
-		s.metrics.ResourcePoolUpdateFail.Inc(1)
+		s.metrics.ResourcePoolMetrics.ResourcePoolUpdateFail.Inc(1)
 		return err
 	}
-	s.metrics.ResourcePoolUpdate.Inc(1)
+	s.metrics.ResourcePoolMetrics.ResourcePoolUpdate.Inc(1)
 	return nil
 }
 
@@ -1520,7 +1558,7 @@ func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.Re
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetAllResourcePools, err=%v", err)
-		s.metrics.ResourcePoolGetFail.Inc(1)
+		s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
 		return nil, err
 	}
 	var resultMap = make(map[string]*respool.ResourcePoolConfig)
@@ -1529,17 +1567,17 @@ func (s *Store) GetAllResourcePools(ctx context.Context) (map[string]*respool.Re
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.Errorf("Failed to Fill into ResourcePoolRecord, err= %v", err)
-			s.metrics.ResourcePoolGetFail.Inc(1)
+			s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
 			return nil, err
 		}
 		resourcePoolConfig, err := record.GetResourcePoolConfig()
 		if err != nil {
 			log.Errorf("Failed to get ResourceConfig from record, err= %v", err)
-			s.metrics.ResourcePoolGetFail.Inc(1)
+			s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
 			return nil, err
 		}
 		resultMap[record.RespoolID] = resourcePoolConfig
-		s.metrics.ResourcePoolGet.Inc(1)
+		s.metrics.ResourcePoolMetrics.ResourcePoolGet.Inc(1)
 	}
 	return resultMap, nil
 }
@@ -1552,7 +1590,7 @@ func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.Errorf("Fail to GetResourcePoolsByOwner %v, err=%v", owner, err)
-		s.metrics.ResourcePoolGetFail.Inc(1)
+		s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
 		return nil, err
 	}
 	var resultMap = make(map[string]*respool.ResourcePoolConfig)
@@ -1562,17 +1600,17 @@ func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
 			log.Errorf("Failed to Fill into ResourcePoolRecord, err= %v", err)
-			s.metrics.ResourcePoolGetFail.Inc(1)
+			s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
 			return nil, err
 		}
 		resourcePoolConfig, err := record.GetResourcePoolConfig()
 		if err != nil {
 			log.Errorf("Failed to get ResourceConfig from record, err= %v", err)
-			s.metrics.ResourcePoolGetFail.Inc(1)
+			s.metrics.ResourcePoolMetrics.ResourcePoolGetFail.Inc(1)
 			return nil, err
 		}
 		resultMap[record.RespoolID] = resourcePoolConfig
-		s.metrics.ResourcePoolGet.Inc(1)
+		s.metrics.ResourcePoolMetrics.ResourcePoolGet.Inc(1)
 	}
 	return resultMap, nil
 }
@@ -1592,7 +1630,7 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 		log.WithError(err).
 			WithField("job_id", id.Value).
 			Error("GetJobRuntime failed")
-		s.metrics.JobGetRuntimeFail.Inc(1)
+		s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
 		return nil, err
 	}
 
@@ -1604,12 +1642,12 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 				WithField("job_id", id.Value).
 				WithField("value", value).
 				Error("Failed to get JobRuntimeRecord from record")
-			s.metrics.JobGetRuntimeFail.Inc(1)
+			s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
 			return nil, err
 		}
 		return record.GetJobRuntime()
 	}
-	s.metrics.JobNotFound.Inc(1)
+	s.metrics.JobMetrics.JobNotFound.Inc(1)
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.GetValue())
 }
 
@@ -1626,7 +1664,7 @@ func (s *Store) updateJobIndex(
 		log.WithField("job_id", id.Value).
 			WithError(err).
 			Error("Failed to marshal job runtime")
-		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		s.metrics.JobMetrics.JobUpdateRuntimeFail.Inc(1)
 		return err
 	}
 
@@ -1653,14 +1691,14 @@ func (s *Store) updateJobIndex(
 		configBuffer, err := json.Marshal(config)
 		if err != nil {
 			log.Errorf("Failed to marshal jobConfig, error = %v", err)
-			s.metrics.JobCreateFail.Inc(1)
+			s.metrics.JobMetrics.JobUpdateConfigFail.Inc(1)
 			return err
 		}
 
 		labelBuffer, err := json.Marshal(config.Labels)
 		if err != nil {
 			log.Errorf("Failed to marshal labels, error = %v", err)
-			s.metrics.JobCreateFail.Inc(1)
+			s.metrics.JobMetrics.JobUpdateConfigFail.Inc(1)
 			return err
 		}
 
@@ -1675,10 +1713,10 @@ func (s *Store) updateJobIndex(
 		log.WithField("job_id", id.Value).
 			WithError(err).
 			Error("Failed to update job runtime")
-		s.metrics.JobUpdateInfoFail.Inc(1)
+		s.metrics.JobMetrics.JobUpdateInfoFail.Inc(1)
 		return err
 	}
-	s.metrics.JobUpdateInfo.Inc(1)
+	s.metrics.JobMetrics.JobUpdateInfo.Inc(1)
 	return nil
 }
 
@@ -1695,7 +1733,7 @@ func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobI
 		log.WithField("job_id", id.Value).
 			WithError(err).
 			Error("Failed to update job runtime")
-		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		s.metrics.JobMetrics.JobUpdateRuntimeFail.Inc(1)
 		return err
 	}
 
@@ -1710,7 +1748,7 @@ func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobI
 		log.WithField("job_id", id.Value).
 			WithError(err).
 			Error("Failed to update job runtime")
-		s.metrics.JobUpdateRuntimeFail.Inc(1)
+		s.metrics.JobMetrics.JobUpdateRuntimeFail.Inc(1)
 		return err
 	}
 
@@ -1721,7 +1759,7 @@ func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobI
 			Error("updateJobInfoWithJobRuntime failed")
 		return err
 	}
-	s.metrics.JobUpdateRuntime.Inc(1)
+	s.metrics.JobMetrics.JobUpdateRuntime.Inc(1)
 	return nil
 }
 
@@ -1732,7 +1770,7 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.Qu
 		log.WithError(err).
 			WithField("job_id", id.GetValue()).
 			Error("Failed to get jobConfig")
-		s.metrics.JobQueryFail.Inc(1)
+		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
 	offset := spec.GetPagination().GetOffset()
@@ -1749,6 +1787,7 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.Qu
 		To:   end,
 	})
 	if err != nil {
+		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
 
@@ -1756,6 +1795,7 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.Qu
 	for i := offset; i < end; i++ {
 		result = append(result, tasks[i])
 	}
+	s.metrics.JobMetrics.JobQuery.Inc(1)
 	return result, jobConfig.InstanceCount, nil
 }
 
@@ -1780,11 +1820,11 @@ func (s *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 
 	err := s.applyStatement(ctx, stmt, volume.GetId().GetValue())
 	if err != nil {
-		s.metrics.VolumeCreateFail.Inc(1)
+		s.metrics.VolumeMetrics.VolumeCreateFail.Inc(1)
 		return err
 	}
 
-	s.metrics.VolumeCreate.Inc(1)
+	s.metrics.VolumeMetrics.VolumeCreate.Inc(1)
 	return nil
 }
 
@@ -1800,11 +1840,11 @@ func (s *Store) UpdatePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 
 	err := s.applyStatement(ctx, stmt, volumeID.GetValue())
 	if err != nil {
-		s.metrics.VolumeUpdateFail.Inc(1)
+		s.metrics.VolumeMetrics.VolumeUpdateFail.Inc(1)
 		return err
 	}
 
-	s.metrics.VolumeUpdate.Inc(1)
+	s.metrics.VolumeMetrics.VolumeUpdate.Inc(1)
 	return nil
 }
 
@@ -1821,7 +1861,7 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID *peloton.Volum
 		log.WithError(err).
 			WithField("volume_id", volumeID).
 			Error("Fail to GetPersistentVolume by volumeID.")
-		s.metrics.VolumeGetFail.Inc(1)
+		s.metrics.VolumeMetrics.VolumeGetFail.Inc(1)
 		return nil, err
 	}
 
@@ -1832,10 +1872,10 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID *peloton.Volum
 			log.WithError(err).
 				WithField("raw_volume_value", value).
 				Error("Failed to Fill into PersistentVolumeRecord.")
-			s.metrics.VolumeGetFail.Inc(1)
+			s.metrics.VolumeMetrics.VolumeGetFail.Inc(1)
 			return nil, err
 		}
-		s.metrics.VolumeGet.Inc(1)
+		s.metrics.VolumeMetrics.VolumeGet.Inc(1)
 		return &pb_volume.PersistentVolumeInfo{
 			Id: &peloton.VolumeID{
 				Value: record.VolumeID,
@@ -1855,6 +1895,7 @@ func (s *Store) GetPersistentVolume(ctx context.Context, volumeID *peloton.Volum
 			UpdateTime:    record.UpdateTime.String(),
 		}, nil
 	}
+	s.metrics.VolumeMetrics.VolumeGetFail.Inc(1)
 	return nil, &storage.VolumeNotFoundError{VolumeID: volumeID}
 }
 
@@ -1865,11 +1906,11 @@ func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 
 	err := s.applyStatement(ctx, stmt, volumeID.GetValue())
 	if err != nil {
-		s.metrics.VolumeDeleteFail.Inc(1)
+		s.metrics.VolumeMetrics.VolumeDeleteFail.Inc(1)
 		return err
 	}
 
-	s.metrics.VolumeDelete.Inc(1)
+	s.metrics.VolumeMetrics.VolumeDelete.Inc(1)
 	return nil
 }
 

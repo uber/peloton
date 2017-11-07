@@ -167,7 +167,7 @@ func (d *Config) Connect() error {
 // Store implements JobStore / TaskStore / FrameworkStore / respoolStore interfaces using a mysql backend
 type Store struct {
 	DB      *sqlx.DB
-	metrics storage.Metrics
+	metrics *storage.Metrics
 	Conf    Config
 }
 
@@ -186,7 +186,7 @@ func (m *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
 		log.WithError(err).Error("Marshal job config failed")
-		m.metrics.JobCreateFail.Inc(1)
+		m.metrics.JobMetrics.JobCreateFail.Inc(1)
 		return err
 	}
 
@@ -200,16 +200,16 @@ func (m *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	_, err = m.DB.Exec(insertJobStmt, id.Value, colJobConfig, 0, string(buffer), createdBy)
 	if err != nil {
 		log.WithError(err).WithField("job_id", id.Value).Error("CreateJob failed")
-		m.metrics.JobCreateFail.Inc(1)
+		m.metrics.JobMetrics.JobCreateFail.Inc(1)
 		return err
 	}
 	err = m.UpdateJobRuntime(ctx, id, initialJobRuntime)
 	if err != nil {
 		log.WithError(err).WithField("job_id", id.Value).Error("Create initial runtime failed")
-		m.metrics.JobCreateFail.Inc(1)
+		m.metrics.JobMetrics.JobCreateFail.Inc(1)
 		return err
 	}
-	m.metrics.JobCreate.Inc(1)
+	m.metrics.JobMetrics.JobCreate.Inc(1)
 	return nil
 }
 
@@ -218,17 +218,17 @@ func (m *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
 		log.WithError(err).Error("Marshal job config failed")
-		m.metrics.JobUpdateFail.Inc(1)
+		m.metrics.JobMetrics.JobUpdateFail.Inc(1)
 		return err
 	}
 	_, err = m.DB.Exec(updateJobConfig, string(buffer), id.Value)
 	if err != nil {
 		log.WithError(err).WithField("job_id", id.Value).Error("UpdateJobConfig failed")
-		m.metrics.JobUpdateFail.Inc(1)
+		m.metrics.JobMetrics.JobUpdateFail.Inc(1)
 		return err
 	}
 
-	m.metrics.JobUpdate.Inc(1)
+	m.metrics.JobMetrics.JobUpdate.Inc(1)
 	return nil
 }
 
@@ -263,22 +263,22 @@ func (m *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 	tasks, err := m.GetTasksForJob(ctx, id)
 	if err != nil {
 		log.Errorf("GetTasksForJob for job id %v failed with error %v", id.Value, err)
-		m.metrics.JobDeleteFail.Inc(1)
+		m.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 	if len(tasks) > 0 {
 		err = fmt.Errorf("job id %v still have task runtime records, cannot delete %v", id.Value, tasks)
-		m.metrics.JobDeleteFail.Inc(1)
+		m.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
 
 	_, err = m.DB.Exec(deleteJobStmt, id.Value)
 	if err != nil {
 		log.Errorf("Delete job id %v failed with error %v", id.Value, err)
-		m.metrics.JobDeleteFail.Inc(1)
+		m.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
 	}
-	m.metrics.JobDelete.Inc(1)
+	m.metrics.JobMetrics.JobDelete.Inc(1)
 	return nil
 }
 
@@ -329,14 +329,14 @@ func (m *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 	if taskInfo.InstanceId != instanceID {
 		errMsg := fmt.Sprintf("Task %v has instance id %v, different than the instanceID %d expected", rowKey, instanceID, taskInfo.InstanceId)
 		log.Errorf(errMsg)
-		m.metrics.TaskCreateFail.Inc(1)
+		m.metrics.TaskMetrics.TaskCreateFail.Inc(1)
 		return fmt.Errorf(errMsg)
 	}
 
 	buffer, err := json.Marshal(taskInfo)
 	if err != nil {
 		log.Errorf("error = %v", err)
-		m.metrics.TaskCreateFail.Inc(1)
+		m.metrics.TaskMetrics.TaskCreateFail.Inc(1)
 		return err
 	}
 
@@ -344,10 +344,10 @@ func (m *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 	_, err = m.DB.Exec(insertTaskStmt, rowKey, colBaseInfo, 0, string(buffer), createdBy)
 	if err != nil {
 		log.Errorf("Create task for job %v instance %d failed with error %v", id.Value, instanceID, err)
-		m.metrics.TaskCreateFail.Inc(1)
+		m.metrics.TaskMetrics.TaskCreateFail.Inc(1)
 		return err
 	}
-	m.metrics.TaskCreate.Inc(1)
+	m.metrics.TaskMetrics.TaskCreate.Inc(1)
 	return nil
 }
 
@@ -390,7 +390,7 @@ func (m *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 				buffer, err := json.Marshal(t)
 				if err != nil {
 					log.Errorf("Unable to marshal task %v error = %v", rowKey, err)
-					m.metrics.TaskCreateFail.Inc(batchSize)
+					m.metrics.TaskMetrics.TaskCreateFail.Inc(batchSize)
 					atomic.AddInt64(&tasksNotCreated, batchSize)
 					return
 				}
@@ -426,7 +426,7 @@ func (m *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 					WithField("task_range_end", end-1).
 					WithField("tasks", batchSize).
 					Errorf("Writing task batch to DB failed in %v", time.Since(batchTimeStart))
-				m.metrics.TaskCreateFail.Inc(batchSize)
+				m.metrics.TaskMetrics.TaskCreateFail.Inc(batchSize)
 				atomic.AddInt64(&tasksNotCreated, batchSize)
 				return
 			}
@@ -436,7 +436,7 @@ func (m *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 				WithField("task_range_end", end-1).
 				WithField("tasks", batchSize).
 				Debugf("Wrote tasks to DB in %v", time.Since(batchTimeStart))
-			m.metrics.TaskCreate.Inc(batchSize)
+			m.metrics.TaskMetrics.TaskCreate.Inc(batchSize)
 		}()
 	}
 	wg.Wait()
@@ -492,18 +492,18 @@ func (m *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 
 	if err != nil {
 		log.Errorf("error = %v", err)
-		m.metrics.TaskUpdateFail.Inc(1)
+		m.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
 		return err
 	}
 
 	_, err = m.DB.Exec(updateTaskStmt, string(buffer), rowKey)
 	if err != nil {
 		log.Errorf("Update task for job %v instance %d failed with error %v", taskInfo.JobId.Value, taskInfo.InstanceId, err)
-		m.metrics.TaskUpdateFail.Inc(1)
+		m.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
 		return err
 	}
 
-	m.metrics.TaskUpdate.Inc(1)
+	m.metrics.TaskMetrics.TaskUpdate.Inc(1)
 	return nil
 }
 
@@ -548,13 +548,13 @@ func (m *Store) getJobRecords(filters Filters) ([]JobRecord, error) {
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
 		log.Warnf("getJobs for filters %v returns no rows", filters)
-		m.metrics.JobGetFail.Inc(1)
+		m.metrics.JobMetrics.JobGetFail.Inc(1)
 		return records, nil
 	}
 
 	if err != nil {
 		log.Errorf("getJobs for filter %v failed with error %v", filters, err)
-		m.metrics.JobGetFail.Inc(1)
+		m.metrics.JobMetrics.JobGetFail.Inc(1)
 		return nil, err
 	}
 	return records, nil
@@ -571,12 +571,12 @@ func (m *Store) getJobs(filters Filters) (map[string]*job.JobConfig, error) {
 		jobConfig, err := jobRecord.GetJobConfig()
 		if err != nil {
 			log.Errorf("jobRecord %v GetJobConfig failed, err=%v", jobRecord, err)
-			m.metrics.JobGetFail.Inc(1)
+			m.metrics.JobMetrics.JobGetFail.Inc(1)
 			return nil, err
 		}
 		result[jobRecord.RowKey] = jobConfig
 	}
-	m.metrics.JobGet.Inc(1)
+	m.metrics.JobMetrics.JobGet.Inc(1)
 	return result, nil
 }
 
@@ -587,24 +587,24 @@ func (m *Store) getTasks(filters Filters) ([]*task.TaskInfo, error) {
 	err := m.DB.Select(&records, q, args...)
 	if err == sql.ErrNoRows {
 		log.Warnf("getTasksByInstanceID for filters %v returns no rows", filters)
-		m.metrics.TaskGetFail.Inc(1)
+		m.metrics.TaskMetrics.TaskGetFail.Inc(1)
 		return result, nil
 	}
 	if err != nil {
 		log.Errorf("getTasksByInstanceID for filter %v failed with error %v", filters, err)
-		m.metrics.TaskGetFail.Inc(1)
+		m.metrics.TaskMetrics.TaskGetFail.Inc(1)
 		return nil, err
 	}
 	for _, taskRecord := range records {
 		taskInfo, err := taskRecord.GetTaskInfo()
 		if err != nil {
 			log.Errorf("taskRecord %v GetTaskInfo failed, err=%v", taskRecord, err)
-			m.metrics.TaskGetFail.Inc(1)
+			m.metrics.TaskMetrics.TaskGetFail.Inc(1)
 			return nil, err
 		}
 		result = append(result, taskInfo)
 	}
-	m.metrics.TaskGet.Inc(1)
+	m.metrics.TaskMetrics.TaskGet.Inc(1)
 	return result, nil
 }
 
@@ -803,21 +803,21 @@ func (m *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 		return nil, nil
 	} else if err != nil {
 		log.WithError(err).WithField("job_id", id.Value).Error("Failed to GetJobRuntime")
-		m.metrics.JobGetRuntimeFail.Inc(1)
+		m.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
 		return nil, err
 	}
 
 	if len(records) > 1 {
-		m.metrics.JobGetRuntimeFail.Inc(1)
+		m.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
 		return nil, fmt.Errorf("found %d jobs %v for job id %v", len(records), records, id.Value)
 	}
 	for _, record := range records {
 		runtime, err := record.GetJobRuntime()
 		if err != nil {
-			m.metrics.JobGetRuntimeFail.Inc(1)
+			m.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
 			return nil, err
 		}
-		m.metrics.JobGetRuntime.Inc(1)
+		m.metrics.JobMetrics.JobGetRuntime.Inc(1)
 		return runtime, nil
 	}
 	return nil, fmt.Errorf("GetJobRuntime cannot find runtime for jobID %v", id.Value)
@@ -841,7 +841,7 @@ func (m *Store) GetJobsByState(ctx context.Context, state job.JobState) ([]pelot
 		return result, nil
 	} else if err != nil {
 		log.WithError(err).WithField("job_state", state).Error("Failed to GetJobsByState")
-		m.metrics.JobGetByStatesFail.Inc(1)
+		m.metrics.JobMetrics.JobGetByStatesFail.Inc(1)
 		return nil, err
 	}
 
@@ -850,7 +850,7 @@ func (m *Store) GetJobsByState(ctx context.Context, state job.JobState) ([]pelot
 			Value: record.RowKey,
 		})
 	}
-	m.metrics.JobGetByStates.Inc(1)
+	m.metrics.JobMetrics.JobGetByStates.Inc(1)
 	return result, nil
 }
 
@@ -859,7 +859,7 @@ func (m *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime
 	buffer, err := json.Marshal(runtime)
 	if err != nil {
 		log.WithError(err).Error("Failed to marshal job runtime")
-		m.metrics.JobUpdateRuntimeFail.Inc(1)
+		m.metrics.JobMetrics.JobUpdateRuntimeFail.Inc(1)
 		return err
 	}
 
@@ -868,10 +868,10 @@ func (m *Store) UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime
 		log.WithError(err).
 			WithField("job_id", id.Value).
 			Error("Failed to update job runtime")
-		m.metrics.JobUpdateRuntimeFail.Inc(1)
+		m.metrics.JobMetrics.JobUpdateRuntimeFail.Inc(1)
 		return err
 	}
-	m.metrics.JobUpdateRuntime.Inc(1)
+	m.metrics.JobMetrics.JobUpdateRuntime.Inc(1)
 	return nil
 }
 
