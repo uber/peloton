@@ -185,7 +185,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	// processed.
 	// TODO: Move to util.MesosStateToPelotonState when
 	// https://issues.apache.org/jira/browse/MESOS-6417 is fixed.
-	if state == pb_task.TaskState_RUNNING && config.GetHealthCheck() != nil && event.GetMesosTaskStatus().Healthy == nil {
+	if state == pb_task.TaskState_RUNNING && config.GetHealthCheck().GetEnabled() && event.GetMesosTaskStatus().Healthy == nil {
 		state = pb_task.TaskState_PENDING_HEALTH
 	}
 
