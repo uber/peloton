@@ -185,7 +185,7 @@ func MesosStateToPelotonState(status *mesos.TaskStatus) task.TaskState {
 	case mesos.TaskState_TASK_ERROR:
 		return task.TaskState_FAILED
 	default:
-		log.Errorf("Unknown mesos taskState %v", status.GetState())
+		log.WithField("task_state", status.GetState()).Error("Unknown mesos taskState")
 		return task.TaskState_INITIALIZED
 	}
 }
@@ -220,7 +220,7 @@ func ParseTaskID(taskID string) (*peloton.JobID, uint32, error) {
 
 	instanceID, err := strconv.Atoi(ins)
 	if err != nil {
-		log.Errorf("Failed to parse taskID %v err=%v", taskID, err)
+		log.WithField("task_id", taskID).WithError(err).Error("Failed to parse taskID")
 	}
 	return &peloton.JobID{Value: jobID}, uint32(instanceID), err
 }
@@ -256,7 +256,10 @@ func UnmarshalToType(jsonString string, resultType reflect.Type) (interface{}, e
 	result := reflect.New(resultType)
 	err := json.Unmarshal([]byte(jsonString), result.Interface())
 	if err != nil {
-		log.Errorf("Unmarshal failed with error %v, type %v, jsonString %v", err, resultType, jsonString)
+		log.WithError(err).WithFields(log.Fields{
+			"result_type": resultType,
+			"json_string": jsonString,
+		}).Error("Unmarshal json string to result type failed")
 		return nil, nil
 	}
 	return result.Interface(), nil

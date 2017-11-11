@@ -22,7 +22,7 @@ type ID struct {
 func NewID(httpPort int, grpcPort int) string {
 	ip, err := listenIP()
 	if err != nil {
-		log.Fatalf("Failed to get ip, err=%v", err)
+		log.WithError(err).Fatal("Failed to get ip")
 	}
 	// TODO: Populate the hostname and version in ID
 	id := &ID{

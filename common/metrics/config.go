@@ -74,7 +74,7 @@ func InitMetricScope(
 			promHandler := promReporter.HTTPHandler()
 
 			// if prometheus support is enabled, handle /metrics to serve prom metrics
-			log.Infof("Setting up prometheus metrics handler at /metrics")
+			log.Info("Setting up prometheus metrics handler at /metrics")
 			mux.Handle("/metrics", promHandler)
 		}
 
@@ -82,7 +82,7 @@ func InitMetricScope(
 		if cfg.M3 != nil && cfg.M3.HostPort != "" {
 			r, err := cfg.M3.NewReporter()
 			if err != nil {
-				log.Fatalf("Failed to create m3 reporter: %v", err)
+				log.WithError(err).Fatal("Failed to create m3 reporter")
 			}
 			m3Reporter = r
 		}
@@ -109,14 +109,14 @@ func InitMetricScope(
 	} else {
 		// To use statsd, MultiReporter should be turned off
 		if cfg.Statsd != nil && cfg.Statsd.Enable {
-			log.Infof("Metrics configured with statsd endpoint %s", cfg.Statsd.Endpoint)
+			log.WithField("endpoint", cfg.Statsd.Endpoint).Info("Metrics configured with statsd endpoint")
 			c, err := statsd.NewClient(cfg.Statsd.Endpoint, "")
 			if err != nil {
-				log.Fatalf("Unable to setup Statsd client: %v", err)
+				log.WithError(err).Fatal("Unable to setup Statsd client")
 			}
 			reporter = tallystatsd.NewReporter(c, tallystatsd.Options{})
 		} else {
-			log.Warnf("No metrics backends configured, using the statsd.NoopClient")
+			log.Warn("No metrics backends configured, using the statsd.NoopClient")
 			c, _ := statsd.NewNoopClient()
 			reporter = tallystatsd.NewReporter(c, tallystatsd.Options{})
 		}

@@ -35,7 +35,7 @@ func TestObserver(t *testing.T) {
 		role:     role,
 		metrics:  newObserverMetrics(tally.NoopScope, "testobserverrole"),
 		callback: func(leader string) error {
-			log.Infof("NewLeaderCallback called with %s", leader)
+			log.WithField("leader", leader).Info("NewLeaderCallback called with leader")
 			events <- "new_leader:" + leader
 			return nil
 		},

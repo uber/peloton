@@ -122,7 +122,7 @@ func (h *serviceHandler) Create(
 		}, nil
 	}
 
-	log.WithField("config", jobConfig).Infof("JobManager.Create called")
+	log.WithField("config", jobConfig).Info("JobManager.Create called")
 
 	// Validate job config with default task configs
 	err = task_config.ValidateTaskConfig(jobConfig)
@@ -209,8 +209,10 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	err := h.taskStore.CreateTaskRuntimes(ctx, jobID, runtimes, "peloton")
 	nTasks := int64(len(runtimes))
 	if err != nil {
-		log.Errorf("Failed to create tasks (%d) for job %v: %v",
-			nTasks, jobID.Value, err)
+		log.WithError(err).WithFields(log.Fields{
+			"num_tasks": nTasks,
+			"job_id":    jobID.Value,
+		}).Error("Failed to create tasks for job")
 		h.metrics.TaskCreateFail.Inc(nTasks)
 		return err
 	}
@@ -236,8 +238,11 @@ func (h *serviceHandler) createAndEnqueueTasks(
 		return err
 	}
 
-	log.Infof("Job %v all %v tasks created, time spent: %v",
-		jobID.Value, instances, time.Since(startAddTaskTime))
+	log.WithFields(log.Fields{
+		"job_id":    jobID.Value,
+		"instances": instances,
+		"duration":  time.Since(startAddTaskTime),
+	}).Info("All tasks for job are created in duration")
 
 	return nil
 }
@@ -335,7 +340,7 @@ func (h *serviceHandler) Update(
 	// TODO: Update goal state version of existing tasks to the new version.
 	for id, runtime := range diff.InstancesToAdd {
 		if err := h.taskStore.CreateTaskRuntime(ctx, jobID, id, runtime, "peloton"); err != nil {
-			log.Errorf("Failed to create task for job %v: %v", jobID.Value, err)
+			log.WithError(err).WithField("job_id", jobID.Value).Error("Failed to create task for job")
 			h.metrics.TaskCreateFail.Inc(1)
 			h.metrics.JobUpdateFail.Inc(1)
 			// FIXME: Add a new Error type for this
@@ -449,7 +454,7 @@ func (h *serviceHandler) Delete(
 
 	if err := h.jobStore.DeleteJob(ctx, req.Id); err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
-		log.Errorf("Delete job failed with error %v", err)
+		log.WithError(err).WithField("job_id", req.GetId().GetValue()).Error("Delete job failed")
 		return &job.DeleteResponse{
 			Error: &job.DeleteResponse_Error{
 				NotFound: &api_errors.JobNotFound{

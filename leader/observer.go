@@ -66,7 +66,7 @@ func (o *observer) Start() error {
 		for o.running {
 			err := o.waitForEvent()
 			if err != nil {
-				log.WithFields(log.Fields{"role": o.role}).Errorf("Failure observing election; retrying: %v", err)
+				log.WithField("role", o.role).WithError(err).Error("Failure observing election, retrying")
 			}
 			time.Sleep(zkConnErrRetry)
 		}

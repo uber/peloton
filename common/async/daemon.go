@@ -59,7 +59,7 @@ type daemon struct {
 func (d *daemon) Start() {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	log.Infof("Daemon %s starting", d.name)
+	log.WithField("daemon", d.name).Info("Daemon starting")
 	if !d.started && !d.running {
 		go func() {
 			ctx, cancelFunc := context.WithCancel(context.Background())
@@ -74,7 +74,7 @@ func (d *daemon) Start() {
 func (d *daemon) Stop() {
 	d.lock.Lock()
 	defer d.lock.Unlock()
-	log.Infof("Daemon %s stopping", d.name)
+	log.WithField("daemon", d.name).Info("Daemon stopping")
 	d.started = false
 	if d.cancelFunc != nil {
 		d.cancelFunc()
@@ -87,7 +87,7 @@ func (d *daemon) startRunning(cancelFunc context.CancelFunc) {
 	defer d.lock.Unlock()
 	d.running = true
 	d.cancelFunc = cancelFunc
-	log.Infof("Daemon %s started running", d.name)
+	log.WithField("daemon", d.name).Info("Daemon started running")
 }
 
 func (d *daemon) stopRunning() {
@@ -95,5 +95,5 @@ func (d *daemon) stopRunning() {
 	defer d.lock.Unlock()
 	d.running = false
 	d.cancelFunc = nil
-	log.Infof("Daemon %s stopped running", d.name)
+	log.WithField("daemon", d.name).Info("Daemon stopped running")
 }

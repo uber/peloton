@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -80,6 +81,6 @@ func (manager *taskManager) SetPlacements(ctx context.Context, placements []*res
 
 func (manager *taskManager) Enqueue(ctx context.Context, gangs []*resmgrsvc.Gang) error {
 	// TODO(mu): send unplaced tasks back to correct state (READY) per T1028631.
-	log.Warnf("Enqueue in %T is not implemented yet", manager)
+	log.WithField("type", fmt.Sprintf("%T", manager)).Warn("Enqueue is not implemented in type yet")
 	return nil
 }

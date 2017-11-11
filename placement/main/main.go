@@ -235,7 +235,7 @@ func main() {
 
 	log.Debug("Starting YARPC dispatcher")
 	if err := dispatcher.Start(); err != nil {
-		log.Fatalf("Unable to start dispatcher: %v", err)
+		log.WithError(err).Fatal("Unable to start dispatcher")
 	}
 
 	log.Info("Connect to the TaskStore")

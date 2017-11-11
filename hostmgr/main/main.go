@@ -220,7 +220,7 @@ func main() {
 
 	mesosMasterDetector, err := mesos.NewZKDetector(cfg.Mesos.ZkPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize mesos master detector: %v", err)
+		log.WithError(err).Fatal("Failed to initialize mesos master detector")
 	}
 
 	// NOTE: we start the server immediately even if no leader has been
@@ -412,17 +412,17 @@ func main() {
 		server,
 	)
 	if err != nil {
-		log.Fatalf("Unable to create leader candidate: %v", err)
+		log.WithError(err).Fatal("Unable to create leader candidate")
 	}
 	err = candidate.Start()
 	if err != nil {
-		log.Fatalf("Unable to start leader candidate: %v", err)
+		log.WithError(err).Fatal("Unable to start leader candidate")
 	}
 	defer candidate.Stop()
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
-		log.Fatalf("Could not start rpc server: %v", err)
+		log.WithError(err).Fatal("Could not start rpc server")
 	}
 
 	log.WithFields(log.Fields{
