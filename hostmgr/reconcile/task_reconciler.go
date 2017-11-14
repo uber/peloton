@@ -2,7 +2,6 @@ package reconcile
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -10,7 +9,7 @@ import (
 	"github.com/uber-go/tally"
 
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
@@ -167,25 +166,24 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	[]*sched.Call_Reconcile_Task, error) {
 
 	var reconcileTasks []*sched.Call_Reconcile_Task
-	allJobs, err := r.jobStore.GetAllJobs(ctx)
+	jobStates := []job.JobState{
+		job.JobState_RUNNING,
+	}
+	jobIDs, err := r.jobStore.GetJobsByStates(ctx, jobStates)
 	if err != nil {
-		log.WithField("error", err).Error("Failed to get all jobs.")
+		log.WithError(err).Error("Failed to get running jobs.")
 		return reconcileTasks, err
 	}
 
-	// TODO(mu): we should query tasks by non-terminal state directly on tasks
-	// table with pagination to avoid repetitive queries and storing all tasks
-	// in memory.
-	for jobID := range allJobs {
+	for _, jobID := range jobIDs {
 		nonTerminalTasks, getTasksErr := r.taskStore.GetTasksForJobAndState(
 			ctx,
-			&peloton.JobID{Value: jobID},
-			strconv.Itoa(int(task.TaskState_value["RUNNING"])),
+			&jobID,
+			task.TaskState_RUNNING.String(),
 		)
 		if getTasksErr != nil {
-			log.WithFields(log.Fields{
-				"job":   jobID,
-				"error": err,
+			log.WithError(getTasksErr).WithFields(log.Fields{
+				"job": jobID,
 			}).Error("Failed to get running tasks for job")
 			return reconcileTasks, getTasksErr
 		}

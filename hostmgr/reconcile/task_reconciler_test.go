@@ -3,7 +3,6 @@ package reconcile
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"testing"
 	"time"
 
@@ -45,6 +44,12 @@ func (m *mockFrameworkInfoProvider) GetFrameworkID(ctx context.Context) *mesos.F
 	tmp := frameworkID
 	return &mesos.FrameworkID{Value: &tmp}
 }
+
+var (
+	_nonTerminalJobStates = []job.JobState{
+		job.JobState_RUNNING,
+	}
+)
 
 type TaskReconcilerTestSuite struct {
 	suite.Suite
@@ -124,10 +129,10 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
+			GetJobsByStates(context.Background(), _nonTerminalJobStates).
+			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(context.Background(), suite.testJobID,
-				strconv.Itoa(int(task.TaskState_value[task.TaskState_RUNNING.String()]))).
+			GetTasksForJobAndState(context.Background(), suite.testJobID, "RUNNING").
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -190,10 +195,10 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
+			GetJobsByStates(context.Background(), _nonTerminalJobStates).
+			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(context.Background(), suite.testJobID,
-				strconv.Itoa(int(task.TaskState_value[task.TaskState_RUNNING.String()]))).
+			GetTasksForJobAndState(context.Background(), suite.testJobID, "RUNNING").
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -239,10 +244,10 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 	defer suite.ctrl.Finish()
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
-			GetAllJobs(context.Background()).Return(suite.allJobRuntime, nil),
+			GetJobsByStates(context.Background(), _nonTerminalJobStates).
+			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndState(context.Background(), suite.testJobID,
-				strconv.Itoa(int(task.TaskState_value[task.TaskState_RUNNING.String()]))).
+			GetTasksForJobAndState(context.Background(), suite.testJobID, "RUNNING").
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
