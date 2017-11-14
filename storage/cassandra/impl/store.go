@@ -42,12 +42,12 @@ type Metrics struct {
 func NewMetrics(scope tally.Scope) Metrics {
 
 	executeScope := scope.SubScope(executeName)
-	executeSuccessScope := executeScope.Tagged(map[string]string{"type": "success"})
-	executeFailScope := executeScope.Tagged(map[string]string{"type": "fail"})
+	executeSuccessScope := executeScope.Tagged(map[string]string{"result": "success"})
+	executeFailScope := executeScope.Tagged(map[string]string{"result": "fail"})
 
 	executeBatchScope := scope.SubScope(executeBatchName)
-	executeBatchSuccessScope := executeBatchScope.Tagged(map[string]string{"type": "success"})
-	executeBatchFailScope := executeBatchScope.Tagged(map[string]string{"type": "fail"})
+	executeBatchSuccessScope := executeBatchScope.Tagged(map[string]string{"result": "success"})
+	executeBatchFailScope := executeBatchScope.Tagged(map[string]string{"result": "fail"})
 
 	metrics := Metrics{
 		ExecuteSuccess: executeSuccessScope.Counter(executeName),
