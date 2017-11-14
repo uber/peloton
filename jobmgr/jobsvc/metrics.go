@@ -35,15 +35,15 @@ type Metrics struct {
 // NewMetrics returns a new Metrics struct, with all metrics
 // initialized and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
-	jobSuccessScope := scope.Tagged(map[string]string{"type": "success"})
-	jobFailScope := scope.Tagged(map[string]string{"type": "fail"})
+	jobSuccessScope := scope.Tagged(map[string]string{"result": "success"})
+	jobFailScope := scope.Tagged(map[string]string{"result": "fail"})
 	jobAPIScope := scope.SubScope("api")
 
 	// TODO: find a better way of organizing metrics per package so we
 	// don't have to nest task scope under job scope here.
 	taskScope := scope.SubScope("task")
-	taskSuccessScope := taskScope.Tagged(map[string]string{"type": "success"})
-	taskFailScope := taskScope.Tagged(map[string]string{"type": "fail"})
+	taskSuccessScope := taskScope.Tagged(map[string]string{"result": "success"})
+	taskFailScope := taskScope.Tagged(map[string]string{"result": "fail"})
 
 	return &Metrics{
 		JobAPICreate:   jobAPIScope.Counter("create"),

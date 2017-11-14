@@ -88,6 +88,7 @@ func (m *serviceHandler) Get(
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil {
 		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
+		m.metrics.TaskGetFail.Inc(1)
 		return &task.GetResponse{
 			NotFound: &pb_errors.JobNotFound{
 				Id:      body.JobId,
@@ -211,6 +212,7 @@ func (m *serviceHandler) Start(
 		log.WithField("job", body.JobId).
 			WithError(err).
 			Error("failed to get job from db")
+		m.metrics.TaskStartFail.Inc(1)
 		return &task.StartResponse{
 			Error: &task.StartResponse_Error{
 				NotFound: &pb_errors.JobNotFound{
@@ -227,6 +229,7 @@ func (m *serviceHandler) Start(
 		log.WithField("job", body.JobId).
 			WithError(err).
 			Error("failed to get tasks for job in db")
+		m.metrics.TaskStartFail.Inc(1)
 		return &task.StartResponse{
 			Error: &task.StartResponse_Error{
 				OutOfRange: &task.InstanceIdOutOfRange{
@@ -278,6 +281,7 @@ func (m *serviceHandler) Start(
 	}
 
 	if err != nil {
+		m.metrics.TaskStartFail.Inc(1)
 		return &task.StartResponse{
 			Error: &task.StartResponse_Error{
 				Failure: &task.TaskStartFailure{
