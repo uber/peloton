@@ -45,7 +45,8 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	runtimeUpdater *jobmgr_job.RuntimeUpdater,
+	trackedManager tracked.Manager,
+	runtimeUpdater jobmgr_job.RuntimeUpdater,
 	clientName string) {
 
 	handler := &serviceHandler{
@@ -67,8 +68,9 @@ type serviceHandler struct {
 	taskStore      storage.TaskStore
 	respoolClient  respool.ResourceManagerYARPCClient
 	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
-	runtimeUpdater *jobmgr_job.RuntimeUpdater
 	rootCtx        context.Context
+	trackedManager tracked.Manager
+	runtimeUpdater jobmgr_job.RuntimeUpdater
 	metrics        *Metrics
 }
 

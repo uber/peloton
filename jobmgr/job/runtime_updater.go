@@ -13,6 +13,7 @@ import (
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 
+	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"github.com/pkg/errors"
@@ -44,17 +45,27 @@ var NonTerminatedStates = map[job.JobState]bool{
 	job.JobState_UNKNOWN: true,
 }
 
+// RuntimeUpdater is the interface to update job runtime.
+type RuntimeUpdater interface {
+	eventstream.EventHandler
+
+	Start()
+	Stop()
+
+	UpdateJob(ctx context.Context, jobID *peloton.JobID) error
+}
+
 // NewJobRuntimeUpdater creates a new JobRuntimeUpdater
 func NewJobRuntimeUpdater(
 	trackedManager tracked.Manager,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	cfg Config,
-	parentScope tally.Scope) *RuntimeUpdater {
+	parentScope tally.Scope) RuntimeUpdater {
 	cfg.normalize()
 
 	// TODO: load firstTaskUpdateTime from DB after restart
-	updater := RuntimeUpdater{
+	updater := runtimeUpdater{
 		cfg:                 cfg,
 		jobStore:            jobStore,
 		taskStore:           taskStore,
@@ -74,8 +85,8 @@ func NewJobRuntimeUpdater(
 	return &updater
 }
 
-// RuntimeUpdater updates the job runtime states
-type RuntimeUpdater struct {
+// runtimeUpdater updates the job runtime states
+type runtimeUpdater struct {
 	sync.Mutex
 
 	cfg Config
@@ -101,12 +112,12 @@ type RuntimeUpdater struct {
 }
 
 // OnEvent callback
-func (j *RuntimeUpdater) OnEvent(event *pb_eventstream.Event) {
+func (j *runtimeUpdater) OnEvent(event *pb_eventstream.Event) {
 	log.Error("Not implemented")
 }
 
 // OnEvents is the implementation of the event stream handler callback
-func (j *RuntimeUpdater) OnEvents(events []*pb_eventstream.Event) {
+func (j *runtimeUpdater) OnEvents(events []*pb_eventstream.Event) {
 	j.Lock()
 	defer j.Unlock()
 
@@ -142,7 +153,7 @@ func formatTime(timestamp float64, layout string) string {
 }
 
 // UpdateJob updates the job runtime synchronously
-func (j *RuntimeUpdater) UpdateJob(ctx context.Context, jobID *peloton.JobID) error {
+func (j *runtimeUpdater) UpdateJob(ctx context.Context, jobID *peloton.JobID) error {
 	j.Lock()
 	// Ensure we mark it for eventual evaluation.
 	j.taskUpdatedFlags[jobID.GetValue()] = true
@@ -161,7 +172,7 @@ func (j *RuntimeUpdater) UpdateJob(ctx context.Context, jobID *peloton.JobID) er
 }
 
 // updateJobRuntime for the given job ID.
-func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.JobID) error {
+func (j *runtimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.JobID) error {
 	// Ensure this is the only job update running for this job.
 	j.Lock()
 	if c, ok := j.taskUpdateRunning[jobID.GetValue()]; ok {
@@ -297,7 +308,7 @@ func (j *RuntimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	return nil
 }
 
-func (j *RuntimeUpdater) updateJobsRuntime(ctx context.Context) {
+func (j *runtimeUpdater) updateJobsRuntime(ctx context.Context) {
 	j.Lock()
 
 	log.Debug("JobRuntimeUpdater updateJobsRuntime")
@@ -324,7 +335,7 @@ func (j *RuntimeUpdater) updateJobsRuntime(ctx context.Context) {
 
 // checkAllJobs would check and update all jobs that is not in terminal state
 // every checkAllJobsInterval time
-func (j *RuntimeUpdater) checkAllJobs(ctx context.Context) {
+func (j *runtimeUpdater) checkAllJobs(ctx context.Context) {
 	j.Lock()
 
 	if time.Since(j.lastCheckAllJobsTime) < checkAllJobsInterval {
@@ -356,7 +367,7 @@ func (j *RuntimeUpdater) checkAllJobs(ctx context.Context) {
 	}
 }
 
-func (j *RuntimeUpdater) clear() {
+func (j *runtimeUpdater) clear() {
 	log.Info("jobRuntimeUpdater cleared")
 
 	j.taskUpdatedFlags = make(map[string]bool)
@@ -365,7 +376,7 @@ func (j *RuntimeUpdater) clear() {
 
 }
 
-func (j *RuntimeUpdater) updateJobStateLoop(c <-chan time.Time) {
+func (j *runtimeUpdater) updateJobStateLoop(c <-chan time.Time) {
 	for range c {
 		if j.started.Load() {
 			// update job runtime based on taskUpdatedFlags
@@ -383,7 +394,7 @@ func (j *RuntimeUpdater) updateJobStateLoop(c <-chan time.Time) {
 }
 
 // Start starts processing status update events
-func (j *RuntimeUpdater) Start() {
+func (j *runtimeUpdater) Start() {
 	j.Lock()
 	defer j.Unlock()
 
@@ -393,7 +404,7 @@ func (j *RuntimeUpdater) Start() {
 }
 
 // Stop stops processing status update events
-func (j *RuntimeUpdater) Stop() {
+func (j *runtimeUpdater) Stop() {
 	j.Lock()
 	defer j.Unlock()
 
@@ -405,6 +416,6 @@ func (j *RuntimeUpdater) Stop() {
 }
 
 // GetEventProgress returns the progress
-func (j *RuntimeUpdater) GetEventProgress() uint64 {
+func (j *runtimeUpdater) GetEventProgress() uint64 {
 	return j.progress.Load()
 }
