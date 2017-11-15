@@ -2,6 +2,7 @@ package event
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,10 @@ import (
 
 // Declare a Now function so that we can mock it in unit tests.
 var now = time.Now
+// Maximum retries on mesos system failures
+const (
+	MaxSystemFailureAttempts = 2
+)
 
 // StatusUpdate is the interface for task status updates
 type StatusUpdate interface {
@@ -129,6 +134,25 @@ func (p *statusUpdate) GetEventProgress() uint64 {
 	return p.applier.GetEventProgress()
 }
 
+func (p *statusUpdate) isSystemFailure(event *pb_eventstream.Event) bool {
+	if event.Type != pb_eventstream.Event_MESOS_TASK_STATUS {
+		return false
+	}
+	state := util.MesosStateToPelotonState(event.MesosTaskStatus)
+	if state != pb_task.TaskState_FAILED && state != pb_task.TaskState_KILLED {
+		return false
+	}
+	if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED {
+		return true
+	}
+	if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED {
+		if strings.Contains(event.MesosTaskStatus.GetMessage(), "Container terminated with signal Broken pipe") {
+			return true
+		}
+	}
+	return false
+}
+
 // ProcessStatusUpdate processes the actual task status
 func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_eventstream.Event) error {
 	var taskID string
@@ -216,10 +240,17 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 	}
 
-	maxFailures := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
 	switch state {
-	case pb_task.TaskState_FAILED:
-		if runtime.GetFailureCount() >= maxFailures {
+	case pb_task.TaskState_FAILED, pb_task.TaskState_KILLED:
+		maxAttempts := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
+		if p.isSystemFailure(event) {
+			if maxAttempts < MaxSystemFailureAttempts {
+				maxAttempts = MaxSystemFailureAttempts
+			}
+			p.metrics.RetryFailedLaunchTotal.Inc(1)
+		}
+
+		if runtime.GetFailureCount() >= maxAttempts {
 			// Stop scheduling the task, max failures reached.
 			runtime.GoalState = pb_task.TaskState_FAILED
 			runtime.State = state
