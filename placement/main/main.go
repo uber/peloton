@@ -3,11 +3,6 @@ package main
 import (
 	"os"
 
-	log "github.com/sirupsen/logrus"
-	"go.uber.org/yarpc"
-	"go.uber.org/yarpc/api/transport"
-	"gopkg.in/alecthomas/kingpin.v2"
-
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
@@ -17,6 +12,13 @@ import (
 	"code.uber.internal/infra/peloton/placement"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+
+	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/api/transport"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -98,6 +100,12 @@ var (
 		Default("").
 		Envar("DATACENTER").
 		String()
+
+	taskType = app.Flag(
+		"task-type", "Placement engine task type").
+		Default("BATCH").
+		Envar("TASK_TYPE").
+		String()
 )
 
 func main() {
@@ -159,6 +167,16 @@ func main() {
 	if *cassandraPort != 0 {
 		cfg.Storage.Cassandra.CassandraConn.Port = *cassandraPort
 	}
+
+	placementTaskType := resmgr.TaskType_BATCH
+	if *taskType != "" {
+		if tt, ok := resmgr.TaskType_value[*taskType]; ok {
+			placementTaskType = resmgr.TaskType(tt)
+		} else {
+			log.WithField("placement_task_type", *taskType).Error("Invalid placement task type")
+		}
+	}
+	log.WithField("placement_task_type", placementTaskType).Info("Placement engine task type")
 
 	log.WithField("config", cfg).Info("Loaded Placement Engine config")
 
