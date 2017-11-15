@@ -272,11 +272,17 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 			Pagination: &query.PaginationSpec{
 				Limit:  10,
 				Offset: 0,
+				OrderBy: []*query.OrderBy{
+					&query.OrderBy{
+						Order:    query.OrderBy_DESC,
+						Property: &query.PropertyPath{Value: "creation_time"},
+					},
+				},
 			},
 		},
 	}).Return(nil, nil)
 
-	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", 10, 0))
+	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", 10, 0, "creation_time", "DESC"))
 }
 
 func (suite *jobActionsTestSuite) TestClient_JobGetAction() {

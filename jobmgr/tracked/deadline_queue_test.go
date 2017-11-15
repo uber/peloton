@@ -47,7 +47,8 @@ func TestTimeoutQueueOrdering(t *testing.T) {
 		}
 
 		for _, v := range expect {
-			assert.Equal(t, v, q.popIfReady())
+			p := q.popIfReady().(*testQueueItem)
+			assert.Equal(t, v.value, p.value)
 		}
 	}
 
