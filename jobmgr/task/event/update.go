@@ -3,6 +3,7 @@ package event
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,11 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+)
+
+// Maximum retries on mesos system failures
+const (
+	MaxSystemFailureAttempts = 1
 )
 
 // NowFunc returns time.Time so that we can mock it in unit tests.
@@ -112,6 +118,25 @@ func (p *statusUpdate) OnEvent(event *pb_eventstream.Event) {
 // GetEventProgress returns the progress of the event progressing
 func (p *statusUpdate) GetEventProgress() uint64 {
 	return p.applier.GetEventProgress()
+}
+
+func (p *statusUpdate) isSystemFailure(event *pb_eventstream.Event) bool {
+	if event.Type != pb_eventstream.Event_MESOS_TASK_STATUS {
+		return false
+	}
+	state := util.MesosStateToPelotonState(event.MesosTaskStatus)
+	if state != pb_task.TaskState_FAILED && state != pb_task.TaskState_KILLED {
+		return false
+	}
+	if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED {
+		return true
+	}
+	if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED {
+		if strings.Contains(event.MesosTaskStatus.GetMessage(), "Container terminated with signal Broken pipe") {
+			return true
+		}
+	}
+	return false
 }
 
 // ProcessStatusUpdate processes the actual task status
@@ -221,7 +246,15 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			runtime.FailureCount++
 		}
 
-		if runtime.GetFailureCount() > config.GetRestartPolicy().GetMaxFailures() {
+		maxAttempts := config.GetRestartPolicy().GetMaxFailures()
+		if p.isSystemFailure(event) {
+			if maxAttempts < MaxSystemFailureAttempts {
+				maxAttempts = MaxSystemFailureAttempts
+			}
+			p.metrics.RetryFailedLaunchTotal.Inc(1)
+		}
+
+		if runtime.GetFailureCount() > maxAttempts {
 			// Stop scheduling the task, max failures reached.
 			runtime.GoalState = pb_task.TaskGoalState_KILL
 			runtime.State = state

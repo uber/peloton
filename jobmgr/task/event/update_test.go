@@ -31,7 +31,7 @@ const (
 var (
 	_jobID       = uuid.NewUUID().String()
 	_uuidStr     = uuid.NewUUID().String()
-	_mesosReason = mesos.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED
+	_mesosReason = mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED
 	_sla         = &job.SlaConfig{
 		Preemptible: false,
 	}
@@ -244,6 +244,50 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 	)
 
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+}
+
+// Test processing task failure due to container launch failure.
+func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedSystemFailure() {
+	defer suite.ctrl.Finish()
+
+	failureReason := mesos.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
+	event.MesosTaskStatus.Reason = &failureReason
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	taskInfo.GetConfig().GetRestartPolicy().MaxFailures = 0
+
+	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
+	suite.mockTrackedManager.EXPECT().
+		GetTaskRuntime(context.Background(), _pelotonJobID, _instanceID).
+		Return(taskInfo.Runtime, nil)
+	suite.mockTaskStore.EXPECT().
+		GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil)
+	suite.mockTrackedManager.EXPECT().
+		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo) {
+			suite.Equal(
+				runtime.State,
+				task.TaskState_FAILED,
+			)
+			suite.Equal(
+				runtime.Reason,
+				failureReason.String(),
+			)
+			suite.Equal(
+				runtime.Message,
+				rescheduleMsg,
+			)
+			suite.Equal(
+				runtime.FailureCount,
+				uint32(1),
+			)
+		}).
+		Return(nil)
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_failed_total+"].Value())
+	time.Sleep(_waitTime)
 }
 
 // Test processing task LOST status update w/ retry.
