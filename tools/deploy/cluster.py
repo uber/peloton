@@ -37,6 +37,7 @@ class Cluster(object):
     """
 
     def __init__(self, **kwargs):
+        self.auto_migrate = False
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
 
