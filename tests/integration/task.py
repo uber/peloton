@@ -18,3 +18,7 @@ class Task(object):
     @property
     def mesos_task_id(self):
         return self.get_info().runtime.mesosTaskId.value
+
+    @property
+    def state(self):
+        return self.get_info().runtime.state

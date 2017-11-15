@@ -204,8 +204,8 @@ func TestEngineSuggestActionGoalPreempting(t *testing.T) {
 		{pb_task.TaskState_LAUNCHING, tracked.StopAction},
 		{pb_task.TaskState_LAUNCHED, tracked.StopAction},
 		{pb_task.TaskState_RUNNING, tracked.StopAction},
-		{pb_task.TaskState_LOST, tracked.InitializeAction},
-		{pb_task.TaskState_KILLED, tracked.InitializeAction},
+		{pb_task.TaskState_LOST, tracked.PreemptAction},
+		{pb_task.TaskState_KILLED, tracked.PreemptAction},
 		{pb_task.TaskState_UNHEALTHY, tracked.StopAction},
 		{pb_task.TaskState_PENDING_HEALTH, tracked.StopAction},
 	}

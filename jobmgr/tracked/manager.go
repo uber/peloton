@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -265,11 +266,44 @@ func (m *manager) runTaskAction(ctx context.Context, id *peloton.JobID, instance
 	case UseGoalConfigVersionAction:
 		err = t.useGoalConfigVersion(ctx)
 
+	case PreemptAction:
+		// Here we check what the task preemption policy is,
+		// if killOnPreempt is set to true then we don't reschedule the task
+		// after it is preempted
+		pp, err := m.getTaskPreemptionPolicy(ctx, t.job.id, t.id,
+			gs.ConfigVersion)
+		if err != nil {
+			err = errors.Wrapf(err, "unable to get task preemption policy")
+			break
+		}
+		log.WithField("job_id", t.job.id.GetValue()).
+			WithField("instance_id", t.id).
+			WithField("preemption_policy", pp).
+			Debug("running preemption action")
+		if pp != nil && pp.GetKillOnPreempt() {
+			// We are done , we don't want to reschedule it
+			return m.runTaskAction(ctx, id, instanceID, UntrackAction)
+		}
+		// Reschedule the task
+		return m.runTaskAction(ctx, id, instanceID, InitializeAction)
+
 	default:
 		err = fmt.Errorf("no command configured for running task action `%v`", action)
 	}
 
 	return err
+}
+
+// getTaskPreemptionPolicy returns the restart policy of the task,
+// used when the task is preempted
+func (m *manager) getTaskPreemptionPolicy(ctx context.Context, jobID *peloton.JobID,
+	instanceID uint32, configVersion uint64) (*pb_task.PreemptionPolicy, error) {
+	config, err := m.taskStore.GetTaskConfig(ctx, jobID, instanceID,
+		configVersion)
+	if err != nil {
+		return nil, err
+	}
+	return config.GetPreemptionPolicy(), nil
 }
 
 // addJob to the manager, if missing. The manager lock must be hold when called.

@@ -240,10 +240,13 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	switch state {
 	case pb_task.TaskState_FAILED, pb_task.TaskState_KILLED:
-		// If the stop was not user provoked, count it as a failure.
-		if runtime.GoalState != pb_task.TaskGoalState_RESTART &&
-			runtime.ConfigVersion == runtime.DesiredConfigVersion {
-			runtime.FailureCount++
+		// If the stop was not user invoked or caused by preemption,
+		// count it as a failure.
+		if runtime.GoalState != pb_task.TaskGoalState_RESTART && runtime.
+			GoalState != pb_task.TaskGoalState_PREEMPT {
+			if runtime.ConfigVersion == runtime.DesiredConfigVersion {
+				runtime.FailureCount++
+			}
 		}
 
 		maxAttempts := config.GetRestartPolicy().GetMaxFailures()
@@ -258,7 +261,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			// Stop scheduling the task, max failures reached.
 			runtime.GoalState = pb_task.TaskGoalState_KILL
 			runtime.State = state
-			statusMsg = fmt.Sprintf("Task killed after %d failure(s): %s", runtime.GetFailureCount(), statusMsg)
+			statusMsg = fmt.Sprintf("Task killed after %d failure(s): %s",
+				runtime.GetFailureCount(), statusMsg)
 			break
 		}
 
@@ -290,6 +294,19 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		runtime.CompletionTime = p.now().UTC().Format(time.RFC3339Nano)
 	}
 
+	// clear message and reason
+	runtime.Message = ""
+	runtime.Reason = ""
+
+	// Persist message to help end user figure out root cause
+	if wasPreempted(state, runtime.GoalState) {
+		runtime.Reason = "Task preempted"
+		runtime.Message = "Task will be rescheduled"
+		if config.GetPreemptionPolicy().GetKillOnPreempt() {
+			runtime.Message = "Task will not be rescheduled"
+		}
+	}
+
 	// Persist error message to help end user figure out root cause
 	if isUnexpected(state) {
 		runtime.Message = statusMsg
@@ -314,6 +331,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	return nil
+}
+
+func wasPreempted(taskState pb_task.TaskState,
+	goalState pb_task.TaskGoalState) bool {
+	return taskState == pb_task.TaskState_KILLED &&
+		goalState == pb_task.TaskGoalState_PREEMPT
 }
 
 func (p *statusUpdate) ProcessListeners(event *pb_eventstream.Event) {

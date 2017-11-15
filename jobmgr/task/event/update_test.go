@@ -337,6 +337,62 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
+// Test processing task KILL by PREEMPTION
+func (suite *TaskUpdaterTestSuite) TestProcessPreemptedTaskStatusUpdate() {
+	defer suite.ctrl.Finish()
+
+	tt := []struct {
+		killOnPreempt  bool
+		preemptMessage string
+	}{
+		{
+			killOnPreempt:  false,
+			preemptMessage: "Task will be rescheduled",
+		},
+		{
+			killOnPreempt:  true,
+			preemptMessage: "Task will not be rescheduled",
+		},
+	}
+
+	for _, t := range tt {
+		event := createTestTaskUpdateEvent(mesos.TaskState_TASK_KILLED)
+		taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+		taskInfo.Runtime.GoalState = task.TaskGoalState_PREEMPT
+
+		taskInfo.Config.PreemptionPolicy = &task.PreemptionPolicy{
+			KillOnPreempt: t.killOnPreempt,
+		}
+		preemptMessage := t.preemptMessage
+
+		preemptReason := "Task preempted"
+		oldFailureCount := taskInfo.Runtime.FailureCount
+		suite.mockTrackedManager.EXPECT().
+			GetTaskRuntime(context.Background(), _pelotonJobID, _instanceID).
+			Return(taskInfo.Runtime, nil)
+		suite.mockTaskStore.EXPECT().
+			GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil)
+		suite.mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+			Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo) {
+				suite.Equal(
+					runtime.Message,
+					preemptMessage,
+				)
+				suite.Equal(
+					runtime.Reason,
+					preemptReason,
+				)
+				suite.Equal(
+					runtime.FailureCount,
+					oldFailureCount,
+				)
+			}).
+			Return(nil)
+		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	}
+}
+
 func (suite *TaskUpdaterTestSuite) TestUpdaterProcessListeners() {
 	defer suite.ctrl.Finish()
 

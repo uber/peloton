@@ -58,6 +58,7 @@ const (
 	NoAction                   TaskAction = "no_action"
 	ReloadRuntime              TaskAction = "reload_runtime"
 	UntrackAction              TaskAction = "untrack"
+	PreemptAction              TaskAction = "preempt_action"
 	InitializeAction           TaskAction = "initialize_task"
 	StartAction                TaskAction = "start_task"
 	StopAction                 TaskAction = "stop_task"

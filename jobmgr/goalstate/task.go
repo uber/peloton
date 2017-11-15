@@ -70,8 +70,8 @@ var (
 			task.TaskState_RUNNING:        tracked.StopAction,
 			task.TaskState_UNHEALTHY:      tracked.StopAction,
 			task.TaskState_PENDING_HEALTH: tracked.StopAction,
-			task.TaskState_LOST:           tracked.InitializeAction,
-			task.TaskState_KILLED:         tracked.InitializeAction,
+			task.TaskState_LOST:           tracked.PreemptAction,
+			task.TaskState_KILLED:         tracked.PreemptAction,
 		},
 	}
 )

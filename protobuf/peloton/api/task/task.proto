@@ -199,6 +199,17 @@ message RestartPolicy {
 }
 
 /**
+ * Preemption policy for a task
+ */
+message PreemptionPolicy {
+  // This polciy defines if the task should be restarted after it is
+  // preempted. If set to true the task will not be rescheduled
+  // after it is preempted. If set to false the task will be rescheduled.
+  // Defaults to false
+  bool killOnPreempt = 2;
+}
+
+/**
  *  Persistent volume configuration for a task.
  */
 message PersistentVolumeConfig {
@@ -242,11 +253,14 @@ message TaskConfig {
   // necessary.
   Constraint constraint = 8;
 
-  // Task restart policy, unset means no restart.
+  // Task restart policy on failures
   RestartPolicy restartPolicy = 9;
 
   // Persistent volume config of the task.
   PersistentVolumeConfig volume = 10;
+
+  // Preemtion policy of the task
+  PreemptionPolicy preemptionPolicy = 11;
 }
 
 /**
