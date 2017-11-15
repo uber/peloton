@@ -47,7 +47,7 @@ func InitServiceHandler(
 	taskStore storage.TaskStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
 	volumeStore storage.PersistentVolumeStore,
-	runtimeUpdater *job.RuntimeUpdater,
+	runtimeUpdater job.RuntimeUpdater,
 	trackedManager tracked.Manager,
 	mesosAgentWorkDir string) {
 
@@ -73,7 +73,7 @@ type serviceHandler struct {
 	jobStore           storage.JobStore
 	volumeStore        storage.PersistentVolumeStore
 	frameworkInfoStore storage.FrameworkInfoStore
-	runtimeUpdater     *job.RuntimeUpdater
+	runtimeUpdater     job.RuntimeUpdater
 	metrics            *Metrics
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	httpClient         *http.Client
@@ -250,13 +250,13 @@ func (m *serviceHandler) Start(
 	for instID, taskInfo := range taskInfos {
 		taskRuntime := taskInfo.GetRuntime()
 		// Skip start task if current state is not terminal state.
-		// TODO(mu): LAUNCHING state is exception here because task occasionally
-		// stuck at LAUNCHING state but we don't have good retry module yet.
+		// TODO(mu): LAUNCHED state is exception here because task occasionally
+		// stuck at LAUNCHED state but we don't have good retry module yet.
 		if !util.IsPelotonStateTerminal(taskRuntime.GetState()) {
-			if taskRuntime.GetState() != task.TaskState_LAUNCHING {
+			if taskRuntime.GetState() != task.TaskState_LAUNCHED {
 				continue
 			}
-			// for LAUNCHING state task, do not generate new mesos task
+			// for LAUNCHED state task, do not generate new mesos task
 			// id but only update runtime state.
 			taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
 		} else {
@@ -283,12 +283,21 @@ func (m *serviceHandler) Start(
 		m.metrics.TaskStart.Inc(1)
 	}
 
+	if err == nil && len(startedInstanceIds) > 0 {
+		err = m.runtimeUpdater.UpdateJob(ctx, body.GetJobId())
+	}
+
 	if err != nil {
+		log.WithError(err).WithFields(log.Fields{
+			"request":              body,
+			"tasks":                taskInfos,
+			"started_instance_ids": startedInstanceIds,
+		}).Error("failed to start tasks")
 		m.metrics.TaskStartFail.Inc(1)
 		return &task.StartResponse{
 			Error: &task.StartResponse_Error{
 				Failure: &task.TaskStartFailure{
-					Message: fmt.Sprintf("Goalstate update failed for %v", err),
+					Message: fmt.Sprintf("task start failed for %v", err),
 				},
 			},
 			StartedInstanceIds: startedInstanceIds,

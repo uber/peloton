@@ -13,6 +13,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	"code.uber.internal/infra/peloton/storage"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -29,13 +31,42 @@ const (
 	jobCompletionTime = "2017-01-03T18:04:05.987654447Z"
 )
 
+func createJobRuntimeUpdater(
+	trackedManager tracked.Manager,
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore,
+	cfg Config,
+	parentScope tally.Scope) *runtimeUpdater {
+	cfg.normalize()
+
+	// TODO: load firstTaskUpdateTime from DB after restart
+	updater := runtimeUpdater{
+		cfg:                 cfg,
+		jobStore:            jobStore,
+		taskStore:           taskStore,
+		firstTaskUpdateTime: make(map[peloton.JobID]float64),
+		lastTaskUpdateTime:  make(map[peloton.JobID]float64),
+		taskUpdatedFlags:    make(map[peloton.JobID]bool),
+		taskUpdateRunning:   make(map[peloton.JobID]chan struct{}),
+		metrics:             NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
+		jobRecovery: NewJobRecovery(
+			trackedManager,
+			jobStore,
+			taskStore,
+			parentScope),
+	}
+	t := time.NewTicker(cfg.StateUpdateInterval)
+	go updater.updateJobStateLoop(t.C)
+	return &updater
+}
+
 func TestUpdateJobRuntime_Events(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	var mockJobStore = store_mocks.NewMockJobStore(ctrl)
 	var mockTaskStore = store_mocks.NewMockTaskStore(ctrl)
 
-	updater := NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
+	updater := createJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
 
 	var events []*pb_eventstream.Event
 
@@ -137,7 +168,7 @@ func TestUpdateJobRuntime_UpdateJob(t *testing.T) {
 	// Initialize a new job runtime updater and expect to load three
 	// tasks (two succeded and one running) from DB. Also process one
 	// task event and verify the job start time is as expected.
-	updater := NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
+	updater := createJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
 	updater.Start()
 	updater.OnEvents(events)
 	updater.checkAllJobs(context.Background())
@@ -230,7 +261,7 @@ func TestUpdateJobRuntime_SynchronousJobUpdate(t *testing.T) {
 		Return(nil).
 		AnyTimes()
 
-	updater := NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
+	updater := createJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, Config{}, tally.NoopScope)
 	updater.Start()
 	updater.UpdateJob(context.Background(), jobID)
 
