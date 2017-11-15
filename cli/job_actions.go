@@ -118,7 +118,9 @@ func (c *Client) JobQueryAction(
 	keywords string,
 	states string,
 	limit uint32,
-	offset uint32) error {
+	offset uint32,
+	sortBy string,
+	sortOrder string) error {
 	var apiLabels []*peloton.Label
 	if len(labels) > 0 {
 		labelPairs := strings.Split(labels, labelSeparator)
@@ -155,6 +157,27 @@ func (c *Client) JobQueryAction(
 			apiStates = append(apiStates, job.JobState(job.JobState_value[k]))
 		}
 	}
+
+	order := query.OrderBy_DESC
+	if sortOrder == "ASC" {
+		order = query.OrderBy_ASC
+	} else if sortOrder != "DESC" {
+		return errors.New("Invalid sort order " + sortOrder)
+	}
+	var sort []*query.OrderBy
+	for _, s := range strings.Split(sortBy, labelSeparator) {
+		if s != "" {
+
+			propertyPath := &query.PropertyPath{
+				Value: s,
+			}
+			sort = append(sort, &query.OrderBy{
+				Order:    order,
+				Property: propertyPath,
+			})
+		}
+	}
+
 	var request = &job.QueryRequest{
 		RespoolID: respoolID,
 		Spec: &job.QuerySpec{
@@ -162,8 +185,9 @@ func (c *Client) JobQueryAction(
 			Keywords:  apiKeywords,
 			JobStates: apiStates,
 			Pagination: &query.PaginationSpec{
-				Limit:  limit,
-				Offset: offset,
+				Limit:   limit,
+				Offset:  offset,
+				OrderBy: sort,
 			},
 		},
 	}

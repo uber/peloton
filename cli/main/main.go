@@ -99,6 +99,8 @@ var (
 	jobQueryStates      = jobQuery.Flag("states", "job states").Default("").Short('s').String()
 	jobQueryLimit       = jobQuery.Flag("limit", "limit").Default("100").Short('n').Uint32()
 	jobQueryOffset      = jobQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
+	jobQuerySortBy      = jobQuery.Flag("sort", "sort by property").Default("creation_time").Short('p').String()
+	jobQuerySortOrder   = jobQuery.Flag("sortorder", "sort order (ASC or DESC)").Default("DESC").Short('a').String()
 
 	jobUpdate       = job.Command("update", "update a job")
 	jobUpdateID     = jobUpdate.Arg("job", "job identifier").Required().String()
@@ -281,7 +283,7 @@ func main() {
 	case jobStatus.FullCommand():
 		err = client.JobStatusAction(*jobStatusName)
 	case jobQuery.FullCommand():
-		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryLimit, *jobQueryOffset)
+		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryLimit, *jobQueryOffset, *jobQuerySortBy, *jobQuerySortOrder)
 	case jobUpdate.FullCommand():
 		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig)
 	case taskGet.FullCommand():

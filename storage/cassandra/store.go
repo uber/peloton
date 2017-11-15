@@ -492,6 +492,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			if count < len(orderBy)-1 {
 				where += ","
 			}
+			count++
 		}
 		where += "]"
 	}
