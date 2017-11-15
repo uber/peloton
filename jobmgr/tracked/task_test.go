@@ -21,7 +21,9 @@ func TestTaskRunAction(t *testing.T) {
 
 	before := time.Now()
 
-	assert.NoError(t, tt.RunAction(context.Background(), NoAction))
+	reschedule, err := tt.RunAction(context.Background(), NoAction)
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
 
 	la, lt := tt.LastAction()
 	assert.Equal(t, NoAction, la)

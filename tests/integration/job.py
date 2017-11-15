@@ -2,6 +2,7 @@ import logging
 import time
 
 from client import Client
+from task import Task
 from google.protobuf import json_format
 from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
 from peloton_client.pbgen.peloton.api.job import job_pb2 as job
@@ -84,6 +85,45 @@ class Job(object):
         )
         log.info('stopping all tasks in job %s', self.job_id)
 
+    def get_info(self):
+        request = job.GetRequest(
+            id=peloton.JobID(value=self.job_id),
+        )
+        resp = self.client.job_svc.Get(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('error')
+        return resp.jobInfo
+
+    def get_runtime(self):
+        return self.get_info().runtime
+
+    def get_config(self):
+        return self.get_info().config
+
+    def get_task(self, iid):
+        return Task(self, iid)
+
+    def get_tasks(self, one_range=None):
+        config = self.get_config()
+        return {iid: Task(self, iid) for iid in xrange(config.instanceCount)}
+
+    def get_task_info(self, instance_id):
+        request = task.GetRequest(
+            jobId=peloton.JobID(value=self.job_id),
+            instanceId=instance_id,
+        )
+        resp = self.client.task_svc.Get(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('notFound')
+        assert not resp.HasField('outOfRange')
+        return resp.result
+
     def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED'):
         state = ''
         attempts = 0
@@ -123,6 +163,33 @@ class Job(object):
         elapsed = end - start
         log.info('state transition took %s seconds', elapsed)
         assert state == goal_state
+
+    def wait_for_condition(self, condition):
+        attempts = 0
+        start = time.time()
+        log.info('waiting for condition %s', condition.__name__)
+        result = False
+        while attempts < self.config.max_retry_attempts:
+            try:
+                result = condition()
+                if result:
+                    break
+            except Exception as e:
+                log.warn(e)
+
+            time.sleep(self.config.sleep_time_sec)
+            attempts += 1
+
+        if attempts == self.config.max_retry_attempts:
+            log.info('max attempts reached to wait for condition')
+            log.info('confition: %s', condition.__name__)
+            assert False
+
+        end = time.time()
+        elapsed = end - start
+        log.info('waited on condition %s for %s seconds',
+                 condition.__name__, elapsed)
+        assert result
 
     def ensure_respool(self):
         # lookup respool

@@ -7,9 +7,11 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -36,8 +38,10 @@ type Task interface {
 	// LastAction performed by the task, as well as when it was performed.
 	LastAction() (TaskAction, time.Time)
 
-	// RunAction on the task.
-	RunAction(ctx context.Context, action TaskAction) error
+	// RunAction on the task. Returns a bool representing if the task should
+	// be rescheduled by the goalstate engine and an error representing the
+	// result of the action.
+	RunAction(ctx context.Context, action TaskAction) (bool, error)
 }
 
 // State of a job. This can encapsulate either the actual state or the goal
@@ -56,6 +60,7 @@ const (
 	UntrackAction        TaskAction = "untrack"
 	StartAction          TaskAction = "start_task"
 	StopAction           TaskAction = "stop_task"
+	PreemptAction        TaskAction = "preempt_action"
 	InitializeAction     TaskAction = "initialize_task"
 	UseGoalVersionAction TaskAction = "use_goal_state"
 )
@@ -124,7 +129,7 @@ func (t *task) LastAction() (TaskAction, time.Time) {
 	return t.lastAction, t.lastActionTime
 }
 
-func (t *task) RunAction(ctx context.Context, action TaskAction) error {
+func (t *task) RunAction(ctx context.Context, action TaskAction) (bool, error) {
 	defer t.job.m.mtx.scope.Tagged(map[string]string{"action": string(action)}).Timer("run_duration").Start().Stop()
 
 	// TODO: Move to Manager, such that the following holds:
@@ -147,10 +152,14 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) error {
 		Info("running action for task")
 
 	var err error
+	reschedule := true
+
 	switch action {
 	case NoAction:
+		reschedule = false
 
 	case UntrackAction:
+		reschedule = false
 		t.job.m.clearTask(t)
 
 	case StartAction:
@@ -162,11 +171,56 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) error {
 	case InitializeAction:
 		err = t.initialize(ctx)
 
+	case PreemptAction:
+		action, err := t.getPostPreemptAction(ctx)
+		if err != nil {
+			err = errors.Wrapf(err, "unable to get post preemption action")
+			break
+		}
+		log.WithField("job_id", t.job.id.GetValue()).
+			WithField("instance_id", t.id).
+			WithField("action", action).
+			Info("running preemption action")
+		return t.RunAction(ctx, action)
+
 	default:
 		err = fmt.Errorf("no command configured for running task action `%v`", action)
 	}
 
-	return err
+	return reschedule, err
+}
+
+// returns the action to be performed after preemption based on the task
+// preemption policy
+func (t *task) getPostPreemptAction(ctx context.Context) (TaskAction, error) {
+	// Here we check what the task preemption policy is,
+	// if killOnPreempt is set to true then we don't reschedule the task
+	// after it is preempted
+	var action TaskAction
+	pp, err := t.getTaskPreemptionPolicy(ctx, t.job.id, t.id,
+		t.GoalState().ConfigVersion)
+	if err != nil {
+		err = errors.Wrapf(err, "unable to get task preemption policy")
+		return action, err
+	}
+	if pp != nil && pp.GetKillOnPreempt() {
+		// We are done , we don't want to reschedule it
+		return UntrackAction, nil
+	}
+	return InitializeAction, nil
+}
+
+// getTaskPreemptionPolicy returns the restart policy of the task,
+// used when the task is preempted
+func (t *task) getTaskPreemptionPolicy(ctx context.Context, jobID *peloton.JobID,
+	instanceID uint32, configVersion uint64) (*pb_task.PreemptionPolicy,
+	error) {
+	config, err := t.job.m.taskStore.GetTaskConfig(ctx, jobID, instanceID,
+		int64(configVersion))
+	if err != nil {
+		return nil, err
+	}
+	return config.GetPreemptionPolicy(), nil
 }
 
 func (t *task) updateRuntime(runtime *pb_task.RuntimeInfo) {

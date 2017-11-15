@@ -108,11 +108,11 @@ func TestEngineSuggestActionGoalPreempting(t *testing.T) {
 		},
 		{
 			currentState: pb_task.TaskState_LOST,
-			action:       tracked.InitializeAction,
+			action:       tracked.PreemptAction,
 		},
 		{
 			currentState: pb_task.TaskState_KILLED,
-			action:       tracked.InitializeAction,
+			action:       tracked.PreemptAction,
 		},
 	}
 
@@ -139,7 +139,8 @@ func TestEngineProcessTask(t *testing.T) {
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
 	taskMock.EXPECT().LastAction().Return(tracked.NoAction, time.Time{})
-	taskMock.EXPECT().RunAction(gomock.Any(), tracked.NoAction).Return(nil)
+	taskMock.EXPECT().RunAction(gomock.Any(),
+		tracked.NoAction).Return(false, nil)
 	managerMock.EXPECT().ScheduleTask(taskMock, time.Time{})
 
 	e.processTask(taskMock)
@@ -147,7 +148,8 @@ func TestEngineProcessTask(t *testing.T) {
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
 	taskMock.EXPECT().LastAction().Return(tracked.NoAction, time.Time{})
-	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(nil)
+	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(
+		true, nil)
 	managerMock.EXPECT().ScheduleTask(taskMock, gomock.Any())
 
 	e.processTask(taskMock)
@@ -155,11 +157,22 @@ func TestEngineProcessTask(t *testing.T) {
 	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
 	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
 	taskMock.EXPECT().LastAction().Return(tracked.StopAction, time.Time{})
-	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(fmt.Errorf("my error"))
+	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(
+		true, fmt.Errorf("my error"))
 	taskMock.EXPECT().Job().Return(jobMock)
 	jobMock.EXPECT().ID().Return(&peloton.JobID{})
 	taskMock.EXPECT().ID().Return(uint32(0))
 	managerMock.EXPECT().ScheduleTask(taskMock, gomock.Any())
+
+	e.processTask(taskMock)
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_PREEMPTING,
+		ConfigVersion: 0})
+	taskMock.EXPECT().LastAction().Return(tracked.StopAction, time.Time{})
+	taskMock.EXPECT().RunAction(gomock.Any(), tracked.PreemptAction).Return(
+		false, nil)
+	managerMock.EXPECT().ScheduleTask(taskMock, time.Time{})
 
 	e.processTask(taskMock)
 }

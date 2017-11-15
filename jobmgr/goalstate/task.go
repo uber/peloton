@@ -43,8 +43,8 @@ var (
 			task.TaskState_LAUNCHING:   tracked.StopAction,
 			task.TaskState_LAUNCHED:    tracked.StopAction,
 			task.TaskState_RUNNING:     tracked.StopAction,
-			task.TaskState_LOST:        tracked.InitializeAction,
-			task.TaskState_KILLED:      tracked.InitializeAction,
+			task.TaskState_LOST:        tracked.PreemptAction,
+			task.TaskState_KILLED:      tracked.PreemptAction,
 		},
 	}
 )
@@ -54,29 +54,31 @@ func (e *engine) processTask(t tracked.Task) {
 	lastAction, lastActionTime := t.LastAction()
 
 	// Now run the action, to reflect the decision taken above.
-	success := e.runTaskAction(action, t)
+	reschedule, success := e.runTaskAction(action, t)
 
 	// Update and reschedule the task, based on the result.
 	delay := _indefDelay
-	switch {
-	case action == tracked.NoAction || action == tracked.UntrackAction || (success && action == tracked.StartAction):
-		// No need to reschedule.
+	if reschedule {
+		switch {
+		case success && action == tracked.StartAction:
+			// No need to reschedule.
 
-	case action != lastAction:
-		// First time we see this, trigger default timeout.
-		if success {
-			delay = e.cfg.SuccessRetryDelay
-		} else {
-			delay = e.cfg.FailureRetryDelay
-		}
+		case action != lastAction:
+			// First time we see this, trigger default timeout.
+			if success {
+				delay = e.cfg.SuccessRetryDelay
+			} else {
+				delay = e.cfg.FailureRetryDelay
+			}
 
-	case action == lastAction:
-		// Not the first time we see this, apply backoff.
-		delay = time.Since(lastActionTime)
-		if success {
-			delay += e.cfg.SuccessRetryDelay
-		} else {
-			delay += e.cfg.FailureRetryDelay
+		case action == lastAction:
+			// Not the first time we see this, apply backoff.
+			delay = time.Since(lastActionTime)
+			if success {
+				delay += e.cfg.SuccessRetryDelay
+			} else {
+				delay += e.cfg.FailureRetryDelay
+			}
 		}
 	}
 
@@ -92,9 +94,10 @@ func (e *engine) processTask(t tracked.Task) {
 	e.trackedManager.ScheduleTask(t, deadline)
 }
 
-func (e *engine) runTaskAction(action tracked.TaskAction, t tracked.Task) bool {
+func (e *engine) runTaskAction(action tracked.TaskAction,
+	t tracked.Task) (bool, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	err := t.RunAction(ctx, action)
+	reschedule, err := t.RunAction(ctx, action)
 	cancel()
 
 	if err != nil {
@@ -106,7 +109,7 @@ func (e *engine) runTaskAction(action tracked.TaskAction, t tracked.Task) bool {
 			Error("failed to execute goalstate action")
 	}
 
-	return err == nil
+	return reschedule, err == nil
 }
 
 func (e *engine) suggestTaskAction(t tracked.Task) tracked.TaskAction {

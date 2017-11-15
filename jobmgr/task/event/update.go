@@ -6,19 +6,20 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
-
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
+
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 )
 
 // Declare a Now function so that we can mock it in unit tests.
@@ -241,7 +242,21 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 	}
 
+	// clear message and reason
+	runtime.Message = ""
+	runtime.Reason = ""
+
 	switch state {
+	case pb_task.TaskState_KILLED:
+		if runtime.GetGoalState() == pb_task.TaskState_PREEMPTING {
+			runtime.Reason = "Task preempted"
+			runtime.Message = "Task will not be rescheduled"
+			pp := taskInfo.GetConfig().GetPreemptionPolicy()
+			if pp == nil || !pp.GetKillOnPreempt() {
+				runtime.Message = "Task will be rescheduled"
+			}
+		}
+
 	case pb_task.TaskState_FAILED:
 		maxAttempts := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
 		if p.isSystemFailure(event) {

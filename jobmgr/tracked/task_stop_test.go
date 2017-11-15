@@ -33,7 +33,9 @@ func TestTaskStop(t *testing.T) {
 		},
 	}
 
-	assert.EqualError(t, tt.RunAction(context.Background(), StopAction), "tracked task has no runtime info assigned")
+	reschedule, err := tt.RunAction(context.Background(), StopAction)
+	assert.True(t, reschedule)
+	assert.EqualError(t, err, "tracked task has no runtime info assigned")
 
 	taskID := &mesos_v1.TaskID{
 		Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
@@ -44,7 +46,10 @@ func TestTaskStop(t *testing.T) {
 	}).Return(nil, nil)
 
 	tt.runtime = &pb_task.RuntimeInfo{MesosTaskId: taskID}
-	assert.NoError(t, tt.RunAction(context.Background(), StopAction))
+
+	reschedule, err = tt.RunAction(context.Background(), StopAction)
+	assert.True(t, reschedule)
+	assert.NoError(t, err)
 }
 
 func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
@@ -100,8 +105,10 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	mockTaskStore.EXPECT().
 		UpdateTask(gomock.Any(), taskInfo).Return(nil)
 
-	assert.NoError(t, tt.RunAction(context.Background(), StopAction))
+	reschedule, err := tt.RunAction(context.Background(), StopAction)
+	assert.True(t, reschedule)
+	assert.NoError(t, err)
 
-	// Test that it's rescheduled immediatly as we updated the state.
+	// Test that it's rescheduled immediately as we updated the state.
 	assert.Equal(t, tt, tt.job.m.WaitForScheduledTask(nil))
 }

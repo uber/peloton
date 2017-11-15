@@ -55,7 +55,9 @@ func TestTaskInitialize(t *testing.T) {
 		},
 	}
 
-	assert.NoError(t, tt.RunAction(context.Background(), InitializeAction))
+	reschedule, err := tt.RunAction(context.Background(), InitializeAction)
+	assert.True(t, reschedule)
+	assert.NoError(t, err)
 	assert.NotEqual(t, oldMesosTaskID, taskInfo.Runtime.MesosTaskId)
 	assert.Equal(t, peloton_task.TaskState_INITIALIZED, taskInfo.Runtime.State)
 	assert.Equal(t, peloton_task.TaskState_SUCCEEDED, taskInfo.Runtime.GoalState)

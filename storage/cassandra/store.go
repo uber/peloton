@@ -1060,7 +1060,9 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 	return resultMap, nil
 }
 
-func (s *Store) getTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int64) (*task.TaskConfig, error) {
+// GetTaskConfig returns the task specific config
+func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
+	instanceID uint32, version int64) (*task.TaskConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskConfigTable).
 		Where(
@@ -1107,7 +1109,8 @@ func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.Jo
 		return nil, err
 	}
 
-	config, err := s.getTaskConfig(ctx, id, uint32(record.InstanceID), int64(runtime.ConfigVersion))
+	config, err := s.GetTaskConfig(ctx, id, uint32(record.InstanceID),
+		int64(runtime.ConfigVersion))
 	if err != nil {
 		return nil, err
 	}

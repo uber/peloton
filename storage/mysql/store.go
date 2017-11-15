@@ -480,6 +480,12 @@ func (m *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID
 	return nil, fmt.Errorf("unimplemented GetTaskStateSummaryForJob")
 }
 
+// GetTaskConfig returns the task specific config
+func (m *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
+	instanceID uint32, version int64) (*task.TaskConfig, error) {
+	return nil, fmt.Errorf("unimplemented GetTaskConfig")
+}
+
 // GetTasksForJobAndState returns the tasks (runtime_config) for a peloton job with certain state
 func (m *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "task_state=": {state}})
