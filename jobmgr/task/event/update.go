@@ -25,7 +25,7 @@ import (
 var now = time.Now
 // Maximum retries on mesos system failures
 const (
-	MaxSystemFailureAttempts = 2
+	MaxSystemFailureAttempts = 4
 )
 
 // StatusUpdate is the interface for task status updates
