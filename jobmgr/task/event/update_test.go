@@ -32,7 +32,7 @@ var (
 	_jobID         = uuid.NewUUID().String()
 	_uuidStr       = uuid.NewUUID().String()
 	_mesosTaskID   = fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, _uuidStr)
-	_mesosReason   = esos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED
+	_mesosReason   = mesos.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED
 	_pelotonTaskID = fmt.Sprintf("%s-%d", _jobID, _instanceID)
 	_sla           = &job.SlaConfig{
 		Preemptible: false,
@@ -253,28 +253,27 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedSystemFailure() {
 	taskInfo.GetConfig().GetRestartPolicy().MaxFailures = 0
 
 	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
-	suite.mockTrackedManager.EXPECT().
-		GetTaskRuntime(context.Background(), _pelotonJobID, _instanceID).
-		Return(taskInfo.Runtime, nil)
 	suite.mockTaskStore.EXPECT().
-		GetTaskConfig(context.Background(), _pelotonJobID, _instanceID, uint64(0)).Return(taskInfo.Config, nil)
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(taskInfo, nil)
 	suite.mockTrackedManager.EXPECT().
-		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
-		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo) {
+		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
+			suite.Equal(updateTask.JobId, _pelotonJobID)
 			suite.Equal(
-				runtime.State,
-				task.TaskState_FAILED,
+				updateTask.Runtime.State,
+				task.TaskState_INITIALIZED,
 			)
 			suite.Equal(
-				runtime.Reason,
+				updateTask.Runtime.Reason,
 				failureReason.String(),
 			)
 			suite.Equal(
-				runtime.Message,
+				updateTask.Runtime.Message,
 				rescheduleMsg,
 			)
 			suite.Equal(
-				runtime.FailureCount,
+				updateTask.Runtime.FailureCount,
 				uint32(1),
 			)
 		}).

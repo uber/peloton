@@ -138,7 +138,7 @@ func (p *statusUpdate) isSystemFailure(event *pb_eventstream.Event) bool {
 	if event.Type != pb_eventstream.Event_MESOS_TASK_STATUS {
 		return false
 	}
-	state := util.MesosStateToPelotonState(event.MesosTaskStatus)
+	state := util.MesosStateToPelotonState(event.MesosTaskStatus.GetState())
 	if state != pb_task.TaskState_FAILED && state != pb_task.TaskState_KILLED {
 		return false
 	}
@@ -241,7 +241,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	switch state {
-	case pb_task.TaskState_FAILED, pb_task.TaskState_KILLED:
+	case pb_task.TaskState_FAILED:
 		maxAttempts := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
 		if p.isSystemFailure(event) {
 			if maxAttempts < MaxSystemFailureAttempts {
