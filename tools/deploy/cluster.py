@@ -38,7 +38,7 @@ class Cluster(object):
             setattr(self, k, v)
 
         self.client = AuroraClientZK.create(
-            zk_endpoints = self.zookeeper, zk_path=self.aurora_zk_path)
+            zk_endpoints=self.zookeeper, zk_path=self.aurora_zk_path)
 
         self.apps = {}
         for app in PELOTON_APPS:

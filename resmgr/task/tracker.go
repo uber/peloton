@@ -231,7 +231,12 @@ func (tr *tracker) MarkItInvalid(tID *peloton.TaskID) error {
 	if err != nil {
 		return err
 	}
-	t.respool.AddInvalidTask(tID)
+	// We only need to invalidate tasks if they are in PENDING or
+	// INITIALIZED STATE as Pending queue only will have these tasks
+	if t.GetCurrentState() == task.TaskState_PENDING ||
+		t.GetCurrentState() == task.TaskState_INITIALIZED {
+		t.respool.AddInvalidTask(tID)
+	}
 	return nil
 }
 

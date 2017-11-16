@@ -769,3 +769,56 @@ func (suite *HandlerTestSuite) TestGetPreemptibleTasks() {
 	suite.NotNil(res)
 	suite.Equal(5, len(res.Tasks))
 }
+
+func (suite *HandlerTestSuite) TestRequeueInvalidatedTasks() {
+	log.Info("TestRequeueInvalidTasks called")
+	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	suite.NoError(err)
+	var gangs []*resmgrsvc.Gang
+	gangs = append(gangs, suite.pendingGang0())
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
+		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
+		Gangs:   gangs,
+	}
+
+	suite.rmTaskTracker.AddTask(
+		suite.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
+	rmtask := suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	suite.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	suite.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	suite.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	suite.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
+	suite.NoError(err)
+
+	// Marking this task to Invalidate
+	// It will not invalidate as its in Lunching state
+	suite.rmTaskTracker.MarkItInvalid(suite.pendingGang0().Tasks[0].Id)
+
+	// Tasks should be removed from Tracker
+	taskget := suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
+	suite.Nil(taskget)
+
+	// Testing to see if we can send same task in the enqueue
+	// after invalidating the task
+	node.SetEntitlement(suite.getEntitlement())
+	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
+	suite.NoError(err)
+	suite.Nil(enqResp.GetError())
+	// Waiting for scheduler to kick in, As the task was not
+	// in initialized and pending state it will not be invalidate
+	// and should be able to requeue and get to READY state
+	time.Sleep(timeout)
+	rmtask = suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
+	suite.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
+}

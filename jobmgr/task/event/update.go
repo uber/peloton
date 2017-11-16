@@ -23,6 +23,7 @@ import (
 
 // Declare a Now function so that we can mock it in unit tests.
 var now = time.Now
+
 // Maximum retries on mesos system failures
 const (
 	MaxSystemFailureAttempts = 4
