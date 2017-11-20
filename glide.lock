@@ -54,7 +54,7 @@ imports:
 - name: github.com/go-sql-driver/mysql
   version: 2e00b5cd70399450106cec6431c2e2ce3cae5034
 - name: github.com/gocql/gocql
-  version: b0b4cc30eff2e6acd0977ec5dd214f6bb9d0180b
+  version: 09f0498f9ab5ca0267e3b451483a368648de2158
   subpackages:
   - internal/lru
   - internal/murmur
