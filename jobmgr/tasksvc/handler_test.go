@@ -441,7 +441,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	)
 
 	gomock.InOrder(
-		trackedMock.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 		updaterMock.EXPECT().UpdateJob(gomock.Any(), suite.testJobID).Return(nil),
 	)
 
@@ -552,7 +552,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
-		trackedMock.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		trackedMock.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 		updaterMock.EXPECT().UpdateJob(gomock.Any(), suite.testJobID).Return(nil),
 	)
 

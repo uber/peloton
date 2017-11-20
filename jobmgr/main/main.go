@@ -306,6 +306,7 @@ func main() {
 		rootScope,
 		jobStore,
 		taskStore,
+		trackedManager,
 		runtimeUpdater,
 		common.PelotonResourceManager, // TODO: to be removed
 	)

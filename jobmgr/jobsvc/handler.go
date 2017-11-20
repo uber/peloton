@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 
 	"github.com/pborman/uuid"
