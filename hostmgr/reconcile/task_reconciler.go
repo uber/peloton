@@ -161,7 +161,6 @@ func (r *taskReconciler) reconcileExplicitly(ctx context.Context, running *atomi
 }
 
 // getReconcileTasks queries datastore and get all the RUNNING tasks.
-// TODO(mu): Revisit all the non-terminal state in Peloton.
 func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	[]*sched.Call_Reconcile_Task, error) {
 
@@ -187,14 +186,13 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 			}).Error("Failed to get running tasks for job")
 			return reconcileTasks, getTasksErr
 		}
-		// TODO(mu): Consider storing agent_id in tasks table for faster
-		// task reconciliation.
 		if len(nonTerminalTasks) != 0 {
 			for _, taskInfo := range nonTerminalTasks {
 				reconcileTasks = append(
 					reconcileTasks,
 					&sched.Call_Reconcile_Task{
-						TaskId: taskInfo.GetRuntime().GetMesosTaskId(),
+						TaskId:  taskInfo.GetRuntime().GetMesosTaskId(),
+						AgentId: taskInfo.GetRuntime().GetAgentID(),
 					},
 				)
 			}

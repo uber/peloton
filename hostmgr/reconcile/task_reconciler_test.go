@@ -20,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
 	mock_mpb "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
 )
 
@@ -28,6 +29,7 @@ const (
 	frameworkID                    = "frameworkID"
 	testInstanceCount              = 5
 	testJobID                      = "testJob0"
+	testAgentID                    = "agentID"
 	testBatchSize                  = 3
 	explicitReconcileBatchInterval = 100 * time.Millisecond
 	oneExplicitReconcileRunDelay   = 350 * time.Millisecond
@@ -114,6 +116,9 @@ func (suite *TaskReconcilerTestSuite) createTestTaskInfo(
 			MesosTaskId: &mesos.TaskID{Value: &taskID},
 			State:       state,
 			GoalState:   task.TaskState_SUCCEEDED,
+			AgentID: &mesos.AgentID{
+				Value: util.PtrPrintf(testAgentID),
+			},
 		},
 		Config:     suite.testJobConfig.GetDefaultConfig(),
 		InstanceId: instanceID,
@@ -144,6 +149,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 				suite.Equal(sched.Call_RECONCILE, call.GetType())
 				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
 				suite.Equal(testBatchSize, len(call.GetReconcile().GetTasks()))
+				suite.Equal(call.GetReconcile().GetTasks()[0].AgentId.GetValue(), testAgentID)
 			}).
 			Return(nil),
 		suite.schedulerClient.EXPECT().
@@ -158,6 +164,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 				suite.Equal(
 					testInstanceCount-testBatchSize,
 					len(call.GetReconcile().GetTasks()))
+				suite.Equal(call.GetReconcile().GetTasks()[0].AgentId.GetValue(), testAgentID)
 			}).
 			Return(nil),
 		suite.schedulerClient.EXPECT().
@@ -210,6 +217,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 				suite.Equal(sched.Call_RECONCILE, call.GetType())
 				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
 				suite.Equal(testBatchSize, len(call.GetReconcile().GetTasks()))
+				suite.Equal(call.GetReconcile().GetTasks()[0].AgentId.GetValue(), testAgentID)
 			}).
 			Return(fmt.Errorf("fake error")),
 		suite.schedulerClient.EXPECT().
