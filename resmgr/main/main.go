@@ -103,6 +103,12 @@ var (
 		Default("").
 		Envar("DATACENTER").
 		String()
+
+	enablePreemption = app.Flag(
+		"enable_preemption", "Enabling preemption").
+		Default(false).
+		Envar("ENABLE_PREEMPTION").
+		Bool()
 )
 
 func main() {
@@ -167,6 +173,10 @@ func main() {
 
 	if *datacenter != "" {
 		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
+	}
+
+	if *enablePreemption {
+		cfg.ResManager.PreemptionConfig.Enabled = *enablePreemption
 	}
 
 	log.WithField("config", cfg).Info("Loaded Resource Manager config")
