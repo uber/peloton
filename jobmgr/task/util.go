@@ -1,7 +1,6 @@
 package task
 
 import (
-	"code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/util"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -11,27 +10,15 @@ import (
 
 // CreateInitializingTask for insertion into the storage layer, before being
 // enqueued.
-func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *job.JobConfig) (*task.TaskInfo, error) {
-	// Get task-specific config.
-	taskConfig, err := config.GetTaskConfig(jobID, jobConfig, instanceID)
-	if err != nil {
-		return nil, err
-	}
-
+func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *job.JobConfig) *task.RuntimeInfo {
 	runtime := &task.RuntimeInfo{
 		ConfigVersion:        jobConfig.GetChangeLog().GetVersion(),
 		DesiredConfigVersion: jobConfig.GetChangeLog().GetVersion(),
 		GoalState:            GetDefaultGoalState(jobConfig.GetType()),
 	}
 
-	t := &task.TaskInfo{
-		Runtime:    runtime,
-		Config:     taskConfig,
-		InstanceId: instanceID,
-		JobId:      jobID,
-	}
-	util.RegenerateMesosTaskID(t)
-	return t, nil
+	util.RegenerateMesosTaskID(jobID, instanceID, runtime)
+	return runtime
 }
 
 // GetDefaultGoalState from the job type.

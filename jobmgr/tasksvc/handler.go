@@ -258,7 +258,7 @@ func (m *serviceHandler) Start(
 			taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
 		} else {
 			// Only regenerate mesos task id for terminated task.
-			util.RegenerateMesosTaskID(taskInfo)
+			util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		}
 
 		// First change goalstate if it is KILLED.
@@ -270,7 +270,7 @@ func (m *serviceHandler) Start(
 			}
 		}
 
-		err = m.trackedManager.UpdateTask(ctx, taskInfo.GetJobId(), instID, taskInfo)
+		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskRuntime)
 		if err != nil {
 			// Skip remaining tasks starting if db update error occurs.
 			log.WithError(err).
@@ -367,7 +367,7 @@ func (m *serviceHandler) Stop(
 
 		taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
 		// TODO: We can retry here in case of conflict.
-		err = m.trackedManager.UpdateTask(ctx, taskInfo.GetJobId(), instID, taskInfo)
+		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskInfo.GetRuntime())
 		if err != nil {
 			// Skip remaining tasks killing if db update error occurs.
 			log.WithError(err).

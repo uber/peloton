@@ -321,10 +321,15 @@ func (m *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID
 	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "instance_id=": {instanceID}})
 }
 
-// CreateTask creates a task for a peloton job
-// TODO: remove this in favor of CreateTasks
-func (m *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error {
+// CreateTaskRuntime creates a task runtime for a peloton job
+// TODO: remove this in favor of CreateTaskRuntimes
+func (m *Store) CreateTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, createdBy string) error {
 	// TODO: discuss on whether taskID should be part of the taskInfo instead of runtime
+	taskInfo := &task.TaskInfo{
+		InstanceId: instanceID,
+		JobId:      id,
+		Runtime:    runtime,
+	}
 	rowKey := fmt.Sprintf("%s-%d", id.Value, instanceID)
 	if taskInfo.InstanceId != instanceID {
 		errMsg := fmt.Sprintf("Task %v has instance id %v, different than the instanceID %d expected", rowKey, instanceID, taskInfo.InstanceId)
@@ -351,8 +356,17 @@ func (m *Store) CreateTask(ctx context.Context, id *peloton.JobID, instanceID ui
 	return nil
 }
 
-// CreateTasks creates rows for a slice of Tasks, numbered 0..n
-func (m *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error {
+// CreateTaskRuntimes creates rows for a slice of Task runtimes, numbered 0..n
+func (m *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo, createdBy string) error {
+	taskInfos := []*task.TaskInfo{}
+	for instanceID, runtime := range runtimes {
+		taskinfo := &task.TaskInfo{
+			InstanceId: uint32(instanceID),
+			JobId:      id,
+			Runtime:    runtime,
+		}
+		taskInfos = append(taskInfos, taskinfo)
+	}
 	timeStart := time.Now()
 	maxBatchSize := int64(m.Conf.MaxBatchSize)
 	if maxBatchSize == 0 {
@@ -486,15 +500,30 @@ func (m *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 	return nil, fmt.Errorf("unimplemented GetTaskConfig")
 }
 
+// CreateTaskConfigs creates task configurations.
+func (m *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
+	return fmt.Errorf("unimplemented CreateTaskConfigs")
+}
+
 // GetTasksForJobAndState returns the tasks (runtime_config) for a peloton job with certain state
 func (m *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "task_state=": {state}})
 }
 
-// UpdateTask updates a task for a peloton job
-func (m *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
-	rowKey := fmt.Sprintf("%s-%d", taskInfo.JobId.Value, taskInfo.InstanceId)
-	buffer, err := json.Marshal(taskInfo)
+// GetTaskRuntime returns the task runtime peloton task
+func (m *Store) GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.RuntimeInfo, error) {
+	return nil, fmt.Errorf("unimplemented GetTaskRuntime")
+}
+
+// UpdateTaskRuntime updates a task for a peloton job
+func (m *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
+	rowKey := fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)
+	taskinfo := &task.TaskInfo{
+		InstanceId: instanceID,
+		JobId:      jobID,
+		Runtime:    runtime,
+	}
+	buffer, err := json.Marshal(taskinfo)
 
 	if err != nil {
 		log.Errorf("error = %v", err)
@@ -504,7 +533,7 @@ func (m *Store) UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error {
 
 	_, err = m.DB.Exec(updateTaskStmt, string(buffer), rowKey)
 	if err != nil {
-		log.Errorf("Update task for job %v instance %d failed with error %v", taskInfo.JobId.Value, taskInfo.InstanceId, err)
+		log.Errorf("Update task for job %v instance %d failed with error %v", jobID.GetValue(), instanceID, err)
 		m.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
 		return err
 	}

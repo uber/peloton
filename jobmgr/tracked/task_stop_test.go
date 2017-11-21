@@ -2,7 +2,6 @@ package tracked
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -94,16 +93,13 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		},
 	}).Return(res, nil)
 
-	taskInfo := &pb_task.TaskInfo{
-		InstanceId: 7,
-		Runtime: &pb_task.RuntimeInfo{
-			State: pb_task.TaskState_INITIALIZED,
-		},
+	runtime := &pb_task.RuntimeInfo{
+		State: pb_task.TaskState_INITIALIZED,
 	}
 	mockTaskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", tt.job.id.Value, tt.id)).Return(taskInfo, nil)
+		GetTaskRuntime(gomock.Any(), tt.job.id, tt.id).Return(runtime, nil)
 	mockTaskStore.EXPECT().
-		UpdateTask(gomock.Any(), taskInfo).Return(nil)
+		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, runtime).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StopAction)
 	assert.True(t, reschedule)

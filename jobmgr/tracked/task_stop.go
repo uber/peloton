@@ -67,20 +67,20 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 		}
 	}
 
-	taskInfo, err := t.job.m.taskStore.GetTaskByID(ctx, taskID)
+	runtime, err := t.job.m.taskStore.GetTaskRuntime(ctx, t.Job().ID(), t.ID())
 	if err != nil {
 		return err
 	}
 
 	// If it had changed, update to current and abort.
-	if taskInfo.Runtime.State != pb_task.TaskState_INITIALIZED {
-		t.job.m.SetTask(t.job.id, t.id, taskInfo.Runtime)
+	if runtime.State != pb_task.TaskState_INITIALIZED {
+		t.job.m.SetTask(t.job.id, t.id, runtime)
 		return nil
 	}
 
-	taskInfo.Runtime.State = pb_task.TaskState_KILLED
+	runtime.State = pb_task.TaskState_KILLED
 
-	return t.job.m.UpdateTask(ctx, t.job.id, t.id, taskInfo)
+	return t.job.m.UpdateTaskRuntime(ctx, t.job.id, t.id, runtime)
 }
 
 func (t *task) stopMesosTask(ctx context.Context, runtime *pb_task.RuntimeInfo) error {

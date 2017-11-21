@@ -33,14 +33,14 @@ func (t *task) initialize(ctx context.Context) error {
 		return fmt.Errorf("job config not found for %v", t.job.id)
 	}
 
-	util.RegenerateMesosTaskID(taskInfo)
+	util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 
 	// update task runtime
 	taskInfo.Runtime.GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
 	taskInfo.Runtime.StartTime = ""
 	taskInfo.Runtime.CompletionTime = ""
 
-	err = m.UpdateTask(ctx, t.job.ID(), taskInfo.GetInstanceId(), taskInfo)
+	err = m.UpdateTaskRuntime(ctx, t.job.ID(), taskInfo.GetInstanceId(), taskInfo.GetRuntime())
 	if err != nil {
 		return errors.Wrapf(err, "unable to update task")
 	}

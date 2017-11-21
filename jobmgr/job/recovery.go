@@ -83,12 +83,12 @@ func (j *Recovery) recoverJobs(ctx context.Context) {
 
 // Make sure that all tasks created and queued to RM
 func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup bool) error {
-	log.WithField("job_id", jobID.Value).Info("recovering job")
+	log.WithField("job_id", jobID.GetValue()).Info("recovering job")
 
 	jobConfig, err := j.jobStore.GetJobConfig(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to get jobConfig")
 		return err
 	}
@@ -96,7 +96,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 	jobRuntime, err := j.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to GetJobRuntime")
 		return err
 	}
@@ -107,7 +107,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		createTime, err := time.Parse(time.RFC3339Nano, jobRuntime.CreationTime)
 		if err != nil {
 			log.WithError(err).
-				WithField("job_id", jobID.Value).
+				WithField("job_id", jobID.GetValue()).
 				WithField("create_time", jobRuntime.CreationTime).
 				Error("Failed to Parse job create time")
 			return err
@@ -115,11 +115,18 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		// Only recover job that still in Initialized state after jobRecoveryGracePeriod
 		// this is for avoiding collision with jobs being created right now
 		if time.Since(createTime) < jobRecoveryGracePeriod {
-			log.WithField("job_id", jobID.Value).
+			log.WithField("job_id", jobID.GetValue()).
 				WithField("create_time", createTime).
 				Info("Job created recently, skip")
 			return nil
 		}
+	}
+
+	if err := j.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Error("Failed to create task configs")
+		return err
 	}
 
 	for batch := uint32(0); batch < jobConfig.InstanceCount/batchRows+1; batch++ {
@@ -131,7 +138,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		taskInfos, err := j.taskStore.GetTasksForJobByRange(ctx, jobID, &pb_task.InstanceRange{From: start, To: end})
 		if err != nil {
 			log.WithError(err).
-				WithField("job_id", jobID.Value).
+				WithField("job_id", jobID.GetValue()).
 				WithField("start", start).
 				WithField("end", end).
 				Error("Failed to GetTasksForJobByRange")
@@ -146,13 +153,13 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 				continue
 			}
 			// Task does not exist in taskStore.
-			log.WithField("job_id", jobID.Value).
+			log.WithField("job_id", jobID.GetValue()).
 				WithField("task_instance", i).
 				Info("Creating missing task")
 			err := createTaskForJob(ctx, j.trackedManager, j.taskStore, jobID, i, jobConfig)
 			if err != nil {
 				log.WithError(err).
-					WithField("job_id", jobID.Value).
+					WithField("job_id", jobID.GetValue()).
 					WithField("id", i).
 					Error("Failed to CreateTask")
 				j.metrics.TaskRecoverFailed.Inc(1)
@@ -166,7 +173,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 	err = j.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to UpdateJobRuntime")
 		return err
 	}
@@ -180,20 +187,17 @@ func createTaskForJob(
 	jobID *peloton.JobID,
 	id uint32,
 	jobConfig *job.JobConfig) error {
-	taskInfo, err := task.CreateInitializingTask(jobID, id, jobConfig)
-	if err != nil {
-		return err
-	}
+	runtime := task.CreateInitializingTask(jobID, id, jobConfig)
 
-	if err := taskStore.CreateTask(ctx, jobID, id, taskInfo, jobConfig.OwningTeam); err != nil {
+	if err := taskStore.CreateTaskRuntime(ctx, jobID, id, runtime, jobConfig.OwningTeam); err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			WithField("id", id).
-			Error("Failed to CreateTask")
+			Error("Failed to CreateTaskRuntime")
 		return err
 	}
 
-	trackedManager.SetTask(jobID, id, taskInfo.Runtime)
+	trackedManager.SetTask(jobID, id, runtime)
 
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/taskconfig"
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
@@ -174,23 +175,34 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	instances := jobConfig.InstanceCount
 	startAddTaskTime := time.Now()
 
+	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Error("Failed to create task configs")
+		return err
+	}
+
 	tasks := make([]*task.TaskInfo, instances)
+	runtimes := make([]*task.RuntimeInfo, instances)
 	for i := uint32(0); i < instances; i++ {
-		t, err := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
-		if err != nil {
-			log.Errorf("Failed to get task config (%d) for job %v: %v",
-				i, jobID.Value, err)
-			return err
+		runtime := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
+		runtimes[i] = runtime
+
+		// TODO: Remove once tracker can handle enqueueing of gangs.
+		tasks[i] = &task.TaskInfo{
+			JobId:      jobID,
+			InstanceId: i,
+			Runtime:    runtime,
+			Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
 		}
-		tasks[i] = t
 	}
 
 	// TODO: use the username of current session for createBy param
-	err := h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
+	err := h.taskStore.CreateTaskRuntimes(ctx, jobID, runtimes, "peloton")
 	nTasks := int64(len(tasks))
 	if err != nil {
 		log.Errorf("Failed to create tasks (%d) for job %v: %v",
-			nTasks, jobID.Value, err)
+			nTasks, jobID.GetValue(), err)
 		h.metrics.TaskCreateFail.Inc(nTasks)
 		return err
 	}
@@ -199,7 +211,7 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.resmgrClient)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to enqueue tasks to RM")
 		return err
 	}
@@ -207,7 +219,7 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to GetJobRuntime")
 		return err
 	}
@@ -215,13 +227,15 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	err = h.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to UpdateJobRuntime")
 		return err
 	}
 
-	log.Infof("Job %v all %v tasks created, time spent: %v",
-		jobID.Value, instances, time.Since(startAddTaskTime))
+	log.WithField("job_id", jobID.GetValue()).
+		WithField("instance_count", instances).
+		WithField("time_spent", time.Since(startAddTaskTime)).
+		Info("all tasks created for job")
 
 	return nil
 }
@@ -238,7 +252,7 @@ func (h *serviceHandler) Update(
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to GetJobRuntime")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
@@ -266,7 +280,7 @@ func (h *serviceHandler) Update(
 
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to GetJobConfig")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
@@ -286,7 +300,7 @@ func (h *serviceHandler) Update(
 	}
 
 	if diff.IsNoop() {
-		log.WithField("job_id", jobID.Value).
+		log.WithField("job_id", jobID.GetValue()).
 			Info("update is a noop")
 		return nil, nil
 	}
@@ -304,39 +318,29 @@ func (h *serviceHandler) Update(
 		}, nil
 	}
 
-	log.WithField("job_id", jobID.Value).
+	log.WithField("job_id", jobID.GetValue()).
 		Infof("adding %d instances", len(diff.InstancesToAdd))
 
-	var tasks []*task.TaskInfo
-	for _, taskInfo := range diff.InstancesToAdd {
-		tasks = append(tasks, taskInfo)
-	}
-
-	err = h.taskStore.CreateTasks(ctx, jobID, tasks, "peloton")
-	nTasks := int64(len(tasks))
-	if err != nil {
-		log.Errorf("Failed to create tasks (%d) for job %v: %v",
-			nTasks, jobID.Value, err)
-		h.metrics.TaskCreateFail.Inc(nTasks)
-		h.metrics.JobUpdateFail.Inc(1)
-		// FIXME: Add a new Error type for this
-		return nil, err
-	}
-	h.metrics.TaskCreate.Inc(nTasks)
-
-	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, newConfig, h.resmgrClient)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.Value).
-			Error("Failed to enqueue tasks to RM")
+	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, newConfig); err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
+	}
+
+	for id, runtime := range diff.InstancesToAdd {
+		if err := h.taskStore.CreateTaskRuntime(ctx, jobID, id, runtime, "peloton"); err != nil {
+			log.WithError(err).WithField("job_id", jobID.GetValue()).Error("Failed to create task for job")
+			h.metrics.TaskCreateFail.Inc(1)
+			h.metrics.JobUpdateFail.Inc(1)
+			return nil, err
+		}
+		h.metrics.TaskCreate.Inc(1)
+		h.trackedManager.SetTask(jobID, id, runtime)
 	}
 
 	err = h.runtimeUpdater.UpdateJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.Value).
+			WithField("job_id", jobID.GetValue()).
 			Error("Failed to update job runtime")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err

@@ -65,6 +65,9 @@ func (suite *TaskUpdaterRMTestSuite) TestProcessStatusUpdate() {
 	instanceID := 0
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instanceID, uuidStr)
 	pelotonTaskID := fmt.Sprintf("%s-%d", jobID, instanceID)
+	pelotonJobID := &peloton.JobID{
+		Value: jobID,
+	}
 
 	pelotonState := task.TaskState_RUNNING
 	pelotonEvent := &task.TaskEvent{
@@ -80,6 +83,8 @@ func (suite *TaskUpdaterRMTestSuite) TestProcessStatusUpdate() {
 	}
 
 	taskInfo := &task.TaskInfo{
+		JobId:      pelotonJobID,
+		InstanceId: uint32(instanceID),
 		Runtime: &task.RuntimeInfo{
 			MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
 			State:       task.TaskState_INITIALIZED,
@@ -99,7 +104,7 @@ func (suite *TaskUpdaterRMTestSuite) TestProcessStatusUpdate() {
 			GetTaskByID(context.Background(), pelotonTaskID).
 			Return(taskInfo, nil),
 		suite.mockTaskStore.EXPECT().
-			UpdateTask(context.Background(), updateTaskInfo).
+			UpdateTaskRuntime(context.Background(), pelotonJobID, uint32(instanceID), updateTaskInfo.Runtime).
 			Return(nil),
 	)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))

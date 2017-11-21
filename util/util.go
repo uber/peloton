@@ -365,16 +365,15 @@ func ConvertLabels(pelotonLabels []*peloton.Label) *mesos.Labels {
 	return mesosLabels
 }
 
-// RegenerateMesosTaskID generates a new mesos task ID and update task info.
-func RegenerateMesosTaskID(taskInfo *task.TaskInfo) {
-	// The mesos task id must end with an UUID1, to encode in a timestamp.
+// RegenerateMesosTaskID generates a new mesos task ID and update task runtime.
+func RegenerateMesosTaskID(jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) {
 	mesosTaskID := fmt.Sprintf(
 		"%s-%d-%s",
-		taskInfo.GetJobId().GetValue(),
-		taskInfo.GetInstanceId(),
+		jobID.GetValue(),
+		instanceID,
 		uuid.New())
-	taskInfo.GetRuntime().MesosTaskId = &mesos.TaskID{
+	runtime.MesosTaskId = &mesos.TaskID{
 		Value: &mesosTaskID,
 	}
-	taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
+	runtime.State = task.TaskState_INITIALIZED
 }

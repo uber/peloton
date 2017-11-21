@@ -97,7 +97,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 
 		// For each job, create 3 tasks
 		for j := uint32(0); j < uint32(nTasks); j++ {
-			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
+			var tID = fmt.Sprintf("%s-%d", jobID.GetValue(), j)
 			var taskInfo = task.TaskInfo{
 				Runtime: &task.RuntimeInfo{
 					MesosTaskId: &mesos.TaskID{Value: &tID},
@@ -108,7 +108,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 				InstanceId: uint32(j),
 				JobId:      jobID,
 			}
-			err = suite.store.CreateTask(context.Background(), jobID, j, &taskInfo, "test")
+			err = suite.store.CreateTaskRuntime(context.Background(), jobID, j, taskInfo.Runtime, "test")
 			suite.NoError(err)
 		}
 	}
@@ -139,7 +139,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 		suite.Equal(len(tasks), nTasks)
 		for _, task := range tasks {
 			task.Runtime.Host = fmt.Sprintf("compute-%d", i)
-			err := suite.store.UpdateTask(context.Background(), task)
+			err := suite.store.UpdateTaskRuntime(context.Background(), task.JobId, task.InstanceId, task.Runtime)
 			suite.NoError(err)
 		}
 	}
@@ -177,7 +177,7 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 			},
 		}
 		var jobConfig = job.JobConfig{
-			Name:          jobID.Value,
+			Name:          jobID.GetValue(),
 			OwningTeam:    "team6",
 			LdapGroups:    []string{"money", "team6", "otto"},
 			Sla:           &sla,
@@ -187,21 +187,16 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 		suite.NoError(err)
 
 		// now, create a mess of tasks
-		taskInfos := []*task.TaskInfo{}
+		runtimes := []*task.RuntimeInfo{}
 		for j := 0; j < nTasks; j++ {
-			var tID = fmt.Sprintf("%s-%d", jobID.Value, j)
-			var taskInfo = task.TaskInfo{
-				Runtime: &task.RuntimeInfo{
-					MesosTaskId: &mesos.TaskID{Value: &tID},
-					State:       task.TaskState(j),
-				},
-				Config:     jobConfig.GetDefaultConfig(),
-				InstanceId: uint32(j),
-				JobId:      &jobID,
+			var tID = fmt.Sprintf("%s-%d", jobID.GetValue(), j)
+			var runtime = task.RuntimeInfo{
+				MesosTaskId: &mesos.TaskID{Value: &tID},
+				State:       task.TaskState(j),
 			}
-			taskInfos = append(taskInfos, &taskInfo)
+			runtimes = append(runtimes, &runtime)
 		}
-		err = suite.store.CreateTasks(context.Background(), &jobID, taskInfos, "test")
+		err = suite.store.CreateTaskRuntimes(context.Background(), &jobID, runtimes, "test")
 		suite.NoError(err)
 	}
 
@@ -403,7 +398,7 @@ func (suite *mySQLStoreTestSuite) TestJobRuntime() {
 	suite.NoError(err)
 	idFound := false
 	for _, id := range jobIds {
-		if id.Value == jobID.Value {
+		if id.Value == jobID.GetValue() {
 			idFound = true
 		}
 	}

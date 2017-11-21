@@ -158,12 +158,12 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	hostsLaunchedOn := make(map[string]bool)
 	launchedTasks := make(map[string]*task.TaskConfig)
 
-	updatedTaskInfo := proto.Clone(testTasks[0]).(*task.TaskInfo)
-	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
-	updatedTaskInfo.Runtime.AgentID = hostOffers[0].GetAgentId()
-	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
-	updatedTaskInfo.Runtime.Ports["port"] = testPort
-	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHED
+	updatedRuntime := proto.Clone(testTasks[0].Runtime).(*task.RuntimeInfo)
+	updatedRuntime.Host = hostOffers[0].Hostname
+	updatedRuntime.AgentID = hostOffers[0].GetAgentId()
+	updatedRuntime.Ports = make(map[string]uint32)
+	updatedRuntime.Ports["port"] = testPort
+	updatedRuntime.State = task.TaskState_LAUNCHED
 
 	gomock.InOrder(
 		mockRes.EXPECT().
@@ -176,7 +176,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
 		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), updatedTaskInfo).Return(nil),
+		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), testTasks[0].JobId, testTasks[0].InstanceId, updatedRuntime).Return(nil),
 
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
@@ -273,15 +273,12 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 	hostsLaunchedOn := make(map[string]bool)
 	launchedTasks := make(map[string]*task.TaskConfig)
 
-	updatedTaskInfo := proto.Clone(testTasks[0]).(*task.TaskInfo)
-	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
-	updatedTaskInfo.Runtime.AgentID = hostOffers[0].GetAgentId()
-	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
-	updatedTaskInfo.Runtime.Ports["port"] = testPort
-	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHED
-
-	initializedTaskInfo := proto.Clone(updatedTaskInfo).(*task.TaskInfo)
-	initializedTaskInfo.Runtime.State = task.TaskState_INITIALIZED
+	updatedRuntime := proto.Clone(testTasks[0].Runtime).(*task.RuntimeInfo)
+	updatedRuntime.Host = hostOffers[0].Hostname
+	updatedRuntime.AgentID = hostOffers[0].GetAgentId()
+	updatedRuntime.Ports = make(map[string]uint32)
+	updatedRuntime.Ports["port"] = testPort
+	updatedRuntime.State = task.TaskState_LAUNCHED
 
 	gomock.InOrder(
 		mockRes.EXPECT().
@@ -294,7 +291,7 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
 		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), updatedTaskInfo).Return(nil),
+		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), testTasks[0].JobId, testTasks[0].InstanceId, updatedRuntime).Return(nil),
 
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
@@ -321,9 +318,9 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 			}, nil).
 			Times(1),
 
-		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 
-		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), initializedTaskInfo.GetJobId()).Return(_jobConfig, nil),
+		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), testTasks[0].JobId).Return(_jobConfig, nil),
 
 		mockRes.EXPECT().EnqueueGangs(
 			gomock.Any(),
@@ -409,15 +406,12 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 	hostsLaunchedOn := make(map[string]bool)
 	launchedTasks := make(map[string]*task.TaskConfig)
 
-	updatedTaskInfo := proto.Clone(testTasks[0]).(*task.TaskInfo)
-	updatedTaskInfo.Runtime.Host = hostOffers[0].Hostname
-	updatedTaskInfo.Runtime.AgentID = hostOffers[0].GetAgentId()
-	updatedTaskInfo.Runtime.Ports = make(map[string]uint32)
-	updatedTaskInfo.Runtime.Ports["port"] = testPort
-	updatedTaskInfo.Runtime.State = task.TaskState_LAUNCHED
-
-	initializedTaskInfo := proto.Clone(updatedTaskInfo).(*task.TaskInfo)
-	initializedTaskInfo.Runtime.State = task.TaskState_INITIALIZED
+	updatedRuntime := proto.Clone(testTasks[0].Runtime).(*task.RuntimeInfo)
+	updatedRuntime.Host = hostOffers[0].Hostname
+	updatedRuntime.AgentID = hostOffers[0].GetAgentId()
+	updatedRuntime.Ports = make(map[string]uint32)
+	updatedRuntime.Ports["port"] = testPort
+	updatedRuntime.State = task.TaskState_LAUNCHED
 
 	gomock.InOrder(
 		mockRes.EXPECT().
@@ -430,7 +424,7 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
 		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), updatedTaskInfo).Return(nil),
+		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), testTasks[0].JobId, testTasks[0].InstanceId, updatedRuntime).Return(nil),
 
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
@@ -461,9 +455,9 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 		mockHostMgr.EXPECT().ReleaseHostOffers(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ReleaseHostOffersResponse{}, nil),
 
-		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 
-		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), initializedTaskInfo.GetJobId()).Return(_jobConfig, nil),
+		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), testTasks[0].JobId).Return(_jobConfig, nil),
 
 		// Mock EnqueueGangs call.
 		mockRes.EXPECT().EnqueueGangs(
@@ -567,7 +561,7 @@ func TestLaunchStatefulTask(t *testing.T) {
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
 		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 
 		mockVolumeStore.EXPECT().
 			GetPersistentVolume(gomock.Any(), gomock.Any()).
@@ -683,7 +677,7 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
 		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 
 		mockVolumeStore.EXPECT().
 			GetPersistentVolume(gomock.Any(), gomock.Any()).
@@ -824,7 +818,7 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceDirectly(t *testing.T) {
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
 		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTask(gomock.Any(), gomock.Any()).Return(nil),
+		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 
 		// Mock OfferOperation call.
 		mockHostMgr.EXPECT().

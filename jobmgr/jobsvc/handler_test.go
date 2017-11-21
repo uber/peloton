@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 
@@ -262,9 +263,11 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore
+	suite.handler.trackedManager = mockTrackedManager
 	updater := jobmgr_job.NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, jobmgr_job.Config{}, tally.NoopScope)
 	updater.Start()
 	suite.handler.runtimeUpdater = updater
@@ -286,15 +289,17 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
-		CreateTasks(context.Background(), jobID, gomock.Any(), "peloton").
+		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
 	mockTaskStore.EXPECT().
+		CreateTaskRuntime(context.Background(), jobID, uint32(3), gomock.Any(), "peloton").
+		Return(nil).
+		AnyTimes()
+	mockTrackedManager.EXPECT().SetTask(jobID, uint32(3), gomock.Any()).AnyTimes()
+	mockTaskStore.EXPECT().
 		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
 		Return(map[string]uint32{}, nil).
-		AnyTimes()
-	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), gomock.Any()).
-		Return(&resmgrsvc.EnqueueGangsResponse{}, nil).
 		AnyTimes()
 
 	req := &job.UpdateRequest{

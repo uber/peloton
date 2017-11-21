@@ -139,7 +139,7 @@ func (p *preemptor) preemptTasks(ctx context.Context, tasks []*resmgr.Task) erro
 		taskInfo.GetRuntime().GoalState = pb_task.TaskState_PREEMPTING
 
 		// update the task in the tracked manager
-		err = p.trackedManager.UpdateTask(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo)
+		err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		}

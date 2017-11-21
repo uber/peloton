@@ -136,7 +136,7 @@ func (p *statusUpdateRM) ProcessStatusUpdate(ctx context.Context, event *pb_even
 
 	taskInfo.GetRuntime().State = state
 
-	err = p.taskStore.UpdateTask(ctx, taskInfo)
+	err = p.taskStore.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{

@@ -67,7 +67,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		}, nil,
 	)
 	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskID.Value).Return(taskInfo, nil)
-	suite.mockTrackedManager.EXPECT().UpdateTask(gomock.Any(), gomock.Any(), gomock.Any(), taskInfo).Return(nil)
+	suite.mockTrackedManager.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), taskInfo.Runtime).Return(nil)
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)

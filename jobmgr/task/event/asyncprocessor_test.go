@@ -36,24 +36,24 @@ func TestBucketEventProcessor(t *testing.T) {
 	var offset uint64
 	applier := newBucketEventProcessor(handler, 15, 100)
 
-	jobID := "Test"
-	n := 243
+	jobID := &peloton.JobID{Value: "Test"}
+	n := uint32(243)
 
-	for i := 0; i < n; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
-		mockTaskStore.EXPECT().GetTaskByID(context.Background(), fmt.Sprintf("%s-%d", jobID, i)).Return(&task.TaskInfo{
+	for i := uint32(0); i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
+		pelotonTaskID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
+		taskInfo := &task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{
-					Value: &mesosTaskID,
-				},
+				MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
 			},
-			InstanceId: uint32(i),
-			JobId:      &peloton.JobID{Value: jobID},
-		}, nil)
-		mockTrackedManager.EXPECT().UpdateTask(context.Background(), &peloton.JobID{Value: jobID}, uint32(i), gomock.Any()).Return(nil)
+			InstanceId: i,
+			JobId:      jobID,
+		}
+		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
+		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
 	}
-	for i := 0; i < n; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
+	for i := uint32(0); i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
 		state := mesos.TaskState_TASK_STARTING
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
@@ -72,21 +72,21 @@ func TestBucketEventProcessor(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	for i := 0; i < n; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
-		mockTaskStore.EXPECT().GetTaskByID(context.Background(), fmt.Sprintf("%s-%d", jobID, i)).Return(&task.TaskInfo{
+	for i := uint32(0); i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
+		pelotonTaskID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
+		taskInfo := &task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{
-					Value: &mesosTaskID,
-				},
+				MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
 			},
-			InstanceId: uint32(i),
-			JobId:      &peloton.JobID{Value: jobID},
-		}, nil)
-		mockTrackedManager.EXPECT().UpdateTask(context.Background(), &peloton.JobID{Value: jobID}, uint32(i), gomock.Any()).Return(nil)
+			InstanceId: i,
+			JobId:      jobID,
+		}
+		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
+		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
 	}
-	for i := 0; i < n; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
+	for i := uint32(0); i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
 		state := mesos.TaskState_TASK_RUNNING
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{
@@ -105,21 +105,21 @@ func TestBucketEventProcessor(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	for i := 0; i < n; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
-		mockTaskStore.EXPECT().GetTaskByID(context.Background(), fmt.Sprintf("%s-%d", jobID, i)).Return(&task.TaskInfo{
+	for i := uint32(0); i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
+		pelotonTaskID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
+		taskInfo := &task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{
-					Value: &mesosTaskID,
-				},
+				MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
 			},
-			InstanceId: uint32(i),
-			JobId:      &peloton.JobID{Value: jobID},
-		}, nil)
-		mockTrackedManager.EXPECT().UpdateTask(context.Background(), &peloton.JobID{Value: jobID}, uint32(i), gomock.Any()).Return(nil)
+			InstanceId: i,
+			JobId:      jobID,
+		}
+		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
+		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
 	}
-	for i := 0; i < n; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
+	for i := uint32(0); i < n; i++ {
+		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
 		state := mesos.TaskState_TASK_FINISHED
 		status := &mesos.TaskStatus{
 			TaskId: &mesos.TaskID{

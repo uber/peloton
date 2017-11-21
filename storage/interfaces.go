@@ -45,15 +45,18 @@ type JobStore interface {
 
 // TaskStore is the interface to store task states
 type TaskStore interface {
-	// TODO: remove CreateTask as it should be deprecated for CreateTasks
-	CreateTask(ctx context.Context, id *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo, createdBy string) error
-	CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []*task.TaskInfo, createdBy string) error
+	// TODO: remove CreateTaskRuntime as it should be deprecated for CreateTaskRuntimes
+	CreateTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, createdBy string) error
+	CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo, createdBy string) error
+	GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.RuntimeInfo, error)
+	UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error
+
+	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)
 	GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error)
 	GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)
 	GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error)
 	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int64) (*task.TaskConfig, error)
-	UpdateTask(ctx context.Context, taskInfo *task.TaskInfo) error
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
 	QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error)
 	GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error)

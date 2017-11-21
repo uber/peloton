@@ -33,12 +33,11 @@ type Manager interface {
 	// immediate evaluation.
 	SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo)
 
-	// UpdateTask with the new runtime info, by first attempting to persit it.
-	// If it fail in persisting the change due to a data race, an AlreadyExists
-	// error is returned.
+	// UpdateTaskRuntime with the new runtime info, by first attempting to persit
+	// it. If it fail in persisting the change due to a data race, an
+	// AlreadyExists error is returned.
 	// If succesfull, this will also schedule the task for immediate evaluation.
-	// TODO: Should only take the task runtime, not info.
-	UpdateTask(ctx context.Context, jobID *peloton.JobID, instanceID uint32, info *pb_task.TaskInfo) error
+	UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) error
 
 	// ScheduleTask to be evaluated by the goal state engine, at deadline.
 	ScheduleTask(t Task, deadline time.Time)
@@ -125,14 +124,14 @@ func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_t
 	m.scheduleTask(t, time.Now())
 }
 
-func (m *manager) UpdateTask(ctx context.Context, jobID *peloton.JobID, instanceID uint32, info *pb_task.TaskInfo) error {
+func (m *manager) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) error {
 	// TODO: We need to figure out how to handle this case, where we modify in
 	// the non-leader.
-	if err := m.taskStore.UpdateTask(ctx, info); err != nil {
+	if err := m.taskStore.UpdateTaskRuntime(ctx, jobID, instanceID, runtime); err != nil {
 		return err
 	}
 
-	m.SetTask(jobID, instanceID, info.GetRuntime())
+	m.SetTask(jobID, instanceID, runtime)
 	return nil
 }
 

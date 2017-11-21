@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	_waitTime   = 1 * time.Second
-	_instanceID = 0
+	_waitTime          = 1 * time.Second
+	_instanceID uint32 = 0
 )
 
 var (
@@ -143,7 +143,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil),
 		suite.mockTrackedManager.EXPECT().
-			UpdateTask(context.Background(), updateTaskInfo.JobId, updateTaskInfo.InstanceId, updateTaskInfo).
+			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime()).
 			Return(nil),
 	)
 
@@ -186,23 +186,22 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
 	suite.mockTrackedManager.EXPECT().
-		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
-		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
-			suite.Equal(updateTask.JobId, _pelotonJobID)
+		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo) {
 			suite.Equal(
-				updateTask.Runtime.State,
+				runtime.State,
 				task.TaskState_INITIALIZED,
 			)
 			suite.Equal(
-				updateTask.Runtime.Reason,
+				runtime.Reason,
 				_mesosReason.String(),
 			)
 			suite.Equal(
-				updateTask.Runtime.Message,
+				runtime.Message,
 				rescheduleMsg,
 			)
 			suite.Equal(
-				updateTask.Runtime.FailureCount,
+				runtime.FailureCount,
 				uint32(1),
 			)
 		}).
@@ -234,7 +233,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil),
 		suite.mockTrackedManager.EXPECT().
-			UpdateTask(context.Background(), updateTaskInfo.JobId, updateTaskInfo.InstanceId, updateTaskInfo).
+			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime()).
 			Return(nil),
 	)
 
@@ -257,23 +256,23 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedSystemFailure() {
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
 	suite.mockTrackedManager.EXPECT().
-		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
-		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
-			suite.Equal(updateTask.JobId, _pelotonJobID)
+		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, JobId *peloton.JobID, _ interface{}, updateTask *task.RuntimeInfo) {
+			suite.Equal(JobId, _pelotonJobID)
 			suite.Equal(
-				updateTask.Runtime.State,
+				updateTask.State,
 				task.TaskState_INITIALIZED,
 			)
 			suite.Equal(
-				updateTask.Runtime.Reason,
+				updateTask.Reason,
 				failureReason.String(),
 			)
 			suite.Equal(
-				updateTask.Runtime.Message,
+				updateTask.Message,
 				rescheduleMsg,
 			)
 			suite.Equal(
-				updateTask.Runtime.FailureCount,
+				updateTask.FailureCount,
 				uint32(1),
 			)
 		}).
@@ -297,14 +296,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
 	suite.mockTrackedManager.EXPECT().
-		UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
-		Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
+		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo) {
 			suite.Equal(
-				updateTask.Runtime.State,
+				runtime.State,
 				task.TaskState_INITIALIZED,
 			)
 			suite.Equal(
-				updateTask.Runtime.Message,
+				runtime.Message,
 				rescheduleMsg,
 			)
 		}).
@@ -378,19 +377,19 @@ func (suite *TaskUpdaterTestSuite) TestProcessPreemptedTaskStatusUpdate() {
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil)
 		suite.mockTrackedManager.EXPECT().
-			UpdateTask(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
-			Do(func(ctx context.Context, _, _ interface{}, updateTask *task.TaskInfo) {
+			UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+			Do(func(ctx context.Context, _, _ interface{}, updateTask *task.RuntimeInfo) {
 				suite.Equal(
 					preemptMessage,
-					updateTask.Runtime.Message,
+					updateTask.Message,
 				)
 				suite.Equal(
 					preemptReason,
-					updateTask.Runtime.Reason,
+					updateTask.Reason,
 				)
 				suite.Equal(
 					oldFailureCount,
-					updateTask.Runtime.FailureCount,
+					updateTask.FailureCount,
 				)
 			}).
 			Return(nil)

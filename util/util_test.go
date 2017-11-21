@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )

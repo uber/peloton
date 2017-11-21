@@ -277,7 +277,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 		p.metrics.RetryFailedTasksTotal.Inc(1)
 		statusMsg = "Rescheduled due to task failure status: " + statusMsg
-		util.RegenerateMesosTaskID(taskInfo)
+		util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		runtime.FailureCount++
 
 		// TODO: check for failing reason before rescheduling.
@@ -297,7 +297,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("reschedule lost task")
 		statusMsg = "Rescheduled due to task LOST: " + statusMsg
-		util.RegenerateMesosTaskID(taskInfo)
+		util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 
 	default:
 		// TODO: figure out on what cases state updates should not be persisted
@@ -329,13 +329,13 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		).Debug("Received unexpected update for task")
 	}
 
-	err = p.trackedManager.UpdateTask(ctx, taskInfo.GetJobId(), taskInfo.GetInstanceId(), taskInfo)
+	err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), taskInfo.GetInstanceId(), runtime)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
 				"task_id": taskID,
-				"State":   state}).
-			Error("Fail to update taskInfo for taskID")
+				"state":   state}).
+			Error("Fail to update runtime for taskID")
 		return err
 	}
 

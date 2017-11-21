@@ -280,9 +280,9 @@ func (l *launcher) enqueueTasks(ctx context.Context, tasks []*task.TaskInfo) err
 
 	for _, t := range tasks {
 		t.Runtime.State = task.TaskState_INITIALIZED
-		util.RegenerateMesosTaskID(t)
+		util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.Runtime)
 		for {
-			err := l.taskStore.UpdateTask(ctx, t)
+			err := l.taskStore.UpdateTaskRuntime(ctx, t.JobId, t.InstanceId, t.Runtime)
 			if err == nil {
 				break
 			}
@@ -365,7 +365,7 @@ func (l *launcher) getLaunchableTasks(
 		}
 
 		// Writes the hostname and ports information back to db.
-		err = l.taskStore.UpdateTask(ctx, taskInfo)
+		err = l.taskStore.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		if err != nil {
 			log.WithError(err).WithField("task_info", taskInfo).
 				Error("Not able to update Task")

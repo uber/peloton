@@ -195,3 +195,17 @@ func TestManagerStartStop(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestPublishMetrics(t *testing.T) {
+	m := &manager{
+		jobs:      map[string]*job{},
+		mtx:       newMetrics(tally.NoopScope),
+		taskQueue: newDeadlineQueue(newMetrics(tally.NoopScope)),
+		running:   true,
+	}
+
+	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+
+	m.publishMetrics()
+}
