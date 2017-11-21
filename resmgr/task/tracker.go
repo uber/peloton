@@ -71,6 +71,8 @@ type Tracker interface {
 type tracker struct {
 	sync.Mutex
 
+	//TODO: After go 1.9 we need to use
+	// https://golang.org/doc/go1.9#sync-map
 	// Maps task id -> rm task
 	tasks map[string]*RMTask
 
@@ -303,6 +305,8 @@ func (tr *tracker) Clear() {
 // GetActiveTasks returns task to states map, if jobID or respoolID is provided,
 // only tasks for that job or respool will be returned
 func (tr *tracker) GetActiveTasks(jobID string, respoolID string) map[string]string {
+	tr.Lock()
+	defer tr.Unlock()
 	var taskStates = map[string]string{}
 	for id, task := range tr.tasks {
 		if jobID == "" && respoolID == "" {
