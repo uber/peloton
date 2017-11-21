@@ -106,7 +106,7 @@ var (
 
 	enablePreemption = app.Flag(
 		"enable_preemption", "Enabling preemption").
-		Default(false).
+		Default("false").
 		Envar("ENABLE_PREEMPTION").
 		Bool()
 )
