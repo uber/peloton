@@ -167,7 +167,7 @@ class App(object):
         ]
 
         # Mount langley secrets if secret dir is specified.
-        if self.cluster.secret_config_dir is not None:
+        if not getattr(self.cluster, 'secret_config_dir', ''):
             volumes.append((
                 self.cluster.secret_config_dir,
                 self.cluster.secret_config_dir,
