@@ -896,11 +896,14 @@ func (s *Store) CreateTasks(ctx context.Context, id *peloton.JobID, taskInfos []
 // logTaskStateChange logs the task state change events
 func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, instanceID uint32, taskInfo *task.TaskInfo) error {
 	var stateChange = TaskStateChangeRecord{
-		JobID:      jobID.GetValue(),
-		InstanceID: instanceID,
-		TaskState:  taskInfo.Runtime.State.String(),
-		TaskHost:   taskInfo.Runtime.Host,
-		EventTime:  time.Now().UTC(),
+		JobID:       jobID.GetValue(),
+		InstanceID:  instanceID,
+		MesosTaskID: taskInfo.GetRuntime().GetMesosTaskId().GetValue(),
+		TaskState:   taskInfo.GetRuntime().GetState().String(),
+		TaskHost:    taskInfo.GetRuntime().GetHost(),
+		EventTime:   time.Now().UTC(),
+		Reason:      taskInfo.GetRuntime().GetReason(),
+		Message:     taskInfo.GetRuntime().GetMessage(),
 	}
 	buffer, err := json.Marshal(stateChange)
 	if err != nil {
@@ -947,6 +950,8 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskInfos map[s
 			TaskHost:    runtime.GetHost(),
 			EventTime:   time.Now().UTC(),
 			MesosTaskID: runtime.GetMesosTaskId().GetValue(),
+			Reason:      runtime.GetReason(),
+			Message:     runtime.GetMessage(),
 		}
 		buffer, err := json.Marshal(stateChange)
 		if err != nil {

@@ -90,6 +90,8 @@ type TaskStateChangeRecord struct {
 	JobID       string    `cql:"job_id"`
 	InstanceID  uint32    `cql:"instance_id"`
 	MesosTaskID string    `cql:"mesos_task_id"`
+	Message     string    `cql:"message"`
+	Reason      string    `cql:"reason"`
 }
 
 // FrameworkInfoRecord tracks the framework info

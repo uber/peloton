@@ -843,6 +843,13 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	err = taskStore.UpdateTask(context.Background(), taskInfo)
 	suite.NoError(err)
 
+	taskInfo.Runtime.State = task.TaskState_LOST
+	taskInfo.Runtime.Host = host2
+	taskInfo.Runtime.Reason = "Reconciliation reason"
+	taskInfo.Runtime.Message = "Reconciliation message"
+	err = taskStore.UpdateTask(context.Background(), taskInfo)
+	suite.NoError(err)
+
 	stateRecords, err := store.GetTaskStateChanges(context.Background(), &jobID, 0)
 	suite.NoError(err)
 
@@ -852,6 +859,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	suite.Equal(stateRecords[3].TaskState, task.TaskState_PREEMPTING.String())
 	suite.Equal(stateRecords[4].TaskState, task.TaskState_RUNNING.String())
 	suite.Equal(stateRecords[5].TaskState, task.TaskState_SUCCEEDED.String())
+	suite.Equal(stateRecords[6].TaskState, task.TaskState_LOST.String())
 
 	suite.Equal(stateRecords[0].TaskHost, "")
 	suite.Equal(stateRecords[1].TaskHost, "")
@@ -859,6 +867,12 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	suite.Equal(stateRecords[3].TaskHost, "")
 	suite.Equal(stateRecords[4].TaskHost, host2)
 	suite.Equal(stateRecords[5].TaskHost, host2)
+	suite.Equal(stateRecords[6].TaskHost, host2)
+
+	suite.Empty(stateRecords[5].Reason)
+	suite.Empty(stateRecords[5].Message)
+	suite.Equal(stateRecords[6].Reason, "Reconciliation reason")
+	suite.Equal(stateRecords[6].Message, "Reconciliation message")
 
 	stateRecords, err = store.GetTaskStateChanges(context.Background(), &jobID, 99999)
 	suite.Error(err)
