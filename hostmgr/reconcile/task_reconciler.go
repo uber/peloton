@@ -96,13 +96,13 @@ func (r *taskReconciler) reconcileImplicitly(ctx context.Context) {
 		return
 	}
 	r.metrics.ReconcileImplicitly.Inc(1)
-	log.Debug("Reconcile tasks implicitly returned.")
+	log.Info("Reconcile tasks implicitly returned.")
 }
 
 func (r *taskReconciler) reconcileExplicitly(ctx context.Context, running *atomic.Bool) {
 	log.Info("Reconcile tasks explicitly called.")
 	if r.isExplicitReconcileRunning.Swap(true) {
-		log.Info("Reconcile tasks explicit is already running, no-op.")
+		log.Warn("Reconcile tasks explicit is already running, no-op.")
 		return
 	}
 	defer r.isExplicitReconcileRunning.Store(false)
@@ -114,8 +114,8 @@ func (r *taskReconciler) reconcileExplicitly(ctx context.Context, running *atomi
 		r.metrics.ReconcileExplicitlyFail.Inc(1)
 		return
 	}
-	log.WithField("total_reconcile_tasks", reconcileTasksLen).
-		Debug("Total number of tasks to reconcile explicitly.")
+	log.WithField("reconcile_tasks_total", reconcileTasksLen).
+		Info("Total number of tasks to reconcile explicitly.")
 
 	frameworkID := r.frameworkInfoProvider.GetFrameworkID(ctx)
 	streamID := r.frameworkInfoProvider.GetMesosStreamID(ctx)
@@ -157,7 +157,7 @@ func (r *taskReconciler) reconcileExplicitly(ctx context.Context, running *atomi
 
 	r.metrics.ExplicitTasksPerRun.Update(float64(explicitTasksPerRun))
 	r.metrics.ReconcileExplicitly.Inc(1)
-	log.Debug("Reconcile tasks explicitly returned.")
+	log.Info("Reconcile tasks explicitly returned.")
 }
 
 // getReconcileTasks queries datastore and get all the RUNNING tasks.
@@ -173,6 +173,7 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 		log.WithError(err).Error("Failed to get running jobs.")
 		return reconcileTasks, err
 	}
+	log.WithField("job_ids", jobIDs).Info("explicit reconcile job ids.")
 
 	for _, jobID := range jobIDs {
 		nonTerminalTasks, getTasksErr := r.taskStore.GetTasksForJobAndState(
@@ -184,7 +185,7 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 			log.WithError(getTasksErr).WithFields(log.Fields{
 				"job": jobID,
 			}).Error("Failed to get running tasks for job")
-			return reconcileTasks, getTasksErr
+			continue
 		}
 		if len(nonTerminalTasks) != 0 {
 			for _, taskInfo := range nonTerminalTasks {

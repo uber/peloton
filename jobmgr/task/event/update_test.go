@@ -170,7 +170,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameState() {
 	now = nowMock
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	suite.Equal(
-		int64(0),
+		int64(1),
 		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
 }
 
@@ -309,6 +309,20 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 			)
 		}).
 		Return(nil)
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	time.Sleep(_waitTime)
+}
+
+// Test processing task LOST status update w/o retry due to current state already in terminal state.
+func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithoutRetry() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
+
+	suite.mockTaskStore.EXPECT().
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(taskInfo, nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	time.Sleep(_waitTime)
 }

@@ -197,6 +197,24 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return errors.New("Unknown Event ")
 	}
 
+	// Update task state counter for non-reconcilication update.
+	if isMesosStatus && event.GetMesosTaskStatus().GetReason() != mesos_v1.TaskStatus_REASON_RECONCILIATION {
+		switch state {
+		case pb_task.TaskState_RUNNING:
+			p.metrics.TasksRunningTotal.Inc(1)
+		case pb_task.TaskState_SUCCEEDED:
+			p.metrics.TasksSucceededTotal.Inc(1)
+		case pb_task.TaskState_FAILED:
+			p.metrics.TasksFailedTotal.Inc(1)
+		case pb_task.TaskState_KILLED:
+			p.metrics.TasksKilledTotal.Inc(1)
+		case pb_task.TaskState_LOST:
+			p.metrics.TasksLostTotal.Inc(1)
+		}
+	} else {
+		p.metrics.TasksReconciledTotal.Inc(1)
+	}
+
 	taskInfo, err := p.taskStore.GetTaskByID(ctx, taskID)
 	if err != nil {
 		log.WithError(err).
@@ -213,7 +231,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"orphan_task_id":    mesosTaskID,
 			"db_task_id":        dbTaskID,
 			"db_task_info":      taskInfo,
-			"task_status_event": event.MesosTaskStatus,
+			"task_status_event": event.GetMesosTaskStatus(),
 		}).Warn("skip status update for orphan mesos task")
 		return nil
 	}
@@ -221,25 +239,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	if state == runtime.GetState() {
 		log.WithFields(log.Fields{
 			"db_task_info":      taskInfo,
-			"task_status_event": event.MesosTaskStatus,
+			"task_status_event": event.GetMesosTaskStatus(),
 		}).Debug("skip same status update for mesos task")
 		return nil
-	}
-
-	// Update task state counter for non-reconcilication update.
-	if isMesosStatus && event.GetMesosTaskStatus().GetReason() != mesos_v1.TaskStatus_REASON_RECONCILIATION {
-		switch state {
-		case pb_task.TaskState_RUNNING:
-			p.metrics.TasksRunningTotal.Inc(1)
-		case pb_task.TaskState_SUCCEEDED:
-			p.metrics.TasksSucceededTotal.Inc(1)
-		case pb_task.TaskState_FAILED:
-			p.metrics.TasksFailedTotal.Inc(1)
-		case pb_task.TaskState_KILLED:
-			p.metrics.TasksKilledTotal.Inc(1)
-		case pb_task.TaskState_LOST:
-			p.metrics.TasksLostTotal.Inc(1)
-		}
 	}
 
 	// clear message and reason
@@ -281,6 +283,14 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		// TODO: check for failing reason before rescheduling.
 
 	case pb_task.TaskState_LOST:
+		if util.IsPelotonStateTerminal(runtime.GetState()) {
+			// Skip LOST status update if current state is terminal state.
+			log.WithFields(log.Fields{
+				"db_task_info":      taskInfo,
+				"task_status_event": event.GetMesosTaskStatus(),
+			}).Debug("skip reschedule lost task as it is already in terminal state")
+			return nil
+		}
 		p.metrics.RetryLostTasksTotal.Inc(1)
 		log.WithFields(log.Fields{
 			"db_task_info":      taskInfo,

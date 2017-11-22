@@ -18,6 +18,8 @@ type Metrics struct {
 	TasksKilledTotal    tally.Counter
 	TasksSucceededTotal tally.Counter
 	TasksRunningTotal   tally.Counter
+
+	TasksReconciledTotal tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -35,5 +37,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TasksSucceededTotal: scope.Counter("tasks_succeeded_total"),
 		TasksKilledTotal:    scope.Counter("tasks_killed_total"),
 		TasksRunningTotal:   scope.Counter("tasks_running_total"),
+
+		TasksReconciledTotal: scope.Counter("tasks_reconciled_total"),
 	}
 }
