@@ -154,7 +154,8 @@ class App(object):
                 self.cluster, 'secret_config_dir', ''),
             'MESOS_SECRET_FILE': getattr(
                 self.cluster, 'mesos_secret_file', ''),
-            'ENABLE_PREEMPTION': self.cluster.enable_preemption,
+            'ENABLE_PREEMPTION': getattr(
+                self.cluster, 'enable_preemption', 'false'),
         }
 
         params = [
