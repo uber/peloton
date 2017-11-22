@@ -4,17 +4,17 @@ import (
 	"os"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/config"
+	common_config "code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/placement"
+	"code.uber.internal/infra/peloton/placement/config"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
-
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc"
@@ -125,8 +125,8 @@ func main() {
 	log.SetLevel(initialLevel)
 
 	log.WithField("files", *cfgFiles).Info("Loading Placement Engnine config")
-	var cfg Config
-	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
+	var cfg config.Config
+	if err := common_config.Parse(&cfg, *cfgFiles...); err != nil {
 		log.WithField("error", err).Fatal("Cannot parse yaml config")
 	}
 
@@ -171,15 +171,15 @@ func main() {
 		cfg.Storage.Cassandra.CassandraConn.Port = *cassandraPort
 	}
 
-	placementTaskType := resmgr.TaskType_BATCH
+	cfg.Placement.TaskType = resmgr.TaskType_BATCH
 	if *taskType != "" {
 		if tt, ok := resmgr.TaskType_value[*taskType]; ok {
-			placementTaskType = resmgr.TaskType(tt)
+			cfg.Placement.TaskType = resmgr.TaskType(tt)
 		} else {
 			log.WithField("placement_task_type", *taskType).Error("Invalid placement task type")
 		}
 	}
-	log.WithField("placement_task_type", placementTaskType).Info("Placement engine task type")
+	log.WithField("placement_task_type", cfg.Placement.TaskType).Info("Placement engine task type")
 
 	log.WithField("config", cfg).Info("Loaded Placement Engine config")
 
@@ -259,8 +259,7 @@ func main() {
 	log.Info("Connect to the TaskStore")
 	_, taskStore, _, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
 
-	// Initialize and start placement engine
-	placementEngine := placement.New(
+	engine := placement.New(
 		dispatcher,
 		rootScope,
 		&cfg.Placement,
@@ -269,8 +268,8 @@ func main() {
 		taskStore,
 	)
 	log.Info("Start the PlacementEngine")
-	placementEngine.Start()
-	defer placementEngine.Stop()
+	engine.Start()
+	defer engine.Stop()
 
 	log.Info("Initialize the Heartbeat process")
 	// we can *honestly* say the server is booted up now

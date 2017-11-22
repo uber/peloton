@@ -5,35 +5,21 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
-
-type Counter struct {
-	number  int64
-	running bool
-	lock    sync.Mutex
-}
-
-func (c *Counter) Run(ctx context.Context) error {
-	atomic.AddInt64(&c.number, 1)
-	return nil
-}
-
-func (c *Counter) larger(expected int64) int64 {
-	repeat := true
-	var value int64
-	for repeat {
-		value = atomic.LoadInt64(&c.number)
-		repeat = value < expected
-	}
-	return value
-}
 
 type Waiter struct {
 	gotEvent bool
 	running  bool
 	lock     sync.Mutex
+}
+
+func (w *Waiter) GotEvent() bool {
+	w.lock.Lock()
+	defer w.lock.Unlock()
+	return w.gotEvent
 }
 
 func (w *Waiter) Running() bool {
@@ -48,13 +34,37 @@ func (w *Waiter) setRunning(state bool) {
 	w.running = state
 }
 
+func (w *Waiter) setGotEvent(state bool) {
+	w.lock.Lock()
+	defer w.lock.Unlock()
+	w.gotEvent = state
+}
+
 func (w *Waiter) Run(ctx context.Context) error {
 	w.setRunning(true)
 	defer w.setRunning(false)
 	select {
 	case <-ctx.Done():
-		w.gotEvent = true
+		w.setGotEvent(true)
+		return ctx.Err()
 	}
+}
+
+type Running struct {
+	running  int64
+	multiple int64
+}
+
+func (r *Running) Run(ctx context.Context) error {
+	atomic.AddInt64(&r.running, 1)
+	if running := atomic.LoadInt64(&r.running); running != 1 {
+		atomic.StoreInt64(&r.multiple, 1)
+	}
+	select {
+	case <-time.After(2 * time.Millisecond):
+	case <-ctx.Done():
+	}
+	atomic.AddInt64(&r.running, -1)
 	return nil
 }
 
@@ -63,41 +73,45 @@ func setupWaiter() (Daemon, *Waiter) {
 	return NewDaemon("waiter", waiter), waiter
 }
 
-func setupCounter() (Daemon, *Counter) {
-	counter := &Counter{}
-	return NewDaemon("counter", counter), counter
+func setupRunning() (Daemon, *Running) {
+	running := &Running{}
+	return NewDaemon("running", running), running
+}
+
+func TestDaemonMultipleStartAndStopsStartsOnlyOneConcurrentRunnable(t *testing.T) {
+	daemon, running := setupRunning()
+	allStarted := &sync.WaitGroup{}
+	concurrency := 100
+	allStarted.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer allStarted.Done()
+			daemon.Start()
+		}()
+	}
+	allStarted.Wait()
+	// Multiple stops will not block
+	daemon.Stop()
+	daemon.Stop()
+	assert.Equal(t, int64(0), atomic.LoadInt64(&running.multiple))
 }
 
 func TestDaemonStart(t *testing.T) {
-	daemon, counter := setupCounter()
+	daemon, waiter := setupWaiter()
 	daemon.Start()
-	value1 := counter.larger(1)
-	assert.True(t, value1 > 0)
-	value2 := counter.larger(value1)
-	assert.True(t, value2 >= value1)
+	for !waiter.Running() {
+		continue
+	}
+	assert.True(t, waiter.Running())
 	daemon.Stop()
 }
 
-func TestDaemonStopEvent(t *testing.T) {
+func TestDaemonStop(t *testing.T) {
 	daemon, waiter := setupWaiter()
 	daemon.Start()
 	for !waiter.Running() {
 		continue
 	}
 	daemon.Stop()
-	for waiter.Running() {
-		continue
-	}
-	assert.True(t, waiter.gotEvent)
-}
-
-func TestDaemonStop(t *testing.T) {
-	daemon, counter := setupCounter()
-	daemon.Start()
-	value1 := counter.larger(1)
-	daemon.Stop()
-	assert.True(t, value1 > 0)
-	value2 := counter.larger(value1)
-	value3 := counter.larger(value1)
-	assert.True(t, value3 == value2)
+	assert.True(t, waiter.GotEvent())
 }

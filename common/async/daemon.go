@@ -9,18 +9,21 @@ import (
 
 // Daemon represents a function that we want to start and run continuously until stopped.
 type Daemon interface {
-	// Start starts the daemon.
-	// The daemon is running when the underlying step function is started.
+	// Start starts the daemon. The daemon is running when the underlying
+	// runnable is started. Start blocks until the runnable is in the running
+	// state. Otherwise it returns and does not block.
 	Start()
 
-	// Stop stops the daemon.
-	// The daemon is running until the underlying step function returns.
+	// Stop stops the daemon. The daemon is running until the underlying
+	// runnable returns. Stop blocks until the runnable is in state stopped.
+	// Otherwise it returns and does not block.
 	Stop()
 }
 
 // Runnable represents a runnable function that can return an error.
 type Runnable interface {
-	// Run will run the runnable with an context and log any errors that it might return.
+	// Run will run the runnable with a context and return any errors that
+	// might occur.
 	Run(ctx context.Context) (err error)
 }
 
@@ -42,58 +45,99 @@ func NewRunnable(runFunc func(context.Context) error) Runnable {
 // NewDaemon will create a new daemon.
 func NewDaemon(name string, runnable Runnable) Daemon {
 	return &daemon{
-		name:     name,
-		runnable: runnable,
+		condition: sync.NewCond(&sync.Mutex{}),
+		name:      name,
+		runnable:  runnable,
 	}
 }
 
+type status uint
+
+func (s status) String() string {
+	switch s {
+	case running:
+		return "running"
+	case cancelled:
+		return "cancelled"
+	case stopped:
+		return "stopped"
+	default:
+		return "unknown"
+	}
+}
+
+const (
+	stopped status = iota
+	running
+	cancelled
+)
+
 type daemon struct {
-	lock       sync.Mutex
-	started    bool
-	running    bool
 	cancelFunc context.CancelFunc
+	condition  *sync.Cond
+	status     status
 	name       string
 	runnable   Runnable
 }
 
+// notifyOfStop will notify the daemon that the runnable stopped running and update the running flag.
+func (d *daemon) notifyOfStop() {
+	d.condition.L.Lock()
+	defer d.condition.L.Unlock()
+	d.status = stopped
+	d.condition.Broadcast()
+}
+
 func (d *daemon) Start() {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	log.WithField("daemon", d.name).Info("Daemon starting")
-	if !d.started && !d.running {
-		go func() {
-			ctx, cancelFunc := context.WithCancel(context.Background())
-			d.startRunning(cancelFunc)
-			defer d.stopRunning()
-			d.runnable.Run(ctx)
-		}()
+	d.condition.L.Lock()
+	defer d.condition.L.Unlock()
+	loop := true
+	for loop {
+		switch d.status {
+		case running:
+			return
+		case cancelled:
+			d.condition.Wait()
+		case stopped:
+			loop = false
+			continue
+		}
 	}
-	d.started = true
+
+	// Status is stopped => launch the runnable
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	d.cancelFunc = cancelFunc
+	// Start the runnable
+	go func() {
+		defer d.notifyOfStop()
+		d.runnable.Run(ctx)
+	}()
+	d.status = running
+	d.condition.Broadcast()
+	log.WithField("name", d.name).
+		WithField("status", d.status).
+		Info("Daemon started")
 }
 
 func (d *daemon) Stop() {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	log.WithField("daemon", d.name).Info("Daemon stopping")
-	d.started = false
-	if d.cancelFunc != nil {
-		d.cancelFunc()
-		d.cancelFunc = nil
+	d.condition.L.Lock()
+	defer d.condition.L.Unlock()
+	for {
+		switch d.status {
+		case running:
+			d.status = cancelled
+			if d.cancelFunc != nil {
+				d.cancelFunc()
+				d.cancelFunc = nil
+			}
+			d.condition.Wait()
+		case cancelled:
+			d.condition.Wait()
+		case stopped:
+			log.WithField("name", d.name).
+				WithField("status", d.status).
+				Info("Daemon stopped")
+			return
+		}
 	}
-}
-
-func (d *daemon) startRunning(cancelFunc context.CancelFunc) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	d.running = true
-	d.cancelFunc = cancelFunc
-	log.WithField("daemon", d.name).Info("Daemon started running")
-}
-
-func (d *daemon) stopRunning() {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	d.running = false
-	d.cancelFunc = nil
-	log.WithField("daemon", d.name).Info("Daemon stopped running")
 }

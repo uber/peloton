@@ -1,4 +1,4 @@
-package placement
+package metrics
 
 import (
 	"github.com/uber-go/tally"
