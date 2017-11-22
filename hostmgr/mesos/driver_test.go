@@ -190,7 +190,7 @@ func (suite *schedulerDriverTestSuite) TestPostSubscribe() {
 	suite.driver.PostSubscribe(context.Background(), _streamID)
 }
 
-func (suite *schedulerDriverTestSuite) TestPrepareSubscribeRequest() {
+func (suite *schedulerDriverTestSuite) TestPrepareLoadedFrameworkID() {
 	req, err := suite.driver.PrepareSubscribeRequest(context.Background(), "")
 	suite.Error(err)
 	suite.Nil(req)
@@ -212,6 +212,30 @@ func (suite *schedulerDriverTestSuite) TestPrepareSubscribeRequest() {
 	suite.NoError(err)
 	call := reflect.New(reflect.TypeOf(sched.Call{}))
 	suite.NoError(mpb.UnmarshalPbMessage(p, call, _encoding))
+}
+
+func (suite *schedulerDriverTestSuite) TestPrepareFirstTimeRegister() {
+	req, err := suite.driver.PrepareSubscribeRequest(context.Background(), "")
+	suite.Error(err)
+	suite.Nil(req)
+
+	suite.store.EXPECT().
+		GetFrameworkID(context.Background(), gomock.Eq(_frameworkName)).
+		Return("", nil)
+
+	req, err = suite.driver.PrepareSubscribeRequest(context.Background(), _hostPort)
+	suite.NoError(err)
+	suite.Equal("POST", req.Method)
+	suite.Equal("http://test-host:1234/api/v1/scheduler", req.URL.String())
+	suite.Contains(req.Header["Content-Type"], "application/json")
+	p := make([]byte, 1000)
+	n, err := req.Body.Read(p)
+	suite.NotEmpty(n)
+	suite.NoError(err)
+	call := reflect.New(reflect.TypeOf(sched.Call{}))
+	suite.NoError(mpb.UnmarshalPbMessage(p, call, _encoding))
+	pc := call.Interface().(*sched.Call)
+	suite.Equal(pelotonFrameworkID, pc.GetFrameworkId().GetValue())
 }
 
 func TestSchedulerDriverTestSuite(t *testing.T) {
