@@ -56,7 +56,7 @@ import:
 - package: github.com/docker/libkv
   version: ^0.2.1
 - package: github.com/gocql/gocql
-  version: b0b4cc30eff2e6acd0977ec5dd214f6bb9d0180b
+  version: 09f0498f9ab5ca0267e3b451483a368648de2158
 - package: github.com/alecthomas/template
 - package: github.com/alecthomas/units
 - package: github.com/gogo/protobuf
