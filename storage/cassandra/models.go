@@ -14,7 +14,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/gogo/protobuf/proto"
-	log "github.com/sirupsen/logrus"
 )
 
 // JobConfigRecord correspond to a peloton job config.
@@ -144,7 +143,6 @@ func SetObjectField(object interface{}, fieldName string, value interface{}) err
 // FillObject fills the data from DB into an object
 func FillObject(data map[string]interface{}, object interface{}, objType reflect.Type) error {
 	objectFields := getAllFieldInLowercase(objType)
-	log.Debugf("objectFields : %v", objectFields)
 	for fieldName, value := range data {
 		_, contains := objectFields[strings.ToLower(fieldName)]
 		if !contains {

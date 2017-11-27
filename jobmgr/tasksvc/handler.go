@@ -99,7 +99,6 @@ func (m *serviceHandler) Get(
 
 	result, err := m.taskStore.GetTaskForJob(ctx, body.JobId, body.InstanceId)
 	for _, taskInfo := range result {
-		log.Infof("found task %v", taskInfo)
 		m.metrics.TaskGet.Inc(1)
 		return &task.GetResponse{
 			Result: taskInfo,

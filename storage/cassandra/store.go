@@ -430,7 +430,6 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 		return nil, err
 	}
 
-	log.Debugf("all result = %v", allResults)
 	if len(allResults) > 1 {
 		s.metrics.JobMetrics.JobGetFail.Inc(1)
 		return nil, fmt.Errorf("found %d jobs %v for job id %v", len(allResults), allResults, jobID)
@@ -532,9 +531,12 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
+		uql, args, _, _ := stmt.ToUql()
 		log.WithField("labels", spec.GetLabels()).
+			WithField("uql", uql).
+			WithField("args", args).
 			WithError(err).
-			Error("Fail to Query jobs")
+			Error("fail to query jobs")
 		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
@@ -563,7 +565,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		if !ok {
 			log.WithField("labels", spec.GetLabels()).
 				WithError(err).
-				Error("Fail to Query jobs")
+				Error("fail to query jobs due to invalid response from cassandra")
 			s.metrics.JobMetrics.JobQueryFail.Inc(1)
 			return nil, 0, fmt.Errorf("got invalid response from cassandra")
 		}
@@ -574,15 +576,18 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 
 		jobRuntime, err := s.GetJobRuntime(ctx, jobID)
 		if err != nil {
-			log.WithError(err).WithField("job_id", id.String()).Warnf("no job runtime found when executing jobs query")
+			log.WithError(err).
+				WithField("job_id", id.String()).
+				Warn("no job runtime found when executing jobs query")
 			continue
 		}
 
 		jobConfig, err := s.GetJobConfig(ctx, jobID)
 		if err != nil {
 			log.WithField("labels", spec.GetLabels()).
+				WithField("job_id", id.String()).
 				WithError(err).
-				Error("Fail to Query jobs")
+				Error("fail to query jobs as not able to get job config")
 			continue
 		}
 
