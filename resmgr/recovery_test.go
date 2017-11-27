@@ -303,13 +303,12 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		jobs[i] = peloton.JobID{Value: fmt.Sprintf("TestJob_%d", i)}
 	}
 
-	// create 4 jobs ( 2 JobState_SUCCEEDED, 1 JobState_INITIALIZED, 1 JobState_PENDING)
+	// create 4 jobs ( 2 JobState_RUNNING, 2 JobState_PENDING)
 	fmt.Println(suite.mockJobStore, suite.mockCtrl)
 	suite.mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Eq([]job.JobState{
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
 		job.JobState_UNKNOWN,
-		job.JobState_INITIALIZED,
 	})).Return(jobs, nil)
 
 	suite.mockJobStore.EXPECT().

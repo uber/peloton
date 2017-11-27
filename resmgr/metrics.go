@@ -24,10 +24,11 @@ type Metrics struct {
 	GetPlacementSuccess tally.Counter
 	GetPlacementFail    tally.Counter
 
-	RecoverySuccess      tally.Counter
-	RecoveryFail         tally.Counter
-	RecoverySuccessCount tally.Counter
-	RecoveryFailCount    tally.Counter
+	RecoverySuccess            tally.Counter
+	RecoveryFail               tally.Counter
+	RecoverySuccessCount       tally.Counter
+	RecoveryFailCount          tally.Counter
+	RecoveryEnqueueFailedCount tally.Counter
 
 	PlacementQueueLen tally.Gauge
 
@@ -42,6 +43,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	apiScope := scope.SubScope("api")
 	serverScope := scope.SubScope("server")
 	placement := scope.SubScope("placement")
+	recovery := scope.SubScope("recovery")
 
 	return &Metrics{
 		APIEnqueueGangs:    apiScope.Counter("enqueue_gangs"),
@@ -64,10 +66,11 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		GetPlacementSuccess: successScope.Counter("get_placements"),
 		GetPlacementFail:    failScope.Counter("get_placements"),
 
-		RecoverySuccess:      successScope.Counter("recovery"),
-		RecoveryFail:         failScope.Counter("recovery"),
-		RecoverySuccessCount: successScope.Counter("task_count"),
-		RecoveryFailCount:    failScope.Counter("task_count"),
+		RecoverySuccess:            successScope.Counter("recovery"),
+		RecoveryFail:               failScope.Counter("recovery"),
+		RecoverySuccessCount:       successScope.Counter("task_count"),
+		RecoveryFailCount:          failScope.Counter("task_count"),
+		RecoveryEnqueueFailedCount: recovery.Counter("enqueue_task_fail_count"),
 
 		PlacementQueueLen: placement.Gauge("placement_queue_length"),
 

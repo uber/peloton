@@ -29,7 +29,6 @@ var (
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
 		job.JobState_UNKNOWN,
-		job.JobState_INITIALIZED,
 	}
 	// taskStatesToSkip represents the task states which need to be skipped when doing recovery
 	taskStatesToSkip = map[task.TaskState]bool{
@@ -180,10 +179,11 @@ func (r *recoveryHandler) requeueJob(
 			count, err := r.requeueTasksInRange(ctx, jobID, jobConfig, from, to)
 			if err != nil {
 				r.metrics.RecoveryFailCount.Inc(int64(count))
-				log.WithFields(log.Fields{
-					"JobID": jobID,
-					"from":  from,
-					"to":    to}).Error("Failed to requeue tasks for")
+				log.WithError(err).
+					WithFields(log.Fields{
+						"job_id": jobID,
+						"from":   from,
+						"to":     to}).Error("Failed to requeue tasks for")
 				errString = errString + fmt.Sprintf("[ job %v in [%v, %v) ]",
 					jobID, from, to)
 				isError = true
@@ -221,8 +221,34 @@ func (r *recoveryHandler) requeueTasksInRange(
 	}
 	resp, err := r.handler.EnqueueGangs(ctx, request)
 	if resp.GetError() != nil {
-		return len(notRunningTasks), errors.Errorf("failed to requeue tasks %s",
-			getEnqueueGangErrorMessage(resp.GetError()))
+		if resp.GetError().GetFailure() != nil &&
+			resp.GetError().GetFailure().GetFailed() != nil {
+			count := 0
+			for _, fail := range resp.GetError().GetFailure().GetFailed() {
+				log.WithFields(log.Fields{
+					"task_id ": fail.Task.Id.Value,
+					"error":    fail.GetMessage(),
+				}).Error("not able to enqueue gang in recovery")
+				count++
+			}
+			r.metrics.RecoveryEnqueueFailedCount.
+				Inc(int64(count))
+		} else {
+			log.WithFields(log.Fields{
+				"gangs": resmgrTasks,
+				"error": resp.GetError().String(),
+			}).Error("not able to enqueue gang in recovery")
+			r.metrics.RecoveryEnqueueFailedCount.
+				Inc(int64(len(notRunningTasks)))
+		}
+	}
+	if err != nil {
+		log.WithFields(log.Fields{
+			"gangs": resmgrTasks,
+			"error": err.Error(),
+		}).Error("not able to enqueue gang in recovery")
+		r.metrics.RecoveryEnqueueFailedCount.
+			Inc(int64(len(notRunningTasks)))
 	}
 
 	// enqueuing running tasks
