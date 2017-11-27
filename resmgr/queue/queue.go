@@ -32,6 +32,6 @@ func CreateQueue(policy respool.SchedulingPolicy, limit int64) (Queue, error) {
 		return NewPriorityQueue(limit), nil
 	default:
 		//if type is invalid, return an error
-		return nil, errors.New("Invalid queue Type")
+		return nil, errors.New("invalid queue type")
 	}
 }

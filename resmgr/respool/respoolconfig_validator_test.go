@@ -23,18 +23,18 @@ type resPoolConfigValidatorSuite struct {
 	mockCtrl     *gomock.Controller
 }
 
-func (suite *resPoolConfigValidatorSuite) SetupSuite() {
+func (s *resPoolConfigValidatorSuite) SetupSuite() {
 	fmt.Println("setting up resPoolConfigValidatorSuite")
-	suite.mockCtrl = gomock.NewController(suite.T())
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+	s.mockCtrl = gomock.NewController(s.T())
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
 	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-		Return(suite.getResPools(), nil).AnyTimes()
-	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
+		Return(s.getResPools(), nil).AnyTimes()
+	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
 	gomock.InOrder(mockJobStore.EXPECT().GetJobsByStates(context.Background(),
 		gomock.Any()).Return(nil, nil).AnyTimes(),
 	)
-	suite.resourceTree = &tree{
+	s.resourceTree = &tree{
 		store:     mockResPoolStore,
 		root:      nil,
 		metrics:   NewMetrics(tally.NoopScope),
@@ -45,22 +45,22 @@ func (suite *resPoolConfigValidatorSuite) SetupSuite() {
 	}
 }
 
-func (suite *resPoolConfigValidatorSuite) TearDownSuite() {
-	suite.mockCtrl.Finish()
+func (s *resPoolConfigValidatorSuite) TearDownSuite() {
+	s.mockCtrl.Finish()
 }
 
-func (suite *resPoolConfigValidatorSuite) SetupTest() {
-	err := suite.resourceTree.Start()
-	suite.NoError(err)
+func (s *resPoolConfigValidatorSuite) SetupTest() {
+	err := s.resourceTree.Start()
+	s.NoError(err)
 }
 
-func (suite *resPoolConfigValidatorSuite) TearDownTest() {
-	err := suite.resourceTree.Stop()
-	suite.NoError(err)
+func (s *resPoolConfigValidatorSuite) TearDownTest() {
+	err := s.resourceTree.Stop()
+	s.NoError(err)
 }
 
 // Returns resource configs
-func (suite *resPoolConfigValidatorSuite) getResourceConfig() []*pb_respool.ResourceConfig {
+func (s *resPoolConfigValidatorSuite) getResourceConfig() []*pb_respool.ResourceConfig {
 
 	resConfigs := []*pb_respool.ResourceConfig{
 		{
@@ -92,7 +92,7 @@ func (suite *resPoolConfigValidatorSuite) getResourceConfig() []*pb_respool.Reso
 }
 
 // Returns resource pools
-func (suite *resPoolConfigValidatorSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+func (s *resPoolConfigValidatorSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 
 	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
@@ -101,49 +101,49 @@ func (suite *resPoolConfigValidatorSuite) getResPools() map[string]*pb_respool.R
 		common.RootResPoolID: {
 			Name:      common.RootResPoolID,
 			Parent:    nil,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool1": {
 			Name:      "respool1",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool2": {
 			Name:      "respool2",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool3": {
 			Name:      "respool3",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool11": {
 			Name:      "respool11",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool23": {
@@ -175,7 +175,7 @@ func (suite *resPoolConfigValidatorSuite) getResPools() map[string]*pb_respool.R
 	}
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateReservationsExceedLimit() {
+func (s *resPoolConfigValidatorSuite) TestValidateReservationsExceedLimit() {
 	mockResourcePoolID := &peloton.ResourcePoolID{Value: "respool33"}
 	mockParentPoolID := &peloton.ResourcePoolID{Value: "respool11"}
 
@@ -198,18 +198,27 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{ValidateResourcePool})
 
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
 
-	suite.EqualError(err, "resource cpu, reservation 50 exceeds limit 10")
+	s.EqualError(err, "resource cpu, reservation 50 exceeds limit 10")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateOverrideRoot() {
+func (s *resPoolConfigValidatorSuite) TestNewValidator() {
+	v, err := NewResourcePoolConfigValidator(s.resourceTree)
+	s.NoError(err)
+
+	rcv, ok := v.(*resourcePoolConfigValidator)
+	s.True(ok)
+	s.Equal(5, len(rcv.resourcePoolConfigValidatorFuncs))
+}
+
+func (s *resPoolConfigValidatorSuite) TestValidateOverrideRoot() {
 	mockResourcePoolID := &peloton.ResourcePoolID{Value: common.RootResPoolID}
 	mockParentPoolID := &peloton.ResourcePoolID{Value: "respool11"}
 
@@ -232,18 +241,18 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{ValidateResourcePool})
 
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
 
-	suite.EqualError(err, fmt.Sprintf("cannot override %s", common.RootResPoolID))
+	s.EqualError(err, fmt.Sprintf("cannot override %s", common.RootResPoolID))
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateCycle() {
+func (s *resPoolConfigValidatorSuite) TestValidateCycle() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool33",
 	}
@@ -270,17 +279,18 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{ValidateCycle})
 
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "resource pool ID: respool33 and parent ID: respool33 cannot be same")
+	s.EqualError(err, "resource pool ID: respool33 and parent "+
+		"ID: respool33 cannot be same")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateParentLookupError() {
+func (s *resPoolConfigValidatorSuite) TestValidateParentLookupError() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool33",
 	}
@@ -307,15 +317,15 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{ValidateParent})
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "Resource pool (i_do_not_exist) not found")
+	s.EqualError(err, "resource pool (i_do_not_exist) not found")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateParentChanged() {
+func (s *resPoolConfigValidatorSuite) TestValidateParentChanged() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool1",
 	}
@@ -341,17 +351,18 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ID:                 mockResourcePoolID,
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{ValidateParent})
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
 
-	suite.EqualError(err, "parent override not allowed, actual root, override respool2")
+	s.EqualError(err, "parent override not allowed, "+
+		"actual root, override respool2")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateParentExceedLimit() {
+func (s *resPoolConfigValidatorSuite) TestValidateParentExceedLimit() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool33",
 	}
@@ -377,16 +388,17 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ID:                 mockResourcePoolID,
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{ValidateParent})
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "resource cpu, limit 99999 exceeds parent limit 1000")
+	s.EqualError(err, "resource cpu, limit 99999 exceeds"+
+		" parent limit 1000")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateInvalidResourceKind() {
+func (s *resPoolConfigValidatorSuite) TestValidateInvalidResourceKind() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool33",
 	}
@@ -412,16 +424,17 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ID:                 mockResourcePoolID,
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{ValidateParent})
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "parent respool11 doesn't have resource kind aaa")
+	s.EqualError(err, "parent respool11 doesn't have "+
+		"resource kind aaa")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateChildrenReservationsError() {
+func (s *resPoolConfigValidatorSuite) TestValidateChildrenReservationsError() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool34",
 	}
@@ -447,19 +460,20 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ID:                 mockResourcePoolID,
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{ValidateChildrenReservations})
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(
+	s.EqualError(
 		err,
-		"Aggregated child reservation 101 of kind `cpu` exceed parent `respool21` reservations 100",
+		"Aggregated child reservation 101 of kind `cpu` "+
+			"exceed parent `respool21` reservations 100",
 	)
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootValidationReservations() {
+func (s *resPoolConfigValidatorSuite) TestRootValidationReservations() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool3",
 	}
@@ -467,10 +481,10 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootVa
 	mockParentPoolID := &peloton.ResourcePoolID{
 		Value: common.RootResPoolID,
 	}
-	rootResPool, err := suite.resourceTree.Get(mockParentPoolID)
-	suite.NoError(err)
+	rootResPool, err := s.resourceTree.Get(mockParentPoolID)
+	s.NoError(err)
 	resourcePoolConfig := rootResPool.ResourcePoolConfig()
-	resourcePoolConfig.Resources = suite.getResourceConfig()
+	resourcePoolConfig.Resources = s.getResourceConfig()
 	rootResPool.SetResourcePoolConfig(resourcePoolConfig)
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
@@ -493,21 +507,22 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootVa
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err = rv.Register(
 		[]ResourcePoolConfigValidatorFunc{
 			ValidateChildrenReservations,
 		},
 	)
 
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.Error(err)
-	suite.Equal(err.Error(), "Aggregated child reservation 300 of kind `cpu` exceed parent `root` reservations 100")
+	s.Error(err)
+	s.Equal(err.Error(), "Aggregated child reservation 300 "+
+		"of kind `cpu` exceed parent `root` reservations 100")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootValidationParent() {
+func (s *resPoolConfigValidatorSuite) TestRootValidationParent() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool3",
 	}
@@ -515,10 +530,10 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootVa
 	mockParentPoolID := &peloton.ResourcePoolID{
 		Value: common.RootResPoolID,
 	}
-	rootResPool, err := suite.resourceTree.Get(mockParentPoolID)
-	suite.NoError(err)
+	rootResPool, err := s.resourceTree.Get(mockParentPoolID)
+	s.NoError(err)
 	resourcePoolConfig := rootResPool.ResourcePoolConfig()
-	resourcePoolConfig.Resources = suite.getResourceConfig()
+	resourcePoolConfig.Resources = s.getResourceConfig()
 	rootResPool.SetResourcePoolConfig(resourcePoolConfig)
 
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
@@ -541,21 +556,21 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_RootVa
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err = rv.Register(
 		[]ResourcePoolConfigValidatorFunc{
 			ValidateParent,
 		},
 	)
 
-	suite.NoError(err)
+	s.NoError(err)
 
 	err = rv.Validate(resourcePoolConfigData)
-	suite.Error(err)
-	suite.Equal(err.Error(), "resource cpu, limit 10001 exceeds parent limit 1000")
+	s.Error(err)
+	s.Equal(err.Error(), "resource cpu, limit 10001 exceeds parent limit 1000")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_NoPolicy() {
+func (s *resPoolConfigValidatorSuite) TestNoPolicy() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool99",
 	}
@@ -581,24 +596,26 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_NoPoli
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{
 			ValidateResourcePool,
 		},
 	)
 
-	suite.NoError(err)
-	suite.EqualValues(mockResourcePoolConfig.Policy, pb_respool.SchedulingPolicy_UNKNOWN)
+	s.NoError(err)
+	s.EqualValues(mockResourcePoolConfig.Policy,
+		pb_respool.SchedulingPolicy_UNKNOWN)
 
 	err = rv.Validate(resourcePoolConfigData)
 
-	suite.NoError(err)
-	suite.EqualValues(mockResourcePoolConfig.Policy, pb_respool.SchedulingPolicy_PriorityFIFO)
+	s.NoError(err)
+	s.EqualValues(mockResourcePoolConfig.Policy,
+		pb_respool.SchedulingPolicy_PriorityFIFO)
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidatePathError() {
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+func (s *resPoolConfigValidatorSuite) TestValidatePathError() {
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{
 			ValidateResourcePoolPath,
@@ -613,30 +630,30 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		Path: mockResourcePath,
 	}
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "path cannot be empty")
+	s.EqualError(err, "path cannot be empty")
 
 	// nil path
 	resourcePoolConfigData = ResourcePoolConfigData{
 		Path: nil,
 	}
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "path cannot be nil")
+	s.EqualError(err, "path cannot be nil")
 
 	// invalid path
 	mockResourcePath.Value = "infrastructure/compute"
 	resourcePoolConfigData.Path = mockResourcePath
 	err = rv.Validate(resourcePoolConfigData)
-	suite.EqualError(err, "path should begin with /")
+	s.EqualError(err, "path should begin with /")
 }
 
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidatePath() {
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+func (s *resPoolConfigValidatorSuite) TestValidatePath() {
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{
 			ValidateResourcePoolPath,
 		},
 	)
-	suite.NoError(err)
+	s.NoError(err)
 
 	// valid path
 	mockResourcePath := &pb_respool.ResourcePoolPath{
@@ -646,24 +663,24 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		Path: mockResourcePath,
 	}
 	err = rv.Validate(resourcePoolConfigData)
-	suite.NoError(err)
+	s.NoError(err)
 
 	// root path
 	mockResourcePath.Value = "/"
 	resourcePoolConfigData.Path = mockResourcePath
 	err = rv.Validate(resourcePoolConfigData)
-	suite.NoError(err)
+	s.NoError(err)
 }
 
 // tests creating pool with existing name should fail
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateSiblingsCreate() {
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+func (s *resPoolConfigValidatorSuite) TestValidateSiblingsCreate() {
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{
 			ValidateSiblings,
 		},
 	)
-	suite.NoError(err)
+	s.NoError(err)
 
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: uuid.New(),
@@ -681,20 +698,20 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 	err = rv.Validate(resourcePoolConfigData)
-	suite.Error(err)
-	suite.Equal("resource pool:respool1 already exists",
+	s.Error(err)
+	s.Equal("resource pool:respool1 already exists",
 		err.Error())
 }
 
 // tests renaming pool to existing name should fail
-func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_ValidateSiblingsUpdate() {
-	rv := &resourcePoolConfigValidator{resTree: suite.resourceTree}
+func (s *resPoolConfigValidatorSuite) TestValidateSiblingsUpdate() {
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
 	_, err := rv.Register(
 		[]ResourcePoolConfigValidatorFunc{
 			ValidateSiblings,
 		},
 	)
-	suite.NoError(err)
+	s.NoError(err)
 
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool2", // existing ID
@@ -712,8 +729,8 @@ func (suite *resPoolConfigValidatorSuite) TestResourcePoolConfigValidator_Valida
 		ResourcePoolConfig: mockResourcePoolConfig,
 	}
 	err = rv.Validate(resourcePoolConfigData)
-	suite.Error(err)
-	suite.Equal("resource pool:respool1 already exists",
+	s.Error(err)
+	s.Equal("resource pool:respool1 already exists",
 		err.Error())
 }
 

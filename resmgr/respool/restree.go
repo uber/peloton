@@ -99,7 +99,7 @@ func InitTree(
 // InitTree function.
 func GetTree() Tree {
 	if respoolTree == nil {
-		log.Fatal("Resource pool tree is not initialized")
+		log.Fatal("resource pool tree is not initialized")
 	}
 	return respoolTree
 }
@@ -109,13 +109,14 @@ func GetTree() Tree {
 func (t *tree) Start() error {
 	resPoolConfigs, err := t.store.GetAllResourcePools(context.Background())
 	if err != nil {
-		log.WithError(err).Error("GetAllResourcePools failed")
+		log.WithError(err).Error(
+			"failed to get resource pool configs from store")
 		return err
 	}
 	// Initializing the respoolTree
 	t.root, err = t.initTree(resPoolConfigs)
 	if err != nil {
-		log.WithError(err).Error("initializeResourceTree failed")
+		log.WithError(err).Error("failed to initialize resource tree")
 		return errors.Wrap(err, "failed to start tree")
 	}
 	return nil
@@ -143,7 +144,7 @@ func (t *tree) initTree(
 	log.Info("Initializing Resource Tree")
 
 	if resPoolConfigs == nil {
-		return nil, errors.New("resPoolConfigs cannot be nil")
+		return nil, errors.New("resource pool configs cannot be nil")
 	}
 
 	if len(resPoolConfigs) == 0 {
@@ -176,7 +177,7 @@ func (t *tree) buildTree(
 ) (ResPool, error) {
 	node, err := NewRespool(t.scope, ID, parent, resPoolConfigs[ID])
 	if err != nil {
-		log.WithError(err).Error("Error creating resource pool")
+		log.WithError(err).Error("failed to create resource pool")
 		return nil, err
 	}
 
@@ -207,7 +208,6 @@ func (t *tree) printTree(root ResPool) {
 		n := queue.Front()
 		queue.Remove(n)
 		nodeVar := n.Value.(*resPool)
-		log.WithField("respool_ID", nodeVar.ID).Info()
 		nodeVar.logNodeResources()
 		children := nodeVar.Children()
 		for e := children.Front(); e != nil; e = e.Next() {
@@ -231,13 +231,8 @@ func (t *tree) getChildResPoolConfigs(
 	return childRespoolConfigs
 }
 
-// getRoot will return the root node for the resource pool tree
-func (t *tree) getRoot() ResPool {
-	// TODO: Need to clone the tree
-	return t.root
-}
-
-// GetAllNodes returns all the leaf nodes in the tree
+// GetAllNodes returns all the nodes in the tree based on the supplied isLeaf
+// argument
 func (t *tree) GetAllNodes(leafOnly bool) *list.List {
 	t.RLock()
 	defer t.RUnlock()
@@ -308,7 +303,6 @@ func (t *tree) Upsert(ID *peloton.ResourcePoolID, resPoolConfig *respool.Resourc
 	// check if parent exits
 	parent, err := t.lookupResPool(parentID)
 	if err != nil {
-		// parent is <nil>
 		return errors.Wrap(err, "parent does not exists")
 	}
 
@@ -358,7 +352,7 @@ func (t *tree) lookupResPool(ID *peloton.ResourcePoolID) (ResPool, error) {
 	if val, ok := t.resPools[ID.Value]; ok {
 		return val, nil
 	}
-	return nil, fmt.Errorf("Resource pool (%s) not found", ID.Value)
+	return nil, fmt.Errorf("resource pool (%s) not found", ID.Value)
 }
 
 // Recursively walks the tree beneath the root based on resource pool names
@@ -377,20 +371,19 @@ func (t *tree) walkTree(root ResPool, nodes []string) (ResPool, error) {
 		}
 	}
 
-	return nil, errors.Errorf("Resource pool (%s) not found", nodes)
+	return nil, errors.Errorf("resource pool (%s) not found", nodes)
 }
 
-func (t *tree) Delete(ID *peloton.ResourcePoolID) error {
-	// acquire RW lock
+func (t *tree) Delete(respoolID *peloton.ResourcePoolID) error {
 	t.Lock()
 	defer t.Unlock()
 
-	// Lookup the resource pool
-	resPool, err := t.lookupResPool(ID)
+	// Lookup the resource pool.
+	resPool, err := t.lookupResPool(respoolID)
 	if err != nil {
 		return err
 	}
-	// Get the parent
+	// Get the parent.
 	parent := resPool.Parent()
 
 	if parent == nil {
@@ -401,14 +394,20 @@ func (t *tree) Delete(ID *peloton.ResourcePoolID) error {
 
 	for e := children.Front(); e != nil; e = e.Next() {
 		child, _ := e.Value.(ResPool)
-		if child.ID() != ID.Value {
+		if child.ID() != respoolID.Value {
 			newChildren.PushBack(child)
 		}
 	}
-	// Setting the new children removed from chil list
+	// Updating the parent's children.
 	parent.SetChildren(newChildren)
 
-	// Deleting from the list
-	delete(t.resPools, ID.Value)
+	// Delete all children from the internal list.
+	for e := resPool.Children().Front(); e != nil; e = e.Next() {
+		child, _ := e.Value.(ResPool)
+		delete(t.resPools, child.ID())
+	}
+	// delete the node itself
+	delete(t.resPools, respoolID.Value)
+
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	"code.uber.internal/infra/peloton/common"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -29,15 +30,15 @@ type resPoolHandlerTestSuite struct {
 	resourcePoolConfigValidator Validator
 }
 
-func (suite *resPoolHandlerTestSuite) SetupSuite() {
-	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
-	suite.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-		Return(suite.getResPools(), nil).AnyTimes()
-	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
-	suite.resourceTree = &tree{
-		store:     suite.mockResPoolStore,
+func (s *resPoolHandlerTestSuite) SetupSuite() {
+	s.mockCtrl = gomock.NewController(s.T())
+	s.mockResPoolStore = store_mocks.NewMockResourcePoolStore(s.mockCtrl)
+	s.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+		Return(s.getResPools(), nil).AnyTimes()
+	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
+	s.resourceTree = &tree{
+		store:     s.mockResPoolStore,
 		root:      nil,
 		metrics:   NewMetrics(tally.NoopScope),
 		resPools:  make(map[string]ResPool),
@@ -45,45 +46,41 @@ func (suite *resPoolHandlerTestSuite) SetupSuite() {
 		taskStore: mockTaskStore,
 		scope:     tally.NoopScope,
 	}
-	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(suite.resourceTree)
-	suite.NoError(err)
-	suite.resourcePoolConfigValidator = resourcePoolConfigValidator
+	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(s.resourceTree)
+	s.NoError(err)
+	s.resourcePoolConfigValidator = resourcePoolConfigValidator
 }
 
-func (suite *resPoolHandlerTestSuite) TearDownSuite() {
-	suite.mockCtrl.Finish()
+func (s *resPoolHandlerTestSuite) TearDownSuite() {
+	s.mockCtrl.Finish()
 }
 
-func (suite *resPoolHandlerTestSuite) SetupTest() {
-	suite.context = context.Background()
-	err := suite.resourceTree.Start()
-	suite.NoError(err)
+func (s *resPoolHandlerTestSuite) SetupTest() {
+	s.context = context.Background()
+	err := s.resourceTree.Start()
+	s.NoError(err)
 
-	suite.handler = &serviceHandler{
-		resPoolTree:            suite.resourceTree,
+	s.handler = &serviceHandler{
+		resPoolTree:            s.resourceTree,
 		dispatcher:             nil,
 		metrics:                NewMetrics(tally.NoopScope),
-		store:                  suite.mockResPoolStore,
-		runningState:           runningStateRunning,
-		resPoolConfigValidator: suite.resourcePoolConfigValidator,
+		store:                  s.mockResPoolStore,
+		runningState:           rc.RunningStateRunning,
+		resPoolConfigValidator: s.resourcePoolConfigValidator,
 	}
 }
 
-func (suite *resPoolHandlerTestSuite) TearDownTest() {
-	defer suite.mockCtrl.Finish()
+func (s *resPoolHandlerTestSuite) TearDownTest() {
+	defer s.mockCtrl.Finish()
 	log.Info("tearing down")
-	err := suite.resourceTree.Stop()
-	suite.NoError(err)
-	err = suite.handler.Stop()
-	suite.NoError(err)
-}
-
-func TestResPoolHandler(t *testing.T) {
-	suite.Run(t, new(resPoolHandlerTestSuite))
+	err := s.resourceTree.Stop()
+	s.NoError(err)
+	err = s.handler.Stop()
+	s.NoError(err)
 }
 
 // Returns resource configs
-func (suite *resPoolHandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
+func (s *resPoolHandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
 
 	resConfigs := []*pb_respool.ResourceConfig{
 		{
@@ -115,7 +112,7 @@ func (suite *resPoolHandlerTestSuite) getResourceConfig() []*pb_respool.Resource
 }
 
 // Returns resource pools
-func (suite *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+func (s *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 
 	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
@@ -124,49 +121,49 @@ func (suite *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.Resou
 		"root": {
 			Name:      "root",
 			Parent:    nil,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool1": {
 			Name:      "respool1",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool2": {
 			Name:      "respool2",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool3": {
 			Name:      "respool3",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool11": {
 			Name:      "respool11",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool23": {
@@ -185,27 +182,22 @@ func (suite *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.Resou
 	}
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolEmptyID() {
-
-	log.Info("TestServiceHandler_GetResourcePoolInvalidID called")
-
+func (s *resPoolHandlerTestSuite) TestGetResourcePoolEmptyID() {
 	// form request
 	getReq := &pb_respool.GetRequest{}
 
-	getResp, err := suite.handler.GetResourcePool(
-		suite.context,
+	getResp, err := s.handler.GetResourcePool(
+		s.context,
 		getReq,
 	)
 
-	suite.NoError(err)
-	suite.NotNil(getResp)
-	suite.Equal(common.RootResPoolID, getResp.Poolinfo.Id.Value)
-	suite.Nil(getResp.Poolinfo.Parent)
+	s.NoError(err)
+	s.NotNil(getResp)
+	s.Equal(common.RootResPoolID, getResp.Poolinfo.Id.Value)
+	s.Nil(getResp.Poolinfo.Parent)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLeafNode() {
-	log.Info("TestServiceHandler_GetResourcePoolLeafNode called")
-
+func (s *resPoolHandlerTestSuite) TestGetResourcePoolLeafNode() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool21",
 	}
@@ -215,20 +207,18 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolLeafNode
 		Id: mockResourcePoolID,
 	}
 
-	getResp, err := suite.handler.GetResourcePool(
-		suite.context,
+	getResp, err := s.handler.GetResourcePool(
+		s.context,
 		getReq,
 	)
 
-	suite.NoError(err)
-	suite.NotNil(getResp)
-	suite.Equal(mockResourcePoolID.Value, getResp.Poolinfo.Id.Value)
-	suite.Len(getResp.Poolinfo.Children, 0)
+	s.NoError(err)
+	s.NotNil(getResp)
+	s.Equal(mockResourcePoolID.Value, getResp.Poolinfo.Id.Value)
+	s.Len(getResp.Poolinfo.Children, 0)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolWithChildNodes() {
-	log.Info("TestServiceHandler_GetResourcePoolWithChildNodes called")
-
+func (s *resPoolHandlerTestSuite) TestGetResourcePoolWithChildNodes() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool2",
 	}
@@ -239,21 +229,19 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolWithChil
 		IncludeChildPools: true,
 	}
 
-	getResp, err := suite.handler.GetResourcePool(
-		suite.context,
+	getResp, err := s.handler.GetResourcePool(
+		s.context,
 		getReq,
 	)
 
-	suite.NoError(err)
-	suite.NotNil(getResp)
-	suite.Equal(mockResourcePoolID.Value, getResp.Poolinfo.Id.Value)
-	suite.Len(getResp.Poolinfo.Children, 2)
-	suite.Len(getResp.ChildPools, 2)
+	s.NoError(err)
+	s.NotNil(getResp)
+	s.Equal(mockResourcePoolID.Value, getResp.Poolinfo.Id.Value)
+	s.Len(getResp.Poolinfo.Children, 2)
+	s.Len(getResp.ChildPools, 2)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolError() {
-	log.Info("TestServiceHandler_GetResourcePoolError called")
-
+func (s *resPoolHandlerTestSuite) TestGetResourcePoolError() {
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: "non_exist",
 	}
@@ -263,24 +251,21 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_GetResourcePoolError() 
 		Id: mockResourcePoolID,
 	}
 
-	getResp, err := suite.handler.GetResourcePool(
-		suite.context,
+	getResp, err := s.handler.GetResourcePool(
+		s.context,
 		getReq,
 	)
 
-	suite.NoError(err)
-	suite.NotNil(getResp)
-	suite.NotNil(getResp.Error)
+	s.NoError(err)
+	s.NotNil(getResp)
+	s.NotNil(getResp.Error)
 
-	expectedMsg := "resource pool not found"
-	suite.Equal(expectedMsg, getResp.Error.NotFound.Message)
+	expectedMsg := "Resource pool not found"
+	s.Equal(expectedMsg, getResp.Error.NotFound.Message)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
-	log.Info("TestServiceHandler_CreateResourcePool called")
-
+func (s *resPoolHandlerTestSuite) TestCreateResourcePool() {
 	mockResourcePoolName := "respool99"
-
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
 		Parent: &peloton.ResourcePoolID{Value: "respool23"},
@@ -301,27 +286,24 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePool() {
 	}
 
 	// set expectations
-	suite.mockResPoolStore.EXPECT().CreateResourcePool(
+	s.mockResPoolStore.EXPECT().CreateResourcePool(
 		context.Background(),
 		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
 		"peloton").Return(nil)
 
-	createResp, err := suite.handler.CreateResourcePool(
-		suite.context,
+	createResp, err := s.handler.CreateResourcePool(
+		s.context,
 		createReq)
 
-	suite.NoError(err)
-	suite.NotNil(createResp)
-	suite.Nil(createResp.Error)
-	suite.NotNil(uuid.Parse(createResp.Result.Value))
+	s.NoError(err)
+	s.NotNil(createResp)
+	s.Nil(createResp.Error)
+	s.NotNil(uuid.Parse(createResp.Result.Value))
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolValidationError() {
-	log.Info("TestServiceHandler_CreateResourcePoolValidationError called")
-
+func (s *resPoolHandlerTestSuite) TestCreateResourcePoolValidationError() {
 	mockResourcePoolName := "respool101"
-
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
 		Parent: &peloton.ResourcePoolID{Value: "respool23"},
@@ -342,22 +324,19 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolValid
 		Config: mockResourcePoolConfig,
 	}
 
-	createResp, err := suite.handler.CreateResourcePool(
-		suite.context,
+	createResp, err := s.handler.CreateResourcePool(
+		s.context,
 		createReq)
 
-	suite.NoError(err)
-	suite.NotNil(createResp)
-	suite.NotNil(createResp.Error)
+	s.NoError(err)
+	s.NotNil(createResp)
+	s.NotNil(createResp.Error)
 	expectedMsg := "resource cpu, reservation 5 exceeds limit 1"
-	suite.Equal(expectedMsg, createResp.Error.InvalidResourcePoolConfig.Message)
+	s.Equal(expectedMsg, createResp.Error.InvalidResourcePoolConfig.Message)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlreadyExistsError() {
-	log.Info("TestServiceHandler_CreateResourcePoolAlreadyExistsError called")
-
+func (s *resPoolHandlerTestSuite) TestCreateResourcePoolAlreadyExistsError() {
 	mockResourcePoolName := "respool99"
-
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
 		Parent: &peloton.ResourcePoolID{Value: "respool23"},
@@ -379,31 +358,28 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_CreateResourcePoolAlrea
 
 	expectedErrMsg := "resource pool already exits"
 	// set expectations
-	suite.mockResPoolStore.EXPECT().CreateResourcePool(
+	s.mockResPoolStore.EXPECT().CreateResourcePool(
 		context.Background(),
 		gomock.Any(),
 		gomock.Eq(mockResourcePoolConfig),
 		"peloton",
 	).Return(errors.New(expectedErrMsg))
 
-	createResp, err := suite.handler.CreateResourcePool(
-		suite.context,
+	createResp, err := s.handler.CreateResourcePool(
+		s.context,
 		createReq)
 
 	actualErrResourcePoolID := createResp.Error.AlreadyExists.Id.Value
-	suite.NoError(err)
-	suite.NotNil(createResp)
-	suite.Nil(createResp.Result)
-	suite.NotNil(createResp.Error)
-	suite.Equal(expectedErrMsg, createResp.Error.AlreadyExists.Message)
-	suite.NotNil(uuid.Parse(actualErrResourcePoolID))
+	s.NoError(err)
+	s.NotNil(createResp)
+	s.Nil(createResp.Result)
+	s.NotNil(createResp.Error)
+	s.Equal(expectedErrMsg, createResp.Error.AlreadyExists.Message)
+	s.NotNil(uuid.Parse(actualErrResourcePoolID))
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePool() {
-	log.Info("TestServiceHandler_UpdateResourcePool called")
-
+func (s *resPoolHandlerTestSuite) TestUpdateResourcePool() {
 	mockResourcePoolName := "respool23"
-
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
 		Parent: &peloton.ResourcePoolID{Value: "respool22"},
@@ -428,25 +404,22 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePool() {
 	}
 
 	// set expectations
-	suite.mockResPoolStore.EXPECT().UpdateResourcePool(
+	s.mockResPoolStore.EXPECT().UpdateResourcePool(
 		context.Background(),
 		gomock.Eq(mockResourcePoolID),
 		gomock.Eq(mockResourcePoolConfig)).Return(nil)
 
-	updateResp, err := suite.handler.UpdateResourcePool(
-		suite.context,
+	updateResp, err := s.handler.UpdateResourcePool(
+		s.context,
 		updateReq)
 
-	suite.NoError(err)
-	suite.NotNil(updateResp)
-	suite.Nil(updateResp.Error)
+	s.NoError(err)
+	s.NotNil(updateResp)
+	s.Nil(updateResp.Error)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolValidationError() {
-	log.Info("TestServiceHandler_UpdateResourcePoolValidationError called")
-
+func (s *resPoolHandlerTestSuite) TestUpdateResourcePoolValidationError() {
 	mockResourcePoolName := "respool22"
-
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
 		Parent: &peloton.ResourcePoolID{Value: "respool2"},
@@ -471,22 +444,19 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolValid
 		Config: mockResourcePoolConfig,
 	}
 
-	updateResp, err := suite.handler.UpdateResourcePool(
-		suite.context,
+	updateResp, err := s.handler.UpdateResourcePool(
+		s.context,
 		updateReq)
 
-	suite.NoError(err)
-	suite.NotNil(updateResp)
-	suite.NotNil(updateResp.Error)
+	s.NoError(err)
+	s.NotNil(updateResp)
+	s.NotNil(updateResp.Error)
 	expectedMsg := "resource cpu, reservation 5 exceeds limit 1"
-	suite.Equal(expectedMsg, updateResp.Error.InvalidResourcePoolConfig.Message)
+	s.Equal(expectedMsg, updateResp.Error.InvalidResourcePoolConfig.Message)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotExistsError() {
-	log.Info("TestServiceHandler_UpdateResourcePoolNotExistsError called")
-
+func (s *resPoolHandlerTestSuite) TestUpdateResourcePoolNotExistsError() {
 	mockResourcePoolName := "respool105"
-
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
 		Name:   mockResourcePoolName,
 		Parent: &peloton.ResourcePoolID{Value: "respool23"},
@@ -510,37 +480,35 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_UpdateResourcePoolNotEx
 		Config: mockResourcePoolConfig,
 	}
 
-	expectedErrMsg := "Resource pool (respool105) not found"
+	expectedErrMsg := "resource pool (respool105) not found"
 
-	updateResp, err := suite.handler.UpdateResourcePool(
-		suite.context,
+	updateResp, err := s.handler.UpdateResourcePool(
+		s.context,
 		updateReq)
 
 	actualErrResourcePoolID := updateResp.Error.NotFound.Id.Value
-	suite.NoError(err)
-	suite.NotNil(updateResp)
-	suite.NotNil(updateResp.Error)
-	suite.Equal(expectedErrMsg, updateResp.Error.NotFound.Message)
-	suite.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
+	s.NoError(err)
+	s.NotNil(updateResp)
+	s.NotNil(updateResp.Error)
+	s.Equal(expectedErrMsg, updateResp.Error.NotFound.Message)
+	s.Equal(mockResourcePoolID.Value, actualErrResourcePoolID)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_Query() {
+func (s *resPoolHandlerTestSuite) TestQuery() {
 	// query request
 	queryReq := &pb_respool.QueryRequest{}
-	updateResp, err := suite.handler.Query(
-		suite.context,
+	updateResp, err := s.handler.Query(
+		s.context,
 		queryReq,
 	)
 
-	suite.NoError(err)
-	suite.NotNil(updateResp)
-	suite.NotNil(updateResp.ResourcePools)
-	suite.Len(updateResp.ResourcePools, len(suite.getResPools()))
+	s.NoError(err)
+	s.NotNil(updateResp)
+	s.NotNil(updateResp.ResourcePools)
+	s.Len(updateResp.ResourcePools, len(s.getResPools()))
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolID() {
-	log.Info("TestServiceHandler_LookupResourcePoolID called")
-
+func (s *resPoolHandlerTestSuite) TestLookupResourcePoolID() {
 	// root
 	lookupRequest := &pb_respool.LookupRequest{
 		Path: &pb_respool.ResourcePoolPath{
@@ -548,29 +516,27 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolID() 
 		},
 	}
 
-	lookupResponse, err := suite.handler.LookupResourcePoolID(suite.context, lookupRequest)
-	suite.NoError(err)
-	suite.NotNil(lookupResponse)
-	suite.Equal("root", lookupResponse.Id.Value)
+	lookupResponse, err := s.handler.LookupResourcePoolID(s.context, lookupRequest)
+	s.NoError(err)
+	s.NotNil(lookupResponse)
+	s.Equal("root", lookupResponse.Id.Value)
 
 	// /respool1/respool11
 	lookupRequest.Path.Value = "/respool1/respool11"
-	lookupResponse, err = suite.handler.LookupResourcePoolID(suite.context, lookupRequest)
-	suite.NoError(err)
-	suite.NotNil(lookupResponse)
-	suite.Equal("respool11", lookupResponse.Id.Value)
+	lookupResponse, err = s.handler.LookupResourcePoolID(s.context, lookupRequest)
+	s.NoError(err)
+	s.NotNil(lookupResponse)
+	s.Equal("respool11", lookupResponse.Id.Value)
 
 	// /respool2/respool22/
 	lookupRequest.Path.Value = "/respool2/respool22/"
-	lookupResponse, err = suite.handler.LookupResourcePoolID(suite.context, lookupRequest)
-	suite.NoError(err)
-	suite.NotNil(lookupResponse)
-	suite.Equal("respool22", lookupResponse.Id.Value)
+	lookupResponse, err = s.handler.LookupResourcePoolID(s.context, lookupRequest)
+	s.NoError(err)
+	s.NotNil(lookupResponse)
+	s.Equal("respool22", lookupResponse.Id.Value)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolPathDoesNotExist() {
-	log.Info("TestServiceHandler_LookupResourcePoolPathDoesNotExist called")
-
+func (s *resPoolHandlerTestSuite) TestLookupResourcePoolPathDoesNotExist() {
 	// root
 	lookupRequest := &pb_respool.LookupRequest{
 		Path: &pb_respool.ResourcePoolPath{
@@ -578,20 +544,18 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolPathD
 		},
 	}
 
-	lookupResponse, err := suite.handler.LookupResourcePoolID(suite.context,
+	lookupResponse, err := s.handler.LookupResourcePoolID(s.context,
 		lookupRequest,
 	)
 
-	suite.NoError(err)
-	suite.NotNil(lookupResponse)
-	suite.NotNil(lookupResponse.Error)
-	suite.NotNil(lookupResponse.Error.NotFound)
-	suite.Equal("/does/not/exist", lookupResponse.Error.NotFound.Path.Value)
+	s.NoError(err)
+	s.NotNil(lookupResponse)
+	s.NotNil(lookupResponse.Error)
+	s.NotNil(lookupResponse.Error.NotFound)
+	s.Equal("/does/not/exist", lookupResponse.Error.NotFound.Path.Value)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolInvalidPath() {
-	log.Info("TestServiceHandler_LookupResourcePoolInvalidPath called")
-
+func (s *resPoolHandlerTestSuite) TestLookupResourcePoolInvalidPath() {
 	// invalid path
 	lookupRequest := &pb_respool.LookupRequest{
 		Path: &pb_respool.ResourcePoolPath{
@@ -599,19 +563,17 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_LookupResourcePoolInval
 		},
 	}
 
-	lookupResponse, err := suite.handler.LookupResourcePoolID(suite.context, lookupRequest)
+	lookupResponse, err := s.handler.LookupResourcePoolID(s.context, lookupRequest)
 
-	suite.NoError(err)
-	suite.NotNil(lookupResponse)
-	suite.NotNil(lookupResponse.Error)
-	suite.NotNil(lookupResponse.Error.InvalidPath)
-	suite.Equal("does/not/begin/with/slash", lookupResponse.Error.InvalidPath.Path.Value)
-	suite.Equal("path should begin with /", lookupResponse.Error.InvalidPath.Message)
+	s.NoError(err)
+	s.NotNil(lookupResponse)
+	s.NotNil(lookupResponse.Error)
+	s.NotNil(lookupResponse.Error.InvalidPath)
+	s.Equal("does/not/begin/with/slash", lookupResponse.Error.InvalidPath.Path.Value)
+	s.Equal("path should begin with /", lookupResponse.Error.InvalidPath.Message)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_DeleteResourcePool() {
-	log.Info("TestServiceHandler_DeleteResourcePool called")
-
+func (s *resPoolHandlerTestSuite) TestDeleteResourcePool() {
 	mockResourcePoolName := "respool11"
 	mockResourcePoolID := &peloton.ResourcePoolID{
 		Value: mockResourcePoolName,
@@ -626,22 +588,20 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_DeleteResourcePool() {
 	}
 
 	// set expectations
-	suite.mockResPoolStore.EXPECT().DeleteResourcePool(
+	s.mockResPoolStore.EXPECT().DeleteResourcePool(
 		context.Background(),
 		gomock.Eq(mockResourcePoolID)).Return(nil)
 
-	deleteResp, err := suite.handler.DeleteResourcePool(
-		suite.context,
+	deleteResp, err := s.handler.DeleteResourcePool(
+		s.context,
 		deleteReq)
 
-	suite.NoError(err)
-	suite.NotNil(deleteResp)
-	suite.Nil(deleteResp.Error)
+	s.NoError(err)
+	s.NotNil(deleteResp)
+	s.Nil(deleteResp.Error)
 }
 
-func (suite *resPoolHandlerTestSuite) TestServiceHandler_DeleteResourcePoolIsNotLeaf() {
-	log.Info("TestServiceHandler_DeleteResourcePoolIsNotLeaf called")
-
+func (s *resPoolHandlerTestSuite) TestDeleteResourcePoolIsNotLeaf() {
 	mockResPoolPath := &pb_respool.ResourcePoolPath{
 		Value: "/respool1",
 	}
@@ -651,11 +611,15 @@ func (suite *resPoolHandlerTestSuite) TestServiceHandler_DeleteResourcePoolIsNot
 		Path: mockResPoolPath,
 	}
 
-	deleteResp, err := suite.handler.DeleteResourcePool(
-		suite.context,
+	deleteResp, err := s.handler.DeleteResourcePool(
+		s.context,
 		deleteReq)
 
-	suite.NoError(err)
-	suite.NotNil(deleteResp)
-	suite.Equal("Resource Pool is not leaf", deleteResp.Error.IsNotLeaf.Message)
+	s.NoError(err)
+	s.NotNil(deleteResp)
+	s.Equal("Resource Pool is not leaf", deleteResp.Error.IsNotLeaf.Message)
+}
+
+func TestResPoolHandler(t *testing.T) {
+	suite.Run(t, new(resPoolHandlerTestSuite))
 }

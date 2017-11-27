@@ -415,7 +415,7 @@ func (suite *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
 	log.Infof("%v", enqResp)
 	notFound := &resmgrsvc.ResourcePoolNotFound{
 		Id:      respoolID,
-		Message: "Resource pool (respool10) not found",
+		Message: "resource pool (respool10) not found",
 	}
 	suite.Equal(notFound, enqResp.GetError().GetNotFound())
 	log.Info("TestEnqueueGangsResPoolNotFound returned")

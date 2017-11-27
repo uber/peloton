@@ -1,7 +1,3 @@
-// +build !unit
-
-// FIXME: Use a store mock and remove above build tag!
-
 package respool
 
 import (
@@ -21,7 +17,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -41,43 +36,43 @@ type resTreeTestSuite struct {
 	mockTaskStore    *store_mocks.MockTaskStore
 }
 
-func (suite *resTreeTestSuite) SetupSuite() {
+func (s *resTreeTestSuite) SetupSuite() {
 	fmt.Println("setting up resTreeTestSuite")
-	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockResPoolStore = store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
-	suite.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-		Return(suite.getResPools(), nil).AnyTimes()
-	suite.mockJobStore = store_mocks.NewMockJobStore(suite.mockCtrl)
-	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
+	s.mockCtrl = gomock.NewController(s.T())
+	s.mockResPoolStore = store_mocks.NewMockResourcePoolStore(s.mockCtrl)
+	s.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+		Return(s.getResPools(), nil).AnyTimes()
+	s.mockJobStore = store_mocks.NewMockJobStore(s.mockCtrl)
+	s.mockTaskStore = store_mocks.NewMockTaskStore(s.mockCtrl)
 
-	suite.resourceTree = &tree{
-		store:       suite.mockResPoolStore,
+	s.resourceTree = &tree{
+		store:       s.mockResPoolStore,
 		root:        nil,
 		metrics:     NewMetrics(tally.NoopScope),
 		resPools:    make(map[string]ResPool),
-		jobStore:    suite.mockJobStore,
-		taskStore:   suite.mockTaskStore,
+		jobStore:    s.mockJobStore,
+		taskStore:   s.mockTaskStore,
 		scope:       tally.NoopScope,
 		updatedChan: make(chan struct{}, 1),
 	}
 }
 
-func (suite *resTreeTestSuite) TearDownSuite() {
-	suite.mockCtrl.Finish()
+func (s *resTreeTestSuite) TearDownSuite() {
+	s.mockCtrl.Finish()
 }
 
-func (suite *resTreeTestSuite) SetupTest() {
-	err := suite.resourceTree.Start()
-	suite.NoError(err)
+func (s *resTreeTestSuite) SetupTest() {
+	err := s.resourceTree.Start()
+	s.NoError(err)
 }
 
-func (suite *resTreeTestSuite) TearDownTest() {
-	err := suite.resourceTree.Stop()
-	suite.NoError(err)
+func (s *resTreeTestSuite) TearDownTest() {
+	err := s.resourceTree.Stop()
+	s.NoError(err)
 }
 
 // Returns resource configs
-func (suite *resTreeTestSuite) getResourceConfig() []*respool.ResourceConfig {
+func (s *resTreeTestSuite) getResourceConfig() []*respool.ResourceConfig {
 
 	resConfigs := []*respool.ResourceConfig{
 		{
@@ -109,7 +104,7 @@ func (suite *resTreeTestSuite) getResourceConfig() []*respool.ResourceConfig {
 }
 
 // Returns resource pools
-func (suite *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
+func (s *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolConfig {
 
 	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := respool.SchedulingPolicy_PriorityFIFO
@@ -119,43 +114,43 @@ func (suite *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolCon
 		"respool1": {
 			Name:      "respool1",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool2": {
 			Name:      "respool2",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool3": {
 			Name:      "respool3",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool11": {
 			Name:      "respool11",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool23": {
@@ -187,58 +182,64 @@ func (suite *resTreeTestSuite) getResPools() map[string]*respool.ResourcePoolCon
 	}
 }
 
-func TestPelotonResPool(t *testing.T) {
-	suite.Run(t, new(resTreeTestSuite))
+func (s *resTreeTestSuite) getEntitlement() map[string]float64 {
+	mapEntitlement := make(map[string]float64)
+	mapEntitlement[common.CPU] = float64(100)
+	mapEntitlement[common.MEMORY] = float64(1000)
+	mapEntitlement[common.DISK] = float64(100)
+	mapEntitlement[common.GPU] = float64(2)
+	return mapEntitlement
 }
 
-func (suite *resTreeTestSuite) TestPrintTree() {
+func (s *resTreeTestSuite) TestPrintTree() {
 	// TODO: serialize the tree and compare it
-	rt, ok := suite.resourceTree.(*tree)
-	suite.Equal(true, ok)
+	rt, ok := s.resourceTree.(*tree)
+	s.Equal(true, ok)
 	rt.printTree(rt.root)
 }
 
-func (suite *resTreeTestSuite) TestGetChildren() {
-	rt, ok := suite.resourceTree.(*tree)
-	suite.Equal(true, ok)
+func (s *resTreeTestSuite) TestGetChildren() {
+	rt, ok := s.resourceTree.(*tree)
+	s.Equal(true, ok)
 	list := rt.root.Children()
-	suite.Equal(list.Len(), 3)
+	s.Equal(list.Len(), 3)
 	n := rt.resPools["respool1"]
 	list = n.Children()
-	suite.Equal(list.Len(), 2)
+	s.Equal(list.Len(), 2)
 	n = rt.resPools["respool2"]
 	list = n.Children()
-	suite.Equal(list.Len(), 2)
+	s.Equal(list.Len(), 2)
 }
 
-func (suite *resTreeTestSuite) TestResourceConfig() {
-	rt, ok := suite.resourceTree.(*tree)
-	suite.Equal(true, ok)
+func (s *resTreeTestSuite) TestResourceConfig() {
+	rt, ok := s.resourceTree.(*tree)
+	s.Equal(true, ok)
 	n := rt.resPools["respool1"]
-	suite.Equal(n.ID(), "respool1")
+	s.Equal(n.ID(), "respool1")
 	for _, res := range n.Resources() {
 		if res.Kind == "cpu" {
-			assert.Equal(suite.T(), res.Reservation, 100.00, "Reservation is not Equal")
-			assert.Equal(suite.T(), res.Limit, 1000.00, "Limit is not equal")
+			s.Equal(res.Reservation, 100.00,
+				"Reservation is not Equal")
+			s.Equal(res.Limit, 1000.00, "Limit is not equal")
 		}
 		if res.Kind == "memory" {
-			assert.Equal(suite.T(), res.Reservation, 100.00, "Reservation is not Equal")
-			assert.Equal(suite.T(), res.Limit, 1000.00, "Limit is not equal")
+			s.Equal(res.Reservation, 100.00, "Reservation is not Equal")
+			s.Equal(res.Limit, 1000.00, "Limit is not equal")
 		}
 		if res.Kind == "disk" {
-			assert.Equal(suite.T(), res.Reservation, 100.00, "Reservation is not Equal")
-			assert.Equal(suite.T(), res.Limit, 1000.00, "Limit is not equal")
+			s.Equal(res.Reservation, 100.00, "Reservation is not Equal")
+			s.Equal(res.Limit, 1000.00, "Limit is not equal")
 		}
 		if res.Kind == "gpu" {
-			assert.Equal(suite.T(), res.Reservation, 2.00, "Reservation is not Equal")
-			assert.Equal(suite.T(), res.Limit, 4.00, "Limit is not equal")
+			s.Equal(res.Reservation, 2.00, "Reservation is not Equal")
+			s.Equal(res.Limit, 4.00, "Limit is not equal")
 		}
 	}
 }
 
-func (suite *resTreeTestSuite) TestPendingQueueError() {
-	rt, ok := suite.resourceTree.(*tree)
-	suite.Equal(true, ok)
+func (s *resTreeTestSuite) TestPendingQueueError() {
+	rt, ok := s.resourceTree.(*tree)
+	s.Equal(true, ok)
 	// Task -1
 	jobID1 := &peloton.JobID{
 		Value: "job1",
@@ -253,15 +254,15 @@ func (suite *resTreeTestSuite) TestPendingQueueError() {
 		Id:       taskID1,
 	}
 	err := rt.resPools["respool1"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem1))
-	suite.EqualError(
+	s.EqualError(
 		err,
-		"Respool respool1 is not a leaf node",
+		"resource pool respool1 is not a leaf node",
 	)
 }
 
-func (suite *resTreeTestSuite) TestPendingQueue() {
-	rt, ok := suite.resourceTree.(*tree)
-	suite.Equal(true, ok)
+func (s *resTreeTestSuite) TestPendingQueue() {
+	rt, ok := s.resourceTree.(*tree)
+	s.Equal(true, ok)
 	// Task -1
 	jobID1 := &peloton.JobID{
 		Value: "job1",
@@ -302,45 +303,45 @@ func (suite *resTreeTestSuite) TestPendingQueue() {
 			MemLimitMb:  100,
 		},
 	}
-	rt.resPools["respool11"].SetEntitlement(suite.getEntitlement())
+	rt.resPools["respool11"].SetEntitlement(s.getEntitlement())
 	rt.resPools["respool11"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem2))
 
 	gangList3, err := rt.resPools["respool11"].DequeueGangList(1)
 	if err != nil {
-		assert.Fail(suite.T(), "Dequeue should not fail")
+		s.Fail("Dequeue should not fail")
 	}
 	if len(gangList3) != 1 {
-		assert.Fail(suite.T(), "Dequeue should return single task gang")
+		s.Fail("Dequeue should return single task gang")
 	}
 	gang := gangList3[0]
 	if len(gang.Tasks) != 1 {
-		assert.Fail(suite.T(), "Dequeue single task gang should be length 1")
+		s.Fail("Dequeue single task gang should be length 1")
 	}
 	t1 := gang.Tasks[0]
-	assert.Equal(suite.T(), t1.JobId.Value, "job1", "Should get Job-1")
-	assert.Equal(suite.T(), t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
+	s.Equal(t1.JobId.Value, "job1", "Should get Job-1")
+	s.Equal(t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
 	gangList4, err2 := rt.resPools["respool11"].DequeueGangList(1)
 	if err2 != nil {
-		assert.Fail(suite.T(), "Dequeue should not fail")
+		s.Fail("Dequeue should not fail")
 	}
 	if len(gangList4) != 1 {
-		assert.Fail(suite.T(), "Dequeue should return single task gang")
+		s.Fail("Dequeue should return single task gang")
 	}
 	gang = gangList4[0]
 	if len(gang.Tasks) != 1 {
-		assert.Fail(suite.T(), "Dequeue single task gang should be length 1")
+		s.Fail("Dequeue single task gang should be length 1")
 	}
 	t2 := gang.Tasks[0]
-	assert.Equal(suite.T(), t2.JobId.Value, "job1", "Should get Job-1")
-	assert.Equal(suite.T(), t2.Id.GetValue(), "job1-2", "Should get Job-1 and Task-1")
+	s.Equal(t2.JobId.Value, "job1", "Should get Job-1")
+	s.Equal(t2.Id.GetValue(), "job1-2", "Should get Job-1 and Task-1")
 }
 
-func (suite *resTreeTestSuite) TestTree_UpsertExistingResourcePoolConfig() {
+func (s *resTreeTestSuite) TestUpsertExistingResourcePoolConfig() {
 	select {
 	default:
-	case <-suite.resourceTree.UpdatedChannel():
-		suite.Fail("update channel should be empty")
+	case <-s.resourceTree.UpdatedChannel():
+		s.Fail("update channel should be empty")
 	}
 
 	mockExistingResourcePoolID := &peloton.ResourcePoolID{
@@ -365,13 +366,13 @@ func (suite *resTreeTestSuite) TestTree_UpsertExistingResourcePoolConfig() {
 		Name:   mockParentPoolID.Value,
 	}
 
-	err := suite.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
-	suite.NoError(err)
+	err := s.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
+	s.NoError(err)
 
-	<-suite.resourceTree.UpdatedChannel()
+	<-s.resourceTree.UpdatedChannel()
 }
 
-func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfig() {
+func (s *resTreeTestSuite) TestUpsertNewResourcePoolConfig() {
 	mockExistingResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool24",
 	}
@@ -394,11 +395,11 @@ func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfig() {
 		Name:   mockParentPoolID.Value,
 	}
 
-	err := suite.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
-	suite.NoError(err)
+	err := s.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
+	s.NoError(err)
 }
 
-func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfigError() {
+func (s *resTreeTestSuite) TestUpsertNewResourcePoolConfigError() {
 	mockExistingResourcePoolID := &peloton.ResourcePoolID{
 		Value: "respool200",
 	}
@@ -420,65 +421,101 @@ func (suite *resTreeTestSuite) TestTree_UpsertNewResourcePoolConfigError() {
 		Name: mockParentPoolID.Value,
 	}
 
-	err := suite.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
-	suite.EqualError(
+	err := s.resourceTree.Upsert(mockExistingResourcePoolID, mockResourcePoolConfig)
+	s.EqualError(
 		err,
-		"failed to insert resource pool: respool200: error creating resource pool respool200: Invalid queue Type",
+		"failed to insert resource pool: respool200: error creating resource"+
+			" pool respool200: invalid queue type",
 	)
 }
 
-func (suite *resTreeTestSuite) TestTree_ResourcePoolPath() {
+func (s *resTreeTestSuite) TestResourcePoolPath() {
 	// Get Root
-	resPool, err := suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+	resPool, err := s.resourceTree.GetByPath(&respool.ResourcePoolPath{
 		Value: "/",
 	})
-	suite.NoError(err)
-	suite.Equal(resPool.Name(), "root")
-	suite.Equal(resPool.GetPath(), "/")
-	suite.True(resPool.IsRoot())
+	s.NoError(err)
+	s.Equal(resPool.Name(), "root")
+	s.Equal(resPool.GetPath(), "/")
+	s.True(resPool.IsRoot())
 
 	// Get respool1
-	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+	resPool, err = s.resourceTree.GetByPath(&respool.ResourcePoolPath{
 		Value: "/respool1",
 	})
-	suite.NoError(err)
-	suite.Equal(resPool.Name(), "respool1")
-	suite.Equal(resPool.GetPath(), "/respool1")
-	suite.Equal(resPool.Parent().Name(), "root")
-	suite.False(resPool.IsRoot())
+	s.NoError(err)
+	s.Equal(resPool.Name(), "respool1")
+	s.Equal(resPool.GetPath(), "/respool1")
+	s.Equal(resPool.Parent().Name(), "root")
+	s.False(resPool.IsRoot())
 
 	// Get respool11
-	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+	resPool, err = s.resourceTree.GetByPath(&respool.ResourcePoolPath{
 		Value: "/respool1/respool11",
 	})
-	suite.NoError(err)
-	suite.Equal(resPool.Name(), "respool11")
-	suite.Equal(resPool.GetPath(), "/respool1/respool11")
-	suite.Equal(resPool.GetPath(), "/respool1/respool11")
-	suite.Equal(resPool.Parent().Name(), "respool1")
-	suite.False(resPool.IsRoot())
+	s.NoError(err)
+	s.Equal(resPool.Name(), "respool11")
+	s.Equal(resPool.GetPath(), "/respool1/respool11")
+	s.Equal(resPool.GetPath(), "/respool1/respool11")
+	s.Equal(resPool.Parent().Name(), "respool1")
+	s.False(resPool.IsRoot())
 
 	// Get non-existent pool
-	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+	resPool, err = s.resourceTree.GetByPath(&respool.ResourcePoolPath{
 		Value: "/doesnotexist",
 	})
-	suite.Error(err)
+	s.Error(err)
 
 	// Get non-existent pool
-	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+	resPool, err = s.resourceTree.GetByPath(&respool.ResourcePoolPath{
 		Value: "/respool1/respool11/doesnotexist",
 	})
-	suite.Error(err)
+	s.Error(err)
 
 	// Get on uninitialized tree fails.
-	suite.resourceTree.(*tree).root = nil
-	resPool, err = suite.resourceTree.GetByPath(&respool.ResourcePoolPath{
+	s.resourceTree.(*tree).root = nil
+	resPool, err = s.resourceTree.GetByPath(&respool.ResourcePoolPath{
 		Value: "/",
 	})
-	suite.Error(err)
+	s.Error(err)
 }
 
-func (suite *resTreeTestSuite) TestConvertTask() {
+func (s *resTreeTestSuite) TestGetAllNodes() {
+	nodes := s.resourceTree.GetAllNodes(false)
+	s.Equal(10, nodes.Len())
+
+	nodes = s.resourceTree.GetAllNodes(true)
+	s.Equal(5, nodes.Len())
+}
+
+func (s *resTreeTestSuite) TestGet() {
+	tt := []struct {
+		respoolID string
+		err       string
+	}{
+		{
+			respoolID: "root",
+			err:       "",
+		},
+		{
+			respoolID: "doesnotexist",
+			err:       "resource pool (doesnotexist) not found",
+		},
+	}
+
+	for _, t := range tt {
+		node, err := s.resourceTree.Get(&peloton.ResourcePoolID{Value: t.respoolID})
+		if err != nil {
+			s.Nil(node)
+			s.EqualError(err, t.err)
+			continue
+		}
+		s.NoError(err)
+		s.Equal(t.respoolID, node.ID())
+	}
+}
+
+func (s *resTreeTestSuite) TestConvertTask() {
 	ti := &task.TaskInfo{
 		JobId: &peloton.JobID{
 			Value: "job-1",
@@ -495,9 +532,9 @@ func (suite *resTreeTestSuite) TestConvertTask() {
 	}
 
 	rmtask := util.ConvertTaskToResMgrTask(ti, jobConfig)
-	suite.NotNil(rmtask)
-	suite.EqualValues(rmtask.Priority, 12)
-	suite.EqualValues(rmtask.Preemptible, true)
+	s.NotNil(rmtask)
+	s.EqualValues(rmtask.Priority, 12)
+	s.EqualValues(rmtask.Preemptible, true)
 
 	ti = &task.TaskInfo{
 		JobId: &peloton.JobID{
@@ -510,16 +547,45 @@ func (suite *resTreeTestSuite) TestConvertTask() {
 	jobConfig = &job.JobConfig{}
 
 	rmtask = util.ConvertTaskToResMgrTask(ti, jobConfig)
-	suite.NotNil(rmtask)
-	suite.EqualValues(rmtask.Priority, 0)
-	suite.EqualValues(rmtask.Preemptible, false)
+	s.NotNil(rmtask)
+	s.EqualValues(rmtask.Priority, 0)
+	s.EqualValues(rmtask.Preemptible, false)
 }
 
-func (suite *resTreeTestSuite) getEntitlement() map[string]float64 {
-	mapEntitlement := make(map[string]float64)
-	mapEntitlement[common.CPU] = float64(100)
-	mapEntitlement[common.MEMORY] = float64(1000)
-	mapEntitlement[common.DISK] = float64(100)
-	mapEntitlement[common.GPU] = float64(2)
-	return mapEntitlement
+func (s *resTreeTestSuite) TestDelete() {
+	mockCtrl := gomock.NewController(s.T())
+	defer mockCtrl.Finish()
+
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
+	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+		Return(s.getResPools(), nil).AnyTimes()
+	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
+	resourceTree := &tree{
+		store:       mockResPoolStore,
+		root:        nil,
+		metrics:     NewMetrics(tally.NoopScope),
+		resPools:    make(map[string]ResPool),
+		jobStore:    mockJobStore,
+		taskStore:   mockTaskStore,
+		scope:       tally.NoopScope,
+		updatedChan: make(chan struct{}, 1),
+	}
+	resourceTree.Start()
+
+	s.Equal(10, resourceTree.GetAllNodes(false).Len())
+
+	// delete respool 11
+	resourceTree.Delete(&peloton.ResourcePoolID{Value: "respool11"})
+	s.Equal(9, resourceTree.GetAllNodes(false).Len())
+	s.Equal(4, resourceTree.GetAllNodes(true).Len())
+
+	// delete respool 1
+	resourceTree.Delete(&peloton.ResourcePoolID{Value: "respool1"})
+	s.Equal(7, resourceTree.GetAllNodes(false).Len())
+	s.Equal(3, resourceTree.GetAllNodes(true).Len())
+}
+
+func TestPelotonResPool(t *testing.T) {
+	suite.Run(t, new(resTreeTestSuite))
 }

@@ -19,87 +19,84 @@ import (
 	"github.com/uber-go/tally"
 )
 
-// ResPool is a node in a resource tree
+// ResPool is a node in a resource tree.
 type ResPool interface {
-	// Returns the resource pool name
+	// Returns the resource pool name.
 	Name() string
-	// Returns the resource pool ID
+	// Returns the resource pool ID.
 	ID() string
-	// Returns the resource pool's parent
+	// Returns the resource pool's parent.
 	Parent() ResPool
-	// Sets the parent of the resource pool
+	// Sets the parent of the resource pool.
 	SetParent(ResPool)
-	// Returns the children(if any) of the resource pool
+	// Returns the children(if any) of the resource pool.
 	Children() *list.List
-	// Sets the children of the resource pool
+	// Sets the children of the resource pool.
 	SetChildren(*list.List)
-	// Returns true of the resource pool is a leaf
+	// Returns true of the resource pool is a leaf.
 	IsLeaf() bool
-	// Returns the config of the resource pool
+	// Returns the config of the resource pool.
 	ResourcePoolConfig() *respool.ResourcePoolConfig
-	// Sets the resource pool config
+	// Sets the resource pool config.
 	SetResourcePoolConfig(*respool.ResourcePoolConfig)
-	// Returns a map of resources and its resource config
+	// Returns a map of resources and its resource config.
 	Resources() map[string]*respool.ResourceConfig
-	// Sets the resource config
+	// Sets the resource config.
 	SetResourceConfig(*respool.ResourceConfig)
-	// Converts to resource pool info
+	// Converts to resource pool info.
 	ToResourcePoolInfo() *respool.ResourcePoolInfo
-	// Aggregates the child reservations by resource type
+	// Aggregates the child reservations by resource type.
 	AggregatedChildrenReservations() (map[string]float64, error)
-	// Forms a gang from a single task
+	// Forms a gang from a single task.
 	MakeTaskGang(task *resmgr.Task) *resmgrsvc.Gang
-	// Enqueues gang (task list) into resource pool pending queue
+	// Enqueues gang (task list) into resource pool pending queue.
 	EnqueueGang(gang *resmgrsvc.Gang) error
-	// Dequeues gang (task list) list from the resource pool
+	// Dequeues gang (task list) list from the resource pool.
 	DequeueGangList(int) ([]*resmgrsvc.Gang, error)
-	// SetEntitlement sets the entitlement for the resource pool
+	// SetEntitlement sets the entitlement for the resource pool.
 	// input is map[ResourceKind]->EntitledCapacity
 	SetEntitlement(map[string]float64)
 	// SetEntitlementResources sets the entitlement for
-	// the resource pool based on the resources
+	// the resource pool based on the resources.
 	SetEntitlementResources(res *scalar.Resources)
 	// SetEntitlementByKind sets the entitlement of the respool
-	// by kind
+	// by kind.
 	SetEntitlementByKind(kind string, entitlement float64)
-	//GetEntitlement gets the entitlement for the resource pool
+	//GetEntitlement gets the entitlement for the resource pool.
 	GetEntitlement() *scalar.Resources
-	// GetChildReservation returns the total reservation of all
-	// the children by kind
-	GetChildReservation() map[string]float64
-	// GetAllocation returns the resource allocation for the resource pool
+	// GetAllocation returns the resource allocation for the resource pool.
 	GetAllocation() *scalar.Resources
-	// SetAllocation sets the resource allocation for the resource pool
+	// SetAllocation sets the resource allocation for the resource pool.
 	SetAllocation(res *scalar.Resources)
-	// SubtractFromAllocation recaptures the resources from task
+	// SubtractFromAllocation recaptures the resources from task.
 	SubtractFromAllocation(res *scalar.Resources) error
-	// GetPath returns the resource pool path
+	// GetPath returns the resource pool path.
 	GetPath() string
-	// IsRoot returns true if the node is the root of the resource tree
+	// IsRoot returns true if the node is the root of the resource tree.
 	IsRoot() bool
 	// AddToAllocation adds resources to current allocation
-	// for the resource pool
+	// for the resource pool.
 	AddToAllocation(res *scalar.Resources) error
 	// AddToDemand adds resources to current demand
-	// for the resource pool
+	// for the resource pool.
 	AddToDemand(res *scalar.Resources) error
 	// SubtractFromDemand subtracts resources from current demand
-	// for the resource pool
+	// for the resource pool.
 	SubtractFromDemand(res *scalar.Resources) error
-	// GetDemand returns the resource demand for the resource pool
+	// GetDemand returns the resource demand for the resource pool.
 	GetDemand() *scalar.Resources
 	// CalculateDemand calculates the resource demand
-	// for the resource pool recursively for the subtree
+	// for the resource pool recursively for the subtree.
 	CalculateDemand() *scalar.Resources
 	// CalculateAllocation calculates the allocation recursively for
 	// all the children.
 	CalculateAllocation() *scalar.Resources
-	// AddInvalidTask will add the killed tasks to respool
-	// By that respool can discard those tasks asynchronously
+	// AddInvalidTask will add the killed tasks to respool which can be
+	// discarded asynchronously which scheduling.
 	AddInvalidTask(task *peloton.TaskID)
 }
 
-// resPool implements ResPool interface
+// resPool implements ResPool interface.
 type resPool struct {
 	sync.RWMutex
 
@@ -117,7 +114,7 @@ type resPool struct {
 	invalidTasks    map[string]bool
 }
 
-// NewRespool will initialize the resource pool node and return that
+// NewRespool will initialize the resource pool node and return that.
 func NewRespool(
 	scope tally.Scope,
 	ID string,
@@ -153,13 +150,13 @@ func NewRespool(
 		invalidTasks:    make(map[string]bool),
 	}
 
-	// Initialize metrics
+	// Initialize metrics.
 	poolScope := scope.Tagged(map[string]string{
 		"path": pool.GetPath(),
 	})
 	pool.metrics = NewMetrics(poolScope)
 
-	// Initialize resources
+	// Initialize resources.
 	pool.initResources(config.GetResources())
 	pool.updateDynamicResourceMetrics()
 	pool.metrics.PendingQueueSize.Update(float64(pool.pendingQueue.Size()))
@@ -167,40 +164,40 @@ func NewRespool(
 	return pool, nil
 }
 
-// ID returns the resource pool UUID
+// ID returns the resource pool UUID.
 func (n *resPool) ID() string {
 	return n.id
 }
 
-// Name returns the resource pool name
+// Name returns the resource pool name.
 func (n *resPool) Name() string {
 	return n.poolConfig.Name
 }
 
-// Parent returns the resource pool's parent pool
+// Parent returns the resource pool's parent pool.
 func (n *resPool) Parent() ResPool {
 	n.RLock()
 	defer n.RUnlock()
 	return n.parent
 }
 
-// SetParent will be setting the parent for the resource pool
+// SetParent will be setting the parent for the resource pool.
 func (n *resPool) SetParent(parent ResPool) {
 	n.Lock()
 	n.parent = parent
-	// reset path to be calculated again
+	// reset path to be calculated again.
 	n.path = ""
 	n.Unlock()
 }
 
-// SetChildren will be setting the children for the resource pool
+// SetChildren will be setting the children for the resource pool.
 func (n *resPool) SetChildren(children *list.List) {
 	n.Lock()
 	n.children = children
 	n.Unlock()
 }
 
-// Children will be getting the children for the resource pool
+// Children will be getting the children for the resource pool.
 func (n *resPool) Children() *list.List {
 	n.RLock()
 	defer n.RUnlock()
@@ -214,14 +211,15 @@ func (n *resPool) SetResourceConfig(resources *respool.ResourceConfig) {
 	n.initResources([]*respool.ResourceConfig{resources})
 }
 
-// Resources returns the resource configs
+// Resources returns the resource configs.
 func (n *resPool) Resources() map[string]*respool.ResourceConfig {
 	n.RLock()
 	defer n.RUnlock()
 	return n.resourceConfigs
 }
 
-// SetResourcePoolConfig sets the resource pool config and initializes the resources
+// SetResourcePoolConfig sets the resource pool config and initializes the
+// resources.
 func (n *resPool) SetResourcePoolConfig(config *respool.ResourcePoolConfig) {
 	n.Lock()
 	defer n.Unlock()
@@ -229,7 +227,7 @@ func (n *resPool) SetResourcePoolConfig(config *respool.ResourcePoolConfig) {
 	n.initResources(config.GetResources())
 }
 
-// ResourcePoolConfig returns the resource pool config
+// ResourcePoolConfig returns the resource pool config.
 func (n *resPool) ResourcePoolConfig() *respool.ResourcePoolConfig {
 	n.RLock()
 	defer n.RUnlock()
@@ -262,7 +260,7 @@ func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
 		return err
 	}
 	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
-	err := errors.Errorf("Respool %s is not a leaf node", n.id)
+	err := errors.Errorf("resource pool %s is not a leaf node", n.id)
 	return err
 }
 
@@ -277,7 +275,7 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 		return nil, err
 	}
 	if !n.isLeaf() {
-		err := errors.Errorf("Respool %s is not a leaf node", n.id)
+		err := errors.Errorf("resource pool %s is not a leaf node", n.id)
 		return nil, err
 	}
 
@@ -441,25 +439,24 @@ func GetGangResources(gang *resmgrsvc.Gang) *scalar.Resources {
 
 // AggregatedChildrenReservations returns aggregated child reservations by resource kind
 func (n *resPool) AggregatedChildrenReservations() (map[string]float64, error) {
-	aggChildrenReservations := make(map[string]float64)
+	totalReservation := make(map[string]float64)
 	n.RLock()
 	defer n.RUnlock()
-	for child := n.children.Front(); child != nil; child = child.Next() {
-		if childResPool, ok := child.Value.(*resPool); ok {
-			for kind, cResource := range childResPool.resourceConfigs {
-				cReservation := cResource.Reservation
-				if reservations, ok := aggChildrenReservations[kind]; ok {
-					// We only need reservations
-					cReservation += reservations
-				}
-				aggChildrenReservations[kind] = cReservation
-			}
-		} else {
-			return nil, errors.Errorf("failed to type assert child resource pool %v",
-				child.Value)
+	nodes := n.Children()
+	// We need to find out the total reservation
+	for e := nodes.Front(); e != nil; e = e.Next() {
+		n, ok := e.Value.(ResPool)
+		if !ok {
+			return totalReservation, errors.Errorf("failed to type assert child resource pool %v",
+				e.Value)
+		}
+		resources := n.Resources()
+		for kind, resource := range resources {
+			totalReservation[kind] =
+				totalReservation[kind] + resource.Reservation
 		}
 	}
-	return aggChildrenReservations, nil
+	return totalReservation, nil
 }
 
 // ToResourcePoolInfo converts ResPool to ResourcePoolInfo
@@ -656,22 +653,6 @@ func (n *resPool) GetEntitlement() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
 	return n.entitlement
-}
-
-// GetChildReservation returns the reservation of all the children
-func (n *resPool) GetChildReservation() map[string]float64 {
-	totalReservation := make(map[string]float64)
-	nodes := n.Children()
-	// We need to find out the total reservation
-	for e := nodes.Front(); e != nil; e = e.Next() {
-		n := e.Value.(ResPool)
-		resources := n.Resources()
-		for kind, resource := range resources {
-			totalReservation[kind] =
-				totalReservation[kind] + resource.Reservation
-		}
-	}
-	return totalReservation
 }
 
 // GetAllocation gets the resource allocation for the pool
