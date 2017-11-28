@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
 	"code.uber.internal/infra/peloton/jobmgr/tasksvc"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
@@ -172,11 +173,11 @@ func main() {
 	}
 
 	if *placementDequeLimit != 0 {
-		cfg.JobManager.TaskLauncher.PlacementDequeueLimit = *placementDequeLimit
+		cfg.JobManager.Placement.PlacementDequeueLimit = *placementDequeLimit
 	}
 
 	if *getPlacementsTimeout != 0 {
-		cfg.JobManager.TaskLauncher.GetPlacementsTimeout = *getPlacementsTimeout
+		cfg.JobManager.Placement.GetPlacementsTimeout = *getPlacementsTimeout
 	}
 
 	if !*useCassandra {
@@ -280,17 +281,26 @@ func main() {
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(
 		dispatcher,
-		common.PelotonResourceManager,
 		common.PelotonHostManager,
 		jobStore,
 		taskStore,
 		volumeStore,
-		&cfg.JobManager.TaskLauncher,
 		rootScope,
 	)
 
 	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher(), rootScope)
 	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, rootScope)
+
+	// Init placement processor
+	placement.InitProcessor(
+		dispatcher,
+		common.PelotonResourceManager,
+		trackedManager,
+		launcher.GetLauncher(),
+		taskStore,
+		&cfg.JobManager.Placement,
+		rootScope,
+	)
 
 	// Init service handler.
 	// TODO: change to updated jobmgr.Config
@@ -390,8 +400,8 @@ func main() {
 	}
 	defer candidate.Stop()
 
-	launcher.GetLauncher().Start()
-	defer launcher.GetLauncher().Stop()
+	placement.GetProcessor().Start()
+	defer placement.GetProcessor().Stop()
 
 	log.WithFields(log.Fields{
 		"httpPort": cfg.JobManager.HTTPPort,

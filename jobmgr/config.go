@@ -3,7 +3,7 @@ package jobmgr
 import (
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job"
-	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
 	"code.uber.internal/infra/peloton/jobmgr/upgrade"
 )
@@ -26,7 +26,7 @@ type Config struct {
 	Job job.Config
 
 	// Task launcher specific configs
-	TaskLauncher launcher.Config `yaml:"task_launcher"`
+	Placement placement.Config `yaml:"task_launcher"`
 
 	// GoalState configuration
 	GoalState goalstate.Config `yaml:"goal_state"`

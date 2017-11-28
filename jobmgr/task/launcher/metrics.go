@@ -13,20 +13,16 @@ type Metrics struct {
 
 	TaskRequeuedOnLaunchFail tally.Counter
 
-	GetPlacement              tally.Counter
-	GetPlacementFail          tally.Counter
-	GetDBTaskInfo             tally.Timer
-	LauncherGoRoutines        tally.Counter
-	GetPlacementsCallDuration tally.Timer
-	LaunchTasksCallDuration   tally.Timer
+	GetDBTaskInfo           tally.Timer
+	LauncherGoRoutines      tally.Counter
+	LaunchTasksCallDuration tally.Timer
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
 // initialized and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
-	taskSuccessScope := scope.Tagged(map[string]string{"type": "success"})
-	taskFailScope := scope.Tagged(map[string]string{"type": "fail"})
-	taskAPIScope := scope.SubScope("task_api")
+	taskSuccessScope := scope.Tagged(map[string]string{"result": "success"})
+	taskFailScope := scope.Tagged(map[string]string{"result": "fail"})
 	functionCallScope := scope.SubScope("functioncall")
 	getPlacementScope := scope.SubScope("get_placement")
 	launchTaskScope := scope.SubScope("launch_tasks")
@@ -36,12 +32,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskLaunchFail:  taskFailScope.Counter("launch"),
 		TaskLaunchRetry: launchTaskScope.Counter("retry"),
 
-		TaskRequeuedOnLaunchFail:  taskFailScope.Counter("launch_fail_requeued_total"),
-		GetPlacement:              taskAPIScope.Counter("get_placement"),
-		GetPlacementFail:          taskFailScope.Counter("get_placement"),
-		GetDBTaskInfo:             functionCallScope.Timer("get_taskinfo"),
-		LauncherGoRoutines:        getPlacementScope.Counter("go_routines"),
-		GetPlacementsCallDuration: getPlacementScope.Timer("call_duration"),
-		LaunchTasksCallDuration:   launchTaskScope.Timer("call_duration"),
+		TaskRequeuedOnLaunchFail: taskFailScope.Counter("launch_fail_requeued_total"),
+		GetDBTaskInfo:            functionCallScope.Timer("get_taskinfo"),
+		LauncherGoRoutines:       getPlacementScope.Counter("go_routines"),
+		LaunchTasksCallDuration:  launchTaskScope.Timer("call_duration"),
 	}
 }

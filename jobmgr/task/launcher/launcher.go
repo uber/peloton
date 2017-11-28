@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/pborman/uuid"
@@ -29,24 +28,11 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
-// Config is Task launcher specific config
-type Config struct {
-	// PlacementDequeueLimit is the limit which task launcher get the
-	// placements
-	PlacementDequeueLimit int `yaml:"placement_dequeue_limit"`
-
-	// GetPlacementsTimeout is the timeout value for task launcher to
-	// call GetPlacements
-	GetPlacementsTimeout int `yaml:"get_placements_timeout_ms"`
-}
-
 // Launcher defines the interface of task launcher which launches
 // tasks from the placed queues of resource pool
 type Launcher interface {
-	// Start starts the task Launcher goroutines
-	Start() error
-	// Stop stops the task Launcher goroutines
-	Stop() error
+	// ProcessPlacements launches tasks to hostmgr
+	ProcessPlacements(ctx context.Context, resMgrClient resmgrsvc.ResourceManagerServiceYARPCClient, placements []*resmgr.Placement) error
 	// LaunchTaskWithReservedResource launches task with reserved resource
 	// to hostmgr directly.
 	LaunchTaskWithReservedResource(ctx context.Context, taskInfo *task.TaskInfo) error
@@ -55,23 +41,17 @@ type Launcher interface {
 // launcher implements the Launcher interface
 type launcher struct {
 	sync.Mutex
-
-	resMgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
 	hostMgrClient hostsvc.InternalHostServiceYARPCClient
-	started       int32
-	shutdown      int32
 	jobStore      storage.JobStore
 	taskStore     storage.TaskStore
 	volumeStore   storage.PersistentVolumeStore
-	config        *Config
 	metrics       *Metrics
 	retryPolicy   backoff.RetryPolicy
 }
 
 const (
 	// Time out for the function to time out
-	_timeoutFunctionCall = 120 * time.Second
-	_rpcTimeout          = 10 * time.Second
+	_rpcTimeout = 10 * time.Second
 )
 
 var (
@@ -85,12 +65,10 @@ var onceInitTaskLauncher sync.Once
 // InitTaskLauncher initializes a Task Launcher
 func InitTaskLauncher(
 	d *yarpc.Dispatcher,
-	resMgrClientName string,
 	hostMgrClientName string,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
-	config *Config,
 	parent tally.Scope,
 ) {
 	onceInitTaskLauncher.Do(func() {
@@ -100,12 +78,10 @@ func InitTaskLauncher(
 		}
 
 		taskLauncher = &launcher{
-			resMgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
 			hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
 			jobStore:      jobStore,
 			taskStore:     taskStore,
 			volumeStore:   volumeStore,
-			config:        config,
 			metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 			// TODO: make launch retry policy config.
 			retryPolicy: backoff.NewRetryPolicy(3, 15*time.Second),
@@ -121,74 +97,48 @@ func GetLauncher() Launcher {
 	return taskLauncher
 }
 
-// Start starts Task Launcher
-func (l *launcher) Start() error {
-	if atomic.CompareAndSwapInt32(&l.started, 0, 1) {
-		log.Info("Starting Task Launcher")
-		atomic.StoreInt32(&l.shutdown, 0)
-		go func() {
-			for l.isRunning() {
-				placements, err := l.getPlacements()
+// ProcessPlacements launches tasks to host manager
+func (l *launcher) ProcessPlacements(ctx context.Context, resMgrClient resmgrsvc.ResourceManagerServiceYARPCClient, placements []*resmgr.Placement) error {
+	log.WithField("placements", placements).Debug("Start processing placements")
+	for _, placement := range placements {
+		go func(placement *resmgr.Placement) {
+			tasks, taskInfos, err := l.getLaunchableTasks(
+				ctx,
+				placement.GetTasks(),
+				placement.GetHostname(),
+				placement.GetAgentId(),
+				placement.GetPorts())
+			if err != nil {
+				err = l.tryReturnOffers(ctx, err, placement)
 				if err != nil {
-					log.WithError(err).Error("jobmgr failed to dequeue placements")
-					continue
+					log.WithError(err).WithFields(log.Fields{
+						"placement":   placement,
+						"tasks_total": len(tasks),
+					}).Error("Failed to get launchable tasks")
 				}
-
-				if len(placements) == 0 {
-					// log a debug to make it not verbose
-					log.Debug("No placements")
-					continue
-				}
-
-				// Getting and launching placements in different go routine
-				l.processPlacements(context.Background(), placements)
+				return
 			}
-		}()
+			l.metrics.LauncherGoRoutines.Inc(1)
+			err = l.launchTasks(ctx, tasks, placement)
+			l.tryReturnOffers(ctx, err, placement)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"placement":   placement,
+					"tasks_total": len(tasks),
+				}).Error("failed to launch tasks to hostmgr")
+
+				// On launch failure, re-enqueue the tasks to resource manager.
+				l.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(tasks)))
+				if err = l.enqueueTasks(ctx, resMgrClient, taskInfos); err != nil {
+					log.WithError(err).WithFields(log.Fields{
+						"task_infos":  taskInfos,
+						"tasks_total": len(taskInfos),
+					}).Error("failed to enqueue tasks back to resmgr")
+				}
+			}
+		}(placement)
 	}
-	log.Info("Task Launcher started")
 	return nil
-}
-
-func (l *launcher) getPlacements() ([]*resmgr.Placement, error) {
-	ctx, cancelFunc := context.WithTimeout(context.Background(), _timeoutFunctionCall)
-	defer cancelFunc()
-
-	request := &resmgrsvc.GetPlacementsRequest{
-		Limit:   uint32(l.config.PlacementDequeueLimit),
-		Timeout: uint32(l.config.GetPlacementsTimeout),
-	}
-
-	callStart := time.Now()
-	response, err := l.resMgrClient.GetPlacements(ctx, request)
-	callDuration := time.Since(callStart)
-
-	if err != nil {
-		l.metrics.GetPlacementFail.Inc(1)
-		return nil, err
-	}
-
-	if response.GetError() != nil {
-		l.metrics.GetPlacementFail.Inc(1)
-		return nil, errors.New(response.GetError().String())
-	}
-
-	if len(response.GetPlacements()) != 0 {
-		log.WithFields(log.Fields{
-			"num_placements": len(response.Placements),
-			"duration":       callDuration.Seconds(),
-		}).Info("GetPlacements")
-	}
-
-	// TODO: turn getplacement metric into gauge so we can
-	//       get the current get_placements counts
-	l.metrics.GetPlacement.Inc(int64(len(response.GetPlacements())))
-	l.metrics.GetPlacementsCallDuration.Record(callDuration)
-	return response.GetPlacements(), nil
-}
-
-func (l *launcher) isRunning() bool {
-	shutdown := atomic.LoadInt32(&l.shutdown)
-	return shutdown == 0
 }
 
 // LaunchTaskWithReservedResource launch a task to hostmgr directly as the resource
@@ -228,52 +178,8 @@ func (l *launcher) isLauncherRetryableError(err error) bool {
 	return true
 }
 
-// launchTasks launches tasks to host manager
-func (l *launcher) processPlacements(ctx context.Context, placements []*resmgr.Placement) error {
-	log.WithField("placements", placements).Debug("Start processing placements")
-	for _, placement := range placements {
-		go func(placement *resmgr.Placement) {
-			tasks, taskInfos, err := l.getLaunchableTasks(
-				ctx,
-				placement.GetTasks(),
-				placement.GetHostname(),
-				placement.GetAgentId(),
-				placement.GetPorts())
-			if err != nil {
-				err = l.tryReturnOffers(ctx, err, placement)
-				if err != nil {
-					log.WithError(err).WithFields(log.Fields{
-						"placement":   placement,
-						"tasks_total": len(tasks),
-					}).Error("Failed to get launchable tasks")
-				}
-				return
-			}
-			l.metrics.LauncherGoRoutines.Inc(1)
-			err = l.launchTasks(ctx, tasks, placement)
-			l.tryReturnOffers(ctx, err, placement)
-			if err != nil {
-				log.WithError(err).WithFields(log.Fields{
-					"placement":   placement,
-					"tasks_total": len(tasks),
-				}).Error("failed to launch tasks to hostmgr")
-
-				// On launch failure, re-enqueue the tasks to resource manager.
-				l.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(tasks)))
-				if err = l.enqueueTasks(ctx, taskInfos); err != nil {
-					log.WithError(err).WithFields(log.Fields{
-						"task_infos":  taskInfos,
-						"tasks_total": len(taskInfos),
-					}).Error("failed to enqueue tasks back to resmgr")
-				}
-			}
-		}(placement)
-	}
-	return nil
-}
-
 // enqueueTask enqueues given task to resmgr to launch again.
-func (l *launcher) enqueueTasks(ctx context.Context, tasks []*task.TaskInfo) error {
+func (l *launcher) enqueueTasks(ctx context.Context, resMgrClient resmgrsvc.ResourceManagerServiceYARPCClient, tasks []*task.TaskInfo) error {
 	if len(tasks) == 0 {
 		return nil
 	}
@@ -298,7 +204,7 @@ func (l *launcher) enqueueTasks(ctx context.Context, tasks []*task.TaskInfo) err
 	}
 	jobConfig, err := l.jobStore.GetJobConfig(ctx, tasks[0].GetJobId())
 	if err == nil {
-		err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, l.resMgrClient)
+		err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, resMgrClient)
 	}
 	return err
 }
@@ -423,30 +329,6 @@ func createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.LaunchableTask {
 		launchableTasks = append(launchableTasks, &launchableTask)
 	}
 	return launchableTasks
-}
-
-// Stop stops Task Launcher process
-func (l *launcher) Stop() error {
-	defer l.Unlock()
-	l.Lock()
-
-	if !(l.isRunning()) {
-		log.Warn("Task Launcher is already stopped, no action will be performed")
-		return nil
-	}
-
-	log.Info("Stopping Task Launcher")
-	atomic.StoreInt32(&l.shutdown, 1)
-	// Wait for task launcher to be stopped
-	for {
-		if l.isRunning() {
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			break
-		}
-	}
-	log.Info("Task Launcher Stopped")
-	return nil
 }
 
 func (l *launcher) launchStatefulTasks(

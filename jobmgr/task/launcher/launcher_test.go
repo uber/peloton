@@ -112,10 +112,6 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		metrics:       metrics,
@@ -166,12 +162,6 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	updatedRuntime.State = task.TaskState_LAUNCHED
 
 	gomock.InOrder(
-		mockRes.EXPECT().
-			GetPlacements(
-				gomock.Any(),
-				gomock.Any()).
-			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
-
 		// Mock Task Store GetTaskByID
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
@@ -198,12 +188,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 			Times(1),
 	)
 
-	placements, err := taskLauncher.getPlacements()
-
-	if err != nil {
-		assert.Error(t, err)
-	}
-	taskLauncher.processPlacements(context.Background(), placements)
+	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -227,10 +212,6 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		jobStore:      mockJobStore,
 		taskStore:     mockTaskStore,
@@ -281,12 +262,6 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 	updatedRuntime.State = task.TaskState_LAUNCHED
 
 	gomock.InOrder(
-		mockRes.EXPECT().
-			GetPlacements(
-				gomock.Any(),
-				gomock.Any()).
-			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
-
 		// Mock Task Store GetTaskByID
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
@@ -328,12 +303,7 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 		).Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	placements, err := taskLauncher.getPlacements()
-
-	if err != nil {
-		assert.Error(t, err)
-	}
-	taskLauncher.processPlacements(context.Background(), placements)
+	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -360,10 +330,6 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		jobStore:      mockJobStore,
 		taskStore:     mockTaskStore,
@@ -414,12 +380,6 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 	updatedRuntime.State = task.TaskState_LAUNCHED
 
 	gomock.InOrder(
-		mockRes.EXPECT().
-			GetPlacements(
-				gomock.Any(),
-				gomock.Any()).
-			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
-
 		// Mock Task Store GetTaskByID
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
@@ -466,12 +426,7 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 		).Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	placements, err := taskLauncher.getPlacements()
-
-	if err != nil {
-		assert.Error(t, err)
-	}
-	taskLauncher.processPlacements(context.Background(), placements)
+	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -499,10 +454,6 @@ func TestLaunchStatefulTask(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		volumeStore:   mockVolumeStore,
@@ -551,12 +502,6 @@ func TestLaunchStatefulTask(t *testing.T) {
 
 	volumeInfo := &volume.PersistentVolumeInfo{}
 	gomock.InOrder(
-		mockRes.EXPECT().
-			GetPlacements(
-				gomock.Any(),
-				gomock.Any()).
-			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
-
 		// Mock Task Store GetTaskByID
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
@@ -585,12 +530,7 @@ func TestLaunchStatefulTask(t *testing.T) {
 			Times(1),
 	)
 
-	placements, err := taskLauncher.getPlacements()
-
-	if err != nil {
-		assert.Error(t, err)
-	}
-	taskLauncher.processPlacements(context.Background(), placements)
+	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -613,10 +553,6 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		volumeStore:   mockVolumeStore,
@@ -667,12 +603,6 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 		State: volume.VolumeState_CREATED,
 	}
 	gomock.InOrder(
-		mockRes.EXPECT().
-			GetPlacements(
-				gomock.Any(),
-				gomock.Any()).
-			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
-
 		// Mock Task Store GetTaskByID
 		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
 
@@ -701,12 +631,7 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 			Times(1),
 	)
 
-	placements, err := taskLauncher.getPlacements()
-
-	if err != nil {
-		assert.Error(t, err)
-	}
-	taskLauncher.processPlacements(context.Background(), placements)
+	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -723,9 +648,6 @@ func TestProcessPlacementsWithNoTasksReleasesOffers(t *testing.T) {
 
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	taskLauncher := launcher{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
 		hostMgrClient: mockHostMgr,
 		metrics:       NewMetrics(tally.NoopScope),
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
@@ -740,7 +662,7 @@ func TestProcessPlacementsWithNoTasksReleasesOffers(t *testing.T) {
 	}).
 		Return(&hostsvc.ReleaseHostOffersResponse{}, nil)
 
-	taskLauncher.processPlacements(context.Background(), []*resmgr.Placement{{
+	taskLauncher.ProcessPlacements(context.Background(), nil, []*resmgr.Placement{{
 		Hostname: "hostname-0",
 		AgentId:  &mesos.AgentID{},
 	}})
@@ -752,7 +674,6 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceDirectly(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
@@ -760,10 +681,6 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceDirectly(t *testing.T) {
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		volumeStore:   mockVolumeStore,
@@ -853,7 +770,6 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceWithDBReadErr(t *testing.T)
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
@@ -861,10 +777,6 @@ func TestLaunchStatefulTaskLaunchWithReservedResourceWithDBReadErr(t *testing.T)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
-		config: &Config{
-			PlacementDequeueLimit: 100,
-		},
-		resMgrClient:  mockRes,
 		hostMgrClient: mockHostMgr,
 		taskStore:     mockTaskStore,
 		volumeStore:   mockVolumeStore,
