@@ -25,6 +25,11 @@ type Metrics struct {
 	Pruned      tally.Counter
 	PrunerValid tally.Gauge
 
+	// metrics for unreserving offers
+	UnreserveOffer           tally.Counter
+	UnreserveOfferFail       tally.Counter
+	CleanReservationResource tally.Counter
+
 	// metrics for total number of available hosts in the cluster.
 	AvailableHosts tally.Gauge
 }
@@ -40,8 +45,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	poolCallScope := poolScope.SubScope("call")
 
 	handlerScope := scope.SubScope("handler")
-	offerEventScope := handlerScope.Tagged(map[string]string{"type": "offer"})
-	inverseEventScope := handlerScope.Tagged(map[string]string{"type": "inverse"})
+	offerEventScope := handlerScope.Tagged(map[string]string{"result": "offer"})
+	inverseEventScope := handlerScope.Tagged(map[string]string{"result": "inverse"})
 
 	prunerScope := handlerScope.SubScope("pruner")
 
@@ -60,6 +65,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		Pruned:      prunerScope.Counter("pruned"),
 		PrunerValid: prunerScope.Gauge("valid"),
+
+		UnreserveOffer:           poolCallScope.Counter("unreserve"),
+		UnreserveOfferFail:       poolFailScope.Counter("unreserve"),
+		CleanReservationResource: poolCallScope.Counter("clean"),
 
 		AvailableHosts: hostScope.Gauge("available_total"),
 	}

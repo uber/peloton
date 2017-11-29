@@ -12,14 +12,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
 	hostmgr_summary_mocks "code.uber.internal/infra/peloton/hostmgr/summary/mocks"
+	"code.uber.internal/infra/peloton/util"
+	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
 )
 
 type mockJSONClient struct {
@@ -37,13 +39,26 @@ func (c *mockJSONClient) Call(mesosStreamID string, msg proto.Message) error {
 type mockMesosStreamIDProvider struct {
 }
 
-func (msp *mockMesosStreamIDProvider) GetMesosStreamID() string {
+func (msp *mockMesosStreamIDProvider) GetMesosStreamID(ctx context.Context) string {
 	return "stream"
 }
 
-func (msp *mockMesosStreamIDProvider) GetFrameworkID() *mesos.FrameworkID {
+func (msp *mockMesosStreamIDProvider) GetFrameworkID(ctx context.Context) *mesos.FrameworkID {
 	return nil
 }
+
+const (
+	_perHostCPU = 10.0
+	_perHostMem = 20.0
+	pelotonRole = "peloton"
+)
+
+var (
+	_testAgent   = "agent"
+	_testOfferID = "testOffer"
+	_testKey     = "testKey"
+	_testValue   = "testValue"
+)
 
 func TestRemoveExpiredOffers(t *testing.T) {
 	// empty offer pool
@@ -304,6 +319,137 @@ func TestResetExpiredHostSummaries(t *testing.T) {
 		for _, hostname := range resetHostnames {
 			assert.Contains(t, tt.expectedPrunedHostnames, hostname)
 		}
+	}
+}
+
+func TestAddToBeUnreservedOffers(t *testing.T) {
+	// empty offer pool
+	scope := tally.NewTestScope("", map[string]string{})
+	ctrl := gomock.NewController(t)
+	mockSchedulerClient := mpb_mocks.NewMockSchedulerClient(ctrl)
+	defer ctrl.Finish()
+	pool := &offerPool{
+		timedOffers:                make(map[string]*TimedOffer),
+		hostOfferIndex:             make(map[string]summary.HostSummary),
+		timedOffersLock:            &sync.Mutex{},
+		offerHoldTime:              1 * time.Minute,
+		metrics:                    NewMetrics(scope),
+		mesosFrameworkInfoProvider: &mockMesosStreamIDProvider{},
+		mSchedulerClient:           mockSchedulerClient,
+	}
+
+	mockSchedulerClient.EXPECT().
+		Call(
+			gomock.Eq("stream"),
+			gomock.Any()).
+		Do(func(_ string, msg proto.Message) {
+			// Verify implicit reconcile call.
+			call := msg.(*sched.Call)
+			assert.Equal(t, sched.Call_ACCEPT, call.GetType())
+			assert.Equal(t, "", call.GetFrameworkId().GetValue())
+		}).
+		Return(nil)
+
+	reservation := &mesos.Resource_ReservationInfo{
+		Labels: &mesos.Labels{
+			Labels: []*mesos.Label{
+				{
+					Key:   &_testKey,
+					Value: &_testValue,
+				},
+			},
+		},
+	}
+	reservedResources := []*mesos.Resource{
+		util.NewMesosResourceBuilder().
+			WithName("cpus").
+			WithValue(_perHostCPU).
+			WithRole(pelotonRole).
+			WithReservation(reservation).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName("mem").
+			WithValue(_perHostMem).
+			WithReservation(reservation).
+			WithRole(pelotonRole).
+			Build(),
+	}
+
+	offer1 := createReservedMesosOffer(reservedResources)
+
+	pool.AddOffers(context.Background(), []*mesos.Offer{offer1})
+	assert.Equal(t, int64(0), scope.Snapshot().Counters()["pool.call.unreserve+"].Value())
+	pool.CleanReservationResources()
+	assert.Equal(t, int64(1), scope.Snapshot().Counters()["pool.call.unreserve+"].Value())
+	assert.Equal(t, int64(0), scope.Snapshot().Counters()["pool.fail.unreserve+"].Value())
+}
+
+func TestAddToBeUnreservedOffersFailure(t *testing.T) {
+	// empty offer pool
+	scope := tally.NewTestScope("", map[string]string{})
+	ctrl := gomock.NewController(t)
+	mockSchedulerClient := mpb_mocks.NewMockSchedulerClient(ctrl)
+	defer ctrl.Finish()
+	pool := &offerPool{
+		timedOffers:                make(map[string]*TimedOffer),
+		hostOfferIndex:             make(map[string]summary.HostSummary),
+		timedOffersLock:            &sync.Mutex{},
+		offerHoldTime:              1 * time.Minute,
+		metrics:                    NewMetrics(scope),
+		mesosFrameworkInfoProvider: &mockMesosStreamIDProvider{},
+		mSchedulerClient:           mockSchedulerClient,
+	}
+
+	mockSchedulerClient.EXPECT().
+		Call(
+			gomock.Eq("stream"),
+			gomock.Any()).
+		Return(fmt.Errorf("some error"))
+
+	reservation := &mesos.Resource_ReservationInfo{
+		Labels: &mesos.Labels{
+			Labels: []*mesos.Label{
+				{
+					Key:   &_testKey,
+					Value: &_testValue,
+				},
+			},
+		},
+	}
+	reservedResources := []*mesos.Resource{
+		util.NewMesosResourceBuilder().
+			WithName("cpus").
+			WithValue(_perHostCPU).
+			WithRole(pelotonRole).
+			WithReservation(reservation).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName("mem").
+			WithValue(_perHostMem).
+			WithReservation(reservation).
+			WithRole(pelotonRole).
+			Build(),
+	}
+
+	offer1 := createReservedMesosOffer(reservedResources)
+
+	pool.AddOffers(context.Background(), []*mesos.Offer{offer1})
+	assert.Equal(t, int64(0), scope.Snapshot().Counters()["pool.call.unreserve+"].Value())
+	pool.CleanReservationResources()
+	assert.Equal(t, int64(0), scope.Snapshot().Counters()["pool.call.unreserve+"].Value())
+	assert.Equal(t, int64(1), scope.Snapshot().Counters()["pool.fail.unreserve+"].Value())
+}
+
+func createReservedMesosOffer(res []*mesos.Resource) *mesos.Offer {
+	return &mesos.Offer{
+		Id: &mesos.OfferID{
+			Value: &_testOfferID,
+		},
+		AgentId: &mesos.AgentID{
+			Value: &_testAgent,
+		},
+		Hostname:  &_testAgent,
+		Resources: res,
 	}
 }
 

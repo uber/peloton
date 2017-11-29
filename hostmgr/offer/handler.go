@@ -10,6 +10,7 @@ import (
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	"code.uber.internal/infra/peloton/hostmgr/prune"
+	"code.uber.internal/infra/peloton/hostmgr/reservation/cleaner"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 
@@ -19,7 +20,10 @@ import (
 )
 
 const (
-	hostPrunerName = "hostpruner"
+	_hostPrunerName              = "hostpruner"
+	_resourceCleanerName         = "resourceCleaner"
+	_resourceCleanerPeriod       = 60 * time.Minute
+	_resourceCleanerInitialDelay = 10 * time.Minute
 )
 
 // EventHandler defines the interface for offer event handler that is
@@ -73,13 +77,25 @@ func InitEventHandler(
 	)
 	hostPruner := prune.NewHostPruner(
 		pool,
-		parent.SubScope(hostPrunerName),
+		parent.SubScope(_hostPrunerName),
 	)
 	backgroundMgr.RegisterWorks(
 		background.Work{
-			Name:   hostPrunerName,
+			Name:   _hostPrunerName,
 			Func:   hostPruner.Prune,
 			Period: hostPruningPeriodSec,
+		},
+	)
+	resourceCleaner := cleaner.NewCleaner(
+		pool,
+		parent.SubScope(_resourceCleanerName),
+	)
+	backgroundMgr.RegisterWorks(
+		background.Work{
+			Name:         _resourceCleanerName,
+			Func:         resourceCleaner.Run,
+			Period:       _resourceCleanerPeriod,
+			InitialDelay: _resourceCleanerInitialDelay,
 		},
 	)
 	//TODO: refactor OfferPruner as a background worker

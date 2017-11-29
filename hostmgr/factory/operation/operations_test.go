@@ -27,8 +27,10 @@ const (
 )
 
 var (
-	_testKey   = "testKey"
-	_testValue = "testValue"
+	_testAgent   = "agent"
+	_testKey     = "testKey"
+	_testValue   = "testValue"
+	_testOfferID = "testOffer"
 )
 
 type OperationTestSuite struct {
@@ -273,6 +275,67 @@ func (suite *OperationTestSuite) TestOfferOperationsLaunchNotEnoughResources() {
 
 	suite.Error(err)
 	suite.Equal(0, len(offerOperations))
+}
+
+func (suite *OperationTestSuite) TestGetOfferUnreserveOperation() {
+	operations := []*hostsvc.OfferOperation{
+		{
+			Type: hostsvc.OfferOperation_UNRESERVE,
+		},
+	}
+	testOffer := suite.createReservedMesosOffer(suite.reservedResources[:2])
+	operationsFactory := NewOfferOperationsFactory(
+		operations,
+		testOffer.GetResources(),
+		"hostname-0",
+		&mesos.AgentID{
+			Value: util.PtrPrintf("agent-0"),
+		},
+	)
+
+	offerOperations, err := operationsFactory.GetOfferOperations()
+
+	suite.NoError(err)
+	suite.Equal(1, len(offerOperations))
+	unreserveOp := offerOperations[0]
+	suite.Equal(
+		mesos.Offer_Operation_UNRESERVE,
+		unreserveOp.GetType())
+	suite.Equal(
+		suite.reservedResources[:2],
+		unreserveOp.GetUnreserve().GetResources())
+}
+
+func (suite *OperationTestSuite) TestGetOfferInvalidUnreserveOperation() {
+	operations := []*hostsvc.OfferOperation{
+		{
+			Type: hostsvc.OfferOperation_UNRESERVE,
+		},
+	}
+	operationsFactory := NewOfferOperationsFactory(
+		operations,
+		suite.reservedResources,
+		"hostname-0",
+		&mesos.AgentID{
+			Value: util.PtrPrintf("agent-0"),
+		},
+	)
+
+	_, err := operationsFactory.GetOfferOperations()
+	suite.Error(err)
+}
+
+func (suite *OperationTestSuite) createReservedMesosOffer(res []*mesos.Resource) *mesos.Offer {
+	return &mesos.Offer{
+		Id: &mesos.OfferID{
+			Value: &_testOfferID,
+		},
+		AgentId: &mesos.AgentID{
+			Value: &_testAgent,
+		},
+		Hostname:  &_testAgent,
+		Resources: res,
+	}
 }
 
 func generateLaunchableTasks(numTasks int) []*hostsvc.LaunchableTask {

@@ -10,12 +10,14 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/hostmgr/factory/task"
+	"code.uber.internal/infra/peloton/hostmgr/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 )
 
 var (
 	pelotonRole      = "peloton"
 	pelotonPrinciple = "peloton"
+	unreservedRole   = "*"
 )
 
 // OfferOperationsFactory returns operations for mesos offer ACCEPT call.
@@ -64,6 +66,8 @@ func (o *OfferOperationsFactory) getOfferOperation(
 		return o.getReserveOperation(operation)
 	case hostsvc.OfferOperation_CREATE:
 		return o.getCreateOperation(operation)
+	case hostsvc.OfferOperation_UNRESERVE:
+		return o.getUnreserveOperation(operation)
 	default:
 		return nil, errors.New("offer operation type not supported")
 	}
@@ -113,6 +117,40 @@ func (o *OfferOperationsFactory) getReserveOperation(
 		Type: &reserveType,
 		Reserve: &mesos.Offer_Operation_Reserve{
 			Resources: reservedResources,
+		},
+	}, nil
+}
+
+func (o *OfferOperationsFactory) getUnreserveOperation(
+	operation *hostsvc.OfferOperation) (*mesos.Offer_Operation, error) {
+
+	unusedResourcesLabels := reservation.GetReservationLabelsWithoutVolume(o.resources)
+
+	var result []*mesos.Resource
+	for _, res := range o.resources {
+		if len(res.GetRole()) == 0 ||
+			res.GetRole() == unreservedRole ||
+			res.GetReservation().GetLabels() == nil {
+			continue
+		}
+
+		resLabels := res.GetReservation().GetLabels().String()
+		if _, ok := unusedResourcesLabels[resLabels]; !ok {
+			continue
+		}
+
+		result = append(result, res)
+	}
+
+	if len(result) == 0 {
+		return nil, errors.New("invalid unreserve operation")
+	}
+
+	reserveType := mesos.Offer_Operation_UNRESERVE
+	return &mesos.Offer_Operation{
+		Type: &reserveType,
+		Unreserve: &mesos.Offer_Operation_Unreserve{
+			Resources: result,
 		},
 	}, nil
 }

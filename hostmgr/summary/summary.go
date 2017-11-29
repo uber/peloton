@@ -89,6 +89,10 @@ type HostSummary interface {
 	// to ReadyOffer if the PlacingOffer status has expired, and returns
 	// wether the hostSummary got reset
 	ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources)
+
+	// RemoveUnusedReservedOffers removes and returns offers that contain
+	// unused reserved resources.
+	RemoveUnusedReservedOffers() []*mesos.Offer
 }
 
 // hostSummary is a data struct holding offers on a particular host.
@@ -103,9 +107,11 @@ type hostSummary struct {
 
 	// offerID -> reserved offer
 	reservedOffers map[string]*mesos.Offer
-	// reservedResources has reservationLabelID -> resources.
+	// reservedResources has reservationLabelID -> resources, which groups
+	// reserved resources by labels. It is recalculated everytime offer added.
 	reservedResources map[string]*reservation.ReservedResources
 
+	// TODO: pass volumeStore in updatePersistentVolume function.
 	volumeStore storage.PersistentVolumeStore
 }
 
@@ -278,19 +284,19 @@ func (a *hostSummary) AddMesosOffer(ctx context.Context, offer *mesos.Offer) Cac
 			reservedOffers)
 		a.updatePersistentVolumes(ctx)
 		log.WithFields(log.Fields{
-			"offer":                    offer,
-			"total_reserved_resources": a.reservedResources,
-		}).Debug("Added reserved offer.")
+			"offer": offer,
+			"total_reserved_resources_noindex": a.reservedResources,
+		}).Info("Added reserved offer.")
 	}
 
 	return a.status
 }
 
-// storePersistentVolumes iterates reserved resources and write volume info into
-// the db if not exist.
+// updatePersistentVolumes iterates all the reserved resources and write volume
+// info into the db if not exist.
+// TODO(mu): only update persistent volume from the offer just added.
 func (a *hostSummary) updatePersistentVolumes(ctx context.Context) error {
 	for labels, res := range a.reservedResources {
-		// TODO(mu): unreserve resources without persistent volume.
 		if len(res.Volumes) == 0 {
 			continue
 		}
@@ -325,12 +331,12 @@ func (a *hostSummary) updatePersistentVolumes(ctx context.Context) error {
 			}
 
 			// TODO: compare volume info with result from db.
-			log.WithFields(
-				log.Fields{
-					"reserved_resource": res,
-					"labels":            labels,
-					"volume":            pv}).
-				Info("updating persistent volume table")
+			log.WithFields(log.Fields{
+				"reserved_resource": res,
+				"labels":            labels,
+				"volume":            pv,
+			}).Info("updating persistent volume table")
+
 			err = a.volumeStore.UpdatePersistentVolume(ctx, volumeID, volume.VolumeState_CREATED)
 			if err != nil {
 				log.WithFields(
@@ -359,10 +365,7 @@ func (a *hostSummary) ClaimForLaunch() (map[string]*mesos.Offer, error) {
 	}
 
 	result := make(map[string]*mesos.Offer)
-	for id, offer := range a.unreservedOffers {
-		result[id] = offer
-		delete(a.unreservedOffers, id)
-	}
+	result, a.unreservedOffers = a.unreservedOffers, result
 
 	// Reset status to ready so any future offer on the host is considered
 	// as ready.
@@ -378,10 +381,7 @@ func (a *hostSummary) ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, e
 	defer a.Unlock()
 
 	result := make(map[string]*mesos.Offer)
-	for id, offer := range a.reservedOffers {
-		result[id] = offer
-		delete(a.reservedOffers, id)
-	}
+	result, a.reservedOffers = a.reservedOffers, result
 
 	return result, nil
 }
@@ -401,18 +401,7 @@ func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offe
 			return a.status, reserved
 		}
 
-		// Remove offer then calculate/update the reserved resource.
 		delete(a.reservedOffers, offerID)
-		reservedOffers := []*mesos.Offer{}
-		for _, offer := range a.reservedOffers {
-			reservedOffers = append(reservedOffers, offer)
-		}
-		a.reservedResources = reservation.GetLabeledReservedResources(
-			reservedOffers)
-		log.WithFields(log.Fields{
-			"offerID":                  offerID,
-			"total_reserved_resources": a.reservedResources,
-		}).Debug("Removed reserved offer.")
 		return a.status, reserved
 	}
 
@@ -489,4 +478,20 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 		}
 	}
 	return false, scalar.Resources{}
+}
+
+// RemoveUnusedReservedOffers removes and returns offers that contain unused reserved resources,
+// i.e. offers without volume.
+func (a *hostSummary) RemoveUnusedReservedOffers() []*mesos.Offer {
+	a.Lock()
+	defer a.Unlock()
+
+	result := []*mesos.Offer{}
+	for _, offer := range a.reservedOffers {
+		if len(reservation.GetReservationLabelsWithoutVolume(offer.GetResources())) != 0 {
+			delete(a.reservedOffers, offer.GetId().GetValue())
+			result = append(result, offer)
+		}
+	}
+	return result
 }
