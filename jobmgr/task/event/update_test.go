@@ -326,6 +326,35 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithoutRetry()
 	time.Sleep(_waitTime)
 }
 
+// Test processing task LOST status update due to reconciliation w/o retry due to goal state being killed.
+func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
+	defer suite.ctrl.Finish()
+
+	failureReason := mesos.TaskStatus_REASON_RECONCILIATION
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	event.MesosTaskStatus.Reason = &failureReason
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	taskInfo.Runtime.GoalState = task.TaskState_KILLED
+
+	updateTaskInfo := createTestTaskInfo(task.TaskState_KILLED)
+	updateTaskInfo.GetRuntime().Reason = failureReason.String()
+	updateTaskInfo.GetRuntime().Message = _failureMsg
+	updateTaskInfo.GetRuntime().GoalState = task.TaskState_KILLED
+	updateTaskInfo.GetRuntime().CompletionTime = _currentTime
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+		suite.mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime()).
+			Return(nil),
+	)
+
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	time.Sleep(_waitTime)
+}
+
 // Test processing orphan task status update.
 func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
 	defer suite.ctrl.Finish()

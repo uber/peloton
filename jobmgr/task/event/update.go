@@ -291,6 +291,16 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			}).Debug("skip reschedule lost task as it is already in terminal state")
 			return nil
 		}
+		if runtime.GetGoalState() == pb_task.TaskState_KILLED {
+			// Do not take any action for killed tasks, just mark it killed.
+			// Same message will go to resource manager which will release the placement.
+			log.WithFields(log.Fields{
+				"db_task_info":      taskInfo,
+				"task_status_event": event.GetMesosTaskStatus(),
+			}).Debug("mark stopped task as killed due to LOST")
+			runtime.State = pb_task.TaskState_KILLED
+			break
+		}
 		p.metrics.RetryLostTasksTotal.Inc(1)
 		log.WithFields(log.Fields{
 			"db_task_info":      taskInfo,
