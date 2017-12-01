@@ -273,6 +273,10 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.handler.runtimeUpdater = updater
 
 	mockJobStore.EXPECT().
+		GetJobFullConfig(context.Background(), jobID).
+		Return(&oldJobConfig, nil).
+		AnyTimes()
+	mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).
 		Return(&oldJobConfig, nil).
 		AnyTimes()

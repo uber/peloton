@@ -148,8 +148,10 @@ enum JobState {
   // All tasks in the job are in terminated state and one or more
   // tasks in the job is killed by the user.
   KILLED = 6;
-}
 
+  // Job is deleted.
+  DELETED = 7;
+}
 
 /**
  *  Job RuntimeInfo provides the current runtime status of a Job
@@ -179,6 +181,9 @@ message RuntimeInfo
   // The version reflects the version of the JobConfig, that's currently
   // used by the job.
   int64 configVersion = 6;
+
+  // Goal state of the job.
+  JobState goalState = 7;
 }
 
 /**
@@ -212,6 +217,7 @@ message QuerySpec {
 
   // List of keywords to query the jobs. Will match all jobs if
   // the list is empty.
+  // keywords cannot be used to search instance configuration.
   repeated string keywords = 3;
 
   // List of job states to query the jobs. Will match all jobs if

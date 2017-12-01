@@ -232,6 +232,11 @@ func (m *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 	return nil
 }
 
+// GetJobFullConfig returns full job configuration including instance configuration
+func (m *Store) GetJobFullConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error) {
+	return nil, fmt.Errorf("unsupported get job full config")
+}
+
 // GetJobConfig returns a job config given the job id
 func (m *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error) {
 	jobs, err := m.getJobs(Filters{"row_key=": {id.Value}, "col_key=": {colJobConfig}})
@@ -293,7 +298,7 @@ func (m *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 }
 
 // GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job
-func (m *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+func (m *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange, configNeeded storage.ConfigurationRequest) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "instance_id >=": {Range.From}, "instance_id <": {Range.To}})
 }
 
@@ -496,7 +501,7 @@ func (m *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID
 
 // GetTaskConfig returns the task specific config
 func (m *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
-	instanceID uint32, version int64) (*task.TaskConfig, error) {
+	instanceID uint32, version uint64) (*task.TaskConfig, error) {
 	return nil, fmt.Errorf("unimplemented GetTaskConfig")
 }
 

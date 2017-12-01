@@ -142,7 +142,7 @@ func (m *serviceHandler) List(
 		if body.Range.To > jobConfig.InstanceCount {
 			body.Range.To = jobConfig.InstanceCount
 		}
-		result, err = m.taskStore.GetTasksForJobByRange(ctx, body.JobId, body.Range)
+		result, err = m.taskStore.GetTasksForJobByRange(ctx, body.JobId, body.Range, storage.ConfigurationNeeded)
 	}
 	if err != nil || len(result) == 0 {
 		m.metrics.TaskListFail.Inc(1)
@@ -185,7 +185,7 @@ func (m *serviceHandler) getTaskInfosByRangesFromDB(
 			if taskRange.GetTo() > jobConfig.InstanceCount {
 				taskRange.To = jobConfig.InstanceCount
 			}
-			tmpTaskInfos, err = m.taskStore.GetTasksForJobByRange(ctx, jobID, taskRange)
+			tmpTaskInfos, err = m.taskStore.GetTasksForJobByRange(ctx, jobID, taskRange, storage.ConfigurationNotNeeded)
 			if err != nil {
 				return taskInfos, err
 			}

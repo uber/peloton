@@ -122,10 +122,13 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		}
 	}
 
-	if err := j.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("Failed to create task configs")
+	if jobRuntime.GetGoalState() == job.JobState_DELETED {
+		err := j.jobStore.DeleteJob(ctx, jobID)
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", jobID.GetValue()).
+				Error("failed to delete job in recovery")
+		}
 		return err
 	}
 
@@ -135,7 +138,7 @@ func (j *Recovery) recoverJob(ctx context.Context, jobID *peloton.JobID, startup
 		log.WithField("start", start).
 			WithField("end", end).
 			Debug("Validating task range")
-		taskInfos, err := j.taskStore.GetTasksForJobByRange(ctx, jobID, &pb_task.InstanceRange{From: start, To: end})
+		taskInfos, err := j.taskStore.GetTasksForJobByRange(ctx, jobID, &pb_task.InstanceRange{From: start, To: end}, storage.ConfigurationNotNeeded)
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", jobID.GetValue()).

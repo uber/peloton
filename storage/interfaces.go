@@ -17,6 +17,16 @@ type TaskNotFoundError struct {
 	TaskID string
 }
 
+// ConfigurationRequest indicates whether configuration information is being requested
+type ConfigurationRequest int
+
+const (
+	// ConfigurationNeeded indicates that configuration information is being requested
+	ConfigurationNeeded ConfigurationRequest = iota
+	// ConfigurationNotNeeded indicates that configuration information is not being requested
+	ConfigurationNotNeeded
+)
+
 func (e *TaskNotFoundError) Error() string {
 	return fmt.Sprintf("%v is not found", e.TaskID)
 }
@@ -34,6 +44,7 @@ func (e *VolumeNotFoundError) Error() string {
 type JobStore interface {
 	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error
 	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
+	GetJobFullConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
 	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error)
 	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
@@ -54,9 +65,10 @@ type TaskStore interface {
 	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)
 	GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error)
-	GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)
+	// If configNeeded is set to ConfigurationNotNeeded, only task runtimes will be returned.
+	GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange, configNeeded ConfigurationRequest) (map[uint32]*task.TaskInfo, error)
 	GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error)
-	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int64) (*task.TaskConfig, error)
+	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version uint64) (*task.TaskConfig, error)
 	GetTaskConfigs(ctx context.Context, id *peloton.JobID, instanceIDs []uint32, version int64) (map[uint32]*task.TaskConfig, error)
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
 	QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error)

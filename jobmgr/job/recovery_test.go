@@ -15,6 +15,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 
+	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/storage/cassandra"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"github.com/pborman/uuid"
@@ -69,6 +70,7 @@ func TestValidatorWithStore(t *testing.T) {
 	// the job state is update to pending.
 	jobRuntime, err := csStore.GetJobRuntime(context.Background(), jobID)
 	assert.Nil(t, err)
+	jobRuntime.GoalState = job.JobState_SUCCEEDED
 	jobRuntime.CreationTime = (time.Now().Add(-10 * time.Hour)).Format(time.RFC3339Nano)
 
 	for i := uint32(0); i < uint32(3); i++ {
@@ -152,10 +154,6 @@ func TestValidator(t *testing.T) {
 		GetJobRuntime(context.Background(), gomock.Any()).
 		Return(&jobRuntime, nil).
 		AnyTimes()
-	mockTaskStore.EXPECT().
-		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
-		Return(nil).
-		AnyTimes()
 	mockJobStore.EXPECT().
 		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(nil).
@@ -166,7 +164,7 @@ func TestValidator(t *testing.T) {
 		Return(nil)
 	mockTrackedManager.EXPECT().SetTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobByRange(context.Background(), jobID, &task.InstanceRange{From: 0, To: 3}).
+		GetTasksForJobByRange(context.Background(), jobID, &task.InstanceRange{From: 0, To: 3}, storage.ConfigurationNotNeeded).
 		Return(tasks, nil)
 
 	validator := NewJobRecovery(mockTrackedManager, mockJobStore, mockTaskStore, tally.NoopScope)
@@ -230,10 +228,6 @@ func TestValidatorFailures(t *testing.T) {
 		GetJobRuntime(context.Background(), gomock.Any()).
 		Return(&jobRuntime, nil).
 		AnyTimes()
-	mockTaskStore.EXPECT().
-		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
-		Return(nil).
-		AnyTimes()
 	mockJobStore.EXPECT().
 		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
 		Return(errors.New("Mock error")).
@@ -250,7 +244,7 @@ func TestValidatorFailures(t *testing.T) {
 		AnyTimes()
 	mockTrackedManager.EXPECT().SetTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
 	mockTaskStore.EXPECT().
-		GetTasksForJobByRange(context.Background(), jobID, &task.InstanceRange{From: 0, To: 3}).
+		GetTasksForJobByRange(context.Background(), jobID, &task.InstanceRange{From: 0, To: 3}, storage.ConfigurationNotNeeded).
 		Return(tasks, nil).
 		AnyTimes()
 

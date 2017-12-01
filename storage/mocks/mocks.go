@@ -13,6 +13,7 @@ import (
 	task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	upgrade "code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
 	volume "code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	storage "code.uber.internal/infra/peloton/storage"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -87,6 +88,19 @@ func (_m *MockJobStore) GetJobConfig(_param0 context.Context, _param1 *peloton.J
 // GetJobConfig indicates an expected call of GetJobConfig
 func (_mr *MockJobStoreMockRecorder) GetJobConfig(arg0, arg1 interface{}) *gomock.Call {
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetJobConfig", reflect.TypeOf((*MockJobStore)(nil).GetJobConfig), arg0, arg1)
+}
+
+// GetJobFullConfig mocks base method
+func (_m *MockJobStore) GetJobFullConfig(_param0 context.Context, _param1 *peloton.JobID) (*job.JobConfig, error) {
+	ret := _m.ctrl.Call(_m, "GetJobFullConfig", _param0, _param1)
+	ret0, _ := ret[0].(*job.JobConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetJobFullConfig indicates an expected call of GetJobFullConfig
+func (_mr *MockJobStoreMockRecorder) GetJobFullConfig(arg0, arg1 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetJobFullConfig", reflect.TypeOf((*MockJobStore)(nil).GetJobFullConfig), arg0, arg1)
 }
 
 // GetJobRuntime mocks base method
@@ -226,7 +240,7 @@ func (_mr *MockTaskStoreMockRecorder) GetTaskByID(arg0, arg1 interface{}) *gomoc
 }
 
 // GetTaskConfig mocks base method
-func (_m *MockTaskStore) GetTaskConfig(_param0 context.Context, _param1 *peloton.JobID, _param2 uint32, _param3 int64) (*task.TaskConfig, error) {
+func (_m *MockTaskStore) GetTaskConfig(_param0 context.Context, _param1 *peloton.JobID, _param2 uint32, _param3 uint64) (*task.TaskConfig, error) {
 	ret := _m.ctrl.Call(_m, "GetTaskConfig", _param0, _param1, _param2, _param3)
 	ret0, _ := ret[0].(*task.TaskConfig)
 	ret1, _ := ret[1].(error)
@@ -317,16 +331,16 @@ func (_mr *MockTaskStoreMockRecorder) GetTasksForJobAndState(arg0, arg1, arg2 in
 }
 
 // GetTasksForJobByRange mocks base method
-func (_m *MockTaskStore) GetTasksForJobByRange(_param0 context.Context, _param1 *peloton.JobID, _param2 *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
-	ret := _m.ctrl.Call(_m, "GetTasksForJobByRange", _param0, _param1, _param2)
+func (_m *MockTaskStore) GetTasksForJobByRange(_param0 context.Context, _param1 *peloton.JobID, _param2 *task.InstanceRange, _param3 storage.ConfigurationRequest) (map[uint32]*task.TaskInfo, error) {
+	ret := _m.ctrl.Call(_m, "GetTasksForJobByRange", _param0, _param1, _param2, _param3)
 	ret0, _ := ret[0].(map[uint32]*task.TaskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetTasksForJobByRange indicates an expected call of GetTasksForJobByRange
-func (_mr *MockTaskStoreMockRecorder) GetTasksForJobByRange(arg0, arg1, arg2 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetTasksForJobByRange", reflect.TypeOf((*MockTaskStore)(nil).GetTasksForJobByRange), arg0, arg1, arg2)
+func (_mr *MockTaskStoreMockRecorder) GetTasksForJobByRange(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetTasksForJobByRange", reflect.TypeOf((*MockTaskStore)(nil).GetTasksForJobByRange), arg0, arg1, arg2, arg3)
 }
 
 // QueryTasks mocks base method
