@@ -1,0 +1,11 @@
+This directory contains the following files.
+
+Yaml files for 10,000 task job with no instance config.
+testjob_large_short.yaml runs each instance with a sleep of 10s
+and testjob_large_long.yaml runs each instance with a sleep of 300s.
+
+A base yaml file (testjob_base.yaml) and a python file
+(generate_instance_config.py) which can be used to generate a job with
+any number of tasks with instance configs. An example to use this is as follows.
+python example/performance/generate_instance_config.py --number=10000 --sleep=10
+which generates 10,000 tasks each sleeping for 10s.

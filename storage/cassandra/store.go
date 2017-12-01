@@ -828,7 +828,6 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 							WithField("instance_id", instanceID).
 							WithError(err).
 							Error("Failed to create task runtime")
-						s.metrics.TaskMetrics.TaskCreateFail.Inc(int64(nTasks))
 						atomic.AddUint32(&tasksNotCreated, batchSize)
 						return
 					}
@@ -859,13 +858,11 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 				if err != nil {
 					log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 						Errorf("Writing %d tasks (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart), err)
-					s.metrics.TaskMetrics.TaskCreateFail.Inc(int64(nTasks))
 					atomic.AddUint32(&tasksNotCreated, batchSize)
 					return
 				}
 				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 					Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart))
-				s.metrics.TaskMetrics.TaskCreate.Inc(int64(nTasks))
 
 				err = s.logTaskStateChanges(ctx, idsToTaskRuntimes)
 				if err != nil {
@@ -877,6 +874,8 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 	wg.Wait()
 
 	if tasksNotCreated != 0 {
+		s.metrics.TaskMetrics.TaskCreateFail.Inc(int64(tasksNotCreated))
+		s.metrics.TaskMetrics.TaskCreate.Inc(int64(nTasks - tasksNotCreated))
 		msg := fmt.Sprintf(
 			"Wrote %d tasks for %v, and was unable to write %d tasks to Cassandra in %v",
 			nTasks-tasksNotCreated,
@@ -886,6 +885,8 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 		log.Errorf(msg)
 		return fmt.Errorf(msg)
 	}
+
+	s.metrics.TaskMetrics.TaskCreate.Inc(int64(nTasks))
 
 	log.WithField("duration_s", time.Since(timeStart).Seconds()).
 		Infof("Wrote all %d tasks for %v to Cassandra in %v", nTasks, jobID, time.Since(timeStart))
