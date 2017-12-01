@@ -425,6 +425,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.createTestTaskInfo(
 		task.TaskState_FAILED, 1)
+	singleTaskInfo[1].GetRuntime().GoalState = task.TaskState_FAILED
 
 	taskRanges := []*task.InstanceRange{
 		{
@@ -454,6 +455,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 		request,
 	)
 	suite.Equal(singleTaskInfo[1].GetRuntime().GetState(), task.TaskState_INITIALIZED)
+	suite.Equal(singleTaskInfo[1].GetRuntime().GetGoalState(), task.TaskState_SUCCEEDED)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
 	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)

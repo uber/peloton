@@ -261,13 +261,11 @@ func (m *serviceHandler) Start(
 			util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		}
 
-		// First change goalstate if it is KILLED.
-		if taskInfo.GetRuntime().GoalState == task.TaskState_KILLED {
-			if jobConfig.GetType() == pb_job.JobType_SERVICE {
-				taskInfo.GetRuntime().GoalState = task.TaskState_RUNNING
-			} else {
-				taskInfo.GetRuntime().GoalState = task.TaskState_SUCCEEDED
-			}
+		// Change the goalstate.
+		if jobConfig.GetType() == pb_job.JobType_SERVICE {
+			taskInfo.GetRuntime().GoalState = task.TaskState_RUNNING
+		} else {
+			taskInfo.GetRuntime().GoalState = task.TaskState_SUCCEEDED
 		}
 
 		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskRuntime)
