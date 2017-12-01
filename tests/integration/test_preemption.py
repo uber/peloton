@@ -27,8 +27,7 @@ pytestmark = [pytest.mark.preemption]
 #                                for tasks in respool_B
 
 
-@pytest.mark.smoketest
-def test__preemption_tasks_reshcedules_task():
+def test__preemption_tasks_reschedules_task():
     job_1 = Job(job_file='test_preemption_job.yaml',
                 config=IntegrationTestConfig(
                     pool_file='test_preemption_pool_A.yaml'))
