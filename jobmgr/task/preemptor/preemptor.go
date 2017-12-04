@@ -137,6 +137,8 @@ func (p *preemptor) preemptTasks(ctx context.Context, tasks []*resmgr.Task) erro
 
 		// set goal state to TaskState_PREEMPTING
 		taskInfo.GetRuntime().GoalState = pb_task.TaskState_PREEMPTING
+		taskInfo.GetRuntime().Message = "Preempting running task"
+		taskInfo.GetRuntime().Reason = ""
 
 		// update the task in the tracked manager
 		err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)

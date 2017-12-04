@@ -244,9 +244,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return nil
 	}
 
-	// clear message and reason
-	runtime.Message = ""
-	runtime.Reason = ""
+	// Persist the reason and message for mesos updates
+	runtime.Message = statusMsg
+	runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
 
 	switch state {
 	case pb_task.TaskState_KILLED:
@@ -276,7 +276,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 
 		p.metrics.RetryFailedTasksTotal.Inc(1)
-		statusMsg = "Rescheduled due to task failure status: " + statusMsg
+		runtime.Message = "Rescheduled due to task failure status: " + runtime.Message
 		util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		runtime.FailureCount++
 
@@ -299,6 +299,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				"task_status_event": event.GetMesosTaskStatus(),
 			}).Debug("mark stopped task as killed due to LOST")
 			runtime.State = pb_task.TaskState_KILLED
+			runtime.Message = "Stopped task LOST event: " + statusMsg
 			break
 		}
 		p.metrics.RetryLostTasksTotal.Inc(1)
@@ -306,7 +307,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"db_task_info":      taskInfo,
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("reschedule lost task")
-		statusMsg = "Rescheduled due to task LOST: " + statusMsg
+		runtime.Message = "Rescheduled due to task LOST: " + statusMsg
 		util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 
 	default:
@@ -324,19 +325,6 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		pb_task.TaskState_FAILED,
 		pb_task.TaskState_KILLED:
 		runtime.CompletionTime = now().UTC().Format(time.RFC3339Nano)
-	}
-
-	// Persist error message to help end user figure out root cause
-	if isUnexpected(state) && isMesosStatus {
-		runtime.Message = statusMsg
-		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
-		// TODO: Add metrics for unexpected task updates
-		log.WithFields(log.Fields{
-			"task_status_event": event.GetMesosTaskStatus(),
-			"task_id":           taskID,
-			"state":             state,
-			"runtime":           runtime},
-		).Debug("Received unexpected update for task")
 	}
 
 	err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), taskInfo.GetInstanceId(), runtime)

@@ -39,6 +39,8 @@ func (t *task) initialize(ctx context.Context) error {
 	taskInfo.Runtime.GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
 	taskInfo.Runtime.StartTime = ""
 	taskInfo.Runtime.CompletionTime = ""
+	taskInfo.Runtime.Message = "Initialize task"
+	taskInfo.Runtime.Reason = ""
 
 	err = m.UpdateTaskRuntime(ctx, t.job.ID(), taskInfo.GetInstanceId(), taskInfo.GetRuntime())
 	if err != nil {

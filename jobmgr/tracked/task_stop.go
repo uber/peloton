@@ -79,6 +79,8 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 	}
 
 	runtime.State = pb_task.TaskState_KILLED
+	runtime.Message = "Non-running task killed"
+	runtime.Reason = ""
 
 	return t.job.m.UpdateTaskRuntime(ctx, t.job.id, t.id, runtime)
 }

@@ -160,6 +160,8 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	updatedRuntime.Ports = make(map[string]uint32)
 	updatedRuntime.Ports["port"] = testPort
 	updatedRuntime.State = task.TaskState_LAUNCHED
+	updatedRuntime.Reason = "REASON_UPDATE_OFFER"
+	updatedRuntime.Message = "Add hostname and ports"
 
 	gomock.InOrder(
 		// Mock Task Store GetTaskByID
@@ -260,6 +262,8 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 	updatedRuntime.Ports = make(map[string]uint32)
 	updatedRuntime.Ports["port"] = testPort
 	updatedRuntime.State = task.TaskState_LAUNCHED
+	updatedRuntime.Reason = "REASON_UPDATE_OFFER"
+	updatedRuntime.Message = "Add hostname and ports"
 
 	gomock.InOrder(
 		// Mock Task Store GetTaskByID
@@ -378,6 +382,8 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 	updatedRuntime.Ports = make(map[string]uint32)
 	updatedRuntime.Ports["port"] = testPort
 	updatedRuntime.State = task.TaskState_LAUNCHED
+	updatedRuntime.Reason = "REASON_UPDATE_OFFER"
+	updatedRuntime.Message = "Add hostname and ports"
 
 	gomock.InOrder(
 		// Mock Task Store GetTaskByID

@@ -109,10 +109,10 @@ func (p *statusUpdateRM) ProcessStatusUpdate(ctx context.Context, event *pb_even
 	var err error
 	var state pb_task.TaskState
 
+	statusMsg := event.PelotonTaskEvent.Message
 	if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
 		taskID = event.PelotonTaskEvent.TaskId.Value
 		state = event.PelotonTaskEvent.State
-		statusMsg := event.PelotonTaskEvent.Message
 		log.WithFields(log.Fields{
 			"taskID":  taskID,
 			"state":   state.String(),
@@ -135,6 +135,8 @@ func (p *statusUpdateRM) ProcessStatusUpdate(ctx context.Context, event *pb_even
 	}
 
 	taskInfo.GetRuntime().State = state
+	taskInfo.GetRuntime().Message = statusMsg
+	taskInfo.GetRuntime().Reason = "REASON_RESOURCE_TASK_UPDATE"
 
 	err = p.taskStore.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 	if err != nil {

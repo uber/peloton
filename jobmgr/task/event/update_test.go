@@ -137,6 +137,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
 	updateTaskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 	updateTaskInfo.GetRuntime().StartTime = _currentTime
+	updateTaskInfo.GetRuntime().Message = "testFailure"
+	updateTaskInfo.GetRuntime().Reason = "REASON_COMMAND_EXECUTOR_FAILED"
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -338,7 +340,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 
 	updateTaskInfo := createTestTaskInfo(task.TaskState_KILLED)
 	updateTaskInfo.GetRuntime().Reason = failureReason.String()
-	updateTaskInfo.GetRuntime().Message = _failureMsg
+	updateTaskInfo.GetRuntime().Message = "Stopped task LOST event: " + _failureMsg
 	updateTaskInfo.GetRuntime().GoalState = task.TaskState_KILLED
 	updateTaskInfo.GetRuntime().CompletionTime = _currentTime
 

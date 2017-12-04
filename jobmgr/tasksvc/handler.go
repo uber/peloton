@@ -268,6 +268,8 @@ func (m *serviceHandler) Start(
 		} else {
 			taskInfo.GetRuntime().GoalState = task.TaskState_SUCCEEDED
 		}
+		taskInfo.GetRuntime().Message = "Task start API request"
+		taskInfo.GetRuntime().Reason = ""
 
 		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskRuntime)
 		if err != nil {
@@ -370,6 +372,8 @@ func (m *serviceHandler) Stop(
 		}
 
 		taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
+		taskInfo.GetRuntime().Message = "Task stop API request"
+		taskInfo.GetRuntime().Reason = ""
 		// TODO: We can retry here in case of conflict.
 		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskInfo.GetRuntime())
 		if err != nil {

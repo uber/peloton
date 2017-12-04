@@ -186,6 +186,8 @@ func (l *launcher) enqueueTasks(ctx context.Context, resMgrClient resmgrsvc.Reso
 
 	for _, t := range tasks {
 		t.Runtime.State = task.TaskState_INITIALIZED
+		t.Runtime.Message = "Regenerate placement"
+		t.Runtime.Reason = "REASON_HOST_REJECT_OFFER"
 		util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.Runtime)
 		for {
 			err := l.taskStore.UpdateTaskRuntime(ctx, t.JobId, t.InstanceId, t.Runtime)
@@ -271,6 +273,8 @@ func (l *launcher) getLaunchableTasks(
 		}
 
 		// Writes the hostname and ports information back to db.
+		taskInfo.GetRuntime().Message = "Add hostname and ports"
+		taskInfo.GetRuntime().Reason = "REASON_UPDATE_OFFER"
 		err = l.taskStore.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		if err != nil {
 			log.WithError(err).WithField("task_info", taskInfo).

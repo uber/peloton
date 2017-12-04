@@ -96,6 +96,7 @@ func (suite *TaskUpdaterRMTestSuite) TestProcessStatusUpdate() {
 			MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
 			State:       task.TaskState_RUNNING,
 			GoalState:   task.TaskState_SUCCEEDED,
+			Reason:      "REASON_RESOURCE_TASK_UPDATE",
 		},
 	}
 
