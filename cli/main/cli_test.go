@@ -28,14 +28,12 @@ func TestParseJobCreate(t *testing.T) {
 	assert.Equal(t, *jobCreateConfig, cfg)
 }
 
-func TestParseJobCancel(t *testing.T) {
+func TestParseJobDelete(t *testing.T) {
 	job := "foojobid"
-	for _, c := range []string{"cancel", "delete"} {
-		cmd, err := app.Parse([]string{"job", c, job})
-		assert.Nil(t, err)
-		assert.Equal(t, jobDelete.FullCommand(), cmd)
-		assert.Equal(t, job, *jobDeleteName)
-	}
+	cmd, err := app.Parse([]string{"job", "delete", job})
+	assert.Nil(t, err)
+	assert.Equal(t, jobDelete.FullCommand(), cmd)
+	assert.Equal(t, job, *jobDeleteName)
 }
 
 func TestParseTaskGet(t *testing.T) {

@@ -82,8 +82,11 @@ var (
 		"resource pool starting from the root").Required().String()
 	jobCreateConfig = jobCreate.Arg("config", "YAML job configuration").Required().ExistingFile()
 
-	jobDelete     = job.Command("cancel", "cancel a job").Alias("delete")
+	jobDelete     = job.Command("delete", "delete a job")
 	jobDeleteName = jobDelete.Arg("job", "job identifier").Required().String()
+
+	jobStop     = job.Command("stop", "stop a job")
+	jobStopName = jobStop.Arg("job", "job identifier").Required().String()
 
 	jobGet     = job.Command("get", "get a job")
 	jobGetName = jobGet.Arg("job", "job identifier").Required().String()
@@ -278,6 +281,8 @@ func main() {
 		err = client.JobCreateAction(*jobCreateID, *jobCreateResPoolPath, *jobCreateConfig)
 	case jobDelete.FullCommand():
 		err = client.JobDeleteAction(*jobDeleteName)
+	case jobStop.FullCommand():
+		err = client.TaskStopAction(*jobStopName, nil)
 	case jobGet.FullCommand():
 		err = client.JobGetAction(*jobGetName)
 	case jobStatus.FullCommand():

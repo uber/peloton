@@ -141,6 +141,18 @@ func (c *Client) TaskStopAction(jobID string, instanceRanges []*task.InstanceRan
 		return err
 	}
 	printTaskStopResponse(response, c.Debug)
+	// Retry one more time in case failedInstanceList is non zero
+	if len(response.GetInvalidInstanceIds()) > 0 {
+		fmt.Fprintf(
+			tabWriter,
+			"Retrying failed tasks",
+		)
+		response, err = c.taskClient.Stop(c.ctx, request)
+		if err != nil {
+			return err
+		}
+		printTaskStopResponse(response, c.Debug)
+	}
 	return nil
 }
 
@@ -284,7 +296,7 @@ func printTaskStartResponse(r *task.StartResponse, debug bool) {
 			fmt.Fprintf(
 				tabWriter,
 				"Tasks started successfully for instances: %v and "+
-					"invalid instances are: %v",
+					"failed instances are: %v\n",
 				r.GetStartedInstanceIds(),
 				r.GetInvalidInstanceIds(),
 			)
@@ -326,7 +338,7 @@ func printTaskStopResponse(r *task.StopResponse, debug bool) {
 			fmt.Fprintf(
 				tabWriter,
 				"Tasks stopped successfully for instances: %v and "+
-					"invalid instances are: %v",
+					"failed instances are: %v\n",
 				r.GetStoppedInstanceIds(),
 				r.GetInvalidInstanceIds(),
 			)

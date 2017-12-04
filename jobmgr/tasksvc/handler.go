@@ -244,6 +244,7 @@ func (m *serviceHandler) Start(
 	}
 
 	var startedInstanceIds []uint32
+	var failedInstanceIds []uint32
 	for instID, taskInfo := range taskInfos {
 		taskRuntime := taskInfo.GetRuntime()
 		// Skip start task if current state is not terminal state.
@@ -270,11 +271,13 @@ func (m *serviceHandler) Start(
 
 		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskRuntime)
 		if err != nil {
-			// Skip remaining tasks starting if db update error occurs.
+			// If db update error occurs, add it to failedInstanceIds list and continue.
 			log.WithError(err).
 				WithField("task", taskInfo).
 				Error("Failed to update task to INITIALIZED state")
-			break
+			failedInstanceIds = append(failedInstanceIds, instID)
+			m.metrics.TaskStartFail.Inc(1)
+			continue
 		}
 
 		startedInstanceIds = append(startedInstanceIds, instID)
@@ -299,11 +302,13 @@ func (m *serviceHandler) Start(
 				},
 			},
 			StartedInstanceIds: startedInstanceIds,
+			InvalidInstanceIds: failedInstanceIds,
 		}, nil
 	}
 
 	return &task.StartResponse{
 		StartedInstanceIds: startedInstanceIds,
+		InvalidInstanceIds: failedInstanceIds,
 	}, nil
 }
 
@@ -355,6 +360,7 @@ func (m *serviceHandler) Stop(
 
 	// tasksToKill only includes task ids whose goal state update succeeds.
 	var stoppedInstanceIds []uint32
+	var failedInstanceIds []uint32
 	// Persist KILLED goalstate for tasks in db.
 	for instID, taskInfo := range taskInfos {
 		taskID := taskInfo.GetRuntime().GetMesosTaskId()
@@ -367,12 +373,13 @@ func (m *serviceHandler) Stop(
 		// TODO: We can retry here in case of conflict.
 		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskInfo.GetRuntime())
 		if err != nil {
-			// Skip remaining tasks killing if db update error occurs.
+			// If a db update error occurs, add it to failedInstanceIds list and continue.
 			log.WithError(err).
 				WithField("task_id", taskID).
 				Error("Failed to update KILLED goalstate")
 			m.metrics.TaskStopFail.Inc(1)
-			break
+			failedInstanceIds = append(failedInstanceIds, instID)
+			continue
 		}
 
 		stoppedInstanceIds = append(stoppedInstanceIds, instID)
@@ -391,6 +398,7 @@ func (m *serviceHandler) Stop(
 	}
 	return &task.StopResponse{
 		StoppedInstanceIds: stoppedInstanceIds,
+		InvalidInstanceIds: failedInstanceIds,
 	}, nil
 }
 
