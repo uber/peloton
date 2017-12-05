@@ -922,6 +922,73 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	suite.Error(err)
 }
 
+func (suite *CassandraStoreTestSuite) TestGetTaskEvents() {
+	var taskStore storage.TaskStore
+	taskStore = store
+	nTasks := 2
+	host1 := "compute1"
+	host2 := "compute2"
+	var jobID = peloton.JobID{Value: uuid.New()}
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = uint32(nTasks)
+	err := suite.createJob(context.Background(), &jobID, jobConfig, "uber")
+	suite.NoError(err)
+
+	taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+	err = taskStore.CreateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime, "test")
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.TaskState_PENDING
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.TaskState_RUNNING
+	taskInfo.Runtime.Host = host1
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.TaskState_PREEMPTING
+	taskInfo.Runtime.Host = ""
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.TaskState_RUNNING
+	taskInfo.Runtime.Host = host2
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.TaskState_SUCCEEDED
+	taskInfo.Runtime.Host = host2
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
+	suite.NoError(err)
+
+	taskInfo.Runtime.State = task.TaskState_LOST
+	taskInfo.Runtime.Host = host2
+	taskInfo.Runtime.Reason = "Reconciliation reason"
+	taskInfo.Runtime.Message = "Reconciliation message"
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, taskInfo.InstanceId, taskInfo.Runtime)
+	suite.NoError(err)
+
+	events, err := store.GetTaskEvents(context.Background(), &jobID, 0)
+	suite.NoError(err)
+
+	suite.Equal(events[0].State, task.TaskState_INITIALIZED)
+	suite.Equal(events[1].State, task.TaskState_PENDING)
+	suite.Equal(events[2].State, task.TaskState_RUNNING)
+	suite.Equal(events[3].State, task.TaskState_PREEMPTING)
+	suite.Equal(events[4].State, task.TaskState_RUNNING)
+	suite.Equal(events[5].State, task.TaskState_SUCCEEDED)
+	suite.Equal(events[6].State, task.TaskState_LOST)
+
+	suite.Empty(events[5].Message)
+	suite.Equal(events[6].Message, "Reconciliation message")
+
+	events, err = store.GetTaskEvents(context.Background(), &jobID, 99999)
+	suite.Error(err)
+	events, err = store.GetTaskEvents(context.Background(), nil, 0)
+	suite.Error(err)
+}
+
 func (suite *CassandraStoreTestSuite) TestGetAllJobs() {
 	jobs := []string{uuid.New(), uuid.New()}
 	respoolPagination := uuid.New()

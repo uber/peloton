@@ -89,6 +89,63 @@ func (suite *TaskHandlerTestSuite) createTestTaskInfo(
 	}
 }
 
+func (suite *TaskHandlerTestSuite) createTestTaskEvents() []*task.TaskEvent {
+	var taskID0 = fmt.Sprintf("%s-%d", suite.testJobID.Value, 0)
+	var taskID1 = fmt.Sprintf("%s-%d", suite.testJobID.Value, 1)
+	return []*task.TaskEvent{
+		&task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskID0,
+			},
+			State:     task.TaskState_INITIALIZED,
+			Message:   "",
+			Timestamp: "2017-12-11T22:17:26Z",
+			Hostname:  "peloton-test-host",
+			Reason:    "",
+		},
+		&task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskID1,
+			},
+			State:     task.TaskState_INITIALIZED,
+			Message:   "",
+			Timestamp: "2017-12-11T22:17:46Z",
+			Hostname:  "peloton-test-host-1",
+			Reason:    "",
+		},
+		&task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskID0,
+			},
+			State:     task.TaskState_FAILED,
+			Message:   "",
+			Timestamp: "2017-12-11T22:17:36Z",
+			Hostname:  "peloton-test-host",
+			Reason:    "",
+		},
+		&task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskID1,
+			},
+			State:     task.TaskState_LAUNCHED,
+			Message:   "",
+			Timestamp: "2017-12-11T22:17:50Z",
+			Hostname:  "peloton-test-host-1",
+			Reason:    "",
+		},
+		&task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskID1,
+			},
+			State:     task.TaskState_RUNNING,
+			Message:   "",
+			Timestamp: "2017-12-11T22:17:56Z",
+			Hostname:  "peloton-test-host-1",
+			Reason:    "",
+		},
+	}
+}
+
 func (suite *TaskHandlerTestSuite) TestGetTaskInfosByRangesFromDBReturnsError() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
@@ -471,6 +528,79 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	suite.Nil(resp.GetError())
 	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
 	suite.Equal(resp.GetStartedInstanceIds(), []uint32{1})
+}
+
+func (suite *TaskHandlerTestSuite) TestGetEvents() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	suite.handler.resmgrClient = mockResmgrClient
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	trackedMock := mocks.NewMockManager(ctrl)
+	suite.handler.trackedManager = trackedMock
+	updaterMock := job_mocks.NewMockRuntimeUpdater(ctrl)
+	suite.handler.runtimeUpdater = updaterMock
+
+	taskEvents := suite.createTestTaskEvents()
+
+	gomock.InOrder(
+		mockTaskStore.EXPECT().
+			GetTaskEvents(gomock.Any(), gomock.Any(), gomock.Any()).Return(taskEvents, nil),
+	)
+	var request = &task.GetEventsRequest{
+		JobId:      suite.testJobID,
+		InstanceId: 0,
+	}
+	resp, err := suite.handler.GetEvents(
+		context.Background(),
+		request,
+	)
+	suite.NoError(err)
+	suite.Nil(resp.GetError())
+	eventsList := resp.GetResult()
+	suite.Equal(len(eventsList), 2)
+	task0Events := eventsList[0].GetEvent()
+	task1Events := eventsList[1].GetEvent()
+	suite.Equal(len(task0Events), 2)
+	suite.Equal(len(task1Events), 3)
+	taskID1 := fmt.Sprintf("%s-%d", suite.testJobID.Value, 1)
+	expectedTask1Events := []*task.TaskEvent{
+		&task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskID1,
+			},
+			State:     task.TaskState_INITIALIZED,
+			Message:   "",
+			Timestamp: "2017-12-11T22:17:46Z",
+			Hostname:  "peloton-test-host-1",
+			Reason:    "",
+		},
+		&task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskID1,
+			},
+			State:     task.TaskState_LAUNCHED,
+			Message:   "",
+			Timestamp: "2017-12-11T22:17:50Z",
+			Hostname:  "peloton-test-host-1",
+			Reason:    "",
+		},
+		&task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskID1,
+			},
+			State:     task.TaskState_RUNNING,
+			Message:   "",
+			Timestamp: "2017-12-11T22:17:56Z",
+			Hostname:  "peloton-test-host-1",
+			Reason:    "",
+		},
+	}
+	suite.Equal(task1Events, expectedTask1Events)
 }
 
 func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {

@@ -1021,6 +1021,71 @@ func (s *Store) GetTaskStateChanges(ctx context.Context, jobID *peloton.JobID, i
 	return nil, fmt.Errorf("No state change records found for jobID %v, instanceID %v", jobID, instanceID)
 }
 
+// GetTaskEvents returns the events list for a task
+func (s *Store) GetTaskEvents(ctx context.Context, jobID *peloton.JobID, instanceID uint32) ([]*task.TaskEvent, error) {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(taskStateChangesTable).
+		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			WithField("instance_id", instanceID).
+			Error("Failed to get task state changes")
+		s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
+		return nil, err
+	}
+
+	var result []*task.TaskEvent
+	for _, value := range allResults {
+		var stateChangeRecords TaskStateChangeRecords
+		err = FillObject(value, &stateChangeRecords, reflect.TypeOf(stateChangeRecords))
+		if err != nil {
+			log.WithError(err).
+				WithField("value", value).
+				Error("Failed to Fill into TaskStateChangeRecords")
+			s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
+			return nil, err
+		}
+
+		records, err := stateChangeRecords.GetStateChangeRecords()
+		if err != nil {
+			log.WithError(err).
+				Error("Failed to get TaskStateChangeRecords")
+			s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
+			return nil, err
+		}
+
+		for _, record := range records {
+			state, ok := task.TaskState_value[record.TaskState]
+			if !ok {
+				log.WithError(err).
+					WithField("task_state", record.TaskState).
+					Error("Unknown TaskState")
+				state, _ = task.TaskState_value["UNKNOWN"]
+			}
+			rec := &task.TaskEvent{
+				// TaskStateChangeRecords does not store event source, so don't set Source here
+				State:     task.TaskState(state),
+				Timestamp: record.EventTime.String(),
+				Message:   record.Message,
+				Reason:    record.Reason,
+				Hostname:  record.TaskHost,
+				// TaskId here will contain Mesos TaskId
+				TaskId: &peloton.TaskID{
+					Value: record.MesosTaskID,
+				},
+			}
+			result = append(result, rec)
+		}
+		s.metrics.TaskMetrics.TaskGetLogState.Inc(1)
+		return result, nil
+
+	}
+	s.metrics.TaskMetrics.TaskGetLogStateFail.Inc(1)
+	return nil, fmt.Errorf("No state change records found for jobID %v, instanceID %v", jobID, instanceID)
+}
+
 // GetTasksForJobResultSet returns the result set that can be used to iterate each task in a job
 // Caller need to call result.Close()
 func (s *Store) GetTasksForJobResultSet(ctx context.Context, id *peloton.JobID) ([]map[string]interface{}, error) {

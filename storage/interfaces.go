@@ -65,6 +65,7 @@ type TaskStore interface {
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
 	QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error)
 	GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error)
+	GetTaskEvents(ctx context.Context, id *peloton.JobID, instanceID uint32) ([]*task.TaskEvent, error)
 }
 
 // UpgradeStore is the interface to store upgrades and upgrade progress.

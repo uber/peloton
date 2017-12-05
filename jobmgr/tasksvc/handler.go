@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/pkg/errors"
@@ -21,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
+	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
@@ -108,6 +110,31 @@ func (m *serviceHandler) Get(
 			JobId:         body.JobId,
 			InstanceCount: jobConfig.InstanceCount,
 		},
+	}, nil
+}
+
+func (m *serviceHandler) GetEvents(
+	ctx context.Context,
+	body *task.GetEventsRequest) (*task.GetEventsResponse, error) {
+	m.metrics.TaskAPIGetEvents.Inc(1)
+	result, err := m.taskStore.GetTaskEvents(ctx, body.GetJobId(), body.GetInstanceId())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", body.GetJobId()).
+			Error("Failed to get task state changes")
+		m.metrics.TaskGetEventsFail.Inc(1)
+		return &task.GetEventsResponse{
+			Error: &task.GetEventsResponse_Error{
+				EventError: &task.TaskEventsError{
+					Message: fmt.Sprintf("error: %v", err),
+				},
+			},
+		}, nil
+	}
+
+	m.metrics.TaskGetEvents.Inc(1)
+	return &task.GetEventsResponse{
+		Result: getEventsResponseResult(result),
 	}, nil
 }
 
@@ -677,4 +704,26 @@ func (m *serviceHandler) getFrameworkID(ctx context.Context) (string, error) {
 		return frameworkIDVal, errEmptyFrameworkID
 	}
 	return frameworkIDVal, nil
+}
+
+// getEventsResponseResult returns []*GetEventsResponse_Events which is a list
+// of event lists for each mesos task sorted by time
+func getEventsResponseResult(records []*task.TaskEvent) []*task.GetEventsResponse_Events {
+	// Get a map of <mesos task id : []*TaskEvent>
+	resMap := make(map[string]*task.GetEventsResponse_Events)
+	for _, record := range records {
+		taskID := record.GetTaskId().GetValue()
+		_, ok := resMap[taskID]
+		if ok {
+			resMap[taskID].Event = append(resMap[taskID].Event, record)
+		} else {
+			resMap[taskID] = &task.GetEventsResponse_Events{Event: []*task.TaskEvent{record}}
+		}
+	}
+	var eventsListRes []*task.GetEventsResponse_Events
+	for _, eventList := range resMap {
+		eventsListRes = append(eventsListRes, eventList)
+	}
+	sort.Sort(statechanges.TaskEventByTime(eventsListRes))
+	return eventsListRes
 }

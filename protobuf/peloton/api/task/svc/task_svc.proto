@@ -9,10 +9,10 @@ package peloton.api.task.svc;
 option go_package = "peloton/api/task/svc";
 option java_package = "peloton.api.task.svc";
 
+import "peloton/api/errors/errors.proto";
 import "peloton/api/peloton.proto";
 import "peloton/api/query/query.proto";
 import "peloton/api/task/task.proto";
-
 
 /**
  *  Task service defines the task related methods such as get, list,
@@ -45,6 +45,12 @@ service TaskService
   // client can use the Mesos Agent HTTP endpoints to read and download
   // the files. http://mesos.apache.org/documentation/latest/endpoints/
   rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
+
+  // GetEvents returns task events in for a instance in a job. An instance
+  // may have multiple Mesos tasks and GetEventsResponse will contain a
+  // map for each mesos task and its corresponding list of events.
+  // This is an experimental API and is subject to change
+  rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
 }
 
 
@@ -247,4 +253,39 @@ message BrowseSandboxResponse {
   // The list of sandbox file paths.
   // TODO: distinguish files and directories in the sandbox
   repeated string paths = 4;
+}
+
+message TaskEventsError {
+  string message = 1;
+}
+
+/**
+ *  Request message for TaskService.GetEvents method.
+ */
+message GetEventsRequest {
+  // The job ID of the task
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task 
+  uint32 instanceId = 2;
+}
+
+/**
+ *  Response message for TaskService.GetEvents method.
+ *
+ *  Return errors:
+ *    INTERNAL:      if failed to get task events for internal errors.
+ */
+message GetEventsResponse {
+  message Events {
+    repeated TaskEvent event = 1;
+  };
+
+  repeated Events result = 1;
+
+  message Error {
+    TaskEventsError eventError = 1;
+  }
+
+  Error error = 2;
 }

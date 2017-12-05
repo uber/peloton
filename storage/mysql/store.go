@@ -731,6 +731,11 @@ func (m *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, er
 	return nil, errors.New("unimplemented")
 }
 
+// GetTaskEvents returns the events list for a task
+func (m *Store) GetTaskEvents(ctx context.Context, jobID *peloton.JobID, instanceID uint32) ([]*task.TaskEvent, error) {
+	return nil, errors.New("unimplemented")
+}
+
 // CreateResourcePool creates a resource pool with the resource pool id and the config value
 // TODO: Need to create test case
 func (m *Store) CreateResourcePool(ctx context.Context, id *peloton.ResourcePoolID, respoolConfig *respool.ResourcePoolConfig, createdBy string) error {

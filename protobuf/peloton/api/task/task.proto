@@ -447,6 +447,12 @@ message TaskEvent {
 
   // The source that generated the task event.
   Source source = 5;
+
+  // The host on which the task is running
+  string hostname = 6;
+
+  // The short reason for the task event
+  string reason = 7;
 }
 
 // DEPRECATED by peloton.api.task.svc.TaskService.
@@ -478,6 +484,9 @@ service TaskManager
 
   // BrowseSandbox returns list of file paths inside sandbox.
   rpc BrowseSandbox(BrowseSandboxRequest) returns (BrowseSandboxResponse);
+
+  // Get event changes of a task in job.
+  rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
 }
 
 // DEPRECATED by google.rpc.INTERNAL error.
@@ -538,6 +547,32 @@ message GetResponse {
   TaskInfo result = 1;
   errors.JobNotFound notFound = 2;
   InstanceIdOutOfRange outOfRange = 3;
+}
+
+// DEPRECATED by peloton.api.task.svc.GetEventsRequest.
+message GetEventsRequest {
+  peloton.JobID jobId = 1;
+  uint32 instanceId = 2;
+}
+
+// DEPRECATED by peloton.api.task.svc.GetEventsResponse.
+message GetEventsResponse {
+  message Events {
+    repeated TaskEvent event = 1;
+  };
+
+  repeated Events result = 1;
+
+  message Error {
+    TaskEventsError eventError = 1;
+  }
+
+  Error error = 2;
+}
+
+// DEPRECATED by google.rpc.INTERNAL error.
+message TaskEventsError {
+  string message = 1;
 }
 
 // DEPRECATED by peloton.api.task.svc.ListTasksRequest.

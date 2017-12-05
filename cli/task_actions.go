@@ -16,7 +16,9 @@ import (
 const (
 	taskListFormatHeader = "Instance\tName\tState\tStart Time\tRun Time\t" +
 		"Host\tMessage\tReason\t\n"
-	taskListFormatBody = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+	taskListFormatBody     = "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n"
+	taskEventsFormatHeader = "Mesos Task Id\tState\tEvent Time\tHost\tMessage\tReason\t\n"
+	taskEventsFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
 // SortedTaskInfoList makes TaskInfo implement sortable interface
@@ -92,6 +94,22 @@ func (c *Client) TaskLogsGetAction(fileName string, jobID string, instanceID uin
 
 	fmt.Printf("\n\n%s", body)
 
+	return nil
+}
+
+// TaskGetEventsAction is the action to get a task instance
+func (c *Client) TaskGetEventsAction(jobID string, instanceID uint32) error {
+	var request = &task.GetEventsRequest{
+		JobId: &peloton.JobID{
+			Value: jobID,
+		},
+		InstanceId: instanceID,
+	}
+	response, err := c.taskClient.GetEvents(c.ctx, request)
+	if err != nil {
+		return err
+	}
+	printTaskGetEventsResponse(response, c.Debug)
 	return nil
 }
 
@@ -213,6 +231,25 @@ func printTask(t *task.TaskInfo) {
 	)
 }
 
+// printTaskEvents print the list of events for the task
+func printTaskEvents(eventsList []*task.GetEventsResponse_Events) {
+	// Print the task events
+	for _, events := range eventsList {
+		for _, event := range events.GetEvent() {
+			fmt.Fprintf(
+				tabWriter,
+				taskEventsFormatBody,
+				event.GetTaskId().GetValue(),
+				event.GetState(),
+				event.GetTimestamp(),
+				event.GetHostname(),
+				event.GetMessage(),
+				event.GetReason(),
+			)
+		}
+	}
+}
+
 func printTaskGetResponse(r *task.GetResponse, debug bool) {
 	if debug {
 		printResponseJSON(r)
@@ -230,6 +267,26 @@ func printTaskGetResponse(r *task.GetResponse, debug bool) {
 			printTask(r.GetResult())
 		} else {
 			fmt.Fprintf(tabWriter, "Unexpected error, no results in response.\n")
+		}
+	}
+	tabWriter.Flush()
+}
+
+func printTaskGetEventsResponse(r *task.GetEventsResponse, debug bool) {
+	if debug {
+		printResponseJSON(r)
+	} else {
+		err := r.GetError()
+		if err != nil {
+			if err.GetEventError() != nil {
+				fmt.Fprintf(tabWriter,
+					"Got event error: %s\n", err.GetEventError().GetMessage())
+			} else {
+				fmt.Fprintf(tabWriter, "Unexpected error %v\n", err)
+			}
+		} else {
+			fmt.Fprintf(tabWriter, taskEventsFormatHeader)
+			printTaskEvents(r.GetResult())
 		}
 	}
 	tabWriter.Flush()
