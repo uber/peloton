@@ -9,9 +9,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -49,6 +51,7 @@ type statusUpdate struct {
 	jobStore       storage.JobStore
 	taskStore      storage.TaskStore
 	eventClients   map[string]*eventstream.Client
+	hostmgrClient  hostsvc.InternalHostServiceYARPCClient
 	applier        *asyncEventProcessor
 	trackedManager tracked.Manager
 	listeners      []Listener
@@ -82,6 +85,7 @@ func InitTaskStatusUpdate(
 			eventClients:   make(map[string]*eventstream.Client),
 			trackedManager: trackedManager,
 			listeners:      listeners,
+			hostmgrClient:  hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 		}
 		// TODO: add config for BucketEventProcessor
 		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
@@ -219,7 +223,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	if err != nil {
 		log.WithError(err).
 			WithField("task_id", taskID).
-			Error("Fail to find taskInfo for taskID")
+			WithField("task_status_event", event.GetMesosTaskStatus()).
+			WithField("state", state.String()).
+			Error("fail to find taskInfo for taskID for mesos event")
 		return err
 	}
 
@@ -232,7 +238,15 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"db_task_id":        dbTaskID,
 			"db_task_info":      taskInfo,
 			"task_status_event": event.GetMesosTaskStatus(),
-		}).Warn("skip status update for orphan mesos task")
+		}).Info("received status update for orphan mesos task")
+
+		err := jobmgr_task.KillTask(ctx, p.hostmgrClient, event.MesosTaskStatus.GetTaskId())
+		if err != nil {
+			log.WithError(err).
+				WithField("orphan_task_id", mesosTaskID).
+				WithField("db_task_id", dbTaskID).
+				Error("failed to kill orphan task")
+		}
 		return nil
 	}
 

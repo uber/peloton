@@ -17,9 +17,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 
 	event_mocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
+	"code.uber.internal/infra/peloton/storage"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
@@ -65,6 +68,7 @@ type TaskUpdaterTestSuite struct {
 	mockTrackedManager *mocks.MockManager
 	mockListener1      *event_mocks.MockListener
 	mockListener2      *event_mocks.MockListener
+	mockHostMgrClient  *host_mocks.MockInternalHostServiceYARPCClient
 }
 
 func (suite *TaskUpdaterTestSuite) SetupTest() {
@@ -75,6 +79,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.mockTrackedManager = mocks.NewMockManager(suite.ctrl)
 	suite.mockListener1 = event_mocks.NewMockListener(suite.ctrl)
 	suite.mockListener2 = event_mocks.NewMockListener(suite.ctrl)
+	suite.mockHostMgrClient = host_mocks.NewMockInternalHostServiceYARPCClient(suite.ctrl)
 
 	suite.updater = &statusUpdate{
 		jobStore:       suite.mockJobStore,
@@ -83,6 +88,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 		trackedManager: suite.mockTrackedManager,
 		rootCtx:        context.Background(),
 		metrics:        NewMetrics(suite.testScope.SubScope("status_updater")),
+		hostmgrClient:  suite.mockHostMgrClient,
 	}
 }
 
@@ -367,11 +373,28 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
 	// task status update.
 	dbMesosTaskID := fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, uuid.NewUUID().String())
 	taskInfo.GetRuntime().MesosTaskId = &mesos.TaskID{Value: &dbMesosTaskID}
+	orphanTaskID := &mesos.TaskID{
+		Value: &[]string{_mesosTaskID}[0],
+	}
 
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
+	suite.mockHostMgrClient.EXPECT().KillTasks(context.Background(), &hostsvc.KillTasksRequest{
+		TaskIds: []*mesos.TaskID{orphanTaskID},
+	}).Return(nil, nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+}
+
+// Test processing status update for a task missing from DB.
+func (suite *TaskUpdaterTestSuite) TestProcessMissingTaskStatusUpdate() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	suite.mockTaskStore.EXPECT().
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(nil, &storage.TaskNotFoundError{TaskID: _pelotonTaskID})
+	suite.Error(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
 // Test processing task KILL by PREEMPTION

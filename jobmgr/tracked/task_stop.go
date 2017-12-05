@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -89,22 +89,5 @@ func (t *task) stopMesosTask(ctx context.Context, runtime *pb_task.RuntimeInfo) 
 	// Send kill signal to mesos, if the task has a mesos task ID associated
 	// to it.
 
-	req := &hostsvc.KillTasksRequest{
-		TaskIds: []*mesos_v1.TaskID{runtime.GetMesosTaskId()},
-	}
-	res, err := t.job.m.hostmgrClient.KillTasks(ctx, req)
-	if err != nil {
-		return err
-	} else if e := res.GetError(); e != nil {
-		switch {
-		case e.KillFailure != nil:
-			return fmt.Errorf(e.KillFailure.Message)
-		case e.InvalidTaskIDs != nil:
-			return fmt.Errorf(e.InvalidTaskIDs.Message)
-		default:
-			return fmt.Errorf(e.String())
-		}
-	}
-
-	return nil
+	return jobmgr_task.KillTask(ctx, t.job.m.hostmgrClient, runtime.GetMesosTaskId())
 }
