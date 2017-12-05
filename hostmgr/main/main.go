@@ -23,6 +23,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/reconcile"
 	"code.uber.internal/infra/peloton/hostmgr/task"
+	"code.uber.internal/infra/peloton/hostmgr/volume"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -391,6 +392,15 @@ func main() {
 		cfg.HostManager.TaskUpdateAckConcurrency,
 		common.PelotonResourceManager,
 		rootScope,
+	)
+
+	// Init volume handler.
+	volume.InitServiceHandler(
+		dispatcher,
+		rootScope,
+		jobStore,
+		taskStore,
+		volumeStore,
 	)
 
 	server := hostmgr.NewServer(

@@ -921,7 +921,7 @@ func (m *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 }
 
 // UpdatePersistentVolume update state for a persistent volume.
-func (m *Store) UpdatePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID, state pb_volume.VolumeState) error {
+func (m *Store) UpdatePersistentVolume(ctx context.Context, volume *pb_volume.PersistentVolumeInfo) error {
 	return errors.New("Not implemented")
 }
 

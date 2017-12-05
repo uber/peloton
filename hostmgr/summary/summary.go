@@ -337,7 +337,8 @@ func (a *hostSummary) updatePersistentVolumes(ctx context.Context) error {
 				"volume":            pv,
 			}).Info("updating persistent volume table")
 
-			err = a.volumeStore.UpdatePersistentVolume(ctx, volumeID, volume.VolumeState_CREATED)
+			pv.State = volume.VolumeState_CREATED
+			err = a.volumeStore.UpdatePersistentVolume(ctx, pv)
 			if err != nil {
 				log.WithFields(
 					log.Fields{

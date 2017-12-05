@@ -1272,7 +1272,8 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	_, err = volumeStore.GetPersistentVolume(context.Background(), volumeID2)
 	suite.Error(err)
 
-	err = volumeStore.UpdatePersistentVolume(context.Background(), volumeID1, volume.VolumeState_CREATED)
+	rpv.State = volume.VolumeState_CREATED
+	err = volumeStore.UpdatePersistentVolume(context.Background(), rpv)
 	suite.NoError(err)
 
 	// Verfy updated persistent volume info.
@@ -1280,7 +1281,7 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	suite.NoError(err)
 	suite.Equal(rpv.Id.Value, "volume1")
 	suite.Equal(rpv.State.String(), "CREATED")
-	suite.Equal(rpv.State.String(), "CREATED")
+	suite.Equal(rpv.GoalState.String(), "CREATED")
 	suite.Equal(rpv.JobId.Value, "job")
 	suite.Equal(rpv.InstanceId, uint32(0))
 	suite.Equal(rpv.Hostname, "host")

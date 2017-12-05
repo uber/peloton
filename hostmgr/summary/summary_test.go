@@ -378,7 +378,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 		AnyTimes().
 		Return(volumeInfo, nil)
 	suite.mockVolumeStore.EXPECT().
-		UpdatePersistentVolume(context.Background(), gomock.Any(), volume.VolumeState_CREATED).
+		UpdatePersistentVolume(context.Background(), gomock.Any()).
 		AnyTimes().
 		Return(nil)
 
@@ -574,7 +574,7 @@ func (suite *HostOfferSummaryTestSuite) TestRemoveUnusedReservedOffers() {
 		AnyTimes().
 		Return(volumeInfo, nil)
 	suite.mockVolumeStore.EXPECT().
-		UpdatePersistentVolume(context.Background(), gomock.Any(), volume.VolumeState_CREATED).
+		UpdatePersistentVolume(context.Background(), gomock.Any()).
 		AnyTimes().
 		Return(nil)
 

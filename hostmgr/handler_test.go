@@ -798,7 +798,7 @@ func (suite *HostMgrHandlerTestSuite) TestLaunchOperationWithReservedOffers() {
 		AnyTimes().
 		Return(volumeInfo, nil)
 	suite.volumeStore.EXPECT().
-		UpdatePersistentVolume(context.Background(), gomock.Any(), volume.VolumeState_CREATED).
+		UpdatePersistentVolume(context.Background(), volumeInfo).
 		AnyTimes().
 		Return(nil)
 

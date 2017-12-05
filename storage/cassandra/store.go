@@ -1880,17 +1880,18 @@ func (s *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 	return nil
 }
 
-// UpdatePersistentVolume update state for a persistent volume.
-func (s *Store) UpdatePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID, state pb_volume.VolumeState) error {
+// UpdatePersistentVolume updates persistent volume info.
+func (s *Store) UpdatePersistentVolume(ctx context.Context, volumeInfo *pb_volume.PersistentVolumeInfo) error {
 
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.
 		Update(volumeTable).
-		Set("state", state.String()).
+		Set("state", volumeInfo.GetState().String()).
+		Set("goal_state", volumeInfo.GetGoalState().String()).
 		Set("update_time", time.Now().UTC()).
-		Where(qb.Eq{"volume_id": volumeID.GetValue()})
+		Where(qb.Eq{"volume_id": volumeInfo.GetId().GetValue()})
 
-	err := s.applyStatement(ctx, stmt, volumeID.GetValue())
+	err := s.applyStatement(ctx, stmt, volumeInfo.GetId().GetValue())
 	if err != nil {
 		s.metrics.VolumeMetrics.VolumeUpdateFail.Inc(1)
 		return err

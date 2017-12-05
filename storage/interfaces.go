@@ -114,7 +114,7 @@ type ResourcePoolStore interface {
 // PersistentVolumeStore is the interface to store all the persistent volume info
 type PersistentVolumeStore interface {
 	CreatePersistentVolume(ctx context.Context, volumeInfo *volume.PersistentVolumeInfo) error
-	UpdatePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID, state volume.VolumeState) error
+	UpdatePersistentVolume(ctx context.Context, volumeInfo *volume.PersistentVolumeInfo) error
 	GetPersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) (*volume.PersistentVolumeInfo, error)
 	DeletePersistentVolume(ctx context.Context, volumeID *peloton.VolumeID) error
 }
