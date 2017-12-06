@@ -144,7 +144,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	updateTaskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 	updateTaskInfo.GetRuntime().StartTime = _currentTime
 	updateTaskInfo.GetRuntime().Message = "testFailure"
-	updateTaskInfo.GetRuntime().Reason = "REASON_COMMAND_EXECUTOR_FAILED"
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -467,15 +466,4 @@ func (suite *TaskUpdaterTestSuite) TestUpdaterStart() {
 	suite.mockListener2.EXPECT().Start()
 
 	suite.updater.Start()
-}
-
-func (suite *TaskUpdaterTestSuite) TestIsErrorState() {
-	suite.True(isUnexpected(task.TaskState_FAILED))
-	suite.True(isUnexpected(task.TaskState_LOST))
-
-	suite.False(isUnexpected(task.TaskState_KILLED))
-	suite.False(isUnexpected(task.TaskState_LAUNCHING))
-	suite.False(isUnexpected(task.TaskState_RUNNING))
-	suite.False(isUnexpected(task.TaskState_SUCCEEDED))
-	suite.False(isUnexpected(task.TaskState_INITIALIZED))
 }

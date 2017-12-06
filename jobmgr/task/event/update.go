@@ -260,7 +260,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	// Persist the reason and message for mesos updates
 	runtime.Message = statusMsg
-	runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
+	runtime.Reason = ""
 
 	switch state {
 	case pb_task.TaskState_KILLED:
@@ -274,6 +274,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 
 	case pb_task.TaskState_FAILED:
+		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
 		maxAttempts := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
 		if p.isSystemFailure(event) {
 			if maxAttempts < MaxSystemFailureAttempts {
@@ -297,6 +298,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		// TODO: check for failing reason before rescheduling.
 
 	case pb_task.TaskState_LOST:
+		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
 		if util.IsPelotonStateTerminal(runtime.GetState()) {
 			// Skip LOST status update if current state is terminal state.
 			log.WithFields(log.Fields{
@@ -357,18 +359,6 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 func (p *statusUpdate) ProcessListeners(event *pb_eventstream.Event) {
 	for _, listener := range p.listeners {
 		listener.OnEvents([]*pb_eventstream.Event{event})
-	}
-}
-
-// isUnexpected tells if taskState is unexpected or not
-func isUnexpected(taskState pb_task.TaskState) bool {
-	switch taskState {
-	case pb_task.TaskState_FAILED,
-		pb_task.TaskState_LOST:
-		return true
-	default:
-		// TODO: we may want to treat unknown state as error
-		return false
 	}
 }
 
