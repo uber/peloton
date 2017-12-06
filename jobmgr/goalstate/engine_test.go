@@ -20,9 +20,14 @@ func TestEngineStartStop(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 
 	tmMock.EXPECT().WaitForScheduledTask(gomock.Any()).Do(func(stopChan <-chan struct{}) {
+		<-stopChan
+		wg.Done()
+	}).Return(nil)
+
+	tmMock.EXPECT().WaitForScheduledJob(gomock.Any()).Do(func(stopChan <-chan struct{}) {
 		<-stopChan
 		wg.Done()
 	}).Return(nil)

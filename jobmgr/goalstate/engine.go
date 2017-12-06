@@ -61,7 +61,8 @@ func (e *engine) Start() {
 	}
 
 	e.stopChan = make(chan struct{})
-	go e.run(e.stopChan)
+	go e.runTask(e.stopChan)
+	go e.runJob(e.stopChan)
 
 	log.Info("goalstate.Engine started")
 }
@@ -81,7 +82,7 @@ func (e *engine) Stop() {
 	log.Info("goalstate.Engine stopped")
 }
 
-func (e *engine) run(stopChan <-chan struct{}) {
+func (e *engine) runTask(stopChan <-chan struct{}) {
 	for {
 		t := e.trackedManager.WaitForScheduledTask(stopChan)
 		if t == nil {
@@ -89,5 +90,15 @@ func (e *engine) run(stopChan <-chan struct{}) {
 		}
 
 		e.processTask(t)
+	}
+}
+
+func (e *engine) runJob(stopChan <-chan struct{}) {
+	for {
+		j := e.trackedManager.WaitForScheduledJob(stopChan)
+		if j == nil {
+			return
+		}
+		e.processJob(j)
 	}
 }

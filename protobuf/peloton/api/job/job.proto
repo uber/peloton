@@ -179,6 +179,9 @@ message RuntimeInfo
   // The version reflects the version of the JobConfig, that's currently
   // used by the job.
   int64 configVersion = 6;
+
+  // Goal state of the job.
+  JobState goalState = 7;
 }
 
 /**

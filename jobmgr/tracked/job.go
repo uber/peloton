@@ -1,10 +1,23 @@
 package tracked
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"sync"
 
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+)
+
+// JobAction that can be given to the RunJobAction method.
+type JobAction string
+
+// Actions available to be performed on the job.
+const (
+	JobNoAction    JobAction = "no_action"
+	JobCreateTasks JobAction = "create_tasks"
 )
 
 // Job tracked by the system, serving as a best effort view of what's stored
@@ -18,21 +31,44 @@ type Job interface {
 
 	// Get All Tasks returns all tasks for the job
 	GetAllTasks() map[uint32]Task
+
+	// RunAction on the job. Returns a bool representing if the job should
+	// be rescheduled by the goalstate engine and an error representing the
+	// result of the action.
+	RunAction(ctx context.Context, action JobAction) (bool, error)
+
+	// GetJobRuntime returns the runtime of the job
+	GetJobRuntime(ctx context.Context) (*pb_job.RuntimeInfo, error)
+
+	// ClearJobRuntime sets the cached job runtime to nil
+	ClearJobRuntime()
 }
 
 func newJob(id *peloton.JobID, m *manager) *job {
 	return &job{
-		id:    id,
-		m:     m,
-		tasks: map[uint32]*task{},
+		queueItemMixin: newQueueItemMixing(),
+		id:             id,
+		m:              m,
+		tasks:          map[uint32]*task{},
 	}
+}
+
+// config of a job. This encapsulate a subset of the job config, needed
+// for processing actions.
+type jobConfig struct {
+	instanceCount uint32
+	respoolID     *peloton.ResourcePoolID
+	sla           *pb_job.SlaConfig
 }
 
 type job struct {
 	sync.RWMutex
+	queueItemMixin
 
-	id *peloton.JobID
-	m  *manager
+	id      *peloton.JobID
+	config  *jobConfig
+	m       *manager
+	runtime *pb_job.RuntimeInfo
 
 	// TODO: Use list as we expect to always track tasks 0..n-1.
 	tasks map[uint32]*task
@@ -40,6 +76,21 @@ type job struct {
 
 func (j *job) ID() *peloton.JobID {
 	return j.id
+}
+
+func (j *job) ClearJobRuntime() {
+	j.runtime = nil
+}
+
+func (j *job) RunAction(ctx context.Context, action JobAction) (bool, error) {
+	switch action {
+	case JobNoAction:
+		return false, nil
+	case JobCreateTasks:
+		return j.createTasks(ctx)
+	default:
+		return false, fmt.Errorf("unsupported job action %v", action)
+	}
 }
 
 func (j *job) GetTask(id uint32) Task {
@@ -75,4 +126,45 @@ func (j *job) setTask(id uint32, runtime *pb_task.RuntimeInfo) *task {
 
 	t.updateRuntime(runtime)
 	return t
+}
+
+func (j *job) GetJobRuntime(ctx context.Context) (*pb_job.RuntimeInfo, error) {
+	j.RLock()
+	defer j.RUnlock()
+
+	if j.runtime != nil {
+		return j.runtime, nil
+	}
+	var err error
+	j.runtime, err = j.m.jobStore.GetJobRuntime(ctx, j.ID())
+	return j.runtime, err
+}
+
+func (j *job) updateRuntime(jobInfo *pb_job.JobInfo) {
+	j.Lock()
+	defer j.Unlock()
+
+	j.runtime = jobInfo.GetRuntime()
+	if jobInfo.GetConfig() != nil {
+		j.config = &jobConfig{
+			instanceCount: jobInfo.Config.InstanceCount,
+			sla:           jobInfo.Config.Sla,
+			respoolID:     jobInfo.Config.RespoolID,
+		}
+	}
+}
+
+func (j *job) getConfig() (*jobConfig, error) {
+	j.RLock()
+	defer j.RUnlock()
+
+	if j.config == nil {
+		return nil, errors.New("missing job config in goal state")
+	}
+	return j.config, nil
+}
+
+//To be implemented
+func (j *job) createTasks(ctx context.Context) (bool, error) {
+	return false, nil
 }

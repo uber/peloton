@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -32,48 +31,14 @@ func TestManagerAddAndGet(t *testing.T) {
 	assert.Equal(t, j, m.addJob(jobID))
 }
 
-func TestManagerScheduleAndDequeueTasks(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	mtx := newMetrics(tally.NoopScope)
-	m := &manager{
-		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(mtx),
-		taskQueueChanged: make(chan struct{}, 1),
-		running:          true,
-	}
-
-	j := m.addJob(jobID)
-
-	c := 100
-	var wg sync.WaitGroup
-	wg.Add(c)
-
-	for i := 0; i < c; i++ {
-		go func() {
-			tt := m.WaitForScheduledTask(nil)
-			assert.NotNil(t, tt)
-			wg.Done()
-		}()
-	}
-
-	go func() {
-		for i := 0; i < c; i++ {
-			m.SetTask(jobID, uint32(i), nil)
-			m.ScheduleTask(j.GetTask(uint32(i)), time.Now())
-		}
-	}()
-
-	wg.Wait()
-}
-
 func TestManagerClearTask(t *testing.T) {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 
 	m := &manager{
-		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(newMetrics(tally.NoopScope)),
-		taskQueueChanged: make(chan struct{}, 1),
-		running:          true,
+		jobs:          map[string]*job{},
+		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		running:       true,
 	}
 
 	j := m.addJob(jobID)
@@ -88,40 +53,74 @@ func TestManagerClearTask(t *testing.T) {
 	assert.Equal(t, 1, len(m.jobs))
 	assert.Equal(t, 2, len(j.tasks))
 
-	m.WaitForScheduledTask(nil)
+	assert.Equal(t, 1, len(m.jobs))
 	m.WaitForScheduledTask(nil)
 	m.clearTask(t0.(*task))
 	assert.Equal(t, 1, len(m.jobs))
 	assert.Equal(t, 1, len(j.tasks))
 
+	m.WaitForScheduledTask(nil)
 	m.clearTask(t1.(*task))
 	assert.Equal(t, 0, len(m.jobs))
 	assert.Equal(t, 0, len(j.tasks))
+}
 
-	m.clearTask(t1.(*task))
+func TestManagerSetAndClearJob(t *testing.T) {
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	jobRuntime := &pb_job.RuntimeInfo{
+		State:     pb_job.JobState_RUNNING,
+		GoalState: pb_job.JobState_SUCCEEDED,
+	}
+	jobInfo := &pb_job.JobInfo{
+		Runtime: jobRuntime,
+	}
+
+	m := &manager{
+		jobs:          map[string]*job{},
+		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		running:       true,
+	}
+
+	m.SetJob(jobID, jobInfo)
+	assert.Equal(t, 1, len(m.jobs))
+	m.WaitForScheduledJob(nil)
+
+	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+	m.WaitForScheduledTask(nil)
+	j0 := m.GetJob(jobID)
+	t0 := j0.GetTask(0)
+	m.clearTask(t0.(*task))
+	assert.Equal(t, 0, len(m.jobs))
 }
 
 func TestManagerSyncFromDB(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
+	id := "3c8a3c3e-71e3-49c5-9aed-2929823f595c"
 
 	jobstoreMock := store_mocks.NewMockJobStore(ctrl)
 	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
 
 	m := &manager{
-		jobs:             map[string]*job{},
-		jobStore:         jobstoreMock,
-		taskStore:        taskstoreMock,
-		taskQueue:        newDeadlineQueue(newMetrics(tally.NoopScope)),
-		taskQueueChanged: make(chan struct{}, 1),
-		running:          true,
+		jobs:          map[string]*job{},
+		jobStore:      jobstoreMock,
+		taskStore:     taskstoreMock,
+		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		running:       true,
 	}
 
 	jobstoreMock.EXPECT().GetAllJobs(gomock.Any()).Return(map[string]*pb_job.RuntimeInfo{
-		"3c8a3c3e-71e3-49c5-9aed-2929823f595c": nil,
+		id: &pb_job.RuntimeInfo{
+			State:     pb_job.JobState_RUNNING,
+			GoalState: pb_job.JobState_SUCCEEDED,
+		},
 	}, nil)
 
-	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+	jobID := &peloton.JobID{Value: id}
+	jobstoreMock.EXPECT().GetJobConfig(gomock.Any(), jobID).Return(nil, nil)
 	taskstoreMock.EXPECT().GetTasksForJob(gomock.Any(), jobID).
 		Return(map[uint32]*pb_task.TaskInfo{
 			1: {
@@ -137,18 +136,21 @@ func TestManagerSyncFromDB(t *testing.T) {
 
 	m.syncFromDB(context.Background())
 
-	task := m.GetJob(jobID).GetTask(1)
+	job0 := m.GetJob(jobID)
+	assert.NotNil(t, job0)
+	task := job0.GetTask(1)
 	assert.NotNil(t, task)
+	assert.Equal(t, job0, m.WaitForScheduledJob(nil))
 	assert.Equal(t, task, m.WaitForScheduledTask(nil))
 }
 
 func TestManagerStopClearsTasks(t *testing.T) {
 	m := &manager{
-		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(newMetrics(tally.NoopScope)),
-		taskQueueChanged: make(chan struct{}, 1),
-		running:          true,
-		stopChan:         make(chan struct{}),
+		jobs:          map[string]*job{},
+		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		running:       true,
+		stopChan:      make(chan struct{}),
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
@@ -157,15 +159,15 @@ func TestManagerStopClearsTasks(t *testing.T) {
 	m.SetTask(jobID, 2, &pb_task.RuntimeInfo{})
 
 	assert.Len(t, m.addJob(jobID).tasks, 3)
-	assert.Len(t, *m.taskQueue.pq, 3)
+	assert.Len(t, *m.taskScheduler.queue.pq, 3)
 
 	m.Stop()
 	assert.Nil(t, m.GetJob(jobID))
-	assert.Len(t, *m.taskQueue.pq, 0)
+	assert.Len(t, *m.taskScheduler.queue.pq, 0)
 
 	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
 	assert.Nil(t, m.GetJob(jobID))
-	assert.Len(t, *m.taskQueue.pq, 0)
+	assert.Len(t, *m.taskScheduler.queue.pq, 0)
 }
 
 func TestManagerStartStop(t *testing.T) {
@@ -175,10 +177,10 @@ func TestManagerStartStop(t *testing.T) {
 	jobstoreMock := store_mocks.NewMockJobStore(ctrl)
 
 	m := &manager{
-		jobs:             map[string]*job{},
-		jobStore:         jobstoreMock,
-		taskQueue:        newDeadlineQueue(newMetrics(tally.NoopScope)),
-		taskQueueChanged: make(chan struct{}, 1),
+		jobs:          map[string]*job{},
+		jobStore:      jobstoreMock,
+		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
 	}
 
 	var wg sync.WaitGroup
@@ -198,10 +200,11 @@ func TestManagerStartStop(t *testing.T) {
 
 func TestPublishMetrics(t *testing.T) {
 	m := &manager{
-		jobs:      map[string]*job{},
-		mtx:       newMetrics(tally.NoopScope),
-		taskQueue: newDeadlineQueue(newMetrics(tally.NoopScope)),
-		running:   true,
+		jobs:          map[string]*job{},
+		mtx:           newMetrics(tally.NoopScope),
+		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		running:       true,
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -36,18 +37,33 @@ type Manager interface {
 	// immediate evaluation.
 	SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo)
 
+	// SetJob to the state in the JobInfo.
+	SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo)
+
 	// UpdateTaskRuntime with the new runtime info, by first attempting to persit
 	// it. If it fail in persisting the change due to a data race, an
 	// AlreadyExists error is returned.
 	// If succesfull, this will also schedule the task for immediate evaluation.
 	UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) error
 
+	// UpdateJobRuntime updates job with the new runtime, by first attempting to persist
+	// it. If that fails, it just returns back the error for now.
+	// If successful, the job will get scheduled in the goal state for next action.
+	UpdateJobRuntime(ctx context.Context, jobID *peloton.JobID, runtime *pb_job.RuntimeInfo, config *pb_job.JobConfig) error
+
 	// ScheduleTask to be evaluated by the goal state engine, at deadline.
 	ScheduleTask(t Task, deadline time.Time)
+
+	// ScheduleJob to be evaluated by the goal state engine, at deadline.
+	ScheduleJob(j Job, deadline time.Time)
 
 	// WaitForScheduledTask blocked until a scheduled task is ready or the
 	// stopChan is closed.
 	WaitForScheduledTask(stopChan <-chan struct{}) Task
+
+	// WaitForScheduledJob blocked until a scheduled job is ready or the
+	// stopChan is closed.
+	WaitForScheduledJob(stopChan <-chan struct{}) Job
 
 	// Start syncs jobs and tasks from DB, starts emitting metrics.
 	Start()
@@ -64,18 +80,18 @@ func NewManager(
 	volumeStore storage.PersistentVolumeStore,
 	taskLauncher launcher.Launcher,
 	parentScope tally.Scope) Manager {
-	mtx := newMetrics(parentScope.SubScope("tracked"))
+	scope := parentScope.SubScope("tracked")
 	return &manager{
-		jobs:             map[string]*job{},
-		taskQueue:        newDeadlineQueue(mtx),
-		taskQueueChanged: make(chan struct{}, 1),
-		hostmgrClient:    hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
-		resmgrClient:     resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
-		jobStore:         jobStore,
-		taskStore:        taskStore,
-		volumeStore:      volumeStore,
-		taskLauncher:     taskLauncher,
-		mtx:              mtx,
+		jobs:          map[string]*job{},
+		taskScheduler: newScheduler(newMetrics(scope.SubScope("tasks"))),
+		jobScheduler:  newScheduler(newMetrics(scope.SubScope("jobs"))),
+		hostmgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
+		resmgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
+		jobStore:      jobStore,
+		taskStore:     taskStore,
+		volumeStore:   volumeStore,
+		taskLauncher:  taskLauncher,
+		mtx:           newMetrics(scope),
 	}
 }
 
@@ -87,8 +103,8 @@ type manager struct {
 
 	running bool
 
-	taskQueue        *deadlineQueue
-	taskQueueChanged chan struct{}
+	taskScheduler *scheduler
+	jobScheduler  *scheduler
 
 	hostmgrClient hostsvc.InternalHostServiceYARPCClient
 	resmgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
@@ -124,6 +140,19 @@ func (m *manager) GetAllJobs() map[string]Job {
 	return jobMap
 }
 
+func (m *manager) SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo) {
+	m.Lock()
+	defer m.Unlock()
+
+	if !m.running {
+		return
+	}
+
+	j := m.addJob(jobID)
+	j.updateRuntime(jobInfo)
+	m.jobScheduler.schedule(j, time.Now())
+}
+
 func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) {
 	m.Lock()
 	defer m.Unlock()
@@ -134,7 +163,15 @@ func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_t
 
 	j := m.addJob(jobID)
 	t := j.setTask(instanceID, runtime)
-	m.scheduleTask(t, time.Now())
+	m.taskScheduler.schedule(t, time.Now())
+}
+
+func (m *manager) UpdateJobRuntime(ctx context.Context, jobID *peloton.JobID, runtime *pb_job.RuntimeInfo, config *pb_job.JobConfig) error {
+	if err := m.jobStore.UpdateJobRuntime(ctx, jobID, runtime); err != nil {
+		return err
+	}
+	m.SetJob(jobID, &pb_job.JobInfo{Runtime: runtime, Config: config})
+	return nil
 }
 
 func (m *manager) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) error {
@@ -148,6 +185,17 @@ func (m *manager) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, i
 	return nil
 }
 
+func (m *manager) ScheduleJob(j Job, deadline time.Time) {
+	m.Lock()
+	defer m.Unlock()
+
+	if !m.running {
+		return
+	}
+
+	m.jobScheduler.schedule(j.(*job), deadline)
+}
+
 func (m *manager) ScheduleTask(t Task, deadline time.Time) {
 	m.Lock()
 	defer m.Unlock()
@@ -156,42 +204,23 @@ func (m *manager) ScheduleTask(t Task, deadline time.Time) {
 		return
 	}
 
-	m.scheduleTask(t.(*task), deadline)
+	m.taskScheduler.schedule(t.(*task), deadline)
+}
+
+func (m *manager) WaitForScheduledJob(stopChan <-chan struct{}) Job {
+	r := m.jobScheduler.waitForReady(stopChan)
+	if r == nil {
+		return nil
+	}
+	return r.(*job)
 }
 
 func (m *manager) WaitForScheduledTask(stopChan <-chan struct{}) Task {
-	for {
-		m.RLock()
-		deadline := m.taskQueue.nextDeadline()
-		m.RUnlock()
-
-		var timer *time.Timer
-		var timerChan <-chan time.Time
-		if !deadline.IsZero() {
-			timer = time.NewTimer(time.Until(deadline))
-			timerChan = timer.C
-		}
-
-		select {
-		case <-timerChan:
-			m.Lock()
-			r := m.taskQueue.popIfReady()
-			m.Unlock()
-
-			if r != nil {
-				return r.(*task)
-			}
-
-		case <-m.taskQueueChanged:
-
-		case <-stopChan:
-			return nil
-		}
-
-		if timer != nil {
-			timer.Stop()
-		}
+	r := m.taskScheduler.waitForReady(stopChan)
+	if r == nil {
+		return nil
 	}
+	return r.(*task)
 }
 
 // addJob to the manager, if missing. The manager lock must be hold when called.
@@ -222,21 +251,9 @@ func (m *manager) clearTask(t *task) {
 	defer t.job.Unlock()
 
 	delete(t.job.tasks, t.id)
+	// TODO fix delete of job.
 	if len(t.job.tasks) == 0 {
 		delete(m.jobs, t.job.id.GetValue())
-	}
-}
-
-// scheduleTask to deadline. The manager lock must be hold when called.
-func (m *manager) scheduleTask(t *task, deadline time.Time) {
-	// Override if newer.
-	if t.deadline().IsZero() || deadline.Before(t.deadline()) {
-		t.setDeadline(deadline)
-		m.taskQueue.update(t)
-		select {
-		case m.taskQueueChanged <- struct{}{}:
-		default:
-		}
 	}
 }
 
@@ -251,7 +268,7 @@ func (m *manager) Start() {
 	m.running = true
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 		defer cancel()
 
 		if err := m.syncFromDB(ctx); err != nil {
@@ -277,8 +294,9 @@ func (m *manager) Stop() {
 
 	for _, job := range m.jobs {
 		for _, t := range job.tasks {
-			m.scheduleTask(t, time.Time{})
+			m.taskScheduler.schedule(t, time.Time{})
 		}
+		m.jobScheduler.schedule(job, time.Time{})
 	}
 
 	m.jobs = map[string]*job{}
@@ -289,7 +307,9 @@ func (m *manager) Stop() {
 }
 
 func (m *manager) syncFromDB(ctx context.Context) error {
-	log.Info("syncing tracked manager with DB goalstates")
+	log.Info("syncing tracked manager with db")
+	numberTasks := 0
+	startRecoveryTime := time.Now()
 
 	// TODO: Skip completed jobs.
 	jobs, err := m.jobStore.GetAllJobs(ctx)
@@ -297,17 +317,58 @@ func (m *manager) syncFromDB(ctx context.Context) error {
 		return err
 	}
 
-	for id := range jobs {
+	for id, jobRuntime := range jobs {
 		jobID := &peloton.JobID{Value: id}
+		// ignore jobs with terminal goal state and in terminal state
+		switch jobRuntime.GetState() {
+		case
+			pb_job.JobState_FAILED,
+			pb_job.JobState_KILLED,
+			pb_job.JobState_SUCCEEDED:
+			switch jobRuntime.GetGoalState() {
+			case
+				pb_job.JobState_KILLED,
+				pb_job.JobState_SUCCEEDED:
+				log.WithField("job_id", id).
+					WithField("state", jobRuntime.GetState().String).
+					WithField("goal_state", jobRuntime.GetGoalState().String).
+					Info("skipping load of completed job")
+				continue
+			}
+
+		}
+
+		jobConfig, err := m.jobStore.GetJobConfig(ctx, jobID)
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", id).
+				Error("failed to load job config into goal state engine")
+			continue
+		}
+
+		m.SetJob(jobID, &pb_job.JobInfo{
+			Runtime: jobRuntime,
+			Config:  jobConfig,
+		})
+
 		tasks, err := m.taskStore.GetTasksForJob(ctx, jobID)
 		if err != nil {
-			return err
+			delete(m.jobs, id)
+			log.WithError(err).
+				WithField("job_id", id).
+				Error("failed to load tasks for job into goal state engine")
+			continue
 		}
 
 		for instanceID, task := range tasks {
 			m.SetTask(jobID, instanceID, task.GetRuntime())
+			numberTasks++
 		}
 	}
+
+	log.WithField("no_of_tasks", numberTasks).
+		WithField("time_spent", time.Since(startRecoveryTime)).
+		Info("syncing tracked manager with db is finished")
 
 	return nil
 }
