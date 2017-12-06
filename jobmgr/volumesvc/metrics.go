@@ -1,4 +1,4 @@
-package volume
+package volumesvc
 
 import (
 	"github.com/uber-go/tally"
@@ -19,7 +19,7 @@ type Metrics struct {
 	DeleteVolumeFail tally.Counter
 }
 
-// NewMetrics returns a new instance of hostmgr.Metrics.
+// NewMetrics returns a new instance of volumesvc.Metrics.
 func NewMetrics(scope tally.Scope) *Metrics {
 	subScope := scope.SubScope("volume")
 	return &Metrics{

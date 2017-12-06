@@ -1,4 +1,4 @@
-package volume
+package volumesvc
 
 import (
 	"testing"
@@ -24,7 +24,7 @@ const (
 	_testJobID    = "testJob"
 )
 
-type HostmgVolumeHandlerTestSuite struct {
+type VolumeHandlerTestSuite struct {
 	suite.Suite
 
 	ctrl        *gomock.Controller
@@ -34,7 +34,7 @@ type HostmgVolumeHandlerTestSuite struct {
 	handler     *serviceHandler
 }
 
-func (suite *HostmgVolumeHandlerTestSuite) SetupTest() {
+func (suite *VolumeHandlerTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.volumeStore = storage_mocks.NewMockPersistentVolumeStore(suite.ctrl)
@@ -47,15 +47,15 @@ func (suite *HostmgVolumeHandlerTestSuite) SetupTest() {
 	}
 }
 
-func (suite *HostmgVolumeHandlerTestSuite) TearDownTest() {
+func (suite *VolumeHandlerTestSuite) TearDownTest() {
 	log.Debug("tearing down")
 }
 
-func TestHostmgVolumeHandlerTestSuite(t *testing.T) {
-	suite.Run(t, new(HostmgVolumeHandlerTestSuite))
+func TestVolumeHandlerTestSuite(t *testing.T) {
+	suite.Run(t, new(VolumeHandlerTestSuite))
 }
 
-func (suite *HostmgVolumeHandlerTestSuite) TestGetVolume() {
+func (suite *VolumeHandlerTestSuite) TestGetVolume() {
 	defer suite.ctrl.Finish()
 
 	testPelotonVolumeID := &peloton.VolumeID{
@@ -77,7 +77,7 @@ func (suite *HostmgVolumeHandlerTestSuite) TestGetVolume() {
 	suite.Equal(volumeInfo, resp.GetResult())
 }
 
-func (suite *HostmgVolumeHandlerTestSuite) TestGetVolumeNotFound() {
+func (suite *VolumeHandlerTestSuite) TestGetVolumeNotFound() {
 	defer suite.ctrl.Finish()
 
 	testPelotonVolumeID := &peloton.VolumeID{
@@ -97,7 +97,7 @@ func (suite *HostmgVolumeHandlerTestSuite) TestGetVolumeNotFound() {
 	suite.Equal(err, errVolumeNotFound)
 }
 
-func (suite *HostmgVolumeHandlerTestSuite) TestListVolumes() {
+func (suite *VolumeHandlerTestSuite) TestListVolumes() {
 	defer suite.ctrl.Finish()
 
 	testPelotonVolumeID1 := &peloton.VolumeID{
@@ -159,7 +159,7 @@ func (suite *HostmgVolumeHandlerTestSuite) TestListVolumes() {
 	suite.Equal(2, len(resp.GetVolumes()))
 }
 
-func (suite *HostmgVolumeHandlerTestSuite) TestListVolumesDBError() {
+func (suite *VolumeHandlerTestSuite) TestListVolumesDBError() {
 	defer suite.ctrl.Finish()
 
 	testPelotonVolumeID1 := &peloton.VolumeID{
@@ -192,7 +192,7 @@ func (suite *HostmgVolumeHandlerTestSuite) TestListVolumesDBError() {
 	suite.Nil(resp.GetVolumes())
 }
 
-func (suite *HostmgVolumeHandlerTestSuite) TestDeleteVolume() {
+func (suite *VolumeHandlerTestSuite) TestDeleteVolume() {
 	defer suite.ctrl.Finish()
 
 	testPelotonVolumeID1 := &peloton.VolumeID{
@@ -237,7 +237,7 @@ func (suite *HostmgVolumeHandlerTestSuite) TestDeleteVolume() {
 	suite.NoError(err)
 }
 
-func (suite *HostmgVolumeHandlerTestSuite) TestDeleteVolumeInUse() {
+func (suite *VolumeHandlerTestSuite) TestDeleteVolumeInUse() {
 	defer suite.ctrl.Finish()
 
 	testPelotonVolumeID1 := &peloton.VolumeID{

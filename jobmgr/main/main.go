@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/tasksvc"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/upgrade"
+	"code.uber.internal/infra/peloton/jobmgr/volumesvc"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -330,6 +331,13 @@ func main() {
 		runtimeUpdater,
 		trackedManager,
 		*mesosAgentWorkDir,
+	)
+	volumesvc.InitServiceHandler(
+		dispatcher,
+		rootScope,
+		jobStore,
+		taskStore,
+		volumeStore,
 	)
 
 	upgradeManager := upgrade.NewManager(jobStore, cfg.JobManager.Upgrade)
