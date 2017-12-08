@@ -42,6 +42,17 @@ message LaunchableTask {
   Volume volume = 4;
 }
 
+
+/**
+ *  ExecutorOnAgent describes the executor to be shutdown by host manager including Mesos
+ *  agent id and executor id.
+ */
+message ExecutorOnAgent {
+  mesos.v1.ExecutorID executorId = 1;
+  mesos.v1.AgentID agentId = 2;
+}
+
+
 /** QuantityControl includes input from placement engine to control how many
  * host offers need to be returned.
  */
@@ -166,6 +177,22 @@ message InvalidOffers {
 }
 
 /**
+ * Error for invalid shutdown executors.
+ */
+message InvalidExecutors{
+    string message = 1;
+    repeated ExecutorOnAgent executors = 2;
+}
+
+/**
+ * Error for failed shutdown executors.
+ */
+message ShutdownFailure{
+    string message = 1;
+    repeated ExecutorOnAgent executors = 2;
+}
+
+/**
  * Error when actually tasks launch failed.
  */
 message LaunchFailure {
@@ -228,6 +255,9 @@ service InternalHostService
 
   // Kill tasks that are running on Mesos cluster
   rpc KillTasks(KillTasksRequest) returns (KillTasksResponse);
+
+  // Shutdown executors that running on a Mesos agent
+  rpc ShutdownExecutors(ShutdownExecutorsRequest) returns (ShutdownExecutorsResponse);
 
   // Reserve resources on a host
   rpc ReserveResources(ReserveResourcesRequest) returns (ReserveResourcesResponse);
@@ -377,6 +407,19 @@ message LaunchTasksResponse {
     InvalidArgument invalidArgument = 1;
     LaunchFailure launchFailure = 2;
     InvalidOffers invalidOffers = 3;
+  }
+
+  Error error = 1;
+}
+
+message ShutdownExecutorsRequest {
+  repeated ExecutorOnAgent executors = 1;
+}
+
+message ShutdownExecutorsResponse {
+  message Error {
+    InvalidExecutors invalidExecutors = 1;
+    ShutdownFailure    shutdownFailure = 2;
   }
 
   Error error = 1;

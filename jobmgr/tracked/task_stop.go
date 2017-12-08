@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	log "github.com/sirupsen/logrus"
+
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
-
-	log "github.com/sirupsen/logrus"
 )
 
 func (t *task) stop(ctx context.Context) error {
@@ -90,4 +89,13 @@ func (t *task) stopMesosTask(ctx context.Context, runtime *pb_task.RuntimeInfo) 
 	// to it.
 
 	return jobmgr_task.KillTask(ctx, t.job.m.hostmgrClient, runtime.GetMesosTaskId())
+}
+
+func (t *task) shutdownMesosExecutor(ctx context.Context, runtime *pb_task.RuntimeInfo) error {
+	// Send shutdown signal to mesos, if the task has a mesos executor ID and agent ID associated
+	// to it.
+
+	return jobmgr_task.ShutdownMesosExecutor(ctx,
+		t.job.m.hostmgrClient, runtime.GetMesosTaskId(),
+		runtime.GetAgentID())
 }

@@ -58,3 +58,37 @@ func KillTask(ctx context.Context, hostmgrClient hostsvc.InternalHostServiceYARP
 
 	return nil
 }
+
+// ShutdownMesosExecutor shutdown a executor given its executor ID and agent ID
+func ShutdownMesosExecutor(
+	ctx context.Context,
+	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
+	taskID *mesos_v1.TaskID,
+	agentID *mesos_v1.AgentID) error {
+
+	req := &hostsvc.ShutdownExecutorsRequest{
+		Executors: []*hostsvc.ExecutorOnAgent{
+			{
+				ExecutorId: &mesos_v1.ExecutorID{Value: taskID.Value},
+				AgentId:    agentID,
+			},
+		},
+	}
+
+	res, err := hostmgrClient.ShutdownExecutors(ctx, req)
+
+	if err != nil {
+		return err
+	} else if e := res.GetError(); e != nil {
+		switch {
+		case e.ShutdownFailure != nil:
+			return fmt.Errorf(e.ShutdownFailure.Message)
+		case e.InvalidExecutors != nil:
+			return fmt.Errorf(e.InvalidExecutors.Message)
+		default:
+			return fmt.Errorf(e.String())
+		}
+	}
+
+	return nil
+}

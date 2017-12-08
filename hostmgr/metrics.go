@@ -19,6 +19,10 @@ type Metrics struct {
 	KillTasks     tally.Counter
 	KillTasksFail tally.Counter
 
+	ShutdownExecutors        tally.Counter
+	ShutdownExecutorsInvalid tally.Counter
+	ShutdownExecutorsFail    tally.Counter
+
 	ReleaseHostOffers tally.Counter
 
 	Elected         tally.Gauge
@@ -55,6 +59,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		KillTasks:     scope.Counter("kill_tasks"),
 		KillTasksFail: scope.Counter("kill_tasks_fail"),
+
+		ShutdownExecutors:        scope.Counter("shutdown_executors"),
+		ShutdownExecutorsInvalid: scope.Counter("shutdown_executors_invalid"),
+		ShutdownExecutorsFail:    scope.Counter("shutdown_executors_fail"),
 
 		ReleaseHostOffers: scope.Counter("release_host_offers"),
 

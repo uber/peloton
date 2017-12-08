@@ -578,6 +578,95 @@ func validateLaunchTasks(request *hostsvc.LaunchTasksRequest) error {
 	return nil
 }
 
+func validateShutdownExecutors(request *hostsvc.ShutdownExecutorsRequest) error {
+	executorList := request.GetExecutors()
+
+	if len(executorList) <= 0 {
+		return errors.New("Empty executor list in ShutdownExecutorsRequest")
+	}
+
+	for _, executor := range executorList {
+		if executor.GetAgentId() == nil || executor.GetExecutorId() == nil {
+			return errors.New("Empty Executor Id or Agent Id ")
+		}
+	}
+	return nil
+}
+
+// ShutdownExecutors implements InternalHostService.ShutdownExecutors.
+func (h *serviceHandler) ShutdownExecutors(
+	ctx context.Context,
+	body *hostsvc.ShutdownExecutorsRequest) (
+	*hostsvc.ShutdownExecutorsResponse, error) {
+	log.WithField("request", body).Debug("ShutdownExecutor called.")
+	shutdownExecutors := body.GetExecutors()
+
+	if err := validateShutdownExecutors(body); err != nil {
+		h.metrics.ShutdownExecutorsInvalid.Inc(1)
+		return &hostsvc.ShutdownExecutorsResponse{
+			Error: &hostsvc.ShutdownExecutorsResponse_Error{
+				InvalidExecutors: &hostsvc.InvalidExecutors{
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	var wg sync.WaitGroup
+	failedMutex := &sync.Mutex{}
+	var failedExecutors []*hostsvc.ExecutorOnAgent
+	var errs []string
+	for _, shutdownExecutor := range shutdownExecutors {
+		wg.Add(1)
+		go func(shutdownExecutor *hostsvc.ExecutorOnAgent) {
+			defer wg.Done()
+			executorID := shutdownExecutor.GetExecutorId()
+			agentID := shutdownExecutor.GetAgentId()
+
+			callType := sched.Call_SHUTDOWN
+			msg := &sched.Call{
+				FrameworkId: h.frameworkInfoProvider.GetFrameworkID(ctx),
+				Type:        &callType,
+				Shutdown: &sched.Call_Shutdown{
+					ExecutorId: executorID,
+					AgentId:    agentID,
+				},
+			}
+			msid := h.frameworkInfoProvider.GetMesosStreamID(ctx)
+			err := h.schedulerClient.Call(msid, msg)
+			if err != nil {
+				h.metrics.ShutdownExecutorsFail.Inc(1)
+				log.WithFields(log.Fields{
+					"executor_id": executorID,
+					"agent_id":    agentID,
+					"error":       err,
+				}).Error("Shutdown executor failure")
+
+				failedMutex.Lock()
+				defer failedMutex.Unlock()
+				failedExecutors = append(
+					failedExecutors, shutdownExecutor)
+				errs = append(errs, err.Error())
+				return
+			}
+			h.metrics.ShutdownExecutors.Inc(1)
+		}(shutdownExecutor)
+	}
+	wg.Wait()
+	if len(failedExecutors) > 0 {
+		return &hostsvc.ShutdownExecutorsResponse{
+			Error: &hostsvc.ShutdownExecutorsResponse_Error{
+				ShutdownFailure: &hostsvc.ShutdownFailure{
+					Message:   strings.Join(errs, ";"),
+					Executors: failedExecutors,
+				},
+			},
+		}, nil
+	}
+
+	return &hostsvc.ShutdownExecutorsResponse{}, nil
+}
+
 // KillTasks implements InternalHostService.KillTasks.
 func (h *serviceHandler) KillTasks(
 	ctx context.Context,

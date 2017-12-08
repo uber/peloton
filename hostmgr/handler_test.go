@@ -562,6 +562,177 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireAndLaunchOperation() {
 	suite.checkResourcesGauges(0, "placing")
 }
 
+// Test happy case of shutdown executor
+func (suite *HostMgrHandlerTestSuite) TestShutdownExecutors() {
+	defer suite.ctrl.Finish()
+
+	e1 := "e1"
+	a1 := "a1"
+	e2 := "e2"
+	a2 := "a2"
+
+	shutdownExecutors := []*hostsvc.ExecutorOnAgent{
+		{
+			ExecutorId: &mesos.ExecutorID{Value: &e1},
+			AgentId:    &mesos.AgentID{Value: &a1},
+		},
+		{
+			ExecutorId: &mesos.ExecutorID{Value: &e2},
+			AgentId:    &mesos.AgentID{Value: &a2},
+		},
+	}
+	shutdownReq := &hostsvc.ShutdownExecutorsRequest{
+		Executors: shutdownExecutors,
+	}
+
+	shutdownedExecutors := make(map[string]string)
+	mockMutex := &sync.Mutex{}
+
+	// Set expectations on provider
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+		suite.frameworkID,
+	).Times(2)
+	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
+		_streamID,
+	).Times(2)
+
+	suite.schedulerClient.EXPECT().
+		Call(
+			gomock.Eq(_streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify clientCall message.
+			call := msg.(*sched.Call)
+			suite.Equal(sched.Call_SHUTDOWN, call.GetType())
+			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+			aid := call.GetShutdown().GetAgentId()
+			eid := call.GetShutdown().GetExecutorId()
+
+			suite.NotNil(aid)
+			suite.NotNil(eid)
+
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+			shutdownedExecutors[eid.GetValue()] = aid.GetValue()
+		}).
+		Return(nil).
+		Times(2)
+
+	resp, err := suite.handler.ShutdownExecutors(rootCtx, shutdownReq)
+	suite.NoError(err)
+	suite.Nil(resp.GetError())
+	suite.Equal(
+		map[string]string{"e1": "a1", "e2": "a2"},
+		shutdownedExecutors)
+
+	suite.Equal(
+		int64(2),
+		suite.testScope.Snapshot().Counters()["shutdown_executors+"].Value())
+}
+
+// Test some failure cases of shutdown executor
+func (suite *HostMgrHandlerTestSuite) TestShutdownExecutorsFailure() {
+	defer suite.ctrl.Finish()
+
+	e1 := "e1"
+	a1 := "a1"
+	e2 := "e2"
+	a2 := "a2"
+
+	shutdownExecutors := []*hostsvc.ExecutorOnAgent{
+		{
+			ExecutorId: &mesos.ExecutorID{Value: &e1},
+			AgentId:    &mesos.AgentID{Value: &a1},
+		},
+		{
+			ExecutorId: &mesos.ExecutorID{Value: &e2},
+			AgentId:    &mesos.AgentID{Value: &a2},
+		},
+	}
+	shutdownReq := &hostsvc.ShutdownExecutorsRequest{
+		Executors: shutdownExecutors,
+	}
+
+	failedExecutors := make(map[string]string)
+	shutdownedExecutors := make(map[string]string)
+	mockMutex := &sync.Mutex{}
+
+	// Set expectations on provider
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
+		suite.frameworkID,
+	).Times(2)
+	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
+		_streamID,
+	).Times(2)
+
+	// A failed call.
+	suite.schedulerClient.EXPECT().
+		Call(
+			gomock.Eq(_streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify call message and process the executor into failedShutdownedExecutors
+			call := msg.(*sched.Call)
+			suite.Equal(sched.Call_SHUTDOWN, call.GetType())
+			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+			aid := call.GetShutdown().GetAgentId()
+			eid := call.GetShutdown().GetExecutorId()
+
+			suite.NotNil(aid)
+			suite.NotNil(eid)
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+			failedExecutors[eid.GetValue()] = aid.GetValue()
+		}).
+		Return(errors.New("Some error"))
+
+	// A successful call.
+	suite.schedulerClient.EXPECT().
+		Call(
+			gomock.Eq(_streamID),
+			gomock.Any(),
+		).
+		Do(func(_ string, msg proto.Message) {
+			// Verify call message while process the kill task id into `killedTaskIds`
+			call := msg.(*sched.Call)
+			suite.Equal(sched.Call_SHUTDOWN, call.GetType())
+			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+			aid := call.GetShutdown().GetAgentId()
+			eid := call.GetShutdown().GetExecutorId()
+
+			suite.NotNil(aid)
+			suite.NotNil(eid)
+			mockMutex.Lock()
+			defer mockMutex.Unlock()
+
+			shutdownedExecutors[eid.GetValue()] = aid.GetValue()
+		}).
+		Return(nil)
+
+	resp, err := suite.handler.ShutdownExecutors(rootCtx, shutdownReq)
+	suite.NoError(err)
+	suite.NotNil(resp.GetError().GetShutdownFailure())
+
+	suite.Equal(1, len(failedExecutors))
+	suite.Equal(1, len(shutdownedExecutors))
+
+	suite.NotEqual(shutdownedExecutors, failedExecutors)
+
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["shutdown_executors+"].Value())
+
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["shutdown_executors_fail+"].Value())
+
+}
+
 // Test happy case of killing task
 func (suite *HostMgrHandlerTestSuite) TestKillTask() {
 	defer suite.ctrl.Finish()
