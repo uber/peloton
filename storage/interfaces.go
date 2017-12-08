@@ -57,6 +57,7 @@ type TaskStore interface {
 	GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)
 	GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error)
 	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int64) (*task.TaskConfig, error)
+	GetTaskConfigs(ctx context.Context, id *peloton.JobID, instanceIDs []uint32, version int64) (map[uint32]*task.TaskConfig, error)
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
 	QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error)
 	GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error)

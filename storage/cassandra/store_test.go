@@ -737,6 +737,46 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 	suite.Equal(uint64(2), info.GetRuntime().GetRevision().GetVersion())
 }
 
+// TestGetTaskConfigs tests reading task configs(overridden and default)
+func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	// create default task config
+	store.createTaskConfig(context.Background(), jobID,
+		_defaultTaskConfigID,
+		&task.TaskConfig{
+			Name: "default",
+		}, 0)
+
+	// create 5 tasks with versions
+	var instanceIDs []uint32
+	for i := int64(0); i < 5; i++ {
+		suite.NoError(store.createTaskConfig(context.Background(), jobID,
+			i,
+			&task.TaskConfig{
+				Name: fmt.Sprintf("task-%d", i),
+			}, 0))
+		instanceIDs = append(instanceIDs, uint32(i))
+	}
+
+	// Add new instance ID 6 which should have the detault task config
+	instanceIDs = append(instanceIDs, uint32(6))
+
+	// get the task configs
+	configs, err := store.GetTaskConfigs(context.Background(), jobID, instanceIDs, int64(0))
+	suite.NoError(err)
+	suite.Equal(6, len(configs))
+
+	for instance, config := range configs {
+		expectedName := fmt.Sprintf("task-%d", instance)
+		if instance == 6 {
+			// for instance ID 6 we expect the default config
+			expectedName = "default"
+		}
+		suite.Equal(expectedName, config.Name)
+	}
+}
+
 // TestCreateTasks ensures mysql task create batching works as expected.
 func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 	jobTasks := map[string]int{

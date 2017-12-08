@@ -65,6 +65,9 @@ type TaskMetrics struct {
 	TaskGetConfig     tally.Counter
 	TaskGetConfigFail tally.Counter
 
+	TaskGetConfigs     tally.Counter
+	TaskGetConfigsFail tally.Counter
+
 	TaskLogState     tally.Counter
 	TaskLogStateFail tally.Counter
 
@@ -238,6 +241,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskGetFail:          taskFailScope.Counter("get"),
 		TaskGetConfig:        taskSuccessScope.Counter("get_config"),
 		TaskGetConfigFail:    taskFailScope.Counter("get_config"),
+		TaskGetConfigs:       taskSuccessScope.Counter("get_configs"),
+		TaskGetConfigsFail:   taskFailScope.Counter("get_configs"),
 
 		TaskLogState:        taskSuccessScope.Counter("log_state"),
 		TaskLogStateFail:    taskFailScope.Counter("log_state"),

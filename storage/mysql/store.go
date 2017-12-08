@@ -500,6 +500,12 @@ func (m *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 	return nil, fmt.Errorf("unimplemented GetTaskConfig")
 }
 
+// GetTaskConfigs returns the task specific config for a list of instances
+func (m *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
+	instanceIDs []uint32, version int64) (map[uint32]*task.TaskConfig, error) {
+	return nil, fmt.Errorf("unimplemented GetTaskConfigs")
+}
+
 // CreateTaskConfigs creates task configurations.
 func (m *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
 	return fmt.Errorf("unimplemented CreateTaskConfigs")

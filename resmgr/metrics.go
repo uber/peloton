@@ -24,11 +24,13 @@ type Metrics struct {
 	GetPlacementSuccess tally.Counter
 	GetPlacementFail    tally.Counter
 
-	RecoverySuccess            tally.Counter
-	RecoveryFail               tally.Counter
-	RecoverySuccessCount       tally.Counter
-	RecoveryFailCount          tally.Counter
-	RecoveryEnqueueFailedCount tally.Counter
+	RecoverySuccess             tally.Counter
+	RecoveryFail                tally.Counter
+	RecoveryRunningSuccessCount tally.Counter
+	RecoveryRunningFailCount    tally.Counter
+	RecoveryEnqueueFailedCount  tally.Counter
+	RecoveryEnqueueSuccessCount tally.Counter
+	RecoveryTimer               tally.Timer
 
 	PlacementQueueLen tally.Gauge
 
@@ -37,9 +39,9 @@ type Metrics struct {
 
 // NewMetrics returns a new instance of resmgr.Metrics.
 func NewMetrics(scope tally.Scope) *Metrics {
-	successScope := scope.Tagged(map[string]string{"type": "success"})
-	failScope := scope.Tagged(map[string]string{"type": "fail"})
-	timeoutScope := scope.Tagged(map[string]string{"type": "timeout"})
+	successScope := scope.Tagged(map[string]string{"result": "success"})
+	failScope := scope.Tagged(map[string]string{"result": "fail"})
+	timeoutScope := scope.Tagged(map[string]string{"result": "timeout"})
 	apiScope := scope.SubScope("api")
 	serverScope := scope.SubScope("server")
 	placement := scope.SubScope("placement")
@@ -66,13 +68,14 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		GetPlacementSuccess: successScope.Counter("get_placements"),
 		GetPlacementFail:    failScope.Counter("get_placements"),
 
-		RecoverySuccess:            successScope.Counter("recovery"),
-		RecoveryFail:               failScope.Counter("recovery"),
-		RecoverySuccessCount:       successScope.Counter("task_count"),
-		RecoveryFailCount:          failScope.Counter("task_count"),
-		RecoveryEnqueueFailedCount: recovery.Counter("enqueue_task_fail_count"),
-
-		PlacementQueueLen: placement.Gauge("placement_queue_length"),
+		RecoverySuccess:             successScope.Counter("recovery"),
+		RecoveryFail:                failScope.Counter("recovery"),
+		RecoveryRunningSuccessCount: successScope.Counter("task_count"),
+		RecoveryRunningFailCount:    failScope.Counter("task_count"),
+		RecoveryEnqueueFailedCount:  failScope.Counter("enqueue_task_count"),
+		RecoveryEnqueueSuccessCount: successScope.Counter("enqueue_task_count"),
+		RecoveryTimer:               recovery.Timer("running_tasks"),
+		PlacementQueueLen:           placement.Gauge("placement_queue_length"),
 
 		Elected: serverScope.Gauge("elected"),
 	}

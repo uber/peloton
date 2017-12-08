@@ -238,6 +238,19 @@ func (_mr *MockTaskStoreMockRecorder) GetTaskConfig(arg0, arg1, arg2, arg3 inter
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetTaskConfig", reflect.TypeOf((*MockTaskStore)(nil).GetTaskConfig), arg0, arg1, arg2, arg3)
 }
 
+// GetTaskConfigs mocks base method
+func (_m *MockTaskStore) GetTaskConfigs(_param0 context.Context, _param1 *peloton.JobID, _param2 []uint32, _param3 int64) (map[uint32]*task.TaskConfig, error) {
+	ret := _m.ctrl.Call(_m, "GetTaskConfigs", _param0, _param1, _param2, _param3)
+	ret0, _ := ret[0].(map[uint32]*task.TaskConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTaskConfigs indicates an expected call of GetTaskConfigs
+func (_mr *MockTaskStoreMockRecorder) GetTaskConfigs(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetTaskConfigs", reflect.TypeOf((*MockTaskStore)(nil).GetTaskConfigs), arg0, arg1, arg2, arg3)
+}
+
 // GetTaskForJob mocks base method
 func (_m *MockTaskStore) GetTaskForJob(_param0 context.Context, _param1 *peloton.JobID, _param2 uint32) (map[uint32]*task.TaskInfo, error) {
 	ret := _m.ctrl.Call(_m, "GetTaskForJob", _param0, _param1, _param2)

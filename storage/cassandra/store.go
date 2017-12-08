@@ -863,7 +863,6 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 				}
 				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
 					Debugf("Wrote %d tasks (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart))
-
 				err = s.logTaskStateChanges(ctx, idsToTaskRuntimes)
 				if err != nil {
 					log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
@@ -1102,6 +1101,84 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 	return record.GetTaskConfig()
 }
 
+// GetTaskConfigs returns the task configs for a list of instance IDs,
+// job ID and config version.
+func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
+	instanceIDs []uint32, version int64) (map[uint32]*task.TaskConfig, error) {
+	taskConfigMap := make(map[uint32]*task.TaskConfig)
+
+	// add default instance ID to read the default config
+	var dbInstanceIDs []int
+	for _, instance := range instanceIDs {
+		dbInstanceIDs = append(dbInstanceIDs, int(instance))
+	}
+	dbInstanceIDs = append(dbInstanceIDs, _defaultTaskConfigID)
+
+	stmt := s.DataStore.NewQuery().Select("*").From(taskConfigTable).
+		Where(
+			qb.Eq{
+				"job_id":      id.GetValue(),
+				"version":     version,
+				"instance_id": dbInstanceIDs,
+			})
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		log.WithField("job_id", id.GetValue()).
+			WithField("instance_ids", instanceIDs).
+			WithField("version", version).
+			WithError(err).
+			Error("Failed to get task configs")
+		s.metrics.TaskMetrics.TaskGetConfigsFail.Inc(1)
+		return taskConfigMap, err
+	}
+
+	if len(allResults) == 0 {
+		log.Info("no results")
+		return taskConfigMap, nil
+	}
+
+	var defaultConfig *task.TaskConfig
+	// Read all the overridden task configs and the default task config
+	for _, value := range allResults {
+		var record TaskConfigRecord
+		if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
+			log.WithField("value", value).
+				WithError(err).
+				Error("Failed to Fill into TaskRecord")
+			s.metrics.TaskMetrics.TaskGetConfigsFail.Inc(1)
+			return nil, err
+		}
+		taskConfig, err := record.GetTaskConfig()
+		if err != nil {
+			return nil, err
+		}
+		if record.InstanceID == _defaultTaskConfigID {
+			// get the default config
+			defaultConfig = taskConfig
+			continue
+		}
+		taskConfigMap[uint32(record.InstanceID)] = taskConfig
+	}
+
+	// Fill the instances which don't have a overridden config with the default
+	// config
+	for _, instance := range instanceIDs {
+		if _, ok := taskConfigMap[instance]; !ok {
+			// use the default config for this instance
+			if defaultConfig == nil {
+				// we should never be here.
+				// Either every instance has a override config or we have a
+				// default config.
+				s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
+				return nil, fmt.Errorf("unable to read default task config")
+			}
+			taskConfigMap[instance] = defaultConfig
+		}
+	}
+	s.metrics.TaskMetrics.TaskGetConfigs.Inc(1)
+	return taskConfigMap, nil
+}
+
 func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.JobID, record *TaskRuntimeRecord) (*task.TaskInfo, error) {
 	runtime, err := record.GetTaskRuntime()
 	if err != nil {
@@ -1198,8 +1275,10 @@ func (s *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID
 	return resultMap, nil
 }
 
-// GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job given instance id range
-func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
+// GetTasksForJobByRange returns the TaskInfo for batch jobs by
+// instance ID range.
+func (s *Store) GetTasksForJobByRange(ctx context.Context,
+	id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.GetValue()
 	result := make(map[uint32]*task.TaskInfo)
 	queryBuilder := s.DataStore.NewQuery()
@@ -1211,24 +1290,94 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
-		log.Errorf("Fail to GetTasksForJobByRange by jobId %v range %v, err=%v", jobID, instanceRange, err)
+		log.WithError(err).
+			WithField("job_id", jobID).
+			WithField("range", instanceRange).
+			Error("Fail to GetTasksForBatchJobsByRange")
 		s.metrics.TaskMetrics.TaskGetForJobRangeFail.Inc(1)
 		return nil, err
 	}
+	if len(allResults) == 0 {
+		return result, nil
+	}
+
+	// create map of instanceID->runtime
+	runtimeMap := make(map[uint32]*task.RuntimeInfo)
 	for _, value := range allResults {
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
-			log.WithField("job_id", id.GetValue()).
+			log.WithField("job_id", jobID).
+				WithField("range", instanceRange).
 				WithError(err).
 				Error("Failed to Fill into TaskRecord")
 			s.metrics.TaskMetrics.TaskGetForJobRangeFail.Inc(1)
 			return nil, err
 		}
-		taskInfo, err := s.getTaskInfoFromRuntimeRecord(ctx, id, &record)
-		result[taskInfo.InstanceId] = taskInfo
-		s.metrics.TaskMetrics.TaskGetForJobRange.Inc(1)
+		runtime, err := record.GetTaskRuntime()
+		if err != nil {
+			return result, err
+		}
+		runtimeMap[uint32(record.InstanceID)] = runtime
 	}
+
+	if len(runtimeMap) == 0 {
+		return result, nil
+	}
+
+	// map of configVersion-> list of instance IDS with that version
+	//
+	// NB: For batch jobs the assumption is that most(
+	// if not all) of the tasks will have the same task config version.
+	// So we can use this optimization to get all the configs with just 1 DB
+	// call. In the worst case if all tasks have a different config version
+	// then it'll take 1 DB call for each task config.
+	configVersions := make(map[uint64][]uint32)
+	for instanceID, runtime := range runtimeMap {
+		instances, ok := configVersions[runtime.GetConfigVersion()]
+		if !ok {
+			instances = []uint32{}
+		}
+		instances = append(instances, instanceID)
+		configVersions[runtime.GetConfigVersion()] = instances
+	}
+
+	log.WithField("config_versions_map",
+		configVersions).Debug("config versions to read")
+
+	// map of instanceID -> task config
+	configMap := make(map[uint32]*task.TaskConfig)
+
+	for configVersion, instances := range configVersions {
+		// Get the configs for a particular config version
+		configs, err := s.GetTaskConfigs(ctx, id, instances,
+			int64(configVersion))
+		if err != nil {
+			return result, err
+		}
+
+		// appends the configs
+		for instanceID, config := range configs {
+			configMap[instanceID] = config
+		}
+	}
+
+	// We have the task configs and the task runtimes, so we can
+	// create task infos
+	for instanceID, runtime := range runtimeMap {
+		config := configMap[instanceID]
+		result[instanceID] = &task.TaskInfo{
+			InstanceId: instanceID,
+			JobId:      id,
+			Config:     config,
+			Runtime:    runtime,
+		}
+	}
+
+	// The count should be the same
+	log.WithField("count_runtime", len(runtimeMap)).
+		WithField("count_config", len(configMap)).
+		Debug("runtime vs config")
 	return result, nil
 }
 
@@ -2079,7 +2228,7 @@ func (s *Store) GetWorkflowProgress(ctx context.Context, id *upgrade.WorkflowID)
 		}
 		return record.GetProcessingInstances(), uint32(record.Progress), nil
 	}
-	return nil, 0, fmt.Errorf("Cannot find workflow with ID %v", id.GetValue())
+	return nil, 0, fmt.Errorf("cannot find workflow with ID %v", id.GetValue())
 }
 
 func parseTime(v string) time.Time {

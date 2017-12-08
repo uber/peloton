@@ -266,8 +266,9 @@ func (suite *recoveryTestSuite) createTasks(jobID *peloton.JobID, numTasks uint3
 		}
 		tasks[i] = &task.TaskInfo{
 			Runtime: &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{Value: &taskID},
-				State:       taskState,
+				MesosTaskId:   &mesos.TaskID{Value: &taskID},
+				State:         taskState,
+				ConfigVersion: uint64(0),
 			},
 			Config:     &taskConf,
 			InstanceId: i,
@@ -359,7 +360,10 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 				PlacingTimeout:   1 * time.Minute,
 			},
 		})
-	GetRecoveryHandler().Start()
+
+	rh := GetRecoveryHandler().(*recoveryHandler)
+	rh.Start()
+	<-rh.finished
 
 	// 2. check the queue content
 	var resPoolID peloton.ResourcePoolID
