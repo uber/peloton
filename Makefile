@@ -161,14 +161,14 @@ test-containers:
 	bash docker/run_test_mysql.sh
 	bash docker/run_test_cassandra.sh
 
-test: $(GOCOV) pbgens mockgens test-containers
+test: $(GOCOV) pbgens test-containers
 	gocov test -race $(ALL_PKGS) | gocov report
 
-test_pkg: $(GOCOV) $(PBGENS) mockgens test-containers
+test_pkg: $(GOCOV) $(PBGENS) test-containers
 	echo 'Running tests for package $(TEST_PKG)'
 	gocov test -race `echo $(ALL_PKGS) | tr ' ' '\n' | grep $(TEST_PKG)` | gocov report
 
-unit-test: $(GOCOV) $(PBGENS) mockgens
+unit-test: $(GOCOV) $(PBGENS)
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
 integ-test:
@@ -251,7 +251,7 @@ lint: format
 	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
 	fi;
 
-jenkins: devtools lint pbgens mockgens
+jenkins: devtools lint pbgens
 	@chmod -R 777 $(dir $(PBGEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
 	go test -race -i $(ALL_PKGS)
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'

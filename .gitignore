@@ -9,10 +9,8 @@
 *.tmp
 .tmp/
 .build/
-.gen/
 /pbgen
 /vendor
-/vendor_mocks
 /bin
 /protoc
 .vagrant
@@ -34,9 +32,6 @@ cover
 jenkins.xml
 .cache
 /env/
-.gen
-# Ignore any mocks sub-directory.
-mocks/
 
 # Emacs
 *~
@@ -44,4 +39,6 @@ mocks/
 \#*\#
 .unison.*.tmp
 workspace/
-.gen/
+.gen/mesos/
+*pb.go
+*pb.yarpc.go
