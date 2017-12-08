@@ -272,6 +272,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				runtime.Message = "Task will be rescheduled"
 			}
 		}
+		runtime.State = state
 
 	case pb_task.TaskState_FAILED:
 		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
