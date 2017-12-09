@@ -1,4 +1,4 @@
-package mimir
+package models
 
 import (
 	"fmt"
@@ -89,10 +89,8 @@ func makeAffinityRequirements(constraint *task.Constraint) requirements.Affinity
 		}
 		return requirements.NewOrRequirement(subRequirements...)
 	default:
-		if constraint != nil {
-			log.WithField("type", constraint.GetType()).
-				Warn("unknown constraint type")
-		}
+		log.WithField("type", constraint.GetType()).
+			Warn("unknown constraint type")
 		return requirements.NewAndRequirement()
 	}
 }

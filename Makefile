@@ -59,11 +59,8 @@ db-pressure:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/dbpressure storage/pressuretest/main/*.go
 
 install:
-	@if [ ! -d "$(VENDOR)" ]; then \
-		echo "Fetching dependencies"; \
-		glide --version || go get github.com/Masterminds/glide; \
-		rm -rf vendor && glide install; \
-	fi
+	glide --version || go get github.com/Masterminds/glide
+	rm -rf vendor && glide install
 	@if [ ! -d "env" ]; then \
 		pip install virtualenv ; \
 		virtualenv env ; \
@@ -88,8 +85,11 @@ pbgens: $(VENDOR)
 	./scripts/generate-protobuf.py
 
 clean:
-	rm -rf vendor pbgen vendor_mocks $(BIN_DIR) .gen env
+	rm -rf vendor/mesos vendor/peloton pbgen
+	rm -rf vendor_mocks
 	find . -path "*/mocks/*.go" | grep -v "./vendor" | xargs rm -f {}
+	rm -rf $(BIN_DIR)
+	rm -rf .gen
 
 format fmt: ## Runs "gofmt $(FMT_FLAGS) -w" to reformat all Go files
 	@gofmt -s -w $(FMT_SRC)
@@ -130,13 +130,13 @@ define vendor_mockgen
 endef
 
 mockgens: pbgens $(GOMOCK)
-	$(call local_mockgen,common/background,Manager)
-	$(call local_mockgen,common/constraints,Evaluator)
 	$(call local_mockgen,.gen/peloton/api/job,JobManagerYARPCClient)
 	$(call local_mockgen,.gen/peloton/api/respool,ResourceManagerYARPCClient)
 	$(call local_mockgen,.gen/peloton/api/task,TaskManagerYARPCClient)
 	$(call local_mockgen,.gen/peloton/private/hostmgr/hostsvc,InternalHostServiceYARPCClient)
 	$(call local_mockgen,.gen/peloton/private/resmgrsvc,ResourceManagerServiceYARPCClient)
+	$(call local_mockgen,common/background,Manager)
+	$(call local_mockgen,common/constraints,Evaluator)
 	$(call local_mockgen,hostmgr/mesos,MasterDetector;FrameworkInfoProvider)
 	$(call local_mockgen,hostmgr/offer,EventHandler)
 	$(call local_mockgen,hostmgr/offer/offerpool,Pool)
@@ -145,10 +145,6 @@ mockgens: pbgens $(GOMOCK)
 	$(call local_mockgen,jobmgr/task/event,Listener;StatusProcessor)
 	$(call local_mockgen,jobmgr/task/launcher,Launcher)
 	$(call local_mockgen,jobmgr/tracked,Manager;Job;Task)
-	$(call local_mockgen,placement/offers,Service)
-	$(call local_mockgen,placement/plugins,Strategy)
-	$(call local_mockgen,placement/tasks,Service)
-	$(call local_mockgen,resmgr/preemption,Preemptor)
 	$(call local_mockgen,resmgr/respool,ResPool;Tree)
 	$(call local_mockgen,resmgr/preemption,Preemptor)
 	$(call local_mockgen,storage,JobStore;TaskStore;UpgradeStore;FrameworkInfoStore;ResourcePoolStore;PersistentVolumeStore)

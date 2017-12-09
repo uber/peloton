@@ -10,20 +10,17 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resource_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-	"code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/placement/models"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/uber-go/tally"
 )
 
-func TestOfferService_Dequeue(t *testing.T) {
+func TestOfferManager_Dequeue(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockResourceManager := resource_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostManager := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	metrics := metrics.NewMetrics(tally.NoopScope)
-	service := NewService(mockHostManager, mockResourceManager, metrics)
+	manager := NewManager(mockHostManager, mockResourceManager)
 
 	ctx := context.Background()
 	filter := &hostsvc.HostFilter{}
@@ -64,19 +61,19 @@ func TestOfferService_Dequeue(t *testing.T) {
 				Error: nil,
 			}, nil),
 	)
-	offers := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	offers, _, err := manager.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	assert.NoError(t, err)
 	assert.Equal(t, 1, len(offers))
 	assert.Equal(t, "hostname", offers[0].Offer().Hostname)
 	assert.Equal(t, 1, len(offers[0].Tasks()))
 }
 
-func TestOfferService_Return(t *testing.T) {
+func TestOfferManager_Return(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mockResourceManager := resource_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostManager := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	metrics := metrics.NewMetrics(tally.NoopScope)
-	service := NewService(mockHostManager, mockResourceManager, metrics)
+	manager := NewManager(mockHostManager, mockResourceManager)
 
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: "hostname",
@@ -84,8 +81,8 @@ func TestOfferService_Return(t *testing.T) {
 	hostOffers := []*hostsvc.HostOffer{
 		hostOffer,
 	}
-	offers := []*models.Host{
-		models.NewHost(hostOffer, nil, time.Now()),
+	offers := []*models.Offer{
+		models.NewOffer(hostOffer, nil, time.Now()),
 	}
 	gomock.InOrder(
 		mockHostManager.EXPECT().
@@ -102,5 +99,6 @@ func TestOfferService_Return(t *testing.T) {
 	)
 
 	ctx := context.Background()
-	service.Release(ctx, offers)
+	err := manager.Release(ctx, offers)
+	assert.NoError(t, err)
 }

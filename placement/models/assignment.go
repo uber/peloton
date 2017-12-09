@@ -1,10 +1,10 @@
 package models
 
-// Assignment represents the assignment of a task to an host. Note that the same host can be used in multiple
+// Assignment represents the assignment of a task to an offer. Note that the same offer can be used in multiple
 // different assignment instances.
 type Assignment struct {
-	host *Host
-	task *Task
+	offer *Offer
+	task  *Task
 }
 
 // NewAssignment will create a new empty assignment from a task.
@@ -14,14 +14,14 @@ func NewAssignment(task *Task) *Assignment {
 	}
 }
 
-// SetHost will set the host in the assignment to the given host.
-func (assignment *Assignment) SetHost(offer *Host) {
-	assignment.host = offer
+// SetOffer will set the offer in the assignment to the given offer.
+func (assignment *Assignment) SetOffer(offer *Offer) {
+	assignment.offer = offer
 }
 
-// Host wil return the host that the task was assigned to.
-func (assignment *Assignment) Host() *Host {
-	return assignment.host
+// Offer wil return the offer that the task was assigned to.
+func (assignment *Assignment) Offer() *Offer {
+	return assignment.offer
 }
 
 // Task will return the task of the assignment.

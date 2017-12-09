@@ -6,6 +6,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
 
 // NewTask will create a new placement task from a resource manager task and the gang it belongs to.
@@ -20,18 +21,13 @@ func NewTask(gang *resmgrsvc.Gang, task *resmgr.Task, deadline time.Time, maxRou
 
 // Task represents a Peloton task, a Mimir placement entity can also be obtained from it.
 type Task struct {
-	gang *resmgrsvc.Gang
-	task *resmgr.Task
-	// deadline when the task should successfully placed or have failed to do so.
-	deadline time.Time
-	// maxRounds is the maximal number of successful placement rounds.
-	maxRounds int
-	// rounds is the current number of successful placement rounds.
-	rounds int
-	// data is used by placement strategies to transfer state between calls to the
-	// place once method.
-	data interface{}
-	lock sync.Mutex
+	gang      *resmgrsvc.Gang
+	task      *resmgr.Task
+	deadline  time.Time // The deadline when the task should successfully placed or have failed to do so.
+	maxRounds int       // The maximal number of successful placement rounds.
+	rounds    int       // The current number of successful placement rounds.
+	entity    *placement.Entity
+	lock      sync.Mutex
 }
 
 // Gang will return the resource manager gang that the task belongs to
@@ -44,18 +40,15 @@ func (task *Task) Task() *resmgr.Task {
 	return task.task
 }
 
-// SetData will set the data transfer object on the task.
-func (task *Task) SetData(data interface{}) {
+// Entity will return the Mimir entity corresponding to the task.
+func (task *Task) Entity() *placement.Entity {
 	task.lock.Lock()
 	defer task.lock.Unlock()
-	task.data = data
-}
-
-// Data will return the data transfer object of the task.
-func (task *Task) Data() interface{} {
-	task.lock.Lock()
-	defer task.lock.Unlock()
-	return task.data
+	if task.entity != nil {
+		return task.entity
+	}
+	task.entity = TaskToEntity(task.task)
+	return task.entity
 }
 
 // IncRounds will increment the number of placement rounds that the task have been through.
