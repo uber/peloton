@@ -3,7 +3,7 @@
 0.7.0 (unreleased)
 ------------------
 
-0.6.0
+0.6.1
 ------------------
 
 - 2017-12-08    Improve Resource Manager recovery performance                                          @Anant Vyas
@@ -12,7 +12,6 @@
 - 2017-12-06    Do not update runtime reason on mesos update always                                    @Apoorva Jindal
 - 2017-12-06    Move volumesvc from hostmgr to jobmgr                                                  @Tengfei Mu
 - 2017-12-07    Check in mocks                                                                         @Tengfei Mu
-- 2017-10-19    Merge the placement engine from the master branch into release.                        @Casper Kejlberg-Rasmussen
 - 2017-12-05    Kill orphaned tasks in mesos                                                           @Apoorva Jindal
 - 2017-12-05    Implement volume list and delete API                                                   @Tengfei Mu
 - 2017-12-04    Add reason and message for every update to task runtime                                @Apoorva Jindal
