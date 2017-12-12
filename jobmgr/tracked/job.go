@@ -15,6 +15,9 @@ type Job interface {
 
 	// GetTask from the task id.
 	GetTask(id uint32) Task
+
+	// Get All Tasks returns all tasks for the job
+	GetAllTasks() map[uint32]Task
 }
 
 func newJob(id *peloton.JobID, m *manager) *job {
@@ -48,6 +51,16 @@ func (j *job) GetTask(id uint32) Task {
 	}
 
 	return nil
+}
+
+func (j *job) GetAllTasks() map[uint32]Task {
+	j.RLock()
+	defer j.RUnlock()
+	taskMap := make(map[uint32]Task)
+	for k, v := range j.tasks {
+		taskMap[k] = v
+	}
+	return taskMap
 }
 
 func (j *job) setTask(id uint32, runtime *pb_task.RuntimeInfo) *task {

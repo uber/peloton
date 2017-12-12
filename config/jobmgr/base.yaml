@@ -36,6 +36,8 @@ job_manager:
     preemption_period: 60s
     preemption_dequeue_limit: 100
     preemption_dequeue_timeout_ms: 100
+  deadline:
+    deadline_tracking_period: 30m 
 
 election:
   root: "/peloton"

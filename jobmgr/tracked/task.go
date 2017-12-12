@@ -42,6 +42,9 @@ type Task interface {
 	// be rescheduled by the goalstate engine and an error representing the
 	// result of the action.
 	RunAction(ctx context.Context, action TaskAction) (bool, error)
+
+	// GetRunTime returns the task run time
+	GetRunTime() *pb_task.RuntimeInfo
 }
 
 // State of a job. This can encapsulate either the actual state or the goal
@@ -233,4 +236,11 @@ func (t *task) updateRuntime(runtime *pb_task.RuntimeInfo) {
 	now := time.Now()
 	t.goalStateTime = now
 	t.stateTime = now
+}
+
+// GetRunTime returns task run time
+func (t *task) GetRunTime() *pb_task.RuntimeInfo {
+	t.RLock()
+	defer t.RUnlock()
+	return t.runtime
 }

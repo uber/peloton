@@ -19,6 +19,7 @@ sla:
   minimuminstancecount: 12
   minimuminstancepercent: 50
   preemptible: false
+  maxrunningtime: 300 
 defaultconfig:
   resource:
     cpulimit: 0.1
@@ -30,7 +31,7 @@ defaultconfig:
   container: null
   command:
     shell: true
-    value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID: $PELOTON_TASK_ID" && sleep 10'
+    value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID: $PELOTON_TASK_ID" && sleep 30'
 instanceconfig:
   0:
     name: instance0

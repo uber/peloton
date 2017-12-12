@@ -29,6 +29,9 @@ type Manager interface {
 	// GetJob will return the current tracked Job, nil if currently not tracked.
 	GetJob(id *peloton.JobID) Job
 
+	// GetAllJobs returns the list of all jobs in manager
+	GetAllJobs() map[string]Job
+
 	// SetTask to the new runtime info. This will also schedule the task for
 	// immediate evaluation.
 	SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo)
@@ -109,6 +112,16 @@ func (m *manager) GetJob(id *peloton.JobID) Job {
 	}
 
 	return nil
+}
+
+func (m *manager) GetAllJobs() map[string]Job {
+	m.RLock()
+	defer m.RUnlock()
+	jobMap := make(map[string]Job)
+	for k, v := range m.jobs {
+		jobMap[k] = v
+	}
+	return jobMap
 }
 
 func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) {

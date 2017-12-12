@@ -5,6 +5,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
@@ -28,6 +29,7 @@ type Server struct {
 	taskPreemptor   preemptor.Preemptor
 	goalstateEngine goalstate.Engine
 	trackedManager  tracked.Manager
+	deadlineTracker deadline.Tracker
 }
 
 // NewServer creates a job manager Server instance.
@@ -36,6 +38,7 @@ func NewServer(
 	goalstateEngine goalstate.Engine,
 	trackedManager tracked.Manager,
 	taskPreemptor preemptor.Preemptor,
+	deadlineTracker deadline.Tracker,
 ) *Server {
 
 	return &Server{
@@ -46,6 +49,7 @@ func NewServer(
 		taskPreemptor:     taskPreemptor,
 		goalstateEngine:   goalstateEngine,
 		trackedManager:    trackedManager,
+		deadlineTracker:   deadlineTracker,
 	}
 }
 
@@ -60,6 +64,7 @@ func (s *Server) GainedLeadershipCallback() error {
 	s.taskPreemptor.Start()
 	s.goalstateEngine.Start()
 	s.trackedManager.Start()
+	s.deadlineTracker.Start()
 
 	return nil
 }
@@ -75,6 +80,7 @@ func (s *Server) LostLeadershipCallback() error {
 	s.taskPreemptor.Stop()
 	s.goalstateEngine.Stop()
 	s.trackedManager.Stop()
+	s.deadlineTracker.Stop()
 
 	return nil
 }
@@ -89,6 +95,7 @@ func (s *Server) ShutDownCallback() error {
 	s.taskPreemptor.Stop()
 	s.goalstateEngine.Stop()
 	s.trackedManager.Stop()
+	s.deadlineTracker.Stop()
 
 	return nil
 }

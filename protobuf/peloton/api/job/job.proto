@@ -70,6 +70,12 @@ message SlaConfig {
   // has enough reserved resources for the full set of minimum number of instances.
   //
   uint32 minimumRunningInstances = 5;
+
+  //
+  // maxRunningTime represents the max time which all tasks of this job
+  // can run. This timer starts when the task enters into running state.
+  // if the tasks of this job exceeds this run time then they will be killed
+  uint32 maxRunningTime = 6;
 }
 
 

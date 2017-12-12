@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
+	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/task/placement"
@@ -385,12 +386,23 @@ func main() {
 		rootScope,
 	)
 
+	// Create a new Dead Line tracker for jobs
+	deadlineTracker := deadline.New(
+		dispatcher,
+		jobStore,
+		taskStore,
+		rootScope,
+		&cfg.JobManager.Deadline,
+		trackedManager,
+	)
+
 	server := jobmgr.NewServer(
 		cfg.JobManager.HTTPPort,
 		cfg.JobManager.GRPCPort,
 		goalstateEngine,
 		trackedManager,
 		taskPreemptor,
+		deadlineTracker,
 	)
 
 	candidate, err := leader.NewCandidate(

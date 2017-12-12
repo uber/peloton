@@ -37,6 +37,18 @@ func (_m *MockManager) EXPECT() *MockManagerMockRecorder {
 	return _m.recorder
 }
 
+// GetAllJobs mocks base method
+func (_m *MockManager) GetAllJobs() map[string]tracked.Job {
+	ret := _m.ctrl.Call(_m, "GetAllJobs")
+	ret0, _ := ret[0].(map[string]tracked.Job)
+	return ret0
+}
+
+// GetAllJobs indicates an expected call of GetAllJobs
+func (_mr *MockManagerMockRecorder) GetAllJobs() *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetAllJobs", reflect.TypeOf((*MockManager)(nil).GetAllJobs))
+}
+
 // GetJob mocks base method
 func (_m *MockManager) GetJob(_param0 *peloton.JobID) tracked.Job {
 	ret := _m.ctrl.Call(_m, "GetJob", _param0)
@@ -136,6 +148,18 @@ func (_m *MockJob) EXPECT() *MockJobMockRecorder {
 	return _m.recorder
 }
 
+// GetAllTasks mocks base method
+func (_m *MockJob) GetAllTasks() map[uint32]tracked.Task {
+	ret := _m.ctrl.Call(_m, "GetAllTasks")
+	ret0, _ := ret[0].(map[uint32]tracked.Task)
+	return ret0
+}
+
+// GetAllTasks indicates an expected call of GetAllTasks
+func (_mr *MockJobMockRecorder) GetAllTasks() *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetAllTasks", reflect.TypeOf((*MockJob)(nil).GetAllTasks))
+}
+
 // GetTask mocks base method
 func (_m *MockJob) GetTask(_param0 uint32) tracked.Task {
 	ret := _m.ctrl.Call(_m, "GetTask", _param0)
@@ -193,6 +217,18 @@ func (_m *MockTask) CurrentState() tracked.State {
 // CurrentState indicates an expected call of CurrentState
 func (_mr *MockTaskMockRecorder) CurrentState() *gomock.Call {
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "CurrentState", reflect.TypeOf((*MockTask)(nil).CurrentState))
+}
+
+// GetRunTime mocks base method
+func (_m *MockTask) GetRunTime() *task.RuntimeInfo {
+	ret := _m.ctrl.Call(_m, "GetRunTime")
+	ret0, _ := ret[0].(*task.RuntimeInfo)
+	return ret0
+}
+
+// GetRunTime indicates an expected call of GetRunTime
+func (_mr *MockTaskMockRecorder) GetRunTime() *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "GetRunTime", reflect.TypeOf((*MockTask)(nil).GetRunTime))
 }
 
 // GoalState mocks base method
