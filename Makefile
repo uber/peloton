@@ -58,6 +58,15 @@ executor:
 db-pressure:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/dbpressure storage/pressuretest/main/*.go
 
+# Here we checkout the v1.0.0 commit sha of mockgen in order to pin the version of the
+# mockgen binary. `go get` doesn't allow us to do that so we need to build the binary
+# after checking out the code ourselves.
+build-mockgen:
+	cd $(GOPATH)/src/github.com/golang/mock \
+		&& git checkout 13f360950a79f5864a972c786a10a50e44b69541 \
+		&& go build -o $(GOPATH)/bin/mockgen ./mockgen/*.go \
+		&& cd -
+
 install:
 	glide --version || go get github.com/Masterminds/glide
 	rm -rf vendor && glide install
@@ -129,7 +138,7 @@ define vendor_mockgen
   $(call source_mockgen,vendor_mocks/$(dir $(1))mocks/$(notdir $(1)),vendor/$(1))
 endef
 
-mockgens: pbgens $(GOMOCK)
+mockgens: build-mockgen pbgens $(GOMOCK)
 	$(call local_mockgen,.gen/peloton/api/job,JobManagerYARPCClient)
 	$(call local_mockgen,.gen/peloton/api/respool,ResourceManagerYARPCClient)
 	$(call local_mockgen,.gen/peloton/api/task,TaskManagerYARPCClient)
@@ -157,14 +166,14 @@ test-containers:
 	bash docker/run_test_mysql.sh
 	bash docker/run_test_cassandra.sh
 
-test: $(GOCOV) pbgens test-containers
+test: $(GOCOV) pbgens mockgens test-containers
 	gocov test -race $(ALL_PKGS) | gocov report
 
-test_pkg: $(GOCOV) $(PBGENS) test-containers
+test_pkg: $(GOCOV) $(PBGENS) mockgens test-containers
 	echo 'Running tests for package $(TEST_PKG)'
 	gocov test -race `echo $(ALL_PKGS) | tr ' ' '\n' | grep $(TEST_PKG)` | gocov report
 
-unit-test: $(GOCOV) $(PBGENS)
+unit-test: $(GOCOV) $(PBGENS) mockgens
 	gocov test $(ALL_PKGS) --tags "unit" | gocov report
 
 integ-test:
@@ -247,7 +256,7 @@ lint: format
 	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
 	fi;
 
-jenkins: devtools lint pbgens
+jenkins: devtools lint pbgens mockgens
 	@chmod -R 777 $(dir $(PBGEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
 	go test -race -i $(ALL_PKGS)
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'

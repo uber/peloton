@@ -1,5 +1,5 @@
-hash: b7ad6d4b5966ee815ce97c11441feb0482131556e2827734cc29e9e5847414ce
-updated: 2017-09-19T06:40:01.657941711+02:00
+hash: 59187bf5710ead4f2f409090748992f6e8a9ac63e6500ac384a149c95485652e
+updated: 2017-12-12T17:28:26.480038276-08:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -107,7 +107,7 @@ imports:
   - ext
   - log
 - name: github.com/pborman/uuid
-  version: e790cca94e6cc75c7064b1332e63811d4aae1a53
+  version: e533369306653d193b93dae055f6083cbf8ba54f
 - name: github.com/pkg/errors
   version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
 - name: github.com/pmezard/go-difflib
@@ -157,7 +157,7 @@ imports:
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: be9e53c77349ae2dd4b8c03a6dc20ed9a88b9927
+  version: 6c4631652c6aab57c64f65c2e0aaec2e9aae3a64
   subpackages:
   - m3
   - m3/customtransports
@@ -167,7 +167,7 @@ imports:
   - prometheus
   - statsd
 - name: github.com/uber/tchannel-go
-  version: a7ad9ecb640b5f10a0395b38d6319175172b3ab2
+  version: 7bcb33f4bb908c21374f8bfdc9d4b1ebcbb8dab0
   subpackages:
   - internal/argreader
   - relay
@@ -176,16 +176,16 @@ imports:
   - trand
   - typed
 - name: go.uber.org/atomic
-  version: 4e336646b2ef9fc6e47be8e21594178f98e5ebcf
+  version: 8474b86a5a6f79c443ce4b2992817ff32cf208b8
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/thriftrw
-  version: b032111262f3c4a5c8027c349ca4645aced173bb
+  version: 61a13b1cb9cf4d6b26aeabf3fb907d90aaa693af
   subpackages:
   - internal/semver
   - version
 - name: go.uber.org/yarpc
-  version: fe97992d7ceca33392987b80e3eb926c392ccdd3
+  version: 636a5ca277a366ddcbcd29214d896dc0fc4f5171
   subpackages:
   - api/backoff
   - api/encoding
@@ -196,7 +196,6 @@ imports:
   - internal
   - internal/backoff
   - internal/bufferpool
-  - internal/clientconfig
   - internal/config
   - internal/digester
   - internal/errorsync
@@ -211,17 +210,18 @@ imports:
   - internal/pally
   - internal/protoplugin
   - internal/request
+  - internal/yarpcerrors
   - peer
   - peer/hostport
   - pkg/errors
   - pkg/lifecycle
   - pkg/procedure
+  - transport/grpc
   - transport/http
-  - transport/x/grpc
   - yarpcconfig
   - yarpcerrors
 - name: go.uber.org/zap
-  version: 3216c4c73e8ebbafff73c456dd27143f4a7c1f94
+  version: 35aad584952c3e7020db7b839f6b102de6271f89
   subpackages:
   - buffer
   - internal/bufferpool
@@ -229,7 +229,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: 8351a756f30f1297fe94bbf4b767ec589c6ea6d0
+  version: d866cfc389cec985d6fda2859936a575a55a3ab6
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -262,12 +262,15 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3
+  version: e687fa4e6424368ece6e4fe727cea2c806a0fcb4
   repo: https://github.com/grpc/grpc-go
   subpackages:
+  - balancer
+  - balancer/roundrobin
   - codes
   - connectivity
   - credentials
+  - encoding
   - grpclb/grpc_lb_v1/messages
   - grpclog
   - internal
@@ -275,6 +278,9 @@ imports:
   - metadata
   - naming
   - peer
+  - resolver
+  - resolver/dns
+  - resolver/passthrough
   - stats
   - status
   - tap
