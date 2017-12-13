@@ -3,6 +3,14 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.2
+------------------
+
+- 2017-12-12    Adding more logging to entitlelement calculator in resmgr                              @Mayank Bansal
+- 2017-12-12    Revert "Check in mocks"        							                               @Antoine Pourchet
+- 2017-12-12    Adding deadline feature in Peloton                                                     @Mayank Bansal
+- 2017-12-08    Add changelog for changes between 0.5.0 and 0.6.0                                      @Anant Vyas
+
 0.6.1
 ------------------
 
