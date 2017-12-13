@@ -15,7 +15,7 @@ import (
 
 const (
 	// MaxRecvMsgSize is the largest acceptable RPC message size.
-	MaxRecvMsgSize = 64 * 1024 * 1024 // 64MB
+	MaxRecvMsgSize = 256 * 1024 * 1024 // 256MB
 )
 
 // NewTransport returns a new transport, using the default transport layer.
