@@ -10,14 +10,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/common/taskconfig"
 	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
-	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
@@ -58,6 +55,7 @@ func InitServiceHandler(
 		resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
 		rootCtx:        context.Background(),
 		runtimeUpdater: runtimeUpdater,
+		trackedManager: trackedManager,
 		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
 	}
 
@@ -154,90 +152,12 @@ func (h *serviceHandler) Create(
 	}
 	h.metrics.JobCreate.Inc(1)
 
-	// Detach a new goroutine, for creating tasks and enqueue, as the job is now
-	// fully persisted in the store and there are no reason for blocking the
-	// client.
-	// Note the use of a new context, as we no longer want to honor the request
-	// deadline.
-	go h.createAndEnqueueTasks(context.Background(), jobID, jobConfig)
+	// Put job in tracked manager to create tasks
+	h.trackedManager.SetJob(jobID, nil)
 
 	return &job.CreateResponse{
 		JobId: jobID,
 	}, nil
-}
-
-// TODO: Merge with recovery, such that it will use same path for creating/
-// recovering.
-func (h *serviceHandler) createAndEnqueueTasks(
-	ctx context.Context,
-	jobID *peloton.JobID,
-	jobConfig *job.JobConfig) error {
-	instances := jobConfig.InstanceCount
-	startAddTaskTime := time.Now()
-
-	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("Failed to create task configs")
-		return err
-	}
-
-	tasks := make([]*task.TaskInfo, instances)
-	runtimes := make([]*task.RuntimeInfo, instances)
-	for i := uint32(0); i < instances; i++ {
-		runtime := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
-		runtimes[i] = runtime
-
-		// TODO: Remove once tracker can handle enqueueing of gangs.
-		tasks[i] = &task.TaskInfo{
-			JobId:      jobID,
-			InstanceId: i,
-			Runtime:    runtime,
-			Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
-		}
-	}
-
-	// TODO: use the username of current session for createBy param
-	err := h.taskStore.CreateTaskRuntimes(ctx, jobID, runtimes, "peloton")
-	nTasks := int64(len(tasks))
-	if err != nil {
-		log.Errorf("Failed to create tasks (%d) for job %v: %v",
-			nTasks, jobID.GetValue(), err)
-		h.metrics.TaskCreateFail.Inc(nTasks)
-		return err
-	}
-	h.metrics.TaskCreate.Inc(nTasks)
-
-	err = jobmgr_task.EnqueueGangs(h.rootCtx, tasks, jobConfig, h.resmgrClient)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("Failed to enqueue tasks to RM")
-		return err
-	}
-
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("Failed to GetJobRuntime")
-		return err
-	}
-	jobRuntime.State = job.JobState_PENDING
-	err = h.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("Failed to UpdateJobRuntime")
-		return err
-	}
-
-	log.WithField("job_id", jobID.GetValue()).
-		WithField("instance_count", instances).
-		WithField("time_spent", time.Since(startAddTaskTime)).
-		Info("all tasks created for job")
-
-	return nil
 }
 
 // Update updates a job object for a given job configuration and

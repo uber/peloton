@@ -57,6 +57,7 @@ func TestEngineProcessJob(t *testing.T) {
 	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
 	jobMock.EXPECT().RunAction(gomock.Any(), tracked.JobCreateTasks).Return(false, nil)
 	jobMock.EXPECT().ClearJobRuntime()
+	jobMock.EXPECT().SetLastDelay(gomock.Any()).Return()
 	managerMock.EXPECT().ScheduleJob(jobMock, gomock.Any())
 	e.processJob(jobMock)
 }

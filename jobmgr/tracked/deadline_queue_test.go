@@ -24,7 +24,7 @@ func (i *testQueueItem) deadline() time.Time {
 }
 
 func TestTimeoutQueueOrdering(t *testing.T) {
-	mtx := newMetrics(tally.NoopScope)
+	mtx := NewQueueMetrics(tally.NoopScope)
 	q := newDeadlineQueue(mtx)
 
 	i1 := &testQueueItem{1, -1}

@@ -14,7 +14,7 @@ func TestTaskRunAction(t *testing.T) {
 		lastAction: StopAction,
 		job: &job{
 			m: &manager{
-				mtx: newMetrics(tally.NoopScope),
+				mtx: NewMetrics(tally.NoopScope),
 			},
 		},
 	}

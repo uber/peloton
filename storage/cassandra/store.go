@@ -363,10 +363,19 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 		return err
 	}
 
+	var goalState job.JobState
+	switch jobConfig.Type {
+	case job.JobType_BATCH:
+		goalState = job.JobState_SUCCEEDED
+	default:
+		goalState = job.JobState_RUNNING
+	}
+
 	initialJobRuntime := job.RuntimeInfo{
 		State:        job.JobState_INITIALIZED,
 		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
 		TaskStats:    make(map[string]uint32),
+		GoalState:    goalState,
 	}
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount

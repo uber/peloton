@@ -83,15 +83,15 @@ func NewManager(
 	scope := parentScope.SubScope("tracked")
 	return &manager{
 		jobs:          map[string]*job{},
-		taskScheduler: newScheduler(newMetrics(scope.SubScope("tasks"))),
-		jobScheduler:  newScheduler(newMetrics(scope.SubScope("jobs"))),
+		taskScheduler: newScheduler(NewQueueMetrics(scope.SubScope("tasks"))),
+		jobScheduler:  newScheduler(NewQueueMetrics(scope.SubScope("jobs"))),
 		hostmgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		jobStore:      jobStore,
 		taskStore:     taskStore,
 		volumeStore:   volumeStore,
 		taskLauncher:  taskLauncher,
-		mtx:           newMetrics(scope),
+		mtx:           NewMetrics(scope),
 	}
 }
 
@@ -115,7 +115,7 @@ type manager struct {
 
 	taskLauncher launcher.Launcher
 
-	mtx      *metrics
+	mtx      *Metrics
 	stopChan chan struct{}
 }
 
@@ -149,7 +149,11 @@ func (m *manager) SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo) {
 	}
 
 	j := m.addJob(jobID)
-	j.updateRuntime(jobInfo)
+	// Ok to add tracking of a job without any info.
+	// Runtime will be dynamically obtained from DB when scheduled.
+	if jobInfo != nil {
+		j.updateRuntime(jobInfo)
+	}
 	m.jobScheduler.schedule(j, time.Now())
 }
 

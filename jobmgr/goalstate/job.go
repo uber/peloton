@@ -45,8 +45,16 @@ func (e *engine) processJob(j tracked.Job) {
 		if success {
 			delay = e.cfg.SuccessRetryDelay
 		} else {
-			delay = e.cfg.FailureRetryDelay
+			// backoff
+			delay = j.GetLastDelay() + e.cfg.FailureRetryDelay
+			if delay > e.cfg.MaxRetryDelay {
+				delay = e.cfg.MaxRetryDelay
+			}
+			j.SetLastDelay(delay)
 		}
+	}
+	if success {
+		j.SetLastDelay(0)
 	}
 
 	var deadline time.Time
@@ -86,5 +94,6 @@ func (e *engine) suggestJobAction(j tracked.Job) (tracked.JobAction, error) {
 			return a, nil
 		}
 	}
+
 	return tracked.JobNoAction, nil
 }

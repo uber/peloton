@@ -27,7 +27,7 @@ func TestTaskStop(t *testing.T) {
 		job: &job{
 			m: &manager{
 				hostmgrClient: hostMock,
-				mtx:           newMetrics(tally.NoopScope),
+				mtx:           NewMetrics(tally.NoopScope),
 			},
 		},
 	}
@@ -60,10 +60,10 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 
 	m := &manager{
 		jobs:          map[string]*job{},
-		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
 		taskStore:     mockTaskStore,
 		resmgrClient:  mockResmgr,
-		mtx:           newMetrics(tally.NoopScope),
+		mtx:           NewMetrics(tally.NoopScope),
 		running:       true,
 	}
 

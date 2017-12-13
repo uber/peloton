@@ -49,11 +49,6 @@ func createJobRuntimeUpdater(
 		taskUpdatedFlags:    make(map[string]bool),
 		taskUpdateRunning:   make(map[string]chan struct{}),
 		metrics:             NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
-		jobRecovery: NewJobRecovery(
-			trackedManager,
-			jobStore,
-			taskStore,
-			parentScope),
 	}
 	t := time.NewTicker(cfg.StateUpdateInterval)
 	go updater.updateJobStateLoop(t.C)

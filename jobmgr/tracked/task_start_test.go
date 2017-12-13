@@ -41,7 +41,7 @@ func TestTaskStartStateless(t *testing.T) {
 				jobStore:      mockJobStore,
 				taskStore:     mockTaskStore,
 				resmgrClient:  mockResmgrClient,
-				mtx:           newMetrics(tally.NoopScope),
+				mtx:           NewMetrics(tally.NoopScope),
 			},
 		},
 		runtime: &pb_task.RuntimeInfo{},
@@ -98,7 +98,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 				volumeStore:   mockVolumeStore,
 				resmgrClient:  mockResmgrClient,
 				taskLauncher:  mockTaskLauncher,
-				mtx:           newMetrics(tally.NoopScope),
+				mtx:           NewMetrics(tally.NoopScope),
 			},
 		},
 		runtime: &pb_task.RuntimeInfo{
@@ -162,7 +162,7 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 				volumeStore:   mockVolumeStore,
 				resmgrClient:  mockResmgrClient,
 				taskLauncher:  mockTaskLauncher,
-				mtx:           newMetrics(tally.NoopScope),
+				mtx:           NewMetrics(tally.NoopScope),
 			},
 		},
 		runtime: &pb_task.RuntimeInfo{

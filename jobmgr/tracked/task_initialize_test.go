@@ -48,7 +48,7 @@ func TestTaskInitialize(t *testing.T) {
 	tt := &task{
 		job: &job{
 			m: &manager{
-				mtx:       newMetrics(tally.NoopScope),
+				mtx:       NewMetrics(tally.NoopScope),
 				taskStore: mockTaskStore,
 				jobStore:  mockJobStore,
 			},

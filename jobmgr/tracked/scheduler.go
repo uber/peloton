@@ -14,7 +14,7 @@ type scheduler struct {
 	queueChanged chan struct{}
 }
 
-func newScheduler(mtx *metrics) *scheduler {
+func newScheduler(mtx *QueueMetrics) *scheduler {
 	return &scheduler{
 		queue:        newDeadlineQueue(mtx),
 		queueChanged: make(chan struct{}, 1),
@@ -61,6 +61,7 @@ func (s *scheduler) waitForReady(stopChan <-chan struct{}) queueItem {
 			}
 
 		case <-s.queueChanged:
+			// Wake up to process the next item in the queue
 
 		case <-stopChan:
 			return nil

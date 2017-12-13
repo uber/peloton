@@ -10,7 +10,7 @@ import (
 )
 
 func TestSchedulerScheduleAndDequeueTasks(t *testing.T) {
-	s := newScheduler(newMetrics(tally.NoopScope))
+	s := newScheduler(NewQueueMetrics(tally.NoopScope))
 
 	c := 100
 	var wg sync.WaitGroup

@@ -31,7 +31,7 @@ func newQueueItemMixing() queueItemMixin {
 	return queueItemMixin{queueIndex: -1}
 }
 
-func newDeadlineQueue(mtx *metrics) *deadlineQueue {
+func newDeadlineQueue(mtx *QueueMetrics) *deadlineQueue {
 	q := &deadlineQueue{
 		pq:  &priorityQueue{},
 		mtx: mtx,
@@ -44,7 +44,7 @@ func newDeadlineQueue(mtx *metrics) *deadlineQueue {
 
 type deadlineQueue struct {
 	pq  *priorityQueue
-	mtx *metrics
+	mtx *QueueMetrics
 }
 
 func (q *deadlineQueue) nextDeadline() time.Time {

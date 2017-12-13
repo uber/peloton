@@ -36,8 +36,8 @@ func TestManagerClearTask(t *testing.T) {
 
 	m := &manager{
 		jobs:          map[string]*job{},
-		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
-		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		running:       true,
 	}
 
@@ -78,8 +78,8 @@ func TestManagerSetAndClearJob(t *testing.T) {
 
 	m := &manager{
 		jobs:          map[string]*job{},
-		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
-		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		running:       true,
 	}
 
@@ -107,8 +107,8 @@ func TestManagerSyncFromDB(t *testing.T) {
 		jobs:          map[string]*job{},
 		jobStore:      jobstoreMock,
 		taskStore:     taskstoreMock,
-		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
-		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		running:       true,
 	}
 
@@ -147,8 +147,8 @@ func TestManagerSyncFromDB(t *testing.T) {
 func TestManagerStopClearsTasks(t *testing.T) {
 	m := &manager{
 		jobs:          map[string]*job{},
-		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
-		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		running:       true,
 		stopChan:      make(chan struct{}),
 	}
@@ -179,8 +179,8 @@ func TestManagerStartStop(t *testing.T) {
 	m := &manager{
 		jobs:          map[string]*job{},
 		jobStore:      jobstoreMock,
-		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
-		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 	}
 
 	var wg sync.WaitGroup
@@ -201,9 +201,9 @@ func TestManagerStartStop(t *testing.T) {
 func TestPublishMetrics(t *testing.T) {
 	m := &manager{
 		jobs:          map[string]*job{},
-		mtx:           newMetrics(tally.NoopScope),
-		taskScheduler: newScheduler(newMetrics(tally.NoopScope)),
-		jobScheduler:  newScheduler(newMetrics(tally.NoopScope)),
+		mtx:           NewMetrics(tally.NoopScope),
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		running:       true,
 	}
 

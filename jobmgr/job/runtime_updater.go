@@ -74,11 +74,6 @@ func NewJobRuntimeUpdater(
 		taskUpdatedFlags:    make(map[string]bool),
 		taskUpdateRunning:   make(map[string]chan struct{}),
 		metrics:             NewRuntimeUpdaterMetrics(parentScope.SubScope("runtime_updater")),
-		jobRecovery: NewJobRecovery(
-			trackedManager,
-			jobStore,
-			taskStore,
-			parentScope),
 	}
 	t := time.NewTicker(cfg.StateUpdateInterval)
 	go updater.updateJobStateLoop(t.C)
@@ -105,8 +100,6 @@ type runtimeUpdater struct {
 	taskStore storage.TaskStore
 
 	lastCheckAllJobsTime time.Time
-
-	jobRecovery *Recovery
 
 	metrics *RuntimeUpdaterMetrics
 }
@@ -267,7 +260,10 @@ func (j *runtimeUpdater) updateJobRuntime(ctx context.Context, jobID *peloton.Jo
 	if ok {
 		completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
 	}
-	if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
+	if jobRuntime.State == job.JobState_INITIALIZED {
+		// do not do any thing as all tasks have not been created yet
+		jobState = job.JobState_INITIALIZED
+	} else if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
 		jobState = job.JobState_SUCCEEDED
 		jobRuntime.CompletionTime = completionTime
 		delete(j.lastTaskUpdateTime, jobID.Value)
@@ -384,11 +380,6 @@ func (j *runtimeUpdater) updateJobStateLoop(c <-chan time.Time) {
 			// Also scan all jobs and see if their runtime state need to be
 			// updated, in case some task updates are lost
 			j.checkAllJobs(context.Background())
-			// jobRecovery is ran from time to time on the leader JobManager.
-			// This is because all JM can fail and leave partially created jobs.
-			// Thus the leader need to check from time to time to recover the
-			// partially created jobs
-			j.jobRecovery.recoverJobs(context.Background())
 		}
 	}
 }
