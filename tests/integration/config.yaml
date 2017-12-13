@@ -5,8 +5,8 @@ client:
   resmgr_service_name: peloton-resmgr
   name: peloton-integration-test
   cluster_zk_servers:
-    peloton-devel01: zookeeper-peloton-devel01.pit-irn-1.uberatc.net
-    peloton-preprod01: zookeeper-peloton-preprod01.pit-irn-1.uberatc.net
+    peloton-devel01: zookeeper-mesos-devel01.pit-irn-1.uberatc.net
+    peloton-preprod01: zookeeper-mesos-preprod01.pit-irn-1.uberatc.net
     sjc1-devel01: zookeeper-mesos-devel01-sjc1.uber.internal
     dca1-devel01: zookeeper-mesos-devel01-dca1.uber.internal
     local: localhost:8192
