@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -394,19 +393,6 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 
 	// Verify aggregated resources for reserved part.
 	suite.Equal(reservedOffers, len(hybridSummary.reservedOffers))
-	suite.Equal(
-		reservedOffers,
-		len(hybridSummary.reservedResources[suite.labels1.String()].Volumes),
-	)
-	suite.Empty(hybridSummary.reservedResources[suite.labels2.String()].Volumes)
-	for label, res := range hybridSummary.reservedResources {
-		if label == suite.labels1.String() {
-			suite.Equal(res.Resources.CPU, 5.0)
-			suite.Equal(res.Resources.Disk, 0.0)
-		} else {
-			suite.Equal(res.Resources.Mem, 10.0)
-		}
-	}
 
 	// Verify resources for unreserved part.
 	suite.True(hybridSummary.HasOffer())
@@ -552,44 +538,6 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		reset, _ := s.ResetExpiredPlacingOfferStatus(now)
 		suite.Equal(tt.resetExpected, reset, tt.msg)
 	}
-}
-
-func (suite *HostOfferSummaryTestSuite) TestRemoveUnusedReservedOffers() {
-	defer suite.ctrl.Finish()
-	reservedOffers := 2
-
-	hybridSummary := New(suite.mockVolumeStore).(*hostSummary)
-
-	var offers []*mesos.Offer
-	for i := 0; i < reservedOffers; i++ {
-		offerID := fmt.Sprintf("reserved-%d", i)
-		offers = append(offers, suite.createReservedMesosOffer(offerID, false /* hasPersistentVolume */))
-	}
-	offers = append(offers, suite.createUnreservedMesosOffer("testOfferUnreserved"))
-
-	volumeInfo := &volume.PersistentVolumeInfo{}
-
-	suite.mockVolumeStore.EXPECT().
-		GetPersistentVolume(context.Background(), gomock.Any()).
-		AnyTimes().
-		Return(volumeInfo, nil)
-	suite.mockVolumeStore.EXPECT().
-		UpdatePersistentVolume(context.Background(), gomock.Any()).
-		AnyTimes().
-		Return(nil)
-
-	for _, offer := range offers {
-		status := hybridSummary.AddMesosOffer(context.Background(), offer)
-		suite.Equal(ReadyOffer, status)
-	}
-
-	removedOffers := hybridSummary.RemoveUnusedReservedOffers()
-	suite.Equal(reservedOffers, len(removedOffers))
-	for _, offer := range removedOffers {
-		suite.True(strings.HasPrefix(offer.GetId().GetValue(), "reserved-"))
-	}
-
-	suite.Empty(len(hybridSummary.reservedOffers))
 }
 
 // TODO: Add the following test cases:

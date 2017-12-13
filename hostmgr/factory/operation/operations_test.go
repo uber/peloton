@@ -27,10 +27,11 @@ const (
 )
 
 var (
-	_testAgent   = "agent"
-	_testKey     = "testKey"
-	_testValue   = "testValue"
-	_testOfferID = "testOffer"
+	_testAgent    = "agent"
+	_testKey      = "testKey"
+	_testValue    = "testValue"
+	_testOfferID  = "testOffer"
+	_testVolumeID = "testVolume"
 )
 
 type OperationTestSuite struct {
@@ -119,7 +120,7 @@ func (suite *OperationTestSuite) SetupTest() {
 	}
 	diskInfo := &mesos.Resource_DiskInfo{
 		Persistence: &mesos.Resource_DiskInfo_Persistence{
-			Id: &_testKey,
+			Id: &_testVolumeID,
 		},
 	}
 	suite.reservedResources = []*mesos.Resource{
@@ -277,10 +278,45 @@ func (suite *OperationTestSuite) TestOfferOperationsLaunchNotEnoughResources() {
 	suite.Equal(0, len(offerOperations))
 }
 
+func (suite *OperationTestSuite) TestGetOfferDestroyOperation() {
+	operations := []*hostsvc.OfferOperation{
+		{
+			Type: hostsvc.OfferOperation_DESTROY,
+			Destroy: &hostsvc.OfferOperation_Destroy{
+				VolumeID: _testVolumeID,
+			},
+		},
+	}
+	testOffer := suite.createReservedMesosOffer(suite.reservedResources)
+	operationsFactory := NewOfferOperationsFactory(
+		operations,
+		testOffer.GetResources(),
+		"hostname-0",
+		&mesos.AgentID{
+			Value: util.PtrPrintf("agent-0"),
+		},
+	)
+
+	offerOperations, err := operationsFactory.GetOfferOperations()
+
+	suite.NoError(err)
+	suite.Equal(1, len(offerOperations))
+	destroyOp := offerOperations[0]
+	suite.Equal(
+		mesos.Offer_Operation_DESTROY,
+		destroyOp.GetType())
+	suite.Equal(
+		suite.reservedResources[2],
+		destroyOp.GetDestroy().GetVolumes()[0])
+}
+
 func (suite *OperationTestSuite) TestGetOfferUnreserveOperation() {
 	operations := []*hostsvc.OfferOperation{
 		{
 			Type: hostsvc.OfferOperation_UNRESERVE,
+			Unreserve: &hostsvc.OfferOperation_Unreserve{
+				Label: suite.reservedResources[0].GetReservation().GetLabels().String(),
+			},
 		},
 	}
 	testOffer := suite.createReservedMesosOffer(suite.reservedResources[:2])

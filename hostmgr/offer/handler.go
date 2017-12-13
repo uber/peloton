@@ -89,6 +89,9 @@ func InitEventHandler(
 	resourceCleaner := cleaner.NewCleaner(
 		pool,
 		parent.SubScope(_resourceCleanerName),
+		volumeStore,
+		schedulerClient,
+		hostmgr_mesos.GetSchedulerDriver(),
 	)
 	backgroundMgr.RegisterWorks(
 		background.Work{

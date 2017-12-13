@@ -293,6 +293,16 @@ message OfferOperation {
       repeated LaunchableTask tasks = 1;
     }
 
+    message Destroy {
+      // Persistent volume ID to be destroyed.
+      string volumeID = 1;
+    }
+
+    message Unreserve {
+      // The reservation label string to be unreserved.
+      string label = 1;
+    }
+
     // Type of the operation.
     Type type = 1;
 
@@ -302,7 +312,8 @@ message OfferOperation {
     Reserve reserve = 3;
     Create create = 4;
     Launch launch = 5;
-
+    Destroy destroy = 6;
+    Unreserve unreserve = 7;
 }
 
 message OfferOperationsRequest {

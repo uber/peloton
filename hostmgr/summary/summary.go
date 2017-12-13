@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
@@ -13,8 +14,6 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
@@ -90,9 +89,8 @@ type HostSummary interface {
 	// wether the hostSummary got reset
 	ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources)
 
-	// RemoveUnusedReservedOffers removes and returns offers that contain
-	// unused reserved resources.
-	RemoveUnusedReservedOffers() []*mesos.Offer
+	// GetReservedOffers returns all the reserved offers on current host.
+	GetReservedOffers() map[string]*mesos.Offer
 }
 
 // hostSummary is a data struct holding offers on a particular host.
@@ -107,9 +105,6 @@ type hostSummary struct {
 
 	// offerID -> reserved offer
 	reservedOffers map[string]*mesos.Offer
-	// reservedResources has reservationLabelID -> resources, which groups
-	// reserved resources by labels. It is recalculated everytime offer added.
-	reservedResources map[string]*reservation.ReservedResources
 
 	// TODO: pass volumeStore in updatePersistentVolume function.
 	volumeStore storage.PersistentVolumeStore
@@ -124,9 +119,7 @@ func New(
 		status: ReadyOffer,
 
 		reservedOffers: make(map[string]*mesos.Offer),
-		reservedResources: make(
-			map[string]*reservation.ReservedResources),
-		volumeStore: volumeStore,
+		volumeStore:    volumeStore,
 	}
 }
 
@@ -276,82 +269,9 @@ func (a *hostSummary) AddMesosOffer(ctx context.Context, offer *mesos.Offer) Cac
 		}
 	} else {
 		a.reservedOffers[offerID] = offer
-		reservedOffers := []*mesos.Offer{}
-		for _, offer := range a.reservedOffers {
-			reservedOffers = append(reservedOffers, offer)
-		}
-		a.reservedResources = reservation.GetLabeledReservedResources(
-			reservedOffers)
-		a.updatePersistentVolumes(ctx)
-		log.WithFields(log.Fields{
-			"offer": offer,
-			"total_reserved_resources_noindex": a.reservedResources,
-		}).Info("Added reserved offer.")
 	}
 
 	return a.status
-}
-
-// updatePersistentVolumes iterates all the reserved resources and write volume
-// info into the db if not exist.
-// TODO(mu): only update persistent volume from the offer just added.
-func (a *hostSummary) updatePersistentVolumes(ctx context.Context) error {
-	for labels, res := range a.reservedResources {
-		if len(res.Volumes) == 0 {
-			continue
-		}
-
-		if len(res.Volumes) != 1 {
-			log.WithField("reserved_resource", res).
-				WithField("labels", labels).
-				Warn("more than one volume reserved for same label")
-		}
-
-		// TODO(mu): Add cache for created volumes to avoid repeated db read/write.
-		for _, v := range res.Volumes {
-			volumeID := &peloton.VolumeID{
-				Value: v,
-			}
-			pv, err := a.volumeStore.GetPersistentVolume(ctx, volumeID)
-			if err != nil || pv == nil {
-				log.WithFields(
-					log.Fields{
-						"reserved_resource": res,
-						"labels":            labels,
-						"volume_id":         v}).
-					WithError(err).
-					Error("volume contained in reserved resources but not found in db")
-				continue
-			}
-
-			// TODO(mu): destory/unreserve volume/resource if goalstate is DELETED.
-			if pv.GetState() == volume.VolumeState_CREATED {
-				// Skip update volume if state already created.
-				continue
-			}
-
-			// TODO: compare volume info with result from db.
-			log.WithFields(log.Fields{
-				"reserved_resource": res,
-				"labels":            labels,
-				"volume":            pv,
-			}).Info("updating persistent volume table")
-
-			pv.State = volume.VolumeState_CREATED
-			err = a.volumeStore.UpdatePersistentVolume(ctx, pv)
-			if err != nil {
-				log.WithFields(
-					log.Fields{
-						"reserved_resource": res,
-						"labels":            labels,
-						"volume":            pv}).
-					WithError(err).
-					Error("volume state update failed")
-			}
-		}
-	}
-
-	return nil
 }
 
 // ClaimForLaunch atomically check that current hostSummary is in Placing
@@ -481,18 +401,14 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 	return false, scalar.Resources{}
 }
 
-// RemoveUnusedReservedOffers removes and returns offers that contain unused reserved resources,
-// i.e. offers without volume.
-func (a *hostSummary) RemoveUnusedReservedOffers() []*mesos.Offer {
+// GetReservedOffers returns map of offerID to mesos offer object.
+func (a *hostSummary) GetReservedOffers() map[string]*mesos.Offer {
 	a.Lock()
 	defer a.Unlock()
 
-	result := []*mesos.Offer{}
-	for _, offer := range a.reservedOffers {
-		if len(reservation.GetReservationLabelsWithoutVolume(offer.GetResources())) != 0 {
-			delete(a.reservedOffers, offer.GetId().GetValue())
-			result = append(result, offer)
-		}
+	result := make(map[string]*mesos.Offer)
+	for offerID, offer := range a.reservedOffers {
+		result[offerID] = proto.Clone(offer).(*mesos.Offer)
 	}
 	return result
 }

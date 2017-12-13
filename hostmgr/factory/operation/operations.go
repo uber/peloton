@@ -10,7 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/hostmgr/factory/task"
-	"code.uber.internal/infra/peloton/hostmgr/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 )
 
@@ -68,6 +67,8 @@ func (o *OfferOperationsFactory) getOfferOperation(
 		return o.getCreateOperation(operation)
 	case hostsvc.OfferOperation_UNRESERVE:
 		return o.getUnreserveOperation(operation)
+	case hostsvc.OfferOperation_DESTROY:
+		return o.getDestroyOperation(operation)
 	default:
 		return nil, errors.New("offer operation type not supported")
 	}
@@ -121,10 +122,46 @@ func (o *OfferOperationsFactory) getReserveOperation(
 	}, nil
 }
 
+func (o *OfferOperationsFactory) getDestroyOperation(
+	operation *hostsvc.OfferOperation) (*mesos.Offer_Operation, error) {
+
+	if len(operation.GetDestroy().GetVolumeID()) == 0 {
+		log.WithField("operation", operation).Error("invalid destroy operation")
+		return nil, errors.New("invalid destroy operation")
+	}
+
+	var result []*mesos.Resource
+	for _, res := range o.resources {
+		if len(res.GetRole()) == 0 ||
+			res.GetRole() == unreservedRole ||
+			res.GetReservation().GetLabels() == nil ||
+			res.GetDisk().GetPersistence().GetId() != operation.GetDestroy().GetVolumeID() {
+			continue
+		}
+
+		result = append(result, res)
+	}
+
+	if len(result) == 0 {
+		return nil, errors.New("invalid destroy operation")
+	}
+
+	reserveType := mesos.Offer_Operation_DESTROY
+	return &mesos.Offer_Operation{
+		Type: &reserveType,
+		Destroy: &mesos.Offer_Operation_Destroy{
+			Volumes: result,
+		},
+	}, nil
+}
+
 func (o *OfferOperationsFactory) getUnreserveOperation(
 	operation *hostsvc.OfferOperation) (*mesos.Offer_Operation, error) {
 
-	unusedResourcesLabels := reservation.GetReservationLabelsWithoutVolume(o.resources)
+	if len(operation.GetUnreserve().GetLabel()) == 0 {
+		log.WithField("operation", operation).Error("invalid unreserve operation")
+		return nil, errors.New("invalid unreserve operation")
+	}
 
 	var result []*mesos.Resource
 	for _, res := range o.resources {
@@ -135,10 +172,9 @@ func (o *OfferOperationsFactory) getUnreserveOperation(
 		}
 
 		resLabels := res.GetReservation().GetLabels().String()
-		if _, ok := unusedResourcesLabels[resLabels]; !ok {
+		if resLabels != operation.GetUnreserve().GetLabel() {
 			continue
 		}
-
 		result = append(result, res)
 	}
 

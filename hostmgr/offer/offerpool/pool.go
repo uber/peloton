@@ -16,7 +16,6 @@ import (
 
 	"code.uber.internal/infra/peloton/common/constraints"
 	common_scalar "code.uber.internal/infra/peloton/common/scalar"
-	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
@@ -70,8 +69,11 @@ type Pool interface {
 	// and returns the hostnames which got reset
 	ResetExpiredHostSummaries(now time.Time) []string
 
-	// CleanReservationResources unreserves the offers without persistent volume.
-	CleanReservationResources()
+	// GetReservedOffers returns all the reserved offers in the cluster.
+	GetReservedOffers() map[string]map[string]*mesos.Offer
+
+	// RemoveReservedOffers removes given offerID from given host.
+	RemoveReservedOffer(hostname string, offerID string)
 }
 
 const (
@@ -581,66 +583,24 @@ func (p *offerPool) ResetExpiredHostSummaries(now time.Time) []string {
 	return resetHostnames
 }
 
-func (p *offerPool) CleanReservationResources() {
+// GetReservedOffers returns mapping from hostname to their reserved offers.
+func (p *offerPool) RemoveReservedOffer(hostname string, offerID string) {
 	p.RLock()
 	defer p.RUnlock()
-	p.metrics.CleanReservationResource.Inc(1)
-	for hostname, summary := range p.hostOfferIndex {
-		for _, offer := range summary.RemoveUnusedReservedOffers() {
-			if err := p.unreserveOffer(offer); err != nil {
-				p.metrics.UnreserveOfferFail.Inc(1)
-				log.WithFields(log.Fields{
-					"hostname": hostname,
-					"offer":    offer,
-				}).Error("Failed to unreserve unused offer resource")
-				continue
-			}
-			p.metrics.UnreserveOffer.Inc(1)
-			log.WithFields(log.Fields{
-				"hostname": hostname,
-				"offer":    offer,
-			}).Info("Unreserve unused offer resource")
-		}
+
+	if summary, ok := p.hostOfferIndex[hostname]; ok {
+		summary.RemoveMesosOffer(offerID)
 	}
 }
 
-// unreserveOffer calls mesos master to unreserve resources that contain no
-// persistent volume.
-func (p *offerPool) unreserveOffer(offer *mesos.Offer) error {
-	ctx, cancel := context.WithTimeout(context.Background(), _defaultContextTimeout)
-	defer cancel()
+// GetReservedOffers returns mapping from hostname to their reserved offers.
+func (p *offerPool) GetReservedOffers() map[string]map[string]*mesos.Offer {
+	p.RLock()
+	defer p.RUnlock()
 
-	operations := []*hostsvc.OfferOperation{
-		{
-			Type: hostsvc.OfferOperation_UNRESERVE,
-		},
+	result := make(map[string]map[string]*mesos.Offer)
+	for hostname, summary := range p.hostOfferIndex {
+		result[hostname] = summary.GetReservedOffers()
 	}
-	factory := operation.NewOfferOperationsFactory(
-		operations,
-		offer.GetResources(),
-		offer.GetHostname(),
-		offer.GetAgentId(),
-	)
-	offerOperations, err := factory.GetOfferOperations()
-	if err != nil {
-		return err
-	}
-
-	callType := sched.Call_ACCEPT
-	msg := &sched.Call{
-		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkID(ctx),
-		Type:        &callType,
-		Accept: &sched.Call_Accept{
-			OfferIds:   []*mesos.OfferID{offer.GetId()},
-			Operations: offerOperations,
-		},
-	}
-
-	log.WithFields(log.Fields{
-		"offer": offer,
-		"call":  msg,
-	}).Debug("unreserving offer with operations")
-
-	msid := p.mesosFrameworkInfoProvider.GetMesosStreamID(ctx)
-	return p.mSchedulerClient.Call(msid, msg)
+	return result
 }
