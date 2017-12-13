@@ -152,47 +152,6 @@ func (h *serviceHandler) Create(
 			},
 		}, nil
 	}
-
-	// Persist the task configurations as well
-	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
-		h.metrics.JobCreateFail.Inc(1)
-		return &job.CreateResponse{
-			Error: &job.CreateResponse_Error{
-				AlreadyExists: &job.JobAlreadyExists{
-					Id:      req.Id,
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
-
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
-	if err != nil {
-		h.metrics.JobCreateFail.Inc(1)
-		return &job.CreateResponse{
-			Error: &job.CreateResponse_Error{
-				AlreadyExists: &job.JobAlreadyExists{
-					Id:      req.Id,
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
-
-	// TODO fix for non-batch jobs
-	jobRuntime.GoalState = job.JobState_SUCCEEDED
-	if err := h.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime); err != nil {
-		h.metrics.JobCreateFail.Inc(1)
-		return &job.CreateResponse{
-			Error: &job.CreateResponse_Error{
-				AlreadyExists: &job.JobAlreadyExists{
-					Id:      req.Id,
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
-
 	h.metrics.JobCreate.Inc(1)
 
 	// Detach a new goroutine, for creating tasks and enqueue, as the job is now
@@ -215,6 +174,13 @@ func (h *serviceHandler) createAndEnqueueTasks(
 	jobConfig *job.JobConfig) error {
 	instances := jobConfig.InstanceCount
 	startAddTaskTime := time.Now()
+
+	if err := h.taskStore.CreateTaskConfigs(ctx, jobID, jobConfig); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Error("Failed to create task configs")
+		return err
+	}
 
 	tasks := make([]*task.TaskInfo, instances)
 	runtimes := make([]*task.RuntimeInfo, instances)
@@ -306,7 +272,7 @@ func (h *serviceHandler) Update(
 	}
 
 	newConfig := req.Config
-	oldConfig, err := h.jobStore.GetJobFullConfig(ctx, jobID)
+	oldConfig, err := h.jobStore.GetJobConfig(ctx, jobID)
 
 	if newConfig.RespoolID == nil {
 		newConfig.RespoolID = oldConfig.RespoolID
@@ -315,7 +281,7 @@ func (h *serviceHandler) Update(
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
-			Error("Failed to GetJobFullConfig")
+			Error("Failed to GetJobConfig")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
@@ -396,12 +362,12 @@ func (h *serviceHandler) Get(
 	log.WithField("request", req).Debug("JobManager.Get called")
 	h.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, err := h.jobStore.GetJobFullConfig(ctx, req.Id)
+	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.Id)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
 			WithField("job_id", req.Id.Value).
-			Info("GetJobFullConfig failed")
+			Info("GetJobConfig failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
 				NotFound: &api_errors.JobNotFound{

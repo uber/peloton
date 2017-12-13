@@ -218,7 +218,8 @@ func (t *task) getPostPreemptAction(ctx context.Context) (TaskAction, error) {
 func (t *task) getTaskPreemptionPolicy(ctx context.Context, jobID *peloton.JobID,
 	instanceID uint32, configVersion uint64) (*pb_task.PreemptionPolicy,
 	error) {
-	config, err := t.job.m.taskStore.GetTaskConfig(ctx, jobID, instanceID, configVersion)
+	config, err := t.job.m.taskStore.GetTaskConfig(ctx, jobID, instanceID,
+		int64(configVersion))
 	if err != nil {
 		return nil, err
 	}

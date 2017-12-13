@@ -261,18 +261,11 @@ func (s *Store) executeBatch(ctx context.Context, stmts []api.Statement) error {
 }
 
 func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, version int64, owner string) error {
-	// Do not store instance config with job config in DB. It will be stored with each instance.
-	// Hence, set the instance config in the job config to null.
-	// But save the instance config to be restored in the memory copy of job config
-	// so that it can later be written to DB with each instance.
-	instanceConfig := jobConfig.InstanceConfig
-	jobConfig.InstanceConfig = nil
 	jobID := id.GetValue()
 	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
 		log.Errorf("Failed to marshal jobConfig, error = %v", err)
 		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-		jobConfig.InstanceConfig = instanceConfig
 		return err
 	}
 
@@ -289,20 +282,15 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 			time.Now().UTC(),
 			configBuffer).
 		IfNotExist()
-
 	err = s.applyStatement(ctx, stmt, jobID)
-
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id.GetValue()).
 			Error("createJobConfig failed")
 		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-		jobConfig.InstanceConfig = instanceConfig
 		return err
 	}
-
 	s.metrics.JobMetrics.JobCreateConfig.Inc(1)
-	jobConfig.InstanceConfig = instanceConfig
 
 	// TODO: Create TaskConfig here. This requires the task configs to be
 	// flattened at this point, see jobmgr.
@@ -312,108 +300,19 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 
 // CreateTaskConfigs from the job config.
 func (s *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
-	// First store the  default config
-	if jobConfig.GetDefaultConfig() != nil {
-		if err := s.createTaskConfig(ctx, id, _defaultTaskConfigID, jobConfig.GetDefaultConfig(), 0); err != nil {
+	// TODO set correct version
+	if err := s.createTaskConfig(ctx, id, _defaultTaskConfigID, jobConfig.GetDefaultConfig(), 0); err != nil {
+		return err
+	}
+
+	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
+		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
+		// TODO set correct version
+		if err := s.createTaskConfig(ctx, id, int64(instanceID), merged, 0); err != nil {
 			return err
 		}
 	}
 
-	maxBatchSize := uint32(s.Conf.MaxBatchSize)
-	maxParallelBatches := uint32(s.Conf.MaxParallelBatches)
-	if maxBatchSize == 0 {
-		maxBatchSize = math.MaxUint32
-	}
-
-	// Fetch and load the instance ids and corresponding config
-	instConfig := jobConfig.GetInstanceConfig()
-	nTasks := uint32(len(instConfig))
-	tasksNotCreated := uint32(0)
-	instanceIds := make([]int, nTasks)
-	count := 0
-	for instanceID := range instConfig {
-		instanceIds[count] = int(instanceID)
-		count++
-	}
-
-	timeStart := time.Now()
-	nBatches := nTasks / maxBatchSize
-	if (nTasks % maxBatchSize) > 0 {
-		nBatches = nBatches + 1
-	}
-	increment := uint32(0)
-	if (nBatches % maxParallelBatches) > 0 {
-		increment = 1
-	}
-
-	wg := new(sync.WaitGroup)
-	prevEnd := uint32(0)
-	log.WithField("batches", nBatches).
-		WithField("tasks", nTasks).
-		Debug("Creating task configs")
-
-	// Start parallel go routines to write task configs into Cassandra
-	for i := uint32(0); i < maxParallelBatches; i++ {
-		batchStart := prevEnd
-		batchEnd := batchStart + (nBatches / maxParallelBatches) + increment
-		if batchEnd > nTasks {
-			batchEnd = nTasks
-		}
-		prevEnd = batchEnd
-		if batchStart == batchEnd {
-			continue
-		}
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for batch := batchStart; batch < batchEnd; batch++ {
-				// do batching by rows, up to s.Conf.MaxBatchSize
-				start := batch * maxBatchSize // the starting instance ID
-				end := nTasks                 // the end bounds (noninclusive)
-				if nTasks >= (batch+1)*maxBatchSize {
-					end = (batch + 1) * maxBatchSize
-				}
-				batchSize := end - start // how many tasks in this batch
-				if batchSize < 1 {
-					// skip if it overflows
-					continue
-				}
-
-				log.WithField("id", id.GetValue()).
-					WithField("start", start).
-					WithField("end", end).
-					Debug("creating tasks")
-
-				for j := start; j < end; j++ {
-					instanceID := instanceIds[j]
-					cfg := instConfig[uint32(instanceID)]
-					if err := s.createTaskConfig(ctx, id, int64(instanceID), cfg, 0); err != nil {
-						log.WithError(err).
-							WithField("job_id", id.GetValue()).
-							WithField("instance_id", instanceID).
-							Error("failed to create task config")
-						atomic.AddUint32(&tasksNotCreated, batchSize)
-					}
-				}
-			}
-		}()
-	}
-	wg.Wait()
-
-	if tasksNotCreated > 0 {
-		msg := fmt.Sprintf(
-			"Unable to write %d tasks to Cassandra for %v",
-			tasksNotCreated,
-			id.GetValue())
-		return fmt.Errorf(msg)
-	}
-
-	log.WithField("duration", time.Since(timeStart).Seconds()).
-		WithField("job_id", id.GetValue()).
-		WithField("task_count", nTasks).
-		Info("wrote all task configs for job")
 	return nil
 }
 
@@ -466,7 +365,6 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 
 	initialJobRuntime := job.RuntimeInfo{
 		State:        job.JobState_INITIALIZED,
-		GoalState:    job.JobState_DELETED,
 		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
 		TaskStats:    make(map[string]uint32),
 	}
@@ -530,38 +428,6 @@ func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 	r.ConfigVersion = version
 
 	return s.updateJobRuntimeWithConfig(ctx, id, r, jobConfig)
-}
-
-// GetJobFullConfig returns the combined job runtime and config (including InstanceConfig) in a job info struct.
-func (s *Store) GetJobFullConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error) {
-	runtime, err := s.GetJobRuntime(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	config, err := s.GetJobConfig(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	// For backward compatibility
-	if config.GetInstanceConfig() != nil {
-		return config, nil
-	}
-
-	for i := uint32(0); i < config.InstanceCount; i++ {
-		instConfig, err := s.getTaskInstanceConfig(ctx, id, i, uint64(runtime.ConfigVersion))
-		if err != nil {
-			return nil, err
-		}
-		if instConfig != nil {
-			if config.InstanceConfig == nil {
-				config.InstanceConfig = make(map[uint32]*task.TaskConfig)
-			}
-			config.InstanceConfig[i] = instConfig
-		}
-	}
-	return config, nil
 }
 
 // GetJobConfig returns a job config given the job id
@@ -1193,36 +1059,38 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 	return resultMap, nil
 }
 
-func (s *Store) getTaskInstanceConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, configVersion uint64) (*task.TaskConfig, error) {
+// GetTaskConfig returns the task specific config
+func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
+	instanceID uint32, version int64) (*task.TaskConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskConfigTable).
 		Where(
 			qb.Eq{
 				"job_id":      id.GetValue(),
-				"version":     configVersion,
-				"instance_id": []interface{}{instanceID},
+				"version":     version,
+				"instance_id": []interface{}{instanceID, _defaultTaskConfigID},
 			})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithField("job_id", id.GetValue()).
 			WithField("instance_id", instanceID).
-			WithField("version", configVersion).
+			WithField("version", version).
 			WithError(err).
 			Error("Fail to getTaskConfig")
 		s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
 		return nil, err
 	}
+	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))
 
 	if len(allResults) == 0 {
-		return nil, nil
+		return nil, &storage.TaskNotFoundError{TaskID: taskID}
 	}
 
+	// Use last result (the most specific).
 	value := allResults[len(allResults)-1]
 	var record TaskConfigRecord
 	if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
-		log.WithField("job_id", id.GetValue()).
-			WithField("task_id", instanceID).
-			WithField("version", configVersion).
+		log.WithField("task_id", taskID).
 			WithError(err).
 			Error("Failed to Fill into TaskRecord")
 		s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
@@ -1305,106 +1173,28 @@ func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
 				return nil, fmt.Errorf("unable to read default task config")
 			}
 			taskConfigMap[instance] = defaultConfig
-		} else {
-			taskConfigMap[instance] = taskconfig.Merge(defaultConfig, taskConfigMap[instance])
 		}
 	}
 	s.metrics.TaskMetrics.TaskGetConfigs.Inc(1)
 	return taskConfigMap, nil
 }
 
-// GetTaskConfig gets the merged task configuration
-func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, configVersion uint64) (*task.TaskConfig, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(taskConfigTable).
-		Where(
-			qb.Eq{
-				"job_id":      id.GetValue(),
-				"version":     configVersion,
-				"instance_id": []interface{}{instanceID, _defaultTaskConfigID},
-			})
-	allResults, err := s.executeRead(ctx, stmt)
-	if err != nil {
-		log.WithField("job_id", id.GetValue()).
-			WithField("instance_id", instanceID).
-			WithField("version", configVersion).
-			WithError(err).
-			Error("Fail to getTaskConfig")
-		s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
-		return nil, err
-	}
-
-	if len(allResults) == 0 {
-		return nil, nil
-	}
-
-	var configDefault *task.TaskConfig
-	var configInstance *task.TaskConfig
-
-	for _, value := range allResults {
-		var record TaskConfigRecord
-		if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
-			log.WithField("job_id", id.GetValue()).
-				WithField("instance_id", instanceID).
-				WithError(err).
-				Error("failed to fill into task record")
-			s.metrics.TaskMetrics.TaskGetConfigFail.Inc(1)
-		}
-		if configInstance == nil && uint32(record.InstanceID) == instanceID {
-			configInstance, err = record.GetTaskConfig()
-			if err != nil {
-				log.WithField("job_id", id.GetValue()).
-					WithField("instance_id", instanceID).
-					WithError(err).
-					Error("failed to fetch from task record")
-				s.metrics.TaskMetrics.TaskGetFail.Inc(1)
-				return nil, err
-			}
-		}
-		if configDefault == nil && record.InstanceID == _defaultTaskConfigID {
-			configDefault, err = record.GetTaskConfig()
-			if err != nil {
-				log.WithField("job_id", id.GetValue()).
-					WithField("instance_id", instanceID).
-					WithError(err).
-					Error("failed to fetch default config from task record")
-				s.metrics.TaskMetrics.TaskGetFail.Inc(1)
-				return nil, err
-			}
-		}
-	}
-	s.metrics.TaskMetrics.TaskGetConfig.Inc(1)
-	return taskconfig.Merge(configDefault, configInstance), nil
-}
-
-func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.JobID, record *TaskRuntimeRecord, configNeeded storage.ConfigurationRequest) (*task.TaskInfo, error) {
+func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.JobID, record *TaskRuntimeRecord) (*task.TaskInfo, error) {
 	runtime, err := record.GetTaskRuntime()
 	if err != nil {
 		log.Errorf("Failed to parse task runtime from record, val = %v err= %v", record, err)
 		return nil, err
 	}
 
-	if configNeeded == storage.ConfigurationNeeded {
-		config, err := s.GetTaskConfig(ctx, id, uint32(record.InstanceID),
-			uint64(runtime.ConfigVersion))
-		if err != nil {
-			log.WithField("job_id", id.GetValue()).
-				WithField("instance_id", uint32(record.InstanceID)).
-				WithError(err).
-				Error("failed to get task config")
-			return nil, err
-		}
-		return &task.TaskInfo{
-			Runtime:    runtime,
-			Config:     config,
-			InstanceId: uint32(record.InstanceID),
-			JobId:      id,
-		}, nil
+	config, err := s.GetTaskConfig(ctx, id, uint32(record.InstanceID),
+		int64(runtime.ConfigVersion))
+	if err != nil {
+		return nil, err
 	}
 
 	return &task.TaskInfo{
 		Runtime:    runtime,
-		Config:     nil,
+		Config:     config,
 		InstanceId: uint32(record.InstanceID),
 		JobId:      id,
 	}, nil
@@ -1433,7 +1223,7 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 			s.metrics.TaskMetrics.TaskGetForJobAndStateFail.Inc(1)
 			return nil, err
 		}
-		resultMap[uint32(record.InstanceID)], err = s.getTask(ctx, id.GetValue(), uint32(record.InstanceID), storage.ConfigurationNotNeeded)
+		resultMap[uint32(record.InstanceID)], err = s.getTask(ctx, id.GetValue(), uint32(record.InstanceID))
 		if err != nil {
 			log.Errorf("Failed to get taskInfo from task, val = %v err= %v", value, err)
 			s.metrics.TaskMetrics.TaskGetForJobAndStateFail.Inc(1)
@@ -1485,8 +1275,10 @@ func (s *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID
 	return resultMap, nil
 }
 
-// GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job given instance id range
-func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, instanceRange *task.InstanceRange, configNeeded storage.ConfigurationRequest) (map[uint32]*task.TaskInfo, error) {
+// GetTasksForJobByRange returns the TaskInfo for batch jobs by
+// instance ID range.
+func (s *Store) GetTasksForJobByRange(ctx context.Context,
+	id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.GetValue()
 	result := make(map[uint32]*task.TaskInfo)
 	queryBuilder := s.DataStore.NewQuery()
@@ -1505,7 +1297,6 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 		s.metrics.TaskMetrics.TaskGetForJobRangeFail.Inc(1)
 		return nil, err
 	}
-
 	if len(allResults) == 0 {
 		return result, nil
 	}
@@ -1534,52 +1325,47 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, in
 		return result, nil
 	}
 
+	// map of configVersion-> list of instance IDS with that version
+	//
+	// NB: For batch jobs the assumption is that most(
+	// if not all) of the tasks will have the same task config version.
+	// So we can use this optimization to get all the configs with just 1 DB
+	// call. In the worst case if all tasks have a different config version
+	// then it'll take 1 DB call for each task config.
+	configVersions := make(map[uint64][]uint32)
+	for instanceID, runtime := range runtimeMap {
+		instances, ok := configVersions[runtime.GetConfigVersion()]
+		if !ok {
+			instances = []uint32{}
+		}
+		instances = append(instances, instanceID)
+		configVersions[runtime.GetConfigVersion()] = instances
+	}
+
+	log.WithField("config_versions_map",
+		configVersions).Debug("config versions to read")
+
 	// map of instanceID -> task config
 	configMap := make(map[uint32]*task.TaskConfig)
 
-	if configNeeded == storage.ConfigurationNeeded {
-		// map of configVersion-> list of instance IDS with that version
-		//
-		// NB: For batch jobs the assumption is that most(
-		// if not all) of the tasks will have the same task config version.
-		// So we can use this optimization to get all the configs with just 1 DB
-		// call. In the worst case if all tasks have a different config version
-		// then it'll take 1 DB call for each task config.
-		configVersions := make(map[uint64][]uint32)
-		for instanceID, runtime := range runtimeMap {
-			instances, ok := configVersions[runtime.GetConfigVersion()]
-			if !ok {
-				instances = []uint32{}
-			}
-			instances = append(instances, instanceID)
-			configVersions[runtime.GetConfigVersion()] = instances
+	for configVersion, instances := range configVersions {
+		// Get the configs for a particular config version
+		configs, err := s.GetTaskConfigs(ctx, id, instances,
+			int64(configVersion))
+		if err != nil {
+			return result, err
 		}
 
-		log.WithField("config_versions_map",
-			configVersions).Debug("config versions to read")
-
-		for configVersion, instances := range configVersions {
-			// Get the configs for a particular config version
-			configs, err := s.GetTaskConfigs(ctx, id, instances,
-				int64(configVersion))
-			if err != nil {
-				return result, err
-			}
-
-			// appends the configs
-			for instanceID, config := range configs {
-				configMap[instanceID] = config
-			}
+		// appends the configs
+		for instanceID, config := range configs {
+			configMap[instanceID] = config
 		}
 	}
 
 	// We have the task configs and the task runtimes, so we can
 	// create task infos
 	for instanceID, runtime := range runtimeMap {
-		var config *task.TaskConfig
-		if configNeeded == storage.ConfigurationNeeded {
-			config = configMap[instanceID]
-		}
+		config := configMap[instanceID]
 		result[instanceID] = &task.TaskInfo{
 			InstanceId: instanceID,
 			JobId:      id,
@@ -1726,10 +1512,10 @@ func (s *Store) GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo,
 			Error("Invalid task id")
 		return nil, err
 	}
-	return s.getTask(ctx, jobID, uint32(instanceID), storage.ConfigurationNeeded)
+	return s.getTask(ctx, jobID, uint32(instanceID))
 }
 
-func (s *Store) getTask(ctx context.Context, jobID string, instanceID uint32, configNeeded storage.ConfigurationRequest) (*task.TaskInfo, error) {
+func (s *Store) getTask(ctx context.Context, jobID string, instanceID uint32) (*task.TaskInfo, error) {
 	record, err := s.getTaskRuntimeRecord(ctx, jobID, instanceID)
 	if err != nil {
 		log.WithError(err).
@@ -1739,7 +1525,7 @@ func (s *Store) getTask(ctx context.Context, jobID string, instanceID uint32, co
 		return nil, err
 	}
 
-	return s.getTaskInfoFromRuntimeRecord(ctx, &peloton.JobID{Value: jobID}, record, configNeeded)
+	return s.getTaskInfoFromRuntimeRecord(ctx, &peloton.JobID{Value: jobID}, record)
 }
 
 // getTaskRuntimeRecord returns the runtime record for a peloton task
@@ -2103,14 +1889,7 @@ func (s *Store) updateJobIndex(
 		Where(qb.Eq{"job_id": id.GetValue()})
 
 	if config != nil {
-		// Do not store instance config with job config in DB. It will be stored with each instance.
-		// Hence, set the instance config in the job config to null.
-		// But save the instance config to be restored in the memory copy of job config
-		// so that it can later be written to DB with each instance.
-		instanceConfig := config.InstanceConfig
-		config.InstanceConfig = nil
 		configBuffer, err := json.Marshal(config)
-		config.InstanceConfig = instanceConfig
 		if err != nil {
 			log.Errorf("Failed to marshal jobConfig, error = %v", err)
 			s.metrics.JobMetrics.JobUpdateConfigFail.Inc(1)
@@ -2207,8 +1986,7 @@ func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.Qu
 	tasks, err := s.GetTasksForJobByRange(ctx, id, &task.InstanceRange{
 		From: offset,
 		To:   end,
-	},
-		storage.ConfigurationNeeded)
+	})
 	if err != nil {
 		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, 0, err

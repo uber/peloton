@@ -465,7 +465,6 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 	var records = 1
 	var keys = []string{"testKey0", "testKey1", "testKey2", "key0"}
 	var vals = []string{"testVal0", "testVal1", "testVal2", "val0"}
-	var instanceCount = uint32(3)
 	// Wait for 5 * 50ms for DB to be cleaned up
 	var maxAttempts = 5
 	for i := 0; i < records; i++ {
@@ -483,25 +482,6 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 				FdLimit:     1000 + uint32(i),
 			},
 		}
-		var taskConfig0 = task.TaskConfig{
-			Resource: &task.ResourceConfig{
-				CpuLimit:    0.7,
-				MemLimitMb:  700,
-				DiskLimitMb: 1500,
-				FdLimit:     1000 + uint32(i),
-			},
-		}
-		var taskConfig1 = task.TaskConfig{
-			Resource: &task.ResourceConfig{
-				CpuLimit:    0.6,
-				MemLimitMb:  600,
-				DiskLimitMb: 1500,
-				FdLimit:     1000 + uint32(i),
-			},
-		}
-		var instanceConfig = make(map[uint32]*task.TaskConfig)
-		instanceConfig[0] = &taskConfig0
-		instanceConfig[1] = &taskConfig1
 		var labels = []*peloton.Label{
 			{Key: keys[0], Value: vals[0]},
 			{Key: keys[1], Value: vals[1]},
@@ -518,14 +498,12 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 			owner = "money"
 		}
 		var jobconfig = job.JobConfig{
-			Name:           fmt.Sprintf("TestJob_%d", i),
-			OwningTeam:     owner,
-			LdapGroups:     []string{"money", "team6", "otto"},
-			Sla:            &sla,
-			InstanceCount:  instanceCount,
-			DefaultConfig:  &taskConfig,
-			InstanceConfig: instanceConfig,
-			Labels:         labels,
+			Name:          fmt.Sprintf("TestJob_%d", i),
+			OwningTeam:    owner,
+			LdapGroups:    []string{"money", "team6", "otto"},
+			Sla:           &sla,
+			DefaultConfig: &taskConfig,
+			Labels:        labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
 		err := suite.createJob(context.Background(), &jobID, &jobconfig, "uber")
@@ -542,14 +520,6 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
 		suite.Equal(len(jobconf.Labels), 4)
-
-		config, err := jobStore.GetJobFullConfig(context.Background(), &jobID)
-		suite.NoError(err)
-		suite.Equal(config.InstanceCount, instanceCount)
-		suite.Equal(config.InstanceConfig[0].GetResource().GetCpuLimit(), taskConfig0.GetResource().GetCpuLimit())
-		suite.Equal(config.InstanceConfig[0].GetResource().GetMemLimitMb(), taskConfig0.GetResource().GetMemLimitMb())
-		suite.Equal(config.InstanceConfig[1].GetResource().GetCpuLimit(), taskConfig1.GetResource().GetCpuLimit())
-		suite.Equal(config.InstanceConfig[1].GetResource().GetMemLimitMb(), taskConfig1.GetResource().GetMemLimitMb())
 
 		suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
 
@@ -746,7 +716,7 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 		IfNotExist()
 	suite.NoError(store.applyStatement(context.Background(), stmt, ""))
 
-	info, err := store.getTask(context.Background(), jobID.GetValue(), 0, storage.ConfigurationNotNeeded)
+	info, err := store.getTask(context.Background(), jobID.GetValue(), 0)
 	suite.NoError(err)
 	suite.Equal(uint64(0), info.GetRuntime().GetRevision().GetVersion())
 	suite.Equal(uint64(0), info.GetRuntime().GetRevision().GetCreatedAt())
@@ -755,14 +725,14 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 	before := time.Now()
 	suite.NoError(store.UpdateTaskRuntime(context.Background(), jobID, 0, info.Runtime))
 
-	info, err = store.getTask(context.Background(), jobID.GetValue(), 0, storage.ConfigurationNotNeeded)
+	info, err = store.getTask(context.Background(), jobID.GetValue(), 0)
 	suite.NoError(err)
 	suite.Equal(uint64(1), info.GetRuntime().GetRevision().GetVersion())
 	suite.True(info.GetRuntime().GetRevision().UpdatedAt >= uint64(before.UnixNano()))
 
 	suite.NoError(store.UpdateTaskRuntime(context.Background(), jobID, 0, info.Runtime))
 
-	info, err = store.getTask(context.Background(), jobID.GetValue(), 0, storage.ConfigurationNotNeeded)
+	info, err = store.getTask(context.Background(), jobID.GetValue(), 0)
 	suite.NoError(err)
 	suite.Equal(uint64(2), info.GetRuntime().GetRevision().GetVersion())
 }
@@ -1030,7 +1000,7 @@ func (suite *CassandraStoreTestSuite) validateRange(jobID *peloton.JobID, from, 
 		To:   uint32(to),
 	}
 	var taskInRange map[uint32]*task.TaskInfo
-	taskInRange, err = taskStore.GetTasksForJobByRange(context.Background(), jobID, r, storage.ConfigurationNeeded)
+	taskInRange, err = taskStore.GetTasksForJobByRange(context.Background(), jobID, r)
 	suite.NoError(err)
 
 	suite.Equal(to-from, len(taskInRange))
@@ -1478,7 +1448,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
 	suite.NoError(store.CreateTaskRuntime(context.Background(), jobID, 0, &task.RuntimeInfo{}, ""))
 
-	info, err := store.getTask(context.Background(), jobID.GetValue(), 0, storage.ConfigurationNotNeeded)
+	info, err := store.getTask(context.Background(), jobID.GetValue(), 0)
 	suite.NoError(err)
 
 	runtime, err := store.GetTaskRuntime(context.Background(), jobID, 0)

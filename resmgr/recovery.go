@@ -471,8 +471,7 @@ func (r *recoveryHandler) loadTasksInRange(
 		&task.InstanceRange{
 			From: from,
 			To:   to,
-		},
-		storage.ConfigurationNeeded)
+		})
 	for taskID, taskInfo := range taskInfoMap {
 		if _, ok := taskStatesToSkip[taskInfo.GetRuntime().GetState()]; !ok {
 			log.WithFields(log.Fields{

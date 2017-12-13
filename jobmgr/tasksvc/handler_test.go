@@ -19,7 +19,6 @@ import (
 
 	job_mocks "code.uber.internal/infra/peloton/jobmgr/job/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
-	"code.uber.internal/infra/peloton/storage"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -165,7 +164,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0], storage.ConfigurationNotNeeded).Return(singleTaskInfo, nil),
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		trackedMock.EXPECT().UpdateTaskRuntime(gomock.Any(), suite.taskInfos[1].GetJobId(), uint32(1), suite.taskInfos[1].Runtime).Return(nil),
 	)
 
@@ -208,7 +207,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0], storage.ConfigurationNotNeeded).Return(taskInfos, nil),
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(taskInfos, nil),
 		trackedMock.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 		trackedMock.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 	)
@@ -258,9 +257,9 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0], storage.ConfigurationNotNeeded).Return(singleTaskInfo, nil),
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, correctedRange, storage.ConfigurationNotNeeded).
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, correctedRange).
 			Return(emptyTaskInfo, errors.New("test error")),
 	)
 
@@ -439,7 +438,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0], storage.ConfigurationNotNeeded).Return(singleTaskInfo, nil),
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 	)
 
 	gomock.InOrder(
@@ -497,9 +496,9 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0], storage.ConfigurationNotNeeded).Return(singleTaskInfo, nil),
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, correctedTaskRange, storage.ConfigurationNotNeeded).
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, correctedTaskRange).
 			Return(emptyTaskInfo, errors.New("test error")),
 	)
 
@@ -554,7 +553,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
-			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0], storage.ConfigurationNotNeeded).Return(singleTaskInfo, nil),
+			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		trackedMock.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 		updaterMock.EXPECT().UpdateJob(gomock.Any(), suite.testJobID).Return(nil),
 	)

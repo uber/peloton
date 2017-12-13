@@ -20,7 +20,6 @@ import (
 	"code.uber.internal/infra/peloton/common/queue"
 	rp "code.uber.internal/infra/peloton/resmgr/respool"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
-	"code.uber.internal/infra/peloton/storage"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -320,7 +319,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		GetTasksForJobByRange(context.Background(), &jobs[0], &task.InstanceRange{
 			From: 0,
 			To:   10,
-		}, storage.ConfigurationNeeded).
+		}).
 		Return(suite.createTasks(&jobs[0], 9, task.TaskState_INITIALIZED), nil)
 
 	suite.mockJobStore.EXPECT().
@@ -330,7 +329,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		GetTasksForJobByRange(context.Background(), &jobs[1], &task.InstanceRange{
 			From: 0,
 			To:   10,
-		}, storage.ConfigurationNeeded).
+		}).
 		Return(suite.createTasks(&jobs[1], 9, task.TaskState_PENDING), nil)
 
 	suite.mockJobStore.EXPECT().
@@ -340,7 +339,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		GetTasksForJobByRange(context.Background(), &jobs[2], &task.InstanceRange{
 			From: 0,
 			To:   10,
-		}, storage.ConfigurationNeeded).
+		}).
 		Return(suite.createTasks(&jobs[2], 9, task.TaskState_RUNNING), nil)
 
 	suite.mockJobStore.EXPECT().
@@ -350,7 +349,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		GetTasksForJobByRange(context.Background(), &jobs[3], &task.InstanceRange{
 			From: 0,
 			To:   10,
-		}, storage.ConfigurationNeeded).
+		}).
 		Return(suite.createTasks(&jobs[3], 9, task.TaskState_LAUNCHED), nil)
 
 	// Perform recovery
