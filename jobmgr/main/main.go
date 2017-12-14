@@ -328,7 +328,6 @@ func main() {
 		jobStore,
 		taskStore,
 		frameworkInfoStore,
-		volumeStore,
 		runtimeUpdater,
 		trackedManager,
 		*mesosAgentWorkDir,

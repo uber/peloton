@@ -113,7 +113,7 @@ func TestManagerSyncFromDB(t *testing.T) {
 	}
 
 	jobstoreMock.EXPECT().GetAllJobs(gomock.Any()).Return(map[string]*pb_job.RuntimeInfo{
-		id: &pb_job.RuntimeInfo{
+		id: {
 			State:     pb_job.JobState_RUNNING,
 			GoalState: pb_job.JobState_SUCCEEDED,
 		},

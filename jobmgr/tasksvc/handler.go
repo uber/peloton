@@ -44,7 +44,6 @@ func InitServiceHandler(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
-	volumeStore storage.PersistentVolumeStore,
 	runtimeUpdater job.RuntimeUpdater,
 	trackedManager tracked.Manager,
 	mesosAgentWorkDir string) {
@@ -52,7 +51,6 @@ func InitServiceHandler(
 	handler := &serviceHandler{
 		taskStore:          taskStore,
 		jobStore:           jobStore,
-		volumeStore:        volumeStore,
 		frameworkInfoStore: frameworkInfoStore,
 		runtimeUpdater:     runtimeUpdater,
 		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
@@ -69,7 +67,6 @@ func InitServiceHandler(
 type serviceHandler struct {
 	taskStore          storage.TaskStore
 	jobStore           storage.JobStore
-	volumeStore        storage.PersistentVolumeStore
 	frameworkInfoStore storage.FrameworkInfoStore
 	runtimeUpdater     job.RuntimeUpdater
 	metrics            *Metrics

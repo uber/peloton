@@ -162,7 +162,7 @@ func (l *launcher) LaunchTaskWithReservedResource(ctx context.Context, taskInfo 
 		selectedPorts = append(selectedPorts, port)
 	}
 	err = l.launchStatefulTasks(
-		ctx, launchableTasks, taskRuntime.GetHost(), selectedPorts, false)
+		ctx, launchableTasks, taskRuntime.GetHost(), selectedPorts, false /* checkVolume */)
 	return err
 }
 
@@ -239,11 +239,17 @@ func (l *launcher) getLaunchableTasks(
 		// Generate volume ID if not set for stateful task.
 		if taskInfo.GetConfig().GetVolume() != nil {
 			if taskInfo.GetRuntime().GetVolumeID() == nil || hostname != taskInfo.GetRuntime().GetHost() {
-				// Generates volume ID if first time launch the stateful task,
-				// OR task is being launched to a different host.
-				taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
+				newVolumeID := &peloton.VolumeID{
 					Value: uuid.New(),
 				}
+				log.WithFields(log.Fields{
+					"task":          taskInfo,
+					"hostname":      hostname,
+					"new_volume_id": newVolumeID,
+				}).Info("generates new volume id for task")
+				// Generates volume ID if first time launch the stateful task,
+				// OR task is being launched to a different host.
+				taskInfo.GetRuntime().VolumeID = newVolumeID
 			}
 		}
 
@@ -392,7 +398,10 @@ func (l *launcher) launchStatefulTasks(
 		Operations: operations,
 	}
 
-	log.WithField("request", request).Debug("OfferOperations Called")
+	log.WithFields(log.Fields{
+		"request":        request,
+		"selected_tasks": selectedTasks,
+	}).Info("OfferOperations called")
 
 	response, err := l.hostMgrClient.OfferOperations(ctx, request)
 	if err != nil {
@@ -459,7 +468,7 @@ func (l *launcher) launchTasks(
 			selectedTasks,
 			placement.GetHostname(),
 			placement.GetPorts(),
-			true,
+			true, /* checkVolume */
 		)
 	}
 	callDuration := time.Since(callStart)
