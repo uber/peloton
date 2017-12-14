@@ -9,7 +9,7 @@
 *.tmp
 .tmp/
 .build/
-.gen/
+docker/pip.conf
 /pbgen
 /vendor
 /vendor_mocks
@@ -27,6 +27,7 @@
 *.pyc
 *.egg-info
 *.orig
+tmp.yaml
 out.txt
 .coverage
 coverage.xml
@@ -47,4 +48,3 @@ docker/pip.conf
 \#*\#
 .unison.*.tmp
 workspace/
-.gen/

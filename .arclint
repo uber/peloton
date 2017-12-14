@@ -12,12 +12,12 @@
     "golint": {
       "type": "golint",
       "include": "(\\.go$)",
-      "exclude": ["(^mesos-go/.+\\.go$)", "(^pbgen/.+\\.go$)"]
+      "exclude": ["(^mesos-go/.+\\.go$)", "(^pbgen/.+\\.go$)", "(^\\.gen/.+\\.go$)"]
     },
     "govet": {
       "type": "govet",
       "include": "(\\.go$)",
-      "exclude": "(^mesos-go/.+.go$)"
+      "exclude": ["(^mesos-go/.+.go$)", "(^\\.gen/.+\\.go$)"]
     },
     "json": {
       "type": "json",
