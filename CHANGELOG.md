@@ -3,6 +3,12 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.4
+------------------
+- 2017-12-14    Skip terminal jobs during job manager sync from DB                                     @apoorvaj
+- 2017-12-14    Added the mesos podtask                                                                @pourchet
+
+
 0.6.3
 ------------------
 - 2017-12-14    Increase MaxRecvMsgSize in gRPC to 256MB                                               @min
