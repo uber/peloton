@@ -268,7 +268,7 @@ func (m *manager) Start() {
 	m.running = true
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		if err := m.syncFromDB(ctx); err != nil {
@@ -325,17 +325,7 @@ func (m *manager) syncFromDB(ctx context.Context) error {
 			pb_job.JobState_FAILED,
 			pb_job.JobState_KILLED,
 			pb_job.JobState_SUCCEEDED:
-			switch jobRuntime.GetGoalState() {
-			case
-				pb_job.JobState_KILLED,
-				pb_job.JobState_SUCCEEDED:
-				log.WithField("job_id", id).
-					WithField("state", jobRuntime.GetState().String).
-					WithField("goal_state", jobRuntime.GetGoalState().String).
-					Info("skipping load of completed job")
-				continue
-			}
-
+			continue
 		}
 
 		jobConfig, err := m.jobStore.GetJobConfig(ctx, jobID)
