@@ -3,17 +3,27 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.3
+------------------
+- 2017-12-14    Increase MaxRecvMsgSize in gRPC to 256MB                                               @min
+- 2017-12-14    Merge the placement engine from the master branch into release                         @kejlberg
+- 2017-12-13    Move metrics gauage update to asynchronous                                             @zhitao
+- 2017-12-13    Update volume state upon stateful task running status update                           @mu
+- 2017-12-13    Add more logging for jobmgr to launch stateful                                         @mu
+- 2017-12-13    Fixing Integration test preprod cluster zk address                                     @mabansal
+- 2017-12-13    Add reservation cleaner to clean both unused volume and resources                      @mu
+- 2017-12-13    Add job goal state to job manager                                                      @apoorvaj
+- 2017-12-13    Add materialized view for volume by state                                              @mu
+
 0.6.2
 ------------------
-
 - 2017-12-12    Adding more logging to entitlelement calculator in resmgr                              @Mayank Bansal
-- 2017-12-12    Revert "Check in mocks"        							                               @Antoine Pourchet
+- 2017-12-12    Revert "Check in mocks"        							                                           @Antoine Pourchet
 - 2017-12-12    Adding deadline feature in Peloton                                                     @Mayank Bansal
 - 2017-12-08    Add changelog for changes between 0.5.0 and 0.6.0                                      @Anant Vyas
 
 0.6.1
 ------------------
-
 - 2017-12-08    Improve Resource Manager recovery performance                                          @Anant Vyas
 - 2017-12-06    Add materialized view for volumes by job ids                                           @Tengfei Mu
 - 2017-12-07    Update task runtime state when receiving a mesos kill event                            @Apoorva Jindal
