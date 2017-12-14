@@ -38,6 +38,9 @@ jenkins.xml
 # Ignore any mocks sub-directory.
 mocks/
 
+# Ignore docker generated files.
+docker/pip.conf
+
 # Emacs
 *~
 .\#*

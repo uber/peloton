@@ -11,6 +11,8 @@ type Metrics struct {
 	ready   scalar.GaugeMaps
 	placing scalar.GaugeMaps
 
+	refreshTimer tally.Timer
+
 	// metrics for handler
 	OfferEvents               tally.Counter
 	RescindEvents             tally.Counter
@@ -53,6 +55,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	return &Metrics{
 		ready:   scalar.NewGaugeMaps(readyScope),
 		placing: scalar.NewGaugeMaps(placingScope),
+
+		refreshTimer: poolScope.Timer("refresh"),
 
 		OfferEvents:   offerEventScope.Counter("offer"),
 		RescindEvents: offerEventScope.Counter("rescind"),

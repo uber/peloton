@@ -74,6 +74,9 @@ type Pool interface {
 
 	// RemoveReservedOffers removes given offerID from given host.
 	RemoveReservedOffer(hostname string, offerID string)
+
+	// RefreshGaugeMaps refreshes ready/placing metrics from all hosts.
+	RefreshGaugeMaps()
 }
 
 const (
@@ -105,7 +108,7 @@ func NewOfferPool(
 	}
 
 	// Initialize gauges.
-	p.updateMetrics(p.readyResources.Get(), p.placingResources.Get())
+	p.updateMetrics()
 
 	return p
 }
@@ -179,6 +182,7 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 			delta = *(delta.Add(&tmp))
 		}
 	}
+
 	if len(hostOffers) > 0 {
 		incQuantity(&p.placingResources, delta, p.metrics.placing)
 		decQuantity(&p.readyResources, delta, p.metrics.ready)
@@ -256,8 +260,11 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 	return offerMap, nil
 }
 
-func (p *offerPool) updateMetrics(ready scalar.Resources, placing scalar.Resources) {
+func (p *offerPool) updateMetrics() {
+	ready := p.readyResources.Get()
 	p.metrics.ready.Update(&ready)
+
+	placing := p.placingResources.Get()
 	p.metrics.placing.Update(&placing)
 }
 
@@ -464,7 +471,7 @@ func (p *offerPool) Clear() {
 	p.hostOfferIndex = map[string]summary.HostSummary{}
 	p.readyResources = scalar.AtomicResources{}
 	p.placingResources = scalar.AtomicResources{}
-	p.updateMetrics(p.readyResources.Get(), p.readyResources.Get())
+	p.updateMetrics()
 }
 
 // DeclineOffers calls mesos master to decline list of offers
@@ -512,8 +519,7 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 		return err
 	}
 
-	delta := hostOffers.UnreservedAmount()
-
+	delta, _ := hostOffers.UnreservedAmount()
 	decQuantity(&p.placingResources, delta, p.metrics.placing)
 	incQuantity(&p.readyResources, delta, p.metrics.ready)
 
@@ -535,7 +541,9 @@ func incQuantity(
 	tmp := resources.Get()
 	tmp = *(tmp.Add(&delta))
 	resources.Set(tmp)
-	gaugeMaps.Update(&tmp)
+
+	// TODO(zhitao): clean up this after confirming snapshot based solution works.
+	// gaugeMaps.Update(&tmp)
 }
 
 func decQuantity(
@@ -556,7 +564,9 @@ func decQuantity(
 	}
 	tmp := *(curr.Subtract(&delta))
 	resources.Set(tmp)
-	gaugeMaps.Update(&tmp)
+
+	// TODO(zhitao): clean up this after confirming snapshot based solution works.
+	// gaugeMaps.Update(&tmp)
 }
 
 // ResetExpiredHostSummaries resets the status of each hostSummary of the offerPool
@@ -603,4 +613,36 @@ func (p *offerPool) GetReservedOffers() map[string]map[string]*mesos.Offer {
 		result[hostname] = summary.GetReservedOffers()
 	}
 	return result
+}
+
+func (p *offerPool) RefreshGaugeMaps() {
+	log.Debug("starting offer pool usage metrics refresh")
+
+	p.RLock()
+	defer p.RUnlock()
+
+	stopWatch := p.metrics.refreshTimer.Start()
+
+	ready := &scalar.Resources{}
+	placing := &scalar.Resources{}
+
+	for _, h := range p.hostOfferIndex {
+		amount, status := h.UnreservedAmount()
+		switch status {
+		case summary.ReadyOffer:
+			ready = ready.Add(&amount)
+		case summary.PlacingOffer:
+			placing = placing.Add(&amount)
+		}
+	}
+
+	p.metrics.ready.Update(ready)
+	p.metrics.placing.Update(placing)
+
+	log.WithFields(log.Fields{
+		"placing_resources": *placing,
+		"ready_resources":   *ready,
+	}).Debug("offer pool usage metrics refreshed")
+
+	stopWatch.Stop()
 }

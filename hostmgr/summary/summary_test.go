@@ -397,11 +397,13 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	// Verify resources for unreserved part.
 	suite.True(hybridSummary.HasOffer())
 	suite.True(hybridSummary.HasAnyOffer())
-	unreservedAmount := hybridSummary.UnreservedAmount()
+	unreservedAmount, status := hybridSummary.UnreservedAmount()
 	suite.Equal(5.0, unreservedAmount.CPU)
 	suite.Equal(5.0, unreservedAmount.Mem)
 	suite.Equal(5.0, unreservedAmount.Disk)
 	suite.Equal(5.0, unreservedAmount.GPU)
+
+	suite.Equal(ReadyOffer, status)
 
 	// Remove offer concurrently.
 	wg = sync.WaitGroup{}
@@ -433,6 +435,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 		evaluateRes   constraints.EvaluateResult
 		evaluateErr   error
 		initialStatus CacheStatus
+		afterStatus   CacheStatus
 		noMock        bool
 	}{
 		{
@@ -440,27 +443,32 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 			offers:        []*mesos.Offer{offer},
 			evaluateRes:   constraints.EvaluateResultMatch,
 			initialStatus: ReadyOffer,
+			afterStatus:   PlacingOffer,
 		},
 		{
 			match:         hostsvc.HostFilterResult_MATCH,
 			offers:        []*mesos.Offer{offer},
 			evaluateRes:   constraints.EvaluateResultNotApplicable,
 			initialStatus: ReadyOffer,
+			afterStatus:   PlacingOffer,
 		},
 
 		{
 			match:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
 			evaluateRes:   constraints.EvaluateResultMismatch,
 			initialStatus: ReadyOffer,
+			afterStatus:   ReadyOffer,
 		},
 		{
 			match:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
 			evaluateErr:   errors.New("some error"),
 			initialStatus: ReadyOffer,
+			afterStatus:   ReadyOffer,
 		},
 		{
 			match:         hostsvc.HostFilterResult_MISMATCH_STATUS,
 			initialStatus: PlacingOffer,
+			afterStatus:   PlacingOffer,
 			noMock:        true,
 		},
 	}
@@ -495,6 +503,10 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 		match, offers := s.TryMatch(filter, mockEvaluator)
 		suite.Equal(tt.match, match, "test case is %v", tt)
 		suite.Equal(tt.offers, offers)
+
+		_, afterStatus := s.UnreservedAmount()
+		suite.Equal(tt.afterStatus, afterStatus, "test case is %v", tt)
+
 		ctrl.Finish()
 	}
 }

@@ -4,8 +4,12 @@ import (
 	"context"
 	"time"
 
-	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/atomic"
+	"github.com/uber-go/tally"
+	"go.uber.org/yarpc"
 
+	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
 	"code.uber.internal/infra/peloton/common/background"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
@@ -13,10 +17,6 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/reservation/cleaner"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
-
-	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/tally"
-	"go.uber.org/yarpc"
 )
 
 const (
@@ -24,6 +24,9 @@ const (
 	_resourceCleanerName         = "resourceCleaner"
 	_resourceCleanerPeriod       = 60 * time.Minute
 	_resourceCleanerInitialDelay = 10 * time.Minute
+
+	_poolMetricsRefresh       = "poolMetricsRefresh"
+	_poolMetricsRefreshPeriod = 60 * time.Second
 )
 
 // EventHandler defines the interface for offer event handler that is
@@ -99,6 +102,14 @@ func InitEventHandler(
 			Func:         resourceCleaner.Run,
 			Period:       _resourceCleanerPeriod,
 			InitialDelay: _resourceCleanerInitialDelay,
+		},
+
+		background.Work{
+			Name: _poolMetricsRefresh,
+			Func: func(_ *atomic.Bool) {
+				pool.RefreshGaugeMaps()
+			},
+			Period: _poolMetricsRefreshPeriod,
 		},
 	)
 	//TODO: refactor OfferPruner as a background worker

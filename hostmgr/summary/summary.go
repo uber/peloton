@@ -82,7 +82,9 @@ type HostSummary interface {
 	// otherwise returns error.
 	CasStatus(old, new CacheStatus) error
 
-	UnreservedAmount() scalar.Resources
+	// UnreservedAmount tells us unreserved resources amount and status for
+	// report purpose.
+	UnreservedAmount() (scalar.Resources, CacheStatus)
 
 	// ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
 	// to ReadyOffer if the PlacingOffer status has expired, and returns
@@ -222,7 +224,6 @@ func (a *hostSummary) TryMatch(
 	filter *hostsvc.HostFilter,
 	evaluator constraints.Evaluator,
 ) (hostsvc.HostFilterResult, []*mesos.Offer) {
-
 	a.Lock()
 	defer a.Unlock()
 
@@ -367,16 +368,16 @@ func (a *hostSummary) casStatusLockFree(old, new CacheStatus) error {
 }
 
 // UnreservedAmount returns the amount of unreserved resources.
-func (a *hostSummary) UnreservedAmount() scalar.Resources {
+func (a *hostSummary) UnreservedAmount() (scalar.Resources, CacheStatus) {
 	a.Lock()
 	defer a.Unlock()
 
-	return scalar.FromOfferMap(a.unreservedOffers)
+	return scalar.FromOfferMap(a.unreservedOffers), a.status
 }
 
 // ResetExpiredPlacingOfferStatus resets a hostSummary status from PlacingOffer
 // to ReadyOffer if the PlacingOffer status has expired, and returns
-// wether the hostSummary got reset
+// whether the hostSummary got reset
 func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources) {
 	if !a.HasOffer() {
 		a.Lock()
@@ -392,7 +393,8 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 					"curr_status": a.status,
 					"ready_count": a.readyCount.Load(),
 					"offers":      offers,
-				}).Warn("pruning hostoffer")
+				}).Warn("reset host from placing to ready after timeout")
+
 				a.casStatusLockFree(PlacingOffer, ReadyOffer)
 				return true, scalar.FromOfferMap(a.unreservedOffers)
 			}

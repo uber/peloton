@@ -177,6 +177,7 @@ func (suite *HostMgrHandlerTestSuite) TearDownTest() {
 func (suite *HostMgrHandlerTestSuite) assertGaugeValues(
 	values map[string]float64) {
 
+	suite.pool.RefreshGaugeMaps()
 	gauges := suite.testScope.Snapshot().Gauges()
 
 	for key, value := range values {
