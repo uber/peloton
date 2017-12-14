@@ -1,11 +1,12 @@
 changelog: null
-name: TestPelotonDockerJob_123
+name: TestPelotonDockerJob_PersistentVolume
+type: 1
 owningteam: team6
 ldapgroups:
 - money
 - team6
 - otto
-description: "A dummy test docker job for peloton"
+description: "A dummy test docker job for peloton using persistent volume"
 labels:
 - key: testKey0
   value: testVal0
@@ -44,8 +45,8 @@ defaultconfig:
         hostpath: /var
         mode: 2
   volume:
-     containerpath: testvolumepath20
+     containerpath: testvolumepath
      sizemb: 20
   command:
     shell: true
-    value: 'echo Hello && sleep 300'
+    value: 'echo Hello && sleep 600'

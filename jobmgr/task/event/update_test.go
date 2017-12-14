@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
@@ -65,6 +66,7 @@ type TaskUpdaterTestSuite struct {
 	testScope          tally.TestScope
 	mockJobStore       *store_mocks.MockJobStore
 	mockTaskStore      *store_mocks.MockTaskStore
+	mockVolumeStore    *store_mocks.MockPersistentVolumeStore
 	mockTrackedManager *mocks.MockManager
 	mockListener1      *event_mocks.MockListener
 	mockListener2      *event_mocks.MockListener
@@ -76,6 +78,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.testScope = tally.NewTestScope("", map[string]string{})
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.ctrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.ctrl)
+	suite.mockVolumeStore = store_mocks.NewMockPersistentVolumeStore(suite.ctrl)
 	suite.mockTrackedManager = mocks.NewMockManager(suite.ctrl)
 	suite.mockListener1 = event_mocks.NewMockListener(suite.ctrl)
 	suite.mockListener2 = event_mocks.NewMockListener(suite.ctrl)
@@ -84,6 +87,7 @@ func (suite *TaskUpdaterTestSuite) SetupTest() {
 	suite.updater = &statusUpdate{
 		jobStore:       suite.mockJobStore,
 		taskStore:      suite.mockTaskStore,
+		volumeStore:    suite.mockVolumeStore,
 		listeners:      []Listener{suite.mockListener1, suite.mockListener2},
 		trackedManager: suite.mockTrackedManager,
 		rootCtx:        context.Background(),
@@ -448,6 +452,75 @@ func (suite *TaskUpdaterTestSuite) TestProcessPreemptedTaskStatusUpdate() {
 			Return(nil)
 		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 	}
+}
+
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	taskInfo := createTestTaskInfo(task.TaskState_LAUNCHED)
+	taskInfo.GetConfig().Volume = &task.PersistentVolumeConfig{}
+	testVolumeID := &peloton.VolumeID{
+		Value: "testVolume",
+	}
+	taskInfo.GetRuntime().VolumeID = testVolumeID
+
+	volumeInfo := &volume.PersistentVolumeInfo{
+		State: volume.VolumeState_INITIALIZED,
+	}
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+		suite.mockVolumeStore.EXPECT().
+			GetPersistentVolume(context.Background(), testVolumeID).
+			Return(volumeInfo, nil),
+		suite.mockVolumeStore.EXPECT().
+			UpdatePersistentVolume(context.Background(), volumeInfo).
+			Return(nil),
+		suite.mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, taskInfo.GetRuntime()).
+			Return(nil),
+	)
+
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
+}
+
+func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningIfAlreadyCreated() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	taskInfo := createTestTaskInfo(task.TaskState_LAUNCHED)
+	taskInfo.GetConfig().Volume = &task.PersistentVolumeConfig{}
+	testVolumeID := &peloton.VolumeID{
+		Value: "testVolume",
+	}
+	taskInfo.GetRuntime().VolumeID = testVolumeID
+
+	volumeInfo := &volume.PersistentVolumeInfo{
+		State: volume.VolumeState_CREATED,
+	}
+
+	gomock.InOrder(
+		suite.mockTaskStore.EXPECT().
+			GetTaskByID(context.Background(), _pelotonTaskID).
+			Return(taskInfo, nil),
+		suite.mockVolumeStore.EXPECT().
+			GetPersistentVolume(context.Background(), testVolumeID).
+			Return(volumeInfo, nil),
+		suite.mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, taskInfo.GetRuntime()).
+			Return(nil),
+	)
+
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	suite.Equal(
+		int64(1),
+		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
 }
 
 func (suite *TaskUpdaterTestSuite) TestUpdaterProcessListeners() {

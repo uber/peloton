@@ -8,6 +8,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
@@ -50,6 +51,7 @@ type Listener interface {
 type statusUpdate struct {
 	jobStore       storage.JobStore
 	taskStore      storage.TaskStore
+	volumeStore    storage.PersistentVolumeStore
 	eventClients   map[string]*eventstream.Client
 	hostmgrClient  hostsvc.InternalHostServiceYARPCClient
 	applier        *asyncEventProcessor
@@ -69,6 +71,7 @@ func InitTaskStatusUpdate(
 	server string,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	volumeStore storage.PersistentVolumeStore,
 	trackedManager tracked.Manager,
 	listeners []Listener,
 	parentScope tally.Scope) {
@@ -80,6 +83,7 @@ func InitTaskStatusUpdate(
 		statusUpdater = &statusUpdate{
 			jobStore:       jobStore,
 			taskStore:      taskStore,
+			volumeStore:    volumeStore,
 			rootCtx:        context.Background(),
 			metrics:        NewMetrics(parentScope.SubScope("status_updater")),
 			eventClients:   make(map[string]*eventstream.Client),
@@ -258,6 +262,15 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		return nil
 	}
 
+	if state == pb_task.TaskState_RUNNING &&
+		taskInfo.GetConfig().GetVolume() != nil &&
+		len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
+		// Update volume state to be CREATED upon task RUNNING.
+		if err := p.updatePersistentVolumeState(ctx, taskInfo); err != nil {
+			return err
+		}
+	}
+
 	// Persist the reason and message for mesos updates
 	runtime.Message = statusMsg
 	runtime.Reason = ""
@@ -355,6 +368,32 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	return nil
+}
+
+// updatePersistentVolumeState updates volume state to be CREATED.
+func (p *statusUpdate) updatePersistentVolumeState(ctx context.Context, taskInfo *pb_task.TaskInfo) error {
+	// Update volume state to be created if task enters RUNNING state.
+	volumeInfo, err := p.volumeStore.GetPersistentVolume(ctx, taskInfo.GetRuntime().GetVolumeID())
+	if err != nil {
+		log.WithError(err).WithFields(log.Fields{
+			"db_task_info": taskInfo,
+			"volume_id":    taskInfo.GetRuntime().GetVolumeID(),
+		}).Error("Failed to read db for given volume")
+		_, ok := err.(*storage.VolumeNotFoundError)
+		if !ok {
+			// Do not ack status update running if db read error.
+			return err
+		}
+		return nil
+	}
+
+	// Do not update volume db if state is already CREATED.
+	if volumeInfo.State == volume.VolumeState_CREATED {
+		return nil
+	}
+
+	volumeInfo.State = volume.VolumeState_CREATED
+	return p.volumeStore.UpdatePersistentVolume(ctx, volumeInfo)
 }
 
 func (p *statusUpdate) ProcessListeners(event *pb_eventstream.Event) {

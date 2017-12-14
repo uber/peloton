@@ -60,12 +60,6 @@ func (c *CircularBuffer) GetItem(sequence uint64) (*CircularBufferItem, error) {
 func (c *CircularBuffer) GetItemsByRange(from uint64, to uint64) ([]*CircularBufferItem, error) {
 	c.RLock()
 	defer c.RUnlock()
-	log.WithFields(log.Fields{
-		"from": from,
-		"to":   to,
-		"head": c.head,
-		"tail": c.tail}).
-		Debug("GetItemsByRange")
 	if from > c.head || to < c.tail {
 		log.WithFields(log.Fields{
 			"from": from,

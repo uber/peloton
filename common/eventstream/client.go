@@ -206,7 +206,6 @@ func (c *Client) sendWaitEventRequest(
 		return nil, err
 	}
 	c.metrics.WaitForEventsSuccess.Inc(1)
-	log.WithField("WaitForEventsResponse", response).Debugln()
 	return response, nil
 }
 
@@ -229,7 +228,6 @@ func (c *Client) waitEventsLoop() {
 			}
 			// Note: InvalidPurgeOffset should never happen if the client does the right thing. For now, just log it
 		}
-		log.WithField("Number of events", len(response.GetEvents())).Debug("event received")
 		if len(response.GetEvents()) == 0 {
 			time.Sleep(noEventSleep)
 			continue
