@@ -1025,7 +1025,7 @@ func (s *Store) GetTasksForJobResultSet(ctx context.Context, id *peloton.JobID) 
 	return result, nil
 }
 
-// GetTasksForJob returns all the tasks (tasks.TaskInfo) for a peloton job
+// GetTasksForJob returns all the task runtimes (no configuration) in a map of tasks.TaskInfo for a peloton job
 func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error) {
 	allResults, err := s.GetTasksForJobResultSet(ctx, id)
 	if err != nil {
@@ -1284,6 +1284,54 @@ func (s *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID
 	return resultMap, nil
 }
 
+// GetTaskRuntimesForJobByRange returns the Task RuntimeInfo for batch jobs by
+// instance ID range.
+func (s *Store) GetTaskRuntimesForJobByRange(ctx context.Context,
+	id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.RuntimeInfo, error) {
+	jobID := id.GetValue()
+	result := make(map[uint32]*task.RuntimeInfo)
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").
+		From(taskRuntimeTable).
+		Where(qb.Eq{"job_id": jobID}).
+		Where("instance_id >= ?", instanceRange.From).
+		Where("instance_id < ?", instanceRange.To)
+
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			WithField("range", instanceRange).
+			Error("fail to get task rutimes for jobs by range")
+		s.metrics.TaskMetrics.TaskGetRuntimesForJobRangeFail.Inc(1)
+		return nil, err
+	}
+	if len(allResults) == 0 {
+		return result, nil
+	}
+
+	for _, value := range allResults {
+		var record TaskRuntimeRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithField("job_id", jobID).
+				WithField("range", instanceRange).
+				WithError(err).
+				Error("failed to fill runtime into task record")
+			s.metrics.TaskMetrics.TaskGetRuntimesForJobRangeFail.Inc(1)
+			return nil, err
+		}
+		runtime, err := record.GetTaskRuntime()
+		if err != nil {
+			return result, err
+		}
+		result[uint32(record.InstanceID)] = runtime
+	}
+
+	s.metrics.TaskMetrics.TaskGetRuntimesForJobRange.Inc(1)
+	return result, nil
+}
+
 // GetTasksForJobByRange returns the TaskInfo for batch jobs by
 // instance ID range.
 func (s *Store) GetTasksForJobByRange(ctx context.Context,
@@ -1387,6 +1435,7 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context,
 	log.WithField("count_runtime", len(runtimeMap)).
 		WithField("count_config", len(configMap)).
 		Debug("runtime vs config")
+	s.metrics.TaskMetrics.TaskGetForJobRange.Inc(1)
 	return result, nil
 }
 

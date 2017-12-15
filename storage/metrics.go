@@ -86,6 +86,9 @@ type TaskMetrics struct {
 	TaskGetForJobRange     tally.Counter
 	TaskGetForJobRangeFail tally.Counter
 
+	TaskGetRuntimesForJobRange     tally.Counter
+	TaskGetRuntimesForJobRangeFail tally.Counter
+
 	TaskGetRuntime     tally.Counter
 	TaskGetRuntimeFail tally.Counter
 
@@ -249,14 +252,16 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskGetLogState:     taskSuccessScope.Counter("get_log_state"),
 		TaskGetLogStateFail: taskFailScope.Counter("get_log_state"),
 
-		TaskGetForJob:             taskSuccessScope.Counter("get_for_job"),
-		TaskGetForJobFail:         taskFailScope.Counter("get_for_job"),
-		TaskGetForJobAndState:     taskSuccessScope.Counter("get_for_job_and_state"),
-		TaskGetForJobAndStateFail: taskFailScope.Counter("get_for_job_and_state"),
-		TaskSummaryForJob:         taskSuccessScope.Counter("summary_for_job"),
-		TaskSummaryForJobFail:     taskFailScope.Counter("summary_for_job"),
-		TaskGetForJobRange:        taskSuccessScope.Counter("get_for_job_range"),
-		TaskGetForJobRangeFail:    taskFailScope.Counter("get_for_job_range"),
+		TaskGetForJob:                  taskSuccessScope.Counter("get_for_job"),
+		TaskGetForJobFail:              taskFailScope.Counter("get_for_job"),
+		TaskGetForJobAndState:          taskSuccessScope.Counter("get_for_job_and_state"),
+		TaskGetForJobAndStateFail:      taskFailScope.Counter("get_for_job_and_state"),
+		TaskSummaryForJob:              taskSuccessScope.Counter("summary_for_job"),
+		TaskSummaryForJobFail:          taskFailScope.Counter("summary_for_job"),
+		TaskGetForJobRange:             taskSuccessScope.Counter("get_for_job_range"),
+		TaskGetForJobRangeFail:         taskFailScope.Counter("get_for_job_range"),
+		TaskGetRuntimesForJobRange:     taskSuccessScope.Counter("get_runtimes_for_job_range"),
+		TaskGetRuntimesForJobRangeFail: taskFailScope.Counter("get_runtimes_for_job_range"),
 
 		TaskGetRuntime:        taskSuccessScope.Counter("get_runtime"),
 		TaskGetRuntimeFail:    taskFailScope.Counter("get_runtime"),

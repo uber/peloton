@@ -104,33 +104,41 @@ func TestManagerSyncFromDB(t *testing.T) {
 	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
 
 	m := &manager{
+		syncDone:      false,
+		syncDoneCond:  &sync.Cond{L: &sync.Mutex{}},
 		jobs:          map[string]*job{},
 		jobStore:      jobstoreMock,
 		taskStore:     taskstoreMock,
 		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
 		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		running:       true,
+		mtx:           NewMetrics(tally.NoopScope),
 	}
 
-	jobstoreMock.EXPECT().GetAllJobs(gomock.Any()).Return(map[string]*pb_job.RuntimeInfo{
-		id: {
-			State:     pb_job.JobState_RUNNING,
-			GoalState: pb_job.JobState_SUCCEEDED,
-		},
+	jobID := &peloton.JobID{Value: id}
+	var jobIDList []peloton.JobID
+	jobIDList = append(jobIDList, peloton.JobID{Value: id})
+
+	jobConfig := &pb_job.JobConfig{
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
+		InstanceCount: 1,
+	}
+
+	jobstoreMock.EXPECT().GetJobsByStates(gomock.Any(), gomock.Any()).Return(jobIDList, nil)
+
+	jobstoreMock.EXPECT().GetJobRuntime(gomock.Any(), jobID).Return(&pb_job.RuntimeInfo{
+		State:     pb_job.JobState_RUNNING,
+		GoalState: pb_job.JobState_SUCCEEDED,
 	}, nil)
 
-	jobID := &peloton.JobID{Value: id}
-	jobstoreMock.EXPECT().GetJobConfig(gomock.Any(), jobID).Return(nil, nil)
-	taskstoreMock.EXPECT().GetTasksForJob(gomock.Any(), jobID).
-		Return(map[uint32]*pb_task.TaskInfo{
-			1: {
-				JobId:      jobID,
-				InstanceId: 1,
-				Runtime: &pb_task.RuntimeInfo{
-					GoalState:            pb_task.TaskState_RUNNING,
-					DesiredConfigVersion: 42,
-					ConfigVersion:        42,
-				},
+	jobstoreMock.EXPECT().GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
+
+	taskstoreMock.EXPECT().GetTaskRuntimesForJobByRange(gomock.Any(), jobID, gomock.Any()).
+		Return(map[uint32]*pb_task.RuntimeInfo{
+			0: {
+				GoalState:            pb_task.TaskState_RUNNING,
+				DesiredConfigVersion: 42,
+				ConfigVersion:        42,
 			},
 		}, nil)
 
@@ -138,7 +146,7 @@ func TestManagerSyncFromDB(t *testing.T) {
 
 	job0 := m.GetJob(jobID)
 	assert.NotNil(t, job0)
-	task := job0.GetTask(1)
+	task := job0.GetTask(0)
 	assert.NotNil(t, task)
 	assert.Equal(t, job0, m.WaitForScheduledJob(nil))
 	assert.Equal(t, task, m.WaitForScheduledTask(nil))
@@ -146,11 +154,14 @@ func TestManagerSyncFromDB(t *testing.T) {
 
 func TestManagerStopClearsTasks(t *testing.T) {
 	m := &manager{
+		syncDone:      true,
+		syncDoneCond:  &sync.Cond{L: &sync.Mutex{}},
 		jobs:          map[string]*job{},
 		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
 		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		running:       true,
 		stopChan:      make(chan struct{}),
+		mtx:           NewMetrics(tally.NoopScope),
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
@@ -174,21 +185,26 @@ func TestManagerStartStop(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
+	var jobIDList []peloton.JobID
+
 	jobstoreMock := store_mocks.NewMockJobStore(ctrl)
 
 	m := &manager{
+		syncDone:      false,
+		syncDoneCond:  &sync.Cond{L: &sync.Mutex{}},
 		jobs:          map[string]*job{},
 		jobStore:      jobstoreMock,
 		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
 		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
+		mtx:           NewMetrics(tally.NoopScope),
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	jobstoreMock.EXPECT().GetAllJobs(gomock.Any()).Return(nil, nil).Do(func(_ interface{}) error {
+	jobstoreMock.EXPECT().GetJobsByStates(gomock.Any(), gomock.Any()).Return(jobIDList, nil).Do(func(_ interface{}, _ interface{}) ([]peloton.JobID, error) {
 		wg.Done()
-		return nil
+		return jobIDList, nil
 	})
 
 	m.Start()

@@ -59,12 +59,12 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 
-	s.getStatusUpdate().Start()
 	s.getStatusUpdateRM().Start()
 	s.taskPreemptor.Start()
 	s.goalstateEngine.Start()
 	s.trackedManager.Start()
 	s.deadlineTracker.Start()
+	s.getStatusUpdate().Start()
 
 	return nil
 }

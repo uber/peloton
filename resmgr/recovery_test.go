@@ -313,6 +313,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	})).Return(jobs, nil)
 
 	suite.mockJobStore.EXPECT().
+		GetJobRuntime(context.Background(), &jobs[0]).
+		Return(&job.RuntimeInfo{
+			State:     job.JobState_RUNNING,
+			GoalState: job.JobState_SUCCEEDED,
+		}, nil)
+
+	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[0]).
 		Return(suite.createJob(&jobs[0], 10, 1), nil)
 	suite.mockTaskStore.EXPECT().
@@ -321,6 +328,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			To:   10,
 		}).
 		Return(suite.createTasks(&jobs[0], 9, task.TaskState_INITIALIZED), nil)
+
+	suite.mockJobStore.EXPECT().
+		GetJobRuntime(context.Background(), &jobs[1]).
+		Return(&job.RuntimeInfo{
+			State:     job.JobState_RUNNING,
+			GoalState: job.JobState_SUCCEEDED,
+		}, nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[1]).
@@ -333,6 +347,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		Return(suite.createTasks(&jobs[1], 9, task.TaskState_PENDING), nil)
 
 	suite.mockJobStore.EXPECT().
+		GetJobRuntime(context.Background(), &jobs[2]).
+		Return(&job.RuntimeInfo{
+			State:     job.JobState_RUNNING,
+			GoalState: job.JobState_SUCCEEDED,
+		}, nil)
+
+	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[2]).
 		Return(suite.createJob(&jobs[2], 10, 1), nil)
 	suite.mockTaskStore.EXPECT().
@@ -341,6 +362,13 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			To:   10,
 		}).
 		Return(suite.createTasks(&jobs[2], 9, task.TaskState_RUNNING), nil)
+
+	suite.mockJobStore.EXPECT().
+		GetJobRuntime(context.Background(), &jobs[3]).
+		Return(&job.RuntimeInfo{
+			State:     job.JobState_RUNNING,
+			GoalState: job.JobState_SUCCEEDED,
+		}, nil)
 
 	suite.mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), &jobs[3]).

@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	cmn_recovery "code.uber.internal/infra/peloton/common/recovery"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/storage"
@@ -113,15 +114,6 @@ func (r *recoveryHandler) Stop() error {
 	return nil
 }
 
-type jobsBatch struct {
-	jobs []peloton.JobID
-}
-
-type tasksBatch struct {
-	from uint32
-	to   uint32
-}
-
 // Start loads all the jobs and tasks which are not in terminal state
 // and requeue them
 func (r *recoveryHandler) Start() error {
@@ -133,41 +125,11 @@ func (r *recoveryHandler) Start() error {
 
 	defer r.metrics.RecoveryTimer.Start().Stop()
 
-	jobsIDs, err := r.jobStore.GetJobsByStates(ctx, jobStates)
+	err := cmn_recovery.RecoverJobsByState(ctx, r.jobStore, jobStates, r.requeueTasksInRange)
 	if err != nil {
 		r.metrics.RecoveryFail.Inc(1)
-		log.WithError(err).Error("failed to read job IDs for recovery")
+		log.WithError(err).Error("failed to recover running tasks")
 		return err
-	}
-	log.WithField("job_ids :", jobsIDs).Info("jobs to recover")
-
-	jobBatches := r.createJobBatches(jobsIDs)
-	var bwg sync.WaitGroup
-	finished := make(chan bool, 1)
-	errChan := make(chan error, 1)
-	for _, batch := range jobBatches {
-		bwg.Add(1)
-		go func(batch jobsBatch) {
-			defer bwg.Done()
-			r.recoverJobsBatch(ctx, batch, errChan)
-		}(batch)
-	}
-
-	go func() {
-		bwg.Wait()
-		close(finished)
-	}()
-
-	// wait for all goroutines to finish successfully or
-	// exit early
-	select {
-	case <-finished:
-	case err := <-errChan:
-		if err != nil {
-			log.WithError(err).Error("Recovery failed for running tasks")
-			r.metrics.RecoveryFail.Inc(1)
-			return err
-		}
 	}
 
 	log.Info("Recovery completed successfully for running tasks")
@@ -226,123 +188,11 @@ func (r *recoveryHandler) recoverNonRunningTasks() {
 	log.Info("Recovery of non running tasks completed")
 }
 
-func (r *recoveryHandler) recoverJobsBatch(ctx context.Context, jobs jobsBatch,
-	errChan chan<- error) {
-
-	for _, jobID := range jobs.jobs {
-		jobConfig, err := r.jobStore.GetJobConfig(ctx, &jobID)
-		if err != nil {
-			r.metrics.RecoveryFail.Inc(1)
-			log.WithField("job_id", jobID.Value).
-				WithError(err).
-				Error("Failed to load job config")
-			errChan <- err
-			return
-		}
-		err = r.recoverJob(ctx, jobID.Value, jobConfig)
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", jobID).
-				Error("Failed to recover job", jobID)
-			errChan <- err
-			return
-		}
-	}
-}
-
-func (r *recoveryHandler) createJobBatches(jobIDS []peloton.JobID) []jobsBatch {
-	numJobs := uint32(len(jobIDS))
-	rangevar := numJobs / RequeueJobBatchSize
-	initialSingleInstance := uint32(0)
-	var batches []jobsBatch
-	for i := initialSingleInstance; i <= rangevar; i++ {
-		from := i * RequeueJobBatchSize
-		to := util.Min((i+1)*RequeueJobBatchSize, numJobs)
-		batches = append(batches, jobsBatch{
-			jobIDS[from:to],
-		})
-	}
-	return batches
-}
-
-func (r *recoveryHandler) createTaskBatches(config *job.
-	JobConfig) []tasksBatch {
-	// check job config
-	var batches []tasksBatch
-	initialSingleInstance := uint32(0)
-	numSingleInstances := config.InstanceCount
-	minInstances := config.GetSla().GetMinimumRunningInstances()
-
-	if minInstances > 1 {
-		// gangs
-		batches = append(batches, tasksBatch{
-			0,
-			minInstances,
-		})
-		numSingleInstances -= minInstances
-		initialSingleInstance += minInstances
-	}
-	if numSingleInstances > 0 {
-		rangevar := numSingleInstances / RequeueTaskBatchSize
-		for i := initialSingleInstance; i <= rangevar; i++ {
-			from := i * RequeueTaskBatchSize
-			to := util.Min((i+1)*RequeueTaskBatchSize, numSingleInstances)
-			batches = append(batches, tasksBatch{
-				from,
-				to,
-			})
-		}
-	}
-
-	return batches
-}
-
-// creates task batches for the tasks in a job and performs recovery for each
-// batch concurrently. Even if once batch fails recovery fails
-func (r *recoveryHandler) recoverJob(
-	ctx context.Context,
-	jobID string,
-	jobConfig *job.JobConfig) error {
-
-	finished := make(chan bool, 1)
-	errChan := make(chan error, 1)
-
-	taskBatches := r.createTaskBatches(jobConfig)
-	var twg sync.WaitGroup
-	// create goroutines for each batch of tasks in the job
-	for _, batch := range taskBatches {
-		twg.Add(1)
-		go func(batch tasksBatch) {
-			defer twg.Done()
-			r.requeueTasksInRange(ctx, jobID, jobConfig,
-				batch, errChan)
-		}(batch)
-	}
-
-	go func() {
-		twg.Wait()
-		close(finished)
-	}()
-
-	// wait for all goroutines to finish successfully or
-	// exit early
-	select {
-	case <-finished:
-	case err := <-errChan:
-		if err != nil {
-			return err
-		}
-	}
-
-	log.WithField("job_id", jobID).Info("Recovered job successfully")
-	return nil
-}
-
 func (r *recoveryHandler) requeueTasksInRange(ctx context.Context,
-	jobID string,
-	jobConfig *job.JobConfig, batch tasksBatch, errChan chan<- error) {
+	jobID string, jobConfig *job.JobConfig, jobRuntime *job.RuntimeInfo,
+	batch cmn_recovery.TasksBatch, errChan chan<- error) {
 	nonRunningTasks, runningTasks, err := r.loadTasksInRange(ctx, jobID,
-		batch.from, batch.to)
+		batch.From, batch.To)
 
 	if err != nil {
 		errChan <- err
@@ -363,9 +213,10 @@ func (r *recoveryHandler) requeueTasksInRange(ctx context.Context,
 	} else {
 		r.metrics.RecoveryRunningFailCount.Inc(int64(len(runningTasks)) - int64(
 			addedTasks))
+		errChan <- err
+		return
 	}
 
-	errChan <- err
 	return
 }
 

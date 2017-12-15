@@ -12,14 +12,16 @@ type QueueMetrics struct {
 
 // JobMetrics contains all counters to track job metrics
 type JobMetrics struct {
-	JobCreate       tally.Counter
-	JobCreateFailed tally.Counter
+	JobCreate           tally.Counter
+	JobCreateFailed     tally.Counter
+	JobRecoveryDuration tally.Gauge
 }
 
 // TaskMetrics contains all counters to track task metrics
 type TaskMetrics struct {
 	TaskCreate     tally.Counter
 	TaskCreateFail tally.Counter
+	TaskRecovered  tally.Counter
 }
 
 // Metrics is the struct containing all the counters that track internal state
@@ -46,13 +48,15 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	taskScope := scope.SubScope("task")
 
 	jobMetrics := &JobMetrics{
-		JobCreate:       jobScope.Counter("recovered"),
-		JobCreateFailed: jobScope.Counter("recover_failed"),
+		JobCreate:           jobScope.Counter("recovered"),
+		JobCreateFailed:     jobScope.Counter("recover_failed"),
+		JobRecoveryDuration: jobScope.Gauge("recovery_duration"),
 	}
 
 	taskMetrics := &TaskMetrics{
 		TaskCreate:     taskScope.Counter("create"),
 		TaskCreateFail: taskScope.Counter("create_fail"),
+		TaskRecovered:  taskScope.Counter("recovered"),
 	}
 
 	return &Metrics{

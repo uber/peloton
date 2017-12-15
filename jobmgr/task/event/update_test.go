@@ -535,6 +535,8 @@ func (suite *TaskUpdaterTestSuite) TestUpdaterProcessListeners() {
 func (suite *TaskUpdaterTestSuite) TestUpdaterStart() {
 	defer suite.ctrl.Finish()
 
+	suite.mockTrackedManager.EXPECT().WaitForSyncFromDB().Return()
+
 	suite.mockListener1.EXPECT().Start()
 	suite.mockListener2.EXPECT().Start()
 

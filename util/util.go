@@ -199,6 +199,17 @@ func IsPelotonStateTerminal(state task.TaskState) bool {
 	}
 }
 
+// IsPelotoJobStateTerminal returns true if job state is terminal
+// otherwise false
+func IsPelotoJobStateTerminal(state job.JobState) bool {
+	switch state {
+	case job.JobState_SUCCEEDED, job.JobState_FAILED, job.JobState_KILLED:
+		return true
+	default:
+		return false
+	}
+}
+
 // ParseTaskID parses the jobID and instanceID from peloton taskID
 func ParseTaskID(taskID string) (string, int, error) {
 	pos := strings.LastIndex(taskID, "-")

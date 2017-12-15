@@ -292,6 +292,13 @@ func (m *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}})
 }
 
+// GetTaskRuntimesForJobByRange returns the Task RuntimeInfo for batch jobs by
+// instance ID range.
+func (m *Store) GetTaskRuntimesForJobByRange(ctx context.Context,
+	id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.RuntimeInfo, error) {
+	return nil, errors.New("Not implemented")
+}
+
 // GetTasksForJobByRange returns the tasks (tasks.TaskInfo) for a peloton job
 func (m *Store) GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error) {
 	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "instance_id >=": {Range.From}, "instance_id <": {Range.To}})
