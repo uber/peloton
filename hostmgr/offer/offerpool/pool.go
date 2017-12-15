@@ -178,8 +178,7 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 	var delta scalar.Resources
 	for _, offers := range hostOffers {
 		for _, offer := range offers {
-			tmp := scalar.FromOffer(offer)
-			delta = *(delta.Add(&tmp))
+			delta = delta.Add(scalar.FromOffer(offer))
 		}
 	}
 
@@ -538,10 +537,7 @@ func incQuantity(
 	delta scalar.Resources,
 	gaugeMaps common_scalar.GaugeMaps,
 ) {
-	tmp := resources.Get()
-	tmp = *(tmp.Add(&delta))
-	resources.Set(tmp)
-
+	resources.Set(resources.Get().Add(delta))
 	// TODO(zhitao): clean up this after confirming snapshot based solution works.
 	// gaugeMaps.Update(&tmp)
 }
@@ -552,7 +548,7 @@ func decQuantity(
 	gaugeMaps common_scalar.GaugeMaps,
 ) {
 	curr := resources.Get()
-	if !(&curr).Contains(&delta) {
+	if !curr.Contains(delta) {
 		// NOTE: we still proceed from there, but logs an error which
 		// we hope to recover from logging.
 		// This could be triggered by either missed offer tracking in
@@ -562,8 +558,7 @@ func decQuantity(
 			"delta":   delta,
 		}).Error("Not sufficient resource to subtract delta!")
 	}
-	tmp := *(curr.Subtract(&delta))
-	resources.Set(tmp)
+	resources.Set(curr.Subtract(delta))
 
 	// TODO(zhitao): clean up this after confirming snapshot based solution works.
 	// gaugeMaps.Update(&tmp)
@@ -623,16 +618,16 @@ func (p *offerPool) RefreshGaugeMaps() {
 
 	stopWatch := p.metrics.refreshTimer.Start()
 
-	ready := &scalar.Resources{}
-	placing := &scalar.Resources{}
+	ready := scalar.Resources{}
+	placing := scalar.Resources{}
 
 	for _, h := range p.hostOfferIndex {
 		amount, status := h.UnreservedAmount()
 		switch status {
 		case summary.ReadyOffer:
-			ready = ready.Add(&amount)
+			ready = ready.Add(amount)
 		case summary.PlacingOffer:
-			placing = placing.Add(&amount)
+			placing = placing.Add(amount)
 		}
 	}
 
@@ -640,8 +635,8 @@ func (p *offerPool) RefreshGaugeMaps() {
 	p.metrics.placing.Update(placing)
 
 	log.WithFields(log.Fields{
-		"placing_resources": *placing,
-		"ready_resources":   *ready,
+		"placing_resources": placing,
+		"ready_resources":   ready,
 	}).Debug("offer pool usage metrics refreshed")
 
 	stopWatch.Stop()

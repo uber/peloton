@@ -77,7 +77,7 @@ func (o *OfferOperationsFactory) getOfferOperation(
 func checkOfferResources(offerRes []*mesos.Resource, opRes []*mesos.Resource) error {
 	mesosResources := scalar.FromMesosResources(offerRes)
 	operationResources := scalar.FromMesosResources(opRes)
-	if !mesosResources.Contains(&operationResources) {
+	if !mesosResources.Contains(operationResources) {
 		log.WithFields(log.Fields{
 			"offer_resources":     offerRes,
 			"operation_resources": opRes,

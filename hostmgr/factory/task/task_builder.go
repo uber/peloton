@@ -56,7 +56,7 @@ func NewBuilder(resources []*mesos.Resource) *Builder {
 
 		if !tmp.Empty() {
 			prev := scalars[role]
-			scalars[role] = *(prev.Add(&tmp))
+			scalars[role] = prev.Add(tmp)
 		} else {
 
 			ports := util.ExtractPortSet(rs)
@@ -490,8 +490,8 @@ func (tb *Builder) extractScalarResources(
 
 		launchResources = append(launchResources, rs...)
 
-		trySubtract := leftover.TrySubtract(&minimum)
-		if trySubtract == nil {
+		trySubtract, ok := leftover.TrySubtract(minimum)
+		if !ok {
 			msg := "Incorrect resource amount in leftover!"
 			log.WithFields(log.Fields{
 				"leftover": leftover,
@@ -499,7 +499,7 @@ func (tb *Builder) extractScalarResources(
 			}).Warn(msg)
 			return nil, errors.New(msg)
 		}
-		leftover = *trySubtract
+		leftover = trySubtract
 
 		if leftover.Empty() {
 			delete(tb.scalars, role)
@@ -507,8 +507,8 @@ func (tb *Builder) extractScalarResources(
 			tb.scalars[role] = leftover
 		}
 
-		trySubtract = requiredScalar.TrySubtract(&minimum)
-		if trySubtract == nil {
+		trySubtract, ok = requiredScalar.TrySubtract(minimum)
+		if !ok {
 			msg := "Incorrect resource amount in required!"
 			log.WithFields(log.Fields{
 				"required": requiredScalar,
@@ -516,7 +516,7 @@ func (tb *Builder) extractScalarResources(
 			}).Warn(msg)
 			return nil, errors.New(msg)
 		}
-		requiredScalar = *trySubtract
+		requiredScalar = trySubtract
 
 		if requiredScalar.Empty() {
 			break

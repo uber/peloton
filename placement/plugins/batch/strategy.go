@@ -48,8 +48,8 @@ func (batch *batch) fillOffer(offer *models.Host, unassigned []*models.Assignmen
 		}
 
 		usage := scalar.FromResourceConfig(placement.Task().Task().GetResource())
-		trySubtract := remain.TrySubtract(&usage)
-		if trySubtract == nil {
+		trySubtract, ok := remain.TrySubtract(usage)
+		if !ok {
 			log.WithFields(log.Fields{
 				"remain": remain,
 				"usage":  usage,
@@ -58,7 +58,7 @@ func (batch *batch) fillOffer(offer *models.Host, unassigned []*models.Assignmen
 		}
 
 		remainPorts -= usedPorts
-		remain = *trySubtract
+		remain = trySubtract
 		placement.SetHost(offer)
 	}
 	return nil

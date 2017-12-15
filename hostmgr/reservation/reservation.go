@@ -12,7 +12,7 @@ const (
 
 // ReservedResources has both reserved resources and volumes.
 type ReservedResources struct {
-	Resources *scalar.Resources
+	Resources scalar.Resources
 	// volumes has list of volume IDs.
 	Volumes []string
 }
@@ -60,7 +60,7 @@ func GetLabeledReservedResourcesFromResources(
 		resLabels := res.GetReservation().GetLabels().String()
 		if _, ok := reservedResources[resLabels]; !ok {
 			reservedResources[resLabels] = &ReservedResources{
-				Resources: &scalar.Resources{},
+				Resources: scalar.Resources{},
 			}
 		}
 
@@ -73,8 +73,8 @@ func GetLabeledReservedResourcesFromResources(
 		}
 
 		resResource := scalar.FromMesosResource(res)
-		reservedResources[resLabels].Resources = (reservedResources[resLabels].Resources.Add(
-			&resResource))
+		reservedResources[resLabels].Resources = reservedResources[resLabels].Resources.Add(
+			resResource)
 	}
 	return reservedResources
 }

@@ -12,8 +12,6 @@ import (
 
 // Resources is a non-thread safe helper struct holding recognized resources.
 type Resources struct {
-	// TODO(zhitao): Figure out a way to upgrade to newer version of
-	// https://github.com/uber-go/atomic and use `Float64`.
 	CPU  float64
 	Mem  float64
 	Disk float64
@@ -31,33 +29,33 @@ func lessThanOrEqual(f1, f2 float64) bool {
 }
 
 // GetCPU returns the CPU resource
-func (r *Resources) GetCPU() float64 {
+func (r Resources) GetCPU() float64 {
 	return r.CPU
 }
 
 // GetDisk returns the Disk resource
-func (r *Resources) GetDisk() float64 {
+func (r Resources) GetDisk() float64 {
 	return r.Disk
 }
 
 // GetMem returns the Memory resource
-func (r *Resources) GetMem() float64 {
+func (r Resources) GetMem() float64 {
 	return r.Mem
 }
 
 // GetGPU returns the GPU resource
-func (r *Resources) GetGPU() float64 {
+func (r Resources) GetGPU() float64 {
 	return r.GPU
 }
 
 // HasGPU is a special condition to ensure exclusive protection for GPU.
-func (r *Resources) HasGPU() bool {
+func (r Resources) HasGPU() bool {
 	return math.Abs(r.GPU) > util.ResourceEspilon
 }
 
 // Contains determines whether current Resources is large enough to contain
 // the other one.
-func (r *Resources) Contains(other *Resources) bool {
+func (r Resources) Contains(other Resources) bool {
 	return lessThanOrEqual(other.CPU, r.CPU) &&
 		lessThanOrEqual(other.Mem, r.Mem) &&
 		lessThanOrEqual(other.Disk, r.Disk) &&
@@ -65,8 +63,8 @@ func (r *Resources) Contains(other *Resources) bool {
 }
 
 // Add atomically add another scalar resources onto current one.
-func (r *Resources) Add(other *Resources) *Resources {
-	return &Resources{
+func (r Resources) Add(other Resources) Resources {
+	return Resources{
 		CPU:  r.CPU + other.CPU,
 		Mem:  r.Mem + other.Mem,
 		Disk: r.Disk + other.Disk,
@@ -75,17 +73,17 @@ func (r *Resources) Add(other *Resources) *Resources {
 }
 
 // TrySubtract attempts to subtract another scalar resources from current one
-// , but returns nil if other has more resources.
-func (r *Resources) TrySubtract(other *Resources) *Resources {
+// , but returns false if other has more resources.
+func (r Resources) TrySubtract(other Resources) (Resources, bool) {
 	if !r.Contains(other) {
-		return nil
+		return Resources{}, false
 	}
-	return r.Subtract(other)
+	return r.Subtract(other), true
 }
 
 // Subtract another scalar resources from current one and return a new copy of result.
-func (r *Resources) Subtract(other *Resources) *Resources {
-	return &Resources{
+func (r Resources) Subtract(other Resources) Resources {
+	return Resources{
 		CPU:  r.CPU - other.CPU,
 		Mem:  r.Mem - other.Mem,
 		Disk: r.Disk - other.Disk,
@@ -94,7 +92,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 }
 
 // NonEmptyFields returns corresponding Mesos resource names for fields which are not empty.
-func (r *Resources) NonEmptyFields() []string {
+func (r Resources) NonEmptyFields() []string {
 	var nonEmptyFields []string
 	if math.Abs(r.CPU) > util.ResourceEspilon {
 		nonEmptyFields = append(nonEmptyFields, "cpus")
@@ -113,7 +111,7 @@ func (r *Resources) NonEmptyFields() []string {
 }
 
 // Empty returns whether all fields are empty now.
-func (r *Resources) Empty() bool {
+func (r Resources) Empty() bool {
 	return len(r.NonEmptyFields()) == 0
 }
 
@@ -146,7 +144,7 @@ func FromMesosResource(resource *mesos.Resource) (r Resources) {
 func FromMesosResources(resources []*mesos.Resource) (r Resources) {
 	for _, resource := range resources {
 		tmp := FromMesosResource(resource)
-		r = *(r.Add(&tmp))
+		r = r.Add(tmp)
 	}
 
 	return r
@@ -164,7 +162,7 @@ func FromOffer(offer *mesos.Offer) Resources {
 func FromOfferMap(offerMap map[string]*mesos.Offer) (r Resources) {
 	for _, offer := range offerMap {
 		tmp := FromOffer(offer)
-		r = *(r.Add(&tmp))
+		r = r.Add(tmp)
 	}
 
 	return r

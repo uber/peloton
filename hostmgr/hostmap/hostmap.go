@@ -85,7 +85,7 @@ func (loader *Loader) Load(_ *uatomic.Bool) {
 		id := info.GetId().GetValue()
 		m.RegisteredAgents[id] = info
 		resources := scalar.FromMesosResources(info.GetResources())
-		m.Capacity = *(m.Capacity.Add(&resources))
+		m.Capacity = m.Capacity.Add(resources)
 	}
 
 	agentInfoMap.Store(m)

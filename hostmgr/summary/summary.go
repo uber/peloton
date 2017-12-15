@@ -155,7 +155,7 @@ func matchHostFilter(
 	if min != nil {
 		scalarRes := scalar.FromOfferMap(offerMap)
 		scalarMin := scalar.FromResourceConfig(min)
-		if !scalarRes.Contains(&scalarMin) {
+		if !scalarRes.Contains(scalarMin) {
 			return hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES
 		}
 
