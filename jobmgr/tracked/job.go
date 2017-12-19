@@ -257,6 +257,8 @@ func (j *job) createTasks(ctx context.Context) (bool, error) {
 		return true, err
 	}
 
+	// TBD add a timeout per task in case placement is not returned in some time
+
 	j.m.mtx.jobMetrics.JobCreate.Inc(1)
 	log.WithField("job_id", j.id.GetValue()).
 		WithField("instance_count", instances).
@@ -269,7 +271,7 @@ func (j *job) createTasks(ctx context.Context) (bool, error) {
 func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, taskInfos map[uint32]*pb_task.TaskInfo) error {
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		if _, ok := taskInfos[i]; ok {
-			if taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED {
+			if taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED || taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_PENDING {
 				// Task exists, just send to resource manager
 				j.m.SetTask(j.id, i, taskInfos[i].GetRuntime())
 			}
@@ -317,8 +319,10 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 	err := j.m.taskStore.CreateTaskRuntimes(ctx, j.id, runtimes, jobConfig.OwningTeam)
 	nTasks := int64(len(tasks))
 	if err != nil {
-		log.Errorf("Failed to create tasks (%d) for job %v: %v",
-			nTasks, j.id.GetValue(), err)
+		log.WithError(err).
+			WithField("job_id", j.id.GetValue()).
+			WithField("number_of_tasks", nTasks).
+			Error("Failed to create tasks for job")
 		j.m.mtx.taskMetrics.TaskCreateFail.Inc(nTasks)
 		return err
 	}
@@ -338,5 +342,17 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 		return err
 	}
 
+	// Move all task states to pending
+	for i := uint32(0); i < instances; i++ {
+		runtimes[i].State = pb_task.TaskState_PENDING
+		runtimes[i].Message = "Task sent for placement"
+	}
+	err = j.m.taskStore.UpdateTaskRuntimes(ctx, j.id, runtimes)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.id.GetValue()).
+			Error("failed to update task runtime to pending")
+		return err
+	}
 	return nil
 }

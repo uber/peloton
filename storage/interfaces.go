@@ -50,6 +50,7 @@ type TaskStore interface {
 	CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo, createdBy string) error
 	GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.RuntimeInfo, error)
 	UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error
+	UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo) error
 
 	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)

@@ -1467,6 +1467,141 @@ func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 	return nil
 }
 
+// UpdateTaskRuntimes updates task runtimes for the given slice of task runtimes, instances 0..n
+func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo) error {
+	// TODO the batching used in this function needs to be abstracted to a common
+	// routine to be used by any storage API which needs to batch
+	maxBatchSize := uint32(s.Conf.MaxBatchSize)
+	maxParallelBatches := uint32(s.Conf.MaxParallelBatches)
+	if maxBatchSize == 0 {
+		maxBatchSize = math.MaxUint32
+	}
+	jobID := id.GetValue()
+	nTasks := uint32(len(runtimes))
+	tasksNotUpdated := uint32(0)
+	timeStart := time.Now()
+	nBatches := nTasks / maxBatchSize
+	if (nTasks % maxBatchSize) > 0 {
+		nBatches = nBatches + 1
+	}
+	increment := uint32(0)
+	if (nBatches % maxParallelBatches) > 0 {
+		increment = 1
+	}
+	wg := new(sync.WaitGroup)
+	prevEnd := uint32(0)
+	log.WithField("batches", nBatches).
+		WithField("tasks", nTasks).
+		WithField("job_id", jobID).
+		Debug("updating task runtimes")
+	for i := uint32(0); i < maxParallelBatches; i++ {
+		batchStart := prevEnd
+		batchEnd := batchStart + (nBatches / maxParallelBatches) + increment
+		if batchEnd > nTasks {
+			batchEnd = nTasks
+		}
+		prevEnd = batchEnd
+		if batchStart == batchEnd {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for batch := batchStart; batch < batchEnd; batch++ {
+				// do batching by rows, up to s.Conf.MaxBatchSize
+				start := batch * maxBatchSize // the starting instance ID
+				end := nTasks                 // the end bounds (noninclusive)
+				if nTasks >= (batch+1)*maxBatchSize {
+					end = (batch + 1) * maxBatchSize
+				}
+				batchSize := end - start // how many tasks in this batch
+				if batchSize < 1 {
+					// skip if it overflows
+					continue
+				}
+				batchTimeStart := time.Now()
+				insertStatements := []api.Statement{}
+				idsToTaskRuntimes := map[string]*task.RuntimeInfo{}
+				log.WithField("id", id.GetValue()).
+					WithField("start", start).
+					WithField("end", end).
+					Debug("updating task runtimes")
+				for instanceID := start; instanceID < end; instanceID++ {
+					runtime := runtimes[instanceID]
+					if runtime == nil {
+						continue
+					}
+
+					// Bump version of task.
+					if runtime.Revision == nil {
+						runtime.Revision = &peloton.ChangeLog{}
+					}
+					runtime.Revision.Version++
+					runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
+
+					taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
+					idsToTaskRuntimes[taskID] = runtime
+
+					runtimeBuffer, err := proto.Marshal(runtime)
+					if err != nil {
+						log.WithField("job_id", id.GetValue()).
+							WithField("instance_id", instanceID).
+							WithError(err).
+							Error("failed to update task runtime")
+						atomic.AddUint32(&tasksNotUpdated, batchSize)
+						return
+					}
+
+					// TBD use of CAS
+
+					queryBuilder := s.DataStore.NewQuery()
+					stmt := queryBuilder.Update(taskRuntimeTable).
+						Set("version", runtime.Revision.Version).
+						Set("update_time", time.Now().UTC()).
+						Set("state", runtime.GetState().String()).
+						Set("runtime_info", runtimeBuffer).
+						Where(qb.Eq{"job_id": id.GetValue(), "instance_id": instanceID})
+					insertStatements = append(insertStatements, stmt)
+				}
+				err := s.applyStatements(ctx, insertStatements, jobID)
+				if err != nil {
+					log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
+						Errorf("Updating %d task runtimes (%d:%d) for %v to Cassandra failed in %v with %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart), err)
+					atomic.AddUint32(&tasksNotUpdated, batchSize)
+					return
+				}
+				log.WithField("duration_s", time.Since(batchTimeStart).Seconds()).
+					Debugf("updated %d task runtimes (%d:%d) for %v to Cassandra in %v", batchSize, start, end-1, id.GetValue(), time.Since(batchTimeStart))
+				err = s.logTaskStateChanges(ctx, idsToTaskRuntimes)
+				if err != nil {
+					log.Errorf("Unable to log task state changes for job ID %v range(%d:%d), error = %v", jobID, start, end-1, err)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	if tasksNotUpdated != 0 {
+		s.metrics.TaskMetrics.TaskUpdateFail.Inc(int64(tasksNotUpdated))
+		s.metrics.TaskMetrics.TaskUpdate.Inc(int64(nTasks - tasksNotUpdated))
+		msg := fmt.Sprintf(
+			"Updated %d task runtimes for %v, and was unable to write %d tasks to Cassandra in %v",
+			nTasks-tasksNotUpdated,
+			jobID,
+			tasksNotUpdated,
+			time.Since(timeStart))
+		log.Errorf(msg)
+		return fmt.Errorf(msg)
+	}
+
+	s.metrics.TaskMetrics.TaskUpdate.Inc(int64(nTasks))
+
+	log.WithField("duration_s", time.Since(timeStart).Seconds()).
+		Infof("updated all %d task runtimes for %v to Cassandra in %v", nTasks, jobID, time.Since(timeStart))
+	return nil
+
+}
+
 // GetTaskForJob returns a task by jobID and instanceID
 func (s *Store) GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error) {
 	taskID := fmt.Sprintf(taskIDFmt, id.GetValue(), int(instanceID))

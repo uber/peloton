@@ -22,14 +22,17 @@ var (
 	_isoVersionsTaskRules = map[task.TaskState]map[task.TaskState]tracked.TaskAction{
 		task.TaskState_RUNNING: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
+			task.TaskState_PENDING:     tracked.StartAction,
 		},
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
+			task.TaskState_PENDING:     tracked.StartAction,
 			task.TaskState_SUCCEEDED:   tracked.UntrackAction,
 			task.TaskState_KILLED:      tracked.UntrackAction,
 		},
 		task.TaskState_KILLED: {
 			task.TaskState_INITIALIZED: tracked.StopAction,
+			task.TaskState_PENDING:     tracked.StopAction,
 			task.TaskState_LAUNCHING:   tracked.StopAction,
 			task.TaskState_LAUNCHED:    tracked.StopAction,
 			task.TaskState_RUNNING:     tracked.StopAction,
@@ -44,6 +47,7 @@ var (
 		},
 		task.TaskState_PREEMPTING: {
 			task.TaskState_INITIALIZED: tracked.StopAction,
+			task.TaskState_PENDING:     tracked.StopAction,
 			task.TaskState_LAUNCHING:   tracked.StopAction,
 			task.TaskState_LAUNCHED:    tracked.StopAction,
 			task.TaskState_RUNNING:     tracked.StopAction,

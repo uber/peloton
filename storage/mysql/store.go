@@ -926,6 +926,11 @@ func (m *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 	return errors.New("Not implemented")
 }
 
+// UpdateTaskRuntimes updates task runtimes for the given slice of task runtimes, instances 0..n
+func (m *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo) error {
+	return errors.New("Not implemented")
+}
+
 // UpdatePersistentVolume update state for a persistent volume.
 func (m *Store) UpdatePersistentVolume(ctx context.Context, volume *pb_volume.PersistentVolumeInfo) error {
 	return errors.New("Not implemented")

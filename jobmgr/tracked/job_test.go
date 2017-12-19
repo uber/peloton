@@ -131,6 +131,10 @@ func TestJobCreateTasks(t *testing.T) {
 		EnqueueGangs(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
+	taskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), j.id, gomock.Any()).
+		Return(nil)
+
 	jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), j.id).
 		Return(&jobRuntime, nil)
@@ -202,7 +206,7 @@ func TestJobCreateTasksWithStore(t *testing.T) {
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskInfo, err := csStore.GetTaskForJob(context.Background(), jobID, i)
 		assert.Nil(t, err)
-		assert.Equal(t, pb_task.TaskState_INITIALIZED, taskInfo[i].Runtime.GetState())
+		assert.Equal(t, pb_task.TaskState_PENDING, taskInfo[i].Runtime.GetState())
 	}
 }
 

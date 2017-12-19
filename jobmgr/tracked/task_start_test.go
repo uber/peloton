@@ -71,6 +71,9 @@ func TestTaskStartStateless(t *testing.T) {
 	}
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
 
+	mockTaskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, gomock.Any()).Return(nil)
+
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
 	assert.True(t, reschedule)
 	assert.NoError(t, err)
@@ -134,6 +137,8 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 	}, nil)
 	mockTaskLauncher.EXPECT().
 		LaunchTaskWithReservedResource(gomock.Any(), taskInfo).Return(nil)
+	mockTaskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
 	assert.True(t, reschedule)
@@ -200,6 +205,8 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 		ResPool: jobConfig.RespoolID,
 	}
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
+	mockTaskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
 	assert.True(t, reschedule)
