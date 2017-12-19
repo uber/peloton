@@ -45,6 +45,9 @@ type Task interface {
 
 	// GetRunTime returns the task run time
 	GetRunTime() *pb_task.RuntimeInfo
+
+	// UpdateRuntime sets the task run time
+	UpdateRuntime(runtime *pb_task.RuntimeInfo)
 }
 
 // State of a job. This can encapsulate either the actual state or the goal
@@ -226,7 +229,7 @@ func (t *task) getTaskPreemptionPolicy(ctx context.Context, jobID *peloton.JobID
 	return config.GetPreemptionPolicy(), nil
 }
 
-func (t *task) updateRuntime(runtime *pb_task.RuntimeInfo) {
+func (t *task) UpdateRuntime(runtime *pb_task.RuntimeInfo) {
 	t.Lock()
 	defer t.Unlock()
 

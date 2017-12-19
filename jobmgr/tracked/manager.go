@@ -279,6 +279,18 @@ func (m *manager) clearTask(t *task) {
 	t.job.Lock()
 	defer t.job.Unlock()
 
+	if (t.job.config != nil) && (t.job.config.sla.GetMaximumRunningInstances() > 0) {
+		if t.job.currentScheduledTasks > 0 {
+			t.job.currentScheduledTasks--
+		}
+		err := t.job.evaluateJobSLA()
+		if err != nil {
+			t.job.currentScheduledTasks++
+			m.ScheduleTask(t, time.Now())
+			return
+		}
+	}
+
 	delete(t.job.tasks, t.id)
 	// TODO fix delete of job.
 	if len(t.job.tasks) == 0 {
@@ -376,12 +388,26 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 		return
 	}
 
-	j := m.GetJob(id)
+	maxInstances := jobConfig.GetSla().GetMaximumRunningInstances()
+
+	j := m.jobs[id.GetValue()]
 	for instanceID, runtime := range runtimes {
 		m.mtx.taskMetrics.TaskRecovered.Inc(1)
 		// Do not add set the task again if it already exists
 		if j.GetTask(instanceID) == nil {
-			m.SetTask(id, instanceID, runtime)
+			if maxInstances > 0 {
+				// Only add to job tracker, do not schedule to run it.
+				j.setTask(instanceID, runtime)
+				j.RLock()
+				noTasks := uint32(len(j.tasks))
+				j.RUnlock()
+				if noTasks == jobConfig.InstanceCount {
+					// all tasks are present in tracker. now determine which ones need to start.
+					j.recoverJobWithSLA()
+				}
+			} else {
+				m.SetTask(id, instanceID, runtime)
+			}
 		}
 	}
 	return

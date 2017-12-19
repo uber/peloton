@@ -153,7 +153,11 @@ func (h *serviceHandler) Create(
 	h.metrics.JobCreate.Inc(1)
 
 	// Put job in tracked manager to create tasks
-	h.trackedManager.SetJob(jobID, nil)
+	jobInfo := &job.JobInfo{
+		Id:     jobID,
+		Config: jobConfig,
+	}
+	h.trackedManager.SetJob(jobID, jobInfo)
 
 	return &job.CreateResponse{
 		JobId: jobID,
