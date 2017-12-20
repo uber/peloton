@@ -224,7 +224,7 @@ func (suite *HostOfferSummaryTestSuite) TestConstraintMatchForResources() {
 			msg: "GPU machines are exclusive",
 		},
 		{
-			expected: hostsvc.HostFilterResult_MISMATCH_STATUS,
+			expected: hostsvc.HostFilterResult_NO_OFFER,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
 					MaxHosts: 1,
@@ -428,58 +428,82 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 	defer suite.ctrl.Finish()
 	offer := suite.createUnreservedMesosOffer("offer-id")
 
-	testTable := []struct {
-		match  hostsvc.HostFilterResult
-		offers []*mesos.Offer
+	testTable := map[string]struct {
+		match          hostsvc.HostFilterResult
+		expectedOffers []*mesos.Offer
 
-		evaluateRes   constraints.EvaluateResult
-		evaluateErr   error
+		evaluateRes constraints.EvaluateResult
+		evaluateErr error
+
 		initialStatus CacheStatus
 		afterStatus   CacheStatus
 		noMock        bool
-	}{
-		{
-			match:         hostsvc.HostFilterResult_MATCH,
-			offers:        []*mesos.Offer{offer},
-			evaluateRes:   constraints.EvaluateResultMatch,
-			initialStatus: ReadyOffer,
-			afterStatus:   PlacingOffer,
-		},
-		{
-			match:         hostsvc.HostFilterResult_MATCH,
-			offers:        []*mesos.Offer{offer},
-			evaluateRes:   constraints.EvaluateResultNotApplicable,
-			initialStatus: ReadyOffer,
-			afterStatus:   PlacingOffer,
-		},
 
-		{
+		initialOffers []*mesos.Offer
+	}{
+		"matched-correctly": {
+			match:          hostsvc.HostFilterResult_MATCH,
+			expectedOffers: []*mesos.Offer{offer},
+			evaluateRes:    constraints.EvaluateResultMatch,
+			initialStatus:  ReadyOffer,
+			afterStatus:    PlacingOffer,
+			initialOffers:  []*mesos.Offer{offer},
+		},
+		"matched-not-applicable": {
+			match:          hostsvc.HostFilterResult_MATCH,
+			expectedOffers: []*mesos.Offer{offer},
+			evaluateRes:    constraints.EvaluateResultNotApplicable,
+			initialStatus:  ReadyOffer,
+			afterStatus:    PlacingOffer,
+			initialOffers:  []*mesos.Offer{offer},
+		},
+		"mismatched-constraint": {
 			match:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
 			evaluateRes:   constraints.EvaluateResultMismatch,
 			initialStatus: ReadyOffer,
 			afterStatus:   ReadyOffer,
+			initialOffers: []*mesos.Offer{offer},
 		},
-		{
+		"mismatched-error": {
 			match:         hostsvc.HostFilterResult_MISMATCH_CONSTRAINTS,
 			evaluateErr:   errors.New("some error"),
 			initialStatus: ReadyOffer,
 			afterStatus:   ReadyOffer,
+			initialOffers: []*mesos.Offer{offer},
 		},
-		{
+		"mismatched-no-offer-placing-status": {
 			match:         hostsvc.HostFilterResult_MISMATCH_STATUS,
 			initialStatus: PlacingOffer,
 			afterStatus:   PlacingOffer,
-			noMock:        true,
+			noMock:        true, // mockEvaluator should not be called in this case.
+			initialOffers: []*mesos.Offer{},
+		},
+		"mismatched-no-offer-ready-status": {
+			match:         hostsvc.HostFilterResult_NO_OFFER,
+			initialStatus: ReadyOffer,
+			afterStatus:   ReadyOffer,
+			noMock:        true, // mockEvaluator should not be called in this case.
+			initialOffers: []*mesos.Offer{},
+		},
+		"mismatched-mismatch-status": {
+			match:         hostsvc.HostFilterResult_MISMATCH_STATUS,
+			initialStatus: PlacingOffer,
+			afterStatus:   PlacingOffer,
+			noMock:        true, // mockEvaluator should not be called in this case.
+			initialOffers: []*mesos.Offer{offer},
 		},
 	}
 
-	for _, tt := range testTable {
+	for ttName, tt := range testTable {
 		ctrl := gomock.NewController(suite.T())
 		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
 
 		s := New(suite.mockVolumeStore).(*hostSummary)
 		s.status = tt.initialStatus
-		suite.Equal(tt.initialStatus, s.AddMesosOffer(context.Background(), offer))
+		for _, initialOffer := range tt.initialOffers {
+			suite.Equal(tt.initialStatus, s.AddMesosOffer(context.Background(), initialOffer))
+		}
+
 		filter := &hostsvc.HostFilter{
 			SchedulingConstraint: &task.Constraint{
 				Type: task.Constraint_LABEL_CONSTRAINT,
@@ -501,11 +525,11 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatch() {
 		}
 
 		match, offers := s.TryMatch(filter, mockEvaluator)
-		suite.Equal(tt.match, match, "test case is %v", tt)
-		suite.Equal(tt.offers, offers)
+		suite.Equal(tt.match, match, "test case is %s", ttName)
+		suite.Equal(tt.expectedOffers, offers)
 
 		_, afterStatus := s.UnreservedAmount()
-		suite.Equal(tt.afterStatus, afterStatus, "test case is %v", tt)
+		suite.Equal(tt.afterStatus, afterStatus, "test case is %s", ttName)
 
 		ctrl.Finish()
 	}

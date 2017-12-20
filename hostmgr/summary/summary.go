@@ -148,7 +148,7 @@ func matchHostFilter(
 ) hostsvc.HostFilterResult {
 
 	if len(offerMap) == 0 {
-		return hostsvc.HostFilterResult_MISMATCH_STATUS
+		return hostsvc.HostFilterResult_NO_OFFER
 	}
 
 	min := c.GetResourceConstraint().GetMinimum()
@@ -227,8 +227,12 @@ func (a *hostSummary) TryMatch(
 	a.Lock()
 	defer a.Unlock()
 
-	if !a.HasOffer() || a.status != ReadyOffer {
+	if a.status != ReadyOffer {
 		return hostsvc.HostFilterResult_MISMATCH_STATUS, nil
+	}
+
+	if !a.HasOffer() {
+		return hostsvc.HostFilterResult_NO_OFFER, nil
 	}
 
 	readyOffers := make(map[string]*mesos.Offer)

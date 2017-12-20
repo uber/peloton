@@ -108,12 +108,16 @@ enum HostFilterResult {
     // Host is filtered out because maxHosts limit is reached.
     MISMATCH_MAX_HOST_LIMIT = 6;
 
+    // Host has no available offer to be matched. Usually this means the host is
+    // fully used already.
+    NO_OFFER = 7;
+
     // Host is filtered out because numPlacements * resourceConstraint
     // can already to satisfied.
-    // MISMATCH_SUFFICIENT_TASKS = 7;
+    // MISMATCH_SUFFICIENT_TASKS ;
 
     // Host has not enough total resources.
-    // INSUFFICIENT_TOTAL_RESOURCES = 8;
+    // INSUFFICIENT_TOTAL_RESOURCES ;
 }
 
 /**

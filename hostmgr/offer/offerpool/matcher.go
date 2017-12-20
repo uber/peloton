@@ -54,7 +54,7 @@ func (m *Matcher) tryMatchImpl(
 	}
 
 	if !s.HasOffer() {
-		return hostsvc.HostFilterResult_MISMATCH_STATUS
+		return hostsvc.HostFilterResult_NO_OFFER
 	}
 
 	tryResult, offers := s.TryMatch(m.hostFilter, m.evaluator)
