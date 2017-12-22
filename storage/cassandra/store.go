@@ -301,8 +301,10 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 // CreateTaskConfigs from the job config.
 func (s *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
 	// TODO set correct version
-	if err := s.createTaskConfig(ctx, id, _defaultTaskConfigID, jobConfig.GetDefaultConfig(), 0); err != nil {
-		return err
+	if jobConfig.GetDefaultConfig() != nil {
+		if err := s.createTaskConfig(ctx, id, _defaultTaskConfigID, jobConfig.GetDefaultConfig(), 0); err != nil {
+			return err
+		}
 	}
 
 	for instanceID, cfg := range jobConfig.GetInstanceConfig() {

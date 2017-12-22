@@ -497,13 +497,18 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		if i < 2 {
 			owner = "money"
 		}
+		instanceConfig := make(map[uint32]*task.TaskConfig)
+		instanceConfig[0] = &taskConfig
+		instanceConfig[1] = &taskConfig
+		instanceConfig[2] = &taskConfig
 		var jobconfig = job.JobConfig{
-			Name:          fmt.Sprintf("TestJob_%d", i),
-			OwningTeam:    owner,
-			LdapGroups:    []string{"money", "team6", "otto"},
-			Sla:           &sla,
-			DefaultConfig: &taskConfig,
-			Labels:        labels,
+			Name:           fmt.Sprintf("TestJob_%d", i),
+			OwningTeam:     owner,
+			LdapGroups:     []string{"money", "team6", "otto"},
+			Sla:            &sla,
+			InstanceConfig: instanceConfig,
+			InstanceCount:  3,
+			Labels:         labels,
 		}
 		originalJobs = append(originalJobs, &jobconfig)
 		err := suite.createJob(context.Background(), &jobID, &jobconfig, "uber")
@@ -520,6 +525,9 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
 		suite.Equal(len(jobconf.Labels), 4)
+		taskConfigs, noErr := store.GetTaskConfigs(context.Background(), &jobID, []uint32{0, 1, 2}, 0)
+		suite.Equal(len(taskConfigs), 3)
+		suite.NoError(noErr)
 
 		suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
 
