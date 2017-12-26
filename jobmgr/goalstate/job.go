@@ -25,6 +25,12 @@ var (
 		job.JobState_SUCCEEDED: {
 			job.JobState_INITIALIZED: tracked.JobCreateTasks,
 		},
+		job.JobState_KILLED: {
+			job.JobState_UNKNOWN:     tracked.JobKill,
+			job.JobState_INITIALIZED: tracked.JobKill,
+			job.JobState_PENDING:     tracked.JobKill,
+			job.JobState_RUNNING:     tracked.JobKill,
+		},
 	}
 )
 

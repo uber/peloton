@@ -103,12 +103,8 @@ func (j *job) createTasks(ctx context.Context) (bool, error) {
 }
 
 // To be used only with MaximumRunningInstances set to non-zero in SLA.
-// This function should be called while holding both manager and job locks.
+// This function should be called while holding the job lock.
 func (j *job) scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances uint32, instanceID uint32, runtime *pb_task.RuntimeInfo) {
-	if !j.m.running {
-		return
-	}
-
 	if runtime.GetState() != pb_task.TaskState_INITIALIZED {
 		log.WithField("state", runtime.GetState()).
 			WithField("job_id", j.id.GetValue()).
@@ -137,6 +133,7 @@ func (j *job) scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances uint3
 	// TODO move this message to debug after MaximumRunningInstances feature is stabilized
 	log.WithField("job_id", j.id.GetValue()).
 		WithField("current_scheduled_tasks", j.currentScheduledTasks).
+		WithField("instance_id", instanceID).
 		Info("update current scheduled tasks")
 }
 
@@ -147,11 +144,9 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 			if taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED || taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_PENDING {
 				// Task exists, just send to resource manager
 				if maxRunningInstances > 0 && taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED {
-					j.m.Lock()
 					j.Lock()
 					j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, i, taskInfos[i].GetRuntime())
 					j.Unlock()
-					j.m.Unlock()
 				} else {
 					j.m.SetTask(j.id, i, taskInfos[i].GetRuntime())
 				}
@@ -177,11 +172,9 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 		j.m.mtx.taskMetrics.TaskCreate.Inc(1)
 
 		if maxRunningInstances > 0 {
-			j.m.Lock()
 			j.Lock()
 			j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, i, runtime)
 			j.Unlock()
-			j.m.Unlock()
 		} else {
 			j.m.SetTask(j.id, i, runtime)
 		}
@@ -195,7 +188,7 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 
 	// Create task runtimes
 	tasks := make([]*pb_task.TaskInfo, instances)
-	runtimes := make([]*pb_task.RuntimeInfo, instances)
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
 	for i := uint32(0); i < instances; i++ {
 		runtime := jobmgr_task.CreateInitializingTask(j.id, i, jobConfig)
 		runtimes[i] = runtime
@@ -227,14 +220,12 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 
 	if maxRunningInstances > 0 {
-		j.m.Lock()
 		j.Lock()
 		// Only schedule maxRunningInstances number of tasks for placement
 		for i := uint32(0); i < maxRunningInstances; i++ {
 			j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, i, runtimes[i])
 		}
 		j.Unlock()
-		j.m.Unlock()
 	} else {
 		// Send tasks to resource manager
 		err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, j.m.resmgrClient)
@@ -262,7 +253,7 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 	return nil
 }
 
-// Thread should be holding both manager and job locks before calling this function.
+// Thread should be holding the job lock before calling this function.
 func (j *job) evaluateJobSLA() error {
 	if j.config == nil || j.config.sla == nil {
 		return nil
@@ -280,7 +271,7 @@ func (j *job) evaluateJobSLA() error {
 		return err
 	}
 
-	if util.IsPelotoJobStateTerminal(jobRuntime.GetState()) {
+	if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) {
 		return nil
 	}
 
@@ -362,24 +353,26 @@ func (j *job) isRecoveryRetryable(err error) bool {
 }
 
 // Only to be used during job receovery. TODO move to job goal state.
+// The job SLA being evaluated here is maximumRunningInstances, and
+// it ensures that there are maximumRunningInstances tasks scheduled to run.
 func (j *job) recoverJobWithSLA() {
-	// First up currentScheduledTasks.
+	j.Lock()
+	defer j.Unlock()
+
+	// First count currentScheduledTasks.
 	currentScheduledTasks := uint32(0)
-	j.RLock()
 	for _, t := range j.tasks {
 		runtime := t.GetRunTime()
-		if runtime.GetState() != pb_task.TaskState_INITIALIZED && !util.IsPelotonStateTerminal(runtime.GetState()) {
+		if runtime.GetState() != pb_task.TaskState_INITIALIZED {
+			// Re-evaluate all tasks, and increment currentScheduledTasks even for terminated tasks.
+			// When these tasks are removed from tracker, it will cause other tasks to be rescheduled.
+			j.m.taskScheduler.schedule(t, time.Now())
 			currentScheduledTasks++
 		}
 	}
-	j.RUnlock()
 
 	retryPolicy := backoff.NewRetryPolicy(retryCount, retryDuration)
 
-	j.m.Lock()
-	defer j.m.Unlock()
-	j.Lock()
-	defer j.Unlock()
 	j.currentScheduledTasks = currentScheduledTasks
 	// TODO move this message to debug after MaximumRunningInstances feature is stabilized
 	log.WithField("job_id", j.id.GetValue()).

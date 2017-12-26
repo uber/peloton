@@ -187,14 +187,14 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 		suite.NoError(err)
 
 		// now, create a mess of tasks
-		runtimes := []*task.RuntimeInfo{}
+		runtimes := make(map[uint32]*task.RuntimeInfo)
 		for j := 0; j < nTasks; j++ {
 			var tID = fmt.Sprintf("%s-%d", jobID.GetValue(), j)
 			var runtime = task.RuntimeInfo{
 				MesosTaskId: &mesos.TaskID{Value: &tID},
 				State:       task.TaskState(j),
 			}
-			runtimes = append(runtimes, &runtime)
+			runtimes[uint32(j)] = &runtime
 		}
 		err = suite.store.CreateTaskRuntimes(context.Background(), &jobID, runtimes, "test")
 		suite.NoError(err)

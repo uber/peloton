@@ -35,6 +35,13 @@ func TestEngineSuggestActionJobGoalState(t *testing.T) {
 	action, err = e.suggestJobAction(jobMock)
 	assert.NoError(t, err)
 	assert.Equal(t, tracked.JobNoAction, action)
+
+	jobRuntime.GoalState = job.JobState_KILLED
+	jobRuntime.State = job.JobState_RUNNING
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	action, err = e.suggestJobAction(jobMock)
+	assert.NoError(t, err)
+	assert.Equal(t, tracked.JobKill, action)
 }
 
 func TestEngineProcessJob(t *testing.T) {

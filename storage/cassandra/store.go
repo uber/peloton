@@ -762,14 +762,20 @@ func (s *Store) CreateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 }
 
 // CreateTaskRuntimes creates task runtimes for the given slice of task runtimes, instances 0..n
-func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo, owner string) error {
+func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo, owner string) error {
+	var instanceIDList []uint32
+
 	maxBatchSize := uint32(s.Conf.MaxBatchSize)
 	maxParallelBatches := uint32(s.Conf.MaxParallelBatches)
 	if maxBatchSize == 0 {
 		maxBatchSize = math.MaxUint32
 	}
 	jobID := id.GetValue()
+	for instanceID := range runtimes {
+		instanceIDList = append(instanceIDList, instanceID)
+	}
 	nTasks := uint32(len(runtimes))
+
 	tasksNotCreated := uint32(0)
 	timeStart := time.Now()
 	nBatches := nTasks / maxBatchSize
@@ -780,11 +786,13 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 	if (nBatches % maxParallelBatches) > 0 {
 		increment = 1
 	}
+
 	wg := new(sync.WaitGroup)
 	prevEnd := uint32(0)
 	log.WithField("batches", nBatches).
 		WithField("tasks", nTasks).
 		Debug("Creating tasks")
+
 	for i := uint32(0); i < maxParallelBatches; i++ {
 		batchStart := prevEnd
 		batchEnd := batchStart + (nBatches / maxParallelBatches) + increment
@@ -817,7 +825,8 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 					WithField("start", start).
 					WithField("end", end).
 					Debug("creating tasks")
-				for instanceID := start; instanceID < end; instanceID++ {
+				for k := start; k < end; k++ {
+					instanceID := instanceIDList[k]
 					runtime := runtimes[instanceID]
 					if runtime == nil {
 						continue
@@ -1518,8 +1527,10 @@ func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 	return nil
 }
 
-// UpdateTaskRuntimes updates task runtimes for the given slice of task runtimes, instances 0..n
-func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo) error {
+// UpdateTaskRuntimes updates task runtimes for the given task instance-ids
+func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo) error {
+	var instanceIDList []uint32
+
 	// TODO the batching used in this function needs to be abstracted to a common
 	// routine to be used by any storage API which needs to batch
 	maxBatchSize := uint32(s.Conf.MaxBatchSize)
@@ -1528,7 +1539,11 @@ func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 		maxBatchSize = math.MaxUint32
 	}
 	jobID := id.GetValue()
+	for instanceID := range runtimes {
+		instanceIDList = append(instanceIDList, instanceID)
+	}
 	nTasks := uint32(len(runtimes))
+
 	tasksNotUpdated := uint32(0)
 	timeStart := time.Now()
 	nBatches := nTasks / maxBatchSize
@@ -1539,12 +1554,14 @@ func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 	if (nBatches % maxParallelBatches) > 0 {
 		increment = 1
 	}
+
 	wg := new(sync.WaitGroup)
 	prevEnd := uint32(0)
 	log.WithField("batches", nBatches).
 		WithField("tasks", nTasks).
 		WithField("job_id", jobID).
 		Debug("updating task runtimes")
+
 	for i := uint32(0); i < maxParallelBatches; i++ {
 		batchStart := prevEnd
 		batchEnd := batchStart + (nBatches / maxParallelBatches) + increment
@@ -1577,7 +1594,8 @@ func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 					WithField("start", start).
 					WithField("end", end).
 					Debug("updating task runtimes")
-				for instanceID := start; instanceID < end; instanceID++ {
+				for k := start; k < end; k++ {
+					instanceID := instanceIDList[k]
 					runtime := runtimes[instanceID]
 					if runtime == nil {
 						continue

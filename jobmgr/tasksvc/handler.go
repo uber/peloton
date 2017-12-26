@@ -223,6 +223,47 @@ func (m *serviceHandler) Start(
 		}, nil
 	}
 
+	jobRuntime, err := m.jobStore.GetJobRuntime(ctx, body.GetJobId())
+	if err != nil {
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("failed to get job runtime from db")
+		m.metrics.TaskStartFail.Inc(1)
+		return &task.StartResponse{
+			Error: &task.StartResponse_Error{
+				Failure: &task.TaskStartFailure{
+					Message: fmt.Sprintf("task start failed while getting job status %v", err),
+				},
+			},
+		}, nil
+	}
+
+	if jobRuntime.GetGoalState() == pb_job.JobState_KILLED {
+		if jobConfig.GetType() == pb_job.JobType_SERVICE {
+			jobRuntime.GoalState = pb_job.JobState_RUNNING
+		} else {
+			jobRuntime.GoalState = pb_job.JobState_SUCCEEDED
+		}
+
+		// Since no action needs to be taken at a job level, only update the DB
+		// and not the cache. Whenever, a job action needs to be taken, the
+		// cache is always updated at that time.
+		err := m.jobStore.UpdateJobRuntime(ctx, body.GetJobId(), jobRuntime)
+		if err != nil {
+			log.WithField("job", body.JobId).
+				WithError(err).
+				Error("failed to set job runtime in db")
+			m.metrics.TaskStartFail.Inc(1)
+			return &task.StartResponse{
+				Error: &task.StartResponse_Error{
+					Failure: &task.TaskStartFailure{
+						Message: fmt.Sprintf("task start failed while updating job status %v", err),
+					},
+				},
+			}, nil
+		}
+	}
+
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
 		ctx, body.GetJobId(), body.GetRanges(), jobConfig)
 	if err != nil {
@@ -311,6 +352,62 @@ func (m *serviceHandler) Start(
 	}, nil
 }
 
+func (m *serviceHandler) stopJob(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	jobConfig *pb_job.JobConfig) (*task.StopResponse, error) {
+
+	var instanceList []uint32
+	instanceCount := jobConfig.GetInstanceCount()
+
+	for i := uint32(0); i < instanceCount; i++ {
+		instanceList = append(instanceList, i)
+	}
+
+	jobRuntime, err := m.jobStore.GetJobRuntime(ctx, jobID)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Error("failed to get job run time")
+		m.metrics.TaskStopFail.Inc(int64(instanceCount))
+		return &task.StopResponse{
+			Error: &task.StopResponse_Error{
+				UpdateError: &task.TaskUpdateError{
+					Message: fmt.Sprintf("Job state fetch failed for %v", err),
+				},
+			},
+			InvalidInstanceIds: instanceList,
+		}, nil
+	}
+
+	if jobRuntime.GoalState == pb_job.JobState_KILLED {
+		return &task.StopResponse{
+			StoppedInstanceIds: instanceList,
+		}, nil
+	}
+
+	jobRuntime.GoalState = pb_job.JobState_KILLED
+	err = m.trackedManager.UpdateJobRuntime(ctx, jobID, jobRuntime, jobConfig)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Error("failed to update job run time")
+		m.metrics.TaskStopFail.Inc(int64(instanceCount))
+		return &task.StopResponse{
+			Error: &task.StopResponse_Error{
+				UpdateError: &task.TaskUpdateError{
+					Message: fmt.Sprintf("Job state update failed for %v", err),
+				},
+			},
+			InvalidInstanceIds: instanceList,
+		}, nil
+	}
+	m.metrics.TaskStop.Inc(int64(instanceCount))
+	return &task.StopResponse{
+		StoppedInstanceIds: instanceList,
+	}, nil
+}
+
 // Stop implements TaskManager.Stop, tries to stop tasks in a given job.
 func (m *serviceHandler) Stop(
 	ctx context.Context,
@@ -340,8 +437,16 @@ func (m *serviceHandler) Stop(
 		}, nil
 	}
 
+	taskRange := body.GetRanges()
+	if len(taskRange) == 0 || (len(taskRange) == 1 && taskRange[0].From == 0 && taskRange[0].To >= jobConfig.InstanceCount) {
+		// Stop all tasks in a job, stop entire job instead of task by task
+		log.WithField("job_id", body.GetJobId().GetValue()).
+			Info("stopping all tasks in the job")
+		return m.stopJob(ctx, body.GetJobId(), jobConfig)
+	}
+
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
-		ctx, body.GetJobId(), body.GetRanges(), jobConfig)
+		ctx, body.GetJobId(), taskRange, jobConfig)
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).

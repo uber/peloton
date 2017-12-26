@@ -821,14 +821,14 @@ func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 		suite.NoError(err)
 
 		// now, create a mess of tasks
-		taskRuntimes := []*task.RuntimeInfo{}
+		taskRuntimes := make(map[uint32]*task.RuntimeInfo)
 		for j := 0; j < nTasks; j++ {
 			tID := fmt.Sprintf("%s-%d", jobID.GetValue(), j)
 			var runtime = &task.RuntimeInfo{
 				MesosTaskId: &mesos.TaskID{Value: &tID},
 				State:       task.TaskState(j),
 			}
-			taskRuntimes = append(taskRuntimes, runtime)
+			taskRuntimes[uint32(j)] = runtime
 		}
 		err = store.CreateTaskRuntimes(context.Background(), &jobID, taskRuntimes, "test")
 		suite.NoError(err)

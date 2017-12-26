@@ -10,6 +10,8 @@ import (
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // JobAction that can be given to the RunJobAction method.
@@ -19,6 +21,7 @@ type JobAction string
 const (
 	JobNoAction    JobAction = "no_action"
 	JobCreateTasks JobAction = "create_tasks"
+	JobKill        JobAction = "job_kill"
 )
 
 // Job tracked by the system, serving as a best effort view of what's stored
@@ -118,6 +121,8 @@ func (j *job) RunAction(ctx context.Context, action JobAction) (bool, error) {
 		return false, nil
 	case JobCreateTasks:
 		return j.createTasks(ctx)
+	case JobKill:
+		return j.killJob(ctx)
 	default:
 		return false, fmt.Errorf("unsupported job action %v", action)
 	}
@@ -192,4 +197,56 @@ func (j *job) getConfig() (*jobConfig, error) {
 		return nil, errors.New("missing job config in goal state")
 	}
 	return j.config, nil
+}
+
+// killJob will stop all tasks in the job.
+// If the action needs to be rescheduled, the function returns true.
+// In general, if an error is encountered while stopping all tasks,
+// the action needs to be rescheduled.
+func (j *job) killJob(ctx context.Context) (bool, error) {
+	jobConfig, err := j.m.jobStore.GetJobConfig(ctx, j.id)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.id.GetValue()).
+			Error("failed to fetch job config to kill a job")
+		return true, err
+	}
+
+	instanceCount := jobConfig.GetInstanceCount()
+	instRange := &pb_task.InstanceRange{
+		From: 0,
+		To:   instanceCount,
+	}
+	runtimes, err := j.m.taskStore.GetTaskRuntimesForJobByRange(ctx, j.id, instRange)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.id.GetValue()).
+			Error("failed to fetch task runtimes to kill a job")
+		return true, err
+	}
+
+	// Update task runtimes to kill task
+	updatedRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
+	for instanceID, runtime := range runtimes {
+		if runtime.GetGoalState() == pb_task.TaskState_KILLED {
+			continue
+		}
+		runtime.GoalState = pb_task.TaskState_KILLED
+		runtime.Message = "Task stop API request"
+		runtime.Reason = ""
+		updatedRuntimes[instanceID] = runtime
+	}
+
+	err = j.m.taskStore.UpdateTaskRuntimes(ctx, j.id, updatedRuntimes)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.id.GetValue()).
+			Error("failed to update task runtimes to kill a job")
+		return true, err
+	}
+
+	for i := uint32(0); i < uint32(len(updatedRuntimes)); i++ {
+		j.m.SetTask(j.id, i, updatedRuntimes[i])
+	}
+	return false, nil
 }

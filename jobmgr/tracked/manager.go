@@ -296,6 +296,10 @@ func (m *manager) clearTask(t *task) {
 		}
 		err := t.job.evaluateJobSLA()
 		if err != nil {
+			log.WithError(err).
+				WithField("job_id", t.job.ID()).
+				WithField("instance_id", t.ID()).
+				Error("failed to evaluate sla for the job")
 			t.job.currentScheduledTasks++
 			m.ScheduleTask(t, time.Now())
 			return

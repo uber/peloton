@@ -199,9 +199,9 @@ func IsPelotonStateTerminal(state task.TaskState) bool {
 	}
 }
 
-// IsPelotoJobStateTerminal returns true if job state is terminal
+// IsPelotonJobStateTerminal returns true if job state is terminal
 // otherwise false
-func IsPelotoJobStateTerminal(state job.JobState) bool {
+func IsPelotonJobStateTerminal(state job.JobState) bool {
 	switch state {
 	case job.JobState_SUCCEEDED, job.JobState_FAILED, job.JobState_KILLED:
 		return true

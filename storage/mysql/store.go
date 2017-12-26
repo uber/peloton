@@ -364,7 +364,7 @@ func (m *Store) CreateTaskRuntime(ctx context.Context, id *peloton.JobID, instan
 }
 
 // CreateTaskRuntimes creates rows for a slice of Task runtimes, numbered 0..n
-func (m *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo, createdBy string) error {
+func (m *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo, createdBy string) error {
 	taskInfos := []*task.TaskInfo{}
 	for instanceID, runtime := range runtimes {
 		taskinfo := &task.TaskInfo{
@@ -934,7 +934,7 @@ func (m *Store) CreatePersistentVolume(ctx context.Context, volume *pb_volume.Pe
 }
 
 // UpdateTaskRuntimes updates task runtimes for the given slice of task runtimes, instances 0..n
-func (m *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes []*task.RuntimeInfo) error {
+func (m *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo) error {
 	return errors.New("Not implemented")
 }
 

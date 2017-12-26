@@ -131,7 +131,7 @@ func recoverJobsBatch(ctx context.Context, jobStore storage.JobStore, jobs JobsB
 		}
 
 		// Do not process batch jobs in terminal state
-		if util.IsPelotoJobStateTerminal(jobRuntime.GetState()) && util.IsPelotoJobStateTerminal(jobRuntime.GetGoalState()) {
+		if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) && util.IsPelotonJobStateTerminal(jobRuntime.GetGoalState()) {
 			continue
 		}
 

@@ -6,7 +6,10 @@ import (
 
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
@@ -49,4 +52,97 @@ func TestJob(t *testing.T) {
 
 	j.ClearJobRuntime()
 	assert.Nil(t, j.runtime)
+}
+
+func TestJobKill(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobStore := store_mocks.NewMockJobStore(ctrl)
+	taskStore := store_mocks.NewMockTaskStore(ctrl)
+
+	j := &job{
+		id: &peloton.JobID{Value: uuid.NewRandom().String()},
+		m: &manager{
+			mtx:           NewMetrics(tally.NoopScope),
+			jobStore:      jobStore,
+			taskStore:     taskStore,
+			jobs:          map[string]*job{},
+			running:       true,
+			taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+			jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
+			stopChan:      make(chan struct{}),
+		},
+		tasks: map[uint32]*task{},
+	}
+	j.m.jobs[j.id.GetValue()] = j
+
+	instanceCount := uint32(4)
+	jobConfig := pb_job.JobConfig{
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"team1", "team2", "team3"},
+		InstanceCount: instanceCount,
+		Type:          pb_job.JobType_BATCH,
+	}
+
+	jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), j.id).
+		Return(&jobConfig, nil)
+
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[0] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_RUNNING,
+		GoalState: pb_task.TaskState_SUCCEEDED,
+	}
+	runtimes[1] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_RUNNING,
+		GoalState: pb_task.TaskState_SUCCEEDED,
+	}
+	runtimes[2] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_INITIALIZED,
+		GoalState: pb_task.TaskState_SUCCEEDED,
+	}
+	runtimes[3] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_INITIALIZED,
+		GoalState: pb_task.TaskState_SUCCEEDED,
+	}
+
+	newRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
+	newRuntimes[0] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_RUNNING,
+		GoalState: pb_task.TaskState_KILLED,
+		Message:   "Task stop API request",
+		Reason:    "",
+	}
+	newRuntimes[1] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_RUNNING,
+		GoalState: pb_task.TaskState_KILLED,
+		Message:   "Task stop API request",
+		Reason:    "",
+	}
+	newRuntimes[2] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_INITIALIZED,
+		GoalState: pb_task.TaskState_KILLED,
+		Message:   "Task stop API request",
+		Reason:    "",
+	}
+	newRuntimes[3] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_INITIALIZED,
+		GoalState: pb_task.TaskState_KILLED,
+		Message:   "Task stop API request",
+		Reason:    "",
+	}
+
+	taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), j.id, gomock.Any()).
+		Return(runtimes, nil)
+	taskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), j.id, newRuntimes).
+		Return(nil)
+
+	reschedule, err := j.RunAction(context.Background(), JobKill)
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
+	assert.Equal(t, instanceCount, uint32(len(j.tasks)))
+
 }

@@ -651,7 +651,7 @@ func TestJobRecoverSLA(t *testing.T) {
 		job: j,
 		id:  uint32(0),
 		runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_SUCCEEDED,
+			State:     pb_task.TaskState_INITIALIZED,
 			GoalState: pb_task.TaskState_SUCCEEDED,
 		},
 	}
@@ -702,8 +702,8 @@ func TestJobRecoverSLA(t *testing.T) {
 		}, nil)
 
 	taskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), j.id, uint32(3)).
-		Return(j.tasks[3].runtime, nil)
+		GetTaskRuntime(gomock.Any(), j.id, gomock.Any()).
+		Return(j.tasks[0].runtime, nil)
 
 	j.recoverJobWithSLA()
 	assert.Equal(t, jobCfg.GetSla().GetMaximumRunningInstances(), j.currentScheduledTasks)
