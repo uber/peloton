@@ -16,7 +16,13 @@ from app import (
 # Currently DB schema migration is executed only in hostmgr so we have
 # to update hostmgr first.
 # TODO: use a separate binary for DB migration
-PELOTON_APPS = ['hostmgr', 'resmgr', 'placement', 'jobmgr']
+PELOTON_APPS = [
+    'hostmgr',
+    'resmgr',
+    'placement',
+    'placement_stateful',
+    'jobmgr',
+]
 CRON_APPS = ['watchdog']
 
 
@@ -47,6 +53,8 @@ class Cluster(object):
         self.apps = {}
         for app in PELOTON_APPS:
             app_cfg = getattr(self, app)
+            if not app_cfg:
+                continue
             self.apps[app] = App(name=app, cluster=self, **app_cfg)
         for app in CRON_APPS:
             app_cfg = getattr(self, app)

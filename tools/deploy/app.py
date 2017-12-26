@@ -158,6 +158,10 @@ class App(object):
                 self.cluster, 'enable_preemption', 'false'),
         }
 
+        if self.name == 'placement_stateful':
+            env_vars['TASK_TYPE'] = 'STATEFUL'
+            env_vars['APP'] = 'placement'
+
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))
             for key, val in env_vars.iteritems()
