@@ -155,6 +155,17 @@ func (m *manager) GetJob(id *peloton.JobID) Job {
 	return nil
 }
 
+func (m *manager) getJobStruct(id *peloton.JobID) *job {
+	m.RLock()
+	defer m.RUnlock()
+
+	if j, ok := m.jobs[id.GetValue()]; ok {
+		return j
+	}
+
+	return nil
+}
+
 func (m *manager) GetAllJobs() map[string]Job {
 	m.RLock()
 	defer m.RUnlock()
@@ -390,17 +401,15 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 
 	maxInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 
-	j := m.jobs[id.GetValue()]
+	j := m.getJobStruct(id)
 	for instanceID, runtime := range runtimes {
 		m.mtx.taskMetrics.TaskRecovered.Inc(1)
-		// Do not add set the task again if it already exists
+		// Do not add the task again if it already exists
 		if j.GetTask(instanceID) == nil {
 			if maxInstances > 0 {
 				// Only add to job tracker, do not schedule to run it.
 				j.setTask(instanceID, runtime)
-				j.RLock()
-				noTasks := uint32(len(j.tasks))
-				j.RUnlock()
+				noTasks := uint32(len(j.GetAllTasks()))
 				if noTasks == jobConfig.InstanceCount {
 					// all tasks are present in tracker. now determine which ones need to start.
 					j.recoverJobWithSLA()
