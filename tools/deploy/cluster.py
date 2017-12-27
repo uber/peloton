@@ -52,8 +52,8 @@ class Cluster(object):
 
         self.apps = {}
         for app in PELOTON_APPS:
-            app_cfg = getattr(self, app)
-            if not app_cfg:
+            app_cfg = getattr(self, app, None)
+            if app_cfg is None:
                 continue
             self.apps[app] = App(name=app, cluster=self, **app_cfg)
         for app in CRON_APPS:
@@ -107,17 +107,14 @@ class Cluster(object):
 
         # Print the job config diffs
         print 'Update Peloton cluster "%s" to new config: ' % self.name
-        for name in PELOTON_APPS + CRON_APPS:
-            app = self.apps[name]
+        for name, app in self.apps.iteritems():
             self.diff_config(app, verbose)
 
         if not force and not yesno('Proceed with the update ?'):
             return
 
         updated_apps = []
-        for name in PELOTON_APPS + CRON_APPS:
-            app = self.apps[name]
-
+        for name, app in self.apps.iteritems():
             updated_apps.append(app)
             if not app.update_or_create_job(update_callback):
                 # Rollback the updates for all apps that have been updated
