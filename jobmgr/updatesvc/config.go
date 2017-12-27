@@ -1,4 +1,4 @@
-package upgrade
+package updatesvc
 
 import "time"
 
@@ -7,7 +7,7 @@ const (
 	_defaultProgressInterval = 5 * time.Second
 )
 
-// Config for upgrades, and how they are progressed.
+// Config for updates, and how they are progressed.
 type Config struct {
 	ReloadInterval   time.Duration `yaml:"reload_interval"`
 	ProgressInterval time.Duration `yaml:"progress_interval"`

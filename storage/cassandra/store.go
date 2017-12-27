@@ -18,7 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/common"
@@ -48,7 +48,7 @@ const (
 	taskConfigTable       = "task_config"
 	taskRuntimeTable      = "task_runtime"
 	taskStateChangesTable = "task_state_changes"
-	upgradesTable         = "upgrades"
+	updatesTable          = "update_info"
 	frameworksTable       = "frameworks"
 	taskJobStateView      = "mv_task_by_state"
 	jobByStateView        = "mv_job_by_state"
@@ -2394,119 +2394,90 @@ func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 	return nil
 }
 
-// CreateUpgrade creates a new entry in Cassandra, if it doesn't already exist.
-func (s *Store) CreateUpgrade(ctx context.Context, id *upgrade.WorkflowID, spec *upgrade.UpgradeSpec) error {
-	optionsBuffer, err := json.Marshal(spec.GetOptions())
+// CreateUpdate creates a new entry in Cassandra, if it doesn't already exist.
+func (s *Store) CreateUpdate(ctx context.Context, id *update.UpdateID, jobID *peloton.JobID, jobConfig *job.JobConfig, updateConfig *update.UpdateConfig) error {
+	updateConfigBuffer, err := json.Marshal(updateConfig)
 	if err != nil {
-		log.Errorf("Failed to marshal options, error = %v", err)
+		log.WithError(err).
+			WithField("update_id", id.GetValue()).
+			WithField("job_id", jobID.GetValue()).
+			Error("failed to marshal update config")
 		return err
 	}
 
-	configBuffer, err := json.Marshal(spec.GetJobConfig())
+	jobConfigBuffer, err := json.Marshal(jobConfig)
 	if err != nil {
-		log.Errorf("Failed to marshal jobConfig, error = %v", err)
+		log.WithError(err).
+			WithField("update_id", id.GetValue()).
+			WithField("job_id", jobID.GetValue()).
+			Error("failed to marshal job config")
 		return err
 	}
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(upgradesTable).
+	stmt := queryBuilder.Insert(updatesTable).
 		Columns(
-			"upgrade_id",
-			"options",
+			"update_id",
+			"update_config",
 			"state",
-			"progress",
-			"instances",
+			"instances_total",
+			"instances_done",
+			"instances_current",
 			"job_id",
-			"job_config").
+			"job_config",
+			"creation_time").
 		Values(
 			id.GetValue(),
-			string(optionsBuffer),
-			upgrade.State_ROLLING_FORWARD,
+			string(updateConfigBuffer),
+			update.State_ROLLING_FORWARD,
+			jobConfig.GetInstanceCount(),
 			0,
 			[]int{},
-			spec.GetJobId().GetValue(),
-			configBuffer).
+			jobID.GetValue(),
+			jobConfigBuffer,
+			time.Now()).
 		IfNotExist()
 
 	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
 		log.WithError(err).
-			WithField("workflow_id", id.GetValue()).
-			Error("CreateUpgrade failed")
+			WithField("update_id", id.GetValue()).
+			WithField("job_id", jobID.GetValue()).
+			Error("create update in DB failed")
 		return err
 	}
 
 	return nil
 }
 
-// AddTaskToProcessing adds instanceID to the set of processing instances, and
-// incrementing the progress by one. It's an error if instanceID is not the
-// next instance in line to be upgraded.
-func (s *Store) AddTaskToProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
+// GetUpdateProgress returns the list of tasks being process as well as the
+// overall progress of the update.
+func (s *Store) GetUpdateProgress(ctx context.Context, id *update.UpdateID) ([]uint32, uint32, error) {
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(upgradesTable).
-		Add("instances", []uint32{instanceID}).
-		Set("progress", instanceID+1).
-		Where(qb.Eq{"upgrade_id": id.GetValue()}).
-		IfOnly(fmt.Sprintf("progress = %d", instanceID))
-
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		log.WithError(err).
-			WithField("workflow_id", id.GetValue()).
-			Error("StartTaskUpgrade failed")
-		return err
-	}
-
-	return nil
-}
-
-// RemoveTaskFromProcessing removes the instanceID from the set of processing
-// instances. This function is a no-op if the instanceID is not in the list
-// of processing tasks.
-func (s *Store) RemoveTaskFromProcessing(ctx context.Context, id *upgrade.WorkflowID, instanceID uint32) error {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(upgradesTable).
-		Remove("instances", []uint32{instanceID}).
-		Where(qb.Eq{"upgrade_id": id.GetValue()})
-
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		log.WithError(err).
-			WithField("workflow_id", id.GetValue()).
-			Error("CompleteTaskUpgrade failed")
-		return err
-	}
-
-	return nil
-}
-
-// GetWorkflowProgress returns the list of tasks being process as well as the
-// overall progress of the upgrade.
-func (s *Store) GetWorkflowProgress(ctx context.Context, id *upgrade.WorkflowID) ([]uint32, uint32, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("instances", "progress").From(upgradesTable).Where(qb.Eq{"upgrade_id": id.GetValue()})
+	stmt := queryBuilder.Select("instances_current", "instances_done").From(updatesTable).Where(qb.Eq{"update_id": id.GetValue()})
 	result, err := s.DataStore.Execute(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id.GetValue()).
-			Error("GetJobRuntime failed")
+			WithField("update_id", id.GetValue()).
+			Error("get update progress from db failed")
 		return nil, 0, err
 	}
 
 	allResults, err := result.All(ctx)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id.GetValue()).
-			Error("GetJobRuntime Get all results failed")
+			WithField("update_id", id.GetValue()).
+			Error("get update process all results failed")
 		return nil, 0, err
 	}
 
 	for _, value := range allResults {
-		var record UpgradeRecord
+		var record UpdateRecord
 		if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
 			return nil, 0, err
 		}
-		return record.GetProcessingInstances(), uint32(record.Progress), nil
+		return record.GetProcessingInstances(), uint32(record.InstancesDone), nil
 	}
-	return nil, 0, fmt.Errorf("cannot find workflow with ID %v", id.GetValue())
+	return nil, 0, fmt.Errorf("cannot find update with ID %v", id.GetValue())
 }
 
 func parseTime(v string) time.Time {

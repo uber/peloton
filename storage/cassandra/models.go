@@ -104,16 +104,16 @@ type FrameworkInfoRecord struct {
 
 // Resource pool (to be added)
 
-// UpgradeRecord tracks the upgrade info
-type UpgradeRecord struct {
-	Instances []int
-	Progress  int
+// UpdateRecord tracks the update info
+type UpdateRecord struct {
+	InstancesCurrent []int `cql:"instances_current"`
+	InstancesDone    int   `cql:"instances_done"`
 }
 
 // GetProcessingInstances returns a list of tasks currently being upgraded.
-func (r *UpgradeRecord) GetProcessingInstances() []uint32 {
-	p := make([]uint32, len(r.Instances))
-	for i, v := range r.Instances {
+func (r *UpdateRecord) GetProcessingInstances() []uint32 {
+	p := make([]uint32, len(r.InstancesCurrent))
+	for i, v := range r.InstancesCurrent {
 		p[i] = uint32(v)
 	}
 	return p

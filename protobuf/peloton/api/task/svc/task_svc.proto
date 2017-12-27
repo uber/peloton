@@ -9,7 +9,6 @@ package peloton.api.task.svc;
 option go_package = "peloton/api/task/svc";
 option java_package = "peloton.api.task.svc";
 
-import "peloton/api/errors/errors.proto";
 import "peloton/api/peloton.proto";
 import "peloton/api/query/query.proto";
 import "peloton/api/task/task.proto";

@@ -1,4 +1,4 @@
-package upgrade
+package updatesvc
 
 import (
 	"testing"

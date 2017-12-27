@@ -21,7 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
 	"code.uber.internal/infra/peloton/jobmgr/tasksvc"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
-	"code.uber.internal/infra/peloton/jobmgr/upgrade"
+	"code.uber.internal/infra/peloton/jobmgr/updatesvc"
 	"code.uber.internal/infra/peloton/jobmgr/volumesvc"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/stores"
@@ -216,7 +216,7 @@ func main() {
 		logging.LevelOverwriteHandler(initialLevel),
 	)
 
-	jobStore, taskStore, upgradeStore, _, frameworkInfoStore, volumeStore :=
+	jobStore, taskStore, updateStore, _, frameworkInfoStore, volumeStore :=
 		stores.CreateStores(&cfg.Storage, rootScope)
 
 	// Create both HTTP and GRPC inbounds
@@ -340,11 +340,8 @@ func main() {
 		volumeStore,
 	)
 
-	upgradeManager := upgrade.NewManager(jobStore, cfg.JobManager.Upgrade)
-	upgradeManager.Start()
-	defer upgradeManager.Stop()
-
-	upgrade.InitServiceHandler(dispatcher, jobStore, upgradeStore)
+	updateManager := updatesvc.NewManager(jobStore, cfg.JobManager.Update)
+	updatesvc.InitServiceHandler(dispatcher, jobStore, updateStore)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
@@ -403,6 +400,7 @@ func main() {
 		trackedManager,
 		taskPreemptor,
 		deadlineTracker,
+		updateManager,
 	)
 
 	candidate, err := leader.NewCandidate(

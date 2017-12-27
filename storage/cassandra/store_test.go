@@ -15,7 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/upgrade"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -1412,44 +1412,21 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 }
 
 func (suite *CassandraStoreTestSuite) TestUpgrade() {
-	id := &upgrade.WorkflowID{
+	id := &update.UpdateID{
 		Value: uuid.New(),
 	}
-	suite.NoError(store.CreateUpgrade(context.Background(), id, &upgrade.UpgradeSpec{
-		JobId: &peloton.JobID{
+	suite.NoError(store.CreateUpdate(
+		context.Background(),
+		id,
+		&peloton.JobID{
 			Value: uuid.New(),
 		},
-	}))
-	processing, progress, err := store.GetWorkflowProgress(context.Background(), id)
+		nil,
+		nil,
+	))
+	processing, progress, err := store.GetUpdateProgress(context.Background(), id)
 	suite.Empty(processing)
 	suite.Equal(uint32(0), progress)
-	suite.NoError(err)
-
-	// Cannot process task 2.
-	suite.EqualError(store.AddTaskToProcessing(context.Background(), id, 2),
-		fmt.Sprintf("code:already-exists message:%v is not applied, item could exist already", id.Value))
-	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
-	suite.Empty(processing)
-	suite.Equal(uint32(0), progress)
-	suite.NoError(err)
-
-	// Processing task 2 should succeed.
-	suite.NoError(store.AddTaskToProcessing(context.Background(), id, 0))
-	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
-	suite.Equal([]uint32{0}, processing)
-	suite.Equal(uint32(1), progress)
-	suite.NoError(err)
-
-	suite.NoError(store.RemoveTaskFromProcessing(context.Background(), id, 2))
-	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
-	suite.Equal([]uint32{0}, processing)
-	suite.Equal(uint32(1), progress)
-	suite.NoError(err)
-
-	suite.NoError(store.RemoveTaskFromProcessing(context.Background(), id, 0))
-	processing, progress, err = store.GetWorkflowProgress(context.Background(), id)
-	suite.Empty(processing)
-	suite.Equal(uint32(1), progress)
 	suite.NoError(err)
 }
 

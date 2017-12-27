@@ -6,7 +6,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
-	"code.uber.internal/infra/peloton/jobmgr/upgrade"
+	"code.uber.internal/infra/peloton/jobmgr/updatesvc"
 )
 
 // Config is JobManager specific configuration
@@ -32,8 +32,8 @@ type Config struct {
 	// GoalState configuration
 	GoalState goalstate.Config `yaml:"goal_state"`
 
-	// Upgrade specific configuration.
-	Upgrade upgrade.Config
+	// Update specific configuration.
+	Update updatesvc.Config
 
 	// Preemption related config
 	Preemptor preemptor.Config `yaml:"task_preemptor"`
