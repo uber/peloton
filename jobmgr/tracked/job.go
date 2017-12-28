@@ -93,18 +93,26 @@ func (j *job) ID() *peloton.JobID {
 }
 
 func (j *job) ClearJobRuntime() {
+	j.Lock()
+	defer j.Unlock()
 	j.runtime = nil
 }
 
 func (j *job) SetLastDelay(delay time.Duration) {
+	j.Lock()
+	defer j.Unlock()
 	j.lastDelay = delay
 }
 
 func (j *job) GetLastDelay() time.Duration {
+	j.RLock()
+	defer j.RUnlock()
 	return j.lastDelay
 }
 
 func (j *job) RunAction(ctx context.Context, action JobAction) (bool, error) {
+	defer j.m.mtx.scope.Tagged(map[string]string{"action": string(action)}).Timer("run_duration").Start().Stop()
+
 	switch action {
 	case JobNoAction:
 		return false, nil
@@ -151,8 +159,8 @@ func (j *job) setTask(id uint32, runtime *pb_task.RuntimeInfo) *task {
 }
 
 func (j *job) GetJobRuntime(ctx context.Context) (*pb_job.RuntimeInfo, error) {
-	j.RLock()
-	defer j.RUnlock()
+	j.Lock()
+	defer j.Unlock()
 
 	if j.runtime != nil {
 		return j.runtime, nil
