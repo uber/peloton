@@ -157,6 +157,15 @@ func (c *cleaner) needCleanVolume(volumeID string, offer *mesos.Offer) bool {
 	}
 
 	if volumeInfo.GetGoalState() == volume.VolumeState_DELETED {
+		volumeInfo.State = volume.VolumeState_DELETED
+		err = c.volumeStore.UpdatePersistentVolume(ctx, volumeInfo)
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{
+				"volume": volumeInfo,
+				"offer":  offer,
+			}).Error("Failed to update db for given volume")
+			return false
+		}
 		return true
 	}
 

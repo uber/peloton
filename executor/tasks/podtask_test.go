@@ -94,7 +94,7 @@ func TestWatcherLag(t *testing.T) {
 	}
 
 	count := 0
-	for _ = range states {
+	for range states {
 		count++
 	}
 	require.Equal(t, channelsize, count)

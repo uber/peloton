@@ -180,12 +180,14 @@ func TestCleanVolume(t *testing.T) {
 		Value: _testVolumeID,
 	}
 	volumeInfo := &volume.PersistentVolumeInfo{
+		State:     volume.VolumeState_CREATED,
 		GoalState: volume.VolumeState_DELETED,
 	}
 
 	gomock.InOrder(
 		mockOfferPool.EXPECT().GetReservedOffers().Return(hostOffers),
 		mockVolumeStore.EXPECT().GetPersistentVolume(gomock.Any(), volumeID).Return(volumeInfo, nil),
+		mockVolumeStore.EXPECT().UpdatePersistentVolume(gomock.Any(), volumeInfo).Return(nil),
 		mockOfferPool.EXPECT().RemoveReservedOffer(offer.GetHostname(), offer.GetId().GetValue()),
 		mockSchedulerClient.EXPECT().
 			Call(

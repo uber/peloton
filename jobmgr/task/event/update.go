@@ -387,8 +387,9 @@ func (p *statusUpdate) updatePersistentVolumeState(ctx context.Context, taskInfo
 		return nil
 	}
 
-	// Do not update volume db if state is already CREATED.
-	if volumeInfo.State == volume.VolumeState_CREATED {
+	// Do not update volume db if state is already CREATED or goalstate is DELETED.
+	if volumeInfo.GetState() == volume.VolumeState_CREATED ||
+		volumeInfo.GetGoalState() == volume.VolumeState_DELETED {
 		return nil
 	}
 

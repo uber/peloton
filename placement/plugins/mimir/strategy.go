@@ -136,7 +136,7 @@ func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 		maxOffers = int(neededOffers)
 	}
 	return map[*hostsvc.HostFilter][]*models.Assignment{
-		&hostsvc.HostFilter{
+		{
 			ResourceConstraint: &hostsvc.ResourceConstraint{
 				NumPorts: uint32(maxPorts),
 				Minimum: &task.ResourceConfig{
