@@ -126,6 +126,12 @@ func (j *job) scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances uint3
 		t = newTask(j, instanceID)
 		j.tasks[instanceID] = t
 	}
+
+	// Do not re-schedule a task
+	if t.IsScheduled() {
+		return
+	}
+
 	t.UpdateRuntime(runtime)
 
 	j.m.taskScheduler.schedule(t, time.Now())

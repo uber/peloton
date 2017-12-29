@@ -19,6 +19,8 @@ func TestTaskRunAction(t *testing.T) {
 		},
 	}
 
+	assert.False(t, tt.IsScheduled())
+
 	before := time.Now()
 
 	reschedule, err := tt.RunAction(context.Background(), NoAction)

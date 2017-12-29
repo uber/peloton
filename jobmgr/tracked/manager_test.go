@@ -48,6 +48,8 @@ func TestManagerClearTask(t *testing.T) {
 	t1 := j.GetTask(1)
 	assert.Equal(t, 1, len(m.jobs))
 	assert.Equal(t, 2, len(j.tasks))
+	assert.True(t, t0.IsScheduled())
+	assert.True(t, t1.IsScheduled())
 
 	m.clearTask(t0.(*task))
 	assert.Equal(t, 1, len(m.jobs))

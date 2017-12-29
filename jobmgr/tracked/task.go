@@ -48,6 +48,9 @@ type Task interface {
 
 	// UpdateRuntime sets the task run time
 	UpdateRuntime(runtime *pb_task.RuntimeInfo)
+
+	// IsScheduled returns true if task is queued with the taskScheduler
+	IsScheduled() bool
 }
 
 // State of a job. This can encapsulate either the actual state or the goal
@@ -246,4 +249,11 @@ func (t *task) GetRunTime() *pb_task.RuntimeInfo {
 	t.RLock()
 	defer t.RUnlock()
 	return t.runtime
+}
+
+func (t *task) IsScheduled() bool {
+	t.RLock()
+	defer t.RUnlock()
+
+	return t.isScheduled()
 }

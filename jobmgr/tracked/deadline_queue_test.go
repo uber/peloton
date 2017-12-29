@@ -22,6 +22,7 @@ func (i *testQueueItem) deadline() time.Time {
 	}
 	return time.Unix(int64(i.value), 0)
 }
+func (i *testQueueItem) isScheduled() bool { return !i.deadline().IsZero() }
 
 func TestTimeoutQueueOrdering(t *testing.T) {
 	mtx := NewQueueMetrics(tally.NoopScope)

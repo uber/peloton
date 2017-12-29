@@ -10,6 +10,7 @@ const (
 )
 
 type queueItem interface {
+	isScheduled() bool
 	deadline() time.Time
 	setDeadline(deadline time.Time)
 
@@ -26,6 +27,7 @@ func (i *queueItemMixin) index() int                     { return i.queueIndex }
 func (i *queueItemMixin) setIndex(index int)             { i.queueIndex = index }
 func (i *queueItemMixin) deadline() time.Time            { return i.queueDeadline }
 func (i *queueItemMixin) setDeadline(deadline time.Time) { i.queueDeadline = deadline }
+func (i *queueItemMixin) isScheduled() bool              { return !i.deadline().IsZero() }
 
 func newQueueItemMixing() queueItemMixin {
 	return queueItemMixin{queueIndex: -1}
