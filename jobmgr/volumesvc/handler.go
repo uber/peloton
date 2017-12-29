@@ -113,16 +113,11 @@ func (h *serviceHandler) ListVolumes(
 	log.WithField("request", req).Debug("ListVolumes called")
 	h.metrics.ListVolumeAPI.Inc(1)
 
-	if len(req.GetJobId().GetValue()) == 0 {
-		h.metrics.ListVolumeFail.Inc(1)
-		return &volume_svc.ListVolumesResponse{}, errJobNotFound
-	}
-
 	taskInfos, err := h.taskStore.GetTasksForJob(ctx, req.GetJobId())
 	if err != nil {
 		log.WithError(err).WithField("req", req).Error("Failed to get tasks for job")
 		h.metrics.ListVolumeFail.Inc(1)
-		return &volume_svc.ListVolumesResponse{}, errTaskNotFound
+		return &volume_svc.ListVolumesResponse{}, errJobNotFound
 	}
 
 	result := make(map[string]*volume.PersistentVolumeInfo)

@@ -4,7 +4,7 @@
 
 syntax = "proto3";
 
-package peloton.api.volume;
+package peloton.api.volume.svc;
 
 option go_package = "peloton/api/volume/svc";
 option java_package = "peloton.api.volume.svc";

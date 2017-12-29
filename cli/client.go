@@ -5,25 +5,28 @@ import (
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/leader"
-
-	"code.uber.internal/infra/peloton/common"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
+
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/volume/svc"
+
+	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/leader"
 )
 
 // Client is a JSON Client with associated dispatcher and context
 type Client struct {
-	jobClient  job.JobManagerYARPCClient
-	taskClient task.TaskManagerYARPCClient
-	resClient  respool.ResourceManagerYARPCClient
-	dispatcher *yarpc.Dispatcher
-	ctx        context.Context
-	cancelFunc context.CancelFunc
+	jobClient    job.JobManagerYARPCClient
+	taskClient   task.TaskManagerYARPCClient
+	resClient    respool.ResourceManagerYARPCClient
+	volumeClient volume_svc.VolumeServiceYARPCClient
+	dispatcher   *yarpc.Dispatcher
+	ctx          context.Context
+	cancelFunc   context.CancelFunc
 	// Debug is whether debug output is enabled
 	Debug bool
 }
@@ -73,6 +76,9 @@ func New(
 		),
 		resClient: respool.NewResourceManagerYARPCClient(
 			dispatcher.ClientConfig(common.PelotonResourceManager),
+		),
+		volumeClient: volume_svc.NewVolumeServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonJobManager),
 		),
 		dispatcher: dispatcher,
 		ctx:        ctx,

@@ -163,6 +163,15 @@ var (
 	resPoolDelete     = resPool.Command("delete", "delete a resource pool")
 	resPoolDeletePath = resPoolDelete.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
+
+	// Top level volume command
+	volume = app.Command("volume", "manage persistent volume")
+
+	volumeList        = volume.Command("list", "list volumes for a job")
+	volumeListJobName = volumeList.Arg("job", "job identifier").Required().String()
+
+	volumeDelete         = volume.Command("delete", "delete a volume")
+	volumeDeleteVolumeID = volumeDelete.Arg("volume", "volume identifier").Required().String()
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -311,6 +320,10 @@ func main() {
 		err = client.ResPoolDumpAction(*resPoolDumpFormat)
 	case resPoolDelete.FullCommand():
 		err = client.ResPoolDeleteAction(*resPoolDeletePath)
+	case volumeList.FullCommand():
+		err = client.VolumeListAction(*volumeListJobName)
+	case volumeDelete.FullCommand():
+		err = client.VolumeDeleteAction(*volumeDeleteVolumeID)
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}
