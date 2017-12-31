@@ -10,6 +10,7 @@ import (
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -163,6 +164,25 @@ func (j *job) setTask(id uint32, runtime *pb_task.RuntimeInfo) *task {
 	return t
 }
 
+// setTasks creates the task provided in the input map (if not already present),
+// updates the runtime of each task, and returns a map of the tasks.
+func (j *job) setTasks(runtimes map[uint32]*pb_task.RuntimeInfo) map[uint32]*task {
+	j.Lock()
+	defer j.Unlock()
+
+	taskInJobMap := make(map[uint32]*task)
+	for id, runtime := range runtimes {
+		t, ok := j.tasks[id]
+		if !ok {
+			t = newTask(j, id)
+			j.tasks[id] = t
+		}
+		t.UpdateRuntime(runtime)
+		taskInJobMap[id] = t
+	}
+	return taskInJobMap
+}
+
 func (j *job) GetJobRuntime(ctx context.Context) (*pb_job.RuntimeInfo, error) {
 	j.Lock()
 	defer j.Unlock()
@@ -228,7 +248,7 @@ func (j *job) killJob(ctx context.Context) (bool, error) {
 	// Update task runtimes to kill task
 	updatedRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
 	for instanceID, runtime := range runtimes {
-		if runtime.GetGoalState() == pb_task.TaskState_KILLED {
+		if runtime.GetGoalState() == pb_task.TaskState_KILLED || util.IsPelotonStateTerminal(runtime.GetState()) {
 			continue
 		}
 		runtime.GoalState = pb_task.TaskState_KILLED
@@ -245,8 +265,9 @@ func (j *job) killJob(ctx context.Context) (bool, error) {
 		return true, err
 	}
 
-	for i := uint32(0); i < uint32(len(updatedRuntimes)); i++ {
-		j.m.SetTask(j.id, i, updatedRuntimes[i])
-	}
+	// Schedule the tasks in tracked manager now
+	j.m.SetTasks(j.id, updatedRuntimes)
+	log.WithField("job_id", j.id.GetValue()).
+		Info("initiated kill of all tasks in the job")
 	return false, nil
 }

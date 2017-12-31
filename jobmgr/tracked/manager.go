@@ -28,8 +28,6 @@ const (
 // for marking tasks as dirty and ready for being processed by the goal state
 // engine.
 type Manager interface {
-	// WaitForSyndFromDB will block the caller till the DB sync at manager start is complete
-	WaitForSyncFromDB()
 
 	// GetJob will return the current tracked Job, nil if currently not tracked.
 	GetJob(id *peloton.JobID) Job
@@ -40,6 +38,11 @@ type Manager interface {
 	// SetTask to the new runtime info. This will also schedule the task for
 	// immediate evaluation.
 	SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo)
+
+	// SetTasks sets a map of tasks to new runtime info.
+	// This will also scheduled these tasks for immediate evaluation.
+	// TBD SetTask should be removed and all callers should use SetTasks.
+	SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo)
 
 	// SetJob to the state in the JobInfo.
 	SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo)
@@ -86,8 +89,6 @@ func NewManager(
 	parentScope tally.Scope) Manager {
 	scope := parentScope.SubScope("tracked")
 	return &manager{
-		syncDone:      false,
-		syncDoneCond:  &sync.Cond{L: &sync.Mutex{}},
 		jobs:          map[string]*job{},
 		taskScheduler: newScheduler(NewQueueMetrics(scope.SubScope("tasks"))),
 		jobScheduler:  newScheduler(NewQueueMetrics(scope.SubScope("jobs"))),
@@ -103,9 +104,6 @@ func NewManager(
 
 type manager struct {
 	sync.RWMutex
-
-	syncDone     bool
-	syncDoneCond *sync.Cond
 
 	// jobs maps from from peloton job id -> tracked job.
 	jobs map[string]*job
@@ -126,22 +124,6 @@ type manager struct {
 
 	mtx      *Metrics
 	stopChan chan struct{}
-}
-
-// This should be called only in the job manager leader.
-func (m *manager) WaitForSyncFromDB() {
-	m.syncDoneCond.L.Lock()
-	for !m.syncDone {
-		m.syncDoneCond.Wait()
-	}
-	m.syncDoneCond.L.Unlock()
-}
-
-func (m *manager) broadcastSyncFromDBComplete() {
-	m.syncDoneCond.L.Lock()
-	m.syncDone = true
-	m.syncDoneCond.L.Unlock()
-	m.syncDoneCond.Broadcast()
 }
 
 func (m *manager) GetJob(id *peloton.JobID) Job {
@@ -204,6 +186,21 @@ func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_t
 	j := m.addJob(jobID)
 	t := j.setTask(instanceID, runtime)
 	m.taskScheduler.schedule(t, time.Now())
+}
+
+func (m *manager) SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo) {
+	m.Lock()
+	defer m.Unlock()
+
+	if !m.running {
+		return
+	}
+
+	j := m.addJob(jobID)
+	taskMap := j.setTasks(runtimes)
+	for _, t := range taskMap {
+		m.taskScheduler.schedule(t, time.Now())
+	}
 }
 
 func (m *manager) UpdateJobRuntime(ctx context.Context, jobID *peloton.JobID, runtime *pb_job.RuntimeInfo, config *pb_job.JobConfig) error {
@@ -316,47 +313,35 @@ func (m *manager) clearTask(t *task) {
 // Start syncs jobs and tasks from DB, starts emitting metrics.
 func (m *manager) Start() {
 	m.Lock()
-	defer m.Unlock()
 
 	if m.running {
+		m.Unlock()
 		return
 	}
 	m.running = true
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
-
-		if err := m.syncFromDB(ctx); err != nil {
-			log.WithError(err).Warn("failed to sync with DB in tracked manager")
-		}
-	}()
-
 	m.stopChan = make(chan struct{})
 	go m.runPublishMetrics(m.stopChan)
+
+	m.Unlock()
+
+	if err := m.syncFromDB(context.Background()); err != nil {
+		log.WithError(err).Warn("failed to sync with DB in tracked manager")
+	}
 
 	log.Info("tracked.Manager started")
 }
 
 // Stop clears the current tracked jobs and tasks, stops emitting metrics.
 func (m *manager) Stop() {
-	// Do not do anything if not runnning
 	m.Lock()
+	defer m.Unlock()
+
+	// Do not do anything if not runnning
 	if !m.running {
-		m.Unlock()
 		log.Info("tracked.Manager stopped")
 		return
 	}
-	m.Unlock()
-
-	// Wait to stop till syncing from DB is finished.
-	m.WaitForSyncFromDB()
-	m.syncDoneCond.L.Lock()
-	m.syncDone = false
-	m.syncDoneCond.L.Unlock()
-
-	m.Lock()
-	defer m.Unlock()
 
 	m.running = false
 
@@ -430,14 +415,6 @@ func (m *manager) syncFromDB(ctx context.Context) error {
 	log.Info("syncing tracked manager with db")
 	startRecoveryTime := time.Now()
 
-	// Just set syncDone to false in case still set from previous run.
-	m.syncDoneCond.L.Lock()
-	if m.syncDone != false {
-		log.Error("db sync done is incorrectly set to true during manager start")
-		m.syncDone = false
-	}
-	m.syncDoneCond.L.Unlock()
-
 	// jobStates represents the job states which need recovery
 	jobStates := []pb_job.JobState{
 		pb_job.JobState_INITIALIZED,
@@ -456,8 +433,6 @@ func (m *manager) syncFromDB(ctx context.Context) error {
 	log.WithField("time_spent", time.Since(startRecoveryTime)).
 		Info("syncing tracked manager with db is finished")
 	m.mtx.jobMetrics.JobRecoveryDuration.Update(float64(time.Since(startRecoveryTime) / time.Millisecond))
-
-	m.broadcastSyncFromDBComplete()
 
 	return nil
 }

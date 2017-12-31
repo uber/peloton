@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	_defaultJobActionTimeout = 5 * time.Second
+	_defaultJobActionTimeout = 60 * time.Second
 )
 
 var (

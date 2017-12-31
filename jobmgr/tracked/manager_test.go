@@ -106,8 +106,6 @@ func TestManagerSyncFromDB(t *testing.T) {
 	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
 
 	m := &manager{
-		syncDone:      false,
-		syncDoneCond:  &sync.Cond{L: &sync.Mutex{}},
 		jobs:          map[string]*job{},
 		jobStore:      jobstoreMock,
 		taskStore:     taskstoreMock,
@@ -156,8 +154,6 @@ func TestManagerSyncFromDB(t *testing.T) {
 
 func TestManagerStopClearsTasks(t *testing.T) {
 	m := &manager{
-		syncDone:      true,
-		syncDoneCond:  &sync.Cond{L: &sync.Mutex{}},
 		jobs:          map[string]*job{},
 		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
 		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
@@ -192,8 +188,6 @@ func TestManagerStartStop(t *testing.T) {
 	jobstoreMock := store_mocks.NewMockJobStore(ctrl)
 
 	m := &manager{
-		syncDone:      false,
-		syncDoneCond:  &sync.Cond{L: &sync.Mutex{}},
 		jobs:          map[string]*job{},
 		jobStore:      jobstoreMock,
 		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),

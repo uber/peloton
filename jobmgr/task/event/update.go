@@ -408,11 +408,6 @@ func (p *statusUpdate) OnEvents(events []*pb_eventstream.Event) {}
 
 // Start starts processing status update events
 func (p *statusUpdate) Start() {
-	// Wait for tracked manager to complete syncing from DB before
-	// starting to process any updates
-	log.Info("Task status updater waiting for sync from DB to be complete")
-	p.trackedManager.WaitForSyncFromDB()
-
 	for _, client := range p.eventClients {
 		client.Start()
 	}

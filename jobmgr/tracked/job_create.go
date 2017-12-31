@@ -369,7 +369,7 @@ func (j *job) recoverJobWithSLA() {
 	currentScheduledTasks := uint32(0)
 	for _, t := range j.tasks {
 		runtime := t.GetRunTime()
-		if runtime.GetState() != pb_task.TaskState_INITIALIZED {
+		if runtime.GetState() != pb_task.TaskState_INITIALIZED || runtime.GetGoalState() == pb_task.TaskState_KILLED {
 			// Re-evaluate all tasks, and increment currentScheduledTasks even for terminated tasks.
 			// When these tasks are removed from tracker, it will cause other tasks to be rescheduled.
 			j.m.taskScheduler.schedule(t, time.Now())
