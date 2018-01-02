@@ -71,3 +71,5 @@ import:
   version: ^v1.0.0
   subpackages:
     - mockgen
+- package: github.com/uber-go/automaxprocs
+  version: ^v1.1.0

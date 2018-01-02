@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"runtime"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
@@ -10,7 +9,6 @@ import (
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/common/rpc"
-
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
@@ -21,6 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/peer"
 
 	log "github.com/sirupsen/logrus"
+	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -112,10 +111,6 @@ var (
 )
 
 func main() {
-	// After go 1.5 the GOMAXPROCS is default to # of CPUs
-	// As we need to do quite some DB writes, set the GOMAXPROCS to
-	// 2 * NumCPUs
-	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
 	app.Version(version)
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))

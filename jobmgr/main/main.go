@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"runtime"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
@@ -26,11 +25,12 @@ import (
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
+
+	log "github.com/sirupsen/logrus"
+	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
 	"gopkg.in/alecthomas/kingpin.v2"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -133,8 +133,6 @@ var (
 )
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
-
 	app.Version(version)
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))

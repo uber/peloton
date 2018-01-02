@@ -1,5 +1,5 @@
-hash: 59187bf5710ead4f2f409090748992f6e8a9ac63e6500ac384a149c95485652e
-updated: 2017-12-12T17:28:26.480038276-08:00
+hash: 52aac400f0aa4a8610e1b1378f21bb75003019447ebe6099cc022f91cc54a33f
+updated: 2018-01-04T14:06:48.847692185-08:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -107,7 +107,7 @@ imports:
   - ext
   - log
 - name: github.com/pborman/uuid
-  version: e533369306653d193b93dae055f6083cbf8ba54f
+  version: e790cca94e6cc75c7064b1332e63811d4aae1a53
 - name: github.com/pkg/errors
   version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
 - name: github.com/pmezard/go-difflib
@@ -152,6 +152,8 @@ imports:
   version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
 - name: github.com/uber-go/atomic
   version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
+- name: github.com/uber-go/automaxprocs
+  version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
 - name: github.com/uber-go/mapdecode
   version: 718b4994083e432669f44a00174c5f1bcdb1434d
   subpackages:
@@ -177,6 +179,12 @@ imports:
   - typed
 - name: go.uber.org/atomic
   version: 8474b86a5a6f79c443ce4b2992817ff32cf208b8
+- name: go.uber.org/automaxprocs
+  version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
+  subpackages:
+  - internal/cgroups
+  - internal/runtime
+  - maxprocs
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/thriftrw
@@ -185,7 +193,7 @@ imports:
   - internal/semver
   - version
 - name: go.uber.org/yarpc
-  version: 636a5ca277a366ddcbcd29214d896dc0fc4f5171
+  version: 584eb8fc6268aaad27d58d5a651929d7e7bdedf6
   subpackages:
   - api/backoff
   - api/encoding
@@ -229,7 +237,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: d866cfc389cec985d6fda2859936a575a55a3ab6
+  version: f5079bd7f6f74e23c4d65efa0f4ce14cbd6a3c0f
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -262,10 +270,11 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: e687fa4e6424368ece6e4fe727cea2c806a0fcb4
+  version: f3955b8e9e244dd4dd4bc4f7b7a23a8445400a76
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer
+  - balancer/base
   - balancer/roundrobin
   - codes
   - connectivity
@@ -286,7 +295,7 @@ imports:
   - tap
   - transport
 - name: gopkg.in/alecthomas/kingpin.v2
-  version: 1087e65c9441605df944fb12c33f0fe7072d18ca
+  version: 947dcec5ba9c011838740e680966fd7087a71d0d
 - name: gopkg.in/inf.v0
   version: 3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4
 - name: gopkg.in/validator.v2

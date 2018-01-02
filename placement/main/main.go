@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+
 	"code.uber.internal/infra/peloton/common"
 	common_config "code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
@@ -14,9 +16,8 @@ import (
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-
 	log "github.com/sirupsen/logrus"
+	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
 	"gopkg.in/alecthomas/kingpin.v2"
