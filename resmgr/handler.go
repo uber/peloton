@@ -2,6 +2,7 @@ package resmgr
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"sync/atomic"
 	"time"
@@ -28,10 +29,11 @@ import (
 )
 
 var (
-	errFailingGangMemberTask = errors.New("task fail because other gang member failed")
-	errSameTaskPresent       = errors.New("same task present in tracker, Ignoring new task")
-	errGangNotEnqueued       = errors.New("Could not enqueue gang to ready after retry")
-	errEnqueuedAgain         = errors.New("enqueued again after retry")
+	errFailingGangMemberTask    = errors.New("task fail because other gang member failed")
+	errSameTaskPresent          = errors.New("same task present in tracker, Ignoring new task")
+	errGangNotEnqueued          = errors.New("Could not enqueue gang to ready after retry")
+	errEnqueuedAgain            = errors.New("enqueued again after retry")
+	errUnplacedTaskInWrongState = errors.New("unplaced task should be in state placing")
 )
 
 // ServiceHandler implements peloton.private.resmgr.ResourceManagerService
@@ -96,6 +98,39 @@ func (h *ServiceHandler) GetStreamHandler() *eventstream.Handler {
 	return h.eventStreamHandler
 }
 
+func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang) (
+	[]*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
+	allTasksExist := true
+	for _, task := range gang.GetTasks() {
+		task := h.rmTracker.GetTask(task.GetId())
+		if task == nil {
+			allTasksExist = false
+			break
+		}
+	}
+	if allTasksExist {
+		var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
+		for _, task := range gang.GetTasks() {
+			err := h.requeueUnplacedTask(task)
+			if err != nil {
+				failed = append(
+					failed,
+					&resmgrsvc.EnqueueGangsFailure_FailedTask{
+						Task:    task,
+						Message: err.Error(),
+					},
+				)
+			}
+		}
+		var err error
+		if len(failed) > 0 {
+			err = fmt.Errorf("some tasks failed to be re-enqueued")
+		}
+		return failed, err
+	}
+	return nil, fmt.Errorf("not all tasks for the gang exists in the resource manager")
+}
+
 // EnqueueGangs implements ResourceManagerService.EnqueueGangs
 func (h *ServiceHandler) EnqueueGangs(
 	ctx context.Context,
@@ -106,28 +141,36 @@ func (h *ServiceHandler) EnqueueGangs(
 	h.metrics.APIEnqueueGangs.Inc(1)
 
 	// Lookup respool from the resource pool tree
+	var err error
+	var resourcePool respool.ResPool
 	respoolID := req.GetResPool()
-	respool, err := respool.GetTree().Get(respoolID)
-	if err != nil {
-		h.metrics.EnqueueGangFail.Inc(1)
-		return &resmgrsvc.EnqueueGangsResponse{
-			Error: &resmgrsvc.EnqueueGangsResponse_Error{
-				NotFound: &resmgrsvc.ResourcePoolNotFound{
-					Id:      respoolID,
-					Message: err.Error(),
+	if respoolID != nil {
+		resourcePool, err = respool.GetTree().Get(respoolID)
+		if err != nil {
+			h.metrics.EnqueueGangFail.Inc(1)
+			return &resmgrsvc.EnqueueGangsResponse{
+				Error: &resmgrsvc.EnqueueGangsResponse_Error{
+					NotFound: &resmgrsvc.ResourcePoolNotFound{
+						Id:      respoolID,
+						Message: err.Error(),
+					},
 				},
-			},
-		}, nil
+			}, nil
+		}
+		// TODO: check if the user has permission to run tasks in the
+		// respool
 	}
-	// TODO: check if the user has permission to run tasks in the
-	// respool
 
 	// Enqueue the gangs sent in an API call to the pending queue of the respool.
 	// For each gang, add its tasks to the state machine, enqueue the gang, and
 	// return per-task success/failure.
 	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	for _, gang := range req.GetGangs() {
-		failed, err = h.enqueueGang(gang, respool)
+		if resourcePool == nil {
+			failed, err = h.returnExistingTasks(gang)
+		} else {
+			failed, err = h.enqueueGang(gang, resourcePool)
+		}
 		// Report per-task success/failure for all tasks in gang
 		for _, task := range gang.GetTasks() {
 			if err != nil {
@@ -236,6 +279,33 @@ func (h *ServiceHandler) removeTasksFromTracker(gang *resmgrsvc.Gang) {
 	for _, task := range gang.Tasks {
 		h.rmTracker.DeleteTask(task.Id)
 	}
+}
+
+func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task) error {
+	rmTask := h.rmTracker.GetTask(requeuedTask.Id)
+	if rmTask == nil {
+		return nil
+	}
+	currentTaskState := rmTask.GetCurrentState()
+	if currentTaskState == t.TaskState_READY {
+		return nil
+	}
+	if currentTaskState == t.TaskState_PLACING {
+		// Transitioning back to Ready State
+		rmTask.TransitTo(t.TaskState_READY.String())
+		// Adding to ready Queue
+		var tasks []*resmgr.Task
+		gang := &resmgrsvc.Gang{
+			Tasks: append(tasks, rmTask.Task()),
+		}
+		err := rmtask.GetScheduler().EnqueueGang(gang)
+		if err != nil {
+			log.WithField("gang", gang).Error(errGangNotEnqueued.Error())
+			return err
+		}
+		return nil
+	}
+	return errUnplacedTaskInWrongState
 }
 
 // requeueTask validates the enqueued task has the same mesos task id or not

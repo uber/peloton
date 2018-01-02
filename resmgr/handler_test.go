@@ -330,6 +330,60 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	log.Info("TestEnqueueDequeueGangsOneResPool returned")
 }
 
+func (suite *HandlerTestSuite) TestReenqueueGangNonExistingGangFails() {
+	log.Info("TestReenqueueGangNonExistingGangFails called")
+
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
+		Gangs: suite.pendingGangs(),
+	}
+	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
+	suite.NoError(err)
+	suite.NotNil(enqResp.GetError())
+	suite.NotNil(enqResp.GetError().GetFailure().GetFailed())
+
+	log.Info("TestReenqueueGangNonExistingGangFails returned")
+}
+
+func (suite *HandlerTestSuite) TestReenqueueGangThatFailedPlacement() {
+	log.Info("TestReenqueueGangThatFailedPlacement called")
+
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
+		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
+		Gangs:   suite.pendingGangs(),
+	}
+	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	suite.NoError(err)
+	node.SetEntitlement(suite.getEntitlement())
+	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
+	suite.NoError(err)
+	suite.Nil(enqResp.GetError())
+
+	// There is a race condition in the test due to the Scheduler.scheduleTasks
+	// method is run asynchronously.
+	time.Sleep(2 * time.Second)
+
+	// Re-enqueue the gangs without a resource pool
+	enqReq.ResPool = nil
+	enqResp, err = suite.handler.EnqueueGangs(suite.context, enqReq)
+	suite.NoError(err)
+	suite.Nil(enqResp.GetError())
+
+	// Make sure we dequeue the gangs again for the next test to work
+	deqReq := &resmgrsvc.DequeueGangsRequest{
+		Limit:   10,
+		Timeout: 2 * 1000, // 2 sec
+	}
+	// Scheduler.scheduleTasks method is run asynchronously.
+	// We need to wait here
+	time.Sleep(timeout)
+	// Checking whether we get the task from ready queue
+	deqResp, err := suite.handler.DequeueGangs(suite.context, deqReq)
+	suite.NoError(err)
+	suite.Nil(deqResp.GetError())
+
+	log.Info("TestReenqueueGangThatFailedPlacement returned")
+}
+
 func (suite *HandlerTestSuite) TestRequeue() {
 	log.Info("TestRequeue called")
 	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
