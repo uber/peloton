@@ -53,12 +53,14 @@ func (st *statetimer) Stop() error {
 	defer st.Unlock()
 
 	if st.runningState == runningStateNotStarted {
-		log.Warn("State Recovery is already stopped, no action" +
-			" will be performed")
+		log.WithField("task_id", st.statemachine.name).
+			Warn("State Recovery is already stopped, " +
+				"no action will be performed")
 		return errors.New("State Timer is not running")
 	}
 
-	log.Debug("Stopping State Recovery")
+	log.WithField("task_id", st.statemachine.name).
+		Debug("Stopping State Recovery")
 	st.stopChan <- struct{}{}
 
 	// Wait for State recovery to be stopped
@@ -70,7 +72,8 @@ func (st *statetimer) Stop() error {
 			break
 		}
 	}
-	log.Debug("State Recovery Stopped")
+	log.WithField("task_id", st.statemachine.name).
+		Debug("State Recovery Stopped")
 	return nil
 }
 
@@ -81,29 +84,41 @@ func (st *statetimer) Start(timeout time.Duration) error {
 	defer st.Unlock()
 
 	if st.runningState == runningStateRunning {
-		log.Warn("State Recovery is already running, no action " +
-			"will be performed")
+		log.WithField("task_id", st.statemachine.name).
+			Warn("State Recovery is already running, no action will be performed")
 		return nil
 	}
 
 	started := make(chan int, 1)
-	go func() error {
+	go func() {
 		atomic.StoreInt32(&st.runningState, runningStateRunning)
 		defer atomic.StoreInt32(&st.runningState, runningStateNotStarted)
-		log.Debug("Starting State recovery")
+		log.WithField("task_id", st.statemachine.name).
+			Debug("Starting State recovery")
 		started <- 0
 
 		for {
 			timer := time.NewTimer(timeout)
 			select {
 			case <-st.stopChan:
-				log.Debug("Exiting State Recovery")
+				log.WithField("task_id", st.statemachine.name).
+					Debug("Exiting State Recovery")
 			case <-timer.C:
-				st.statemachine.rollbackState()
-				log.Info("Recovered state, stopping service")
+				err := st.statemachine.rollbackState()
+				if err != nil {
+					log.WithField("task_id", st.statemachine.name).
+						WithField("current_state", st.statemachine.current).
+						WithError(err).
+						Error("Error recovering state machine")
+					timer.Stop()
+					return
+				}
+				log.WithField("task_id", st.statemachine.name).
+					WithField("current_state", st.statemachine.current).
+					Info("Recovered state, stopping service")
 			}
 			timer.Stop()
-			return nil
+			return
 		}
 	}()
 	// Wait until go routine is started

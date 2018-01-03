@@ -486,7 +486,10 @@ func (suite *PreemptorTestSuite) createTasks(numTasks int,
 		t := suite.createTask(i, uint32(i))
 		tasks = append(tasks, t)
 		suite.tracker.AddTask(t, suite.eventStreamHandler, mockResPool,
-			&rm_task.Config{})
+			&rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+			})
 	}
 	return tasks
 }

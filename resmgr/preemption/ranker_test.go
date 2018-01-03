@@ -65,7 +65,10 @@ func (suite *RankerTestSuite) addTaskToTracker(task *resmgr.Task) {
 		Policy:    policy,
 	}
 	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1", nil, respoolConfig)
-	suite.tracker.AddTask(task, suite.eventStreamHandler, suite.respool, &rm_task.Config{})
+	suite.tracker.AddTask(task, suite.eventStreamHandler, suite.respool, &rm_task.Config{
+		LaunchingTimeout: 1 * time.Minute,
+		PlacingTimeout:   1 * time.Minute,
+	})
 }
 
 // Returns resource configs
