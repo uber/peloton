@@ -203,7 +203,7 @@ func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
 		Enqueue(
 			gomock.Any(),
 			gomock.Any(),
-		).
+		).MinTimes(1).
 		Return()
 
 	mockTaskService.EXPECT().

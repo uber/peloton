@@ -11,6 +11,7 @@ import (
 	resource_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"code.uber.internal/infra/peloton/placement/config"
 	"code.uber.internal/infra/peloton/placement/metrics"
+	"code.uber.internal/infra/peloton/placement/models"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
@@ -104,4 +105,38 @@ func TestTaskService_SetPlacements(t *testing.T) {
 	)
 
 	service.SetPlacements(ctx, placements)
+}
+
+func TestTaskService_Enqueue(t *testing.T) {
+	service, mockResourceManager, ctrl := setupService(t)
+	defer ctrl.Finish()
+
+	request := &resmgrsvc.EnqueueGangsRequest{
+		Gangs: []*resmgrsvc.Gang{
+			{
+				Tasks: []*resmgr.Task{
+					{
+						Name: "task",
+					},
+				},
+			},
+		},
+	}
+	rmTask := &resmgr.Task{
+		Name: "task",
+	}
+	gang := &resmgrsvc.Gang{
+		Tasks: []*resmgr.Task{rmTask},
+	}
+	task := models.NewTask(gang, rmTask, time.Now().Add(10*time.Second), 1)
+	assignments := []*models.Assignment{models.NewAssignment(task)}
+
+	gomock.InOrder(
+		mockResourceManager.EXPECT().EnqueueGangs(
+			gomock.Any(),
+			request,
+		),
+	)
+	ctx := context.Background()
+	service.Enqueue(ctx, assignments)
 }

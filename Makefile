@@ -74,7 +74,7 @@ install:
 		rm -rf vendor && glide install; \
 	fi
 	@if [ ! -d "env" ]; then \
-		pip install virtualenv ; \
+		which virtualenv || pip install virtualenv ; \
 		virtualenv env ; \
 		. env/bin/activate ; \
 		pip install --upgrade pip ; \

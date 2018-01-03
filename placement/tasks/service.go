@@ -3,8 +3,6 @@ package tasks
 import (
 	"context"
 	"errors"
-	"fmt"
-
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
@@ -144,6 +142,34 @@ func (s *service) Enqueue(ctx context.Context, assignments []*models.Assignment)
 	if len(assignments) == 0 {
 		return
 	}
-	// TODO(mu): send unplaced tasks back to correct state (READY) per T963947. ResPoolId is needed to do this!
-	log.WithField("type", fmt.Sprintf("%T", s)).Warn("Enqueue is not implemented in type yet")
+	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
+	defer cancelFunc()
+	gangs := make([]*resmgrsvc.Gang, 0, len(assignments))
+	for _, assignment := range assignments {
+		gangs = append(gangs, &resmgrsvc.Gang{
+			Tasks: []*resmgr.Task{assignment.Task().Task()},
+		})
+	}
+	var request = &resmgrsvc.EnqueueGangsRequest{
+		Gangs: gangs,
+	}
+	response, err := s.resourceManager.EnqueueGangs(ctx, request)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"gangs": len(gangs),
+			"error": err.Error(),
+		}).WithError(errors.New("failed to return tasks"))
+		return
+	}
+	log.WithFields(log.Fields{
+		"request":  request,
+		"response": response,
+	}).Warn("Enqueue gangs back to resmgr called")
+	if response.GetError() != nil {
+		log.WithFields(log.Fields{
+			"gangs": len(gangs),
+			"error": response.Error.String(),
+		}).Error("Failed to place tasks")
+		return
+	}
 }
