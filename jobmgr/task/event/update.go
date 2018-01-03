@@ -235,7 +235,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	runtime := taskInfo.GetRuntime()
 	dbTaskID := runtime.GetMesosTaskId().GetValue()
-	if isMesosStatus && dbTaskID != mesosTaskID {
+	if isMesosStatus && dbTaskID != mesosTaskID && state == pb_task.TaskState_RUNNING {
 		p.metrics.SkipOrphanTasksTotal.Inc(1)
 		log.WithFields(log.Fields{
 			"orphan_task_id":    mesosTaskID,
@@ -243,6 +243,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"db_task_info":      taskInfo,
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("received status update for orphan mesos task")
+
+		if taskInfo.GetConfig().GetVolume() != nil &&
+			len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
+			// Do not kill stateful orphan task.
+			return nil
+		}
 
 		err := jobmgr_task.KillTask(ctx, p.hostmgrClient, event.MesosTaskStatus.GetTaskId())
 		if err != nil {
@@ -304,12 +310,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			break
 		}
 
+		// TODO(mu): check for failing reason before rescheduling.
 		p.metrics.RetryFailedTasksTotal.Inc(1)
 		runtime.Message = "Rescheduled due to task failure status: " + runtime.Message
 		util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		runtime.FailureCount++
-
-		// TODO: check for failing reason before rescheduling.
 
 	case pb_task.TaskState_LOST:
 		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
@@ -332,18 +337,24 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			runtime.Message = "Stopped task LOST event: " + statusMsg
 			break
 		}
-		p.metrics.RetryLostTasksTotal.Inc(1)
+
+		if taskInfo.GetConfig().GetVolume() != nil &&
+			len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
+			// Do not reschedule stateful task. Storage layer will decide
+			// whether to start or replace this task.
+			runtime.State = pb_task.TaskState_LOST
+			break
+		}
+
 		log.WithFields(log.Fields{
 			"db_task_info":      taskInfo,
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("reschedule lost task")
+		p.metrics.RetryLostTasksTotal.Inc(1)
 		runtime.Message = "Rescheduled due to task LOST: " + statusMsg
 		util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 
 	default:
-		// TODO: figure out on what cases state updates should not be persisted
-		// TODO: depends on the state, may need to put the task back to
-		// the queue, or clear the pending task record from taskqueue
 		runtime.State = state
 	}
 

@@ -337,6 +337,37 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithoutRetry()
 	time.Sleep(_waitTime)
 }
 
+// Test processing task LOST status update w/o retry for stateful task.
+func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStatefulTask() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	taskInfo.GetConfig().Volume = &task.PersistentVolumeConfig{}
+	taskInfo.GetRuntime().VolumeID = &peloton.VolumeID{
+		Value: "testVolumeID",
+	}
+
+	suite.mockTaskStore.EXPECT().
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(taskInfo, nil)
+	suite.mockTrackedManager.EXPECT().
+		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any()).
+		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo) {
+			suite.Equal(
+				runtime.State,
+				task.TaskState_LOST,
+			)
+			suite.Equal(
+				runtime.Message,
+				_failureMsg,
+			)
+		}).
+		Return(nil)
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	time.Sleep(_waitTime)
+}
+
 // Test processing task LOST status update due to reconciliation w/o retry due to goal state being killed.
 func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 	defer suite.ctrl.Finish()
@@ -370,8 +401,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
 	defer suite.ctrl.Finish()
 
-	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
-	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
 	// generates new mesos task id that is different with the one in the
 	// task status update.
 	dbMesosTaskID := fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, uuid.NewUUID().String())

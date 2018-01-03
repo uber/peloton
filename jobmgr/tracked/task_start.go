@@ -46,19 +46,7 @@ func (t *task) start(ctx context.Context) error {
 			if m.taskLauncher == nil {
 				return fmt.Errorf("task launcher not available")
 			}
-			err = m.taskLauncher.LaunchTaskWithReservedResource(ctx, taskInfo)
-			if err != nil {
-				return err
-			}
-
-			// Update task state to PENDING
-			runtime := taskInfo.GetRuntime()
-			if runtime.GetState() != pb_task.TaskState_PENDING {
-				runtime.State = pb_task.TaskState_PENDING
-				runtime.Message = "Task sent for placement"
-				err = m.taskStore.UpdateTaskRuntime(ctx, t.job.ID(), t.ID(), runtime)
-			}
-			return err
+			return m.taskLauncher.LaunchTaskWithReservedResource(ctx, taskInfo)
 		}
 	}
 

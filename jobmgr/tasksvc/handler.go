@@ -312,18 +312,13 @@ func (m *serviceHandler) Start(
 	var failedInstanceIds []uint32
 	for instID, taskInfo := range taskInfos {
 		taskRuntime := taskInfo.GetRuntime()
-		// Skip start task if current state is not terminal state.
-		// TODO(mu): LAUNCHED state is exception here because task occasionally
-		// stuck at LAUNCHED state but we don't have good retry module yet.
-		if !util.IsPelotonStateTerminal(taskRuntime.GetState()) {
-			if taskRuntime.GetState() != task.TaskState_LAUNCHED {
-				continue
-			}
-			// for LAUNCHED state task, do not generate new mesos task
-			// id but only update runtime state.
+		taskState := taskRuntime.GetState()
+
+		if taskState == task.TaskState_INITIALIZED || taskState == task.TaskState_PENDING ||
+			(taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0) {
+			// Do not regenerate mesos task ID if task is known that not in mesos yet OR stateful task.
 			taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
 		} else {
-			// Only regenerate mesos task id for terminated task.
 			util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 		}
 
