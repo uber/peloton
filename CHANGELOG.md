@@ -3,6 +3,32 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.5
+------------------
+* 2018-01-03    Skip reschedule stateful task upon task lost event                                     mu@uber.com
+* 2018-01-03    Refactor and add tests to resource manager `respool` pkg                               avyas@uber.com
+* 2018-01-03    Implemented API to get Task Events                                                     adityacb@uber.com
+* 2018-01-02    Make kill job faster and fix regression in create job                                  apoorvaj@uber.com
+* 2018-01-02    Do not reschedule already scheduled INITIALIZED tasks                                  apoorvaj@uber.com
+* 2017-12-29    Virtual Mesos cluster setup through Peloton Client                                     chunyang.shen@uber.com
+* 2017-12-29    Add cli command to list and clean persistent volume                                    mu@uber.com
+* 2017-12-29    Update volume state to be DELETED in resource cleaner                                  mu@uber.com
+* 2017-12-29    Eable "shutdown executor" for hotmgr                                                   chunyang.shen@uber.com
+* 2017-12-28    Implement job stop using job goal state                                                apoorvaj@uber.com
+* 2017-12-28    Take lock before reading/writing to job struct                                         apoorvaj@uber.com
+* 2017-12-27    Acquire read lock before getting job in tracked manager                                apoorvaj@uber.com
+* 2017-12-27    Fix deployment script to ignore apps that doesn't exist                                mu@uber.com
+* 2017-12-26    Added mesos client for executor                                                        pourchet@uber.com
+* 2017-12-26    Add option to start stateful placement engine in deployment script                     mu@uber.com
+* 2017-12-22    Allow a job configuration without a default configuration.                             apoorvaj@uber.com
+* 2017-12-22    Add support for MaximumRunningInstances SLA configuration.                             apoorvaj@uber.com
+* 2017-12-21    Implement job recovery in goal state engine in job manager                             apoorvaj@uber.com
+* 2017-12-20    Move task state to PENDING after enqueuing it to resource manager.                     apoorvaj@uber.com
+* 2017-12-20    [hostmgr] Separate reporting between no offer and mismatch status.                     zhitao@uber.com
+* 2017-12-15    Move creation of tasks and recovery into job goal state                                apoorvaj@uber.com
+* 2017-12-15    Change scalar.Resources methods from pointer receiver to non-pointer.                  zhitao@uber.com
+
+
 0.6.4
 ------------------
 - 2017-12-14    Skip terminal jobs during job manager sync from DB                                     @apoorvaj
@@ -24,7 +50,7 @@
 0.6.2
 ------------------
 - 2017-12-12    Adding more logging to entitlelement calculator in resmgr                              @Mayank Bansal
-- 2017-12-12    Revert "Check in mocks"        							                                           @Antoine Pourchet
+- 2017-12-12    Revert "Check in mocks"        							                               @Antoine Pourchet
 - 2017-12-12    Adding deadline feature in Peloton                                                     @Mayank Bansal
 - 2017-12-08    Add changelog for changes between 0.5.0 and 0.6.0                                      @Anant Vyas
 
