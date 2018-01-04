@@ -23,6 +23,9 @@ var (
 		task.TaskState_RUNNING: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
 			task.TaskState_PENDING:     tracked.StartAction,
+			task.TaskState_LAUNCHED:    tracked.StartAction,
+			task.TaskState_SUCCEEDED:   tracked.StartAction,
+			task.TaskState_FAILED:      tracked.StartAction,
 		},
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: tracked.StartAction,

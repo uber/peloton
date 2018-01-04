@@ -25,6 +25,7 @@ var _offersFactor = map[resmgr.TaskType]float64{
 
 // New will create a new strategy using Mimir-lib to do the placement logic.
 func New(placer lib_mimir.Placer, config *config.PlacementConfig) plugins.Strategy {
+	log.Info("Using mimir placement strategy.")
 	return &mimir{
 		placer: placer,
 		config: config,

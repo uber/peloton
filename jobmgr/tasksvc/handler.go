@@ -22,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
+	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
@@ -323,11 +324,7 @@ func (m *serviceHandler) Start(
 		}
 
 		// Change the goalstate.
-		if jobConfig.GetType() == pb_job.JobType_SERVICE {
-			taskInfo.GetRuntime().GoalState = task.TaskState_RUNNING
-		} else {
-			taskInfo.GetRuntime().GoalState = task.TaskState_SUCCEEDED
-		}
+		taskInfo.GetRuntime().GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
 		taskInfo.GetRuntime().Message = "Task start API request"
 		taskInfo.GetRuntime().Reason = ""
 

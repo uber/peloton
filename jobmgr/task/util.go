@@ -19,15 +19,15 @@ func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *
 	runtime := &task.RuntimeInfo{
 		ConfigVersion:        jobConfig.GetChangeLog().GetVersion(),
 		DesiredConfigVersion: jobConfig.GetChangeLog().GetVersion(),
-		GoalState:            GetDefaultGoalState(jobConfig.GetType()),
+		GoalState:            GetDefaultTaskGoalState(jobConfig.GetType()),
 	}
 
 	util.RegenerateMesosTaskID(jobID, instanceID, runtime)
 	return runtime
 }
 
-// GetDefaultGoalState from the job type.
-func GetDefaultGoalState(jobType job.JobType) task.TaskState {
+// GetDefaultTaskGoalState from the job type.
+func GetDefaultTaskGoalState(jobType job.JobType) task.TaskState {
 	switch jobType {
 	case job.JobType_SERVICE:
 		return task.TaskState_RUNNING

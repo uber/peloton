@@ -36,7 +36,7 @@ func (t *task) initialize(ctx context.Context) error {
 	util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
 
 	// update task runtime
-	taskInfo.Runtime.GoalState = jobmgr_task.GetDefaultGoalState(jobConfig.GetType())
+	taskInfo.Runtime.GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
 	taskInfo.Runtime.StartTime = ""
 	taskInfo.Runtime.CompletionTime = ""
 	taskInfo.Runtime.Message = "Initialize task"

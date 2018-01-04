@@ -12,6 +12,7 @@ import (
 
 // New creates a new batch placement strategy.
 func New() plugins.Strategy {
+	log.Info("Using batch placement strategy.")
 	return &batch{}
 }
 
