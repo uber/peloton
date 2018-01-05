@@ -10,8 +10,12 @@ import sys
 # peloton_proto = './vendor/code.uber.internal/infra/peloton/protobuf/'
 peloton_proto = './protobuf/'
 protoc_cmd = (
-    'protoc --proto_path={proto_path} --{generator}_out={mflag}:{gen_dir}'
+    'protoc  --proto_path={proto_path} --{generator}_out={mflag}:{gen_dir}'
     ' {file}'
+)
+doc_cmd = (
+    'protoc  --doc_out={output} --doc_opt={format} '
+    '--proto_path={proto_path} {file}'
 )
 
 
@@ -43,13 +47,31 @@ def generate(generator, f, m, gen_dir):
         sys.exit(retval)
 
 
+def generatedoc(f, output, format):
+    print doc_cmd.format(proto_path=peloton_proto,
+                         file=f, output=output, format=format)
+    cmd = doc_cmd.format(proto_path=peloton_proto,
+                         file=f, output=output, format=format)
+    retval = subprocess.call(cmd, shell=True)
+
+    if retval != 0:
+        sys.exit(retval)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Generate types and yarpc stubs from protobuf files')
+        description='Generate types, yarpc stubs and doc from protobuf files')
     parser.add_argument('-l', '--go-loc', help='go location of generated code',
                         default='code.uber.internal/infra/peloton/.gen/')
     parser.add_argument('-o', '--out', help='output dir of generated code',
                         default='.gen')
+    parser.add_argument('-d', '--doc',
+                        help='output dir of api documentation',
+                        default='./apidoc')
+    parser.add_argument('-f', '--format',
+                        help='format for the api documentation',
+                        default='markdown,docs.md')
+
     args = parser.parse_args()
     return args
 
@@ -60,7 +82,9 @@ def main():
     m = mflags(files, args.go_loc)
 
     # For every .proto file in peloton generate us a golang file
+    allfiles = ""
     for f in files:
+        allfiles = allfiles + " " + f
         generate("go", f, m, args.out)
 
         # Generate yarpc-go files for all files with a service. The yarpc
@@ -72,6 +96,8 @@ def main():
                 if l.startswith('service '):
                     generate("yarpc-go", f, m, args.out)
                     break
+
+    generatedoc(allfiles, args.doc, args.format)
 
 
 if __name__ == '__main__':

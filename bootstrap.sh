@@ -2,7 +2,7 @@
 
 set -euxo pipefail
 
-PROTOC_VERSION=3.0.2
+PROTOC_VERSION=3.5.1
 
 function install_protoc_dev_server {
     wget https://github.com/google/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-x86_64.zip

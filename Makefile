@@ -93,6 +93,7 @@ cover:
 
 pbgens: $(VENDOR)
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
+	go get -u github.com/pseudomuto/protoc-gen-doc/cmd/...
 	@mkdir -p $(PBGEN_DIR)
 	./scripts/generate-protobuf.py
 

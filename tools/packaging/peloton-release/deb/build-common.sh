@@ -2,7 +2,7 @@ PREFIX=/
 INSTALL_DIR="$(mktemp -d)"
 OUTPUT_DIR=/output
 SRC_DIR="${SRC_DIR:-/peloton}"
-PROTOC_VERSION="3.0.2"
+PROTOC_VERSION="3.5.1"
 GO_VERSION="1.8"
 
 install_golang() {

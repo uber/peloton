@@ -2,7 +2,7 @@ FROM golang:1.8
 
 ENV CONFIG_DIR /etc/peloton
 ENV ENVIRONMENT development
-ENV PROTOC_VERSION 3.0.2
+ENV PROTOC_VERSION 3.5.1
 ENV BUILD_DIR /go/src/code.uber.internal/infra/peloton
 ENV PATH $BUILD_DIR/bin:$PATH
 
