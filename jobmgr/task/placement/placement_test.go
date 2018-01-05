@@ -1,6 +1,7 @@
 package placement
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -18,7 +19,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	launcher_mocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -69,6 +72,8 @@ func createTestTask(instanceID int) *task.TaskInfo {
 			MesosTaskId: &mesos.TaskID{
 				Value: &tid,
 			},
+			State:     task.TaskState_PENDING,
+			GoalState: task.TaskState_SUCCEEDED,
 		},
 	}
 }
@@ -100,7 +105,6 @@ func TestMultipleTasksPlacements(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	pp := processor{
@@ -108,7 +112,6 @@ func TestMultipleTasksPlacements(t *testing.T) {
 			PlacementDequeueLimit: 100,
 		},
 		resMgrClient: mockRes,
-		taskStore:    mockTaskStore,
 		metrics:      metrics,
 	}
 
@@ -141,11 +144,6 @@ func TestMultipleTasksPlacements(t *testing.T) {
 				gomock.Any(),
 				gomock.Any()).
 			Return(&resmgrsvc.GetPlacementsResponse{Placements: placements}, nil),
-
-		mockTaskStore.EXPECT().
-			GetTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(testTasks[0].Runtime, nil).
-			AnyTimes(),
 	)
 
 	gPlacements, err := pp.getPlacements()
@@ -154,6 +152,302 @@ func TestMultipleTasksPlacements(t *testing.T) {
 		assert.Error(t, err)
 	}
 	assert.Equal(t, placements, gPlacements)
+}
+
+// This test ensures placement engine, one start can dequeue placements, and
+// then call launcher to launch the placements.
+func TestTaskPlacementNoError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	pp := processor{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:   mockRes,
+		metrics:        metrics,
+		taskLauncher:   mockTaskLauncher,
+		trackedManager: mockTrackedManager,
+	}
+
+	testTask := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+	taskInfo := make(map[string]*task.TaskInfo)
+	taskInfo[taskID.Value] = testTask
+
+	gomock.InOrder(
+		mockTaskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+		mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(nil),
+		mockTaskLauncher.EXPECT().
+			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+	)
+
+	pp.ProcessPlacement(context.Background(), p)
+}
+
+func TestTaskPlacementGetTaskError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	pp := processor{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:   mockRes,
+		metrics:        metrics,
+		taskLauncher:   mockTaskLauncher,
+		trackedManager: mockTrackedManager,
+	}
+
+	testTask := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+	taskInfo := make(map[string]*task.TaskInfo)
+	taskInfo[taskID.Value] = testTask
+
+	gomock.InOrder(
+		mockTaskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, fmt.Errorf("fake launch error")),
+		mockTaskLauncher.EXPECT().
+			TryReturnOffers(gomock.Any(), gomock.Any(), p).Return(nil),
+	)
+
+	pp.ProcessPlacement(context.Background(), p)
+}
+
+func TestTaskPlacementKilledTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	pp := processor{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:   mockRes,
+		metrics:        metrics,
+		taskLauncher:   mockTaskLauncher,
+		trackedManager: mockTrackedManager,
+	}
+
+	testTask := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+	testTask.Runtime.GoalState = task.TaskState_KILLED
+	testTask.Runtime.State = task.TaskState_KILLED
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+	taskInfo := make(map[string]*task.TaskInfo)
+	taskInfo[taskID.Value] = testTask
+
+	gomock.InOrder(
+		mockTaskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+	)
+
+	pp.ProcessPlacement(context.Background(), p)
+}
+
+func TestTaskPlacementKilledRunningTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	pp := processor{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:   mockRes,
+		metrics:        metrics,
+		taskLauncher:   mockTaskLauncher,
+		trackedManager: mockTrackedManager,
+	}
+
+	testTask := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+	testTask.Runtime.GoalState = task.TaskState_KILLED
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+	taskInfo := make(map[string]*task.TaskInfo)
+	taskInfo[taskID.Value] = testTask
+
+	expectedRuntime := make(map[uint32]*task.RuntimeInfo)
+	expectedRuntime[testTask.InstanceId] = testTask.Runtime
+
+	gomock.InOrder(
+		mockTaskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+		mockTrackedManager.EXPECT().
+			SetTasks(testTask.JobId, expectedRuntime, tracked.UpdateAndSchedule).Return(),
+	)
+
+	pp.ProcessPlacement(context.Background(), p)
+}
+
+func TestTaskPlacementDBError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	pp := processor{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:   mockRes,
+		metrics:        metrics,
+		taskLauncher:   mockTaskLauncher,
+		trackedManager: mockTrackedManager,
+	}
+
+	testTask := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+	taskInfo := make(map[string]*task.TaskInfo)
+	taskInfo[taskID.Value] = testTask
+
+	gomock.InOrder(
+		mockTaskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+		mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(fmt.Errorf("fake db error")),
+	)
+
+	pp.ProcessPlacement(context.Background(), p)
+}
+
+func TestTaskPlacementError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	pp := processor{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:   mockRes,
+		metrics:        metrics,
+		taskLauncher:   mockTaskLauncher,
+		trackedManager: mockTrackedManager,
+	}
+
+	testTask := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+	taskInfo := make(map[string]*task.TaskInfo)
+	taskInfo[taskID.Value] = testTask
+
+	gomock.InOrder(
+		mockTaskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+		mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(nil),
+		mockTaskLauncher.EXPECT().
+			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
+		mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateAndSchedule).Return(nil),
+	)
+
+	pp.ProcessPlacement(context.Background(), p)
+}
+
+func TestTaskPlacementPlacementResMgrError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	pp := processor{
+		config: &Config{
+			PlacementDequeueLimit: 100,
+		},
+		resMgrClient:   mockRes,
+		metrics:        metrics,
+		taskLauncher:   mockTaskLauncher,
+		trackedManager: mockTrackedManager,
+	}
+
+	testTask := createTestTask(0) // taskinfo
+	rs := createResources(float64(1))
+	hostOffer := createHostOffer(0, rs)
+	p := createPlacements(testTask, hostOffer)
+
+	taskID := &peloton.TaskID{
+		Value: testTask.JobId.Value + "-" + fmt.Sprint(testTask.InstanceId),
+	}
+	taskInfo := make(map[string]*task.TaskInfo)
+	taskInfo[taskID.Value] = testTask
+
+	gomock.InOrder(
+		mockTaskLauncher.EXPECT().
+			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+		mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(nil),
+		mockTaskLauncher.EXPECT().
+			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
+		mockTrackedManager.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateAndSchedule).Return(fmt.Errorf("fake db error")),
+	)
+
+	pp.ProcessPlacement(context.Background(), p)
 }
 
 // createPlacements creates the placement

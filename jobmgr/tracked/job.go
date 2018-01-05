@@ -257,7 +257,7 @@ func (j *job) killJob(ctx context.Context) (bool, error) {
 		updatedRuntimes[instanceID] = runtime
 	}
 
-	err = j.m.taskStore.UpdateTaskRuntimes(ctx, j.id, updatedRuntimes)
+	err = j.m.UpdateTaskRuntimes(ctx, j.id, updatedRuntimes, UpdateAndSchedule)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", j.id.GetValue()).
@@ -265,8 +265,6 @@ func (j *job) killJob(ctx context.Context) (bool, error) {
 		return true, err
 	}
 
-	// Schedule the tasks in tracked manager now
-	j.m.SetTasks(j.id, updatedRuntimes)
 	log.WithField("job_id", j.id.GetValue()).
 		Info("initiated kill of all tasks in the job")
 	return false, nil

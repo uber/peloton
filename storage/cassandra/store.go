@@ -1537,61 +1537,6 @@ func (s *Store) GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instan
 	return runtime, err
 }
 
-// UpdateTaskRuntime updates a task for a peloton job
-func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
-	// Bump version of task.
-	if runtime.Revision == nil {
-		runtime.Revision = &peloton.ChangeLog{}
-	}
-	currentVersion := runtime.Revision.Version
-
-	runtime.Revision.Version++
-	runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
-
-	runtimeBuffer, err := proto.Marshal(runtime)
-	if err != nil {
-		log.WithField("job_id", jobID.GetValue()).
-			WithField("instance_id", instanceID).
-			WithError(err).
-			Error("Failed to update task runtime")
-		s.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
-		return err
-	}
-
-	vc := strconv.FormatUint(currentVersion, 10)
-	if currentVersion == 0 {
-		vc += ", null"
-	}
-	// Comment out the condition as we are seeing perf issue with CAS writes in C* in pit-prod01
-	// condition := "version IN (" + vc + ")"
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Update(taskRuntimeTable).
-		Set("version", runtime.Revision.Version).
-		Set("update_time", time.Now().UTC()).
-		Set("state", runtime.GetState().String()).
-		Set("runtime_info", runtimeBuffer).
-		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID}) //.
-		//IfOnly(condition)
-
-	if err := s.applyStatement(ctx, stmt, fmt.Sprintf(taskIDFmt, jobID.GetValue(), instanceID)); err != nil {
-		if yarpcerrors.IsAlreadyExists(err) {
-
-			log.WithField("job_id", jobID.GetValue()).
-				WithField("instance_id", instanceID).
-				WithField("version", runtime.Revision.Version).
-				WithField("state", runtime.GetState().String()).
-				WithField("goalstate", runtime.GetGoalState().String()).
-				Info("already exists error during update task run time")
-		}
-		s.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
-		return err
-	}
-	s.metrics.TaskMetrics.TaskUpdate.Inc(1)
-	s.logTaskStateChange(ctx, jobID, instanceID, runtime)
-	return nil
-}
-
 // UpdateTaskRuntimes updates task runtimes for the given task instance-ids
 func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo) error {
 	var instanceIDList []uint32

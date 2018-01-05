@@ -7,6 +7,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
+	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/updatesvc"
@@ -27,11 +28,12 @@ type Server struct {
 	getStatusUpdate   func() event.StatusUpdate
 	getStatusUpdateRM func() event.StatusUpdateRM
 
-	taskPreemptor   preemptor.Preemptor
-	goalstateEngine goalstate.Engine
-	trackedManager  tracked.Manager
-	deadlineTracker deadline.Tracker
-	updateManager   updatesvc.Manager
+	taskPreemptor      preemptor.Preemptor
+	goalstateEngine    goalstate.Engine
+	trackedManager     tracked.Manager
+	deadlineTracker    deadline.Tracker
+	updateManager      updatesvc.Manager
+	placementProcessor placement.Processor
 }
 
 // NewServer creates a job manager Server instance.
@@ -42,18 +44,20 @@ func NewServer(
 	taskPreemptor preemptor.Preemptor,
 	deadlineTracker deadline.Tracker,
 	updateManager updatesvc.Manager,
+	placementProcessor placement.Processor,
 ) *Server {
 
 	return &Server{
-		ID:                leader.NewID(httpPort, grpcPort),
-		role:              common.JobManagerRole,
-		getStatusUpdate:   event.GetStatusUpdater,
-		getStatusUpdateRM: event.GetStatusUpdaterRM,
-		taskPreemptor:     taskPreemptor,
-		goalstateEngine:   goalstateEngine,
-		trackedManager:    trackedManager,
-		deadlineTracker:   deadlineTracker,
-		updateManager:     updateManager,
+		ID:                 leader.NewID(httpPort, grpcPort),
+		role:               common.JobManagerRole,
+		getStatusUpdate:    event.GetStatusUpdater,
+		getStatusUpdateRM:  event.GetStatusUpdaterRM,
+		taskPreemptor:      taskPreemptor,
+		goalstateEngine:    goalstateEngine,
+		trackedManager:     trackedManager,
+		deadlineTracker:    deadlineTracker,
+		updateManager:      updateManager,
+		placementProcessor: placementProcessor,
 	}
 }
 
@@ -67,6 +71,7 @@ func (s *Server) GainedLeadershipCallback() error {
 	s.taskPreemptor.Start()
 	s.goalstateEngine.Start()
 	s.trackedManager.Start()
+	s.placementProcessor.Start()
 	s.deadlineTracker.Start()
 	s.updateManager.Start()
 	s.getStatusUpdate().Start()
@@ -82,6 +87,7 @@ func (s *Server) LostLeadershipCallback() error {
 
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
+	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
 	s.goalstateEngine.Stop()
 	s.trackedManager.Stop()
@@ -98,6 +104,7 @@ func (s *Server) ShutDownCallback() error {
 
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
+	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
 	s.goalstateEngine.Stop()
 	s.trackedManager.Stop()

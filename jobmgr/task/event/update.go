@@ -368,7 +368,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		runtime.CompletionTime = now().UTC().Format(time.RFC3339Nano)
 	}
 
-	err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), taskInfo.GetInstanceId(), runtime)
+	err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), taskInfo.GetInstanceId(), runtime, tracked.UpdateAndSchedule)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{

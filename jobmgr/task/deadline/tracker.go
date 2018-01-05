@@ -204,7 +204,7 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 	taskInfo.GetRuntime().Reason = "Deadline exceeded"
 
 	// update the task in the tracked manager
-	err = t.trackedManager.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
+	err = t.trackedManager.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime, tracked.UpdateAndSchedule)
 	if err != nil {
 		return err
 	}

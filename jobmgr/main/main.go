@@ -282,7 +282,6 @@ func main() {
 	launcher.InitTaskLauncher(
 		dispatcher,
 		common.PelotonHostManager,
-		jobStore,
 		taskStore,
 		volumeStore,
 		rootScope,
@@ -292,12 +291,11 @@ func main() {
 	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, rootScope)
 
 	// Init placement processor
-	placement.InitProcessor(
+	placementProcessor := placement.InitProcessor(
 		dispatcher,
 		common.PelotonResourceManager,
 		trackedManager,
 		launcher.GetLauncher(),
-		taskStore,
 		&cfg.JobManager.Placement,
 		rootScope,
 	)
@@ -399,6 +397,7 @@ func main() {
 		taskPreemptor,
 		deadlineTracker,
 		updateManager,
+		placementProcessor,
 	)
 
 	candidate, err := leader.NewCandidate(
@@ -415,9 +414,6 @@ func main() {
 		log.Fatalf("Unable to start leader candidate: %v", err)
 	}
 	defer candidate.Stop()
-
-	placement.GetProcessor().Start()
-	defer placement.GetProcessor().Stop()
 
 	log.WithFields(log.Fields{
 		"httpPort": cfg.JobManager.HTTPPort,

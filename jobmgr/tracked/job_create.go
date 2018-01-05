@@ -154,7 +154,9 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 					j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, i, taskInfos[i].GetRuntime())
 					j.Unlock()
 				} else {
-					j.m.SetTask(j.id, i, taskInfos[i].GetRuntime())
+					runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+					runtimes[i] = taskInfos[i].GetRuntime()
+					j.m.SetTasks(j.id, runtimes, UpdateAndSchedule)
 				}
 
 			}
@@ -182,7 +184,9 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 			j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, i, runtime)
 			j.Unlock()
 		} else {
-			j.m.SetTask(j.id, i, runtime)
+			runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+			runtimes[i] = runtime
+			j.m.SetTasks(j.id, runtimes, UpdateAndSchedule)
 		}
 	}
 
@@ -247,7 +251,7 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 			runtimes[i].State = pb_task.TaskState_PENDING
 			runtimes[i].Message = "Task sent for placement"
 		}
-		err = j.m.taskStore.UpdateTaskRuntimes(ctx, j.id, runtimes)
+		err = j.m.UpdateTaskRuntimes(ctx, j.id, runtimes, UpdateOnly)
 		if err != nil {
 			log.WithError(err).
 				WithField("job_id", j.id.GetValue()).

@@ -200,7 +200,9 @@ func updateTaskState(taskStore storage.TaskStore, jobIDVal string, instance uint
 	}
 	taskInfo[instance].GetRuntime().State = state
 	t = time.Now()
-	err = taskStore.UpdateTaskRuntime(context.Background(), &peloton.JobID{Value: jobIDVal}, instance, taskInfo[instance].Runtime)
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	runtimes[instance] = taskInfo[instance].Runtime
+	err = taskStore.UpdateTaskRuntimes(context.Background(), &peloton.JobID{Value: jobIDVal}, runtimes)
 	d = time.Since(t)
 	rootScope.Timer("UpdateTask").Record(d)
 	if err != nil {

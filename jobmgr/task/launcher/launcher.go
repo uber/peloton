@@ -2,7 +2,6 @@ package launcher
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -19,11 +18,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/common/backoff"
-	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -31,18 +27,20 @@ import (
 // Launcher defines the interface of task launcher which launches
 // tasks from the placed queues of resource pool
 type Launcher interface {
-	// ProcessPlacements launches tasks to hostmgr
-	ProcessPlacements(ctx context.Context, resMgrClient resmgrsvc.ResourceManagerServiceYARPCClient, placements []*resmgr.Placement) error
-	// LaunchTaskWithReservedResource launches task with reserved resource
-	// to hostmgr directly.
-	LaunchTaskWithReservedResource(ctx context.Context, taskInfo *task.TaskInfo) error
+	// ProcessPlacement launches tasks to hostmgr
+	ProcessPlacement(ctx context.Context, tasks []*hostsvc.LaunchableTask, placement *resmgr.Placement) error
+	// LaunchStatefulTasks launches stateful task with reserved resource to hostmgr directly.
+	LaunchStatefulTasks(ctx context.Context, selectedTasks []*hostsvc.LaunchableTask, hostname string, selectedPorts []uint32, checkVolume bool) error
+	// GetLaunchableTasks returns launchable tasks after updating their runtime state with the placement information
+	GetLaunchableTasks(ctx context.Context, tasks []*peloton.TaskID, hostname string, agentID *mesos.AgentID, selectedPorts []uint32) (map[string]*task.TaskInfo, error)
+	// TryReturnOffers returns the offers in the placement back to host manager
+	TryReturnOffers(ctx context.Context, err error, placement *resmgr.Placement) error
 }
 
 // launcher implements the Launcher interface
 type launcher struct {
 	sync.Mutex
 	hostMgrClient hostsvc.InternalHostServiceYARPCClient
-	jobStore      storage.JobStore
 	taskStore     storage.TaskStore
 	volumeStore   storage.PersistentVolumeStore
 	metrics       *Metrics
@@ -66,7 +64,6 @@ var onceInitTaskLauncher sync.Once
 func InitTaskLauncher(
 	d *yarpc.Dispatcher,
 	hostMgrClientName string,
-	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
 	parent tally.Scope,
@@ -79,7 +76,6 @@ func InitTaskLauncher(
 
 		taskLauncher = &launcher{
 			hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
-			jobStore:      jobStore,
 			taskStore:     taskStore,
 			volumeStore:   volumeStore,
 			metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
@@ -98,71 +94,17 @@ func GetLauncher() Launcher {
 }
 
 // ProcessPlacements launches tasks to host manager
-func (l *launcher) ProcessPlacements(ctx context.Context, resMgrClient resmgrsvc.ResourceManagerServiceYARPCClient, placements []*resmgr.Placement) error {
-	log.WithField("placements", placements).Debug("Start processing placements")
-	for _, placement := range placements {
-		go func(placement *resmgr.Placement) {
-			tasks, taskInfos, err := l.getLaunchableTasks(
-				ctx,
-				placement.GetTasks(),
-				placement.GetHostname(),
-				placement.GetAgentId(),
-				placement.GetPorts())
-			if err != nil {
-				err = l.tryReturnOffers(ctx, err, placement)
-				if err != nil {
-					log.WithError(err).WithFields(log.Fields{
-						"placement":   placement,
-						"tasks_total": len(tasks),
-					}).Error("Failed to get launchable tasks")
-				}
-				return
-			}
-			l.metrics.LauncherGoRoutines.Inc(1)
-			err = l.launchTasks(ctx, tasks, placement)
-			l.tryReturnOffers(ctx, err, placement)
-			if err != nil {
-				log.WithError(err).WithFields(log.Fields{
-					"placement":   placement,
-					"tasks_total": len(tasks),
-				}).Error("failed to launch tasks to hostmgr")
-
-				// On launch failure, re-enqueue the tasks to resource manager.
-				l.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(tasks)))
-				if err = l.enqueueTasks(ctx, resMgrClient, taskInfos); err != nil {
-					log.WithError(err).WithFields(log.Fields{
-						"task_infos":  taskInfos,
-						"tasks_total": len(taskInfos),
-					}).Error("failed to enqueue tasks back to resmgr")
-				}
-			}
-		}(placement)
-	}
-	return nil
-}
-
-// LaunchTaskWithReservedResource launch a task to hostmgr directly as the resource
-// is already reserved.
-func (l *launcher) LaunchTaskWithReservedResource(ctx context.Context, taskInfo *task.TaskInfo) error {
-	pelotonTaskID := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", taskInfo.GetJobId().GetValue(), taskInfo.GetInstanceId()),
-	}
-	taskRuntime := taskInfo.GetRuntime()
-	launchableTasks, _, err := l.getLaunchableTasks(
-		ctx, []*peloton.TaskID{pelotonTaskID},
-		taskRuntime.GetHost(),
-		taskRuntime.GetAgentID(),
-		nil)
+func (l *launcher) ProcessPlacement(ctx context.Context, tasks []*hostsvc.LaunchableTask, placement *resmgr.Placement) error {
+	l.metrics.LauncherGoRoutines.Inc(1)
+	err := l.launchTasks(ctx, tasks, placement)
+	l.TryReturnOffers(ctx, err, placement)
 	if err != nil {
-		return err
+		log.WithError(err).WithFields(log.Fields{
+			"placement":   placement,
+			"tasks_total": len(tasks),
+		}).Error("failed to launch tasks to hostmgr")
+		l.metrics.TaskRequeuedOnLaunchFail.Inc(int64(len(tasks)))
 	}
-	runtimePorts := taskInfo.GetRuntime().GetPorts()
-	var selectedPorts []uint32
-	for _, port := range runtimePorts {
-		selectedPorts = append(selectedPorts, port)
-	}
-	err = l.launchStatefulTasks(
-		ctx, launchableTasks, taskRuntime.GetHost(), selectedPorts, false /* checkVolume */)
 	return err
 }
 
@@ -178,61 +120,23 @@ func (l *launcher) isLauncherRetryableError(err error) bool {
 	return true
 }
 
-// enqueueTask enqueues given task to resmgr to launch again.
-func (l *launcher) enqueueTasks(ctx context.Context, resMgrClient resmgrsvc.ResourceManagerServiceYARPCClient, tasks []*task.TaskInfo) error {
-	if len(tasks) == 0 {
-		return nil
-	}
-
-	for _, t := range tasks {
-		t.Runtime.State = task.TaskState_INITIALIZED
-		t.Runtime.Message = "Regenerate placement"
-		t.Runtime.Reason = "REASON_HOST_REJECT_OFFER"
-		util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.Runtime)
-		for {
-			err := l.taskStore.UpdateTaskRuntime(ctx, t.JobId, t.InstanceId, t.Runtime)
-			if err == nil {
-				break
-			}
-			if common.IsTransientError(err) {
-				log.WithError(err).WithFields(log.Fields{
-					"job_id":      t.JobId,
-					"instance_id": t.InstanceId,
-				}).Warn("retrying update task runtime on transient error")
-			} else {
-				return err
-			}
-		}
-	}
-	jobConfig, err := l.jobStore.GetJobConfig(ctx, tasks[0].GetJobId())
-	if err == nil {
-		err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, resMgrClient)
-	}
-	return err
-}
-
-func (l *launcher) getLaunchableTasks(
+func (l *launcher) GetLaunchableTasks(
 	ctx context.Context,
 	tasks []*peloton.TaskID,
 	hostname string,
 	agentID *mesos.AgentID,
-	selectedPorts []uint32) ([]*hostsvc.LaunchableTask, []*task.TaskInfo, error) {
+	selectedPorts []uint32) (map[string]*task.TaskInfo, error) {
 	portsIndex := 0
 
-	var tasksInfo []*task.TaskInfo
+	tasksInfo := make(map[string]*task.TaskInfo)
 	getTaskInfoStart := time.Now()
 
 	for _, taskID := range tasks {
 		// TODO: We need to add batch api's for getting all tasks in one shot
 		taskInfo, err := l.taskStore.GetTaskByID(ctx, taskID.GetValue())
 		if err != nil {
-			log.WithError(err).WithField("Task Id", taskID.Value).
+			log.WithError(err).WithField("Task Id", taskID.GetValue()).
 				Error("Not able to get Task")
-			continue
-		}
-
-		if taskInfo.GetRuntime().GetGoalState() == task.TaskState_KILLED {
-			log.WithField("task_id", taskID.Value).Info("skipping launch of killed task")
 			continue
 		}
 
@@ -253,9 +157,12 @@ func (l *launcher) getLaunchableTasks(
 			}
 		}
 
-		taskInfo.GetRuntime().Host = hostname
-		taskInfo.GetRuntime().AgentID = agentID
-		taskInfo.GetRuntime().State = task.TaskState_LAUNCHED
+		if taskInfo.GetRuntime().GetGoalState() != task.TaskState_KILLED {
+			taskInfo.GetRuntime().Host = hostname
+			taskInfo.GetRuntime().AgentID = agentID
+			taskInfo.GetRuntime().State = task.TaskState_LAUNCHED
+		}
+
 		if selectedPorts != nil {
 			// Reset runtime ports to get new ports assignment if placement has ports.
 			taskInfo.GetRuntime().Ports = make(map[string]uint32)
@@ -271,28 +178,20 @@ func (l *launcher) getLaunchableTasks(
 						"selected_ports": selectedPorts,
 						"task_info":      taskInfo,
 					}).Error("placement contains less selected ports than required.")
-					return nil, nil, errors.New("invalid placement")
+					return nil, errors.New("invalid placement")
 				}
 				taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
 				portsIndex++
 			}
 		}
 
-		// Writes the hostname and ports information back to db.
 		taskInfo.GetRuntime().Message = "Add hostname and ports"
 		taskInfo.GetRuntime().Reason = "REASON_UPDATE_OFFER"
-		err = l.taskStore.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
-		if err != nil {
-			log.WithError(err).WithField("task_info", taskInfo).
-				Error("Not able to update Task")
-			continue
-		}
-
-		tasksInfo = append(tasksInfo, taskInfo)
+		tasksInfo[taskID.GetValue()] = taskInfo
 	}
 
 	if len(tasksInfo) == 0 {
-		return nil, nil, errEmptyTasks
+		return nil, errEmptyTasks
 	}
 
 	getTaskInfoDuration := time.Since(getTaskInfoStart)
@@ -304,12 +203,11 @@ func (l *launcher) getLaunchableTasks(
 
 	l.metrics.GetDBTaskInfo.Record(getTaskInfoDuration)
 
-	launchableTasks := createLaunchableTasks(tasksInfo)
-	return launchableTasks, tasksInfo, nil
+	return tasksInfo, nil
 }
 
-// createLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
-func createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.LaunchableTask {
+// CreateLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
+func CreateLaunchableTasks(tasks map[string]*task.TaskInfo) []*hostsvc.LaunchableTask {
 	var launchableTasks []*hostsvc.LaunchableTask
 	for _, task := range tasks {
 		var launchableTask hostsvc.LaunchableTask
@@ -341,7 +239,7 @@ func createLaunchableTasks(tasks []*task.TaskInfo) []*hostsvc.LaunchableTask {
 	return launchableTasks
 }
 
-func (l *launcher) launchStatefulTasks(
+func (l *launcher) LaunchStatefulTasks(
 	ctx context.Context,
 	selectedTasks []*hostsvc.LaunchableTask,
 	hostname string,
@@ -463,7 +361,7 @@ func (l *launcher) launchTasks(
 				return l.launchBatchTasks(ctx, selectedTasks, placement)
 			}, l.retryPolicy, l.isLauncherRetryableError)
 	} else {
-		err = l.launchStatefulTasks(
+		err = l.LaunchStatefulTasks(
 			ctx,
 			selectedTasks,
 			placement.GetHostname(),
@@ -490,7 +388,7 @@ func (l *launcher) launchTasks(
 	return nil
 }
 
-func (l *launcher) tryReturnOffers(ctx context.Context, err error, placement *resmgr.Placement) error {
+func (l *launcher) TryReturnOffers(ctx context.Context, err error, placement *resmgr.Placement) error {
 	if err != nil && err != errLaunchInvalidOffer {
 		request := &hostsvc.ReleaseHostOffersRequest{
 			HostOffers: []*hostsvc.HostOffer{{

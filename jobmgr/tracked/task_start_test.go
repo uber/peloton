@@ -72,7 +72,7 @@ func TestTaskStartStateless(t *testing.T) {
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
 
 	mockTaskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, gomock.Any()).Return(nil)
+		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
 	assert.True(t, reschedule)
@@ -96,6 +96,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 			},
 			m: &manager{
 				hostmgrClient: mockHost,
+				jobs:          map[string]*job{},
 				jobStore:      mockJobStore,
 				taskStore:     mockTaskStore,
 				volumeStore:   mockVolumeStore,
@@ -127,6 +128,10 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 		Runtime: tt.runtime,
 	}
 
+	taskID := fmt.Sprintf("%s-%d", tt.job.id.Value, tt.id)
+	taskInfos := make(map[string]*pb_task.TaskInfo)
+	taskInfos[taskID] = taskInfo
+
 	mockJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
 	mockTaskStore.EXPECT().
@@ -136,13 +141,96 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 		State: volume.VolumeState_CREATED,
 	}, nil)
 	mockTaskLauncher.EXPECT().
-		LaunchTaskWithReservedResource(gomock.Any(), taskInfo).Return(nil)
+		GetLaunchableTasks(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(taskInfos, nil)
 	mockTaskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, gomock.Any()).Return(nil)
-
+		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
+	mockTaskLauncher.EXPECT().
+		LaunchStatefulTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(nil)
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
 	assert.True(t, reschedule)
 	assert.NoError(t, err)
+}
+
+func TestTaskStartStatefullWithVolumeDBError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockHost := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockJobStore := storage_mocks.NewMockJobStore(ctrl)
+	mockTaskStore := storage_mocks.NewMockTaskStore(ctrl)
+	mockVolumeStore := storage_mocks.NewMockPersistentVolumeStore(ctrl)
+	mockResmgrClient := mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskLauncher := mocks2.NewMockLauncher(ctrl)
+
+	tt := &task{
+		id: 12345,
+		job: &job{
+			id: &peloton.JobID{
+				Value: "my-job-id",
+			},
+			m: &manager{
+				hostmgrClient: mockHost,
+				jobs:          map[string]*job{},
+				jobStore:      mockJobStore,
+				taskStore:     mockTaskStore,
+				volumeStore:   mockVolumeStore,
+				resmgrClient:  mockResmgrClient,
+				taskLauncher:  mockTaskLauncher,
+				mtx:           NewMetrics(tally.NoopScope),
+			},
+		},
+		runtime: &pb_task.RuntimeInfo{
+			MesosTaskId: &mesos_v1.TaskID{
+				Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
+			},
+			VolumeID: &peloton.VolumeID{
+				Value: "my-volume-id",
+			},
+		},
+	}
+
+	jobConfig := &job2.JobConfig{
+		RespoolID: &peloton.ResourcePoolID{
+			Value: "my-respool-id",
+		},
+	}
+	taskInfo := &pb_task.TaskInfo{
+		InstanceId: tt.id,
+		Config: &pb_task.TaskConfig{
+			Volume: &pb_task.PersistentVolumeConfig{},
+		},
+		Runtime: tt.runtime,
+	}
+
+	taskID := fmt.Sprintf("%s-%d", tt.job.id.Value, tt.id)
+	taskInfos := make(map[string]*pb_task.TaskInfo)
+	taskInfos[taskID] = taskInfo
+
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), tt.job.id).Return(jobConfig, nil)
+	mockTaskStore.EXPECT().
+		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", tt.job.id.Value, tt.id)).Return(taskInfo, nil)
+	mockVolumeStore.EXPECT().
+		GetPersistentVolume(gomock.Any(), tt.runtime.VolumeID).Return(&volume.PersistentVolumeInfo{
+		State: volume.VolumeState_CREATED,
+	}, nil)
+	mockTaskLauncher.EXPECT().
+		GetLaunchableTasks(
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+			gomock.Any(),
+		).Return(taskInfos, nil)
+	mockTaskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(fmt.Errorf("fake db write error"))
+	reschedule, err := tt.RunAction(context.Background(), StartAction)
+	assert.True(t, reschedule)
+	assert.Error(t, err)
 }
 
 func TestTaskStartStatefullWithoutVolume(t *testing.T) {
@@ -206,7 +294,7 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 	}
 	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
 	mockTaskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, gomock.Any()).Return(nil)
+		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
 	assert.True(t, reschedule)

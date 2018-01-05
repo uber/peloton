@@ -528,8 +528,8 @@ func (m *Store) GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instan
 	return nil, fmt.Errorf("unimplemented GetTaskRuntime")
 }
 
-// UpdateTaskRuntime updates a task for a peloton job
-func (m *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
+// updateTaskRuntime updates a task for a peloton job
+func (m *Store) updateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
 	rowKey := fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)
 	taskinfo := &task.TaskInfo{
 		InstanceId: instanceID,

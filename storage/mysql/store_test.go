@@ -139,7 +139,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 		suite.Equal(len(tasks), nTasks)
 		for _, task := range tasks {
 			task.Runtime.Host = fmt.Sprintf("compute-%d", i)
-			err := suite.store.UpdateTaskRuntime(context.Background(), task.JobId, task.InstanceId, task.Runtime)
+			err := suite.store.updateTaskRuntime(context.Background(), task.JobId, task.InstanceId, task.Runtime)
 			suite.NoError(err)
 		}
 	}

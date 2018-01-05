@@ -73,7 +73,9 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 
 	// If it had changed, update to current and abort.
 	if runtime.State != pb_task.TaskState_INITIALIZED {
-		t.job.m.SetTask(t.job.id, t.id, runtime)
+		runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+		runtimes[t.id] = runtime
+		t.job.m.SetTasks(t.job.id, runtimes, UpdateAndSchedule)
 		return nil
 	}
 
@@ -81,13 +83,12 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 	runtime.Message = "Non-running task killed"
 	runtime.Reason = ""
 
-	return t.job.m.UpdateTaskRuntime(ctx, t.job.id, t.id, runtime)
+	return t.job.m.UpdateTaskRuntime(ctx, t.job.id, t.id, runtime, UpdateAndSchedule)
 }
 
 func (t *task) stopMesosTask(ctx context.Context, runtime *pb_task.RuntimeInfo) error {
 	// Send kill signal to mesos, if the task has a mesos task ID associated
 	// to it.
-
 	return jobmgr_task.KillTask(ctx, t.job.m.hostmgrClient, runtime.GetMesosTaskId())
 }
 

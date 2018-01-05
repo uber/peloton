@@ -14,6 +14,7 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
@@ -100,12 +101,15 @@ func (suite *TaskUpdaterRMTestSuite) TestProcessStatusUpdate() {
 		},
 	}
 
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[uint32(instanceID)] = updateTaskInfo.Runtime
+
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
 			GetTaskByID(context.Background(), pelotonTaskID).
 			Return(taskInfo, nil),
 		suite.mockTaskStore.EXPECT().
-			UpdateTaskRuntime(context.Background(), pelotonJobID, uint32(instanceID), updateTaskInfo.Runtime).
+			UpdateTaskRuntimes(context.Background(), pelotonJobID, runtimes).
 			Return(nil),
 	)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))

@@ -20,6 +20,10 @@ var (
 	// goal-state -> current-state -> action.
 	// It assumes task's runtime and goal are at the same version
 	_isoVersionsTaskRules = map[task.TaskState]map[task.TaskState]tracked.TaskAction{
+		task.TaskState_UNKNOWN: {
+			// This reloads the task runtime from DB if the task runtime in cache is nil
+			task.TaskState_UNKNOWN: tracked.ReloadTaskRuntime,
+		},
 		task.TaskState_RUNNING: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
 			task.TaskState_PENDING:     tracked.StartAction,

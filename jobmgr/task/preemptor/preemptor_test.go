@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
@@ -67,7 +68,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		}, nil,
 	)
 	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskID.Value).Return(taskInfo, nil)
-	suite.mockTrackedManager.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), taskInfo.Runtime).Return(nil)
+	suite.mockTrackedManager.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), taskInfo.Runtime, tracked.UpdateAndSchedule).Return(nil)
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)

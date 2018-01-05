@@ -34,9 +34,11 @@ func TestTaskInitialize(t *testing.T) {
 	}
 	mockTaskStore := mocks.NewMockTaskStore(ctrl)
 	mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), gomock.Any()).Return(taskInfo, nil)
-	mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Do(
-		func(_ context.Context, jobID *peloton.JobID, instanceID uint32, updatedRuntimeInfo *peloton_task.RuntimeInfo) {
-			taskInfo.Runtime = updatedRuntimeInfo
+	mockTaskStore.EXPECT().UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).Do(
+		func(_ context.Context, jobID *peloton.JobID, runtimes map[uint32]*peloton_task.RuntimeInfo) {
+			for _, updatedRuntimeInfo := range runtimes {
+				taskInfo.Runtime = updatedRuntimeInfo
+			}
 		}).Return(nil)
 
 	jobConfig := &pb_job.JobConfig{

@@ -2,6 +2,7 @@ package tracked
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -42,8 +43,10 @@ func TestManagerClearTask(t *testing.T) {
 	}
 
 	j := m.addJob(jobID)
-	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
-	m.SetTask(jobID, 1, &pb_task.RuntimeInfo{})
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[0] = &pb_task.RuntimeInfo{}
+	runtimes[1] = &pb_task.RuntimeInfo{}
+	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
 	t0 := j.GetTask(0)
 	t1 := j.GetTask(1)
 	assert.Equal(t, 1, len(m.jobs))
@@ -89,7 +92,9 @@ func TestManagerSetAndClearJob(t *testing.T) {
 	assert.Equal(t, 1, len(m.jobs))
 	m.WaitForScheduledJob(nil)
 
-	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[0] = &pb_task.RuntimeInfo{}
+	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
 	m.WaitForScheduledTask(nil)
 	j0 := m.GetJob(jobID)
 	t0 := j0.GetTask(0)
@@ -163,9 +168,11 @@ func TestManagerStopClearsTasks(t *testing.T) {
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
-	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
-	m.SetTask(jobID, 1, &pb_task.RuntimeInfo{})
-	m.SetTask(jobID, 2, &pb_task.RuntimeInfo{})
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[0] = &pb_task.RuntimeInfo{}
+	runtimes[1] = &pb_task.RuntimeInfo{}
+	runtimes[2] = &pb_task.RuntimeInfo{}
+	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
 
 	assert.Len(t, m.addJob(jobID).tasks, 3)
 	assert.Len(t, *m.taskScheduler.queue.pq, 3)
@@ -174,7 +181,9 @@ func TestManagerStopClearsTasks(t *testing.T) {
 	assert.Nil(t, m.GetJob(jobID))
 	assert.Len(t, *m.taskScheduler.queue.pq, 0)
 
-	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+	runtimes = make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[0] = &pb_task.RuntimeInfo{}
+	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
 	assert.Nil(t, m.GetJob(jobID))
 	assert.Len(t, *m.taskScheduler.queue.pq, 0)
 }
@@ -220,7 +229,40 @@ func TestPublishMetrics(t *testing.T) {
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
-	m.SetTask(jobID, 0, &pb_task.RuntimeInfo{})
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[0] = &pb_task.RuntimeInfo{}
+	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
 
 	m.publishMetrics()
+}
+
+func TestManagerUpdateTaskRuntimeDBError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobstoreMock := store_mocks.NewMockJobStore(ctrl)
+	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
+
+	m := &manager{
+		jobs:          map[string]*job{},
+		mtx:           NewMetrics(tally.NoopScope),
+		jobStore:      jobstoreMock,
+		taskStore:     taskstoreMock,
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
+		running:       true,
+	}
+
+	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[0] = &pb_task.RuntimeInfo{
+		State: pb_task.TaskState_RUNNING,
+	}
+
+	taskstoreMock.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error"))
+
+	err := m.UpdateTaskRuntimes(context.Background(), jobID, runtimes, UpdateAndSchedule)
+	assert.Error(t, err)
+	assert.Nil(t, m.jobs[jobID.Value].tasks[0].runtime)
 }

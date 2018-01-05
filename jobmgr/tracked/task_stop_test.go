@@ -68,9 +68,11 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	}
 
 	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
-	m.SetTask(jobID, 7, &pb_task.RuntimeInfo{
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[7] = &pb_task.RuntimeInfo{
 		State: pb_task.TaskState_INITIALIZED,
-	})
+	}
+	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
 	tt := m.GetJob(jobID).GetTask(7).(*task)
 	taskID := &peloton.TaskID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-7"}
 	var killResponseErr []*resmgrsvc.KillTasksResponse_Error
@@ -98,7 +100,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	mockTaskStore.EXPECT().
 		GetTaskRuntime(gomock.Any(), tt.job.id, tt.id).Return(runtime, nil)
 	mockTaskStore.EXPECT().
-		UpdateTaskRuntime(gomock.Any(), tt.job.id, tt.id, runtime).Return(nil)
+		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StopAction)
 	assert.True(t, reschedule)

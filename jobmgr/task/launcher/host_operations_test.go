@@ -44,7 +44,11 @@ func (suite *HostOperationTestSuite) TestGetHostOperations() {
 		hostsvc.OfferOperation_LAUNCH,
 	}
 	testTask := createStatefulTask(0)
-	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
+
+	tasksInfo := make(map[string]*task.TaskInfo)
+	tasksInfo["0"] = testTask
+
+	launchableTasks := []*hostsvc.LaunchableTask{CreateLaunchableTasks(tasksInfo)[0]}
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
@@ -86,7 +90,9 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
 		hostsvc.OfferOperation_LAUNCH,
 	}
 	testTask := createStatefulTask(0)
-	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
+	tasksInfo := make(map[string]*task.TaskInfo)
+	tasksInfo["0"] = testTask
+	launchableTasks := []*hostsvc.LaunchableTask{CreateLaunchableTasks(tasksInfo)[0]}
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
@@ -120,7 +126,9 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
 		hostsvc.OfferOperation_LAUNCH,
 	}
 	testTask := createStatefulTask(0)
-	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
+	tasksInfo := make(map[string]*task.TaskInfo)
+	tasksInfo["0"] = testTask
+	launchableTasks := []*hostsvc.LaunchableTask{CreateLaunchableTasks(tasksInfo)[0]}
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
@@ -167,7 +175,9 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsIncorrectMesosTaskIDFo
 	}
 	testTask := createStatefulTask(0)
 	testTask.GetRuntime().GetMesosTaskId().Value = util.PtrPrintf("test-format")
-	launchableTasks := []*hostsvc.LaunchableTask{createLaunchableTasks([]*task.TaskInfo{testTask})[0]}
+	tasksInfo := make(map[string]*task.TaskInfo)
+	tasksInfo["0"] = testTask
+	launchableTasks := []*hostsvc.LaunchableTask{CreateLaunchableTasks(tasksInfo)[0]}
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{

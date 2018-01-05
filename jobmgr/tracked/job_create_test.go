@@ -295,19 +295,22 @@ func TestJobRecoverWithStore(t *testing.T) {
 		tasks: map[uint32]*task{},
 	}
 
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
 	for i := uint32(0); i < uint32(3); i++ {
 		runtime := jobmgr_task.CreateInitializingTask(jobID, i, &jobConfig)
 		err := csStore.CreateTaskRuntime(ctx, jobID, i, runtime, jobConfig.OwningTeam)
 		assert.NoError(t, err)
-		j.m.SetTask(j.id, i, runtime)
+		runtimes[i] = runtime
 	}
 
 	for i := uint32(7); i < uint32(9); i++ {
 		runtime := jobmgr_task.CreateInitializingTask(jobID, i, &jobConfig)
 		err := csStore.CreateTaskRuntime(ctx, jobID, i, runtime, jobConfig.OwningTeam)
 		assert.NoError(t, err)
-		j.m.SetTask(j.id, i, runtime)
+		runtimes[i] = runtime
 	}
+
+	j.m.SetTasks(j.id, runtimes, UpdateAndSchedule)
 
 	reschedule, err := j.RunAction(context.Background(), JobCreateTasks)
 	assert.False(t, reschedule)

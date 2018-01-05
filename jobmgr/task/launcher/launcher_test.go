@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
@@ -21,8 +20,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/common/backoff"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -101,12 +98,10 @@ func createHostOffer(hostID int, resources []*mesos.Resource) *hostsvc.HostOffer
 	}
 }
 
-// This test ensures that multiple placements returned from resmgr can be properly placed by hostmgr
-func TestMultipleTasksPlaced(t *testing.T) {
+func TestGetLaunchableTasks(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
@@ -119,57 +114,134 @@ func TestMultipleTasksPlaced(t *testing.T) {
 	}
 
 	// generate 25 test tasks
-	numTasks := 1
-	testTasks := make([]*task.TaskInfo, numTasks)
-	taskIDs := make([]*peloton.TaskID, numTasks)
-	placements := make([]*resmgr.Placement, numTasks)
-	taskConfigs := make(map[string]*task.TaskConfig)
-	taskIds := make(map[string]*peloton.TaskID)
+	numTasks := 25
+	var tasks []*peloton.TaskID
+	var selectedPorts []uint32
+	taskInfos := make(map[string]*task.TaskInfo)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		taskID := &peloton.TaskID{
 			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
 		}
-		taskIDs[i] = taskID
-		testTasks[i] = tmp
-		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
-		taskIds[taskID.Value] = taskID
+		tasks = append(tasks, taskID)
+		taskInfos[taskID.Value] = tmp
+		selectedPorts = append(selectedPorts, testPort+uint32(i))
 	}
-
-	// generate 1 host offer, each can hold 1 tasks.
-	numHostOffers := 1
 	rs := createResources(1)
-	var hostOffers []*hostsvc.HostOffer
-	for i := 0; i < numHostOffers; i++ {
-		hostOffers = append(hostOffers, createHostOffer(i, rs))
+	hostOffer := createHostOffer(0, rs)
+
+	for i := 0; i < numTasks; i++ {
+		mockTaskStore.EXPECT().
+			GetTaskByID(gomock.Any(), tasks[i].GetValue()).
+			Return(taskInfos[tasks[i].GetValue()], nil)
+
 	}
 
-	// Generate Placements per host offer
-	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
-		placements[i] = p
+	taskInfos, err := taskLauncher.GetLaunchableTasks(context.Background(), tasks, hostOffer.Hostname, hostOffer.AgentId, selectedPorts)
+	assert.NoError(t, err)
+	for _, taskInfo := range taskInfos {
+		assert.Equal(t, task.TaskState_LAUNCHED, taskInfo.GetRuntime().GetState())
+		assert.Equal(t, hostOffer.Hostname, taskInfo.GetRuntime().GetHost())
+		assert.Equal(t, hostOffer.AgentId, taskInfo.GetRuntime().GetAgentID())
 	}
+}
+
+func TestGetLaunchableTasksStateful(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	taskLauncher := launcher{
+		hostMgrClient: mockHostMgr,
+		taskStore:     mockTaskStore,
+		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
+	}
+
+	// generate 25 test tasks
+	numTasks := 25
+	var tasks []*peloton.TaskID
+	var selectedPorts []uint32
+	taskInfos := make(map[string]*task.TaskInfo)
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
+			ContainerPath: "testpath",
+			SizeMB:        10,
+		}
+		taskID := &peloton.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		}
+		tasks = append(tasks, taskID)
+		taskInfos[taskID.Value] = tmp
+		selectedPorts = append(selectedPorts, testPort+uint32(i))
+	}
+	rs := createResources(1)
+	hostOffer := createHostOffer(0, rs)
+
+	for i := 0; i < numTasks; i++ {
+		mockTaskStore.EXPECT().
+			GetTaskByID(gomock.Any(), tasks[i].GetValue()).
+			Return(taskInfos[tasks[i].GetValue()], nil)
+	}
+
+	taskInfos, err := taskLauncher.GetLaunchableTasks(context.Background(), tasks, hostOffer.Hostname, hostOffer.AgentId, selectedPorts)
+	assert.NoError(t, err)
+	for _, taskInfo := range taskInfos {
+		assert.Equal(t, task.TaskState_LAUNCHED, taskInfo.GetRuntime().GetState())
+		assert.Equal(t, hostOffer.Hostname, taskInfo.GetRuntime().GetHost())
+		assert.Equal(t, hostOffer.AgentId, taskInfo.GetRuntime().GetAgentID())
+		assert.NotNil(t, taskInfo.GetRuntime().GetVolumeID(), "Volume ID should not be null")
+	}
+}
+
+// This test ensures that multiple tasks can be launched in hostmgr
+func TestMultipleTasksLaunched(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	testScope := tally.NewTestScope("", map[string]string{})
+	metrics := NewMetrics(testScope)
+	taskLauncher := launcher{
+		hostMgrClient: mockHostMgr,
+		taskStore:     mockTaskStore,
+		metrics:       metrics,
+		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
+	}
+
+	// generate 25 test tasks
+	numTasks := 25
+	var launchableTasks []*hostsvc.LaunchableTask
+	taskInfos := make(map[string]*task.TaskInfo)
+	taskConfigs := make(map[string]*task.TaskConfig)
+	for i := 0; i < numTasks; i++ {
+		tmp := createTestTask(i)
+		launchableTask := hostsvc.LaunchableTask{
+			TaskId: tmp.GetRuntime().GetMesosTaskId(),
+			Config: tmp.GetConfig(),
+			Ports:  tmp.GetRuntime().GetPorts(),
+		}
+		launchableTasks = append(launchableTasks, &launchableTask)
+		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+		taskInfos[taskID] = tmp
+		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
+	}
+
+	// generate 1 host offer, each can hold many tasks
+	rs := createResources(1)
+	hostOffer := createHostOffer(0, rs)
+	placement := createPlacementMultipleTasks(taskInfos, hostOffer)
 
 	// Capture LaunchTasks calls
 	hostsLaunchedOn := make(map[string]bool)
 	launchedTasks := make(map[string]*task.TaskConfig)
 
-	updatedRuntime := proto.Clone(testTasks[0].Runtime).(*task.RuntimeInfo)
-	updatedRuntime.Host = hostOffers[0].Hostname
-	updatedRuntime.AgentID = hostOffers[0].GetAgentId()
-	updatedRuntime.Ports = make(map[string]uint32)
-	updatedRuntime.Ports["port"] = testPort
-	updatedRuntime.State = task.TaskState_LAUNCHED
-	updatedRuntime.Reason = "REASON_UPDATE_OFFER"
-	updatedRuntime.Message = "Add hostname and ports"
-
 	gomock.InOrder(
-		// Mock Task Store GetTaskByID
-		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
-
-		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), testTasks[0].JobId, testTasks[0].InstanceId, updatedRuntime).Return(nil),
-
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
 			LaunchTasks(
@@ -190,7 +262,7 @@ func TestMultipleTasksPlaced(t *testing.T) {
 			Times(1),
 	)
 
-	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
+	taskLauncher.ProcessPlacement(context.Background(), launchableTasks, placement)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -207,71 +279,45 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
 		hostMgrClient: mockHostMgr,
-		jobStore:      mockJobStore,
 		taskStore:     mockTaskStore,
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
+	// generate 1 test task
 	numTasks := 1
-	testTasks := make([]*task.TaskInfo, numTasks)
-	taskIDs := make([]*peloton.TaskID, numTasks)
-	placements := make([]*resmgr.Placement, numTasks)
+	var launchableTasks []*hostsvc.LaunchableTask
+	taskInfos := make(map[string]*task.TaskInfo)
 	taskConfigs := make(map[string]*task.TaskConfig)
-	taskIds := make(map[string]*peloton.TaskID)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
-		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		launchableTask := hostsvc.LaunchableTask{
+			TaskId: tmp.GetRuntime().GetMesosTaskId(),
+			Config: tmp.GetConfig(),
+			Ports:  tmp.GetRuntime().GetPorts(),
 		}
-		taskIDs[i] = taskID
-		testTasks[i] = tmp
+		launchableTasks = append(launchableTasks, &launchableTask)
+		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+		taskInfos[taskID] = tmp
 		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
-		taskIds[taskID.Value] = taskID
 	}
 
-	// generate 1 host offer, each can hold 1 tasks.
-	numHostOffers := 1
+	// generate 1 host offer, each can hold many tasks
 	rs := createResources(1)
-	var hostOffers []*hostsvc.HostOffer
-	for i := 0; i < numHostOffers; i++ {
-		hostOffers = append(hostOffers, createHostOffer(i, rs))
-	}
-
-	// Generate Placements per host offer
-	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
-		placements[i] = p
-	}
+	hostOffer := createHostOffer(0, rs)
+	placement := createPlacementMultipleTasks(taskInfos, hostOffer)
 
 	// Capture LaunchTasks calls
 	hostsLaunchedOn := make(map[string]bool)
 	launchedTasks := make(map[string]*task.TaskConfig)
 
-	updatedRuntime := proto.Clone(testTasks[0].Runtime).(*task.RuntimeInfo)
-	updatedRuntime.Host = hostOffers[0].Hostname
-	updatedRuntime.AgentID = hostOffers[0].GetAgentId()
-	updatedRuntime.Ports = make(map[string]uint32)
-	updatedRuntime.Ports["port"] = testPort
-	updatedRuntime.State = task.TaskState_LAUNCHED
-	updatedRuntime.Reason = "REASON_UPDATE_OFFER"
-	updatedRuntime.Message = "Add hostname and ports"
-
 	gomock.InOrder(
-		// Mock Task Store GetTaskByID
-		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
-
-		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), testTasks[0].JobId, testTasks[0].InstanceId, updatedRuntime).Return(nil),
-
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
 			LaunchTasks(
@@ -296,18 +342,10 @@ func TestLaunchTasksWithInvalidOfferResponse(t *testing.T) {
 				},
 			}, nil).
 			Times(1),
-
-		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-
-		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), testTasks[0].JobId).Return(_jobConfig, nil),
-
-		mockRes.EXPECT().EnqueueGangs(
-			gomock.Any(),
-			gomock.Any(),
-		).Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
+	err := taskLauncher.ProcessPlacement(context.Background(), launchableTasks, placement)
+	assert.Error(t, err)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -327,71 +365,45 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
 		hostMgrClient: mockHostMgr,
-		jobStore:      mockJobStore,
 		taskStore:     mockTaskStore,
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
+	// generate 1 test task
 	numTasks := 1
-	testTasks := make([]*task.TaskInfo, numTasks)
-	taskIDs := make([]*peloton.TaskID, numTasks)
-	placements := make([]*resmgr.Placement, numTasks)
+	var launchableTasks []*hostsvc.LaunchableTask
+	taskInfos := make(map[string]*task.TaskInfo)
 	taskConfigs := make(map[string]*task.TaskConfig)
-	taskIds := make(map[string]*peloton.TaskID)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
-		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		launchableTask := hostsvc.LaunchableTask{
+			TaskId: tmp.GetRuntime().GetMesosTaskId(),
+			Config: tmp.GetConfig(),
+			Ports:  tmp.GetRuntime().GetPorts(),
 		}
-		taskIDs[i] = taskID
-		testTasks[i] = tmp
+		launchableTasks = append(launchableTasks, &launchableTask)
+		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+		taskInfos[taskID] = tmp
 		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
-		taskIds[taskID.Value] = taskID
 	}
 
-	// generate 1 host offer, each can hold 1 tasks.
-	numHostOffers := 1
+	// generate 1 host offer, each can hold many tasks
 	rs := createResources(1)
-	var hostOffers []*hostsvc.HostOffer
-	for i := 0; i < numHostOffers; i++ {
-		hostOffers = append(hostOffers, createHostOffer(i, rs))
-	}
-
-	// Generate Placements per host offer
-	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
-		placements[i] = p
-	}
+	hostOffer := createHostOffer(0, rs)
+	placement := createPlacementMultipleTasks(taskInfos, hostOffer)
 
 	// Capture LaunchTasks calls
 	hostsLaunchedOn := make(map[string]bool)
 	launchedTasks := make(map[string]*task.TaskConfig)
 
-	updatedRuntime := proto.Clone(testTasks[0].Runtime).(*task.RuntimeInfo)
-	updatedRuntime.Host = hostOffers[0].Hostname
-	updatedRuntime.AgentID = hostOffers[0].GetAgentId()
-	updatedRuntime.Ports = make(map[string]uint32)
-	updatedRuntime.Ports["port"] = testPort
-	updatedRuntime.State = task.TaskState_LAUNCHED
-	updatedRuntime.Reason = "REASON_UPDATE_OFFER"
-	updatedRuntime.Message = "Add hostname and ports"
-
 	gomock.InOrder(
-		// Mock Task Store GetTaskByID
-		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
-
-		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), testTasks[0].JobId, testTasks[0].InstanceId, updatedRuntime).Return(nil),
-
 		// Mock LaunchTasks call.
 		mockHostMgr.EXPECT().
 			LaunchTasks(
@@ -420,19 +432,10 @@ func TestLaunchTasksRetryWithError(t *testing.T) {
 		// Mock ReleaseOffer call.
 		mockHostMgr.EXPECT().ReleaseHostOffers(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ReleaseHostOffersResponse{}, nil),
-
-		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-
-		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), testTasks[0].JobId).Return(_jobConfig, nil),
-
-		// Mock EnqueueGangs call.
-		mockRes.EXPECT().EnqueueGangs(
-			gomock.Any(),
-			gomock.Any(),
-		).Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
+	err := taskLauncher.ProcessPlacement(context.Background(), launchableTasks, placement)
+	assert.Error(t, err)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -452,7 +455,6 @@ func TestLaunchStatefulTask(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
@@ -467,53 +469,37 @@ func TestLaunchStatefulTask(t *testing.T) {
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
+	// generate 1 test task
 	numTasks := 1
-	testTasks := make([]*task.TaskInfo, numTasks)
-	taskIDs := make([]*peloton.TaskID, numTasks)
-	placements := make([]*resmgr.Placement, numTasks)
-	taskConfigs := make(map[string]*task.TaskConfig)
-	taskIds := make(map[string]*peloton.TaskID)
+	var launchableTasks []*hostsvc.LaunchableTask
+	taskInfos := make(map[string]*task.TaskInfo)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
 			ContainerPath: "testpath",
 			SizeMB:        10,
 		}
-		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		launchableTask := hostsvc.LaunchableTask{
+			TaskId: tmp.GetRuntime().GetMesosTaskId(),
+			Config: tmp.GetConfig(),
+			Ports:  tmp.GetRuntime().GetPorts(),
 		}
-		taskIDs[i] = taskID
-		testTasks[i] = tmp
-		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
-		taskIds[taskID.Value] = taskID
+		launchableTasks = append(launchableTasks, &launchableTask)
+		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+		taskInfos[taskID] = tmp
 	}
 
-	// generate 1 host offer, each can hold 1 tasks.
-	numHostOffers := 1
+	// generate 1 host offer, each can hold many tasks
 	rs := createResources(1)
-	var hostOffers []*hostsvc.HostOffer
-	for i := 0; i < numHostOffers; i++ {
-		hostOffers = append(hostOffers, createHostOffer(i, rs))
-	}
-
-	// Generate Placements per host offer
-	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
-		p.Type = resmgr.TaskType_STATEFUL
-		placements[i] = p
-	}
+	hostOffer := createHostOffer(0, rs)
+	placement := createPlacementMultipleTasks(taskInfos, hostOffer)
+	placement.Type = resmgr.TaskType_STATEFUL
 
 	// Capture OfferOperation calls
 	hostsLaunchedOn := make(map[string]bool)
 
 	volumeInfo := &volume.PersistentVolumeInfo{}
 	gomock.InOrder(
-		// Mock Task Store GetTaskByID
-		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
-
-		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-
 		mockVolumeStore.EXPECT().
 			GetPersistentVolume(gomock.Any(), gomock.Any()).
 			Return(volumeInfo, nil),
@@ -536,7 +522,7 @@ func TestLaunchStatefulTask(t *testing.T) {
 			Times(1),
 	)
 
-	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
+	taskLauncher.ProcessPlacement(context.Background(), launchableTasks, placement)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -547,11 +533,11 @@ func TestLaunchStatefulTask(t *testing.T) {
 	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
 }
 
+// TestLaunchStatefulTaskLaunchWithVolume will return persistent volume info to be non-null
 func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
@@ -566,41 +552,33 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
 	}
 
+	// generate 1 test task
 	numTasks := 1
-	testTasks := make([]*task.TaskInfo, numTasks)
-	taskIDs := make([]*peloton.TaskID, numTasks)
-	placements := make([]*resmgr.Placement, numTasks)
+	var launchableTasks []*hostsvc.LaunchableTask
+	taskInfos := make(map[string]*task.TaskInfo)
 	taskConfigs := make(map[string]*task.TaskConfig)
-	taskIds := make(map[string]*peloton.TaskID)
 	for i := 0; i < numTasks; i++ {
 		tmp := createTestTask(i)
 		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
 			ContainerPath: "testpath",
 			SizeMB:        10,
 		}
-		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		launchableTask := hostsvc.LaunchableTask{
+			TaskId: tmp.GetRuntime().GetMesosTaskId(),
+			Config: tmp.GetConfig(),
+			Ports:  tmp.GetRuntime().GetPorts(),
 		}
-		taskIDs[i] = taskID
-		testTasks[i] = tmp
+		launchableTasks = append(launchableTasks, &launchableTask)
+		taskID := tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId)
+		taskInfos[taskID] = tmp
 		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
-		taskIds[taskID.Value] = taskID
 	}
 
-	// generate 1 host offer, each can hold 1 tasks.
-	numHostOffers := 1
+	// generate 1 host offer, each can hold many tasks
 	rs := createResources(1)
-	var hostOffers []*hostsvc.HostOffer
-	for i := 0; i < numHostOffers; i++ {
-		hostOffers = append(hostOffers, createHostOffer(i, rs))
-	}
-
-	// Generate Placements per host offer
-	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
-		p.Type = resmgr.TaskType_STATEFUL
-		placements[i] = p
-	}
+	hostOffer := createHostOffer(0, rs)
+	placement := createPlacementMultipleTasks(taskInfos, hostOffer)
+	placement.Type = resmgr.TaskType_STATEFUL
 
 	// Capture OfferOperation calls
 	hostsLaunchedOn := make(map[string]bool)
@@ -609,12 +587,6 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 		State: volume.VolumeState_CREATED,
 	}
 	gomock.InOrder(
-		// Mock Task Store GetTaskByID
-		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
-
-		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-
 		mockVolumeStore.EXPECT().
 			GetPersistentVolume(gomock.Any(), gomock.Any()).
 			Return(volumeInfo, nil),
@@ -631,13 +603,14 @@ func TestLaunchStatefulTaskLaunchWithVolume(t *testing.T) {
 				defer lock.Unlock()
 				req := reqBody.(*hostsvc.OfferOperationsRequest)
 				hostsLaunchedOn[req.Hostname] = true
+				// Since volume info is already present, only 1 operation is requested.
 				assert.Equal(t, 1, len(req.Operations))
 			}).
 			Return(&hostsvc.OfferOperationsResponse{}, nil).
 			Times(1),
 	)
 
-	taskLauncher.ProcessPlacements(context.Background(), mockRes, placements)
+	taskLauncher.ProcessPlacement(context.Background(), launchableTasks, placement)
 
 	time.Sleep(1 * time.Second)
 	expectedLaunchedHosts := map[string]bool{
@@ -668,175 +641,28 @@ func TestProcessPlacementsWithNoTasksReleasesOffers(t *testing.T) {
 	}).
 		Return(&hostsvc.ReleaseHostOffersResponse{}, nil)
 
-	taskLauncher.ProcessPlacements(context.Background(), nil, []*resmgr.Placement{{
+	taskLauncher.ProcessPlacement(context.Background(), nil, &resmgr.Placement{
 		Hostname: "hostname-0",
 		AgentId:  &mesos.AgentID{},
-	}})
+	})
 
 	time.Sleep(1 * time.Second)
 }
 
-func TestLaunchStatefulTaskLaunchWithReservedResourceDirectly(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+// createPlacementMultipleTasks creates the placement with multiple tasks
+func createPlacementMultipleTasks(tasks map[string]*task.TaskInfo, hostOffer *hostsvc.HostOffer) *resmgr.Placement {
+	var TasksIds []*peloton.TaskID
 
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
-	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
-
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-	taskLauncher := launcher{
-		hostMgrClient: mockHostMgr,
-		taskStore:     mockTaskStore,
-		volumeStore:   mockVolumeStore,
-		metrics:       metrics,
-		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
+	for id := range tasks {
+		TasksIds = append(TasksIds, &peloton.TaskID{Value: id})
 	}
-
-	numTasks := 1
-	testTasks := make([]*task.TaskInfo, numTasks)
-	taskIDs := make([]*peloton.TaskID, numTasks)
-	placements := make([]*resmgr.Placement, numTasks)
-	taskConfigs := make(map[string]*task.TaskConfig)
-	taskIds := make(map[string]*peloton.TaskID)
-	var testTask *task.TaskInfo
-	for i := 0; i < numTasks; i++ {
-		tmp := createTestTask(i)
-		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
-			ContainerPath: "testpath",
-			SizeMB:        10,
-		}
-		tmp.GetRuntime().Host = "hostname-0"
-		testTask = tmp
-		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
-		}
-		taskIDs[i] = taskID
-		testTasks[i] = tmp
-		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
-		taskIds[taskID.Value] = taskID
+	placement := &resmgr.Placement{
+		AgentId:  hostOffer.AgentId,
+		Hostname: hostOffer.Hostname,
+		Tasks:    TasksIds,
+		Ports:    []uint32{testPort},
 	}
-
-	// generate 1 host offer, each can hold 1 tasks.
-	numHostOffers := 1
-	rs := createResources(1)
-	var hostOffers []*hostsvc.HostOffer
-	for i := 0; i < numHostOffers; i++ {
-		hostOffers = append(hostOffers, createHostOffer(i, rs))
-	}
-
-	// Generate Placements per host offer
-	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
-		p.Type = resmgr.TaskType_STATEFUL
-		placements[i] = p
-	}
-
-	// Capture OfferOperation calls
-	hostsLaunchedOn := make(map[string]bool)
-
-	gomock.InOrder(
-		// Mock Task Store GetTaskByID
-		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).Return(testTasks[0], nil),
-
-		// Mock Task Store UpdateTask
-		mockTaskStore.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-
-		// Mock OfferOperation call.
-		mockHostMgr.EXPECT().
-			OfferOperations(
-				gomock.Any(),
-				gomock.Any()).
-			Do(func(_ context.Context, reqBody interface{}) {
-				// No need to unmarksnal output: empty means success.
-				// Capture call since we don't know ordering of tasks.
-				lock.Lock()
-				defer lock.Unlock()
-				req := reqBody.(*hostsvc.OfferOperationsRequest)
-				hostsLaunchedOn[req.Hostname] = true
-				assert.Equal(t, 1, len(req.Operations))
-			}).
-			Return(&hostsvc.OfferOperationsResponse{}, nil).
-			Times(1),
-	)
-
-	err := taskLauncher.LaunchTaskWithReservedResource(context.Background(), testTask)
-
-	assert.NoError(t, err)
-	expectedLaunchedHosts := map[string]bool{
-		"hostname-0": true,
-	}
-	lock.Lock()
-	defer lock.Unlock()
-	assert.Equal(t, expectedLaunchedHosts, hostsLaunchedOn)
-}
-
-func TestLaunchStatefulTaskLaunchWithReservedResourceWithDBReadErr(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
-	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
-
-	testScope := tally.NewTestScope("", map[string]string{})
-	metrics := NewMetrics(testScope)
-	taskLauncher := launcher{
-		hostMgrClient: mockHostMgr,
-		taskStore:     mockTaskStore,
-		volumeStore:   mockVolumeStore,
-		metrics:       metrics,
-		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
-	}
-
-	numTasks := 1
-	testTasks := make([]*task.TaskInfo, numTasks)
-	taskIDs := make([]*peloton.TaskID, numTasks)
-	placements := make([]*resmgr.Placement, numTasks)
-	taskConfigs := make(map[string]*task.TaskConfig)
-	taskIds := make(map[string]*peloton.TaskID)
-	var testTask *task.TaskInfo
-	for i := 0; i < numTasks; i++ {
-		tmp := createTestTask(i)
-		tmp.GetConfig().Volume = &task.PersistentVolumeConfig{
-			ContainerPath: "testpath",
-			SizeMB:        10,
-		}
-		tmp.GetRuntime().Host = "hostname-0"
-		testTask = tmp
-		taskID := &peloton.TaskID{
-			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
-		}
-		taskIDs[i] = taskID
-		testTasks[i] = tmp
-		taskConfigs[tmp.GetRuntime().GetMesosTaskId().GetValue()] = tmp.Config
-		taskIds[taskID.Value] = taskID
-	}
-
-	// generate 1 host offer, each can hold 1 tasks.
-	numHostOffers := 1
-	rs := createResources(1)
-	var hostOffers []*hostsvc.HostOffer
-	for i := 0; i < numHostOffers; i++ {
-		hostOffers = append(hostOffers, createHostOffer(i, rs))
-	}
-
-	// Generate Placements per host offer
-	for i := 0; i < numHostOffers; i++ {
-		p := createPlacements(testTasks[i], hostOffers[i])
-		p.Type = resmgr.TaskType_STATEFUL
-		placements[i] = p
-	}
-
-	gomock.InOrder(
-		// Mock Task Store GetTaskByID
-		mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskIDs[0].Value).
-			Return(testTasks[0], fmt.Errorf("fake db read error")),
-	)
-
-	err := taskLauncher.LaunchTaskWithReservedResource(context.Background(), testTask)
-	assert.Equal(t, err, errEmptyTasks)
+	return placement
 }
 
 // createPlacements creates the placement

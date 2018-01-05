@@ -72,6 +72,7 @@ const (
 	PreemptAction        TaskAction = "preempt_action"
 	InitializeAction     TaskAction = "initialize_task"
 	UseGoalVersionAction TaskAction = "use_goal_state"
+	ReloadTaskRuntime    TaskAction = "reload_runtime"
 )
 
 func newTask(job *job, id uint32) *task {
@@ -180,6 +181,9 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) (bool, error) {
 	case InitializeAction:
 		err = t.initialize(ctx)
 
+	case ReloadTaskRuntime:
+		err = t.reloadRuntime(ctx)
+
 	case PreemptAction:
 		action, err := t.getPostPreemptAction(ctx)
 		if err != nil {
@@ -256,4 +260,19 @@ func (t *task) IsScheduled() bool {
 	defer t.RUnlock()
 
 	return t.isScheduled()
+}
+
+// reloadRuntime loads the task runtime from DB into cache
+func (t *task) reloadRuntime(ctx context.Context) error {
+	runtime, err := t.job.m.taskStore.GetTaskRuntime(ctx, t.job.ID(), t.ID())
+	if err != nil {
+		return err
+	}
+	t.UpdateRuntime(runtime)
+	// This function is called when the runtime in cache is nil which happens
+	// when DB write operation fails. If this failed DB write operation is called from
+	// the goalstate code itself, then the current task action needs to be re-executed.
+	// So, after task runtime is reloaded back into cache, the task action
+	// needs to be re-executed which is accomplished by returning an error here.
+	return fmt.Errorf("runtime reloaded after error")
 }

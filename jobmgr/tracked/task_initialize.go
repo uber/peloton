@@ -42,7 +42,7 @@ func (t *task) initialize(ctx context.Context) error {
 	taskInfo.Runtime.Message = "Initialize task"
 	taskInfo.Runtime.Reason = ""
 
-	err = m.UpdateTaskRuntime(ctx, t.job.ID(), taskInfo.GetInstanceId(), taskInfo.GetRuntime())
+	err = m.UpdateTaskRuntime(ctx, t.job.ID(), taskInfo.GetInstanceId(), taskInfo.GetRuntime(), UpdateAndSchedule)
 	if err != nil {
 		return errors.Wrapf(err, "unable to update task")
 	}

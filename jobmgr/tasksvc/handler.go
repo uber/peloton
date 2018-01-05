@@ -311,9 +311,10 @@ func (m *serviceHandler) Start(
 
 	var startedInstanceIds []uint32
 	var failedInstanceIds []uint32
-	for instID, taskInfo := range taskInfos {
-		taskRuntime := taskInfo.GetRuntime()
-		taskState := taskRuntime.GetState()
+	var instanceIds []uint32
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	for _, taskInfo := range taskInfos {
+		taskState := taskInfo.GetRuntime().GetState()
 
 		if taskState == task.TaskState_INITIALIZED || taskState == task.TaskState_PENDING ||
 			(taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0) {
@@ -327,19 +328,21 @@ func (m *serviceHandler) Start(
 		taskInfo.GetRuntime().GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
 		taskInfo.GetRuntime().Message = "Task start API request"
 		taskInfo.GetRuntime().Reason = ""
+		runtimes[taskInfo.InstanceId] = taskInfo.GetRuntime()
 
-		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskRuntime)
-		if err != nil {
-			// If db update error occurs, add it to failedInstanceIds list and continue.
-			log.WithError(err).
-				WithField("task", taskInfo).
-				Error("Failed to update task to INITIALIZED state")
-			failedInstanceIds = append(failedInstanceIds, instID)
-			m.metrics.TaskStartFail.Inc(1)
-			continue
-		}
+		instanceIds = append(instanceIds, taskInfo.InstanceId)
+	}
 
-		startedInstanceIds = append(startedInstanceIds, instID)
+	err = m.trackedManager.UpdateTaskRuntimes(ctx, body.GetJobId(), runtimes, tracked.UpdateAndSchedule)
+	if err != nil {
+		log.WithError(err).
+			WithField("runtimes", runtimes).
+			WithField("job_id", body.GetJobId().GetValue()).
+			Error("failed to update task to initialized state")
+		m.metrics.TaskStartFail.Inc(1)
+		failedInstanceIds = instanceIds
+	} else {
+		startedInstanceIds = instanceIds
 		m.metrics.TaskStart.Inc(1)
 	}
 
@@ -484,9 +487,10 @@ func (m *serviceHandler) Stop(
 	// tasksToKill only includes task ids whose goal state update succeeds.
 	var stoppedInstanceIds []uint32
 	var failedInstanceIds []uint32
+	var instanceIds []uint32
+	runtimes := make(map[uint32]*task.RuntimeInfo)
 	// Persist KILLED goalstate for tasks in db.
-	for instID, taskInfo := range taskInfos {
-		taskID := taskInfo.GetRuntime().GetMesosTaskId()
+	for _, taskInfo := range taskInfos {
 		// Skip update task goalstate if it is already KILLED.
 		if taskInfo.GetRuntime().GoalState == task.TaskState_KILLED {
 			continue
@@ -495,19 +499,20 @@ func (m *serviceHandler) Stop(
 		taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
 		taskInfo.GetRuntime().Message = "Task stop API request"
 		taskInfo.GetRuntime().Reason = ""
-		// TODO: We can retry here in case of conflict.
-		err = m.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), instID, taskInfo.GetRuntime())
-		if err != nil {
-			// If a db update error occurs, add it to failedInstanceIds list and continue.
-			log.WithError(err).
-				WithField("task_id", taskID).
-				Error("Failed to update KILLED goalstate")
-			m.metrics.TaskStopFail.Inc(1)
-			failedInstanceIds = append(failedInstanceIds, instID)
-			continue
-		}
+		runtimes[taskInfo.InstanceId] = taskInfo.GetRuntime()
+		instanceIds = append(instanceIds, taskInfo.InstanceId)
+	}
 
-		stoppedInstanceIds = append(stoppedInstanceIds, instID)
+	err = m.trackedManager.UpdateTaskRuntimes(ctx, body.GetJobId(), runtimes, tracked.UpdateAndSchedule)
+	if err != nil {
+		log.WithError(err).
+			WithField("runtimes", runtimes).
+			WithField("job_id", body.GetJobId().GetValue()).
+			Error("failed to updated killed goalstate")
+		failedInstanceIds = instanceIds
+		m.metrics.TaskStopFail.Inc(1)
+	} else {
+		stoppedInstanceIds = instanceIds
 		m.metrics.TaskStop.Inc(1)
 	}
 

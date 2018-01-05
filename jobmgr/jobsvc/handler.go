@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -258,7 +259,9 @@ func (h *serviceHandler) Update(
 			return nil, err
 		}
 		h.metrics.TaskCreate.Inc(1)
-		h.trackedManager.SetTask(jobID, id, runtime)
+		runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+		runtimes[id] = runtime
+		h.trackedManager.SetTasks(jobID, runtimes, tracked.UpdateAndSchedule)
 	}
 
 	err = h.runtimeUpdater.UpdateJob(ctx, jobID)

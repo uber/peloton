@@ -24,6 +24,17 @@ const (
 	_defaultMetricsUpdateTick = 10 * time.Second
 )
 
+// UpdateRequest is used to inform manager whether the caller wants to only update the DB
+// or both DB update and scheduling the job/task for evaluation is needed
+type UpdateRequest int
+
+const (
+	// UpdateOnly indicates only DB update is requested
+	UpdateOnly UpdateRequest = iota
+	// UpdateAndSchedule indicates both updating the DB and schedule the job/task for evaluation is requested
+	UpdateAndSchedule
+)
+
 // Manager for tracking jobs and tasks. The manager has built in scheduler,
 // for marking tasks as dirty and ready for being processed by the goal state
 // engine.
@@ -35,23 +46,26 @@ type Manager interface {
 	// GetAllJobs returns the list of all jobs in manager
 	GetAllJobs() map[string]Job
 
-	// SetTask to the new runtime info. This will also schedule the task for
-	// immediate evaluation.
-	SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo)
-
 	// SetTasks sets a map of tasks to new runtime info.
-	// This will also scheduled these tasks for immediate evaluation.
-	// TBD SetTask should be removed and all callers should use SetTasks.
-	SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo)
+	// If req is set to UpdateAndSchedule, this will also scheduled these tasks for immediate evaluation.
+	// UpdateOnly will be used by the caller is the caller is trying to execute a batch task operation.
+	// In this case, SetTasks will merely update the DB and the cache, and let the caller complete the batch operation.
+	// An example is the launching of tasks in a placement. It is a batch task operation because all tasks
+	// in the placement need to go to host manager in one API call instead of being launched on a task by task basis.
+	SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo, req UpdateRequest)
 
 	// SetJob to the state in the JobInfo.
 	SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo)
 
-	// UpdateTaskRuntime with the new runtime info, by first attempting to persit
-	// it. If it fail in persisting the change due to a data race, an
-	// AlreadyExists error is returned.
-	// If succesfull, this will also schedule the task for immediate evaluation.
-	UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) error
+	// UpdateTaskRuntimes updates all tasks with th new runtime info, by first attempting to persist it,
+	// and then storing it in the cache. If the attempt to persist fails, the local cache is cleaned up.
+	// If successful and the request is to schedule the task for evaluation, then it also queues the
+	// task into the deadline queue for immediate evaluation
+	UpdateTaskRuntimes(ctx context.Context, jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo, req UpdateRequest) error
+
+	// UpdateTaskRuntime is a helper function for UpdateTaskRuntimes which can be used to update a single
+	// task without having the caller to create a map. It internally invokes UpdateTaskRuntimes.
+	UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo, req UpdateRequest) error
 
 	// UpdateJobRuntime updates job with the new runtime, by first attempting to persist
 	// it. If that fails, it just returns back the error for now.
@@ -175,20 +189,7 @@ func (m *manager) SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo) {
 	m.jobScheduler.schedule(j, time.Now())
 }
 
-func (m *manager) SetTask(jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) {
-	m.Lock()
-	defer m.Unlock()
-
-	if !m.running {
-		return
-	}
-
-	j := m.addJob(jobID)
-	t := j.setTask(instanceID, runtime)
-	m.taskScheduler.schedule(t, time.Now())
-}
-
-func (m *manager) SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo) {
+func (m *manager) SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo, req UpdateRequest) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -198,6 +199,9 @@ func (m *manager) SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.Ru
 
 	j := m.addJob(jobID)
 	taskMap := j.setTasks(runtimes)
+	if req == UpdateOnly {
+		return
+	}
 	for _, t := range taskMap {
 		m.taskScheduler.schedule(t, time.Now())
 	}
@@ -211,15 +215,24 @@ func (m *manager) UpdateJobRuntime(ctx context.Context, jobID *peloton.JobID, ru
 	return nil
 }
 
-func (m *manager) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo) error {
-	// TODO: We need to figure out how to handle this case, where we modify in
-	// the non-leader.
-	if err := m.taskStore.UpdateTaskRuntime(ctx, jobID, instanceID, runtime); err != nil {
+func (m *manager) UpdateTaskRuntimes(ctx context.Context, jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo, req UpdateRequest) error {
+	if err := m.taskStore.UpdateTaskRuntimes(ctx, jobID, runtimes); err != nil {
+		// Clear the runtime in the cache
+		j := m.addJob(jobID)
+		for instID := range runtimes {
+			j.setTask(instID, nil)
+		}
 		return err
 	}
 
-	m.SetTask(jobID, instanceID, runtime)
+	m.SetTasks(jobID, runtimes, req)
 	return nil
+}
+
+func (m *manager) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo, req UpdateRequest) error {
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[instanceID] = runtime
+	return m.UpdateTaskRuntimes(ctx, jobID, runtimes, req)
 }
 
 func (m *manager) ScheduleJob(j Job, deadline time.Time) {
@@ -391,6 +404,7 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 	maxInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 
 	j := m.getJobStruct(id)
+	scheduleRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
 	for instanceID, runtime := range runtimes {
 		m.mtx.taskMetrics.TaskRecovered.Inc(1)
 		// Do not add the task again if it already exists
@@ -404,9 +418,13 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 					j.recoverJobWithSLA()
 				}
 			} else {
-				m.SetTask(id, instanceID, runtime)
+				scheduleRuntimes[instanceID] = runtime
 			}
 		}
+	}
+
+	if len(scheduleRuntimes) > 0 {
+		m.SetTasks(id, scheduleRuntimes, UpdateAndSchedule)
 	}
 	return
 }

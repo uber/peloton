@@ -138,7 +138,9 @@ func (p *statusUpdateRM) ProcessStatusUpdate(ctx context.Context, event *pb_even
 	taskInfo.GetRuntime().Message = statusMsg
 	taskInfo.GetRuntime().Reason = "REASON_RESOURCE_TASK_UPDATE"
 
-	err = p.taskStore.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[taskInfo.InstanceId] = taskInfo.Runtime
+	err = p.taskStore.UpdateTaskRuntimes(ctx, taskInfo.JobId, runtimes)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{

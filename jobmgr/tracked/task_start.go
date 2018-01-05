@@ -4,12 +4,66 @@ import (
 	"context"
 	"fmt"
 
+	log "github.com/sirupsen/logrus"
+
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
 )
+
+func (t *task) startStatefulTask(ctx context.Context, taskInfo *pb_task.TaskInfo) error {
+	m := t.job.m
+	// Volume is in CREATED state so launch the task directly to hostmgr.
+	if m.taskLauncher == nil {
+		return fmt.Errorf("task launcher not available")
+	}
+
+	if taskInfo.GetRuntime().GetGoalState() == pb_task.TaskState_KILLED {
+		return nil
+	}
+
+	pelotonTaskID := &peloton.TaskID{
+		Value: fmt.Sprintf("%s-%d", taskInfo.GetJobId().GetValue(), taskInfo.GetInstanceId()),
+	}
+
+	taskInfos, err := m.taskLauncher.GetLaunchableTasks(
+		ctx,
+		[]*peloton.TaskID{pelotonTaskID},
+		taskInfo.GetRuntime().GetHost(),
+		taskInfo.GetRuntime().GetAgentID(),
+		nil,
+	)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", t.job.ID().GetValue()).
+			WithField("instance_id", t.ID()).
+			Error("failed to get launchable tasks")
+		return err
+	}
+
+	// GetLaunchableTasks have updated the task runtime to LAUNCHED state and
+	// the placement operation. So update the runtime in cache and DB.
+	err = m.UpdateTaskRuntime(ctx, t.job.ID(), t.ID(), taskInfos[pelotonTaskID.Value].GetRuntime(), UpdateOnly)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", t.job.ID().GetValue()).
+			WithField("instance_id", t.ID()).
+			Error("failed to update task runtime during launch")
+		return err
+	}
+
+	launchableTasks := launcher.CreateLaunchableTasks(taskInfos)
+	var selectedPorts []uint32
+	runtimePorts := taskInfo.GetRuntime().GetPorts()
+	for _, port := range runtimePorts {
+		selectedPorts = append(selectedPorts, port)
+	}
+
+	return m.taskLauncher.LaunchStatefulTasks(ctx, launchableTasks, taskInfo.GetRuntime().GetHost(), selectedPorts, false /* checkVolume */)
+}
 
 func (t *task) start(ctx context.Context) error {
 	m := t.job.m
@@ -42,11 +96,7 @@ func (t *task) start(ctx context.Context) error {
 			}
 			// Volume not exist so enqueue as normal task going through placement.
 		} else if pv.GetState() == volume.VolumeState_CREATED {
-			// Volume is in CREATED state so launch the task directly to hostmgr.
-			if m.taskLauncher == nil {
-				return fmt.Errorf("task launcher not available")
-			}
-			return m.taskLauncher.LaunchTaskWithReservedResource(ctx, taskInfo)
+			return t.startStatefulTask(ctx, taskInfo)
 		}
 	}
 
@@ -60,7 +110,7 @@ func (t *task) start(ctx context.Context) error {
 	if runtime.GetState() != pb_task.TaskState_PENDING {
 		runtime.State = pb_task.TaskState_PENDING
 		runtime.Message = "Task sent for placement"
-		err = m.taskStore.UpdateTaskRuntime(ctx, t.job.ID(), t.ID(), runtime)
+		err = m.UpdateTaskRuntime(ctx, t.job.ID(), t.ID(), runtime, UpdateOnly)
 	}
 	return err
 }

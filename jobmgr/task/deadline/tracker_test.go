@@ -75,7 +75,7 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.mockJobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
 	suite.mockTrackedManager.EXPECT().GetAllJobs().Return(jobs)
 	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), gomock.Any()).Return(taskInfo, nil)
-	suite.mockTrackedManager.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), taskInfo.Runtime).Return(nil)
+	suite.mockTrackedManager.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), taskInfo.Runtime, tracked.UpdateAndSchedule).Return(nil)
 
 	err := suite.tracker.trackDeadline()
 

@@ -296,7 +296,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		CreateTaskRuntime(context.Background(), jobID, uint32(3), gomock.Any(), "peloton").
 		Return(nil).
 		AnyTimes()
-	mockTrackedManager.EXPECT().SetTask(jobID, uint32(3), gomock.Any()).AnyTimes()
+	mockTrackedManager.EXPECT().SetTasks(jobID, gomock.Any(), gomock.Any()).AnyTimes()
 	mockTaskStore.EXPECT().
 		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
 		Return(map[string]uint32{}, nil).

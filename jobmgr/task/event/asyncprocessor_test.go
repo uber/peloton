@@ -15,6 +15,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 )
@@ -50,7 +52,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      jobID,
 		}
 		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
-		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
+		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any(), tracked.UpdateAndSchedule).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
@@ -83,7 +85,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      jobID,
 		}
 		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
-		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
+		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any(), tracked.UpdateAndSchedule).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
@@ -116,7 +118,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      jobID,
 		}
 		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
-		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any()).Return(nil)
+		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any(), tracked.UpdateAndSchedule).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
