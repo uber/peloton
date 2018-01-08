@@ -3,6 +3,7 @@ package tracked
 import (
 	"context"
 	"fmt"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -10,6 +11,10 @@ import (
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+)
+
+const (
+	_defaultShutdownExecutorTimeout = 10 * time.Minute
 )
 
 func (t *task) stop(ctx context.Context) error {
@@ -87,16 +92,22 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 }
 
 func (t *task) stopMesosTask(ctx context.Context, runtime *pb_task.RuntimeInfo) error {
-	// Send kill signal to mesos, if the task has a mesos task ID associated
-	// to it.
-	return jobmgr_task.KillTask(ctx, t.job.m.hostmgrClient, runtime.GetMesosTaskId())
-}
+	// Send kill signal to mesos first time, shutdown the executor if timeout
+	if t.GetKillAttempts() == 0 {
+		err := jobmgr_task.KillTask(ctx, t.job.m.hostmgrClient, runtime.GetMesosTaskId())
+		if err != nil {
+			return err
+		}
+		t.IncrementKillAttempts()
+		// timeout for task kill
+		t.job.m.ScheduleTask(t, time.Now().Add(_defaultShutdownExecutorTimeout))
+		return nil
+	}
+	t.job.m.mtx.taskMetrics.ExecutorShutdown.Inc(1)
+	log.
+		WithField("job_id", t.Job().ID().GetValue()).
+		WithField("instance_id", t.ID()).
+		Info("Task kill timed out, try to shutdown executor")
 
-func (t *task) shutdownMesosExecutor(ctx context.Context, runtime *pb_task.RuntimeInfo) error {
-	// Send shutdown signal to mesos, if the task has a mesos executor ID and agent ID associated
-	// to it.
-
-	return jobmgr_task.ShutdownMesosExecutor(ctx,
-		t.job.m.hostmgrClient, runtime.GetMesosTaskId(),
-		runtime.GetAgentID())
+	return jobmgr_task.ShutdownMesosExecutor(ctx, t.job.m.hostmgrClient, runtime.GetMesosTaskId(), runtime.GetAgentID())
 }

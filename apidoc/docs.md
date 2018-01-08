@@ -3,6 +3,18 @@
 
 ## Table of Contents
 
+- [peloton.proto](#peloton.proto)
+    - [ChangeLog](#peloton.api.peloton.ChangeLog)
+    - [JobID](#peloton.api.peloton.JobID)
+    - [Label](#peloton.api.peloton.Label)
+    - [ResourcePoolID](#peloton.api.peloton.ResourcePoolID)
+    - [TaskID](#peloton.api.peloton.TaskID)
+    - [VolumeID](#peloton.api.peloton.VolumeID)
+  
+  
+  
+  
+
 - [mesos.proto](#mesos.proto)
     - [Address](#mesos.v1.Address)
     - [AgentID](#mesos.v1.AgentID)
@@ -153,201 +165,6 @@
   
   
 
-- [peloton.proto](#peloton.proto)
-    - [ChangeLog](#peloton.api.peloton.ChangeLog)
-    - [JobID](#peloton.api.peloton.JobID)
-    - [Label](#peloton.api.peloton.Label)
-    - [ResourcePoolID](#peloton.api.peloton.ResourcePoolID)
-    - [TaskID](#peloton.api.peloton.TaskID)
-    - [VolumeID](#peloton.api.peloton.VolumeID)
-  
-  
-  
-  
-
-- [agent.proto](#agent.proto)
-    - [Call](#mesos.v1.agent.Call)
-    - [Call.AttachContainerInput](#mesos.v1.agent.Call.AttachContainerInput)
-    - [Call.AttachContainerOutput](#mesos.v1.agent.Call.AttachContainerOutput)
-    - [Call.GetMetrics](#mesos.v1.agent.Call.GetMetrics)
-    - [Call.KillNestedContainer](#mesos.v1.agent.Call.KillNestedContainer)
-    - [Call.LaunchNestedContainer](#mesos.v1.agent.Call.LaunchNestedContainer)
-    - [Call.LaunchNestedContainerSession](#mesos.v1.agent.Call.LaunchNestedContainerSession)
-    - [Call.ListFiles](#mesos.v1.agent.Call.ListFiles)
-    - [Call.ReadFile](#mesos.v1.agent.Call.ReadFile)
-    - [Call.SetLoggingLevel](#mesos.v1.agent.Call.SetLoggingLevel)
-    - [Call.WaitNestedContainer](#mesos.v1.agent.Call.WaitNestedContainer)
-    - [ProcessIO](#mesos.v1.agent.ProcessIO)
-    - [ProcessIO.Control](#mesos.v1.agent.ProcessIO.Control)
-    - [ProcessIO.Control.Heartbeat](#mesos.v1.agent.ProcessIO.Control.Heartbeat)
-    - [ProcessIO.Data](#mesos.v1.agent.ProcessIO.Data)
-    - [Response](#mesos.v1.agent.Response)
-    - [Response.GetContainers](#mesos.v1.agent.Response.GetContainers)
-    - [Response.GetContainers.Container](#mesos.v1.agent.Response.GetContainers.Container)
-    - [Response.GetExecutors](#mesos.v1.agent.Response.GetExecutors)
-    - [Response.GetExecutors.Executor](#mesos.v1.agent.Response.GetExecutors.Executor)
-    - [Response.GetFlags](#mesos.v1.agent.Response.GetFlags)
-    - [Response.GetFrameworks](#mesos.v1.agent.Response.GetFrameworks)
-    - [Response.GetFrameworks.Framework](#mesos.v1.agent.Response.GetFrameworks.Framework)
-    - [Response.GetHealth](#mesos.v1.agent.Response.GetHealth)
-    - [Response.GetLoggingLevel](#mesos.v1.agent.Response.GetLoggingLevel)
-    - [Response.GetMetrics](#mesos.v1.agent.Response.GetMetrics)
-    - [Response.GetState](#mesos.v1.agent.Response.GetState)
-    - [Response.GetTasks](#mesos.v1.agent.Response.GetTasks)
-    - [Response.GetVersion](#mesos.v1.agent.Response.GetVersion)
-    - [Response.ListFiles](#mesos.v1.agent.Response.ListFiles)
-    - [Response.ReadFile](#mesos.v1.agent.Response.ReadFile)
-    - [Response.WaitNestedContainer](#mesos.v1.agent.Response.WaitNestedContainer)
-  
-    - [Call.AttachContainerInput.Type](#mesos.v1.agent.Call.AttachContainerInput.Type)
-    - [Call.Type](#mesos.v1.agent.Call.Type)
-    - [ProcessIO.Control.Type](#mesos.v1.agent.ProcessIO.Control.Type)
-    - [ProcessIO.Data.Type](#mesos.v1.agent.ProcessIO.Data.Type)
-    - [ProcessIO.Type](#mesos.v1.agent.ProcessIO.Type)
-    - [Response.Type](#mesos.v1.agent.Response.Type)
-  
-  
-  
-
-- [allocator.proto](#allocator.proto)
-    - [InverseOfferStatus](#mesos.v1.allocator.InverseOfferStatus)
-  
-    - [InverseOfferStatus.Status](#mesos.v1.allocator.InverseOfferStatus.Status)
-  
-  
-  
-
-- [executor.proto](#executor.proto)
-    - [Call](#mesos.v1.executor.Call)
-    - [Call.Message](#mesos.v1.executor.Call.Message)
-    - [Call.Subscribe](#mesos.v1.executor.Call.Subscribe)
-    - [Call.Update](#mesos.v1.executor.Call.Update)
-    - [Event](#mesos.v1.executor.Event)
-    - [Event.Acknowledged](#mesos.v1.executor.Event.Acknowledged)
-    - [Event.Error](#mesos.v1.executor.Event.Error)
-    - [Event.Kill](#mesos.v1.executor.Event.Kill)
-    - [Event.Launch](#mesos.v1.executor.Event.Launch)
-    - [Event.LaunchGroup](#mesos.v1.executor.Event.LaunchGroup)
-    - [Event.Message](#mesos.v1.executor.Event.Message)
-    - [Event.Subscribed](#mesos.v1.executor.Event.Subscribed)
-  
-    - [Call.Type](#mesos.v1.executor.Call.Type)
-    - [Event.Type](#mesos.v1.executor.Event.Type)
-  
-  
-  
-
-- [maintenance.proto](#maintenance.proto)
-    - [ClusterStatus](#mesos.v1.maintenance.ClusterStatus)
-    - [ClusterStatus.DrainingMachine](#mesos.v1.maintenance.ClusterStatus.DrainingMachine)
-    - [Schedule](#mesos.v1.maintenance.Schedule)
-    - [Window](#mesos.v1.maintenance.Window)
-  
-  
-  
-  
-
-- [quota.proto](#quota.proto)
-    - [QuotaInfo](#mesos.v1.quota.QuotaInfo)
-    - [QuotaRequest](#mesos.v1.quota.QuotaRequest)
-    - [QuotaStatus](#mesos.v1.quota.QuotaStatus)
-  
-  
-  
-  
-
-- [master.proto](#master.proto)
-    - [Call](#mesos.v1.master.Call)
-    - [Call.CreateVolumes](#mesos.v1.master.Call.CreateVolumes)
-    - [Call.DestroyVolumes](#mesos.v1.master.Call.DestroyVolumes)
-    - [Call.GetMetrics](#mesos.v1.master.Call.GetMetrics)
-    - [Call.ListFiles](#mesos.v1.master.Call.ListFiles)
-    - [Call.ReadFile](#mesos.v1.master.Call.ReadFile)
-    - [Call.RemoveQuota](#mesos.v1.master.Call.RemoveQuota)
-    - [Call.ReserveResources](#mesos.v1.master.Call.ReserveResources)
-    - [Call.SetLoggingLevel](#mesos.v1.master.Call.SetLoggingLevel)
-    - [Call.SetQuota](#mesos.v1.master.Call.SetQuota)
-    - [Call.StartMaintenance](#mesos.v1.master.Call.StartMaintenance)
-    - [Call.StopMaintenance](#mesos.v1.master.Call.StopMaintenance)
-    - [Call.UnreserveResources](#mesos.v1.master.Call.UnreserveResources)
-    - [Call.UpdateMaintenanceSchedule](#mesos.v1.master.Call.UpdateMaintenanceSchedule)
-    - [Call.UpdateWeights](#mesos.v1.master.Call.UpdateWeights)
-    - [Event](#mesos.v1.master.Event)
-    - [Event.AgentAdded](#mesos.v1.master.Event.AgentAdded)
-    - [Event.AgentRemoved](#mesos.v1.master.Event.AgentRemoved)
-    - [Event.Subscribed](#mesos.v1.master.Event.Subscribed)
-    - [Event.TaskAdded](#mesos.v1.master.Event.TaskAdded)
-    - [Event.TaskUpdated](#mesos.v1.master.Event.TaskUpdated)
-    - [Response](#mesos.v1.master.Response)
-    - [Response.GetAgents](#mesos.v1.master.Response.GetAgents)
-    - [Response.GetAgents.Agent](#mesos.v1.master.Response.GetAgents.Agent)
-    - [Response.GetExecutors](#mesos.v1.master.Response.GetExecutors)
-    - [Response.GetExecutors.Executor](#mesos.v1.master.Response.GetExecutors.Executor)
-    - [Response.GetFlags](#mesos.v1.master.Response.GetFlags)
-    - [Response.GetFrameworks](#mesos.v1.master.Response.GetFrameworks)
-    - [Response.GetFrameworks.Framework](#mesos.v1.master.Response.GetFrameworks.Framework)
-    - [Response.GetHealth](#mesos.v1.master.Response.GetHealth)
-    - [Response.GetLoggingLevel](#mesos.v1.master.Response.GetLoggingLevel)
-    - [Response.GetMaintenanceSchedule](#mesos.v1.master.Response.GetMaintenanceSchedule)
-    - [Response.GetMaintenanceStatus](#mesos.v1.master.Response.GetMaintenanceStatus)
-    - [Response.GetMaster](#mesos.v1.master.Response.GetMaster)
-    - [Response.GetMetrics](#mesos.v1.master.Response.GetMetrics)
-    - [Response.GetQuota](#mesos.v1.master.Response.GetQuota)
-    - [Response.GetRoles](#mesos.v1.master.Response.GetRoles)
-    - [Response.GetState](#mesos.v1.master.Response.GetState)
-    - [Response.GetTasks](#mesos.v1.master.Response.GetTasks)
-    - [Response.GetVersion](#mesos.v1.master.Response.GetVersion)
-    - [Response.GetWeights](#mesos.v1.master.Response.GetWeights)
-    - [Response.ListFiles](#mesos.v1.master.Response.ListFiles)
-    - [Response.ReadFile](#mesos.v1.master.Response.ReadFile)
-  
-    - [Call.Type](#mesos.v1.master.Call.Type)
-    - [Event.Type](#mesos.v1.master.Event.Type)
-    - [Response.Type](#mesos.v1.master.Response.Type)
-  
-  
-  
-
-- [scheduler.proto](#scheduler.proto)
-    - [Call](#mesos.v1.scheduler.Call)
-    - [Call.Accept](#mesos.v1.scheduler.Call.Accept)
-    - [Call.AcceptInverseOffers](#mesos.v1.scheduler.Call.AcceptInverseOffers)
-    - [Call.Acknowledge](#mesos.v1.scheduler.Call.Acknowledge)
-    - [Call.Decline](#mesos.v1.scheduler.Call.Decline)
-    - [Call.DeclineInverseOffers](#mesos.v1.scheduler.Call.DeclineInverseOffers)
-    - [Call.Kill](#mesos.v1.scheduler.Call.Kill)
-    - [Call.Message](#mesos.v1.scheduler.Call.Message)
-    - [Call.Reconcile](#mesos.v1.scheduler.Call.Reconcile)
-    - [Call.Reconcile.Task](#mesos.v1.scheduler.Call.Reconcile.Task)
-    - [Call.Request](#mesos.v1.scheduler.Call.Request)
-    - [Call.Revive](#mesos.v1.scheduler.Call.Revive)
-    - [Call.Shutdown](#mesos.v1.scheduler.Call.Shutdown)
-    - [Call.Subscribe](#mesos.v1.scheduler.Call.Subscribe)
-    - [Call.Suppress](#mesos.v1.scheduler.Call.Suppress)
-    - [Event](#mesos.v1.scheduler.Event)
-    - [Event.Error](#mesos.v1.scheduler.Event.Error)
-    - [Event.Failure](#mesos.v1.scheduler.Event.Failure)
-    - [Event.InverseOffers](#mesos.v1.scheduler.Event.InverseOffers)
-    - [Event.Message](#mesos.v1.scheduler.Event.Message)
-    - [Event.Offers](#mesos.v1.scheduler.Event.Offers)
-    - [Event.Rescind](#mesos.v1.scheduler.Event.Rescind)
-    - [Event.RescindInverseOffer](#mesos.v1.scheduler.Event.RescindInverseOffer)
-    - [Event.Subscribed](#mesos.v1.scheduler.Event.Subscribed)
-    - [Event.Update](#mesos.v1.scheduler.Event.Update)
-  
-    - [Call.Type](#mesos.v1.scheduler.Call.Type)
-    - [Event.Type](#mesos.v1.scheduler.Event.Type)
-  
-  
-  
-
-- [changelog.proto](#changelog.proto)
-    - [ChangeLog](#peloton.api.changelog.ChangeLog)
-  
-  
-  
-  
-
 - [errors.proto](#errors.proto)
     - [InvalidRespool](#peloton.api.errors.InvalidRespool)
     - [JobGetRuntimeFail](#peloton.api.errors.JobGetRuntimeFail)
@@ -430,99 +247,6 @@
     - [TaskManager](#peloton.api.task.TaskManager)
   
 
-- [respool.proto](#respool.proto)
-    - [CreateRequest](#peloton.api.respool.CreateRequest)
-    - [CreateResponse](#peloton.api.respool.CreateResponse)
-    - [CreateResponse.Error](#peloton.api.respool.CreateResponse.Error)
-    - [DeleteRequest](#peloton.api.respool.DeleteRequest)
-    - [DeleteResponse](#peloton.api.respool.DeleteResponse)
-    - [DeleteResponse.Error](#peloton.api.respool.DeleteResponse.Error)
-    - [GetRequest](#peloton.api.respool.GetRequest)
-    - [GetResponse](#peloton.api.respool.GetResponse)
-    - [GetResponse.Error](#peloton.api.respool.GetResponse.Error)
-    - [InvalidResourcePoolConfig](#peloton.api.respool.InvalidResourcePoolConfig)
-    - [InvalidResourcePoolPath](#peloton.api.respool.InvalidResourcePoolPath)
-    - [LookupRequest](#peloton.api.respool.LookupRequest)
-    - [LookupResponse](#peloton.api.respool.LookupResponse)
-    - [LookupResponse.Error](#peloton.api.respool.LookupResponse.Error)
-    - [QueryRequest](#peloton.api.respool.QueryRequest)
-    - [QueryResponse](#peloton.api.respool.QueryResponse)
-    - [QueryResponse.Error](#peloton.api.respool.QueryResponse.Error)
-    - [ResourceConfig](#peloton.api.respool.ResourceConfig)
-    - [ResourcePoolAlreadyExists](#peloton.api.respool.ResourcePoolAlreadyExists)
-    - [ResourcePoolConfig](#peloton.api.respool.ResourcePoolConfig)
-    - [ResourcePoolInfo](#peloton.api.respool.ResourcePoolInfo)
-    - [ResourcePoolIsBusy](#peloton.api.respool.ResourcePoolIsBusy)
-    - [ResourcePoolIsNotLeaf](#peloton.api.respool.ResourcePoolIsNotLeaf)
-    - [ResourcePoolNotDeleted](#peloton.api.respool.ResourcePoolNotDeleted)
-    - [ResourcePoolNotFound](#peloton.api.respool.ResourcePoolNotFound)
-    - [ResourcePoolPath](#peloton.api.respool.ResourcePoolPath)
-    - [ResourcePoolPathNotFound](#peloton.api.respool.ResourcePoolPathNotFound)
-    - [ResourceUsage](#peloton.api.respool.ResourceUsage)
-    - [UpdateRequest](#peloton.api.respool.UpdateRequest)
-    - [UpdateResponse](#peloton.api.respool.UpdateResponse)
-    - [UpdateResponse.Error](#peloton.api.respool.UpdateResponse.Error)
-  
-    - [SchedulingPolicy](#peloton.api.respool.SchedulingPolicy)
-  
-  
-    - [ResourceManager](#peloton.api.respool.ResourceManager)
-  
-
-- [job.proto](#job.proto)
-    - [CreateRequest](#peloton.api.job.CreateRequest)
-    - [CreateResponse](#peloton.api.job.CreateResponse)
-    - [CreateResponse.Error](#peloton.api.job.CreateResponse.Error)
-    - [DeleteRequest](#peloton.api.job.DeleteRequest)
-    - [DeleteResponse](#peloton.api.job.DeleteResponse)
-    - [DeleteResponse.Error](#peloton.api.job.DeleteResponse.Error)
-    - [GetRequest](#peloton.api.job.GetRequest)
-    - [GetResponse](#peloton.api.job.GetResponse)
-    - [GetResponse.Error](#peloton.api.job.GetResponse.Error)
-    - [InvalidJobConfig](#peloton.api.job.InvalidJobConfig)
-    - [InvalidJobId](#peloton.api.job.InvalidJobId)
-    - [JobAlreadyExists](#peloton.api.job.JobAlreadyExists)
-    - [JobConfig](#peloton.api.job.JobConfig)
-    - [JobConfig.InstanceConfigEntry](#peloton.api.job.JobConfig.InstanceConfigEntry)
-    - [JobInfo](#peloton.api.job.JobInfo)
-    - [JobNotFound](#peloton.api.job.JobNotFound)
-    - [QueryRequest](#peloton.api.job.QueryRequest)
-    - [QueryResponse](#peloton.api.job.QueryResponse)
-    - [QueryResponse.Error](#peloton.api.job.QueryResponse.Error)
-    - [QuerySpec](#peloton.api.job.QuerySpec)
-    - [RuntimeInfo](#peloton.api.job.RuntimeInfo)
-    - [RuntimeInfo.TaskStatsEntry](#peloton.api.job.RuntimeInfo.TaskStatsEntry)
-    - [SlaConfig](#peloton.api.job.SlaConfig)
-    - [UpdateRequest](#peloton.api.job.UpdateRequest)
-    - [UpdateResponse](#peloton.api.job.UpdateResponse)
-    - [UpdateResponse.Error](#peloton.api.job.UpdateResponse.Error)
-  
-    - [JobState](#peloton.api.job.JobState)
-    - [JobType](#peloton.api.job.JobType)
-  
-  
-    - [JobManager](#peloton.api.job.JobManager)
-  
-
-- [update.proto](#update.proto)
-    - [UpdateConfig](#peloton.api.update.UpdateConfig)
-    - [UpdateID](#peloton.api.update.UpdateID)
-    - [UpdateInfo](#peloton.api.update.UpdateInfo)
-    - [UpdateStatus](#peloton.api.update.UpdateStatus)
-  
-    - [State](#peloton.api.update.State)
-  
-  
-  
-
-- [volume.proto](#volume.proto)
-    - [PersistentVolumeInfo](#peloton.api.volume.PersistentVolumeInfo)
-  
-    - [VolumeState](#peloton.api.volume.VolumeState)
-  
-  
-  
-
 - [eventstream.proto](#eventstream.proto)
     - [ClientUnsupported](#peloton.private.eventstream.ClientUnsupported)
     - [Event](#peloton.private.eventstream.Event)
@@ -602,102 +326,280 @@
     - [ResourceManagerService](#peloton.private.resmgr.ResourceManagerService)
   
 
-- [job_svc.proto](#job_svc.proto)
-    - [CreateJobRequest](#peloton.api.job.svc.CreateJobRequest)
-    - [CreateJobResponse](#peloton.api.job.svc.CreateJobResponse)
-    - [DeleteJobRequest](#peloton.api.job.svc.DeleteJobRequest)
-    - [DeleteJobResponse](#peloton.api.job.svc.DeleteJobResponse)
-    - [GetJobRequest](#peloton.api.job.svc.GetJobRequest)
-    - [GetJobResponse](#peloton.api.job.svc.GetJobResponse)
-    - [QueryJobsRequest](#peloton.api.job.svc.QueryJobsRequest)
-    - [QueryJobsResponse](#peloton.api.job.svc.QueryJobsResponse)
-    - [UpdateJobRequest](#peloton.api.job.svc.UpdateJobRequest)
-    - [UpdateJobResponse](#peloton.api.job.svc.UpdateJobResponse)
+- [update.proto](#update.proto)
+    - [UpdateConfig](#peloton.api.update.UpdateConfig)
+    - [UpdateID](#peloton.api.update.UpdateID)
+    - [UpdateInfo](#peloton.api.update.UpdateInfo)
+    - [UpdateStatus](#peloton.api.update.UpdateStatus)
+  
+    - [State](#peloton.api.update.State)
   
   
-  
-    - [JobService](#peloton.api.job.svc.JobService)
   
 
-- [respool_svc.proto](#respool_svc.proto)
-    - [CreateResourcePoolRequest](#peloton.api.respool.CreateResourcePoolRequest)
-    - [CreateResourcePoolResponse](#peloton.api.respool.CreateResourcePoolResponse)
-    - [DeleteResourcePoolRequest](#peloton.api.respool.DeleteResourcePoolRequest)
-    - [DeleteResourcePoolResponse](#peloton.api.respool.DeleteResourcePoolResponse)
-    - [GetResourcePoolRequest](#peloton.api.respool.GetResourcePoolRequest)
-    - [GetResourcePoolResponse](#peloton.api.respool.GetResourcePoolResponse)
-    - [LookupResourcePoolIDRequest](#peloton.api.respool.LookupResourcePoolIDRequest)
-    - [LookupResourcePoolIDResponse](#peloton.api.respool.LookupResourcePoolIDResponse)
-    - [QueryResourcePoolsRequest](#peloton.api.respool.QueryResourcePoolsRequest)
-    - [QueryResourcePoolsResponse](#peloton.api.respool.QueryResourcePoolsResponse)
-    - [UpdateResourcePoolRequest](#peloton.api.respool.UpdateResourcePoolRequest)
-    - [UpdateResourcePoolResponse](#peloton.api.respool.UpdateResourcePoolResponse)
+- [changelog.proto](#changelog.proto)
+    - [ChangeLog](#peloton.api.changelog.ChangeLog)
   
-  
-  
-    - [ResourcePoolService](#peloton.api.respool.ResourcePoolService)
-  
-
-- [task_svc.proto](#task_svc.proto)
-    - [BrowseSandboxRequest](#peloton.api.task.svc.BrowseSandboxRequest)
-    - [BrowseSandboxResponse](#peloton.api.task.svc.BrowseSandboxResponse)
-    - [GetEventsRequest](#peloton.api.task.svc.GetEventsRequest)
-    - [GetEventsResponse](#peloton.api.task.svc.GetEventsResponse)
-    - [GetEventsResponse.Error](#peloton.api.task.svc.GetEventsResponse.Error)
-    - [GetEventsResponse.Events](#peloton.api.task.svc.GetEventsResponse.Events)
-    - [GetTaskRequest](#peloton.api.task.svc.GetTaskRequest)
-    - [GetTaskResponse](#peloton.api.task.svc.GetTaskResponse)
-    - [ListTasksRequest](#peloton.api.task.svc.ListTasksRequest)
-    - [ListTasksResponse](#peloton.api.task.svc.ListTasksResponse)
-    - [ListTasksResponse.TasksEntry](#peloton.api.task.svc.ListTasksResponse.TasksEntry)
-    - [QueryTasksRequest](#peloton.api.task.svc.QueryTasksRequest)
-    - [QueryTasksResponse](#peloton.api.task.svc.QueryTasksResponse)
-    - [RestartTasksRequest](#peloton.api.task.svc.RestartTasksRequest)
-    - [RestartTasksResponse](#peloton.api.task.svc.RestartTasksResponse)
-    - [StartTasksRequest](#peloton.api.task.svc.StartTasksRequest)
-    - [StartTasksResponse](#peloton.api.task.svc.StartTasksResponse)
-    - [StopTasksRequest](#peloton.api.task.svc.StopTasksRequest)
-    - [StopTasksResponse](#peloton.api.task.svc.StopTasksResponse)
-    - [TaskEventsError](#peloton.api.task.svc.TaskEventsError)
-  
-  
-  
-    - [TaskService](#peloton.api.task.svc.TaskService)
-  
-
-- [update_svc.proto](#update_svc.proto)
-    - [AbortUpdateRequest](#peloton.api.update.svc.AbortUpdateRequest)
-    - [AbortUpdateResponse](#peloton.api.update.svc.AbortUpdateResponse)
-    - [CreateUpdateRequest](#peloton.api.update.svc.CreateUpdateRequest)
-    - [CreateUpdateResponse](#peloton.api.update.svc.CreateUpdateResponse)
-    - [GetUpdateRequest](#peloton.api.update.svc.GetUpdateRequest)
-    - [GetUpdateResponse](#peloton.api.update.svc.GetUpdateResponse)
-    - [ListUpdatesRequest](#peloton.api.update.svc.ListUpdatesRequest)
-    - [ListUpdatesResponse](#peloton.api.update.svc.ListUpdatesResponse)
-    - [PauseUpdateRequest](#peloton.api.update.svc.PauseUpdateRequest)
-    - [PauseUpdateResponse](#peloton.api.update.svc.PauseUpdateResponse)
-    - [ResumeUpdateRequest](#peloton.api.update.svc.ResumeUpdateRequest)
-    - [ResumeUpdateResponse](#peloton.api.update.svc.ResumeUpdateResponse)
-    - [RollbackUpdateRequest](#peloton.api.update.svc.RollbackUpdateRequest)
-    - [RollbackUpdateResponse](#peloton.api.update.svc.RollbackUpdateResponse)
   
   
   
-    - [UpdateService](#peloton.api.update.svc.UpdateService)
+
+- [respool.proto](#respool.proto)
+    - [CreateRequest](#peloton.api.respool.CreateRequest)
+    - [CreateResponse](#peloton.api.respool.CreateResponse)
+    - [CreateResponse.Error](#peloton.api.respool.CreateResponse.Error)
+    - [DeleteRequest](#peloton.api.respool.DeleteRequest)
+    - [DeleteResponse](#peloton.api.respool.DeleteResponse)
+    - [DeleteResponse.Error](#peloton.api.respool.DeleteResponse.Error)
+    - [GetRequest](#peloton.api.respool.GetRequest)
+    - [GetResponse](#peloton.api.respool.GetResponse)
+    - [GetResponse.Error](#peloton.api.respool.GetResponse.Error)
+    - [InvalidResourcePoolConfig](#peloton.api.respool.InvalidResourcePoolConfig)
+    - [InvalidResourcePoolPath](#peloton.api.respool.InvalidResourcePoolPath)
+    - [LookupRequest](#peloton.api.respool.LookupRequest)
+    - [LookupResponse](#peloton.api.respool.LookupResponse)
+    - [LookupResponse.Error](#peloton.api.respool.LookupResponse.Error)
+    - [QueryRequest](#peloton.api.respool.QueryRequest)
+    - [QueryResponse](#peloton.api.respool.QueryResponse)
+    - [QueryResponse.Error](#peloton.api.respool.QueryResponse.Error)
+    - [ResourceConfig](#peloton.api.respool.ResourceConfig)
+    - [ResourcePoolAlreadyExists](#peloton.api.respool.ResourcePoolAlreadyExists)
+    - [ResourcePoolConfig](#peloton.api.respool.ResourcePoolConfig)
+    - [ResourcePoolInfo](#peloton.api.respool.ResourcePoolInfo)
+    - [ResourcePoolIsBusy](#peloton.api.respool.ResourcePoolIsBusy)
+    - [ResourcePoolIsNotLeaf](#peloton.api.respool.ResourcePoolIsNotLeaf)
+    - [ResourcePoolNotDeleted](#peloton.api.respool.ResourcePoolNotDeleted)
+    - [ResourcePoolNotFound](#peloton.api.respool.ResourcePoolNotFound)
+    - [ResourcePoolPath](#peloton.api.respool.ResourcePoolPath)
+    - [ResourcePoolPathNotFound](#peloton.api.respool.ResourcePoolPathNotFound)
+    - [ResourceUsage](#peloton.api.respool.ResourceUsage)
+    - [UpdateRequest](#peloton.api.respool.UpdateRequest)
+    - [UpdateResponse](#peloton.api.respool.UpdateResponse)
+    - [UpdateResponse.Error](#peloton.api.respool.UpdateResponse.Error)
+  
+    - [SchedulingPolicy](#peloton.api.respool.SchedulingPolicy)
+  
+  
+    - [ResourceManager](#peloton.api.respool.ResourceManager)
   
 
-- [volume_svc.proto](#volume_svc.proto)
-    - [DeleteVolumeRequest](#peloton.api.volume.svc.DeleteVolumeRequest)
-    - [DeleteVolumeResponse](#peloton.api.volume.svc.DeleteVolumeResponse)
-    - [GetVolumeRequest](#peloton.api.volume.svc.GetVolumeRequest)
-    - [GetVolumeResponse](#peloton.api.volume.svc.GetVolumeResponse)
-    - [ListVolumesRequest](#peloton.api.volume.svc.ListVolumesRequest)
-    - [ListVolumesResponse](#peloton.api.volume.svc.ListVolumesResponse)
-    - [ListVolumesResponse.VolumesEntry](#peloton.api.volume.svc.ListVolumesResponse.VolumesEntry)
+- [job.proto](#job.proto)
+    - [CreateRequest](#peloton.api.job.CreateRequest)
+    - [CreateResponse](#peloton.api.job.CreateResponse)
+    - [CreateResponse.Error](#peloton.api.job.CreateResponse.Error)
+    - [DeleteRequest](#peloton.api.job.DeleteRequest)
+    - [DeleteResponse](#peloton.api.job.DeleteResponse)
+    - [DeleteResponse.Error](#peloton.api.job.DeleteResponse.Error)
+    - [GetRequest](#peloton.api.job.GetRequest)
+    - [GetResponse](#peloton.api.job.GetResponse)
+    - [GetResponse.Error](#peloton.api.job.GetResponse.Error)
+    - [InvalidJobConfig](#peloton.api.job.InvalidJobConfig)
+    - [InvalidJobId](#peloton.api.job.InvalidJobId)
+    - [JobAlreadyExists](#peloton.api.job.JobAlreadyExists)
+    - [JobConfig](#peloton.api.job.JobConfig)
+    - [JobConfig.InstanceConfigEntry](#peloton.api.job.JobConfig.InstanceConfigEntry)
+    - [JobInfo](#peloton.api.job.JobInfo)
+    - [JobNotFound](#peloton.api.job.JobNotFound)
+    - [QueryRequest](#peloton.api.job.QueryRequest)
+    - [QueryResponse](#peloton.api.job.QueryResponse)
+    - [QueryResponse.Error](#peloton.api.job.QueryResponse.Error)
+    - [QuerySpec](#peloton.api.job.QuerySpec)
+    - [RuntimeInfo](#peloton.api.job.RuntimeInfo)
+    - [RuntimeInfo.TaskStatsEntry](#peloton.api.job.RuntimeInfo.TaskStatsEntry)
+    - [SlaConfig](#peloton.api.job.SlaConfig)
+    - [UpdateRequest](#peloton.api.job.UpdateRequest)
+    - [UpdateResponse](#peloton.api.job.UpdateResponse)
+    - [UpdateResponse.Error](#peloton.api.job.UpdateResponse.Error)
+  
+    - [JobState](#peloton.api.job.JobState)
+    - [JobType](#peloton.api.job.JobType)
+  
+  
+    - [JobManager](#peloton.api.job.JobManager)
+  
+
+- [volume.proto](#volume.proto)
+    - [PersistentVolumeInfo](#peloton.api.volume.PersistentVolumeInfo)
+  
+    - [VolumeState](#peloton.api.volume.VolumeState)
   
   
   
-    - [VolumeService](#peloton.api.volume.svc.VolumeService)
+
+- [scheduler.proto](#scheduler.proto)
+    - [Call](#mesos.v1.scheduler.Call)
+    - [Call.Accept](#mesos.v1.scheduler.Call.Accept)
+    - [Call.AcceptInverseOffers](#mesos.v1.scheduler.Call.AcceptInverseOffers)
+    - [Call.Acknowledge](#mesos.v1.scheduler.Call.Acknowledge)
+    - [Call.Decline](#mesos.v1.scheduler.Call.Decline)
+    - [Call.DeclineInverseOffers](#mesos.v1.scheduler.Call.DeclineInverseOffers)
+    - [Call.Kill](#mesos.v1.scheduler.Call.Kill)
+    - [Call.Message](#mesos.v1.scheduler.Call.Message)
+    - [Call.Reconcile](#mesos.v1.scheduler.Call.Reconcile)
+    - [Call.Reconcile.Task](#mesos.v1.scheduler.Call.Reconcile.Task)
+    - [Call.Request](#mesos.v1.scheduler.Call.Request)
+    - [Call.Revive](#mesos.v1.scheduler.Call.Revive)
+    - [Call.Shutdown](#mesos.v1.scheduler.Call.Shutdown)
+    - [Call.Subscribe](#mesos.v1.scheduler.Call.Subscribe)
+    - [Call.Suppress](#mesos.v1.scheduler.Call.Suppress)
+    - [Event](#mesos.v1.scheduler.Event)
+    - [Event.Error](#mesos.v1.scheduler.Event.Error)
+    - [Event.Failure](#mesos.v1.scheduler.Event.Failure)
+    - [Event.InverseOffers](#mesos.v1.scheduler.Event.InverseOffers)
+    - [Event.Message](#mesos.v1.scheduler.Event.Message)
+    - [Event.Offers](#mesos.v1.scheduler.Event.Offers)
+    - [Event.Rescind](#mesos.v1.scheduler.Event.Rescind)
+    - [Event.RescindInverseOffer](#mesos.v1.scheduler.Event.RescindInverseOffer)
+    - [Event.Subscribed](#mesos.v1.scheduler.Event.Subscribed)
+    - [Event.Update](#mesos.v1.scheduler.Event.Update)
+  
+    - [Call.Type](#mesos.v1.scheduler.Call.Type)
+    - [Event.Type](#mesos.v1.scheduler.Event.Type)
+  
+  
+  
+
+- [agent.proto](#agent.proto)
+    - [Call](#mesos.v1.agent.Call)
+    - [Call.AttachContainerInput](#mesos.v1.agent.Call.AttachContainerInput)
+    - [Call.AttachContainerOutput](#mesos.v1.agent.Call.AttachContainerOutput)
+    - [Call.GetMetrics](#mesos.v1.agent.Call.GetMetrics)
+    - [Call.KillNestedContainer](#mesos.v1.agent.Call.KillNestedContainer)
+    - [Call.LaunchNestedContainer](#mesos.v1.agent.Call.LaunchNestedContainer)
+    - [Call.LaunchNestedContainerSession](#mesos.v1.agent.Call.LaunchNestedContainerSession)
+    - [Call.ListFiles](#mesos.v1.agent.Call.ListFiles)
+    - [Call.ReadFile](#mesos.v1.agent.Call.ReadFile)
+    - [Call.SetLoggingLevel](#mesos.v1.agent.Call.SetLoggingLevel)
+    - [Call.WaitNestedContainer](#mesos.v1.agent.Call.WaitNestedContainer)
+    - [ProcessIO](#mesos.v1.agent.ProcessIO)
+    - [ProcessIO.Control](#mesos.v1.agent.ProcessIO.Control)
+    - [ProcessIO.Control.Heartbeat](#mesos.v1.agent.ProcessIO.Control.Heartbeat)
+    - [ProcessIO.Data](#mesos.v1.agent.ProcessIO.Data)
+    - [Response](#mesos.v1.agent.Response)
+    - [Response.GetContainers](#mesos.v1.agent.Response.GetContainers)
+    - [Response.GetContainers.Container](#mesos.v1.agent.Response.GetContainers.Container)
+    - [Response.GetExecutors](#mesos.v1.agent.Response.GetExecutors)
+    - [Response.GetExecutors.Executor](#mesos.v1.agent.Response.GetExecutors.Executor)
+    - [Response.GetFlags](#mesos.v1.agent.Response.GetFlags)
+    - [Response.GetFrameworks](#mesos.v1.agent.Response.GetFrameworks)
+    - [Response.GetFrameworks.Framework](#mesos.v1.agent.Response.GetFrameworks.Framework)
+    - [Response.GetHealth](#mesos.v1.agent.Response.GetHealth)
+    - [Response.GetLoggingLevel](#mesos.v1.agent.Response.GetLoggingLevel)
+    - [Response.GetMetrics](#mesos.v1.agent.Response.GetMetrics)
+    - [Response.GetState](#mesos.v1.agent.Response.GetState)
+    - [Response.GetTasks](#mesos.v1.agent.Response.GetTasks)
+    - [Response.GetVersion](#mesos.v1.agent.Response.GetVersion)
+    - [Response.ListFiles](#mesos.v1.agent.Response.ListFiles)
+    - [Response.ReadFile](#mesos.v1.agent.Response.ReadFile)
+    - [Response.WaitNestedContainer](#mesos.v1.agent.Response.WaitNestedContainer)
+  
+    - [Call.AttachContainerInput.Type](#mesos.v1.agent.Call.AttachContainerInput.Type)
+    - [Call.Type](#mesos.v1.agent.Call.Type)
+    - [ProcessIO.Control.Type](#mesos.v1.agent.ProcessIO.Control.Type)
+    - [ProcessIO.Data.Type](#mesos.v1.agent.ProcessIO.Data.Type)
+    - [ProcessIO.Type](#mesos.v1.agent.ProcessIO.Type)
+    - [Response.Type](#mesos.v1.agent.Response.Type)
+  
+  
+  
+
+- [allocator.proto](#allocator.proto)
+    - [InverseOfferStatus](#mesos.v1.allocator.InverseOfferStatus)
+  
+    - [InverseOfferStatus.Status](#mesos.v1.allocator.InverseOfferStatus.Status)
+  
+  
+  
+
+- [maintenance.proto](#maintenance.proto)
+    - [ClusterStatus](#mesos.v1.maintenance.ClusterStatus)
+    - [ClusterStatus.DrainingMachine](#mesos.v1.maintenance.ClusterStatus.DrainingMachine)
+    - [Schedule](#mesos.v1.maintenance.Schedule)
+    - [Window](#mesos.v1.maintenance.Window)
+  
+  
+  
+  
+
+- [quota.proto](#quota.proto)
+    - [QuotaInfo](#mesos.v1.quota.QuotaInfo)
+    - [QuotaRequest](#mesos.v1.quota.QuotaRequest)
+    - [QuotaStatus](#mesos.v1.quota.QuotaStatus)
+  
+  
+  
+  
+
+- [master.proto](#master.proto)
+    - [Call](#mesos.v1.master.Call)
+    - [Call.CreateVolumes](#mesos.v1.master.Call.CreateVolumes)
+    - [Call.DestroyVolumes](#mesos.v1.master.Call.DestroyVolumes)
+    - [Call.GetMetrics](#mesos.v1.master.Call.GetMetrics)
+    - [Call.ListFiles](#mesos.v1.master.Call.ListFiles)
+    - [Call.ReadFile](#mesos.v1.master.Call.ReadFile)
+    - [Call.RemoveQuota](#mesos.v1.master.Call.RemoveQuota)
+    - [Call.ReserveResources](#mesos.v1.master.Call.ReserveResources)
+    - [Call.SetLoggingLevel](#mesos.v1.master.Call.SetLoggingLevel)
+    - [Call.SetQuota](#mesos.v1.master.Call.SetQuota)
+    - [Call.StartMaintenance](#mesos.v1.master.Call.StartMaintenance)
+    - [Call.StopMaintenance](#mesos.v1.master.Call.StopMaintenance)
+    - [Call.UnreserveResources](#mesos.v1.master.Call.UnreserveResources)
+    - [Call.UpdateMaintenanceSchedule](#mesos.v1.master.Call.UpdateMaintenanceSchedule)
+    - [Call.UpdateWeights](#mesos.v1.master.Call.UpdateWeights)
+    - [Event](#mesos.v1.master.Event)
+    - [Event.AgentAdded](#mesos.v1.master.Event.AgentAdded)
+    - [Event.AgentRemoved](#mesos.v1.master.Event.AgentRemoved)
+    - [Event.Subscribed](#mesos.v1.master.Event.Subscribed)
+    - [Event.TaskAdded](#mesos.v1.master.Event.TaskAdded)
+    - [Event.TaskUpdated](#mesos.v1.master.Event.TaskUpdated)
+    - [Response](#mesos.v1.master.Response)
+    - [Response.GetAgents](#mesos.v1.master.Response.GetAgents)
+    - [Response.GetAgents.Agent](#mesos.v1.master.Response.GetAgents.Agent)
+    - [Response.GetExecutors](#mesos.v1.master.Response.GetExecutors)
+    - [Response.GetExecutors.Executor](#mesos.v1.master.Response.GetExecutors.Executor)
+    - [Response.GetFlags](#mesos.v1.master.Response.GetFlags)
+    - [Response.GetFrameworks](#mesos.v1.master.Response.GetFrameworks)
+    - [Response.GetFrameworks.Framework](#mesos.v1.master.Response.GetFrameworks.Framework)
+    - [Response.GetHealth](#mesos.v1.master.Response.GetHealth)
+    - [Response.GetLoggingLevel](#mesos.v1.master.Response.GetLoggingLevel)
+    - [Response.GetMaintenanceSchedule](#mesos.v1.master.Response.GetMaintenanceSchedule)
+    - [Response.GetMaintenanceStatus](#mesos.v1.master.Response.GetMaintenanceStatus)
+    - [Response.GetMaster](#mesos.v1.master.Response.GetMaster)
+    - [Response.GetMetrics](#mesos.v1.master.Response.GetMetrics)
+    - [Response.GetQuota](#mesos.v1.master.Response.GetQuota)
+    - [Response.GetRoles](#mesos.v1.master.Response.GetRoles)
+    - [Response.GetState](#mesos.v1.master.Response.GetState)
+    - [Response.GetTasks](#mesos.v1.master.Response.GetTasks)
+    - [Response.GetVersion](#mesos.v1.master.Response.GetVersion)
+    - [Response.GetWeights](#mesos.v1.master.Response.GetWeights)
+    - [Response.ListFiles](#mesos.v1.master.Response.ListFiles)
+    - [Response.ReadFile](#mesos.v1.master.Response.ReadFile)
+  
+    - [Call.Type](#mesos.v1.master.Call.Type)
+    - [Event.Type](#mesos.v1.master.Event.Type)
+    - [Response.Type](#mesos.v1.master.Response.Type)
+  
+  
+  
+
+- [executor.proto](#executor.proto)
+    - [Call](#mesos.v1.executor.Call)
+    - [Call.Message](#mesos.v1.executor.Call.Message)
+    - [Call.Subscribe](#mesos.v1.executor.Call.Subscribe)
+    - [Call.Update](#mesos.v1.executor.Call.Update)
+    - [Event](#mesos.v1.executor.Event)
+    - [Event.Acknowledged](#mesos.v1.executor.Event.Acknowledged)
+    - [Event.Error](#mesos.v1.executor.Event.Error)
+    - [Event.Kill](#mesos.v1.executor.Event.Kill)
+    - [Event.Launch](#mesos.v1.executor.Event.Launch)
+    - [Event.LaunchGroup](#mesos.v1.executor.Event.LaunchGroup)
+    - [Event.Message](#mesos.v1.executor.Event.Message)
+    - [Event.Subscribed](#mesos.v1.executor.Event.Subscribed)
+  
+    - [Call.Type](#mesos.v1.executor.Call.Type)
+    - [Event.Type](#mesos.v1.executor.Event.Type)
+  
+  
   
 
 - [hostsvc.proto](#hostsvc.proto)
@@ -776,7 +678,216 @@
     - [TaskQueue](#peloton.private.resmgr.taskqueue.TaskQueue)
   
 
+- [update_svc.proto](#update_svc.proto)
+    - [AbortUpdateRequest](#peloton.api.update.svc.AbortUpdateRequest)
+    - [AbortUpdateResponse](#peloton.api.update.svc.AbortUpdateResponse)
+    - [CreateUpdateRequest](#peloton.api.update.svc.CreateUpdateRequest)
+    - [CreateUpdateResponse](#peloton.api.update.svc.CreateUpdateResponse)
+    - [GetUpdateRequest](#peloton.api.update.svc.GetUpdateRequest)
+    - [GetUpdateResponse](#peloton.api.update.svc.GetUpdateResponse)
+    - [ListUpdatesRequest](#peloton.api.update.svc.ListUpdatesRequest)
+    - [ListUpdatesResponse](#peloton.api.update.svc.ListUpdatesResponse)
+    - [PauseUpdateRequest](#peloton.api.update.svc.PauseUpdateRequest)
+    - [PauseUpdateResponse](#peloton.api.update.svc.PauseUpdateResponse)
+    - [ResumeUpdateRequest](#peloton.api.update.svc.ResumeUpdateRequest)
+    - [ResumeUpdateResponse](#peloton.api.update.svc.ResumeUpdateResponse)
+    - [RollbackUpdateRequest](#peloton.api.update.svc.RollbackUpdateRequest)
+    - [RollbackUpdateResponse](#peloton.api.update.svc.RollbackUpdateResponse)
+  
+  
+  
+    - [UpdateService](#peloton.api.update.svc.UpdateService)
+  
+
+- [respool_svc.proto](#respool_svc.proto)
+    - [CreateResourcePoolRequest](#peloton.api.respool.CreateResourcePoolRequest)
+    - [CreateResourcePoolResponse](#peloton.api.respool.CreateResourcePoolResponse)
+    - [DeleteResourcePoolRequest](#peloton.api.respool.DeleteResourcePoolRequest)
+    - [DeleteResourcePoolResponse](#peloton.api.respool.DeleteResourcePoolResponse)
+    - [GetResourcePoolRequest](#peloton.api.respool.GetResourcePoolRequest)
+    - [GetResourcePoolResponse](#peloton.api.respool.GetResourcePoolResponse)
+    - [LookupResourcePoolIDRequest](#peloton.api.respool.LookupResourcePoolIDRequest)
+    - [LookupResourcePoolIDResponse](#peloton.api.respool.LookupResourcePoolIDResponse)
+    - [QueryResourcePoolsRequest](#peloton.api.respool.QueryResourcePoolsRequest)
+    - [QueryResourcePoolsResponse](#peloton.api.respool.QueryResourcePoolsResponse)
+    - [UpdateResourcePoolRequest](#peloton.api.respool.UpdateResourcePoolRequest)
+    - [UpdateResourcePoolResponse](#peloton.api.respool.UpdateResourcePoolResponse)
+  
+  
+  
+    - [ResourcePoolService](#peloton.api.respool.ResourcePoolService)
+  
+
+- [task_svc.proto](#task_svc.proto)
+    - [BrowseSandboxRequest](#peloton.api.task.svc.BrowseSandboxRequest)
+    - [BrowseSandboxResponse](#peloton.api.task.svc.BrowseSandboxResponse)
+    - [GetEventsRequest](#peloton.api.task.svc.GetEventsRequest)
+    - [GetEventsResponse](#peloton.api.task.svc.GetEventsResponse)
+    - [GetEventsResponse.Error](#peloton.api.task.svc.GetEventsResponse.Error)
+    - [GetEventsResponse.Events](#peloton.api.task.svc.GetEventsResponse.Events)
+    - [GetTaskRequest](#peloton.api.task.svc.GetTaskRequest)
+    - [GetTaskResponse](#peloton.api.task.svc.GetTaskResponse)
+    - [ListTasksRequest](#peloton.api.task.svc.ListTasksRequest)
+    - [ListTasksResponse](#peloton.api.task.svc.ListTasksResponse)
+    - [ListTasksResponse.TasksEntry](#peloton.api.task.svc.ListTasksResponse.TasksEntry)
+    - [QueryTasksRequest](#peloton.api.task.svc.QueryTasksRequest)
+    - [QueryTasksResponse](#peloton.api.task.svc.QueryTasksResponse)
+    - [RestartTasksRequest](#peloton.api.task.svc.RestartTasksRequest)
+    - [RestartTasksResponse](#peloton.api.task.svc.RestartTasksResponse)
+    - [StartTasksRequest](#peloton.api.task.svc.StartTasksRequest)
+    - [StartTasksResponse](#peloton.api.task.svc.StartTasksResponse)
+    - [StopTasksRequest](#peloton.api.task.svc.StopTasksRequest)
+    - [StopTasksResponse](#peloton.api.task.svc.StopTasksResponse)
+    - [TaskEventsError](#peloton.api.task.svc.TaskEventsError)
+  
+  
+  
+    - [TaskService](#peloton.api.task.svc.TaskService)
+  
+
+- [job_svc.proto](#job_svc.proto)
+    - [CreateJobRequest](#peloton.api.job.svc.CreateJobRequest)
+    - [CreateJobResponse](#peloton.api.job.svc.CreateJobResponse)
+    - [DeleteJobRequest](#peloton.api.job.svc.DeleteJobRequest)
+    - [DeleteJobResponse](#peloton.api.job.svc.DeleteJobResponse)
+    - [GetJobRequest](#peloton.api.job.svc.GetJobRequest)
+    - [GetJobResponse](#peloton.api.job.svc.GetJobResponse)
+    - [QueryJobsRequest](#peloton.api.job.svc.QueryJobsRequest)
+    - [QueryJobsResponse](#peloton.api.job.svc.QueryJobsResponse)
+    - [UpdateJobRequest](#peloton.api.job.svc.UpdateJobRequest)
+    - [UpdateJobResponse](#peloton.api.job.svc.UpdateJobResponse)
+  
+  
+  
+    - [JobService](#peloton.api.job.svc.JobService)
+  
+
+- [volume_svc.proto](#volume_svc.proto)
+    - [DeleteVolumeRequest](#peloton.api.volume.svc.DeleteVolumeRequest)
+    - [DeleteVolumeResponse](#peloton.api.volume.svc.DeleteVolumeResponse)
+    - [GetVolumeRequest](#peloton.api.volume.svc.GetVolumeRequest)
+    - [GetVolumeResponse](#peloton.api.volume.svc.GetVolumeResponse)
+    - [ListVolumesRequest](#peloton.api.volume.svc.ListVolumesRequest)
+    - [ListVolumesResponse](#peloton.api.volume.svc.ListVolumesResponse)
+    - [ListVolumesResponse.VolumesEntry](#peloton.api.volume.svc.ListVolumesResponse.VolumesEntry)
+  
+  
+  
+    - [VolumeService](#peloton.api.volume.svc.VolumeService)
+  
+
 - [Scalar Value Types](#scalar-value-types)
+
+
+
+<a name="peloton.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## peloton.proto
+
+
+
+<a name="peloton.api.peloton.ChangeLog"/>
+
+### ChangeLog
+Change log of an entity info, such as Job config etc.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| version | [uint64](#uint64) |  | Version number of the entity info which is monotonically increasing. Clients can use this to guide against race conditions using MVCC. |
+| createdAt | [uint64](#uint64) |  | The timestamp when the entity info is created |
+| updatedAt | [uint64](#uint64) |  | The timestamp when the entity info is updated |
+| updatedBy | [string](#string) |  | The user or service that updated the entity info |
+
+
+
+
+
+
+<a name="peloton.api.peloton.JobID"/>
+
+### JobID
+A unique ID assigned to a Job. This is a UUID in RFC4122 format.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.peloton.Label"/>
+
+### Label
+Key, value pair used to store free form user-data.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.peloton.ResourcePoolID"/>
+
+### ResourcePoolID
+A unique ID assigned to a Resource Pool. This is a UUID in RFC4122 format.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.peloton.TaskID"/>
+
+### TaskID
+A unique ID assigned to a Task (aka job instance). The task ID is in
+the format of JobID-&lt;InstanceID&gt;.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.peloton.VolumeID"/>
+
+### VolumeID
+A unique ID assigned to a Volume. This is a UUID in RFC4122 format.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| value | [string](#string) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+ 
 
 
 
@@ -3759,2800 +3870,6 @@ Describes the source of the task status update.
 
 
 
-<a name="peloton.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## peloton.proto
-
-
-
-<a name="peloton.api.peloton.ChangeLog"/>
-
-### ChangeLog
-Change log of an entity info, such as Job config etc.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| version | [uint64](#uint64) |  | Version number of the entity info which is monotonically increasing. Clients can use this to guide against race conditions using MVCC. |
-| createdAt | [uint64](#uint64) |  | The timestamp when the entity info is created |
-| updatedAt | [uint64](#uint64) |  | The timestamp when the entity info is updated |
-| updatedBy | [string](#string) |  | The user or service that updated the entity info |
-
-
-
-
-
-
-<a name="peloton.api.peloton.JobID"/>
-
-### JobID
-A unique ID assigned to a Job. This is a UUID in RFC4122 format.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.api.peloton.Label"/>
-
-### Label
-Key, value pair used to store free form user-data.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.api.peloton.ResourcePoolID"/>
-
-### ResourcePoolID
-A unique ID assigned to a Resource Pool. This is a UUID in RFC4122 format.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.api.peloton.TaskID"/>
-
-### TaskID
-A unique ID assigned to a Task (aka job instance). The task ID is in
-the format of JobID-&lt;InstanceID&gt;.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.api.peloton.VolumeID"/>
-
-### VolumeID
-A unique ID assigned to a Volume. This is a UUID in RFC4122 format.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| value | [string](#string) |  |  |
-
-
-
-
-
- 
-
- 
-
- 
-
- 
-
-
-
-<a name="agent.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## agent.proto
-
-
-
-<a name="mesos.v1.agent.Call"/>
-
-### Call
-Calls that can be sent to the v1 agent API.
-
-A call is described using the standard protocol buffer &#34;union&#34;
-trick, see
-https://developers.google.com/protocol-buffers/docs/techniques#union.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [Call.Type](#mesos.v1.agent.Call.Type) | optional |  |
-| get_metrics | [Call.GetMetrics](#mesos.v1.agent.Call.GetMetrics) | optional |  |
-| set_logging_level | [Call.SetLoggingLevel](#mesos.v1.agent.Call.SetLoggingLevel) | optional |  |
-| list_files | [Call.ListFiles](#mesos.v1.agent.Call.ListFiles) | optional |  |
-| read_file | [Call.ReadFile](#mesos.v1.agent.Call.ReadFile) | optional |  |
-| launch_nested_container | [Call.LaunchNestedContainer](#mesos.v1.agent.Call.LaunchNestedContainer) | optional |  |
-| wait_nested_container | [Call.WaitNestedContainer](#mesos.v1.agent.Call.WaitNestedContainer) | optional |  |
-| kill_nested_container | [Call.KillNestedContainer](#mesos.v1.agent.Call.KillNestedContainer) | optional |  |
-| launch_nested_container_session | [Call.LaunchNestedContainerSession](#mesos.v1.agent.Call.LaunchNestedContainerSession) | optional |  |
-| attach_container_input | [Call.AttachContainerInput](#mesos.v1.agent.Call.AttachContainerInput) | optional |  |
-| attach_container_output | [Call.AttachContainerOutput](#mesos.v1.agent.Call.AttachContainerOutput) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.AttachContainerInput"/>
-
-### Call.AttachContainerInput
-Attaches the caller to the STDIN of the entry point of the container.
-Clients can use this to stream input data to a container.
-Note that this call needs to be made on a persistent connection by
-streaming a CONTAINER_ID message followed by one or more PROCESS_IO
-messages.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [Call.AttachContainerInput.Type](#mesos.v1.agent.Call.AttachContainerInput.Type) | optional |  |
-| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | optional |  |
-| process_io | [ProcessIO](#mesos.v1.agent.ProcessIO) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.AttachContainerOutput"/>
-
-### Call.AttachContainerOutput
-Attaches the caller to the STDOUT and STDERR of the entrypoint of
-the container. Clients can use this to stream output/error from the
-container. This call will result in a streaming response of `ProcessIO`;
-so this call needs to be made on a persistent connection.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.GetMetrics"/>
-
-### Call.GetMetrics
-Provides a snapshot of the current metrics tracked by the agent.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| timeout | [.mesos.v1.DurationInfo](#mesos.v1.agent..mesos.v1.DurationInfo) | optional | If set, `timeout` would be used to determines the maximum amount of time the API will take to respond. If the timeout is exceeded, some metrics may not be included in the response. |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.KillNestedContainer"/>
-
-### Call.KillNestedContainer
-Kills the nested container. Currently only supports SIGKILL.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.LaunchNestedContainer"/>
-
-### Call.LaunchNestedContainer
-Launches a nested container within an executor&#39;s tree of containers.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
-| command | [.mesos.v1.CommandInfo](#mesos.v1.agent..mesos.v1.CommandInfo) | optional |  |
-| container | [.mesos.v1.ContainerInfo](#mesos.v1.agent..mesos.v1.ContainerInfo) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.LaunchNestedContainerSession"/>
-
-### Call.LaunchNestedContainerSession
-Launches a nested container within an executor&#39;s tree of containers.
-The differences between this call and `LaunchNestedContainer` are:
-1) The container&#39;s life-cycle is tied to the lifetime of the
-connection used to make this call, i.e., if the connection ever
-breaks, the container will be destroyed.
-2) The nested container shares the same namespaces and cgroups as
-its parent container.
-3) Results in a streaming response of type `ProcessIO`. So the call
-needs to be made on a persistent connection.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
-| command | [.mesos.v1.CommandInfo](#mesos.v1.agent..mesos.v1.CommandInfo) | optional |  |
-| container | [.mesos.v1.ContainerInfo](#mesos.v1.agent..mesos.v1.ContainerInfo) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.ListFiles"/>
-
-### Call.ListFiles
-Provides the file listing for a directory.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| path | [string](#string) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.ReadFile"/>
-
-### Call.ReadFile
-Reads data from a file.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| path | [string](#string) | required | The path of file. |
-| offset | [uint64](#uint64) | required | Initial offset in file to start reading from. |
-| length | [uint64](#uint64) | optional | The maximum number of bytes to read. The read length is capped at 16 memory pages. |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.SetLoggingLevel"/>
-
-### Call.SetLoggingLevel
-Sets the logging verbosity level for a specified duration. Mesos uses
-[glog](https://github.com/google/glog) for logging. The library only uses
-verbose logging which means nothing will be output unless the verbosity
-level is set (by default it&#39;s 0, libprocess uses levels 1, 2, and 3).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| level | [uint32](#uint32) | required | The verbosity level. |
-| duration | [.mesos.v1.DurationInfo](#mesos.v1.agent..mesos.v1.DurationInfo) | required | The duration to keep verbosity level toggled. After this duration, the verbosity level of log would revert to the original level. |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Call.WaitNestedContainer"/>
-
-### Call.WaitNestedContainer
-Waits for the nested container to terminate and receives the exit status.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.ProcessIO"/>
-
-### ProcessIO
-Streaming response to `Call::LAUNCH_NESTED_CONTAINER_SESSION` and
-`Call::ATTACH_CONTAINER_OUTPUT`.
-
-This message is also used to stream request data for
-`Call::ATTACH_CONTAINER_INPUT`.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [ProcessIO.Type](#mesos.v1.agent.ProcessIO.Type) | optional |  |
-| data | [ProcessIO.Data](#mesos.v1.agent.ProcessIO.Data) | optional |  |
-| control | [ProcessIO.Control](#mesos.v1.agent.ProcessIO.Control) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.ProcessIO.Control"/>
-
-### ProcessIO.Control
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [ProcessIO.Control.Type](#mesos.v1.agent.ProcessIO.Control.Type) | optional |  |
-| tty_info | [.mesos.v1.TTYInfo](#mesos.v1.agent..mesos.v1.TTYInfo) | optional |  |
-| heartbeat | [ProcessIO.Control.Heartbeat](#mesos.v1.agent.ProcessIO.Control.Heartbeat) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.ProcessIO.Control.Heartbeat"/>
-
-### ProcessIO.Control.Heartbeat
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| interval | [.mesos.v1.DurationInfo](#mesos.v1.agent..mesos.v1.DurationInfo) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.ProcessIO.Data"/>
-
-### ProcessIO.Data
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [ProcessIO.Data.Type](#mesos.v1.agent.ProcessIO.Data.Type) | optional |  |
-| data | [bytes](#bytes) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response"/>
-
-### Response
-Synchronous responses for all calls made to the v1 agent API.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [Response.Type](#mesos.v1.agent.Response.Type) | optional |  |
-| get_health | [Response.GetHealth](#mesos.v1.agent.Response.GetHealth) | optional |  |
-| get_flags | [Response.GetFlags](#mesos.v1.agent.Response.GetFlags) | optional |  |
-| get_version | [Response.GetVersion](#mesos.v1.agent.Response.GetVersion) | optional |  |
-| get_metrics | [Response.GetMetrics](#mesos.v1.agent.Response.GetMetrics) | optional |  |
-| get_logging_level | [Response.GetLoggingLevel](#mesos.v1.agent.Response.GetLoggingLevel) | optional |  |
-| list_files | [Response.ListFiles](#mesos.v1.agent.Response.ListFiles) | optional |  |
-| read_file | [Response.ReadFile](#mesos.v1.agent.Response.ReadFile) | optional |  |
-| get_state | [Response.GetState](#mesos.v1.agent.Response.GetState) | optional |  |
-| get_containers | [Response.GetContainers](#mesos.v1.agent.Response.GetContainers) | optional |  |
-| get_frameworks | [Response.GetFrameworks](#mesos.v1.agent.Response.GetFrameworks) | optional |  |
-| get_executors | [Response.GetExecutors](#mesos.v1.agent.Response.GetExecutors) | optional |  |
-| get_tasks | [Response.GetTasks](#mesos.v1.agent.Response.GetTasks) | optional |  |
-| wait_nested_container | [Response.WaitNestedContainer](#mesos.v1.agent.Response.WaitNestedContainer) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetContainers"/>
-
-### Response.GetContainers
-Information about containers running on this agent. It contains
-ContainerStatus and ResourceStatistics along with some metadata
-of the containers.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| containers | [Response.GetContainers.Container](#mesos.v1.agent.Response.GetContainers.Container) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetContainers.Container"/>
-
-### Response.GetContainers.Container
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.agent..mesos.v1.FrameworkID) | required |  |
-| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.agent..mesos.v1.ExecutorID) | required |  |
-| executor_name | [string](#string) | required |  |
-| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
-| container_status | [.mesos.v1.ContainerStatus](#mesos.v1.agent..mesos.v1.ContainerStatus) | optional |  |
-| resource_statistics | [.mesos.v1.ResourceStatistics](#mesos.v1.agent..mesos.v1.ResourceStatistics) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetExecutors"/>
-
-### Response.GetExecutors
-Lists information about all the executors known to the agent at the
-current time.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| executors | [Response.GetExecutors.Executor](#mesos.v1.agent.Response.GetExecutors.Executor) | repeated |  |
-| completed_executors | [Response.GetExecutors.Executor](#mesos.v1.agent.Response.GetExecutors.Executor) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetExecutors.Executor"/>
-
-### Response.GetExecutors.Executor
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| executor_info | [.mesos.v1.ExecutorInfo](#mesos.v1.agent..mesos.v1.ExecutorInfo) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetFlags"/>
-
-### Response.GetFlags
-Contains the flag configuration of the agent.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| flags | [.mesos.v1.Flag](#mesos.v1.agent..mesos.v1.Flag) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetFrameworks"/>
-
-### Response.GetFrameworks
-Information about all the frameworks known to the agent at the current
-time.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| frameworks | [Response.GetFrameworks.Framework](#mesos.v1.agent.Response.GetFrameworks.Framework) | repeated |  |
-| completed_frameworks | [Response.GetFrameworks.Framework](#mesos.v1.agent.Response.GetFrameworks.Framework) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetFrameworks.Framework"/>
-
-### Response.GetFrameworks.Framework
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| framework_info | [.mesos.v1.FrameworkInfo](#mesos.v1.agent..mesos.v1.FrameworkInfo) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetHealth"/>
-
-### Response.GetHealth
-`healthy` would be true if the agent is healthy. Delayed responses are also
-indicative of the poor health of the agent.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| healthy | [bool](#bool) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetLoggingLevel"/>
-
-### Response.GetLoggingLevel
-Contains the logging level of the agent.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| level | [uint32](#uint32) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetMetrics"/>
-
-### Response.GetMetrics
-Contains a snapshot of the current metrics.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| metrics | [.mesos.v1.Metric](#mesos.v1.agent..mesos.v1.Metric) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetState"/>
-
-### Response.GetState
-Contains full state of the agent i.e. information about the tasks,
-frameworks and executors running in the cluster.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| get_tasks | [Response.GetTasks](#mesos.v1.agent.Response.GetTasks) | optional |  |
-| get_executors | [Response.GetExecutors](#mesos.v1.agent.Response.GetExecutors) | optional |  |
-| get_frameworks | [Response.GetFrameworks](#mesos.v1.agent.Response.GetFrameworks) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetTasks"/>
-
-### Response.GetTasks
-Lists information about all the tasks known to the agent at the current
-time.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| pending_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are pending in the agent&#39;s queue before an executor is launched. |
-| queued_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are enqueued for a launched executor that has not yet registered. |
-| launched_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are running. |
-| terminated_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are terminated but pending updates. |
-| completed_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are terminated and updates acked. |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.GetVersion"/>
-
-### Response.GetVersion
-Contains the version information of the agent.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| version_info | [.mesos.v1.VersionInfo](#mesos.v1.agent..mesos.v1.VersionInfo) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.ListFiles"/>
-
-### Response.ListFiles
-Contains the file listing(similar to `ls -l`) for a directory.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| file_infos | [.mesos.v1.FileInfo](#mesos.v1.agent..mesos.v1.FileInfo) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.ReadFile"/>
-
-### Response.ReadFile
-Contains the file data.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| size | [uint64](#uint64) | required | The size of file (in bytes). |
-| data | [bytes](#bytes) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.agent.Response.WaitNestedContainer"/>
-
-### Response.WaitNestedContainer
-Returns termination information about the nested container.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| exit_status | [int32](#int32) | optional |  |
-
-
-
-
-
- 
-
-
-<a name="mesos.v1.agent.Call.AttachContainerInput.Type"/>
-
-### Call.AttachContainerInput.Type
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 |  |
-| CONTAINER_ID | 1 |  |
-| PROCESS_IO | 2 |  |
-
-
-
-<a name="mesos.v1.agent.Call.Type"/>
-
-### Call.Type
-If a call of type `Call::FOO` requires additional parameters they can be
-included in the corresponding `Call::Foo` message. Similarly, if a call
-receives a synchronous response it will be returned as a `Response`
-message of type `Response::FOO`; see `Call::LaunchNestedContainerSession`
-and `Call::AttachContainerOutput` for exceptions.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 |  |
-| GET_HEALTH | 1 | Retrieves the agent&#39;s health status. |
-| GET_FLAGS | 2 | Retrieves the agent&#39;s flag configuration. |
-| GET_VERSION | 3 | Retrieves the agent&#39;s version information. |
-| GET_METRICS | 4 | See &#39;GetMetrics&#39; below. |
-| GET_LOGGING_LEVEL | 5 | Retrieves the agent&#39;s logging level. |
-| SET_LOGGING_LEVEL | 6 | See &#39;SetLoggingLevel&#39; below. |
-| LIST_FILES | 7 |  |
-| READ_FILE | 8 | See &#39;ReadFile&#39; below. |
-| GET_STATE | 9 |  |
-| GET_CONTAINERS | 10 |  |
-| GET_FRAMEWORKS | 11 | Retrieves the information about known frameworks. |
-| GET_EXECUTORS | 12 | Retrieves the information about known executors. |
-| GET_TASKS | 13 | Retrieves the information about known tasks. |
-| LAUNCH_NESTED_CONTAINER | 14 | Calls for managing nested containers underneath an executor&#39;s container.
-
-See &#39;LaunchNestedContainer&#39; below. |
-| WAIT_NESTED_CONTAINER | 15 | See &#39;WaitNestedContainer&#39; below. |
-| KILL_NESTED_CONTAINER | 16 | See &#39;KillNestedContainer&#39; below. |
-| LAUNCH_NESTED_CONTAINER_SESSION | 17 | See &#39;LaunchNestedContainerSession&#39; below. |
-| ATTACH_CONTAINER_INPUT | 18 | See &#39;AttachContainerInput&#39; below. |
-| ATTACH_CONTAINER_OUTPUT | 19 | see &#39;AttachContainerOutput&#39; below. |
-
-
-
-<a name="mesos.v1.agent.ProcessIO.Control.Type"/>
-
-### ProcessIO.Control.Type
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 |  |
-| TTY_INFO | 1 |  |
-| HEARTBEAT | 2 |  |
-
-
-
-<a name="mesos.v1.agent.ProcessIO.Data.Type"/>
-
-### ProcessIO.Data.Type
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 |  |
-| STDIN | 1 |  |
-| STDOUT | 2 |  |
-| STDERR | 3 |  |
-
-
-
-<a name="mesos.v1.agent.ProcessIO.Type"/>
-
-### ProcessIO.Type
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 |  |
-| DATA | 1 |  |
-| CONTROL | 2 |  |
-
-
-
-<a name="mesos.v1.agent.Response.Type"/>
-
-### Response.Type
-Each of the responses of type `FOO` corresponds to `Foo` message below.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 |  |
-| GET_HEALTH | 1 | See &#39;GetHealth&#39; below. |
-| GET_FLAGS | 2 | See &#39;GetFlags&#39; below. |
-| GET_VERSION | 3 | See &#39;GetVersion&#39; below. |
-| GET_METRICS | 4 | See &#39;GetMetrics&#39; below. |
-| GET_LOGGING_LEVEL | 5 | See &#39;GetLoggingLevel&#39; below. |
-| LIST_FILES | 6 |  |
-| READ_FILE | 7 | See &#39;ReadFile&#39; below. |
-| GET_STATE | 8 |  |
-| GET_CONTAINERS | 9 |  |
-| GET_FRAMEWORKS | 10 | See &#39;GetFrameworks&#39; below. |
-| GET_EXECUTORS | 11 | See &#39;GetExecutors&#39; below. |
-| GET_TASKS | 12 | See &#39;GetTasks&#39; below. |
-| WAIT_NESTED_CONTAINER | 13 | See &#39;WaitNestedContainer&#39; below. |
-
-
- 
-
- 
-
- 
-
-
-
-<a name="allocator.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## allocator.proto
-
-
-
-<a name="mesos.v1.allocator.InverseOfferStatus"/>
-
-### InverseOfferStatus
-Describes the status of an inverse offer.
-
-This is a protobuf so as to be able to share the status to inverse offers
-through endpoints such as the maintenance status endpoint.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| status | [InverseOfferStatus.Status](#mesos.v1.allocator.InverseOfferStatus.Status) | required |  |
-| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.allocator..mesos.v1.FrameworkID) | required |  |
-| timestamp | [.mesos.v1.TimeInfo](#mesos.v1.allocator..mesos.v1.TimeInfo) | required | Time, since the epoch, when this status was last updated. |
-
-
-
-
-
- 
-
-
-<a name="mesos.v1.allocator.InverseOfferStatus.Status"/>
-
-### InverseOfferStatus.Status
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 1 | We have not received a response yet. This is the default state before receiving a response. |
-| ACCEPT | 2 | The framework is ok with the inverse offer. This means it will not violate any SLAs and will attempt to evacuate any tasks running on the agent. If the tasks are not evacuated by the framework, the operator can manually shut down the slave knowing that the framework will not have violated its SLAs. |
-| DECLINE | 3 | The framework wants to block the maintenance operation from happening. An example would be that it cannot meet its SLA by losing resources. |
-
-
- 
-
- 
-
- 
-
-
-
-<a name="executor.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## executor.proto
-
-
-
-<a name="mesos.v1.executor.Call"/>
-
-### Call
-Executor call API.
-
-Like Event, a Call is described using the standard protocol buffer
-&#34;union&#34; trick (see above).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.executor..mesos.v1.ExecutorID) | required | Identifies the executor which generated this call. |
-| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.executor..mesos.v1.FrameworkID) | required |  |
-| type | [Call.Type](#mesos.v1.executor.Call.Type) | optional | Type of the call, indicates which optional field below should be present if that type has a nested message definition. In case type is SUBSCRIBED, no message needs to be set. See comments on `Event::Type` above on the reasoning behind this field being optional. |
-| subscribe | [Call.Subscribe](#mesos.v1.executor.Call.Subscribe) | optional |  |
-| update | [Call.Update](#mesos.v1.executor.Call.Update) | optional |  |
-| message | [Call.Message](#mesos.v1.executor.Call.Message) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Call.Message"/>
-
-### Call.Message
-Sends arbitrary binary data to the scheduler. Note that Mesos
-neither interprets this data nor makes any guarantees about the
-delivery of this message to the scheduler.
-See &#39;Message&#39; in the &#39;Events&#39; section.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| data | [bytes](#bytes) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Call.Subscribe"/>
-
-### Call.Subscribe
-Request to subscribe with the agent. If subscribing after a disconnection,
-it must include a list of all the tasks and updates which haven&#39;t been
-acknowledged by the scheduler.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| unacknowledged_tasks | [.mesos.v1.TaskInfo](#mesos.v1.executor..mesos.v1.TaskInfo) | repeated |  |
-| unacknowledged_updates | [Call.Update](#mesos.v1.executor.Call.Update) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Call.Update"/>
-
-### Call.Update
-Notifies the scheduler that a task has transitioned from one
-state to another. Status updates should be used by executors
-to reliably communicate the status of the tasks that they
-manage. It is crucial that a terminal update (see TaskState
-in v1/mesos.proto) is sent to the scheduler as soon as the task
-terminates, in order for Mesos to release the resources allocated
-to the task. It is the responsibility of the scheduler to
-explicitly acknowledge the receipt of a status update. See
-&#39;Acknowledged&#39; in the &#39;Events&#39; section above for the semantics.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| status | [.mesos.v1.TaskStatus](#mesos.v1.executor..mesos.v1.TaskStatus) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Event"/>
-
-### Event
-Executor event API.
-
-An event is described using the standard protocol buffer &#34;union&#34;
-trick, see https://developers.google.com/protocol-buffers/docs/techniques#union.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [Event.Type](#mesos.v1.executor.Event.Type) | optional | Type of the event, indicates which optional field below should be present if that type has a nested message definition. Enum fields should be optional, see: MESOS-4997. |
-| subscribed | [Event.Subscribed](#mesos.v1.executor.Event.Subscribed) | optional |  |
-| acknowledged | [Event.Acknowledged](#mesos.v1.executor.Event.Acknowledged) | optional |  |
-| launch | [Event.Launch](#mesos.v1.executor.Event.Launch) | optional |  |
-| launch_group | [Event.LaunchGroup](#mesos.v1.executor.Event.LaunchGroup) | optional |  |
-| kill | [Event.Kill](#mesos.v1.executor.Event.Kill) | optional |  |
-| message | [Event.Message](#mesos.v1.executor.Event.Message) | optional |  |
-| error | [Event.Error](#mesos.v1.executor.Event.Error) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Event.Acknowledged"/>
-
-### Event.Acknowledged
-Received when the agent acknowledges the receipt of status
-update. Schedulers are responsible for explicitly acknowledging
-the receipt of status updates that have &#39;update.status().uuid()&#39;
-field set. Unacknowledged updates can be retried by the executor.
-They should also be sent by the executor whenever it
-re-subscribes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task_id | [.mesos.v1.TaskID](#mesos.v1.executor..mesos.v1.TaskID) | required |  |
-| uuid | [bytes](#bytes) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Event.Error"/>
-
-### Event.Error
-Received in case the executor sends invalid calls (e.g.,
-required values not set).
-TODO(arojas): Remove this once the old executor driver is no
-longer supported. With HTTP API all errors will be signaled via
-HTTP response codes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Event.Kill"/>
-
-### Event.Kill
-Received when the scheduler wants to kill a specific task. Once
-the task is terminated, the executor should send a TASK_KILLED
-(or TASK_FAILED) update. The terminal update is necessary so
-Mesos can release the resources associated with the task.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task_id | [.mesos.v1.TaskID](#mesos.v1.executor..mesos.v1.TaskID) | required |  |
-| kill_policy | [.mesos.v1.KillPolicy](#mesos.v1.executor..mesos.v1.KillPolicy) | optional | If set, overrides any previously specified kill policy for this task. This includes &#39;TaskInfo.kill_policy&#39; and &#39;Executor.kill.kill_policy&#39;. Can be used to forcefully kill a task which is already being killed. |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Event.Launch"/>
-
-### Event.Launch
-Received when the framework attempts to launch a task. Once
-the task is successfully launched, the executor must respond with
-a TASK_RUNNING update (See TaskState in v1/mesos.proto).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task | [.mesos.v1.TaskInfo](#mesos.v1.executor..mesos.v1.TaskInfo) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Event.LaunchGroup"/>
-
-### Event.LaunchGroup
-Received when the framework attempts to launch a group of tasks atomically.
-Similar to `Launch` above the executor must send TASK_RUNNING updates for
-tasks that are successfully launched.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task_group | [.mesos.v1.TaskGroupInfo](#mesos.v1.executor..mesos.v1.TaskGroupInfo) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Event.Message"/>
-
-### Event.Message
-Received when a custom message generated by the scheduler is
-forwarded by the agent. Note that this message is not
-interpreted by Mesos and is only forwarded (without reliability
-guarantees) to the executor. It is up to the scheduler to retry
-if the message is dropped for any reason.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| data | [bytes](#bytes) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.executor.Event.Subscribed"/>
-
-### Event.Subscribed
-First event received when the executor subscribes.
-The &#39;id&#39; field in the &#39;framework_info&#39; will be set.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| executor_info | [.mesos.v1.ExecutorInfo](#mesos.v1.executor..mesos.v1.ExecutorInfo) | required |  |
-| framework_info | [.mesos.v1.FrameworkInfo](#mesos.v1.executor..mesos.v1.FrameworkInfo) | required |  |
-| agent_info | [.mesos.v1.AgentInfo](#mesos.v1.executor..mesos.v1.AgentInfo) | required |  |
-| container_id | [.mesos.v1.ContainerID](#mesos.v1.executor..mesos.v1.ContainerID) | optional | Uniquely identifies the container of an executor run. |
-
-
-
-
-
- 
-
-
-<a name="mesos.v1.executor.Call.Type"/>
-
-### Call.Type
-Possible call types, followed by message definitions if
-applicable.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 | See comments above on `Event::Type` for more details on this enum value. |
-| SUBSCRIBE | 1 | See &#39;Subscribe&#39; below. |
-| UPDATE | 2 | See &#39;Update&#39; below. |
-| MESSAGE | 3 | See &#39;Message&#39; below. |
-
-
-
-<a name="mesos.v1.executor.Event.Type"/>
-
-### Event.Type
-Possible event types, followed by message definitions if
-applicable.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 | This must be the first enum value in this list, to ensure that if &#39;type&#39; is not set, the default value is UNKNOWN. This enables enum values to be added in a backwards-compatible way. See: MESOS-4997. |
-| SUBSCRIBED | 1 | See &#39;Subscribed&#39; below. |
-| LAUNCH | 2 | See &#39;Launch&#39; below. |
-| LAUNCH_GROUP | 8 | See &#39;LaunchGroup&#39; below. |
-| KILL | 3 | See &#39;Kill&#39; below. |
-| ACKNOWLEDGED | 4 | See &#39;Acknowledged&#39; below. |
-| MESSAGE | 5 | See &#39;Message&#39; below. |
-| ERROR | 6 | See &#39;Error&#39; below. |
-| SHUTDOWN | 7 | Received when the agent asks the executor to shutdown/kill itself. The executor is then required to kill all its active tasks, send `TASK_KILLED` status updates and gracefully exit. The executor should terminate within a `MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD` (an environment variable set by the agent upon executor startup); it can be configured via `ExecutorInfo.shutdown_grace_period`. If the executor fails to do so, the agent will forcefully destroy the container where the executor is running. The agent would then send `TASK_LOST` updates for any remaining active tasks of this executor.
-
-NOTE: The executor must not assume that it will always be allotted the full grace period, as the agent may decide to allot a shorter period and failures / forcible terminations may occur.
-
-TODO(alexr): Consider adding a duration field into the `Shutdown` message so that the agent can communicate when a shorter period has been allotted. |
-
-
- 
-
- 
-
- 
-
-
-
-<a name="maintenance.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## maintenance.proto
-
-
-
-<a name="mesos.v1.maintenance.ClusterStatus"/>
-
-### ClusterStatus
-Represents the maintenance status of each machine in the cluster.
-The lists correspond to the `MachineInfo.Mode` enumeration.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| draining_machines | [ClusterStatus.DrainingMachine](#mesos.v1.maintenance.ClusterStatus.DrainingMachine) | repeated |  |
-| down_machines | [.mesos.v1.MachineID](#mesos.v1.maintenance..mesos.v1.MachineID) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.maintenance.ClusterStatus.DrainingMachine"/>
-
-### ClusterStatus.DrainingMachine
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.mesos.v1.MachineID](#mesos.v1.maintenance..mesos.v1.MachineID) | required |  |
-| statuses | [.mesos.v1.allocator.InverseOfferStatus](#mesos.v1.maintenance..mesos.v1.allocator.InverseOfferStatus) | repeated | A list of the most recent responses to inverse offers from frameworks running on this draining machine. |
-
-
-
-
-
-
-<a name="mesos.v1.maintenance.Schedule"/>
-
-### Schedule
-A list of maintenance windows.
-For example, this may represent a rolling restart of agents.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| windows | [Window](#mesos.v1.maintenance.Window) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.maintenance.Window"/>
-
-### Window
-A set of machines scheduled to go into maintenance
-in the same `unavailability`.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| machine_ids | [.mesos.v1.MachineID](#mesos.v1.maintenance..mesos.v1.MachineID) | repeated | Machines affected by this maintenance window. |
-| unavailability | [.mesos.v1.Unavailability](#mesos.v1.maintenance..mesos.v1.Unavailability) | required | Interval during which this set of machines is expected to be down. |
-
-
-
-
-
- 
-
- 
-
- 
-
- 
-
-
-
-<a name="quota.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## quota.proto
-
-
-
-<a name="mesos.v1.quota.QuotaInfo"/>
-
-### QuotaInfo
-TODO(joerg84): Add limits, i.e. upper bounds of resources that a
-role is allowed to use.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| role | [string](#string) | optional | Quota is granted per role and not per framework, similar to dynamic reservations. |
-| principal | [string](#string) | optional | Principal which set the quota. Currently only operators can set quotas. |
-| guarantee | [.mesos.v1.Resource](#mesos.v1.quota..mesos.v1.Resource) | repeated | The guarantee that these resources are allocatable for the above role. NOTE: `guarantee.role` should not specify any role except &#39;*&#39;, because quota does not reserve specific resources. |
-
-
-
-
-
-
-<a name="mesos.v1.quota.QuotaRequest"/>
-
-### QuotaRequest
-`QuotaRequest` provides a schema for set quota JSON requests.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| force | [bool](#bool) | optional | Disables the capacity heuristic check if set to `true`. |
-| role | [string](#string) | optional | The role for which to set quota. |
-| guarantee | [.mesos.v1.Resource](#mesos.v1.quota..mesos.v1.Resource) | repeated | The requested guarantee that these resources will be allocatable for the above role. |
-
-
-
-
-
-
-<a name="mesos.v1.quota.QuotaStatus"/>
-
-### QuotaStatus
-`QuotaStatus` describes the internal representation for the /quota/status
-response.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| infos | [QuotaInfo](#mesos.v1.quota.QuotaInfo) | repeated | Quotas which are currently set, i.e. known to the master. |
-
-
-
-
-
- 
-
- 
-
- 
-
- 
-
-
-
-<a name="master.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## master.proto
-
-
-
-<a name="mesos.v1.master.Call"/>
-
-### Call
-Calls that can be sent to the v1 master API.
-
-A call is described using the standard protocol buffer &#34;union&#34;
-trick, see
-https://developers.google.com/protocol-buffers/docs/techniques#union.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [Call.Type](#mesos.v1.master.Call.Type) | optional |  |
-| get_metrics | [Call.GetMetrics](#mesos.v1.master.Call.GetMetrics) | optional |  |
-| set_logging_level | [Call.SetLoggingLevel](#mesos.v1.master.Call.SetLoggingLevel) | optional |  |
-| list_files | [Call.ListFiles](#mesos.v1.master.Call.ListFiles) | optional |  |
-| read_file | [Call.ReadFile](#mesos.v1.master.Call.ReadFile) | optional |  |
-| update_weights | [Call.UpdateWeights](#mesos.v1.master.Call.UpdateWeights) | optional |  |
-| reserve_resources | [Call.ReserveResources](#mesos.v1.master.Call.ReserveResources) | optional |  |
-| unreserve_resources | [Call.UnreserveResources](#mesos.v1.master.Call.UnreserveResources) | optional |  |
-| create_volumes | [Call.CreateVolumes](#mesos.v1.master.Call.CreateVolumes) | optional |  |
-| destroy_volumes | [Call.DestroyVolumes](#mesos.v1.master.Call.DestroyVolumes) | optional |  |
-| update_maintenance_schedule | [Call.UpdateMaintenanceSchedule](#mesos.v1.master.Call.UpdateMaintenanceSchedule) | optional |  |
-| start_maintenance | [Call.StartMaintenance](#mesos.v1.master.Call.StartMaintenance) | optional |  |
-| stop_maintenance | [Call.StopMaintenance](#mesos.v1.master.Call.StopMaintenance) | optional |  |
-| set_quota | [Call.SetQuota](#mesos.v1.master.Call.SetQuota) | optional |  |
-| remove_quota | [Call.RemoveQuota](#mesos.v1.master.Call.RemoveQuota) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.CreateVolumes"/>
-
-### Call.CreateVolumes
-Create persistent volumes on reserved resources. The request is forwarded
-asynchronously to the Mesos agent where the reserved resources are located.
-That asynchronous message may not be delivered or creating the volumes at
-the agent might fail. Volume creation can be verified by sending a
-`GET_VOLUMES` call.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
-| volumes | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.DestroyVolumes"/>
-
-### Call.DestroyVolumes
-Destroy persistent volumes. The request is forwarded asynchronously to the
-Mesos agent where the reserved resources are located. That asynchronous
-message may not be delivered or destroying the volumes at the agent might
-fail. Volume deletion can be verified by sending a `GET_VOLUMES` call.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
-| volumes | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.GetMetrics"/>
-
-### Call.GetMetrics
-Provides a snapshot of the current metrics tracked by the master.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| timeout | [.mesos.v1.DurationInfo](#mesos.v1.master..mesos.v1.DurationInfo) | optional | If set, `timeout` would be used to determines the maximum amount of time the API will take to respond. If the timeout is exceeded, some metrics may not be included in the response. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.ListFiles"/>
-
-### Call.ListFiles
-Provides the file listing for a directory.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| path | [string](#string) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.ReadFile"/>
-
-### Call.ReadFile
-Reads data from a file.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| path | [string](#string) | required | The path of file. |
-| offset | [uint64](#uint64) | required | Initial offset in file to start reading from. |
-| length | [uint64](#uint64) | optional | The maximum number of bytes to read. The read length is capped at 16 memory pages. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.RemoveQuota"/>
-
-### Call.RemoveQuota
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| role | [string](#string) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.ReserveResources"/>
-
-### Call.ReserveResources
-Reserve resources dynamically on a specific agent.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
-| resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.SetLoggingLevel"/>
-
-### Call.SetLoggingLevel
-Sets the logging verbosity level for a specified duration. Mesos uses
-[glog](https://github.com/google/glog) for logging. The library only uses
-verbose logging which means nothing will be output unless the verbosity
-level is set (by default it&#39;s 0, libprocess uses levels 1, 2, and 3).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| level | [uint32](#uint32) | required | The verbosity level. |
-| duration | [.mesos.v1.DurationInfo](#mesos.v1.master..mesos.v1.DurationInfo) | required | The duration to keep verbosity level toggled. After this duration, the verbosity level of log would revert to the original level. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.SetQuota"/>
-
-### Call.SetQuota
-Sets the quota for resources to be used by a particular role.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| quota_request | [.mesos.v1.quota.QuotaRequest](#mesos.v1.master..mesos.v1.quota.QuotaRequest) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.StartMaintenance"/>
-
-### Call.StartMaintenance
-Starts the maintenance of the cluster, this would bring a set of machines
-down.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| machines | [.mesos.v1.MachineID](#mesos.v1.master..mesos.v1.MachineID) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.StopMaintenance"/>
-
-### Call.StopMaintenance
-Stops the maintenance of the cluster, this would bring a set of machines
-back up.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| machines | [.mesos.v1.MachineID](#mesos.v1.master..mesos.v1.MachineID) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.UnreserveResources"/>
-
-### Call.UnreserveResources
-Unreserve resources dynamically on a specific agent.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
-| resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.UpdateMaintenanceSchedule"/>
-
-### Call.UpdateMaintenanceSchedule
-Updates the cluster&#39;s maintenance schedule.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| schedule | [.mesos.v1.maintenance.Schedule](#mesos.v1.master..mesos.v1.maintenance.Schedule) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Call.UpdateWeights"/>
-
-### Call.UpdateWeights
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| weight_infos | [.mesos.v1.WeightInfo](#mesos.v1.master..mesos.v1.WeightInfo) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Event"/>
-
-### Event
-Streaming response to `Call::SUBSCRIBE` made to the master.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [Event.Type](#mesos.v1.master.Event.Type) | optional |  |
-| subscribed | [Event.Subscribed](#mesos.v1.master.Event.Subscribed) | optional |  |
-| task_added | [Event.TaskAdded](#mesos.v1.master.Event.TaskAdded) | optional |  |
-| task_updated | [Event.TaskUpdated](#mesos.v1.master.Event.TaskUpdated) | optional |  |
-| agent_added | [Event.AgentAdded](#mesos.v1.master.Event.AgentAdded) | optional |  |
-| agent_removed | [Event.AgentRemoved](#mesos.v1.master.Event.AgentRemoved) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Event.AgentAdded"/>
-
-### Event.AgentAdded
-Forwarded by the master when an agent becomes known to it.
-This can happen when an agent registered for the first
-time, or reregistered after a master failover.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent | [Response.GetAgents.Agent](#mesos.v1.master.Response.GetAgents.Agent) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Event.AgentRemoved"/>
-
-### Event.AgentRemoved
-Forwarded by the master when an agent is removed.
-This can happen when an agent does not re-register
-within `--agent_reregister_timeout` upon a master failover,
-or when the agent is scheduled for maintenance.
-
-NOTE: It&#39;s possible that an agent might become
-active once it has been removed, i.e. if the master
-has gc&#39;ed its list of known &#34;dead&#34; agents.
-See MESOS-5965 for context.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Event.Subscribed"/>
-
-### Event.Subscribed
-First event received when a client subscribes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| get_state | [Response.GetState](#mesos.v1.master.Response.GetState) | optional | Snapshot of the entire cluster state. Further updates to the cluster state are sent as separate events on the stream. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Event.TaskAdded"/>
-
-### Event.TaskAdded
-Forwarded by the master when a task becomes known to it. This can happen
-when a new task is launched by the scheduler or when the task becomes
-known to the master upon an agent (re-)registration after a failover.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Event.TaskUpdated"/>
-
-### Event.TaskUpdated
-Forwarded by the master when an existing task transitions to a new state.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.master..mesos.v1.FrameworkID) | required |  |
-| status | [.mesos.v1.TaskStatus](#mesos.v1.master..mesos.v1.TaskStatus) | required | This is the status of the task corresponding to the last status update acknowledged by the scheduler. |
-| state | [.mesos.v1.TaskState](#mesos.v1.master..mesos.v1.TaskState) | required | This is the latest state of the task according to the agent. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response"/>
-
-### Response
-Synchronous responses for all calls (except Call::SUBSCRIBE) made to
-the v1 master API.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [Response.Type](#mesos.v1.master.Response.Type) | optional |  |
-| get_health | [Response.GetHealth](#mesos.v1.master.Response.GetHealth) | optional |  |
-| get_flags | [Response.GetFlags](#mesos.v1.master.Response.GetFlags) | optional |  |
-| get_version | [Response.GetVersion](#mesos.v1.master.Response.GetVersion) | optional |  |
-| get_metrics | [Response.GetMetrics](#mesos.v1.master.Response.GetMetrics) | optional |  |
-| get_logging_level | [Response.GetLoggingLevel](#mesos.v1.master.Response.GetLoggingLevel) | optional |  |
-| list_files | [Response.ListFiles](#mesos.v1.master.Response.ListFiles) | optional |  |
-| read_file | [Response.ReadFile](#mesos.v1.master.Response.ReadFile) | optional |  |
-| get_state | [Response.GetState](#mesos.v1.master.Response.GetState) | optional |  |
-| get_agents | [Response.GetAgents](#mesos.v1.master.Response.GetAgents) | optional |  |
-| get_frameworks | [Response.GetFrameworks](#mesos.v1.master.Response.GetFrameworks) | optional |  |
-| get_executors | [Response.GetExecutors](#mesos.v1.master.Response.GetExecutors) | optional |  |
-| get_tasks | [Response.GetTasks](#mesos.v1.master.Response.GetTasks) | optional |  |
-| get_roles | [Response.GetRoles](#mesos.v1.master.Response.GetRoles) | optional |  |
-| get_weights | [Response.GetWeights](#mesos.v1.master.Response.GetWeights) | optional |  |
-| get_master | [Response.GetMaster](#mesos.v1.master.Response.GetMaster) | optional |  |
-| get_maintenance_status | [Response.GetMaintenanceStatus](#mesos.v1.master.Response.GetMaintenanceStatus) | optional |  |
-| get_maintenance_schedule | [Response.GetMaintenanceSchedule](#mesos.v1.master.Response.GetMaintenanceSchedule) | optional |  |
-| get_quota | [Response.GetQuota](#mesos.v1.master.Response.GetQuota) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetAgents"/>
-
-### Response.GetAgents
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agents | [Response.GetAgents.Agent](#mesos.v1.master.Response.GetAgents.Agent) | repeated | Registered agents. |
-| recovered_agents | [.mesos.v1.AgentInfo](#mesos.v1.master..mesos.v1.AgentInfo) | repeated | Agents which are recovered from registry but not reregistered yet. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetAgents.Agent"/>
-
-### Response.GetAgents.Agent
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_info | [.mesos.v1.AgentInfo](#mesos.v1.master..mesos.v1.AgentInfo) | required |  |
-| active | [bool](#bool) | required |  |
-| version | [string](#string) | required |  |
-| pid | [string](#string) | optional |  |
-| registered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
-| reregistered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
-| total_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated | Total resources (including oversubscribed resources) the agent provides. |
-| allocated_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
-| offered_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
-| capabilities | [.mesos.v1.AgentInfo.Capability](#mesos.v1.master..mesos.v1.AgentInfo.Capability) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetExecutors"/>
-
-### Response.GetExecutors
-Lists information about all the executors known to the master at the
-current time. Note that there might be executors unknown to the master
-running on partitioned or unsubscribed agents.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| executors | [Response.GetExecutors.Executor](#mesos.v1.master.Response.GetExecutors.Executor) | repeated |  |
-| orphan_executors | [Response.GetExecutors.Executor](#mesos.v1.master.Response.GetExecutors.Executor) | repeated | As of Mesos 1.2, this field will always be empty.
-
-TODO(neilc): Remove this field after a deprecation cycle starting in Mesos 1.2. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetExecutors.Executor"/>
-
-### Response.GetExecutors.Executor
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| executor_info | [.mesos.v1.ExecutorInfo](#mesos.v1.master..mesos.v1.ExecutorInfo) | required |  |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetFlags"/>
-
-### Response.GetFlags
-Contains the flag configuration of the master.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| flags | [.mesos.v1.Flag](#mesos.v1.master..mesos.v1.Flag) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetFrameworks"/>
-
-### Response.GetFrameworks
-Information about all the frameworks known to the master at the current
-time. Note that there might be frameworks unknown to the master running
-on partitioned or unsubscribed agents.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| frameworks | [Response.GetFrameworks.Framework](#mesos.v1.master.Response.GetFrameworks.Framework) | repeated | Frameworks that have subscribed with the master. Note that this includes frameworks that are disconnected and in the process of re-subscribing. |
-| completed_frameworks | [Response.GetFrameworks.Framework](#mesos.v1.master.Response.GetFrameworks.Framework) | repeated | Frameworks that have been teared down. |
-| recovered_frameworks | [.mesos.v1.FrameworkInfo](#mesos.v1.master..mesos.v1.FrameworkInfo) | repeated | This field previously contained frameworks that previously subscribed but haven&#39;t yet re-subscribed after a master failover. As of Mesos 1.2, this field will always be empty; recovered frameworks are now reported in the `frameworks` list with the `recovered` field set to true.
-
-TODO(neilc): Remove this field after a deprecation cycle starting in Mesos 1.2. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetFrameworks.Framework"/>
-
-### Response.GetFrameworks.Framework
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| framework_info | [.mesos.v1.FrameworkInfo](#mesos.v1.master..mesos.v1.FrameworkInfo) | required |  |
-| active | [bool](#bool) | required |  |
-| connected | [bool](#bool) | required |  |
-| recovered | [bool](#bool) | required | If true, this framework was previously subscribed but hasn&#39;t yet re-subscribed after a master failover. Recovered frameworks are only reported if one or more agents running a task or executor for the framework have re-registered after master failover. |
-| registered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
-| reregistered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
-| unregistered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
-| offers | [.mesos.v1.Offer](#mesos.v1.master..mesos.v1.Offer) | repeated |  |
-| inverse_offers | [.mesos.v1.InverseOffer](#mesos.v1.master..mesos.v1.InverseOffer) | repeated |  |
-| allocated_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
-| offered_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetHealth"/>
-
-### Response.GetHealth
-`healthy` would be true if the master is healthy. Delayed responses are
-also indicative of the poor health of the master.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| healthy | [bool](#bool) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetLoggingLevel"/>
-
-### Response.GetLoggingLevel
-Contains the logging level of the master.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| level | [uint32](#uint32) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetMaintenanceSchedule"/>
-
-### Response.GetMaintenanceSchedule
-Contains the cluster&#39;s maintenance schedule.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| schedule | [.mesos.v1.maintenance.Schedule](#mesos.v1.master..mesos.v1.maintenance.Schedule) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetMaintenanceStatus"/>
-
-### Response.GetMaintenanceStatus
-Contains the cluster&#39;s maintenance status.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| status | [.mesos.v1.maintenance.ClusterStatus](#mesos.v1.master..mesos.v1.maintenance.ClusterStatus) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetMaster"/>
-
-### Response.GetMaster
-Contains the master&#39;s information.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| master_info | [.mesos.v1.MasterInfo](#mesos.v1.master..mesos.v1.MasterInfo) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetMetrics"/>
-
-### Response.GetMetrics
-Contains a snapshot of the current metrics.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| metrics | [.mesos.v1.Metric](#mesos.v1.master..mesos.v1.Metric) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetQuota"/>
-
-### Response.GetQuota
-Contains the cluster&#39;s configured quotas.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| status | [.mesos.v1.quota.QuotaStatus](#mesos.v1.master..mesos.v1.quota.QuotaStatus) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetRoles"/>
-
-### Response.GetRoles
-Provides information about every role that is on the role whitelist (if
-enabled), has one or more registered frameworks or has a non-default weight
-or quota.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| roles | [.mesos.v1.Role](#mesos.v1.master..mesos.v1.Role) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetState"/>
-
-### Response.GetState
-Contains full state of the master i.e. information about the tasks,
-agents, frameworks and executors running in the cluster.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| get_tasks | [Response.GetTasks](#mesos.v1.master.Response.GetTasks) | optional |  |
-| get_executors | [Response.GetExecutors](#mesos.v1.master.Response.GetExecutors) | optional |  |
-| get_frameworks | [Response.GetFrameworks](#mesos.v1.master.Response.GetFrameworks) | optional |  |
-| get_agents | [Response.GetAgents](#mesos.v1.master.Response.GetAgents) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetTasks"/>
-
-### Response.GetTasks
-Lists information about all the tasks known to the master at the current
-time. Note that there might be tasks unknown to the master running on
-partitioned or unsubscribed agents.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| pending_tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | Tasks that are enqueued on the master waiting (e.g., authorizing) to be launched. |
-| tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | Tasks that have been forwarded to the agent for launch. This includes tasks that are staging or running; it also includes tasks that have reached a terminal state but the terminal status update has not yet been acknowledged by the scheduler. |
-| unreachable_tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | Tasks that were running on agents that have become partitioned from the master. If/when the agent is no longer partitioned, tasks running on that agent will no longer be unreachable (they will either be running or completed). Note that the master only stores a limited number of unreachable tasks; information about unreachable tasks is also not preserved across master failover. |
-| completed_tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | Tasks that have reached terminal state and have all their updates acknowledged by the scheduler. |
-| orphan_tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | As of Mesos 1.2, this field will always be empty.
-
-TODO(neilc): Remove this field after a deprecation cycle starting in Mesos 1.2. |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetVersion"/>
-
-### Response.GetVersion
-Contains the version information of the master.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| version_info | [.mesos.v1.VersionInfo](#mesos.v1.master..mesos.v1.VersionInfo) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.GetWeights"/>
-
-### Response.GetWeights
-Provides the weight information about every role.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| weight_infos | [.mesos.v1.WeightInfo](#mesos.v1.master..mesos.v1.WeightInfo) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.ListFiles"/>
-
-### Response.ListFiles
-Contains the file listing(similar to `ls -l`) for a directory.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| file_infos | [.mesos.v1.FileInfo](#mesos.v1.master..mesos.v1.FileInfo) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.master.Response.ReadFile"/>
-
-### Response.ReadFile
-Contains the file data.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| size | [uint64](#uint64) | required | The size of file (in bytes). |
-| data | [bytes](#bytes) | required |  |
-
-
-
-
-
- 
-
-
-<a name="mesos.v1.master.Call.Type"/>
-
-### Call.Type
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 | If a call of type `Call::FOO` requires additional parameters they can be included in the corresponding `Call::Foo` message. Similarly, if a call receives a synchronous response it will be returned as a `Response` message of type `Response::FOO`. Currently all calls except `Call::SUBSCRIBE` receive synchronous responses; `Call::SUBSCRIBE` returns a streaming response of `Event`. |
-| GET_HEALTH | 1 | Retrieves the master&#39;s health status. |
-| GET_FLAGS | 2 | Retrieves the master&#39;s flag configuration. |
-| GET_VERSION | 3 | Retrieves the master&#39;s version information. |
-| GET_METRICS | 4 | See &#39;GetMetrics&#39; below. |
-| GET_LOGGING_LEVEL | 5 | Retrieves the master&#39;s logging level. |
-| SET_LOGGING_LEVEL | 6 | See &#39;SetLoggingLevel&#39; below. |
-| LIST_FILES | 7 |  |
-| READ_FILE | 8 | See &#39;ReadFile&#39; below. |
-| GET_STATE | 9 |  |
-| GET_AGENTS | 10 |  |
-| GET_FRAMEWORKS | 11 |  |
-| GET_EXECUTORS | 12 | Retrieves the information about all executors. |
-| GET_TASKS | 13 | Retrieves the information about all known tasks. |
-| GET_ROLES | 14 | Retrieves the information about roles. |
-| GET_WEIGHTS | 15 | Retrieves the information about role weights. |
-| UPDATE_WEIGHTS | 16 |  |
-| GET_MASTER | 17 | Retrieves the master&#39;s information. |
-| SUBSCRIBE | 18 | Subscribes the master to receive events. |
-| RESERVE_RESOURCES | 19 |  |
-| UNRESERVE_RESOURCES | 20 |  |
-| CREATE_VOLUMES | 21 | See &#39;CreateVolumes&#39; below. |
-| DESTROY_VOLUMES | 22 | See &#39;DestroyVolumes&#39; below. |
-| GET_MAINTENANCE_STATUS | 23 | Retrieves the cluster&#39;s maintenance status. |
-| GET_MAINTENANCE_SCHEDULE | 24 | Retrieves the cluster&#39;s maintenance schedule. |
-| UPDATE_MAINTENANCE_SCHEDULE | 25 | See &#39;UpdateMaintenanceSchedule&#39; below. |
-| START_MAINTENANCE | 26 | See &#39;StartMaintenance&#39; below. |
-| STOP_MAINTENANCE | 27 | See &#39;StopMaintenance&#39; below. |
-| GET_QUOTA | 28 |  |
-| SET_QUOTA | 29 | See &#39;SetQuota&#39; below. |
-| REMOVE_QUOTA | 30 | See &#39;RemoveQuota&#39; below. |
-
-
-
-<a name="mesos.v1.master.Event.Type"/>
-
-### Event.Type
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 |  |
-| SUBSCRIBED | 1 | See `Subscribed` below. |
-| TASK_ADDED | 2 | See `TaskAdded` below. |
-| TASK_UPDATED | 3 | See `TaskUpdated` below. |
-| AGENT_ADDED | 4 | See `AgentAdded` below. |
-| AGENT_REMOVED | 5 | See `AgentRemoved` below. |
-
-
-
-<a name="mesos.v1.master.Response.Type"/>
-
-### Response.Type
-Each of the responses of type `FOO` corresponds to `Foo` message below.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 |  |
-| GET_HEALTH | 1 | See &#39;GetHealth&#39; below. |
-| GET_FLAGS | 2 | See &#39;GetFlags&#39; below. |
-| GET_VERSION | 3 | See &#39;GetVersion&#39; below. |
-| GET_METRICS | 4 | See &#39;GetMetrics&#39; below. |
-| GET_LOGGING_LEVEL | 5 | See &#39;GetLoggingLevel&#39; below. |
-| LIST_FILES | 6 |  |
-| READ_FILE | 7 | See &#39;ReadFile&#39; below. |
-| GET_STATE | 8 |  |
-| GET_AGENTS | 9 |  |
-| GET_FRAMEWORKS | 10 |  |
-| GET_EXECUTORS | 11 | See &#39;GetExecutors&#39; below. |
-| GET_TASKS | 12 | See &#39;GetTasks&#39; below. |
-| GET_ROLES | 13 | See &#39;GetRoles&#39; below. |
-| GET_WEIGHTS | 14 | See &#39;GetWeights&#39; below. |
-| GET_MASTER | 15 | See &#39;GetMaster&#39; below. |
-| GET_MAINTENANCE_STATUS | 16 | See &#39;GetMaintenanceStatus&#39; below. |
-| GET_MAINTENANCE_SCHEDULE | 17 | See &#39;GetMaintenanceSchedule&#39; below. |
-| GET_QUOTA | 18 |  |
-
-
- 
-
- 
-
- 
-
-
-
-<a name="scheduler.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## scheduler.proto
-
-
-
-<a name="mesos.v1.scheduler.Call"/>
-
-### Call
-Scheduler call API.
-
-Like Event, a Call is described using the standard protocol buffer
-&#34;union&#34; trick (see above).
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.scheduler..mesos.v1.FrameworkID) | optional | Identifies who generated this call. Master assigns a framework id when a new scheduler subscribes for the first time. Once assigned, the scheduler must set the &#39;framework_id&#39; here and within its FrameworkInfo (in any further &#39;Subscribe&#39; calls). This allows the master to identify a scheduler correctly across disconnections, failovers, etc. |
-| type | [Call.Type](#mesos.v1.scheduler.Call.Type) | optional | Type of the call, indicates which optional field below should be present if that type has a nested message definition. See comments on `Event::Type` above on the reasoning behind this field being optional. |
-| subscribe | [Call.Subscribe](#mesos.v1.scheduler.Call.Subscribe) | optional |  |
-| accept | [Call.Accept](#mesos.v1.scheduler.Call.Accept) | optional |  |
-| decline | [Call.Decline](#mesos.v1.scheduler.Call.Decline) | optional |  |
-| accept_inverse_offers | [Call.AcceptInverseOffers](#mesos.v1.scheduler.Call.AcceptInverseOffers) | optional |  |
-| decline_inverse_offers | [Call.DeclineInverseOffers](#mesos.v1.scheduler.Call.DeclineInverseOffers) | optional |  |
-| revive | [Call.Revive](#mesos.v1.scheduler.Call.Revive) | optional |  |
-| kill | [Call.Kill](#mesos.v1.scheduler.Call.Kill) | optional |  |
-| shutdown | [Call.Shutdown](#mesos.v1.scheduler.Call.Shutdown) | optional |  |
-| acknowledge | [Call.Acknowledge](#mesos.v1.scheduler.Call.Acknowledge) | optional |  |
-| reconcile | [Call.Reconcile](#mesos.v1.scheduler.Call.Reconcile) | optional |  |
-| message | [Call.Message](#mesos.v1.scheduler.Call.Message) | optional |  |
-| request | [Call.Request](#mesos.v1.scheduler.Call.Request) | optional |  |
-| suppress | [Call.Suppress](#mesos.v1.scheduler.Call.Suppress) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Accept"/>
-
-### Call.Accept
-Accepts an offer, performing the specified operations
-in a sequential manner.
-
-E.g. Launch a task with a newly reserved persistent volume:
-
-Accept {
-offer_ids: [ ... ]
-operations: [
-{ type: RESERVE,
-reserve: { resources: [ disk(role):2 ] } }
-{ type: CREATE,
-create: { volumes: [ disk(role):1&#43;persistence ] } }
-{ type: LAUNCH,
-launch: { task_infos ... disk(role):1;disk(role):1&#43;persistence } }
-]
-}
-
-Note that any of the offer’s resources not used in the &#39;Accept&#39;
-call (e.g., to launch a task) are considered unused and might be
-reoffered to other frameworks. In other words, the same OfferID
-cannot be used in more than one &#39;Accept&#39; call.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| offer_ids | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | repeated |  |
-| operations | [.mesos.v1.Offer.Operation](#mesos.v1.scheduler..mesos.v1.Offer.Operation) | repeated |  |
-| filters | [.mesos.v1.Filters](#mesos.v1.scheduler..mesos.v1.Filters) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.AcceptInverseOffers"/>
-
-### Call.AcceptInverseOffers
-Accepts an inverse offer. Inverse offers should only be accepted
-if the resources in the offer can be safely evacuated before the
-provided unavailability.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| inverse_offer_ids | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | repeated |  |
-| filters | [.mesos.v1.Filters](#mesos.v1.scheduler..mesos.v1.Filters) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Acknowledge"/>
-
-### Call.Acknowledge
-Acknowledges the receipt of status update. Schedulers are
-responsible for explicitly acknowledging the receipt of status
-updates that have &#39;Update.status().uuid()&#39; field set. Such status
-updates are retried by the agent until they are acknowledged by
-the scheduler.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | required |  |
-| task_id | [.mesos.v1.TaskID](#mesos.v1.scheduler..mesos.v1.TaskID) | required |  |
-| uuid | [bytes](#bytes) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Decline"/>
-
-### Call.Decline
-Declines an offer, signaling the master to potentially reoffer
-the resources to a different framework. Note that this is same
-as sending an Accept call with no operations. See comments on
-top of &#39;Accept&#39; for semantics.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| offer_ids | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | repeated |  |
-| filters | [.mesos.v1.Filters](#mesos.v1.scheduler..mesos.v1.Filters) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.DeclineInverseOffers"/>
-
-### Call.DeclineInverseOffers
-Declines an inverse offer. Inverse offers should be declined if
-the resources in the offer might not be safely evacuated before
-the provided unavailability.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| inverse_offer_ids | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | repeated |  |
-| filters | [.mesos.v1.Filters](#mesos.v1.scheduler..mesos.v1.Filters) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Kill"/>
-
-### Call.Kill
-Kills a specific task. If the scheduler has a custom executor,
-the kill is forwarded to the executor and it is up to the
-executor to kill the task and send a TASK_KILLED (or TASK_FAILED)
-update. Note that Mesos releases the resources for a task once it
-receives a terminal update (See TaskState in v1/mesos.proto) for
-it. If the task is unknown to the master, a TASK_LOST update is
-generated.
-
-If a task within a task group is killed before the group is
-delivered to the executor, all tasks in the task group are
-killed. When a task group has been delivered to the executor,
-it is up to the executor to decide how to deal with the kill.
-Note The default Mesos executor will currently kill all the
-tasks in the task group if it gets a kill for any task.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task_id | [.mesos.v1.TaskID](#mesos.v1.scheduler..mesos.v1.TaskID) | required |  |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | optional |  |
-| kill_policy | [.mesos.v1.KillPolicy](#mesos.v1.scheduler..mesos.v1.KillPolicy) | optional | If set, overrides any previously specified kill policy for this task. This includes &#39;TaskInfo.kill_policy&#39; and &#39;Executor.kill.kill_policy&#39;. Can be used to forcefully kill a task which is already being killed. |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Message"/>
-
-### Call.Message
-Sends arbitrary binary data to the executor. Note that Mesos
-neither interprets this data nor makes any guarantees about the
-delivery of this message to the executor.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | required |  |
-| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.scheduler..mesos.v1.ExecutorID) | required |  |
-| data | [bytes](#bytes) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Reconcile"/>
-
-### Call.Reconcile
-Allows the scheduler to query the status for non-terminal tasks.
-This causes the master to send back the latest task status for
-each task in &#39;tasks&#39;, if possible. Tasks that are no longer known
-will result in a TASK_LOST, TASK_UNKNOWN, or TASK_UNREACHABLE update.
-If &#39;tasks&#39; is empty, then the master will send the latest status
-for each task currently known.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tasks | [Call.Reconcile.Task](#mesos.v1.scheduler.Call.Reconcile.Task) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Reconcile.Task"/>
-
-### Call.Reconcile.Task
-TODO(vinod): Support arbitrary queries than just state of tasks.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task_id | [.mesos.v1.TaskID](#mesos.v1.scheduler..mesos.v1.TaskID) | required |  |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Request"/>
-
-### Call.Request
-Requests a specific set of resources from Mesos&#39;s allocator. If
-the allocator has support for this, corresponding offers will be
-sent asynchronously via the OFFERS event(s).
-
-NOTE: The built-in hierarchical allocator doesn&#39;t have support
-for this call and hence simply ignores it.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| requests | [.mesos.v1.Request](#mesos.v1.scheduler..mesos.v1.Request) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Revive"/>
-
-### Call.Revive
-Revive offers for a specified role. If role is unset, the
-`REVIVE` call will revive offers for all of the roles the
-framework is subscribed to.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| role | [string](#string) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Shutdown"/>
-
-### Call.Shutdown
-Shuts down a custom executor. When the executor gets a shutdown
-event, it is expected to kill all its tasks (and send TASK_KILLED
-updates) and terminate. If the executor doesn’t terminate within
-a certain timeout (configurable via
-&#39;--executor_shutdown_grace_period&#39; agent flag), the agent will
-forcefully destroy the container (executor and its tasks) and
-transition its active tasks to TASK_LOST.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.scheduler..mesos.v1.ExecutorID) | required |  |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Subscribe"/>
-
-### Call.Subscribe
-Subscribes the scheduler with the master to receive events. A
-scheduler must send other calls only after it has received the
-SUBCRIBED event.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| framework_info | [.mesos.v1.FrameworkInfo](#mesos.v1.scheduler..mesos.v1.FrameworkInfo) | required | See the comments below on &#39;framework_id&#39; on the semantics for &#39;framework_info.id&#39;. |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Call.Suppress"/>
-
-### Call.Suppress
-Suppress offers for a specified role. If role is unset, the
-`SUPPRESS` call will suppress offers for all of the roles the
-framework is subscribed to.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| role | [string](#string) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event"/>
-
-### Event
-Scheduler event API.
-
-An event is described using the standard protocol buffer &#34;union&#34;
-trick, see:
-https://developers.google.com/protocol-buffers/docs/techniques#union.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| type | [Event.Type](#mesos.v1.scheduler.Event.Type) | optional | Type of the event, indicates which optional field below should be present if that type has a nested message definition. Enum fields should be optional, see: MESOS-4997. |
-| subscribed | [Event.Subscribed](#mesos.v1.scheduler.Event.Subscribed) | optional |  |
-| offers | [Event.Offers](#mesos.v1.scheduler.Event.Offers) | optional |  |
-| inverse_offers | [Event.InverseOffers](#mesos.v1.scheduler.Event.InverseOffers) | optional |  |
-| rescind | [Event.Rescind](#mesos.v1.scheduler.Event.Rescind) | optional |  |
-| rescind_inverse_offer | [Event.RescindInverseOffer](#mesos.v1.scheduler.Event.RescindInverseOffer) | optional |  |
-| update | [Event.Update](#mesos.v1.scheduler.Event.Update) | optional |  |
-| message | [Event.Message](#mesos.v1.scheduler.Event.Message) | optional |  |
-| failure | [Event.Failure](#mesos.v1.scheduler.Event.Failure) | optional |  |
-| error | [Event.Error](#mesos.v1.scheduler.Event.Error) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.Error"/>
-
-### Event.Error
-Received when there is an unrecoverable error in the scheduler (e.g.,
-scheduler failed over, rate limiting, authorization errors etc.). The
-scheduler should abort on receiving this event.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.Failure"/>
-
-### Event.Failure
-Received when an agent is removed from the cluster (e.g., failed
-health checks) or when an executor is terminated. Note that, this
-event coincides with receipt of terminal UPDATE events for any
-active tasks belonging to the agent or executor and receipt of
-&#39;Rescind&#39; events for any outstanding offers belonging to the
-agent. Note that there is no guaranteed order between the
-&#39;Failure&#39;, &#39;Update&#39; and &#39;Rescind&#39; events when an agent or executor
-is removed.
-TODO(vinod): Consider splitting the lost agent and terminated
-executor into separate events and ensure it&#39;s reliably generated.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | optional |  |
-| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.scheduler..mesos.v1.ExecutorID) | optional | If this was just a failure of an executor on an agent then &#39;executor_id&#39; will be set and possibly &#39;status&#39; (if we were able to determine the exit status). |
-| status | [int32](#int32) | optional |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.InverseOffers"/>
-
-### Event.InverseOffers
-Received whenever there are resources requested back from the
-scheduler. Each inverse offer specifies the agent, and
-optionally specific resources. Accepting or Declining an inverse
-offer informs the allocator of the scheduler&#39;s ability to release
-the specified resources without violating an SLA. If no resources
-are specified then all resources on the agent are requested to be
-released.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| inverse_offers | [.mesos.v1.InverseOffer](#mesos.v1.scheduler..mesos.v1.InverseOffer) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.Message"/>
-
-### Event.Message
-Received when a custom message generated by the executor is
-forwarded by the master. Note that this message is not
-interpreted by Mesos and is only forwarded (without reliability
-guarantees) to the scheduler. It is up to the executor to retry
-if the message is dropped for any reason.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | required |  |
-| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.scheduler..mesos.v1.ExecutorID) | required |  |
-| data | [bytes](#bytes) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.Offers"/>
-
-### Event.Offers
-Received whenever there are new resources that are offered to the
-scheduler. Each offer corresponds to a set of resources on an
-agent. Until the scheduler accepts or declines an offer the
-resources are considered allocated to the scheduler.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| offers | [.mesos.v1.Offer](#mesos.v1.scheduler..mesos.v1.Offer) | repeated |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.Rescind"/>
-
-### Event.Rescind
-Received when a particular offer is no longer valid (e.g., the
-agent corresponding to the offer has been removed) and hence
-needs to be rescinded. Any future calls (&#39;Accept&#39; / &#39;Decline&#39;) made
-by the scheduler regarding this offer will be invalid.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| offer_id | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.RescindInverseOffer"/>
-
-### Event.RescindInverseOffer
-Received when a particular inverse offer is no longer valid
-(e.g., the agent corresponding to the offer has been removed)
-and hence needs to be rescinded. Any future calls (&#39;Accept&#39;
-&#39;Decline&#39;) made by the scheduler regarding this inverse offer
-will be invalid.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| inverse_offer_id | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | required |  |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.Subscribed"/>
-
-### Event.Subscribed
-First event received when the scheduler subscribes.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.scheduler..mesos.v1.FrameworkID) | required |  |
-| heartbeat_interval_seconds | [double](#double) | optional | This value will be set if the master is sending heartbeats. See the comment above on &#39;HEARTBEAT&#39; for more details. |
-| master_info | [.mesos.v1.MasterInfo](#mesos.v1.scheduler..mesos.v1.MasterInfo) | optional | Since Mesos 1.1. |
-
-
-
-
-
-
-<a name="mesos.v1.scheduler.Event.Update"/>
-
-### Event.Update
-Received whenever there is a status update that is generated by
-the executor or agent or master. Status updates should be used by
-executors to reliably communicate the status of the tasks that
-they manage. It is crucial that a terminal update (see TaskState
-in v1/mesos.proto) is sent by the executor as soon as the task
-terminates, in order for Mesos to release the resources allocated
-to the task. It is also the responsibility of the scheduler to
-explicitly acknowledge the receipt of a status update. See
-&#39;Acknowledge&#39; in the &#39;Call&#39; section below for the semantics.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| status | [.mesos.v1.TaskStatus](#mesos.v1.scheduler..mesos.v1.TaskStatus) | required |  |
-
-
-
-
-
- 
-
-
-<a name="mesos.v1.scheduler.Call.Type"/>
-
-### Call.Type
-Possible call types, followed by message definitions if
-applicable.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 | See comments above on `Event::Type` for more details on this enum value. |
-| SUBSCRIBE | 1 | See &#39;Subscribe&#39; below. |
-| TEARDOWN | 2 | Shuts down all tasks/executors and removes framework. |
-| ACCEPT | 3 | See &#39;Accept&#39; below. |
-| DECLINE | 4 | See &#39;Decline&#39; below. |
-| ACCEPT_INVERSE_OFFERS | 13 | See &#39;AcceptInverseOffers&#39; below. |
-| DECLINE_INVERSE_OFFERS | 14 | See &#39;DeclineInverseOffers&#39; below. |
-| REVIVE | 5 | Removes any previous filters set via ACCEPT or DECLINE. |
-| KILL | 6 | See &#39;Kill&#39; below. |
-| SHUTDOWN | 7 | See &#39;Shutdown&#39; below. |
-| ACKNOWLEDGE | 8 | See &#39;Acknowledge&#39; below. |
-| RECONCILE | 9 | See &#39;Reconcile&#39; below. |
-| MESSAGE | 10 | See &#39;Message&#39; below. |
-| REQUEST | 11 | See &#39;Request&#39; below. |
-| SUPPRESS | 12 | Inform master to stop sending offers to the framework. |
-
-
-
-<a name="mesos.v1.scheduler.Event.Type"/>
-
-### Event.Type
-Possible event types, followed by message definitions if
-applicable.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNKNOWN | 0 | This must be the first enum value in this list, to ensure that if &#39;type&#39; is not set, the default value is UNKNOWN. This enables enum values to be added in a backwards-compatible way. See: MESOS-4997. |
-| SUBSCRIBED | 1 | See &#39;Subscribed&#39; below. |
-| OFFERS | 2 | See &#39;Offers&#39; below. |
-| INVERSE_OFFERS | 9 | See &#39;InverseOffers&#39; below. |
-| RESCIND | 3 | See &#39;Rescind&#39; below. |
-| RESCIND_INVERSE_OFFER | 10 | See &#39;RescindInverseOffer&#39; below. |
-| UPDATE | 4 | See &#39;Update&#39; below. |
-| MESSAGE | 5 | See &#39;Message&#39; below. |
-| FAILURE | 6 | See &#39;Failure&#39; below. |
-| ERROR | 7 | See &#39;Error&#39; below. |
-| HEARTBEAT | 8 | Periodic message sent by the Mesos master according to &#39;Subscribed.heartbeat_interval_seconds&#39;. If the scheduler does not receive any events (including heartbeats) for an extended period of time (e.g., 5 x heartbeat_interval_seconds), there is likely a network partition. In such a case the scheduler should close the existing subscription connection and resubscribe using a backoff strategy. |
-
-
- 
-
- 
-
- 
-
-
-
-<a name="changelog.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## changelog.proto
-
-
-
-<a name="peloton.api.changelog.ChangeLog"/>
-
-### ChangeLog
-Change log of the entity info
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| version | [int64](#int64) |  | Version number of the entity info which is monotonically increasing. Clients can use this to guide against race conditions using MVCC. |
-| createdAt | [int64](#int64) |  | The timestamp when the entity info is created |
-| updatedAt | [int64](#int64) |  | The timestamp when the entity info is updated |
-| updatedBy | [string](#string) |  | The entity of the user that updated the entity info |
-
-
-
-
-
- 
-
- 
-
- 
-
- 
-
-
-
 <a name="errors.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -7672,6 +4989,1173 @@ Task manager interface
 
 
 
+<a name="eventstream.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## eventstream.proto
+
+
+
+<a name="peloton.private.eventstream.ClientUnsupported"/>
+
+### ClientUnsupported
+Error message for clients that are not expected by the server
+For now, the server only expects a list of pre-defined clients
+For example. Hostmgr would expect only Job manager / resource manager
+to consume the task update event stream.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.Event"/>
+
+### Event
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| offset | [uint64](#uint64) |  | offset is the sequence id of the event |
+| type | [Event.Type](#peloton.private.eventstream.Event.Type) |  |  |
+| mesosTaskStatus | [.mesos.v1.TaskStatus](#peloton.private.eventstream..mesos.v1.TaskStatus) |  |  |
+| pelotonTaskEvent | [.peloton.api.task.TaskEvent](#peloton.private.eventstream..peloton.api.task.TaskEvent) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.InitStreamRequest"/>
+
+### InitStreamRequest
+Client need to call this to init a stream on server side
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| clientName | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.InitStreamResponse"/>
+
+### InitStreamResponse
+InitStreamResponse pass back the streamID and the minOffset of the events
+on server side
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [InitStreamResponse.Error](#peloton.private.eventstream.InitStreamResponse.Error) |  |  |
+| streamID | [string](#string) |  | streamID is created by the server and will change when server restarts |
+| minOffset | [uint64](#uint64) |  | min Offset of the event in the server side circular buffer |
+| previousPurgeOffset | [uint64](#uint64) |  | previous purgeOffset for the client, if there is any stored on the server the client can use previousPurgeOffset as the begin offset for the next WaitForEventsRequest |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.InitStreamResponse.Error"/>
+
+### InitStreamResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| clientUnsupported | [ClientUnsupported](#peloton.private.eventstream.ClientUnsupported) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.InvalidPurgeOffset"/>
+
+### InvalidPurgeOffset
+Error message for incorrect purge offset
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| purgeOffset | [uint64](#uint64) |  |  |
+| beginOffset | [uint64](#uint64) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.InvalidStreamID"/>
+
+### InvalidStreamID
+Error message for clients that are not expected by the server
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| currentStreamID | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.OffsetOutOfRange"/>
+
+### OffsetOutOfRange
+The intended event offset is out of the event range on the server side
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| streamID | [string](#string) |  |  |
+| minOffset | [uint64](#uint64) |  |  |
+| maxOffset | [uint64](#uint64) |  |  |
+| offsetRequested | [uint64](#uint64) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.WaitForEventsRequest"/>
+
+### WaitForEventsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| streamID | [string](#string) |  | Current streamID |
+| purgeOffset | [uint64](#uint64) |  | The offeSet that the client has processed, which can be purged on the server |
+| beginOffset | [uint64](#uint64) |  | The begin offset of the intended data |
+| limit | [int32](#int32) |  | The max number of events limit for current request |
+| timeoutMs | [int32](#int32) |  | Timeout value |
+| clientName | [string](#string) |  | Name of the client |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.WaitForEventsResponse"/>
+
+### WaitForEventsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [WaitForEventsResponse.Error](#peloton.private.eventstream.WaitForEventsResponse.Error) |  |  |
+| events | [Event](#peloton.private.eventstream.Event) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.private.eventstream.WaitForEventsResponse.Error"/>
+
+### WaitForEventsResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| outOfRange | [OffsetOutOfRange](#peloton.private.eventstream.OffsetOutOfRange) |  |  |
+| clientUnsupported | [ClientUnsupported](#peloton.private.eventstream.ClientUnsupported) |  |  |
+| invalidStreamID | [InvalidStreamID](#peloton.private.eventstream.InvalidStreamID) |  |  |
+| invalidPurgeOffset | [InvalidPurgeOffset](#peloton.private.eventstream.InvalidPurgeOffset) |  |  |
+
+
+
+
+
+ 
+
+
+<a name="peloton.private.eventstream.Event.Type"/>
+
+### Event.Type
+Describes the type of event
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN_EVENT_TYPE | 0 |  |
+| MESOS_TASK_STATUS | 1 |  |
+| PELOTON_TASK_EVENT | 2 |  |
+
+
+ 
+
+ 
+
+
+<a name="peloton.private.eventstream.EventStreamService"/>
+
+### EventStreamService
+
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| InitStream | [InitStreamRequest](#peloton.private.eventstream.InitStreamRequest) | [InitStreamResponse](#peloton.private.eventstream.InitStreamRequest) | Client calls CreateStream to learn about information to consume the stream |
+| WaitForEvents | [WaitForEventsRequest](#peloton.private.eventstream.WaitForEventsRequest) | [WaitForEventsResponse](#peloton.private.eventstream.WaitForEventsRequest) | Wait for some task events |
+
+ 
+
+
+
+<a name="resmgr.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## resmgr.proto
+
+
+
+<a name="peloton.private.resmgr.Placement"/>
+
+### Placement
+Placement describes the mapping of a list of tasks to a host
+so that Job Manager can launch the tasks on the host.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tasks | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) | repeated | The list of tasks to be placed |
+| hostname | [string](#string) |  | The name of the host where the tasks are placed |
+| agentId | [.mesos.v1.AgentID](#peloton.private.resmgr..mesos.v1.AgentID) |  | The Mesos agent ID of the host where the tasks are placed |
+| offerIds | [.mesos.v1.OfferID](#peloton.private.resmgr..mesos.v1.OfferID) | repeated | The list of Mesos offers of the placed tasks |
+| ports | [uint32](#uint32) | repeated | The list of allocated ports which should be sufficient for all placed tasks |
+| type | [TaskType](#peloton.private.resmgr.TaskType) |  | Type of the tasks in the placement. Note all tasks must belong to same type. By default the type is batch task. |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.Task"/>
+
+### Task
+Task describes a task instance at Resource Manager layer. Only
+includes the minimal set of fields required for Resource Manager
+and Placement Engine, such as resource config, constraint etc.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Name of the task |
+| id | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) |  | The unique ID of the task |
+| jobId | [.peloton.api.peloton.JobID](#peloton.private.resmgr..peloton.api.peloton.JobID) |  | The Job ID of the task for use cases like gang scheduling |
+| taskId | [.mesos.v1.TaskID](#peloton.private.resmgr..mesos.v1.TaskID) |  | The mesos task ID of the task |
+| resource | [.peloton.api.task.ResourceConfig](#peloton.private.resmgr..peloton.api.task.ResourceConfig) |  | Resource config of the task |
+| priority | [uint32](#uint32) |  | Priority of a task. Higher value takes priority over lower value when making scheduling decisions as well as preemption decisions |
+| preemptible | [bool](#bool) |  | Whether the task is preemptible. If a task is not preemptible, then it will have to be launched using reserved resources. |
+| labels | [.mesos.v1.Labels](#peloton.private.resmgr..mesos.v1.Labels) |  | List of user-defined labels for the task, these are used to enforce the constraint. These are copied from the TaskConfig. |
+| constraint | [.peloton.api.task.Constraint](#peloton.private.resmgr..peloton.api.task.Constraint) |  | Constraint on the labels of the host or tasks on the host that this task should run on. This is copied from the TaskConfig. |
+| type | [TaskType](#peloton.private.resmgr.TaskType) |  | Type of the Task |
+| numPorts | [uint32](#uint32) |  | Number of dynamic ports |
+| minInstances | [uint32](#uint32) |  | Minimum number of running instances. Value &gt; 1 indicates task is in scheduling gang of that size; task instanceID is in [0..minInstances-1]. If value &lt;= 1, task is not in scheduling gang and is scheduled singly. |
+| hostname | [string](#string) |  | Hostname of the host on which the task is running on. |
+
+
+
+
+
+ 
+
+
+<a name="peloton.private.resmgr.TaskType"/>
+
+### TaskType
+TaskType task type definition such as batch, service and infra agent.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 | This is unknown type, this is also used in DequeueGangsRequest to indicate that we want tasks of any task type back. |
+| BATCH | 1 | Normal batch task |
+| STATELESS | 2 | STATELESS task which is long running and will be restarted upon failures. |
+| STATEFUL | 3 | STATEFUL task which is using persistent volume and is long running |
+| DAEMON | 4 | Daemon task which has one instance running on each host for infra agents like muttley, m3collector etc. |
+
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="resmgrsvc.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## resmgrsvc.proto
+
+
+
+<a name="peloton.private.resmgr.DequeueGangsFailure"/>
+
+### DequeueGangsFailure
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.DequeueGangsRequest"/>
+
+### DequeueGangsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| limit | [uint32](#uint32) |  | Max number of ready gangs to dequeue |
+| timeout | [uint32](#uint32) |  | Timeout in milliseconds if no gangs are ready |
+| type | [TaskType](#peloton.private.resmgr.TaskType) |  | Task Type to identify which kind of tasks need to be dequeued |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.DequeueGangsResponse"/>
+
+### DequeueGangsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [DequeueGangsResponse.Error](#peloton.private.resmgr.DequeueGangsResponse.Error) |  |  |
+| gangs | [Gang](#peloton.private.resmgr.Gang) | repeated | The list of gangs that have been dequeued |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.DequeueGangsResponse.Error"/>
+
+### DequeueGangsResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| timedout | [RequestTimedout](#peloton.private.resmgr.RequestTimedout) |  |  |
+| failure | [DequeueGangsFailure](#peloton.private.resmgr.DequeueGangsFailure) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.EnqueueGangsFailure"/>
+
+### EnqueueGangsFailure
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| failed | [EnqueueGangsFailure.FailedTask](#peloton.private.resmgr.EnqueueGangsFailure.FailedTask) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.EnqueueGangsFailure.FailedTask"/>
+
+### EnqueueGangsFailure.FailedTask
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task | [Task](#peloton.private.resmgr.Task) |  |  |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.EnqueueGangsRequest"/>
+
+### EnqueueGangsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| resPool | [.peloton.api.peloton.ResourcePoolID](#peloton.private.resmgr..peloton.api.peloton.ResourcePoolID) |  | ResourcePool |
+| gangs | [Gang](#peloton.private.resmgr.Gang) | repeated | The list of gangs to enqueue |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.EnqueueGangsResponse"/>
+
+### EnqueueGangsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [EnqueueGangsResponse.Error](#peloton.private.resmgr.EnqueueGangsResponse.Error) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.EnqueueGangsResponse.Error"/>
+
+### EnqueueGangsResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| notFound | [ResourcePoolNotFound](#peloton.private.resmgr.ResourcePoolNotFound) |  |  |
+| noPermission | [ResourcePoolNoPermission](#peloton.private.resmgr.ResourcePoolNoPermission) |  |  |
+| failure | [EnqueueGangsFailure](#peloton.private.resmgr.EnqueueGangsFailure) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.Gang"/>
+
+### Gang
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tasks | [Task](#peloton.private.resmgr.Task) | repeated | List of tasks to be scheduled together |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetActiveTasksRequest"/>
+
+### GetActiveTasksRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobID | [string](#string) |  | optional jobID to filter out tasks |
+| respoolID | [string](#string) |  | optional respoolID to filter out tasks |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetActiveTasksResponse"/>
+
+### GetActiveTasksResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [GetActiveTasksResponse.Error](#peloton.private.resmgr.GetActiveTasksResponse.Error) |  |  |
+| taskStatesMap | [GetActiveTasksResponse.TaskStatesMapEntry](#peloton.private.resmgr.GetActiveTasksResponse.TaskStatesMapEntry) | repeated | This will return a map from task id to state. |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetActiveTasksResponse.Error"/>
+
+### GetActiveTasksResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetActiveTasksResponse.TaskStatesMapEntry"/>
+
+### GetActiveTasksResponse.TaskStatesMapEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetPlacementsFailure"/>
+
+### GetPlacementsFailure
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetPlacementsRequest"/>
+
+### GetPlacementsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| limit | [uint32](#uint32) |  | Max number of placements to retrieve |
+| timeout | [uint32](#uint32) |  | Timeout in milliseconds if no placements |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetPlacementsResponse"/>
+
+### GetPlacementsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [GetPlacementsResponse.Error](#peloton.private.resmgr.GetPlacementsResponse.Error) |  |  |
+| placements | [Placement](#peloton.private.resmgr.Placement) | repeated | List of task placements to return |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetPlacementsResponse.Error"/>
+
+### GetPlacementsResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| failure | [GetPlacementsFailure](#peloton.private.resmgr.GetPlacementsFailure) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetPreemptibleTasksFailure"/>
+
+### GetPreemptibleTasksFailure
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetPreemptibleTasksRequest"/>
+
+### GetPreemptibleTasksRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| limit | [uint32](#uint32) |  | Max number of running tasks to dequeue |
+| timeout | [uint32](#uint32) |  | Timeout in milliseconds if no tasks are ready |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetPreemptibleTasksResponse"/>
+
+### GetPreemptibleTasksResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [GetPreemptibleTasksResponse.Error](#peloton.private.resmgr.GetPreemptibleTasksResponse.Error) |  |  |
+| tasks | [Task](#peloton.private.resmgr.Task) | repeated | The list of tasks that have been dequeued |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetPreemptibleTasksResponse.Error"/>
+
+### GetPreemptibleTasksResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| timedout | [RequestTimedout](#peloton.private.resmgr.RequestTimedout) |  |  |
+| failure | [GetPreemptibleTasksFailure](#peloton.private.resmgr.GetPreemptibleTasksFailure) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetTasksByHostsRequest"/>
+
+### GetTasksByHostsRequest
+GetTasksByHostsRequest will always returns the currently running tasks
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| hostnames | [string](#string) | repeated |  |
+| type | [TaskType](#peloton.private.resmgr.TaskType) |  | Task Type to identify which kind of tasks need to be dequeued, if this is left out all tasks wil be returned. |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetTasksByHostsResponse"/>
+
+### GetTasksByHostsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [GetTasksByHostsResponse.Error](#peloton.private.resmgr.GetTasksByHostsResponse.Error) |  |  |
+| hostTasksMap | [GetTasksByHostsResponse.HostTasksMapEntry](#peloton.private.resmgr.GetTasksByHostsResponse.HostTasksMapEntry) | repeated | This will return a map from hostname to a list of tasks running on the host. |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetTasksByHostsResponse.Error"/>
+
+### GetTasksByHostsResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.GetTasksByHostsResponse.HostTasksMapEntry"/>
+
+### GetTasksByHostsResponse.HostTasksMapEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [TaskList](#peloton.private.resmgr.TaskList) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.KillTasksError"/>
+
+### KillTasksError
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) |  |  |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.KillTasksRequest"/>
+
+### KillTasksRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tasks | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) | repeated | Peloton Task Ids for |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.KillTasksResponse"/>
+
+### KillTasksResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [KillTasksResponse.Error](#peloton.private.resmgr.KillTasksResponse.Error) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.KillTasksResponse.Error"/>
+
+### KillTasksResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| notFound | [TasksNotFound](#peloton.private.resmgr.TasksNotFound) |  |  |
+| killError | [KillTasksError](#peloton.private.resmgr.KillTasksError) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.NotifyTaskUpdatesError"/>
+
+### NotifyTaskUpdatesError
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.NotifyTaskUpdatesRequest"/>
+
+### NotifyTaskUpdatesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| events | [.peloton.private.eventstream.Event](#peloton.private.resmgr..peloton.private.eventstream.Event) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.NotifyTaskUpdatesResponse"/>
+
+### NotifyTaskUpdatesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [NotifyTaskUpdatesResponse.Error](#peloton.private.resmgr.NotifyTaskUpdatesResponse.Error) |  |  |
+| purgeOffset | [uint64](#uint64) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.NotifyTaskUpdatesResponse.Error"/>
+
+### NotifyTaskUpdatesResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [NotifyTaskUpdatesError](#peloton.private.resmgr.NotifyTaskUpdatesError) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.RequestTimedout"/>
+
+### RequestTimedout
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.ResourcePoolNoPermission"/>
+
+### ResourcePoolNoPermission
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.ResourcePoolID](#peloton.private.resmgr..peloton.api.peloton.ResourcePoolID) |  |  |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.ResourcePoolNotFound"/>
+
+### ResourcePoolNotFound
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.ResourcePoolID](#peloton.private.resmgr..peloton.api.peloton.ResourcePoolID) |  |  |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.SetPlacementsFailure"/>
+
+### SetPlacementsFailure
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| failed | [SetPlacementsFailure.FailedPlacement](#peloton.private.resmgr.SetPlacementsFailure.FailedPlacement) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.SetPlacementsFailure.FailedPlacement"/>
+
+### SetPlacementsFailure.FailedPlacement
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| placement | [Placement](#peloton.private.resmgr.Placement) |  |  |
+| message | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.SetPlacementsRequest"/>
+
+### SetPlacementsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| placements | [Placement](#peloton.private.resmgr.Placement) | repeated | List of task placements to set |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.SetPlacementsResponse"/>
+
+### SetPlacementsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| error | [SetPlacementsResponse.Error](#peloton.private.resmgr.SetPlacementsResponse.Error) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.SetPlacementsResponse.Error"/>
+
+### SetPlacementsResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| failure | [SetPlacementsFailure](#peloton.private.resmgr.SetPlacementsFailure) |  |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.TaskList"/>
+
+### TaskList
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tasks | [Task](#peloton.private.resmgr.Task) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.private.resmgr.TasksNotFound"/>
+
+### TasksNotFound
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) |  |  |
+| message | [string](#string) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="peloton.private.resmgr.ResourceManagerService"/>
+
+### ResourceManagerService
+ResourceManagerService describes the internal interface of
+Resource Manager to other Peloton applications such as Job Manager
+and Placement Engine. This includes the EnqueueGangs and GetPlacements
+APIs called by Job Manager, and DequeueGangs and SetPlacements APIs
+called by Placement Engine.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| EnqueueGangs | [EnqueueGangsRequest](#peloton.private.resmgr.EnqueueGangsRequest) | [EnqueueGangsResponse](#peloton.private.resmgr.EnqueueGangsRequest) | Enqueue a list of Gangs, each of which is a list of one or more tasks, to a given leaf resource pool for scheduling. The Gangs will be in PENDING state first and then transit to READY state when the resource pool has available resources. This method will be called by Job Manager when a new job is created or new Gangs are added. If any Gangs fail to enqueue, Job Manager should retry those failed Gangs. |
+| DequeueGangs | [DequeueGangsRequest](#peloton.private.resmgr.DequeueGangsRequest) | [DequeueGangsResponse](#peloton.private.resmgr.DequeueGangsRequest) | Dequeue a list of Gangs, each comprised of tasks that are in READY state for placement. The tasks will transit from READY to PLACING state after the return of this method. This method will be called by Placement Engine to retrieve a list of gangs for computing placement. If tasks are in PLACING state for too long in case of Placement Engine failures, the tasks will be timed out and transit back to READY state. |
+| SetPlacements | [SetPlacementsRequest](#peloton.private.resmgr.SetPlacementsRequest) | [SetPlacementsResponse](#peloton.private.resmgr.SetPlacementsRequest) | Set the placement information for a list of tasks. The tasks will transit from PLACING to PLACED state after this call. This method will be called by Placement Engine after it computes the placement decision for those tasks. |
+| GetPlacements | [GetPlacementsRequest](#peloton.private.resmgr.GetPlacementsRequest) | [GetPlacementsResponse](#peloton.private.resmgr.GetPlacementsRequest) | Get the placement information for a list of tasks. The tasks will transit from PLACED to LAUNCHING state after this call. This method is called by Job Manager to launch the tasks on Mesos. If the tasks are in LAUNCHING state for too long without transiting to RUNNING state, the tasks will be timedout and transit back to PLACED state. |
+| NotifyTaskUpdates | [NotifyTaskUpdatesRequest](#peloton.private.resmgr.NotifyTaskUpdatesRequest) | [NotifyTaskUpdatesResponse](#peloton.private.resmgr.NotifyTaskUpdatesRequest) | Notifies task status updates to resource manager. This will be called by Host manager to notify resource manager on task status updates. |
+| GetTasksByHosts | [GetTasksByHostsRequest](#peloton.private.resmgr.GetTasksByHostsRequest) | [GetTasksByHostsResponse](#peloton.private.resmgr.GetTasksByHostsRequest) | Get the list of Tasks running on the the list of host provided. This information is needed from the placement engines to find out which tasks are running on which hosts so the placement engine can place tasks taking this information into account. |
+| GetActiveTasks | [GetActiveTasksRequest](#peloton.private.resmgr.GetActiveTasksRequest) | [GetActiveTasksResponse](#peloton.private.resmgr.GetActiveTasksRequest) | Get task to state map. This information is helpful for debug purpose. |
+| KillTasks | [KillTasksRequest](#peloton.private.resmgr.KillTasksRequest) | [KillTasksResponse](#peloton.private.resmgr.KillTasksRequest) | Kill Tasks kills/Delete the tasks in Resource Manager |
+| GetPreemptibleTasks | [GetPreemptibleTasksRequest](#peloton.private.resmgr.GetPreemptibleTasksRequest) | [GetPreemptibleTasksResponse](#peloton.private.resmgr.GetPreemptibleTasksRequest) | Get the list of tasks to preempt. The tasks will transition from RUNNING to PREEMPTING state after the return of this method. This method will be called by the job manager to kill the tasks and re-enqueue them. |
+
+ 
+
+
+
+<a name="update.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## update.proto
+
+
+
+<a name="peloton.api.update.UpdateConfig"/>
+
+### UpdateConfig
+Update options for a job update
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| batchSize | [int32](#int32) |  | Update batch size of the deployment |
+| batchPercentage | [double](#double) |  | Update batch percentage of the deployment. If present, will take precedence over batchSize |
+| stopBeforeUpdate | [bool](#bool) |  | Whether or not to stop all instance before update |
+| startPaused | [bool](#bool) |  | startPaused indicates if the update should start in the paused state, requiring an explicit resume to initiate. |
+
+
+
+
+
+
+<a name="peloton.api.update.UpdateID"/>
+
+### UpdateID
+A unique ID assigned to a update.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| value | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.update.UpdateInfo"/>
+
+### UpdateInfo
+Information of an update, such as update config and runtime status
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| updateId | [UpdateID](#peloton.api.update.UpdateID) |  | Update ID of the job update |
+| config | [UpdateConfig](#peloton.api.update.UpdateConfig) |  | Update configuration |
+| status | [UpdateStatus](#peloton.api.update.UpdateStatus) |  | Update runtime status |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.update..peloton.api.peloton.JobID) |  | Job ID of the job update |
+
+
+
+
+
+
+<a name="peloton.api.update.UpdateStatus"/>
+
+### UpdateStatus
+UpdateStatus provides current runtime status of an update
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| numTasksDone | [int32](#int32) |  | Number of tasks that have been updated |
+| numTasksRemaining | [int32](#int32) |  | Number of tasks to be updated |
+| state | [State](#peloton.api.update.State) |  | Runtime state of the update |
+
+
+
+
+
+ 
+
+
+<a name="peloton.api.update.State"/>
+
+### State
+Runtime state of a job update
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| ROLLING_FORWARD | 0 | The update is rolling forward |
+| ROLLING_BACK | 1 | The update is rolling back |
+| PAUSED | 2 | The update is paused |
+| SUCCEEDED | 3 | The update completed successfully |
+| ROLLED_BACK | 4 | The update is rolled back |
+| ABORTED | 5 | The update is aborted |
+
+
+ 
+
+ 
+
+ 
+
+
+
+<a name="changelog.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## changelog.proto
+
+
+
+<a name="peloton.api.changelog.ChangeLog"/>
+
+### ChangeLog
+Change log of the entity info
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| version | [int64](#int64) |  | Version number of the entity info which is monotonically increasing. Clients can use this to guide against race conditions using MVCC. |
+| createdAt | [int64](#int64) |  | The timestamp when the entity info is created |
+| updatedAt | [int64](#int64) |  | The timestamp when the entity info is updated |
+| updatedBy | [string](#string) |  | The entity of the user that updated the entity info |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+ 
+
+
+
 <a name="respool.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -8725,106 +7209,6 @@ Job Manager service interface
 
 
 
-<a name="update.proto"/>
-<p align="right"><a href="#top">Top</a></p>
-
-## update.proto
-
-
-
-<a name="peloton.api.update.UpdateConfig"/>
-
-### UpdateConfig
-Update options for a job update
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| batchSize | [int32](#int32) |  | Update batch size of the deployment |
-| batchPercentage | [double](#double) |  | Update batch percentage of the deployment. If present, will take precedence over batchSize |
-| stopBeforeUpdate | [bool](#bool) |  | Whether or not to stop all instance before update |
-| startPaused | [bool](#bool) |  | startPaused indicates if the update should start in the paused state, requiring an explicit resume to initiate. |
-
-
-
-
-
-
-<a name="peloton.api.update.UpdateID"/>
-
-### UpdateID
-A unique ID assigned to a update.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.api.update.UpdateInfo"/>
-
-### UpdateInfo
-Information of an update, such as update config and runtime status
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| updateId | [UpdateID](#peloton.api.update.UpdateID) |  | Update ID of the job update |
-| config | [UpdateConfig](#peloton.api.update.UpdateConfig) |  | Update configuration |
-| status | [UpdateStatus](#peloton.api.update.UpdateStatus) |  | Update runtime status |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.update..peloton.api.peloton.JobID) |  | Job ID of the job update |
-
-
-
-
-
-
-<a name="peloton.api.update.UpdateStatus"/>
-
-### UpdateStatus
-UpdateStatus provides current runtime status of an update
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| numTasksDone | [int32](#int32) |  | Number of tasks that have been updated |
-| numTasksRemaining | [int32](#int32) |  | Number of tasks to be updated |
-| state | [State](#peloton.api.update.State) |  | Runtime state of the update |
-
-
-
-
-
- 
-
-
-<a name="peloton.api.update.State"/>
-
-### State
-Runtime state of a job update
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| ROLLING_FORWARD | 0 | The update is rolling forward |
-| ROLLING_BACK | 1 | The update is rolling back |
-| PAUSED | 2 | The update is paused |
-| SUCCEEDED | 3 | The update completed successfully |
-| ROLLED_BACK | 4 | The update is rolled back |
-| ABORTED | 5 | The update is aborted |
-
-
- 
-
- 
-
- 
-
-
-
 <a name="volume.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -8879,195 +7263,538 @@ States of a persistent volume
 
 
 
-<a name="eventstream.proto"/>
+<a name="scheduler.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
-## eventstream.proto
+## scheduler.proto
 
 
 
-<a name="peloton.private.eventstream.ClientUnsupported"/>
+<a name="mesos.v1.scheduler.Call"/>
 
-### ClientUnsupported
-Error message for clients that are not expected by the server
-For now, the server only expects a list of pre-defined clients
-For example. Hostmgr would expect only Job manager / resource manager
-to consume the task update event stream.
+### Call
+Scheduler call API.
+
+Like Event, a Call is described using the standard protocol buffer
+&#34;union&#34; trick (see above).
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
+| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.scheduler..mesos.v1.FrameworkID) | optional | Identifies who generated this call. Master assigns a framework id when a new scheduler subscribes for the first time. Once assigned, the scheduler must set the &#39;framework_id&#39; here and within its FrameworkInfo (in any further &#39;Subscribe&#39; calls). This allows the master to identify a scheduler correctly across disconnections, failovers, etc. |
+| type | [Call.Type](#mesos.v1.scheduler.Call.Type) | optional | Type of the call, indicates which optional field below should be present if that type has a nested message definition. See comments on `Event::Type` above on the reasoning behind this field being optional. |
+| subscribe | [Call.Subscribe](#mesos.v1.scheduler.Call.Subscribe) | optional |  |
+| accept | [Call.Accept](#mesos.v1.scheduler.Call.Accept) | optional |  |
+| decline | [Call.Decline](#mesos.v1.scheduler.Call.Decline) | optional |  |
+| accept_inverse_offers | [Call.AcceptInverseOffers](#mesos.v1.scheduler.Call.AcceptInverseOffers) | optional |  |
+| decline_inverse_offers | [Call.DeclineInverseOffers](#mesos.v1.scheduler.Call.DeclineInverseOffers) | optional |  |
+| revive | [Call.Revive](#mesos.v1.scheduler.Call.Revive) | optional |  |
+| kill | [Call.Kill](#mesos.v1.scheduler.Call.Kill) | optional |  |
+| shutdown | [Call.Shutdown](#mesos.v1.scheduler.Call.Shutdown) | optional |  |
+| acknowledge | [Call.Acknowledge](#mesos.v1.scheduler.Call.Acknowledge) | optional |  |
+| reconcile | [Call.Reconcile](#mesos.v1.scheduler.Call.Reconcile) | optional |  |
+| message | [Call.Message](#mesos.v1.scheduler.Call.Message) | optional |  |
+| request | [Call.Request](#mesos.v1.scheduler.Call.Request) | optional |  |
+| suppress | [Call.Suppress](#mesos.v1.scheduler.Call.Suppress) | optional |  |
 
 
 
 
 
 
-<a name="peloton.private.eventstream.Event"/>
+<a name="mesos.v1.scheduler.Call.Accept"/>
+
+### Call.Accept
+Accepts an offer, performing the specified operations
+in a sequential manner.
+
+E.g. Launch a task with a newly reserved persistent volume:
+
+Accept {
+offer_ids: [ ... ]
+operations: [
+{ type: RESERVE,
+reserve: { resources: [ disk(role):2 ] } }
+{ type: CREATE,
+create: { volumes: [ disk(role):1&#43;persistence ] } }
+{ type: LAUNCH,
+launch: { task_infos ... disk(role):1;disk(role):1&#43;persistence } }
+]
+}
+
+Note that any of the offer’s resources not used in the &#39;Accept&#39;
+call (e.g., to launch a task) are considered unused and might be
+reoffered to other frameworks. In other words, the same OfferID
+cannot be used in more than one &#39;Accept&#39; call.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| offer_ids | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | repeated |  |
+| operations | [.mesos.v1.Offer.Operation](#mesos.v1.scheduler..mesos.v1.Offer.Operation) | repeated |  |
+| filters | [.mesos.v1.Filters](#mesos.v1.scheduler..mesos.v1.Filters) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.AcceptInverseOffers"/>
+
+### Call.AcceptInverseOffers
+Accepts an inverse offer. Inverse offers should only be accepted
+if the resources in the offer can be safely evacuated before the
+provided unavailability.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| inverse_offer_ids | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | repeated |  |
+| filters | [.mesos.v1.Filters](#mesos.v1.scheduler..mesos.v1.Filters) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Acknowledge"/>
+
+### Call.Acknowledge
+Acknowledges the receipt of status update. Schedulers are
+responsible for explicitly acknowledging the receipt of status
+updates that have &#39;Update.status().uuid()&#39; field set. Such status
+updates are retried by the agent until they are acknowledged by
+the scheduler.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | required |  |
+| task_id | [.mesos.v1.TaskID](#mesos.v1.scheduler..mesos.v1.TaskID) | required |  |
+| uuid | [bytes](#bytes) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Decline"/>
+
+### Call.Decline
+Declines an offer, signaling the master to potentially reoffer
+the resources to a different framework. Note that this is same
+as sending an Accept call with no operations. See comments on
+top of &#39;Accept&#39; for semantics.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| offer_ids | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | repeated |  |
+| filters | [.mesos.v1.Filters](#mesos.v1.scheduler..mesos.v1.Filters) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.DeclineInverseOffers"/>
+
+### Call.DeclineInverseOffers
+Declines an inverse offer. Inverse offers should be declined if
+the resources in the offer might not be safely evacuated before
+the provided unavailability.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| inverse_offer_ids | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | repeated |  |
+| filters | [.mesos.v1.Filters](#mesos.v1.scheduler..mesos.v1.Filters) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Kill"/>
+
+### Call.Kill
+Kills a specific task. If the scheduler has a custom executor,
+the kill is forwarded to the executor and it is up to the
+executor to kill the task and send a TASK_KILLED (or TASK_FAILED)
+update. Note that Mesos releases the resources for a task once it
+receives a terminal update (See TaskState in v1/mesos.proto) for
+it. If the task is unknown to the master, a TASK_LOST update is
+generated.
+
+If a task within a task group is killed before the group is
+delivered to the executor, all tasks in the task group are
+killed. When a task group has been delivered to the executor,
+it is up to the executor to decide how to deal with the kill.
+Note The default Mesos executor will currently kill all the
+tasks in the task group if it gets a kill for any task.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task_id | [.mesos.v1.TaskID](#mesos.v1.scheduler..mesos.v1.TaskID) | required |  |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | optional |  |
+| kill_policy | [.mesos.v1.KillPolicy](#mesos.v1.scheduler..mesos.v1.KillPolicy) | optional | If set, overrides any previously specified kill policy for this task. This includes &#39;TaskInfo.kill_policy&#39; and &#39;Executor.kill.kill_policy&#39;. Can be used to forcefully kill a task which is already being killed. |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Message"/>
+
+### Call.Message
+Sends arbitrary binary data to the executor. Note that Mesos
+neither interprets this data nor makes any guarantees about the
+delivery of this message to the executor.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | required |  |
+| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.scheduler..mesos.v1.ExecutorID) | required |  |
+| data | [bytes](#bytes) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Reconcile"/>
+
+### Call.Reconcile
+Allows the scheduler to query the status for non-terminal tasks.
+This causes the master to send back the latest task status for
+each task in &#39;tasks&#39;, if possible. Tasks that are no longer known
+will result in a TASK_LOST, TASK_UNKNOWN, or TASK_UNREACHABLE update.
+If &#39;tasks&#39; is empty, then the master will send the latest status
+for each task currently known.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tasks | [Call.Reconcile.Task](#mesos.v1.scheduler.Call.Reconcile.Task) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Reconcile.Task"/>
+
+### Call.Reconcile.Task
+TODO(vinod): Support arbitrary queries than just state of tasks.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task_id | [.mesos.v1.TaskID](#mesos.v1.scheduler..mesos.v1.TaskID) | required |  |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Request"/>
+
+### Call.Request
+Requests a specific set of resources from Mesos&#39;s allocator. If
+the allocator has support for this, corresponding offers will be
+sent asynchronously via the OFFERS event(s).
+
+NOTE: The built-in hierarchical allocator doesn&#39;t have support
+for this call and hence simply ignores it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| requests | [.mesos.v1.Request](#mesos.v1.scheduler..mesos.v1.Request) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Revive"/>
+
+### Call.Revive
+Revive offers for a specified role. If role is unset, the
+`REVIVE` call will revive offers for all of the roles the
+framework is subscribed to.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| role | [string](#string) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Shutdown"/>
+
+### Call.Shutdown
+Shuts down a custom executor. When the executor gets a shutdown
+event, it is expected to kill all its tasks (and send TASK_KILLED
+updates) and terminate. If the executor doesn’t terminate within
+a certain timeout (configurable via
+&#39;--executor_shutdown_grace_period&#39; agent flag), the agent will
+forcefully destroy the container (executor and its tasks) and
+transition its active tasks to TASK_LOST.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.scheduler..mesos.v1.ExecutorID) | required |  |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Subscribe"/>
+
+### Call.Subscribe
+Subscribes the scheduler with the master to receive events. A
+scheduler must send other calls only after it has received the
+SUBCRIBED event.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| framework_info | [.mesos.v1.FrameworkInfo](#mesos.v1.scheduler..mesos.v1.FrameworkInfo) | required | See the comments below on &#39;framework_id&#39; on the semantics for &#39;framework_info.id&#39;. |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Call.Suppress"/>
+
+### Call.Suppress
+Suppress offers for a specified role. If role is unset, the
+`SUPPRESS` call will suppress offers for all of the roles the
+framework is subscribed to.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| role | [string](#string) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Event"/>
 
 ### Event
+Scheduler event API.
 
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| offset | [uint64](#uint64) |  | offset is the sequence id of the event |
-| type | [Event.Type](#peloton.private.eventstream.Event.Type) |  |  |
-| mesosTaskStatus | [.mesos.v1.TaskStatus](#peloton.private.eventstream..mesos.v1.TaskStatus) |  |  |
-| pelotonTaskEvent | [.peloton.api.task.TaskEvent](#peloton.private.eventstream..peloton.api.task.TaskEvent) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.eventstream.InitStreamRequest"/>
-
-### InitStreamRequest
-Client need to call this to init a stream on server side
+An event is described using the standard protocol buffer &#34;union&#34;
+trick, see:
+https://developers.google.com/protocol-buffers/docs/techniques#union.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| clientName | [string](#string) |  |  |
+| type | [Event.Type](#mesos.v1.scheduler.Event.Type) | optional | Type of the event, indicates which optional field below should be present if that type has a nested message definition. Enum fields should be optional, see: MESOS-4997. |
+| subscribed | [Event.Subscribed](#mesos.v1.scheduler.Event.Subscribed) | optional |  |
+| offers | [Event.Offers](#mesos.v1.scheduler.Event.Offers) | optional |  |
+| inverse_offers | [Event.InverseOffers](#mesos.v1.scheduler.Event.InverseOffers) | optional |  |
+| rescind | [Event.Rescind](#mesos.v1.scheduler.Event.Rescind) | optional |  |
+| rescind_inverse_offer | [Event.RescindInverseOffer](#mesos.v1.scheduler.Event.RescindInverseOffer) | optional |  |
+| update | [Event.Update](#mesos.v1.scheduler.Event.Update) | optional |  |
+| message | [Event.Message](#mesos.v1.scheduler.Event.Message) | optional |  |
+| failure | [Event.Failure](#mesos.v1.scheduler.Event.Failure) | optional |  |
+| error | [Event.Error](#mesos.v1.scheduler.Event.Error) | optional |  |
 
 
 
 
 
 
-<a name="peloton.private.eventstream.InitStreamResponse"/>
+<a name="mesos.v1.scheduler.Event.Error"/>
 
-### InitStreamResponse
-InitStreamResponse pass back the streamID and the minOffset of the events
-on server side
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [InitStreamResponse.Error](#peloton.private.eventstream.InitStreamResponse.Error) |  |  |
-| streamID | [string](#string) |  | streamID is created by the server and will change when server restarts |
-| minOffset | [uint64](#uint64) |  | min Offset of the event in the server side circular buffer |
-| previousPurgeOffset | [uint64](#uint64) |  | previous purgeOffset for the client, if there is any stored on the server the client can use previousPurgeOffset as the begin offset for the next WaitForEventsRequest |
-
-
-
-
-
-
-<a name="peloton.private.eventstream.InitStreamResponse.Error"/>
-
-### InitStreamResponse.Error
-
+### Event.Error
+Received when there is an unrecoverable error in the scheduler (e.g.,
+scheduler failed over, rate limiting, authorization errors etc.). The
+scheduler should abort on receiving this event.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| clientUnsupported | [ClientUnsupported](#peloton.private.eventstream.ClientUnsupported) |  |  |
+| message | [string](#string) | required |  |
 
 
 
 
 
 
-<a name="peloton.private.eventstream.InvalidPurgeOffset"/>
+<a name="mesos.v1.scheduler.Event.Failure"/>
 
-### InvalidPurgeOffset
-Error message for incorrect purge offset
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| purgeOffset | [uint64](#uint64) |  |  |
-| beginOffset | [uint64](#uint64) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.eventstream.InvalidStreamID"/>
-
-### InvalidStreamID
-Error message for clients that are not expected by the server
+### Event.Failure
+Received when an agent is removed from the cluster (e.g., failed
+health checks) or when an executor is terminated. Note that, this
+event coincides with receipt of terminal UPDATE events for any
+active tasks belonging to the agent or executor and receipt of
+&#39;Rescind&#39; events for any outstanding offers belonging to the
+agent. Note that there is no guaranteed order between the
+&#39;Failure&#39;, &#39;Update&#39; and &#39;Rescind&#39; events when an agent or executor
+is removed.
+TODO(vinod): Consider splitting the lost agent and terminated
+executor into separate events and ensure it&#39;s reliably generated.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| currentStreamID | [string](#string) |  |  |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | optional |  |
+| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.scheduler..mesos.v1.ExecutorID) | optional | If this was just a failure of an executor on an agent then &#39;executor_id&#39; will be set and possibly &#39;status&#39; (if we were able to determine the exit status). |
+| status | [int32](#int32) | optional |  |
 
 
 
 
 
 
-<a name="peloton.private.eventstream.OffsetOutOfRange"/>
+<a name="mesos.v1.scheduler.Event.InverseOffers"/>
 
-### OffsetOutOfRange
-The intended event offset is out of the event range on the server side
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| streamID | [string](#string) |  |  |
-| minOffset | [uint64](#uint64) |  |  |
-| maxOffset | [uint64](#uint64) |  |  |
-| offsetRequested | [uint64](#uint64) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.eventstream.WaitForEventsRequest"/>
-
-### WaitForEventsRequest
-
+### Event.InverseOffers
+Received whenever there are resources requested back from the
+scheduler. Each inverse offer specifies the agent, and
+optionally specific resources. Accepting or Declining an inverse
+offer informs the allocator of the scheduler&#39;s ability to release
+the specified resources without violating an SLA. If no resources
+are specified then all resources on the agent are requested to be
+released.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| streamID | [string](#string) |  | Current streamID |
-| purgeOffset | [uint64](#uint64) |  | The offeSet that the client has processed, which can be purged on the server |
-| beginOffset | [uint64](#uint64) |  | The begin offset of the intended data |
-| limit | [int32](#int32) |  | The max number of events limit for current request |
-| timeoutMs | [int32](#int32) |  | Timeout value |
-| clientName | [string](#string) |  | Name of the client |
+| inverse_offers | [.mesos.v1.InverseOffer](#mesos.v1.scheduler..mesos.v1.InverseOffer) | repeated |  |
 
 
 
 
 
 
-<a name="peloton.private.eventstream.WaitForEventsResponse"/>
+<a name="mesos.v1.scheduler.Event.Message"/>
 
-### WaitForEventsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [WaitForEventsResponse.Error](#peloton.private.eventstream.WaitForEventsResponse.Error) |  |  |
-| events | [Event](#peloton.private.eventstream.Event) | repeated |  |
-
-
-
-
-
-
-<a name="peloton.private.eventstream.WaitForEventsResponse.Error"/>
-
-### WaitForEventsResponse.Error
-
+### Event.Message
+Received when a custom message generated by the executor is
+forwarded by the master. Note that this message is not
+interpreted by Mesos and is only forwarded (without reliability
+guarantees) to the scheduler. It is up to the executor to retry
+if the message is dropped for any reason.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| outOfRange | [OffsetOutOfRange](#peloton.private.eventstream.OffsetOutOfRange) |  |  |
-| clientUnsupported | [ClientUnsupported](#peloton.private.eventstream.ClientUnsupported) |  |  |
-| invalidStreamID | [InvalidStreamID](#peloton.private.eventstream.InvalidStreamID) |  |  |
-| invalidPurgeOffset | [InvalidPurgeOffset](#peloton.private.eventstream.InvalidPurgeOffset) |  |  |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.scheduler..mesos.v1.AgentID) | required |  |
+| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.scheduler..mesos.v1.ExecutorID) | required |  |
+| data | [bytes](#bytes) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Event.Offers"/>
+
+### Event.Offers
+Received whenever there are new resources that are offered to the
+scheduler. Each offer corresponds to a set of resources on an
+agent. Until the scheduler accepts or declines an offer the
+resources are considered allocated to the scheduler.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| offers | [.mesos.v1.Offer](#mesos.v1.scheduler..mesos.v1.Offer) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Event.Rescind"/>
+
+### Event.Rescind
+Received when a particular offer is no longer valid (e.g., the
+agent corresponding to the offer has been removed) and hence
+needs to be rescinded. Any future calls (&#39;Accept&#39; / &#39;Decline&#39;) made
+by the scheduler regarding this offer will be invalid.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| offer_id | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Event.RescindInverseOffer"/>
+
+### Event.RescindInverseOffer
+Received when a particular inverse offer is no longer valid
+(e.g., the agent corresponding to the offer has been removed)
+and hence needs to be rescinded. Any future calls (&#39;Accept&#39;
+&#39;Decline&#39;) made by the scheduler regarding this inverse offer
+will be invalid.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| inverse_offer_id | [.mesos.v1.OfferID](#mesos.v1.scheduler..mesos.v1.OfferID) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Event.Subscribed"/>
+
+### Event.Subscribed
+First event received when the scheduler subscribes.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.scheduler..mesos.v1.FrameworkID) | required |  |
+| heartbeat_interval_seconds | [double](#double) | optional | This value will be set if the master is sending heartbeats. See the comment above on &#39;HEARTBEAT&#39; for more details. |
+| master_info | [.mesos.v1.MasterInfo](#mesos.v1.scheduler..mesos.v1.MasterInfo) | optional | Since Mesos 1.1. |
+
+
+
+
+
+
+<a name="mesos.v1.scheduler.Event.Update"/>
+
+### Event.Update
+Received whenever there is a status update that is generated by
+the executor or agent or master. Status updates should be used by
+executors to reliably communicate the status of the tasks that
+they manage. It is crucial that a terminal update (see TaskState
+in v1/mesos.proto) is sent by the executor as soon as the task
+terminates, in order for Mesos to release the resources allocated
+to the task. It is also the responsibility of the scheduler to
+explicitly acknowledge the receipt of a status update. See
+&#39;Acknowledge&#39; in the &#39;Call&#39; section below for the semantics.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| status | [.mesos.v1.TaskStatus](#mesos.v1.scheduler..mesos.v1.TaskStatus) | required |  |
 
 
 
@@ -9076,88 +7803,626 @@ The intended event offset is out of the event range on the server side
  
 
 
-<a name="peloton.private.eventstream.Event.Type"/>
+<a name="mesos.v1.scheduler.Call.Type"/>
+
+### Call.Type
+Possible call types, followed by message definitions if
+applicable.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 | See comments above on `Event::Type` for more details on this enum value. |
+| SUBSCRIBE | 1 | See &#39;Subscribe&#39; below. |
+| TEARDOWN | 2 | Shuts down all tasks/executors and removes framework. |
+| ACCEPT | 3 | See &#39;Accept&#39; below. |
+| DECLINE | 4 | See &#39;Decline&#39; below. |
+| ACCEPT_INVERSE_OFFERS | 13 | See &#39;AcceptInverseOffers&#39; below. |
+| DECLINE_INVERSE_OFFERS | 14 | See &#39;DeclineInverseOffers&#39; below. |
+| REVIVE | 5 | Removes any previous filters set via ACCEPT or DECLINE. |
+| KILL | 6 | See &#39;Kill&#39; below. |
+| SHUTDOWN | 7 | See &#39;Shutdown&#39; below. |
+| ACKNOWLEDGE | 8 | See &#39;Acknowledge&#39; below. |
+| RECONCILE | 9 | See &#39;Reconcile&#39; below. |
+| MESSAGE | 10 | See &#39;Message&#39; below. |
+| REQUEST | 11 | See &#39;Request&#39; below. |
+| SUPPRESS | 12 | Inform master to stop sending offers to the framework. |
+
+
+
+<a name="mesos.v1.scheduler.Event.Type"/>
 
 ### Event.Type
-Describes the type of event
+Possible event types, followed by message definitions if
+applicable.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
-| UNKNOWN_EVENT_TYPE | 0 |  |
-| MESOS_TASK_STATUS | 1 |  |
-| PELOTON_TASK_EVENT | 2 |  |
+| UNKNOWN | 0 | This must be the first enum value in this list, to ensure that if &#39;type&#39; is not set, the default value is UNKNOWN. This enables enum values to be added in a backwards-compatible way. See: MESOS-4997. |
+| SUBSCRIBED | 1 | See &#39;Subscribed&#39; below. |
+| OFFERS | 2 | See &#39;Offers&#39; below. |
+| INVERSE_OFFERS | 9 | See &#39;InverseOffers&#39; below. |
+| RESCIND | 3 | See &#39;Rescind&#39; below. |
+| RESCIND_INVERSE_OFFER | 10 | See &#39;RescindInverseOffer&#39; below. |
+| UPDATE | 4 | See &#39;Update&#39; below. |
+| MESSAGE | 5 | See &#39;Message&#39; below. |
+| FAILURE | 6 | See &#39;Failure&#39; below. |
+| ERROR | 7 | See &#39;Error&#39; below. |
+| HEARTBEAT | 8 | Periodic message sent by the Mesos master according to &#39;Subscribed.heartbeat_interval_seconds&#39;. If the scheduler does not receive any events (including heartbeats) for an extended period of time (e.g., 5 x heartbeat_interval_seconds), there is likely a network partition. In such a case the scheduler should close the existing subscription connection and resubscribe using a backoff strategy. |
 
 
  
 
  
 
-
-<a name="peloton.private.eventstream.EventStreamService"/>
-
-### EventStreamService
-
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| InitStream | [InitStreamRequest](#peloton.private.eventstream.InitStreamRequest) | [InitStreamResponse](#peloton.private.eventstream.InitStreamRequest) | Client calls CreateStream to learn about information to consume the stream |
-| WaitForEvents | [WaitForEventsRequest](#peloton.private.eventstream.WaitForEventsRequest) | [WaitForEventsResponse](#peloton.private.eventstream.WaitForEventsRequest) | Wait for some task events |
-
  
 
 
 
-<a name="resmgr.proto"/>
+<a name="agent.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
-## resmgr.proto
+## agent.proto
 
 
 
-<a name="peloton.private.resmgr.Placement"/>
+<a name="mesos.v1.agent.Call"/>
 
-### Placement
-Placement describes the mapping of a list of tasks to a host
-so that Job Manager can launch the tasks on the host.
+### Call
+Calls that can be sent to the v1 agent API.
 
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tasks | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) | repeated | The list of tasks to be placed |
-| hostname | [string](#string) |  | The name of the host where the tasks are placed |
-| agentId | [.mesos.v1.AgentID](#peloton.private.resmgr..mesos.v1.AgentID) |  | The Mesos agent ID of the host where the tasks are placed |
-| offerIds | [.mesos.v1.OfferID](#peloton.private.resmgr..mesos.v1.OfferID) | repeated | The list of Mesos offers of the placed tasks |
-| ports | [uint32](#uint32) | repeated | The list of allocated ports which should be sufficient for all placed tasks |
-| type | [TaskType](#peloton.private.resmgr.TaskType) |  | Type of the tasks in the placement. Note all tasks must belong to same type. By default the type is batch task. |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.Task"/>
-
-### Task
-Task describes a task instance at Resource Manager layer. Only
-includes the minimal set of fields required for Resource Manager
-and Placement Engine, such as resource config, constraint etc.
+A call is described using the standard protocol buffer &#34;union&#34;
+trick, see
+https://developers.google.com/protocol-buffers/docs/techniques#union.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| name | [string](#string) |  | Name of the task |
-| id | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) |  | The unique ID of the task |
-| jobId | [.peloton.api.peloton.JobID](#peloton.private.resmgr..peloton.api.peloton.JobID) |  | The Job ID of the task for use cases like gang scheduling |
-| taskId | [.mesos.v1.TaskID](#peloton.private.resmgr..mesos.v1.TaskID) |  | The mesos task ID of the task |
-| resource | [.peloton.api.task.ResourceConfig](#peloton.private.resmgr..peloton.api.task.ResourceConfig) |  | Resource config of the task |
-| priority | [uint32](#uint32) |  | Priority of a task. Higher value takes priority over lower value when making scheduling decisions as well as preemption decisions |
-| preemptible | [bool](#bool) |  | Whether the task is preemptible. If a task is not preemptible, then it will have to be launched using reserved resources. |
-| labels | [.mesos.v1.Labels](#peloton.private.resmgr..mesos.v1.Labels) |  | List of user-defined labels for the task, these are used to enforce the constraint. These are copied from the TaskConfig. |
-| constraint | [.peloton.api.task.Constraint](#peloton.private.resmgr..peloton.api.task.Constraint) |  | Constraint on the labels of the host or tasks on the host that this task should run on. This is copied from the TaskConfig. |
-| type | [TaskType](#peloton.private.resmgr.TaskType) |  | Type of the Task |
-| numPorts | [uint32](#uint32) |  | Number of dynamic ports |
-| minInstances | [uint32](#uint32) |  | Minimum number of running instances. Value &gt; 1 indicates task is in scheduling gang of that size; task instanceID is in [0..minInstances-1]. If value &lt;= 1, task is not in scheduling gang and is scheduled singly. |
-| hostname | [string](#string) |  | Hostname of the host on which the task is running on. |
+| type | [Call.Type](#mesos.v1.agent.Call.Type) | optional |  |
+| get_metrics | [Call.GetMetrics](#mesos.v1.agent.Call.GetMetrics) | optional |  |
+| set_logging_level | [Call.SetLoggingLevel](#mesos.v1.agent.Call.SetLoggingLevel) | optional |  |
+| list_files | [Call.ListFiles](#mesos.v1.agent.Call.ListFiles) | optional |  |
+| read_file | [Call.ReadFile](#mesos.v1.agent.Call.ReadFile) | optional |  |
+| launch_nested_container | [Call.LaunchNestedContainer](#mesos.v1.agent.Call.LaunchNestedContainer) | optional |  |
+| wait_nested_container | [Call.WaitNestedContainer](#mesos.v1.agent.Call.WaitNestedContainer) | optional |  |
+| kill_nested_container | [Call.KillNestedContainer](#mesos.v1.agent.Call.KillNestedContainer) | optional |  |
+| launch_nested_container_session | [Call.LaunchNestedContainerSession](#mesos.v1.agent.Call.LaunchNestedContainerSession) | optional |  |
+| attach_container_input | [Call.AttachContainerInput](#mesos.v1.agent.Call.AttachContainerInput) | optional |  |
+| attach_container_output | [Call.AttachContainerOutput](#mesos.v1.agent.Call.AttachContainerOutput) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.AttachContainerInput"/>
+
+### Call.AttachContainerInput
+Attaches the caller to the STDIN of the entry point of the container.
+Clients can use this to stream input data to a container.
+Note that this call needs to be made on a persistent connection by
+streaming a CONTAINER_ID message followed by one or more PROCESS_IO
+messages.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [Call.AttachContainerInput.Type](#mesos.v1.agent.Call.AttachContainerInput.Type) | optional |  |
+| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | optional |  |
+| process_io | [ProcessIO](#mesos.v1.agent.ProcessIO) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.AttachContainerOutput"/>
+
+### Call.AttachContainerOutput
+Attaches the caller to the STDOUT and STDERR of the entrypoint of
+the container. Clients can use this to stream output/error from the
+container. This call will result in a streaming response of `ProcessIO`;
+so this call needs to be made on a persistent connection.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.GetMetrics"/>
+
+### Call.GetMetrics
+Provides a snapshot of the current metrics tracked by the agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| timeout | [.mesos.v1.DurationInfo](#mesos.v1.agent..mesos.v1.DurationInfo) | optional | If set, `timeout` would be used to determines the maximum amount of time the API will take to respond. If the timeout is exceeded, some metrics may not be included in the response. |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.KillNestedContainer"/>
+
+### Call.KillNestedContainer
+Kills the nested container. Currently only supports SIGKILL.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.LaunchNestedContainer"/>
+
+### Call.LaunchNestedContainer
+Launches a nested container within an executor&#39;s tree of containers.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
+| command | [.mesos.v1.CommandInfo](#mesos.v1.agent..mesos.v1.CommandInfo) | optional |  |
+| container | [.mesos.v1.ContainerInfo](#mesos.v1.agent..mesos.v1.ContainerInfo) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.LaunchNestedContainerSession"/>
+
+### Call.LaunchNestedContainerSession
+Launches a nested container within an executor&#39;s tree of containers.
+The differences between this call and `LaunchNestedContainer` are:
+1) The container&#39;s life-cycle is tied to the lifetime of the
+connection used to make this call, i.e., if the connection ever
+breaks, the container will be destroyed.
+2) The nested container shares the same namespaces and cgroups as
+its parent container.
+3) Results in a streaming response of type `ProcessIO`. So the call
+needs to be made on a persistent connection.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
+| command | [.mesos.v1.CommandInfo](#mesos.v1.agent..mesos.v1.CommandInfo) | optional |  |
+| container | [.mesos.v1.ContainerInfo](#mesos.v1.agent..mesos.v1.ContainerInfo) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.ListFiles"/>
+
+### Call.ListFiles
+Provides the file listing for a directory.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| path | [string](#string) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.ReadFile"/>
+
+### Call.ReadFile
+Reads data from a file.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| path | [string](#string) | required | The path of file. |
+| offset | [uint64](#uint64) | required | Initial offset in file to start reading from. |
+| length | [uint64](#uint64) | optional | The maximum number of bytes to read. The read length is capped at 16 memory pages. |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.SetLoggingLevel"/>
+
+### Call.SetLoggingLevel
+Sets the logging verbosity level for a specified duration. Mesos uses
+[glog](https://github.com/google/glog) for logging. The library only uses
+verbose logging which means nothing will be output unless the verbosity
+level is set (by default it&#39;s 0, libprocess uses levels 1, 2, and 3).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| level | [uint32](#uint32) | required | The verbosity level. |
+| duration | [.mesos.v1.DurationInfo](#mesos.v1.agent..mesos.v1.DurationInfo) | required | The duration to keep verbosity level toggled. After this duration, the verbosity level of log would revert to the original level. |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Call.WaitNestedContainer"/>
+
+### Call.WaitNestedContainer
+Waits for the nested container to terminate and receives the exit status.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.ProcessIO"/>
+
+### ProcessIO
+Streaming response to `Call::LAUNCH_NESTED_CONTAINER_SESSION` and
+`Call::ATTACH_CONTAINER_OUTPUT`.
+
+This message is also used to stream request data for
+`Call::ATTACH_CONTAINER_INPUT`.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [ProcessIO.Type](#mesos.v1.agent.ProcessIO.Type) | optional |  |
+| data | [ProcessIO.Data](#mesos.v1.agent.ProcessIO.Data) | optional |  |
+| control | [ProcessIO.Control](#mesos.v1.agent.ProcessIO.Control) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.ProcessIO.Control"/>
+
+### ProcessIO.Control
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [ProcessIO.Control.Type](#mesos.v1.agent.ProcessIO.Control.Type) | optional |  |
+| tty_info | [.mesos.v1.TTYInfo](#mesos.v1.agent..mesos.v1.TTYInfo) | optional |  |
+| heartbeat | [ProcessIO.Control.Heartbeat](#mesos.v1.agent.ProcessIO.Control.Heartbeat) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.ProcessIO.Control.Heartbeat"/>
+
+### ProcessIO.Control.Heartbeat
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| interval | [.mesos.v1.DurationInfo](#mesos.v1.agent..mesos.v1.DurationInfo) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.ProcessIO.Data"/>
+
+### ProcessIO.Data
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [ProcessIO.Data.Type](#mesos.v1.agent.ProcessIO.Data.Type) | optional |  |
+| data | [bytes](#bytes) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response"/>
+
+### Response
+Synchronous responses for all calls made to the v1 agent API.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [Response.Type](#mesos.v1.agent.Response.Type) | optional |  |
+| get_health | [Response.GetHealth](#mesos.v1.agent.Response.GetHealth) | optional |  |
+| get_flags | [Response.GetFlags](#mesos.v1.agent.Response.GetFlags) | optional |  |
+| get_version | [Response.GetVersion](#mesos.v1.agent.Response.GetVersion) | optional |  |
+| get_metrics | [Response.GetMetrics](#mesos.v1.agent.Response.GetMetrics) | optional |  |
+| get_logging_level | [Response.GetLoggingLevel](#mesos.v1.agent.Response.GetLoggingLevel) | optional |  |
+| list_files | [Response.ListFiles](#mesos.v1.agent.Response.ListFiles) | optional |  |
+| read_file | [Response.ReadFile](#mesos.v1.agent.Response.ReadFile) | optional |  |
+| get_state | [Response.GetState](#mesos.v1.agent.Response.GetState) | optional |  |
+| get_containers | [Response.GetContainers](#mesos.v1.agent.Response.GetContainers) | optional |  |
+| get_frameworks | [Response.GetFrameworks](#mesos.v1.agent.Response.GetFrameworks) | optional |  |
+| get_executors | [Response.GetExecutors](#mesos.v1.agent.Response.GetExecutors) | optional |  |
+| get_tasks | [Response.GetTasks](#mesos.v1.agent.Response.GetTasks) | optional |  |
+| wait_nested_container | [Response.WaitNestedContainer](#mesos.v1.agent.Response.WaitNestedContainer) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetContainers"/>
+
+### Response.GetContainers
+Information about containers running on this agent. It contains
+ContainerStatus and ResourceStatistics along with some metadata
+of the containers.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| containers | [Response.GetContainers.Container](#mesos.v1.agent.Response.GetContainers.Container) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetContainers.Container"/>
+
+### Response.GetContainers.Container
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.agent..mesos.v1.FrameworkID) | required |  |
+| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.agent..mesos.v1.ExecutorID) | required |  |
+| executor_name | [string](#string) | required |  |
+| container_id | [.mesos.v1.ContainerID](#mesos.v1.agent..mesos.v1.ContainerID) | required |  |
+| container_status | [.mesos.v1.ContainerStatus](#mesos.v1.agent..mesos.v1.ContainerStatus) | optional |  |
+| resource_statistics | [.mesos.v1.ResourceStatistics](#mesos.v1.agent..mesos.v1.ResourceStatistics) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetExecutors"/>
+
+### Response.GetExecutors
+Lists information about all the executors known to the agent at the
+current time.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| executors | [Response.GetExecutors.Executor](#mesos.v1.agent.Response.GetExecutors.Executor) | repeated |  |
+| completed_executors | [Response.GetExecutors.Executor](#mesos.v1.agent.Response.GetExecutors.Executor) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetExecutors.Executor"/>
+
+### Response.GetExecutors.Executor
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| executor_info | [.mesos.v1.ExecutorInfo](#mesos.v1.agent..mesos.v1.ExecutorInfo) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetFlags"/>
+
+### Response.GetFlags
+Contains the flag configuration of the agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| flags | [.mesos.v1.Flag](#mesos.v1.agent..mesos.v1.Flag) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetFrameworks"/>
+
+### Response.GetFrameworks
+Information about all the frameworks known to the agent at the current
+time.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| frameworks | [Response.GetFrameworks.Framework](#mesos.v1.agent.Response.GetFrameworks.Framework) | repeated |  |
+| completed_frameworks | [Response.GetFrameworks.Framework](#mesos.v1.agent.Response.GetFrameworks.Framework) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetFrameworks.Framework"/>
+
+### Response.GetFrameworks.Framework
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| framework_info | [.mesos.v1.FrameworkInfo](#mesos.v1.agent..mesos.v1.FrameworkInfo) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetHealth"/>
+
+### Response.GetHealth
+`healthy` would be true if the agent is healthy. Delayed responses are also
+indicative of the poor health of the agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| healthy | [bool](#bool) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetLoggingLevel"/>
+
+### Response.GetLoggingLevel
+Contains the logging level of the agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| level | [uint32](#uint32) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetMetrics"/>
+
+### Response.GetMetrics
+Contains a snapshot of the current metrics.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| metrics | [.mesos.v1.Metric](#mesos.v1.agent..mesos.v1.Metric) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetState"/>
+
+### Response.GetState
+Contains full state of the agent i.e. information about the tasks,
+frameworks and executors running in the cluster.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| get_tasks | [Response.GetTasks](#mesos.v1.agent.Response.GetTasks) | optional |  |
+| get_executors | [Response.GetExecutors](#mesos.v1.agent.Response.GetExecutors) | optional |  |
+| get_frameworks | [Response.GetFrameworks](#mesos.v1.agent.Response.GetFrameworks) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetTasks"/>
+
+### Response.GetTasks
+Lists information about all the tasks known to the agent at the current
+time.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| pending_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are pending in the agent&#39;s queue before an executor is launched. |
+| queued_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are enqueued for a launched executor that has not yet registered. |
+| launched_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are running. |
+| terminated_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are terminated but pending updates. |
+| completed_tasks | [.mesos.v1.Task](#mesos.v1.agent..mesos.v1.Task) | repeated | Tasks that are terminated and updates acked. |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.GetVersion"/>
+
+### Response.GetVersion
+Contains the version information of the agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| version_info | [.mesos.v1.VersionInfo](#mesos.v1.agent..mesos.v1.VersionInfo) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.ListFiles"/>
+
+### Response.ListFiles
+Contains the file listing(similar to `ls -l`) for a directory.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| file_infos | [.mesos.v1.FileInfo](#mesos.v1.agent..mesos.v1.FileInfo) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.ReadFile"/>
+
+### Response.ReadFile
+Contains the file data.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| size | [uint64](#uint64) | required | The size of file (in bytes). |
+| data | [bytes](#bytes) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.agent.Response.WaitNestedContainer"/>
+
+### Response.WaitNestedContainer
+Returns termination information about the nested container.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| exit_status | [int32](#int32) | optional |  |
 
 
 
@@ -9166,18 +8431,116 @@ and Placement Engine, such as resource config, constraint etc.
  
 
 
-<a name="peloton.private.resmgr.TaskType"/>
+<a name="mesos.v1.agent.Call.AttachContainerInput.Type"/>
 
-### TaskType
-TaskType task type definition such as batch, service and infra agent.
+### Call.AttachContainerInput.Type
+
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
-| UNKNOWN | 0 | This is unknown type, this is also used in DequeueGangsRequest to indicate that we want tasks of any task type back. |
-| BATCH | 1 | Normal batch task |
-| STATELESS | 2 | STATELESS task which is long running and will be restarted upon failures. |
-| STATEFUL | 3 | STATEFUL task which is using persistent volume and is long running |
-| DAEMON | 4 | Daemon task which has one instance running on each host for infra agents like muttley, m3collector etc. |
+| UNKNOWN | 0 |  |
+| CONTAINER_ID | 1 |  |
+| PROCESS_IO | 2 |  |
+
+
+
+<a name="mesos.v1.agent.Call.Type"/>
+
+### Call.Type
+If a call of type `Call::FOO` requires additional parameters they can be
+included in the corresponding `Call::Foo` message. Similarly, if a call
+receives a synchronous response it will be returned as a `Response`
+message of type `Response::FOO`; see `Call::LaunchNestedContainerSession`
+and `Call::AttachContainerOutput` for exceptions.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 |  |
+| GET_HEALTH | 1 | Retrieves the agent&#39;s health status. |
+| GET_FLAGS | 2 | Retrieves the agent&#39;s flag configuration. |
+| GET_VERSION | 3 | Retrieves the agent&#39;s version information. |
+| GET_METRICS | 4 | See &#39;GetMetrics&#39; below. |
+| GET_LOGGING_LEVEL | 5 | Retrieves the agent&#39;s logging level. |
+| SET_LOGGING_LEVEL | 6 | See &#39;SetLoggingLevel&#39; below. |
+| LIST_FILES | 7 |  |
+| READ_FILE | 8 | See &#39;ReadFile&#39; below. |
+| GET_STATE | 9 |  |
+| GET_CONTAINERS | 10 |  |
+| GET_FRAMEWORKS | 11 | Retrieves the information about known frameworks. |
+| GET_EXECUTORS | 12 | Retrieves the information about known executors. |
+| GET_TASKS | 13 | Retrieves the information about known tasks. |
+| LAUNCH_NESTED_CONTAINER | 14 | Calls for managing nested containers underneath an executor&#39;s container.
+
+See &#39;LaunchNestedContainer&#39; below. |
+| WAIT_NESTED_CONTAINER | 15 | See &#39;WaitNestedContainer&#39; below. |
+| KILL_NESTED_CONTAINER | 16 | See &#39;KillNestedContainer&#39; below. |
+| LAUNCH_NESTED_CONTAINER_SESSION | 17 | See &#39;LaunchNestedContainerSession&#39; below. |
+| ATTACH_CONTAINER_INPUT | 18 | See &#39;AttachContainerInput&#39; below. |
+| ATTACH_CONTAINER_OUTPUT | 19 | see &#39;AttachContainerOutput&#39; below. |
+
+
+
+<a name="mesos.v1.agent.ProcessIO.Control.Type"/>
+
+### ProcessIO.Control.Type
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 |  |
+| TTY_INFO | 1 |  |
+| HEARTBEAT | 2 |  |
+
+
+
+<a name="mesos.v1.agent.ProcessIO.Data.Type"/>
+
+### ProcessIO.Data.Type
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 |  |
+| STDIN | 1 |  |
+| STDOUT | 2 |  |
+| STDERR | 3 |  |
+
+
+
+<a name="mesos.v1.agent.ProcessIO.Type"/>
+
+### ProcessIO.Type
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 |  |
+| DATA | 1 |  |
+| CONTROL | 2 |  |
+
+
+
+<a name="mesos.v1.agent.Response.Type"/>
+
+### Response.Type
+Each of the responses of type `FOO` corresponds to `Foo` message below.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 |  |
+| GET_HEALTH | 1 | See &#39;GetHealth&#39; below. |
+| GET_FLAGS | 2 | See &#39;GetFlags&#39; below. |
+| GET_VERSION | 3 | See &#39;GetVersion&#39; below. |
+| GET_METRICS | 4 | See &#39;GetMetrics&#39; below. |
+| GET_LOGGING_LEVEL | 5 | See &#39;GetLoggingLevel&#39; below. |
+| LIST_FILES | 6 |  |
+| READ_FILE | 7 | See &#39;ReadFile&#39; below. |
+| GET_STATE | 8 |  |
+| GET_CONTAINERS | 9 |  |
+| GET_FRAMEWORKS | 10 | See &#39;GetFrameworks&#39; below. |
+| GET_EXECUTORS | 11 | See &#39;GetExecutors&#39; below. |
+| GET_TASKS | 12 | See &#39;GetTasks&#39; below. |
+| WAIT_NESTED_CONTAINER | 13 | See &#39;WaitNestedContainer&#39; below. |
 
 
  
@@ -9188,696 +8551,45 @@ TaskType task type definition such as batch, service and infra agent.
 
 
 
-<a name="resmgrsvc.proto"/>
+<a name="allocator.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
-## resmgrsvc.proto
+## allocator.proto
 
 
 
-<a name="peloton.private.resmgr.DequeueGangsFailure"/>
+<a name="mesos.v1.allocator.InverseOfferStatus"/>
 
-### DequeueGangsFailure
+### InverseOfferStatus
+Describes the status of an inverse offer.
 
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.DequeueGangsRequest"/>
-
-### DequeueGangsRequest
-
+This is a protobuf so as to be able to share the status to inverse offers
+through endpoints such as the maintenance status endpoint.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| limit | [uint32](#uint32) |  | Max number of ready gangs to dequeue |
-| timeout | [uint32](#uint32) |  | Timeout in milliseconds if no gangs are ready |
-| type | [TaskType](#peloton.private.resmgr.TaskType) |  | Task Type to identify which kind of tasks need to be dequeued |
+| status | [InverseOfferStatus.Status](#mesos.v1.allocator.InverseOfferStatus.Status) | required |  |
+| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.allocator..mesos.v1.FrameworkID) | required |  |
+| timestamp | [.mesos.v1.TimeInfo](#mesos.v1.allocator..mesos.v1.TimeInfo) | required | Time, since the epoch, when this status was last updated. |
 
 
 
 
 
+ 
 
-<a name="peloton.private.resmgr.DequeueGangsResponse"/>
 
-### DequeueGangsResponse
+<a name="mesos.v1.allocator.InverseOfferStatus.Status"/>
 
+### InverseOfferStatus.Status
 
 
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [DequeueGangsResponse.Error](#peloton.private.resmgr.DequeueGangsResponse.Error) |  |  |
-| gangs | [Gang](#peloton.private.resmgr.Gang) | repeated | The list of gangs that have been dequeued |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.DequeueGangsResponse.Error"/>
-
-### DequeueGangsResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| timedout | [RequestTimedout](#peloton.private.resmgr.RequestTimedout) |  |  |
-| failure | [DequeueGangsFailure](#peloton.private.resmgr.DequeueGangsFailure) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.EnqueueGangsFailure"/>
-
-### EnqueueGangsFailure
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| failed | [EnqueueGangsFailure.FailedTask](#peloton.private.resmgr.EnqueueGangsFailure.FailedTask) | repeated |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.EnqueueGangsFailure.FailedTask"/>
-
-### EnqueueGangsFailure.FailedTask
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task | [Task](#peloton.private.resmgr.Task) |  |  |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.EnqueueGangsRequest"/>
-
-### EnqueueGangsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| resPool | [.peloton.api.peloton.ResourcePoolID](#peloton.private.resmgr..peloton.api.peloton.ResourcePoolID) |  | ResourcePool |
-| gangs | [Gang](#peloton.private.resmgr.Gang) | repeated | The list of gangs to enqueue |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.EnqueueGangsResponse"/>
-
-### EnqueueGangsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [EnqueueGangsResponse.Error](#peloton.private.resmgr.EnqueueGangsResponse.Error) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.EnqueueGangsResponse.Error"/>
-
-### EnqueueGangsResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| notFound | [ResourcePoolNotFound](#peloton.private.resmgr.ResourcePoolNotFound) |  |  |
-| noPermission | [ResourcePoolNoPermission](#peloton.private.resmgr.ResourcePoolNoPermission) |  |  |
-| failure | [EnqueueGangsFailure](#peloton.private.resmgr.EnqueueGangsFailure) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.Gang"/>
-
-### Gang
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tasks | [Task](#peloton.private.resmgr.Task) | repeated | List of tasks to be scheduled together |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetActiveTasksRequest"/>
-
-### GetActiveTasksRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobID | [string](#string) |  | optional jobID to filter out tasks |
-| respoolID | [string](#string) |  | optional respoolID to filter out tasks |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetActiveTasksResponse"/>
-
-### GetActiveTasksResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [GetActiveTasksResponse.Error](#peloton.private.resmgr.GetActiveTasksResponse.Error) |  |  |
-| taskStatesMap | [GetActiveTasksResponse.TaskStatesMapEntry](#peloton.private.resmgr.GetActiveTasksResponse.TaskStatesMapEntry) | repeated | This will return a map from task id to state. |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetActiveTasksResponse.Error"/>
-
-### GetActiveTasksResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetActiveTasksResponse.TaskStatesMapEntry"/>
-
-### GetActiveTasksResponse.TaskStatesMapEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetPlacementsFailure"/>
-
-### GetPlacementsFailure
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetPlacementsRequest"/>
-
-### GetPlacementsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| limit | [uint32](#uint32) |  | Max number of placements to retrieve |
-| timeout | [uint32](#uint32) |  | Timeout in milliseconds if no placements |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetPlacementsResponse"/>
-
-### GetPlacementsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [GetPlacementsResponse.Error](#peloton.private.resmgr.GetPlacementsResponse.Error) |  |  |
-| placements | [Placement](#peloton.private.resmgr.Placement) | repeated | List of task placements to return |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetPlacementsResponse.Error"/>
-
-### GetPlacementsResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| failure | [GetPlacementsFailure](#peloton.private.resmgr.GetPlacementsFailure) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetPreemptibleTasksFailure"/>
-
-### GetPreemptibleTasksFailure
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetPreemptibleTasksRequest"/>
-
-### GetPreemptibleTasksRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| limit | [uint32](#uint32) |  | Max number of running tasks to dequeue |
-| timeout | [uint32](#uint32) |  | Timeout in milliseconds if no tasks are ready |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetPreemptibleTasksResponse"/>
-
-### GetPreemptibleTasksResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [GetPreemptibleTasksResponse.Error](#peloton.private.resmgr.GetPreemptibleTasksResponse.Error) |  |  |
-| tasks | [Task](#peloton.private.resmgr.Task) | repeated | The list of tasks that have been dequeued |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetPreemptibleTasksResponse.Error"/>
-
-### GetPreemptibleTasksResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| timedout | [RequestTimedout](#peloton.private.resmgr.RequestTimedout) |  |  |
-| failure | [GetPreemptibleTasksFailure](#peloton.private.resmgr.GetPreemptibleTasksFailure) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetTasksByHostsRequest"/>
-
-### GetTasksByHostsRequest
-GetTasksByHostsRequest will always returns the currently running tasks
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| hostnames | [string](#string) | repeated |  |
-| type | [TaskType](#peloton.private.resmgr.TaskType) |  | Task Type to identify which kind of tasks need to be dequeued, if this is left out all tasks wil be returned. |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetTasksByHostsResponse"/>
-
-### GetTasksByHostsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [GetTasksByHostsResponse.Error](#peloton.private.resmgr.GetTasksByHostsResponse.Error) |  |  |
-| hostTasksMap | [GetTasksByHostsResponse.HostTasksMapEntry](#peloton.private.resmgr.GetTasksByHostsResponse.HostTasksMapEntry) | repeated | This will return a map from hostname to a list of tasks running on the host. |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetTasksByHostsResponse.Error"/>
-
-### GetTasksByHostsResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.GetTasksByHostsResponse.HostTasksMapEntry"/>
-
-### GetTasksByHostsResponse.HostTasksMapEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [TaskList](#peloton.private.resmgr.TaskList) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.KillTasksError"/>
-
-### KillTasksError
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) |  |  |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.KillTasksRequest"/>
-
-### KillTasksRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tasks | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) | repeated | Peloton Task Ids for |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.KillTasksResponse"/>
-
-### KillTasksResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [KillTasksResponse.Error](#peloton.private.resmgr.KillTasksResponse.Error) | repeated |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.KillTasksResponse.Error"/>
-
-### KillTasksResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| notFound | [TasksNotFound](#peloton.private.resmgr.TasksNotFound) |  |  |
-| killError | [KillTasksError](#peloton.private.resmgr.KillTasksError) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.NotifyTaskUpdatesError"/>
-
-### NotifyTaskUpdatesError
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.NotifyTaskUpdatesRequest"/>
-
-### NotifyTaskUpdatesRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| events | [.peloton.private.eventstream.Event](#peloton.private.resmgr..peloton.private.eventstream.Event) | repeated |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.NotifyTaskUpdatesResponse"/>
-
-### NotifyTaskUpdatesResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [NotifyTaskUpdatesResponse.Error](#peloton.private.resmgr.NotifyTaskUpdatesResponse.Error) |  |  |
-| purgeOffset | [uint64](#uint64) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.NotifyTaskUpdatesResponse.Error"/>
-
-### NotifyTaskUpdatesResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [NotifyTaskUpdatesError](#peloton.private.resmgr.NotifyTaskUpdatesError) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.RequestTimedout"/>
-
-### RequestTimedout
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.ResourcePoolNoPermission"/>
-
-### ResourcePoolNoPermission
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.ResourcePoolID](#peloton.private.resmgr..peloton.api.peloton.ResourcePoolID) |  |  |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.ResourcePoolNotFound"/>
-
-### ResourcePoolNotFound
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.ResourcePoolID](#peloton.private.resmgr..peloton.api.peloton.ResourcePoolID) |  |  |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.SetPlacementsFailure"/>
-
-### SetPlacementsFailure
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| failed | [SetPlacementsFailure.FailedPlacement](#peloton.private.resmgr.SetPlacementsFailure.FailedPlacement) | repeated |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.SetPlacementsFailure.FailedPlacement"/>
-
-### SetPlacementsFailure.FailedPlacement
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| placement | [Placement](#peloton.private.resmgr.Placement) |  |  |
-| message | [string](#string) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.SetPlacementsRequest"/>
-
-### SetPlacementsRequest
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| placements | [Placement](#peloton.private.resmgr.Placement) | repeated | List of task placements to set |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.SetPlacementsResponse"/>
-
-### SetPlacementsResponse
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| error | [SetPlacementsResponse.Error](#peloton.private.resmgr.SetPlacementsResponse.Error) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.SetPlacementsResponse.Error"/>
-
-### SetPlacementsResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| failure | [SetPlacementsFailure](#peloton.private.resmgr.SetPlacementsFailure) |  |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.TaskList"/>
-
-### TaskList
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tasks | [Task](#peloton.private.resmgr.Task) | repeated |  |
-
-
-
-
-
-
-<a name="peloton.private.resmgr.TasksNotFound"/>
-
-### TasksNotFound
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| task | [.peloton.api.peloton.TaskID](#peloton.private.resmgr..peloton.api.peloton.TaskID) |  |  |
-| message | [string](#string) |  |  |
-
-
-
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 1 | We have not received a response yet. This is the default state before receiving a response. |
+| ACCEPT | 2 | The framework is ok with the inverse offer. This means it will not violate any SLAs and will attempt to evacuate any tasks running on the agent. If the tasks are not evacuated by the framework, the operator can manually shut down the slave knowing that the framework will not have violated its SLAs. |
+| DECLINE | 3 | The framework wants to block the maintenance operation from happening. An example would be that it cannot meet its SLA by losing resources. |
 
 
  
@@ -9887,195 +8599,74 @@ GetTasksByHostsRequest will always returns the currently running tasks
  
 
 
-<a name="peloton.private.resmgr.ResourceManagerService"/>
 
-### ResourceManagerService
-ResourceManagerService describes the internal interface of
-Resource Manager to other Peloton applications such as Job Manager
-and Placement Engine. This includes the EnqueueGangs and GetPlacements
-APIs called by Job Manager, and DequeueGangs and SetPlacements APIs
-called by Placement Engine.
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| EnqueueGangs | [EnqueueGangsRequest](#peloton.private.resmgr.EnqueueGangsRequest) | [EnqueueGangsResponse](#peloton.private.resmgr.EnqueueGangsRequest) | Enqueue a list of Gangs, each of which is a list of one or more tasks, to a given leaf resource pool for scheduling. The Gangs will be in PENDING state first and then transit to READY state when the resource pool has available resources. This method will be called by Job Manager when a new job is created or new Gangs are added. If any Gangs fail to enqueue, Job Manager should retry those failed Gangs. |
-| DequeueGangs | [DequeueGangsRequest](#peloton.private.resmgr.DequeueGangsRequest) | [DequeueGangsResponse](#peloton.private.resmgr.DequeueGangsRequest) | Dequeue a list of Gangs, each comprised of tasks that are in READY state for placement. The tasks will transit from READY to PLACING state after the return of this method. This method will be called by Placement Engine to retrieve a list of gangs for computing placement. If tasks are in PLACING state for too long in case of Placement Engine failures, the tasks will be timed out and transit back to READY state. |
-| SetPlacements | [SetPlacementsRequest](#peloton.private.resmgr.SetPlacementsRequest) | [SetPlacementsResponse](#peloton.private.resmgr.SetPlacementsRequest) | Set the placement information for a list of tasks. The tasks will transit from PLACING to PLACED state after this call. This method will be called by Placement Engine after it computes the placement decision for those tasks. |
-| GetPlacements | [GetPlacementsRequest](#peloton.private.resmgr.GetPlacementsRequest) | [GetPlacementsResponse](#peloton.private.resmgr.GetPlacementsRequest) | Get the placement information for a list of tasks. The tasks will transit from PLACED to LAUNCHING state after this call. This method is called by Job Manager to launch the tasks on Mesos. If the tasks are in LAUNCHING state for too long without transiting to RUNNING state, the tasks will be timedout and transit back to PLACED state. |
-| NotifyTaskUpdates | [NotifyTaskUpdatesRequest](#peloton.private.resmgr.NotifyTaskUpdatesRequest) | [NotifyTaskUpdatesResponse](#peloton.private.resmgr.NotifyTaskUpdatesRequest) | Notifies task status updates to resource manager. This will be called by Host manager to notify resource manager on task status updates. |
-| GetTasksByHosts | [GetTasksByHostsRequest](#peloton.private.resmgr.GetTasksByHostsRequest) | [GetTasksByHostsResponse](#peloton.private.resmgr.GetTasksByHostsRequest) | Get the list of Tasks running on the the list of host provided. This information is needed from the placement engines to find out which tasks are running on which hosts so the placement engine can place tasks taking this information into account. |
-| GetActiveTasks | [GetActiveTasksRequest](#peloton.private.resmgr.GetActiveTasksRequest) | [GetActiveTasksResponse](#peloton.private.resmgr.GetActiveTasksRequest) | Get task to state map. This information is helpful for debug purpose. |
-| KillTasks | [KillTasksRequest](#peloton.private.resmgr.KillTasksRequest) | [KillTasksResponse](#peloton.private.resmgr.KillTasksRequest) | Kill Tasks kills/Delete the tasks in Resource Manager |
-| GetPreemptibleTasks | [GetPreemptibleTasksRequest](#peloton.private.resmgr.GetPreemptibleTasksRequest) | [GetPreemptibleTasksResponse](#peloton.private.resmgr.GetPreemptibleTasksRequest) | Get the list of tasks to preempt. The tasks will transition from RUNNING to PREEMPTING state after the return of this method. This method will be called by the job manager to kill the tasks and re-enqueue them. |
-
- 
-
-
-
-<a name="job_svc.proto"/>
+<a name="maintenance.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
-## job_svc.proto
+## maintenance.proto
 
 
 
-<a name="peloton.api.job.svc.CreateJobRequest"/>
+<a name="mesos.v1.maintenance.ClusterStatus"/>
 
-### CreateJobRequest
-Request message for JobService.CreateJob method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The unique job UUID specified by the client. This can be used by the client to re-create a failed job without the side-effect of creating duplicated jobs. If unset, the server will create a new UUID for the job for each invocation. |
-| pool | [.peloton.api.respool.ResourcePoolPath](#peloton.api.job.svc..peloton.api.respool.ResourcePoolPath) |  | The resource pool under which the job should be created. The scheduling of all tasks in the job will be subject to the resource availablity of the resource pool. |
-| config | [.peloton.api.job.JobConfig](#peloton.api.job.svc..peloton.api.job.JobConfig) |  | The detailed configuration of the job to be created. |
-
-
-
-
-
-
-<a name="peloton.api.job.svc.CreateJobResponse"/>
-
-### CreateJobResponse
-Response message for JobService.CreateJob method.
-
-Return errors:
-ALREADY_EXISTS:    if the job ID already exists.o
-INVALID_ARGUMENT:  if the job ID or job config is invalid.
-NOT_FOUND:         if the resource pool is not found.
+### ClusterStatus
+Represents the maintenance status of each machine in the cluster.
+The lists correspond to the `MachineInfo.Mode` enumeration.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The job ID of the newly created job. Will be the same as the one in CreateJobRequest if provided. Otherwise, a new job ID will be generated by the server. |
+| draining_machines | [ClusterStatus.DrainingMachine](#mesos.v1.maintenance.ClusterStatus.DrainingMachine) | repeated |  |
+| down_machines | [.mesos.v1.MachineID](#mesos.v1.maintenance..mesos.v1.MachineID) | repeated |  |
 
 
 
 
 
 
-<a name="peloton.api.job.svc.DeleteJobRequest"/>
+<a name="mesos.v1.maintenance.ClusterStatus.DrainingMachine"/>
 
-### DeleteJobRequest
-Request message for JobService.DeleteJob method.
+### ClusterStatus.DrainingMachine
+
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The job ID to be deleted. |
+| id | [.mesos.v1.MachineID](#mesos.v1.maintenance..mesos.v1.MachineID) | required |  |
+| statuses | [.mesos.v1.allocator.InverseOfferStatus](#mesos.v1.maintenance..mesos.v1.allocator.InverseOfferStatus) | repeated | A list of the most recent responses to inverse offers from frameworks running on this draining machine. |
 
 
 
 
 
 
-<a name="peloton.api.job.svc.DeleteJobResponse"/>
+<a name="mesos.v1.maintenance.Schedule"/>
 
-### DeleteJobResponse
-Response message for JobService.DeleteJob method.
-
-Return errors:
-NOT_FOUND:  if the job is not found in Peloton.
-
-
-
-
-
-
-<a name="peloton.api.job.svc.GetJobRequest"/>
-
-### GetJobRequest
-Request message for JobService.GetJob method.
+### Schedule
+A list of maintenance windows.
+For example, this may represent a rolling restart of agents.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The job ID to look up the job. |
+| windows | [Window](#mesos.v1.maintenance.Window) | repeated |  |
 
 
 
 
 
 
-<a name="peloton.api.job.svc.GetJobResponse"/>
+<a name="mesos.v1.maintenance.Window"/>
 
-### GetJobResponse
-Response message for JobService.GetJob method.
-
-Return errors:
-NOT_FOUND:  if the job is not found in Peloton.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| result | [.peloton.api.job.JobConfig](#peloton.api.job.svc..peloton.api.job.JobConfig) |  | The job configuration of the matching job. |
-
-
-
-
-
-
-<a name="peloton.api.job.svc.QueryJobsRequest"/>
-
-### QueryJobsRequest
-Request message for JobService.QueryJobs method.
+### Window
+A set of machines scheduled to go into maintenance
+in the same `unavailability`.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| spec | [.peloton.api.job.QuerySpec](#peloton.api.job.svc..peloton.api.job.QuerySpec) |  | The spec of query criteria for the jobs. |
-| pagination | [.peloton.api.query.PaginationSpec](#peloton.api.job.svc..peloton.api.query.PaginationSpec) |  | The spec of how to do pagination for the query results. |
-
-
-
-
-
-
-<a name="peloton.api.job.svc.QueryJobsResponse"/>
-
-### QueryJobsResponse
-Response message for JobService.QueryJobs method.
-
-Return errors:
-INVALID_ARGUMENT:  if the resource pool path or job states are invalid.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| records | [.peloton.api.job.JobInfo](#peloton.api.job.svc..peloton.api.job.JobInfo) | repeated | List of jobs that match the job query criteria. |
-| pagination | [.peloton.api.query.Pagination](#peloton.api.job.svc..peloton.api.query.Pagination) |  | Pagination result of the job query. |
-
-
-
-
-
-
-<a name="peloton.api.job.svc.UpdateJobRequest"/>
-
-### UpdateJobRequest
-Request message for JobService.UpdateJob method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The job ID to be updated. |
-| config | [.peloton.api.job.JobConfig](#peloton.api.job.svc..peloton.api.job.JobConfig) |  | The new job config to be applied to the job. |
-
-
-
-
-
-
-<a name="peloton.api.job.svc.UpdateJobResponse"/>
-
-### UpdateJobResponse
-Response message for JobService.UpdateJob method.
-
-Return errors:
-INVALID_ARGUMENT:  if the job ID or job config is invalid.
-NOT_FOUND:         if the job ID is not found.
+| machine_ids | [.mesos.v1.MachineID](#mesos.v1.maintenance..mesos.v1.MachineID) | repeated | Machines affected by this maintenance window. |
+| unavailability | [.mesos.v1.Unavailability](#mesos.v1.maintenance..mesos.v1.Unavailability) | required | Interval during which this set of machines is expected to be down. |
 
 
 
@@ -10087,220 +8678,62 @@ NOT_FOUND:         if the job ID is not found.
 
  
 
-
-<a name="peloton.api.job.svc.JobService"/>
-
-### JobService
-Job service defines the job related methods such as create, get,
-query and kill jobs.
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| CreateJob | [CreateJobRequest](#peloton.api.job.svc.CreateJobRequest) | [CreateJobResponse](#peloton.api.job.svc.CreateJobRequest) | Create a job entity for a given config. |
-| GetJob | [GetJobRequest](#peloton.api.job.svc.GetJobRequest) | [GetJobResponse](#peloton.api.job.svc.GetJobRequest) | Get the config of a job entity. |
-| QueryJobs | [QueryJobsRequest](#peloton.api.job.svc.QueryJobsRequest) | [QueryJobsResponse](#peloton.api.job.svc.QueryJobsRequest) | Query the jobs that match a list of labels. |
-| DeleteJob | [DeleteJobRequest](#peloton.api.job.svc.DeleteJobRequest) | [DeleteJobResponse](#peloton.api.job.svc.DeleteJobRequest) | Delete a job and stop all related tasks. |
-| UpdateJob | [UpdateJobRequest](#peloton.api.job.svc.UpdateJobRequest) | [UpdateJobResponse](#peloton.api.job.svc.UpdateJobRequest) | Update a job entity with a new config. This is a temporary API for updating batch jobs. It only supports adding new instances to an existing job. It will be deprecated when the UpgradeService API is implemented. |
-
  
 
 
 
-<a name="respool_svc.proto"/>
+<a name="quota.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
-## respool_svc.proto
+## quota.proto
 
 
 
-<a name="peloton.api.respool.CreateResourcePoolRequest"/>
+<a name="mesos.v1.quota.QuotaInfo"/>
 
-### CreateResourcePoolRequest
-Request message for ResourcePoolService.CreateResourcePool method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The unique resource pool UUID specified by the client. This can be used by the client to re-create a failed resource pool without the side-effect of creating duplicated resource pool. If unset, the server will create a new UUID for the resource pool. |
-| config | [ResourcePoolConfig](#peloton.api.respool.ResourcePoolConfig) |  | The detailed configuration of the resource pool be to created. |
-
-
-
-
-
-
-<a name="peloton.api.respool.CreateResourcePoolResponse"/>
-
-### CreateResourcePoolResponse
-Response message for ResourcePoolService.CreateResourcePool method.
-
-Return errors:
-ALREADY_EXISTS:   if the resource pool already exists.
-INVALID_ARGUMENT: if the resource pool config is invalid.o
+### QuotaInfo
+TODO(joerg84): Add limits, i.e. upper bounds of resources that a
+role is allowed to use.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The ID of the newly created resource pool. |
+| role | [string](#string) | optional | Quota is granted per role and not per framework, similar to dynamic reservations. |
+| principal | [string](#string) | optional | Principal which set the quota. Currently only operators can set quotas. |
+| guarantee | [.mesos.v1.Resource](#mesos.v1.quota..mesos.v1.Resource) | repeated | The guarantee that these resources are allocatable for the above role. NOTE: `guarantee.role` should not specify any role except &#39;*&#39;, because quota does not reserve specific resources. |
 
 
 
 
 
 
-<a name="peloton.api.respool.DeleteResourcePoolRequest"/>
+<a name="mesos.v1.quota.QuotaRequest"/>
 
-### DeleteResourcePoolRequest
-Request message for ResourcePoolService.DeleteResourcePool method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The ID of the resource pool to be deleted. |
-
-
-
-
-
-
-<a name="peloton.api.respool.DeleteResourcePoolResponse"/>
-
-### DeleteResourcePoolResponse
-Response message for ResourcePoolService.DeleteResourcePool method.
-
-Return errors:
-NOT_FOUND:        if the resource pool is not found.
-INVALID_ARGUMENT: if the resource pool is not leaf node.
-FAILED_PRECONDITION:  if the resource pool is busy.
-INTERNAL:         if the resource pool fail to delete for internal errors.
-
-
-
-
-
-
-<a name="peloton.api.respool.GetResourcePoolRequest"/>
-
-### GetResourcePoolRequest
-Request message for ResourcePoolService.GetResourcePool method.
+### QuotaRequest
+`QuotaRequest` provides a schema for set quota JSON requests.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The ID of the resource pool to get the detailed information. |
-| includeChildPools | [bool](#bool) |  | Whether or not to include the resource pool info of the direct children |
+| force | [bool](#bool) | optional | Disables the capacity heuristic check if set to `true`. |
+| role | [string](#string) | optional | The role for which to set quota. |
+| guarantee | [.mesos.v1.Resource](#mesos.v1.quota..mesos.v1.Resource) | repeated | The requested guarantee that these resources will be allocatable for the above role. |
 
 
 
 
 
 
-<a name="peloton.api.respool.GetResourcePoolResponse"/>
+<a name="mesos.v1.quota.QuotaStatus"/>
 
-### GetResourcePoolResponse
-Response message for ResourcePoolService.GetResourcePool method.
-
-Return errors:
-NOT_FOUND:   if the resource pool is not found.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| resPool | [ResourcePoolInfo](#peloton.api.respool.ResourcePoolInfo) |  | The detailed information of the resource pool. |
-| childResPools | [ResourcePoolInfo](#peloton.api.respool.ResourcePoolInfo) | repeated | The list of child resource pools. |
-
-
-
-
-
-
-<a name="peloton.api.respool.LookupResourcePoolIDRequest"/>
-
-### LookupResourcePoolIDRequest
-Request message for ResourcePoolService.LookupResourcePoolID method.
+### QuotaStatus
+`QuotaStatus` describes the internal representation for the /quota/status
+response.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| path | [ResourcePoolPath](#peloton.api.respool.ResourcePoolPath) |  | The resource pool path to look up the resource pool ID. |
-
-
-
-
-
-
-<a name="peloton.api.respool.LookupResourcePoolIDResponse"/>
-
-### LookupResourcePoolIDResponse
-Response message for ResourcePoolService.LookupResourcePoolID method.
-
-Return errors:
-NOT_FOUND:        if the resource pool is not found.
-INVALID_ARGUMENT: if the resource pool path is invalid.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The resource pool ID for the given resource pool path. |
-
-
-
-
-
-
-<a name="peloton.api.respool.QueryResourcePoolsRequest"/>
-
-### QueryResourcePoolsRequest
-Request message for ResourcePoolService.QueryResourcePools method.
-
-
-TODO Filters
-
-
-
-
-
-
-<a name="peloton.api.respool.QueryResourcePoolsResponse"/>
-
-### QueryResourcePoolsResponse
-Response message for ResourcePoolService.QueryResourcePools method.
-
-Return errors:
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| resPools | [ResourcePoolInfo](#peloton.api.respool.ResourcePoolInfo) | repeated |  |
-
-
-
-
-
-
-<a name="peloton.api.respool.UpdateResourcePoolRequest"/>
-
-### UpdateResourcePoolRequest
-Request message for ResourcePoolService.UpdateResourcePool method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The ID of the resource pool to update the configuration. |
-| config | [ResourcePoolConfig](#peloton.api.respool.ResourcePoolConfig) |  | The configuration of the resource pool to be updated. |
-
-
-
-
-
-
-<a name="peloton.api.respool.UpdateResourcePoolResponse"/>
-
-### UpdateResourcePoolResponse
-Response message for ResourcePoolService.UpdateResourcePool method.
-
-Return errors:
-NOT_FOUND:   if the resource pool is not found.
+| infos | [QuotaInfo](#mesos.v1.quota.QuotaInfo) | repeated | Quotas which are currently set, i.e. known to the master. |
 
 
 
@@ -10312,383 +8745,870 @@ NOT_FOUND:   if the resource pool is not found.
 
  
 
-
-<a name="peloton.api.respool.ResourcePoolService"/>
-
-### ResourcePoolService
-ResourcePoolService defines the resource pool related methods
-such as create, get, delete and upgrade resource pools.
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| CreateResourcePool | [CreateResourcePoolRequest](#peloton.api.respool.CreateResourcePoolRequest) | [CreateResourcePoolResponse](#peloton.api.respool.CreateResourcePoolRequest) | Create a resource pool entity for a given config |
-| GetResourcePool | [GetResourcePoolRequest](#peloton.api.respool.GetResourcePoolRequest) | [GetResourcePoolResponse](#peloton.api.respool.GetResourcePoolRequest) | Get the resource pool entity |
-| DeleteResourcePool | [DeleteResourcePoolRequest](#peloton.api.respool.DeleteResourcePoolRequest) | [DeleteResourcePoolResponse](#peloton.api.respool.DeleteResourcePoolRequest) | Delete a resource pool entity |
-| UpdateResourcePool | [UpdateResourcePoolRequest](#peloton.api.respool.UpdateResourcePoolRequest) | [UpdateResourcePoolResponse](#peloton.api.respool.UpdateResourcePoolRequest) | Modify a resource pool entity |
-| LookupResourcePoolID | [LookupResourcePoolIDRequest](#peloton.api.respool.LookupResourcePoolIDRequest) | [LookupResourcePoolIDResponse](#peloton.api.respool.LookupResourcePoolIDRequest) | Lookup the resource pool ID for a given resource pool path |
-| QueryResourcePools | [QueryResourcePoolsRequest](#peloton.api.respool.QueryResourcePoolsRequest) | [QueryResourcePoolsResponse](#peloton.api.respool.QueryResourcePoolsRequest) | Query the resource pools. |
-
  
 
 
 
-<a name="task_svc.proto"/>
+<a name="master.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
-## task_svc.proto
+## master.proto
 
 
 
-<a name="peloton.api.task.svc.BrowseSandboxRequest"/>
+<a name="mesos.v1.master.Call"/>
 
-### BrowseSandboxRequest
-Request message for TaskService.BrowseSandbox method.
+### Call
+Calls that can be sent to the v1 master API.
 
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the task to browse the sandbox. |
-| instanceId | [uint32](#uint32) |  | The instance ID of the task to browse the sandbox. |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.BrowseSandboxResponse"/>
-
-### BrowseSandboxResponse
-Response message for TaskService.BrowseSandbox method.
-
-Return errors:
-NOT_FOUND:     if the job ID is not found.
-OUT_OF_RANGE:  if the instance IDs are out of range.
-INTERNAL:      if fail to browse the sandbox for internal errors.
-FAILED_PRECONDITION:  if the task has not been run yet.
+A call is described using the standard protocol buffer &#34;union&#34;
+trick, see
+https://developers.google.com/protocol-buffers/docs/techniques#union.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| hostname | [string](#string) |  | The hostname of the sandbox. |
-| port | [string](#string) |  | The port of the sandbox. |
-| paths | [string](#string) | repeated | The list of sandbox file paths. TODO: distinguish files and directories in the sandbox |
+| type | [Call.Type](#mesos.v1.master.Call.Type) | optional |  |
+| get_metrics | [Call.GetMetrics](#mesos.v1.master.Call.GetMetrics) | optional |  |
+| set_logging_level | [Call.SetLoggingLevel](#mesos.v1.master.Call.SetLoggingLevel) | optional |  |
+| list_files | [Call.ListFiles](#mesos.v1.master.Call.ListFiles) | optional |  |
+| read_file | [Call.ReadFile](#mesos.v1.master.Call.ReadFile) | optional |  |
+| update_weights | [Call.UpdateWeights](#mesos.v1.master.Call.UpdateWeights) | optional |  |
+| reserve_resources | [Call.ReserveResources](#mesos.v1.master.Call.ReserveResources) | optional |  |
+| unreserve_resources | [Call.UnreserveResources](#mesos.v1.master.Call.UnreserveResources) | optional |  |
+| create_volumes | [Call.CreateVolumes](#mesos.v1.master.Call.CreateVolumes) | optional |  |
+| destroy_volumes | [Call.DestroyVolumes](#mesos.v1.master.Call.DestroyVolumes) | optional |  |
+| update_maintenance_schedule | [Call.UpdateMaintenanceSchedule](#mesos.v1.master.Call.UpdateMaintenanceSchedule) | optional |  |
+| start_maintenance | [Call.StartMaintenance](#mesos.v1.master.Call.StartMaintenance) | optional |  |
+| stop_maintenance | [Call.StopMaintenance](#mesos.v1.master.Call.StopMaintenance) | optional |  |
+| set_quota | [Call.SetQuota](#mesos.v1.master.Call.SetQuota) | optional |  |
+| remove_quota | [Call.RemoveQuota](#mesos.v1.master.Call.RemoveQuota) | optional |  |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.GetEventsRequest"/>
+<a name="mesos.v1.master.Call.CreateVolumes"/>
 
-### GetEventsRequest
-Request message for TaskService.GetEvents method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the task |
-| instanceId | [uint32](#uint32) |  | The instance ID of the task |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.GetEventsResponse"/>
-
-### GetEventsResponse
-Response message for TaskService.GetEvents method.
-
-Return errors:
-INTERNAL:      if failed to get task events for internal errors.
+### Call.CreateVolumes
+Create persistent volumes on reserved resources. The request is forwarded
+asynchronously to the Mesos agent where the reserved resources are located.
+That asynchronous message may not be delivered or creating the volumes at
+the agent might fail. Volume creation can be verified by sending a
+`GET_VOLUMES` call.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| result | [GetEventsResponse.Events](#peloton.api.task.svc.GetEventsResponse.Events) | repeated |  |
-| error | [GetEventsResponse.Error](#peloton.api.task.svc.GetEventsResponse.Error) |  |  |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
+| volumes | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.GetEventsResponse.Error"/>
+<a name="mesos.v1.master.Call.DestroyVolumes"/>
 
-### GetEventsResponse.Error
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| eventError | [TaskEventsError](#peloton.api.task.svc.TaskEventsError) |  |  |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.GetEventsResponse.Events"/>
-
-### GetEventsResponse.Events
-
+### Call.DestroyVolumes
+Destroy persistent volumes. The request is forwarded asynchronously to the
+Mesos agent where the reserved resources are located. That asynchronous
+message may not be delivered or destroying the volumes at the agent might
+fail. Volume deletion can be verified by sending a `GET_VOLUMES` call.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| event | [.peloton.api.task.TaskEvent](#peloton.api.task.svc..peloton.api.task.TaskEvent) | repeated |  |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
+| volumes | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.GetTaskRequest"/>
+<a name="mesos.v1.master.Call.GetMetrics"/>
 
-### GetTaskRequest
-Request message for TaskService.GetTask method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the task to get. |
-| instanceId | [uint32](#uint32) |  | The instance ID of the task to get. |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.GetTaskResponse"/>
-
-### GetTaskResponse
-Response message for TaskService.GetTask method.
-
-Return errors:
-NOT_FOUND:     if the job or task not found.
-OUT_OF_RANGE:  if the instance ID is out of range.
+### Call.GetMetrics
+Provides a snapshot of the current metrics tracked by the master.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| result | [.peloton.api.task.TaskInfo](#peloton.api.task.svc..peloton.api.task.TaskInfo) |  | The task info of the task. |
+| timeout | [.mesos.v1.DurationInfo](#mesos.v1.master..mesos.v1.DurationInfo) | optional | If set, `timeout` would be used to determines the maximum amount of time the API will take to respond. If the timeout is exceeded, some metrics may not be included in the response. |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.ListTasksRequest"/>
+<a name="mesos.v1.master.Call.ListFiles"/>
 
-### ListTasksRequest
-Request message for TaskService.ListTasks method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to list. |
-| range | [.peloton.api.task.InstanceRange](#peloton.api.task.svc..peloton.api.task.InstanceRange) |  | The instance ID range of the tasks to list. |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.ListTasksResponse"/>
-
-### ListTasksResponse
-Response message for TaskService.GetTask method.
-
-Return errors:
-NOT_FOUND:  if the job ID is not found.
-OUT_OF_RANGE:  if the instance IDs are out of range.
+### Call.ListFiles
+Provides the file listing for a directory.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| tasks | [ListTasksResponse.TasksEntry](#peloton.api.task.svc.ListTasksResponse.TasksEntry) | repeated | The map of instance ID to task info for all matching tasks. |
+| path | [string](#string) | required |  |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.ListTasksResponse.TasksEntry"/>
+<a name="mesos.v1.master.Call.ReadFile"/>
 
-### ListTasksResponse.TasksEntry
+### Call.ReadFile
+Reads data from a file.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| path | [string](#string) | required | The path of file. |
+| offset | [uint64](#uint64) | required | Initial offset in file to start reading from. |
+| length | [uint64](#uint64) | optional | The maximum number of bytes to read. The read length is capped at 16 memory pages. |
+
+
+
+
+
+
+<a name="mesos.v1.master.Call.RemoveQuota"/>
+
+### Call.RemoveQuota
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| key | [uint32](#uint32) |  |  |
-| value | [.peloton.api.task.TaskInfo](#peloton.api.task.svc..peloton.api.task.TaskInfo) |  |  |
+| role | [string](#string) | required |  |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.QueryTasksRequest"/>
+<a name="mesos.v1.master.Call.ReserveResources"/>
 
-### QueryTasksRequest
-Request message for TaskService.QueryTasks method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to query. |
-| spec | [.peloton.api.task.QuerySpec](#peloton.api.task.svc..peloton.api.task.QuerySpec) |  | The spec of query criteria for the tasks. |
-| pagination | [.peloton.api.query.PaginationSpec](#peloton.api.task.svc..peloton.api.query.PaginationSpec) |  | The spec of how to do pagination for the query results. |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.QueryTasksResponse"/>
-
-### QueryTasksResponse
-Response message for TaskService.QueryTasks method.
-
-Return errors:
-NOT_FOUND:     if the job ID is not found.
-INTERNAL:      if fail to query the tasks for internal errors.
+### Call.ReserveResources
+Reserve resources dynamically on a specific agent.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| records | [.peloton.api.task.TaskInfo](#peloton.api.task.svc..peloton.api.task.TaskInfo) | repeated | List of tasks that match the task query criteria. |
-| pagination | [.peloton.api.query.Pagination](#peloton.api.task.svc..peloton.api.query.Pagination) |  | Pagination result of the task query. |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
+| resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.RestartTasksRequest"/>
+<a name="mesos.v1.master.Call.SetLoggingLevel"/>
 
-### RestartTasksRequest
-Request message for TaskService.RestartTasks method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to restart. |
-| ranges | [.peloton.api.task.InstanceRange](#peloton.api.task.svc..peloton.api.task.InstanceRange) | repeated | The instance ID ranges of the tasks to restart. |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.RestartTasksResponse"/>
-
-### RestartTasksResponse
-Response message for TaskService.RestartTasks method.
-
-Return errors:
-NOT_FOUND:     if the job ID is not found.
-OUT_OF_RANGE:  if the instance IDs are out of range.
-INTERNAL:      if the tasks fail to restart for internal errors.
+### Call.SetLoggingLevel
+Sets the logging verbosity level for a specified duration. Mesos uses
+[glog](https://github.com/google/glog) for logging. The library only uses
+verbose logging which means nothing will be output unless the verbosity
+level is set (by default it&#39;s 0, libprocess uses levels 1, 2, and 3).
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| stopped | [uint32](#uint32) | repeated | The set of instance IDs that have been stopped. |
-| failed | [uint32](#uint32) | repeated | The set of instance IDs that are failed to stop. |
+| level | [uint32](#uint32) | required | The verbosity level. |
+| duration | [.mesos.v1.DurationInfo](#mesos.v1.master..mesos.v1.DurationInfo) | required | The duration to keep verbosity level toggled. After this duration, the verbosity level of log would revert to the original level. |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.StartTasksRequest"/>
+<a name="mesos.v1.master.Call.SetQuota"/>
 
-### StartTasksRequest
-Request message for TaskService.StartTasks method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to start. |
-| ranges | [.peloton.api.task.InstanceRange](#peloton.api.task.svc..peloton.api.task.InstanceRange) | repeated | The instance ID ranges of the tasks to start. |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.StartTasksResponse"/>
-
-### StartTasksResponse
-Response message for TaskService.StartTasks method.
-
-Return errors:
-NOT_FOUND:     if the job ID is not found.
-OUT_OF_RANGE:  if the instance IDs are out of range.
-INTERNAL:      if the tasks fail to start for internal errors.
+### Call.SetQuota
+Sets the quota for resources to be used by a particular role.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| started | [uint32](#uint32) | repeated | The set of instance IDs that have been started. |
-| failed | [uint32](#uint32) | repeated | The set of instance IDs that are failed to start. |
+| quota_request | [.mesos.v1.quota.QuotaRequest](#mesos.v1.master..mesos.v1.quota.QuotaRequest) | required |  |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.StopTasksRequest"/>
+<a name="mesos.v1.master.Call.StartMaintenance"/>
 
-### StopTasksRequest
-Request message for TaskService.StopTasks method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to stop. |
-| ranges | [.peloton.api.task.InstanceRange](#peloton.api.task.svc..peloton.api.task.InstanceRange) | repeated | The instance ID ranges of the tasks to stop. |
-
-
-
-
-
-
-<a name="peloton.api.task.svc.StopTasksResponse"/>
-
-### StopTasksResponse
-Response message for TaskService.StopTasks method.
-
-Return errors:
-NOT_FOUND:     if the job ID is not found in Peloton.
-OUT_OF_RANGE:  if the instance IDs are out of range.
-INTERNAL:      if the tasks fail to stop for internal errors.
+### Call.StartMaintenance
+Starts the maintenance of the cluster, this would bring a set of machines
+down.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| stopped | [uint32](#uint32) | repeated | The set of instance IDs that have been stopped. |
-| failed | [uint32](#uint32) | repeated | The set of instance IDs that are failed to stop. |
+| machines | [.mesos.v1.MachineID](#mesos.v1.master..mesos.v1.MachineID) | repeated |  |
 
 
 
 
 
 
-<a name="peloton.api.task.svc.TaskEventsError"/>
+<a name="mesos.v1.master.Call.StopMaintenance"/>
 
-### TaskEventsError
+### Call.StopMaintenance
+Stops the maintenance of the cluster, this would bring a set of machines
+back up.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| machines | [.mesos.v1.MachineID](#mesos.v1.master..mesos.v1.MachineID) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Call.UnreserveResources"/>
+
+### Call.UnreserveResources
+Unreserve resources dynamically on a specific agent.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
+| resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Call.UpdateMaintenanceSchedule"/>
+
+### Call.UpdateMaintenanceSchedule
+Updates the cluster&#39;s maintenance schedule.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| schedule | [.mesos.v1.maintenance.Schedule](#mesos.v1.master..mesos.v1.maintenance.Schedule) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Call.UpdateWeights"/>
+
+### Call.UpdateWeights
 
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| message | [string](#string) |  |  |
+| weight_infos | [.mesos.v1.WeightInfo](#mesos.v1.master..mesos.v1.WeightInfo) | repeated |  |
 
 
 
+
+
+
+<a name="mesos.v1.master.Event"/>
+
+### Event
+Streaming response to `Call::SUBSCRIBE` made to the master.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [Event.Type](#mesos.v1.master.Event.Type) | optional |  |
+| subscribed | [Event.Subscribed](#mesos.v1.master.Event.Subscribed) | optional |  |
+| task_added | [Event.TaskAdded](#mesos.v1.master.Event.TaskAdded) | optional |  |
+| task_updated | [Event.TaskUpdated](#mesos.v1.master.Event.TaskUpdated) | optional |  |
+| agent_added | [Event.AgentAdded](#mesos.v1.master.Event.AgentAdded) | optional |  |
+| agent_removed | [Event.AgentRemoved](#mesos.v1.master.Event.AgentRemoved) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Event.AgentAdded"/>
+
+### Event.AgentAdded
+Forwarded by the master when an agent becomes known to it.
+This can happen when an agent registered for the first
+time, or reregistered after a master failover.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent | [Response.GetAgents.Agent](#mesos.v1.master.Response.GetAgents.Agent) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Event.AgentRemoved"/>
+
+### Event.AgentRemoved
+Forwarded by the master when an agent is removed.
+This can happen when an agent does not re-register
+within `--agent_reregister_timeout` upon a master failover,
+or when the agent is scheduled for maintenance.
+
+NOTE: It&#39;s possible that an agent might become
+active once it has been removed, i.e. if the master
+has gc&#39;ed its list of known &#34;dead&#34; agents.
+See MESOS-5965 for context.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Event.Subscribed"/>
+
+### Event.Subscribed
+First event received when a client subscribes.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| get_state | [Response.GetState](#mesos.v1.master.Response.GetState) | optional | Snapshot of the entire cluster state. Further updates to the cluster state are sent as separate events on the stream. |
+
+
+
+
+
+
+<a name="mesos.v1.master.Event.TaskAdded"/>
+
+### Event.TaskAdded
+Forwarded by the master when a task becomes known to it. This can happen
+when a new task is launched by the scheduler or when the task becomes
+known to the master upon an agent (re-)registration after a failover.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Event.TaskUpdated"/>
+
+### Event.TaskUpdated
+Forwarded by the master when an existing task transitions to a new state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.master..mesos.v1.FrameworkID) | required |  |
+| status | [.mesos.v1.TaskStatus](#mesos.v1.master..mesos.v1.TaskStatus) | required | This is the status of the task corresponding to the last status update acknowledged by the scheduler. |
+| state | [.mesos.v1.TaskState](#mesos.v1.master..mesos.v1.TaskState) | required | This is the latest state of the task according to the agent. |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response"/>
+
+### Response
+Synchronous responses for all calls (except Call::SUBSCRIBE) made to
+the v1 master API.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [Response.Type](#mesos.v1.master.Response.Type) | optional |  |
+| get_health | [Response.GetHealth](#mesos.v1.master.Response.GetHealth) | optional |  |
+| get_flags | [Response.GetFlags](#mesos.v1.master.Response.GetFlags) | optional |  |
+| get_version | [Response.GetVersion](#mesos.v1.master.Response.GetVersion) | optional |  |
+| get_metrics | [Response.GetMetrics](#mesos.v1.master.Response.GetMetrics) | optional |  |
+| get_logging_level | [Response.GetLoggingLevel](#mesos.v1.master.Response.GetLoggingLevel) | optional |  |
+| list_files | [Response.ListFiles](#mesos.v1.master.Response.ListFiles) | optional |  |
+| read_file | [Response.ReadFile](#mesos.v1.master.Response.ReadFile) | optional |  |
+| get_state | [Response.GetState](#mesos.v1.master.Response.GetState) | optional |  |
+| get_agents | [Response.GetAgents](#mesos.v1.master.Response.GetAgents) | optional |  |
+| get_frameworks | [Response.GetFrameworks](#mesos.v1.master.Response.GetFrameworks) | optional |  |
+| get_executors | [Response.GetExecutors](#mesos.v1.master.Response.GetExecutors) | optional |  |
+| get_tasks | [Response.GetTasks](#mesos.v1.master.Response.GetTasks) | optional |  |
+| get_roles | [Response.GetRoles](#mesos.v1.master.Response.GetRoles) | optional |  |
+| get_weights | [Response.GetWeights](#mesos.v1.master.Response.GetWeights) | optional |  |
+| get_master | [Response.GetMaster](#mesos.v1.master.Response.GetMaster) | optional |  |
+| get_maintenance_status | [Response.GetMaintenanceStatus](#mesos.v1.master.Response.GetMaintenanceStatus) | optional |  |
+| get_maintenance_schedule | [Response.GetMaintenanceSchedule](#mesos.v1.master.Response.GetMaintenanceSchedule) | optional |  |
+| get_quota | [Response.GetQuota](#mesos.v1.master.Response.GetQuota) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetAgents"/>
+
+### Response.GetAgents
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agents | [Response.GetAgents.Agent](#mesos.v1.master.Response.GetAgents.Agent) | repeated | Registered agents. |
+| recovered_agents | [.mesos.v1.AgentInfo](#mesos.v1.master..mesos.v1.AgentInfo) | repeated | Agents which are recovered from registry but not reregistered yet. |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetAgents.Agent"/>
+
+### Response.GetAgents.Agent
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent_info | [.mesos.v1.AgentInfo](#mesos.v1.master..mesos.v1.AgentInfo) | required |  |
+| active | [bool](#bool) | required |  |
+| version | [string](#string) | required |  |
+| pid | [string](#string) | optional |  |
+| registered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
+| reregistered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
+| total_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated | Total resources (including oversubscribed resources) the agent provides. |
+| allocated_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
+| offered_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
+| capabilities | [.mesos.v1.AgentInfo.Capability](#mesos.v1.master..mesos.v1.AgentInfo.Capability) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetExecutors"/>
+
+### Response.GetExecutors
+Lists information about all the executors known to the master at the
+current time. Note that there might be executors unknown to the master
+running on partitioned or unsubscribed agents.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| executors | [Response.GetExecutors.Executor](#mesos.v1.master.Response.GetExecutors.Executor) | repeated |  |
+| orphan_executors | [Response.GetExecutors.Executor](#mesos.v1.master.Response.GetExecutors.Executor) | repeated | As of Mesos 1.2, this field will always be empty.
+
+TODO(neilc): Remove this field after a deprecation cycle starting in Mesos 1.2. |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetExecutors.Executor"/>
+
+### Response.GetExecutors.Executor
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| executor_info | [.mesos.v1.ExecutorInfo](#mesos.v1.master..mesos.v1.ExecutorInfo) | required |  |
+| agent_id | [.mesos.v1.AgentID](#mesos.v1.master..mesos.v1.AgentID) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetFlags"/>
+
+### Response.GetFlags
+Contains the flag configuration of the master.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| flags | [.mesos.v1.Flag](#mesos.v1.master..mesos.v1.Flag) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetFrameworks"/>
+
+### Response.GetFrameworks
+Information about all the frameworks known to the master at the current
+time. Note that there might be frameworks unknown to the master running
+on partitioned or unsubscribed agents.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| frameworks | [Response.GetFrameworks.Framework](#mesos.v1.master.Response.GetFrameworks.Framework) | repeated | Frameworks that have subscribed with the master. Note that this includes frameworks that are disconnected and in the process of re-subscribing. |
+| completed_frameworks | [Response.GetFrameworks.Framework](#mesos.v1.master.Response.GetFrameworks.Framework) | repeated | Frameworks that have been teared down. |
+| recovered_frameworks | [.mesos.v1.FrameworkInfo](#mesos.v1.master..mesos.v1.FrameworkInfo) | repeated | This field previously contained frameworks that previously subscribed but haven&#39;t yet re-subscribed after a master failover. As of Mesos 1.2, this field will always be empty; recovered frameworks are now reported in the `frameworks` list with the `recovered` field set to true.
+
+TODO(neilc): Remove this field after a deprecation cycle starting in Mesos 1.2. |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetFrameworks.Framework"/>
+
+### Response.GetFrameworks.Framework
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| framework_info | [.mesos.v1.FrameworkInfo](#mesos.v1.master..mesos.v1.FrameworkInfo) | required |  |
+| active | [bool](#bool) | required |  |
+| connected | [bool](#bool) | required |  |
+| recovered | [bool](#bool) | required | If true, this framework was previously subscribed but hasn&#39;t yet re-subscribed after a master failover. Recovered frameworks are only reported if one or more agents running a task or executor for the framework have re-registered after master failover. |
+| registered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
+| reregistered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
+| unregistered_time | [.mesos.v1.TimeInfo](#mesos.v1.master..mesos.v1.TimeInfo) | optional |  |
+| offers | [.mesos.v1.Offer](#mesos.v1.master..mesos.v1.Offer) | repeated |  |
+| inverse_offers | [.mesos.v1.InverseOffer](#mesos.v1.master..mesos.v1.InverseOffer) | repeated |  |
+| allocated_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
+| offered_resources | [.mesos.v1.Resource](#mesos.v1.master..mesos.v1.Resource) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetHealth"/>
+
+### Response.GetHealth
+`healthy` would be true if the master is healthy. Delayed responses are
+also indicative of the poor health of the master.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| healthy | [bool](#bool) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetLoggingLevel"/>
+
+### Response.GetLoggingLevel
+Contains the logging level of the master.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| level | [uint32](#uint32) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetMaintenanceSchedule"/>
+
+### Response.GetMaintenanceSchedule
+Contains the cluster&#39;s maintenance schedule.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| schedule | [.mesos.v1.maintenance.Schedule](#mesos.v1.master..mesos.v1.maintenance.Schedule) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetMaintenanceStatus"/>
+
+### Response.GetMaintenanceStatus
+Contains the cluster&#39;s maintenance status.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| status | [.mesos.v1.maintenance.ClusterStatus](#mesos.v1.master..mesos.v1.maintenance.ClusterStatus) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetMaster"/>
+
+### Response.GetMaster
+Contains the master&#39;s information.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| master_info | [.mesos.v1.MasterInfo](#mesos.v1.master..mesos.v1.MasterInfo) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetMetrics"/>
+
+### Response.GetMetrics
+Contains a snapshot of the current metrics.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| metrics | [.mesos.v1.Metric](#mesos.v1.master..mesos.v1.Metric) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetQuota"/>
+
+### Response.GetQuota
+Contains the cluster&#39;s configured quotas.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| status | [.mesos.v1.quota.QuotaStatus](#mesos.v1.master..mesos.v1.quota.QuotaStatus) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetRoles"/>
+
+### Response.GetRoles
+Provides information about every role that is on the role whitelist (if
+enabled), has one or more registered frameworks or has a non-default weight
+or quota.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| roles | [.mesos.v1.Role](#mesos.v1.master..mesos.v1.Role) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetState"/>
+
+### Response.GetState
+Contains full state of the master i.e. information about the tasks,
+agents, frameworks and executors running in the cluster.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| get_tasks | [Response.GetTasks](#mesos.v1.master.Response.GetTasks) | optional |  |
+| get_executors | [Response.GetExecutors](#mesos.v1.master.Response.GetExecutors) | optional |  |
+| get_frameworks | [Response.GetFrameworks](#mesos.v1.master.Response.GetFrameworks) | optional |  |
+| get_agents | [Response.GetAgents](#mesos.v1.master.Response.GetAgents) | optional |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetTasks"/>
+
+### Response.GetTasks
+Lists information about all the tasks known to the master at the current
+time. Note that there might be tasks unknown to the master running on
+partitioned or unsubscribed agents.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| pending_tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | Tasks that are enqueued on the master waiting (e.g., authorizing) to be launched. |
+| tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | Tasks that have been forwarded to the agent for launch. This includes tasks that are staging or running; it also includes tasks that have reached a terminal state but the terminal status update has not yet been acknowledged by the scheduler. |
+| unreachable_tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | Tasks that were running on agents that have become partitioned from the master. If/when the agent is no longer partitioned, tasks running on that agent will no longer be unreachable (they will either be running or completed). Note that the master only stores a limited number of unreachable tasks; information about unreachable tasks is also not preserved across master failover. |
+| completed_tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | Tasks that have reached terminal state and have all their updates acknowledged by the scheduler. |
+| orphan_tasks | [.mesos.v1.Task](#mesos.v1.master..mesos.v1.Task) | repeated | As of Mesos 1.2, this field will always be empty.
+
+TODO(neilc): Remove this field after a deprecation cycle starting in Mesos 1.2. |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetVersion"/>
+
+### Response.GetVersion
+Contains the version information of the master.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| version_info | [.mesos.v1.VersionInfo](#mesos.v1.master..mesos.v1.VersionInfo) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.GetWeights"/>
+
+### Response.GetWeights
+Provides the weight information about every role.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| weight_infos | [.mesos.v1.WeightInfo](#mesos.v1.master..mesos.v1.WeightInfo) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.ListFiles"/>
+
+### Response.ListFiles
+Contains the file listing(similar to `ls -l`) for a directory.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| file_infos | [.mesos.v1.FileInfo](#mesos.v1.master..mesos.v1.FileInfo) | repeated |  |
+
+
+
+
+
+
+<a name="mesos.v1.master.Response.ReadFile"/>
+
+### Response.ReadFile
+Contains the file data.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| size | [uint64](#uint64) | required | The size of file (in bytes). |
+| data | [bytes](#bytes) | required |  |
+
+
+
+
+
+ 
+
+
+<a name="mesos.v1.master.Call.Type"/>
+
+### Call.Type
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 | If a call of type `Call::FOO` requires additional parameters they can be included in the corresponding `Call::Foo` message. Similarly, if a call receives a synchronous response it will be returned as a `Response` message of type `Response::FOO`. Currently all calls except `Call::SUBSCRIBE` receive synchronous responses; `Call::SUBSCRIBE` returns a streaming response of `Event`. |
+| GET_HEALTH | 1 | Retrieves the master&#39;s health status. |
+| GET_FLAGS | 2 | Retrieves the master&#39;s flag configuration. |
+| GET_VERSION | 3 | Retrieves the master&#39;s version information. |
+| GET_METRICS | 4 | See &#39;GetMetrics&#39; below. |
+| GET_LOGGING_LEVEL | 5 | Retrieves the master&#39;s logging level. |
+| SET_LOGGING_LEVEL | 6 | See &#39;SetLoggingLevel&#39; below. |
+| LIST_FILES | 7 |  |
+| READ_FILE | 8 | See &#39;ReadFile&#39; below. |
+| GET_STATE | 9 |  |
+| GET_AGENTS | 10 |  |
+| GET_FRAMEWORKS | 11 |  |
+| GET_EXECUTORS | 12 | Retrieves the information about all executors. |
+| GET_TASKS | 13 | Retrieves the information about all known tasks. |
+| GET_ROLES | 14 | Retrieves the information about roles. |
+| GET_WEIGHTS | 15 | Retrieves the information about role weights. |
+| UPDATE_WEIGHTS | 16 |  |
+| GET_MASTER | 17 | Retrieves the master&#39;s information. |
+| SUBSCRIBE | 18 | Subscribes the master to receive events. |
+| RESERVE_RESOURCES | 19 |  |
+| UNRESERVE_RESOURCES | 20 |  |
+| CREATE_VOLUMES | 21 | See &#39;CreateVolumes&#39; below. |
+| DESTROY_VOLUMES | 22 | See &#39;DestroyVolumes&#39; below. |
+| GET_MAINTENANCE_STATUS | 23 | Retrieves the cluster&#39;s maintenance status. |
+| GET_MAINTENANCE_SCHEDULE | 24 | Retrieves the cluster&#39;s maintenance schedule. |
+| UPDATE_MAINTENANCE_SCHEDULE | 25 | See &#39;UpdateMaintenanceSchedule&#39; below. |
+| START_MAINTENANCE | 26 | See &#39;StartMaintenance&#39; below. |
+| STOP_MAINTENANCE | 27 | See &#39;StopMaintenance&#39; below. |
+| GET_QUOTA | 28 |  |
+| SET_QUOTA | 29 | See &#39;SetQuota&#39; below. |
+| REMOVE_QUOTA | 30 | See &#39;RemoveQuota&#39; below. |
+
+
+
+<a name="mesos.v1.master.Event.Type"/>
+
+### Event.Type
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 |  |
+| SUBSCRIBED | 1 | See `Subscribed` below. |
+| TASK_ADDED | 2 | See `TaskAdded` below. |
+| TASK_UPDATED | 3 | See `TaskUpdated` below. |
+| AGENT_ADDED | 4 | See `AgentAdded` below. |
+| AGENT_REMOVED | 5 | See `AgentRemoved` below. |
+
+
+
+<a name="mesos.v1.master.Response.Type"/>
+
+### Response.Type
+Each of the responses of type `FOO` corresponds to `Foo` message below.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 |  |
+| GET_HEALTH | 1 | See &#39;GetHealth&#39; below. |
+| GET_FLAGS | 2 | See &#39;GetFlags&#39; below. |
+| GET_VERSION | 3 | See &#39;GetVersion&#39; below. |
+| GET_METRICS | 4 | See &#39;GetMetrics&#39; below. |
+| GET_LOGGING_LEVEL | 5 | See &#39;GetLoggingLevel&#39; below. |
+| LIST_FILES | 6 |  |
+| READ_FILE | 7 | See &#39;ReadFile&#39; below. |
+| GET_STATE | 8 |  |
+| GET_AGENTS | 9 |  |
+| GET_FRAMEWORKS | 10 |  |
+| GET_EXECUTORS | 11 | See &#39;GetExecutors&#39; below. |
+| GET_TASKS | 12 | See &#39;GetTasks&#39; below. |
+| GET_ROLES | 13 | See &#39;GetRoles&#39; below. |
+| GET_WEIGHTS | 14 | See &#39;GetWeights&#39; below. |
+| GET_MASTER | 15 | See &#39;GetMaster&#39; below. |
+| GET_MAINTENANCE_STATUS | 16 | See &#39;GetMaintenanceStatus&#39; below. |
+| GET_MAINTENANCE_SCHEDULE | 17 | See &#39;GetMaintenanceSchedule&#39; below. |
+| GET_QUOTA | 18 |  |
 
 
  
@@ -10698,239 +9618,246 @@ INTERNAL:      if the tasks fail to stop for internal errors.
  
 
 
-<a name="peloton.api.task.svc.TaskService"/>
 
-### TaskService
-Task service defines the task related methods such as get, list,
-start, stop and restart tasks.
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| GetTask | [GetTaskRequest](#peloton.api.task.svc.GetTaskRequest) | [GetTaskResponse](#peloton.api.task.svc.GetTaskRequest) | Get the info of a task in job. |
-| ListTasks | [ListTasksRequest](#peloton.api.task.svc.ListTasksRequest) | [ListTasksResponse](#peloton.api.task.svc.ListTasksRequest) | List a set of tasks in a job for a given range of instance IDs. |
-| StartTasks | [StartTasksRequest](#peloton.api.task.svc.StartTasksRequest) | [StartTasksResponse](#peloton.api.task.svc.StartTasksRequest) | Start a set of tasks for a job. Will be no-op for tasks that are currently running. |
-| StopTasks | [StopTasksRequest](#peloton.api.task.svc.StopTasksRequest) | [StopTasksResponse](#peloton.api.task.svc.StopTasksRequest) | Stop a set of tasks for a job. Will be no-op for tasks that are currently stopped. |
-| RestartTasks | [RestartTasksRequest](#peloton.api.task.svc.RestartTasksRequest) | [RestartTasksResponse](#peloton.api.task.svc.RestartTasksRequest) | Restart a set of tasks for a job. Will start tasks that are currently stopped. |
-| QueryTasks | [QueryTasksRequest](#peloton.api.task.svc.QueryTasksRequest) | [QueryTasksResponse](#peloton.api.task.svc.QueryTasksRequest) | Query task info in a job, using a set of filters. |
-| BrowseSandbox | [BrowseSandboxRequest](#peloton.api.task.svc.BrowseSandboxRequest) | [BrowseSandboxResponse](#peloton.api.task.svc.BrowseSandboxRequest) | BrowseSandbox returns list of file paths inside sandbox. The client can use the Mesos Agent HTTP endpoints to read and download the files. http://mesos.apache.org/documentation/latest/endpoints |
-| GetEvents | [GetEventsRequest](#peloton.api.task.svc.GetEventsRequest) | [GetEventsResponse](#peloton.api.task.svc.GetEventsRequest) | GetEvents returns task events in for a instance in a job. An instance may have multiple Mesos tasks and GetEventsResponse will contain a map for each mesos task and its corresponding list of events. This is an experimental API and is subject to change |
-
- 
-
-
-
-<a name="update_svc.proto"/>
+<a name="executor.proto"/>
 <p align="right"><a href="#top">Top</a></p>
 
-## update_svc.proto
+## executor.proto
 
 
 
-<a name="peloton.api.update.svc.AbortUpdateRequest"/>
+<a name="mesos.v1.executor.Call"/>
 
-### AbortUpdateRequest
-Request message for UpdateService.AbortUpdate method.
+### Call
+Executor call API.
 
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier of the update to be aborted. |
-| softAbort | [bool](#bool) |  |  |
-
-
-
-
-
-
-<a name="peloton.api.update.svc.AbortUpdateResponse"/>
-
-### AbortUpdateResponse
-Response message for UpdateService.AbortUpdate method.
-Returns errors:
-NOT_FOUND: if the update with the provided identifier is not found.
-UNAVAILABLE: if the update is in a state which cannot be resumed.
-
-
-
-
-
-
-<a name="peloton.api.update.svc.CreateUpdateRequest"/>
-
-### CreateUpdateRequest
-Request message for UpdateService.CreateUpdate method.
+Like Event, a Call is described using the standard protocol buffer
+&#34;union&#34; trick (see above).
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.update.svc..peloton.api.peloton.JobID) |  | Entity id of the job to be updated. |
-| jobConfig | [.peloton.api.job.JobConfig](#peloton.api.update.svc..peloton.api.job.JobConfig) |  | New configuration of the job to be updated. The new job config will be applied to all instances without violating the job SLA. |
-| updateConfig | [.peloton.api.update.UpdateConfig](#peloton.api.update.svc..peloton.api.update.UpdateConfig) |  | The options of the update. |
+| executor_id | [.mesos.v1.ExecutorID](#mesos.v1.executor..mesos.v1.ExecutorID) | required | Identifies the executor which generated this call. |
+| framework_id | [.mesos.v1.FrameworkID](#mesos.v1.executor..mesos.v1.FrameworkID) | required |  |
+| type | [Call.Type](#mesos.v1.executor.Call.Type) | optional | Type of the call, indicates which optional field below should be present if that type has a nested message definition. In case type is SUBSCRIBED, no message needs to be set. See comments on `Event::Type` above on the reasoning behind this field being optional. |
+| subscribe | [Call.Subscribe](#mesos.v1.executor.Call.Subscribe) | optional |  |
+| update | [Call.Update](#mesos.v1.executor.Call.Update) | optional |  |
+| message | [Call.Message](#mesos.v1.executor.Call.Message) | optional |  |
 
 
 
 
 
 
-<a name="peloton.api.update.svc.CreateUpdateResponse"/>
+<a name="mesos.v1.executor.Call.Message"/>
 
-### CreateUpdateResponse
-Response message for UpdateService.CreateUpdate method.
-Returns errors:
-NOT_FOUND:      if the job with the provided identifier is not found.
-ALREADY_EXISTS: if another update for the same job is running.
-INVALID_ARGUMENTS: if the provided job config or update config is invalid.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| result | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier for the newly created update. |
-
-
-
-
-
-
-<a name="peloton.api.update.svc.GetUpdateRequest"/>
-
-### GetUpdateRequest
-Request message for UpdateService.GetUpdate method.
+### Call.Message
+Sends arbitrary binary data to the scheduler. Note that Mesos
+neither interprets this data nor makes any guarantees about the
+delivery of this message to the scheduler.
+See &#39;Message&#39; in the &#39;Events&#39; section.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  |  |
+| data | [bytes](#bytes) | required |  |
 
 
 
 
 
 
-<a name="peloton.api.update.svc.GetUpdateResponse"/>
+<a name="mesos.v1.executor.Call.Subscribe"/>
 
-### GetUpdateResponse
-Response message for UpdateService.GetUpdate method.
-Returns errors:
-NOT_FOUND: if the update with the provided identifier is not found.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| result | [.peloton.api.update.UpdateInfo](#peloton.api.update.svc..peloton.api.update.UpdateInfo) |  | Update update information. |
-
-
-
-
-
-
-<a name="peloton.api.update.svc.ListUpdatesRequest"/>
-
-### ListUpdatesRequest
-Request message for UpdateService.ListUpdates method.
+### Call.Subscribe
+Request to subscribe with the agent. If subscribing after a disconnection,
+it must include a list of all the tasks and updates which haven&#39;t been
+acknowledged by the scheduler.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| limit | [int32](#int32) |  | Number of updates to return. |
+| unacknowledged_tasks | [.mesos.v1.TaskInfo](#mesos.v1.executor..mesos.v1.TaskInfo) | repeated |  |
+| unacknowledged_updates | [Call.Update](#mesos.v1.executor.Call.Update) | repeated |  |
 
 
 
 
 
 
-<a name="peloton.api.update.svc.ListUpdatesResponse"/>
+<a name="mesos.v1.executor.Call.Update"/>
 
-### ListUpdatesResponse
-Response message for UpdateService.ListUpdates method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| updateInfo | [.peloton.api.update.UpdateInfo](#peloton.api.update.svc..peloton.api.update.UpdateInfo) | repeated |  |
-
-
-
-
-
-
-<a name="peloton.api.update.svc.PauseUpdateRequest"/>
-
-### PauseUpdateRequest
-Request message for UpdateService.PauseUpdate method.
+### Call.Update
+Notifies the scheduler that a task has transitioned from one
+state to another. Status updates should be used by executors
+to reliably communicate the status of the tasks that they
+manage. It is crucial that a terminal update (see TaskState
+in v1/mesos.proto) is sent to the scheduler as soon as the task
+terminates, in order for Mesos to release the resources allocated
+to the task. It is the responsibility of the scheduler to
+explicitly acknowledge the receipt of a status update. See
+&#39;Acknowledged&#39; in the &#39;Events&#39; section above for the semantics.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier of the update to be paused. |
+| status | [.mesos.v1.TaskStatus](#mesos.v1.executor..mesos.v1.TaskStatus) | required |  |
 
 
 
 
 
 
-<a name="peloton.api.update.svc.PauseUpdateResponse"/>
+<a name="mesos.v1.executor.Event"/>
 
-### PauseUpdateResponse
-Response message for UpdateService.PauseUpdate method.
-Returns errors:
-NOT_FOUND: if the update with the provided identifier is not found.
-UNAVAILABLE: if the update is in a state which cannot be paused.
+### Event
+Executor event API.
 
-
-
-
-
-
-<a name="peloton.api.update.svc.ResumeUpdateRequest"/>
-
-### ResumeUpdateRequest
-Request message for UpdateService.ResumeUpdate method.
+An event is described using the standard protocol buffer &#34;union&#34;
+trick, see https://developers.google.com/protocol-buffers/docs/techniques#union.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier of the update to be resumed. |
+| type | [Event.Type](#mesos.v1.executor.Event.Type) | optional | Type of the event, indicates which optional field below should be present if that type has a nested message definition. Enum fields should be optional, see: MESOS-4997. |
+| subscribed | [Event.Subscribed](#mesos.v1.executor.Event.Subscribed) | optional |  |
+| acknowledged | [Event.Acknowledged](#mesos.v1.executor.Event.Acknowledged) | optional |  |
+| launch | [Event.Launch](#mesos.v1.executor.Event.Launch) | optional |  |
+| launch_group | [Event.LaunchGroup](#mesos.v1.executor.Event.LaunchGroup) | optional |  |
+| kill | [Event.Kill](#mesos.v1.executor.Event.Kill) | optional |  |
+| message | [Event.Message](#mesos.v1.executor.Event.Message) | optional |  |
+| error | [Event.Error](#mesos.v1.executor.Event.Error) | optional |  |
 
 
 
 
 
 
-<a name="peloton.api.update.svc.ResumeUpdateResponse"/>
+<a name="mesos.v1.executor.Event.Acknowledged"/>
 
-### ResumeUpdateResponse
-Response message for UpdateService.ResumeUpdate method.
-Returns errors:
-NOT_FOUND: if the update with the provided identifier is not found.
-UNAVAILABLE: if the update is in a state which cannot be resumed.
-
-
-
-
-
-
-<a name="peloton.api.update.svc.RollbackUpdateRequest"/>
-
-### RollbackUpdateRequest
-Request message for UpdateService.RollbackUpdate method.
+### Event.Acknowledged
+Received when the agent acknowledges the receipt of status
+update. Schedulers are responsible for explicitly acknowledging
+the receipt of status updates that have &#39;update.status().uuid()&#39;
+field set. Unacknowledged updates can be retried by the executor.
+They should also be sent by the executor whenever it
+re-subscribes.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier of the update to be rolled back. |
+| task_id | [.mesos.v1.TaskID](#mesos.v1.executor..mesos.v1.TaskID) | required |  |
+| uuid | [bytes](#bytes) | required |  |
 
 
 
 
 
 
-<a name="peloton.api.update.svc.RollbackUpdateResponse"/>
+<a name="mesos.v1.executor.Event.Error"/>
 
-### RollbackUpdateResponse
-Response message for UpdateService.RollbackUpdate method.
-Returns errors:
-NOT_FOUND: if the update with the provided identifier is not found.
-UNAVAILABLE: if the update is in a state which cannot be resumed.
+### Event.Error
+Received in case the executor sends invalid calls (e.g.,
+required values not set).
+TODO(arojas): Remove this once the old executor driver is no
+longer supported. With HTTP API all errors will be signaled via
+HTTP response codes.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.executor.Event.Kill"/>
+
+### Event.Kill
+Received when the scheduler wants to kill a specific task. Once
+the task is terminated, the executor should send a TASK_KILLED
+(or TASK_FAILED) update. The terminal update is necessary so
+Mesos can release the resources associated with the task.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task_id | [.mesos.v1.TaskID](#mesos.v1.executor..mesos.v1.TaskID) | required |  |
+| kill_policy | [.mesos.v1.KillPolicy](#mesos.v1.executor..mesos.v1.KillPolicy) | optional | If set, overrides any previously specified kill policy for this task. This includes &#39;TaskInfo.kill_policy&#39; and &#39;Executor.kill.kill_policy&#39;. Can be used to forcefully kill a task which is already being killed. |
+
+
+
+
+
+
+<a name="mesos.v1.executor.Event.Launch"/>
+
+### Event.Launch
+Received when the framework attempts to launch a task. Once
+the task is successfully launched, the executor must respond with
+a TASK_RUNNING update (See TaskState in v1/mesos.proto).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task | [.mesos.v1.TaskInfo](#mesos.v1.executor..mesos.v1.TaskInfo) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.executor.Event.LaunchGroup"/>
+
+### Event.LaunchGroup
+Received when the framework attempts to launch a group of tasks atomically.
+Similar to `Launch` above the executor must send TASK_RUNNING updates for
+tasks that are successfully launched.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| task_group | [.mesos.v1.TaskGroupInfo](#mesos.v1.executor..mesos.v1.TaskGroupInfo) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.executor.Event.Message"/>
+
+### Event.Message
+Received when a custom message generated by the scheduler is
+forwarded by the agent. Note that this message is not
+interpreted by Mesos and is only forwarded (without reliability
+guarantees) to the executor. It is up to the scheduler to retry
+if the message is dropped for any reason.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| data | [bytes](#bytes) | required |  |
+
+
+
+
+
+
+<a name="mesos.v1.executor.Event.Subscribed"/>
+
+### Event.Subscribed
+First event received when the executor subscribes.
+The &#39;id&#39; field in the &#39;framework_info&#39; will be set.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| executor_info | [.mesos.v1.ExecutorInfo](#mesos.v1.executor..mesos.v1.ExecutorInfo) | required |  |
+| framework_info | [.mesos.v1.FrameworkInfo](#mesos.v1.executor..mesos.v1.FrameworkInfo) | required |  |
+| agent_info | [.mesos.v1.AgentInfo](#mesos.v1.executor..mesos.v1.AgentInfo) | required |  |
+| container_id | [.mesos.v1.ContainerID](#mesos.v1.executor..mesos.v1.ContainerID) | optional | Uniquely identifies the container of an executor run. |
 
 
 
@@ -10938,164 +9865,48 @@ UNAVAILABLE: if the update is in a state which cannot be resumed.
 
  
 
- 
 
- 
+<a name="mesos.v1.executor.Call.Type"/>
 
+### Call.Type
+Possible call types, followed by message definitions if
+applicable.
 
-<a name="peloton.api.update.svc.UpdateService"/>
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 | See comments above on `Event::Type` for more details on this enum value. |
+| SUBSCRIBE | 1 | See &#39;Subscribe&#39; below. |
+| UPDATE | 2 | See &#39;Update&#39; below. |
+| MESSAGE | 3 | See &#39;Message&#39; below. |
 
-### UpdateService
-Update service interface
-EXPERIMENTAL: This API is not yet stable.
 
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| CreateUpdate | [CreateUpdateRequest](#peloton.api.update.svc.CreateUpdateRequest) | [CreateUpdateResponse](#peloton.api.update.svc.CreateUpdateRequest) | Create a new update for a job. Only one update can exist for a job at a given time. |
-| GetUpdate | [GetUpdateRequest](#peloton.api.update.svc.GetUpdateRequest) | [GetUpdateResponse](#peloton.api.update.svc.GetUpdateRequest) | Get the status of an update. |
-| ListUpdates | [ListUpdatesRequest](#peloton.api.update.svc.ListUpdatesRequest) | [ListUpdatesResponse](#peloton.api.update.svc.ListUpdatesRequest) | List all updates that are currently running. |
-| PauseUpdate | [PauseUpdateRequest](#peloton.api.update.svc.PauseUpdateRequest) | [PauseUpdateResponse](#peloton.api.update.svc.PauseUpdateRequest) | Pause an update. |
-| ResumeUpdate | [ResumeUpdateRequest](#peloton.api.update.svc.ResumeUpdateRequest) | [ResumeUpdateResponse](#peloton.api.update.svc.ResumeUpdateRequest) | Resume a paused update. |
-| RollbackUpdate | [RollbackUpdateRequest](#peloton.api.update.svc.RollbackUpdateRequest) | [RollbackUpdateResponse](#peloton.api.update.svc.RollbackUpdateRequest) | Rollback an update. |
-| AbortUpdate | [AbortUpdateRequest](#peloton.api.update.svc.AbortUpdateRequest) | [AbortUpdateResponse](#peloton.api.update.svc.AbortUpdateRequest) | Abort an update. |
 
- 
+<a name="mesos.v1.executor.Event.Type"/>
 
+### Event.Type
+Possible event types, followed by message definitions if
+applicable.
 
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNKNOWN | 0 | This must be the first enum value in this list, to ensure that if &#39;type&#39; is not set, the default value is UNKNOWN. This enables enum values to be added in a backwards-compatible way. See: MESOS-4997. |
+| SUBSCRIBED | 1 | See &#39;Subscribed&#39; below. |
+| LAUNCH | 2 | See &#39;Launch&#39; below. |
+| LAUNCH_GROUP | 8 | See &#39;LaunchGroup&#39; below. |
+| KILL | 3 | See &#39;Kill&#39; below. |
+| ACKNOWLEDGED | 4 | See &#39;Acknowledged&#39; below. |
+| MESSAGE | 5 | See &#39;Message&#39; below. |
+| ERROR | 6 | See &#39;Error&#39; below. |
+| SHUTDOWN | 7 | Received when the agent asks the executor to shutdown/kill itself. The executor is then required to kill all its active tasks, send `TASK_KILLED` status updates and gracefully exit. The executor should terminate within a `MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD` (an environment variable set by the agent upon executor startup); it can be configured via `ExecutorInfo.shutdown_grace_period`. If the executor fails to do so, the agent will forcefully destroy the container where the executor is running. The agent would then send `TASK_LOST` updates for any remaining active tasks of this executor.
 
-<a name="volume_svc.proto"/>
-<p align="right"><a href="#top">Top</a></p>
+NOTE: The executor must not assume that it will always be allotted the full grace period, as the agent may decide to allot a shorter period and failures / forcible terminations may occur.
 
-## volume_svc.proto
-
-
-
-<a name="peloton.api.volume.svc.DeleteVolumeRequest"/>
-
-### DeleteVolumeRequest
-Request message for VolumeService.Delete method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.VolumeID](#peloton.api.volume.svc..peloton.api.peloton.VolumeID) |  | volume id for the delete request. |
-
-
-
-
-
-
-<a name="peloton.api.volume.svc.DeleteVolumeResponse"/>
-
-### DeleteVolumeResponse
-Response message for VolumeService.Delete method.
-
-Return errors:
-NOT_FOUND:         if the volume is not found.
-
-
-
-
-
-
-<a name="peloton.api.volume.svc.GetVolumeRequest"/>
-
-### GetVolumeRequest
-Request message for VolumeService.Get method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| id | [.peloton.api.peloton.VolumeID](#peloton.api.volume.svc..peloton.api.peloton.VolumeID) |  | the volume id. |
-
-
-
-
-
-
-<a name="peloton.api.volume.svc.GetVolumeResponse"/>
-
-### GetVolumeResponse
-Response message for VolumeService.Get method.
-
-Return errors:
-NOT_FOUND:         if the volume is not found.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| result | [.peloton.api.volume.PersistentVolumeInfo](#peloton.api.volume.svc..peloton.api.volume.PersistentVolumeInfo) |  | volume info result. |
-
-
-
-
-
-
-<a name="peloton.api.volume.svc.ListVolumesRequest"/>
-
-### ListVolumesRequest
-Request message for VolumeService.List method.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| jobId | [.peloton.api.peloton.JobID](#peloton.api.volume.svc..peloton.api.peloton.JobID) |  | job ID for the volumes. |
-
-
-
-
-
-
-<a name="peloton.api.volume.svc.ListVolumesResponse"/>
-
-### ListVolumesResponse
-Response message for VolumeService.List method.
-
-Return errors:
-NOT_FOUND:         if the volume is not found.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| volumes | [ListVolumesResponse.VolumesEntry](#peloton.api.volume.svc.ListVolumesResponse.VolumesEntry) | repeated | volumes result map from volume uuid to volume info. |
-
-
-
-
-
-
-<a name="peloton.api.volume.svc.ListVolumesResponse.VolumesEntry"/>
-
-### ListVolumesResponse.VolumesEntry
-
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| key | [string](#string) |  |  |
-| value | [.peloton.api.volume.PersistentVolumeInfo](#peloton.api.volume.svc..peloton.api.volume.PersistentVolumeInfo) |  |  |
-
-
-
+TODO(alexr): Consider adding a duration field into the `Shutdown` message so that the agent can communicate when a shorter period has been allotted. |
 
 
  
 
  
-
- 
-
-
-<a name="peloton.api.volume.svc.VolumeService"/>
-
-### VolumeService
-Volume Manager service interface
-
-| Method Name | Request Type | Response Type | Description |
-| ----------- | ------------ | ------------- | ------------|
-| ListVolumes | [ListVolumesRequest](#peloton.api.volume.svc.ListVolumesRequest) | [ListVolumesResponse](#peloton.api.volume.svc.ListVolumesRequest) | List associated volumes for given job. |
-| GetVolume | [GetVolumeRequest](#peloton.api.volume.svc.GetVolumeRequest) | [GetVolumeResponse](#peloton.api.volume.svc.GetVolumeRequest) | Get volume data. |
-| DeleteVolume | [DeleteVolumeRequest](#peloton.api.volume.svc.DeleteVolumeRequest) | [DeleteVolumeResponse](#peloton.api.volume.svc.DeleteVolumeRequest) | Delete a persistent volume. |
 
  
 
@@ -12108,6 +10919,1195 @@ TODO: Add error handling here
 | ----------- | ------------ | ------------- | ------------|
 | Enqueue | [EnqueueRequest](#peloton.private.resmgr.taskqueue.EnqueueRequest) | [EnqueueResponse](#peloton.private.resmgr.taskqueue.EnqueueRequest) | Enqueue a list of tasks |
 | Dequeue | [DequeueRequest](#peloton.private.resmgr.taskqueue.DequeueRequest) | [DequeueResponse](#peloton.private.resmgr.taskqueue.DequeueRequest) | Dequeue a list of tasks |
+
+ 
+
+
+
+<a name="update_svc.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## update_svc.proto
+
+
+
+<a name="peloton.api.update.svc.AbortUpdateRequest"/>
+
+### AbortUpdateRequest
+Request message for UpdateService.AbortUpdate method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier of the update to be aborted. |
+| softAbort | [bool](#bool) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.AbortUpdateResponse"/>
+
+### AbortUpdateResponse
+Response message for UpdateService.AbortUpdate method.
+Returns errors:
+NOT_FOUND: if the update with the provided identifier is not found.
+UNAVAILABLE: if the update is in a state which cannot be resumed.
+
+
+
+
+
+
+<a name="peloton.api.update.svc.CreateUpdateRequest"/>
+
+### CreateUpdateRequest
+Request message for UpdateService.CreateUpdate method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.update.svc..peloton.api.peloton.JobID) |  | Entity id of the job to be updated. |
+| jobConfig | [.peloton.api.job.JobConfig](#peloton.api.update.svc..peloton.api.job.JobConfig) |  | New configuration of the job to be updated. The new job config will be applied to all instances without violating the job SLA. |
+| updateConfig | [.peloton.api.update.UpdateConfig](#peloton.api.update.svc..peloton.api.update.UpdateConfig) |  | The options of the update. |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.CreateUpdateResponse"/>
+
+### CreateUpdateResponse
+Response message for UpdateService.CreateUpdate method.
+Returns errors:
+NOT_FOUND:      if the job with the provided identifier is not found.
+ALREADY_EXISTS: if another update for the same job is running.
+INVALID_ARGUMENTS: if the provided job config or update config is invalid.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| result | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier for the newly created update. |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.GetUpdateRequest"/>
+
+### GetUpdateRequest
+Request message for UpdateService.GetUpdate method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.GetUpdateResponse"/>
+
+### GetUpdateResponse
+Response message for UpdateService.GetUpdate method.
+Returns errors:
+NOT_FOUND: if the update with the provided identifier is not found.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| result | [.peloton.api.update.UpdateInfo](#peloton.api.update.svc..peloton.api.update.UpdateInfo) |  | Update update information. |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.ListUpdatesRequest"/>
+
+### ListUpdatesRequest
+Request message for UpdateService.ListUpdates method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| limit | [int32](#int32) |  | Number of updates to return. |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.ListUpdatesResponse"/>
+
+### ListUpdatesResponse
+Response message for UpdateService.ListUpdates method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| updateInfo | [.peloton.api.update.UpdateInfo](#peloton.api.update.svc..peloton.api.update.UpdateInfo) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.PauseUpdateRequest"/>
+
+### PauseUpdateRequest
+Request message for UpdateService.PauseUpdate method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier of the update to be paused. |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.PauseUpdateResponse"/>
+
+### PauseUpdateResponse
+Response message for UpdateService.PauseUpdate method.
+Returns errors:
+NOT_FOUND: if the update with the provided identifier is not found.
+UNAVAILABLE: if the update is in a state which cannot be paused.
+
+
+
+
+
+
+<a name="peloton.api.update.svc.ResumeUpdateRequest"/>
+
+### ResumeUpdateRequest
+Request message for UpdateService.ResumeUpdate method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier of the update to be resumed. |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.ResumeUpdateResponse"/>
+
+### ResumeUpdateResponse
+Response message for UpdateService.ResumeUpdate method.
+Returns errors:
+NOT_FOUND: if the update with the provided identifier is not found.
+UNAVAILABLE: if the update is in a state which cannot be resumed.
+
+
+
+
+
+
+<a name="peloton.api.update.svc.RollbackUpdateRequest"/>
+
+### RollbackUpdateRequest
+Request message for UpdateService.RollbackUpdate method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| updateId | [.peloton.api.update.UpdateID](#peloton.api.update.svc..peloton.api.update.UpdateID) |  | Identifier of the update to be rolled back. |
+
+
+
+
+
+
+<a name="peloton.api.update.svc.RollbackUpdateResponse"/>
+
+### RollbackUpdateResponse
+Response message for UpdateService.RollbackUpdate method.
+Returns errors:
+NOT_FOUND: if the update with the provided identifier is not found.
+UNAVAILABLE: if the update is in a state which cannot be resumed.
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="peloton.api.update.svc.UpdateService"/>
+
+### UpdateService
+Update service interface
+EXPERIMENTAL: This API is not yet stable.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| CreateUpdate | [CreateUpdateRequest](#peloton.api.update.svc.CreateUpdateRequest) | [CreateUpdateResponse](#peloton.api.update.svc.CreateUpdateRequest) | Create a new update for a job. Only one update can exist for a job at a given time. |
+| GetUpdate | [GetUpdateRequest](#peloton.api.update.svc.GetUpdateRequest) | [GetUpdateResponse](#peloton.api.update.svc.GetUpdateRequest) | Get the status of an update. |
+| ListUpdates | [ListUpdatesRequest](#peloton.api.update.svc.ListUpdatesRequest) | [ListUpdatesResponse](#peloton.api.update.svc.ListUpdatesRequest) | List all updates that are currently running. |
+| PauseUpdate | [PauseUpdateRequest](#peloton.api.update.svc.PauseUpdateRequest) | [PauseUpdateResponse](#peloton.api.update.svc.PauseUpdateRequest) | Pause an update. |
+| ResumeUpdate | [ResumeUpdateRequest](#peloton.api.update.svc.ResumeUpdateRequest) | [ResumeUpdateResponse](#peloton.api.update.svc.ResumeUpdateRequest) | Resume a paused update. |
+| RollbackUpdate | [RollbackUpdateRequest](#peloton.api.update.svc.RollbackUpdateRequest) | [RollbackUpdateResponse](#peloton.api.update.svc.RollbackUpdateRequest) | Rollback an update. |
+| AbortUpdate | [AbortUpdateRequest](#peloton.api.update.svc.AbortUpdateRequest) | [AbortUpdateResponse](#peloton.api.update.svc.AbortUpdateRequest) | Abort an update. |
+
+ 
+
+
+
+<a name="respool_svc.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## respool_svc.proto
+
+
+
+<a name="peloton.api.respool.CreateResourcePoolRequest"/>
+
+### CreateResourcePoolRequest
+Request message for ResourcePoolService.CreateResourcePool method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The unique resource pool UUID specified by the client. This can be used by the client to re-create a failed resource pool without the side-effect of creating duplicated resource pool. If unset, the server will create a new UUID for the resource pool. |
+| config | [ResourcePoolConfig](#peloton.api.respool.ResourcePoolConfig) |  | The detailed configuration of the resource pool be to created. |
+
+
+
+
+
+
+<a name="peloton.api.respool.CreateResourcePoolResponse"/>
+
+### CreateResourcePoolResponse
+Response message for ResourcePoolService.CreateResourcePool method.
+
+Return errors:
+ALREADY_EXISTS:   if the resource pool already exists.
+INVALID_ARGUMENT: if the resource pool config is invalid.o
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The ID of the newly created resource pool. |
+
+
+
+
+
+
+<a name="peloton.api.respool.DeleteResourcePoolRequest"/>
+
+### DeleteResourcePoolRequest
+Request message for ResourcePoolService.DeleteResourcePool method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The ID of the resource pool to be deleted. |
+
+
+
+
+
+
+<a name="peloton.api.respool.DeleteResourcePoolResponse"/>
+
+### DeleteResourcePoolResponse
+Response message for ResourcePoolService.DeleteResourcePool method.
+
+Return errors:
+NOT_FOUND:        if the resource pool is not found.
+INVALID_ARGUMENT: if the resource pool is not leaf node.
+FAILED_PRECONDITION:  if the resource pool is busy.
+INTERNAL:         if the resource pool fail to delete for internal errors.
+
+
+
+
+
+
+<a name="peloton.api.respool.GetResourcePoolRequest"/>
+
+### GetResourcePoolRequest
+Request message for ResourcePoolService.GetResourcePool method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The ID of the resource pool to get the detailed information. |
+| includeChildPools | [bool](#bool) |  | Whether or not to include the resource pool info of the direct children |
+
+
+
+
+
+
+<a name="peloton.api.respool.GetResourcePoolResponse"/>
+
+### GetResourcePoolResponse
+Response message for ResourcePoolService.GetResourcePool method.
+
+Return errors:
+NOT_FOUND:   if the resource pool is not found.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| resPool | [ResourcePoolInfo](#peloton.api.respool.ResourcePoolInfo) |  | The detailed information of the resource pool. |
+| childResPools | [ResourcePoolInfo](#peloton.api.respool.ResourcePoolInfo) | repeated | The list of child resource pools. |
+
+
+
+
+
+
+<a name="peloton.api.respool.LookupResourcePoolIDRequest"/>
+
+### LookupResourcePoolIDRequest
+Request message for ResourcePoolService.LookupResourcePoolID method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| path | [ResourcePoolPath](#peloton.api.respool.ResourcePoolPath) |  | The resource pool path to look up the resource pool ID. |
+
+
+
+
+
+
+<a name="peloton.api.respool.LookupResourcePoolIDResponse"/>
+
+### LookupResourcePoolIDResponse
+Response message for ResourcePoolService.LookupResourcePoolID method.
+
+Return errors:
+NOT_FOUND:        if the resource pool is not found.
+INVALID_ARGUMENT: if the resource pool path is invalid.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The resource pool ID for the given resource pool path. |
+
+
+
+
+
+
+<a name="peloton.api.respool.QueryResourcePoolsRequest"/>
+
+### QueryResourcePoolsRequest
+Request message for ResourcePoolService.QueryResourcePools method.
+
+
+TODO Filters
+
+
+
+
+
+
+<a name="peloton.api.respool.QueryResourcePoolsResponse"/>
+
+### QueryResourcePoolsResponse
+Response message for ResourcePoolService.QueryResourcePools method.
+
+Return errors:
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| resPools | [ResourcePoolInfo](#peloton.api.respool.ResourcePoolInfo) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.api.respool.UpdateResourcePoolRequest"/>
+
+### UpdateResourcePoolRequest
+Request message for ResourcePoolService.UpdateResourcePool method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.ResourcePoolID](#peloton.api.respool..peloton.api.peloton.ResourcePoolID) |  | The ID of the resource pool to update the configuration. |
+| config | [ResourcePoolConfig](#peloton.api.respool.ResourcePoolConfig) |  | The configuration of the resource pool to be updated. |
+
+
+
+
+
+
+<a name="peloton.api.respool.UpdateResourcePoolResponse"/>
+
+### UpdateResourcePoolResponse
+Response message for ResourcePoolService.UpdateResourcePool method.
+
+Return errors:
+NOT_FOUND:   if the resource pool is not found.
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="peloton.api.respool.ResourcePoolService"/>
+
+### ResourcePoolService
+ResourcePoolService defines the resource pool related methods
+such as create, get, delete and upgrade resource pools.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| CreateResourcePool | [CreateResourcePoolRequest](#peloton.api.respool.CreateResourcePoolRequest) | [CreateResourcePoolResponse](#peloton.api.respool.CreateResourcePoolRequest) | Create a resource pool entity for a given config |
+| GetResourcePool | [GetResourcePoolRequest](#peloton.api.respool.GetResourcePoolRequest) | [GetResourcePoolResponse](#peloton.api.respool.GetResourcePoolRequest) | Get the resource pool entity |
+| DeleteResourcePool | [DeleteResourcePoolRequest](#peloton.api.respool.DeleteResourcePoolRequest) | [DeleteResourcePoolResponse](#peloton.api.respool.DeleteResourcePoolRequest) | Delete a resource pool entity |
+| UpdateResourcePool | [UpdateResourcePoolRequest](#peloton.api.respool.UpdateResourcePoolRequest) | [UpdateResourcePoolResponse](#peloton.api.respool.UpdateResourcePoolRequest) | Modify a resource pool entity |
+| LookupResourcePoolID | [LookupResourcePoolIDRequest](#peloton.api.respool.LookupResourcePoolIDRequest) | [LookupResourcePoolIDResponse](#peloton.api.respool.LookupResourcePoolIDRequest) | Lookup the resource pool ID for a given resource pool path |
+| QueryResourcePools | [QueryResourcePoolsRequest](#peloton.api.respool.QueryResourcePoolsRequest) | [QueryResourcePoolsResponse](#peloton.api.respool.QueryResourcePoolsRequest) | Query the resource pools. |
+
+ 
+
+
+
+<a name="task_svc.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## task_svc.proto
+
+
+
+<a name="peloton.api.task.svc.BrowseSandboxRequest"/>
+
+### BrowseSandboxRequest
+Request message for TaskService.BrowseSandbox method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the task to browse the sandbox. |
+| instanceId | [uint32](#uint32) |  | The instance ID of the task to browse the sandbox. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.BrowseSandboxResponse"/>
+
+### BrowseSandboxResponse
+Response message for TaskService.BrowseSandbox method.
+
+Return errors:
+NOT_FOUND:     if the job ID is not found.
+OUT_OF_RANGE:  if the instance IDs are out of range.
+INTERNAL:      if fail to browse the sandbox for internal errors.
+FAILED_PRECONDITION:  if the task has not been run yet.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| hostname | [string](#string) |  | The hostname of the sandbox. |
+| port | [string](#string) |  | The port of the sandbox. |
+| paths | [string](#string) | repeated | The list of sandbox file paths. TODO: distinguish files and directories in the sandbox |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.GetEventsRequest"/>
+
+### GetEventsRequest
+Request message for TaskService.GetEvents method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the task |
+| instanceId | [uint32](#uint32) |  | The instance ID of the task |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.GetEventsResponse"/>
+
+### GetEventsResponse
+Response message for TaskService.GetEvents method.
+
+Return errors:
+INTERNAL:      if failed to get task events for internal errors.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| result | [GetEventsResponse.Events](#peloton.api.task.svc.GetEventsResponse.Events) | repeated |  |
+| error | [GetEventsResponse.Error](#peloton.api.task.svc.GetEventsResponse.Error) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.GetEventsResponse.Error"/>
+
+### GetEventsResponse.Error
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| eventError | [TaskEventsError](#peloton.api.task.svc.TaskEventsError) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.GetEventsResponse.Events"/>
+
+### GetEventsResponse.Events
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| event | [.peloton.api.task.TaskEvent](#peloton.api.task.svc..peloton.api.task.TaskEvent) | repeated |  |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.GetTaskRequest"/>
+
+### GetTaskRequest
+Request message for TaskService.GetTask method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the task to get. |
+| instanceId | [uint32](#uint32) |  | The instance ID of the task to get. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.GetTaskResponse"/>
+
+### GetTaskResponse
+Response message for TaskService.GetTask method.
+
+Return errors:
+NOT_FOUND:     if the job or task not found.
+OUT_OF_RANGE:  if the instance ID is out of range.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| result | [.peloton.api.task.TaskInfo](#peloton.api.task.svc..peloton.api.task.TaskInfo) |  | The task info of the task. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.ListTasksRequest"/>
+
+### ListTasksRequest
+Request message for TaskService.ListTasks method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to list. |
+| range | [.peloton.api.task.InstanceRange](#peloton.api.task.svc..peloton.api.task.InstanceRange) |  | The instance ID range of the tasks to list. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.ListTasksResponse"/>
+
+### ListTasksResponse
+Response message for TaskService.GetTask method.
+
+Return errors:
+NOT_FOUND:  if the job ID is not found.
+OUT_OF_RANGE:  if the instance IDs are out of range.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tasks | [ListTasksResponse.TasksEntry](#peloton.api.task.svc.ListTasksResponse.TasksEntry) | repeated | The map of instance ID to task info for all matching tasks. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.ListTasksResponse.TasksEntry"/>
+
+### ListTasksResponse.TasksEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [uint32](#uint32) |  |  |
+| value | [.peloton.api.task.TaskInfo](#peloton.api.task.svc..peloton.api.task.TaskInfo) |  |  |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.QueryTasksRequest"/>
+
+### QueryTasksRequest
+Request message for TaskService.QueryTasks method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to query. |
+| spec | [.peloton.api.task.QuerySpec](#peloton.api.task.svc..peloton.api.task.QuerySpec) |  | The spec of query criteria for the tasks. |
+| pagination | [.peloton.api.query.PaginationSpec](#peloton.api.task.svc..peloton.api.query.PaginationSpec) |  | The spec of how to do pagination for the query results. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.QueryTasksResponse"/>
+
+### QueryTasksResponse
+Response message for TaskService.QueryTasks method.
+
+Return errors:
+NOT_FOUND:     if the job ID is not found.
+INTERNAL:      if fail to query the tasks for internal errors.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| records | [.peloton.api.task.TaskInfo](#peloton.api.task.svc..peloton.api.task.TaskInfo) | repeated | List of tasks that match the task query criteria. |
+| pagination | [.peloton.api.query.Pagination](#peloton.api.task.svc..peloton.api.query.Pagination) |  | Pagination result of the task query. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.RestartTasksRequest"/>
+
+### RestartTasksRequest
+Request message for TaskService.RestartTasks method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to restart. |
+| ranges | [.peloton.api.task.InstanceRange](#peloton.api.task.svc..peloton.api.task.InstanceRange) | repeated | The instance ID ranges of the tasks to restart. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.RestartTasksResponse"/>
+
+### RestartTasksResponse
+Response message for TaskService.RestartTasks method.
+
+Return errors:
+NOT_FOUND:     if the job ID is not found.
+OUT_OF_RANGE:  if the instance IDs are out of range.
+INTERNAL:      if the tasks fail to restart for internal errors.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| stopped | [uint32](#uint32) | repeated | The set of instance IDs that have been stopped. |
+| failed | [uint32](#uint32) | repeated | The set of instance IDs that are failed to stop. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.StartTasksRequest"/>
+
+### StartTasksRequest
+Request message for TaskService.StartTasks method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to start. |
+| ranges | [.peloton.api.task.InstanceRange](#peloton.api.task.svc..peloton.api.task.InstanceRange) | repeated | The instance ID ranges of the tasks to start. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.StartTasksResponse"/>
+
+### StartTasksResponse
+Response message for TaskService.StartTasks method.
+
+Return errors:
+NOT_FOUND:     if the job ID is not found.
+OUT_OF_RANGE:  if the instance IDs are out of range.
+INTERNAL:      if the tasks fail to start for internal errors.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| started | [uint32](#uint32) | repeated | The set of instance IDs that have been started. |
+| failed | [uint32](#uint32) | repeated | The set of instance IDs that are failed to start. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.StopTasksRequest"/>
+
+### StopTasksRequest
+Request message for TaskService.StopTasks method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.task.svc..peloton.api.peloton.JobID) |  | The job ID of the tasks to stop. |
+| ranges | [.peloton.api.task.InstanceRange](#peloton.api.task.svc..peloton.api.task.InstanceRange) | repeated | The instance ID ranges of the tasks to stop. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.StopTasksResponse"/>
+
+### StopTasksResponse
+Response message for TaskService.StopTasks method.
+
+Return errors:
+NOT_FOUND:     if the job ID is not found in Peloton.
+OUT_OF_RANGE:  if the instance IDs are out of range.
+INTERNAL:      if the tasks fail to stop for internal errors.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| stopped | [uint32](#uint32) | repeated | The set of instance IDs that have been stopped. |
+| failed | [uint32](#uint32) | repeated | The set of instance IDs that are failed to stop. |
+
+
+
+
+
+
+<a name="peloton.api.task.svc.TaskEventsError"/>
+
+### TaskEventsError
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| message | [string](#string) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="peloton.api.task.svc.TaskService"/>
+
+### TaskService
+Task service defines the task related methods such as get, list,
+start, stop and restart tasks.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| GetTask | [GetTaskRequest](#peloton.api.task.svc.GetTaskRequest) | [GetTaskResponse](#peloton.api.task.svc.GetTaskRequest) | Get the info of a task in job. |
+| ListTasks | [ListTasksRequest](#peloton.api.task.svc.ListTasksRequest) | [ListTasksResponse](#peloton.api.task.svc.ListTasksRequest) | List a set of tasks in a job for a given range of instance IDs. |
+| StartTasks | [StartTasksRequest](#peloton.api.task.svc.StartTasksRequest) | [StartTasksResponse](#peloton.api.task.svc.StartTasksRequest) | Start a set of tasks for a job. Will be no-op for tasks that are currently running. |
+| StopTasks | [StopTasksRequest](#peloton.api.task.svc.StopTasksRequest) | [StopTasksResponse](#peloton.api.task.svc.StopTasksRequest) | Stop a set of tasks for a job. Will be no-op for tasks that are currently stopped. |
+| RestartTasks | [RestartTasksRequest](#peloton.api.task.svc.RestartTasksRequest) | [RestartTasksResponse](#peloton.api.task.svc.RestartTasksRequest) | Restart a set of tasks for a job. Will start tasks that are currently stopped. |
+| QueryTasks | [QueryTasksRequest](#peloton.api.task.svc.QueryTasksRequest) | [QueryTasksResponse](#peloton.api.task.svc.QueryTasksRequest) | Query task info in a job, using a set of filters. |
+| BrowseSandbox | [BrowseSandboxRequest](#peloton.api.task.svc.BrowseSandboxRequest) | [BrowseSandboxResponse](#peloton.api.task.svc.BrowseSandboxRequest) | BrowseSandbox returns list of file paths inside sandbox. The client can use the Mesos Agent HTTP endpoints to read and download the files. http://mesos.apache.org/documentation/latest/endpoints |
+| GetEvents | [GetEventsRequest](#peloton.api.task.svc.GetEventsRequest) | [GetEventsResponse](#peloton.api.task.svc.GetEventsRequest) | GetEvents returns task events in for a instance in a job. An instance may have multiple Mesos tasks and GetEventsResponse will contain a map for each mesos task and its corresponding list of events. This is an experimental API and is subject to change |
+
+ 
+
+
+
+<a name="job_svc.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## job_svc.proto
+
+
+
+<a name="peloton.api.job.svc.CreateJobRequest"/>
+
+### CreateJobRequest
+Request message for JobService.CreateJob method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The unique job UUID specified by the client. This can be used by the client to re-create a failed job without the side-effect of creating duplicated jobs. If unset, the server will create a new UUID for the job for each invocation. |
+| pool | [.peloton.api.respool.ResourcePoolPath](#peloton.api.job.svc..peloton.api.respool.ResourcePoolPath) |  | The resource pool under which the job should be created. The scheduling of all tasks in the job will be subject to the resource availablity of the resource pool. |
+| config | [.peloton.api.job.JobConfig](#peloton.api.job.svc..peloton.api.job.JobConfig) |  | The detailed configuration of the job to be created. |
+
+
+
+
+
+
+<a name="peloton.api.job.svc.CreateJobResponse"/>
+
+### CreateJobResponse
+Response message for JobService.CreateJob method.
+
+Return errors:
+ALREADY_EXISTS:    if the job ID already exists.o
+INVALID_ARGUMENT:  if the job ID or job config is invalid.
+NOT_FOUND:         if the resource pool is not found.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The job ID of the newly created job. Will be the same as the one in CreateJobRequest if provided. Otherwise, a new job ID will be generated by the server. |
+
+
+
+
+
+
+<a name="peloton.api.job.svc.DeleteJobRequest"/>
+
+### DeleteJobRequest
+Request message for JobService.DeleteJob method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The job ID to be deleted. |
+
+
+
+
+
+
+<a name="peloton.api.job.svc.DeleteJobResponse"/>
+
+### DeleteJobResponse
+Response message for JobService.DeleteJob method.
+
+Return errors:
+NOT_FOUND:  if the job is not found in Peloton.
+
+
+
+
+
+
+<a name="peloton.api.job.svc.GetJobRequest"/>
+
+### GetJobRequest
+Request message for JobService.GetJob method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The job ID to look up the job. |
+
+
+
+
+
+
+<a name="peloton.api.job.svc.GetJobResponse"/>
+
+### GetJobResponse
+Response message for JobService.GetJob method.
+
+Return errors:
+NOT_FOUND:  if the job is not found in Peloton.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| result | [.peloton.api.job.JobConfig](#peloton.api.job.svc..peloton.api.job.JobConfig) |  | The job configuration of the matching job. |
+
+
+
+
+
+
+<a name="peloton.api.job.svc.QueryJobsRequest"/>
+
+### QueryJobsRequest
+Request message for JobService.QueryJobs method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| spec | [.peloton.api.job.QuerySpec](#peloton.api.job.svc..peloton.api.job.QuerySpec) |  | The spec of query criteria for the jobs. |
+| pagination | [.peloton.api.query.PaginationSpec](#peloton.api.job.svc..peloton.api.query.PaginationSpec) |  | The spec of how to do pagination for the query results. |
+
+
+
+
+
+
+<a name="peloton.api.job.svc.QueryJobsResponse"/>
+
+### QueryJobsResponse
+Response message for JobService.QueryJobs method.
+
+Return errors:
+INVALID_ARGUMENT:  if the resource pool path or job states are invalid.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| records | [.peloton.api.job.JobInfo](#peloton.api.job.svc..peloton.api.job.JobInfo) | repeated | List of jobs that match the job query criteria. |
+| pagination | [.peloton.api.query.Pagination](#peloton.api.job.svc..peloton.api.query.Pagination) |  | Pagination result of the job query. |
+
+
+
+
+
+
+<a name="peloton.api.job.svc.UpdateJobRequest"/>
+
+### UpdateJobRequest
+Request message for JobService.UpdateJob method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.JobID](#peloton.api.job.svc..peloton.api.peloton.JobID) |  | The job ID to be updated. |
+| config | [.peloton.api.job.JobConfig](#peloton.api.job.svc..peloton.api.job.JobConfig) |  | The new job config to be applied to the job. |
+
+
+
+
+
+
+<a name="peloton.api.job.svc.UpdateJobResponse"/>
+
+### UpdateJobResponse
+Response message for JobService.UpdateJob method.
+
+Return errors:
+INVALID_ARGUMENT:  if the job ID or job config is invalid.
+NOT_FOUND:         if the job ID is not found.
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="peloton.api.job.svc.JobService"/>
+
+### JobService
+Job service defines the job related methods such as create, get,
+query and kill jobs.
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| CreateJob | [CreateJobRequest](#peloton.api.job.svc.CreateJobRequest) | [CreateJobResponse](#peloton.api.job.svc.CreateJobRequest) | Create a job entity for a given config. |
+| GetJob | [GetJobRequest](#peloton.api.job.svc.GetJobRequest) | [GetJobResponse](#peloton.api.job.svc.GetJobRequest) | Get the config of a job entity. |
+| QueryJobs | [QueryJobsRequest](#peloton.api.job.svc.QueryJobsRequest) | [QueryJobsResponse](#peloton.api.job.svc.QueryJobsRequest) | Query the jobs that match a list of labels. |
+| DeleteJob | [DeleteJobRequest](#peloton.api.job.svc.DeleteJobRequest) | [DeleteJobResponse](#peloton.api.job.svc.DeleteJobRequest) | Delete a job and stop all related tasks. |
+| UpdateJob | [UpdateJobRequest](#peloton.api.job.svc.UpdateJobRequest) | [UpdateJobResponse](#peloton.api.job.svc.UpdateJobRequest) | Update a job entity with a new config. This is a temporary API for updating batch jobs. It only supports adding new instances to an existing job. It will be deprecated when the UpgradeService API is implemented. |
+
+ 
+
+
+
+<a name="volume_svc.proto"/>
+<p align="right"><a href="#top">Top</a></p>
+
+## volume_svc.proto
+
+
+
+<a name="peloton.api.volume.svc.DeleteVolumeRequest"/>
+
+### DeleteVolumeRequest
+Request message for VolumeService.Delete method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.VolumeID](#peloton.api.volume.svc..peloton.api.peloton.VolumeID) |  | volume id for the delete request. |
+
+
+
+
+
+
+<a name="peloton.api.volume.svc.DeleteVolumeResponse"/>
+
+### DeleteVolumeResponse
+Response message for VolumeService.Delete method.
+
+Return errors:
+NOT_FOUND:         if the volume is not found.
+
+
+
+
+
+
+<a name="peloton.api.volume.svc.GetVolumeRequest"/>
+
+### GetVolumeRequest
+Request message for VolumeService.Get method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [.peloton.api.peloton.VolumeID](#peloton.api.volume.svc..peloton.api.peloton.VolumeID) |  | the volume id. |
+
+
+
+
+
+
+<a name="peloton.api.volume.svc.GetVolumeResponse"/>
+
+### GetVolumeResponse
+Response message for VolumeService.Get method.
+
+Return errors:
+NOT_FOUND:         if the volume is not found.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| result | [.peloton.api.volume.PersistentVolumeInfo](#peloton.api.volume.svc..peloton.api.volume.PersistentVolumeInfo) |  | volume info result. |
+
+
+
+
+
+
+<a name="peloton.api.volume.svc.ListVolumesRequest"/>
+
+### ListVolumesRequest
+Request message for VolumeService.List method.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| jobId | [.peloton.api.peloton.JobID](#peloton.api.volume.svc..peloton.api.peloton.JobID) |  | job ID for the volumes. |
+
+
+
+
+
+
+<a name="peloton.api.volume.svc.ListVolumesResponse"/>
+
+### ListVolumesResponse
+Response message for VolumeService.List method.
+
+Return errors:
+NOT_FOUND:         if the volume is not found.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| volumes | [ListVolumesResponse.VolumesEntry](#peloton.api.volume.svc.ListVolumesResponse.VolumesEntry) | repeated | volumes result map from volume uuid to volume info. |
+
+
+
+
+
+
+<a name="peloton.api.volume.svc.ListVolumesResponse.VolumesEntry"/>
+
+### ListVolumesResponse.VolumesEntry
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  |  |
+| value | [.peloton.api.volume.PersistentVolumeInfo](#peloton.api.volume.svc..peloton.api.volume.PersistentVolumeInfo) |  |  |
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+
+<a name="peloton.api.volume.svc.VolumeService"/>
+
+### VolumeService
+Volume Manager service interface
+
+| Method Name | Request Type | Response Type | Description |
+| ----------- | ------------ | ------------- | ------------|
+| ListVolumes | [ListVolumesRequest](#peloton.api.volume.svc.ListVolumesRequest) | [ListVolumesResponse](#peloton.api.volume.svc.ListVolumesRequest) | List associated volumes for given job. |
+| GetVolume | [GetVolumeRequest](#peloton.api.volume.svc.GetVolumeRequest) | [GetVolumeResponse](#peloton.api.volume.svc.GetVolumeRequest) | Get volume data. |
+| DeleteVolume | [DeleteVolumeRequest](#peloton.api.volume.svc.DeleteVolumeRequest) | [DeleteVolumeResponse](#peloton.api.volume.svc.DeleteVolumeRequest) | Delete a persistent volume. |
 
  
 

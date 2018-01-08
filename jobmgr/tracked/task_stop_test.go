@@ -51,6 +51,54 @@ func TestTaskStop(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestTaskStopTimeout(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	hostMock := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	m := &manager{
+		jobs:          map[string]*job{},
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		hostmgrClient: hostMock,
+		mtx:           NewMetrics(tally.NoopScope),
+		running:       true,
+	}
+
+	taskID := &mesos_v1.TaskID{
+		Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
+	}
+
+	agentID := &mesos_v1.AgentID{
+		Value: &[]string{"fd77c867-8931-4fc4-87eb-4491f2900148-S99"}[0],
+	}
+
+	tt := &task{
+		job: &job{
+			m: m,
+		},
+		killingAttempts: 1,
+		runtime: &pb_task.RuntimeInfo{
+			MesosTaskId: taskID,
+			AgentID:     agentID,
+		},
+	}
+
+	shutdownReq := &hostsvc.ShutdownExecutorsRequest{
+		Executors: []*hostsvc.ExecutorOnAgent{
+			{
+				ExecutorId: &mesos_v1.ExecutorID{Value: taskID.Value},
+				AgentId:    agentID,
+			},
+		},
+	}
+
+	hostMock.EXPECT().ShutdownExecutors(context.Background(), shutdownReq).Return(nil, nil)
+	reschedule, err := tt.RunAction(context.Background(), StopAction)
+
+	assert.True(t, reschedule)
+	assert.NoError(t, err)
+}
+
 func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

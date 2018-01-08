@@ -67,6 +67,7 @@ type TaskAction string
 const (
 	NoAction             TaskAction = "no_action"
 	UntrackAction        TaskAction = "untrack"
+	KilledAction         TaskAction = "killed"
 	StartAction          TaskAction = "start_task"
 	StopAction           TaskAction = "stop_task"
 	PreemptAction        TaskAction = "preempt_action"
@@ -102,6 +103,9 @@ type task struct {
 	// lastState set, the resulting action and when that action was last tried.
 	lastAction     TaskAction
 	lastActionTime time.Time
+
+	// killingAttempts tracks how many times we had try to kill this task
+	killingAttempts int
 }
 
 func (t *task) ID() uint32 {
@@ -169,6 +173,12 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) (bool, error) {
 		reschedule = false
 
 	case UntrackAction:
+		reschedule = false
+		t.job.m.clearTask(t)
+
+	case KilledAction:
+		// clear the killAttempts before clear the task
+		t.ClearKillAttempts()
 		reschedule = false
 		t.job.m.clearTask(t)
 
@@ -275,4 +285,25 @@ func (t *task) reloadRuntime(ctx context.Context) error {
 	// So, after task runtime is reloaded back into cache, the task action
 	// needs to be re-executed which is accomplished by returning an error here.
 	return fmt.Errorf("runtime reloaded after error")
+}
+
+func (t *task) GetKillAttempts() int {
+	t.RLock()
+	defer t.RUnlock()
+
+	return t.killingAttempts
+}
+
+func (t *task) IncrementKillAttempts() {
+	t.Lock()
+	defer t.Unlock()
+
+	t.killingAttempts++
+}
+
+func (t *task) ClearKillAttempts() {
+	t.Lock()
+	defer t.Unlock()
+
+	t.killingAttempts = 0
 }

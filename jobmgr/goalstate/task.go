@@ -41,9 +41,9 @@ var (
 			task.TaskState_LAUNCHING:   tracked.StopAction,
 			task.TaskState_LAUNCHED:    tracked.StopAction,
 			task.TaskState_RUNNING:     tracked.StopAction,
-			task.TaskState_KILLED:      tracked.UntrackAction,
-			task.TaskState_SUCCEEDED:   tracked.UntrackAction,
-			task.TaskState_FAILED:      tracked.UntrackAction,
+			task.TaskState_KILLED:      tracked.KilledAction,
+			task.TaskState_SUCCEEDED:   tracked.KilledAction,
+			task.TaskState_FAILED:      tracked.KilledAction,
 		},
 		task.TaskState_FAILED: {
 			task.TaskState_FAILED:    tracked.UntrackAction,
