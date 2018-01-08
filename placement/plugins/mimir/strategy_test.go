@@ -44,8 +44,8 @@ func TestMimirPlace(t *testing.T) {
 	strategy := setupStrategy()
 	strategy.PlaceOnce(assignments, offers)
 
-	assert.Equal(t, offers[0], assignments[0].Host())
-	assert.Nil(t, assignments[1].Host())
+	assert.Equal(t, offers[0], assignments[0].GetHost())
+	assert.Nil(t, assignments[1].GetHost())
 }
 
 func TestMimirFilters(t *testing.T) {

@@ -120,7 +120,7 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 	var assignments []*models.Assignment
 	for i := 0; i < createTasks; i++ {
 		assignment := testutil.SetupAssignment(deadline, 1)
-		assignment.Task().Task().Resource.CpuLimit = 5
+		assignment.GetTask().GetTask().Resource.CpuLimit = 5
 		assignments = append(assignments, assignment)
 	}
 	var hosts []*models.Host
@@ -141,7 +141,7 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 
 	var success, failed int
 	for _, assignment := range assignments {
-		if assignment.Host() != nil {
+		if assignment.GetHost() != nil {
 			success++
 		} else {
 			failed++
@@ -182,7 +182,7 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 
 	var success, failed int
 	for _, assignment := range assignments {
-		if assignment.Host() != nil {
+		if assignment.GetHost() != nil {
 			success++
 		} else {
 			failed++
@@ -239,10 +239,10 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = 1 * time.Second
 
-	offer := testutil.SetupHost()
-	offers := []*models.Host{offer}
+	host := testutil.SetupHost()
+	offers := []*models.Host{host}
 	assignment := testutil.SetupAssignment(time.Now().Add(1*time.Second), 5)
-	assignment.SetHost(offer)
+	assignment.SetHost(host)
 	assignments := []*models.Assignment{assignment}
 
 	mockStrategy.EXPECT().
@@ -293,10 +293,10 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = 100 * time.Millisecond
 
-	offer := testutil.SetupHost()
-	offers := []*models.Host{offer}
+	host := testutil.SetupHost()
+	hosts := []*models.Host{host}
 	assignment := testutil.SetupAssignment(time.Now(), 1)
-	assignment.SetHost(offer)
+	assignment.SetHost(host)
 	assignments := []*models.Assignment{assignment}
 
 	mockTaskService.EXPECT().
@@ -318,7 +318,7 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 			gomock.Any(),
 		).MinTimes(1).
 		Return(
-			offers,
+			hosts,
 		)
 
 	mockStrategy.EXPECT().
@@ -377,11 +377,11 @@ func TestEngineFindUsedOffers(t *testing.T) {
 	used := engine.findUsedHosts(assignments)
 	assert.Equal(t, 0, len(used))
 
-	offer := testutil.SetupHost()
-	assignment.SetHost(offer)
+	host := testutil.SetupHost()
+	assignment.SetHost(host)
 	used = engine.findUsedHosts(assignments)
 	assert.Equal(t, 1, len(used))
-	assert.Equal(t, offer, used[0])
+	assert.Equal(t, host, used[0])
 }
 
 func TestEngineFilterAssignments(t *testing.T) {
@@ -391,13 +391,13 @@ func TestEngineFilterAssignments(t *testing.T) {
 	deadline1 := time.Now()
 	now := deadline1.Add(1 * time.Second)
 	deadline2 := now.Add(30 * time.Second)
-	offer := testutil.SetupHost()
+	host := testutil.SetupHost()
 
 	assignment1 := testutil.SetupAssignment(deadline1, 1) // assigned
-	assignment1.SetHost(offer)
+	assignment1.SetHost(host)
 
 	assignment2 := testutil.SetupAssignment(deadline2, 2) // retryable
-	assignment2.SetHost(offer)
+	assignment2.SetHost(host)
 
 	assignment3 := testutil.SetupAssignment(deadline2, 1) // retryable
 
@@ -423,10 +423,10 @@ func TestEngineCleanup(t *testing.T) {
 	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
 	defer ctrl.Finish()
 
-	offer := testutil.SetupHost()
-	offers := []*models.Host{offer}
+	host := testutil.SetupHost()
+	hosts := []*models.Host{host}
 	assignment := testutil.SetupAssignment(time.Now(), 1)
-	assignment.SetHost(offer)
+	assignment.SetHost(host)
 	assignments := []*models.Assignment{assignment}
 
 	mockTaskService.EXPECT().
@@ -449,7 +449,7 @@ func TestEngineCleanup(t *testing.T) {
 		).
 		Return()
 
-	engine.cleanup(context.Background(), assignments, nil, nil, offers)
+	engine.cleanup(context.Background(), assignments, nil, nil, hosts)
 }
 
 func TestEngineCreatePlacement(t *testing.T) {
@@ -458,9 +458,9 @@ func TestEngineCreatePlacement(t *testing.T) {
 
 	now := time.Now()
 	deadline := now.Add(30 * time.Second)
-	offer := testutil.SetupHost()
+	host := testutil.SetupHost()
 	assignment1 := testutil.SetupAssignment(deadline, 1)
-	assignment1.SetHost(offer)
+	assignment1.SetHost(host)
 	assignment2 := testutil.SetupAssignment(deadline, 1)
 	assignments := []*models.Assignment{
 		assignment1,
@@ -469,10 +469,10 @@ func TestEngineCreatePlacement(t *testing.T) {
 
 	placements := engine.createPlacement(assignments)
 	assert.Equal(t, 1, len(placements))
-	assert.Equal(t, offer.Offer().Hostname, placements[0].Hostname)
-	assert.Equal(t, offer.Offer().AgentId, placements[0].AgentId)
-	assert.Equal(t, assignment1.Task().Task().Type, placements[0].Type)
-	assert.Equal(t, []*peloton.TaskID{assignment1.Task().Task().Id}, placements[0].Tasks)
+	assert.Equal(t, host.GetOffer().Hostname, placements[0].Hostname)
+	assert.Equal(t, host.GetOffer().AgentId, placements[0].AgentId)
+	assert.Equal(t, assignment1.GetTask().GetTask().Type, placements[0].Type)
+	assert.Equal(t, []*peloton.TaskID{assignment1.GetTask().GetTask().Id}, placements[0].Tasks)
 	assert.Equal(t, 3, len(placements[0].Ports))
 }
 
@@ -485,8 +485,8 @@ func TestEngineAssignPortsAllFromASingleRange(t *testing.T) {
 	assignment1 := testutil.SetupAssignment(deadline, 1)
 	assignment2 := testutil.SetupAssignment(deadline, 1)
 	tasks := []*models.Task{
-		assignment1.Task(),
-		assignment2.Task(),
+		assignment1.GetTask(),
+		assignment2.GetTask(),
 	}
 	offer := testutil.SetupHost()
 
@@ -509,19 +509,19 @@ func TestEngineAssignPortsFromMultipleRanges(t *testing.T) {
 	assignment1 := testutil.SetupAssignment(deadline, 1)
 	assignment2 := testutil.SetupAssignment(deadline, 1)
 	tasks := []*models.Task{
-		assignment1.Task(),
-		assignment2.Task(),
+		assignment1.GetTask(),
+		assignment2.GetTask(),
 	}
-	offer := testutil.SetupHost()
-	*offer.Offer().Resources[4].Ranges.Range[0].End = uint64(31001)
+	host := testutil.SetupHost()
+	*host.GetOffer().Resources[4].Ranges.Range[0].End = uint64(31001)
 	begin, end := uint64(31002), uint64(31009)
-	offer.Offer().Resources[4].Ranges.Range = append(
-		offer.Offer().Resources[4].Ranges.Range, &mesos_v1.Value_Range{
+	host.GetOffer().Resources[4].Ranges.Range = append(
+		host.GetOffer().Resources[4].Ranges.Range, &mesos_v1.Value_Range{
 			Begin: &begin,
 			End:   &end,
 		})
 
-	ports := engine.assignPorts(offer, tasks)
+	ports := engine.assignPorts(host, tasks)
 	intPorts := make([]int, len(ports))
 	for i := range ports {
 		intPorts[i] = int(ports[i])
@@ -553,17 +553,17 @@ func TestEngineFindUnusedOffers(t *testing.T) {
 		assignment3,
 		assignment4,
 	}
-	offer1 := testutil.SetupHost()
-	offer2 := testutil.SetupHost()
-	assignment1.SetHost(offer1)
-	assignment2.SetHost(offer1)
-	assignment3.SetHost(offer1)
+	host1 := testutil.SetupHost()
+	host2 := testutil.SetupHost()
+	assignment1.SetHost(host1)
+	assignment2.SetHost(host1)
+	assignment3.SetHost(host1)
 	offers := []*models.Host{
-		offer1,
-		offer2,
+		host1,
+		host2,
 	}
 
 	unused := engine.findUnusedHosts(assignments, retryable, offers)
 	assert.Equal(t, 1, len(unused))
-	assert.Equal(t, offer2, unused[0])
+	assert.Equal(t, host2, unused[0])
 }

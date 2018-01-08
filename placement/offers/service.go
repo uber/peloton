@@ -154,7 +154,7 @@ func (s *service) Release(ctx context.Context, hosts []*models.Host) {
 	}
 	hostOffers := make([]*hostsvc.HostOffer, 0, len(hosts))
 	for _, offer := range hosts {
-		hostOffers = append(hostOffers, offer.Offer())
+		hostOffers = append(hostOffers, offer.GetOffer())
 	}
 	// ToDo: buffer the hosts until we have a batch of a certain size and return that.
 	request := &hostsvc.ReleaseHostOffersRequest{

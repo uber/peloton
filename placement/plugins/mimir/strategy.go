@@ -45,10 +45,10 @@ func (mimir *mimir) convertAssignments(pelotonAssignments []*models.Assignment) 
 	assignments := make([]*placement.Assignment, 0, len(pelotonAssignments))
 	entitiesToAssignments := make(map[*placement.Entity]*models.Assignment, len(pelotonAssignments))
 	for _, p := range pelotonAssignments {
-		data := p.Task().Data()
+		data := p.GetTask().Data()
 		if data == nil {
-			entity := TaskToEntity(p.Task().Task())
-			p.Task().SetData(entity)
+			entity := TaskToEntity(p.GetTask().GetTask())
+			p.GetTask().SetData(entity)
 			data = entity
 		}
 		entity := data.(*placement.Entity)
@@ -66,9 +66,9 @@ func (mimir *mimir) convertHosts(hosts []*models.Host) ([]*placement.Group,
 	for _, host := range hosts {
 		data := host.Data()
 		if data == nil {
-			group := OfferToGroup(host.Offer())
+			group := OfferToGroup(host.GetOffer())
 			entities := placement.Entities{}
-			for _, task := range host.Tasks() {
+			for _, task := range host.GetTasks() {
 				entity := TaskToEntity(task)
 				entities.Add(entity)
 			}
@@ -84,15 +84,15 @@ func (mimir *mimir) convertHosts(hosts []*models.Host) ([]*placement.Group,
 }
 
 func (mimir *mimir) updateAssignments(assignments []*placement.Assignment,
-	entitiesToAssignments map[*placement.Entity]*models.Assignment, groupsToOffers map[*placement.Group]*models.Host) {
+	entitiesToAssignments map[*placement.Entity]*models.Assignment, groupsToHosts map[*placement.Group]*models.Host) {
 	// Update the Peloton assignments from the mimir assignments
 	for _, assignment := range assignments {
 		if assignment.Failed {
 			continue
 		}
-		offer := groupsToOffers[assignment.AssignedGroup]
+		host := groupsToHosts[assignment.AssignedGroup]
 		pelotonAssignment := entitiesToAssignments[assignment.Entity]
-		pelotonAssignment.SetHost(offer)
+		pelotonAssignment.SetHost(host)
 	}
 }
 
@@ -123,7 +123,7 @@ func (mimir *mimir) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 	var maxCPU, maxGPU, maxMemory, maxDisk, maxPorts float64
 	for _, assignment := range assignments {
 		assignmentsCopy = append(assignmentsCopy, assignment)
-		resmgrTask := assignment.Task().Task()
+		resmgrTask := assignment.GetTask().GetTask()
 		maxCPU = math.Max(maxCPU, resmgrTask.Resource.CpuLimit)
 		maxGPU = math.Max(maxGPU, resmgrTask.Resource.GpuLimit)
 		maxMemory = math.Max(maxMemory, resmgrTask.Resource.MemLimitMb)

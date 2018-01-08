@@ -22,9 +22,9 @@ func TestBatchPlace(t *testing.T) {
 	strategy := New()
 	strategy.PlaceOnce(assignments, offers)
 
-	assert.Equal(t, offers[0], assignments[0].Host())
-	assert.Equal(t, offers[1], assignments[1].Host())
-	assert.Nil(t, assignments[2].Host())
+	assert.Equal(t, offers[0], assignments[0].GetHost())
+	assert.Equal(t, offers[1], assignments[1].GetHost())
+	assert.Nil(t, assignments[2].GetHost())
 }
 
 func TestBatchPlaceOneFreeHost(t *testing.T) {
@@ -32,8 +32,8 @@ func TestBatchPlaceOneFreeHost(t *testing.T) {
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
-	assignments[0].Task().Task().Resource.CpuLimit = 5
-	assignments[1].Task().Task().Resource.CpuLimit = 5
+	assignments[0].GetTask().GetTask().Resource.CpuLimit = 5
+	assignments[1].GetTask().GetTask().Resource.CpuLimit = 5
 	offers := []*models.Host{
 		testutil.SetupHost(),
 		testutil.SetupHost(),
@@ -41,8 +41,8 @@ func TestBatchPlaceOneFreeHost(t *testing.T) {
 	strategy := New()
 	strategy.PlaceOnce(assignments, offers)
 
-	assert.Equal(t, offers[0], assignments[0].Host())
-	assert.Equal(t, offers[0], assignments[1].Host())
+	assert.Equal(t, offers[0], assignments[0].GetHost())
+	assert.Equal(t, offers[0], assignments[1].GetHost())
 }
 
 func TestBatchFiltersWithResources(t *testing.T) {
@@ -51,7 +51,7 @@ func TestBatchFiltersWithResources(t *testing.T) {
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
-	assignments[2].Task().Task().Resource.CpuLimit += 1.0
+	assignments[2].GetTask().GetTask().Resource.CpuLimit += 1.0
 	strategy := New()
 
 	filters := strategy.Filters(assignments)
@@ -73,9 +73,9 @@ func TestBatchFiltersWithPorts(t *testing.T) {
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
-	assignments[0].Task().Task().NumPorts = 1
-	assignments[1].Task().Task().NumPorts = 1
-	assignments[2].Task().Task().NumPorts = 2
+	assignments[0].GetTask().GetTask().NumPorts = 1
+	assignments[1].GetTask().GetTask().NumPorts = 1
+	assignments[2].GetTask().GetTask().NumPorts = 2
 	strategy := New()
 
 	filters := strategy.Filters(assignments)

@@ -11,34 +11,54 @@ import (
 // NewHost will create a placement host from a host manager host and all the resource manager tasks on it.
 func NewHost(hostOffer *hostsvc.HostOffer, tasks []*resmgr.Task, claimed time.Time) *Host {
 	return &Host{
-		offer:   hostOffer,
-		tasks:   tasks,
-		claimed: claimed,
+		Offer:   hostOffer,
+		Tasks:   tasks,
+		Claimed: claimed,
 	}
 }
 
 // Host represents a Peloton host and the tasks running on it and a Mimir placement group also be obtained from it.
 type Host struct {
 	// host offer of the host.
-	offer *hostsvc.HostOffer
+	Offer *hostsvc.HostOffer `json:"offer"`
 	// tasks running on the host.
-	tasks []*resmgr.Task
-	// claimed is the time when the host was acquired from the host manager.
-	claimed time.Time
+	Tasks []*resmgr.Task `json:"tasks"`
+	// Claimed is the time when the host was acquired from the host manager.
+	Claimed time.Time `json:"claimed"`
 	// data is used by placement strategies to transfer state between calls to the
 	// place once method.
 	data interface{}
 	lock sync.Mutex
 }
 
-// Offer will return the host offer of the host.
-func (host *Host) Offer() *hostsvc.HostOffer {
-	return host.offer
+// GetOffer returns the host offer of the host.
+func (host *Host) GetOffer() *hostsvc.HostOffer {
+	return host.Offer
 }
 
-// Tasks will return the tasks running on the host of the host.
-func (host *Host) Tasks() []*resmgr.Task {
-	return host.tasks
+// SetOffer sets the host offer of the host.
+func (host *Host) SetOffer(offer *hostsvc.HostOffer) {
+	host.Offer = offer
+}
+
+// GetTasks returns the tasks of the host.
+func (host *Host) GetTasks() []*resmgr.Task {
+	return host.Tasks
+}
+
+// SetTasks sets the tasks of the host.
+func (host *Host) SetTasks(tasks []*resmgr.Task) {
+	host.Tasks = tasks
+}
+
+// GetClaimed returns the time when the host was claimed.
+func (host *Host) GetClaimed() time.Time {
+	return host.Claimed
+}
+
+// SetClaimed sets the time when the host was claimed.
+func (host *Host) SetClaimed(claimed time.Time) {
+	host.Claimed = claimed
 }
 
 // SetData will set the data transfer object on the host.
@@ -57,5 +77,5 @@ func (host *Host) Data() interface{} {
 
 // Age will return the age of the host, which is the time since it was dequeued from the host manager.
 func (host *Host) Age(now time.Time) time.Duration {
-	return now.Sub(host.claimed)
+	return now.Sub(host.Claimed)
 }

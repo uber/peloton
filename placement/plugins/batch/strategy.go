@@ -34,11 +34,11 @@ func (batch *batch) availablePorts(resources []*mesos_v1.Resource) uint64 {
 
 // fillOffer assigns in sequence as many tasks as possible to the given offer,
 // and returns a list of tasks not assigned to the offer.
-func (batch *batch) fillOffer(offer *models.Host, unassigned []*models.Assignment) []*models.Assignment {
-	remainPorts := batch.availablePorts(offer.Offer().GetResources())
-	remain := scalar.FromMesosResources(offer.Offer().GetResources())
+func (batch *batch) fillOffer(host *models.Host, unassigned []*models.Assignment) []*models.Assignment {
+	remainPorts := batch.availablePorts(host.GetOffer().GetResources())
+	remain := scalar.FromMesosResources(host.GetOffer().GetResources())
 	for i, placement := range unassigned {
-		resmgrTask := placement.Task().Task()
+		resmgrTask := placement.GetTask().GetTask()
 		usedPorts := uint64(resmgrTask.GetNumPorts())
 		if usedPorts > remainPorts {
 			log.WithFields(log.Fields{
@@ -48,7 +48,7 @@ func (batch *batch) fillOffer(offer *models.Host, unassigned []*models.Assignmen
 			return unassigned[i:]
 		}
 
-		usage := scalar.FromResourceConfig(placement.Task().Task().GetResource())
+		usage := scalar.FromResourceConfig(placement.GetTask().GetTask().GetResource())
 		trySubtract, ok := remain.TrySubtract(usage)
 		if !ok {
 			log.WithFields(log.Fields{
@@ -60,7 +60,7 @@ func (batch *batch) fillOffer(offer *models.Host, unassigned []*models.Assignmen
 
 		remainPorts -= usedPorts
 		remain = trySubtract
-		placement.SetHost(offer)
+		placement.SetHost(host)
 	}
 	return nil
 }
@@ -84,11 +84,11 @@ func (batch *batch) getHostFilter(assignment *models.Assignment) *hostsvc.HostFi
 	result := &hostsvc.HostFilter{
 		// HostLimit will be later determined by number of tasks.
 		ResourceConstraint: &hostsvc.ResourceConstraint{
-			Minimum:  assignment.Task().Task().Resource,
-			NumPorts: assignment.Task().Task().NumPorts,
+			Minimum:  assignment.GetTask().GetTask().Resource,
+			NumPorts: assignment.GetTask().GetTask().NumPorts,
 		},
 	}
-	if constraint := assignment.Task().Task().Constraint; constraint != nil {
+	if constraint := assignment.GetTask().GetTask().Constraint; constraint != nil {
 		result.SchedulingConstraint = constraint
 	}
 	return result

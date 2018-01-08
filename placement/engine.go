@@ -126,14 +126,14 @@ func (e *engine) Stop() {
 func (e *engine) getTaskIDs(tasks []*models.Task) []*peloton.TaskID {
 	var taskIDs []*peloton.TaskID
 	for _, task := range tasks {
-		taskIDs = append(taskIDs, task.Task().Id)
+		taskIDs = append(taskIDs, task.GetTask().Id)
 	}
 	return taskIDs
 }
 
 func (e *engine) assignPorts(offer *models.Host, tasks []*models.Task) []uint32 {
 	availablePortRanges := map[*models.PortRange]struct{}{}
-	for _, resource := range offer.Offer().GetResources() {
+	for _, resource := range offer.GetOffer().GetResources() {
 		if resource.GetName() != "ports" {
 			continue
 		}
@@ -144,7 +144,7 @@ func (e *engine) assignPorts(offer *models.Host, tasks []*models.Task) []uint32 
 	var selectedPorts []uint32
 	for _, taskEntity := range tasks {
 		assignedPorts := uint32(0)
-		neededPorts := taskEntity.Task().NumPorts
+		neededPorts := taskEntity.GetTask().NumPorts
 		depletedRanges := []*models.PortRange{}
 		for portRange := range availablePortRanges {
 			ports := portRange.TakePorts(neededPorts - assignedPorts)
@@ -167,8 +167,8 @@ func (e *engine) assignPorts(offer *models.Host, tasks []*models.Task) []uint32 
 func (e *engine) filterAssignments(now time.Time, assignments []*models.Assignment) (assigned, retryable,
 	unassigned []*models.Assignment) {
 	for _, assignment := range assignments {
-		task := assignment.Task()
-		if assignment.Host() == nil {
+		task := assignment.GetTask()
+		if assignment.GetHost() == nil {
 			if task.PastDeadline(now) {
 				unassigned = append(unassigned, assignment)
 				continue
@@ -194,7 +194,7 @@ func (e *engine) filterAssignments(now time.Time, assignments []*models.Assignme
 func (e *engine) findUsedHosts(retryable []*models.Assignment) []*models.Host {
 	offers := map[*models.Host]struct{}{}
 	for _, assignment := range retryable {
-		if offer := assignment.Host(); offer != nil {
+		if offer := assignment.GetHost(); offer != nil {
 			offers[offer] = struct{}{}
 		}
 	}
@@ -215,7 +215,7 @@ func (e *engine) findUnusedHosts(assigned, retryable []*models.Assignment,
 	// For each offer determine if any tasks where assigned to it.
 	usedOffers := map[*models.Host]struct{}{}
 	for _, placement := range assignments {
-		offer := placement.Host()
+		offer := placement.GetHost()
 		if offer == nil {
 			continue
 		}
@@ -236,8 +236,8 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 	// For each offer find all tasks assigned to it.
 	offersToTasks := map[*models.Host][]*models.Task{}
 	for _, placement := range assigned {
-		task := placement.Task()
-		offer := placement.Host()
+		task := placement.GetTask()
+		offer := placement.GetHost()
 		if offer == nil {
 			continue
 		}
@@ -253,8 +253,8 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 		taskIDs := e.getTaskIDs(tasks)
 		selectedPorts := e.assignPorts(offer, tasks)
 		placement := &resmgr.Placement{
-			Hostname: offer.Offer().Hostname,
-			AgentId:  offer.Offer().AgentId,
+			Hostname: offer.GetOffer().Hostname,
+			AgentId:  offer.GetOffer().AgentId,
 			Type:     e.config.TaskType,
 			Tasks:    taskIDs,
 			Ports:    selectedPorts,
@@ -284,7 +284,7 @@ func (e *engine) cleanup(ctx context.Context, assigned, retryable, unassigned []
 
 func (e *engine) pastDeadline(now time.Time, assignments []*models.Assignment) bool {
 	for _, assignment := range assignments {
-		if !assignment.Task().PastDeadline(now) {
+		if !assignment.GetTask().PastDeadline(now) {
 			return false
 		}
 	}

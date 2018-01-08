@@ -64,10 +64,10 @@ func TestOfferService_Dequeue(t *testing.T) {
 				Error: nil,
 			}, nil),
 	)
-	offers := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
-	assert.Equal(t, 1, len(offers))
-	assert.Equal(t, "hostname", offers[0].Offer().Hostname)
-	assert.Equal(t, 1, len(offers[0].Tasks()))
+	hosts := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	assert.Equal(t, 1, len(hosts))
+	assert.Equal(t, "hostname", hosts[0].GetOffer().Hostname)
+	assert.Equal(t, 1, len(hosts[0].GetTasks()))
 }
 
 func TestOfferService_Return(t *testing.T) {

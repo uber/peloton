@@ -147,7 +147,7 @@ func (s *service) Enqueue(ctx context.Context, assignments []*models.Assignment)
 	gangs := make([]*resmgrsvc.Gang, 0, len(assignments))
 	for _, assignment := range assignments {
 		gangs = append(gangs, &resmgrsvc.Gang{
-			Tasks: []*resmgr.Task{assignment.Task().Task()},
+			Tasks: []*resmgr.Task{assignment.GetTask().GetTask()},
 		})
 	}
 	var request = &resmgrsvc.EnqueueGangsRequest{

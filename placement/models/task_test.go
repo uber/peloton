@@ -25,12 +25,12 @@ func setupTaskVariables() (time.Time, *resmgrsvc.Gang, *resmgr.Task, *Task) {
 
 func TestTask_Gang(t *testing.T) {
 	_, resmgrGang, _, task := setupTaskVariables()
-	assert.Equal(t, resmgrGang, task.Gang())
+	assert.Equal(t, resmgrGang, task.GetGang())
 }
 
 func TestTask_Task(t *testing.T) {
 	_, _, resmgrTask, task := setupTaskVariables()
-	assert.Equal(t, resmgrTask, task.Task())
+	assert.Equal(t, resmgrTask, task.GetTask())
 }
 
 func TestTask_DataAndSetData(t *testing.T) {

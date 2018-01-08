@@ -31,12 +31,12 @@ func setupHostVariables() (time.Time, *hostsvc.HostOffer, *resmgrsvc.Gang, *resm
 
 func TestHost_Offer(t *testing.T) {
 	_, hostOffer, _, _, host, _, _ := setupHostVariables()
-	assert.Equal(t, hostOffer, host.Offer())
+	assert.Equal(t, hostOffer, host.GetOffer())
 }
 
 func TestHost_Tasks(t *testing.T) {
 	_, _, resmgrGang, _, host, _, _ := setupHostVariables()
-	assert.Equal(t, resmgrGang.GetTasks(), host.Tasks())
+	assert.Equal(t, resmgrGang.GetTasks(), host.GetTasks())
 }
 
 func TestHost_DataAndSetData(t *testing.T) {
