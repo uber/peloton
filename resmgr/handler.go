@@ -628,7 +628,7 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 		if *(rmTask.Task().TaskId.Value) !=
 			*(event.MesosTaskStatus.TaskId.Value) {
 			log.WithFields(log.Fields{
-				"task_ID": rmTask.Task().Id,
+				"task_ID": rmTask.Task().TaskId.Value,
 				"event":   event,
 			}).Error("could not be updated due to" +
 				"different mesos taskID")
@@ -651,7 +651,7 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 				log.WithField("event", event).Error("Could not be updated")
 			}
 			log.WithFields(log.Fields{
-				"task_ID":       taskID,
+				"task_ID":       taskID.Value,
 				"current_state": taskState.String(),
 			}).Info("Task is completed and removed from tracker")
 			rmtask.GetTracker().UpdateCounters(
