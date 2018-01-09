@@ -134,6 +134,7 @@ func (h *serviceHandler) AcquireHostOffers(
 	}
 
 	h.metrics.AcquireHostOffers.Inc(1)
+	h.metrics.AcquireHostsCount.Inc(int64(len(response.HostOffers)))
 
 	log.WithField("response", response).Debug("AcquireHostOffers returned")
 	return &response, nil
@@ -157,6 +158,8 @@ func (h *serviceHandler) ReleaseHostOffers(
 	}
 
 	h.metrics.ReleaseHostOffers.Inc(1)
+	h.metrics.ReleaseHostsCount.Inc(int64(len(body.GetHostOffers())))
+
 	return &response, nil
 }
 

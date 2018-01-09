@@ -15,6 +15,7 @@ type Metrics struct {
 
 	AcquireHostOffers        tally.Counter
 	AcquireHostOffersInvalid tally.Counter
+	AcquireHostsCount        tally.Counter
 
 	KillTasks     tally.Counter
 	KillTasksFail tally.Counter
@@ -24,6 +25,7 @@ type Metrics struct {
 	ShutdownExecutorsFail    tally.Counter
 
 	ReleaseHostOffers tally.Counter
+	ReleaseHostsCount tally.Counter
 
 	Elected         tally.Gauge
 	MesosConnected  tally.Gauge
@@ -56,6 +58,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		AcquireHostOffers:        scope.Counter("acquire_host_offers"),
 		AcquireHostOffersInvalid: scope.Counter("acquire_host_offers_invalid"),
+		AcquireHostsCount:        scope.Counter("acquire_hosts_count"),
 
 		KillTasks:     scope.Counter("kill_tasks"),
 		KillTasksFail: scope.Counter("kill_tasks_fail"),
@@ -65,6 +68,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ShutdownExecutorsFail:    scope.Counter("shutdown_executors_fail"),
 
 		ReleaseHostOffers: scope.Counter("release_host_offers"),
+		ReleaseHostsCount: scope.Counter("release_hosts_count"),
 
 		Elected:         serverScope.Gauge("elected"),
 		MesosConnected:  serverScope.Gauge("mesos_connected"),

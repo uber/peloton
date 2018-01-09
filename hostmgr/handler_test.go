@@ -263,6 +263,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 		int64(1),
 		suite.testScope.Snapshot().Counters()["acquire_host_offers+"].Value())
 
+	suite.Equal(
+		int64(numHosts),
+		suite.testScope.Snapshot().Counters()["acquire_hosts_count+"].Value())
+
 	// TODO: Add check for number of HostOffers in placing state.
 	suite.checkResourcesGauges(0, "ready")
 	suite.checkResourcesGauges(numHosts, "placing")
@@ -302,6 +306,10 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 	suite.Equal(
 		int64(1),
 		suite.testScope.Snapshot().Counters()["release_host_offers+"].Value())
+
+	suite.Equal(
+		int64(numHosts),
+		suite.testScope.Snapshot().Counters()["release_hosts_count+"].Value())
 
 	// Acquire again should return non empty result.
 	acquiredResp, err = suite.handler.AcquireHostOffers(
