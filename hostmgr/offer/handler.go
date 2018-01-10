@@ -22,8 +22,8 @@ import (
 const (
 	_hostPrunerName              = "hostpruner"
 	_resourceCleanerName         = "resourceCleaner"
-	_resourceCleanerPeriod       = 60 * time.Minute
-	_resourceCleanerInitialDelay = 10 * time.Minute
+	_resourceCleanerPeriod       = 15 * time.Minute
+	_resourceCleanerInitialDelay = 15 * time.Minute
 
 	_poolMetricsRefresh       = "poolMetricsRefresh"
 	_poolMetricsRefreshPeriod = 60 * time.Second

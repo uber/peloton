@@ -71,12 +71,12 @@ func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.H
 		log.WithFields(log.Fields{
 			"unassigned": unassigned,
 			"hosts":      hosts,
-		}).Debug("batch placement before")
+		}).Debug("PlaceOnce batch strategy called")
 		unassigned = batch.fillOffer(host, unassigned)
 		log.WithFields(log.Fields{
 			"unassigned": unassigned,
 			"hosts":      hosts,
-		}).Debug("batch placement after")
+		}).Debug("PlaceOnce batch strategy returned")
 	}
 }
 

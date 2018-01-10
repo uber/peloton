@@ -88,16 +88,19 @@ func (s *service) Dequeue(ctx context.Context, taskType resmgr.TaskType, batchSi
 			assignments = append(assignments, models.NewAssignment(task))
 		}
 	}
-	log.WithFields(log.Fields{
-		"request":     request,
-		"response":    response,
-		"taskType":    taskType,
-		"batchSize":   batchSize,
-		"timeout":     timeout,
-		"assignments": assignments,
-	}).Debug("Dequeued gangs")
-	log.WithField("tasks", len(assignments)).
-		Info("Dequeued from task queue")
+	if len(assignments) > 0 {
+		log.WithFields(log.Fields{
+			"request":         request,
+			"response":        response,
+			"taskType":        taskType,
+			"batchSize":       batchSize,
+			"timeout":         timeout,
+			"assignments_len": len(assignments),
+			"assignments":     assignments,
+		}).Debug("Dequeued gangs")
+		log.WithField("tasks", len(assignments)).
+			Info("Dequeued from task queue")
+	}
 	return assignments
 }
 

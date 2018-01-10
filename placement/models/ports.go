@@ -24,6 +24,7 @@ func (portRange *PortRange) NumPorts() uint32 {
 // TakePorts will take the number of ports from the range or as many as
 // available if more ports are requested than are in the range.
 func (portRange *PortRange) TakePorts(numPorts uint32) []uint32 {
+	// Try to select ports in a random fashion to avoid ports conflict.
 	ports := make([]uint32, 0, numPorts)
 	stop := portRange.begin + numPorts
 	if numPorts >= portRange.NumPorts() {

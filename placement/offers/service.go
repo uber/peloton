@@ -62,6 +62,8 @@ func (s *service) fetchOffers(ctx context.Context, filter *hostsvc.HostFilter) (
 
 func (s *service) fetchTasks(ctx context.Context, hostOffers []*hostsvc.HostOffer,
 	taskType resmgr.TaskType) (map[string]*resmgrsvc.TaskList, error) {
+	ctx, cancelFunc := context.WithTimeout(ctx, _timeout)
+	defer cancelFunc()
 	// Extract the hostnames
 	hostnames := make([]string, 0, len(hostOffers))
 	for _, hostOffer := range hostOffers {
@@ -121,29 +123,29 @@ func (s *service) Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.
 
 	// Get tasks running on all the offers
 	var hostTasksMap map[string]*resmgrsvc.TaskList
-	if fetchTasks {
+	if fetchTasks && len(hostOffers) > 0 {
 		hostTasksMap, err = s.fetchTasks(ctx, hostOffers, taskType)
 		if err != nil {
 			log.WithFields(log.Fields{
-				log.ErrorKey:     err,
 				"hostOffers":     hostOffers,
 				"filter_results": filterResults,
 				"filter":         filter,
 				"taskType":       taskType,
 				"fetchTasks":     fetchTasks,
-			}).Error("Failed to fetch tasks on hosts")
+			}).WithError(err).Error("Failed to fetch tasks on hosts")
 			s.metrics.OfferGetFail.Inc(1)
 			return nil
 		}
 	}
 
 	log.WithFields(log.Fields{
-		"hostOffers":     hostOffers,
-		"filter_results": filterResults,
-		"filter":         filter,
-		"taskType":       taskType,
-		"fetchTasks":     fetchTasks,
-	}).Debug("Dequeue hosts")
+		"hostOffers":             hostOffers,
+		"filter_results":         filterResults,
+		"filter":                 filter,
+		"taskType":               taskType,
+		"fetchTasks":             fetchTasks,
+		"host_tasks_map_noindex": hostTasksMap,
+	}).Debug("Offer service acquired offers and related tasks.")
 	// Create placement offers from the host offers
 	return s.convertOffers(hostOffers, hostTasksMap, time.Now())
 }
@@ -166,7 +168,7 @@ func (s *service) Release(ctx context.Context, hosts []*models.Host) {
 	log.WithFields(log.Fields{
 		"request":  request,
 		"response": response,
-	}).Debug("ReleaseHostOffers returned")
+	}).Debug("ReleaseHostOffers request returned")
 	if err != nil {
 		log.WithField("error", err).Error("ReleaseHostOffers failed")
 		return
@@ -176,5 +178,4 @@ func (s *service) Release(ctx context.Context, hosts []*models.Host) {
 		// TODO: Differentiate known error types by metrics and logs.
 		return
 	}
-	log.WithField("hosts", hosts).Debug("Returned unused hosts")
 }

@@ -56,10 +56,10 @@ func TestMimirFilters(t *testing.T) {
 		testutil.SetupAssignment(deadline, 1),
 	}
 	taskTypeToExpectedMaxHosts := map[resmgr.TaskType]uint32{
-		resmgr.TaskType_BATCH:     2,
-		resmgr.TaskType_STATELESS: 3,
-		resmgr.TaskType_DAEMON:    3,
-		resmgr.TaskType_STATEFUL:  3,
+		resmgr.TaskType_BATCH:     1,
+		resmgr.TaskType_STATELESS: 1,
+		resmgr.TaskType_DAEMON:    1,
+		resmgr.TaskType_STATEFUL:  1,
 	}
 	for taskType, expectedMaxHosts := range taskTypeToExpectedMaxHosts {
 		strategy.config.TaskType = taskType

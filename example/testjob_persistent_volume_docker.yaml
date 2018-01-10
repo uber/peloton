@@ -27,6 +27,11 @@ defaultconfig:
     disklimitmb: 16
     fdlimit: 10
   healthcheck: null
+  labels:
+  - key: testKey11
+    value: testVal11
+  - key: testKey22
+    value: testVal22
   ports: []
   container:
     type: 1
@@ -49,4 +54,13 @@ defaultconfig:
      sizemb: 20
   command:
     shell: true
-    value: 'echo Hello && sleep 600'
+    value: 'echo Hello && sleep 3600'
+  constraint:
+    type: 1  # LABEL_CONSTRAINT
+    labelconstraint:
+      kind: 1 # TASK
+      condition: 2 # CONDITION_EQUAL
+      requirement: 0
+      label:
+        key: testKey11
+        value: testVal11

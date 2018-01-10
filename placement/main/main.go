@@ -176,6 +176,7 @@ func main() {
 			if cfg.Placement.TaskType == resmgr.TaskType_STATEFUL {
 				// Use mimir strategy for stateful task placement.
 				cfg.Placement.Strategy = config.Mimir
+				cfg.Placement.FetchOfferTasks = true
 			}
 		} else {
 			log.WithField("placement_task_type", *taskType).Error("Invalid placement task type")

@@ -116,6 +116,7 @@ func makeMetricRequirements(task *resmgr.Task) []*requirements.MetricRequirement
 
 func addRelations(labels *mesos_v1.Labels, relations *labels.LabelBag) {
 	for _, label := range labels.GetLabels() {
+		log.WithField("label", label.String()).Debug("Adding relation label")
 		relations.Add(makeLabel(label.GetKey(), label.GetValue()))
 	}
 }

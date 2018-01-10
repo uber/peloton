@@ -16,15 +16,15 @@ placement:
   max_rounds:
     unknown: 1
     batch: 1
-    stateless: 5
-    daemon: 5
-    stateless: 0  # 0 Means no limit
+    stateless: 2
+    daemon: 0 # 0 Means no limit
+    stateful: 2
   max_durations:
     unknown: 500s
     batch: 500s
-    stateless: 500s
+    stateless: 60s
     daemon: 500s
-    stateless: 500s
+    stateful: 60s
 
 election:
   root: "/peloton"

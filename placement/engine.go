@@ -182,11 +182,6 @@ func (e *engine) filterAssignments(now time.Time, assignments []*models.Assignme
 		}
 		retryable = append(retryable, assignment)
 	}
-	log.WithFields(log.Fields{
-		"failed":    len(unassigned),
-		"retryable": len(retryable),
-		"success":   len(assigned),
-	}).Debug("assignment outcome")
 	return assigned, retryable, unassigned
 }
 
@@ -268,9 +263,11 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 
 func (e *engine) cleanup(ctx context.Context, assigned, retryable, unassigned []*models.Assignment,
 	offers []*models.Host) {
-	// Create the resource manager placements.
-	resPlacements := e.createPlacement(assigned)
-	e.taskService.SetPlacements(ctx, resPlacements)
+	if len(assigned) > 0 {
+		// Create the resource manager placements.
+		resPlacements := e.createPlacement(assigned)
+		e.taskService.SetPlacements(ctx, resPlacements)
+	}
 
 	// Return tasks that failed to get placed.
 	e.taskService.Enqueue(ctx, unassigned)
@@ -340,7 +337,7 @@ func (e *engine) placeAssignmentGroup(ctx context.Context, filter *hostsvc.HostF
 			"retryable":  retryable,
 			"unassigned": unassigned,
 			"hosts":      hosts,
-		}).Debug("placed assignment group")
+		}).Debug("Finshed one round placing assignment group")
 		// Set placements and return unused offers and failed tasks
 		e.cleanup(ctx, assigned, retryable, unassigned, hosts)
 	}

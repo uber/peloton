@@ -17,10 +17,10 @@ import (
 
 var _offersFactor = map[resmgr.TaskType]float64{
 	resmgr.TaskType_UNKNOWN:   1.0,
-	resmgr.TaskType_BATCH:     1.5,
-	resmgr.TaskType_STATELESS: 3.0,
-	resmgr.TaskType_DAEMON:    3.0,
-	resmgr.TaskType_STATEFUL:  3.0,
+	resmgr.TaskType_BATCH:     1.0,
+	resmgr.TaskType_STATELESS: 1.0,
+	resmgr.TaskType_DAEMON:    1.0,
+	resmgr.TaskType_STATEFUL:  1.0,
 }
 
 // New will create a new strategy using Mimir-lib to do the placement logic.
@@ -102,19 +102,27 @@ func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*
 	groups, groupsToHosts := mimir.convertHosts(hosts)
 
 	log.WithFields(log.Fields{
-		"assignments": pelotonAssignments,
-		"hosts":       hosts,
-	}).Debug("batch placement before")
+		"peloton_assignments": pelotonAssignments,
+		"peloton_hosts":       hosts,
+	}).Debug("PlaceOnce mimir strategy called")
 
 	// Place the assignments onto the groups
 	mimir.placer.Place(assignments, groups)
+
+	for _, assignment := range assignments {
+		transcript := assignment.Transcript
+		host := groupsToHosts[assignment.AssignedGroup]
+		log.WithField("host", host).
+			WithField("transcript", transcript.String()).
+			Debug("Placed mimir assignment")
+	}
 
 	mimir.updateAssignments(assignments, entitiesToAssignments, groupsToHosts)
 
 	log.WithFields(log.Fields{
 		"assignments": pelotonAssignments,
 		"hosts":       hosts,
-	}).Debug("batch placement after")
+	}).Debug("PlaceOnce mimir strategy returned")
 }
 
 // Filters is an implementation of the placement.Strategy interface.
