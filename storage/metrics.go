@@ -80,6 +80,9 @@ type TaskMetrics struct {
 	TaskGetForJobAndState     tally.Counter
 	TaskGetForJobAndStateFail tally.Counter
 
+	TaskIDsGetForJobAndState     tally.Counter
+	TaskIDsGetForJobAndStateFail tally.Counter
+
 	TaskSummaryForJob     tally.Counter
 	TaskSummaryForJobFail tally.Counter
 
@@ -256,6 +259,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskGetForJobFail:              taskFailScope.Counter("get_for_job"),
 		TaskGetForJobAndState:          taskSuccessScope.Counter("get_for_job_and_state"),
 		TaskGetForJobAndStateFail:      taskFailScope.Counter("get_for_job_and_state"),
+		TaskIDsGetForJobAndState:       taskSuccessScope.Counter("get_ids_for_job_and_state"),
+		TaskIDsGetForJobAndStateFail:   taskFailScope.Counter("get_ids_for_job_and_state"),
 		TaskSummaryForJob:              taskSuccessScope.Counter("summary_for_job"),
 		TaskSummaryForJobFail:          taskFailScope.Counter("summary_for_job"),
 		TaskGetForJobRange:             taskSuccessScope.Counter("get_for_job_range"),

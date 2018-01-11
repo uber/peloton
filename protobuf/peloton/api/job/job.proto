@@ -148,6 +148,9 @@ enum JobState {
   // All tasks in the job are in terminated state and one or more
   // tasks in the job is killed by the user.
   KILLED = 6;
+
+  // All tasks in the job have been requested to be killed by the user.
+  KILLING = 7;
 }
 
 

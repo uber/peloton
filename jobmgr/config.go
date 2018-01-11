@@ -2,10 +2,10 @@ package jobmgr
 
 import (
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/updatesvc"
 )
 
@@ -24,7 +24,7 @@ type Config struct {
 	DbWriteConcurrency int `yaml:"db_write_concurrency"`
 
 	// Job general configuration.
-	Job job.Config
+	Tracked tracked.Config
 
 	// Task launcher specific configs
 	Placement placement.Config `yaml:"task_launcher"`

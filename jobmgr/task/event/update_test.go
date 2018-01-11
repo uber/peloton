@@ -145,6 +145,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	timeNow := float64(time.Now().UnixNano())
+	event.MesosTaskStatus.Timestamp = &timeNow
 	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
 	updateTaskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 	updateTaskInfo.GetRuntime().StartTime = _currentTime
@@ -154,6 +156,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		suite.mockTaskStore.EXPECT().
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil),
+		suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, event.MesosTaskStatus.Timestamp).Return(),
 		suite.mockTrackedManager.EXPECT().
 			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime(), tracked.UpdateAndSchedule).
 			Return(nil),
@@ -197,6 +200,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
+	suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return()
 	suite.mockTrackedManager.EXPECT().
 		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any(), tracked.UpdateAndSchedule).
 		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo, req tracked.UpdateRequest) {
@@ -244,6 +248,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 		suite.mockTaskStore.EXPECT().
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil),
+		suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return(),
 		suite.mockTrackedManager.EXPECT().
 			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime(), tracked.UpdateAndSchedule).
 			Return(nil),
@@ -267,6 +272,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedSystemFailure() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
+	suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return()
 	suite.mockTrackedManager.EXPECT().
 		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any(), tracked.UpdateAndSchedule).
 		Do(func(ctx context.Context, JobId *peloton.JobID, _ interface{}, updateTask *task.RuntimeInfo, req tracked.UpdateRequest) {
@@ -307,6 +313,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
+	suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return()
 	suite.mockTrackedManager.EXPECT().
 		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any(), tracked.UpdateAndSchedule).
 		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo, req tracked.UpdateRequest) {
@@ -370,6 +377,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
+	suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return()
 	suite.mockTrackedManager.EXPECT().
 		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any(), tracked.UpdateAndSchedule).
 		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo, req tracked.UpdateRequest) {
@@ -407,6 +415,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 		suite.mockTaskStore.EXPECT().
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil),
+		suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return(),
 		suite.mockTrackedManager.EXPECT().
 			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime(), tracked.UpdateAndSchedule).
 			Return(nil),
@@ -500,6 +509,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessPreemptedTaskStatusUpdate() {
 		suite.mockTaskStore.EXPECT().
 			GetTaskByID(context.Background(), _pelotonTaskID).
 			Return(taskInfo, nil)
+		suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return()
 		suite.mockTrackedManager.EXPECT().
 			UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any(), tracked.UpdateAndSchedule).
 			Do(func(ctx context.Context, _, _ interface{}, updateTask *task.RuntimeInfo, req tracked.UpdateRequest) {
@@ -546,6 +556,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		suite.mockVolumeStore.EXPECT().
 			UpdatePersistentVolume(context.Background(), volumeInfo).
 			Return(nil),
+		suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return(),
 		suite.mockTrackedManager.EXPECT().
 			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, taskInfo.GetRuntime(), tracked.UpdateAndSchedule).
 			Return(nil),
@@ -579,6 +590,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		suite.mockVolumeStore.EXPECT().
 			GetPersistentVolume(context.Background(), testVolumeID).
 			Return(volumeInfo, nil),
+		suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return(),
 		suite.mockTrackedManager.EXPECT().
 			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, taskInfo.GetRuntime(), tracked.UpdateAndSchedule).
 			Return(nil),

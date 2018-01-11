@@ -7,17 +7,10 @@ import (
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
-	"code.uber.internal/infra/peloton/common/backoff"
 	"code.uber.internal/infra/peloton/common/taskconfig"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
-)
-
-const (
-	retryCount    int           = 3
-	retryDuration time.Duration = 15 * time.Second
 )
 
 func (j *job) createTasks(ctx context.Context) (bool, error) {
@@ -102,47 +95,6 @@ func (j *job) createTasks(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// To be used only with MaximumRunningInstances set to non-zero in SLA.
-// This function should be called while holding the job lock.
-func (j *job) scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances uint32, instanceID uint32, runtime *pb_task.RuntimeInfo) {
-	if runtime.GetState() != pb_task.TaskState_INITIALIZED {
-		log.WithField("state", runtime.GetState()).
-			WithField("job_id", j.id.GetValue()).
-			WithField("instance_id", instanceID).
-			Debug("skipping instance")
-		return
-	}
-
-	if j.currentScheduledTasks >= maxRunningInstances {
-		log.WithField("current_scheduled_tasks", j.currentScheduledTasks).
-			WithField("job_id", j.id.GetValue()).
-			WithField("instance_id", instanceID).
-			Debug("skipping instance")
-		return
-	}
-
-	t, ok := j.tasks[instanceID]
-	if !ok {
-		t = newTask(j, instanceID)
-		j.tasks[instanceID] = t
-	}
-
-	// Do not re-schedule a task
-	if t.IsScheduled() {
-		return
-	}
-
-	t.UpdateRuntime(runtime)
-
-	j.m.taskScheduler.schedule(t, time.Now())
-	j.currentScheduledTasks++
-	// TODO move this message to debug after MaximumRunningInstances feature is stabilized
-	log.WithField("job_id", j.id.GetValue()).
-		WithField("current_scheduled_tasks", j.currentScheduledTasks).
-		WithField("instance_id", instanceID).
-		Info("update current scheduled tasks")
-}
-
 func (j *job) sendTasksToResMgr(ctx context.Context, tasks []*pb_task.TaskInfo, jobConfig *pb_job.JobConfig) error {
 	if len(tasks) == 0 {
 		return nil
@@ -186,9 +138,10 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 			if taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED {
 				// Task exists, just send to resource manager
 				if maxRunningInstances > 0 && taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED {
-					j.Lock()
-					j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, i, taskInfos[i].GetRuntime())
-					j.Unlock()
+					// add task to cache
+					j.setTask(i, taskInfos[i].GetRuntime())
+					// run the runtime updater to start instances
+					j.m.ScheduleJob(j, time.Now().Add(j.m.GetJobRuntimeDuration(jobConfig.GetType())))
 				} else {
 					runtimes := make(map[uint32]*pb_task.RuntimeInfo)
 					runtimes[i] = taskInfos[i].GetRuntime()
@@ -223,9 +176,10 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 		j.m.mtx.taskMetrics.TaskCreate.Inc(1)
 
 		if maxRunningInstances > 0 {
-			j.Lock()
-			j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, i, runtime)
-			j.Unlock()
+			// add task to cache
+			j.setTask(i, runtime)
+			// run the runtime updater to start instances
+			j.m.ScheduleJob(j, time.Now().Add(j.m.GetJobRuntimeDuration(jobConfig.GetType())))
 		} else {
 			runtimes := make(map[uint32]*pb_task.RuntimeInfo)
 			runtimes[i] = runtime
@@ -280,144 +234,15 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 
 	if maxRunningInstances > 0 {
-		j.Lock()
-		// Only schedule maxRunningInstances number of tasks for placement
+		uRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
 		for i := uint32(0); i < maxRunningInstances; i++ {
-			j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, i, runtimes[i])
+			uRuntimes[i] = runtimes[i]
 		}
-		j.Unlock()
+		j.m.SetTasks(j.ID(), uRuntimes, UpdateAndSchedule)
 	} else {
 		// Send tasks to resource manager
 		return j.sendTasksToResMgr(ctx, tasks, jobConfig)
 	}
 
 	return nil
-}
-
-// Thread should be holding the job lock before calling this function.
-func (j *job) evaluateJobSLA() error {
-	if j.config == nil || j.config.sla == nil {
-		return nil
-	}
-
-	maxRunningInstances := j.config.sla.GetMaximumRunningInstances()
-	scheduledList := make(map[uint32]bool)
-
-	// Get job runtime, and if there is no more initialized tasks remaining, just return.
-	jobRuntime, err := j.m.jobStore.GetJobRuntime(context.Background(), j.id)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", j.id).
-			Error("failed to get job runtime while evaluating job sla")
-		return err
-	}
-
-	if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) {
-		return nil
-	}
-
-	taskStats := jobRuntime.GetTaskStats()
-
-	if jobRuntime.GetState() == pb_job.JobState_RUNNING && taskStats[pb_task.TaskState_INITIALIZED.String()] == uint32(0) {
-		return nil
-	}
-
-	if maxRunningInstances == 0 {
-		return nil
-	}
-
-	if j.currentScheduledTasks < maxRunningInstances {
-		// Try to find a task in the cache which has not run yet,
-		// validate its runtime with DB, and then schedule it.
-		for _, t := range j.tasks {
-			if t.GetRunTime() == nil {
-				continue
-			}
-
-			if j.currentScheduledTasks >= maxRunningInstances {
-				break
-			}
-
-			if t.GetRunTime().GetState() == pb_task.TaskState_INITIALIZED {
-				runtime, err := j.m.taskStore.GetTaskRuntime(context.Background(), j.id, t.ID())
-				if err != nil {
-					log.WithError(err).
-						WithField("job_id", j.id.GetValue()).
-						WithField("instance_id", t.ID()).
-						Error("failed to get task runtime while evaluating job sla")
-					continue
-				}
-
-				t.UpdateRuntime(runtime)
-				j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, t.ID(), runtime)
-				scheduledList[t.ID()] = true
-			}
-		}
-	}
-
-	if j.currentScheduledTasks >= maxRunningInstances {
-		return nil
-	}
-
-	// Did not find enough initialized tasks in cache.
-	// So, load runtimes from DB and find one now.
-	// TODO once task goal state cache is always in sync with DB, this code can be removed.
-	tasks, err := j.m.taskStore.GetTasksForJob(context.Background(), j.id)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", j.id).
-			Error("failed to get task runtimes for job during sla evaluation")
-		return err
-	}
-
-	for instanceID, task := range tasks {
-		if _, ok := scheduledList[instanceID]; ok {
-			continue
-		}
-
-		runtime := task.GetRuntime()
-		if t, ok := j.tasks[instanceID]; ok {
-			t.UpdateRuntime(runtime)
-		}
-
-		j.scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances, instanceID, runtime)
-		scheduledList[instanceID] = true
-	}
-
-	return nil
-}
-
-func (j *job) isRecoveryRetryable(err error) bool {
-	log.WithError(err).
-		Warn("job sla evaluation is failing during recovery")
-	return true
-}
-
-// Only to be used during job receovery. TODO move to job goal state.
-// The job SLA being evaluated here is maximumRunningInstances, and
-// it ensures that there are maximumRunningInstances tasks scheduled to run.
-func (j *job) recoverJobWithSLA() {
-	j.Lock()
-	defer j.Unlock()
-
-	// First count currentScheduledTasks.
-	currentScheduledTasks := uint32(0)
-	for _, t := range j.tasks {
-		runtime := t.GetRunTime()
-		if runtime.GetState() != pb_task.TaskState_INITIALIZED || runtime.GetGoalState() == pb_task.TaskState_KILLED {
-			// Re-evaluate all tasks, and increment currentScheduledTasks even for terminated tasks.
-			// When these tasks are removed from tracker, it will cause other tasks to be rescheduled.
-			j.m.taskScheduler.schedule(t, time.Now())
-			currentScheduledTasks++
-		}
-	}
-
-	retryPolicy := backoff.NewRetryPolicy(retryCount, retryDuration)
-
-	j.currentScheduledTasks = currentScheduledTasks
-	// TODO move this message to debug after MaximumRunningInstances feature is stabilized
-	log.WithField("job_id", j.id.GetValue()).
-		WithField("current_scheduled_tasks", j.currentScheduledTasks).
-		Info("current scheduled tasks set after recovery")
-	backoff.Retry(func() error { return j.evaluateJobSLA() }, retryPolicy, j.isRecoveryRetryable)
 }

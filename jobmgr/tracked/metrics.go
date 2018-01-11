@@ -15,6 +15,13 @@ type JobMetrics struct {
 	JobCreate           tally.Counter
 	JobCreateFailed     tally.Counter
 	JobRecoveryDuration tally.Gauge
+
+	JobSucceeded tally.Counter
+	JobKilled    tally.Counter
+	JobFailed    tally.Counter
+
+	JobRuntimeUpdated      tally.Counter
+	JobRuntimeUpdateFailed tally.Counter
 }
 
 // TaskMetrics contains all counters to track task metrics
@@ -31,6 +38,7 @@ type Metrics struct {
 	scope       tally.Scope
 	jobMetrics  *JobMetrics
 	taskMetrics *TaskMetrics
+	IsLeader    tally.Gauge
 }
 
 // NewQueueMetrics returns a new QueueMetrics struct.
@@ -47,11 +55,17 @@ func NewQueueMetrics(scope tally.Scope) *QueueMetrics {
 func NewMetrics(scope tally.Scope) *Metrics {
 	jobScope := scope.SubScope("job")
 	taskScope := scope.SubScope("task")
+	managerScope := scope.SubScope("manager")
 
 	jobMetrics := &JobMetrics{
-		JobCreate:           jobScope.Counter("recovered"),
-		JobCreateFailed:     jobScope.Counter("recover_failed"),
-		JobRecoveryDuration: jobScope.Gauge("recovery_duration"),
+		JobCreate:              jobScope.Counter("recovered"),
+		JobCreateFailed:        jobScope.Counter("recover_failed"),
+		JobRecoveryDuration:    jobScope.Gauge("recovery_duration"),
+		JobSucceeded:           jobScope.Counter("job_succeeded"),
+		JobKilled:              jobScope.Counter("job_killed"),
+		JobFailed:              jobScope.Counter("job_failed"),
+		JobRuntimeUpdated:      jobScope.Counter("runtime_update_success"),
+		JobRuntimeUpdateFailed: jobScope.Counter("runtime_update_fail"),
 	}
 
 	taskMetrics := &TaskMetrics{
@@ -65,5 +79,6 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		scope:       scope,
 		jobMetrics:  jobMetrics,
 		taskMetrics: taskMetrics,
+		IsLeader:    managerScope.Gauge("is_leader"),
 	}
 }

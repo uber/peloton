@@ -523,6 +523,11 @@ func (m *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "task_state=": {state}})
 }
 
+// GetTaskIDsForJobAndState returns a list of instance-ids for a peloton job with certain state.
+func (m *Store) GetTaskIDsForJobAndState(ctx context.Context, id *peloton.JobID, state string) ([]uint32, error) {
+	return nil, fmt.Errorf("unimplemented GetTaskIDsForJobAndState")
+}
+
 // GetTaskRuntime returns the task runtime peloton task
 func (m *Store) GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.RuntimeInfo, error) {
 	return nil, fmt.Errorf("unimplemented GetTaskRuntime")

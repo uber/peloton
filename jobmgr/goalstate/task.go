@@ -32,9 +32,6 @@ var (
 		},
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
-			task.TaskState_SUCCEEDED:   tracked.UntrackAction,
-			task.TaskState_KILLED:      tracked.UntrackAction,
-			task.TaskState_FAILED:      tracked.UntrackAction,
 		},
 		task.TaskState_KILLED: {
 			task.TaskState_INITIALIZED: tracked.StopAction,
@@ -51,9 +48,6 @@ var (
 			// The actions here are used to recover stuck tasks
 			// whose goal state was incorrectly set to FAILED.
 			task.TaskState_INITIALIZED: tracked.FailAction,
-			task.TaskState_FAILED:      tracked.UntrackAction,
-			task.TaskState_SUCCEEDED:   tracked.UntrackAction,
-			task.TaskState_KILLED:      tracked.UntrackAction,
 		},
 		task.TaskState_PREEMPTING: {
 			task.TaskState_INITIALIZED: tracked.StopAction,

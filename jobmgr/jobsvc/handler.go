@@ -14,11 +14,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
-	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
@@ -46,7 +46,6 @@ func InitServiceHandler(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	trackedManager tracked.Manager,
-	runtimeUpdater jobmgr_job.RuntimeUpdater,
 	clientName string) {
 
 	handler := &serviceHandler{
@@ -55,7 +54,6 @@ func InitServiceHandler(
 		respoolClient:  respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
 		resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
 		rootCtx:        context.Background(),
-		runtimeUpdater: runtimeUpdater,
 		trackedManager: trackedManager,
 		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
 	}
@@ -71,7 +69,6 @@ type serviceHandler struct {
 	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
 	rootCtx        context.Context
 	trackedManager tracked.Manager
-	runtimeUpdater jobmgr_job.RuntimeUpdater
 	metrics        *Metrics
 }
 
@@ -158,7 +155,7 @@ func (h *serviceHandler) Create(
 		Id:     jobID,
 		Config: jobConfig,
 	}
-	h.trackedManager.SetJob(jobID, jobInfo)
+	h.trackedManager.SetJob(jobID, jobInfo, tracked.UpdateAndSchedule)
 
 	return &job.CreateResponse{
 		JobId: jobID,
@@ -183,7 +180,7 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
-	if !jobmgr_job.NonTerminatedStates[jobRuntime.State] {
+	if util.IsPelotonJobStateTerminal(jobRuntime.State) {
 		msg := fmt.Sprintf("Job is in a terminal state:%s", jobRuntime.State)
 		h.metrics.JobUpdateFail.Inc(1)
 		return &job.UpdateResponse{
@@ -243,6 +240,13 @@ func (h *serviceHandler) Update(
 		}, nil
 	}
 
+	// Update the config in the cache.
+	jobInfo := &job.JobInfo{
+		Id:     jobID,
+		Config: newConfig,
+	}
+	h.trackedManager.SetJob(jobID, jobInfo, tracked.UpdateOnly)
+
 	log.WithField("job_id", jobID.GetValue()).
 		Infof("adding %d instances", len(diff.InstancesToAdd))
 
@@ -264,7 +268,6 @@ func (h *serviceHandler) Update(
 		h.trackedManager.SetTasks(jobID, runtimes, tracked.UpdateAndSchedule)
 	}
 
-	err = h.runtimeUpdater.UpdateJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
@@ -381,7 +384,7 @@ func (h *serviceHandler) Delete(
 		return nil, err
 	}
 
-	if jobmgr_job.NonTerminatedStates[jobRuntime.State] {
+	if !util.IsPelotonJobStateTerminal(jobRuntime.State) {
 		h.metrics.JobDeleteFail.Inc(1)
 		return nil, fmt.Errorf("Job is not in a terminal state: %s", jobRuntime.State)
 	}

@@ -15,7 +15,6 @@ import (
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/common"
-	jobmgr_job "code.uber.internal/infra/peloton/jobmgr/job"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -268,9 +267,6 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore
 	suite.handler.trackedManager = mockTrackedManager
-	updater := jobmgr_job.NewJobRuntimeUpdater(nil, mockJobStore, mockTaskStore, jobmgr_job.Config{}, tally.NoopScope)
-	updater.Start()
-	suite.handler.runtimeUpdater = updater
 
 	mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).
@@ -288,6 +284,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
+	mockTrackedManager.EXPECT().SetJob(jobID, gomock.Any(), gomock.Any())
 	mockTaskStore.EXPECT().
 		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).

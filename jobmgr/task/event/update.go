@@ -376,6 +376,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		runtime.CompletionTime = now().UTC().Format(time.RFC3339Nano)
 	}
 
+	// Update the task update times in job cache and then update the task runtime in cache and DB
+	p.trackedManager.UpdateJobUpdateTime(taskInfo.GetJobId(), event.MesosTaskStatus.Timestamp)
 	err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), taskInfo.GetInstanceId(), runtime, tracked.UpdateAndSchedule)
 	if err != nil {
 		log.WithError(err).

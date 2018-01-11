@@ -30,11 +30,11 @@ func TestEngineSuggestActionJobGoalState(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, tracked.JobCreateTasks, action)
 
-	jobRuntime.State = job.JobState_RUNNING
+	jobRuntime.State = job.JobState_SUCCEEDED
 	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
 	action, err = e.suggestJobAction(jobMock)
 	assert.NoError(t, err)
-	assert.Equal(t, tracked.JobNoAction, action)
+	assert.Equal(t, tracked.JobUntrackAction, action)
 
 	jobRuntime.GoalState = job.JobState_KILLED
 	jobRuntime.State = job.JobState_RUNNING
@@ -42,6 +42,13 @@ func TestEngineSuggestActionJobGoalState(t *testing.T) {
 	action, err = e.suggestJobAction(jobMock)
 	assert.NoError(t, err)
 	assert.Equal(t, tracked.JobKill, action)
+
+	jobRuntime.State = job.JobState_RUNNING
+	jobRuntime.GoalState = job.JobState_SUCCEEDED
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	action, err = e.suggestJobAction(jobMock)
+	assert.NoError(t, err)
+	assert.Equal(t, tracked.JobNoAction, action)
 }
 
 func TestEngineProcessJob(t *testing.T) {
@@ -63,6 +70,7 @@ func TestEngineProcessJob(t *testing.T) {
 
 	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
 	jobMock.EXPECT().RunAction(gomock.Any(), tracked.JobCreateTasks).Return(false, nil)
+	jobMock.EXPECT().JobRuntimeUpdater(gomock.Any()).Return(false, nil)
 	jobMock.EXPECT().ClearJobRuntime()
 	jobMock.EXPECT().SetLastDelay(gomock.Any()).Return()
 	managerMock.EXPECT().ScheduleJob(jobMock, gomock.Any())

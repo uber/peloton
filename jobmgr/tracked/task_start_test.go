@@ -42,6 +42,7 @@ func TestTaskStartStateless(t *testing.T) {
 				taskStore:     mockTaskStore,
 				resmgrClient:  mockResmgrClient,
 				mtx:           NewMetrics(tally.NoopScope),
+				jobs:          map[string]*job{},
 			},
 		},
 		runtime: &pb_task.RuntimeInfo{},
@@ -75,7 +76,7 @@ func TestTaskStartStateless(t *testing.T) {
 		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
-	assert.True(t, reschedule)
+	assert.False(t, reschedule)
 	assert.NoError(t, err)
 }
 
@@ -153,7 +154,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 	mockTaskLauncher.EXPECT().
 		LaunchStatefulTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(nil)
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
-	assert.True(t, reschedule)
+	assert.False(t, reschedule)
 	assert.NoError(t, err)
 }
 
@@ -256,6 +257,7 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 				resmgrClient:  mockResmgrClient,
 				taskLauncher:  mockTaskLauncher,
 				mtx:           NewMetrics(tally.NoopScope),
+				jobs:          map[string]*job{},
 			},
 		},
 		runtime: &pb_task.RuntimeInfo{
@@ -297,6 +299,6 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StartAction)
-	assert.True(t, reschedule)
+	assert.False(t, reschedule)
 	assert.NoError(t, err)
 }

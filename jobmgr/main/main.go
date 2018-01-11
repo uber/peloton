@@ -11,7 +11,6 @@ import (
 	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
@@ -287,7 +286,7 @@ func main() {
 		rootScope,
 	)
 
-	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher(), rootScope)
+	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher(), rootScope, cfg.JobManager.Tracked)
 	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, rootScope)
 
 	// Init placement processor
@@ -300,22 +299,12 @@ func main() {
 		rootScope,
 	)
 
-	// Init service handler.
-	// TODO: change to updated jobmgr.Config
-	runtimeUpdater := job.NewJobRuntimeUpdater(
-		trackedManager,
-		jobStore,
-		taskStore,
-		cfg.JobManager.Job,
-		rootScope)
-
 	jobsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
 		jobStore,
 		taskStore,
 		trackedManager,
-		runtimeUpdater,
 		common.PelotonResourceManager, // TODO: to be removed
 	)
 	tasksvc.InitServiceHandler(
@@ -324,7 +313,6 @@ func main() {
 		jobStore,
 		taskStore,
 		frameworkInfoStore,
-		runtimeUpdater,
 		trackedManager,
 		*mesosAgentWorkDir,
 	)
@@ -353,7 +341,7 @@ func main() {
 		taskStore,
 		volumeStore,
 		trackedManager,
-		[]event.Listener{runtimeUpdater},
+		[]event.Listener{},
 		rootScope,
 	)
 
@@ -364,7 +352,6 @@ func main() {
 		common.PelotonHostManager,
 		jobStore,
 		taskStore,
-		runtimeUpdater,
 		common.PelotonResourceManager,
 		rootScope,
 	)

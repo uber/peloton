@@ -55,7 +55,10 @@ type Manager interface {
 	SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo, req UpdateRequest)
 
 	// SetJob to the state in the JobInfo.
-	SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo)
+	// If req is set to UpdateAndSchedule, this will also scheduled the job for immediate evaluation.
+	// UpdateOnly will only update the job config and runtime. The primary use case is to update the
+	// job config in the cache which does not require any job action to be executed.
+	SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo, req UpdateRequest)
 
 	// UpdateTaskRuntimes updates all tasks with th new runtime info, by first attempting to persist it,
 	// and then storing it in the cache. If the attempt to persist fails, the local cache is cleaned up.
@@ -72,6 +75,9 @@ type Manager interface {
 	// If successful, the job will get scheduled in the goal state for next action.
 	UpdateJobRuntime(ctx context.Context, jobID *peloton.JobID, runtime *pb_job.RuntimeInfo, config *pb_job.JobConfig) error
 
+	// Update the task update times in the job cache
+	UpdateJobUpdateTime(jobID *peloton.JobID, t *float64)
+
 	// ScheduleTask to be evaluated by the goal state engine, at deadline.
 	ScheduleTask(t Task, deadline time.Time)
 
@@ -85,6 +91,9 @@ type Manager interface {
 	// WaitForScheduledJob blocked until a scheduled job is ready or the
 	// stopChan is closed.
 	WaitForScheduledJob(stopChan <-chan struct{}) Job
+
+	// Returns the minimum time duration between successive runs of job runtime updater
+	GetJobRuntimeDuration(jobType pb_job.JobType) time.Duration
 
 	// Start syncs jobs and tasks from DB, starts emitting metrics.
 	Start()
@@ -100,7 +109,9 @@ func NewManager(
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
 	taskLauncher launcher.Launcher,
-	parentScope tally.Scope) Manager {
+	parentScope tally.Scope,
+	cfg Config) Manager {
+	cfg.normalize()
 	scope := parentScope.SubScope("tracked")
 	return &manager{
 		jobs:          map[string]*job{},
@@ -113,6 +124,7 @@ func NewManager(
 		volumeStore:   volumeStore,
 		taskLauncher:  taskLauncher,
 		mtx:           NewMetrics(scope),
+		cfg:           cfg,
 	}
 }
 
@@ -136,8 +148,16 @@ type manager struct {
 
 	taskLauncher launcher.Launcher
 
+	cfg      Config
 	mtx      *Metrics
 	stopChan chan struct{}
+}
+
+func (m *manager) GetJobRuntimeDuration(jobType pb_job.JobType) time.Duration {
+	if jobType == pb_job.JobType_BATCH {
+		return m.cfg.JobBatchRuntimeUpdateInterval
+	}
+	return m.cfg.JobServiceRuntimeUpdateInterval
 }
 
 func (m *manager) GetJob(id *peloton.JobID) Job {
@@ -172,7 +192,7 @@ func (m *manager) GetAllJobs() map[string]Job {
 	return jobMap
 }
 
-func (m *manager) SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo) {
+func (m *manager) SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo, req UpdateRequest) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -185,6 +205,10 @@ func (m *manager) SetJob(jobID *peloton.JobID, jobInfo *pb_job.JobInfo) {
 	// Runtime will be dynamically obtained from DB when scheduled.
 	if jobInfo != nil {
 		j.updateRuntime(jobInfo)
+	}
+
+	if req == UpdateOnly {
+		return
 	}
 	m.jobScheduler.schedule(j, time.Now())
 }
@@ -207,11 +231,19 @@ func (m *manager) SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.Ru
 	}
 }
 
+func (m *manager) UpdateJobUpdateTime(jobID *peloton.JobID, t *float64) {
+	j := m.GetJob(jobID)
+	if j == nil {
+		j = m.addJob(jobID)
+	}
+	j.SetTaskUpdateTime(t)
+}
+
 func (m *manager) UpdateJobRuntime(ctx context.Context, jobID *peloton.JobID, runtime *pb_job.RuntimeInfo, config *pb_job.JobConfig) error {
 	if err := m.jobStore.UpdateJobRuntime(ctx, jobID, runtime); err != nil {
 		return err
 	}
-	m.SetJob(jobID, &pb_job.JobInfo{Runtime: runtime, Config: config})
+	m.SetJob(jobID, &pb_job.JobInfo{Runtime: runtime, Config: config}, UpdateAndSchedule)
 	return nil
 }
 
@@ -226,6 +258,20 @@ func (m *manager) UpdateTaskRuntimes(ctx context.Context, jobID *peloton.JobID, 
 	}
 
 	m.SetTasks(jobID, runtimes, req)
+
+	// Also schedule the job runtime updater to update job runtime
+	j := m.GetJob(jobID)
+	if j == nil {
+		j = m.addJob(jobID)
+	}
+
+	jobType := pb_job.JobType_SERVICE
+	jobConfig, _ := j.GetConfig()
+	if jobConfig != nil {
+		jobType = jobConfig.jobType
+	}
+
+	m.ScheduleJob(j, time.Now().Add(m.GetJobRuntimeDuration(jobType)))
 	return nil
 }
 
@@ -284,43 +330,22 @@ func (m *manager) addJob(id *peloton.JobID) *job {
 	return j
 }
 
-// clearTask from the manager, and remove job if needed.
-func (m *manager) clearTask(t *task) {
-	// Take both locks to ensure we don't clear job while concurrently adding to
-	// it, but also ensuring we never take the manager lock while holding a job
-	// lock, to avoid deadlocks.
+// clearJob removes the job and all it tasks from inventory
+func (m *manager) clearJob(j *job) {
 	m.Lock()
 	defer m.Unlock()
 
-	// First check if the task is already scheduled. If it is, ignore.
-	if t.index() != -1 {
+	if j.index() != -1 {
 		return
 	}
 
-	t.job.Lock()
-	defer t.job.Unlock()
+	j.Lock()
+	defer j.Unlock()
 
-	if (t.job.config != nil) && (t.job.config.sla.GetMaximumRunningInstances() > 0) {
-		if t.job.currentScheduledTasks > 0 {
-			t.job.currentScheduledTasks--
-		}
-		err := t.job.evaluateJobSLA()
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", t.job.ID()).
-				WithField("instance_id", t.ID()).
-				Error("failed to evaluate sla for the job")
-			t.job.currentScheduledTasks++
-			m.ScheduleTask(t, time.Now())
-			return
-		}
+	for instID := range j.tasks {
+		delete(j.tasks, instID)
 	}
-
-	delete(t.job.tasks, t.id)
-	// TODO fix delete of job.
-	if len(t.job.tasks) == 0 {
-		delete(m.jobs, t.job.id.GetValue())
-	}
+	delete(m.jobs, j.ID().GetValue())
 }
 
 // Start syncs jobs and tasks from DB, starts emitting metrics.
@@ -331,6 +356,7 @@ func (m *manager) Start() {
 		m.Unlock()
 		return
 	}
+	m.mtx.IsLeader.Update(1.0)
 	m.running = true
 
 	m.stopChan = make(chan struct{})
@@ -356,6 +382,7 @@ func (m *manager) Stop() {
 		return
 	}
 
+	m.mtx.IsLeader.Update(0.0)
 	m.running = false
 
 	for _, job := range m.jobs {
@@ -381,7 +408,7 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 		m.SetJob(id, &pb_job.JobInfo{
 			Runtime: jobRuntime,
 			Config:  jobConfig,
-		})
+		}, UpdateAndSchedule)
 	}
 
 	runtimes, err := m.taskStore.GetTaskRuntimesForJobByRange(
@@ -413,11 +440,6 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 			if maxInstances > 0 {
 				// Only add to job tracker, do not schedule to run it.
 				j.setTask(instanceID, runtime)
-				noTasks := uint32(len(j.GetAllTasks()))
-				if noTasks == jobConfig.InstanceCount {
-					// all tasks are present in tracker. now determine which ones need to start.
-					j.recoverJobWithSLA()
-				}
 			} else {
 				if runtime.GetState() == pb_task.TaskState_INITIALIZED && jobRuntime.GetState() == pb_job.JobState_INITIALIZED {
 					// These tasks will be created using recovery with job goal state
@@ -435,6 +457,14 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 
 	if len(updateOnlyRuntimes) > 0 {
 		m.SetTasks(id, updateOnlyRuntimes, UpdateOnly)
+	}
+
+	// If all tasks have been loaded into cache, then run job action as well
+	noTasks := uint32(len(j.GetAllTasks()))
+	if noTasks == jobConfig.InstanceCount {
+		// all tasks are present in tracker, now run the runtime updater.
+		// which will start the required number of instances.
+		m.ScheduleJob(j, time.Now())
 	}
 	return
 }

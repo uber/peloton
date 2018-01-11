@@ -32,46 +32,6 @@ func TestManagerAddAndGet(t *testing.T) {
 	assert.Equal(t, j, m.addJob(jobID))
 }
 
-func TestManagerClearTask(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	m := &manager{
-		jobs:          map[string]*job{},
-		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
-		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
-		running:       true,
-	}
-
-	j := m.addJob(jobID)
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
-	runtimes[0] = &pb_task.RuntimeInfo{}
-	runtimes[1] = &pb_task.RuntimeInfo{}
-	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
-	t0 := j.GetTask(0)
-	t1 := j.GetTask(1)
-	assert.Equal(t, 1, len(m.jobs))
-	assert.Equal(t, 2, len(j.tasks))
-	assert.True(t, t0.IsScheduled())
-	assert.True(t, t1.IsScheduled())
-
-	m.clearTask(t0.(*task))
-	assert.Equal(t, 1, len(m.jobs))
-	assert.Equal(t, 2, len(j.tasks))
-
-	assert.Equal(t, 1, len(m.jobs))
-	tScheduled := m.WaitForScheduledTask(nil)
-	assert.NotNil(t, tScheduled)
-	m.clearTask(tScheduled.(*task))
-	assert.Equal(t, 1, len(m.jobs))
-	assert.Equal(t, 1, len(j.tasks))
-
-	tScheduled = m.WaitForScheduledTask(nil)
-	assert.NotNil(t, tScheduled)
-	m.clearTask(tScheduled.(*task))
-	assert.Equal(t, 0, len(m.jobs))
-	assert.Equal(t, 0, len(j.tasks))
-}
-
 func TestManagerSetAndClearJob(t *testing.T) {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 
@@ -90,7 +50,7 @@ func TestManagerSetAndClearJob(t *testing.T) {
 		running:       true,
 	}
 
-	m.SetJob(jobID, jobInfo)
+	m.SetJob(jobID, jobInfo, UpdateAndSchedule)
 	assert.Equal(t, 1, len(m.jobs))
 	m.WaitForScheduledJob(nil)
 
@@ -99,8 +59,7 @@ func TestManagerSetAndClearJob(t *testing.T) {
 	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
 	m.WaitForScheduledTask(nil)
 	j0 := m.GetJob(jobID)
-	t0 := j0.GetTask(0)
-	m.clearTask(t0.(*task))
+	m.clearJob(j0.(*job))
 	assert.Equal(t, 0, len(m.jobs))
 }
 

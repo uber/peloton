@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"time"
 
@@ -66,7 +67,6 @@ type TaskAction string
 // Actions available to be performed on the task.
 const (
 	NoAction             TaskAction = "no_action"
-	UntrackAction        TaskAction = "untrack"
 	KilledAction         TaskAction = "killed"
 	StartAction          TaskAction = "start_task"
 	StopAction           TaskAction = "stop_task"
@@ -173,21 +173,22 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) (bool, error) {
 	case NoAction:
 		reschedule = false
 
-	case UntrackAction:
-		reschedule = false
-		t.job.m.clearTask(t)
-
 	case KilledAction:
 		// clear the killAttempts before clear the task
 		t.ClearKillAttempts()
 		reschedule = false
-		t.job.m.clearTask(t)
 
 	case StartAction:
 		err = t.start(ctx)
+		if err == nil {
+			reschedule = false
+		}
 
 	case StopAction:
 		err = t.stop(ctx)
+		if err == nil {
+			reschedule = false
+		}
 
 	case InitializeAction:
 		err = t.initialize(ctx)
@@ -241,7 +242,7 @@ func (t *task) getPostPreemptAction(ctx context.Context) (TaskAction, error) {
 	}
 	if pp != nil && pp.GetKillOnPreempt() {
 		// We are done , we don't want to reschedule it
-		return UntrackAction, nil
+		return NoAction, nil
 	}
 	return InitializeAction, nil
 }
@@ -263,7 +264,37 @@ func (t *task) UpdateRuntime(runtime *pb_task.RuntimeInfo) {
 	t.Lock()
 	defer t.Unlock()
 
-	// TODO: Reject update if older than current revision.
+	if reflect.DeepEqual(t.runtime, runtime) {
+		return
+	}
+
+	// The runtime version needs to be monotonically increasing.
+	// If the revision in the update is smaller than the current version,
+	// then ignore the update. If the revisions are the same, then reset the
+	// cache and let goal state or job runtime updater reload the runtime from DB.
+
+	if t.runtime.GetRevision().GetVersion() > runtime.GetRevision().GetVersion() {
+		log.WithField("current_revision", t.runtime.GetRevision().GetVersion()).
+			WithField("new_revision", runtime.GetRevision().GetVersion()).
+			WithField("new_state", runtime.GetState().String()).
+			WithField("old_state", t.runtime.GetState().String()).
+			WithField("new_goal_state", runtime.GetGoalState().String()).
+			WithField("old_goal_state", t.runtime.GetGoalState().String()).
+			Info("got old revision")
+		return
+	}
+
+	if t.runtime != nil && t.runtime.GetRevision().GetVersion() == runtime.GetRevision().GetVersion() {
+		log.WithField("current_revision", t.runtime.GetRevision().GetVersion()).
+			WithField("new_revision", runtime.GetRevision().GetVersion()).
+			WithField("new_state", runtime.GetState().String()).
+			WithField("old_state", t.runtime.GetState().String()).
+			WithField("new_goal_state", runtime.GetGoalState().String()).
+			WithField("old_goal_state", t.runtime.GetGoalState().String()).
+			Debug("got same revision")
+		t.runtime = nil
+	}
+
 	t.runtime = runtime
 
 	now := time.Now()

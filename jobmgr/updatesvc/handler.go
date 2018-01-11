@@ -7,8 +7,8 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/update/svc"
-	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -40,7 +40,7 @@ func (h *serviceHandler) CreateUpdate(ctx context.Context, req *svc.CreateUpdate
 		return nil, yarpcerrors.NotFoundErrorf("job not found")
 	}
 
-	if !job.NonTerminatedStates[jr.GetState()] {
+	if util.IsPelotonJobStateTerminal(jr.GetState()) {
 		return nil, yarpcerrors.InvalidArgumentErrorf("cannot update terminated job")
 	}
 

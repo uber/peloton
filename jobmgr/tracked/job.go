@@ -20,9 +20,10 @@ type JobAction string
 
 // Actions available to be performed on the job.
 const (
-	JobNoAction    JobAction = "no_action"
-	JobCreateTasks JobAction = "create_tasks"
-	JobKill        JobAction = "job_kill"
+	JobNoAction      JobAction = "noop"
+	JobCreateTasks   JobAction = "create_tasks"
+	JobKill          JobAction = "job_kill"
+	JobUntrackAction JobAction = "untrack"
 )
 
 // Job tracked by the system, serving as a best effort view of what's stored
@@ -34,13 +35,19 @@ type Job interface {
 	// GetTask from the task id.
 	GetTask(id uint32) Task
 
-	// Get All Tasks returns all tasks for the job
+	// GetAllTasks returns all tasks for the job
 	GetAllTasks() map[uint32]Task
+
+	// GetTasksNum returns total number of tasks in cache for the job
+	GetTasksNum() uint32
 
 	// RunAction on the job. Returns a bool representing if the job should
 	// be rescheduled by the goalstate engine and an error representing the
 	// result of the action.
 	RunAction(ctx context.Context, action JobAction) (bool, error)
+
+	// GetConfig fetches the job config stored in the cache
+	GetConfig() (*JobConfig, error)
 
 	// GetJobRuntime returns the runtime of the job
 	GetJobRuntime(ctx context.Context) (*pb_job.RuntimeInfo, error)
@@ -53,24 +60,36 @@ type Job interface {
 
 	// GetLastDelay gets the last delay value
 	GetLastDelay() time.Duration
+
+	// Set the update times for the job
+	SetTaskUpdateTime(t *float64)
+
+	// TODO JobRuntimeUpdater needs to be moved away from cache into
+	// a job specific structure.
+	// JobRuntimeUpdater updates the runtime of the job based on the task states
+	JobRuntimeUpdater(ctx context.Context) (bool, error)
 }
 
 func newJob(id *peloton.JobID, m *manager) *job {
 	return &job{
-		queueItemMixin: newQueueItemMixing(),
-		id:             id,
-		m:              m,
-		tasks:          map[uint32]*task{},
-		lastDelay:      0,
+		queueItemMixin:   newQueueItemMixing(),
+		id:               id,
+		m:                m,
+		tasks:            map[uint32]*task{},
+		initializedTasks: map[uint32]*task{},
+		lastDelay:        0,
 	}
 }
 
-// config of a job. This encapsulate a subset of the job config, needed
+// JobConfig of a job. This encapsulate a subset of the job config, needed
 // for processing actions.
-type jobConfig struct {
+// TODO this structure needs to go away and pb_job.JobConfig should be
+// used to store the job configuration in the cache as well.
+type JobConfig struct {
 	instanceCount uint32
 	respoolID     *peloton.ResourcePoolID
 	sla           *pb_job.SlaConfig
+	jobType       pb_job.JobType
 }
 
 type job struct {
@@ -78,18 +97,18 @@ type job struct {
 	queueItemMixin
 
 	id        *peloton.JobID
-	config    *jobConfig
+	config    *JobConfig
 	m         *manager
 	runtime   *pb_job.RuntimeInfo
 	lastDelay time.Duration
 
-	// currentScheduledTasks is used to track number of tasks scheduled.
-	// It is used to ensure that number of tasks scheduled does not
-	// exceed MaximumRunningInstances in the job SLA configuration
-	currentScheduledTasks uint32
+	// map of tasks in initialized state
+	initializedTasks map[uint32]*task
 
-	// TODO: Use list as we expect to always track tasks 0..n-1.
 	tasks map[uint32]*task
+
+	firstTaskUpdateTime float64
+	lastTaskUpdateTime  float64
 }
 
 func (j *job) ID() *peloton.JobID {
@@ -124,6 +143,9 @@ func (j *job) RunAction(ctx context.Context, action JobAction) (bool, error) {
 		return j.createTasks(ctx)
 	case JobKill:
 		return j.killJob(ctx)
+	case JobUntrackAction:
+		j.m.clearJob(j)
+		return false, nil
 	default:
 		return false, fmt.Errorf("unsupported job action %v", action)
 	}
@@ -148,6 +170,13 @@ func (j *job) GetAllTasks() map[uint32]Task {
 		taskMap[k] = v
 	}
 	return taskMap
+}
+
+func (j *job) GetTasksNum() uint32 {
+	j.RLock()
+	defer j.RUnlock()
+
+	return uint32(len(j.tasks))
 }
 
 func (j *job) setTask(id uint32, runtime *pb_task.RuntimeInfo) *task {
@@ -201,22 +230,71 @@ func (j *job) updateRuntime(jobInfo *pb_job.JobInfo) {
 
 	j.runtime = jobInfo.GetRuntime()
 	if jobInfo.GetConfig() != nil {
-		j.config = &jobConfig{
+		j.config = &JobConfig{
 			instanceCount: jobInfo.Config.InstanceCount,
 			sla:           jobInfo.Config.Sla,
 			respoolID:     jobInfo.Config.RespoolID,
+			jobType:       jobInfo.Config.GetType(),
 		}
 	}
 }
 
-func (j *job) getConfig() (*jobConfig, error) {
+func (j *job) GetConfig() (*JobConfig, error) {
 	j.RLock()
 	defer j.RUnlock()
 
+	var jobConfig JobConfig
 	if j.config == nil {
 		return nil, errors.New("missing job config in goal state")
 	}
-	return j.config, nil
+
+	jobConfig = *j.config
+	if j.config.sla != nil {
+		*jobConfig.sla = *j.config.sla
+	}
+	if j.config.respoolID != nil {
+		*jobConfig.respoolID = *j.config.respoolID
+	}
+	return &jobConfig, nil
+}
+
+func (j *job) clearInitializedTaskMap() {
+	j.Lock()
+	defer j.Unlock()
+
+	j.initializedTasks = map[uint32]*task{}
+}
+
+func (j *job) addTaskToInitializedTaskMap(t *task) {
+	j.Lock()
+	defer j.Unlock()
+
+	j.initializedTasks[t.ID()] = t
+}
+
+func (j *job) SetTaskUpdateTime(t *float64) {
+	j.Lock()
+	defer j.Unlock()
+
+	if j.firstTaskUpdateTime == 0 {
+		j.firstTaskUpdateTime = *t
+	}
+
+	j.lastTaskUpdateTime = *t
+}
+
+func (j *job) getFirstTaskUpdateTime() float64 {
+	j.RLock()
+	j.RUnlock()
+
+	return j.firstTaskUpdateTime
+}
+
+func (j *job) getLastTaskUpdateTime() float64 {
+	j.RLock()
+	j.RUnlock()
+
+	return j.lastTaskUpdateTime
 }
 
 // killJob will stop all tasks in the job.
@@ -262,6 +340,24 @@ func (j *job) killJob(ctx context.Context) (bool, error) {
 		log.WithError(err).
 			WithField("job_id", j.id.GetValue()).
 			Error("failed to update task runtimes to kill a job")
+		return true, err
+	}
+
+	// Get job runtime and update job state to killing
+	jobRuntime, err := j.m.jobStore.GetJobRuntime(ctx, j.id)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.id.GetValue()).
+			Error("failed to get job runtime during job kill")
+		return true, err
+	}
+
+	jobRuntime.State = pb_job.JobState_KILLING
+	err = j.m.jobStore.UpdateJobRuntime(ctx, j.id, jobRuntime)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.id.GetValue()).
+			Error("failed to update job runtime during job kill")
 		return true, err
 	}
 

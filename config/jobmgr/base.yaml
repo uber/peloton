@@ -29,6 +29,9 @@ storage:
 job_manager:
   http_port: 5292
   grpc_port: 5392
+  tracked:
+    job_batch_runtime_update_interval: 30s
+    job_service_runtime_update_interval: 1s
   task_launcher:
     placement_dequeue_limit: 10
     get_placements_timeout_ms: 100

@@ -53,6 +53,7 @@ func TestTaskInitialize(t *testing.T) {
 				mtx:       NewMetrics(tally.NoopScope),
 				taskStore: mockTaskStore,
 				jobStore:  mockJobStore,
+				jobs:      map[string]*job{},
 			},
 		},
 	}

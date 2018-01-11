@@ -1,5 +1,7 @@
 package event
 
+// TODO Remove this file as it not being used
+
 import (
 	"context"
 	"errors"
@@ -33,14 +35,13 @@ type StatusUpdateListenerRM interface {
 
 // StatusUpdate reads and processes the task state change events from HM
 type statusUpdateRM struct {
-	jobStore          storage.JobStore
-	taskStore         storage.TaskStore
-	eventClients      map[string]*eventstream.Client
-	applier           *asyncEventProcessor
-	jobRuntimeUpdater StatusUpdateListenerRM
-	rootCtx           context.Context
-	resmgrClient      resmgrsvc.ResourceManagerServiceYARPCClient
-	metrics           *Metrics
+	jobStore     storage.JobStore
+	taskStore    storage.TaskStore
+	eventClients map[string]*eventstream.Client
+	applier      *asyncEventProcessor
+	rootCtx      context.Context
+	resmgrClient resmgrsvc.ResourceManagerServiceYARPCClient
+	metrics      *Metrics
 }
 
 // Singleton task status updater
@@ -53,7 +54,6 @@ func InitTaskStatusUpdateRM(
 	server string,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	jobRuntimeUpdater StatusUpdateListenerRM,
 	resmgrClientName string,
 	parentScope tally.Scope) {
 	onceInitStatusUpdateRM.Do(func() {
@@ -78,7 +78,6 @@ func InitTaskStatusUpdateRM(
 			statusUpdaterRM,
 			parentScope.SubScope("ResmgrEventStreamClient"))
 		statusUpdaterRM.eventClients[common.PelotonResourceManager] = eventClientRM
-		statusUpdaterRM.jobRuntimeUpdater = jobRuntimeUpdater
 	})
 }
 
@@ -154,7 +153,6 @@ func (p *statusUpdateRM) ProcessStatusUpdate(ctx context.Context, event *pb_even
 
 // OnEvents is the callback function notifying a batch of events
 func (p *statusUpdateRM) OnEvents(events []*pb_eventstream.Event) {
-	p.jobRuntimeUpdater.OnEvents(events)
 }
 
 // Start starts processing status update events
@@ -163,9 +161,6 @@ func (p *statusUpdateRM) Start() {
 		client.Start()
 	}
 	log.Info("Task status updater started")
-	if p.jobRuntimeUpdater != nil {
-		p.jobRuntimeUpdater.Start()
-	}
 }
 
 // Stop stops processing status update events
@@ -174,8 +169,5 @@ func (p *statusUpdateRM) Stop() {
 		client.Stop()
 	}
 	log.Info("Task status updater stopped")
-	if p.jobRuntimeUpdater != nil {
-		p.jobRuntimeUpdater.Stop()
-	}
 
 }

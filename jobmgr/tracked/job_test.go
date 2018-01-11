@@ -45,7 +45,7 @@ func TestJob(t *testing.T) {
 	assert.Equal(t, jobRuntime, runtime)
 	assert.NoError(t, err)
 
-	config, err := j.getConfig()
+	config, err := j.GetConfig()
 	assert.Equal(t, jobConfig.RespoolID, config.respoolID)
 	assert.Equal(t, jobConfig.InstanceCount, config.instanceCount)
 	assert.NoError(t, err)
@@ -133,11 +133,26 @@ func TestJobKill(t *testing.T) {
 		Reason:    "",
 	}
 
+	jobRuntime := &pb_job.RuntimeInfo{
+		State:     pb_job.JobState_RUNNING,
+		GoalState: pb_job.JobState_SUCCEEDED,
+	}
+	newJobRuntime := &pb_job.RuntimeInfo{
+		State:     pb_job.JobState_KILLING,
+		GoalState: pb_job.JobState_SUCCEEDED,
+	}
+
 	taskStore.EXPECT().
 		GetTaskRuntimesForJobByRange(gomock.Any(), j.id, gomock.Any()).
 		Return(runtimes, nil)
 	taskStore.EXPECT().
 		UpdateTaskRuntimes(gomock.Any(), j.id, newRuntimes).
+		Return(nil)
+	jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), j.id).
+		Return(jobRuntime, nil)
+	jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), j.id, newJobRuntime).
 		Return(nil)
 
 	reschedule, err := j.RunAction(context.Background(), JobKill)

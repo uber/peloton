@@ -15,13 +15,12 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-
-	job_mocks "code.uber.internal/infra/peloton/jobmgr/job/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	"code.uber.internal/infra/peloton/util"
+
+	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/util"
 )
 
 const (
@@ -419,8 +418,6 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 	suite.handler.taskStore = mockTaskStore
 	trackedMock := mocks.NewMockManager(ctrl)
 	suite.handler.trackedManager = trackedMock
-	updaterMock := job_mocks.NewMockRuntimeUpdater(ctrl)
-	suite.handler.runtimeUpdater = updaterMock
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -440,15 +437,13 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockJobStore.EXPECT().
 			GetJobRuntime(gomock.Any(), suite.testJobID).Return(suite.testJobRuntime, nil),
+		mockJobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.testJobID, gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
 	)
 
 	trackedMock.EXPECT().UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-
-	gomock.InOrder(
-		updaterMock.EXPECT().UpdateJob(gomock.Any(), suite.testJobID).Return(nil),
-	)
 
 	var request = &task.StartRequest{
 		JobId: suite.testJobID,
@@ -479,8 +474,6 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	suite.handler.taskStore = mockTaskStore
 	trackedMock := mocks.NewMockManager(ctrl)
 	suite.handler.trackedManager = trackedMock
-	updaterMock := job_mocks.NewMockRuntimeUpdater(ctrl)
-	suite.handler.runtimeUpdater = updaterMock
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -504,13 +497,14 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockJobStore.EXPECT().
 			GetJobRuntime(gomock.Any(), suite.testJobID).Return(suite.testJobRuntime, nil),
+		mockJobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.testJobID, gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 	)
 
 	gomock.InOrder(
 		trackedMock.EXPECT().UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		updaterMock.EXPECT().UpdateJob(gomock.Any(), suite.testJobID).Return(nil),
 	)
 
 	var request = &task.StartRequest{
@@ -541,8 +535,6 @@ func (suite *TaskHandlerTestSuite) TestGetEvents() {
 	suite.handler.taskStore = mockTaskStore
 	trackedMock := mocks.NewMockManager(ctrl)
 	suite.handler.trackedManager = trackedMock
-	updaterMock := job_mocks.NewMockRuntimeUpdater(ctrl)
-	suite.handler.runtimeUpdater = updaterMock
 
 	taskEvents := suite.createTestTaskEvents()
 
@@ -637,6 +629,8 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockJobStore.EXPECT().
 			GetJobRuntime(gomock.Any(), suite.testJobID).Return(suite.testJobRuntime, nil),
+		mockJobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.testJobID, gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		mockTaskStore.EXPECT().
@@ -672,8 +666,6 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 	suite.handler.taskStore = mockTaskStore
 	trackedMock := mocks.NewMockManager(ctrl)
 	suite.handler.trackedManager = trackedMock
-	updaterMock := job_mocks.NewMockRuntimeUpdater(ctrl)
-	suite.handler.runtimeUpdater = updaterMock
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -696,10 +688,11 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockJobStore.EXPECT().
 			GetJobRuntime(gomock.Any(), suite.testJobID).Return(suite.testJobRuntime, nil),
+		mockJobStore.EXPECT().
+			UpdateJobRuntime(gomock.Any(), suite.testJobID, gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		trackedMock.EXPECT().UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		updaterMock.EXPECT().UpdateJob(gomock.Any(), suite.testJobID).Return(nil),
 	)
 
 	var request = &task.StartRequest{

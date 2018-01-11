@@ -1297,6 +1297,45 @@ func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.Jo
 	}, nil
 }
 
+//TODO GetTaskIDsForJobAndState and GetTasksForJobAndState have similar functionalities.
+// They need to be merged with the common function only returning a task summary
+// instead of full config and runtime.
+
+// GetTaskIDsForJobAndState returns a list of instance-ids for a peloton job with certain state.
+func (s *Store) GetTaskIDsForJobAndState(ctx context.Context, id *peloton.JobID, state string) ([]uint32, error) {
+	jobID := id.GetValue()
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("instance_id").From(taskJobStateView).
+		Where(qb.Eq{"job_id": jobID, "state": state})
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID).
+			WithField("task_state", state).
+			Error("fail to fetch instance id list from db")
+		s.metrics.TaskMetrics.TaskIDsGetForJobAndStateFail.Inc(1)
+		return nil, err
+	}
+
+	var result []uint32
+	for _, value := range allResults {
+		var record TaskRuntimeRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", jobID).
+				WithField("task_state", state).
+				Error("fail to fill task id into task record")
+			s.metrics.TaskMetrics.TaskIDsGetForJobAndStateFail.Inc(1)
+			return nil, err
+		}
+		result = append(result, uint32(record.InstanceID))
+	}
+
+	s.metrics.TaskMetrics.TaskIDsGetForJobAndState.Inc(1)
+	return result, nil
+}
+
 // GetTasksForJobAndState returns the tasks for a peloton job with certain state.
 // result map key is TaskID, value is TaskHost
 func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
@@ -1328,6 +1367,7 @@ func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, s
 		}
 		s.metrics.TaskMetrics.TaskGetForJobAndState.Inc(1)
 	}
+	s.metrics.TaskMetrics.TaskGetForJobAndState.Inc(1)
 	return resultMap, nil
 }
 

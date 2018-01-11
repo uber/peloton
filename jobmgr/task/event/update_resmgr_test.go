@@ -1,5 +1,7 @@
 package event
 
+// TODO Remove this file as it not being used
+
 import (
 	"context"
 	"fmt"

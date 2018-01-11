@@ -47,7 +47,7 @@ func TestTaskStop(t *testing.T) {
 	tt.runtime = &pb_task.RuntimeInfo{MesosTaskId: taskID}
 
 	reschedule, err = tt.RunAction(context.Background(), StopAction)
-	assert.True(t, reschedule)
+	assert.False(t, reschedule)
 	assert.NoError(t, err)
 }
 
@@ -95,7 +95,7 @@ func TestTaskStopTimeout(t *testing.T) {
 	hostMock.EXPECT().ShutdownExecutors(context.Background(), shutdownReq).Return(nil, nil)
 	reschedule, err := tt.RunAction(context.Background(), StopAction)
 
-	assert.True(t, reschedule)
+	assert.False(t, reschedule)
 	assert.NoError(t, err)
 }
 
@@ -109,6 +109,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	m := &manager{
 		jobs:          map[string]*job{},
 		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		taskStore:     mockTaskStore,
 		resmgrClient:  mockResmgr,
 		mtx:           NewMetrics(tally.NoopScope),
@@ -151,7 +152,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StopAction)
-	assert.True(t, reschedule)
+	assert.False(t, reschedule)
 	assert.NoError(t, err)
 
 	// Test that it's rescheduled immediately as we updated the state.
@@ -168,6 +169,7 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 	m := &manager{
 		jobs:          map[string]*job{},
 		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 		taskStore:     mockTaskStore,
 		resmgrClient:  mockResmgr,
 		mtx:           NewMetrics(tally.NoopScope),
@@ -210,7 +212,7 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
 
 	reschedule, err := tt.RunAction(context.Background(), StopAction)
-	assert.True(t, reschedule)
+	assert.False(t, reschedule)
 	assert.NoError(t, err)
 
 	// Test that it's rescheduled immediately as we updated the state.

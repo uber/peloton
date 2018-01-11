@@ -52,6 +52,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      jobID,
 		}
 		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
+		mockTrackedManager.EXPECT().UpdateJobUpdateTime(gomock.Any(), gomock.Any()).Return()
 		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any(), tracked.UpdateAndSchedule).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {
@@ -85,6 +86,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      jobID,
 		}
 		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
+		mockTrackedManager.EXPECT().UpdateJobUpdateTime(gomock.Any(), gomock.Any()).Return()
 		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any(), tracked.UpdateAndSchedule).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {
@@ -118,6 +120,7 @@ func TestBucketEventProcessor(t *testing.T) {
 			JobId:      jobID,
 		}
 		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
+		mockTrackedManager.EXPECT().UpdateJobUpdateTime(gomock.Any(), gomock.Any()).Return()
 		mockTrackedManager.EXPECT().UpdateTaskRuntime(context.Background(), jobID, i, gomock.Any(), tracked.UpdateAndSchedule).Return(nil)
 	}
 	for i := uint32(0); i < n; i++ {

@@ -24,12 +24,23 @@ var (
 		},
 		job.JobState_SUCCEEDED: {
 			job.JobState_INITIALIZED: tracked.JobCreateTasks,
+			job.JobState_SUCCEEDED:   tracked.JobUntrackAction,
+			job.JobState_FAILED:      tracked.JobUntrackAction,
+			job.JobState_KILLED:      tracked.JobUntrackAction,
 		},
 		job.JobState_KILLED: {
 			job.JobState_UNKNOWN:     tracked.JobKill,
 			job.JobState_INITIALIZED: tracked.JobKill,
 			job.JobState_PENDING:     tracked.JobKill,
 			job.JobState_RUNNING:     tracked.JobKill,
+			job.JobState_SUCCEEDED:   tracked.JobUntrackAction,
+			job.JobState_FAILED:      tracked.JobUntrackAction,
+			job.JobState_KILLED:      tracked.JobUntrackAction,
+		},
+		job.JobState_FAILED: {
+			job.JobState_SUCCEEDED: tracked.JobUntrackAction,
+			job.JobState_FAILED:    tracked.JobUntrackAction,
+			job.JobState_KILLED:    tracked.JobUntrackAction,
 		},
 	}
 )
@@ -39,6 +50,10 @@ func (e *engine) processJob(j tracked.Job) {
 	var success bool
 	action, err := e.suggestJobAction(j)
 	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.ID()).
+			Error("failed to get job action, retry")
+		e.metrics.JobGoalStateActionSuggestFail.Inc(1)
 		reschedule = true
 		success = false
 	} else {
@@ -71,12 +86,21 @@ func (e *engine) processJob(j tracked.Job) {
 func (e *engine) runJobAction(j tracked.Job, action tracked.JobAction) (bool, bool) {
 	reschedule, err := j.RunAction(context.Background(), action)
 	if err != nil {
-		log.
-			WithField("job_id", j.ID().GetValue()).
+		log.WithField("job_id", j.ID().GetValue()).
 			WithField("action", action).
 			WithError(err).
 			Error("failed to execute job goalstate action")
+	} else {
+		var runtimeReschedule bool
+		runtimeReschedule, err = j.JobRuntimeUpdater(context.Background())
+		if runtimeReschedule == true {
+			reschedule = true
+		}
 	}
+
+	// Currently, the cache and DB can go out of sync. So, we currently reload job runtime
+	// everytime we run the goal state. After implementation of write-through cache which
+	// will keep cache and DB always in sync, this can go away.
 	j.ClearJobRuntime()
 	return reschedule, err == nil
 }
@@ -85,6 +109,7 @@ func (e *engine) suggestJobAction(j tracked.Job) (tracked.JobAction, error) {
 	// first get the job runtime
 	ctx, cancel := context.WithTimeout(context.Background(), _defaultJobActionTimeout)
 	defer cancel()
+
 	runtime, err := j.GetJobRuntime(ctx)
 	if err != nil {
 		return tracked.JobNoAction, err

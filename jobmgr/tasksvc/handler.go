@@ -20,7 +20,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/job"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
@@ -47,7 +46,6 @@ func InitServiceHandler(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
-	runtimeUpdater job.RuntimeUpdater,
 	trackedManager tracked.Manager,
 	mesosAgentWorkDir string) {
 
@@ -55,7 +53,6 @@ func InitServiceHandler(
 		taskStore:          taskStore,
 		jobStore:           jobStore,
 		frameworkInfoStore: frameworkInfoStore,
-		runtimeUpdater:     runtimeUpdater,
 		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		httpClient:         &http.Client{Timeout: _httpClientTimeout},
@@ -71,7 +68,6 @@ type serviceHandler struct {
 	taskStore          storage.TaskStore
 	jobStore           storage.JobStore
 	frameworkInfoStore storage.FrameworkInfoStore
-	runtimeUpdater     job.RuntimeUpdater
 	metrics            *Metrics
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	httpClient         *http.Client
@@ -266,30 +262,29 @@ func (m *serviceHandler) Start(
 		}, nil
 	}
 
-	if jobRuntime.GetGoalState() == pb_job.JobState_KILLED {
-		if jobConfig.GetType() == pb_job.JobType_SERVICE {
-			jobRuntime.GoalState = pb_job.JobState_RUNNING
-		} else {
-			jobRuntime.GoalState = pb_job.JobState_SUCCEEDED
-		}
+	if jobConfig.GetType() == pb_job.JobType_SERVICE {
+		jobRuntime.GoalState = pb_job.JobState_RUNNING
+	} else {
+		jobRuntime.GoalState = pb_job.JobState_SUCCEEDED
+	}
+	jobRuntime.State = pb_job.JobState_PENDING
 
-		// Since no action needs to be taken at a job level, only update the DB
-		// and not the cache. Whenever, a job action needs to be taken, the
-		// cache is always updated at that time.
-		err := m.jobStore.UpdateJobRuntime(ctx, body.GetJobId(), jobRuntime)
-		if err != nil {
-			log.WithField("job", body.JobId).
-				WithError(err).
-				Error("failed to set job runtime in db")
-			m.metrics.TaskStartFail.Inc(1)
-			return &task.StartResponse{
-				Error: &task.StartResponse_Error{
-					Failure: &task.TaskStartFailure{
-						Message: fmt.Sprintf("task start failed while updating job status %v", err),
-					},
+	// Since no action needs to be taken at a job level, only update the DB
+	// and not the cache. Whenever, a job action needs to be taken, the
+	// cache is always updated at that time.
+	err = m.jobStore.UpdateJobRuntime(ctx, body.GetJobId(), jobRuntime)
+	if err != nil {
+		log.WithField("job", body.JobId).
+			WithError(err).
+			Error("failed to set job runtime in db")
+		m.metrics.TaskStartFail.Inc(1)
+		return &task.StartResponse{
+			Error: &task.StartResponse_Error{
+				Failure: &task.TaskStartFailure{
+					Message: fmt.Sprintf("task start failed while updating job status %v", err),
 				},
-			}, nil
-		}
+			},
+		}, nil
 	}
 
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
@@ -344,10 +339,6 @@ func (m *serviceHandler) Start(
 	} else {
 		startedInstanceIds = instanceIds
 		m.metrics.TaskStart.Inc(1)
-	}
-
-	if err == nil && len(startedInstanceIds) > 0 {
-		err = m.runtimeUpdater.UpdateJob(ctx, body.GetJobId())
 	}
 
 	if err != nil {

@@ -47,6 +47,7 @@ func TestJobCreateTasks(t *testing.T) {
 			resmgrClient: resmgrClient,
 			jobStore:     jobStore,
 			taskStore:    taskStore,
+			jobs:         map[string]*job{},
 		},
 		tasks: map[uint32]*task{},
 	}
@@ -146,6 +147,7 @@ func TestJobCreateTasksWithStore(t *testing.T) {
 			resmgrClient: resmgrClient,
 			jobStore:     csStore,
 			taskStore:    csStore,
+			jobs:         map[string]*job{},
 		},
 		tasks: map[uint32]*task{},
 	}
@@ -185,6 +187,7 @@ func TestJobRecover(t *testing.T) {
 			jobStore:     jobStore,
 			taskStore:    taskStore,
 			resmgrClient: resmgrClient,
+			jobs:         map[string]*job{},
 		},
 		tasks: map[uint32]*task{},
 	}
@@ -301,6 +304,7 @@ func TestJobRecoverWithStore(t *testing.T) {
 			resmgrClient: resmgrClient,
 			jobStore:     csStore,
 			taskStore:    csStore,
+			jobs:         map[string]*job{},
 		},
 		tasks: map[uint32]*task{},
 	}
@@ -360,7 +364,6 @@ func TestJobMaxRunningInstances(t *testing.T) {
 			jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 			stopChan:      make(chan struct{}),
 		},
-		currentScheduledTasks: 0,
 		tasks: map[uint32]*task{},
 	}
 	j.m.jobs[j.id.GetValue()] = j
@@ -417,7 +420,6 @@ func TestJobMaxRunningInstances(t *testing.T) {
 	assert.False(t, reschedule)
 	assert.NoError(t, err)
 	assert.Equal(t, instanceCount, uint32(len(j.tasks)))
-	assert.Equal(t, jobConfig.GetSla().GetMaximumRunningInstances(), j.currentScheduledTasks)
 }
 
 func TestJobRecoverMaxRunningInstances(t *testing.T) {
@@ -439,7 +441,6 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 			jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
 			stopChan:      make(chan struct{}),
 		},
-		currentScheduledTasks: 0,
 		tasks: map[uint32]*task{},
 	}
 	j.m.jobs[j.id.GetValue()] = j
@@ -483,6 +484,10 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		JobId:      j.id,
 	}
 
+	t0 := newTask(j, 0)
+	j.tasks[0] = t0
+	t0.UpdateRuntime(taskInfos[0].GetRuntime())
+
 	taskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), j.id).
 		Return(taskInfos, nil)
@@ -514,214 +519,5 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 	reschedule, err := j.RunAction(context.Background(), JobCreateTasks)
 	assert.False(t, reschedule)
 	assert.NoError(t, err)
-	assert.Equal(t, jobConfig.GetSla().GetMaximumRunningInstances(), j.currentScheduledTasks)
-}
-
-func TestJobEvaluateSLA(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-
-	instanceCount := uint32(5)
-
-	jobCfg := pb_job.JobConfig{
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
-		Sla: &pb_job.SlaConfig{
-			MaximumRunningInstances: 3,
-		},
-	}
-
-	j := &job{
-		id: &peloton.JobID{Value: uuid.NewRandom().String()},
-		m: &manager{
-			mtx:           NewMetrics(tally.NoopScope),
-			jobs:          map[string]*job{},
-			jobStore:      jobStore,
-			taskStore:     taskStore,
-			running:       true,
-			taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
-			jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
-			stopChan:      make(chan struct{}),
-		},
-		currentScheduledTasks: 0,
-		config: &jobConfig{
-			instanceCount: jobCfg.InstanceCount,
-			sla:           jobCfg.Sla,
-		},
-		tasks: map[uint32]*task{},
-	}
-	j.m.jobs[j.id.GetValue()] = j
-	jobID := j.id
-
-	runtime0 := &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_SUCCEEDED,
-		GoalState: pb_task.TaskState_SUCCEEDED,
-	}
-	j.tasks[0] = &task{
-		job:     j,
-		id:      uint32(0),
-		runtime: runtime0,
-	}
-
-	runtime1 := &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_INITIALIZED,
-		GoalState: pb_task.TaskState_SUCCEEDED,
-	}
-	j.tasks[1] = &task{
-		job:     j,
-		id:      uint32(1),
-		runtime: runtime1,
-	}
-
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), j.id).
-		Return(&pb_job.RuntimeInfo{
-			State: pb_job.JobState_PENDING,
-		}, nil)
-
-	taskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), j.id, uint32(1)).
-		Return(runtime1, nil)
-
-	taskStore.EXPECT().GetTasksForJob(gomock.Any(), jobID).
-		Return(map[uint32]*pb_task.TaskInfo{
-			0: {
-				JobId:      jobID,
-				InstanceId: 0,
-				Runtime:    runtime0,
-			},
-			1: {
-				JobId:      jobID,
-				InstanceId: 1,
-				Runtime:    runtime1,
-			},
-			2: {
-				JobId:      jobID,
-				InstanceId: 2,
-				Runtime: &pb_task.RuntimeInfo{
-					GoalState: pb_task.TaskState_SUCCEEDED,
-					State:     pb_task.TaskState_INITIALIZED,
-				},
-			},
-			3: {
-				JobId:      jobID,
-				InstanceId: 3,
-				Runtime: &pb_task.RuntimeInfo{
-					GoalState: pb_task.TaskState_SUCCEEDED,
-					State:     pb_task.TaskState_INITIALIZED,
-				},
-			},
-		}, nil)
-
-	err := j.evaluateJobSLA()
-	assert.NoError(t, err)
-	assert.Equal(t, jobCfg.GetSla().GetMaximumRunningInstances()+1, uint32(len(j.tasks)))
-	assert.Equal(t, jobCfg.GetSla().GetMaximumRunningInstances(), j.currentScheduledTasks)
-}
-
-func TestJobRecoverSLA(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-
-	instanceCount := uint32(5)
-
-	jobCfg := pb_job.JobConfig{
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
-		Sla: &pb_job.SlaConfig{
-			MaximumRunningInstances: 3,
-		},
-	}
-
-	j := &job{
-		id: &peloton.JobID{Value: uuid.NewRandom().String()},
-		m: &manager{
-			mtx:           NewMetrics(tally.NoopScope),
-			jobs:          map[string]*job{},
-			jobStore:      jobStore,
-			taskStore:     taskStore,
-			running:       true,
-			taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
-			jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
-			stopChan:      make(chan struct{}),
-		},
-		currentScheduledTasks: 0,
-		config: &jobConfig{
-			instanceCount: jobCfg.InstanceCount,
-			sla:           jobCfg.Sla,
-		},
-		tasks: map[uint32]*task{},
-	}
-	j.m.jobs[j.id.GetValue()] = j
-
-	j.tasks[0] = &task{
-		job: j,
-		id:  uint32(0),
-		runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_INITIALIZED,
-			GoalState: pb_task.TaskState_SUCCEEDED,
-		},
-	}
-
-	j.tasks[1] = &task{
-		job: j,
-		id:  uint32(1),
-		runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_RUNNING,
-			GoalState: pb_task.TaskState_SUCCEEDED,
-		},
-	}
-
-	j.tasks[2] = &task{
-		job: j,
-		id:  uint32(2),
-		runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_PENDING,
-			GoalState: pb_task.TaskState_SUCCEEDED,
-		},
-	}
-
-	j.tasks[3] = &task{
-		job: j,
-		id:  uint32(3),
-		runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_INITIALIZED,
-			GoalState: pb_task.TaskState_SUCCEEDED,
-		},
-	}
-
-	j.tasks[4] = &task{
-		job: j,
-		id:  uint32(4),
-		runtime: &pb_task.RuntimeInfo{
-			State:     pb_task.TaskState_INITIALIZED,
-			GoalState: pb_task.TaskState_SUCCEEDED,
-		},
-	}
-
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), j.id).
-		Return(&pb_job.RuntimeInfo{
-			State: pb_job.JobState_RUNNING,
-			TaskStats: map[string]uint32{
-				pb_task.TaskState_INITIALIZED.String(): 2,
-			},
-		}, nil)
-
-	taskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), j.id, gomock.Any()).
-		Return(j.tasks[0].runtime, nil)
-
-	j.recoverJobWithSLA()
-	assert.Equal(t, jobCfg.GetSla().GetMaximumRunningInstances(), j.currentScheduledTasks)
+	assert.Equal(t, instanceCount, uint32(len(j.tasks)))
 }
