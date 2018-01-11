@@ -22,6 +22,7 @@ var csStore *cassandra.Store
 var pendingJobID *peloton.JobID
 var runningJobID *peloton.JobID
 var failedJobID *peloton.JobID
+var unknownJobID *peloton.JobID
 var mutex = &sync.Mutex{}
 var receivedPendingJobID []string
 
@@ -34,7 +35,7 @@ func init() {
 	}
 }
 
-func createJob(ctx context.Context, state pb_job.JobState) (*peloton.JobID, error) {
+func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobState) (*peloton.JobID, error) {
 	var jobID = &peloton.JobID{Value: uuid.New()}
 	var sla = pb_job.SlaConfig{
 		Priority:                22,
@@ -68,6 +69,7 @@ func createJob(ctx context.Context, state pb_job.JobState) (*peloton.JobID, erro
 	}
 
 	jobRuntime.State = state
+	jobRuntime.GoalState = goalState
 	err = csStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
 	if err != nil {
 		return nil, err
@@ -119,13 +121,18 @@ func TestJobRecoveryWithStore(t *testing.T) {
 
 	ctx := context.Background()
 
-	pendingJobID, err = createJob(ctx, pb_job.JobState_PENDING)
+	pendingJobID, err = createJob(ctx, pb_job.JobState_PENDING, pb_job.JobState_SUCCEEDED)
 	assert.NoError(t, err)
 
-	runningJobID, err = createJob(ctx, pb_job.JobState_RUNNING)
+	runningJobID, err = createJob(ctx, pb_job.JobState_RUNNING, pb_job.JobState_SUCCEEDED)
 	assert.NoError(t, err)
 
-	failedJobID, err = createJob(ctx, pb_job.JobState_FAILED)
+	// this job should not be recovered
+	failedJobID, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_SUCCEEDED)
+	assert.NoError(t, err)
+
+	// this job should not be recovered
+	unknownJobID, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_UNKNOWN)
 	assert.NoError(t, err)
 
 	err = RecoverJobsByState(ctx, csStore, jobStatesPending, recoverPendingTask)

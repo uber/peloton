@@ -135,6 +135,13 @@ func recoverJobsBatch(ctx context.Context, jobStore storage.JobStore, jobs JobsB
 			continue
 		}
 
+		// Do not process terminated jobs with unknown goal state.
+		// Older batch jobs created with code which did not set the goal
+		// state will have goal state to be JobState_UNKNOWN.
+		if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) && jobRuntime.GetGoalState() == job.JobState_UNKNOWN {
+			continue
+		}
+
 		jobConfig, err := jobStore.GetJobConfig(ctx, &jobID)
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
