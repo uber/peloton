@@ -118,6 +118,7 @@ func (c *Client) JobQueryAction(
 	keywords string,
 	states string,
 	limit uint32,
+	maxLimit uint32,
 	offset uint32,
 	sortBy string,
 	sortOrder string) error {
@@ -185,9 +186,10 @@ func (c *Client) JobQueryAction(
 			Keywords:  apiKeywords,
 			JobStates: apiStates,
 			Pagination: &query.PaginationSpec{
-				Limit:   limit,
-				Offset:  offset,
-				OrderBy: sort,
+				Limit:    limit,
+				Offset:   offset,
+				OrderBy:  sort,
+				MaxLimit: maxLimit,
 			},
 		},
 	}

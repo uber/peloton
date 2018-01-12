@@ -6987,7 +6987,7 @@ DEPRECATED by peloton.api.job.svc.QueryJobsRequest
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | respoolID | [.peloton.api.peloton.ResourcePoolID](#peloton.api.job..peloton.api.peloton.ResourcePoolID) |  |  |
-| spec | [QuerySpec](#peloton.api.job.QuerySpec) |  |  |
+| spec | [QuerySpec](#peloton.api.job.QuerySpec) |  | Per instance configuration in the job configuration cannot be queried. |
 
 
 
@@ -7005,6 +7005,7 @@ DEPRECATED by peloton.api.job.svc.QueryJobsResponse
 | error | [QueryResponse.Error](#peloton.api.job.QueryResponse.Error) |  |  |
 | records | [JobInfo](#peloton.api.job.JobInfo) | repeated | NOTE: instanceConfig is not returned as part of jobConfig inside jobInfo as it can be so huge that exceeds grpc limit size. Use Job.Get() API to get instanceConfig for job. |
 | pagination | [.peloton.api.query.Pagination](#peloton.api.job..peloton.api.query.Pagination) |  |  |
+| spec | [QuerySpec](#peloton.api.job.QuerySpec) |  | The query spec from the request |
 
 
 
@@ -11915,6 +11916,7 @@ INVALID_ARGUMENT:  if the resource pool path or job states are invalid.
 | ----- | ---- | ----- | ----------- |
 | records | [.peloton.api.job.JobInfo](#peloton.api.job.svc..peloton.api.job.JobInfo) | repeated | List of jobs that match the job query criteria. |
 | pagination | [.peloton.api.query.Pagination](#peloton.api.job.svc..peloton.api.query.Pagination) |  | Pagination result of the job query. |
+| spec | [.peloton.api.job.QuerySpec](#peloton.api.job.svc..peloton.api.job.QuerySpec) |  | Return the spec of query criteria from the request. |
 
 
 

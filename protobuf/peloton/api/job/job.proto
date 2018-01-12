@@ -329,6 +329,7 @@ message GetResponse {
 message QueryRequest {
   peloton.ResourcePoolID respoolID = 1;
 
+  // Per instance configuration in the job configuration cannot be  queried.
   QuerySpec spec = 2;
 }
 
@@ -346,6 +347,9 @@ message QueryResponse {
   repeated JobInfo records = 2;
 
   query.Pagination pagination = 3;
+
+  // The query spec from the request
+  QuerySpec spec = 4;
 }
 
 // DEPRECATED by peloton.api.job.svc.DeleteRequest

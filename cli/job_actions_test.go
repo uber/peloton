@@ -278,11 +278,12 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 						Property: &query.PropertyPath{Value: "creation_time"},
 					},
 				},
+				MaxLimit: 100,
 			},
 		},
 	}).Return(nil, nil)
 
-	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", 10, 0, "creation_time", "DESC"))
+	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", 10, 100, 0, "creation_time", "DESC"))
 }
 
 func (suite *jobActionsTestSuite) TestClient_JobGetAction() {

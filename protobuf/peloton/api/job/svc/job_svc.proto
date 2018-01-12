@@ -122,6 +122,9 @@ message QueryJobsResponse {
 
   // Pagination result of the job query.
   query.Pagination pagination = 2;
+
+  // Return the spec of query criteria from the request.
+  job.QuerySpec spec = 3;
 }
 
 

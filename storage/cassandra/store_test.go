@@ -124,7 +124,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	}
 	// Run the following query to trigger rebuild the lucene index
 	queryBuilder := store.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene, '{refresh:true}')")
+	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
 	_, err := store.DataStore.Execute(context.Background(), stmt)
 	suite.NoError(err)
 
@@ -265,7 +265,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 	// Run the following query to trigger rebuild the lucene index
 	queryBuilder := store.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene, '{refresh:true}')")
+	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
 	_, err := store.DataStore.Execute(context.Background(), stmt)
 	suite.NoError(err)
 
@@ -428,7 +428,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		store.UpdateJobRuntime(context.Background(), jobIDs[i], runtime)
 	}
 	queryBuilder = store.DataStore.NewQuery()
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene, '{refresh:true}')")
+	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
 	_, err = store.DataStore.Execute(context.Background(), stmt)
 	suite.NoError(err)
 

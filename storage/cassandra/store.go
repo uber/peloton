@@ -515,7 +515,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"respool_id", values:%s}`, strconv.Quote(respoolID.GetValue())))
 	}
 
-	where := `expr(job_index_lucene, '{filter: [`
+	where := `expr(job_index_lucene_v2, '{filter: [`
 	for i, c := range clauses {
 		if i > 0 {
 			where += ", "
@@ -524,24 +524,36 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	}
 	where += "]"
 
-	// add sorter into the query in case orderby is specified in the query spec
+	// add default sorting by creation time in descending order in case orderby
+	// is not specificed in the query spec
 	var orderBy = spec.GetPagination().GetOrderBy()
-	if orderBy != nil && len(orderBy) > 0 {
-		where += ", sort:["
-		count := 0
-		for _, order := range orderBy {
-			where += fmt.Sprintf("{field: \"%s\"", order.Property.GetValue())
-			if order.Order == query.OrderBy_DESC {
-				where += ", reverse: true"
-			}
-			where += "}"
-			if count < len(orderBy)-1 {
-				where += ","
-			}
-			count++
+	if orderBy == nil || len(orderBy) == 0 {
+		orderBy = []*query.OrderBy{
+			&query.OrderBy{
+				Order: query.OrderBy_DESC,
+				Property: &query.PropertyPath{
+					Value: "creation_time",
+				},
+			},
 		}
-		where += "]"
 	}
+
+	// add sorter into the query
+	where += ", sort:["
+	count := 0
+	for _, order := range orderBy {
+		where += fmt.Sprintf("{field: \"%s\"", order.Property.GetValue())
+		if order.Order == query.OrderBy_DESC {
+			where += ", reverse: true"
+		}
+		where += "}"
+		if count < len(orderBy)-1 {
+			where += ","
+		}
+		count++
+	}
+	where += "]"
+
 	where += "}')"
 
 	maxLimit := _defaultQueryMaxLimit
@@ -2112,7 +2124,12 @@ func (s *Store) updateJobIndex(
 		Where(qb.Eq{"job_id": id.GetValue()})
 
 	if config != nil {
+		// Do not save the instance config with the job
+		// configuration in the job_index table.
+		instanceConfig := config.GetInstanceConfig()
+		config.InstanceConfig = nil
 		configBuffer, err := json.Marshal(config)
+		config.InstanceConfig = instanceConfig
 		if err != nil {
 			log.Errorf("Failed to marshal jobConfig, error = %v", err)
 			s.metrics.JobMetrics.JobUpdateConfigFail.Inc(1)

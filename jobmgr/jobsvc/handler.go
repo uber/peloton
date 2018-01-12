@@ -347,6 +347,7 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 					Message: err.Error(),
 				},
 			},
+			Spec: req.GetSpec(),
 		}, nil
 	}
 
@@ -358,6 +359,7 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 			Limit:  req.GetSpec().GetPagination().GetLimit(),
 			Total:  total,
 		},
+		Spec: req.GetSpec(),
 	}
 	log.WithField("response", resp).Debug("JobManager.Query returned")
 	return resp, nil
