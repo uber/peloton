@@ -39,6 +39,7 @@ type Metrics struct {
 	ResourcePoolAllocation  scalar.GaugeMaps
 	ResourcePoolEntitlement scalar.GaugeMaps
 	ResourcePoolAvailable   scalar.GaugeMaps
+	ResourcePoolDemand      scalar.GaugeMaps
 
 	ResourcePoolReservation scalar.GaugeMaps
 	ResourcePoolLimit       scalar.GaugeMaps
@@ -56,6 +57,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	usageScope := scope.SubScope("allocation")
 	entitlementScope := scope.SubScope("entitlement")
 	availableScope := scope.SubScope("available")
+	demandScope := scope.SubScope("demand")
 
 	reservationScope := scope.SubScope("reservation")
 	limitScope := scope.SubScope("limit")
@@ -92,6 +94,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ResourcePoolAllocation:  scalar.NewGaugeMaps(usageScope),
 		ResourcePoolEntitlement: scalar.NewGaugeMaps(entitlementScope),
 		ResourcePoolAvailable:   scalar.NewGaugeMaps(availableScope),
+		ResourcePoolDemand:      scalar.NewGaugeMaps(demandScope),
 
 		ResourcePoolReservation: scalar.NewGaugeMaps(reservationScope),
 		ResourcePoolLimit:       scalar.NewGaugeMaps(limitScope),

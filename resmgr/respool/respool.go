@@ -157,7 +157,7 @@ func NewRespool(
 
 	// Initialize resources.
 	pool.initResources(config.GetResources())
-	pool.updateDynamicResourceMetrics()
+	pool.updateResourceMetrics()
 	pool.metrics.PendingQueueSize.Update(float64(pool.pendingQueue.Size()))
 
 	return pool, nil
@@ -314,7 +314,7 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 			n.Lock()
 			n.allocation = n.allocation.Add(GetGangResources(gang))
 			n.Unlock()
-			n.updateDynamicResourceMetrics()
+			n.updateResourceMetrics()
 		} else {
 			if len(gangList) <= 0 {
 				log.WithField(
@@ -567,7 +567,6 @@ func (n *resPool) initResources(resList []*respool.ResourceConfig) {
 	for _, res := range resList {
 		n.resourceConfigs[res.Kind] = res
 	}
-	n.updateStaticResourceMetrics()
 }
 
 // logNodeResources will be printing the resources for the resource pool
@@ -611,7 +610,7 @@ func (n *resPool) SetEntitlement(entitlement map[string]float64) {
 		"memory":     n.entitlement.MEMORY,
 		"gpu":        n.entitlement.GPU,
 	}).Debug("Setting Entitlement for Respool")
-	n.updateDynamicResourceMetrics()
+	n.updateResourceMetrics()
 }
 
 // SetEntitlementByKind sets the entitlement for the resource pool
@@ -633,7 +632,7 @@ func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
 		"kind":        kind,
 		"entitlement": entitlement,
 	}).Debug("Setting Entitlement")
-	n.updateDynamicResourceMetrics()
+	n.updateResourceMetrics()
 }
 
 func (n *resPool) SetEntitlementResources(res *scalar.Resources) {
@@ -644,7 +643,7 @@ func (n *resPool) SetEntitlementResources(res *scalar.Resources) {
 		"respool_ID":  n.ID(),
 		"entitlement": res,
 	}).Debug("Setting Entitlement")
-	n.updateDynamicResourceMetrics()
+	n.updateResourceMetrics()
 }
 
 // GetEntitlement gets the entitlement for the resource pool
@@ -691,6 +690,7 @@ func (n *resPool) SubtractFromAllocation(res *scalar.Resources) error {
 		WithField("respool_ID", n.ID()).
 		WithField("allocation", n.allocation).
 		Debug("Current Allocation after Done Task")
+	n.updateResourceMetrics()
 	return nil
 }
 
@@ -739,6 +739,7 @@ func (n *resPool) AddToAllocation(res *scalar.Resources) error {
 		"respool_ID": n.ID(),
 		"allocation": n.allocation,
 	}).Debug("Current Allocation after Adding resources")
+	n.updateResourceMetrics()
 	return nil
 
 }
@@ -756,6 +757,7 @@ func (n *resPool) AddToDemand(res *scalar.Resources) error {
 		"demand":     n.demand,
 	}).Debug("Current Demand after Adding resources")
 
+	n.updateResourceMetrics()
 	return nil
 }
 
@@ -776,6 +778,7 @@ func (n *resPool) SubtractFromDemand(res *scalar.Resources) error {
 		WithField("demand", n.demand).
 		Debug("Current Demand " +
 			"after removing resources")
+	n.updateResourceMetrics()
 	return nil
 }
 
@@ -792,6 +795,13 @@ func (n *resPool) updateDynamicResourceMetrics() {
 	n.metrics.ResourcePoolEntitlement.Update(n.entitlement)
 	n.metrics.ResourcePoolAllocation.Update(n.allocation)
 	n.metrics.ResourcePoolAvailable.Update(n.entitlement.Subtract(n.allocation))
+	n.metrics.ResourcePoolDemand.Update(n.demand)
+}
+
+// updates all the metrics (static and dynamic)
+func (n *resPool) updateResourceMetrics() {
+	n.updateStaticResourceMetrics()
+	n.updateDynamicResourceMetrics()
 }
 
 // AddInvalidTask adds the invalid task by that it can
