@@ -162,7 +162,7 @@ func (o *MesosResourceBuilder) Build() *mesos.Resource {
 func MesosStateToPelotonState(mstate mesos.TaskState) task.TaskState {
 	switch mstate {
 	case mesos.TaskState_TASK_STAGING:
-		return task.TaskState_LAUNCHING
+		return task.TaskState_LAUNCHED
 	case mesos.TaskState_TASK_STARTING:
 		return task.TaskState_STARTING
 	case mesos.TaskState_TASK_RUNNING:
