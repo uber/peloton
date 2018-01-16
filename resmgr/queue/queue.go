@@ -15,9 +15,10 @@ type Queue interface {
 	// they came into the queue
 	Dequeue() (*resmgrsvc.Gang, error)
 	// Peek peeks the gang(list) based on the priority and order
-	// they came into the queue
+	// they came into the queue.
+	// limit is the number of gangs to peek.
 	// It will return an error if there is no gang in the queue
-	Peek() (*resmgrsvc.Gang, error)
+	Peek(limit uint32) ([]*resmgrsvc.Gang, error)
 	// Remove removes the item from the queue
 	Remove(item *resmgrsvc.Gang) error
 	// Size returns the total number of items in the queue

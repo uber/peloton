@@ -94,6 +94,10 @@ type ResPool interface {
 	// AddInvalidTask will add the killed tasks to respool which can be
 	// discarded asynchronously which scheduling.
 	AddInvalidTask(task *peloton.TaskID)
+	// PeekPendingTasks returns the list of gangs which are in the
+	// resource pools pending queue or an error.
+	// limit determines the number of gangs to be returned.
+	PeekPendingGangs(limit uint32) ([]*resmgrsvc.Gang, error)
 }
 
 // resPool implements ResPool interface.
@@ -282,7 +286,7 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	for i := 1; i <= limit; i++ {
 		// First peek the gang and see if that can be
 		// dequeued from the list
-		gang, err := n.pendingQueue.Peek()
+		gangs, err := n.pendingQueue.Peek(1)
 
 		if err != nil {
 			if len(gangList) == 0 {
@@ -291,7 +295,8 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 			break
 		}
 
-		// checking if the gang is stil valid
+		gang := gangs[0]
+		// checking if the gang is still valid
 		// before admission control
 		err = n.validateGang(gang)
 		if err != nil {
@@ -810,6 +815,12 @@ func (n *resPool) AddInvalidTask(task *peloton.TaskID) {
 	n.Lock()
 	defer n.Unlock()
 	n.invalidTasks[task.Value] = true
+}
+
+func (n *resPool) PeekPendingGangs(limit uint32) ([]*resmgrsvc.Gang, error) {
+	n.RLock()
+	defer n.RUnlock()
+	return n.pendingQueue.Peek(limit)
 }
 
 func getLimits(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {

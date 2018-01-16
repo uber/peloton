@@ -1045,6 +1045,26 @@ func (s *ResPoolSuite) TestAggregatedChildrenReservations() {
 	s.Equal(map[string]float64{}, ar)
 }
 
+func (s *ResPoolSuite) TestResPoolPeekPendingGangs() {
+	respool := s.createTestResourcePool()
+
+	// no gangs yet
+	gangs, err := respool.PeekPendingGangs(10)
+	s.Error(err)
+	s.EqualError(err, "peek failed, queue is empty")
+
+	// enqueue 4 gangs
+	for _, t := range s.getTasks() {
+		gang := respool.MakeTaskGang(t)
+		err := respool.EnqueueGang(gang)
+		s.NoError(err)
+	}
+
+	gangs, err = respool.PeekPendingGangs(10)
+	s.NoError(err)
+	s.Equal(4, len(gangs))
+}
+
 func TestResPoolSuite(t *testing.T) {
 	suite.Run(t, new(ResPoolSuite))
 }

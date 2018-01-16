@@ -53,7 +53,7 @@ func (p *MultiLevelList) GetName() string {
 // it takes input as the level and value as interface{}
 func (p *MultiLevelList) Push(level int, element interface{}) error {
 	// TODO: We need to optimize the locking
-	// TODO: Need to take RLock on Map and Excusive lock on individual list
+	// TODO: Need to take RLock on Map and Exclusive lock on individual list
 
 	p.Lock()
 	defer p.Unlock()
@@ -117,14 +117,41 @@ func (p *MultiLevelList) Pop(level int) (interface{}, error) {
 // PeekItem method returns the the Front Item for the given Level
 // It will not remove the item from the list
 func (p *MultiLevelList) PeekItem(level int) (interface{}, error) {
-	p.Lock()
-	defer p.Unlock()
+	p.RLock()
+	defer p.RUnlock()
 	if val, ok := p.mapLists[level]; ok {
 		e := val.Front().Value
 		return e, nil
 	}
 	err := ErrorQueueEmpty(fmt.Sprintf("No items found in queue for priority %d", level))
 	return nil, err
+}
+
+// PeekItems returns a list of items from a given level.
+// The number of items returns is min(limit, number of items in a given level).
+// Its returns an error if there are no items in the level.
+// It does not remove the items from the list.
+func (p *MultiLevelList) PeekItems(level int, limit int) ([]interface{}, error) {
+	p.RLock()
+	defer p.RUnlock()
+	var elements []interface{}
+
+	val, ok := p.mapLists[level]
+	if !ok {
+		return elements, ErrorQueueEmpty(fmt.Sprintf("No items found in queue for priority %d", level))
+	}
+
+	for e := val.Front(); e != nil; e = e.Next() {
+		if e == nil {
+			continue
+		}
+		elements = append(elements, e.Value)
+		if len(elements) == limit {
+			// we've reached as much as we wanted to
+			return elements, nil
+		}
+	}
+	return elements, nil
 }
 
 // Remove method removes the specified item from multilevel list

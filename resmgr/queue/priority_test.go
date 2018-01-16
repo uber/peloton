@@ -163,25 +163,59 @@ func (suite *FifoQueueTestSuite) TestDequeue() {
 }
 
 func (suite *FifoQueueTestSuite) TestPeek() {
-	gang, err := suite.fq.Peek()
+	gangs, err := suite.fq.Peek(1)
 	suite.NoError(err)
-	suite.Equal(len(gang.Tasks), 1)
-	dqRes := gang.Tasks[0]
+	suite.Equal(len(gangs), 1)
+	suite.Equal(len(gangs[0].Tasks), 1)
+	dqRes := gangs[0].Tasks[0]
 	suite.Equal(dqRes.JobId.Value, "job2", "Should get Job-2")
 	suite.Equal(suite.fq.Len(2), 2, "Length should be 2")
 }
 
-func (suite *FifoQueueTestSuite) TestRemove() {
-	gang, err := suite.fq.Peek()
+func (suite *FifoQueueTestSuite) TestPeekWithLimit() {
+	q := NewPriorityQueue(1000)
+
+	// add 4 tasks with different priorities
+	for i := 0; i < 4; i++ {
+		var gang1 resmgrsvc.Gang
+		// Task - 1
+		jobID1 := &peloton.JobID{
+			Value: fmt.Sprintf("job-%d", i),
+		}
+		taskID1 := &peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", jobID1.Value, 0),
+		}
+		enq1 := resmgr.Task{
+			Name:     fmt.Sprintf("job-%d", i),
+			Priority: uint32(i),
+			JobId:    jobID1,
+			Id:       taskID1,
+		}
+		gang1.Tasks = append(gang1.Tasks, &enq1)
+		q.Enqueue(&gang1)
+	}
+
+	// peek 10
+	gangs, err := q.Peek(10)
 	suite.NoError(err)
-	suite.Equal(len(gang.Tasks), 1)
-	err = suite.fq.Remove(gang)
+	// should return 4 gangs
+	suite.Equal(4, len(gangs))
+
+	// first gang should have the highest priority
+	suite.Equal(uint32(3), gangs[0].Tasks[0].GetPriority())
+}
+
+func (suite *FifoQueueTestSuite) TestRemove() {
+	gangs, err := suite.fq.Peek(1)
+	suite.NoError(err)
+	suite.Equal(len(gangs[0].Tasks), 1)
+	err = suite.fq.Remove(gangs[0])
 	suite.NoError(err)
 	suite.Equal(suite.fq.Len(2), 1, "Length should be 1")
 
-	gang, err = suite.fq.Peek()
+	gangs, err = suite.fq.Peek(1)
 	suite.NoError(err)
-	err = suite.fq.Remove(gang)
+	err = suite.fq.Remove(gangs[0])
 	suite.NoError(err)
 	suite.Equal(suite.fq.Len(2), 0, "Length should be 0")
 

@@ -529,7 +529,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	var orderBy = spec.GetPagination().GetOrderBy()
 	if orderBy == nil || len(orderBy) == 0 {
 		orderBy = []*query.OrderBy{
-			&query.OrderBy{
+			{
 				Order: query.OrderBy_DESC,
 				Property: &query.PropertyPath{
 					Value: "creation_time",

@@ -216,3 +216,24 @@ func (suite *MultiLevelListTestSuite) TestPeek() {
 	retTask := e.(*resmgr.Task)
 	suite.Equal(retTask.Id.Value, "job2-1")
 }
+
+func (suite *MultiLevelListTestSuite) TestPeekItems() {
+	// level 1 has 1 item
+	es, err := suite.mll.PeekItems(1, 100)
+	suite.NoError(err)
+	suite.Equal(1, len(es))
+	retTask := es[0].(*resmgr.Task)
+	suite.Equal(retTask.Id.Value, "job2-1")
+
+	// level 0 has 2 items
+	es, err = suite.mll.PeekItems(0, 100)
+	suite.NoError(err)
+	suite.Equal(2, len(es))
+	retTask = es[0].(*resmgr.Task)
+	suite.Equal(retTask.Id.Value, "job1-1")
+
+	// There is no level 3
+	es, err = suite.mll.PeekItems(3, 100)
+	suite.Error(err)
+	suite.EqualError(err, "No items found in queue for priority 3")
+}

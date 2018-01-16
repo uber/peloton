@@ -70,6 +70,12 @@ func (c *MockClient) KillTasks(context.Context, *resmgrsvc.KillTasksRequest, ...
 	return nil, nil
 }
 
+func (c *MockClient) GetPendingTasks(context.Context,
+	*resmgrsvc.GetPendingTasksRequest,
+	...yarpc.CallOption) (*resmgrsvc.GetPendingTasksResponse, error) {
+	return nil, nil
+}
+
 func (c *MockClient) setError(errorFlag bool) {
 	c.Lock()
 	defer c.Unlock()

@@ -141,7 +141,7 @@ func (s *scheduler) scheduleTasks() {
 		n := e.Value.(respool.ResPool)
 		// DequeueGangList checks the entitlement for the
 		// resource pool and takes the decision if we can
-		// dequeue gang or not based on resource avalability
+		// dequeue gang or not based on resource availability.
 		gangList, err := n.DequeueGangList(dequeueGangLimit)
 		if err != nil {
 			log.WithField("respool", n.ID()).WithError(err).Debug("No Items found")

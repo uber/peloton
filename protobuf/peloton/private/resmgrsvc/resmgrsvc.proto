@@ -81,6 +81,16 @@ service ResourceManagerService {
   rpc GetActiveTasks(GetActiveTasksRequest) returns (GetActiveTasksResponse);
 
   /**
+  * Returns the tasks which are waiting on resources in a resource pool in the
+  * order in which they were added, up to a max limit number of gangs.
+  * Eg specifying a limit of 10 would return pending tasks from the first 10
+  * gangs in the queue.
+  * The tasks are grouped according to their gang membership since one gang
+  * can contain multiple tasks is the unit of scheduling.
+  */
+  rpc GetPendingTasks(GetPendingTasksRequest) returns (GetPendingTasksResponse);
+
+  /**
    * Kill Tasks kills/Delete the tasks in Resource Manager
    */
   rpc KillTasks(KillTasksRequest) returns (KillTasksResponse);
@@ -282,6 +292,31 @@ message GetActiveTasksResponse {
   Error error = 1;
   // This will return a map from task id to state.
   map <string,string> taskStatesMap = 2;
+}
+
+// Returns the pending tasks in a resource pool in the order in which they
+// will be processed, grouped by the gang in which they belong.
+message GetPendingTasksRequest {
+  // respoolID of the pool
+  api.peloton.ResourcePoolID respoolID = 1;
+  // limit is the number of gangs to be returned.
+  uint32 limit = 2;
+}
+/**
+ * Response message for GetPendingTasks method
+ * Return errors:
+ *    NOT_FOUND:            if the resource pool is not found.
+ *    INVALID_ARGUMENT:     if the resource pool is not supplied or is not a
+ *                          leaf node
+ *    INTERNAL:             if failed to get pending tasks because of internal errors.
+ */
+message GetPendingTasksResponse {
+  message TaskList {
+    repeated string taskID = 1;
+  }
+
+  // This will return a map from gang to tasks inside the gang
+  repeated TaskList tasks = 2;
 }
 
 message KillTasksRequest {

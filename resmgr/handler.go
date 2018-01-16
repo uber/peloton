@@ -26,6 +26,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -678,6 +680,82 @@ func (h *ServiceHandler) GetActiveTasks(
 ) (*resmgrsvc.GetActiveTasksResponse, error) {
 	taskStates := h.rmTracker.GetActiveTasks(req.GetJobID(), req.GetRespoolID())
 	return &resmgrsvc.GetActiveTasksResponse{TaskStatesMap: taskStates}, nil
+}
+
+// GetPendingTasks returns the pending tasks from a resource pool in the
+// order in which they were added up to a max limit number of gangs.
+// Eg specifying a limit of 10 would return pending tasks from the first 10
+// gangs in the queue.
+// The tasks are grouped according to their gang membership since one gang
+// can contain multiple tasks.
+func (h *ServiceHandler) GetPendingTasks(
+	ctx context.Context,
+	req *resmgrsvc.GetPendingTasksRequest,
+) (*resmgrsvc.GetPendingTasksResponse, error) {
+
+	respoolID := req.GetRespoolID()
+	limit := req.GetLimit()
+
+	log.WithField("respool_id", respoolID).
+		WithField("limit", limit).
+		Info("GetPendingTasks called")
+
+	if respoolID == nil {
+		return &resmgrsvc.GetPendingTasksResponse{},
+			status.Errorf(codes.InvalidArgument,
+				"Resource pool ID can't be nil")
+	}
+
+	node, err := h.resPoolTree.Get(&peloton.ResourcePoolID{
+		Value: respoolID.GetValue()})
+	if err != nil {
+		return &resmgrsvc.GetPendingTasksResponse{},
+			status.Errorf(codes.NotFound,
+				"Resource pool ID not found:%s", respoolID)
+	}
+
+	if !node.IsLeaf() {
+		return &resmgrsvc.GetPendingTasksResponse{},
+			status.Errorf(codes.InvalidArgument,
+				"Resource pool:%s is not a leaf node", respoolID)
+	}
+
+	tasks, err := h.getPendingTasks(node, limit)
+	if err != nil {
+		return &resmgrsvc.GetPendingTasksResponse{},
+			status.Errorf(codes.Internal,
+				"Failed to return pending tasks, err:%s", err.Error())
+	}
+
+	log.WithField("respool_id", respoolID).
+		WithField("limit", limit).
+		Debug("GetPendingTasks returned")
+
+	return &resmgrsvc.GetPendingTasksResponse{
+		Tasks: tasks,
+	}, nil
+}
+
+func (h *ServiceHandler) getPendingTasks(node respool.ResPool,
+	limit uint32) ([]*resmgrsvc.GetPendingTasksResponse_TaskList,
+	error) {
+	var tasks []*resmgrsvc.GetPendingTasksResponse_TaskList
+
+	gangs, err := node.PeekPendingGangs(limit)
+	if err != nil {
+		return tasks, errors.Wrap(err, "failed to peek pending gangs")
+	}
+
+	for _, gang := range gangs {
+		var taskIDs []string
+		for _, task := range gang.GetTasks() {
+			taskIDs = append(taskIDs, task.GetId().GetValue())
+		}
+		tasks = append(tasks, &resmgrsvc.GetPendingTasksResponse_TaskList{
+			TaskID: taskIDs,
+		})
+	}
+	return tasks, nil
 }
 
 // KillTasks kills the task

@@ -2,9 +2,11 @@ package queue
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -66,34 +68,66 @@ func (f *PriorityQueue) Dequeue() (*resmgrsvc.Gang, error) {
 	return res, nil
 }
 
-// Peek peeks the gang(list) based on the priority and order
-// they came into the queue
+// Peek peeks the limit number of gangs based on the priority and order
+// they came into the queue.
 // It will return an error if there is no gang in the queue
-func (f *PriorityQueue) Peek() (*resmgrsvc.Gang, error) {
+func (f *PriorityQueue) Peek(limit uint32) ([]*resmgrsvc.Gang, error) {
 	// TODO: optimize the write lock here with potential read lock
 	f.Lock()
 	defer f.Unlock()
 
-	highestPriority := f.list.GetHighestLevel()
-	item, err := f.list.PeekItem(highestPriority)
-	if err != nil {
-		// TODO: Need to add test case for this case
-		for highestPriority != f.list.GetHighestLevel() {
-			highestPriority = f.list.GetHighestLevel()
-			item, err = f.list.PeekItem(highestPriority)
-			if err == nil {
-				break
-			}
+	var items []*resmgrsvc.Gang
+	priority := f.list.GetHighestLevel()
+	itemsLeft := int(limit)
+
+	// start at the highest priority
+	// keep going down until priority 0 or until limit is satisfied
+	for {
+		if priority < 0 {
+			// min priority is 0; we are done
+			break
 		}
+
+		if itemsLeft == 0 {
+			// we are done
+			break
+		}
+
+		itemsByPriority, err := f.list.PeekItems(priority, itemsLeft)
 		if err != nil {
-			return nil, err
+			if _, ok := err.(ErrorQueueEmpty); ok {
+				// no items for priority, continue to the next one
+				priority--
+				continue
+			}
+			return items, fmt.Errorf("peek failed err:%s", err)
 		}
+
+		gangs, err := toGang(itemsByPriority)
+		if err != nil {
+			return items, fmt.Errorf("peek failed err:%s", err)
+		}
+
+		items = append(items, gangs...)
+
+		priority--
+		itemsLeft = itemsLeft - len(itemsByPriority)
 	}
-	if item == nil {
-		return nil, errors.New("Peek failed")
+
+	if len(items) == 0 {
+		return items, errors.New("peek failed, queue is empty")
 	}
-	res := item.(*resmgrsvc.Gang)
-	return res, nil
+
+	return items, nil
+}
+
+func toGang(items []interface{}) ([]*resmgrsvc.Gang, error) {
+	var gangs []*resmgrsvc.Gang
+	for _, item := range items {
+		res := item.(*resmgrsvc.Gang)
+		gangs = append(gangs, res)
+	}
+	return gangs, nil
 }
 
 // Remove removes the item from the queue
