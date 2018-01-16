@@ -47,7 +47,6 @@ type processor struct {
 	trackedManager tracked.Manager
 	taskLauncher   launcher.Launcher
 	running        int32
-	done           int32
 	config         *Config
 	metrics        *Metrics
 }
@@ -55,6 +54,10 @@ type processor struct {
 const (
 	// Time out for the function to time out
 	_rpcTimeout = 10 * time.Second
+	// maxRetryCount is the maximum number of times a transient error from the DB will be retried.
+	// This is a safety mechanism to avoid placement engine getting stuck in
+	// retrying errors wrongly classified as transient errors.
+	maxRetryCount = 1000
 )
 
 // InitProcessor initializes placement processor
@@ -114,8 +117,6 @@ func (p *processor) Start() error {
 				go p.ProcessPlacement(ctx, placement)
 			}
 		}
-		// All placements completed processing,
-		atomic.StoreInt32(&p.done, 1)
 	}()
 	log.Info("placement processor started")
 	return nil
@@ -160,7 +161,8 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 			log.WithField("task_id", taskID).Info("skipping launch of killed task")
 			delete(taskInfos, taskID)
 		} else {
-			for {
+			retry := 0
+			for retry < maxRetryCount {
 				err := p.trackedManager.UpdateTaskRuntime(ctx, jobID, uint32(instanceID), runtime, tracked.UpdateOnly)
 				if err == nil {
 					break
@@ -179,6 +181,7 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 					delete(taskInfos, taskID)
 					break
 				}
+				retry++
 			}
 		}
 	}
@@ -252,13 +255,13 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 		t.Runtime.AgentID = nil
 		t.Runtime.Ports = nil
 		util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.Runtime)
-		for {
+		retry := 0
+		for retry < maxRetryCount {
 			err = p.trackedManager.UpdateTaskRuntime(ctx, t.JobId, t.InstanceId, t.Runtime, tracked.UpdateAndSchedule)
 			if err == nil {
 				break
 			}
 			if common.IsTransientError(err) {
-				// TBD add a max retry to bail out after a few retries.
 				log.WithError(err).WithFields(log.Fields{
 					"job_id":      t.JobId,
 					"instance_id": t.InstanceId,
@@ -266,6 +269,7 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 			} else {
 				return err
 			}
+			retry++
 		}
 	}
 	return err
@@ -276,29 +280,14 @@ func (p *processor) isRunning() bool {
 	return running == 1
 }
 
-func (p *processor) isDone() bool {
-	done := atomic.LoadInt32(&p.done)
-	return done == 1
-}
-
 // Stop stops placement processor
 func (p *processor) Stop() error {
-	atomic.StoreInt32(&p.done, 0)
 	if !(p.isRunning()) {
 		log.Warn("placement processor is already stopped, no action will be performed")
 		return nil
 	}
 
-	log.Info("stopping placement processor")
 	atomic.StoreInt32(&p.running, 0)
-	for {
-		// Wait for all placements to be done processing
-		if !p.isDone() {
-			time.Sleep(10 * time.Millisecond)
-		} else {
-			break
-		}
-	}
 	log.Info("placement processor stopped")
 	return nil
 }
