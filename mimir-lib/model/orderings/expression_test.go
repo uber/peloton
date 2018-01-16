@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,15 +22,16 @@
 package orderings
 
 import (
+	"math"
+	"testing"
+
 	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
 	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 	"github.com/stretchr/testify/assert"
-	"math"
-	"testing"
 )
 
-func setupTwoGroupsAndEntity() (*placement.Group, *placement.Group, *placement.Entity) {
+func setupTwoGroupsAndEntity() (*placement.Group, *placement.Group, []*placement.Group, *placement.Entity) {
 	metrics1 := metrics.NewMetricSet()
 	metrics1.Set(metrics.MemoryTotal, 128*metrics.GiB)
 	metrics1.Set(metrics.MemoryUsed, 32*metrics.GiB)
@@ -76,16 +77,16 @@ func setupTwoGroupsAndEntity() (*placement.Group, *placement.Group, *placement.E
 		Metrics: usage,
 	}
 
-	return group1, group2, entity
+	return group1, group2, []*placement.Group{group1, group2}, entity
 }
 
 func TestCustomByMultiplyNoSubExpressions(t *testing.T) {
 	custom := Multiply()
 
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.Equal(t, 0, len(custom.Tuple(group1, entity)))
-	assert.Equal(t, 0, len(custom.Tuple(group2, entity)))
+	assert.Equal(t, 0, len(custom.Tuple(group1, groups, entity)))
+	assert.Equal(t, 0, len(custom.Tuple(group2, groups, entity)))
 }
 
 func TestCustomByMetric(t *testing.T) {
@@ -93,46 +94,46 @@ func TestCustomByMetric(t *testing.T) {
 		Metric(GroupSource, metrics.DiskFree),
 		Inverse(Metric(EntitySource, metrics.DiskUsed)),
 	)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.Equal(t, 2.0, custom.Tuple(group1, entity)[0])
-	assert.Equal(t, 3.0, custom.Tuple(group2, entity)[0])
+	assert.Equal(t, 2.0, custom.Tuple(group1, groups, entity)[0])
+	assert.Equal(t, 3.0, custom.Tuple(group2, groups, entity)[0])
 }
 
 func TestCustomByMetricForInvalidSource(t *testing.T) {
 	custom := Metric(Source("invalid"), metrics.DiskFree)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.Equal(t, 0.0, custom.Tuple(group1, entity)[0])
-	assert.Equal(t, 0.0, custom.Tuple(group2, entity)[0])
+	assert.Equal(t, 0.0, custom.Tuple(group1, groups, entity)[0])
+	assert.Equal(t, 0.0, custom.Tuple(group2, groups, entity)[0])
 }
 
 func TestCustomByInverse(t *testing.T) {
 	custom := Inverse(
 		Metric(GroupSource, metrics.DiskFree))
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.Equal(t, 1.0, custom.Tuple(group1, entity)[0]*metrics.TiB)
-	assert.Equal(t, 1.0/1.5, custom.Tuple(group2, entity)[0]*metrics.TiB)
+	assert.Equal(t, 1.0, custom.Tuple(group1, groups, entity)[0]*metrics.TiB)
+	assert.Equal(t, 1.0/1.5, custom.Tuple(group2, groups, entity)[0]*metrics.TiB)
 }
 
 func TestCustomByInverseDivisionByZero(t *testing.T) {
 	custom := Inverse(
 		// The groups have no network metrics so we divide by zero
 		Metric(GroupSource, metrics.NetworkFree))
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.Equal(t, math.Inf(1), custom.Tuple(group1, entity)[0])
-	assert.Equal(t, math.Inf(1), custom.Tuple(group2, entity)[0])
+	assert.Equal(t, math.Inf(1), custom.Tuple(group1, groups, entity)[0])
+	assert.Equal(t, math.Inf(1), custom.Tuple(group2, groups, entity)[0])
 }
 
 func TestCustomByConstant(t *testing.T) {
 	custom := Inverse(
 		Constant(2.0))
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.Equal(t, 0.5, custom.Tuple(group1, entity)[0])
-	assert.Equal(t, 0.5, custom.Tuple(group2, entity)[0])
+	assert.Equal(t, 0.5, custom.Tuple(group1, groups, entity)[0])
+	assert.Equal(t, 0.5, custom.Tuple(group2, groups, entity)[0])
 }
 
 func TestCustomByMapping(t *testing.T) {
@@ -151,42 +152,46 @@ func TestCustomByMapping(t *testing.T) {
 	custom := Map(
 		mapping,
 		Metric(GroupSource, metrics.DiskFree))
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.Equal(t, 0.0, custom.Tuple(group1, entity)[0])
-	assert.Equal(t, 1.0, custom.Tuple(group2, entity)[0])
+	assert.Equal(t, 0.0, custom.Tuple(group1, groups, entity)[0])
+	assert.Equal(t, 1.0, custom.Tuple(group2, groups, entity)[0])
 }
 
 func TestOrderByMetricFreeDisk(t *testing.T) {
 	custom := Metric(GroupSource, metrics.DiskFree)
 	ordering := NewCustomOrdering(custom)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.True(t, ordering.Less(group1, group2, entity))
+	assert.True(t, ordering.Less(group1, group2, groups, entity))
 }
 
 func TestOrderByMetricReverseFreeDisk(t *testing.T) {
 	custom := Negate(Metric(GroupSource, metrics.DiskFree))
 	ordering := NewCustomOrdering(custom)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.True(t, ordering.Less(group2, group1, entity))
+	assert.True(t, ordering.Less(group2, group1, groups, entity))
 }
 
 func TestOrderByRelation(t *testing.T) {
-	custom := Relation(labels.NewLabelTemplate("schemaless", "instance", "mezzanine"))
+	custom := Relation(
+		labels.NewLabelTemplate("rack", "*"),
+		labels.NewLabelTemplate("schemaless", "instance", "mezzanine"))
 	ordering := NewCustomOrdering(custom)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.True(t, ordering.Less(group2, group1, entity))
+	assert.True(t, ordering.Less(group2, group1, groups, entity))
 }
 
 func TestOrderByLabel(t *testing.T) {
-	custom := Label(labels.NewLabelTemplate("rack", "sjc1-a0084"))
+	custom := Label(
+		labels.NewLabelTemplate("rack", "*"),
+		labels.NewLabelTemplate("rack", "sjc1-a0084"))
 	ordering := NewCustomOrdering(custom)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.True(t, ordering.Less(group1, group2, entity))
+	assert.True(t, ordering.Less(group1, group2, groups, entity))
 }
 
 func TestOrderByFreeDiskDividedByEntityDiskUsage(t *testing.T) {
@@ -196,20 +201,20 @@ func TestOrderByFreeDiskDividedByEntityDiskUsage(t *testing.T) {
 			Inverse(
 				Metric(EntitySource, metrics.DiskUsed))))
 	ordering := NewCustomOrdering(custom)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.True(t, ordering.Less(group2, group1, entity))
+	assert.True(t, ordering.Less(group2, group1, groups, entity))
 }
 
 func TestOrderByRelationThenReverseFreeDisk(t *testing.T) {
 	custom := Concatenate(
-		Relation(labels.NewLabelTemplate("schemaless", "instance", "screamstore")),
+		Relation(nil, labels.NewLabelTemplate("schemaless", "instance", "screamstore")),
 		Negate(Metric(GroupSource, metrics.DiskFree)),
 	)
 	ordering := NewCustomOrdering(custom)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.True(t, ordering.Less(group2, group1, entity))
+	assert.True(t, ordering.Less(group2, group1, groups, entity))
 }
 
 func TestOrderBySummationOfFreeMemoryAndDisk(t *testing.T) {
@@ -220,11 +225,11 @@ func TestOrderBySummationOfFreeMemoryAndDisk(t *testing.T) {
 		),
 	)
 	ordering := NewCustomOrdering(custom)
-	group1, group2, entity := setupTwoGroupsAndEntity()
+	group1, group2, groups, entity := setupTwoGroupsAndEntity()
 
-	assert.True(t, ordering.Less(group2, group1, entity))
+	assert.True(t, ordering.Less(group2, group1, groups, entity))
 	expected1 := group1.Metrics.Get(metrics.MemoryFree) + group1.Metrics.Get(metrics.DiskFree)
-	assert.Equal(t, -expected1, custom.Tuple(group1, entity)[0])
+	assert.Equal(t, -expected1, custom.Tuple(group1, groups, entity)[0])
 	expected2 := group2.Metrics.Get(metrics.MemoryFree) + group2.Metrics.Get(metrics.DiskFree)
-	assert.Equal(t, -expected2, custom.Tuple(group2, entity)[0])
+	assert.Equal(t, -expected2, custom.Tuple(group2, groups, entity)[0])
 }

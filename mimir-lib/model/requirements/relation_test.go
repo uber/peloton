@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,79 +22,107 @@
 package requirements
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRelationRequirement_String_and_Composite(t *testing.T) {
 	requirement := NewRelationRequirement(
-		labels.NewLabel("rack", "dc1-a009"),
+		nil,
 		labels.NewLabel("redis", "instance", "store1"),
 		LessThanEqual,
 		0,
 	)
 
-	assert.Equal(t, "applies to rack.dc1-a009 and requires that the occurrences of the relation"+
+	assert.Equal(t, "requires that the occurrences of the relation"+
 		" redis.instance.store1 should be less_than_equal 0", requirement.String())
 	composite, name := requirement.Composite()
 	assert.False(t, composite)
 	assert.Equal(t, "relation", name)
 }
 
-func TestRelationRequirement_Fulfilled_FulfilledOnBagWhereTheRequirementDoesNotApply(t *testing.T) {
-	labelBag, relationBag := hostWithoutIssue()
+func TestRelationRequirement_Fulfilled_FulfilledOnScopedBagWithoutTheRelation(t *testing.T) {
+	group1 := placement.NewGroup("group1")
+	group1.Labels, group1.Relations = hostWithoutIssue()
+	group2 := placement.NewGroup("group2")
+	group2.Labels, group2.Relations = hostWithZFSVolume()
+	scope := []*placement.Group{group1, group2}
 
 	requirement := NewRelationRequirement(
-		labels.NewLabel("rack", "dc1-a009"),
-		labels.NewLabel("redis", "instance", "store1"),
-		LessThanEqual,
-		0,
-	)
-	transcript := NewTranscript("transcript")
-	assert.True(t, requirement.Fulfilled(labelBag, relationBag, transcript))
-	assert.Equal(t, 1, transcript.GroupsPassed)
-	assert.Equal(t, 0, transcript.GroupsFailed)
-}
-
-func TestRelationRequirement_Fulfilled_FulfilledOnBagWithoutTheRelation(t *testing.T) {
-	labelBag, relationBag := hostWithoutIssue()
-
-	requirement := NewRelationRequirement(
-		labels.NewLabel("rack", "dc1-a007"),
+		labels.NewLabel("rack", "*"),
 		labels.NewLabel("redis", "instance", "store2"),
 		LessThanEqual,
 		0,
 	)
-	transcript := NewTranscript("transcript")
-	assert.True(t, requirement.Fulfilled(labelBag, relationBag, transcript))
+	transcript := placement.NewTranscript("transcript")
+	assert.True(t, requirement.Passed(group1, scope, nil, transcript))
+	assert.Equal(t, 1, transcript.GroupsPassed)
+	assert.Equal(t, 0, transcript.GroupsFailed)
+}
+
+func TestRelationRequirement_Fulfilled_NotFulfilledOnScopedBagWithTheRelation(t *testing.T) {
+	group1 := placement.NewGroup("group1")
+	group1.Labels, group1.Relations = hostWithZFSVolume()
+	group2 := placement.NewGroup("group2")
+	group2.Labels, group2.Relations = hostWithoutIssue()
+	scope := []*placement.Group{group1, group2}
+
+	requirement := NewRelationRequirement(
+		labels.NewLabel("rack", "*"),
+		labels.NewLabel("redis", "instance", "store1"),
+		LessThanEqual,
+		0,
+	)
+	transcript := placement.NewTranscript("transcript")
+	assert.False(t, requirement.Passed(group1, scope, nil, transcript))
+	assert.Equal(t, 0, transcript.GroupsPassed)
+	assert.Equal(t, 1, transcript.GroupsFailed)
+}
+
+func TestRelationRequirement_Fulfilled_FulfilledOnBagWithoutTheRelation(t *testing.T) {
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithoutIssue()
+
+	requirement := NewRelationRequirement(
+		nil,
+		labels.NewLabel("redis", "instance", "store2"),
+		LessThanEqual,
+		0,
+	)
+	transcript := placement.NewTranscript("transcript")
+	assert.True(t, requirement.Passed(group, nil, nil, transcript))
 	assert.Equal(t, 1, transcript.GroupsPassed)
 	assert.Equal(t, 0, transcript.GroupsFailed)
 }
 
 func TestRelationRequirement_Fulfilled_NotFulfilledOnBagWithTheRelation(t *testing.T) {
-	labelBag, relationBag := hostWithoutIssue()
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithoutIssue()
 
 	requirement := NewRelationRequirement(
-		labels.NewLabel("rack", "dc1-a007"),
+		nil,
 		labels.NewLabel("redis", "instance", "store1"),
 		LessThanEqual,
 		0,
 	)
-	transcript := NewTranscript("transcript")
-	assert.False(t, requirement.Fulfilled(labelBag, relationBag, transcript))
+	transcript := placement.NewTranscript("transcript")
+	assert.False(t, requirement.Passed(group, nil, nil, transcript))
 	assert.Equal(t, 0, transcript.GroupsPassed)
 	assert.Equal(t, 1, transcript.GroupsFailed)
 }
 
 func TestRelationRequirement_Fulfilled_IsUnfulfilledForInvalidComparison(t *testing.T) {
-	labelBag, relationBag := hostWithoutIssue()
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithoutIssue()
 
 	requirement := NewRelationRequirement(
-		labels.NewLabel("rack", "dc1-a007"),
+		nil,
 		labels.NewLabel("redis", "instance", "store1"),
 		Comparison("invalid"),
 		0,
 	)
-	assert.False(t, requirement.Fulfilled(labelBag, relationBag, nil))
+	assert.False(t, requirement.Passed(group, nil, nil, nil))
 }

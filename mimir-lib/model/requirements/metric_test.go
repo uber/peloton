@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,10 +22,12 @@
 package requirements
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/stretchr/testify/assert"
 )
 
 func hostWithDiskResources() *metrics.MetricSet {
@@ -48,25 +50,31 @@ func TestMetricRequirement_String_and_Composite(t *testing.T) {
 }
 
 func TestMetricRequirement_Fulfilled_FulfilledOnSetWithEnoughOfTheResource(t *testing.T) {
-	set := hostWithDiskResources()
+	group := placement.NewGroup("group")
+	group.Metrics = hostWithDiskResources()
 
 	requirement := NewMetricRequirement(metrics.DiskFree, GreaterThanEqual, 256*metrics.GiB)
 
-	assert.True(t, requirement.Fulfilled(set, nil))
+	transcript := placement.NewTranscript("transcript")
+	assert.True(t, requirement.Passed(group, nil, nil, transcript))
+	assert.Equal(t, 1, transcript.GroupsPassed)
+	assert.Equal(t, 0, transcript.GroupsFailed)
 }
 
 func TestMetricRequirement_Fulfilled_NotFulfilledOnSetWithTooLittleOfTheResource(t *testing.T) {
-	set := hostWithDiskResources()
+	group := placement.NewGroup("group")
+	group.Metrics = hostWithDiskResources()
 
 	requirement := NewMetricRequirement(metrics.DiskFree, GreaterThanEqual, 512*metrics.GiB)
 
-	assert.False(t, requirement.Fulfilled(set, nil))
+	assert.False(t, requirement.Passed(group, nil, nil, nil))
 }
 
 func TestMetricRequirement_Fulfilled_IsUnfulfilledForInvalidComparison(t *testing.T) {
-	set := hostWithDiskResources()
+	group := placement.NewGroup("group")
+	group.Metrics = hostWithDiskResources()
 
 	requirement := NewMetricRequirement(metrics.DiskFree, Comparison("invalid"), 256*metrics.GiB)
 
-	assert.False(t, requirement.Fulfilled(set, nil))
+	assert.False(t, requirement.Passed(group, nil, nil, nil))
 }

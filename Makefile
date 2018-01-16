@@ -201,8 +201,6 @@ pcluster-teardown:
 update-mimir:
 	@rm -rf mimir-lib
 	@git clone gitolite@code.uber.internal:infra/mimir-lib
-	@rm -rf mimir-lib/.arcconfig mimir-lib/.arclint mimir-lib/.git mimir-lib/.gitignore \
-	 mimir-lib/glide.yaml mimir-lib/glide.lock mimir-lib/Makefile mimir-lib/README.md
 	@chmod u+x ./mimir-transform.sh
 	@./mimir-transform.sh
 

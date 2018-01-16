@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,14 +22,14 @@
 package placement
 
 // Entities represents a set of entities.
-type Entities map[*Entity]*Entity
+type Entities map[string]*Entity
 
 // Add will add the entity to the set.
 func (entities Entities) Add(entity *Entity) {
-	entities[entity] = entity
+	entities[entity.Name] = entity
 }
 
 // Remove will remove the entity from the set.
 func (entities Entities) Remove(entity *Entity) {
-	delete(entities, entity)
+	delete(entities, entity.Name)
 }

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,14 +22,14 @@
 package generation
 
 import (
+	"fmt"
+	"time"
+
 	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
 	"code.uber.internal/infra/peloton/mimir-lib/model/orderings"
 	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
-	"fmt"
-	"math/rand"
-	"time"
 )
 
 // EntityBuilder is used to generate new entities for use in tests and benchmarks.
@@ -37,79 +37,44 @@ type EntityBuilder interface {
 	// Name will use the Label.String() method value of the generated value from the label builder.
 	Name(template labels.LabelTemplate) EntityBuilder
 
-	// Mapper will use the given change change metric requirements into usage metrics for the entity.
-	Mapper(mapper metrics.TypeMapper) EntityBuilder
-
 	// Ordering will use the given custom to create an ordering.
 	Ordering(ordering orderings.Custom) EntityBuilder
 
 	// AddRelation will add a relation generated from the given label builder,
 	AddRelation(template labels.LabelTemplate) EntityBuilder
 
-	// AddMetricRequirement will add a metric requirement on the given metric type, bound type and value from the
-	// given distribution.
-	AddMetricRequirement(metricType metrics.MetricType, comparison requirements.Comparison, value Distribution) EntityBuilder
+	// AddMetric will add the metric generated from the given distribution.
+	AddMetric(metricType metrics.MetricType, distribution Distribution) EntityBuilder
 
-	// AffinityRequirement will set the affinity requirement builder to the given builder.
-	AffinityRequirement(builder AffinityRequirementBuilder) EntityBuilder
+	// Requirement will set the affinity requirement builder to the given builder.
+	Requirement(builder RequirementBuilder) EntityBuilder
 
 	// Generate will generate an entity that depends on the random source and the time.
-	Generate(random *rand.Rand, time time.Time) *placement.Entity
+	Generate(random Random, time time.Duration) *placement.Entity
 }
 
 // NewEntityBuilder will create a new entity builder for generating entities.
 func NewEntityBuilder() EntityBuilder {
-	mapping := map[metrics.MetricType]metrics.MetricType{
-		metrics.DiskFree:   metrics.DiskUsed,
-		metrics.MemoryFree: metrics.MemoryUsed,
-	}
 	custom := orderings.Negate(orderings.Metric(orderings.GroupSource, metrics.DiskFree))
 	return &entityBuilder{
-		name:                labels.NewLabelTemplate(),
-		mapper:              metrics.NewTypeMapper(mapping),
-		custom:              custom,
-		relations:           map[labels.LabelTemplate]struct{}{},
-		metricRequirements:  []*metricRequirement{},
-		affinityRequirement: NewAndRequirementBuilder(),
+		name:        labels.NewLabelTemplate(),
+		custom:      custom,
+		relations:   map[labels.LabelTemplate]struct{}{},
+		metrics:     map[metrics.MetricType]Distribution{},
+		requirement: NewAndRequirementBuilder(),
 	}
 }
 
 type entityBuilder struct {
-	name                labels.LabelTemplate
-	mapper              metrics.TypeMapper
-	custom              orderings.Custom
-	relations           map[labels.LabelTemplate]struct{}
-	metricRequirements  []*metricRequirement
-	affinityRequirement AffinityRequirementBuilder
-}
-
-type metricRequirement struct {
-	metricType metrics.MetricType
-	comparison requirements.Comparison
-	value      Distribution
-}
-
-type labelRequirement struct {
-	appliesTo   labels.LabelTemplate
-	label       labels.LabelTemplate
-	occurrences int
-	comparison  requirements.Comparison
-}
-
-type relationRequirement struct {
-	appliesTo   labels.LabelTemplate
-	relation    labels.LabelTemplate
-	occurrences int
-	comparison  requirements.Comparison
+	name        labels.LabelTemplate
+	custom      orderings.Custom
+	relations   map[labels.LabelTemplate]struct{}
+	metrics     map[metrics.MetricType]Distribution
+	requirement RequirementBuilder
 }
 
 func (builder *entityBuilder) Name(template labels.LabelTemplate) EntityBuilder {
 	builder.name = template
-	return builder
-}
-
-func (builder *entityBuilder) Mapper(mapper metrics.TypeMapper) EntityBuilder {
-	builder.mapper = mapper
 	return builder
 }
 
@@ -123,38 +88,26 @@ func (builder *entityBuilder) AddRelation(template labels.LabelTemplate) EntityB
 	return builder
 }
 
-func (builder *entityBuilder) AddMetricRequirement(metricType metrics.MetricType,
-	comparison requirements.Comparison, value Distribution) EntityBuilder {
-	builder.metricRequirements = append(builder.metricRequirements, &metricRequirement{
-		metricType: metricType,
-		comparison: comparison,
-		value:      value,
-	})
+func (builder *entityBuilder) AddMetric(metricType metrics.MetricType, distribution Distribution) EntityBuilder {
+	builder.metrics[metricType] = distribution
 	return builder
 }
 
-func (builder *entityBuilder) AffinityRequirement(affinityBuilder AffinityRequirementBuilder) EntityBuilder {
-	builder.affinityRequirement = affinityBuilder
+func (builder *entityBuilder) Requirement(affinityBuilder RequirementBuilder) EntityBuilder {
+	builder.requirement = affinityBuilder
 	return builder
 }
 
-func (builder *entityBuilder) Generate(random *rand.Rand, time time.Time) *placement.Entity {
+func (builder *entityBuilder) Generate(random Random, time time.Duration) *placement.Entity {
 	result := placement.NewEntity(builder.name.Instantiate().String())
 	result.Ordering = orderings.NewCustomOrdering(builder.custom)
+	result.Requirement = builder.requirement.Generate(random, time)
 	for relation := range builder.relations {
 		result.Relations.Add(relation.Instantiate())
 	}
-	for _, metricRequirement := range builder.metricRequirements {
-		value := metricRequirement.value.Value(random, time)
-		result.MetricRequirements = append(result.MetricRequirements, &requirements.MetricRequirement{
-			MetricType: metricRequirement.metricType,
-			Comparison: metricRequirement.comparison,
-			Value:      value,
-		})
-		result.Metrics.Add(metricRequirement.metricType, value)
+	for metric, distribution := range builder.metrics {
+		result.Metrics.Add(metric, distribution.Value(random, time))
 	}
-	builder.mapper.Map(result.Metrics)
-	result.AffinityRequirement = builder.affinityRequirement.Generate(random, time)
 	return result
 }
 
@@ -165,7 +118,7 @@ func CreateSchemalessEntityBuilder() (builder EntityBuilder, variables labels.Te
 	nameTemplate := labels.NewLabelTemplate(fmt.Sprintf("%v-us1-cluster%v-db%v",
 		Instance.Variable(), Cluster.Variable(), Database.Variable()))
 	variables.Add(nameTemplate)
-	hostTemplate := labels.NewLabelTemplate("host", "*")
+	scopeTemplate := labels.NewLabelTemplate("host", "*")
 	datacenterTemplate := labels.NewLabelTemplate(Datacenter.Name(), Datacenter.Variable())
 	variables.Add(datacenterTemplate)
 	instanceRelationTemplate := labels.NewLabelTemplate("schemaless", "instance", Instance.Variable())
@@ -179,34 +132,31 @@ func CreateSchemalessEntityBuilder() (builder EntityBuilder, variables labels.Te
 	volumeZFSTemplate := labels.NewLabelTemplate(VolumeType.Name(), "zfs")
 	diskDistribution := NewConstantGaussian(2.2*metrics.TiB, 0.5*metrics.TiB)
 	memoryDistribution := NewConstantGaussian(64*metrics.GiB, 0)
-	mapping := map[metrics.MetricType]metrics.MetricType{
-		metrics.DiskFree:   metrics.DiskUsed,
-		metrics.MemoryFree: metrics.MemoryUsed,
-	}
 	custom := orderings.Negate(orderings.Metric(orderings.GroupSource, metrics.DiskFree))
-	affinityBuilder := NewAndRequirementBuilder(
-		NewLabelRequirementBuilder(hostTemplate, datacenterTemplate, requirements.Equal, 1),
-		NewLabelRequirementBuilder(hostTemplate, issueLabelTemplate, requirements.LessThanEqual, 0),
+	requirementBuilder := NewAndRequirementBuilder(
+		NewMetricRequirementBuilder(metrics.DiskFree, requirements.GreaterThanEqual, diskDistribution),
+		NewMetricRequirementBuilder(metrics.MemoryFree, requirements.GreaterThanEqual, memoryDistribution),
+		NewLabelRequirementBuilder(scopeTemplate, datacenterTemplate, requirements.Equal, 1),
+		NewLabelRequirementBuilder(nil, issueLabelTemplate, requirements.LessThanEqual, 0),
 		NewOrRequirementBuilder(
-			NewLabelRequirementBuilder(hostTemplate, volumeLocalTemplate, requirements.GreaterThanEqual, 1),
-			NewLabelRequirementBuilder(hostTemplate, volumeZFSTemplate, requirements.GreaterThanEqual, 1),
+			NewLabelRequirementBuilder(nil, volumeLocalTemplate, requirements.GreaterThanEqual, 1),
+			NewLabelRequirementBuilder(nil, volumeZFSTemplate, requirements.GreaterThanEqual, 1),
 		),
-		NewRelationRequirementBuilder(hostTemplate, instanceRelationTemplate, requirements.LessThanEqual, 0),
+		NewRelationRequirementBuilder(scopeTemplate, instanceRelationTemplate, requirements.LessThanEqual, 0),
 	)
 	builder.Name(nameTemplate).
-		Mapper(metrics.NewTypeMapper(mapping)).
 		Ordering(custom).
-		AffinityRequirement(affinityBuilder).
+		Requirement(requirementBuilder).
 		AddRelation(instanceRelationTemplate).
 		AddRelation(clusterRelationTemplate).
-		AddMetricRequirement(metrics.DiskFree, requirements.GreaterThanEqual, diskDistribution).
-		AddMetricRequirement(metrics.MemoryFree, requirements.GreaterThanEqual, memoryDistribution)
+		AddMetric(metrics.DiskUsed, diskDistribution).
+		AddMetric(metrics.MemoryUsed, memoryDistribution)
 	return
 }
 
 // CreateSchemalessEntities will create a list of entities that represents the databases for all the clusters of a
 // Schemaless instance.
-func CreateSchemalessEntities(random *rand.Rand, builder EntityBuilder, templates labels.TemplateSet,
+func CreateSchemalessEntities(random Random, builder EntityBuilder, templates labels.TemplateSet,
 	clusters, perCluster int) []*placement.Entity {
 	entities := []*placement.Entity{}
 	for cluster := 1; cluster <= clusters; cluster++ {
@@ -214,7 +164,7 @@ func CreateSchemalessEntities(random *rand.Rand, builder EntityBuilder, template
 			templates.
 				Bind(Cluster.Name(), fmt.Sprintf("%v", cluster)).
 				Bind(Database.Name(), fmt.Sprintf("%v", database))
-			entities = append(entities, builder.Generate(random, time.Now()))
+			entities = append(entities, builder.Generate(random, time.Duration(cluster*perCluster+database)))
 		}
 	}
 	return entities

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -100,6 +100,21 @@ func (bag *LabelBag) AddAll(other *LabelBag) {
 	}
 }
 
+// Set adds the value in the label bag and sets it count.
+func (bag *LabelBag) Set(label *Label, count int) {
+	bag.lock.Lock()
+	defer bag.lock.Unlock()
+
+	if oldPair, found := bag.bag[label.String()]; found {
+		oldPair.count = count
+	} else {
+		bag.bag[label.String()] = &labelCount{
+			label: label,
+			count: count,
+		}
+	}
+}
+
 // SetAll sets all labels in the given label bag to the labels and counts in the other label bag, any labels that
 // exists in the label bag but not in other will still be present with the same count.
 func (bag *LabelBag) SetAll(other *LabelBag) {
@@ -115,6 +130,18 @@ func (bag *LabelBag) SetAll(other *LabelBag) {
 			bag.bag[pair.label.String()] = pair
 		}
 	}
+}
+
+// Labels returns a new slice of all the labels in the bag.
+func (bag *LabelBag) Labels() []*Label {
+	bag.lock.RLock()
+	defer bag.lock.RUnlock()
+
+	result := make([]*Label, 0, len(bag.bag))
+	for _, pair := range bag.bag {
+		result = append(result, pair.label)
+	}
+	return result
 }
 
 // Find will find all labels matching the given label.
@@ -141,6 +168,11 @@ func (bag *LabelBag) findByPattern(pattern *Label) []*Label {
 		result = append(result, pair.label)
 	}
 	return result
+}
+
+// Contains returns true iff the count of the label is strictly higher than zero.
+func (bag *LabelBag) Contains(label *Label) bool {
+	return bag.Count(label) > 0
 }
 
 // Count counts the number of labels that this label matches.

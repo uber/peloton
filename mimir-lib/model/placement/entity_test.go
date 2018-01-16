@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,41 +22,15 @@
 package placement
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestEntity_Fulfilled_true_for_empty_requirements(t *testing.T) {
+func TestNewEntity(t *testing.T) {
 	entity := NewEntity("entity")
-	group := NewGroup("group")
 
-	assert.True(t, entity.Fulfilled(group, nil))
-}
-
-func TestEntity_Fulfilled_false_for_unfulfilled_metric_requirement(t *testing.T) {
-	entity := NewEntity("entity")
-	entity.MetricRequirements = append(entity.MetricRequirements, requirements.NewMetricRequirement(
-		metrics.DiskFree, requirements.GreaterThanEqual, 256*metrics.GiB))
-	group := NewGroup("group")
-
-	assert.False(t, entity.Fulfilled(group, nil))
-}
-
-func TestEntity_Fulfilled_false_for_unfulfilled_affinity_requirement(t *testing.T) {
-	entity := NewEntity("entity")
-	entity.AffinityRequirement = requirements.NewOrRequirement(
-		requirements.NewLabelRequirement(
-			labels.NewLabel("host", "*"),
-			labels.NewLabel("volume-types", "zfs"),
-			requirements.Equal,
-			1,
-		),
-	)
-	group := NewGroup("group")
-	group.Labels.Add(labels.NewLabel("host", "some-host"))
-
-	assert.False(t, entity.Fulfilled(group, nil))
+	assert.Equal(t, "entity", entity.Name)
+	assert.NotNil(t, entity.Metrics)
+	assert.NotNil(t, entity.Relations)
 }

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,8 +22,10 @@
 package requirements
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
 	"fmt"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
 
 // MetricRequirement represents a hard requirement for placing a Database in a given PlacementGroup which should have
@@ -51,9 +53,10 @@ func NewMetricRequirement(metricType metrics.MetricType, comparison Comparison, 
 	}
 }
 
-// Fulfilled checks if the requirement is fulfilled by the given metric set.
-func (requirement *MetricRequirement) Fulfilled(metricSet *metrics.MetricSet, transcript *Transcript) bool {
-	value := metricSet.Get(requirement.MetricType)
+// Passed checks if the requirement is fulfilled by the given group within the scope groups.
+func (requirement *MetricRequirement) Passed(group *placement.Group, scopeGroups []*placement.Group,
+	entity *placement.Entity, transcript *placement.Transcript) bool {
+	value := group.Metrics.Get(requirement.MetricType)
 	fulfilled, err := requirement.Comparison.Compare(value, requirement.Value)
 	if err != nil || !fulfilled {
 		transcript.IncFailed()

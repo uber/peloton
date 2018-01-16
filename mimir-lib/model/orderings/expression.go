@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,10 +22,12 @@
 package orderings
 
 import (
+	"math"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model"
 	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
 	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
-	"math"
 )
 
 // Metric will create an ordering which will order groups based on their value of the given metric type.
@@ -38,16 +40,18 @@ func Metric(source Source, metricType metrics.MetricType) Custom {
 
 // Relation will create an ordering which will order groups based on the number of their relations matching
 // the given pattern.
-func Relation(pattern labels.LabelTemplate) Custom {
+func Relation(scope, pattern labels.LabelTemplate) Custom {
 	return &byRelation{
+		scope:   scope,
 		pattern: pattern,
 	}
 }
 
 // Label will create an ordering which will order groups based on the number of their labels matching
 // the given pattern.
-func Label(pattern labels.LabelTemplate) Custom {
+func Label(scope, pattern labels.LabelTemplate) Custom {
 	return &byLabel{
+		scope:   scope,
 		pattern: pattern,
 	}
 }
@@ -112,7 +116,7 @@ type byMetric struct {
 	metricType metrics.MetricType
 }
 
-func (by *byMetric) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
+func (by *byMetric) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
 	switch by.source {
 	case EntitySource:
 		return []float64{entity.Metrics.Get(by.metricType)}
@@ -123,26 +127,39 @@ func (by *byMetric) Tuple(group *placement.Group, entity *placement.Entity) []fl
 }
 
 type byRelation struct {
+	scope   labels.LabelTemplate
 	pattern labels.LabelTemplate
 }
 
-func (by *byRelation) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
-	return []float64{float64(group.Relations.Count(by.pattern.Instantiate()))}
+func (by *byRelation) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
+	var scope *labels.Label
+	if by.scope != nil {
+		scope = by.scope.Instantiate()
+	}
+	scopeRelations := model.CopyScope(scope, true, group, scopeGroups)
+	return []float64{float64(scopeRelations.Count(by.pattern.Instantiate()))}
 }
 
 type byLabel struct {
+	scope   labels.LabelTemplate
 	pattern labels.LabelTemplate
 }
 
-func (by *byLabel) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
-	return []float64{float64(group.Labels.Count(by.pattern.Instantiate()))}
+func (by *byLabel) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
+	var scope *labels.Label
+	if by.scope != nil {
+		scope = by.scope.Instantiate()
+	}
+	scopeLabels := model.CopyScope(
+		scope, false, group, scopeGroups)
+	return []float64{float64(scopeLabels.Count(by.pattern.Instantiate()))}
 }
 
 type byConstant struct {
 	constant float64
 }
 
-func (by *byConstant) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
+func (by *byConstant) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
 	return []float64{by.constant}
 }
 
@@ -150,8 +167,8 @@ type byNegate struct {
 	subExpression Custom
 }
 
-func (by *byNegate) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
-	tuple := by.subExpression.Tuple(group, entity)
+func (by *byNegate) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
+	tuple := by.subExpression.Tuple(group, scopeGroups, entity)
 	for i := range tuple {
 		tuple[i] = -tuple[i]
 	}
@@ -162,8 +179,8 @@ type byInverse struct {
 	subExpression Custom
 }
 
-func (by *byInverse) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
-	tuple := by.subExpression.Tuple(group, entity)
+func (by *byInverse) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
+	tuple := by.subExpression.Tuple(group, scopeGroups, entity)
 	for i := range tuple {
 		if tuple[i] == 0.0 {
 			tuple[i] = math.Inf(1)
@@ -178,11 +195,11 @@ type bySummation struct {
 	subExpressions []Custom
 }
 
-func (by *bySummation) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
+func (by *bySummation) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
 	tuples := make([][]float64, 0, len(by.subExpressions))
 	minLength := math.MaxInt64
 	for _, subExpression := range by.subExpressions {
-		t := subExpression.Tuple(group, entity)
+		t := subExpression.Tuple(group, scopeGroups, entity)
 		if len(t) < minLength {
 			minLength = len(t)
 		}
@@ -207,11 +224,11 @@ type byMultiply struct {
 	subExpressions []Custom
 }
 
-func (by *byMultiply) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
+func (by *byMultiply) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
 	tuples := make([][]float64, 0, len(by.subExpressions))
 	minLength := math.MaxInt64
 	for _, subExpression := range by.subExpressions {
-		t := subExpression.Tuple(group, entity)
+		t := subExpression.Tuple(group, scopeGroups, entity)
 		if len(t) < minLength {
 			minLength = len(t)
 		}
@@ -237,8 +254,8 @@ type byMap struct {
 	subExpression Custom
 }
 
-func (by *byMap) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
-	tuple := by.subExpression.Tuple(group, entity)
+func (by *byMap) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
+	tuple := by.subExpression.Tuple(group, scopeGroups, entity)
 	for i := range tuple {
 		tuple[i] = by.mapping.Map(tuple[i])
 	}
@@ -249,10 +266,10 @@ type byConcatenate struct {
 	subExpressions []Custom
 }
 
-func (by *byConcatenate) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
+func (by *byConcatenate) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
 	var tuple []float64
 	for _, subExpression := range by.subExpressions {
-		tuple = append(tuple, subExpression.Tuple(group, entity)...)
+		tuple = append(tuple, subExpression.Tuple(group, scopeGroups, entity)...)
 	}
 	return tuple
 }

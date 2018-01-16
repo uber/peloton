@@ -8,7 +8,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	lib_mimir "code.uber.internal/infra/peloton/mimir-lib"
+	"code.uber.internal/infra/peloton/mimir-lib/algorithms"
 	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 	"code.uber.internal/infra/peloton/placement/config"
 	"code.uber.internal/infra/peloton/placement/models"
@@ -24,8 +24,8 @@ var _offersFactor = map[resmgr.TaskType]float64{
 }
 
 // New will create a new strategy using Mimir-lib to do the placement logic.
-func New(placer lib_mimir.Placer, config *config.PlacementConfig) plugins.Strategy {
-	log.Info("Using mimir placement strategy.")
+func New(placer algorithms.Placer, config *config.PlacementConfig) plugins.Strategy {
+	log.Info("Using Mimir placement strategy.")
 	return &mimir{
 		placer: placer,
 		config: config,
@@ -34,7 +34,7 @@ func New(placer lib_mimir.Placer, config *config.PlacementConfig) plugins.Strate
 
 // mimir is a placement strategy that uses the mimir library to decide on how to assign tasks to offers.
 type mimir struct {
-	placer lib_mimir.Placer
+	placer algorithms.Placer
 	config *config.PlacementConfig
 }
 
@@ -47,7 +47,7 @@ func (mimir *mimir) convertAssignments(pelotonAssignments []*models.Assignment) 
 	for _, p := range pelotonAssignments {
 		data := p.GetTask().Data()
 		if data == nil {
-			entity := TaskToEntity(p.GetTask().GetTask())
+			entity := TaskToEntity(p.GetTask().GetTask(), false)
 			p.GetTask().SetData(entity)
 			data = entity
 		}
@@ -69,10 +69,11 @@ func (mimir *mimir) convertHosts(hosts []*models.Host) ([]*placement.Group,
 			group := OfferToGroup(host.GetOffer())
 			entities := placement.Entities{}
 			for _, task := range host.GetTasks() {
-				entity := TaskToEntity(task)
+				entity := TaskToEntity(task, true)
 				entities.Add(entity)
 			}
 			group.Entities = entities
+			group.Update()
 			host.SetData(group)
 			data = group
 		}
@@ -104,17 +105,22 @@ func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*
 	log.WithFields(log.Fields{
 		"peloton_assignments": pelotonAssignments,
 		"peloton_hosts":       hosts,
-	}).Debug("PlaceOnce mimir strategy called")
+	}).Debug("PlaceOnce Mimir strategy called")
 
 	// Place the assignments onto the groups
-	mimir.placer.Place(assignments, groups)
+	mimir.placer.Place(assignments, groups, nil)
 
 	for _, assignment := range assignments {
-		transcript := assignment.Transcript
-		host := groupsToHosts[assignment.AssignedGroup]
-		log.WithField("host", host).
-			WithField("transcript", transcript.String()).
-			Debug("Placed mimir assignment")
+		if assignment.AssignedGroup != nil {
+			log.WithField("group", dumpGroup(assignment.AssignedGroup)).
+				WithField("entity", dumpEntity(assignment.Entity)).
+				WithField("transcript", assignment.Transcript.String()).
+				Debug("Placed Mimir assignment")
+		} else {
+			log.WithField("entity", dumpEntity(assignment.Entity)).
+				WithField("transcript", assignment.Transcript.String()).
+				Debug("Did not place Mimir assignment")
+		}
 	}
 
 	mimir.updateAssignments(assignments, entitiesToAssignments, groupsToHosts)
@@ -122,7 +128,7 @@ func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*
 	log.WithFields(log.Fields{
 		"assignments": pelotonAssignments,
 		"hosts":       hosts,
-	}).Debug("PlaceOnce mimir strategy returned")
+	}).Debug("PlaceOnce Mimir strategy returned")
 }
 
 // Filters is an implementation of the placement.Strategy interface.

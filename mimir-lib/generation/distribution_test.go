@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,34 +22,75 @@
 package generation
 
 import (
-	"github.com/stretchr/testify/assert"
-	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
+func TestRandomImpl_Uniform(t *testing.T) {
+	random := NewRandom(42)
+	now := time.Duration(0)
+	value1 := random.Uniform(now)
+	value2 := random.Uniform(now)
+	assert.Equal(t, value1, value2)
+}
+
+func TestRandomImpl_Norm(t *testing.T) {
+	random := NewRandom(42)
+	now := time.Duration(0)
+	value1 := random.Norm(now)
+	value2 := random.Norm(now)
+	assert.Equal(t, value1, value2)
+}
+
+func TestRandomImpl_Exp(t *testing.T) {
+	random := NewRandom(42)
+	now := time.Duration(0)
+	value1 := random.Exp(now)
+	value2 := random.Exp(now)
+	assert.Equal(t, value1, value2)
+}
+
+func TestRandomImpl_Perm(t *testing.T) {
+	random := NewRandom(42)
+	now := time.Duration(0)
+	value1 := random.Perm(now, 42)
+	value2 := random.Perm(now, 42)
+	assert.Equal(t, value1, value2)
+}
+
 func TestGaussian_Value(t *testing.T) {
-	random := rand.New(rand.NewSource(42))
-	now := time.Now()
+	random := NewRandom(42)
+	now := time.Duration(0)
 	distribution := NewConstantGaussian(1.0, 0.0)
 
-	assert.Equal(t, 1.0, distribution.Value(random, now))
+	value1 := distribution.Value(random, now)
+	value2 := distribution.Value(random, now)
+	assert.Equal(t, value1, value2)
+	assert.Equal(t, 1.0, value1)
 }
 
 func TestUniformDiscrete_Value(t *testing.T) {
-	random := rand.New(rand.NewSource(42))
-	now := time.Now()
+	random := NewRandom(42)
+	now := time.Duration(0)
 	distribution := NewUniformDiscrete(1.0)
 
-	assert.Equal(t, 1.0, distribution.Value(random, now))
+	value1 := distribution.Value(random, now)
+	value2 := distribution.Value(random, now)
+	assert.Equal(t, value1, value2)
+	assert.Equal(t, 1.0, value1)
 }
 
 func TestDiscrete_Value(t *testing.T) {
-	random := rand.New(rand.NewSource(42))
-	now := time.Now()
+	random := NewRandom(42)
+	now := time.Duration(0)
 	distribution := NewDiscrete(map[float64]float64{
 		1.0: 1.0,
 	})
 
-	assert.Equal(t, 1.0, distribution.Value(random, now))
+	value1 := distribution.Value(random, now)
+	value2 := distribution.Value(random, now)
+	assert.Equal(t, value1, value2)
+	assert.Equal(t, 1.0, value1)
 }

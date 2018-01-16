@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,13 +22,13 @@
 package generation
 
 import (
-	"github.com/stretchr/testify/assert"
-	"math/rand"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestEntityBuilder_Generate(t *testing.T) {
-	random := rand.New(rand.NewSource(42))
+	random := NewRandom(42)
 	entityBuilder, variables := CreateSchemalessEntityBuilder()
 
 	variables.
@@ -37,9 +37,8 @@ func TestEntityBuilder_Generate(t *testing.T) {
 	entities := CreateSchemalessEntities(random, entityBuilder, variables, 4, 4)
 
 	for _, entity := range entities {
-		assert.Equal(t, 2, entity.Relations.Size())
-		assert.Equal(t, 2, entity.Metrics.Size())
-		assert.Equal(t, 2, len(entity.MetricRequirements))
-		assert.NotNil(t, entity.AffinityRequirement)
+		assert.Equal(t, 2, entity.Relations.Size(), "incorrect relations count")
+		assert.Equal(t, 2, entity.Metrics.Size(), "incorrect metrics count")
+		assert.NotNil(t, entity.Requirement)
 	}
 }

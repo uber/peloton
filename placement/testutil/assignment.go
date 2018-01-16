@@ -60,7 +60,7 @@ func SetupAssignment(deadline time.Time, maxRounds int) *models.Assignment {
 									Type: task.Constraint_LABEL_CONSTRAINT,
 									LabelConstraint: &task.LabelConstraint{
 										Kind:      task.LabelConstraint_TASK,
-										Condition: task.LabelConstraint_CONDITION_EQUAL,
+										Condition: task.LabelConstraint_CONDITION_LESS_THAN,
 										Label: &peloton.Label{
 											Key:   "key2",
 											Value: "value2",

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,40 +24,102 @@ package generation
 import (
 	"math/rand"
 	"sort"
+	"sync"
 	"time"
 )
 
-// Distribution represents a probability distribution which can change according to time.
+// Random is source of randomness that varies throughout time, but will always return the same value for the same
+// instance in time.
+type Random interface {
+	// Uniform returns a value in the range [0;1[.
+	Uniform(gtime time.Duration) float64
+
+	// Norm returns a normal distributed value in the range [-math.MaxFloat64, +math.MaxFloat64] with mean 0.0 and
+	// stddev 1.0.
+	Norm(gtime time.Duration) float64
+
+	// Exp returns a exponentially distributed value in the range [0, +math.MaxFloat64] with an exponential distribution
+	// whose rate parameter (lambda) is 1 and whose mean is 1/lambda (1).
+	Exp(gtime time.Duration) float64
+
+	// Perm returns permutation of the numbers 0, 1, ..., n-1.
+	Perm(gtime time.Duration, n int) []int
+}
+
+// NewRandom returns a new source of randomness with the given seed.
+func NewRandom(seed int64) Random {
+	return &randomImpl{
+		source: rand.New(rand.NewSource(seed)),
+		seed:   seed,
+	}
+}
+
+type randomImpl struct {
+	source *rand.Rand
+	seed   int64
+	lock   sync.Mutex
+}
+
+func (random *randomImpl) Uniform(gtime time.Duration) float64 {
+	random.lock.Lock()
+	defer random.lock.Unlock()
+	random.source.Seed(random.seed + int64(gtime))
+	return random.source.Float64()
+}
+
+func (random *randomImpl) Norm(gtime time.Duration) float64 {
+	random.lock.Lock()
+	defer random.lock.Unlock()
+	random.source.Seed(random.seed + int64(gtime))
+	return random.source.NormFloat64()
+}
+
+func (random *randomImpl) Exp(gtime time.Duration) float64 {
+	random.lock.Lock()
+	defer random.lock.Unlock()
+	random.source.Seed(random.seed + int64(gtime))
+	return random.source.ExpFloat64()
+}
+
+func (random *randomImpl) Perm(gtime time.Duration, n int) []int {
+	random.lock.Lock()
+	defer random.lock.Unlock()
+	random.source.Seed(random.seed + int64(gtime))
+	return random.source.Perm(n)
+}
+
+// Distribution represents a probability distribution which can change according to time but always returns the same
+// value for the same point in time.
 type Distribution interface {
-	Value(random *rand.Rand, time time.Time) float64
+	Value(random Random, gtime time.Duration) float64
 }
 
 // NewConstantGaussian creates a new GaussianDistribution with constant mean and standard deviation.
 func NewConstantGaussian(mean, deviation float64) *Gaussian {
 	return &Gaussian{
-		Mean:              func(time time.Time) float64 { return mean },
-		StandardDeviation: func(time time.Time) float64 { return deviation },
+		Mean:              func(gtime time.Duration) float64 { return mean },
+		StandardDeviation: func(gtime time.Duration) float64 { return deviation },
 	}
 }
 
 // Gaussian represents a gaussian distribution with varying mean and standard deviation throughout time.
 type Gaussian struct {
-	Mean              func(time time.Time) float64
-	StandardDeviation func(time time.Time) float64
+	Mean              func(gtime time.Duration) float64
+	StandardDeviation func(gtime time.Duration) float64
 }
 
 // Value returns a random value from a gaussian with a mean and standard deviation that varies throughout time.
-func (gaussian *Gaussian) Value(random *rand.Rand, time time.Time) float64 {
-	return random.NormFloat64()*gaussian.StandardDeviation(time) + gaussian.Mean(time)
+func (gaussian *Gaussian) Value(random Random, gtime time.Duration) float64 {
+	return random.Norm(gtime)*gaussian.StandardDeviation(gtime) + gaussian.Mean(gtime)
 }
 
 // Discrete represents a discrete distribution with varying probabilities for each value throughout time.
 type Discrete struct {
-	ValuesToProbabilities map[float64]func(time time.Time) float64
+	ValuesToProbabilities map[float64]func(gtime time.Duration) float64
 }
 
 // Value returns a random value from a discrete distribution that varies throughout time.
-func (discrete *Discrete) Value(random *rand.Rand, time time.Time) float64 {
+func (discrete *Discrete) Value(random Random, gtime time.Duration) float64 {
 	keys := make([]float64, len(discrete.ValuesToProbabilities))
 	i := 0
 	for key := range discrete.ValuesToProbabilities {
@@ -65,13 +127,13 @@ func (discrete *Discrete) Value(random *rand.Rand, time time.Time) float64 {
 		i++
 	}
 	sort.Float64s(keys)
-	sample := random.Float64()
+	sample := random.Uniform(gtime)
 	sum := 0.0
 	result := 0.0
 	for _, value := range keys {
 		probability := discrete.ValuesToProbabilities[value]
 		result = value
-		sum += probability(time)
+		sum += probability(gtime)
 		if sample < sum {
 			break
 		}
@@ -82,9 +144,9 @@ func (discrete *Discrete) Value(random *rand.Rand, time time.Time) float64 {
 // NewUniformDiscrete creates a new Discrete which returns a set of values with a uniform probability
 // distribution throughout time.
 func NewUniformDiscrete(values ...float64) *Discrete {
-	valuesToProbabilities := map[float64]func(time.Time) float64{}
+	valuesToProbabilities := map[float64]func(time.Duration) float64{}
 	for _, value := range values {
-		valuesToProbabilities[value] = func(time time.Time) float64 {
+		valuesToProbabilities[value] = func(gtime time.Duration) float64 {
 			return 1.0 / float64(len(values))
 		}
 	}
@@ -96,13 +158,13 @@ func NewUniformDiscrete(values ...float64) *Discrete {
 // NewDiscrete creates a new discrete distribution which returns each value with a probability distributed that
 // corresponds to the weight of the value.
 func NewDiscrete(valueToWeight map[float64]float64) *Discrete {
-	v := map[float64]func(time.Time) float64{}
+	v := map[float64]func(time.Duration) float64{}
 	weights := 0.0
 	for _, weight := range valueToWeight {
 		weights += weight
 	}
 	for value, weight := range valueToWeight {
-		v[value] = func(time time.Time) float64 {
+		v[value] = func(gtime time.Duration) float64 {
 			return weight / weights
 		}
 	}

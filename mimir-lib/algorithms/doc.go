@@ -19,33 +19,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package placement
+package algorithms
 
-import (
-	"fmt"
-)
-
-// Assignment represents a placement of an entity in a given group or the failure to be able to place the
-// entity in a group that satisfies all requirements of the entity.
-type Assignment struct {
-	// Entity to be placed.
-	Entity *Entity
-
-	// AssignedGroup the Group that the Entity got assigned to.
-	AssignedGroup *Group
-
-	// Failed is true if the assignment failed.
-	Failed bool
-
-	// Transcript holds the placement transcript of the placement of the entity.
-	Transcript *Transcript
-}
-
-// NewAssignment creates a new empty assignment for the entity.
-func NewAssignment(entity *Entity) *Assignment {
-	return &Assignment{
-		Entity:     entity,
-		Failed:     true,
-		Transcript: NewTranscript(fmt.Sprintf("requirements fulfillment for %v", entity.Name)),
-	}
-}
+/*
+Package algorithms provides a placer to place entities on groups and a relocator to find entities on groups that
+can benefit from being relocated to another group.
+*/

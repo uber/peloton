@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,8 +22,11 @@
 package requirements
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"fmt"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model"
+	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
 
 // LabelRequirement represents a requirement in relation to a specific group having a specific label,
@@ -39,29 +42,27 @@ import (
 // which applies to any group that is a host and requires that there is exactly 1 occurrence of the
 // label volume-types.zfs on the group.
 type LabelRequirement struct {
-	AppliesTo   *labels.Label
+	Scope       *labels.Label
 	Label       *labels.Label
 	Comparison  Comparison
 	Occurrences int
 }
 
 // NewLabelRequirement creates a new label requirement.
-func NewLabelRequirement(appliesTo, label *labels.Label, comparison Comparison, occurrences int) *LabelRequirement {
+func NewLabelRequirement(scope, label *labels.Label, comparison Comparison, occurrences int) *LabelRequirement {
 	return &LabelRequirement{
-		AppliesTo:   appliesTo,
+		Scope:       scope,
 		Label:       label,
 		Comparison:  comparison,
 		Occurrences: occurrences,
 	}
 }
 
-// Fulfilled checks if the requirement is fulfilled by the given label and relation bags.
-func (requirement *LabelRequirement) Fulfilled(labelBag, relationBag *labels.LabelBag, transcript *Transcript) bool {
-	if labelBag.Count(requirement.AppliesTo) == 0 {
-		transcript.IncPassed()
-		return true
-	}
-	occurrences := labelBag.Count(requirement.Label)
+// Passed checks if the requirement is fulfilled by the given group within the scope groups.
+func (requirement *LabelRequirement) Passed(group *placement.Group, scopeGroups []*placement.Group,
+	entity *placement.Entity, transcript *placement.Transcript) bool {
+	scopeLabels := model.CopyScope(requirement.Scope, false, group, scopeGroups)
+	occurrences := scopeLabels.Count(requirement.Label)
 	fulfilled, err := requirement.Comparison.Compare(float64(occurrences), float64(requirement.Occurrences))
 	if err != nil || !fulfilled {
 		transcript.IncFailed()
@@ -72,8 +73,8 @@ func (requirement *LabelRequirement) Fulfilled(labelBag, relationBag *labels.Lab
 }
 
 func (requirement *LabelRequirement) String() string {
-	return fmt.Sprintf("applies to %v and requires that the occurrences of the label %v should be %v %v",
-		requirement.AppliesTo, requirement.Label, requirement.Comparison, requirement.Occurrences)
+	return fmt.Sprintf("requires that the occurrences of the label %v should be %v %v",
+		requirement.Label, requirement.Comparison, requirement.Occurrences)
 }
 
 // Composite returns false as the requirement is not composite and the name of the requirement type.

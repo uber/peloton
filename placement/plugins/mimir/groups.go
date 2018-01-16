@@ -13,52 +13,40 @@ import (
 
 // OfferToGroup will convert an offer to a group.
 func OfferToGroup(hostOffer *hostsvc.HostOffer) *placement.Group {
-	return _groupMapper.Convert(hostOffer)
-}
-
-var _groupMapper = &groupMapper{
-	deriver: metrics.NewDeriver([]metrics.FreeMetricTuple{
-		{metrics.CPUFree, metrics.CPUUsed, metrics.CPUTotal},
-		{metrics.MemoryFree, metrics.MemoryUsed, metrics.MemoryTotal},
-		{metrics.DiskFree, metrics.DiskUsed, metrics.DiskTotal},
-		{metrics.GPUFree, metrics.GPUUsed, metrics.GPUTotal},
-		{metrics.PortsFree, metrics.PortsUsed, metrics.PortsTotal},
-	}),
-}
-
-type groupMapper struct {
-	deriver metrics.Deriver
-}
-
-func (mapper *groupMapper) Convert(hostOffer *hostsvc.HostOffer) *placement.Group {
 	group := placement.NewGroup(hostOffer.Hostname)
-	group.Metrics = mapper.makeMetrics(hostOffer.GetResources())
-	group.Labels = mapper.makeLabels(hostOffer.Attributes)
+	group.Metrics = makeMetrics(hostOffer.GetResources())
+	group.Labels = makeLabels(hostOffer.Attributes)
 	return group
 }
 
-func (mapper *groupMapper) makeMetrics(resources []*mesos_v1.Resource) *metrics.MetricSet {
+func makeMetrics(resources []*mesos_v1.Resource) *metrics.MetricSet {
 	result := metrics.NewMetricSet()
 	for _, resource := range resources {
 		value := resource.GetScalar().GetValue()
 		switch name := resource.GetName(); name {
 		case "cpus":
-			result.Add(metrics.CPUTotal, value*100.0)
-		case "mem":
-			result.Add(metrics.MemoryTotal, value*metrics.MiB)
-		case "disk":
-			result.Add(metrics.DiskTotal, value*metrics.MiB)
+			result.Add(CPUAvailable, value*100.0)
+			result.Set(CPUFree, 0.0)
 		case "gpus":
-			result.Add(metrics.GPUTotal, value*100.0)
+			result.Add(GPUAvailable, value*100.0)
+			result.Set(GPUFree, 0.0)
+		case "mem":
+			result.Add(MemoryAvailable, value*metrics.MiB)
+			result.Set(MemoryFree, 0.0)
+		case "disk":
+			result.Add(DiskAvailable, value*metrics.MiB)
+			result.Set(DiskFree, 0.0)
 		case "ports":
 			ports := uint64(0)
 			for _, r := range resource.GetRanges().GetRange() {
 				ports += r.GetEnd() - r.GetBegin() + 1
 			}
-			result.Add(metrics.PortsTotal, float64(ports))
+			result.Add(PortsAvailable, float64(ports))
+			result.Set(PortsFree, 0.0)
 		}
 	}
-	mapper.deriver.Derive(result)
+	// Compute the derived metrics, e.g. the free metrics from the available and reserved metrics.
+	result.Update()
 	return result
 }
 
@@ -67,7 +55,7 @@ func (mapper *groupMapper) makeMetrics(resources []*mesos_v1.Resource) *metrics.
 // A text attribute with name n and value t will be turned into the label ["n", "t"].
 // A ranges attribute with name n and ranges [r_1a:r_1b], ..., [r_na:r_nb] will be turned into
 // the label ["n", "[r_1a-r1b];...[r_na-r_nb]"].
-func (mapper *groupMapper) makeLabels(attributes []*mesos_v1.Attribute) *labels.LabelBag {
+func makeLabels(attributes []*mesos_v1.Attribute) *labels.LabelBag {
 	result := labels.NewLabelBag()
 	for _, attribute := range attributes {
 		var value string

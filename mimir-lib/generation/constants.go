@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -36,11 +36,11 @@ const (
 	// Datacenter is used to represent a datacenter name in label templates.
 	Datacenter = Variable("datacenter")
 
+	// Host is used to represent a host name in label templates.
+	Host = Variable("host")
+
 	// Rack is used to represent a rack name in label templates.
 	Rack = Variable("rack")
-
-	// HostID is used to represent a host id in label templates.
-	HostID = Variable("host-id")
 
 	// VolumeType is used to represent a volume type of a group.
 	VolumeType = Variable("volume-type")

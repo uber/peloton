@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,9 +21,22 @@
 
 package placement
 
+import "strings"
+
 // Ordering orders two given groups relative to each other given an entity.
 type Ordering interface {
 	// Less returns true if group1 is strictly less than group2, i.e. group1 < group2. when ranking the groups for
 	// placing the entity onto them.
-	Less(group1, group2 *Group, entity *Entity) bool
+	Less(group1, group2 *Group, scopeGroups []*Group, entity *Entity) bool
+}
+
+// NameOrdering returns a new ordering by the group name.
+func NameOrdering() Ordering {
+	return name{}
+}
+
+type name struct{}
+
+func (ordering name) Less(group1, group2 *Group, scopeGroups []*Group, entity *Entity) bool {
+	return strings.Compare(group1.Name, group2.Name) == -1
 }

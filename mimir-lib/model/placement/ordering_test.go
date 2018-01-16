@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,26 +19,18 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package metrics
+package placement
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestChanger_Change(t *testing.T) {
-	set := NewMetricSet()
-	set.Set(MemoryFree, 1.0*GiB)
-	set.Set(NetworkFree, 1.0*GiBit)
-
-	changer := NewTypeMapper(map[MetricType]MetricType{
-		MemoryFree:  MemoryUsed,
-		NetworkFree: NetworkUsed,
-	})
-	changer.Map(set)
-
-	assert.Equal(t, 0.0, set.Get(MemoryFree))
-	assert.Equal(t, 1.0*GiB, set.Get(MemoryUsed))
-	assert.Equal(t, 0.0, set.Get(NetworkFree))
-	assert.Equal(t, 1.0*GiBit, set.Get(NetworkUsed))
+func TestNameOrdering(t *testing.T) {
+	group1 := NewGroup("a")
+	group2 := NewGroup("b")
+	ordering := NameOrdering()
+	assert.True(t, ordering.Less(group1, group2, nil, nil))
+	assert.False(t, ordering.Less(group2, group1, nil, nil))
 }

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -47,14 +47,15 @@ func NewGroup(name string) *Group {
 }
 
 // Update will update the relations and metrics of the group from those of its entities.
-func (group *Group) Update(deriver metrics.Deriver) {
+func (group *Group) Update() {
 	newRelations := labels.NewLabelBag()
 	newMetrics := metrics.NewMetricSet()
-	for entity := range group.Entities {
+	for _, entity := range group.Entities {
 		newRelations.AddAll(entity.Relations)
-		newMetrics.AddAll(entity.Metrics)
+		newMetrics.AddAll(entity.Metrics, metrics.Ephemeral())
 	}
 	group.Relations = newRelations
-	group.Metrics.SetAll(newMetrics)
-	deriver.Derive(group.Metrics)
+	group.Metrics.ClearAll(metrics.Ephemeral())
+	group.Metrics.SetAll(newMetrics, metrics.Ephemeral())
+	group.Metrics.Update()
 }

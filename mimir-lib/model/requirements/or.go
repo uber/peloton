@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,9 +22,10 @@
 package requirements
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"fmt"
 	"strings"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
 
 // OrRequirement represents an "or" of a set of sub affinity requirements which can be another or, and, label or relation
@@ -37,31 +38,36 @@ import (
 //		...
 //	)
 type OrRequirement struct {
-	AffinityRequirements []AffinityRequirement
+	Requirements []placement.Requirement
 }
 
 // NewOrRequirement creates a new or requirement.
-func NewOrRequirement(requirements ...AffinityRequirement) *OrRequirement {
+func NewOrRequirement(requirements ...placement.Requirement) *OrRequirement {
 	return &OrRequirement{
-		AffinityRequirements: requirements,
+		Requirements: requirements,
 	}
 }
 
-// Fulfilled checks if the requirement is fulfilled by the given label and relation bags.
-func (requirement *OrRequirement) Fulfilled(labelBag, relationBag *labels.LabelBag, transcript *Transcript) bool {
-	for _, subRequirement := range requirement.AffinityRequirements {
-		if subRequirement.Fulfilled(labelBag, relationBag, transcript.Subscript(subRequirement)) {
-			transcript.IncPassed()
-			return true
+// Passed checks if the requirement is fulfilled by the given group within the scope groups.
+func (requirement *OrRequirement) Passed(group *placement.Group, scopeGroups []*placement.Group,
+	entity *placement.Entity, transcript *placement.Transcript) bool {
+	result := false
+	for _, subRequirement := range requirement.Requirements {
+		if subRequirement.Passed(group, scopeGroups, entity, transcript.Subscript(subRequirement)) {
+			result = true
 		}
 	}
-	transcript.IncFailed()
-	return false
+	if result {
+		transcript.IncPassed()
+	} else {
+		transcript.IncFailed()
+	}
+	return result
 }
 
 func (requirement *OrRequirement) String() string {
-	subRequirements := make([]string, 0, len(requirement.AffinityRequirements))
-	for _, subRequirement := range requirement.AffinityRequirements {
+	subRequirements := make([]string, 0, len(requirement.Requirements))
+	for _, subRequirement := range requirement.Requirements {
 		subRequirements = append(subRequirements, subRequirement.String())
 	}
 	return fmt.Sprintf("at least one of the requirements; %v, should be true",

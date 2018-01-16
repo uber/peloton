@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,15 +22,16 @@
 package orderings
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
-	"github.com/stretchr/testify/assert"
 	"strconv"
 	"testing"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/stretchr/testify/assert"
 )
 
 type testCustom struct{}
 
-func (custom *testCustom) Tuple(group *placement.Group, entity *placement.Entity) []float64 {
+func (custom *testCustom) Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64 {
 	f, _ := strconv.ParseFloat(group.Name, 64)
 	return []float64{f}
 }
@@ -42,10 +43,11 @@ func (custom *testCustom) Clone() Custom {
 func TestCustomOrdering_Less(t *testing.T) {
 	group1 := placement.NewGroup("1")
 	group2 := placement.NewGroup("2")
+	groups := []*placement.Group{group1, group2}
 	entity := placement.NewEntity("entity")
 
 	ordering := NewCustomOrdering(&testCustom{})
 
-	assert.True(t, ordering.Less(group1, group2, entity))
-	assert.False(t, ordering.Less(group2, group1, entity))
+	assert.True(t, ordering.Less(group1, group2, groups, entity))
+	assert.False(t, ordering.Less(group2, group1, groups, entity))
 }

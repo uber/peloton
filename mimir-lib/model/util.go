@@ -19,33 +19,37 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package placement
+package model
 
 import (
-	"fmt"
+	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
 
-// Assignment represents a placement of an entity in a given group or the failure to be able to place the
-// entity in a group that satisfies all requirements of the entity.
-type Assignment struct {
-	// Entity to be placed.
-	Entity *Entity
-
-	// AssignedGroup the Group that the Entity got assigned to.
-	AssignedGroup *Group
-
-	// Failed is true if the assignment failed.
-	Failed bool
-
-	// Transcript holds the placement transcript of the placement of the entity.
-	Transcript *Transcript
+func source(group *placement.Group, copyRelations bool) *labels.LabelBag {
+	if copyRelations {
+		return group.Relations
+	}
+	return group.Labels
 }
 
-// NewAssignment creates a new empty assignment for the entity.
-func NewAssignment(entity *Entity) *Assignment {
-	return &Assignment{
-		Entity:     entity,
-		Failed:     true,
-		Transcript: NewTranscript(fmt.Sprintf("requirements fulfillment for %v", entity.Name)),
+// CopyScope will copy all labels or relations that match the given scope.
+func CopyScope(scope *labels.Label, copyRelations bool, group *placement.Group,
+	scopeGroups []*placement.Group) *labels.LabelBag {
+	if scope == nil && copyRelations {
+		return group.Relations
 	}
+	if scope == nil && !copyRelations {
+		return group.Labels
+	}
+	result := labels.NewLabelBag()
+	for i := range scopeGroups {
+		for _, scopeLabel := range group.Labels.Find(scope) {
+			if scopeGroups[i].Labels.Contains(scopeLabel) {
+				result.AddAll(source(scopeGroups[i], copyRelations))
+				break
+			}
+		}
+	}
+	return result
 }

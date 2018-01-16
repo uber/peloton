@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,53 +19,46 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package mimir
+package algorithms
 
-import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
-)
+import "code.uber.internal/infra/peloton/mimir-lib/model/placement"
 
 // Placer can create assignments for entities.
 type Placer interface {
 	// Place takes a slice of assignments with entities attached and groups it then updates the assignments with the
 	// groups where it will be beneficial to place the entities.
-	Place(assignments []*placement.Assignment, groups []*placement.Group)
+	Place(assignments []*placement.Assignment, groups, scopeGroups []*placement.Group)
 }
 
 // NewPlacer creates a new placer given a deriver for computing derived metrics.
-func NewPlacer(deriver metrics.Deriver) Placer {
-	return &placer{
-		deriver: deriver,
-	}
+func NewPlacer() Placer {
+	return &placer{}
 }
 
-type placer struct {
-	deriver metrics.Deriver
-}
+type placer struct{}
 
-func (_placer *placer) Place(assignments []*placement.Assignment, groups []*placement.Group) {
+func (_placer *placer) Place(assignments []*placement.Assignment, groups, scopeGroups []*placement.Group) {
 	for _, assignment := range assignments {
 		bestGroup := assignment.AssignedGroup
 		entity := assignment.Entity
 		for _, group := range groups {
-			if !entity.Fulfilled(group, assignment.Transcript) {
+			if !entity.Requirement.Passed(group, scopeGroups, entity, assignment.Transcript) {
 				continue
 			}
 			if bestGroup == nil {
 				bestGroup = group
-			} else if entity.Ordering.Less(group, bestGroup, entity) {
+			} else if entity.Ordering.Less(group, bestGroup, scopeGroups, entity) {
 				bestGroup = group
 			}
 		}
 		if assignment.AssignedGroup != nil {
 			assignment.AssignedGroup.Entities.Remove(entity)
-			assignment.AssignedGroup.Update(_placer.deriver)
+			assignment.AssignedGroup.Update()
 		}
 		if bestGroup != nil {
 			assignment.AssignedGroup = bestGroup
 			bestGroup.Entities.Add(entity)
-			bestGroup.Update(_placer.deriver)
+			bestGroup.Update()
 			assignment.Failed = false
 		}
 	}

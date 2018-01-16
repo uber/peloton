@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,25 +22,29 @@
 package requirements
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"strings"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/stretchr/testify/assert"
 )
 
 func setupAndRequirement() *AndRequirement {
 	return NewAndRequirement(
 		NewLabelRequirement(
-			labels.NewLabel("rack", "*"),
+			nil,
 			labels.NewLabel("issues", "*"),
 			LessThanEqual,
 			0,
 		),
 		NewLabelRequirement(
-			labels.NewLabel("rack", "*"),
-			labels.NewLabel("rack", "dc1-a009"),
-			LessThanEqual,
-			0,
+			nil,
+			labels.NewLabel("rack", "dc1-a007"),
+			GreaterThanEqual,
+			1,
 		),
 	)
 }
@@ -49,8 +53,8 @@ func TestAndRequirement_String_and_Composite(t *testing.T) {
 	requirement := setupAndRequirement()
 
 	assert.Equal(t, fmt.Sprintf("all of the requirements; %v, %v, should be true",
-		requirement.AffinityRequirements[0].String(),
-		requirement.AffinityRequirements[1].String()),
+		requirement.Requirements[0].String(),
+		requirement.Requirements[1].String()),
 		requirement.String())
 	composite, name := requirement.Composite()
 	assert.True(t, composite)
@@ -58,47 +62,55 @@ func TestAndRequirement_String_and_Composite(t *testing.T) {
 }
 
 func TestAndRequirement_Fulfilled_updates_transcript_and_delegates_updates(t *testing.T) {
-	labelBag, relationBag := hostWithoutIssue()
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithIssue()
 
 	requirement := setupAndRequirement()
 
-	transcript := NewTranscript("transcript")
-	requirement.Fulfilled(labelBag, relationBag, transcript)
-	assert.Equal(t, 1, transcript.GroupsPassed)
-	assert.Equal(t, 0, transcript.GroupsFailed)
+	transcript := placement.NewTranscript("transcript")
+	requirement.Passed(group, nil, nil, transcript)
+	assert.Equal(t, 0, transcript.GroupsPassed)
+	assert.Equal(t, 1, transcript.GroupsFailed)
 	assert.Equal(t, 2, len(transcript.Subscripts))
-	for _, subscript := range transcript.Subscripts {
-		assert.Equal(t, 1, subscript.GroupsPassed)
-		assert.Equal(t, 0, subscript.GroupsFailed)
+	for description, subscript := range transcript.Subscripts {
+		if strings.Contains(description.String(), "issues") {
+			assert.Equal(t, 0, subscript.GroupsPassed)
+			assert.Equal(t, 1, subscript.GroupsFailed)
+		} else {
+			assert.Equal(t, 1, subscript.GroupsPassed)
+			assert.Equal(t, 0, subscript.GroupsFailed)
+		}
 	}
 }
 
 func TestAndRequirement_Fulfilled_returns_true_if_subrequirements_are_true(t *testing.T) {
-	labelBag, relationBag := hostWithoutIssue()
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithoutIssue()
 
 	requirement := setupAndRequirement()
 
-	transcript := NewTranscript("transcript")
-	assert.True(t, requirement.Fulfilled(labelBag, relationBag, transcript))
+	transcript := placement.NewTranscript("transcript")
+	assert.True(t, requirement.Passed(group, nil, nil, transcript))
 }
 
 func TestAndRequirement_Fulfilled_returns_false_if_any_subrequirements_are_false(t *testing.T) {
-	labelBag, relationBag := hostWithoutIssue()
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithoutIssue()
 
 	requirement := NewAndRequirement(
 		NewLabelRequirement(
-			labels.NewLabel("rack", "*"),
+			nil,
 			labels.NewLabel("issues", "*"),
 			LessThanEqual,
 			0,
 		),
 		NewLabelRequirement(
-			labels.NewLabel("rack", "*"),
+			nil,
 			labels.NewLabel("rack", "dc1-a007"),
 			LessThanEqual,
 			0,
 		),
 	)
 
-	assert.False(t, requirement.Fulfilled(labelBag, relationBag, nil))
+	assert.False(t, requirement.Passed(group, nil, nil, nil))
 }

@@ -19,33 +19,49 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package placement
+package metrics
 
 import (
 	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// Assignment represents a placement of an entity in a given group or the failure to be able to place the
-// entity in a group that satisfies all requirements of the entity.
-type Assignment struct {
-	// Entity to be placed.
-	Entity *Entity
+func TestTopSort_DetectCycle(t *testing.T) {
+	metricTypes := make([]MetricType, 3)
+	for i := range metricTypes {
+		metricTypes[i].Name = fmt.Sprintf("metric_type%v", i)
+		metricTypes[i].Unit = "unit"
+		metricTypes[i].derivation = &derivation{}
+	}
+	for i := range metricTypes {
+		next := metricTypes[(i+1)%3]
+		d := metricTypes[i].derivation.(*derivation)
+		d.dependencies = []MetricType{next}
+	}
 
-	// AssignedGroup the Group that the Entity got assigned to.
-	AssignedGroup *Group
-
-	// Failed is true if the assignment failed.
-	Failed bool
-
-	// Transcript holds the placement transcript of the placement of the entity.
-	Transcript *Transcript
+	_, err := TopSort(metricTypes[2], metricTypes[1], metricTypes[0])
+	assert.Error(t, err, "is forming a cycle")
 }
 
-// NewAssignment creates a new empty assignment for the entity.
-func NewAssignment(entity *Entity) *Assignment {
-	return &Assignment{
-		Entity:     entity,
-		Failed:     true,
-		Transcript: NewTranscript(fmt.Sprintf("requirements fulfillment for %v", entity.Name)),
+func TestTopSort_ChainDAG(t *testing.T) {
+	metricTypes := make([]MetricType, 3)
+	for i := range metricTypes {
+		metricTypes[i].Name = fmt.Sprintf("metric_type%v", i)
+		metricTypes[i].Unit = "unit"
+		metricTypes[i].derivation = &derivation{}
 	}
+	for i := range metricTypes {
+		if i >= len(metricTypes)-1 {
+			break
+		}
+		next := metricTypes[(i+1)%3]
+		d := metricTypes[i].derivation.(*derivation)
+		d.dependencies = []MetricType{next}
+	}
+
+	order, err := TopSort(metricTypes...)
+	assert.NoError(t, err)
+	assert.NotNil(t, order)
 }

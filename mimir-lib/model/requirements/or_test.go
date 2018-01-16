@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,24 +22,26 @@
 package requirements
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"github.com/stretchr/testify/assert"
 )
 
 func setupOrRequirement() *OrRequirement {
 	return NewOrRequirement(
 		NewLabelRequirement(
-			labels.NewLabel("host", "*"),
-			labels.NewLabel("volume-types", "local"),
+			nil,
+			labels.NewLabel("volume-types", "zfs"),
 			GreaterThanEqual,
 			1,
 		),
 		NewLabelRequirement(
-			labels.NewLabel("host", "*"),
-			labels.NewLabel("volume-types", "zfs"),
+			nil,
+			labels.NewLabel("volume-types", "local"),
 			GreaterThanEqual,
 			1,
 		),
@@ -50,8 +52,8 @@ func TestOrRequirement_String_and_Composite(t *testing.T) {
 	requirement := setupOrRequirement()
 
 	assert.Equal(t, fmt.Sprintf("at least one of the requirements; %v, %v, should be true",
-		requirement.AffinityRequirements[0].String(),
-		requirement.AffinityRequirements[1].String()),
+		requirement.Requirements[0].String(),
+		requirement.Requirements[1].String()),
 		requirement.String())
 	composite, name := requirement.Composite()
 	assert.True(t, composite)
@@ -59,12 +61,13 @@ func TestOrRequirement_String_and_Composite(t *testing.T) {
 }
 
 func TestOrRequirement_Fulfilled_updates_transcript_and_delegates_updates(t *testing.T) {
-	labelBag, relationBag := hostWithZFSVolume()
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithZFSVolume()
 
 	requirement := setupOrRequirement()
 
-	transcript := NewTranscript("transcript")
-	requirement.Fulfilled(labelBag, relationBag, transcript)
+	transcript := placement.NewTranscript("transcript")
+	requirement.Passed(group, nil, nil, transcript)
 	assert.Equal(t, 1, transcript.GroupsPassed)
 	assert.Equal(t, 0, transcript.GroupsFailed)
 	assert.Equal(t, 2, len(transcript.Subscripts))
@@ -80,17 +83,19 @@ func TestOrRequirement_Fulfilled_updates_transcript_and_delegates_updates(t *tes
 }
 
 func TestOrRequirement_Fulfilled_returns_true_if_any_subrequirement_is_true(t *testing.T) {
-	labelBag, relationBag := hostWithZFSVolume()
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithZFSVolume()
 
 	requirement := setupOrRequirement()
 
-	assert.True(t, requirement.Fulfilled(labelBag, relationBag, nil))
+	assert.True(t, requirement.Passed(group, nil, nil, nil))
 }
 
 func TestOrRequirement_Fulfilled_returns_false_if_all_subrequirements_are_false(t *testing.T) {
-	labelBag, relationBag := hostWithoutIssue()
+	group := placement.NewGroup("group")
+	group.Labels, group.Relations = hostWithoutIssue()
 
 	requirement := setupOrRequirement()
 
-	assert.False(t, requirement.Fulfilled(labelBag, relationBag, nil))
+	assert.False(t, requirement.Passed(group, nil, nil, nil))
 }

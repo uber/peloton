@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,18 +19,18 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package requirements
+package placement
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// AffinityRequirement represents an affinity requirements for the labels and relations of a group. The affinity
-// requirement can be composed of a tree of and, or, label and relation requirements.
-type AffinityRequirement interface {
-	// Fulfilled returns true iff the requirement is fulfilled by the given label and relation bags.
-	Fulfilled(labelBag, relationBag *labels.LabelBag, transcript *Transcript) bool
-
-	// The requirement needs to be transcriptable so we can keep a transcript of its evaluation.
-	Transcriptable
+func TestEmptyTranscript(t *testing.T) {
+	transcript := EmptyTranscript()
+	assert.Equal(t, "empty", transcript.String())
+	composite, transcriptType := transcript.Composite()
+	assert.False(t, composite)
+	assert.Equal(t, "empty-type", transcriptType)
 }

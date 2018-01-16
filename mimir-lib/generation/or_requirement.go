@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,26 +22,28 @@
 package generation
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
-	"math/rand"
 	"time"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
 )
 
-type orRequirementBuilder struct {
-	affinityRequirementBuilders []AffinityRequirementBuilder
-}
-
 // NewOrRequirementBuilder will create a new or requirement builder for generating or requirements.
-func NewOrRequirementBuilder(subRequirements ...AffinityRequirementBuilder) AffinityRequirementBuilder {
+func NewOrRequirementBuilder(subRequirements ...RequirementBuilder) RequirementBuilder {
 	return &orRequirementBuilder{
-		affinityRequirementBuilders: subRequirements,
+		requirementBuilders: subRequirements,
 	}
 }
 
-func (builder *orRequirementBuilder) Generate(random *rand.Rand, time time.Time) requirements.AffinityRequirement {
-	subRequirements := make([]requirements.AffinityRequirement, 0, len(builder.affinityRequirementBuilders))
-	for _, subBuilder := range builder.affinityRequirementBuilders {
-		subRequirements = append(subRequirements, subBuilder.Generate(random, time))
+type orRequirementBuilder struct {
+	requirementBuilders []RequirementBuilder
+}
+
+func (builder *orRequirementBuilder) Generate(random Random, time time.Duration) placement.Requirement {
+	subRequirements := make([]placement.Requirement, 0, len(builder.requirementBuilders))
+	for _, subBuilder := range builder.requirementBuilders {
+		subRequirement := subBuilder.Generate(random, time)
+		subRequirements = append(subRequirements, subRequirement)
 	}
 	return requirements.NewOrRequirement(subRequirements...)
 }

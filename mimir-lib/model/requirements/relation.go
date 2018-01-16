@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,8 +22,11 @@
 package requirements
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"fmt"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model"
+	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
 
 // RelationRequirement represents a requirement on the number of occurrences for a specific relation on a group.
@@ -39,29 +42,27 @@ import (
 // which only applies to groups in rack dc1-a009 and requires that there are 0 or less occurrences of the
 // relation redis.instance.store1 on the group.
 type RelationRequirement struct {
-	AppliesTo   *labels.Label
+	Scope       *labels.Label
 	Relation    *labels.Label
 	Comparison  Comparison
 	Occurrences int
 }
 
 // NewRelationRequirement creates a new relation requirement.
-func NewRelationRequirement(appliesTo, relation *labels.Label, comparison Comparison, occurrences int) *RelationRequirement {
+func NewRelationRequirement(scope, relation *labels.Label, comparison Comparison, occurrences int) *RelationRequirement {
 	return &RelationRequirement{
-		AppliesTo:   appliesTo,
+		Scope:       scope,
 		Relation:    relation,
 		Comparison:  comparison,
 		Occurrences: occurrences,
 	}
 }
 
-// Fulfilled checks if the requirement is fulfilled by the given label and relation bags.
-func (requirement *RelationRequirement) Fulfilled(labelBag, relationBag *labels.LabelBag, transcript *Transcript) bool {
-	if labelBag.Count(requirement.AppliesTo) == 0 {
-		transcript.IncPassed()
-		return true
-	}
-	occurrences := relationBag.Count(requirement.Relation)
+// Passed checks if the requirement is fulfilled by the given group within the scope groups.
+func (requirement *RelationRequirement) Passed(group *placement.Group, scopeGroups []*placement.Group,
+	entity *placement.Entity, transcript *placement.Transcript) bool {
+	scopeRelations := model.CopyScope(requirement.Scope, true, group, scopeGroups)
+	occurrences := scopeRelations.Count(requirement.Relation)
 	fulfilled, err := requirement.Comparison.Compare(float64(occurrences), float64(requirement.Occurrences))
 	if err != nil || !fulfilled {
 		transcript.IncFailed()
@@ -72,8 +73,8 @@ func (requirement *RelationRequirement) Fulfilled(labelBag, relationBag *labels.
 }
 
 func (requirement *RelationRequirement) String() string {
-	return fmt.Sprintf("applies to %v and requires that the occurrences of the relation %v should be %v %v",
-		requirement.AppliesTo, requirement.Relation, requirement.Comparison, requirement.Occurrences)
+	return fmt.Sprintf("requires that the occurrences of the relation %v should be %v %v",
+		requirement.Relation, requirement.Comparison, requirement.Occurrences)
 }
 
 // Composite returns false as the requirement is not composite and the name of the requirement type.

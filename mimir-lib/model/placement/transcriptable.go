@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,29 +19,31 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package metrics
+package placement
 
-// TypeMapper maps a metric type, say a metric type of a requirement, to another metric type. An example is
-// used CPUs of an entity which is computed from the free CPUs required by the entity.
-type TypeMapper interface {
-	// Map will change the types of the metrics in the metric set to other types.
-	Map(metricSet *MetricSet)
+// Transcriptable represents something we can create a transcript for, it is usually a requirement which can be composed
+// of sub-requirements, hence we want a human readable name in the string-method and to know whatever it is composite
+// in the composite-method and the type of composition.
+type Transcriptable interface {
+	// String will return a human readable string representation of the transcript-able.
+	String() string
+
+	// Composite will return true iff the transcript-able is composed of other transcript-ables and a type name describing
+	// the type of transcript-able.
+	Composite() (composite bool, typeName string)
 }
 
-// NewTypeMapper will create a type mapper that maps the types of a metric set to the types given in the mapping.
-func NewTypeMapper(mapping map[MetricType]MetricType) TypeMapper {
-	return &changer{
-		mapping: mapping,
-	}
+// EmptyTranscript returns an empty transcript.
+func EmptyTranscript() Transcriptable {
+	return empty{}
 }
 
-type changer struct {
-	mapping map[MetricType]MetricType
+type empty struct{}
+
+func (transcript empty) String() string {
+	return "empty"
 }
 
-func (_changer *changer) Map(metricSet *MetricSet) {
-	for from, to := range _changer.mapping {
-		metricSet.Set(to, metricSet.Get(from))
-		metricSet.Clear(from)
-	}
+func (transcript empty) Composite() (bool, string) {
+	return false, "empty-type"
 }

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,16 +19,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package requirements
+package metrics
 
-// Transcriptable represents something we can create a transcript for, it is usually a requirement which can be composed
-// of sub-requirements, hence we want a human readable name in the string-method and to know whatever it is composite
-// in the composite-method and the type of composition.
-type Transcriptable interface {
-	// String will return a human readable string representation of the transcriptable.
-	String() string
+// Derivation describes which other metric types that a given metric type is derived from and is able to calculate
+// the current value of the metric from the other other metrics in a given metric set.
+type Derivation interface {
+	// Dependencies returns the set of dependencies that this metric needs to derive its value.
+	Dependencies() []MetricType
 
-	// Composite will return true iff the transcriptable is composed of other transcriptables and a type name describing
-	// the type of transcriptable.
-	Composite() (composite bool, typeName string)
+	// Calculate computes the derived value of the metric type and updates the metric set.
+	Calculate(metricType MetricType, metricSet *MetricSet)
 }

@@ -1,7 +1,6 @@
 package mimir
 
 import (
-	"fmt"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -17,20 +16,24 @@ import (
 )
 
 // TaskToEntity will convert a task to an entity.
-func TaskToEntity(task *resmgr.Task) *placement.Entity {
-	entity := placement.NewEntity(fmt.Sprintf("%v-%v", task.GetName(), task.GetId().GetValue()))
-	addMetrics(task, entity.Metrics)
+func TaskToEntity(task *resmgr.Task, isLaunched bool) *placement.Entity {
+	entity := placement.NewEntity(task.GetId().GetValue())
+	if !isLaunched {
+		addMetrics(task, entity.Metrics)
+	}
 	addRelations(task.GetLabels(), entity.Relations)
 	entity.Ordering = orderings.NewCustomOrdering(
 		orderings.Concatenate(
-			orderings.Negate(orderings.Metric(orderings.GroupSource, metrics.DiskFree)),
-			orderings.Negate(orderings.Metric(orderings.GroupSource, metrics.MemoryFree)),
-			orderings.Negate(orderings.Metric(orderings.GroupSource, metrics.CPUFree)),
-			orderings.Negate(orderings.Metric(orderings.GroupSource, metrics.GPUFree)),
+			orderings.Negate(orderings.Metric(orderings.GroupSource, DiskFree)),
+			orderings.Negate(orderings.Metric(orderings.GroupSource, MemoryFree)),
+			orderings.Negate(orderings.Metric(orderings.GroupSource, CPUFree)),
+			orderings.Negate(orderings.Metric(orderings.GroupSource, GPUFree)),
 		),
 	)
-	entity.MetricRequirements = makeMetricRequirements(task)
-	entity.AffinityRequirement = makeAffinityRequirements(task.GetConstraint())
+	var req []placement.Requirement
+	req = append(req, makeAffinityRequirements(task.GetConstraint()))
+	req = append(req, makeMetricRequirements(task)...)
+	entity.Requirement = requirements.NewAndRequirement(req...)
 	return entity
 }
 
@@ -53,11 +56,10 @@ func makeLabel(key, value string) *labels.Label {
 	return labels.NewLabel(append(strings.Split(key, "."), value)...)
 }
 
-func makeAffinityRequirements(constraint *task.Constraint) requirements.AffinityRequirement {
+func makeAffinityRequirements(constraint *task.Constraint) placement.Requirement {
 	switch constraint.GetType() {
 	case task.Constraint_LABEL_CONSTRAINT:
 		kind := constraint.GetLabelConstraint().GetKind()
-		appliesTo := labels.NewLabel("offer", "*")
 		labelRelation := makeLabel(
 			constraint.GetLabelConstraint().GetLabel().GetKey(),
 			constraint.GetLabelConstraint().GetLabel().GetValue())
@@ -65,24 +67,24 @@ func makeAffinityRequirements(constraint *task.Constraint) requirements.Affinity
 		switch kind {
 		case task.LabelConstraint_TASK:
 			return requirements.NewRelationRequirement(
-				appliesTo, labelRelation, comparison, int(constraint.GetLabelConstraint().GetRequirement()))
+				nil, labelRelation, comparison, int(constraint.GetLabelConstraint().GetRequirement()))
 		case task.LabelConstraint_HOST:
 			return requirements.NewLabelRequirement(
-				appliesTo, labelRelation, comparison, int(constraint.GetLabelConstraint().GetRequirement()))
+				nil, labelRelation, comparison, int(constraint.GetLabelConstraint().GetRequirement()))
 		default:
 			log.WithField("kind", kind).
 				Warn("unknown relation constraint kind")
 			return requirements.NewAndRequirement()
 		}
 	case task.Constraint_AND_CONSTRAINT:
-		subRequirements := []requirements.AffinityRequirement{}
+		var subRequirements []placement.Requirement
 		for _, subConstraint := range constraint.GetAndConstraint().GetConstraints() {
 			subRequirement := makeAffinityRequirements(subConstraint)
 			subRequirements = append(subRequirements, subRequirement)
 		}
 		return requirements.NewAndRequirement(subRequirements...)
 	case task.Constraint_OR_CONSTRAINT:
-		subRequirements := []requirements.AffinityRequirement{}
+		var subRequirements []placement.Requirement
 		for _, subConstraint := range constraint.GetOrConstraint().GetConstraints() {
 			subRequirement := makeAffinityRequirements(subConstraint)
 			subRequirements = append(subRequirements, subRequirement)
@@ -97,19 +99,19 @@ func makeAffinityRequirements(constraint *task.Constraint) requirements.Affinity
 	}
 }
 
-func makeMetricRequirements(task *resmgr.Task) []*requirements.MetricRequirement {
+func makeMetricRequirements(task *resmgr.Task) []placement.Requirement {
 	resource := task.GetResource()
 	cpuRequirement := requirements.NewMetricRequirement(
-		metrics.CPUFree, requirements.GreaterThanEqual, resource.GetCpuLimit()*100.0)
+		CPUFree, requirements.GreaterThanEqual, resource.GetCpuLimit()*100.0)
 	memoryRequirement := requirements.NewMetricRequirement(
-		metrics.MemoryFree, requirements.GreaterThanEqual, resource.GetMemLimitMb()*metrics.MiB)
+		MemoryFree, requirements.GreaterThanEqual, resource.GetMemLimitMb()*metrics.MiB)
 	diskRequirement := requirements.NewMetricRequirement(
-		metrics.DiskFree, requirements.GreaterThanEqual, resource.GetDiskLimitMb()*metrics.MiB)
+		DiskFree, requirements.GreaterThanEqual, resource.GetDiskLimitMb()*metrics.MiB)
 	gpuRequirement := requirements.NewMetricRequirement(
-		metrics.GPUFree, requirements.GreaterThanEqual, resource.GetGpuLimit()*100.0)
+		GPUFree, requirements.GreaterThanEqual, resource.GetGpuLimit()*100.0)
 	portRequirement := requirements.NewMetricRequirement(
-		metrics.PortsFree, requirements.GreaterThanEqual, float64(task.GetNumPorts()))
-	return []*requirements.MetricRequirement{
+		PortsFree, requirements.GreaterThanEqual, float64(task.GetNumPorts()))
+	return []placement.Requirement{
 		cpuRequirement, memoryRequirement, diskRequirement, gpuRequirement, portRequirement,
 	}
 }
@@ -123,9 +125,9 @@ func addRelations(labels *mesos_v1.Labels, relations *labels.LabelBag) {
 
 func addMetrics(task *resmgr.Task, metricSet *metrics.MetricSet) {
 	resource := task.GetResource()
-	metricSet.Set(metrics.CPUUsed, resource.GetCpuLimit()*100.0)
-	metricSet.Set(metrics.GPUUsed, resource.GetGpuLimit()*100)
-	metricSet.Set(metrics.MemoryUsed, resource.GetMemLimitMb()*metrics.MiB)
-	metricSet.Set(metrics.DiskUsed, resource.GetDiskLimitMb()*metrics.MiB)
-	metricSet.Set(metrics.PortsUsed, float64(task.GetNumPorts()))
+	metricSet.Set(CPUReserved, resource.GetCpuLimit()*100.0)
+	metricSet.Set(GPUReserved, resource.GetGpuLimit()*100)
+	metricSet.Set(MemoryReserved, resource.GetMemLimitMb()*metrics.MiB)
+	metricSet.Set(DiskReserved, resource.GetDiskLimitMb()*metrics.MiB)
+	metricSet.Set(PortsReserved, float64(task.GetNumPorts()))
 }

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,36 +22,41 @@
 package generation
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
-	"math/rand"
 	"time"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
 )
 
+// NewLabelRequirementBuilder will create a new label requirement builder requiring that the labels occurrences to
+// fulfill the comparison.
+func NewLabelRequirementBuilder(scope, label labels.LabelTemplate, comparison requirements.Comparison,
+	occurrences int) RequirementBuilder {
+	return &labelRequirementBuilder{
+		scope:       scope,
+		label:       label,
+		comparison:  comparison,
+		occurrences: occurrences,
+	}
+}
+
 type labelRequirementBuilder struct {
-	appliesTo   labels.LabelTemplate
+	scope       labels.LabelTemplate
 	label       labels.LabelTemplate
 	comparison  requirements.Comparison
 	occurrences int
 }
 
-func (builder *labelRequirementBuilder) Generate(random *rand.Rand, time time.Time) requirements.AffinityRequirement {
+func (builder *labelRequirementBuilder) Generate(random Random, time time.Duration) placement.Requirement {
+	var scope *labels.Label
+	if builder.scope != nil {
+		scope = builder.scope.Instantiate()
+	}
 	return requirements.NewLabelRequirement(
-		builder.appliesTo.Instantiate(),
+		scope,
 		builder.label.Instantiate(),
 		builder.comparison,
 		builder.occurrences,
 	)
-}
-
-// NewLabelRequirementBuilder will create a new label requirement builder applying to a groups with a given label
-// requiring that the labels occurrences to fulfill the comparison.
-func NewLabelRequirementBuilder(appliesTo, label labels.LabelTemplate, comparison requirements.Comparison,
-	occurrences int) AffinityRequirementBuilder {
-	return &labelRequirementBuilder{
-		appliesTo:   appliesTo,
-		label:       label,
-		comparison:  comparison,
-		occurrences: occurrences,
-	}
 }

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -21,14 +21,12 @@
 
 package orderings
 
-import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
-)
+import "code.uber.internal/infra/peloton/mimir-lib/model/placement"
 
 // Custom is used to create a custom ordering with. It can return a slice of floats to do lexicographic orderings.
 type Custom interface {
 	// Tuple returns a tuple of floats created from the group and the entity.
-	Tuple(group *placement.Group, entity *placement.Entity) []float64
+	Tuple(group *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) []float64
 }
 
 // NewCustomOrdering creates a lexicographic ordering from a tuple score implementation.
@@ -42,9 +40,9 @@ type customOrdering struct {
 	scorer Custom
 }
 
-func (order *customOrdering) Less(group1, group2 *placement.Group, entity *placement.Entity) bool {
-	tuple1 := order.scorer.Tuple(group1, entity)
-	tuple2 := order.scorer.Tuple(group2, entity)
+func (order *customOrdering) Less(group1, group2 *placement.Group, scopeGroups []*placement.Group, entity *placement.Entity) bool {
+	tuple1 := order.scorer.Tuple(group1, scopeGroups, entity)
+	tuple2 := order.scorer.Tuple(group2, scopeGroups, entity)
 	for i := range tuple1 {
 		if tuple1[i] < tuple2[i] {
 			return true

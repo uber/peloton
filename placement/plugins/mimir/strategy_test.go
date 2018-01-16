@@ -5,8 +5,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-	lib_mimir "code.uber.internal/infra/peloton/mimir-lib"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
+	"code.uber.internal/infra/peloton/mimir-lib/algorithms"
 	"code.uber.internal/infra/peloton/placement/config"
 	"code.uber.internal/infra/peloton/placement/models"
 	"code.uber.internal/infra/peloton/placement/testutil"
@@ -22,14 +21,7 @@ func setupStrategy() *mimir {
 		TaskType:             resmgr.TaskType_BATCH,
 		FetchOfferTasks:      false,
 	}
-	deriver := metrics.NewDeriver([]metrics.FreeMetricTuple{
-		{metrics.CPUFree, metrics.CPUUsed, metrics.CPUTotal},
-		{metrics.MemoryFree, metrics.MemoryUsed, metrics.MemoryTotal},
-		{metrics.DiskFree, metrics.DiskUsed, metrics.DiskTotal},
-		{metrics.GPUFree, metrics.GPUUsed, metrics.GPUTotal},
-		{metrics.PortsFree, metrics.PortsUsed, metrics.PortsTotal},
-	})
-	placer := lib_mimir.NewPlacer(deriver)
+	placer := algorithms.NewPlacer()
 	return New(placer, config).(*mimir)
 }
 

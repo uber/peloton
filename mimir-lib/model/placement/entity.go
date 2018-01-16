@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,50 +24,24 @@ package placement
 import (
 	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
 	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
 )
 
 // Entity represents an task, process or some entity that should run on a group.
 type Entity struct {
-	Name                string
-	Relocateable        bool
-	Ordering            Ordering
-	AffinityRequirement requirements.AffinityRequirement
-	MetricRequirements  []*requirements.MetricRequirement
-	Relations           *labels.LabelBag
-	Metrics             *metrics.MetricSet
-}
-
-// Fulfilled checks if the requirements are fulfilled by the given group and will update the result into the transcript.
-func (entity *Entity) Fulfilled(group *Group, transcript *requirements.Transcript) bool {
-	passed := true
-	for _, metricRequirement := range entity.MetricRequirements {
-		if !metricRequirement.Fulfilled(group.Metrics, transcript.Subscript(metricRequirement)) {
-			passed = false
-		}
-	}
-	if entity.AffinityRequirement != nil {
-		if !entity.AffinityRequirement.Fulfilled(
-			group.Labels, group.Relations, transcript.Subscript(entity.AffinityRequirement)) {
-			passed = false
-		}
-	}
-	if passed {
-		transcript.IncPassed()
-	} else {
-		transcript.IncFailed()
-	}
-	return passed
+	Name        string
+	Requirement Requirement
+	Ordering    Ordering
+	Relations   *labels.LabelBag
+	Metrics     *metrics.MetricSet
 }
 
 // NewEntity will create a new entity with the given name and creation time.
 func NewEntity(name string) *Entity {
 	return &Entity{
-		Name:                name,
-		Relocateable:        true,
-		AffinityRequirement: requirements.NewAndRequirement(),
-		MetricRequirements:  []*requirements.MetricRequirement{},
-		Relations:           labels.NewLabelBag(),
-		Metrics:             metrics.NewMetricSet(),
+		Name:        name,
+		Requirement: FailedRequirement(),
+		Ordering:    NameOrdering(),
+		Relations:   labels.NewLabelBag(),
+		Metrics:     metrics.NewMetricSet(),
 	}
 }

@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,8 +23,26 @@ package metrics
 
 // MetricType represents a type of information, it can be cpu usage, memory usage, disk usage, etc.
 type MetricType struct {
-	Name string
-	Unit string
+	Name       string
+	Unit       string
+	derivation Derivation
+}
+
+// Derivation returns the derivation of this type.
+func (metricType MetricType) Derivation() Derivation {
+	return metricType.derivation
+}
+
+// SetDerivation sets the derivation of this type and gives an error if the derivation introduces a cycle in the
+// derivation rules.
+func (metricType *MetricType) SetDerivation(value Derivation) error {
+	metricType.derivation = value
+	_, err := TopSort(*metricType)
+	if err != nil {
+		metricType.derivation = nil
+		return err
+	}
+	return nil
 }
 
 var (
@@ -40,8 +58,9 @@ var (
 	}
 	// CPUFree represents the free cpu usage for a group.
 	CPUFree = MetricType{
-		Name: "cpu_free",
-		Unit: "%",
+		Name:       "cpu_free",
+		Unit:       "%",
+		derivation: computeFree(CPUTotal, CPUUsed),
 	}
 
 	// MemoryTotal represents the total memory.
@@ -56,8 +75,9 @@ var (
 	}
 	// MemoryFree represents the free memory for a group.
 	MemoryFree = MetricType{
-		Name: "memory_free",
-		Unit: "bytes",
+		Name:       "memory_free",
+		Unit:       "bytes",
+		derivation: computeFree(MemoryTotal, MemoryUsed),
 	}
 
 	// DiskTotal represents the total disk for a group
@@ -72,8 +92,9 @@ var (
 	}
 	// DiskFree represents the free disk for a group.
 	DiskFree = MetricType{
-		Name: "disk_free",
-		Unit: "bytes",
+		Name:       "disk_free",
+		Unit:       "bytes",
+		derivation: computeFree(DiskTotal, DiskUsed),
 	}
 
 	// NetworkTotal represents the total network for a group
@@ -88,8 +109,9 @@ var (
 	}
 	// NetworkFree represents the free network for a group.
 	NetworkFree = MetricType{
-		Name: "network_free",
-		Unit: "bits",
+		Name:       "network_free",
+		Unit:       "bits",
+		derivation: computeFree(NetworkTotal, NetworkUsed),
 	}
 
 	// GPUTotal represents the total gpu for a group, each gpu adds 100 %, so a 24 core gpu will have 2400 % gpu.
@@ -104,8 +126,9 @@ var (
 	}
 	// GPUFree represents the free gpu usage for a group.
 	GPUFree = MetricType{
-		Name: "gpu_free",
-		Unit: "%",
+		Name:       "gpu_free",
+		Unit:       "%",
+		derivation: computeFree(GPUTotal, GPUUsed),
 	}
 
 	// FileDescriptorsTotal represents the total number of file descriptors available for a group.
@@ -120,8 +143,9 @@ var (
 	}
 	// FileDescriptorsFree represents the number of free file descriptors available for a group.
 	FileDescriptorsFree = MetricType{
-		Name: "file_descriptors_free",
-		Unit: "#",
+		Name:       "file_descriptors_free",
+		Unit:       "#",
+		derivation: computeFree(FileDescriptorsTotal, FileDescriptorsUsed),
 	}
 
 	// PortsTotal represents the total number of ports available for a group.
@@ -136,8 +160,9 @@ var (
 	}
 	// PortsFree represents the free number of ports for a group.
 	PortsFree = MetricType{
-		Name: "ports_free",
-		Unit: "#",
+		Name:       "ports_free",
+		Unit:       "#",
+		derivation: computeFree(PortsTotal, PortsUsed),
 	}
 )
 
@@ -161,3 +186,25 @@ const (
 	// GiBit is the unit Gibibits
 	GiBit = 1024.0 * MiBit
 )
+
+type derivation struct {
+	dependencies []MetricType
+	calculation  func(metricType MetricType, metricSet *MetricSet)
+}
+
+func (derivation *derivation) Dependencies() []MetricType {
+	return derivation.dependencies
+}
+
+func (derivation *derivation) Calculate(metricType MetricType, metricSet *MetricSet) {
+	derivation.calculation(metricType, metricSet)
+}
+
+func computeFree(total, used MetricType) Derivation {
+	return &derivation{
+		dependencies: []MetricType{total, used},
+		calculation: func(free MetricType, metricSet *MetricSet) {
+			metricSet.Set(free, metricSet.Get(total)-metricSet.Get(used))
+		},
+	}
+}

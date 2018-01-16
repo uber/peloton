@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,13 +22,30 @@
 package generation
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
-	"math/rand"
 	"time"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
+	"code.uber.internal/infra/peloton/mimir-lib/model/requirements"
 )
 
-// AffinityRequirementBuilder is used to generate new affinity requirements for use in tests and benchmarks.
-type AffinityRequirementBuilder interface {
-	// Generate will generate an affinity requirement that depends on the random source and the time.
-	Generate(random *rand.Rand, time time.Time) requirements.AffinityRequirement
+// NewMetricRequirementBuilder will create a new metrics requirement builder requiring the metric to fulfill the
+// requirement.
+func NewMetricRequirementBuilder(metricType metrics.MetricType, comparison requirements.Comparison,
+	value Distribution) RequirementBuilder {
+	return &metricRequirementBuilder{
+		metricType: metricType,
+		comparison: comparison,
+		value:      value,
+	}
+}
+
+type metricRequirementBuilder struct {
+	metricType metrics.MetricType
+	comparison requirements.Comparison
+	value      Distribution
+}
+
+func (builder *metricRequirementBuilder) Generate(random Random, time time.Duration) placement.Requirement {
+	return requirements.NewMetricRequirement(builder.metricType, builder.comparison, builder.value.Value(random, time))
 }

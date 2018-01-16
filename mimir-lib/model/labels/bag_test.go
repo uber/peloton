@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,8 +22,10 @@
 package labels
 
 import (
-	"github.com/stretchr/testify/assert"
+	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLabelBag_Size(t *testing.T) {
@@ -32,6 +34,16 @@ func TestLabelBag_Size(t *testing.T) {
 	assert.Equal(t, 0, bag.Size())
 	bag.Add(label)
 	assert.Equal(t, 1, bag.Size())
+	bag.Add(label)
+	assert.Equal(t, 1, bag.Size())
+}
+
+func TestLabelBag_Contains(t *testing.T) {
+	bag := NewLabelBag()
+	label := NewLabel("some", "label")
+	assert.False(t, bag.Contains(label))
+	bag.Add(label)
+	assert.True(t, bag.Contains(label))
 }
 
 func TestLabelBag_AddWillAddALabelToTheBag(t *testing.T) {
@@ -56,6 +68,18 @@ func TestLabelBag_AddAllWillAddAllLabelsToTheBag(t *testing.T) {
 	assert.Equal(t, 3, bag1.Count(label2))
 }
 
+func TestLabelBag_Set(t *testing.T) {
+	bag := NewLabelBag()
+	label1 := NewLabel("some", "label", "1")
+	label2 := NewLabel("some", "label", "2")
+	bag.Add(label1)
+
+	bag.Set(label1, 3)
+	bag.Set(label2, 2)
+	assert.Equal(t, 3, bag.Count(label1))
+	assert.Equal(t, 2, bag.Count(label2))
+}
+
 func TestLabelBag_SetAllReplacesAllLabels(t *testing.T) {
 	bag1 := NewLabelBag()
 	bag2 := NewLabelBag()
@@ -76,6 +100,19 @@ func TestLabelBag_SetAllReplacesAllLabels(t *testing.T) {
 
 	assert.Equal(t, 3, bag1.Count(label1))
 	assert.Equal(t, 3, bag1.Count(label2))
+}
+
+func TestLabelBag_Labels(t *testing.T) {
+	bag := NewLabelBag()
+	for i := 0; i < 3; i++ {
+		bag.Add(NewLabel("some", "label", strconv.Itoa(i)))
+	}
+
+	labels := bag.Labels()
+	assert.Equal(t, 3, len(labels))
+	for _, label := range labels {
+		assert.True(t, bag.Contains(label))
+	}
 }
 
 func TestLabelBag_Find(t *testing.T) {

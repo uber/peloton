@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,22 +22,17 @@
 package generation
 
 import (
-	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
-	"code.uber.internal/infra/peloton/mimir-lib/model/metrics"
-	"github.com/stretchr/testify/assert"
-	"math/rand"
 	"testing"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/labels"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGroupBuilder_Generate(t *testing.T) {
-	random := rand.New(rand.NewSource(42))
+	random := NewRandom(42)
 	builder, templates := CreateHostGroupsBuilder()
-	deriver := metrics.NewDeriver([]metrics.FreeMetricTuple{
-		metrics.NewFreeMetricTuple(metrics.MemoryFree, metrics.MemoryUsed, metrics.MemoryTotal),
-		metrics.NewFreeMetricTuple(metrics.DiskFree, metrics.DiskUsed, metrics.DiskTotal),
-	})
 	templates.Bind(Datacenter.Name(), "dc1")
-	groups := CreateHostGroups(random, builder, templates, deriver, 2, 8)
+	groups := CreateHostGroups(random, builder, templates, 2, 8)
 
 	assert.Equal(t, 8, len(groups))
 	rackCounts := map[string]int{}

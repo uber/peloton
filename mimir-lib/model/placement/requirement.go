@@ -21,31 +21,25 @@
 
 package placement
 
-import (
-	"fmt"
-)
+// Requirement tells if a given group passes the requirements for a given entity in relation to the given scope.
+type Requirement interface {
+	// Passed returns true iff group passes the requirement in relation to the given scope.
+	Passed(group *Group, scopeGroups []*Group, entity *Entity, transcript *Transcript) bool
 
-// Assignment represents a placement of an entity in a given group or the failure to be able to place the
-// entity in a group that satisfies all requirements of the entity.
-type Assignment struct {
-	// Entity to be placed.
-	Entity *Entity
-
-	// AssignedGroup the Group that the Entity got assigned to.
-	AssignedGroup *Group
-
-	// Failed is true if the assignment failed.
-	Failed bool
-
-	// Transcript holds the placement transcript of the placement of the entity.
-	Transcript *Transcript
+	// The requirement should be transcript-able, so we can get metrics about how many groups pass and fail the
+	// requirement.
+	Transcriptable
 }
 
-// NewAssignment creates a new empty assignment for the entity.
-func NewAssignment(entity *Entity) *Assignment {
-	return &Assignment{
-		Entity:     entity,
-		Failed:     true,
-		Transcript: NewTranscript(fmt.Sprintf("requirements fulfillment for %v", entity.Name)),
-	}
+// FailedRequirement returns a requirement that never passes.
+func FailedRequirement() Requirement {
+	return failed{}
+}
+
+type failed struct {
+	empty
+}
+
+func (requirement failed) Passed(group *Group, scopeGroups []*Group, entity *Entity, transcript *Transcript) bool {
+	return false
 }

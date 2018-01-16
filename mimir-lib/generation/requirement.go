@@ -1,5 +1,5 @@
-// @generated AUTO GENERATED - DO NOT EDIT!
-// Copyright (c) 2017 Uber Technologies, Inc.
+// @generated AUTO GENERATED - DO NOT EDIT! 9f8b9e47d86b5e1a3668856830c149e768e78415
+// Copyright (c) 2018 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,34 +19,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package metrics
+package generation
 
 import (
-	"github.com/stretchr/testify/assert"
-	"testing"
+	"time"
+
+	"code.uber.internal/infra/peloton/mimir-lib/model/placement"
 )
 
-func TestDeriver_Derive(t *testing.T) {
-	set := NewMetricSet()
-	set.Set(CPUTotal, 1000.0)
-	set.Set(CPUUsed, 500.0)
-	set.Set(MemoryTotal, 128.0*GiB)
-	set.Set(MemoryUsed, 64.0*GiB)
-	set.Set(DiskTotal, 4.0*TiB)
-	set.Set(DiskUsed, 1.0*TiB)
-	set.Set(NetworkTotal, 1.0*GiBit)
-	set.Set(NetworkUsed, 200*MiBit)
-
-	deriver := NewDeriver([]FreeMetricTuple{
-		NewFreeMetricTuple(CPUFree, CPUUsed, CPUTotal),
-		NewFreeMetricTuple(MemoryFree, MemoryUsed, MemoryTotal),
-		NewFreeMetricTuple(NetworkFree, NetworkUsed, NetworkTotal),
-		NewFreeMetricTuple(DiskFree, DiskUsed, DiskTotal),
-	})
-	deriver.Derive(set)
-
-	assert.Equal(t, 500.0, set.Get(CPUFree))
-	assert.Equal(t, 64*GiB, set.Get(MemoryFree))
-	assert.Equal(t, 3*TiB, set.Get(DiskFree))
-	assert.Equal(t, 824*MiBit, set.Get(NetworkFree))
+// RequirementBuilder is used to generate new requirements for use in tests and benchmarks.
+type RequirementBuilder interface {
+	// Generate will generate a requirement and a metric set that depends on the random source and the time.
+	Generate(random Random, time time.Duration) placement.Requirement
 }
