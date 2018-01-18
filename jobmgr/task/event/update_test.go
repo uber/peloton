@@ -398,8 +398,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 	time.Sleep(_waitTime)
 }
 
-// Test processing orphan task status update.
-func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
+// Test processing orphan RUNNING task status update.
+func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskRunningStatusUpdate() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
@@ -418,6 +418,23 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskStatusUpdate() {
 	suite.mockHostMgrClient.EXPECT().KillTasks(context.Background(), &hostsvc.KillTasksRequest{
 		TaskIds: []*mesos.TaskID{orphanTaskID},
 	}).Return(nil, nil)
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+}
+
+// Test processing orphan task LOST status update.
+func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskLostStatusUpdate() {
+	defer suite.ctrl.Finish()
+
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
+	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
+	// generates new mesos task id that is different with the one in the
+	// task status update.
+	dbMesosTaskID := fmt.Sprintf("%s-%d-%s", _jobID, _instanceID, uuid.NewUUID().String())
+	taskInfo.GetRuntime().MesosTaskId = &mesos.TaskID{Value: &dbMesosTaskID}
+
+	suite.mockTaskStore.EXPECT().
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(taskInfo, nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
