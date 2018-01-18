@@ -31,9 +31,9 @@ collect_metrics = TestMetrics()
 
 
 #
-# Global setup / teardown across all test suites
+# Module scoped setup / teardown across test suites.
 #
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_cluster(request):
     log.info('setup cluster')
     if os.getenv('CLUSTER', ''):

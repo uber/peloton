@@ -357,35 +357,39 @@ def run_peloton(applications):
 #
 # Starts a container and waits for it to come up
 #
-def start_and_wait(application_name, container_name, ports):
+def start_and_wait(application_name, container_name, ports, extra_env=None):
     # TODO: It's very implicit that the first port is the HTTP port, perhaps we
     # should split it out even more.
+    env = {
+        'CONFIG_DIR': 'config',
+        'APP': application_name,
+        'HTTP_PORT': ports[0],
+        'DB_HOST': host_ip,
+        'ELECTION_ZK_SERVERS': '{0}:{1}'.format(
+            host_ip,
+            config['local_zk_port']
+        ),
+        'MESOS_ZK_PATH': 'zk://{0}:{1}/mesos'.format(
+            host_ip,
+            config['local_zk_port']
+        ),
+        'MESOS_SECRET_FILE': '/files/hostmgr_mesos_secret',
+        'CASSANDRA_HOSTS': host_ip,
+        'ENABLE_DEBUG_LOGGING': config['debug'],
+        'DATACENTER': '',
+        # used to migrate the schema;used inside host manager
+        'AUTO_MIGRATE': config['auto_migrate'],
+    }
+    if extra_env:
+        env.update(extra_env)
+    environment = []
+    for key, value in env.iteritems():
+        environment.append('%s=%s' % (key, value))
     container = cli.create_container(
         name=container_name,
         hostname=container_name,
         ports=[repr(port) for port in ports],
-        environment=[
-            'CONFIG_DIR=config',
-            'APP=%s' % application_name,
-            'HTTP_PORT=' + repr(ports[0]),
-            'DB_HOST=' + host_ip,
-            'ELECTION_ZK_SERVERS={0}:{1}'.format(
-                host_ip,
-                config['local_zk_port']
-            ),
-            'MESOS_ZK_PATH=zk://{0}:{1}/mesos'.format(
-                host_ip,
-                config['local_zk_port']
-            ),
-            'MESOS_SECRET_FILE=/files/hostmgr_mesos_secret',
-            'CASSANDRA_HOSTS={0}'.format(
-                host_ip,
-            ),
-            'ENABLE_DEBUG_LOGGING=' + config['debug'],
-            'DATACENTER=' + '',
-            # used to migrate the schema;used inside host manager
-            'AUTO_MIGRATE=' + config['auto_migrate'],
-        ],
+        environment=environment,
         host_config=cli.create_host_config(
             port_bindings={
                 port: port
@@ -450,13 +454,16 @@ def run_peloton_jobmgr():
 # Run peloton placement app
 #
 def run_peloton_placement():
-    for i in range(0, config['peloton_placement_instance_count']):
+    i = 0
+    for task_type in config['peloton_placement_instances']:
         # to not cause port conflicts among apps, increase port by 10
         # for each instance
         ports = [port + i * 10 for port in config['peloton_placement_ports']]
         name = config['peloton_placement_container'] + repr(i)
         remove_existing_container(name)
-        start_and_wait('placement', name, ports)
+        start_and_wait('placement', name, ports,
+                       extra_env={'TASK_TYPE': task_type})
+        i = i + 1
 
 
 #
@@ -529,7 +536,7 @@ def teardown():
         name = config['peloton_jobmgr_container'] + repr(i)
         remove_existing_container(name)
 
-    for i in range(0, config['peloton_placement_instance_count']):
+    for i in range(0, len(config['peloton_placement_instances'])):
         name = config['peloton_placement_container'] + repr(i)
         remove_existing_container(name)
 

@@ -86,7 +86,9 @@ peloton_placement_container: peloton-placement
 peloton_placement_ports:
   - 5293
   - 5393
-peloton_placement_instance_count: 2
+peloton_placement_instances:
+  - BATCH
+  - STATEFUL
 
 # auto migrates the database schema on host manager startup
 auto_migrate: "true"

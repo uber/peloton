@@ -13,15 +13,9 @@ if [[ -z "${CLUSTER}" ]] && [[ -z "${SKIP_BUILD}" ]]; then
   IMAGE=uber/peloton make docker
 fi
 
-pip install virtualenv
-
-if [ ! -d env ]; then
-  virtualenv env
-fi
+make install
 
 . env/bin/activate
-
-pip install -r tests/integration/requirements.txt
 
 # Allow python path override so we can test any local changes in python client
 if [[ -z "${PYTHONPATH}" ]]; then

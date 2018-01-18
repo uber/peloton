@@ -1,0 +1,44 @@
+name: TestPelotonDockerJob_PersistentVolume
+owningTeam: team6
+description: "A dummy test docker job for peloton using persistent volume"
+instanceCount: 1
+sla:
+  priority: 22
+  preemptible: false
+defaultConfig:
+  resource:
+    cpuLimit: 0.2
+    memLimitMb: 16.0
+    diskLimitMb: 16
+    fdLimit: 10
+  healthCheck: null
+  labels:
+  - key: stateful_job
+    value: mystore
+  ports: []
+  container:
+    type: 1
+    docker:
+      image: "debian"
+    volumes:
+      - containerPath: /test-tmp
+        hostPath: /tmp
+        mode: 1
+      - containerPath: /test-var
+        hostPath: /var
+        mode: 2
+  volume:
+     containerPath: testvolumepath
+     sizeMB: 20
+  command:
+    shell: true
+    value: 'echo Hello && sleep 20'
+  constraint:
+    type: 1  # LABEL_CONSTRAINT
+    labelConstraint:
+      kind: 1 # TASK
+      condition: 2 # CONDITION_EQUAL
+      requirement: 0
+      label:
+        key: stateful_job
+        value: mystore
