@@ -27,16 +27,18 @@ var (
 
 	// jobStates represents the job states which need recovery
 	jobStates = []job.JobState{
+		job.JobState_INITIALIZED,
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
 		job.JobState_UNKNOWN,
 	}
 	// taskStatesToSkip represents the task states which need to be skipped when doing recovery
 	taskStatesToSkip = map[task.TaskState]bool{
-		task.TaskState_SUCCEEDED: true,
-		task.TaskState_FAILED:    true,
-		task.TaskState_KILLED:    true,
-		task.TaskState_LOST:      true,
+		task.TaskState_SUCCEEDED:   true,
+		task.TaskState_FAILED:      true,
+		task.TaskState_KILLED:      true,
+		task.TaskState_LOST:        true,
+		task.TaskState_INITIALIZED: true,
 	}
 )
 

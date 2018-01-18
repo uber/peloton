@@ -147,7 +147,7 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		if _, ok := taskInfos[i]; ok {
-			if taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED || taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_PENDING {
+			if taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED {
 				// Task exists, just send to resource manager
 				if maxRunningInstances > 0 && taskInfos[i].GetRuntime().GetState() == pb_task.TaskState_INITIALIZED {
 					j.Lock()

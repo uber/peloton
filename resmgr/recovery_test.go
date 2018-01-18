@@ -307,6 +307,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	// create 4 jobs ( 2 JobState_RUNNING, 2 JobState_PENDING)
 	fmt.Println(suite.mockJobStore, suite.mockCtrl)
 	suite.mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Eq([]job.JobState{
+		job.JobState_INITIALIZED,
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
 		job.JobState_UNKNOWN,
@@ -398,14 +399,11 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 	resPoolID.Value = "respool21"
 	gangsSummary := suite.getQueueContent(resPoolID)
 
-	suite.Equal(2, len(gangsSummary))
+	suite.Equal(1, len(gangsSummary))
 
-	// Job0 and Job3 should be recovered and should have 9 gangs(1 task per gang) in the pending queue
+	// Job0 should not be recovered
 	gangs := gangsSummary["TestJob_0"]
-	suite.Equal(9, len(gangs))
-	for _, gang := range gangs {
-		suite.Equal(1, len(gang.GetTasks()))
-	}
+	suite.Equal(0, len(gangs))
 
 	// Job1 should be recovered and should have 1 gang(9 tasks per gang) in the pending queue
 	gangs = gangsSummary["TestJob_1"]
@@ -414,9 +412,9 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 		suite.Equal(9, len(gang.GetTasks()))
 	}
 
-	// Checking total number of tasks in the tracker(9*4=36)
+	// Checking total number of tasks in the tracker(9*3=27)
 	// This includes tasks from TestJob_2 which are not re queued but are inserted in the tracker
-	suite.Equal(suite.rmTaskTracker.GetSize(), int64(36))
+	suite.Equal(suite.rmTaskTracker.GetSize(), int64(27))
 }
 
 func TestResmgrRecovery(t *testing.T) {
