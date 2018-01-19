@@ -3,6 +3,32 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.6
+------------------
+* 2018-01-18    Change update task runtime success message to debug.                                   apoorvaj@uber.com
+* 2018-01-18    PENDING tasks should not be re-sent to resource manager                                apoorvaj@uber.com
+* 2018-01-18    Cleanup in placement processor                                                         apoorvaj@uber.com
+* 2018-01-18    Do not update task runtime for all orphan tasks                                        mu@uber.com
+* 2018-01-18    Add a stateful integration tests                                                       kejlberg@uber.com
+* 2018-01-18    Bugfix Mimir placement strategy and bump Mimir-lib                                     kejlberg@uber.com
+* 2018-01-16    Fix make test.                                                                         apoorvaj@uber.com
+* 2018-01-12    Task runtime information in the cache should be either nil or in sync with DB          apoorvaj@uber.com
+* 2018-01-12    Mesos state STAGING maps to LAUNCHED state in peloton.                                 apoorvaj@uber.com
+* 2018-01-12    Adding Demand metrics as well updating static metrics with dynamic metrics             mabansal@uber.com
+* 2018-01-11    Do not recover old terminated batch jobs with unknown goal state.                      apoorvaj@uber.com
+* 2018-01-11    Automatically set GOMAXPROCS to match Linux container CPU quota                        avyas@uber.com
+* 2018-01-10    Fix stateful placement engine to dequeue and place stateful tasks                      mu@uber.com
+* 2018-01-09    Add a counter about number of hosts acquired and released on hostmgr                   zhitao@uber.com
+* 2018-01-09    Add update API and DB schema                                                           apoorvaj@uber.com
+* 2018-01-08    Add 50k & 100k tasks perf base jobs                                                    rcharles@uber.com
+* 2018-01-08    Fix logging for ELK ingestion                                                          rcharles@uber.com
+* 2018-01-08    Change the placement models so that they will be json serialized when using them in logging fields. kejlberg@uber.com
+* 2018-01-05    Adding API doc in peloton repo                                                         mabansal@uber.com
+* 2018-01-04    Add ability to preempt PLACING tasks                                                   avyas@uber.com
+* 2018-01-04    Use mimir placement strategy for stateful task placement                               mu@uber.com
+* 2018-01-04    The placement engine now returns failed tasks to the resource manager.                 kejlberg@uber.com
+* 2018-01-04    Add support for re-enqueuing unplaced tasks into the resource manager                  kejlberg@uber.com
+
 0.6.5
 ------------------
 * 2018-01-03    Skip reschedule stateful task upon task lost event                                     mu@uber.com
