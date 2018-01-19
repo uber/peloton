@@ -1676,7 +1676,7 @@ func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 	s.metrics.TaskMetrics.TaskUpdate.Inc(int64(nTasks))
 
 	log.WithField("duration_s", time.Since(timeStart).Seconds()).
-		Infof("updated all %d task runtimes for %v to Cassandra in %v", nTasks, jobID, time.Since(timeStart))
+		Debug("updated all %d task runtimes for %v to Cassandra in %v", nTasks, jobID, time.Since(timeStart))
 	return nil
 
 }
