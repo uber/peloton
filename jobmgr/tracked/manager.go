@@ -440,7 +440,6 @@ func (m *manager) syncFromDB(ctx context.Context) error {
 		pb_job.JobState_RUNNING,
 		// Get failed and killed jobs in-case service jobs need to be restarted
 		pb_job.JobState_FAILED,
-		pb_job.JobState_KILLED,
 		pb_job.JobState_UNKNOWN,
 	}
 	err := cmn_recovery.RecoverJobsByState(ctx, m.jobStore, jobStates, m.recoverTasks)
