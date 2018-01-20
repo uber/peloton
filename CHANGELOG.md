@@ -3,6 +3,10 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.7
+------------------
+* 2018-01-19    Do not recover KILLED jobs.                                                            apoorvaj@uber.com
+
 0.6.6
 ------------------
 * 2018-01-18    Change update task runtime success message to debug.                                   apoorvaj@uber.com
