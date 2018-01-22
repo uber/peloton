@@ -62,12 +62,52 @@ def parse_arguments():
         help='the number of Mesos agent in the vcluster',
     )
 
+    # Subparser for the 'mesos' command
+    parser_mesos_slave = subparsers.add_parser(
+        'mesos-slave',
+        help='adding Mesos slaves giving a zookeeper')
+
+    parser_mesos_slave.add_argument(
+        '-s',
+        '--agent-number',
+        type=int,
+        dest='agent_number',
+        help='the number of Mesos slaves add into the vcluster',
+    )
+
+    parser_mesos_slave.add_argument(
+        '-k',
+        '--zk',
+        dest='zk',
+        help='the host of virtual zk',
+    )
+
+    # Subparser for the 'mesos-slave' command
+    parser_mesos_slave = subparsers.add_parser(
+        'mesos-master',
+        help='set up a virtual cluster with Mesos master and Mesos slave')
+
+    parser_mesos_slave.add_argument(
+        '-k',
+        '--zk',
+        dest='zk',
+        help='the host of virtual zk',
+    )
+
     # Subparser for the 'setup' command
-    parser_peloton = subparsers.add_parser(
+    parser_setup = subparsers.add_parser(
         'setup',
         help='set up a virtual cluster')
 
-    parser_peloton.add_argument(
+    parser_setup.add_argument(
+        '-i',
+        '--peloton-image',
+        nargs='?',
+        dest='peloton_image',
+        help='the docker image address of peloton',
+    )
+
+    parser_setup.add_argument(
         '-s',
         '--agent-number',
         type=int,
@@ -75,12 +115,18 @@ def parse_arguments():
         help='the number of Mesos agent in the vcluster',
     )
 
-    # Subparser for the 'shutdown' command
-    subparsers.add_parser(
+    # Subparser for the 'teardown' command
+    parser_teardown = subparsers.add_parser(
         'teardown',
-        help='shut down a virtual cluster')
-
-    # Subparser for the 'shutdown' command
+        help='shut down a virtual cluster'
+    )
+    parser_teardown.add_argument(
+        '-o',
+        '--option',
+        dest='option',
+        help='option of action',
+    )
+    # Subparser for the 'peloton' command
     parser_peloton = subparsers.add_parser(
         'peloton',
         help='start peloton on a Mesos cluster')
@@ -92,7 +138,15 @@ def parse_arguments():
         help='the host of virtual zk',
     )
 
-    # Subparser for the 'shutdown' command
+    parser_peloton.add_argument(
+        '-i',
+        '--peloton-image',
+        nargs='?',
+        dest='peloton_image',
+        help='the docker image address of peloton',
+    )
+
+    # Subparser for the 'cassandra' command
     parser_cassandra = subparsers.add_parser(
         'cassandra',
         help='cassandra keyspace creation and migration')
@@ -102,6 +156,10 @@ def parse_arguments():
         dest='option',
         help='option of action',
     )
+
+    subparsers.add_parser(
+        'zookeeper',
+        help='get the virtual zookeeper')
 
     return parser.parse_args()
 
@@ -120,18 +178,39 @@ def main():
         agent_number = args.agent_number
         vcluster.start_mesos(agent_number)
 
+    elif command == 'mesos-slave':
+        agent_number = args.agent_number
+        zk = args.zk.split(':')
+        if len(zk) != 2:
+            raise Exception("Invalid zk")
+        vcluster.start_mesos_slave(args.zk, agent_number)
+
+    elif command == 'mesos-master':
+        zk = args.zk.split(':')
+        if len(zk) != 2:
+            raise Exception("Invalid zk")
+        vcluster.start_mesos_master(args.zk)
+
     elif command == 'peloton':
         zk = args.zk.split(':')
         if len(zk) != 2:
             raise Exception("Invalid zk")
-        vcluster.start_peloton(zk[0], zk[1])
+        peloton_image = args.peloton_image
+        vcluster.start_peloton(zk[0], zk[1], peloton_image)
 
     elif command == 'setup':
         agent_number = args.agent_number
-        vcluster.start_all(agent_number)
+        peloton_image = args.peloton_image
+        vcluster.start_all(agent_number, peloton_image)
 
     elif command == 'teardown':
-        vcluster.teardown()
+        option = args.option
+        if option == 'slave':
+            vcluster.teardown_slave()
+        elif option == 'peloton':
+            vcluster.teardown_peloton()
+        else:
+            vcluster.teardown()
 
     elif command == 'cassandra':
         option = args.option
@@ -141,6 +220,9 @@ def main():
         elif option == 'drop':
             cassandra_operation(
                 create=False, keyspace=args.label_name)
+
+    elif command == 'zookeeper':
+        print vcluster.get_vitual_zookeeper()
 
 
 if __name__ == "__main__":

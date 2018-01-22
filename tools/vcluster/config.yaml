@@ -1,5 +1,6 @@
 zookeeper:
   image: library/zookeeper:3.4.10
+  instance_count: 1
   ports:
     - ZOO_PORT
   volume:
@@ -14,7 +15,8 @@ zookeeper:
     diskLimitMb: 10000.0
 
 mesos-master:
-  image: mesosphere/mesos-master:1.2.0-rc2
+  image: docker-registry.pit-irn-1.uberatc.net/uber-usi/uber-mesos:sjc1-produ-0000000002
+  instance_count: 3
   ports:
     - MESOS_PORT
   resource:
@@ -23,7 +25,7 @@ mesos-master:
     diskLimitMb: 10240.0
   static_env:
     - name: 'MESOS_AUTHENTICATE_HTTP_READWRITE'
-      value: 'true'
+      value: 'false'
     - name: 'MESOS_AUTHENTICATE_FRAMEWORKS'
       value: 'true'
     - name: 'MESOS_AUTHENTICATE_HTTP_FRAMEWORKS'
@@ -39,7 +41,9 @@ mesos-master:
     - name: 'MESOS_REGISTRY'
       value: 'replicated_log'
     - name: 'MESOS_WORK_DIR'
-      value: '/var/lib/mesos'
+      value: '/mnt/mesos/sandbox/vcluster_master_workdir'
+    - name: 'GLOG_v'
+      value: '1'
   dynamic_env: 'MESOS_ZK'
   start_command: 'mesos-master'
   fetch_files:
@@ -47,14 +51,14 @@ mesos-master:
       name: 'credentials.json'
 
 mesos-slave:
-  image: mesosphere/mesos-slave:1.2.0-rc2
+  image: docker-registry.pit-irn-1.uberatc.net/uber-usi/uber-mesos:sjc1-produ-0000000002
+  instance_count: 500
   ports:
     - MESOS_PORT
-    - MESOS_HOSTNAME
   resource:
-    cpuLimit: 0.1
-    memLimitMb: 128
-    diskLimitMb: 128
+    cpuLimit: 0.5
+    memLimitMb: 512
+    diskLimitMb: 512
   static_env:
     - name: 'MESOS_SWITCH_USER'
       value: '0'
@@ -67,9 +71,13 @@ mesos-slave:
     - name: 'MESOS_LAUNCHER'
       value: 'posix'
     - name: 'MESOS_WORK_DIR'
-      value: '/var/lib/mesos'
+      value: '/mnt/mesos/sandbox/vcluster_agent_workdir'
     - name: 'MESOS_RESOURCES'
-      value: 'cpus(*):3.5;mem(*):1024;disk(*):20000;ports(*):[31000-32000]'
+      value: 'cpus(*):3.0;mem(*):1024;disk(*):1024;ports(*):[31000-32000]'
+    - name: 'MESOS_SYSTEMD_ENABLE_SUPPORT'
+      value: 'false'
+    - name: 'GLOG_v'
+      value: '1'
   dynamic_env: 'MESOS_MASTER'
   start_command: 'rm -rf /var/lib/mesos/meta/slaves/latest && mesos-slave'
   fetch_files:
@@ -90,26 +98,27 @@ cassandra:
 
 
 peloton:
-  image: docker-registry.pit-irn-1.uberatc.net/vendor/peloton:0.3.1-17-g68c09b5
+  image: docker-registry.pit-irn-1.uberatc.net/vendor/peloton:0.6.7
   ports:
     - HTTP_PORT
     - GRPC_PORT
   resource:
-    cpuLimit: 1.0
-    memLimitMb: 128
-    diskLimitMb: 128
+    cpuLimit: 2.0
+    memLimitMb: 2048
+    diskLimitMb: 2048
   dynamic_env:
     - APP
     - DB_HOST
     - ELECTION_ZK_SERVERS
     - MESOS_ZK_PATH
+    - CASSANDRA_HOSTS
   static_env:
-    - name: 'CASSANDRA_HOSTS'
-      value: 'ms-82ef95a4.pit-irn-1.uberatc.net'
     - name: 'CONFIG_DIR'
       value: 'config'
     - name: 'AUTO_MIGRATE'
       value: 'false'
+    - name: 'MESOS_SECRET_FILE'
+      value: '/mnt/mesos/sandbox/hostmgr_mesos_secret'
   start_command: 'bash /bin/entrypoint.sh'
   hostmgr:
     instance_count: 2
@@ -119,5 +128,6 @@ peloton:
     instance_count: 2
   placement:
     instance_count: 2
-
-
+  fetch_files:
+    - source: 'https://gist.githubusercontent.com/scy0208/08a66afe3a7837e5e1c1528d16b47e6f/raw/2119f0fe20b7a1e827e4e43b288545799d6b4e5e/hostmgr_mesos_secret'
+      name: 'hostmgr_mesos_secret'

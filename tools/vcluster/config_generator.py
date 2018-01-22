@@ -17,6 +17,7 @@ def load_config():
 config = load_config()
 
 
+# create task config to launch Docker container
 def create_task_config(module, dynamic_env):
     """
     param module: the module name
@@ -76,6 +77,73 @@ def create_task_config(module, dynamic_env):
             ) for fetch_file in fetch_files],
             shell=True,
             value=start_cmd,
+        ),
+
+    )
+
+
+# create task config to launch Mesos Containerizer container
+def create_mesos_task_config(module, dynamic_env, docker_image=None):
+    resource_config = config.get(module).get('resource')
+    ports = config.get(module).get('ports')
+    ports_config = []
+    for port in ports:
+        ports_config.append(
+            task.PortConfig(
+                name=port,
+                envName=port,
+            )
+        )
+
+    environments = []
+    start_cmd = config.get(module).get('start_command')
+    static_envs = config.get(module).get('static_env')
+    fetch_files = config.get(module).get('fetch_files', [])
+
+    for static_env in static_envs:
+        environments.append(
+            mesos.Environment.Variable(
+                name=static_env['name'],
+                value=static_env['value'],
+            )
+        )
+
+    for dyn_env_name, dyn_env_value in dynamic_env.iteritems():
+        environments.append(
+            mesos.Environment.Variable(
+                name=dyn_env_name,
+                value=dyn_env_value,
+            )
+        )
+
+    if not docker_image:
+        docker_image = config.get(module).get('image')
+
+    return task.TaskConfig(
+        resource=task.ResourceConfig(**resource_config),
+        ports=ports_config,
+        container=mesos.ContainerInfo(
+            type='MESOS',
+            mesos=mesos.ContainerInfo.MesosInfo(
+                image=mesos.Image(
+                    type='DOCKER',
+                    docker=mesos.Image.Docker(
+                        name=docker_image,
+
+                    )
+                )
+            ),
+        ),
+        command=mesos.CommandInfo(
+            uris=[mesos.CommandInfo.URI(
+                value=fetch_file['source'],
+                output_file=fetch_file['name'],
+            ) for fetch_file in fetch_files],
+            shell=True,
+            value=start_cmd,
+            environment=mesos.Environment(
+                variables=environments
+            )
         ),
 
     )
