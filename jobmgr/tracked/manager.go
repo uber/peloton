@@ -407,12 +407,6 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 	scheduleRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
 	for instanceID, runtime := range runtimes {
 		m.mtx.taskMetrics.TaskRecovered.Inc(1)
-
-		if runtime.GetState() == pb_task.TaskState_INITIALIZED && runtime.GetGoalState() == pb_task.TaskState_SUCCEEDED && jobRuntime.GetState() != pb_job.JobState_INITIALIZED {
-			// Skip tasks which have already been sent to resource manager
-			continue
-		}
-
 		// Do not add the task again if it already exists
 		if j.GetTask(instanceID) == nil {
 			if maxInstances > 0 {
