@@ -220,11 +220,18 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 
 	var offerMap map[string]*mesos.Offer
 	var err error
-	if useReservedOffers {
-		offerMap, err = p.hostOfferIndex[hostname].ClaimReservedOffersForLaunch()
-	} else {
-		offerMap, err = p.hostOfferIndex[hostname].ClaimForLaunch()
+
+	hs, ok := p.hostOfferIndex[hostname]
+	if !ok {
+		return nil, errors.New("cannot find input hostname " + hostname)
 	}
+
+	if useReservedOffers {
+		offerMap, err = hs.ClaimReservedOffersForLaunch()
+	} else {
+		offerMap, err = hs.ClaimForLaunch()
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +259,7 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 		}).Debug("Claiming offer for launch")
 	}
 
-	if !p.hostOfferIndex[hostname].HasAnyOffer() {
+	if !hs.HasAnyOffer() {
 		p.metrics.AvailableHosts.Update(float64(p.availableHosts.Dec()))
 	}
 
@@ -428,6 +435,12 @@ func (p *offerPool) RemoveExpiredOffers() (map[string]*TimedOffer, int) {
 	if len(offersToDecline) > 0 {
 		for offerID, offer := range offersToDecline {
 			hostName := offer.Hostname
+			if _, ok := p.hostOfferIndex[hostName]; !ok {
+				log.WithField("host", hostName).
+					Debug("Hostname is not in offer pool")
+				continue
+			}
+
 			status, removed := p.hostOfferIndex[hostName].RemoveMesosOffer(offerID)
 			if removed != nil {
 				delta := scalar.FromOffer(removed)

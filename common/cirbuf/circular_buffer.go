@@ -3,8 +3,9 @@ package cirbuf
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // CircularBuffer is a circular buffer implementation
