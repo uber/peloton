@@ -176,13 +176,15 @@ func TestJobRecover(t *testing.T) {
 
 	jobStore := store_mocks.NewMockJobStore(ctrl)
 	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	resmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 
 	j := &job{
 		id: &peloton.JobID{Value: uuid.NewRandom().String()},
 		m: &manager{
-			mtx:       NewMetrics(tally.NoopScope),
-			jobStore:  jobStore,
-			taskStore: taskStore,
+			mtx:          NewMetrics(tally.NoopScope),
+			jobStore:     jobStore,
+			taskStore:    taskStore,
+			resmgrClient: resmgrClient,
 		},
 		tasks: map[uint32]*task{},
 	}
@@ -241,6 +243,14 @@ func TestJobRecover(t *testing.T) {
 
 	taskStore.EXPECT().
 		CreateTaskRuntime(gomock.Any(), j.id, uint32(3), gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
+
+	taskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), j.id, gomock.Any()).
 		Return(nil)
 
 	jobStore.EXPECT().
@@ -312,6 +322,10 @@ func TestJobRecoverWithStore(t *testing.T) {
 
 	j.m.SetTasks(j.id, runtimes, UpdateAndSchedule)
 
+	resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
+
 	reschedule, err := j.RunAction(context.Background(), JobCreateTasks)
 	assert.False(t, reschedule)
 	assert.NoError(t, err)
@@ -323,7 +337,7 @@ func TestJobRecoverWithStore(t *testing.T) {
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskInfo, err := csStore.GetTaskForJob(context.Background(), jobID, i)
 		assert.Nil(t, err)
-		assert.Equal(t, pb_task.TaskState_INITIALIZED, taskInfo[i].GetRuntime().GetState())
+		assert.Equal(t, pb_task.TaskState_PENDING, taskInfo[i].GetRuntime().GetState())
 	}
 }
 

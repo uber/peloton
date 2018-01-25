@@ -159,6 +159,62 @@ func TestManagerSyncFromDB(t *testing.T) {
 	assert.Equal(t, task, m.WaitForScheduledTask(nil))
 }
 
+func TestManagerInitializedJobSyncFromDB(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	id := "3c8a3c3e-71e3-49c5-9aed-2929823f595c"
+
+	jobstoreMock := store_mocks.NewMockJobStore(ctrl)
+	taskstoreMock := store_mocks.NewMockTaskStore(ctrl)
+
+	m := &manager{
+		jobs:          map[string]*job{},
+		jobStore:      jobstoreMock,
+		taskStore:     taskstoreMock,
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
+		running:       true,
+		mtx:           NewMetrics(tally.NoopScope),
+	}
+
+	jobID := &peloton.JobID{Value: id}
+	var jobIDList []peloton.JobID
+	jobIDList = append(jobIDList, peloton.JobID{Value: id})
+
+	jobConfig := &pb_job.JobConfig{
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
+		InstanceCount: 1,
+	}
+
+	jobstoreMock.EXPECT().GetJobsByStates(gomock.Any(), gomock.Any()).Return(jobIDList, nil)
+
+	jobstoreMock.EXPECT().GetJobRuntime(gomock.Any(), jobID).Return(&pb_job.RuntimeInfo{
+		State:     pb_job.JobState_INITIALIZED,
+		GoalState: pb_job.JobState_SUCCEEDED,
+	}, nil)
+
+	jobstoreMock.EXPECT().GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
+
+	taskstoreMock.EXPECT().GetTaskRuntimesForJobByRange(gomock.Any(), jobID, gomock.Any()).
+		Return(map[uint32]*pb_task.RuntimeInfo{
+			0: {
+				State:                pb_task.TaskState_INITIALIZED,
+				GoalState:            pb_task.TaskState_SUCCEEDED,
+				DesiredConfigVersion: 42,
+				ConfigVersion:        42,
+			},
+		}, nil)
+
+	m.syncFromDB(context.Background())
+
+	job0 := m.GetJob(jobID)
+	assert.NotNil(t, job0)
+	task := job0.GetTask(0)
+	assert.NotNil(t, task)
+	assert.Equal(t, job0, m.WaitForScheduledJob(nil))
+	assert.False(t, task.IsScheduled())
+}
+
 func TestManagerStopClearsTasks(t *testing.T) {
 	m := &manager{
 		jobs:          map[string]*job{},

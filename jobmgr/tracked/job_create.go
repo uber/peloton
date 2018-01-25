@@ -143,7 +143,43 @@ func (j *job) scheduleTaskWithMaxRunningInstancesInSLA(maxRunningInstances uint3
 		Info("update current scheduled tasks")
 }
 
+func (j *job) sendTasksToResMgr(ctx context.Context, tasks []*pb_task.TaskInfo, jobConfig *pb_job.JobConfig) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	// Send tasks to resource manager
+	err := jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, j.m.resmgrClient)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.ID().GetValue()).
+			Error("failed to enqueue tasks to rm")
+		return err
+	}
+
+	// Move all task states to pending
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	for _, task := range tasks {
+		instID := task.GetInstanceId()
+		runtime := task.GetRuntime()
+		runtime.State = pb_task.TaskState_PENDING
+		runtime.Message = "Task sent for placement"
+		runtimes[instID] = runtime
+	}
+
+	err = j.m.UpdateTaskRuntimes(ctx, j.ID(), runtimes, UpdateOnly)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.ID().GetValue()).
+			Error("failed to update task runtime to pending")
+		return err
+	}
+	return nil
+}
+
 func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, taskInfos map[uint32]*pb_task.TaskInfo) error {
+	var tasks []*pb_task.TaskInfo
+
 	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		if _, ok := taskInfos[i]; ok {
@@ -156,7 +192,14 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 				} else {
 					runtimes := make(map[uint32]*pb_task.RuntimeInfo)
 					runtimes[i] = taskInfos[i].GetRuntime()
-					j.m.SetTasks(j.id, runtimes, UpdateAndSchedule)
+					taskInfo := &pb_task.TaskInfo{
+						JobId:      j.ID(),
+						InstanceId: i,
+						Runtime:    taskInfos[i].GetRuntime(),
+						Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
+					}
+					tasks = append(tasks, taskInfo)
+					j.m.SetTasks(j.id, runtimes, UpdateOnly)
 				}
 
 			}
@@ -186,11 +229,18 @@ func (j *job) recoverTasks(ctx context.Context, jobConfig *pb_job.JobConfig, tas
 		} else {
 			runtimes := make(map[uint32]*pb_task.RuntimeInfo)
 			runtimes[i] = runtime
-			j.m.SetTasks(j.id, runtimes, UpdateAndSchedule)
+			taskInfo := &pb_task.TaskInfo{
+				JobId:      j.ID(),
+				InstanceId: i,
+				Runtime:    runtime,
+				Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
+			}
+			tasks = append(tasks, taskInfo)
+			j.m.SetTasks(j.id, runtimes, UpdateOnly)
 		}
 	}
 
-	return nil
+	return j.sendTasksToResMgr(ctx, tasks, jobConfig)
 }
 
 func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobConfig) error {
@@ -238,26 +288,7 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 		j.Unlock()
 	} else {
 		// Send tasks to resource manager
-		err = jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, j.m.resmgrClient)
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", j.id.GetValue()).
-				Error("failed to enqueue tasks to RM")
-			return err
-		}
-
-		// Move all task states to pending
-		for i := uint32(0); i < instances; i++ {
-			runtimes[i].State = pb_task.TaskState_PENDING
-			runtimes[i].Message = "Task sent for placement"
-		}
-		err = j.m.UpdateTaskRuntimes(ctx, j.id, runtimes, UpdateOnly)
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", j.id.GetValue()).
-				Error("failed to update task runtime to pending")
-			return err
-		}
+		return j.sendTasksToResMgr(ctx, tasks, jobConfig)
 	}
 
 	return nil

@@ -405,6 +405,7 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 
 	j := m.getJobStruct(id)
 	scheduleRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
+	updateOnlyRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
 	for instanceID, runtime := range runtimes {
 		m.mtx.taskMetrics.TaskRecovered.Inc(1)
 		// Do not add the task again if it already exists
@@ -418,13 +419,22 @@ func (m *manager) recoverTasks(ctx context.Context, jobID string, jobConfig *pb_
 					j.recoverJobWithSLA()
 				}
 			} else {
-				scheduleRuntimes[instanceID] = runtime
+				if runtime.GetState() == pb_task.TaskState_INITIALIZED && jobRuntime.GetState() == pb_job.JobState_INITIALIZED {
+					// These tasks will be created using recovery with job goal state
+					updateOnlyRuntimes[instanceID] = runtime
+				} else {
+					scheduleRuntimes[instanceID] = runtime
+				}
 			}
 		}
 	}
 
 	if len(scheduleRuntimes) > 0 {
 		m.SetTasks(id, scheduleRuntimes, UpdateAndSchedule)
+	}
+
+	if len(updateOnlyRuntimes) > 0 {
+		m.SetTasks(id, updateOnlyRuntimes, UpdateOnly)
 	}
 	return
 }
