@@ -69,10 +69,7 @@ func (e *engine) processJob(j tracked.Job) {
 }
 
 func (e *engine) runJobAction(j tracked.Job, action tracked.JobAction) (bool, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), _defaultJobActionTimeout)
-	defer cancel()
-
-	reschedule, err := j.RunAction(ctx, action)
+	reschedule, err := j.RunAction(context.Background(), action)
 	if err != nil {
 		log.
 			WithField("job_id", j.ID().GetValue()).
