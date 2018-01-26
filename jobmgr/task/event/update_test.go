@@ -238,7 +238,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
 	updateTaskInfo.GetRuntime().Reason = _mesosReason.String()
 	updateTaskInfo.GetRuntime().Message = _failureMsg
 	updateTaskInfo.GetRuntime().CompletionTime = _currentTime
-	updateTaskInfo.GetRuntime().GoalState = task.TaskState_FAILED
+	updateTaskInfo.GetRuntime().GoalState = task.TaskState_SUCCEEDED
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -330,6 +330,24 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithoutRetry()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_LOST)
 	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
+
+	suite.mockTaskStore.EXPECT().
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(taskInfo, nil)
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+	time.Sleep(_waitTime)
+}
+
+// Test processing task FAILED status update due to launch of duplicate task IDs.
+func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedDuplicateTask() {
+	defer suite.ctrl.Finish()
+
+	failureReason := mesos.TaskStatus_REASON_TASK_INVALID
+	failureMsg := "Task has duplicate ID"
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
+	event.MesosTaskStatus.Reason = &failureReason
+	event.MesosTaskStatus.Message = &failureMsg
+	taskInfo := createTestTaskInfo(task.TaskState_LAUNCHED)
 
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).

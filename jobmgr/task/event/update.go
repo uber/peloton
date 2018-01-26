@@ -297,6 +297,12 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		runtime.State = state
 
 	case pb_task.TaskState_FAILED:
+		if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_TASK_INVALID && strings.Contains(event.GetMesosTaskStatus().GetMessage(), "Task has duplicate ID") {
+			log.WithField("task_id", taskID).
+				Info("ignoring duplicate task id failure")
+			return nil
+		}
+
 		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
 		maxAttempts := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
 		if p.isSystemFailure(event) {
@@ -308,7 +314,6 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 		if runtime.GetFailureCount() >= maxAttempts {
 			// Stop scheduling the task, max failures reached.
-			runtime.GoalState = pb_task.TaskState_FAILED
 			runtime.State = state
 			break
 		}
