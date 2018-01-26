@@ -101,6 +101,12 @@ service ResourceManagerService {
   * job manager to kill the tasks and re-enqueue them.
   */
   rpc GetPreemptibleTasks(GetPreemptibleTasksRequest) returns (GetPreemptibleTasksResponse);
+
+  /**
+   * MarkTasksLaunched is used to let the resource manager know that the
+   * tasks in the request have been launched.
+   */
+  rpc MarkTasksLaunched(MarkTasksLaunchedRequest) returns (MarkTasksLaunchedResponse);
 }
 
 message GetPreemptibleTasksFailure {
@@ -342,3 +348,9 @@ message KillTasksResponse {
   repeated Error error = 1;
 }
 
+message MarkTasksLaunchedRequest {
+  // Peloton Task Ids
+  repeated api.peloton.TaskID tasks = 1;
+}
+
+message MarkTasksLaunchedResponse {}

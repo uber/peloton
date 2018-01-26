@@ -50,8 +50,11 @@ type Task interface {
 	// UpdateRuntime sets the task run time
 	UpdateRuntime(runtime *pb_task.RuntimeInfo)
 
-	// IsScheduled returns true if task is queued with the taskScheduler
+	// IsScheduled returns true if task is queued with the taskScheduler.
 	IsScheduled() bool
+
+	// GetLastRuntimeUpdateTime returns the last time the task runtime was updated.
+	GetLastRuntimeUpdateTime() time.Time
 }
 
 // State of a job. This can encapsulate either the actual state or the goal
@@ -66,15 +69,17 @@ type TaskAction string
 
 // Actions available to be performed on the task.
 const (
-	NoAction             TaskAction = "no_action"
-	KilledAction         TaskAction = "killed"
-	StartAction          TaskAction = "start_task"
-	StopAction           TaskAction = "stop_task"
-	PreemptAction        TaskAction = "preempt_action"
-	InitializeAction     TaskAction = "initialize_task"
-	UseGoalVersionAction TaskAction = "use_goal_state"
-	ReloadTaskRuntime    TaskAction = "reload_runtime"
-	FailAction           TaskAction = "fail"
+	NoAction                  TaskAction = "no_action"
+	KilledAction              TaskAction = "killed"
+	StartAction               TaskAction = "start_task"
+	StopAction                TaskAction = "stop_task"
+	PreemptAction             TaskAction = "preempt_action"
+	InitializeAction          TaskAction = "initialize_task"
+	UseGoalVersionAction      TaskAction = "use_goal_state"
+	ReloadTaskRuntime         TaskAction = "reload_runtime"
+	FailAction                TaskAction = "fail"
+	LaunchRetryAction         TaskAction = "launch_retry"
+	NotifyLaunchedTasksAction TaskAction = "notify_launched_task"
 )
 
 func newTask(job *job, id uint32) *task {
@@ -97,13 +102,11 @@ type task struct {
 
 	runtime *pb_task.RuntimeInfo
 
-	// goalState along with the time the goal state was updated.
-	stateTime     time.Time
-	goalStateTime time.Time
-
 	// lastState set, the resulting action and when that action was last tried.
 	lastAction     TaskAction
 	lastActionTime time.Time
+
+	lastRuntimeUpdateTime time.Time
 
 	// killingAttempts tracks how many times we had try to kill this task
 	killingAttempts int
@@ -205,6 +208,12 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) (bool, error) {
 		runtime.State = pb_task.TaskState_FAILED
 		err = t.job.m.UpdateTaskRuntime(ctx, t.job.ID(), t.ID(), runtime, UpdateAndSchedule)
 
+	case LaunchRetryAction:
+		err = t.launchRetry(ctx)
+
+	case NotifyLaunchedTasksAction:
+		err = t.sendLaunchInfoToResMgr(ctx)
+
 	case ReloadTaskRuntime:
 		err = t.reloadRuntime(ctx)
 
@@ -297,9 +306,13 @@ func (t *task) UpdateRuntime(runtime *pb_task.RuntimeInfo) {
 
 	t.runtime = runtime
 
-	now := time.Now()
-	t.goalStateTime = now
-	t.stateTime = now
+	t.lastRuntimeUpdateTime = time.Now()
+}
+
+func (t *task) GetLastRuntimeUpdateTime() time.Time {
+	t.RLock()
+	defer t.RUnlock()
+	return t.lastRuntimeUpdateTime
 }
 
 // GetRunTime returns task run time

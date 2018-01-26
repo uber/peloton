@@ -3,9 +3,10 @@ package goalstate
 import "time"
 
 const (
-	_defaultMaxRetryDelay     = 60 * time.Minute
-	_defaultSuccessRetryDelay = 20 * time.Second
-	_defaultFailureRetryDelay = 2 * time.Second
+	_defaultMaxRetryDelay           = 60 * time.Minute
+	_defaultSuccessRetryDelay       = 20 * time.Second
+	_defaultFailureRetryDelay       = 2 * time.Second
+	_defaultLaunchTimeRetryDuration = 20 * time.Minute
 )
 
 // Config for the goalstate engine.
@@ -20,6 +21,11 @@ type Config struct {
 	// FailureRetryDelay is the delay for retry, if an operation failed. Backoff
 	// will be applied for up to MaxRetryDelay.
 	FailureRetryDelay time.Duration `yaml:"failure_retry_delay"`
+	// LaunchTimeout is the timeout value for the launched state.
+	// If no update is received from Mesos within this timeout value,
+	// the task will be re-queued to the resource manager for placement
+	// with a new mesos task id.
+	LaunchTimeout time.Duration `yaml:"launch_timeout"`
 }
 
 // normalize configuration by setting unassigned fields to default values.
@@ -32,5 +38,8 @@ func (c *Config) normalize() {
 	}
 	if c.FailureRetryDelay == 0 {
 		c.FailureRetryDelay = _defaultFailureRetryDelay
+	}
+	if c.LaunchTimeout == 0 {
+		c.LaunchTimeout = _defaultLaunchTimeRetryDuration
 	}
 }

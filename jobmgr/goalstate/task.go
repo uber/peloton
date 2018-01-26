@@ -26,12 +26,13 @@ var (
 		},
 		task.TaskState_RUNNING: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
-			task.TaskState_LAUNCHED:    tracked.StartAction,
 			task.TaskState_SUCCEEDED:   tracked.StartAction,
 			task.TaskState_FAILED:      tracked.StartAction,
+			task.TaskState_LAUNCHED:    tracked.LaunchRetryAction,
 		},
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
+			task.TaskState_LAUNCHED:    tracked.LaunchRetryAction,
 		},
 		task.TaskState_KILLED: {
 			task.TaskState_INITIALIZED: tracked.StopAction,
@@ -78,7 +79,7 @@ func (e *engine) processTask(t tracked.Task) {
 		case action != lastAction:
 			// First time we see this, trigger default timeout.
 			if success {
-				delay = e.cfg.SuccessRetryDelay
+				delay = e.getSuccessRetryDelay(action, 0)
 			} else {
 				delay = e.cfg.FailureRetryDelay
 			}
@@ -87,7 +88,7 @@ func (e *engine) processTask(t tracked.Task) {
 			// Not the first time we see this, apply backoff.
 			delay = time.Since(lastActionTime)
 			if success {
-				delay += e.cfg.SuccessRetryDelay
+				delay = e.getSuccessRetryDelay(action, delay)
 			} else {
 				delay += e.cfg.FailureRetryDelay
 			}
@@ -148,9 +149,27 @@ func (e *engine) suggestTaskAction(t tracked.Task) tracked.TaskAction {
 	// Find action to reach goal state from current state.
 	if tr, ok := _isoVersionsTaskRules[goalState.State]; ok {
 		if a, ok := tr[currentState.State]; ok {
+			// Retry to launch only if launch timeout occurs
+			if a == tracked.LaunchRetryAction && time.Now().Sub(t.GetLastRuntimeUpdateTime()) < e.cfg.LaunchTimeout {
+				return tracked.NotifyLaunchedTasksAction
+			}
 			return a
 		}
 	}
 
 	return tracked.NoAction
+}
+
+// getSuccessRetryDelay is used to implement a different timeout than default value on a successful action.
+// E.g. after successfully launching a task, job manager needs to timeout after 20 mins and regenerate
+// new placement for the task. This can be achieved by putting in a state-specific timeout here.
+func (e *engine) getSuccessRetryDelay(action tracked.TaskAction, delay time.Duration) time.Duration {
+	switch action {
+	case tracked.LaunchRetryAction,
+		tracked.NotifyLaunchedTasksAction:
+		delay = e.cfg.LaunchTimeout
+	default:
+		delay += e.cfg.SuccessRetryDelay
+	}
+	return delay
 }

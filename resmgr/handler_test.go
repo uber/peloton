@@ -684,6 +684,34 @@ func (suite *HandlerTestSuite) TestKillTasks() {
 	suite.Equal(res.Error[0].NotFound.Task.Value, tasks[0].Value)
 }
 
+func (suite *HandlerTestSuite) TestMarkTasksLaunched() {
+	suite.rmTaskTracker.Clear()
+	_, tasks := suite.createRMTasks()
+
+	var launchedTasks []*peloton.TaskID
+	launchedTasks = append(launchedTasks, tasks[0])
+	launchedTasks = append(launchedTasks, tasks[1])
+
+	// Send valid tasks
+	req := &resmgrsvc.MarkTasksLaunchedRequest{
+		Tasks: launchedTasks,
+	}
+	_, err := suite.handler.MarkTasksLaunched(suite.context, req)
+	suite.NoError(err)
+	rmTask := suite.rmTaskTracker.GetTask(tasks[0])
+	suite.Equal(rmTask.GetCurrentState(), task.TaskState_LAUNCHED)
+	rmTask = suite.rmTaskTracker.GetTask(tasks[1])
+	suite.Equal(rmTask.GetCurrentState(), task.TaskState_LAUNCHED)
+
+	// Send invalid tasks
+	var notValidkilledtasks []*peloton.TaskID
+	req = &resmgrsvc.MarkTasksLaunchedRequest{
+		Tasks: notValidkilledtasks,
+	}
+	_, err = suite.handler.MarkTasksLaunched(suite.context, req)
+	suite.NoError(err)
+}
+
 func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
 	rm_task.InitTaskTracker(tally.NoopScope)

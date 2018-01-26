@@ -26,10 +26,11 @@ type JobMetrics struct {
 
 // TaskMetrics contains all counters to track task metrics
 type TaskMetrics struct {
-	TaskCreate       tally.Counter
-	TaskCreateFail   tally.Counter
-	TaskRecovered    tally.Counter
-	ExecutorShutdown tally.Counter
+	TaskCreate        tally.Counter
+	TaskCreateFail    tally.Counter
+	TaskRecovered     tally.Counter
+	ExecutorShutdown  tally.Counter
+	TaskLaunchTimeout tally.Counter
 }
 
 // Metrics is the struct containing all the counters that track internal state
@@ -69,10 +70,11 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	}
 
 	taskMetrics := &TaskMetrics{
-		TaskCreate:       taskScope.Counter("create"),
-		TaskCreateFail:   taskScope.Counter("create_fail"),
-		TaskRecovered:    taskScope.Counter("recovered"),
-		ExecutorShutdown: taskScope.Counter("executor_shutdown"),
+		TaskCreate:        taskScope.Counter("create"),
+		TaskCreateFail:    taskScope.Counter("create_fail"),
+		TaskRecovered:     taskScope.Counter("recovered"),
+		ExecutorShutdown:  taskScope.Counter("executor_shutdown"),
+		TaskLaunchTimeout: taskScope.Counter("launch_timeout"),
 	}
 
 	return &Metrics{

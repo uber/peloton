@@ -326,10 +326,11 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) error {
 
 	currentTaskState := rmTask.GetCurrentState()
 
-	// If state is Launching or Running then only
+	// If state is Launching, Launched or Running then only
 	// put task to ready queue with update of
 	// mesos task id otherwise ignore
 	if currentTaskState == t.TaskState_LAUNCHING ||
+		currentTaskState == t.TaskState_LAUNCHED ||
 		currentTaskState == t.TaskState_RUNNING {
 		// Updating the New Mesos Task ID
 		rmTask.Task().TaskId = requeuedTask.TaskId
@@ -882,4 +883,34 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 	return &resmgrsvc.GetPreemptibleTasksResponse{
 		Tasks: tasks,
 	}, nil
+}
+
+// MarkTasksLaunched is used to notify the resource manager that tasks have been launched
+func (h *ServiceHandler) MarkTasksLaunched(
+	ctx context.Context,
+	req *resmgrsvc.MarkTasksLaunchedRequest) (*resmgrsvc.MarkTasksLaunchedResponse, error) {
+
+	launchedTasks := req.GetTasks()
+	if len(launchedTasks) == 0 {
+		return &resmgrsvc.MarkTasksLaunchedResponse{}, nil
+	}
+
+	log.WithField("launched_tasks", launchedTasks).Debug("tasks launched called")
+	h.metrics.APILaunchedTasks.Inc(1)
+
+	for _, taskID := range launchedTasks {
+		task := h.rmTracker.GetTask(taskID)
+		if task == nil {
+			continue
+		}
+
+		err := task.TransitTo(t.TaskState_LAUNCHED.String())
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", taskID).
+				Info("failed to transit to launched state")
+			continue
+		}
+	}
+	return &resmgrsvc.MarkTasksLaunchedResponse{}, nil
 }

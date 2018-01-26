@@ -75,6 +75,9 @@ func (c *MockClient) GetPendingTasks(context.Context,
 	...yarpc.CallOption) (*resmgrsvc.GetPendingTasksResponse, error) {
 	return nil, nil
 }
+func (c *MockClient) MarkTasksLaunched(context.Context, *resmgrsvc.MarkTasksLaunchedRequest, ...yarpc.CallOption) (*resmgrsvc.MarkTasksLaunchedResponse, error) {
+	return nil, nil
+}
 
 func (c *MockClient) setError(errorFlag bool) {
 	c.Lock()

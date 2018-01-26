@@ -69,6 +69,7 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 						// as running/launching
 						state.State(task.TaskState_RUNNING.String()),
 						state.State(task.TaskState_LAUNCHING.String()),
+						state.State(task.TaskState_LAUNCHED.String()),
 					},
 					Callback: nil,
 				}).
@@ -132,6 +133,22 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 					From: state.State(task.TaskState_LAUNCHING.String()),
 					To: []state.State{
 						state.State(task.TaskState_RUNNING.String()),
+						state.State(task.TaskState_READY.String()),
+						state.State(task.TaskState_KILLED.String()),
+						state.State(task.TaskState_LAUNCHED.String()),
+					},
+					Callback: nil,
+				}).
+			AddRule(
+				&state.Rule{
+					From: state.State(task.TaskState_LAUNCHED.String()),
+					To: []state.State{
+						state.State(task.TaskState_RUNNING.String()),
+						// The launch of the task may time out in job manager,
+						// which will then regenerate the mesos task id, and then
+						// enqueue the task again into resource manager. Since, the
+						// task has already passed admission control, it will be
+						// moved to the READY state.
 						state.State(task.TaskState_READY.String()),
 						state.State(task.TaskState_KILLED.String()),
 						state.State(task.TaskState_LAUNCHED.String()),

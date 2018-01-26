@@ -193,6 +193,9 @@ func TestTaskPlacementNoError(t *testing.T) {
 			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(nil),
 		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		mockTrackedManager.EXPECT().
+			GetJob(gomock.Any()).
+			Return(nil),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)

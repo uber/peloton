@@ -359,6 +359,8 @@ func (tr *tracker) publishCounters() {
 			tr.metrics.placedTasks.Update(counter)
 		case task.TaskState_LAUNCHING.String():
 			tr.metrics.launchingTasks.Update(counter)
+		case task.TaskState_LAUNCHED.String():
+			tr.metrics.launchedTasks.Update(counter)
 		case task.TaskState_RUNNING.String():
 			tr.metrics.runningTasks.Update(counter)
 		case task.TaskState_SUCCEEDED.String():

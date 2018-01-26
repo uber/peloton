@@ -192,14 +192,40 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 	}
 
 	launchableTasks := launcher.CreateLaunchableTasks(taskInfos)
-	err = p.taskLauncher.ProcessPlacement(ctx, launchableTasks, placement)
-	if err != nil {
+	if err = p.taskLauncher.ProcessPlacement(ctx, launchableTasks, placement); err != nil {
 		if err = p.enqueueTasks(ctx, taskInfos); err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"task_infos":  taskInfos,
 				"tasks_total": len(taskInfos),
 			}).Error("failed to enqueue tasks back to resmgr")
 		}
+		return
+	}
+
+	for id := range taskInfos {
+		jobID, instanceID, err := util.ParseTaskID(id)
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", id).
+				Error("failed to parse the task id in placement processor")
+			continue
+		}
+
+		j := p.trackedManager.GetJob(&peloton.JobID{Value: jobID})
+		if j == nil {
+			log.WithField("job_id", jobID).
+				Error("failed to find job in cache in placement processor")
+			continue
+		}
+
+		t := j.GetTask(uint32(instanceID))
+		if t == nil {
+			log.WithField("job_id", jobID).
+				WithField("instance_id", uint32(instanceID)).
+				Error("failed to find task in cache in placement processor")
+			continue
+		}
+		p.trackedManager.ScheduleTask(t, time.Now())
 	}
 }
 

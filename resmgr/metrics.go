@@ -24,6 +24,8 @@ type Metrics struct {
 	GetPlacementSuccess tally.Counter
 	GetPlacementFail    tally.Counter
 
+	APILaunchedTasks tally.Counter
+
 	RecoverySuccess             tally.Counter
 	RecoveryFail                tally.Counter
 	RecoveryRunningSuccessCount tally.Counter
@@ -67,6 +69,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		APIGetPlacements:    apiScope.Counter("get_placements"),
 		GetPlacementSuccess: successScope.Counter("get_placements"),
 		GetPlacementFail:    failScope.Counter("get_placements"),
+
+		APILaunchedTasks: apiScope.Counter("launched_tasks"),
 
 		RecoverySuccess:             successScope.Counter("recovery"),
 		RecoveryFail:                failScope.Counter("recovery"),

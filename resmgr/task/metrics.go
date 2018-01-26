@@ -17,6 +17,7 @@ type Metrics struct {
 	placingTasks   tally.Gauge
 	placedTasks    tally.Gauge
 	launchingTasks tally.Gauge
+	launchedTasks  tally.Gauge
 	runningTasks   tally.Gauge
 	succeededTasks tally.Gauge
 	failedTasks    tally.Gauge
@@ -47,6 +48,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		placingTasks:     taskStateScope.Gauge("task_state_placing"),
 		placedTasks:      taskStateScope.Gauge("task_state_placed"),
 		launchingTasks:   taskStateScope.Gauge("task_state_launching"),
+		launchedTasks:    taskStateScope.Gauge("task_state_launched"),
 		runningTasks:     taskStateScope.Gauge("task_state_running"),
 		succeededTasks:   taskStateScope.Gauge("task_state_succeeded"),
 		failedTasks:      taskStateScope.Gauge("task_state_failed"),
