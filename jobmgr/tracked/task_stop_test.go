@@ -157,3 +157,62 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 	// Test that it's rescheduled immediately as we updated the state.
 	assert.Equal(t, tt, tt.job.m.WaitForScheduledTask(nil))
 }
+
+func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockResmgr := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	mockTaskStore := storage_mocks.NewMockTaskStore(ctrl)
+
+	m := &manager{
+		jobs:          map[string]*job{},
+		taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+		taskStore:     mockTaskStore,
+		resmgrClient:  mockResmgr,
+		mtx:           NewMetrics(tally.NoopScope),
+		running:       true,
+	}
+
+	jobID := &peloton.JobID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c"}
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[7] = &pb_task.RuntimeInfo{
+		State: pb_task.TaskState_PENDING,
+	}
+	m.SetTasks(jobID, runtimes, UpdateAndSchedule)
+	tt := m.GetJob(jobID).GetTask(7).(*task)
+	taskID := &peloton.TaskID{Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-7"}
+	var killResponseErr []*resmgrsvc.KillTasksResponse_Error
+	killResponseErr = append(killResponseErr,
+		&resmgrsvc.KillTasksResponse_Error{
+			NotFound: &resmgrsvc.TasksNotFound{
+				Message: "Tasks Not Found",
+				Task:    taskID,
+			},
+		})
+	res := &resmgrsvc.KillTasksResponse{
+		Error: killResponseErr,
+	}
+	mockResmgr.EXPECT().KillTasks(context.Background(), &resmgrsvc.KillTasksRequest{
+		Tasks: []*peloton.TaskID{
+			{
+				Value: "3c8a3c3e-71e3-49c5-9aed-2929823f595c-7",
+			},
+		},
+	}).Return(res, nil)
+
+	runtime := &pb_task.RuntimeInfo{
+		State: pb_task.TaskState_PENDING,
+	}
+	mockTaskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), tt.job.id, tt.id).Return(runtime, nil)
+	mockTaskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), tt.job.id, gomock.Any()).Return(nil)
+
+	reschedule, err := tt.RunAction(context.Background(), StopAction)
+	assert.True(t, reschedule)
+	assert.NoError(t, err)
+
+	// Test that it's rescheduled immediately as we updated the state.
+	assert.Equal(t, tt, tt.job.m.WaitForScheduledTask(nil))
+}

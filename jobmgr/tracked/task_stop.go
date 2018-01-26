@@ -27,7 +27,8 @@ func (t *task) stop(ctx context.Context) error {
 	}
 
 	switch {
-	case runtime.GetState() == pb_task.TaskState_INITIALIZED:
+	case runtime.GetState() == pb_task.TaskState_INITIALIZED,
+		runtime.GetState() == pb_task.TaskState_PENDING:
 		return t.stopInitializedTask(ctx)
 
 	case runtime.GetMesosTaskId() != nil:
@@ -77,7 +78,8 @@ func (t *task) stopInitializedTask(ctx context.Context) error {
 	}
 
 	// If it had changed, update to current and abort.
-	if runtime.State != pb_task.TaskState_INITIALIZED {
+	if runtime.GetState() != pb_task.TaskState_INITIALIZED &&
+		runtime.GetState() != pb_task.TaskState_PENDING {
 		runtimes := make(map[uint32]*pb_task.RuntimeInfo)
 		runtimes[t.id] = runtime
 		t.job.m.SetTasks(t.job.id, runtimes, UpdateAndSchedule)
