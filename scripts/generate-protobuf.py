@@ -70,7 +70,7 @@ def parse_args():
                         default='./apidoc')
     parser.add_argument('-f', '--format',
                         help='format for the api documentation',
-                        default='markdown,docs.md')
+                        default='html,docs.html')
 
     args = parser.parse_args()
     return args
