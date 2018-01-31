@@ -32,40 +32,72 @@ func (e *VolumeNotFoundError) Error() string {
 
 // JobStore is the interface to store job states
 type JobStore interface {
+	// CreateJob creates the job configuration and job runtime
 	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error
+	// GetJobConfig fetches the job configuration for a given job
 	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
+	// QueryJobs queries for all jobs which match the query in the QuerySpec
 	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error)
+	// UpdateJobConfig updates the job configuration of an existing job
 	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
+	// DeleteJob deletes the job configuration, runtime
+	// and all tasks in DB of a given job
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
+	// GetAllJobs gets the runtime of all jobs in DB
 	GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error)
+	// GetJobRuntime gets the job runtime of a given job
 	GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error)
+	// GetJobsByStates gets all jobs in a given state
 	GetJobsByStates(ctx context.Context, state []job.JobState) ([]peloton.JobID, error)
+	// UpdateJobRuntime updates the runtime of a given job
 	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error
 }
 
 // TaskStore is the interface to store task states
 type TaskStore interface {
-	// TODO: remove CreateTaskRuntime as it should be deprecated for CreateTaskRuntimes
+	// CreateTaskRuntime creates the runtime of a given task
 	CreateTaskRuntime(ctx context.Context, id *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, createdBy string) error
 	// CreateTaskRuntimes creates the runtimes by running multiple parallel go routines, each of which do batching as well
 	CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo, createdBy string) error
+	// GetTaskRuntime gets the runtime of a given task
 	GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32) (*task.RuntimeInfo, error)
+	// UpdateTaskRuntime updates the runtime of a given task
 	UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error
 	// UpdateTaskRuntimes updates the runtimes by running multiple parallel go routines, each of which do batching as well
 	UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo) error
 
+	// CreateTaskConfigs creates the configuration of all tasks
 	CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error
+
+	// GetTasksForJob gets the task info for all tasks in a job
 	GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint32]*task.TaskInfo, error)
+	// GetTasksForJobAndStates gets the task info for all
+	// tasks in a given job and in a given state
 	GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []task.TaskState) (map[uint32]*task.TaskInfo, error)
+	// GetTaskIDsForJobAndState gets the task identifiers for all
+	// tasks in a given job and in a given state
 	GetTaskIDsForJobAndState(ctx context.Context, id *peloton.JobID, state string) ([]uint32, error)
+	// GetTaskRuntimesForJobByRange gets the task runtime for all
+	// tasks in a job with instanceID in the given range
 	GetTaskRuntimesForJobByRange(ctx context.Context, id *peloton.JobID, instanceRange *task.InstanceRange) (map[uint32]*task.RuntimeInfo, error)
+	// GetTasksForJobByRange gets the task info for all
+	// tasks in a job with instanceID in the given range
 	GetTasksForJobByRange(ctx context.Context, id *peloton.JobID, Range *task.InstanceRange) (map[uint32]*task.TaskInfo, error)
+	// GetTaskForJob gets the task info for a given task
 	GetTaskForJob(ctx context.Context, id *peloton.JobID, instanceID uint32) (map[uint32]*task.TaskInfo, error)
-	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version int64) (*task.TaskConfig, error)
-	GetTaskConfigs(ctx context.Context, id *peloton.JobID, instanceIDs []uint32, version int64) (map[uint32]*task.TaskConfig, error)
+	// GetTaskConfig gets the task config of a given task
+	GetTaskConfig(ctx context.Context, id *peloton.JobID, instanceID uint32, version uint64) (*task.TaskConfig, error)
+	// GetTaskConfigs gets the task config for all tasks in a job
+	// for all the instanceIDs provided in the input
+	GetTaskConfigs(ctx context.Context, id *peloton.JobID, instanceIDs []uint32, version uint64) (map[uint32]*task.TaskConfig, error)
+	// GetTaskByID gets the task info for a given task
 	GetTaskByID(ctx context.Context, taskID string) (*task.TaskInfo, error)
+	// QueryTasks queries for all tasks in a job matching the QuerySpec
 	QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error)
+	// GetTaskStateSummaryForJob gets the map state to instanceIDs
+	// (in that state) in a given job
 	GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID) (map[string]uint32, error)
+	// GetTaskEvents gets all the events for runtime changes for a given task
 	GetTaskEvents(ctx context.Context, id *peloton.JobID, instanceID uint32) ([]*task.TaskEvent, error)
 }
 

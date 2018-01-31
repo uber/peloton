@@ -105,10 +105,10 @@ func getPostPreemptAction(ctx context.Context, entity goalstate.Entity) (goalsta
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 
-	taskGoalState := taskEnt.GetGoalState().(cached.TaskStateVector)
+	taskState := taskEnt.GetState().(cached.TaskStateVector)
 
 	pp, err := getTaskPreemptionPolicy(ctx, taskEnt.jobID, taskEnt.instanceID,
-		taskGoalState.ConfigVersion, goalStateDriver)
+		taskState.ConfigVersion, goalStateDriver)
 	if err != nil {
 		log.WithError(err).
 			Error("unable to get task preemption policy")
@@ -127,8 +127,11 @@ func getTaskPreemptionPolicy(ctx context.Context, jobID *peloton.JobID,
 	instanceID uint32, configVersion uint64,
 	goalStateDriver *driver) (*task.PreemptionPolicy,
 	error) {
-	config, err := goalStateDriver.taskStore.GetTaskConfig(ctx, jobID, instanceID,
-		int64(configVersion))
+	config, err := goalStateDriver.taskStore.GetTaskConfig(
+		ctx,
+		jobID,
+		instanceID,
+		configVersion)
 	if err != nil {
 		return nil, err
 	}

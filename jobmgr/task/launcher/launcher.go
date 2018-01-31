@@ -159,7 +159,7 @@ func (l *launcher) GetLaunchableTasks(
 		}
 
 		// TODO: We need to add batch api's for getting all tasks in one shot
-		taskConfig, err := l.taskStore.GetTaskConfig(ctx, jobID, uint32(instanceID), int64(cachedRuntime.GetConfigVersion()))
+		taskConfig, err := l.taskStore.GetTaskConfig(ctx, jobID, uint32(instanceID), cachedRuntime.GetConfigVersion())
 		if err != nil {
 			log.WithError(err).WithField("task_id", taskID.GetValue()).
 				Error("not able to get task configuration")

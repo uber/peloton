@@ -237,6 +237,15 @@ func (h *serviceHandler) Update(
 		return nil, nil
 	}
 
+	// TODO move updating the version to write through cache
+	if oldConfig.GetChangeLog().GetVersion() > 0 {
+		newConfig.ChangeLog = &peloton.ChangeLog{
+			CreatedAt: uint64(time.Now().UnixNano()),
+			UpdatedAt: uint64(time.Now().UnixNano()),
+			Version:   oldConfig.GetChangeLog().GetVersion() + 1,
+		}
+	}
+
 	err = h.jobStore.UpdateJobConfig(ctx, jobID, newConfig)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
@@ -267,6 +276,8 @@ func (h *serviceHandler) Update(
 	}
 
 	for id, runtime := range diff.InstancesToAdd {
+		runtime.ConfigVersion = newConfig.GetChangeLog().GetVersion()
+		runtime.DesiredConfigVersion = newConfig.GetChangeLog().GetVersion()
 		runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 		runtimes[id] = runtime
 		if err := cachedJob.CreateTasks(ctx, runtimes, "peloton"); err != nil {

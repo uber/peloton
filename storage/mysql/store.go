@@ -503,13 +503,13 @@ func (m *Store) GetTaskStateSummaryForJob(ctx context.Context, id *peloton.JobID
 
 // GetTaskConfig returns the task specific config
 func (m *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
-	instanceID uint32, version int64) (*task.TaskConfig, error) {
+	instanceID uint32, version uint64) (*task.TaskConfig, error) {
 	return nil, fmt.Errorf("unimplemented GetTaskConfig")
 }
 
 // GetTaskConfigs returns the task specific config for a list of instances
 func (m *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
-	instanceIDs []uint32, version int64) (map[uint32]*task.TaskConfig, error) {
+	instanceIDs []uint32, version uint64) (map[uint32]*task.TaskConfig, error) {
 	return nil, fmt.Errorf("unimplemented GetTaskConfigs")
 }
 

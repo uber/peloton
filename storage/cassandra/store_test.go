@@ -957,7 +957,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		suite.NoError(err)
 		suite.Equal(jobconf.Name, jobID.GetValue())
 		suite.Equal(len(jobconf.Labels), 4)
-		taskConfigs, noErr := store.GetTaskConfigs(context.Background(), &jobID, []uint32{0, 1, 2}, 0)
+		taskConfigs, noErr := store.GetTaskConfigs(context.Background(), &jobID, []uint32{0, 1, 2}, 1)
 		suite.Equal(len(taskConfigs), 3)
 		suite.NoError(noErr)
 
@@ -1040,6 +1040,7 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 		for j := uint32(0); j < nTasks; j++ {
 			taskInfo := createTaskInfo(jobConfig, &jobID, j)
 			taskInfo.Runtime.State = task.TaskState(j)
+			taskInfo.Runtime.ConfigVersion = jobConfig.GetChangeLog().GetVersion()
 			err = taskStore.CreateTaskRuntime(context.Background(), &jobID, j, taskInfo.Runtime, "test")
 			suite.NoError(err)
 			err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, j, taskInfo.Runtime)
@@ -1203,7 +1204,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskConfigs() {
 	instanceIDs = append(instanceIDs, uint32(6))
 
 	// get the task configs
-	configs, err := store.GetTaskConfigs(context.Background(), jobID, instanceIDs, int64(0))
+	configs, err := store.GetTaskConfigs(context.Background(), jobID, instanceIDs, uint64(0))
 	suite.NoError(err)
 	suite.Equal(6, len(configs))
 
@@ -1769,6 +1770,7 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 
 	// update instance count
 	jobConfig.InstanceCount = uint32(newInstanceCount)
+	jobConfig.ChangeLog.Version = uint64(2)
 	err = jobStore.UpdateJobConfig(context.Background(), &jobID, jobConfig)
 	suite.NoError(err)
 
@@ -1966,6 +1968,10 @@ func (suite *CassandraStoreTestSuite) TestTaskQueryFilter() {
 	err := suite.createJob(context.Background(), &jobID, jobConfig, "user1")
 	suite.Nil(err)
 
+	for i := 0; i < 100; i++ {
+		runtimes[uint32(i)].ConfigVersion = jobConfig.GetChangeLog().GetVersion()
+	}
+
 	err = taskStore.CreateTaskRuntimes(context.Background(), &jobID, runtimes, "user1")
 	suite.Nil(err)
 
@@ -2038,6 +2044,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		taskInfo := createTaskInfo(jobConfig, &jobID, i)
+		taskInfo.Runtime.ConfigVersion = jobConfig.GetChangeLog().GetVersion()
 		err := taskStore.CreateTaskRuntime(context.Background(), &jobID, i, taskInfo.Runtime, "user1")
 		suite.Nil(err)
 

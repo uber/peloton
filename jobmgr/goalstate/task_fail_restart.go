@@ -59,7 +59,11 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	taskConfig, err := goalStateDriver.taskStore.GetTaskConfig(ctx, taskEnt.jobID, taskEnt.instanceID, int64(runtime.GetConfigVersion()))
+	taskConfig, err := goalStateDriver.taskStore.GetTaskConfig(
+		ctx,
+		taskEnt.jobID,
+		taskEnt.instanceID,
+		runtime.GetConfigVersion())
 	if err != nil {
 		return err
 	}

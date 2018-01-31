@@ -271,7 +271,12 @@ func (s *Store) executeBatch(ctx context.Context, stmts []api.Statement) error {
 	}
 }
 
-func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, version int64, owner string) error {
+func (s *Store) createJobConfig(
+	ctx context.Context,
+	id *peloton.JobID,
+	jobConfig *job.JobConfig,
+	version uint64,
+	owner string) error {
 	jobID := id.GetValue()
 	configBuffer, err := proto.Marshal(jobConfig)
 	if err != nil {
@@ -311,9 +316,9 @@ func (s *Store) createJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 
 // CreateTaskConfigs from the job config.
 func (s *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
-	// TODO set correct version
+	version := jobConfig.GetChangeLog().GetVersion()
 	if jobConfig.GetDefaultConfig() != nil {
-		if err := s.createTaskConfig(ctx, id, _defaultTaskConfigID, jobConfig.GetDefaultConfig(), 0); err != nil {
+		if err := s.createTaskConfig(ctx, id, _defaultTaskConfigID, jobConfig.GetDefaultConfig(), version); err != nil {
 			return err
 		}
 	}
@@ -321,7 +326,7 @@ func (s *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobCon
 	for instanceID, cfg := range jobConfig.GetInstanceConfig() {
 		merged := taskconfig.Merge(jobConfig.GetDefaultConfig(), cfg)
 		// TODO set correct version
-		if err := s.createTaskConfig(ctx, id, int64(instanceID), merged, 0); err != nil {
+		if err := s.createTaskConfig(ctx, id, int64(instanceID), merged, version); err != nil {
 			return err
 		}
 	}
@@ -329,7 +334,7 @@ func (s *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobCon
 	return nil
 }
 
-func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanceID int64, taskConfig *task.TaskConfig, version int) error {
+func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanceID int64, taskConfig *task.TaskConfig, version uint64) error {
 	configBuffer, err := proto.Marshal(taskConfig)
 	if err != nil {
 		s.metrics.TaskMetrics.TaskCreateConfigFail.Inc(1)
@@ -371,8 +376,14 @@ func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanc
 
 // CreateJob creates a job with the job id and the config value
 func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
-	// Create version 0 of the job config.
-	if err := s.createJobConfig(ctx, id, jobConfig, 0, owner); err != nil {
+	// TODO move to write through cache
+	// Create version 1 of the job config.
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		CreatedAt: uint64(time.Now().UnixNano()),
+		UpdatedAt: uint64(time.Now().UnixNano()),
+		Version:   1,
+	}
+	if err := s.createJobConfig(ctx, id, jobConfig, jobConfig.GetChangeLog().GetVersion(), owner); err != nil {
 		return err
 	}
 
@@ -385,10 +396,11 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	}
 
 	initialJobRuntime := job.RuntimeInfo{
-		State:        job.JobState_INITIALIZED,
-		CreationTime: time.Now().UTC().Format(time.RFC3339Nano),
-		TaskStats:    make(map[string]uint32),
-		GoalState:    goalState,
+		State:                job.JobState_INITIALIZED,
+		CreationTime:         time.Now().UTC().Format(time.RFC3339Nano),
+		TaskStats:            make(map[string]uint32),
+		GoalState:            goalState,
+		ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
 	}
 	// Init the task stats to reflect that all tasks are in initialized state
 	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
@@ -406,7 +418,7 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	return nil
 }
 
-func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (int64, error) {
+func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (uint64, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("MAX(version)").From(jobConfigTable).
 		Where(qb.Eq{"job_id": id.GetValue()})
@@ -420,7 +432,7 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (int64,
 	log.Debugf("max version: %v", allResults)
 	for _, value := range allResults {
 		for _, max := range value {
-			return max.(int64), nil
+			return max.(uint64), nil
 		}
 	}
 	return 0, nil
@@ -428,16 +440,24 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (int64,
 
 // UpdateJobConfig updates a job with the job id and the config value
 func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
-	version, err := s.getMaxJobVersion(ctx, id)
-	if err != nil {
-		s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-		return err
+	// Increment version.
+	if jobConfig.GetChangeLog().GetVersion() < 1 {
+		// Older job which does not have changelog.
+		// TODO remove this after no more job in the system
+		// does not have a changelog version.
+		v, err := s.getMaxJobVersion(ctx, id)
+		if err != nil {
+			s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
+			return err
+		}
+		jobConfig.ChangeLog = &peloton.ChangeLog{
+			CreatedAt: uint64(time.Now().UnixNano()),
+			UpdatedAt: uint64(time.Now().UnixNano()),
+			Version:   v + 1,
+		}
 	}
 
-	// Increment version.
-	version++
-
-	if err := s.createJobConfig(ctx, id, jobConfig, version, "<missing owner>"); err != nil {
+	if err := s.createJobConfig(ctx, id, jobConfig, jobConfig.GetChangeLog().GetVersion(), "<missing owner>"); err != nil {
 		return err
 	}
 
@@ -447,7 +467,7 @@ func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfi
 	}
 
 	// Update to use new version.
-	r.ConfigVersion = version
+	r.ConfigurationVersion = jobConfig.GetChangeLog().GetVersion()
 
 	return s.updateJobRuntimeWithConfig(ctx, id, r, jobConfig)
 }
@@ -462,7 +482,7 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 	jobID := id.GetValue()
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("config").From(jobConfigTable).
-		Where(qb.Eq{"job_id": jobID, "version": r.ConfigVersion})
+		Where(qb.Eq{"job_id": jobID, "version": r.ConfigurationVersion})
 	stmtString, _, _ := stmt.ToSQL()
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -927,6 +947,10 @@ func (s *Store) CreateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 			runtime.GetState().String(),
 			runtimeBuffer)
 
+	// IfNotExist() will cause Writing task runtimes to Cassandra concurrently
+	// failed with Operation timed out issue when batch size is small, e.g. 1.
+	// For now, we have to drop the IfNotExist()
+
 	taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
 	if err := s.applyStatement(ctx, stmt, taskID); err != nil {
 		s.metrics.TaskMetrics.TaskCreateFail.Inc(1)
@@ -1328,7 +1352,7 @@ func (s *Store) GetTasksForJob(ctx context.Context, id *peloton.JobID) (map[uint
 
 // GetTaskConfig returns the task specific config
 func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
-	instanceID uint32, version int64) (*task.TaskConfig, error) {
+	instanceID uint32, version uint64) (*task.TaskConfig, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").From(taskConfigTable).
 		Where(
@@ -1371,7 +1395,7 @@ func (s *Store) GetTaskConfig(ctx context.Context, id *peloton.JobID,
 // GetTaskConfigs returns the task configs for a list of instance IDs,
 // job ID and config version.
 func (s *Store) GetTaskConfigs(ctx context.Context, id *peloton.JobID,
-	instanceIDs []uint32, version int64) (map[uint32]*task.TaskConfig, error) {
+	instanceIDs []uint32, version uint64) (map[uint32]*task.TaskConfig, error) {
 	taskConfigMap := make(map[uint32]*task.TaskConfig)
 
 	// add default instance ID to read the default config
@@ -1454,7 +1478,7 @@ func (s *Store) getTaskInfoFromRuntimeRecord(ctx context.Context, id *peloton.Jo
 	}
 
 	config, err := s.GetTaskConfig(ctx, id, uint32(record.InstanceID),
-		int64(runtime.ConfigVersion))
+		runtime.ConfigVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -1793,7 +1817,7 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context,
 	for configVersion, instances := range configVersions {
 		// Get the configs for a particular config version
 		configs, err := s.GetTaskConfigs(ctx, id, instances,
-			int64(configVersion))
+			configVersion)
 		if err != nil {
 			return result, err
 		}

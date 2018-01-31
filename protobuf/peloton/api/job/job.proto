@@ -180,12 +180,15 @@ message RuntimeInfo
   // of tasks in the particular state.
   map<string, uint32> taskStats = 5;
 
-  // The version reflects the version of the JobConfig, that's currently
-  // used by the job.
+  // This field is being deprecated and should not be used.
   int64 configVersion = 6;
 
   // Goal state of the job.
   JobState goalState = 7;
+
+  // The version reflects the version of the JobConfig, that is currently
+  // used by the job.
+  uint64 configurationVersion = 8;
 }
 
 /**
