@@ -772,3 +772,60 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithEmptyFrameworkID() {
 	suite.NoError(err)
 	suite.NotNil(resp.GetError().GetFailure())
 }
+
+func (suite *TaskHandlerTestSuite) TestRefreshTask() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	trackedMock := mocks.NewMockManager(ctrl)
+	suite.handler.trackedManager = trackedMock
+
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	for instID, taskInfo := range suite.taskInfos {
+		runtimes[instID] = taskInfo.GetRuntime()
+	}
+
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil)
+	mockTaskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
+			From: 0,
+			To:   suite.testJobConfig.GetInstanceCount(),
+		}).Return(runtimes, nil)
+	trackedMock.EXPECT().SetTasks(suite.testJobID, runtimes, tracked.UpdateAndSchedule).Return()
+
+	var request = &task.RefreshRequest{
+		JobId: suite.testJobID,
+	}
+	_, err := suite.handler.Refresh(context.Background(), request)
+	suite.NoError(err)
+
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).Return(nil, fmt.Errorf("fake db error"))
+	_, err = suite.handler.Refresh(context.Background(), request)
+	suite.Error(err)
+
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil)
+	mockTaskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
+			From: 0,
+			To:   suite.testJobConfig.GetInstanceCount(),
+		}).Return(nil, fmt.Errorf("fake db error"))
+	_, err = suite.handler.Refresh(context.Background(), request)
+	suite.Error(err)
+
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil)
+	mockTaskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), suite.testJobID, &task.InstanceRange{
+			From: 0,
+			To:   suite.testJobConfig.GetInstanceCount(),
+		}).Return(nil, nil)
+	_, err = suite.handler.Refresh(context.Background(), request)
+	suite.Error(err)
+}

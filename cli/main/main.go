@@ -91,6 +91,9 @@ var (
 	jobGet     = job.Command("get", "get a job")
 	jobGetName = jobGet.Arg("job", "job identifier").Required().String()
 
+	jobRefresh     = job.Command("refresh", "load runtime state of job and re-refresh corresponding action (debug only)")
+	jobRefreshName = jobRefresh.Arg("job", "job identifier").Required().String()
+
 	jobStatus     = job.Command("status", "get job status")
 	jobStatusName = jobStatus.Arg("job", "job identifier").Required().String()
 
@@ -129,6 +132,10 @@ var (
 	taskList              = task.Command("list", "show tasks of a job")
 	taskListJobName       = taskList.Arg("job", "job identifier").Required().String()
 	taskListInstanceRange = taskRangeFlag(taskList.Flag("range", "show range of instances (from:to syntax)").Default(":").Short('r'))
+
+	taskRefresh              = task.Command("refresh", "load runtime state of tasks and re-refresh corresponding action (debug only)")
+	taskRefreshJobName       = taskRefresh.Arg("job", "job identifier").Required().String()
+	taskRefreshInstanceRange = taskRangeFlag(taskRefresh.Flag("range", "range of instances (from:to syntax)").Default(":").Short('r'))
 
 	taskStart               = task.Command("start", "start a task")
 	taskStartJobName        = taskStart.Arg("job", "job identifier").Required().String()
@@ -299,6 +306,8 @@ func main() {
 		err = client.TaskStopAction(*jobStopName, nil)
 	case jobGet.FullCommand():
 		err = client.JobGetAction(*jobGetName)
+	case jobRefresh.FullCommand():
+		err = client.JobRefreshAction(*jobRefreshName)
 	case jobStatus.FullCommand():
 		err = client.JobStatusAction(*jobStatusName)
 	case jobQuery.FullCommand():
@@ -313,6 +322,8 @@ func main() {
 		err = client.TaskLogsGetAction(*taskLogsGetFileName, *taskLogsGetJobName, *taskLogsGetInstanceID)
 	case taskList.FullCommand():
 		err = client.TaskListAction(*taskListJobName, taskListInstanceRange)
+	case taskRefresh.FullCommand():
+		err = client.TaskRefreshAction(*taskRefreshJobName, taskRefreshInstanceRange)
 	case taskStart.FullCommand():
 		err = client.TaskStartAction(*taskStartJobName, *taskStartInstanceRanges)
 	case taskStop.FullCommand():

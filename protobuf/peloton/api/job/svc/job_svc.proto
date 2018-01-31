@@ -38,6 +38,10 @@ service JobService {
   // existing job. It will be deprecated when the UpgradeService API
   // is implemented.
   rpc UpdateJob(UpdateJobRequest) returns (UpdateJobResponse);
+
+  // Debug only method. Allows user to load job runtime state from DB
+  // and re-execute the action associated with current state.
+  rpc RefreshJob(RefreshJobRequest) returns (RefreshJobResponse);
 }
 
 
@@ -167,3 +171,21 @@ message UpdateJobRequest {
  */
 message UpdateJobResponse {
 }
+
+
+/**
+ *  Request message for JobService.RefreshJob method.
+ */
+message RefreshJobRequest {
+  // The job ID to look up the job.
+  peloton.JobID id = 1;
+}
+
+
+/**
+ *  Response message for JobService.RefreshJob method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:  if the job is not found in Peloton.
+ */
+message RefreshJobResponse {}

@@ -16,6 +16,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
@@ -351,4 +352,49 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
 	suite.Nil(res)
 	suite.EqualError(err, "Job is not in a terminal state: PENDING")
+}
+
+func (suite *JobHandlerTestSuite) TestJobRefresh() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	id := &peloton.JobID{
+		Value: "my-job",
+	}
+	jobConfig := &job.JobConfig{
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"team1", "team2", "team3"},
+		InstanceCount: 4,
+	}
+	jobRuntime := &job.RuntimeInfo{State: job.JobState_RUNNING}
+	jobInfo := &job.JobInfo{
+		Id:      id,
+		Config:  jobConfig,
+		Runtime: jobRuntime,
+	}
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	suite.handler.trackedManager = mockTrackedManager
+
+	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
+		Return(jobConfig, nil)
+	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+		Return(jobRuntime, nil)
+	mockTrackedManager.EXPECT().SetJob(id, jobInfo, tracked.UpdateAndSchedule).Return()
+	_, err := suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
+	suite.NoError(err)
+
+	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
+		Return(nil, fmt.Errorf("fake db error"))
+	_, err = suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
+	suite.Error(err)
+
+	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
+		Return(jobConfig, nil)
+	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+		Return(nil, fmt.Errorf("fake db error"))
+	_, err = suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
+	suite.Error(err)
 }

@@ -50,6 +50,10 @@ service TaskService
   // map for each mesos task and its corresponding list of events.
   // This is an experimental API and is subject to change
   rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
+
+  // Debug only method. Allows user to load task runtime state from DB
+  // and re-execute the action associated with current state.
+  rpc RefreshTasks(RefreshTasksRequest) returns (RefreshTasksResponse);
 }
 
 
@@ -288,3 +292,23 @@ message GetEventsResponse {
 
   Error error = 2;
 }
+
+/**
+ *  Request message for TaskService.RefreshTasks method.
+ */
+message RefreshTasksRequest {
+  // The job ID of the tasks to list.
+  peloton.JobID jobId = 1;
+
+  // The instance ID range of the tasks to refresh.
+  task.InstanceRange range = 2;
+}
+
+
+/**
+ *  Response message for TaskService.RefreshTasks method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:  if the job or tasks are not found.
+ */
+message RefreshTasksResponse {}

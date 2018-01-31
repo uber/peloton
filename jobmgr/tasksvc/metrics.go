@@ -18,6 +18,9 @@ type Metrics struct {
 	TaskAPIList       tally.Counter
 	TaskList          tally.Counter
 	TaskListFail      tally.Counter
+	TaskAPIRefresh    tally.Counter
+	TaskRefresh       tally.Counter
+	TaskRefreshFail   tally.Counter
 	TaskAPIStart      tally.Counter
 	TaskStart         tally.Counter
 	TaskStartFail     tally.Counter
@@ -55,6 +58,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskAPIList:       taskAPIScope.Counter("list"),
 		TaskList:          taskSuccessScope.Counter("list"),
 		TaskListFail:      taskFailScope.Counter("list"),
+		TaskAPIRefresh:    taskAPIScope.Counter("refresh"),
+		TaskRefresh:       taskSuccessScope.Counter("refresh"),
+		TaskRefreshFail:   taskFailScope.Counter("refresh"),
 		TaskAPIStart:      taskAPIScope.Counter("start"),
 		TaskStart:         taskSuccessScope.Counter("start"),
 		TaskStartFail:     taskFailScope.Counter("start"),

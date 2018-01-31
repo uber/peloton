@@ -7,21 +7,24 @@ import (
 // Metrics is the struct containing all the counters that track
 // internal state of the job service
 type Metrics struct {
-	JobAPICreate  tally.Counter
-	JobCreate     tally.Counter
-	JobCreateFail tally.Counter
-	JobAPIGet     tally.Counter
-	JobGet        tally.Counter
-	JobGetFail    tally.Counter
-	JobAPIDelete  tally.Counter
-	JobDelete     tally.Counter
-	JobDeleteFail tally.Counter
-	JobAPIQuery   tally.Counter
-	JobQuery      tally.Counter
-	JobQueryFail  tally.Counter
-	JobAPIUpdate  tally.Counter
-	JobUpdate     tally.Counter
-	JobUpdateFail tally.Counter
+	JobAPICreate   tally.Counter
+	JobCreate      tally.Counter
+	JobCreateFail  tally.Counter
+	JobAPIGet      tally.Counter
+	JobGet         tally.Counter
+	JobGetFail     tally.Counter
+	JobAPIDelete   tally.Counter
+	JobDelete      tally.Counter
+	JobDeleteFail  tally.Counter
+	JobAPIQuery    tally.Counter
+	JobQuery       tally.Counter
+	JobQueryFail   tally.Counter
+	JobAPIUpdate   tally.Counter
+	JobUpdate      tally.Counter
+	JobUpdateFail  tally.Counter
+	JobAPIRefresh  tally.Counter
+	JobRefresh     tally.Counter
+	JobRefreshFail tally.Counter
 
 	JobAPIGetByRespoolID  tally.Counter
 	JobGetByRespoolID     tally.Counter
@@ -63,6 +66,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobUpdateFail:  jobFailScope.Counter("update"),
 		TaskCreate:     taskSuccessScope.Counter("create"),
 		TaskCreateFail: taskFailScope.Counter("create"),
+		JobAPIRefresh:  jobAPIScope.Counter("refresh"),
+		JobRefresh:     jobSuccessScope.Counter("refresh"),
+		JobRefreshFail: jobFailScope.Counter("refresh"),
 
 		JobAPIGetByRespoolID:  jobAPIScope.Counter("get_by_respool_id"),
 		JobGetByRespoolID:     jobSuccessScope.Counter("get_by_respool_id"),

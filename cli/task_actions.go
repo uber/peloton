@@ -130,6 +130,18 @@ func (c *Client) TaskListAction(jobID string, instanceRange *task.InstanceRange)
 	return nil
 }
 
+// TaskRefreshAction calls task refresh API
+func (c *Client) TaskRefreshAction(jobID string, instanceRange *task.InstanceRange) error {
+	var request = &task.RefreshRequest{
+		JobId: &peloton.JobID{
+			Value: jobID,
+		},
+		Range: instanceRange,
+	}
+	_, err := c.taskClient.Refresh(c.ctx, request)
+	return err
+}
+
 // TaskStartAction is the action to start a task
 func (c *Client) TaskStartAction(jobID string, instanceRanges []*task.InstanceRange) error {
 	var request = &task.StartRequest{

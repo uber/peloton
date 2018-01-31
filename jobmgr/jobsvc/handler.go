@@ -25,6 +25,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -333,6 +334,40 @@ func (h *serviceHandler) Get(
 	}
 	log.WithField("response", resp).Debug("JobManager.Get returned")
 	return resp, nil
+}
+
+// Refresh loads the task runtime state from DB, updates the cache,
+// and enqueues it to goal state for evaluation.
+func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (*job.RefreshResponse, error) {
+	log.WithField("request", req).Debug("JobManager.Refresh called")
+	h.metrics.JobAPIRefresh.Inc(1)
+
+	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.GetId())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", req.GetId().GetValue()).
+			Error("failed to get job config in refresh job")
+		h.metrics.JobRefreshFail.Inc(1)
+		return &job.RefreshResponse{}, yarpcerrors.NotFoundErrorf("job not found")
+	}
+
+	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetId())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", req.GetId().GetValue()).
+			Error("failed to get job runtime in refresh job")
+		h.metrics.JobRefreshFail.Inc(1)
+		return &job.RefreshResponse{}, yarpcerrors.NotFoundErrorf("job not found")
+	}
+
+	jobInfo := &job.JobInfo{
+		Id:      req.GetId(),
+		Config:  jobConfig,
+		Runtime: jobRuntime,
+	}
+	h.trackedManager.SetJob(req.GetId(), jobInfo, tracked.UpdateAndSchedule)
+	h.metrics.JobRefresh.Inc(1)
+	return &job.RefreshResponse{}, nil
 }
 
 // Query returns a list of jobs matching the given query

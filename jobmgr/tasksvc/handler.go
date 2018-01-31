@@ -11,6 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 
 	pb_errors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -183,6 +184,56 @@ func (m *serviceHandler) List(
 	}
 	log.WithField("response", resp).Debug("TaskSVC.List returned")
 	return resp, nil
+}
+
+// Refresh loads the task runtime state from DB, updates the cache,
+// and enqueues it to goal state for evaluation.
+func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) (*task.RefreshResponse, error) {
+	log.WithField("request", req).Debug("TaskSVC.Refresh called")
+
+	m.metrics.TaskAPIRefresh.Inc(1)
+	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.GetJobId())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", req.GetJobId().GetValue()).
+			Error("failed to load job config in executing task")
+		m.metrics.TaskRefreshFail.Inc(1)
+		return &task.RefreshResponse{}, yarpcerrors.NotFoundErrorf("job not found")
+	}
+
+	reqRange := req.GetRange()
+	if reqRange == nil {
+		reqRange = &task.InstanceRange{
+			From: 0,
+			To:   jobConfig.InstanceCount,
+		}
+	}
+
+	if reqRange.To > jobConfig.InstanceCount {
+		reqRange.To = jobConfig.InstanceCount
+	}
+
+	runtimes, err := m.taskStore.GetTaskRuntimesForJobByRange(ctx, req.GetJobId(), reqRange)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", req.GetJobId().GetValue()).
+			WithField("range", reqRange).
+			Error("failed to load task runtimes in executing task")
+		m.metrics.TaskRefreshFail.Inc(1)
+		return &task.RefreshResponse{}, yarpcerrors.NotFoundErrorf("tasks not found")
+	}
+	if len(runtimes) == 0 {
+		log.WithError(err).
+			WithField("job_id", req.GetJobId().GetValue()).
+			WithField("range", reqRange).
+			Error("no task runtimes found while executing task")
+		m.metrics.TaskRefreshFail.Inc(1)
+		return &task.RefreshResponse{}, yarpcerrors.NotFoundErrorf("tasks not found")
+	}
+
+	m.trackedManager.SetTasks(req.GetJobId(), runtimes, tracked.UpdateAndSchedule)
+	m.metrics.TaskRefresh.Inc(1)
+	return &task.RefreshResponse{}, nil
 }
 
 // getTaskInfosByRangesFromDB get all the tasks infos for given job and ranges.

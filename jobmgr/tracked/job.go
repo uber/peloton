@@ -136,6 +136,16 @@ func (j *job) GetLastDelay() time.Duration {
 func (j *job) RunAction(ctx context.Context, action JobAction) (bool, error) {
 	defer j.m.mtx.scope.Tagged(map[string]string{"action": string(action)}).Timer("run_duration").Start().Stop()
 
+	j.RLock()
+	if j.runtime != nil {
+		log.WithField("action", action).
+			WithField("current_state", j.runtime.GetState().String()).
+			WithField("goal_state", j.runtime.GetGoalState().String()).
+			WithField("job_id", j.id.GetValue()).
+			Info("running action for job")
+	}
+	j.RUnlock()
+
 	switch action {
 	case JobNoAction:
 		return false, nil

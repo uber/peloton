@@ -96,6 +96,17 @@ func (c *Client) JobGetAction(jobID string) error {
 	return nil
 }
 
+// JobRefreshAction calls the refresh API for a job
+func (c *Client) JobRefreshAction(jobID string) error {
+	var request = &job.RefreshRequest{
+		Id: &peloton.JobID{
+			Value: jobID,
+		},
+	}
+	_, err := c.jobClient.Refresh(c.ctx, request)
+	return err
+}
+
 // JobStatusAction is the action for getting status of a job
 func (c *Client) JobStatusAction(jobID string) error {
 	var request = &job.GetRequest{

@@ -487,6 +487,10 @@ service TaskManager
 
   // Get event changes of a task in job.
   rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
+
+  // Debug only method. Allows user to load task runtime state from DB
+  // and re-execute the action associated with current state.
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
 }
 
 // DEPRECATED by google.rpc.INTERNAL error.
@@ -673,3 +677,12 @@ message QueryResponse {
 
   query.Pagination pagination = 3;
 }
+
+// DEPRECATED by peloton.api.task.svc.RefreshTasksRequest.
+message RefreshRequest {
+  peloton.JobID jobId = 1;
+  InstanceRange range = 2;
+}
+
+// DEPRECATED by peloton.api.task.svc.RefreshTasksResponse.
+message RefreshResponse {}
