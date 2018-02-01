@@ -67,10 +67,10 @@ def parse_args():
                         default='.gen')
     parser.add_argument('-d', '--doc',
                         help='output dir of api documentation',
-                        default='./apidoc')
+                        default='./docs/_static/')
     parser.add_argument('-f', '--format',
                         help='format for the api documentation',
-                        default='html,docs.html')
+                        default='html,apidoc.html')
 
     args = parser.parse_args()
     return args

@@ -6,7 +6,7 @@ User Guide
 Api Doc
 --------
 
-- See the complete `API documentation <_static/docs.html>`_
+- See the complete `API documentation <_static/apidoc.html>`_
 
 Resource Pools
 ----------------
