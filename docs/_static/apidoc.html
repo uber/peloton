@@ -1620,6 +1620,10 @@
                 </li>
               
                 <li>
+                  <a href="#peloton.api.job.JobSummary"><span class="badge">M</span>JobSummary</a>
+                </li>
+              
+                <li>
                   <a href="#peloton.api.job.QueryRequest"><span class="badge">M</span>QueryRequest</a>
                 </li>
               
@@ -16805,6 +16809,78 @@ revocable offers </p></td>
 
         
       
+        <h3 id="peloton.api.job.JobSummary">JobSummary</h3>
+        <p>Summary of a job that contains jobId, name, owner, type, respool, instance count, labels, runtimeInfo.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#peloton.api.job..peloton.api.peloton.JobID">.peloton.api.peloton.JobID</a></td>
+                  <td></td>
+                  <td><p>Job ID </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Name of the job </p></td>
+                </tr>
+              
+                <tr>
+                  <td>owner</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Owner of the job </p></td>
+                </tr>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#peloton.api.job.JobType">JobType</a></td>
+                  <td></td>
+                  <td><p>Type of the job </p></td>
+                </tr>
+              
+                <tr>
+                  <td>respoolID</td>
+                  <td><a href="#peloton.api.job..peloton.api.peloton.ResourcePoolID">.peloton.api.peloton.ResourcePoolID</a></td>
+                  <td></td>
+                  <td><p>Resource Pool ID where this job belongs to </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instanceCount</td>
+                  <td><a href="#uint32">uint32</a></td>
+                  <td></td>
+                  <td><p>Number of instances of the job </p></td>
+                </tr>
+              
+                <tr>
+                  <td>labels</td>
+                  <td><a href="#peloton.api.job..peloton.api.peloton.Label">.peloton.api.peloton.Label</a></td>
+                  <td>repeated</td>
+                  <td><p>List of user-defined labels for the job </p></td>
+                </tr>
+              
+                <tr>
+                  <td>runtime</td>
+                  <td><a href="#peloton.api.job.RuntimeInfo">RuntimeInfo</a></td>
+                  <td></td>
+                  <td><p>Job runtime information </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+        
+
+        
+      
         <h3 id="peloton.api.job.QueryRequest">QueryRequest</h3>
         <p>DEPRECATED by peloton.api.job.svc.QueryJobsRequest</p>
 
@@ -16856,7 +16932,9 @@ revocable offers </p></td>
                   <td>records</td>
                   <td><a href="#peloton.api.job.JobInfo">JobInfo</a></td>
                   <td>repeated</td>
-                  <td><p>NOTE: instanceConfig is not returned as part of jobConfig inside jobInfo
+                  <td><p>DEPRECATED by peloton.api.job.JobSummary
+JobInfo is huge and there is no need to return it in QueryResponse.
+NOTE: instanceConfig is not returned as part of jobConfig inside jobInfo
 as it can be so huge that exceeds grpc limit size. Use Job.Get() API to get
 instanceConfig for job. </p></td>
                 </tr>
@@ -16873,6 +16951,13 @@ instanceConfig for job. </p></td>
                   <td><a href="#peloton.api.job.QuerySpec">QuerySpec</a></td>
                   <td></td>
                   <td><p>The query spec from the request </p></td>
+                </tr>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#peloton.api.job.JobSummary">JobSummary</a></td>
+                  <td>repeated</td>
+                  <td><p>Job summary </p></td>
                 </tr>
               
             </tbody>

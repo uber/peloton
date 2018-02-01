@@ -1,3 +1,5 @@
+ALTER TABLE job_index ADD (name text, job_type int, instance_count int);
+
 /*
   create v2 lucene index in cassandra store for job_index table
  */
@@ -8,6 +10,10 @@ WITH OPTIONS = {
    'schema': '{
       fields: {
          owner: {type: "string"},
+         name: {type: "string"},
+         job_type: {type: "integer"},
+         instance_count: {type: "integer"},
+         runtime_info: {type: "text", analyzer: "english"},
          labels: {type: "text", analyzer: "english"},
          config:{type: "text", analyzer: "english"},
          creation_time: {type: "date", pattern: "yyyyMMddHHmmss"},

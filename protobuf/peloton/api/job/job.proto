@@ -200,6 +200,36 @@ message JobInfo
 }
 
 /**
+ *  Summary of a job that contains jobId, name, owner, type, respool, instance count, labels, runtimeInfo.
+ */
+message JobSummary
+{
+  // Job ID
+  peloton.JobID id = 1;
+
+  // Name of the job
+  string name = 2;
+
+  // Owner of the job
+  string owner = 3;
+
+  // Type of the job
+  JobType type = 4;
+
+  // Resource Pool ID where this job belongs to
+  peloton.ResourcePoolID respoolID = 5;
+
+   // Number of instances of the job
+  uint32 instanceCount = 6;
+
+  // List of user-defined labels for the job
+  repeated peloton.Label labels = 7;
+
+  // Job runtime information
+  RuntimeInfo runtime = 8;
+}
+
+/**
  *  QuerySpec specifies the list of query criteria for jobs. All
  *  indexed fields should be part of this message. And all fields
  *  in this message have to be indexed too.
@@ -341,6 +371,8 @@ message QueryResponse {
   }
   Error error = 1;
 
+  // DEPRECATED by peloton.api.job.JobSummary
+  // JobInfo is huge and there is no need to return it in QueryResponse.
   // NOTE: instanceConfig is not returned as part of jobConfig inside jobInfo
   // as it can be so huge that exceeds grpc limit size. Use Job.Get() API to get
   // instanceConfig for job.
@@ -350,6 +382,9 @@ message QueryResponse {
 
   // The query spec from the request
   QuerySpec spec = 4;
+
+  // Job summary
+  repeated JobSummary results = 5;
 }
 
 // DEPRECATED by peloton.api.job.svc.DeleteRequest
