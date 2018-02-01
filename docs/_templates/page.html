@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+
+  {% block body %}
+  {% if pagename != 'index' %}
+
+<!-- Creates mini TOCs on each page  --> 
+      <div class="layout layout--rev push--sides">
+      <div class="layout__item one-quarter desk-one-third palm-one-whole db-side-menu push--bottom">
+        <br/><br/><br/>
+        {{ toctree(maxdepth=-1, includehidden=True, titles_only=True) }}
+        <hr class="style14"/>
+        {{ toc }}
+      </div>
+      <div class="layout__item three-quarters desk-two-thirds palm-one-whole db-content">
+
+
+
+        {{ body }}
+        
+        <div class="layout layout--middle layout--flush">
+          <div class="layout__item one-half">
+      </div>
+    </div>
+
+
+
+  {% else %}
+    <div class="layout push--sides">
+      <nav class="db-navigation layout__item push--bottom">
+        {{ toctree(maxdepth=2, includehidden=True, collapse=False) }}
+      </nav>
+    </div>
+
+    {% include "index.html" %}
+
+  {% endif %}
+{% endblock %}
+
