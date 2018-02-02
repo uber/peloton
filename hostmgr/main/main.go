@@ -379,6 +379,7 @@ func main() {
 		masterOperatorClient,
 		driver,
 		volumeStore,
+		cfg.Mesos,
 	)
 
 	// Initializing TaskStateManager will start to record task status

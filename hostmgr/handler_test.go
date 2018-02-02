@@ -941,6 +941,7 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 			suite.masterOperatorClient.EXPECT().AllocatedResources(
 				gomock.Any(),
 			).Return(tt.response, tt.err)
+			suite.masterOperatorClient.EXPECT().GetQuota(gomock.Any()).Return(nil, nil)
 		}
 
 		// Make the cluster capacity API request
@@ -964,6 +965,70 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 			for _, v := range resp.PhysicalResources {
 				suite.Equal(v.Capacity, float64(numAgents))
 			}
+		}
+	}
+}
+
+func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota() {
+	scalerType := mesos.Value_SCALAR
+	scalerVal := 200.0
+	name := "cpus"
+	quotaVal := 100.0
+
+	loader := &hostmap.Loader{
+		OperatorClient: suite.masterOperatorClient,
+		Scope:          suite.testScope,
+	}
+	numAgents := 2
+	response := makeAgentsResponse(numAgents)
+	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+
+	loader.Load(nil)
+
+	clusterCapacityReq := &hostsvc.ClusterCapacityRequest{}
+
+	// Set expectations on provider interface
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(suite.frameworkID)
+
+	responseAllocated := []*mesos.Resource{
+		{
+			Name: &name,
+			Scalar: &mesos.Value_Scalar{
+				Value: &scalerVal,
+			},
+			Type: &scalerType,
+		},
+	}
+
+	responseQuota := []*mesos.Resource{
+		{
+			Name: &name,
+			Scalar: &mesos.Value_Scalar{
+				Value: &quotaVal,
+			},
+			Type: &scalerType,
+		},
+	}
+
+	// Set expectations on the mesos operator client
+	suite.masterOperatorClient.EXPECT().AllocatedResources(
+		gomock.Any(),
+	).Return(responseAllocated, nil)
+
+	suite.masterOperatorClient.EXPECT().GetQuota(gomock.Any()).Return(responseQuota, nil)
+
+	// Make the cluster capacity API request
+	resp, _ := suite.handler.ClusterCapacity(
+		rootCtx,
+		clusterCapacityReq,
+	)
+
+	suite.Nil(resp.Error)
+	suite.NotNil(resp.Resources)
+	suite.Equal(4, len(resp.PhysicalResources))
+	for _, v := range resp.PhysicalResources {
+		if v.GetKind() == "cpu" {
+			suite.Equal(v.Capacity, float64(quotaVal))
 		}
 	}
 }

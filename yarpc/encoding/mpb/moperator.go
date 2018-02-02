@@ -26,6 +26,7 @@ const (
 type MasterOperatorClient interface {
 	Agents() (*mesos_master.Response_GetAgents, error)
 	AllocatedResources(ID string) ([]*mesos.Resource, error)
+	GetQuota(role string) ([]*mesos.Resource, error)
 }
 
 type masterOperatorClient struct {
@@ -209,4 +210,42 @@ func filterRoles(roles []*mesos.Role, fn rolesFilterFn) []*mesos.Role {
 		}
 	}
 	return filteredRoles
+}
+
+// GetQuota returns the quota set for specified role
+func (mo *masterOperatorClient) GetQuota(role string) (
+	[]*mesos.Resource, error) {
+
+	// GetQuota call only has `Call.Type` and no embedded message.
+	callType := mesos_master.Call_GET_QUOTA
+
+	masterMsg := &mesos_master.Call{
+		Type: &callType,
+	}
+
+	// Create context to cancel automatically when Timeout expires
+	ctx, cancel := context.WithTimeout(
+		context.Background(), _timeout,
+	)
+	defer cancel()
+
+	// Make Call
+	response, err := mo.call(ctx, masterMsg)
+
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	quota := response.GetGetQuota()
+
+	if quota != nil {
+		quotaInfo := quota.GetStatus().GetInfos()
+		for _, info := range quotaInfo {
+			if role == info.GetRole() {
+				// return specified roles quota
+				return info.GetGuarantee(), nil
+			}
+		}
+	}
+	return nil, nil
 }

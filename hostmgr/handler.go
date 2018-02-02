@@ -38,6 +38,7 @@ type serviceHandler struct {
 	offerPool             offerpool.Pool
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 	volumeStore           storage.PersistentVolumeStore
+	roleName              string
 }
 
 // InitServiceHandler initialize serviceHandler.
@@ -48,6 +49,7 @@ func InitServiceHandler(
 	masterOperatorClient mpb.MasterOperatorClient,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 	volumeStore storage.PersistentVolumeStore,
+	mesosConfig hostmgr_mesos.Config,
 ) {
 
 	handler := &serviceHandler{
@@ -57,6 +59,7 @@ func InitServiceHandler(
 		offerPool:             offer.GetEventHandler().GetOfferPool(),
 		frameworkInfoProvider: frameworkInfoProvider,
 		volumeStore:           volumeStore,
+		roleName:              mesosConfig.Framework.Role,
 	}
 
 	d.Register(hostsvc.BuildInternalHostServiceYARPCProcedures(handler))
@@ -835,7 +838,44 @@ func (h *serviceHandler) ClusterCapacity(
 		}, nil
 	}
 
+	// NOTE: This only works if
+	// 1) no quota is set for any role, or
+	// 2) quota is set for the same role peloton is registered under.
+	// If operator set a quota for another role but leave peloton's role unset,
+	// cluster capacity will be over estimated.
+	var res scalar.Resources
+	quotaResources, err := h.operatorMasterClient.GetQuota(h.roleName)
+	if err != nil {
+		h.metrics.ClusterCapacityFail.Inc(1)
+		log.WithError(err).Error("error getting quota ")
+		return &hostsvc.ClusterCapacityResponse{
+			Error: &hostsvc.ClusterCapacityResponse_Error{
+				ClusterUnavailable: &hostsvc.ClusterUnavailable{
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	if err == nil && quotaResources != nil {
+		res = scalar.FromMesosResources(quotaResources)
+		if res.GetCPU() <= 0 {
+			res.CPU = agentMap.Capacity.GetCPU()
+		}
+		if res.GetMem() <= 0 {
+			res.Mem = agentMap.Capacity.GetMem()
+		}
+		if res.GetDisk() <= 0 {
+			res.Disk = agentMap.Capacity.GetDisk()
+		}
+		if res.GetGPU() <= 0 {
+			res.GPU = agentMap.Capacity.GetGPU()
+		}
+	} else {
+		res = agentMap.Capacity
+	}
 	h.metrics.ClusterCapacity.Inc(1)
+
 	clusterCapacityResponse := &hostsvc.ClusterCapacityResponse{
 		Resources: []*hostsvc.Resource{
 			{
@@ -855,16 +895,16 @@ func (h *serviceHandler) ClusterCapacity(
 		PhysicalResources: []*hostsvc.Resource{
 			{
 				Kind:     common.CPU,
-				Capacity: agentMap.Capacity.CPU,
+				Capacity: res.CPU,
 			}, {
 				Kind:     common.DISK,
-				Capacity: agentMap.Capacity.Disk,
+				Capacity: res.Disk,
 			}, {
 				Kind:     common.GPU,
-				Capacity: agentMap.Capacity.GPU,
+				Capacity: res.GPU,
 			}, {
 				Kind:     common.MEMORY,
-				Capacity: agentMap.Capacity.Mem,
+				Capacity: res.Mem,
 			},
 		},
 	}
