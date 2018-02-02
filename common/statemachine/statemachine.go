@@ -1,13 +1,11 @@
 package statemachine
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	"github.com/uber-go/atomic"
 )
 
 // Rule is struct to define the transition rules
@@ -79,10 +77,6 @@ type statemachine struct {
 	// global transition callback which applies to all state transitions
 	// for an example want to notify state transitions
 	transitionCallback func(*Transition) error
-
-	// This atomic boolean helps to identify if previous transition is
-	// complete or still not done
-	inTransition atomic.Bool
 
 	// lastUpdatedTime records the time when last state is transitioned
 	lastUpdatedTime time.Time
@@ -157,20 +151,11 @@ func (sm *statemachine) validateRule(rule *Rule) error {
 func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	// Locking the statemachine to synchronize state changes
 	sm.Lock()
-
-	// Checking is previous transitions are complete
-	inTransition := sm.inTransition.Load()
-	if inTransition {
-		sm.Unlock()
-		return errors.Errorf("transition to  %s not able to "+
-			"transition, previous transition is not "+
-			"finished yet", fmt.Sprint(to))
-	}
+	defer sm.Unlock()
 
 	// checking if transition is allowed
 	err := sm.isValidTransition(to)
 	if err != nil {
-		sm.Unlock()
 		return err
 	}
 
@@ -182,14 +167,8 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 		Params:       args,
 	}
 
-	// Changing intransition value by that we block rest
-	// of the transitions
-	sm.inTransition.Swap(true)
-
-	// Doing actual transition
+	// Storing values for reverseTransition
 	curState := sm.current
-	sm.current = to
-	sm.lastUpdatedTime = time.Now()
 
 	// Try to stop state recovery if its transitioning
 	// from timeout state
@@ -205,34 +184,25 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 				"task_id": sm.name,
 				"from ":   curState,
 				"to":      to,
-			}).Error("Failed to stop state timeout recovery")
+			}).Error("failed to stop state timeout recovery")
 			return err
 		}
 	}
 
-	swapTransition := func() {
-		// Locking state machine before moving transition to finish
-		sm.Lock()
-		defer sm.Unlock()
-
-		// Making transition done
-		sm.inTransition.Swap(false)
-	}
-
-	defer swapTransition()
-
-	// Unlocking the state machine to call callback functions
-	sm.Unlock()
+	// Doing actual transition
+	sm.current = to
+	sm.lastUpdatedTime = time.Now()
 
 	// invoking callback function
 	if sm.rules[curState].Callback != nil {
 		err = sm.rules[curState].Callback(t)
 		if err != nil {
-			log.WithFields(log.Fields{
-				"task_id": sm.name,
-				"from ":   curState,
-				"to":      to,
-			}).Error("Error in call back")
+			log.WithError(err).WithFields(log.Fields{
+				"task_id":        sm.GetName(),
+				"current_state ": curState,
+				"to_state":       to,
+			}).Error("callback failed for task")
+
 			return err
 		}
 	}
@@ -241,11 +211,11 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	if sm.transitionCallback != nil {
 		err = sm.transitionCallback(t)
 		if err != nil {
-			log.WithFields(log.Fields{
-				"task_id": sm.name,
-				"from ":   curState,
-				"to":      to,
-			}).Error("Error in transition call back")
+			log.WithError(err).WithFields(log.Fields{
+				"task_id":        sm.GetName(),
+				"current_state ": curState,
+				"to_state":       to,
+			}).Error("transition callback failed for task")
 			return err
 		}
 	}
@@ -257,7 +227,28 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 			"to":      to,
 		}).Info("Task transitioned to timeout state")
 		if rule.Timeout != 0 {
-			sm.timer.Start(rule.Timeout)
+			err := sm.timer.Start(rule.Timeout)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"task_id": sm.name,
+					"state":   to,
+				}).Error("timer could not be started retrying ...")
+				err = sm.timer.Stop()
+				if err != nil {
+					log.WithError(err).WithFields(log.Fields{
+						"task_id": sm.name,
+						"state":   to,
+					}).Error("timer could not be stoped")
+				}
+				err = sm.timer.Start(rule.Timeout)
+				if err != nil {
+					log.WithError(err).WithFields(log.Fields{
+						"task_id": sm.name,
+						"state":   to,
+					}).Error("timer could not be started, returning")
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -318,13 +309,6 @@ func (sm *statemachine) rollbackState() error {
 		return nil
 	}
 
-	// Checking if any transition in place
-	linTransition := sm.inTransition.Load()
-	if linTransition {
-		return errors.Errorf("transition to  %s not able to "+
-			"transition, previous transition is not "+
-			"finished yet", fmt.Sprint(rule.To))
-	}
 	//  Creating Transition to pass to callbacks
 	t := &Transition{
 		StateMachine: sm,
@@ -332,10 +316,6 @@ func (sm *statemachine) rollbackState() error {
 		To:           rule.To,
 		Params:       nil,
 	}
-
-	// Changing in-transition value by that we block rest
-	// of the transitions
-	sm.inTransition.Swap(true)
 
 	log.WithFields(log.Fields{
 		"task_id":       t.StateMachine.GetName(),
@@ -347,16 +327,6 @@ func (sm *statemachine) rollbackState() error {
 	// Doing actual transition
 	sm.current = rule.To
 	sm.lastUpdatedTime = time.Now()
-	swapTransition := func() {
-		// Locking it again as we need it for transition
-		sm.Lock()
-		// Making transition done
-		sm.inTransition.Swap(false)
-	}
-	defer swapTransition()
-
-	// Unlocking the state machine to call callback functions
-	sm.Unlock()
 
 	// invoking callback function
 	if rule.Callback != nil {

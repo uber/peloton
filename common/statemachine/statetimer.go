@@ -74,6 +74,7 @@ func (st *statetimer) Stop() error {
 	}
 	log.WithField("task_id", st.statemachine.name).
 		Debug("State Recovery Stopped")
+
 	return nil
 }
 
@@ -86,7 +87,7 @@ func (st *statetimer) Start(timeout time.Duration) error {
 	if st.runningState == runningStateRunning {
 		log.WithField("task_id", st.statemachine.name).
 			Warn("State Recovery is already running, no action will be performed")
-		return nil
+		return errors.New("State Timer is already running")
 	}
 
 	started := make(chan int, 1)
