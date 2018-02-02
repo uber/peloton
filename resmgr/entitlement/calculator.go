@@ -207,24 +207,46 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 		}).Info("Demand for resource pool")
 
 		resConfig := n.Resources()
+		// Caping the demand with Limit for resource pool
+		// If demand is less then limit then we use demand for
+		// Entitlement calculation otherwise we use limit as demand
+		// to cap the allocation till limit.
+		limitedDemand := demand
 		for kind, res := range resConfig {
-			assignment.Set(kind, math.Min(demand.Get(kind), res.Reservation))
-			if demand.Get(kind) > res.Reservation {
+			limitedDemand.Set(kind, math.Min(demand.Get(kind), res.GetLimit()))
+			log.WithFields(log.Fields{
+				"respool_ID":     n.ID(),
+				"respool_name":   n.Name(),
+				"kind":           kind,
+				"actual_demand":  demand.Get(kind),
+				"limit":          res.Limit,
+				"limited_demand": limitedDemand.Get(kind),
+			}).Info("Limited Demand for resource pool")
+		}
+
+		// Setting the demand to cap at limit for entitlement calculation
+		demands[n.ID()] = limitedDemand
+
+		// Now checking if demand is less then reservation or not
+		// Taking the assignement to the min(demand,reservation)
+		for kind, res := range resConfig {
+			assignment.Set(kind, math.Min(limitedDemand.Get(kind), res.Reservation))
+			if limitedDemand.Get(kind) > res.Reservation {
 				totalShare[kind] += res.Share
-				demand.Set(kind, demand.Get(kind)-res.Reservation)
+				limitedDemand.Set(kind, limitedDemand.Get(kind)-res.Reservation)
 			} else {
-				demand.Set(kind, 0)
+				limitedDemand.Set(kind, 0)
 			}
 		}
 
 		entitlement = entitlement.Subtract(assignment)
 		assignments[n.ID()] = assignment
-		demands[n.ID()] = demand
+		demands[n.ID()] = limitedDemand
 		log.WithFields(log.Fields{
-			"respool":     n.Name(),
-			"demand":      demand,
-			"assignment":  assignment,
-			"entitlement": entitlement,
+			"respool":        n.Name(),
+			"limited_demand": limitedDemand,
+			"assignment":     assignment,
+			"entitlement":    entitlement,
 		}).Debug("First pass completed for respool")
 	}
 
@@ -306,7 +328,14 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 					entitlement.Get(kind))
 				value = float64(value / totalChildShare)
 				value += assignments[n.ID()].Get(kind)
-				assignments[n.ID()].Set(kind, value)
+
+				// We need to cap the limit here for free resources
+				// as we can not give more then limit to resource pool
+				if value > n.Resources()[kind].GetLimit() {
+					assignments[n.ID()].Set(kind, n.Resources()[kind].GetLimit())
+				} else {
+					assignments[n.ID()].Set(kind, value)
+				}
 			}
 		}
 	}
