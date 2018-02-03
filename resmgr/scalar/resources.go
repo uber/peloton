@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/util"
@@ -125,6 +126,19 @@ func ConvertToResmgrResource(resource *task.ResourceConfig) *Resources {
 		GPU:    resource.GetGpuLimit(),
 		MEMORY: resource.GetMemLimitMb(),
 	}
+}
+
+// GetGangResources aggregates gang resources to resmgr resources
+func GetGangResources(gang *resmgrsvc.Gang) *Resources {
+	if gang == nil {
+		return nil
+	}
+	totalRes := &Resources{}
+	for _, task := range gang.GetTasks() {
+		totalRes = totalRes.Add(
+			ConvertToResmgrResource(task.GetResource()))
+	}
+	return totalRes
 }
 
 func (r *Resources) String() string {

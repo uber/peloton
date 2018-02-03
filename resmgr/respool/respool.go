@@ -35,24 +35,34 @@ type ResPool interface {
 	SetChildren(*list.List)
 	// Returns true of the resource pool is a leaf.
 	IsLeaf() bool
+	// GetPath returns the resource pool path.
+	GetPath() string
+	// IsRoot returns true if the node is the root of the resource tree.
+	IsRoot() bool
+
 	// Returns the config of the resource pool.
 	ResourcePoolConfig() *respool.ResourcePoolConfig
 	// Sets the resource pool config.
 	SetResourcePoolConfig(*respool.ResourcePoolConfig)
+
 	// Returns a map of resources and its resource config.
 	Resources() map[string]*respool.ResourceConfig
 	// Sets the resource config.
 	SetResourceConfig(*respool.ResourceConfig)
+
 	// Converts to resource pool info.
 	ToResourcePoolInfo() *respool.ResourcePoolInfo
+
 	// Aggregates the child reservations by resource type.
 	AggregatedChildrenReservations() (map[string]float64, error)
+
 	// Forms a gang from a single task.
 	MakeTaskGang(task *resmgr.Task) *resmgrsvc.Gang
 	// Enqueues gang (task list) into resource pool pending queue.
 	EnqueueGang(gang *resmgrsvc.Gang) error
 	// Dequeues gang (task list) list from the resource pool.
 	DequeueGangList(int) ([]*resmgrsvc.Gang, error)
+
 	// SetEntitlement sets the entitlement for the resource pool.
 	// input is map[ResourceKind]->EntitledCapacity
 	SetEntitlement(map[string]float64)
@@ -64,19 +74,21 @@ type ResPool interface {
 	SetEntitlementByKind(kind string, entitlement float64)
 	//GetEntitlement gets the entitlement for the resource pool.
 	GetEntitlement() *scalar.Resources
-	// GetAllocation returns the resource allocation for the resource pool.
+
+	// GetAllocation returns the total resource allocation for the resource
+	// pool.
 	GetAllocation() *scalar.Resources
 	// SetAllocation sets the resource allocation for the resource pool.
 	SetAllocation(res *scalar.Resources)
 	// SubtractFromAllocation recaptures the resources from task.
-	SubtractFromAllocation(res *scalar.Resources) error
-	// GetPath returns the resource pool path.
-	GetPath() string
-	// IsRoot returns true if the node is the root of the resource tree.
-	IsRoot() bool
+	SubtractFromAllocation(preemptible bool, res *scalar.Resources) error
 	// AddToAllocation adds resources to current allocation
 	// for the resource pool.
-	AddToAllocation(res *scalar.Resources) error
+	AddToAllocation(preemptible bool, res *scalar.Resources) error
+	// CalculateAllocation calculates the allocation recursively for
+	// all the children.
+	CalculateAllocation() *scalar.Resources
+
 	// AddToDemand adds resources to current demand
 	// for the resource pool.
 	AddToDemand(res *scalar.Resources) error
@@ -88,9 +100,7 @@ type ResPool interface {
 	// CalculateDemand calculates the resource demand
 	// for the resource pool recursively for the subtree.
 	CalculateDemand() *scalar.Resources
-	// CalculateAllocation calculates the allocation recursively for
-	// all the children.
-	CalculateAllocation() *scalar.Resources
+
 	// AddInvalidTask will add the killed tasks to respool which can be
 	// discarded asynchronously which scheduling.
 	AddInvalidTask(task *peloton.TaskID)
@@ -100,22 +110,36 @@ type ResPool interface {
 	PeekPendingGangs(limit uint32) ([]*resmgrsvc.Gang, error)
 }
 
-// resPool implements ResPool interface.
+// resPool implements the ResPool interface.
 type resPool struct {
 	sync.RWMutex
 
-	id              string
-	path            string
-	children        *list.List
-	parent          ResPool
+	id       string
+	path     string
+	children *list.List
+	parent   ResPool
+
 	resourceConfigs map[string]*respool.ResourceConfig
 	poolConfig      *respool.ResourcePoolConfig
-	pendingQueue    queue.Queue
-	entitlement     *scalar.Resources
-	allocation      *scalar.Resources
-	demand          *scalar.Resources
-	metrics         *Metrics
-	invalidTasks    map[string]bool
+
+	entitlement *scalar.Resources
+	totalAlloc  *scalar.Resources
+	demand      *scalar.Resources
+
+	// tracks the total allocation of non-preemptible tasks in this resource
+	// pool. Used for admission control of non-preemptible tasks inside this
+	// resource pool.
+	nonPreemptibleAlloc *scalar.Resources
+
+	// set of invalid tasks which should be discarded during admission
+	// control
+	invalidTasks map[string]bool
+
+	// queue containing gangs waiting to be admitted into the resource pool.
+	// queue semantics is defined by the SchedulingPolicy
+	pendingQueue queue.Queue
+
+	metrics *Metrics
 }
 
 // NewRespool will initialize the resource pool node and return that.
@@ -126,32 +150,27 @@ func NewRespool(
 	config *respool.ResourcePoolConfig) (ResPool, error) {
 
 	if config == nil {
-		log.
-			WithField("respool_ID: ", ID).
-			Error("resource config is empty")
 		return nil, errors.Errorf("error creating resource pool %s; "+
 			"ResourcePoolConfig is nil", ID)
 	}
 
 	q, err := queue.CreateQueue(config.Policy, math.MaxInt64)
 	if err != nil {
-		log.WithField("respool_ID: ", ID).
-			WithError(err).
-			Error("Error creating resource pool pending queue")
 		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
 	}
 
 	pool := &resPool{
-		id:              ID,
-		children:        list.New(),
-		parent:          parent,
-		resourceConfigs: make(map[string]*respool.ResourceConfig),
-		poolConfig:      config,
-		pendingQueue:    q,
-		entitlement:     &scalar.Resources{},
-		allocation:      &scalar.Resources{},
-		demand:          &scalar.Resources{},
-		invalidTasks:    make(map[string]bool),
+		id:                  ID,
+		children:            list.New(),
+		parent:              parent,
+		resourceConfigs:     make(map[string]*respool.ResourceConfig),
+		poolConfig:          config,
+		pendingQueue:        q,
+		entitlement:         &scalar.Resources{},
+		totalAlloc:          &scalar.Resources{},
+		demand:              &scalar.Resources{},
+		nonPreemptibleAlloc: &scalar.Resources{},
+		invalidTasks:        make(map[string]bool),
 	}
 
 	// Initialize metrics
@@ -317,14 +336,13 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 			gangList = append(gangList, gang)
 			// Need to lock the usage before updating it
 			n.Lock()
-			n.allocation = n.allocation.Add(GetGangResources(gang))
+			n.totalAlloc = n.totalAlloc.Add(scalar.GetGangResources(gang))
 			n.Unlock()
 			n.updateResourceMetrics()
 		} else {
 			if len(gangList) <= 0 {
-				log.WithField(
-					"gang", gang).Debug("Need more" +
-					" resources then available")
+				log.WithField("gang", gang).
+					Debug("Need more resources then available")
 				return nil, errors.Errorf("Queue %s is already full", n.id)
 			}
 		}
@@ -418,27 +436,19 @@ func (n *resPool) canBeAdmitted(gang *resmgrsvc.Gang) bool {
 	defer n.RUnlock()
 
 	currentEntitlement := n.entitlement
-	log.WithField("entitlement", currentEntitlement).Debug("Current Entitlement")
-	currentAllocation := n.allocation
-	log.WithField("allocation", currentAllocation).Debug("Current Allocation")
-	neededResources := GetGangResources(gang)
-	log.WithField("neededResources", neededResources).Debug("Current Resources needed")
+	currentAllocation := n.totalAlloc
+	neededResources := scalar.GetGangResources(gang)
+
+	log.WithField("entitlement", currentEntitlement).
+		WithField("total_alloc", currentAllocation).Debug(
+		"Current Resources")
+
+	log.WithField("resources_required", neededResources).Debug(
+		"Resources required")
+
 	return currentAllocation.
 		Add(neededResources).
 		LessThanOrEqual(currentEntitlement)
-}
-
-// GetGangResources aggregates gang resources to resmgr resources
-func GetGangResources(gang *resmgrsvc.Gang) *scalar.Resources {
-	if gang == nil {
-		return nil
-	}
-	totalRes := &scalar.Resources{}
-	for _, task := range gang.GetTasks() {
-		totalRes = totalRes.Add(
-			scalar.ConvertToResmgrResource(task.GetResource()))
-	}
-	return totalRes
 }
 
 // AggregatedChildrenReservations returns aggregated child reservations by resource kind
@@ -495,11 +505,11 @@ func (n *resPool) ToResourcePoolInfo() *respool.ResourcePoolInfo {
 	}
 }
 
-// calculateAllocation calculates the allocation recursively for
+// calculateAllocation calculates the total allocation recursively for
 // all the children.
 func (n *resPool) CalculateAllocation() *scalar.Resources {
 	if n.isLeaf() {
-		return n.allocation
+		return n.totalAlloc
 	}
 	allocation := &scalar.Resources{}
 	for child := n.children.Front(); child != nil; child = child.Next() {
@@ -508,7 +518,7 @@ func (n *resPool) CalculateAllocation() *scalar.Resources {
 				childResPool.CalculateAllocation())
 		}
 	}
-	n.allocation = allocation
+	n.totalAlloc = allocation
 	return allocation
 }
 
@@ -609,7 +619,7 @@ func (n *resPool) SetEntitlement(entitlement map[string]float64) {
 		}
 	}
 	log.WithFields(log.Fields{
-		"respool_ID": n.ID(),
+		"respool_id": n.ID(),
 		"cpu":        n.entitlement.CPU,
 		"disk":       n.entitlement.DISK,
 		"memory":     n.entitlement.MEMORY,
@@ -633,7 +643,7 @@ func (n *resPool) SetEntitlementByKind(kind string, entitlement float64) {
 		n.entitlement.MEMORY = entitlement
 	}
 	log.WithFields(log.Fields{
-		"respool_ID":  n.ID(),
+		"respool_id":  n.ID(),
 		"kind":        kind,
 		"entitlement": entitlement,
 	}).Debug("Setting Entitlement")
@@ -645,7 +655,7 @@ func (n *resPool) SetEntitlementResources(res *scalar.Resources) {
 	defer n.Unlock()
 	n.entitlement = res
 	log.WithFields(log.Fields{
-		"respool_ID":  n.ID(),
+		"respool_id":  n.ID(),
 		"entitlement": res,
 	}).Debug("Setting Entitlement")
 	n.updateResourceMetrics()
@@ -662,17 +672,17 @@ func (n *resPool) GetEntitlement() *scalar.Resources {
 func (n *resPool) GetAllocation() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
-	return n.allocation
+	return n.totalAlloc
 }
 
 // SetAllocation sets the resource allocation for the pool
 func (n *resPool) SetAllocation(res *scalar.Resources) {
 	n.Lock()
 	defer n.Unlock()
-	n.allocation = res
+	n.totalAlloc = res
 }
 
-// GetDemand gets the resource allocation for the pool
+// GetDemand gets the resource demand for the pool
 func (n *resPool) GetDemand() *scalar.Resources {
 	n.RLock()
 	defer n.RUnlock()
@@ -680,20 +690,32 @@ func (n *resPool) GetDemand() *scalar.Resources {
 }
 
 // SubtractFromAllocation updates the allocation for the resource pool
-func (n *resPool) SubtractFromAllocation(res *scalar.Resources) error {
+func (n *resPool) SubtractFromAllocation(preemptible bool, res *scalar.
+	Resources) error {
 	n.Lock()
 	defer n.Unlock()
 
-	newAllocation := n.allocation.Subtract(res)
+	newAllocation := n.totalAlloc.Subtract(res)
 
 	if newAllocation == nil {
 		return errors.Errorf("Couldn't update the resources")
 	}
-	n.allocation = newAllocation
+	n.totalAlloc = newAllocation
+
+	if !preemptible {
+		n.nonPreemptibleAlloc = n.nonPreemptibleAlloc.Subtract(res)
+
+		//TODO av: Change to debug
+		log.
+			WithField("respool_id", n.ID()).
+			WithField("non_preemptible_alloc", n.nonPreemptibleAlloc).
+			Info("Current non-preemptible totalAlloc")
+	}
 
 	log.
-		WithField("respool_ID", n.ID()).
-		WithField("allocation", n.allocation).
+		WithField("respool_id", n.ID()).
+		WithField("total_alloc", n.totalAlloc).
+		WithField("non_preemptible_alloc", n.totalAlloc).
 		Debug("Current Allocation after Done Task")
 	n.updateResourceMetrics()
 	return nil
@@ -734,19 +756,25 @@ func (n *resPool) calculatePath() string {
 
 // AddToAllocation adds resources to the allocation
 // for the resource pool
-func (n *resPool) AddToAllocation(res *scalar.Resources) error {
+func (n *resPool) AddToAllocation(preemptible bool,
+	res *scalar.Resources) error {
 	n.Lock()
 	defer n.Unlock()
 
-	n.allocation = n.allocation.Add(res)
+	n.totalAlloc = n.totalAlloc.Add(res)
+
+	if !preemptible {
+		n.nonPreemptibleAlloc = n.nonPreemptibleAlloc.Add(res)
+	}
 
 	log.WithFields(log.Fields{
-		"respool_ID": n.ID(),
-		"allocation": n.allocation,
+		"respool_id":            n.ID(),
+		"total_alloc":           n.totalAlloc,
+		"non_preemptible_alloc": n.nonPreemptibleAlloc,
 	}).Debug("Current Allocation after Adding resources")
+
 	n.updateResourceMetrics()
 	return nil
-
 }
 
 // AddToDemand adds resources to the demand
@@ -758,7 +786,7 @@ func (n *resPool) AddToDemand(res *scalar.Resources) error {
 	n.demand = n.demand.Add(res)
 
 	log.WithFields(log.Fields{
-		"respool_ID": n.ID(),
+		"respool_id": n.ID(),
 		"demand":     n.demand,
 	}).Debug("Current Demand after Adding resources")
 
@@ -779,7 +807,7 @@ func (n *resPool) SubtractFromDemand(res *scalar.Resources) error {
 	n.demand = newDemand
 
 	log.
-		WithField("respool_ID", n.ID()).
+		WithField("respool_id", n.ID()).
 		WithField("demand", n.demand).
 		Debug("Current Demand " +
 			"after removing resources")
@@ -797,10 +825,11 @@ func (n *resPool) updateStaticResourceMetrics() {
 // updates dynamic metrics(Allocation, Entitlement, Available) which change based on
 // usage and entitlement calculation
 func (n *resPool) updateDynamicResourceMetrics() {
-	n.metrics.ResourcePoolEntitlement.Update(n.entitlement)
-	n.metrics.ResourcePoolAllocation.Update(n.allocation)
-	n.metrics.ResourcePoolAvailable.Update(n.entitlement.Subtract(n.allocation))
-	n.metrics.ResourcePoolDemand.Update(n.demand)
+	n.metrics.Entitlement.Update(n.entitlement)
+	n.metrics.TotalAllocation.Update(n.totalAlloc)
+	n.metrics.NonPreemptibleAllocation.Update(n.nonPreemptibleAlloc)
+	n.metrics.Available.Update(n.entitlement.Subtract(n.totalAlloc))
+	n.metrics.Demand.Update(n.demand)
 }
 
 // updates all the metrics (static and dynamic)
@@ -809,7 +838,7 @@ func (n *resPool) updateResourceMetrics() {
 	n.updateDynamicResourceMetrics()
 }
 
-// AddInvalidTask adds the invalid task by that it can
+// AddInvalidTask adds an invalid task so that it can
 // remove them from the respool later
 func (n *resPool) AddInvalidTask(task *peloton.TaskID) {
 	n.Lock()

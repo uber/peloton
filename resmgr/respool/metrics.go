@@ -36,10 +36,11 @@ type Metrics struct {
 
 	PendingQueueSize tally.Gauge
 
-	ResourcePoolAllocation  scalar.GaugeMaps
-	ResourcePoolEntitlement scalar.GaugeMaps
-	ResourcePoolAvailable   scalar.GaugeMaps
-	ResourcePoolDemand      scalar.GaugeMaps
+	TotalAllocation          scalar.GaugeMaps
+	NonPreemptibleAllocation scalar.GaugeMaps
+	Entitlement              scalar.GaugeMaps
+	Available                scalar.GaugeMaps
+	Demand                   scalar.GaugeMaps
 
 	ResourcePoolReservation scalar.GaugeMaps
 	ResourcePoolLimit       scalar.GaugeMaps
@@ -54,7 +55,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 	pendingScope := scope.SubScope("pending")
 
-	usageScope := scope.SubScope("allocation")
+	allocationScope := scope.SubScope("totalAlloc")
 	entitlementScope := scope.SubScope("entitlement")
 	availableScope := scope.SubScope("available")
 	demandScope := scope.SubScope("demand")
@@ -91,10 +92,13 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		PendingQueueSize: pendingScope.Gauge("pending_queue_size"),
 
-		ResourcePoolAllocation:  scalar.NewGaugeMaps(usageScope),
-		ResourcePoolEntitlement: scalar.NewGaugeMaps(entitlementScope),
-		ResourcePoolAvailable:   scalar.NewGaugeMaps(availableScope),
-		ResourcePoolDemand:      scalar.NewGaugeMaps(demandScope),
+		TotalAllocation: scalar.NewGaugeMaps(allocationScope.SubScope(
+			"total")),
+		NonPreemptibleAllocation: scalar.NewGaugeMaps(allocationScope.
+			SubScope("non_preemptible")),
+		Entitlement: scalar.NewGaugeMaps(entitlementScope),
+		Available:   scalar.NewGaugeMaps(availableScope),
+		Demand:      scalar.NewGaugeMaps(demandScope),
 
 		ResourcePoolReservation: scalar.NewGaugeMaps(reservationScope),
 		ResourcePoolLimit:       scalar.NewGaugeMaps(limitScope),

@@ -3,8 +3,6 @@ package task
 import (
 	"sync"
 
-	log "github.com/sirupsen/logrus"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
@@ -12,7 +10,9 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
+
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
 
@@ -211,7 +211,7 @@ func (tr *tracker) MarkItDone(
 	if !(tr.GetTask(tID).GetCurrentState().String() == task.TaskState_PENDING.String() ||
 		tr.GetTask(tID).GetCurrentState().String() == task.TaskState_INITIALIZED.String()) {
 		err := t.respool.SubtractFromAllocation(
-			scalar.ConvertToResmgrResource(
+			t.Task().GetPreemptible(), scalar.ConvertToResmgrResource(
 				t.task.GetResource()))
 		if err != nil {
 			return errors.Errorf("Not able to update task %s ", tID)
@@ -271,7 +271,7 @@ func (tr *tracker) AddResources(
 		return errors.Errorf("task %s is not in tracker", tID)
 	}
 	res := scalar.ConvertToResmgrResource(task.task.GetResource())
-	err := task.respool.AddToAllocation(res)
+	err := task.respool.AddToAllocation(task.Task().GetPreemptible(), res)
 	if err != nil {
 		return errors.Errorf("Not able to add resources for "+
 			"task %s for respool %s ", tID, task.respool.Name())

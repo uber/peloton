@@ -327,8 +327,9 @@ func (p *preemptor) evictNonRunningTask(rmTask *task.RMTask) error {
 	}
 
 	// Subtract the task resources from the resource pool allocation
-	err := resPool.SubtractFromAllocation(scalar.ConvertToResmgrResource(
-		t.Resource))
+	err := resPool.SubtractFromAllocation(t.GetPreemptible(),
+		scalar.ConvertToResmgrResource(
+			t.Resource))
 	if err != nil {
 		return errors.Wrapf(err, "unable to subtract allocation from "+
 			"resource pool")

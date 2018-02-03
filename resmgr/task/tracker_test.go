@@ -207,7 +207,7 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 		GPU:    float64(0),
 		MEMORY: float64(100),
 	}
-	rmTask.respool.AddToAllocation(resources)
+	rmTask.respool.AddToAllocation(true, resources)
 
 	res := rmTask.respool.GetAllocation()
 
@@ -228,7 +228,7 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 
 	rmTask = suite.tracker.GetTask(t)
 
-	rmTask.respool.AddToAllocation(resources)
+	rmTask.respool.AddToAllocation(true, resources)
 
 	res = rmTask.respool.GetAllocation()
 
@@ -249,7 +249,7 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 	taskID = fmt.Sprintf("job1-%d", 3)
 	t = &peloton.TaskID{Value: taskID}
 	rmTask = suite.tracker.GetTask(t)
-	rmTask.respool.AddToAllocation(resources)
+	rmTask.respool.AddToAllocation(true, resources)
 
 	res = rmTask.respool.GetAllocation()
 

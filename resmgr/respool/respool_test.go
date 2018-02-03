@@ -425,7 +425,7 @@ func (s *ResPoolSuite) TestAllocation() {
 	s.Equal(float64(10), allocation.DISK)
 	s.Equal(float64(0), allocation.GPU)
 
-	err = resPoolNode.SubtractFromAllocation(allocation)
+	err = resPoolNode.SubtractFromAllocation(true, allocation)
 	s.NoError(err)
 	newAllocation := resPoolNode.GetAllocation()
 	s.NotNil(newAllocation)
@@ -434,7 +434,7 @@ func (s *ResPoolSuite) TestAllocation() {
 	s.Equal(float64(0), newAllocation.DISK)
 	s.Equal(float64(0), newAllocation.GPU)
 
-	resPoolNode.AddToAllocation(allocation)
+	resPoolNode.AddToAllocation(true, allocation)
 	newAllocation = resPoolNode.GetAllocation()
 	s.NotNil(newAllocation)
 	s.Equal(float64(1), allocation.CPU)
@@ -802,7 +802,7 @@ func (s *ResPoolSuite) TestGetGangResources() {
 	gang := &resmgrsvc.Gang{
 		Tasks: rmTasks,
 	}
-	res := GetGangResources(gang)
+	res := scalar.GetGangResources(gang)
 	s.Equal(float64(1), res.CPU)
 	s.Equal(float64(0), res.GPU)
 	s.Equal(float64(100), res.MEMORY)
@@ -1063,6 +1063,65 @@ func (s *ResPoolSuite) TestResPoolPeekPendingGangs() {
 	gangs, err = respool.PeekPendingGangs(10)
 	s.NoError(err)
 	s.Equal(4, len(gangs))
+}
+
+func (s *ResPoolSuite) TestNonPreemptibleAllocation() {
+	poolConfigroot := &pb_respool.ResourcePoolConfig{
+		Name:      "testNonPreemptible",
+		Parent:    nil,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	rp, err := NewRespool(tally.NoopScope, _rootResPoolID.Value, nil,
+		poolConfigroot)
+	s.NoError(err)
+
+	// Add allocation for both preemptible and non-preemptible
+	allocation := s.getAllocation()
+	rp.AddToAllocation(true, allocation)
+	rp.AddToAllocation(false, allocation)
+
+	// Allocation includes both preemptible and non-preemptible
+	allocation = rp.GetAllocation()
+	s.NotNil(allocation)
+	s.Equal(float64(200), allocation.CPU)
+	s.Equal(float64(200), allocation.MEMORY)
+	s.Equal(float64(2000), allocation.DISK)
+	s.Equal(float64(2), allocation.GPU)
+
+	// Check non-preemptible allocation
+	node, ok := rp.(*resPool)
+	s.True(ok)
+	s.Equal(float64(100), node.nonPreemptibleAlloc.CPU)
+	s.Equal(float64(100), node.nonPreemptibleAlloc.MEMORY)
+	s.Equal(float64(1000), node.nonPreemptibleAlloc.DISK)
+	s.Equal(float64(1), node.nonPreemptibleAlloc.GPU)
+
+	// Remove allocation for preemptible
+	rp.SubtractFromAllocation(true, s.getAllocation())
+	// Allocation includes non-preemptible
+	allocation = rp.GetAllocation()
+	s.NotNil(allocation)
+	s.Equal(node.nonPreemptibleAlloc.CPU, allocation.CPU)
+	s.Equal(node.nonPreemptibleAlloc.MEMORY, allocation.MEMORY)
+	s.Equal(node.nonPreemptibleAlloc.DISK, allocation.DISK)
+	s.Equal(node.nonPreemptibleAlloc.GPU, allocation.GPU)
+
+	// Remove allocation for non-preemptible
+	rp.SubtractFromAllocation(false, s.getAllocation())
+
+	// Allocation is zero
+	allocation = rp.GetAllocation()
+	s.NotNil(allocation)
+	s.Equal(float64(0), allocation.CPU)
+	s.Equal(float64(0), allocation.MEMORY)
+	s.Equal(float64(0), allocation.DISK)
+	s.Equal(float64(0), allocation.GPU)
+	s.Equal(node.nonPreemptibleAlloc.CPU, allocation.CPU)
+	s.Equal(node.nonPreemptibleAlloc.MEMORY, allocation.MEMORY)
+	s.Equal(node.nonPreemptibleAlloc.DISK, allocation.DISK)
+	s.Equal(node.nonPreemptibleAlloc.GPU, allocation.GPU)
 }
 
 func TestResPoolSuite(t *testing.T) {

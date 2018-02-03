@@ -315,8 +315,8 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks
 		GPU:    1,
 	}
 	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
-	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
-		func(res *scalar.Resources) {
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any(), gomock.Any()).Do(
+		func(_ bool, res *scalar.Resources) {
 			allocation = allocation.Subtract(res)
 		}).Return(nil).AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
@@ -374,8 +374,8 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForPlacingTas
 		GPU:    1,
 	}
 	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
-	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
-		func(res *scalar.Resources) {
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any(), gomock.Any()).Do(
+		func(_ bool, res *scalar.Resources) {
 			allocation = allocation.Subtract(res)
 		}).Return(nil).AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()

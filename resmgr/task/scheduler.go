@@ -167,7 +167,7 @@ func (s *scheduler) scheduleTasks() {
 					"due to invalid tasks, " +
 					"Dropping it")
 				// We need to remove the allocation from the resource pool
-				err = n.SubtractFromAllocation(respool.GetGangResources(gang))
+				err = subtractGangFromAllocation(gang, n)
 				if err != nil {
 					log.WithError(err).WithField(
 						"Gang", gang).
@@ -214,7 +214,7 @@ func (s *scheduler) scheduleTasks() {
 				log.WithError(err).Error("Not able to enqueue" +
 					"gang back to pending queue")
 			}
-			err = n.SubtractFromAllocation(respool.GetGangResources(invalidGang))
+			err = subtractGangFromAllocation(invalidGang, n)
 			if err != nil {
 				log.WithError(err).WithField(
 					"Gang", invalidGang).
@@ -222,6 +222,17 @@ func (s *scheduler) scheduleTasks() {
 			}
 		}
 	}
+}
+
+// Removes the gang resources from the resource pools allocation
+func subtractGangFromAllocation(gang *resmgrsvc.Gang,
+	node respool.ResPool) error {
+	for _, task := range gang.GetTasks() {
+		err := node.SubtractFromAllocation(task.GetPreemptible(),
+			scalar.ConvertToResmgrResource(task.GetResource()))
+		return err
+	}
+	return nil
 }
 
 // transitGang tries to transit to "TO" state for all the tasks
