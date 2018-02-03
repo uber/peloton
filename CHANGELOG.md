@@ -3,6 +3,26 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.8
+------------------
+* 2018-02-02    Removing race between different transitions in state machine                                     Mayank Bansal
+* 2018-02-02    Adding mesos quota support in cluster capacity call for host manager                             Mayank Bansal
+* 2018-01-31    Schema and DB change to speed up JobQuery                                                        Aditya Bhave
+* 2018-02-02    Adding Limit support for resource pools                                                          Mayank Bansal
+* 2018-01-31    Adding apidoc in docs folder from build                                                          Mayank Bansal
+* 2018-01-31    Adding peloton engdocs                                                                           Mayank Bansal
+* 2018-01-02    Add extra logging in state machine implementation                                                Anant Vyas
+* 2018-01-31    Changing api docs to html format                                                                 Mayank Bansal
+* 2018-01-25    Ignore failure event due to duplicate task ID message from Mesos                                 Apoorva Jindal
+* 2018-01-26    Send kill of PENDING tasks to resource manager                                                   Apoorva Jindal
+* 2018-01-24    Send initialized tasks during recovery as a batch to resource manager                            Apoorva Jindal
+* 2018-01-24    Guard against any case when hostname may be missing in offer pool.                               Zhitao Li
+* 2018-01-22    Add Script for performance test running                                                          Chunyang Shen
+* 2018-01-11    Fix sorting based on creation/completion time in job query                                       Apoorva Jindal
+* 2018-01-24    Do not run job action with a context timeout.                                                    Apoorva Jindal
+* 2018-01-23    Revert "Temporarily, do not recover initialized tasks in non-initialized jobs in job manager"    Apoorva Jindal
+* 2018-01-08    shutdown executor after task kill timeout                                                        Chunyang Shen
+
 0.6.7
 ------------------
 * 2018-01-19    Do not recover KILLED jobs.                                                            apoorvaj@uber.com
