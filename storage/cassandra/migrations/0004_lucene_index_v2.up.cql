@@ -1,4 +1,10 @@
-ALTER TABLE job_index ADD (name text, job_type int, instance_count int);
+/*
+  Doing alter table inline causes failure when using on cassandra 3.4.0
+*/
+
+ALTER TABLE job_index ADD name text;
+ALTER TABLE job_index ADD job_type int;
+ALTER TABLE job_index ADD instance_count int;
 
 /*
   create v2 lucene index in cassandra store for job_index table
