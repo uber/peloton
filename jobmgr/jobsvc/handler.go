@@ -340,7 +340,7 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 	log.WithField("request", req).Info("JobManager.Query called")
 	h.metrics.JobAPIQuery.Inc(1)
 
-	jobConfigs, total, err := h.jobStore.QueryJobs(ctx, req.GetRespoolID(), req.GetSpec())
+	jobConfigs, jobSummary, total, err := h.jobStore.QueryJobs(ctx, req.GetRespoolID(), req.GetSpec())
 	if err != nil {
 		h.metrics.JobQueryFail.Inc(1)
 		log.WithError(err).Error("Query job failed with error")
@@ -357,6 +357,7 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 	h.metrics.JobQuery.Inc(1)
 	resp := &job.QueryResponse{
 		Records: jobConfigs,
+		Results: jobSummary,
 		Pagination: &query.Pagination{
 			Offset: req.GetSpec().GetPagination().GetOffset(),
 			Limit:  req.GetSpec().GetPagination().GetLimit(),

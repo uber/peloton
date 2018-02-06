@@ -19852,10 +19852,10 @@ revocable offers </p></td>
                 </tr>
               
                 <tr>
-                  <td>labels</td>
-                  <td><a href="#peloton.api.job..peloton.api.peloton.Label">.peloton.api.peloton.Label</a></td>
-                  <td>repeated</td>
-                  <td><p>List of user-defined labels for the job </p></td>
+                  <td>respoolID</td>
+                  <td><a href="#peloton.api.job..peloton.api.peloton.ResourcePoolID">.peloton.api.peloton.ResourcePoolID</a></td>
+                  <td></td>
+                  <td><p>Resource Pool ID where this job belongs to </p></td>
                 </tr>
               
                 <tr>
@@ -19997,7 +19997,7 @@ revocable offers </p></td>
         
       
         <h3 id="peloton.api.job.JobSummary">JobSummary</h3>
-        <p>Summary of a job that contains jobId, name, owner, type, respool, instance count, labels, runtimeInfo.</p>
+        <p>Summary of a job configuration and runtime.</p><p>Will be returned as part of Job Query API response.</p>
 
         
           <table class="field-table">
@@ -20021,13 +20021,6 @@ revocable offers </p></td>
                 </tr>
               
                 <tr>
-                  <td>owner</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Owner of the job </p></td>
-                </tr>
-              
-                <tr>
                   <td>type</td>
                   <td><a href="#peloton.api.job.JobType">JobType</a></td>
                   <td></td>
@@ -20035,10 +20028,24 @@ revocable offers </p></td>
                 </tr>
               
                 <tr>
-                  <td>respoolID</td>
-                  <td><a href="#peloton.api.job..peloton.api.peloton.ResourcePoolID">.peloton.api.peloton.ResourcePoolID</a></td>
+                  <td>owner</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Resource Pool ID where this job belongs to </p></td>
+                  <td><p>Owner of the job </p></td>
+                </tr>
+              
+                <tr>
+                  <td>owningTeam</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Owning team of the job </p></td>
+                </tr>
+              
+                <tr>
+                  <td>labels</td>
+                  <td><a href="#peloton.api.job..peloton.api.peloton.Label">.peloton.api.peloton.Label</a></td>
+                  <td>repeated</td>
+                  <td><p>List of user-defined labels for the job </p></td>
                 </tr>
               
                 <tr>

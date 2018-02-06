@@ -203,7 +203,8 @@ message JobInfo
 }
 
 /**
- *  Summary of a job that contains jobId, name, owner, type, respool, instance count, labels, runtimeInfo.
+ *  Summary of a job configuration and runtime.
+ *  Will be returned as part of Job Query API response.
  */
 message JobSummary
 {
@@ -213,23 +214,26 @@ message JobSummary
   // Name of the job
   string name = 2;
 
-  // Owner of the job
-  string owner = 3;
-
   // Type of the job
-  JobType type = 4;
+  JobType type = 3;
 
-  // Resource Pool ID where this job belongs to
-  peloton.ResourcePoolID respoolID = 5;
+  // Owner of the job
+  string owner = 4;
 
-   // Number of instances of the job
-  uint32 instanceCount = 6;
+  // Owning team of the job
+  string owningTeam = 5;
 
   // List of user-defined labels for the job
-  repeated peloton.Label labels = 7;
+  repeated peloton.Label labels = 6;
+
+  // Number of instances of the job
+  uint32 instanceCount = 7;
+
+  // Resource Pool ID where this job belongs to
+  peloton.ResourcePoolID respoolID = 8;
 
   // Job runtime information
-  RuntimeInfo runtime = 8;
+  RuntimeInfo runtime = 9;
 }
 
 /**

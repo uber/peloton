@@ -321,7 +321,7 @@ func printJobStatusResponse(r *job.GetResponse, jsonFormat bool) {
 	tabWriter.Flush()
 }
 
-func printJobQueryRecord(j *job.JobInfo) {
+func printJobQueryResult(j *job.JobSummary) {
 	startTime, err := time.Parse(time.RFC3339Nano, j.GetRuntime().GetCreationTime())
 	startTimeStr := ""
 	if err == nil {
@@ -331,11 +331,11 @@ func printJobQueryRecord(j *job.JobInfo) {
 		tabWriter,
 		jobQueryFormatBody,
 		j.GetId().GetValue(),
-		j.GetConfig().GetName(),
-		j.GetConfig().GetOwningTeam(),
+		j.GetName(),
+		j.GetOwningTeam(),
 		j.GetRuntime().GetState().String(),
 		startTimeStr,
-		j.GetConfig().GetInstanceCount(),
+		j.GetInstanceCount(),
 		j.GetRuntime().GetTaskStats()["RUNNING"],
 	)
 }
@@ -346,12 +346,12 @@ func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
 	} else {
 		if r.GetError() != nil {
 			fmt.Fprintf(tabWriter, "Error: %v\n", r.GetError().String())
-		} else if len(r.GetRecords()) == 0 {
+		} else if len(r.GetResults()) == 0 {
 			fmt.Fprint(tabWriter, "No jobs found.\n", r.GetError().String())
 		} else {
 			fmt.Fprintf(tabWriter, jobQueryFormatHeader)
-			for _, k := range r.GetRecords() {
-				printJobQueryRecord(k)
+			for _, k := range r.GetResults() {
+				printJobQueryResult(k)
 			}
 		}
 		tabWriter.Flush()

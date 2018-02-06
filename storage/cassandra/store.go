@@ -480,7 +480,7 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 }
 
 // QueryJobs returns all jobs in the resource pool that matches the spec.
-func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, uint32, error) {
+func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, []*job.JobSummary, uint32, error) {
 	// Query is based on stratio lucene index on jobs.
 	// See https://github.com/Stratio/cassandra-lucene-index
 	// We are using "must" for the labels and only return the jobs that contains all
@@ -565,7 +565,15 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	log.WithField("where", where).Debug("query string")
 
 	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("job_id").From(jobIndexTable)
+	stmt := queryBuilder.Select("job_id",
+		"name",
+		"owner",
+		"job_type",
+		"respool_id",
+		"instance_count",
+		"labels",
+		"runtime_info").
+		From(jobIndexTable)
 
 	if len(clauses) > 0 {
 		stmt = stmt.Where(where)
@@ -580,7 +588,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 			WithError(err).
 			Error("fail to query jobs")
 		s.metrics.JobMetrics.JobQueryFail.Inc(1)
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 
 	total := uint32(len(allResults))
@@ -605,11 +613,14 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	for _, value := range allResults {
 		id, ok := value["job_id"].(qb.UUID)
 		if !ok {
-			log.WithField("labels", spec.GetLabels()).
-				WithError(err).
-				Error("fail to query jobs due to invalid response from cassandra")
+			uql, args, _, _ := stmt.ToUql()
+			log.WithField("uql", uql).
+				WithField("args", args).
+				WithField("labels", spec.GetLabels()).
+				WithField("job_id", value).
+				Error("fail to find job_id in query result")
 			s.metrics.JobMetrics.JobQueryFail.Inc(1)
-			return nil, 0, fmt.Errorf("got invalid response from cassandra")
+			return nil, nil, 0, fmt.Errorf("got invalid response from cassandra")
 		}
 
 		jobID := &peloton.JobID{
@@ -644,8 +655,20 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		})
 	}
 
+	summaryResults, err := getJobSummaryFromLuceneResult(allResults)
+	if err != nil {
+		// Suppress this error until we get rid of JobInfo
+		// Just log warning and increment query fail metric
+		uql, args, _, _ := stmt.ToUql()
+		log.WithField("uql", uql).
+			WithField("args", args).
+			WithField("labels", spec.GetLabels()).
+			WithError(err).
+			Warn("Failed to get JobSummary")
+		s.metrics.JobMetrics.JobQueryFail.Inc(1)
+	}
 	s.metrics.JobMetrics.JobQuery.Inc(1)
-	return results, total, nil
+	return results, summaryResults, total, nil
 }
 
 // GetJobsByStates returns all Jobs which belong one of the states
@@ -2186,6 +2209,9 @@ func (s *Store) updateJobIndex(
 		stmt = stmt.Set("config", configBuffer).
 			Set("respool_id", config.GetRespoolID().GetValue()).
 			Set("owner", config.GetOwningTeam()).
+			Set("name", config.GetName()).
+			Set("job_type", uint32(config.GetType())).
+			Set("instance_count", uint32(config.GetInstanceCount())).
 			Set("labels", labelBuffer)
 	}
 
@@ -2488,4 +2514,87 @@ func parseTime(v string) time.Time {
 		return time.Time{}
 	}
 	return r
+}
+
+func getJobSummaryFromLuceneResult(allResults []map[string]interface{}) ([]*job.JobSummary, error) {
+	var summaryResults []*job.JobSummary
+	for _, value := range allResults {
+		summary := &job.JobSummary{}
+		id, ok := value["job_id"].(qb.UUID)
+		if !ok {
+			log.WithField("job_id", value).
+				Error("fail to find job_id in query result")
+			return nil, fmt.Errorf("got invalid response from cassandra")
+		}
+		summary.Id = &peloton.JobID{
+			Value: id.String(),
+		}
+
+		runtimeInfo, ok := value["runtime_info"].(string)
+		if ok {
+			err := json.Unmarshal([]byte(runtimeInfo), &summary.Runtime)
+			if err != nil {
+				log.WithError(err).
+					WithField("runtime_info", runtimeInfo).
+					Info("failed to unmarshal runtime info")
+			}
+		} else {
+			log.WithField("runtime_info", value["runtime_info"]).
+				Info("failed to cast runtime_info to string")
+		}
+
+		summary.Name, ok = value["name"].(string)
+		if !ok {
+			log.WithField("name", value["name"]).
+				Info("failed to cast name to string")
+		}
+
+		summary.OwningTeam, ok = value["owner"].(string)
+		if !ok {
+			log.WithField("owner", value["owner"]).
+				Info("failed to cast owner to string")
+		}
+
+		instcnt, ok := value["instance_count"].(int)
+		if !ok {
+			log.WithField("instance_count", value["instance_count"]).
+				Info("failed to cast instance_count to uint32")
+		} else {
+			summary.InstanceCount = uint32(instcnt)
+		}
+
+		jobType, ok := value["job_type"].(int)
+		if !ok {
+			log.WithField("job_type", value["job_type"]).
+				Info("failed to cast job_type to uint32")
+		} else {
+			summary.Type = job.JobType(jobType)
+		}
+
+		respoolIDStr, ok := value["respool_id"].(string)
+		if !ok {
+			log.WithField("respool_id", value["respool_id"]).
+				Info("failed to cast respool_id to string")
+		} else {
+			summary.RespoolID = &peloton.ResourcePoolID{
+				Value: respoolIDStr,
+			}
+		}
+
+		labelBuffer, ok := value["labels"].(string)
+		if ok {
+			err := json.Unmarshal([]byte(labelBuffer), &summary.Labels)
+			if err != nil {
+				log.WithError(err).
+					WithField("labels", labelBuffer).
+					Info("failed to unmarshal labels")
+			}
+		} else {
+			log.WithField("labels", value["labels"]).
+				Info("failed to cast labels to string")
+		}
+
+		summaryResults = append(summaryResults, summary)
+	}
+	return summaryResults, nil
 }
