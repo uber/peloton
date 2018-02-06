@@ -3,6 +3,10 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.8.2
+------------------
+* 2018-02-06    Untrack failed tasks with goal state succeeded.                                                  Apoorva Jindal
+
 0.6.8.1
 ------------------
 * 2018-02-03    Fix migrate script for job_index                                                                 Aditya Bhave
