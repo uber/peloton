@@ -351,8 +351,21 @@ func (j *job) killJob(ctx context.Context) (bool, error) {
 			Error("failed to get job runtime during job kill")
 		return true, err
 	}
+	jobState := pb_job.JobState_KILLING
 
-	jobRuntime.State = pb_job.JobState_KILLING
+	// If all instances have not been created, and all created instances are already killed,
+	// then directly update the job state to KILLED.
+	if len(updatedRuntimes) == 0 && jobRuntime.GetState() == pb_job.JobState_INITIALIZED && j.GetTasksNum() < instanceCount {
+		jobState = pb_job.JobState_KILLED
+		for _, runtime := range runtimes {
+			if !util.IsPelotonStateTerminal(runtime.GetState()) {
+				jobState = pb_job.JobState_KILLING
+				break
+			}
+		}
+	}
+	jobRuntime.State = jobState
+
 	err = j.m.jobStore.UpdateJobRuntime(ctx, j.id, jobRuntime)
 	if err != nil {
 		log.WithError(err).

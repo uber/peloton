@@ -161,3 +161,100 @@ func TestJobKill(t *testing.T) {
 	assert.Equal(t, instanceCount, uint32(len(j.tasks)))
 
 }
+
+func TestJobKillPartiallyCreatedJob(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobStore := store_mocks.NewMockJobStore(ctrl)
+	taskStore := store_mocks.NewMockTaskStore(ctrl)
+
+	j := &job{
+		id: &peloton.JobID{Value: uuid.NewRandom().String()},
+		m: &manager{
+			mtx:           NewMetrics(tally.NoopScope),
+			jobStore:      jobStore,
+			taskStore:     taskStore,
+			jobs:          map[string]*job{},
+			running:       true,
+			taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
+			jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
+			stopChan:      make(chan struct{}),
+		},
+		tasks: map[uint32]*task{},
+	}
+	j.m.jobs[j.id.GetValue()] = j
+
+	instanceCount := uint32(4)
+	jobConfig := pb_job.JobConfig{
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"team1", "team2", "team3"},
+		InstanceCount: instanceCount,
+		Type:          pb_job.JobType_BATCH,
+	}
+
+	jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), j.id).
+		Return(&jobConfig, nil)
+
+	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes[2] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_SUCCEEDED,
+		GoalState: pb_task.TaskState_KILLED,
+	}
+	runtimes[3] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_KILLED,
+		GoalState: pb_task.TaskState_KILLED,
+	}
+	jobRuntime := &pb_job.RuntimeInfo{
+		State:     pb_job.JobState_INITIALIZED,
+		GoalState: pb_job.JobState_KILLED,
+	}
+	newJobRuntime := &pb_job.RuntimeInfo{
+		State:     pb_job.JobState_KILLED,
+		GoalState: pb_job.JobState_KILLED,
+	}
+
+	taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), j.id, gomock.Any()).
+		Return(runtimes, nil)
+	taskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), j.id, gomock.Any()).
+		Return(nil)
+	jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), j.id).
+		Return(jobRuntime, nil)
+	jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), j.id, newJobRuntime).
+		Return(nil)
+
+	reschedule, err := j.RunAction(context.Background(), JobKill)
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
+
+	runtimes[2] = &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_RUNNING,
+		GoalState: pb_task.TaskState_KILLED,
+	}
+	newJobRuntime.State = pb_job.JobState_KILLING
+
+	jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), j.id).
+		Return(&jobConfig, nil)
+	taskStore.EXPECT().
+		GetTaskRuntimesForJobByRange(gomock.Any(), j.id, gomock.Any()).
+		Return(runtimes, nil)
+	taskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), j.id, gomock.Any()).
+		Return(nil)
+	jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), j.id).
+		Return(jobRuntime, nil)
+	jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), j.id, newJobRuntime).
+		Return(nil)
+
+	reschedule, err = j.RunAction(context.Background(), JobKill)
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
+}
