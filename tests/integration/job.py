@@ -63,6 +63,26 @@ class Job(object):
         self.job_id = resp.jobId.value
         log.info('created job %s', self.job_id)
 
+    def update(self, new_job_file):
+        job_config_dump = load_test_config(new_job_file)
+        new_job_config = job.JobConfig()
+        json_format.ParseDict(job_config_dump, new_job_config)
+
+        request = job.UpdateRequest(
+            id=peloton.JobID(value=self.job_id),
+            config=new_job_config,
+        )
+        resp = self.client.job_svc.Update(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('error')
+
+        # update the config
+        self.job_config = new_job_config
+        log.info('updated job %s', self.job_id)
+
     def start(self):
         request = task.StartRequest(
             jobId=peloton.JobID(value=self.job_id),

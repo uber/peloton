@@ -22,8 +22,7 @@ def test__create_job():
 
 
 @pytest.mark.smoketest
-def test__stop_long_running_batch_job_immediately(
-        mesos_master, jobmgr):
+def test__stop_long_running_batch_job_immediately():
     job = Job(job_file='long_running_job.yaml',
               config=IntegrationTestConfig(max_retry_attempts=100))
     job.job_config.instanceCount = 100
@@ -44,3 +43,33 @@ def test__create_a_batch_job_and_restart_jobmgr_completes_jobs(jobmgr):
     jobmgr.restart()
 
     job.wait_for_state()
+
+
+@pytest.mark.smoketest
+def test_update_job_increase_instances():
+    job = Job(job_file='long_running_job.yaml',
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.create()
+    job.wait_for_state(goal_state='RUNNING')
+
+    # job has only 1 task to begin with
+    expected_count = 1
+
+    def tasks_count():
+        count = 0
+        for t in job.get_tasks().values():
+            if t.state == 8 or t.state == 9:
+                count += 1
+
+        print "total instances running/completed: %d" % count
+        return count == expected_count
+
+    job.wait_for_condition(tasks_count)
+
+    # update the job with the new config
+    job.update(new_job_file='long_running_job_update_instances.yaml')
+
+    # number of tasks should increase to 2
+    expected_count = 2
+    job.wait_for_condition(tasks_count)
+    job.wait_for_state(goal_state='RUNNING')
