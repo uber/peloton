@@ -74,6 +74,7 @@ const (
 	InitializeAction     TaskAction = "initialize_task"
 	UseGoalVersionAction TaskAction = "use_goal_state"
 	ReloadTaskRuntime    TaskAction = "reload_runtime"
+	FailAction           TaskAction = "fail"
 )
 
 func newTask(job *job, id uint32) *task {
@@ -190,6 +191,18 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) (bool, error) {
 
 	case InitializeAction:
 		err = t.initialize(ctx)
+
+	case FailAction:
+		runtime, err := t.job.m.taskStore.GetTaskRuntime(ctx, t.job.ID(), t.ID())
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", t.job.ID().GetValue()).
+				WithField("instance_id", t.ID()).
+				Error("failed to get task runtime during task fail action")
+			return true, err
+		}
+		runtime.State = pb_task.TaskState_FAILED
+		err = t.job.m.UpdateTaskRuntime(ctx, t.job.ID(), t.ID(), runtime, UpdateAndSchedule)
 
 	case ReloadTaskRuntime:
 		err = t.reloadRuntime(ctx)
