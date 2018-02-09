@@ -131,6 +131,49 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 	return nil
 }
 
+// updateJobRuntimeState determines the job state based on task state counts,
+// and returns false if the job state does not change.
+func (j *job) updateJobRuntimeState(jobRuntime *pb_job.RuntimeInfo, stateCounts map[string]uint32, instances uint32, completionTime string) bool {
+	var jobState pb_job.JobState
+
+	if jobRuntime.State == pb_job.JobState_INITIALIZED && j.GetTasksNum() != instances {
+		// do not do any thing as all tasks have not been created yet
+		jobState = pb_job.JobState_INITIALIZED
+	} else if stateCounts[pb_task.TaskState_SUCCEEDED.String()] == instances {
+		jobState = pb_job.JobState_SUCCEEDED
+		if completionTime != "" {
+			jobRuntime.CompletionTime = completionTime
+		}
+		j.m.mtx.jobMetrics.JobSucceeded.Inc(1)
+	} else if stateCounts[pb_task.TaskState_SUCCEEDED.String()]+
+		stateCounts[pb_task.TaskState_FAILED.String()] == instances {
+		jobState = pb_job.JobState_FAILED
+		if completionTime != "" {
+			jobRuntime.CompletionTime = completionTime
+		}
+		j.m.mtx.jobMetrics.JobFailed.Inc(1)
+	} else if stateCounts[pb_task.TaskState_KILLED.String()] > 0 &&
+		(stateCounts[pb_task.TaskState_SUCCEEDED.String()]+
+			stateCounts[pb_task.TaskState_FAILED.String()]+
+			stateCounts[pb_task.TaskState_KILLED.String()] == instances) {
+		jobState = pb_job.JobState_KILLED
+		if completionTime != "" {
+			jobRuntime.CompletionTime = completionTime
+		}
+		j.m.mtx.jobMetrics.JobKilled.Inc(1)
+	} else if stateCounts[pb_task.TaskState_RUNNING.String()] > 0 {
+		jobState = pb_job.JobState_RUNNING
+	} else {
+		jobState = pb_job.JobState_PENDING
+	}
+
+	if jobRuntime.State != jobState {
+		jobRuntime.State = jobState
+		return true
+	}
+	return false
+}
+
 // JobRuntimeUpdater updates the job runtime.
 // When the jobmgr leader fails over, the tracked.manager runs syncFromDB which enqueues all recovered jobs
 // into goal state, which will then run the job runtime updater and update the out-of-date runtime info.
@@ -205,7 +248,7 @@ func (j *job) JobRuntimeUpdater(ctx context.Context) (bool, error) {
 		return true, err
 	}
 
-	if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) {
+	if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) && !j.updateJobRuntimeState(jobRuntime, stateCounts, instances, "") {
 		log.WithField("job_id", j.ID().GetValue()).
 			WithField("task_stats", stateCounts).
 			Debug("Task stats did not change, return")
@@ -246,33 +289,7 @@ func (j *job) JobRuntimeUpdater(ctx context.Context) (bool, error) {
 		}
 	}
 
-	var jobState pb_job.JobState
-	if jobRuntime.State == pb_job.JobState_INITIALIZED && j.GetTasksNum() != instances {
-		// do not do any thing as all tasks have not been created yet
-		jobState = pb_job.JobState_INITIALIZED
-	} else if stateCounts[pb_task.TaskState_SUCCEEDED.String()] == instances {
-		jobState = pb_job.JobState_SUCCEEDED
-		jobRuntime.CompletionTime = completionTime
-		j.m.mtx.jobMetrics.JobSucceeded.Inc(1)
-	} else if stateCounts[pb_task.TaskState_SUCCEEDED.String()]+
-		stateCounts[pb_task.TaskState_FAILED.String()] == instances {
-		jobState = pb_job.JobState_FAILED
-		jobRuntime.CompletionTime = completionTime
-		j.m.mtx.jobMetrics.JobFailed.Inc(1)
-	} else if stateCounts[pb_task.TaskState_KILLED.String()] > 0 &&
-		(stateCounts[pb_task.TaskState_SUCCEEDED.String()]+
-			stateCounts[pb_task.TaskState_FAILED.String()]+
-			stateCounts[pb_task.TaskState_KILLED.String()] == instances) {
-		jobState = pb_job.JobState_KILLED
-		jobRuntime.CompletionTime = completionTime
-		j.m.mtx.jobMetrics.JobKilled.Inc(1)
-	} else if stateCounts[pb_task.TaskState_RUNNING.String()] > 0 {
-		jobState = pb_job.JobState_RUNNING
-	} else {
-		jobState = pb_job.JobState_PENDING
-	}
-
-	jobRuntime.State = jobState
+	j.updateJobRuntimeState(jobRuntime, stateCounts, instances, completionTime)
 	jobRuntime.TaskStats = stateCounts
 
 	// Update the job runtime
@@ -293,6 +310,7 @@ func (j *job) JobRuntimeUpdater(ctx context.Context) (bool, error) {
 	}
 
 	if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) {
+		// Evaluate this job immediately as no more task updates will arrive
 		j.m.ScheduleJob(j, time.Now())
 	}
 

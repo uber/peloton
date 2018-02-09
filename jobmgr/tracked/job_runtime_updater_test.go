@@ -295,6 +295,36 @@ func TestJobUpdateJobRuntime(t *testing.T) {
 	reschedule, err = j.JobRuntimeUpdater(context.Background())
 	assert.True(t, reschedule)
 	assert.Error(t, err)
+
+	// Simulate SUCCEEDED job with correct task stats in runtime but incorrect state
+	j.tasks = map[uint32]*task{}
+	addTasks(j, 0, instanceCount, pb_task.TaskState_SUCCEEDED)
+	stateCounts = make(map[string]uint32)
+	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount
+	jobRuntime = pb_job.RuntimeInfo{
+		State:     pb_job.JobState_RUNNING,
+		GoalState: pb_job.JobState_SUCCEEDED,
+		TaskStats: stateCounts,
+	}
+
+	jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), j.id).
+		Return(&jobRuntime, nil)
+
+	taskStore.EXPECT().
+		GetTaskStateSummaryForJob(gomock.Any(), j.id).
+		Return(stateCounts, nil)
+
+	jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), j.id, gomock.Any()).
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
+			assert.Equal(t, runtime.State, pb_job.JobState_SUCCEEDED)
+		}).
+		Return(nil)
+
+	reschedule, err = j.JobRuntimeUpdater(context.Background())
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
 }
 
 func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
