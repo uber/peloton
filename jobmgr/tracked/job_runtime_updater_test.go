@@ -9,6 +9,8 @@ import (
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"github.com/golang/mock/gomock"
@@ -333,6 +335,7 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 
 	jobStore := store_mocks.NewMockJobStore(ctrl)
 	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	resmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 
 	j := &job{
 		id: &peloton.JobID{Value: uuid.NewRandom().String()},
@@ -343,11 +346,13 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 			jobs:          map[string]*job{},
 			taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
 			jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
+			resmgrClient:  resmgrClient,
 			running:       true,
 		},
 		tasks:            map[uint32]*task{},
 		initializedTasks: map[uint32]*task{},
 	}
+	j.m.jobs[j.id.GetValue()] = j
 
 	instanceCount := uint32(100)
 
@@ -399,6 +404,10 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 		}).
 		Return(nil)
 
+	jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), j.id).
+		Return(&jobConfig, nil)
+
 	taskStore.EXPECT().
 		GetTaskIDsForJobAndState(gomock.Any(), j.id, pb_task.TaskState_INITIALIZED.String()).
 		Return(initializedTasks, nil)
@@ -410,6 +419,20 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 				State: pb_task.TaskState_INITIALIZED,
 			}, nil)
 	}
+
+	resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
+
+	taskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), j.id, gomock.Any()).
+		Do(func(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo) {
+			assert.Equal(t, uint32(len(runtimes)), jobConfig.Sla.MaximumRunningInstances)
+			for _, runtime := range runtimes {
+				assert.Equal(t, runtime.GetState(), pb_task.TaskState_PENDING)
+			}
+		}).
+		Return(nil)
 
 	reschedule, err := j.JobRuntimeUpdater(context.Background())
 	assert.False(t, reschedule)

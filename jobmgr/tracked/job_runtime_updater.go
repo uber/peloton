@@ -8,6 +8,8 @@ import (
 
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
+	"code.uber.internal/infra/peloton/common/taskconfig"
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
@@ -26,6 +28,11 @@ var taskStatesAfterStart = []pb_task.TaskState{
 	pb_task.TaskState_KILLED,
 }
 
+// taskStatesScheduled is the set of Peloton task states which
+// indicate a task has been sent to resource manager, or has been
+// placed by the resource manager, and has not reached a terminal state.
+// It will be used to determine which tasks in DB (or cache) have not yet
+// been sent to resource manager for getting placed.
 var taskStatesScheduled = []pb_task.TaskState{
 	pb_task.TaskState_RUNNING,
 	pb_task.TaskState_PENDING,
@@ -56,6 +63,14 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 		return nil
 	}
 
+	jobConfig, err := j.m.jobStore.GetJobConfig(ctx, j.ID())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.ID().GetValue()).
+			Error("failed to get job config in start instances")
+		return err
+	}
+
 	stateCounts := runtime.GetTaskStats()
 
 	currentScheduledInstances := uint32(0)
@@ -78,6 +93,7 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 		return err
 	}
 
+	var tasks []*pb_task.TaskInfo
 	for _, instID := range initializedTasks {
 		if tasksToStart == 0 {
 			break
@@ -103,7 +119,13 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 		if t.IsScheduled() {
 			continue
 		}
-		j.m.taskScheduler.schedule(t.(*task), time.Now())
+		taskinfo := &pb_task.TaskInfo{
+			JobId:      j.ID(),
+			InstanceId: instID,
+			Runtime:    taskRuntime,
+			Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[instID]),
+		}
+		tasks = append(tasks, taskinfo)
 		tasksToStart--
 	}
 
@@ -128,7 +150,7 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 		j.m.taskScheduler.schedule(task, time.Now())
 		tasksToStart--
 	}*/
-	return nil
+	return j.sendTasksToResMgr(ctx, tasks, jobConfig)
 }
 
 // updateJobRuntimeState determines the job state based on task state counts,

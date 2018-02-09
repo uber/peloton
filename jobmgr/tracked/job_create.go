@@ -234,15 +234,11 @@ func (j *job) createAndEnqueueTasks(ctx context.Context, jobConfig *pb_job.JobCo
 	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 
 	if maxRunningInstances > 0 {
-		uRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
+		var uTasks []*pb_task.TaskInfo
 		for i := uint32(0); i < maxRunningInstances; i++ {
-			uRuntimes[i] = runtimes[i]
+			uTasks = append(uTasks, tasks[i])
 		}
-		j.m.SetTasks(j.ID(), uRuntimes, UpdateAndSchedule)
-	} else {
-		// Send tasks to resource manager
-		return j.sendTasksToResMgr(ctx, tasks, jobConfig)
+		return j.sendTasksToResMgr(ctx, uTasks, jobConfig)
 	}
-
-	return nil
+	return j.sendTasksToResMgr(ctx, tasks, jobConfig)
 }

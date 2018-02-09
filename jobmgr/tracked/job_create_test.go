@@ -351,6 +351,7 @@ func TestJobMaxRunningInstances(t *testing.T) {
 
 	jobStore := store_mocks.NewMockJobStore(ctrl)
 	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	resmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 
 	j := &job{
 		id: &peloton.JobID{Value: uuid.NewRandom().String()},
@@ -362,6 +363,7 @@ func TestJobMaxRunningInstances(t *testing.T) {
 			running:       true,
 			taskScheduler: newScheduler(NewQueueMetrics(tally.NoopScope)),
 			jobScheduler:  newScheduler(NewQueueMetrics(tally.NoopScope)),
+			resmgrClient:  resmgrClient,
 			stopChan:      make(chan struct{}),
 		},
 		tasks: map[uint32]*task{},
@@ -406,6 +408,20 @@ func TestJobMaxRunningInstances(t *testing.T) {
 
 	taskStore.EXPECT().
 		CreateTaskRuntimes(gomock.Any(), j.id, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), gomock.Any()).
+		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
+
+	taskStore.EXPECT().
+		UpdateTaskRuntimes(gomock.Any(), j.id, gomock.Any()).
+		Do(func(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*pb_task.RuntimeInfo) {
+			assert.Equal(t, uint32(len(runtimes)), jobConfig.Sla.MaximumRunningInstances)
+			for _, runtime := range runtimes {
+				assert.Equal(t, runtime.GetState(), pb_task.TaskState_PENDING)
+			}
+		}).
 		Return(nil)
 
 	jobStore.EXPECT().
