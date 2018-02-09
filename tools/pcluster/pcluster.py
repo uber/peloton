@@ -467,6 +467,17 @@ def run_peloton_placement():
 
 
 #
+# Run peloton archiver app
+#
+def run_peloton_archiver():
+    for i in range(0, config['peloton_archiver_instance_count']):
+        ports = [port + i * 10 for port in config['peloton_archiver_ports']]
+        name = config['peloton_archiver_container'] + repr(i)
+        remove_existing_container(name)
+        start_and_wait('archiver', name, ports)
+
+
+#
 # Run health check for peloton apps
 #
 def wait_for_up(app, port):
@@ -540,6 +551,10 @@ def teardown():
         name = config['peloton_placement_container'] + repr(i)
         remove_existing_container(name)
 
+    for i in range(0, config['peloton_archiver_instance_count']):
+        name = config['peloton_archiver_container'] + repr(i)
+        remove_existing_container(name)
+
 
 def parse_arguments():
     program_shortdesc = __import__('__main__').__doc__.split("\n")[1]
@@ -595,6 +610,13 @@ USAGE
         default=False,
         help="disable peloton placement engine app"
     )
+    parser_setup.add_argument(
+        "--no-archiver",
+        dest="disable_peloton_archiver",
+        action='store_true',
+        default=False,
+        help="disable peloton archiver app"
+    )
     # Subparser for the 'teardown' command
     subparsers.add_parser('teardown', help='tear down a personal cluster')
     # Process arguments
@@ -609,6 +631,7 @@ class App:
     HOST_MANAGER = 2
     PLACEMENT_ENGINE = 3
     JOB_MANAGER = 4
+    ARCHIVER = 5
 
 
 # Defines the order in which the apps are started
@@ -617,7 +640,8 @@ APP_START_ORDER = OrderedDict([
     (App.HOST_MANAGER, run_peloton_hostmgr),
     (App.RESOURCE_MANAGER, run_peloton_resmgr),
     (App.PLACEMENT_ENGINE, run_peloton_placement),
-    (App.JOB_MANAGER, run_peloton_jobmgr)]
+    (App.JOB_MANAGER, run_peloton_jobmgr),
+    (App.ARCHIVER, run_peloton_archiver)]
 )
 
 
@@ -631,7 +655,8 @@ def main():
             App.HOST_MANAGER: args.disable_peloton_hostmgr,
             App.RESOURCE_MANAGER: args.disable_peloton_resmgr,
             App.PLACEMENT_ENGINE: args.disable_peloton_placement,
-            App.JOB_MANAGER: args.disable_peloton_jobmgr
+            App.JOB_MANAGER: args.disable_peloton_jobmgr,
+            App.ARCHIVER: args.disable_peloton_archiver
         }
 
         setup(

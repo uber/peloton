@@ -1,0 +1,13 @@
+archiver:
+  http_port: 5295
+  grpc_port: 5395
+  archive_interval: 24h
+  max_archive_entries: 100
+  archive_age: 720h
+  peloton_client_timeout: 20s
+
+election:
+  root: "/peloton"
+
+health:
+  heartbeat_interval: 5s

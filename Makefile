@@ -1,4 +1,4 @@
-.PHONY: all placement executor install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure
+.PHONY: all placement executor install cli test unit_test cover lint clean hostmgr jobmgr resmgr docker version debs docker-push test-containers db-pressure archiver
 .DEFAULT_GOAL := all
 
 PROJECT_ROOT  = code.uber.internal/infra/peloton
@@ -38,7 +38,7 @@ endif
 
 .PRECIOUS: $(PBGENS) $(LOCAL_MOCKS) $(VENDOR_MOCKS) mockgens
 
-all: pbgens placement executor cli hostmgr resmgr jobmgr
+all: pbgens placement executor cli hostmgr resmgr jobmgr archiver
 
 jobmgr:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-jobmgr jobmgr/main/*.go
@@ -57,6 +57,9 @@ executor:
 
 db-pressure:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/dbpressure storage/pressuretest/main/*.go
+
+archiver:
+	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-archiver archiver/main/*.go
 
 # Here we checkout the v1.0.0 commit sha of mockgen in order to pin the version of the
 # mockgen binary. `go get` doesn't allow us to do that so we need to build the binary

@@ -1,0 +1,16 @@
+logging:
+  level: info
+
+metrics:
+  multi_reporter: true
+  prometheus:
+    enable: true
+
+archiver:
+  archive_interval: 5m
+  max_archive_entries: 10
+  archive_age: 10m
+  peloton_client_timeout: 20s
+
+election:
+  zk_servers: ["localhost:8192"]
