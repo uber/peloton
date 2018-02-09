@@ -3,8 +3,6 @@ from __future__ import absolute_import
 
 import datetime
 import time
-from argparse import ArgumentParser
-from argparse import RawDescriptionHelpFormatter
 from deepdiff import DeepDiff
 
 from peloton_client.client import PelotonClient
@@ -158,7 +156,7 @@ class PerformanceTestClient(object):
         }
         return self.monitering(resp.jobId.value, target_status)
 
-    def monitering(self, job_id, target_status, stable_timeout=120):
+    def monitering(self, job_id, target_status, stable_timeout=360):
         """
         monitering will stop if the job status is not changed in stable_timeout
         or the job status meets the target_status. monitering returns a bool
@@ -192,9 +190,7 @@ class PerformanceTestClient(object):
             time.sleep(5)
 
         if not check_finish(task_stats):
-            return False, 0
-
-        print job_runtime
+            return False, 0, 0
 
         create_time = datetime.datetime.strptime(
             job_runtime.creationTime[:25],
@@ -218,69 +214,3 @@ class PerformanceTestClient(object):
         complete_duration = (complete_time - create_time).total_seconds()
 
         return True, start_duration, complete_duration
-
-
-def parse_arguments():
-    parser = ArgumentParser(
-        formatter_class=RawDescriptionHelpFormatter)
-
-    parser.add_argument(
-        '-z',
-        '--zookeeper-server',
-        dest='zookeeper_server',
-        help='the DNS of zookeeper server of the physical Peloton cluster',
-    )
-
-    parser.add_argument(
-        '-n',
-        '--instance_num',
-        type=int,
-        dest='instance_num',
-        help='number of instance',
-    )
-
-    parser.add_argument(
-        '-t',
-        '--sleep-time',
-        type=int,
-        dest='sleep_time',
-        help='sleep time in seconds for each task',
-    )
-
-    parser.add_argument(
-        '-i',
-        '--instance-config',
-        type=bool,
-        dest='instance_config',
-        help='with unique insstance config or not',
-    )
-
-    return parser.parse_args()
-
-
-def main():
-    args = parse_arguments()
-    pf_client = PerformanceTestClient(args.zookeeper_server)
-
-    succeeded, start_time, completion_time = pf_client.run_benchmark(
-        args.instance_num,
-        args.sleep_time,
-        args.instance_config,
-    )
-    resp = {
-        'Succeeded': succeeded,
-        'Instance': args.instance_num,
-        'Task duration (s)': args.sleep_time,
-        'Use instance config': args.instance_config,
-    }
-    if succeeded:
-        resp.update({
-            'Time to start(s)': start_time,
-            'Total Execution Time(s)': completion_time,
-        })
-
-    print resp
-
-
-if __name__ == "__main__":
-    main()

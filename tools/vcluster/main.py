@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 
@@ -100,11 +99,11 @@ def parse_arguments():
         help='set up a virtual cluster')
 
     parser_setup.add_argument(
-        '-i',
-        '--peloton-image',
+        '-v',
+        '--peloton-version',
         nargs='?',
-        dest='peloton_image',
-        help='the docker image address of peloton',
+        dest='peloton_version',
+        help='The image version for Peloton',
     )
 
     parser_setup.add_argument(
@@ -139,11 +138,11 @@ def parse_arguments():
     )
 
     parser_peloton.add_argument(
-        '-i',
-        '--peloton-image',
+        '-v',
+        '--peloton-version',
         nargs='?',
-        dest='peloton_image',
-        help='the docker image address of peloton',
+        dest='peloton_version',
+        help='The image version for Peloton',
     )
 
     # Subparser for the 'cassandra' command
@@ -158,8 +157,8 @@ def parse_arguments():
     )
 
     subparsers.add_parser(
-        'zookeeper',
-        help='get the virtual zookeeper')
+        'parameters',
+        help='get the parameters of the vCluster')
 
     return parser.parse_args()
 
@@ -195,13 +194,13 @@ def main():
         zk = args.zk.split(':')
         if len(zk) != 2:
             raise Exception("Invalid zk")
-        peloton_image = args.peloton_image
-        vcluster.start_peloton(zk[0], zk[1], peloton_image)
+        peloton_version = args.peloton_version
+        vcluster.start_peloton(zk[0], zk[1], peloton_version)
 
     elif command == 'setup':
         agent_number = args.agent_number
-        peloton_image = args.peloton_image
-        vcluster.start_all(agent_number, peloton_image)
+        peloton_version = args.peloton_version
+        vcluster.start_all(agent_number, peloton_version)
 
     elif command == 'teardown':
         option = args.option
@@ -220,9 +219,6 @@ def main():
         elif option == 'drop':
             cassandra_operation(
                 create=False, keyspace=args.label_name)
-
-    elif command == 'zookeeper':
-        print vcluster.get_vitual_zookeeper()
 
 
 if __name__ == "__main__":

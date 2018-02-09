@@ -16,6 +16,7 @@ FMT_SRC:=$(shell echo "$(ALL_SRC)" | tr ' ' '\n')
 ALL_PKGS = $(shell go list $(sort $(dir $(ALL_SRC))) | grep -v vendor | grep -v mesos-go)
 
 PACKAGE_VERSION=`git describe --always --tags`
+PACKAGE_HASH=`git rev-parse HEAD`
 DOCKER_IMAGE ?= uber/peloton
 DC ?= all
 PBGEN_DIR = .gen
@@ -219,8 +220,23 @@ devtools:
     # temp removing: https://github.com/gemnasium/migrate/issues/26
     # go get github.com/gemnasium/migrate
 
+vcluster:
+	rm -rf env ;
+	@if [ ! -d "env" ]; then \
+		which virtualenv || pip install virtualenv ; \
+		virtualenv env ; \
+		. env/bin/activate ; \
+		pip install --upgrade pip ; \
+		pip install -r tools/vcluster/requirements.txt ; \
+		deactivate ; \
+	fi
+	go get github.com/gemnasium/migrate
+
 version:
 	@echo $(PACKAGE_VERSION)
+
+commit-hash:
+	@echo $(PACKAGE_HASH)
 
 project-name:
 	@echo $(PROJECT_ROOT)

@@ -2,6 +2,7 @@ import time
 import subprocess
 import os
 from retry import retry
+import json
 
 from config_generator import config
 from peloton_helper import PelotonClientHelper
@@ -98,6 +99,15 @@ class VCluster(object):
         self.peloton = Peloton(self.label_name, self.peloton_helper)
         self.virtual_zookeeper = ''
 
+        # vcluster is the config can be loaded for launching benchmark test
+        # it can be dump into the file '.vcluster'
+        self.vcluster_config = {}
+
+    def output_vcluster_data(self):
+        # write the vcluster data into a json file
+        with open('.vcluster', 'w') as outfile:
+            json.dump(self.vcluster_config, outfile)
+
     def start_mesos(self, agent_num):
         """
         param agent_num: Mesos-agent number of the virtual cluster
@@ -127,9 +137,14 @@ class VCluster(object):
 
         # create mesos slaves
         self.start_mesos_slave(self.virtual_zookeeper, agent_num)
+
+        self.vcluster_config.update({
+            "Zookeeper": '%s:%s' % (host, port),
+            "Mesos Slave Number": agent_num,
+        })
         return host, port
 
-    def start_peloton(self, zk_host, zk_port, docker_image=None):
+    def start_peloton(self, zk_host, zk_port, version=None):
         """
         type zk_host: str
         type zk_port: str
@@ -141,7 +156,7 @@ class VCluster(object):
         print_okblue("DB migration finished")
 
         # Setup Peloton
-        print_okgreen('Step: Create Peloton applications')
+        print_okgreen('Step: Create Peloton, version: %s' % version)
 
         zk = '%s:%s' % (zk_host, zk_port)
 
@@ -159,15 +174,20 @@ class VCluster(object):
             self.peloton.setup(
                 dynamic_env_master, peloton_app_count,
                 self.label_name + '_' + 'peloton-' + app,
-                docker_image
+                version
             )
 
-    def start_all(self, agent_num, peloton_image):
+        self.vcluster_config.update({
+            'Peloton Version': version,
+        })
+
+    def start_all(self, agent_num, peloton_version):
         """
         type agent_num: int
         """
         host, port = self.start_mesos(agent_num)
-        self.start_peloton(host, port, peloton_image)
+        self.start_peloton(host, port, peloton_version)
+        self.output_vcluster_data()
 
     def start_mesos_master(self, virtual_zookeeper):
         zk_address = 'zk://%s/mesos' % virtual_zookeeper
@@ -202,6 +222,11 @@ class VCluster(object):
 
         print_okgreen('Step: drop the cassandra keyspace')
         cassandra_operation(keyspace=self.label_name, create=False)
+
+        try:
+            os.remove('.vcluster')
+        except OSError:
+            pass
 
     def teardown(self):
         self.teardown_peloton()

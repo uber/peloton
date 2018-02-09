@@ -2,7 +2,7 @@
 # takes an list of images (built locally) like uber/peloton:foo123, and tags and
 # pushes to some registries. By default, it will push the image to both ATG and
 # SJC1 registries with DC=all. You can override with DC=atg or DC=sjc1
-set -e
+
 DC="${DC:-all}"
 [[ $(uname) == Darwin || -n $JENKINS_HOME ]] && docker_cmd='docker' || docker_cmd='sudo docker'
 

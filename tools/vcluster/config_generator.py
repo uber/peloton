@@ -83,7 +83,7 @@ def create_task_config(module, dynamic_env):
 
 
 # create task config to launch Mesos Containerizer container
-def create_mesos_task_config(module, dynamic_env, docker_image=None):
+def create_mesos_task_config(module, dynamic_env, version=None):
     resource_config = config.get(module).get('resource')
     ports = config.get(module).get('ports')
     ports_config = []
@@ -116,8 +116,12 @@ def create_mesos_task_config(module, dynamic_env, docker_image=None):
             )
         )
 
-    if not docker_image:
-        docker_image = config.get(module).get('image')
+    docker_registry = config.get(module).get('docker_registry')
+    image_path = config.get(module).get('image_path')
+    if not version:
+        version = config.get(module).get('version')
+
+    docker_image = os.path.join(docker_registry, image_path) + ':' + version
 
     return task.TaskConfig(
         resource=task.ResourceConfig(**resource_config),

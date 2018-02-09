@@ -38,9 +38,10 @@ class Module(object):
 
         self.peloton_helper = peloton_helper
         self.job_id = ''
+        self.version = ''
 
     def setup(self, dynamic_env, instance_number,
-              job_name=None, docker_image=None):
+              job_name=None, version=None):
         """
         param dynamic: dict of dynamic environment virable
         param instance_number: number of tasks in the job
@@ -54,7 +55,10 @@ class Module(object):
             job_name = self.label + '_' + self.name
         task_config = create_mesos_task_config(self.name,
                                                dynamic_env,
-                                               docker_image)
+                                               version)
+        if version:
+            self.version = version
+
         resp = self.peloton_helper.create_job(
             label=self.label,
             name=job_name,
@@ -148,7 +152,7 @@ class MesosSlave(Module):
         )
 
     def setup(self, dynamic_env, instance_number,
-              job_name=None, docker_image=None):
+              job_name=None, version=None):
         """
         param dynamic: dict of dynamic environment virable
         param instance_number: number of tasks in the job
@@ -161,6 +165,9 @@ class MesosSlave(Module):
         if not job_name:
             job_name = self.label + '_' + self.name
 
+        if version:
+            self.version = version
+
         instance_config = {}
 
         for i in range(instance_number):
@@ -170,7 +177,7 @@ class MesosSlave(Module):
             instance_config.update(
                 {i: create_mesos_task_config(self.name,
                                              dynamic_env,
-                                             docker_image)
+                                             version)
                  }
             )
 

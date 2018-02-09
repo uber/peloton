@@ -1,5 +1,7 @@
 zookeeper:
-  image: library/zookeeper:3.4.10
+  docker_registry: ''
+  image_path: library/zookeeper
+  version: 3.4.10
   instance_count: 1
   ports:
     - ZOO_PORT
@@ -15,6 +17,9 @@ zookeeper:
     diskLimitMb: 10000.0
 
 mesos-master:
+  docker_registry: docker-registry.pit-irn-1.uberatc.net
+  image_path: uber-usi/uber-mesos
+  version: sjc1-produ-0000000002
   image: docker-registry.pit-irn-1.uberatc.net/uber-usi/uber-mesos:sjc1-produ-0000000002
   instance_count: 3
   ports:
@@ -51,6 +56,9 @@ mesos-master:
       name: 'credentials.json'
 
 mesos-slave:
+  docker_registry: docker-registry.pit-irn-1.uberatc.net
+  image_path: uber-usi/uber-mesos
+  version: sjc1-produ-0000000002
   image: docker-registry.pit-irn-1.uberatc.net/uber-usi/uber-mesos:sjc1-produ-0000000002
   instance_count: 500
   ports:
@@ -98,7 +106,9 @@ cassandra:
 
 
 peloton:
-  image: docker-registry.pit-irn-1.uberatc.net/vendor/peloton:0.6.7
+  docker_registry: docker-registry.pit-irn-1.uberatc.net
+  image_path: vendor/peloton
+  version: 0.6.7
   ports:
     - HTTP_PORT
     - GRPC_PORT

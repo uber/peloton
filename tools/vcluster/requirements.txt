@@ -1,0 +1,18 @@
+# Used for launching peloton job
+peloton-client>=0.3.6
+
+# To parse yaml config for vCluster
+pyyaml>=3.12
+
+# To monitering the the variation job status
+deepdiff>=2.5.1
+
+# To get the Mesos/Peloton leader
+kazoo>=2.2.1
+
+# Data framework to process performance data
+pandas>=0.21.0
+
+# DB migration
+cqlsh>=5.0.4
+retry>=0.9.2
