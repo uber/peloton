@@ -19,6 +19,7 @@ import (
 type EventHandler interface {
 	Connected()
 	HandleEvent(*executor.Event) error
+	Disconnected()
 }
 
 // JSONUnmarshal is an unmarshalling method from json into a protobuf message.
@@ -29,6 +30,7 @@ func JSONUnmarshal(content []byte, msg proto.Message) error { return json.Unmars
 // an error, the connection is severed and disconnected is called.
 func DispatchEvents(body io.ReadCloser, unmarshal UnmarshalFunc, handler EventHandler) error {
 	defer body.Close()
+	defer handler.Disconnected()
 
 	reader := bufio.NewReader(body)
 	for {

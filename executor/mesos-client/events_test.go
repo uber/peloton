@@ -18,6 +18,7 @@ func TestReadNothing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	handler := mocks.NewMockEventHandler(ctrl)
+	handler.EXPECT().Disconnected()
 
 	reader, writer := io.Pipe()
 	closer := ioutil.NopCloser(reader)
@@ -32,6 +33,7 @@ func TestReadEmptyChunk(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	handler := mocks.NewMockEventHandler(ctrl)
+	handler.EXPECT().Disconnected()
 
 	reader, writer := io.Pipe()
 	closer := ioutil.NopCloser(reader)
@@ -47,6 +49,7 @@ func TestReadEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	handler := mocks.NewMockEventHandler(ctrl)
+	handler.EXPECT().Disconnected()
 
 	reader, writer := io.Pipe()
 	closer := ioutil.NopCloser(reader)
@@ -65,6 +68,7 @@ func TestDisconnectOnEOF(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	handler := mocks.NewMockEventHandler(ctrl)
+	handler.EXPECT().Disconnected()
 
 	reader, writer := io.Pipe()
 	closer := ioutil.NopCloser(reader)

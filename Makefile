@@ -164,6 +164,7 @@ mockgens: build-mockgen pbgens $(GOMOCK)
 	$(call local_mockgen,yarpc/encoding/mpb,SchedulerClient;MasterOperatorClient)
 	$(call local_mockgen,yarpc/transport/mhttp,Inbound)
 	$(call local_mockgen,executor/mesos-client,EventHandler;HTTPDoer)
+	$(call local_mockgen,executor,MesosClient;Task)
 	$(call vendor_mockgen,go.uber.org/yarpc/encoding/json/outbound.go)
 
 # launch the test containers to run integration tests and so-on

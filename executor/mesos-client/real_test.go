@@ -23,6 +23,7 @@ func TestSubscribeResponseCode(t *testing.T) {
 
 	handler := mocks.NewMockEventHandler(ctrl)
 	handler.EXPECT().Connected()
+	handler.EXPECT().Disconnected()
 
 	doer := mocks.NewMockHTTPDoer(ctrl)
 	doer.EXPECT().Do(gomock.Any()).Return(&http.Response{

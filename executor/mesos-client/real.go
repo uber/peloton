@@ -148,6 +148,7 @@ func (c *Client) subscribe(req *http.Request) (int, error) {
 
 	log.Debugf("Got a good response from subscribe")
 	c.handler.Connected()
+
 	return resp.StatusCode, DispatchEvents(resp.Body, c.Unmarshal, c.handler)
 }
 
