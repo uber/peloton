@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	// ResourceEspilon is the minimum espilon mesos resource;
+	// ResourceEpsilon is the minimum epsilon mesos resource;
 	// This is because Mesos internally uses a fixed point precision. See MESOS-4687 for details.
-	ResourceEspilon float64 = 0.0009
+	ResourceEpsilon = 0.0009
 )
 
 var uuidLength = len(uuid.New())
@@ -73,7 +73,7 @@ func CreateMesosScalarResources(values map[string]float64, role string) []*mesos
 	var rs []*mesos.Resource
 	for name, value := range values {
 		// Skip any value smaller than Espilon.
-		if math.Abs(value) < ResourceEspilon {
+		if math.Abs(value) < ResourceEpsilon {
 			continue
 		}
 

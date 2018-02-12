@@ -22,7 +22,7 @@ type Resources struct {
 // TODO(zhitao): Explore fixed point number in T777007.
 func lessThanOrEqual(f1, f2 float64) bool {
 	v := f1 - f2
-	if math.Abs(v) < util.ResourceEspilon {
+	if math.Abs(v) < util.ResourceEpsilon {
 		return true
 	}
 	return v < 0
@@ -50,7 +50,7 @@ func (r Resources) GetGPU() float64 {
 
 // HasGPU is a special condition to ensure exclusive protection for GPU.
 func (r Resources) HasGPU() bool {
-	return math.Abs(r.GPU) > util.ResourceEspilon
+	return math.Abs(r.GPU) > util.ResourceEpsilon
 }
 
 // Contains determines whether current Resources is large enough to contain
@@ -94,16 +94,16 @@ func (r Resources) Subtract(other Resources) Resources {
 // NonEmptyFields returns corresponding Mesos resource names for fields which are not empty.
 func (r Resources) NonEmptyFields() []string {
 	var nonEmptyFields []string
-	if math.Abs(r.CPU) > util.ResourceEspilon {
+	if math.Abs(r.CPU) > util.ResourceEpsilon {
 		nonEmptyFields = append(nonEmptyFields, "cpus")
 	}
-	if math.Abs(r.Mem) > util.ResourceEspilon {
+	if math.Abs(r.Mem) > util.ResourceEpsilon {
 		nonEmptyFields = append(nonEmptyFields, "mem")
 	}
-	if math.Abs(r.Disk) > util.ResourceEspilon {
+	if math.Abs(r.Disk) > util.ResourceEpsilon {
 		nonEmptyFields = append(nonEmptyFields, "disk")
 	}
-	if math.Abs(r.GPU) > util.ResourceEspilon {
+	if math.Abs(r.GPU) > util.ResourceEpsilon {
 		nonEmptyFields = append(nonEmptyFields, "gpus")
 	}
 

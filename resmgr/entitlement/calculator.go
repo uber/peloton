@@ -259,10 +259,10 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 		}).Debug("Remaining resources before second pass")
 		// Second Pass: In the second pass we will distribute the
 		// rest of the resources to the resource pools which have
-		// higher demand then reservation
+		// higher demand than the reservation.
 		// It will also cap the fair share to demand and redistribute the
 		// rest of the entitlement to others.
-		for remaining.Get(kind) > util.ResourceEspilon && c.isDemandExist(demands, kind) {
+		for remaining.Get(kind) > util.ResourceEpsilon && c.demandExist(demands, kind) {
 			log.WithField("remaining", remaining.Get(kind)).Debug("Remaining resources")
 			remainingShare := totalShare[kind]
 			for e := childs.Front(); e != nil; e = e.Next() {
@@ -273,11 +273,11 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 					"kind":      kind,
 					"demand":    demands[n.ID()].Get(kind),
 				}).Debug("Evaluating respool")
-				if remaining.Get(kind) < util.ResourceEspilon {
+				if remaining.Get(kind) < util.ResourceEpsilon {
 					break
 				}
 
-				if demands[n.ID()].Get(kind) < util.ResourceEspilon {
+				if demands[n.ID()].Get(kind) < util.ResourceEpsilon {
 					continue
 				}
 
@@ -320,7 +320,7 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 		// we need to distribute the rest of the entitlement
 		// to all the nodes for the anticipation of some work
 		// load and not starve everybody till next cycle
-		if entitlement.Get(kind) > 0 {
+		if entitlement.Get(kind) > util.ResourceEpsilon {
 			totalChildShare := c.getChildShare(resp, kind)
 			for e := childs.Front(); e != nil; e = e.Next() {
 				n := e.Value.(respool.ResPool)
@@ -375,12 +375,12 @@ func (c *calculator) getChildShare(resp respool.ResPool, kind string) float64 {
 	return totalshare
 }
 
-// isDemandExist returns true if demand exists for particular kind
-func (c *calculator) isDemandExist(
+// demandExist returns true if demand exists for any resource kind
+func (c *calculator) demandExist(
 	demands map[string]*scalar.Resources,
 	kind string) bool {
-	for _, res := range demands {
-		if res.Get(kind) > 0 {
+	for _, resource := range demands {
+		if resource.Get(kind) > util.ResourceEpsilon {
 			return true
 		}
 	}

@@ -114,7 +114,7 @@ func TestLowerThanEspilonResources(t *testing.T) {
 		"cpus": 1.0,
 		"mem":  2.0,
 		"disk": 3.0,
-		"gpus": ResourceEspilon / 2.0,
+		"gpus": ResourceEpsilon / 2.0,
 	}, "*")
 
 	assert.Equal(t, 3, len(rs))

@@ -89,7 +89,7 @@ func (r *Resources) Add(other *Resources) *Resources {
 
 func lessThanOrEqual(f1, f2 float64) bool {
 	v := f1 - f2
-	if math.Abs(v) < util.ResourceEspilon {
+	if math.Abs(v) < util.ResourceEpsilon {
 		return true
 	}
 	return v < 0
@@ -143,7 +143,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		result.CPU = float64(0)
 	} else {
 		result.CPU = r.CPU - other.CPU
-		if result.CPU < util.ResourceEspilon {
+		if result.CPU < util.ResourceEpsilon {
 			result.CPU = float64(0)
 		}
 	}
@@ -156,7 +156,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		result.GPU = float64(0)
 	} else {
 		result.GPU = r.GPU - other.GPU
-		if result.GPU < util.ResourceEspilon {
+		if result.GPU < util.ResourceEpsilon {
 			result.GPU = float64(0)
 		}
 	}
@@ -169,7 +169,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		result.MEMORY = float64(0)
 	} else {
 		result.MEMORY = r.MEMORY - other.MEMORY
-		if result.MEMORY < util.ResourceEspilon {
+		if result.MEMORY < util.ResourceEpsilon {
 			result.MEMORY = float64(0)
 		}
 	}
@@ -182,7 +182,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		result.DISK = float64(0)
 	} else {
 		result.DISK = r.DISK - other.DISK
-		if result.DISK < util.ResourceEspilon {
+		if result.DISK < util.ResourceEpsilon {
 			result.DISK = float64(0)
 		}
 	}
