@@ -84,7 +84,7 @@ func (m *serviceHandler) Get(
 	m.metrics.TaskAPIGet.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil {
-		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
+		log.Debug("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskGetFail.Inc(1)
 		return &task.GetResponse{
 			NotFound: &pb_errors.JobNotFound{
@@ -145,7 +145,7 @@ func (m *serviceHandler) List(
 	m.metrics.TaskAPIList.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil {
-		log.Errorf("Failed to find job with id %v, err=%v", body.JobId, err)
+		log.Debug("Failed to find job with id %v, err=%v", body.JobId, err)
 		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
 			NotFound: &pb_errors.JobNotFound{
@@ -588,7 +588,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 	m.metrics.TaskAPIQuery.Inc(1)
 	_, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil {
-		log.Errorf("Failed to find job with id %v, err=%v", req.JobId, err)
+		log.Debug("Failed to find job with id %v, err=%v", req.JobId, err)
 		m.metrics.TaskQueryFail.Inc(1)
 		return &task.QueryResponse{
 			Error: &task.QueryResponse_Error{
@@ -636,7 +636,7 @@ func (m *serviceHandler) BrowseSandbox(
 	if err != nil {
 		log.WithField("job_id", req.JobId.Value).
 			WithError(err).
-			Error("failed to find job with id")
+			Debug("failed to find job with id")
 		m.metrics.TaskListLogsFail.Inc(1)
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{

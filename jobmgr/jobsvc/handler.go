@@ -298,7 +298,7 @@ func (h *serviceHandler) Get(
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
 			WithField("job_id", req.Id.Value).
-			Info("GetJobConfig failed")
+			Debug("GetJobConfig failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
 				NotFound: &api_errors.JobNotFound{
@@ -313,7 +313,7 @@ func (h *serviceHandler) Get(
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
 			WithField("job_id", req.Id.Value).
-			Error("Get jobRuntime failed")
+			Debug("Get jobRuntime failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
 				GetRuntimeFail: &api_errors.JobGetRuntimeFail{
