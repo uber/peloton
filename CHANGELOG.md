@@ -3,6 +3,27 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.9
+------------------
+* 2018-02-14    Log debug (not error) messages from job/task read handlers                             apoorvaj@uber.com
+* 2018-02-13    Track allocation of non-preemptible tasks separately                                   avyas@uber.com
+* 2018-02-13    Add archiver component to peloton                                                      adityacb@uber.com
+* 2018-02-12    Batch tasks being sent to resource manager for maximum running instances feature.      apoorvaj@uber.com
+* 2018-02-12    Fix demand calculation in entitlement calculator                                       avyas@uber.com
+* 2018-02-12    Update release version in engdocs                                                      avyas@uber.com
+* 2018-02-12    Add integration test for job update RPC                                                avyas@uber.com
+* 2018-02-09    Evaluate and update job state even if the task stats have not changed.                 apoorvaj@uber.com
+* 2018-02-09    Add refresh API for both job and task                                                  apoorvaj@uber.com
+* 2018-02-09    Implemented core executor code                                                         pourchet@uber.com
+* 2018-02-09    A task in launched state times out in job manager                                      apoorvaj@uber.com
+* 2018-02-08    Handle kill for a job which has not fully created all tasks.                           apoorvaj@uber.com
+* 2018-02-08    Send JobSummary in Job Query Response                                                  adityacb@uber.com
+* 2018-02-08    Run job runtime updater as part of job goal state                                      apoorvaj@uber.com
+* 2018-02-08    Handle initialized tasks with goal state set to be failed.                             apoorvaj@uber.com
+* 2018-02-08    Add GetPendingTasks API in resource manager                                            avyas@uber.com
+* 2018-02-07    Drop the old lucene index and the unused upgrades table in the next migration.         apoorvaj@uber.com
+* 2018-02-07    Fix Down Sync migration script for update_info                                         adityacb@uber.com
+
 0.6.8.2
 ------------------
 * 2018-02-06    Untrack failed tasks with goal state succeeded.                                                  Apoorva Jindal
