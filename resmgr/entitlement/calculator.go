@@ -433,8 +433,11 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 		}
 		rootResourcePoolConfig.Resources = rootres
 	} else {
+		// update the reservation and limit to the cluster capacity
 		for _, resource := range rootres {
 			resource.Reservation =
+				c.clusterCapacity[resource.Kind]
+			resource.Limit =
 				c.clusterCapacity[resource.Kind]
 		}
 	}

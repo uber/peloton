@@ -347,6 +347,28 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 				},
 			}, nil).
 			Times(1),
+		suite.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+			Return(&hostsvc.ClusterCapacityResponse{
+				PhysicalResources: []*hostsvc.Resource{
+					{
+						Kind:     common.CPU,
+						Capacity: 100,
+					},
+					{
+						Kind:     common.GPU,
+						Capacity: 10,
+					},
+					{
+						Kind:     common.MEMORY,
+						Capacity: 1000,
+					},
+					{
+						Kind:     common.DISK,
+						Capacity: 6000,
+					},
+				},
+			}, nil).
+			Times(1),
 	)
 
 	rootres, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
@@ -365,6 +387,22 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	suite.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(0))
 	suite.Equal(RootResPool.Resources()[common.MEMORY].Reservation, float64(1000))
 	suite.Equal(RootResPool.Resources()[common.DISK].Reservation, float64(6000))
+	suite.Equal(RootResPool.Resources()[common.CPU].Limit, float64(100))
+	suite.Equal(RootResPool.Resources()[common.GPU].Limit, float64(0))
+	suite.Equal(RootResPool.Resources()[common.MEMORY].Limit, float64(1000))
+	suite.Equal(RootResPool.Resources()[common.DISK].Limit, float64(6000))
+
+	// Update the cluster capacity (Add GPU)
+	suite.calculator.calculateEntitlement(context.Background())
+	suite.NoError(err)
+	suite.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
+	suite.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(10))
+	suite.Equal(RootResPool.Resources()[common.MEMORY].Reservation, float64(1000))
+	suite.Equal(RootResPool.Resources()[common.DISK].Reservation, float64(6000))
+	suite.Equal(RootResPool.Resources()[common.CPU].Limit, float64(100))
+	suite.Equal(RootResPool.Resources()[common.GPU].Limit, float64(10))
+	suite.Equal(RootResPool.Resources()[common.MEMORY].Limit, float64(1000))
+	suite.Equal(RootResPool.Resources()[common.DISK].Limit, float64(6000))
 }
 
 func (suite *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
