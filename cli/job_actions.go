@@ -128,6 +128,7 @@ func (c *Client) JobQueryAction(
 	respoolPath string,
 	keywords string,
 	states string,
+	owner string,
 	limit uint32,
 	maxLimit uint32,
 	offset uint32,
@@ -196,6 +197,7 @@ func (c *Client) JobQueryAction(
 			Labels:    apiLabels,
 			Keywords:  apiKeywords,
 			JobStates: apiStates,
+			Owner:     owner,
 			Pagination: &query.PaginationSpec{
 				Limit:    limit,
 				Offset:   offset,

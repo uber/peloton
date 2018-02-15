@@ -496,7 +496,19 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 
 	// jobconfig field must contain all specified keywords
 	for _, word := range spec.GetKeywords() {
-		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"config", values:%s}`, strconv.Quote(word)))
+		// Lucene for some reason does wildcard search as case insensitive
+		// However, to match individual words we still need to match
+		// by exact keyword. Using boolean filter to do this.
+		// using the "should" syntax will enable us to match on either
+		// wildcard search or exact match
+		wildcardWord := fmt.Sprintf("*%s*", strings.ToLower(word))
+		clauses = append(clauses, fmt.Sprintf(
+			`{type: "boolean",`+
+				`should: [`+
+				`{type: "wildcard", field:"config", value:%s},`+
+				`{type: "match", field:"config", value:%s}`+
+				`]`+
+				`}`, strconv.Quote(wildcardWord), strconv.Quote(word)))
 	}
 
 	// Add support on query by job state
@@ -513,6 +525,11 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 
 	if respoolID != nil {
 		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"respool_id", values:%s}`, strconv.Quote(respoolID.GetValue())))
+	}
+
+	owner := spec.GetOwner()
+	if owner != "" {
+		clauses = append(clauses, fmt.Sprintf(`{type: "match", field:"owner", value:%s}`, strconv.Quote(owner)))
 	}
 
 	where := `expr(job_index_lucene_v2, '{filter: [`

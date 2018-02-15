@@ -215,6 +215,19 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	suite.Equal(_defaultQueryMaxLimit, uint32(total))
 }
 
+func (suite *CassandraStoreTestSuite) queryJobs(
+	spec *job.QuerySpec, expectedEntriesPerPage int, expectedTotalEntries int) (
+	[]*job.JobInfo, []*job.JobSummary) {
+	var jobStore storage.JobStore
+	jobStore = store
+	result, summary, total, err := jobStore.QueryJobs(context.Background(), nil, spec)
+	suite.NoError(err)
+	suite.Equal(expectedEntriesPerPage, len(result))
+	suite.Equal(expectedEntriesPerPage, len(summary))
+	suite.Equal(expectedTotalEntries, int(total))
+	return result, summary
+}
+
 func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	var jobStore storage.JobStore
 	jobStore = store
@@ -230,7 +243,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	var vals1 = []string{"valX0", "valX1", "valX2", "valX3", "valX4", "valX5"}
 	keyCommon := "keyX"
 	valCommon := "valX"
-	// Create 3 jobs with different labels and a common label
+	// Create 5 jobs with different labels and a common label
 	for i := 0; i < records; i++ {
 		var jobID = peloton.JobID{Value: uuid.New()} // fmt.Sprintf("TestQueryJob%d", i)}
 		jobIDs = append(jobIDs, &jobID)
@@ -285,16 +298,12 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.NoError(err)
 
 	// query by common label should return all jobs
-	result1, summary, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec := &job.QuerySpec{
 		Labels: []*peloton.Label{
 			{Key: keyCommon, Value: valCommon},
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(records, len(result1))
-	suite.Equal(records, len(summary))
-	suite.Equal(records, int(total))
-
+	}
+	result1, summary := suite.queryJobs(spec, records, records)
 	asMap := map[string]*job.JobInfo{}
 	for _, r := range result1 {
 		asMap[r.Id.Value] = r
@@ -306,150 +315,146 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 
 	// query by specific state returns one job
 	for i := 0; i < records; i++ {
-		result1, summary, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		spec = &job.QuerySpec{
 			Labels: []*peloton.Label{
 				{Key: keyCommon, Value: valCommon},
 			},
 			JobStates: []job.JobState{job.JobState(i + 1)},
-		})
-		suite.NoError(err)
-		suite.Equal(1, len(result1))
-		suite.Equal(1, int(total))
+		}
+		result1, summary := suite.queryJobs(spec, 1, 1)
 		suite.Equal(i+1, int(result1[0].Runtime.State))
 		suite.Nil(result1[0].GetConfig().GetInstanceConfig())
 		suite.Equal(fmt.Sprintf("TestQueryJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
 
-		suite.Equal(1, len(summary))
 		suite.Equal(i+1, int(summary[0].GetRuntime().GetState()))
 		suite.Equal(fmt.Sprintf("TestQueryJob_%d", i), summary[0].GetName())
 	}
+
+	// query by Owner returns 5 jobs
+	spec = &job.QuerySpec{
+		Owner: "owner",
+	}
+	_, _ = suite.queryJobs(spec, records, records)
+
+	// query by Owner returns 0 jobs
+	spec = &job.QuerySpec{
+		Owner: "Owner",
+	}
+	_, _ = suite.queryJobs(spec, 0, 0)
+
+	// Test query with partial keyword
+	spec = &job.QuerySpec{
+		Keywords: []string{"stQueryJob"},
+	}
+	_, _ = suite.queryJobs(spec, records, records)
+
+	// Test query with partial keyword that should match one job
+	spec = &job.QuerySpec{
+		Keywords: []string{"stQueryJob_2"},
+	}
+	_, summary = suite.queryJobs(spec, 1, 1)
+	suite.Equal("TestQueryJob_2", summary[0].GetName())
+
+	// Test query with partial keyword and owner that should match one job
+	spec = &job.QuerySpec{
+		Keywords: []string{"stQueryJob_2"},
+		Owner:    "owner",
+	}
+	_, _ = suite.queryJobs(spec, 1, 1)
+
 	// Update tasks to different states, and query by state
 	for i := 0; i < records; i++ {
-		result1, summary, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+		spec = &job.QuerySpec{
 			Labels: []*peloton.Label{
 				{Key: keys0[i], Value: vals0[i]},
 				{Key: keys1[i], Value: vals1[i]},
 			},
-		})
-		suite.NoError(err)
-		suite.Equal(1, len(result1))
-		suite.Equal(1, int(total))
+		}
+		_, _ = suite.queryJobs(spec, 1, 1)
 		suite.Equal(fmt.Sprintf("TestQueryJob_%d", i), asMap[jobIDs[i].Value].Config.Name)
-		suite.Equal(1, len(summary))
 	}
 
 	// query for non-exist label return nothing
 	var other = "other"
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Labels: []*peloton.Label{
 			{Key: keys0[0], Value: other},
 			{Key: keys1[1], Value: vals1[0]},
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(0, len(result1))
-	suite.Equal(0, len(summary))
-	suite.Equal(0, int(total))
+	}
+	_, _ = suite.queryJobs(spec, 0, 0)
 
 	// Test query with keyword
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome"},
-	})
-	suite.NoError(err)
-	suite.Equal(records, len(result1))
-	suite.Equal(records, len(summary))
-	suite.Equal(records, int(total))
+	}
+	_, _ = suite.queryJobs(spec, records, records)
 
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome", "keytest1"},
-	})
-	suite.NoError(err)
-	suite.Equal(1, len(result1))
-	suite.Equal(1, len(summary))
-	suite.Equal(1, int(total))
+	}
+	_, _ = suite.queryJobs(spec, 1, 1)
 
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome", "nonexistkeyword"},
-	})
-	suite.NoError(err)
-	suite.Equal(0, len(result1))
-	suite.Equal(0, len(summary))
-	suite.Equal(0, int(total))
+	}
+	_, _ = suite.queryJobs(spec, 0, 0)
 
 	// Query with both labels and keyword
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Labels: []*peloton.Label{
 			{Key: keys0[0], Value: vals0[0]},
 		},
 		Keywords: []string{"team6", "test", "awesome"},
-	})
-	suite.NoError(err)
-	suite.Equal(1, len(result1))
-	suite.Equal(1, len(summary))
-	suite.Equal(1, int(total))
+	}
+	_, _ = suite.queryJobs(spec, 1, 1)
 
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome"},
 		Pagination: &query.PaginationSpec{
 			Offset: 0,
 			Limit:  0,
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(0, len(result1))
-	suite.Equal(0, len(summary))
-	suite.Equal(records, int(total))
+	}
+	_, _ = suite.queryJobs(spec, 0, records)
 
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome"},
 		Pagination: &query.PaginationSpec{
 			Offset: 1,
 			Limit:  0,
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(0, len(result1))
-	suite.Equal(0, len(summary))
-	suite.Equal(records, int(total))
+	}
+	_, _ = suite.queryJobs(spec, 0, records)
 
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome"},
 		Pagination: &query.PaginationSpec{
 			Offset: 0,
 			Limit:  1,
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(1, len(result1))
-	suite.Equal(1, len(summary))
-	suite.Equal(records, int(total))
+	}
+	_, _ = suite.queryJobs(spec, 1, records)
 
 	// Test max limit should cap total returned.
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome"},
 		Pagination: &query.PaginationSpec{
 			Offset:   0,
 			Limit:    1,
 			MaxLimit: 2,
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(1, len(result1))
-	suite.Equal(1, len(summary))
-	// Total should be 2, same as MaxLimit, instead of 5.
-	suite.Equal(2, int(total))
+	}
+	// expected total should be 2, same as MaxLimit, instead of 5.
+	_, _ = suite.queryJobs(spec, 1, 2)
 
-	// Search for label with quote.
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Labels: []*peloton.Label{{
 			Key:   keys0[2],
 			Value: vals0[2],
 		}},
-	})
-	suite.NoError(err)
-	suite.Equal(1, len(result1))
-	suite.Equal(1, len(summary))
-	suite.Equal(1, int(total))
+	}
+	_, _ = suite.queryJobs(spec, 1, 1)
 
 	// Query for multiple states
 	for i := 0; i < records; i++ {
@@ -464,30 +469,22 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	suite.NoError(err)
 
 	jobStates := []job.JobState{job.JobState_PENDING, job.JobState_RUNNING, job.JobState_SUCCEEDED}
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Labels: []*peloton.Label{
 			{Key: keyCommon, Value: valCommon},
 		},
 		JobStates: jobStates,
-	})
-
-	suite.NoError(err)
-	suite.Equal(len(jobStates), len(result1))
-	suite.Equal(len(jobStates), len(summary))
-	suite.Equal(len(jobStates), int(total))
+	}
+	_, _ = suite.queryJobs(spec, len(jobStates), len(jobStates))
 
 	jobStates = []job.JobState{job.JobState_PENDING, job.JobState_INITIALIZED, job.JobState_RUNNING, job.JobState_SUCCEEDED}
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Labels: []*peloton.Label{
 			{Key: keyCommon, Value: valCommon},
 		},
 		JobStates: jobStates,
-	})
-
-	suite.NoError(err)
-	suite.Equal(len(jobStates), len(result1))
-	suite.Equal(len(jobStates), len(summary))
-	suite.Equal(len(jobStates), int(total))
+	}
+	_, _ = suite.queryJobs(spec, len(jobStates), len(jobStates))
 }
 
 func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {

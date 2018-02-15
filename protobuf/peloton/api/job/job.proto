@@ -251,7 +251,8 @@ message QuerySpec {
   repeated peloton.Label labels = 2;
 
   // List of keywords to query the jobs. Will match all jobs if
-  // the list is empty.
+  // the list is empty. When set, will do a wildcard match on
+  // owner, name, labels, description.
   repeated string keywords = 3;
 
   // List of job states to query the jobs. Will match all jobs if
@@ -261,6 +262,11 @@ message QuerySpec {
   // The resource pool to query the jobs. Will match jobs from all
   // resource pools if unset.
   respool.ResourcePoolPath respool = 5;
+
+  // Query jobs by owner. This is case sensitive and will
+  // look for jobs with owner matching the exact owner string.
+  // Will match all jobs if owner is unset.
+  string owner = 6;
 }
 
 /**

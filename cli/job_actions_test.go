@@ -269,6 +269,7 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 			JobStates: []job.JobState{
 				job.JobState_RUNNING,
 			},
+			Owner: "test_owner",
 			Pagination: &query.PaginationSpec{
 				Limit:  10,
 				Offset: 0,
@@ -283,7 +284,7 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 		},
 	}).Return(nil, nil)
 
-	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", 10, 100, 0, "creation_time", "DESC"))
+	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", "test_owner", 10, 100, 0, "creation_time", "DESC"))
 }
 
 func (suite *jobActionsTestSuite) TestClient_JobGetAction() {

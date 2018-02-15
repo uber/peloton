@@ -103,6 +103,7 @@ var (
 	jobQueryRespoolPath = jobQuery.Flag("respool", "respool path").Default("").Short('r').String()
 	jobQueryKeywords    = jobQuery.Flag("keywords", "keywords").Default("").Short('k').String()
 	jobQueryStates      = jobQuery.Flag("states", "job states").Default("").Short('s').String()
+	jobQueryOwner       = jobQuery.Flag("owner", "job owner").Default("").String()
 	jobQueryLimit       = jobQuery.Flag("limit", "maximum number of jobs to return").Default("100").Short('n').Uint32()
 	jobQueryMaxLimit    = jobQuery.Flag("total", "total number of jobs to query").Default("100").Short('q').Uint32()
 	jobQueryOffset      = jobQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
@@ -311,7 +312,7 @@ func main() {
 	case jobStatus.FullCommand():
 		err = client.JobStatusAction(*jobStatusName)
 	case jobQuery.FullCommand():
-		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryLimit, *jobQueryMaxLimit, *jobQueryOffset, *jobQuerySortBy, *jobQuerySortOrder)
+		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryOwner, *jobQueryLimit, *jobQueryMaxLimit, *jobQueryOffset, *jobQuerySortBy, *jobQuerySortOrder)
 	case jobUpdate.FullCommand():
 		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig)
 	case taskGet.FullCommand():
