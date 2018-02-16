@@ -1,7 +1,5 @@
 {
     "conduit_uri": "https://code.uberinternal.com/",
     "history.immutable": false,
-    "git.default-relative-commit": "origin/release",
-    "arc.land.onto.default": "release",
-    "base": "git:merge-base(origin/release)"
+    "git.default-relative-commit": "origin/master"
 }
