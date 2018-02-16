@@ -58,6 +58,64 @@ var (
 	_testValue   = "testValue"
 )
 
+func TestOffersWithUnavailability(t *testing.T) {
+	// empty offer pool
+	scope := tally.NewTestScope("", map[string]string{})
+	pool := &offerPool{
+		timedOffers:     make(map[string]*TimedOffer),
+		hostOfferIndex:  make(map[string]summary.HostSummary),
+		timedOffersLock: &sync.Mutex{},
+		offerHoldTime:   1 * time.Minute,
+		metrics:         NewMetrics(scope),
+	}
+	assert.Equal(t, len(pool.timedOffers), 0)
+
+	offer1 := getMesosOffer("agent1", "offer1")
+
+	offer2 := getMesosOffer("agent2", "offer2")
+
+	offer3 := getMesosOffer("agent1", "offer3")
+
+	unavailableOffer := getMesosOffer("agent4", "offer5")
+	var startTime int64 = 1
+	var unavailability = &mesos.Unavailability{
+		Start: &mesos.TimeInfo{
+			Nanoseconds: &startTime,
+		},
+	}
+	unavailableOffer.Unavailability = unavailability
+
+	// the offer with Unavailability shouldn't be considered
+	pool.AddOffers(context.Background(), []*mesos.Offer{offer1, offer2, offer3, unavailableOffer})
+	assert.Equal(t, len(pool.timedOffers), 3)
+
+	// resending an unavailable offer shouldn't break anything
+	pool.AddOffers(context.Background(), []*mesos.Offer{unavailableOffer})
+	assert.Equal(t, len(pool.timedOffers), 3)
+
+	//when unavailability is removed the pool should accept offers
+	//from the host again
+	offer4 := getMesosOffer("agent4", "offer4")
+	pool.AddOffers(context.Background(), []*mesos.Offer{offer4})
+	assert.Equal(t, len(pool.timedOffers), 4)
+
+	pool.AddOffers(context.Background(), []*mesos.Offer{unavailableOffer})
+	assert.Equal(t, len(pool.timedOffers), 4)
+
+	//test that adding multiple valid offers works after host is placed in
+	// maintenance
+	offer6 := getMesosOffer("agent4", "offer6")
+	offer7 := getMesosOffer("agent4", "offer7")
+	pool.AddOffers(context.Background(), []*mesos.Offer{offer6, offer7})
+	assert.Equal(t, len(pool.timedOffers), 6)
+
+	//test that we still don't accept offers with Unavailability when host
+	//has multiple outstanding offers
+	pool.AddOffers(context.Background(), []*mesos.Offer{unavailableOffer})
+	assert.Equal(t, len(pool.timedOffers), 6)
+
+}
+
 func TestRemoveExpiredOffers(t *testing.T) {
 	// empty offer pool
 	scope := tally.NewTestScope("", map[string]string{})

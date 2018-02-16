@@ -93,6 +93,8 @@ type HostSummary interface {
 
 	// GetReservedOffers returns all the reserved offers on current host.
 	GetReservedOffers() map[string]*mesos.Offer
+
+	GetUnreservedOffers() []*mesos.Offer
 }
 
 // hostSummary is a data struct holding offers on a particular host.
@@ -417,4 +419,14 @@ func (a *hostSummary) GetReservedOffers() map[string]*mesos.Offer {
 		result[offerID] = proto.Clone(offer).(*mesos.Offer)
 	}
 	return result
+}
+
+func (a *hostSummary) GetUnreservedOffers() []*mesos.Offer {
+	var offersToReturn []*mesos.Offer
+	a.Lock()
+	defer a.Unlock()
+	for _, offer := range a.unreservedOffers {
+		offersToReturn = append(offersToReturn, offer)
+	}
+	return offersToReturn
 }

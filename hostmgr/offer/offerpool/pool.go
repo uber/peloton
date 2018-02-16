@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
@@ -26,8 +27,9 @@ import (
 // Pool caches a set of offers received from Mesos master. It is
 // currently only instantiated at the leader of Peloton masters.
 type Pool interface {
-	// Add offers to the pool
-	AddOffers(context.Context, []*mesos.Offer)
+	// Add offers to the pool. Filters out non-viable offers (offers with non-nil Unavailability)
+	// and returns slice of acceptable offers
+	AddOffers(context.Context, []*mesos.Offer) []*mesos.Offer
 
 	// Rescind a offer from the pool.
 	// Returns whether the offer is found in the pool.
@@ -333,9 +335,64 @@ func (p *offerPool) addOffer(ctx context.Context, offer *mesos.Offer, expiration
 	}
 }
 
-func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) {
-	expiration := time.Now().Add(p.offerHoldTime)
+func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) []*mesos.Offer {
+	var acceptableOffers []*mesos.Offer
+	var unavailableOffers []*mesos.Offer
+	hostnameToOffers := make(map[string][]*mesos.Offer)
+
 	for _, offer := range offers {
+		oldOffers := hostnameToOffers[offer.GetHostname()]
+		hostnameToOffers[offer.GetHostname()] = append(oldOffers, offer)
+	}
+
+	for _, offers := range hostnameToOffers {
+		consistent := true
+		offer := offers[0]
+		for i := 1; i < len(offers); i++ {
+			//ensure that all offers from given host have consistent Unavailability
+			if !proto.Equal(offers[i].Unavailability, offer.Unavailability) {
+				log.WithFields(log.Fields{
+					"offer1": offers[i],
+					"offer2": offer}).
+					Warn("Offers from same host have inconsistent Unavailability")
+				consistent = false
+				break
+
+			}
+		}
+		if consistent {
+			if offer.Unavailability != nil {
+				// track all offers coming from hosts with maintenance scheduled
+				// TODO: store unavailability window on hosts
+				unavailableOffers = append(unavailableOffers, offers...)
+			} else {
+				// these offers don't have any scheduled unavailability and can be treated normally
+				acceptableOffers = append(acceptableOffers, offers...)
+			}
+		}
+	}
+
+	// To avoid scheduling tasks on hosts with maintenance scheduled we will
+	// rescind all outstanding offers on those hosts
+	var allOffersToRescind []*mesos.Offer
+
+	for _, offer := range unavailableOffers {
+		hostname := offer.GetHostname()
+		hostOffers, ok := p.hostOfferIndex[hostname]
+		if !ok {
+			// this indicates that the host that is entering maintenance has no outstanding
+			// offers. this is not a problem, we can check the next host now
+			continue
+
+		}
+		allOffersToRescind = append(allOffersToRescind, hostOffers.GetUnreservedOffers()...)
+	}
+	for _, offer := range allOffersToRescind {
+		log.WithField("offer_id", offer.GetId()).Warn("This offer is from a host in maintenance, Mesos should have rescinded it")
+	}
+
+	expiration := time.Now().Add(p.offerHoldTime)
+	for _, offer := range acceptableOffers {
 		result := p.tryAddOffer(ctx, offer, expiration)
 		if !result {
 			p.addOffer(ctx, offer, expiration)
@@ -344,13 +401,14 @@ func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) {
 
 	p.timedOffersLock.Lock()
 	defer p.timedOffersLock.Unlock()
-	for _, offer := range offers {
+	for _, offer := range acceptableOffers {
 		offerID := *offer.Id.Value
 		p.timedOffers[offerID] = &TimedOffer{
 			Hostname:   offer.GetHostname(),
 			Expiration: expiration,
 		}
 	}
+	return acceptableOffers
 }
 
 func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
