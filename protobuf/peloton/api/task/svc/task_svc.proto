@@ -78,7 +78,11 @@ message GetTaskRequest {
  */
 message GetTaskResponse {
   // The task info of the task.
+  // DEPRECATED
   TaskInfo result = 1;
+
+  // Returns all active and completed tasks of the given instance.
+  repeated TaskInfo results = 2;
 }
 
 
@@ -234,6 +238,10 @@ message BrowseSandboxRequest {
 
   // The instance ID of the task to browse the sandbox.
   uint32 instanceId = 2;
+
+  // Get the sandbox path of a particular task of an instance.
+  // If not provided, the path of the latest task is returned.
+  string taskId = 3;
 }
 
 

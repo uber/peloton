@@ -369,6 +369,9 @@ message RuntimeInfo {
 
   // Revision of the current task info.
   peloton.ChangeLog revision = 15;
+
+  // The mesos task id of the previous task run of the instance.
+  mesos.v1.TaskID prevMesosTaskId = 16;
 }
 
 
@@ -513,6 +516,11 @@ message TaskNotRunning {
 message BrowseSandboxRequest {
   peloton.JobID jobId = 1;
   uint32 instanceId = 2;
+  // Get the sandbox path of a particular task of an instance.
+  // This should be set to the mesos task id in the runtime of
+  // the task for which the sandbox is being requested.
+  // If not provided, the path of the latest task is returned.
+  string taskId = 3;
 }
 
 // DEPRECATED by peloton.api.task.svc.BrowseSandboxResponse.
@@ -548,9 +556,12 @@ message GetRequest {
 
 // DEPRECATED by peloton.api.task.svc.GetTaskResponse.
 message GetResponse {
+  // DEPRECATED by repeated TaskInfo
   TaskInfo result = 1;
   errors.JobNotFound notFound = 2;
   InstanceIdOutOfRange outOfRange = 3;
+  // Returns all active and completed tasks of the given instance.
+  repeated TaskInfo results = 4;
 }
 
 // DEPRECATED by peloton.api.task.svc.GetEventsRequest.
