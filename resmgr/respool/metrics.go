@@ -55,7 +55,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 	pendingScope := scope.SubScope("pending")
 
-	allocationScope := scope.SubScope("totalAlloc")
+	allocationScope := scope.SubScope("allocation")
 	entitlementScope := scope.SubScope("entitlement")
 	availableScope := scope.SubScope("available")
 	demandScope := scope.SubScope("demand")
