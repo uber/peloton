@@ -7,16 +7,12 @@ import string
 import subprocess
 import sys
 
-# peloton_proto = './vendor/code.uber.internal/infra/peloton/protobuf/'
 peloton_proto = './protobuf/'
 protoc_cmd = (
-    'protoc  --proto_path={proto_path} --{generator}_out={mflag}:{gen_dir}'
-    ' {file}'
+    'protoc  --proto_path={proto_path} --{gen}_out={mflags}:{out_dir} '
+    '--{gen}_opt={gen_opt} {file}'
 )
-doc_cmd = (
-    'protoc  --doc_out={output} --doc_opt={format} '
-    '--proto_path={proto_path} {file}'
-)
+doc_opt = 'html,apidoc.html:mesos/*,private/*'
 
 
 def protos():
@@ -36,22 +32,27 @@ def mflags(files, go_loc):
     return m
 
 
-def generate(generator, f, m, gen_dir):
-    print protoc_cmd.format(proto_path=peloton_proto, mflag='${mflag}',
-                            gen_dir=gen_dir, file=f, generator=generator)
-    cmd = protoc_cmd.format(proto_path=peloton_proto, mflag=m,
-                            gen_dir=gen_dir, file=f, generator=generator)
-    retval = subprocess.call(cmd, shell=True)
+def is_service_proto(f):
+    with open(f) as o:
+        lines = o.readlines()
 
-    if retval != 0:
-        sys.exit(retval)
+        for l in lines:
+            if l.startswith('service '):
+                return True
+        return False
 
 
-def generatedoc(f, output, format):
-    print doc_cmd.format(proto_path=peloton_proto,
-                         file=f, output=output, format=format)
-    cmd = doc_cmd.format(proto_path=peloton_proto,
-                         file=f, output=output, format=format)
+def generate(gen, f, m, out_dir, gen_opt=''):
+    print ' '.join([
+        'protoc',
+        '--proto_path=%s' % peloton_proto,
+        '--%s_out=%s:%s' % (gen, '${mflags}' if m != '' else m, out_dir),
+        '--%s_opt=%s' % (gen, gen_opt) if gen_opt != '' else '',
+        f,
+    ])
+
+    cmd = protoc_cmd.format(proto_path=peloton_proto, gen=gen, mflags=m,
+                            out_dir=out_dir, gen_opt=gen_opt, file=f)
     retval = subprocess.call(cmd, shell=True)
 
     if retval != 0:
@@ -63,14 +64,10 @@ def parse_args():
         description='Generate types, yarpc stubs and doc from protobuf files')
     parser.add_argument('-l', '--go-loc', help='go location of generated code',
                         default='code.uber.internal/infra/peloton/.gen/')
-    parser.add_argument('-o', '--out', help='output dir of generated code',
+    parser.add_argument('-o', '--out-dir', help='output dir of generated code',
                         default='.gen')
-    parser.add_argument('-d', '--doc',
-                        help='output dir of api documentation',
-                        default='./docs/_static/')
-    parser.add_argument('-f', '--format',
-                        help='format for the api documentation',
-                        default='html,apidoc.html')
+    parser.add_argument('-g', '--generator', help='protoc generator to use'
+                        '(go, doc)',  default='go')
 
     args = parser.parse_args()
     return args
@@ -79,25 +76,22 @@ def parse_args():
 def main():
     args = parse_args()
     files = protos()
-    m = mflags(files, args.go_loc)
 
-    # For every .proto file in peloton generate us a golang file
-    allfiles = ""
-    for f in files:
-        allfiles = allfiles + " " + f
-        generate("go", f, m, args.out)
+    if args.generator == 'go':
+        m = mflags(files, args.go_loc)
 
-        # Generate yarpc-go files for all files with a service. The yarpc
-        # plugin generates bad output for files without any services.
-        with open(f) as o:
-            lines = o.readlines()
+        # For every .proto file in peloton generate us a golang file
+        for f in files:
+            generate('go', f, m, args.out_dir)
 
-            for l in lines:
-                if l.startswith('service '):
-                    generate("yarpc-go", f, m, args.out)
-                    break
+            # Generate yarpc-go files for protobuf files with a service.
+            # The yarpc plugin generates bad output for files without any
+            # services.
+            if is_service_proto(f):
+                generate('yarpc-go', f, m, args.out_dir)
 
-    generatedoc(allfiles, args.doc, args.format)
+    elif args.generator == 'doc':
+        generate('doc', ' '.join(files), '', args.out_dir, doc_opt)
 
 
 if __name__ == '__main__':

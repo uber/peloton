@@ -20,6 +20,7 @@ PACKAGE_HASH=`git rev-parse HEAD`
 DOCKER_IMAGE ?= uber/peloton
 DC ?= all
 PBGEN_DIR = .gen
+APIDOC_DIR = docs/_static/
 
 GOCOV = $(go get github.com/axw/gocov/gocov)
 GOCOV_XML = $(go get github.com/AlekSi/gocov-xml)
@@ -97,9 +98,12 @@ cover:
 
 pbgens: $(VENDOR)
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
-	go get -u github.com/pseudomuto/protoc-gen-doc/cmd/...
 	@mkdir -p $(PBGEN_DIR)
-	./scripts/generate-protobuf.py
+	./scripts/generate-protobuf.py --generator=go --out-dir=$(PBGEN_DIR)
+
+apidoc: $(VENDOR)
+	go get -u github.com/pseudomuto/protoc-gen-doc/cmd/...
+	./scripts/generate-protobuf.py --generator=doc --out-dir=$(APIDOC_DIR)
 
 clean:
 	rm -rf vendor pbgen vendor_mocks $(BIN_DIR) .gen env
