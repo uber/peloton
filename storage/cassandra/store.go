@@ -975,14 +975,16 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 // logTaskStateChange logs the task state change events
 func (s *Store) logTaskStateChange(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
 	var stateChange = TaskStateChangeRecord{
-		JobID:       jobID.GetValue(),
-		InstanceID:  instanceID,
-		MesosTaskID: runtime.GetMesosTaskId().GetValue(),
-		TaskState:   runtime.GetState().String(),
-		TaskHost:    runtime.GetHost(),
-		EventTime:   time.Now().UTC(),
-		Reason:      runtime.GetReason(),
-		Message:     runtime.GetMessage(),
+		JobID:           jobID.GetValue(),
+		InstanceID:      instanceID,
+		MesosTaskID:     runtime.GetMesosTaskId().GetValue(),
+		AgentID:         runtime.GetAgentID().GetValue(),
+		TaskState:       runtime.GetState().String(),
+		TaskHost:        runtime.GetHost(),
+		EventTime:       time.Now().UTC().Format(time.RFC3339),
+		Reason:          runtime.GetReason(),
+		Message:         runtime.GetMessage(),
+		PrevMesosTaskID: runtime.GetPrevMesosTaskId().GetValue(),
 	}
 	buffer, err := json.Marshal(stateChange)
 	if err != nil {
@@ -1022,14 +1024,16 @@ func (s *Store) logTaskStateChanges(ctx context.Context, taskIDToTaskRuntimes ma
 			return err
 		}
 		stateChange := TaskStateChangeRecord{
-			JobID:       jobID,
-			InstanceID:  uint32(instanceID),
-			TaskState:   runtime.GetState().String(),
-			TaskHost:    runtime.GetHost(),
-			EventTime:   time.Now().UTC(),
-			MesosTaskID: runtime.GetMesosTaskId().GetValue(),
-			Reason:      runtime.GetReason(),
-			Message:     runtime.GetMessage(),
+			JobID:           jobID,
+			InstanceID:      uint32(instanceID),
+			TaskState:       runtime.GetState().String(),
+			TaskHost:        runtime.GetHost(),
+			EventTime:       time.Now().UTC().Format(time.RFC3339),
+			MesosTaskID:     runtime.GetMesosTaskId().GetValue(),
+			AgentID:         runtime.GetAgentID().GetValue(),
+			Reason:          runtime.GetReason(),
+			Message:         runtime.GetMessage(),
+			PrevMesosTaskID: runtime.GetPrevMesosTaskId().GetValue(),
 		}
 		buffer, err := json.Marshal(stateChange)
 		if err != nil {
@@ -1126,13 +1130,17 @@ func (s *Store) GetTaskEvents(ctx context.Context, jobID *peloton.JobID, instanc
 			rec := &task.TaskEvent{
 				// TaskStateChangeRecords does not store event source, so don't set Source here
 				State:     task.TaskState(state),
-				Timestamp: record.EventTime.String(),
+				Timestamp: record.EventTime,
 				Message:   record.Message,
 				Reason:    record.Reason,
 				Hostname:  record.TaskHost,
 				// TaskId here will contain Mesos TaskId
 				TaskId: &peloton.TaskID{
 					Value: record.MesosTaskID,
+				},
+				AgentId: record.AgentID,
+				PrevTaskId: &peloton.TaskID{
+					Value: record.PrevMesosTaskID,
 				},
 			}
 			result = append(result, rec)

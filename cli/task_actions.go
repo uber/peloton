@@ -45,12 +45,13 @@ func (c *Client) TaskGetAction(jobID string, instanceID uint32) error {
 }
 
 // TaskLogsGetAction is the action to get logs files for given job instance.
-func (c *Client) TaskLogsGetAction(fileName string, jobID string, instanceID uint32) error {
+func (c *Client) TaskLogsGetAction(fileName string, jobID string, instanceID uint32, taskID string) error {
 	var request = &task.BrowseSandboxRequest{
 		JobId: &peloton.JobID{
 			Value: jobID,
 		},
 		InstanceId: instanceID,
+		TaskId:     taskID,
 	}
 	response, err := c.taskClient.BrowseSandbox(c.ctx, request)
 	if err != nil {

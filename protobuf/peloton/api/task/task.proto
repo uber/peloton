@@ -461,6 +461,12 @@ message TaskEvent {
 
   // The short reason for the task event
   string reason = 7;
+
+  // The agentID for the task
+  string agentId = 8;
+
+  // The previous mesos task ID of the task event.
+  peloton.TaskID prevTaskId = 9;
 }
 
 // DEPRECATED by peloton.api.task.svc.TaskService.

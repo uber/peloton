@@ -13,6 +13,7 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 
+	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	pb_errors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -77,6 +78,52 @@ type serviceHandler struct {
 	mesosAgentWorkDir  string
 }
 
+func (m *serviceHandler) getTerminalEvents(eventList []*task.TaskEvent, lastTaskInfo *task.TaskInfo) []*task.TaskInfo {
+	var taskInfos []*task.TaskInfo
+
+	sortEventsList := getEventsResponseResult(eventList)
+	for _, events := range sortEventsList {
+		var terminalEvent *task.TaskEvent
+
+		for i := len(events.GetEvent()) - 1; i >= 0; i-- {
+			event := events.GetEvent()[i]
+			if util.IsPelotonStateTerminal(event.GetState()) {
+				terminalEvent = event
+				break
+			}
+			if i == 0 {
+				terminalEvent = events.GetEvent()[len(events.GetEvent())-1]
+			}
+		}
+
+		mesosID := terminalEvent.GetTaskId().GetValue()
+		prevMesosID := terminalEvent.GetPrevTaskId().GetValue()
+		agentID := terminalEvent.GetAgentId()
+		taskInfos = append(taskInfos, &task.TaskInfo{
+			InstanceId: lastTaskInfo.GetInstanceId(),
+			JobId:      lastTaskInfo.GetJobId(),
+			Config:     lastTaskInfo.GetConfig(),
+			Runtime: &task.RuntimeInfo{
+				State: terminalEvent.GetState(),
+				MesosTaskId: &mesos_v1.TaskID{
+					Value: &mesosID,
+				},
+				Host: terminalEvent.GetHostname(),
+				AgentID: &mesos_v1.AgentID{
+					Value: &agentID,
+				},
+				Message: terminalEvent.GetMessage(),
+				Reason:  terminalEvent.GetReason(),
+				PrevMesosTaskId: &mesos_v1.TaskID{
+					Value: &prevMesosID,
+				},
+			},
+		})
+	}
+
+	return taskInfos
+}
+
 func (m *serviceHandler) Get(
 	ctx context.Context,
 	body *task.GetRequest) (*task.GetResponse, error) {
@@ -94,20 +141,40 @@ func (m *serviceHandler) Get(
 		}, nil
 	}
 
+	var lastTaskInfo *task.TaskInfo
 	result, err := m.taskStore.GetTaskForJob(ctx, body.JobId, body.InstanceId)
 	for _, taskInfo := range result {
-		m.metrics.TaskGet.Inc(1)
+		lastTaskInfo = taskInfo
+		break
+	}
+
+	if lastTaskInfo == nil {
+		m.metrics.TaskGetFail.Inc(1)
 		return &task.GetResponse{
-			Result: taskInfo,
+			OutOfRange: &task.InstanceIdOutOfRange{
+				JobId:         body.JobId,
+				InstanceCount: jobConfig.InstanceCount,
+			},
 		}, nil
 	}
 
-	m.metrics.TaskGetFail.Inc(1)
+	eventList, err := m.taskStore.GetTaskEvents(ctx, body.GetJobId(), body.GetInstanceId())
+	if err != nil {
+		m.metrics.TaskGetFail.Inc(1)
+		return &task.GetResponse{
+			OutOfRange: &task.InstanceIdOutOfRange{
+				JobId:         body.JobId,
+				InstanceCount: jobConfig.InstanceCount,
+			},
+		}, nil
+	}
+
+	taskInfos := m.getTerminalEvents(eventList, lastTaskInfo)
+
+	m.metrics.TaskGet.Inc(1)
 	return &task.GetResponse{
-		OutOfRange: &task.InstanceIdOutOfRange{
-			JobId:         body.JobId,
-			InstanceCount: jobConfig.InstanceCount,
-		},
+		Result:  lastTaskInfo,
+		Results: taskInfos,
 	}, nil
 }
 
@@ -119,7 +186,7 @@ func (m *serviceHandler) GetEvents(
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", body.GetJobId()).
-			Error("Failed to get task state changes")
+			Debug("Failed to get task state changes")
 		m.metrics.TaskGetEventsFail.Inc(1)
 		return &task.GetEventsResponse{
 			Error: &task.GetEventsResponse_Error{
@@ -626,6 +693,67 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 	return resp, nil
 }
 
+func (m *serviceHandler) getHostInfoWithTaskID(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32,
+	taskID string) (hostname string, agentID string, err error) {
+	var taskEventsList []*task.TaskEvent
+
+	events, err := m.taskStore.GetTaskEvents(ctx, jobID, instanceID)
+	if err != nil {
+		return "", "", err
+	}
+
+	for _, event := range events {
+		if event.TaskId.GetValue() == taskID {
+			taskEventsList = append(taskEventsList, event)
+		}
+	}
+
+	var terminalEvent *task.TaskEvent
+	sort.Sort(statechanges.TaskEventByTime(taskEventsList))
+
+	for i := len(taskEventsList) - 1; i >= 0; i-- {
+		event := taskEventsList[i]
+		if util.IsPelotonStateTerminal(event.GetState()) {
+			terminalEvent = event
+			break
+		}
+		if i == 0 {
+			terminalEvent = taskEventsList[len(taskEventsList)-1]
+		}
+	}
+
+	hostname = terminalEvent.GetHostname()
+	agentID = terminalEvent.GetAgentId()
+	return hostname, agentID, nil
+}
+
+func (m *serviceHandler) getHostInfoCurrentTask(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	instanceID uint32) (hostname string, agentID string, taskID string, err error) {
+	result, err := m.taskStore.GetTaskForJob(ctx, jobID, instanceID)
+
+	if err != nil {
+		return "", "", "", err
+	}
+
+	if len(result) != 1 {
+		return "", "", "", yarpcerrors.NotFoundErrorf("task not found")
+	}
+
+	var taskInfo *task.TaskInfo
+	for _, t := range result {
+		taskInfo = t
+	}
+
+	hostname, agentID = taskInfo.GetRuntime().GetHost(), taskInfo.GetRuntime().GetAgentID().GetValue()
+	taskID = taskInfo.GetRuntime().GetMesosTaskId().GetValue()
+	return hostname, agentID, taskID, nil
+}
+
 func (m *serviceHandler) BrowseSandbox(
 	ctx context.Context,
 	req *task.BrowseSandboxRequest) (*task.BrowseSandboxResponse, error) {
@@ -648,12 +776,18 @@ func (m *serviceHandler) BrowseSandbox(
 		}, nil
 	}
 
-	result, err := m.taskStore.GetTaskForJob(ctx, req.JobId, req.InstanceId)
-	if err != nil || len(result) != 1 {
-		log.WithField("req", req).
-			WithField("result", result).
-			WithError(err).
-			Error("failed to get task for job")
+	var hostname string
+	var agentID string
+	var taskID string
+	taskID = req.GetTaskId()
+
+	if len(taskID) > 0 {
+		hostname, agentID, err = m.getHostInfoWithTaskID(ctx, req.JobId, req.InstanceId, taskID)
+	} else {
+		hostname, agentID, taskID, err = m.getHostInfoCurrentTask(ctx, req.JobId, req.InstanceId)
+	}
+
+	if err != nil {
 		m.metrics.TaskListLogsFail.Inc(1)
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
@@ -665,19 +799,12 @@ func (m *serviceHandler) BrowseSandbox(
 		}, nil
 	}
 
-	var taskInfo *task.TaskInfo
-	for _, t := range result {
-		taskInfo = t
-	}
-
-	hostname, agentID := taskInfo.GetRuntime().GetHost(), taskInfo.GetRuntime().GetAgentID().GetValue()
-	taskID := taskInfo.GetRuntime().GetMesosTaskId().GetValue()
-	if len(agentID) == 0 {
+	if len(hostname) == 0 || len(agentID) == 0 {
 		m.metrics.TaskListLogsFail.Inc(1)
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
 				NotRunning: &task.TaskNotRunning{
-					Message: "taskinfo does not have agentID",
+					Message: "taskinfo does not have hostname or agentID",
 				},
 			},
 		}, nil
@@ -688,8 +815,7 @@ func (m *serviceHandler) BrowseSandbox(
 	if err != nil {
 		m.metrics.TaskListLogsFail.Inc(1)
 		log.WithError(err).WithFields(log.Fields{
-			"req":       req,
-			"task_info": taskInfo,
+			"req": req,
 		}).Error("failed to get framework id")
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
@@ -707,8 +833,10 @@ func (m *serviceHandler) BrowseSandbox(
 	if err != nil {
 		m.metrics.TaskListLogsFail.Inc(1)
 		log.WithError(err).WithFields(log.Fields{
-			"req":       req,
-			"task_info": taskInfo,
+			"req":          req,
+			"hostname":     hostname,
+			"framework_id": frameworkID,
+			"agent_id":     agentID,
 		}).Error("failed to list slave logs files paths")
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
@@ -761,8 +889,9 @@ func getEventsResponseResult(records []*task.TaskEvent) []*task.GetEventsRespons
 	}
 	var eventsListRes []*task.GetEventsResponse_Events
 	for _, eventList := range resMap {
+		sort.Sort(statechanges.TaskEventByTime(eventList.GetEvent()))
 		eventsListRes = append(eventsListRes, eventList)
 	}
-	sort.Sort(statechanges.TaskEventByTime(eventsListRes))
+	sort.Sort(statechanges.TaskEventListByTime(eventsListRes))
 	return eventsListRes
 }

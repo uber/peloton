@@ -240,6 +240,8 @@ message BrowseSandboxRequest {
   uint32 instanceId = 2;
 
   // Get the sandbox path of a particular task of an instance.
+  // This should be set to the mesos task id in the runtime of
+  // the task for which the sandbox is being requested.
   // If not provided, the path of the latest task is returned.
   string taskId = 3;
 }

@@ -21,6 +21,8 @@ import (
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	"github.com/pborman/uuid"
 )
 
 const (
@@ -72,7 +74,7 @@ func (suite *TaskHandlerTestSuite) createTestTaskInfo(
 	state task.TaskState,
 	instanceID uint32) *task.TaskInfo {
 
-	var taskID = fmt.Sprintf("%s-%d", suite.testJobID.Value, instanceID)
+	var taskID = fmt.Sprintf("%s-%d-%s", suite.testJobID.Value, instanceID, uuid.New())
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			MesosTaskId: &mesos.TaskID{Value: &taskID},
@@ -159,6 +161,101 @@ func (suite *TaskHandlerTestSuite) TestGetTaskInfosByRangesFromDBReturnsError() 
 	_, err := suite.handler.getTaskInfosByRangesFromDB(context.Background(), jobID, nil, nil)
 
 	suite.EqualError(err, "my-error")
+}
+
+func (suite *TaskHandlerTestSuite) createTaskEventForGetTasks(instanceID uint32, taskRuns uint32) ([]*task.TaskEvent, []*task.TaskEvent) {
+	var events []*task.TaskEvent
+	var getReturnEvents []*task.TaskEvent
+	taskInfos := make([]*task.TaskInfo, taskRuns)
+	for i := uint32(0); i < taskRuns; i++ {
+		var prevTaskID *peloton.TaskID
+		taskInfos[i] = suite.createTestTaskInfo(task.TaskState_FAILED, instanceID)
+		if i > uint32(0) {
+			prevTaskID = &peloton.TaskID{
+				Value: taskInfos[i-1].GetRuntime().GetMesosTaskId().GetValue(),
+			}
+		}
+
+		event := &task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskInfos[i].GetRuntime().GetMesosTaskId().GetValue(),
+			},
+			PrevTaskId: prevTaskID,
+			State:      task.TaskState_PENDING,
+			Message:    "",
+			Timestamp:  "2017-12-11T22:17:26Z",
+			Hostname:   "peloton-test-host",
+			Reason:     "",
+		}
+		events = append(events, event)
+
+		event = &task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskInfos[i].GetRuntime().GetMesosTaskId().GetValue(),
+			},
+			PrevTaskId: prevTaskID,
+			State:      task.TaskState_RUNNING,
+			Message:    "",
+			Timestamp:  "2017-12-11T22:17:26Z",
+			Hostname:   "peloton-test-host",
+			Reason:     "",
+		}
+		events = append(events, event)
+
+		event = &task.TaskEvent{
+			TaskId: &peloton.TaskID{
+				Value: taskInfos[i].GetRuntime().GetMesosTaskId().GetValue(),
+			},
+			PrevTaskId: prevTaskID,
+			State:      task.TaskState_FAILED,
+			Message:    "",
+			Timestamp:  "2017-12-11T22:17:26Z",
+			Hostname:   "peloton-test-host",
+			Reason:     "",
+		}
+		events = append(events, event)
+		getReturnEvents = append(getReturnEvents, event)
+	}
+
+	return events, getReturnEvents
+}
+
+func (suite *TaskHandlerTestSuite) TestGetTasks() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+
+	instanceID := uint32(0)
+	taskRuns := uint32(3)
+	lastTaskInfo := suite.createTestTaskInfo(task.TaskState_FAILED, instanceID)
+	taskInfoMap := make(map[uint32]*task.TaskInfo)
+	taskInfoMap[instanceID] = lastTaskInfo
+	events, _ := suite.createTaskEventForGetTasks(instanceID, taskRuns)
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().
+			GetTaskForJob(gomock.Any(), suite.testJobID, instanceID).Return(taskInfoMap, nil),
+		mockTaskStore.EXPECT().
+			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).Return(events, nil),
+	)
+
+	var req = &task.GetRequest{
+		JobId:      suite.testJobID,
+		InstanceId: instanceID,
+	}
+
+	resp, err := suite.handler.Get(context.Background(), req)
+	suite.NoError(err)
+	suite.Equal(uint32(len(resp.Results)), taskRuns)
+	for _, result := range resp.Results {
+		suite.Equal(result.GetRuntime().GetState(), task.TaskState_FAILED)
+	}
 }
 
 func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
@@ -708,6 +805,36 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 	suite.Nil(resp.GetError())
 	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
 	suite.Equal(resp.GetStartedInstanceIds(), []uint32{1})
+}
+
+func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+
+	instanceID := uint32(0)
+	taskRuns := uint32(3)
+	events, getReturnEvents := suite.createTaskEventForGetTasks(instanceID, taskRuns)
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().
+			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().
+			GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).Return(events, nil),
+	)
+
+	var req = &task.BrowseSandboxRequest{
+		JobId:      suite.testJobID,
+		InstanceId: instanceID,
+		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+	}
+	resp, err := suite.handler.BrowseSandbox(context.Background(), req)
+	suite.NoError(err)
+	suite.NotNil(resp.GetError().GetNotRunning())
 }
 
 func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithoutHostname() {

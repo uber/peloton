@@ -383,6 +383,7 @@ func RegenerateMesosTaskID(jobID *peloton.JobID, instanceID uint32, runtime *tas
 		jobID.GetValue(),
 		instanceID,
 		uuid.New())
+	runtime.PrevMesosTaskId = runtime.MesosTaskId
 	runtime.MesosTaskId = &mesos.TaskID{
 		Value: &mesosTaskID,
 	}

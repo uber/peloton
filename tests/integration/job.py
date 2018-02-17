@@ -144,6 +144,34 @@ class Job(object):
         assert not resp.HasField('outOfRange')
         return resp.result
 
+    def get_task_runs(self, instance_id):
+        request = task.GetRequest(
+            jobId=peloton.JobID(value=self.job_id),
+            instanceId=instance_id,
+        )
+        resp = self.client.task_svc.Get(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('notFound')
+        assert not resp.HasField('outOfRange')
+        return resp.results
+
+    def browse_task_sandbox(self, instance_id, task_id):
+        request = task.BrowseSandboxRequest(
+            jobId=peloton.JobID(value=self.job_id),
+            instanceId=instance_id,
+            taskId=task_id
+        )
+        resp = self.client.task_svc.BrowseSandbox(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('error')
+        return resp
+
     def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED'):
         state = ''
         attempts = 0
