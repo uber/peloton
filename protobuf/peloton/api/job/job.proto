@@ -267,6 +267,12 @@ message QuerySpec {
   // look for jobs with owner matching the exact owner string.
   // Will match all jobs if owner is unset.
   string owner = 6;
+
+  // Query jobs by name. This is case sensitive and will
+  // look for jobs with name matching the name string. Will
+  // support partial name match. Will match all jobs if
+  // name is unset.
+  string name = 7;
 }
 
 /**

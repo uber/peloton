@@ -129,6 +129,7 @@ func (c *Client) JobQueryAction(
 	keywords string,
 	states string,
 	owner string,
+	name string,
 	limit uint32,
 	maxLimit uint32,
 	offset uint32,
@@ -198,6 +199,7 @@ func (c *Client) JobQueryAction(
 			Keywords:  apiKeywords,
 			JobStates: apiStates,
 			Owner:     owner,
+			Name:      name,
 			Pagination: &query.PaginationSpec{
 				Limit:    limit,
 				Offset:   offset,
@@ -383,10 +385,12 @@ func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
 			records := r.GetRecords()
 			results := r.GetResults()
 			if len(records) != 0 {
+				fmt.Fprintf(tabWriter, jobQueryFormatHeader)
 				for _, k := range records {
 					printJobQueryRecord(k)
 				}
 			} else if len(results) != 0 {
+				fmt.Fprintf(tabWriter, jobQueryFormatHeader)
 				for _, k := range r.GetResults() {
 					printJobQueryResult(k)
 				}

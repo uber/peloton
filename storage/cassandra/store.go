@@ -532,6 +532,12 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		clauses = append(clauses, fmt.Sprintf(`{type: "match", field:"owner", value:%s}`, strconv.Quote(owner)))
 	}
 
+	name := spec.GetName()
+	if name != "" {
+		wildcardName := fmt.Sprintf("*%s*", name)
+		clauses = append(clauses, fmt.Sprintf(`{type: "wildcard", field:"name", value:%s}`, strconv.Quote(wildcardName)))
+	}
+
 	where := `expr(job_index_lucene_v2, '{filter: [`
 	for i, c := range clauses {
 		if i > 0 {
@@ -673,7 +679,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		})
 	}
 
-	summaryResults, err := getJobSummaryFromLuceneResult(allResults)
+	summaryResults, err := s.getJobSummaryFromLuceneResult(ctx, allResults)
 	if err != nil {
 		// Suppress this error until we get rid of JobInfo
 		// Just log warning and increment query fail metric
@@ -2534,7 +2540,7 @@ func parseTime(v string) time.Time {
 	return r
 }
 
-func getJobSummaryFromLuceneResult(allResults []map[string]interface{}) ([]*job.JobSummary, error) {
+func (s *Store) getJobSummaryFromLuceneResult(ctx context.Context, allResults []map[string]interface{}) ([]*job.JobSummary, error) {
 	var summaryResults []*job.JobSummary
 	for _, value := range allResults {
 		summary := &job.JobSummary{}
@@ -2546,6 +2552,34 @@ func getJobSummaryFromLuceneResult(allResults []map[string]interface{}) ([]*job.
 		}
 		summary.Id = &peloton.JobID{
 			Value: id.String(),
+		}
+
+		name, ok := value["name"].(string)
+		if !ok {
+			log.WithField("name", value["name"]).
+				Info("failed to cast name to string")
+		}
+		if name == "" {
+			// In case of an older job, the "name" column is not populated
+			// in jobIndexTable. This is a rudimentary assumption,
+			// unfortunately because jobIndexTable doesn't have versioning.
+			// In this case, get summary from jobconfig
+			// and move on to the next job entry.
+			// TODO (adityacb): remove this code block when we
+			// start archiving older jobs and no longer hit this case.
+			log.WithField("job_id", id).
+				Debug("empty name in job_index, get job summary from job config")
+			summary, err := s.getJobSummaryFromConfig(ctx, summary.Id)
+			if err != nil {
+				log.WithError(err).
+					WithField("job_id", id).
+					Error("failed to get job summary from job config")
+				return nil, fmt.Errorf("failed to get job summary from job config")
+			}
+			summaryResults = append(summaryResults, summary)
+			continue
+		} else {
+			summary.Name = name
 		}
 
 		runtimeInfo, ok := value["runtime_info"].(string)
@@ -2561,17 +2595,12 @@ func getJobSummaryFromLuceneResult(allResults []map[string]interface{}) ([]*job.
 				Info("failed to cast runtime_info to string")
 		}
 
-		summary.Name, ok = value["name"].(string)
-		if !ok {
-			log.WithField("name", value["name"]).
-				Info("failed to cast name to string")
-		}
-
 		summary.OwningTeam, ok = value["owner"].(string)
 		if !ok {
 			log.WithField("owner", value["owner"]).
 				Info("failed to cast owner to string")
 		}
+		summary.Owner = summary.OwningTeam
 
 		instcnt, ok := value["instance_count"].(int)
 		if !ok {
@@ -2615,4 +2644,29 @@ func getJobSummaryFromLuceneResult(allResults []map[string]interface{}) ([]*job.
 		summaryResults = append(summaryResults, summary)
 	}
 	return summaryResults, nil
+}
+
+func (s *Store) getJobSummaryFromConfig(ctx context.Context, id *peloton.JobID) (*job.JobSummary, error) {
+	summary := &job.JobSummary{}
+	jobConfig, err := s.GetJobConfig(ctx, id)
+	if err != nil {
+		log.WithError(err).
+			Info("failed to get jobconfig")
+		return nil, err
+	}
+	summary.Name = jobConfig.GetName()
+	summary.Id = id
+	summary.Type = jobConfig.GetType()
+	summary.Owner = jobConfig.GetOwningTeam()
+	summary.OwningTeam = jobConfig.GetOwningTeam()
+	summary.Labels = jobConfig.GetLabels()
+	summary.InstanceCount = jobConfig.GetInstanceCount()
+	summary.RespoolID = jobConfig.GetRespoolID()
+	summary.Runtime, err = s.GetJobRuntime(ctx, id)
+	if err != nil {
+		log.WithError(err).
+			Info("failed to get job runtime")
+		return nil, err
+	}
+	return summary, nil
 }

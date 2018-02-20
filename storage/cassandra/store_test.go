@@ -225,6 +225,67 @@ func (suite *CassandraStoreTestSuite) queryJobs(
 	return result, summary
 }
 
+func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
+	var jobStore storage.JobStore
+	jobStore = store
+	jobID := peloton.JobID{Value: uuid.New()}
+	var labels = []*peloton.Label{
+		{Key: "test0", Value: "test-val0"},
+		{Key: "test1", Value: "test-val1"},
+	}
+	var jobConfig = job.JobConfig{
+		Name:          "GetJobSummary",
+		OwningTeam:    "owner",
+		LdapGroups:    []string{"job", "summary"},
+		Labels:        labels,
+		InstanceCount: 10,
+		Type:          job.JobType_BATCH,
+		Description:   fmt.Sprintf("get jobs summary"),
+	}
+	err := suite.createJob(context.Background(), &jobID, &jobConfig, "uber")
+	suite.NoError(err)
+
+	where := fmt.Sprintf(`expr(job_index_lucene_v2,` +
+		`'{refresh:true, filter: [` +
+		`{type: "match", field:"name", value:"GetJobSummary"}` +
+		`]}')`)
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.Select("job_id",
+		"name",
+		"owner",
+		"job_type",
+		"respool_id",
+		"instance_count",
+		"labels",
+		"runtime_info").
+		From(jobIndexTable)
+	stmt = stmt.Where(where)
+	allResults, err := store.executeRead(context.Background(), stmt)
+	suite.NoError(err)
+
+	suite.T().Logf("allResults %v", allResults)
+	summaryResultFromLucene, err := store.getJobSummaryFromLuceneResult(context.Background(), allResults)
+	suite.NoError(err)
+
+	// tamper allResults to make name "" and force summary to be retrieved from jobconfig
+	allResults[0]["name"] = ""
+	summaryResultFromJobConfig, err := store.getJobSummaryFromLuceneResult(context.Background(), allResults)
+	suite.NoError(err)
+
+	suite.Equal(1, len(summaryResultFromLucene))
+	suite.Equal(1, len(summaryResultFromJobConfig))
+
+	suite.Equal("GetJobSummary", summaryResultFromLucene[0].GetName())
+	suite.Equal("owner", summaryResultFromLucene[0].GetOwningTeam())
+	suite.Equal("owner", summaryResultFromLucene[0].GetOwner())
+
+	suite.Equal("GetJobSummary", summaryResultFromJobConfig[0].GetName())
+	suite.Equal("owner", summaryResultFromJobConfig[0].GetOwningTeam())
+	suite.Equal("owner", summaryResultFromJobConfig[0].GetOwner())
+
+	suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
+}
+
 func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	var jobStore storage.JobStore
 	jobStore = store
@@ -345,6 +406,25 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		Owner: "Owner",
 	}
 	_, _ = suite.queryJobs(spec, 0, 0)
+
+	// query by Name
+	for i := 0; i < records; i++ {
+		spec = &job.QuerySpec{
+			Name: fmt.Sprintf("TestQueryJob_%d", i),
+		}
+		_, summary = suite.queryJobs(spec, 1, 1)
+		suite.Equal(fmt.Sprintf("TestQueryJob_%d", i), summary[0].GetName())
+	}
+	// query by wrong name returns 0 jobs
+	spec = &job.QuerySpec{
+		Name: "TestQueryJob_wrong_name",
+	}
+	_, _ = suite.queryJobs(spec, 0, 0)
+	// query by partial name returns 5 jobs
+	spec = &job.QuerySpec{
+		Name: "TestQueryJob",
+	}
+	_, _ = suite.queryJobs(spec, records, records)
 
 	// Test query with partial keyword
 	spec = &job.QuerySpec{
