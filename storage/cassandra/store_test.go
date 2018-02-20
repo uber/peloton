@@ -130,25 +130,21 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	_, err := store.DataStore.Execute(context.Background(), stmt)
 	suite.NoError(err)
 
-	result1, summary, total, err := jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec := &job.QuerySpec{
 		Keywords: []string{"TestQueryJobPaging", "test", "awesome"},
 		Pagination: &query.PaginationSpec{
 			Offset: 10,
 			Limit:  25,
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(25, len(result1))
-	suite.Equal(25, len(summary))
-	suite.Equal(_defaultQueryMaxLimit, uint32(total))
+	}
+	_, _ = suite.queryJobs(spec, 25, int(_defaultQueryMaxLimit))
 
 	var owner = query.PropertyPath{Value: "owner"}
 	var orderByOwner = query.OrderBy{
 		Property: &owner,
 		Order:    query.OrderBy_ASC,
 	}
-
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"TestQueryJobPaging", "test", "awesome"},
 		Pagination: &query.PaginationSpec{
 			Offset: 10,
@@ -157,21 +153,28 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 				&orderByOwner,
 			},
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(25, len(result1))
-	suite.Equal(25, len(summary))
+	}
+	result1, summary := suite.queryJobs(spec, 25, int(_defaultQueryMaxLimit))
 	for i, c := range result1 {
-		suite.Equal(fmt.Sprintf("owner_%d", 1010+i), c.Config.OwningTeam)
+		suite.Equal(fmt.Sprintf("owner_%d", 1010+i), c.Config.GetOwningTeam())
 	}
 	for i, c := range summary {
 		suite.Equal(fmt.Sprintf("owner_%d", 1010+i), c.GetOwningTeam())
 	}
 
-	suite.Equal(_defaultQueryMaxLimit, uint32(total))
+	// Pagination with limit not set. Limit should default to _defaultQueryLimit
+	spec = &job.QuerySpec{
+		Keywords: []string{"TestQueryJobPaging", "test", "awesome"},
+		Pagination: &query.PaginationSpec{
+			OrderBy: []*query.OrderBy{
+				&orderByOwner,
+			},
+		},
+	}
+	_, _ = suite.queryJobs(spec, int(_defaultQueryLimit), int(_defaultQueryMaxLimit))
 
 	orderByOwner.Order = query.OrderBy_DESC
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Keywords: []string{"TestQueryJobPaging", "test", "awesome"},
 		Pagination: &query.PaginationSpec{
 			Offset: 10,
@@ -180,39 +183,33 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 				&orderByOwner,
 			},
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(25, len(result1))
-	suite.Equal(25, len(summary))
+	}
+	result1, summary = suite.queryJobs(spec, 25, int(_defaultQueryMaxLimit))
 	for i, c := range result1 {
-		suite.Equal(fmt.Sprintf("owner_%d", 1289-i), c.Config.OwningTeam)
+		suite.Equal(fmt.Sprintf("owner_%d", 1289-i), c.Config.GetOwningTeam())
 	}
 	for i, c := range summary {
 		suite.Equal(fmt.Sprintf("owner_%d", 1289-i), c.GetOwningTeam())
 	}
-	suite.Equal(_defaultQueryMaxLimit, uint32(total))
 
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), respool, &job.QuerySpec{})
-	suite.NoError(err)
-	suite.Equal(int(_defaultQueryLimit), len(result1))
-	suite.Equal(int(_defaultQueryLimit), len(summary))
-	suite.Equal(_defaultQueryMaxLimit, uint32(total))
+	_, _ = suite.queryJobs(&job.QuerySpec{}, int(_defaultQueryLimit), int(_defaultQueryMaxLimit))
 
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), &peloton.ResourcePoolID{Value: uuid.New()}, &job.QuerySpec{})
+	result1, summary, total, err := jobStore.QueryJobs(context.Background(), &peloton.ResourcePoolID{Value: uuid.New()}, &job.QuerySpec{})
 	suite.NoError(err)
 	suite.Equal(0, len(result1))
 	suite.Equal(0, len(summary))
 	suite.Equal(0, int(total))
 
-	result1, summary, total, err = jobStore.QueryJobs(context.Background(), respool, &job.QuerySpec{
+	spec = &job.QuerySpec{
 		Pagination: &query.PaginationSpec{
 			Limit: 1000,
 		},
-	})
-	suite.NoError(err)
-	suite.Equal(_defaultQueryMaxLimit, uint32(len(result1)))
-	suite.Equal(_defaultQueryMaxLimit, uint32(len(summary)))
-	suite.Equal(_defaultQueryMaxLimit, uint32(total))
+	}
+	_, _ = suite.queryJobs(spec, int(_defaultQueryMaxLimit), int(_defaultQueryMaxLimit))
+
+	for _, jobID := range jobIDs {
+		suite.NoError(jobStore.DeleteJob(context.Background(), jobID))
+	}
 }
 
 func (suite *CassandraStoreTestSuite) queryJobs(
@@ -269,7 +266,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		}
 		var jobConfig = job.JobConfig{
 			Name:           fmt.Sprintf("TestQueryJob_%d", i),
-			OwningTeam:     "owner",
+			OwningTeam:     fmt.Sprintf("query_owner_%d", i),
 			LdapGroups:     []string{"money", "team6", "gign"},
 			Sla:            &sla,
 			DefaultConfig:  &taskConfig,
@@ -330,11 +327,18 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		suite.Equal(fmt.Sprintf("TestQueryJob_%d", i), summary[0].GetName())
 	}
 
-	// query by Owner returns 5 jobs
-	spec = &job.QuerySpec{
-		Owner: "owner",
+	for i := 0; i < records; i++ {
+		spec = &job.QuerySpec{
+			Owner: fmt.Sprintf("query_owner_%d", i),
+		}
+		_, summary = suite.queryJobs(spec, 1, 1)
+		suite.Equal(fmt.Sprintf("query_owner_%d", i), summary[0].GetOwningTeam())
 	}
-	_, _ = suite.queryJobs(spec, records, records)
+	// query by Owner_0 returns 0 jobs
+	spec = &job.QuerySpec{
+		Owner: "Query_Owner_0",
+	}
+	_, _ = suite.queryJobs(spec, 0, 0)
 
 	// query by Owner returns 0 jobs
 	spec = &job.QuerySpec{
@@ -355,10 +359,80 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	_, summary = suite.queryJobs(spec, 1, 1)
 	suite.Equal("TestQueryJob_2", summary[0].GetName())
 
+	// test sort by name in ascending order
+	orderByName := query.PropertyPath{Value: "name"}
+	orderByOwner := query.PropertyPath{Value: "owner"}
+	orderBy := []*query.OrderBy{
+		{
+			Order:    query.OrderBy_ASC,
+			Property: &orderByName,
+		},
+	}
+	spec = &job.QuerySpec{
+		Keywords: []string{"TestQueryJob"},
+		Pagination: &query.PaginationSpec{
+			OrderBy: orderBy,
+		},
+	}
+	// expect that first entry is TestQueryJob_0
+	_, summary = suite.queryJobs(spec, records, records)
+	suite.Equal("TestQueryJob_0", summary[0].GetName())
+
+	// test sort by name in descending order
+	orderBy = []*query.OrderBy{
+		{
+			Order:    query.OrderBy_DESC,
+			Property: &orderByName,
+		},
+	}
+	spec = &job.QuerySpec{
+		Keywords: []string{"TestQueryJob"},
+		Pagination: &query.PaginationSpec{
+			OrderBy: orderBy,
+		},
+	}
+	// expect that first entry is TestQueryJob_4
+	_, summary = suite.queryJobs(spec, records, records)
+	suite.Equal("TestQueryJob_4", summary[0].GetName())
+
+	// test sort by owner in ascending order
+	orderBy = []*query.OrderBy{
+		{
+			Order:    query.OrderBy_ASC,
+			Property: &orderByOwner,
+		},
+	}
+	spec = &job.QuerySpec{
+		Keywords: []string{"query_owner"},
+		Pagination: &query.PaginationSpec{
+			OrderBy: orderBy,
+		},
+	}
+	// expect that first entry is owner_0
+	_, summary = suite.queryJobs(spec, records, records)
+	suite.Equal("query_owner_0", summary[0].GetOwningTeam())
+
+	// test sort by owner in descending order
+	orderBy = []*query.OrderBy{
+		{
+			Order:    query.OrderBy_DESC,
+			Property: &orderByOwner,
+		},
+	}
+	spec = &job.QuerySpec{
+		Keywords: []string{"query_owner"},
+		Pagination: &query.PaginationSpec{
+			OrderBy: orderBy,
+		},
+	}
+	// expect that first entry is owner_4
+	_, summary = suite.queryJobs(spec, records, records)
+	suite.Equal("query_owner_4", summary[0].GetOwningTeam())
+
 	// Test query with partial keyword and owner that should match one job
 	spec = &job.QuerySpec{
 		Keywords: []string{"stQueryJob_2"},
-		Owner:    "owner",
+		Owner:    "query_owner_2",
 	}
 	_, _ = suite.queryJobs(spec, 1, 1)
 
@@ -412,20 +486,10 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome"},
 		Pagination: &query.PaginationSpec{
-			Offset: 0,
-			Limit:  0,
-		},
-	}
-	_, _ = suite.queryJobs(spec, 0, records)
-
-	spec = &job.QuerySpec{
-		Keywords: []string{"team6", "test", "awesome"},
-		Pagination: &query.PaginationSpec{
 			Offset: 1,
-			Limit:  0,
 		},
 	}
-	_, _ = suite.queryJobs(spec, 0, records)
+	_, _ = suite.queryJobs(spec, records-1, records)
 
 	spec = &job.QuerySpec{
 		Keywords: []string{"team6", "test", "awesome"},
@@ -485,6 +549,9 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		JobStates: jobStates,
 	}
 	_, _ = suite.queryJobs(spec, len(jobStates), len(jobStates))
+	for _, jobID := range jobIDs {
+		suite.NoError(jobStore.DeleteJob(context.Background(), jobID))
+	}
 }
 
 func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {

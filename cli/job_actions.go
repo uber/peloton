@@ -334,6 +334,26 @@ func printJobStatusResponse(r *job.GetResponse, jsonFormat bool) {
 	tabWriter.Flush()
 }
 
+// TODO (adityacb): remove printJobQueryRecord after fixing T1554507
+func printJobQueryRecord(j *job.JobInfo) {
+	startTime, err := time.Parse(time.RFC3339Nano, j.GetRuntime().GetCreationTime())
+	startTimeStr := ""
+	if err == nil {
+		startTimeStr = startTime.Format(time.RFC3339)
+	}
+	fmt.Fprintf(
+		tabWriter,
+		jobQueryFormatBody,
+		j.GetId().GetValue(),
+		j.GetConfig().GetName(),
+		j.GetConfig().GetOwningTeam(),
+		j.GetRuntime().GetState().String(),
+		startTimeStr,
+		j.GetConfig().GetInstanceCount(),
+		j.GetRuntime().GetTaskStats()["RUNNING"],
+	)
+}
+
 func printJobQueryResult(j *job.JobSummary) {
 	startTime, err := time.Parse(time.RFC3339Nano, j.GetRuntime().GetCreationTime())
 	startTimeStr := ""
@@ -359,12 +379,19 @@ func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
 	} else {
 		if r.GetError() != nil {
 			fmt.Fprintf(tabWriter, "Error: %v\n", r.GetError().String())
-		} else if len(r.GetResults()) == 0 {
-			fmt.Fprint(tabWriter, "No jobs found.\n", r.GetError().String())
 		} else {
-			fmt.Fprintf(tabWriter, jobQueryFormatHeader)
-			for _, k := range r.GetResults() {
-				printJobQueryResult(k)
+			records := r.GetRecords()
+			results := r.GetResults()
+			if len(records) != 0 {
+				for _, k := range records {
+					printJobQueryRecord(k)
+				}
+			} else if len(results) != 0 {
+				for _, k := range r.GetResults() {
+					printJobQueryResult(k)
+				}
+			} else {
+				fmt.Fprint(tabWriter, "No jobs found.\n", r.GetError().String())
 			}
 		}
 		tabWriter.Flush()

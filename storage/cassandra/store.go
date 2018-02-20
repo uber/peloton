@@ -591,10 +591,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		"labels",
 		"runtime_info").
 		From(jobIndexTable)
-
-	if len(clauses) > 0 {
-		stmt = stmt.Where(where)
-	}
+	stmt = stmt.Where(where)
 
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -619,7 +616,11 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 
 	end := _defaultQueryLimit
 	if spec.GetPagination() != nil {
-		end = spec.GetPagination().GetLimit()
+		limit := spec.GetPagination().GetLimit()
+		if limit > 0 {
+			// end should not be 0, it will yield in empty result
+			end = limit
+		}
 	}
 	if end > uint32(len(allResults)) {
 		end = uint32(len(allResults))
