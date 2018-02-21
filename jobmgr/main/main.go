@@ -389,7 +389,7 @@ func main() {
 
 	candidate, err := leader.NewCandidate(
 		cfg.Election,
-		rootScope.SubScope("election"),
+		rootScope,
 		common.JobManagerRole,
 		server,
 	)

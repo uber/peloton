@@ -72,6 +72,8 @@ func (*heartbeat) Start() {
 					Debug("Emitting heartbeat.")
 				hb.metrics.Heartbeat.Update(1)
 
+				// Only send a leader heartbeat metric
+				// for the elected leader
 				if hb.candidate != nil && hb.candidate.IsLeader() {
 					log.WithField("tick", t).
 						Debug("Emitting leader metric.")

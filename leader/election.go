@@ -2,6 +2,7 @@ package leader
 
 import (
 	"errors"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -72,9 +73,13 @@ func NewCandidate(
 		ttl,
 	)
 	scope := parent.SubScope("election")
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.WithError(err).Fatal("failed to get hostname")
+	}
 	el := election{
 		running:    false,
-		metrics:    newElectionMetrics(scope, role, nomination.GetID()),
+		metrics:    newElectionMetrics(scope, hostname),
 		role:       role,
 		nomination: nomination,
 		candidate:  candidate,

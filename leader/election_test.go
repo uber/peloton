@@ -64,7 +64,7 @@ func TestLeaderElection(t *testing.T) {
 
 	el := election{
 		role:       role,
-		metrics:    newElectionMetrics(tally.NoopScope, "role", "testhost:666"),
+		metrics:    newElectionMetrics(tally.NoopScope, "hostname"),
 		candidate:  leadership.NewCandidate(mockStore, key, "testhost:666", ttl),
 		nomination: testComponent{host: "testhost", port: "666"},
 	}

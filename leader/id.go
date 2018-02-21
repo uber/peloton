@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 
 	log "github.com/sirupsen/logrus"
 )
 
 // ID defines the json struct to be encoded in leader node
+// TODO(rcharles) add Instance representing the instance number
 type ID struct {
 	Hostname string `json:"hostname"`
 	IP       string `json:"ip"`
@@ -22,11 +24,16 @@ type ID struct {
 func NewID(httpPort int, grpcPort int) string {
 	ip, err := listenIP()
 	if err != nil {
-		log.Fatalf("Failed to get ip, err=%v", err)
+		log.WithError(err).Fatal("failed to get ip")
 	}
-	// TODO: Populate the hostname and version in ID
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.WithError(err).Fatal("failed to get hostname")
+	}
+
+	// TODO: Populate the version in ID
 	id := &ID{
-		Hostname: "",
+		Hostname: hostname,
 		IP:       fmt.Sprintf("%s", ip),
 		HTTPPort: httpPort,
 		GRPCPort: grpcPort,

@@ -23,8 +23,9 @@ type observerMetrics struct {
 	Error         tally.Counter
 }
 
-func newElectionMetrics(scope tally.Scope, role string, id string) electionMetrics {
-	s := scope.Tagged(map[string]string{"role": role, "id": id})
+//TODO(rcharles) replace tag hostname with instanceNumber
+func newElectionMetrics(scope tally.Scope, hostname string) electionMetrics {
+	s := scope.Tagged(map[string]string{"hostname": hostname})
 
 	return electionMetrics{
 		Start:            s.Counter("start"),
