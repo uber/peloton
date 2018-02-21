@@ -92,8 +92,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		PendingQueueSize: pendingScope.Gauge("pending_queue_size"),
 
-		TotalAllocation: scalar.NewGaugeMaps(allocationScope.SubScope(
-			"total")),
+		TotalAllocation: scalar.NewGaugeMaps(allocationScope),
 		NonPreemptibleAllocation: scalar.NewGaugeMaps(allocationScope.
 			SubScope("non_preemptible")),
 		Entitlement: scalar.NewGaugeMaps(entitlementScope),
