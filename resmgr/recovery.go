@@ -27,7 +27,6 @@ var (
 
 	// jobStates represents the job states which need recovery
 	jobStates = []job.JobState{
-		job.JobState_INITIALIZED,
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
 		job.JobState_UNKNOWN,
