@@ -23,7 +23,6 @@ import (
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -213,12 +212,10 @@ func (suite *recoveryTestSuite) getQueueContent(
 		suite.NoError(err)
 		node.SetEntitlement(suite.getEntitlement())
 		dequeuedGangs, err := node.DequeueGangList(1)
-		if err != nil {
-			fmt.Printf("Failed to dequeue item: %v", err)
+		suite.NoError(err)
+
+		if len(dequeuedGangs) == 0 {
 			break
-		}
-		if len(dequeuedGangs) != 1 {
-			assert.Fail(suite.T(), "Dequeue should return single task scheduling unit")
 		}
 		gang := dequeuedGangs[0]
 		if gang != nil {
@@ -229,9 +226,6 @@ func (suite *recoveryTestSuite) getQueueContent(
 				result[jobID] = gang
 			}
 			result[jobID] = append(result[jobID], gang)
-
-		} else {
-			break
 		}
 	}
 	return result

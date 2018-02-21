@@ -19,8 +19,8 @@ import (
 	"github.com/uber-go/tally"
 )
 
-// ResPool is a node in a resource tree.
-type ResPool interface {
+// node represents a node in a tree
+type node interface {
 	// Returns the resource pool name.
 	Name() string
 	// Returns the resource pool ID.
@@ -39,6 +39,11 @@ type ResPool interface {
 	GetPath() string
 	// IsRoot returns true if the node is the root of the resource tree.
 	IsRoot() bool
+}
+
+// ResPool is a node in a resource pool hierarchy.
+type ResPool interface {
+	node
 
 	// Returns the config of the resource pool.
 	ResourcePoolConfig() *respool.ResourcePoolConfig
@@ -127,17 +132,25 @@ type resPool struct {
 	demand      *scalar.Resources
 
 	// tracks the total allocation of non-preemptible tasks in this resource
-	// pool. Used for admission control of non-preemptible tasks inside this
-	// resource pool.
+	// pool by their type. Used for admissionController control of non-preemptible
+	// tasks inside this resource pool.
 	nonPreemptibleAlloc *scalar.Resources
 
-	// set of invalid tasks which should be discarded during admission
+	// set of invalid tasks which should be discarded during admissionController
 	// control
 	invalidTasks map[string]bool
 
 	// queue containing gangs waiting to be admitted into the resource pool.
 	// queue semantics is defined by the SchedulingPolicy
 	pendingQueue queue.Queue
+	// queue containing controller tasks(
+	// gang with 1 task) waiting to be admitted.
+	// All tasks are enqueued to the pending queue,
+	// the only reason a task would move from pending queue to controller
+	// queue is when the task is of type CONTROLLER and it can't be admitted,
+	// in that case the task is moved to the controller queue so that it
+	// doesn't block the rest of the tasks in pending queue.
+	controllerQueue queue.Queue
 
 	metrics *Metrics
 }
@@ -154,7 +167,12 @@ func NewRespool(
 			"ResourcePoolConfig is nil", ID)
 	}
 
-	q, err := queue.CreateQueue(config.Policy, math.MaxInt64)
+	pq, err := queue.CreateQueue(config.Policy, math.MaxInt64)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
+	}
+
+	cq, err := queue.CreateQueue(config.Policy, math.MaxInt64)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
 	}
@@ -165,7 +183,8 @@ func NewRespool(
 		parent:              parent,
 		resourceConfigs:     make(map[string]*respool.ResourceConfig),
 		poolConfig:          config,
-		pendingQueue:        q,
+		pendingQueue:        pq,
+		controllerQueue:     cq,
 		entitlement:         &scalar.Resources{},
 		totalAlloc:          &scalar.Resources{},
 		demand:              &scalar.Resources{},
@@ -287,10 +306,14 @@ func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
 }
 
 // DequeueGangList dequeues a list of gangs from the
-// pending queue.  Each gang is a task list representing a gang
-// of 1 or more (same priority) tasks, from the pending queue.
-// If there is no gang present then its a error if any one present
+// resource pool which can be admitted.
+// Each gang is a task list representing a gang
+// of 1 or more (same priority) tasks.
+// If there is no gang present then its a error, if any one present
 // then it will return all the gangs within limit without error
+// The dequeue works in the following way
+// 1. First checks the controller queue to admit controller jobs
+// 2. Checks the pending queue
 func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	if limit <= 0 {
 		err := errors.Errorf("limit %d is not valid", limit)
@@ -302,153 +325,103 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	}
 
 	var gangList []*resmgrsvc.Gang
-	for i := 1; i <= limit; i++ {
-		// First peek the gang and see if that can be
-		// dequeued from the list
+
+	// In the first pass we check the controller queue to admit as many
+	// controller tasks as we can satisfy with the controller quota of the
+	// resource pool.
+	cgs, err := n.dequeueController(limit)
+	if err != nil {
+		log.WithError(err).Warn("Error dequeueing from controller queue")
+	}
+	gangList = append(gangList, cgs...)
+
+	// In the second pass we check the pending queue.
+	// If the task at the head of the queue is a controller task and can't be
+	// admitted with the controller quota,
+	// we will move it to the controller queue so that it doesn't block the
+	// rest of the tasks. That controller task will be picked up from the
+	// controller queue in the next scheduling cycle.	left := len(gangList)
+	left := limit - len(gangList)
+	pgs, err := n.dequeuePending(left)
+	if err != nil {
+		log.WithError(err).Warn("Error dequeueing from pending queue")
+	}
+	gangList = append(gangList, pgs...)
+
+	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
+	return gangList, err
+}
+
+func (n *resPool) dequeuePending(limit int) ([]*resmgrsvc.Gang,
+	error) {
+
+	var err error
+	var gangList []*resmgrsvc.Gang
+
+	for i := 0; i < limit; i++ {
 		gangs, err := n.pendingQueue.Peek(1)
-
 		if err != nil {
-			if len(gangList) == 0 {
-				return nil, err
+			if _, ok := err.(queue.ErrorQueueEmpty); ok {
+				// pending queue is empty we are done
+				return gangList, nil
 			}
-			break
+			log.WithError(err).
+				Error("Failed to peek into pending queue")
+			return gangList, err
 		}
-
 		gang := gangs[0]
-		// checking if the gang is still valid
-		// before admission control
-		err = n.validateGang(gang)
+		ok, err := pending.TryAdmit(gang, n)
 		if err != nil {
-			continue
-		}
-
-		if n.canBeAdmitted(gang) {
-			log.WithField("gang", gang.Tasks[0].Id).
-				Debug("Can be admitted")
-			err := n.pendingQueue.Remove(gang)
-			if err != nil {
-				if len(gangList) == 0 {
-					return nil, err
-				}
+			if err != errGangInvalid {
+				log.WithField("respool_id", n.ID()).
+					WithError(err).Error(
+					"Failed to admit tasks from controller queue")
 				break
 			}
-			log.WithField("gang", gang).Debug("Deleted")
+			continue
+		}
+		if ok {
 			gangList = append(gangList, gang)
-			// Need to lock the usage before updating it
-			n.Lock()
-			n.totalAlloc = n.totalAlloc.Add(scalar.GetGangResources(gang))
-			n.Unlock()
-			n.updateResourceMetrics()
-		} else {
-			if len(gangList) <= 0 {
-				log.WithField("gang", gang).
-					Debug("Need more resources then available")
-				return nil, errors.Errorf("Queue %s is already full", n.id)
-			}
+			continue
 		}
 	}
-	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
-	return gangList, nil
+	return gangList, err
 }
 
-// validateGang checks for all/some tasks been deleted. This function will delete that
-// gang from pending queue if all tasks are deleted or enqueue gang back with rest of
-// the tasks in the gang
-func (n *resPool) validateGang(gang *resmgrsvc.Gang) error {
-	n.Lock()
-	defer n.Unlock()
-	var invalidateGang bool
+func (n *resPool) dequeueController(
+	limit int) ([]*resmgrsvc.Gang, error) {
 
-	if gang == nil {
-		invalidateGang = true
-	}
-	var newTasks []*resmgr.Task
-
-	// Check if gang is not nil
-	if !invalidateGang {
-		for _, task := range gang.GetTasks() {
-			if _, exists := n.invalidTasks[task.Id.Value]; !exists {
-				newTasks = append(newTasks, task)
-			} else {
-				delete(n.invalidTasks, task.Id.Value)
-				invalidateGang = true
-			}
-		}
-	}
-
-	// Gang is validated so ready for admission control
-	if !invalidateGang {
-		return nil
-	}
-
-	// remove it from the pending queue
-	log.WithFields(log.Fields{
-		"gang": gang,
-	}).Info("Tasks are deleted for this gang")
-	// Removing the gang from pending queue as tasks are deleted
-	// from this gang
-	err := n.pendingQueue.Remove(gang)
-	if err != nil {
-		log.WithError(err).Error("Not able to delete" +
-			"gang from pending queue")
-		return err
-	}
-
-	// We need to remove it from the demand
-	for _, task := range gang.GetTasks() {
-		// We have to remove demand as we removed task from
-		// pending queue.
-		n.demand = n.demand.Subtract(
-			scalar.ConvertToResmgrResource(
-				task.GetResource()))
-	}
-
-	// We need to enqueue the gang if all the tasks are not
-	// deleted from the gang
-	if gang != nil && len(newTasks) != 0 {
-		gang.Tasks = newTasks
-		err = n.pendingQueue.Enqueue(gang)
+	var err error
+	var gangList []*resmgrsvc.Gang
+	for i := 0; i < limit; i++ {
+		gangs, err := n.controllerQueue.Peek(1)
 		if err != nil {
-			log.WithError(err).WithField("new_gang", gang).
-				Error("Not able to enqueue" +
-					"gang to pending queue")
+			if _, ok := err.(queue.ErrorQueueEmpty); ok {
+				// queue is empty
+				break
+			}
+			log.WithError(err).Error(
+				"Failed to peek into controller queue")
+			break
 		}
-		for _, task := range gang.GetTasks() {
-			// We have to add demand as we admitted task to
-			// pending queue.
-			n.demand = n.demand.Add(
-				scalar.ConvertToResmgrResource(
-					task.GetResource()))
+		gang := gangs[0]
+
+		ok, err := controller.TryAdmit(gang, n)
+		if err != nil {
+			log.WithField("respool_id", n.ID()).
+				WithError(err).Error(
+				"Failed to admit tasks from controller queue")
+			break
 		}
-		return err
+		if !ok {
+			// can't admit any more gangs
+			log.WithField("respool_id", n.ID()).
+				Debug("Resource pool quota for controller tasks is full")
+			break
+		}
+		gangList = append(gangList, gang)
 	}
-
-	// All the tasks in this gang is been deleted
-	// sending error for the validation by that ignore this gang
-	// for admission control
-	log.WithField("gang", gang).Info("All tasks are killed " +
-		"for gang")
-	return errors.New("All tasks are killed for gang")
-}
-
-func (n *resPool) canBeAdmitted(gang *resmgrsvc.Gang) bool {
-	n.RLock()
-	defer n.RUnlock()
-
-	currentEntitlement := n.entitlement
-	currentAllocation := n.totalAlloc
-	neededResources := scalar.GetGangResources(gang)
-
-	log.WithField("entitlement", currentEntitlement).
-		WithField("total_alloc", currentAllocation).Debug(
-		"Current Resources")
-
-	log.WithField("resources_required", neededResources).Debug(
-		"Resources required")
-
-	return currentAllocation.
-		Add(neededResources).
-		LessThanOrEqual(currentEntitlement)
+	return gangList, err
 }
 
 // AggregatedChildrenReservations returns aggregated child reservations by resource kind

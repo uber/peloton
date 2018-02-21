@@ -70,7 +70,7 @@ func (f *PriorityQueue) Dequeue() (*resmgrsvc.Gang, error) {
 
 // Peek peeks the limit number of gangs based on the priority and order
 // they came into the queue.
-// It will return an error if there is no gang in the queue
+// It will return an `ErrorQueueEmpty` if there is no gangs in the queue
 func (f *PriorityQueue) Peek(limit uint32) ([]*resmgrsvc.Gang, error) {
 	// TODO: optimize the write lock here with potential read lock
 	f.Lock()
@@ -115,7 +115,7 @@ func (f *PriorityQueue) Peek(limit uint32) ([]*resmgrsvc.Gang, error) {
 	}
 
 	if len(items) == 0 {
-		return items, errors.New("peek failed, queue is empty")
+		return items, ErrorQueueEmpty("peek failed, queue is empty")
 	}
 
 	return items, nil

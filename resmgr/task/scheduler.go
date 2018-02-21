@@ -144,7 +144,9 @@ func (s *scheduler) scheduleTasks() {
 		// dequeue gang or not based on resource availability.
 		gangList, err := n.DequeueGangList(dequeueGangLimit)
 		if err != nil {
-			log.WithField("respool", n.ID()).WithError(err).Debug("No Items found")
+			log.WithError(err).
+				WithField("respool_id", n.ID()).
+				Error("Failed to dequeue from resource pool")
 			continue
 		}
 		var invalidGangs []*resmgrsvc.Gang

@@ -379,7 +379,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 	}
 	resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(bigtask))
 	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
-	s.Error(err)
+	s.NoError(err)
 	s.Nil(dequeuedGangs)
 	resPoolNode.SetEntitlementByKind(common.CPU, float64(500))
 	dequeuedGangs, err = resPoolNode.DequeueGangList(1)

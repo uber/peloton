@@ -16434,6 +16434,16 @@ Clients can use this to guide against race conditions using MVCC. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>taskId</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Get the sandbox path of a particular task of an instance.
+This should be set to the mesos task id in the runtime of
+the task for which the sandbox is being requested.
+If not provided, the path of the latest task is returned. </p></td>
+                </tr>
+              
             </tbody>
           </table>
         
@@ -16722,7 +16732,7 @@ Clients can use this to guide against race conditions using MVCC. </p></td>
                   <td>result</td>
                   <td><a href="#peloton.api.task.TaskInfo">TaskInfo</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>DEPRECATED by repeated TaskInfo </p></td>
                 </tr>
               
                 <tr>
@@ -16737,6 +16747,13 @@ Clients can use this to guide against race conditions using MVCC. </p></td>
                   <td><a href="#peloton.api.task.InstanceIdOutOfRange">InstanceIdOutOfRange</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#peloton.api.task.TaskInfo">TaskInfo</a></td>
+                  <td>repeated</td>
+                  <td><p>Returns all active and completed tasks of the given instance. </p></td>
                 </tr>
               
             </tbody>
@@ -17602,6 +17619,13 @@ See Mesos TaskStatus.Reason for more details. </p></td>
                   <td><p>Revision of the current task info. </p></td>
                 </tr>
               
+                <tr>
+                  <td>prevMesosTaskId</td>
+                  <td><a href="#peloton.api.task..mesos.v1.TaskID">.mesos.v1.TaskID</a></td>
+                  <td></td>
+                  <td><p>The mesos task id of the previous task run of the instance. </p></td>
+                </tr>
+              
             </tbody>
           </table>
         
@@ -17934,6 +17958,15 @@ necessary. </p></td>
                   <td><a href="#peloton.api.task.PreemptionPolicy">PreemptionPolicy</a></td>
                   <td></td>
                   <td><p>Preemtion policy of the task </p></td>
+                </tr>
+              
+                <tr>
+                  <td>controller</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether this is a controler task. A controller is a special batch task
+which controls other tasks inside a job. E.g. spark driver tasks in a spark
+job will be a controller task. </p></td>
                 </tr>
               
             </tbody>
@@ -20306,7 +20339,8 @@ list is empty. </p></td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
                   <td><p>List of keywords to query the jobs. Will match all jobs if
-the list is empty. </p></td>
+the list is empty. When set, will do a wildcard match on
+owner, name, labels, description. </p></td>
                 </tr>
               
                 <tr>
@@ -20323,6 +20357,25 @@ the list is empty. </p></td>
                   <td></td>
                   <td><p>The resource pool to query the jobs. Will match jobs from all
 resource pools if unset. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>owner</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Query jobs by owner. This is case sensitive and will
+look for jobs with owner matching the exact owner string.
+Will match all jobs if owner is unset. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Query jobs by name. This is case sensitive and will
+look for jobs with name matching the name string. Will
+support partial name match. Will match all jobs if
+name is unset. </p></td>
                 </tr>
               
             </tbody>
@@ -21806,8 +21859,15 @@ indicate that we want tasks of any task type back.</p></td>
               <tr>
                 <td>DAEMON</td>
                 <td>4</td>
-                <td><p>Daemon task which has one instance running on each host for infra
+                <td><p>DAEMON task which has one instance running on each host for infra
 agents like muttley, m3collector etc.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CONTROLLER</td>
+                <td>5</td>
+                <td><p>CONTROLLER task is a special task which controls other tasks inside the
+job. E.g. spark driver tasks in a spark job will be a controller task.</p></td>
               </tr>
             
           </tbody>
@@ -23958,6 +24018,14 @@ children </p></td>
                   <td><p>The instance ID of the task to browse the sandbox. </p></td>
                 </tr>
               
+                <tr>
+                  <td>taskId</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Get the sandbox path of a particular task of an instance.
+If not provided, the path of the latest task is returned. </p></td>
+                </tr>
+              
             </tbody>
           </table>
         
@@ -24152,7 +24220,15 @@ TODO: distinguish files and directories in the sandbox </p></td>
                   <td>result</td>
                   <td><a href="#peloton.api.task.svc..peloton.api.task.TaskInfo">.peloton.api.task.TaskInfo</a></td>
                   <td></td>
-                  <td><p>The task info of the task. </p></td>
+                  <td><p>The task info of the task.
+DEPRECATED </p></td>
+                </tr>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#peloton.api.task.svc..peloton.api.task.TaskInfo">.peloton.api.task.TaskInfo</a></td>
+                  <td>repeated</td>
+                  <td><p>Returns all active and completed tasks of the given instance. </p></td>
                 </tr>
               
             </tbody>
