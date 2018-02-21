@@ -45,6 +45,7 @@ func TestMergeInstanceOverride(t *testing.T) {
 			DiskLimitMb: 1500,
 			FdLimit:     1000,
 		},
+		Controller: false,
 	}
 	instanceConfig := &task.TaskConfig{
 		Resource: &task.ResourceConfig{
@@ -53,10 +54,13 @@ func TestMergeInstanceOverride(t *testing.T) {
 			DiskLimitMb: 2000,
 			FdLimit:     3000,
 		},
+		Controller: true,
 	}
 
 	assert.Equal(t, instanceConfig.Resource, Merge(defaultConfig, instanceConfig).Resource)
 	assert.Equal(t, defaultConfig.Name, Merge(defaultConfig, instanceConfig).Name)
+	assert.Equal(t, instanceConfig.Controller, Merge(defaultConfig,
+		instanceConfig).Controller)
 }
 
 func TestMergeWithExistingEnviron(t *testing.T) {

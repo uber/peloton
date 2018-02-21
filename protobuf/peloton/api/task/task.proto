@@ -254,6 +254,11 @@ message TaskConfig {
 
   // Preemtion policy of the task
   PreemptionPolicy preemptionPolicy = 11;
+
+  // Whether this is a controler task. A controller is a special batch task
+  // which controls other tasks inside a job. E.g. spark driver tasks in a spark
+  // job will be a controller task.
+  bool controller = 12;
 }
 
 /**

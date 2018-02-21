@@ -26,11 +26,27 @@ func Merge(base *task.TaskConfig, override *task.TaskConfig) *task.TaskConfig {
 	mergedVal := reflect.ValueOf(merged).Elem()
 	for i := 0; i < baseVal.NumField(); i++ {
 		field := overrideVal.Field(i)
-		if (field.Kind() == reflect.String && field.String() == "") ||
-			(field.Kind() != reflect.String && field.IsNil()) {
-			mergedVal.Field(i).Set(baseVal.Field(i))
-		} else {
+
+		switch field.Kind() {
+		case reflect.Bool:
+			// override bool
 			mergedVal.Field(i).Set(overrideVal.Field(i))
+		case reflect.String:
+			if field.String() == "" {
+				// set to base config value if the string is empty
+				mergedVal.Field(i).Set(baseVal.Field(i))
+			} else {
+				// merged config should have the overridden value
+				mergedVal.Field(i).Set(overrideVal.Field(i))
+			}
+		default:
+			if field.IsNil() {
+				// set to base config value if the value is empty
+				mergedVal.Field(i).Set(baseVal.Field(i))
+			} else {
+				// merged config should have the overridden value
+				mergedVal.Field(i).Set(overrideVal.Field(i))
+			}
 		}
 	}
 
