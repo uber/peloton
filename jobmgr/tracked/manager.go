@@ -35,6 +35,19 @@ const (
 	UpdateAndSchedule
 )
 
+var (
+	// jobStatesToRecover represents the job states which need recovery
+	jobStatesToRecover = []pb_job.JobState{
+		pb_job.JobState_INITIALIZED,
+		pb_job.JobState_PENDING,
+		pb_job.JobState_RUNNING,
+		pb_job.JobState_KILLING,
+		// Get failed and killed jobs in-case service jobs need to be restarted
+		pb_job.JobState_FAILED,
+		pb_job.JobState_UNKNOWN,
+	}
+)
+
 // Manager for tracking jobs and tasks. The manager has built in scheduler,
 // for marking tasks as dirty and ready for being processed by the goal state
 // engine.
@@ -473,16 +486,7 @@ func (m *manager) syncFromDB(ctx context.Context) error {
 	log.Info("syncing tracked manager with db")
 	startRecoveryTime := time.Now()
 
-	// jobStates represents the job states which need recovery
-	jobStates := []pb_job.JobState{
-		pb_job.JobState_INITIALIZED,
-		pb_job.JobState_PENDING,
-		pb_job.JobState_RUNNING,
-		// Get failed and killed jobs in-case service jobs need to be restarted
-		pb_job.JobState_FAILED,
-		pb_job.JobState_UNKNOWN,
-	}
-	err := cmn_recovery.RecoverJobsByState(ctx, m.jobStore, jobStates, m.recoverTasks)
+	err := cmn_recovery.RecoverJobsByState(ctx, m.jobStore, jobStatesToRecover, m.recoverTasks)
 	if err != nil {
 		return err
 	}

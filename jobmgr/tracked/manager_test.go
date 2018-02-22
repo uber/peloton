@@ -63,6 +63,24 @@ func TestManagerSetAndClearJob(t *testing.T) {
 	assert.Equal(t, 0, len(m.jobs))
 }
 
+func TestRecoverJobStates(t *testing.T) {
+	var jobStatesNotRecover = []pb_job.JobState{
+		pb_job.JobState_SUCCEEDED,
+		pb_job.JobState_KILLED,
+	}
+
+	jobKnownStates := append(jobStatesNotRecover, jobStatesToRecover...)
+	for _, state := range pb_job.JobState_name {
+		found := false
+		for _, notRecover := range jobKnownStates {
+			if notRecover.String() == state {
+				found = true
+			}
+		}
+		assert.True(t, found)
+	}
+}
+
 func TestManagerSyncFromDB(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
