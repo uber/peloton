@@ -33,6 +33,7 @@ var (
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: tracked.StartAction,
 			task.TaskState_LAUNCHED:    tracked.LaunchRetryAction,
+			task.TaskState_FAILED:      tracked.FailRetryAction,
 		},
 		task.TaskState_KILLED: {
 			task.TaskState_INITIALIZED: tracked.StopAction,

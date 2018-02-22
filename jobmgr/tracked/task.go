@@ -80,6 +80,7 @@ const (
 	FailAction                TaskAction = "fail"
 	LaunchRetryAction         TaskAction = "launch_retry"
 	NotifyLaunchedTasksAction TaskAction = "notify_launched_task"
+	FailRetryAction           TaskAction = "fail_retry"
 )
 
 func newTask(job *job, id uint32) *task {
@@ -228,6 +229,9 @@ func (t *task) RunAction(ctx context.Context, action TaskAction) (bool, error) {
 			WithField("action", action).
 			Info("running preemption action")
 		return t.RunAction(ctx, action)
+
+	case FailRetryAction:
+		reschedule, err = t.failureRetry(ctx)
 
 	default:
 		err = fmt.Errorf("no command configured for running task action `%v`", action)

@@ -190,13 +190,12 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipSameState() {
 }
 
 // Test processing task failure status update w/ retry.
-func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() {
+func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdate() {
 	defer suite.ctrl.Finish()
 
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 
-	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
@@ -206,7 +205,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 		Do(func(ctx context.Context, _, _ interface{}, runtime *task.RuntimeInfo, req tracked.UpdateRequest) {
 			suite.Equal(
 				runtime.State,
-				task.TaskState_INITIALIZED,
+				task.TaskState_FAILED,
 			)
 			suite.Equal(
 				runtime.Reason,
@@ -214,84 +213,11 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateWithRetry() 
 			)
 			suite.Equal(
 				runtime.Message,
-				rescheduleMsg,
+				_failureMsg,
 			)
 			suite.Equal(
 				runtime.FailureCount,
-				uint32(1),
-			)
-		}).
-		Return(nil)
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["status_updater.tasks_failed_total+"].Value())
-	time.Sleep(_waitTime)
-}
-
-// Test processing task failure status update w/o retry.
-func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdateNoRetry() {
-	defer suite.ctrl.Finish()
-
-	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
-	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
-	// Set max failure to be 0 so we don't retry schedule upon task failure.
-	taskInfo.GetConfig().GetRestartPolicy().MaxFailures = 0
-	updateTaskInfo := createTestTaskInfo(task.TaskState_FAILED)
-	updateTaskInfo.GetConfig().GetRestartPolicy().MaxFailures = 0
-	updateTaskInfo.GetRuntime().Reason = _mesosReason.String()
-	updateTaskInfo.GetRuntime().Message = _failureMsg
-	updateTaskInfo.GetRuntime().CompletionTime = _currentTime
-	updateTaskInfo.GetRuntime().GoalState = task.TaskState_SUCCEEDED
-
-	gomock.InOrder(
-		suite.mockTaskStore.EXPECT().
-			GetTaskByID(context.Background(), _pelotonTaskID).
-			Return(taskInfo, nil),
-		suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return(),
-		suite.mockTrackedManager.EXPECT().
-			UpdateTaskRuntime(context.Background(), _pelotonJobID, _instanceID, updateTaskInfo.GetRuntime(), tracked.UpdateAndSchedule).
-			Return(nil),
-	)
-
-	now = nowMock
-	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
-}
-
-// Test processing task failure due to container launch failure.
-func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedSystemFailure() {
-	defer suite.ctrl.Finish()
-
-	failureReason := mesos.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED
-	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_FAILED)
-	event.MesosTaskStatus.Reason = &failureReason
-	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
-	taskInfo.GetConfig().GetRestartPolicy().MaxFailures = 0
-
-	rescheduleMsg := "Rescheduled due to task failure status: testFailure"
-	suite.mockTaskStore.EXPECT().
-		GetTaskByID(context.Background(), _pelotonTaskID).
-		Return(taskInfo, nil)
-	suite.mockTrackedManager.EXPECT().UpdateJobUpdateTime(_pelotonJobID, gomock.Any()).Return()
-	suite.mockTrackedManager.EXPECT().
-		UpdateTaskRuntime(context.Background(), _pelotonJobID, uint32(0), gomock.Any(), tracked.UpdateAndSchedule).
-		Do(func(ctx context.Context, JobId *peloton.JobID, _ interface{}, updateTask *task.RuntimeInfo, req tracked.UpdateRequest) {
-			suite.Equal(JobId, _pelotonJobID)
-			suite.Equal(
-				updateTask.State,
-				task.TaskState_INITIALIZED,
-			)
-			suite.Equal(
-				updateTask.Reason,
-				failureReason.String(),
-			)
-			suite.Equal(
-				updateTask.Message,
-				rescheduleMsg,
-			)
-			suite.Equal(
-				updateTask.FailureCount,
-				uint32(1),
+				uint32(0),
 			)
 		}).
 		Return(nil)

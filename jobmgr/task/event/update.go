@@ -28,11 +28,6 @@ import (
 // Declare a Now function so that we can mock it in unit tests.
 var now = time.Now
 
-// Maximum retries on mesos system failures
-const (
-	MaxSystemFailureAttempts = 4
-)
-
 // StatusUpdate is the interface for task status updates
 type StatusUpdate interface {
 	Start()
@@ -142,25 +137,6 @@ func (p *statusUpdate) OnEvent(event *pb_eventstream.Event) {
 // GetEventProgress returns the progress of the event progressing
 func (p *statusUpdate) GetEventProgress() uint64 {
 	return p.applier.GetEventProgress()
-}
-
-func (p *statusUpdate) isSystemFailure(event *pb_eventstream.Event) bool {
-	if event.Type != pb_eventstream.Event_MESOS_TASK_STATUS {
-		return false
-	}
-	state := util.MesosStateToPelotonState(event.MesosTaskStatus.GetState())
-	if state != pb_task.TaskState_FAILED && state != pb_task.TaskState_KILLED {
-		return false
-	}
-	if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED {
-		return true
-	}
-	if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED {
-		if strings.Contains(event.MesosTaskStatus.GetMessage(), "Container terminated with signal Broken pipe") {
-			return true
-		}
-	}
-	return false
 }
 
 // ProcessStatusUpdate processes the actual task status
@@ -302,27 +278,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				Info("ignoring duplicate task id failure")
 			return nil
 		}
-
 		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
-		maxAttempts := taskInfo.GetConfig().GetRestartPolicy().GetMaxFailures()
-		if p.isSystemFailure(event) {
-			if maxAttempts < MaxSystemFailureAttempts {
-				maxAttempts = MaxSystemFailureAttempts
-			}
-			p.metrics.RetryFailedLaunchTotal.Inc(1)
-		}
-
-		if runtime.GetFailureCount() >= maxAttempts {
-			// Stop scheduling the task, max failures reached.
-			runtime.State = state
-			break
-		}
-
-		// TODO(mu): check for failing reason before rescheduling.
-		p.metrics.RetryFailedTasksTotal.Inc(1)
-		runtime.Message = "Rescheduled due to task failure status: " + runtime.Message
-		util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
-		runtime.FailureCount++
+		runtime.State = state
 
 	case pb_task.TaskState_LOST:
 		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
