@@ -21,6 +21,9 @@ const (
 	// zkConnErrRetry how long to wait before restarting campaigning
 	// for leadership on connection error
 	zkConnErrRetry = 1 * time.Second
+	// _metricsUpdateTick is the period between consecutive emissions
+	// of leader election metrics
+	_metricsUpdateTick = 10 * time.Second
 )
 
 // ElectionConfig is config related to leader election of this service.
@@ -41,6 +44,7 @@ type election struct {
 	role       string
 	candidate  *leadership.Candidate
 	nomination Nomination
+	stopChan   chan struct{}
 }
 
 // NewCandidate creates new election object to control participation
@@ -83,10 +87,30 @@ func NewCandidate(
 		role:       role,
 		nomination: nomination,
 		candidate:  candidate,
+		stopChan:   make(chan struct{}, 1),
 	}
 
 	return &el, nil
 
+}
+
+// updateLeaderElectionMetric emits leader election
+// metrics at constant interval
+func (el *election) updateLeaderElectionMetrics(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	select {
+	case <-el.stopChan:
+		log.Info("Stopped leader election metrics emission")
+		return
+	case <-ticker.C:
+		if el.IsLeader() {
+			el.metrics.IsLeader.Update(1)
+		} else {
+			el.metrics.IsLeader.Update(0)
+		}
+	}
 }
 
 // Start begins running election for leadership
@@ -117,6 +141,10 @@ func (el *election) Start() error {
 		}
 		log.Info("Stopped running election")
 	}()
+
+	// Update leader election metrics
+	go el.updateLeaderElectionMetrics(_metricsUpdateTick)
+
 	return nil
 }
 
@@ -189,6 +217,7 @@ func (el *election) Stop() error {
 	el.Lock()
 	defer el.Unlock()
 	if el.running {
+		el.stopChan <- struct{}{}
 		el.running = false
 		el.metrics.Stop.Inc(1)
 		el.metrics.Running.Update(0)

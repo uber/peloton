@@ -67,6 +67,7 @@ func TestLeaderElection(t *testing.T) {
 		metrics:    newElectionMetrics(tally.NoopScope, "hostname"),
 		candidate:  leadership.NewCandidate(mockStore, key, "testhost:666", ttl),
 		nomination: testComponent{host: "testhost", port: "666"},
+		stopChan:   make(chan struct{}, 1),
 	}
 
 	log.Info("About to start")
