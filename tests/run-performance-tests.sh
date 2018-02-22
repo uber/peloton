@@ -44,13 +44,13 @@ echo $VERSION
 echo $COMMIT_HASH
 
 # start vCluster
-tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /DefaultResPool -n $COMMIT_HASH setup -s 1000 -v $VERSION
+tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /DefaultResPool -n "v${COMMIT_HASH}" setup -s 1000 -v $VERSION
 
 # run benchmark
 tests/performance/multi_benchmark.py
 
 # teardown vCluster
-tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /DefaultResPool -n $COMMIT_HASH teardown
+tools/vcluster/main.py -z zookeeper-mesos-preprod01.pit-irn-1.uberatc.net -p /DefaultResPool -n "v${COMMIT_HASH}" teardown
 
 deactivate
 

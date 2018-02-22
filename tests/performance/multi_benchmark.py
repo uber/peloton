@@ -22,7 +22,7 @@ how to run this script.
 """
 
 INSTANCE_NUM = [10000, 50000]
-SLEEP_TIME = [100, 300]
+SLEEP_TIME_SEC = [10, 300]
 INSTANCE_CONFIG = [True, False]
 
 
@@ -34,15 +34,14 @@ def main():
         cluster_config = json.loads(open(file_name).read())
     except Exception:
         raise Exception('Invalid vcluster config file')
-
-    pf_client = PerformanceTestClient(cluster_config['Zookeeper'])
+    agent_num = int(cluster_config['Mesos Slave Number'])
+    pf_client = PerformanceTestClient(cluster_config['Zookeeper'], agent_num)
     peloton_version = cluster_config['Peloton Version']
-    agent_num = cluster_config['Mesos Slave Number']
     records = []
     df = pd.DataFrame()
 
     for instance_num in INSTANCE_NUM:
-        for sleep_time in SLEEP_TIME:
+        for sleep_time in SLEEP_TIME_SEC:
             for instance_config in INSTANCE_CONFIG:
 
                 succeeded, start, completion = pf_client.run_benchmark(
@@ -52,7 +51,7 @@ def main():
                 )
 
                 record = {
-                    'Instance Number': instance_num,
+                    'Task Number': instance_num,
                     'Sleep Time(s)': sleep_time,
                     'Use Instance Config': instance_config,
                     'Succeeded': succeeded,

@@ -62,15 +62,15 @@ def create_task_config(sleep_time, dynamic_factor):
 
 
 class PerformanceTestClient(object):
-    def __init__(self, zk_server):
+    def __init__(self, zk_server, agent_num):
         self.zk_server = zk_server
         self.client = PelotonClient(
             name='peloton-client',
             zk_servers=zk_server,
         )
-        self.respool_id = self.ensure_respool()
+        self.respool_id = self.ensure_respool(agent_num)
 
-    def ensure_respool(self):
+    def ensure_respool(self, agent_num):
         # lookup respool
         request = respool.LookupRequest(
             path=respool.ResourcePoolPath(value='/' + RESPOOL_PATH),
@@ -81,9 +81,14 @@ class PerformanceTestClient(object):
             timeout=default_timeout,
         )
 
-        # create pool if not exist
+        # create pool if not exist,
+        # respool can use 90% of the resource of the cluster
         if resp.id.value is None or resp.id.value == u'':
-            respool_config = create_pool_config(4, 12, 12)
+            respool_config = create_pool_config(
+                cpu=agent_num * 3.0 * 0.9,
+                memory=agent_num * 1024 * 0.9,
+                disk=agent_num * 1024 * 0.9,
+            )
             request = respool.CreateRequest(
                 config=respool_config,
             )
@@ -126,7 +131,22 @@ class PerformanceTestClient(object):
 
         request = job.CreateRequest(
             config=job.JobConfig(
-                name='test job',
+                name='instance %s && sleep %s && instance config %s' % (
+                    instance_num, sleep_time, use_instance_config),
+                labels=[
+                    peloton.Label(
+                        key='task_num',
+                        value=str(instance_num),
+                    ),
+                    peloton.Label(
+                        key='sleep_time',
+                        value=str(sleep_time),
+                    ),
+                    peloton.Label(
+                        key='use_instance_config',
+                        value=str(use_instance_config),
+                    ),
+                ],
                 owningTeam='compute',
                 description='test job',
                 instanceCount=instance_num,
@@ -156,7 +176,7 @@ class PerformanceTestClient(object):
         }
         return self.monitering(resp.jobId.value, target_status)
 
-    def monitering(self, job_id, target_status, stable_timeout=360):
+    def monitering(self, job_id, target_status, stable_timeout=600):
         """
         monitering will stop if the job status is not changed in stable_timeout
         or the job status meets the target_status. monitering returns a bool
