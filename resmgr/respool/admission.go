@@ -152,7 +152,7 @@ func (ac batchAdmissionController) canAdmit(gang *resmgrsvc.Gang,
 	defer pool.Unlock()
 
 	currentEntitlement := pool.entitlement
-	currentAllocation := pool.totalAlloc
+	currentAllocation := pool.allocation.GetByType(scalar.TotalAllocation)
 	neededResources := scalar.GetGangResources(gang)
 
 	log.WithField("entitlement", currentEntitlement).
@@ -218,7 +218,7 @@ func pendingQueueAdmitter() admissionController {
 					"failed to remove from pending queue")
 			}
 			pool.Lock()
-			pool.totalAlloc = pool.totalAlloc.Add(scalar.GetGangResources(gang))
+			pool.allocation = pool.allocation.Add(scalar.GetGangAllocation(gang))
 			pool.Unlock()
 
 			return true, nil

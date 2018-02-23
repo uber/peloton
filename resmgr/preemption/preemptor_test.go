@@ -167,7 +167,7 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState() {
 	for _, t := range tt {
 		mockResPool.EXPECT().GetEntitlement().Return(t.entitlement).
 			Times(6)
-		mockResPool.EXPECT().GetAllocation().Return(t.allocation).
+		mockResPool.EXPECT().GetTotalAllocatedResources().Return(t.allocation).
 			Times(6)
 
 		for i := 0; i < 6; i++ {
@@ -204,29 +204,29 @@ func (suite *PreemptorTestSuite) TestUpdateResourcePoolsState_Reset() {
 
 	// mock allocation going down on compared to the entitlement once
 	gomock.InOrder(
-		mockResPool.EXPECT().GetAllocation().Return(&scalar.Resources{
+		mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
 			CPU:    20,
 			MEMORY: 200,
 			DISK:   2000,
 			GPU:    0,
-		}), mockResPool.EXPECT().GetAllocation().Return(&scalar.Resources{
+		}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
 			CPU:    20,
 			MEMORY: 200,
 			DISK:   2000,
 			GPU:    0,
-		}), mockResPool.EXPECT().GetAllocation().Return(&scalar.Resources{
+		}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
 			CPU:    20,
 			MEMORY: 200,
 			DISK:   2000,
 			GPU:    0,
-		}), mockResPool.EXPECT().GetAllocation().Return(&scalar.Resources{
+		}), mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
 			CPU:    20,
 			MEMORY: 200,
 			DISK:   2000,
 			GPU:    0,
 		}),
 		// allocation goes down
-		mockResPool.EXPECT().GetAllocation().Return(&scalar.Resources{
+		mockResPool.EXPECT().GetTotalAllocatedResources().Return(&scalar.Resources{
 			CPU:    10,
 			MEMORY: 100,
 			DISK:   1000,
@@ -272,7 +272,7 @@ func (suite *PreemptorTestSuite) TestPreemptor_ProcessResourcePoolForRunningTask
 		DISK:   2450,
 		GPU:    1,
 	}
-	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
+	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation).AnyTimes()
 	mockResPool.EXPECT().GetPath().Return("/respool-1")
 
 	numRunningTasks := 3
@@ -308,15 +308,18 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks
 		DISK:   2000,
 		GPU:    1,
 	}).AnyTimes()
-	allocation := &scalar.Resources{
-		CPU:    25,
-		MEMORY: 500,
-		DISK:   2450,
-		GPU:    1,
-	}
-	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
-	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any(), gomock.Any()).Do(
-		func(_ bool, res *scalar.Resources) {
+	allocation := &scalar.Allocation{
+		Value: map[scalar.AllocationType]*scalar.Resources{
+			scalar.TotalAllocation: {
+				CPU:    25,
+				MEMORY: 500,
+				DISK:   2450,
+				GPU:    1,
+			}}}
+	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation.
+		GetByType(scalar.TotalAllocation)).AnyTimes()
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
+		func(res *scalar.Allocation) {
 			allocation = allocation.Subtract(res)
 		}).Return(nil).AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
@@ -336,7 +339,8 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
-	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.False(allocation.
+		GetByType(scalar.TotalAllocation).LessThanOrEqual(mockResPool.GetEntitlement()))
 	// Check demand is zero
 	suite.Equal(demand, scalar.ZeroResource)
 
@@ -344,7 +348,8 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForReadyTasks
 	suite.NoError(err)
 
 	// Check allocation <= entitlement after
-	suite.True(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.True(allocation.
+		GetByType(scalar.TotalAllocation).LessThanOrEqual(mockResPool.GetEntitlement()))
 	// Check demand includes resources for all READY tasks
 	suite.Equal(demand, &scalar.Resources{
 		CPU:    _taskResources.CpuLimit * float64(numReadyTasks),
@@ -367,15 +372,19 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForPlacingTas
 		DISK:   2000,
 		GPU:    1,
 	}).AnyTimes()
-	allocation := &scalar.Resources{
-		CPU:    25,
-		MEMORY: 500,
-		DISK:   2450,
-		GPU:    1,
-	}
-	mockResPool.EXPECT().GetAllocation().Return(allocation).AnyTimes()
-	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any(), gomock.Any()).Do(
-		func(_ bool, res *scalar.Resources) {
+	allocation := &scalar.Allocation{
+		Value: map[scalar.AllocationType]*scalar.Resources{
+			scalar.TotalAllocation: {
+				CPU:    25,
+				MEMORY: 500,
+				DISK:   2450,
+				GPU:    1,
+			}}}
+	mockResPool.EXPECT().GetTotalAllocatedResources().Return(allocation.
+		GetByType(scalar.TotalAllocation)).
+		AnyTimes()
+	mockResPool.EXPECT().SubtractFromAllocation(gomock.Any()).Do(
+		func(res *scalar.Allocation) {
 			allocation = allocation.Subtract(res)
 		}).Return(nil).AnyTimes()
 	mockResPool.EXPECT().EnqueueGang(gomock.Any()).Return(nil).AnyTimes()
@@ -395,7 +404,9 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForPlacingTas
 	suite.preemptor.ranker = suite.getMockRanker(tasks)
 
 	// Check allocation > entitlement before
-	suite.False(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.False(allocation.GetByType(scalar.TotalAllocation).LessThanOrEqual(
+		mockResPool.
+			GetEntitlement()))
 	// Check demand is zero
 	suite.Equal(demand, scalar.ZeroResource)
 
@@ -403,7 +414,8 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForPlacingTas
 	suite.NoError(err)
 
 	// Check allocation <= entitlement after
-	suite.True(allocation.LessThanOrEqual(mockResPool.GetEntitlement()))
+	suite.True(allocation.GetByType(scalar.TotalAllocation).
+		LessThanOrEqual(mockResPool.GetEntitlement()))
 	// Check demand includes resources for all READY tasks
 	suite.Equal(demand, &scalar.Resources{
 		CPU:    _taskResources.CpuLimit * float64(numReadyTasks),

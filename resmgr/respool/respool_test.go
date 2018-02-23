@@ -412,35 +412,38 @@ func (s *ResPoolSuite) TestAllocation() {
 	resPoolNode := s.createTestResourcePool()
 	resPoolNode.SetEntitlement(s.getEntitlement())
 
+	totalAlloc := scalar.NewAllocation()
 	for _, t := range s.getTasks() {
 		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(t))
+		totalAlloc = totalAlloc.Add(scalar.GetTaskAllocation(t))
 	}
 	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
-	allocation := resPoolNode.GetAllocation()
-	s.NotNil(allocation)
-	s.Equal(float64(1), allocation.CPU)
-	s.Equal(float64(100), allocation.MEMORY)
-	s.Equal(float64(10), allocation.DISK)
-	s.Equal(float64(0), allocation.GPU)
 
-	err = resPoolNode.SubtractFromAllocation(true, allocation)
+	resourceAlloc := resPoolNode.GetTotalAllocatedResources()
+	s.NotNil(resourceAlloc)
+	s.Equal(float64(1), resourceAlloc.CPU)
+	s.Equal(float64(100), resourceAlloc.MEMORY)
+	s.Equal(float64(10), resourceAlloc.DISK)
+	s.Equal(float64(0), resourceAlloc.GPU)
+
+	err = resPoolNode.SubtractFromAllocation(totalAlloc)
 	s.NoError(err)
-	newAllocation := resPoolNode.GetAllocation()
+	newAllocation := resPoolNode.GetTotalAllocatedResources()
 	s.NotNil(newAllocation)
 	s.Equal(float64(0), newAllocation.CPU)
 	s.Equal(float64(0), newAllocation.MEMORY)
 	s.Equal(float64(0), newAllocation.DISK)
 	s.Equal(float64(0), newAllocation.GPU)
 
-	resPoolNode.AddToAllocation(true, allocation)
-	newAllocation = resPoolNode.GetAllocation()
+	resPoolNode.AddToAllocation(totalAlloc)
+	newAllocation = resPoolNode.GetTotalAllocatedResources()
 	s.NotNil(newAllocation)
-	s.Equal(float64(1), allocation.CPU)
-	s.Equal(float64(100), allocation.MEMORY)
-	s.Equal(float64(10), allocation.DISK)
-	s.Equal(float64(0), allocation.GPU)
+	s.Equal(float64(1), resourceAlloc.CPU)
+	s.Equal(float64(100), resourceAlloc.MEMORY)
+	s.Equal(float64(10), resourceAlloc.DISK)
+	s.Equal(float64(0), resourceAlloc.GPU)
 }
 
 func (s *ResPoolSuite) TestCalculateAllocation() {
@@ -498,7 +501,7 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value, resPoolNode1, poolConfig11)
 	s.NoError(err)
 	resPoolNode11.SetEntitlement(s.getEntitlement())
-	resPoolNode11.SetAllocation(s.getAllocation())
+	resPoolNode11.SetTotalAllocatedResources(s.getAllocation())
 
 	poolConfig12 := &pb_respool.ResourcePoolConfig{
 		Name:      "respool12",
@@ -510,7 +513,7 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value, resPoolNode1, poolConfig12)
 	s.NoError(err)
 	resPoolNode12.SetEntitlement(s.getEntitlement())
-	resPoolNode12.SetAllocation(s.getAllocation())
+	resPoolNode12.SetTotalAllocatedResources(s.getAllocation())
 
 	node1ChildrenList := list.New()
 	node1ChildrenList.PushBack(resPoolNode11)
@@ -527,34 +530,34 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value, resPoolNode2, poolConfig21)
 	s.NoError(err)
 	resPoolNode21.SetEntitlement(s.getEntitlement())
-	resPoolNode21.SetAllocation(s.getAllocation())
+	resPoolNode21.SetTotalAllocatedResources(s.getAllocation())
 	node2ChildrenList := list.New()
 	node2ChildrenList.PushBack(resPoolNode21)
 	resPoolNode2.SetChildren(node2ChildrenList)
-	resPoolRoot.CalculateAllocation()
+	resPoolRoot.CalculateTotalAllocatedResources()
 
-	allocationroot := resPoolRoot.GetAllocation()
+	allocationroot := resPoolRoot.GetTotalAllocatedResources()
 	s.NotNil(allocationroot)
 	s.Equal(float64(300), allocationroot.CPU)
 	s.Equal(float64(300), allocationroot.MEMORY)
 	s.Equal(float64(3000), allocationroot.DISK)
 	s.Equal(float64(3), allocationroot.GPU)
 
-	allocation1 := resPoolNode1.GetAllocation()
+	allocation1 := resPoolNode1.GetTotalAllocatedResources()
 	s.NotNil(allocation1)
 	s.Equal(float64(200), allocation1.CPU)
 	s.Equal(float64(200), allocation1.MEMORY)
 	s.Equal(float64(2000), allocation1.DISK)
 	s.Equal(float64(2), allocation1.GPU)
 
-	allocation2 := resPoolNode2.GetAllocation()
+	allocation2 := resPoolNode2.GetTotalAllocatedResources()
 	s.NotNil(allocation2)
 	s.Equal(float64(100), allocation2.CPU)
 	s.Equal(float64(100), allocation2.MEMORY)
 	s.Equal(float64(1000), allocation2.DISK)
 	s.Equal(float64(1), allocation2.GPU)
 
-	allocation11 := resPoolNode11.GetAllocation()
+	allocation11 := resPoolNode11.GetTotalAllocatedResources()
 	s.NotNil(allocation11)
 	s.Equal(float64(100), allocation11.CPU)
 	s.Equal(float64(100), allocation11.MEMORY)
@@ -616,7 +619,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value, resPoolNode1, poolConfig11)
 	s.NoError(err)
 	resPoolNode11.SetEntitlement(s.getEntitlement())
-	resPoolNode11.SetAllocation(s.getAllocation())
+	resPoolNode11.SetTotalAllocatedResources(s.getAllocation())
 	resPoolNode11.AddToDemand(s.getDemand())
 
 	poolConfig12 := &pb_respool.ResourcePoolConfig{
@@ -629,7 +632,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value, resPoolNode1, poolConfig12)
 	s.NoError(err)
 	resPoolNode12.SetEntitlement(s.getEntitlement())
-	resPoolNode12.SetAllocation(s.getAllocation())
+	resPoolNode12.SetTotalAllocatedResources(s.getAllocation())
 	resPoolNode12.AddToDemand(s.getDemand())
 
 	node1ChildrenList := list.New()
@@ -647,7 +650,7 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value, resPoolNode2, poolConfig21)
 	s.NoError(err)
 	resPoolNode21.SetEntitlement(s.getEntitlement())
-	resPoolNode21.SetAllocation(s.getAllocation())
+	resPoolNode21.SetTotalAllocatedResources(s.getAllocation())
 	resPoolNode21.AddToDemand(s.getDemand())
 	node2ChildrenList := list.New()
 	node2ChildrenList.PushBack(resPoolNode21)
@@ -1063,65 +1066,6 @@ func (s *ResPoolSuite) TestResPoolPeekPendingGangs() {
 	gangs, err = respool.PeekPendingGangs(10)
 	s.NoError(err)
 	s.Equal(4, len(gangs))
-}
-
-func (s *ResPoolSuite) TestNonPreemptibleAllocation() {
-	poolConfigroot := &pb_respool.ResourcePoolConfig{
-		Name:      "testNonPreemptible",
-		Parent:    nil,
-		Resources: s.getResources(),
-		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
-	}
-
-	rp, err := NewRespool(tally.NoopScope, _rootResPoolID.Value, nil,
-		poolConfigroot)
-	s.NoError(err)
-
-	// Add allocation for both preemptible and non-preemptible
-	allocation := s.getAllocation()
-	rp.AddToAllocation(true, allocation)
-	rp.AddToAllocation(false, allocation)
-
-	// Allocation includes both preemptible and non-preemptible
-	allocation = rp.GetAllocation()
-	s.NotNil(allocation)
-	s.Equal(float64(200), allocation.CPU)
-	s.Equal(float64(200), allocation.MEMORY)
-	s.Equal(float64(2000), allocation.DISK)
-	s.Equal(float64(2), allocation.GPU)
-
-	// Check non-preemptible allocation
-	node, ok := rp.(*resPool)
-	s.True(ok)
-	s.Equal(float64(100), node.nonPreemptibleAlloc.CPU)
-	s.Equal(float64(100), node.nonPreemptibleAlloc.MEMORY)
-	s.Equal(float64(1000), node.nonPreemptibleAlloc.DISK)
-	s.Equal(float64(1), node.nonPreemptibleAlloc.GPU)
-
-	// Remove allocation for preemptible
-	rp.SubtractFromAllocation(true, s.getAllocation())
-	// Allocation includes non-preemptible
-	allocation = rp.GetAllocation()
-	s.NotNil(allocation)
-	s.Equal(node.nonPreemptibleAlloc.CPU, allocation.CPU)
-	s.Equal(node.nonPreemptibleAlloc.MEMORY, allocation.MEMORY)
-	s.Equal(node.nonPreemptibleAlloc.DISK, allocation.DISK)
-	s.Equal(node.nonPreemptibleAlloc.GPU, allocation.GPU)
-
-	// Remove allocation for non-preemptible
-	rp.SubtractFromAllocation(false, s.getAllocation())
-
-	// Allocation is zero
-	allocation = rp.GetAllocation()
-	s.NotNil(allocation)
-	s.Equal(float64(0), allocation.CPU)
-	s.Equal(float64(0), allocation.MEMORY)
-	s.Equal(float64(0), allocation.DISK)
-	s.Equal(float64(0), allocation.GPU)
-	s.Equal(node.nonPreemptibleAlloc.CPU, allocation.CPU)
-	s.Equal(node.nonPreemptibleAlloc.MEMORY, allocation.MEMORY)
-	s.Equal(node.nonPreemptibleAlloc.DISK, allocation.DISK)
-	s.Equal(node.nonPreemptibleAlloc.GPU, allocation.GPU)
 }
 
 func TestResPoolSuite(t *testing.T) {

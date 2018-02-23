@@ -210,9 +210,7 @@ func (tr *tracker) MarkItDone(
 	// and initialized state
 	if !(tr.GetTask(tID).GetCurrentState().String() == task.TaskState_PENDING.String() ||
 		tr.GetTask(tID).GetCurrentState().String() == task.TaskState_INITIALIZED.String()) {
-		err := t.respool.SubtractFromAllocation(
-			t.Task().GetPreemptible(), scalar.ConvertToResmgrResource(
-				t.task.GetResource()))
+		err := t.respool.SubtractFromAllocation(scalar.GetTaskAllocation(t.Task()))
 		if err != nil {
 			return errors.Errorf("Not able to update task %s ", tID)
 		}
@@ -266,18 +264,18 @@ func (tr *tracker) TasksByHosts(hosts []string, taskType resmgr.TaskType) map[st
 // AddResources adds the task resources to respool
 func (tr *tracker) AddResources(
 	tID *peloton.TaskID) error {
-	task := tr.GetTask(tID)
-	if task == nil {
-		return errors.Errorf("task %s is not in tracker", tID)
+	rmTask := tr.GetTask(tID)
+	if rmTask == nil {
+		return errors.Errorf("rmTask %s is not in tracker", tID)
 	}
-	res := scalar.ConvertToResmgrResource(task.task.GetResource())
-	err := task.respool.AddToAllocation(task.Task().GetPreemptible(), res)
+	res := scalar.ConvertToResmgrResource(rmTask.Task().GetResource())
+	err := rmTask.respool.AddToAllocation(scalar.GetTaskAllocation(rmTask.Task()))
 	if err != nil {
 		return errors.Errorf("Not able to add resources for "+
-			"task %s for respool %s ", tID, task.respool.Name())
+			"rmTask %s for respool %s ", tID, rmTask.respool.Name())
 	}
 	log.WithFields(log.Fields{
-		"Respool":   task.respool.Name(),
+		"Respool":   rmTask.respool.Name(),
 		"Resources": res,
 	}).Debug("Added resources to Respool")
 	return nil

@@ -161,7 +161,7 @@ func (c *calculator) calculateEntitlement(ctx context.Context) error {
 	// Invoking the demand calculation
 	rootResPool.CalculateDemand()
 	// Invoking the Allocation calculation
-	rootResPool.CalculateAllocation()
+	rootResPool.CalculateTotalAllocatedResources()
 	// Setting Entitlement for root respool's children
 	c.setEntitlementForChildren(rootResPool)
 
@@ -197,7 +197,7 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 
 		// Demand is pending tasks + already allocated
 		demand := n.GetDemand()
-		allocation := n.GetAllocation()
+		allocation := n.GetTotalAllocatedResources()
 		demand = demand.Add(allocation)
 		demands[n.ID()] = demand
 		log.WithFields(log.Fields{

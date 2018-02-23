@@ -344,7 +344,7 @@ func (h *serviceHandler) DeleteResourcePool(
 	}
 
 	// Get the allocation of the resource pool.
-	allocation := resPool.GetAllocation()
+	allocation := resPool.GetTotalAllocatedResources()
 	// Get the resource pool demand.
 	demand := resPool.GetDemand()
 

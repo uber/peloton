@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common"
 
@@ -187,4 +188,163 @@ func TestSet(t *testing.T) {
 	assert.EqualValues(t, float64(5.0), r1.Get(common.GPU))
 	assert.EqualValues(t, float64(3.0), r1.Get(common.MEMORY))
 	assert.EqualValues(t, float64(4.0), r1.Get(common.DISK))
+}
+
+func TestInitializeAllocation(t *testing.T) {
+	alloc := NewAllocation()
+	for _, v := range alloc.Value {
+		assert.Equal(t, v, ZeroResource)
+	}
+}
+
+func withTotalAlloc() *Allocation {
+	return withAllocByType(TotalAllocation)
+}
+
+func withNonPreemptibleAlloc() *Allocation {
+	return withAllocByType(NonPreemptibleAllocation)
+}
+
+func withControllerAlloc() *Allocation {
+	return withAllocByType(ControllerAllocation)
+}
+
+func withAllocByType(allocationType AllocationType) *Allocation {
+	alloc := initializeZeroAlloc()
+
+	alloc.Value[allocationType] = &Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	return alloc
+}
+
+func TestAddAllocation(t *testing.T) {
+	totalAlloc := withTotalAlloc()
+	npAlloc := withNonPreemptibleAlloc()
+
+	expectedAlloc := initializeZeroAlloc()
+	expectedAlloc.Value[TotalAllocation] = &Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	expectedAlloc.Value[NonPreemptibleAllocation] = &Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	expectedAlloc.Value[ControllerAllocation] = ZeroResource
+	totalAlloc = totalAlloc.Add(npAlloc)
+	assert.Equal(t, expectedAlloc, totalAlloc)
+
+	controllerAlloc := withControllerAlloc()
+	expectedAlloc.Value[ControllerAllocation] = &Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	assert.Equal(t, expectedAlloc, totalAlloc.Add(controllerAlloc))
+}
+
+func TestSubtractAllocation(t *testing.T) {
+	npAlloc := withNonPreemptibleAlloc() // only has non-preemptible alloc
+	totalAlloc := withTotalAlloc()       // only has total alloc
+
+	totalAlloc = totalAlloc.Subtract(npAlloc)
+
+	//since they are in different dimensions they should not be affected
+	assert.NotEqual(t, ZeroResource, totalAlloc)
+
+	totalAlloc = totalAlloc.Subtract(totalAlloc)
+	for _, v := range totalAlloc.Value {
+		assert.Equal(t, ZeroResource, v)
+	}
+
+	npAlloc = npAlloc.Subtract(npAlloc)
+	for _, v := range npAlloc.Value {
+		assert.Equal(t, ZeroResource, v)
+	}
+}
+
+func TestGetTaskAllocation(t *testing.T) {
+	taskConfig := &task.ResourceConfig{
+		CpuLimit:    4.0,
+		DiskLimitMb: 5.0,
+		GpuLimit:    1.0,
+		MemLimitMb:  10.0,
+	}
+
+	tt := []struct {
+		preemptible bool
+		ttype       resmgr.TaskType
+		noAlloc     []AllocationType
+		hasAlloc    []AllocationType
+	}{
+		{
+			// represents a preemptible batch task
+			preemptible: true,
+			ttype:       resmgr.TaskType_BATCH,
+			noAlloc:     []AllocationType{NonPreemptibleAllocation, ControllerAllocation},
+			hasAlloc:    []AllocationType{PreemptibleAllocation},
+		},
+		{
+			// represents a non-preemptible batch task
+			preemptible: false,
+			ttype:       resmgr.TaskType_BATCH,
+			noAlloc:     []AllocationType{PreemptibleAllocation, ControllerAllocation},
+			hasAlloc:    []AllocationType{NonPreemptibleAllocation},
+		},
+		{
+			// represents a non-preemptible controller task
+			preemptible: false,
+			ttype:       resmgr.TaskType_CONTROLLER,
+			noAlloc:     []AllocationType{PreemptibleAllocation},
+			hasAlloc:    []AllocationType{ControllerAllocation, NonPreemptibleAllocation},
+		},
+		{
+			// represents a preemptible controller task
+			preemptible: true,
+			ttype:       resmgr.TaskType_CONTROLLER,
+			noAlloc:     []AllocationType{NonPreemptibleAllocation},
+			hasAlloc:    []AllocationType{ControllerAllocation, PreemptibleAllocation},
+		},
+	}
+
+	for _, test := range tt {
+		rmTask := &resmgr.Task{
+			Preemptible: test.preemptible,
+			Resource:    taskConfig,
+			Type:        test.ttype,
+		}
+
+		alloc := GetTaskAllocation(rmTask)
+
+		// total should always be equal to the taskConfig
+		res := alloc.GetByType(TotalAllocation)
+		assert.Equal(t, float64(4.0), res.CPU)
+		assert.Equal(t, float64(5.0), res.DISK)
+		assert.Equal(t, float64(1.0), res.GPU)
+		assert.Equal(t, float64(10.0), res.MEMORY)
+
+		// these should be equal to the taskConfig
+		for _, allocType := range test.hasAlloc {
+			res := alloc.GetByType(allocType)
+			assert.Equal(t, float64(4.0), res.CPU)
+			assert.Equal(t, float64(5.0), res.DISK)
+			assert.Equal(t, float64(1.0), res.GPU)
+			assert.Equal(t, float64(10.0), res.MEMORY)
+		}
+
+		// these should be equal to zero
+		for _, allocType := range test.noAlloc {
+			res := alloc.GetByType(allocType)
+			assert.Equal(t, ZeroResource, res)
+		}
+	}
 }

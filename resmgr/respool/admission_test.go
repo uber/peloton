@@ -55,10 +55,10 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	s.NoError(err)
 
 	// allocation should be zero
-	s.Equal(float64(0), resPool.GetAllocation().CPU)
-	s.Equal(float64(0), resPool.GetAllocation().MEMORY)
-	s.Equal(float64(0), resPool.GetAllocation().DISK)
-	s.Equal(float64(0), resPool.GetAllocation().GPU)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().CPU)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().MEMORY)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
 
 	ok, err = pending.TryAdmit(gang, resPool)
 	s.NoError(err)
@@ -66,10 +66,10 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	s.Equal(0, resPool.pendingQueue.Size())
 
 	// check allocation after
-	s.Equal(float64(1), resPool.GetAllocation().CPU)
-	s.Equal(float64(100), resPool.GetAllocation().MEMORY)
-	s.Equal(float64(10), resPool.GetAllocation().DISK)
-	s.Equal(float64(0), resPool.GetAllocation().GPU)
+	s.Equal(float64(1), resPool.GetTotalAllocatedResources().CPU)
+	s.Equal(float64(100), resPool.GetTotalAllocatedResources().MEMORY)
+	s.Equal(float64(10), resPool.GetTotalAllocatedResources().DISK)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
@@ -85,10 +85,10 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
 	s.NoError(err)
 
 	// allocation should be zero
-	s.Equal(float64(0), resPool.GetAllocation().CPU)
-	s.Equal(float64(0), resPool.GetAllocation().MEMORY)
-	s.Equal(float64(0), resPool.GetAllocation().DISK)
-	s.Equal(float64(0), resPool.GetAllocation().GPU)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().CPU)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().MEMORY)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
 
 	ok, err = pending.TryAdmit(gang, resPool)
 	s.NoError(err)
@@ -96,8 +96,8 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
 	s.Equal(1, resPool.pendingQueue.Size())
 
 	// check allocation after
-	s.Equal(float64(0), resPool.GetAllocation().CPU)
-	s.Equal(float64(0), resPool.GetAllocation().MEMORY)
-	s.Equal(float64(0), resPool.GetAllocation().DISK)
-	s.Equal(float64(0), resPool.GetAllocation().GPU)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().CPU)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().MEMORY)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
+	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
 }

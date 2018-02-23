@@ -172,10 +172,10 @@ func (suite *TrackerTestSuite) TestClear() {
 }
 
 func (suite *TrackerTestSuite) TestAddResources() {
-	res := suite.respool.GetAllocation()
+	res := suite.respool.GetTotalAllocatedResources()
 	suite.Equal(res.GetCPU(), float64(0))
 	suite.tracker.AddResources(&peloton.TaskID{Value: "job1-1"})
-	res = suite.respool.GetAllocation()
+	res = suite.respool.GetTotalAllocatedResources()
 	suite.Equal(res.GetCPU(), float64(1))
 }
 
@@ -207,16 +207,16 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 		GPU:    float64(0),
 		MEMORY: float64(100),
 	}
-	rmTask.respool.AddToAllocation(true, resources)
+	rmTask.respool.AddToAllocation(scalar.GetTaskAllocation(rmTask.Task()))
 
-	res := rmTask.respool.GetAllocation()
+	res := rmTask.respool.GetTotalAllocatedResources()
 
 	suite.Equal(res, resources)
 
 	deleteTask := &peloton.TaskID{Value: taskID}
 	suite.tracker.MarkItDone(deleteTask)
 
-	res = rmTask.respool.GetAllocation()
+	res = rmTask.respool.GetTotalAllocatedResources()
 	suite.Equal(res, resources)
 
 	// FOR TASK 2
@@ -228,9 +228,9 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 
 	rmTask = suite.tracker.GetTask(t)
 
-	rmTask.respool.AddToAllocation(true, resources)
+	rmTask.respool.AddToAllocation(scalar.GetTaskAllocation(rmTask.Task()))
 
-	res = rmTask.respool.GetAllocation()
+	res = rmTask.respool.GetTotalAllocatedResources()
 
 	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
@@ -238,7 +238,7 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 	deleteTask = &peloton.TaskID{Value: taskID}
 	suite.tracker.MarkItDone(deleteTask)
 
-	res = rmTask.respool.GetAllocation()
+	res = rmTask.respool.GetTotalAllocatedResources()
 
 	suite.Equal(res, resources)
 
@@ -249,9 +249,9 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 	taskID = fmt.Sprintf("job1-%d", 3)
 	t = &peloton.TaskID{Value: taskID}
 	rmTask = suite.tracker.GetTask(t)
-	rmTask.respool.AddToAllocation(true, resources)
+	rmTask.respool.AddToAllocation(scalar.GetTaskAllocation(rmTask.Task()))
 
-	res = rmTask.respool.GetAllocation()
+	res = rmTask.respool.GetTotalAllocatedResources()
 
 	err = rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
@@ -262,7 +262,7 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 	deleteTask = &peloton.TaskID{Value: taskID}
 	suite.tracker.MarkItDone(deleteTask)
 
-	res = rmTask.respool.GetAllocation()
+	res = rmTask.respool.GetTotalAllocatedResources()
 
 	zeroResource := &scalar.Resources{
 		CPU:    float64(0),

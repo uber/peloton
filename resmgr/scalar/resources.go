@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -13,7 +14,107 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ZeroResource represents the minimum value of a resource
+// AllocationType represents the different allocation dimensions the resource
+// pool can track for admission control
+type AllocationType int
+
+const (
+	// NonPreemptibleAllocation tracks allocation for non-preemptible tasks
+	NonPreemptibleAllocation AllocationType = iota + 1
+	// PreemptibleAllocation tracks allocation for preemptible tasks
+	PreemptibleAllocation
+	// ControllerAllocation tracks allocation for controller tasks
+	ControllerAllocation
+	// TotalAllocation tracks the allocation of all tasks(
+	// including NonPreemptibleAllocation,PreemptibleAllocation and ControllerAllocation)
+	TotalAllocation
+)
+
+// Allocation is the container to track allocation across different dimensions
+type Allocation struct {
+	Value map[AllocationType]*Resources
+}
+
+// NewAllocation returns a new Allocation
+func NewAllocation() *Allocation {
+	return initializeZeroAlloc()
+}
+
+// GetByType returns the allocation by type
+func (a *Allocation) GetByType(allocationType AllocationType) *Resources {
+	return a.Value[allocationType]
+}
+
+// Add adds one allocation to another
+func (a *Allocation) Add(other *Allocation) *Allocation {
+	result := initializeZeroAlloc()
+	for t, v := range a.Value {
+		result.Value[t] = v.Add(other.Value[t])
+	}
+	return result
+}
+
+// Subtract subtracts one allocation to another
+func (a *Allocation) Subtract(other *Allocation) *Allocation {
+	result := initializeZeroAlloc()
+	for t, v := range a.Value {
+		result.Value[t] = v.Subtract(other.Value[t])
+	}
+	return result
+}
+
+// initializeZeroAlloc initializes a zero alloc
+func initializeZeroAlloc() *Allocation {
+	alloc := &Allocation{
+		Value: make(map[AllocationType]*Resources),
+	}
+
+	alloc.Value[TotalAllocation] = ZeroResource
+	alloc.Value[NonPreemptibleAllocation] = ZeroResource
+	alloc.Value[ControllerAllocation] = ZeroResource
+	alloc.Value[PreemptibleAllocation] = ZeroResource
+
+	return alloc
+}
+
+// GetGangAllocation returns the allocation across different dimensions of
+// all tasks in a gang
+func GetGangAllocation(gang *resmgrsvc.Gang) *Allocation {
+	gangAllocation := initializeZeroAlloc()
+
+	for _, task := range gang.GetTasks() {
+		gangAllocation = gangAllocation.Add(GetTaskAllocation(task))
+	}
+	return gangAllocation
+}
+
+// GetTaskAllocation returns the allocation across different dimensions of a
+// task
+func GetTaskAllocation(rmTask *resmgr.Task) *Allocation {
+	alloc := initializeZeroAlloc()
+
+	taskResource := ConvertToResmgrResource(rmTask.Resource)
+
+	// check if the task is non-preemptible
+	if rmTask.GetPreemptible() {
+		alloc.Value[PreemptibleAllocation] = taskResource
+
+	} else {
+		alloc.Value[NonPreemptibleAllocation] = taskResource
+	}
+
+	// check if its a controller task
+	if rmTask.GetType() == resmgr.TaskType_CONTROLLER {
+		alloc.Value[ControllerAllocation] = taskResource
+	}
+
+	// every task account for total allocation
+	alloc.Value[TotalAllocation] = taskResource
+
+	return alloc
+}
+
+// ZeroResource represents the minimum Value of a resource
 var ZeroResource = &Resources{
 	CPU:    float64(0),
 	GPU:    float64(0),
@@ -64,7 +165,7 @@ func (r *Resources) Get(kind string) float64 {
 	return float64(0)
 }
 
-// Set sets the kind of resource with the value
+// Set sets the kind of resource with the Value
 func (r *Resources) Set(kind string, value float64) {
 	switch kind {
 	case common.CPU:
@@ -153,7 +254,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"from_cpu ": r.CPU,
 			"value_cpu": other.CPU,
-		}).Debug("Subtracted value is Greater")
+		}).Debug("Subtracted Value is Greater")
 		result.CPU = float64(0)
 	} else {
 		result.CPU = r.CPU - other.CPU
@@ -166,7 +267,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"from_gpu ": r.GPU,
 			"value_gpu": other.GPU,
-		}).Debug("Subtracted value is Greater")
+		}).Debug("Subtracted Value is Greater")
 		result.GPU = float64(0)
 	} else {
 		result.GPU = r.GPU - other.GPU
@@ -179,7 +280,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"from_memory ": r.MEMORY,
 			"value_memory": other.MEMORY,
-		}).Debug("Subtracted value is Greater")
+		}).Debug("Subtracted Value is Greater")
 		result.MEMORY = float64(0)
 	} else {
 		result.MEMORY = r.MEMORY - other.MEMORY
@@ -192,7 +293,7 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 		log.WithFields(log.Fields{
 			"from_disk":  r.DISK,
 			"value_disk": other.DISK,
-		}).Debug("Subtracted value is Greater")
+		}).Debug("Subtracted Value is Greater")
 		result.DISK = float64(0)
 	} else {
 		result.DISK = r.DISK - other.DISK

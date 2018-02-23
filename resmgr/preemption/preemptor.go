@@ -203,7 +203,7 @@ func (p *preemptor) updateResourcePoolsState() {
 	nodes := p.resTree.GetAllNodes(true)
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		resourcesAboveEntitlement := n.GetAllocation().Subtract(n.GetEntitlement())
+		resourcesAboveEntitlement := n.GetTotalAllocatedResources().Subtract(n.GetEntitlement())
 		count := 0
 		if !scalar.ZeroResource.Equal(resourcesAboveEntitlement) {
 			// increment the count
@@ -227,7 +227,7 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to get resource pool")
 	}
-	resourcesToFree := resourcePool.GetAllocation().Subtract(resourcePool.GetEntitlement())
+	resourcesToFree := resourcePool.GetTotalAllocatedResources().Subtract(resourcePool.GetEntitlement())
 	log.
 		WithField("respool_id", respoolID).
 		WithField("resource_to_free", resourcesToFree).
@@ -327,9 +327,7 @@ func (p *preemptor) evictNonRunningTask(rmTask *task.RMTask) error {
 	}
 
 	// Subtract the task resources from the resource pool allocation
-	err := resPool.SubtractFromAllocation(t.GetPreemptible(),
-		scalar.ConvertToResmgrResource(
-			t.Resource))
+	err := resPool.SubtractFromAllocation(scalar.GetTaskAllocation(t))
 	if err != nil {
 		return errors.Wrapf(err, "unable to subtract allocation from "+
 			"resource pool")
