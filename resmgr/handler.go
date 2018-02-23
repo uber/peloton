@@ -249,7 +249,7 @@ func (h *ServiceHandler) enqueueGang(
 
 		if h.rmTracker.GetTask(task.Id) != nil {
 			err = h.rmTracker.GetTask(task.Id).TransitTo(
-				t.TaskState_PENDING.String())
+				t.TaskState_PENDING.String(), "enqueue gangs called")
 			if err != nil {
 				log.Error(err)
 			}
@@ -294,7 +294,8 @@ func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task) error {
 	}
 	if currentTaskState == t.TaskState_PLACING {
 		// Transitioning back to Ready State
-		rmTask.TransitTo(t.TaskState_READY.String())
+		// TBD fetch the reason from the API and store
+		rmTask.TransitTo(t.TaskState_READY.String(), "requeue unplaced task")
 		// Adding to ready Queue
 		var tasks []*resmgr.Task
 		gang := &resmgrsvc.Gang{
@@ -335,7 +336,7 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) error {
 		// Updating the New Mesos Task ID
 		rmTask.Task().TaskId = requeuedTask.TaskId
 		// Transitioning back to Ready State
-		rmTask.TransitTo(t.TaskState_READY.String())
+		rmTask.TransitTo(t.TaskState_READY.String(), "task updated with new mesos task id")
 		// Adding to ready Queue
 		var tasks []*resmgr.Task
 		gang := &resmgrsvc.Gang{
@@ -379,7 +380,7 @@ func (h *ServiceHandler) DequeueGangs(
 			// Moving task to Placing state
 			if h.rmTracker.GetTask(task.Id) != nil {
 				err = h.rmTracker.GetTask(task.Id).TransitTo(
-					t.TaskState_PLACING.String())
+					t.TaskState_PLACING.String(), "dequeued with gang for placement")
 				if err != nil {
 					log.WithError(err).WithField(
 						"task_ID", task.Id.Value).
@@ -429,7 +430,8 @@ func (h *ServiceHandler) SetPlacements(
 	for _, placement := range req.GetPlacements() {
 		newplacement := h.transitTasksInPlacement(placement,
 			t.TaskState_PLACING,
-			t.TaskState_PLACED)
+			t.TaskState_PLACED,
+			"placement received")
 		h.rmTracker.SetPlacementHost(newplacement, newplacement.Hostname)
 		err = h.placements.Enqueue(newplacement)
 		if err != nil {
@@ -530,7 +532,8 @@ func (h *ServiceHandler) GetPlacements(
 		placement := item.(*resmgr.Placement)
 		newPlacement := h.transitTasksInPlacement(placement,
 			t.TaskState_PLACED,
-			t.TaskState_LAUNCHING)
+			t.TaskState_LAUNCHING,
+			"placement dequeued")
 		placements = append(placements, newPlacement)
 		h.metrics.GetPlacementSuccess.Inc(1)
 	}
@@ -547,7 +550,8 @@ func (h *ServiceHandler) GetPlacements(
 func (h *ServiceHandler) transitTasksInPlacement(
 	placement *resmgr.Placement,
 	expectedState t.TaskState,
-	newState t.TaskState) *resmgr.Placement {
+	newState t.TaskState,
+	reason string) *resmgr.Placement {
 	invalidTasks := make(map[string]*peloton.TaskID)
 	for _, taskID := range placement.Tasks {
 		rmTask := h.rmTracker.GetTask(taskID)
@@ -574,7 +578,7 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			invalidTasks[taskID.Value] = taskID
 
 		} else {
-			err := rmTask.TransitTo(newState.String())
+			err := rmTask.TransitTo(newState.String(), reason)
 			if err != nil {
 				log.WithError(errors.WithStack(err)).
 					WithField("task_ID", taskID.GetValue()).
@@ -639,7 +643,7 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 			continue
 		}
 		if taskState == t.TaskState_RUNNING {
-			err = rmTask.TransitTo(t.TaskState_RUNNING.String())
+			err = rmTask.TransitTo(t.TaskState_RUNNING.String(), "received running state from mesos")
 			if err != nil {
 				log.WithError(errors.WithStack(err)).
 					WithField("task_ID", taskID.Value).
@@ -860,7 +864,7 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 		// Transit task state machine to PREEMPTING
 		if rmTask := h.rmTracker.GetTask(task.Id); rmTask != nil {
 			err = rmTask.TransitTo(
-				t.TaskState_PREEMPTING.String())
+				t.TaskState_PREEMPTING.String(), "preemption triggered")
 			if err != nil {
 				// the task could have moved from RUNNING state
 				log.WithError(err).
@@ -904,7 +908,7 @@ func (h *ServiceHandler) MarkTasksLaunched(
 			continue
 		}
 
-		err := task.TransitTo(t.TaskState_LAUNCHED.String())
+		err := task.TransitTo(t.TaskState_LAUNCHED.String(), "received task launch")
 		if err != nil {
 			log.WithError(err).
 				WithField("task_id", taskID).

@@ -1,11 +1,16 @@
 package statemachine
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+)
+
+const (
+	createStateReasonString = "task created"
 )
 
 // Rule is struct to define the transition rules
@@ -44,10 +49,13 @@ type Callback func(*Transition) error
 type StateMachine interface {
 
 	// TransitTo function transits to desired state
-	TransitTo(to State, args ...interface{}) error
+	TransitTo(to State, reason string, args ...interface{}) error
 
 	// GetCurrentState returns the current state of State Machine
 	GetCurrentState() State
+
+	// GetReason returns the reason for the last state transition
+	GetReason() string
 
 	// GetName returns the Name of the StateMachine object
 	GetName() string
@@ -87,6 +95,9 @@ type statemachine struct {
 
 	// timer is the object for statetimer
 	timer StateTimer
+
+	// reason records the reason for a state transition
+	reason string
 }
 
 // NewStateMachine it will create the new state machine
@@ -106,6 +117,7 @@ func NewStateMachine(
 		timeoutRules:       timeoutRules,
 		transitionCallback: trasitionCallback,
 		lastUpdatedTime:    time.Now(),
+		reason:             createStateReasonString,
 	}
 
 	sm.timer = NewTimer(sm)
@@ -148,7 +160,7 @@ func (sm *statemachine) validateRule(rule *Rule) error {
 
 // TransitTo is the function which clients will call to transition from one state to other
 // this also calls the callbacks after the valid transition is done
-func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
+func (sm *statemachine) TransitTo(to State, reason string, args ...interface{}) error {
 	// Locking the statemachine to synchronize state changes
 	sm.Lock()
 	defer sm.Unlock()
@@ -192,6 +204,7 @@ func (sm *statemachine) TransitTo(to State, args ...interface{}) error {
 	// Doing actual transition
 	sm.current = to
 	sm.lastUpdatedTime = time.Now()
+	sm.reason = reason
 
 	// invoking callback function
 	if sm.rules[curState].Callback != nil {
@@ -285,6 +298,12 @@ func (sm *statemachine) GetCurrentState() State {
 	return sm.current
 }
 
+func (sm *statemachine) GetReason() string {
+	sm.RLock()
+	defer sm.RUnlock()
+	return sm.reason
+}
+
 // GetName returns the name of the state machine object
 func (sm *statemachine) GetName() string {
 	return sm.name
@@ -327,6 +346,7 @@ func (sm *statemachine) rollbackState() error {
 	// Doing actual transition
 	sm.current = rule.To
 	sm.lastUpdatedTime = time.Now()
+	sm.reason = fmt.Sprintf("rollback from state %s to state %s", sm.current, rule.To)
 
 	// invoking callback function
 	if rule.Callback != nil {

@@ -247,7 +247,7 @@ func (suite *SchedulerTestSuite) AddTasks() {
 		suite.NoError(err)
 		suite.addTasktotracker(t)
 		rmTask := suite.rmTaskTracker.GetTask(t.Id)
-		err = rmTask.TransitTo(task.TaskState_PENDING.String())
+		err = rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 		suite.NoError(err)
 		resPool.EnqueueGang(resPool.MakeTaskGang(t))
 	}

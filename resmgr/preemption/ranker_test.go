@@ -164,38 +164,38 @@ func (suite *RankerTestSuite) addTasks() {
 
 func (suite *RankerTestSuite) transitToPending(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
 }
 
 func (suite *RankerTestSuite) transitToReady(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_READY.String())
+	err = rmTask.TransitTo(task.TaskState_READY.String(), "")
 	suite.NoError(err)
 }
 
 func (suite *RankerTestSuite) transitToRunning(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_PLACED.String())
+	err = rmTask.TransitTo(task.TaskState_PLACED.String(), "")
 	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_LAUNCHING.String())
+	err = rmTask.TransitTo(task.TaskState_LAUNCHING.String(), "")
 	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_RUNNING.String())
+	err = rmTask.TransitTo(task.TaskState_RUNNING.String(), "")
 	suite.NoError(err)
 }
 
 func (suite *RankerTestSuite) transitToPlacing(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_READY.String())
+	err = rmTask.TransitTo(task.TaskState_READY.String(), "")
 	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_PLACING.String())
+	err = rmTask.TransitTo(task.TaskState_PLACING.String(), "")
 	suite.NoError(err)
 }
 

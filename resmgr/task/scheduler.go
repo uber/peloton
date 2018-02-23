@@ -152,7 +152,7 @@ func (s *scheduler) scheduleTasks() {
 		var invalidGangs []*resmgrsvc.Gang
 		for _, gang := range gangList {
 
-			err = s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY)
+			err = s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY, "gang admitted")
 			if err != nil {
 				// we can not dequeue this gang Dropping them
 				// As they can block the whole resource pool.
@@ -206,7 +206,7 @@ func (s *scheduler) scheduleTasks() {
 		// which can not be admitted to ready queue
 		// for the placement
 		for _, invalidGang := range invalidGangs {
-			err = s.transitGang(invalidGang, pt.TaskState_READY, pt.TaskState_PENDING)
+			err = s.transitGang(invalidGang, pt.TaskState_READY, pt.TaskState_PENDING, "gang admission failure")
 			if err != nil {
 				log.WithError(err).Error("Not able to transit back " +
 					"to Pending")
@@ -228,14 +228,14 @@ func (s *scheduler) scheduleTasks() {
 
 // transitGang tries to transit to "TO" state for all the tasks
 // in the gang and if anyone fails sends error
-func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, toState pt.TaskState) error {
+func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, toState pt.TaskState, reason string) error {
 	isInvalidTaskInGang := false
 	invalidTasks := ""
 	for _, task := range gang.GetTasks() {
 		if s.rmTaskTracker.GetTask(task.Id) != nil {
 			if s.rmTaskTracker.GetTask(task.Id).GetCurrentState() == fromState {
 				err := s.rmTaskTracker.GetTask(task.Id).
-					TransitTo(toState.String())
+					TransitTo(toState.String(), reason)
 				if err != nil {
 					isInvalidTaskInGang = true
 					log.WithError(errors.WithStack(err)).Errorf("error while "+

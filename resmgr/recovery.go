@@ -284,12 +284,10 @@ func (r *recoveryHandler) addTaskToTracker(
 
 	if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
 		err = rmtask.GetTracker().GetTask(rmTask.Id).
-			TransitTo(task.TaskState_RUNNING.String())
+			TransitTo(task.TaskState_RUNNING.String(), "task recovered into running state")
 	} else if taskInfo.GetRuntime().GetState() == task.TaskState_LAUNCHED {
-		// There is no LAUNCHED state in resmgrm we have only LAUNCHING
-		// and after LAUNCHING state is RUNNING.
 		err = rmtask.GetTracker().GetTask(rmTask.Id).
-			TransitTo(task.TaskState_LAUNCHING.String())
+			TransitTo(task.TaskState_LAUNCHED.String(), "task recovered into launched state")
 	}
 	if err != nil {
 		return errors.Wrap(err, "transition failed in task state machine")

@@ -119,9 +119,9 @@ func (suite *TrackerTestSuite) TestTasksByHosts() {
 
 func (suite *TrackerTestSuite) TestTransition() {
 	rmTask := suite.tracker.GetTask(suite.task.Id)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_READY.String())
+	err = rmTask.TransitTo(task.TaskState_READY.String(), "")
 	suite.NoError(err)
 }
 
@@ -232,7 +232,7 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
+	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
 
 	deleteTask = &peloton.TaskID{Value: taskID}
@@ -253,10 +253,10 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 
-	err = rmTask.TransitTo(task.TaskState_PENDING.String())
+	err = rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
 
-	err = rmTask.TransitTo(task.TaskState_READY.String())
+	err = rmTask.TransitTo(task.TaskState_READY.String(), "")
 	suite.NoError(err)
 
 	deleteTask = &peloton.TaskID{Value: taskID}

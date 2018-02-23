@@ -404,15 +404,15 @@ func (suite *HandlerTestSuite) TestRequeue() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
+	err = rmtask.TransitTo(task.TaskState_READY.String(), "")
 	suite.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	err = rmtask.TransitTo(task.TaskState_PLACING.String(), "")
 	suite.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	err = rmtask.TransitTo(task.TaskState_PLACED.String(), "")
 	suite.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
+	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String(), "")
 	suite.NoError(err)
 
 	// Testing to see if we can send same task in the enqueue
@@ -526,9 +526,9 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
 			rmTask := handler.rmTracker.GetTask(taskID)
-			rmTask.TransitTo(task.TaskState_PENDING.String())
-			rmTask.TransitTo(task.TaskState_READY.String())
-			rmTask.TransitTo(task.TaskState_PLACING.String())
+			rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+			rmTask.TransitTo(task.TaskState_READY.String(), "")
+			rmTask.TransitTo(task.TaskState_PLACING.String(), "")
 		}
 	}
 	setResp, err := handler.SetPlacements(suite.context, setReq)
@@ -554,9 +554,9 @@ func (suite *HandlerTestSuite) TestGetTasksByHosts() {
 		hostnames = append(hostnames, placement.Hostname)
 		for _, taskID := range placement.Tasks {
 			rmTask := suite.handler.rmTracker.GetTask(taskID)
-			rmTask.TransitTo(task.TaskState_PENDING.String())
-			rmTask.TransitTo(task.TaskState_READY.String())
-			rmTask.TransitTo(task.TaskState_PLACING.String())
+			rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+			rmTask.TransitTo(task.TaskState_READY.String(), "")
+			rmTask.TransitTo(task.TaskState_PLACING.String(), "")
 		}
 	}
 	setResp, err := suite.handler.SetPlacements(suite.context, setReq)
@@ -789,9 +789,9 @@ func (suite *HandlerTestSuite) TestGetActiveTasks() {
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
 			rmTask := suite.handler.rmTracker.GetTask(taskID)
-			rmTask.TransitTo(task.TaskState_PENDING.String())
-			rmTask.TransitTo(task.TaskState_READY.String())
-			rmTask.TransitTo(task.TaskState_PLACING.String())
+			rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+			rmTask.TransitTo(task.TaskState_READY.String(), "")
+			rmTask.TransitTo(task.TaskState_PLACING.String(), "")
 		}
 	}
 	setResp, err := suite.handler.SetPlacements(suite.context, setReq)
@@ -829,10 +829,10 @@ func (suite *HandlerTestSuite) TestGetPreemptibleTasks() {
 				PlacingTimeout:   1 * time.Minute,
 			})
 		rmTask := suite.handler.rmTracker.GetTask(taskID)
-		rmTask.TransitTo(task.TaskState_PENDING.String())
-		rmTask.TransitTo(task.TaskState_PLACED.String())
-		rmTask.TransitTo(task.TaskState_LAUNCHING.String())
-		rmTask.TransitTo(task.TaskState_RUNNING.String())
+		rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+		rmTask.TransitTo(task.TaskState_PLACED.String(), "")
+		rmTask.TransitTo(task.TaskState_LAUNCHING.String(), "")
+		rmTask.TransitTo(task.TaskState_RUNNING.String(), "")
 	}
 
 	var calls []*gomock.Call
@@ -872,15 +872,15 @@ func (suite *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), "")
 	suite.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
+	err = rmtask.TransitTo(task.TaskState_READY.String(), "")
 	suite.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	err = rmtask.TransitTo(task.TaskState_PLACING.String(), "")
 	suite.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	err = rmtask.TransitTo(task.TaskState_PLACED.String(), "")
 	suite.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
+	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String(), "")
 	suite.NoError(err)
 
 	// Marking this task to Invalidate
