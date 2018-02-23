@@ -22,7 +22,7 @@ the admission control with its 2 queues. Here's how it works:
 1. The resource pool first dequeues gangs from the controller queue and tries to admit as many
    controller tasks it can. This is decided by the max_controller_percentage, which
    is defined as the maximum resources the controller tasks can use a percentage of the resource
-   pools reservation. For eg if the max_controller_percentage=10 and resource pool's resevation is:
+   pools reservation. For eg if the max_controller_percentage=10 and resource pool's reservation is:
    cpu:100
    mem:1000
    disk:1000

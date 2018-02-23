@@ -90,6 +90,32 @@ message ResourcePoolConfig {
 
   // Task Scheduling policy
   SchedulingPolicy policy = 8;
+
+  // The controller limit for this resource pool
+  ControllerLimit controllerLimit = 9;
+}
+
+// The max limit of resources `CONTROLLER`(see TaskType) tasks can use in
+// this resource pool. This is defined as a percentage of the resource pool's
+// reservation. If undefined there is no maximum limit for controller tasks
+// i.e. controller tasks will not be treated differently. For eg if the
+// resource pool's reservation is defined as:
+//
+//      cpu:100
+//      mem:1000
+//      disk:1000
+//      gpu:10
+//
+// And the ControllerLimit = 10 ,Then the maximum resources the controller
+// tasks can use is 10% of the reservation, i.e.
+//
+//      cpu:10
+//      mem:100
+//      disk:100
+//      gpu:1
+//
+message ControllerLimit {
+  double maxPercent = 1 ;
 }
 
 message ResourceUsage {
