@@ -34,7 +34,7 @@ func (e *VolumeNotFoundError) Error() string {
 type JobStore interface {
 	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error
 	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
-	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, []*job.JobSummary, uint32, error)
+	QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error)
 	UpdateJobConfig(ctx context.Context, id *peloton.JobID, Config *job.JobConfig) error
 	DeleteJob(ctx context.Context, id *peloton.JobID) error
 	GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, error)

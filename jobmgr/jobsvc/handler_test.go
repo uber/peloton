@@ -320,7 +320,7 @@ func (suite *JobHandlerTestSuite) TestJobQuery() {
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
 
-	mockJobStore.EXPECT().QueryJobs(context.Background(), nil, nil)
+	mockJobStore.EXPECT().QueryJobs(context.Background(), nil, nil, false)
 	req := &job.QueryRequest{}
 	resp, err := suite.handler.Query(suite.context, req)
 	suite.NoError(err)

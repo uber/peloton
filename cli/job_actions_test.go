@@ -283,6 +283,7 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 				MaxLimit: 100,
 			},
 		},
+		SummaryOnly: true,
 	}).Return(nil, nil)
 
 	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", "test_owner", "test_name", 10, 100, 0, "creation_time", "DESC"))

@@ -480,13 +480,12 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 }
 
 // QueryJobs returns all jobs in the resource pool that matches the spec.
-func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, []*job.JobSummary, uint32, error) {
+func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error) {
 	// Query is based on stratio lucene index on jobs.
 	// See https://github.com/Stratio/cassandra-lucene-index
 	// We are using "must" for the labels and only return the jobs that contains all
 	// label values
 	// TODO: investigate if there are any golang library that can build lucene query
-
 	var clauses []string
 
 	// Labels field must contain value of the specified labels
@@ -633,6 +632,23 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	}
 	allResults = allResults[:end]
 
+	summaryResults, err := s.getJobSummaryFromLuceneResult(ctx, allResults)
+	if summaryOnly {
+		if err != nil {
+			// Process error if caller requested only job summary
+			uql, args, _, _ := stmt.ToUql()
+			log.WithField("uql", uql).
+				WithField("args", args).
+				WithField("labels", spec.GetLabels()).
+				WithError(err).
+				Error("Failed to get JobSummary")
+			s.metrics.JobMetrics.JobQueryFail.Inc(1)
+			return nil, nil, 0, err
+		}
+		s.metrics.JobMetrics.JobQuery.Inc(1)
+		return nil, summaryResults, total, nil
+	}
+
 	var results []*job.JobInfo
 	for _, value := range allResults {
 		id, ok := value["job_id"].(qb.UUID)
@@ -679,18 +695,6 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		})
 	}
 
-	summaryResults, err := s.getJobSummaryFromLuceneResult(ctx, allResults)
-	if err != nil {
-		// Suppress this error until we get rid of JobInfo
-		// Just log warning and increment query fail metric
-		uql, args, _, _ := stmt.ToUql()
-		log.WithField("uql", uql).
-			WithField("args", args).
-			WithField("labels", spec.GetLabels()).
-			WithError(err).
-			Warn("Failed to get JobSummary")
-		s.metrics.JobMetrics.JobQueryFail.Inc(1)
-	}
 	s.metrics.JobMetrics.JobQuery.Inc(1)
 	return results, summaryResults, total, nil
 }

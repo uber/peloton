@@ -252,7 +252,7 @@ func (m *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 // In the tasks table, the "Labels" field are compacted (all whitespaces and " are removed for each label),
 // then stored as the "labels_summary" row. Mysql fulltext index are also set on this field.
 // When a query comes, the query labels are compacted in the same way then queried against the fulltext index.
-func (m *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec) ([]*job.JobInfo, []*job.JobSummary, uint32, error) {
+func (m *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error) {
 	return nil, nil, 0, fmt.Errorf("unsupported storage backend")
 }
 

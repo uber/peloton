@@ -30,6 +30,9 @@ type Metrics struct {
 	JobGetByRespoolID     tally.Counter
 	JobGetByRespoolIDFail tally.Counter
 
+	// Timers
+	JobQueryHandlerDuration tally.Timer
+
 	// TODO: find a better way of organizing metrics per package
 	TaskCreate     tally.Counter
 	TaskCreateFail tally.Counter
@@ -69,6 +72,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobAPIRefresh:  jobAPIScope.Counter("refresh"),
 		JobRefresh:     jobSuccessScope.Counter("refresh"),
 		JobRefreshFail: jobFailScope.Counter("refresh"),
+
+		JobQueryHandlerDuration: jobAPIScope.Timer("job_query_duration"),
 
 		JobAPIGetByRespoolID:  jobAPIScope.Counter("get_by_respool_id"),
 		JobGetByRespoolID:     jobSuccessScope.Counter("get_by_respool_id"),

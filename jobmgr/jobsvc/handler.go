@@ -374,8 +374,9 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job.QueryResponse, error) {
 	log.WithField("request", req).Info("JobManager.Query called")
 	h.metrics.JobAPIQuery.Inc(1)
+	callStart := time.Now()
 
-	jobConfigs, jobSummary, total, err := h.jobStore.QueryJobs(ctx, req.GetRespoolID(), req.GetSpec())
+	jobConfigs, jobSummary, total, err := h.jobStore.QueryJobs(ctx, req.GetRespoolID(), req.GetSpec(), req.GetSummaryOnly())
 	if err != nil {
 		h.metrics.JobQueryFail.Inc(1)
 		log.WithError(err).Error("Query job failed with error")
@@ -400,6 +401,8 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 		},
 		Spec: req.GetSpec(),
 	}
+	callDuration := time.Since(callStart)
+	h.metrics.JobQueryHandlerDuration.Record(callDuration)
 	log.WithField("response", resp).Debug("JobManager.Query returned")
 	return resp, nil
 }

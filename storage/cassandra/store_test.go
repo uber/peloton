@@ -194,7 +194,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 
 	_, _ = suite.queryJobs(&job.QuerySpec{}, int(_defaultQueryLimit), int(_defaultQueryMaxLimit))
 
-	result1, summary, total, err := jobStore.QueryJobs(context.Background(), &peloton.ResourcePoolID{Value: uuid.New()}, &job.QuerySpec{})
+	result1, summary, total, err := jobStore.QueryJobs(context.Background(), &peloton.ResourcePoolID{Value: uuid.New()}, &job.QuerySpec{}, false)
 	suite.NoError(err)
 	suite.Equal(0, len(result1))
 	suite.Equal(0, len(summary))
@@ -217,7 +217,7 @@ func (suite *CassandraStoreTestSuite) queryJobs(
 	[]*job.JobInfo, []*job.JobSummary) {
 	var jobStore storage.JobStore
 	jobStore = store
-	result, summary, total, err := jobStore.QueryJobs(context.Background(), nil, spec)
+	result, summary, total, err := jobStore.QueryJobs(context.Background(), nil, spec, false)
 	suite.NoError(err)
 	suite.Equal(expectedEntriesPerPage, len(result))
 	suite.Equal(expectedEntriesPerPage, len(summary))
@@ -283,6 +283,21 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 	suite.Equal("owner", summaryResultFromJobConfig[0].GetOwningTeam())
 	suite.Equal("owner", summaryResultFromJobConfig[0].GetOwner())
 
+	// tamper allResults to make job_id not UUID and look for error.
+	allResults[0]["job_id"] = "junk"
+	_, err = store.getJobSummaryFromLuceneResult(context.Background(), allResults)
+	suite.Error(err)
+
+	// QueryJobs with summaryOnly = true. result1 should be nil
+	spec := &job.QuerySpec{
+		Name: "GetJobSummary",
+	}
+	result1, summary, total, err := jobStore.QueryJobs(context.Background(), nil, spec, true)
+	suite.NoError(err)
+	suite.Equal(0, len(result1))
+	suite.Equal(1, len(summary))
+	suite.Equal(1, int(total))
+	suite.Equal("GetJobSummary", summary[0].GetName())
 	suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
 }
 

@@ -207,6 +207,7 @@ func (c *Client) JobQueryAction(
 				MaxLimit: maxLimit,
 			},
 		},
+		SummaryOnly: true,
 	}
 	response, err := c.jobClient.Query(c.ctx, request)
 	if err != nil {

@@ -384,6 +384,11 @@ message QueryRequest {
 
   // Per instance configuration in the job configuration cannot be  queried.
   QuerySpec spec = 2;
+
+  // Only return the job summary in the query response
+  // If set, JobInfo in QueryResponse would be set to nil
+  // and only JobSummary in QueryResponse would be populated.
+  bool summaryOnly = 3;
 }
 
 // DEPRECATED by peloton.api.job.svc.QueryJobsResponse
