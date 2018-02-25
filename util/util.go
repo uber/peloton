@@ -339,12 +339,6 @@ func ConvertTaskToResMgrTask(
 		}
 	}
 
-	// By default task type is batch.
-	taskType := resmgr.TaskType_BATCH
-	if taskInfo.GetConfig().GetVolume() != nil {
-		taskType = resmgr.TaskType_STATEFUL
-	}
-
 	return &resmgr.Task{
 		Id:           taskID,
 		JobId:        taskInfo.GetJobId(),
@@ -356,9 +350,22 @@ func ConvertTaskToResMgrTask(
 		Resource:     taskInfo.GetConfig().GetResource(),
 		Constraint:   taskInfo.GetConfig().GetConstraint(),
 		NumPorts:     uint32(numPorts),
-		Type:         taskType,
+		Type:         getTaskType(taskInfo.GetConfig()),
 		Labels:       ConvertLabels(taskInfo.GetConfig().GetLabels()),
 	}
+}
+
+// returns the task type
+func getTaskType(cfg *task.TaskConfig) resmgr.TaskType {
+	if cfg.GetVolume() != nil {
+		return resmgr.TaskType_STATEFUL
+	}
+	if cfg.GetController() {
+		return resmgr.TaskType_CONTROLLER
+	}
+
+	// By default task type is batch.
+	return resmgr.TaskType_BATCH
 }
 
 // ConvertLabels will convert Peloton labels to Mesos labels.

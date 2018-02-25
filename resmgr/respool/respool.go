@@ -52,8 +52,6 @@ type ResPool interface {
 
 	// Returns a map of resources and its resource config.
 	Resources() map[string]*respool.ResourceConfig
-	// Sets the resource config.
-	SetResourceConfig(*respool.ResourceConfig)
 
 	// Converts to resource pool info.
 	ToResourcePoolInfo() *respool.ResourcePoolInfo
@@ -156,6 +154,8 @@ type resPool struct {
 	// in that case the task is moved to the controller queue so that it
 	// doesn't block the rest of the tasks in pending queue.
 	controllerQueue queue.Queue
+	// The max limit of resources controller tasks can use in this pool
+	controllerLimit *scalar.Resources
 
 	metrics *Metrics
 }
@@ -201,8 +201,8 @@ func NewRespool(
 		"path": pool.GetPath(),
 	}))
 
-	// Initialize resources.
-	pool.initResources(config.GetResources())
+	// Initialize resources and limits.
+	pool.initialize(config)
 	pool.updateResourceMetrics()
 	pool.metrics.PendingQueueSize.Update(float64(pool.pendingQueue.Size()))
 
@@ -249,13 +249,6 @@ func (n *resPool) Children() *list.List {
 	return n.children
 }
 
-// SetResourceConfig will set the resource poolConfig for one kind of resource.
-func (n *resPool) SetResourceConfig(resources *respool.ResourceConfig) {
-	n.Lock()
-	defer n.Unlock()
-	n.initResources([]*respool.ResourceConfig{resources})
-}
-
 // Resources returns the resource configs.
 func (n *resPool) Resources() map[string]*respool.ResourceConfig {
 	n.RLock()
@@ -269,7 +262,7 @@ func (n *resPool) SetResourcePoolConfig(config *respool.ResourcePoolConfig) {
 	n.Lock()
 	defer n.Unlock()
 	n.poolConfig = config
-	n.initResources(config.GetResources())
+	n.initialize(config)
 }
 
 // ResourcePoolConfig returns the resource pool config.
@@ -331,7 +324,7 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	var gangList []*resmgrsvc.Gang
 
 	// In the first pass we check the controller queue to admit as many
-	// controller tasks as we can satisfy with the controller quota of the
+	// controller tasks as we can satisfy with the controller limit of the
 	// resource pool.
 	cgs, err := n.dequeueController(limit)
 	if err != nil {
@@ -339,12 +332,8 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	}
 	gangList = append(gangList, cgs...)
 
-	// In the second pass we check the pending queue.
-	// If the task at the head of the queue is a controller task and can't be
-	// admitted with the controller quota,
-	// we will move it to the controller queue so that it doesn't block the
-	// rest of the tasks. That controller task will be picked up from the
-	// controller queue in the next scheduling cycle.	left := len(gangList)
+	// In the second pass we check the tasks in the pending pending queue.
+	// Pending queue can contain both non-controller and controller tasks.
 	left := limit - len(gangList)
 	pgs, err := n.dequeuePending(left)
 	if err != nil {
@@ -356,6 +345,10 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	return gangList, err
 }
 
+// If the task at the head of the pending queue is a controller task and can't
+// be admitted with the controller limit, we will move it to the controller
+// queue so that it doesn't block the rest of the tasks. That controller task
+// will be picked up from the controller queue in the next scheduling cycle.
 func (n *resPool) dequeuePending(limit int) ([]*resmgrsvc.Gang,
 	error) {
 
@@ -374,28 +367,28 @@ func (n *resPool) dequeuePending(limit int) ([]*resmgrsvc.Gang,
 			return gangList, err
 		}
 		gang := gangs[0]
-		ok, err := pending.TryAdmit(gang, n)
+		err = pending.TryAdmit(gang, n)
 		if err != nil {
-			// the admission can fail because the gang is invalid.
-			// In this case we move on to the next gang in the queue with the
-			// expectation that the invalid gang is removed from the head of
-			// the queue.
-			if err == errGangInvalid {
+			if err == errGangInvalid || err == errControllerTask {
+				// the admission can fail  :
+				// 1. Because the gang is invalid.
+				// In this case we move on to the next gang in the queue with the
+				// expectation that the invalid gang is removed from the head of
+				// the queue.
+				// 2. Because the controller limit was reached,
+				// In this case we move on to the next gang in the
+				// queue with the expectation that the controller gang is moved
+				// to the controller queue.
 				continue
 			}
-			log.WithField("respool_id", n.ID()).
-				WithError(err).Error(
-				"Failed to admit tasks from pending queue")
 			break
 		}
-		if ok {
-			gangList = append(gangList, gang)
-			continue
-		}
+		gangList = append(gangList, gang)
 	}
 	return gangList, err
 }
 
+// This only contains controller tasks.
 func (n *resPool) dequeueController(
 	limit int) ([]*resmgrsvc.Gang, error) {
 
@@ -414,24 +407,15 @@ func (n *resPool) dequeueController(
 		}
 		gang := gangs[0]
 
-		ok, err := controller.TryAdmit(gang, n)
+		err = controller.TryAdmit(gang, n)
 		if err != nil {
-			// the admission can fail because the gang is invalid.
-			// In this case we move on to the next gang in the queue with the
-			// expectation that the invalid gang is removed from the head of
-			// the queue.
 			if err == errGangInvalid {
+				// the admission can fail because the gang is invalid.
+				// In this case we move on to the next gang in the queue with the
+				// expectation that the invalid gang is removed from the head of
+				// the queue.
 				continue
 			}
-			log.WithField("respool_id", n.ID()).
-				WithError(err).Error(
-				"Failed to admit tasks from controller queue")
-			break
-		}
-		if !ok {
-			// can't admit any more gangs
-			log.WithField("respool_id", n.ID()).
-				Debug("Resource pool quota for controller tasks is full")
 			break
 		}
 		gangList = append(gangList, gang)
@@ -538,28 +522,28 @@ func (n *resPool) createRespoolUsage(allocation *scalar.Resources) []*respool.Re
 	ru := &respool.ResourceUsage{
 		Kind:       common.CPU,
 		Allocation: allocation.CPU,
-		// Hardcoding until we have real slack
+		// Hard coding until we have real slack
 		Slack: float64(0),
 	}
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.GPU,
 		Allocation: allocation.GPU,
-		// Hardcoding until we have real slack
+		// Hard coding until we have real slack
 		Slack: float64(0),
 	}
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.MEMORY,
 		Allocation: allocation.MEMORY,
-		// Hardcoding until we have real slack
+		// Hard coding until we have real slack
 		Slack: float64(0),
 	}
 	resUsage = append(resUsage, ru)
 	ru = &respool.ResourceUsage{
 		Kind:       common.DISK,
 		Allocation: allocation.DISK,
-		// Hardcoding until we have real slack
+		// Hard coding until we have real slack
 		Slack: float64(0),
 	}
 	resUsage = append(resUsage, ru)
@@ -570,32 +554,46 @@ func (n *resPool) isLeaf() bool {
 	return n.children.Len() == 0
 }
 
-// initResources will initializing the resource poolConfig under resource pool
+// initializes the resources and limits for this pool
 // NB: The function calling initResources should acquire the lock
-func (n *resPool) initResources(resList []*respool.ResourceConfig) {
-	for _, res := range resList {
+func (n *resPool) initialize(cfg *respool.ResourcePoolConfig) {
+
+	for _, res := range cfg.Resources {
 		n.resourceConfigs[res.Kind] = res
 	}
-}
 
-// logNodeResources will be printing the resources for the resource pool
-func (n *resPool) logNodeResources() {
-	n.RLock()
-	defer n.RLock()
-	for kind, res := range n.resourceConfigs {
-		log.WithFields(log.Fields{
-			"kind":        kind,
-			"limit":       res.Limit,
-			"reservation": res.Reservation,
-			"share":       res.Share,
-		}).Info("ResPool Resources for ResPool", n.id)
+	climit := cfg.GetControllerLimit()
+	if climit == nil {
+		n.controllerLimit = nil
+		return
 	}
+
+	controllerLimit := &scalar.Resources{}
+	multiplier := climit.MaxPercent / 100
+	for kind, res := range n.resourceConfigs {
+		switch kind {
+		case common.CPU:
+			controllerLimit.CPU = res.Reservation * multiplier
+		case common.MEMORY:
+			controllerLimit.MEMORY = res.Reservation * multiplier
+		case common.GPU:
+			controllerLimit.GPU = res.Reservation * multiplier
+		case common.DISK:
+			controllerLimit.DISK = res.Reservation * multiplier
+		}
+	}
+
+	log.WithField("controller_limit", controllerLimit).
+		WithField("respool_id", n.id).
+		Info("Setting controller limit")
+	n.controllerLimit = controllerLimit
 }
 
 // SetEntitlement sets the entitlement for the resource pool
 func (n *resPool) SetEntitlement(entitlement map[string]float64) {
 	n.Lock()
 	defer n.Unlock()
+
 	if entitlement == nil {
 		return
 	}
@@ -805,6 +803,7 @@ func (n *resPool) updateStaticResourceMetrics() {
 	n.metrics.ResourcePoolShare.Update(getShare(n.resourceConfigs))
 	n.metrics.ResourcePoolLimit.Update(getLimits(n.resourceConfigs))
 	n.metrics.ResourcePoolReservation.Update(getReservations(n.resourceConfigs))
+	n.metrics.ControllerLimit.Update(n.controllerLimit)
 }
 
 // updates dynamic metrics(Allocation, Entitlement, Available) which change based on
@@ -814,6 +813,8 @@ func (n *resPool) updateDynamicResourceMetrics() {
 	n.metrics.TotalAllocation.Update(n.allocation.GetByType(scalar.TotalAllocation))
 	n.metrics.NonPreemptibleAllocation.Update(n.allocation.GetByType(scalar.
 		NonPreemptibleAllocation))
+	n.metrics.ControllerAllocation.Update(n.allocation.GetByType(scalar.
+		ControllerAllocation))
 	n.metrics.Available.Update(n.entitlement.
 		Subtract(n.allocation.GetByType(scalar.TotalAllocation)))
 	n.metrics.Demand.Update(n.demand)

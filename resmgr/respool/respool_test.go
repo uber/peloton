@@ -858,47 +858,6 @@ func (s *ResPoolSuite) TestSetParent() {
 	s.Equal("/respool2/"+_testResPoolName, resPool.GetPath())
 }
 
-func (s *ResPoolSuite) TestSetResourceConfig() {
-	respool := s.createTestResourcePool()
-	expectedResources := map[string]*pb_respool.ResourceConfig{
-		"cpu": {
-			Share:       1,
-			Kind:        "cpu",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		"memory": {
-			Share:       1,
-			Kind:        "memory",
-			Reservation: 1000,
-			Limit:       1000,
-		},
-		"disk": {
-			Share:       1,
-			Kind:        "disk",
-			Reservation: 100,
-			Limit:       1000,
-		},
-		"gpu": {
-			Share:       1,
-			Kind:        "gpu",
-			Reservation: 2,
-			Limit:       4,
-		},
-	}
-	s.Equal(expectedResources, respool.Resources())
-
-	newCPUConfig := &pb_respool.ResourceConfig{
-		Share:       2,
-		Kind:        "cpu",
-		Reservation: 1000,
-		Limit:       1000,
-	}
-	expectedResources["cpu"] = newCPUConfig
-	respool.SetResourceConfig(newCPUConfig)
-	s.Equal(expectedResources, respool.Resources())
-}
-
 func (s *ResPoolSuite) TestSetResourcePoolConfig() {
 	respool := s.createTestResourcePool()
 	expectedPoolConfig := &pb_respool.ResourcePoolConfig{
@@ -1066,6 +1025,29 @@ func (s *ResPoolSuite) TestResPoolPeekPendingGangs() {
 	gangs, err = respool.PeekPendingGangs(10)
 	s.NoError(err)
 	s.Equal(4, len(gangs))
+}
+
+func (s *ResPoolSuite) TestResPoolControllerLimit() {
+	rootConfig := &pb_respool.ResourcePoolConfig{
+		Name:      "root",
+		Parent:    nil,
+		Resources: s.getResources(),
+		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
+		ControllerLimit: &pb_respool.ControllerLimit{
+			MaxPercent: 1, // 1 percent
+		},
+	}
+
+	node := s.createTestResourcePool()
+	resPool, ok := node.(*resPool)
+	s.True(ok)
+
+	resPool.initialize(rootConfig)
+	// 1 % of reservation
+	s.Equal(float64(1), resPool.controllerLimit.CPU)
+	s.Equal(float64(0.02), resPool.controllerLimit.GPU)
+	s.Equal(float64(10), resPool.controllerLimit.MEMORY)
+	s.Equal(float64(1), resPool.controllerLimit.CPU)
 }
 
 func TestResPoolSuite(t *testing.T) {

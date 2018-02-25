@@ -13,7 +13,7 @@ labels:
   value: testVal1
 - key: testKey2
   value: testVal2
-instancecount: 100
+instancecount: 10
 sla:
   priority: 22
   minimuminstancecount: 12
@@ -22,7 +22,7 @@ sla:
   maxrunningtime: 300 
 defaultconfig:
   resource:
-    cpulimit: 0.1
+    cpulimit: 1.0
     memlimitmb: 2.0
     disklimitmb: 10
     fdlimit: 10
@@ -34,12 +34,14 @@ defaultconfig:
     value: 'echo "Job $PELOTON_JOB_ID instance $PELOTON_INSTANCE_ID: $PELOTON_TASK_ID" && sleep 30'
 instanceconfig:
   0:
-    name: instance0
+    name: controller0
+    controller: true
     command:
       shell: true
-      value: 'echo Hello instance 0 && sleep 5'
+      value: 'echo Hello instance 0 && sleep 100'
   1:
-    name: instance1
+    name: controller1
+    controller: true
     command:
       shell: true
       value: 'echo Hello instance 0 && sleep 15'

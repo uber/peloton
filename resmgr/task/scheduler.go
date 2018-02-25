@@ -308,6 +308,14 @@ func (s *scheduler) EnqueueGang(gang *resmgrsvc.Gang) error {
 	return err
 }
 
+// thread safe way to get random level
+func (s *scheduler) getRandLevel(n int) int {
+	s.lock.Lock()
+	l := s.random.Intn(n)
+	s.lock.Unlock()
+	return l
+}
+
 // DequeueGang dequeues a gang, which is a task list of 1 or more (same priority)
 // tasks of type task type, from the ready queue. If task type is UNKNOWN then
 // gangs with tasks of any task type will be returned.
@@ -316,9 +324,22 @@ func (s *scheduler) DequeueGang(maxWaitTime time.Duration, taskType resmgr.TaskT
 	if taskType == resmgr.TaskType_UNKNOWN {
 		levels := s.queue.Levels()
 		if len(levels) > 0 {
-			level = levels[s.random.Intn(len(levels))]
+			level = levels[s.getRandLevel(len(levels))]
 		}
 	}
+
+	// TODO avyas there could be better ways to do this
+	// The placement engine right now works per task type.
+	// CONTROLLER tasks are special BATCH tasks which control other tasks eg
+	// spark driver. When the batch placement engine requests tasks to be
+	// placed from the resmgr, we need to provide both BATCH and CONTROLLER
+	// tasks from the ready queue.
+	if taskType == resmgr.TaskType_BATCH {
+		// include controller tasks as well
+		levels := []int{int(resmgr.TaskType_BATCH), int(resmgr.TaskType_CONTROLLER)}
+		level = levels[s.getRandLevel(len(levels))]
+	}
+
 	s.condition.L.Lock()
 	defer s.condition.L.Unlock()
 	pastDeadline := uint32(0)

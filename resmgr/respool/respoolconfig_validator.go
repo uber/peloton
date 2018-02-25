@@ -11,7 +11,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ResourcePoolConfigValidatorFunc validator func for registering custom validator
+// Validator performs validations on the resource config pool
+type Validator interface {
+	// Validate validates the resource pool config
+	Validate(data interface{}) error
+	// register a slice of Validator functions
+	Register(validatorFuncs interface{}) (Validator, error)
+}
+
+// ResourcePoolConfigValidatorFunc Validator func for registering custom validator
 type ResourcePoolConfigValidatorFunc func(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error
 
 // ResourcePoolConfigData holds the data that needs to be validated
@@ -40,6 +48,7 @@ func NewResourcePoolConfigValidator(rTree Tree) (Validator, error) {
 			ValidateParent,
 			ValidateSiblings,
 			ValidateChildrenReservations,
+			ValidateControllerLimit,
 		},
 	)
 }
@@ -62,7 +71,8 @@ func (rv *resourcePoolConfigValidator) Validate(data interface{}) error {
 }
 
 // Register a slice of validator functions
-func (rv *resourcePoolConfigValidator) Register(validatorFuncs interface{}) (Validator, error) {
+func (rv *resourcePoolConfigValidator) Register(validatorFuncs interface{}) (
+	Validator, error) {
 	if vFuncs, ok := validatorFuncs.([]ResourcePoolConfigValidatorFunc); ok {
 		rv.resourcePoolConfigValidatorFuncs = vFuncs
 		return rv, nil
@@ -226,7 +236,8 @@ func ValidateChildrenReservations(resTree Tree, resourcePoolConfigData ResourceP
 }
 
 // ValidateResourcePool if resource configurations are correct
-func ValidateResourcePool(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
+func ValidateResourcePool(_ Tree,
+	resourcePoolConfigData ResourcePoolConfigData) error {
 	resPoolConfig := resourcePoolConfigData.ResourcePoolConfig
 	ID := resourcePoolConfigData.ID
 
@@ -267,7 +278,8 @@ func ValidateResourcePool(resTree Tree, resourcePoolConfigData ResourcePoolConfi
 }
 
 // ValidateCycle if adding/updating current pool would result in a cycle
-func ValidateCycle(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
+func ValidateCycle(_ Tree,
+	resourcePoolConfigData ResourcePoolConfigData) error {
 	resPoolConfig := resourcePoolConfigData.ResourcePoolConfig
 	ID := resourcePoolConfigData.ID
 
@@ -285,7 +297,8 @@ func ValidateCycle(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) 
 }
 
 // ValidateResourcePoolPath validates the resource pool path
-func ValidateResourcePoolPath(resTree Tree, resourcePoolConfigData ResourcePoolConfigData) error {
+func ValidateResourcePoolPath(_ Tree,
+	resourcePoolConfigData ResourcePoolConfigData) error {
 	path := resourcePoolConfigData.Path
 
 	if path == nil {
@@ -304,5 +317,21 @@ func ValidateResourcePoolPath(resTree Tree, resourcePoolConfigData ResourcePoolC
 		return errors.Errorf("path should begin with %s", ResourcePoolPathDelimiter)
 	}
 
+	return nil
+}
+
+// ValidateControllerLimit validates the controller limit
+func ValidateControllerLimit(_ Tree,
+	resourcePoolConfigData ResourcePoolConfigData) error {
+	controllerLimit := resourcePoolConfigData.ResourcePoolConfig.GetControllerLimit()
+	if controllerLimit == nil {
+		return nil
+	}
+
+	maxPercent := controllerLimit.GetMaxPercent()
+	if maxPercent > 100 {
+		return errors.New("controller limit, " +
+			"max percent cannot be more than 100")
+	}
 	return nil
 }

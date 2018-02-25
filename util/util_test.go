@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"testing"
 
-	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
@@ -129,4 +131,33 @@ func TestGPUResources(t *testing.T) {
 	}, "*")
 
 	assert.Equal(t, 4, len(rs))
+}
+
+func TestGetTaskType(t *testing.T) {
+	tt := []struct {
+		cfg *task.TaskConfig
+		tt  resmgr.TaskType
+	}{
+
+		{
+			cfg: &task.TaskConfig{
+				Controller: true,
+			},
+			tt: resmgr.TaskType_CONTROLLER,
+		},
+		{
+			cfg: &task.TaskConfig{
+				Volume: &task.PersistentVolumeConfig{},
+			},
+			tt: resmgr.TaskType_STATEFUL,
+		},
+		{
+			cfg: &task.TaskConfig{},
+			tt:  resmgr.TaskType_BATCH,
+		},
+	}
+
+	for _, test := range tt {
+		assert.Equal(t, test.tt, getTaskType(test.cfg))
+	}
 }

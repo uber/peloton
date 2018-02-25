@@ -23,4 +23,6 @@ resources:
   reservation: 0
   limit: 0
   share: 1
+controllerlimit:
+  maxpercent: 10
 policy: 1

@@ -13,6 +13,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -215,7 +216,7 @@ func (s *resPoolConfigValidatorSuite) TestNewValidator() {
 
 	rcv, ok := v.(*resourcePoolConfigValidator)
 	s.True(ok)
-	s.Equal(5, len(rcv.resourcePoolConfigValidatorFuncs))
+	s.Equal(6, len(rcv.resourcePoolConfigValidatorFuncs))
 }
 
 func (s *resPoolConfigValidatorSuite) TestValidateOverrideRoot() {
@@ -732,6 +733,46 @@ func (s *resPoolConfigValidatorSuite) TestValidateSiblingsUpdate() {
 	s.Error(err)
 	s.Equal("resource pool:respool1 already exists",
 		err.Error())
+}
+
+func (s *resPoolConfigValidatorSuite) TestValidateControllerLimit() {
+	rv := &resourcePoolConfigValidator{resTree: s.resourceTree}
+	_, err := rv.Register(
+		[]ResourcePoolConfigValidatorFunc{
+			ValidateControllerLimit,
+		},
+	)
+	s.NoError(err)
+
+	tt := []struct {
+		maxPercent float64
+		err        error
+	}{
+		{
+			maxPercent: 200,
+			err:        errors.New("controller limit, max percent cannot be more than 100"),
+		},
+		{
+			maxPercent: 10,
+			err:        nil,
+		},
+	}
+
+	for _, t := range tt {
+		resourcePoolConfigData := ResourcePoolConfigData{
+			ResourcePoolConfig: &pb_respool.ResourcePoolConfig{
+				ControllerLimit: &pb_respool.ControllerLimit{
+					MaxPercent: t.maxPercent,
+				},
+			},
+		}
+		err = rv.Validate(resourcePoolConfigData)
+		if t.err != nil {
+			s.EqualError(t.err, err.Error())
+		} else {
+			s.NoError(err)
+		}
+	}
 }
 
 func TestResPoolConfigValidator(t *testing.T) {

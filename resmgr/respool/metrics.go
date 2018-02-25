@@ -3,6 +3,7 @@ package respool
 import (
 	"code.uber.internal/infra/peloton/common/scalar"
 
+	"github.com/gocql/gocql"
 	"github.com/uber-go/tally"
 )
 
@@ -45,6 +46,9 @@ type Metrics struct {
 	ResourcePoolReservation scalar.GaugeMaps
 	ResourcePoolLimit       scalar.GaugeMaps
 	ResourcePoolShare       scalar.GaugeMaps
+
+	ControllerAllocation scalar.GaugeMaps
+	ControllerLimit      scalar.GaugeMaps
 }
 
 // NewMetrics returns a new instance of respool.Metrics.
@@ -102,5 +106,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ResourcePoolReservation: scalar.NewGaugeMaps(reservationScope),
 		ResourcePoolLimit:       scalar.NewGaugeMaps(limitScope),
 		ResourcePoolShare:       scalar.NewGaugeMaps(shareScope),
+
+		ControllerAllocation: scalar.NewGaugeMaps(allocationScope.
+			SubScope("controller_allocation")),
+		ControllerLimit: scalar.NewGaugeMaps(limitScope.SubScope(
+			"controller_limit")),
 	}
 }

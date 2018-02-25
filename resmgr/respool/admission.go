@@ -14,48 +14,151 @@ import (
 var (
 	errGangInvalid          = errors.New("gang is invalid")
 	errGangValidationFailed = errors.New("gang validation failed")
+	errResourcePoolFull     = errors.New("resource pool full")
+	errControllerTask       = errors.New("failed to admit controller task")
 )
+
+type queueType int
+
+const (
+	controllerQueue queueType = iota + 1
+	pendingQueue
+)
+
+// returns true if the gang can be admitted to the pool
+type admitter func(gang *resmgrsvc.Gang, pool *resPool) bool
+
+//  returns true if there's enough resources in the pool to admit the gang
+func checkEntitlement(gang *resmgrsvc.Gang,
+	pool *resPool) bool {
+	currentEntitlement := pool.entitlement
+	currentAllocation := pool.allocation.GetByType(scalar.TotalAllocation)
+	neededResources := scalar.GetGangResources(gang)
+
+	log.WithField("entitlement", currentEntitlement).
+		WithField("total_alloc", currentAllocation).
+		WithField("resources_required", neededResources).Debug(
+		"checking entitlement")
+
+	return currentAllocation.
+		Add(neededResources).
+		LessThanOrEqual(currentEntitlement)
+
+}
+
+// returns true if a controller gang can be admitted to the pool
+func checkControllerLimit(gang *resmgrsvc.Gang,
+	pool *resPool) bool {
+	if !isController(gang) {
+		// don't need to check controller limit
+		return true
+	}
+
+	if pool.controllerLimit == nil {
+		log.WithField("respool_id", pool.id).
+			Debug("resource pool doesn't have a controller limit")
+		return true
+	}
+
+	// check controller limit and allocation
+	controllerAllocation := pool.allocation.GetByType(scalar.ControllerAllocation)
+	neededResources := scalar.GetGangResources(gang)
+
+	log.WithField("controller_limit", pool.controllerLimit).
+		WithField("controller_alloc", controllerAllocation).
+		WithField("resources_required", neededResources).Debug(
+		"checking controller limit")
+
+	return controllerAllocation.
+		Add(neededResources).
+		LessThanOrEqual(pool.controllerLimit)
+}
 
 // admissionController is the interface for the admission controller for a
 // resource pool
 type admissionController interface {
 	// Try admit, tries to admit the gang into the resource pool.
-	// Returns a bool to indicate if the admission was successful or not and an
-	// error if there was some error in the admission control
-	TryAdmit(gang *resmgrsvc.Gang, pool *resPool) (bool, error)
+	// Returns an error if there was some error in the admission control
+	TryAdmit(gang *resmgrsvc.Gang, pool *resPool) error
 }
-
-// admissionHandler is the handler for the admission controller
-type admissionHandler func(gang *resmgrsvc.Gang, pool *resPool) (bool, error)
 
 // batchAdmissionController is the implementation of admissionController for
 // batch tasks
 type batchAdmissionController struct {
-	tt        resmgr.TaskType
-	onSuccess admissionHandler
-	onFailure admissionHandler
+	qt        queueType
+	admitters []admitter
+}
+
+var (
+	pending    = newPendingQueueAdmissionController()
+	controller = newControllerQueueAdmissionController()
+)
+
+func newPendingQueueAdmissionController() admissionController {
+	return batchAdmissionController{
+		qt:        pendingQueue,
+		admitters: []admitter{checkEntitlement, checkControllerLimit},
+	}
+}
+
+func newControllerQueueAdmissionController() admissionController {
+	return batchAdmissionController{
+		qt:        controllerQueue,
+		admitters: []admitter{checkEntitlement, checkControllerLimit},
+	}
 }
 
 func (ac batchAdmissionController) TryAdmit(
 	gang *resmgrsvc.Gang,
-	pool *resPool) (ok bool, err error) {
+	pool *resPool) error {
 
-	ok, err = ac.validateGang(gang, pool)
+	pool.Lock()
+	defer pool.Unlock()
+
+	ok, err := ac.validateGang(gang, pool)
 	if err != nil {
-		return false, errGangValidationFailed
+		return errGangValidationFailed
 	}
 
 	// Gang is invalid
 	if !ok {
-		return false, errGangInvalid
+		return errGangInvalid
 	}
 
-	// TODO avyas add admission control for controller tasks
-	if ac.canAdmit(gang, pool) {
-		return ac.onSuccess(gang, pool)
+	if ok = ac.canAdmit(gang, pool); !ok {
+		switch ac.qt {
+		case pendingQueue:
+			// If a gang can't be admitted from the pending queue to the resource
+			// pool, then if
+			// 1. its a controller task it is moved to the controller queue
+			// 2. its a non-controller task do nothing
+			if isController(gang) {
+				err = pool.pendingQueue.Remove(gang)
+				if err != nil {
+					return errors.Wrapf(err,
+						"failed to remove gang from pending queue")
+				}
+
+				err = pool.controllerQueue.Enqueue(gang)
+				if err != nil {
+					return errors.Wrapf(err,
+						"failed to enqueue gang to controller queue")
+				}
+				return errControllerTask
+			}
+		}
+		return errResourcePoolFull
 	}
 
-	return ac.onFailure(gang, pool)
+	// add to allocation and remove from source queue
+	err = ac.getSourceQueue(pool).Remove(gang)
+	if err != nil {
+		return errors.Wrapf(err,
+			"failed to remove gang from queue")
+	}
+
+	pool.allocation = pool.allocation.Add(scalar.GetGangAllocation(gang))
+	return nil
 }
 
 // validateGang checks for all/some tasks been deleted. This function will delete that
@@ -65,9 +168,6 @@ func (ac batchAdmissionController) TryAdmit(
 // false if the gang is invalid and an optional error if the validation failed.
 func (ac batchAdmissionController) validateGang(gang *resmgrsvc.Gang, pool *resPool) (bool,
 	error) {
-
-	pool.Lock()
-	defer pool.Unlock()
 
 	// return false if gang is nil
 	if gang == nil {
@@ -146,106 +246,37 @@ func (ac batchAdmissionController) validateGang(gang *resmgrsvc.Gang, pool *resP
 	return false, nil
 }
 
+// returns true if gang can be admitted to the pool
 func (ac batchAdmissionController) canAdmit(gang *resmgrsvc.Gang,
 	pool *resPool) bool {
-	pool.Lock()
-	defer pool.Unlock()
 
-	currentEntitlement := pool.entitlement
-	currentAllocation := pool.allocation.GetByType(scalar.TotalAllocation)
-	neededResources := scalar.GetGangResources(gang)
-
-	log.WithField("entitlement", currentEntitlement).
-		WithField("total_alloc", currentAllocation).Debug(
-		"Current Resources")
-
-	log.WithField("resources_required", neededResources).Debug(
-		"Resources required")
-
-	return currentAllocation.
-		Add(neededResources).
-		LessThanOrEqual(currentEntitlement)
+	// loop through the admitters
+	for _, f := range ac.admitters {
+		if !f(gang, pool) {
+			// bail out fast
+			return false
+		}
+	}
+	// all admitters can admit
+	return true
 }
 
-var (
-	controller = controllerQueueAdmitter()
-	pending    = pendingQueueAdmitter()
-)
+// returns true if the gang is of controller task
+func isController(gang *resmgrsvc.Gang) bool {
+	tasks := gang.GetTasks()
 
-// controllerQueueAdmitter performs admission of gangs from the controller
-// queue of the resource pool
-func controllerQueueAdmitter() admissionController {
-	return batchAdmissionController{
-
-		// If a gang can be admitted from the controller queue,
-		// it is removed from the controller queue and the gangs resources are
-		// added to the resource pool's controller allocation.
-		onSuccess: func(gang *resmgrsvc.Gang, pool *resPool) (bool, error) {
-			err := pool.controllerQueue.Remove(gang)
-			if err != nil {
-				return false, errors.Wrapf(err,
-					"failed to remove from controller queue")
-			}
-			pool.Lock()
-			// TODO avyas add to controller allocation
-			pool.Unlock()
-
-			return true, nil
-		},
-
-		// If a gang can't be admitted from the pending queue to the resource
-		// pool then do nothing
-		onFailure: func(gang *resmgrsvc.Gang, pool *resPool) (bool, error) {
-			// no-op
-			return false, nil
-		},
-		tt: resmgr.TaskType_CONTROLLER,
+	if len(tasks) > 1 {
+		return false
 	}
-}
 
-// pendingQueueAdmitter performs admission of gangs from the pending queue of
-// the resource pool
-func pendingQueueAdmitter() admissionController {
-	return batchAdmissionController{
-
-		// If a gang can be admitted from the pending queue,
-		// it is removed from the pending queue and the gangs resources are
-		// added to the resource pool allocation.
-		onSuccess: func(gang *resmgrsvc.Gang, pool *resPool) (bool, error) {
-			err := pool.pendingQueue.Remove(gang)
-			if err != nil {
-				return false, errors.Wrapf(err,
-					"failed to remove from pending queue")
-			}
-			pool.Lock()
-			pool.allocation = pool.allocation.Add(scalar.GetGangAllocation(gang))
-			pool.Unlock()
-
-			return true, nil
-		},
-
-		// If a gang can't be admitted from the pending queue to the resource
-		// pool, then if
-		// 1. its a controller task it is moved to the controller queue
-		// 2. its a non-controller task do nothing
-		onFailure: func(gang *resmgrsvc.Gang, pool *resPool) (bool, error) {
-			pool.Lock()
-			defer pool.Unlock()
-
-			//TODO avyas: add failure handler for controller task
-			return false, nil
-		},
-		tt: resmgr.TaskType_BATCH,
-	}
+	return tasks[0].GetType() == resmgr.TaskType_CONTROLLER
 }
 
 // getSourceQueue returns the source queue depending on the type of the batch
 // task
 func (ac batchAdmissionController) getSourceQueue(pool *resPool) queue.Queue {
-	switch ac.tt {
-	case resmgr.TaskType_CONTROLLER:
+	if ac.qt == controllerQueue {
 		return pool.controllerQueue
-	default:
-		return pool.pendingQueue
 	}
+	return pool.pendingQueue
 }

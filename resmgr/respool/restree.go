@@ -200,22 +200,6 @@ func (t *tree) buildTree(
 	return node, nil
 }
 
-// printTree will print the whole Resource Pool Tree in BFS manner
-func (t *tree) printTree(root ResPool) {
-	var queue list.List
-	queue.PushBack(root)
-	for queue.Len() != 0 {
-		n := queue.Front()
-		queue.Remove(n)
-		nodeVar := n.Value.(*resPool)
-		nodeVar.logNodeResources()
-		children := nodeVar.Children()
-		for e := children.Front(); e != nil; e = e.Next() {
-			queue.PushBack(e.Value.(*resPool))
-		}
-	}
-}
-
 // getChildResPoolConfigs will return map[respoolid] = respoolConfig for a
 // parent resource pool
 func (t *tree) getChildResPoolConfigs(

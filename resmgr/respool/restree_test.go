@@ -191,13 +191,6 @@ func (s *resTreeTestSuite) getEntitlement() map[string]float64 {
 	return mapEntitlement
 }
 
-func (s *resTreeTestSuite) TestPrintTree() {
-	// TODO: serialize the tree and compare it
-	rt, ok := s.resourceTree.(*tree)
-	s.Equal(true, ok)
-	rt.printTree(rt.root)
-}
-
 func (s *resTreeTestSuite) TestGetChildren() {
 	rt, ok := s.resourceTree.(*tree)
 	s.Equal(true, ok)
