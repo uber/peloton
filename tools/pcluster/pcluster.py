@@ -110,17 +110,20 @@ def remove_existing_container(name):
 # Teardown mesos related containers.
 #
 def teardown_mesos():
-    remove_existing_container(config['zk_container'])
-
-    remove_existing_container(config['mesos_master_container'])
-
+    # 1 - Remove all Mesos Agents
     for i in range(0, config['num_agents']):
         agent = config['mesos_agent_container'] + repr(i)
         remove_existing_container(agent)
 
-    # Remove orphaned mesos containers.
+    # 2 - Remove Mesos Master
+    remove_existing_container(config['mesos_master_container'])
+
+    # 3- Remove orphaned mesos containers.
     for c in cli.containers(filters={'name': '^/mesos-'}, all=True):
         remove_existing_container(c.get("Id"))
+
+    # 4 - Remove ZooKeeper
+    remove_existing_container(config['zk_container'])
 
 
 #
@@ -135,14 +138,11 @@ def run_mesos():
     container = cli.create_container(
         name=config['zk_container'],
         hostname=config['zk_container'],
-        volumes=['/files'],
         host_config=cli.create_host_config(
             port_bindings={
                 config['default_zk_port']: config['local_zk_port'],
             },
-            binds=[
-                work_dir + '/files:/files',
-            ]),
+        ),
         image=config['zk_image'],
         detach=True
     )
@@ -529,31 +529,36 @@ def setup(applications={}, enable_peloton=False):
 # TODO (wu): use docker labels when launching containers
 #            and then remove all containers with that label
 def teardown():
+    # 1 - Remove jobmgr instances
+    for i in range(0, config['peloton_jobmgr_instance_count']):
+        name = config['peloton_jobmgr_container'] + repr(i)
+        remove_existing_container(name)
+
+    # 2 - Remove placement engine instances
+    for i in range(0, len(config['peloton_placement_instances'])):
+        name = config['peloton_placement_container'] + repr(i)
+        remove_existing_container(name)
+
+    # 3 - Remove resmgr instances
+    for i in range(0, config['peloton_resmgr_instance_count']):
+        name = config['peloton_resmgr_container'] + repr(i)
+        remove_existing_container(name)
+
+    # 4 - Remove hostmgr instances
+    for i in range(0, config['peloton_hostmgr_instance_count']):
+        name = config['peloton_hostmgr_container'] + repr(i)
+        remove_existing_container(name)
+
+    # 5 - Remove archiver instances
+    for i in range(0, config['peloton_archiver_instance_count']):
+        name = config['peloton_archiver_container'] + repr(i)
+        remove_existing_container(name)
+
     teardown_mesos()
 
     remove_existing_container(config['mysql_container'])
 
     remove_existing_container(config['cassandra_container'])
-
-    for i in range(0, config['peloton_resmgr_instance_count']):
-        name = config['peloton_resmgr_container'] + repr(i)
-        remove_existing_container(name)
-
-    for i in range(0, config['peloton_hostmgr_instance_count']):
-        name = config['peloton_hostmgr_container'] + repr(i)
-        remove_existing_container(name)
-
-    for i in range(0, config['peloton_jobmgr_instance_count']):
-        name = config['peloton_jobmgr_container'] + repr(i)
-        remove_existing_container(name)
-
-    for i in range(0, len(config['peloton_placement_instances'])):
-        name = config['peloton_placement_container'] + repr(i)
-        remove_existing_container(name)
-
-    for i in range(0, config['peloton_archiver_instance_count']):
-        name = config['peloton_archiver_container'] + repr(i)
-        remove_existing_container(name)
 
 
 def parse_arguments():

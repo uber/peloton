@@ -2,7 +2,7 @@
 
 
 # ZK configs
-zk_image: netflixoss/exhibitor:1.5.2
+zk_image: library/zookeeper:3.4
 default_zk_port: 2181
 local_zk_port: 8192
 zk_container: peloton-zk
