@@ -677,13 +677,37 @@ func (h *ServiceHandler) acknowledgeEvent(offset uint64) {
 	}
 }
 
-// GetActiveTasks returns task to state map
+func (h *ServiceHandler) fillTaskEntry(task *rmtask.RMTask) *resmgrsvc.GetActiveTasksResponse_TaskEntry {
+	taskEntry := &resmgrsvc.GetActiveTasksResponse_TaskEntry{
+		TaskID:         task.Task().GetId().GetValue(),
+		TaskState:      task.GetCurrentState().String(),
+		Reason:         task.StateMachine().GetReason(),
+		LastUpdateTime: task.StateMachine().GetLastUpdateTime().String(),
+	}
+	return taskEntry
+}
+
+// GetActiveTasks returns state to task entry map.
+// The map can be filtered based on job id, respool id and task states.
 func (h *ServiceHandler) GetActiveTasks(
 	ctx context.Context,
 	req *resmgrsvc.GetActiveTasksRequest,
 ) (*resmgrsvc.GetActiveTasksResponse, error) {
-	taskStates := h.rmTracker.GetActiveTasks(req.GetJobID(), req.GetRespoolID())
-	return &resmgrsvc.GetActiveTasksResponse{TaskStatesMap: taskStates}, nil
+	var taskStates = map[string]*resmgrsvc.GetActiveTasksResponse_TaskEntries{}
+
+	taskStateMap := h.rmTracker.GetActiveTasks(req.GetJobID(), req.GetRespoolID(), req.GetStates())
+	for state, tasks := range taskStateMap {
+		for _, task := range tasks {
+			taskEntry := h.fillTaskEntry(task)
+			if _, ok := taskStates[state]; !ok {
+				var taskList resmgrsvc.GetActiveTasksResponse_TaskEntries
+				taskStates[state] = &taskList
+			}
+			taskStates[state].TaskEntry = append(taskStates[state].GetTaskEntry(), taskEntry)
+		}
+	}
+
+	return &resmgrsvc.GetActiveTasksResponse{TasksByState: taskStates}, nil
 }
 
 // GetPendingTasks returns the pending tasks from a resource pool in the

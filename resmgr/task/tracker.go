@@ -60,7 +60,7 @@ type Tracker interface {
 	Clear()
 
 	// GetActiveTasks returns task states map
-	GetActiveTasks(jobID string, respoolID string) map[string]string
+	GetActiveTasks(jobID string, respoolID string, states []string) map[string][]*RMTask
 
 	// UpdateCounters updates the counters for each state
 	UpdateCounters(from string, to string)
@@ -300,25 +300,41 @@ func (tr *tracker) Clear() {
 	}
 }
 
+func (tr *tracker) isStateInRequest(state string, reqStates []string) bool {
+	for _, req := range reqStates {
+		if state == req {
+			return true
+		}
+	}
+	return false
+}
+
 // GetActiveTasks returns task to states map, if jobID or respoolID is provided,
 // only tasks for that job or respool will be returned
-func (tr *tracker) GetActiveTasks(jobID string, respoolID string) map[string]string {
+func (tr *tracker) GetActiveTasks(jobID string, respoolID string, states []string) map[string][]*RMTask {
 	tr.Lock()
 	defer tr.Unlock()
-	var taskStates = map[string]string{}
-	for id, task := range tr.tasks {
-		if jobID == "" && respoolID == "" {
-			taskStates[id] = task.GetCurrentState().String()
-		} else {
-			// TODO: make it handle jobID 'AND' respoolID if there is a usecase
-			if task.Task().GetJobId().GetValue() == jobID {
-				taskStates[id] = task.GetCurrentState().String()
+	taskStates := make(map[string][]*RMTask)
+
+	for _, task := range tr.tasks {
+		taskState := task.GetCurrentState().String()
+		if jobID != "" || respoolID != "" || len(states) != 0 {
+			if jobID != "" && task.Task().GetJobId().GetValue() != jobID {
+				continue
 			}
 
-			if task.Respool().ID() == respoolID {
-				taskStates[id] = task.GetCurrentState().String()
+			if respoolID != "" && task.Respool().ID() != respoolID {
+				continue
+			}
+
+			if len(states) > 0 && !tr.isStateInRequest(taskState, states) {
+				continue
 			}
 		}
+		if _, ok := taskStates[taskState]; !ok {
+			taskStates[taskState] = []*RMTask{}
+		}
+		taskStates[taskState] = append(taskStates[taskState], task)
 	}
 	return taskStates
 }

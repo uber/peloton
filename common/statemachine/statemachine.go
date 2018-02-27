@@ -62,6 +62,9 @@ type StateMachine interface {
 
 	// GetStateTimer returns the statetimer object
 	GetStateTimer() StateTimer
+
+	// GetLastUpdatedTime returns the last update time of the state machine
+	GetLastUpdateTime() time.Time
 }
 
 // statemachine is state machine, State Machine is responsible for moving states
@@ -302,6 +305,12 @@ func (sm *statemachine) GetReason() string {
 	sm.RLock()
 	defer sm.RUnlock()
 	return sm.reason
+}
+
+func (sm *statemachine) GetLastUpdateTime() time.Time {
+	sm.RLock()
+	defer sm.RUnlock()
+	return sm.lastUpdatedTime
 }
 
 // GetName returns the name of the state machine object

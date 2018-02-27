@@ -294,15 +294,33 @@ message GetActiveTasksRequest {
 
   // optional respoolID to filter out tasks
   string respoolID = 2;
+
+  // optional states to filter out tasks
+  repeated string states = 3;
 }
 
 message GetActiveTasksResponse {
   message Error {
     string message = 1;
   }
+  message TaskEntry {
+    string taskID = 1;
+    string taskState = 2;
+    string reason = 3;
+    string lastUpdateTime = 4;
+  }
+  message TaskEntries {
+    repeated TaskEntry taskEntry= 1;
+  }
+
   Error error = 1;
+
   // This will return a map from task id to state.
+  // DEPRECATED
   map <string,string> taskStatesMap = 2;
+
+  // This will return a map from state to list of tasks.
+  map <string, TaskEntries> tasksByState = 4;
 }
 
 // Returns the pending tasks in a resource pool in the order in which they

@@ -802,7 +802,11 @@ func (suite *HandlerTestSuite) TestGetActiveTasks() {
 	res, err := suite.handler.GetActiveTasks(context.Background(), req)
 	suite.NoError(err)
 	suite.NotNil(res)
-	suite.Equal(54, len(res.TaskStatesMap))
+	totalTasks := 0
+	for _, tasks := range res.GetTasksByState() {
+		totalTasks += len(tasks.GetTaskEntry())
+	}
+	suite.Equal(54, totalTasks)
 }
 
 func (suite *HandlerTestSuite) TestGetPreemptibleTasks() {

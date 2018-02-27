@@ -180,10 +180,26 @@ func (suite *TrackerTestSuite) TestAddResources() {
 }
 
 func (suite *TrackerTestSuite) TestGetTaskStates() {
-	result := suite.tracker.GetActiveTasks("", "")
+	result := suite.tracker.GetActiveTasks("", "", nil)
 	suite.Equal(1, len(result))
 
-	result = suite.tracker.GetActiveTasks("foo", "")
+	result = suite.tracker.GetActiveTasks("foo", "", nil)
+	suite.Equal(0, len(result))
+
+	rmTask := suite.tracker.GetTask(suite.task.Id)
+	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+	suite.NoError(err)
+
+	states := make([]string, 2)
+	states[0] = task.TaskState_PENDING.String()
+	states[1] = task.TaskState_PLACING.String()
+	result = suite.tracker.GetActiveTasks("", "", states)
+	suite.Equal(1, len(result))
+
+	result = suite.tracker.GetActiveTasks("job1", "", states)
+	suite.Equal(1, len(result))
+
+	result = suite.tracker.GetActiveTasks("foo", "", states)
 	suite.Equal(0, len(result))
 }
 

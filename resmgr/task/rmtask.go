@@ -278,6 +278,11 @@ func (rmTask *RMTask) Task() *resmgr.Task {
 	return rmTask.task
 }
 
+// StateMachine returns the state machine of the RMTask.
+func (rmTask *RMTask) StateMachine() state.StateMachine {
+	return rmTask.stateMachine
+}
+
 // GetCurrentState returns the current state
 func (rmTask *RMTask) GetCurrentState() task.TaskState {
 	return task.TaskState(

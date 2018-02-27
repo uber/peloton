@@ -154,34 +154,37 @@ func (t *reconciler) getTasksToReconcile() (map[string]string, error) {
 	// map of pelotonTaskID->MesosTaskID
 	tasksToReconcile := make(map[string]string)
 
-	activeTasks := t.tracker.GetActiveTasks("", "")
-	for pelotonTaskID, rmtrackerState := range activeTasks {
-		taskInfo, err := t.taskStore.GetTaskByID(context.Background(), pelotonTaskID)
+	activeTasks := t.tracker.GetActiveTasks("", "", nil)
+	for rmtrackerState, pelotonTasks := range activeTasks {
+		for _, pelotonTask := range pelotonTasks {
+			pelotonTaskID := pelotonTask.task.Id.Value
+			taskInfo, err := t.taskStore.GetTaskByID(context.Background(), pelotonTaskID)
 
-		if err != nil {
-			errs = multierror.Append(errs, errors.Errorf("unable to get task:%s from the "+
-				"database", pelotonTaskID))
-			continue
-		}
-		actualState := taskInfo.GetRuntime().GetState()
-		if _, ok := terminalTaskStates[actualState]; ok {
-			rmTask := t.tracker.GetTask(&peloton.TaskID{
-				Value: pelotonTaskID,
-			})
-			if rmTask == nil {
-				errs = multierror.Append(errs, errors.Errorf("unable to get rm task:%s "+
-					"from tracker", pelotonTaskID))
-			} else if rmTask.Task().GetTaskId().GetValue() ==
-				taskInfo.Runtime.GetMesosTaskId().GetValue() &&
-				actualState.String() != rmtrackerState {
-				// The task state in the database is terminal but in the tracker it is not
-				// we have a leak!
-				tasksToReconcile[pelotonTaskID] = rmTask.Task().GetTaskId().GetValue()
+			if err != nil {
+				errs = multierror.Append(errs, errors.Errorf("unable to get task:%s from the "+
+					"database", pelotonTaskID))
+				continue
+			}
+			actualState := taskInfo.GetRuntime().GetState()
+			if _, ok := terminalTaskStates[actualState]; ok {
+				rmTask := t.tracker.GetTask(&peloton.TaskID{
+					Value: pelotonTaskID,
+				})
+				if rmTask == nil {
+					errs = multierror.Append(errs, errors.Errorf("unable to get rm task:%s "+
+						"from tracker", pelotonTaskID))
+				} else if rmTask.Task().GetTaskId().GetValue() ==
+					taskInfo.Runtime.GetMesosTaskId().GetValue() &&
+					actualState.String() != rmtrackerState {
+					// The task state in the database is terminal but in the tracker it is not
+					// we have a leak!
+					tasksToReconcile[pelotonTaskID] = rmTask.Task().GetTaskId().GetValue()
 
-				// update metrics
-				leakedResources := scalar.ConvertToResmgrResource(
-					rmTask.task.GetResource())
-				t.metrics.LeakedResources.Update(leakedResources)
+					// update metrics
+					leakedResources := scalar.ConvertToResmgrResource(
+						rmTask.task.GetResource())
+					t.metrics.LeakedResources.Update(leakedResources)
+				}
 			}
 		}
 	}

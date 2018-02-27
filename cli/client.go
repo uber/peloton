@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/volume/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/leader"
@@ -23,6 +24,7 @@ type Client struct {
 	jobClient    job.JobManagerYARPCClient
 	taskClient   task.TaskManagerYARPCClient
 	resClient    respool.ResourceManagerYARPCClient
+	resMgrClient resmgrsvc.ResourceManagerServiceYARPCClient
 	volumeClient volume_svc.VolumeServiceYARPCClient
 	dispatcher   *yarpc.Dispatcher
 	ctx          context.Context
@@ -77,6 +79,8 @@ func New(
 		resClient: respool.NewResourceManagerYARPCClient(
 			dispatcher.ClientConfig(common.PelotonResourceManager),
 		),
+		resMgrClient: resmgrsvc.NewResourceManagerServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonResourceManager)),
 		volumeClient: volume_svc.NewVolumeServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonJobManager),
 		),

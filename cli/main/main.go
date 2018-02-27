@@ -153,6 +153,19 @@ var (
 	taskRestartJobName        = taskRestart.Arg("job", "job identifier").Required().String()
 	taskRestartInstanceRanges = taskRangeListFlag(taskRestart.Flag("range", "restart range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
 
+	// Top level resource manager state command
+	resMgr      = app.Command("resmgr", "fetch resource manager state")
+	resMgrTasks = resMgr.Command("tasks", "fetch resource manager task state")
+
+	resMgrActiveTasks             = resMgrTasks.Command("active", "fetch active tasks in resource manager")
+	resMgrActiveTasksGetJobName   = resMgrActiveTasks.Flag("job", "job identifier").Default("").String()
+	resMgrActiveTasksGetRespoolID = resMgrActiveTasks.Flag("respool", "resource pool identifier").Default("").String()
+	resMgrActiveTasksGetStates    = resMgrActiveTasks.Flag("states", "task states").Default("").String()
+
+	resMgrPendingTasks             = resMgrTasks.Command("pending", "fetch pending tasks (ordered) in resource manager as json/yaml")
+	resMgrPendingTasksGetRespoolID = resMgrPendingTasks.Arg("respool", "resource pool identifier").Default("").String()
+	resMgrPendingTasksGetLimit     = resMgrPendingTasks.Flag("limit", "maximum number of tasks to return").Default("100").Uint32()
+
 	// Top level resource pool command
 	resPool = app.Command("respool", "manage resource pools")
 
@@ -333,6 +346,10 @@ func main() {
 		err = client.TaskStopAction(*taskStopJobName, *taskStopInstanceRanges)
 	case taskRestart.FullCommand():
 		err = client.TaskRestartAction(*taskRestartJobName, *taskRestartInstanceRanges)
+	case resMgrActiveTasks.FullCommand():
+		err = client.ResMgrGetActiveTasks(*resMgrActiveTasksGetJobName, *resMgrActiveTasksGetRespoolID, *resMgrActiveTasksGetStates)
+	case resMgrPendingTasks.FullCommand():
+		err = client.ResMgrGetPendingTasks(*resMgrPendingTasksGetRespoolID, uint32(*resMgrPendingTasksGetLimit))
 	case resPoolCreate.FullCommand():
 		err = client.ResPoolCreateAction(*resPoolCreatePath, *resPoolCreateConfig)
 	case respoolUpdate.FullCommand():

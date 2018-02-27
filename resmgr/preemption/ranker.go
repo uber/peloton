@@ -3,7 +3,6 @@ package preemption
 import (
 	"sort"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"code.uber.internal/infra/peloton/resmgr/scalar"
@@ -61,7 +60,7 @@ func (r *statePriorityRuntimeRanker) GetTasksToEvict(respoolID string, requiredR
 
 // rankAllTasks returns all active tasks in the resource pool in the preemption order
 func (r *statePriorityRuntimeRanker) rankAllTasks(respoolID string) []*rm_task.RMTask {
-	stateTaskMap := r.toStateTaskMap(r.tracker.GetActiveTasks("", respoolID))
+	stateTaskMap := r.tracker.GetActiveTasks("", respoolID, nil)
 	var allTasks []*rm_task.RMTask
 	for _, taskState := range taskStatesPreemptionOrder {
 		tasksInState := stateTaskMap[taskState.String()]
@@ -97,19 +96,6 @@ func filterTasks(resourcesLimit *scalar.Resources, allTasks []*rm_task.RMTask) [
 		resourceRunningCount = resourceRunningCount.Add(taskResources)
 	}
 	return tasksToEvict
-}
-
-// Returns a map or TaskState->TaskID
-func (r *statePriorityRuntimeRanker) toStateTaskMap(taskToStateMap map[string]string) map[string][]*rm_task.RMTask {
-	stateTaskMap := make(map[string][]*rm_task.RMTask)
-	for taskeID, state := range taskToStateMap {
-		if _, ok := stateTaskMap[state]; !ok {
-			stateTaskMap[state] = []*rm_task.RMTask{}
-		}
-		rmTask := r.tracker.GetTask(&peloton.TaskID{Value: taskeID})
-		stateTaskMap[state] = append(stateTaskMap[state], rmTask)
-	}
-	return stateTaskMap
 }
 
 // return 0  if  t1 == t2
