@@ -54,7 +54,9 @@ import:
 - package: github.com/docker/leadership
   version: ^0.1.0
 - package: github.com/docker/libkv
-  version: ^0.2.1
+  repo: gitolite@code.uber.internal:infra/docker-libkv
+  version: v0.2.2
+  vcs: git
 - package: github.com/gocql/gocql
   version: 09f0498f9ab5ca0267e3b451483a368648de2158
 - package: github.com/alecthomas/template

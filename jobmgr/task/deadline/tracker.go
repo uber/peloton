@@ -77,6 +77,8 @@ func (t *tracker) Start() error {
 	defer t.lock.Unlock()
 	t.lock.Lock()
 
+	t.stopChan = make(chan struct{}, 1)
+
 	if atomic.CompareAndSwapInt32(&t.runningState, RunningStateNotStarted, RunningStateRunning) {
 		go func() {
 			defer atomic.StoreInt32(&t.runningState, RunningStateNotStarted)

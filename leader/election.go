@@ -11,6 +11,7 @@ import (
 	"github.com/docker/leadership"
 	"github.com/docker/libkv/store"
 	"github.com/docker/libkv/store/zookeeper"
+	"github.com/samuel/go-zookeeper/zk"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 )
@@ -38,13 +39,14 @@ type ElectionConfig struct {
 // election holds the state of the zkelection
 type election struct {
 	sync.Mutex
-	metrics    electionMetrics
-	running    bool
-	leader     string
-	role       string
-	candidate  *leadership.Candidate
-	nomination Nomination
-	stopChan   chan struct{}
+	metrics     electionMetrics
+	running     bool
+	leader      string
+	role        string
+	candidate   *leadership.Candidate
+	nomination  Nomination
+	stopChan    chan struct{}
+	zkEventChan <-chan zk.Event
 }
 
 // NewCandidate creates new election object to control participation
@@ -70,6 +72,13 @@ func NewCandidate(
 	if err != nil {
 		return nil, err
 	}
+
+	// Cast the libkv store as a ZooKeeper store
+	zkStore, ok := client.(*zookeeper.Zookeeper)
+	if !ok {
+		return nil, errors.New("cast to ZooKeeper store type failed")
+	}
+
 	candidate := leadership.NewCandidate(
 		client,
 		leaderZkPath(cfg.Root, role),
@@ -82,12 +91,13 @@ func NewCandidate(
 		log.WithError(err).Fatal("failed to get hostname")
 	}
 	el := election{
-		running:    false,
-		metrics:    newElectionMetrics(scope, hostname),
-		role:       role,
-		nomination: nomination,
-		candidate:  candidate,
-		stopChan:   make(chan struct{}, 1),
+		running:     false,
+		metrics:     newElectionMetrics(scope, hostname),
+		role:        role,
+		nomination:  nomination,
+		candidate:   candidate,
+		stopChan:    make(chan struct{}, 1),
+		zkEventChan: zkStore.EventChan, // see docker/libkv fork for context
 	}
 
 	return &el, nil
@@ -148,17 +158,62 @@ func (el *election) Start() error {
 	return nil
 }
 
+// Listens on events from ZK connection if the connection is no
+// longer valid.
+func (el *election) waitForDisconEvents(disconEventChan chan struct{}) {
+	for {
+		select {
+		case e := <-el.zkEventChan:
+			if e.Type != zk.EventSession {
+				continue
+			}
+			if e.State == zk.StateDisconnected {
+				disconEventChan <- struct{}{}
+				return
+			}
+		}
+	}
+}
+
+// Declare lost leadership
+func (el *election) declareLostLeadership() error {
+	log.WithFields(log.Fields{
+		"id":   el.nomination.GetID(),
+		"role": el.role,
+	}).Info("Leadership lost")
+	el.metrics.LostLeadership.Inc(1)
+	el.metrics.IsLeader.Update(0)
+	return el.nomination.LostLeadershipCallback()
+}
+
 // waitForEvent handles events like this host gaining or losing
 // leadership, or a connectivity error occurring.
 
-// NOTE: this function blocks until an event is handled from either
-// the error channel or the event channel. It should be called by a
-// wrapper function that handles retries
+// NOTE: this function blocks until an event is handled from either:
+// the error channel, the event channel, or the ZK connection event channel.
+// It should be called by a wrapper function that handles retries
 func (el *election) waitForEvent() error {
+	disconEventChan := make(chan struct{})
+	go el.waitForDisconEvents(disconEventChan)
+
 	electionCh, errCh := el.candidate.RunForElection()
 
 	for {
 		select {
+		case <-disconEventChan:
+			log.WithFields(log.Fields{
+				"role": el.role,
+			}).Error("zk disconnected, will retry to run for election")
+			el.metrics.Error.Inc(1)
+			err := el.declareLostLeadership()
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"id":   el.nomination.GetID(),
+					"role": el.role,
+				}).Error("LostLeadershipCallback failed")
+			}
+			close(disconEventChan)
+			return errors.New("zk connection failure")
 		case isElected := <-electionCh:
 			if isElected {
 				log.WithFields(log.Fields{
@@ -169,35 +224,26 @@ func (el *election) waitForEvent() error {
 				el.metrics.IsLeader.Update(1)
 				err := el.nomination.GainedLeadershipCallback()
 				if err != nil {
-					log.WithFields(log.Fields{
-						"id":    el.nomination.GetID(),
-						"role":  el.role,
-						"error": err,
+					log.WithError(err).WithFields(log.Fields{
+						"id":   el.nomination.GetID(),
+						"role": el.role,
 					}).Error("GainedLeadershipCallback failed")
 					return err
 				}
 			} else {
-				log.WithFields(log.Fields{
-					"id":   el.nomination.GetID(),
-					"role": el.role,
-				}).Info("Leadership lost")
-				el.metrics.LostLeadership.Inc(1)
-				el.metrics.IsLeader.Update(0)
-				err := el.nomination.LostLeadershipCallback()
+				err := el.declareLostLeadership()
 				if err != nil {
-					log.WithFields(log.Fields{
-						"id":    el.nomination.GetID(),
-						"role":  el.role,
-						"error": err,
+					log.WithError(err).WithFields(log.Fields{
+						"id":   el.nomination.GetID(),
+						"role": el.role,
 					}).Error("LostLeadershipCallback failed")
 					return err
 				}
 			}
 		case err := <-errCh:
 			if err != nil {
-				log.WithFields(log.Fields{
-					"role":  el.role,
-					"error": err,
+				log.WithError(err).WithFields(log.Fields{
+					"role": el.role,
 				}).Error("Error participating in election")
 				el.metrics.Error.Inc(1)
 				return err

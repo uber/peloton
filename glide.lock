@@ -1,5 +1,5 @@
-hash: 52aac400f0aa4a8610e1b1378f21bb75003019447ebe6099cc022f91cc54a33f
-updated: 2018-01-04T14:06:48.847692185-08:00
+hash: 136b5edabca172dbbfd2e4d26b9fc4d6015208eabe536e5eea2b96239ed8c3db
+updated: 2018-02-21T11:44:31.191418542-08:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -18,7 +18,7 @@ imports:
   subpackages:
   - quantile
 - name: github.com/cactus/go-statsd-client
-  version: 91c326c3f7bd20f0226d3d1c289dd9f8ce28d33d
+  version: 138b925ccdf617776955904ba7759fce64406cec
   subpackages:
   - statsd
 - name: github.com/certifi/gocertifi
@@ -30,13 +30,15 @@ imports:
 - name: github.com/docker/leadership
   version: bfc7753dd48af19513b29deec23c364bf0f274eb
 - name: github.com/docker/libkv
-  version: aabc039ad04deb721e234f99cd1b4aa28ac71a40
+  version: 5cdca2c0ae480c213766572a115ca2d779d37428
+  repo: gitolite@code.uber.internal:infra/docker-libkv
+  vcs: git
   subpackages:
   - store
   - store/mock
   - store/zookeeper
 - name: github.com/evalphobia/logrus_sentry
-  version: 13ba9278e2adf1537fd94143a6b6a1c0dc008ac7
+  version: 57846a82817615f185b10cc40de8dc60c1ca5ae1
 - name: github.com/facebookgo/clock
   version: 600d898af40aa09a7a93ecb9265d87b0504b6f03
 - name: github.com/gemnasium/migrate
@@ -107,7 +109,7 @@ imports:
   - ext
   - log
 - name: github.com/pborman/uuid
-  version: e790cca94e6cc75c7064b1332e63811d4aae1a53
+  version: c65b2f87fee37d1c7854c9164a450713c28d50cd
 - name: github.com/pkg/errors
   version: 248dadf4e9068a0b3e79f02ed0a610d935de5302
 - name: github.com/pmezard/go-difflib
@@ -159,7 +161,7 @@ imports:
   subpackages:
   - internal/mapstructure
 - name: github.com/uber-go/tally
-  version: 6c4631652c6aab57c64f65c2e0aaec2e9aae3a64
+  version: 522328b48efad0c6034dba92bf39228694e9d31f
   subpackages:
   - m3
   - m3/customtransports
@@ -169,7 +171,7 @@ imports:
   - prometheus
   - statsd
 - name: github.com/uber/tchannel-go
-  version: 7bcb33f4bb908c21374f8bfdc9d4b1ebcbb8dab0
+  version: acd4eb54c11531814d9cd0344fdc53bebe86ab12
   subpackages:
   - internal/argreader
   - relay
@@ -187,13 +189,18 @@ imports:
   - maxprocs
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
-- name: go.uber.org/thriftrw
-  version: 61a13b1cb9cf4d6b26aeabf3fb907d90aaa693af
+- name: go.uber.org/net/metrics
+  version: 1e19de5b971489a45d178e12a0f72a78c70e300e
   subpackages:
-  - internal/semver
+  - bucket
+  - push
+  - tallypush
+- name: go.uber.org/thriftrw
+  version: 6216e5bb19132c14e979cf9c62abae6f022a0c0d
+  subpackages:
   - version
 - name: go.uber.org/yarpc
-  version: 584eb8fc6268aaad27d58d5a651929d7e7bdedf6
+  version: 112080bb21323a681a9b269fa7b5a1489558aab0
   subpackages:
   - api/backoff
   - api/encoding
@@ -215,7 +222,6 @@ imports:
   - internal/net
   - internal/observability
   - internal/outboundmiddleware
-  - internal/pally
   - internal/protoplugin
   - internal/request
   - internal/yarpcerrors
@@ -237,7 +243,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: f5079bd7f6f74e23c4d65efa0f4ce14cbd6a3c0f
+  version: cbe0f9307d0156177f9dd5dc85da1a31abc5f2fb
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -270,7 +276,7 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: f3955b8e9e244dd4dd4bc4f7b7a23a8445400a76
+  version: 8e4536a86ab602859c20df5ebfd0bd4228d08655
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer
@@ -280,6 +286,7 @@ imports:
   - connectivity
   - credentials
   - encoding
+  - encoding/proto
   - grpclb/grpc_lb_v1/messages
   - grpclog
   - internal
