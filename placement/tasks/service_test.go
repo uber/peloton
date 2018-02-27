@@ -17,6 +17,10 @@ import (
 	"github.com/uber-go/tally"
 )
 
+const (
+	_testReason = "Test Placement Reason"
+)
+
 func setupService(t *testing.T) (Service, *resource_mocks.MockResourceManagerServiceYARPCClient, *gomock.Controller) {
 	ctrl := gomock.NewController(t)
 	mockResourceManager := resource_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
@@ -121,6 +125,7 @@ func TestTaskService_Enqueue(t *testing.T) {
 				},
 			},
 		},
+		Reason: _testReason,
 	}
 	rmTask := &resmgr.Task{
 		Name: "task",
@@ -138,5 +143,5 @@ func TestTaskService_Enqueue(t *testing.T) {
 		),
 	)
 	ctx := context.Background()
-	service.Enqueue(ctx, assignments)
+	service.Enqueue(ctx, assignments, _testReason)
 }

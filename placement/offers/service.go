@@ -2,6 +2,7 @@ package offers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -10,13 +11,19 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/placement/models"
+
 	log "github.com/sirupsen/logrus"
+)
+
+const (
+	_failedToAcquireHostOffers = "Failed to acquire host offers"
+	_failedToFetchTasksOnHosts = "Failed to fetch tasks on hosts"
 )
 
 // Service will manage offers used by any placement strategy.
 type Service interface {
 	// Acquire fetches a batch of offers from the host service.
-	Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.TaskType, filter *hostsvc.HostFilter) (offers []*models.Host)
+	Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.TaskType, filter *hostsvc.HostFilter) (offers []*models.Host, reason string)
 
 	// Release will return the given offers to the host service.
 	Release(ctx context.Context, offers []*models.Host)
@@ -95,30 +102,19 @@ func (s *service) convertOffers(hostOffers []*hostsvc.HostOffer,
 	return offers
 }
 
-func (s *service) Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.TaskType, filter *hostsvc.HostFilter) []*models.Host {
+func (s *service) Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.TaskType, filter *hostsvc.HostFilter) (offers []*models.Host, reason string) {
 	// Get offers
 	hostOffers, filterResults, err := s.fetchOffers(ctx, filter)
 	if err != nil {
 		log.WithFields(log.Fields{
-			log.ErrorKey:     err,
 			"hostOffers":     hostOffers,
 			"filter_results": filterResults,
 			"filter":         filter,
 			"taskType":       taskType,
 			"fetchTasks":     fetchTasks,
-		}).Error("Failed to dequeue hosts")
+		}).WithError(err).Error(_failedToAcquireHostOffers)
 		s.metrics.OfferGetFail.Inc(1)
-		return nil
-	}
-
-	if len(hostOffers) == 0 {
-		log.WithFields(log.Fields{
-			"hostOffers":     hostOffers,
-			"filter_results": filterResults,
-			"filter":         filter,
-			"taskType":       taskType,
-			"fetchTasks":     fetchTasks,
-		}).Warn("No hosts dequeued")
+		return offers, _failedToAcquireHostOffers
 	}
 
 	// Get tasks running on all the offers
@@ -132,9 +128,9 @@ func (s *service) Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.
 				"filter":         filter,
 				"taskType":       taskType,
 				"fetchTasks":     fetchTasks,
-			}).WithError(err).Error("Failed to fetch tasks on hosts")
+			}).WithError(err).Error(_failedToFetchTasksOnHosts)
 			s.metrics.OfferGetFail.Inc(1)
-			return nil
+			return offers, _failedToFetchTasksOnHosts
 		}
 	}
 
@@ -145,9 +141,19 @@ func (s *service) Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.
 		"taskType":               taskType,
 		"fetchTasks":             fetchTasks,
 		"host_tasks_map_noindex": hostTasksMap,
-	}).Debug("Offer service acquired offers and related tasks.")
+	}).Debug("Offer service acquired offers and related tasks")
+
+	filterRes, _ := json.Marshal(filterResults)
+	if len(hostOffers) == 0 {
+		log.WithFields(log.Fields{
+			"filter_results": string(filterRes),
+			"filter":         filter,
+			"taskType":       taskType,
+		}).Info("No host offers dequeued")
+	}
+
 	// Create placement offers from the host offers
-	return s.convertOffers(hostOffers, hostTasksMap, time.Now())
+	return s.convertOffers(hostOffers, hostTasksMap, time.Now()), string(filterRes)
 }
 
 func (s *service) Release(ctx context.Context, hosts []*models.Host) {

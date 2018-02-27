@@ -162,6 +162,11 @@ message EnqueueGangsRequest {
 
   // The list of gangs to enqueue
   repeated Gang gangs = 2;
+
+  // The reason for enqueuing the gang, needed for resmgr internal task state
+  // debugging. e.g. tasks returned by placement engine should have specific
+  // reason for why task cannot be placed thus returned.
+  string reason = 3;
 }
 
 message EnqueueGangsResponse {

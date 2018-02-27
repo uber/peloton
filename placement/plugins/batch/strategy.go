@@ -82,7 +82,6 @@ func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.H
 
 func (batch *batch) getHostFilter(assignment *models.Assignment) *hostsvc.HostFilter {
 	result := &hostsvc.HostFilter{
-		// HostLimit will be later determined by number of tasks.
 		ResourceConstraint: &hostsvc.ResourceConstraint{
 			Minimum:  assignment.GetTask().GetTask().Resource,
 			NumPorts: assignment.GetTask().GetTask().NumPorts,
@@ -109,7 +108,21 @@ func (batch *batch) Filters(assignments []*models.Assignment) map[*hostsvc.HostF
 		batch = append(batch, assignment)
 		filters[groups[s]] = batch
 	}
-	return filters
+
+	// Add quantity control to hostfilter.
+	result := map[*hostsvc.HostFilter][]*models.Assignment{}
+	for filter, assignments := range filters {
+		filterWithQuantity := &hostsvc.HostFilter{
+			ResourceConstraint:   filter.GetResourceConstraint(),
+			SchedulingConstraint: filter.GetSchedulingConstraint(),
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(len(assignments)),
+			},
+		}
+		result[filterWithQuantity] = assignments
+	}
+
+	return result
 }
 
 // ConcurrencySafe is an implementation of the placement.Strategy interface.

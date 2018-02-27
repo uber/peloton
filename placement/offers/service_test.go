@@ -2,6 +2,7 @@ package offers
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	resource_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 	"code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/placement/models"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
@@ -27,13 +29,18 @@ func TestOfferService_Dequeue(t *testing.T) {
 
 	ctx := context.Background()
 	filter := &hostsvc.HostFilter{}
+	filterResult := map[string]uint32{
+		"MISMATCH_CONSTRAINTS": 3,
+		"MISMATCH_GPU":         5,
+	}
+	filterResultStr, _ := json.Marshal(filterResult)
 	hostOffers := &hostsvc.AcquireHostOffersResponse{
 		HostOffers: []*hostsvc.HostOffer{
 			{
 				Hostname: "hostname",
 			},
 		},
-		FilterResultCounts: map[string]uint32{},
+		FilterResultCounts: filterResult,
 	}
 	gomock.InOrder(
 		mockHostManager.EXPECT().
@@ -64,7 +71,8 @@ func TestOfferService_Dequeue(t *testing.T) {
 				Error: nil,
 			}, nil),
 	)
-	hosts := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	hosts, reason := service.Acquire(ctx, true, resmgr.TaskType_UNKNOWN, filter)
+	assert.Equal(t, string(filterResultStr), reason)
 	assert.Equal(t, 1, len(hosts))
 	assert.Equal(t, "hostname", hosts[0].GetOffer().Hostname)
 	assert.Equal(t, 1, len(hosts[0].GetTasks()))

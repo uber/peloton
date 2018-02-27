@@ -58,6 +58,7 @@ func TestBatchFiltersWithResources(t *testing.T) {
 
 	assert.Equal(t, 2, len(filters))
 	for filter, batch := range filters {
+		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
 		switch filter.ResourceConstraint.Minimum.CpuLimit {
 		case 32.0:
 			assert.Equal(t, 2, len(batch))
@@ -82,6 +83,7 @@ func TestBatchFiltersWithPorts(t *testing.T) {
 
 	assert.Equal(t, 2, len(filters))
 	for filter, batch := range filters {
+		assert.Equal(t, uint32(len(batch)), filter.GetQuantity().GetMaxHosts())
 		switch filter.ResourceConstraint.NumPorts {
 		case 1:
 			assert.Equal(t, 2, len(batch))

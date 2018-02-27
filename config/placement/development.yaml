@@ -8,6 +8,9 @@ storage:
 election:
   zk_servers: ["localhost:8192"]
 
+placement:
+  max_placement_duration: 30s
+
 metrics:
   multi_reporter: true
   prometheus:

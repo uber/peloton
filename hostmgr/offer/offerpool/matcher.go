@@ -53,10 +53,6 @@ func (m *Matcher) tryMatchImpl(
 		return hostsvc.HostFilterResult_MISMATCH_MAX_HOST_LIMIT
 	}
 
-	if !s.HasOffer() {
-		return hostsvc.HostFilterResult_NO_OFFER
-	}
-
 	tryResult, offers := s.TryMatch(m.hostFilter, m.evaluator)
 	log.WithFields(log.Fields{
 		"host_filter": m.hostFilter,

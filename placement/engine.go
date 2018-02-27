@@ -32,6 +32,8 @@ const (
 	_noOffersTimeoutPenalty = 1 * time.Second
 	// _noTasksTimeoutPenalty is the timeout value for a get tasks request.
 	_noTasksTimeoutPenalty = 1 * time.Second
+
+	_failedToPlaceTaskAfterTimeout = "Failed to place task after timeout"
 )
 
 // Engine represents a placement engine that can be started and stopped.
@@ -261,14 +263,18 @@ func (e *engine) cleanup(ctx context.Context, assigned, retryable, unassigned []
 		e.taskService.SetPlacements(ctx, resPlacements)
 	}
 
-	// Return tasks that failed to get placed.
-	e.taskService.Enqueue(ctx, unassigned)
+	if len(unassigned) > 0 {
+		// Return tasks that failed to get placed.
+		e.taskService.Enqueue(ctx, unassigned, _failedToPlaceTaskAfterTimeout)
+	}
 
 	// Find the unused offers.
 	unusedOffers := e.findUnusedHosts(assigned, retryable, offers)
 
-	// Release the unused offers.
-	e.offerService.Release(ctx, unusedOffers)
+	if len(unusedOffers) > 0 {
+		// Release the unused offers.
+		e.offerService.Release(ctx, unusedOffers)
+	}
 }
 
 func (e *engine) pastDeadline(now time.Time, assignments []*models.Assignment) bool {
@@ -287,13 +293,13 @@ func (e *engine) placeAssignmentGroup(ctx context.Context, filter *hostsvc.HostF
 	}).Debug("placing assignment group")
 	for len(assignments) > 0 {
 		// Try and get some hosts
-		hosts := e.offerService.Acquire(
+		hosts, reason := e.offerService.Acquire(
 			ctx, e.config.FetchOfferTasks, e.config.TaskType, filter)
 		existing := e.findUsedHosts(assignments)
 		now := time.Now()
 		for !e.pastDeadline(now, assignments) && len(hosts)+len(existing) == 0 {
 			time.Sleep(_noOffersTimeoutPenalty)
-			hosts = e.offerService.Acquire(
+			hosts, reason = e.offerService.Acquire(
 				ctx, e.config.FetchOfferTasks, e.config.TaskType, filter)
 			now = time.Now()
 		}
@@ -309,7 +315,7 @@ func (e *engine) placeAssignmentGroup(ctx context.Context, filter *hostsvc.HostF
 			}).Warn("failed to place tasks due to offer starvation")
 			e.metrics.OfferStarved.Inc(1)
 			// Return the tasks
-			e.taskService.Enqueue(ctx, assignments)
+			e.taskService.Enqueue(ctx, assignments, reason)
 			return
 		}
 		e.metrics.OfferGet.Inc(1)
@@ -345,8 +351,7 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 	}
 
 	filters := e.strategy.Filters(assignments)
-	for f, b := range filters {
-		filter, batch := f, b
+	for filter, batch := range filters {
 		// Run the placement of each batch in parallel
 		e.pool.Enqueue(async.JobFunc(func(context.Context) {
 			e.placeAssignmentGroup(ctx, filter, batch)

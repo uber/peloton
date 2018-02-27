@@ -19,7 +19,7 @@ type Service interface {
 	Dequeue(ctx context.Context, taskType resmgr.TaskType, batchSize int, timeout int) (assignments []*models.Assignment)
 
 	// Enqueue will put some tasks into the resource service which where not placed.
-	Enqueue(ctx context.Context, assignments []*models.Assignment)
+	Enqueue(ctx context.Context, assignments []*models.Assignment, reason string)
 
 	// SetPlacements will set the given placements in the resource service.
 	SetPlacements(ctx context.Context, placements []*resmgr.Placement)
@@ -141,7 +141,7 @@ func (s *service) SetPlacements(ctx context.Context, placements []*resmgr.Placem
 	s.metrics.SetPlacementSuccess.Inc(int64(len(placements)))
 }
 
-func (s *service) Enqueue(ctx context.Context, assignments []*models.Assignment) {
+func (s *service) Enqueue(ctx context.Context, assignments []*models.Assignment, reason string) {
 	if len(assignments) == 0 {
 		return
 	}
@@ -154,7 +154,8 @@ func (s *service) Enqueue(ctx context.Context, assignments []*models.Assignment)
 		})
 	}
 	var request = &resmgrsvc.EnqueueGangsRequest{
-		Gangs: gangs,
+		Gangs:  gangs,
+		Reason: reason,
 	}
 	response, err := s.resourceManager.EnqueueGangs(ctx, request)
 	if err != nil {

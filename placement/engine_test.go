@@ -25,6 +25,10 @@ import (
 	"github.com/uber-go/tally"
 )
 
+const (
+	_testReason = "Test Placement Reason"
+)
+
 func setupEngine(t *testing.T) (*gomock.Controller, *engine, *offers_mock.MockService,
 	*tasks_mock.MockService, *mocks.MockStrategy) {
 	ctrl := gomock.NewController(t)
@@ -80,6 +84,7 @@ func TestEnginePlaceNoTasksToPlace(t *testing.T) {
 	assert.True(t, delay > time.Duration(0))
 }
 
+// TODO: use mockgens to replace manually generated mocks.
 type mockService struct {
 	lockAssignments sync.Mutex
 	lockHosts       sync.Mutex
@@ -87,12 +92,17 @@ type mockService struct {
 	hosts           []*models.Host
 }
 
-func (s *mockService) Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.TaskType, filter *hostsvc.HostFilter) (offers []*models.Host) {
+func (s *mockService) Acquire(
+	ctx context.Context,
+	fetchTasks bool,
+	taskType resmgr.TaskType,
+	filter *hostsvc.HostFilter) (offers []*models.Host, reason string) {
+
 	s.lockHosts.Lock()
 	defer s.lockHosts.Unlock()
 	result := s.hosts
 	s.hosts = nil
-	return result
+	return result, _testReason
 }
 
 func (s *mockService) Dequeue(ctx context.Context, taskType resmgr.TaskType, batchSize int, timeout int) (assignments []*models.Assignment) {
@@ -105,7 +115,7 @@ func (s *mockService) Dequeue(ctx context.Context, taskType resmgr.TaskType, bat
 
 func (s *mockService) Release(ctx context.Context, offers []*models.Host) {}
 
-func (s *mockService) Enqueue(ctx context.Context, assignments []*models.Assignment) {}
+func (s *mockService) Enqueue(ctx context.Context, assignments []*models.Assignment, reason string) {}
 
 func (s *mockService) SetPlacements(ctx context.Context, placements []*resmgr.Placement) {}
 
@@ -192,26 +202,13 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 	assert.Equal(t, 15, failed)
 }
 
+// Test tasks cannot get placed due to no host offer.
 func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
 	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = time.Millisecond
 	assignment := testutil.SetupAssignment(time.Now().Add(time.Millisecond), 1)
 	assignments := []*models.Assignment{assignment}
-
-	mockTaskService.EXPECT().
-		Enqueue(
-			gomock.Any(),
-			gomock.Any(),
-		).MinTimes(1).
-		Return()
-
-	mockTaskService.EXPECT().
-		SetPlacements(
-			gomock.Any(),
-			gomock.Any(),
-		).MaxTimes(0).
-		Return()
 
 	mockOfferService.EXPECT().
 		Acquire(
@@ -220,14 +217,14 @@ func TestEnginePlaceNoHostsMakesTaskExceedDeadline(t *testing.T) {
 			gomock.Any(),
 			gomock.Any(),
 		).MinTimes(1).
-		Return(nil)
+		Return(nil, _testReason)
 
-	mockOfferService.EXPECT().
-		Release(
+	mockTaskService.EXPECT().
+		Enqueue(
 			gomock.Any(),
 			gomock.Any(),
-		).
-		MaxTimes(0).
+			_testReason,
+		).Times(1).
 		Return()
 
 	filter := &hostsvc.HostFilter{}
@@ -254,13 +251,6 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 		Return()
 
 	mockTaskService.EXPECT().
-		Enqueue(
-			gomock.Any(),
-			gomock.Any(),
-		).MinTimes(1).
-		Return()
-
-	mockTaskService.EXPECT().
 		SetPlacements(
 			gomock.Any(),
 			gomock.Any(),
@@ -274,15 +264,7 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 			gomock.Any(),
 			gomock.Any(),
 		).MinTimes(1).
-		Return(offers)
-
-	mockOfferService.EXPECT().
-		Release(
-			gomock.Any(),
-			gomock.Any(),
-		).
-		MinTimes(1).
-		Return()
+		Return(offers, _testReason)
 
 	filter := &hostsvc.HostFilter{}
 	engine.placeAssignmentGroup(context.Background(), filter, assignments)
@@ -319,6 +301,7 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 		).MinTimes(1).
 		Return(
 			hosts,
+			_testReason,
 		)
 
 	mockStrategy.EXPECT().
@@ -341,6 +324,7 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 
 	mockTaskService.EXPECT().
 		Enqueue(
+			gomock.Any(),
 			gomock.Any(),
 			gomock.Any(),
 		).AnyTimes().
@@ -420,7 +404,7 @@ func TestEngineFilterAssignments(t *testing.T) {
 }
 
 func TestEngineCleanup(t *testing.T) {
-	ctrl, engine, mockOfferService, mockTaskService, _ := setupEngine(t)
+	ctrl, engine, _, mockTaskService, _ := setupEngine(t)
 	defer ctrl.Finish()
 
 	host := testutil.SetupHost()
@@ -430,26 +414,21 @@ func TestEngineCleanup(t *testing.T) {
 	assignments := []*models.Assignment{assignment}
 
 	mockTaskService.EXPECT().
-		Enqueue(
-			gomock.Any(),
-			gomock.Any(),
-		).
-		Return()
-	mockTaskService.EXPECT().
 		SetPlacements(
 			gomock.Any(),
 			gomock.Any(),
 		).
 		Return()
 
-	mockOfferService.EXPECT().
-		Release(
+	mockTaskService.EXPECT().
+		Enqueue(
 			gomock.Any(),
-			gomock.Any(),
+			assignments,
+			_failedToPlaceTaskAfterTimeout,
 		).
 		Return()
 
-	engine.cleanup(context.Background(), assignments, nil, nil, hosts)
+	engine.cleanup(context.Background(), assignments, nil, assignments, hosts)
 }
 
 func TestEngineCreatePlacement(t *testing.T) {

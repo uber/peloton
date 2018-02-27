@@ -100,7 +100,7 @@ func (h *ServiceHandler) GetStreamHandler() *eventstream.Handler {
 	return h.eventStreamHandler
 }
 
-func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang) (
+func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang, reason string) (
 	[]*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
 	allTasksExist := true
 	for _, task := range gang.GetTasks() {
@@ -113,7 +113,7 @@ func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang) (
 	if allTasksExist {
 		var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 		for _, task := range gang.GetTasks() {
-			err := h.requeueUnplacedTask(task)
+			err := h.requeueUnplacedTask(task, reason)
 			if err != nil {
 				failed = append(
 					failed,
@@ -169,7 +169,7 @@ func (h *ServiceHandler) EnqueueGangs(
 	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	for _, gang := range req.GetGangs() {
 		if resourcePool == nil {
-			failed, err = h.returnExistingTasks(gang)
+			failed, err = h.returnExistingTasks(gang, req.GetReason())
 		} else {
 			failed, err = h.enqueueGang(gang, resourcePool)
 		}
@@ -283,7 +283,7 @@ func (h *ServiceHandler) removeTasksFromTracker(gang *resmgrsvc.Gang) {
 	}
 }
 
-func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task) error {
+func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task, reason string) error {
 	rmTask := h.rmTracker.GetTask(requeuedTask.Id)
 	if rmTask == nil {
 		return nil
@@ -294,8 +294,7 @@ func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task) error {
 	}
 	if currentTaskState == t.TaskState_PLACING {
 		// Transitioning back to Ready State
-		// TBD fetch the reason from the API and store
-		rmTask.TransitTo(t.TaskState_READY.String(), "requeue unplaced task")
+		rmTask.TransitTo(t.TaskState_READY.String(), reason)
 		// Adding to ready Queue
 		var tasks []*resmgr.Task
 		gang := &resmgrsvc.Gang{
