@@ -71,7 +71,7 @@ LoggerMode = Enum('standard', 'rotate')
 
 class Logger(Struct):
   destination = Default(LoggerDestination, LoggerDestination('file'))
-  mode = Default(LoggerMode, LoggerMode('standard'))
+  mode = Default(LoggerMode, LoggerMode('rotate'))
   rotate = RotatePolicy
 
 
