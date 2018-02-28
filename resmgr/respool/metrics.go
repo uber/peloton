@@ -3,7 +3,6 @@ package respool
 import (
 	"code.uber.internal/infra/peloton/common/scalar"
 
-	"github.com/gocql/gocql"
 	"github.com/uber-go/tally"
 )
 
