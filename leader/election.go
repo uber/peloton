@@ -110,15 +110,17 @@ func (el *election) updateLeaderElectionMetrics(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	select {
-	case <-el.stopChan:
-		log.Info("Stopped leader election metrics emission")
-		return
-	case <-ticker.C:
-		if el.IsLeader() {
-			el.metrics.IsLeader.Update(1)
-		} else {
-			el.metrics.IsLeader.Update(0)
+	for {
+		select {
+		case <-el.stopChan:
+			log.Info("Stopped leader election metrics emission")
+			return
+		case <-ticker.C:
+			if el.IsLeader() {
+				el.metrics.IsLeader.Update(1)
+			} else {
+				el.metrics.IsLeader.Update(0)
+			}
 		}
 	}
 }
