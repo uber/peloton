@@ -3,6 +3,48 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.10
+------------------
+* 2018-02-28    Bump peloton apps mem limit to 16GB                                                    avyas@uber.com
+* 2018-02-28    Enable log rotation for Peloton containers                                             apoorvaj@uber.com
+* 2018-02-28    Add 'task query' command to CLI to query on tasks(for a job) by state(s)               sachins@uber.com
+* 2018-02-28    [API] Extend pending tasks API to work with controller queue                           avyas@uber.com
+* 2018-02-28    Bump thrift version for peloton deployment tool                                        mu@uber.com
+* 2018-02-27    JobQuery optimization                                                                  adityacb@uber.com
+* 2018-02-27    Fix updating a nil controller limit metric                                             avyas@uber.com
+* 2018-02-27    Change peloton deploy script to honor apps deployment order                            mu@uber.com
+* 2018-02-27    Remove unused import                                                                   avyas@uber.com
+* 2018-02-27    Fix periodic leader election metrics                                                   rcharles@uber.com
+* 2018-02-27    [API] Add API and CLI to fetch active and pending tasks from resource manager          apoorvaj@uber.com
+* 2018-02-27    Controller tasks scheduling and admission : part two                                   avyas@uber.com
+* 2018-02-27    Expose placement reason to resmgr for state tracking                                   mu@uber.com
+* 2018-02-27    Retry connection with ZooKeeper if connection dropped                                  rcharles@uber.com
+* 2018-02-27    Fix pcluster for ZK stability                                                          rcharles@uber.com
+* 2018-02-26    Persist FAILED task state into DB even if task needs to be restarted                   apoorvaj@uber.com
+* 2018-02-25    Store reason for a state transition in the state machine                               apoorvaj@uber.com
+* 2018-02-25    [API] Add controller limit in the resource pool config                                 avyas@uber.com
+* 2018-02-24    API: Add summaryOnly flag to QueryRequest                                              adityacb@uber.com
+* 2018-02-23    Refactor allocation accounting in resource manager                                     avyas@uber.com
+* 2018-02-22    Change job runtime updater run interval for batch to be 10s and recover jobs in KILLING state. apoorvaj@uber.com
+* 2018-02-22    Controller tasks scheduling and admission : part one                                   avyas@uber.com
+* 2018-02-22    Add support for fetching task logs for previous task runs                              apoorvaj@uber.com
+* 2018-02-22    Create respool based on the size of vcluster                                           chunyang.shen@uber.com
+* 2018-02-22    Clean up old Aurora job files for Peloton deployment                                   min@uber.com
+* 2018-02-22    Add a separate Makefile target to generate API docs                                    min@uber.com
+* 2018-02-22    Emit Leader Election `is_leader` metrics every 10 secs                                 rcharles@uber.com
+* 2018-02-22    [API] Add Controller task type in the peloton API                                      avyas@uber.com
+* 2018-02-22    Fix JobSummary for old jobs, add job query by name                                     adityacb@uber.com
+* 2018-02-21    Add maintenance mode to Peloton using Mesos maintenance primitives                     cjketchum@uber.com
+* 2018-02-21    Fix ZooKeeper Leader Election metrics                                                  rcharles@uber.com
+* 2018-02-21    Revert allocation metric name                                                          avyas@uber.com
+* 2018-02-20    Add API to be able to fetch different task (runs) of an instance                       apoorvaj@uber.com
+* 2018-02-20    Fix sorting in job query response                                                      adityacb@uber.com
+* 2018-02-16    [API]: add job query by owner, wildcard search                                         adityacb@uber.com
+* 2018-02-16    Merge branch master into release                                                       apoorvaj@uber.com
+* 2018-02-16    Fix `allocation` metric scope name                                                     avyas@uber.com
+* 2018-02-16    Add script for run multiple testing                                                    chunyang.shen@uber.com
+* 2018-02-14    Update root resource pool `limit` with cluster capacity                                avyas@uber.com
+
 0.6.9
 ------------------
 * 2018-02-14    Log debug (not error) messages from job/task read handlers                             apoorvaj@uber.com
