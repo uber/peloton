@@ -113,6 +113,10 @@ type ResPool interface {
 	// resource pools pending queue or an error.
 	// limit determines the number of gangs to be returned.
 	PeekPendingGangs(limit uint32) ([]*resmgrsvc.Gang, error)
+	// PeekControllerGangs returns the list of gangs which are in the
+	// resource pools controller queue or an error.
+	// limit determines the number of gangs to be returned.
+	PeekControllerGangs(limit uint32) ([]*resmgrsvc.Gang, error)
 }
 
 // resPool implements the ResPool interface.
@@ -841,6 +845,12 @@ func (n *resPool) PeekPendingGangs(limit uint32) ([]*resmgrsvc.Gang, error) {
 	n.RLock()
 	defer n.RUnlock()
 	return n.pendingQueue.Peek(limit)
+}
+
+func (n *resPool) PeekControllerGangs(limit uint32) ([]*resmgrsvc.Gang, error) {
+	n.RLock()
+	defer n.RUnlock()
+	return n.controllerQueue.Peek(limit)
 }
 
 func getLimits(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {

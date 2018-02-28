@@ -251,8 +251,8 @@ func (ac batchAdmissionController) canAdmit(gang *resmgrsvc.Gang,
 	pool *resPool) bool {
 
 	// loop through the admitters
-	for _, f := range ac.admitters {
-		if !f(gang, pool) {
+	for _, admitter := range ac.admitters {
+		if !admitter(gang, pool) {
 			// bail out fast
 			return false
 		}

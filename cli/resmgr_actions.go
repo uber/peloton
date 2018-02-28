@@ -36,10 +36,18 @@ func (c *Client) ResMgrGetActiveTasks(jobID string, respoolID string, states str
 }
 
 // ResMgrGetPendingTasks fetches the pending tasks from resource manager.
-func (c *Client) ResMgrGetPendingTasks(respoolID string, limit uint32) error {
+func (c *Client) ResMgrGetPendingTasks(respoolID string, limit uint32,
+	queueType string) error {
+	// default to PENDING
+	qt := resmgrsvc.GetPendingTasksRequest_PENDING
+	if queueType == "controller" {
+		qt = resmgrsvc.GetPendingTasksRequest_CONTROLLER
+	}
+
 	var request = &resmgrsvc.GetPendingTasksRequest{
 		RespoolID: &peloton.ResourcePoolID{Value: respoolID},
 		Limit:     limit,
+		Queue:     qt,
 	}
 	resp, err := c.resMgrClient.GetPendingTasks(c.ctx, request)
 	if err != nil {

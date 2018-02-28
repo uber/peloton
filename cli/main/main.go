@@ -163,8 +163,13 @@ var (
 	resMgrActiveTasksGetStates    = resMgrActiveTasks.Flag("states", "task states").Default("").String()
 
 	resMgrPendingTasks             = resMgrTasks.Command("pending", "fetch pending tasks (ordered) in resource manager as json/yaml")
-	resMgrPendingTasksGetRespoolID = resMgrPendingTasks.Arg("respool", "resource pool identifier").Default("").String()
-	resMgrPendingTasksGetLimit     = resMgrPendingTasks.Flag("limit", "maximum number of tasks to return").Default("100").Uint32()
+	resMgrPendingTasksGetRespoolID = resMgrPendingTasks.Arg("respool",
+		"resource pool identifier").Required().String()
+	resMgrPendingTasksGetLimit = resMgrPendingTasks.Flag("limit", "maximum number of tasks to return").Default("100").Uint32()
+	resMgrPendingTasksQueue    = resMgrPendingTasks.Flag("queue",
+		"the tasks queue to check, default to pending queue").Default(
+		"pending").Short('q').
+		Enum("pending", "controller")
 
 	// Top level resource pool command
 	resPool = app.Command("respool", "manage resource pools")
@@ -349,7 +354,8 @@ func main() {
 	case resMgrActiveTasks.FullCommand():
 		err = client.ResMgrGetActiveTasks(*resMgrActiveTasksGetJobName, *resMgrActiveTasksGetRespoolID, *resMgrActiveTasksGetStates)
 	case resMgrPendingTasks.FullCommand():
-		err = client.ResMgrGetPendingTasks(*resMgrPendingTasksGetRespoolID, uint32(*resMgrPendingTasksGetLimit))
+		err = client.ResMgrGetPendingTasks(*resMgrPendingTasksGetRespoolID,
+			uint32(*resMgrPendingTasksGetLimit), *resMgrPendingTasksQueue)
 	case resPoolCreate.FullCommand():
 		err = client.ResPoolCreateAction(*resPoolCreatePath, *resPoolCreateConfig)
 	case respoolUpdate.FullCommand():

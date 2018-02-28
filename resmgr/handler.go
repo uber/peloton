@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
+	r_queue "code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
@@ -748,7 +749,7 @@ func (h *ServiceHandler) GetPendingTasks(
 				"Resource pool:%s is not a leaf node", respoolID)
 	}
 
-	tasks, err := h.getPendingTasks(node, limit)
+	tasks, err := h.getPendingTasks(node, req.GetQueue(), limit)
 	if err != nil {
 		return &resmgrsvc.GetPendingTasksResponse{},
 			status.Errorf(codes.Internal,
@@ -765,12 +766,25 @@ func (h *ServiceHandler) GetPendingTasks(
 }
 
 func (h *ServiceHandler) getPendingTasks(node respool.ResPool,
-	limit uint32) ([]*resmgrsvc.GetPendingTasksResponse_TaskList,
+	qt resmgrsvc.GetPendingTasksRequest_QueueType, limit uint32) ([]*resmgrsvc.
+	GetPendingTasksResponse_TaskList,
 	error) {
 	var tasks []*resmgrsvc.GetPendingTasksResponse_TaskList
 
-	gangs, err := node.PeekPendingGangs(limit)
+	var gangs []*resmgrsvc.Gang
+	var err error
+
+	switch qt {
+	case resmgrsvc.GetPendingTasksRequest_PENDING:
+		gangs, err = node.PeekPendingGangs(limit)
+	case resmgrsvc.GetPendingTasksRequest_CONTROLLER:
+		gangs, err = node.PeekControllerGangs(limit)
+	}
+
 	if err != nil {
+		if _, ok := err.(r_queue.ErrorQueueEmpty); ok {
+			return tasks, nil
+		}
 		return tasks, errors.Wrap(err, "failed to peek pending gangs")
 	}
 

@@ -1027,6 +1027,28 @@ func (s *ResPoolSuite) TestResPoolPeekPendingGangs() {
 	s.Equal(4, len(gangs))
 }
 
+func (s *ResPoolSuite) TestResPoolPeekControllerGangs() {
+	respool := s.createTestResourcePool()
+
+	// no gangs yet
+	gangs, err := respool.PeekControllerGangs(10)
+	s.Error(err)
+	s.EqualError(err, "peek failed, queue is empty")
+
+	// enqueue 4 gangs
+	for _, t := range s.getTasks() {
+		gang := respool.MakeTaskGang(t)
+		resPool, ok := respool.(*resPool)
+		s.True(ok)
+		err := resPool.controllerQueue.Enqueue(gang)
+		s.NoError(err)
+	}
+
+	gangs, err = respool.PeekControllerGangs(10)
+	s.NoError(err)
+	s.Equal(4, len(gangs))
+}
+
 func (s *ResPoolSuite) TestResPoolControllerLimit() {
 	rootConfig := &pb_respool.ResourcePoolConfig{
 		Name:      "root",
