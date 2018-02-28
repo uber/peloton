@@ -50,15 +50,15 @@ class Cluster(object):
         self.client = AuroraClientZK.create(
             zk_endpoints=self.zookeeper, zk_path=self.aurora_zk_path)
 
-        self.apps = {}
+        self.apps = []
         for app in PELOTON_APPS:
             app_cfg = getattr(self, app, None)
             if app_cfg is None:
                 continue
-            self.apps[app] = App(name=app, cluster=self, **app_cfg)
+            self.apps.append(App(name=app, cluster=self, **app_cfg))
         for app in CRON_APPS:
             app_cfg = getattr(self, app)
-            self.apps[app] = CronApp(name=app, cluster=self, **app_cfg)
+            self.apps.append(CronApp(name=app, cluster=self, **app_cfg))
 
     @staticmethod
     def load(cfg_file):
@@ -107,14 +107,14 @@ class Cluster(object):
 
         # Print the job config diffs
         print 'Update Peloton cluster "%s" to new config: ' % self.name
-        for name, app in self.apps.iteritems():
+        for app in self.apps:
             self.diff_config(app, verbose)
 
         if not force and not yesno('Proceed with the update ?'):
             return
 
         updated_apps = []
-        for name, app in self.apps.iteritems():
+        for app in self.apps:
             updated_apps.append(app)
             if not app.update_or_create_job(update_callback):
                 # Rollback the updates for all apps that have been updated
@@ -127,7 +127,7 @@ class Cluster(object):
         """
         Rollback the updates to the list of apps in the cluster
         """
-        while apps:
+        while len(apps) > 0:
             app = apps.pop()
             print 'Rolling back app %s ...' % app.name
             app.rollback_job()
