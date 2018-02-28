@@ -102,7 +102,7 @@ class App(object):
         # Default attributes
         self.enable_debug_logging = False
         self.cpu_limit = 4.0
-        self.mem_limit = 8 * GB
+        self.mem_limit = 16 * GB
         self.disk_limit = 16 * GB
 
         for k, v in kwargs.iteritems():
