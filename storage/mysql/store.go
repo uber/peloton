@@ -518,9 +518,9 @@ func (m *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobCon
 	return fmt.Errorf("unimplemented CreateTaskConfigs")
 }
 
-// GetTasksForJobAndState returns the tasks (runtime_config) for a peloton job with certain state
-func (m *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
-	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "task_state=": {state}})
+// GetTasksForJobAndStates returns the tasks (runtime_config) for a peloton job with certain state
+func (m *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []string) (map[uint32]*task.TaskInfo, error) {
+	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "task_state=": {states}})
 }
 
 // GetTaskIDsForJobAndState returns a list of instance-ids for a peloton job with certain state.

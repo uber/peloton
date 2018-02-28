@@ -1755,3 +1755,46 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 
 	suite.Equal(info.Runtime, runtime)
 }
+
+func (suite *CassandraStoreTestSuite) TestQueryTasks() {
+	var taskStore storage.TaskStore
+	taskStore = store
+	var jobID = peloton.JobID{Value: uuid.New()}
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = uint32(len(task.TaskState_name))
+	err := suite.createJob(context.Background(), &jobID, jobConfig, "user1")
+	suite.Nil(err)
+
+	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
+		taskInfo := createTaskInfo(jobConfig, &jobID, i)
+		err := taskStore.CreateTaskRuntime(context.Background(), &jobID, i, taskInfo.Runtime, "user1")
+		suite.Nil(err)
+
+		taskInfo.Runtime.State = task.TaskState(i)
+		runtimes[i] = taskInfo.Runtime
+		err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+		suite.NoError(err)
+	}
+
+	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
+		tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+			TaskStates: []task.TaskState{task.TaskState(i)},
+		})
+		suite.Nil(err)
+
+		suite.Equal(1, len(tasks))
+		suite.Equal(task.TaskState(i), tasks[0].GetRuntime().GetState())
+	}
+
+	for i := uint32(0); i < jobConfig.InstanceCount-1; i += 2 {
+		tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+			TaskStates: []task.TaskState{task.TaskState(i), task.TaskState(i + 1)},
+		})
+		suite.Nil(err)
+
+		suite.Equal(2, len(tasks))
+		suite.Equal(task.TaskState(i), tasks[0].GetRuntime().GetState())
+		suite.Equal(task.TaskState(i+1), tasks[1].GetRuntime().GetState())
+	}
+}

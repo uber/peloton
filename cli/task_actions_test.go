@@ -12,6 +12,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
@@ -160,5 +161,141 @@ func (suite *taskActionsTestSuite) withMockTaskListResponse(
 	err error) {
 
 	suite.mockTask.EXPECT().List(suite.ctx, gomock.Eq(req)).
+		Return(resp, err)
+}
+
+func (suite *taskActionsTestSuite) getQueryResult(
+	jobID *peloton.JobID, states []task.TaskState) []*task.TaskInfo {
+
+	result := []*task.TaskInfo{
+		{
+			InstanceId: 0,
+			JobId:      jobID,
+			Config: &task.TaskConfig{
+				Name: "Instance_0",
+			},
+			Runtime: &task.RuntimeInfo{
+				StartTime:      taskStartTime,
+				CompletionTime: "",
+				State:          task.TaskState_RUNNING,
+				Host:           "mesos-slave-01",
+				Message:        "",
+				Reason:         "",
+			},
+		},
+		{
+			InstanceId: 1,
+			JobId:      jobID,
+			Config: &task.TaskConfig{
+				Name: "Instance_1",
+			},
+			Runtime: &task.RuntimeInfo{
+				StartTime:      taskStartTime,
+				CompletionTime: "",
+				State:          task.TaskState_RUNNING,
+				Host:           "mesos-slave-02",
+				Message:        "",
+				Reason:         "",
+			},
+		},
+		{
+			InstanceId: 2,
+			JobId:      jobID,
+			Config: &task.TaskConfig{
+				Name: "Instance_2",
+			},
+			Runtime: &task.RuntimeInfo{
+				StartTime:      taskStartTime,
+				CompletionTime: "",
+				State:          task.TaskState_RUNNING,
+				Host:           "mesos-slave-03",
+				Message:        "",
+				Reason:         "",
+			},
+		},
+	}
+	return result
+}
+
+func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
+	c := Client{
+		Debug:      false,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+	tests := []struct {
+		taskQueryRequest  *task.QueryRequest
+		taskQueryResponse *task.QueryResponse
+		queryError        error
+	}{
+		{
+			taskQueryRequest: &task.QueryRequest{
+				JobId: jobID,
+				Spec: &task.QuerySpec{
+					Pagination: &query.PaginationSpec{
+						Limit:  10,
+						Offset: 0,
+					},
+					TaskStates: []task.TaskState{
+						task.TaskState_RUNNING,
+					},
+				},
+			},
+			taskQueryResponse: &task.QueryResponse{
+				Records: suite.getQueryResult(jobID, []task.TaskState{task.TaskState_RUNNING}),
+			},
+			queryError: nil,
+		},
+		{
+			taskQueryRequest: &task.QueryRequest{
+				JobId: jobID,
+				Spec: &task.QuerySpec{
+					Pagination: &query.PaginationSpec{
+						Limit:  10,
+						Offset: 0,
+					},
+					TaskStates: []task.TaskState{
+						task.TaskState_RUNNING,
+					},
+				},
+			},
+			taskQueryResponse: &task.QueryResponse{
+				Records: nil,
+				Error: &task.QueryResponse_Error{
+					NotFound: &errors.JobNotFound{
+						Id:      jobID,
+						Message: "Job not found",
+					},
+				},
+			},
+			queryError: nil,
+		},
+	}
+	for _, t := range tests {
+		suite.withMockTaskQueryResponse(
+			t.taskQueryRequest,
+			t.taskQueryResponse,
+			t.queryError,
+		)
+		err := c.TaskQueryAction(jobID.Value, "RUNNING", 10, 0)
+		if t.queryError != nil {
+			suite.EqualError(err, t.queryError.Error())
+		} else {
+			suite.NoError(err)
+		}
+	}
+}
+
+func (suite *taskActionsTestSuite) withMockTaskQueryResponse(
+	req *task.QueryRequest,
+	resp *task.QueryResponse,
+	err error) {
+
+	suite.mockTask.EXPECT().Query(suite.ctx, gomock.Eq(req)).
 		Return(resp, err)
 }

@@ -77,8 +77,8 @@ type TaskMetrics struct {
 	TaskGetForJob     tally.Counter
 	TaskGetForJobFail tally.Counter
 
-	TaskGetForJobAndState     tally.Counter
-	TaskGetForJobAndStateFail tally.Counter
+	TaskGetForJobAndStates     tally.Counter
+	TaskGetForJobAndStatesFail tally.Counter
 
 	TaskIDsGetForJobAndState     tally.Counter
 	TaskIDsGetForJobAndStateFail tally.Counter
@@ -103,6 +103,9 @@ type TaskMetrics struct {
 
 	TaskUpdate     tally.Counter
 	TaskUpdateFail tally.Counter
+
+	TaskQueryTasks     tally.Counter
+	TaskQueryTasksFail tally.Counter
 }
 
 // ResourcePoolMetrics is a struct for tracking resource pool related counters in the storage layer
@@ -255,18 +258,22 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskGetLogState:     taskSuccessScope.Counter("get_log_state"),
 		TaskGetLogStateFail: taskFailScope.Counter("get_log_state"),
 
-		TaskGetForJob:                  taskSuccessScope.Counter("get_for_job"),
-		TaskGetForJobFail:              taskFailScope.Counter("get_for_job"),
-		TaskGetForJobAndState:          taskSuccessScope.Counter("get_for_job_and_state"),
-		TaskGetForJobAndStateFail:      taskFailScope.Counter("get_for_job_and_state"),
-		TaskIDsGetForJobAndState:       taskSuccessScope.Counter("get_ids_for_job_and_state"),
-		TaskIDsGetForJobAndStateFail:   taskFailScope.Counter("get_ids_for_job_and_state"),
+		TaskGetForJob:                taskSuccessScope.Counter("get_for_job"),
+		TaskGetForJobFail:            taskFailScope.Counter("get_for_job"),
+		TaskIDsGetForJobAndState:     taskSuccessScope.Counter("get_ids_for_job_and_state"),
+		TaskIDsGetForJobAndStateFail: taskFailScope.Counter("get_ids_for_job_and_state"),
+
+		TaskGetForJobAndStates:     taskSuccessScope.Counter("get_for_job_and_states"),
+		TaskGetForJobAndStatesFail: taskFailScope.Counter("get_for_job_and_states"),
+
 		TaskSummaryForJob:              taskSuccessScope.Counter("summary_for_job"),
 		TaskSummaryForJobFail:          taskFailScope.Counter("summary_for_job"),
 		TaskGetForJobRange:             taskSuccessScope.Counter("get_for_job_range"),
 		TaskGetForJobRangeFail:         taskFailScope.Counter("get_for_job_range"),
 		TaskGetRuntimesForJobRange:     taskSuccessScope.Counter("get_runtimes_for_job_range"),
 		TaskGetRuntimesForJobRangeFail: taskFailScope.Counter("get_runtimes_for_job_range"),
+		TaskQueryTasks:                 taskSuccessScope.Counter("query_tasks_for_job"),
+		TaskQueryTasksFail:             taskFailScope.Counter("query_tasks_for_job"),
 
 		TaskGetRuntime:        taskSuccessScope.Counter("get_runtime"),
 		TaskGetRuntimeFail:    taskFailScope.Counter("get_runtime"),

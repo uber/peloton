@@ -176,10 +176,10 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	log.WithField("job_ids", jobIDs).Info("explicit reconcile job ids.")
 
 	for _, jobID := range jobIDs {
-		nonTerminalTasks, getTasksErr := r.taskStore.GetTasksForJobAndState(
+		nonTerminalTasks, getTasksErr := r.taskStore.GetTasksForJobAndStates(
 			ctx,
 			&jobID,
-			task.TaskState_RUNNING.String(),
+			[]string{task.TaskState_RUNNING.String()},
 		)
 		if getTasksErr != nil {
 			log.WithError(getTasksErr).WithFields(log.Fields{
