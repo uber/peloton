@@ -803,7 +803,10 @@ func (n *resPool) updateStaticResourceMetrics() {
 	n.metrics.ResourcePoolShare.Update(getShare(n.resourceConfigs))
 	n.metrics.ResourcePoolLimit.Update(getLimits(n.resourceConfigs))
 	n.metrics.ResourcePoolReservation.Update(getReservations(n.resourceConfigs))
-	n.metrics.ControllerLimit.Update(n.controllerLimit)
+
+	if n.controllerLimit != nil {
+		n.metrics.ControllerLimit.Update(n.controllerLimit)
+	}
 }
 
 // updates dynamic metrics(Allocation, Entitlement, Available) which change based on
