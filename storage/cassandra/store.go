@@ -62,6 +62,9 @@ const (
 	// _defaultTaskConfigID is used for storing, and retrieving, the default
 	// task configuration, when no specific is available.
 	_defaultTaskConfigID = -1
+
+	jobIndexTimeFormat = "20060102150405"
+	jobQuerySpanInDays = 7
 )
 
 // Config is the config for cassandra Store
@@ -536,6 +539,15 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		wildcardName := fmt.Sprintf("*%s*", name)
 		clauses = append(clauses, fmt.Sprintf(`{type: "wildcard", field:"name", value:%s}`, strconv.Quote(wildcardName)))
 	}
+
+	// query for jobs created over the past week
+	// TODO (adityacb): customize time span from 1 week.
+	// Add 30 seconds to upper bound to account for jobs
+	// that have just been created.
+	now := time.Now().Add(time.Second * 30).UTC()
+	upper := fmt.Sprintf(now.Format(jobIndexTimeFormat))
+	lower := fmt.Sprintf(now.AddDate(0, 0, -jobQuerySpanInDays).Format(jobIndexTimeFormat))
+	clauses = append(clauses, fmt.Sprintf(`{type: "range", field:"creation_time", lower: "%s", upper: "%s"}`, lower, upper))
 
 	where := `expr(job_index_lucene_v2, '{filter: [`
 	for i, c := range clauses {

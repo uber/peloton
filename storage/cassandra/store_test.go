@@ -19,6 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 
 	"code.uber.internal/infra/peloton/storage"
+	qb "code.uber.internal/infra/peloton/storage/querybuilder"
 
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
@@ -263,7 +264,6 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 	allResults, err := store.executeRead(context.Background(), stmt)
 	suite.NoError(err)
 
-	suite.T().Logf("allResults %v", allResults)
 	summaryResultFromLucene, err := store.getJobSummaryFromLuceneResult(context.Background(), allResults)
 	suite.NoError(err)
 
@@ -298,6 +298,39 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 	suite.Equal(1, len(summary))
 	suite.Equal(1, int(total))
 	suite.Equal("GetJobSummary", summary[0].GetName())
+
+	// Modify creation_time to now - 8 days
+	updateStmt := queryBuilder.Update(jobIndexTable).
+		Set("creation_time", time.Now().AddDate(0, 0, -8).UTC()).
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	_, err = store.executeWrite(context.Background(), updateStmt)
+	suite.NoError(err)
+	// Run the following query to trigger rebuild the lucene index
+	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
+	_, err = store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+
+	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, spec, true)
+	suite.NoError(err)
+	suite.Equal(0, len(summary))
+	suite.Equal(0, int(total))
+
+	// Modify creation_time to now - 3 days
+	updateStmt = queryBuilder.Update(jobIndexTable).
+		Set("creation_time", time.Now().AddDate(0, 0, -3).UTC()).
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	_, err = store.executeWrite(context.Background(), updateStmt)
+	suite.NoError(err)
+	// Run the following query to trigger rebuild the lucene index
+	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
+	_, err = store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+
+	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, spec, true)
+	suite.NoError(err)
+	suite.Equal(1, len(summary))
+	suite.Equal(1, int(total))
+
 	suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
 }
 
