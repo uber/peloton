@@ -140,12 +140,6 @@ var (
 	taskRefreshJobName       = taskRefresh.Arg("job", "job identifier").Required().String()
 	taskRefreshInstanceRange = taskRangeFlag(taskRefresh.Flag("range", "range of instances (from:to syntax)").Default(":").Short('r'))
 
-	taskQuery        = task.Command("query", "query tasks by state(s)")
-	taskQueryJobName = taskQuery.Arg("job", "job identifier").Required().String()
-	taskQueryStates  = taskQuery.Flag("states", "task states").Default("").Short('s').String()
-	taskQueryLimit   = taskQuery.Flag("limit", "limit").Default("100").Short('n').Uint32()
-	taskQueryOffset  = taskQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
-
 	taskStart               = task.Command("start", "start a task")
 	taskStartJobName        = taskStart.Arg("job", "job identifier").Required().String()
 	taskStartInstanceRanges = taskRangeListFlag(taskStart.Flag("range", "start range of instances (specify multiple times) (from:to syntax, default ALL)").Default(":").Short('r'))
@@ -351,8 +345,6 @@ func main() {
 		err = client.TaskListAction(*taskListJobName, taskListInstanceRange)
 	case taskRefresh.FullCommand():
 		err = client.TaskRefreshAction(*taskRefreshJobName, taskRefreshInstanceRange)
-	case taskQuery.FullCommand():
-		err = client.TaskQueryAction(*taskQueryJobName, *taskQueryStates, *taskQueryLimit, *taskQueryOffset)
 	case taskStart.FullCommand():
 		err = client.TaskStartAction(*taskStartJobName, *taskStartInstanceRanges)
 	case taskStop.FullCommand():

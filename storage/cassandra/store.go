@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1408,20 +1407,17 @@ func (s *Store) GetTaskIDsForJobAndState(ctx context.Context, id *peloton.JobID,
 	return result, nil
 }
 
-// GetTasksForJobAndStates returns the tasks for a peloton job which are in one of the specified states.
+// GetTasksForJobAndState returns the tasks for a peloton job with certain state.
 // result map key is TaskID, value is TaskHost
-func (s *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []string) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTasksForJobAndState(ctx context.Context, id *peloton.JobID, state string) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.GetValue()
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("instance_id").From(taskJobStateView).
-		Where(qb.Eq{"job_id": jobID, "state": states})
+		Where(qb.Eq{"job_id": jobID, "state": state})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID).
-			WithField("states", states).
-			Error("Failed to GetTasksForJobAndStates")
-		s.metrics.TaskMetrics.TaskGetForJobAndStatesFail.Inc(1)
+		log.Errorf("Fail to GetTasksForJobAndState by jobId %v state %v, err=%v", jobID, state, err)
+		s.metrics.TaskMetrics.TaskGetForJobAndStateFail.Inc(1)
 		return nil, err
 	}
 	resultMap := make(map[uint32]*task.TaskInfo)
@@ -1430,26 +1426,19 @@ func (s *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, 
 		var record TaskRuntimeRecord
 		err := FillObject(value, &record, reflect.TypeOf(record))
 		if err != nil {
-			log.WithError(err).
-				WithField("job_id", jobID).
-				WithField("value", value).
-				Error("GetTasksForJobAndStates failed to Fill into TaskRecord")
-			s.metrics.TaskMetrics.TaskGetForJobAndStatesFail.Inc(1)
+			log.Errorf("Failed to Fill into TaskRecord, val = %v err= %v", value, err)
+			s.metrics.TaskMetrics.TaskGetForJobAndStateFail.Inc(1)
 			return nil, err
 		}
 		resultMap[uint32(record.InstanceID)], err = s.getTask(ctx, id.GetValue(), uint32(record.InstanceID))
 		if err != nil {
-			log.WithError(err).
-				WithField("job_id", jobID).
-				WithField("instance_id", record.InstanceID).
-				WithField("value", value).
-				Error("Failed to get taskInfo from task")
-			s.metrics.TaskMetrics.TaskGetForJobAndStatesFail.Inc(1)
+			log.Errorf("Failed to get taskInfo from task, val = %v err= %v", value, err)
+			s.metrics.TaskMetrics.TaskGetForJobAndStateFail.Inc(1)
 			return nil, err
 		}
-		s.metrics.TaskMetrics.TaskGetForJobAndStates.Inc(1)
+		s.metrics.TaskMetrics.TaskGetForJobAndState.Inc(1)
 	}
-	s.metrics.TaskMetrics.TaskGetForJobAndStates.Inc(1)
+	s.metrics.TaskMetrics.TaskGetForJobAndState.Inc(1)
 	return resultMap, nil
 }
 
@@ -2329,28 +2318,14 @@ func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobI
 	return nil
 }
 
-// QueryTasks returns the tasks filtered on states(spec.TaskStates) in the given offset..offset+limit range.
-func (s *Store) QueryTasks(ctx context.Context, jobID *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error) {
-	runtime, err := s.GetJobRuntime(ctx, jobID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	config, err := s.GetJobConfig(ctx, jobID)
-	if err != nil {
-		return nil, 0, err
-	}
-	jobInfo := &job.JobInfo{
-		Runtime: runtime,
-		Config:  config,
-		Id:      jobID,
-	}
-
+// QueryTasks returns all tasks in the given offset..offset+limit range.
+func (s *Store) QueryTasks(ctx context.Context, id *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error) {
+	jobConfig, err := s.GetJobConfig(ctx, id)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("QueryTasks failed to get job")
-		s.metrics.TaskMetrics.TaskQueryTasksFail.Inc(1)
+			WithField("job_id", id.GetValue()).
+			Error("Failed to get jobConfig")
+		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
 	offset := spec.GetPagination().GetOffset()
@@ -2358,50 +2333,25 @@ func (s *Store) QueryTasks(ctx context.Context, jobID *peloton.JobID, spec *task
 	if spec.GetPagination() != nil {
 		limit = spec.GetPagination().GetLimit()
 	}
-
-	var taskStates []string
-	if len(spec.TaskStates) > 0 {
-		for _, s := range spec.GetTaskStates() {
-			taskStates = append(taskStates, s.String())
-		}
+	end := offset + limit
+	if end > jobConfig.InstanceCount {
+		end = jobConfig.InstanceCount
 	}
-
-	var tasks map[uint32]*task.TaskInfo
-	//Get all tasks for the job if query doesn't specify the task state(s)
-	if len(spec.TaskStates) == 0 {
-		tasks, err = s.GetTasksForJob(ctx, jobID)
-	} else {
-		tasks, err = s.GetTasksForJobAndStates(ctx, jobID, taskStates)
-	}
+	tasks, err := s.GetTasksForJobByRange(ctx, id, &task.InstanceRange{
+		From: offset,
+		To:   end,
+	})
 	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			WithField("states", taskStates).
-			Error("QueryTasks failed to get tasks for the job")
-		s.metrics.TaskMetrics.TaskQueryTasksFail.Inc(1)
+		s.metrics.JobMetrics.JobQueryFail.Inc(1)
 		return nil, 0, err
 	}
 
-	//sortedTasksResult is sorted (by instanceID) list of tasksResult
-	var sortedTasksResult SortedTaskInfoList
-	for _, taskInfo := range tasks {
-		sortedTasksResult = append(sortedTasksResult, taskInfo)
-	}
-
-	sort.Sort(sortedTasksResult)
-
-	end := offset + limit
-	if end > uint32(len(sortedTasksResult)) {
-		end = uint32(len(sortedTasksResult))
-	}
-
 	var result []*task.TaskInfo
-	if offset < end {
-		result = sortedTasksResult[offset:end]
+	for i := offset; i < end; i++ {
+		result = append(result, tasks[i])
 	}
-
-	s.metrics.TaskMetrics.TaskQueryTasks.Inc(1)
-	return result, jobInfo.Config.InstanceCount, nil
+	s.metrics.JobMetrics.JobQuery.Inc(1)
+	return result, jobConfig.InstanceCount, nil
 }
 
 // CreatePersistentVolume creates a persistent volume entry.
@@ -2744,10 +2694,3 @@ func (s *Store) getJobSummaryFromConfig(ctx context.Context, id *peloton.JobID) 
 	}
 	return summary, nil
 }
-
-// SortedTaskInfoList makes TaskInfo implement sortable interface
-type SortedTaskInfoList []*task.TaskInfo
-
-func (a SortedTaskInfoList) Len() int           { return len(a) }
-func (a SortedTaskInfoList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a SortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].InstanceId }
