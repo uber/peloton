@@ -185,11 +185,11 @@ func (suite *StateMachineTestSuite) TestCancelTimeOutTransition() {
 	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "succeeded")
 }
 
-func (suite *StateMachineTestSuite) TestStopStateRecovery() {
+func (suite *StateMachineTestSuite) TestTerminateStateMachine() {
 	err := suite.stateMachine.TransitTo("killed", "")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
-	suite.stateMachine.GetStateTimer().Stop()
+	suite.stateMachine.Terminate()
 	time.Sleep(3 * time.Second)
 	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "killed")
 }

@@ -12,17 +12,18 @@ type Metrics struct {
 
 	TaskLeninTracker tally.Gauge
 
-	pendingTasks   tally.Gauge
-	readyTasks     tally.Gauge
-	placingTasks   tally.Gauge
-	placedTasks    tally.Gauge
-	launchingTasks tally.Gauge
-	launchedTasks  tally.Gauge
-	runningTasks   tally.Gauge
-	succeededTasks tally.Gauge
-	failedTasks    tally.Gauge
-	lostTasks      tally.Gauge
-	killedTasks    tally.Gauge
+	pendingTasks    tally.Gauge
+	readyTasks      tally.Gauge
+	placingTasks    tally.Gauge
+	placedTasks     tally.Gauge
+	launchingTasks  tally.Gauge
+	launchedTasks   tally.Gauge
+	runningTasks    tally.Gauge
+	succeededTasks  tally.Gauge
+	failedTasks     tally.Gauge
+	lostTasks       tally.Gauge
+	killedTasks     tally.Gauge
+	preemptingTasks tally.Gauge
 
 	LeakedResources scalar.GaugeMaps
 
@@ -54,6 +55,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		failedTasks:      taskStateScope.Gauge("task_state_failed"),
 		lostTasks:        taskStateScope.Gauge("task_state_lost"),
 		killedTasks:      taskStateScope.Gauge("task_state_killed"),
+		preemptingTasks:  taskStateScope.Gauge("task_state_preempting"),
 
 		LeakedResources:       scalar.NewGaugeMaps(leakScope),
 		ReconciliationSuccess: successScope.Counter("run"),

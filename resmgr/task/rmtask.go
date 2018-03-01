@@ -190,14 +190,14 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 					From:     state.State(task.TaskState_PLACING.String()),
 					To:       state.State(task.TaskState_READY.String()),
 					Timeout:  rmTask.config.PlacingTimeout,
-					Callback: rmTask.placingToReadyCallBack,
+					Callback: rmTask.timeoutCallback,
 				}).
 			AddTimeoutRule(
 				&state.TimeoutRule{
 					From:     state.State(task.TaskState_LAUNCHING.String()),
 					To:       state.State(task.TaskState_READY.String()),
 					Timeout:  rmTask.config.LaunchingTimeout,
-					Callback: rmTask.placingToReadyCallBack,
+					Callback: rmTask.timeoutCallback,
 				}).
 			Build()
 	if err != nil {
@@ -223,9 +223,9 @@ func (rmTask *RMTask) transitionCallBack(t *state.Transition) error {
 	return nil
 }
 
-// placingToReadyCallBack is the callback for the resource manager task
-// which moving after timeout from placing state to ready state
-func (rmTask *RMTask) placingToReadyCallBack(t *state.Transition) error {
+// timeoutCallback is the callback for the resource manager task
+// which moving after timeout from placing/launching state to ready state
+func (rmTask *RMTask) timeoutCallback(t *state.Transition) error {
 	pTaskID := &peloton.TaskID{Value: t.StateMachine.GetName()}
 	task := GetTracker().GetTask(pTaskID)
 	if task == nil {

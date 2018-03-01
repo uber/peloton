@@ -18,13 +18,14 @@ import (
 	"github.com/uber-go/tally"
 )
 
-var csStore *cassandra.Store
-var pendingJobID *peloton.JobID
-var runningJobID *peloton.JobID
-var failedJobID *peloton.JobID
-var unknownJobID *peloton.JobID
+var (
+	csStore              *cassandra.Store
+	pendingJobID         *peloton.JobID
+	runningJobID         *peloton.JobID
+	receivedPendingJobID []string
+)
+
 var mutex = &sync.Mutex{}
-var receivedPendingJobID []string
 
 func init() {
 	conf := cassandra.MigrateForTest()
@@ -128,11 +129,11 @@ func TestJobRecoveryWithStore(t *testing.T) {
 	assert.NoError(t, err)
 
 	// this job should not be recovered
-	failedJobID, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_SUCCEEDED)
+	_, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_SUCCEEDED)
 	assert.NoError(t, err)
 
 	// this job should not be recovered
-	unknownJobID, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_UNKNOWN)
+	_, err = createJob(ctx, pb_job.JobState_FAILED, pb_job.JobState_UNKNOWN)
 	assert.NoError(t, err)
 
 	err = RecoverJobsByState(ctx, csStore, jobStatesPending, recoverPendingTask)

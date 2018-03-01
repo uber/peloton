@@ -17,7 +17,7 @@ import (
 )
 
 // Tracker is the interface for resource manager to
-// track all the tasks in rm
+// track all the tasks
 type Tracker interface {
 
 	// AddTask adds the task to state machine
@@ -71,7 +71,7 @@ type Tracker interface {
 type tracker struct {
 	sync.Mutex
 
-	//TODO: After go 1.9 we need to use
+	// TODO: After go 1.9 we need to use
 	// https://golang.org/doc/go1.9#sync-map
 	// Maps task id -> rm task
 	tasks map[string]*RMTask
@@ -212,10 +212,17 @@ func (tr *tracker) MarkItDone(
 		tr.GetTask(tID).GetCurrentState().String() == task.TaskState_INITIALIZED.String()) {
 		err := t.respool.SubtractFromAllocation(scalar.GetTaskAllocation(t.Task()))
 		if err != nil {
-			return errors.Errorf("Not able to update task %s ", tID)
+			return errors.Errorf("failed update task %s ", tID)
 		}
 	}
-	log.WithField("Task", tID.Value).Info("Deleting the task from Tracker")
+
+	// stop the state machine
+	err := t.StateMachine().Terminate()
+	if err != nil {
+		return err
+	}
+
+	log.WithField("task_id", tID.Value).Info("Deleting the task from Tracker")
 	tr.DeleteTask(tID)
 	return nil
 }
@@ -243,7 +250,7 @@ func (tr *tracker) MarkItInvalid(tID *peloton.TaskID) error {
 // TasksByHosts returns all tasks of the given type running on the given hosts.
 func (tr *tracker) TasksByHosts(hosts []string, taskType resmgr.TaskType) map[string][]*RMTask {
 	result := map[string][]*RMTask{}
-	types := []resmgr.TaskType{}
+	var types []resmgr.TaskType
 	if taskType == resmgr.TaskType_UNKNOWN {
 		for t := range resmgr.TaskType_name {
 			types = append(types, resmgr.TaskType(t))
@@ -275,8 +282,8 @@ func (tr *tracker) AddResources(
 			"rmTask %s for respool %s ", tID, rmTask.respool.Name())
 	}
 	log.WithFields(log.Fields{
-		"Respool":   rmTask.respool.Name(),
-		"Resources": res,
+		"respool_id": rmTask.respool.ID(),
+		"resources":  res,
 	}).Debug("Added resources to Respool")
 	return nil
 }
@@ -316,14 +323,14 @@ func (tr *tracker) GetActiveTasks(jobID string, respoolID string, states []strin
 	defer tr.Unlock()
 	taskStates := make(map[string][]*RMTask)
 
-	for _, task := range tr.tasks {
-		taskState := task.GetCurrentState().String()
+	for _, t := range tr.tasks {
+		taskState := t.GetCurrentState().String()
 		if jobID != "" || respoolID != "" || len(states) != 0 {
-			if jobID != "" && task.Task().GetJobId().GetValue() != jobID {
+			if jobID != "" && t.Task().GetJobId().GetValue() != jobID {
 				continue
 			}
 
-			if respoolID != "" && task.Respool().ID() != respoolID {
+			if respoolID != "" && t.Respool().ID() != respoolID {
 				continue
 			}
 
@@ -334,7 +341,7 @@ func (tr *tracker) GetActiveTasks(jobID string, respoolID string, states []strin
 		if _, ok := taskStates[taskState]; !ok {
 			taskStates[taskState] = []*RMTask{}
 		}
-		taskStates[taskState] = append(taskStates[taskState], task)
+		taskStates[taskState] = append(taskStates[taskState], t)
 	}
 	return taskStates
 }
@@ -359,7 +366,7 @@ func (tr *tracker) UpdateCounters(from string, to string) {
 	tr.publishCounters()
 }
 
-// publishcounters publishes the counters for all task states
+// publishes the counters for all task states
 func (tr *tracker) publishCounters() {
 	for state, counter := range tr.counters {
 		switch state {
@@ -385,6 +392,8 @@ func (tr *tracker) publishCounters() {
 			tr.metrics.lostTasks.Update(counter)
 		case task.TaskState_KILLED.String():
 			tr.metrics.killedTasks.Update(counter)
+		case task.TaskState_PREEMPTING.String():
+			tr.metrics.preemptingTasks.Update(counter)
 		}
 	}
 }

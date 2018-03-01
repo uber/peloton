@@ -605,69 +605,78 @@ func (h *ServiceHandler) NotifyTaskUpdates(
 		return &response, nil
 	}
 
-	for _, event := range req.Events {
-		taskState := util.MesosStateToPelotonState(
-			event.MesosTaskStatus.GetState())
-		if taskState != t.TaskState_RUNNING &&
-			!util.IsPelotonStateTerminal(taskState) {
-			h.acknowledgeEvent(event.Offset)
-			continue
-		}
-		ptID, err := util.ParseTaskIDFromMesosTaskID(
-			*(event.MesosTaskStatus.TaskId.Value))
-		if err != nil {
-			log.WithFields(log.Fields{
-				"event":         event,
-				"mesos_task_ID": *(event.MesosTaskStatus.TaskId.Value),
-			}).Error("Could not parse mesos ID")
-			h.acknowledgeEvent(event.Offset)
-			continue
-		}
-		taskID := &peloton.TaskID{
-			Value: ptID,
-		}
-		rmTask := h.rmTracker.GetTask(taskID)
-		if rmTask == nil {
-			h.acknowledgeEvent(event.Offset)
-			continue
-		}
-
-		if *(rmTask.Task().TaskId.Value) !=
-			*(event.MesosTaskStatus.TaskId.Value) {
-			log.WithFields(log.Fields{
-				"task_ID": rmTask.Task().TaskId.Value,
-				"event":   event,
-			}).Error("could not be updated due to" +
-				"different mesos taskID")
-			h.acknowledgeEvent(event.Offset)
-			continue
-		}
-		if taskState == t.TaskState_RUNNING {
-			err = rmTask.TransitTo(t.TaskState_RUNNING.String(), "received running state from mesos")
-			if err != nil {
-				log.WithError(errors.WithStack(err)).
-					WithField("task_ID", taskID.Value).
-					Info("Not able to transition to RUNNING for task")
-			}
-			// update the start time
-			rmTask.UpdateStartTime(time.Now().UTC())
-		} else {
-			// TODO: We probably want to terminate all the tasks in gang
-			err = rmtask.GetTracker().MarkItDone(taskID)
-			if err != nil {
-				log.WithField("event", event).Error("Could not be updated")
-			}
-			log.WithFields(log.Fields{
-				"task_ID":       taskID.Value,
-				"current_state": taskState.String(),
-			}).Info("Task is completed and removed from tracker")
-			rmtask.GetTracker().UpdateCounters(
-				t.TaskState_RUNNING.String(), taskState.String())
-		}
-		h.acknowledgeEvent(event.Offset)
+	for _, e := range req.Events {
+		h.handleEvent(e)
 	}
 	response.PurgeOffset = atomic.LoadUint64(h.maxOffset)
 	return &response, nil
+}
+
+func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
+	defer h.acknowledgeEvent(event.Offset)
+
+	taskState := util.MesosStateToPelotonState(
+		event.MesosTaskStatus.GetState())
+	if taskState != t.TaskState_RUNNING &&
+		!util.IsPelotonStateTerminal(taskState) {
+		return
+	}
+
+	ptID, err := util.ParseTaskIDFromMesosTaskID(
+		*(event.MesosTaskStatus.TaskId.Value))
+	if err != nil {
+		log.WithFields(log.Fields{
+			"event":         event,
+			"mesos_task_ID": *(event.MesosTaskStatus.TaskId.Value),
+		}).Error("Could not parse mesos ID")
+		return
+	}
+
+	taskID := &peloton.TaskID{
+		Value: ptID,
+	}
+	rmTask := h.rmTracker.GetTask(taskID)
+	if rmTask == nil {
+		return
+	}
+
+	if *(rmTask.Task().TaskId.Value) !=
+		*(event.MesosTaskStatus.TaskId.Value) {
+		log.WithFields(log.Fields{
+			"task_ID": rmTask.Task().TaskId.Value,
+			"event":   event,
+		}).Error("could not be updated due to" +
+			"different mesos taskID")
+		return
+	}
+
+	if taskState == t.TaskState_RUNNING {
+		err = rmTask.TransitTo(t.TaskState_RUNNING.String(), "received running state from mesos")
+		if err != nil {
+			log.WithError(errors.WithStack(err)).
+				WithField("task_ID", ptID).
+				Info("Not able to transition to RUNNING for task")
+		}
+		// update the start time
+		rmTask.UpdateStartTime(time.Now().UTC())
+		return
+	}
+
+	// TODO: We probably want to terminate all the tasks in gang
+	err = rmtask.GetTracker().MarkItDone(taskID)
+	if err != nil {
+		log.WithField("event", event).WithError(err).Error(
+			"Could not be updated")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"task_ID":       ptID,
+		"current_state": taskState.String(),
+	}).Info("Task is completed and removed from tracker")
+	rmtask.GetTracker().UpdateCounters(
+		t.TaskState_RUNNING.String(), taskState.String())
+
 }
 
 func (h *ServiceHandler) acknowledgeEvent(offset uint64) {

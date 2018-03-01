@@ -65,6 +65,9 @@ type StateMachine interface {
 
 	// GetLastUpdatedTime returns the last update time of the state machine
 	GetLastUpdateTime() time.Time
+
+	// Terminates the state machine
+	Terminate() error
 }
 
 // statemachine is state machine, State Machine is responsible for moving states
@@ -316,6 +319,24 @@ func (sm *statemachine) GetLastUpdateTime() time.Time {
 // GetName returns the name of the state machine object
 func (sm *statemachine) GetName() string {
 	return sm.name
+}
+
+// Terminate terminates the state machine
+func (sm *statemachine) Terminate() error {
+	sm.Lock()
+	defer sm.Unlock()
+
+	// check if current state is a timeout state
+	if rule, ok := sm.timeoutRules[sm.current]; ok {
+		if rule.Timeout != 0 {
+			err := sm.timer.Stop()
+			if err != nil {
+				return errors.Wrapf(err, "failed to stop the state machine timer")
+			}
+		}
+	}
+
+	return nil
 }
 
 // rollbackState recovers the state.

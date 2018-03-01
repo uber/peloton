@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	resp "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
@@ -41,10 +42,15 @@ func (suite *TrackerTestSuite) SetupTest() {
 		tally.Scope(tally.NoopScope))
 	suite.hostname = "hostname"
 	suite.task = suite.createTask(1)
-	suite.addTasktotracker(suite.task)
+	suite.addTaskToTracker(suite.task)
 }
 
-func (suite *TrackerTestSuite) addTasktotracker(task *resmgr.Task) {
+func (suite *TrackerTestSuite) addTaskToTracker(task *resmgr.Task) {
+	suite.addTaskToTrackerWithTimeoutConfig(task, &Config{})
+}
+
+func (suite *TrackerTestSuite) addTaskToTrackerWithTimeoutConfig(task *resmgr.
+	Task, cfg *Config) {
 	rootID := peloton.ResourcePoolID{Value: common.RootResPoolID}
 	policy := resp.SchedulingPolicy_PriorityFIFO
 	respoolConfig := &resp.ResourcePoolConfig{
@@ -54,7 +60,7 @@ func (suite *TrackerTestSuite) addTasktotracker(task *resmgr.Task) {
 		Policy:    policy,
 	}
 	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1", nil, respoolConfig)
-	suite.tracker.AddTask(task, suite.eventStreamHandler, suite.respool, &Config{})
+	suite.tracker.AddTask(task, suite.eventStreamHandler, suite.respool, cfg)
 }
 
 // Returns resource configs
@@ -147,9 +153,9 @@ func (suite *TrackerTestSuite) TestSetPlacementHost() {
 	var tasks []*peloton.TaskID
 	for i := 0; i < 5; i++ {
 		taskID := fmt.Sprintf("job1-%d", i)
-		task := &peloton.TaskID{Value: taskID}
-		tasks = append(tasks, task)
-		suite.addTasktotracker(suite.createTask(i))
+		t := &peloton.TaskID{Value: taskID}
+		tasks = append(tasks, t)
+		suite.addTaskToTracker(suite.createTask(i))
 	}
 	placement.Tasks = tasks
 	suite.tracker.SetPlacementHost(placement, suite.hostname)
@@ -203,10 +209,10 @@ func (suite *TrackerTestSuite) TestGetTaskStates() {
 	suite.Equal(0, len(result))
 }
 
-func (suite *TrackerTestSuite) TestMarkItDone() {
+func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	suite.tracker.Clear()
 	for i := 0; i < 5; i++ {
-		suite.addTasktotracker(suite.createTask(i))
+		suite.addTaskToTracker(suite.createTask(i))
 	}
 	// Task 1
 	// Trying to remove the first Task which is in initialized state
@@ -260,7 +266,7 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 
 	// TASK 3
 	// Trying to remove the Third Task which is in Ready state
-	// As READ task should subtracted from allocation so
+	// As READY task should subtracted from allocation so
 	// so respool allocation is zero
 	taskID = fmt.Sprintf("job1-%d", 3)
 	t = &peloton.TaskID{Value: taskID}
@@ -289,4 +295,24 @@ func (suite *TrackerTestSuite) TestMarkItDone() {
 	suite.Equal(res, zeroResource)
 
 	suite.tracker.Clear()
+}
+
+func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
+	suite.addTaskToTrackerWithTimeoutConfig(suite.createTask(1), &Config{
+		LaunchingTimeout: 1 * time.Second,
+	})
+	taskID := fmt.Sprintf("job1-%d", 1)
+	t := &peloton.TaskID{Value: taskID}
+
+	rmTask := suite.tracker.GetTask(t)
+	suite.NotNil(rmTask)
+
+	// transit to a timeout state
+	rmTask.TransitTo(task.TaskState_LAUNCHING.String(), "")
+
+	suite.tracker.MarkItDone(t)
+
+	// the state machine's timer should be stopped
+	err := rmTask.StateMachine().GetStateTimer().Stop()
+	suite.EqualError(err, "State Timer is not running")
 }
