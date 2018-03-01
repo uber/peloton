@@ -3,6 +3,10 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.10.1
+------------------
+* 2018-02-28    Revert "Add 'task query' command to CLI to query on tasks(for a job) by state(s)"      rcharles@uber.com
+
 0.6.10
 ------------------
 * 2018-02-28    Bump peloton apps mem limit to 16GB                                                    avyas@uber.com
