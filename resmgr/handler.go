@@ -40,7 +40,6 @@ var (
 )
 
 // ServiceHandler implements peloton.private.resmgr.ResourceManagerService
-// TODO: add placing and placed task queues
 type ServiceHandler struct {
 	metrics            *Metrics
 	resPoolTree        respool.Tree
@@ -101,39 +100,6 @@ func (h *ServiceHandler) GetStreamHandler() *eventstream.Handler {
 	return h.eventStreamHandler
 }
 
-func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang, reason string) (
-	[]*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
-	allTasksExist := true
-	for _, task := range gang.GetTasks() {
-		task := h.rmTracker.GetTask(task.GetId())
-		if task == nil {
-			allTasksExist = false
-			break
-		}
-	}
-	if allTasksExist {
-		var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
-		for _, task := range gang.GetTasks() {
-			err := h.requeueUnplacedTask(task, reason)
-			if err != nil {
-				failed = append(
-					failed,
-					&resmgrsvc.EnqueueGangsFailure_FailedTask{
-						Task:    task,
-						Message: err.Error(),
-					},
-				)
-			}
-		}
-		var err error
-		if len(failed) > 0 {
-			err = fmt.Errorf("some tasks failed to be re-enqueued")
-		}
-		return failed, err
-	}
-	return nil, fmt.Errorf("not all tasks for the gang exists in the resource manager")
-}
-
 // EnqueueGangs implements ResourceManagerService.EnqueueGangs
 func (h *ServiceHandler) EnqueueGangs(
 	ctx context.Context,
@@ -160,8 +126,6 @@ func (h *ServiceHandler) EnqueueGangs(
 				},
 			}, nil
 		}
-		// TODO: check if the user has permission to run tasks in the
-		// respool
 	}
 
 	// Enqueue the gangs sent in an API call to the pending queue of the respool.
@@ -204,6 +168,39 @@ func (h *ServiceHandler) EnqueueGangs(
 	response := resmgrsvc.EnqueueGangsResponse{}
 	log.Debug("Enqueue Returned")
 	return &response, nil
+}
+
+func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang, reason string) (
+	[]*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
+	allTasksExist := true
+	for _, task := range gang.GetTasks() {
+		task := h.rmTracker.GetTask(task.GetId())
+		if task == nil {
+			allTasksExist = false
+			break
+		}
+	}
+	if allTasksExist {
+		var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
+		for _, task := range gang.GetTasks() {
+			err := h.requeueUnplacedTask(task, reason)
+			if err != nil {
+				failed = append(
+					failed,
+					&resmgrsvc.EnqueueGangsFailure_FailedTask{
+						Task:    task,
+						Message: err.Error(),
+					},
+				)
+			}
+		}
+		var err error
+		if len(failed) > 0 {
+			err = fmt.Errorf("some tasks failed to be re-enqueued")
+		}
+		return failed, err
+	}
+	return nil, fmt.Errorf("not all tasks for the gang exists in the resource manager")
 }
 
 func (h *ServiceHandler) enqueueGang(
@@ -261,7 +258,7 @@ func (h *ServiceHandler) enqueueGang(
 		if err == nil {
 			err = respool.AddToDemand(totalGangResources)
 			log.WithFields(log.Fields{
-				"respool_ID":           respool.ID(),
+				"respool_id":           respool.ID(),
 				"total_gang_resources": totalGangResources,
 			}).Debug("Resources added for Gang")
 			if err != nil {
@@ -369,7 +366,8 @@ func (h *ServiceHandler) DequeueGangs(
 	for i := uint32(0); i < limit; i++ {
 		gang, err := sched.DequeueGang(timeout*time.Millisecond, req.Type)
 		if err != nil {
-			log.Debug("Timeout to dequeue gang from ready queue")
+			log.WithField("task_type", req.Type).
+				Debug("Timeout to dequeue gang from ready queue")
 			h.metrics.DequeueGangTimeout.Inc(1)
 			break
 		}
@@ -383,7 +381,7 @@ func (h *ServiceHandler) DequeueGangs(
 					t.TaskState_PLACING.String(), "dequeued with gang for placement")
 				if err != nil {
 					log.WithError(err).WithField(
-						"task_ID", task.Id.Value).
+						"task_id", task.Id.Value).
 						Error("Failed to transit state " +
 							"for task")
 				}
@@ -558,14 +556,14 @@ func (h *ServiceHandler) transitTasksInPlacement(
 		if rmTask == nil {
 			invalidTasks[taskID.Value] = taskID
 			log.WithFields(log.Fields{
-				"task_ID": taskID.Value,
+				"task_id": taskID.Value,
 			}).Debug("Task is not present in tracker, " +
 				"Removing it from placement")
 			continue
 		}
 		state := rmTask.GetCurrentState()
 		log.WithFields(log.Fields{
-			"task_ID":       taskID.Value,
+			"task_id":       taskID.Value,
 			"current_state": state.String(),
 		}).Debug("Get Placement for task")
 		if state != expectedState {
@@ -581,13 +579,13 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			err := rmTask.TransitTo(newState.String(), reason)
 			if err != nil {
 				log.WithError(errors.WithStack(err)).
-					WithField("task_ID", taskID.GetValue()).
+					WithField("task_id", taskID.GetValue()).
 					Info("not able to transition to launching for task")
 				invalidTasks[taskID.Value] = taskID
 			}
 		}
 		log.WithFields(log.Fields{
-			"task_ID":       taskID.Value,
+			"task_id":       taskID.Value,
 			"current_state": state.String(),
 		}).Debug("Latest state in Get Placement")
 	}
@@ -627,8 +625,8 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"event":         event,
-			"mesos_task_ID": *(event.MesosTaskStatus.TaskId.Value),
-		}).Error("Could not parse mesos ID")
+			"mesos_task_id": *(event.MesosTaskStatus.TaskId.Value),
+		}).Error("Could not parse mesos task ID")
 		return
 	}
 
@@ -643,10 +641,10 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	if *(rmTask.Task().TaskId.Value) !=
 		*(event.MesosTaskStatus.TaskId.Value) {
 		log.WithFields(log.Fields{
-			"task_ID": rmTask.Task().TaskId.Value,
+			"task_id": rmTask.Task().TaskId.Value,
 			"event":   event,
 		}).Error("could not be updated due to" +
-			"different mesos taskID")
+			"different mesos task ID")
 		return
 	}
 
@@ -654,7 +652,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 		err = rmTask.TransitTo(t.TaskState_RUNNING.String(), "received running state from mesos")
 		if err != nil {
 			log.WithError(errors.WithStack(err)).
-				WithField("task_ID", ptID).
+				WithField("task_id", ptID).
 				Info("Not able to transition to RUNNING for task")
 		}
 		// update the start time
@@ -671,7 +669,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	}
 
 	log.WithFields(log.Fields{
-		"task_ID":       ptID,
+		"task_id":       ptID,
 		"current_state": taskState.String(),
 	}).Info("Task is completed and removed from tracker")
 	rmtask.GetTracker().UpdateCounters(
@@ -845,7 +843,7 @@ func (h *ServiceHandler) KillTasks(
 			continue
 		}
 		log.WithFields(log.Fields{
-			"task_ID":       taskTobeKilled.Value,
+			"task_id":       taskTobeKilled.Value,
 			"current_state": killedRmTask.GetCurrentState().String(),
 		}).Info("Task is Killed and removed from tracker")
 		h.rmTracker.UpdateCounters(
@@ -914,13 +912,13 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 			if err != nil {
 				// the task could have moved from RUNNING state
 				log.WithError(err).
-					WithField("task_ID", task.Id.Value).
+					WithField("task_id", task.Id.Value).
 					Error("failed to transit state for task")
 				continue
 			}
 		} else {
 			log.WithError(err).
-				WithField("task_ID", task.Id.Value).
+				WithField("task_id", task.Id.Value).
 				Error("failed to find task in the tracker")
 			continue
 		}

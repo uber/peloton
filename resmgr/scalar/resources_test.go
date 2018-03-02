@@ -282,35 +282,35 @@ func TestGetTaskAllocation(t *testing.T) {
 
 	tt := []struct {
 		preemptible bool
-		ttype       resmgr.TaskType
+		controller  bool
 		noAlloc     []AllocationType
 		hasAlloc    []AllocationType
 	}{
 		{
 			// represents a preemptible batch task
 			preemptible: true,
-			ttype:       resmgr.TaskType_BATCH,
+			controller:  false,
 			noAlloc:     []AllocationType{NonPreemptibleAllocation, ControllerAllocation},
 			hasAlloc:    []AllocationType{PreemptibleAllocation},
 		},
 		{
 			// represents a non-preemptible batch task
 			preemptible: false,
-			ttype:       resmgr.TaskType_BATCH,
+			controller:  false,
 			noAlloc:     []AllocationType{PreemptibleAllocation, ControllerAllocation},
 			hasAlloc:    []AllocationType{NonPreemptibleAllocation},
 		},
 		{
 			// represents a non-preemptible controller task
 			preemptible: false,
-			ttype:       resmgr.TaskType_CONTROLLER,
+			controller:  true,
 			noAlloc:     []AllocationType{PreemptibleAllocation},
 			hasAlloc:    []AllocationType{ControllerAllocation, NonPreemptibleAllocation},
 		},
 		{
 			// represents a preemptible controller task
 			preemptible: true,
-			ttype:       resmgr.TaskType_CONTROLLER,
+			controller:  true,
 			noAlloc:     []AllocationType{NonPreemptibleAllocation},
 			hasAlloc:    []AllocationType{ControllerAllocation, PreemptibleAllocation},
 		},
@@ -320,7 +320,7 @@ func TestGetTaskAllocation(t *testing.T) {
 		rmTask := &resmgr.Task{
 			Preemptible: test.preemptible,
 			Resource:    taskConfig,
-			Type:        test.ttype,
+			Controller:  test.controller,
 		}
 
 		alloc := GetTaskAllocation(rmTask)

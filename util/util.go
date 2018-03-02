@@ -352,6 +352,7 @@ func ConvertTaskToResMgrTask(
 		NumPorts:     uint32(numPorts),
 		Type:         getTaskType(taskInfo.GetConfig()),
 		Labels:       ConvertLabels(taskInfo.GetConfig().GetLabels()),
+		Controller:   taskInfo.GetConfig().GetController(),
 	}
 }
 
@@ -360,10 +361,6 @@ func getTaskType(cfg *task.TaskConfig) resmgr.TaskType {
 	if cfg.GetVolume() != nil {
 		return resmgr.TaskType_STATEFUL
 	}
-	if cfg.GetController() {
-		return resmgr.TaskType_CONTROLLER
-	}
-
 	// By default task type is batch.
 	return resmgr.TaskType_BATCH
 }

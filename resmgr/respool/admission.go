@@ -269,7 +269,7 @@ func isController(gang *resmgrsvc.Gang) bool {
 		return false
 	}
 
-	return tasks[0].GetType() == resmgr.TaskType_CONTROLLER
+	return tasks[0].GetController()
 }
 
 // getSourceQueue returns the source queue depending on the type of the batch

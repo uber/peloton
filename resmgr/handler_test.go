@@ -47,23 +47,23 @@ type HandlerTestSuite struct {
 	rmTaskTracker rm_task.Tracker
 }
 
-func (suite *HandlerTestSuite) SetupSuite() {
-	suite.ctrl = gomock.NewController(suite.T())
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.ctrl)
+func (s *HandlerTestSuite) SetupSuite() {
+	s.ctrl = gomock.NewController(s.T())
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.ctrl)
 	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
-		Return(suite.getResPools(), nil).AnyTimes()
-	mockJobStore := store_mocks.NewMockJobStore(suite.ctrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(suite.ctrl)
+		Return(s.getResPools(), nil).AnyTimes()
+	mockJobStore := store_mocks.NewMockJobStore(s.ctrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(s.ctrl)
 
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
-	suite.resTree = respool.GetTree()
+	s.resTree = respool.GetTree()
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker(tally.NoopScope)
-	suite.rmTaskTracker = rm_task.GetTracker()
-	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, suite.rmTaskTracker)
-	suite.taskScheduler = rm_task.GetScheduler()
+	s.rmTaskTracker = rm_task.GetTracker()
+	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, s.rmTaskTracker)
+	s.taskScheduler = rm_task.GetScheduler()
 
-	suite.handler = &ServiceHandler{
+	s.handler = &ServiceHandler{
 		metrics:     NewMetrics(tally.NoopScope),
 		resPoolTree: respool.GetTree(),
 		placements: queue.NewQueue(
@@ -71,7 +71,7 @@ func (suite *HandlerTestSuite) SetupSuite() {
 			reflect.TypeOf(resmgr.Placement{}),
 			maxPlacementQueueSize,
 		),
-		rmTracker: suite.rmTaskTracker,
+		rmTracker: s.rmTaskTracker,
 		config: Config{
 			RmTaskConfig: &rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
@@ -79,7 +79,7 @@ func (suite *HandlerTestSuite) SetupSuite() {
 			},
 		},
 	}
-	suite.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
+	s.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
 		[]string{
 			common.PelotonJobManager,
@@ -89,35 +89,35 @@ func (suite *HandlerTestSuite) SetupSuite() {
 		tally.Scope(tally.NoopScope))
 }
 
-func (suite *HandlerTestSuite) TearDownSuite() {
-	suite.ctrl.Finish()
-	suite.rmTaskTracker.Clear()
+func (s *HandlerTestSuite) TearDownSuite() {
+	s.ctrl.Finish()
+	s.rmTaskTracker.Clear()
 }
 
-func (suite *HandlerTestSuite) SetupTest() {
-	suite.context = context.Background()
-	err := suite.resTree.Start()
-	suite.NoError(err)
+func (s *HandlerTestSuite) SetupTest() {
+	s.context = context.Background()
+	err := s.resTree.Start()
+	s.NoError(err)
 
-	err = suite.taskScheduler.Start()
-	suite.NoError(err)
+	err = s.taskScheduler.Start()
+	s.NoError(err)
 
 }
 
-func (suite *HandlerTestSuite) TearDownTest() {
+func (s *HandlerTestSuite) TearDownTest() {
 	log.Info("tearing down")
 
 	err := respool.GetTree().Stop()
-	suite.NoError(err)
+	s.NoError(err)
 	err = rm_task.GetScheduler().Stop()
-	suite.NoError(err)
+	s.NoError(err)
 }
 
 func TestResManagerHandler(t *testing.T) {
 	suite.Run(t, new(HandlerTestSuite))
 }
 
-func (suite *HandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
+func (s *HandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
 
 	resConfigs := []*pb_respool.ResourceConfig{
 		{
@@ -148,7 +148,7 @@ func (suite *HandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConfig 
 	return resConfigs
 }
 
-func (suite *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+func (s *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 
 	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
@@ -157,55 +157,55 @@ func (suite *HandlerTestSuite) getResPools() map[string]*pb_respool.ResourcePool
 		"root": {
 			Name:      "root",
 			Parent:    nil,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool1": {
 			Name:      "respool1",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool2": {
 			Name:      "respool2",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool3": {
 			Name:      "respool3",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool11": {
 			Name:      "respool11",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 	}
 }
 
-func (suite *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
+func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	uuidStr := "uuidstr-1"
 	jobID := "job1"
@@ -231,7 +231,7 @@ func (suite *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (suite *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
+func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	gang.Tasks = []*resmgr.Task{
 		{
@@ -250,7 +250,7 @@ func (suite *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (suite *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
+func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
 	gang.Tasks = []*resmgr.Task{
 		{
@@ -283,36 +283,34 @@ func (suite *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 	return &gang
 }
 
-func (suite *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
+func (s *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
 	gangs := make([]*resmgrsvc.Gang, 3)
-	gangs[0] = suite.pendingGang0()
-	gangs[1] = suite.pendingGang1()
-	gangs[2] = suite.pendingGang2()
+	gangs[0] = s.pendingGang0()
+	gangs[1] = s.pendingGang1()
+	gangs[2] = s.pendingGang2()
 	return gangs
 }
 
-func (suite *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
+func (s *HandlerTestSuite) expectedGangs() []*resmgrsvc.Gang {
 	gangs := make([]*resmgrsvc.Gang, 3)
-	gangs[0] = suite.pendingGang2()
-	gangs[1] = suite.pendingGang1()
-	gangs[2] = suite.pendingGang0()
+	gangs[0] = s.pendingGang2()
+	gangs[1] = s.pendingGang1()
+	gangs[2] = s.pendingGang0()
 	return gangs
 }
 
-func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
-	log.Info("TestEnqueueDequeueGangsOneResPool called")
-
+func (s *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
-		Gangs:   suite.pendingGangs(),
+		Gangs:   s.pendingGangs(),
 	}
-	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
-	suite.NoError(err)
-	node.SetEntitlement(suite.getEntitlement())
-	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	node.SetEntitlement(s.getEntitlement())
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 
-	suite.NoError(err)
-	suite.Nil(enqResp.GetError())
+	s.NoError(err)
+	s.Nil(enqResp.GetError())
 
 	deqReq := &resmgrsvc.DequeueGangsRequest{
 		Limit:   10,
@@ -322,41 +320,33 @@ func (suite *HandlerTestSuite) TestEnqueueDequeueGangsOneResPool() {
 	// method is run asynchronously.
 	time.Sleep(2 * time.Second)
 
-	deqResp, err := suite.handler.DequeueGangs(suite.context, deqReq)
-	suite.NoError(err)
-	suite.Nil(deqResp.GetError())
-	suite.Equal(suite.expectedGangs(), deqResp.GetGangs())
-
-	log.Info("TestEnqueueDequeueGangsOneResPool returned")
+	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
+	s.NoError(err)
+	s.Nil(deqResp.GetError())
+	s.Equal(s.expectedGangs(), deqResp.GetGangs())
 }
 
-func (suite *HandlerTestSuite) TestReenqueueGangNonExistingGangFails() {
-	log.Info("TestReenqueueGangNonExistingGangFails called")
-
+func (s *HandlerTestSuite) TestReEnqueueGangNonExistingGangFails() {
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
-		Gangs: suite.pendingGangs(),
+		Gangs: s.pendingGangs(),
 	}
-	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
-	suite.NoError(err)
-	suite.NotNil(enqResp.GetError())
-	suite.NotNil(enqResp.GetError().GetFailure().GetFailed())
-
-	log.Info("TestReenqueueGangNonExistingGangFails returned")
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.NotNil(enqResp.GetError())
+	s.NotNil(enqResp.GetError().GetFailure().GetFailed())
 }
 
-func (suite *HandlerTestSuite) TestReenqueueGangThatFailedPlacement() {
-	log.Info("TestReenqueueGangThatFailedPlacement called")
-
+func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
-		Gangs:   suite.pendingGangs(),
+		Gangs:   s.pendingGangs(),
 	}
-	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
-	suite.NoError(err)
-	node.SetEntitlement(suite.getEntitlement())
-	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
-	suite.NoError(err)
-	suite.Nil(enqResp.GetError())
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	node.SetEntitlement(s.getEntitlement())
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.Nil(enqResp.GetError())
 
 	// There is a race condition in the test due to the Scheduler.scheduleTasks
 	// method is run asynchronously.
@@ -364,9 +354,9 @@ func (suite *HandlerTestSuite) TestReenqueueGangThatFailedPlacement() {
 
 	// Re-enqueue the gangs without a resource pool
 	enqReq.ResPool = nil
-	enqResp, err = suite.handler.EnqueueGangs(suite.context, enqReq)
-	suite.NoError(err)
-	suite.Nil(enqResp.GetError())
+	enqResp, err = s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.Nil(enqResp.GetError())
 
 	// Make sure we dequeue the gangs again for the next test to work
 	deqReq := &resmgrsvc.DequeueGangsRequest{
@@ -377,50 +367,47 @@ func (suite *HandlerTestSuite) TestReenqueueGangThatFailedPlacement() {
 	// We need to wait here
 	time.Sleep(timeout)
 	// Checking whether we get the task from ready queue
-	deqResp, err := suite.handler.DequeueGangs(suite.context, deqReq)
-	suite.NoError(err)
-	suite.Nil(deqResp.GetError())
-
-	log.Info("TestReenqueueGangThatFailedPlacement returned")
+	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
+	s.NoError(err)
+	s.Nil(deqResp.GetError())
 }
 
-func (suite *HandlerTestSuite) TestRequeue() {
-	log.Info("TestRequeue called")
-	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
-	suite.NoError(err)
+func (s *HandlerTestSuite) TestRequeue() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
 	var gangs []*resmgrsvc.Gang
-	gangs = append(gangs, suite.pendingGang0())
+	gangs = append(gangs, s.pendingGang0())
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
 		Gangs:   gangs,
 	}
 
-	suite.rmTaskTracker.AddTask(
-		suite.pendingGang0().Tasks[0],
+	s.rmTaskTracker.AddTask(
+		s.pendingGang0().Tasks[0],
 		nil,
 		node,
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
 		})
-	rmtask := suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
+	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_PLACING.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_PLACED.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 
 	// Testing to see if we can send same task in the enqueue
 	// request then it should error out
-	node.SetEntitlement(suite.getEntitlement())
-	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
-	suite.NoError(err)
-	suite.NotNil(enqResp.GetError())
+	node.SetEntitlement(s.getEntitlement())
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.NotNil(enqResp.GetError())
 	log.Error(err)
 	log.Error(enqResp.GetError())
 	// Testing to see if we can send different Mesos taskID
@@ -433,12 +420,12 @@ func (suite *HandlerTestSuite) TestRequeue() {
 	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
 		Value: &mesosTaskID,
 	}
-	enqResp, err = suite.handler.EnqueueGangs(suite.context, enqReq)
-	suite.NoError(err)
-	suite.NotNil(enqResp.GetError())
+	enqResp, err = s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.NotNil(enqResp.GetError())
 
-	rmtask = suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
-	suite.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
+	rmtask = s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	s.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
 
 	deqReq := &resmgrsvc.DequeueGangsRequest{
 		Limit:   10,
@@ -448,39 +435,37 @@ func (suite *HandlerTestSuite) TestRequeue() {
 	// We need to wait here
 	time.Sleep(timeout)
 	// Checking whether we get the task from ready queue
-	deqResp, err := suite.handler.DequeueGangs(suite.context, deqReq)
-	suite.NoError(err)
-	suite.Nil(deqResp.GetError())
+	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
+	s.NoError(err)
+	s.Nil(deqResp.GetError())
 	log.Info(*deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
-	suite.Equal(mesosTaskID, *deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
+	s.Equal(mesosTaskID, *deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
 }
 
-func (suite *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
-	log.Info("TestEnqueueGangsResPoolNotFound called")
+func (s *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
 	respool.InitTree(tally.NoopScope, nil, nil, nil)
 
 	respoolID := &peloton.ResourcePoolID{Value: "respool10"}
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: respoolID,
-		Gangs:   suite.pendingGangs(),
+		Gangs:   s.pendingGangs(),
 	}
-	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
-	suite.NoError(err)
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
 	log.Infof("%v", enqResp)
 	notFound := &resmgrsvc.ResourcePoolNotFound{
 		Id:      respoolID,
 		Message: "resource pool (respool10) not found",
 	}
-	suite.Equal(notFound, enqResp.GetError().GetNotFound())
-	log.Info("TestEnqueueGangsResPoolNotFound returned")
+	s.Equal(notFound, enqResp.GetError().GetNotFound())
 }
 
-func (suite *HandlerTestSuite) TestEnqueueGangsFailure() {
+func (s *HandlerTestSuite) TestEnqueueGangsFailure() {
 	// TODO: Mock ResPool.Enqueue task to simulate task enqueue failures
-	suite.True(true)
+	s.True(true)
 }
 
-func (suite *HandlerTestSuite) getPlacements() []*resmgr.Placement {
+func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	var placements []*resmgr.Placement
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
 	for i := 0; i < 10; i++ {
@@ -490,7 +475,7 @@ func (suite *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 				Value: fmt.Sprintf("task-%d-%d", i, j),
 			}
 			tasks = append(tasks, task)
-			suite.rmTaskTracker.AddTask(&resmgr.Task{
+			s.rmTaskTracker.AddTask(&resmgr.Task{
 				Id: task,
 			}, nil, resp, &rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
@@ -507,7 +492,7 @@ func (suite *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	return placements
 }
 
-func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
+func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	handler := &ServiceHandler{
 		metrics:     NewMetrics(tally.NoopScope),
 		resPoolTree: nil,
@@ -516,12 +501,12 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 			reflect.TypeOf(resmgr.Placement{}),
 			maxPlacementQueueSize,
 		),
-		rmTracker: suite.rmTaskTracker,
+		rmTracker: s.rmTaskTracker,
 	}
-	handler.eventStreamHandler = suite.handler.eventStreamHandler
+	handler.eventStreamHandler = s.handler.eventStreamHandler
 
 	setReq := &resmgrsvc.SetPlacementsRequest{
-		Placements: suite.getPlacements(),
+		Placements: s.getPlacements(),
 	}
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
@@ -531,61 +516,61 @@ func (suite *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 			rmTask.TransitTo(task.TaskState_PLACING.String(), "")
 		}
 	}
-	setResp, err := handler.SetPlacements(suite.context, setReq)
-	suite.NoError(err)
-	suite.Nil(setResp.GetError())
+	setResp, err := handler.SetPlacements(s.context, setReq)
+	s.NoError(err)
+	s.Nil(setResp.GetError())
 
 	getReq := &resmgrsvc.GetPlacementsRequest{
 		Limit:   10,
 		Timeout: 1 * 1000, // 1 sec
 	}
-	getResp, err := handler.GetPlacements(suite.context, getReq)
-	suite.NoError(err)
-	suite.Nil(getResp.GetError())
-	suite.Equal(suite.getPlacements(), getResp.GetPlacements())
+	getResp, err := handler.GetPlacements(s.context, getReq)
+	s.NoError(err)
+	s.Nil(getResp.GetError())
+	s.Equal(s.getPlacements(), getResp.GetPlacements())
 }
 
-func (suite *HandlerTestSuite) TestGetTasksByHosts() {
+func (s *HandlerTestSuite) TestGetTasksByHosts() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
-		Placements: suite.getPlacements(),
+		Placements: s.getPlacements(),
 	}
 	hostnames := make([]string, 0, len(setReq.Placements))
 	for _, placement := range setReq.Placements {
 		hostnames = append(hostnames, placement.Hostname)
 		for _, taskID := range placement.Tasks {
-			rmTask := suite.handler.rmTracker.GetTask(taskID)
+			rmTask := s.handler.rmTracker.GetTask(taskID)
 			rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 			rmTask.TransitTo(task.TaskState_READY.String(), "")
 			rmTask.TransitTo(task.TaskState_PLACING.String(), "")
 		}
 	}
-	setResp, err := suite.handler.SetPlacements(suite.context, setReq)
-	suite.NoError(err)
-	suite.Nil(setResp.GetError())
+	setResp, err := s.handler.SetPlacements(s.context, setReq)
+	s.NoError(err)
+	s.Nil(setResp.GetError())
 
 	req := &resmgrsvc.GetTasksByHostsRequest{
 		Hostnames: hostnames,
 	}
-	res, err := suite.handler.GetTasksByHosts(context.Background(), req)
-	suite.NoError(err)
-	suite.NotNil(res)
-	suite.Equal(len(hostnames), len(res.HostTasksMap))
+	res, err := s.handler.GetTasksByHosts(context.Background(), req)
+	s.NoError(err)
+	s.NotNil(res)
+	s.Equal(len(hostnames), len(res.HostTasksMap))
 	for _, hostname := range hostnames {
 		_, exists := res.HostTasksMap[hostname]
-		suite.True(exists)
+		s.True(exists)
 	}
 	for _, placement := range setReq.Placements {
-		suite.Equal(len(placement.Tasks), len(res.HostTasksMap[placement.Hostname].Tasks))
+		s.Equal(len(placement.Tasks), len(res.HostTasksMap[placement.Hostname].Tasks))
 	}
 }
 
-func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
-	_, tasks := suite.createRMTasks()
+func (s *HandlerTestSuite) TestRemoveTasksFromPlacement() {
+	_, tasks := s.createRMTasks()
 	placement := &resmgr.Placement{
 		Tasks:    tasks,
 		Hostname: fmt.Sprintf("host-%d", 1),
 	}
-	suite.Equal(len(placement.Tasks), 5)
+	s.Equal(len(placement.Tasks), 5)
 	taskstoremove := make(map[string]*peloton.TaskID)
 	for j := 0; j < 2; j++ {
 		taskID := &peloton.TaskID{
@@ -593,33 +578,33 @@ func (suite *HandlerTestSuite) TestRemoveTasksFromPlacement() {
 		}
 		taskstoremove[taskID.Value] = taskID
 	}
-	newPlacement := suite.handler.removeTasksFromPlacements(placement, taskstoremove)
-	suite.NotNil(newPlacement)
-	suite.Equal(len(newPlacement.Tasks), 3)
+	newPlacement := s.handler.removeTasksFromPlacements(placement, taskstoremove)
+	s.NotNil(newPlacement)
+	s.Equal(len(newPlacement.Tasks), 3)
 }
 
-func (suite *HandlerTestSuite) TestRemoveTasksFromGang() {
-	rmtasks, _ := suite.createRMTasks()
+func (s *HandlerTestSuite) TestRemoveTasksFromGang() {
+	rmtasks, _ := s.createRMTasks()
 	gang := &resmgrsvc.Gang{
 		Tasks: rmtasks,
 	}
-	suite.Equal(len(gang.Tasks), 5)
+	s.Equal(len(gang.Tasks), 5)
 	tasksToRemove := make(map[string]*resmgr.Task)
 	tasksToRemove[rmtasks[0].Id.Value] = rmtasks[0]
 	tasksToRemove[rmtasks[1].Id.Value] = rmtasks[1]
-	newGang := suite.handler.removeFromGang(gang, tasksToRemove)
-	suite.NotNil(newGang)
-	suite.Equal(len(newGang.Tasks), 3)
+	newGang := s.handler.removeFromGang(gang, tasksToRemove)
+	s.NotNil(newGang)
+	s.Equal(len(newGang.Tasks), 3)
 }
 
-func (suite *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
+func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 	var tasks []*peloton.TaskID
 	var rmTasks []*resmgr.Task
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
 		&pb_respool.ResourcePoolConfig{
 			Name:      "respool1",
 			Parent:    nil,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 		})
 	for j := 0; j < 5; j++ {
@@ -636,7 +621,7 @@ func (suite *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskI
 				MemLimitMb:  100,
 			},
 		}
-		suite.rmTaskTracker.AddTask(rmTask, nil, resp,
+		s.rmTaskTracker.AddTask(rmTask, nil, resp,
 			&rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
 				PlacingTimeout:   1 * time.Minute,
@@ -646,9 +631,9 @@ func (suite *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskI
 	return rmTasks, tasks
 }
 
-func (suite *HandlerTestSuite) TestKillTasks() {
-	suite.rmTaskTracker.Clear()
-	_, tasks := suite.createRMTasks()
+func (s *HandlerTestSuite) TestKillTasks() {
+	s.rmTaskTracker.Clear()
+	_, tasks := s.createRMTasks()
 
 	var killedtasks []*peloton.TaskID
 	killedtasks = append(killedtasks, tasks[0])
@@ -659,34 +644,34 @@ func (suite *HandlerTestSuite) TestKillTasks() {
 	}
 	// This is a valid list tasks should be deleted
 	// Result is no error and tracker should have remaining 3 tasks
-	res, err := suite.handler.KillTasks(suite.context, killReq)
-	suite.NoError(err)
-	suite.Nil(res.Error)
-	suite.Equal(suite.rmTaskTracker.GetSize(), int64(3))
+	res, err := s.handler.KillTasks(s.context, killReq)
+	s.NoError(err)
+	s.Nil(res.Error)
+	s.Equal(s.rmTaskTracker.GetSize(), int64(3))
 	var notValidkilledtasks []*peloton.TaskID
 	killReq = &resmgrsvc.KillTasksRequest{
 		Tasks: notValidkilledtasks,
 	}
 	// This list does not have any tasks in the list
 	// this should return error.
-	res, err = suite.handler.KillTasks(suite.context, killReq)
-	suite.NotNil(res.Error)
+	res, err = s.handler.KillTasks(s.context, killReq)
+	s.NotNil(res.Error)
 	notValidkilledtasks = append(notValidkilledtasks, tasks[0])
 	killReq = &resmgrsvc.KillTasksRequest{
 		Tasks: notValidkilledtasks,
 	}
 	// This list have invalid task in the list which should be not
 	// present in the tracker and should return error
-	res, err = suite.handler.KillTasks(suite.context, killReq)
-	suite.NotNil(res.Error)
-	suite.NotNil(res.Error[0].NotFound)
-	suite.Nil(res.Error[0].KillError)
-	suite.Equal(res.Error[0].NotFound.Task.Value, tasks[0].Value)
+	res, err = s.handler.KillTasks(s.context, killReq)
+	s.NotNil(res.Error)
+	s.NotNil(res.Error[0].NotFound)
+	s.Nil(res.Error[0].KillError)
+	s.Equal(res.Error[0].NotFound.Task.Value, tasks[0].Value)
 }
 
-func (suite *HandlerTestSuite) TestMarkTasksLaunched() {
-	suite.rmTaskTracker.Clear()
-	_, tasks := suite.createRMTasks()
+func (s *HandlerTestSuite) TestMarkTasksLaunched() {
+	s.rmTaskTracker.Clear()
+	_, tasks := s.createRMTasks()
 
 	var launchedTasks []*peloton.TaskID
 	launchedTasks = append(launchedTasks, tasks[0])
@@ -696,23 +681,23 @@ func (suite *HandlerTestSuite) TestMarkTasksLaunched() {
 	req := &resmgrsvc.MarkTasksLaunchedRequest{
 		Tasks: launchedTasks,
 	}
-	_, err := suite.handler.MarkTasksLaunched(suite.context, req)
-	suite.NoError(err)
-	rmTask := suite.rmTaskTracker.GetTask(tasks[0])
-	suite.Equal(rmTask.GetCurrentState(), task.TaskState_LAUNCHED)
-	rmTask = suite.rmTaskTracker.GetTask(tasks[1])
-	suite.Equal(rmTask.GetCurrentState(), task.TaskState_LAUNCHED)
+	_, err := s.handler.MarkTasksLaunched(s.context, req)
+	s.NoError(err)
+	rmTask := s.rmTaskTracker.GetTask(tasks[0])
+	s.Equal(rmTask.GetCurrentState(), task.TaskState_LAUNCHED)
+	rmTask = s.rmTaskTracker.GetTask(tasks[1])
+	s.Equal(rmTask.GetCurrentState(), task.TaskState_LAUNCHED)
 
 	// Send invalid tasks
 	var notValidkilledtasks []*peloton.TaskID
 	req = &resmgrsvc.MarkTasksLaunchedRequest{
 		Tasks: notValidkilledtasks,
 	}
-	_, err = suite.handler.MarkTasksLaunched(suite.context, req)
-	suite.NoError(err)
+	_, err = s.handler.MarkTasksLaunched(s.context, req)
+	s.NoError(err)
 }
 
-func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
+func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
 	rm_task.InitTaskTracker(tally.NoopScope)
 	handler := &ServiceHandler{
@@ -728,7 +713,7 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 		&pb_respool.ResourcePoolConfig{
 			Name:      "respool1",
 			Parent:    nil,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 		})
 	for i := 0; i < 100; i++ {
@@ -769,11 +754,11 @@ func (suite *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 		Events: events,
 	}
 	response, _ := handler.NotifyTaskUpdates(context.Background(), req)
-	assert.Equal(suite.T(), uint64(1099), response.PurgeOffset)
-	assert.Nil(suite.T(), response.Error)
+	assert.Equal(s.T(), uint64(1099), response.PurgeOffset)
+	assert.Nil(s.T(), response.Error)
 }
 
-func (suite *HandlerTestSuite) getEntitlement() map[string]float64 {
+func (s *HandlerTestSuite) getEntitlement() map[string]float64 {
 	mapEntitlement := make(map[string]float64)
 	mapEntitlement[common.CPU] = float64(100)
 	mapEntitlement[common.MEMORY] = float64(1000)
@@ -782,38 +767,38 @@ func (suite *HandlerTestSuite) getEntitlement() map[string]float64 {
 	return mapEntitlement
 }
 
-func (suite *HandlerTestSuite) TestGetActiveTasks() {
+func (s *HandlerTestSuite) TestGetActiveTasks() {
 	setReq := &resmgrsvc.SetPlacementsRequest{
-		Placements: suite.getPlacements(),
+		Placements: s.getPlacements(),
 	}
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
-			rmTask := suite.handler.rmTracker.GetTask(taskID)
+			rmTask := s.handler.rmTracker.GetTask(taskID)
 			rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 			rmTask.TransitTo(task.TaskState_READY.String(), "")
 			rmTask.TransitTo(task.TaskState_PLACING.String(), "")
 		}
 	}
-	setResp, err := suite.handler.SetPlacements(suite.context, setReq)
-	suite.NoError(err)
-	suite.Nil(setResp.GetError())
+	setResp, err := s.handler.SetPlacements(s.context, setReq)
+	s.NoError(err)
+	s.Nil(setResp.GetError())
 
 	req := &resmgrsvc.GetActiveTasksRequest{}
-	res, err := suite.handler.GetActiveTasks(context.Background(), req)
-	suite.NoError(err)
-	suite.NotNil(res)
+	res, err := s.handler.GetActiveTasks(context.Background(), req)
+	s.NoError(err)
+	s.NotNil(res)
 	totalTasks := 0
 	for _, tasks := range res.GetTasksByState() {
 		totalTasks += len(tasks.GetTaskEntry())
 	}
-	suite.Equal(54, totalTasks)
+	s.Equal(54, totalTasks)
 }
 
-func (suite *HandlerTestSuite) TestGetPreemptibleTasks() {
-	defer suite.handler.rmTracker.Clear()
+func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
+	defer s.handler.rmTracker.Clear()
 
-	mockPreemptor := mocks.NewMockPreemptor(suite.ctrl)
-	suite.handler.preemptor = mockPreemptor
+	mockPreemptor := mocks.NewMockPreemptor(s.ctrl)
+	s.handler.preemptor = mockPreemptor
 
 	// Mock tasks in RUNNING state
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
@@ -825,14 +810,14 @@ func (suite *HandlerTestSuite) TestGetPreemptibleTasks() {
 		expectedTasks = append(expectedTasks, &resmgr.Task{
 			Id: taskID,
 		})
-		suite.rmTaskTracker.AddTask(&resmgr.Task{
+		s.rmTaskTracker.AddTask(&resmgr.Task{
 			Id: taskID,
 		}, nil, resp,
 			&rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
 				PlacingTimeout:   1 * time.Minute,
 			})
-		rmTask := suite.handler.rmTracker.GetTask(taskID)
+		rmTask := s.handler.rmTracker.GetTask(taskID)
 		rmTask.TransitTo(task.TaskState_PENDING.String(), "")
 		rmTask.TransitTo(task.TaskState_PLACED.String(), "")
 		rmTask.TransitTo(task.TaskState_LAUNCHING.String(), "")
@@ -850,61 +835,85 @@ func (suite *HandlerTestSuite) TestGetPreemptibleTasks() {
 		Timeout: 100,
 		Limit:   5,
 	}
-	res, err := suite.handler.GetPreemptibleTasks(context.Background(), req)
-	suite.NoError(err)
-	suite.NotNil(res)
-	suite.Equal(5, len(res.Tasks))
+	res, err := s.handler.GetPreemptibleTasks(context.Background(), req)
+	s.NoError(err)
+	s.NotNil(res)
+	s.Equal(5, len(res.Tasks))
 }
 
-func (suite *HandlerTestSuite) TestRequeueInvalidatedTasks() {
-	log.Info("TestRequeueInvalidTasks called")
-	node, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
-	suite.NoError(err)
+func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
 	var gangs []*resmgrsvc.Gang
-	gangs = append(gangs, suite.pendingGang0())
+	gangs = append(gangs, s.pendingGang0())
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
 		Gangs:   gangs,
 	}
 
-	suite.rmTaskTracker.AddTask(
-		suite.pendingGang0().Tasks[0],
+	s.rmTaskTracker.AddTask(
+		s.pendingGang0().Tasks[0],
 		nil,
 		node,
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
 		})
-	rmtask := suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
+	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_PLACING.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_PLACED.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String(), "")
-	suite.NoError(err)
+	s.NoError(err)
 
 	// Marking this task to Invalidate
 	// It will not invalidate as its in Lunching state
-	suite.rmTaskTracker.MarkItInvalid(suite.pendingGang0().Tasks[0].Id)
+	s.rmTaskTracker.MarkItInvalid(s.pendingGang0().Tasks[0].Id)
 
 	// Tasks should be removed from Tracker
-	taskget := suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
-	suite.Nil(taskget)
+	taskget := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	s.Nil(taskget)
 
 	// Testing to see if we can send same task in the enqueue
 	// after invalidating the task
-	node.SetEntitlement(suite.getEntitlement())
-	enqResp, err := suite.handler.EnqueueGangs(suite.context, enqReq)
-	suite.NoError(err)
-	suite.Nil(enqResp.GetError())
+	node.SetEntitlement(s.getEntitlement())
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.Nil(enqResp.GetError())
 	// Waiting for scheduler to kick in, As the task was not
 	// in initialized and pending state it will not be invalidate
 	// and should be able to requeue and get to READY state
 	time.Sleep(timeout)
-	rmtask = suite.rmTaskTracker.GetTask(suite.pendingGang0().Tasks[0].Id)
-	suite.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
+	rmtask = s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	s.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
+}
+
+func (s *HandlerTestSuite) TestGetPendingTasks() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	err = node.EnqueueGang(s.pendingGang2())
+	s.NoError(err)
+
+	req := &resmgrsvc.GetPendingTasksRequest{
+		RespoolID: &peloton.ResourcePoolID{
+			Value: "respool3",
+		},
+		Limit: uint32(1),
+	}
+
+	resp, err := s.handler.GetPendingTasks(s.context, req)
+	s.NoError(err)
+
+	s.Equal(1, len(resp.Tasks))
+	for _, g := range resp.Tasks {
+		s.Equal(2, len(g.TaskID))
+		for i, tid := range g.TaskID {
+			s.Equal(fmt.Sprintf("job2-%d", i+1), tid)
+		}
+	}
 }

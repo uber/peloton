@@ -138,13 +138,6 @@ func TestGetTaskType(t *testing.T) {
 		cfg *task.TaskConfig
 		tt  resmgr.TaskType
 	}{
-
-		{
-			cfg: &task.TaskConfig{
-				Controller: true,
-			},
-			tt: resmgr.TaskType_CONTROLLER,
-		},
 		{
 			cfg: &task.TaskConfig{
 				Volume: &task.PersistentVolumeConfig{},

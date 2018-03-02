@@ -34,10 +34,6 @@ enum TaskType {
   // DAEMON task which has one instance running on each host for infra
   // agents like muttley, m3collector etc.
   DAEMON = 4;
-
-  // CONTROLLER task is a special task which controls other tasks inside the
-  // job. E.g. spark driver tasks in a spark job will be a controller task.
-  CONTROLLER = 5;
 }
 
 /**
@@ -94,6 +90,11 @@ message Task {
 
   // Hostname of the host on which the task is running on.
   string hostname = 13;
+
+  // Whether this is a controler task. A controller is a special batch task
+  // which controls other tasks inside a job. E.g. spark driver tasks in a spark
+  // job will be a controller task.
+  bool controller = 14;
 }
 
 /**

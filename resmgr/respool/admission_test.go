@@ -17,8 +17,8 @@ func (s *ResPoolSuite) respoolWithConfig(config *respool.ResourcePoolConfig) Res
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
-	respool := s.createTestResourcePool()
-	resPool, ok := respool.(*resPool)
+	pool := s.createTestResourcePool()
+	resPool, ok := pool.(*resPool)
 	s.True(ok)
 
 	task := s.getTasks()[0]
@@ -50,8 +50,8 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
-	respool := s.createTestResourcePool()
-	resPool, ok := respool.(*resPool)
+	pool := s.createTestResourcePool()
+	resPool, ok := pool.(*resPool)
 	s.True(ok)
 
 	resPool.SetEntitlement(s.getEntitlement())
@@ -81,8 +81,8 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 }
 
 func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
-	respool := s.createTestResourcePool()
-	resPool, ok := respool.(*resPool)
+	pool := s.createTestResourcePool()
+	resPool, ok := pool.(*resPool)
 	s.True(ok)
 
 	task := s.getTasks()[0]
@@ -121,29 +121,34 @@ func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {
 	}
 
 	tt := []struct {
-		canAdmit bool
-		tt       resmgr.TaskType
-		err      error
+		canAdmit   bool
+		err        error
+		controller bool
 	}{
-		{ // Tests a batch task at the head of queue which can be admitted
-			canAdmit: true,
-			tt:       resmgr.TaskType_BATCH,
-			err:      nil,
+		{
+			// Tests a batch task at the head of queue which can be admitted
+			canAdmit:   true,
+			err:        nil,
+			controller: false,
 		},
-		{ // Tests a batch task at the head of queue which can not be admitted
-			canAdmit: false,
-			tt:       resmgr.TaskType_BATCH,
-			err:      errResourcePoolFull,
+		{
+			// Tests a batch task at the head of queue which can not be admitted
+			canAdmit:   false,
+			err:        errResourcePoolFull,
+			controller: false,
 		},
-		{ // Tests a controller task at the head of queue which can be admitted
-			canAdmit: true,
-			tt:       resmgr.TaskType_CONTROLLER,
-			err:      nil,
+		{
+			// Tests a controller task at the head of queue which can be admitted
+			canAdmit:   true,
+			err:        nil,
+			controller: true,
 		},
-		{ // Tests a batch task at the head of queue which can nit be admitted
-			canAdmit: false,
-			tt:       resmgr.TaskType_CONTROLLER,
-			err:      errControllerTask,
+		{
+			// Tests a controller task at the head of queue which can not be
+			// admitted
+			canAdmit:   false,
+			err:        errControllerTask,
+			controller: true,
 		},
 	}
 
@@ -153,13 +158,13 @@ func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {
 		s.True(ok)
 		if t.canAdmit {
 			resPool.SetEntitlement(s.getEntitlement())
-		} else if t.tt == resmgr.TaskType_CONTROLLER {
+		} else if t.controller {
 			// set the limit to zero
 			resPool.controllerLimit = scalar.ZeroResource
 		}
 
 		task := s.getTasks()[0]
-		task.Type = t.tt
+		task.Controller = t.controller
 		gang := resPool.MakeTaskGang(task)
 		err := resPool.EnqueueGang(gang)
 		s.NoError(err)
@@ -170,7 +175,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {
 		if t.canAdmit {
 			assertAdmittedSuccessfully(s, task, resPool)
 		} else {
-			assertFailedAdmission(s, resPool, t.tt)
+			assertFailedAdmission(s, resPool, t.controller)
 		}
 	}
 }
@@ -188,17 +193,14 @@ func (s *ResPoolSuite) TestBatchAdmissionController_ControllerAdmitter() {
 
 	tt := []struct {
 		canAdmit bool
-		tt       resmgr.TaskType
 		err      error
 	}{
 		{ // Tests a controller task at the head of queue which can be admitted
 			canAdmit: true,
-			tt:       resmgr.TaskType_CONTROLLER,
 			err:      nil,
 		},
 		{ // Tests a batch task at the head of queue which can nit be admitted
 			canAdmit: false,
-			tt:       resmgr.TaskType_CONTROLLER,
 			err:      errResourcePoolFull,
 		},
 	}
@@ -215,7 +217,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_ControllerAdmitter() {
 		}
 
 		task := s.getTasks()[0]
-		task.Type = t.tt
+		task.Controller = true
 		gang := resPool.MakeTaskGang(task)
 		err := resPool.controllerQueue.Enqueue(gang)
 		s.NoError(err)
@@ -226,23 +228,22 @@ func (s *ResPoolSuite) TestBatchAdmissionController_ControllerAdmitter() {
 		if t.canAdmit {
 			assertAdmittedSuccessfully(s, task, resPool)
 		} else {
-			assertFailedAdmission(s, resPool, t.tt)
+			assertFailedAdmission(s, resPool, true)
 		}
 	}
 }
 
-func assertFailedAdmission(s *ResPoolSuite, resPool *resPool, tt resmgr.TaskType) {
+func assertFailedAdmission(s *ResPoolSuite, resPool *resPool, controller bool) {
 	// gang resources shouldn't account for respool allocation
 	s.Equal(scalar.ZeroResource, resPool.allocation.GetByType(scalar.TotalAllocation))
 	s.Equal(scalar.ZeroResource, resPool.allocation.GetByType(scalar.ControllerAllocation))
-	if tt == resmgr.TaskType_BATCH {
-		// gang should remain in pending queue
-		s.Equal(1, resPool.pendingQueue.Size())
-	}
-	if tt == resmgr.TaskType_CONTROLLER {
+	if controller {
 		// gang should be moved to controller queue
 		s.Equal(0, resPool.pendingQueue.Size())
 		s.Equal(1, resPool.controllerQueue.Size())
+	} else {
+		// gang should remain in pending queue
+		s.Equal(1, resPool.pendingQueue.Size())
 	}
 }
 

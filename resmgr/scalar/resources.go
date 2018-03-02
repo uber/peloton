@@ -82,8 +82,8 @@ func initializeZeroAlloc() *Allocation {
 func GetGangAllocation(gang *resmgrsvc.Gang) *Allocation {
 	gangAllocation := initializeZeroAlloc()
 
-	for _, task := range gang.GetTasks() {
-		gangAllocation = gangAllocation.Add(GetTaskAllocation(task))
+	for _, t := range gang.GetTasks() {
+		gangAllocation = gangAllocation.Add(GetTaskAllocation(t))
 	}
 	return gangAllocation
 }
@@ -104,7 +104,7 @@ func GetTaskAllocation(rmTask *resmgr.Task) *Allocation {
 	}
 
 	// check if its a controller task
-	if rmTask.GetType() == resmgr.TaskType_CONTROLLER {
+	if rmTask.GetController() {
 		alloc.Value[ControllerAllocation] = taskResource
 	}
 
