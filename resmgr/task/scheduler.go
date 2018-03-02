@@ -327,19 +327,6 @@ func (s *scheduler) DequeueGang(maxWaitTime time.Duration, taskType resmgr.TaskT
 			level = levels[s.getRandLevel(len(levels))]
 		}
 	}
-
-	// TODO avyas there could be better ways to do this
-	// The placement engine right now works per task type.
-	// CONTROLLER tasks are special BATCH tasks which control other tasks eg
-	// spark driver. When the batch placement engine requests tasks to be
-	// placed from the resmgr, we need to provide both BATCH and CONTROLLER
-	// tasks from the ready queue.
-	if taskType == resmgr.TaskType_BATCH {
-		// include controller tasks as well
-		levels := []int{int(resmgr.TaskType_BATCH), int(resmgr.TaskType_CONTROLLER)}
-		level = levels[s.getRandLevel(len(levels))]
-	}
-
 	s.condition.L.Lock()
 	defer s.condition.L.Unlock()
 	pastDeadline := uint32(0)
