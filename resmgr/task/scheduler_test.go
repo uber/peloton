@@ -344,13 +344,11 @@ func TestScheduler_EnqueueGang_enqueues_until_the_queue_is_full(t *testing.T) {
 
 func TestScheduler_DequeueGang_blocks_until_a_gang_is_added(t *testing.T) {
 	scheduler := setupScheduler(3)
-	bgs := createGangs(1, resmgr.TaskType_BATCH)
-	cgs := createGangs(1, resmgr.TaskType_CONTROLLER)
+	gangs := createGangs(1, resmgr.TaskType_BATCH)
 	start := time.Now()
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		scheduler.EnqueueGang(bgs[0])
-		scheduler.EnqueueGang(cgs[0])
+		scheduler.EnqueueGang(gangs[0])
 	}()
 	gang, err := scheduler.DequeueGang(50*time.Millisecond, resmgr.TaskType_BATCH)
 	end := time.Now()
@@ -409,15 +407,11 @@ func TestScheduler_DequeueGang_of_different_types_at_the_same_time(t *testing.T)
 
 func TestScheduler_EnqueueGang_and_DequeueGang_multiple_times(t *testing.T) {
 	size := 100
-	gangsByType := make(map[resmgr.TaskType]int)
-	gangsByType[resmgr.TaskType_BATCH] = 100
-	gangsByType[resmgr.TaskType_CONTROLLER] = 100
-	gangs := createMixedGangs(gangsByType)
+	gangs := createGangs(size, resmgr.TaskType_BATCH)
 	scheduler := setupScheduler(5)
 	dequeued := uint32(0)
 	join := sync.WaitGroup{}
-	join.Add(4 * size)
-
+	join.Add(2 * size)
 	for _, gang := range gangs {
 		go func() {
 			for {
@@ -443,7 +437,7 @@ func TestScheduler_EnqueueGang_and_DequeueGang_multiple_times(t *testing.T) {
 		}(gang)
 	}
 	join.Wait()
-	assert.Equal(t, size*2, int(dequeued))
+	assert.Equal(t, size, int(dequeued))
 }
 
 func createMixedGangs(groupSizes map[resmgr.TaskType]int) []*resmgrsvc.Gang {
