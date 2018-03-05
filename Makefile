@@ -150,6 +150,7 @@ endef
 mockgens: build-mockgen pbgens $(GOMOCK)
 	$(call local_mockgen,common/background,Manager)
 	$(call local_mockgen,common/constraints,Evaluator)
+	$(call local_mockgen,common/goalstate,Engine)
 	$(call local_mockgen,.gen/peloton/api/job,JobManagerYARPCClient)
 	$(call local_mockgen,.gen/peloton/api/respool,ResourceManagerYARPCClient)
 	$(call local_mockgen,.gen/peloton/api/task,TaskManagerYARPCClient)
