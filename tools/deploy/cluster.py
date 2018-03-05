@@ -57,8 +57,12 @@ class Cluster(object):
                 continue
             self.apps.append(App(name=app, cluster=self, **app_cfg))
         for app in CRON_APPS:
-            app_cfg = getattr(self, app)
-            self.apps.append(CronApp(name=app, cluster=self, **app_cfg))
+            app_cfg = getattr(self, app, None)
+            if app_cfg is not None:
+                self.apps.append(CronApp(name=app, cluster=self, **app_cfg))
+            else:
+                print 'Skipping cron app, existing cron will ' \
+                    'have to be disabled using `aurora deschedule` command'
 
     @staticmethod
     def load(cfg_file):
