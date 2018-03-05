@@ -3,6 +3,10 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.10.3
+------------------
+* 2018-03-05    Handle incomplete killed jobs                                                          apoorvaj@uber.com
+
 0.6.10.2
 ------------------
 * 2018-03-02    Revert DequeueGang to get CONTROLLER task as well                                      rcharles@uber.com
