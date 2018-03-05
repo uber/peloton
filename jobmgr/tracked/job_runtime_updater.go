@@ -301,6 +301,10 @@ func (j *job) JobRuntimeUpdater(ctx context.Context) (bool, error) {
 	}
 
 	if totalInstanceCount != instances {
+		if jobRuntime.GetState() == pb_job.JobState_KILLED && jobRuntime.GetGoalState() == pb_job.JobState_KILLED {
+			// Job already killed, do not do anything
+			return false, nil
+		}
 		// Either MV view has not caught up or all instances have not been created
 		if j.GetTasksNum() != instances {
 			// all instances have not been created, trigger recovery
