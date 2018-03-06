@@ -138,6 +138,14 @@ def parse_arguments():
     )
 
     parser_peloton.add_argument(
+        '-s',
+        '--agent-number',
+        type=int,
+        dest='agent_number',
+        help='the number of Mesos agent in the vcluster',
+    )
+
+    parser_peloton.add_argument(
         '-v',
         '--peloton-version',
         nargs='?',
@@ -194,8 +202,8 @@ def main():
         zk = args.zk.split(':')
         if len(zk) != 2:
             raise Exception("Invalid zk")
-        peloton_version = args.peloton_version
-        vcluster.start_peloton(zk[0], zk[1], peloton_version)
+        vcluster.start_peloton(
+            args.zk, args.agent_number, args.peloton_version)
 
     elif command == 'setup':
         agent_number = args.agent_number

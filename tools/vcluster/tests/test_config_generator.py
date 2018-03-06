@@ -2,7 +2,12 @@ import unittest
 
 from peloton_client.pbgen.mesos.v1 import mesos_pb2 as mesos
 from peloton_client.pbgen.peloton.api.task import task_pb2 as task
-from tools.vcluster.config_generator import create_mesos_task_config
+from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
+from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
+from tools.vcluster.config_generator import (
+    create_mesos_task_config,
+    create_pool_config,
+)
 
 
 class ConfigGeneratorTest(unittest.TestCase):
@@ -69,3 +74,37 @@ class ConfigGeneratorTest(unittest.TestCase):
         )
 
         self.assertEqual(got, expected)
+
+    def test_create_pool_config(self):
+        expected = respool.ResourcePoolConfig(
+            name='test_respool',
+            resources=[
+                respool.ResourceConfig(
+                    kind='cpu',
+                    reservation=1.0,
+                    limit=1.0,
+                    share=1,
+                ),
+                respool.ResourceConfig(
+                    kind='memory',
+                    reservation=1024,
+                    limit=1024,
+                    share=1,
+                ),
+                respool.ResourceConfig(
+                    kind='disk',
+                    reservation=1024,
+                    limit=1024,
+                    share=1,
+                ),
+            ],
+            parent=peloton.ResourcePoolID(value='root')
+        )
+
+        actual = create_pool_config(
+            name='test_respool',
+            cpu=1.0,
+            memory=1024,
+            disk=1024
+        )
+        self.assertEqual(actual, expected)

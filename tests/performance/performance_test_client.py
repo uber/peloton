@@ -12,37 +12,12 @@ from peloton_client.pbgen.peloton.api.job import job_pb2 as job
 from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
 from peloton_client.pbgen.peloton.api.task import task_pb2 as task
 
+from m3.client import M3
+from m3.emitter import DirectEmitter
 
 default_timeout = 60
 
 RESPOOL_PATH = 'DefaultResPool'
-
-
-def create_pool_config(cpu, memory, disk):
-    return respool.ResourcePoolConfig(
-                name=RESPOOL_PATH,
-                resources=[
-                    respool.ResourceConfig(
-                        kind='cpu',
-                        reservation=cpu,
-                        limit=cpu,
-                        share=1,
-                    ),
-                    respool.ResourceConfig(
-                        kind='memory',
-                        reservation=memory,
-                        limit=memory,
-                        share=1,
-                    ),
-                    respool.ResourceConfig(
-                        kind='disk',
-                        reservation=disk,
-                        limit=disk,
-                        share=1,
-                    ),
-                ],
-                parent=peloton.ResourcePoolID(value='root')
-            )
 
 
 def create_task_config(sleep_time, dynamic_factor):
@@ -62,15 +37,28 @@ def create_task_config(sleep_time, dynamic_factor):
 
 
 class PerformanceTestClient(object):
-    def __init__(self, zk_server, agent_num):
+    def __init__(self, zk_server, agent_num, version):
         self.zk_server = zk_server
+        self.agent_num = agent_num
+        self.version = version
+
+        self.m3_client = M3(
+            application_identifier='vcluster-monitor',
+            emitter=DirectEmitter(),
+            environment='production',
+            default_tags={
+                'peloton_version': self.version,
+                'agent_num': str(self.agent_num),
+            }
+        )
+
         self.client = PelotonClient(
             name='peloton-client',
             zk_servers=zk_server,
         )
-        self.respool_id = self.ensure_respool(agent_num)
+        self.respool_id = self.ensure_respool()
 
-    def ensure_respool(self, agent_num):
+    def ensure_respool(self):
         # lookup respool
         request = respool.LookupRequest(
             path=respool.ResourcePoolPath(value='/' + RESPOOL_PATH),
@@ -81,30 +69,12 @@ class PerformanceTestClient(object):
             timeout=default_timeout,
         )
 
-        # create pool if not exist,
-        # respool can use 90% of the resource of the cluster
-        if resp.id.value is None or resp.id.value == u'':
-            respool_config = create_pool_config(
-                cpu=agent_num * 3.0 * 0.9,
-                memory=agent_num * 1024 * 0.9,
-                disk=agent_num * 1024 * 0.9,
-            )
-            request = respool.CreateRequest(
-                config=respool_config,
-            )
-            resp = self.client.respool_svc.CreateResourcePool(
-                request,
-                metadata=self.client.resmgr_metadata,
-                timeout=default_timeout,
-            )
-            respool_id = resp.result.value
-        else:
-            respool_id = resp.id.value
+        respool_id = resp.id.value
 
         assert respool_id
         return respool_id
 
-    def get_job_status(self, job_id):
+    def get_job_info(self, job_id):
         request = job.GetRequest(
             id=peloton.JobID(value=job_id),
         )
@@ -114,7 +84,7 @@ class PerformanceTestClient(object):
                 metadata=self.client.jobmgr_metadata,
                 timeout=default_timeout,
             )
-            return resp.jobInfo.runtime
+            return resp.jobInfo
         except Exception:
             raise
 
@@ -171,12 +141,9 @@ class PerformanceTestClient(object):
         except Exception:
             raise
 
-        target_status = {
-            'SUCCEEDED': instance_num
-        }
-        return self.monitering(resp.jobId.value, target_status)
+        return self.monitoring(resp.jobId.value)
 
-    def monitering(self, job_id, target_status, stable_timeout=600):
+    def monitoring(self, job_id, stable_timeout=600):
         """
         monitering will stop if the job status is not changed in stable_timeout
         or the job status meets the target_status. monitering returns a bool
@@ -187,29 +154,39 @@ class PerformanceTestClient(object):
 
         """
         if not job_id:
-            return
+            return False, 0, 0
         data = []
-
-        def check_finish(task_stats):
-            for k, v in target_status.iteritems():
-                if task_stats.get(k, 0) < v:
-                    return False
-            return True
-
+        tags = {}
         stable_timestamp = datetime.datetime.now()
         while datetime.datetime.now() - stable_timestamp < datetime.timedelta(
                 seconds=stable_timeout):
-            job_runtime = self.get_job_status(job_id)
+            job_info = self.get_job_info(job_id)
+            job_runtime = job_info.runtime
+            job_config = job_info.config
             task_stats = dict(job_runtime.taskStats)
             data.append(task_stats)
-            if check_finish(task_stats):
+
+            # Prepare M3 tags and push data to M3
+            for label in job_config.labels:
+                tags.update({label.key: label.value})
+
+            for state_name, task_num in task_stats.iteritems():
+                tags.update({'task_state': state_name})
+                self.m3_client.count(
+                    key='total_tasks_by_state',
+                    n=task_num,
+                    tags=tags
+                )
+
+            if job_runtime.state == job_runtime.goalState:
                 break
+
             if len(data) < 2 or DeepDiff(data[-1], data[-2]):
                 # new record is different from previous
                 stable_timestamp = datetime.datetime.now()
-            time.sleep(5)
+            time.sleep(10)
 
-        if not check_finish(task_stats):
+        if job_runtime.state != job_runtime.goalState:
             return False, 0, 0
 
         create_time = datetime.datetime.strptime(
@@ -230,7 +207,12 @@ class PerformanceTestClient(object):
         else:
             complete_time = create_time
 
-        start_duration = (start_time - create_time).total_seconds()
-        complete_duration = (complete_time - create_time).total_seconds()
+        start_du = (start_time - create_time).total_seconds()
+        complete_du = (complete_time - create_time).total_seconds()
 
-        return True, start_duration, complete_duration
+        self.m3_client.timing(
+            'start_duration', start_du*1000, tags)
+        self.m3_client.timing(
+            'complete_duration', complete_du*1000, tags)
+
+        return True, start_du, complete_du

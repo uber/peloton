@@ -64,9 +64,9 @@ mesos-slave:
   ports:
     - MESOS_PORT
   resource:
-    cpuLimit: 0.5
-    memLimitMb: 512
-    diskLimitMb: 512
+    cpuLimit: 1.0
+    memLimitMb: 1024
+    diskLimitMb: 1024
   static_env:
     - name: 'MESOS_SWITCH_USER'
       value: '0'
@@ -80,8 +80,13 @@ mesos-slave:
       value: 'posix'
     - name: 'MESOS_WORK_DIR'
       value: '/mnt/mesos/sandbox/vcluster_agent_workdir'
+#    Make announced resource same as real physical resource.
+#    Each agent would expose this amount of virtual HW,
+#    and so the total virtual cluster HW accounted for in
+#    Mesos Master is num_agents * cpus for total cores for example,
+#    which is also the size of the Peloton root RP.
     - name: 'MESOS_RESOURCES'
-      value: 'cpus(*):3.0;mem(*):1024;disk(*):1024;ports(*):[31000-32000]'
+      value: 'cpus(*):1.0;mem(*):1024;disk(*):1024;ports(*):[31000-32000]'
     - name: 'MESOS_SYSTEMD_ENABLE_SUPPORT'
       value: 'false'
     - name: 'GLOG_v'

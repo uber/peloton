@@ -3,6 +3,8 @@ import yaml
 
 from peloton_client.pbgen.mesos.v1 import mesos_pb2 as mesos
 from peloton_client.pbgen.peloton.api.task import task_pb2 as task
+from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
+from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
 
 
 def load_config():
@@ -85,7 +87,7 @@ def create_task_config(module, dynamic_env):
 # create task config to launch Mesos Containerizer container
 def create_mesos_task_config(module, dynamic_env, version=None):
     resource_config = config.get(module).get('resource')
-    ports = config.get(module).get('ports')
+    ports = config.get(module).get('ports', [])
     ports_config = []
     for port in ports:
         ports_config.append(
@@ -96,8 +98,8 @@ def create_mesos_task_config(module, dynamic_env, version=None):
         )
 
     environments = []
-    start_cmd = config.get(module).get('start_command')
-    static_envs = config.get(module).get('static_env')
+    start_cmd = config.get(module).get('start_command', '')
+    static_envs = config.get(module).get('static_env', [])
     fetch_files = config.get(module).get('fetch_files', [])
 
     for static_env in static_envs:
@@ -150,4 +152,38 @@ def create_mesos_task_config(module, dynamic_env, version=None):
             )
         ),
 
+    )
+
+
+def create_pool_config(name, cpu, memory, disk):
+    """
+    type name: string
+    type cpu: float
+    type memory: float
+    type disk: float
+    rtype: respool.ResourcePoolConfig
+    """
+    return respool.ResourcePoolConfig(
+        name=name,
+        resources=[
+            respool.ResourceConfig(
+                kind='cpu',
+                reservation=cpu,
+                limit=cpu,
+                share=1,
+            ),
+            respool.ResourceConfig(
+                kind='memory',
+                reservation=memory,
+                limit=memory,
+                share=1,
+            ),
+            respool.ResourceConfig(
+                kind='disk',
+                reservation=disk,
+                limit=disk,
+                share=1,
+            ),
+        ],
+        parent=peloton.ResourcePoolID(value='root')
     )

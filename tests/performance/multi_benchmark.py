@@ -34,10 +34,11 @@ def main():
         cluster_config = json.loads(open(file_name).read())
     except Exception:
         raise Exception('Invalid vcluster config file')
+    zkserver = cluster_config['Zookeeper']
     agent_num = int(cluster_config['Mesos Slave Number'])
-    pf_client = PerformanceTestClient(cluster_config['Zookeeper'], agent_num)
     peloton_version = cluster_config['Peloton Version']
     records = []
+    pf_client = PerformanceTestClient(zkserver, agent_num, peloton_version)
     df = pd.DataFrame()
 
     for instance_num in INSTANCE_NUM:

@@ -10,12 +10,61 @@ from peloton_client.pbgen.peloton.api.query import query_pb2 as query
 from peloton_client.pbgen.peloton.api.task import task_pb2 as task
 from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
 
+from config_generator import (
+    config,
+    create_pool_config,
+)
+
 from color_print import (
     print_okblue,
     print_fail,
 )
 
 default_timeout = 60
+
+RESPOOL_PATH = 'DefaultResPool'
+
+
+def create_respool_for_new_peloton(
+        zk_server,
+        agent_num,
+        repool_name=RESPOOL_PATH):
+    """
+    Create A respool for a cluster according the cluster size
+    type zk_server: string
+    type agent_num: int
+    type respool_name: string
+    rtype: string
+
+    """
+    client = PelotonClient(
+        name='peloton-client',
+        zk_servers=zk_server
+    )
+
+    # Respool size should be 90% of the cluster size
+    # CPU, Memory and Disk values are the announced
+    # resource value of every Mesos slave
+    resource_config = config.get('mesos-slave').get('resource')
+
+    respool_config = create_pool_config(
+        name=repool_name,
+        cpu=agent_num * resource_config.get('cpuLimit') * 0.9,
+        memory=agent_num * resource_config.get('memLimitMb') * 0.9,
+        disk=agent_num * resource_config.get('diskLimitMb') * 0.9,
+    )
+
+    request = respool.CreateRequest(
+        config=respool_config,
+    )
+    resp = client.respool_svc.CreateResourcePool(
+        request,
+        metadata=client.resmgr_metadata,
+        timeout=default_timeout,
+    )
+    respool_id = resp.result.value
+    assert respool_id
+    return respool_id
 
 
 class PelotonClientHelper(object):
@@ -234,7 +283,7 @@ class PelotonClientHelper(object):
             print_fail('Exception calling List Tasks :%s' % str(e))
             raise
 
-    def monitering(self, job_id, target_status, stable_timeout=120):
+    def monitering(self, job_id, target_status, stable_timeout=600):
         """
         monitering will stop if the job status is not changed in stable_timeout
         or the job status meets the target_status. monitering returns a bool

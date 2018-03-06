@@ -5,7 +5,10 @@ from retry import retry
 import json
 
 from config_generator import config
-from peloton_helper import PelotonClientHelper
+from peloton_helper import (
+    PelotonClientHelper,
+    create_respool_for_new_peloton,
+)
 from color_print import (
     print_okblue,
     print_okgreen,
@@ -15,7 +18,7 @@ from modules import (
     Zookeeper,
     MesosMaster,
     MesosSlave,
-    Peloton
+    Peloton,
 )
 
 
@@ -97,6 +100,7 @@ class VCluster(object):
 
         # Optionally includes Peloton apps
         self.peloton = Peloton(self.label_name, self.peloton_helper)
+
         self.virtual_zookeeper = ''
 
         # vcluster is the config can be loaded for launching benchmark test
@@ -144,7 +148,7 @@ class VCluster(object):
         })
         return host, port
 
-    def start_peloton(self, zk_host, zk_port, version=None):
+    def start_peloton(self, virtual_zookeeper, agent_num, version=None):
         """
         type zk_host: str
         type zk_port: str
@@ -158,14 +162,12 @@ class VCluster(object):
         # Setup Peloton
         print_okgreen('Step: Create Peloton, version: %s' % version)
 
-        zk = '%s:%s' % (zk_host, zk_port)
-
         for app in self.APP_ORDER:
             print_okblue('Creating peloton application: %s' % app)
             dynamic_env_master = {
                 'APP': app,
-                'ELECTION_ZK_SERVERS': zk,
-                'MESOS_ZK_PATH': 'zk://%s/mesos' % zk,
+                'ELECTION_ZK_SERVERS': virtual_zookeeper,
+                'MESOS_ZK_PATH': 'zk://%s/mesos' % virtual_zookeeper,
                 'CASSANDRA_STORE': self.label_name,
                 'CASSANDRA_HOSTS': host
             }
@@ -181,12 +183,19 @@ class VCluster(object):
             'Peloton Version': version,
         })
 
+        # create a default resource pool
+        create_respool_for_new_peloton(
+            zk_server=virtual_zookeeper,
+            agent_num=agent_num,
+        )
+
     def start_all(self, agent_num, peloton_version):
         """
         type agent_num: int
         """
         host, port = self.start_mesos(agent_num)
-        self.start_peloton(host, port, peloton_version)
+        virtual_zookeeper = '%s:%s' % (host, port)
+        self.start_peloton(virtual_zookeeper, agent_num, peloton_version)
         self.output_vcluster_data()
 
     def start_mesos_master(self, virtual_zookeeper):
