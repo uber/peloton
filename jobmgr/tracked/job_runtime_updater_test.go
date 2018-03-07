@@ -327,6 +327,26 @@ func TestJobUpdateJobRuntime(t *testing.T) {
 	reschedule, err = j.JobRuntimeUpdater(context.Background())
 	assert.False(t, reschedule)
 	assert.NoError(t, err)
+
+	// Simulate killed job with no tasks created
+	j.tasks = map[uint32]*task{}
+	stateCounts = make(map[string]uint32)
+	jobRuntime = pb_job.RuntimeInfo{
+		State:     pb_job.JobState_KILLED,
+		GoalState: pb_job.JobState_KILLED,
+		TaskStats: stateCounts,
+	}
+	jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), j.id).
+		Return(&jobRuntime, nil)
+
+	taskStore.EXPECT().
+		GetTaskStateSummaryForJob(gomock.Any(), j.id).
+		Return(stateCounts, nil)
+
+	reschedule, err = j.JobRuntimeUpdater(context.Background())
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
 }
 
 func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {

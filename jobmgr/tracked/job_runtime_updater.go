@@ -153,9 +153,11 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 	return j.sendTasksToResMgr(ctx, tasks, jobConfig)
 }
 
-// updateJobRuntimeState determines the job state based on task state counts,
-// and returns false if the job state does not change.
-func (j *job) updateJobRuntimeState(jobRuntime *pb_job.RuntimeInfo, stateCounts map[string]uint32, instances uint32, completionTime string) bool {
+// determineJobRuntimeState determines the job state based on current
+// job runtime state and task state counts.
+func (j *job) determineJobRuntimeState(jobRuntime *pb_job.RuntimeInfo,
+	stateCounts map[string]uint32,
+	instances uint32) pb_job.JobState {
 	var jobState pb_job.JobState
 
 	if jobRuntime.State == pb_job.JobState_INITIALIZED && j.GetTasksNum() != instances {
@@ -163,25 +165,16 @@ func (j *job) updateJobRuntimeState(jobRuntime *pb_job.RuntimeInfo, stateCounts 
 		jobState = pb_job.JobState_INITIALIZED
 	} else if stateCounts[pb_task.TaskState_SUCCEEDED.String()] == instances {
 		jobState = pb_job.JobState_SUCCEEDED
-		if completionTime != "" {
-			jobRuntime.CompletionTime = completionTime
-		}
 		j.m.mtx.jobMetrics.JobSucceeded.Inc(1)
 	} else if stateCounts[pb_task.TaskState_SUCCEEDED.String()]+
 		stateCounts[pb_task.TaskState_FAILED.String()] == instances {
 		jobState = pb_job.JobState_FAILED
-		if completionTime != "" {
-			jobRuntime.CompletionTime = completionTime
-		}
 		j.m.mtx.jobMetrics.JobFailed.Inc(1)
 	} else if stateCounts[pb_task.TaskState_KILLED.String()] > 0 &&
 		(stateCounts[pb_task.TaskState_SUCCEEDED.String()]+
 			stateCounts[pb_task.TaskState_FAILED.String()]+
 			stateCounts[pb_task.TaskState_KILLED.String()] == instances) {
 		jobState = pb_job.JobState_KILLED
-		if completionTime != "" {
-			jobRuntime.CompletionTime = completionTime
-		}
 		j.m.mtx.jobMetrics.JobKilled.Inc(1)
 	} else if stateCounts[pb_task.TaskState_RUNNING.String()] > 0 {
 		jobState = pb_job.JobState_RUNNING
@@ -189,11 +182,7 @@ func (j *job) updateJobRuntimeState(jobRuntime *pb_job.RuntimeInfo, stateCounts 
 		jobState = pb_job.JobState_PENDING
 	}
 
-	if jobRuntime.State != jobState {
-		jobRuntime.State = jobState
-		return true
-	}
-	return false
+	return jobState
 }
 
 // JobRuntimeUpdater updates the job runtime.
@@ -270,31 +259,6 @@ func (j *job) JobRuntimeUpdater(ctx context.Context) (bool, error) {
 		return true, err
 	}
 
-	if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) && !j.updateJobRuntimeState(jobRuntime, stateCounts, instances, "") {
-		log.WithField("job_id", j.ID().GetValue()).
-			WithField("task_stats", stateCounts).
-			Debug("Task stats did not change, return")
-		return false, nil
-	}
-
-	getFirstTaskUpdateTime := j.getFirstTaskUpdateTime()
-	if getFirstTaskUpdateTime != 0 && jobRuntime.StartTime == "" {
-		count := uint32(0)
-		for _, state := range taskStatesAfterStart {
-			count += stateCounts[state.String()]
-		}
-
-		if count > 0 {
-			jobRuntime.StartTime = formatTime(getFirstTaskUpdateTime, time.RFC3339Nano)
-		}
-	}
-
-	completionTime := ""
-	lastTaskUpdateTime := j.getLastTaskUpdateTime()
-	if lastTaskUpdateTime != 0 {
-		completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
-	}
-
 	totalInstanceCount := uint32(0)
 	for _, state := range pb_task.TaskState_name {
 		totalInstanceCount += stateCounts[state]
@@ -315,7 +279,36 @@ func (j *job) JobRuntimeUpdater(ctx context.Context) (bool, error) {
 		}
 	}
 
-	j.updateJobRuntimeState(jobRuntime, stateCounts, instances, completionTime)
+	jobState := j.determineJobRuntimeState(jobRuntime, stateCounts, instances)
+
+	if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) && jobRuntime.GetState() == jobState {
+		log.WithField("job_id", j.ID().GetValue()).
+			WithField("task_stats", stateCounts).
+			Debug("Task stats did not change, return")
+		return false, nil
+	}
+
+	getFirstTaskUpdateTime := j.getFirstTaskUpdateTime()
+	if getFirstTaskUpdateTime != 0 && jobRuntime.StartTime == "" {
+		count := uint32(0)
+		for _, state := range taskStatesAfterStart {
+			count += stateCounts[state.String()]
+		}
+
+		if count > 0 {
+			jobRuntime.StartTime = formatTime(getFirstTaskUpdateTime, time.RFC3339Nano)
+		}
+	}
+
+	jobRuntime.State = jobState
+	if util.IsPelotonJobStateTerminal(jobState) {
+		completionTime := ""
+		lastTaskUpdateTime := j.getLastTaskUpdateTime()
+		if lastTaskUpdateTime != 0 {
+			completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
+		}
+		jobRuntime.CompletionTime = completionTime
+	}
 	jobRuntime.TaskStats = stateCounts
 
 	// Update the job runtime
