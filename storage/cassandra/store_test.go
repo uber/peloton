@@ -312,6 +312,91 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 
 	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, spec, true)
 	suite.NoError(err)
+	suite.Equal(1, len(summary))
+	suite.Equal(1, int(total))
+
+	// Modify state to SUCCEEDED. Now this job should not show up.
+	updateStmt = queryBuilder.Update(jobIndexTable).
+		Set("state", "SUCCEEDED").
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	_, err = store.executeWrite(context.Background(), updateStmt)
+	suite.NoError(err)
+	// Run the following query to trigger rebuild the lucene index
+	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
+	_, err = store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+
+	// Any query for terminal states should not display jobs that are older than 7 days
+	jobStates := []job.JobState{job.JobState_KILLED, job.JobState_FAILED, job.JobState_SUCCEEDED}
+	spec = &job.QuerySpec{
+		Name:      "GetJobSummary",
+		JobStates: jobStates,
+	}
+	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, spec, true)
+	suite.NoError(err)
+	suite.Equal(0, len(summary))
+	suite.Equal(0, int(total))
+
+	updateStmt = queryBuilder.Update(jobIndexTable).
+		Set("state", "KILLED").
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	_, err = store.executeWrite(context.Background(), updateStmt)
+	suite.NoError(err)
+	// Run the following query to trigger rebuild the lucene index
+	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
+	_, err = store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+
+	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, spec, true)
+	suite.NoError(err)
+	suite.Equal(0, len(summary))
+	suite.Equal(0, int(total))
+
+	updateStmt = queryBuilder.Update(jobIndexTable).
+		Set("state", "FAILED").
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	_, err = store.executeWrite(context.Background(), updateStmt)
+	suite.NoError(err)
+	// Run the following query to trigger rebuild the lucene index
+	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
+	_, err = store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+
+	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, spec, true)
+	suite.NoError(err)
+	suite.Equal(0, len(summary))
+	suite.Equal(0, int(total))
+
+	updateStmt = queryBuilder.Update(jobIndexTable).
+		Set("state", "RUNNING").
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	_, err = store.executeWrite(context.Background(), updateStmt)
+	suite.NoError(err)
+	// Run the following query to trigger rebuild the lucene index
+	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
+	_, err = store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+
+	// Any query for active states should display jobs that are older than 7 days
+	jobStates = []job.JobState{job.JobState_PENDING, job.JobState_RUNNING, job.JobState_INITIALIZED}
+	spec = &job.QuerySpec{
+		Name:      "GetJobSummary",
+		JobStates: jobStates,
+	}
+	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, spec, true)
+	suite.NoError(err)
+	// Even if job is created 8 days ago, display it because it is in active state.
+	suite.Equal(1, len(summary))
+	suite.Equal(1, int(total))
+
+	jobStates = []job.JobState{job.JobState_RUNNING, job.JobState_SUCCEEDED}
+	spec = &job.QuerySpec{
+		Name:      "GetJobSummary",
+		JobStates: jobStates,
+	}
+	result1, summary, total, err = jobStore.QueryJobs(context.Background(), nil, spec, true)
+	suite.NoError(err)
+	// When searching for ACTIVE + TERMINAL states, we will again default to 7 days time range.
 	suite.Equal(0, len(summary))
 	suite.Equal(0, int(total))
 

@@ -65,6 +65,7 @@ const (
 
 	jobIndexTimeFormat = "20060102150405"
 	jobQuerySpanInDays = 7
+	jobQueryJitter     = time.Second * 30
 )
 
 // Config is the config for cassandra Store
@@ -514,9 +515,21 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	}
 
 	// Add support on query by job state
+	// queryTerminalStates will be set if the spec contains any
+	// terminal job state. In this case we will restrict the
+	// job query to query for jobs over the last 7 days.
+	// This is a temporary fix so that lucene index query doesn't
+	// time out when searching for ALL jobs with terminal states
+	//  which is a huge number.
+	// TODO (adityacb): change this once we have query spec support
+	// a custom time range
+	queryTerminalStates := false
 	if len(spec.JobStates) > 0 {
 		values := ""
 		for i, s := range spec.JobStates {
+			if util.IsPelotonJobStateTerminal(s) {
+				queryTerminalStates = true
+			}
 			values = values + strconv.Quote(s.String())
 			if i < len(spec.JobStates)-1 {
 				values = values + ","
@@ -540,14 +553,17 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		clauses = append(clauses, fmt.Sprintf(`{type: "wildcard", field:"name", value:%s}`, strconv.Quote(wildcardName)))
 	}
 
-	// query for jobs created over the past week
-	// TODO (adityacb): customize time span from 1 week.
-	// Add 30 seconds to upper bound to account for jobs
-	// that have just been created.
-	now := time.Now().Add(time.Second * 30).UTC()
-	upper := fmt.Sprintf(now.Format(jobIndexTimeFormat))
-	lower := fmt.Sprintf(now.AddDate(0, 0, -jobQuerySpanInDays).Format(jobIndexTimeFormat))
-	clauses = append(clauses, fmt.Sprintf(`{type: "range", field:"creation_time", lower: "%s", upper: "%s"}`, lower, upper))
+	if queryTerminalStates {
+		// query for jobs created over the past week only when
+		// querying for jobs in a terminal state.
+		// TODO (adityacb): customize time span from 1 week.
+		// Add jobQueryJitter to upper bound to account for jobs
+		// that have just been created.
+		now := time.Now().Add(jobQueryJitter).UTC()
+		upper := fmt.Sprintf(now.Format(jobIndexTimeFormat))
+		lower := fmt.Sprintf(now.AddDate(0, 0, -jobQuerySpanInDays).Format(jobIndexTimeFormat))
+		clauses = append(clauses, fmt.Sprintf(`{type: "range", field:"creation_time", lower: "%s", upper: "%s"}`, lower, upper))
+	}
 
 	where := `expr(job_index_lucene_v2, '{filter: [`
 	for i, c := range clauses {
