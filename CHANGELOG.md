@@ -3,6 +3,10 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.10.4
+------------------
+* 2018-03-06    Remove 7 day time span restriction from querying active jobs                           adityacb@uber.com
+
 0.6.10.3
 ------------------
 * 2018-03-05    Handle incomplete killed jobs                                                          apoorvaj@uber.com
