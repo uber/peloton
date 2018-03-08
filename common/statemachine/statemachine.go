@@ -67,7 +67,7 @@ type StateMachine interface {
 	GetLastUpdateTime() time.Time
 
 	// Terminates the state machine
-	Terminate() error
+	Terminate()
 }
 
 // statemachine is state machine, State Machine is responsible for moving states
@@ -196,15 +196,7 @@ func (sm *statemachine) TransitTo(to State, reason string, args ...interface{}) 
 			"from ":   curState,
 			"to":      to,
 		}).Info("Stopping state timeout recovery")
-		err = sm.timer.Stop()
-		if err != nil {
-			log.WithError(err).WithFields(log.Fields{
-				"task_id": sm.name,
-				"from ":   curState,
-				"to":      to,
-			}).Error("failed to stop state timeout recovery")
-			return err
-		}
+		sm.timer.Stop()
 	}
 
 	// Doing actual transition
@@ -252,13 +244,7 @@ func (sm *statemachine) TransitTo(to State, reason string, args ...interface{}) 
 					"task_id": sm.name,
 					"state":   to,
 				}).Error("timer could not be started retrying ...")
-				err = sm.timer.Stop()
-				if err != nil {
-					log.WithError(err).WithFields(log.Fields{
-						"task_id": sm.name,
-						"state":   to,
-					}).Error("timer could not be stoped")
-				}
+				sm.timer.Stop()
 				err = sm.timer.Start(rule.Timeout)
 				if err != nil {
 					log.WithError(err).WithFields(log.Fields{
@@ -322,28 +308,21 @@ func (sm *statemachine) GetName() string {
 }
 
 // Terminate terminates the state machine
-func (sm *statemachine) Terminate() error {
+func (sm *statemachine) Terminate() {
 	sm.Lock()
 	defer sm.Unlock()
 
 	// check if current state is a timeout state
 	if rule, ok := sm.timeoutRules[sm.current]; ok {
 		if rule.Timeout != 0 {
-			err := sm.timer.Stop()
-			if err != nil {
-				return errors.Wrapf(err, "failed to stop the state machine timer")
-			}
+			sm.timer.Stop()
 		}
 	}
-
-	return nil
 }
 
 // rollbackState recovers the state.
+// Note: the caller should acquire the lock on the state machine before calling.
 func (sm *statemachine) rollbackState() error {
-	sm.Lock()
-	defer sm.Unlock()
-
 	if sm.timeoutRules == nil {
 		return nil
 	}

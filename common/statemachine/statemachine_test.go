@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -153,7 +152,6 @@ func (suite *StateMachineTestSuite) TestTransitionWithInTransition() {
 	err := suite.stateMachine.TransitTo("running", "")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "running")
-	logrus.Info("I M HEREEEEEEE")
 	// Previous transition is not finished yet, should have error
 	err = suite.stateMachine.TransitTo("succeeded", "")
 	suite.Error(err)

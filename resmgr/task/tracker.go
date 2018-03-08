@@ -217,10 +217,7 @@ func (tr *tracker) MarkItDone(
 	}
 
 	// stop the state machine
-	err := t.StateMachine().Terminate()
-	if err != nil {
-		return err
-	}
+	t.StateMachine().Terminate()
 
 	log.WithField("task_id", tID.Value).Info("Deleting the task from Tracker")
 	tr.DeleteTask(tID)

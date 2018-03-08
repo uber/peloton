@@ -41,7 +41,6 @@ func (suite *StateTimerTestSuite) TestTimer() {
 	suite.EqualValues(suite.statetimer.runningState, runningStateRunning)
 	suite.statetimer.Stop()
 	suite.EqualValues(suite.statetimer.runningState, runningStateNotStarted)
-	err := suite.statetimer.Stop()
-	suite.Error(err)
+	suite.statetimer.Stop()
 	suite.EqualValues(suite.statetimer.runningState, runningStateNotStarted)
 }

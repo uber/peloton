@@ -312,7 +312,10 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 
 	suite.tracker.MarkItDone(t)
 
+	// wait for LaunchingTimeout
+	time.Sleep(1 * time.Second)
+
 	// the state machine's timer should be stopped
-	err := rmTask.StateMachine().GetStateTimer().Stop()
-	suite.EqualError(err, "State Timer is not running")
+	suite.Equal(task.TaskState_LAUNCHING.String(),
+		string(rmTask.StateMachine().GetCurrentState()))
 }

@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	// NotStarted state of task scheduler
+	// NotStarted state of state timer
 	runningStateNotStarted = iota
-	// Running state of task scheduler
+	// Running state of state timer
 	runningStateRunning
 )
 
@@ -21,7 +21,7 @@ type StateTimer interface {
 	// Start starts the state recovery
 	Start(timeout time.Duration) error
 	// Stop stops the state recovery
-	Stop() error
+	Stop()
 }
 
 // statetimer is the timer object which is used to start the state recovery
@@ -48,7 +48,7 @@ func NewTimer(sm *statemachine) StateTimer {
 }
 
 // Stop stops state recovery process
-func (st *statetimer) Stop() error {
+func (st *statetimer) Stop() {
 	st.Lock()
 	defer st.Unlock()
 
@@ -56,7 +56,7 @@ func (st *statetimer) Stop() error {
 		log.WithField("task_id", st.statemachine.name).
 			Warn("State Recovery is already stopped, " +
 				"no action will be performed")
-		return errors.New("State Timer is not running")
+		return
 	}
 
 	log.WithField("task_id", st.statemachine.name).
@@ -74,8 +74,6 @@ func (st *statetimer) Stop() error {
 	}
 	log.WithField("task_id", st.statemachine.name).
 		Debug("State Recovery Stopped")
-
-	return nil
 }
 
 // Start starts the recovery process and recover the states
@@ -90,39 +88,53 @@ func (st *statetimer) Start(timeout time.Duration) error {
 		return errors.New("State Timer is already running")
 	}
 
-	started := make(chan int, 1)
+	started := make(chan struct{})
 	go func() {
-		atomic.StoreInt32(&st.runningState, runningStateRunning)
-		defer atomic.StoreInt32(&st.runningState, runningStateNotStarted)
 		log.WithField("task_id", st.statemachine.name).
 			Debug("Starting State recovery")
-		started <- 0
 
-		for {
-			timer := time.NewTimer(timeout)
-			select {
-			case <-st.stopChan:
-				log.WithField("task_id", st.statemachine.name).
-					Debug("Exiting State Recovery")
-			case <-timer.C:
-				err := st.statemachine.rollbackState()
-				if err != nil {
-					log.WithField("task_id", st.statemachine.name).
-						WithField("current_state", st.statemachine.current).
-						WithError(err).
-						Error("Error recovering state machine")
-					timer.Stop()
-					return
-				}
-				log.WithField("task_id", st.statemachine.name).
-					WithField("current_state", st.statemachine.current).
-					Info("Recovered state, stopping service")
-			}
+		atomic.StoreInt32(&st.runningState, runningStateRunning)
+		timer := time.NewTimer(timeout)
+
+		defer func() {
+			atomic.StoreInt32(&st.runningState, runningStateNotStarted)
 			timer.Stop()
-			return
+		}()
+
+		started <- struct{}{}
+
+		select {
+		case <-st.stopChan:
+			log.WithField("task_id", st.statemachine.name).
+				Debug("Exiting State Recovery")
+		case <-timer.C:
+			st.recover()
 		}
 	}()
-	// Wait until go routine is started
+	// wait for goroutine to start
 	<-started
 	return nil
+}
+
+func (st *statetimer) recover() {
+	// Acquiring the state machine lock here
+	// The lock should be held for the entire duration of the rollback and
+	// the termination of the timer.
+	// Otherwise there could be cases where after the rollback and before the
+	// timer termination the state machine can be updated and cause undefined
+	// behaviour.
+	st.statemachine.Lock()
+	defer st.statemachine.Unlock()
+
+	err := st.statemachine.rollbackState()
+	if err != nil {
+		log.WithField("task_id", st.statemachine.name).
+			WithField("current_state", st.statemachine.current).
+			WithError(err).
+			Error("Error recovering state machine")
+		return
+	}
+	log.WithField("task_id", st.statemachine.name).
+		WithField("current_state", st.statemachine.current).
+		Info("Recovered state, stopping service")
 }
