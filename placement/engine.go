@@ -287,11 +287,11 @@ func (e *engine) pastDeadline(now time.Time, assignments []*models.Assignment) b
 }
 
 func (e *engine) placeAssignmentGroup(ctx context.Context, filter *hostsvc.HostFilter, assignments []*models.Assignment) {
-	log.WithFields(log.Fields{
-		"filter":      filter,
-		"assignments": assignments,
-	}).Debug("placing assignment group")
 	for len(assignments) > 0 {
+		log.WithFields(log.Fields{
+			"filter":      filter,
+			"assignments": assignments,
+		}).Debug("placing assignment group")
 		// Try and get some hosts
 		hosts, reason := e.offerService.Acquire(
 			ctx, e.config.FetchOfferTasks, e.config.TaskType, filter)
@@ -351,7 +351,8 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 	}
 
 	filters := e.strategy.Filters(assignments)
-	for filter, batch := range filters {
+	for f, b := range filters {
+		filter, batch := f, b
 		// Run the placement of each batch in parallel
 		e.pool.Enqueue(async.JobFunc(func(context.Context) {
 			e.placeAssignmentGroup(ctx, filter, batch)
