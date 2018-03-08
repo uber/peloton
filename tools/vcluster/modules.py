@@ -21,6 +21,10 @@ KILLED_TARGET_STATUS = {
 }
 
 
+class ModuleLaunchFailedException(Exception):
+    pass
+
+
 class Module(object):
     def __init__(self, module_name, label_name, peloton_helper):
         """
@@ -69,7 +73,7 @@ class Module(object):
         print_okblue('Waiting for job %s creating...' % job_name)
         if not self.peloton_helper.monitering(self.job_id,
                                               RUNNING_TARGET_STATUS):
-            raise Exception("Module %s can not launch" % self.name)
+            raise ModuleLaunchFailedException("%s can not launch" % self.name)
 
     def teardown(self, job_name=None):
         """
@@ -192,7 +196,7 @@ class MesosSlave(Module):
         print_okblue('Waiting for job %s setup...' % job_name)
         if not self.peloton_helper.monitering(self.job_id,
                                               RUNNING_TARGET_STATUS):
-            raise Exception("Module %s can not launch" % self.name)
+            raise ModuleLaunchFailedException("%s can not launch" % self.name)
 
 
 class Cassandra(Module):

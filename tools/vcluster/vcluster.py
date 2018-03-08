@@ -19,6 +19,7 @@ from modules import (
     MesosMaster,
     MesosSlave,
     Peloton,
+    ModuleLaunchFailedException,
 )
 
 
@@ -193,10 +194,15 @@ class VCluster(object):
         """
         type agent_num: int
         """
-        host, port = self.start_mesos(agent_num)
-        virtual_zookeeper = '%s:%s' % (host, port)
-        self.start_peloton(virtual_zookeeper, agent_num, peloton_version)
-        self.output_vcluster_data()
+        try:
+            host, port = self.start_mesos(agent_num)
+            virtual_zookeeper = '%s:%s' % (host, port)
+            self.start_peloton(virtual_zookeeper, agent_num, peloton_version)
+            self.output_vcluster_data()
+        except ModuleLaunchFailedException as e:
+            print 'vcluster launch faild: %s' % e
+            self.teardown()
+            raise
 
     def start_mesos_master(self, virtual_zookeeper):
         zk_address = 'zk://%s/mesos' % virtual_zookeeper

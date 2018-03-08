@@ -20,6 +20,14 @@ default_timeout = 60
 RESPOOL_PATH = 'DefaultResPool'
 
 
+class ResPoolNotFoundException(Exception):
+    pass
+
+
+class JobCreateFailedException(Exception):
+    pass
+
+
 def create_task_config(sleep_time, dynamic_factor):
     return task.TaskConfig(
         resource=task.ResourceConfig(
@@ -71,7 +79,11 @@ class PerformanceTestClient(object):
 
         respool_id = resp.id.value
 
-        assert respool_id
+        try:
+            assert respool_id
+        except AssertionError:
+            raise ResPoolNotFoundException
+
         return respool_id
 
     def get_job_info(self, job_id):
@@ -139,7 +151,7 @@ class PerformanceTestClient(object):
             )
             print resp
         except Exception:
-            raise
+            raise JobCreateFailedException
 
         return self.monitoring(resp.jobId.value)
 
