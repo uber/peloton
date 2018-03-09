@@ -77,8 +77,8 @@ type TaskMetrics struct {
 	TaskGetForJob     tally.Counter
 	TaskGetForJobFail tally.Counter
 
-	TaskGetForJobAndState     tally.Counter
-	TaskGetForJobAndStateFail tally.Counter
+	TaskGetForJobAndStates     tally.Counter
+	TaskGetForJobAndStatesFail tally.Counter
 
 	TaskIDsGetForJobAndState     tally.Counter
 	TaskIDsGetForJobAndStateFail tally.Counter
@@ -103,6 +103,9 @@ type TaskMetrics struct {
 
 	TaskUpdate     tally.Counter
 	TaskUpdateFail tally.Counter
+
+	TaskQueryTasks     tally.Counter
+	TaskQueryTasksFail tally.Counter
 }
 
 // ResourcePoolMetrics is a struct for tracking resource pool related counters in the storage layer
@@ -257,8 +260,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		TaskGetForJob:                  taskSuccessScope.Counter("get_for_job"),
 		TaskGetForJobFail:              taskFailScope.Counter("get_for_job"),
-		TaskGetForJobAndState:          taskSuccessScope.Counter("get_for_job_and_state"),
-		TaskGetForJobAndStateFail:      taskFailScope.Counter("get_for_job_and_state"),
+		TaskGetForJobAndStates:         taskSuccessScope.Counter("get_for_job_and_states"),
+		TaskGetForJobAndStatesFail:     taskFailScope.Counter("get_for_job_and_states"),
 		TaskIDsGetForJobAndState:       taskSuccessScope.Counter("get_ids_for_job_and_state"),
 		TaskIDsGetForJobAndStateFail:   taskFailScope.Counter("get_ids_for_job_and_state"),
 		TaskSummaryForJob:              taskSuccessScope.Counter("summary_for_job"),
@@ -272,6 +275,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskGetRuntimeFail:    taskFailScope.Counter("get_runtime"),
 		TaskUpdateRuntime:     taskSuccessScope.Counter("update_runtime"),
 		TaskUpdateRuntimeFail: taskFailScope.Counter("update_runtime"),
+		TaskQueryTasks:        taskSuccessScope.Counter("query_tasks_for_job"),
+		TaskQueryTasksFail:    taskFailScope.Counter("query_tasks_for_job"),
 
 		TaskDelete:     taskSuccessScope.Counter("delete"),
 		TaskDeleteFail: taskFailScope.Counter("delete"),

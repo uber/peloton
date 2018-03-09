@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
@@ -128,6 +129,36 @@ func (c *Client) TaskListAction(jobID string, instanceRange *task.InstanceRange)
 		return err
 	}
 	printTaskListResponse(response, c.Debug)
+	return nil
+}
+
+// TaskQueryAction is the action to query task
+func (c *Client) TaskQueryAction(jobID string, states string, limit uint32, offset uint32) error {
+	var taskStates []task.TaskState
+	for _, k := range strings.Split(states, labelSeparator) {
+		if k != "" {
+			taskStates = append(taskStates, task.TaskState(task.TaskState_value[k]))
+		}
+	}
+
+	var request = &task.QueryRequest{
+		JobId: &peloton.JobID{
+			Value: jobID,
+		},
+		Spec: &task.QuerySpec{
+			Pagination: &query.PaginationSpec{
+				Limit:  limit,
+				Offset: offset,
+			},
+			TaskStates: taskStates,
+		},
+	}
+	response, err := c.taskClient.Query(c.ctx, request)
+
+	if err != nil {
+		return err
+	}
+	printTaskQueryResponse(response, c.Debug)
 	return nil
 }
 
@@ -325,6 +356,28 @@ func printTaskListResponse(r *task.ListResponse, debug bool) {
 			sort.Sort(tasks)
 
 			for _, t := range tasks {
+				printTask(t)
+			}
+		}
+	}
+	tabWriter.Flush()
+}
+
+func printTaskQueryResponse(r *task.QueryResponse, debug bool) {
+	if debug {
+		printResponseJSON(r)
+	} else {
+		if r.GetError().GetNotFound() != nil {
+			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
+				r.Error.NotFound.Id.Value, r.Error.NotFound.Message)
+		} else {
+			if len(r.GetRecords()) == 0 {
+				fmt.Fprintf(tabWriter, "No tasks found\n")
+				return
+			}
+			fmt.Fprintf(tabWriter, taskListFormatHeader)
+
+			for _, t := range r.GetRecords() {
 				printTask(t)
 			}
 		}
