@@ -33,21 +33,21 @@ def test__stop_long_running_batch_job_immediately():
     job.wait_for_state(goal_state='KILLED')
 
 
-# TBD enable this test after updating the peloton client to latest
-# def test__run_failing_job():
-#    job = Job(job_file='test_job_fail.yaml',
-#              config=IntegrationTestConfig(max_retry_attempts=100))
-#    job.create()
-#    job.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
-#
-#    results = job.get_task_runs(0)
-#    assert len(results) == 5
-#    for i in range(0, len(results)):
-#        result = results[i]
-#        browse_response =
-#            job.browse_task_sandbox(i, result.runtime.mesosTaskId)
-#        assert browse_response.hostname
-#        assert browse_response.paths
+def test__run_failing_job():
+    job = Job(job_file='test_job_fail.yaml',
+              config=IntegrationTestConfig(max_retry_attempts=100))
+    job.create()
+    job.wait_for_state(goal_state='FAILED', failed_state='SUCCEEDED')
+
+    results = job.get_task_runs(0)
+    assert len(results) == 5
+    # TBD uncomment after the ability to fetch logs from mesos in pcluster
+    # for i in range(0, len(results)):
+    # result = results[i]
+    # browse_response = \
+    # job.browse_task_sandbox(i, result.runtime.mesosTaskId.value)
+    # assert browse_response.hostname
+    # assert browse_response.paths
 
 
 def test__create_a_batch_job_and_restart_jobmgr_completes_jobs(jobmgr):
