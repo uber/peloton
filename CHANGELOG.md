@@ -3,6 +3,10 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.10.5
+------------------
+* 2018-03-07    Revert range map change                                                               mu@uber.com
+
 0.6.10.4
 ------------------
 * 2018-03-06    Remove 7 day time span restriction from querying active jobs                           adityacb@uber.com
@@ -10,10 +14,11 @@
 0.6.10.3
 ------------------
 * 2018-03-05    Handle incomplete killed jobs                                                          apoorvaj@uber.com
+* 2018-03-01    Terminate the statemachine when a task is removed from the tracker                     avyas@uber.com
 
 0.6.10.2
 ------------------
-* 2018-03-02    Revert DequeueGang to get CONTROLLER task as well                                      rcharles@uber.com
+* 2018-03-02    Revert DequeueGang to get CONTROLLER task as well                                      avyas@uber.com
 
 0.6.10.1
 ------------------
