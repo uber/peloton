@@ -5,6 +5,7 @@ import time
 
 from docker import Client
 from tools.pcluster.pcluster import setup, teardown
+from job import Job
 from m3.client import M3
 from m3.emitter import BatchedEmitter
 
@@ -128,3 +129,17 @@ def mesos_agent():
     # TODO: We need to pick up the count dynamically.
     return Container(['peloton-mesos-agent0', 'peloton-mesos-agent1',
                       'peloton-mesos-agent2'])
+
+
+@pytest.fixture
+def long_running_job(request):
+    job = Job(job_file='long_running_job.yaml')
+
+    # teardown
+    def kill_long_running_job():
+        print "\nstopping long running job"
+        job.stop()
+
+    request.addfinalizer(kill_long_running_job)
+
+    return job

@@ -1,72 +1,148 @@
 import pytest
+import time
 
-from job import Job
+from job import IntegrationTestConfig, Job
 from peloton_client.pbgen.peloton.api.job import job_pb2
 
 
 pytestmark = [pytest.mark.default, pytest.mark.task]
 
 
+def kill_jobs(jobs):
+    for job in jobs:
+        job.stop()
+
+    for job in jobs:
+        job.wait_for_state(goal_state='KILLED')
+
+
 @pytest.mark.smoketest
-def test__stop_start_all_tasks_kills_tasks_and_job():
-    job = Job(job_file='long_running_job.yaml')
-    job.create()
-    job.wait_for_state(goal_state='RUNNING')
+def test__stop_start_all_tasks_kills_tasks_and_job(long_running_job):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
-    job.stop()
-    job.wait_for_state(goal_state='KILLED')
+    long_running_job.stop()
+    long_running_job.wait_for_state(goal_state='KILLED')
 
-    job.start()
-    job.wait_for_state(goal_state='RUNNING')
-    job.stop()
+    long_running_job.start()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
 
 def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(
-        mesos_master):
-    job = Job(job_file='long_running_job.yaml')
-    job.create()
-    job.wait_for_state(goal_state='RUNNING')
+        long_running_job, mesos_master):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
     mesos_master.stop()
-    job.stop()
+    long_running_job.stop()
     mesos_master.start()
-    job.wait_for_state(goal_state='KILLED')
+    long_running_job.wait_for_state(goal_state='KILLED')
 
     mesos_master.stop()
-    job.start()
+    long_running_job.start()
     mesos_master.start()
-    job.wait_for_state(goal_state='RUNNING')
-    job.stop()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
 
 def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
-        mesos_master, jobmgr):
-    job = Job(job_file='long_running_job.yaml')
-    job.create()
-    job.wait_for_state(goal_state='RUNNING')
+        long_running_job, mesos_master, jobmgr):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
     mesos_master.stop()
-    job.stop()
+    long_running_job.stop()
     jobmgr.restart()
     mesos_master.start()
-    job.wait_for_state(goal_state='KILLED')
+    long_running_job.wait_for_state(goal_state='KILLED')
 
     mesos_master.stop()
-    job.start()
+    long_running_job.start()
     jobmgr.restart()
     mesos_master.start()
-    job.wait_for_state(goal_state='RUNNING')
-    job.stop()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
 
-def test__kill_mesos_agent_makes_task_resume(mesos_agent):
-    job = Job(job_file='long_running_job.yaml')
-    job.job_config.type = job_pb2.SERVICE
+def test__kill_mesos_agent_makes_task_resume(long_running_job, mesos_agent):
+    long_running_job.job_config.type = job_pb2.SERVICE
 
-    job.create()
-    job.wait_for_state(goal_state='RUNNING')
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
     mesos_agent.restart()
 
-    job.wait_for_state(goal_state='RUNNING')
-    job.stop()
+    long_running_job.wait_for_state(goal_state='RUNNING')
+
+
+def test_controller_task_limit():
+    # This tests the controller limit of a resource pool. Once it is fully
+    # allocated by a controller task, subsequent tasks can't be admitted.
+    # 1. start controller job1 which uses all the controller limit
+    # 2. start controller job2, make sure it remains pending.
+    # 3. kill  job1, make sure job2 starts running.
+
+    # job1 uses all the controller limit
+    job1 = Job(job_file='test_controller_job.yaml',
+               config=IntegrationTestConfig(
+                   pool_file='test_respool_controller_limit.yaml'))
+
+    job1.create()
+    job1.wait_for_state(goal_state='RUNNING')
+
+    # job2 should remain pending as job1 used the controller limit
+    job2 = Job(job_file='test_controller_job.yaml',
+               config=IntegrationTestConfig(
+                   pool_file='test_respool_controller_limit.yaml'))
+    job2.create()
+
+    # sleep for 5 seconds to make sure job 2 has enough time
+    time.sleep(5)
+
+    # make sure job2 can't run
+    job2.wait_for_state(goal_state='PENDING')
+
+    # stop job1
+    job1.stop()
+    job1.wait_for_state(goal_state='KILLED')
+
+    # make sure job2 starts running
+    job2.wait_for_state(goal_state='RUNNING')
+
+    kill_jobs([job2])
+
+
+def test_controller_task_limit_executor_can_run():
+    # This tests the controller limit isn't applied to non-controller jobs.
+    # 1. start controller cjob1 which uses all the controller limit
+    # 2. start controller cjob2, make sure it remains pending.
+    # 3. start non-controller job, make sure it succeeds.
+
+    # job1 uses all the controller limit
+    cjob1 = Job(job_file='test_controller_job.yaml',
+                config=IntegrationTestConfig(
+                    pool_file='test_respool_controller_limit.yaml'))
+
+    cjob1.create()
+    cjob1.wait_for_state(goal_state='RUNNING')
+
+    # job2 should remain pending as job1 used the controller limit
+    cjob2 = Job(job_file='test_controller_job.yaml',
+                config=IntegrationTestConfig(
+                    pool_file='test_respool_controller_limit.yaml'))
+    cjob2.create()
+
+    # sleep for 5 seconds to make sure job 2 has enough time
+    time.sleep(5)
+
+    # make sure job2 can't run
+    cjob2.wait_for_state(goal_state='PENDING')
+
+    # start a normal executor job
+    job = Job(job_file='test_job.yaml',
+              config=IntegrationTestConfig(
+                  pool_file='test_respool_controller_limit.yaml'))
+    job.create()
+
+    # make sure job can run and finish
+    job.wait_for_state(goal_state='SUCCEEDED')
+
+    kill_jobs([cjob1, cjob2])
