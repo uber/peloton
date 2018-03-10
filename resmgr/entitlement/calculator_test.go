@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+
+	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
@@ -33,54 +36,55 @@ type EntitlementCalculatorTestSuite struct {
 	mockHostMgr *host_mocks.MockInternalHostServiceYARPCClient
 }
 
-func (suite *EntitlementCalculatorTestSuite) SetupSuite() {
-	suite.mockCtrl = gomock.NewController(suite.T())
-	suite.mockHostMgr = host_mocks.NewMockInternalHostServiceYARPCClient(suite.mockCtrl)
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(suite.mockCtrl)
+func (s *EntitlementCalculatorTestSuite) SetupSuite() {
+	s.mockCtrl = gomock.NewController(s.T())
+	s.mockHostMgr = host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
 	gomock.InOrder(
 		mockResPoolStore.EXPECT().
-			GetAllResourcePools(context.Background()).Return(suite.getResPools(), nil).AnyTimes(),
+			GetAllResourcePools(context.Background()).Return(s.getResPools(), nil).AnyTimes(),
 	)
-	mockJobStore := store_mocks.NewMockJobStore(suite.mockCtrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(suite.mockCtrl)
+	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
 	gomock.InOrder(
 		mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Any()).
 			Return(nil, nil).AnyTimes(),
 	)
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 
-	suite.resTree = respool.GetTree()
+	s.resTree = respool.GetTree()
 
-	suite.calculator = &calculator{
-		resPoolTree:       suite.resTree,
+	s.calculator = &calculator{
+		resPoolTree:       s.resTree,
 		runningState:      res_common.RunningStateNotStarted,
 		calculationPeriod: 10 * time.Millisecond,
 		stopChan:          make(chan struct{}, 1),
 		clusterCapacity:   make(map[string]float64),
-		hostMgrClient:     suite.mockHostMgr,
+		hostMgrClient:     s.mockHostMgr,
+		metrics:           NewMetrics(tally.NoopScope),
 	}
 }
-func (suite *EntitlementCalculatorTestSuite) SetupTest() {
+func (s *EntitlementCalculatorTestSuite) SetupTest() {
 	fmt.Println("setting up")
-	suite.resTree.Start()
+	s.resTree.Start()
 }
 
-func (suite *EntitlementCalculatorTestSuite) TearDownTest() {
+func (s *EntitlementCalculatorTestSuite) TearDownTest() {
 	fmt.Println("tearing down")
-	err := suite.resTree.Stop()
-	suite.NoError(err)
-	suite.mockCtrl.Finish()
+	err := s.resTree.Stop()
+	s.NoError(err)
+	s.mockCtrl.Finish()
 }
 
 func TestEntitlementCalculator(t *testing.T) {
 	suite.Run(t, new(EntitlementCalculatorTestSuite))
 }
 
-func (suite *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
+func (s *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted() {
 	var wg sync.WaitGroup
 	wg.Add(5)
 
-	suite.mockHostMgr.EXPECT().
+	s.mockHostMgr.EXPECT().
 		ClusterCapacity(
 			gomock.Any(),
 			gomock.Any()).
@@ -90,15 +94,15 @@ func (suite *EntitlementCalculatorTestSuite) TestPeriodicCalculationWhenStarted(
 		Return(&hostsvc.ClusterCapacityResponse{}, nil).
 		Times(5)
 
-	suite.NoError(suite.calculator.Start())
+	s.NoError(s.calculator.Start())
 
 	// Wait for 5 calculations, and then stop.
 	wg.Wait()
 
-	suite.NoError(suite.calculator.Stop())
+	s.NoError(s.calculator.Stop())
 }
 
-func (suite *EntitlementCalculatorTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
+func (s *EntitlementCalculatorTestSuite) getResourceConfig() []*pb_respool.ResourceConfig {
 	resConfigs := []*pb_respool.ResourceConfig{
 		{
 			Share:       1,
@@ -129,7 +133,7 @@ func (suite *EntitlementCalculatorTestSuite) getResourceConfig() []*pb_respool.R
 }
 
 // Returns resource pools
-func (suite *EntitlementCalculatorTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
+func (s *EntitlementCalculatorTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 	rootID := peloton.ResourcePoolID{Value: "root"}
 	policy := pb_respool.SchedulingPolicy_PriorityFIFO
 
@@ -137,58 +141,58 @@ func (suite *EntitlementCalculatorTestSuite) getResPools() map[string]*pb_respoo
 		"root": {
 			Name:      "root",
 			Parent:    nil,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool1": {
 			Name:      "respool1",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool2": {
 			Name:      "respool2",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool3": {
 			Name:      "respool3",
 			Parent:    &rootID,
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool11": {
 			Name:      "respool11",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool12": {
 			Name:      "respool12",
 			Parent:    &peloton.ResourcePoolID{Value: "respool1"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool21": {
 			Name:      "respool21",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 		"respool22": {
 			Name:      "respool22",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
-			Resources: suite.getResourceConfig(),
+			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
 	}
 }
 
-func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
+func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 	// Mock LaunchTasks call.
 	gomock.InOrder(
-		suite.mockHostMgr.EXPECT().
+		s.mockHostMgr.EXPECT().
 			ClusterCapacity(
 				gomock.Any(),
 				gomock.Any()).
@@ -214,8 +218,8 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 			}, nil).
 			Times(3),
 	)
-	resPool, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
-	suite.NoError(err)
+	resPool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
+	s.NoError(err)
 	demand := &scalar.Resources{
 		CPU:    20,
 		MEMORY: 200,
@@ -223,109 +227,109 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlement() {
 		GPU:    0,
 	}
 	resPool.AddToDemand(demand)
-	suite.calculator.calculateEntitlement(context.Background())
+	s.calculator.calculateEntitlement(context.Background())
 
 	res := resPool.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(33))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(333))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(33))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(333))
+	s.Equal(int64(res.DISK), int64(1000))
 
-	ResPool12, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
+	ResPool12, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
 	res = ResPool12.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(13))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(133))
-	suite.Equal(int64(res.DISK), int64(0))
+	s.Equal(int64(res.CPU), int64(13))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(133))
+	s.Equal(int64(res.DISK), int64(0))
 
-	ResPool21, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
-	suite.NoError(err)
+	ResPool21, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
+	s.NoError(err)
 	ResPool21.AddToDemand(demand)
 
-	suite.calculator.calculateEntitlement(context.Background())
+	s.calculator.calculateEntitlement(context.Background())
 
 	res = resPool.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(30))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(300))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(30))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(300))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool12.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(10))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(100))
-	suite.Equal(int64(res.DISK), int64(0))
+	s.Equal(int64(res.CPU), int64(10))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(100))
+	s.Equal(int64(res.DISK), int64(0))
 
 	res = ResPool21.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(30))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(300))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(30))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(300))
+	s.Equal(int64(res.DISK), int64(1000))
 
-	ResPool22, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
-	suite.NoError(err)
+	ResPool22, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
+	s.NoError(err)
 	ResPool22.AddToDemand(demand)
-	suite.calculator.calculateEntitlement(context.Background())
+	s.calculator.calculateEntitlement(context.Background())
 
 	res = resPool.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(26))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(266))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(26))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(266))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool21.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(26))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(266))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(26))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(266))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool22.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(26))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(266))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(26))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(266))
+	s.Equal(int64(res.DISK), int64(1000))
 
-	ResPool2, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool2"})
-	suite.NoError(err)
+	ResPool2, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool2"})
+	s.NoError(err)
 
 	res = ResPool2.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(53))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(533))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(53))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(533))
+	s.Equal(int64(res.DISK), int64(1000))
 
-	ResPool3, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
-	suite.NoError(err)
+	ResPool3, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
 
 	res = ResPool3.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(13))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(133))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(13))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(133))
+	s.Equal(int64(res.DISK), int64(1000))
 
-	ResPool1, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool1"})
-	suite.NoError(err)
+	ResPool1, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool1"})
+	s.NoError(err)
 
 	res = ResPool1.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(33))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(333))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(33))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(333))
+	s.Equal(int64(res.DISK), int64(1000))
 
-	ResPoolRoot, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
-	suite.NoError(err)
+	ResPoolRoot, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
+	s.NoError(err)
 
 	res = ResPoolRoot.GetEntitlement()
-	suite.Equal(res.CPU, float64(100))
-	suite.Equal(res.GPU, float64(0))
-	suite.Equal(res.MEMORY, float64(1000))
-	suite.Equal(res.DISK, float64(6000))
+	s.Equal(res.CPU, float64(100))
+	s.Equal(res.GPU, float64(0))
+	s.Equal(res.MEMORY, float64(1000))
+	s.Equal(res.DISK, float64(6000))
 }
 
-func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
+func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	// Mock LaunchTasks call.
 	gomock.InOrder(
-		suite.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+		s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
 				PhysicalResources: []*hostsvc.Resource{
 					{
@@ -347,7 +351,7 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 				},
 			}, nil).
 			Times(1),
-		suite.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+		s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
 				PhysicalResources: []*hostsvc.Resource{
 					{
@@ -371,44 +375,44 @@ func (suite *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 			Times(1),
 	)
 
-	rootres, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
-	suite.NoError(err)
-	rootres.SetResourcePoolConfig(suite.getResPools()["root"])
-	suite.Equal(rootres.Resources()[common.CPU].Reservation, float64(10))
-	suite.Equal(rootres.Resources()[common.GPU].Reservation, float64(1))
-	suite.Equal(rootres.Resources()[common.MEMORY].Reservation, float64(100))
-	suite.Equal(rootres.Resources()[common.DISK].Reservation, float64(1000))
+	rootres, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
+	s.NoError(err)
+	rootres.SetResourcePoolConfig(s.getResPools()["root"])
+	s.Equal(rootres.Resources()[common.CPU].Reservation, float64(10))
+	s.Equal(rootres.Resources()[common.GPU].Reservation, float64(1))
+	s.Equal(rootres.Resources()[common.MEMORY].Reservation, float64(100))
+	s.Equal(rootres.Resources()[common.DISK].Reservation, float64(1000))
 
-	suite.calculator.calculateEntitlement(context.Background())
+	s.calculator.calculateEntitlement(context.Background())
 
-	RootResPool, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
-	suite.NoError(err)
-	suite.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
-	suite.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(0))
-	suite.Equal(RootResPool.Resources()[common.MEMORY].Reservation, float64(1000))
-	suite.Equal(RootResPool.Resources()[common.DISK].Reservation, float64(6000))
-	suite.Equal(RootResPool.Resources()[common.CPU].Limit, float64(100))
-	suite.Equal(RootResPool.Resources()[common.GPU].Limit, float64(0))
-	suite.Equal(RootResPool.Resources()[common.MEMORY].Limit, float64(1000))
-	suite.Equal(RootResPool.Resources()[common.DISK].Limit, float64(6000))
+	RootResPool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
+	s.NoError(err)
+	s.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
+	s.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(0))
+	s.Equal(RootResPool.Resources()[common.MEMORY].Reservation, float64(1000))
+	s.Equal(RootResPool.Resources()[common.DISK].Reservation, float64(6000))
+	s.Equal(RootResPool.Resources()[common.CPU].Limit, float64(100))
+	s.Equal(RootResPool.Resources()[common.GPU].Limit, float64(0))
+	s.Equal(RootResPool.Resources()[common.MEMORY].Limit, float64(1000))
+	s.Equal(RootResPool.Resources()[common.DISK].Limit, float64(6000))
 
 	// Update the cluster capacity (Add GPU)
-	suite.calculator.calculateEntitlement(context.Background())
-	suite.NoError(err)
-	suite.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
-	suite.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(10))
-	suite.Equal(RootResPool.Resources()[common.MEMORY].Reservation, float64(1000))
-	suite.Equal(RootResPool.Resources()[common.DISK].Reservation, float64(6000))
-	suite.Equal(RootResPool.Resources()[common.CPU].Limit, float64(100))
-	suite.Equal(RootResPool.Resources()[common.GPU].Limit, float64(10))
-	suite.Equal(RootResPool.Resources()[common.MEMORY].Limit, float64(1000))
-	suite.Equal(RootResPool.Resources()[common.DISK].Limit, float64(6000))
+	s.calculator.calculateEntitlement(context.Background())
+	s.NoError(err)
+	s.Equal(RootResPool.Resources()[common.CPU].Reservation, float64(100))
+	s.Equal(RootResPool.Resources()[common.GPU].Reservation, float64(10))
+	s.Equal(RootResPool.Resources()[common.MEMORY].Reservation, float64(1000))
+	s.Equal(RootResPool.Resources()[common.DISK].Reservation, float64(6000))
+	s.Equal(RootResPool.Resources()[common.CPU].Limit, float64(100))
+	s.Equal(RootResPool.Resources()[common.GPU].Limit, float64(10))
+	s.Equal(RootResPool.Resources()[common.MEMORY].Limit, float64(1000))
+	s.Equal(RootResPool.Resources()[common.DISK].Limit, float64(6000))
 }
 
-func (suite *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
+func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 	// Mock LaunchTasks call.
 	gomock.InOrder(
-		suite.mockHostMgr.EXPECT().
+		s.mockHostMgr.EXPECT().
 			ClusterCapacity(
 				gomock.Any(),
 				gomock.Any()).
@@ -434,23 +438,23 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 			}, nil).
 			Times(1),
 	)
-	ResPoolRoot, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
-	suite.NoError(err)
+	ResPoolRoot, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
+	s.NoError(err)
 
-	ResPool1, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool1"})
-	suite.NoError(err)
-	ResPool2, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool2"})
-	suite.NoError(err)
-	ResPool3, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
-	suite.NoError(err)
-	ResPool11, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
-	suite.NoError(err)
-	ResPool12, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
-	suite.NoError(err)
-	ResPool21, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
-	suite.NoError(err)
-	ResPool22, err := suite.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
-	suite.NoError(err)
+	ResPool1, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool1"})
+	s.NoError(err)
+	ResPool2, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool2"})
+	s.NoError(err)
+	ResPool3, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	ResPool11, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
+	s.NoError(err)
+	ResPool12, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
+	s.NoError(err)
+	ResPool21, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
+	s.NoError(err)
+	ResPool22, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
+	s.NoError(err)
 	demand := &scalar.Resources{
 		CPU:    40,
 		MEMORY: 400,
@@ -464,53 +468,116 @@ func (suite *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 	ResPool22.AddToDemand(demand)
 	ResPool3.AddToDemand(demand)
 
-	suite.calculator.calculateEntitlement(context.Background())
+	s.calculator.calculateEntitlement(context.Background())
 
 	res := ResPoolRoot.GetEntitlement()
-	suite.Equal(res.CPU, float64(100))
-	suite.Equal(res.GPU, float64(0))
-	suite.Equal(res.MEMORY, float64(1000))
-	suite.Equal(res.DISK, float64(6000))
+	s.Equal(res.CPU, float64(100))
+	s.Equal(res.GPU, float64(0))
+	s.Equal(res.MEMORY, float64(1000))
+	s.Equal(res.DISK, float64(6000))
 
 	res = ResPool1.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(33))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(333))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(33))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(333))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool2.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(33))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(333))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(33))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(333))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool3.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(33))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(333))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(33))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(333))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool11.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(16))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(166))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(16))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(166))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool12.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(16))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(166))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(16))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(166))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool21.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(16))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(166))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(16))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(166))
+	s.Equal(int64(res.DISK), int64(1000))
 
 	res = ResPool22.GetEntitlement()
-	suite.Equal(int64(res.CPU), int64(16))
-	suite.Equal(int64(res.GPU), int64(0))
-	suite.Equal(int64(res.MEMORY), int64(166))
-	suite.Equal(int64(res.DISK), int64(1000))
+	s.Equal(int64(res.CPU), int64(16))
+	s.Equal(int64(res.GPU), int64(0))
+	s.Equal(int64(res.MEMORY), int64(166))
+	s.Equal(int64(res.DISK), int64(1000))
+}
+
+func (s *EntitlementCalculatorTestSuite) TestInitCalculator() {
+	// This test initializes the entitlement calculation
+	// and check if calculator is not nil
+	dispatcher := yarpc.NewDispatcher(yarpc.Config{
+		Name:      common.PelotonResourceManager,
+		Inbounds:  nil,
+		Outbounds: nil,
+		Metrics: yarpc.MetricsConfig{
+			Tally: tally.NoopScope,
+		},
+	})
+
+	InitCalculator(
+		dispatcher,
+		10*time.Millisecond,
+		tally.NoopScope,
+		s.mockHostMgr,
+	)
+	calc := GetCalculator()
+	s.NotNil(calc)
+	// Now initializing the calculator again
+	// which should not cause any thing as
+	// it should have the same object
+	InitCalculator(
+		dispatcher,
+		10*time.Millisecond,
+		tally.NoopScope,
+		s.mockHostMgr,
+	)
+	newCalc := GetCalculator()
+	s.Equal(newCalc, calc)
+
+}
+
+func (s *EntitlementCalculatorTestSuite) TestStartCalculatorMultipleTimes() {
+	// This test covers if we start entitlement calculation
+	// multiple times it will not start the other one if
+	// previous is running
+
+	s.mockHostMgr.EXPECT().
+		ClusterCapacity(
+			gomock.Any(),
+			gomock.Any()).
+		Return(&hostsvc.ClusterCapacityResponse{}, nil).
+		Times(1)
+
+	s.NoError(s.calculator.Start())
+	s.NoError(s.calculator.Start())
+	s.NoError(s.calculator.Stop())
+	s.NoError(s.calculator.Stop())
+}
+
+func (s *EntitlementCalculatorTestSuite) TestUpdateCapacityError() {
+	// If hostmgr returns error, checking Entitlement fails
+	s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
+		Return(&hostsvc.ClusterCapacityResponse{
+			PhysicalResources: nil,
+		}, errors.New("Capacity Unavailable")).
+		Times(1)
+	err := s.calculator.calculateEntitlement(context.Background())
+	s.Error(err)
 }

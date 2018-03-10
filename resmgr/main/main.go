@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
@@ -247,6 +249,9 @@ func main() {
 		dispatcher,
 		cfg.ResManager.EntitlementCaculationPeriod,
 		rootScope,
+		hostsvc.NewInternalHostServiceYARPCClient(
+			dispatcher.ClientConfig(
+				common.PelotonHostManager)),
 	)
 
 	// Initializing the task reconciler

@@ -55,7 +55,8 @@ var calc *calculator
 func InitCalculator(
 	d *yarpc.Dispatcher,
 	calculationPeriod time.Duration,
-	parent tally.Scope) {
+	parent tally.Scope,
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient) {
 
 	if calc != nil {
 		log.Warning("entitlement calculator has already " +
@@ -68,11 +69,9 @@ func InitCalculator(
 		runningState:      res_common.RunningStateNotStarted,
 		calculationPeriod: calculationPeriod,
 		stopChan:          make(chan struct{}, 1),
-		hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(
-			d.ClientConfig(
-				common.PelotonHostManager)),
-		clusterCapacity: make(map[string]float64),
-		metrics:         NewMetrics(parent.SubScope("calculator")),
+		hostMgrClient:     hostMgrClient,
+		clusterCapacity:   make(map[string]float64),
+		metrics:           NewMetrics(parent.SubScope("calculator")),
 	}
 	log.Info("entitlement calculator is initialized")
 }
@@ -182,6 +181,45 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 	log.WithField("respool", resp.Name()).
 		Debug("Starting Entitlement cycle for respool")
 
+	// Setting entitlement is a 3 phase process
+	// 1. Calculate assignments based on reservation
+	// 2. Distribute rest of the free resources based on share and demand
+	// 3. Once the demand is zero , distribute remaining based on share
+
+	// This is the first phase for assignment
+	entitlement = c.calculateAssignmentsFromReservation(resp, demands, entitlement, assignments, totalShare)
+
+	// This is second and third phase for distributing remaining resources
+	c.distributeRemainingResources(resp, demands, entitlement, assignments, totalShare)
+
+	// Now setting entitlement for all the children and call
+	// for their children recursively
+	for e := childs.Front(); e != nil; e = e.Next() {
+		n := e.Value.(respool.ResPool)
+
+		n.SetEntitlementResources(assignments[n.ID()])
+		log.WithFields(log.Fields{
+			"respool_ID":   n.ID(),
+			"respool_name": n.Name(),
+			"entitlement":  assignments[n.ID()],
+		}).Info("Setting the entitlement for ResPool")
+
+		// Calling the function recursively
+		// for all the children for the respool passed
+		// to this function
+		c.setEntitlementForChildren(n)
+	}
+}
+
+// calculateAssignmentsFromReservation calculates assigments
+// based on demand and reservation
+// as well as return the remaining entitlement for redistribution
+func (c *calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
+	demands map[string]*scalar.Resources,
+	entitlement *scalar.Resources,
+	assignments map[string]*scalar.Resources,
+	totalShare map[string]float64,
+) *scalar.Resources {
 	// First Pass: In the first pass of children we get the demand recursively
 	// calculated And then compare with respool reservation and
 	// choose the min of these two
@@ -191,6 +229,7 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 	// of the kind of resources which demand is more then the resrevation
 	// As we can ignore the other whose demands are reached as they dont
 	// need to get the fare share
+	childs := resp.Children()
 	for e := childs.Front(); e != nil; e = e.Next() {
 		assignment := new(scalar.Resources)
 		n := e.Value.(respool.ResPool)
@@ -249,7 +288,18 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 			"entitlement":    entitlement,
 		}).Debug("First pass completed for respool")
 	}
+	return entitlement
+}
 
+// distributeRemainingResources distributes the remianing entitlement based
+// on demand and share of the resourcepool.
+func (c *calculator) distributeRemainingResources(resp respool.ResPool,
+	demands map[string]*scalar.Resources,
+	entitlement *scalar.Resources,
+	assignments map[string]*scalar.Resources,
+	totalShare map[string]float64,
+) {
+	childs := resp.Children()
 	for _, kind := range []string{common.CPU, common.GPU,
 		common.MEMORY, common.DISK} {
 		remaining := *entitlement
@@ -338,24 +388,6 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 				}
 			}
 		}
-	}
-
-	// Now setting entitlement for all the children and call
-	// for their children recursively
-	for e := childs.Front(); e != nil; e = e.Next() {
-		n := e.Value.(respool.ResPool)
-
-		n.SetEntitlementResources(assignments[n.ID()])
-		log.WithFields(log.Fields{
-			"respool_ID":   n.ID(),
-			"respool_name": n.Name(),
-			"entitlement":  assignments[n.ID()],
-		}).Info("Setting the entitlement for ResPool")
-
-		// Calling the function recursively
-		// for all the children for the respool passed
-		// to this function
-		c.setEntitlementForChildren(n)
 	}
 }
 
