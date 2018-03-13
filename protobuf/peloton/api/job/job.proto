@@ -273,6 +273,16 @@ message QuerySpec {
   // support partial name match. Will match all jobs if
   // name is unset.
   string name = 7;
+
+  // Query jobs by creation time range. This will look for all jobs
+  // that were created within a specified time range. This
+  // search will operate based on job creation time.
+  peloton.TimeRange creationTimeRange = 8;
+
+  // Query jobs by completion time range. This will look for all jobs
+  // that were completed within a specified time range. This
+  // search will operate based on job completion time.
+  peloton.TimeRange completionTimeRange = 9;
 }
 
 /**

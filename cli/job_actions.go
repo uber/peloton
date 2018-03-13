@@ -11,6 +11,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 
+	"github.com/golang/protobuf/ptypes"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -130,6 +132,7 @@ func (c *Client) JobQueryAction(
 	states string,
 	owner string,
 	name string,
+	days uint32,
 	limit uint32,
 	maxLimit uint32,
 	offset uint32,
@@ -192,21 +195,36 @@ func (c *Client) JobQueryAction(
 		}
 	}
 
-	var request = &job.QueryRequest{
-		RespoolID: respoolID,
-		Spec: &job.QuerySpec{
-			Labels:    apiLabels,
-			Keywords:  apiKeywords,
-			JobStates: apiStates,
-			Owner:     owner,
-			Name:      name,
-			Pagination: &query.PaginationSpec{
-				Limit:    limit,
-				Offset:   offset,
-				OrderBy:  sort,
-				MaxLimit: maxLimit,
-			},
+	spec := &job.QuerySpec{
+		Labels:    apiLabels,
+		Keywords:  apiKeywords,
+		JobStates: apiStates,
+		Owner:     owner,
+		Name:      name,
+		Pagination: &query.PaginationSpec{
+			Limit:    limit,
+			Offset:   offset,
+			OrderBy:  sort,
+			MaxLimit: maxLimit,
 		},
+	}
+
+	if days > 0 {
+		now := time.Now().UTC()
+		max, err := ptypes.TimestampProto(now)
+		if err != nil {
+			return err
+		}
+		min, err := ptypes.TimestampProto(now.AddDate(0, 0, -int(days)))
+		if err != nil {
+			return err
+		}
+		spec.CreationTimeRange = &peloton.TimeRange{Min: min, Max: max}
+	}
+
+	var request = &job.QueryRequest{
+		RespoolID:   respoolID,
+		Spec:        spec,
 		SummaryOnly: true,
 	}
 	response, err := c.jobClient.Query(c.ctx, request)

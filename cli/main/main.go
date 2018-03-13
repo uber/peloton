@@ -105,11 +105,15 @@ var (
 	jobQueryStates      = jobQuery.Flag("states", "job states").Default("").Short('s').String()
 	jobQueryOwner       = jobQuery.Flag("owner", "job owner").Default("").String()
 	jobQueryName        = jobQuery.Flag("name", "job name").Default("").String()
-	jobQueryLimit       = jobQuery.Flag("limit", "maximum number of jobs to return").Default("100").Short('n').Uint32()
-	jobQueryMaxLimit    = jobQuery.Flag("total", "total number of jobs to query").Default("100").Short('q').Uint32()
-	jobQueryOffset      = jobQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
-	jobQuerySortBy      = jobQuery.Flag("sort", "sort by property").Default("creation_time").Short('p').String()
-	jobQuerySortOrder   = jobQuery.Flag("sortorder", "sort order (ASC or DESC)").Default("DESC").Short('a').String()
+	// We can search by time range for completed time as well as created time.
+	// We support protobuf timestamps in backend to define time range
+	// To keep CLI simple, lets accept this time range for creation time in last n days
+	jobQueryTimeRange = jobQuery.Flag("timerange", "query jobs created within last d days").Short('d').Default("0").Uint32()
+	jobQueryLimit     = jobQuery.Flag("limit", "maximum number of jobs to return").Default("100").Short('n').Uint32()
+	jobQueryMaxLimit  = jobQuery.Flag("total", "total number of jobs to query").Default("100").Short('q').Uint32()
+	jobQueryOffset    = jobQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
+	jobQuerySortBy    = jobQuery.Flag("sort", "sort by property").Default("creation_time").Short('p').String()
+	jobQuerySortOrder = jobQuery.Flag("sortorder", "sort order (ASC or DESC)").Default("DESC").Short('a').String()
 
 	jobUpdate       = job.Command("update", "update a job")
 	jobUpdateID     = jobUpdate.Arg("job", "job identifier").Required().String()
@@ -338,7 +342,7 @@ func main() {
 	case jobStatus.FullCommand():
 		err = client.JobStatusAction(*jobStatusName)
 	case jobQuery.FullCommand():
-		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryOwner, *jobQueryName, *jobQueryLimit, *jobQueryMaxLimit, *jobQueryOffset, *jobQuerySortBy, *jobQuerySortOrder)
+		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryOwner, *jobQueryName, *jobQueryTimeRange, *jobQueryLimit, *jobQueryMaxLimit, *jobQueryOffset, *jobQuerySortBy, *jobQuerySortOrder)
 	case jobUpdate.FullCommand():
 		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig)
 	case taskGet.FullCommand():

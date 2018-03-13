@@ -22,6 +22,7 @@ RUN wget https://github.com/google/protobuf/releases/download/v$PROTOC_VERSION/p
     && unzip -d protoc protoc-$PROTOC_VERSION-linux-x86_64.zip \
     && rm protoc-$PROTOC_VERSION-linux-x86_64.zip \
     && cp protoc/bin/protoc /usr/local/bin \
+    && cp -rf protoc/include/* /usr/local/include/. \
     && rm -rf protoc \
     && go get -u github.com/golang/protobuf/proto \
     && go get -u github.com/golang/protobuf/protoc-gen-go

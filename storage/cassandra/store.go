@@ -35,6 +35,7 @@ import (
 	"github.com/gemnasium/migrate/migrate"
 	"github.com/gocql/gocql"
 	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -56,6 +57,8 @@ const (
 	resPoolsTable         = "respools"
 	resPoolsOwnerView     = "mv_respools_by_owner"
 	volumeTable           = "persistent_volumes"
+	creationTimeField     = "creation_time"
+	completionTimeField   = "completion_time"
 
 	_defaultQueryLimit    uint32 = 10
 	_defaultQueryMaxLimit uint32 = 100
@@ -64,9 +67,9 @@ const (
 	// task configuration, when no specific is available.
 	_defaultTaskConfigID = -1
 
-	jobIndexTimeFormat = "20060102150405"
-	jobQuerySpanInDays = 7
-	jobQueryJitter     = time.Second * 30
+	jobIndexTimeFormat        = "20060102150405"
+	jobQueryDefaultSpanInDays = 7
+	jobQueryJitter            = time.Second * 30
 )
 
 // Config is the config for cassandra Store
@@ -81,6 +84,8 @@ type Config struct {
 	// MaxParallelBatches controls the maximum number of go routines run to create tasks
 	MaxParallelBatches int `yaml:"max_parallel_batches"`
 }
+
+type luceneClauses []string
 
 // AutoMigrate migrates the db schemas for cassandra
 func (c *Config) AutoMigrate() []error {
@@ -484,6 +489,42 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", jobID)
 }
 
+// WithTimeRangeFilter will take timerange and time_field (creation_time|completion_time) as
+// input and create a range filter on those fields and append to the clauses list
+func (c *luceneClauses) WithTimeRangeFilter(timeRange *peloton.TimeRange, timeField string) error {
+	if timeRange == nil || c == nil {
+		return nil
+	}
+	if timeField != creationTimeField && timeField != completionTimeField {
+		return fmt.Errorf("Invalid time field %s", timeField)
+	}
+	// Create filter if time range is not nil
+	min, err := ptypes.Timestamp(timeRange.GetMin())
+	if err != nil {
+		log.WithField("timeRange", timeRange).
+			WithField("timeField", timeField).
+			WithError(err).
+			Error("fail to get min time range")
+		return err
+	}
+	max, err := ptypes.Timestamp(timeRange.GetMax())
+	if err != nil {
+		log.WithField("timeRange", timeRange).
+			WithField("timeField", timeField).
+			WithError(err).
+			Error("fail to get max time range")
+		return err
+	}
+	// validate min and max limits are legit (i.e. max > min)
+	if max.Before(min) {
+		return fmt.Errorf("Incorrect timerange")
+	}
+	timeRangeMinStr := fmt.Sprintf(min.Format(jobIndexTimeFormat))
+	timeRangeMaxStr := fmt.Sprintf(max.Format(jobIndexTimeFormat))
+	*c = append(*c, fmt.Sprintf(`{type: "range", field:"%s", lower: "%s", upper: "%s", include_lower: true}`, timeField, timeRangeMinStr, timeRangeMaxStr))
+	return nil
+}
+
 // QueryJobs returns all jobs in the resource pool that matches the spec.
 func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID, spec *job.QuerySpec, summaryOnly bool) ([]*job.JobInfo, []*job.JobSummary, uint32, error) {
 	// Query is based on stratio lucene index on jobs.
@@ -491,7 +532,7 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	// We are using "must" for the labels and only return the jobs that contains all
 	// label values
 	// TODO: investigate if there are any golang library that can build lucene query
-	var clauses []string
+	var clauses luceneClauses
 
 	// Labels field must contain value of the specified labels
 	for _, label := range spec.GetLabels() {
@@ -554,16 +595,61 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 		clauses = append(clauses, fmt.Sprintf(`{type: "wildcard", field:"name", value:%s}`, strconv.Quote(wildcardName)))
 	}
 
-	if queryTerminalStates {
-		// query for jobs created over the past week only when
-		// querying for jobs in a terminal state.
-		// TODO (adityacb): customize time span from 1 week.
-		// Add jobQueryJitter to upper bound to account for jobs
+	creationTimeRange := spec.GetCreationTimeRange()
+	completionTimeRange := spec.GetCompletionTimeRange()
+	err := clauses.WithTimeRangeFilter(creationTimeRange, creationTimeField)
+	if err != nil {
+		log.WithField("creationTimeRange", creationTimeRange).
+			WithError(err).
+			Error("fail to build time range filter")
+		s.metrics.JobMetrics.JobQueryFail.Inc(1)
+		return nil, nil, 0, err
+	}
+
+	err = clauses.WithTimeRangeFilter(completionTimeRange, completionTimeField)
+	if err != nil {
+		log.WithField("completionTimeRange", completionTimeRange).
+			WithError(err).
+			Error("fail to build time range filter")
+		s.metrics.JobMetrics.JobQueryFail.Inc(1)
+		return nil, nil, 0, err
+	}
+
+	// If no time range is specified in query spec, but the query is for terminal state,
+	// use default time range
+	if creationTimeRange == nil && completionTimeRange == nil && queryTerminalStates {
+		// Add jobQueryJitter to max bound to account for jobs
 		// that have just been created.
+		// if time range is not specified and the job is in terminal state,
+		// apply a default range of last 7 days
+		// TODO (adityacb): remove artificially enforcing default time range for
+		// completed jobs once UI supports query by time range.
 		now := time.Now().Add(jobQueryJitter).UTC()
-		upper := fmt.Sprintf(now.Format(jobIndexTimeFormat))
-		lower := fmt.Sprintf(now.AddDate(0, 0, -jobQuerySpanInDays).Format(jobIndexTimeFormat))
-		clauses = append(clauses, fmt.Sprintf(`{type: "range", field:"creation_time", lower: "%s", upper: "%s"}`, lower, upper))
+		max, err := ptypes.TimestampProto(now)
+		if err != nil {
+			log.WithField("now", now).
+				WithError(err).
+				Error("fail to create time stamp proto")
+			s.metrics.JobMetrics.JobQueryFail.Inc(1)
+			return nil, nil, 0, err
+		}
+		min, err := ptypes.TimestampProto(now.AddDate(0, 0, -jobQueryDefaultSpanInDays))
+		if err != nil {
+			log.WithField("now", now).
+				WithError(err).
+				Error("fail to create time stamp proto")
+			s.metrics.JobMetrics.JobQueryFail.Inc(1)
+			return nil, nil, 0, err
+		}
+		defaultCreationTimeRange := &peloton.TimeRange{Min: min, Max: max}
+		err = clauses.WithTimeRangeFilter(defaultCreationTimeRange, "creation_time")
+		if err != nil {
+			log.WithField("defaultCreationTimeRange", defaultCreationTimeRange).
+				WithError(err).
+				Error("fail to build time range filter")
+			s.metrics.JobMetrics.JobQueryFail.Inc(1)
+			return nil, nil, 0, err
+		}
 	}
 
 	where := `expr(job_index_lucene_v2, '{filter: [`

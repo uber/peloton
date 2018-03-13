@@ -10,6 +10,7 @@ package peloton.api.peloton;
 option go_package = "peloton/api/peloton";
 option java_package = "peloton.api";
 
+import "google/protobuf/timestamp.proto";
 
 /**
  *  A unique ID assigned to a Job. This is a UUID in RFC4122 format.
@@ -71,4 +72,13 @@ message ChangeLog {
 message Label {
   string key = 1;
   string value = 2;
+}
+
+/**
+ * Time range specified by min and max timestamps.
+ * Time range is left closed and right open: [min, max)
+ */
+message TimeRange {
+  google.protobuf.Timestamp min = 1;
+  google.protobuf.Timestamp max = 2;
 }
