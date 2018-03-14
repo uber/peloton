@@ -88,24 +88,28 @@ func (s *resPoolHandlerTestSuite) getResourceConfig() []*pb_respool.ResourceConf
 			Kind:        "cpu",
 			Reservation: 100,
 			Limit:       1000,
+			Type:        pb_respool.ReservationType_ELASTIC,
 		},
 		{
 			Share:       1,
 			Kind:        "memory",
 			Reservation: 100,
 			Limit:       1000,
+			Type:        pb_respool.ReservationType_ELASTIC,
 		},
 		{
 			Share:       1,
 			Kind:        "disk",
 			Reservation: 100,
 			Limit:       1000,
+			Type:        pb_respool.ReservationType_ELASTIC,
 		},
 		{
 			Share:       1,
 			Kind:        "gpu",
 			Reservation: 2,
 			Limit:       4,
+			Type:        pb_respool.ReservationType_ELASTIC,
 		},
 	}
 	return resConfigs
@@ -175,6 +179,28 @@ func (s *resPoolHandlerTestSuite) getResPools() map[string]*pb_respool.ResourceP
 					Reservation: 50,
 					Limit:       100,
 					Share:       1,
+					Type:        pb_respool.ReservationType_ELASTIC,
+				},
+				{
+					Kind:        "memory",
+					Reservation: 50,
+					Limit:       100,
+					Share:       1,
+					Type:        pb_respool.ReservationType_ELASTIC,
+				},
+				{
+					Kind:        "disk",
+					Reservation: 50,
+					Limit:       100,
+					Share:       1,
+					Type:        pb_respool.ReservationType_ELASTIC,
+				},
+				{
+					Kind:        "gpu",
+					Reservation: 50,
+					Limit:       100,
+					Share:       1,
+					Type:        pb_respool.ReservationType_ELASTIC,
 				},
 			},
 			Policy: policy,
@@ -275,6 +301,7 @@ func (s *resPoolHandlerTestSuite) TestCreateResourcePool() {
 				Limit:       1,
 				Share:       1,
 				Kind:        "cpu",
+				Type:        pb_respool.ReservationType_ELASTIC,
 			},
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
@@ -302,6 +329,84 @@ func (s *resPoolHandlerTestSuite) TestCreateResourcePool() {
 	s.NotNil(uuid.Parse(createResp.Result.Value))
 }
 
+func (s *resPoolHandlerTestSuite) TestCreateStaticResourcePool() {
+	mockResourcePoolName := "respool109"
+	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
+		Name:   mockResourcePoolName,
+		Parent: &peloton.ResourcePoolID{Value: "respool23"},
+		Resources: []*pb_respool.ResourceConfig{
+			{
+				Reservation: 1,
+				Limit:       1,
+				Share:       1,
+				Kind:        "cpu",
+				Type:        pb_respool.ReservationType_STATIC,
+			},
+			{
+				Reservation: 1,
+				Limit:       1,
+				Share:       1,
+				Kind:        "memory",
+				Type:        pb_respool.ReservationType_STATIC,
+			},
+			{
+				Reservation: 1,
+				Limit:       1,
+				Share:       1,
+				Kind:        "disk",
+				Type:        pb_respool.ReservationType_STATIC,
+			},
+			{
+				Reservation: 1,
+				Limit:       1,
+				Share:       1,
+				Kind:        "gpu",
+				Type:        pb_respool.ReservationType_STATIC,
+			},
+		},
+		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	// create request
+	createReq := &pb_respool.CreateRequest{
+		Config: mockResourcePoolConfig,
+	}
+
+	// set expectations
+	s.mockResPoolStore.EXPECT().CreateResourcePool(
+		context.Background(),
+		gomock.Any(),
+		gomock.Eq(mockResourcePoolConfig),
+		"peloton").Return(nil)
+
+	createResp, err := s.handler.CreateResourcePool(
+		s.context,
+		createReq)
+
+	s.NoError(err)
+	s.NotNil(createResp)
+	s.Nil(createResp.Error)
+	s.NotNil(uuid.Parse(createResp.Result.Value))
+
+	// query request to get all the resourcepool configs
+	queryReq := &pb_respool.QueryRequest{}
+	queryResp, err := s.handler.Query(
+		s.context,
+		queryReq,
+	)
+	var respoolConfig *pb_respool.ResourcePoolConfig
+	for _, respoolInfo := range queryResp.GetResourcePools() {
+		if respoolInfo.GetId().Value == createResp.Result.Value {
+			respoolConfig = respoolInfo.GetConfig()
+		}
+	}
+	s.NotNil(respoolConfig)
+	s.EqualValues(pb_respool.ReservationType_STATIC, respoolConfig.GetResources()[0].Type)
+	s.EqualValues(pb_respool.ReservationType_STATIC, respoolConfig.GetResources()[1].Type)
+	s.EqualValues(pb_respool.ReservationType_STATIC, respoolConfig.GetResources()[2].Type)
+	s.EqualValues(pb_respool.ReservationType_STATIC, respoolConfig.GetResources()[3].Type)
+}
+
 func (s *resPoolHandlerTestSuite) TestCreateResourcePoolValidationError() {
 	mockResourcePoolName := "respool101"
 	mockResourcePoolConfig := &pb_respool.ResourcePoolConfig{
@@ -314,6 +419,7 @@ func (s *resPoolHandlerTestSuite) TestCreateResourcePoolValidationError() {
 				Limit:       1,
 				Share:       1,
 				Kind:        "cpu",
+				Type:        pb_respool.ReservationType_ELASTIC,
 			},
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
@@ -346,6 +452,7 @@ func (s *resPoolHandlerTestSuite) TestCreateResourcePoolAlreadyExistsError() {
 				Share:       1,
 				Limit:       1,
 				Reservation: 1,
+				Type:        pb_respool.ReservationType_ELASTIC,
 			},
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
@@ -389,6 +496,7 @@ func (s *resPoolHandlerTestSuite) TestUpdateResourcePool() {
 				Limit:       1,
 				Share:       1,
 				Kind:        "cpu",
+				Type:        pb_respool.ReservationType_ELASTIC,
 			},
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
@@ -430,6 +538,7 @@ func (s *resPoolHandlerTestSuite) TestUpdateResourcePoolValidationError() {
 				Limit:       1,
 				Share:       1,
 				Kind:        "cpu",
+				Type:        pb_respool.ReservationType_ELASTIC,
 			},
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,
@@ -466,6 +575,7 @@ func (s *resPoolHandlerTestSuite) TestUpdateResourcePoolNotExistsError() {
 				Share:       1,
 				Limit:       1,
 				Reservation: 0,
+				Type:        pb_respool.ReservationType_ELASTIC,
 			},
 		},
 		Policy: pb_respool.SchedulingPolicy_PriorityFIFO,

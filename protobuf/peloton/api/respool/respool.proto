@@ -49,13 +49,40 @@ message ResourceConfig {
   // Share on the resource pool
   double share = 4;
 
+  // ReservationType indicates the the type of reservation
+  // There are two kind of reservation
+  // 1. elastic
+  // 2. static
+  ReservationType type = 5;
+}
+
+/**
+  * ReservationType indicates reservation type for the resourcepool
+  */
+enum ReservationType {
+  UNKNOWN_TYPE = 0;
+
+  // elastic reservation enables resource pool to be elastic
+  // in reservation , which means other resource pool
+  // can  take resources from this resource pool as well
+  // as this resource pool also can take resources from
+  // any other resource pool. This is the by default behavior
+  // for the resource pool
+  ELASTIC = 1;
+
+  // static reservation enables resource pool to be static
+  // in reservation , which means no other resource pool
+  // can take resources from this resource pool as well
+  // as this resource pool also can not take resources from
+  // any other resource pool. By default value for this is false
+  // which means all the resource pools are elastic in nature.
+  STATIC = 2;
 }
 
 /**
   * Scheduling policy for Resource Pool.
   */
 enum SchedulingPolicy {
-  // TODO: We need to investigate why yarpc is ommiting value 0
   UNKNOWN = 0;
 
   // This scheduling policy will return item for highest priority in FIFO order
