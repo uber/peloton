@@ -68,6 +68,11 @@ type Job interface {
 	// a job specific structure.
 	// JobRuntimeUpdater updates the runtime of the job based on the task states
 	JobRuntimeUpdater(ctx context.Context) (bool, error)
+
+	// TODO EvaluateMaxRunningInstanceSLA needs to be moved away from cache into
+	// a specific job actions structure.
+	// EvaluateMaxRunningInstanceSLA evaluates maximum running instances job SLA.
+	EvaluateMaxRunningInstancesSLA(ctx context.Context) (bool, error)
 }
 
 func newJob(id *peloton.JobID, m *manager) *job {

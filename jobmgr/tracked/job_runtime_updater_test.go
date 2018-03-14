@@ -428,6 +428,10 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 		GetJobConfig(gomock.Any(), j.id).
 		Return(&jobConfig, nil)
 
+	jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), j.id).
+		Return(&jobRuntime, nil)
+
 	taskStore.EXPECT().
 		GetTaskIDsForJobAndState(gomock.Any(), j.id, pb_task.TaskState_INITIALIZED.String()).
 		Return(initializedTasks, nil)
@@ -455,6 +459,9 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 		Return(nil)
 
 	reschedule, err := j.JobRuntimeUpdater(context.Background())
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
+	reschedule, err = j.EvaluateMaxRunningInstancesSLA(context.Background())
 	assert.False(t, reschedule)
 	assert.NoError(t, err)
 }

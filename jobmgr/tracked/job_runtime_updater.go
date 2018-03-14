@@ -58,17 +58,35 @@ func formatTime(timestamp float64, layout string) string {
 	return time.Unix(seconds, nanoSec).UTC().Format(layout)
 }
 
-func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, maxRunningInstances uint32) error {
-	if runtime.GetGoalState() == pb_job.JobState_KILLED {
-		return nil
-	}
-
+// EvaluateMaxRunningInstancesSLA evaluates the maximum running instances job SLA
+// and determines instances to start if any. Returns true in the boolean
+// if it needs to be run again and error if any.
+func (j *job) EvaluateMaxRunningInstancesSLA(ctx context.Context) (bool, error) {
+	// TODO SLA is stored in cache. Fetch from cache instead of DB.
 	jobConfig, err := j.m.jobStore.GetJobConfig(ctx, j.ID())
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", j.ID().GetValue()).
 			Error("failed to get job config in start instances")
-		return err
+		return true, err
+	}
+
+	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
+	if maxRunningInstances == 0 {
+		return false, nil
+	}
+
+	runtime, err := j.m.jobStore.GetJobRuntime(ctx, j.ID())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", j.ID().GetValue()).
+			Error("failed to get job runtime during start instances")
+		j.m.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
+		return true, err
+	}
+
+	if runtime.GetGoalState() == pb_job.JobState_KILLED {
+		return false, nil
 	}
 
 	stateCounts := runtime.GetTaskStats()
@@ -90,7 +108,7 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 		log.WithError(err).
 			WithField("job_id", j.ID().GetValue()).
 			Error("failed to fetch initialized task list")
-		return err
+		return true, err
 	}
 
 	var tasks []*pb_task.TaskInfo
@@ -116,6 +134,10 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 		}
 
 		t := j.GetTask(instID)
+		if t == nil {
+			// Add the task to cache if not found.
+			t = j.setTask(instID, taskRuntime)
+		}
 		if t.IsScheduled() {
 			continue
 		}
@@ -150,7 +172,11 @@ func (j *job) startInstances(ctx context.Context, runtime *pb_job.RuntimeInfo, m
 		j.m.taskScheduler.schedule(task, time.Now())
 		tasksToStart--
 	}*/
-	return j.sendTasksToResMgr(ctx, tasks, jobConfig)
+	err = j.sendTasksToResMgr(ctx, tasks, jobConfig)
+	if err != nil {
+		return true, err
+	}
+	return false, nil
 }
 
 // determineJobRuntimeState determines the job state based on current
@@ -319,13 +345,6 @@ func (j *job) JobRuntimeUpdater(ctx context.Context) (bool, error) {
 			Error("failed to update jobRuntime in runtime updater")
 		j.m.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
 		return true, err
-	}
-
-	if jConfig.sla.GetMaximumRunningInstances() > 0 {
-		err = j.startInstances(ctx, jobRuntime, jConfig.sla.GetMaximumRunningInstances())
-		if err != nil {
-			return true, err
-		}
 	}
 
 	if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) {

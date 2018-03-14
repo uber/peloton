@@ -92,9 +92,17 @@ func (e *engine) runJobAction(j tracked.Job, action tracked.JobAction) (bool, bo
 			Error("failed to execute job goalstate action")
 	} else {
 		var runtimeReschedule bool
+		var startReschedule bool
 		runtimeReschedule, err = j.JobRuntimeUpdater(context.Background())
 		if runtimeReschedule == true {
 			reschedule = true
+		}
+		// If run time updater runs with no error, then evaluate job SLA, else do nothing.
+		if err == nil {
+			startReschedule, err = j.EvaluateMaxRunningInstancesSLA(context.Background())
+			if startReschedule == true {
+				reschedule = true
+			}
 		}
 	}
 

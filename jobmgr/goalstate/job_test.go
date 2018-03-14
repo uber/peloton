@@ -1,6 +1,7 @@
 package goalstate
 
 import (
+	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -71,8 +72,17 @@ func TestEngineProcessJob(t *testing.T) {
 	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
 	jobMock.EXPECT().RunAction(gomock.Any(), tracked.JobCreateTasks).Return(false, nil)
 	jobMock.EXPECT().JobRuntimeUpdater(gomock.Any()).Return(false, nil)
+	jobMock.EXPECT().EvaluateMaxRunningInstancesSLA(gomock.Any()).Return(false, nil)
 	jobMock.EXPECT().ClearJobRuntime()
 	jobMock.EXPECT().SetLastDelay(gomock.Any()).Return()
+	managerMock.EXPECT().ScheduleJob(jobMock, gomock.Any())
+	e.processJob(jobMock)
+
+	// Simulate runtime updater returning a fake error.
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	jobMock.EXPECT().RunAction(gomock.Any(), tracked.JobCreateTasks).Return(false, nil)
+	jobMock.EXPECT().JobRuntimeUpdater(gomock.Any()).Return(false, fmt.Errorf("fake error"))
+	jobMock.EXPECT().ClearJobRuntime()
 	managerMock.EXPECT().ScheduleJob(jobMock, gomock.Any())
 	e.processJob(jobMock)
 }
