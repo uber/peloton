@@ -287,6 +287,8 @@ func (suite *jobActionsTestSuite) TestClient_JobQueryAction() {
 	}).Return(nil, nil)
 
 	suite.NoError(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", "test_owner", "test_name", 10, 100, 0, "creation_time", "DESC"))
+	suite.Error(c.JobQueryAction("key=value1,value2", "", "keyword,", "RUNNING", "test_owner", "test_name", 10, 100, 0, "creation_time", "DESC"))
+	suite.Error(c.JobQueryAction("key=value", "", "keyword,", "RUNNING", "test_owner", "test_name", 10, 100, 0, "creation_time", "RANDOM"))
 }
 
 func (suite *jobActionsTestSuite) TestClient_JobGetAction() {

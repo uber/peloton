@@ -23,9 +23,9 @@ const (
 )
 
 const (
-	jobQueryFormatHeader = "ID\tName\tOwner\tState\tCreate Time\tInstance Total\t" +
-		"Instance Running\t\n"
-	jobQueryFormatBody = "%s\t%s\t%s\t%s\t%s\t%d\t%d\t\n"
+	jobSummaryFormatHeader = "ID\tName\tOwner\tState\tCreation Time\tCompletion Time\tTotal\t" +
+		"Running\tSucceeded\tFailed\tKilled\t\n"
+	jobSummaryFormatBody = "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t\n"
 )
 
 // JobCreateAction is the action for creating a job
@@ -337,42 +337,35 @@ func printJobStatusResponse(r *job.GetResponse, jsonFormat bool) {
 	tabWriter.Flush()
 }
 
-// TODO (adityacb): remove printJobQueryRecord after fixing T1554507
-func printJobQueryRecord(j *job.JobInfo) {
-	startTime, err := time.Parse(time.RFC3339Nano, j.GetRuntime().GetCreationTime())
-	startTimeStr := ""
-	if err == nil {
-		startTimeStr = startTime.Format(time.RFC3339)
-	}
-	fmt.Fprintf(
-		tabWriter,
-		jobQueryFormatBody,
-		j.GetId().GetValue(),
-		j.GetConfig().GetName(),
-		j.GetConfig().GetOwningTeam(),
-		j.GetRuntime().GetState().String(),
-		startTimeStr,
-		j.GetConfig().GetInstanceCount(),
-		j.GetRuntime().GetTaskStats()["RUNNING"],
-	)
-}
-
 func printJobQueryResult(j *job.JobSummary) {
-	startTime, err := time.Parse(time.RFC3339Nano, j.GetRuntime().GetCreationTime())
-	startTimeStr := ""
+	creationTime, err := time.Parse(time.RFC3339Nano, j.GetRuntime().GetCreationTime())
+	creationTimeStr := ""
 	if err == nil {
-		startTimeStr = startTime.Format(time.RFC3339)
+		creationTimeStr = creationTime.Format(time.RFC3339)
 	}
+	completionTime, err := time.Parse(time.RFC3339Nano, j.GetRuntime().GetCompletionTime())
+	completionTimeStr := ""
+	if err == nil {
+		completionTimeStr = completionTime.Format(time.RFC3339)
+	} else {
+		// completionTime will be empty for active jobs
+		completionTimeStr = "--"
+	}
+
 	fmt.Fprintf(
 		tabWriter,
-		jobQueryFormatBody,
+		jobSummaryFormatBody,
 		j.GetId().GetValue(),
 		j.GetName(),
 		j.GetOwningTeam(),
 		j.GetRuntime().GetState().String(),
-		startTimeStr,
+		creationTimeStr,
+		completionTimeStr,
 		j.GetInstanceCount(),
 		j.GetRuntime().GetTaskStats()["RUNNING"],
+		j.GetRuntime().GetTaskStats()["SUCCEEDED"],
+		j.GetRuntime().GetTaskStats()["FAILED"],
+		j.GetRuntime().GetTaskStats()["KILLED"],
 	)
 }
 
@@ -383,16 +376,10 @@ func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
 		if r.GetError() != nil {
 			fmt.Fprintf(tabWriter, "Error: %v\n", r.GetError().String())
 		} else {
-			records := r.GetRecords()
 			results := r.GetResults()
-			if len(records) != 0 {
-				fmt.Fprintf(tabWriter, jobQueryFormatHeader)
-				for _, k := range records {
-					printJobQueryRecord(k)
-				}
-			} else if len(results) != 0 {
-				fmt.Fprintf(tabWriter, jobQueryFormatHeader)
-				for _, k := range r.GetResults() {
+			if len(results) != 0 {
+				fmt.Fprintf(tabWriter, jobSummaryFormatHeader)
+				for _, k := range results {
 					printJobQueryResult(k)
 				}
 			} else {
