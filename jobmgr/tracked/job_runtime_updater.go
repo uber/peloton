@@ -97,9 +97,18 @@ func (j *job) EvaluateMaxRunningInstancesSLA(ctx context.Context) (bool, error) 
 	}
 
 	if currentScheduledInstances >= maxRunningInstances {
+		if currentScheduledInstances > maxRunningInstances {
+			log.WithFields(log.Fields{
+				"current_scheduled_tasks": currentScheduledInstances,
+				"max_running_instances":   maxRunningInstances,
+				"job_id":                  j.ID().GetValue(),
+			}).Info("scheduled instances exceed max running instances")
+			j.m.mtx.jobMetrics.JobMaxRunningInstancesExcceeding.Inc(int64(currentScheduledInstances - maxRunningInstances))
+		}
 		log.WithField("current_scheduled_tasks", currentScheduledInstances).
 			WithField("job_id", j.ID().GetValue()).
 			Debug("no instances to start")
+		return false, nil
 	}
 	tasksToStart := maxRunningInstances - currentScheduledInstances
 
@@ -111,9 +120,17 @@ func (j *job) EvaluateMaxRunningInstancesSLA(ctx context.Context) (bool, error) 
 		return true, err
 	}
 
+	log.WithFields(log.Fields{
+		"job_id":                      j.ID().GetValue(),
+		"max_running_instances":       maxRunningInstances,
+		"current_scheduled_instances": currentScheduledInstances,
+		"length_initialized_tasks":    len(initializedTasks),
+		"tasks_to_start":              tasksToStart,
+	}).Debug("find tasks to start")
+
 	var tasks []*pb_task.TaskInfo
 	for _, instID := range initializedTasks {
-		if tasksToStart == 0 {
+		if tasksToStart <= 0 {
 			break
 		}
 

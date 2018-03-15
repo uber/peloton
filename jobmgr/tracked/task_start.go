@@ -3,6 +3,7 @@ package tracked
 import (
 	"context"
 	"fmt"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -72,6 +73,11 @@ func (t *task) start(ctx context.Context) error {
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, t.job.id)
 	if err != nil {
 		return fmt.Errorf("job config not found for %v", t.job.id)
+	}
+
+	if jobConfig.GetSla().GetMaximumRunningInstances() > 0 {
+		t.job.m.ScheduleJob(t.job, time.Now())
+		return nil
 	}
 
 	taskID := &peloton.TaskID{

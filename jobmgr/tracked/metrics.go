@@ -20,8 +20,9 @@ type JobMetrics struct {
 	JobKilled    tally.Counter
 	JobFailed    tally.Counter
 
-	JobRuntimeUpdated      tally.Counter
-	JobRuntimeUpdateFailed tally.Counter
+	JobRuntimeUpdated                tally.Counter
+	JobRuntimeUpdateFailed           tally.Counter
+	JobMaxRunningInstancesExcceeding tally.Counter
 }
 
 // TaskMetrics contains all counters to track task metrics
@@ -61,14 +62,15 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	managerScope := scope.SubScope("manager")
 
 	jobMetrics := &JobMetrics{
-		JobCreate:              jobScope.Counter("recovered"),
-		JobCreateFailed:        jobScope.Counter("recover_failed"),
-		JobRecoveryDuration:    jobScope.Gauge("recovery_duration"),
-		JobSucceeded:           jobScope.Counter("job_succeeded"),
-		JobKilled:              jobScope.Counter("job_killed"),
-		JobFailed:              jobScope.Counter("job_failed"),
-		JobRuntimeUpdated:      jobScope.Counter("runtime_update_success"),
-		JobRuntimeUpdateFailed: jobScope.Counter("runtime_update_fail"),
+		JobCreate:                        jobScope.Counter("recovered"),
+		JobCreateFailed:                  jobScope.Counter("recover_failed"),
+		JobRecoveryDuration:              jobScope.Gauge("recovery_duration"),
+		JobSucceeded:                     jobScope.Counter("job_succeeded"),
+		JobKilled:                        jobScope.Counter("job_killed"),
+		JobFailed:                        jobScope.Counter("job_failed"),
+		JobRuntimeUpdated:                jobScope.Counter("runtime_update_success"),
+		JobRuntimeUpdateFailed:           jobScope.Counter("runtime_update_fail"),
+		JobMaxRunningInstancesExcceeding: jobScope.Counter("max_running_instances_exceeded"),
 	}
 
 	taskMetrics := &TaskMetrics{

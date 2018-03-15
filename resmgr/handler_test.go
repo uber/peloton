@@ -422,7 +422,7 @@ func (s *HandlerTestSuite) TestRequeue() {
 	}
 	enqResp, err = s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
-	s.NotNil(enqResp.GetError())
+	s.Nil(enqResp.GetError())
 
 	rmtask = s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	s.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)

@@ -214,13 +214,15 @@ func (h *ServiceHandler) enqueueGang(
 	for _, task := range gang.GetTasks() {
 		err := h.requeueTask(task)
 		if err != nil {
-			failed = append(
-				failed,
-				&resmgrsvc.EnqueueGangsFailure_FailedTask{
-					Task:    task,
-					Message: err.Error(),
-				},
-			)
+			if err != errEnqueuedAgain {
+				failed = append(
+					failed,
+					&resmgrsvc.EnqueueGangsFailure_FailedTask{
+						Task:    task,
+						Message: err.Error(),
+					},
+				)
+			}
 			continue
 		}
 

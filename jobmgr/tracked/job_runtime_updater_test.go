@@ -375,6 +375,7 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 	j.m.jobs[j.id.GetValue()] = j
 
 	instanceCount := uint32(100)
+	maxRunningInstances := uint32(10)
 
 	jobConfig := pb_job.JobConfig{
 		OwningTeam:    "team6",
@@ -382,7 +383,7 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 		InstanceCount: instanceCount,
 		Type:          pb_job.JobType_BATCH,
 		Sla: &pb_job.SlaConfig{
-			MaximumRunningInstances: 10,
+			MaximumRunningInstances: maxRunningInstances,
 		},
 	}
 
@@ -461,6 +462,46 @@ func TestJobUpdateJobWithMaxRunningInstances(t *testing.T) {
 	reschedule, err := j.JobRuntimeUpdater(context.Background())
 	assert.False(t, reschedule)
 	assert.NoError(t, err)
+	reschedule, err = j.EvaluateMaxRunningInstancesSLA(context.Background())
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
+
+	// Simulate when max running instances are already running
+	addTasks(j, 0, maxRunningInstances, pb_task.TaskState_RUNNING)
+	addTasks(j, maxRunningInstances, instanceCount, pb_task.TaskState_INITIALIZED)
+	stateCounts = make(map[string]uint32)
+	stateCounts[pb_task.TaskState_INITIALIZED.String()] = instanceCount - maxRunningInstances
+	stateCounts[pb_task.TaskState_RUNNING.String()] = maxRunningInstances
+	jobRuntime.TaskStats = stateCounts
+
+	jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), j.id).
+		Return(&jobConfig, nil)
+
+	jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), j.id).
+		Return(&jobRuntime, nil)
+
+	reschedule, err = j.EvaluateMaxRunningInstancesSLA(context.Background())
+	assert.False(t, reschedule)
+	assert.NoError(t, err)
+
+	// Simulate error when scheduled instances is greater than maximum running instances
+	addTasks(j, 0, instanceCount/2, pb_task.TaskState_INITIALIZED)
+	addTasks(j, instanceCount/2, instanceCount, pb_task.TaskState_RUNNING)
+	stateCounts = make(map[string]uint32)
+	stateCounts[pb_task.TaskState_INITIALIZED.String()] = instanceCount / 2
+	stateCounts[pb_task.TaskState_RUNNING.String()] = instanceCount / 2
+	jobRuntime.TaskStats = stateCounts
+
+	jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), j.id).
+		Return(&jobConfig, nil)
+
+	jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), j.id).
+		Return(&jobRuntime, nil)
+
 	reschedule, err = j.EvaluateMaxRunningInstancesSLA(context.Background())
 	assert.False(t, reschedule)
 	assert.NoError(t, err)
