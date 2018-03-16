@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
+	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
 	r_queue "code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/respool"
@@ -249,7 +250,7 @@ func (h *ServiceHandler) enqueueGang(
 
 		if h.rmTracker.GetTask(task.Id) != nil {
 			err = h.rmTracker.GetTask(task.Id).TransitTo(
-				t.TaskState_PENDING.String(), "enqueue gangs called")
+				t.TaskState_PENDING.String(), statemachine.WithReason("enqueue gangs called"))
 			if err != nil {
 				log.Error(err)
 			}
@@ -294,7 +295,7 @@ func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task, reason s
 	}
 	if currentTaskState == t.TaskState_PLACING {
 		// Transitioning back to Ready State
-		rmTask.TransitTo(t.TaskState_READY.String(), reason)
+		rmTask.TransitTo(t.TaskState_READY.String(), statemachine.WithReason("Previous placement timed out due to "+reason))
 		// Adding to ready Queue
 		var tasks []*resmgr.Task
 		gang := &resmgrsvc.Gang{
@@ -335,7 +336,7 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) error {
 		// Updating the New Mesos Task ID
 		rmTask.Task().TaskId = requeuedTask.TaskId
 		// Transitioning back to Ready State
-		rmTask.TransitTo(t.TaskState_READY.String(), "task updated with new mesos task id")
+		rmTask.TransitTo(t.TaskState_READY.String(), statemachine.WithReason("task updated with new mesos task id"))
 		// Adding to ready Queue
 		var tasks []*resmgr.Task
 		gang := &resmgrsvc.Gang{
@@ -380,7 +381,7 @@ func (h *ServiceHandler) DequeueGangs(
 			// Moving task to Placing state
 			if h.rmTracker.GetTask(task.Id) != nil {
 				err = h.rmTracker.GetTask(task.Id).TransitTo(
-					t.TaskState_PLACING.String(), "dequeued with gang for placement")
+					t.TaskState_PLACING.String())
 				if err != nil {
 					log.WithError(err).WithField(
 						"task_id", task.Id.Value).
@@ -578,7 +579,7 @@ func (h *ServiceHandler) transitTasksInPlacement(
 			invalidTasks[taskID.Value] = taskID
 
 		} else {
-			err := rmTask.TransitTo(newState.String(), reason)
+			err := rmTask.TransitTo(newState.String(), statemachine.WithReason(reason))
 			if err != nil {
 				log.WithError(errors.WithStack(err)).
 					WithField("task_id", taskID.GetValue()).
@@ -651,7 +652,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	}
 
 	if taskState == t.TaskState_RUNNING {
-		err = rmTask.TransitTo(t.TaskState_RUNNING.String(), "received running state from mesos")
+		err = rmTask.TransitTo(t.TaskState_RUNNING.String(), statemachine.WithReason("received running state from mesos"))
 		if err != nil {
 			log.WithError(errors.WithStack(err)).
 				WithField("task_id", ptID).
@@ -910,7 +911,7 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 		// Transit task state machine to PREEMPTING
 		if rmTask := h.rmTracker.GetTask(task.Id); rmTask != nil {
 			err = rmTask.TransitTo(
-				t.TaskState_PREEMPTING.String(), "preemption triggered")
+				t.TaskState_PREEMPTING.String(), statemachine.WithReason("preemption triggered"))
 			if err != nil {
 				// the task could have moved from RUNNING state
 				log.WithError(err).
@@ -954,7 +955,7 @@ func (h *ServiceHandler) MarkTasksLaunched(
 			continue
 		}
 
-		err := task.TransitTo(t.TaskState_LAUNCHED.String(), "received task launch")
+		err := task.TransitTo(t.TaskState_LAUNCHED.String(), statemachine.WithReason("received task launch"))
 		if err != nil {
 			log.WithError(err).
 				WithField("task_id", taskID).

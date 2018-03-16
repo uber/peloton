@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common/queue"
+	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
@@ -297,7 +298,7 @@ func (p *preemptor) evictNonRunningTask(rmTask *task.RMTask) error {
 	}
 
 	// Transit task to PENDING
-	if err := trackedTask.TransitTo(peloton_task.TaskState_PENDING.String(), "non-running task evicted"); err != nil {
+	if err := trackedTask.TransitTo(peloton_task.TaskState_PENDING.String(), statemachine.WithReason("non-running task evicted")); err != nil {
 		// The task could have transited to another state
 		log.
 			WithField("task_id", t.Id.Value).

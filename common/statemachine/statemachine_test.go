@@ -125,49 +125,49 @@ func (suite *StateMachineTestSuite) callbackTimeout(t *Transition) error {
 }
 
 func (suite *StateMachineTestSuite) TestCallbacksRunning() {
-	err := suite.stateMachine.TransitTo("running", "move to running")
+	err := suite.stateMachine.TransitTo("running", WithReason("move to running"))
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "running")
 	suite.Equal(suite.stateMachine.GetReason(), "move to running")
-	err = suite.stateMachine.TransitTo("killed", "")
+	err = suite.stateMachine.TransitTo("killed")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
 }
 
 func (suite *StateMachineTestSuite) TestCallbacksKilled() {
-	err := suite.stateMachine.TransitTo("killed", "")
+	err := suite.stateMachine.TransitTo("killed")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
 }
 
 func (suite *StateMachineTestSuite) TestInvalidTransition() {
-	err := suite.stateMachine.TransitTo("killed", "")
+	err := suite.stateMachine.TransitTo("killed")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
-	err = suite.stateMachine.TransitTo("initialized", "")
+	err = suite.stateMachine.TransitTo("initialized", WithReason(""))
 	suite.Error(err)
 }
 
 func (suite *StateMachineTestSuite) TestTransitionWithInTransition() {
-	err := suite.stateMachine.TransitTo("running", "")
+	err := suite.stateMachine.TransitTo("running")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "running")
 	// Previous transition is not finished yet, should have error
-	err = suite.stateMachine.TransitTo("succeeded", "")
+	err = suite.stateMachine.TransitTo("succeeded")
 	suite.Error(err)
 }
 
 func (suite *StateMachineTestSuite) TestTransitionSameState() {
-	err := suite.stateMachine.TransitTo("running", "")
+	err := suite.stateMachine.TransitTo("running")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "running")
 	// Transition to same state
-	err = suite.stateMachine.TransitTo("running", "")
+	err = suite.stateMachine.TransitTo("running")
 	suite.Error(err)
 }
 
 func (suite *StateMachineTestSuite) TestTimeOut() {
-	err := suite.stateMachine.TransitTo("killed", "")
+	err := suite.stateMachine.TransitTo("killed")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
 	time.Sleep(3 * time.Second)
@@ -175,16 +175,16 @@ func (suite *StateMachineTestSuite) TestTimeOut() {
 }
 
 func (suite *StateMachineTestSuite) TestCancelTimeOutTransition() {
-	err := suite.stateMachine.TransitTo("placing", "")
+	err := suite.stateMachine.TransitTo("placing")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "placing")
-	err = suite.stateMachine.TransitTo("succeeded", "")
+	err = suite.stateMachine.TransitTo("succeeded")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "succeeded")
 }
 
 func (suite *StateMachineTestSuite) TestTerminateStateMachine() {
-	err := suite.stateMachine.TransitTo("killed", "")
+	err := suite.stateMachine.TransitTo("killed")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
 	suite.stateMachine.Terminate()

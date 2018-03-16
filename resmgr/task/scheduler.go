@@ -15,7 +15,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
+	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/common"
+
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -235,7 +237,7 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 		if s.rmTaskTracker.GetTask(task.Id) != nil {
 			if s.rmTaskTracker.GetTask(task.Id).GetCurrentState() == fromState {
 				err := s.rmTaskTracker.GetTask(task.Id).
-					TransitTo(toState.String(), reason)
+					TransitTo(toState.String(), statemachine.WithReason(reason))
 				if err != nil {
 					isInvalidTaskInGang = true
 					log.WithError(errors.WithStack(err)).Errorf("error while "+

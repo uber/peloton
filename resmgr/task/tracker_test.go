@@ -125,9 +125,9 @@ func (suite *TrackerTestSuite) TestTasksByHosts() {
 
 func (suite *TrackerTestSuite) TestTransition() {
 	rmTask := suite.tracker.GetTask(suite.task.Id)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_READY.String(), "")
+	err = rmTask.TransitTo(task.TaskState_READY.String())
 	suite.NoError(err)
 }
 
@@ -193,7 +193,7 @@ func (suite *TrackerTestSuite) TestGetTaskStates() {
 	suite.Equal(0, len(result))
 
 	rmTask := suite.tracker.GetTask(suite.task.Id)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
 
 	states := make([]string, 2)
@@ -254,7 +254,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 
-	err := rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+	err := rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
 
 	deleteTask = &peloton.TaskID{Value: taskID}
@@ -275,10 +275,10 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 
-	err = rmTask.TransitTo(task.TaskState_PENDING.String(), "")
+	err = rmTask.TransitTo(task.TaskState_PENDING.String())
 	suite.NoError(err)
 
-	err = rmTask.TransitTo(task.TaskState_READY.String(), "")
+	err = rmTask.TransitTo(task.TaskState_READY.String())
 	suite.NoError(err)
 
 	deleteTask = &peloton.TaskID{Value: taskID}
@@ -308,7 +308,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 	suite.NotNil(rmTask)
 
 	// transit to a timeout state
-	rmTask.TransitTo(task.TaskState_LAUNCHING.String(), "")
+	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
 	suite.tracker.MarkItDone(t)
 

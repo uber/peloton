@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	cmn_recovery "code.uber.internal/infra/peloton/common/recovery"
+	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/storage"
@@ -284,10 +285,10 @@ func (r *recoveryHandler) addTaskToTracker(
 
 	if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
 		err = rmtask.GetTracker().GetTask(rmTask.Id).
-			TransitTo(task.TaskState_RUNNING.String(), "task recovered into running state")
+			TransitTo(task.TaskState_RUNNING.String(), statemachine.WithReason("task recovered into running state"))
 	} else if taskInfo.GetRuntime().GetState() == task.TaskState_LAUNCHED {
 		err = rmtask.GetTracker().GetTask(rmTask.Id).
-			TransitTo(task.TaskState_LAUNCHED.String(), "task recovered into launched state")
+			TransitTo(task.TaskState_LAUNCHED.String(), statemachine.WithReason("task recovered into launched state"))
 	}
 	if err != nil {
 		return errors.Wrap(err, "transition failed in task state machine")

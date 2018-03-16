@@ -44,12 +44,22 @@ type TimeoutRule struct {
 // Callback is the type for callback function
 type Callback func(*Transition) error
 
+// Option is the option passed to TransitTo to trigger state machine transition
+type Option func(*statemachine)
+
+// WithReason is an Option and is used to provide the state transition reason
+func WithReason(reason string) Option {
+	return func(sm *statemachine) {
+		sm.reason = reason
+	}
+}
+
 // StateMachine is the interface wrapping around the statemachine Object
 // Using to not expose full object
 type StateMachine interface {
 
 	// TransitTo function transits to desired state
-	TransitTo(to State, reason string, args ...interface{}) error
+	TransitTo(to State, options ...Option) error
 
 	// GetCurrentState returns the current state of State Machine
 	GetCurrentState() State
@@ -166,7 +176,7 @@ func (sm *statemachine) validateRule(rule *Rule) error {
 
 // TransitTo is the function which clients will call to transition from one state to other
 // this also calls the callbacks after the valid transition is done
-func (sm *statemachine) TransitTo(to State, reason string, args ...interface{}) error {
+func (sm *statemachine) TransitTo(to State, options ...Option) error {
 	// Locking the statemachine to synchronize state changes
 	sm.Lock()
 	defer sm.Unlock()
@@ -182,7 +192,7 @@ func (sm *statemachine) TransitTo(to State, reason string, args ...interface{}) 
 		StateMachine: sm,
 		From:         sm.current,
 		To:           to,
-		Params:       args,
+		Params:       nil,
 	}
 
 	// Storing values for reverseTransition
@@ -202,7 +212,10 @@ func (sm *statemachine) TransitTo(to State, reason string, args ...interface{}) 
 	// Doing actual transition
 	sm.current = to
 	sm.lastUpdatedTime = time.Now()
-	sm.reason = reason
+	// Update options
+	for _, option := range options {
+		option(sm)
+	}
 
 	// invoking callback function
 	if sm.rules[curState].Callback != nil {

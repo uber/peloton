@@ -208,8 +208,8 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 }
 
 // TransitTo transitions to the target state
-func (rmTask *RMTask) TransitTo(stateTo string, reason string, args ...interface{}) error {
-	err := rmTask.stateMachine.TransitTo(state.State(stateTo), reason, args)
+func (rmTask *RMTask) TransitTo(stateTo string, options ...state.Option) error {
+	err := rmTask.stateMachine.TransitTo(state.State(stateTo), options...)
 	if err == nil {
 		GetTracker().UpdateCounters(rmTask.GetCurrentState().String(), stateTo)
 	}
