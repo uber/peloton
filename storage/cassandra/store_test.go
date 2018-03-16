@@ -540,6 +540,12 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummary() {
 	suite.Equal(1, int(total))
 	suite.Equal("GetJobSummary", summary[0].GetName())
 
+	// query with spec = nil should not result in error, it should result in 0 entries.
+	_, summary, total, err = jobStore.QueryJobs(context.Background(), nil, nil, true)
+	suite.NoError(err)
+	suite.Equal(0, len(summary))
+	suite.Equal(0, int(total))
+
 	suite.NoError(jobStore.DeleteJob(context.Background(), &jobID))
 }
 

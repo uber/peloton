@@ -31,15 +31,18 @@ class IntegrationTestConfig(object):
 
 
 class Job(object):
-    def __init__(self, job_file='test_job.yaml', client=None, config=None):
+    def __init__(self, job_file='test_job.yaml',
+                 client=None,
+                 config=None,
+                 job_config=None):
 
         self.config = config or IntegrationTestConfig()
         self.client = client or Client()
         self.job_id = None
-
-        job_config_dump = load_test_config(job_file)
-        job_config = job.JobConfig()
-        json_format.ParseDict(job_config_dump, job_config)
+        if job_config is None:
+            job_config_dump = load_test_config(job_file)
+            job_config = job.JobConfig()
+            json_format.ParseDict(job_config_dump, job_config)
         self.job_config = job_config
 
     def create_per_task_configs(self):

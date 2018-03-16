@@ -534,6 +534,10 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	// TODO: investigate if there are any golang library that can build lucene query
 	var clauses luceneClauses
 
+	if spec == nil {
+		return nil, nil, 0, nil
+	}
+
 	// Labels field must contain value of the specified labels
 	for _, label := range spec.GetLabels() {
 		clauses = append(clauses, fmt.Sprintf(`{type: "contains", field:"labels", values:%s}`, strconv.Quote(label.Value)))
@@ -566,9 +570,9 @@ func (s *Store) QueryJobs(ctx context.Context, respoolID *peloton.ResourcePoolID
 	// TODO (adityacb): change this once we have query spec support
 	// a custom time range
 	queryTerminalStates := false
-	if len(spec.JobStates) > 0 {
+	if len(spec.GetJobStates()) > 0 {
 		values := ""
-		for i, s := range spec.JobStates {
+		for i, s := range spec.GetJobStates() {
 			if util.IsPelotonJobStateTerminal(s) {
 				queryTerminalStates = true
 			}
