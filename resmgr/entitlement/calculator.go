@@ -15,7 +15,7 @@ import (
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	res "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	pb_res "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -189,8 +189,13 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 	// This is the first phase for assignment
 	entitlement = c.calculateAssignmentsFromReservation(resp, demands, entitlement, assignments, totalShare)
 
-	// This is second and third phase for distributing remaining resources
+	// This is second phase for distributing remaining resources
 	c.distributeRemainingResources(resp, demands, entitlement, assignments, totalShare)
+
+	// This is the third phase for the entitlement cycle. here after all the
+	// assigmenets based on demand, rest of the resources are being
+	// distributed in all the resource pools.
+	c.distributeUnclaimedResources(resp, entitlement, assignments)
 
 	// Now setting entitlement for all the children and call
 	// for their children recursively
@@ -223,7 +228,9 @@ func (c *calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
 	// First Pass: In the first pass of children we get the demand recursively
 	// calculated And then compare with respool reservation and
 	// choose the min of these two
-	// assignment := min(demand,reservation)
+	// assignment := min(demand,reservation) if the resource type is ELASTIC.
+	// If the resourceType is Static then we need to make assignment to
+	// equal to reservation.
 	// We also measure the free entitlement by that we can distribute
 	// it with fair share. We also need to keep track of the total share
 	// of the kind of resources which demand is more then the resrevation
@@ -234,61 +241,83 @@ func (c *calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
 		assignment := new(scalar.Resources)
 		n := e.Value.(respool.ResPool)
 
-		// Demand is pending tasks + already allocated
-		demand := n.GetDemand()
-		allocation := n.GetTotalAllocatedResources()
-		demand = demand.Add(allocation)
-		demands[n.ID()] = demand
-		log.WithFields(log.Fields{
-			"respool_ID":   n.ID(),
-			"respool_name": n.Name(),
-			"demand":       demand,
-		}).Info("Demand for resource pool")
+		resConfigMap := n.Resources()
 
-		resConfig := n.Resources()
-		// Caping the demand with Limit for resource pool
-		// If demand is less then limit then we use demand for
-		// Entitlement calculation otherwise we use limit as demand
-		// to cap the allocation till limit.
-		limitedDemand := demand
-		for kind, res := range resConfig {
-			limitedDemand.Set(kind, math.Min(demand.Get(kind), res.GetLimit()))
-			log.WithFields(log.Fields{
-				"respool_ID":     n.ID(),
-				"respool_name":   n.Name(),
-				"kind":           kind,
-				"actual_demand":  demand.Get(kind),
-				"limit":          res.Limit,
-				"limited_demand": limitedDemand.Get(kind),
-			}).Info("Limited Demand for resource pool")
-		}
+		c.calculateDemandForRespool(n, demands)
 
-		// Setting the demand to cap at limit for entitlement calculation
-		demands[n.ID()] = limitedDemand
-
+		demand := demands[n.ID()]
 		// Now checking if demand is less then reservation or not
 		// Taking the assignement to the min(demand,reservation)
-		for kind, res := range resConfig {
-			assignment.Set(kind, math.Min(limitedDemand.Get(kind), res.Reservation))
-			if limitedDemand.Get(kind) > res.Reservation {
-				totalShare[kind] += res.Share
-				limitedDemand.Set(kind, limitedDemand.Get(kind)-res.Reservation)
+		for kind, cfg := range resConfigMap {
+			// Checking the reservation type of the resource pool
+			// If resource type is reservation type static then
+			// entitlement will always be greater than equal to
+			// reservation irrespective of the demand. Otherwise
+			// Based on the demand assignment := min(demand,reservation)
+			if cfg.Type == pb_res.ReservationType_STATIC {
+				assignment.Set(kind, cfg.Reservation)
 			} else {
-				limitedDemand.Set(kind, 0)
+				assignment.Set(kind, math.Min(demand.Get(kind), cfg.Reservation))
+			}
+			if demand.Get(kind) > cfg.Reservation {
+				totalShare[kind] += cfg.Share
+				demand.Set(kind, demand.Get(kind)-cfg.Reservation)
+			} else {
+				demand.Set(kind, 0)
 			}
 		}
 
 		entitlement = entitlement.Subtract(assignment)
 		assignments[n.ID()] = assignment
-		demands[n.ID()] = limitedDemand
+		demands[n.ID()] = demand
 		log.WithFields(log.Fields{
 			"respool":        n.Name(),
-			"limited_demand": limitedDemand,
+			"limited_demand": demand,
 			"assignment":     assignment,
 			"entitlement":    entitlement,
 		}).Debug("First pass completed for respool")
 	}
 	return entitlement
+}
+
+// calculateDemandForRespool calculates the demand based on number of
+// tasks waiting in the queue as well as current allocation.
+// This also caps the demand based on the limit of the resource pool
+// for that type of resource
+func (c *calculator) calculateDemandForRespool(n respool.ResPool,
+	demands map[string]*scalar.Resources,
+) {
+	// Demand is pending tasks + already allocated
+	demand := n.GetDemand()
+	allocation := n.GetTotalAllocatedResources()
+	demand = demand.Add(allocation)
+	demands[n.ID()] = demand
+	log.WithFields(log.Fields{
+		"respool_ID":   n.ID(),
+		"respool_name": n.Name(),
+		"demand":       demand,
+	}).Info("Demand for resource pool")
+
+	resConfig := n.Resources()
+	// Caping the demand with Limit for resource pool
+	// If demand is less then limit then we use demand for
+	// Entitlement calculation otherwise we use limit as demand
+	// to cap the allocation till limit.
+	limitedDemand := demand
+	for kind, res := range resConfig {
+		limitedDemand.Set(kind, math.Min(demand.Get(kind), res.GetLimit()))
+		log.WithFields(log.Fields{
+			"respool_ID":     n.ID(),
+			"respool_name":   n.Name(),
+			"kind":           kind,
+			"actual_demand":  demand.Get(kind),
+			"limit":          res.Limit,
+			"limited_demand": limitedDemand.Get(kind),
+		}).Info("Limited Demand for resource pool")
+	}
+
+	// Setting the demand to cap at limit for entitlement calculation
+	demands[n.ID()] = limitedDemand
 }
 
 // distributeRemainingResources distributes the remianing entitlement based
@@ -365,7 +394,23 @@ func (c *calculator) distributeRemainingResources(resp respool.ResPool,
 			*entitlement = remaining
 			totalShare[kind] = remainingShare
 		}
+	}
+}
 
+// distributeUnclaimedResources is the THIRD PHASE of the
+// entitlement calculation. Third phase is to distribute the
+// free resources in the cluster which is remaining after
+// distribution to all the resource pools which had demand.
+// This is in anticipation of respools can get some more workloads
+// in between two entitlement cycles
+func (c *calculator) distributeUnclaimedResources(
+	resp respool.ResPool,
+	entitlement *scalar.Resources,
+	assignments map[string]*scalar.Resources,
+) {
+	childs := resp.Children()
+	for _, kind := range []string{common.CPU, common.GPU,
+		common.MEMORY, common.DISK} {
 		// Third pass : Now all the demand is been satisfied
 		// we need to distribute the rest of the entitlement
 		// to all the nodes for the anticipation of some work
@@ -441,7 +486,7 @@ func (c *calculator) updateClusterCapacity(ctx context.Context, rootResPool resp
 	rootres := rootResourcePoolConfig.Resources
 	if rootres == nil {
 		log.WithField("root", rootResPool).Info("res pool have nil resource config")
-		rootres = []*res.ResourceConfig{
+		rootres = []*pb_res.ResourceConfig{
 			{
 				Kind:        common.CPU,
 				Reservation: c.clusterCapacity[common.CPU],

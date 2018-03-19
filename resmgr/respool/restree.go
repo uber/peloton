@@ -53,17 +53,17 @@ type Tree interface {
 
 // tree implements the Tree interface
 type tree struct {
-	sync.RWMutex
+	sync.RWMutex // Mutes for synchronization for tree
 
-	store   storage.ResourcePoolStore
-	metrics *Metrics
+	store   storage.ResourcePoolStore // Store object for resource pool store
+	metrics *Metrics                  // Metrics object for reporting
 	root    ResPool
 	// map of [ID] = ResPool
-	resPools    map[string]ResPool
-	jobStore    storage.JobStore
-	taskStore   storage.TaskStore
-	scope       tally.Scope
-	updatedChan chan struct{}
+	resPools    map[string]ResPool // Map of all the respools in Tree indexed by ID
+	jobStore    storage.JobStore   // Keeping the jobstore object
+	taskStore   storage.TaskStore  // Keeping Task store object within tree
+	scope       tally.Scope        // Parent scope for the metrics
+	updatedChan chan struct{}      // Channel to update all the changes in tree
 }
 
 // Singleton resource pool tree
@@ -92,6 +92,14 @@ func InitTree(
 		scope:       scope.SubScope("restree"),
 		updatedChan: make(chan struct{}, 1),
 	}
+}
+
+// Destroy will destroy the tree , Once this is called , Tree has
+// to be initialized again
+// TODO This is been done for tests and should be removed after
+// we remove the singleton
+func Destroy() {
+	respoolTree = nil
 }
 
 // GetTree returns the interface of a Resource Pool Tree. This

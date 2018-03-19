@@ -38,6 +38,11 @@ type resTreeTestSuite struct {
 
 func (s *resTreeTestSuite) SetupSuite() {
 	fmt.Println("setting up resTreeTestSuite")
+	s.initTree()
+}
+
+// initTree creates the tree object and store in suite
+func (s *resTreeTestSuite) initTree() {
 	s.mockCtrl = gomock.NewController(s.T())
 	s.mockResPoolStore = store_mocks.NewMockResourcePoolStore(s.mockCtrl)
 	s.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
@@ -59,6 +64,36 @@ func (s *resTreeTestSuite) SetupSuite() {
 
 func (s *resTreeTestSuite) TearDownSuite() {
 	s.mockCtrl.Finish()
+	Destroy()
+}
+
+// This function destroy test the initialize and destroy
+// of the tree.
+func (s *resTreeTestSuite) TestInitDestroyTree() {
+	// Stopping the current tree from suite
+	s.resourceTree.Stop()
+	Destroy()
+	// Creating local mocks and stores for new tree
+	mockCtrl := gomock.NewController(s.T())
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(mockCtrl)
+	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+		Return(s.getResPools(), nil).AnyTimes()
+	mockJobStore := store_mocks.NewMockJobStore(mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(mockCtrl)
+	// Initialize the local tree
+	InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	resTree := GetTree()
+	s.NotNil(resTree)
+	// Init again to see if we get the same object
+	InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	resTreeNew := GetTree()
+	s.Equal(resTree, resTreeNew)
+	// Stopping and destroying local tree
+	resTree.Stop()
+	Destroy()
+	s.Nil(respoolTree)
+	// Reinitialize the test suite tree again for rest of test suite
+	s.initTree()
 }
 
 func (s *resTreeTestSuite) SetupTest() {

@@ -39,6 +39,20 @@ type EntitlementCalculatorTestSuite struct {
 func (s *EntitlementCalculatorTestSuite) SetupSuite() {
 	s.mockCtrl = gomock.NewController(s.T())
 	s.mockHostMgr = host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
+
+	s.calculator = &calculator{
+		resPoolTree:       s.resTree,
+		runningState:      res_common.RunningStateNotStarted,
+		calculationPeriod: 10 * time.Millisecond,
+		stopChan:          make(chan struct{}, 1),
+		clusterCapacity:   make(map[string]float64),
+		hostMgrClient:     s.mockHostMgr,
+		metrics:           NewMetrics(tally.NoopScope),
+	}
+	s.initRespoolTree()
+}
+
+func (s *EntitlementCalculatorTestSuite) initRespoolTree() {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
 	gomock.InOrder(
 		mockResPoolStore.EXPECT().
@@ -53,17 +67,9 @@ func (s *EntitlementCalculatorTestSuite) SetupSuite() {
 	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
 
 	s.resTree = respool.GetTree()
-
-	s.calculator = &calculator{
-		resPoolTree:       s.resTree,
-		runningState:      res_common.RunningStateNotStarted,
-		calculationPeriod: 10 * time.Millisecond,
-		stopChan:          make(chan struct{}, 1),
-		clusterCapacity:   make(map[string]float64),
-		hostMgrClient:     s.mockHostMgr,
-		metrics:           NewMetrics(tally.NoopScope),
-	}
+	s.calculator.resPoolTree = s.resTree
 }
+
 func (s *EntitlementCalculatorTestSuite) SetupTest() {
 	fmt.Println("setting up")
 	s.resTree.Start()
@@ -132,6 +138,40 @@ func (s *EntitlementCalculatorTestSuite) getResourceConfig() []*pb_respool.Resou
 	return resConfigs
 }
 
+func (s *EntitlementCalculatorTestSuite) getStaticResourceConfig() []*pb_respool.ResourceConfig {
+	resConfigs := []*pb_respool.ResourceConfig{
+		{
+			Share:       1,
+			Kind:        "cpu",
+			Reservation: 10,
+			Limit:       1000,
+			Type:        pb_respool.ReservationType_STATIC,
+		},
+		{
+			Share:       1,
+			Kind:        "memory",
+			Reservation: 100,
+			Limit:       1000,
+			Type:        pb_respool.ReservationType_STATIC,
+		},
+		{
+			Share:       1,
+			Kind:        "disk",
+			Reservation: 1000,
+			Limit:       1000,
+			Type:        pb_respool.ReservationType_STATIC,
+		},
+		{
+			Share:       1,
+			Kind:        "gpu",
+			Reservation: 1,
+			Limit:       4,
+			Type:        pb_respool.ReservationType_STATIC,
+		},
+	}
+	return resConfigs
+}
+
 // Returns resource pools
 func (s *EntitlementCalculatorTestSuite) getResPools() map[string]*pb_respool.ResourcePoolConfig {
 	rootID := peloton.ResourcePoolID{Value: "root"}
@@ -183,6 +223,62 @@ func (s *EntitlementCalculatorTestSuite) getResPools() map[string]*pb_respool.Re
 		"respool22": {
 			Name:      "respool22",
 			Parent:    &peloton.ResourcePoolID{Value: "respool2"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+	}
+}
+
+func (s *EntitlementCalculatorTestSuite) getStaticResPools() map[string]*pb_respool.ResourcePoolConfig {
+	rootID := peloton.ResourcePoolID{Value: "root"}
+	policy := pb_respool.SchedulingPolicy_PriorityFIFO
+
+	return map[string]*pb_respool.ResourcePoolConfig{
+		"root": {
+			Name:      "roots",
+			Parent:    nil,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool1s": {
+			Name:      "respool1s",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool2s": {
+			Name:      "respool2s",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool3s": {
+			Name:      "respool3s",
+			Parent:    &rootID,
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool11s": {
+			Name:      "respool11s",
+			Parent:    &peloton.ResourcePoolID{Value: "respool1s"},
+			Resources: s.getStaticResourceConfig(),
+			Policy:    policy,
+		},
+		"respool12s": {
+			Name:      "respool12s",
+			Parent:    &peloton.ResourcePoolID{Value: "respool1s"},
+			Resources: s.getStaticResourceConfig(),
+			Policy:    policy,
+		},
+		"respool21s": {
+			Name:      "respool21s",
+			Parent:    &peloton.ResourcePoolID{Value: "respool2s"},
+			Resources: s.getResourceConfig(),
+			Policy:    policy,
+		},
+		"respool22s": {
+			Name:      "respool22s",
+			Parent:    &peloton.ResourcePoolID{Value: "respool2s"},
 			Resources: s.getResourceConfig(),
 			Policy:    policy,
 		},
@@ -580,4 +676,100 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacityError() {
 		Times(1)
 	err := s.calculator.calculateEntitlement(context.Background())
 	s.Error(err)
+}
+
+// Testing the Static respools and their entitlement
+func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
+
+	// Stopping and destroying the test suite's tree as
+	// for this test we are building another tree
+
+	err := s.resTree.Stop()
+
+	respool.Destroy()
+
+	s.NoError(err)
+
+	// Building Local Tree for this test suite
+	mockCtrl := gomock.NewController(s.T())
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(mockCtrl)
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(mockCtrl)
+	gomock.InOrder(
+		mockResPoolStore.EXPECT().
+			GetAllResourcePools(context.Background()).Return(s.getStaticResPools(), nil).AnyTimes(),
+	)
+	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
+	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
+	gomock.InOrder(
+		mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Any()).
+			Return(nil, nil).AnyTimes(),
+	)
+
+	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+
+	resTree := respool.GetTree()
+
+	// Creating local calculator object
+	calculator := &calculator{
+		resPoolTree:       resTree,
+		runningState:      res_common.RunningStateNotStarted,
+		calculationPeriod: 10 * time.Millisecond,
+		stopChan:          make(chan struct{}, 1),
+		clusterCapacity:   make(map[string]float64),
+		hostMgrClient:     mockHostMgr,
+		metrics:           NewMetrics(tally.NoopScope),
+	}
+
+	resTree.Start()
+
+	// Mock LaunchTasks call.
+	gomock.InOrder(
+		mockHostMgr.EXPECT().
+			ClusterCapacity(
+				gomock.Any(),
+				gomock.Any()).
+			Return(&hostsvc.ClusterCapacityResponse{
+				PhysicalResources: []*hostsvc.Resource{
+					{
+						Kind:     common.CPU,
+						Capacity: 100,
+					},
+					{
+						Kind:     common.GPU,
+						Capacity: 0,
+					},
+					{
+						Kind:     common.MEMORY,
+						Capacity: 1000,
+					},
+					{
+						Kind:     common.DISK,
+						Capacity: 6000,
+					},
+				},
+			}, nil).
+			Times(1),
+	)
+	resPool, err := resTree.Get(&peloton.ResourcePoolID{Value: "respool11s"})
+	s.NoError(err)
+	demand := &scalar.Resources{
+		CPU:    20,
+		MEMORY: 200,
+		DISK:   2000,
+		GPU:    0,
+	}
+	resPool.AddToDemand(demand)
+	calculator.calculateEntitlement(context.Background())
+	res := resPool.GetEntitlement()
+
+	s.Equal(int64(res.CPU), int64(28))
+	s.Equal(int64(res.GPU), int64(1))
+	s.Equal(int64(res.MEMORY), int64(283))
+	s.Equal(int64(res.DISK), int64(1000))
+
+	err = resTree.Stop()
+	s.NoError(err)
+	mockCtrl.Finish()
+	respool.Destroy()
+	s.initRespoolTree()
 }

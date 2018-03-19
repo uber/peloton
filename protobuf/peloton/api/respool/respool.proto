@@ -51,8 +51,8 @@ message ResourceConfig {
 
   // ReservationType indicates the the type of reservation
   // There are two kind of reservation
-  // 1. elastic
-  // 2. static
+  // 1. ELASTIC
+  // 2. STATIC
   ReservationType type = 5;
 }
 
@@ -62,7 +62,7 @@ message ResourceConfig {
 enum ReservationType {
   UNKNOWN_TYPE = 0;
 
-  // elastic reservation enables resource pool to be elastic
+  // ELASTIC reservation enables resource pool to be elastic
   // in reservation , which means other resource pool
   // can  take resources from this resource pool as well
   // as this resource pool also can take resources from
@@ -70,12 +70,13 @@ enum ReservationType {
   // for the resource pool
   ELASTIC = 1;
 
-  // static reservation enables resource pool to be static
-  // in reservation , which means no other resource pool
-  // can take resources from this resource pool as well
-  // as this resource pool also can not take resources from
-  // any other resource pool. By default value for this is false
-  // which means all the resource pools are elastic in nature.
+  // STATIC reservation enables resource pool to be static
+  // in reservation , which means irrespective of the demand
+  // this resource pool will have atleast reservation as entitlement
+  // value. No other resource pool can take resources from this
+  // resource pool. If demand for this resource pool is high
+  // it can take resources from other resource pools.
+  // By default value for reservation type ELASTIC.
   STATIC = 2;
 }
 
