@@ -1517,11 +1517,15 @@ func (s *Store) GetTaskIDsForJobAndState(ctx context.Context, id *peloton.JobID,
 // GetTasksForJobAndStates returns the tasks for a peloton job which are in one of the specified states.
 // result map key is TaskID, value is TaskHost
 // TODO: 'states' should be []TaskState instead of []string
-func (s *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []string) (map[uint32]*task.TaskInfo, error) {
+func (s *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []task.TaskState) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.GetValue()
 	queryBuilder := s.DataStore.NewQuery()
+	var taskStates []string
+	for _, state := range states {
+		taskStates = append(taskStates, state.String())
+	}
 	stmt := queryBuilder.Select("instance_id").From(taskJobStateView).
-		Where(qb.Eq{"job_id": jobID, "state": states})
+		Where(qb.Eq{"job_id": jobID, "state": taskStates})
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
 		log.WithError(err).
@@ -2453,10 +2457,7 @@ func (s *Store) QueryTasks(ctx context.Context, jobID *peloton.JobID, spec *task
 		limit = spec.GetPagination().GetLimit()
 	}
 
-	var taskStates []string
-	for _, s := range spec.GetTaskStates() {
-		taskStates = append(taskStates, s.String())
-	}
+	taskStates := spec.GetTaskStates()
 
 	var tasks map[uint32]*task.TaskInfo
 	//Get all tasks for the job if query doesn't specify the task state(s)

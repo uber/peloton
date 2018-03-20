@@ -519,8 +519,12 @@ func (m *Store) CreateTaskConfigs(ctx context.Context, id *peloton.JobID, jobCon
 }
 
 // GetTasksForJobAndStates returns the tasks (runtime_config) for a peloton job with certain states
-func (m *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []string) (map[uint32]*task.TaskInfo, error) {
-	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "task_states=": {states}})
+func (m *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []task.TaskState) (map[uint32]*task.TaskInfo, error) {
+	var taskStates []string
+	for _, state := range states {
+		taskStates = append(taskStates, state.String())
+	}
+	return m.getTasksByInstanceID(Filters{"job_id=": {id.Value}, "task_states=": {taskStates}})
 }
 
 // GetTaskIDsForJobAndState returns a list of instance-ids for a peloton job with certain state.

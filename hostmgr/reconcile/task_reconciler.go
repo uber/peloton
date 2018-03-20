@@ -179,7 +179,7 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 		nonTerminalTasks, getTasksErr := r.taskStore.GetTasksForJobAndStates(
 			ctx,
 			&jobID,
-			[]string{task.TaskState_RUNNING.String()},
+			[]task.TaskState{task.TaskState_RUNNING},
 		)
 		if getTasksErr != nil {
 			log.WithError(getTasksErr).WithFields(log.Fields{
