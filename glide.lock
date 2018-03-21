@@ -1,5 +1,5 @@
-hash: 8629d53195828a40a19e84bc674aa173db7637f9575bcf3cd5b13d42adb89bc1
-updated: 2018-03-21T13:41:49.242771189-07:00
+hash: 1828677931e8905d3201a041c55a2857d9d5f40286fd716017e8344a91053b68
+updated: 2018-03-21T15:29:35.785174675-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -198,7 +198,7 @@ imports:
   subpackages:
   - version
 - name: go.uber.org/yarpc
-  version: 74cd4e7d2dee21702c2131968b04367850011d5d
+  version: 124245f8b772089faceae70bdbc6e7b9f3bcdf0f
   subpackages:
   - api/backoff
   - api/encoding
