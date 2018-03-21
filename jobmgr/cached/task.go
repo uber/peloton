@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -27,10 +27,10 @@ type Task interface {
 	JobID() *peloton.JobID
 
 	// UpdateRuntime sets the task run time
-	UpdateRuntime(runtime *pb_task.RuntimeInfo)
+	UpdateRuntime(runtime *pbtask.RuntimeInfo)
 
 	// GetRunTime returns the task run time
-	GetRunTime() *pb_task.RuntimeInfo
+	GetRunTime() *pbtask.RuntimeInfo
 
 	// GetLastRuntimeUpdateTime returns the last time the task runtime was updated.
 	GetLastRuntimeUpdateTime() time.Time
@@ -62,7 +62,7 @@ type Task interface {
 // TaskStateVector defines the state of a task.
 // This encapsulates both the actual state and the goal state.
 type TaskStateVector struct {
-	State         pb_task.TaskState
+	State         pbtask.TaskState
 	ConfigVersion uint64
 }
 
@@ -83,7 +83,7 @@ type task struct {
 	jobID *peloton.JobID // Parent job identifier
 	id    uint32         // instance identifier
 
-	runtime *pb_task.RuntimeInfo // task runtime information
+	runtime *pbtask.RuntimeInfo // task runtime information
 
 	lastAction     string    // lastAction run on this task by the goal state
 	lastActionTime time.Time // the time at which the last action was run on this task by goal state
@@ -103,7 +103,7 @@ func (t *task) JobID() *peloton.JobID {
 	return t.jobID
 }
 
-func (t *task) UpdateRuntime(runtime *pb_task.RuntimeInfo) {
+func (t *task) UpdateRuntime(runtime *pbtask.RuntimeInfo) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -143,7 +143,7 @@ func (t *task) UpdateRuntime(runtime *pb_task.RuntimeInfo) {
 	t.lastRuntimeUpdateTime = time.Now()
 }
 
-func (t *task) GetRunTime() *pb_task.RuntimeInfo {
+func (t *task) GetRunTime() *pbtask.RuntimeInfo {
 	t.RLock()
 	defer t.RUnlock()
 	return t.runtime

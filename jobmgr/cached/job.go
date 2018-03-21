@@ -3,27 +3,27 @@ package cached
 import (
 	"context"
 	"sync"
-	"time"
 
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 )
 
 // UpdateRequest is used to indicate whether the caller wants to update only
-// cache or update both database and cache.
-// TODO this needs to be removed once all create and update calls
-// job manager go throuch cache instead of directly calling storage.
+// cache or update both database and cache. This is used during job manager recovery
+// as only cache needs to be updated during recovery.
 type UpdateRequest int
 
 const (
 	// UpdateCacheOnly updates only the cache.
-	UpdateCacheOnly UpdateRequest = iota
+	UpdateCacheOnly UpdateRequest = iota + 1
 	// UpdateCacheAndDB updates both DB and cache.
 	UpdateCacheAndDB
 )
 
 // Job in the cache.
+// TODO there a lot of methods in this interface. To determine if
+// this can be broken up into smaller pieces.
 type Job interface {
 	// Identifier of the job.
 	ID() *peloton.JobID
@@ -34,12 +34,12 @@ type Job interface {
 	// CreateTasks creates the task runtimes in cache and DB.
 	// Create and Update need to be different functions as the backing
 	// storage calls are different.
-	CreateTasks(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo) error
+	CreateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo) error
 
 	// UpdateTasks updates all tasks with the new runtime info. If the request
 	// is to update both DB and cache, it first attempts to persist it in storage,
 	// and then storing it in the cache. If the attempt to persist fails, the local cache is cleaned up.
-	UpdateTasks(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req UpdateRequest) error
+	UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req UpdateRequest) error
 
 	// GetTask from the task id.
 	GetTask(id uint32) Task
@@ -51,7 +51,7 @@ type Job interface {
 	// Create will be used to create the job configuration and runtime in DB.
 	// Create and Update need to be different functions as the backing
 	// storage calls are different.
-	Create(ctx context.Context, jobInfo *pb_job.JobInfo) error
+	Create(ctx context.Context, jobInfo *pbjob.JobInfo) error
 
 	// Update updates job with the new runtime. If the request is to update
 	// both DB and cache, it first attempts to persist the request in storage,
@@ -60,7 +60,7 @@ type Job interface {
 	// TODO persist both job configuration and runtime. Only runtime is persisted with this call.
 	// Job configuration persistence can be implemented after all create and update calls
 	// go through the cache.
-	Update(ctx context.Context, jobInfo *pb_job.JobInfo, req UpdateRequest) error
+	Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error
 
 	// ClearRuntime sets the cached job runtime to nil
 	// TODO remove after write-through cache
@@ -70,16 +70,16 @@ type Job interface {
 	IsPartiallyCreated() bool
 
 	// GetRuntime returns the runtime of the job
-	GetRuntime(ctx context.Context) (*pb_job.RuntimeInfo, error)
+	GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error)
 
 	// GetInstanceCount returns the instance count in the job config stored in the cache
 	GetInstanceCount() uint32
 
 	// GetSLAConfig returns the SLS configuration in the job config stored in the cache
-	GetSLAConfig() *pb_job.SlaConfig
+	GetSLAConfig() *pbjob.SlaConfig
 
 	// GetJobType returns the job type in the job config stored in the cache
-	GetJobType() pb_job.JobType
+	GetJobType() pbjob.JobType
 
 	// SetTaskUpdateTime updates the task update times in the job cache
 	SetTaskUpdateTime(t *float64)
@@ -89,23 +89,17 @@ type Job interface {
 
 	// GetLastTaskUpdateTime gets the last task update time
 	GetLastTaskUpdateTime() float64
-
-	// SetLastDelay sets the last delay value.
-	// Last delay is used by goal state to track expoenential backoff of scheduling duration
-	// in case a job action keeps returning an error.
-	SetLastDelay(delay time.Duration)
-
-	// GetLastDelay gets the last delay value
-	GetLastDelay() time.Duration
 }
 
 // newJob creates a new cache job object
 func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 	return &job{
-		id:         id,
+		id: id,
+		// jobFactory is stored in the job instead of using the singleton object
+		// because job needs access to the different stores in the job factory
+		// which are private variables and not available to other packages.
 		jobFactory: jobFactory,
 		tasks:      map[uint32]*task{},
-		lastDelay:  0,
 	}
 }
 
@@ -117,14 +111,13 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 type job struct {
 	sync.RWMutex // Mutex to acquire before accessing any job information in cache
 
-	id            *peloton.JobID   // The job identifier
-	instanceCount uint32           // Instance count in the job configuration
-	sla           pb_job.SlaConfig // SLA configuration in the job configuration
-	jobType       pb_job.JobType   // Job type (batch or service) in the job configuration
+	id            *peloton.JobID  // The job identifier
+	instanceCount uint32          // Instance count in the job configuration
+	sla           pbjob.SlaConfig // SLA configuration in the job configuration
+	jobType       pbjob.JobType   // Job type (batch or service) in the job configuration
 	//TODO make job factory a singleton object so that it does not need to passed around
-	jobFactory *jobFactory         // Pointer to the parent job factory object
-	runtime    *pb_job.RuntimeInfo // Runtime information of the job
-	lastDelay  time.Duration       // last intra-run duration of goal state action
+	jobFactory *jobFactory        // Pointer to the parent job factory object
+	runtime    *pbjob.RuntimeInfo // Runtime information of the job
 
 	tasks map[uint32]*task // map of all job tasks
 
@@ -138,7 +131,7 @@ func (j *job) ID() *peloton.JobID {
 	return j.id
 }
 
-func (j *job) updateTaskRuntimesInCache(runtimes map[uint32]*pb_task.RuntimeInfo) {
+func (j *job) updateTaskRuntimesInCache(runtimes map[uint32]*pbtask.RuntimeInfo) {
 	for id, runtime := range runtimes {
 		t, ok := j.tasks[id]
 		if !ok {
@@ -151,11 +144,11 @@ func (j *job) updateTaskRuntimesInCache(runtimes map[uint32]*pb_task.RuntimeInfo
 }
 
 // TODO implement this function.
-func (j *job) CreateTasks(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo) error {
+func (j *job) CreateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo) error {
 	return nil
 }
 
-func (j *job) UpdateTasks(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req UpdateRequest) error {
+func (j *job) UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req UpdateRequest) error {
 	j.Lock()
 	defer j.Unlock()
 
@@ -163,7 +156,7 @@ func (j *job) UpdateTasks(ctx context.Context, runtimes map[uint32]*pb_task.Runt
 		if err := j.jobFactory.taskStore.UpdateTaskRuntimes(ctx, j.ID(), runtimes); err != nil {
 			// Clear the runtime in the cache
 			for instID := range runtimes {
-				j.updateTaskRuntimesInCache(map[uint32]*pb_task.RuntimeInfo{instID: nil})
+				j.updateTaskRuntimesInCache(map[uint32]*pbtask.RuntimeInfo{instID: nil})
 			}
 			return err
 		}
@@ -194,7 +187,7 @@ func (j *job) GetAllTasks() map[uint32]Task {
 	return taskMap
 }
 
-func (j *job) updateJobInCache(jobInfo *pb_job.JobInfo) {
+func (j *job) updateJobInCache(jobInfo *pbjob.JobInfo) {
 	j.runtime = jobInfo.GetRuntime()
 	if jobInfo.GetConfig() != nil {
 		j.instanceCount = jobInfo.GetConfig().GetInstanceCount()
@@ -204,11 +197,11 @@ func (j *job) updateJobInCache(jobInfo *pb_job.JobInfo) {
 }
 
 // TODO implement
-func (j *job) Create(ctx context.Context, jobInfo *pb_job.JobInfo) error {
+func (j *job) Create(ctx context.Context, jobInfo *pbjob.JobInfo) error {
 	return nil
 }
 
-func (j *job) Update(ctx context.Context, jobInfo *pb_job.JobInfo, req UpdateRequest) error {
+func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error {
 	j.Lock()
 	defer j.Unlock()
 
@@ -257,7 +250,7 @@ func (j *job) IsPartiallyCreated() bool {
 	return true
 }
 
-func (j *job) GetRuntime(ctx context.Context) (*pb_job.RuntimeInfo, error) {
+func (j *job) GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error) {
 	j.Lock()
 	defer j.Unlock()
 
@@ -273,7 +266,7 @@ func (j *job) GetInstanceCount() uint32 {
 	return j.instanceCount
 }
 
-func (j *job) GetSLAConfig() *pb_job.SlaConfig {
+func (j *job) GetSLAConfig() *pbjob.SlaConfig {
 	j.RLock()
 	defer j.RUnlock()
 	// return a copy
@@ -281,7 +274,7 @@ func (j *job) GetSLAConfig() *pb_job.SlaConfig {
 	return &sla
 }
 
-func (j *job) GetJobType() pb_job.JobType {
+func (j *job) GetJobType() pbjob.JobType {
 	j.RLock()
 	defer j.RUnlock()
 	return j.jobType
@@ -299,16 +292,4 @@ func (j *job) GetLastTaskUpdateTime() float64 {
 	j.RUnlock()
 
 	return j.lastTaskUpdateTime
-}
-
-func (j *job) SetLastDelay(delay time.Duration) {
-	j.Lock()
-	defer j.Unlock()
-	j.lastDelay = delay
-}
-
-func (j *job) GetLastDelay() time.Duration {
-	j.RLock()
-	defer j.RUnlock()
-	return j.lastDelay
 }

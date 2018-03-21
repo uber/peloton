@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -17,7 +17,7 @@ import (
 	"github.com/uber-go/tally"
 )
 
-func initializeJob(jobStore *store_mocks.MockJobStore, taskStore *store_mocks.MockTaskStore, jobID *peloton.JobID) *job {
+func initializeJob(jobStore *storemocks.MockJobStore, taskStore *storemocks.MockTaskStore, jobID *peloton.JobID) *job {
 	j := &job{
 		id: jobID,
 		jobFactory: &jobFactory{
@@ -38,7 +38,7 @@ func TestJobFetchID(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 
 	j := initializeJob(jobStore, nil, &jobID)
@@ -53,7 +53,7 @@ func TestJobSetAndFetchConfigAndRuntime(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 
 	j := initializeJob(jobStore, nil, &jobID)
@@ -62,19 +62,19 @@ func TestJobSetAndFetchConfigAndRuntime(t *testing.T) {
 	instanceCount := uint32(10)
 	maxRunningInstances := uint32(2)
 	maxRunningTime := uint32(5)
-	jobRuntime := &pb_job.RuntimeInfo{
-		State:     pb_job.JobState_RUNNING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
-	jobConfig := &pb_job.JobConfig{
-		Sla: &pb_job.SlaConfig{
+	jobConfig := &pbjob.JobConfig{
+		Sla: &pbjob.SlaConfig{
 			MaximumRunningInstances: maxRunningInstances,
 			MaxRunningTime:          maxRunningTime,
 		},
 		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
+		Type:          pbjob.JobType_BATCH,
 	}
-	jobInfo := &pb_job.JobInfo{
+	jobInfo := &pbjob.JobInfo{
 		Runtime: jobRuntime,
 		Config:  jobConfig,
 	}
@@ -83,7 +83,7 @@ func TestJobSetAndFetchConfigAndRuntime(t *testing.T) {
 	actJobRuntime, _ := j.GetRuntime(context.Background())
 	assert.Equal(t, jobRuntime, actJobRuntime)
 	assert.Equal(t, instanceCount, j.GetInstanceCount())
-	assert.Equal(t, pb_job.JobType_BATCH, j.GetJobType())
+	assert.Equal(t, pbjob.JobType_BATCH, j.GetJobType())
 	assert.Equal(t, maxRunningInstances, j.GetSLAConfig().GetMaximumRunningInstances())
 	assert.Equal(t, maxRunningTime, j.GetSLAConfig().GetMaxRunningTime())
 }
@@ -93,7 +93,7 @@ func TestJobClearRuntime(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 
 	j := initializeJob(jobStore, nil, &jobID)
@@ -101,19 +101,19 @@ func TestJobClearRuntime(t *testing.T) {
 	instanceCount := uint32(10)
 	maxRunningInstances := uint32(2)
 	maxRunningTime := uint32(5)
-	jobRuntime := &pb_job.RuntimeInfo{
-		State:     pb_job.JobState_RUNNING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
-	jobConfig := &pb_job.JobConfig{
-		Sla: &pb_job.SlaConfig{
+	jobConfig := &pbjob.JobConfig{
+		Sla: &pbjob.SlaConfig{
 			MaximumRunningInstances: maxRunningInstances,
 			MaxRunningTime:          maxRunningTime,
 		},
 		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
+		Type:          pbjob.JobType_BATCH,
 	}
-	jobInfo := &pb_job.JobInfo{
+	jobInfo := &pbjob.JobInfo{
 		Runtime: jobRuntime,
 		Config:  jobConfig,
 	}
@@ -133,14 +133,14 @@ func TestJobDBError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 
 	j := initializeJob(jobStore, nil, &jobID)
 
-	jobRuntime := &pb_job.RuntimeInfo{
-		State:     pb_job.JobState_RUNNING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 
 	// Test db error in fetching job runtime
@@ -152,7 +152,7 @@ func TestJobDBError(t *testing.T) {
 	// Test updating job runtime in DB and cache
 	jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), &jobID, jobRuntime).Return(nil)
-	err = j.Update(context.Background(), &pb_job.JobInfo{Runtime: jobRuntime}, UpdateCacheAndDB)
+	err = j.Update(context.Background(), &pbjob.JobInfo{Runtime: jobRuntime}, UpdateCacheAndDB)
 	assert.NoError(t, err)
 	actJobRuntime, err = j.GetRuntime(context.Background())
 	assert.Equal(t, jobRuntime, actJobRuntime)
@@ -161,7 +161,7 @@ func TestJobDBError(t *testing.T) {
 	// Test error in DB while update job runtime
 	jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), &jobID, jobRuntime).Return(fmt.Errorf("fake db error"))
-	err = j.Update(context.Background(), &pb_job.JobInfo{Runtime: jobRuntime}, UpdateCacheAndDB)
+	err = j.Update(context.Background(), &pbjob.JobInfo{Runtime: jobRuntime}, UpdateCacheAndDB)
 	assert.Error(t, err)
 }
 
@@ -170,7 +170,7 @@ func TestJobSetJobUpdateTime(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 
 	j := initializeJob(jobStore, nil, &jobID)
@@ -182,41 +182,24 @@ func TestJobSetJobUpdateTime(t *testing.T) {
 	assert.Equal(t, updateTime, j.GetLastTaskUpdateTime())
 }
 
-// TestJobSetDelay tests setting and getting job delays.
-func TestJobSetDelay(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
-
-	j := initializeJob(jobStore, nil, &jobID)
-
-	// Test setting and fetching last delay
-	delay := 1 * time.Second
-	j.SetLastDelay(delay)
-	assert.Equal(t, delay, j.GetLastDelay())
-}
-
-// TestTaskOpsInJob tests all operations on the tasks in the job.
-
+// TestSetGetTasksInJobInCacheSingle tests setting and getting single task in job in cache.
 func TestSetGetTasksInJobInCacheSingle(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskstore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskstore := storemocks.NewMockTaskStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pb_task.RuntimeInfo{
-		State: pb_task.TaskState_RUNNING,
+	runtime := pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
 	}
 
 	// Test updating tasks one at a time in cache
 	for i := uint32(0); i < instanceCount; i++ {
-		j.UpdateTasks(context.Background(), map[uint32]*pb_task.RuntimeInfo{i: &runtime}, UpdateCacheOnly)
+		j.UpdateTasks(context.Background(), map[uint32]*pbtask.RuntimeInfo{i: &runtime}, UpdateCacheOnly)
 	}
 	assert.Equal(t, instanceCount, uint32(len(j.tasks)))
 
@@ -227,21 +210,22 @@ func TestSetGetTasksInJobInCacheSingle(t *testing.T) {
 	}
 }
 
+// TestSetGetTasksInJobInCacheBlock tests setting and getting tasks as a chunk in a job in cache.
 func TestSetGetTasksInJobInCacheBlock(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskstore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskstore := storemocks.NewMockTaskStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
 	j := initializeJob(jobStore, taskstore, &jobID)
 
 	// Test updating tasks in one call in cache
-	runtime := pb_task.RuntimeInfo{
-		State: pb_task.TaskState_SUCCEEDED,
+	runtime := pbtask.RuntimeInfo{
+		State: pbtask.TaskState_SUCCEEDED,
 	}
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtimes[i] = &runtime
 	}
@@ -253,21 +237,22 @@ func TestSetGetTasksInJobInCacheBlock(t *testing.T) {
 	}
 }
 
+// TestTasksUpdateInDB tests updating task runtimes in DB.
 func TestTasksUpdateInDB(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskstore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskstore := storemocks.NewMockTaskStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
 	j := initializeJob(jobStore, taskstore, &jobID)
 
 	// Update task runtimes in DB and cache
-	runtime := pb_task.RuntimeInfo{
-		State: pb_task.TaskState_RUNNING,
+	runtime := pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
 	}
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtimes[i] = &runtime
 	}
@@ -282,20 +267,21 @@ func TestTasksUpdateInDB(t *testing.T) {
 	}
 }
 
+// TestTasksUpdateDBError tests getting DB error during update task runtimes.
 func TestTasksUpdateDBError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskstore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskstore := storemocks.NewMockTaskStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pb_task.RuntimeInfo{
-		State: pb_task.TaskState_RUNNING,
+	runtime := pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
 	}
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtimes[i] = &runtime
 	}
@@ -312,43 +298,45 @@ func TestTasksUpdateDBError(t *testing.T) {
 	}
 }
 
+// TestTasksUpdateRuntimeSingleTask tests updating task runtime of a single task in DB.
 func TestTasksUpdateRuntimeSingleTask(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskstore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskstore := storemocks.NewMockTaskStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pb_task.RuntimeInfo{
-		State: pb_task.TaskState_RUNNING,
+	runtime := pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
 	}
 
 	// Update task runtime of only one task
 	taskstore.EXPECT().
 		UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	err := j.UpdateTasks(context.Background(), map[uint32]*pb_task.RuntimeInfo{0: &runtime}, UpdateCacheAndDB)
+	err := j.UpdateTasks(context.Background(), map[uint32]*pbtask.RuntimeInfo{0: &runtime}, UpdateCacheAndDB)
 	assert.NoError(t, err)
 	tt := j.GetTask(0)
 	actRuntime := tt.GetRunTime()
 	assert.Equal(t, runtime, *actRuntime)
 }
 
+// TestTasksGetAllTasks tests getting all tasks.
 func TestTasksGetAllTasks(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskstore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskstore := storemocks.NewMockTaskStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pb_task.RuntimeInfo{
-		State: pb_task.TaskState_RUNNING,
+	runtime := pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
 	}
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtimes[i] = &runtime
 	}
@@ -359,20 +347,21 @@ func TestTasksGetAllTasks(t *testing.T) {
 	assert.Equal(t, instanceCount, uint32(len(ttMap)))
 }
 
+// TestPartialJobCheck checks the partial job check.
 func TestPartialJobCheck(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskstore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskstore := storemocks.NewMockTaskStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pb_task.RuntimeInfo{
-		State: pb_task.TaskState_RUNNING,
+	runtime := pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
 	}
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtimes[i] = &runtime
 	}
@@ -383,21 +372,22 @@ func TestPartialJobCheck(t *testing.T) {
 	assert.True(t, j.IsPartiallyCreated())
 }
 
+// TestClearTasks tests cleaning up all tasks in the job in cache.
 func TestClearTasks(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskstore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskstore := storemocks.NewMockTaskStore(ctrl)
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
 
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pb_task.RuntimeInfo{
-		State: pb_task.TaskState_RUNNING,
+	runtime := pbtask.RuntimeInfo{
+		State: pbtask.TaskState_RUNNING,
 	}
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	for i := uint32(0); i < instanceCount; i++ {
 		runtimes[i] = &runtime
 	}

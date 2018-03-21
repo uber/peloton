@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/sirupsen/logrus"
@@ -39,22 +39,6 @@ type JobFactory interface {
 	Stop()
 }
 
-// NewJobFactory returns a new job factory object.
-func NewJobFactory(
-	jobStore storage.JobStore,
-	taskStore storage.TaskStore,
-	volumeStore storage.PersistentVolumeStore,
-	parentScope tally.Scope) JobFactory {
-	scope := parentScope.SubScope("cache")
-	return &jobFactory{
-		jobs:        map[string]*job{},
-		jobStore:    jobStore,
-		taskStore:   taskStore,
-		volumeStore: volumeStore,
-		mtx:         NewMetrics(scope),
-	}
-}
-
 type jobFactory struct {
 	sync.RWMutex //  Mutex to acquire before accessing any variables in the job factory object
 
@@ -65,6 +49,40 @@ type jobFactory struct {
 	volumeStore storage.PersistentVolumeStore // storage volume store object
 	mtx         *Metrics                      // cache metrics
 	stopChan    chan struct{}                 // channel to indicate that the job factory needs to stop
+}
+
+var jobFactoryObject *jobFactory       // singleton job factory object
+var onceInitJobFactoryObject sync.Once // ensure job factory is initialized only once
+
+// InitJobFactory initializes the singleton job factory object.
+func InitJobFactory(
+	jobStore storage.JobStore,
+	taskStore storage.TaskStore,
+	volumeStore storage.PersistentVolumeStore,
+	parentScope tally.Scope) {
+	scope := parentScope.SubScope("cache")
+	onceInitJobFactoryObject.Do(func() {
+		if jobFactoryObject != nil {
+			log.Warning("job factory already initialized")
+			return
+		}
+
+		jobFactoryObject = &jobFactory{
+			jobs:        map[string]*job{},
+			jobStore:    jobStore,
+			taskStore:   taskStore,
+			volumeStore: volumeStore,
+			mtx:         NewMetrics(scope),
+		}
+	})
+}
+
+// GetJobFactory is used to fetch the singleton job factory object.
+func GetJobFactory() JobFactory {
+	if jobFactoryObject == nil {
+		log.Fatal("job factory is not initialized")
+	}
+	return jobFactoryObject
 }
 
 func (f *jobFactory) AddJob(id *peloton.JobID) Job {
@@ -172,11 +190,11 @@ func (f *jobFactory) runPublishMetrics(stopChan <-chan struct{}) {
 // publishMetrics is the routine which publishes cache metrics to M3
 func (f *jobFactory) publishMetrics() {
 	// Initialise tasks count map for all possible pairs of (state, goal_state)
-	tCount := map[pb_task.TaskState]map[pb_task.TaskState]float64{}
-	for s := range pb_task.TaskState_name {
-		tCount[pb_task.TaskState(s)] = map[pb_task.TaskState]float64{}
-		for gs := range pb_task.TaskState_name {
-			tCount[pb_task.TaskState(s)][pb_task.TaskState(gs)] = 0.0
+	tCount := map[pbtask.TaskState]map[pbtask.TaskState]float64{}
+	for s := range pbtask.TaskState_name {
+		tCount[pbtask.TaskState(s)] = map[pbtask.TaskState]float64{}
+		for gs := range pbtask.TaskState_name {
+			tCount[pbtask.TaskState(s)][pbtask.TaskState(gs)] = 0.0
 		}
 	}
 

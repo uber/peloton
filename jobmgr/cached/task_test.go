@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
@@ -24,9 +24,9 @@ func TestTask(t *testing.T) {
 	assert.Equal(t, jobID, *tt.JobID())
 
 	// Test fetching state and goal state of task
-	runtime := pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_RUNNING,
-		GoalState: pb_task.TaskState_SUCCEEDED,
+	runtime := pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 	tt.UpdateRuntime(&runtime)
 
@@ -47,12 +47,12 @@ func TestTask(t *testing.T) {
 func TaskTestUpdateRuntime(t *testing.T) {
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceID := uint32(1)
-	runtime := pb_task.RuntimeInfo{
+	runtime := pbtask.RuntimeInfo{
 		Revision: &peloton.ChangeLog{
 			Version: 3,
 		},
-		State:     pb_task.TaskState_RUNNING,
-		GoalState: pb_task.TaskState_SUCCEEDED,
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 
 	tt := &task{
@@ -66,35 +66,35 @@ func TaskTestUpdateRuntime(t *testing.T) {
 	assert.Equal(t, runtime, tt.runtime)
 
 	// Now update with older version and check not updated
-	oldRuntime := pb_task.RuntimeInfo{
+	oldRuntime := pbtask.RuntimeInfo{
 		Revision: &peloton.ChangeLog{
 			Version: 1,
 		},
-		State:     pb_task.TaskState_PENDING,
-		GoalState: pb_task.TaskState_SUCCEEDED,
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 	tt.UpdateRuntime(&oldRuntime)
 	assert.Equal(t, runtime, tt.runtime)
 
 	// Now update with same version
-	sameRuntime := pb_task.RuntimeInfo{
+	sameRuntime := pbtask.RuntimeInfo{
 		Revision: &peloton.ChangeLog{
 			Version: 3,
 		},
-		State:     pb_task.TaskState_PENDING,
-		GoalState: pb_task.TaskState_SUCCEEDED,
+		State:     pbtask.TaskState_PENDING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 	tt.UpdateRuntime(&sameRuntime)
 	assert.Nil(t, tt.runtime)
 
 	tt.runtime = &runtime
 	// Finally update to new version
-	newRuntime := pb_task.RuntimeInfo{
+	newRuntime := pbtask.RuntimeInfo{
 		Revision: &peloton.ChangeLog{
 			Version: 4,
 		},
-		State:     pb_task.TaskState_SUCCEEDED,
-		GoalState: pb_task.TaskState_SUCCEEDED,
+		State:     pbtask.TaskState_SUCCEEDED,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 	tt.UpdateRuntime(&newRuntime)
 	assert.Equal(t, newRuntime, tt.runtime)
