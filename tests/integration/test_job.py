@@ -22,15 +22,14 @@ def test__create_job():
 
 
 @pytest.mark.smoketest
-def test__stop_long_running_batch_job_immediately():
-    job = Job(job_file='long_running_job.yaml',
-              config=IntegrationTestConfig(max_retry_attempts=100))
-    job.job_config.instanceCount = 100
-    job.create()
-    job.wait_for_state(goal_state='RUNNING')
+def test__stop_long_running_batch_job_immediately(long_running_job):
+    long_running_job.config = IntegrationTestConfig(max_retry_attempts=100)
+    long_running_job.job_config.instanceCount = 100
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='RUNNING')
 
-    job.stop()
-    job.wait_for_state(goal_state='KILLED')
+    long_running_job.stop()
+    long_running_job.wait_for_state(goal_state='KILLED')
 
 
 def test__run_failing_job():
