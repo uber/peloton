@@ -1,5 +1,5 @@
-hash: 136b5edabca172dbbfd2e4d26b9fc4d6015208eabe536e5eea2b96239ed8c3db
-updated: 2018-02-21T11:44:31.191418542-08:00
+hash: 8629d53195828a40a19e84bc674aa173db7637f9575bcf3cd5b13d42adb89bc1
+updated: 2018-03-21T13:41:49.242771189-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -8,9 +8,7 @@ imports:
 - name: github.com/alecthomas/units
   version: 2efee857e7cfd4f3d0138cc3cbb1b4966962b93a
 - name: github.com/apache/thrift
-  version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
-  repo: git://git.apache.org/thrift.git
-  vcs: git
+  version: 9549b25c77587b29be4e0b5c258221a4ed85d37a
   subpackages:
   - lib/go/thrift
 - name: github.com/beorn7/perks
@@ -30,7 +28,7 @@ imports:
 - name: github.com/docker/leadership
   version: bfc7753dd48af19513b29deec23c364bf0f274eb
 - name: github.com/docker/libkv
-  version: 5cdca2c0ae480c213766572a115ca2d779d37428
+  version: 15f83944c154cc9c816c51d3683dc28decbba4c8
   repo: gitolite@code.uber.internal:infra/docker-libkv
   vcs: git
   subpackages:
@@ -155,7 +153,7 @@ imports:
 - name: github.com/uber-go/atomic
   version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
 - name: github.com/uber-go/automaxprocs
-  version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
+  version: 946a8391268aea0a60a86403988ff3ab4b604a83
 - name: github.com/uber-go/mapdecode
   version: 718b4994083e432669f44a00174c5f1bcdb1434d
   subpackages:
@@ -200,7 +198,7 @@ imports:
   subpackages:
   - version
 - name: go.uber.org/yarpc
-  version: 112080bb21323a681a9b269fa7b5a1489558aab0
+  version: 74cd4e7d2dee21702c2131968b04367850011d5d
   subpackages:
   - api/backoff
   - api/encoding
@@ -243,7 +241,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: cbe0f9307d0156177f9dd5dc85da1a31abc5f2fb
+  version: 6078986fec03a1dcc236c34816c71b0e05018fda
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -260,8 +258,7 @@ imports:
   - lex/httplex
   - trace
 - name: golang.org/x/sys
-  version: 98b5b1e7e80eb60271c8dc4eba6521ec2c3e811e
-  repo: https://github.com/golang/sys
+  version: 8f0908ab3b2457e2e15403d3697c9ef5cb4b57a9
   subpackages:
   - unix
 - name: golang.org/x/text

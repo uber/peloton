@@ -6,7 +6,6 @@ import (
 
 	"github.com/docker/leadership"
 	libkvmock "github.com/docker/libkv/store/mock"
-	"github.com/samuel/go-zookeeper/zk"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -102,66 +101,4 @@ func TestLeaderElection(t *testing.T) {
 	// and then you are no longer leader
 	assert.Equal(t, false, el.IsLeader())
 
-}
-
-func TestLeaderElectionZKDisconnection(t *testing.T) {
-	// Testing ZooKeeper leader election in the scope of a disconnection
-	// with ZK quorum: an elected leader should declare the leadership
-	// as lost.
-
-	// Mock ZK store
-	kv, err := libkvmock.New([]string{}, nil)
-	assert.NoError(t, err)
-	assert.NotNil(t, kv)
-	mockStore := kv.(*libkvmock.Mock)
-
-	// Mock Lock
-	mockLock := &libkvmock.Lock{}
-	ZKkey := "peloton/fake"
-	mockStore.On("NewLock", ZKkey, mock.Anything).Return(mockLock, nil)
-
-	// Mock Lock() and Unlock() as succeeding to simulate
-	// successful leadership gain
-	mockLock.On("Lock", mock.Anything).Return(make(<-chan struct{}), nil)
-	mockLock.On("Unlock").Return(nil)
-
-	// ZK event channel used to listen on ZK disconnection events
-	zkEventChan := make(chan zk.Event)
-
-	nomination := &testComponent{
-		host:   "testhost",
-		port:   "666",
-		events: make(chan string, 100),
-	}
-
-	// Define election and run election
-	el := election{
-		candidate:   leadership.NewCandidate(mockStore, ZKkey, "testhost:666", ttl),
-		metrics:     newElectionMetrics(tally.NoopScope, "hostname"),
-		nomination:  nomination,
-		role:        "testrole",
-		stopChan:    make(chan struct{}, 1),
-		zkEventChan: zkEventChan,
-	}
-
-	// Start leader election
-	err = el.Start()
-	assert.NoError(t, err)
-
-	// By default start by not being a leader
-	assert.Equal(t, <-nomination.events, "leadership_lost")
-
-	// Since the lock always succeeeds, leadership is gained
-	assert.Equal(t, <-nomination.events, "leadership_gained")
-	assert.Equal(t, true, el.IsLeader())
-
-	// Simulate disconnection with ZK by sending an ZK disconnection event
-	zkEventChan <- zk.Event{
-		Type:  zk.EventSession,
-		State: zk.StateDisconnected,
-	}
-
-	// Once ZK disconnection is detected,
-	// leadership should be declared lost
-	assert.Equal(t, "leadership_lost", <-nomination.events)
 }
