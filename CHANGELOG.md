@@ -3,6 +3,30 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.11
+------------------
+* 2018-03-21    Pin down YARPC version in glide to avoid `uber fx`                                             Charles Raimbert
+* 2018-03-21    Use patched docker/libkv for ZooKeeper Leader Election                                         Charles Raimbert
+* 2018-03-21    Use long running job fixture for `test__stop_long_running_batch_job_immediately`               Anant Vyas
+* 2018-03-20    Modify GetTasksForJobAndStates to accept []TaskState parameter instead of []string             Sachin Sharma
+* 2018-03-15    Add integration test for Job Query API                                                         Aditya Bhave
+* 2018-03-16    Do not update the state transition reason on dequeue from placement engine                     Apoorva Jindal
+* 2018-03-15    Correct scheduled task accounting in case of launch errors for maxRunningInstance feature      Apoorva Jindal
+* 2018-03-04    Add cache to job manager.                                                                      Apoorva Jindal
+* 2018-03-19    Adding support for static respool in Tree hierarchy and Entitlement                            Mayank Bansal
+* 2018-03-12    Add support to query jobs by timerange                                                         Aditya Bhave
+* 2018-03-08    Be able to teardown vcluster in any fail in launching or testing vcluster                      Chunyang Shen
+* 2018-03-14    Add runtime info to jobquery cli output                                                        Aditya Bhave
+* 2018-03-14    Always evaluate a job for maxRunningInstaces SLA irrespective of job runtime updater result    Apoorva Jindal
+* 2018-03-13    Adding Static reservation type in to resourcepool config                                       Mayank Bansal
+* 2018-03-08    Add integration tests for controller task                                                      Anant Vyas
+* 2018-03-06    Add a monitor job for vcluster to send data to M3                                              Chunyang Shen
+* 2018-03-08    Enable integration test for fetching logs of previous task runs of failed task                 Apoorva Jindal
+* 2018-03-09    Dividing entitlement calculation to phases and adding more tests to entitlement                Mayank Bansal
+* 2018-03-07    Do not overwrite killed state for partially completed jobs                                     Apoorva Jindal
+* 2018-03-08    Add 'task query' command to CLI to query on tasks(for a job) by state(s)                       Sachin Sharma
+* 2018-03-07    Fix race condition in state machine rollback                                                   Anant Vyas
+
 0.6.10.5
 ------------------
 * 2018-03-07    Revert range map change                                                               mu@uber.com
