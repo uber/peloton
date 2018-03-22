@@ -19,6 +19,7 @@ install_protoc () {
     wget https://github.com/google/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-x86_64.zip
     unzip -d protoc protoc-$PROTOC_VERSION-linux-x86_64.zip
     cp protoc/bin/protoc /usr/bin
+    cp -rf protoc/include/* /usr/include/.
     chmod 755 /usr/bin/protoc
     rm -r protoc
     rm protoc-$PROTOC_VERSION-linux-x86_64.zip
