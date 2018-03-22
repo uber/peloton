@@ -1961,6 +1961,12 @@ func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 		return err
 	}
 
+	stmt = queryBuilder.Delete(jobIndexTable).Where(qb.Eq{"job_id": id.GetValue()})
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
+		return err
+	}
+
 	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
 	err := s.applyStatement(ctx, stmt, id.GetValue())
 	if err != nil {

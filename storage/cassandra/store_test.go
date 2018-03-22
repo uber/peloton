@@ -71,6 +71,14 @@ func (suite *CassandraStoreTestSuite) createJob(ctx context.Context, id *peloton
 	return store.CreateTaskConfigs(ctx, id, jobConfig)
 }
 
+// Run the following query to trigger lucene index refresh
+func (suite *CassandraStoreTestSuite) refreshLuceneIndex() {
+	queryBuilder := store.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
+	_, err := store.DataStore.Execute(context.Background(), stmt)
+	suite.NoError(err)
+}
+
 func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 	var jobStore storage.JobStore
 	jobStore = store
@@ -126,11 +134,8 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
 		suite.NoError(err)
 	}
-	// Run the following query to trigger rebuild the lucene index
-	queryBuilder := store.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err := store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	spec := &job.QuerySpec{
 		Keywords: []string{"TestQueryJobPaging", "test", "awesome"},
@@ -274,10 +279,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 		Where(qb.Eq{"job_id": jobID.GetValue()})
 	_, err = store.executeWrite(context.Background(), updateStmt)
 	suite.NoError(err)
-	// Run the following query to trigger rebuild the lucene index
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	_, _ = suite.queryJobs(spec, 1, 1)
 
@@ -287,10 +290,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 		Where(qb.Eq{"job_id": jobID.GetValue()})
 	_, err = store.executeWrite(context.Background(), updateStmt)
 	suite.NoError(err)
-	// Run the following query to trigger rebuild the lucene index
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	// Any query for terminal states should not display jobs that are older than 7 days
 	jobStates := []job.JobState{job.JobState_KILLED, job.JobState_FAILED, job.JobState_SUCCEEDED}
@@ -305,10 +306,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 		Where(qb.Eq{"job_id": jobID.GetValue()})
 	_, err = store.executeWrite(context.Background(), updateStmt)
 	suite.NoError(err)
-	// Run the following query to trigger rebuild the lucene index
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	_, _ = suite.queryJobs(spec, 0, 0)
 
@@ -317,10 +316,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 		Where(qb.Eq{"job_id": jobID.GetValue()})
 	_, err = store.executeWrite(context.Background(), updateStmt)
 	suite.NoError(err)
-	// Run the following query to trigger rebuild the lucene index
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	_, _ = suite.queryJobs(spec, 0, 0)
 
@@ -329,10 +326,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 		Where(qb.Eq{"job_id": jobID.GetValue()})
 	_, err = store.executeWrite(context.Background(), updateStmt)
 	suite.NoError(err)
-	// Run the following query to trigger rebuild the lucene index
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	// Any query for active states should display jobs that are older than 7 days
 	jobStates = []job.JobState{job.JobState_PENDING, job.JobState_RUNNING, job.JobState_INITIALIZED}
@@ -358,10 +353,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 		Where(qb.Eq{"job_id": jobID.GetValue()})
 	_, err = store.executeWrite(context.Background(), updateStmt)
 	suite.NoError(err)
-	// Run the following query to trigger rebuild the lucene index
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	_, _ = suite.queryJobs(spec, 1, 1)
 
@@ -394,10 +387,8 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 		Where(qb.Eq{"job_id": jobID.GetValue()})
 	_, err = store.executeWrite(context.Background(), updateStmt)
 	suite.NoError(err)
-	// Run the following query to trigger rebuild the lucene index
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	// query by creation time ranges with last 2 hours
 	now = time.Now().UTC()
@@ -448,10 +439,9 @@ func (suite *CassandraStoreTestSuite) TestGetJobSummaryByTimeRange() {
 		Where(qb.Eq{"job_id": jobID.GetValue()})
 	_, err = store.executeWrite(context.Background(), updateStmt)
 	suite.NoError(err)
-	// Run the following query to trigger rebuild the lucene index
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
+
 	// again query by both creation and completion time ranges with last 2 hours
 	// The 1 hour old job here will show up in this query
 	_, _ = suite.queryJobs(spec, 1, 1)
@@ -612,11 +602,8 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		err = jobStore.UpdateJobRuntime(context.Background(), &jobID, runtime)
 		suite.NoError(err)
 	}
-	// Run the following query to trigger rebuild the lucene index
-	queryBuilder := store.DataStore.NewQuery()
-	stmt := queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err := store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	// query by common label should return all jobs
 	spec := &job.QuerySpec{
@@ -870,10 +857,8 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 		runtime.State = job.JobState(i)
 		store.UpdateJobRuntime(context.Background(), jobIDs[i], runtime)
 	}
-	queryBuilder = store.DataStore.NewQuery()
-	stmt = queryBuilder.Select("*").From(jobIndexTable).Where("expr(job_index_lucene_v2, '{refresh:true}')")
-	_, err = store.DataStore.Execute(context.Background(), stmt)
-	suite.NoError(err)
+
+	suite.refreshLuceneIndex()
 
 	jobStates := []job.JobState{job.JobState_PENDING, job.JobState_RUNNING, job.JobState_SUCCEEDED}
 	spec = &job.QuerySpec{
@@ -941,7 +926,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		instanceConfig[1] = &taskConfig
 		instanceConfig[2] = &taskConfig
 		var jobconfig = job.JobConfig{
-			Name:           fmt.Sprintf("TestJob_%d", i),
+			Name:           jobID.GetValue(),
 			OwningTeam:     owner,
 			LdapGroups:     []string{"money", "team6", "otto"},
 			Sla:            &sla,
@@ -959,10 +944,18 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		err = suite.createJob(context.Background(), &jobID, &jobconfig, "uber2")
 		suite.Error(err)
 
+		// refresh lucene
+		suite.refreshLuceneIndex()
+		spec := &job.QuerySpec{
+			Name: jobID.GetValue(),
+		}
+		// query jobs should result in 1 entry after delete
+		_, _ = suite.queryJobs(spec, 1, 1)
+
 		var jobconf *job.JobConfig
 		jobconf, err = jobStore.GetJobConfig(context.Background(), &jobID)
 		suite.NoError(err)
-		suite.Equal(jobconf.Name, fmt.Sprintf("TestJob_%d", i))
+		suite.Equal(jobconf.Name, jobID.GetValue())
 		suite.Equal(len(jobconf.Labels), 4)
 		taskConfigs, noErr := store.GetTaskConfigs(context.Background(), &jobID, []uint32{0, 1, 2}, 0)
 		suite.Equal(len(taskConfigs), 3)
@@ -994,6 +987,11 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		tasks, err := store.GetTasksForJob(context.Background(), &jobID)
 		suite.Len(tasks, 0)
 		suite.NoError(err)
+
+		// refresh lucene
+		suite.refreshLuceneIndex()
+		// query jobs should result in 0 entries after delete
+		_, _ = suite.queryJobs(spec, 0, 0)
 	}
 }
 
