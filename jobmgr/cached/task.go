@@ -41,13 +41,6 @@ type Task interface {
 	// GoalState of the task.
 	GoalState() TaskStateVector
 
-	// TBD remove LastAction from the cache
-	// SetLastAction performed by the task, as well as when it was performed.
-	SetLastAction(a string, d time.Time)
-
-	// GetLastAction performed by the task, as well as when it was performed.
-	GetLastAction() (string, time.Time)
-
 	// TODO remove all functions related to kill attempts
 	// GetKillAttempts returns number of kill attempts up till now
 	GetKillAttempts() int
@@ -84,9 +77,6 @@ type task struct {
 	id    uint32         // instance identifier
 
 	runtime *pbtask.RuntimeInfo // task runtime information
-
-	lastAction     string    // lastAction run on this task by the goal state
-	lastActionTime time.Time // the time at which the last action was run on this task by goal state
 
 	lastRuntimeUpdateTime time.Time // last time at which the task runtime information was updated
 
@@ -173,21 +163,6 @@ func (t *task) GoalState() TaskStateVector {
 		State:         t.runtime.GetGoalState(),
 		ConfigVersion: t.runtime.GetDesiredConfigVersion(),
 	}
-}
-
-func (t *task) SetLastAction(a string, d time.Time) {
-	t.Lock()
-	defer t.Unlock()
-
-	t.lastAction = a
-	t.lastActionTime = d
-}
-
-func (t *task) GetLastAction() (string, time.Time) {
-	t.RLock()
-	defer t.RUnlock()
-
-	return t.lastAction, t.lastActionTime
 }
 
 func (t *task) GetKillAttempts() int {
