@@ -101,7 +101,7 @@ func TestWaitForEvent(t *testing.T) {
 			MesosTaskStatus: &mesos.TaskStatus{},
 		})
 		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.api.addEvent+"].Value())
-		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.addEvent+type=success"].Value())
+		assert.Equal(t, int64(i+1), testScope.Snapshot().Counters()["EventStreamHandler.addEvent+result=success"].Value())
 	}
 	// start and end within head tail range
 	request := makeWaitForEventsRequest("jobMgr", streamID, uint64(10), int32(23), uint64(10))
@@ -153,8 +153,8 @@ func TestWaitForEvent(t *testing.T) {
 	response, _ = eventStreamHandler.WaitForEvents(context.Background(), request)
 	assert.NotNil(t, response.Error.InvalidStreamID)
 
-	assert.Equal(t, int64(3), testScope.Snapshot().Counters()["EventStreamHandler.waitForEvents+type=success"].Value())
-	assert.Equal(t, int64(4), testScope.Snapshot().Counters()["EventStreamHandler.waitForEvents+type=fail"].Value())
+	assert.Equal(t, int64(3), testScope.Snapshot().Counters()["EventStreamHandler.waitForEvents+result=success"].Value())
+	assert.Equal(t, int64(4), testScope.Snapshot().Counters()["EventStreamHandler.waitForEvents+result=fail"].Value())
 	assert.Equal(t, int64(7), testScope.Snapshot().Counters()["EventStreamHandler.api.waitForEvents+"].Value())
 
 }

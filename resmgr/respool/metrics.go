@@ -52,8 +52,8 @@ type Metrics struct {
 
 // NewMetrics returns a new instance of respool.Metrics.
 func NewMetrics(scope tally.Scope) *Metrics {
-	successScope := scope.Tagged(map[string]string{"type": "success"})
-	failScope := scope.Tagged(map[string]string{"type": "fail"})
+	successScope := scope.Tagged(map[string]string{"result": "success"})
+	failScope := scope.Tagged(map[string]string{"result": "fail"})
 	apiScope := scope.SubScope("api")
 
 	pendingScope := scope.SubScope("pending")

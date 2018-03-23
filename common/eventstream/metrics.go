@@ -27,8 +27,8 @@ type HandlerMetrics struct {
 // NewHandlerMetrics creates a HandlerMetrics
 func NewHandlerMetrics(scope tally.Scope) *HandlerMetrics {
 	handlerAPIScope := scope.SubScope("api")
-	handlerSuccessScope := scope.Tagged(map[string]string{"type": "success"})
-	handlerFailScope := scope.Tagged(map[string]string{"type": "fail"})
+	handlerSuccessScope := scope.Tagged(map[string]string{"result": "success"})
+	handlerFailScope := scope.Tagged(map[string]string{"result": "fail"})
 	return &HandlerMetrics{
 		Head:                  scope.Gauge("head"),
 		Tail:                  scope.Gauge("tail"),
@@ -66,8 +66,8 @@ type ClientMetrics struct {
 // NewClientMetrics creates a new ClientMetrics
 func NewClientMetrics(scope tally.Scope) *ClientMetrics {
 	clientAPIScope := scope.SubScope("api")
-	clientSuccessScope := scope.Tagged(map[string]string{"type": "success"})
-	clientFailScope := scope.Tagged(map[string]string{"type": "fail"})
+	clientSuccessScope := scope.Tagged(map[string]string{"result": "success"})
+	clientFailScope := scope.Tagged(map[string]string{"result": "fail"})
 	return &ClientMetrics{
 		EventsConsumed:       scope.Counter("eventsConsumed"),
 		StreamIDChange:       scope.Counter("streamIdChange"),

@@ -74,14 +74,14 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	offerScope := scope.SubScope("offer")
 	placementScope := scope.SubScope("placement")
 
-	taskSuccessScope := taskScope.Tagged(map[string]string{"type": "success"})
-	taskFailScope := taskScope.Tagged(map[string]string{"type": "fail"})
+	taskSuccessScope := taskScope.Tagged(map[string]string{"result": "success"})
+	taskFailScope := taskScope.Tagged(map[string]string{"result": "fail"})
 
-	offerSuccessScope := offerScope.Tagged(map[string]string{"type": "success"})
-	offerFailScope := offerScope.Tagged(map[string]string{"type": "fail"})
+	offerSuccessScope := offerScope.Tagged(map[string]string{"result": "success"})
+	offerFailScope := offerScope.Tagged(map[string]string{"result": "fail"})
 
-	placementSuccessScope := placementScope.Tagged(map[string]string{"type": "success"})
-	placementFailScope := placementScope.Tagged(map[string]string{"type": "fail"})
+	placementSuccessScope := placementScope.Tagged(map[string]string{"result": "success"})
+	placementFailScope := placementScope.Tagged(map[string]string{"result": "fail"})
 	placementTimeScope := placementScope.Tagged(map[string]string{"type": "timer"})
 
 	return &Metrics{

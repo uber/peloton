@@ -39,8 +39,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 	reconcilerScope := scope.SubScope("reconciler")
 	leakScope := reconcilerScope.SubScope("leaks")
-	successScope := reconcilerScope.Tagged(map[string]string{"type": "success"})
-	failScope := reconcilerScope.Tagged(map[string]string{"type": "fail"})
+	successScope := reconcilerScope.Tagged(map[string]string{"result": "success"})
+	failScope := reconcilerScope.Tagged(map[string]string{"result": "fail"})
 	return &Metrics{
 		ReadyQueueLen:    readyScope.Gauge("ready_queue_length"),
 		TaskLeninTracker: trackerScope.Gauge("task_len_tracker"),

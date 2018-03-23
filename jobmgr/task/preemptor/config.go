@@ -18,8 +18,8 @@ type Metrics struct {
 // NewMetrics returns a new Metrics struct, with all metrics
 // initialized and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
-	taskSuccessScope := scope.Tagged(map[string]string{"type": "success"})
-	taskFailScope := scope.Tagged(map[string]string{"type": "fail"})
+	taskSuccessScope := scope.Tagged(map[string]string{"result": "success"})
+	taskFailScope := scope.Tagged(map[string]string{"result": "fail"})
 	taskAPIScope := scope.SubScope("task_api")
 	getTasksToPreemptScope := scope.SubScope("get_preemptible_tasks")
 
