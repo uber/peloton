@@ -26,7 +26,6 @@ import (
 var (
 	errEnqueueEmptySchedUnit    = errors.New("empty gang to to ready queue enqueue")
 	errReadyQueueDequeueFailed  = errors.New("dequeue gang from ready queue failed")
-	errReadyQueueTaskMissing    = errors.New("task missed tracking in enqueue ready queue")
 	errReadyQueueDequeueTimeout = errors.New("dequeue gang from ready queue timed out")
 )
 
@@ -154,7 +153,8 @@ func (s *scheduler) scheduleTasks() {
 		var invalidGangs []*resmgrsvc.Gang
 		for _, gang := range gangList {
 
-			err = s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY, "gang admitted")
+			err = s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY,
+				"gang admitted")
 			if err != nil {
 				// we can not dequeue this gang Dropping them
 				// As they can block the whole resource pool.
@@ -234,32 +234,43 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 	isInvalidTaskInGang := false
 	invalidTasks := ""
 	for _, task := range gang.GetTasks() {
-		if s.rmTaskTracker.GetTask(task.Id) != nil {
-			if s.rmTaskTracker.GetTask(task.Id).GetCurrentState() == fromState {
-				err := s.rmTaskTracker.GetTask(task.Id).
-					TransitTo(toState.String(), statemachine.WithReason(reason))
-				if err != nil {
-					isInvalidTaskInGang = true
-					log.WithError(errors.WithStack(err)).Errorf("error while "+
-						"transitioning to %s state", toState.String())
-
-					invalidTasks = invalidTasks + " , " + task.Id.Value
-				}
-			} else {
-				isInvalidTaskInGang = true
-				log.Errorf("Task %s is already in %s state",
-					task.Id.Value, toState.String())
-				invalidTasks = invalidTasks + " , " + task.Id.Value
-			}
-		} else {
+		rmTask := s.rmTaskTracker.GetTask(task.Id)
+		if rmTask == nil {
 			isInvalidTaskInGang = true
-			log.WithError(errReadyQueueTaskMissing).WithFields(log.Fields{
-				"From": fromState.String(),
-				"To":   toState.String(),
-			}).Error("error in transit task")
+			log.WithFields(log.Fields{
+				"task_id": task.Id.Value,
+				"to":      toState.String(),
+				"from":    fromState.String(),
+			}).Error("Task not in tracker")
+			invalidTasks = invalidTasks + " , " + task.Id.Value
+			continue
+		}
+
+		if rmTask.GetCurrentState() != fromState {
+			isInvalidTaskInGang = true
+			log.WithFields(log.Fields{
+				"task_id":    task.Id.Value,
+				"to":         toState.String(),
+				"from":       fromState.String(),
+				"task_state": rmTask.GetCurrentState().String(),
+			}).Error("Task is not in expected state")
+			invalidTasks = invalidTasks + " , " + task.Id.Value
+			continue
+		}
+
+		err := rmTask.TransitTo(toState.String(), statemachine.WithReason(reason))
+		if err != nil {
+			isInvalidTaskInGang = true
+			log.WithFields(log.Fields{
+				"task_id":    task.Id.Value,
+				"to":         toState.String(),
+				"from":       fromState.String(),
+				"task_state": rmTask.GetCurrentState().String(),
+			}).Error("Failed to transition task")
 			invalidTasks = invalidTasks + " , " + task.Id.Value
 		}
 	}
+
 	if isInvalidTaskInGang {
 		return errors.Errorf("Invalid Tasks in gang %s", invalidTasks)
 	}
