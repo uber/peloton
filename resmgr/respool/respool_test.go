@@ -45,6 +45,13 @@ func (s *ResPoolSuite) SetupSuite() {
 	s.root = rootResPool
 }
 
+// makeTaskGang forms a gang from a single task
+func makeTaskGang(task *resmgr.Task) *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	gang.Tasks = append(gang.Tasks, task)
+	return &gang
+}
+
 func (s *ResPoolSuite) getResources() []*pb_respool.ResourceConfig {
 	return []*pb_respool.ResourceConfig{
 		{
@@ -87,6 +94,7 @@ func (s *ResPoolSuite) getTasks() []*resmgr.Task {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 		{
 			Name:     "job1-1",
@@ -99,6 +107,7 @@ func (s *ResPoolSuite) getTasks() []*resmgr.Task {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 		{
 			Name:     "job2-1",
@@ -111,6 +120,7 @@ func (s *ResPoolSuite) getTasks() []*resmgr.Task {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 		{
 			Name:     "job2-2",
@@ -123,6 +133,7 @@ func (s *ResPoolSuite) getTasks() []*resmgr.Task {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 	}
 }
@@ -268,7 +279,7 @@ out:
 		}
 
 		for _, task := range s.getTasks() {
-			gang := respool.MakeTaskGang(task)
+			gang := makeTaskGang(task)
 			if t.emptyGang {
 				gang = nil
 			}
@@ -299,7 +310,7 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 	resPoolNode.SetEntitlement(s.getEntitlement())
 
 	for _, t := range s.getTasks() {
-		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(t))
+		resPoolNode.EnqueueGang(makeTaskGang(t))
 	}
 
 	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
@@ -340,7 +351,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 	resPoolNode.SetEntitlement(s.getEntitlement())
 
 	for _, t := range s.getTasks() {
-		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(t))
+		resPoolNode.EnqueueGang(makeTaskGang(t))
 	}
 
 	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
@@ -377,7 +388,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 			MemLimitMb:  100,
 		},
 	}
-	resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(bigtask))
+	resPoolNode.EnqueueGang(makeTaskGang(bigtask))
 	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
 	s.NoError(err)
 	s.Nil(dequeuedGangs)
@@ -414,7 +425,7 @@ func (s *ResPoolSuite) TestAllocation() {
 
 	totalAlloc := scalar.NewAllocation()
 	for _, t := range s.getTasks() {
-		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(t))
+		resPoolNode.EnqueueGang(makeTaskGang(t))
 		totalAlloc = totalAlloc.Add(scalar.GetTaskAllocation(t))
 	}
 	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
@@ -737,7 +748,7 @@ func (s *ResPoolSuite) TestResPoolDequeueError() {
 	s.NoError(err)
 
 	for _, t := range s.getTasks() {
-		resPoolNode.EnqueueGang(resPoolNode.MakeTaskGang(t))
+		resPoolNode.EnqueueGang(makeTaskGang(t))
 	}
 
 	_, err = resPoolNode.DequeueGangList(0)
@@ -758,19 +769,6 @@ func (s *ResPoolSuite) TestGetLimits() {
 	s.Equal(float64(1000), resources.GetCPU())
 	s.Equal(float64(4), resources.GetGPU())
 	s.Equal(float64(1000), resources.GetDisk())
-	s.Equal(float64(1000), resources.GetMem())
-}
-
-func (s *ResPoolSuite) TestGetReservation() {
-	resourceConfigs := make(map[string]*pb_respool.ResourceConfig)
-	for _, config := range s.getResources() {
-		resourceConfigs[config.Kind] = config
-	}
-
-	resources := getReservations(resourceConfigs)
-	s.Equal(float64(100), resources.GetCPU())
-	s.Equal(float64(2), resources.GetGPU())
-	s.Equal(float64(100), resources.GetDisk())
 	s.Equal(float64(1000), resources.GetMem())
 }
 
@@ -817,7 +815,7 @@ func (s *ResPoolSuite) TestTaskValidation() {
 	resPoolNode1.SetEntitlement(s.getEntitlement())
 
 	for _, t := range s.getTasks() {
-		resPoolNode1.EnqueueGang(resPoolNode1.MakeTaskGang(t))
+		resPoolNode1.EnqueueGang(makeTaskGang(t))
 		resPoolNode1.AddInvalidTask(t.Id)
 		resPoolNode1.AddToDemand(scalar.ConvertToResmgrResource(
 			t.GetResource()))
@@ -1017,7 +1015,7 @@ func (s *ResPoolSuite) TestResPoolPeekPendingGangs() {
 
 	// enqueue 4 gangs
 	for _, t := range s.getTasks() {
-		gang := respool.MakeTaskGang(t)
+		gang := makeTaskGang(t)
 		err := respool.EnqueueGang(gang)
 		s.NoError(err)
 	}
@@ -1037,7 +1035,7 @@ func (s *ResPoolSuite) TestResPoolPeekControllerGangs() {
 
 	// enqueue 4 gangs
 	for _, t := range s.getTasks() {
-		gang := respool.MakeTaskGang(t)
+		gang := makeTaskGang(t)
 		resPool, ok := respool.(*resPool)
 		s.True(ok)
 		err := resPool.controllerQueue.Enqueue(gang)

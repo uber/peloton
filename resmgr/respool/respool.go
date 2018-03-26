@@ -7,7 +7,6 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -59,8 +58,6 @@ type ResPool interface {
 	// Aggregates the child reservations by resource type.
 	AggregatedChildrenReservations() (map[string]float64, error)
 
-	// Forms a gang from a single task.
-	MakeTaskGang(task *resmgr.Task) *resmgrsvc.Gang
 	// Enqueues gang (task list) into resource pool pending queue.
 	EnqueueGang(gang *resmgrsvc.Gang) error
 	// Dequeues gang (task list) list from the resource pool.
@@ -133,23 +130,19 @@ type resPool struct {
 
 	// Tracks the allocation across different task dimensions
 	allocation *scalar.Allocation
-
 	// Tracks the max resources this resource pool can use in a given
 	// entitlement cycle
 	entitlement *scalar.Resources
-
 	// Tracks the demand of resources, in the pending and the controller queue,
 	// which are waiting to be admitted.
 	// Once admitted their resources are accounted for in `allocation`.
 	demand *scalar.Resources
-
-	// set of invalid tasks which will be discarded during admission control.
-	invalidTasks map[string]bool
+	// the reserved resources of this pool
+	reservation *scalar.Resources
 
 	// queue containing gangs waiting to be admitted into the resource pool.
 	// queue semantics is defined by the SchedulingPolicy
 	pendingQueue queue.Queue
-
 	// queue containing controller tasks(
 	// gang with 1 task) waiting to be admitted.
 	// All tasks are enqueued to the pending queue,
@@ -158,8 +151,19 @@ type resPool struct {
 	// in that case the task is moved to the controller queue so that it
 	// doesn't block the rest of the tasks in pending queue.
 	controllerQueue queue.Queue
+	// queue containing non-preemptible gangs, waiting to be admitted.
+	// All tasks are enqueued to the pending queue,
+	// the only reason a task would move from pending queue to np
+	// queue is when the task is non-preemptible and it can't be admitted,
+	// in that case the task is moved to the np queue so that it
+	// doesn't block the rest of the tasks in pending queue.
+	npQueue queue.Queue
+
 	// The max limit of resources controller tasks can use in this pool
 	controllerLimit *scalar.Resources
+
+	// set of invalid tasks which will be discarded during admission control.
+	invalidTasks map[string]bool
 
 	metrics *Metrics
 }
@@ -167,36 +171,43 @@ type resPool struct {
 // NewRespool will initialize the resource pool node and return that.
 func NewRespool(
 	scope tally.Scope,
-	ID string,
+	id string,
 	parent ResPool,
 	config *respool.ResourcePoolConfig) (ResPool, error) {
 
 	if config == nil {
 		return nil, errors.Errorf("error creating resource pool %s; "+
-			"ResourcePoolConfig is nil", ID)
+			"ResourcePoolConfig is nil", id)
 	}
 
 	pq, err := queue.CreateQueue(config.Policy, math.MaxInt64)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
+		return nil, errors.Wrapf(err, "error creating resource pool %s", id)
 	}
 
 	cq, err := queue.CreateQueue(config.Policy, math.MaxInt64)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error creating resource pool %s", ID)
+		return nil, errors.Wrapf(err, "error creating resource pool %s", id)
+	}
+
+	nq, err := queue.CreateQueue(config.Policy, math.MaxInt64)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error creating resource pool %s", id)
 	}
 
 	pool := &resPool{
-		id:              ID,
+		id:              id,
 		children:        list.New(),
 		parent:          parent,
 		resourceConfigs: make(map[string]*respool.ResourceConfig),
 		poolConfig:      config,
 		pendingQueue:    pq,
 		controllerQueue: cq,
+		npQueue:         nq,
 		allocation:      scalar.NewAllocation(),
 		entitlement:     &scalar.Resources{},
 		demand:          &scalar.Resources{},
+		reservation:     &scalar.Resources{},
 		invalidTasks:    make(map[string]bool),
 	}
 
@@ -283,13 +294,6 @@ func (n *resPool) IsLeaf() bool {
 	return n.isLeaf()
 }
 
-// MakeTaskGang forms a gang from a single task
-func (n *resPool) MakeTaskGang(task *resmgr.Task) *resmgrsvc.Gang {
-	var gang resmgrsvc.Gang
-	gang.Tasks = append(gang.Tasks, task)
-	return &gang
-}
-
 // EnqueueGang inserts a gang, which is a task list representing a gang
 // of 1 or more (same priority) tasks, into pending queue.
 func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
@@ -313,111 +317,85 @@ func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
 // If there is no gang present then its a error, if any one present
 // then it will return all the gangs within limit without error
 // The dequeue works in the following way
-// 1. First checks the controller queue to admit controller jobs
-// 2. Checks the pending queue
+// 1. Checks the non preemptible queue to admit non preemptible gangs
+// 2. Checks the controller queue to admit controller preemptible gangs
+// 3. Checks the pending queue (
+//    and moves gangs to non preemptible queue or controller queue)
 func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	if limit <= 0 {
 		err := errors.Errorf("limit %d is not valid", limit)
 		return nil, err
 	}
+
 	if !n.isLeaf() {
 		err := errors.Errorf("resource pool %s is not a leaf node", n.id)
 		return nil, err
 	}
 
+	var err error
 	var gangList []*resmgrsvc.Gang
 
-	// In the first pass we check the controller queue to admit as many
-	// controller tasks as we can satisfy with the controller limit of the
-	// resource pool.
-	cgs, err := n.dequeueController(limit)
-	if err != nil {
-		log.WithError(err).Warn("Error dequeueing from controller queue")
+	for _, qt := range []queueType{nonPreemptibleQueue, controllerQueue, pendingQueue} {
+		// check how many gangs left from the limit
+		left := limit - len(gangList)
+		if left == 0 {
+			break
+		}
+		gangs, err := n.dequeue(qt, left)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"respool_id": n.id,
+				"queue":      qt,
+				"gangs_left": left,
+			}).WithError(err).
+				Warn("Error dequeueing from queue")
+			continue
+		}
+		gangList = append(gangList, gangs...)
 	}
-	gangList = append(gangList, cgs...)
-
-	// In the second pass we check the tasks in the pending pending queue.
-	// Pending queue can contain both non-controller and controller tasks.
-	left := limit - len(gangList)
-	pgs, err := n.dequeuePending(left)
-	if err != nil {
-		log.WithError(err).Warn("Error dequeueing from pending queue")
-	}
-	gangList = append(gangList, pgs...)
 
 	n.metrics.PendingQueueSize.Update(float64(n.pendingQueue.Size()))
 	return gangList, err
 }
 
-// If the task at the head of the pending queue is a controller task and can't
-// be admitted with the controller limit, we will move it to the controller
-// queue so that it doesn't block the rest of the tasks. That controller task
-// will be picked up from the controller queue in the next scheduling cycle.
-func (n *resPool) dequeuePending(limit int) ([]*resmgrsvc.Gang,
+// dequeues limit number of gangs from the respool for admission.
+func (n *resPool) dequeue(qt queueType, limit int) ([]*resmgrsvc.Gang,
 	error) {
 
 	var err error
 	var gangList []*resmgrsvc.Gang
 
+	if limit <= 0 {
+		return gangList, nil
+	}
+
 	for i := 0; i < limit; i++ {
-		gangs, err := n.pendingQueue.Peek(1)
+		gangs, err := n.queue(qt).Peek(1)
 		if err != nil {
 			if _, ok := err.(queue.ErrorQueueEmpty); ok {
-				// pending queue is empty we are done
+				// queue is empty we are done
 				return gangList, nil
 			}
 			log.WithError(err).
-				Error("Failed to peek into pending queue")
+				Error("Failed to peek into queue")
 			return gangList, err
 		}
 		gang := gangs[0]
-		err = pending.TryAdmit(gang, n)
+		err = admission.TryAdmit(gang, n, qt)
 		if err != nil {
-			if err == errGangInvalid || err == errControllerTask {
+			if err == errGangInvalid || err == errSkipNonPreemptibleGang ||
+				err == errSkipControllerGang {
 				// the admission can fail  :
 				// 1. Because the gang is invalid.
 				// In this case we move on to the next gang in the queue with the
 				// expectation that the invalid gang is removed from the head of
 				// the queue.
-				// 2. Because the controller limit was reached,
-				// In this case we move on to the next gang in the
-				// queue with the expectation that the controller gang is moved
-				// to the controller queue.
-				continue
-			}
-			break
-		}
-		gangList = append(gangList, gang)
-	}
-	return gangList, err
-}
-
-// This only contains controller tasks.
-func (n *resPool) dequeueController(
-	limit int) ([]*resmgrsvc.Gang, error) {
-
-	var err error
-	var gangList []*resmgrsvc.Gang
-	for i := 0; i < limit; i++ {
-		gangs, err := n.controllerQueue.Peek(1)
-		if err != nil {
-			if _, ok := err.(queue.ErrorQueueEmpty); ok {
-				// queue is empty
-				break
-			}
-			log.WithError(err).Error(
-				"Failed to peek into controller queue")
-			break
-		}
-		gang := gangs[0]
-
-		err = controller.TryAdmit(gang, n)
-		if err != nil {
-			if err == errGangInvalid {
-				// the admission can fail because the gang is invalid.
-				// In this case we move on to the next gang in the queue with the
-				// expectation that the invalid gang is removed from the head of
-				// the queue.
+				// 2. Because the gang should be skipped (
+				// controller gang or non-preemptible gang)
+				log.WithFields(log.Fields{
+					"respool_id": n.id,
+					"error":      err.Error(),
+				}).Debug("skipping gang from admission")
 				continue
 			}
 			break
@@ -521,6 +499,18 @@ func (n *resPool) CalculateDemand() *scalar.Resources {
 	return demand
 }
 
+// getQueue returns the queue depending on the queue type
+func (n *resPool) queue(qt queueType) queue.Queue {
+	switch qt {
+	case controllerQueue:
+		return n.controllerQueue
+	case nonPreemptibleQueue:
+		return n.npQueue
+	default:
+		return n.pendingQueue
+	}
+}
+
 func (n *resPool) createRespoolUsage(allocation *scalar.Resources) []*respool.ResourceUsage {
 	resUsage := make([]*respool.ResourceUsage, 0, 4)
 	ru := &respool.ResourceUsage{
@@ -561,11 +551,37 @@ func (n *resPool) isLeaf() bool {
 // initializes the resources and limits for this pool
 // NB: The function calling initResources should acquire the lock
 func (n *resPool) initialize(cfg *respool.ResourcePoolConfig) {
+	n.initResConfig(cfg)
+	n.initControllerLimit(cfg)
+	n.initReservation(cfg)
+}
 
+// initializes the reserved resources
+func (n *resPool) initReservation(cfg *respool.ResourcePoolConfig) {
+	for kind, res := range n.resourceConfigs {
+		switch kind {
+		case common.CPU:
+			n.reservation.CPU = res.Reservation
+		case common.MEMORY:
+			n.reservation.MEMORY = res.Reservation
+		case common.GPU:
+			n.reservation.GPU = res.Reservation
+		case common.DISK:
+			n.reservation.DISK = res.Reservation
+		}
+	}
+	log.WithField("reservation", n.reservation).
+		WithField("respool_id", n.id).
+		Info("Setting reservation")
+}
+
+func (n *resPool) initResConfig(cfg *respool.ResourcePoolConfig) {
 	for _, res := range cfg.Resources {
 		n.resourceConfigs[res.Kind] = res
 	}
+}
 
+func (n *resPool) initControllerLimit(cfg *respool.ResourcePoolConfig) {
 	climit := cfg.GetControllerLimit()
 	if climit == nil {
 		n.controllerLimit = nil
@@ -590,6 +606,16 @@ func (n *resPool) initialize(cfg *respool.ResourcePoolConfig) {
 	log.WithField("controller_limit", controllerLimit).
 		WithField("respool_id", n.id).
 		Info("Setting controller limit")
+	n.controllerLimit = controllerLimit
+}
+
+// ControllerLimit returns the controller limit of the resource pool
+func (n *resPool) ControllerLimit() *scalar.Resources {
+	return n.controllerLimit
+}
+
+// SetControllerLimit sets the controller limit of this resource pool
+func (n *resPool) SetControllerLimit(controllerLimit *scalar.Resources) {
 	n.controllerLimit = controllerLimit
 }
 
@@ -806,7 +832,7 @@ func (n *resPool) SubtractFromDemand(res *scalar.Resources) error {
 func (n *resPool) updateStaticResourceMetrics() {
 	n.metrics.ResourcePoolShare.Update(getShare(n.resourceConfigs))
 	n.metrics.ResourcePoolLimit.Update(getLimits(n.resourceConfigs))
-	n.metrics.ResourcePoolReservation.Update(getReservations(n.resourceConfigs))
+	n.metrics.ResourcePoolReservation.Update(n.reservation)
 
 	if n.controllerLimit != nil {
 		n.metrics.ControllerLimit.Update(n.controllerLimit)
@@ -865,23 +891,6 @@ func getLimits(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resou
 			resources.MEMORY = res.Limit
 		case common.DISK:
 			resources.DISK = res.Limit
-		}
-	}
-	return &resources
-}
-
-func getReservations(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {
-	var resources scalar.Resources
-	for kind, res := range resourceConfigs {
-		switch kind {
-		case common.CPU:
-			resources.CPU = res.Reservation
-		case common.GPU:
-			resources.GPU = res.Reservation
-		case common.MEMORY:
-			resources.MEMORY = res.Reservation
-		case common.DISK:
-			resources.DISK = res.Reservation
 		}
 	}
 	return &resources

@@ -4,7 +4,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	"github.com/pkg/errors"
@@ -15,30 +14,37 @@ var (
 	errGangInvalid          = errors.New("gang is invalid")
 	errGangValidationFailed = errors.New("gang validation failed")
 	errResourcePoolFull     = errors.New("resource pool full")
-	errControllerTask       = errors.New("failed to admit controller task")
+
+	errSkipControllerGang = errors.New(
+		"skipping controller gang from admitting")
+	errSkipNonPreemptibleGang = errors.New(
+		"skipping non-preemptible gang from admitting")
 )
 
+// defines the different queues of the resource pool from which the gangs are
+// admitted.
 type queueType int
 
 const (
 	controllerQueue queueType = iota + 1
 	pendingQueue
+	nonPreemptibleQueue
 )
 
 // returns true if the gang can be admitted to the pool
 type admitter func(gang *resmgrsvc.Gang, pool *resPool) bool
 
 //  returns true if there's enough resources in the pool to admit the gang
-func checkEntitlement(gang *resmgrsvc.Gang,
-	pool *resPool) bool {
+func entitlementAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	currentEntitlement := pool.entitlement
 	currentAllocation := pool.allocation.GetByType(scalar.TotalAllocation)
 	neededResources := scalar.GetGangResources(gang)
 
-	log.WithField("entitlement", currentEntitlement).
-		WithField("total_alloc", currentAllocation).
-		WithField("resources_required", neededResources).Debug(
-		"checking entitlement")
+	log.WithFields(log.Fields{
+		"entitlement":        currentEntitlement,
+		"total_alloc":        currentAllocation,
+		"resources_required": neededResources,
+	}).Debug("checking entitlement")
 
 	return currentAllocation.
 		Add(neededResources).
@@ -47,8 +53,7 @@ func checkEntitlement(gang *resmgrsvc.Gang,
 }
 
 // returns true if a controller gang can be admitted to the pool
-func checkControllerLimit(gang *resmgrsvc.Gang,
-	pool *resPool) bool {
+func controllerAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 	if !isController(gang) {
 		// don't need to check controller limit
 		return true
@@ -61,61 +66,72 @@ func checkControllerLimit(gang *resmgrsvc.Gang,
 	}
 
 	// check controller limit and allocation
+	controllerLimit := pool.controllerLimit
 	controllerAllocation := pool.allocation.GetByType(scalar.ControllerAllocation)
 	neededResources := scalar.GetGangResources(gang)
 
-	log.WithField("controller_limit", pool.controllerLimit).
-		WithField("controller_alloc", controllerAllocation).
-		WithField("resources_required", neededResources).Debug(
-		"checking controller limit")
+	log.WithFields(log.Fields{
+		"controller_limit":   controllerLimit,
+		"controller_alloc":   controllerAllocation,
+		"resources_required": neededResources,
+	}).Debug("checking controller limit")
 
 	return controllerAllocation.
 		Add(neededResources).
-		LessThanOrEqual(pool.controllerLimit)
+		LessThanOrEqual(controllerLimit)
 }
 
-// admissionController is the interface for the admission controller for a
-// resource pool
-type admissionController interface {
-	// Try admit, tries to admit the gang into the resource pool.
-	// Returns an error if there was some error in the admission control
-	TryAdmit(gang *resmgrsvc.Gang, pool *resPool) error
+// For admission of non preemptible gangs there are 2 approaches:
+// 1. Non preemptible will not be admitted if allocation > reservation
+//    i.e. non-preemptible gangs should not use elastic resources.
+// 2. Lower priority gangs will not be admitted if
+//    (higher priority allocation) > reservation
+// Peloton takes approach 1 by checking the total allocation of all
+// non-preemptible gangs and the resource pool reservation.
+func reservationAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
+	if isPreemptible(gang) {
+		//don't need to check reservation
+		return true
+	}
+
+	npAllocation := pool.allocation.GetByType(scalar.NonPreemptibleAllocation)
+	neededResources := scalar.GetGangResources(gang)
+	reservation := pool.reservation
+
+	log.WithFields(log.Fields{
+		"reservation":           reservation,
+		"non_preemptible_alloc": npAllocation,
+		"resources_required":    neededResources,
+	}).Debug("checking reservation")
+
+	return npAllocation.
+		Add(neededResources).
+		LessThanOrEqual(reservation)
 }
 
-// batchAdmissionController is the implementation of admissionController for
-// batch tasks
-type batchAdmissionController struct {
-	qt        queueType
+type admissionController struct {
 	admitters []admitter
 }
 
-var (
-	pending    = newPendingQueueAdmissionController()
-	controller = newControllerQueueAdmissionController()
-)
-
-func newPendingQueueAdmissionController() admissionController {
-	return batchAdmissionController{
-		qt:        pendingQueue,
-		admitters: []admitter{checkEntitlement, checkControllerLimit},
-	}
+// the global admission controller for all resource pool
+var admission = admissionController{
+	admitters: []admitter{
+		entitlementAdmitter,
+		controllerAdmitter,
+		reservationAdmitter,
+	},
 }
 
-func newControllerQueueAdmissionController() admissionController {
-	return batchAdmissionController{
-		qt:        controllerQueue,
-		admitters: []admitter{checkEntitlement, checkControllerLimit},
-	}
-}
-
-func (ac batchAdmissionController) TryAdmit(
+// Try admit, tries to admit the gang into the resource pool.
+// Returns an error if there was some error in the admission control
+func (ac admissionController) TryAdmit(
 	gang *resmgrsvc.Gang,
-	pool *resPool) error {
+	pool *resPool, qt queueType) error {
 
 	pool.Lock()
 	defer pool.Unlock()
 
-	ok, err := ac.validateGang(gang, pool)
+	ok, err := ac.validateGang(gang, pool, qt)
 	if err != nil {
 		return errGangValidationFailed
 	}
@@ -126,38 +142,55 @@ func (ac batchAdmissionController) TryAdmit(
 	}
 
 	if ok = ac.canAdmit(gang, pool); !ok {
-		switch ac.qt {
-		case pendingQueue:
+		if qt == pendingQueue {
 			// If a gang can't be admitted from the pending queue to the resource
-			// pool, then if
-			// 1. its a controller task it is moved to the controller queue
-			// 2. its a non-controller task do nothing
+			// pool, then if:
+			// 1. Its a non-preemptible task it is moved to the non-preemptible
+			//    queue
+			// 2. Its a controller task it is moved to the controller queue
+			// 3. Else the resource pool is full, do nothing
+			if !isPreemptible(gang) {
+				err := ac.moveToQueue(pool, nonPreemptibleQueue, gang)
+				if err != nil {
+					return err
+				}
+				return errSkipNonPreemptibleGang
+			}
 			if isController(gang) {
-				err = pool.pendingQueue.Remove(gang)
+				err = ac.moveToQueue(pool, controllerQueue, gang)
 				if err != nil {
-					return errors.Wrapf(err,
-						"failed to remove gang from pending queue")
+					return err
 				}
-
-				err = pool.controllerQueue.Enqueue(gang)
-				if err != nil {
-					return errors.Wrapf(err,
-						"failed to enqueue gang to controller queue")
-				}
-				return errControllerTask
+				return errSkipControllerGang
 			}
 		}
 		return errResourcePoolFull
 	}
 
 	// add to allocation and remove from source queue
-	err = ac.getSourceQueue(pool).Remove(gang)
+	err = pool.queue(qt).Remove(gang)
 	if err != nil {
 		return errors.Wrapf(err,
-			"failed to remove gang from queue")
+			"failed to remove gang from queue, qtype:%d", qt)
 	}
 
 	pool.allocation = pool.allocation.Add(scalar.GetGangAllocation(gang))
+	return nil
+}
+
+// moves the gang from the pending queue to one of controller queue or np queue.
+func (ac admissionController) moveToQueue(pool *resPool, qt queueType,
+	gang *resmgrsvc.Gang) error {
+	err := pool.pendingQueue.Remove(gang)
+	if err != nil {
+		return errors.Wrap(err,
+			"failed to remove gang from pending queue")
+	}
+	err = pool.queue(qt).Enqueue(gang)
+	if err != nil {
+		return errors.Wrapf(err,
+			"failed to enqueue gang to queue, qtype:%d", qt)
+	}
 	return nil
 }
 
@@ -166,7 +199,8 @@ func (ac batchAdmissionController) TryAdmit(
 // rest of the tasks in the gang.
 // Returns true if the gang is valid and ready for admission control,
 // false if the gang is invalid and an optional error if the validation failed.
-func (ac batchAdmissionController) validateGang(gang *resmgrsvc.Gang, pool *resPool) (bool,
+func (ac admissionController) validateGang(gang *resmgrsvc.Gang,
+	pool *resPool, qt queueType) (bool,
 	error) {
 
 	// return false if gang is nil
@@ -208,7 +242,7 @@ func (ac batchAdmissionController) validateGang(gang *resmgrsvc.Gang, pool *resP
 
 	// Removing the gang from queue as tasks are deleted
 	// from this gang
-	err := ac.getSourceQueue(pool).Remove(gang)
+	err := pool.queue(qt).Remove(gang)
 	if err != nil {
 		log.WithError(err).Error("Failed to delete" +
 			"gang from pending queue")
@@ -229,7 +263,7 @@ func (ac batchAdmissionController) validateGang(gang *resmgrsvc.Gang, pool *resP
 	if len(validTasks) != 0 {
 		gang.Tasks = validTasks
 		// TODO this should enqueue at the head of the queue
-		err = ac.getSourceQueue(pool).Enqueue(gang)
+		err = pool.queue(qt).Enqueue(gang)
 		if err != nil {
 			log.WithError(err).
 				WithField("new_gang", gang).
@@ -247,7 +281,7 @@ func (ac batchAdmissionController) validateGang(gang *resmgrsvc.Gang, pool *resP
 }
 
 // returns true if gang can be admitted to the pool
-func (ac batchAdmissionController) canAdmit(gang *resmgrsvc.Gang,
+func (ac admissionController) canAdmit(gang *resmgrsvc.Gang,
 	pool *resPool) bool {
 
 	// loop through the admitters
@@ -272,11 +306,14 @@ func isController(gang *resmgrsvc.Gang) bool {
 	return tasks[0].GetController()
 }
 
-// getSourceQueue returns the source queue depending on the type of the batch
-// task
-func (ac batchAdmissionController) getSourceQueue(pool *resPool) queue.Queue {
-	if ac.qt == controllerQueue {
-		return pool.controllerQueue
+// returns true if the gang is non-preemptible
+func isPreemptible(gang *resmgrsvc.Gang) bool {
+	tasks := gang.GetTasks()
+
+	if len(tasks) == 0 {
+		return false
 	}
-	return pool.pendingQueue
+
+	// Preemption is defined at the Job level, so we can check just one task
+	return tasks[0].Preemptible
 }

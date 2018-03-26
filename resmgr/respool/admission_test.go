@@ -22,7 +22,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
 	s.True(ok)
 
 	task := s.getTasks()[0]
-	gang := resPool.MakeTaskGang(task)
+	gang := makeTaskGang(task)
 
 	err := resPool.EnqueueGang(gang)
 	resPool.AddToDemand(scalar.GetGangResources(gang))
@@ -38,7 +38,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
 	resPool.AddInvalidTask(task.Id)
 
 	// try and admit
-	err = pending.TryAdmit(gang, resPool)
+	err = admission.TryAdmit(gang, resPool, pendingQueue)
 	s.Equal(err, errGangInvalid)
 
 	// demand should be removed
@@ -57,7 +57,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	resPool.SetEntitlement(s.getEntitlement())
 
 	task := s.getTasks()[0]
-	gang := resPool.MakeTaskGang(task)
+	gang := makeTaskGang(task)
 
 	err := resPool.EnqueueGang(gang)
 	resPool.AddToDemand(scalar.GetGangResources(gang))
@@ -69,7 +69,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
 
-	err = pending.TryAdmit(gang, resPool)
+	err = admission.TryAdmit(gang, resPool, pendingQueue)
 	s.NoError(err)
 	s.Equal(0, resPool.pendingQueue.Size())
 
@@ -86,7 +86,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
 	s.True(ok)
 
 	task := s.getTasks()[0]
-	gang := resPool.MakeTaskGang(task)
+	gang := makeTaskGang(task)
 
 	err := resPool.EnqueueGang(gang)
 	resPool.AddToDemand(scalar.GetGangResources(gang))
@@ -98,7 +98,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
 
-	err = pending.TryAdmit(gang, resPool)
+	err = admission.TryAdmit(gang, resPool, pendingQueue)
 	s.Equal(err, errResourcePoolFull)
 	s.Equal(1, resPool.pendingQueue.Size())
 
@@ -121,34 +121,55 @@ func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {
 	}
 
 	tt := []struct {
-		canAdmit   bool
-		err        error
-		controller bool
+		canAdmit    bool
+		err         error
+		controller  bool
+		preemptible bool
 	}{
 		{
 			// Tests a batch task at the head of queue which can be admitted
-			canAdmit:   true,
-			err:        nil,
-			controller: false,
+			canAdmit:    true,
+			err:         nil,
+			controller:  false,
+			preemptible: true,
 		},
 		{
 			// Tests a batch task at the head of queue which can not be admitted
-			canAdmit:   false,
-			err:        errResourcePoolFull,
-			controller: false,
+			canAdmit:    false,
+			err:         errResourcePoolFull,
+			controller:  false,
+			preemptible: true,
 		},
 		{
 			// Tests a controller task at the head of queue which can be admitted
-			canAdmit:   true,
-			err:        nil,
-			controller: true,
+			canAdmit:    true,
+			err:         nil,
+			controller:  true,
+			preemptible: true,
 		},
 		{
 			// Tests a controller task at the head of queue which can not be
 			// admitted
-			canAdmit:   false,
-			err:        errControllerTask,
-			controller: true,
+			canAdmit:    false,
+			err:         errSkipControllerGang,
+			controller:  true,
+			preemptible: true,
+		},
+		{
+			// Tests a non preemptible gang at the head of queue which can be
+			// admitted
+			canAdmit:    true,
+			err:         nil,
+			controller:  false,
+			preemptible: false,
+		},
+		{
+			// Tests a non preemptible task at the head of queue which can not be
+			// admitted
+			canAdmit:    false,
+			err:         errSkipNonPreemptibleGang,
+			controller:  false,
+			preemptible: false,
 		},
 	}
 
@@ -161,21 +182,25 @@ func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {
 		} else if t.controller {
 			// set the limit to zero
 			resPool.controllerLimit = scalar.ZeroResource
+		} else if !t.preemptible {
+			// set the reservation to zero
+			resPool.reservation = scalar.ZeroResource
 		}
 
 		task := s.getTasks()[0]
 		task.Controller = t.controller
-		gang := resPool.MakeTaskGang(task)
+		task.Preemptible = t.preemptible
+		gang := makeTaskGang(task)
 		err := resPool.EnqueueGang(gang)
 		s.NoError(err)
 
-		err = pending.TryAdmit(gang, resPool)
+		err = admission.TryAdmit(gang, resPool, pendingQueue)
 		s.Equal(t.err, err)
 
 		if t.canAdmit {
 			assertAdmittedSuccessfully(s, task, resPool)
 		} else {
-			assertFailedAdmission(s, resPool, t.controller)
+			assertFailedAdmission(s, resPool, t.controller, t.preemptible)
 		}
 	}
 }
@@ -218,33 +243,97 @@ func (s *ResPoolSuite) TestBatchAdmissionController_ControllerAdmitter() {
 
 		task := s.getTasks()[0]
 		task.Controller = true
-		gang := resPool.MakeTaskGang(task)
+		gang := makeTaskGang(task)
 		err := resPool.controllerQueue.Enqueue(gang)
 		s.NoError(err)
 
-		err = controller.TryAdmit(gang, resPool)
+		err = admission.TryAdmit(gang, resPool, controllerQueue)
 		s.Equal(t.err, err)
 
 		if t.canAdmit {
 			assertAdmittedSuccessfully(s, task, resPool)
 		} else {
-			assertFailedAdmission(s, resPool, true)
+			assertFailedAdmission(s, resPool, true, true)
 		}
 	}
 }
 
-func assertFailedAdmission(s *ResPoolSuite, resPool *resPool, controller bool) {
+func (s *ResPoolSuite) TestBatchAdmissionController_NPAdmitter() {
+	poolConfig := &respool.ResourcePoolConfig{
+		Name:      _testResPoolName,
+		Parent:    &_rootResPoolID,
+		Resources: s.getResources(),
+		Policy:    respool.SchedulingPolicy_PriorityFIFO,
+	}
+
+	tt := []struct {
+		canAdmit bool
+		err      error
+	}{
+		{ // Tests a controller task at the head of queue which can be admitted
+			canAdmit: true,
+			err:      nil,
+		},
+		{ // Tests a batch task at the head of queue which can nit be admitted
+			canAdmit: false,
+			err:      errResourcePoolFull,
+		},
+	}
+
+	for _, t := range tt {
+		rp := s.respoolWithConfig(poolConfig)
+		resPool, ok := rp.(*resPool)
+		s.True(ok)
+		if t.canAdmit {
+			resPool.SetEntitlement(s.getEntitlement())
+		} else {
+			// set the reservation to zero
+			resPool.reservation = scalar.ZeroResource
+		}
+
+		task := s.getTasks()[3]
+		task.Preemptible = false
+		gang := makeTaskGang(task)
+		err := resPool.npQueue.Enqueue(gang)
+		s.NoError(err)
+
+		err = admission.TryAdmit(gang, resPool, nonPreemptibleQueue)
+		s.Equal(t.err, err)
+
+		if t.canAdmit {
+			assertAdmittedSuccessfully(s, task, resPool)
+		} else {
+			assertFailedAdmission(s, resPool, false, false)
+		}
+	}
+}
+
+func assertFailedAdmission(s *ResPoolSuite, resPool *resPool,
+	controller bool, preemptible bool) {
 	// gang resources shouldn't account for respool allocation
 	s.Equal(scalar.ZeroResource, resPool.allocation.GetByType(scalar.TotalAllocation))
 	s.Equal(scalar.ZeroResource, resPool.allocation.GetByType(scalar.ControllerAllocation))
+	s.Equal(scalar.ZeroResource, resPool.allocation.GetByType(scalar.NonPreemptibleAllocation))
 	if controller {
 		// gang should be moved to controller queue
 		s.Equal(0, resPool.pendingQueue.Size())
 		s.Equal(1, resPool.controllerQueue.Size())
-	} else {
-		// gang should remain in pending queue
-		s.Equal(1, resPool.pendingQueue.Size())
+		s.Equal(0, resPool.npQueue.Size())
+		return
 	}
+
+	if !preemptible {
+		// gang should be moved to np queue
+		s.Equal(0, resPool.pendingQueue.Size())
+		s.Equal(0, resPool.controllerQueue.Size())
+		s.Equal(1, resPool.npQueue.Size())
+		return
+	}
+
+	// gang should remain in pending queue
+	s.Equal(1, resPool.pendingQueue.Size())
+	s.Equal(0, resPool.controllerQueue.Size())
+	s.Equal(0, resPool.npQueue.Size())
 }
 
 func assertAdmittedSuccessfully(s *ResPoolSuite, task *resmgr.Task, resPool *resPool) {
@@ -254,7 +343,11 @@ func assertAdmittedSuccessfully(s *ResPoolSuite, task *resmgr.Task, resPool *res
 	// gang resource should account for respool's controller allocation
 	s.Equal(scalar.GetTaskAllocation(task).GetByType(scalar.ControllerAllocation),
 		resPool.allocation.GetByType(scalar.ControllerAllocation))
-	// gang resource should be removed from pending queue
+	// gang resource should account for respool's non preemptible allocation
+	s.Equal(scalar.GetTaskAllocation(task).GetByType(scalar.NonPreemptibleAllocation),
+		resPool.allocation.GetByType(scalar.NonPreemptibleAllocation))
+	// gang resource should be removed from all the queues
 	s.Equal(0, resPool.pendingQueue.Size())
 	s.Equal(0, resPool.controllerQueue.Size())
+	s.Equal(0, resPool.npQueue.Size())
 }

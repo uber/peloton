@@ -226,6 +226,7 @@ func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
+			Preemptible: true,
 		},
 	}
 	return &gang
@@ -245,6 +246,7 @@ func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 	}
 	return &gang
@@ -265,6 +267,7 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 		{
 			Name:         "job2-2",
@@ -278,6 +281,7 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 	}
 	return &gang

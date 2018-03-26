@@ -200,6 +200,7 @@ func (suite *SchedulerTestSuite) AddTasks() {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 		{
 			Name:     "job1-1",
@@ -212,6 +213,7 @@ func (suite *SchedulerTestSuite) AddTasks() {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 		{
 			Name:     "job2-1",
@@ -224,6 +226,7 @@ func (suite *SchedulerTestSuite) AddTasks() {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 		{
 			Name:     "job2-2",
@@ -236,6 +239,7 @@ func (suite *SchedulerTestSuite) AddTasks() {
 				GpuLimit:    0,
 				MemLimitMb:  100,
 			},
+			Preemptible: true,
 		},
 	}
 	resPool, err := suite.resTree.Get(&peloton.ResourcePoolID{
@@ -249,8 +253,15 @@ func (suite *SchedulerTestSuite) AddTasks() {
 		rmTask := suite.rmTaskTracker.GetTask(t.Id)
 		err = rmTask.TransitTo(task.TaskState_PENDING.String())
 		suite.NoError(err)
-		resPool.EnqueueGang(resPool.MakeTaskGang(t))
+		resPool.EnqueueGang(createGang(t))
 	}
+}
+
+// createGang creates a gang from a single task
+func createGang(task *resmgr.Task) *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	gang.Tasks = append(gang.Tasks, task)
+	return &gang
 }
 
 func (suite *SchedulerTestSuite) validateReadyQueue(expectedTaskIDs []string) {

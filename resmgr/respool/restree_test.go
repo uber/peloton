@@ -281,7 +281,7 @@ func (s *resTreeTestSuite) TestPendingQueueError() {
 		JobId:    jobID1,
 		Id:       taskID1,
 	}
-	err := rt.resPools["respool1"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem1))
+	err := rt.resPools["respool1"].EnqueueGang(makeTaskGang(taskItem1))
 	s.EqualError(
 		err,
 		"resource pool respool1 is not a leaf node",
@@ -309,8 +309,9 @@ func (s *resTreeTestSuite) TestPendingQueue() {
 			GpuLimit:    0,
 			MemLimitMb:  100,
 		},
+		Preemptible: true,
 	}
-	rt.resPools["respool11"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem1))
+	rt.resPools["respool11"].EnqueueGang(makeTaskGang(taskItem1))
 
 	// Task -2
 	jobID2 := &peloton.JobID{
@@ -330,9 +331,10 @@ func (s *resTreeTestSuite) TestPendingQueue() {
 			GpuLimit:    0,
 			MemLimitMb:  100,
 		},
+		Preemptible: true,
 	}
 	rt.resPools["respool11"].SetEntitlement(s.getEntitlement())
-	rt.resPools["respool11"].EnqueueGang(rt.resPools["respool11"].MakeTaskGang(taskItem2))
+	rt.resPools["respool11"].EnqueueGang(makeTaskGang(taskItem2))
 
 	gangList3, err := rt.resPools["respool11"].DequeueGangList(1)
 	if err != nil {
