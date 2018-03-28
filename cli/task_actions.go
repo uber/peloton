@@ -22,12 +22,12 @@ const (
 	taskEventsFormatBody   = "%s\t%s\t%s\t%s\t%s\t%s\t\n"
 )
 
-// SortedTaskInfoList makes TaskInfo implement sortable interface
-type SortedTaskInfoList []*task.TaskInfo
+// sortedTaskInfoList makes TaskInfo implement sortable interface
+type sortedTaskInfoList []*task.TaskInfo
 
-func (a SortedTaskInfoList) Len() int           { return len(a) }
-func (a SortedTaskInfoList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a SortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].InstanceId }
+func (a sortedTaskInfoList) Len() int           { return len(a) }
+func (a sortedTaskInfoList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a sortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].InstanceId }
 
 // TaskGetAction is the action to get a task instance
 func (c *Client) TaskGetAction(jobID string, instanceID uint32) error {
@@ -218,21 +218,26 @@ func (c *Client) TaskStartAction(jobID string, instanceRanges []*task.InstanceRa
 }
 
 // TaskStopAction is the action to stop a task
-func (c *Client) TaskStopAction(jobID string, instanceRanges []*task.InstanceRange) error {
+func (c *Client) TaskStopAction(jobID string,
+	instanceRanges []*task.InstanceRange) error {
+
+	id := &peloton.JobID{
+		Value: jobID,
+	}
+
 	var request = &task.StopRequest{
-		JobId: &peloton.JobID{
-			Value: jobID,
-		},
+		JobId:  id,
 		Ranges: instanceRanges,
 	}
 	response, err := c.taskClient.Stop(c.ctx, request)
 	if err != nil {
 		return err
 	}
+
 	printTaskStopResponse(response, c.Debug)
 	// Retry one more time in case failedInstanceList is non zero
 	if len(response.GetInvalidInstanceIds()) > 0 {
-		fmt.Fprintf(
+		fmt.Fprint(
 			tabWriter,
 			"Retrying failed tasks",
 		)
@@ -266,7 +271,7 @@ func printTask(t *task.TaskInfo) {
 	cfg := t.GetConfig()
 	runtime := t.GetRuntime()
 
-	// Calcuate the start time and run time of the task
+	// Calculate the start time and run time of the task
 	startTimeStr := ""
 	durationStr := ""
 	startTime, err := time.Parse(time.RFC3339Nano, runtime.GetStartTime())
@@ -322,192 +327,238 @@ func printTaskEvents(eventsList []*task.GetEventsResponse_Events) {
 }
 
 func printTaskGetResponse(r *task.GetResponse, debug bool) {
+	defer tabWriter.Flush()
+
 	if debug {
 		printResponseJSON(r)
-	} else {
-		if r.GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
-				r.NotFound.Id.Value, r.NotFound.Message)
-		} else if r.GetOutOfRange() != nil {
-			fmt.Fprintf(tabWriter,
-				"Requested instance of job %s is not within the range of valid "+
-					"instances (0...%d)\n",
-				r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
-		} else if r.GetResult() != nil {
-			fmt.Fprintf(tabWriter, taskListFormatHeader)
-			printTask(r.GetResult())
-		} else {
-			fmt.Fprintf(tabWriter, "Unexpected error, no results in response.\n")
-		}
+		return
 	}
-	tabWriter.Flush()
+
+	if r.GetNotFound() != nil {
+		fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
+			r.NotFound.Id.Value, r.NotFound.Message)
+		return
+	}
+
+	if r.GetOutOfRange() != nil {
+		fmt.Fprintf(tabWriter,
+			"Requested instance of job %s is not within the range of valid "+
+				"instances (0...%d)\n",
+			r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
+		return
+	}
+
+	if r.GetResult() != nil {
+		fmt.Fprint(tabWriter, taskListFormatHeader)
+		printTask(r.GetResult())
+		return
+	}
+	fmt.Fprint(tabWriter, "Unexpected error, no results in response.\n")
 }
 
 func printTaskGetEventsResponse(r *task.GetEventsResponse, debug bool) {
+	defer tabWriter.Flush()
+
 	if debug {
 		printResponseJSON(r)
-	} else {
-		err := r.GetError()
-		if err != nil {
-			if err.GetEventError() != nil {
-				fmt.Fprintf(tabWriter,
-					"Got event error: %s\n", err.GetEventError().GetMessage())
-			} else {
-				fmt.Fprintf(tabWriter, "Unexpected error %v\n", err)
-			}
-		} else {
-			fmt.Fprintf(tabWriter, taskEventsFormatHeader)
-			printTaskEvents(r.GetResult())
-		}
+		return
 	}
-	tabWriter.Flush()
+
+	err := r.GetError()
+	if err == nil {
+		fmt.Fprint(tabWriter, taskEventsFormatHeader)
+		printTaskEvents(r.GetResult())
+		return
+	}
+
+	if err.GetEventError() != nil {
+		fmt.Fprintf(tabWriter,
+			"Got event error: %s\n", err.GetEventError().GetMessage())
+		return
+	}
+
+	fmt.Fprintf(tabWriter, "Unexpected error %v\n", err)
 }
 
 func printTaskListResponse(r *task.ListResponse, debug bool) {
+	defer tabWriter.Flush()
+
 	if debug {
 		printResponseJSON(r)
-	} else {
-		if r.GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
-				r.NotFound.Id.Value, r.NotFound.Message)
-		} else {
-			fmt.Fprintf(tabWriter, taskListFormatHeader)
-
-			// we want to show tasks in sorted order
-			tasks := make(SortedTaskInfoList, len(r.GetResult().GetValue()))
-			i := 0
-			for _, k := range r.GetResult().GetValue() {
-				tasks[i] = k
-				i++
-			}
-			sort.Sort(tasks)
-
-			for _, t := range tasks {
-				printTask(t)
-			}
-		}
+		return
 	}
-	tabWriter.Flush()
+
+	if r.GetNotFound() != nil {
+		fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
+			r.NotFound.Id.Value, r.NotFound.Message)
+		return
+	}
+
+	fmt.Fprint(tabWriter, taskListFormatHeader)
+	// we want to show tasks in sorted order
+	tasks := make(sortedTaskInfoList, len(r.GetResult().GetValue()))
+	i := 0
+	for _, k := range r.GetResult().GetValue() {
+		tasks[i] = k
+		i++
+	}
+	sort.Sort(tasks)
+
+	for _, t := range tasks {
+		printTask(t)
+	}
 }
 
 func printTaskQueryResponse(r *task.QueryResponse, debug bool) {
+	defer tabWriter.Flush()
+
 	if debug {
 		printResponseJSON(r)
-	} else {
-		if r.GetError().GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
-				r.Error.NotFound.Id.Value, r.Error.NotFound.Message)
-		} else {
-			if len(r.GetRecords()) == 0 {
-				fmt.Fprintf(tabWriter, "No tasks found\n")
-				return
-			}
-			fmt.Fprintf(tabWriter, taskListFormatHeader)
-
-			for _, t := range r.GetRecords() {
-				printTask(t)
-			}
-		}
+		return
 	}
-	tabWriter.Flush()
+
+	if r.GetError().GetNotFound() != nil {
+		fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
+			r.Error.NotFound.Id.Value, r.Error.NotFound.Message)
+		return
+	}
+
+	if len(r.GetRecords()) == 0 {
+		fmt.Fprint(tabWriter, "No tasks found\n")
+		return
+	}
+
+	fmt.Fprint(tabWriter, taskListFormatHeader)
+	for _, t := range r.GetRecords() {
+		printTask(t)
+	}
 }
 
 func printTaskStartResponse(r *task.StartResponse, debug bool) {
+	defer tabWriter.Flush()
+
 	if debug {
 		printResponseJSON(r)
-	} else {
-		respError := r.GetError()
-		if respError != nil {
-			respNotFound := respError.GetNotFound()
-			if respNotFound != nil {
-				fmt.Fprintf(
-					tabWriter,
-					"Job %s was not found: %s\n",
-					respNotFound.GetId().GetValue(),
-					respNotFound.GetMessage(),
-				)
-			} else if respError.GetOutOfRange() != nil {
-				fmt.Fprintf(
-					tabWriter,
-					"Requested instances:%d of job %s is not within "+
-						"the range of valid instances (0...%d)\n",
-					r.GetInvalidInstanceIds(),
-					respError.GetOutOfRange().GetJobId().GetValue(),
-					respError.GetOutOfRange().GetInstanceCount(),
-				)
-			} else if r.GetError().GetFailure() != nil {
-				fmt.Fprintf(
-					tabWriter,
-					"Tasks stop goalstate update in DB got error: %s\n",
-					respError.GetFailure().GetMessage(),
-				)
-			}
-		} else {
-			fmt.Fprintf(
-				tabWriter,
-				"Tasks started successfully for instances: %v and "+
-					"failed instances are: %v\n",
-				r.GetStartedInstanceIds(),
-				r.GetInvalidInstanceIds(),
-			)
-		}
+		return
 	}
-	tabWriter.Flush()
+	respError := r.GetError()
+	if respError == nil {
+		fmt.Fprintf(
+			tabWriter,
+			"Tasks started successfully for instances: %v and "+
+				"failed instances are: %v\n",
+			r.GetStartedInstanceIds(),
+			r.GetInvalidInstanceIds(),
+		)
+		return
+	}
+	if respError.GetNotFound() != nil {
+		fmt.Fprintf(
+			tabWriter,
+			"Job %s was not found: %s\n",
+			respError.GetNotFound().GetId().GetValue(),
+			respError.GetNotFound().GetMessage(),
+		)
+		return
+	}
+
+	if respError.GetOutOfRange() != nil {
+		fmt.Fprintf(
+			tabWriter,
+			"Requested instances:%d of job %s is not within "+
+				"the range of valid instances (0...%d)\n",
+			r.GetInvalidInstanceIds(),
+			respError.GetOutOfRange().GetJobId().GetValue(),
+			respError.GetOutOfRange().GetInstanceCount(),
+		)
+		return
+	}
+
+	if r.GetError().GetFailure() != nil {
+		fmt.Fprintf(
+			tabWriter,
+			"Tasks stop goalstate update in DB got error: %s\n",
+			respError.GetFailure().GetMessage(),
+		)
+	}
 }
 
 func printTaskStopResponse(r *task.StopResponse, debug bool) {
+	defer tabWriter.Flush()
+
 	if debug {
 		printResponseJSON(r)
-	} else {
-		respError := r.GetError()
-		if respError != nil {
-			if respError.GetNotFound() != nil {
-				fmt.Fprintf(
-					tabWriter,
-					"Job %s was not found: %s\n",
-					respError.GetNotFound().GetId().GetValue(),
-					respError.GetNotFound().GetMessage(),
-				)
-			} else if respError.GetOutOfRange() != nil {
-				fmt.Fprintf(
-					tabWriter,
-					"Requested instances:%d of job %s is not within "+
-						"the range of valid instances (0...%d)\n",
-					r.GetInvalidInstanceIds(),
-					respError.GetOutOfRange().GetJobId().GetValue(),
-					respError.GetOutOfRange().GetInstanceCount(),
-				)
-			} else if respError.GetUpdateError() != nil {
-				fmt.Fprintf(
-					tabWriter,
-					"Tasks stop goalstate update in DB got error: %s\n",
-					respError.GetUpdateError(),
-				)
-			}
-		} else {
-			fmt.Fprintf(
-				tabWriter,
-				"Tasks stopped successfully for instances: %v and "+
-					"failed instances are: %v\n",
-				r.GetStoppedInstanceIds(),
-				r.GetInvalidInstanceIds(),
-			)
-		}
+		return
 	}
-	tabWriter.Flush()
+
+	respError := r.GetError()
+	if respError == nil {
+		if len(r.GetInvalidInstanceIds()) == 0 {
+			fmt.Fprintf(
+				tabWriter, "Successfully signalled %v tasks for stopping\n",
+				len(r.GetStoppedInstanceIds()))
+			return
+		}
+
+		fmt.Fprintf(
+			tabWriter,
+			"Some tasks failed to stop, failed_instance_ids:%v",
+			r.GetInvalidInstanceIds(),
+		)
+		return
+	}
+
+	if respError.GetNotFound() != nil {
+		fmt.Fprintf(
+			tabWriter,
+			"Job %s was not found: %s\n",
+			respError.GetNotFound().GetId().GetValue(),
+			respError.GetNotFound().GetMessage(),
+		)
+		return
+	}
+
+	if respError.GetOutOfRange() != nil {
+		fmt.Fprintf(
+			tabWriter,
+			"Requested instances:%d of job %s is not within "+
+				"the range of valid instances (0...%d)\n",
+			r.GetInvalidInstanceIds(),
+			respError.GetOutOfRange().GetJobId().GetValue(),
+			respError.GetOutOfRange().GetInstanceCount(),
+		)
+		return
+	}
+
+	if respError.GetUpdateError() != nil {
+		fmt.Fprintf(
+			tabWriter,
+			"Tasks stop failed with error: %s\n",
+			respError.GetUpdateError(),
+		)
+	}
 }
 
 func printTaskRestartResponse(r *task.RestartResponse, debug bool) {
+	defer tabWriter.Flush()
+
 	if debug {
 		printResponseJSON(r)
-	} else {
-		if r.GetNotFound() != nil {
-			fmt.Fprintf(tabWriter, "Job %s was not found: %s\n", r.NotFound.Id.Value, r.NotFound.Message)
-		} else if r.GetOutOfRange() != nil {
-			fmt.Fprintf(tabWriter, "Requested instance of job %s is not within the range of valid instances (0...%d)\n", r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
-		} else {
-			fmt.Fprintf(tabWriter, "Job restarted\n")
-		}
+		return
 	}
-	tabWriter.Flush()
+
+	if r.GetNotFound() != nil {
+		fmt.Fprintf(tabWriter, "Job %s was not found: %s\n",
+			r.NotFound.Id.Value, r.NotFound.Message)
+		return
+	}
+
+	if r.GetOutOfRange() != nil {
+		fmt.Fprintf(tabWriter, "Requested instance of job %s is not "+
+			"within the range of valid instances (0...%d)\n",
+			r.OutOfRange.JobId.Value, r.OutOfRange.InstanceCount)
+		return
+	}
+
+	fmt.Fprint(tabWriter, "Job restarted\n")
 }

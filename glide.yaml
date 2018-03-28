@@ -52,11 +52,11 @@ import:
 - package: github.com/gemnasium/migrate
   version: v1.4.1
 - package: github.com/docker/leadership
-  repo: https://github.com/craimbert/leadership.git
   version: ^0.1.1
+  repo: https://github.com/craimbert/leadership.git
 - package: github.com/docker/libkv
-  repo: https://github.com/craimbert/libkv.git
   version: ^0.2.2
+  repo: https://github.com/craimbert/libkv.git
 - package: github.com/gocql/gocql
   version: 09f0498f9ab5ca0267e3b451483a368648de2158
 - package: github.com/alecthomas/template
@@ -72,6 +72,8 @@ import:
 - package: github.com/golang/mock
   version: ^v1.0.0
   subpackages:
-    - mockgen
+  - mockgen
 - package: github.com/uber-go/automaxprocs
   version: ^v1.1.0
+- package: gopkg.in/cheggaaa/pb.v1
+  version: ^2.0.6

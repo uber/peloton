@@ -1,5 +1,5 @@
-hash: 36c3c97e50f70822690c1b2bc9de2cb273245f1d4211a9932d12d0b61aefd3dd
-updated: 2018-04-30T15:59:26.746206-07:00
+hash: 24daaf69bae733b225e92855d72fe85ee4b9f7e162e12683d7069a5d39bc3f81
+updated: 2018-05-07T13:38:22.886077441-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -97,6 +97,10 @@ imports:
   version: f22ce00fd9394014049dad11c244859432bd6820
 - name: github.com/lann/ps
   version: 62de8c46ede02a7675c4c79c84883eb164cb71e3
+- name: github.com/mattn/go-colorable
+  version: efa589957cd060542a26d2dd7832fd6a6c6c3ade
+- name: github.com/mattn/go-isatty
+  version: 6ca4dbf54d38eea1a992b3c722a76a5d1c4cb25c
 - name: github.com/matttproud/golang_protobuf_extensions
   version: c12348ce28de40eed0136aa2b644d0ee0650e56c
   subpackages:
@@ -151,7 +155,9 @@ imports:
 - name: github.com/uber-common/bark
   version: 8841a0f8e7ca869284ccb29c08a14cf3f4310f46
 - name: github.com/uber-go/atomic
-  version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
+  version: 1ea20fb1cbb1cc08cbd0d913a96dead89aa18289
+  subpackages:
+  - utils
 - name: github.com/uber-go/automaxprocs
   version: 946a8391268aea0a60a86403988ff3ab4b604a83
 - name: github.com/uber-go/mapdecode
@@ -178,7 +184,7 @@ imports:
   - trand
   - typed
 - name: go.uber.org/atomic
-  version: 8474b86a5a6f79c443ce4b2992817ff32cf208b8
+  version: 1ea20fb1cbb1cc08cbd0d913a96dead89aa18289
 - name: go.uber.org/automaxprocs
   version: 6fecebd30e89df4ebcb6ca6dc1d0a5c8d2aa10a0
   subpackages:
@@ -241,7 +247,7 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: 5f9ae10d9af5b1c89ae6904293b14b064d4ada23
+  version: d11bb6cd8e3c4e60239c9cb20ef68586d74500d0
   repo: https://github.com/golang/net
   subpackages:
   - bpf
@@ -256,7 +262,6 @@ imports:
   - internal/timeseries
   - ipv4
   - ipv6
-  - lex/httplex
   - trace
 - name: golang.org/x/sys
   version: 8f0908ab3b2457e2e15403d3697c9ef5cb4b57a9
@@ -301,10 +306,26 @@ imports:
   - transport
 - name: gopkg.in/alecthomas/kingpin.v2
   version: 947dcec5ba9c011838740e680966fd7087a71d0d
+- name: gopkg.in/cheggaaa/pb.v1
+  version: c112833d014c77e8bde723fd0158e3156951639f
+- name: gopkg.in/cheggaaa/pb.v2
+  version: c112833d014c77e8bde723fd0158e3156951639f
+  subpackages:
+  - termutil
+- name: gopkg.in/fatih/color.v1
+  version: 507f6050b8568533fb3f5504de8e5205fa62a114
 - name: gopkg.in/inf.v0
   version: 3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4
+- name: gopkg.in/mattn/go-colorable.v0
+  version: 167de6bfdfba052fa6b2d3664c8f5272e23c9072
+- name: gopkg.in/mattn/go-isatty.v0
+  version: 0360b2af4f38e8d38c7fce2a9f4e702702d73a39
+- name: gopkg.in/mattn/go-runewidth.v0
+  version: 9e777a8366cce605130a531d2cd6363d07ad7317
 - name: gopkg.in/validator.v2
   version: 0a9835d809fb647a62611d30cb792e0b5dd65b11
+- name: gopkg.in/VividCortex/ewma.v1
+  version: b24eb346a94c3ba12c1da1e564dbac1b498a77ce
 - name: gopkg.in/yaml.v2
   version: a5b47d31c556af34a302ce5d659e6fea44d90de0
 testImports: []

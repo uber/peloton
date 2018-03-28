@@ -26,15 +26,17 @@ service TaskService
   rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
 
   // Start a set of tasks for a job. Will be no-op for tasks that
-  // are currently running.
+  // are currently running. The tasks are started asynchronously after
+  // the API call returns.
   rpc StartTasks(StartTasksRequest) returns (StartTasksResponse);
 
   // Stop a set of tasks for a job. Will be no-op for tasks that
-  // are currently stopped.
+  // are currently stopped. The tasks are stopped asynchronously after
+  // the API call returns.
   rpc StopTasks(StopTasksRequest) returns (StopTasksResponse);
 
   // Restart a set of tasks for a job. Will start tasks that are
-  // currently stopped.
+  // currently stopped. This is an asynchronous call.
   rpc RestartTasks(RestartTasksRequest) returns (RestartTasksResponse);
 
   // Query task info in a job, using a set of filters.
@@ -147,7 +149,8 @@ message StopTasksRequest {
   // The job ID of the tasks to stop.
   peloton.JobID jobId = 1;
 
-  // The instance ID ranges of the tasks to stop.
+  // The instance ID ranges of the tasks to stop. If you dont specify any range
+  // it will signal all instance IDs to stop.
   repeated task.InstanceRange ranges = 2;
 }
 
@@ -161,10 +164,11 @@ message StopTasksRequest {
  *    INTERNAL:      if the tasks fail to stop for internal errors.
  */
 message StopTasksResponse {
-  // The set of instance IDs that have been stopped.
+  // The set of instance IDs that have been signalled to be stopped.
+  // These instanced IDs will be asynchronously stopped.
   repeated uint32 stopped = 1;
 
-  // The set of instance IDs that are failed to stop.
+  // The set of instance IDs that have failed to be signalled successfuly.
   repeated uint32 failed = 2;
 }
 

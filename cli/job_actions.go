@@ -1,18 +1,23 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/protobuf/ptypes"
-
+	"gopkg.in/cheggaaa/pb.v1"
 	"gopkg.in/yaml.v2"
 )
 
@@ -22,9 +27,10 @@ const (
 
 	defaultResponseFormat = "yaml"
 	jsonResponseFormat    = "json"
-)
 
-const (
+	jobStopProgressTimeout = 10 * time.Minute
+	jobStopProgressRefresh = 5 * time.Second
+
 	jobSummaryFormatHeader = "ID\tName\tOwner\tState\tCreation Time\tCompletion Time\tTotal\t" +
 		"Running\tSucceeded\tFailed\tKilled\t\n"
 	jobSummaryFormatBody = "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t\n"
@@ -37,17 +43,17 @@ func (c *Client) JobCreateAction(jobID string, respoolPath string, cfg string) e
 		return err
 	}
 	if respoolID == nil {
-		return fmt.Errorf("Unable to find resource pool ID for "+
+		return fmt.Errorf("unable to find resource pool ID for "+
 			":%s", respoolPath)
 	}
 
 	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
-		return fmt.Errorf("Unable to open file %s: %v", cfg, err)
+		return fmt.Errorf("unable to open file %s: %v", cfg, err)
 	}
 	if err := yaml.Unmarshal(buffer, &jobConfig); err != nil {
-		return fmt.Errorf("Unable to parse file %s: %v", cfg, err)
+		return fmt.Errorf("unable to parse file %s: %v", cfg, err)
 	}
 
 	// TODO remove this once respool is moved out of jobconfig
@@ -85,17 +91,21 @@ func (c *Client) JobDeleteAction(jobID string) error {
 
 // JobGetAction is the action for getting a job
 func (c *Client) JobGetAction(jobID string) error {
-	var request = &job.GetRequest{
-		Id: &peloton.JobID{
-			Value: jobID,
-		},
-	}
-	response, err := c.jobClient.Get(c.ctx, request)
+	response, err := c.jobGet(jobID)
 	if err != nil {
 		return err
 	}
 	printJobGetResponse(response, c.Debug)
 	return nil
+}
+
+func (c *Client) jobGet(jobID string) (*job.GetResponse, error) {
+	var request = &job.GetRequest{
+		Id: &peloton.JobID{
+			Value: jobID,
+		},
+	}
+	return c.jobClient.Get(c.ctx, request)
 }
 
 // JobRefreshAction calls the refresh API for a job
@@ -240,10 +250,10 @@ func (c *Client) JobUpdateAction(jobID string, cfg string) error {
 	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
-		return fmt.Errorf("Unable to open file %s: %v", cfg, err)
+		return fmt.Errorf("unable to open file %s: %v", cfg, err)
 	}
 	if err := yaml.Unmarshal(buffer, &jobConfig); err != nil {
-		return fmt.Errorf("Unable to parse file %s: %v", cfg, err)
+		return fmt.Errorf("unable to parse file %s: %v", cfg, err)
 	}
 
 	var request = &job.UpdateRequest{
@@ -259,6 +269,138 @@ func (c *Client) JobUpdateAction(jobID string, cfg string) error {
 
 	printJobUpdateResponse(response, c.Debug)
 	return nil
+}
+
+// JobStopAction is the action of stopping a job
+func (c *Client) JobStopAction(jobID string, showProgress bool) error {
+	// check the job status
+	jobGetResponse, err := c.jobGet(jobID)
+	if err != nil {
+		return err
+	}
+
+	if util.IsPelotonJobStateTerminal(
+		jobGetResponse.GetJobInfo().GetRuntime().GetState()) {
+		fmt.Fprintf(
+			tabWriter,
+			"Job is in terminal state: %s\n", jobGetResponse.GetJobInfo().
+				GetRuntime().GetState().String(),
+		)
+		tabWriter.Flush()
+		return nil
+	}
+
+	id := &peloton.JobID{
+		Value: jobID,
+	}
+
+	// job is not in terminal state, so lets stop it
+	var request = &task.StopRequest{
+		JobId:  id,
+		Ranges: nil,
+	}
+	response, err := c.taskClient.Stop(c.ctx, request)
+	if err != nil {
+		return err
+	}
+
+	if showProgress {
+		return c.pollStatusWithTimeout(id)
+	}
+
+	printTaskStopResponse(response, c.Debug)
+	// Retry one more time in case failedInstanceList is non zero
+	if len(response.GetInvalidInstanceIds()) > 0 {
+		fmt.Fprint(
+			tabWriter,
+			"Retrying failed tasks",
+		)
+		response, err = c.taskClient.Stop(c.ctx, request)
+		if err != nil {
+			return err
+		}
+		printTaskStopResponse(response, c.Debug)
+	}
+	return nil
+}
+
+func (c *Client) pollStatusWithTimeout(id *peloton.JobID) error {
+	// get the status
+	total, terminated, err := c.tasksTerminated(id)
+	if err != nil {
+		return err
+	}
+
+	if total == terminated {
+		// done
+		fmt.Printf("Job stopped, total_tasks:%d terminated_tasks:%d\n",
+			total, terminated)
+		return nil
+	}
+
+	// init the bar to the total tasks
+	bar := pb.Simple.
+		Start(int(total)).
+		SetTotal(int64(total)).
+		SetWidth(80).
+		SetRefreshRate(time.Second).Set("prefix", "terminated/total: ")
+	defer bar.Finish()
+
+	// Keep trying until we're timed out or got a result or got an error
+	timeout := time.After(jobStopProgressTimeout)
+	refresh := time.Tick(jobStopProgressRefresh)
+	for {
+		select {
+		case <-timeout:
+			fmt.Fprint(os.Stderr, "Timed out waiting for job to stop")
+			return nil
+		case <-refresh:
+			total, terminated, err := c.tasksTerminated(id)
+			if err != nil {
+				return err
+			}
+
+			bar.SetCurrent(int64(terminated))
+			if total == terminated {
+				// done
+				return nil
+			}
+		}
+	}
+}
+
+// returns the total number of tasks, terminated tasks and error if any
+func (c *Client) tasksTerminated(id *peloton.JobID) (uint32, uint32, error) {
+	var request = &job.GetRequest{
+		Id: id,
+	}
+	ctx, cf := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cf()
+
+	response, err := c.jobClient.Get(ctx, request)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	total := response.GetJobInfo().GetConfig().GetInstanceCount()
+	// check job state
+	state := response.GetJobInfo().GetRuntime().GetState()
+	if util.IsPelotonJobStateTerminal(state) {
+		// the job is in terminal state
+		return total, total, nil
+	}
+
+	tasksInStates := response.GetJobInfo().GetRuntime().GetTaskStats()
+	// all terminal task states
+	terminated := uint32(0)
+	for state, count := range tasksInStates {
+		if util.IsPelotonStateTerminal(task.TaskState(task.
+			TaskState_value[state])) {
+			terminated += count
+		}
+	}
+
+	return total, terminated, nil
 }
 
 func printJobUpdateResponse(r *job.UpdateResponse, jsonFormat bool) {
@@ -301,17 +443,6 @@ func printJobCreateResponse(r *job.CreateResponse, jsonFormat bool) {
 		} else {
 			fmt.Fprint(tabWriter, "Missing job ID in job create response\n")
 		}
-		tabWriter.Flush()
-	}
-}
-
-func printJobDeleteResponse(r *job.DeleteResponse, jsonFormat bool) {
-	// TODO: when DeleteResponse has useful fields in it, fill me in!
-	// Right now, its completely empty
-	if jsonFormat {
-		printResponseJSON(r)
-	} else {
-		fmt.Fprintf(tabWriter, "Job deleted\n")
 		tabWriter.Flush()
 	}
 }
@@ -396,7 +527,7 @@ func printJobQueryResponse(r *job.QueryResponse, jsonFormat bool) {
 		} else {
 			results := r.GetResults()
 			if len(results) != 0 {
-				fmt.Fprintf(tabWriter, jobSummaryFormatHeader)
+				fmt.Fprint(tabWriter, jobSummaryFormatHeader)
 				for _, k := range results {
 					printJobQueryResult(k)
 				}
