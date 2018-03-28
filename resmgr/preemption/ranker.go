@@ -63,11 +63,25 @@ func (r *statePriorityRuntimeRanker) rankAllTasks(respoolID string) []*rm_task.R
 	stateTaskMap := r.tracker.GetActiveTasks("", respoolID, nil)
 	var allTasks []*rm_task.RMTask
 	for _, taskState := range taskStatesPreemptionOrder {
-		tasksInState := stateTaskMap[taskState.String()]
+		// tracker contains *all*(preemptible + non-preemptible) tasks,
+		// so we need to filer out the non-preemptible tasks before ranking
+		// them.
+		tasksInState := filterPreemptibleTasks(stateTaskMap[taskState.String()])
 		r.sorter.Sort(tasksInState)
 		allTasks = append(allTasks, tasksInState...)
 	}
 	return allTasks
+}
+
+// returns only preemptible tasks
+func filterPreemptibleTasks(allTasks []*rm_task.RMTask) []*rm_task.RMTask {
+	var p []*rm_task.RMTask
+	for _, t := range allTasks {
+		if t.Task().Preemptible {
+			p = append(p, t)
+		}
+	}
+	return p
 }
 
 // filterTasks filters tasks which satisfy the resourcesLimit

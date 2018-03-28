@@ -117,6 +117,7 @@ func (suite *RankerTestSuite) createTask(instance int, priority uint32) *resmgr.
 			GpuLimit:    0,
 			MemLimitMb:  100,
 		},
+		Preemptible: true,
 	}
 }
 
@@ -305,5 +306,61 @@ func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_GetTasksToEvictLimi
 
 	for i, taskToEvict := range tasksToEvict {
 		suite.Equal(expectedTasks[i], taskToEvict.Task().GetId().Value)
+	}
+}
+
+func (suite *RankerTestSuite) addTaskWithID(tid string,
+	jid string, preemptible bool) {
+	suite.addTaskToTracker(&resmgr.Task{
+		Name:     tid,
+		Priority: 0,
+		JobId:    &peloton.JobID{Value: jid},
+		Id:       &peloton.TaskID{Value: tid},
+		Hostname: "hostname",
+		Resource: &task.ResourceConfig{
+			CpuLimit:    1,
+			DiskLimitMb: 9,
+			GpuLimit:    0,
+			MemLimitMb:  100,
+		},
+		Preemptible: preemptible,
+	})
+}
+
+func (suite *RankerTestSuite) TestStatePriorityRuntimeRanker_FilterNonPreemptible() {
+	tt := []struct {
+		tid         string
+		jid         string
+		preemptible bool
+	}{
+		{
+			tid:         "job1-1",
+			jid:         "job1",
+			preemptible: true,
+		},
+		{
+			tid:         "job2-1",
+			jid:         "job2",
+			preemptible: false,
+		},
+	}
+
+	for _, t := range tt {
+		suite.addTaskWithID(t.tid, t.jid, t.preemptible)
+		suite.transitToRunning(&peloton.TaskID{Value: t.tid})
+
+		ranker := newStatePriorityRuntimeRanker(suite.tracker)
+		tasksToEvict := ranker.GetTasksToEvict("respool-1", &scalar.Resources{
+			CPU:    5.5,
+			MEMORY: 550,
+			GPU:    0,
+			DISK:   55,
+		})
+
+		// should always contain just the preemptible task(s)s
+		suite.Equal(1, len(tasksToEvict))
+		for _, taskToEvict := range tasksToEvict {
+			suite.Equal("job1-1", taskToEvict.Task().GetId().Value)
+		}
 	}
 }
