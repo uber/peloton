@@ -172,6 +172,7 @@ func (suite *StateMachineTestSuite) TestTimeOut() {
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
 	time.Sleep(3 * time.Second)
 	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "running")
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetReason()), "rollback from state killed to state running due to timeout")
 }
 
 func (suite *StateMachineTestSuite) TestCancelTimeOutTransition() {

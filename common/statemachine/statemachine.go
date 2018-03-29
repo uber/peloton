@@ -366,9 +366,9 @@ func (sm *statemachine) rollbackState() error {
 	}).Debug("Transitioning from Timeout")
 
 	// Doing actual transition
+	sm.reason = fmt.Sprintf("rollback from state %s to state %s due to timeout", sm.current, rule.To)
 	sm.current = rule.To
 	sm.lastUpdatedTime = time.Now()
-	sm.reason = fmt.Sprintf("rollback from state %s to state %s", sm.current, rule.To)
 
 	// invoking callback function
 	if rule.Callback != nil {

@@ -250,7 +250,7 @@ func (h *ServiceHandler) enqueueGang(
 
 		if h.rmTracker.GetTask(task.Id) != nil {
 			err = h.rmTracker.GetTask(task.Id).TransitTo(
-				t.TaskState_PENDING.String(), statemachine.WithReason("enqueue gangs called"))
+				t.TaskState_PENDING.String(), statemachine.WithReason("waiting to be admitted"))
 			if err != nil {
 				log.Error(err)
 			}
@@ -336,7 +336,7 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) error {
 		// Updating the New Mesos Task ID
 		rmTask.Task().TaskId = requeuedTask.TaskId
 		// Transitioning back to Ready State
-		rmTask.TransitTo(t.TaskState_READY.String(), statemachine.WithReason("task updated with new mesos task id"))
+		rmTask.TransitTo(t.TaskState_READY.String(), statemachine.WithReason("waiting for placement (task updated with new mesos task id)"))
 		// Adding to ready Queue
 		var tasks []*resmgr.Task
 		gang := &resmgrsvc.Gang{
@@ -534,7 +534,7 @@ func (h *ServiceHandler) GetPlacements(
 		newPlacement := h.transitTasksInPlacement(placement,
 			t.TaskState_PLACED,
 			t.TaskState_LAUNCHING,
-			"placement dequeued")
+			"placement dequeued, waiting for launch")
 		placements = append(placements, newPlacement)
 		h.metrics.GetPlacementSuccess.Inc(1)
 	}
@@ -652,7 +652,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	}
 
 	if taskState == t.TaskState_RUNNING {
-		err = rmTask.TransitTo(t.TaskState_RUNNING.String(), statemachine.WithReason("received running state from mesos"))
+		err = rmTask.TransitTo(t.TaskState_RUNNING.String(), statemachine.WithReason("task running"))
 		if err != nil {
 			log.WithError(errors.WithStack(err)).
 				WithField("task_id", ptID).
@@ -955,7 +955,7 @@ func (h *ServiceHandler) MarkTasksLaunched(
 			continue
 		}
 
-		err := task.TransitTo(t.TaskState_LAUNCHED.String(), statemachine.WithReason("received task launch"))
+		err := task.TransitTo(t.TaskState_LAUNCHED.String(), statemachine.WithReason("task launched"))
 		if err != nil {
 			log.WithError(err).
 				WithField("task_id", taskID).
