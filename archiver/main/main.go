@@ -2,28 +2,23 @@ package main
 
 import (
 	"os"
+	"time"
 
+	archiverConfig "code.uber.internal/infra/peloton/archiver/config"
 	"code.uber.internal/infra/peloton/archiver/engine"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
 	"code.uber.internal/infra/peloton/common/metrics"
-	"code.uber.internal/infra/peloton/common/rpc"
 
 	log "github.com/sirupsen/logrus"
 	_ "go.uber.org/automaxprocs"
-	"go.uber.org/yarpc"
 	"gopkg.in/alecthomas/kingpin.v2"
-)
-
-const (
-	// PelotonArchiver application name
-	PelotonArchiver = "peloton-archiver"
 )
 
 var (
 	version string
-	app     = kingpin.New(PelotonArchiver, "Peloton Archiver")
+	app     = kingpin.New(archiverConfig.PelotonArchiver, "Peloton Archiver")
 
 	debug = app.Flag(
 		"debug", "enable debug mode (print full json responses)").
@@ -51,9 +46,48 @@ var (
 			"(election.zk_servers override) (set $ELECTION_ZK_SERVERS to override)").
 		Envar("ELECTION_ZK_SERVERS").
 		Strings()
+
+	httpPort = app.Flag(
+		"http-port", "Archiver HTTP port (archiver.http_port override) "+
+			"(set $PORT to override)").
+		Envar("HTTP_PORT").
+		Int()
+
+	grpcPort = app.Flag(
+		"grpc-port", "Archiver gRPC port (archiver.grpc_port override) "+
+			"(set $PORT to override)").
+		Envar("GRPC_PORT").
+		Int()
+
+	enableArchiver = app.Flag(
+		"enable-archiver", "enable Archiver").
+		Default("false").
+		Envar("ENABLE_ARCHIVER").
+		Bool()
+
+	archiveInterval = app.Flag(
+		"archive-interval",
+		"Archive interval duration in h/m/s (archiver.archive_interval override) (set $ARCHIVE_INTERVAL to override)").
+		Envar("ARCHIVE_INTERVAL").
+		String()
+
+	archiveAge = app.Flag(
+		"archive-age",
+		"Archive age duration in h/m/s (archiver.archive_age override) (set $ARCHIVE_AGE to override)").
+		Envar("ARCHIVE_AGE").
+		String()
+
+	archiveStepSize = app.Flag(
+		"archive-step-size",
+		"Archive step size in h/m/s (archiver.archive_step_size override) (set $ARCHIVE_STEP_SIZE to override)").
+		Envar("ARCHIVE_STEP_SIZE").
+		String()
 )
 
 func main() {
+	var cfg archiverConfig.Config
+	var err error
+
 	app.Version(version)
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
@@ -64,18 +98,58 @@ func main() {
 	if *debug {
 		initialLevel = log.DebugLevel
 	}
+
 	log.SetLevel(initialLevel)
 
 	log.WithField("files", *cfgFiles).
 		Info("Loading archiver config")
-	var cfg Config
-	if err := config.Parse(&cfg, *cfgFiles...); err != nil {
-		log.WithField("error", err).
+
+	if err = config.Parse(&cfg, *cfgFiles...); err != nil {
+		log.WithError(err).
 			Fatal("Cannot parse yaml config")
 	}
 
 	if *enableSentry {
 		logging.ConfigureSentry(&cfg.SentryConfig)
+	}
+
+	if *httpPort != 0 {
+		cfg.Archiver.HTTPPort = *httpPort
+	}
+
+	if *grpcPort != 0 {
+		cfg.Archiver.GRPCPort = *grpcPort
+	}
+
+	if *enableArchiver {
+		cfg.Archiver.Enable = *enableArchiver
+	}
+
+	if *archiveInterval != "" {
+		cfg.Archiver.ArchiveInterval, err = time.ParseDuration(*archiveInterval)
+		if err != nil {
+			log.WithError(err).
+				WithField("ARCHIVE_INTERVAL", *archiveInterval).
+				Fatal("Cannot parse Archive Interval")
+		}
+	}
+
+	if *archiveAge != "" {
+		cfg.Archiver.ArchiveAge, err = time.ParseDuration(*archiveAge)
+		if err != nil {
+			log.WithError(err).
+				WithField("ARCHIVE_AGE", *archiveAge).
+				Fatal("Cannot parse Archive Age")
+		}
+	}
+
+	if *archiveStepSize != "" {
+		cfg.Archiver.ArchiveStepSize, err = time.ParseDuration(*archiveStepSize)
+		if err != nil {
+			log.WithError(err).
+				WithField("ARCHIVE_STEP_SIZE", *archiveStepSize).
+				Fatal("Cannot parse Archive Step Size")
+		}
 	}
 
 	// zkservers list is needed to create peloton client.
@@ -89,7 +163,7 @@ func main() {
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,
-		PelotonArchiver,
+		archiverConfig.PelotonArchiver,
 		metrics.TallyFlushInterval,
 	)
 	defer scopeCloser.Close()
@@ -99,38 +173,25 @@ func main() {
 		logging.LevelOverwriteHandler(initialLevel),
 	)
 
-	inbounds := rpc.NewInbounds(
-		cfg.Archiver.HTTPPort,
-		cfg.Archiver.GRPCPort,
-		mux,
-	)
-	// dispatcher is started just to enable health checks
-	dispatcher := yarpc.NewDispatcher(yarpc.Config{
-		Name:     PelotonArchiver,
-		Inbounds: inbounds,
-		Metrics: yarpc.MetricsConfig{
-			Tally: rootScope,
-		},
-	})
-	// Start dispatch loop
-	if err := dispatcher.Start(); err != nil {
-		log.WithError(err).
-			Fatal("Could not start dispatcher")
-	}
-
-	archiverEngine, err := engine.New(cfg.Election, cfg.Archiver, rootScope, *debug)
+	archiverEngine, err := engine.New(cfg, rootScope, mux)
 	if err != nil {
 		log.WithError(err).
 			WithField("zkservers", cfg.Election.ZKServers).
 			WithField("zkroot", cfg.Election.Root).
 			Fatal("Could not create archiver engine")
 	}
-	archiverEngine.Start()
-	defer archiverEngine.Stop()
-
-	log.Info("Started archiver")
 
 	health.InitHeartbeat(rootScope, cfg.Health, nil)
+	log.Info("Started archiver")
+	errChan := make(chan error, 1)
+	if cfg.Archiver.Enable {
+		archiverEngine.Start(errChan)
+	}
 
-	select {}
+	select {
+	case err := <-errChan:
+		archiverEngine.Cleanup()
+		log.WithError(err).Fatal("Archiver engine got a fatal error." +
+			" Restarting.")
+	}
 }

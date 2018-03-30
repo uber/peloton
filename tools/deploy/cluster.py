@@ -22,6 +22,7 @@ PELOTON_APPS = [
     'placement',
     'placement_stateful',
     'jobmgr',
+    'archiver'
 ]
 CRON_APPS = ['watchdog']
 

@@ -7,15 +7,27 @@ import (
 // Metrics is the struct containing all the counters that track internal state
 // of archiver engine.
 type Metrics struct {
-	ArchiverSuccess tally.Counter
-	ArchiverFail    tally.Counter
+	ArchiverStart             tally.Counter
+	ArchiverJobQuerySuccess   tally.Counter
+	ArchiverJobQueryFail      tally.Counter
+	ArchiverJobDeleteSuccess  tally.Counter
+	ArchiverJobDeleteFail     tally.Counter
+	ArchiverNoJobsInTimerange tally.Counter
+
+	ArchiverRunDuration tally.Timer
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
 // initialized and rooted at the given tally.Scope
 func NewMetrics(scope tally.Scope) *Metrics {
 	return &Metrics{
-		ArchiverSuccess: scope.Counter("archiver_success"),
-		ArchiverFail:    scope.Counter("archiver_fail"),
+		ArchiverStart:             scope.Counter("archiver_start"),
+		ArchiverJobQuerySuccess:   scope.Counter("archiver_job_query_success"),
+		ArchiverJobQueryFail:      scope.Counter("archiver_job_query_fail"),
+		ArchiverJobDeleteSuccess:  scope.Counter("archiver_job_delete_success"),
+		ArchiverJobDeleteFail:     scope.Counter("archiver_job_delete_fail"),
+		ArchiverNoJobsInTimerange: scope.Counter("archiver_no_jobs_in_timerange"),
+
+		ArchiverRunDuration: scope.Timer("archiver_run_duration"),
 	}
 }

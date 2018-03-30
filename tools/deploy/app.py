@@ -166,6 +166,12 @@ class App(object):
             env_vars['TASK_TYPE'] = 'STATEFUL'
             env_vars['APP'] = 'placement'
 
+        if self.name == 'archiver':
+            env_vars['ENABLE_ARCHIVER'] = self.enable_archiver
+            env_vars['ARCHIVE_AGE'] = self.archive_age
+            env_vars['ARCHIVE_INTERVAL'] = self.archive_interval
+            env_vars['ARCHIVE_STEP_SIZE'] = self.archive_step_size
+
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))
             for key, val in env_vars.iteritems()

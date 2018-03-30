@@ -1,4 +1,4 @@
-package archiver
+package config
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestConfigNormalize(t *testing.T) {
-	c := Config{}
+	c := ArchiverConfig{}
 
 	c.Normalize()
 
@@ -15,4 +15,8 @@ func TestConfigNormalize(t *testing.T) {
 	assert.Equal(t, _defaultMaxArchiveEntries, c.MaxArchiveEntries)
 	assert.Equal(t, _defaultArchiveAge, c.ArchiveAge)
 	assert.Equal(t, _defaultPelotonClientTimeout, c.PelotonClientTimeout)
+	assert.Equal(t, _defaultArchiveStepSize, c.ArchiveStepSize)
+	assert.Equal(t, _defaultMaxRetryAttemptsJobQuery, c.MaxRetryAttemptsJobQuery)
+	assert.Equal(t, _defaultRetryIntervalJobQuery, c.RetryIntervalJobQuery)
+	assert.Equal(t, _defaultBootstrapDelay, c.BootstrapDelay)
 }
