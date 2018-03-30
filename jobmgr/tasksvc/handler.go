@@ -440,21 +440,22 @@ func (m *serviceHandler) Start(
 	var instanceIds []uint32
 	runtimes := make(map[uint32]*task.RuntimeInfo)
 	for _, taskInfo := range taskInfos {
+		runtime := &task.RuntimeInfo{}
 		taskState := taskInfo.GetRuntime().GetState()
 
 		if taskState == task.TaskState_INITIALIZED || taskState == task.TaskState_PENDING ||
 			(taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0) {
 			// Do not regenerate mesos task ID if task is known that not in mesos yet OR stateful task.
-			taskInfo.GetRuntime().State = task.TaskState_INITIALIZED
+			runtime.State = task.TaskState_INITIALIZED
 		} else {
-			util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
+			runtime = util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime.MesosTaskId)
 		}
 
 		// Change the goalstate.
-		taskInfo.GetRuntime().GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
-		taskInfo.GetRuntime().Message = "Task start API request"
-		taskInfo.GetRuntime().Reason = ""
-		runtimes[taskInfo.InstanceId] = taskInfo.GetRuntime()
+		runtime.GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
+		runtime.Message = "Task start API request"
+		runtime.Reason = ""
+		runtimes[taskInfo.InstanceId] = runtime
 
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
@@ -633,10 +634,12 @@ func (m *serviceHandler) Stop(
 			continue
 		}
 
-		taskInfo.GetRuntime().GoalState = task.TaskState_KILLED
-		taskInfo.GetRuntime().Message = "Task stop API request"
-		taskInfo.GetRuntime().Reason = ""
-		runtimes[taskInfo.InstanceId] = taskInfo.GetRuntime()
+		runtime := &task.RuntimeInfo{
+			GoalState: task.TaskState_KILLED,
+			Message:   "Task stop API request",
+			Reason:    "",
+		}
+		runtimes[taskInfo.InstanceId] = runtime
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
 

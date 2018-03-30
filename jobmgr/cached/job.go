@@ -2,24 +2,26 @@ package cached
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
+	"code.uber.internal/infra/peloton/common"
+
+	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// UpdateRequest is used to indicate whether the caller wants to update only
-// cache or update both database and cache. This is used during job manager recovery
-// as only cache needs to be updated during recovery.
-type UpdateRequest int
-
-const (
-	// UpdateCacheOnly updates only the cache.
-	UpdateCacheOnly UpdateRequest = iota + 1
-	// UpdateCacheAndDB updates both DB and cache.
-	UpdateCacheAndDB
-)
+// writeTaskRuntimeToDB defines the interface of a function which will be used
+// to write task runtimes to DB in parallel
+type writeTaskRuntimeToDB func(ctx context.Context, instanceID uint32,
+	runtime *pbtask.RuntimeInfo, req UpdateRequest,
+	owner string) error
 
 // Job in the cache.
 // TODO there a lot of methods in this interface. To determine if
@@ -34,7 +36,7 @@ type Job interface {
 	// CreateTasks creates the task runtimes in cache and DB.
 	// Create and Update need to be different functions as the backing
 	// storage calls are different.
-	CreateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo) error
+	CreateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, owner string) error
 
 	// UpdateTasks updates all tasks with the new runtime info. If the request
 	// is to update both DB and cache, it first attempts to persist it in storage,
@@ -110,13 +112,12 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 type job struct {
 	sync.RWMutex // Mutex to acquire before accessing any job information in cache
 
-	id            *peloton.JobID  // The job identifier
-	instanceCount uint32          // Instance count in the job configuration
-	sla           pbjob.SlaConfig // SLA configuration in the job configuration
-	jobType       pbjob.JobType   // Job type (batch or service) in the job configuration
-	//TODO make job factory a singleton object so that it does not need to passed around
-	jobFactory *jobFactory        // Pointer to the parent job factory object
-	runtime    *pbjob.RuntimeInfo // Runtime information of the job
+	id            *peloton.JobID     // The job identifier
+	instanceCount uint32             // Instance count in the job configuration
+	sla           pbjob.SlaConfig    // SLA configuration in the job configuration
+	jobType       pbjob.JobType      // Job type (batch or service) in the job configuration
+	jobFactory    *jobFactory        // Pointer to the parent job factory object
+	runtime       *pbjob.RuntimeInfo // Runtime information of the job
 
 	tasks map[uint32]*task // map of all job tasks
 
@@ -130,39 +131,162 @@ func (j *job) ID() *peloton.JobID {
 	return j.id
 }
 
-func (j *job) updateTaskRuntimesInCache(runtimes map[uint32]*pbtask.RuntimeInfo) {
-	for id, runtime := range runtimes {
-		t, ok := j.tasks[id]
-		if !ok {
-			t = newTask(j.ID(), id)
-			j.tasks[id] = t
-		}
-		t.UpdateRuntime(runtime)
-	}
-	return
-}
-
-// TODO implement this function.
-func (j *job) CreateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo) error {
-	return nil
-}
-
-func (j *job) UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req UpdateRequest) error {
-	if req == UpdateCacheAndDB {
-		if err := j.jobFactory.taskStore.UpdateTaskRuntimes(ctx, j.ID(), runtimes); err != nil {
-			// Clear the runtime in the cache
-			for instID := range runtimes {
-				j.updateTaskRuntimesInCache(map[uint32]*pbtask.RuntimeInfo{instID: nil})
-			}
-			return err
-		}
-	}
-
+// addTask adds a new task, and if already present, just returns it
+func (j *job) addTask(instID uint32) *task {
 	j.Lock()
 	defer j.Unlock()
 
-	j.updateTaskRuntimesInCache(runtimes)
+	t, ok := j.tasks[instID]
+	if !ok {
+		t = newTask(j.ID(), instID, j.jobFactory)
+		j.tasks[instID] = t
+	}
+	return t
+}
+
+// updateTasksInParallel runs go routines which will create/update tasks
+// in parallel to improve performance.
+func (j *job) updateTasksInParallel(
+	ctx context.Context,
+	runtimes map[uint32]*pbtask.RuntimeInfo,
+	owner string, req UpdateRequest,
+	write writeTaskRuntimeToDB) error {
+
+	var instanceIDList []uint32
+	var transientError int32
+
+	nTasks := uint32(len(runtimes))
+	transientError = 0 // indicates if the runtime create/update hit a transient error
+
+	for instanceID := range runtimes {
+		instanceIDList = append(instanceIDList, instanceID)
+	}
+
+	// how many tasks failed to update due to errors
+	tasksNotUpdated := uint32(0)
+
+	// Each go routine will update at least (nTasks / _defaultMaxParallelBatches)
+	// number of tasks. In addition if nTasks % _defaultMaxParallelBatches > 0,
+	// the first increment number of go routines are going to run
+	// one additional task.
+	increment := nTasks % _defaultMaxParallelBatches
+
+	timeStart := time.Now()
+	wg := new(sync.WaitGroup)
+	prevEnd := uint32(0)
+
+	// run the parallel batches
+	for i := uint32(0); i < _defaultMaxParallelBatches; i++ {
+		// start of the batch
+		updateStart := prevEnd
+		// end of the batch
+		updateEnd := updateStart + (nTasks / _defaultMaxParallelBatches)
+		if increment > 0 {
+			updateEnd++
+			increment--
+		}
+
+		if updateEnd > nTasks {
+			updateEnd = nTasks
+		}
+		prevEnd = updateEnd
+		if updateStart == updateEnd {
+			continue
+		}
+		wg.Add(1)
+
+		// Start a go routine to update all tasks in a batch
+		go func() {
+			defer wg.Done()
+			for k := updateStart; k < updateEnd; k++ {
+				instanceID := instanceIDList[k]
+				runtime := runtimes[instanceID]
+				if runtime == nil {
+					continue
+				}
+
+				err := write(ctx, instanceID, runtimes[instanceID], req, owner)
+				if err != nil {
+					atomic.AddUint32(&tasksNotUpdated, 1)
+					if common.IsTransientError(err) {
+						atomic.StoreInt32(&transientError, 1)
+					}
+					return
+				}
+			}
+		}()
+	}
+	// wait for all batches to complete
+	wg.Wait()
+
+	if tasksNotUpdated != 0 {
+		msg := fmt.Sprintf(
+			"Updated %d task runtimes for %v, and was unable to write %d tasks in %v",
+			nTasks-tasksNotUpdated,
+			j.ID(),
+			tasksNotUpdated,
+			time.Since(timeStart))
+		log.WithFields(log.Fields{
+			"job_id":            j.ID().GetValue(),
+			"tasks_updated":     nTasks - tasksNotUpdated,
+			"tasks_not_updated": tasksNotUpdated,
+			"time_elapsed":      time.Since(timeStart),
+		}).Error("failed to update task runtimes")
+		if transientError > 0 {
+			// return a transient error if a transient error is encountered
+			// while creating.updating any task
+			return yarpcerrors.AbortedErrorf(msg)
+		}
+		return yarpcerrors.InternalErrorf(msg)
+	}
 	return nil
+}
+
+// createSingleTask is a helper function to crate a single task
+func (j *job) createSingleTask(
+	ctx context.Context,
+	instanceID uint32,
+	runtime *pbtask.RuntimeInfo,
+	req UpdateRequest,
+	owner string) error {
+	now := time.Now()
+	runtime.Revision = &peloton.ChangeLog{
+		CreatedAt: uint64(now.UnixNano()),
+		UpdatedAt: uint64(now.UnixNano()),
+		Version:   1,
+	}
+
+	if j.GetTask(instanceID) != nil {
+		return yarpcerrors.InvalidArgumentErrorf("task %d already exists", instanceID)
+	}
+
+	t := j.addTask(instanceID)
+	return t.CreateRuntime(ctx, runtime, owner)
+}
+
+func (j *job) CreateTasks(
+	ctx context.Context,
+	runtimes map[uint32]*pbtask.RuntimeInfo,
+	owner string) error {
+	return j.updateTasksInParallel(ctx, runtimes, owner, UpdateCacheAndDB, j.createSingleTask)
+}
+
+// updateSingleTask is a helper function to update a single task
+func (j *job) updateSingleTask(
+	ctx context.Context,
+	instanceID uint32,
+	runtime *pbtask.RuntimeInfo,
+	req UpdateRequest,
+	owner string) error {
+	t := j.addTask(instanceID)
+	return t.UpdateRuntime(ctx, runtime, req)
+}
+
+func (j *job) UpdateTasks(
+	ctx context.Context,
+	runtimes map[uint32]*pbtask.RuntimeInfo,
+	req UpdateRequest) error {
+	return j.updateTasksInParallel(ctx, runtimes, "", req, j.updateSingleTask)
 }
 
 func (j *job) GetTask(id uint32) Task {
@@ -186,6 +310,8 @@ func (j *job) GetAllTasks() map[uint32]Task {
 	return taskMap
 }
 
+// updateJobInCache updates the job config and runtime in cache.
+//TODO fix this function after write through cache for job config and runtime.
 func (j *job) updateJobInCache(jobInfo *pbjob.JobInfo) {
 	j.runtime = jobInfo.GetRuntime()
 	if jobInfo.GetConfig() != nil {
@@ -283,14 +409,14 @@ func (j *job) GetJobType() pbjob.JobType {
 
 func (j *job) GetFirstTaskUpdateTime() float64 {
 	j.RLock()
-	j.RUnlock()
+	defer j.RUnlock()
 
 	return j.firstTaskUpdateTime
 }
 
 func (j *job) GetLastTaskUpdateTime() float64 {
 	j.RLock()
-	j.RUnlock()
+	defer j.RUnlock()
 
 	return j.lastTaskUpdateTime
 }

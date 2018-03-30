@@ -48,10 +48,12 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		if runtime.GetGoalState() == task.TaskState_KILLED || util.IsPelotonStateTerminal(runtime.GetState()) {
 			continue
 		}
-		runtime.GoalState = task.TaskState_KILLED
-		runtime.Message = "Task stop API request"
-		runtime.Reason = ""
-		updatedRuntimes[instanceID] = runtime
+		updatedRuntime := &task.RuntimeInfo{
+			GoalState: task.TaskState_KILLED,
+			Message:   "Task stop API request",
+			Reason:    "",
+		}
+		updatedRuntimes[instanceID] = updatedRuntime
 	}
 
 	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)

@@ -126,9 +126,10 @@ func sendTasksToResMgr(
 	runtimes := make(map[uint32]*task.RuntimeInfo)
 	for _, tt := range tasks {
 		instID := tt.GetInstanceId()
-		runtime := tt.GetRuntime()
-		runtime.State = task.TaskState_PENDING
-		runtime.Message = "Task sent for placement"
+		runtime := &task.RuntimeInfo{
+			State:   task.TaskState_PENDING,
+			Message: "Task sent for placement",
+		}
 		runtimes[instID] = runtime
 	}
 
@@ -164,8 +165,10 @@ func recoverTasks(
 			if taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
 				// Task exists, just send to resource manager
 				if maxRunningInstances > 0 && taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
-					// add task to cache
-					cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{i: taskInfos[i].GetRuntime()}, cached.UpdateCacheOnly)
+					// add task to cache if not already present
+					if cachedJob.GetTask(i) == nil {
+						cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{i: taskInfos[i].GetRuntime()}, cached.UpdateCacheOnly)
+					}
 					// run the runtime updater to start instances
 					goalStateDriver.EnqueueJob(jobID, time.Now().Add(goalStateDriver.getJobRuntimeDuration(jobConfig.GetType())))
 				} else {
@@ -178,7 +181,10 @@ func recoverTasks(
 						Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
 					}
 					tasks = append(tasks, taskInfo)
-					cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
+					// add task to cache if not already present
+					if cachedJob.GetTask(i) == nil {
+						cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
+					}
 				}
 
 			}
@@ -191,7 +197,7 @@ func recoverTasks(
 			Info("Creating missing task")
 
 		runtime := jobmgr_task.CreateInitializingTask(jobID, i, jobConfig)
-		if err := goalStateDriver.taskStore.CreateTaskRuntime(ctx, jobID, i, runtime, jobConfig.OwningTeam); err != nil {
+		if err := cachedJob.CreateTasks(ctx, map[uint32]*task.RuntimeInfo{i: runtime}, jobConfig.OwningTeam); err != nil {
 			goalStateDriver.mtx.taskMetrics.TaskCreateFail.Inc(1)
 			log.WithError(err).
 				WithField("job_id", jobID.GetValue()).
@@ -202,13 +208,9 @@ func recoverTasks(
 		goalStateDriver.mtx.taskMetrics.TaskCreate.Inc(1)
 
 		if maxRunningInstances > 0 {
-			// add task to cache
-			cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{i: runtime}, cached.UpdateCacheOnly)
 			// run the runtime updater to start instances
 			goalStateDriver.EnqueueJob(jobID, time.Now().Add(goalStateDriver.getJobRuntimeDuration(jobConfig.GetType())))
 		} else {
-			runtimes := make(map[uint32]*task.RuntimeInfo)
-			runtimes[i] = runtime
 			taskInfo := &task.TaskInfo{
 				JobId:      jobID,
 				InstanceId: i,
@@ -216,7 +218,6 @@ func recoverTasks(
 				Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[i]),
 			}
 			tasks = append(tasks, taskInfo)
-			cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
 		}
 	}
 
@@ -247,7 +248,7 @@ func createAndEnqueueTasks(
 		}
 	}
 
-	err := goalStateDriver.taskStore.CreateTaskRuntimes(ctx, jobID, runtimes, jobConfig.OwningTeam)
+	err := cachedJob.CreateTasks(ctx, runtimes, jobConfig.OwningTeam)
 	nTasks := int64(len(tasks))
 	if err != nil {
 		log.WithError(err).
@@ -258,8 +259,6 @@ func createAndEnqueueTasks(
 		return err
 	}
 	goalStateDriver.mtx.taskMetrics.TaskCreate.Inc(nTasks)
-
-	cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
 
 	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 

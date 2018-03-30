@@ -153,11 +153,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	timeNow := float64(time.Now().UnixNano())
 	event.MesosTaskStatus.Timestamp = &timeNow
 	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
-	updateTaskInfo := createTestTaskInfo(task.TaskState_RUNNING)
-	updateTaskInfo.GetRuntime().StartTime = _currentTime
-	updateTaskInfo.GetRuntime().Message = "testFailure"
+	updatedRuntime := &task.RuntimeInfo{
+		State:     task.TaskState_RUNNING,
+		StartTime: _currentTime,
+		Message:   "testFailure",
+	}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	runtimes[_instanceID] = updateTaskInfo.GetRuntime()
+	runtimes[_instanceID] = updatedRuntime
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -360,13 +362,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 	taskInfo.Runtime.GoalState = task.TaskState_KILLED
 
-	updateTaskInfo := createTestTaskInfo(task.TaskState_KILLED)
-	updateTaskInfo.GetRuntime().Reason = failureReason.String()
-	updateTaskInfo.GetRuntime().Message = "Stopped task LOST event: " + _failureMsg
-	updateTaskInfo.GetRuntime().GoalState = task.TaskState_KILLED
-	updateTaskInfo.GetRuntime().CompletionTime = _currentTime
+	updatedRuntime := &task.RuntimeInfo{
+		State:          task.TaskState_KILLED,
+		Reason:         failureReason.String(),
+		Message:        "Stopped task LOST event: " + _failureMsg,
+		CompletionTime: _currentTime,
+	}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	runtimes[_instanceID] = updateTaskInfo.GetRuntime()
+	runtimes[_instanceID] = updatedRuntime
 
 	gomock.InOrder(
 		suite.mockTaskStore.EXPECT().
@@ -514,8 +517,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		Value: "testVolume",
 	}
 	taskInfo.GetRuntime().VolumeID = testVolumeID
+	updatedRuntime := &task.RuntimeInfo{
+		State:     task.TaskState_RUNNING,
+		StartTime: _currentTime,
+		Message:   "testFailure",
+	}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	runtimes[_instanceID] = taskInfo.GetRuntime()
+	runtimes[_instanceID] = updatedRuntime
 
 	volumeInfo := &volume.PersistentVolumeInfo{
 		State: volume.VolumeState_INITIALIZED,
@@ -558,8 +566,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		Value: "testVolume",
 	}
 	taskInfo.GetRuntime().VolumeID = testVolumeID
+	updatedRuntime := &task.RuntimeInfo{
+		State:     task.TaskState_RUNNING,
+		StartTime: _currentTime,
+		Message:   "testFailure",
+	}
 	runtimes := make(map[uint32]*task.RuntimeInfo)
-	runtimes[_instanceID] = taskInfo.GetRuntime()
+	runtimes[_instanceID] = updatedRuntime
 
 	volumeInfo := &volume.PersistentVolumeInfo{
 		State: volume.VolumeState_CREATED,
@@ -611,8 +624,8 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 				task.TaskState_RUNNING,
 			)
 			suite.Equal(
-				runtime.CompletionTime,
 				"",
+				runtime.CompletionTime,
 			)
 		}).
 		Return(nil)

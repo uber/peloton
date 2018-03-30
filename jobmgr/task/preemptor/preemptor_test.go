@@ -1,6 +1,7 @@
 package preemptor
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -73,7 +74,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		Id: killingTaskID,
 	}
 	killingTaskInfo := &peloton_task.TaskInfo{
-		InstanceId: 0,
+		InstanceId: 1,
 		Runtime: &peloton_task.RuntimeInfo{
 			State:     peloton_task.TaskState_KILLING,
 			GoalState: peloton_task.TaskState_KILLED,
@@ -83,6 +84,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	cachedJob := cachedmocks.NewMockJob(suite.mockCtrl)
 	runtimes := make(map[uint32]*peloton_task.RuntimeInfo)
 	runtimes[0] = runningTaskInfo.Runtime
+	runtimes[1] = killingTaskInfo.Runtime
 
 	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(
 		&resmgrsvc.GetPreemptibleTasksResponse{
@@ -101,13 +103,15 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), runningTaskID.Value).Return(runningTaskInfo, nil)
 	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), killingTaskID.Value).Return(killingTaskInfo, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob)
-	cachedJob.EXPECT().UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheAndDB).Return(nil)
+	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(ctx context.Context, runtimes map[uint32]*peloton_task.RuntimeInfo, req cached.UpdateRequest) {
+			suite.Equal(peloton_task.TaskState_PREEMPTING, runtimes[runningTaskInfo.InstanceId].GetGoalState())
+		}).
+		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)
-	suite.Equal(peloton_task.TaskState_PREEMPTING, runningTaskInfo.GetRuntime().GoalState)
-	suite.Equal(peloton_task.TaskState_KILLED, killingTaskInfo.GetRuntime().GoalState)
 }
 
 func (suite *PreemptorTestSuite) TestReconciler_StartStop() {

@@ -159,6 +159,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	mockHost := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskLauncher := mocks2.NewMockLauncher(ctrl)
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
@@ -209,7 +210,7 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 		Runtime: runtime,
 	}
 
-	taskID := fmt.Sprintf("%s-%d", jobID, instanceID)
+	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)
 	taskInfos := make(map[string]*pb_task.TaskInfo)
 	taskInfos[taskID] = taskInfo
 
@@ -243,7 +244,13 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 		GetJob(jobID).Return(cachedJob)
 
 	cachedJob.EXPECT().
+		GetTask(instanceID).Return(cachedTask)
+
+	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
+
+	cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	mockTaskLauncher.EXPECT().
 		LaunchStatefulTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(nil)
@@ -262,6 +269,7 @@ func TestTaskStartStatefullWithVolumeDBError(t *testing.T) {
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	mockHost := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskLauncher := mocks2.NewMockLauncher(ctrl)
 	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
@@ -312,7 +320,7 @@ func TestTaskStartStatefullWithVolumeDBError(t *testing.T) {
 		Runtime: runtime,
 	}
 
-	taskID := fmt.Sprintf("%s-%d", jobID, instanceID)
+	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)
 	taskInfos := make(map[string]*pb_task.TaskInfo)
 	taskInfos[taskID] = taskInfo
 
@@ -344,6 +352,9 @@ func TestTaskStartStatefullWithVolumeDBError(t *testing.T) {
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetTask(instanceID).Return(cachedTask)
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("fake db write error"))

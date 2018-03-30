@@ -22,13 +22,10 @@ const (
 // CreateInitializingTask for insertion into the storage layer, before being
 // enqueued.
 func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *job.JobConfig) *task.RuntimeInfo {
-	runtime := &task.RuntimeInfo{
-		ConfigVersion:        jobConfig.GetChangeLog().GetVersion(),
-		DesiredConfigVersion: jobConfig.GetChangeLog().GetVersion(),
-		GoalState:            GetDefaultTaskGoalState(jobConfig.GetType()),
-	}
-
-	util.RegenerateMesosTaskID(jobID, instanceID, runtime)
+	runtime := util.RegenerateMesosTaskID(jobID, instanceID, nil)
+	runtime.ConfigVersion = jobConfig.GetChangeLog().GetVersion()
+	runtime.DesiredConfigVersion = jobConfig.GetChangeLog().GetVersion()
+	runtime.GoalState = GetDefaultTaskGoalState(jobConfig.GetType())
 	return runtime
 }
 

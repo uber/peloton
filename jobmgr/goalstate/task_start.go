@@ -56,12 +56,30 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return nil
 	}
 
+	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
+	if cachedTask == nil {
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.GetValue(),
+			"instance_id": taskEnt.instanceID,
+		}).Error("task is nil in cache with valid job")
+		return nil
+	}
+
 	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: taskInfos[pelotonTaskID.Value].GetRuntime()}, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", taskEnt.jobID).
 			WithField("instance_id", taskEnt.instanceID).
 			Error("failed to update task runtime during launch")
+		return err
+	}
+
+	taskInfos[pelotonTaskID.Value].Runtime, err = cachedTask.GetRunTime(ctx)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", taskEnt.jobID).
+			WithField("instance_id", taskEnt.instanceID).
+			Error("failed to fetch task runtime from cache")
 		return err
 	}
 
@@ -148,9 +166,11 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	// Update task state to PENDING
 	runtime := taskInfo.GetRuntime()
 	if runtime.GetState() != task.TaskState_PENDING {
-		runtime.State = task.TaskState_PENDING
-		runtime.Message = "Task sent for placement"
-		err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
+		updatedRuntime := &task.RuntimeInfo{
+			State:   task.TaskState_PENDING,
+			Message: "Task sent for placement",
+		}
+		err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
 	}
 	return err
 }

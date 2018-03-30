@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -72,16 +73,18 @@ func TestTaskStop(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask).Times(2)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
-	runtime.State = pbtask.TaskState_KILLING
-	runtime.Message = "Killing the task"
-	runtime.Reason = ""
+	expectedRuntime := &pbtask.RuntimeInfo{
+		State:   pbtask.TaskState_KILLING,
+		Message: "Killing the task",
+		Reason:  "",
+	}
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), map[uint32]*pbtask.RuntimeInfo{
-		instanceID: runtime,
+		instanceID: expectedRuntime,
 	}, cached.UpdateCacheAndDB)
 
 	hostMock.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
@@ -117,10 +120,10 @@ func TestTaskStop(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(nil)
+		GetRunTime(gomock.Any()).Return(nil, fmt.Errorf("fake error"))
 
 	err = TaskStop(context.Background(), taskEnt)
-	assert.EqualError(t, err, "task has no runtime info in cache")
+	assert.EqualError(t, err, "fake error")
 }
 
 func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
@@ -179,7 +182,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
@@ -273,7 +276,7 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)

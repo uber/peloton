@@ -54,7 +54,10 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	runtime := cachedTask.GetRunTime()
+	runtime, err := cachedTask.GetRunTime(ctx)
+	if err != nil {
+		return err
+	}
 
 	taskConfig, err := goalStateDriver.taskStore.GetTaskConfig(ctx, taskEnt.jobID, taskEnt.instanceID, int64(runtime.GetConfigVersion()))
 	if err != nil {
@@ -77,13 +80,13 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 
 	// reschedule the task
 	goalStateDriver.mtx.taskMetrics.RetryFailedTasksTotal.Inc(1)
-	util.RegenerateMesosTaskID(taskEnt.jobID, taskEnt.instanceID, runtime)
-	runtime.FailureCount++
-	runtime.Message = "Rescheduled after task failure"
+	updatedRuntime := util.RegenerateMesosTaskID(taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
+	updatedRuntime.FailureCount = runtime.GetFailureCount() + 1
+	updatedRuntime.Message = "Rescheduled after task failure"
 	log.WithField("job_id", taskEnt.jobID).
 		WithField("instance_id", taskEnt.instanceID).
 		Debug("restarting failed task")
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
+	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 	}

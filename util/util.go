@@ -381,17 +381,20 @@ func ConvertLabels(pelotonLabels []*peloton.Label) *mesos.Labels {
 }
 
 // RegenerateMesosTaskID generates a new mesos task ID and update task runtime.
-func RegenerateMesosTaskID(jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) {
+func RegenerateMesosTaskID(jobID *peloton.JobID, instanceID uint32, prevMesosTaskID *mesos.TaskID) *task.RuntimeInfo {
 	mesosTaskID := fmt.Sprintf(
 		"%s-%d-%s",
 		jobID.GetValue(),
 		instanceID,
 		uuid.New())
-	runtime.PrevMesosTaskId = runtime.MesosTaskId
-	runtime.MesosTaskId = &mesos.TaskID{
-		Value: &mesosTaskID,
+	runtime := &task.RuntimeInfo{
+		PrevMesosTaskId: prevMesosTaskID,
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+		State: task.TaskState_INITIALIZED,
 	}
-	runtime.State = task.TaskState_INITIALIZED
+	return runtime
 }
 
 // Contains checks whether an item contains in a list

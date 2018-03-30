@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/yarpc"
 
+	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
@@ -155,12 +156,26 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 		runtime := taskInfo.GetRuntime()
 		cachedJob := p.jobFactory.AddJob(jobID)
 
-		if runtime.GetGoalState() == task.TaskState_KILLED {
-			if runtime.GetState() != task.TaskState_KILLED {
+		cachedTask := cachedJob.GetTask(uint32(instanceID))
+		if cachedTask == nil {
+			log.WithFields(log.Fields{
+				"job_id":      jobID.GetValue(),
+				"instance_id": uint32(instanceID),
+			}).Error("task is nil in cache with valid job")
+			continue
+		}
+
+		cachedRuntime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			log.WithError(err).
+				WithField("task_id", taskID).
+				Error("cannot fetch task runtime")
+			continue
+		}
+
+		if cachedRuntime.GetGoalState() == task.TaskState_KILLED {
+			if cachedRuntime.GetState() != task.TaskState_KILLED {
 				// Received placement for task which needs to be killed, retry killing the task.
-				killTasks := make(map[uint32]*task.RuntimeInfo)
-				killTasks[uint32(instanceID)] = runtime
-				cachedJob.UpdateTasks(ctx, killTasks, cached.UpdateCacheOnly)
 				p.goalStateDriver.EnqueueTask(jobID, uint32(instanceID), time.Now())
 			}
 
@@ -172,6 +187,7 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 			for retry < maxRetryCount {
 				err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{uint32(instanceID): runtime}, cached.UpdateCacheAndDB)
 				if err == nil {
+					taskInfo.Runtime, _ = cachedTask.GetRunTime(ctx)
 					break
 				}
 				if common.IsTransientError(err) {
@@ -267,17 +283,19 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 
 	var err error
 	for _, t := range tasks {
-		t.Runtime.State = task.TaskState_INITIALIZED
-		t.Runtime.Message = "Regenerate placement"
-		t.Runtime.Reason = "REASON_HOST_REJECT_OFFER"
-		t.Runtime.Host = ""
-		t.Runtime.AgentID = nil
-		t.Runtime.Ports = nil
-		util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.Runtime)
+		runtime := util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.GetRuntime().GetMesosTaskId())
+		runtime.Message = "Regenerate placement"
+		runtime.Reason = "REASON_HOST_REJECT_OFFER"
+		runtime.AgentID = &mesosv1.AgentID{}
+		runtime.Ports = make(map[string]uint32)
 		retry := 0
 		for retry < maxRetryCount {
 			cachedJob := p.jobFactory.AddJob(t.JobId)
-			err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{uint32(t.InstanceId): t.Runtime}, cached.UpdateCacheAndDB)
+			err = cachedJob.UpdateTasks(
+				ctx,
+				map[uint32]*task.RuntimeInfo{uint32(t.InstanceId): runtime},
+				cached.UpdateCacheAndDB,
+			)
 			if err == nil {
 				p.goalStateDriver.EnqueueTask(t.JobId, t.InstanceId, time.Now())
 				break

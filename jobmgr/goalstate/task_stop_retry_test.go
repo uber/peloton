@@ -74,7 +74,7 @@ func TestTaskStopShutdownExecutor(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedTask.EXPECT().
 		GetLastRuntimeUpdateTime().Return(time.Now().Add(-_defaultShutdownExecutorTimeout))
@@ -142,7 +142,7 @@ func TestTaskStopNoTimeout(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedTask.EXPECT().
 		GetLastRuntimeUpdateTime().Return(time.Now())

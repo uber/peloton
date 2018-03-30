@@ -166,6 +166,7 @@ func TestTaskPlacementNoError(t *testing.T) {
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
@@ -198,7 +199,13 @@ func TestTaskPlacementNoError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
+			GetTask(uint32(0)).Return(cachedTask),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+		cachedJob.EXPECT().
 			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 		goalStateDriver.EXPECT().
@@ -254,6 +261,7 @@ func TestTaskPlacementKilledTask(t *testing.T) {
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
@@ -287,6 +295,10 @@ func TestTaskPlacementKilledTask(t *testing.T) {
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			GetTask(uint32(0)).Return(cachedTask),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)
@@ -300,6 +312,7 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
@@ -336,7 +349,9 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), expectedRuntime, cached.UpdateCacheOnly).Return(nil),
+			GetTask(uint32(0)).Return(cachedTask),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, gomock.Any(), gomock.Any()).Return(),
 	)
@@ -352,6 +367,7 @@ func TestTaskPlacementDBError(t *testing.T) {
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
@@ -383,6 +399,10 @@ func TestTaskPlacementDBError(t *testing.T) {
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			GetTask(uint32(0)).Return(cachedTask),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().
 			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("fake db error")),
 	)
@@ -398,6 +418,7 @@ func TestTaskPlacementError(t *testing.T) {
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
@@ -430,7 +451,13 @@ func TestTaskPlacementError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
+			GetTask(uint32(0)).Return(cachedTask),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+		cachedJob.EXPECT().
 			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
 		jobFactory.EXPECT().
@@ -452,6 +479,7 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
@@ -484,7 +512,13 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
+			GetTask(uint32(0)).Return(cachedTask),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+		cachedJob.EXPECT().
 			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
 		jobFactory.EXPECT().

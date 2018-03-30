@@ -1042,12 +1042,7 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 			taskInfo.Runtime.State = task.TaskState(j)
 			err = taskStore.CreateTaskRuntime(context.Background(), &jobID, j, taskInfo.Runtime, "test")
 			suite.NoError(err)
-			// Create same task should error
-			err = taskStore.CreateTaskRuntime(context.Background(), &jobID, j, taskInfo.Runtime, "test")
-			suite.Error(err)
-			runtimes := make(map[uint32]*task.RuntimeInfo)
-			runtimes[j] = taskInfo.Runtime
-			err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+			err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, j, taskInfo.Runtime)
 			suite.NoError(err)
 		}
 	}
@@ -1070,13 +1065,11 @@ func (suite *CassandraStoreTestSuite) TestAddTasks() {
 		tasks, err := taskStore.GetTasksForJob(context.Background(), jobIDs[i])
 		suite.NoError(err)
 		suite.Equal(len(tasks), 3)
-		runtimes := make(map[uint32]*task.RuntimeInfo)
 		for _, task := range tasks {
 			task.Runtime.Host = fmt.Sprintf("compute_%d", i)
-			runtimes[task.InstanceId] = task.Runtime
+			err = taskStore.UpdateTaskRuntime(context.Background(), task.JobId, task.InstanceId, task.Runtime)
+			suite.NoError(err)
 		}
-		err = taskStore.UpdateTaskRuntimes(context.Background(), jobIDs[i], runtimes)
-		suite.NoError(err)
 	}
 	for i := 0; i < nJobs; i++ {
 		tasks, err := taskStore.GetTasksForJob(context.Background(), jobIDs[i])
@@ -1151,7 +1144,6 @@ func (suite *CassandraStoreTestSuite) TestUpdateTaskConcurrently() {
 
 func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	runtimes := make(map[uint32]*task.RuntimeInfo)
 
 	// Create legacy task with missing version field.
 	suite.NoError(store.createTaskConfig(context.Background(), jobID, 0, &task.TaskConfig{}, 0))
@@ -1173,20 +1165,16 @@ func (suite *CassandraStoreTestSuite) TestTaskVersionMigration() {
 	suite.Equal(uint64(0), info.GetRuntime().GetRevision().GetUpdatedAt())
 
 	before := time.Now()
-	runtimes[0] = info.Runtime
-	suite.NoError(store.UpdateTaskRuntimes(context.Background(), jobID, runtimes))
+	info.Runtime.Revision = &peloton.ChangeLog{
+		Version:   1,
+		UpdatedAt: uint64(time.Now().UnixNano()),
+	}
+	suite.NoError(store.UpdateTaskRuntime(context.Background(), jobID, 0, info.Runtime))
 
 	info, err = store.getTask(context.Background(), jobID.GetValue(), 0)
 	suite.NoError(err)
 	suite.Equal(uint64(1), info.GetRuntime().GetRevision().GetVersion())
 	suite.True(info.GetRuntime().GetRevision().UpdatedAt >= uint64(before.UnixNano()))
-
-	runtimes[0] = info.Runtime
-	suite.NoError(store.UpdateTaskRuntimes(context.Background(), jobID, runtimes))
-
-	info, err = store.getTask(context.Background(), jobID.GetValue(), 0)
-	suite.NoError(err)
-	suite.Equal(uint64(2), info.GetRuntime().GetRevision().GetVersion())
 }
 
 // TestGetTaskConfigs tests reading task configs(overridden and default)
@@ -1298,7 +1286,6 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	host1 := "compute1"
 	host2 := "compute2"
 	var jobID = peloton.JobID{Value: uuid.New()}
-	runtimes := make(map[uint32]*task.RuntimeInfo)
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(nTasks)
 	err := suite.createJob(context.Background(), &jobID, jobConfig, "uber")
@@ -1309,40 +1296,34 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateChanges() {
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PENDING
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host1
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PREEMPTING
 	taskInfo.Runtime.Host = ""
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host2
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_SUCCEEDED
 	taskInfo.Runtime.Host = host2
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_LOST
 	taskInfo.Runtime.Host = host2
 	taskInfo.Runtime.Reason = "Reconciliation reason"
 	taskInfo.Runtime.Message = "Reconciliation message"
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, taskInfo.InstanceId, taskInfo.Runtime)
 	suite.NoError(err)
 
 	stateRecords, err := store.GetTaskStateChanges(context.Background(), &jobID, 0)
@@ -1380,7 +1361,6 @@ func (suite *CassandraStoreTestSuite) TestGetTaskEvents() {
 	host1 := "compute1"
 	host2 := "compute2"
 	var jobID = peloton.JobID{Value: uuid.New()}
-	runtimes := make(map[uint32]*task.RuntimeInfo)
 	jobConfig := createJobConfig()
 	jobConfig.InstanceCount = uint32(nTasks)
 	err := suite.createJob(context.Background(), &jobID, jobConfig, "uber")
@@ -1391,40 +1371,33 @@ func (suite *CassandraStoreTestSuite) TestGetTaskEvents() {
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PENDING
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host1
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_PREEMPTING
 	taskInfo.Runtime.Host = ""
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_RUNNING
 	taskInfo.Runtime.Host = host2
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	taskInfo.Runtime.State = task.TaskState_SUCCEEDED
 	taskInfo.Runtime.Host = host2
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
-	suite.NoError(err)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 
 	taskInfo.Runtime.State = task.TaskState_LOST
 	taskInfo.Runtime.Host = host2
 	taskInfo.Runtime.Reason = "Reconciliation reason"
 	taskInfo.Runtime.Message = "Reconciliation message"
-	runtimes[0] = taskInfo.Runtime
-	err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+	err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, 0, taskInfo.Runtime)
 	suite.NoError(err)
 
 	events, err := store.GetTaskEvents(context.Background(), &jobID, 0)
@@ -1486,9 +1459,7 @@ func (suite *CassandraStoreTestSuite) TestGetTaskStateSummary() {
 		err := taskStore.CreateTaskRuntime(context.Background(), &jobID, i, taskInfo.Runtime, "user1")
 		suite.Nil(err)
 		taskInfo.Runtime.State = task.TaskState(i / 2)
-		runtimes := make(map[uint32]*task.RuntimeInfo)
-		runtimes[i] = taskInfo.Runtime
-		err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
+		err = taskStore.UpdateTaskRuntime(context.Background(), &jobID, i, taskInfo.Runtime)
 		suite.Nil(err)
 	}
 
@@ -1914,6 +1885,9 @@ func createTaskInfo(
 		Runtime: &task.RuntimeInfo{
 			MesosTaskId: &mesos.TaskID{Value: &tID},
 			State:       task.TaskState_INITIALIZED,
+			Revision: &peloton.ChangeLog{
+				Version: 1,
+			},
 		},
 		Config:     jobConfig.GetDefaultConfig(),
 		InstanceId: uint32(i),

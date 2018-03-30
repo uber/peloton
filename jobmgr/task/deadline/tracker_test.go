@@ -1,6 +1,7 @@
 package deadline
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -80,16 +81,17 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.jobFactory.EXPECT().GetAllJobs().Return(jobs)
 	suite.mockJobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
 	job.EXPECT().GetAllTasks().Return(tasks)
-	task.EXPECT().GetRunTime().Return(taskInfo.Runtime).Times(2)
-	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), gomock.Any()).Return(taskInfo, nil)
+	task.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(job)
-	job.EXPECT().UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheAndDB).Return(nil)
+	job.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(ctx context.Context, runtimes map[uint32]*peloton_task.RuntimeInfo, req cached.UpdateRequest) {
+			suite.Equal(peloton_task.TaskState_KILLED, runtimes[1].GetGoalState())
+		}).
+		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
 
 	err := suite.tracker.trackDeadline()
-
 	suite.NoError(err)
-	suite.Equal(peloton_task.TaskState_KILLED, taskInfo.GetRuntime().GoalState)
 }
 
 func (suite *DeadlineTrackerTestSuite) TestTracker_StartStop() {

@@ -12,10 +12,6 @@ import (
 	"github.com/uber-go/tally"
 )
 
-const (
-	_defaultMetricsUpdateTick = 10 * time.Second // time duration at which cache metrics are computed
-)
-
 // JobFactory is the entrypoint object into the cache which stores job and tasks.
 // This only runs in the job manager leader.
 type JobFactory interface {

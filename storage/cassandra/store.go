@@ -899,15 +899,7 @@ func (s *Store) GetAllJobs(ctx context.Context) (map[string]*job.RuntimeInfo, er
 }
 
 // CreateTaskRuntime creates a task runtime for a peloton job
-// TODO: remove this in favor of CreateTaskRuntimes
 func (s *Store) CreateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo, owner string) error {
-	now := time.Now()
-	runtime.Revision = &peloton.ChangeLog{
-		CreatedAt: uint64(now.UnixNano()),
-		UpdatedAt: uint64(now.UnixNano()),
-		Version:   0,
-	}
-
 	runtimeBuffer, err := proto.Marshal(runtime)
 	if err != nil {
 		log.WithField("job_id", jobID.GetValue()).
@@ -933,8 +925,7 @@ func (s *Store) CreateTaskRuntime(ctx context.Context, jobID *peloton.JobID, ins
 			runtime.GetRevision().GetVersion(),
 			time.Now().UTC(),
 			runtime.GetState().String(),
-			runtimeBuffer).
-		IfNotExist()
+			runtimeBuffer)
 
 	taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
 	if err := s.applyStatement(ctx, stmt, taskID); err != nil {
@@ -1020,13 +1011,6 @@ func (s *Store) CreateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 					runtime := runtimes[instanceID]
 					if runtime == nil {
 						continue
-					}
-
-					now := time.Now()
-					runtime.Revision = &peloton.ChangeLog{
-						CreatedAt: uint64(now.UnixNano()),
-						UpdatedAt: uint64(now.UnixNano()),
-						Version:   0,
 					}
 
 					taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
@@ -1862,6 +1846,32 @@ func (s *Store) GetTaskRuntime(ctx context.Context, jobID *peloton.JobID, instan
 	return runtime, err
 }
 
+// UpdateTaskRuntime updates a task for a peloton job
+func (s *Store) UpdateTaskRuntime(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *task.RuntimeInfo) error {
+	runtimeBuffer, err := proto.Marshal(runtime)
+	if err != nil {
+		s.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
+		return err
+	}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(taskRuntimeTable).
+		Set("version", runtime.Revision.Version).
+		Set("update_time", time.Now().UTC()).
+		Set("state", runtime.GetState().String()).
+		Set("runtime_info", runtimeBuffer).
+		Where(qb.Eq{"job_id": jobID.GetValue(), "instance_id": instanceID})
+
+	if err := s.applyStatement(ctx, stmt, fmt.Sprintf(taskIDFmt, jobID.GetValue(), instanceID)); err != nil {
+		s.metrics.TaskMetrics.TaskUpdateFail.Inc(1)
+		return err
+	}
+
+	s.metrics.TaskMetrics.TaskUpdate.Inc(1)
+	s.logTaskStateChange(ctx, jobID, instanceID, runtime)
+	return nil
+}
+
 // UpdateTaskRuntimes updates task runtimes for the given task instance-ids
 func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runtimes map[uint32]*task.RuntimeInfo) error {
 	var instanceIDList []uint32
@@ -1936,13 +1946,6 @@ func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 						continue
 					}
 
-					// Bump version of task.
-					if runtime.Revision == nil {
-						runtime.Revision = &peloton.ChangeLog{}
-					}
-					runtime.Revision.Version++
-					runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
-
 					taskID := fmt.Sprintf(taskIDFmt, jobID, instanceID)
 					idsToTaskRuntimes[taskID] = runtime
 
@@ -1955,8 +1958,6 @@ func (s *Store) UpdateTaskRuntimes(ctx context.Context, id *peloton.JobID, runti
 						atomic.AddUint32(&tasksNotUpdated, batchSize)
 						return
 					}
-
-					// TBD use of CAS
 
 					queryBuilder := s.DataStore.NewQuery()
 					stmt := queryBuilder.Update(taskRuntimeTable).

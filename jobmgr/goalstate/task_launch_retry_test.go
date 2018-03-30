@@ -56,17 +56,14 @@ func TestTaskLaunchTimeout(t *testing.T) {
 	}
 
 	oldMesosTaskID := uuid.New()
-	taskInfo := &pb_task.TaskInfo{
-		InstanceId: instanceID,
-		JobId:      jobID,
-		Runtime: &pb_task.RuntimeInfo{
-			State: pb_task.TaskState_LAUNCHED,
-			MesosTaskId: &mesos_v1.TaskID{
-				Value: &oldMesosTaskID,
-			},
-			GoalState: pb_task.TaskState_SUCCEEDED,
+	runtime := &pb_task.RuntimeInfo{
+		State: pb_task.TaskState_LAUNCHED,
+		MesosTaskId: &mesos_v1.TaskID{
+			Value: &oldMesosTaskID,
 		},
+		GoalState: pb_task.TaskState_SUCCEEDED,
 	}
+	newRuntime := runtime
 	jobConfig := &pb_job.JobConfig{
 		Type: pb_job.JobType_BATCH,
 	}
@@ -78,13 +75,7 @@ func TestTaskLaunchTimeout(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		CurrentState().Return(cached.TaskStateVector{
-		State: pb_task.TaskState_LAUNCHED,
-	}).Times(2)
-
-	cachedTask.EXPECT().
-		GetRunTime().
-		Return(taskInfo.Runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedTask.EXPECT().
 		GetLastRuntimeUpdateTime().Return(time.Now().Add(-goalStateDriver.cfg.LaunchTimeout))
@@ -92,14 +83,18 @@ func TestTaskLaunchTimeout(t *testing.T) {
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
-	taskStore.EXPECT().GetTaskByID(gomock.Any(), gomock.Any()).Return(taskInfo, nil)
+	cachedJob.EXPECT().
+		GetTask(instanceID).Return(cachedTask)
+
+	cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	jobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
 
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
 		func(_ context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
 			for _, updatedRuntimeInfo := range runtimes {
-				taskInfo.Runtime = updatedRuntimeInfo
+				newRuntime = updatedRuntimeInfo
 			}
 		}).Return(nil)
 
@@ -119,9 +114,9 @@ func TestTaskLaunchTimeout(t *testing.T) {
 
 	err := TaskLaunchRetry(context.Background(), taskEnt)
 	assert.NoError(t, err)
-	assert.NotEqual(t, oldMesosTaskID, taskInfo.Runtime.MesosTaskId)
-	assert.Equal(t, pb_task.TaskState_INITIALIZED, taskInfo.Runtime.State)
-	assert.Equal(t, pb_task.TaskState_SUCCEEDED, taskInfo.Runtime.GoalState)
+	assert.NotEqual(t, oldMesosTaskID, newRuntime.MesosTaskId)
+	assert.Equal(t, pb_task.TaskState_INITIALIZED, newRuntime.State)
+	assert.Equal(t, pb_task.TaskState_SUCCEEDED, newRuntime.GoalState)
 }
 
 func TestLaunchedTaskSendLaunchInfoResMgr(t *testing.T) {
@@ -152,6 +147,11 @@ func TestLaunchedTaskSendLaunchInfoResMgr(t *testing.T) {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceID := uint32(0)
 
+	runtime := &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_LAUNCHED,
+		GoalState: pb_task.TaskState_SUCCEEDED,
+	}
+
 	taskEnt := &taskEntity{
 		jobID:      jobID,
 		instanceID: instanceID,
@@ -168,9 +168,7 @@ func TestLaunchedTaskSendLaunchInfoResMgr(t *testing.T) {
 		GetLastRuntimeUpdateTime().Return(time.Now())
 
 	cachedTask.EXPECT().
-		CurrentState().Return(cached.TaskStateVector{
-		State: pb_task.TaskState_LAUNCHED,
-	})
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	resmgrClient.EXPECT().
 		MarkTasksLaunched(gomock.Any(), gomock.Any()).
@@ -227,20 +225,19 @@ func TestTaskStartTimeout(t *testing.T) {
 	}
 
 	oldMesosTaskID := uuid.New()
-	taskInfo := &pb_task.TaskInfo{
-		InstanceId: instanceID,
-		JobId:      jobID,
-		Runtime: &pb_task.RuntimeInfo{
-			State: pb_task.TaskState_STARTING,
-			MesosTaskId: &mesos_v1.TaskID{
-				Value: &oldMesosTaskID,
-			},
-			GoalState: pb_task.TaskState_SUCCEEDED,
+	runtime := &pb_task.RuntimeInfo{
+		State: pb_task.TaskState_STARTING,
+		MesosTaskId: &mesos_v1.TaskID{
+			Value: &oldMesosTaskID,
 		},
+		GoalState: pb_task.TaskState_SUCCEEDED,
 	}
+
 	jobConfig := &pb_job.JobConfig{
 		Type: pb_job.JobType_BATCH,
 	}
+
+	newRuntime := runtime
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
@@ -249,13 +246,7 @@ func TestTaskStartTimeout(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		CurrentState().Return(cached.TaskStateVector{
-		State: pb_task.TaskState_STARTING,
-	}).Times(2)
-
-	cachedTask.EXPECT().
-		GetRunTime().
-		Return(taskInfo.Runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedTask.EXPECT().
 		GetLastRuntimeUpdateTime().Return(time.Now().Add(-goalStateDriver.cfg.LaunchTimeout))
@@ -263,14 +254,18 @@ func TestTaskStartTimeout(t *testing.T) {
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
-	taskStore.EXPECT().GetTaskByID(gomock.Any(), gomock.Any()).Return(taskInfo, nil)
+	cachedJob.EXPECT().
+		GetTask(instanceID).Return(cachedTask)
+
+	cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	jobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
 
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
 		func(_ context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
 			for _, updatedRuntimeInfo := range runtimes {
-				taskInfo.Runtime = updatedRuntimeInfo
+				newRuntime = updatedRuntimeInfo
 			}
 		}).Return(nil)
 
@@ -290,9 +285,9 @@ func TestTaskStartTimeout(t *testing.T) {
 
 	err := TaskLaunchRetry(context.Background(), taskEnt)
 	assert.NoError(t, err)
-	assert.NotEqual(t, oldMesosTaskID, taskInfo.Runtime.MesosTaskId)
-	assert.Equal(t, pb_task.TaskState_INITIALIZED, taskInfo.Runtime.State)
-	assert.Equal(t, pb_task.TaskState_SUCCEEDED, taskInfo.Runtime.GoalState)
+	assert.NotEqual(t, oldMesosTaskID, newRuntime.MesosTaskId)
+	assert.Equal(t, pb_task.TaskState_INITIALIZED, newRuntime.State)
+	assert.Equal(t, pb_task.TaskState_SUCCEEDED, newRuntime.GoalState)
 }
 
 func TestStartingTaskReenqueue(t *testing.T) {
@@ -323,6 +318,11 @@ func TestStartingTaskReenqueue(t *testing.T) {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceID := uint32(0)
 
+	runtime := &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_STARTING,
+		GoalState: pb_task.TaskState_SUCCEEDED,
+	}
+
 	taskEnt := &taskEntity{
 		jobID:      jobID,
 		instanceID: instanceID,
@@ -339,9 +339,7 @@ func TestStartingTaskReenqueue(t *testing.T) {
 		GetLastRuntimeUpdateTime().Return(time.Now())
 
 	cachedTask.EXPECT().
-		CurrentState().Return(cached.TaskStateVector{
-		State: pb_task.TaskState_STARTING,
-	})
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
@@ -389,6 +387,11 @@ func TestTaskWithUnexpectedStateReenqueue(t *testing.T) {
 	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceID := uint32(0)
 
+	runtime := &pb_task.RuntimeInfo{
+		State:     pb_task.TaskState_RUNNING,
+		GoalState: pb_task.TaskState_SUCCEEDED,
+	}
+
 	taskEnt := &taskEntity{
 		jobID:      jobID,
 		instanceID: instanceID,
@@ -402,9 +405,7 @@ func TestTaskWithUnexpectedStateReenqueue(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		CurrentState().Return(cached.TaskStateVector{
-		State: pb_task.TaskState_RUNNING,
-	}).Times(2)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)

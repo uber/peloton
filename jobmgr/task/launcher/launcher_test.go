@@ -22,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/backoff"
+	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -104,10 +105,14 @@ func TestGetLaunchableTasks(t *testing.T) {
 
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
 		hostMgrClient: mockHostMgr,
+		jobFactory:    jobFactory,
 		taskStore:     mockTaskStore,
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
@@ -131,10 +136,18 @@ func TestGetLaunchableTasks(t *testing.T) {
 	hostOffer := createHostOffer(0, rs)
 
 	for i := 0; i < numTasks; i++ {
+		taskID := tasks[i].GetValue()
+		jobID, instanceID, err := util.ParseTaskID(taskID)
+		assert.NoError(t, err)
+		jobFactory.EXPECT().
+			GetJob(&peloton.JobID{Value: jobID}).Return(cachedJob)
+		cachedJob.EXPECT().
+			GetTask(uint32(instanceID)).Return(cachedTask)
 		mockTaskStore.EXPECT().
-			GetTaskByID(gomock.Any(), tasks[i].GetValue()).
-			Return(taskInfos[tasks[i].GetValue()], nil)
-
+			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
+			Return(taskInfos[tasks[i].GetValue()].GetConfig(), nil)
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
 
 	taskInfos, err := taskLauncher.GetLaunchableTasks(context.Background(), tasks, hostOffer.Hostname, hostOffer.AgentId, selectedPorts)
@@ -152,10 +165,14 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 
 	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	taskLauncher := launcher{
 		hostMgrClient: mockHostMgr,
+		jobFactory:    jobFactory,
 		taskStore:     mockTaskStore,
 		metrics:       metrics,
 		retryPolicy:   backoff.NewRetryPolicy(5, 15*time.Millisecond),
@@ -183,9 +200,18 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 	hostOffer := createHostOffer(0, rs)
 
 	for i := 0; i < numTasks; i++ {
+		taskID := tasks[i].GetValue()
+		jobID, instanceID, err := util.ParseTaskID(taskID)
+		assert.NoError(t, err)
+		jobFactory.EXPECT().
+			GetJob(&peloton.JobID{Value: jobID}).Return(cachedJob)
+		cachedJob.EXPECT().
+			GetTask(uint32(instanceID)).Return(cachedTask)
 		mockTaskStore.EXPECT().
-			GetTaskByID(gomock.Any(), tasks[i].GetValue()).
-			Return(taskInfos[tasks[i].GetValue()], nil)
+			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
+			Return(taskInfos[tasks[i].GetValue()].GetConfig(), nil)
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(taskInfos[tasks[i].GetValue()].GetRuntime(), nil).AnyTimes()
 	}
 
 	taskInfos, err := taskLauncher.GetLaunchableTasks(context.Background(), tasks, hostOffer.Hostname, hostOffer.AgentId, selectedPorts)

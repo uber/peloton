@@ -350,8 +350,6 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
-	singleRuntime := make(map[uint32]*task.RuntimeInfo)
-	singleRuntime[1] = suite.taskInfos[1].Runtime
 
 	taskRanges := []*task.InstanceRange{
 		{
@@ -368,7 +366,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 		jobFactory.EXPECT().
 			AddJob(suite.testJobID).Return(cachedJob),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), singleRuntime, cached.UpdateCacheAndDB).Return(nil),
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(suite.testJobID, uint32(1), gomock.Any()).Return(),
 	)
@@ -603,7 +601,12 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 		jobFactory.EXPECT().
 			AddJob(suite.testJobID).Return(cachedJob),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+			Do(func(ctx context.Context, runtimes map[uint32]*task.RuntimeInfo, req cached.UpdateRequest) {
+				for _, runtime := range runtimes {
+					suite.Equal(runtime.GetState(), task.TaskState_INITIALIZED)
+				}
+			}).Return(nil),
 	)
 
 	goalStateDriver.EXPECT().
@@ -617,9 +620,6 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 		request,
 	)
 
-	for _, taskInfo := range tasksInfoList {
-		suite.Equal(taskInfo.GetRuntime().GetState(), task.TaskState_INITIALIZED)
-	}
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
 	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
@@ -671,7 +671,13 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 		jobFactory.EXPECT().
 			AddJob(suite.testJobID).Return(cachedJob),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+			Do(func(ctx context.Context, runtimes map[uint32]*task.RuntimeInfo, req cached.UpdateRequest) {
+				for _, runtime := range runtimes {
+					suite.Equal(runtime.GetState(), task.TaskState_INITIALIZED)
+					suite.Equal(runtime.GetGoalState(), task.TaskState_SUCCEEDED)
+				}
+			}).Return(nil),
 	)
 
 	goalStateDriver.EXPECT().
@@ -685,8 +691,6 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 		context.Background(),
 		request,
 	)
-	suite.Equal(singleTaskInfo[1].GetRuntime().GetState(), task.TaskState_INITIALIZED)
-	suite.Equal(singleTaskInfo[1].GetRuntime().GetGoalState(), task.TaskState_SUCCEEDED)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
 	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
@@ -866,7 +870,12 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 		jobFactory.EXPECT().
 			AddJob(suite.testJobID).Return(cachedJob),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+			Do(func(ctx context.Context, runtimes map[uint32]*task.RuntimeInfo, req cached.UpdateRequest) {
+				for _, runtime := range runtimes {
+					suite.Equal(runtime.GetState(), task.TaskState_INITIALIZED)
+				}
+			}).Return(nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return(),
 	)
@@ -879,7 +888,6 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 		context.Background(),
 		request,
 	)
-	suite.Equal(singleTaskInfo[1].GetRuntime().GetState(), task.TaskState_INITIALIZED)
 	suite.NoError(err)
 	suite.Nil(resp.GetError())
 	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)

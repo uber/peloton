@@ -75,7 +75,7 @@ func TestTaskFailNoRetry(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(&taskConfig, nil)
@@ -138,7 +138,7 @@ func TestTaskFailRetry(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(&taskConfig, nil)
@@ -224,7 +224,7 @@ func TestTaskFailSystemFailure(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(&taskConfig, nil)
@@ -304,7 +304,7 @@ func TestTaskFailDBError(t *testing.T) {
 		GetTask(instanceID).Return(cachedTask)
 
 	cachedTask.EXPECT().
-		GetRunTime().Return(runtime)
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	taskStore.EXPECT().
 		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(nil, fmt.Errorf("fake db error"))

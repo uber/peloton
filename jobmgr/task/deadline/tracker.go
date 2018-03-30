@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
@@ -160,12 +161,22 @@ func (t *tracker) trackDeadline() error {
 		}
 
 		for instance, info := range v.GetAllTasks() {
-			if info.GetRunTime().GetState() != pb_task.TaskState_RUNNING {
-				log.WithField("state", info.GetRunTime().GetState().String()).
-					Info("Task is not running. Ignoring tracker")
+			runtime, err := info.GetRunTime(context.Background())
+			if err != nil {
+				log.WithError(err).
+					WithFields(log.Fields{
+						"job_id":      id,
+						"instance_id": instance,
+					}).Info("failed to fetch task runtime")
 				continue
 			}
-			st, _ := time.Parse(time.RFC3339Nano, info.GetRunTime().GetStartTime())
+
+			if runtime.GetState() != pb_task.TaskState_RUNNING {
+				log.WithField("state", runtime.GetState().String()).
+					Debug("Task is not running. Ignoring tracker")
+				continue
+			}
+			st, _ := time.Parse(time.RFC3339Nano, runtime.GetStartTime())
 			delta := time.Now().UTC().Sub(st)
 			log.WithFields(log.Fields{
 				"deadline":       jobConfig.GetSla().GetMaxRunningTime(),
@@ -201,22 +212,25 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 	log.WithField("task_ID", task.Value).
 		Info("stopping task")
 
-	taskInfo, err := t.taskStore.GetTaskByID(ctx, task.Value)
+	// set goal state to TaskState_KILLED
+	runtime := &pb_task.RuntimeInfo{
+		GoalState: pb_task.TaskState_KILLED,
+		Reason:    "Deadline exceeded",
+	}
+
+	id, instanceID, err := util.ParseTaskID(task.GetValue())
 	if err != nil {
 		return err
 	}
-
-	// set goal state to TaskState_KILLED
-	taskInfo.GetRuntime().GoalState = pb_task.TaskState_KILLED
-	taskInfo.GetRuntime().Reason = "Deadline exceeded"
+	jobID := &peloton.JobID{Value: id}
 
 	// update the task in DB and cache, and then schedule to goalstate
-	cachedJob := t.jobFactory.AddJob(taskInfo.JobId)
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{taskInfo.InstanceId: taskInfo.Runtime}, cached.UpdateCacheAndDB)
+	cachedJob := t.jobFactory.AddJob(jobID)
+	err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{uint32(instanceID): runtime}, cached.UpdateCacheAndDB)
 	if err != nil {
 		return err
 	}
-	t.goalStateDriver.EnqueueTask(taskInfo.JobId, taskInfo.InstanceId, time.Now())
+	t.goalStateDriver.EnqueueTask(jobID, uint32(instanceID), time.Now())
 	return nil
 }
 

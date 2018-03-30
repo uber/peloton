@@ -33,6 +33,29 @@ func initializeJob(jobStore *storemocks.MockJobStore, taskStore *storemocks.Mock
 	return j
 }
 
+func initializeRuntimes(instanceCount uint32, state pbtask.TaskState) map[uint32]*pbtask.RuntimeInfo {
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State: state,
+		}
+		runtimes[i] = runtime
+	}
+	return runtimes
+}
+
+func initializeCurrentRuntime(state pbtask.TaskState) *pbtask.RuntimeInfo {
+	runtime := &pbtask.RuntimeInfo{
+		State: state,
+		Revision: &peloton.ChangeLog{
+			CreatedAt: uint64(time.Now().UnixNano()),
+			UpdatedAt: uint64(time.Now().UnixNano()),
+			Version:   1,
+		},
+	}
+	return runtime
+}
+
 // TestJobFetchID tests fetching job ID.
 func TestJobFetchID(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -182,6 +205,61 @@ func TestJobSetJobUpdateTime(t *testing.T) {
 	assert.Equal(t, updateTime, j.GetLastTaskUpdateTime())
 }
 
+// TestJobCreateTasks tests creating task runtimes in cache and DB
+func TestJobCreateTasks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	taskstore := storemocks.NewMockTaskStore(ctrl)
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	instanceCount := uint32(10)
+	j := initializeJob(nil, taskstore, jobID)
+	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_INITIALIZED)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		taskstore.EXPECT().
+			CreateTaskRuntime(gomock.Any(), jobID, i, gomock.Any(), "peloton").
+			Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo, owner string) {
+				assert.Equal(t, pbtask.TaskState_INITIALIZED, runtime.GetState())
+				assert.Equal(t, uint64(1), runtime.GetRevision().GetVersion())
+			}).Return(nil)
+	}
+
+	err := j.CreateTasks(context.Background(), runtimes, "peloton")
+	assert.NoError(t, err)
+
+	// Validate the state of the tasks in cache is correct
+	for i := uint32(0); i < instanceCount; i++ {
+		tt := j.GetTask(i)
+		assert.NotNil(t, tt)
+		actRuntime, _ := tt.GetRunTime(context.Background())
+		assert.NotNil(t, actRuntime)
+		assert.Equal(t, pbtask.TaskState_INITIALIZED, actRuntime.GetState())
+		assert.Equal(t, uint64(1), actRuntime.GetRevision().GetVersion())
+	}
+}
+
+// TestJobCreateTasksWithDBError tests getting DB error while creating task runtimes
+func TestJobCreateTasksWithDBError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	taskstore := storemocks.NewMockTaskStore(ctrl)
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	instanceCount := uint32(10)
+	j := initializeJob(nil, taskstore, jobID)
+
+	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_INITIALIZED)
+	for i := uint32(0); i < instanceCount; i++ {
+		taskstore.EXPECT().
+			CreateTaskRuntime(gomock.Any(), jobID, i, gomock.Any(), "peloton").
+			Return(fmt.Errorf("fake db error"))
+	}
+
+	err := j.CreateTasks(context.Background(), runtimes, "peloton")
+	assert.Error(t, err)
+}
+
 // TestSetGetTasksInJobInCacheSingle tests setting and getting single task in job in cache.
 func TestSetGetTasksInJobInCacheSingle(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -203,9 +281,10 @@ func TestSetGetTasksInJobInCacheSingle(t *testing.T) {
 	}
 	assert.Equal(t, instanceCount, uint32(len(j.tasks)))
 
+	// Validate the state of the tasks in cache is correct
 	for i := uint32(0); i < instanceCount; i++ {
 		tt := j.GetTask(i)
-		actRuntime := tt.GetRunTime()
+		actRuntime, _ := tt.GetRunTime(context.Background())
 		assert.Equal(t, runtime, *actRuntime)
 	}
 }
@@ -222,18 +301,14 @@ func TestSetGetTasksInJobInCacheBlock(t *testing.T) {
 	j := initializeJob(jobStore, taskstore, &jobID)
 
 	// Test updating tasks in one call in cache
-	runtime := pbtask.RuntimeInfo{
-		State: pbtask.TaskState_SUCCEEDED,
-	}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	for i := uint32(0); i < instanceCount; i++ {
-		runtimes[i] = &runtime
-	}
+	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_SUCCEEDED)
 	j.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
-	for instID := range runtimes {
+
+	// Validate the state of the tasks in cache is correct
+	for instID, runtime := range runtimes {
 		tt := j.GetTask(instID)
-		actRuntime := tt.GetRunTime()
-		assert.Equal(t, runtime, *actRuntime)
+		actRuntime, _ := tt.GetRunTime(context.Background())
+		assert.Equal(t, runtime, actRuntime)
 	}
 }
 
@@ -244,26 +319,32 @@ func TestTasksUpdateInDB(t *testing.T) {
 
 	jobStore := storemocks.NewMockJobStore(ctrl)
 	taskstore := storemocks.NewMockTaskStore(ctrl)
-	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
-	j := initializeJob(jobStore, taskstore, &jobID)
+	j := initializeJob(jobStore, taskstore, jobID)
+
+	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_RUNNING)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
+		taskstore.EXPECT().
+			GetTaskRuntime(gomock.Any(), jobID, i).Return(oldRuntime, nil)
+		taskstore.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), jobID, i, gomock.Any()).Return(nil)
+	}
 
 	// Update task runtimes in DB and cache
-	runtime := pbtask.RuntimeInfo{
-		State: pbtask.TaskState_RUNNING,
-	}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	for i := uint32(0); i < instanceCount; i++ {
-		runtimes[i] = &runtime
-	}
-	taskstore.EXPECT().
-		UpdateTaskRuntimes(gomock.Any(), gomock.Any(), runtimes).Return(nil)
 	err := j.UpdateTasks(context.Background(), runtimes, UpdateCacheAndDB)
 	assert.NoError(t, err)
+
+	// Validate the state of the tasks in cache is correct
 	for instID := range runtimes {
 		tt := j.GetTask(instID)
-		actRuntime := tt.GetRunTime()
-		assert.Equal(t, runtime, *actRuntime)
+		assert.NotNil(t, tt)
+		actRuntime, _ := tt.GetRunTime(context.Background())
+		assert.NotNil(t, actRuntime)
+		assert.Equal(t, pbtask.TaskState_RUNNING, actRuntime.GetState())
+		assert.Equal(t, uint64(2), actRuntime.GetRevision().GetVersion())
 	}
 }
 
@@ -274,28 +355,28 @@ func TestTasksUpdateDBError(t *testing.T) {
 
 	jobStore := storemocks.NewMockJobStore(ctrl)
 	taskstore := storemocks.NewMockTaskStore(ctrl)
-	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
 	instanceCount := uint32(10)
-	j := initializeJob(jobStore, taskstore, &jobID)
+	j := initializeJob(jobStore, taskstore, jobID)
 
-	runtime := pbtask.RuntimeInfo{
+	runtime := &pbtask.RuntimeInfo{
 		State: pbtask.TaskState_RUNNING,
 	}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	for i := uint32(0); i < instanceCount; i++ {
-		runtimes[i] = &runtime
+	oldRuntime := &pbtask.RuntimeInfo{
+		State: pbtask.TaskState_LAUNCHED,
 	}
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 
-	// Simulate fake DB error
-	taskstore.EXPECT().
-		UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error"))
+	for i := uint32(0); i < instanceCount; i++ {
+		tt := j.addTask(i)
+		tt.runtime = oldRuntime
+		runtimes[i] = runtime
+		// Simulate fake DB error
+		taskstore.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), jobID, i, gomock.Any()).Return(fmt.Errorf("fake db error"))
+	}
 	err := j.UpdateTasks(context.Background(), runtimes, UpdateCacheAndDB)
 	assert.Error(t, err)
-	for instID := range runtimes {
-		tt := j.GetTask(instID)
-		actRuntime := tt.GetRunTime()
-		assert.Nil(t, actRuntime)
-	}
 }
 
 // TestTasksUpdateRuntimeSingleTask tests updating task runtime of a single task in DB.
@@ -308,18 +389,24 @@ func TestTasksUpdateRuntimeSingleTask(t *testing.T) {
 	jobID := peloton.JobID{Value: uuid.NewRandom().String()}
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pbtask.RuntimeInfo{
+	runtime := &pbtask.RuntimeInfo{
 		State: pbtask.TaskState_RUNNING,
 	}
+	oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
+	tt := j.addTask(0)
+	tt.runtime = oldRuntime
 
 	// Update task runtime of only one task
 	taskstore.EXPECT().
-		UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-	err := j.UpdateTasks(context.Background(), map[uint32]*pbtask.RuntimeInfo{0: &runtime}, UpdateCacheAndDB)
+		UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	err := j.UpdateTasks(context.Background(), map[uint32]*pbtask.RuntimeInfo{0: runtime}, UpdateCacheAndDB)
 	assert.NoError(t, err)
-	tt := j.GetTask(0)
-	actRuntime := tt.GetRunTime()
-	assert.Equal(t, runtime, *actRuntime)
+
+	// Validate the state of the task in cache is correct
+	att := j.GetTask(0)
+	actRuntime, _ := att.GetRunTime(context.Background())
+	assert.Equal(t, pbtask.TaskState_RUNNING, actRuntime.GetState())
+	assert.Equal(t, uint64(2), actRuntime.GetRevision().GetVersion())
 }
 
 // TestTasksGetAllTasks tests getting all tasks.
@@ -333,13 +420,7 @@ func TestTasksGetAllTasks(t *testing.T) {
 	instanceCount := uint32(10)
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pbtask.RuntimeInfo{
-		State: pbtask.TaskState_RUNNING,
-	}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	for i := uint32(0); i < instanceCount; i++ {
-		runtimes[i] = &runtime
-	}
+	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_RUNNING)
 	j.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
 
 	// Test get all tasks
@@ -358,13 +439,7 @@ func TestPartialJobCheck(t *testing.T) {
 	instanceCount := uint32(10)
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pbtask.RuntimeInfo{
-		State: pbtask.TaskState_RUNNING,
-	}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	for i := uint32(0); i < instanceCount; i++ {
-		runtimes[i] = &runtime
-	}
+	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_RUNNING)
 	j.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
 
 	// Test partial job check
@@ -384,13 +459,7 @@ func TestClearTasks(t *testing.T) {
 
 	j := initializeJob(jobStore, taskstore, &jobID)
 
-	runtime := pbtask.RuntimeInfo{
-		State: pbtask.TaskState_RUNNING,
-	}
-	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-	for i := uint32(0); i < instanceCount; i++ {
-		runtimes[i] = &runtime
-	}
+	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_RUNNING)
 	j.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
 
 	// Test clearing all tasks of job

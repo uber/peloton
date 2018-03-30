@@ -38,19 +38,18 @@ func TaskStop(ctx context.Context, entity goalstate.Entity) error {
 		}).Error("task is nil in cache with valid job")
 		return nil
 	}
-	runtime := cachedTask.GetRunTime()
+	runtime, err := cachedTask.GetRunTime(ctx)
 
-	if runtime == nil {
-		return fmt.Errorf("task has no runtime info in cache")
+	if err != nil {
+		return err
 	}
 
-	switch {
-	case runtime.GetState() == task.TaskState_INITIALIZED,
-		runtime.GetState() == task.TaskState_PENDING:
+	if cached.IsResMgrOwnedState(runtime.GetState()) || runtime.GetState() == task.TaskState_INITIALIZED {
 		// kill in resource manager
 		return stopInitializedTask(ctx, taskEnt)
+	}
 
-	case runtime.GetMesosTaskId() != nil:
+	if runtime.GetMesosTaskId() != nil {
 		// kill in  mesos
 		return stopMesosTask(ctx, taskEnt, runtime)
 	}
@@ -104,18 +103,19 @@ func stopInitializedTask(ctx context.Context, taskEnt *taskEntity) error {
 	}
 
 	// If it had changed, update to current and abort.
-	if runtime.GetState() != task.TaskState_INITIALIZED &&
-		runtime.GetState() != task.TaskState_PENDING {
-		cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheOnly)
+	if !cached.IsResMgrOwnedState(runtime.GetState()) &&
+		runtime.GetState() != task.TaskState_INITIALIZED {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		return nil
 	}
 
-	runtime.State = task.TaskState_KILLED
-	runtime.Message = "Non-running task killed"
-	runtime.Reason = ""
+	updatedRuntime := &task.RuntimeInfo{
+		State:   task.TaskState_KILLED,
+		Message: "Non-running task killed",
+		Reason:  "",
+	}
 
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
+	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 	}
@@ -144,10 +144,13 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 		return err
 	}
 
-	runtime.State = task.TaskState_KILLING
-	runtime.Message = "Killing the task"
-	runtime.Reason = ""
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
+	updatedRuntime := &task.RuntimeInfo{
+		State:   task.TaskState_KILLING,
+		Message: "Killing the task",
+		Reason:  "",
+	}
+	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
+
 	if err == nil {
 		// timeout for task kill
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now().Add(_defaultShutdownExecutorTimeout))

@@ -24,17 +24,10 @@ func TaskFailed(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	runtime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, taskEnt.jobID, taskEnt.instanceID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", taskEnt.jobID).
-			WithField("instance_id", taskEnt.instanceID).
-			Error("failed to get task runtime during task fail action")
-		return err
+	runtime := &task.RuntimeInfo{
+		State: task.TaskState_FAILED,
 	}
-
-	runtime.State = task.TaskState_FAILED
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
+	err := cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 	}
@@ -62,7 +55,7 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	if err != nil {
 		return err
 	}
-	cachedTask.UpdateRuntime(runtime)
+	cachedTask.UpdateRuntime(ctx, runtime, cached.UpdateCacheOnly)
 
 	// This function is called when the runtime in cache is nil.
 	// The task needs to re-enqueued into the goal state engine

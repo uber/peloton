@@ -52,7 +52,12 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	switch cachedTask.CurrentState().State {
+	cachedRuntime, err := cachedTask.GetRunTime(ctx)
+	if err != nil {
+		return err
+	}
+
+	switch cachedRuntime.State {
 	case task.TaskState_LAUNCHED:
 		if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.LaunchTimeout {
 			// LAUNCHED not times out, just send it to resource manager
@@ -70,7 +75,7 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 		log.WithFields(log.Fields{
 			"job_id":      taskEnt.jobID.GetValue(),
 			"instance_id": taskEnt.instanceID,
-			"state":       cachedTask.CurrentState().State,
+			"state":       cachedRuntime.State,
 		}).Error("unexpected task state, expecting LAUNCHED or STARTING state")
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		return nil
@@ -80,8 +85,8 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 	log.WithFields(log.Fields{
 		"job_id":      taskEnt.jobID.GetValue(),
 		"instance_id": taskEnt.instanceID,
-		"mesos_id":    cachedTask.GetRunTime().GetMesosTaskId().GetValue(),
-		"state":       cachedTask.CurrentState().State.String(),
+		"mesos_id":    cachedRuntime.GetMesosTaskId().GetValue(),
+		"state":       cachedRuntime.State.String(),
 	}).Info("task timed out, reinitializing the task")
 
 	// TODO kill the old task as well instead of waiting for the orphaned task

@@ -30,6 +30,7 @@ func TestTaskInitialize(t *testing.T) {
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 
 	goalStateDriver := &driver{
 		jobEngine:  jobGoalStateEngine,
@@ -52,16 +53,13 @@ func TestTaskInitialize(t *testing.T) {
 	}
 
 	oldMesosTaskID := uuid.New()
-	taskInfo := &pbtask.TaskInfo{
-		InstanceId: 1,
-		JobId:      &peloton.JobID{Value: uuid.New()},
-		Runtime: &pbtask.RuntimeInfo{
-			State: pbtask.TaskState_KILLED,
-			MesosTaskId: &mesos_v1.TaskID{
-				Value: &oldMesosTaskID,
-			},
+	runtime := &pbtask.RuntimeInfo{
+		State: pbtask.TaskState_KILLED,
+		MesosTaskId: &mesos_v1.TaskID{
+			Value: &oldMesosTaskID,
 		},
 	}
+	newRuntime := runtime
 
 	jobConfig := &pb_job.JobConfig{
 		Type: pb_job.JobType_BATCH,
@@ -70,14 +68,18 @@ func TestTaskInitialize(t *testing.T) {
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
-	taskStore.EXPECT().GetTaskByID(gomock.Any(), gomock.Any()).Return(taskInfo, nil)
+	cachedJob.EXPECT().
+		GetTask(instanceID).Return(cachedTask)
+
+	cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	jobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
 
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
 		func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req cached.UpdateRequest) {
 			for _, updatedRuntimeInfo := range runtimes {
-				taskInfo.Runtime = updatedRuntimeInfo
+				newRuntime = updatedRuntimeInfo
 			}
 		}).Return(nil)
 
@@ -97,7 +99,7 @@ func TestTaskInitialize(t *testing.T) {
 
 	err := TaskInitialize(context.Background(), taskEnt)
 	assert.NoError(t, err)
-	assert.NotEqual(t, oldMesosTaskID, taskInfo.Runtime.MesosTaskId)
-	assert.Equal(t, pbtask.TaskState_INITIALIZED, taskInfo.Runtime.State)
-	assert.Equal(t, pbtask.TaskState_SUCCEEDED, taskInfo.Runtime.GoalState)
+	assert.NotEqual(t, oldMesosTaskID, newRuntime.MesosTaskId)
+	assert.Equal(t, pbtask.TaskState_INITIALIZED, newRuntime.State)
+	assert.Equal(t, pbtask.TaskState_SUCCEEDED, newRuntime.GoalState)
 }

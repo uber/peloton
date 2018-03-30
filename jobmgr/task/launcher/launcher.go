@@ -20,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/backoff"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -41,6 +42,7 @@ type Launcher interface {
 type launcher struct {
 	sync.Mutex
 	hostMgrClient hostsvc.InternalHostServiceYARPCClient
+	jobFactory    cached.JobFactory
 	taskStore     storage.TaskStore
 	volumeStore   storage.PersistentVolumeStore
 	metrics       *Metrics
@@ -64,6 +66,7 @@ var onceInitTaskLauncher sync.Once
 func InitTaskLauncher(
 	d *yarpc.Dispatcher,
 	hostMgrClientName string,
+	jobFactory cached.JobFactory,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
 	parent tally.Scope,
@@ -76,6 +79,7 @@ func InitTaskLauncher(
 
 		taskLauncher = &launcher{
 			hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
+			jobFactory:    jobFactory,
 			taskStore:     taskStore,
 			volumeStore:   volumeStore,
 			metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
@@ -120,6 +124,8 @@ func (l *launcher) isLauncherRetryableError(err error) bool {
 	return true
 }
 
+// The taskinfo being returned contains the current task configuration and
+// the new runtime which needs to be updated into the DB for each launchable task.
 func (l *launcher) GetLaunchableTasks(
 	ctx context.Context,
 	tasks []*peloton.TaskID,
@@ -132,42 +138,72 @@ func (l *launcher) GetLaunchableTasks(
 	getTaskInfoStart := time.Now()
 
 	for _, taskID := range tasks {
-		// TODO: We need to add batch api's for getting all tasks in one shot
-		taskInfo, err := l.taskStore.GetTaskByID(ctx, taskID.GetValue())
-		if err != nil {
-			log.WithError(err).WithField("Task Id", taskID.GetValue()).
-				Error("Not able to get Task")
+		id, instanceID, err := util.ParseTaskID(taskID.GetValue())
+		jobID := &peloton.JobID{Value: id}
+
+		cachedJob := l.jobFactory.GetJob(jobID)
+		if cachedJob == nil {
+			// job does not exist, just ignore the task?
 			continue
 		}
 
+		cachedTask := cachedJob.GetTask(uint32(instanceID))
+		if cachedTask == nil {
+			log.WithFields(log.Fields{
+				"job_id":      jobID.GetValue(),
+				"instance_id": uint32(instanceID),
+			}).Error("task is nil in cache with valid job")
+			continue
+		}
+
+		cachedRuntime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			log.WithError(err).
+				WithFields(log.Fields{
+					"job_id":      jobID.GetValue(),
+					"instance_id": uint32(instanceID),
+				}).Error("cannot fetch task runtime")
+			continue
+		}
+
+		// TODO: We need to add batch api's for getting all tasks in one shot
+		taskConfig, err := l.taskStore.GetTaskConfig(ctx, jobID, uint32(instanceID), int64(cachedRuntime.GetConfigVersion()))
+		if err != nil {
+			log.WithError(err).WithField("task_id", taskID.GetValue()).
+				Error("not able to get task configuration")
+			continue
+		}
+
+		runtime := &task.RuntimeInfo{}
+
 		// Generate volume ID if not set for stateful task.
-		if taskInfo.GetConfig().GetVolume() != nil {
-			if taskInfo.GetRuntime().GetVolumeID() == nil || hostname != taskInfo.GetRuntime().GetHost() {
+		if taskConfig.GetVolume() != nil {
+			if cachedRuntime.GetVolumeID() == nil || hostname != cachedRuntime.GetHost() {
 				newVolumeID := &peloton.VolumeID{
 					Value: uuid.New(),
 				}
 				log.WithFields(log.Fields{
-					"task":          taskInfo,
+					"task_id":       taskID,
 					"hostname":      hostname,
 					"new_volume_id": newVolumeID,
 				}).Info("generates new volume id for task")
 				// Generates volume ID if first time launch the stateful task,
 				// OR task is being launched to a different host.
-				taskInfo.GetRuntime().VolumeID = newVolumeID
+				runtime.VolumeID = newVolumeID
 			}
 		}
 
-		if taskInfo.GetRuntime().GetGoalState() != task.TaskState_KILLED {
-			taskInfo.GetRuntime().Host = hostname
-			taskInfo.GetRuntime().AgentID = agentID
-			taskInfo.GetRuntime().State = task.TaskState_LAUNCHED
+		if cachedRuntime.GetGoalState() != task.TaskState_KILLED {
+			runtime.Host = hostname
+			runtime.AgentID = agentID
+			runtime.State = task.TaskState_LAUNCHED
 		}
 
 		if selectedPorts != nil {
 			// Reset runtime ports to get new ports assignment if placement has ports.
-			taskInfo.GetRuntime().Ports = make(map[string]uint32)
+			runtime.Ports = make(map[string]uint32)
 			// Assign selected dynamic port to task per port config.
-			for _, portConfig := range taskInfo.GetConfig().GetPorts() {
+			for _, portConfig := range taskConfig.GetPorts() {
 				if portConfig.GetValue() != 0 {
 					// Skip static port.
 					continue
@@ -176,17 +212,24 @@ func (l *launcher) GetLaunchableTasks(
 					// This should never happen.
 					log.WithFields(log.Fields{
 						"selected_ports": selectedPorts,
-						"task_info":      taskInfo,
+						"task_id":        taskID,
 					}).Error("placement contains less selected ports than required.")
 					return nil, errors.New("invalid placement")
 				}
-				taskInfo.GetRuntime().Ports[portConfig.GetName()] = selectedPorts[portsIndex]
+				runtime.Ports[portConfig.GetName()] = selectedPorts[portsIndex]
 				portsIndex++
 			}
 		}
 
-		taskInfo.GetRuntime().Message = "Add hostname and ports"
-		taskInfo.GetRuntime().Reason = "REASON_UPDATE_OFFER"
+		runtime.Message = "Add hostname and ports"
+		runtime.Reason = "REASON_UPDATE_OFFER"
+
+		taskInfo := &task.TaskInfo{
+			InstanceId: uint32(instanceID),
+			JobId:      jobID,
+			Config:     taskConfig,
+			Runtime:    runtime,
+		}
 		tasksInfo[taskID.GetValue()] = taskInfo
 	}
 

@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/util"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // TaskInitialize does the following:
@@ -26,30 +27,35 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	taskID := &peloton.TaskID{
-		Value: taskEnt.GetID(),
+	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
+	if cachedTask == nil {
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.GetValue(),
+			"instance_id": taskEnt.instanceID,
+		}).Error("task is nil in cache with valid job")
+		return nil
+	}
+	runtime, err := cachedTask.GetRunTime(ctx)
+	if err != nil {
+		return err
 	}
 
-	taskInfo, err := goalStateDriver.taskStore.GetTaskByID(ctx, taskID.GetValue())
-	if err != nil || taskInfo == nil {
-		return fmt.Errorf("task info not found for %v", taskID.GetValue())
-	}
-
+	// TODO get job type from cache instead of DB
 	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, taskEnt.jobID)
 	if err != nil {
 		return fmt.Errorf("job config not found for %v", taskEnt.jobID)
 	}
 
-	util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
+	updatedRuntime := util.RegenerateMesosTaskID(taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
 
 	// update task runtime
-	taskInfo.Runtime.GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
-	taskInfo.Runtime.StartTime = ""
-	taskInfo.Runtime.CompletionTime = ""
-	taskInfo.Runtime.Message = "Initialize task"
-	taskInfo.Runtime.Reason = ""
+	updatedRuntime.GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
+	updatedRuntime.StartTime = ""
+	updatedRuntime.CompletionTime = ""
+	updatedRuntime.Message = "Initialize task"
+	updatedRuntime.Reason = ""
 
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: taskInfo.GetRuntime()}, cached.UpdateCacheAndDB)
+	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 	}

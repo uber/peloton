@@ -102,12 +102,8 @@ func TestJobCreateTasks(t *testing.T) {
 		AddJob(jobID).
 		Return(cachedJob)
 
-	taskStore.EXPECT().
-		CreateTaskRuntimes(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
-		Return(nil)
-
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	resmgrClient.EXPECT().
@@ -281,23 +277,18 @@ func TestJobRecover(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
+		GetTask(uint32(1)).Return(nil)
+
+	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, cached.UpdateCacheOnly).
 		Return(nil)
 
-	taskStore.EXPECT().
-		CreateTaskRuntime(gomock.Any(), jobID, uint32(2), gomock.Any(), gomock.Any()).
+	cachedJob.EXPECT().
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
-		Return(nil)
-
-	taskStore.EXPECT().
-		CreateTaskRuntime(gomock.Any(), jobID, uint32(3), gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	resmgrClient.EXPECT().
@@ -473,12 +464,8 @@ func TestJobMaxRunningInstances(t *testing.T) {
 		AddJob(jobID).
 		Return(cachedJob)
 
-	taskStore.EXPECT().
-		CreateTaskRuntimes(gomock.Any(), jobID, gomock.Any(), gomock.Any()).
-		Return(nil)
-
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	resmgrClient.EXPECT().
@@ -599,6 +586,9 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
+		GetTask(uint32(1)).Return(nil)
+
+	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, cached.UpdateCacheOnly).
 		Return(nil)
 
@@ -606,24 +596,16 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	taskStore.EXPECT().
-		CreateTaskRuntime(gomock.Any(), jobID, uint32(2), gomock.Any(), gomock.Any()).
-		Return(nil)
-
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	taskStore.EXPECT().
-		CreateTaskRuntime(gomock.Any(), jobID, uint32(3), gomock.Any(), gomock.Any()).
-		Return(nil)
-
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	jobGoalStateEngine.EXPECT().

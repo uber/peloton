@@ -221,6 +221,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	runtime := taskInfo.GetRuntime()
+	updatedRuntime := &pb_task.RuntimeInfo{}
 	dbTaskID := runtime.GetMesosTaskId().GetValue()
 	if isMesosStatus && dbTaskID != mesosTaskID {
 		p.metrics.SkipOrphanTasksTotal.Inc(1)
@@ -252,7 +253,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 
 	if state == runtime.GetState() {
 		log.WithFields(log.Fields{
-			"db_task_info":      taskInfo,
+			"db_task_runtime":   taskInfo.GetRuntime(),
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Debug("skip same status update for mesos task")
 		return nil
@@ -268,20 +269,20 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	// Persist the reason and message for mesos updates
-	runtime.Message = statusMsg
-	runtime.Reason = ""
+	updatedRuntime.Message = statusMsg
+	updatedRuntime.Reason = ""
 
 	switch state {
 	case pb_task.TaskState_KILLED:
 		if runtime.GetGoalState() == pb_task.TaskState_PREEMPTING {
-			runtime.Reason = "Task preempted"
-			runtime.Message = "Task will not be rescheduled"
+			updatedRuntime.Reason = "Task preempted"
+			updatedRuntime.Message = "Task will not be rescheduled"
 			pp := taskInfo.GetConfig().GetPreemptionPolicy()
 			if pp == nil || !pp.GetKillOnPreempt() {
-				runtime.Message = "Task will be rescheduled"
+				updatedRuntime.Message = "Task will be rescheduled"
 			}
 		}
-		runtime.State = state
+		updatedRuntime.State = state
 
 	case pb_task.TaskState_FAILED:
 		if event.GetMesosTaskStatus().GetReason() == mesos_v1.TaskStatus_REASON_TASK_INVALID && strings.Contains(event.GetMesosTaskStatus().GetMessage(), "Task has duplicate ID") {
@@ -289,11 +290,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				Info("ignoring duplicate task id failure")
 			return nil
 		}
-		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
-		runtime.State = state
+		updatedRuntime.Reason = event.GetMesosTaskStatus().GetReason().String()
+		updatedRuntime.State = state
 
 	case pb_task.TaskState_LOST:
-		runtime.Reason = event.GetMesosTaskStatus().GetReason().String()
+		updatedRuntime.Reason = event.GetMesosTaskStatus().GetReason().String()
 		if util.IsPelotonStateTerminal(runtime.GetState()) {
 			// Skip LOST status update if current state is terminal state.
 			log.WithFields(log.Fields{
@@ -309,8 +310,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 				"db_task_info":      taskInfo,
 				"task_status_event": event.GetMesosTaskStatus(),
 			}).Debug("mark stopped task as killed due to LOST")
-			runtime.State = pb_task.TaskState_KILLED
-			runtime.Message = "Stopped task LOST event: " + statusMsg
+			updatedRuntime.State = pb_task.TaskState_KILLED
+			updatedRuntime.Message = "Stopped task LOST event: " + statusMsg
 			break
 		}
 
@@ -318,7 +319,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
 			// Do not reschedule stateful task. Storage layer will decide
 			// whether to start or replace this task.
-			runtime.State = pb_task.TaskState_LOST
+			updatedRuntime.State = pb_task.TaskState_LOST
 			break
 		}
 
@@ -327,31 +328,36 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("reschedule lost task")
 		p.metrics.RetryLostTasksTotal.Inc(1)
-		runtime.Message = "Rescheduled due to task LOST: " + statusMsg
-		util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime)
+		updatedRuntime = util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime.GetMesosTaskId())
+		updatedRuntime.Message = "Rescheduled due to task LOST: " + statusMsg
+		updatedRuntime.Reason = event.GetMesosTaskStatus().GetReason().String()
 
 	default:
-		runtime.State = state
+		updatedRuntime.State = state
 	}
 
 	// Update task start and completion timestamps
-	switch runtime.State {
+	switch updatedRuntime.State {
 	case pb_task.TaskState_RUNNING:
 		// CompletionTime may have been set (e.g. task has been set),
 		// which could make StartTime larger than CompletionTime.
 		// Reset CompletionTime every time a task transits to RUNNING state.
-		runtime.StartTime = now().UTC().Format(time.RFC3339Nano)
-		runtime.CompletionTime = ""
+		updatedRuntime.StartTime = now().UTC().Format(time.RFC3339Nano)
+		updatedRuntime.CompletionTime = ""
 	case pb_task.TaskState_SUCCEEDED,
 		pb_task.TaskState_FAILED,
 		pb_task.TaskState_KILLED:
-		runtime.CompletionTime = now().UTC().Format(time.RFC3339Nano)
+		updatedRuntime.CompletionTime = now().UTC().Format(time.RFC3339Nano)
 	}
 
 	// Update the task update times in job cache and then update the task runtime in cache and DB
 	cachedJob := p.jobFactory.AddJob(taskInfo.GetJobId())
 	cachedJob.SetTaskUpdateTime(event.MesosTaskStatus.Timestamp)
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{taskInfo.GetInstanceId(): runtime}, cached.UpdateCacheAndDB)
+	err = cachedJob.UpdateTasks(
+		ctx,
+		map[uint32]*pb_task.RuntimeInfo{taskInfo.GetInstanceId(): updatedRuntime},
+		cached.UpdateCacheAndDB,
+	)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{

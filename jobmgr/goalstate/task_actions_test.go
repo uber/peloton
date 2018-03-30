@@ -64,7 +64,7 @@ func TestTaskReloadRuntime(t *testing.T) {
 		Return(runtime, nil)
 
 	cachedTask.EXPECT().
-		UpdateRuntime(gomock.Any())
+		UpdateRuntime(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
@@ -113,23 +113,14 @@ func TestTaskFailAction(t *testing.T) {
 		driver:     goalStateDriver,
 	}
 
-	runtime := &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_INITIALIZED,
-		GoalState: pb_task.TaskState_FAILED,
-	}
 	newRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
 	newRuntimes[0] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_FAILED,
-		GoalState: pb_task.TaskState_FAILED,
+		State: pb_task.TaskState_FAILED,
 	}
 
 	jobFactory.EXPECT().
 		GetJob(jobID).
 		Return(cachedJob)
-
-	taskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), jobID, instanceID).
-		Return(runtime, nil)
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), newRuntimes, cached.UpdateCacheAndDB).Return(nil)

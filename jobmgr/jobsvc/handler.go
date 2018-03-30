@@ -267,17 +267,15 @@ func (h *serviceHandler) Update(
 	}
 
 	for id, runtime := range diff.InstancesToAdd {
-		if err := h.taskStore.CreateTaskRuntime(ctx, jobID, id, runtime, "peloton"); err != nil {
+		runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+		runtimes[id] = runtime
+		if err := cachedJob.CreateTasks(ctx, runtimes, "peloton"); err != nil {
 			log.WithError(err).WithField("job_id", jobID.GetValue()).Error("Failed to create task for job")
 			h.metrics.TaskCreateFail.Inc(1)
 			h.metrics.JobUpdateFail.Inc(1)
 			return nil, err
 		}
 		h.metrics.TaskCreate.Inc(1)
-		runtimes := make(map[uint32]*pbtask.RuntimeInfo)
-		runtimes[id] = runtime
-		// Store in cache and then enqueue task to goal state
-		cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
 		h.goalStateDriver.EnqueueTask(jobID, id, time.Now())
 	}
 

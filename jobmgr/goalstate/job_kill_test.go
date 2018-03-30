@@ -80,25 +80,21 @@ func TestJobKill(t *testing.T) {
 
 	newRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
 	newRuntimes[0] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_RUNNING,
 		GoalState: pbtask.TaskState_KILLED,
 		Message:   "Task stop API request",
 		Reason:    "",
 	}
 	newRuntimes[1] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_RUNNING,
 		GoalState: pbtask.TaskState_KILLED,
 		Message:   "Task stop API request",
 		Reason:    "",
 	}
 	newRuntimes[2] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_INITIALIZED,
 		GoalState: pbtask.TaskState_KILLED,
 		Message:   "Task stop API request",
 		Reason:    "",
 	}
 	newRuntimes[3] = &pbtask.RuntimeInfo{
-		State:     pbtask.TaskState_INITIALIZED,
 		GoalState: pbtask.TaskState_KILLED,
 		Message:   "Task stop API request",
 		Reason:    "",

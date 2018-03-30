@@ -284,16 +284,17 @@ func main() {
 		},
 	})
 
+	jobFactory := cached.InitJobFactory(jobStore, taskStore, volumeStore, rootScope)
+
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(
 		dispatcher,
 		common.PelotonHostManager,
+		jobFactory,
 		taskStore,
 		volumeStore,
 		rootScope,
 	)
-
-	jobFactory := cached.InitJobFactory(jobStore, taskStore, volumeStore, rootScope)
 
 	goalStateDriver := goalstate.NewDriver(
 		dispatcher,

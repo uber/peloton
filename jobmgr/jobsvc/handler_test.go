@@ -311,12 +311,8 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
-	mockTaskStore.EXPECT().
-		CreateTaskRuntime(context.Background(), jobID, uint32(3), gomock.Any(), "peloton").
-		Return(nil).
-		AnyTimes()
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil).AnyTimes()
+		CreateTasks(gomock.Any(), gomock.Any(), "peloton").Return(nil).AnyTimes()
 	goalStateDriver.EXPECT().EnqueueTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
 	mockTaskStore.EXPECT().
 		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).

@@ -17,7 +17,11 @@ func TaskExecutorShutdown(ctx context.Context, entity goalstate.Entity) error {
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
 	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
-	runtime := cachedTask.GetRunTime()
+
+	runtime, err := cachedTask.GetRunTime(ctx)
+	if err != nil {
+		return err
+	}
 
 	// It is possible that jobmgr crashes or leader election changes when the task waiting on timeout
 	// Need to reenqueue the task after jobmgr recovers.
