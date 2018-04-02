@@ -24,6 +24,12 @@ if [[ -z ${GOPATH+x} ]] ; then
 	export GOPATH="$workspace"
 fi
 
+# Short-term fix for T1671015 (chunyang.shen)
+mkdir  "$GOPATH/bin"
+export GOBIN="$GOPATH/bin"
+export PATH=$PATH:$GOBIN
+
+
 # TODO(gabe) always do a glide install on the host before building an image
 make install
 cp ~/.pip/pip.conf ./docker/.

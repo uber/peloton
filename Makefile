@@ -75,7 +75,7 @@ build-mockgen:
 install:
 	@if [ ! -d "$(VENDOR)" ]; then \
 		echo "Fetching dependencies"; \
-		glide --version || go get github.com/Masterminds/glide; \
+		glide --version || curl https://glide.sh/get | sh; \
 		rm -rf vendor && glide install; \
 	fi
 	@if [ ! -d "env" ]; then \
