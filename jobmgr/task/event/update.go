@@ -216,7 +216,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		log.WithFields(log.Fields{
 			"orphan_task_id":    mesosTaskID,
 			"db_task_id":        dbTaskID,
-			"db_task_info":      taskInfo,
+			"db_task_runtime":   taskInfo.GetRuntime(),
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("received status update for orphan mesos task")
 

@@ -4,12 +4,19 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/util"
 	log "github.com/sirupsen/logrus"
+)
+
+const (
+	// _waitForTransientErrorBeforeRetry is the time between successive retries
+	// DB updates in case of transient errors in DB read/writes.
+	_waitForTransientErrorBeforeRetry = 1 * time.Millisecond
 )
 
 // StatusProcessor is the interface to process a task status update
@@ -59,39 +66,56 @@ func (t *eventBucket) getProcessedCount() int32 {
 	return atomic.LoadInt32(t.processedCount)
 }
 
+func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket) {
+	for {
+		select {
+		case event := <-bucket.eventChannel:
+			count := 0
+			for {
+				// TODO move this log after the if {} else if {} blocks and remove the count.
+				// Added it here for now to debug the stuck eventstream issue in production.
+				if count > 0 {
+					log.WithFields(log.Fields{
+						"mesos_task_id": event.MesosTaskStatus.GetTaskId().GetValue(),
+						"type":          event.Type,
+						"mesos_state":   util.MesosStateToPelotonState(event.MesosTaskStatus.GetState()).String(),
+						"failure_count": count,
+					}).
+						Info("transient error during task update")
+				}
+				count++
+				// Retry while getting AlreadyExists error.
+				if err := t.ProcessStatusUpdate(context.Background(), event); err == nil {
+					break
+				} else if !common.IsTransientError(err) {
+					log.WithError(err).
+						WithField("bucket_num", bucket.index).
+						WithField("event", event).
+						Error("Error applying taskStatus")
+					break
+				}
+				// sleep for a small duration to wait for the error to clear up before retrying
+				time.Sleep(_waitForTransientErrorBeforeRetry)
+			}
+
+			// Process listeners after handling the event.
+			t.ProcessListeners(event)
+
+			atomic.AddInt32(bucket.processedCount, 1)
+			atomic.StoreUint64(bucket.processedOffset, event.Offset)
+		case <-bucket.shutdownChannel:
+			log.WithField("bucket_num", bucket.index).Info("bucket is shutdown")
+			return
+		}
+	}
+}
+
 func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *asyncEventProcessor {
 	var buckets []*eventBucket
 	for i := 0; i < bucketNum; i++ {
 		bucket := newEventBucket(chanSize, i)
 		buckets = append(buckets, bucket)
-		go func() {
-			for {
-				select {
-				case event := <-bucket.eventChannel:
-					for {
-						// Retry while getting AlreadyExists error.
-						if err := t.ProcessStatusUpdate(context.Background(), event); err == nil {
-							break
-						} else if !common.IsTransientError(err) {
-							log.WithError(err).
-								WithField("bucket_num", bucket.index).
-								WithField("event", event).
-								Error("Error applying taskStatus")
-							break
-						}
-					}
-
-					// Process listeners after handling the event.
-					t.ProcessListeners(event)
-
-					atomic.AddInt32(bucket.processedCount, 1)
-					atomic.StoreUint64(bucket.processedOffset, event.Offset)
-				case <-bucket.shutdownChannel:
-					log.WithField("bucket_num", bucket.index).Info("bucket is shutdown")
-					return
-				}
-			}
-		}()
+		go dequeuEventsFromBucket(t, bucket)
 	}
 	return &asyncEventProcessor{
 		eventBuckets: buckets,
