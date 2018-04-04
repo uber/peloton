@@ -78,6 +78,9 @@ func TestTaskStartStateless(t *testing.T) {
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
+	cachedJob.EXPECT().
+		GetSLAConfig().Return(&job2.SlaConfig{})
+
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
 
@@ -93,6 +96,54 @@ func TestTaskStartStateless(t *testing.T) {
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
+
+	err := TaskStart(context.Background(), taskEnt)
+	assert.NoError(t, err)
+}
+
+func TestTaskStartWithSlaMaxRunningInstances(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobStore := store_mocks.NewMockJobStore(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+
+	goalStateDriver := &driver{
+		jobEngine:  jobGoalStateEngine,
+		jobStore:   jobStore,
+		jobFactory: jobFactory,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+	}
+	goalStateDriver.cfg.normalize()
+
+	jobConfig := &job2.JobConfig{
+		InstanceCount: 2,
+		Sla: &job2.SlaConfig{
+			MaximumRunningInstances: 1,
+		},
+	}
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	instanceID := uint32(0)
+
+	taskEnt := &taskEntity{
+		jobID:      jobID,
+		instanceID: instanceID,
+		driver:     goalStateDriver,
+	}
+
+	jobFactory.EXPECT().
+		GetJob(jobID).Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetSLAConfig().Return(jobConfig.Sla)
+
+	jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
 
 	err := TaskStart(context.Background(), taskEnt)
 	assert.NoError(t, err)
@@ -164,6 +215,9 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetSLAConfig().Return(&job2.SlaConfig{})
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
@@ -265,6 +319,9 @@ func TestTaskStartStatefullWithVolumeDBError(t *testing.T) {
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
+	cachedJob.EXPECT().
+		GetSLAConfig().Return(&job2.SlaConfig{})
+
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
 
@@ -359,6 +416,9 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetSLAConfig().Return(&job2.SlaConfig{})
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)

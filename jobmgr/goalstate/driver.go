@@ -243,17 +243,16 @@ func (d *driver) recoverTasks(ctx context.Context, id string, jobConfig *job.Job
 		return
 	}
 
-	maxInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 	for instanceID, runtime := range runtimes {
 		d.mtx.taskMetrics.TaskRecovered.Inc(1)
 		// Do not add the task again if it already exists
 		if cachedJob.GetTask(instanceID) == nil {
 			cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{instanceID: runtime}, cached.UpdateCacheOnly)
 		}
-		if maxInstances == 0 {
-			if runtime.GetState() != task.TaskState_INITIALIZED || jobRuntime.GetState() != job.JobState_INITIALIZED {
-				d.EnqueueTask(jobID, instanceID, time.Now())
-			}
+
+		// Do not evaluate goal state for tasks which will be evaluated using job create tasks action.
+		if runtime.GetState() != task.TaskState_INITIALIZED || jobRuntime.GetState() != job.JobState_INITIALIZED {
+			d.EnqueueTask(jobID, instanceID, time.Now())
 		}
 	}
 

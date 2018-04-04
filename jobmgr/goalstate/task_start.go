@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
@@ -76,6 +77,11 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
 
+	if cachedJob.GetSLAConfig().GetMaximumRunningInstances() > 0 {
+		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now())
+		return nil
+	}
+
 	// Retrieves job config and task info from data stores.
 	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, taskEnt.jobID)
 	if err != nil {
@@ -86,6 +92,13 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	if jobConfig.GetSla().GetMaximumRunningInstances() > 0 {
+		// This check being true implies that job config in cache is not in sync with DB.
+		// Do a forced sync. This should go away after write through cache
+		// implementation for job configuration.
+		cachedJob.Update(ctx, &job.JobInfo{
+			Id:     taskEnt.jobID,
+			Config: jobConfig,
+		}, cached.UpdateCacheOnly)
 		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now())
 		return nil
 	}

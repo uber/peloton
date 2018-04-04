@@ -276,6 +276,108 @@ func TestSyncFromDB(t *testing.T) {
 	goalStateDriver.syncFromDB(context.Background())
 }
 
+// TestSyncFromDB tests syncing job manager with jobs and tasks in DB.
+func TestSyncFromDBWithMaxRunningInstancesSLA(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	id := "3c8a3c3e-71e3-49c5-9aed-2929823f595c"
+
+	jobStore := store_mocks.NewMockJobStore(ctrl)
+	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+
+	goalStateDriver := &driver{
+		jobEngine:  jobGoalStateEngine,
+		taskEngine: taskGoalStateEngine,
+		jobStore:   jobStore,
+		taskStore:  taskStore,
+		jobFactory: jobFactory,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+	}
+	goalStateDriver.cfg.normalize()
+
+	jobID := &peloton.JobID{Value: id}
+	instanceID1 := uint32(0)
+	instanceID2 := uint32(1)
+	var jobIDList []peloton.JobID
+	jobIDList = append(jobIDList, peloton.JobID{Value: id})
+
+	jobConfig := &job.JobConfig{
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
+		InstanceCount: 2,
+		Sla: &job.SlaConfig{
+			MaximumRunningInstances: 1,
+		},
+	}
+
+	jobStore.EXPECT().GetJobsByStates(gomock.Any(), gomock.Any()).Return(jobIDList, nil)
+
+	jobStore.EXPECT().GetJobRuntime(gomock.Any(), jobID).Return(&job.RuntimeInfo{
+		State:     job.JobState_RUNNING,
+		GoalState: job.JobState_SUCCEEDED,
+	}, nil)
+
+	jobStore.EXPECT().GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
+
+	jobFactory.EXPECT().
+		GetJob(jobID).
+		Return(nil)
+
+	jobFactory.EXPECT().
+		AddJob(jobID).
+		Return(cachedJob)
+
+	cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil)
+
+	jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	taskStore.EXPECT().GetTaskRuntimesForJobByRange(gomock.Any(), jobID, gomock.Any()).
+		Return(map[uint32]*task.RuntimeInfo{
+			instanceID1: {
+				GoalState:            task.TaskState_RUNNING,
+				DesiredConfigVersion: 42,
+				ConfigVersion:        42,
+			},
+			instanceID2: {
+				GoalState:            task.TaskState_INITIALIZED,
+				DesiredConfigVersion: 42,
+				ConfigVersion:        42,
+			},
+		}, nil)
+
+	cachedJob.EXPECT().
+		GetTask(instanceID1).Return(nil)
+
+	cachedJob.EXPECT().
+		GetTask(instanceID2).Return(nil)
+
+	cachedJob.EXPECT().
+		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil).Times(2)
+
+	jobFactory.EXPECT().
+		GetJob(jobID).Return(cachedJob).Times(2)
+
+	cachedJob.EXPECT().
+		GetJobType().Return(job.JobType_BATCH).Times(2)
+
+	taskGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().Times(2)
+
+	jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return().Times(2)
+
+	goalStateDriver.syncFromDB(context.Background())
+}
+
 // TestInitializedJobSyncFromDB tests syncing job manager with
 // jobs in INITIALIZED job state.
 func TestInitializedJobSyncFromDB(t *testing.T) {
