@@ -47,7 +47,8 @@ var (
 		job.JobState_KILLING,
 		// Get failed jobs in-case service jobs need to be restarted
 		// Only killed and succeeded jobs are not recovered as of now.
-		job.JobState_FAILED,
+		// TODO uncomment this after archiver has been put in to delete old jobs.
+		//job.JobState_FAILED,
 		// TODO remove recovery of UNKNOWN state after all old jobs created
 		// before job goal state engine was added have terminated.
 		job.JobState_UNKNOWN,

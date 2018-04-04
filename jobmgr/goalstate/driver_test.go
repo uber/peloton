@@ -170,6 +170,7 @@ func TestRecoverJobStates(t *testing.T) {
 	// Jobs which should not be recovered.
 	var jobStatesNotRecover = []job.JobState{
 		job.JobState_SUCCEEDED,
+		job.JobState_FAILED,
 		job.JobState_KILLED,
 	}
 
