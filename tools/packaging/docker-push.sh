@@ -24,7 +24,7 @@ for dc in $DC ; do
       #TODO this is interactive; use login flags to automate?
       $docker_cmd login "$registry"
     else
-      registry="docker-registry01-sjc1:5055"
+      registry="docker-registry02-sjc1:5055"
     fi
     # pull version from the image, assume latest if not present
     ver="${image##*:}"
