@@ -25,7 +25,7 @@ if [[ -z ${GOPATH+x} ]] ; then
 fi
 
 # Short-term fix for T1671015 (chunyang.shen)
-mkdir  "$GOPATH/bin"
+mkdir -p "$GOPATH/bin"
 export GOBIN="$GOPATH/bin"
 export PATH=$PATH:$GOBIN
 

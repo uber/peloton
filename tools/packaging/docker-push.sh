@@ -20,7 +20,7 @@ for dc in $DC ; do
     echo "Pushing $image to $dc..."
     new_image="vendor/peloton"
     if [[ $dc == atg ]] ; then
-      registry="docker.int.uberatc.com"
+      registry="docker-registry.pit-irn-1.uberatc.net"
       #TODO this is interactive; use login flags to automate?
       $docker_cmd login "$registry"
     else
