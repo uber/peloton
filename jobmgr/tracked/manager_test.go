@@ -67,6 +67,7 @@ func TestRecoverJobStates(t *testing.T) {
 	var jobStatesNotRecover = []pb_job.JobState{
 		pb_job.JobState_SUCCEEDED,
 		pb_job.JobState_KILLED,
+		pb_job.JobState_FAILED,
 	}
 
 	jobKnownStates := append(jobStatesNotRecover, jobStatesToRecover...)

@@ -43,7 +43,8 @@ var (
 		pb_job.JobState_RUNNING,
 		pb_job.JobState_KILLING,
 		// Get failed and killed jobs in-case service jobs need to be restarted
-		pb_job.JobState_FAILED,
+		// TODO apoorvaj, Removing recovery of failed jobs.
+		// pb_job.JobState_FAILED,
 		pb_job.JobState_UNKNOWN,
 	}
 )
@@ -247,7 +248,9 @@ func (m *manager) SetTasks(jobID *peloton.JobID, runtimes map[uint32]*pb_task.Ru
 func (m *manager) UpdateJobUpdateTime(jobID *peloton.JobID, t *float64) {
 	j := m.GetJob(jobID)
 	if j == nil {
+		m.Lock()
 		j = m.addJob(jobID)
+		m.Unlock()
 	}
 	j.SetTaskUpdateTime(t)
 }
