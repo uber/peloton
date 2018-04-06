@@ -12,9 +12,12 @@ Details are in
 https://code.uberinternal.com/w/projects/peloton/performance-test/
 how to run this script.
 """
-import datetime
+from argparse import ArgumentParser
+from argparse import RawDescriptionHelpFormatter
+
 import pandas as pd
 import os
+import sys
 import json
 
 from performance_test_client import (
@@ -29,12 +32,38 @@ SLEEP_TIME_SEC = [10, 60]
 INSTANCE_CONFIG = [True, False]
 
 
-def main():
+def parse_arguments(args):
 
-    file_name = '.vcluster'
+    parser = ArgumentParser(
+        description='',
+        formatter_class=RawDescriptionHelpFormatter)
+
+    # Input the vCluster config file
+    parser.add_argument(
+        '-i',
+        '--input-file',
+        dest='input_file',
+        help='the input config file of vCluster',
+    )
+
+    # Output the performance data
+    parser.add_argument(
+        '-o',
+        '--output-file',
+        dest='output_file',
+        help='the output file to store perf result',
+    )
+    return parser.parse_args(args)
+
+
+def main():
+    args = parse_arguments(sys.argv[1:])
+
+    vcluster_config = args.input_file
+    output_file = args.output_file
 
     try:
-        cluster_config = json.loads(open(file_name).read())
+        cluster_config = json.loads(open(vcluster_config).read())
         agent_num = int(cluster_config['Mesos Slave Number'])
         zkserver = cluster_config['Zookeeper']
         peloton_version = cluster_config['Peloton Version']
@@ -66,23 +95,27 @@ def main():
                     ) + "Test launch failed!"
                     continue
                 record = {
-                    'Task Number': instance_num,
-                    'Sleep Time(s)': sleep_time,
-                    'Use Instance Config': instance_config,
-                    'Succeeded': succeeded,
-                    'Peloton Version': peloton_version,
-                    'Mesos Slave Number': agent_num,
+                    'TaskNum': instance_num,
+                    'Sleep(s)': sleep_time,
+                    'UseInsConf': instance_config,
+                    'Version': peloton_version,
+                    'Cores': agent_num,
                 }
                 if succeeded:
                     record.update({
-                        'Start time(s)': start,
-                        'Execution Time(s)': completion,
+                        'Start(s)': start,
+                        'Exec(s)': completion,
                     })
 
                 print(record)
                 records.append(record)
 
-    df = pd.DataFrame(records)
+    df = pd.DataFrame(
+        records,
+        columns=['Cores', 'TaskNum', 'Sleep(s)',
+                 'UseInsConf', 'Version', 'Start(s)',
+                 'Exec(s)']
+    )
     print(df)
 
     res_dir = os.path.join(
@@ -92,10 +125,9 @@ def main():
     if not os.path.exists(res_dir):
         os.makedirs(res_dir)
 
-    exp_time = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f')
-    file_name = os.path.join(res_dir, exp_time + '.csv')
+    output = os.path.join(res_dir, output_file)
 
-    df.to_csv(file_name, sep='\t')
+    df.to_csv(output, sep='\t')
 
 
 if __name__ == "__main__":

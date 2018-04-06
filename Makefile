@@ -17,6 +17,7 @@ ALL_PKGS = $(shell go list $(sort $(dir $(ALL_SRC))) | grep -v vendor | grep -v 
 
 PACKAGE_VERSION=`git describe --always --tags`
 PACKAGE_HASH=`git rev-parse HEAD`
+STABLE_RELEASE=`git describe --abbrev=0 --tags`
 DOCKER_IMAGE ?= uber/peloton
 DC ?= all
 PBGEN_DIR = .gen
@@ -73,9 +74,16 @@ build-mockgen:
 		&& cd -
 
 install:
+	@if [ -z ${GOPATH} ]; then \
+		echo "No $GOPATH"; \
+		export GOPATH="$(pwd -P)/workspace"; \
+		mkdir -p "$GOPATH/bin"; \
+		export GOBIN="$GOPATH/bin"; \
+		export PATH=$PATH:$GOBIN; \
+	fi
 	@if [ ! -d "$(VENDOR)" ]; then \
 		echo "Fetching dependencies"; \
-		glide --version || curl https://glide.sh/get | sh; \
+		glide --version || go get -u github.com/Masterminds/glide; \
 		rm -rf vendor && glide install; \
 	fi
 	@if [ ! -d "env" ]; then \
@@ -240,6 +248,9 @@ vcluster:
 
 version:
 	@echo $(PACKAGE_VERSION)
+
+stable-release:
+	@echo $(STABLE_RELEASE)
 
 commit-hash:
 	@echo $(PACKAGE_HASH)

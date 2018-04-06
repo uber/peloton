@@ -105,12 +105,14 @@ class VCluster(object):
         self.virtual_zookeeper = ''
 
         # vcluster is the config can be loaded for launching benchmark test
-        # it can be dump into the file '.vcluster'
+        # it can be dump into a file
+        # the config filename starts with 'CONF_' and the label name
         self.vcluster_config = {}
+        self.config_name = 'CONF_' + label_name
 
     def output_vcluster_data(self):
         # write the vcluster data into a json file
-        with open('.vcluster', 'w') as outfile:
+        with open(self.config_name, 'w') as outfile:
             json.dump(self.vcluster_config, outfile)
 
     def start_mesos(self, agent_num):
@@ -239,7 +241,7 @@ class VCluster(object):
         cassandra_operation(keyspace=self.label_name, create=False)
 
         try:
-            os.remove('.vcluster')
+            os.remove(self.config_name)
         except OSError:
             pass
 
