@@ -12,6 +12,7 @@ type Metrics struct {
 	ReconcileExplicitly      tally.Counter
 	ReconcileExplicitlyAbort tally.Counter
 	ReconcileExplicitlyFail  tally.Counter
+	ReconcileGetTasksFail    tally.Counter
 
 	ExplicitTasksPerRun tally.Gauge
 }
@@ -21,12 +22,12 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	successScope := scope.Tagged(map[string]string{"result": "success"})
 	failScope := scope.Tagged(map[string]string{"result": "fail"})
 	return &Metrics{
-		ReconcileImplicitly:     successScope.Counter("implicitly_total"),
-		ReconcileImplicitlyFail: failScope.Counter("implicitly_total"),
-		ReconcileExplicitly:     successScope.Counter("explicitly_total"),
-		ReconcileExplicitlyAbort: failScope.Counter(
-			"explicitly_abort_total"),
-		ReconcileExplicitlyFail: failScope.Counter("explicitly_total"),
+		ReconcileImplicitly:      successScope.Counter("implicitly_total"),
+		ReconcileImplicitlyFail:  failScope.Counter("implicitly_total"),
+		ReconcileExplicitly:      successScope.Counter("explicitly_total"),
+		ReconcileExplicitlyAbort: failScope.Counter("explicitly_abort_total"),
+		ReconcileExplicitlyFail:  failScope.Counter("explicitly_total"),
+		ReconcileGetTasksFail:    failScope.Counter("explicitly_gettasks_total"),
 
 		ExplicitTasksPerRun: scope.Gauge("explicit_tasks_per_run"),
 	}

@@ -49,6 +49,7 @@ func (m *mockFrameworkInfoProvider) GetFrameworkID(ctx context.Context) *mesos.F
 
 var (
 	_nonTerminalJobStates = []job.JobState{
+		job.JobState_PENDING,
 		job.JobState_RUNNING,
 	}
 )
@@ -56,17 +57,18 @@ var (
 type TaskReconcilerTestSuite struct {
 	suite.Suite
 
-	running         atomic.Bool
-	ctrl            *gomock.Controller
-	testScope       tally.TestScope
-	schedulerClient *mock_mpb.MockSchedulerClient
-	reconciler      *taskReconciler
-	mockJobStore    *store_mocks.MockJobStore
-	mockTaskStore   *store_mocks.MockTaskStore
-	testJobID       *peloton.JobID
-	testJobConfig   *job.JobConfig
-	allJobRuntime   map[string]*job.RuntimeInfo
-	taskInfos       map[uint32]*task.TaskInfo
+	running             atomic.Bool
+	ctrl                *gomock.Controller
+	testScope           tally.TestScope
+	schedulerClient     *mock_mpb.MockSchedulerClient
+	reconciler          *taskReconciler
+	mockJobStore        *store_mocks.MockJobStore
+	mockTaskStore       *store_mocks.MockTaskStore
+	testJobID           *peloton.JobID
+	testJobConfig       *job.JobConfig
+	allJobRuntime       map[string]*job.RuntimeInfo
+	taskInfos           map[uint32]*task.TaskInfo
+	taskMixedStateInfos map[uint32]*task.TaskInfo
 }
 
 func (suite *TaskReconcilerTestSuite) SetupTest() {
@@ -89,6 +91,18 @@ func (suite *TaskReconcilerTestSuite) SetupTest() {
 		suite.taskInfos[i] = suite.createTestTaskInfo(
 			task.TaskState_RUNNING, i)
 	}
+
+	suite.taskMixedStateInfos = make(map[uint32]*task.TaskInfo)
+	suite.taskMixedStateInfos[0] = suite.createTestTaskInfo(
+		task.TaskState_LAUNCHED, 0)
+	suite.taskMixedStateInfos[1] = suite.createTestTaskInfo(
+		task.TaskState_LAUNCHED, 1)
+	suite.taskMixedStateInfos[2] = suite.createTestTaskInfo(
+		task.TaskState_STARTING, 2)
+	suite.taskMixedStateInfos[3] = suite.createTestTaskInfo(
+		task.TaskState_RUNNING, 3)
+	suite.taskMixedStateInfos[4] = suite.createTestTaskInfo(
+		task.TaskState_RUNNING, 4)
 
 	suite.reconciler = &taskReconciler{
 		schedulerClient:                suite.schedulerClient,
@@ -137,7 +151,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
 			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_RUNNING}).
+			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING}).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -184,8 +198,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
 	suite.running.Store(true)
-	// Run in a different goroutine.
-	go suite.reconciler.Reconcile(&suite.running)
+	suite.reconciler.Reconcile(&suite.running)
 	time.Sleep(explicitReconcileBatchInterval)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), true)
@@ -205,7 +218,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
 			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_RUNNING}).
+			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING}).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -238,7 +251,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
-	go suite.reconciler.Reconcile(&suite.running)
+	suite.reconciler.Reconcile(&suite.running)
 	time.Sleep(oneExplicitReconcileRunDelay)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
@@ -255,7 +268,7 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
 			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_RUNNING}).
+			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING}).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -285,5 +298,72 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 	suite.running.Store(false)
 	time.Sleep(oneExplicitReconcileRunDelay)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+}
+
+func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
+	defer suite.ctrl.Finish()
+	gomock.InOrder(
+		suite.mockJobStore.EXPECT().
+			GetJobsByStates(context.Background(), _nonTerminalJobStates).
+			Return([]peloton.JobID{*suite.testJobID}, nil),
+		suite.mockTaskStore.EXPECT().
+			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING}).
+			Return(suite.taskMixedStateInfos, nil),
+		suite.schedulerClient.EXPECT().
+			Call(
+				gomock.Eq(streamID),
+				gomock.Any()).
+			Do(func(_ string, msg proto.Message) {
+				// Verify explicit reconcile tasks number is same as batch size.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(3, len(call.GetReconcile().GetTasks()))
+				suite.Equal(call.GetReconcile().GetTasks()[0].AgentId.GetValue(), testAgentID)
+			}).
+			Return(nil),
+		suite.schedulerClient.EXPECT().
+			Call(
+				gomock.Eq(streamID),
+				gomock.Any()).
+			Do(func(_ string, msg proto.Message) {
+				// Verify explicit reconcile tasks number is less than batch size.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(
+					2,
+					len(call.GetReconcile().GetTasks()))
+				suite.Equal(call.GetReconcile().GetTasks()[0].AgentId.GetValue(), testAgentID)
+			}).
+			Return(nil),
+		suite.schedulerClient.EXPECT().
+			Call(
+				gomock.Eq(streamID),
+				gomock.Any()).
+			Do(func(_ string, msg proto.Message) {
+				// Verify implicit reconcile call.
+				call := msg.(*sched.Call)
+				suite.Equal(sched.Call_RECONCILE, call.GetType())
+				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
+				suite.Equal(0, len(call.GetReconcile().GetTasks()))
+			}).
+			Return(nil),
+	)
+
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.running.Store(true)
+	suite.reconciler.Reconcile(&suite.running)
+	time.Sleep(explicitReconcileBatchInterval)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), true)
+	time.Sleep(oneExplicitReconcileRunDelay)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	suite.reconciler.Reconcile(&suite.running)
+	time.Sleep(explicitReconcileBatchInterval)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
 }

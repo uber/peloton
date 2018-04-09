@@ -132,7 +132,8 @@ enum JobState {
   // The job has been initialized and persisted in DB.
   INITIALIZED = 1;
 
-  // All tasks in the job are created and enqueued to resource manager
+  // All tasks have been created and persisted in DB,
+  // but no task is RUNNING yet.
   PENDING = 2;
 
   // Any of the tasks in the job is in RUNNING state.

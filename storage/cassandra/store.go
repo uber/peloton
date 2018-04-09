@@ -1516,7 +1516,6 @@ func (s *Store) GetTaskIDsForJobAndState(ctx context.Context, id *peloton.JobID,
 
 // GetTasksForJobAndStates returns the tasks for a peloton job which are in one of the specified states.
 // result map key is TaskID, value is TaskHost
-// TODO: 'states' should be []TaskState instead of []string
 func (s *Store) GetTasksForJobAndStates(ctx context.Context, id *peloton.JobID, states []task.TaskState) (map[uint32]*task.TaskInfo, error) {
 	jobID := id.GetValue()
 	queryBuilder := s.DataStore.NewQuery()

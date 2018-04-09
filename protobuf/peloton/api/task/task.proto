@@ -142,7 +142,7 @@ message OrConstraint {
 }
 
 /**
- * LabelConstraint represents a constraint on the number of occources a given
+ * LabelConstraint represents a constraint on the number of occurrences of a given
  * label from the set of host labels or task labels present on the host.
  */
 message LabelConstraint {

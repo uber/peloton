@@ -21,7 +21,7 @@ import "peloton/api/changelog/changelog.proto";
  *   The resource hierarchy is anchored at a node called the root,
  *   designated by a slash "/".
  *
- *   For thhe below resource hierarchy ; the "compute" resource pool would be
+ *   For the below resource hierarchy ; the "compute" resource pool would be
  *   desgignated by path: /infrastructure/compute
  *               root
  *                ├─ infrastructure
@@ -64,7 +64,7 @@ enum ReservationType {
 
   // ELASTIC reservation enables resource pool to be elastic
   // in reservation , which means other resource pool
-  // can  take resources from this resource pool as well
+  // can take resources from this resource pool as well
   // as this resource pool also can take resources from
   // any other resource pool. This is the by default behavior
   // for the resource pool

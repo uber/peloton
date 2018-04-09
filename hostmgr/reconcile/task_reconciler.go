@@ -108,12 +108,13 @@ func (r *taskReconciler) reconcileExplicitly(ctx context.Context, running *atomi
 	defer r.isExplicitReconcileRunning.Store(false)
 
 	reconcileTasks, err := r.getReconcileTasks(ctx)
-	reconcileTasksLen := len(reconcileTasks)
 	if err != nil {
 		log.Error("Explicit reconcile failed due to tasks query error.")
 		r.metrics.ReconcileExplicitlyFail.Inc(1)
 		return
 	}
+
+	reconcileTasksLen := len(reconcileTasks)
 	log.WithField("reconcile_tasks_total", reconcileTasksLen).
 		Info("Total number of tasks to reconcile explicitly.")
 
@@ -166,6 +167,7 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 
 	var reconcileTasks []*sched.Call_Reconcile_Task
 	jobStates := []job.JobState{
+		job.JobState_PENDING,
 		job.JobState_RUNNING,
 	}
 	jobIDs, err := r.jobStore.GetJobsByStates(ctx, jobStates)
@@ -176,15 +178,17 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	log.WithField("job_ids", jobIDs).Info("explicit reconcile job ids.")
 
 	for _, jobID := range jobIDs {
+		// Mesos TaskState: TASK_STAGING -> Peloton: TaskState_LAUNCHED
 		nonTerminalTasks, getTasksErr := r.taskStore.GetTasksForJobAndStates(
 			ctx,
 			&jobID,
-			[]task.TaskState{task.TaskState_RUNNING},
+			[]task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING},
 		)
 		if getTasksErr != nil {
 			log.WithError(getTasksErr).WithFields(log.Fields{
 				"job": jobID,
 			}).Error("Failed to get running tasks for job")
+			r.metrics.ReconcileGetTasksFail.Inc(1)
 			continue
 		}
 		if len(nonTerminalTasks) != 0 {
