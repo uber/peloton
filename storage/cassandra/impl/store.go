@@ -131,13 +131,7 @@ func (s *Store) ExecuteBatch(ctx context.Context, stmts []api.Statement) error {
 		ExecutorBase: ExecutorBase{s: s},
 	}
 
-	var rs api.ResultSet
-	f := func() error {
-		var err error
-		rs, err = executor.ExecuteBatch(ctx, stmts)
-		return err
-	}
-	err := f()
+	_, err := executor.ExecuteBatch(ctx, stmts)
 	if err == nil {
 		s.metrics.ExecuteBatchSuccess.Inc(1)
 	} else {
