@@ -142,12 +142,31 @@ message ResourcePoolNoPermission {
   string message = 2;
 }
 
+// EnqueueGangsFailure will be return as part of failure
+// in enqueue Gangs
 message EnqueueGangsFailure {
+  // ErrorCode returns the errorcode for the failure
+  enum ErrorCode {
+    // Error code UNKNOWN
+    ENQUEUE_GANGS_FAILURE_ERROR_CODE_UNKNOWN = 0;
+    // Error code if task is failed to be enqueued/requeued
+    ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL = 1;
+    // Error code if same task is already present
+    ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST = 2;
+    // Error code if other tasks in gang failed
+    ENQUEUE_GANGS_FAILURE_ERROR_CODE_FAILED_DUE_TO_GANG_FAILED = 3;
+  }
   message FailedTask {
+    // Resmgr taskwhich got failed to enqueue/requeue
     resmgr.Task task = 1;
+    // Error messege while failed
     string message = 2;
+    // Error code for which it failed
+    ErrorCode errorcode = 3;
   }
 
+  // List of failed tasks in gangs which are failed to
+  // enqueue/requeue
   repeated FailedTask failed = 1;
 }
 

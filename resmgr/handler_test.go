@@ -376,6 +376,8 @@ func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
 	s.Nil(deqResp.GetError())
 }
 
+// This tests the requeue of the same task with same mesos task id as well
+// as the different mesos task id
 func (s *HandlerTestSuite) TestRequeue() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
@@ -414,6 +416,8 @@ func (s *HandlerTestSuite) TestRequeue() {
 	s.NotNil(enqResp.GetError())
 	log.Error(err)
 	log.Error(enqResp.GetError())
+	s.EqualValues(enqResp.GetError().GetFailure().GetFailed()[0].Errorcode,
+		resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST)
 	// Testing to see if we can send different Mesos taskID
 	// in the enqueue request then it should move task to
 	// ready state and ready queue
@@ -427,6 +431,7 @@ func (s *HandlerTestSuite) TestRequeue() {
 	enqResp, err = s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.Nil(enqResp.GetError())
+	s.Nil(enqResp.GetError().GetFailure().GetFailed())
 
 	rmtask = s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	s.EqualValues(rmtask.GetCurrentState(), task.TaskState_READY)
@@ -435,15 +440,189 @@ func (s *HandlerTestSuite) TestRequeue() {
 		Limit:   10,
 		Timeout: 2 * 1000, // 2 sec
 	}
-	// Scheduler.scheduleTasks method is run asynchronously.
-	// We need to wait here
-	time.Sleep(timeout)
 	// Checking whether we get the task from ready queue
 	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
 	s.NoError(err)
 	s.Nil(deqResp.GetError())
 	log.Info(*deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
 	s.Equal(mesosTaskID, *deqResp.GetGangs()[0].Tasks[0].TaskId.Value)
+}
+
+// TestRequeueTaskNotPresent tests the requeue but if the task is been
+// removed from the tracker then result should be failed
+func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	var gangs []*resmgrsvc.Gang
+	gangs = append(gangs, s.pendingGang0())
+
+	s.rmTaskTracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
+	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
+	s.NoError(err)
+	s.rmTaskTracker.DeleteTask(s.pendingGang0().Tasks[0].Id)
+	failed, err := s.handler.requeueTask(s.pendingGang0().Tasks[0])
+	s.Error(err)
+	s.NotNil(failed)
+	s.EqualValues(failed.Errorcode, resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL)
+}
+
+func (s *HandlerTestSuite) TestRequeueFailures() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	var gangs []*resmgrsvc.Gang
+	gangs = append(gangs, s.pendingGang0())
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
+		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
+		Gangs:   gangs,
+	}
+
+	s.rmTaskTracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
+	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
+	s.NoError(err)
+	// Testing to see if we can send same task in the enqueue
+	// request then it should error out
+	node.SetEntitlement(s.getEntitlement())
+	// Testing to see if we can send different Mesos taskID
+	// in the enqueue request then it should move task to
+	// ready state and ready queue
+	uuidStr := "uuidstr-2"
+	jobID := "job1"
+	instance := 1
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
+		Value: &mesosTaskID,
+	}
+	err = rmtask.TransitTo(task.TaskState_RUNNING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_SUCCEEDED.String())
+	s.NoError(err)
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.NotNil(enqResp.GetError())
+	s.EqualValues(enqResp.GetError().GetFailure().GetFailed()[0].Errorcode,
+		resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL)
+}
+
+func (s *HandlerTestSuite) TestAddingToPendingQueue() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	var gangs []*resmgrsvc.Gang
+	gangs = append(gangs, s.pendingGang0())
+
+	s.rmTaskTracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
+	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	s.NoError(err)
+	err = s.handler.addingGangToPendingQueue(s.pendingGang0(), node)
+	s.Error(err)
+	s.EqualValues(err.Error(), errGangNotEnqueued.Error())
+}
+
+func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	var gangs []*resmgrsvc.Gang
+	gangs = append(gangs, s.pendingGang0())
+
+	s.rmTaskTracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
+	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	s.NoError(err)
+	err = s.handler.addingGangToPendingQueue(&resmgrsvc.Gang{}, node)
+	s.Error(err)
+	s.EqualValues(err.Error(), errGangNotEnqueued.Error())
+	s.rmTaskTracker.Clear()
+}
+
+func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	var gangs []*resmgrsvc.Gang
+	gangs = append(gangs, s.pendingGang0())
+
+	s.rmTaskTracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&rm_task.Config{
+			LaunchingTimeout: 1 * time.Minute,
+			PlacingTimeout:   1 * time.Minute,
+		})
+	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	s.NoError(err)
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
+		ResPool: nil,
+		Gangs:   gangs,
+	}
+
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.NotNil(enqResp.GetError())
 }
 
 func (s *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {

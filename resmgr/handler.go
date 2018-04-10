@@ -38,6 +38,8 @@ var (
 	errGangNotEnqueued          = errors.New("Could not enqueue gang to ready after retry")
 	errEnqueuedAgain            = errors.New("enqueued again after retry")
 	errUnplacedTaskInWrongState = errors.New("unplaced task should be in state placing")
+	errEnqueueTaskFailed        = errors.New("enqueue task to resmgr failed")
+	errRequeueTaskFailed        = errors.New("requeue exisiting task to resmgr failed")
 )
 
 // ServiceHandler implements peloton.private.resmgr.ResourceManagerService
@@ -134,26 +136,19 @@ func (h *ServiceHandler) EnqueueGangs(
 	// return per-task success/failure.
 	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	for _, gang := range req.GetGangs() {
+		// Here we are checking if the respool is nil that means
+		// These gangs are failed in placement engine and been returned
+		// to resmgr for enqueuing again.
 		if resourcePool == nil {
 			failed, err = h.returnExistingTasks(gang, req.GetReason())
 		} else {
 			failed, err = h.enqueueGang(gang, resourcePool)
 		}
-		// Report per-task success/failure for all tasks in gang
-		for _, task := range gang.GetTasks() {
-			if err != nil {
-				failed = append(
-					failed,
-					&resmgrsvc.EnqueueGangsFailure_FailedTask{
-						Task:    task,
-						Message: err.Error(),
-					},
-				)
-				h.metrics.EnqueueGangFail.Inc(1)
-			} else {
-				h.metrics.EnqueueGangSuccess.Inc(1)
-			}
+		if err != nil {
+			h.metrics.EnqueueGangFail.Inc(1)
+			continue
 		}
+		h.metrics.EnqueueGangSuccess.Inc(1)
 	}
 
 	if len(failed) > 0 {
@@ -174,6 +169,8 @@ func (h *ServiceHandler) EnqueueGangs(
 func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang, reason string) (
 	[]*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
 	allTasksExist := true
+	failedTasks := make(map[string]bool)
+	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
 	for _, task := range gang.GetTasks() {
 		task := h.rmTracker.GetTask(task.GetId())
 		if task == nil {
@@ -181,107 +178,179 @@ func (h *ServiceHandler) returnExistingTasks(gang *resmgrsvc.Gang, reason string
 			break
 		}
 	}
-	if allTasksExist {
-		var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
-		for _, task := range gang.GetTasks() {
-			err := h.requeueUnplacedTask(task, reason)
-			if err != nil {
-				failed = append(
-					failed,
-					&resmgrsvc.EnqueueGangsFailure_FailedTask{
-						Task:    task,
-						Message: err.Error(),
-					},
-				)
-			}
-		}
-		var err error
-		if len(failed) > 0 {
-			err = fmt.Errorf("some tasks failed to be re-enqueued")
-		}
+
+	if !allTasksExist {
+		// Making the whole gang failed as there are not all tasks present
+		err := fmt.Errorf("not all tasks for the gang exists in the resource manager")
+		log.WithError(err).Error("failing gang to requeue again ")
+		failed = append(failed, h.markingTasksFailInGang(gang, failedTasks, err)...)
 		return failed, err
 	}
-	return nil, fmt.Errorf("not all tasks for the gang exists in the resource manager")
+
+	for _, task := range gang.GetTasks() {
+		err := h.requeueUnplacedTask(task, reason)
+		if err != nil {
+			failed = append(
+				failed,
+				&resmgrsvc.EnqueueGangsFailure_FailedTask{
+					Task:      task,
+					Message:   err.Error(),
+					Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL,
+				},
+			)
+			failedTasks[task.Id.Value] = true
+		}
+	}
+	var err error
+	if len(failed) > 0 {
+		// If there are some tasks in this gang been failed to enqueue
+		// we are making all the tasks in this gang to be failed
+		// as we can enqueue the full gang or full gang will be failed.
+		failed = append(failed, h.markingTasksFailInGang(gang, failedTasks, errFailingGangMemberTask)...)
+		err = fmt.Errorf("some tasks failed to be re-enqueued")
+	}
+	return failed, err
 }
 
+// enqueueGang adds the new gangs to pending queue or
+// requeue the gang if the tasks have different mesos
+// taskid.
 func (h *ServiceHandler) enqueueGang(
 	gang *resmgrsvc.Gang,
 	respool respool.ResPool) (
 	[]*resmgrsvc.EnqueueGangsFailure_FailedTask,
 	error) {
-	totalGangResources := &scalar.Resources{}
 	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
+	var failedTask *resmgrsvc.EnqueueGangsFailure_FailedTask
 	var err error
+	failedTasks := make(map[string]bool)
+	isGangRequeued := false
 	for _, task := range gang.GetTasks() {
-		err := h.requeueTask(task)
-		if err != nil {
-			if err != errEnqueuedAgain {
-				failed = append(
-					failed,
-					&resmgrsvc.EnqueueGangsFailure_FailedTask{
-						Task:    task,
-						Message: err.Error(),
-					},
-				)
-			}
-			continue
-		}
-
-		// Adding task to state machine
-		err = h.rmTracker.AddTask(
-			task,
-			h.eventStreamHandler,
-			respool,
-			h.config.RmTaskConfig,
-		)
-		if err != nil {
-			failed = append(
-				failed,
-				&resmgrsvc.EnqueueGangsFailure_FailedTask{
-					Task:    task,
-					Message: err.Error(),
-				},
-			)
-			continue
-		}
-		totalGangResources = totalGangResources.Add(
-			scalar.ConvertToResmgrResource(
-				task.GetResource()))
-
-		if h.rmTracker.GetTask(task.Id) != nil {
-			err = h.rmTracker.GetTask(task.Id).TransitTo(
-				t.TaskState_PENDING.String(), statemachine.WithReason("waiting to be admitted"))
-			if err != nil {
-				log.Error(err)
-			}
-		}
-	}
-	if len(failed) == 0 {
-		err = respool.EnqueueGang(gang)
-		if err == nil {
-			err = respool.AddToDemand(totalGangResources)
-			log.WithFields(log.Fields{
-				"respool_id":           respool.ID(),
-				"total_gang_resources": totalGangResources,
-			}).Debug("Resources added for Gang")
-			if err != nil {
-				log.Error(err)
-			}
+		if !(h.isTaskPresent(task)) {
+			// If the task is not present in the tracker
+			// this means its a new task and needs to be
+			// added to tracker
+			failedTask, err = h.addTask(task, respool)
 		} else {
-			// We need to remove gang tasks from tracker
-			h.removeTasksFromTracker(gang)
+			// This is the already present task,
+			// We need to check if it has same mesos
+			// id or different mesos task id.
+			failedTask, err = h.requeueTask(task)
+			isGangRequeued = true
 		}
-	} else {
-		err = errFailingGangMemberTask
+
+		// If there is any failure we need to add those tasks to
+		// failed list of task by that we can remove the gang later
+		if err != nil {
+
+			failed = append(failed, failedTask)
+			failedTasks[task.Id.Value] = true
+		}
 	}
+
+	if len(failed) == 0 {
+		if isGangRequeued {
+			return nil, nil
+		}
+		err = h.addingGangToPendingQueue(gang, respool)
+		// if there is error , we need to mark all tasks in gang failed.
+		if err != nil {
+			failed = append(failed, h.markingTasksFailInGang(gang, failedTasks, errFailingGangMemberTask)...)
+			err = errGangNotEnqueued
+		}
+		return failed, err
+	}
+	// we need to fail the other tasks which are not failed
+	// as we have to enqueue whole gang or not
+	// here we are assuming that all the tasks in gang whether
+	// be enqueued or requeued.
+	failed = append(failed, h.markingTasksFailInGang(gang, failedTasks, errFailingGangMemberTask)...)
+	err = errGangNotEnqueued
+
 	return failed, err
 }
 
-// removeTasksFromTracker removes the  task from the tracker
-func (h *ServiceHandler) removeTasksFromTracker(gang *resmgrsvc.Gang) {
+// isTaskPresent checks if the task is present in the tracker, Returns
+// True if present otherwise False
+func (h *ServiceHandler) isTaskPresent(requeuedTask *resmgr.Task) bool {
+	return h.rmTracker.GetTask(requeuedTask.Id) != nil
+}
+
+// removeGangFromTracker removes the  task from the tracker
+func (h *ServiceHandler) removeGangFromTracker(gang *resmgrsvc.Gang) {
 	for _, task := range gang.Tasks {
 		h.rmTracker.DeleteTask(task.Id)
 	}
+}
+
+// addingGangToPendingQueue transit all tasks of gang to PENDING state
+// and add them to pending queue by that they can be scheduled for
+// next scheduling cycle
+func (h *ServiceHandler) addingGangToPendingQueue(gang *resmgrsvc.Gang,
+	respool respool.ResPool) error {
+	totalGangResources := &scalar.Resources{}
+	taskFailtoTransit := false
+	for _, task := range gang.GetTasks() {
+		if h.rmTracker.GetTask(task.Id) != nil {
+			// transiting the task from INITIALIZED State to PENDING State
+			err := h.rmTracker.GetTask(task.Id).TransitTo(
+				t.TaskState_PENDING.String(), statemachine.WithReason("enqueue gangs called"))
+			if err != nil {
+				taskFailtoTransit = true
+				log.WithError(err).WithField("task", task.Id.Value).
+					Error("not able to transit task to PENDING")
+				break
+			}
+		}
+		// Adding to gang resources as this task is been
+		// successfully added to tracker
+		totalGangResources = totalGangResources.Add(
+			scalar.ConvertToResmgrResource(
+				task.GetResource()))
+	}
+	// Removing the gang from the tracker if some tasks fail to transit
+	if taskFailtoTransit {
+		h.removeGangFromTracker(gang)
+		return errGangNotEnqueued
+	}
+	// Adding gang to pending queue
+	err := respool.EnqueueGang(gang)
+
+	if err == nil {
+		err = respool.AddToDemand(totalGangResources)
+		log.WithFields(log.Fields{
+			"respool_id":           respool.ID(),
+			"total_gang_resources": totalGangResources,
+		}).Debug("Resources added for Gang")
+		if err != nil {
+			log.Error(err)
+		}
+		return err
+	}
+
+	// We need to remove gang tasks from tracker
+	h.removeGangFromTracker(gang)
+	return errGangNotEnqueued
+}
+
+// markingTasksFailInGang marks all other tasks fail which are not
+// part of failedTasks map and return the failed list.
+func (h *ServiceHandler) markingTasksFailInGang(gang *resmgrsvc.Gang,
+	failedTasks map[string]bool,
+	err error,
+) []*resmgrsvc.EnqueueGangsFailure_FailedTask {
+	var failed []*resmgrsvc.EnqueueGangsFailure_FailedTask
+	for _, task := range gang.GetTasks() {
+		if _, ok := failedTasks[task.Id.Value]; !ok {
+			failed = append(failed,
+				&resmgrsvc.EnqueueGangsFailure_FailedTask{
+					Task:      task,
+					Message:   err.Error(),
+					Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_FAILED_DUE_TO_GANG_FAILED,
+				})
+		}
+	}
+	return failed
 }
 
 func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task, reason string) error {
@@ -311,28 +380,52 @@ func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task, reason s
 	return errUnplacedTaskInWrongState
 }
 
+// addTask adds the task to RMTracker based on the respool
+func (h *ServiceHandler) addTask(newTask *resmgr.Task, respool respool.ResPool,
+) (*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
+	// Adding task to state machine
+	err := h.rmTracker.AddTask(
+		newTask,
+		h.eventStreamHandler,
+		respool,
+		h.config.RmTaskConfig,
+	)
+	if err != nil {
+		return &resmgrsvc.EnqueueGangsFailure_FailedTask{
+			Task:      newTask,
+			Message:   err.Error(),
+			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL,
+		}, err
+	}
+	return nil, nil
+}
+
 // requeueTask validates the enqueued task has the same mesos task id or not
 // If task has same mesos task id => return error
 // If task has different mesos task id then check state and based on the state
 // act accordingly
-func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) error {
+func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) (*resmgrsvc.EnqueueGangsFailure_FailedTask, error) {
 	rmTask := h.rmTracker.GetTask(requeuedTask.Id)
 	if rmTask == nil {
-		return nil
+		return &resmgrsvc.EnqueueGangsFailure_FailedTask{
+			Task:      requeuedTask,
+			Message:   errRequeueTaskFailed.Error(),
+			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL,
+		}, errRequeueTaskFailed
 	}
-
 	if *requeuedTask.TaskId.Value == *rmTask.Task().TaskId.Value {
-		return errSameTaskPresent
+		return &resmgrsvc.EnqueueGangsFailure_FailedTask{
+			Task:      requeuedTask,
+			Message:   errSameTaskPresent.Error(),
+			Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_ALREADY_EXIST,
+		}, errSameTaskPresent
 	}
-
 	currentTaskState := rmTask.GetCurrentState()
 
 	// If state is Launching, Launched or Running then only
 	// put task to ready queue with update of
 	// mesos task id otherwise ignore
-	if currentTaskState == t.TaskState_LAUNCHING ||
-		currentTaskState == t.TaskState_LAUNCHED ||
-		currentTaskState == t.TaskState_RUNNING {
+	if h.isTaskInTransitRunning(rmTask.GetCurrentState()) {
 		// Updating the New Mesos Task ID
 		rmTask.Task().TaskId = requeuedTask.TaskId
 		// Transitioning back to Ready State
@@ -345,12 +438,43 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) error {
 		err := rmtask.GetScheduler().EnqueueGang(gang)
 		if err != nil {
 			log.WithField("gang", gang).Error(errGangNotEnqueued.Error())
-			return err
+			return &resmgrsvc.EnqueueGangsFailure_FailedTask{
+				Task:      requeuedTask,
+				Message:   errSameTaskPresent.Error(),
+				Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL,
+			}, err
 		}
 		log.WithField("gang", gang).Debug(errEnqueuedAgain.Error())
-		return errEnqueuedAgain
+		return nil, nil
+
 	}
-	return errSameTaskPresent
+	// TASK should not be in any other state other then
+	// LAUNCHING, RUNNING or LAUNCHED
+	// Logging error if this happens.
+	log.WithFields(log.Fields{
+		"task":              rmTask.Task().Id.Value,
+		"current_state":     currentTaskState.String(),
+		"old_mesos_task_id": *rmTask.Task().TaskId.Value,
+		"new_mesos_task_id": *requeuedTask.TaskId.Value,
+	}).Error("task should not be requeued with different mesos taskid at this state")
+
+	return &resmgrsvc.EnqueueGangsFailure_FailedTask{
+		Task:      requeuedTask,
+		Message:   errSameTaskPresent.Error(),
+		Errorcode: resmgrsvc.EnqueueGangsFailure_ENQUEUE_GANGS_FAILURE_ERROR_CODE_INTERNAL,
+	}, errRequeueTaskFailed
+
+}
+
+// isTaskInTransitRunning return TRUE if the task state is in
+// LAUNCHING, RUNNING or LAUNCHED state else it returns FALSE
+func (h *ServiceHandler) isTaskInTransitRunning(state t.TaskState) bool {
+	if state == t.TaskState_LAUNCHING ||
+		state == t.TaskState_LAUNCHED ||
+		state == t.TaskState_RUNNING {
+		return true
+	}
+	return false
 }
 
 // DequeueGangs implements ResourceManagerService.DequeueGangs
