@@ -32,6 +32,7 @@ func (pq *priorityQueue) Pop() interface{} {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
+	old[n-1] = nil
 	// Clear index and deadline.
 	item.SetIndex(-1)
 	item.SetDeadline(time.Time{})
