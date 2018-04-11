@@ -97,7 +97,7 @@ message Task {
   bool controller = 14;
 
   // This is the timeout for the placement, it needs to be set for different
-  // timeout value for each placement6 iteration. Also it will also be used
+  // timeout value for each placement iteration. Also it will also be used
   // for communicating between placement engine in case of Host reservation.
   double placementTimeout = 15;
 

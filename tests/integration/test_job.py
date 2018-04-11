@@ -1,5 +1,5 @@
 import pytest
-from job import IntegrationTestConfig, Job
+from job import IntegrationTestConfig, Job, kill_jobs
 
 
 # Mark test module so that we can run tests by tags
@@ -59,6 +59,7 @@ def test__create_a_batch_job_and_restart_jobmgr_completes_jobs(jobmgr):
     jobmgr.restart()
 
     job.wait_for_state()
+    kill_jobs([job])
 
 
 @pytest.mark.smoketest
@@ -89,3 +90,5 @@ def test_update_job_increase_instances():
     expected_count = 4
     job.wait_for_condition(tasks_count)
     job.wait_for_state(goal_state='RUNNING')
+
+    kill_jobs([job])

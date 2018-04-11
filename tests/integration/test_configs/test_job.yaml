@@ -17,7 +17,7 @@ instanceCount: 3
 sla:
   priority: 22
   maximumRunningInstances: 1
-  preemptible: false
+  preemptible: true
 defaultConfig:
   labels:
   - key: testKey3

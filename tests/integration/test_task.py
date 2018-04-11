@@ -1,20 +1,12 @@
 import pytest
 import time
 
-from job import IntegrationTestConfig, Job
+from job import IntegrationTestConfig, Job, kill_jobs
 from peloton_client.pbgen.peloton.api.job import job_pb2
 from peloton_client.pbgen.peloton.api.task import task_pb2
 
 
 pytestmark = [pytest.mark.default, pytest.mark.task]
-
-
-def kill_jobs(jobs):
-    for job in jobs:
-        job.stop()
-
-    for job in jobs:
-        job.wait_for_state(goal_state='KILLED')
 
 
 @pytest.mark.smoketest

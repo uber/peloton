@@ -5,7 +5,7 @@ ldapGroups:
 - money
 - team6
 - otto
-description: "A test controller job for peloton integration tests"
+description: "A dummy test job for peloton integration tests"
 labels:
 - key: testKey0
   value: testVal0
@@ -13,11 +13,11 @@ labels:
   value: testVal1
 - key: testKey2
   value: testVal2
-instanceCount: 1
+instanceCount: 2
 sla:
   priority: 22
-  maximumRunningInstances: 1
-  preemptible: true
+  maximumRunningInstances: 2
+  preemptible: false
 defaultConfig:
   labels:
   - key: testKey3
@@ -27,7 +27,7 @@ defaultConfig:
   - key: testKey5
     value: testVal5
   resource:
-    cpuLimit: 0.5
+    cpuLimit: 3.0
     memLimitMb: 0.1
     diskLimitMb: 0.1
     fdLimit: 2
@@ -46,5 +46,4 @@ defaultConfig:
           value: /tmp:/test-tmp:rw
   command:
     shell: true
-    value: 'echo test controller & sleep 1000'
-  controller: true
+    value: 'echo lol & sleep 100'
