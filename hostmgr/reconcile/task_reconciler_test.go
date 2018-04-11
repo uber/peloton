@@ -367,3 +367,11 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
 }
+
+func (suite *TaskReconcilerTestSuite) TestTaskReconciliationExplicitTurnTurn() {
+	defer suite.ctrl.Finish()
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
+
+	suite.reconciler.SetExplicitReconcileTurn(false)
+	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
+}

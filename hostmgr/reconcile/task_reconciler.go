@@ -20,6 +20,7 @@ import (
 // TaskReconciler is the interface to initiate task reconciliation to mesos master.
 type TaskReconciler interface {
 	Reconcile(running *atomic.Bool)
+	SetExplicitReconcileTurn(flag bool)
 }
 
 // taskReconciler implements TaskReconciler.
@@ -72,6 +73,11 @@ func (r *taskReconciler) Reconcile(running *atomic.Bool) {
 	} else {
 		go r.reconcileImplicitly(ctx)
 	}
+}
+
+// SetExplicitReconcileTurn set value for explicit reconciliation turn.
+func (r *taskReconciler) SetExplicitReconcileTurn(flag bool) {
+	r.isExplicitReconcileTurn.Store(flag)
 }
 
 func (r *taskReconciler) reconcileImplicitly(ctx context.Context) {

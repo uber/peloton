@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"code.uber.internal/infra/peloton/hostmgr/reconcile"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/atomic"
@@ -41,6 +43,8 @@ type Server struct {
 	mesosInbound  mhttp.Inbound
 	mesosOutbound transport.Outbounds
 
+	reconciler reconcile.TaskReconciler
+
 	minBackoff time.Duration
 	maxBackoff time.Duration
 
@@ -60,7 +64,8 @@ func NewServer(
 	httpPort, grpcPort int,
 	mesosDetector mesos.MasterDetector,
 	mesosInbound mhttp.Inbound,
-	mesosOutbound transport.Outbounds) *Server {
+	mesosOutbound transport.Outbounds,
+	reconciler reconcile.TaskReconciler) *Server {
 
 	s := &Server{
 		ID:                   leader.NewID(httpPort, grpcPort),
@@ -70,6 +75,7 @@ func NewServer(
 		mesosDetector:        mesosDetector,
 		mesosInbound:         mesosInbound,
 		mesosOutbound:        mesosOutbound,
+		reconciler:           reconciler,
 
 		minBackoff: _minBackoff,
 		maxBackoff: _maxBackoff,
@@ -134,7 +140,6 @@ func (s *Server) ensureStateLoop(c <-chan time.Time) {
 		}).Debug("Maintaining Mesos connection state")
 		s.ensureStateRound()
 	}
-
 }
 
 func (s *Server) resetBackoff() {
@@ -233,7 +238,6 @@ func (s *Server) stopHandlers() {
 		s.backgroundManager.Stop()
 		s.getOfferEventHandler().Stop()
 	}
-
 }
 
 func (s *Server) startHandlers() {
@@ -243,6 +247,9 @@ func (s *Server) startHandlers() {
 	defer s.Unlock()
 
 	if !s.handlersRunning.Swap(true) {
+		// Set Explicit Reconcile Turn to true, to make sure Explicit Reconciliation runs
+		// on Host Manager or Mesos Master re-election.
+		s.reconciler.SetExplicitReconcileTurn(true)
 		s.backgroundManager.Start()
 		s.getOfferEventHandler().Start()
 	}

@@ -38,4 +38,10 @@ type Config struct {
 
 	// Period in sec for running host pruning
 	HostPruningPeriodSec time.Duration `yaml:"host_pruning_period_sec"`
+
+	// Backoff Retry Count to register background worker for Host Manager
+	HostMgrBackoffRetryCount int `yaml:"hostmgr_backoff_retry_count"`
+
+	// Backoff Retry Interval in seconds to register background worker for Host Manager
+	HostMgrBackoffRetryIntervalSec int `yaml:"hostmgr_backoff_retry_interval_sec"`
 }

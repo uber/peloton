@@ -5,6 +5,8 @@ import (
 	"os"
 	"time"
 
+	"code.uber.internal/infra/peloton/common/backoff"
+
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/background"
 	"code.uber.internal/infra/peloton/common/config"
@@ -339,25 +341,45 @@ func main() {
 		Scope:          rootScope.SubScope("hostmap"),
 	}
 
-	// Declare background manager
 	backgroundManager := background.NewManager()
-
-	if err := backgroundManager.RegisterWorks(
-		background.Work{
-			Name:   "hostmap",
-			Func:   loader.Load,
-			Period: cfg.HostManager.HostmapRefreshInterval,
-		},
-		background.Work{
-			Name: "reconciler",
-			Func: reconciler.Reconcile,
-			Period: time.Duration(
-				cfg.HostManager.TaskReconcilerConfig.ReconcileIntervalSec) * time.Second,
-			InitialDelay: time.Duration(
-				cfg.HostManager.TaskReconcilerConfig.InitialReconcileDelaySec) * time.Second,
-		},
-	); err != nil {
-		log.WithError(err).Fatal("Cannot register background works")
+	// Retry on hostmap loader with Background Manager.
+	err = backoff.Retry(
+		func() error {
+			return backgroundManager.RegisterWorks(
+				background.Work{
+					Name:   "hostmap",
+					Func:   loader.Load,
+					Period: cfg.HostManager.HostmapRefreshInterval,
+				},
+			)
+		}, backoff.NewRetryPolicy(cfg.HostManager.HostMgrBackoffRetryCount,
+			time.Duration(cfg.HostManager.HostMgrBackoffRetryIntervalSec)*time.Second),
+		func(error) bool {
+			return true
+		})
+	if err != nil {
+		log.WithError(err).Fatal("Cannot register hostmap loader background worker.")
+	}
+	// Retry on reconciler registry with Background Manager.
+	err = backoff.Retry(
+		func() error {
+			return backgroundManager.RegisterWorks(
+				background.Work{
+					Name: "reconciler",
+					Func: reconciler.Reconcile,
+					Period: time.Duration(
+						cfg.HostManager.TaskReconcilerConfig.ReconcileIntervalSec) * time.Second,
+					InitialDelay: time.Duration(
+						cfg.HostManager.TaskReconcilerConfig.InitialReconcileDelaySec) * time.Second,
+				},
+			)
+		}, backoff.NewRetryPolicy(cfg.HostManager.HostMgrBackoffRetryCount,
+			time.Duration(cfg.HostManager.HostMgrBackoffRetryIntervalSec)*time.Second),
+		func(error) bool {
+			return true
+		})
+	if err != nil {
+		log.WithError(err).Fatal("Cannot register reconciler background worker.")
 	}
 
 	offer.InitEventHandler(
@@ -404,7 +426,13 @@ func main() {
 		mesosMasterDetector,
 		mInbound,
 		mOutbound,
+		reconciler,
 	)
+
+	// Start dispatch loop
+	if err := dispatcher.Start(); err != nil {
+		log.Fatalf("Could not start rpc server: %v", err)
+	}
 
 	candidate, err := leader.NewCandidate(
 		cfg.Election,

@@ -43,6 +43,8 @@ host_manager:
     explicit_reconcile_batch_size: 1000
   hostmap_refresh_interval: 10s
   host_pruning_period_sec: 600s
+  hostmgr_backoff_retry_count: 3
+  hostmgr_backoff_retry_interval_sec: 15
 
 mesos:
   encoding: "x-protobuf"

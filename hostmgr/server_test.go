@@ -15,6 +15,7 @@ import (
 	hm_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	offer_mocks "code.uber.internal/infra/peloton/hostmgr/offer/mocks"
+	reconciler_mocks "code.uber.internal/infra/peloton/hostmgr/reconcile/mocks"
 	mhttp_mocks "code.uber.internal/infra/peloton/yarpc/transport/mhttp/mocks"
 )
 
@@ -41,6 +42,8 @@ type ServerTestSuite struct {
 	detector          *hm_mocks.MockMasterDetector
 	mInbound          *mhttp_mocks.MockInbound
 
+	reconciler *reconciler_mocks.MockTaskReconciler
+
 	server *Server
 }
 
@@ -51,6 +54,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.backgroundManager = backgound_mocks.NewMockManager(suite.ctrl)
 	suite.detector = hm_mocks.NewMockMasterDetector(suite.ctrl)
 	suite.mInbound = mhttp_mocks.NewMockInbound(suite.ctrl)
+	suite.reconciler = reconciler_mocks.NewMockTaskReconciler(suite.ctrl)
 
 	suite.server = &Server{
 		ID:   _ID,
@@ -65,6 +69,8 @@ func (suite *ServerTestSuite) SetupTest() {
 		mesosDetector: suite.detector,
 		mesosInbound:  suite.mInbound,
 		// Add outbound when we need it.
+
+		reconciler: suite.reconciler,
 
 		minBackoff: _minBackoff,
 		maxBackoff: _maxBackoff,
@@ -177,6 +183,8 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 
 		// Connected, now start handlers.
 		suite.mInbound.EXPECT().IsRunning().Return(true),
+		// Triggers Explicit Reconciliation on Mesos Master re-election
+		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 
@@ -196,6 +204,7 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 	suite.server.handlersRunning.Store(false)
 	gomock.InOrder(
 		suite.mInbound.EXPECT().IsRunning().Return(true).Times(2),
+		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 		suite.mInbound.EXPECT().IsRunning().Return(true),
@@ -225,6 +234,8 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 
 		// Connected, now start handlers.
 		suite.mInbound.EXPECT().IsRunning().Return(true),
+		// Triggers Explicit Reconciliation on re-election of host manager.
+		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
 
