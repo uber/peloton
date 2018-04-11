@@ -20,7 +20,10 @@ storage:
       contactPoints: ["127.0.0.1"]
       port: 9042
       consistency: LOCAL_QUORUM
-      timeout: 10s
+      # Need to increase timeout from 10s to 20s to avoid recovery code from timing out
+      # We saw recovery code timing out when peloton was recovering from a
+      # Cassandra latency spike issue.
+      timeout: 20s
     store_name: peloton_test
     migrations: storage/cassandra/migrations/
   use_cassandra: false

@@ -11,7 +11,9 @@ import (
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"code.uber.internal/infra/peloton/storage/cassandra"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -143,4 +145,64 @@ func TestJobRecoveryWithStore(t *testing.T) {
 	err = RecoverJobsByState(ctx, csStore, jobStatesAll, recoverAllTask)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(receivedPendingJobID))
+}
+
+func TestRecoveryAfterJobDelete(t *testing.T) {
+	var err error
+	var jobStatesPending = []pb_job.JobState{
+		pb_job.JobState_PENDING,
+	}
+	var jobRuntime = pb_job.RuntimeInfo{
+		State: pb_job.JobState_PENDING,
+	}
+	var jobConfig = pb_job.JobConfig{
+		Name:          "TestValidatorWithStore",
+		OwningTeam:    "team6",
+		LdapGroups:    []string{"money", "team6", "gsg9"},
+		InstanceCount: 2,
+	}
+	var missingJobID = &peloton.JobID{Value: uuid.New()}
+
+	ctrl := gomock.NewController(t)
+	ctx := context.Background()
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+
+	// recoverJobsBatch should pass even if there is no job_id present in job_runtime
+	// it should just skip over to a new job. This test is specifically to test the
+	// corner case where you deleted a job from job_runtime table but the materialized view
+	// created on this table never got updated (this can happen because MV is
+	// an experimental feature not supported by Cassandra)
+
+	// mock GetJobsByStates to return missingJobID present in MV but
+	// absent from job_runtime
+	jobIDs := []peloton.JobID{*missingJobID, *pendingJobID}
+	mockJobStore.EXPECT().
+		GetJobsByStates(ctx, jobStatesPending).
+		Return(jobIDs, nil).
+		AnyTimes()
+
+	mockJobStore.EXPECT().
+		GetJobRuntime(ctx, missingJobID).
+		Return(nil, fmt.Errorf("Cannot find job wth jobID %v", missingJobID.GetValue())).
+		AnyTimes()
+
+	mockJobStore.EXPECT().
+		GetJobRuntime(ctx, pendingJobID).
+		Return(&jobRuntime, nil).
+		AnyTimes()
+
+	mockJobStore.EXPECT().
+		GetJobConfig(ctx, pendingJobID).
+		Return(&jobConfig, nil).
+		AnyTimes()
+
+	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	assert.NoError(t, err)
+
+	mockJobStore.EXPECT().
+		GetJobsByStates(ctx, jobStatesPending).
+		Return([]peloton.JobID{}, nil).
+		AnyTimes()
+	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
+	assert.NoError(t, err)
 }

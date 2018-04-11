@@ -119,15 +119,27 @@ func recoverJob(ctx context.Context, jobID string, jobConfig *job.JobConfig, job
 	return nil
 }
 
-func recoverJobsBatch(ctx context.Context, jobStore storage.JobStore, jobs JobsBatch, errChan chan<- error, f RecoverBatchTasks) {
-	for _, jobID := range jobs.jobs {
+func recoverJobsBatch(ctx context.Context, jobStore storage.JobStore, batch JobsBatch, errChan chan<- error, f RecoverBatchTasks) {
+	for _, jobID := range batch.jobs {
 		jobRuntime, err := jobStore.GetJobRuntime(ctx, &jobID)
 		if err != nil {
 			log.WithField("job_id", jobID.Value).
 				WithError(err).
-				Error("Failed to load job runtime")
-			errChan <- err
-			return
+				Error("failed to load job runtime")
+			// mv_jobs_by_state is a materialized view created on job_runtime table
+			// The job ids here are queried on the materialized view by state.
+			// There have been situations where job is deleted from job_runtime but
+			// the materialized view does not get updated and the job still shows up.
+			// so if you call GetJobRuntime for such a job, it will get a error.
+			// In this case, we should log the job_id and skip to next job_id instead
+			// of bailing out of the recovery code.
+
+			// TODO (adityacb): create a recovery summary to be
+			// returned at the end of this call.
+			// That way, the caller has a better idea of recovery
+			// stats and error counts and the caller can then
+			// increment specific metrics.
+			continue
 		}
 
 		// Do not process batch jobs in terminal state
@@ -171,7 +183,11 @@ func RecoverJobsByState(ctx context.Context, jobStore storage.JobStore, jobState
 			Error("failed to fetch jobs in recovery")
 		return err
 	}
-	log.WithField("job_ids :", jobsIDs).Info("jobs to recover")
+
+	log.WithFields(log.Fields{
+		"total jobs": len(jobsIDs),
+		"job_ids":    jobsIDs,
+	}).Info("jobs to recover")
 
 	jobBatches := createJobBatches(jobsIDs)
 	var bwg sync.WaitGroup

@@ -826,6 +826,7 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 	for _, state := range states {
 		jobStates = append(jobStates, state.String())
 	}
+	callStart := time.Now()
 
 	stmt := queryBuilder.Select("job_id").From(jobByStateView).
 		Where(qb.Eq{"state": jobStates})
@@ -834,6 +835,8 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 		log.WithError(err).
 			Error("GetJobsByStates failed")
 		s.metrics.JobMetrics.JobGetByStatesFail.Inc(1)
+		callDuration := time.Since(callStart)
+		s.metrics.JobMetrics.JobGetByStatesFailDuration.Record(callDuration)
 		return nil, err
 	}
 
@@ -845,11 +848,15 @@ func (s *Store) GetJobsByStates(ctx context.Context, states []job.JobState) ([]p
 			log.WithError(err).
 				Error("Failed to get JobRuntimeRecord from record")
 			s.metrics.JobMetrics.JobGetByStatesFail.Inc(1)
+			callDuration := time.Since(callStart)
+			s.metrics.JobMetrics.JobGetByStatesFailDuration.Record(callDuration)
 			return nil, err
 		}
 		jobs = append(jobs, peloton.JobID{Value: record.JobID.String()})
 	}
 	s.metrics.JobMetrics.JobGetByStates.Inc(1)
+	callDuration := time.Since(callStart)
+	s.metrics.JobMetrics.JobGetByStatesDuration.Record(callDuration)
 	return jobs, nil
 }
 
