@@ -44,8 +44,10 @@ func (suite *schedulerDriverTestSuite) SetupTest() {
 	suite.driver = InitSchedulerDriver(
 		&Config{
 			Framework: &FrameworkConfig{
-				Name:         _frameworkName,
-				GPUSupported: true,
+				Name:                      _frameworkName,
+				GPUSupported:              true,
+				TaskKillingStateSupported: false,
+				PartitionAwareSupported:   false,
 			},
 			ZkPath:   _zkPath,
 			Encoding: _encoding,
@@ -188,6 +190,26 @@ func (suite *schedulerDriverTestSuite) TestPostSubscribe() {
 
 	// TODO: Do something here.
 	suite.driver.PostSubscribe(context.Background(), _streamID)
+}
+
+func (suite *schedulerDriverTestSuite) TestFrameworkInfoCapability() {
+	value := _frameworkID
+	suite.store.EXPECT().
+		GetFrameworkID(context.Background(), gomock.Eq(_frameworkName)).
+		Return(value, nil)
+
+	subscribe, err := suite.driver.prepareSubscribe(context.Background())
+	suite.Nil(err)
+	// Only GPU_RESOURCES framework capability is enabled.
+	suite.Equal(len(subscribe.Subscribe.FrameworkInfo.Capabilities), 1)
+
+	// Enable TASK_KILLING_STATE.
+	suite.driver.cfg.TaskKillingStateSupported = true
+	suite.driver.cfg.PartitionAwareSupported = true
+	subscribe, err = suite.driver.prepareSubscribe(context.Background())
+	suite.Nil(err)
+	// GPU_RESOURCES & TASK_KILLING_STATE framework capability is enabled.
+	suite.Equal(len(subscribe.Subscribe.FrameworkInfo.Capabilities), 3)
 }
 
 func (suite *schedulerDriverTestSuite) TestPrepareLoadedFrameworkID() {

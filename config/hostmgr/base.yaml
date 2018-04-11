@@ -50,6 +50,8 @@ mesos:
   encoding: "x-protobuf"
   framework:
     gpu_supported: true
+    task_killing_state: false
+    partition_aware: false
     user: "root"
     name: "Peloton"
     # TODO : add roles for other components

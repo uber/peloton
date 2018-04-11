@@ -155,13 +155,34 @@ func (d *schedulerDriver) EventDataType() reflect.Type {
 }
 
 func (d *schedulerDriver) prepareSubscribe(ctx context.Context) (*sched.Call, error) {
-	// TODO: Inject capabilities based on config.
-	gpuSupported := mesos.FrameworkInfo_Capability_GPU_RESOURCES
-	capabilities := []*mesos.FrameworkInfo_Capability{
-		{
+	var capabilities []*mesos.FrameworkInfo_Capability
+	if d.cfg.GPUSupported {
+		log.Info("GPU capability is supported")
+		gpuSupported := mesos.FrameworkInfo_Capability_GPU_RESOURCES
+		gpuCapability := &mesos.FrameworkInfo_Capability{
 			Type: &gpuSupported,
-		},
+		}
+		capabilities = append(capabilities, gpuCapability)
 	}
+
+	if d.cfg.TaskKillingStateSupported {
+		log.Info("Task_Killing_State capability is supported")
+		taskKillingStateSupported := mesos.FrameworkInfo_Capability_TASK_KILLING_STATE
+		taskKillingStateCapability := &mesos.FrameworkInfo_Capability{
+			Type: &taskKillingStateSupported,
+		}
+		capabilities = append(capabilities, taskKillingStateCapability)
+	}
+
+	if d.cfg.PartitionAwareSupported {
+		log.Info("Partition Aware capability is supported")
+		partitionAwareSupported := mesos.FrameworkInfo_Capability_PARTITION_AWARE
+		partitionAwareCapability := &mesos.FrameworkInfo_Capability{
+			Type: &partitionAwareSupported,
+		}
+		capabilities = append(capabilities, partitionAwareCapability)
+	}
+
 	host, err := os.Hostname()
 	if err != nil {
 		msg := "Failed to get host name"
@@ -180,15 +201,6 @@ func (d *schedulerDriver) prepareSubscribe(ctx context.Context) (*sched.Call, er
 		Capabilities:    capabilities,
 		Hostname:        &host,
 		Principal:       &d.cfg.Principal,
-	}
-	if d.cfg.GPUSupported {
-		log.Info("GPU capability is supported")
-		var gpuCapability = mesos.FrameworkInfo_Capability_GPU_RESOURCES
-		info.Capabilities = []*mesos.FrameworkInfo_Capability{
-			{
-				Type: &gpuCapability,
-			},
-		}
 	}
 
 	// To make peloton consistent, if we are not able to load a valid frameworkId
