@@ -1,0 +1,36 @@
+/**
+ *  This file defines the Host Maintenance related messages in Peloton API
+ */
+
+syntax = "proto3";
+
+package peloton.api.host;
+
+enum HostState {
+    // Reserved for future compatibility of new states.
+    UNKNOWN = 0;
+
+    // The host is healthy
+    UP = 1;
+
+    // The tasks running on the host are being rescheduled.
+    // There will be no further placement of tasks on the host
+    DRAINING = 2;
+
+    // There are no tasks running on the host and is ready to be put into maintenance.
+    DRAINED = 3;
+
+    // The host is in maintenance.
+    DOWN = 4;
+}
+
+message HostInfo {
+    // The name of the host
+    string hostName = 1;
+
+    // The IP address of the host
+    string IP = 2;
+
+    // The current state of the host
+    HostState hostState = 3;
+}
