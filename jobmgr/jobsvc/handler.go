@@ -49,8 +49,10 @@ func InitServiceHandler(
 	taskStore storage.TaskStore,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
-	clientName string) {
+	clientName string,
+	jobSvcCfg Config) {
 
+	jobSvcCfg.normalize()
 	handler := &serviceHandler{
 		jobStore:        jobStore,
 		taskStore:       taskStore,
@@ -60,6 +62,7 @@ func InitServiceHandler(
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
+		jobSvcCfg:       jobSvcCfg,
 	}
 
 	d.Register(job.BuildJobManagerYARPCProcedures(handler))
@@ -75,6 +78,7 @@ type serviceHandler struct {
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
 	metrics         *Metrics
+	jobSvcCfg       Config
 }
 
 // Create creates a job object for a given job configuration and
@@ -128,7 +132,7 @@ func (h *serviceHandler) Create(
 	log.WithField("config", jobConfig).Infof("JobManager.Create called")
 
 	// Validate job config with default task configs
-	err = task_config.ValidateTaskConfig(jobConfig)
+	err = task_config.ValidateTaskConfig(jobConfig, h.jobSvcCfg.MaxTasksPerJob)
 	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{

@@ -30,11 +30,25 @@ func validatePortConfig(portConfigs []*task.PortConfig) error {
 
 // ValidateTaskConfig checks whether the task configs in a job config
 // is missing or not, also validates port configs.
-func ValidateTaskConfig(jobConfig *job.JobConfig) error {
+func ValidateTaskConfig(jobConfig *job.JobConfig, maxTasksPerJob uint32) error {
 
 	// Check if each instance has a default or instance-specific config
 	defaultConfig := jobConfig.GetDefaultConfig()
 	if err := validatePortConfig(defaultConfig.GetPorts()); err != nil {
+		return err
+	}
+
+	// Jobs with more than 100k tasks create large Cassandra partitions
+	// of more than 100MB. These combined with Size tiered compaction strategy,
+	// will trigger large partition summary files to be brought onto the heap and trigger GC.
+	// GC trigger will cause read write latency spikes on Cassandra.
+	// This was the root cause of the Peloton outage on 04-05-2018
+	// Including this artificial limit for now till we change the data model
+	// to prevent such large partitions. After changing the data model we can tweak
+	// this limit from the job service config or decide to remove the limit altogether.
+	if jobConfig.InstanceCount > maxTasksPerJob {
+		err := fmt.Errorf("Requested tasks: %v for job is greater than supported: %v tasks/job",
+			jobConfig.InstanceCount, maxTasksPerJob)
 		return err
 	}
 
