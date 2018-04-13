@@ -10,6 +10,7 @@ metrics:
     hostPort: 127.0.0.1:9052
     service: peloton
     env: staging
+    includeHost: true
     tags:
         cluster: peloton-default
   prometheus:
