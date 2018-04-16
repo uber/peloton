@@ -61,8 +61,12 @@ type ResPool interface {
 
 	// Enqueues gang (task list) into resource pool pending queue.
 	EnqueueGang(gang *resmgrsvc.Gang) error
-	// Dequeues gang (task list) list from the resource pool.
-	DequeueGangList(int) ([]*resmgrsvc.Gang, error)
+	// Dequeues gangs (task list) from the resource pool.
+	DequeueGangs(int) ([]*resmgrsvc.Gang, error)
+	// PeekGangs returns a list of gangs from the resource pool's queue based
+	// on the queue type. limit determines the max number of gangs to be
+	// returned.
+	PeekGangs(qt QueueType, limit uint32) ([]*resmgrsvc.Gang, error)
 
 	// SetEntitlement sets the entitlement for the resource pool.
 	// input is map[ResourceKind]->EntitledCapacity
@@ -107,14 +111,6 @@ type ResPool interface {
 	// AddInvalidTask will add the killed tasks to respool which can be
 	// discarded asynchronously which scheduling.
 	AddInvalidTask(task *peloton.TaskID)
-	// PeekPendingTasks returns the list of gangs which are in the
-	// resource pools pending queue or an error.
-	// limit determines the number of gangs to be returned.
-	PeekPendingGangs(limit uint32) ([]*resmgrsvc.Gang, error)
-	// PeekControllerGangs returns the list of gangs which are in the
-	// resource pools controller queue or an error.
-	// limit determines the number of gangs to be returned.
-	PeekControllerGangs(limit uint32) ([]*resmgrsvc.Gang, error)
 }
 
 // resPool implements the ResPool interface.
@@ -315,7 +311,7 @@ func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
 	return err
 }
 
-// DequeueGangList dequeues a list of gangs from the
+// DequeueGangs dequeues a list of gangs from the
 // resource pool which can be admitted.
 // Each gang is a task list representing a gang
 // of 1 or more (same priority) tasks.
@@ -326,7 +322,7 @@ func (n *resPool) EnqueueGang(gang *resmgrsvc.Gang) error {
 // 2. Checks the controller queue to admit controller preemptible gangs
 // 3. Checks the pending queue (
 //    and moves gangs to non preemptible queue or controller queue)
-func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
+func (n *resPool) DequeueGangs(limit int) ([]*resmgrsvc.Gang, error) {
 	if limit <= 0 {
 		err := errors.Errorf("limit %d is not valid", limit)
 		return nil, err
@@ -340,7 +336,7 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 	var err error
 	var gangList []*resmgrsvc.Gang
 
-	for _, qt := range []queueType{nonPreemptibleQueue, controllerQueue, pendingQueue} {
+	for _, qt := range []QueueType{NonPreemptibleQueue, ControllerQueue, PendingQueue} {
 		// check how many gangs left from the limit
 		left := limit - len(gangList)
 		if left == 0 {
@@ -364,7 +360,7 @@ func (n *resPool) DequeueGangList(limit int) ([]*resmgrsvc.Gang, error) {
 }
 
 // dequeues limit number of gangs from the respool for admission.
-func (n *resPool) dequeue(qt queueType, limit int) ([]*resmgrsvc.Gang,
+func (n *resPool) dequeue(qt QueueType, limit int) ([]*resmgrsvc.Gang,
 	error) {
 
 	var err error
@@ -505,15 +501,18 @@ func (n *resPool) CalculateDemand() *scalar.Resources {
 }
 
 // getQueue returns the queue depending on the queue type
-func (n *resPool) queue(qt queueType) queue.Queue {
+func (n *resPool) queue(qt QueueType) queue.Queue {
 	switch qt {
-	case controllerQueue:
+	case ControllerQueue:
 		return n.controllerQueue
-	case nonPreemptibleQueue:
+	case NonPreemptibleQueue:
 		return n.npQueue
-	default:
+	case PendingQueue:
 		return n.pendingQueue
 	}
+
+	// should never come here
+	return nil
 }
 
 func (n *resPool) createRespoolUsage(allocation *scalar.Resources) []*respool.ResourceUsage {
@@ -872,16 +871,23 @@ func (n *resPool) AddInvalidTask(task *peloton.TaskID) {
 	n.invalidTasks[task.Value] = true
 }
 
-func (n *resPool) PeekPendingGangs(limit uint32) ([]*resmgrsvc.Gang, error) {
+// PeekGangs returns a list of gangs from the queue based on the queue type.
+func (n *resPool) PeekGangs(qt QueueType, limit uint32) ([]*resmgrsvc.Gang,
+	error) {
 	n.RLock()
 	defer n.RUnlock()
-	return n.pendingQueue.Peek(limit)
-}
 
-func (n *resPool) PeekControllerGangs(limit uint32) ([]*resmgrsvc.Gang, error) {
-	n.RLock()
-	defer n.RUnlock()
-	return n.controllerQueue.Peek(limit)
+	switch qt {
+	case PendingQueue:
+		return n.pendingQueue.Peek(limit)
+	case ControllerQueue:
+		return n.controllerQueue.Peek(limit)
+	case NonPreemptibleQueue:
+		return n.npQueue.Peek(limit)
+	}
+
+	// should never come here
+	return nil, nil
 }
 
 func (n *resPool) isPreemptionEnabled() bool {

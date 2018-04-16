@@ -41,7 +41,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitValidationFail() {
 	resPool.AddInvalidTask(task.Id)
 
 	// try and admit
-	err = admission.TryAdmit(gang, resPool, pendingQueue)
+	err = admission.TryAdmit(gang, resPool, PendingQueue)
 	s.Equal(err, errGangInvalid)
 
 	// demand should be removed
@@ -72,7 +72,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitSuccess() {
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
 
-	err = admission.TryAdmit(gang, resPool, pendingQueue)
+	err = admission.TryAdmit(gang, resPool, PendingQueue)
 	s.NoError(err)
 	s.Equal(0, resPool.pendingQueue.Size())
 
@@ -101,7 +101,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_TryAdmitFailure() {
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().DISK)
 	s.Equal(float64(0), resPool.GetTotalAllocatedResources().GPU)
 
-	err = admission.TryAdmit(gang, resPool, pendingQueue)
+	err = admission.TryAdmit(gang, resPool, PendingQueue)
 	s.Equal(err, errResourcePoolFull)
 	s.Equal(1, resPool.pendingQueue.Size())
 
@@ -197,7 +197,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_PendingQueueAdmitter() {
 		err := resPool.EnqueueGang(gang)
 		s.NoError(err)
 
-		err = admission.TryAdmit(gang, resPool, pendingQueue)
+		err = admission.TryAdmit(gang, resPool, PendingQueue)
 		s.Equal(t.err, err)
 
 		if t.canAdmit {
@@ -250,7 +250,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_ControllerAdmitter() {
 		err := resPool.controllerQueue.Enqueue(gang)
 		s.NoError(err)
 
-		err = admission.TryAdmit(gang, resPool, controllerQueue)
+		err = admission.TryAdmit(gang, resPool, ControllerQueue)
 		s.Equal(t.err, err)
 
 		if t.canAdmit {
@@ -321,7 +321,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_NPAdmitter() {
 		err := resPool.npQueue.Enqueue(gang)
 		s.NoError(err)
 
-		err = admission.TryAdmit(gang, resPool, nonPreemptibleQueue)
+		err = admission.TryAdmit(gang, resPool, NonPreemptibleQueue)
 		s.Equal(t.wantErr, err, "failed test case:%v", t)
 
 		if t.canAdmit {

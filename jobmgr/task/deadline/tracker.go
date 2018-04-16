@@ -155,7 +155,7 @@ func (t *tracker) trackDeadline() error {
 
 		if jobConfig.GetSla().GetMaxRunningTime() == uint32(0) {
 			log.WithField("job_id", id).
-				Info("MaximimRunningTime is 0, Not tracking this job")
+				Info("MaximumRunningTime is 0, Not tracking this job")
 			continue
 		}
 
@@ -199,7 +199,7 @@ func (t *tracker) trackDeadline() error {
 func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 
 	log.WithField("task_ID", task.Value).
-		Info("stoping task")
+		Info("stopping task")
 
 	taskInfo, err := t.taskStore.GetTaskByID(ctx, task.Value)
 	if err != nil {

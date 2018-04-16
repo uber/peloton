@@ -317,7 +317,7 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 		resPoolNode.EnqueueGang(makeTaskGang(t))
 	}
 
-	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
+	dequeuedGangs, err := resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
 
@@ -331,7 +331,7 @@ func (s *ResPoolSuite) TestResPoolDequeue() {
 	// 1 task should've been dequeued
 	s.Equal(1, priorityQueue.Len(2))
 
-	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
+	dequeuedGangs, err = resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
 
@@ -344,7 +344,7 @@ func (s *ResPoolSuite) TestResPoolDequeueNonLeaf() {
 	children := list.New()
 	children.PushBack(resPoolNode)
 	s.root.SetChildren(children)
-	dequeuedGangs, err := s.root.DequeueGangList(1)
+	dequeuedGangs, err := s.root.DequeueGangs(1)
 	s.Error(err)
 	s.EqualError(err, "resource pool root is not a leaf node")
 	s.Nil(dequeuedGangs)
@@ -358,7 +358,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 		resPoolNode.EnqueueGang(makeTaskGang(t))
 	}
 
-	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
+	dequeuedGangs, err := resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
 
@@ -372,7 +372,7 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 	// 1 task should've been deququeued
 	s.Equal(1, priorityQueue.Len(2))
 
-	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
+	dequeuedGangs, err = resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
 
@@ -393,11 +393,11 @@ func (s *ResPoolSuite) TestResPoolTaskCanBeDequeued() {
 		},
 	}
 	resPoolNode.EnqueueGang(makeTaskGang(bigtask))
-	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
+	dequeuedGangs, err = resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Nil(dequeuedGangs)
 	resPoolNode.SetEntitlementByKind(common.CPU, float64(500))
-	dequeuedGangs, err = resPoolNode.DequeueGangList(1)
+	dequeuedGangs, err = resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
 }
@@ -432,7 +432,7 @@ func (s *ResPoolSuite) TestAllocation() {
 		resPoolNode.EnqueueGang(makeTaskGang(t))
 		totalAlloc = totalAlloc.Add(scalar.GetTaskAllocation(t))
 	}
-	dequeuedGangs, err := resPoolNode.DequeueGangList(1)
+	dequeuedGangs, err := resPoolNode.DequeueGangs(1)
 	s.NoError(err)
 	s.Equal(1, len(dequeuedGangs))
 
@@ -768,7 +768,7 @@ func (s *ResPoolSuite) TestResPoolDequeueError() {
 		resPoolNode.EnqueueGang(makeTaskGang(t))
 	}
 
-	_, err = resPoolNode.DequeueGangList(0)
+	_, err = resPoolNode.DequeueGangs(0)
 	s.EqualError(
 		err,
 		"limit 0 is not valid",
@@ -844,7 +844,7 @@ func (s *ResPoolSuite) TestTaskValidation() {
 	s.Equal(float64(40), demand.DISK)
 	s.Equal(float64(0), demand.GPU)
 
-	gangs, err := resPoolNode1.DequeueGangList(4)
+	gangs, err := resPoolNode1.DequeueGangs(4)
 	s.NoError(err)
 	s.Equal(0, len(gangs))
 	newDemand := resPoolNode1.GetDemand()
@@ -1024,46 +1024,34 @@ func (s *ResPoolSuite) TestAggregatedChildrenReservations() {
 	s.Equal(map[string]float64{}, ar)
 }
 
-func (s *ResPoolSuite) TestResPoolPeekPendingGangs() {
-	respool := s.createTestResourcePool()
+func (s *ResPoolSuite) TestResPoolPeekGangs() {
 
-	// no gangs yet
-	gangs, err := respool.PeekPendingGangs(10)
-	s.Error(err)
-	s.EqualError(err, "peek failed, queue is empty")
+	for _, qt := range []QueueType{
+		PendingQueue,
+		ControllerQueue,
+		NonPreemptibleQueue,
+	} {
+		respool := s.createTestResourcePool()
 
-	// enqueue 4 gangs
-	for _, t := range s.getTasks() {
-		gang := makeTaskGang(t)
-		err := respool.EnqueueGang(gang)
-		s.NoError(err)
+		// no gangs yet
+		gangs, err := respool.PeekGangs(qt, 10)
+		s.Error(err)
+		s.EqualError(err, "peek failed, queue is empty",
+			"queue type failed:%v", qt)
+
+		// enqueue 4 gangs
+		for _, t := range s.getTasks() {
+			gang := makeTaskGang(t)
+			resPool, ok := respool.(*resPool)
+			s.True(ok)
+			err := resPool.queue(qt).Enqueue(gang)
+			s.NoError(err)
+		}
+
+		gangs, err = respool.PeekGangs(qt, 10)
+		s.NoError(err, "queue type failed:%v", qt)
+		s.Equal(4, len(gangs), "queue type failed:%v", qt)
 	}
-
-	gangs, err = respool.PeekPendingGangs(10)
-	s.NoError(err)
-	s.Equal(4, len(gangs))
-}
-
-func (s *ResPoolSuite) TestResPoolPeekControllerGangs() {
-	respool := s.createTestResourcePool()
-
-	// no gangs yet
-	gangs, err := respool.PeekControllerGangs(10)
-	s.Error(err)
-	s.EqualError(err, "peek failed, queue is empty")
-
-	// enqueue 4 gangs
-	for _, t := range s.getTasks() {
-		gang := makeTaskGang(t)
-		resPool, ok := respool.(*resPool)
-		s.True(ok)
-		err := resPool.controllerQueue.Enqueue(gang)
-		s.NoError(err)
-	}
-
-	gangs, err = respool.PeekControllerGangs(10)
-	s.NoError(err)
-	s.Equal(4, len(gangs))
 }
 
 func (s *ResPoolSuite) TestResPoolControllerLimit() {

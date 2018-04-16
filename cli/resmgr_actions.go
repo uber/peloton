@@ -36,18 +36,11 @@ func (c *Client) ResMgrGetActiveTasks(jobID string, respoolID string, states str
 }
 
 // ResMgrGetPendingTasks fetches the pending tasks from resource manager.
-func (c *Client) ResMgrGetPendingTasks(respoolID string, limit uint32,
-	queueType string) error {
-	// default to PENDING
-	qt := resmgrsvc.GetPendingTasksRequest_PENDING
-	if queueType == "controller" {
-		qt = resmgrsvc.GetPendingTasksRequest_CONTROLLER
-	}
+func (c *Client) ResMgrGetPendingTasks(respoolID string, limit uint32) error {
 
 	var request = &resmgrsvc.GetPendingTasksRequest{
 		RespoolID: &peloton.ResourcePoolID{Value: respoolID},
 		Limit:     limit,
-		Queue:     qt,
 	}
 	resp, err := c.resMgrClient.GetPendingTasks(c.ctx, request)
 	if err != nil {
@@ -64,7 +57,7 @@ func printActiveTasksResponse(r *resmgrsvc.GetActiveTasksResponse, debug bool) {
 		if r.GetError() != nil {
 			fmt.Fprintf(tabWriter, r.GetError().GetMessage())
 		} else {
-			fmt.Fprintf(tabWriter, activeTaskListFormatHeader)
+			fmt.Fprint(tabWriter, activeTaskListFormatHeader)
 			for _, taskEntry := range r.GetTasksByState() {
 				for _, task := range taskEntry.GetTaskEntry() {
 					fmt.Fprintf(

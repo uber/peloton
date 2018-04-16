@@ -22,6 +22,7 @@ import (
 	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/preemption/mocks"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	rm "code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
@@ -1116,26 +1117,84 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 }
 
 func (s *HandlerTestSuite) TestGetPendingTasks() {
-	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
-	s.NoError(err)
-	err = node.EnqueueGang(s.pendingGang2())
-	s.NoError(err)
+	respoolID := &peloton.ResourcePoolID{Value: "respool3"}
+	limit := uint32(1)
+
+	mr := rm.NewMockResPool(s.ctrl)
+	mr.EXPECT().IsLeaf().Return(true)
+	mr.EXPECT().PeekGangs(respool.PendingQueue, limit).Return([]*resmgrsvc.Gang{
+		{
+			Tasks: []*resmgr.Task{
+				{
+					Id: &peloton.TaskID{Value: "pendingqueue-job"},
+				},
+			},
+		},
+	}, nil).Times(1)
+	mr.EXPECT().PeekGangs(respool.NonPreemptibleQueue, limit).Return([]*resmgrsvc.Gang{
+		{
+			Tasks: []*resmgr.Task{
+				{
+					Id: &peloton.TaskID{Value: "npqueue-job"},
+				},
+			},
+		},
+	}, nil).Times(1)
+	mr.EXPECT().PeekGangs(respool.ControllerQueue, limit).Return([]*resmgrsvc.Gang{
+		{
+			Tasks: []*resmgr.Task{
+				{
+					Id: &peloton.TaskID{Value: "controllerqueue-job"},
+				},
+			},
+		},
+	}, nil).Times(1)
+
+	mt := rm.NewMockTree(s.ctrl)
+	mt.EXPECT().Get(respoolID).Return(mr, nil).Times(1)
 
 	req := &resmgrsvc.GetPendingTasksRequest{
-		RespoolID: &peloton.ResourcePoolID{
-			Value: "respool3",
-		},
-		Limit: uint32(1),
+		RespoolID: respoolID,
+		Limit:     limit,
 	}
 
-	resp, err := s.handler.GetPendingTasks(s.context, req)
+	handler := &ServiceHandler{
+		metrics:     NewMetrics(tally.NoopScope),
+		resPoolTree: mt,
+		placements: queue.NewQueue(
+			"placement-queue",
+			reflect.TypeOf(resmgr.Placement{}),
+			maxPlacementQueueSize,
+		),
+		rmTracker: s.rmTaskTracker,
+		config: Config{
+			RmTaskConfig: &rm_task.Config{
+				LaunchingTimeout: 1 * time.Minute,
+				PlacingTimeout:   1 * time.Minute,
+			},
+		},
+	}
+
+	resp, err := handler.GetPendingTasks(s.context, req)
 	s.NoError(err)
 
-	s.Equal(1, len(resp.Tasks))
-	for _, g := range resp.Tasks {
-		s.Equal(2, len(g.TaskID))
-		for i, tid := range g.TaskID {
-			s.Equal(fmt.Sprintf("job2-%d", i+1), tid)
+	s.Equal(3, len(resp.GetPendingGangsByQueue()))
+	for q, gangs := range resp.GetPendingGangsByQueue() {
+		s.Equal(1, len(gangs.GetPendingGangs()))
+		expectedTaskID := ""
+		switch q {
+		case "controller":
+			expectedTaskID = "controllerqueue-job"
+		case "non-preemptible":
+			expectedTaskID = "npqueue-job"
+		case "pending":
+			expectedTaskID = "pendingqueue-job"
+		}
+
+		for _, gang := range gangs.GetPendingGangs() {
+			for _, tid := range gang.GetTaskIDs() {
+				s.Equal(expectedTaskID, tid)
+			}
 		}
 	}
 }

@@ -338,7 +338,7 @@ func (s *resTreeTestSuite) TestPendingQueue() {
 	rt.resPools["respool11"].SetEntitlement(s.getEntitlement())
 	rt.resPools["respool11"].EnqueueGang(makeTaskGang(taskItem2))
 
-	gangList3, err := rt.resPools["respool11"].DequeueGangList(1)
+	gangList3, err := rt.resPools["respool11"].DequeueGangs(1)
 	if err != nil {
 		s.Fail("Dequeue should not fail")
 	}
@@ -353,7 +353,7 @@ func (s *resTreeTestSuite) TestPendingQueue() {
 	s.Equal(t1.JobId.Value, "job1", "Should get Job-1")
 	s.Equal(t1.Id.GetValue(), "job1-1", "Should get Job-1 and Task-1")
 
-	gangList4, err2 := rt.resPools["respool11"].DequeueGangList(1)
+	gangList4, err2 := rt.resPools["respool11"].DequeueGangs(1)
 	if err2 != nil {
 		s.Fail("Dequeue should not fail")
 	}
