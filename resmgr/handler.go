@@ -38,7 +38,6 @@ var (
 	errGangNotEnqueued          = errors.New("Could not enqueue gang to ready after retry")
 	errEnqueuedAgain            = errors.New("enqueued again after retry")
 	errUnplacedTaskInWrongState = errors.New("unplaced task should be in state placing")
-	errEnqueueTaskFailed        = errors.New("enqueue task to resmgr failed")
 	errRequeueTaskFailed        = errors.New("requeue exisiting task to resmgr failed")
 )
 
@@ -853,8 +852,8 @@ func (h *ServiceHandler) GetActiveTasks(
 // order in which they were added up to a max limit number of gangs.
 // Eg specifying a limit of 10 would return pending tasks from the first 10
 // gangs in the queue.
-// The tasks are grouped according to their gang membership since one gang
-// can contain multiple tasks.
+// The tasks are grouped according to their gang membership since a gang is the
+// unit of admission.
 func (h *ServiceHandler) GetPendingTasks(
 	ctx context.Context,
 	req *resmgrsvc.GetPendingTasksRequest,
@@ -863,14 +862,15 @@ func (h *ServiceHandler) GetPendingTasks(
 	respoolID := req.GetRespoolID()
 	limit := req.GetLimit()
 
-	log.WithField("respool_id", respoolID).
-		WithField("limit", limit).
-		Info("GetPendingTasks called")
+	log.WithFields(log.Fields{
+		"respool_id": respoolID,
+		"limit":      limit,
+	}).Info("GetPendingTasks called")
 
 	if respoolID == nil {
 		return &resmgrsvc.GetPendingTasksResponse{},
 			status.Errorf(codes.InvalidArgument,
-				"Resource pool ID can't be nil")
+				"resource pool ID can't be nil")
 	}
 
 	node, err := h.resPoolTree.Get(&peloton.ResourcePoolID{
@@ -878,64 +878,79 @@ func (h *ServiceHandler) GetPendingTasks(
 	if err != nil {
 		return &resmgrsvc.GetPendingTasksResponse{},
 			status.Errorf(codes.NotFound,
-				"Resource pool ID not found:%s", respoolID)
+				"resource pool ID not found:%s", respoolID)
 	}
 
 	if !node.IsLeaf() {
 		return &resmgrsvc.GetPendingTasksResponse{},
 			status.Errorf(codes.InvalidArgument,
-				"Resource pool:%s is not a leaf node", respoolID)
+				"resource pool:%s is not a leaf node", respoolID)
 	}
 
-	tasks, err := h.getPendingTasks(node, req.GetQueue(), limit)
+	// returns a list of pending resmgr.gangs for each queue
+	gangsInQueue, err := h.getPendingGangs(node, limit)
 	if err != nil {
 		return &resmgrsvc.GetPendingTasksResponse{},
 			status.Errorf(codes.Internal,
-				"Failed to return pending tasks, err:%s", err.Error())
+				"failed to return pending tasks, err:%s", err.Error())
 	}
 
-	log.WithField("respool_id", respoolID).
-		WithField("limit", limit).
-		Debug("GetPendingTasks returned")
+	// marshall the response since we only care about task ID's
+	pendingGangs := make(map[string]*resmgrsvc.GetPendingTasksResponse_PendingGangs)
+	for q, gangs := range gangsInQueue {
+		var pendingGang []*resmgrsvc.GetPendingTasksResponse_PendingGang
+		for _, gang := range gangs {
+			var taskIDs []string
+			for _, task := range gang.GetTasks() {
+				taskIDs = append(taskIDs, task.GetId().GetValue())
+			}
+			pendingGang = append(pendingGang,
+				&resmgrsvc.GetPendingTasksResponse_PendingGang{
+					TaskIDs: taskIDs})
+		}
+		pendingGangs[q.String()] = &resmgrsvc.GetPendingTasksResponse_PendingGangs{
+			PendingGangs: pendingGang,
+		}
+	}
+
+	log.WithFields(log.Fields{
+		"respool_id":    respoolID,
+		"limit":         limit,
+		"pending_gangs": pendingGangs,
+	}).Debug("GetPendingTasks returned")
 
 	return &resmgrsvc.GetPendingTasksResponse{
-		Tasks: tasks,
+		PendingGangsByQueue: pendingGangs,
 	}, nil
 }
 
-func (h *ServiceHandler) getPendingTasks(node respool.ResPool,
-	qt resmgrsvc.GetPendingTasksRequest_QueueType, limit uint32) ([]*resmgrsvc.
-	GetPendingTasksResponse_TaskList,
+func (h *ServiceHandler) getPendingGangs(node respool.ResPool,
+	limit uint32) (map[respool.QueueType][]*resmgrsvc.Gang,
 	error) {
-	var tasks []*resmgrsvc.GetPendingTasksResponse_TaskList
 
 	var gangs []*resmgrsvc.Gang
 	var err error
 
-	switch qt {
-	case resmgrsvc.GetPendingTasksRequest_PENDING:
-		gangs, err = node.PeekPendingGangs(limit)
-	case resmgrsvc.GetPendingTasksRequest_CONTROLLER:
-		gangs, err = node.PeekControllerGangs(limit)
+	gangsInQueue := make(map[respool.QueueType][]*resmgrsvc.Gang)
+
+	for _, q := range []respool.QueueType{
+		respool.PendingQueue,
+		respool.NonPreemptibleQueue,
+		respool.ControllerQueue} {
+		gangs, err = node.PeekGangs(q, limit)
+
+		if err != nil {
+			if _, ok := err.(r_queue.ErrorQueueEmpty); ok {
+				// queue is empty, move to the next one
+				continue
+			}
+			return gangsInQueue, errors.Wrap(err, "failed to peek pending gangs")
+		}
+
+		gangsInQueue[q] = gangs
 	}
 
-	if err != nil {
-		if _, ok := err.(r_queue.ErrorQueueEmpty); ok {
-			return tasks, nil
-		}
-		return tasks, errors.Wrap(err, "failed to peek pending gangs")
-	}
-
-	for _, gang := range gangs {
-		var taskIDs []string
-		for _, task := range gang.GetTasks() {
-			taskIDs = append(taskIDs, task.GetId().GetValue())
-		}
-		tasks = append(tasks, &resmgrsvc.GetPendingTasksResponse_TaskList{
-			TaskID: taskIDs,
-		})
-	}
-	return tasks, nil
+	return gangsInQueue, nil
 }
 
 // KillTasks kills the task
@@ -990,23 +1005,23 @@ func (h *ServiceHandler) KillTasks(
 
 	if len(tasksNotFound) != 0 {
 		log.WithField("tasks", tasksNotFound).Error("tasks can't be found")
-		for _, t := range tasksNotFound {
+		for _, task := range tasksNotFound {
 			killResponseErr = append(killResponseErr,
 				&resmgrsvc.KillTasksResponse_Error{
 					NotFound: &resmgrsvc.TasksNotFound{
 						Message: "Tasks Not Found",
-						Task:    t,
+						Task:    task,
 					},
 				})
 		}
 	} else {
 		log.WithField("tasks", tasksNotKilled).Error("tasks can't be killed")
-		for _, t := range tasksNotKilled {
+		for _, task := range tasksNotKilled {
 			killResponseErr = append(killResponseErr,
 				&resmgrsvc.KillTasksResponse_Error{
 					KillError: &resmgrsvc.KillTasksError{
 						Message: "Tasks can't be killed",
-						Task:    t,
+						Task:    task,
 					},
 				})
 		}

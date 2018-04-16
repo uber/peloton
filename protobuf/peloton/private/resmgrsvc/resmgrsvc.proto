@@ -86,7 +86,7 @@ service ResourceManagerService {
   * Eg specifying a limit of 10 would return pending tasks from the first 10
   * gangs in the queue.
   * The tasks are grouped according to their gang membership since one gang
-  * can contain multiple tasks is the unit of scheduling.
+  * can contain multiple tasks and it is the unit of scheduling.
   */
   rpc GetPendingTasks(GetPendingTasksRequest) returns (GetPendingTasksResponse);
 
@@ -345,17 +345,10 @@ message GetActiveTasksResponse {
 // Returns the pending tasks in a resource pool in the order in which they
 // will be processed, grouped by the gang in which they belong.
 message GetPendingTasksRequest {
-  enum QueueType {
-    PENDING = 0;
-    CONTROLLER = 1;
-  }
   // respoolID of the pool
   api.peloton.ResourcePoolID respoolID = 1;
   // limit is the number of gangs to be returned.
   uint32 limit = 2;
-
-  // the queue from which the pending tasks are returned. Defaults to PENDING
-  QueueType queue = 3;
 }
 
 /**
@@ -367,12 +360,18 @@ message GetPendingTasksRequest {
  *    INTERNAL:             if failed to get pending tasks because of internal errors.
  */
 message GetPendingTasksResponse {
-  message TaskList {
-    repeated string taskID = 1;
+  // List of pending tasks IDs in a gang
+  message PendingGang {
+    repeated string taskIDs = 1;
   }
 
-  // This will return a map from gang to tasks inside the gang
-  repeated TaskList tasks = 2;
+  // List of pending gangs
+  message PendingGangs {
+    repeated PendingGang pendingGangs = 1;
+  }
+
+  // This will return a map from queue type to the pending gangs
+  map <string, PendingGangs> pendingGangsByQueue = 2;
 }
 
 message KillTasksRequest {

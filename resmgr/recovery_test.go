@@ -216,7 +216,7 @@ func (suite *recoveryTestSuite) getQueueContent(
 		node, err := suite.resourceTree.Get(&respoolID)
 		suite.NoError(err)
 		node.SetEntitlement(suite.getEntitlement())
-		dequeuedGangs, err := node.DequeueGangList(1)
+		dequeuedGangs, err := node.DequeueGangs(1)
 		suite.NoError(err)
 
 		if len(dequeuedGangs) == 0 {

@@ -81,30 +81,45 @@ func (suite *resmgrActionsTestSuite) TestClient_GetPendingTasks() {
 		ctx:          suite.ctx,
 	}
 
-	pTasks := make([]*resmgrsvc.GetPendingTasksResponse_TaskList, 2)
-	tk1 := []string{"job-1-1", "job-1-2"}
-	pTasks[0] = &resmgrsvc.GetPendingTasksResponse_TaskList{
-		TaskID: tk1,
+	pGangs := make(map[string]*resmgrsvc.
+		GetPendingTasksResponse_PendingGangs, 2)
+
+	var pGang1 []*resmgrsvc.GetPendingTasksResponse_PendingGang
+	pGang1 = append(
+		pGang1,
+		&resmgrsvc.GetPendingTasksResponse_PendingGang{
+			TaskIDs: []string{"job-1-1", "job-1-2"},
+		},
+	)
+	var pGang2 []*resmgrsvc.GetPendingTasksResponse_PendingGang
+	pGang2 = append(
+		pGang2,
+		&resmgrsvc.GetPendingTasksResponse_PendingGang{
+			TaskIDs: []string{"job-2-1", "job-2-2"},
+		},
+	)
+	pGangs["pending"] = &resmgrsvc.GetPendingTasksResponse_PendingGangs{
+		PendingGangs: pGang1,
 	}
-	tk2 := []string{"job-2-1", "job-2-2"}
-	pTasks[1] = &resmgrsvc.GetPendingTasksResponse_TaskList{
-		TaskID: tk2,
+	pGangs["non-preemptible"] = &resmgrsvc.GetPendingTasksResponse_PendingGangs{
+		PendingGangs: pGang1,
 	}
+
 	resp := &resmgrsvc.GetPendingTasksResponse{
-		Tasks: pTasks,
+		PendingGangsByQueue: pGangs,
 	}
 
 	suite.mockRes.EXPECT().
 		GetPendingTasks(gomock.Any(), gomock.Any()).
 		Return(resp, nil)
 
-	err := c.ResMgrGetPendingTasks("respool-1", 10, "pending")
+	err := c.ResMgrGetPendingTasks("respool-1", 10)
 	suite.NoError(err)
 
 	suite.mockRes.EXPECT().
 		GetPendingTasks(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("fake res error"))
 
-	err = c.ResMgrGetPendingTasks("respool-1", 10, "pending")
+	err = c.ResMgrGetPendingTasks("respool-1", 10)
 	suite.Error(err)
 }

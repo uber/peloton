@@ -21,15 +21,33 @@ var (
 		"skipping non-preemptible gang from admitting")
 )
 
-// defines the different queues of the resource pool from which the gangs are
-// admitted.
-type queueType int
+// QueueType defines the different queues of the resource pool from which
+// the gangs are admitted.
+type QueueType int
 
 const (
-	controllerQueue queueType = iota + 1
-	pendingQueue
-	nonPreemptibleQueue
+	// PendingQueue is the default queue for all incoming gangs
+	PendingQueue QueueType = iota + 1
+	// ControllerQueue is the queue for controller gangs
+	ControllerQueue
+	// NonPreemptibleQueue is the queue for non preemptible gangs
+	NonPreemptibleQueue
 )
+
+// String returns the queue name
+func (qt QueueType) String() string {
+	switch qt {
+	case NonPreemptibleQueue:
+		return "non-preemptible"
+	case PendingQueue:
+		return "pending"
+	case ControllerQueue:
+		return "controller"
+	}
+
+	// should never come here
+	return "undefined"
+}
 
 // returns true if the gang can be admitted to the pool
 type admitter func(gang *resmgrsvc.Gang, pool *resPool) bool
@@ -128,7 +146,7 @@ var admission = admissionController{
 // Returns an error if there was some error in the admission control
 func (ac admissionController) TryAdmit(
 	gang *resmgrsvc.Gang,
-	pool *resPool, qt queueType) error {
+	pool *resPool, qt QueueType) error {
 
 	pool.Lock()
 	defer pool.Unlock()
@@ -144,7 +162,7 @@ func (ac admissionController) TryAdmit(
 	}
 
 	if admitted := ac.canAdmit(gang, pool); !admitted {
-		if qt == pendingQueue {
+		if qt == PendingQueue {
 			// If a gang can't be admitted from the pending queue to the resource
 			// pool, then if:
 			// 1. Its a non-preemptible task it is moved to the non-preemptible
@@ -155,14 +173,14 @@ func (ac admissionController) TryAdmit(
 				// only move to non preemptible queue iff both are true
 				// 1. its a non preemptible gang
 				// 2. preemption is enabled
-				err := ac.moveToQueue(pool, nonPreemptibleQueue, gang)
+				err := ac.moveToQueue(pool, NonPreemptibleQueue, gang)
 				if err != nil {
 					return err
 				}
 				return errSkipNonPreemptibleGang
 			}
 			if isController(gang) {
-				err = ac.moveToQueue(pool, controllerQueue, gang)
+				err = ac.moveToQueue(pool, ControllerQueue, gang)
 				if err != nil {
 					return err
 				}
@@ -184,7 +202,7 @@ func (ac admissionController) TryAdmit(
 }
 
 // moves the gang from the pending queue to one of controller queue or np queue.
-func (ac admissionController) moveToQueue(pool *resPool, qt queueType,
+func (ac admissionController) moveToQueue(pool *resPool, qt QueueType,
 	gang *resmgrsvc.Gang) error {
 	err := pool.pendingQueue.Remove(gang)
 	if err != nil {
@@ -205,7 +223,7 @@ func (ac admissionController) moveToQueue(pool *resPool, qt queueType,
 // Returns true if the gang is valid and ready for admission control,
 // false if the gang is invalid and an optional error if the validation failed.
 func (ac admissionController) validateGang(gang *resmgrsvc.Gang,
-	pool *resPool, qt queueType) (bool,
+	pool *resPool, qt QueueType) (bool,
 	error) {
 
 	// return false if gang is nil

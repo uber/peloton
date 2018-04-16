@@ -140,10 +140,10 @@ func (s *scheduler) scheduleTasks() {
 	nodes := s.resPoolTree.GetAllNodes(true)
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		// DequeueGangList checks the entitlement for the
+		// DequeueGangs checks the entitlement for the
 		// resource pool and takes the decision if we can
 		// dequeue gang or not based on resource availability.
-		gangList, err := n.DequeueGangList(dequeueGangLimit)
+		gangList, err := n.DequeueGangs(dequeueGangLimit)
 		if err != nil {
 			log.WithError(err).
 				WithField("respool_id", n.ID()).
