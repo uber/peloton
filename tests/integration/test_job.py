@@ -16,7 +16,7 @@ def test__create_batch_job():
 
 @pytest.mark.smoketest
 def test__create_job():
-    job = Job()
+    job = Job(config=IntegrationTestConfig(max_retry_attempts=100))
     job.create()
     job.wait_for_state()
 
