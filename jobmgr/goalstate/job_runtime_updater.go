@@ -355,7 +355,11 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	jobRuntime.State = jobState
 	if util.IsPelotonJobStateTerminal(jobState) {
-		completionTime := ""
+		// In case a job moved from PENDING/INITIALIZED to KILLED state,
+		// the lastTaskUpdateTime will be 0. In this case, we will use
+		// time.Now() as default completion time since a job in terminal
+		// state should always have a completion time
+		completionTime := time.Now().UTC().Format(time.RFC3339Nano)
 		lastTaskUpdateTime := cachedJob.GetLastTaskUpdateTime()
 		if lastTaskUpdateTime != 0 {
 			completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
