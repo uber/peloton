@@ -215,17 +215,19 @@ func (h *Handler) WaitForEvents(
 func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 	h.clientPurgeOffsets[clientName] = purgeOffset
 	var minPurgeOffset uint64
+	var clientWithMinPurgeOffset string
 	minPurgeOffset = math.MaxUint64
-	for _, p := range h.clientPurgeOffsets {
+	for c, p := range h.clientPurgeOffsets {
 		if minPurgeOffset > p {
 			minPurgeOffset = p
+			clientWithMinPurgeOffset = c
 		}
 	}
 	head, tail := h.circularBuffer.GetRange()
 	if minPurgeOffset >= tail && minPurgeOffset <= head {
 		purgedItems, err := h.circularBuffer.MoveTail(minPurgeOffset)
 		if err != nil {
-			log.WithField("minPurgeOffset", minPurgeOffset).Error("Invalid minPurgeOffset")
+			log.WithField("min_purge_offset", minPurgeOffset).Error("Invalid minPurgeOffset")
 			h.metrics.PurgeEventError.Inc(1)
 		} else {
 			if h.purgedEventProcessor != nil {
@@ -234,9 +236,10 @@ func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 		}
 	} else {
 		log.WithFields(log.Fields{
-			"minPurgeOffset": minPurgeOffset,
-			"tail":           tail,
-			"head":           head,
+			"min_purge_offset":           minPurgeOffset,
+			"client_with_min_purge_offset": clientWithMinPurgeOffset,
+			"tail": tail,
+			"head": head,
 		}).Error("minPurgeOffset incorrect")
 		h.metrics.PurgeEventError.Inc(1)
 	}

@@ -44,6 +44,9 @@ type Client struct {
 	clientName string
 	// the stream id of the event stream
 	streamID string
+	// previousSeverPurgeOffset is the purge offset
+	// stores on the handler for the client when client inits
+	previousSeverPurgeOffset uint64
 	// beginOffset of the next pull event request
 	beginOffset uint64
 	// event purge offset to be send to the event stream handler
@@ -166,6 +169,7 @@ func (c *Client) initStream(clientName string) {
 		}
 		c.streamID = response.StreamID
 		c.beginOffset = response.PreviousPurgeOffset
+		c.previousSeverPurgeOffset = response.PreviousPurgeOffset
 		if response.PreviousPurgeOffset < response.MinOffset {
 			log.WithField("previous_purge_offset", response.PreviousPurgeOffset).
 				WithField("min_offset", response.MinOffset).
@@ -188,6 +192,11 @@ func (c *Client) sendWaitEventRequest(
 	purgeOffset = c.eventHandler.GetEventProgress() + 1
 	if purgeOffset > beginOffset {
 		purgeOffset = beginOffset
+	}
+	// This could happen before client processes the first event
+	// where c.eventHandler.GetEventProgress() returns 0.
+	if c.previousSeverPurgeOffset > purgeOffset {
+		purgeOffset = c.previousSeverPurgeOffset
 	}
 	c.metrics.WaitForEventsAPI.Inc(1)
 	c.metrics.PurgeOffset.Update(float64(purgeOffset))
