@@ -236,7 +236,7 @@ func (h *Handler) purgeEvents(clientName string, purgeOffset uint64) {
 		}
 	} else {
 		log.WithFields(log.Fields{
-			"min_purge_offset":           minPurgeOffset,
+			"min_purge_offset":             minPurgeOffset,
 			"client_with_min_purge_offset": clientWithMinPurgeOffset,
 			"tail": tail,
 			"head": head,

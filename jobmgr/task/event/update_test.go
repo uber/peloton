@@ -16,6 +16,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -531,7 +532,6 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 	defer suite.ctrl.Finish()
 
-	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
 	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
 	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
 	taskInfo.GetRuntime().CompletionTime = _currentTime
@@ -539,24 +539,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob)
-	cachedJob.EXPECT().
-		SetTaskUpdateTime(gomock.Any()).Return()
-	cachedJob.EXPECT().
-		UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*task.RuntimeInfo, req cached.UpdateRequest) {
-			runtime := runtimes[_instanceID]
-			suite.Equal(
-				runtime.State,
-				task.TaskState_RUNNING,
-			)
-			suite.Equal(
-				runtime.CompletionTime,
-				"",
-			)
-		}).
-		Return(nil)
-	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
+	suite.mockTrackedManager.EXPECT().
+		UpdateJobUpdateTime(taskInfo.GetJobId(), event.MesosTaskStatus.Timestamp)
+	suite.mockTrackedManager.EXPECT().
+		UpdateTaskRuntime(context.Background(), taskInfo.GetJobId(), taskInfo.GetInstanceId(), gomock.Any(), tracked.UpdateAndSchedule).
+		Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pb_task.RuntimeInfo, req tracked.UpdateRequest) {
+			suite.Equal(runtime.CompletionTime, "")
+		})
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 
