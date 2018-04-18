@@ -77,7 +77,7 @@ type recoveryHandler struct {
 	handler         *ServiceHandler
 	config          Config
 	nonRunningTasks []*resmgrsvc.EnqueueGangsRequest
-	finished        chan bool
+	finished        chan bool //used for testing
 }
 
 // InitRecovery initializes the recoveryHandler
