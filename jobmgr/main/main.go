@@ -318,7 +318,6 @@ func main() {
 		jobFactory,
 		goalStateDriver,
 		common.PelotonResourceManager, // TODO: to be removed
-		cfg.JobManager.JobSvcCfg,
 	)
 	tasksvc.InitServiceHandler(
 		dispatcher,

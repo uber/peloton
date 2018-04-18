@@ -15,10 +15,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 )
 
-const (
-	maxTasksPerJob = 100000
-)
-
 type TaskConfigTestSuite struct {
 	suite.Suite
 	jobID *peloton.JobID
@@ -62,7 +58,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 		DefaultConfig: &taskConfig,
 	}
 
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	err := ValidateTaskConfig(&jobConfig)
 	suite.NoError(err)
 
 	// No error if all instance configs exist
@@ -75,7 +71,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigSuccess() {
 		InstanceCount:  10,
 		InstanceConfig: instances,
 	}
-	err = ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	err = ValidateTaskConfig(&jobConfig)
 	suite.NoError(err)
 }
 
@@ -98,16 +94,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailure() {
 		InstanceCount:  20,
 		InstanceConfig: instances,
 	}
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
-	suite.Error(err)
-}
-
-func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxTasksPerJob() {
-	jobConfig := job.JobConfig{
-		Name:          fmt.Sprintf("TestJob_1"),
-		InstanceCount: maxTasksPerJob + 1,
-	}
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	err := ValidateTaskConfig(&jobConfig)
 	suite.Error(err)
 }
 
@@ -143,7 +130,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxInstances() {
 		DefaultConfig: &taskConfig,
 	}
 
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	err := ValidateTaskConfig(&jobConfig)
 	suite.Error(err)
 }
 
@@ -179,7 +166,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMinInstances() {
 		DefaultConfig: &taskConfig,
 	}
 
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	err := ValidateTaskConfig(&jobConfig)
 	suite.Error(err)
 }
 
@@ -203,7 +190,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureForPortConfig() {
 		DefaultConfig: &taskConfig,
 	}
 
-	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	err := ValidateTaskConfig(&jobConfig)
 	suite.Error(err)
 }
 
