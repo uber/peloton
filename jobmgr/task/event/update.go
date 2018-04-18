@@ -326,7 +326,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	// Update task start and completion timestamps
 	switch runtime.State {
 	case pb_task.TaskState_RUNNING:
+		// CompletionTime may have been set (e.g. task has been set),
+		// which could make StartTime larger than CompletionTime.
+		// Reset CompletionTime every time a task transits to RUNNING state.
 		runtime.StartTime = now().UTC().Format(time.RFC3339Nano)
+		runtime.CompletionTime = ""
 	case pb_task.TaskState_SUCCEEDED,
 		pb_task.TaskState_FAILED,
 		pb_task.TaskState_KILLED:

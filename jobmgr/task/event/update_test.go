@@ -528,6 +528,38 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		suite.testScope.Snapshot().Counters()["status_updater.tasks_running_total+"].Value())
 }
 
+func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
+	defer suite.ctrl.Finish()
+
+	cachedJob := cachedmocks.NewMockJob(suite.ctrl)
+	event := createTestTaskUpdateEvent(mesos.TaskState_TASK_RUNNING)
+	taskInfo := createTestTaskInfo(task.TaskState_FAILED)
+	taskInfo.GetRuntime().CompletionTime = _currentTime
+
+	suite.mockTaskStore.EXPECT().
+		GetTaskByID(context.Background(), _pelotonTaskID).
+		Return(taskInfo, nil)
+	suite.jobFactory.EXPECT().AddJob(_pelotonJobID).Return(cachedJob)
+	cachedJob.EXPECT().
+		SetTaskUpdateTime(gomock.Any()).Return()
+	cachedJob.EXPECT().
+		UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(ctx context.Context, runtimes map[uint32]*task.RuntimeInfo, req cached.UpdateRequest) {
+			runtime := runtimes[_instanceID]
+			suite.Equal(
+				runtime.State,
+				task.TaskState_RUNNING,
+			)
+			suite.Equal(
+				runtime.CompletionTime,
+				"",
+			)
+		}).
+		Return(nil)
+	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
+	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
+}
+
 func (suite *TaskUpdaterTestSuite) TestUpdaterProcessListeners() {
 	defer suite.ctrl.Finish()
 
