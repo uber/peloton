@@ -43,7 +43,8 @@ var (
 		pb_job.JobState_RUNNING,
 		pb_job.JobState_KILLING,
 		// Get failed and killed jobs in-case service jobs need to be restarted
-		pb_job.JobState_FAILED,
+		// TODO(apoorvaj): Uncomment this after archiver has been put in to delete old jobs.
+		// pb_job.JobState_FAILED,
 		pb_job.JobState_UNKNOWN,
 	}
 )

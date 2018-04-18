@@ -66,6 +66,7 @@ func TestManagerSetAndClearJob(t *testing.T) {
 func TestRecoverJobStates(t *testing.T) {
 	var jobStatesNotRecover = []pb_job.JobState{
 		pb_job.JobState_SUCCEEDED,
+		pb_job.JobState_FAILED,
 		pb_job.JobState_KILLED,
 	}
 
