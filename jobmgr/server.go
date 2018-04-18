@@ -4,12 +4,12 @@ import (
 	"sync"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/updatesvc"
 	"code.uber.internal/infra/peloton/leader"
 	log "github.com/sirupsen/logrus"
@@ -28,9 +28,9 @@ type Server struct {
 	getStatusUpdate   func() event.StatusUpdate
 	getStatusUpdateRM func() event.StatusUpdateRM
 
-	jobFactory         cached.JobFactory
 	taskPreemptor      preemptor.Preemptor
-	goalstateDriver    goalstate.Driver
+	goalstateEngine    goalstate.Engine
+	trackedManager     tracked.Manager
 	deadlineTracker    deadline.Tracker
 	updateManager      updatesvc.Manager
 	placementProcessor placement.Processor
@@ -39,8 +39,8 @@ type Server struct {
 // NewServer creates a job manager Server instance.
 func NewServer(
 	httpPort, grpcPort int,
-	jobFactory cached.JobFactory,
-	goalstateDriver goalstate.Driver,
+	goalstateEngine goalstate.Engine,
+	trackedManager tracked.Manager,
 	taskPreemptor preemptor.Preemptor,
 	deadlineTracker deadline.Tracker,
 	updateManager updatesvc.Manager,
@@ -52,9 +52,9 @@ func NewServer(
 		role:               common.JobManagerRole,
 		getStatusUpdate:    event.GetStatusUpdater,
 		getStatusUpdateRM:  event.GetStatusUpdaterRM,
-		jobFactory:         jobFactory,
 		taskPreemptor:      taskPreemptor,
-		goalstateDriver:    goalstateDriver,
+		goalstateEngine:    goalstateEngine,
+		trackedManager:     trackedManager,
 		deadlineTracker:    deadlineTracker,
 		updateManager:      updateManager,
 		placementProcessor: placementProcessor,
@@ -67,10 +67,10 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 
-	s.jobFactory.Start()
 	s.getStatusUpdateRM().Start()
 	s.taskPreemptor.Start()
-	s.goalstateDriver.Start()
+	s.goalstateEngine.Start()
+	s.trackedManager.Start()
 	s.placementProcessor.Start()
 	s.deadlineTracker.Start()
 	s.updateManager.Start()
@@ -85,12 +85,12 @@ func (s *Server) LostLeadershipCallback() error {
 
 	log.WithField("role", s.role).Info("Lost leadership")
 
-	s.jobFactory.Stop()
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
 	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
-	s.goalstateDriver.Stop()
+	s.goalstateEngine.Stop()
+	s.trackedManager.Stop()
 	s.deadlineTracker.Stop()
 	s.updateManager.Stop()
 
@@ -102,12 +102,12 @@ func (s *Server) ShutDownCallback() error {
 
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
 
-	s.jobFactory.Stop()
 	s.getStatusUpdate().Stop()
 	s.getStatusUpdateRM().Stop()
 	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
-	s.goalstateDriver.Stop()
+	s.goalstateEngine.Stop()
+	s.trackedManager.Stop()
 	s.deadlineTracker.Stop()
 
 	return nil

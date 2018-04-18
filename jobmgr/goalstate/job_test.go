@@ -1,128 +1,88 @@
 package goalstate
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 
 	"github.com/golang/mock/gomock"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 )
 
-func TestJobStateAndGoalState(t *testing.T) {
+func TestEngineSuggestActionJobGoalState(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
+	e := NewEngine(Config{}, nil, tally.NoopScope).(*engine)
 
-	goalStateDriver := &driver{
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
+	jobMock := mocks.NewMockJob(ctrl)
+
+	jobRuntime := &job.RuntimeInfo{
+		State:     job.JobState_INITIALIZED,
+		GoalState: job.JobState_SUCCEEDED,
 	}
-	goalStateDriver.cfg.normalize()
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	action, err := e.suggestJobAction(jobMock)
+	assert.NoError(t, err)
+	assert.Equal(t, tracked.JobCreateTasks, action)
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	jobRuntime.State = job.JobState_SUCCEEDED
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	action, err = e.suggestJobAction(jobMock)
+	assert.NoError(t, err)
+	assert.Equal(t, tracked.JobUntrackAction, action)
 
-	jobEnt := &jobEntity{
-		id:     jobID,
-		driver: goalStateDriver,
+	jobRuntime.GoalState = job.JobState_KILLED
+	jobRuntime.State = job.JobState_RUNNING
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	action, err = e.suggestJobAction(jobMock)
+	assert.NoError(t, err)
+	assert.Equal(t, tracked.JobKill, action)
+
+	jobRuntime.State = job.JobState_RUNNING
+	jobRuntime.GoalState = job.JobState_SUCCEEDED
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	action, err = e.suggestJobAction(jobMock)
+	assert.NoError(t, err)
+	assert.Equal(t, tracked.JobNoAction, action)
+}
+
+func TestEngineProcessJob(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobMock := mocks.NewMockJob(ctrl)
+	managerMock := mocks.NewMockManager(ctrl)
+
+	e := &engine{
+		trackedManager: managerMock,
 	}
+	e.cfg.normalize()
 
-	runtime := &job.RuntimeInfo{
-		State:     job.JobState_RUNNING,
+	jobRuntime := &job.RuntimeInfo{
+		State:     job.JobState_INITIALIZED,
 		GoalState: job.JobState_SUCCEEDED,
 	}
 
-	// Test fetching the entity ID
-	assert.Equal(t, jobID.GetValue(), jobEnt.GetID())
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	jobMock.EXPECT().RunAction(gomock.Any(), tracked.JobCreateTasks).Return(false, nil)
+	jobMock.EXPECT().JobRuntimeUpdater(gomock.Any()).Return(false, nil)
+	jobMock.EXPECT().EvaluateMaxRunningInstancesSLA(gomock.Any()).Return(false, nil)
+	jobMock.EXPECT().ClearJobRuntime()
+	jobMock.EXPECT().SetLastDelay(gomock.Any()).Return()
+	managerMock.EXPECT().ScheduleJob(jobMock, gomock.Any())
+	e.processJob(jobMock)
 
-	// Test fetching the entity state
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetRuntime(context.Background()).Return(runtime, nil)
-
-	actState := jobEnt.GetState()
-	assert.Equal(t, runtime.State, actState.(job.JobState))
-
-	// Test fetching the entity goal state
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetRuntime(context.Background()).Return(runtime, nil)
-
-	actGoalState := jobEnt.GetGoalState()
-	assert.Equal(t, runtime.State, actState.(job.JobState))
-
-	// Fetching job runtime gives an error
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetRuntime(context.Background()).Return(nil, fmt.Errorf("fake error"))
-
-	actState = jobEnt.GetState()
-	assert.Equal(t, job.JobState_UNKNOWN, actState.(job.JobState))
-
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetRuntime(context.Background()).Return(nil, fmt.Errorf("fake error"))
-
-	actGoalState = jobEnt.GetGoalState()
-	assert.Equal(t, job.JobState_UNKNOWN, actGoalState.(job.JobState))
-}
-
-func TestJobGetActionList(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	jobEnt := &jobEntity{
-		id: jobID,
-	}
-	_, _, actions := jobEnt.GetActionList(job.JobState_UNKNOWN, job.JobState_UNKNOWN)
-	assert.Equal(t, 1, len(actions))
-
-	_, _, actions = jobEnt.GetActionList(job.JobState_SUCCEEDED, job.JobState_SUCCEEDED)
-	assert.Equal(t, 1, len(actions))
-
-	_, _, actions = jobEnt.GetActionList(job.JobState_RUNNING, job.JobState_SUCCEEDED)
-	assert.Equal(t, 3, len(actions))
-
-	_, _, actions = jobEnt.GetActionList(job.JobState_RUNNING, job.JobState_KILLED)
-	assert.Equal(t, 4, len(actions))
-}
-
-func TestEngineJobSuggestAction(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	jobEnt := &jobEntity{
-		id: jobID,
-	}
-
-	a := jobEnt.suggestJobAction(job.JobState_INITIALIZED, job.JobState_SUCCEEDED)
-	assert.Equal(t, CreateTasksAction, a)
-
-	a = jobEnt.suggestJobAction(job.JobState_SUCCEEDED, job.JobState_SUCCEEDED)
-	assert.Equal(t, UntrackAction, a)
-
-	a = jobEnt.suggestJobAction(job.JobState_RUNNING, job.JobState_KILLED)
-	assert.Equal(t, KillAction, a)
-
-	a = jobEnt.suggestJobAction(job.JobState_RUNNING, job.JobState_SUCCEEDED)
-	assert.Equal(t, NoJobAction, a)
+	// Simulate runtime updater returning a fake error.
+	jobMock.EXPECT().GetJobRuntime(gomock.Any()).Return(jobRuntime, nil)
+	jobMock.EXPECT().RunAction(gomock.Any(), tracked.JobCreateTasks).Return(false, nil)
+	jobMock.EXPECT().JobRuntimeUpdater(gomock.Any()).Return(false, fmt.Errorf("fake error"))
+	jobMock.EXPECT().ClearJobRuntime()
+	managerMock.EXPECT().ScheduleJob(jobMock, gomock.Any())
+	e.processJob(jobMock)
 }

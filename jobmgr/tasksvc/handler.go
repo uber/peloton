@@ -22,12 +22,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/log_manager"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -49,8 +48,7 @@ func InitServiceHandler(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
-	jobFactory cached.JobFactory,
-	goalStateDriver goalstate.Driver,
+	trackedManager tracked.Manager,
 	mesosAgentWorkDir string) {
 
 	handler := &serviceHandler{
@@ -61,8 +59,7 @@ func InitServiceHandler(
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		httpClient:         &http.Client{Timeout: _httpClientTimeout},
 		taskLauncher:       launcher.GetLauncher(),
-		jobFactory:         jobFactory,
-		goalStateDriver:    goalStateDriver,
+		trackedManager:     trackedManager,
 		mesosAgentWorkDir:  mesosAgentWorkDir,
 	}
 	d.Register(task.BuildTaskManagerYARPCProcedures(handler))
@@ -77,8 +74,7 @@ type serviceHandler struct {
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
 	httpClient         *http.Client
 	taskLauncher       launcher.Launcher
-	jobFactory         cached.JobFactory
-	goalStateDriver    goalstate.Driver
+	trackedManager     tracked.Manager
 	mesosAgentWorkDir  string
 }
 
@@ -302,12 +298,7 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 		return &task.RefreshResponse{}, yarpcerrors.NotFoundErrorf("tasks not found")
 	}
 
-	cachedJob := m.jobFactory.AddJob(req.GetJobId())
-	cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
-	for instID := range runtimes {
-		m.goalStateDriver.EnqueueTask(req.GetJobId(), instID, time.Now())
-	}
-
+	m.trackedManager.SetTasks(req.GetJobId(), runtimes, tracked.UpdateAndSchedule)
 	m.metrics.TaskRefresh.Inc(1)
 	return &task.RefreshResponse{}, nil
 }
@@ -455,8 +446,7 @@ func (m *serviceHandler) Start(
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
 
-	cachedJob := m.jobFactory.AddJob(body.GetJobId())
-	err = cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheAndDB)
+	err = m.trackedManager.UpdateTaskRuntimes(ctx, body.GetJobId(), runtimes, tracked.UpdateAndSchedule)
 	if err != nil {
 		log.WithError(err).
 			WithField("runtimes", runtimes).
@@ -467,10 +457,6 @@ func (m *serviceHandler) Start(
 	} else {
 		startedInstanceIds = instanceIds
 		m.metrics.TaskStart.Inc(1)
-	}
-
-	for _, instID := range startedInstanceIds {
-		m.goalStateDriver.EnqueueTask(body.GetJobId(), instID, time.Now())
 	}
 
 	if err != nil {
@@ -532,14 +518,7 @@ func (m *serviceHandler) stopJob(
 	}
 
 	jobRuntime.GoalState = pb_job.JobState_KILLED
-	jobInfo := &pb_job.JobInfo{
-		Id:      jobID,
-		Config:  jobConfig,
-		Runtime: jobRuntime,
-	}
-	cachedJob := m.jobFactory.AddJob(jobID)
-
-	err = cachedJob.Update(ctx, jobInfo, cached.UpdateCacheAndDB)
+	err = m.trackedManager.UpdateJobRuntime(ctx, jobID, jobRuntime, jobConfig)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
@@ -554,9 +533,6 @@ func (m *serviceHandler) stopJob(
 			InvalidInstanceIds: instanceList,
 		}, nil
 	}
-
-	m.goalStateDriver.EnqueueJob(jobID, time.Now())
-
 	m.metrics.TaskStop.Inc(int64(instanceCount))
 	return &task.StopResponse{
 		StoppedInstanceIds: instanceList,
@@ -636,8 +612,7 @@ func (m *serviceHandler) Stop(
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
 
-	cachedJob := m.jobFactory.AddJob(body.GetJobId())
-	err = cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheAndDB)
+	err = m.trackedManager.UpdateTaskRuntimes(ctx, body.GetJobId(), runtimes, tracked.UpdateAndSchedule)
 	if err != nil {
 		log.WithError(err).
 			WithField("runtimes", runtimes).
@@ -648,10 +623,6 @@ func (m *serviceHandler) Stop(
 	} else {
 		stoppedInstanceIds = instanceIds
 		m.metrics.TaskStop.Inc(1)
-	}
-
-	for _, instID := range stoppedInstanceIds {
-		m.goalStateDriver.EnqueueTask(body.GetJobId(), instID, time.Now())
 	}
 
 	if err != nil {

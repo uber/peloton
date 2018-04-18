@@ -1,4 +1,4 @@
-package goalstate
+package tracked
 
 import (
 	"context"
@@ -6,13 +6,10 @@ import (
 	"reflect"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
-	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/common/taskconfig"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
@@ -20,15 +17,15 @@ import (
 
 // taskStatesAfterStart is the set of Peloton task states which
 // indicate a task is being or has already been started.
-var taskStatesAfterStart = []task.TaskState{
-	task.TaskState_STARTING,
-	task.TaskState_RUNNING,
-	task.TaskState_SUCCEEDED,
-	task.TaskState_FAILED,
-	task.TaskState_LOST,
-	task.TaskState_PREEMPTING,
-	task.TaskState_KILLING,
-	task.TaskState_KILLED,
+var taskStatesAfterStart = []pb_task.TaskState{
+	pb_task.TaskState_STARTING,
+	pb_task.TaskState_RUNNING,
+	pb_task.TaskState_SUCCEEDED,
+	pb_task.TaskState_FAILED,
+	pb_task.TaskState_LOST,
+	pb_task.TaskState_PREEMPTING,
+	pb_task.TaskState_KILLING,
+	pb_task.TaskState_KILLED,
 }
 
 // taskStatesScheduled is the set of Peloton task states which
@@ -36,17 +33,17 @@ var taskStatesAfterStart = []task.TaskState{
 // placed by the resource manager, and has not reached a terminal state.
 // It will be used to determine which tasks in DB (or cache) have not yet
 // been sent to resource manager for getting placed.
-var taskStatesScheduled = []task.TaskState{
-	task.TaskState_RUNNING,
-	task.TaskState_PENDING,
-	task.TaskState_LAUNCHED,
-	task.TaskState_READY,
-	task.TaskState_PLACING,
-	task.TaskState_PLACED,
-	task.TaskState_LAUNCHING,
-	task.TaskState_STARTING,
-	task.TaskState_PREEMPTING,
-	task.TaskState_KILLING,
+var taskStatesScheduled = []pb_task.TaskState{
+	pb_task.TaskState_RUNNING,
+	pb_task.TaskState_PENDING,
+	pb_task.TaskState_LAUNCHED,
+	pb_task.TaskState_READY,
+	pb_task.TaskState_PLACING,
+	pb_task.TaskState_PLACED,
+	pb_task.TaskState_LAUNCHING,
+	pb_task.TaskState_STARTING,
+	pb_task.TaskState_PREEMPTING,
+	pb_task.TaskState_KILLING,
 }
 
 // formatTime converts a Unix timestamp to a string format of the
@@ -61,39 +58,35 @@ func formatTime(timestamp float64, layout string) string {
 	return time.Unix(seconds, nanoSec).UTC().Format(layout)
 }
 
-// JobEvaluateMaxRunningInstancesSLA evaluates the maximum running instances job SLA
-// and determines instances to start if any.
-func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Entity) error {
-	id := entity.GetID()
-	jobID := &peloton.JobID{Value: id}
-	goalStateDriver := entity.(*jobEntity).driver
-	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
-
+// EvaluateMaxRunningInstancesSLA evaluates the maximum running instances job SLA
+// and determines instances to start if any. Returns true in the boolean
+// if it needs to be run again and error if any.
+func (j *job) EvaluateMaxRunningInstancesSLA(ctx context.Context) (bool, error) {
 	// TODO SLA is stored in cache. Fetch from cache instead of DB.
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
+	jobConfig, err := j.m.jobStore.GetJobConfig(ctx, j.ID())
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id).
+			WithField("job_id", j.ID().GetValue()).
 			Error("failed to get job config in start instances")
-		return err
+		return true, err
 	}
 
 	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
 	if maxRunningInstances == 0 {
-		return nil
+		return false, nil
 	}
 
-	runtime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobID)
+	runtime, err := j.m.jobStore.GetJobRuntime(ctx, j.ID())
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id).
+			WithField("job_id", j.ID().GetValue()).
 			Error("failed to get job runtime during start instances")
-		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
-		return err
+		j.m.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
+		return true, err
 	}
 
-	if runtime.GetGoalState() == job.JobState_KILLED {
-		return nil
+	if runtime.GetGoalState() == pb_job.JobState_KILLED {
+		return false, nil
 	}
 
 	stateCounts := runtime.GetTaskStats()
@@ -108,67 +101,65 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 			log.WithFields(log.Fields{
 				"current_scheduled_tasks": currentScheduledInstances,
 				"max_running_instances":   maxRunningInstances,
-				"job_id":                  id,
+				"job_id":                  j.ID().GetValue(),
 			}).Info("scheduled instances exceed max running instances")
-			goalStateDriver.mtx.jobMetrics.JobMaxRunningInstancesExcceeding.Inc(int64(currentScheduledInstances - maxRunningInstances))
+			j.m.mtx.jobMetrics.JobMaxRunningInstancesExcceeding.Inc(int64(currentScheduledInstances - maxRunningInstances))
 		}
 		log.WithField("current_scheduled_tasks", currentScheduledInstances).
-			WithField("job_id", id).
+			WithField("job_id", j.ID().GetValue()).
 			Debug("no instances to start")
-		return nil
+		return false, nil
 	}
 	tasksToStart := maxRunningInstances - currentScheduledInstances
 
-	initializedTasks, err := goalStateDriver.taskStore.GetTaskIDsForJobAndState(ctx, jobID, task.TaskState_INITIALIZED.String())
+	initializedTasks, err := j.m.taskStore.GetTaskIDsForJobAndState(ctx, j.ID(), pb_task.TaskState_INITIALIZED.String())
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id).
+			WithField("job_id", j.ID().GetValue()).
 			Error("failed to fetch initialized task list")
-		return err
+		return true, err
 	}
 
 	log.WithFields(log.Fields{
-		"job_id":                      id,
+		"job_id":                      j.ID().GetValue(),
 		"max_running_instances":       maxRunningInstances,
 		"current_scheduled_instances": currentScheduledInstances,
 		"length_initialized_tasks":    len(initializedTasks),
 		"tasks_to_start":              tasksToStart,
 	}).Debug("find tasks to start")
 
-	var tasks []*task.TaskInfo
+	var tasks []*pb_task.TaskInfo
 	for _, instID := range initializedTasks {
 		if tasksToStart <= 0 {
 			break
 		}
 
 		// MV view may run behind. So, make sure that task state is indeed INITIALIZED.
-		taskRuntime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, jobID, instID)
+		taskRuntime, err := j.m.taskStore.GetTaskRuntime(ctx, j.ID(), instID)
 		if err != nil {
 			log.WithError(err).
-				WithField("job_id", id).
+				WithField("job_id", j.ID().GetValue()).
 				WithField("instance_id", instID).
 				Error("failed to fetch task runtimeme")
 			continue
 		}
 
-		if taskRuntime.GetState() != task.TaskState_INITIALIZED {
+		if taskRuntime.GetState() != pb_task.TaskState_INITIALIZED {
 			// Task wrongly set to INITIALIZED, ignore.
 			tasksToStart--
 			continue
 		}
 
-		t := cachedJob.GetTask(instID)
+		t := j.GetTask(instID)
 		if t == nil {
 			// Add the task to cache if not found.
-			cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{instID: taskRuntime}, cached.UpdateCacheOnly)
+			t = j.setTask(instID, taskRuntime)
 		}
-
-		if goalStateDriver.IsScheduledTask(jobID, instID) {
+		if t.IsScheduled() {
 			continue
 		}
-
-		taskinfo := &task.TaskInfo{
-			JobId:      jobID,
+		taskinfo := &pb_task.TaskInfo{
+			JobId:      j.ID(),
 			InstanceId: instID,
 			Runtime:    taskRuntime,
 			Config:     taskconfig.Merge(jobConfig.GetDefaultConfig(), jobConfig.GetInstanceConfig()[instID]),
@@ -198,80 +189,79 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 		j.m.taskScheduler.schedule(task, time.Now())
 		tasksToStart--
 	}*/
-	return sendTasksToResMgr(ctx, jobID, tasks, jobConfig, goalStateDriver)
+	err = j.sendTasksToResMgr(ctx, tasks, jobConfig)
+	if err != nil {
+		return true, err
+	}
+	return false, nil
 }
 
 // determineJobRuntimeState determines the job state based on current
 // job runtime state and task state counts.
-func determineJobRuntimeState(jobRuntime *job.RuntimeInfo,
+func (j *job) determineJobRuntimeState(jobRuntime *pb_job.RuntimeInfo,
 	stateCounts map[string]uint32,
-	instances uint32,
-	goalStateDriver *driver,
-	cachedJob cached.Job) job.JobState {
-	var jobState job.JobState
+	instances uint32) pb_job.JobState {
+	var jobState pb_job.JobState
 
-	if jobRuntime.State == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated() {
+	if jobRuntime.State == pb_job.JobState_INITIALIZED && j.GetTasksNum() != instances {
 		// do not do any thing as all tasks have not been created yet
-		jobState = job.JobState_INITIALIZED
-	} else if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
-		jobState = job.JobState_SUCCEEDED
-		goalStateDriver.mtx.jobMetrics.JobSucceeded.Inc(1)
-	} else if stateCounts[task.TaskState_SUCCEEDED.String()]+
-		stateCounts[task.TaskState_FAILED.String()] == instances {
-		jobState = job.JobState_FAILED
-		goalStateDriver.mtx.jobMetrics.JobFailed.Inc(1)
-	} else if stateCounts[task.TaskState_KILLED.String()] > 0 &&
-		(stateCounts[task.TaskState_SUCCEEDED.String()]+
-			stateCounts[task.TaskState_FAILED.String()]+
-			stateCounts[task.TaskState_KILLED.String()] == instances) {
-		jobState = job.JobState_KILLED
-		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
-	} else if stateCounts[task.TaskState_RUNNING.String()] > 0 {
-		jobState = job.JobState_RUNNING
+		jobState = pb_job.JobState_INITIALIZED
+	} else if stateCounts[pb_task.TaskState_SUCCEEDED.String()] == instances {
+		jobState = pb_job.JobState_SUCCEEDED
+		j.m.mtx.jobMetrics.JobSucceeded.Inc(1)
+	} else if stateCounts[pb_task.TaskState_SUCCEEDED.String()]+
+		stateCounts[pb_task.TaskState_FAILED.String()] == instances {
+		jobState = pb_job.JobState_FAILED
+		j.m.mtx.jobMetrics.JobFailed.Inc(1)
+	} else if stateCounts[pb_task.TaskState_KILLED.String()] > 0 &&
+		(stateCounts[pb_task.TaskState_SUCCEEDED.String()]+
+			stateCounts[pb_task.TaskState_FAILED.String()]+
+			stateCounts[pb_task.TaskState_KILLED.String()] == instances) {
+		jobState = pb_job.JobState_KILLED
+		j.m.mtx.jobMetrics.JobKilled.Inc(1)
+	} else if stateCounts[pb_task.TaskState_RUNNING.String()] > 0 {
+		jobState = pb_job.JobState_RUNNING
 	} else {
-		jobState = job.JobState_PENDING
+		jobState = pb_job.JobState_PENDING
 	}
 
 	return jobState
 }
 
 // JobRuntimeUpdater updates the job runtime.
-// When the jobmgr leader fails over, the goal state driver runs syncFromDB which enqueues all recovered jobs
+// When the jobmgr leader fails over, the tracked.manager runs syncFromDB which enqueues all recovered jobs
 // into goal state, which will then run the job runtime updater and update the out-of-date runtime info.
-func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
-	id := entity.GetID()
-	jobID := &peloton.JobID{Value: id}
-	goalStateDriver := entity.(*jobEntity).driver
-	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
-
-	log.WithField("job_id", id).
+func (j *job) JobRuntimeUpdater(ctx context.Context) (bool, error) {
+	log.WithField("job_id", j.ID().GetValue()).
 		Info("running job runtime update")
 
-	jobRuntime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobID)
+	jobRuntime, err := j.m.jobStore.GetJobRuntime(ctx, j.ID())
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id).
+			WithField("job_id", j.ID().GetValue()).
 			Error("failed to get job runtime in runtime updater")
-		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
-		return err
+		j.m.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
+		return true, err
 	}
 
-	instances := cachedJob.GetInstanceCount()
-	if instances <= 0 {
-		jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
+	var jConfig *JobConfig
+	jConfig, err = j.GetConfig()
+	if err != nil {
+		jobConfig, err := j.m.jobStore.GetJobConfig(ctx, j.ID())
 		if err != nil {
 			log.WithError(err).
-				WithField("job_id", id).
+				WithField("job_id", j.ID().GetValue()).
 				Error("failed to get job config in runtime updater")
-			goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
-			return err
+			j.m.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
+			return true, err
 		}
-		cachedJob.Update(ctx, &job.JobInfo{
+		j.updateRuntime(&pb_job.JobInfo{
 			Config:  jobConfig,
 			Runtime: jobRuntime,
-		}, cached.UpdateCacheOnly)
-		instances = cachedJob.GetInstanceCount()
+		})
+		jConfig, _ = j.GetConfig()
 	}
+	instances := jConfig.instanceCount
 
 	// Keeping the commented code when we have write through cache, then we
 	// can read from cache instead of DB.
@@ -299,49 +289,49 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 		stateCounts[runtime.GetState().String()]++
 
-		if runtime.GetState() == task.TaskState_INITIALIZED && runtime.GetGoalState() != task.TaskState_KILLED {
+		if runtime.GetState() == pb_task.TaskState_INITIALIZED && runtime.GetGoalState() != pb_task.TaskState_KILLED {
 			j.addTaskToInitializedTaskMap(task.(*task))
 		}
 	}*/
 
-	stateCounts, err := goalStateDriver.taskStore.GetTaskStateSummaryForJob(ctx, jobID)
+	stateCounts, err := j.m.taskStore.GetTaskStateSummaryForJob(ctx, j.ID())
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id).
+			WithField("job_id", j.ID().GetValue()).
 			Error("failed to fetch task state summary")
-		return err
+		return true, err
 	}
 
 	totalInstanceCount := uint32(0)
-	for _, state := range task.TaskState_name {
+	for _, state := range pb_task.TaskState_name {
 		totalInstanceCount += stateCounts[state]
 	}
 
 	if totalInstanceCount != instances {
-		if jobRuntime.GetState() == job.JobState_KILLED && jobRuntime.GetGoalState() == job.JobState_KILLED {
+		if jobRuntime.GetState() == pb_job.JobState_KILLED && jobRuntime.GetGoalState() == pb_job.JobState_KILLED {
 			// Job already killed, do not do anything
-			return nil
+			return false, nil
 		}
 		// Either MV view has not caught up or all instances have not been created
-		if cachedJob.IsPartiallyCreated() {
+		if j.GetTasksNum() != instances {
 			// all instances have not been created, trigger recovery
-			jobRuntime.State = job.JobState_INITIALIZED
+			jobRuntime.State = pb_job.JobState_INITIALIZED
 		} else {
 			// MV has not caught up, wait for it to catch up before doing anything
-			return fmt.Errorf("dbs are not in sync")
+			return true, fmt.Errorf("dbs are not in sync")
 		}
 	}
 
-	jobState := determineJobRuntimeState(jobRuntime, stateCounts, instances, goalStateDriver, cachedJob)
+	jobState := j.determineJobRuntimeState(jobRuntime, stateCounts, instances)
 
 	if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) && jobRuntime.GetState() == jobState {
-		log.WithField("job_id", id).
+		log.WithField("job_id", j.ID().GetValue()).
 			WithField("task_stats", stateCounts).
 			Debug("Task stats did not change, return")
-		return nil
+		return false, nil
 	}
 
-	getFirstTaskUpdateTime := cachedJob.GetFirstTaskUpdateTime()
+	getFirstTaskUpdateTime := j.getFirstTaskUpdateTime()
 	if getFirstTaskUpdateTime != 0 && jobRuntime.StartTime == "" {
 		count := uint32(0)
 		for _, state := range taskStatesAfterStart {
@@ -356,7 +346,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	jobRuntime.State = jobState
 	if util.IsPelotonJobStateTerminal(jobState) {
 		completionTime := ""
-		lastTaskUpdateTime := cachedJob.GetLastTaskUpdateTime()
+		lastTaskUpdateTime := j.getLastTaskUpdateTime()
 		if lastTaskUpdateTime != 0 {
 			completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
 		}
@@ -365,28 +355,28 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	jobRuntime.TaskStats = stateCounts
 
 	// Update the job runtime
-	err = goalStateDriver.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
+	err = j.m.jobStore.UpdateJobRuntime(ctx, j.ID(), jobRuntime)
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", id).
+			WithField("job_id", j.ID().GetValue()).
 			Error("failed to update jobRuntime in runtime updater")
-		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
-		return err
+		j.m.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
+		return true, err
 	}
 
 	if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) {
 		// Evaluate this job immediately as no more task updates will arrive
-		goalStateDriver.EnqueueJob(jobID, time.Now())
+		j.m.ScheduleJob(j, time.Now())
 	}
 
-	log.WithField("job_id", id).
+	log.WithField("job_id", j.ID().GetValue()).
 		WithField("updated_state", jobRuntime.State.String()).
 		Info("job runtime updater completed")
 
-	goalStateDriver.mtx.jobMetrics.JobRuntimeUpdated.Inc(1)
-	if jobRuntime.State == job.JobState_INITIALIZED {
+	j.m.mtx.jobMetrics.JobRuntimeUpdated.Inc(1)
+	if jobRuntime.State == pb_job.JobState_INITIALIZED {
 		// This should be hit for only old jobs created with a code version with no job goal state
-		return fmt.Errorf("trigger job recovery")
+		return true, fmt.Errorf("trigger job recovery")
 	}
-	return nil
+	return false, nil
 }

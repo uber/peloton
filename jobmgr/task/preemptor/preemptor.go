@@ -10,8 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	"code.uber.internal/infra/peloton/jobmgr/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 
 	"github.com/hashicorp/go-multierror"
@@ -48,13 +47,12 @@ type Preemptor interface {
 type preemptor struct {
 	sync.Mutex
 
-	resMgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
-	started         int32
-	taskStore       storage.TaskStore
-	jobFactory      cached.JobFactory
-	goalStateDriver goalstate.Driver
-	config          *Config
-	metrics         *Metrics
+	resMgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
+	started        int32
+	taskStore      storage.TaskStore
+	trackedManager tracked.Manager
+	config         *Config
+	metrics        *Metrics
 }
 
 var _timeoutFunctionCall = 120 * time.Second
@@ -64,19 +62,17 @@ func New(
 	d *yarpc.Dispatcher,
 	resMgrClientName string,
 	taskStore storage.TaskStore,
-	jobFactory cached.JobFactory,
-	goalStateDriver goalstate.Driver,
+	trackedManager tracked.Manager,
 	config *Config,
 	parent tally.Scope,
 ) Preemptor {
 
 	return &preemptor{
-		resMgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
-		taskStore:       taskStore,
-		jobFactory:      jobFactory,
-		goalStateDriver: goalStateDriver,
-		config:          config,
-		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		resMgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
+		taskStore:      taskStore,
+		trackedManager: trackedManager,
+		config:         config,
+		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 	}
 }
 
@@ -144,13 +140,10 @@ func (p *preemptor) preemptTasks(ctx context.Context, tasks []*resmgr.Task) erro
 		taskInfo.GetRuntime().Message = "Preempting running task"
 		taskInfo.GetRuntime().Reason = ""
 
-		// update the task in cache and enqueue to goal state engine
-		cachedJob := p.jobFactory.AddJob(taskInfo.JobId)
-		err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{uint32(taskInfo.InstanceId): taskInfo.Runtime}, cached.UpdateCacheAndDB)
+		// update the task in the tracked manager
+		err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime, tracked.UpdateAndSchedule)
 		if err != nil {
 			errs = multierror.Append(errs, err)
-		} else {
-			p.goalStateDriver.EnqueueTask(taskInfo.JobId, taskInfo.InstanceId, time.Now())
 		}
 	}
 	return errs.ErrorOrNil()

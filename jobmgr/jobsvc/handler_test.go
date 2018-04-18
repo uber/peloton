@@ -15,10 +15,9 @@ import (
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 
@@ -264,15 +263,11 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
 	suite.handler.resmgrClient = mockResmgrClient
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore
-	suite.handler.jobFactory = jobFactory
-	suite.handler.goalStateDriver = goalStateDriver
+	suite.handler.trackedManager = mockTrackedManager
 
 	mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).
@@ -290,8 +285,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
-	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
-	cachedJob.EXPECT().Update(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil)
+	mockTrackedManager.EXPECT().SetJob(jobID, gomock.Any(), gomock.Any())
 	mockTaskStore.EXPECT().
 		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).
@@ -300,9 +294,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		CreateTaskRuntime(context.Background(), jobID, uint32(3), gomock.Any(), "peloton").
 		Return(nil).
 		AnyTimes()
-	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil).AnyTimes()
-	goalStateDriver.EXPECT().EnqueueTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
+	mockTrackedManager.EXPECT().SetTasks(jobID, gomock.Any(), gomock.Any()).AnyTimes()
 	mockTaskStore.EXPECT().
 		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
 		Return(map[string]uint32{}, nil).
@@ -383,19 +375,14 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	suite.handler.jobFactory = jobFactory
-	suite.handler.goalStateDriver = goalStateDriver
+	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	suite.handler.trackedManager = mockTrackedManager
 
 	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
 		Return(jobConfig, nil)
 	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
 		Return(jobRuntime, nil)
-	jobFactory.EXPECT().AddJob(id).Return(cachedJob)
-	cachedJob.EXPECT().Update(gomock.Any(), jobInfo, cached.UpdateCacheOnly).Return(nil)
-	goalStateDriver.EXPECT().EnqueueJob(id, gomock.Any())
+	mockTrackedManager.EXPECT().SetJob(id, jobInfo, tracked.UpdateAndSchedule).Return()
 	_, err := suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
 	suite.NoError(err)
 

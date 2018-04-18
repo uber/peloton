@@ -16,7 +16,7 @@ type Entity interface {
 	// for the entity's current state and goal state.
 	// The action list is an array of actions which are executed in order.
 	// Each action needs to be idempotent.
-	GetActionList(state interface{}, goalState interface{}) (context.Context, context.CancelFunc, []Action)
+	GetActionList(state interface{}, goalstate interface{}) (context.Context, context.CancelFunc, []Action)
 }
 
 // Action defines the interface for the function to be used by goal state actions.

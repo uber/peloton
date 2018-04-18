@@ -2,6 +2,7 @@ package cached
 
 import (
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -33,6 +34,14 @@ func TestTask(t *testing.T) {
 	curGoalState := tt.GoalState()
 	assert.Equal(t, runtime.State, curState.State)
 	assert.Equal(t, runtime.GoalState, curGoalState.State)
+
+	// Test setting last action and fetching last action
+	nowTime := time.Now()
+	lastAction := "run"
+	tt.SetLastAction(lastAction, nowTime)
+	actLastAction, actLastTime := tt.GetLastAction()
+	assert.Equal(t, lastAction, actLastAction)
+	assert.Equal(t, nowTime, actLastTime)
 }
 
 func TaskTestUpdateRuntime(t *testing.T) {

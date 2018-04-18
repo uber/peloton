@@ -15,11 +15,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -45,13 +43,12 @@ type Processor interface {
 
 // launcher implements the Launcher interface
 type processor struct {
-	resMgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
-	jobFactory      cached.JobFactory
-	goalStateDriver goalstate.Driver
-	taskLauncher    launcher.Launcher
-	running         int32
-	config          *Config
-	metrics         *Metrics
+	resMgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
+	trackedManager tracked.Manager
+	taskLauncher   launcher.Launcher
+	running        int32
+	config         *Config
+	metrics        *Metrics
 }
 
 const (
@@ -67,19 +64,17 @@ const (
 func InitProcessor(
 	d *yarpc.Dispatcher,
 	resMgrClientName string,
-	jobFactory cached.JobFactory,
-	goalStateDriver goalstate.Driver,
+	trackedManager tracked.Manager,
 	taskLauncher launcher.Launcher,
 	config *Config,
 	parent tally.Scope,
 ) Processor {
 	return &processor{
-		resMgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
-		jobFactory:      jobFactory,
-		goalStateDriver: goalStateDriver,
-		taskLauncher:    taskLauncher,
-		config:          config,
-		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		resMgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(resMgrClientName)),
+		trackedManager: trackedManager,
+		taskLauncher:   taskLauncher,
+		config:         config,
+		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 	}
 }
 
@@ -153,15 +148,13 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 		}
 		jobID := &peloton.JobID{Value: id}
 		runtime := taskInfo.GetRuntime()
-		cachedJob := p.jobFactory.AddJob(jobID)
 
 		if runtime.GetGoalState() == task.TaskState_KILLED {
 			if runtime.GetState() != task.TaskState_KILLED {
 				// Received placement for task which needs to be killed, retry killing the task.
 				killTasks := make(map[uint32]*task.RuntimeInfo)
 				killTasks[uint32(instanceID)] = runtime
-				cachedJob.UpdateTasks(ctx, killTasks, cached.UpdateCacheOnly)
-				p.goalStateDriver.EnqueueTask(jobID, uint32(instanceID), time.Now())
+				p.trackedManager.SetTasks(jobID, killTasks, tracked.UpdateAndSchedule)
 			}
 
 			// Skip launching of deleted tasks.
@@ -170,7 +163,7 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 		} else {
 			retry := 0
 			for retry < maxRetryCount {
-				err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{uint32(instanceID): runtime}, cached.UpdateCacheAndDB)
+				err := p.trackedManager.UpdateTaskRuntime(ctx, jobID, uint32(instanceID), runtime, tracked.UpdateOnly)
 				if err == nil {
 					break
 				}
@@ -209,7 +202,6 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 		return
 	}
 
-	// Finally, enqueue tasks into goalstate
 	for id := range taskInfos {
 		jobID, instanceID, err := util.ParseTaskID(id)
 		if err != nil {
@@ -218,7 +210,22 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 				Error("failed to parse the task id in placement processor")
 			continue
 		}
-		p.goalStateDriver.EnqueueTask(&peloton.JobID{Value: jobID}, uint32(instanceID), time.Now())
+
+		j := p.trackedManager.GetJob(&peloton.JobID{Value: jobID})
+		if j == nil {
+			log.WithField("job_id", jobID).
+				Error("failed to find job in cache in placement processor")
+			continue
+		}
+
+		t := j.GetTask(uint32(instanceID))
+		if t == nil {
+			log.WithField("job_id", jobID).
+				WithField("instance_id", uint32(instanceID)).
+				Error("failed to find task in cache in placement processor")
+			continue
+		}
+		p.trackedManager.ScheduleTask(t, time.Now())
 	}
 }
 
@@ -276,10 +283,8 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 		util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.Runtime)
 		retry := 0
 		for retry < maxRetryCount {
-			cachedJob := p.jobFactory.AddJob(t.JobId)
-			err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{uint32(t.InstanceId): t.Runtime}, cached.UpdateCacheAndDB)
+			err = p.trackedManager.UpdateTaskRuntime(ctx, t.JobId, t.InstanceId, t.Runtime, tracked.UpdateAndSchedule)
 			if err == nil {
-				p.goalStateDriver.EnqueueTask(t.JobId, t.InstanceId, time.Now())
 				break
 			}
 			if common.IsTransientError(err) {

@@ -1,274 +1,206 @@
 package goalstate
 
 import (
-	"fmt"
 	"testing"
+	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	"fmt"
 
 	"github.com/golang/mock/gomock"
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
 )
 
-func TestTaskStateAndGoalState(t *testing.T) {
+func TestEngineSuggestActionGoalKilled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
+	e := NewEngine(Config{}, nil, tally.NoopScope).(*engine)
 
-	goalStateDriver := &driver{
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
-	}
-	goalStateDriver.cfg.normalize()
+	taskMock := mocks.NewMockTask(ctrl)
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	assert.Equal(t, tracked.KilledAction, e.suggestTaskAction(taskMock))
 
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 1})
+	assert.Equal(t, tracked.UseGoalVersionAction, e.suggestTaskAction(taskMock))
 
-	taskState := cached.TaskStateVector{
-		State:         pb_task.TaskState_RUNNING,
-		ConfigVersion: 1,
-	}
-	taskGoalState := cached.TaskStateVector{
-		State:         pb_task.TaskState_SUCCEEDED,
-		ConfigVersion: 1,
-	}
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: tracked.UnknownVersion})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 1})
+	assert.Equal(t, tracked.KilledAction, e.suggestTaskAction(taskMock))
 
-	// Test fetching the entity ID
-	assert.Equal(t, taskID, taskEnt.GetID())
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 
-	// Test fetching the entity state
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
-
-	cachedTask.EXPECT().
-		CurrentState().Return(taskState)
-
-	actState := taskEnt.GetState()
-	assert.Equal(t, taskState, actState.(cached.TaskStateVector))
-
-	// Test fetching the entity goal state
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
-
-	cachedTask.EXPECT().
-		GoalState().Return(taskGoalState)
-
-	actGoalState := taskEnt.GetGoalState()
-	assert.Equal(t, taskGoalState, actGoalState.(cached.TaskStateVector))
-
-	// No cached task
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(nil)
-
-	actState = taskEnt.GetState()
-	assert.Equal(t, pb_task.TaskState_UNKNOWN, actState.(cached.TaskStateVector).State)
-
-	jobFactory.EXPECT().
-		AddJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(nil)
-
-	actGoalState = taskEnt.GetGoalState()
-	assert.Equal(t, pb_task.TaskState_UNKNOWN, actGoalState.(cached.TaskStateVector).State)
-}
-
-func TestTaskActionList(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-	}
-
-	taskState := cached.TaskStateVector{
-		State: pb_task.TaskState_RUNNING,
-	}
-	taskGoalState := cached.TaskStateVector{
-		State: pb_task.TaskState_SUCCEEDED,
-	}
-	_, _, actions := taskEnt.GetActionList(taskState, taskGoalState)
-	assert.Equal(t, 0, len(actions))
-
-	taskState = cached.TaskStateVector{
-		State: pb_task.TaskState_INITIALIZED,
-	}
-	taskGoalState = cached.TaskStateVector{
-		State: pb_task.TaskState_SUCCEEDED,
-	}
-	_, _, actions = taskEnt.GetActionList(taskState, taskGoalState)
-	assert.Equal(t, 1, len(actions))
-
-	taskState = cached.TaskStateVector{
-		State: pb_task.TaskState_UNKNOWN,
-	}
-	taskGoalState = cached.TaskStateVector{
-		State: pb_task.TaskState_SUCCEEDED,
-	}
-	_, _, actions = taskEnt.GetActionList(taskState, taskGoalState)
-	assert.Equal(t, 1, len(actions))
-}
-
-func TestEngineSuggestActionGoalKilled(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-	}
-
-	a := taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 0},
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	assert.Equal(t, KilledAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: cached.UnknownVersion},
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 1})
-	assert.Equal(t, KilledAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	assert.Equal(t, StopAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 10},
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: cached.UnknownVersion})
-	assert.Equal(t, StopAction, a)
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 10})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: tracked.UnknownVersion})
+	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 }
 
 func TestEngineSuggestActionLaunchedState(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-	}
+	e := NewEngine(Config{}, nil, tally.NoopScope).(*engine)
+	taskMock := mocks.NewMockTask(ctrl)
 
-	a := taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_LAUNCHED, ConfigVersion: 0},
-		cached.TaskStateVector{State: pb_task.TaskState_SUCCEEDED, ConfigVersion: 0})
-	assert.Equal(t, LaunchRetryAction, a)
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_LAUNCHED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_SUCCEEDED, ConfigVersion: 0})
+	taskMock.EXPECT().GetLastRuntimeUpdateTime().Return(time.Now().Add(-_defaultLaunchTimeRetryDuration))
+	assert.Equal(t, tracked.LaunchRetryAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_LAUNCHED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_SUCCEEDED, ConfigVersion: 0})
+	taskMock.EXPECT().GetLastRuntimeUpdateTime().Return(time.Now().Add(-1 * time.Second))
+	assert.Equal(t, tracked.NotifyLaunchedTasksAction, e.suggestTaskAction(taskMock))
+}
+
+func TestEngineTimeout(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	e := NewEngine(Config{}, nil, tally.NoopScope).(*engine)
+	assert.Equal(t, e.cfg.LaunchTimeout, e.getSuccessRetryDelay(tracked.LaunchRetryAction, 1*time.Second))
+	assert.Equal(t, e.cfg.LaunchTimeout, e.getSuccessRetryDelay(tracked.NotifyLaunchedTasksAction, 1*time.Second))
+	assert.Equal(t, e.cfg.SuccessRetryDelay+1*time.Second, e.getSuccessRetryDelay(tracked.StopAction, 1*time.Second))
 }
 
 func TestEngineSuggestActionGoalRunning(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-	}
+	e := &engine{}
 
-	a := taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, NoTaskAction, a)
+	taskMock := mocks.NewMockTask(ctrl)
 
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 1})
-	assert.Equal(t, StopAction, a)
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
 
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 0},
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 1})
-	assert.Equal(t, NoTaskAction, a)
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 1})
+	assert.Equal(t, tracked.StopAction, e.suggestTaskAction(taskMock))
 
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_INITIALIZED, ConfigVersion: cached.UnknownVersion},
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, StartAction, a)
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 1})
+	assert.Equal(t, tracked.UseGoalVersionAction, e.suggestTaskAction(taskMock))
 
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_INITIALIZED, ConfigVersion: 123},
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 123})
-	assert.Equal(t, StartAction, a)
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_INITIALIZED, ConfigVersion: tracked.UnknownVersion})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	assert.Equal(t, tracked.StartAction, e.suggestTaskAction(taskMock))
 
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 0},
-		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, NoTaskAction, a)
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_INITIALIZED, ConfigVersion: 123})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 123})
+	assert.Equal(t, tracked.StartAction, e.suggestTaskAction(taskMock))
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	assert.Equal(t, tracked.NoAction, e.suggestTaskAction(taskMock))
 }
 
 func TestEngineSuggestActionGoalPreempting(t *testing.T) {
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-	}
+	e := &engine{}
+
+	taskMock := mocks.NewMockTask(ctrl)
 
 	tt := []struct {
 		currentState pb_task.TaskState
-		action       TaskAction
+		action       tracked.TaskAction
 	}{
 		{
 			currentState: pb_task.TaskState_INITIALIZED,
-			action:       StopAction,
+			action:       tracked.StopAction,
 		},
 		{
 			currentState: pb_task.TaskState_LAUNCHING,
-			action:       StopAction,
+			action:       tracked.StopAction,
 		},
 		{
 			currentState: pb_task.TaskState_LAUNCHED,
-			action:       StopAction,
+			action:       tracked.StopAction,
 		},
 		{
 			currentState: pb_task.TaskState_RUNNING,
-			action:       StopAction,
+			action:       tracked.StopAction,
 		},
 		{
 			currentState: pb_task.TaskState_LOST,
-			action:       PreemptAction,
+			action:       tracked.PreemptAction,
 		},
 		{
 			currentState: pb_task.TaskState_KILLED,
-			action:       PreemptAction,
+			action:       tracked.PreemptAction,
 		},
 	}
 
-	var a TaskAction
 	for _, test := range tt {
-		a = taskEnt.suggestTaskAction(
-			cached.TaskStateVector{State: test.currentState, ConfigVersion: 0},
-			cached.TaskStateVector{State: pb_task.TaskState_PREEMPTING, ConfigVersion: 0})
-		assert.Equal(t, test.action, a)
+		taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_PREEMPTING, ConfigVersion: 0})
+		taskMock.EXPECT().CurrentState().Return(tracked.State{State: test.currentState, ConfigVersion: 0})
+		assert.Equal(t, test.action, e.suggestTaskAction(taskMock))
 	}
+}
+
+func TestEngineProcessTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobMock := mocks.NewMockJob(ctrl)
+	taskMock := mocks.NewMockTask(ctrl)
+	managerMock := mocks.NewMockManager(ctrl)
+
+	e := &engine{
+		trackedManager: managerMock,
+	}
+	e.cfg.normalize()
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().LastAction().Return(tracked.NoAction, time.Time{})
+	taskMock.EXPECT().RunAction(gomock.Any(),
+		tracked.NoAction).Return(false, nil)
+	managerMock.EXPECT().ScheduleTask(taskMock, time.Time{})
+
+	e.processTask(taskMock)
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().LastAction().Return(tracked.NoAction, time.Time{})
+	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(
+		true, nil)
+	managerMock.EXPECT().ScheduleTask(taskMock, gomock.Any())
+
+	e.processTask(taskMock)
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_RUNNING, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().LastAction().Return(tracked.StopAction, time.Time{})
+	taskMock.EXPECT().RunAction(gomock.Any(), tracked.StopAction).Return(
+		true, fmt.Errorf("my error"))
+	taskMock.EXPECT().Job().Return(jobMock)
+	jobMock.EXPECT().ID().Return(&peloton.JobID{})
+	taskMock.EXPECT().ID().Return(uint32(0))
+	managerMock.EXPECT().ScheduleTask(taskMock, gomock.Any())
+
+	e.processTask(taskMock)
+
+	taskMock.EXPECT().CurrentState().Return(tracked.State{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
+	taskMock.EXPECT().GoalState().Return(tracked.State{State: pb_task.TaskState_PREEMPTING,
+		ConfigVersion: 0})
+	taskMock.EXPECT().LastAction().Return(tracked.StopAction, time.Time{})
+	taskMock.EXPECT().RunAction(gomock.Any(), tracked.PreemptAction).Return(
+		false, nil)
+	managerMock.EXPECT().ScheduleTask(taskMock, time.Time{})
+
+	e.processTask(taskMock)
 }

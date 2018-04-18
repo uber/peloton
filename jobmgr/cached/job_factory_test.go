@@ -14,7 +14,8 @@ import (
 )
 
 func TestInitJobFactory(t *testing.T) {
-	f := InitJobFactory(nil, nil, nil, tally.NoopScope)
+	InitJobFactory(nil, nil, nil, tally.NoopScope)
+	f := GetJobFactory()
 	assert.NotNil(t, f)
 }
 

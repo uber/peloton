@@ -8,9 +8,8 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	peloton_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
-	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -20,25 +19,22 @@ import (
 
 type DeadlineTrackerTestSuite struct {
 	suite.Suite
-	mockCtrl        *gomock.Controller
-	tracker         *tracker
-	mockTaskStore   *storage_mocks.MockTaskStore
-	mockJobStore    *storage_mocks.MockJobStore
-	jobFactory      *cachedmocks.MockJobFactory
-	goalStateDriver *goalstatemocks.MockDriver
+	mockCtrl           *gomock.Controller
+	tracker            *tracker
+	mockTaskStore      *storage_mocks.MockTaskStore
+	mockJobStore       *storage_mocks.MockJobStore
+	mockTrackedManager *tracked_mocks.MockManager
 }
 
 func (suite *DeadlineTrackerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mockTaskStore = storage_mocks.NewMockTaskStore(suite.mockCtrl)
 	suite.mockJobStore = storage_mocks.NewMockJobStore(suite.mockCtrl)
-	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.mockCtrl)
-	suite.goalStateDriver = goalstatemocks.NewMockDriver(suite.mockCtrl)
+	suite.mockTrackedManager = tracked_mocks.NewMockManager(suite.mockCtrl)
 	suite.tracker = &tracker{
-		jobStore:        suite.mockJobStore,
-		taskStore:       suite.mockTaskStore,
-		jobFactory:      suite.jobFactory,
-		goalStateDriver: suite.goalStateDriver,
+		jobStore:       suite.mockJobStore,
+		taskStore:      suite.mockTaskStore,
+		trackedManager: suite.mockTrackedManager,
 		config: &Config{
 			DeadlineTrackingPeriod: 10 * time.Second,
 		},
@@ -60,31 +56,26 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	}
 
 	taskInfo := &peloton_task.TaskInfo{
-		InstanceId: 1,
 		Runtime: &peloton_task.RuntimeInfo{
 			State:     peloton_task.TaskState_RUNNING,
 			StartTime: time.Now().AddDate(0, 0, -1).UTC().Format(time.RFC3339Nano),
 		},
 	}
 
-	runtimes := make(map[uint32]*peloton_task.RuntimeInfo)
-	runtimes[1] = taskInfo.Runtime
+	job := tracked_mocks.NewMockJob(suite.mockCtrl)
 
-	job := cachedmocks.NewMockJob(suite.mockCtrl)
-	task := cachedmocks.NewMockTask(suite.mockCtrl)
-	jobs := make(map[string]cached.Job)
-	jobs[jobID.Value] = job
-	tasks := make(map[uint32]cached.Task)
+	tasks := make(map[uint32]tracked.Task)
+	task := tracked_mocks.NewMockTask(suite.mockCtrl)
 	tasks[1] = task
-
-	suite.jobFactory.EXPECT().GetAllJobs().Return(jobs)
-	suite.mockJobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
-	job.EXPECT().GetAllTasks().Return(tasks)
 	task.EXPECT().GetRunTime().Return(taskInfo.Runtime).Times(2)
+	job.EXPECT().GetAllTasks().Return(tasks)
+	jobs := make(map[string]tracked.Job)
+	jobs[jobID.Value] = job
+
+	suite.mockJobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
+	suite.mockTrackedManager.EXPECT().GetAllJobs().Return(jobs)
 	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), gomock.Any()).Return(taskInfo, nil)
-	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(job)
-	job.EXPECT().UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheAndDB).Return(nil)
-	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
+	suite.mockTrackedManager.EXPECT().UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), taskInfo.Runtime, tracked.UpdateAndSchedule).Return(nil)
 
 	err := suite.tracker.trackDeadline()
 
