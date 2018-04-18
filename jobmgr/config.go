@@ -2,6 +2,7 @@ package jobmgr
 
 import (
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
+	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
@@ -39,4 +40,7 @@ type Config struct {
 	Preemptor preemptor.Config `yaml:"task_preemptor"`
 
 	Deadline deadline.Config `yaml:"deadline"`
+
+	// Job service specific configuration
+	JobSvcCfg jobsvc.Config `yaml:"job_service"`
 }

@@ -306,6 +306,7 @@ func main() {
 		taskStore,
 		trackedManager,
 		common.PelotonResourceManager, // TODO: to be removed
+		cfg.JobManager.JobSvcCfg,
 	)
 	tasksvc.InitServiceHandler(
 		dispatcher,

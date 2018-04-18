@@ -44,6 +44,10 @@ job_manager:
     preemption_dequeue_timeout_ms: 100
   deadline:
     deadline_tracking_period: 30m 
+  job_service:
+    # TODO (adityacb): Adjust this limit once we fix T1689063 and T1689077
+    # and have a better data model
+    max_tasks_per_job: 100000
 
 election:
   root: "/peloton"
