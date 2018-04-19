@@ -1,4 +1,4 @@
-package svc
+package hostsvc
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func InitServiceHandler(
 func (m *serviceHandler) QueryHosts(ctx context.Context, request *host_svc.QueryHostsRequest) (*host_svc.QueryHostsResponse, error) {
 	m.metrics.QueryHostsAPI.Inc(1)
 	return &host_svc.QueryHostsResponse{
-		Hosts: nil,
+		HostInfos: nil,
 	}, nil
 }
 

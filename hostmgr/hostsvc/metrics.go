@@ -1,4 +1,4 @@
-package svc
+package hostsvc
 
 import "github.com/uber-go/tally"
 
