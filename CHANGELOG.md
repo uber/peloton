@@ -3,6 +3,48 @@
 0.7.0 (unreleased)
 ------------------
 
+
+0.6.12
+------------------
+* 2018-04-19    Add comment for channel 'finished' in resmgr/recovery.go                               sachins@uber.com
+* 2018-04-18    fix unit test broken by revert of 4533a25                                              zhixin@uber.com
+* 2018-04-18    eventstream client send correct purgeOffset upon restart                               zhixin@uber.com
+* 2018-04-18    unset completion time when task is running                                             zhixin@uber.com
+* 2018-04-17    Revert "Revert "Add 100k task per job limit to master code""                           adityacb@uber.com
+* 2018-04-17    Retry Do not recover FAILED jobs till archiver is committed                            mu@uber.com
+* 2018-04-17    Revert "Rearchitect the job manager to use the cache and the goal state engine"        mu@uber.com
+* 2018-04-17    Revert "Do not recover FAILED jobs till archiver is committed."                        mu@uber.com
+* 2018-04-17    Revert "Add 100k task per job limit to master code"                                    mu@uber.com
+* 2018-04-17    Revert "Fix completion time for jobs moving from PENDING to KILLED"                    mu@uber.com
+* 2018-04-17    Fix completion time for jobs moving from PENDING to KILLED                             adityacb@uber.com
+* 2018-04-17    Add max_retry_attempts for test__create_job to pass smoketest                          chunyang.shen@uber.com
+* 2018-04-16    Add 100k task per job limit to master code                                             adityacb@uber.com
+* 2018-04-13    enable host tags for metrics                                                           zhixin@uber.com
+* 2018-04-12    Bump up C* timeouts and add timers to recovery code                                    adityacb@uber.com
+* 2018-04-12    Add Host Maintenance API                                                               sachins@uber.com
+* 2018-04-12    Change GC and compaction for tables with large partitions                              adityacb@uber.com
+* 2018-04-10    Adding errorcodes in communication between resmgr and jobmgr for enqueuegangs          mabansal@uber.com
+* 2018-04-10    fix potential memory leak in priorityQueue                                             zhixin@uber.com
+* 2018-04-09    Make preemptor aware of non-preemptible tasks                                          avyas@uber.com
+* 2018-04-09    Admission control for non-preemptible gangs                                            avyas@uber.com
+* 2018-04-09    remove unused api.ResultSet to pass lint                                               zhixin@uber.com
+* 2018-04-09    Reconcile Staging Tasks                                                                varung@uber.com
+* 2018-04-06    Add script to do performance comparison betwwen two versions                           chunyang.shen@uber.com
+* 2018-04-04    Push to registry docker-registry02-sjc1:5055                                           chunyang.shen@uber.com
+* 2018-04-04    Do not recover FAILED jobs till archiver is committed.                                 apoorvaj@uber.com
+* 2018-04-04    Fix docker build script and update ATG registry                                        chunyang.shen@uber.com
+* 2018-04-04    Rearchitect the job manager to use the cache and the goal state engine                 apoorvaj@uber.com
+* 2018-04-04    Add a log when transient DB error occur on the hostmgr eventstream path                apoorvaj@uber.com
+* 2018-04-03    Fix resmgr reason for state transition                                                 apoorvaj@uber.com
+* 2018-04-02    Update Glide installation in Makefile                                                  chunyang.shen@uber.com
+* 2018-03-28    Don't log UUID in sentry error                                                         avyas@uber.com
+* 2018-03-26    Add a common library to implement a goal state engine                                  apoorvaj@uber.com
+* 2018-03-23    Rename metric tag from `type` to `result` for success/fail                             rcharles@uber.com
+* 2018-03-22    Delete job_index entry as part of DeleteJob                                            adityacb@uber.com
+* 2018-03-22    Address remaining review comments on in-memory DB                                      apoorvaj@uber.com
+* 2018-03-21    Copy over protoc includes in build script                                              adityacb@uber.com
+
+
 0.6.11
 ------------------
 * 2018-03-21    Pin down YARPC version in glide to avoid `uber fx`                                             Charles Raimbert
