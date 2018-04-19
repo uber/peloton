@@ -54,6 +54,14 @@ func WithReason(reason string) Option {
 	}
 }
 
+// WithInfo is an option passed in TransitTo to have store any meta infor about
+// state machine
+func WithInfo(key string, value string) Option {
+	return func(sm *statemachine) {
+		sm.metaInfo[key] = value
+	}
+}
+
 // StateMachine is the interface wrapping around the statemachine Object
 // Using to not expose full object
 type StateMachine interface {
@@ -78,6 +86,9 @@ type StateMachine interface {
 
 	// Terminates the state machine
 	Terminate()
+
+	// GetMetaInfo returns the map of meta info about state machine
+	GetMetaInfo() map[string]string
 }
 
 // statemachine is state machine, State Machine is responsible for moving states
@@ -114,6 +125,10 @@ type statemachine struct {
 
 	// reason records the reason for a state transition
 	reason string
+
+	// metaInfo will keep the metaInfo for the statemachine
+	// it's a key value pair.
+	metaInfo map[string]string
 }
 
 // NewStateMachine it will create the new state machine
@@ -134,6 +149,7 @@ func NewStateMachine(
 		transitionCallback: trasitionCallback,
 		lastUpdatedTime:    time.Now(),
 		reason:             createStateReasonString,
+		metaInfo:           make(map[string]string),
 	}
 
 	sm.timer = NewTimer(sm)
@@ -202,9 +218,10 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 	// from timeout state
 	if _, ok := sm.timeoutRules[curState]; ok {
 		log.WithFields(log.Fields{
-			"task_id": sm.name,
-			"from ":   curState,
-			"to":      to,
+			"task_id":           sm.name,
+			"from ":             curState,
+			"to":                to,
+			"meta_info_noindex": sm.GetMetaInfo(),
 		}).Info("Stopping state timeout recovery")
 		sm.timer.Stop()
 	}
@@ -222,11 +239,11 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 		err = sm.rules[curState].Callback(t)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"task_id":        sm.GetName(),
-				"current_state ": curState,
-				"to_state":       to,
+				"task_id":           sm.GetName(),
+				"current_state ":    curState,
+				"to_state":          to,
+				"meta_info_noindex": sm.GetMetaInfo(),
 			}).Error("callback failed for task")
-
 			return err
 		}
 	}
@@ -236,9 +253,10 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 		err = sm.transitionCallback(t)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"task_id":        sm.GetName(),
-				"current_state ": curState,
-				"to_state":       to,
+				"task_id":           sm.GetName(),
+				"current_state ":    curState,
+				"to_state":          to,
+				"meta_info_noindex": sm.GetMetaInfo(),
 			}).Error("transition callback failed for task")
 			return err
 		}
@@ -246,9 +264,10 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 	// Checking if this STATE is timeout state
 	if rule, ok := sm.timeoutRules[to]; ok {
 		log.WithFields(log.Fields{
-			"task_id": sm.name,
-			"from":    curState,
-			"to":      to,
+			"task_id":           sm.name,
+			"from":              curState,
+			"to":                to,
+			"meta_info_noindex": sm.GetMetaInfo(),
 		}).Info("Task transitioned to timeout state")
 		if rule.Timeout != 0 {
 			err := sm.timer.Start(rule.Timeout)
@@ -269,6 +288,12 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 			}
 		}
 	}
+	log.WithFields(log.Fields{
+		"task_id":           sm.name,
+		"from ":             curState,
+		"to":                to,
+		"meta_info_noindex": sm.GetMetaInfo(),
+	}).Info("Task transitioned successfully")
 	return nil
 }
 
@@ -359,10 +384,11 @@ func (sm *statemachine) rollbackState() error {
 	}
 
 	log.WithFields(log.Fields{
-		"task_id":       t.StateMachine.GetName(),
-		"rule_from":     rule.From,
-		"rule_to":       rule.To,
-		"current_state": sm.current,
+		"task_id":           t.StateMachine.GetName(),
+		"rule_from":         rule.From,
+		"rule_to":           rule.To,
+		"current_state":     sm.current,
+		"meta_info_noindex": sm.GetMetaInfo(),
 	}).Debug("Transitioning from Timeout")
 
 	// Doing actual transition
@@ -375,10 +401,11 @@ func (sm *statemachine) rollbackState() error {
 		err := rule.Callback(t)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"task_id":       sm.name,
-				"rule_from":     rule.From,
-				"rule_to":       rule.To,
-				"current_state": sm.current,
+				"task_id":           sm.name,
+				"rule_from":         rule.From,
+				"rule_to":           rule.To,
+				"current_state":     sm.current,
+				"meta_info_noindex": sm.GetMetaInfo(),
 			}).Error("Error in call back")
 			return err
 		}
@@ -389,13 +416,19 @@ func (sm *statemachine) rollbackState() error {
 		err := sm.transitionCallback(t)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"task_id":       t.StateMachine.GetName(),
-				"rule_from":     rule.From,
-				"rule_to":       rule.To,
-				"current_state": sm.current,
+				"task_id":           t.StateMachine.GetName(),
+				"rule_from":         rule.From,
+				"rule_to":           rule.To,
+				"current_state":     sm.current,
+				"meta_info_noindex": sm.GetMetaInfo(),
 			}).Error("Error in transition callback")
 			return err
 		}
 	}
 	return nil
+}
+
+// GetMetaInfo returns the meta info for the statemachine
+func (sm *statemachine) GetMetaInfo() map[string]string {
+	return sm.metaInfo
 }

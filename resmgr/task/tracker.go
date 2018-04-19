@@ -131,9 +131,17 @@ func (tr *tracker) AddTask(
 }
 
 // GetTask gets the RM task for taskID
+// this locks the tracker and get the Task
 func (tr *tracker) GetTask(t *peloton.TaskID) *RMTask {
 	tr.Lock()
 	defer tr.Unlock()
+	return tr.getTask(t)
+}
+
+// getTask gets the RM task for taskID
+// this method is not protected, we need to lock tracker
+// before we use this
+func (tr *tracker) getTask(t *peloton.TaskID) *RMTask {
 	if rmTask, ok := tr.tasks[t.Value]; ok {
 		return rmTask
 	}
@@ -188,10 +196,18 @@ func (tr *tracker) SetPlacementHost(placement *resmgr.Placement, hostname string
 	}
 }
 
-// DeleteTask deletes the task from the map
+// DeleteTask deletes the task from the map after
+// locking the tracker , this is interface call
 func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 	tr.Lock()
 	defer tr.Unlock()
+	tr.deleteTask(t)
+}
+
+// deleteTask deletes the task from the map
+// this method is not protected, we need to lock tracker
+// before we use this
+func (tr *tracker) deleteTask(t *peloton.TaskID) {
 	if rmTask, exists := tr.tasks[t.Value]; exists {
 		tr.clearPlacement(rmTask)
 	}
@@ -199,17 +215,21 @@ func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 	tr.metrics.TaskLeninTracker.Update(float64(tr.GetSize()))
 }
 
-// MarkItDone updates the resources in resmgr
+// MarkItDone updates the resources in resmgr and removes the task
+// from the tracker
 func (tr *tracker) MarkItDone(
 	tID *peloton.TaskID) error {
-	t := tr.GetTask(tID)
+	tr.Lock()
+	defer tr.Unlock()
+	t := tr.getTask(tID)
 	if t == nil {
 		return errors.Errorf("task %s is not in tracker", tID)
 	}
+
 	// We need to skip the tasks from resource counting which are in pending and
 	// and initialized state
-	if !(tr.GetTask(tID).GetCurrentState().String() == task.TaskState_PENDING.String() ||
-		tr.GetTask(tID).GetCurrentState().String() == task.TaskState_INITIALIZED.String()) {
+	if !(t.GetCurrentState().String() == task.TaskState_PENDING.String() ||
+		t.GetCurrentState().String() == task.TaskState_INITIALIZED.String()) {
 		err := t.respool.SubtractFromAllocation(scalar.GetTaskAllocation(t.Task()))
 		if err != nil {
 			return errors.Errorf("failed update task %s ", tID)
@@ -220,7 +240,7 @@ func (tr *tracker) MarkItDone(
 	t.StateMachine().Terminate()
 
 	log.WithField("task_id", tID.Value).Info("Deleting the task from Tracker")
-	tr.DeleteTask(tID)
+	tr.deleteTask(tID)
 	return nil
 }
 

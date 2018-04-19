@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
-
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -46,6 +46,8 @@ func (suite *TrackerTestSuite) SetupTest() {
 }
 
 func (suite *TrackerTestSuite) addTaskToTracker(task *resmgr.Task) {
+	//suite.Lock()
+	//defer suite.Lock()
 	suite.addTaskToTrackerWithTimeoutConfig(task, &Config{})
 }
 
@@ -318,4 +320,29 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 	// the state machine's timer should be stopped
 	suite.Equal(task.TaskState_LAUNCHING.String(),
 		string(rmTask.StateMachine().GetCurrentState()))
+}
+
+// TestAddDeleteTasks tests the concurrency issues between add task and delete task from tracker
+// this happens when add tasks and MarkItDone been called at the same time
+func (suite *TrackerTestSuite) TestAddDeleteTasks() {
+	suite.tracker.Clear()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			suite.addTaskToTracker(suite.createTask(i))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			taskID := fmt.Sprintf("job1-%d", i)
+			suite.tracker.MarkItDone(&peloton.TaskID{Value: taskID})
+		}
+
+	}()
+
+	wg.Wait()
+	suite.tracker.Clear()
 }

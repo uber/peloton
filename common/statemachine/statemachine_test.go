@@ -125,10 +125,13 @@ func (suite *StateMachineTestSuite) callbackTimeout(t *Transition) error {
 }
 
 func (suite *StateMachineTestSuite) TestCallbacksRunning() {
-	err := suite.stateMachine.TransitTo("running", WithReason("move to running"))
+	mesosTaskID := suite.stateMachine.GetName() + "mesosid"
+	err := suite.stateMachine.TransitTo("running", WithReason("move to running"),
+		WithInfo("mesos_task_id", mesosTaskID))
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "running")
 	suite.Equal(suite.stateMachine.GetReason(), "move to running")
+	suite.Equal(suite.stateMachine.GetMetaInfo()["mesos_task_id"], mesosTaskID)
 	err = suite.stateMachine.TransitTo("killed")
 	suite.NoError(err)
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
@@ -191,4 +194,10 @@ func (suite *StateMachineTestSuite) TestTerminateStateMachine() {
 	suite.stateMachine.Terminate()
 	time.Sleep(3 * time.Second)
 	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "killed")
+}
+
+func (suite *StateMachineTestSuite) TestMetaInfo() {
+	err := suite.stateMachine.TransitTo("placing", WithInfo("key1", "value1"))
+	suite.NoError(err)
+	suite.Equal(suite.stateMachine.GetMetaInfo()["key1"], "value1")
 }

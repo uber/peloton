@@ -30,6 +30,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/preemption/mocks"
 )
 
@@ -234,6 +235,10 @@ func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 
 func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
+	uuidStr := "uuidstr-1"
+	jobID := "job1"
+	instance := 2
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:     "job1-1",
@@ -247,6 +252,9 @@ func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 				MemLimitMb:  100,
 			},
 			Preemptible: true,
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
 		},
 	}
 	return &gang
@@ -254,6 +262,10 @@ func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 
 func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 	var gang resmgrsvc.Gang
+	uuidStr := "uuidstr-1"
+	jobID := "job1"
+	instance := 2
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
 	gang.Tasks = []*resmgr.Task{
 		{
 			Name:         "job2-1",
@@ -266,6 +278,9 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 				DiskLimitMb: 10,
 				GpuLimit:    0,
 				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
 			},
 			Preemptible: true,
 		},
@@ -280,6 +295,9 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 				DiskLimitMb: 10,
 				GpuLimit:    0,
 				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
 			},
 			Preemptible: true,
 		},
@@ -397,7 +415,8 @@ func (s *HandlerTestSuite) TestRequeue() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
+		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String())
 	s.NoError(err)
@@ -465,7 +484,8 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
+		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String())
 	s.NoError(err)
@@ -501,7 +521,8 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
+		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String())
 	s.NoError(err)
@@ -550,7 +571,8 @@ func (s *HandlerTestSuite) TestAddingToPendingQueue() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
+		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String())
 	s.NoError(err)
@@ -578,7 +600,8 @@ func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
+		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String())
 	s.NoError(err)
@@ -607,7 +630,8 @@ func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
+		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String())
 	s.NoError(err)
@@ -1043,7 +1067,8 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 			PlacingTimeout:   1 * time.Minute,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
-	err = rmtask.TransitTo(task.TaskState_PENDING.String())
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
+		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
 	err = rmtask.TransitTo(task.TaskState_READY.String())
 	s.NoError(err)

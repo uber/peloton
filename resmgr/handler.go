@@ -294,7 +294,8 @@ func (h *ServiceHandler) addingGangToPendingQueue(gang *resmgrsvc.Gang,
 		if h.rmTracker.GetTask(task.Id) != nil {
 			// transiting the task from INITIALIZED State to PENDING State
 			err := h.rmTracker.GetTask(task.Id).TransitTo(
-				t.TaskState_PENDING.String(), statemachine.WithReason("enqueue gangs called"))
+				t.TaskState_PENDING.String(), statemachine.WithReason("enqueue gangs called"),
+				statemachine.WithInfo(mesosTaskID, *task.GetTaskId().Value))
 			if err != nil {
 				taskFailtoTransit = true
 				log.WithError(err).WithField("task", task.Id.Value).
@@ -429,7 +430,9 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) (*resmgrsvc.Enqu
 		// Updating the New Mesos Task ID
 		rmTask.Task().TaskId = requeuedTask.TaskId
 		// Transitioning back to Ready State
-		rmTask.TransitTo(t.TaskState_READY.String(), statemachine.WithReason("waiting for placement (task updated with new mesos task id)"))
+		rmTask.TransitTo(t.TaskState_READY.String(),
+			statemachine.WithReason("waiting for placement (task updated with new mesos task id)"),
+			statemachine.WithInfo(mesosTaskID, *requeuedTask.TaskId.Value))
 		// Adding to ready Queue
 		var tasks []*resmgr.Task
 		gang := &resmgrsvc.Gang{
@@ -798,6 +801,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	log.WithFields(log.Fields{
 		"task_id":       ptID,
 		"current_state": taskState.String(),
+		"mesos_task_id": rmTask.Task().TaskId.Value,
 	}).Info("Task is completed and removed from tracker")
 	rmtask.GetTracker().UpdateCounters(
 		t.TaskState_RUNNING.String(), taskState.String())
