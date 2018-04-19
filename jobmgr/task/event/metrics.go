@@ -1,6 +1,7 @@
 package event
 
 import (
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"github.com/uber-go/tally"
 )
 
@@ -20,6 +21,7 @@ type Metrics struct {
 	TasksRunningTotal   tally.Counter
 
 	TasksReconciledTotal tally.Counter
+	TasksFailedReason    map[int32]tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -39,5 +41,15 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TasksRunningTotal:   scope.Counter("tasks_running_total"),
 
 		TasksReconciledTotal: scope.Counter("tasks_reconciled_total"),
+		TasksFailedReason:    newTasksFailedReasonScope(scope),
 	}
+}
+
+// newTasksFailedReasonScope creates a map of task failed reason to counter
+func newTasksFailedReasonScope(scope tally.Scope) map[int32]tally.Counter {
+	var taggedScopes = make(map[int32]tally.Counter)
+	for reasonID, reasonName := range mesos_v1.TaskStatus_Reason_name {
+		taggedScopes[reasonID] = scope.Tagged(map[string]string{"reason": reasonName}).Counter("task_failed")
+	}
+	return taggedScopes
 }

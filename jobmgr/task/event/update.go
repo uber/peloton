@@ -149,6 +149,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	var err error
 	var mesosTaskID string
 	var state pb_task.TaskState
+	var reason mesos_v1.TaskStatus_Reason
 	var statusMsg string
 	isMesosStatus := false
 
@@ -168,6 +169,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"taskID": taskID,
 			"state":  state.String(),
 		}).Debug("Adding Mesos Event ")
+		reason = event.GetMesosTaskStatus().GetReason()
 	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
 		// Peloton task event is used for task status update from resmgr.
 		taskID = event.PelotonTaskEvent.TaskId.Value
@@ -186,7 +188,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	// Update task state counter for non-reconcilication update.
-	if isMesosStatus && event.GetMesosTaskStatus().GetReason() != mesos_v1.TaskStatus_REASON_RECONCILIATION {
+	if isMesosStatus && reason != mesos_v1.TaskStatus_REASON_RECONCILIATION {
 		switch state {
 		case pb_task.TaskState_RUNNING:
 			p.metrics.TasksRunningTotal.Inc(1)
@@ -194,6 +196,11 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			p.metrics.TasksSucceededTotal.Inc(1)
 		case pb_task.TaskState_FAILED:
 			p.metrics.TasksFailedTotal.Inc(1)
+			p.metrics.TasksFailedReason[int32(reason)].Inc(1)
+			log.WithFields(log.Fields{
+				"task_id":       mesosTaskID,
+				"failed_reason": mesos_v1.TaskStatus_Reason_name[int32(reason)],
+			}).Debug("received failed task")
 		case pb_task.TaskState_KILLED:
 			p.metrics.TasksKilledTotal.Inc(1)
 		case pb_task.TaskState_LOST:
