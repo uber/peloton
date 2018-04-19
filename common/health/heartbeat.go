@@ -78,6 +78,8 @@ func (*heartbeat) Start() {
 					log.WithField("tick", t).
 						Debug("Emitting leader metric.")
 					hb.metrics.Leader.Update(1)
+				} else {
+					hb.metrics.Leader.Update(0)
 				}
 			}
 			ticker.Stop()
