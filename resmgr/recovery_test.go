@@ -18,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
 	"code.uber.internal/infra/peloton/common/queue"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	rp "code.uber.internal/infra/peloton/resmgr/respool"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -48,7 +49,11 @@ func (suite *recoveryTestSuite) SetupSuite() {
 	suite.mockJobStore = store_mocks.NewMockJobStore(suite.mockCtrl)
 	suite.mockTaskStore = store_mocks.NewMockTaskStore(suite.mockCtrl)
 
-	rp.InitTree(tally.NoopScope, suite.mockResPoolStore, suite.mockJobStore, suite.mockTaskStore)
+	rp.InitTree(tally.NoopScope, suite.mockResPoolStore, suite.mockJobStore,
+		suite.mockTaskStore,
+		rc.PreemptionConfig{
+			Enabled: false,
+		})
 	suite.resourceTree = rp.GetTree()
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker(tally.NoopScope)

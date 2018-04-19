@@ -34,14 +34,20 @@ type ServiceHandler interface {
 // serviceHandler implements peloton.api.respool.ResourcePoolService
 type serviceHandler struct {
 	sync.Mutex
-	store                  storage.ResourcePoolStore
-	metrics                *Metrics
-	dispatcher             *yarpc.Dispatcher
-	runningState           int32
+
+	cfg rc.PreemptionConfig
+
+	runningState int32
+
+	store      storage.ResourcePoolStore
+	metrics    *Metrics
+	dispatcher *yarpc.Dispatcher
+
 	resPoolTree            Tree
 	resPoolConfigValidator Validator
-	jobStore               storage.JobStore
-	taskStore              storage.TaskStore
+
+	jobStore  storage.JobStore
+	taskStore storage.TaskStore
 }
 
 // Singleton service handler for ResourcePoolService.
@@ -53,7 +59,8 @@ func InitServiceHandler(
 	parent tally.Scope,
 	store storage.ResourcePoolStore,
 	jobStore storage.JobStore,
-	taskStore storage.TaskStore) {
+	taskStore storage.TaskStore,
+	cfg rc.PreemptionConfig) {
 
 	if handler != nil {
 		log.Warning(
@@ -67,7 +74,7 @@ func InitServiceHandler(
 	metrics := NewMetrics(scope)
 
 	// Initializing Resource Pool Tree.
-	InitTree(scope, store, jobStore, taskStore)
+	InitTree(scope, store, jobStore, taskStore, cfg)
 
 	// Initialize Resource Pool Config Validator.
 	resPoolConfigValidator, err := NewResourcePoolConfigValidator(GetTree())

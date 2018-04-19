@@ -427,7 +427,7 @@ func (suite *PreemptorTestSuite) TestReconciler_ProcessResourcePoolForPlacingTas
 
 func (suite *PreemptorTestSuite) TestPreemptor_Init() {
 	suite.initResourceTree()
-	InitPreemptor(tally.NoopScope, &Config{
+	InitPreemptor(tally.NoopScope, &res_common.PreemptionConfig{
 		Enabled:                      true,
 		TaskPreemptionPeriod:         100 * time.Hour,
 		SustainedOverAllocationCount: 100,
@@ -451,7 +451,10 @@ func (suite *PreemptorTestSuite) initResourceTree() {
 		mockJobStore.EXPECT().GetJobsByStates(context.Background(),
 			gomock.Any()).Return(nil, nil).AnyTimes(),
 	)
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+		mockTaskStore, res_common.PreemptionConfig{
+			Enabled: true,
+		})
 }
 
 // Returns resource pools

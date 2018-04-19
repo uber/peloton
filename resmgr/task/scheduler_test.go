@@ -52,7 +52,8 @@ func (suite *SchedulerTestSuite) SetupSuite() {
 		mockJobStore.EXPECT().GetJobsByStates(context.Background(),
 			gomock.Any()).Return(nil, nil).AnyTimes(),
 	)
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+		mockTaskStore, res_common.PreemptionConfig{Enabled: false})
 
 	suite.resTree = respool.GetTree()
 	suite.readyQueue = queue.NewMultiLevelList("ready-queue", maxReadyQueueSize)

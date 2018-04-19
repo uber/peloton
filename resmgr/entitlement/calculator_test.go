@@ -2,7 +2,6 @@ package entitlement
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -64,19 +63,18 @@ func (s *EntitlementCalculatorTestSuite) initRespoolTree() {
 		mockJobStore.EXPECT().GetJobsByStates(context.Background(), gomock.Any()).
 			Return(nil, nil).AnyTimes(),
 	)
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+		mockTaskStore, res_common.PreemptionConfig{Enabled: false})
 
 	s.resTree = respool.GetTree()
 	s.calculator.resPoolTree = s.resTree
 }
 
 func (s *EntitlementCalculatorTestSuite) SetupTest() {
-	fmt.Println("setting up")
 	s.resTree.Start()
 }
 
 func (s *EntitlementCalculatorTestSuite) TearDownTest() {
-	fmt.Println("tearing down")
 	err := s.resTree.Stop()
 	s.NoError(err)
 	s.mockCtrl.Finish()
@@ -705,7 +703,8 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 			Return(nil, nil).AnyTimes(),
 	)
 
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+		mockTaskStore, res_common.PreemptionConfig{Enabled: false})
 
 	resTree := respool.GetTree()
 

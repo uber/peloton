@@ -235,7 +235,8 @@ func main() {
 	})
 
 	// Initialize resource pool service handlers
-	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore, taskStore)
+	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore,
+		taskStore, *cfg.ResManager.PreemptionConfig)
 
 	// Initializing the resmgr state machine
 	task.InitTaskTracker(rootScope)

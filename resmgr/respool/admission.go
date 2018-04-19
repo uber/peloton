@@ -89,8 +89,10 @@ func controllerAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 // Peloton takes approach 1 by checking the total allocation of all
 // non-preemptible gangs and the resource pool reservation.
 func reservationAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
-	if isPreemptible(gang) {
-		//don't need to check reservation
+	if !pool.isPreemptionEnabled() || isPreemptible(gang) {
+		// don't need to check reservation if
+		// 1. preemption is disabled or
+		// 2. its a preemptible job
 		return true
 	}
 
@@ -102,7 +104,7 @@ func reservationAdmitter(gang *resmgrsvc.Gang, pool *resPool) bool {
 		"reservation":           reservation,
 		"non_preemptible_alloc": npAllocation,
 		"resources_required":    neededResources,
-	}).Debug("checking reservation")
+	}).Info("checking reservation")
 
 	return npAllocation.
 		Add(neededResources).
@@ -141,7 +143,7 @@ func (ac admissionController) TryAdmit(
 		return errGangInvalid
 	}
 
-	if ok = ac.canAdmit(gang, pool); !ok {
+	if admitted := ac.canAdmit(gang, pool); !admitted {
 		if qt == pendingQueue {
 			// If a gang can't be admitted from the pending queue to the resource
 			// pool, then if:
@@ -149,7 +151,10 @@ func (ac admissionController) TryAdmit(
 			//    queue
 			// 2. Its a controller task it is moved to the controller queue
 			// 3. Else the resource pool is full, do nothing
-			if !isPreemptible(gang) {
+			if !isPreemptible(gang) && pool.isPreemptionEnabled() {
+				// only move to non preemptible queue iff both are true
+				// 1. its a non preemptible gang
+				// 2. preemption is enabled
 				err := ac.moveToQueue(pool, nonPreemptibleQueue, gang)
 				if err != nil {
 					return err

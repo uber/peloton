@@ -60,7 +60,7 @@ type preemptor struct {
 // InitPreemptor initializes the task preemptor
 func InitPreemptor(
 	parent tally.Scope,
-	cfg *Config,
+	cfg *common.PreemptionConfig,
 	tracker task.Tracker,
 ) {
 	once.Do(func() {
@@ -168,7 +168,8 @@ func (p *preemptor) Stop() error {
 }
 
 // DequeueTask dequeues a task from the preemption queue
-func (p *preemptor) DequeueTask(maxWaitTime time.Duration) (*resmgr.Task, error) {
+func (p *preemptor) DequeueTask(maxWaitTime time.Duration) (
+	*resmgr.Task, error) {
 	item, err := p.preemptionQueue.Dequeue(maxWaitTime)
 	if err != nil {
 		if _, isTimeout := err.(queue.DequeueTimeOutError); !isTimeout {
@@ -192,7 +193,8 @@ func (p *preemptor) preemptTasks() error {
 		err := p.processResourcePool(respoolID)
 		if err != nil {
 			combinedErr = multierr.Append(combinedErr,
-				errors.Wrapf(err, "unable to preempt tasks from resource pool :%s", respoolID))
+				errors.Wrapf(err, "unable to preempt tasks from "+
+					"resource pool :%s", respoolID))
 		}
 	}
 	return combinedErr
@@ -204,7 +206,8 @@ func (p *preemptor) updateResourcePoolsState() {
 	nodes := p.resTree.GetAllNodes(true)
 	for e := nodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(respool.ResPool)
-		resourcesAboveEntitlement := n.GetTotalAllocatedResources().Subtract(n.GetEntitlement())
+		resourcesAboveEntitlement := n.GetTotalAllocatedResources().Subtract(
+			n.GetEntitlement())
 		count := 0
 		if !scalar.ZeroResource.Equal(resourcesAboveEntitlement) {
 			// increment the count
@@ -228,7 +231,8 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to get resource pool")
 	}
-	resourcesToFree := resourcePool.GetTotalAllocatedResources().Subtract(resourcePool.GetEntitlement())
+	resourcesToFree := resourcePool.GetTotalAllocatedResources().Subtract(
+		resourcePool.GetEntitlement())
 	log.
 		WithField("respool_id", respoolID).
 		WithField("resource_to_free", resourcesToFree).

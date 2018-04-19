@@ -11,6 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 
 	"code.uber.internal/infra/peloton/common"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/storage"
 
 	"github.com/pkg/errors"
@@ -55,6 +56,8 @@ type Tree interface {
 type tree struct {
 	sync.RWMutex // Mutes for synchronization for tree
 
+	preemptionConfig rc.PreemptionConfig
+
 	store   storage.ResourcePoolStore // Store object for resource pool store
 	metrics *Metrics                  // Metrics object for reporting
 	root    ResPool
@@ -75,6 +78,7 @@ func InitTree(
 	store storage.ResourcePoolStore,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	cfg rc.PreemptionConfig,
 ) {
 
 	if respoolTree != nil {
@@ -83,14 +87,15 @@ func InitTree(
 	}
 
 	respoolTree = &tree{
-		store:       store,
-		root:        nil,
-		metrics:     NewMetrics(scope),
-		resPools:    make(map[string]ResPool),
-		jobStore:    jobStore,
-		taskStore:   taskStore,
-		scope:       scope.SubScope("restree"),
-		updatedChan: make(chan struct{}, 1),
+		store:            store,
+		root:             nil,
+		metrics:          NewMetrics(scope),
+		resPools:         make(map[string]ResPool),
+		jobStore:         jobStore,
+		taskStore:        taskStore,
+		scope:            scope.SubScope("restree"),
+		updatedChan:      make(chan struct{}, 1),
+		preemptionConfig: cfg,
 	}
 }
 
@@ -183,7 +188,7 @@ func (t *tree) buildTree(
 	parent ResPool,
 	resPoolConfigs map[string]*respool.ResourcePoolConfig,
 ) (ResPool, error) {
-	node, err := NewRespool(t.scope, ID, parent, resPoolConfigs[ID])
+	node, err := NewRespool(t.scope, ID, parent, resPoolConfigs[ID], t.preemptionConfig)
 	if err != nil {
 		log.WithError(err).Error("failed to create resource pool")
 		return nil, err
@@ -315,7 +320,8 @@ func (t *tree) Upsert(ID *peloton.ResourcePoolID, resPoolConfig *respool.Resourc
 			"respool_ID": ID.Value,
 		}).Debug("Adding resource pool")
 
-		resourcePool, err = NewRespool(t.scope, ID.Value, parent, resPoolConfig)
+		resourcePool, err = NewRespool(t.scope, ID.Value, parent,
+			resPoolConfig, t.preemptionConfig)
 
 		if err != nil {
 			return errors.Wrapf(

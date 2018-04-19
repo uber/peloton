@@ -14,6 +14,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"github.com/stretchr/testify/suite"
@@ -60,7 +61,8 @@ func (suite *TrackerTestSuite) addTaskToTrackerWithTimeoutConfig(task *resmgr.
 		Resources: suite.getResourceConfig(),
 		Policy:    policy,
 	}
-	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1", nil, respoolConfig)
+	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1",
+		nil, respoolConfig, rc.PreemptionConfig{Enabled: false})
 	suite.tracker.AddTask(task, suite.eventStreamHandler, suite.respool, cfg)
 }
 

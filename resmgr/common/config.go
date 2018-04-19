@@ -1,9 +1,10 @@
-package preemption
+package common
 
 import "time"
 
-// Config is the container for preemption related config
-type Config struct {
+// PreemptionConfig is the container for preemption related config
+// TODO merge resmgr config to common
+type PreemptionConfig struct {
 	// Boolean value to represent if preemption is enabled to run
 	Enabled bool
 

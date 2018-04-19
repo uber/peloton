@@ -4,14 +4,17 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
+	"code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	"github.com/pborman/uuid"
 	"github.com/uber-go/tally"
 )
 
-func (s *ResPoolSuite) respoolWithConfig(config *respool.ResourcePoolConfig) ResPool {
-	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), s.root, config)
+func (s *ResPoolSuite) respoolWithConfig(respoolConfig *respool.ResourcePoolConfig) ResPool {
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), s.root,
+		respoolConfig, common.PreemptionConfig{
+			Enabled: true})
 	s.NoError(err)
 	return resPoolNode
 }
@@ -267,16 +270,30 @@ func (s *ResPoolSuite) TestBatchAdmissionController_NPAdmitter() {
 	}
 
 	tt := []struct {
-		canAdmit bool
-		err      error
+		canAdmit          bool
+		wantErr           error
+		preemptionEnabled bool
 	}{
-		{ // Tests a controller task at the head of queue which can be admitted
-			canAdmit: true,
-			err:      nil,
+		{
+			// Tests a non preemptible task at the head of queue which can be
+			// admitted when preemption is enabled
+			canAdmit:          true,
+			wantErr:           nil,
+			preemptionEnabled: true,
 		},
-		{ // Tests a batch task at the head of queue which can nit be admitted
-			canAdmit: false,
-			err:      errResourcePoolFull,
+		{
+			// Tests a non preemptible task at the head of queue which can not
+			// be admitted when preemption is enabled
+			canAdmit:          false,
+			wantErr:           errResourcePoolFull,
+			preemptionEnabled: true,
+		},
+		{
+			// Tests a non preemptible task at the head of queue which can be
+			// admitted when preemption is disabled
+			canAdmit:          true,
+			wantErr:           nil,
+			preemptionEnabled: false,
 		},
 	}
 
@@ -284,7 +301,14 @@ func (s *ResPoolSuite) TestBatchAdmissionController_NPAdmitter() {
 		rp := s.respoolWithConfig(poolConfig)
 		resPool, ok := rp.(*resPool)
 		s.True(ok)
+
+		resPool.preemptionCfg.Enabled = t.preemptionEnabled
+
 		if t.canAdmit {
+			if !t.preemptionEnabled {
+				// set the reservation to zero
+				resPool.reservation = scalar.ZeroResource
+			}
 			resPool.SetEntitlement(s.getEntitlement())
 		} else {
 			// set the reservation to zero
@@ -298,7 +322,7 @@ func (s *ResPoolSuite) TestBatchAdmissionController_NPAdmitter() {
 		s.NoError(err)
 
 		err = admission.TryAdmit(gang, resPool, nonPreemptibleQueue)
-		s.Equal(t.err, err)
+		s.Equal(t.wantErr, err, "failed test case:%v", t)
 
 		if t.canAdmit {
 			assertAdmittedSuccessfully(s, task, resPool)

@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 
@@ -81,11 +82,12 @@ func (s *resTreeTestSuite) TestInitDestroyTree() {
 	mockJobStore := store_mocks.NewMockJobStore(mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(mockCtrl)
 	// Initialize the local tree
-	InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore,
+		rc.PreemptionConfig{Enabled: false})
 	resTree := GetTree()
 	s.NotNil(resTree)
 	// Init again to see if we get the same object
-	InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore, rc.PreemptionConfig{Enabled: false})
 	resTreeNew := GetTree()
 	s.Equal(resTree, resTreeNew)
 	// Stopping and destroying local tree

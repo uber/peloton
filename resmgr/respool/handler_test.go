@@ -38,13 +38,14 @@ func (s *resPoolHandlerTestSuite) SetupSuite() {
 	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
 	s.resourceTree = &tree{
-		store:     s.mockResPoolStore,
-		root:      nil,
-		metrics:   NewMetrics(tally.NoopScope),
-		resPools:  make(map[string]ResPool),
-		jobStore:  mockJobStore,
-		taskStore: mockTaskStore,
-		scope:     tally.NoopScope,
+		store:            s.mockResPoolStore,
+		root:             nil,
+		metrics:          NewMetrics(tally.NoopScope),
+		resPools:         make(map[string]ResPool),
+		jobStore:         mockJobStore,
+		taskStore:        mockTaskStore,
+		scope:            tally.NoopScope,
+		preemptionConfig: rc.PreemptionConfig{Enabled: false},
 	}
 	resourcePoolConfigValidator, err := NewResourcePoolConfigValidator(s.resourceTree)
 	s.NoError(err)

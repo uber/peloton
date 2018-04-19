@@ -10,6 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 
@@ -125,6 +126,8 @@ type resPool struct {
 	children *list.List
 	parent   ResPool
 
+	preemptionCfg rc.PreemptionConfig
+
 	resourceConfigs map[string]*respool.ResourceConfig
 	poolConfig      *respool.ResourcePoolConfig
 
@@ -173,7 +176,8 @@ func NewRespool(
 	scope tally.Scope,
 	id string,
 	parent ResPool,
-	config *respool.ResourcePoolConfig) (ResPool, error) {
+	config *respool.ResourcePoolConfig,
+	preemptionConfig rc.PreemptionConfig) (ResPool, error) {
 
 	if config == nil {
 		return nil, errors.Errorf("error creating resource pool %s; "+
@@ -209,6 +213,7 @@ func NewRespool(
 		demand:          &scalar.Resources{},
 		reservation:     &scalar.Resources{},
 		invalidTasks:    make(map[string]bool),
+		preemptionCfg:   preemptionConfig,
 	}
 
 	// Initialize metrics
@@ -877,6 +882,10 @@ func (n *resPool) PeekControllerGangs(limit uint32) ([]*resmgrsvc.Gang, error) {
 	n.RLock()
 	defer n.RUnlock()
 	return n.controllerQueue.Peek(limit)
+}
+
+func (n *resPool) isPreemptionEnabled() bool {
+	return n.preemptionCfg.Enabled
 }
 
 func getLimits(resourceConfigs map[string]*respool.ResourceConfig) *scalar.Resources {

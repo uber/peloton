@@ -12,6 +12,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
@@ -64,7 +65,8 @@ func (suite *RankerTestSuite) addTaskToTracker(task *resmgr.Task) {
 		Resources: suite.getResourceConfig(),
 		Policy:    policy,
 	}
-	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1", nil, respoolConfig)
+	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1",
+		nil, respoolConfig, rc.PreemptionConfig{Enabled: true})
 	suite.tracker.AddTask(task, suite.eventStreamHandler, suite.respool, &rm_task.Config{
 		LaunchingTimeout: 1 * time.Minute,
 		PlacingTimeout:   1 * time.Minute,

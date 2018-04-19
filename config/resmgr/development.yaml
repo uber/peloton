@@ -18,6 +18,6 @@ metrics:
 resmgr:
   entitlement_calculation_period: 5s
   preemption:
+    enabled: false
     sustained_over_allocation_count: 3
     task_preemption_period: 10s
-

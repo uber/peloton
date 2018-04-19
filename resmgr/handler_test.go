@@ -8,19 +8,6 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-
-	"github.com/golang/mock/gomock"
-	"github.com/pborman/uuid"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
-
-	"code.uber.internal/infra/peloton/common/queue"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	rm_task "code.uber.internal/infra/peloton/resmgr/task"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -30,8 +17,20 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/common/statemachine"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/preemption/mocks"
+	"code.uber.internal/infra/peloton/resmgr/respool"
+	rm_task "code.uber.internal/infra/peloton/resmgr/task"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+
+	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
 )
 
 const (
@@ -46,6 +45,7 @@ type HandlerTestSuite struct {
 	taskScheduler rm_task.Scheduler
 	ctrl          *gomock.Controller
 	rmTaskTracker rm_task.Tracker
+	cfg           rc.PreemptionConfig
 }
 
 func (s *HandlerTestSuite) SetupSuite() {
@@ -56,7 +56,13 @@ func (s *HandlerTestSuite) SetupSuite() {
 	mockJobStore := store_mocks.NewMockJobStore(s.ctrl)
 	mockTaskStore := store_mocks.NewMockTaskStore(s.ctrl)
 
-	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore, mockTaskStore)
+	s.cfg = rc.PreemptionConfig{
+		Enabled: false,
+	}
+
+	respool.InitTree(tally.NoopScope, mockResPoolStore, mockJobStore,
+		mockTaskStore, s.cfg)
+
 	s.resTree = respool.GetTree()
 	// Initializing the resmgr state machine
 	rm_task.InitTaskTracker(tally.NoopScope)
@@ -650,7 +656,7 @@ func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
 }
 
 func (s *HandlerTestSuite) TestEnqueueGangsResPoolNotFound() {
-	respool.InitTree(tally.NoopScope, nil, nil, nil)
+	respool.InitTree(tally.NoopScope, nil, nil, nil, s.cfg)
 
 	respoolID := &peloton.ResourcePoolID{Value: "respool10"}
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
@@ -674,7 +680,7 @@ func (s *HandlerTestSuite) TestEnqueueGangsFailure() {
 
 func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 	var placements []*resmgr.Placement
-	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
+	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil, s.cfg)
 	for i := 0; i < 10; i++ {
 		var tasks []*peloton.TaskID
 		for j := 0; j < 5; j++ {
@@ -813,7 +819,7 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 			Parent:    nil,
 			Resources: s.getResourceConfig(),
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
-		})
+		}, s.cfg)
 	for j := 0; j < 5; j++ {
 		mesosTaskID := "mesosID"
 		taskid := &peloton.TaskID{
@@ -926,7 +932,7 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 			Parent:    nil,
 			Resources: s.getResourceConfig(),
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
-		})
+		}, s.cfg)
 	for i := 0; i < 100; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, i, uuidStr)
 		state := mesos_v1.TaskState_TASK_FINISHED
@@ -1012,7 +1018,8 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 	s.handler.preemptor = mockPreemptor
 
 	// Mock tasks in RUNNING state
-	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil, nil)
+	resp, _ := respool.NewRespool(
+		tally.NoopScope, "respool-1", nil, nil, s.cfg)
 	var expectedTasks []*resmgr.Task
 	for j := 1; j <= 5; j++ {
 		taskID := &peloton.TaskID{

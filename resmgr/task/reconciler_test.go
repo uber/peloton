@@ -74,7 +74,8 @@ func (suite *ReconcilerTestSuite) addTaskToTracker(pelotonTaskID string, tracker
 		Resources: suite.getResourceConfig(),
 		Policy:    policy,
 	}
-	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1", nil, respoolConfig)
+	suite.respool, _ = respool.NewRespool(tally.NoopScope, "respool-1",
+		nil, respoolConfig, res_common.PreemptionConfig{Enabled: false})
 	suite.tracker.AddTask(rmTask, suite.eventStreamHandler, suite.respool, &Config{})
 }
 

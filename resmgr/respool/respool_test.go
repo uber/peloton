@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/queue"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 
@@ -28,6 +29,7 @@ var (
 type ResPoolSuite struct {
 	root ResPool
 	suite.Suite
+	cfg rc.PreemptionConfig
 }
 
 func (s *ResPoolSuite) SetupSuite() {
@@ -38,8 +40,9 @@ func (s *ResPoolSuite) SetupSuite() {
 		Resources: s.getResources(),
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
+	s.cfg = rc.PreemptionConfig{Enabled: false}
 	rootResPool, err := NewRespool(tally.NoopScope, common.RootResPoolID, nil,
-		rootConfig)
+		rootConfig, s.cfg)
 	s.NoError(err)
 	s.True(rootResPool.IsRoot())
 	s.root = rootResPool
@@ -172,7 +175,8 @@ func (s *ResPoolSuite) createTestResourcePool() ResPool {
 		Resources: s.getResources(),
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
-	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), s.root, poolConfig)
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), s.root,
+		poolConfig, s.cfg)
 	s.NoError(err)
 	return resPoolNode
 }
@@ -215,7 +219,7 @@ func (s *ResPoolSuite) TestNewResPool() {
 
 	for _, t := range tt {
 		id := uuid.New()
-		resPool, err := NewRespool(tally.NoopScope, id, s.root, t.poolConfig)
+		resPool, err := NewRespool(tally.NoopScope, id, s.root, t.poolConfig, s.cfg)
 		if err != nil {
 			s.Equal(fmt.Sprintf(t.err, id), err.Error())
 			s.Nil(resPool)
@@ -472,7 +476,8 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolRoot, err := NewRespool(tally.NoopScope, rootID.Value, nil, poolConfigroot)
+	resPoolRoot, err := NewRespool(tally.NoopScope, rootID.Value, nil,
+		poolConfigroot, s.cfg)
 	s.NoError(err)
 
 	poolConfig1 := &pb_respool.ResourcePoolConfig{
@@ -482,7 +487,8 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value, resPoolRoot, poolConfig1)
+	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value,
+		resPoolRoot, poolConfig1, s.cfg)
 	s.NoError(err)
 	resPoolNode1.SetEntitlement(s.getEntitlement())
 
@@ -493,7 +499,8 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value, resPoolRoot, poolConfig2)
+	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value,
+		resPoolRoot, poolConfig2, s.cfg)
 	s.NoError(err)
 	resPoolNode2.SetEntitlement(s.getEntitlement())
 
@@ -509,7 +516,8 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value, resPoolNode1, poolConfig11)
+	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value,
+		resPoolNode1, poolConfig11, s.cfg)
 	s.NoError(err)
 	resPoolNode11.SetEntitlement(s.getEntitlement())
 	resPoolNode11.SetTotalAllocatedResources(s.getAllocation())
@@ -521,7 +529,8 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value, resPoolNode1, poolConfig12)
+	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value,
+		resPoolNode1, poolConfig12, s.cfg)
 	s.NoError(err)
 	resPoolNode12.SetEntitlement(s.getEntitlement())
 	resPoolNode12.SetTotalAllocatedResources(s.getAllocation())
@@ -538,7 +547,8 @@ func (s *ResPoolSuite) TestCalculateAllocation() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value, resPoolNode2, poolConfig21)
+	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value,
+		resPoolNode2, poolConfig21, s.cfg)
 	s.NoError(err)
 	resPoolNode21.SetEntitlement(s.getEntitlement())
 	resPoolNode21.SetTotalAllocatedResources(s.getAllocation())
@@ -590,7 +600,8 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolroot, err := NewRespool(tally.NoopScope, _rootResPoolID.Value, nil, poolConfigroot)
+	resPoolroot, err := NewRespool(tally.NoopScope, _rootResPoolID.Value,
+		nil, poolConfigroot, s.cfg)
 	s.NoError(err)
 
 	poolConfig1 := &pb_respool.ResourcePoolConfig{
@@ -600,7 +611,8 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value, resPoolroot, poolConfig1)
+	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value,
+		resPoolroot, poolConfig1, s.cfg)
 	s.NoError(err)
 	resPoolNode1.SetEntitlement(s.getEntitlement())
 
@@ -611,7 +623,8 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value, resPoolroot, poolConfig2)
+	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value,
+		resPoolroot, poolConfig2, s.cfg)
 	s.NoError(err)
 	resPoolNode2.SetEntitlement(s.getEntitlement())
 
@@ -627,7 +640,8 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value, resPoolNode1, poolConfig11)
+	resPoolNode11, err := NewRespool(tally.NoopScope, respool11ID.Value,
+		resPoolNode1, poolConfig11, s.cfg)
 	s.NoError(err)
 	resPoolNode11.SetEntitlement(s.getEntitlement())
 	resPoolNode11.SetTotalAllocatedResources(s.getAllocation())
@@ -640,7 +654,8 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value, resPoolNode1, poolConfig12)
+	resPoolNode12, err := NewRespool(tally.NoopScope, respool12ID.Value,
+		resPoolNode1, poolConfig12, s.cfg)
 	s.NoError(err)
 	resPoolNode12.SetEntitlement(s.getEntitlement())
 	resPoolNode12.SetTotalAllocatedResources(s.getAllocation())
@@ -658,7 +673,8 @@ func (s *ResPoolSuite) TestCalculateDemand() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value, resPoolNode2, poolConfig21)
+	resPoolNode21, err := NewRespool(tally.NoopScope, respool21ID.Value,
+		resPoolNode2, poolConfig21, s.cfg)
 	s.NoError(err)
 	resPoolNode21.SetEntitlement(s.getEntitlement())
 	resPoolNode21.SetTotalAllocatedResources(s.getAllocation())
@@ -744,7 +760,8 @@ func (s *ResPoolSuite) TestResPoolDequeueError() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), s.root, poolConfig)
+	resPoolNode, err := NewRespool(tally.NoopScope, uuid.New(), s.root,
+		poolConfig, s.cfg)
 	s.NoError(err)
 
 	for _, t := range s.getTasks() {
@@ -850,7 +867,7 @@ func (s *ResPoolSuite) TestSetParent() {
 	}
 
 	newParentPool, err := NewRespool(tally.NoopScope, "respool2", s.root,
-		newParentConfig)
+		newParentConfig, s.cfg)
 	s.NoError(err)
 	resPool.SetParent(newParentPool)
 	s.Equal("/respool2/"+_testResPoolName, resPool.GetPath())
@@ -960,7 +977,8 @@ func (s *ResPoolSuite) TestAggregatedChildrenReservations() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolroot, err := NewRespool(tally.NoopScope, _rootResPoolID.Value, nil, poolConfigroot)
+	resPoolroot, err := NewRespool(tally.NoopScope, _rootResPoolID.Value,
+		nil, poolConfigroot, s.cfg)
 	s.NoError(err)
 
 	poolConfig1 := &pb_respool.ResourcePoolConfig{
@@ -970,7 +988,8 @@ func (s *ResPoolSuite) TestAggregatedChildrenReservations() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 
-	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value, resPoolroot, poolConfig1)
+	resPoolNode1, err := NewRespool(tally.NoopScope, respool1ID.Value,
+		resPoolroot, poolConfig1, s.cfg)
 	s.NoError(err)
 
 	poolConfig2 := &pb_respool.ResourcePoolConfig{
@@ -980,7 +999,7 @@ func (s *ResPoolSuite) TestAggregatedChildrenReservations() {
 		Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 	}
 	resPoolNode2, err := NewRespool(tally.NoopScope, respool2ID.Value,
-		resPoolroot, poolConfig2)
+		resPoolroot, poolConfig2, s.cfg)
 	s.NoError(err)
 
 	children := list.New()
