@@ -791,7 +791,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	}
 
 	// TODO: We probably want to terminate all the tasks in gang
-	err = rmtask.GetTracker().MarkItDone(taskID)
+	err = rmtask.GetTracker().MarkItDone(taskID, *event.MesosTaskStatus.TaskId.Value)
 	if err != nil {
 		log.WithField("event", event).WithError(err).Error(
 			"Could not be updated")
@@ -968,7 +968,7 @@ func (h *ServiceHandler) KillTasks(
 			continue
 		}
 
-		err := h.rmTracker.MarkItInvalid(taskTobeKilled)
+		err := h.rmTracker.MarkItInvalid(taskTobeKilled, *(killedRmTask.Task().TaskId.Value))
 		if err != nil {
 			tasksNotKilled = append(tasksNotKilled, taskTobeKilled)
 			continue

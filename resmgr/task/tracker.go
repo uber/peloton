@@ -41,11 +41,11 @@ type Tracker interface {
 
 	// MarkItDone marks the task done and add back those
 	// resources to respool
-	MarkItDone(taskID *peloton.TaskID) error
+	MarkItDone(taskID *peloton.TaskID, mesosTaskID string) error
 
 	// MarkItInvalid marks the task done and invalidate them
 	// in to respool by that they can be removed from the queue
-	MarkItInvalid(taskID *peloton.TaskID) error
+	MarkItInvalid(taskID *peloton.TaskID, mesosTaskID string) error
 
 	// TasksByHosts returns all tasks of the given type running on the given hosts.
 	TasksByHosts(hosts []string, taskType resmgr.TaskType) map[string][]*RMTask
@@ -218,12 +218,19 @@ func (tr *tracker) deleteTask(t *peloton.TaskID) {
 // MarkItDone updates the resources in resmgr and removes the task
 // from the tracker
 func (tr *tracker) MarkItDone(
-	tID *peloton.TaskID) error {
+	tID *peloton.TaskID,
+	mesosTaskID string) error {
 	tr.Lock()
 	defer tr.Unlock()
 	t := tr.getTask(tID)
 	if t == nil {
 		return errors.Errorf("task %s is not in tracker", tID)
+	}
+
+	// Checking mesos ID again if thats not changed
+	if *t.Task().TaskId.Value != mesosTaskID {
+		return errors.Errorf("for task %s: mesos id %s in tracker is different id %s from event",
+			tID.Value, *t.Task().TaskId.Value, mesosTaskID)
 	}
 
 	// We need to skip the tasks from resource counting which are in pending and
@@ -246,12 +253,12 @@ func (tr *tracker) MarkItDone(
 
 // MarkItInvalid marks the task done and invalidate them
 // in to respool by that they can be removed from the queue
-func (tr *tracker) MarkItInvalid(tID *peloton.TaskID) error {
+func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error {
 	t := tr.GetTask(tID)
 	if t == nil {
 		return errors.Errorf("task %s is not in tracker", tID)
 	}
-	err := tr.MarkItDone(tID)
+	err := tr.MarkItDone(tID, mesosTaskID)
 	if err != nil {
 		return err
 	}

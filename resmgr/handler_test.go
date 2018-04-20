@@ -815,6 +815,7 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 			Policy:    pb_respool.SchedulingPolicy_PriorityFIFO,
 		})
 	for j := 0; j < 5; j++ {
+		mesosTaskID := "mesosID"
 		taskid := &peloton.TaskID{
 			Value: fmt.Sprintf("task-1-%d", j),
 		}
@@ -826,6 +827,9 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 				DiskLimitMb: 10,
 				GpuLimit:    0,
 				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
 			},
 		}
 		s.rmTaskTracker.AddTask(rmTask, nil, resp,
@@ -1081,7 +1085,7 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 
 	// Marking this task to Invalidate
 	// It will not invalidate as its in Lunching state
-	s.rmTaskTracker.MarkItInvalid(s.pendingGang0().Tasks[0].Id)
+	s.rmTaskTracker.MarkItInvalid(s.pendingGang0().Tasks[0].Id, *s.pendingGang0().Tasks[0].TaskId.Value)
 
 	// Tasks should be removed from Tracker
 	taskget := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	resp "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -46,8 +47,6 @@ func (suite *TrackerTestSuite) SetupTest() {
 }
 
 func (suite *TrackerTestSuite) addTaskToTracker(task *resmgr.Task) {
-	//suite.Lock()
-	//defer suite.Lock()
 	suite.addTaskToTrackerWithTimeoutConfig(task, &Config{})
 }
 
@@ -99,6 +98,7 @@ func (suite *TrackerTestSuite) getResourceConfig() []*resp.ResourceConfig {
 
 func (suite *TrackerTestSuite) createTask(instance int) *resmgr.Task {
 	taskID := fmt.Sprintf("job1-%d", instance)
+	mesosID := "mesosTaskID"
 	return &resmgr.Task{
 		Name:     taskID,
 		Priority: 0,
@@ -110,6 +110,9 @@ func (suite *TrackerTestSuite) createTask(instance int) *resmgr.Task {
 			DiskLimitMb: 10,
 			GpuLimit:    0,
 			MemLimitMb:  100,
+		},
+		TaskId: &mesos_v1.TaskID{
+			Value: &mesosID,
 		},
 	}
 }
@@ -238,7 +241,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	suite.Equal(res, resources)
 
 	deleteTask := &peloton.TaskID{Value: taskID}
-	suite.tracker.MarkItDone(deleteTask)
+	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 	suite.Equal(res, resources)
@@ -260,7 +263,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	suite.NoError(err)
 
 	deleteTask = &peloton.TaskID{Value: taskID}
-	suite.tracker.MarkItDone(deleteTask)
+	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 
@@ -284,7 +287,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	suite.NoError(err)
 
 	deleteTask = &peloton.TaskID{Value: taskID}
-	suite.tracker.MarkItDone(deleteTask)
+	suite.tracker.MarkItDone(deleteTask, *rmTask.task.TaskId.Value)
 
 	res = rmTask.respool.GetTotalAllocatedResources()
 
@@ -297,6 +300,21 @@ func (suite *TrackerTestSuite) TestMarkItDone_Allocation() {
 	suite.Equal(res, zeroResource)
 
 	suite.tracker.Clear()
+}
+
+func (suite *TrackerTestSuite) TestMarkItDone_WithDifferentMesosTaskID() {
+	taskID := fmt.Sprintf("job1-%d", 1)
+	t := &peloton.TaskID{Value: taskID}
+
+	rmTask := suite.tracker.GetTask(t)
+	suite.NotNil(rmTask)
+
+	// transit to a timeout state
+	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
+
+	err := suite.tracker.MarkItDone(t, "MesosDifferentTaskID")
+
+	suite.Error(err)
 }
 
 func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
@@ -312,7 +330,7 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 	// transit to a timeout state
 	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
 
-	suite.tracker.MarkItDone(t)
+	suite.tracker.MarkItDone(t, *rmTask.Task().TaskId.Value)
 
 	// wait for LaunchingTimeout
 	time.Sleep(1 * time.Second)
@@ -320,6 +338,24 @@ func (suite *TrackerTestSuite) TestMarkItDone_StateMachine() {
 	// the state machine's timer should be stopped
 	suite.Equal(task.TaskState_LAUNCHING.String(),
 		string(rmTask.StateMachine().GetCurrentState()))
+}
+
+func (suite *TrackerTestSuite) TestMarkItInvalid() {
+
+	taskID := fmt.Sprintf("job1-%d", 1)
+	t := &peloton.TaskID{Value: taskID}
+
+	rmTask := suite.tracker.GetTask(t)
+	suite.NotNil(rmTask)
+
+	// transit to a timeout state
+	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
+
+	err := suite.tracker.MarkItInvalid(t, "MesosDifferentTaskID")
+	suite.Error(err)
+
+	err = suite.tracker.MarkItInvalid(t, *rmTask.Task().TaskId.Value)
+	suite.NoError(err)
 }
 
 // TestAddDeleteTasks tests the concurrency issues between add task and delete task from tracker
@@ -338,7 +374,7 @@ func (suite *TrackerTestSuite) TestAddDeleteTasks() {
 		defer wg.Done()
 		for i := 0; i < 1000; i++ {
 			taskID := fmt.Sprintf("job1-%d", i)
-			suite.tracker.MarkItDone(&peloton.TaskID{Value: taskID})
+			suite.tracker.MarkItDone(&peloton.TaskID{Value: taskID}, "mesosTaskID")
 		}
 
 	}()
