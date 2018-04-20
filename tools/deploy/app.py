@@ -32,6 +32,7 @@ from aurora.schema.thermos.schema_base import (
     Resources,
 )
 from aurora.schema.aurora.base import (
+    Announcer,
     MesosJob as ThermosJob,
     HealthCheckConfig,
     HealthCheckerConfig,
@@ -231,9 +232,16 @@ class App(object):
             ),
             initial_interval_secs=15,
             interval_secs=10,
-            max_consecutive_failures=3,
+            max_consecutive_failures=4,
             timeout_secs=1
         )
+        announce = Announcer()
+        if self.http_port is not None:
+            announce = Announcer(
+                portmap={
+                    'health': self.http_port
+                },
+            )
         thermos_job = ThermosJob(
             name=self.name,
             role=AURORA_ROLE,
@@ -243,11 +251,13 @@ class App(object):
             production=False,
             service=True,
             health_check_config=health_check_config,
+            announce=announce,
         )
         executor_config = ExecutorConfig(
             name=AURORA_EXECUTOR_NAME,
             data=thermos_job.json_dumps()
         )
+
         return executor_config
 
     def get_desired_job_config(self):
