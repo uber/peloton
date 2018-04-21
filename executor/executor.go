@@ -341,6 +341,11 @@ func (exec *Executor) Fatal(err error) {
 	}
 }
 
+// IsConnected returns whether the executor is connected to the agent.
+func (exec *Executor) IsConnected() bool {
+	return exec.state == connected
+}
+
 // Subscribes to the agent to receive events. Sends any unacked Updates and TaskInfo along
 // with the subscribe call.
 func (exec *Executor) subscribe() error {
@@ -443,10 +448,10 @@ func (exec *Executor) newUpdate(task Task, state mesos.TaskState) *executor.Call
 		State:      &state,
 		Uuid:       updateid,
 		Healthy:    &healthy,
-		ExecutorId: exec.info.ExecutorId,
+		ExecutorId: exec.info.GetExecutorId(),
 		Source:     &source,
-		Labels:     task.GetInfo().Labels,
-		AgentId:    exec.agent.Id,
+		Labels:     task.GetInfo().GetLabels(),
+		AgentId:    exec.agent.GetId(),
 	}
 	update := &executor.Call_Update{
 		Status: status,
