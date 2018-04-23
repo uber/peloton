@@ -39,6 +39,7 @@ type serviceHandler struct {
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider
 	volumeStore           storage.PersistentVolumeStore
 	roleName              string
+	mesosDetector         hostmgr_mesos.MasterDetector
 }
 
 // InitServiceHandler initialize serviceHandler.
@@ -50,7 +51,7 @@ func InitServiceHandler(
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
 	volumeStore storage.PersistentVolumeStore,
 	mesosConfig hostmgr_mesos.Config,
-) {
+	mesosDetector hostmgr_mesos.MasterDetector) {
 
 	handler := &serviceHandler{
 		schedulerClient:       schedulerClient,
@@ -60,6 +61,7 @@ func InitServiceHandler(
 		frameworkInfoProvider: frameworkInfoProvider,
 		volumeStore:           volumeStore,
 		roleName:              mesosConfig.Framework.Role,
+		mesosDetector:         mesosDetector,
 	}
 
 	d.Register(hostsvc.BuildInternalHostServiceYARPCProcedures(handler))
@@ -81,8 +83,7 @@ func validateHostFilter(
 // AcquireHostOffers implements InternalHostService.AcquireHostOffers.
 func (h *serviceHandler) AcquireHostOffers(
 	ctx context.Context,
-	body *hostsvc.AcquireHostOffersRequest,
-) (*hostsvc.AcquireHostOffersResponse, error) {
+	body *hostsvc.AcquireHostOffersRequest) (*hostsvc.AcquireHostOffersResponse, error) {
 
 	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
@@ -911,4 +912,21 @@ func (h *serviceHandler) ClusterCapacity(
 
 	h.metrics.refreshClusterCapacityGauges(clusterCapacityResponse)
 	return clusterCapacityResponse, nil
+}
+
+// MesosMasterHostPort returns the Leader Mesos Master hostname and port.
+func (h *serviceHandler) GetMesosMasterHostPort(
+	ctx context.Context,
+	body *hostsvc.MesosMasterHostPortRequest) (*hostsvc.MesosMasterHostPortResponse, error) {
+
+	mesosMasterInfo := strings.Split(h.mesosDetector.HostPort(), ":")
+	if len(mesosMasterInfo) != 2 {
+		return nil, errors.New("unable to fetch leader mesos master hostname & port")
+	}
+	mesosMasterHostPortResponse := &hostsvc.MesosMasterHostPortResponse{
+		Hostname: mesosMasterInfo[0],
+		Port:     mesosMasterInfo[1],
+	}
+
+	return mesosMasterHostPortResponse, nil
 }

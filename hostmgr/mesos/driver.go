@@ -65,8 +65,7 @@ var instance *schedulerDriver
 func InitSchedulerDriver(
 	cfg *Config,
 	store storage.FrameworkInfoStore,
-	defaultHeaders http.Header,
-) SchedulerDriver {
+	defaultHeaders http.Header) SchedulerDriver {
 	// TODO: load framework ID from ZK or DB
 	instance = &schedulerDriver{
 		store:         store,

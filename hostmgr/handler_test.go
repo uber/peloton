@@ -134,6 +134,7 @@ type HostMgrHandlerTestSuite struct {
 	pool                 offerpool.Pool
 	handler              *serviceHandler
 	frameworkID          *mesos.FrameworkID
+	mesosDetector        *hostmgr_mesos_mocks.MockMasterDetector
 }
 
 func (suite *HostMgrHandlerTestSuite) SetupTest() {
@@ -143,6 +144,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 	suite.masterOperatorClient = mpb_mocks.NewMockMasterOperatorClient(suite.ctrl)
 	suite.provider = hostmgr_mesos_mocks.NewMockFrameworkInfoProvider(suite.ctrl)
 	suite.volumeStore = storage_mocks.NewMockPersistentVolumeStore(suite.ctrl)
+	suite.mesosDetector = hostmgr_mesos_mocks.NewMockMasterDetector(suite.ctrl)
 
 	mockValidValue := new(string)
 	*mockValidValue = _frameworkID
@@ -167,6 +169,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		offerPool:             suite.pool,
 		frameworkInfoProvider: suite.provider,
 		volumeStore:           suite.volumeStore,
+		mesosDetector:         suite.mesosDetector,
 	}
 }
 
@@ -1362,6 +1365,21 @@ func (suite *HostMgrHandlerTestSuite) TestReserveCreateLaunchOperationWithCreate
 	suite.Equal(
 		int64(1),
 		suite.testScope.Snapshot().Counters()["offer_operations+"].Value())
+}
+
+func (suite *HostMgrHandlerTestSuite) TestGetMesosMasterHostPort() {
+	defer suite.ctrl.Finish()
+
+	suite.mesosDetector.EXPECT().HostPort().Return("")
+	mesosMasterHostPortResponse, err := suite.handler.GetMesosMasterHostPort(context.Background(), &hostsvc.MesosMasterHostPortRequest{})
+	suite.NotNil(err)
+	suite.Equal(err.Error(), "unable to fetch leader mesos master hostname & port")
+
+	suite.mesosDetector.EXPECT().HostPort().Return("master:5050")
+	mesosMasterHostPortResponse, err = suite.handler.GetMesosMasterHostPort(context.Background(), &hostsvc.MesosMasterHostPortRequest{})
+	suite.Nil(err)
+	suite.Equal(mesosMasterHostPortResponse.Hostname, "master")
+	suite.Equal(mesosMasterHostPortResponse.Port, "5050")
 }
 
 func getAcquireHostOffersRequest() *hostsvc.AcquireHostOffersRequest {

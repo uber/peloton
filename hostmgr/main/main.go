@@ -380,6 +380,7 @@ func main() {
 		driver,
 		volumeStore,
 		cfg.Mesos,
+		mesosMasterDetector,
 	)
 
 	// Initializing TaskStateManager will start to record task status
@@ -424,6 +425,7 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
+	defer dispatcher.Stop()
 
 	log.WithFields(log.Fields{
 		"httpPort": cfg.HostManager.HTTPPort,

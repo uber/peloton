@@ -263,8 +263,7 @@ service InternalHostService
   rpc ReserveResources(ReserveResourcesRequest) returns (ReserveResourcesResponse);
 
   // Unreserve resources on a host
-  rpc UnreserveResources(UnreserveResourcesRequest) returns (
-      UnreserveResourcesResponse);
+  rpc UnreserveResources(UnreserveResourcesRequest) returns (UnreserveResourcesResponse);
 
   // Create volumes on a Mesos host
   rpc CreateVolumes(CreateVolumesRequest) returns (CreateVolumesResponse);
@@ -278,6 +277,9 @@ service InternalHostService
 
   // Performs batch offer operations.
   rpc OfferOperations(OfferOperationsRequest) returns (OfferOperationsResponse);
+
+  // Return leading mesos masters host:port.
+  rpc GetMesosMasterHostPort(MesosMasterHostPortRequest) returns (MesosMasterHostPortResponse);
 }
 
 /**
@@ -285,6 +287,20 @@ service InternalHostService
  */
 message OperationsFailure {
   string message = 1;
+}
+
+/**
+ * Request for mesos master hostname and port.
+ * NOTE: required for protobuf RPC call.
+ */
+message MesosMasterHostPortRequest {}
+
+/**
+ * Response for leader mesos master hostname and port.
+ */
+message MesosMasterHostPortResponse {
+  string hostname = 1;
+  string port = 2;
 }
 
 /**
