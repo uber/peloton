@@ -22,6 +22,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"github.com/pborman/uuid"
 )
 
@@ -955,4 +956,130 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 		}).Return(nil, nil)
 	_, err = suite.handler.Refresh(context.Background(), request)
 	suite.Error(err)
+}
+
+func (suite *TaskHandlerTestSuite) TestListTask() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	testReason := "test reason"
+	var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
+	taskInfos := make(map[uint32]*task.TaskInfo)
+	runningTasks := uint32(testInstanceCount) / 2
+	pendingTasks := uint32(testInstanceCount) - runningTasks
+	for i := uint32(0); i < testInstanceCount; i++ {
+		if i < runningTasks {
+			taskInfos[i] = suite.createTestTaskInfo(
+				task.TaskState_RUNNING, i)
+		} else {
+			taskInfos[i] = suite.createTestTaskInfo(
+				task.TaskState_PENDING, i)
+			taskEntries = append(taskEntries, &resmgrsvc.GetActiveTasksResponse_TaskEntry{
+				TaskID: fmt.Sprintf("%s-%d", suite.testJobID.Value, i),
+				Reason: testReason,
+			})
+		}
+	}
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	suite.handler.resmgrClient = mockResmgrClient
+
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).
+		Return(suite.testJobConfig, nil)
+	mockTaskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.testJobID).
+		Return(taskInfos, nil)
+	mockResmgrClient.EXPECT().
+		GetActiveTasks(gomock.Any(), &resmgrsvc.GetActiveTasksRequest{
+			JobID:  suite.testJobID.GetValue(),
+			States: getResourceManagerProcessingStates(),
+		}).Return(&resmgrsvc.GetActiveTasksResponse{
+		TasksByState: map[string]*resmgrsvc.GetActiveTasksResponse_TaskEntries{
+			task.TaskState_PLACING.String(): {TaskEntry: taskEntries}},
+	}, nil)
+
+	result, err := suite.handler.List(context.Background(), &task.ListRequest{
+		JobId: suite.testJobID,
+	})
+	suite.NoError(err)
+	for _, taskInfo := range result.GetResult().GetValue() {
+		if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
+			suite.Equal(taskInfo.GetRuntime().GetReason(), "")
+			runningTasks--
+		}
+		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
+			suite.Equal(taskInfo.GetRuntime().GetReason(), testReason)
+			pendingTasks--
+		}
+	}
+	suite.Equal(runningTasks, uint32(0))
+	suite.Equal(pendingTasks, uint32(0))
+}
+
+func (suite *TaskHandlerTestSuite) TestQueryTask() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	testReason := "test reason"
+	var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
+	taskInfos := make([]*task.TaskInfo, testInstanceCount)
+	runningTasks := testInstanceCount / 2
+	pendingTasks := testInstanceCount - runningTasks
+	for i := 0; i < testInstanceCount; i++ {
+		if i < runningTasks {
+			taskInfos[i] = suite.createTestTaskInfo(
+				task.TaskState_RUNNING, uint32(i))
+		} else {
+			taskInfos[i] = suite.createTestTaskInfo(
+				task.TaskState_PENDING, uint32(i))
+			taskEntries = append(taskEntries, &resmgrsvc.GetActiveTasksResponse_TaskEntry{
+				TaskID: fmt.Sprintf("%s-%d", suite.testJobID.Value, i),
+				Reason: testReason,
+			})
+		}
+	}
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	suite.handler.resmgrClient = mockResmgrClient
+
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).
+		Return(suite.testJobConfig, nil)
+	mockTaskStore.EXPECT().
+		QueryTasks(gomock.Any(), suite.testJobID, nil).
+		Return(taskInfos, uint32(testInstanceCount), nil)
+	mockResmgrClient.EXPECT().
+		GetActiveTasks(gomock.Any(), &resmgrsvc.GetActiveTasksRequest{
+			JobID:  suite.testJobID.GetValue(),
+			States: getResourceManagerProcessingStates(),
+		}).Return(&resmgrsvc.GetActiveTasksResponse{
+		TasksByState: map[string]*resmgrsvc.GetActiveTasksResponse_TaskEntries{
+			task.TaskState_PLACING.String(): {TaskEntry: taskEntries}},
+	}, nil)
+
+	result, err := suite.handler.Query(context.Background(), &task.QueryRequest{
+		JobId: suite.testJobID,
+	})
+	suite.NoError(err)
+	for _, taskInfo := range result.Records {
+		if taskInfo.GetRuntime().GetState() == task.TaskState_RUNNING {
+			suite.Equal(taskInfo.GetRuntime().GetReason(), "")
+			runningTasks--
+		}
+		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
+			suite.Equal(taskInfo.GetRuntime().GetReason(), testReason)
+			pendingTasks--
+		}
+	}
+	suite.Equal(runningTasks, 0)
+	suite.Equal(pendingTasks, 0)
 }

@@ -243,6 +243,7 @@ func (m *serviceHandler) List(
 		}, nil
 	}
 
+	m.fillTaskInfoFromResourceManager(ctx, body.GetJobId(), convertTaskMapToSlice(result))
 	m.metrics.TaskList.Inc(1)
 	resp := &task.ListResponse{
 		Result: &task.ListResponse_Result{
@@ -680,6 +681,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 		}, nil
 	}
 
+	m.fillTaskInfoFromResourceManager(ctx, req.GetJobId(), result)
 	m.metrics.TaskQuery.Inc(1)
 	resp := &task.QueryResponse{
 		Records: result,
@@ -861,6 +863,53 @@ func (m *serviceHandler) BrowseSandbox(
 	return resp, nil
 }
 
+// TODO: remove this function once eventstream is enabled in RM
+// fillTaskInfoFromResourceManager takes a map of taskinfo and update it
+// with result from ResourceManager. All the task in the input should belong
+// to the same jobID passed in
+func (m *serviceHandler) fillTaskInfoFromResourceManager(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	taskMap []*task.TaskInfo) {
+	// only need to consult ResourceManager for PENDING tasks,
+	// because only tasks with PENDING states are being processed by ResourceManager
+	pendingTasks := make(map[string]*task.TaskInfo)
+	for _, taskInfo := range taskMap {
+		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
+			taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), taskInfo.GetInstanceId())
+			pendingTasks[taskID] = taskInfo
+		}
+	}
+	if len(pendingTasks) == 0 {
+		return
+	}
+
+	// TODO: resmdrsvc.GetActiveTasksRequest.States takes a slice of TaskState instead of string
+	rmResp, err := m.resmgrClient.GetActiveTasks(
+		ctx,
+		&resmgrsvc.GetActiveTasksRequest{
+			JobID:  jobID.GetValue(),
+			States: getResourceManagerProcessingStates(),
+		})
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Error("failed to get active tasks from ResourceManager")
+		return
+	}
+
+	// iterate through the result, and fill in the TaskInfo.Runtime.Reason for PENDING tasks
+	for _, taskEntries := range rmResp.GetTasksByState() {
+		for _, taskEntry := range taskEntries.GetTaskEntry() {
+			taskID := taskEntry.GetTaskID()
+			if pendingTaskInfo, ok := pendingTasks[taskID]; ok {
+				pendingTaskInfo.GetRuntime().Reason = taskEntry.GetReason()
+			}
+		}
+	}
+	return
+}
+
 // GetFrameworkID returns the frameworkID.
 func (m *serviceHandler) getFrameworkID(ctx context.Context) (string, error) {
 	frameworkIDVal, err := m.frameworkInfoStore.GetFrameworkID(ctx, _frameworkName)
@@ -894,4 +943,25 @@ func getEventsResponseResult(records []*task.TaskEvent) []*task.GetEventsRespons
 	}
 	sort.Sort(statechanges.TaskEventListByTime(eventsListRes))
 	return eventsListRes
+}
+
+// TODO: remove this function once eventstream is enabled in RM
+func convertTaskMapToSlice(taskMaps map[uint32]*task.TaskInfo) []*task.TaskInfo {
+	result := make([]*task.TaskInfo, 0, len(taskMaps))
+	for _, taskInfo := range taskMaps {
+		result = append(result, taskInfo)
+	}
+	return result
+}
+
+// TODO: remove this function once eventstream is enabled in RM
+// getResourceManagerProcessingStates returns a slice of state name which
+// indicates a task is still being processed in ResourceManager
+func getResourceManagerProcessingStates() []string {
+	return []string{
+		task.TaskState_PENDING.String(),
+		task.TaskState_READY.String(),
+		task.TaskState_PLACING.String(),
+		task.TaskState_PLACED.String(),
+		task.TaskState_LAUNCHING.String()}
 }
