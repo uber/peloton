@@ -297,7 +297,7 @@ lint: format
 	    (echo "Go Fmt Failures, run 'make fmt'" | cat - vet.log | tee -a $(PHAB_COMMENT) && false) \
 	fi;
 
-jenkins: devtools lint pbgens mockgens
+jenkins: devtools pbgens mockgens lint
 	@chmod -R 777 $(dir $(PBGEN_DIR)) $(dir $(VENDOR_MOCKS)) $(dir $(LOCAL_MOCKS)) ./vendor_mocks
 	go test -race -i $(ALL_PKGS)
 	gocov test -v -race $(ALL_PKGS) > coverage.json | sed 's|filename=".*$(PROJECT_ROOT)/|filename="|'
