@@ -240,6 +240,14 @@ func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 					Pagination: &query.PaginationSpec{
 						Limit:  10,
 						Offset: 0,
+						OrderBy: []*query.OrderBy{
+							{
+								Order: query.OrderBy_DESC,
+								Property: &query.PropertyPath{
+									Value: "state",
+								},
+							},
+						},
 					},
 					TaskStates: []task.TaskState{
 						task.TaskState_RUNNING,
@@ -258,6 +266,14 @@ func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 					Pagination: &query.PaginationSpec{
 						Limit:  10,
 						Offset: 0,
+						OrderBy: []*query.OrderBy{
+							{
+								Order: query.OrderBy_DESC,
+								Property: &query.PropertyPath{
+									Value: "state",
+								},
+							},
+						},
 					},
 					TaskStates: []task.TaskState{
 						task.TaskState_RUNNING,
@@ -282,7 +298,7 @@ func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 			t.taskQueryResponse,
 			t.queryError,
 		)
-		err := c.TaskQueryAction(jobID.Value, "RUNNING", 10, 0)
+		err := c.TaskQueryAction(jobID.Value, "RUNNING", 10, 0, "state", "DESC")
 		if t.queryError != nil {
 			suite.EqualError(err, t.queryError.Error())
 		} else {

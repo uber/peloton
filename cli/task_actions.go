@@ -133,11 +133,37 @@ func (c *Client) TaskListAction(jobID string, instanceRange *task.InstanceRange)
 }
 
 // TaskQueryAction is the action to query task
-func (c *Client) TaskQueryAction(jobID string, states string, limit uint32, offset uint32) error {
+func (c *Client) TaskQueryAction(
+	jobID string,
+	states string,
+	limit uint32,
+	offset uint32,
+	sortBy string,
+	sortOrder string) error {
 	var taskStates []task.TaskState
 	for _, k := range strings.Split(states, labelSeparator) {
 		if k != "" {
 			taskStates = append(taskStates, task.TaskState(task.TaskState_value[k]))
+		}
+	}
+
+	order := query.OrderBy_DESC
+	if sortOrder == "ASC" {
+		order = query.OrderBy_ASC
+	} else if sortOrder != "DESC" {
+		return errors.New("Invalid sort order " + sortOrder)
+	}
+	var sort []*query.OrderBy
+	for _, s := range strings.Split(sortBy, labelSeparator) {
+		if s != "" {
+
+			propertyPath := &query.PropertyPath{
+				Value: s,
+			}
+			sort = append(sort, &query.OrderBy{
+				Order:    order,
+				Property: propertyPath,
+			})
 		}
 	}
 
@@ -146,11 +172,12 @@ func (c *Client) TaskQueryAction(jobID string, states string, limit uint32, offs
 			Value: jobID,
 		},
 		Spec: &task.QuerySpec{
-			Pagination: &query.PaginationSpec{
-				Limit:  limit,
-				Offset: offset,
-			},
 			TaskStates: taskStates,
+			Pagination: &query.PaginationSpec{
+				Limit:   limit,
+				Offset:  offset,
+				OrderBy: sort,
+			},
 		},
 	}
 	response, err := c.taskClient.Query(c.ctx, request)

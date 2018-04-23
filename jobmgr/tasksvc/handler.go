@@ -657,6 +657,8 @@ func (m *serviceHandler) Restart(
 func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*task.QueryResponse, error) {
 	log.WithField("request", req).Info("TaskSVC.Query called")
 	m.metrics.TaskAPIQuery.Inc(1)
+	callStart := time.Now()
+
 	_, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil {
 		log.Debug("Failed to find job with id %v, err=%v", req.JobId, err)
@@ -694,6 +696,8 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 			Total:  total,
 		},
 	}
+	callDuration := time.Since(callStart)
+	m.metrics.TaskQueryHandlerDuration.Record(callDuration)
 	log.WithField("response", resp).Debug("TaskSVC.Query returned")
 	return resp, nil
 }

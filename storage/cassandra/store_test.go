@@ -1985,6 +1985,7 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 		suite.Nil(err)
 
 		taskInfo.Runtime.State = task.TaskState(i)
+		taskInfo.Runtime.StartTime = time.Now().Add(time.Duration(i) * time.Minute).Format(time.RFC3339)
 		runtimes[i] = taskInfo.Runtime
 		err = taskStore.UpdateTaskRuntimes(context.Background(), &jobID, runtimes)
 		suite.NoError(err)
@@ -2003,11 +2004,116 @@ func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	for i := uint32(0); i < jobConfig.InstanceCount-1; i += 2 {
 		tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
 			TaskStates: []task.TaskState{task.TaskState(i), task.TaskState(i + 1)},
+			Pagination: &query.PaginationSpec{
+				Offset: 0,
+				Limit:  2,
+				OrderBy: []*query.OrderBy{
+					{
+						Order: query.OrderBy_DESC,
+						Property: &query.PropertyPath{
+							Value: "state",
+						},
+					},
+				},
+			},
 		})
 		suite.Nil(err)
 
 		suite.Equal(2, len(tasks))
-		suite.Equal(task.TaskState(i), tasks[0].GetRuntime().GetState())
-		suite.Equal(task.TaskState(i+1), tasks[1].GetRuntime().GetState())
+		suite.Equal(task.TaskState(i), tasks[1].GetRuntime().GetState())
+		suite.Equal(task.TaskState(i+1), tasks[0].GetRuntime().GetState())
 	}
+
+	// testing invalid sorting field
+	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		Pagination: &query.PaginationSpec{
+			Offset: 0,
+			Limit:  2,
+			OrderBy: []*query.OrderBy{
+				{
+					Order: query.OrderBy_DESC,
+					Property: &query.PropertyPath{
+						Value: "dummy_field",
+					},
+				},
+			},
+		},
+	})
+	suite.Nil(tasks)
+	suite.NotNil(err)
+
+	// testing sorting by state
+	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		Pagination: &query.PaginationSpec{
+			OrderBy: []*query.OrderBy{
+				{
+					Order: query.OrderBy_DESC,
+					Property: &query.PropertyPath{
+						Value: stateField,
+					},
+				},
+			},
+		},
+	})
+
+	for i := 1; i < len(tasks); i++ {
+		suite.Equal(tasks[i-1].Runtime.State > tasks[i].Runtime.State, true)
+	}
+
+	// teseting sorting by time
+	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		Pagination: &query.PaginationSpec{
+			OrderBy: []*query.OrderBy{
+				{
+					Order: query.OrderBy_DESC,
+					Property: &query.PropertyPath{
+						Value: creationTimeField,
+					},
+				},
+			},
+		},
+	})
+
+	for i := 0; i < len(tasks); i++ {
+		suite.Equal(len(tasks)-i-1, tasks[i].InstanceId)
+	}
+
+}
+
+func TestLess(t *testing.T) {
+	// testing sort by state
+	stateOrder := query.OrderBy{
+		Order: query.OrderBy_DESC,
+		Property: &query.PropertyPath{
+			Value: "state",
+		},
+	}
+
+	orderByList := []*query.OrderBy{&stateOrder}
+
+	jobConfig := createJobConfig()
+	taskInfo1 := createTaskInfo(jobConfig, &peloton.JobID{Value: uuid.New()}, 1)
+	taskInfo2 := createTaskInfo(jobConfig, &peloton.JobID{Value: uuid.New()}, 2)
+
+	taskInfo1.Runtime.State = task.TaskState_RUNNING
+	taskInfo1.Runtime.StartTime = "2018-04-24T01:50:38Z"
+	taskInfo2.Runtime.StartTime = "2018-04-24T01:40:38Z"
+
+	assert.Equal(t, true, Less(orderByList, taskInfo1, taskInfo2))
+
+	// testing sort by creation_time
+	timeOrder := query.OrderBy{
+		Order: query.OrderBy_ASC,
+		Property: &query.PropertyPath{
+			Value: creationTimeField,
+		},
+	}
+	orderByList = []*query.OrderBy{&timeOrder}
+	assert.Equal(t, Less(orderByList, taskInfo1, taskInfo2), false)
+
+	// testing first sort by state, then creation_time
+	taskInfo2.Runtime.State = task.TaskState_RUNNING
+	orderByList = []*query.OrderBy{&stateOrder, &timeOrder}
+	assert.Equal(t, Less(orderByList, taskInfo1, taskInfo2), false)
+
 }

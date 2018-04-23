@@ -37,6 +37,9 @@ type Metrics struct {
 	TaskAPIListLogs  tally.Counter
 	TaskListLogs     tally.Counter
 	TaskListLogsFail tally.Counter
+
+	// Timers
+	TaskQueryHandlerDuration tally.Timer
 }
 
 // NewMetrics returns a new Metrics struct, with all metrics
@@ -76,5 +79,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskAPIListLogs:   taskAPIScope.Counter("list_logs"),
 		TaskListLogs:      taskSuccessScope.Counter("list_logs"),
 		TaskListLogsFail:  taskFailScope.Counter("list_logs"),
+
+		TaskQueryHandlerDuration: taskAPIScope.Timer("task_query_duration"),
 	}
 }

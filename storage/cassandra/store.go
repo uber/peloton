@@ -59,6 +59,7 @@ const (
 	volumeTable           = "persistent_volumes"
 	creationTimeField     = "creation_time"
 	completionTimeField   = "completion_time"
+	stateField            = "state"
 
 	_defaultQueryLimit    uint32 = 10
 	_defaultQueryMaxLimit uint32 = 100
@@ -2452,6 +2453,52 @@ func (s *Store) updateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobI
 	return nil
 }
 
+// Less function holds the task sorting logic
+func Less(orderByList []*query.OrderBy, t1 *task.TaskInfo, t2 *task.TaskInfo) bool {
+	// Keep comparing the two tasks by the field related with Order from the OrderbyList
+	// until they are not equal on one fields
+	for _, orderBy := range orderByList {
+		desc := orderBy.GetOrder() == query.OrderBy_DESC
+		property := orderBy.GetProperty().GetValue()
+		if property == creationTimeField {
+			time1, err1 := time.Parse(time.RFC3339, t1.GetRuntime().GetStartTime())
+			time2, err2 := time.Parse(time.RFC3339, t2.GetRuntime().GetStartTime())
+			if err1 != nil || err2 != nil {
+				// if the start time of the task can't get parsed (or not exist)
+				// we skip the comparision
+				if err1 != nil {
+					log.WithError(err1).
+						WithField("job_id", t1.JobId).
+						WithField("instance_id", t1.InstanceId).
+						Error("Invalid StartTime")
+				}
+				if err1 != nil {
+					log.WithError(err2).
+						WithField("job_id", t2.JobId).
+						WithField("instance_id", t2.InstanceId).
+						Error("Invalid StartTime")
+				}
+				continue
+			}
+			// return result if not equal, otherwise goto next loop
+			if time1.Before(time2) {
+				return !desc
+			} else if time1.After(time2) {
+				return desc
+			}
+		} else if property == stateField {
+			// return result if not equal, otherwise goto next loop
+			if t1.GetRuntime().GetState() < t2.GetRuntime().GetState() {
+				return !desc
+			} else if t1.GetRuntime().GetState() > t2.GetRuntime().GetState() {
+				return desc
+			}
+		}
+	}
+	// Default order by InstanceId with increase order
+	return t1.GetInstanceId() < t2.GetInstanceId()
+}
+
 // QueryTasks returns the tasks filtered on states(spec.TaskStates) in the given offset..offset+limit range.
 func (s *Store) QueryTasks(ctx context.Context, jobID *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error) {
 	jobConfig, err := s.GetJobConfig(ctx, jobID)
@@ -2495,8 +2542,22 @@ func (s *Store) QueryTasks(ctx context.Context, jobID *peloton.JobID, spec *task
 	for _, taskInfo := range tasks {
 		sortedTasksResult = append(sortedTasksResult, taskInfo)
 	}
+	//sorting fields validation check
+	var orderByList = spec.GetPagination().GetOrderBy()
+	for _, orderBy := range orderByList {
+		property := orderBy.GetProperty().GetValue()
+		switch property {
+		case
+			creationTimeField,
+			stateField:
+			continue
+		}
+		return nil, 0, errors.New("Sort only supports fields: state, creation_time")
+	}
 
-	sort.Sort(sortedTasksResult)
+	sort.Slice(sortedTasksResult, func(i, j int) bool {
+		return Less(orderByList, sortedTasksResult[i], sortedTasksResult[j])
+	})
 
 	end := offset + limit
 	if end > uint32(len(sortedTasksResult)) {
