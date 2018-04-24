@@ -19,13 +19,13 @@ RUN apt-get -yqq update && DEBIAN_FRONTEND=noninteractive apt-get -yqq install \
 
 # Install protoc
 RUN wget https://github.com/google/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-x86_64.zip \
-    && unzip -d protoc protoc-$PROTOC_VERSION-linux-x86_64.zip \
-    && rm protoc-$PROTOC_VERSION-linux-x86_64.zip \
-    && cp protoc/bin/protoc /usr/local/bin \
-    && cp -rf protoc/include/* /usr/local/include/. \
-    && rm -rf protoc \
-    && go get -u github.com/golang/protobuf/proto \
-    && go get -u github.com/golang/protobuf/protoc-gen-go
+  && unzip -d protoc protoc-$PROTOC_VERSION-linux-x86_64.zip \
+  && rm protoc-$PROTOC_VERSION-linux-x86_64.zip \
+  && cp protoc/bin/protoc /usr/local/bin \
+  && cp -rf protoc/include/* /usr/local/include/. \
+  && rm -rf protoc \
+  && go get -u github.com/golang/protobuf/proto \
+  && go get -u github.com/golang/protobuf/protoc-gen-go
 
 # TODO(gabe) update this path when we get a public namespace
 COPY . /go/src/code.uber.internal/infra/peloton

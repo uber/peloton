@@ -439,7 +439,7 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
 		return false
 	}
 
-	status, removed := hostOffers.RemoveMesosOffer(oID)
+	status, removed := hostOffers.RemoveMesosOffer(oID, "Offer is rescinded.")
 
 	if removed != nil {
 		delta := scalar.FromOffer(removed)
@@ -499,7 +499,7 @@ func (p *offerPool) RemoveExpiredOffers() (map[string]*TimedOffer, int) {
 				continue
 			}
 
-			status, removed := p.hostOfferIndex[hostName].RemoveMesosOffer(offerID)
+			status, removed := p.hostOfferIndex[hostName].RemoveMesosOffer(offerID, "Offer is expired.")
 			if removed != nil {
 				delta := scalar.FromOffer(removed)
 				switch status {
@@ -659,14 +659,15 @@ func (p *offerPool) ResetExpiredHostSummaries(now time.Time) []string {
 	return resetHostnames
 }
 
-// GetReservedOffers returns mapping from hostname to their reserved offers.
+// RemoveReservedOffer removes offer for a host.
 func (p *offerPool) RemoveReservedOffer(hostname string, offerID string) {
 	p.RLock()
 	defer p.RUnlock()
 
 	if summary, ok := p.hostOfferIndex[hostname]; ok {
-		summary.RemoveMesosOffer(offerID)
+		summary.RemoveMesosOffer(offerID, "Offer is removed from the pool.")
 	}
+
 }
 
 // GetReservedOffers returns mapping from hostname to their reserved offers.

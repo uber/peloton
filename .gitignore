@@ -35,6 +35,7 @@ jenkins.xml
 .cache
 /env/
 .gen
+.vscode/
 # Ignore any mocks sub-directory.
 mocks/
 

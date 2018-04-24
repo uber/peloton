@@ -70,7 +70,7 @@ type HostSummary interface {
 
 	// RemoveMesosOffer removes the given Mesos offer by its id, and returns
 	// CacheStatus and possibly removed offer for tracking purpose.
-	RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offer)
+	RemoveMesosOffer(offerID, reason string) (CacheStatus, *mesos.Offer)
 
 	// ClaimForLaunch releases offers for task launch.
 	ClaimForLaunch() (map[string]*mesos.Offer, error)
@@ -316,7 +316,7 @@ func (a *hostSummary) ClaimReservedOffersForLaunch() (map[string]*mesos.Offer, e
 
 // RemoveMesosOffer removes the given Mesos offer by its id, and returns
 // CacheStatus and possibly removed offer for tracking purpose.
-func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offer) {
+func (a *hostSummary) RemoveMesosOffer(offerID, reason string) (CacheStatus, *mesos.Offer) {
 	a.Lock()
 	defer a.Unlock()
 
@@ -324,8 +324,10 @@ func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offe
 	if !ok {
 		reserved, ok2 := a.reservedOffers[offerID]
 		if !ok2 {
-			log.WithField("offer", offerID).
-				Warn("Remove non-exist reserved offer.")
+			log.WithFields(log.Fields{
+				"offer":  offerID,
+				"reason": reason,
+			}).Warn("Remove non-existing reserved offer.")
 			return a.status, reserved
 		}
 
@@ -335,7 +337,10 @@ func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offe
 
 	switch a.status {
 	case ReadyOffer:
-		log.WithField("offer", offerID).Debug("Ready offer removed")
+		log.WithFields(log.Fields{
+			"offer":  offerID,
+			"reason": reason,
+		}).Debug("Ready offer removed")
 		a.readyCount.Dec()
 	default:
 		// This could trigger INVALID_OFFER error later.
@@ -343,6 +348,7 @@ func (a *hostSummary) RemoveMesosOffer(offerID string) (CacheStatus, *mesos.Offe
 			"offer":              unreserved,
 			"all_offers_noindex": a.unreservedOffers,
 			"status":             a.status,
+			"reason":             reason,
 		}).Warn("Offer removed while not in ready status")
 	}
 

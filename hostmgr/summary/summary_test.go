@@ -412,7 +412,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 		go func(offer *mesos.Offer) {
 			defer wg.Done()
 
-			status, offer := hybridSummary.RemoveMesosOffer(*offer.Id.Value)
+			status, offer := hybridSummary.RemoveMesosOffer(*offer.Id.Value, "Offer is rescinded")
 			suite.Equal(ReadyOffer, status)
 			suite.NotNil(offer)
 		}(offer)
