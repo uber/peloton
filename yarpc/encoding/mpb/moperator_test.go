@@ -2,15 +2,19 @@ package mpb
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos_maintenance "code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
 	mesos_master "code.uber.internal/infra/peloton/.gen/mesos/v1/master"
 
 	"go.uber.org/yarpc/api/transport"
 	transport_mocks "go.uber.org/yarpc/api/transport/transporttest"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1/quota"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -19,28 +23,34 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+const (
+	mockCaller = "testCall"
+	mockSvc    = "testSvc"
+)
+
 type masterOperatorClientTestSuite struct {
 	suite.Suite
 
-	ctrl            *gomock.Controller
-	mockClientCfg   *transport_mocks.MockClientConfig
-	defaultEncoding string
+	ctrl                 *gomock.Controller
+	masterOperatorClient MasterOperatorClient
+	mockUnaryOutbound    *transport_mocks.MockUnaryOutbound
+	mockClientCfg        *transport_mocks.MockClientConfig
+	defaultEncoding      string
 }
 
 func (suite *masterOperatorClientTestSuite) SetupTest() {
 	log.Debug("setup")
-	ctrl := gomock.NewController(suite.T())
-	suite.ctrl = ctrl
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.mockUnaryOutbound = transport_mocks.NewMockUnaryOutbound(suite.ctrl)
 	mockClientCfg := transport_mocks.NewMockClientConfig(suite.ctrl)
 	suite.mockClientCfg = mockClientCfg
 	suite.defaultEncoding = ContentTypeProtobuf
+	suite.masterOperatorClient = NewMasterOperatorClient(suite.mockClientCfg, suite.defaultEncoding)
 }
 
 func (suite *masterOperatorClientTestSuite) TearDownTest() {
 	log.Debug("tear down")
-	if suite.ctrl != nil {
-		suite.ctrl.Finish()
-	}
+	suite.ctrl.Finish()
 }
 
 func mesosResource(name string, value float64) *mesos.Resource {
@@ -70,9 +80,6 @@ func mesosRole(
 }
 
 func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedResources() {
-
-	mockCaller := "testCall"
-	mockSvc := "testSvc"
 	mockValidValue := new(string)
 	*mockValidValue = uuid.NIL.String()
 	mockNotExistValue := new(string)
@@ -185,7 +192,6 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 
 		// Check YARPC call is needed
 		if tt.call {
-			mockUnaryOutbound := transport_mocks.NewMockUnaryOutbound(suite.ctrl)
 			// Set expectations
 			var err error
 			var response *transport.Response
@@ -209,10 +215,10 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 				suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
 				suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
 				suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
-					mockUnaryOutbound,
+					suite.mockUnaryOutbound,
 				),
 
-				mockUnaryOutbound.EXPECT().Call(
+				suite.mockUnaryOutbound.EXPECT().Call(
 					gomock.Any(),
 					gomock.Any(),
 				).Return(
@@ -233,6 +239,422 @@ func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_AllocatedRe
 			suite.NotNil(resources)
 		}
 	}
+}
+
+func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintenanceSchedule() {
+	testHost := "hostname"
+	testIP := "0.0.0.0"
+	testMachines := []*mesos.MachineID{
+		{
+			Hostname: &testHost,
+			Ip:       &testIP,
+		},
+	}
+
+	nanos := int64(time.Now().Nanosecond())
+	startTime := &mesos.TimeInfo{
+		Nanoseconds: &nanos,
+	}
+	windows := []*mesos_maintenance.Window{
+		{
+			MachineIds: testMachines,
+			Unavailability: &mesos.Unavailability{
+				Start: startTime,
+			},
+		},
+	}
+
+	schedule := &mesos_maintenance.Schedule{
+		Windows: windows,
+	}
+
+	callResp := &mesos_master.Response{
+		GetMaintenanceSchedule: &mesos_master.Response_GetMaintenanceSchedule{
+			Schedule: schedule,
+		},
+	}
+	wireData, err := proto.Marshal(callResp)
+	suite.NoError(err)
+
+	response := &transport.Response{
+		Body: ioutil.NopCloser(
+			bytes.NewReader(wireData),
+		),
+		Headers: transport.NewHeaders().With("a", "b"),
+	}
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			response,
+			nil,
+		),
+	)
+	responseGetMaintenanceSchedule, err := suite.masterOperatorClient.GetMaintenanceSchedule()
+	suite.NoError(err)
+	suite.NotNil(responseGetMaintenanceSchedule)
+	responseSchedule := responseGetMaintenanceSchedule.GetSchedule()
+	suite.Equal(schedule, responseSchedule)
+
+	// Test error
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			nil,
+			fmt.Errorf("fake Call error"),
+		),
+	)
+	responseGetMaintenanceSchedule, err = suite.masterOperatorClient.GetMaintenanceSchedule()
+	suite.Error(err)
+	suite.Nil(responseGetMaintenanceSchedule)
+}
+
+func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetMaintenanceStatus() {
+	testHost1 := "hostname"
+	testIP1 := "0.0.0.0"
+	drainingMachines := []*mesos_maintenance.ClusterStatus_DrainingMachine{
+		{
+			Id: &mesos.MachineID{
+				Hostname: &testHost1,
+				Ip:       &testIP1,
+			},
+		},
+	}
+
+	testHost2 := "testhost"
+	testIP2 := "172.17.0.6"
+	downMachines := []*mesos.MachineID{
+		{
+			Hostname: &testHost2,
+			Ip:       &testIP2,
+		},
+	}
+
+	clusterStatus := &mesos_maintenance.ClusterStatus{
+		DrainingMachines: drainingMachines,
+		DownMachines:     downMachines,
+	}
+
+	callResp := &mesos_master.Response{
+		GetMaintenanceStatus: &mesos_master.Response_GetMaintenanceStatus{
+			Status: clusterStatus,
+		},
+	}
+	wireData, err := proto.Marshal(callResp)
+	suite.NoError(err)
+
+	response := &transport.Response{
+		Body: ioutil.NopCloser(
+			bytes.NewReader(wireData),
+		),
+		Headers: transport.NewHeaders().With("a", "b"),
+	}
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			response,
+			nil,
+		),
+	)
+	responseGetMaintenanceStatus, err := suite.masterOperatorClient.GetMaintenanceStatus()
+	suite.NoError(err)
+	suite.NotNil(responseGetMaintenanceStatus)
+	responseMaintenanceStatus := responseGetMaintenanceStatus.GetStatus()
+	suite.Equal(clusterStatus, responseMaintenanceStatus)
+
+	// Test error
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			nil,
+			fmt.Errorf("fake Call error"),
+		),
+	)
+	responseGetMaintenanceStatus, err = suite.masterOperatorClient.GetMaintenanceStatus()
+	suite.Error(err)
+	suite.Nil(responseGetMaintenanceStatus)
+}
+
+func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_StartMaintenance() {
+	testMachines := []struct {
+		host string
+		ip   string
+	}{
+		{
+			host: "host1",
+			ip:   "172.17.0.6",
+		},
+	}
+
+	var testMachineIDs []*mesos.MachineID
+	for _, machine := range testMachines {
+		testMachineIDs = append(testMachineIDs, &mesos.MachineID{
+			Hostname: &machine.host,
+			Ip:       &machine.ip,
+		})
+	}
+
+	wireData := []byte{}
+
+	response := &transport.Response{
+		Body: ioutil.NopCloser(
+			bytes.NewReader(wireData),
+		),
+		Headers: transport.NewHeaders().With("a", "b"),
+	}
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			response,
+			nil,
+		),
+	)
+	err := suite.masterOperatorClient.StartMaintenance(testMachineIDs)
+	suite.NoError(err)
+
+	// Test error
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			nil,
+			fmt.Errorf("fake Call error"),
+		),
+	)
+	err = suite.masterOperatorClient.StartMaintenance(testMachineIDs)
+	suite.Error(err)
+}
+
+func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_StopMaintenance() {
+	testMachines := []struct {
+		host string
+		ip   string
+	}{
+		{
+			host: "host1",
+			ip:   "172.17.0.6",
+		},
+	}
+
+	var testMachineIDs []*mesos.MachineID
+	for _, machine := range testMachines {
+		testMachineIDs = append(testMachineIDs, &mesos.MachineID{
+			Hostname: &machine.host,
+			Ip:       &machine.ip,
+		})
+	}
+
+	wireData := []byte{}
+
+	response := &transport.Response{
+		Body: ioutil.NopCloser(
+			bytes.NewReader(wireData),
+		),
+		Headers: transport.NewHeaders().With("a", "b"),
+	}
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			response,
+			nil,
+		),
+	)
+	err := suite.masterOperatorClient.StopMaintenance(testMachineIDs)
+	suite.NoError(err)
+
+	// Test error
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			nil,
+			fmt.Errorf("fake Call error"),
+		),
+	)
+	err = suite.masterOperatorClient.StopMaintenance(testMachineIDs)
+	suite.Error(err)
+}
+
+func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_UpdateMaintenanceSchedule() {
+	testMachines := []struct {
+		host string
+		ip   string
+	}{
+		{
+			host: "host1",
+			ip:   "172.17.0.6",
+		},
+	}
+
+	var testMachineIDs []*mesos.MachineID
+	for _, machine := range testMachines {
+		testMachineIDs = append(testMachineIDs, &mesos.MachineID{
+			Hostname: &machine.host,
+			Ip:       &machine.ip,
+		})
+	}
+
+	nano := int64(time.Now().Nanosecond())
+	schedule := &mesos_maintenance.Schedule{
+		Windows: []*mesos_maintenance.Window{
+			{
+				MachineIds: testMachineIDs,
+				Unavailability: &mesos.Unavailability{
+					Start: &mesos.TimeInfo{
+						Nanoseconds: &nano,
+					},
+				},
+			},
+		},
+	}
+	wireData := []byte{}
+
+	response := &transport.Response{
+		Body: ioutil.NopCloser(
+			bytes.NewReader(wireData),
+		),
+		Headers: transport.NewHeaders().With("a", "b"),
+	}
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			response,
+			nil,
+		),
+	)
+	err := suite.masterOperatorClient.UpdateMaintenanceSchedule(schedule)
+	suite.NoError(err)
+
+	// Test error
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			nil,
+			fmt.Errorf("fake Call error"),
+		),
+	)
+	err = suite.masterOperatorClient.UpdateMaintenanceSchedule(schedule)
+	suite.Error(err)
+}
+
+func (suite *masterOperatorClientTestSuite) TestMasterOperatorClient_GetQuota() {
+	testRole := "testrole"
+	callResp := &mesos_master.Response{
+		GetQuota: &mesos_master.Response_GetQuota{
+			Status: &mesos_v1_quota.QuotaStatus{
+				Infos: []*mesos_v1_quota.QuotaInfo{
+					{
+						Role:      &testRole,
+						Guarantee: []*mesos.Resource{},
+					},
+				},
+			},
+		},
+	}
+	wireData, err := proto.Marshal(callResp)
+	suite.NoError(err)
+
+	response := &transport.Response{
+		Body: ioutil.NopCloser(
+			bytes.NewReader(wireData),
+		),
+		Headers: transport.NewHeaders().With("a", "b"),
+	}
+	gomock.InOrder(
+		suite.mockClientCfg.EXPECT().Caller().Return(mockCaller),
+		suite.mockClientCfg.EXPECT().Service().Return(mockSvc),
+		suite.mockClientCfg.EXPECT().GetUnaryOutbound().Return(
+			suite.mockUnaryOutbound,
+		),
+
+		suite.mockUnaryOutbound.EXPECT().Call(
+			gomock.Any(),
+			gomock.Any(),
+		).Return(
+			response,
+			nil,
+		),
+	)
+	resources, err := suite.masterOperatorClient.GetQuota(testRole)
+	suite.NoError(err)
+	suite.Nil(resources)
 }
 
 func TestMasterOperatorClientTestSuite(t *testing.T) {

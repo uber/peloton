@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/yarpc/api/transport"
 
+	"code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -26,7 +27,12 @@ const (
 type MasterOperatorClient interface {
 	Agents() (*mesos_master.Response_GetAgents, error)
 	AllocatedResources(ID string) ([]*mesos.Resource, error)
+	GetMaintenanceSchedule() (*mesos_master.Response_GetMaintenanceSchedule, error)
+	GetMaintenanceStatus() (*mesos_master.Response_GetMaintenanceStatus, error)
+	StartMaintenance([]*mesos.MachineID) error
+	StopMaintenance([]*mesos.MachineID) error
 	GetQuota(role string) ([]*mesos.Resource, error)
+	UpdateMaintenanceSchedule(*mesos_v1_maintenance.Schedule) error
 }
 
 type masterOperatorClient struct {
@@ -210,6 +216,143 @@ func filterRoles(roles []*mesos.Role, fn rolesFilterFn) []*mesos.Role {
 		}
 	}
 	return filteredRoles
+}
+
+// GetMaintenanceSchedule returns the current Mesos Maintenance Schedule
+func (mo *masterOperatorClient) GetMaintenanceSchedule() (*mesos_master.Response_GetMaintenanceSchedule, error) {
+	// Set the CALL TYPE
+	callType := mesos_master.Call_GET_MAINTENANCE_SCHEDULE
+
+	masterMsg := &mesos_master.Call{
+		Type: &callType,
+	}
+
+	// Create context to cancel automatically when Timeout expires
+	ctx, cancel := context.WithTimeout(
+		context.Background(), _timeout,
+	)
+
+	defer cancel()
+
+	// Make Call
+	response, err := mo.call(ctx, masterMsg)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return response.GetGetMaintenanceSchedule(), nil
+}
+
+// UpdateMaintenanceSchedule updates the Mesos Maintenance Schedule
+func (mo *masterOperatorClient) UpdateMaintenanceSchedule(schedule *mesos_v1_maintenance.Schedule) error {
+	// Set the CALL TYPE
+	callType := mesos_master.Call_UPDATE_MAINTENANCE_SCHEDULE
+
+	updateMaintenanceSchedule := &mesos_master.Call_UpdateMaintenanceSchedule{
+		Schedule: schedule,
+	}
+	masterMsg := &mesos_master.Call{
+		Type: &callType,
+		UpdateMaintenanceSchedule: updateMaintenanceSchedule,
+	}
+
+	// Create context to cancel automatically when Timeout expires
+	ctx, cancel := context.WithTimeout(
+		context.Background(), _timeout,
+	)
+
+	defer cancel()
+
+	// Make Call
+	_, err := mo.call(ctx, masterMsg)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+// GetMaintenanceStatus returns the current Mesos Cluster Status
+func (mo *masterOperatorClient) GetMaintenanceStatus() (*mesos_master.Response_GetMaintenanceStatus, error) {
+	// Set the CALL TYPE
+	callType := mesos_master.Call_GET_MAINTENANCE_STATUS
+
+	masterMsg := &mesos_master.Call{
+		Type: &callType,
+	}
+
+	// Create context to cancel automatically when Timeout expires
+	ctx, cancel := context.WithTimeout(
+		context.Background(), _timeout,
+	)
+
+	defer cancel()
+
+	// Make Call
+	response, err := mo.call(ctx, masterMsg)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return response.GetGetMaintenanceStatus(), nil
+}
+
+// StartMaintenance brings 'DOWN' the specified machines by un-registering, from Mesos
+// Master, the agents running on these machines. Any agents on machines in maintenance
+// are also prevented from reregistering with the master in the future (until
+// maintenance is completed and the machine is brought back up).
+func (mo *masterOperatorClient) StartMaintenance(machines []*mesos.MachineID) error {
+	// Set the CALL TYPE
+	callType := mesos_master.Call_START_MAINTENANCE
+
+	startMaintenance := &mesos_master.Call_StartMaintenance{
+		Machines: machines,
+	}
+	masterMsg := &mesos_master.Call{
+		Type:             &callType,
+		StartMaintenance: startMaintenance,
+	}
+
+	// Create context to cancel automatically when Timeout expires
+	ctx, cancel := context.WithTimeout(
+		context.Background(), _timeout,
+	)
+
+	defer cancel()
+
+	// Make Call
+	_, err := mo.call(ctx, masterMsg)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
+// StopMaintenance brings the specified machines back 'UP'
+func (mo *masterOperatorClient) StopMaintenance(machines []*mesos.MachineID) error {
+	// Set the CALL TYPE
+	callType := mesos_master.Call_STOP_MAINTENANCE
+
+	stopMaintenance := &mesos_master.Call_StopMaintenance{
+		Machines: machines,
+	}
+	masterMsg := &mesos_master.Call{
+		Type:            &callType,
+		StopMaintenance: stopMaintenance,
+	}
+
+	// Create context to cancel automatically when Timeout expires
+	ctx, cancel := context.WithTimeout(
+		context.Background(), _timeout,
+	)
+
+	defer cancel()
+
+	// Make Call
+	_, err := mo.call(ctx, masterMsg)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }
 
 // GetQuota returns the quota set for specified role
