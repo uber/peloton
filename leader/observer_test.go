@@ -2,6 +2,7 @@ package leader
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ func TestObserver(t *testing.T) {
 		follower: leadership.NewFollower(mockStore, key),
 		role:     role,
 		metrics:  newObserverMetrics(tally.NoopScope, "testobserverrole"),
+		stopChan: make(chan struct{}),
 		callback: func(leader string) error {
 			log.Infof("NewLeaderCallback called with %s", leader)
 			events <- "new_leader:" + leader
@@ -78,5 +80,26 @@ func TestObserver(t *testing.T) {
 	leader, err = o.CurrentLeader()
 	assert.Error(t, err)
 	log.Info("observer testing complete!")
+}
 
+func TestObserverStop(t *testing.T) {
+	role := "testrole"
+	zkpath := "/peloton/fake"
+	key := strings.TrimPrefix(zkpath, "/")
+	o := observer{
+		role:     role,
+		follower: leadership.NewFollower(nil, key),
+		metrics:  newObserverMetrics(tally.NoopScope, "testobserverrole"),
+		stopChan: make(chan struct{}),
+		running:  true,
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		o.observe()
+		wg.Done()
+	}()
+	o.Stop()
+	wg.Wait()
 }

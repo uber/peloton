@@ -93,11 +93,35 @@ func NewCandidate(
 		role:       role,
 		nomination: nomination,
 		candidate:  candidate,
-		stopChan:   make(chan struct{}, 1),
+		stopChan:   make(chan struct{}),
 	}
 
 	return &el, nil
 
+}
+
+// Start begins running election for leadership
+// and calls your callbacks when you gain/lose leadership.
+// NOTE: this handles connection errors and retries, and runs until you
+// call Stop()
+func (el *election) Start() error {
+	el.Lock()
+	defer el.Unlock()
+	if el.running {
+		return errors.New("Already running election")
+	}
+	el.running = true
+	el.metrics.Start.Inc(1)
+	el.metrics.Running.Update(1)
+
+	log.WithFields(log.Fields{"role": el.role}).Info("Joining election")
+
+	// start to campaign for leadership
+	go el.campaign()
+	// Update leader election metrics
+	go el.updateLeaderElectionMetrics(_metricsUpdateTick)
+
+	return nil
 }
 
 // updateLeaderElectionMetric emits leader election
@@ -121,39 +145,23 @@ func (el *election) updateLeaderElectionMetrics(interval time.Duration) {
 	}
 }
 
-// Start begins running election for leadership
-// and calls your callbacks when you gain/lose leadership.
-// NOTE: this handles connection errors and retries, and runs until you
-// call Stop()
-func (el *election) Start() error {
-	el.Lock()
-	defer el.Unlock()
-	if el.running {
-		return errors.New("Already running election")
-	}
-	el.running = true
-	el.metrics.Start.Inc(1)
-	el.metrics.Running.Update(1)
-
-	log.WithFields(log.Fields{"role": el.role}).Info("Joining election")
-	// this will repeatedly call waitForEvent(), and retry when errors
-	// are encountered
-	go func() {
-		for el.running {
+// campaign will repeatedly call waitForEvent(), and retry when errors
+// are encountered
+func (el *election) campaign() {
+	for {
+		select {
+		case <-el.stopChan:
+			log.Info("Stopped running election")
+			return
+		default:
 			err := el.waitForEvent()
 			if err != nil {
 				log.WithFields(log.Fields{"role": el.role}).
 					Errorf("Failure running election; retrying: %v", err)
+				time.Sleep(zkConnErrRetry)
 			}
-			time.Sleep(zkConnErrRetry)
 		}
-		log.Info("Stopped running election")
-	}()
-
-	// Update leader election metrics
-	go el.updateLeaderElectionMetrics(_metricsUpdateTick)
-
-	return nil
+	}
 }
 
 // Declare lost leadership
@@ -177,7 +185,11 @@ func (el *election) waitForEvent() error {
 
 	for {
 		select {
-		case isElected := <-electionCh:
+		case isElected, ok := <-electionCh:
+			// channel is closed, terminate the loop
+			if !ok {
+				return nil
+			}
 			if isElected {
 				log.WithFields(log.Fields{
 					"id":   el.nomination.GetID(),
@@ -191,7 +203,7 @@ func (el *election) waitForEvent() error {
 						"id":   el.nomination.GetID(),
 						"role": el.role,
 					}).Error("GainedLeadershipCallback failed")
-					return err
+					el.candidate.Resign()
 				}
 			} else {
 				err := el.declareLostLeadership()
@@ -200,7 +212,6 @@ func (el *election) waitForEvent() error {
 						"id":   el.nomination.GetID(),
 						"role": el.role,
 					}).Error("LostLeadershipCallback failed")
-					return err
 				}
 			}
 		case err := <-errCh:
@@ -226,21 +237,14 @@ func (el *election) Stop() error {
 	el.Lock()
 	defer el.Unlock()
 	if el.running {
-		el.stopChan <- struct{}{}
 		el.running = false
+		close(el.stopChan)
+		el.candidate.Stop()
 		el.metrics.Stop.Inc(1)
 		el.metrics.Running.Update(0)
-		el.candidate.Stop()
-		// resign asynchronously to avoid deadlocking
-		go el.Resign()
+		el.metrics.Resigned.Inc(1)
 	}
 	return el.nomination.ShutDownCallback()
-}
-
-// Resign gives up leadership
-func (el *election) Resign() {
-	el.metrics.Resigned.Inc(1)
-	el.candidate.Resign()
 }
 
 // IsLeader returns whether this candidate is the current leader
@@ -251,6 +255,12 @@ func (el *election) IsLeader() bool {
 	// resigned, so gate delegating to isLeader on whether we are
 	// actively campaigning for the leadership
 	return el.running && el.candidate.IsLeader()
+}
+
+// Resign gives up leadership
+func (el *election) Resign() {
+	el.metrics.Resigned.Inc(1)
+	el.candidate.Resign()
 }
 
 // leaderZkPath returns the full ZK path to the leader node given a

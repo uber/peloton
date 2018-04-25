@@ -28,6 +28,7 @@ type observer struct {
 	callback func(string) error
 	leader   string
 	running  bool
+	stopChan chan struct{}
 }
 
 // NewObserver creates a new Observer that will watch and react to new leadership events for leaders in
@@ -43,6 +44,7 @@ func NewObserver(cfg ElectionConfig, scope tally.Scope, role string, newLeaderCa
 		metrics:  newObserverMetrics(scope, role),
 		callback: newLeaderCallback,
 		follower: leadership.NewFollower(client, leaderZkPath(cfg.Root, role)),
+		stopChan: make(chan struct{}),
 	}
 	return &obs, nil
 }
@@ -61,16 +63,7 @@ func (o *observer) Start() error {
 
 	log.WithFields(log.Fields{"role": o.role}).Info("Watching for leadership changes")
 
-	// this will repeatedly call waitForEvent(), and retry when errors are encountered
-	go func() {
-		for o.running {
-			err := o.waitForEvent()
-			if err != nil {
-				log.WithFields(log.Fields{"role": o.role}).Errorf("Failure observing election; retrying: %v", err)
-			}
-			time.Sleep(zkConnErrRetry)
-		}
-	}()
+	go o.observe()
 	return nil
 }
 
@@ -79,8 +72,9 @@ func (o *observer) Stop() {
 	o.Lock()
 	defer o.Unlock()
 	if o.running {
-		o.follower.Stop()
 		o.running = false
+		close(o.stopChan)
+		o.follower.Stop()
 		o.metrics.Stop.Inc(1)
 		o.metrics.Running.Update(0)
 	}
@@ -104,7 +98,10 @@ func (o *observer) waitForEvent() error {
 	leaderCh, errCh := o.follower.FollowElection()
 	for {
 		select {
-		case leader := <-leaderCh:
+		case leader, ok := <-leaderCh:
+			if !ok {
+				return nil
+			}
 			o.Lock() // make sure we lock around modifying the current leader, and invoking callback
 			log.WithFields(log.Fields{"role": o.role, "leader": leader}).Info("New leader detected")
 			o.metrics.LeaderChanged.Inc(1)
@@ -115,9 +112,31 @@ func (o *observer) waitForEvent() error {
 				log.WithFields(log.Fields{"role": o.role, "error": err}).Error("NewLeaderCallback failed")
 			}
 		case err := <-errCh:
-			log.WithFields(log.Fields{"role": o.role, "error": err}).Error("Error following election")
-			o.metrics.Error.Inc(1)
-			return err
+			if err != nil {
+				log.WithFields(log.Fields{"role": o.role, "error": err}).Error("Error following election")
+				o.metrics.Error.Inc(1)
+				return err
+			}
+			// just a shutdown signal from the docker/leadership lib,
+			// we can propogate this and let the caller decide if we
+			// should continue to run, or terminate
+			return nil
+		}
+	}
+}
+
+// observe will repeatedly call waitForEvent(), and retry when errors are encountered
+func (o *observer) observe() {
+	for {
+		select {
+		case <-o.stopChan:
+			return
+		default:
+			err := o.waitForEvent()
+			if err != nil {
+				log.WithFields(log.Fields{"role": o.role}).Errorf("Failure observing election; retrying: %v", err)
+				time.Sleep(zkConnErrRetry)
+			}
 		}
 	}
 }
