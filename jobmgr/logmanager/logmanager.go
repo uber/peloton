@@ -11,14 +11,24 @@ const (
 	_slaveFileBrowseURL = "http://%s:5051/files/browse?path=%s"
 )
 
-// LogManager is a wrapper to collect logs location by talking to mesos agents.
-type LogManager struct {
+// TODO: (varung) Move this component to HostManger
+
+// LogManager log manager, is used to access sandbox files under mesos agent executor run directory.
+// It also contains log files.
+type LogManager interface {
+
+	// ListSandboxFilesPaths lists all the sandbox files in the mesos agent executor run directory.
+	ListSandboxFilesPaths(mesosAgentWorDir, frameworkID, hostname, agentID, taskID string) ([]string, error)
+}
+
+// logManager is a wrapper to collect logs location by talking to mesos agents.
+type logManager struct {
 	client *http.Client
 }
 
 // NewLogManager returns a logManager instance.
-func NewLogManager(client *http.Client) *LogManager {
-	return &LogManager{
+func NewLogManager(client *http.Client) LogManager {
+	return &logManager{
 		client: client,
 	}
 }
@@ -28,11 +38,11 @@ type filePath struct {
 }
 
 // ListSandboxFilesPaths returns the list of logs url under sandbox directory for given task.
-func (l *LogManager) ListSandboxFilesPaths(
+func (l *logManager) ListSandboxFilesPaths(
 	mesosAgentWorDir, frameworkID, hostname, agentID, taskID string) ([]string, error) {
 	slaveBrowseURL := getSlaveFileBrowseEndpointURL(mesosAgentWorDir, frameworkID, hostname, agentID, taskID)
 
-	result, err := l.listTaskLogFiles(slaveBrowseURL)
+	result, err := listTaskLogFiles(l.client, slaveBrowseURL)
 	if err != nil {
 		return result, err
 	}
@@ -46,10 +56,10 @@ func getSlaveFileBrowseEndpointURL(mesosAgentWorDir, frameworkID, hostname, agen
 }
 
 // listTaskLogFiles list logs files paths under given sandbox directory.
-func (l *LogManager) listTaskLogFiles(fileURL string) ([]string, error) {
+func listTaskLogFiles(client *http.Client, fileURL string) ([]string, error) {
 
 	var result []string
-	resp, err := l.client.Get(fileURL)
+	resp, err := client.Get(fileURL)
 	if err != nil {
 		return result, err
 	}

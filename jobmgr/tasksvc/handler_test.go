@@ -2,24 +2,27 @@ package tasksvc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
-
-	"github.com/golang/mock/gomock"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/suite"
-	"github.com/uber-go/tally"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
-	"code.uber.internal/infra/peloton/util"
-
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	logmanager_mocks "code.uber.internal/infra/peloton/jobmgr/logmanager/mocks"
+	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
+	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	"code.uber.internal/infra/peloton/util"
+	"github.com/golang/mock/gomock"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/suite"
+	"github.com/uber-go/tally"
+
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -65,6 +68,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 
 func (suite *TaskHandlerTestSuite) TearDownTest() {
 	log.Debug("tearing down")
+	suite.handler.mesosAgentWorkDir = ""
 }
 
 func TestPelotonTaskHandler(t *testing.T) {
@@ -203,17 +207,33 @@ func (suite *TaskHandlerTestSuite) createTaskEventForGetTasks(instanceID uint32,
 		}
 		events = append(events, event)
 
-		event = &task.TaskEvent{
-			TaskId: &peloton.TaskID{
-				Value: taskInfos[i].GetRuntime().GetMesosTaskId().GetValue(),
-			},
-			PrevTaskId: prevTaskID,
-			State:      task.TaskState_FAILED,
-			Message:    "",
-			Timestamp:  "2017-12-11T22:17:26Z",
-			Hostname:   "peloton-test-host",
-			Reason:     "",
+		if i == uint32(0) {
+			event = &task.TaskEvent{
+				TaskId: &peloton.TaskID{
+					Value: taskInfos[i].GetRuntime().GetMesosTaskId().GetValue(),
+				},
+				PrevTaskId: prevTaskID,
+				State:      task.TaskState_FAILED,
+				Message:    "",
+				Timestamp:  "2017-12-11T22:17:26Z",
+				Hostname:   "peloton-test-host",
+				Reason:     "",
+			}
+		} else {
+			event = &task.TaskEvent{
+				TaskId: &peloton.TaskID{
+					Value: taskInfos[i].GetRuntime().GetMesosTaskId().GetValue(),
+				},
+				PrevTaskId: prevTaskID,
+				State:      task.TaskState_FAILED,
+				Message:    "",
+				Timestamp:  "2017-12-11T22:17:26Z",
+				Hostname:   "peloton-test-host",
+				Reason:     "",
+				AgentId:    "peloton-test-agent",
+			}
 		}
+
 		events = append(events, event)
 		getReturnEvents = append(getReturnEvents, event)
 	}
@@ -831,7 +851,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxPreviousTaskRun() {
 	var req = &task.BrowseSandboxRequest{
 		JobId:      suite.testJobID,
 		InstanceId: instanceID,
-		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+		TaskId:     getReturnEvents[0].GetTaskId().GetValue(),
 	}
 	resp, err := suite.handler.BrowseSandbox(context.Background(), req)
 	suite.NoError(err)
@@ -899,6 +919,148 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxWithEmptyFrameworkID() {
 	resp, err := suite.handler.BrowseSandbox(context.Background(), request)
 	suite.NoError(err)
 	suite.NotNil(resp.GetError().GetFailure())
+}
+
+func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	instanceID := uint32(0)
+	taskRuns := uint32(3)
+	events, getReturnEvents := suite.createTaskEventForGetTasks(instanceID, taskRuns)
+	hostName := "peloton-test-host"
+	agentID := "peloton-test-agent"
+	frameworkID := "1234"
+	mesosAgentDir := "mesosAgentDir"
+
+	suite.handler.mesosAgentWorkDir = mesosAgentDir
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	mockFrameworkInfoStore := storage_mocks.NewMockFrameworkInfoStore(ctrl)
+	suite.handler.frameworkInfoStore = mockFrameworkInfoStore
+	mockLogManager := logmanager_mocks.NewMockLogManager(ctrl)
+	suite.handler.logManager = mockLogManager
+
+	var req = &task.BrowseSandboxRequest{
+		JobId:      suite.testJobID,
+		InstanceId: instanceID,
+		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+	}
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).Return(events, nil),
+		mockFrameworkInfoStore.EXPECT().GetFrameworkID(gomock.Any(), _frameworkName).Return(frameworkID, nil),
+		mockLogManager.EXPECT().ListSandboxFilesPaths(mesosAgentDir, frameworkID, hostName, agentID, req.GetTaskId()).Return(nil, errors.New("enable to fetch sandbox files from mesos agent")),
+	)
+
+	resp, _ := suite.handler.BrowseSandbox(context.Background(), req)
+	suite.NotEmpty(resp.GetError().GetFailure())
+}
+
+func (suite *TaskHandlerTestSuite) TesBrowseSandboxGetMesosMasterInfoFailure() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	instanceID := uint32(0)
+	taskRuns := uint32(3)
+	events, getReturnEvents := suite.createTaskEventForGetTasks(instanceID, taskRuns)
+	sandboxFilesPaths := []string{"path1", "path2"}
+	hostName := "peloton-test-host"
+	agentID := "peloton-test-agent"
+	frameworkID := "1234"
+	mesosAgentDir := "mesosAgentDir"
+
+	suite.handler.mesosAgentWorkDir = mesosAgentDir
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	mockFrameworkInfoStore := storage_mocks.NewMockFrameworkInfoStore(ctrl)
+	suite.handler.frameworkInfoStore = mockFrameworkInfoStore
+	mockLogManager := logmanager_mocks.NewMockLogManager(ctrl)
+	suite.handler.logManager = mockLogManager
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	suite.handler.hostMgrClient = mockHostMgr
+
+	var req = &task.BrowseSandboxRequest{
+		JobId:      suite.testJobID,
+		InstanceId: instanceID,
+		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+	}
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).Return(events, nil),
+		mockFrameworkInfoStore.EXPECT().GetFrameworkID(gomock.Any(), _frameworkName).Return(frameworkID, nil),
+		mockLogManager.EXPECT().ListSandboxFilesPaths(mesosAgentDir, frameworkID, hostName, agentID, req.GetTaskId()).Return(sandboxFilesPaths, nil),
+		mockHostMgr.EXPECT().GetMesosMasterHostPort(gomock.Any(), &hostsvc.MesosMasterHostPortRequest{}).Return(nil, errors.New("unable to fetch mesos master info")),
+	)
+
+	resp, _ := suite.handler.BrowseSandbox(context.Background(), req)
+	suite.NotEmpty(resp.GetError().GetFailure())
+}
+
+func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	instanceID := uint32(0)
+	taskRuns := uint32(3)
+	events, getReturnEvents := suite.createTaskEventForGetTasks(instanceID, taskRuns)
+	sandboxFilesPaths := []string{"path1", "path2"}
+	hostName := "peloton-test-host"
+	agentID := "peloton-test-agent"
+	frameworkID := "1234"
+	mesosAgentDir := "mesosAgentDir"
+
+	suite.handler.mesosAgentWorkDir = mesosAgentDir
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	suite.handler.jobStore = mockJobStore
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	suite.handler.taskStore = mockTaskStore
+	mockFrameworkInfoStore := storage_mocks.NewMockFrameworkInfoStore(ctrl)
+	suite.handler.frameworkInfoStore = mockFrameworkInfoStore
+	mockLogManager := logmanager_mocks.NewMockLogManager(ctrl)
+	suite.handler.logManager = mockLogManager
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	suite.handler.hostMgrClient = mockHostMgr
+
+	var req = &task.BrowseSandboxRequest{
+		JobId:      suite.testJobID,
+		InstanceId: instanceID,
+		TaskId:     getReturnEvents[1].GetTaskId().GetValue(),
+	}
+
+	var res = &task.BrowseSandboxResponse{
+		Hostname:            hostName,
+		Port:                "5051",
+		Error:               nil,
+		Paths:               sandboxFilesPaths,
+		MesosMasterHostname: "master",
+		MesosMasterPort:     "5050",
+	}
+
+	gomock.InOrder(
+		mockJobStore.EXPECT().GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
+		mockTaskStore.EXPECT().GetTaskEvents(gomock.Any(), suite.testJobID, instanceID).Return(events, nil),
+		mockFrameworkInfoStore.EXPECT().GetFrameworkID(gomock.Any(), _frameworkName).Return(frameworkID, nil),
+		mockLogManager.EXPECT().ListSandboxFilesPaths(mesosAgentDir, frameworkID, hostName, agentID, req.GetTaskId()).Return(sandboxFilesPaths, nil),
+		mockHostMgr.EXPECT().GetMesosMasterHostPort(gomock.Any(), &hostsvc.MesosMasterHostPortRequest{}).Return(&hostsvc.MesosMasterHostPortResponse{
+			Hostname: "master",
+			Port:     "5050",
+		}, nil),
+	)
+
+	resp, err := suite.handler.BrowseSandbox(context.Background(), req)
+	suite.NoError(err)
+	suite.Equal(resp.Paths, sandboxFilesPaths)
+	suite.Equal(resp, res)
 }
 
 func (suite *TaskHandlerTestSuite) TestRefreshTask() {

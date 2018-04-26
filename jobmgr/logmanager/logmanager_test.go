@@ -20,16 +20,10 @@ const (
 
 type LogManagerTestSuite struct {
 	suite.Suite
-
-	logManager *LogManager
 }
 
 func (suite *LogManagerTestSuite) SetupTest() {
-	suite.logManager = NewLogManager(
-		&http.Client{
-			Timeout: 10 * time.Second,
-		},
-	)
+	log.Debug("setup test")
 }
 
 func (suite *LogManagerTestSuite) TearDownTest() {
@@ -44,7 +38,10 @@ func (suite *LogManagerTestSuite) TestListTaskLogFiles() {
 	ts := httptest.NewServer(slaveMux())
 	defer ts.Close()
 
-	filePaths, err := suite.logManager.listTaskLogFiles(ts.URL + "/files/browse?path=" + "testPath")
+	filePaths, err := listTaskLogFiles(&http.Client{
+		Timeout: 10 * time.Second,
+	}, ts.URL+"/files/browse?path="+"testPath")
+
 	suite.NoError(err)
 	suite.Equal(filePaths, []string{"/var/lib/path1", "/var/lib/path2"})
 }

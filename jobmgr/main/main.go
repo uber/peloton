@@ -1,7 +1,9 @@
 package main
 
 import (
+	"net/http"
 	"os"
+	"time"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/config"
@@ -12,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
+	"code.uber.internal/infra/peloton/jobmgr/logmanager"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
@@ -30,6 +33,10 @@ import (
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
 	"gopkg.in/alecthomas/kingpin.v2"
+)
+
+const (
+	_httpClientTimeout = 15 * time.Second
 )
 
 var (
@@ -308,6 +315,7 @@ func main() {
 		common.PelotonResourceManager, // TODO: to be removed
 		cfg.JobManager.JobSvcCfg,
 	)
+
 	tasksvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
@@ -316,6 +324,8 @@ func main() {
 		frameworkInfoStore,
 		trackedManager,
 		*mesosAgentWorkDir,
+		common.PelotonHostManager,
+		logmanager.NewLogManager(&http.Client{Timeout: _httpClientTimeout}),
 	)
 	volumesvc.InitServiceHandler(
 		dispatcher,

@@ -547,6 +547,10 @@ message BrowseSandboxResponse {
   string hostname = 2;
   string port = 3;
   repeated string paths = 4;
+
+  // Mesos Master hostname and port.
+  string mesosMasterHostname = 5;
+  string mesosMasterPort = 6;
 }
 
 // DEPRECATED by google.rpc.OUT_OF_RANGE error.

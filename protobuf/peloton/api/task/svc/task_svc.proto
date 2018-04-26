@@ -266,6 +266,10 @@ message BrowseSandboxResponse {
   // The list of sandbox file paths.
   // TODO: distinguish files and directories in the sandbox
   repeated string paths = 4;
+
+  // Mesos Master hostname and port.
+  string mesosMasterHostname = 5;
+  string mesosMasterPort = 6;
 }
 
 message TaskEventsError {
@@ -279,7 +283,7 @@ message GetEventsRequest {
   // The job ID of the task
   peloton.JobID jobId = 1;
 
-  // The instance ID of the task 
+  // The instance ID of the task
   uint32 instanceId = 2;
 }
 

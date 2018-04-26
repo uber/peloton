@@ -914,7 +914,7 @@ func (h *serviceHandler) ClusterCapacity(
 	return clusterCapacityResponse, nil
 }
 
-// MesosMasterHostPort returns the Leader Mesos Master hostname and port.
+// GetMesosMasterHostPort returns the Leader Mesos Master hostname and port.
 func (h *serviceHandler) GetMesosMasterHostPort(
 	ctx context.Context,
 	body *hostsvc.MesosMasterHostPortRequest) (*hostsvc.MesosMasterHostPortResponse, error) {

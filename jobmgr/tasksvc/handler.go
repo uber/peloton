@@ -3,7 +3,6 @@ package tasksvc
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sort"
 	"time"
 
@@ -19,10 +18,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
-	"code.uber.internal/infra/peloton/jobmgr/log_manager"
+	"code.uber.internal/infra/peloton/jobmgr/logmanager"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
@@ -32,9 +32,8 @@ import (
 )
 
 const (
-	_rpcTimeout        = 15 * time.Second
-	_httpClientTimeout = 15 * time.Second
-	_frameworkName     = "Peloton"
+	_rpcTimeout    = 15 * time.Second
+	_frameworkName = "Peloton"
 )
 
 var (
@@ -49,7 +48,9 @@ func InitServiceHandler(
 	taskStore storage.TaskStore,
 	frameworkInfoStore storage.FrameworkInfoStore,
 	trackedManager tracked.Manager,
-	mesosAgentWorkDir string) {
+	mesosAgentWorkDir string,
+	hostMgrClientName string,
+	logManager logmanager.LogManager) {
 
 	handler := &serviceHandler{
 		taskStore:          taskStore,
@@ -57,10 +58,11 @@ func InitServiceHandler(
 		frameworkInfoStore: frameworkInfoStore,
 		metrics:            NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 		resmgrClient:       resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
-		httpClient:         &http.Client{Timeout: _httpClientTimeout},
 		taskLauncher:       launcher.GetLauncher(),
 		trackedManager:     trackedManager,
 		mesosAgentWorkDir:  mesosAgentWorkDir,
+		hostMgrClient:      hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
+		logManager:         logManager,
 	}
 	d.Register(task.BuildTaskManagerYARPCProcedures(handler))
 }
@@ -72,10 +74,11 @@ type serviceHandler struct {
 	frameworkInfoStore storage.FrameworkInfoStore
 	metrics            *Metrics
 	resmgrClient       resmgrsvc.ResourceManagerServiceYARPCClient
-	httpClient         *http.Client
 	taskLauncher       launcher.Launcher
 	trackedManager     tracked.Manager
 	mesosAgentWorkDir  string
+	hostMgrClient      hostsvc.InternalHostServiceYARPCClient
+	logManager         logmanager.LogManager
 }
 
 func (m *serviceHandler) getTerminalEvents(eventList []*task.TaskEvent, lastTaskInfo *task.TaskInfo) []*task.TaskInfo {
@@ -756,12 +759,69 @@ func (m *serviceHandler) getHostInfoCurrentTask(
 	return hostname, agentID, taskID, nil
 }
 
+// getSandboxPathInfo - return details such as hostname, agentID, frameworkID and taskID to create sandbox path.
+func (m *serviceHandler) getSandboxPathInfo(ctx context.Context,
+	instanceCount uint32,
+	req *task.BrowseSandboxRequest) (hostname, agentID, taskID, frameworkID string, resp *task.BrowseSandboxResponse) {
+	var host string
+	var agentid string
+	taskid := req.GetTaskId()
+
+	var err error
+	if len(taskid) > 0 {
+		host, agentid, err = m.getHostInfoWithTaskID(ctx, req.JobId, req.InstanceId, taskid)
+	} else {
+		host, agentid, taskid, err = m.getHostInfoCurrentTask(ctx, req.JobId, req.InstanceId)
+	}
+
+	if err != nil {
+		m.metrics.TaskListLogsFail.Inc(1)
+		return "", "", "", "", &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				OutOfRange: &task.InstanceIdOutOfRange{
+					JobId:         req.JobId,
+					InstanceCount: instanceCount,
+				},
+			},
+		}
+	}
+
+	if len(host) == 0 || len(agentid) == 0 {
+		m.metrics.TaskListLogsFail.Inc(1)
+		return "", "", "", "", &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				NotRunning: &task.TaskNotRunning{
+					Message: "taskinfo does not have hostname or agentID",
+				},
+			},
+		}
+	}
+
+	// get framework ID.
+	frameworkid, err := m.getFrameworkID(ctx)
+	if err != nil {
+		m.metrics.TaskListLogsFail.Inc(1)
+		log.WithError(err).WithFields(log.Fields{
+			"req": req,
+		}).Error("failed to get framework id")
+		return "", "", "", "", &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				Failure: &task.BrowseSandboxFailure{
+					Message: err.Error(),
+				},
+			},
+		}
+	}
+	return host, agentid, taskid, frameworkid, nil
+}
+
+// BrowseSandbox returns the list of sandbox files path, with agent name, agent id and mesos master name & port.
 func (m *serviceHandler) BrowseSandbox(
 	ctx context.Context,
 	req *task.BrowseSandboxRequest) (*task.BrowseSandboxResponse, error) {
-
-	log.WithField("req", req).Info("TaskSVC.BrowseSandbox called")
+	log.WithField("req", req).Debug("TaskSVC.BrowseSandbox called")
 	m.metrics.TaskAPIListLogs.Inc(1)
+
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
 	if err != nil {
 		log.WithField("job_id", req.JobId.Value).
@@ -778,59 +838,15 @@ func (m *serviceHandler) BrowseSandbox(
 		}, nil
 	}
 
-	var hostname string
-	var agentID string
-	var taskID string
-	taskID = req.GetTaskId()
-
-	if len(taskID) > 0 {
-		hostname, agentID, err = m.getHostInfoWithTaskID(ctx, req.JobId, req.InstanceId, taskID)
-	} else {
-		hostname, agentID, taskID, err = m.getHostInfoCurrentTask(ctx, req.JobId, req.InstanceId)
+	hostname, agentID, taskID, frameworkID, resp := m.getSandboxPathInfo(ctx, jobConfig.InstanceCount, req)
+	if resp != nil {
+		return resp, nil
 	}
 
-	if err != nil {
-		m.metrics.TaskListLogsFail.Inc(1)
-		return &task.BrowseSandboxResponse{
-			Error: &task.BrowseSandboxResponse_Error{
-				OutOfRange: &task.InstanceIdOutOfRange{
-					JobId:         req.JobId,
-					InstanceCount: jobConfig.InstanceCount,
-				},
-			},
-		}, nil
-	}
+	fmt.Println(hostname, agentID, taskID, frameworkID)
 
-	if len(hostname) == 0 || len(agentID) == 0 {
-		m.metrics.TaskListLogsFail.Inc(1)
-		return &task.BrowseSandboxResponse{
-			Error: &task.BrowseSandboxResponse_Error{
-				NotRunning: &task.TaskNotRunning{
-					Message: "taskinfo does not have hostname or agentID",
-				},
-			},
-		}, nil
-	}
-
-	// get framework ID.
-	frameworkID, err := m.getFrameworkID(ctx)
-	if err != nil {
-		m.metrics.TaskListLogsFail.Inc(1)
-		log.WithError(err).WithFields(log.Fields{
-			"req": req,
-		}).Error("failed to get framework id")
-		return &task.BrowseSandboxResponse{
-			Error: &task.BrowseSandboxResponse_Error{
-				Failure: &task.BrowseSandboxFailure{
-					Message: err.Error(),
-				},
-			},
-		}, nil
-	}
-
-	logManager := logmanager.NewLogManager(m.httpClient)
 	var logPaths []string
-	logPaths, err = logManager.ListSandboxFilesPaths(m.mesosAgentWorkDir, frameworkID, hostname, agentID, taskID)
+	logPaths, err = m.logManager.ListSandboxFilesPaths(m.mesosAgentWorkDir, frameworkID, hostname, agentID, taskID)
 
 	if err != nil {
 		m.metrics.TaskListLogsFail.Inc(1)
@@ -853,11 +869,34 @@ func (m *serviceHandler) BrowseSandbox(
 		}, nil
 	}
 
+	mesosMasterHostPortRespose, err := m.hostMgrClient.GetMesosMasterHostPort(ctx, &hostsvc.MesosMasterHostPortRequest{})
+	if err != nil {
+		m.metrics.TaskListLogsFail.Inc(1)
+		log.WithError(err).WithFields(log.Fields{
+			"req":          req,
+			"hostname":     hostname,
+			"framework_id": frameworkID,
+			"agent_id":     agentID,
+		}).Error("failed to list slave logs files paths")
+		return &task.BrowseSandboxResponse{
+			Error: &task.BrowseSandboxResponse_Error{
+				Failure: &task.BrowseSandboxFailure{
+					Message: fmt.Sprintf(
+						"%v",
+						err,
+					),
+				},
+			},
+		}, nil
+	}
+
 	m.metrics.TaskListLogs.Inc(1)
-	resp := &task.BrowseSandboxResponse{
-		Hostname: hostname,
-		Port:     "5051",
-		Paths:    logPaths,
+	resp = &task.BrowseSandboxResponse{
+		Hostname:            hostname,
+		Port:                "5051",
+		Paths:               logPaths,
+		MesosMasterHostname: mesosMasterHostPortRespose.Hostname,
+		MesosMasterPort:     mesosMasterHostPortRespose.Port,
 	}
 	log.WithField("response", resp).Info("TaskSVC.BrowseSandbox returned")
 	return resp, nil
