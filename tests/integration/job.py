@@ -198,6 +198,7 @@ class Job(object):
         attempts = 0
         start = time.time()
         log.info('waiting for state %s', goal_state)
+        state_transition_failure = False
         while attempts < self.config.max_retry_attempts:
             try:
                 request = job.GetRequest(
@@ -216,12 +217,24 @@ class Job(object):
                 if state == goal_state:
                     break
                 log.debug(format_stats(runtime.taskStats))
-                assert state != failed_state
+                # If we assert here, we will log the exception,
+                # and continue with the finally block. Set a flag
+                # here to indicate failure and then break the loop
+                # in the finally block
+                if state == failed_state:
+                    state_transition_failure = True
             except Exception as e:
                 log.warn(e)
             finally:
+                if state_transition_failure:
+                    break
                 time.sleep(self.config.sleep_time_sec)
                 attempts += 1
+
+        if state_transition_failure:
+            log.info('goal_state:%s current_state:%s attempts: %s',
+                     goal_state, state, str(attempts))
+            assert False
 
         if attempts == self.config.max_retry_attempts:
             log.info('max attempts reached to wait for goal state')

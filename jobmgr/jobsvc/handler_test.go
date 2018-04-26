@@ -27,6 +27,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -359,7 +361,27 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 
 	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
 	suite.Nil(res)
-	suite.EqualError(err, "Job is not in a terminal state: PENDING")
+	suite.Error(err)
+	expectedErr := yarpcerrors.InternalErrorf("Job is not in a terminal state: PENDING")
+	suite.Equal(expectedErr, err)
+
+	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+		Return(nil, fmt.Errorf("fake db error"))
+	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
+	suite.Nil(res)
+	suite.Error(err)
+	expectedErr = yarpcerrors.NotFoundErrorf("job not found")
+	suite.Equal(expectedErr, err)
+
+	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+		Return(&job.RuntimeInfo{State: job.JobState_SUCCEEDED}, nil)
+	mockJobStore.EXPECT().DeleteJob(context.Background(), id).
+		Return(yarpcerrors.InternalErrorf("fake db error"))
+	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
+	suite.Nil(res)
+	suite.Error(err)
+	expectedErr = yarpcerrors.InternalErrorf("fake db error")
+	suite.Equal(expectedErr, err)
 }
 
 func (suite *JobHandlerTestSuite) TestJobRefresh() {

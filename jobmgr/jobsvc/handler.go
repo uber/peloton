@@ -438,25 +438,19 @@ func (h *serviceHandler) Delete(
 			WithField("job_id", req.GetId().GetValue()).
 			Error("Failed to GetJobRuntime")
 		h.metrics.JobDeleteFail.Inc(1)
-		return nil, err
+		return nil, yarpcerrors.NotFoundErrorf("job not found")
 	}
 
 	if !util.IsPelotonJobStateTerminal(jobRuntime.State) {
 		h.metrics.JobDeleteFail.Inc(1)
-		return nil, fmt.Errorf("Job is not in a terminal state: %s", jobRuntime.State)
+		return nil, yarpcerrors.InternalErrorf(
+			fmt.Sprintf("Job is not in a terminal state: %s", jobRuntime.State))
 	}
 
 	if err := h.jobStore.DeleteJob(ctx, req.Id); err != nil {
 		h.metrics.JobDeleteFail.Inc(1)
 		log.Errorf("Delete job failed with error %v", err)
-		return &job.DeleteResponse{
-			Error: &job.DeleteResponse_Error{
-				NotFound: &api_errors.JobNotFound{
-					Id:      req.Id,
-					Message: err.Error(),
-				},
-			},
-		}, nil
+		return nil, err
 	}
 
 	h.metrics.JobDelete.Inc(1)

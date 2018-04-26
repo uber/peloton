@@ -1,6 +1,8 @@
 import logging
 import os
 import pytest
+import random
+import string
 import time
 
 from docker import Client
@@ -8,9 +10,19 @@ from tools.pcluster.pcluster import setup, teardown
 from job import Job
 from m3.client import M3
 from m3.emitter import BatchedEmitter
+from google.protobuf import json_format
+from peloton_client.pbgen.peloton.api.job import job_pb2
+from peloton_client.pbgen.peloton.api.task import task_pb2 as task
+from peloton_client.pbgen.mesos.v1 import mesos_pb2 as mesos
+from util import load_test_config
 
+from collections import defaultdict
 
 log = logging.getLogger(__name__)
+
+NUM_JOBS_PER_STATE = 1
+STATES = ['SUCCEEDED', 'RUNNING', 'FAILED']
+ACTIVE_STATES = ['PENDING', 'RUNNING', 'INITIALIZED']
 
 
 class TestMetrics(object):
@@ -143,3 +155,141 @@ def long_running_job(request):
     request.addfinalizer(kill_long_running_job)
 
     return job
+
+
+"""
+Setup fixture for getting a dict of job objects per state
+"""
+
+
+@pytest.fixture
+def jobs_by_state(request):
+    return _jobs_by_state(_num_jobs_per_state=1)
+
+
+"""
+Setup/Cleanup fixture that starts a set of RUNNING, SUCCEEDED and
+FAILED jobs scoped per module. This is to give each module a set
+of active and completed jobs to test on.
+
+Returns:
+    common salt identifier, respoolID and dict of created jobs
+"""
+
+
+@pytest.fixture(scope="module")
+def create_jobs(request):
+    jobs_by_state = _jobs_by_state()
+    salt = jobs_by_state[0]
+    jobs_dict = jobs_by_state[1]
+    log.info('Create jobs')
+    respoolID = None
+
+    for state in STATES:
+        jobs = jobs_dict[state]
+        for job in jobs:
+            job.create()
+            if state is 'FAILED':
+                job.wait_for_state(goal_state='FAILED',
+                                   failed_state='SUCCEEDED')
+            else:
+                job.wait_for_state(goal_state=state)
+            if respoolID is None:
+                respoolID = job.get_config().respoolID
+
+    def stop_jobs():
+        log.info('Stop jobs')
+        for state in STATES:
+            jobs = jobs_dict[state]
+            for job in jobs:
+                state = job_pb2.JobState.Name(job.get_runtime().state)
+                if state in ACTIVE_STATES:
+                    job.stop()
+                    job.wait_for_state(goal_state='KILLED')
+
+    request.addfinalizer(stop_jobs)
+
+    # Job Query accuracy depends on lucene index being up to date
+    # lucene index refresh time is 10 seconds. Sleep for 12 sec.
+    time.sleep(12)
+    return salt, respoolID, jobs_dict
+
+
+"""
+Load job config from file and modify its specific fields
+we use this function to create jobs with potentially unique names
+and predictable run times and states which we can then query in
+a predictable manner (query by the same name/owner/state)
+
+Args:
+    job_file: Load base config from this file
+    name: Job name string.
+    owner: Job owner string.
+    long_running: when set, job is supposed to run for 60 seconds
+    simulate_failure: If set, job config is created to simulate task failure
+
+Returns:
+    job_pb2.JobConfig object is returned.
+
+Raises:
+    None
+"""
+
+
+def generate_job_config(job_file='test_job.yaml',
+                        name='test', owner='compute',
+                        long_running=False,
+                        simulate_failure=False):
+    job_config_dump = load_test_config(job_file)
+    job_config = job_pb2.JobConfig()
+    json_format.ParseDict(job_config_dump, job_config)
+
+    command_string = "echo 'this is a test' &  sleep 1"
+
+    if long_running:
+        command_string += " & sleep 60"
+
+    if simulate_failure:
+        command_string += " & exit(2)"
+    job_config.name = name
+    job_config.owningTeam = owner
+    task_cfg = task.TaskConfig(
+        command=mesos.CommandInfo(
+            shell=True,
+            value=command_string,
+        ),
+    )
+    job_config.defaultConfig.MergeFrom(task_cfg)
+    return job_config
+
+
+"""
+Get a map of job objects by state and their common identifier salt
+
+Args:
+    _num_jobs_per_state: number of job objects per state.
+
+Returns:
+    dict of jobs list per state is returned
+"""
+
+
+def _jobs_by_state(_num_jobs_per_state=NUM_JOBS_PER_STATE):
+    salt = ''.join(random.choice(string.ascii_uppercase + string.digits)
+                   for _ in range(6))
+    name = 'TestJob-' + salt
+    owner = 'compute-' + salt
+    jobs_by_state = defaultdict(list)
+
+    # create three jobs per state with this owner and name
+    for state in STATES:
+        for i in xrange(_num_jobs_per_state):
+            long_running = True if state is 'RUNNING' else False
+            simulate_failure = True if state is 'FAILED' else False
+            job = Job(job_config=generate_job_config(
+                # job name will be in format: TestJob-<salt>-<inst-id>-<state>
+                name=name + '-' + str(i) + '-' + state,
+                owner=owner, long_running=long_running,
+                simulate_failure=simulate_failure))
+            jobs_by_state[state].append(job)
+    return salt, jobs_by_state
