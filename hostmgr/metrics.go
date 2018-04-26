@@ -39,6 +39,9 @@ type Metrics struct {
 	OfferOperationsInvalid       tally.Counter
 	OfferOperationsInvalidOffers tally.Counter
 
+	RecoverySuccess tally.Counter
+	RecoveryFail    tally.Counter
+
 	scope tally.Scope
 }
 
@@ -76,6 +79,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		ClusterCapacity:     scope.Counter("cluster_capacity"),
 		ClusterCapacityFail: scope.Counter("cluster_capacity_fail"),
+
+		RecoverySuccess: scope.Counter("recovery_success"),
+		RecoveryFail:    scope.Counter("recovery_fail"),
 
 		scope: scope,
 	}

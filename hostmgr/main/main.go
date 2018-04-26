@@ -16,8 +16,10 @@ import (
 	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/hostmgr"
 	"code.uber.internal/infra/peloton/hostmgr/hostmap"
+	"code.uber.internal/infra/peloton/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
+	"code.uber.internal/infra/peloton/hostmgr/queue"
 	"code.uber.internal/infra/peloton/hostmgr/reconcile"
 	"code.uber.internal/infra/peloton/hostmgr/task"
 	"code.uber.internal/infra/peloton/leader"
@@ -393,6 +395,8 @@ func main() {
 		cfg.HostManager.HostPruningPeriodSec,
 	)
 
+	maintenanceQueue := queue.NewMaintenanceQueue()
+
 	// Init service handler.
 	hostmgr.InitServiceHandler(
 		dispatcher,
@@ -403,6 +407,13 @@ func main() {
 		volumeStore,
 		cfg.Mesos,
 		mesosMasterDetector,
+	)
+
+	hostsvc.InitServiceHandler(
+		dispatcher,
+		rootScope,
+		masterOperatorClient,
+		maintenanceQueue,
 	)
 
 	// Initializing TaskStateManager will start to record task status
@@ -418,6 +429,8 @@ func main() {
 		rootScope,
 	)
 
+	recoveryHandler := hostmgr.NewRecoveryHandler(rootScope, masterOperatorClient, maintenanceQueue)
+
 	server := hostmgr.NewServer(
 		rootScope,
 		backgroundManager,
@@ -427,6 +440,7 @@ func main() {
 		mInbound,
 		mOutbound,
 		reconciler,
+		recoveryHandler,
 	)
 
 	// Start dispatch loop

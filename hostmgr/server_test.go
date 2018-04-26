@@ -13,6 +13,7 @@ import (
 
 	backgound_mocks "code.uber.internal/infra/peloton/common/background/mocks"
 	hm_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
+	recovery_mocks "code.uber.internal/infra/peloton/hostmgr/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	offer_mocks "code.uber.internal/infra/peloton/hostmgr/offer/mocks"
 	reconciler_mocks "code.uber.internal/infra/peloton/hostmgr/reconcile/mocks"
@@ -41,6 +42,7 @@ type ServerTestSuite struct {
 	backgroundManager *backgound_mocks.MockManager
 	detector          *hm_mocks.MockMasterDetector
 	mInbound          *mhttp_mocks.MockInbound
+	recoveryHandler   *recovery_mocks.MockRecoveryHandler
 
 	reconciler *reconciler_mocks.MockTaskReconciler
 
@@ -55,6 +57,7 @@ func (suite *ServerTestSuite) SetupTest() {
 	suite.detector = hm_mocks.NewMockMasterDetector(suite.ctrl)
 	suite.mInbound = mhttp_mocks.NewMockInbound(suite.ctrl)
 	suite.reconciler = reconciler_mocks.NewMockTaskReconciler(suite.ctrl)
+	suite.recoveryHandler = recovery_mocks.NewMockRecoveryHandler(suite.ctrl)
 
 	suite.server = &Server{
 		ID:   _ID,
@@ -66,8 +69,9 @@ func (suite *ServerTestSuite) SetupTest() {
 
 		backgroundManager: suite.backgroundManager,
 
-		mesosDetector: suite.detector,
-		mesosInbound:  suite.mInbound,
+		mesosDetector:   suite.detector,
+		mesosInbound:    suite.mInbound,
+		recoveryHandler: suite.recoveryHandler,
 		// Add outbound when we need it.
 
 		reconciler: suite.reconciler,
@@ -121,6 +125,7 @@ func (suite *ServerTestSuite) TestUnelectedStopHandler() {
 		suite.mInbound.EXPECT().IsRunning().Return(false),
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
+		suite.recoveryHandler.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false),
 	)
 	suite.server.ensureStateRound()
@@ -139,6 +144,7 @@ func (suite *ServerTestSuite) TestUnelectedStopConnectionAndHandler() {
 		suite.mInbound.EXPECT().Stop(),
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
+		suite.recoveryHandler.EXPECT().Stop(),
 		suite.mInbound.EXPECT().IsRunning().Return(false),
 	)
 	suite.server.ensureStateRound()
@@ -173,6 +179,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		// Stop handlers.
 		suite.backgroundManager.EXPECT().Stop(),
 		suite.eventHandler.EXPECT().Stop(),
+		suite.recoveryHandler.EXPECT().Stop(),
 
 		// Detect leader and start loop successfully.
 		suite.detector.EXPECT().HostPort().Return(_hostPort),
@@ -187,6 +194,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnection() {
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
+		suite.recoveryHandler.EXPECT().Start(),
 
 		// Last check for connected, used in gauge reporting.
 		suite.mInbound.EXPECT().IsRunning().Return(true),
@@ -207,6 +215,7 @@ func (suite *ServerTestSuite) TestElectedRestartHandlers() {
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
+		suite.recoveryHandler.EXPECT().Start(),
 		suite.mInbound.EXPECT().IsRunning().Return(true),
 	)
 	suite.server.ensureStateRound()
@@ -238,6 +247,7 @@ func (suite *ServerTestSuite) TestElectedRestartConnectionAndHandler() {
 		suite.reconciler.EXPECT().SetExplicitReconcileTurn(true).Times(1),
 		suite.backgroundManager.EXPECT().Start(),
 		suite.eventHandler.EXPECT().Start(),
+		suite.recoveryHandler.EXPECT().Start(),
 
 		// Last check for connected, used in gauge reporting.
 		suite.mInbound.EXPECT().IsRunning().Return(true),

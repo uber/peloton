@@ -54,6 +54,8 @@ type Server struct {
 	elected         atomic.Bool
 	handlersRunning atomic.Bool
 
+	recoveryHandler RecoveryHandler
+
 	metrics *Metrics
 }
 
@@ -65,7 +67,8 @@ func NewServer(
 	mesosDetector mesos.MasterDetector,
 	mesosInbound mhttp.Inbound,
 	mesosOutbound transport.Outbounds,
-	reconciler reconcile.TaskReconciler) *Server {
+	reconciler reconcile.TaskReconciler,
+	recoveryHandler RecoveryHandler) *Server {
 
 	s := &Server{
 		ID:                   leader.NewID(httpPort, grpcPort),
@@ -79,6 +82,8 @@ func NewServer(
 
 		minBackoff: _minBackoff,
 		maxBackoff: _maxBackoff,
+
+		recoveryHandler: recoveryHandler,
 
 		metrics: NewMetrics(parent),
 	}
@@ -237,6 +242,7 @@ func (s *Server) stopHandlers() {
 	if s.handlersRunning.Swap(false) {
 		s.backgroundManager.Stop()
 		s.getOfferEventHandler().Stop()
+		s.recoveryHandler.Stop()
 	}
 }
 
@@ -252,6 +258,7 @@ func (s *Server) startHandlers() {
 		s.reconciler.SetExplicitReconcileTurn(true)
 		s.backgroundManager.Start()
 		s.getOfferEventHandler().Start()
+		s.recoveryHandler.Start()
 	}
 }
 
