@@ -369,9 +369,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessOrphanTaskRunningStatusUpdate() {
 	suite.mockTaskStore.EXPECT().
 		GetTaskByID(context.Background(), _pelotonTaskID).
 		Return(taskInfo, nil)
-	suite.mockHostMgrClient.EXPECT().KillTasks(context.Background(), &hostsvc.KillTasksRequest{
+	suite.mockHostMgrClient.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
 		TaskIds: []*mesos.TaskID{orphanTaskID},
-	}).Return(nil, nil)
+	}).
+		Do(func(ctx context.Context, req *hostsvc.KillTasksRequest) {
+			_, ok := ctx.Deadline()
+			suite.True(ok)
+		}).
+		Return(nil, nil)
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
 }
 

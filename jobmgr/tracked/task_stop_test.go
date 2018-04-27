@@ -40,7 +40,7 @@ func TestTaskStop(t *testing.T) {
 		Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
 	}
 
-	hostMock.EXPECT().KillTasks(context.Background(), &hostsvc.KillTasksRequest{
+	hostMock.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
 		TaskIds: []*mesos_v1.TaskID{taskID},
 	}).Return(nil, nil)
 
