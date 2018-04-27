@@ -3,6 +3,7 @@ import time
 
 from job import IntegrationTestConfig, Job
 from peloton_client.pbgen.peloton.api.job import job_pb2
+from peloton_client.pbgen.peloton.api.task import task_pb2
 
 
 pytestmark = [pytest.mark.default, pytest.mark.task]
@@ -26,6 +27,81 @@ def test__stop_start_all_tasks_kills_tasks_and_job(long_running_job):
 
     long_running_job.start()
     long_running_job.wait_for_state(goal_state='RUNNING')
+
+
+def test__stop_start_partial_tests_with_single_range(long_running_job):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='RUNNING')
+
+    long_running_job.stop()
+    long_running_job.wait_for_state(goal_state='KILLED')
+
+    range = task_pb2.InstanceRange(to=1)
+    setattr(range, 'from', 0)
+
+    def wait_for_instance_to_run():
+        tasks = long_running_job.list_tasks().value
+        return (tasks[0].runtime.state ==
+                task_pb2.TaskState.Value('RUNNING') and
+                tasks[1].runtime.state ==
+                task_pb2.TaskState.Value('KILLED') and
+                tasks[2].runtime.state ==
+                task_pb2.TaskState.Value('KILLED'))
+    long_running_job.start(ranges=[range])
+    long_running_job.wait_for_condition(wait_for_instance_to_run)
+
+    long_running_job.stop(ranges=[range])
+    long_running_job.wait_for_state(goal_state='KILLED')
+
+
+def test__stop_start_partial_tests_with_multiple_ranges(long_running_job):
+    long_running_job.create()
+    long_running_job.wait_for_state(goal_state='RUNNING')
+
+    long_running_job.stop()
+    long_running_job.wait_for_state(goal_state='KILLED')
+
+    range1 = task_pb2.InstanceRange(to=1)
+    setattr(range1, 'from', 0)
+    range2 = task_pb2.InstanceRange(to=2)
+    setattr(range2, 'from', 1)
+
+    def wait_for_instance_to_run():
+        tasks = long_running_job.list_tasks().value
+        return (tasks[0].runtime.state ==
+                task_pb2.TaskState.Value('RUNNING') and
+                tasks[1].runtime.state ==
+                task_pb2.TaskState.Value('RUNNING') and
+                tasks[2].runtime.state ==
+                task_pb2.TaskState.Value('KILLED'))
+    long_running_job.start(ranges=[range1, range2])
+    long_running_job.wait_for_condition(wait_for_instance_to_run)
+
+    long_running_job.stop(ranges=[range1, range2])
+    long_running_job.wait_for_state(goal_state='KILLED')
+
+
+def test__start_stop_task_without_job_id():
+    job_without_id = Job()
+    resp = job_without_id.start()
+    assert resp.HasField('error')
+    assert resp.error.HasField('notFound')
+
+    resp = job_without_id.stop()
+    assert resp.HasField('error')
+    assert resp.error.HasField('notFound')
+
+
+def test__start_stop_task_with_nonexistent_job_id():
+    job_with_nonexistent_id = Job()
+    job_with_nonexistent_id.job_id = "nonexistent-job-id"
+    resp = job_with_nonexistent_id.start()
+    assert resp.HasField('error')
+    assert resp.error.HasField('notFound')
+
+    resp = job_with_nonexistent_id.stop()
+    assert resp.HasField('error')
+    assert resp.error.HasField('notFound')
 
 
 def test__stop_start_tasks_when_mesos_master_down_kills_tasks_when_started(

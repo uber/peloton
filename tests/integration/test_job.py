@@ -69,7 +69,7 @@ def test_update_job_increase_instances():
     job.wait_for_state(goal_state='RUNNING')
 
     # job has only 1 task to begin with
-    expected_count = 1
+    expected_count = 3
 
     def tasks_count():
         count = 0
@@ -85,7 +85,7 @@ def test_update_job_increase_instances():
     # update the job with the new config
     job.update(new_job_file='long_running_job_update_instances.yaml')
 
-    # number of tasks should increase to 2
-    expected_count = 2
+    # number of tasks should increase to 4
+    expected_count = 4
     job.wait_for_condition(tasks_count)
     job.wait_for_state(goal_state='RUNNING')

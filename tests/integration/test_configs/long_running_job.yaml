@@ -1,7 +1,7 @@
 name: TestPelotonLongRunningJob_integration
 owningTeam: team6
 description: "A dummy test long running job for peloton integration tests"
-instanceCount: 1
+instanceCount: 3
 defaultConfig:
   resource:
     # Keep resource limits not too low to avoid potentially hitting quota limit

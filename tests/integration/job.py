@@ -86,27 +86,33 @@ class Job(object):
         self.job_config = new_job_config
         log.info('updated job %s', self.job_id)
 
-    def start(self):
+    def start(self, ranges=None):
         request = task.StartRequest(
             jobId=peloton.JobID(value=self.job_id),
+            ranges=ranges,
         )
-        self.client.task_svc.Start(
-            request,
-            metadata=self.client.jobmgr_metadata,
-            timeout=self.config.rpc_timeout_sec,
-        )
-        log.info('starting all tasks in job %s', self.job_id)
+        response = self.client.task_svc.Start(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=self.config.rpc_timeout_sec,
+            )
+        log.info('starting tasks in job {0} with ranges {1}'
+                 .format(self.job_id, ranges))
+        return response
 
-    def stop(self):
+    def stop(self, ranges=None):
         request = task.StopRequest(
             jobId=peloton.JobID(value=self.job_id),
+            ranges=ranges,
         )
-        self.client.task_svc.Stop(
-            request,
-            metadata=self.client.jobmgr_metadata,
-            timeout=self.config.rpc_timeout_sec,
-        )
-        log.info('stopping all tasks in job %s', self.job_id)
+        response = self.client.task_svc.Stop(
+                request,
+                metadata=self.client.jobmgr_metadata,
+                timeout=self.config.rpc_timeout_sec,
+            )
+        log.info('stopping tasks in job {0} with ranges {1}'
+                 .format(self.job_id, ranges))
+        return response
 
     def get_info(self):
         request = job.GetRequest(
@@ -174,6 +180,18 @@ class Job(object):
         )
         assert not resp.HasField('error')
         return resp
+
+    def list_tasks(self):
+        request = task.ListRequest(
+            jobId=peloton.JobID(value=self.job_id),
+        )
+        resp = self.client.task_svc.List(
+            request,
+            metadata=self.client.jobmgr_metadata,
+            timeout=self.config.rpc_timeout_sec,
+        )
+        assert not resp.HasField('notFound')
+        return resp.result
 
     def wait_for_state(self, goal_state='SUCCEEDED', failed_state='FAILED'):
         state = ''
