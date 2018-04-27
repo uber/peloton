@@ -61,10 +61,14 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		},
 	}
 
+	preemptionCandidate := &resmgr.PreemptionCandidate{
+		Id:     task.Id,
+		Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+	}
 	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(
 		&resmgrsvc.GetPreemptibleTasksResponse{
-			Tasks: []*resmgr.Task{task},
-			Error: nil,
+			PreemptionCandidates: []*resmgr.PreemptionCandidate{preemptionCandidate},
+			Error:                nil,
 		}, nil,
 	)
 	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskID.Value).Return(taskInfo, nil)

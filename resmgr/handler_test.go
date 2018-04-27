@@ -1044,7 +1044,10 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 
 	var calls []*gomock.Call
 	for _, et := range expectedTasks {
-		calls = append(calls, mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(et, nil))
+		calls = append(calls, mockPreemptor.EXPECT().DequeueTask(gomock.Any()).Return(&resmgr.PreemptionCandidate{
+			Id:     et.Id,
+			Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+		}, nil))
 	}
 	gomock.InOrder(calls...)
 
@@ -1056,7 +1059,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 	res, err := s.handler.GetPreemptibleTasks(context.Background(), req)
 	s.NoError(err)
 	s.NotNil(res)
-	s.Equal(5, len(res.Tasks))
+	s.Equal(5, len(res.PreemptionCandidates))
 }
 
 func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {

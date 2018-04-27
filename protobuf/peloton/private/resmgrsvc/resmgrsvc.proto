@@ -128,8 +128,12 @@ message GetPreemptibleTasksResponse {
   }
   Error error = 1;
 
+  // DEPRECATED by preemptionCandidates
   // The list of tasks that have been dequeued
   repeated resmgr.Task tasks = 2;
+
+  // The list of tasks to be preempted
+  repeated resmgr.PreemptionCandidate preemptionCandidates = 3;
 }
 
 message ResourcePoolNotFound {

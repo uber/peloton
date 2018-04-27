@@ -1027,9 +1027,9 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 
 	limit := req.GetLimit()
 	timeout := time.Duration(req.GetTimeout())
-	var tasks []*resmgr.Task
+	var preemptionCandidates []*resmgr.PreemptionCandidate
 	for i := 0; i < int(limit); i++ {
-		task, err := h.preemptor.DequeueTask(timeout * time.Millisecond)
+		preemptionCandidate, err := h.preemptor.DequeueTask(timeout * time.Millisecond)
 		if err != nil {
 			// no more tasks
 			h.metrics.GetPreemptibleTasksTimeout.Inc(1)
@@ -1037,30 +1037,30 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 		}
 
 		// Transit task state machine to PREEMPTING
-		if rmTask := h.rmTracker.GetTask(task.Id); rmTask != nil {
+		if rmTask := h.rmTracker.GetTask(preemptionCandidate.Id); rmTask != nil {
 			err = rmTask.TransitTo(
 				t.TaskState_PREEMPTING.String(), statemachine.WithReason("preemption triggered"))
 			if err != nil {
 				// the task could have moved from RUNNING state
 				log.WithError(err).
-					WithField("task_id", task.Id.Value).
+					WithField("task_id", preemptionCandidate.Id.Value).
 					Error("failed to transit state for task")
 				continue
 			}
 		} else {
 			log.WithError(err).
-				WithField("task_id", task.Id.Value).
+				WithField("task_id", preemptionCandidate.Id.Value).
 				Error("failed to find task in the tracker")
 			continue
 		}
-		tasks = append(tasks, task)
+		preemptionCandidates = append(preemptionCandidates, preemptionCandidate)
 	}
 
-	log.WithField("preemptible_tasks", tasks).
+	log.WithField("preemptible_tasks", preemptionCandidates).
 		Info("GetPreemptibleTasks returned")
 	h.metrics.GetPreemptibleTasksSuccess.Inc(1)
 	return &resmgrsvc.GetPreemptibleTasksResponse{
-		Tasks: tasks,
+		PreemptionCandidates: preemptionCandidates,
 	}, nil
 }
 

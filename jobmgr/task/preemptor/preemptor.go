@@ -124,9 +124,9 @@ func (p *preemptor) performPreemptionCycle() error {
 	return nil
 }
 
-func (p *preemptor) preemptTasks(ctx context.Context, tasks []*resmgr.Task) error {
+func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*resmgr.PreemptionCandidate) error {
 	errs := new(multierror.Error)
-	for _, task := range tasks {
+	for _, task := range preemptionCandidates {
 		log.WithField("task_ID", task.Id.Value).
 			Info("preempting running task")
 
@@ -138,7 +138,7 @@ func (p *preemptor) preemptTasks(ctx context.Context, tasks []*resmgr.Task) erro
 		// set goal state to TaskState_PREEMPTING
 		taskInfo.GetRuntime().GoalState = pb_task.TaskState_PREEMPTING
 		taskInfo.GetRuntime().Message = "Preempting running task"
-		taskInfo.GetRuntime().Reason = ""
+		taskInfo.GetRuntime().Reason = task.Reason.String()
 
 		// update the task in the tracked manager
 		err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime, tracked.UpdateAndSchedule)
@@ -149,7 +149,7 @@ func (p *preemptor) preemptTasks(ctx context.Context, tasks []*resmgr.Task) erro
 	return errs.ErrorOrNil()
 }
 
-func (p *preemptor) getTasks() ([]*resmgr.Task, error) {
+func (p *preemptor) getTasks() ([]*resmgr.PreemptionCandidate, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), _timeoutFunctionCall)
 	defer cancelFunc()
 
@@ -170,17 +170,17 @@ func (p *preemptor) getTasks() ([]*resmgr.Task, error) {
 		return nil, errors.New(response.GetError().String())
 	}
 
-	if len(response.GetTasks()) != 0 {
+	if len(response.GetPreemptionCandidates()) != 0 {
 		log.WithFields(log.Fields{
-			"num_tasks": len(response.Tasks),
+			"num_tasks": len(response.PreemptionCandidates),
 			"duration":  callDuration.Seconds(),
 		}).Info("tasks to preempt")
 	}
 
-	p.metrics.GetPreemptibleTasks.Inc(int64(len(response.GetTasks())))
+	p.metrics.GetPreemptibleTasks.Inc(int64(len(response.PreemptionCandidates)))
 	p.metrics.GetPreemptibleTasksCallDuration.Record(callDuration)
 
-	return response.GetTasks(), nil
+	return response.GetPreemptionCandidates(), nil
 }
 
 // Stop stops Task Preemptor process

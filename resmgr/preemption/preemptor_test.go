@@ -68,7 +68,7 @@ func (suite *PreemptorTestSuite) SetupSuite() {
 		stopChan:                     make(chan struct{}, 1),
 		preemptionQueue: queue.NewQueue(
 			"preemption-queue",
-			reflect.TypeOf(resmgr.Task{}),
+			reflect.TypeOf(resmgr.PreemptionCandidate{}),
 			10000,
 		),
 		respoolState: make(map[string]int),

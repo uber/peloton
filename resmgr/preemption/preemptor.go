@@ -38,7 +38,7 @@ var (
 type Preemptor interface {
 	Start() error
 	Stop() error
-	DequeueTask(maxWaitTime time.Duration) (*resmgr.Task, error)
+	DequeueTask(maxWaitTime time.Duration) (*resmgr.PreemptionCandidate, error)
 }
 
 type preemptor struct {
@@ -73,7 +73,7 @@ func InitPreemptor(
 			stopChan: make(chan struct{}, 1),
 			preemptionQueue: queue.NewQueue(
 				"preemption-queue",
-				reflect.TypeOf(resmgr.Task{}),
+				reflect.TypeOf(resmgr.PreemptionCandidate{}),
 				maxPreemptionQueueSize,
 			),
 			respoolState: make(map[string]int),
@@ -169,7 +169,7 @@ func (p *preemptor) Stop() error {
 
 // DequeueTask dequeues a task from the preemption queue
 func (p *preemptor) DequeueTask(maxWaitTime time.Duration) (
-	*resmgr.Task, error) {
+	*resmgr.PreemptionCandidate, error) {
 	item, err := p.preemptionQueue.Dequeue(maxWaitTime)
 	if err != nil {
 		if _, isTimeout := err.(queue.DequeueTimeOutError); !isTimeout {
@@ -179,7 +179,7 @@ func (p *preemptor) DequeueTask(maxWaitTime time.Duration) (
 		}
 		return nil, err
 	}
-	taskID := item.(*resmgr.Task)
+	taskID := item.(*resmgr.PreemptionCandidate)
 	return taskID, nil
 }
 
@@ -251,7 +251,11 @@ func (p *preemptor) processResourcePool(respoolID string) error {
 				WithField("task_id", t.Task().Id.Value).
 				WithField("respool_id", respoolID).
 				Debug("Adding task to preemption queue")
-			err := p.preemptionQueue.Enqueue(t.Task())
+			preemptionCandidate := &resmgr.PreemptionCandidate{
+				Id:     t.Task().Id,
+				Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+			}
+			err := p.preemptionQueue.Enqueue(preemptionCandidate)
 			if err != nil {
 				// add error and metrics and move to the next task
 				errs = multierr.Append(errs,

@@ -121,3 +121,28 @@ message Placement {
   // By default the type is batch task.
   TaskType type = 6;
 }
+
+/*
+ *  PreemptionCandidate represents a task which has been chosen to be preempted
+*/
+message PreemptionCandidate {
+  // The unique ID of the task
+  api.peloton.TaskID id = 1;
+
+  // The reason for choosing the task for preemption
+  PreemptionReason reason = 2;
+}
+
+/*
+ *  The reason for choosing the task for preemption
+*/
+enum PreemptionReason {
+  // Reserved for compatibility
+  PREEMPTION_REASON_UNKNOWN = 0;
+
+  // Resource Preemption
+  PREEMPTION_REASON_REVOKE_RESOURCES = 1;
+
+  // Host maintenance
+  PREEMPTION_REASON_HOST_MAINTENANCE = 2;
+}
