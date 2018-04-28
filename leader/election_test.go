@@ -198,11 +198,18 @@ func TestElectionStop(t *testing.T) {
 		port:   "666",
 		events: make(chan string, 100),
 	}
+	kv, err := libkvmock.New([]string{}, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, kv)
+	mockStore := kv.(*libkvmock.Mock)
+	testLock := &testLock{}
+	// mock store should return the same lock for the same key
+	mockStore.On("NewLock", key, mock.Anything).Return(testLock, nil)
 
 	el := election{
 		role:       role,
 		metrics:    newElectionMetrics(tally.NoopScope, "hostname"),
-		candidate:  leadership.NewCandidate(nil, key, "testhost:666", ttl),
+		candidate:  leadership.NewCandidate(mockStore, key, "testhost:666", ttl),
 		nomination: nomination,
 		stopChan:   make(chan struct{}, 1),
 		running:    true,
@@ -215,6 +222,10 @@ func TestElectionStop(t *testing.T) {
 		el.updateLeaderElectionMetrics(time.Second)
 		wg.Done()
 	}()
+	// Wait for events from campaign to make sure el.Stop() is called after
+	// leader election begins
+	assert.Equal(t, "leadership_lost", <-nomination.events)
+	assert.Equal(t, "leadership_gained", <-nomination.events)
 	el.Stop()
 	wg.Wait()
 }
