@@ -6,7 +6,7 @@ excludeDirs:
 - pbgen
 import:
 - package: github.com/golang/protobuf
-  version: 8ee79997227bf9b34611aee7946ae64735e6fd93
+  version: fae8ec697c5d103f717d7fec21103cb5ec020bc8
   subpackages:
   - proto
   - protoc

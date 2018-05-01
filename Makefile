@@ -105,6 +105,7 @@ cover:
 	go tool cover -html=cover.out -o cover.html
 
 pbgens: $(VENDOR)
+	go get ./vendor/github.com/golang/protobuf/protoc-gen-go
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
 	@mkdir -p $(PBGEN_DIR)
 	./scripts/generate-protobuf.py --generator=go --out-dir=$(PBGEN_DIR)
