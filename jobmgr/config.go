@@ -6,7 +6,6 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/updatesvc"
 )
 
@@ -23,9 +22,6 @@ type Config struct {
 	// the storage namespace, and made clearer what this controls
 	// (threads? rows? statements?)
 	DbWriteConcurrency int `yaml:"db_write_concurrency"`
-
-	// Job general configuration.
-	Tracked tracked.Config
 
 	// Task launcher specific configs
 	Placement placement.Config `yaml:"task_launcher"`

@@ -14,9 +14,10 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job/updater"
 	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
@@ -46,20 +47,22 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
-	trackedManager tracked.Manager,
+	jobFactory cached.JobFactory,
+	goalStateDriver goalstate.Driver,
 	clientName string,
 	jobSvcCfg Config) {
 
 	jobSvcCfg.normalize()
 	handler := &serviceHandler{
-		jobStore:       jobStore,
-		taskStore:      taskStore,
-		respoolClient:  respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
-		resmgrClient:   resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
-		rootCtx:        context.Background(),
-		trackedManager: trackedManager,
-		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
-		jobSvcCfg:      jobSvcCfg,
+		jobStore:        jobStore,
+		taskStore:       taskStore,
+		respoolClient:   respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
+		resmgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
+		rootCtx:         context.Background(),
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
+		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
+		jobSvcCfg:       jobSvcCfg,
 	}
 
 	d.Register(job.BuildJobManagerYARPCProcedures(handler))
@@ -67,14 +70,15 @@ func InitServiceHandler(
 
 // serviceHandler implements peloton.api.job.JobManager
 type serviceHandler struct {
-	jobStore       storage.JobStore
-	taskStore      storage.TaskStore
-	respoolClient  respool.ResourceManagerYARPCClient
-	resmgrClient   resmgrsvc.ResourceManagerServiceYARPCClient
-	rootCtx        context.Context
-	trackedManager tracked.Manager
-	metrics        *Metrics
-	jobSvcCfg      Config
+	jobStore        storage.JobStore
+	taskStore       storage.TaskStore
+	respoolClient   respool.ResourceManagerYARPCClient
+	resmgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
+	rootCtx         context.Context
+	jobFactory      cached.JobFactory
+	goalStateDriver goalstate.Driver
+	metrics         *Metrics
+	jobSvcCfg       Config
 }
 
 // Create creates a job object for a given job configuration and
@@ -155,12 +159,16 @@ func (h *serviceHandler) Create(
 	}
 	h.metrics.JobCreate.Inc(1)
 
-	// Put job in tracked manager to create tasks
+	// Store job in cache
 	jobInfo := &job.JobInfo{
 		Id:     jobID,
 		Config: jobConfig,
 	}
-	h.trackedManager.SetJob(jobID, jobInfo, tracked.UpdateAndSchedule)
+	cachedJob := h.jobFactory.AddJob(jobID)
+	cachedJob.Update(ctx, jobInfo, cached.UpdateCacheOnly)
+
+	// Enqueue job into goal state engine
+	h.goalStateDriver.EnqueueJob(jobID, time.Now())
 
 	return &job.CreateResponse{
 		JobId: jobID,
@@ -250,7 +258,8 @@ func (h *serviceHandler) Update(
 		Id:     jobID,
 		Config: newConfig,
 	}
-	h.trackedManager.SetJob(jobID, jobInfo, tracked.UpdateOnly)
+	cachedJob := h.jobFactory.AddJob(jobID)
+	cachedJob.Update(ctx, jobInfo, cached.UpdateCacheOnly)
 
 	log.WithField("job_id", jobID.GetValue()).
 		Infof("adding %d instances", len(diff.InstancesToAdd))
@@ -270,7 +279,9 @@ func (h *serviceHandler) Update(
 		h.metrics.TaskCreate.Inc(1)
 		runtimes := make(map[uint32]*pb_task.RuntimeInfo)
 		runtimes[id] = runtime
-		h.trackedManager.SetTasks(jobID, runtimes, tracked.UpdateAndSchedule)
+		// Store in cache and then enqueue task to goal state
+		cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
+		h.goalStateDriver.EnqueueTask(jobID, id, time.Now())
 	}
 
 	if err != nil {
@@ -369,7 +380,10 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 		Config:  jobConfig,
 		Runtime: jobRuntime,
 	}
-	h.trackedManager.SetJob(req.GetId(), jobInfo, tracked.UpdateAndSchedule)
+	// Update cache and enqueue job into goal state
+	cachedJob := h.jobFactory.AddJob(req.GetId())
+	cachedJob.Update(ctx, jobInfo, cached.UpdateCacheOnly)
+	h.goalStateDriver.EnqueueJob(req.GetId(), time.Now())
 	h.metrics.JobRefresh.Inc(1)
 	return &job.RefreshResponse{}, nil
 }

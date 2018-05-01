@@ -9,7 +9,9 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
+
+	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/sirupsen/logrus"
@@ -42,15 +44,16 @@ type Tracker interface {
 
 // tracker implements the Tracker interface
 type tracker struct {
-	lock           sync.Mutex
-	runningState   int32
-	shutdown       int32
-	jobStore       storage.JobStore
-	taskStore      storage.TaskStore
-	stopChan       chan struct{}
-	trackedManager tracked.Manager
-	config         *Config
-	metrics        *Metrics
+	lock            sync.Mutex
+	runningState    int32
+	shutdown        int32
+	jobStore        storage.JobStore
+	taskStore       storage.TaskStore
+	stopChan        chan struct{}
+	jobFactory      cached.JobFactory
+	goalStateDriver goalstate.Driver
+	config          *Config
+	metrics         *Metrics
 }
 
 // New creates a deadline tracker
@@ -58,17 +61,19 @@ func New(
 	d *yarpc.Dispatcher,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	jobFactory cached.JobFactory,
+	goalStateDriver goalstate.Driver,
 	parent tally.Scope,
 	config *Config,
-	trackedManager tracked.Manager,
 ) Tracker {
 	return &tracker{
-		jobStore:       jobStore,
-		taskStore:      taskStore,
-		runningState:   RunningStateNotStarted,
-		trackedManager: trackedManager,
-		config:         config,
-		metrics:        NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
+		jobStore:        jobStore,
+		taskStore:       taskStore,
+		runningState:    RunningStateNotStarted,
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
+		config:          config,
+		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 	}
 }
 
@@ -134,7 +139,7 @@ func (t *tracker) Stop() error {
 
 // trackDeadline functions keeps track of the deadline of each task
 func (t *tracker) trackDeadline() error {
-	jobs := t.trackedManager.GetAllJobs()
+	jobs := t.jobFactory.GetAllJobs()
 
 	for id, v := range jobs {
 		// We need to get the job config
@@ -205,11 +210,13 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 	taskInfo.GetRuntime().GoalState = pb_task.TaskState_KILLED
 	taskInfo.GetRuntime().Reason = "Deadline exceeded"
 
-	// update the task in the tracked manager
-	err = t.trackedManager.UpdateTaskRuntime(ctx, taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime, tracked.UpdateAndSchedule)
+	// update the task in DB and cache, and then schedule to goalstate
+	cachedJob := t.jobFactory.AddJob(taskInfo.JobId)
+	err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{taskInfo.InstanceId: taskInfo.Runtime}, cached.UpdateCacheAndDB)
 	if err != nil {
 		return err
 	}
+	t.goalStateDriver.EnqueueTask(taskInfo.JobId, taskInfo.InstanceId, time.Now())
 	return nil
 }
 

@@ -14,8 +14,9 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/eventstream"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
+	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
@@ -44,16 +45,17 @@ type Listener interface {
 
 // StatusUpdate reads and processes the task state change events from HM
 type statusUpdate struct {
-	jobStore       storage.JobStore
-	taskStore      storage.TaskStore
-	volumeStore    storage.PersistentVolumeStore
-	eventClients   map[string]*eventstream.Client
-	hostmgrClient  hostsvc.InternalHostServiceYARPCClient
-	applier        *asyncEventProcessor
-	trackedManager tracked.Manager
-	listeners      []Listener
-	rootCtx        context.Context
-	metrics        *Metrics
+	jobStore        storage.JobStore
+	taskStore       storage.TaskStore
+	volumeStore     storage.PersistentVolumeStore
+	eventClients    map[string]*eventstream.Client
+	hostmgrClient   hostsvc.InternalHostServiceYARPCClient
+	applier         *asyncEventProcessor
+	jobFactory      cached.JobFactory
+	goalStateDriver goalstate.Driver
+	listeners       []Listener
+	rootCtx         context.Context
+	metrics         *Metrics
 }
 
 // Singleton task status updater
@@ -67,7 +69,8 @@ func InitTaskStatusUpdate(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
-	trackedManager tracked.Manager,
+	jobFactory cached.JobFactory,
+	goalStateDriver goalstate.Driver,
 	listeners []Listener,
 	parentScope tally.Scope) {
 	onceInitStatusUpdate.Do(func() {
@@ -76,15 +79,16 @@ func InitTaskStatusUpdate(
 			return
 		}
 		statusUpdater = &statusUpdate{
-			jobStore:       jobStore,
-			taskStore:      taskStore,
-			volumeStore:    volumeStore,
-			rootCtx:        context.Background(),
-			metrics:        NewMetrics(parentScope.SubScope("status_updater")),
-			eventClients:   make(map[string]*eventstream.Client),
-			trackedManager: trackedManager,
-			listeners:      listeners,
-			hostmgrClient:  hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
+			jobStore:        jobStore,
+			taskStore:       taskStore,
+			volumeStore:     volumeStore,
+			rootCtx:         context.Background(),
+			metrics:         NewMetrics(parentScope.SubScope("status_updater")),
+			eventClients:    make(map[string]*eventstream.Client),
+			jobFactory:      jobFactory,
+			goalStateDriver: goalStateDriver,
+			listeners:       listeners,
+			hostmgrClient:   hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 		}
 		// TODO: add config for BucketEventProcessor
 		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
@@ -338,8 +342,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	// Update the task update times in job cache and then update the task runtime in cache and DB
-	p.trackedManager.UpdateJobUpdateTime(taskInfo.GetJobId(), event.MesosTaskStatus.Timestamp)
-	err = p.trackedManager.UpdateTaskRuntime(ctx, taskInfo.GetJobId(), taskInfo.GetInstanceId(), runtime, tracked.UpdateAndSchedule)
+	cachedJob := p.jobFactory.AddJob(taskInfo.GetJobId())
+	cachedJob.SetTaskUpdateTime(event.MesosTaskStatus.Timestamp)
+	err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{taskInfo.GetInstanceId(): runtime}, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
 			WithFields(log.Fields{
@@ -348,6 +353,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			Error("Fail to update runtime for taskID")
 		return err
 	}
+
+	// Enqueue task to goal state
+	p.goalStateDriver.EnqueueTask(taskInfo.GetJobId(), taskInfo.GetInstanceId(), time.Now())
 
 	return nil
 }

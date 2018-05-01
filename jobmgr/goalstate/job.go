@@ -2,134 +2,166 @@ package goalstate
 
 import (
 	"context"
-	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+
+	"code.uber.internal/infra/peloton/common/goalstate"
 
 	log "github.com/sirupsen/logrus"
 )
 
+// JobAction is a string for job actions.
+type JobAction string
+
 const (
-	_defaultJobActionTimeout = 60 * time.Second
+	// NoJobAction implies do not take any action
+	NoJobAction JobAction = "noop"
+	// CreateTasksAction creates/recovers tasks in a job
+	CreateTasksAction JobAction = "create_tasks"
+	// KillAction kills all tasks in the job
+	KillAction JobAction = "job_kill"
+	// UntrackAction deletes the job and all its tasks
+	UntrackAction JobAction = "untrack"
+)
+
+// _jobActionsMaps maps the JobAction string to the Action function.
+var (
+	_jobActionsMaps = map[JobAction]goalstate.Action{
+		NoJobAction:       nil,
+		CreateTasksAction: JobCreateTasks,
+		KillAction:        JobKill,
+		UntrackAction:     JobUntrack,
+	}
 )
 
 var (
 	// _isoVersionsJobRules maps current states to action, given a goal state:
 	// goal-state -> current-state -> action.
-	// It assumes job's runtime and goal are at the same version
-	_isoVersionsJobRules = map[job.JobState]map[job.JobState]tracked.JobAction{
+	_isoVersionsJobRules = map[job.JobState]map[job.JobState]JobAction{
 		job.JobState_RUNNING: {
-			job.JobState_INITIALIZED: tracked.JobCreateTasks,
+			job.JobState_INITIALIZED: CreateTasksAction,
 		},
 		job.JobState_SUCCEEDED: {
-			job.JobState_INITIALIZED: tracked.JobCreateTasks,
-			job.JobState_SUCCEEDED:   tracked.JobUntrackAction,
-			job.JobState_FAILED:      tracked.JobUntrackAction,
-			job.JobState_KILLED:      tracked.JobUntrackAction,
+			job.JobState_INITIALIZED: CreateTasksAction,
+			job.JobState_SUCCEEDED:   UntrackAction,
+			job.JobState_FAILED:      UntrackAction,
+			job.JobState_KILLED:      UntrackAction,
 		},
 		job.JobState_KILLED: {
-			job.JobState_UNKNOWN:     tracked.JobKill,
-			job.JobState_INITIALIZED: tracked.JobKill,
-			job.JobState_PENDING:     tracked.JobKill,
-			job.JobState_RUNNING:     tracked.JobKill,
-			job.JobState_SUCCEEDED:   tracked.JobUntrackAction,
-			job.JobState_FAILED:      tracked.JobUntrackAction,
-			job.JobState_KILLED:      tracked.JobUntrackAction,
+			job.JobState_UNKNOWN:     KillAction,
+			job.JobState_INITIALIZED: KillAction,
+			job.JobState_PENDING:     KillAction,
+			job.JobState_RUNNING:     KillAction,
+			job.JobState_SUCCEEDED:   UntrackAction,
+			job.JobState_FAILED:      UntrackAction,
+			job.JobState_KILLED:      UntrackAction,
 		},
 		job.JobState_FAILED: {
-			job.JobState_SUCCEEDED: tracked.JobUntrackAction,
-			job.JobState_FAILED:    tracked.JobUntrackAction,
-			job.JobState_KILLED:    tracked.JobUntrackAction,
+			job.JobState_SUCCEEDED: UntrackAction,
+			job.JobState_FAILED:    UntrackAction,
+			job.JobState_KILLED:    UntrackAction,
 		},
 	}
 )
 
-func (e *engine) processJob(j tracked.Job) {
-	var reschedule bool
-	var success bool
-	action, err := e.suggestJobAction(j)
+// NewJobEntity implements the goal state Entity interface for jobs.
+func NewJobEntity(id *peloton.JobID, driver *driver) goalstate.Entity {
+	return &jobEntity{
+		id:     id,
+		driver: driver,
+	}
+}
+
+type jobEntity struct {
+	id     *peloton.JobID // peloton job identifier
+	driver *driver        // the goal state driver
+}
+
+func (j *jobEntity) GetID() string {
+	// return job identifier
+	return j.id.GetValue()
+}
+
+func (j *jobEntity) GetState() interface{} {
+	cachedJob := j.driver.jobFactory.AddJob(j.id)
+
+	jobRuntime, err := cachedJob.GetRuntime(context.Background())
 	if err != nil {
 		log.WithError(err).
-			WithField("job_id", j.ID()).
-			Error("failed to get job action, retry")
-		e.metrics.JobGoalStateActionSuggestFail.Inc(1)
-		reschedule = true
-		success = false
-	} else {
-		reschedule, success = e.runJobAction(j, action)
+			WithField("job_id", j.id.GetValue()).
+			Error("failed to fetch job runtime while determining state")
+		// return UNKNOWN state if cannot fetch job runtime so that job is enqueued
+		// for re-evaluation.
+		return job.JobState_UNKNOWN
 	}
 
-	// Update and reschedule the job, based on the result.
-	delay := _indefDelay
-	if reschedule {
-		if success {
-			delay = e.cfg.SuccessRetryDelay
-		} else {
-			// backoff
-			delay = j.GetLastDelay() + e.cfg.FailureRetryDelay
-			if delay > e.cfg.MaxRetryDelay {
-				delay = e.cfg.MaxRetryDelay
-			}
-			j.SetLastDelay(delay)
-		}
-	}
-	if success {
-		j.SetLastDelay(0)
-	}
-
-	var deadline time.Time
-	deadline = time.Now().Add(delay)
-	e.trackedManager.ScheduleJob(j, deadline)
+	// return job state
+	return jobRuntime.GetState()
 }
 
-func (e *engine) runJobAction(j tracked.Job, action tracked.JobAction) (bool, bool) {
-	reschedule, err := j.RunAction(context.Background(), action)
+func (j *jobEntity) GetGoalState() interface{} {
+	cachedJob := j.driver.jobFactory.AddJob(j.id)
+
+	jobRuntime, err := cachedJob.GetRuntime(context.Background())
 	if err != nil {
-		log.WithField("job_id", j.ID().GetValue()).
-			WithField("action", action).
-			WithError(err).
-			Error("failed to execute job goalstate action")
-	} else {
-		var runtimeReschedule bool
-		var startReschedule bool
-		runtimeReschedule, err = j.JobRuntimeUpdater(context.Background())
-		if runtimeReschedule == true {
-			reschedule = true
-		}
-		// If run time updater runs with no error, then evaluate job SLA, else do nothing.
-		if err == nil {
-			startReschedule, err = j.EvaluateMaxRunningInstancesSLA(context.Background())
-			if startReschedule == true {
-				reschedule = true
-			}
-		}
+		log.WithError(err).
+			WithField("job_id", j.id.GetValue()).
+			Error("failed to fetch job runtime while determining goal state")
+		// return UNKNOWN state if cannot fetch job runtime so that job is enqueued
+		// for re-evaluation.
+		// TODO remove JobState_UNKNOWN after write-through cache implementation.
+		return job.JobState_UNKNOWN
 	}
 
-	// Currently, the cache and DB can go out of sync. So, we currently reload job runtime
-	// everytime we run the goal state. After implementation of write-through cache which
-	// will keep cache and DB always in sync, this can go away.
-	j.ClearJobRuntime()
-	return reschedule, err == nil
+	// return job goal state
+	return jobRuntime.GetGoalState()
 }
 
-func (e *engine) suggestJobAction(j tracked.Job) (tracked.JobAction, error) {
-	// first get the job runtime
-	ctx, cancel := context.WithTimeout(context.Background(), _defaultJobActionTimeout)
-	defer cancel()
+func (j *jobEntity) GetActionList(state interface{}, goalState interface{}) (context.Context, context.CancelFunc, []goalstate.Action) {
+	var actions []goalstate.Action
 
-	runtime, err := j.GetJobRuntime(ctx)
-	if err != nil {
-		return tracked.JobNoAction, err
+	jobState := state.(job.JobState)
+	jobGoalState := goalState.(job.JobState)
+
+	if jobState == job.JobState_UNKNOWN || jobGoalState == job.JobState_UNKNOWN {
+		// State or goal state could not be loaded from DB, so enqueue the job
+		// back into the goal state engine so that the states can be fetched again.
+		actions = append(actions, JobEnqueue)
+		return context.Background(), nil, actions
 	}
-	currentState := runtime.GetState()
-	goalState := runtime.GetGoalState()
 
-	if tr, ok := _isoVersionsJobRules[goalState]; ok {
-		if a, ok := tr[currentState]; ok {
-			return a, nil
+	actionStr := j.suggestJobAction(jobState, jobGoalState)
+	action := _jobActionsMaps[actionStr]
+
+	log.WithField("job_id", j.id.GetValue()).
+		WithField("current_state", jobState.String()).
+		WithField("goal_state", jobGoalState.String()).
+		WithField("job_action", actionStr).
+		Info("running job action")
+
+	if action != nil {
+		// nil action is returned for noop
+		actions = append(actions, action)
+	}
+
+	if actionStr != UntrackAction {
+		// These should always be run
+		actions = append(actions, JobRuntimeUpdater)
+		actions = append(actions, JobEvaluateMaxRunningInstancesSLA)
+		actions = append(actions, JobClearRuntime)
+	}
+
+	return context.Background(), nil, actions
+}
+
+// suggestJobAction provides the job action for a given state and goal state
+func (j *jobEntity) suggestJobAction(state job.JobState, goalstate job.JobState) JobAction {
+	if tr, ok := _isoVersionsJobRules[goalstate]; ok {
+		if a, ok := tr[state]; ok {
+			return a
 		}
 	}
 
-	return tracked.JobNoAction, nil
+	return NoJobAction
 }

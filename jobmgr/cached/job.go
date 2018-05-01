@@ -44,7 +44,6 @@ type Job interface {
 	// GetTask from the task id.
 	GetTask(id uint32) Task
 
-	// TODO remove this after deadline tracker is removed from job manager
 	// GetAllTasks returns all tasks for the job
 	GetAllTasks() map[uint32]Task
 
@@ -149,9 +148,6 @@ func (j *job) CreateTasks(ctx context.Context, runtimes map[uint32]*pbtask.Runti
 }
 
 func (j *job) UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req UpdateRequest) error {
-	j.Lock()
-	defer j.Unlock()
-
 	if req == UpdateCacheAndDB {
 		if err := j.jobFactory.taskStore.UpdateTaskRuntimes(ctx, j.ID(), runtimes); err != nil {
 			// Clear the runtime in the cache
@@ -161,6 +157,9 @@ func (j *job) UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.Runti
 			return err
 		}
 	}
+
+	j.Lock()
+	defer j.Unlock()
 
 	j.updateTaskRuntimesInCache(runtimes)
 	return nil
@@ -191,7 +190,9 @@ func (j *job) updateJobInCache(jobInfo *pbjob.JobInfo) {
 	j.runtime = jobInfo.GetRuntime()
 	if jobInfo.GetConfig() != nil {
 		j.instanceCount = jobInfo.GetConfig().GetInstanceCount()
-		j.sla = *jobInfo.GetConfig().GetSla()
+		if jobInfo.GetConfig().GetSla() != nil {
+			j.sla = *jobInfo.GetConfig().GetSla()
+		}
 		j.jobType = jobInfo.GetConfig().GetType()
 	}
 }
@@ -205,7 +206,7 @@ func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequ
 	j.Lock()
 	defer j.Unlock()
 
-	if req == UpdateCacheAndDB {
+	if jobInfo.GetRuntime() != nil && req == UpdateCacheAndDB {
 		if err := j.jobFactory.jobStore.UpdateJobRuntime(ctx, j.ID(), jobInfo.GetRuntime()); err != nil {
 			return err
 		}

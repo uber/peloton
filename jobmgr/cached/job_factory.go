@@ -28,7 +28,6 @@ type JobFactory interface {
 	// GetJob will return the current cached Job, and nil if currently not in cache.
 	GetJob(id *peloton.JobID) Job
 
-	// TODO remove this after deadline tracker is removed from job manager
 	// GetAllJobs returns the list of all jobs in cache
 	GetAllJobs() map[string]Job
 
@@ -51,38 +50,19 @@ type jobFactory struct {
 	stopChan    chan struct{}                 // channel to indicate that the job factory needs to stop
 }
 
-var jobFactoryObject *jobFactory       // singleton job factory object
-var onceInitJobFactoryObject sync.Once // ensure job factory is initialized only once
-
 // InitJobFactory initializes the singleton job factory object.
 func InitJobFactory(
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
-	parentScope tally.Scope) {
-	scope := parentScope.SubScope("cache")
-	onceInitJobFactoryObject.Do(func() {
-		if jobFactoryObject != nil {
-			log.Warning("job factory already initialized")
-			return
-		}
-
-		jobFactoryObject = &jobFactory{
-			jobs:        map[string]*job{},
-			jobStore:    jobStore,
-			taskStore:   taskStore,
-			volumeStore: volumeStore,
-			mtx:         NewMetrics(scope),
-		}
-	})
-}
-
-// GetJobFactory is used to fetch the singleton job factory object.
-func GetJobFactory() JobFactory {
-	if jobFactoryObject == nil {
-		log.Fatal("job factory is not initialized")
+	parentScope tally.Scope) JobFactory {
+	return &jobFactory{
+		jobs:        map[string]*job{},
+		jobStore:    jobStore,
+		taskStore:   taskStore,
+		volumeStore: volumeStore,
+		mtx:         NewMetrics(parentScope.SubScope("cache")),
 	}
-	return jobFactoryObject
 }
 
 func (f *jobFactory) AddJob(id *peloton.JobID) Job {

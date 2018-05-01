@@ -12,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/jobmgr"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/logmanager"
@@ -21,7 +22,6 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
 	"code.uber.internal/infra/peloton/jobmgr/tasksvc"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
 	"code.uber.internal/infra/peloton/jobmgr/updatesvc"
 	"code.uber.internal/infra/peloton/jobmgr/volumesvc"
 	"code.uber.internal/infra/peloton/leader"
@@ -293,14 +293,25 @@ func main() {
 		rootScope,
 	)
 
-	trackedManager := tracked.NewManager(dispatcher, jobStore, taskStore, volumeStore, launcher.GetLauncher(), rootScope, cfg.JobManager.Tracked)
-	goalstateEngine := goalstate.NewEngine(cfg.JobManager.GoalState, trackedManager, rootScope)
+	jobFactory := cached.InitJobFactory(jobStore, taskStore, volumeStore, rootScope)
+
+	goalStateDriver := goalstate.NewDriver(
+		dispatcher,
+		jobStore,
+		taskStore,
+		volumeStore,
+		jobFactory,
+		launcher.GetLauncher(),
+		rootScope,
+		cfg.JobManager.GoalState,
+	)
 
 	// Init placement processor
 	placementProcessor := placement.InitProcessor(
 		dispatcher,
 		common.PelotonResourceManager,
-		trackedManager,
+		jobFactory,
+		goalStateDriver,
 		launcher.GetLauncher(),
 		&cfg.JobManager.Placement,
 		rootScope,
@@ -311,7 +322,8 @@ func main() {
 		rootScope,
 		jobStore,
 		taskStore,
-		trackedManager,
+		jobFactory,
+		goalStateDriver,
 		common.PelotonResourceManager, // TODO: to be removed
 		cfg.JobManager.JobSvcCfg,
 	)
@@ -322,7 +334,8 @@ func main() {
 		jobStore,
 		taskStore,
 		frameworkInfoStore,
-		trackedManager,
+		jobFactory,
+		goalStateDriver,
 		*mesosAgentWorkDir,
 		common.PelotonHostManager,
 		logmanager.NewLogManager(&http.Client{Timeout: _httpClientTimeout}),
@@ -351,7 +364,8 @@ func main() {
 		jobStore,
 		taskStore,
 		volumeStore,
-		trackedManager,
+		jobFactory,
+		goalStateDriver,
 		[]event.Listener{},
 		rootScope,
 	)
@@ -372,7 +386,8 @@ func main() {
 		dispatcher,
 		common.PelotonResourceManager,
 		taskStore,
-		trackedManager,
+		jobFactory,
+		goalStateDriver,
 		&cfg.JobManager.Preemptor,
 		rootScope,
 	)
@@ -382,16 +397,17 @@ func main() {
 		dispatcher,
 		jobStore,
 		taskStore,
+		jobFactory,
+		goalStateDriver,
 		rootScope,
 		&cfg.JobManager.Deadline,
-		trackedManager,
 	)
 
 	server := jobmgr.NewServer(
 		cfg.JobManager.HTTPPort,
 		cfg.JobManager.GRPCPort,
-		goalstateEngine,
-		trackedManager,
+		jobFactory,
+		goalStateDriver,
 		taskPreemptor,
 		deadlineTracker,
 		updateManager,

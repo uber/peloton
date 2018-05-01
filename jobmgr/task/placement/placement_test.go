@@ -19,9 +19,11 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+
+	"code.uber.internal/infra/peloton/jobmgr/cached"
+	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	launcher_mocks "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
-	tracked_mocks "code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -162,17 +164,21 @@ func TestTaskPlacementNoError(t *testing.T) {
 
 	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
+
 	pp := processor{
 		config: &Config{
 			PlacementDequeueLimit: 100,
 		},
-		resMgrClient:   mockRes,
-		metrics:        metrics,
-		taskLauncher:   mockTaskLauncher,
-		trackedManager: mockTrackedManager,
+		resMgrClient:    mockRes,
+		metrics:         metrics,
+		taskLauncher:    mockTaskLauncher,
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
 	}
 
 	testTask := createTestTask(0) // taskinfo
@@ -189,13 +195,14 @@ func TestTaskPlacementNoError(t *testing.T) {
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
-		mockTrackedManager.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(nil),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-		mockTrackedManager.EXPECT().
-			GetJob(gomock.Any()).
-			Return(nil),
+		goalStateDriver.EXPECT().
+			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)
@@ -207,17 +214,15 @@ func TestTaskPlacementGetTaskError(t *testing.T) {
 
 	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
 	pp := processor{
 		config: &Config{
 			PlacementDequeueLimit: 100,
 		},
-		resMgrClient:   mockRes,
-		metrics:        metrics,
-		taskLauncher:   mockTaskLauncher,
-		trackedManager: mockTrackedManager,
+		resMgrClient: mockRes,
+		metrics:      metrics,
+		taskLauncher: mockTaskLauncher,
 	}
 
 	testTask := createTestTask(0) // taskinfo
@@ -247,17 +252,21 @@ func TestTaskPlacementKilledTask(t *testing.T) {
 
 	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
+
 	pp := processor{
 		config: &Config{
 			PlacementDequeueLimit: 100,
 		},
-		resMgrClient:   mockRes,
-		metrics:        metrics,
-		taskLauncher:   mockTaskLauncher,
-		trackedManager: mockTrackedManager,
+		resMgrClient:    mockRes,
+		metrics:         metrics,
+		taskLauncher:    mockTaskLauncher,
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
 	}
 
 	testTask := createTestTask(0) // taskinfo
@@ -276,6 +285,8 @@ func TestTaskPlacementKilledTask(t *testing.T) {
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)
@@ -287,17 +298,21 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 
 	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
+
 	pp := processor{
 		config: &Config{
 			PlacementDequeueLimit: 100,
 		},
-		resMgrClient:   mockRes,
-		metrics:        metrics,
-		taskLauncher:   mockTaskLauncher,
-		trackedManager: mockTrackedManager,
+		resMgrClient:    mockRes,
+		metrics:         metrics,
+		taskLauncher:    mockTaskLauncher,
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
 	}
 
 	testTask := createTestTask(0) // taskinfo
@@ -318,8 +333,12 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
-		mockTrackedManager.EXPECT().
-			SetTasks(testTask.JobId, expectedRuntime, tracked.UpdateAndSchedule).Return(),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), expectedRuntime, cached.UpdateCacheOnly).Return(nil),
+		goalStateDriver.EXPECT().
+			EnqueueTask(testTask.JobId, gomock.Any(), gomock.Any()).Return(),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)
@@ -331,17 +350,21 @@ func TestTaskPlacementDBError(t *testing.T) {
 
 	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
+
 	pp := processor{
 		config: &Config{
 			PlacementDequeueLimit: 100,
 		},
-		resMgrClient:   mockRes,
-		metrics:        metrics,
-		taskLauncher:   mockTaskLauncher,
-		trackedManager: mockTrackedManager,
+		resMgrClient:    mockRes,
+		metrics:         metrics,
+		taskLauncher:    mockTaskLauncher,
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
 	}
 
 	testTask := createTestTask(0) // taskinfo
@@ -358,8 +381,10 @@ func TestTaskPlacementDBError(t *testing.T) {
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
-		mockTrackedManager.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(fmt.Errorf("fake db error")),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("fake db error")),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)
@@ -371,17 +396,21 @@ func TestTaskPlacementError(t *testing.T) {
 
 	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
+
 	pp := processor{
 		config: &Config{
 			PlacementDequeueLimit: 100,
 		},
-		resMgrClient:   mockRes,
-		metrics:        metrics,
-		taskLauncher:   mockTaskLauncher,
-		trackedManager: mockTrackedManager,
+		resMgrClient:    mockRes,
+		metrics:         metrics,
+		taskLauncher:    mockTaskLauncher,
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
 	}
 
 	testTask := createTestTask(0) // taskinfo
@@ -398,12 +427,18 @@ func TestTaskPlacementError(t *testing.T) {
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
-		mockTrackedManager.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(nil),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
-		mockTrackedManager.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateAndSchedule).Return(nil),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+		goalStateDriver.EXPECT().
+			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)
@@ -415,17 +450,21 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 
 	mockRes := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
 	mockTaskLauncher := launcher_mocks.NewMockLauncher(ctrl)
-	mockTrackedManager := tracked_mocks.NewMockManager(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	testScope := tally.NewTestScope("", map[string]string{})
 	metrics := NewMetrics(testScope)
+
 	pp := processor{
 		config: &Config{
 			PlacementDequeueLimit: 100,
 		},
-		resMgrClient:   mockRes,
-		metrics:        metrics,
-		taskLauncher:   mockTaskLauncher,
-		trackedManager: mockTrackedManager,
+		resMgrClient:    mockRes,
+		metrics:         metrics,
+		taskLauncher:    mockTaskLauncher,
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
 	}
 
 	testTask := createTestTask(0) // taskinfo
@@ -442,12 +481,16 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 	gomock.InOrder(
 		mockTaskLauncher.EXPECT().
 			GetLaunchableTasks(gomock.Any(), p.Tasks, p.Hostname, p.AgentId, p.Ports).Return(taskInfo, nil),
-		mockTrackedManager.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateOnly).Return(nil),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
-		mockTrackedManager.EXPECT().
-			UpdateTaskRuntime(gomock.Any(), testTask.JobId, testTask.InstanceId, gomock.Any(), tracked.UpdateAndSchedule).Return(fmt.Errorf("fake db error")),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("fake db error")),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)

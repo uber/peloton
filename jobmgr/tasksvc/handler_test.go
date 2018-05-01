@@ -11,22 +11,22 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+
+	"code.uber.internal/infra/peloton/jobmgr/cached"
+	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	logmanager_mocks "code.uber.internal/infra/peloton/jobmgr/logmanager/mocks"
-	"code.uber.internal/infra/peloton/jobmgr/tracked"
-	"code.uber.internal/infra/peloton/jobmgr/tracked/mocks"
-	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
+
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	"github.com/pborman/uuid"
 )
 
 const (
@@ -287,8 +287,11 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = jobFactory
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	suite.handler.goalStateDriver = goalStateDriver
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -300,13 +303,23 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasks() {
 		GoalState: job.JobState_KILLED,
 	}
 
+	expectedJobInfo := &job.JobInfo{
+		Id:      suite.testJobID,
+		Config:  suite.testJobConfig,
+		Runtime: expectedJobRuntime,
+	}
+
 	gomock.InOrder(
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockJobStore.EXPECT().
 			GetJobRuntime(gomock.Any(), suite.testJobID).Return(suite.testJobRuntime, nil),
-		trackedMock.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.testJobID, expectedJobRuntime, suite.testJobConfig).Return(nil),
+		jobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(cachedJob),
+		cachedJob.EXPECT().
+			Update(gomock.Any(), expectedJobInfo, cached.UpdateCacheAndDB).Return(nil),
+		goalStateDriver.EXPECT().
+			EnqueueJob(suite.testJobID, gomock.Any()).Return(),
 	)
 
 	var request = &task.StopRequest{
@@ -329,8 +342,11 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = jobFactory
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	suite.handler.goalStateDriver = goalStateDriver
 
 	singleTaskInfo := make(map[uint32]*task.TaskInfo)
 	singleTaskInfo[1] = suite.taskInfos[1]
@@ -349,7 +365,12 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
-		trackedMock.EXPECT().UpdateTaskRuntimes(gomock.Any(), suite.taskInfos[1].GetJobId(), singleRuntime, tracked.UpdateAndSchedule).Return(nil),
+		jobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), singleRuntime, cached.UpdateCacheAndDB).Return(nil),
+		goalStateDriver.EXPECT().
+			EnqueueTask(suite.testJobID, uint32(1), gomock.Any()).Return(),
 	)
 
 	var request = &task.StopRequest{
@@ -373,8 +394,11 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = jobFactory
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	suite.handler.goalStateDriver = goalStateDriver
 
 	taskInfos := make(map[uint32]*task.TaskInfo)
 	taskInfos[1] = suite.taskInfos[1]
@@ -392,8 +416,17 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(taskInfos, nil),
-		trackedMock.EXPECT().UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		jobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 	)
+
+	goalStateDriver.EXPECT().
+		EnqueueTask(suite.testJobID, uint32(1), gomock.Any()).Return()
+
+	goalStateDriver.EXPECT().
+		EnqueueTask(suite.testJobID, uint32(2), gomock.Any()).Return()
 
 	var request = &task.StopRequest{
 		JobId:  suite.testJobID,
@@ -499,16 +532,21 @@ func (suite *TaskHandlerTestSuite) TestStopAllTasksWithUpdateFailure() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = jobFactory
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	suite.handler.goalStateDriver = goalStateDriver
 
 	gomock.InOrder(
 		mockJobStore.EXPECT().
 			GetJobConfig(gomock.Any(), suite.testJobID).Return(suite.testJobConfig, nil),
 		mockJobStore.EXPECT().
 			GetJobRuntime(gomock.Any(), suite.testJobID).Return(suite.testJobRuntime, nil),
-		trackedMock.EXPECT().
-			UpdateJobRuntime(gomock.Any(), suite.testJobID, gomock.Any(), suite.testJobConfig).Return(fmt.Errorf("db update failure")),
+		jobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(cachedJob),
+		cachedJob.EXPECT().
+			Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("db update failure")),
 	)
 
 	var request = &task.StopRequest{
@@ -534,8 +572,11 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = jobFactory
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	suite.handler.goalStateDriver = goalStateDriver
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -559,9 +600,14 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			UpdateJobRuntime(gomock.Any(), suite.testJobID, gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
+		jobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 	)
 
-	trackedMock.EXPECT().UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	goalStateDriver.EXPECT().
+		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().AnyTimes()
 
 	var request = &task.StartRequest{
 		JobId: suite.testJobID,
@@ -590,8 +636,11 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = jobFactory
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	suite.handler.goalStateDriver = goalStateDriver
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -619,11 +668,14 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 			UpdateJobRuntime(gomock.Any(), suite.testJobID, gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
+		jobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 	)
 
-	gomock.InOrder(
-		trackedMock.EXPECT().UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
-	)
+	goalStateDriver.EXPECT().
+		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return()
 
 	var request = &task.StartRequest{
 		JobId:  suite.testJobID,
@@ -651,8 +703,6 @@ func (suite *TaskHandlerTestSuite) TestGetEvents() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
 
 	taskEvents := suite.createTestTaskEvents()
 
@@ -782,8 +832,11 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = jobFactory
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	suite.handler.goalStateDriver = goalStateDriver
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -810,7 +863,12 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 			UpdateJobRuntime(gomock.Any(), suite.testJobID, gomock.Any()).Return(nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
-		trackedMock.EXPECT().UpdateTaskRuntimes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
+		jobFactory.EXPECT().
+			AddJob(suite.testJobID).Return(cachedJob),
+		cachedJob.EXPECT().
+			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+		goalStateDriver.EXPECT().
+			EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return(),
 	)
 
 	var request = &task.StartRequest{
@@ -939,7 +997,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListSandboxFileFailure() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	mockFrameworkInfoStore := storage_mocks.NewMockFrameworkInfoStore(ctrl)
+	mockFrameworkInfoStore := store_mocks.NewMockFrameworkInfoStore(ctrl)
 	suite.handler.frameworkInfoStore = mockFrameworkInfoStore
 	mockLogManager := logmanager_mocks.NewMockLogManager(ctrl)
 	suite.handler.logManager = mockLogManager
@@ -980,7 +1038,7 @@ func (suite *TaskHandlerTestSuite) TesBrowseSandboxGetMesosMasterInfoFailure() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	mockFrameworkInfoStore := storage_mocks.NewMockFrameworkInfoStore(ctrl)
+	mockFrameworkInfoStore := store_mocks.NewMockFrameworkInfoStore(ctrl)
 	suite.handler.frameworkInfoStore = mockFrameworkInfoStore
 	mockLogManager := logmanager_mocks.NewMockLogManager(ctrl)
 	suite.handler.logManager = mockLogManager
@@ -1024,7 +1082,7 @@ func (suite *TaskHandlerTestSuite) TestBrowseSandboxListFilesSuccess() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	mockFrameworkInfoStore := storage_mocks.NewMockFrameworkInfoStore(ctrl)
+	mockFrameworkInfoStore := store_mocks.NewMockFrameworkInfoStore(ctrl)
 	suite.handler.frameworkInfoStore = mockFrameworkInfoStore
 	mockLogManager := logmanager_mocks.NewMockLogManager(ctrl)
 	suite.handler.logManager = mockLogManager
@@ -1071,8 +1129,11 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 	suite.handler.jobStore = mockJobStore
 	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	suite.handler.taskStore = mockTaskStore
-	trackedMock := mocks.NewMockManager(ctrl)
-	suite.handler.trackedManager = trackedMock
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = jobFactory
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	suite.handler.goalStateDriver = goalStateDriver
 
 	runtimes := make(map[uint32]*task.RuntimeInfo)
 	for instID, taskInfo := range suite.taskInfos {
@@ -1086,7 +1147,12 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 			From: 0,
 			To:   suite.testJobConfig.GetInstanceCount(),
 		}).Return(runtimes, nil)
-	trackedMock.EXPECT().SetTasks(suite.testJobID, runtimes, tracked.UpdateAndSchedule).Return()
+	jobFactory.EXPECT().
+		AddJob(suite.testJobID).Return(cachedJob)
+	cachedJob.EXPECT().
+		UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheOnly).Return(nil)
+	goalStateDriver.EXPECT().
+		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().Times(int(suite.testJobConfig.GetInstanceCount()))
 
 	var request = &task.RefreshRequest{
 		JobId: suite.testJobID,

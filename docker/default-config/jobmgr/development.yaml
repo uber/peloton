@@ -9,9 +9,8 @@ storage:
   use_cassandra: true
 
 job_manager:
-  tracked:
+  goal_state:
     job_batch_runtime_update_interval: 1s
     job_service_runtime_update_interval: 1s
-  goal_state:
     launch_timeout: 60s
     max_retry_delay: 60s
