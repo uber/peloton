@@ -226,6 +226,7 @@ def run_mesos():
                 'MESOS_CONTAINERIZERS=' + config['containers'],
                 'MESOS_LOG_DIR=' + config['log_dir'],
                 'MESOS_ISOLATION=' + config['isolation'],
+                'MESOS_SYSTEMD_ENABLE_SUPPORT=false',
                 'MESOS_IMAGE_PROVIDERS=' + config['image_providers'],
                 'MESOS_IMAGE_PROVISIONER_BACKEND={0}'.format(
                     config['image_provisioner_backend']
