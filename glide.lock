@@ -1,5 +1,5 @@
-hash: 1828677931e8905d3201a041c55a2857d9d5f40286fd716017e8344a91053b68
-updated: 2018-03-21T15:29:35.785174675-07:00
+hash: 36c3c97e50f70822690c1b2bc9de2cb273245f1d4211a9932d12d0b61aefd3dd
+updated: 2018-04-30T15:59:26.746206-07:00
 imports:
 - name: github.com/alecthomas/template
   version: a0175ee3bccc567396460bf5acd36800cb10c49c
@@ -26,11 +26,11 @@ imports:
   subpackages:
   - spew
 - name: github.com/docker/leadership
-  version: bfc7753dd48af19513b29deec23c364bf0f274eb
+  version: c19abd2d6a6a5ae5c8d2aac9cc5ca70ba3dd5ed1
+  repo: https://github.com/craimbert/leadership.git
 - name: github.com/docker/libkv
-  version: 15f83944c154cc9c816c51d3683dc28decbba4c8
-  repo: gitolite@code.uber.internal:infra/docker-libkv
-  vcs: git
+  version: 10c10edc73b318e3dab5dbc03ebc9dbc55bfd8cf
+  repo: https://github.com/craimbert/libkv.git
   subpackages:
   - store
   - store/mock
@@ -67,7 +67,7 @@ imports:
   - sortkeys
   - types
 - name: github.com/golang/mock
-  version: 13f360950a79f5864a972c786a10a50e44b69541
+  version: c34cdb4725f4c3844d095133c6e40e448b86589b
   subpackages:
   - gomock
   - mockgen
@@ -169,7 +169,7 @@ imports:
   - prometheus
   - statsd
 - name: github.com/uber/tchannel-go
-  version: acd4eb54c11531814d9cd0344fdc53bebe86ab12
+  version: cc0c40929b0dbdb755b727a8c253de2b5d4af46b
   subpackages:
   - internal/argreader
   - relay
@@ -194,7 +194,7 @@ imports:
   - push
   - tallypush
 - name: go.uber.org/thriftrw
-  version: 6216e5bb19132c14e979cf9c62abae6f022a0c0d
+  version: 43dfafd7bb1c99f0460d645a1959b73f6dfa536f
   subpackages:
   - version
 - name: go.uber.org/yarpc
@@ -233,7 +233,7 @@ imports:
   - yarpcconfig
   - yarpcerrors
 - name: go.uber.org/zap
-  version: 35aad584952c3e7020db7b839f6b102de6271f89
+  version: eeedf312bc6c57391d84767a4cd413f02a917974
   subpackages:
   - buffer
   - internal/bufferpool
@@ -241,12 +241,13 @@ imports:
   - internal/exit
   - zapcore
 - name: golang.org/x/net
-  version: 6078986fec03a1dcc236c34816c71b0e05018fda
+  version: 5f9ae10d9af5b1c89ae6904293b14b064d4ada23
   repo: https://github.com/golang/net
   subpackages:
   - bpf
   - context
   - context/ctxhttp
+  - http/httpguts
   - http2
   - http2/hpack
   - idna
@@ -273,7 +274,7 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: 8e4536a86ab602859c20df5ebfd0bd4228d08655
+  version: d11072e7ca9811b1100b80ca0269ac831f06d024
   repo: https://github.com/grpc/grpc-go
   subpackages:
   - balancer

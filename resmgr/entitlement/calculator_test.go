@@ -51,6 +51,10 @@ func (s *EntitlementCalculatorTestSuite) SetupSuite() {
 	s.initRespoolTree()
 }
 
+func (s *EntitlementCalculatorTestSuite) TearDownSuite() {
+	s.mockCtrl.Finish()
+}
+
 func (s *EntitlementCalculatorTestSuite) initRespoolTree() {
 	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
 	gomock.InOrder(
@@ -77,7 +81,6 @@ func (s *EntitlementCalculatorTestSuite) SetupTest() {
 func (s *EntitlementCalculatorTestSuite) TearDownTest() {
 	err := s.resTree.Stop()
 	s.NoError(err)
-	s.mockCtrl.Finish()
 }
 
 func TestEntitlementCalculator(t *testing.T) {

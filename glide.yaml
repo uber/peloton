@@ -52,11 +52,11 @@ import:
 - package: github.com/gemnasium/migrate
   version: v1.4.1
 - package: github.com/docker/leadership
-  version: ^0.1.0
+  repo: https://github.com/craimbert/leadership.git
+  version: ^0.1.1
 - package: github.com/docker/libkv
-  repo: gitolite@code.uber.internal:infra/docker-libkv
-  version: ^0.2.3
-  vcs: git
+  repo: https://github.com/craimbert/libkv.git
+  version: ^0.2.2
 - package: github.com/gocql/gocql
   version: 09f0498f9ab5ca0267e3b451483a368648de2158
 - package: github.com/alecthomas/template

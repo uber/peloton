@@ -146,6 +146,9 @@ func TestTaskReconcilerTestSuite(t *testing.T) {
 
 func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 	defer suite.ctrl.Finish()
+	// need to sync the goroutine created by taskReconciler.Reconcile
+	// and the test goroutine to avoid data race in test
+	finishCh := make(chan struct{}, 1)
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
@@ -191,6 +194,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 				suite.Equal(sched.Call_RECONCILE, call.GetType())
 				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
 				suite.Equal(0, len(call.GetReconcile().GetTasks()))
+				finishCh <- struct{}{}
 			}).
 			Return(nil),
 	)
@@ -209,10 +213,14 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 	time.Sleep(explicitReconcileBatchInterval)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	<-finishCh
 }
 
 func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 	defer suite.ctrl.Finish()
+	// need to sync the goroutine created by taskReconciler.Reconcile
+	// and the test goroutine to avoid data race in test
+	finishCh := make(chan struct{}, 1)
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
@@ -243,6 +251,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 				suite.Equal(sched.Call_RECONCILE, call.GetType())
 				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
 				suite.Equal(0, len(call.GetReconcile().GetTasks()))
+				finishCh <- struct{}{}
 			}).
 			Return(nil),
 	)
@@ -259,10 +268,14 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 	time.Sleep(oneExplicitReconcileRunDelay)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	<-finishCh
 }
 
 func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 	defer suite.ctrl.Finish()
+	// need to sync the goroutine created by taskReconciler.Reconcile
+	// and the test goroutine to avoid data race in test
+	finishCh := make(chan struct{}, 1)
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
@@ -280,6 +293,7 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 				suite.Equal(sched.Call_RECONCILE, call.GetType())
 				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
 				suite.Equal(testBatchSize, len(call.GetReconcile().GetTasks()))
+				finishCh <- struct{}{}
 			}).
 			Return(nil),
 	)
@@ -299,10 +313,14 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 	time.Sleep(oneExplicitReconcileRunDelay)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), false)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	<-finishCh
 }
 
 func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
 	defer suite.ctrl.Finish()
+	// need to sync the goroutine created by taskReconciler.Reconcile
+	// and the test goroutine to avoid data race in test
+	finishCh := make(chan struct{}, 1)
 	gomock.InOrder(
 		suite.mockJobStore.EXPECT().
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
@@ -348,6 +366,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
 				suite.Equal(sched.Call_RECONCILE, call.GetType())
 				suite.Equal(frameworkID, call.GetFrameworkId().GetValue())
 				suite.Equal(0, len(call.GetReconcile().GetTasks()))
+				finishCh <- struct{}{}
 			}).
 			Return(nil),
 	)
@@ -366,6 +385,7 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
 	time.Sleep(explicitReconcileBatchInterval)
 	suite.Equal(suite.reconciler.isExplicitReconcileTurn.Load(), true)
 	suite.Equal(suite.reconciler.isExplicitReconcileRunning.Load(), false)
+	<-finishCh
 }
 
 func (suite *TaskReconcilerTestSuite) TestTaskReconciliationExplicitTurnTurn() {

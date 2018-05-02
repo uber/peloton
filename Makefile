@@ -64,14 +64,9 @@ db-pressure:
 archiver:
 	go build $(GO_FLAGS) -o ./$(BIN_DIR)/peloton-archiver archiver/main/*.go
 
-# Here we checkout the v1.0.0 commit sha of mockgen in order to pin the version of the
-# mockgen binary. `go get` doesn't allow us to do that so we need to build the binary
-# after checking out the code ourselves.
+# Use the same version of mockgen in unit tests as in mock generation
 build-mockgen:
-	cd $(GOPATH)/src/github.com/golang/mock \
-		&& git checkout 13f360950a79f5864a972c786a10a50e44b69541 \
-		&& go build -o $(GOPATH)/bin/mockgen ./mockgen/*.go \
-		&& cd -
+	go get ./vendor/github.com/golang/mock/mockgen
 
 install:
 	@if [ -z ${GOPATH} ]; then \

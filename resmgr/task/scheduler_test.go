@@ -80,6 +80,10 @@ func (suite *SchedulerTestSuite) SetupSuite() {
 	}
 }
 
+func (suite *SchedulerTestSuite) TearDownSuite() {
+	suite.mockCtrl.Finish()
+}
+
 func (suite *SchedulerTestSuite) SetupTest() {
 	fmt.Println("setting up")
 	suite.resTree.Start()
@@ -93,7 +97,6 @@ func (suite *SchedulerTestSuite) TearDownTest() {
 	suite.NoError(err)
 	err = suite.taskSched.Stop()
 	suite.NoError(err)
-	suite.mockCtrl.Finish()
 }
 
 func TestTaskScheduler(t *testing.T) {

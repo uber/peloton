@@ -72,7 +72,6 @@ func (s *resPoolHandlerTestSuite) SetupTest() {
 }
 
 func (s *resPoolHandlerTestSuite) TearDownTest() {
-	defer s.mockCtrl.Finish()
 	log.Info("tearing down")
 	err := s.resourceTree.Stop()
 	s.NoError(err)
