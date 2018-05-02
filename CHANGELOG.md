@@ -3,6 +3,29 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.12.1
+------------------
+* 2018-05-01    revert protoc-gen-go version                                                           varung@uber.com
+* 2018-05-01    Add job delete integration tests                                                       adityacb@uber.com
+* 2018-05-01    Revert "fix unit test broken by revert of 4533a25"                                     apoorvaj@uber.com
+* 2018-05-01    Fix build issue caused by incompatible protoc-gen-go binary.                           varung@uber.com
+* 2018-05-01    Add integration test for Start and Stop Task API                                       zhixin@uber.com
+* 2018-04-30    Fix missing TTL error when orphan tasks are killed                                     apoorvaj@uber.com
+* 2018-04-30    Add sorting for task query                                                             chunyang.shen@uber.com
+* 2018-04-30    Fix flaky unit test                                                                    zhixin@uber.com
+* 2018-04-27    Modify preemption queue type (from RMTask to PreemptionCandidate)                      sachins@uber.com
+* 2018-04-27    Update browse sandbox API to return mesos master hostname and port                     varung@uber.com
+* 2018-04-26    Add hostmgr recovery to restore the contents of maintenance queue                      sachins@uber.com
+* 2018-04-26    Make candidate resign leadership if GainedLeadershipCallback fails                     zhixin@uber.com
+* 2018-04-25    Add Configurable FrameworkInfo Capability                                              varung@uber.com
+* 2018-04-24    Add HostService handler code                                                           sachins@uber.com
+* 2018-04-24    Bump go version to 1.10 & fix jenkins build.                                           varung@uber.com
+* 2018-04-23    Add Offer Type for feedback.                                                           varung@uber.com
+* 2018-04-23    Add retry for reconciler and explicit reconciliation on hostmgr or mesos master re-election varung@uber.com
+* 2018-04-23    Add Get Mesos Master Host and Port Endpoint to Hostmgr Internal Service.               varung@uber.com
+* 2018-04-23    Added more executor tests                                                              pourchet@uber.com
+* 2018-04-23    Fill in reason from ResoureManager for PENDING tasks                                   zhixin@uber.com
+
 
 0.6.12
 ------------------
