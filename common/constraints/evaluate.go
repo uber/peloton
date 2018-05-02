@@ -60,8 +60,7 @@ func NewEvaluator(kind task.LabelConstraint_Kind) Evaluator {
 // in the given kind matches the input.
 func (e evaluator) Evaluate(
 	constraint *task.Constraint,
-	labelValues LabelValues,
-) (EvaluateResult, error) {
+	labelValues LabelValues) (EvaluateResult, error) {
 
 	switch constraint.GetType() {
 	case task.Constraint_AND_CONSTRAINT:

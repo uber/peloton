@@ -132,7 +132,7 @@ enum HostFilterResult {
 }
 
 /**
- * ResourceConstraint descrbes a condition for which aggregated resources from
+ * ResourceConstraint describes a condition for which aggregated resources from
  * a host must meet in order for it to be returned in `AcquireHostOffers`.
  */
 message ResourceConstraint {

@@ -115,7 +115,7 @@ func (r Resources) Empty() bool {
 	return len(r.NonEmptyFields()) == 0
 }
 
-// FromResourceConfig creats a new instance of `Resources` frmo a `ResourceConfig`.
+// FromResourceConfig creates a new instance of `Resources` from a `ResourceConfig`.
 func FromResourceConfig(rc *task.ResourceConfig) (r Resources) {
 	r.CPU = rc.GetCpuLimit()
 	r.Mem = rc.GetMemLimitMb()
