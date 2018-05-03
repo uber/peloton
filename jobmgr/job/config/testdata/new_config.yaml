@@ -47,3 +47,8 @@ instanceconfig:
     command:
       shell: true
       value: 'echo Hello instance 2'
+  100:
+    name: instance100
+    command:
+      shell: true
+      value: 'echo Hello instance 100'

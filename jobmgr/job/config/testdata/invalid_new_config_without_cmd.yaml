@@ -1,0 +1,32 @@
+# invalid new config as no default cmd is provided, nor per instance cmd
+# tested in combination with old_config_without_default_cmd.yaml
+changelog: null
+name: TestPelotonJob_123
+owningteam: team6
+ldapgroups:
+- money
+- team6
+- otto
+description: "A dummy test job for peloton"
+labels:
+- key: testKey0
+  value: testVal0
+- key: testKey1
+  value: testVal1
+- key: testKey2
+  value: testVal2
+instancecount: 4
+sla:
+  priority: 22
+  minimuminstancecount: 12
+  minimuminstancepercent: 50
+  preemptible: false
+defaultconfig:
+  resource:
+    cpulimit: 0.1
+    memlimitmb: 2.0
+    disklimitmb: 10
+    fdlimit: 10
+  healthcheck: null
+  ports: []
+  container: null

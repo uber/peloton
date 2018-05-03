@@ -5,19 +5,19 @@ import (
 	"fmt"
 	"time"
 
-	api_errors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
+	apierrors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
+
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
-	"code.uber.internal/infra/peloton/jobmgr/job/updater"
-	task_config "code.uber.internal/infra/peloton/jobmgr/task/config"
+	"code.uber.internal/infra/peloton/jobmgr/job/config"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
@@ -27,10 +27,6 @@ import (
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
-)
-
-const (
-	_defaultRPCTimeout = 10 * time.Second
 )
 
 var (
@@ -132,7 +128,7 @@ func (h *serviceHandler) Create(
 	log.WithField("config", jobConfig).Infof("JobManager.Create called")
 
 	// Validate job config with default task configs
-	err = task_config.ValidateTaskConfig(jobConfig, h.jobSvcCfg.MaxTasksPerJob)
+	err = jobconfig.ValidateTaskConfig(jobConfig, h.jobSvcCfg.MaxTasksPerJob)
 	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
@@ -221,7 +217,7 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
-	diff, err := updater.CalculateJobDiff(jobID, oldConfig, newConfig)
+	err = jobconfig.ValidateUpdatedConfig(oldConfig, newConfig, h.jobSvcCfg.MaxTasksPerJob)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return &job.UpdateResponse{
@@ -234,6 +230,7 @@ func (h *serviceHandler) Update(
 		}, nil
 	}
 
+	diff := jobconfig.CalculateJobDiff(jobID, oldConfig, newConfig)
 	if diff.IsNoop() {
 		log.WithField("job_id", jobID.GetValue()).
 			Info("update is a noop")
@@ -277,7 +274,7 @@ func (h *serviceHandler) Update(
 			return nil, err
 		}
 		h.metrics.TaskCreate.Inc(1)
-		runtimes := make(map[uint32]*pb_task.RuntimeInfo)
+		runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 		runtimes[id] = runtime
 		// Store in cache and then enqueue task to goal state
 		cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
@@ -316,7 +313,7 @@ func (h *serviceHandler) Get(
 			Debug("GetJobConfig failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
-				NotFound: &api_errors.JobNotFound{
+				NotFound: &apierrors.JobNotFound{
 					Id:      req.Id,
 					Message: err.Error(),
 				},
@@ -331,7 +328,7 @@ func (h *serviceHandler) Get(
 			Debug("Get jobRuntime failed")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
-				GetRuntimeFail: &api_errors.JobGetRuntimeFail{
+				GetRuntimeFail: &apierrors.JobGetRuntimeFail{
 					Id:      req.Id,
 					Message: err.Error(),
 				},
@@ -400,7 +397,7 @@ func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job
 		log.WithError(err).Error("Query job failed with error")
 		return &job.QueryResponse{
 			Error: &job.QueryResponse_Error{
-				Err: &api_errors.UnknownError{
+				Err: &apierrors.UnknownError{
 					Message: err.Error(),
 				},
 			},

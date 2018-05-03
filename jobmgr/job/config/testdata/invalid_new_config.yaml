@@ -9,3 +9,9 @@ labels:
 defaultconfig:
   resource:
     fdlimit: 100                              # changed fd limit
+instanceconfig:
+  0:
+    name: instance0
+    command:
+      shell: true
+      value: 'echo Bye instance 0'

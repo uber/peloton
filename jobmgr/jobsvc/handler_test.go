@@ -35,6 +35,12 @@ const (
 	testInstanceCount = 2
 )
 
+const (
+	_newConfig        = "testdata/new_config.yaml"
+	_oldConfig        = "testdata/old_config.yaml"
+	_invalidNewConfig = "testdata/invalid_new_config.yaml"
+)
+
 var (
 	defaultResourceConfig = task.ResourceConfig{
 		CpuLimit:    10,
@@ -56,8 +62,9 @@ type JobHandlerTestSuite struct {
 func (suite *JobHandlerTestSuite) SetupTest() {
 	mtx := NewMetrics(tally.NoopScope)
 	suite.handler = &serviceHandler{
-		metrics: mtx,
-		rootCtx: context.Background(),
+		metrics:   mtx,
+		rootCtx:   context.Background(),
+		jobSvcCfg: Config{MaxTasksPerJob: _defaultMaxTasksPerJob},
 	}
 	suite.testJobID = &peloton.JobID{
 		Value: "test_job",
@@ -244,20 +251,26 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
+	testCmd := "echo test"
 	oldInstanceCount := uint32(3)
 	newInstanceCount := uint32(4)
 	jobID := &peloton.JobID{
 		Value: "job0",
 	}
-	oldJobConfig := job.JobConfig{
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	oldJobConfig := &job.JobConfig{
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: oldInstanceCount,
+		DefaultConfig: defaultConfig,
 	}
-	newJobConfig := job.JobConfig{
+	newJobConfig := &job.JobConfig{
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: newInstanceCount,
+		DefaultConfig: defaultConfig,
 	}
 	var jobRuntime = job.RuntimeInfo{
 		State: job.JobState_PENDING,
@@ -278,7 +291,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 
 	mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).
-		Return(&oldJobConfig, nil).
+		Return(oldJobConfig, nil).
 		AnyTimes()
 	mockJobStore.EXPECT().
 		GetJobRuntime(context.Background(), jobID).
@@ -312,7 +325,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 
 	req := &job.UpdateRequest{
 		Id:     jobID,
-		Config: &newJobConfig,
+		Config: newJobConfig,
 	}
 
 	resp, err := suite.handler.Update(suite.context, req)
