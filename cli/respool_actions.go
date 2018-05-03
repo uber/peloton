@@ -135,10 +135,12 @@ func readResourcePoolConfig(cfgFile string) (respool.ResourcePoolConfig, error) 
 	var respoolConfig respool.ResourcePoolConfig
 	buffer, err := ioutil.ReadFile(cfgFile)
 	if err != nil {
-		return respoolConfig, fmt.Errorf("Unable to open file %s: %v", cfgFile, err)
+		return respoolConfig, fmt.Errorf("unable to open file %s: %v",
+			cfgFile, err)
 	}
 	if err := yaml.Unmarshal(buffer, &respoolConfig); err != nil {
-		return respoolConfig, fmt.Errorf("Unable to parse file %s: %v", cfgFile, err)
+		return respoolConfig, fmt.Errorf("unable to parse file %s: %v",
+			cfgFile, err)
 	}
 	return respoolConfig, nil
 }
@@ -150,10 +152,16 @@ func (c *Client) ResPoolDumpAction(resPoolDumpFormat string) error {
 		return err
 	}
 
-	return printResPoolDumpResponse(resPoolDumpFormat, response)
+	return printResPoolDumpResponse(resPoolDumpFormat, response, c.Debug)
 }
 
-func printResPoolDumpResponse(resPoolDumpFormat string, r *respool.QueryResponse) error {
+func printResPoolDumpResponse(resPoolDumpFormat string,
+	r *respool.QueryResponse, debug bool) error {
+	if debug {
+		printResponseJSON(r)
+		return nil
+	}
+
 	if r.Error != nil {
 		return errors.New("error dumping resource pools")
 	}
