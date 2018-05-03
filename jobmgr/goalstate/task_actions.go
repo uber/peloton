@@ -19,7 +19,17 @@ func TaskKilled(ctx context.Context, entity goalstate.Entity) error {
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
 	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
+	if cachedTask == nil {
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.GetValue(),
+			"instance_id": taskEnt.instanceID,
+		}).Error("task is nil in cache with valid job")
+		return nil
+	}
 	cachedTask.ClearKillAttempts()
 	return nil
 }
@@ -31,6 +41,9 @@ func TaskFailed(ctx context.Context, entity goalstate.Entity) error {
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
 
 	runtime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, taskEnt.jobID, taskEnt.instanceID)
 	if err != nil {
@@ -54,7 +67,17 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
 	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
+	if cachedTask == nil {
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.GetValue(),
+			"instance_id": taskEnt.instanceID,
+		}).Error("task is nil in cache with valid job")
+		return nil
+	}
 
 	runtime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, taskEnt.jobID, taskEnt.instanceID)
 	if err != nil {

@@ -42,7 +42,17 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
 	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
+	if cachedTask == nil {
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.GetValue(),
+			"instance_id": taskEnt.instanceID,
+		}).Error("task is nil in cache with valid job")
+		return nil
+	}
 
 	runtime := cachedTask.GetRunTime()
 

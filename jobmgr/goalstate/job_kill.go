@@ -55,6 +55,10 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
+	if cachedJob == nil {
+		return nil
+	}
+
 	err = cachedJob.UpdateTasks(ctx, updatedRuntimes, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).

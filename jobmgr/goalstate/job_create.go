@@ -133,6 +133,11 @@ func sendTasksToResMgr(
 	}
 
 	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
+	if cachedJob == nil {
+		// job has been untracked.
+		return nil
+	}
+
 	err = cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).

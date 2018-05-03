@@ -52,6 +52,10 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 	// GetLaunchableTasks have updated the task runtime to LAUNCHED state and
 	// the placement operation. So update the runtime in cache and DB.
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
+
 	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: taskInfos[pelotonTaskID.Value].GetRuntime()}, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
@@ -76,6 +80,9 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
 
 	if cachedJob.GetSLAConfig().GetMaximumRunningInstances() > 0 {
 		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now())

@@ -22,6 +22,9 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
 
 	taskID := &peloton.TaskID{
 		Value: taskEnt.GetID(),

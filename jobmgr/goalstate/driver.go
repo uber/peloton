@@ -158,6 +158,10 @@ func (d *driver) EnqueueTask(jobID *peloton.JobID, instanceID uint32, deadline t
 	jobEntity := NewJobEntity(jobID, d)
 
 	cachedJob := d.jobFactory.GetJob(jobID)
+	if cachedJob == nil {
+		// job has been untracked. Ignore.
+		return
+	}
 	jobType := cachedJob.GetJobType()
 
 	d.RLock()
