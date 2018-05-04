@@ -82,8 +82,11 @@ func (s *HandlerTestSuite) SetupSuite() {
 		rmTracker: s.rmTaskTracker,
 		config: Config{
 			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
+				LaunchingTimeout:      1 * time.Minute,
+				PlacingTimeout:        1 * time.Minute,
+				PolicyName:            rm_task.ExponentialBackOffPolicy,
+				PlacementRetryBackoff: 30 * time.Second,
+				PlacementRetryCycle:   1,
 			},
 		},
 	}
@@ -234,7 +237,9 @@ func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			Preemptible: true,
+			Preemptible:         true,
+			PlacementTimeout:    60,
+			PlacementRetryCount: 1,
 		},
 	}
 	return &gang
@@ -262,6 +267,8 @@ func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
+			PlacementTimeout:    60,
+			PlacementRetryCount: 1,
 		},
 	}
 	return &gang
@@ -289,7 +296,9 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			Preemptible: true,
+			Preemptible:         true,
+			PlacementTimeout:    60,
+			PlacementRetryCount: 1,
 		},
 		{
 			Name:         "job2-2",
@@ -306,10 +315,47 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			Preemptible: true,
+			Preemptible:         true,
+			PlacementTimeout:    60,
+			PlacementRetryCount: 1,
 		},
 	}
 	return &gang
+}
+
+func (s *HandlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
+	var gang resmgrsvc.Gang
+	uuidStr := "uuidstr-1"
+	jobID := "job9"
+	instance := 1
+	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID, instance, uuidStr)
+	gang.Tasks = []*resmgr.Task{
+		{
+			Name:     "job9-1",
+			Priority: 0,
+			JobId:    &peloton.JobID{Value: "job9"},
+			Id:       &peloton.TaskID{Value: fmt.Sprintf("%s-%d", jobID, instance)},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			TaskId: &mesos_v1.TaskID{
+				Value: &mesosTaskID,
+			},
+			Preemptible:         true,
+			PlacementTimeout:    60,
+			PlacementRetryCount: 3,
+		},
+	}
+	return &gang
+}
+
+func (s *HandlerTestSuite) pendingGangsWithoutPlacement() []*resmgrsvc.Gang {
+	gangs := make([]*resmgrsvc.Gang, 1)
+	gangs[0] = s.pendingGangWithoutPlacement()
+	return gangs
 }
 
 func (s *HandlerTestSuite) pendingGangs() []*resmgrsvc.Gang {
@@ -401,6 +447,45 @@ func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacement() {
 	s.Nil(deqResp.GetError())
 }
 
+func (s *HandlerTestSuite) TestReEnqueueGangThatFailedPlacementManyTimes() {
+	enqReq := &resmgrsvc.EnqueueGangsRequest{
+		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
+		Gangs:   s.pendingGangsWithoutPlacement(),
+	}
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	node.SetEntitlement(s.getEntitlement())
+	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.Nil(enqResp.GetError())
+
+	// There is a race condition in the test due to the Scheduler.scheduleTasks
+	// method is run asynchronously.
+	time.Sleep(2 * time.Second)
+
+	// Make sure we dequeue the gangs again for the next test to work
+	deqReq := &resmgrsvc.DequeueGangsRequest{
+		Limit:   10,
+		Timeout: 2 * 1000, // 2 sec
+	}
+	// Scheduler.scheduleTasks method is run asynchronously.
+	// We need to wait here
+	time.Sleep(timeout)
+	// Checking whether we get the task from ready queue
+	deqResp, err := s.handler.DequeueGangs(s.context, deqReq)
+	s.NoError(err)
+	s.Nil(deqResp.GetError())
+
+	// Re-enqueue the gangs without a resource pool
+	enqReq.ResPool = nil
+	enqResp, err = s.handler.EnqueueGangs(s.context, enqReq)
+	s.NoError(err)
+	s.Nil(enqResp.GetError())
+
+	rmTask := s.handler.rmTracker.GetTask(s.pendingGangsWithoutPlacement()[0].Tasks[0].Id)
+	s.EqualValues(rmTask.GetCurrentState().String(), task.TaskState_PENDING.String())
+}
+
 // This tests the requeue of the same task with same mesos task id as well
 // as the different mesos task id
 func (s *HandlerTestSuite) TestRequeue() {
@@ -420,6 +505,7 @@ func (s *HandlerTestSuite) TestRequeue() {
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
@@ -489,6 +575,7 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
@@ -526,6 +613,7 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
@@ -576,6 +664,7 @@ func (s *HandlerTestSuite) TestAddingToPendingQueue() {
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
@@ -605,6 +694,7 @@ func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
@@ -635,6 +725,7 @@ func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
@@ -694,6 +785,7 @@ func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 			}, nil, resp, &rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
 				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			})
 		}
 
@@ -843,6 +935,7 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 			&rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
 				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			})
 		rmTasks = append(rmTasks, rmTask)
 	}
@@ -966,6 +1059,7 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 		}, nil, resp, &rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		})
 	}
 	req := &resmgrsvc.NotifyTaskUpdatesRequest{
@@ -1035,6 +1129,7 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 			&rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
 				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			})
 		rmTask := s.handler.rmTracker.GetTask(taskID)
 		rmTask.TransitTo(task.TaskState_PENDING.String())
@@ -1080,6 +1175,7 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 		&rm_task.Config{
 			LaunchingTimeout: 1 * time.Minute,
 			PlacingTimeout:   1 * time.Minute,
+			PolicyName:       rm_task.ExponentialBackOffPolicy,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,

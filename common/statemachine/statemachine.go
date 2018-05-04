@@ -32,13 +32,19 @@ type Rule struct {
 type TimeoutRule struct {
 	// from is the source state
 	From State
-	// to is the destination state
-	To State
+	// to is the list of destination states
+	// actual destination state has to be determine
+	// in precall back
+	To []State
 	// timeout for transition to "to" state
 	Timeout time.Duration
 	// callback is transition function which defines 1:1 mapping
 	// of callbacks
 	Callback func(*Transition) error
+	// PreCallback is needed to determine about which state timeout
+	// going to transition. If precallback is not present
+	// Timeout should transition to first TO state.
+	PreCallback func(*Transition) error
 }
 
 // Callback is the type for callback function
@@ -89,6 +95,10 @@ type StateMachine interface {
 
 	// GetMetaInfo returns the map of meta info about state machine
 	GetMetaInfo() map[string]string
+
+	// GetTimeOutRules returns the timeout rules defined for state machine
+	// Its a map of [from state] to timeout rule
+	GetTimeOutRules() map[State]*TimeoutRule
 }
 
 // statemachine is state machine, State Machine is responsible for moving states
@@ -270,6 +280,12 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 			"meta_info_noindex": sm.GetMetaInfo(),
 		}).Info("Task transitioned to timeout state")
 		if rule.Timeout != 0 {
+			log.WithFields(log.Fields{
+				"task_id": sm.name,
+				"from":    curState,
+				"to":      to,
+				"timeout": rule.Timeout.String(),
+			}).Info("Starting timer to recover state if needed")
 			err := sm.timer.Start(rule.Timeout)
 			if err != nil {
 				log.WithError(err).WithFields(log.Fields{
@@ -358,6 +374,12 @@ func (sm *statemachine) Terminate() {
 	}
 }
 
+// GetTimeOutRules returns the timeout rules defined for state machine
+// Its a map of [from state] to timeout rule
+func (sm *statemachine) GetTimeOutRules() map[State]*TimeoutRule {
+	return sm.timeoutRules
+}
+
 // rollbackState recovers the state.
 // Note: the caller should acquire the lock on the state machine before calling.
 func (sm *statemachine) rollbackState() error {
@@ -375,25 +397,53 @@ func (sm *statemachine) rollbackState() error {
 		return nil
 	}
 
-	//  Creating Transition to pass to callbacks
+	// Creating Transition to pass to callbacks, we need to pass this
+	// Transition object to Precallback and precall back has to fill
+	// the transition object with the desired "TO" state
 	t := &Transition{
 		StateMachine: sm,
 		From:         sm.current,
-		To:           rule.To,
+		To:           "",
 		Params:       nil,
+	}
+
+	// Checking if precall back is nil then get the first TO state
+	if rule.PreCallback == nil {
+		t.To = rule.To[0]
+	} else {
+		log.WithFields(log.Fields{
+			"task_id":           t.StateMachine.GetName(),
+			"rule_from":         sm.current,
+			"rule_to":           "",
+			"meta_info_noindex": sm.GetMetaInfo(),
+		}).Info("Calling PreCallback")
+
+		// Call the precall back function, which should fil the t.To state
+		err := rule.PreCallback(t)
+
+		if err != nil || t.To == "" {
+			log.WithError(err).WithFields(log.Fields{
+				"task_id":           sm.name,
+				"rule_from":         t.From,
+				"rule_to":           t.To,
+				"current_state":     sm.current,
+				"meta_info_noindex": sm.GetMetaInfo(),
+			}).Error("error in pre call back")
+			return err
+		}
 	}
 
 	log.WithFields(log.Fields{
 		"task_id":           t.StateMachine.GetName(),
 		"rule_from":         rule.From,
-		"rule_to":           rule.To,
+		"rule_to":           t.To,
 		"current_state":     sm.current,
 		"meta_info_noindex": sm.GetMetaInfo(),
-	}).Debug("Transitioning from Timeout")
+	}).Info("Transitioning from Timeout")
 
 	// Doing actual transition
-	sm.reason = fmt.Sprintf("rollback from state %s to state %s due to timeout", sm.current, rule.To)
-	sm.current = rule.To
+	sm.reason = fmt.Sprintf("rollback from state %s to state %s due to timeout", sm.current, t.To)
+	sm.current = t.To
 	sm.lastUpdatedTime = time.Now()
 
 	// invoking callback function

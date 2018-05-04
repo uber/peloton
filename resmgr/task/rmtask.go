@@ -1,6 +1,7 @@
 package task
 
 import (
+	"sync"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -11,6 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/common/eventstream"
 	state "code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -23,12 +25,15 @@ type RunTimeStats struct {
 
 // RMTask is the wrapper around resmgr.task for state machine
 type RMTask struct {
-	task                *resmgr.Task
-	stateMachine        state.StateMachine
-	respool             respool.ResPool
-	statusUpdateHandler *eventstream.Handler
-	runTimeStats        *RunTimeStats
-	config              *Config
+	sync.Mutex // Mutex for synchronization
+
+	task                *resmgr.Task         // resmgr task
+	stateMachine        state.StateMachine   // state machine for the task
+	respool             respool.ResPool      // ResPool in which this tasks belongs to
+	statusUpdateHandler *eventstream.Handler // Event handler for updates
+	runTimeStats        *RunTimeStats        // run time stats for resmgr task
+	config              *Config              // resmgr config object
+	policy              Policy               // placement retry backoff policy
 }
 
 // CreateRMTask creates the RM task from resmgr.task
@@ -48,6 +53,16 @@ func CreateRMTask(
 	}
 	var err error
 	r.stateMachine, err = r.createStateMachine()
+	// As this is when task is being created , retry should be 0
+	r.Task().PlacementRetryCount = 0
+	// Placement timeout should be equal to placing timeout by default
+	r.Task().PlacementTimeout = config.PlacingTimeout.Seconds()
+	// Creating the backoff policy specified in config
+	// and will be used for further backoff calculations.
+	r.policy, err = GetFactory().CreateBackOffPolicy(config)
+	if err != nil {
+		return nil, err
+	}
 	return &r, err
 }
 
@@ -187,17 +202,23 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 				}).
 			AddTimeoutRule(
 				&state.TimeoutRule{
-					From:     state.State(task.TaskState_PLACING.String()),
-					To:       state.State(task.TaskState_READY.String()),
-					Timeout:  rmTask.config.PlacingTimeout,
-					Callback: rmTask.timeoutCallback,
+					From: state.State(task.TaskState_PLACING.String()),
+					To: []state.State{
+						state.State(task.TaskState_READY.String()),
+						state.State(task.TaskState_PENDING.String()),
+					},
+					Timeout:     rmTask.config.PlacingTimeout,
+					Callback:    rmTask.timeoutCallbackFromPlacing,
+					PreCallback: rmTask.preTimeoutCallback,
 				}).
 			AddTimeoutRule(
 				&state.TimeoutRule{
-					From:     state.State(task.TaskState_LAUNCHING.String()),
-					To:       state.State(task.TaskState_READY.String()),
+					From: state.State(task.TaskState_LAUNCHING.String()),
+					To: []state.State{
+						state.State(task.TaskState_READY.String()),
+					},
 					Timeout:  rmTask.config.LaunchingTimeout,
-					Callback: rmTask.timeoutCallback,
+					Callback: rmTask.timeoutCallbackFromLaunching,
 				}).
 			Build()
 	if err != nil {
@@ -225,24 +246,69 @@ func (rmTask *RMTask) transitionCallBack(t *state.Transition) error {
 
 // timeoutCallback is the callback for the resource manager task
 // which moving after timeout from placing/launching state to ready state
-func (rmTask *RMTask) timeoutCallback(t *state.Transition) error {
+func (rmTask *RMTask) timeoutCallbackFromPlacing(t *state.Transition) error {
 	pTaskID := &peloton.TaskID{Value: t.StateMachine.GetName()}
-	task := GetTracker().GetTask(pTaskID)
-	if task == nil {
+	rmtask := GetTracker().GetTask(pTaskID)
+	if rmtask == nil {
 		return errors.Errorf("Task is not present in statemachine "+
 			"tracker %s ", t.StateMachine.GetName())
 	}
-	var tasks []*resmgr.Task
-	gang := &resmgrsvc.Gang{
-		Tasks: append(tasks, task.task),
+
+	if t.To == state.State(task.TaskState_PENDING.String()) {
+		log.WithFields(log.Fields{
+			"task_id":    pTaskID.Value,
+			"from_state": t.From,
+			"to_state":   t.To,
+		}).Info("task is pushed back to pending queue")
+		// we need to push it if pending
+		err := rmtask.PushTaskForReadmission()
+		if err != nil {
+			return err
+		}
+		return nil
 	}
-	err := GetScheduler().EnqueueGang(gang)
+	log.WithFields(log.Fields{
+		"task_id":    pTaskID.Value,
+		"from_state": t.From,
+		"to_state":   t.To,
+	}).Info("task is pushed back to ready queue")
+	err := rmtask.PushTaskforPlacementAgain()
 	if err != nil {
-		log.WithField("Gang", gang).Error("Could not enqueue " +
-			"gang to ready after timeout")
 		return err
 	}
-	log.WithField("Gang", gang).Debug("Enqueue again due to timeout")
+	log.WithField("Task", rmtask).Debug("Enqueue again due to timeout")
+	return nil
+}
+
+func (rmTask *RMTask) timeoutCallbackFromLaunching(t *state.Transition) error {
+	pTaskID := &peloton.TaskID{Value: t.StateMachine.GetName()}
+	rmtask := GetTracker().GetTask(pTaskID)
+	if rmtask == nil {
+		return errors.Errorf("Task is not present in statemachine "+
+			"tracker %s ", t.StateMachine.GetName())
+	}
+
+	err := rmtask.PushTaskforPlacementAgain()
+	if err != nil {
+		return err
+	}
+	log.WithField("Task", rmtask).Debug("Enqueue again due to timeout")
+	return nil
+}
+
+func (rmTask *RMTask) preTimeoutCallback(t *state.Transition) error {
+	pTaskID := &peloton.TaskID{Value: t.StateMachine.GetName()}
+	rmtask := GetTracker().GetTask(pTaskID)
+	if rmtask == nil {
+		return errors.Errorf("Task is not present in statemachine "+
+			"tracker %s ", t.StateMachine.GetName())
+	}
+
+	if rmtask.IsFailedEnoughPlacement() {
+		t.To = state.State(task.TaskState_PENDING.String())
+		return nil
+	}
+	t.To = state.State(task.TaskState_READY.String())
 	return nil
 }
 
@@ -303,4 +369,82 @@ func (rmTask *RMTask) RunTimeStats() *RunTimeStats {
 // UpdateStartTime updates the start time of the RMTask
 func (rmTask *RMTask) UpdateStartTime(startTime time.Time) {
 	rmTask.runTimeStats.StartTime = startTime
+}
+
+// AddBackoff adds the backoff to the RMtask based on backoff policy
+func (rmTask *RMTask) AddBackoff() error {
+	rmTask.Lock()
+	defer rmTask.Unlock()
+	// Adding the placement timeout values based on policy
+	rmTask.Task().PlacementTimeout = rmTask.config.PlacingTimeout.Seconds() +
+		rmTask.policy.GetNextBackoffDuration(rmTask.Task(), rmTask.config)
+	// Adding the placement retry count based on backoff policy
+	rmTask.Task().PlacementRetryCount++
+
+	// If there is no Timeout rule for PLACING state we should error out
+	if _, ok := rmTask.stateMachine.GetTimeOutRules()[state.State(task.TaskState_PLACING.String())]; !ok {
+		return errors.Errorf("could not add backoff to task %s", rmTask.Task().Id.GetValue())
+	}
+	// Updating the timeout rule by that next timer will start with the new time out value.
+	rule := rmTask.stateMachine.GetTimeOutRules()[state.State(task.TaskState_PLACING.String())]
+	rule.Timeout = time.Duration(rmTask.Task().PlacementTimeout) * time.Second
+	log.WithFields(log.Fields{
+		"task_id":           rmTask.Task().Id.Value,
+		"retry_count":       rmTask.Task().PlacementRetryCount,
+		"placement_timeout": rmTask.Task().PlacementTimeout,
+	}).Info("Adding backoff to task")
+	return nil
+}
+
+// IsFailedEnoughPlacement returns true if one placement cylce is completed
+// otherwise false
+func (rmTask *RMTask) IsFailedEnoughPlacement() bool {
+	return rmTask.policy.IsCycleCompleted(rmTask.Task(), rmTask.config)
+}
+
+// PushTaskForReadmission pushes the task for readmission to pending queue
+func (rmTask *RMTask) PushTaskForReadmission() error {
+	var tasks []*resmgr.Task
+	gang := &resmgrsvc.Gang{
+		Tasks: append(tasks, rmTask.task),
+	}
+	// pushing it to pending queue
+	err := rmTask.Respool().EnqueueGang(gang)
+	if err != nil {
+		log.WithError(err).WithField("task", rmTask.task.Id.Value).Info("could not be enqueued")
+		return err
+	}
+	err = rmTask.Respool().SubtractFromAllocation(scalar.GetGangAllocation(gang))
+	if err != nil {
+		log.WithError(err).WithField(
+			"Gang", gang).
+			Error("Not able to remove allocation " +
+				"from respool")
+		return err
+	}
+	err = rmTask.Respool().AddToDemand(scalar.GetGangResources(gang))
+	if err != nil {
+		log.WithError(err).WithField(
+			"Gang", gang).
+			Error("Not able to add to demand " +
+				"for respool")
+		return err
+	}
+	return nil
+}
+
+// PushTaskforPlacementAgain pushes the task to ready queue as the placement cycle is not
+// completed for this task.
+func (rmTask *RMTask) PushTaskforPlacementAgain() error {
+	var tasks []*resmgr.Task
+	gang := &resmgrsvc.Gang{
+		Tasks: append(tasks, rmTask.task),
+	}
+	err := GetScheduler().EnqueueGang(gang)
+	if err != nil {
+		log.WithField("Gang", gang).Error("Could not enqueue " +
+			"gang to ready after timeout")
+		return err
+	}
+	return nil
 }

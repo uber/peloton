@@ -31,7 +31,7 @@ func (suite *StateMachineTestSuite) SetupTest() {
 		AddRule(
 			&Rule{
 				From: "initialized",
-				To:   []State{"running", "killed", "placing"},
+				To:   []State{"running", "killed", "placing", "launching"},
 				Callback: func(t *Transition) error {
 					switch t.To {
 					case "running":
@@ -75,17 +75,26 @@ func (suite *StateMachineTestSuite) SetupTest() {
 			}).
 		AddTimeoutRule(
 			&TimeoutRule{
-				From:     "killed",
-				To:       "running",
-				Timeout:  2 * time.Second,
-				Callback: suite.callbackTimeout,
+				From:        "killed",
+				To:          []State{"running"},
+				Timeout:     2 * time.Second,
+				Callback:    suite.callbackTimeout,
+				PreCallback: suite.preCallbackTimeout,
 			},
 		).
 		AddTimeoutRule(
 			&TimeoutRule{
 				From:    "placing",
-				To:      "killed",
+				To:      []State{"killed"},
 				Timeout: 2 * time.Second,
+			},
+		).
+		AddTimeoutRule(
+			&TimeoutRule{
+				From:        "launching",
+				To:          []State{"ready"},
+				Timeout:     2 * time.Second,
+				PreCallback: suite.preCallbackTimeoutError,
 			},
 		).
 		Build()
@@ -121,6 +130,18 @@ func (suite *StateMachineTestSuite) TransitionCallBack(t *Transition) error {
 }
 
 func (suite *StateMachineTestSuite) callbackTimeout(t *Transition) error {
+	return nil
+}
+
+func (suite *StateMachineTestSuite) preCallbackTimeout(t *Transition) error {
+	t.To = "running"
+	return nil
+}
+
+func (suite *StateMachineTestSuite) preCallbackTimeoutError(t *Transition) error {
+	// This will return To state empty which is error condition,
+	// So transition should not happen
+	t.To = ""
 	return nil
 }
 
@@ -175,7 +196,30 @@ func (suite *StateMachineTestSuite) TestTimeOut() {
 	suite.Equal(fmt.Sprint(suite.task.state), "killed")
 	time.Sleep(3 * time.Second)
 	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "running")
-	suite.Equal(fmt.Sprint(suite.stateMachine.GetReason()), "rollback from state killed to state running due to timeout")
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetReason()),
+		"rollback from state killed to state running due to timeout")
+}
+
+func (suite *StateMachineTestSuite) TestPreCallBackNil() {
+	err := suite.stateMachine.TransitTo("placing")
+	suite.NoError(err)
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "placing")
+	// As timeout is 2 seconds , we need to wait for 3 seconds to actual timeout happen
+	time.Sleep(3 * time.Second)
+	// Precall back succeeds. timeout should transit state machine to "killed"
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "killed")
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetReason()),
+		"rollback from state placing to state killed due to timeout")
+}
+
+func (suite *StateMachineTestSuite) TestPreCallBackError() {
+	err := suite.stateMachine.TransitTo("launching")
+	suite.NoError(err)
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "launching")
+	// As timeout is 2 seconds , we need to wait for 3 seconds to actual timeout happen
+	time.Sleep(3 * time.Second)
+	// As there is error in callback , transition should not happen
+	suite.Equal(fmt.Sprint(suite.stateMachine.GetCurrentState()), "launching")
 }
 
 func (suite *StateMachineTestSuite) TestCancelTimeOutTransition() {

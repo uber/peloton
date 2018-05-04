@@ -509,7 +509,9 @@ func (suite *SchedulerTestSuite) addTasktotracker(task *resmgr.Task) {
 	resPool, _ := suite.resTree.Get(&peloton.ResourcePoolID{
 		Value: "respool11",
 	})
-	suite.rmTaskTracker.AddTask(task, suite.eventStreamHandler, resPool, &Config{})
+	suite.rmTaskTracker.AddTask(task, suite.eventStreamHandler, resPool, &Config{
+		PolicyName: ExponentialBackOffPolicy,
+	})
 }
 
 func (suite *SchedulerTestSuite) TestUntrackedTasks() {

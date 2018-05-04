@@ -180,6 +180,7 @@ func (s *scheduler) scheduleTasks() {
 				}
 				continue
 			}
+
 			// Once the transition is done to ready state for all
 			// the tasks in the gang , we are enqueuing the gang to
 			// ready queue.
@@ -191,17 +192,11 @@ func (s *scheduler) scheduleTasks() {
 			// Once the gang is enqueued in ready queue,
 			// removing it from from demand for the next entitlement
 			// cycle
-			for _, task := range gang.GetTasks() {
-				// We have to remove demand as we admitted task to
-				// ready queue.
-				err = n.SubtractFromDemand(
-					scalar.ConvertToResmgrResource(
-						task.GetResource()))
-				if err != nil {
-					log.WithError(err).Errorf("Error while "+
-						"subtracting demand for task %s ",
-						task.Id.Value)
-				}
+			err = n.SubtractFromDemand(scalar.GetGangResources(gang))
+			if err != nil {
+				log.WithError(err).WithField("gang", gang).Error("Error while " +
+					"subtracting demand for gang")
+
 			}
 		}
 		// We need to requeue those gangs back

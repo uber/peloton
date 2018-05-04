@@ -74,6 +74,7 @@ func (suite *recoveryTestSuite) SetupSuite() {
 			RmTaskConfig: &rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
 				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
 		},
 	}
@@ -386,6 +387,7 @@ func (suite *recoveryTestSuite) TestRefillTaskQueue() {
 			RmTaskConfig: &rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
 				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			},
 		})
 

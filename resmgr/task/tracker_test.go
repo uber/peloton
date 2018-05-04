@@ -48,7 +48,9 @@ func (suite *TrackerTestSuite) SetupTest() {
 }
 
 func (suite *TrackerTestSuite) addTaskToTracker(task *resmgr.Task) {
-	suite.addTaskToTrackerWithTimeoutConfig(task, &Config{})
+	suite.addTaskToTrackerWithTimeoutConfig(task, &Config{
+		PolicyName: ExponentialBackOffPolicy,
+	})
 }
 
 func (suite *TrackerTestSuite) addTaskToTrackerWithTimeoutConfig(task *resmgr.

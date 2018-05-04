@@ -71,9 +71,7 @@ type Tracker interface {
 type tracker struct {
 	sync.Mutex
 
-	// TODO: After go 1.9 we need to use
-	// https://golang.org/doc/go1.9#sync-map
-	// Maps task id -> rm task
+	// TODO: we should use sync-map
 	tasks map[string]*RMTask
 
 	// Maps hostname -> task type -> task id -> rm task
@@ -99,6 +97,12 @@ func InitTaskTracker(parent tally.Scope) {
 		metrics:    NewMetrics(parent.SubScope("tracker")),
 		counters:   make(map[string]float64),
 	}
+
+	err := InitPolicyFactory()
+	if err != nil {
+		log.Error("Error initializing backoff policy")
+	}
+
 	log.Info("Resource Manager Tracker is initialized")
 }
 

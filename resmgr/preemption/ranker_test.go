@@ -70,6 +70,7 @@ func (suite *RankerTestSuite) addTaskToTracker(task *resmgr.Task) {
 	suite.tracker.AddTask(task, suite.eventStreamHandler, suite.respool, &rm_task.Config{
 		LaunchingTimeout: 1 * time.Minute,
 		PlacingTimeout:   1 * time.Minute,
+		PolicyName:       rm_task.ExponentialBackOffPolicy,
 	})
 }
 

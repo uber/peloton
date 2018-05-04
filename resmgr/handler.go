@@ -35,10 +35,11 @@ import (
 var (
 	errFailingGangMemberTask    = errors.New("task fail because other gang member failed")
 	errSameTaskPresent          = errors.New("same task present in tracker, Ignoring new task")
-	errGangNotEnqueued          = errors.New("Could not enqueue gang to ready after retry")
+	errGangNotEnqueued          = errors.New("could not enqueue gang to ready after retry")
 	errEnqueuedAgain            = errors.New("enqueued again after retry")
 	errUnplacedTaskInWrongState = errors.New("unplaced task should be in state placing")
 	errRequeueTaskFailed        = errors.New("requeue exisiting task to resmgr failed")
+	errGangEnqueuedPending      = errors.New("could not enqueue gang to pending after multiple placement retry")
 )
 
 // ServiceHandler implements peloton.private.resmgr.ResourceManagerService
@@ -353,31 +354,89 @@ func (h *ServiceHandler) markingTasksFailInGang(gang *resmgrsvc.Gang,
 	return failed
 }
 
+// requeueUnplacedTask is going to requeue tasks from placement engine if they could not be
+// placed in prior placement attempt. The two possible paths from here is
+// 1. Put this task again to Ready queue
+// 2. Put this to Pending queue
+// Paths will be decided based on how many ateemps is already been made for placement
 func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task, reason string) error {
 	rmTask := h.rmTracker.GetTask(requeuedTask.Id)
 	if rmTask == nil {
 		return nil
 	}
 	currentTaskState := rmTask.GetCurrentState()
+	// If the task is in READY state we dont need to do anything
 	if currentTaskState == t.TaskState_READY {
 		return nil
 	}
-	if currentTaskState == t.TaskState_PLACING {
-		// Transitioning back to Ready State
-		rmTask.TransitTo(t.TaskState_READY.String(), statemachine.WithReason("Previous placement timed out due to "+reason))
-		// Adding to ready Queue
-		var tasks []*resmgr.Task
-		gang := &resmgrsvc.Gang{
-			Tasks: append(tasks, rmTask.Task()),
-		}
-		err := rmtask.GetScheduler().EnqueueGang(gang)
+
+	// If task is not in PLACING state, it should return errUnplacedTaskInWrongState error
+	if currentTaskState != t.TaskState_PLACING {
+		return errUnplacedTaskInWrongState
+	}
+	// If task is in PLACING state we need to determine which STATE it will
+	// transition to based on retry attempts
+
+	// Checking if this task is been failed enough times
+	// put this task to PENDING queue.
+	if rmTask.IsFailedEnoughPlacement() {
+		err := h.moveTaskForAdmission(requeuedTask, reason)
 		if err != nil {
-			log.WithField("gang", gang).Error(errGangNotEnqueued.Error())
 			return err
 		}
 		return nil
 	}
-	return errUnplacedTaskInWrongState
+
+	log.WithFields(log.Fields{
+		"task_id":    rmTask.Task().Id.Value,
+		"from_state": t.TaskState_PLACING.String(),
+		"to_state":   t.TaskState_PENDING.String(),
+	}).Info("Task is pushed back to pending queue from placement engine requeue")
+
+	// Transitioning back to Ready State
+	err := rmTask.TransitTo(t.TaskState_READY.String(),
+		statemachine.WithReason("Previous placement timed out due to "+reason))
+	if err != nil {
+		log.WithField("task", rmTask.Task().Id.Value).Error(errGangNotEnqueued.Error())
+		return err
+	}
+	// Adding to ready Queue
+	var tasks []*resmgr.Task
+	gang := &resmgrsvc.Gang{
+		Tasks: append(tasks, rmTask.Task()),
+	}
+	err = rmtask.GetScheduler().EnqueueGang(gang)
+	if err != nil {
+		log.WithField("gang", gang).Error(errGangNotEnqueued.Error())
+		return err
+	}
+	return nil
+}
+
+// moveTaskForAdmission transits task to PENDING state and push it back to Pending queue
+func (h *ServiceHandler) moveTaskForAdmission(requeuedTask *resmgr.Task, reason string) error {
+	rmTask := h.rmTracker.GetTask(requeuedTask.Id)
+	if rmTask == nil {
+		return nil
+	}
+	// Transitioning task state to PENDING
+	err := rmTask.TransitTo(t.TaskState_PENDING.String(),
+		statemachine.WithReason("multiple placement timed out, putting back for readmission"+reason))
+	if err != nil {
+		log.WithField("task", rmTask.Task().Id.Value).Error(errGangEnqueuedPending.Error())
+		return err
+	}
+	log.WithFields(log.Fields{
+		"task_id":    rmTask.Task().Id.Value,
+		"from_state": t.TaskState_PLACING.String(),
+		"to_state":   t.TaskState_PENDING.String(),
+	}).Info("Task is pushed back to pending queue from placement engine requeue")
+	// Pushing task to PENDING queue
+	err = rmTask.PushTaskForReadmission()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // addTask adds the task to RMTracker based on the respool
@@ -506,6 +565,9 @@ func (h *ServiceHandler) DequeueGangs(
 
 			// Moving task to Placing state
 			if h.rmTracker.GetTask(task.Id) != nil {
+				//Adding backoff
+				h.rmTracker.GetTask(task.Id).AddBackoff()
+
 				err = h.rmTracker.GetTask(task.Id).TransitTo(
 					t.TaskState_PLACING.String())
 				if err != nil {
@@ -514,6 +576,7 @@ func (h *ServiceHandler) DequeueGangs(
 						Error("Failed to transit state " +
 							"for task")
 				}
+
 			} else {
 				tasksToRemove[task.Id.Value] = task
 			}

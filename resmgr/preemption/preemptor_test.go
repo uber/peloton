@@ -504,6 +504,7 @@ func (suite *PreemptorTestSuite) createTasks(numTasks int,
 			&rm_task.Config{
 				LaunchingTimeout: 1 * time.Minute,
 				PlacingTimeout:   1 * time.Minute,
+				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			})
 	}
 	return tasks
