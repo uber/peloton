@@ -146,6 +146,8 @@ var (
 	taskQuery          = task.Command("query", "query tasks by state(s)")
 	taskQueryJobName   = taskQuery.Arg("job", "job identifier").Required().String()
 	taskQueryStates    = taskQuery.Flag("states", "task states").Default("").Short('s').String()
+	taskQueryTaskNames = taskQuery.Flag("names", "task names").Default("").String()
+	taskQueryTaskHosts = taskQuery.Flag("hosts", "task hosts").Default("").String()
 	taskQueryLimit     = taskQuery.Flag("limit", "limit").Default("100").Short('n').Uint32()
 	taskQueryOffset    = taskQuery.Flag("offset", "offset").Default("0").Short('o').Uint32()
 	taskQuerySortBy    = taskQuery.Flag("sort", "sort by property (state, creation_time)").Short('p').String()
@@ -358,7 +360,7 @@ func main() {
 	case taskList.FullCommand():
 		err = client.TaskListAction(*taskListJobName, taskListInstanceRange)
 	case taskQuery.FullCommand():
-		err = client.TaskQueryAction(*taskQueryJobName, *taskQueryStates, *taskQueryLimit, *taskQueryOffset, *taskQuerySortBy, *taskQuerySortOrder)
+		err = client.TaskQueryAction(*taskQueryJobName, *taskQueryStates, *taskQueryTaskNames, *taskQueryTaskHosts, *taskQueryLimit, *taskQueryOffset, *taskQuerySortBy, *taskQuerySortOrder)
 	case taskRefresh.FullCommand():
 		err = client.TaskRefreshAction(*taskRefreshJobName, taskRefreshInstanceRange)
 	case taskStart.FullCommand():

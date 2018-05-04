@@ -1969,6 +1969,89 @@ func (suite *CassandraStoreTestSuite) TestGetTaskRuntime() {
 	suite.Equal(info.Runtime, runtime)
 }
 
+func (suite *CassandraStoreTestSuite) TestTaskQueryFilter() {
+	var taskStore storage.TaskStore
+	taskStore = store
+	var jobID = peloton.JobID{Value: uuid.New()}
+	runtimes := make(map[uint32]*task.RuntimeInfo)
+	jobConfig := createJobConfig()
+	jobConfig.InstanceCount = 100
+	jobConfig.InstanceConfig = map[uint32]*task.TaskConfig{}
+
+	hosts := []string{"host0", "host1", "host2", "host3"}
+
+	for i := 0; i < 100; i++ {
+		taskInfo := createTaskInfo(jobConfig, &jobID, 0)
+		taskInfo.Config = &task.TaskConfig{Name: fmt.Sprintf("task_%d", i)}
+		jobConfig.InstanceConfig[uint32(i)] = taskInfo.Config
+		taskInfo.Runtime.State = task.TaskState(i % 16)
+		taskInfo.Runtime.Host = hosts[i%4]
+		runtimes[uint32(i)] = taskInfo.Runtime
+	}
+
+	err := suite.createJob(context.Background(), &jobID, jobConfig, "user1")
+	suite.Nil(err)
+
+	err = taskStore.CreateTaskRuntimes(context.Background(), &jobID, runtimes, "user1")
+	suite.Nil(err)
+
+	// testing filtering on state
+	tasks, _, err := taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		TaskStates: []task.TaskState{task.TaskState(task.TaskState_PENDING)},
+	})
+	suite.Nil(err)
+	suite.Equal(len(tasks), 7)
+
+	// testing filtering on state
+	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		TaskStates: []task.TaskState{task.TaskState(task.TaskState_RUNNING)},
+	})
+	suite.Nil(err)
+	suite.Equal(len(tasks), 6)
+
+	// testing filtering on name
+	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		Names: []string{"task_1"},
+	})
+	suite.Nil(err)
+	suite.Equal(1, len(tasks))
+	suite.Equal(uint32(1), tasks[0].InstanceId)
+
+	// testing filtering on name and host
+	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		Names: []string{"task_2"},
+		Hosts: []string{"host2"},
+	})
+	suite.Nil(err)
+	suite.Equal(1, len(tasks))
+	suite.Equal(uint32(2), tasks[0].InstanceId)
+
+	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		Names: []string{"task_1"},
+		Hosts: []string{"Host2"},
+	})
+	suite.Nil(err)
+	suite.Equal(0, len(tasks))
+
+	// testing filtering state and name
+	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		TaskStates: []task.TaskState{task.TaskState(task.TaskState_PLACED)},
+		Names:      []string{"task_5"},
+	})
+	suite.Nil(err)
+	suite.Equal(1, len(tasks))
+	suite.Equal(uint32(5), tasks[0].InstanceId)
+
+	// testing filtering state and host
+	tasks, _, err = taskStore.QueryTasks(context.Background(), &jobID, &task.QuerySpec{
+		TaskStates: []task.TaskState{task.TaskState(task.TaskState_LOST)},
+		Hosts:      []string{"host3"},
+	})
+	suite.Nil(err)
+	suite.Equal(6, len(tasks))
+
+}
+
 func (suite *CassandraStoreTestSuite) TestQueryTasks() {
 	var taskStore storage.TaskStore
 	taskStore = store

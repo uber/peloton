@@ -422,6 +422,15 @@ message QuerySpec {
   // List of task states to query the tasks. Will match all tasks if
   // the list is empty.
   repeated TaskState taskStates = 2;
+
+  // List of task names to query the tasks. Will match all names if
+  // the list is empty.
+  repeated string names = 3;
+
+  // List of hosts to query the tasks. Will match all hosts if
+  // the list is empty.
+  repeated string hosts = 4;
+
 }
 
 

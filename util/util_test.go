@@ -154,3 +154,9 @@ func TestGetTaskType(t *testing.T) {
 		assert.Equal(t, test.tt, getTaskType(test.cfg))
 	}
 }
+
+func TestContains(t *testing.T) {
+	list := []string{"a", "b", "c"}
+	assert.True(t, Contains(list, "a"))
+	assert.False(t, Contains(list, "d"))
+}

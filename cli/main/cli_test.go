@@ -110,12 +110,14 @@ func TestParseJobStatus(t *testing.T) {
 
 func TestTaskQuery(t *testing.T) {
 	jobID := testJobID
-	cmd, err := app.Parse([]string{"task", "query", jobID, "--sort=state", "--sortorder=DESC"})
+	cmd, err := app.Parse([]string{"task", "query", jobID, "--names=taskName", "--hosts=taskHost", "--sort=state", "--sortorder=DESC"})
 	assert.Nil(t, err)
 	assert.Equal(t, cmd, taskQuery.FullCommand())
 	assert.Equal(t, *taskQueryJobName, jobID)
 	assert.Equal(t, *taskQuerySortBy, "state")
 	assert.Equal(t, *taskQuerySortOrder, "DESC")
+	assert.Equal(t, *taskQueryTaskNames, "taskName")
+	assert.Equal(t, *taskQueryTaskHosts, "taskHost")
 
 	// test default value
 	cmd, err = app.Parse([]string{"task", "query", jobID})

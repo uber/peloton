@@ -136,14 +136,29 @@ func (c *Client) TaskListAction(jobID string, instanceRange *task.InstanceRange)
 func (c *Client) TaskQueryAction(
 	jobID string,
 	states string,
+	names string,
+	hosts string,
 	limit uint32,
 	offset uint32,
 	sortBy string,
 	sortOrder string) error {
 	var taskStates []task.TaskState
+	var taskNames, taskHosts []string
 	for _, k := range strings.Split(states, labelSeparator) {
 		if k != "" {
 			taskStates = append(taskStates, task.TaskState(task.TaskState_value[k]))
+		}
+	}
+
+	for _, host := range strings.Split(hosts, labelSeparator) {
+		if host != "" {
+			taskHosts = append(taskHosts, host)
+		}
+	}
+
+	for _, name := range strings.Split(names, labelSeparator) {
+		if name != "" {
+			taskNames = append(taskNames, name)
 		}
 	}
 
@@ -173,6 +188,8 @@ func (c *Client) TaskQueryAction(
 		},
 		Spec: &task.QuerySpec{
 			TaskStates: taskStates,
+			Names:      taskNames,
+			Hosts:      taskHosts,
 			Pagination: &query.PaginationSpec{
 				Limit:   limit,
 				Offset:  offset,

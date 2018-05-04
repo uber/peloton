@@ -193,7 +193,7 @@ func (suite *taskActionsTestSuite) getQueryResult(
 				StartTime:      taskStartTime,
 				CompletionTime: "",
 				State:          task.TaskState_RUNNING,
-				Host:           "mesos-slave-02",
+				Host:           "mesos-slave-01",
 				Message:        "",
 				Reason:         "",
 			},
@@ -208,7 +208,7 @@ func (suite *taskActionsTestSuite) getQueryResult(
 				StartTime:      taskStartTime,
 				CompletionTime: "",
 				State:          task.TaskState_RUNNING,
-				Host:           "mesos-slave-03",
+				Host:           "mesos-slave-01",
 				Message:        "",
 				Reason:         "",
 			},
@@ -252,6 +252,9 @@ func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 					TaskStates: []task.TaskState{
 						task.TaskState_RUNNING,
 					},
+					Hosts: []string{
+						"taskHost",
+					},
 				},
 			},
 			taskQueryResponse: &task.QueryResponse{
@@ -278,6 +281,9 @@ func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 					TaskStates: []task.TaskState{
 						task.TaskState_RUNNING,
 					},
+					Hosts: []string{
+						"taskHost",
+					},
 				},
 			},
 			taskQueryResponse: &task.QueryResponse{
@@ -298,7 +304,7 @@ func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 			t.taskQueryResponse,
 			t.queryError,
 		)
-		err := c.TaskQueryAction(jobID.Value, "RUNNING", 10, 0, "state", "DESC")
+		err := c.TaskQueryAction(jobID.Value, "RUNNING", "", "taskHost", 10, 0, "state", "DESC")
 		if t.queryError != nil {
 			suite.EqualError(err, t.queryError.Error())
 		} else {

@@ -393,3 +393,13 @@ func RegenerateMesosTaskID(jobID *peloton.JobID, instanceID uint32, runtime *tas
 	}
 	runtime.State = task.TaskState_INITIALIZED
 }
+
+// Contains checks whether an item contains in a list
+func Contains(list []string, item string) bool {
+	for _, name := range list {
+		if name == item {
+			return true
+		}
+	}
+	return false
+}
