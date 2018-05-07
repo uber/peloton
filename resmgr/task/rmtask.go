@@ -57,6 +57,10 @@ func CreateRMTask(
 	r.Task().PlacementRetryCount = 0
 	// Placement timeout should be equal to placing timeout by default
 	r.Task().PlacementTimeout = config.PlacingTimeout.Seconds()
+	// Checking if placement backoff is enabled
+	if !config.EnablePlacementBackoff {
+		return &r, err
+	}
 	// Creating the backoff policy specified in config
 	// and will be used for further backoff calculations.
 	r.policy, err = GetFactory().CreateBackOffPolicy(config)
@@ -375,6 +379,10 @@ func (rmTask *RMTask) UpdateStartTime(startTime time.Time) {
 func (rmTask *RMTask) AddBackoff() error {
 	rmTask.Lock()
 	defer rmTask.Unlock()
+	// Check if policy is nil then we should return back
+	if rmTask.policy == nil {
+		return errors.Errorf("backoff policy is disabled %s", rmTask.Task().Id.GetValue())
+	}
 	// Adding the placement timeout values based on policy
 	rmTask.Task().PlacementTimeout = rmTask.config.PlacingTimeout.Seconds() +
 		rmTask.policy.GetNextBackoffDuration(rmTask.Task(), rmTask.config)
@@ -399,6 +407,12 @@ func (rmTask *RMTask) AddBackoff() error {
 // IsFailedEnoughPlacement returns true if one placement cylce is completed
 // otherwise false
 func (rmTask *RMTask) IsFailedEnoughPlacement() bool {
+	rmTask.Lock()
+	defer rmTask.Unlock()
+	// Checking if placement backoff is enabled
+	if !rmTask.config.EnablePlacementBackoff {
+		return false
+	}
 	return rmTask.policy.IsCycleCompleted(rmTask.Task(), rmTask.config)
 }
 

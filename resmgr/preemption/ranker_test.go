@@ -35,7 +35,9 @@ type RankerTestSuite struct {
 func (suite *RankerTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
 
-	rm_task.InitTaskTracker(tally.NoopScope)
+	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
+		EnablePlacementBackoff: true,
+	})
 	suite.tracker = rm_task.GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,

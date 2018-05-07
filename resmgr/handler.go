@@ -565,9 +565,12 @@ func (h *ServiceHandler) DequeueGangs(
 
 			// Moving task to Placing state
 			if h.rmTracker.GetTask(task.Id) != nil {
-				//Adding backoff
-				h.rmTracker.GetTask(task.Id).AddBackoff()
-
+				// Checking if placement backoff is enabled if yes add the
+				// backoff otherwise just dot he transition
+				if h.config.RmTaskConfig.EnablePlacementBackoff {
+					//Adding backoff
+					h.rmTracker.GetTask(task.Id).AddBackoff()
+				}
 				err = h.rmTracker.GetTask(task.Id).TransitTo(
 					t.TaskState_PLACING.String())
 				if err != nil {

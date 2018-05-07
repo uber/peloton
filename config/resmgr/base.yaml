@@ -46,6 +46,8 @@ resmgr:
     # This is the policy name for the backoff
     # which is going to dictate the backoff
     backoff_policy_name: exponential-policy
+    # This flag enable/disable the placement backoff
+    enable_placement_backoff: true
 
   preemption:
     task_preemption_period: 60s

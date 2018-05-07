@@ -58,7 +58,9 @@ func (suite *SchedulerTestSuite) SetupSuite() {
 	suite.resTree = respool.GetTree()
 	suite.readyQueue = queue.NewMultiLevelList("ready-queue", maxReadyQueueSize)
 	// Initializing the resmgr state machine
-	InitTaskTracker(tally.NoopScope)
+	InitTaskTracker(tally.NoopScope, &Config{
+		EnablePlacementBackoff: true,
+	})
 	suite.rmTaskTracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,

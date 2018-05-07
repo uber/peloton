@@ -239,7 +239,7 @@ func main() {
 		taskStore, *cfg.ResManager.PreemptionConfig)
 
 	// Initializing the resmgr state machine
-	task.InitTaskTracker(rootScope)
+	task.InitTaskTracker(rootScope, cfg.ResManager.RmTaskConfig)
 
 	// Initializing the task scheduler
 	task.InitScheduler(rootScope, cfg.ResManager.TaskSchedulingPeriod,

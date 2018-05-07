@@ -56,7 +56,9 @@ func (suite *recoveryTestSuite) SetupSuite() {
 		})
 	suite.resourceTree = rp.GetTree()
 	// Initializing the resmgr state machine
-	rm_task.InitTaskTracker(tally.NoopScope)
+	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
+		EnablePlacementBackoff: true,
+	})
 	suite.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 100*time.Second, suite.rmTaskTracker)
 	suite.taskScheduler = rm_task.GetScheduler()

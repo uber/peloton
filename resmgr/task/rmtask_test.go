@@ -51,7 +51,9 @@ func (s *RMTaskTestSuite) SetupSuite() {
 		})
 
 	s.resTree = respool.GetTree()
-	InitTaskTracker(tally.NoopScope)
+	InitTaskTracker(tally.NoopScope, &Config{
+		EnablePlacementBackoff: true,
+	})
 	s.tracker = GetTracker()
 	InitScheduler(tally.NoopScope, 1*time.Second, s.tracker)
 	s.taskScheduler = GetScheduler()
@@ -273,11 +275,12 @@ func (s *RMTaskTestSuite) TestReadyBackoff() {
 		nil,
 		node,
 		&Config{
-			LaunchingTimeout:      1 * time.Minute,
-			PlacingTimeout:        2 * time.Second,
-			PlacementRetryCycle:   3,
-			PlacementRetryBackoff: 1 * time.Second,
-			PolicyName:            ExponentialBackOffPolicy,
+			LaunchingTimeout:       1 * time.Minute,
+			PlacingTimeout:         2 * time.Second,
+			PlacementRetryCycle:    3,
+			PlacementRetryBackoff:  1 * time.Second,
+			PolicyName:             ExponentialBackOffPolicy,
+			EnablePlacementBackoff: true,
 		})
 
 	respool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
@@ -312,11 +315,12 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 		nil,
 		node,
 		&Config{
-			LaunchingTimeout:      1 * time.Minute,
-			PlacingTimeout:        2 * time.Second,
-			PlacementRetryCycle:   3,
-			PlacementRetryBackoff: 1 * time.Second,
-			PolicyName:            ExponentialBackOffPolicy,
+			LaunchingTimeout:       1 * time.Minute,
+			PlacingTimeout:         2 * time.Second,
+			PlacementRetryCycle:    3,
+			PlacementRetryBackoff:  1 * time.Second,
+			PolicyName:             ExponentialBackOffPolicy,
+			EnablePlacementBackoff: true,
 		})
 
 	respool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
@@ -340,6 +344,52 @@ func (s *RMTaskTestSuite) TestPendingBackoff() {
 	time.Sleep(5 * time.Second)
 	// Third Backoff and transition it should go to Pending state
 	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_PENDING.String())
+}
+
+func (s *RMTaskTestSuite) TestBackOffDisabled() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	node.SetEntitlement(s.getEntitlement())
+
+	s.tracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&Config{
+			LaunchingTimeout:      1 * time.Minute,
+			PlacingTimeout:        2 * time.Second,
+			PlacementRetryCycle:   3,
+			PlacementRetryBackoff: 1 * time.Second,
+			PolicyName:            ExponentialBackOffPolicy,
+			// Making backoff policy disabled
+			EnablePlacementBackoff: false,
+		})
+
+	respool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	respool.EnqueueGang(s.pendingGang0())
+	rmtask := s.tracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	// Transiting task to Pending state
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo("mesos_task_id",
+		*s.pendingGang0().Tasks[0].TaskId.Value))
+	s.NoError(err)
+
+	// Waiting for scheduler to kick in by that the Scheduler.scheduleTasks runs
+	// and we can test time out.
+	time.Sleep(2 * time.Second)
+	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
+	// Making PlacementRetryCount to 2 by that next backoff can make it to PENDING
+	// In case of backoff enabled and if thats not enabled it should make to READY
+	rmtask.task.PlacementRetryCount = 2
+	// Adding backoff but that should not be any effect.
+	rmtask.AddBackoff()
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	s.NoError(err)
+	s.taskScheduler.Stop()
+	// Testing the timeout hence sleep
+	time.Sleep(5 * time.Second)
+	// Third Backoff and transition it should go to READY state
+	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
 }
 
 func (s *RMTaskTestSuite) TestLaunchingTimeout() {

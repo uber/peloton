@@ -32,7 +32,13 @@ type TrackerTestSuite struct {
 }
 
 func (suite *TrackerTestSuite) SetupTest() {
-	InitTaskTracker(tally.NoopScope)
+	suite.setup(&Config{
+		EnablePlacementBackoff: true,
+	})
+}
+
+func (suite *TrackerTestSuite) setup(conf *Config) {
+	InitTaskTracker(tally.NoopScope, conf)
 	suite.tracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -384,5 +390,29 @@ func (suite *TrackerTestSuite) TestAddDeleteTasks() {
 	}()
 
 	wg.Wait()
+	suite.tracker.Clear()
+}
+
+func (suite *TrackerTestSuite) TestBackoffDisabled() {
+	suite.tracker.Clear()
+	rmtracker = nil
+	suite.setup(&Config{
+		EnablePlacementBackoff: false,
+	})
+
+	taskID := fmt.Sprintf("job1-%d", 1)
+	t := &peloton.TaskID{Value: taskID}
+
+	rmTask := suite.tracker.GetTask(t)
+	suite.NotNil(rmTask)
+
+	// transit to a timeout state
+	rmTask.TransitTo(task.TaskState_LAUNCHING.String())
+
+	err := suite.tracker.MarkItInvalid(t, "MesosDifferentTaskID")
+	suite.Error(err)
+
+	err = suite.tracker.MarkItInvalid(t, *rmTask.Task().TaskId.Value)
+	suite.NoError(err)
 	suite.tracker.Clear()
 }

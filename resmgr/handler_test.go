@@ -66,7 +66,9 @@ func (s *HandlerTestSuite) SetupSuite() {
 
 	s.resTree = respool.GetTree()
 	// Initializing the resmgr state machine
-	rm_task.InitTaskTracker(tally.NoopScope)
+	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
+		EnablePlacementBackoff: true,
+	})
 	s.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, s.rmTaskTracker)
 	s.taskScheduler = rm_task.GetScheduler()
@@ -82,11 +84,12 @@ func (s *HandlerTestSuite) SetupSuite() {
 		rmTracker: s.rmTaskTracker,
 		config: Config{
 			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout:      1 * time.Minute,
-				PlacingTimeout:        1 * time.Minute,
-				PolicyName:            rm_task.ExponentialBackOffPolicy,
-				PlacementRetryBackoff: 30 * time.Second,
-				PlacementRetryCycle:   1,
+				LaunchingTimeout:       1 * time.Minute,
+				PlacingTimeout:         1 * time.Minute,
+				PolicyName:             rm_task.ExponentialBackOffPolicy,
+				PlacementRetryBackoff:  30 * time.Second,
+				PlacementRetryCycle:    1,
+				EnablePlacementBackoff: true,
 			},
 		},
 	}
@@ -503,9 +506,10 @@ func (s *HandlerTestSuite) TestRequeue() {
 		nil,
 		node,
 		&rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-			PolicyName:       rm_task.ExponentialBackOffPolicy,
+			LaunchingTimeout:       1 * time.Minute,
+			PlacingTimeout:         1 * time.Minute,
+			PolicyName:             rm_task.ExponentialBackOffPolicy,
+			EnablePlacementBackoff: true,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
@@ -573,9 +577,10 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 		nil,
 		node,
 		&rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-			PolicyName:       rm_task.ExponentialBackOffPolicy,
+			LaunchingTimeout:       1 * time.Minute,
+			PlacingTimeout:         1 * time.Minute,
+			PolicyName:             rm_task.ExponentialBackOffPolicy,
+			EnablePlacementBackoff: true,
 		})
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
@@ -1010,14 +1015,18 @@ func (s *HandlerTestSuite) TestMarkTasksLaunched() {
 
 func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
-	rm_task.InitTaskTracker(tally.NoopScope)
+	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
+		EnablePlacementBackoff: true,
+	})
 	handler := &ServiceHandler{
 		metrics:   NewMetrics(tally.NoopScope),
 		maxOffset: &c,
 		rmTracker: rm_task.GetTracker(),
 	}
 	jobID := "test"
-	rm_task.InitTaskTracker(tally.NoopScope)
+	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
+		EnablePlacementBackoff: true,
+	})
 	uuidStr := uuid.NewUUID().String()
 	var events []*pb_eventstream.Event
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,

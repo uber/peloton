@@ -17,4 +17,6 @@ type Config struct {
 	// This is the policy name for the backoff
 	// which is going to dictate the backoff
 	PolicyName string `yaml:"backoff_policy_name"`
+	// This flag will enable/disable the placement backoff policies
+	EnablePlacementBackoff bool `yaml:"enable_placement_backoff"`
 }

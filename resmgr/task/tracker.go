@@ -86,7 +86,7 @@ type tracker struct {
 var rmtracker *tracker
 
 // InitTaskTracker initialize the task tracker
-func InitTaskTracker(parent tally.Scope) {
+func InitTaskTracker(parent tally.Scope, config *Config) {
 	if rmtracker != nil {
 		log.Info("Resource Manager Tracker is already initialized")
 		return
@@ -97,13 +97,17 @@ func InitTaskTracker(parent tally.Scope) {
 		metrics:    NewMetrics(parent.SubScope("tracker")),
 		counters:   make(map[string]float64),
 	}
+	defer func() {
+		log.Info("Resource Manager Tracker is initialized")
+	}()
 
+	if !config.EnablePlacementBackoff {
+		return
+	}
 	err := InitPolicyFactory()
 	if err != nil {
 		log.Error("Error initializing backoff policy")
 	}
-
-	log.Info("Resource Manager Tracker is initialized")
 }
 
 // GetTracker gets the singleton object of the tracker

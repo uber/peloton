@@ -37,7 +37,9 @@ type ReconcilerTestSuite struct {
 }
 
 func (suite *ReconcilerTestSuite) SetupTest() {
-	InitTaskTracker(tally.NoopScope)
+	InitTaskTracker(tally.NoopScope, &Config{
+		EnablePlacementBackoff: true,
+	})
 	suite.tracker = GetTracker()
 
 	suite.mockCtrl = gomock.NewController(suite.T())
