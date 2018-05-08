@@ -7,16 +7,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/infra/peloton/resmgr/queue"
-	"code.uber.internal/infra/peloton/resmgr/respool"
-	"code.uber.internal/infra/peloton/resmgr/scalar"
-
 	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-
 	"code.uber.internal/infra/peloton/common/statemachine"
 	"code.uber.internal/infra/peloton/resmgr/common"
+	"code.uber.internal/infra/peloton/resmgr/queue"
+	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -27,6 +25,9 @@ var (
 	errEnqueueEmptySchedUnit    = errors.New("empty gang to to ready queue enqueue")
 	errReadyQueueDequeueFailed  = errors.New("dequeue gang from ready queue failed")
 	errReadyQueueDequeueTimeout = errors.New("dequeue gang from ready queue timed out")
+	errTaskIsNotPresent         = errors.New("task is not present in tracker")
+	errTaskNotInCorrectState    = errors.New("task is not present in correct state")
+	errTaskNotTransitioned      = errors.New("task is not transitioned to state")
 )
 
 // Scheduler defines the interface of task scheduler which schedules
@@ -153,30 +154,15 @@ func (s *scheduler) scheduleTasks() {
 		var invalidGangs []*resmgrsvc.Gang
 		for _, gang := range gangList {
 
-			err = s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY,
+			invalidTasks, err := s.transitGang(gang, pt.TaskState_PENDING, pt.TaskState_READY,
 				"gang admitted")
 			if err != nil {
-				// we can not dequeue this gang Dropping them
-				// As they can block the whole resource pool.
-				// It could happen that the tasks have bene killed
-				// (Since the time they have been deququed) and
-				// removed from the tracker, so we need to drop
-				// them from scheduling and remove their resources
-				// from the resource pool allocation.
-				log.WithError(err).WithFields(log.Fields{
-					"Gang": gang,
-					"From": pt.TaskState_PENDING.String(),
-					"To":   pt.TaskState_READY.String(),
-				}).Error("Gang could not be transitioned to Ready " +
-					"due to invalid tasks, " +
-					"Dropping it")
-				// We need to remove the allocation from the resource pool
-				err = n.SubtractFromAllocation(scalar.GetGangAllocation(gang))
-				if err != nil {
-					log.WithError(err).WithField(
-						"Gang", gang).
-						Error("Not able to remove allocation " +
-							"from respool")
+				newGang := s.processGangFailure(n, gang, invalidTasks)
+				if newGang != nil {
+					// All the tasks are not deleted from the gang,
+					// Adding the new gang to invalid gang by that
+					// it can be requeued again
+					invalidGangs = append(invalidGangs, newGang)
 				}
 				continue
 			}
@@ -203,7 +189,8 @@ func (s *scheduler) scheduleTasks() {
 		// which can not be admitted to ready queue
 		// for the placement
 		for _, invalidGang := range invalidGangs {
-			err = s.transitGang(invalidGang, pt.TaskState_READY, pt.TaskState_PENDING, "gang admission failure")
+			_, err := s.transitGang(invalidGang, pt.TaskState_READY, pt.TaskState_PENDING,
+				"gang admission failure")
 			if err != nil {
 				log.WithError(err).Error("Not able to transit back " +
 					"to Pending")
@@ -223,11 +210,71 @@ func (s *scheduler) scheduleTasks() {
 	}
 }
 
+// processGangFailure removes the deleted tasks from the gang
+// and return the gang if there are valid tasks remaining
+func (s *scheduler) processGangFailure(
+	n respool.ResPool,
+	gang *resmgrsvc.Gang,
+	invalidTasks map[string]error,
+) *resmgrsvc.Gang {
+	var newTasks []*resmgr.Task
+	var deletedTasks []*resmgr.Task
+
+	for _, t := range gang.Tasks {
+		if err, ok := invalidTasks[t.Id.Value]; ok {
+			if err != errTaskIsNotPresent {
+				newTasks = append(newTasks, t)
+				continue
+			}
+			deletedTasks = append(deletedTasks, t)
+		}
+	}
+
+	if len(deletedTasks) > 0 {
+		// we can not dequeue this gang Dropping them
+		// As they can block the whole resource pool.
+		// It could happen that the tasks have bene killed
+		// (Since the time they have been deququed) and
+		// removed from the tracker, so we need to drop
+		// them from scheduling and remove their resources
+		// from the resource pool allocation.
+		log.WithError(errTaskIsNotPresent).WithFields(log.Fields{
+			"deleted_tasks": deletedTasks,
+			"From":          pt.TaskState_PENDING.String(),
+			"To":            pt.TaskState_READY.String(),
+		}).Info("Tasks could not be transitioned to Ready " +
+			"due to deletion, " +
+			"Dropping them")
+		// We need to remove the allocation from the resource pool
+		// We are deleting allocation only for deleted tasks
+		err := n.SubtractFromAllocation(scalar.GetGangAllocation(&resmgrsvc.Gang{
+			Tasks: deletedTasks,
+		}))
+		if err != nil {
+			log.WithError(err).WithField(
+				"Gang", gang).
+				Error("Not able to remove allocation " +
+					"from respool")
+		}
+	}
+
+	// All the tasks are deleted from the gang, returning nil
+	if len(newTasks) == 0 {
+		return nil
+	}
+
+	// Creating new gang with remaining tasks
+	return &resmgrsvc.Gang{
+		Tasks: newTasks,
+	}
+}
+
 // transitGang tries to transit to "TO" state for all the tasks
 // in the gang and if anyone fails sends error
-func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, toState pt.TaskState, reason string) error {
+func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, toState pt.TaskState,
+	reason string) (map[string]error, error) {
 	isInvalidTaskInGang := false
-	invalidTasks := ""
+	invalidTasks := make(map[string]error)
 	for _, task := range gang.GetTasks() {
 		rmTask := s.rmTaskTracker.GetTask(task.Id)
 		if rmTask == nil {
@@ -237,9 +284,16 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 				"to":      toState.String(),
 				"from":    fromState.String(),
 			}).Error("Task not in tracker")
-			invalidTasks = invalidTasks + " , " + task.Id.Value
+			invalidTasks[task.Id.Value] = errTaskIsNotPresent
 			continue
 		}
+
+		// Locking the RMtask for making the transition
+		rmTaskLock := func() {
+			rmTask.Lock()
+			defer rmTask.Unlock()
+		}
+		rmTaskLock()
 
 		if rmTask.GetCurrentState() != fromState {
 			isInvalidTaskInGang = true
@@ -249,7 +303,7 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 				"from":       fromState.String(),
 				"task_state": rmTask.GetCurrentState().String(),
 			}).Error("Task is not in expected state")
-			invalidTasks = invalidTasks + " , " + task.Id.Value
+			invalidTasks[task.Id.Value] = errTaskNotInCorrectState
 			continue
 		}
 
@@ -262,14 +316,14 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 				"from":       fromState.String(),
 				"task_state": rmTask.GetCurrentState().String(),
 			}).Error("Failed to transition task")
-			invalidTasks = invalidTasks + " , " + task.Id.Value
+			invalidTasks[task.Id.Value] = errTaskNotTransitioned
 		}
 	}
 
 	if isInvalidTaskInGang {
-		return errors.Errorf("Invalid Tasks in gang %s", invalidTasks)
+		return invalidTasks, errors.Errorf("Invalid Tasks in gang %s", gang)
 	}
-	return nil
+	return nil, nil
 }
 
 // Stop stops Task Scheduler process

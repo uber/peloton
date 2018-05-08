@@ -99,6 +99,7 @@ func (suite *SchedulerTestSuite) TearDownTest() {
 	suite.NoError(err)
 	err = suite.taskSched.Stop()
 	suite.NoError(err)
+	suite.rmTaskTracker.Clear()
 }
 
 func TestTaskScheduler(t *testing.T) {
@@ -522,6 +523,63 @@ func (suite *SchedulerTestSuite) TestUntrackedTasks() {
 	expectedTaskIDs := []string{
 		"job2-1",
 		"job2-2",
+		"job1-2",
+	}
+	suite.validateReadyQueue(expectedTaskIDs)
+}
+
+func (suite *SchedulerTestSuite) TestDeletePartialTasksTasks() {
+	suite.rmTaskTracker.Clear()
+	tasks := []*resmgr.Task{
+		{
+			Name:     "job1-1",
+			Priority: 1,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-1"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			Preemptible: true,
+		},
+		{
+			Name:     "job1-2",
+			Priority: 1,
+			JobId:    &peloton.JobID{Value: "job1"},
+			Id:       &peloton.TaskID{Value: "job1-2"},
+			Resource: &task.ResourceConfig{
+				CpuLimit:    1,
+				DiskLimitMb: 10,
+				GpuLimit:    0,
+				MemLimitMb:  100,
+			},
+			Preemptible: true,
+		},
+	}
+
+	resPool, err := suite.resTree.Get(&peloton.ResourcePoolID{
+		Value: "respool11",
+	})
+	resPool.SetEntitlement(suite.getEntitlement())
+
+	for _, t := range tasks {
+		suite.NoError(err)
+		suite.addTasktotracker(t)
+		rmTask := suite.rmTaskTracker.GetTask(t.Id)
+		err = rmTask.TransitTo(task.TaskState_PENDING.String())
+		suite.NoError(err)
+	}
+	resPool.EnqueueGang(&resmgrsvc.Gang{
+		Tasks: tasks,
+	})
+	suite.rmTaskTracker.DeleteTask(&peloton.TaskID{Value: "job1-1"})
+
+	suite.taskSched.scheduleTasks()
+	suite.rmTaskTracker.Clear()
+
+	expectedTaskIDs := []string{
 		"job1-2",
 	}
 	suite.validateReadyQueue(expectedTaskIDs)

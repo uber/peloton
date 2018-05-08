@@ -838,7 +838,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 		log.WithFields(log.Fields{
 			"task_id": rmTask.Task().TaskId.Value,
 			"event":   event,
-		}).Error("could not be updated due to" +
+		}).Info("could not be updated due to" +
 			"different mesos task ID")
 		return
 	}

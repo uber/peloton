@@ -214,7 +214,7 @@ func (s *RMTaskTestSuite) pendingGang0() *resmgrsvc.Gang {
 }
 
 func (s *RMTaskTestSuite) pendingGangs() []*resmgrsvc.Gang {
-	gangs := make([]*resmgrsvc.Gang, 3)
+	gangs := make([]*resmgrsvc.Gang, 1)
 	gangs[0] = s.pendingGang0()
 	return gangs
 }
@@ -409,10 +409,7 @@ func (s *RMTaskTestSuite) TestLaunchingTimeout() {
 			PlacementRetryBackoff: 1 * time.Second,
 			PolicyName:            ExponentialBackOffPolicy,
 		})
-
-	respool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	respool.EnqueueGang(s.pendingGang0())
 	rmtask := s.tracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo("mesos_task_id",
 		*s.pendingGang0().Tasks[0].TaskId.Value))
