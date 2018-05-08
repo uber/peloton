@@ -226,6 +226,10 @@ func determineJobRuntimeState(jobRuntime *job.RuntimeInfo,
 			stateCounts[task.TaskState_KILLED.String()] == instances) {
 		jobState = job.JobState_KILLED
 		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
+	} else if jobRuntime.State == job.JobState_KILLING {
+		// jobState is set to KILLING in JobKill to avoid materialized view delay,
+		// should keep the state to be KILLING unless job transits to terminal state
+		jobState = job.JobState_KILLING
 	} else if stateCounts[task.TaskState_RUNNING.String()] > 0 {
 		jobState = job.JobState_RUNNING
 	} else {

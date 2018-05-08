@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -23,8 +23,8 @@ func TestJobKill(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskStore := storemocks.NewMockTaskStore(ctrl)
 	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
@@ -49,68 +49,68 @@ func TestJobKill(t *testing.T) {
 	}
 
 	instanceCount := uint32(4)
-	jobConfig := pb_job.JobConfig{
+	jobConfig := pbjob.JobConfig{
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
+		Type:          pbjob.JobType_BATCH,
 	}
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).
 		Return(&jobConfig, nil)
 
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
-	runtimes[0] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_RUNNING,
-		GoalState: pb_task.TaskState_SUCCEEDED,
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+	runtimes[0] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
-	runtimes[1] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_RUNNING,
-		GoalState: pb_task.TaskState_SUCCEEDED,
+	runtimes[1] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
-	runtimes[2] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_INITIALIZED,
-		GoalState: pb_task.TaskState_SUCCEEDED,
+	runtimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
-	runtimes[3] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_INITIALIZED,
-		GoalState: pb_task.TaskState_SUCCEEDED,
-	}
-
-	newRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
-	newRuntimes[0] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_RUNNING,
-		GoalState: pb_task.TaskState_KILLED,
-		Message:   "Task stop API request",
-		Reason:    "",
-	}
-	newRuntimes[1] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_RUNNING,
-		GoalState: pb_task.TaskState_KILLED,
-		Message:   "Task stop API request",
-		Reason:    "",
-	}
-	newRuntimes[2] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_INITIALIZED,
-		GoalState: pb_task.TaskState_KILLED,
-		Message:   "Task stop API request",
-		Reason:    "",
-	}
-	newRuntimes[3] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_INITIALIZED,
-		GoalState: pb_task.TaskState_KILLED,
-		Message:   "Task stop API request",
-		Reason:    "",
+	runtimes[3] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 
-	jobRuntime := &pb_job.RuntimeInfo{
-		State:     pb_job.JobState_RUNNING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	newRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	newRuntimes[0] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_KILLED,
+		Message:   "Task stop API request",
+		Reason:    "",
 	}
-	newJobRuntime := &pb_job.RuntimeInfo{
-		State:     pb_job.JobState_KILLING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	newRuntimes[1] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_KILLED,
+		Message:   "Task stop API request",
+		Reason:    "",
+	}
+	newRuntimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_KILLED,
+		Message:   "Task stop API request",
+		Reason:    "",
+	}
+	newRuntimes[3] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_INITIALIZED,
+		GoalState: pbtask.TaskState_KILLED,
+		Message:   "Task stop API request",
+		Reason:    "",
+	}
+
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_SUCCEEDED,
+	}
+	newJobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_KILLING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 
 	taskStore.EXPECT().
@@ -123,7 +123,7 @@ func TestJobKill(t *testing.T) {
 		UpdateTasks(gomock.Any(), newRuntimes, cached.UpdateCacheAndDB).
 		Return(nil)
 	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH).Times(int(instanceCount))
+		GetJobType().Return(pbjob.JobType_BATCH).Times(int(instanceCount))
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return().Times(int(instanceCount))
@@ -145,8 +145,8 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	jobStore := storemocks.NewMockJobStore(ctrl)
+	taskStore := storemocks.NewMockTaskStore(ctrl)
 	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
@@ -171,33 +171,33 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 	}
 
 	instanceCount := uint32(4)
-	jobConfig := pb_job.JobConfig{
+	jobConfig := pbjob.JobConfig{
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
+		Type:          pbjob.JobType_BATCH,
 	}
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).
 		Return(&jobConfig, nil)
 
-	runtimes := make(map[uint32]*pb_task.RuntimeInfo)
-	runtimes[2] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_SUCCEEDED,
-		GoalState: pb_task.TaskState_KILLED,
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+	runtimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_SUCCEEDED,
+		GoalState: pbtask.TaskState_KILLED,
 	}
-	runtimes[3] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_KILLED,
-		GoalState: pb_task.TaskState_KILLED,
+	runtimes[3] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_KILLED,
+		GoalState: pbtask.TaskState_KILLED,
 	}
-	jobRuntime := &pb_job.RuntimeInfo{
-		State:     pb_job.JobState_INITIALIZED,
-		GoalState: pb_job.JobState_KILLED,
+	jobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_INITIALIZED,
+		GoalState: pbjob.JobState_KILLED,
 	}
-	newJobRuntime := &pb_job.RuntimeInfo{
-		State:     pb_job.JobState_KILLED,
-		GoalState: pb_job.JobState_KILLED,
+	newJobRuntime := &pbjob.RuntimeInfo{
+		State:     pbjob.JobState_KILLED,
+		GoalState: pbjob.JobState_KILLED,
 	}
 
 	taskStore.EXPECT().
@@ -221,12 +221,12 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 	err := JobKill(context.Background(), jobEnt)
 	assert.NoError(t, err)
 
-	runtimes[2] = &pb_task.RuntimeInfo{
-		State:     pb_task.TaskState_RUNNING,
-		GoalState: pb_task.TaskState_KILLED,
+	runtimes[2] = &pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_KILLED,
 	}
-	jobRuntime.State = pb_job.JobState_INITIALIZED
-	newJobRuntime.State = pb_job.JobState_KILLING
+	jobRuntime.State = pbjob.JobState_INITIALIZED
+	newJobRuntime.State = pbjob.JobState_KILLING
 
 	jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).

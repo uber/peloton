@@ -13,27 +13,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TaskKilled handles killed tasks. The kill attempts in the cache needs to
-// be reset to zero after task is successfully killed.
-func TaskKilled(ctx context.Context, entity goalstate.Entity) error {
-	taskEnt := entity.(*taskEntity)
-	goalStateDriver := taskEnt.driver
-	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
-	if cachedJob == nil {
-		return nil
-	}
-	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
-	if cachedTask == nil {
-		log.WithFields(log.Fields{
-			"job_id":      taskEnt.jobID.GetValue(),
-			"instance_id": taskEnt.instanceID,
-		}).Error("task is nil in cache with valid job")
-		return nil
-	}
-	cachedTask.ClearKillAttempts()
-	return nil
-}
-
 // TaskFailed handles initialized tasks with failed goal state.
 // This is not a valid condition and this is implemented to recover
 // tasks stuck in this state due to a previous job manager bug.

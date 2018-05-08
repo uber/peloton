@@ -150,16 +150,6 @@ func TestEngineSuggestActionGoalKilled(t *testing.T) {
 	}
 
 	a := taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 0},
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
-	assert.Equal(t, KilledAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: cached.UnknownVersion},
-		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 1})
-	assert.Equal(t, KilledAction, a)
-
-	a = taskEnt.suggestTaskAction(
 		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 0},
 		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: 0})
 	assert.Equal(t, StopAction, a)
@@ -168,6 +158,11 @@ func TestEngineSuggestActionGoalKilled(t *testing.T) {
 		cached.TaskStateVector{State: pb_task.TaskState_RUNNING, ConfigVersion: 10},
 		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: cached.UnknownVersion})
 	assert.Equal(t, StopAction, a)
+
+	a = taskEnt.suggestTaskAction(
+		cached.TaskStateVector{State: pb_task.TaskState_KILLING, ConfigVersion: 10},
+		cached.TaskStateVector{State: pb_task.TaskState_KILLED, ConfigVersion: cached.UnknownVersion})
+	assert.Equal(t, ExecutorShutdownAction, a)
 }
 
 func TestEngineSuggestActionLaunchedState(t *testing.T) {
@@ -261,6 +256,10 @@ func TestEngineSuggestActionGoalPreempting(t *testing.T) {
 		{
 			currentState: pb_task.TaskState_KILLED,
 			action:       PreemptAction,
+		},
+		{
+			currentState: pb_task.TaskState_KILLING,
+			action:       ExecutorShutdownAction,
 		},
 	}
 

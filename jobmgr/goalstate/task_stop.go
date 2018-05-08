@@ -11,7 +11,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
-	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -125,6 +125,7 @@ func stopInitializedTask(ctx context.Context, taskEnt *taskEntity) error {
 func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.RuntimeInfo) error {
 	goalStateDriver := taskEnt.driver
 	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+
 	if cachedJob == nil {
 		return nil
 	}
@@ -137,22 +138,19 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 		return nil
 	}
 
-	// Send kill signal to mesos first time, shutdown the executor if timeout
-	if cachedTask.GetKillAttempts() == 0 {
-		err := jobmgr_task.KillTask(ctx, goalStateDriver.hostmgrClient, runtime.GetMesosTaskId())
-		if err != nil {
-			return err
-		}
-		cachedTask.IncrementKillAttempts()
-		// timeout for task kill
-		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now().Add(_defaultShutdownExecutorTimeout))
-		return nil
+	// Send kill signal to mesos first time
+	err := jobmgrtask.KillTask(ctx, goalStateDriver.hostmgrClient, runtime.GetMesosTaskId())
+	if err != nil {
+		return err
 	}
 
-	goalStateDriver.mtx.taskMetrics.ExecutorShutdown.Inc(1)
-	log.WithField("job_id", taskEnt.jobID).
-		WithField("instance_id", taskEnt.instanceID).
-		Info("task kill timed out, try to shutdown executor")
-
-	return jobmgr_task.ShutdownMesosExecutor(ctx, goalStateDriver.hostmgrClient, runtime.GetMesosTaskId(), runtime.GetAgentID())
+	runtime.State = task.TaskState_KILLING
+	runtime.Message = "Killing the task"
+	runtime.Reason = ""
+	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
+	if err == nil {
+		// timeout for task kill
+		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now().Add(_defaultShutdownExecutorTimeout))
+	}
+	return err
 }

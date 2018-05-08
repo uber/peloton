@@ -82,7 +82,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	}
 	jobState := job.JobState_KILLING
 
-	// If all instances have not been created, and all created instances are already killed,
+	// If not all instances have been created, and all created instances are already killed,
 	// then directly update the job state to KILLED.
 	if len(updatedRuntimes) == 0 && jobRuntime.GetState() == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated() {
 		jobState = job.JobState_KILLED

@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -33,15 +33,15 @@ type JobRuntimeUpdaterTestSuite struct {
 	suite.Suite
 
 	ctrl                *gomock.Controller
-	jobStore            *store_mocks.MockJobStore
-	taskStore           *store_mocks.MockTaskStore
+	jobStore            *storemocks.MockJobStore
+	taskStore           *storemocks.MockTaskStore
 	jobGoalStateEngine  *goalstatemocks.MockEngine
 	taskGoalStateEngine *goalstatemocks.MockEngine
 	jobFactory          *cachedmocks.MockJobFactory
 	cachedJob           *cachedmocks.MockJob
 	cachedTask          *cachedmocks.MockTask
 	goalStateDriver     *driver
-	resmgrClient        *res_mocks.MockResourceManagerServiceYARPCClient
+	resmgrClient        *resmocks.MockResourceManagerServiceYARPCClient
 	jobID               *peloton.JobID
 	jobEnt              *jobEntity
 }
@@ -52,10 +52,10 @@ func TestJobRuntimeUpdater(t *testing.T) {
 
 func (suite *JobRuntimeUpdaterTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
-	suite.jobStore = store_mocks.NewMockJobStore(suite.ctrl)
-	suite.taskStore = store_mocks.NewMockTaskStore(suite.ctrl)
+	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
 
-	suite.resmgrClient = res_mocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
+	suite.resmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
 	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
 	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
@@ -87,16 +87,16 @@ func (suite *JobRuntimeUpdaterTestSuite) TearDownTest() {
 // Verify that completion time of a completed job shouldn't be empty.
 func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 	instanceCount := uint32(100)
-	jobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_KILLED,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_KILLED,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
 	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 
 	// Simulate KILLED job which never ran
 	stateCounts := make(map[string]uint32)
-	stateCounts[pb_task.TaskState_KILLED.String()] = instanceCount
+	stateCounts[pbtask.TaskState_KILLED.String()] = instanceCount
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -126,7 +126,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			suite.NotEqual(runtime.CompletionTime, "")
 		}).
 		Return(nil)
@@ -140,17 +140,17 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 
 func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 	instanceCount := uint32(100)
-	jobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_PENDING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 
 	// Simulate RUNNING job
 	stateCounts := make(map[string]uint32)
-	stateCounts[pb_task.TaskState_PENDING.String()] = instanceCount / 4
-	stateCounts[pb_task.TaskState_RUNNING.String()] = instanceCount / 4
-	stateCounts[pb_task.TaskState_LAUNCHED.String()] = instanceCount / 4
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount / 4
+	stateCounts[pbtask.TaskState_PENDING.String()] = instanceCount / 4
+	stateCounts[pbtask.TaskState_RUNNING.String()] = instanceCount / 4
+	stateCounts[pbtask.TaskState_LAUNCHED.String()] = instanceCount / 4
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 4
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -174,13 +174,13 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			instanceCount := uint32(100)
-			suite.Equal(runtime.State, pb_job.JobState_RUNNING)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_PENDING.String()], instanceCount/4)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_RUNNING.String()], instanceCount/4)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_LAUNCHED.String()], instanceCount/4)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_SUCCEEDED.String()], instanceCount/4)
+			suite.Equal(runtime.State, pbjob.JobState_RUNNING)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_PENDING.String()], instanceCount/4)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_RUNNING.String()], instanceCount/4)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_LAUNCHED.String()], instanceCount/4)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/4)
 		}).
 		Return(nil)
 
@@ -189,7 +189,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	// Simulate SUCCEEDED job
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount
 
 	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
 	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
@@ -222,10 +222,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			instanceCount := uint32(100)
-			suite.Equal(runtime.State, pb_job.JobState_SUCCEEDED)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_SUCCEEDED.String()], instanceCount)
+			suite.Equal(runtime.State, pbjob.JobState_SUCCEEDED)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount)
 			suite.Equal(runtime.StartTime, jobStartTime)
 			suite.Equal(runtime.CompletionTime, jobCompletionTime)
 		}).
@@ -240,8 +240,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	// Simulate PENDING job
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_PENDING.String()] = instanceCount / 2
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_PENDING.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 2
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -265,11 +265,11 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			instanceCount := uint32(100)
-			suite.Equal(runtime.State, pb_job.JobState_PENDING)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_SUCCEEDED.String()], instanceCount/2)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_PENDING.String()], instanceCount/2)
+			suite.Equal(runtime.State, pbjob.JobState_PENDING)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/2)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_PENDING.String()], instanceCount/2)
 		}).
 		Return(nil)
 
@@ -278,8 +278,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	// Simulate FAILED job
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_FAILED.String()] = instanceCount / 2
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_FAILED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 2
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -307,11 +307,11 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			instanceCount := uint32(100)
-			suite.Equal(runtime.State, pb_job.JobState_FAILED)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_SUCCEEDED.String()], instanceCount/2)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_FAILED.String()], instanceCount/2)
+			suite.Equal(runtime.State, pbjob.JobState_FAILED)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/2)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_FAILED.String()], instanceCount/2)
 		}).
 		Return(nil)
 
@@ -322,11 +322,55 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
 
+	// Simulate KILLING job
+	stateCounts = make(map[string]uint32)
+	stateCounts[pbtask.TaskState_KILLING.String()] = instanceCount / 4
+	stateCounts[pbtask.TaskState_KILLED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 4
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	jobRuntimeWithKilledGoalState := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_KILLING,
+		GoalState: pbjob.JobState_KILLED,
+	}
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.jobID).
+		Return(&jobRuntimeWithKilledGoalState, nil)
+
+	suite.cachedJob.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount)
+
+	suite.taskStore.EXPECT().
+		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
+		Return(stateCounts, nil)
+
+	suite.cachedJob.EXPECT().
+		GetFirstTaskUpdateTime().
+		Return(startTimeUnix)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			instanceCount := uint32(100)
+			suite.Equal(runtime.State, pbjob.JobState_KILLING)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/4)
+			stateCounts[pbtask.TaskState_KILLING.String()] = instanceCount / 4
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_KILLED.String()], instanceCount/2)
+		}).
+		Return(nil)
+
+	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	suite.NoError(err)
+
 	// Simulate KILLED job
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_FAILED.String()] = instanceCount / 4
-	stateCounts[pb_task.TaskState_KILLED.String()] = instanceCount / 2
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount / 4
+	stateCounts[pbtask.TaskState_FAILED.String()] = instanceCount / 4
+	stateCounts[pbtask.TaskState_KILLED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 4
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -354,12 +398,12 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			instanceCount := uint32(100)
-			suite.Equal(runtime.State, pb_job.JobState_KILLED)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_SUCCEEDED.String()], instanceCount/4)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_FAILED.String()], instanceCount/4)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_KILLED.String()], instanceCount/2)
+			suite.Equal(runtime.State, pbjob.JobState_KILLED)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/4)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_FAILED.String()], instanceCount/4)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_KILLED.String()], instanceCount/2)
 		}).
 		Return(nil)
 
@@ -372,10 +416,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	// Simulate INITIALIZED job
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount / 2
-	jobRuntime = pb_job.RuntimeInfo{
-		State:     pb_job.JobState_INITIALIZED,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 2
+	jobRuntime = pbjob.RuntimeInfo{
+		State:     pbjob.JobState_INITIALIZED,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 
 	suite.jobFactory.EXPECT().
@@ -404,10 +448,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
 			instanceCount := uint32(100)
-			suite.Equal(runtime.State, pb_job.JobState_INITIALIZED)
-			suite.Equal(runtime.TaskStats[pb_task.TaskState_SUCCEEDED.String()], instanceCount/2)
+			suite.Equal(runtime.State, pbjob.JobState_INITIALIZED)
+			suite.Equal(runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/2)
 		}).
 		Return(nil)
 
@@ -416,10 +460,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	// Simulate fake DB error
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount
-	jobRuntime = pb_job.RuntimeInfo{
-		State:     pb_job.JobState_RUNNING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount
+	jobRuntime = pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 
 	suite.jobFactory.EXPECT().
@@ -455,10 +499,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	// Simulate SUCCEEDED job with correct task stats in runtime but incorrect state
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount
-	jobRuntime = pb_job.RuntimeInfo{
-		State:     pb_job.JobState_RUNNING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount
+	jobRuntime = pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 		TaskStats: stateCounts,
 	}
 
@@ -488,8 +532,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-		Do(func(ctx context.Context, id *peloton.JobID, runtime *pb_job.RuntimeInfo) {
-			suite.Equal(runtime.State, pb_job.JobState_SUCCEEDED)
+		Do(func(ctx context.Context, id *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.State, pbjob.JobState_SUCCEEDED)
 		}).
 		Return(nil)
 
@@ -502,9 +546,9 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	// Simulate killed job with no tasks created
 	stateCounts = make(map[string]uint32)
-	jobRuntime = pb_job.RuntimeInfo{
-		State:     pb_job.JobState_KILLED,
-		GoalState: pb_job.JobState_KILLED,
+	jobRuntime = pbjob.RuntimeInfo{
+		State:     pbjob.JobState_KILLED,
+		GoalState: pbjob.JobState_KILLED,
 		TaskStats: stateCounts,
 	}
 
@@ -531,25 +575,25 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 	instanceCount := uint32(100)
 	maxRunningInstances := uint32(10)
-	jobConfig := pb_job.JobConfig{
+	jobConfig := pbjob.JobConfig{
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: instanceCount,
-		Type:          pb_job.JobType_BATCH,
-		Sla: &pb_job.SlaConfig{
+		Type:          pbjob.JobType_BATCH,
+		Sla: &pbjob.SlaConfig{
 			MaximumRunningInstances: maxRunningInstances,
 		},
 	}
 
-	jobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_RUNNING,
-		GoalState: pb_job.JobState_SUCCEEDED,
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_RUNNING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 
 	// Simulate RUNNING job
 	stateCounts := make(map[string]uint32)
-	stateCounts[pb_task.TaskState_INITIALIZED.String()] = instanceCount / 2
-	stateCounts[pb_task.TaskState_SUCCEEDED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_INITIALIZED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 2
 	jobRuntime.TaskStats = stateCounts
 
 	var initializedTasks []uint32
@@ -570,14 +614,14 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		Return(&jobRuntime, nil)
 
 	suite.taskStore.EXPECT().
-		GetTaskIDsForJobAndState(gomock.Any(), suite.jobID, pb_task.TaskState_INITIALIZED.String()).
+		GetTaskIDsForJobAndState(gomock.Any(), suite.jobID, pbtask.TaskState_INITIALIZED.String()).
 		Return(initializedTasks, nil)
 
 	for i := uint32(0); i < jobConfig.Sla.MaximumRunningInstances; i++ {
 		suite.taskStore.EXPECT().
 			GetTaskRuntime(gomock.Any(), suite.jobID, gomock.Any()).
-			Return(&pb_task.RuntimeInfo{
-				State: pb_task.TaskState_INITIALIZED,
+			Return(&pbtask.RuntimeInfo{
+				State: pbtask.TaskState_INITIALIZED,
 			}, nil)
 		suite.cachedJob.EXPECT().
 			GetTask(gomock.Any()).Return(suite.cachedTask)
@@ -596,10 +640,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 
 	suite.cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
+		Do(func(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req cached.UpdateRequest) {
 			suite.Equal(uint32(len(runtimes)), jobConfig.Sla.MaximumRunningInstances)
 			for _, runtime := range runtimes {
-				suite.Equal(runtime.GetState(), pb_task.TaskState_PENDING)
+				suite.Equal(runtime.GetState(), pbtask.TaskState_PENDING)
 			}
 		}).
 		Return(nil)
@@ -609,8 +653,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 
 	// Simulate when max running instances are already running
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_INITIALIZED.String()] = instanceCount - maxRunningInstances
-	stateCounts[pb_task.TaskState_RUNNING.String()] = maxRunningInstances
+	stateCounts[pbtask.TaskState_INITIALIZED.String()] = instanceCount - maxRunningInstances
+	stateCounts[pbtask.TaskState_RUNNING.String()] = maxRunningInstances
 	jobRuntime.TaskStats = stateCounts
 
 	suite.jobFactory.EXPECT().
@@ -630,8 +674,8 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 
 	// Simulate error when scheduled instances is greater than maximum running instances
 	stateCounts = make(map[string]uint32)
-	stateCounts[pb_task.TaskState_INITIALIZED.String()] = instanceCount / 2
-	stateCounts[pb_task.TaskState_RUNNING.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_INITIALIZED.String()] = instanceCount / 2
+	stateCounts[pbtask.TaskState_RUNNING.String()] = instanceCount / 2
 	jobRuntime.TaskStats = stateCounts
 
 	suite.jobFactory.EXPECT().

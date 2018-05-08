@@ -40,16 +40,6 @@ type Task interface {
 
 	// GoalState of the task.
 	GoalState() TaskStateVector
-
-	// TODO remove all functions related to kill attempts
-	// GetKillAttempts returns number of kill attempts up till now
-	GetKillAttempts() int
-
-	// IncrementKillAttempts increments the number of kill attempts
-	IncrementKillAttempts()
-
-	// ClearKillAttempts  sets kill attempts to 0
-	ClearKillAttempts()
 }
 
 // TaskStateVector defines the state of a task.
@@ -79,10 +69,6 @@ type task struct {
 	runtime *pbtask.RuntimeInfo // task runtime information
 
 	lastRuntimeUpdateTime time.Time // last time at which the task runtime information was updated
-
-	// TBD killingAttempts need to be removed from cache
-	// killingAttempts tracks how many times we had try to kill this task
-	killingAttempts int
 }
 
 func (t *task) ID() uint32 {
@@ -163,25 +149,4 @@ func (t *task) GoalState() TaskStateVector {
 		State:         t.runtime.GetGoalState(),
 		ConfigVersion: t.runtime.GetDesiredConfigVersion(),
 	}
-}
-
-func (t *task) GetKillAttempts() int {
-	t.RLock()
-	defer t.RUnlock()
-
-	return t.killingAttempts
-}
-
-func (t *task) IncrementKillAttempts() {
-	t.Lock()
-	defer t.Unlock()
-
-	t.killingAttempts++
-}
-
-func (t *task) ClearKillAttempts() {
-	t.Lock()
-	defer t.Unlock()
-
-	t.killingAttempts = 0
 }

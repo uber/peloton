@@ -26,12 +26,12 @@ type TaskAction string
 const (
 	// NoTaskAction implies do not take any action
 	NoTaskAction TaskAction = "noop"
-	// KilledAction is run when task has been killed
-	KilledAction TaskAction = "killed"
 	// StartAction starts a task by sending it to resource manager
 	StartAction TaskAction = "start_task"
 	// StopAction kills the task
 	StopAction TaskAction = "stop_task"
+	// ExecutorShutdownAction shuts down executor directly after StopAction timeout
+	ExecutorShutdownAction TaskAction = "executor_shutdown"
 	// PreemptAction preempts the task
 	PreemptAction TaskAction = "preempt_action"
 	// InitializeAction re-initializes the task and regenerates the mesos task id
@@ -50,16 +50,16 @@ const (
 // _taskActionsMaps maps the task action string to task action function
 var (
 	_taskActionsMaps = map[TaskAction]goalstate.Action{
-		NoTaskAction:      nil,
-		KilledAction:      TaskKilled,
-		StartAction:       TaskStart,
-		StopAction:        TaskStop,
-		PreemptAction:     TaskPreempt,
-		InitializeAction:  TaskInitialize,
-		ReloadTaskRuntime: TaskReloadRuntime,
-		FailAction:        TaskFailed,
-		LaunchRetryAction: TaskLaunchRetry,
-		FailRetryAction:   TaskFailRetry,
+		NoTaskAction:           nil,
+		StartAction:            TaskStart,
+		StopAction:             TaskStop,
+		PreemptAction:          TaskPreempt,
+		InitializeAction:       TaskInitialize,
+		ReloadTaskRuntime:      TaskReloadRuntime,
+		FailAction:             TaskFailed,
+		LaunchRetryAction:      TaskLaunchRetry,
+		FailRetryAction:        TaskFailRetry,
+		ExecutorShutdownAction: TaskExecutorShutdown,
 	}
 )
 
@@ -67,6 +67,7 @@ var (
 	// _isoVersionsTaskRules maps current states to action, given a goal state:
 	// goal-state -> current-state -> action.
 	// It assumes task's runtime and goal are at the same version
+	// TODO: add action for invalid state/goal state combination
 	_isoVersionsTaskRules = map[task.TaskState]map[task.TaskState]TaskAction{
 		task.TaskState_UNKNOWN: {
 			// This reloads the task runtime from DB if the task runtime in cache is nil
@@ -89,9 +90,7 @@ var (
 			task.TaskState_LAUNCHING:   StopAction,
 			task.TaskState_LAUNCHED:    StopAction,
 			task.TaskState_RUNNING:     StopAction,
-			task.TaskState_KILLED:      KilledAction,
-			task.TaskState_SUCCEEDED:   KilledAction,
-			task.TaskState_FAILED:      KilledAction,
+			task.TaskState_KILLING:     ExecutorShutdownAction,
 		},
 		task.TaskState_FAILED: {
 			// FAILED is not a valid task goal state.
@@ -105,6 +104,7 @@ var (
 			task.TaskState_LAUNCHING:   StopAction,
 			task.TaskState_LAUNCHED:    StopAction,
 			task.TaskState_RUNNING:     StopAction,
+			task.TaskState_KILLING:     ExecutorShutdownAction,
 			task.TaskState_LOST:        PreemptAction,
 			task.TaskState_KILLED:      PreemptAction,
 		},
