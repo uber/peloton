@@ -3,8 +3,23 @@
 0.7.0 (unreleased)
 ------------------
 
-0.6.12.1
+0.6.13
 ------------------
+* 2018-05-09    Add filtering `name` and `host` for task query                                         chunyang.shen@uber.com
+* 2018-05-08    Add KILLING state for task                                                             zhixin@uber.com
+* 2018-05-08    Deleted tasks from the gangs needs to be removed from gang and enqueued again          mabansal@uber.com
+* 2018-05-08    Add option to show progress for `job stop` cli action                                  avyas@uber.com
+* 2018-05-07    Making placement backoff feature enable/disbale via config                             mabansal@uber.com
+* 2018-05-04    Update `respool dump` cli to honor `-j/--json` flag                                    avyas@uber.com
+* 2018-05-04    Add job config validatation rule and refactor                                          zhixin@uber.com
+* 2018-05-04    Bug fixes at host summary, refactoring and unit tests.                                 varung@uber.com
+* 2018-05-03    Adding Placement backoff support in Peloton                                            mabansal@uber.com
+* 2018-05-03    Check for cached job and task to be non nil before using it                            apoorvaj@uber.com
+* 2018-05-03    Upgrade mesos version in pcluster and mesos proto files to  version 1.5.0-rc2          adityacb@uber.com
+* 2018-05-02    Update `GetPendingTasks` API to include `NonPreemptible` queue                         avyas@uber.com
+* 2018-05-02    Always evaluate tasks during recovery except for onces recovered by job recovery       apoorvaj@uber.com
+* 2018-05-02    Update version of ledership and libkv package                                          zhixin@uber.com
+* 2018-05-02    Update CHANGELOG for 0.6.12.1                                                          apoorvaj@uber.com
 * 2018-05-01    revert protoc-gen-go version                                                           varung@uber.com
 * 2018-05-01    Add job delete integration tests                                                       adityacb@uber.com
 * 2018-05-01    Revert "fix unit test broken by revert of 4533a25"                                     apoorvaj@uber.com
