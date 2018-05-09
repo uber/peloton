@@ -44,6 +44,13 @@ message ResourcePoolID {
   string value = 1;
 }
 
+/**
+ *  A unique ID assigned to a Secret. This is a UUID in RFC4122 format.
+ */
+message SecretID {
+  string value = 1;
+}
+
 
 /**
  *  Change log of an entity info, such as Job config etc.
@@ -81,4 +88,25 @@ message Label {
 message TimeRange {
   google.protobuf.Timestamp min = 1;
   google.protobuf.Timestamp max = 2;
+}
+
+/**
+ * Secret is used to store secrets per job and contains
+ * ID, absolute container mount path and base64 encoded secret data
+ */
+message Secret {
+  message Value
+  {
+    // Secret data as byte array
+    bytes data = 1;
+  }
+
+  // UUID of the secret
+  SecretID id = 1;
+
+  // Path at which the secret file will be mounted in the container
+  string path = 2;
+
+  // Secret value
+  Value value = 3;
 }

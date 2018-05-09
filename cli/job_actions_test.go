@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io/ioutil"
 	"testing"
@@ -21,8 +22,10 @@ import (
 )
 
 const (
-	testJobConfig = "../example/testjob.yaml"
-	testJobID     = "481d565e-28da-457d-8434-f6bb7faa0e95"
+	testJobConfig  = "../example/testjob.yaml"
+	testJobID      = "481d565e-28da-457d-8434-f6bb7faa0e95"
+	testSecretPath = "/tmp/secret"
+	testSecretStr  = "my-test-secret"
 )
 
 type jobActionsTestSuite struct {
@@ -76,6 +79,8 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 		respoolLookupRequest  *respool.LookupRequest
 		respoolLookupResponse *respool.LookupResponse
 		createError           error
+		secretPath            string
+		secretStr             string
 	}{
 		{
 			jobID: "",
@@ -152,13 +157,47 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 			},
 			createError: nil,
 		},
+		{
+			jobID: id,
+			jobCreateRequest: &job.CreateRequest{
+				Id: &peloton.JobID{
+					Value: id,
+				},
+				Config: config,
+				Secrets: []*peloton.Secret{&peloton.Secret{
+					Path: testSecretPath,
+					Value: &peloton.Secret_Value{
+						Data: []byte(base64.StdEncoding.EncodeToString([]byte(testSecretStr))),
+					},
+				}},
+			},
+			jobCreateResponse: &job.CreateResponse{
+				JobId: &peloton.JobID{
+					Value: id,
+				},
+			},
+			respoolLookupRequest: &respool.LookupRequest{
+				Path: &respool.ResourcePoolPath{
+					Value: path,
+				},
+			},
+			respoolLookupResponse: &respool.LookupResponse{
+				Id: &peloton.ResourcePoolID{
+					Value: id,
+				},
+			},
+			createError: nil,
+			// set secretPath and secretStr explicitly here,
+			// for the rest of the tests, this will default to ""
+			secretPath: testSecretPath,
+			secretStr:  testSecretStr,
+		},
 	}
 
 	for _, t := range tt {
 		suite.withMockResourcePoolLookup(t.respoolLookupRequest, t.respoolLookupResponse)
 		suite.withMockJobCreateResponse(t.jobCreateRequest, t.jobCreateResponse, t.createError)
-
-		err := c.JobCreateAction(t.jobID, path, testJobConfig)
+		err := c.JobCreateAction(t.jobID, path, testJobConfig, t.secretPath, t.secretStr)
 		if t.createError != nil {
 			suite.EqualError(err, t.createError.Error())
 		} else {

@@ -149,6 +149,15 @@ type VolumeMetrics struct {
 	VolumeDeleteFail tally.Counter
 }
 
+// SecretMetrics is a struct for tracking secrets related counters in the storage layer
+type SecretMetrics struct {
+	SecretCreate     tally.Counter
+	SecretCreateFail tally.Counter
+	SecretGet        tally.Counter
+	SecretGetFail    tally.Counter
+	SecretNotFound   tally.Counter
+}
+
 // ErrorMetrics is a struct for tracking all the storage error counters
 type ErrorMetrics struct {
 	ReadFailure        tally.Counter
@@ -175,6 +184,7 @@ type Metrics struct {
 	ResourcePoolMetrics   *ResourcePoolMetrics
 	FrameworkStoreMetrics *FrameworkStoreMetrics
 	VolumeMetrics         *VolumeMetrics
+	SecretMetrics         *SecretMetrics
 	ErrorMetrics          *ErrorMetrics
 }
 
@@ -205,6 +215,11 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	volumeScope := scope.SubScope("persistent_volume")
 	volumeSuccessScope := volumeScope.Tagged(map[string]string{"result": "success"})
 	volumeFailScope := volumeScope.Tagged(map[string]string{"result": "fail"})
+
+	secretScope := scope.SubScope("secret")
+	secretSuccessScope := secretScope.Tagged(map[string]string{"result": "success"})
+	secretFailScope := secretScope.Tagged(map[string]string{"result": "fail"})
+	secretNotFoundScope := secretScope.Tagged(map[string]string{"result": "not_found"})
 
 	storageErrorScope := scope.SubScope("storage_error")
 
@@ -324,6 +339,14 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		VolumeDeleteFail: volumeFailScope.Counter("delete"),
 	}
 
+	secretMetrics := &SecretMetrics{
+		SecretCreate:     secretSuccessScope.Counter("create"),
+		SecretCreateFail: secretFailScope.Counter("create"),
+		SecretGet:        secretSuccessScope.Counter("get"),
+		SecretGetFail:    secretFailScope.Counter("get"),
+		SecretNotFound:   secretNotFoundScope.Counter("get"),
+	}
+
 	errorMetrics := &ErrorMetrics{
 		ReadFailure:        storageErrorScope.Counter("read_failure"),
 		WriteFailure:       storageErrorScope.Counter("write_failure"),
@@ -347,6 +370,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ResourcePoolMetrics:   resourcePoolMetrics,
 		FrameworkStoreMetrics: frameworkStoreMetrics,
 		VolumeMetrics:         volumeMetrics,
+		SecretMetrics:         secretMetrics,
 		ErrorMetrics:          errorMetrics,
 	}
 

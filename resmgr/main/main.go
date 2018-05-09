@@ -188,7 +188,7 @@ func main() {
 
 	mux.HandleFunc(logging.LevelOverwrite, logging.LevelOverwriteHandler(initialLevel))
 
-	jobStore, taskStore, _, respoolStore, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
+	store := stores.MustCreateStore(&cfg.Storage, rootScope)
 
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewInbounds(
@@ -235,8 +235,14 @@ func main() {
 	})
 
 	// Initialize resource pool service handlers
-	respool.InitServiceHandler(dispatcher, rootScope, respoolStore, jobStore,
-		taskStore, *cfg.ResManager.PreemptionConfig)
+	respool.InitServiceHandler(
+		dispatcher,
+		rootScope,
+		store, // store implements RespoolStore
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		*cfg.ResManager.PreemptionConfig,
+	)
 
 	// Initializing the resmgr state machine
 	task.InitTaskTracker(rootScope, cfg.ResManager.RmTaskConfig)
@@ -256,7 +262,12 @@ func main() {
 	)
 
 	// Initializing the task reconciler
-	task.InitReconciler(task.GetTracker(), taskStore, rootScope, cfg.ResManager.TaskReconciliationPeriod)
+	task.InitReconciler(
+		task.GetTracker(),
+		store, // store implements TaskStore
+		rootScope,
+		cfg.ResManager.TaskReconciliationPeriod,
+	)
 
 	// Initializing the task preemptor
 	preemption.InitPreemptor(rootScope, cfg.ResManager.PreemptionConfig, task.GetTracker())
@@ -265,7 +276,13 @@ func main() {
 	serviceHandler := resmgr.InitServiceHandler(dispatcher, rootScope, task.GetTracker(), preemption.GetPreemptor(), cfg.ResManager)
 
 	// Initialize recovery
-	resmgr.InitRecovery(rootScope, jobStore, taskStore, serviceHandler, cfg.ResManager)
+	resmgr.InitRecovery(
+		rootScope,
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		serviceHandler,
+		cfg.ResManager,
+	)
 
 	server := resmgr.NewServer(
 		rootScope,

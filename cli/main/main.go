@@ -80,7 +80,9 @@ var (
 	jobCreateID          = jobCreate.Flag("jobID", "optional job identifier, must be UUID format").Short('i').String()
 	jobCreateResPoolPath = jobCreate.Arg("respool", "complete path of the "+
 		"resource pool starting from the root").Required().String()
-	jobCreateConfig = jobCreate.Arg("config", "YAML job configuration").Required().ExistingFile()
+	jobCreateConfig     = jobCreate.Arg("config", "YAML job configuration").Required().ExistingFile()
+	jobCreateSecretPath = jobCreate.Flag("secret-path", "secret mount path").Default("").String()
+	jobCreateSecret     = jobCreate.Flag("secret-data", "secret data string").Default("").String()
 
 	jobDelete     = job.Command("delete", "delete a job")
 	jobDeleteName = jobDelete.Arg("job", "job identifier").Required().String()
@@ -336,7 +338,14 @@ func main() {
 
 	switch cmd {
 	case jobCreate.FullCommand():
-		err = client.JobCreateAction(*jobCreateID, *jobCreateResPoolPath, *jobCreateConfig)
+		err = client.JobCreateAction(
+			*jobCreateID,
+			*jobCreateResPoolPath,
+			*jobCreateConfig,
+			*jobCreateSecretPath,
+			*jobCreateSecret,
+		)
+
 	case jobDelete.FullCommand():
 		err = client.JobDeleteAction(*jobDeleteName)
 	case jobStop.FullCommand():

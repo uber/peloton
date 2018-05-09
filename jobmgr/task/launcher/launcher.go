@@ -45,6 +45,7 @@ type launcher struct {
 	jobFactory    cached.JobFactory
 	taskStore     storage.TaskStore
 	volumeStore   storage.PersistentVolumeStore
+	secretStore   storage.SecretStore
 	metrics       *Metrics
 	retryPolicy   backoff.RetryPolicy
 }
@@ -52,6 +53,9 @@ type launcher struct {
 const (
 	// Time out for the function to time out
 	_rpcTimeout = 10 * time.Second
+
+	// default secret store cassandra timeout
+	_defaultSecretStoreTimeout = 10 * time.Second
 )
 
 var (
@@ -69,6 +73,7 @@ func InitTaskLauncher(
 	jobFactory cached.JobFactory,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
+	secretStore storage.SecretStore,
 	parent tally.Scope,
 ) {
 	onceInitTaskLauncher.Do(func() {
@@ -82,6 +87,7 @@ func InitTaskLauncher(
 			jobFactory:    jobFactory,
 			taskStore:     taskStore,
 			volumeStore:   volumeStore,
+			secretStore:   secretStore,
 			metrics:       NewMetrics(parent.SubScope("jobmgr").SubScope("task")),
 			// TODO: make launch retry policy config.
 			retryPolicy: backoff.NewRetryPolicy(3, 15*time.Second),
@@ -386,10 +392,15 @@ func (l *launcher) launchTasks(
 		return errEmptyTasks
 	}
 
+	err := l.populateSecrets(ctx, selectedTasks)
+	if err != nil {
+		l.metrics.TaskLaunchFail.Inc(1)
+		return err
+	}
+
 	log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
 
 	callStart := time.Now()
-	var err error
 	if placement.Type != resmgr.TaskType_STATEFUL {
 		err = backoff.Retry(
 			func() error {
@@ -442,4 +453,54 @@ func (l *launcher) TryReturnOffers(ctx context.Context, err error, placement *re
 		}
 	}
 	return err
+}
+
+// populateSecrets checks task config for each of the
+// tasks in selectedTasks list for secrets. If the config
+// has volumes of type secret, it means that the Value field
+// of that secret contains the secret ID. This function queries
+// the DB to fetch the secret by secret ID and then replaces
+// the secret Value by the fetched secret data.
+// We do this to prevent secrets from being leaked as a part
+// of job or task config and populate the task config with
+// actual secrets just before task launch.
+func (l *launcher) populateSecrets(
+	ctx context.Context,
+	selectedTasks []*hostsvc.LaunchableTask,
+) error {
+	for _, selectedTask := range selectedTasks {
+		taskConfig := selectedTask.GetConfig()
+		if taskConfig.GetContainer().GetType() != mesos.ContainerInfo_MESOS {
+			return nil
+		}
+		for _, volume := range taskConfig.GetContainer().GetVolumes() {
+			if volume.GetSource().GetType() == mesos.Volume_Source_SECRET &&
+				volume.GetSource().GetSecret().GetValue().GetData() != nil {
+				// Replace secret ID with actual secret here.
+				// This is done to make sure secrets are read from the DB
+				// when it is absolutely necessary and that they are not
+				// persisted in any place other than the secret_info table
+				// (for example as part of job/task config)
+				ctx, cancel := context.WithTimeout(
+					context.Background(),
+					_defaultSecretStoreTimeout,
+				)
+				defer cancel()
+				secret, err := l.secretStore.GetSecret(
+					ctx, &peloton.SecretID{
+						Value: string(volume.
+							GetSource().
+							GetSecret().
+							GetValue().
+							GetData()),
+					},
+				)
+				if err != nil {
+					return err
+				}
+				volume.GetSource().GetSecret().GetValue().Data = secret.GetValue().GetData()
+			}
+		}
+	}
+	return nil
 }

@@ -23,14 +23,17 @@ import (
 
 	"code.uber.internal/infra/peloton/common/backoff"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 )
 
 const (
-	taskIDFmt   = "testjob-%d-%s"
-	testJobName = "testjob"
-	testPort    = uint32(100)
+	taskIDFmt      = "testjob-%d-%s"
+	testJobName    = "testjob"
+	testPort       = uint32(100)
+	testSecretPath = "/tmp/secret"
+	testSecretStr  = "test-data"
 )
 
 var (
@@ -673,6 +676,68 @@ func TestProcessPlacementsWithNoTasksReleasesOffers(t *testing.T) {
 	})
 
 	time.Sleep(1 * time.Second)
+}
+
+// TestPopulateSecrets tests the populateSecrets function
+// to make sure that all the tasks in launchableTasks list
+// that contain a volume/secret will be populated with
+// the actual secret data fetched from the secret store
+func TestPopulateSecrets(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockSecretStore := store_mocks.NewMockSecretStore(ctrl)
+	taskLauncher := launcher{
+		secretStore: mockSecretStore,
+	}
+
+	// Expected Secret
+	secret := &peloton.Secret{
+		Path: testSecretPath,
+		Value: &peloton.Secret_Value{
+			Data: []byte(testSecretStr),
+		},
+	}
+
+	// generate 3 test tasks
+	numTasks := 3
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	var launchableTasks []*hostsvc.LaunchableTask
+	for i := 0; i < numTasks; i++ {
+		idStr := fmt.Sprintf("secret-id-%d", i)
+		tmp := createTestTask(i)
+		tmp.GetConfig().Container = &mesos.ContainerInfo{
+			Type: &mesosContainerizer,
+			Volumes: []*mesos.Volume{
+				jobmgrtask.CreateSecretVolume(testSecretPath, idStr),
+			},
+		}
+		launchableTask := hostsvc.LaunchableTask{
+			Config: tmp.GetConfig(),
+		}
+		launchableTasks = append(launchableTasks, &launchableTask)
+		mockSecretStore.EXPECT().
+			GetSecret(
+				gomock.Any(),
+				&peloton.SecretID{Value: idStr}).
+			Return(secret, nil)
+	}
+
+	err := taskLauncher.populateSecrets(context.Background(), launchableTasks)
+	assert.NoError(t, err)
+
+	// launchableTasks list should now be updated with actual secret data.
+	// Verify if it matches "test-data" for all tasks
+	for _, task := range launchableTasks {
+		secretFromTask := task.GetConfig().
+			GetContainer().
+			GetVolumes()[0].
+			GetSource().
+			GetSecret().
+			GetValue().
+			GetData()
+		assert.Equal(t, secretFromTask, []byte(testSecretStr))
+	}
 }
 
 // createPlacementMultipleTasks creates the placement with multiple tasks

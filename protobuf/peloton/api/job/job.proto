@@ -343,6 +343,9 @@ message InvalidJobConfig {
 message CreateRequest {
   peloton.JobID id = 1;
   JobConfig config = 2;
+
+  // The list of secrets for this job
+  repeated peloton.Secret secrets=3;
 }
 
 // DEPRECATED by peloton.api.job.svc.CreateJobResponse
@@ -361,6 +364,9 @@ message CreateResponse {
 message UpdateRequest {
   peloton.JobID id = 1;
   JobConfig config = 2;
+
+  // The list of secrets for this job
+  repeated peloton.Secret secrets=3;
 }
 
 // DEPRECATED by peloton.api.job.svc.UpdateJobResponse
@@ -390,6 +396,13 @@ message GetResponse {
   Error error = 1;
 
   JobInfo jobInfo = 2;
+
+  /*
+    The list of secrets for this job, secret.Value will be empty.
+    SecretID and path will be populated, so that caller
+    can identify which secret is associated with this job.
+   */
+  repeated peloton.Secret secrets = 3;
 }
 
 // DEPRECATED by peloton.api.job.svc.QueryJobsRequest

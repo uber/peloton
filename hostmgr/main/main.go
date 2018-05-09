@@ -231,7 +231,7 @@ func main() {
 
 	rootScope.Counter("boot").Inc(1)
 
-	jobStore, taskStore, _, _, frameworkInfoStore, volumeStore := stores.CreateStores(&cfg.Storage, rootScope)
+	store := stores.MustCreateStore(&cfg.Storage, rootScope)
 
 	authHeader, err := mesos.GetAuthHeader(&cfg.Mesos, *mesosSecretFile)
 	if err != nil {
@@ -241,7 +241,7 @@ func main() {
 	// Initialize YARPC dispatcher with necessary inbounds and outbounds
 	driver := mesos.InitSchedulerDriver(
 		&cfg.Mesos,
-		frameworkInfoStore,
+		store, // store implements FrameworkInfoStore
 		authHeader,
 	)
 
@@ -321,7 +321,11 @@ func main() {
 		cfg.Mesos.Encoding,
 	)
 
-	mesos.InitManager(dispatcher, &cfg.Mesos, frameworkInfoStore)
+	mesos.InitManager(
+		dispatcher,
+		&cfg.Mesos,
+		store, // store implements FrameworkInfoStore
+	)
 
 	log.WithFields(log.Fields{
 		"http_port": cfg.HostManager.HTTPPort,
@@ -333,8 +337,8 @@ func main() {
 		schedulerClient,
 		rootScope,
 		driver,
-		jobStore,
-		taskStore,
+		store, // store implements JobStore
+		store, // store implements TaskStore
 		cfg.HostManager.TaskReconcilerConfig,
 	)
 
@@ -390,7 +394,7 @@ func main() {
 		time.Duration(cfg.HostManager.OfferHoldTimeSec)*time.Second,
 		time.Duration(cfg.HostManager.OfferPruningPeriodSec)*time.Second,
 		schedulerClient,
-		volumeStore,
+		store, // store implements VolumeStore
 		backgroundManager,
 		cfg.HostManager.HostPruningPeriodSec,
 	)
@@ -404,7 +408,7 @@ func main() {
 		schedulerClient,
 		masterOperatorClient,
 		driver,
-		volumeStore,
+		store, // store implements VolumeStore
 		cfg.Mesos,
 		mesosMasterDetector,
 	)

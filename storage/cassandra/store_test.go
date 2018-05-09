@@ -31,7 +31,9 @@ import (
 )
 
 const (
-	_resPoolOwner = "teamPeloton"
+	_resPoolOwner  = "teamPeloton"
+	testSecretStr  = "test-data"
+	testSecretPath = "/tmp/file1"
 )
 
 type CassandraStoreTestSuite struct {
@@ -992,6 +994,78 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 		suite.refreshLuceneIndex()
 		// query jobs should result in 0 entries after delete
 		_, _ = suite.queryJobs(spec, 0, 0)
+	}
+}
+
+// TestSecrets tests the secret store API to create and
+// get secrets from secret_info table. It also tests
+// helper function createSecretFromResults for positive
+// and negative test cases (different DB query results)
+func (suite *CassandraStoreTestSuite) TestSecrets() {
+	var secretStore storage.SecretStore
+	secretStore = store
+
+	jobID := &peloton.JobID{Value: uuid.New()}
+	secretID := &peloton.SecretID{Value: uuid.New()}
+	secret := &peloton.Secret{
+		Id:   secretID,
+		Path: testSecretPath,
+		Value: &peloton.Secret_Value{
+			Data: []byte(testSecretStr),
+		},
+	}
+	// Test CreateSecret to verify secret creation in data base is successful
+	err := secretStore.CreateSecret(context.Background(), secret, jobID)
+	suite.NoError(err)
+
+	secretResult, err := secretStore.GetSecret(context.Background(), secretID)
+	suite.NoError(err)
+	suite.Equal(secretResult, secret)
+
+	// Test error conditions
+
+	testResult := make(map[string]interface{})
+	// One secretID must yield to one result row
+	// If the results list has two rows, this will fail
+	_, err = store.createSecretFromResults(secretID,
+		[]map[string]interface{}{
+			// two rows mapping to same secret id
+			testResult,
+			testResult,
+		})
+	suite.Error(err)
+
+	// One secretID must yield to one result row
+	// If the results list has zero rows, this will fail
+	_, err = store.createSecretFromResults(secretID,
+		[]map[string]interface{}{
+		// zero rows mapping to same secret id
+		})
+	suite.Error(err)
+
+	// Test table for bad secret value and path
+	tt := []struct {
+		data interface{}
+		path interface{}
+	}{
+		{
+			// data is not a string
+			data: 42,
+			path: testSecretPath,
+		},
+		{
+			data: testSecretStr,
+			// path is not a string
+			path: 42,
+		},
+	}
+
+	for _, t := range tt {
+		testResult["data"] = t.data
+		testResult["path"] = t.path
+		_, err = store.createSecretFromResults(secretID,
+			[]map[string]interface{}{testResult})
+		suite.Error(err)
 	}
 }
 

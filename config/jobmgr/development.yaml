@@ -24,3 +24,5 @@ job_manager:
     start_timeout: 60s
   deadline:
     deadline_tracking_period: 60s
+  job_service:
+    enable_secrets: true

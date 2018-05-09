@@ -9,23 +9,10 @@ import (
 	"github.com/uber-go/tally"
 )
 
-// CreateStores creates all stores that is needed by peloton
-func CreateStores(
-	cfg *storage_config.Config, rootScope tally.Scope) (
-	storage.JobStore,
-	storage.TaskStore,
-	storage.UpdateStore,
-	storage.ResourcePoolStore,
-	storage.FrameworkInfoStore,
-	storage.PersistentVolumeStore) {
-
-	var jobStore storage.JobStore
-	var taskStore storage.TaskStore
-	var updateStore storage.UpdateStore
-	var resourcePoolStore storage.ResourcePoolStore
-	var frameworkInfoStore storage.FrameworkInfoStore
-	var volumeStore storage.PersistentVolumeStore
-
+// MustCreateStore creates a generic store that is needed by peloton
+// and exits if store can't be created
+func MustCreateStore(
+	cfg *storage_config.Config, rootScope tally.Scope) storage.Store {
 	if !cfg.UseCassandra {
 		// Connect to mysql DB
 		if err := cfg.MySQL.Connect(); err != nil {
@@ -43,30 +30,17 @@ func CreateStores(
 		store.DB.SetMaxOpenConns(cfg.DbWriteConcurrency)
 		store.DB.SetMaxIdleConns(cfg.DbWriteConcurrency)
 		store.DB.SetConnMaxLifetime(cfg.MySQL.ConnLifeTime)
-
-		jobStore = store
-		taskStore = store
-		resourcePoolStore = store
-		frameworkInfoStore = store
-		volumeStore = store
-	} else {
-		log.Infof("cassandra Config: %v", cfg.Cassandra)
-		if cfg.AutoMigrate {
-			if errs := cfg.Cassandra.AutoMigrate(); errs != nil {
-				log.Fatalf("Could not migrate database: %+v", errs)
-			}
-		}
-		store, err := cassandra.NewStore(&cfg.Cassandra, rootScope)
-		if err != nil {
-			log.Fatalf("Could not create cassandra store: %+v", err)
-		}
-
-		jobStore = store
-		taskStore = store
-		updateStore = store
-		resourcePoolStore = store
-		frameworkInfoStore = store
-		volumeStore = store
+		return store
 	}
-	return jobStore, taskStore, updateStore, resourcePoolStore, frameworkInfoStore, volumeStore
+	log.Infof("cassandra Config: %v", cfg.Cassandra)
+	if cfg.AutoMigrate {
+		if errs := cfg.Cassandra.AutoMigrate(); errs != nil {
+			log.Fatalf("Could not migrate database: %+v", errs)
+		}
+	}
+	store, err := cassandra.NewStore(&cfg.Cassandra, rootScope)
+	if err != nil {
+		log.Fatalf("Could not create cassandra store: %+v", err)
+	}
+	return store
 }

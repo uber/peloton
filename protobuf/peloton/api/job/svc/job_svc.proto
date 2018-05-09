@@ -62,6 +62,9 @@ message CreateJobRequest {
 
   // The detailed configuration of the job to be created.
   JobConfig config = 3;
+
+  // The list of secrets for this job
+  repeated peloton.Secret secrets = 4;
 }
 
 
@@ -99,6 +102,12 @@ message GetJobRequest {
 message GetJobResponse {
   // The job configuration of the matching job.
   JobConfig result = 1;
+  /*
+    The list of secrets for this job, secret.Value will be empty.
+    SecretID and path will be populated, so that caller
+    can identify which secret is associated with this job.
+   */
+  repeated peloton.Secret secrets = 3;
 }
 
 
@@ -159,6 +168,8 @@ message UpdateJobRequest {
   peloton.JobID id = 1;
   // The new job config to be applied to the job.
   JobConfig config = 2;
+  // The list of secrets for this job
+  repeated peloton.Secret secrets = 3;
 }
 
 

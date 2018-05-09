@@ -220,8 +220,9 @@ func main() {
 		logging.LevelOverwriteHandler(initialLevel),
 	)
 
-	jobStore, taskStore, updateStore, _, frameworkInfoStore, volumeStore :=
-		stores.CreateStores(&cfg.Storage, rootScope)
+	// store implements JobStore, TaskStore, VolumeStore, UpdateStore
+	// and FrameworkInfoStore
+	store := stores.MustCreateStore(&cfg.Storage, rootScope)
 
 	// Create both HTTP and GRPC inbounds
 	inbounds := rpc.NewInbounds(
@@ -284,23 +285,28 @@ func main() {
 		},
 	})
 
-	jobFactory := cached.InitJobFactory(jobStore, taskStore, volumeStore, rootScope)
+	jobFactory := cached.InitJobFactory(
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		store, // store implements VolumeStore
+		rootScope)
 
 	// TODO: We need to cleanup the client names
 	launcher.InitTaskLauncher(
 		dispatcher,
 		common.PelotonHostManager,
 		jobFactory,
-		taskStore,
-		volumeStore,
+		store, // store implements TaskStore
+		store, // store implements VolumeStore
+		store, // store implements SecretStore
 		rootScope,
 	)
 
 	goalStateDriver := goalstate.NewDriver(
 		dispatcher,
-		jobStore,
-		taskStore,
-		volumeStore,
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		store, // store implements VolumeStore
 		jobFactory,
 		launcher.GetLauncher(),
 		rootScope,
@@ -321,8 +327,9 @@ func main() {
 	jobsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		jobStore,
-		taskStore,
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		store, // store implements SecretStore
 		jobFactory,
 		goalStateDriver,
 		common.PelotonResourceManager, // TODO: to be removed
@@ -332,9 +339,9 @@ func main() {
 	tasksvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		jobStore,
-		taskStore,
-		frameworkInfoStore,
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		store, // store implements FrameworkInfoStore
 		jobFactory,
 		goalStateDriver,
 		*mesosAgentWorkDir,
@@ -344,13 +351,17 @@ func main() {
 	volumesvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
-		jobStore,
-		taskStore,
-		volumeStore,
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		store, // store implements VolumeStore
 	)
 
-	updateManager := updatesvc.NewManager(jobStore, cfg.JobManager.Update)
-	updatesvc.InitServiceHandler(dispatcher, jobStore, updateStore)
+	updateManager := updatesvc.NewManager(store, // JobStore
+		cfg.JobManager.Update)
+	updatesvc.InitServiceHandler(dispatcher,
+		store, // store implements JobStore
+		store, // store implements UpdateStore
+	)
 
 	// Start dispatch loop
 	if err := dispatcher.Start(); err != nil {
@@ -362,9 +373,9 @@ func main() {
 	event.InitTaskStatusUpdate(
 		dispatcher,
 		common.PelotonHostManager,
-		jobStore,
-		taskStore,
-		volumeStore,
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		store, // store implements VolumeStore
 		jobFactory,
 		goalStateDriver,
 		[]event.Listener{},
@@ -376,8 +387,8 @@ func main() {
 	event.InitTaskStatusUpdateRM(
 		dispatcher,
 		common.PelotonHostManager,
-		jobStore,
-		taskStore,
+		store, // store implements JobStore
+		store, // store implements TaskStore
 		common.PelotonResourceManager,
 		rootScope,
 	)
@@ -386,7 +397,7 @@ func main() {
 	taskPreemptor := preemptor.New(
 		dispatcher,
 		common.PelotonResourceManager,
-		taskStore,
+		store, // store implements TaskStore
 		jobFactory,
 		goalStateDriver,
 		&cfg.JobManager.Preemptor,
@@ -396,8 +407,8 @@ func main() {
 	// Create a new Dead Line tracker for jobs
 	deadlineTracker := deadline.New(
 		dispatcher,
-		jobStore,
-		taskStore,
+		store, // store implements JobStore
+		store, // store implements TaskStore
 		jobFactory,
 		goalStateDriver,
 		rootScope,

@@ -2,9 +2,11 @@ package jobsvc
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	apierrors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -18,6 +20,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job/config"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
@@ -43,6 +46,7 @@ func InitServiceHandler(
 	parent tally.Scope,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
+	secretStore storage.SecretStore,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	clientName string,
@@ -52,6 +56,7 @@ func InitServiceHandler(
 	handler := &serviceHandler{
 		jobStore:        jobStore,
 		taskStore:       taskStore,
+		secretStore:     secretStore,
 		respoolClient:   respool.NewResourceManagerYARPCClient(d.ClientConfig(clientName)),
 		resmgrClient:    resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(clientName)),
 		rootCtx:         context.Background(),
@@ -68,6 +73,7 @@ func InitServiceHandler(
 type serviceHandler struct {
 	jobStore        storage.JobStore
 	taskStore       storage.TaskStore
+	secretStore     storage.SecretStore
 	respoolClient   respool.ResourceManagerYARPCClient
 	resmgrClient    resmgrsvc.ResourceManagerServiceYARPCClient
 	rootCtx         context.Context
@@ -83,11 +89,9 @@ func (h *serviceHandler) Create(
 	ctx context.Context,
 	req *job.CreateRequest) (*job.CreateResponse, error) {
 
-	log.WithField("request", req).Debug("JobManager.Create called")
-
 	h.metrics.JobAPICreate.Inc(1)
 
-	jobID := req.Id
+	jobID := req.GetId()
 	// It is possible that jobId is nil since protobuf doesn't enforce it
 	if jobID == nil {
 		jobID = &peloton.JobID{Value: ""}
@@ -95,7 +99,7 @@ func (h *serviceHandler) Create(
 
 	if len(jobID.Value) == 0 {
 		jobID.Value = uuid.New()
-		log.WithField("jobID", jobID).Info("Genarating UUID ID for empty job ID")
+		log.WithField("job_id", jobID).Info("Genarating UUID for empty job ID")
 	} else {
 		if uuid.Parse(jobID.Value) == nil {
 			log.WithField("job_id", jobID.Value).Warn("JobID is not valid UUID")
@@ -110,7 +114,7 @@ func (h *serviceHandler) Create(
 			}, nil
 		}
 	}
-	jobConfig := req.Config
+	jobConfig := req.GetConfig()
 
 	err := h.validateResourcePool(jobConfig.RespoolID)
 	if err != nil {
@@ -139,6 +143,12 @@ func (h *serviceHandler) Create(
 				},
 			},
 		}, nil
+	}
+
+	err = h.handleSecrets(ctx, jobID, jobConfig, req.GetSecrets())
+	if err != nil {
+		h.metrics.JobCreateFail.Inc(1)
+		return &job.CreateResponse{}, err
 	}
 
 	err = h.jobStore.CreateJob(ctx, jobID, jobConfig, "peloton")
@@ -245,6 +255,10 @@ func (h *serviceHandler) Update(
 			Version:   oldConfig.GetChangeLog().GetVersion() + 1,
 		}
 	}
+
+	// TODO (adityacb): handle secrets here
+	// Do not update secret id of existing secrets.
+	// Just replace the secret data in the database for that id
 
 	err = h.jobStore.UpdateJobConfig(ctx, jobID, newConfig)
 	if err != nil {
@@ -505,5 +519,106 @@ func (h *serviceHandler) validateResourcePool(
 		return errNonLeafResourcePool
 	}
 
+	return nil
+}
+
+// handleSecrets will validate secrets in Create/Update job
+// request. It will then construct the mesos volume of type
+// secret and add it to the defaultconfig for this job.
+// This will be a noop if no secrets are provided in the
+// request. If secrets are provided in the request but are
+// not enabled on the cluster, this will result in error.
+func (h *serviceHandler) handleSecrets(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	jobConfig *job.JobConfig,
+	secrets []*peloton.Secret,
+) error {
+	if len(secrets) > 0 {
+		if !h.jobSvcCfg.EnableSecrets {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"secrets not supported by cluster",
+			)
+		}
+
+		// Secrets will be common for all instances in a job.
+		// They will be a part of default container config.
+		// This means that if a job is created with secrets,
+		// we will ensure that the job also has a default config
+		// with mesos containerizer. The secrets will be used by
+		// all tasks in that job and all tasks must use
+		// mesos containerizer for processing secrets.
+		if jobConfig.GetDefaultConfig() == nil {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"default config cannot be nil when using secrets",
+			)
+		}
+		if jobConfig.GetDefaultConfig().GetContainer() == nil {
+			return yarpcerrors.InvalidArgumentErrorf(
+				"default config doesn't have containerizer info",
+			)
+		}
+		// make sure default config uses mesos containerizer
+		if jobConfig.GetDefaultConfig().GetContainer().GetType() != mesos.ContainerInfo_MESOS {
+			return yarpcerrors.InvalidArgumentErrorf(
+				fmt.Sprintf("secrets not supported for container type %v",
+					jobConfig.GetDefaultConfig().GetContainer().GetType()),
+			)
+		}
+
+		// Go through each instance config and make sure they are
+		// using mesos containerizer
+		for _, taskConfig := range jobConfig.GetInstanceConfig() {
+			if taskConfig != nil && taskConfig.GetContainer() != nil {
+				if taskConfig.GetContainer().GetType() != mesos.ContainerInfo_MESOS {
+					return yarpcerrors.InvalidArgumentErrorf(
+						fmt.Sprintf("secrets not supported for "+
+							"container type %v",
+							taskConfig.GetContainer().GetType()),
+					)
+				}
+			}
+		}
+
+		for _, secret := range secrets {
+			if len(secret.GetId().GetValue()) == 0 {
+				secret.Id = &peloton.SecretID{
+					Value: uuid.New(),
+				}
+				log.WithField("job_id", secret.GetId().GetValue()).
+					Info("Genarating UUID for empty secret ID")
+			}
+
+			// Validate that secret is base64 encoded
+			_, err := base64.StdEncoding.DecodeString(
+				string(secret.GetValue().GetData()),
+			)
+			if err != nil {
+				return yarpcerrors.InvalidArgumentErrorf(
+					fmt.Sprintf("failed to decode secret: %v %v",
+						secret.GetValue().GetData(), err),
+				)
+			}
+
+			// store secret in DB
+			err = h.secretStore.CreateSecret(ctx, secret, jobID)
+			if err != nil {
+				return err
+			}
+
+			// Add volume/secret to default container config with this secret
+			// Use secretID instead of secret data when storing as
+			// part of default config in DB.
+			// This is done to prevent secrets leaks via logging/API etc.
+			// At the time of task launch, launcher will read the
+			// secret by secret-id and replace it by secret data.
+			jobConfig.DefaultConfig.Container.Volumes =
+				append(
+					jobConfig.DefaultConfig.Container.Volumes,
+					jobmgrtask.CreateSecretVolume(secret.GetPath(),
+						secret.GetId().GetValue()),
+				)
+		}
+	}
 	return nil
 }

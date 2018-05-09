@@ -262,7 +262,7 @@ func main() {
 	defer dispatcher.Stop()
 
 	log.Info("Connect to the TaskStore")
-	_, taskStore, _, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)
+	store := stores.MustCreateStore(&cfg.Storage, rootScope)
 
 	engine := placement.New(
 		dispatcher,
@@ -270,7 +270,7 @@ func main() {
 		&cfg.Placement,
 		common.PelotonResourceManager,
 		common.PelotonHostManager,
-		taskStore,
+		store, // store implements TaskStore
 	)
 	log.Info("Start the PlacementEngine")
 	engine.Start()

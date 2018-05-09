@@ -2,6 +2,7 @@ package jobsvc
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
@@ -34,6 +36,8 @@ import (
 
 const (
 	testInstanceCount = 2
+	testSecretPath    = "/tmp/secret"
+	testSecretStr     = "top-secret-token"
 )
 
 const (
@@ -115,6 +119,269 @@ func (suite *JobHandlerTestSuite) createTestTaskInfo(
 		InstanceId: instanceID,
 		JobId:      suite.testJobID,
 	}
+}
+
+// TestCreateJobs tests different success/failure scenarios
+// for Job Create API
+func (suite *JobHandlerTestSuite) TestCreateJobs() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	// setup job config
+	testCmd := "echo test"
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+	}
+	respoolID := &peloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobConfig.RespoolID = respoolID
+	getRespoolResponse := &respool.GetResponse{
+		Poolinfo: &respool.ResourcePoolInfo{
+			Id: respoolID,
+		},
+	}
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
+
+	suite.handler.jobStore = mockJobStore
+	suite.handler.jobFactory = jobFactory
+	suite.handler.goalStateDriver = goalStateDriver
+	suite.handler.respoolClient = mockRespoolClient
+
+	// setup mocks
+	mockRespoolClient.EXPECT().
+		GetResourcePool(
+			gomock.Any(),
+			gomock.Any()).
+		Return(getRespoolResponse, nil).AnyTimes()
+	mockJobStore.EXPECT().CreateJob(
+		gomock.Any(),
+		gomock.Any(),
+		jobConfig,
+		gomock.Any()).
+		Return(nil)
+	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
+	cachedJob.EXPECT().
+		Update(gomock.Any(),
+			gomock.Any(),
+			cached.UpdateCacheOnly).Return(nil)
+	goalStateDriver.EXPECT().
+		EnqueueJob(jobID, gomock.Any()).AnyTimes()
+
+	req := &job.CreateRequest{
+		Id:     jobID,
+		Config: jobConfig,
+	}
+
+	// Job Create API for this request should pass
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(jobID, resp.GetJobId())
+
+	// Negative tests begin
+
+	// Job Create with respool set to nil should fail
+	jobConfig.RespoolID = nil
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id:      jobID,
+			Message: errNullResourcePoolID.Error(),
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+
+	// Job Create with respool set to root should fail
+	jobConfig.RespoolID = &peloton.ResourcePoolID{
+		Value: common.RootResPoolID,
+	}
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr = &job.CreateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id:      jobID,
+			Message: errRootResourcePoolID.Error(),
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+}
+
+// TestCreateJobWithSecrets tests different success/failure scenarios
+// for Job Create API for jobs that have secrets
+func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
+	ctrl := gomock.NewController(suite.T())
+	defer ctrl.Finish()
+
+	// setup job config which uses defaultconfig which has
+	// mesos containerizer
+	testCmd := "echo test"
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	dockerContainerizer := mesos.ContainerInfo_DOCKER
+	defaultConfig := &task.TaskConfig{
+		Command:   &mesos.CommandInfo{Value: &testCmd},
+		Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+	}
+	respoolID := &peloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	jobConfig.RespoolID = respoolID
+	getRespoolResponse := &respool.GetResponse{
+		Poolinfo: &respool.ResourcePoolInfo{
+			Id: respoolID,
+		},
+	}
+
+	jobConfig.InstanceConfig = make(map[uint32]*task.TaskConfig)
+	for i := uint32(0); i < 25; i++ {
+		jobConfig.InstanceConfig[i] = &task.TaskConfig{
+			Name:      suite.testJobConfig.Name,
+			Resource:  &defaultResourceConfig,
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		}
+	}
+
+	mockJobStore := store_mocks.NewMockJobStore(ctrl)
+	mockSecretStore := store_mocks.NewMockSecretStore(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
+
+	suite.handler.jobStore = mockJobStore
+	suite.handler.secretStore = mockSecretStore
+	suite.handler.jobFactory = jobFactory
+	suite.handler.goalStateDriver = goalStateDriver
+	suite.handler.respoolClient = mockRespoolClient
+	suite.handler.jobSvcCfg.EnableSecrets = true
+
+	// setup mocks
+	mockRespoolClient.EXPECT().
+		GetResourcePool(
+			gomock.Any(),
+			gomock.Any()).
+		Return(getRespoolResponse, nil).AnyTimes()
+
+	mockSecretStore.EXPECT().CreateSecret(
+		gomock.Any(),
+		gomock.Any(),
+		jobID).
+		Return(nil)
+
+	mockJobStore.EXPECT().CreateJob(
+		gomock.Any(),
+		gomock.Any(),
+		jobConfig,
+		gomock.Any()).
+		Return(nil)
+
+	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
+	cachedJob.EXPECT().Update(
+		gomock.Any(),
+		gomock.Any(),
+		cached.UpdateCacheOnly).
+		Return(nil)
+	goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
+
+	secret := &peloton.Secret{
+		Path: testSecretPath,
+		Value: &peloton.Secret_Value{
+			Data: []byte(base64.StdEncoding.EncodeToString(
+				[]byte(testSecretStr))),
+		},
+	}
+
+	// Create a job with a secret. This should pass
+	req := &job.CreateRequest{
+		Id:      jobID,
+		Config:  jobConfig,
+		Secrets: []*peloton.Secret{secret},
+	}
+
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(jobID, resp.GetJobId())
+
+	// Negative tests begin
+
+	// Create job where one instance is using docker containerizer.
+	jobConfig.InstanceConfig[10].Container =
+		&mesos.ContainerInfo{Type: &dockerContainerizer}
+	req = &job.CreateRequest{
+		Id:      jobID,
+		Config:  jobConfig,
+		Secrets: []*peloton.Secret{secret},
+	}
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.Error(err)
+
+	// Create job with no containerizer info in default config
+
+	// reset instance config to use mesos containerizer
+	jobConfig.InstanceConfig[10].Container =
+		&mesos.ContainerInfo{Type: &mesosContainerizer}
+	jobConfig.DefaultConfig = &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	req = &job.CreateRequest{
+		Id:      jobID,
+		Config:  jobConfig,
+		Secrets: []*peloton.Secret{secret},
+	}
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.Error(err)
+
+	// Create job with secret that is not base64 encoded.
+	jobConfig.DefaultConfig = defaultConfig
+	secret = &peloton.Secret{
+		Path: testSecretPath,
+		Value: &peloton.Secret_Value{
+			Data: []byte(testSecretStr),
+		},
+	}
+	req.Secrets = []*peloton.Secret{secret}
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.Error(err)
+
+	// Create a job that uses docker containerizer in default config
+	// but also has secrets. This should fail since we only support
+	// secrets when using Mesos containerizer in default config.
+	defaultConfig = &task.TaskConfig{
+		Command:   &mesos.CommandInfo{Value: &testCmd},
+		Container: &mesos.ContainerInfo{Type: &dockerContainerizer},
+	}
+	jobConfig = &job.JobConfig{
+		DefaultConfig: defaultConfig,
+	}
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.Error(err)
+
+	// Set EnableSecrets config to false and then create a job
+	// with secrets. This should fail
+	suite.handler.jobSvcCfg.EnableSecrets = false
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.Error(err)
 }
 
 func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {

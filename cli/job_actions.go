@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -37,7 +38,13 @@ const (
 )
 
 // JobCreateAction is the action for creating a job
-func (c *Client) JobCreateAction(jobID string, respoolPath string, cfg string) error {
+func (c *Client) JobCreateAction(
+	jobID string,
+	respoolPath string,
+	cfg string,
+	secretPath string,
+	secretStr string,
+) error {
 	respoolID, err := c.LookupResourcePoolID(respoolPath)
 	if err != nil {
 		return err
@@ -66,6 +73,16 @@ func (c *Client) JobCreateAction(jobID string, respoolPath string, cfg string) e
 		},
 		Config: &jobConfig,
 	}
+	// handle secrets
+	if secretPath != "" && secretStr != "" {
+		request.Secrets = []*peloton.Secret{&peloton.Secret{
+			Path: secretPath,
+			Value: &peloton.Secret_Value{
+				Data: []byte(base64.StdEncoding.EncodeToString([]byte(secretStr))),
+			},
+		}}
+	}
+
 	response, err := c.jobClient.Create(c.ctx, request)
 	if err != nil {
 		return err
