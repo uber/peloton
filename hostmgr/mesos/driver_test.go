@@ -44,10 +44,11 @@ func (suite *schedulerDriverTestSuite) SetupTest() {
 	suite.driver = InitSchedulerDriver(
 		&Config{
 			Framework: &FrameworkConfig{
-				Name:                      _frameworkName,
-				GPUSupported:              true,
-				TaskKillingStateSupported: false,
-				PartitionAwareSupported:   false,
+				Name:                        _frameworkName,
+				GPUSupported:                true,
+				TaskKillingStateSupported:   false,
+				PartitionAwareSupported:     false,
+				RevocableResourcesSupported: false,
 			},
 			ZkPath:   _zkPath,
 			Encoding: _encoding,
@@ -203,13 +204,14 @@ func (suite *schedulerDriverTestSuite) TestFrameworkInfoCapability() {
 	// Only GPU_RESOURCES framework capability is enabled.
 	suite.Equal(len(subscribe.Subscribe.FrameworkInfo.Capabilities), 1)
 
-	// Enable TASK_KILLING_STATE.
+	// Enable TASK_KILLING_STATE, PARTITION_AWARE & REVOCABLE_RESOURCES also.
 	suite.driver.cfg.TaskKillingStateSupported = true
 	suite.driver.cfg.PartitionAwareSupported = true
+	suite.driver.cfg.RevocableResourcesSupported = true
 	subscribe, err = suite.driver.prepareSubscribe(context.Background())
 	suite.Nil(err)
-	// GPU_RESOURCES & TASK_KILLING_STATE framework capability is enabled.
-	suite.Equal(len(subscribe.Subscribe.FrameworkInfo.Capabilities), 3)
+	// GPU_RESOURCES, TASK_KILLING_STATE, REVOCABLE_RESOURCES framework capability is enabled too.
+	suite.Equal(len(subscribe.Subscribe.FrameworkInfo.Capabilities), 4)
 }
 
 func (suite *schedulerDriverTestSuite) TestPrepareLoadedFrameworkID() {

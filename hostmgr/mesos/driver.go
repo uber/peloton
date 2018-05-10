@@ -183,6 +183,15 @@ func (d *schedulerDriver) prepareSubscribe(ctx context.Context) (*sched.Call, er
 		capabilities = append(capabilities, partitionAwareCapability)
 	}
 
+	if d.cfg.RevocableResourcesSupported {
+		log.Info("Revocable resources capability is supported")
+		revocableResourcesSupported := mesos.FrameworkInfo_Capability_REVOCABLE_RESOURCES
+		revocableResourcesCapability := &mesos.FrameworkInfo_Capability{
+			Type: &revocableResourcesSupported,
+		}
+		capabilities = append(capabilities, revocableResourcesCapability)
+	}
+
 	host, err := os.Hostname()
 	if err != nil {
 		msg := "Failed to get host name"
