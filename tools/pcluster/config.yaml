@@ -35,6 +35,9 @@ resources: cpus(peloton):0.5;cpus(*):3.5;mem(peloton):1024;disk(*):20000;mem(*):
 attributes: datacenter:tdc1;rack:tdc1-t0001;zone:tpl1-tdc1
 modules: file:///etc/mesos-slave/modules
 resource_estimator: org_apache_mesos_FixedResourceEstimator
+qos_controller: org_apache_mesos_LoadQoSController
+qos_correction_interval_min: 5secs
+oversubscribed_resources_interval: 1mins
 
 
 # Mysql configs

@@ -71,6 +71,9 @@ for ((i=0; i<$NUM_AGENTS; i++)); do
      -e MESOS_RESOURCES="$RESOURCES" \
      -e MESOS_MODULES=$MODULES \
      -e MESOS_RESOURCE_ESTIMATOR=$RESOURCE_ESTIMATOR \
+     -e MESOS_OVERSUBSCRIBED_RESOURCES_INTERVAL=$OVERSUBSCRIBED_RESOURCES_INTERVAL \
+     -e MESOS_QOS_CONTROLLER=$QOS_CONTROLLER \
+     -e MESOS_QOS_CORRECTION_INTERVAL_MIN=$QOS_CORRECTION_INTERVAL_MIN \
      -p $agent_port:$agent_port \
      -v /var/run/docker.sock:/var/run/docker.sock \
      -v "$(pwd)/mesos_config/etc_mesos-slave:/etc/mesos-slave" \

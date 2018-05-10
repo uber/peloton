@@ -1,12 +1,32 @@
 {
-  "libraries": {
-    "file": "/usr/lib/libfixed_resource_estimator.so",
-    "modules": {
-      "name": "org_apache_mesos_FixedResourceEstimator",
-      "parameters": {
-        "key": "resources",
-        "value": "cpus:3"
+   "libraries":[
+      {
+         "file":"/usr/lib/libload_qos_controller-1.5.0.so",
+         "modules":[
+            {
+               "name":"org_apache_mesos_LoadQoSController",
+               "parameters":[
+                  {
+                     "key":"load_threshold_5min",
+                     "value":"1"
+                  },
+                  {
+                     "key":"load_threshold_15min",
+                     "value":"0.5"
+                  }
+               ]
+            }
+         ]
+      },
+      {
+         "file":"/usr/lib/libfixed_resource_estimator-1.5.0.so",
+         "modules":{
+            "name":"org_apache_mesos_FixedResourceEstimator",
+            "parameters":{
+               "key":"resources",
+               "value":"cpus:3"
+            }
+         }
       }
-    }
-  }
+   ]
 }

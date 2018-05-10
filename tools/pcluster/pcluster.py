@@ -237,6 +237,11 @@ def run_mesos():
                 'MESOS_ATTRIBUTES=' + config['attributes'],
                 'MESOS_MODULES=' + config['modules'],
                 'MESOS_RESOURCE_ESTIMATOR=' + config['resource_estimator'],
+                'MESOS_OVERSUBSCRIBED_RESOURCES_INTERVAL='
+                + config['oversubscribed_resources_interval'],
+                'MESOS_QOS_CONTROLLER=' + config['qos_controller'],
+                'MESOS_QOS_CORRECTION_INTERVAL_MIN='
+                + config['qos_correction_interval_min'],
             ],
             image=config['mesos_slave_image'],
             entrypoint='bash /files/run_mesos_slave.sh',
