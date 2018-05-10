@@ -139,6 +139,10 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 			errs = multierror.Append(errs, err)
 		}
 
+		if taskInfo.GetRuntime().GetGoalState() == pb_task.TaskState_KILLED {
+			continue
+		}
+
 		// set goal state to TaskState_PREEMPTING
 		taskInfo.GetRuntime().GoalState = pb_task.TaskState_PREEMPTING
 		taskInfo.GetRuntime().Message = "Preempting running task"

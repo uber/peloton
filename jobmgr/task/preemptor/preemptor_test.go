@@ -56,40 +56,58 @@ func (suite *PreemptorTestSuite) TearDownSuite() {
 }
 
 func (suite *PreemptorTestSuite) TestPreemptionCycle() {
-	taskID := &peloton.TaskID{Value: "test-preemption-1"}
-	task := &resmgr.Task{
-		Id: taskID,
+	runningTaskID := &peloton.TaskID{Value: "test-preemption-1"}
+	runningTask := &resmgr.Task{
+		Id: runningTaskID,
 	}
-	taskInfo := &peloton_task.TaskInfo{
+	runningTaskInfo := &peloton_task.TaskInfo{
 		InstanceId: 0,
 		Runtime: &peloton_task.RuntimeInfo{
-			State: peloton_task.TaskState_RUNNING,
+			State:     peloton_task.TaskState_RUNNING,
+			GoalState: peloton_task.TaskState_RUNNING,
 		},
 	}
 
-	preemptionCandidate := &resmgr.PreemptionCandidate{
-		Id:     task.Id,
-		Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+	killingTaskID := &peloton.TaskID{Value: "test-preemption-2"}
+	killingTask := &resmgr.Task{
+		Id: killingTaskID,
+	}
+	killingTaskInfo := &peloton_task.TaskInfo{
+		InstanceId: 0,
+		Runtime: &peloton_task.RuntimeInfo{
+			State:     peloton_task.TaskState_KILLING,
+			GoalState: peloton_task.TaskState_KILLED,
+		},
 	}
 
 	cachedJob := cachedmocks.NewMockJob(suite.mockCtrl)
 	runtimes := make(map[uint32]*peloton_task.RuntimeInfo)
-	runtimes[0] = taskInfo.Runtime
+	runtimes[0] = runningTaskInfo.Runtime
 
 	suite.mockResmgr.EXPECT().GetPreemptibleTasks(gomock.Any(), gomock.Any()).Return(
 		&resmgrsvc.GetPreemptibleTasksResponse{
-			PreemptionCandidates: []*resmgr.PreemptionCandidate{preemptionCandidate},
-			Error:                nil,
+			PreemptionCandidates: []*resmgr.PreemptionCandidate{
+				{
+					Id:     runningTask.Id,
+					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+				},
+				{
+					Id:     killingTask.Id,
+					Reason: resmgr.PreemptionReason_PREEMPTION_REASON_REVOKE_RESOURCES,
+				}},
+			Error: nil,
 		}, nil,
 	)
-	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), taskID.Value).Return(taskInfo, nil)
+	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), runningTaskID.Value).Return(runningTaskInfo, nil)
+	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), killingTaskID.Value).Return(killingTaskInfo, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob)
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheAndDB).Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)
-	suite.Equal(peloton_task.TaskState_PREEMPTING, taskInfo.GetRuntime().GoalState)
+	suite.Equal(peloton_task.TaskState_PREEMPTING, runningTaskInfo.GetRuntime().GoalState)
+	suite.Equal(peloton_task.TaskState_KILLED, killingTaskInfo.GetRuntime().GoalState)
 }
 
 func (suite *PreemptorTestSuite) TestReconciler_StartStop() {
