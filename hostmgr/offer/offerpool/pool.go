@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/atomic"
@@ -16,7 +15,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"
-	common_scalar "code.uber.internal/infra/peloton/common/scalar"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/hostmgr/summary"
@@ -28,28 +26,27 @@ import (
 // currently only instantiated at the leader of Peloton masters.
 type Pool interface {
 	// Add offers to the pool. Filters out non-viable offers (offers with non-nil Unavailability)
-	// and returns slice of acceptable offers
+	// and returns slice of acceptable offers.
 	AddOffers(context.Context, []*mesos.Offer) []*mesos.Offer
 
-	// Rescind a offer from the pool.
+	// Rescind a offer from the pool, on Mesos Master --offer-timeout
 	// Returns whether the offer is found in the pool.
 	RescindOffer(*mesos.OfferID) bool
 
-	// Remove expired offers from the pool
+	// RemoveExpiredOffers, prunes offers from the pool, when offer-hold-time is expired.
 	RemoveExpiredOffers() (map[string]*TimedOffer, int)
 
-	// Clear offers in the pool
+	// Clear all offers in the pool
 	Clear()
 
-	// Decline offers
+	// Decline offers, sends Mesos Master decline call and removes from offer pool.
 	DeclineOffers(ctx context.Context, offerIds []*mesos.OfferID) error
 
 	// ClaimForPlace obtains offers from pool conforming to given HostFilter
 	// for placement purposes.
 	// First return value is returned offers, grouped by hostname as key,
 	// Second return value is a map from hostsvc.HostFilterResult to count.
-	ClaimForPlace(constraint *hostsvc.HostFilter) (
-		map[string][]*mesos.Offer, map[string]uint32, error)
+	ClaimForPlace(constraint *hostsvc.HostFilter) (map[string][]*mesos.Offer, map[string]uint32, error)
 
 	// ClaimForLaunch finds offers previously for placement on given host.
 	// The difference from ClaimForPlace is that offers claimed from this
@@ -83,6 +80,10 @@ type Pool interface {
 
 const (
 	_defaultContextTimeout = 10 * time.Second
+
+	// Reject offers from unavailable/maintenance host only before 3 hour of starting window.
+	// Mesos Master sets unix nano seconds for unavailability start time.
+	_defaultRejectUnavailableOffer = int64(10800000000000)
 )
 
 // NewOfferPool creates a offerPool object and registers the
@@ -92,14 +93,11 @@ func NewOfferPool(
 	schedulerClient mpb.SchedulerClient,
 	metrics *Metrics,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
-	volumeStore storage.PersistentVolumeStore,
-) Pool {
+	volumeStore storage.PersistentVolumeStore) Pool {
 	p := &offerPool{
 		hostOfferIndex: make(map[string]summary.HostSummary),
 
-		timedOffers:     make(map[string]*TimedOffer),
-		timedOffersLock: &sync.Mutex{},
-		offerHoldTime:   offerHoldTime,
+		offerHoldTime: offerHoldTime,
 
 		mSchedulerClient:           schedulerClient,
 		mesosFrameworkInfoProvider: frameworkInfoProvider,
@@ -108,9 +106,6 @@ func NewOfferPool(
 
 		volumeStore: volumeStore,
 	}
-
-	// Initialize gauges.
-	p.updateMetrics()
 
 	return p
 }
@@ -131,12 +126,11 @@ type offerPool struct {
 	// offers. It includes both READY and PLACING state hosts.
 	availableHosts atomic.Uint32
 
-	// Map from id to hostname and expiration.
+	// Map from offer id to hostname and offer expiration time.
 	// Used when offer is rescinded or pruned.
-	timedOffers     map[string]*TimedOffer
-	timedOffersLock *sync.Mutex
+	timedOffers sync.Map
 
-	// Time to hold offer for
+	// Time to hold offer in offer pool
 	offerHoldTime time.Duration
 
 	mSchedulerClient           mpb.SchedulerClient
@@ -150,15 +144,10 @@ type offerPool struct {
 }
 
 // ClaimForPlace obtains offers from pool conforming to given constraints.
-// Results are grouped by hostname as key.
-// This implements Pool.ClaimForPlace.
-func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
-	map[string][]*mesos.Offer, map[string]uint32, error) {
-
-	if hostFilter == nil {
-		return nil, nil, errors.New("empty HostFilter passed in")
-	}
-
+// Results are grouped by hostname as key. Here, offers are not cleared from from the offer pool.
+// First return value is returned offers, grouped by hostname as key,
+// Second return value is a map from hostsvc.HostFilterResult to count.
+func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (map[string][]*mesos.Offer, map[string]uint32, error) {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -174,28 +163,7 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 	}
 
 	hasEnoughHosts := matcher.HasEnoughHosts()
-
 	hostOffers, resultCount := matcher.getHostOffers()
-
-	var delta scalar.Resources
-	for _, offers := range hostOffers {
-		for _, offer := range offers {
-			delta = delta.Add(scalar.FromOffer(offer))
-		}
-	}
-
-	if len(hostOffers) > 0 {
-		incQuantity(&p.placingResources, delta, p.metrics.placing)
-		decQuantity(&p.readyResources, delta, p.metrics.ready)
-		log.WithFields(log.Fields{
-			"host_filter":         hostFilter,
-			"host_offers_noindex": hostOffers,
-			"result_count":        resultCount,
-			"delta":               delta,
-			"placing_resources":   p.placingResources.Get(),
-			"ready_resources":     p.readyResources.Get(),
-		}).Debug("Claim offers for place.")
-	}
 
 	if !hasEnoughHosts {
 		// Still proceed to return something.
@@ -211,14 +179,10 @@ func (p *offerPool) ClaimForPlace(hostFilter *hostsvc.HostFilter) (
 	return hostOffers, resultCount, nil
 }
 
-// ClaimForLaunch takes offers from pool for launch.
-func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
-	map[string]*mesos.Offer, error) {
-	// TODO: This is very similar to RemoveExpiredOffers, maybe refactor it.
+// ClaimForLaunch takes offers from pool (removes from hostsummary) for launch.
+func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (map[string]*mesos.Offer, error) {
 	p.RLock()
 	defer p.RUnlock()
-	p.timedOffersLock.Lock()
-	defer p.timedOffersLock.Unlock()
 
 	var offerMap map[string]*mesos.Offer
 	var err error
@@ -238,27 +202,20 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 		return nil, err
 	}
 
+	if len(offerMap) == 0 {
+		return nil, errors.New("No offer found to launch task on " + hostname)
+	}
+
 	for id := range offerMap {
-		if _, ok := p.timedOffers[id]; ok {
-			delete(p.timedOffers, id)
+		if _, ok := p.timedOffers.Load(id); ok {
+			// Remove offer from the offerid -> hostname map.
+			p.timedOffers.Delete(id)
 		} else {
 			log.WithFields(log.Fields{
 				"offer_id": id,
 				"host":     hostname,
-			}).Warn("Offer id is not in pool")
+			}).Warn("ClaimForLaunch: OfferID not found in pool.")
 		}
-	}
-
-	if !useReservedOffers {
-		delta := scalar.FromOfferMap(offerMap)
-		decQuantity(&p.placingResources, delta, p.metrics.placing)
-		log.WithFields(log.Fields{
-			"hostname":               hostname,
-			"claimed_offers_noindex": offerMap,
-			"delta":                  delta,
-			"placing_resources":      p.placingResources.Get(),
-			"ready_resources":        p.readyResources.Get(),
-		}).Debug("Claiming offer for launch")
 	}
 
 	if !hs.HasAnyOffer() {
@@ -268,204 +225,100 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (
 	return offerMap, nil
 }
 
-func (p *offerPool) updateMetrics() {
-	ready := p.readyResources.Get()
-	p.metrics.ready.Update(&ready)
-
-	placing := p.placingResources.Get()
-	p.metrics.placing.Update(&placing)
-}
-
-// tryAddOffer acquires read lock of the offerPool.
-// If the offerPool does not have the hostName, returns false; otherwise,
-// add offer with its expiration time to the agent and returns true.
-func (p *offerPool) tryAddOffer(ctx context.Context, offer *mesos.Offer, expiration time.Time) bool {
-	p.RLock()
-	defer p.RUnlock()
-
-	hostName := *offer.Hostname
-	if _, ok := p.hostOfferIndex[hostName]; !ok {
-		return false
-	}
-	if !p.hostOfferIndex[hostName].HasAnyOffer() {
-		p.metrics.AvailableHosts.Update(float64(p.availableHosts.Inc()))
-	}
-	status := p.hostOfferIndex[hostName].AddMesosOffer(ctx, offer)
-
-	delta := scalar.FromOffer(offer)
-	switch status {
-	case summary.ReadyOffer:
-		incQuantity(&p.readyResources, delta, p.metrics.ready)
-	case summary.PlacingOffer:
-		incQuantity(&p.placingResources, delta, p.metrics.placing)
-	default:
-		log.WithField("status", status).
-			Error("Unknown CacheStatus")
-	}
-	return true
-}
-
-// addOffer acquires the write lock. It would guarantee that the hostName
-// correspond to the offer is added, then add the offer to the agent.
-func (p *offerPool) addOffer(ctx context.Context, offer *mesos.Offer, expiration time.Time) {
-	p.Lock()
-	defer p.Unlock()
-
-	hostName := *offer.Hostname
-	_, ok := p.hostOfferIndex[hostName]
-	if !ok {
-		p.hostOfferIndex[hostName] = summary.New(p.volumeStore)
-	}
-
-	if !p.hostOfferIndex[hostName].HasAnyOffer() {
-		p.metrics.AvailableHosts.Update(float64(p.availableHosts.Inc()))
-	}
-
-	status := p.hostOfferIndex[hostName].AddMesosOffer(ctx, offer)
-
-	delta := scalar.FromOffer(offer)
-	switch status {
-	case summary.ReadyOffer:
-		incQuantity(&p.readyResources, delta, p.metrics.ready)
-	case summary.PlacingOffer:
-		incQuantity(&p.placingResources, delta, p.metrics.placing)
-	default:
-		log.WithField("status", status).
-			Error("Unknown CacheStatus")
-	}
-}
-
+// AddOffers is a callback event when Mesos Master sends offers.
 func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) []*mesos.Offer {
 	var acceptableOffers []*mesos.Offer
-	var unavailableOffers []*mesos.Offer
+	var unavailableOffers []*mesos.OfferID
 	hostnameToOffers := make(map[string][]*mesos.Offer)
 
 	for _, offer := range offers {
+		// If Unavailability for a offer is going to start after 3 hours from current time,
+		// then only stop accepting them.
+		if offer.GetUnavailability() != nil {
+			currentTime := time.Now().UnixNano()
+			unavailabilityStartTime := offer.Unavailability.Start.GetNanoseconds()
+
+			if unavailabilityStartTime-currentTime > 0 && unavailabilityStartTime-currentTime < _defaultRejectUnavailableOffer {
+				unavailableOffers = append(unavailableOffers, offer.Id)
+				continue
+			}
+		}
+
+		p.timedOffers.Store(offer.Id.GetValue(), &TimedOffer{
+			Hostname:   offer.GetHostname(),
+			Expiration: time.Now().Add(p.offerHoldTime),
+		})
+
 		oldOffers := hostnameToOffers[offer.GetHostname()]
 		hostnameToOffers[offer.GetHostname()] = append(oldOffers, offer)
+		acceptableOffers = append(acceptableOffers, offer)
 	}
 
-	for _, offers := range hostnameToOffers {
-		consistent := true
-		offer := offers[0]
-		for i := 1; i < len(offers); i++ {
-			//ensure that all offers from given host have consistent Unavailability
-			if !proto.Equal(offers[i].Unavailability, offer.Unavailability) {
-				log.WithFields(log.Fields{
-					"offer1": offers[i],
-					"offer2": offer}).
-					Warn("Offers from same host have inconsistent Unavailability")
-				consistent = false
-				break
-
-			}
-		}
-		if consistent {
-			if offer.Unavailability != nil {
-				// track all offers coming from hosts with maintenance scheduled
-				// TODO: store unavailability window on hosts
-				unavailableOffers = append(unavailableOffers, offers...)
-			} else {
-				// these offers don't have any scheduled unavailability and can be treated normally
-				acceptableOffers = append(acceptableOffers, offers...)
-			}
-		}
+	// Decline unavailable offers.
+	if len(unavailableOffers) > 0 {
+		log.WithField("unavailable_offers", unavailableOffers).Debug("Offer unavailable due to maintenance on these hosts.")
+		p.DeclineOffers(ctx, unavailableOffers)
 	}
+	log.WithField("acceptable_offers", acceptableOffers).Debug("Acceptable offers.")
 
-	// To avoid scheduling tasks on hosts with maintenance scheduled we will
-	// rescind all outstanding offers on those hosts
-	var allOffersToRescind []*mesos.Offer
+	p.Lock()
+	defer p.Unlock()
 
-	for _, offer := range unavailableOffers {
-		hostname := offer.GetHostname()
-		hostOffers, ok := p.hostOfferIndex[hostname]
+	for hostname, offers := range hostnameToOffers {
+		_, ok := p.hostOfferIndex[hostname]
+
 		if !ok {
-			// this indicates that the host that is entering maintenance has no outstanding
-			// offers. this is not a problem, we can check the next host now
-			continue
-
+			p.hostOfferIndex[hostname] = summary.New(p.volumeStore)
 		}
-		allOffersToRescind = append(allOffersToRescind, hostOffers.GetUnreservedOffers()...)
-	}
-	for _, offer := range allOffersToRescind {
-		log.WithField("offer_id", offer.GetId()).Warn("This offer is from a host in maintenance, Mesos should have rescinded it")
-	}
 
-	expiration := time.Now().Add(p.offerHoldTime)
-	for _, offer := range acceptableOffers {
-		result := p.tryAddOffer(ctx, offer, expiration)
-		if !result {
-			p.addOffer(ctx, offer, expiration)
+		if !p.hostOfferIndex[hostname].HasAnyOffer() {
+			p.metrics.AvailableHosts.Update(float64(p.availableHosts.Inc()))
 		}
+
+		p.hostOfferIndex[hostname].AddMesosOffers(ctx, offers)
 	}
 
-	p.timedOffersLock.Lock()
-	defer p.timedOffersLock.Unlock()
-	for _, offer := range acceptableOffers {
-		offerID := *offer.Id.Value
-		p.timedOffers[offerID] = &TimedOffer{
-			Hostname:   offer.GetHostname(),
-			Expiration: expiration,
-		}
-	}
 	return acceptableOffers
 }
 
-func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
-	id := offerID.GetValue()
-	log.WithField("offer_id", id).Debug("RescindOffer Received")
-	p.RLock()
-	defer p.RUnlock()
-	p.timedOffersLock.Lock()
-	defer p.timedOffersLock.Unlock()
-
-	oID := *offerID.Value
-	offer, ok := p.timedOffers[oID]
+// removeOffer is a helper method to remove an offer from timedOffers and hostSummary.
+func (p *offerPool) removeOffer(offerID, reason string) {
+	offer, ok := p.timedOffers.Load(offerID)
 	if !ok {
-		log.WithField("offer_id", offerID).Warn("OfferID not found in pool")
-		return false
+		log.WithField("offer_id", offerID).Info("removeOffer: OfferID not found in pool.")
+		return
 	}
-
-	delete(p.timedOffers, oID)
+	p.timedOffers.Delete(offerID)
 
 	// Remove offer from hostOffers
-	hostName := offer.Hostname
+	hostName := offer.(*TimedOffer).Hostname
 	hostOffers, ok := p.hostOfferIndex[hostName]
 	if !ok {
 		log.WithFields(log.Fields{
 			"host":     hostName,
-			"offer_id": id,
+			"offer_id": offerID,
 		}).Warn("host not found in hostOfferIndex")
-		return false
-	}
+	} else {
+		hostOffers.RemoveMesosOffer(offerID, reason)
 
-	status, removed := hostOffers.RemoveMesosOffer(oID, "Offer is rescinded.")
-
-	if removed != nil {
-		delta := scalar.FromOffer(removed)
-		switch status {
-		case summary.ReadyOffer:
-			decQuantity(&p.readyResources, delta, p.metrics.ready)
-		case summary.PlacingOffer:
-			decQuantity(&p.placingResources, delta, p.metrics.placing)
-		default:
-			log.WithField("status", status).
-				Error("Unknown CacheStatus")
+		// If host summary (host -> offers), does not have any offer corresponding to a host,
+		// decrement metric for available hosts.
+		if !p.hostOfferIndex[hostName].HasAnyOffer() {
+			p.metrics.AvailableHosts.Update(float64(p.availableHosts.Dec()))
 		}
-		log.WithFields(log.Fields{
-			"hostname":          hostName,
-			"host_status":       status,
-			"removed_offers":    removed,
-			"delta":             delta,
-			"placing_resources": p.placingResources.Get(),
-			"ready_resources":   p.readyResources.Get(),
-		}).Debug("Remove rescinded offer.")
 	}
+}
 
-	if !p.hostOfferIndex[hostName].HasAnyOffer() {
-		p.metrics.AvailableHosts.Update(float64(p.availableHosts.Dec()))
-	}
+// RescindOffer is a callback event when Mesos Master rescinds a offer.
+// Reasons for offer rescind can be lost agent, offer_timeout and more.
+func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
+	p.RLock()
+	defer p.RUnlock()
 
+	oID := *offerID.Value
+	log.WithField("offer_id", oID).Info("RescindOffer Received")
+
+	p.removeOffer(oID, "Offer is rescinded.")
 	return true
 }
 
@@ -475,78 +328,54 @@ func (p *offerPool) RescindOffer(offerID *mesos.OfferID) bool {
 func (p *offerPool) RemoveExpiredOffers() (map[string]*TimedOffer, int) {
 	p.RLock()
 	defer p.RUnlock()
-	p.timedOffersLock.Lock()
-	defer p.timedOffersLock.Unlock()
 
 	offersToDecline := map[string]*TimedOffer{}
-
-	for offerID, timedOffer := range p.timedOffers {
-		if time.Now().After(timedOffer.Expiration) {
-			log.WithField("offer_id", offerID).
-				Debug("Removing expired offer from pool")
-			offersToDecline[offerID] = timedOffer
-			delete(p.timedOffers, offerID)
+	p.timedOffers.Range(func(offerID, timedOffer interface{}) bool {
+		if time.Now().After(timedOffer.(*TimedOffer).Expiration) {
+			log.WithField("offer_id", offerID).Info("Removing expired offer from pool.")
+			offersToDecline[offerID.(string)] = timedOffer.(*TimedOffer)
 		}
-	}
+		return true
+	})
 
 	// Remove the expired offers from hostOfferIndex
 	if len(offersToDecline) > 0 {
-		for offerID, offer := range offersToDecline {
-			hostName := offer.Hostname
-			if _, ok := p.hostOfferIndex[hostName]; !ok {
-				log.WithField("host", hostName).
-					Debug("Hostname is not in offer pool")
-				continue
-			}
-
-			status, removed := p.hostOfferIndex[hostName].RemoveMesosOffer(offerID, "Offer is expired.")
-			if removed != nil {
-				delta := scalar.FromOffer(removed)
-				switch status {
-				case summary.ReadyOffer:
-					decQuantity(&p.readyResources, delta, p.metrics.ready)
-				case summary.PlacingOffer:
-					decQuantity(&p.placingResources, delta, p.metrics.placing)
-				default:
-					log.WithField("status", status).
-						Error("Unknown CacheStatus")
-				}
-				log.WithFields(log.Fields{
-					"host":              hostName,
-					"host_status":       status,
-					"removed_offers":    removed,
-					"delta":             delta,
-					"placing_resources": p.placingResources.Get(),
-					"ready_resources":   p.readyResources.Get(),
-				}).Debug("remove expired offer.")
-			}
-
-			if !p.hostOfferIndex[hostName].HasAnyOffer() {
-				p.metrics.AvailableHosts.Update(float64(p.availableHosts.Dec()))
-			}
+		for offerID := range offersToDecline {
+			p.removeOffer(offerID, "Offer is expired.")
 		}
 	}
-	return offersToDecline, len(p.timedOffers)
+
+	length := 0
+	p.timedOffers.Range(func(_, _ interface{}) bool {
+		length++
+		return true
+	})
+
+	return offersToDecline, length
 }
 
 // Clear removes all offers from pool.
 func (p *offerPool) Clear() {
-	log.Info("Clean up offers")
-	p.Lock()
-	defer p.Unlock()
-	p.timedOffersLock.Lock()
-	defer p.timedOffersLock.Unlock()
+	p.RLock()
+	defer p.RUnlock()
 
-	p.timedOffers = map[string]*TimedOffer{}
+	log.Info("Clean up offerpool.")
+	p.timedOffers.Range(func(key interface{}, value interface{}) bool {
+		p.timedOffers.Delete(key)
+		return true
+	})
 	p.hostOfferIndex = map[string]summary.HostSummary{}
-	p.readyResources = scalar.AtomicResources{}
-	p.placingResources = scalar.AtomicResources{}
-	p.updateMetrics()
+	p.availableHosts.Store(0)
+	p.metrics.AvailableHosts.Update(float64(p.availableHosts.Load()))
 }
 
 // DeclineOffers calls mesos master to decline list of offers
 func (p *offerPool) DeclineOffers(ctx context.Context, offerIDs []*mesos.OfferID) error {
-	log.WithField("offer_ids", offerIDs).Debug("Decline offers")
+	p.RLock()
+	defer p.RUnlock()
+
+	log.WithField("offer_ids", offerIDs).Info("Decline offer.")
+
 	callType := sched.Call_DECLINE
 	msg := &sched.Call{
 		FrameworkId: p.mesosFrameworkInfoProvider.GetFrameworkID(ctx),
@@ -563,9 +392,13 @@ func (p *offerPool) DeclineOffers(ctx context.Context, offerIDs []*mesos.OfferID
 		// should eventually be invalidated by Mesos.
 		log.WithError(err).
 			WithField("call", msg).
-			Warn("Failed to decline offers")
+			Warn("Failed to decline offers.")
 		p.metrics.DeclineFail.Inc(1)
 		return err
+	}
+
+	for _, offerID := range offerIDs {
+		p.removeOffer(*offerID.Value, "Offer is declined.")
 	}
 
 	return nil
@@ -590,49 +423,15 @@ func (p *offerPool) ReturnUnusedOffers(hostname string) error {
 	}
 
 	delta, _ := hostOffers.UnreservedAmount()
-	decQuantity(&p.placingResources, delta, p.metrics.placing)
-	incQuantity(&p.readyResources, delta, p.metrics.ready)
 
 	log.WithFields(log.Fields{
 		"host":              hostname,
 		"delta":             delta,
 		"placing_resources": p.placingResources.Get(),
 		"ready_resources":   p.readyResources.Get(),
-	}).Debug("Returned offers to Ready state.")
+	}).Debug("Returned offers to Ready state for this host.")
 
 	return nil
-}
-
-func incQuantity(
-	resources *scalar.AtomicResources,
-	delta scalar.Resources,
-	gaugeMaps common_scalar.GaugeMaps,
-) {
-	resources.Set(resources.Get().Add(delta))
-	// TODO(zhitao): clean up this after confirming snapshot based solution works.
-	// gaugeMaps.Update(&tmp)
-}
-
-func decQuantity(
-	resources *scalar.AtomicResources,
-	delta scalar.Resources,
-	gaugeMaps common_scalar.GaugeMaps,
-) {
-	curr := resources.Get()
-	if !curr.Contains(delta) {
-		// NOTE: we still proceed from there, but logs an error which
-		// we hope to recover from logging.
-		// This could be triggered by either missed offer tracking in
-		// pool, or float point precision problem.
-		log.WithFields(log.Fields{
-			"current": curr,
-			"delta":   delta,
-		}).Error("Not sufficient resource to subtract delta!")
-	}
-	resources.Set(curr.Subtract(delta))
-
-	// TODO(zhitao): clean up this after confirming snapshot based solution works.
-	// gaugeMaps.Update(&tmp)
 }
 
 // ResetExpiredHostSummaries resets the status of each hostSummary of the offerPool
@@ -645,29 +444,28 @@ func (p *offerPool) ResetExpiredHostSummaries(now time.Time) []string {
 	for hostname, summary := range p.hostOfferIndex {
 		if reset, res := summary.ResetExpiredPlacingOfferStatus(now); reset {
 			resetHostnames = append(resetHostnames, hostname)
-			incQuantity(&p.readyResources, res, p.metrics.ready)
-			decQuantity(&p.placingResources, res, p.metrics.placing)
 			log.WithFields(log.Fields{
-				"host":              hostname,
-				"summary":           summary,
-				"delta":             res,
-				"placing_resources": p.placingResources.Get(),
-				"ready_resources":   p.readyResources.Get(),
-			}).Debug("reset expired host summaries.")
+				"host":    hostname,
+				"summary": summary,
+				"delta":   res,
+			}).Info("reset expired host summaries.")
+		}
+		if !summary.HasAnyOffer() {
+			p.metrics.AvailableHosts.Update(float64(p.availableHosts.Dec()))
 		}
 	}
 	return resetHostnames
 }
 
-// RemoveReservedOffer removes offer for a host.
+// RemoveReservedOffer removes an reserved offer from hostsummary.
 func (p *offerPool) RemoveReservedOffer(hostname string, offerID string) {
 	p.RLock()
 	defer p.RUnlock()
 
-	if summary, ok := p.hostOfferIndex[hostname]; ok {
-		summary.RemoveMesosOffer(offerID, "Offer is removed from the pool.")
-	}
-
+	log.WithFields(log.Fields{
+		"offer_id": offerID,
+		"hostname": hostname}).Info("Remove reserved offer.")
+	p.removeOffer(offerID, "Reserved Offer is removed from the pool.")
 }
 
 // GetReservedOffers returns mapping from hostname to their reserved offers.
@@ -682,6 +480,7 @@ func (p *offerPool) GetReservedOffers() map[string]map[string]*mesos.Offer {
 	return result
 }
 
+// RefreshGaugeMaps refreshes the metrics for hosts in ready and placing state.
 func (p *offerPool) RefreshGaugeMaps() {
 	log.Debug("starting offer pool usage metrics refresh")
 
