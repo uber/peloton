@@ -70,20 +70,7 @@ func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket) {
 	for {
 		select {
 		case event := <-bucket.eventChannel:
-			count := 0
 			for {
-				// TODO move this log after the if {} else if {} blocks and remove the count.
-				// Added it here for now to debug the stuck eventstream issue in production.
-				if count > 0 {
-					log.WithFields(log.Fields{
-						"mesos_task_id": event.MesosTaskStatus.GetTaskId().GetValue(),
-						"type":          event.Type,
-						"mesos_state":   util.MesosStateToPelotonState(event.MesosTaskStatus.GetState()).String(),
-						"failure_count": count,
-					}).
-						Info("transient error during task update")
-				}
-				count++
 				// Retry while getting AlreadyExists error.
 				if err := t.ProcessStatusUpdate(context.Background(), event); err == nil {
 					break

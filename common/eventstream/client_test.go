@@ -8,13 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/yarpc"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/uber-go/tally"
+	"code.uber.internal/infra/peloton/common/lifecycle"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+
+	"go.uber.org/yarpc"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/uber-go/tally"
 )
 
 var addEventSleepInterval = 2 * time.Millisecond
@@ -92,21 +95,19 @@ func (p *TestEventProcessor) GetEventProgress() uint64 {
 
 func makeStreamClient(clientName string, client *testClient) (*Client, *TestEventProcessor) {
 	eventProcessor := &TestEventProcessor{}
-	var shutdownFlag int32
-	var runningState int32
 	eventStreamClient := &Client{
 		rpcClient:    client,
-		shutdownFlag: &shutdownFlag,
-		runningState: &runningState,
 		eventHandler: eventProcessor,
 		clientName:   clientName,
 		metrics:      NewClientMetrics(tally.NewTestScope(clientName, map[string]string{})),
+		lifeCycle:    lifecycle.NewLifeCycle(),
+		log:          log.WithField("client", clientName),
 	}
 	return eventStreamClient, eventProcessor
 }
 
 // Two clients consumes and purges data
-func TestHappycase(t *testing.T) {
+func TestHappyCase(t *testing.T) {
 	bufferSize := 100
 	clientName1 := "jobMgr"
 	clientName2 := "resMgr"
@@ -147,13 +148,6 @@ func TestHappycase(t *testing.T) {
 	eventStreamClient1.Stop()
 	eventStreamClient2.Stop()
 
-	eventStreamClient1.Lock()
-	defer eventStreamClient1.Unlock()
-	eventStreamClient2.Lock()
-	defer eventStreamClient2.Unlock()
-	purgedEventCollector.Lock()
-	defer purgedEventCollector.Unlock()
-
 	assert.Equal(t, batches*batchSize, len(eventProcessor1.events))
 	assert.Equal(t, batches*batchSize, len(eventProcessor2.events))
 	assert.Equal(t, batches*batchSize, len(purgedEventCollector.data))
@@ -168,6 +162,38 @@ func TestHappycase(t *testing.T) {
 	head, tail := handler.circularBuffer.GetRange()
 	assert.Equal(t, batches*batchSize, int(head))
 	assert.Equal(t, batches*batchSize, int(tail))
+
+	// client should be able to process events after start -> stop -> start
+	eventStreamClient1.Start()
+	eventStreamClient2.Start()
+
+	for i := batches; i < 2*batches; i++ {
+		for j := 0; j < batchSize; j++ {
+			id := fmt.Sprintf("%d", i*batchSize+j)
+			handler.AddEvent(&eventstream.Event{
+				Type: eventstream.Event_MESOS_TASK_STATUS,
+				MesosTaskStatus: &mesos.TaskStatus{
+					TaskId: &mesos.TaskID{
+						Value: &id,
+					}},
+			})
+			time.Sleep(addEventSleepInterval)
+		}
+	}
+	time.Sleep(waitEventConsumedInterval)
+	eventStreamClient1.Stop()
+	eventStreamClient2.Stop()
+
+	for i := batches * batchSize; i < 2*batches*batchSize; i++ {
+		assert.Equal(t, i, int(eventProcessor1.events[i].Offset))
+		assert.Equal(t, i, int(eventProcessor2.events[i].Offset))
+		assert.Equal(t, i, int(purgedEventCollector.data[i].SequenceID))
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor1.events[i].MesosTaskStatus.TaskId.Value)
+		assert.Equal(t, fmt.Sprintf("%d", i), *eventProcessor2.events[i].MesosTaskStatus.TaskId.Value)
+	}
+	head, tail = handler.circularBuffer.GetRange()
+	assert.Equal(t, 2*batches*batchSize, int(head))
+	assert.Equal(t, 2*batches*batchSize, int(tail))
 }
 
 // Two clients consumes and purges data; while stream ID changes in between
@@ -232,13 +258,6 @@ func TestStreamIDChange(t *testing.T) {
 
 	eventStreamClient1.Stop()
 	eventStreamClient2.Stop()
-
-	eventStreamClient1.Lock()
-	defer eventStreamClient1.Unlock()
-	eventStreamClient2.Lock()
-	defer eventStreamClient2.Unlock()
-	purgedEventCollector.Lock()
-	defer purgedEventCollector.Unlock()
 
 	assert.Equal(t, batches*batchSize*2, len(eventProcessor1.events))
 	assert.Equal(t, batches*batchSize*2, len(eventProcessor2.events))
@@ -337,13 +356,6 @@ func TestMockRPCError(t *testing.T) {
 
 	eventStreamClient1.Stop()
 	eventStreamClient2.Stop()
-
-	eventStreamClient1.Lock()
-	defer eventStreamClient1.Unlock()
-	eventStreamClient2.Lock()
-	defer eventStreamClient2.Unlock()
-	purgedEventCollector.Lock()
-	defer purgedEventCollector.Unlock()
 
 	assert.Equal(t, count, len(eventProcessor1.events))
 	assert.Equal(t, count, len(eventProcessor2.events))
@@ -447,13 +459,6 @@ func TestClientFailover(t *testing.T) {
 
 	eventStreamClient2.Stop()
 	eventStreamClient3.Stop()
-
-	eventStreamClient1.Lock()
-	defer eventStreamClient1.Unlock()
-	eventStreamClient2.Lock()
-	defer eventStreamClient2.Unlock()
-	purgedEventCollector.Lock()
-	defer purgedEventCollector.Unlock()
 
 	assert.Equal(t, count, len(eventProcessor1.events))
 	assert.Equal(t, count, len(eventProcessor2.events))

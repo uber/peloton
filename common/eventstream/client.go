@@ -2,13 +2,13 @@ package eventstream
 
 import (
 	"context"
-	"sync"
-	"sync/atomic"
 	"time"
 
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
+	"code.uber.internal/infra/peloton/common/lifecycle"
 	"code.uber.internal/infra/peloton/common/metrics"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
 	"go.uber.org/yarpc"
@@ -25,10 +25,10 @@ var (
 // EventHandler is the interface for handling task update events
 type EventHandler interface {
 	// The event notification callback
-	OnEvent(event *pb_eventstream.Event)
+	OnEvent(event *pbeventstream.Event)
 
 	// The events notification callback
-	OnEvents(events []*pb_eventstream.Event)
+	OnEvents(events []*pbeventstream.Event)
 
 	// Returns the event progress the handler has processed. The value
 	// will be used by the client to determine the purgeOffset
@@ -37,9 +37,8 @@ type EventHandler interface {
 
 // Client is the event stream client
 type Client struct {
-	sync.RWMutex
 	// The rpc client to pull events from event stream handler
-	rpcClient pb_eventstream.EventStreamServiceYARPCClient
+	rpcClient pbeventstream.EventStreamServiceYARPCClient
 	// the client name
 	clientName string
 	// the stream id of the event stream
@@ -53,10 +52,10 @@ type Client struct {
 	purgeOffset uint64
 	// event handler interface to process the received events
 	eventHandler EventHandler
+	// log.Entry used by client to share common log fields
+	log *log.Entry
 
-	shutdownFlag *int32
-	runningState *int32
-	started      bool
+	lifeCycle lifecycle.LifeCycle
 
 	metrics *ClientMetrics
 }
@@ -70,15 +69,16 @@ func NewEventStreamClient(
 	taskUpdateHandler EventHandler,
 	parentScope tally.Scope,
 ) *Client {
-	var flag int32
-	var runningState int32
 	client := &Client{
 		clientName:   clientName,
-		rpcClient:    pb_eventstream.NewEventStreamServiceYARPCClient(d.ClientConfig(server)),
-		shutdownFlag: &flag,
-		runningState: &runningState,
+		rpcClient:    pbeventstream.NewEventStreamServiceYARPCClient(d.ClientConfig(server)),
 		eventHandler: taskUpdateHandler,
+		lifeCycle:    lifecycle.NewLifeCycle(),
 		metrics:      NewClientMetrics(parentScope.SubScope(metrics.SafeScopeName(clientName))),
+		log: log.WithFields(log.Fields{
+			"client": clientName,
+			"server": server,
+		}),
 	}
 	return client
 }
@@ -91,22 +91,22 @@ func NewLocalEventStreamClient(
 	taskUpdateHandler EventHandler,
 	parentScope tally.Scope,
 ) *Client {
-	var flag int32
-	var runningState int32
-
 	client := &Client{
 		clientName:   clientName,
 		rpcClient:    newLocalClient(handler),
-		shutdownFlag: &flag,
-		runningState: &runningState,
 		eventHandler: taskUpdateHandler,
 		metrics:      NewClientMetrics(parentScope.SubScope(metrics.SafeScopeName(clientName))),
+		lifeCycle:    lifecycle.NewLifeCycle(),
+		log: log.WithFields(log.Fields{
+			"client": clientName,
+			"server": "local",
+		}),
 	}
 	client.Start()
 	return client
 }
 
-func newLocalClient(h *Handler) pb_eventstream.EventStreamServiceYARPCClient {
+func newLocalClient(h *Handler) pbeventstream.EventStreamServiceYARPCClient {
 	return &localClient{
 		handler: h,
 	}
@@ -122,68 +122,73 @@ type localClient struct {
 // InitStream forwards the call to the handler, dropping the options.
 func (c *localClient) InitStream(
 	ctx context.Context,
-	request *pb_eventstream.InitStreamRequest,
-	opts ...yarpc.CallOption) (*pb_eventstream.InitStreamResponse, error) {
+	request *pbeventstream.InitStreamRequest,
+	opts ...yarpc.CallOption) (*pbeventstream.InitStreamResponse, error) {
 	return c.handler.InitStream(ctx, request)
 }
 
 // WaitForEvents forwards the call to the handler, dropping the options.
 func (c *localClient) WaitForEvents(
 	ctx context.Context,
-	request *pb_eventstream.WaitForEventsRequest,
-	opts ...yarpc.CallOption) (*pb_eventstream.WaitForEventsResponse, error) {
+	request *pbeventstream.WaitForEventsRequest,
+	opts ...yarpc.CallOption) (*pbeventstream.WaitForEventsResponse, error) {
 	return c.handler.WaitForEvents(ctx, request)
 }
 
-func (c *Client) sendInitStreamRequest(clientName string) (*pb_eventstream.InitStreamResponse, error) {
+func (c *Client) sendInitStreamRequest(clientName string) (*pbeventstream.InitStreamResponse, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelFunc()
 	c.metrics.InitStreamAPI.Inc(1)
-	request := &pb_eventstream.InitStreamRequest{
+	request := &pbeventstream.InitStreamRequest{
 		ClientName: clientName,
 	}
 	response, err := c.rpcClient.InitStream(ctx, request)
-	if err != nil {
-		log.WithError(err).Error("sendInitStreamRequest failed")
+	if err != nil || response.Error != nil {
+		c.log.WithError(err).Error("sendInitStreamRequest failed")
 		c.metrics.InitStreamFail.Inc(1)
-		return nil, err
+		return response, err
 	}
 	c.metrics.InitStreamSuccess.Inc(1)
 	c.metrics.StreamIDChange.Inc(1)
-	log.WithField("InitStreamResponse", response).Infoln()
+	c.log.WithField("InitStreamResponse", response).Infoln()
 	return response, nil
 }
 
-func (c *Client) initStream(clientName string) {
-	for c.isRunning() {
-		response, err := c.sendInitStreamRequest(c.clientName)
-		if err != nil {
-			log.WithError(err).Error("sendInitStreamRequest failed")
-			time.Sleep(errorRetrySleep)
-			continue
+func (c *Client) initStream(clientName string, stopCh <-chan struct{}) {
+	for {
+		select {
+		case <-stopCh:
+			c.log.Info("initStream returned due to shutdown")
+			return
+		default:
+			response, err := c.sendInitStreamRequest(clientName)
+			if err != nil {
+				c.log.WithError(err).Error("sendInitStreamRequest failed")
+				time.Sleep(errorRetrySleep)
+				continue
+			}
+			if response.Error != nil {
+				c.log.WithField("error", response.Error).Error("sendInitStreamRequest failed")
+				time.Sleep(errorRetrySleep)
+				continue
+			}
+			c.streamID = response.StreamID
+			c.beginOffset = response.PreviousPurgeOffset
+			c.previousSeverPurgeOffset = response.PreviousPurgeOffset
+			if response.PreviousPurgeOffset < response.MinOffset {
+				c.log.WithField("previous_purge_offset", response.PreviousPurgeOffset).
+					WithField("min_offset", response.MinOffset).
+					Error("Need to adjust beginOffset")
+				c.beginOffset = response.MinOffset
+			}
+			return
 		}
-		if response.Error != nil {
-			log.WithField("InitStreamResponse_Error", response.Error).Error("sendInitStreamRequest failed")
-			time.Sleep(errorRetrySleep)
-			continue
-		}
-		c.streamID = response.StreamID
-		c.beginOffset = response.PreviousPurgeOffset
-		c.previousSeverPurgeOffset = response.PreviousPurgeOffset
-		if response.PreviousPurgeOffset < response.MinOffset {
-			log.WithField("previous_purge_offset", response.PreviousPurgeOffset).
-				WithField("min_offset", response.MinOffset).
-				Error("Need to adjust beginOffset")
-			c.beginOffset = response.MinOffset
-		}
-		return
 	}
-	log.Info("initStream returned due to shutdown")
 }
 
 func (c *Client) sendWaitEventRequest(
 	beginOffset uint64,
-	purgeOffset uint64) (*pb_eventstream.WaitForEventsResponse, error) {
+	purgeOffset uint64) (*pbeventstream.WaitForEventsResponse, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancelFunc()
 
@@ -200,7 +205,7 @@ func (c *Client) sendWaitEventRequest(
 	}
 	c.metrics.WaitForEventsAPI.Inc(1)
 	c.metrics.PurgeOffset.Update(float64(purgeOffset))
-	request := &pb_eventstream.WaitForEventsRequest{
+	request := &pbeventstream.WaitForEventsRequest{
 		BeginOffset: beginOffset,
 		// purgeOffset are used to move the circular buffer tail, thus plus 1
 		PurgeOffset: purgeOffset,
@@ -210,7 +215,7 @@ func (c *Client) sendWaitEventRequest(
 	}
 	response, err := c.rpcClient.WaitForEvents(ctx, request)
 	if err != nil {
-		log.WithError(err).Error("sendWaitForEventsRequest failed")
+		c.log.WithError(err).Error("sendWaitForEventsRequest failed")
 		c.metrics.WaitForEventsFailed.Inc(1)
 		return nil, err
 	}
@@ -218,78 +223,79 @@ func (c *Client) sendWaitEventRequest(
 	return response, nil
 }
 
-func (c *Client) waitEventsLoop() {
-	for c.isRunning() {
-		c.purgeOffset = c.beginOffset
-		response, err := c.sendWaitEventRequest(c.beginOffset, c.purgeOffset)
-		// Retry in case there is RPC error
-		if err != nil {
-			log.WithError(err).Error("sendWaitEventRequest failed")
-			time.Sleep(errorRetrySleep)
-			continue
-		}
-		if response.GetError() != nil {
-			log.WithField("waitforEventsError", response.Error).Error("sendWaitEventRequest returns error")
-			// If client is unsupported / streamID is invalid, Return and the outside loop should call InitStream
-			// again
-			if response.Error.GetClientUnsupported() != nil || response.Error.GetInvalidStreamID() != nil {
-				return
+func (c *Client) waitEventsLoop(stopCh <-chan struct{}) {
+	for {
+		select {
+		case <-stopCh:
+			c.log.Info("waitEventsLoop returned due to shutdown")
+			return
+		default:
+			c.purgeOffset = c.beginOffset
+			response, err := c.sendWaitEventRequest(c.beginOffset, c.purgeOffset)
+			// Retry in case there is RPC error
+			if err != nil {
+				c.log.WithError(err).Error("sendWaitEventRequest failed")
+				time.Sleep(errorRetrySleep)
+				continue
 			}
-			// Note: InvalidPurgeOffset should never happen if the client does the right thing. For now, just log it
-		}
-		if len(response.GetEvents()) == 0 {
-			time.Sleep(noEventSleep)
-			continue
-		}
+			if response.GetError() != nil {
+				c.log.WithField("error", response.Error).Error("sendWaitEventRequest returns error")
+				// If client is unsupported / streamID is invalid, Return and the outside loop should call InitStream
+				// again
+				if response.Error.GetClientUnsupported() != nil || response.Error.GetInvalidStreamID() != nil {
+					return
+				}
+				// Note: InvalidPurgeOffset should never happen if the client does the right thing. For now, just log it
+			}
+			if len(response.GetEvents()) == 0 {
+				time.Sleep(noEventSleep)
+				continue
+			}
 
-		for _, event := range response.Events {
-			log.WithField("event offset", event.GetOffset()).Debug("Processing event")
-			if c.eventHandler != nil {
+			for _, event := range response.Events {
+				c.log.WithField("event_offset", event.GetOffset()).Debug("Processing event")
 				c.eventHandler.OnEvent(event)
+				c.beginOffset = event.GetOffset() + 1
 			}
-			c.beginOffset = event.GetOffset() + 1
+			c.eventHandler.OnEvents(response.Events)
+			c.metrics.EventsConsumed.Inc(int64(len(response.Events)))
 		}
-		c.eventHandler.OnEvents(response.Events)
-		c.metrics.EventsConsumed.Inc(int64(len(response.Events)))
 	}
-	log.Info("waitEventsLoop returned due to shutdown")
 }
 
 // Start starts the client
 func (c *Client) Start() {
-	c.Lock()
-	defer c.Unlock()
-	log.WithField("clientName", c.clientName).Info("Event stream client start() called")
-	if !c.started {
-		c.started = true
-		atomic.StoreInt32(c.shutdownFlag, 0)
-		go func() {
-			atomic.StoreInt32(c.runningState, int32(1))
-			defer atomic.StoreInt32(c.runningState, int32(0))
-			for c.isRunning() {
-				c.initStream(c.clientName)
-				c.waitEventsLoop()
-			}
-			log.WithField("clientName", c.clientName).Info("TaskUpdateStreamClient shutdown")
-		}()
-		for atomic.LoadInt32(c.runningState) != int32(1) {
-			time.Sleep(1 * time.Millisecond)
-		}
-		log.WithField("clientName", c.clientName).Info("Event stream client started")
+	if !c.lifeCycle.Start() {
+		return
 	}
+
+	c.log.Info("Event stream client start() called")
+	stopCh := c.lifeCycle.StopCh()
+	go func() {
+		for {
+			select {
+			case <-stopCh:
+				c.log.Info("Event stream client exits wait events")
+				c.lifeCycle.StopComplete()
+				return
+			default:
+				c.initStream(c.clientName, stopCh)
+				c.waitEventsLoop(stopCh)
+			}
+		}
+
+	}()
+	c.log.Info("Event stream client started")
 }
 
 // Stop stops the client
 func (c *Client) Stop() {
-	log.WithField("clientName", c.clientName).Info("Event stream client stop() called")
-	atomic.StoreInt32(c.shutdownFlag, 1)
-	// wait until the event consuming go routine returns
-	for atomic.LoadInt32(c.runningState) != int32(0) {
-		time.Sleep(1 * time.Millisecond)
+	if !c.lifeCycle.Stop() {
+		return
 	}
-	log.WithField("clientName", c.clientName).Info("Event stream client stopped")
-}
 
-func (c *Client) isRunning() bool {
-	return atomic.LoadInt32(c.shutdownFlag) == int32(0)
+	c.log.Info("Event stream client stop() called")
+	c.lifeCycle.Wait()
+	// wait until the event consuming go routine returns
+	c.log.Info("Event stream client stopped")
 }
