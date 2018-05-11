@@ -35,6 +35,11 @@ if [[ -z ${GOPATH+x} ]] ; then
   export GOPATH="$workspace"
 fi
 
+# Short-term fix for T1671015 (chunyang.shen)
+mkdir -p "$GOPATH/bin"
+export GOBIN="$GOPATH/bin"
+export PATH=$PATH:$GOBIN
+
 # FIXME(gabe) this is a hack; ensure deps are up to date before performing package build
 # Remove this when we can properly perform a `glide install` in a container
 make install
