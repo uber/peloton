@@ -1,9 +1,11 @@
 import pytest
+from datetime import datetime, timedelta
 
 from client import Client
 from peloton_client.pbgen.peloton.api.job import job_pb2
 from peloton_client.pbgen.peloton.api.query import query_pb2 as query
 from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
+from peloton_client.google.protobuf import timestamp_pb2
 
 from conftest import NUM_JOBS_PER_STATE
 
@@ -242,3 +244,52 @@ def test__query_job_negative(create_jobs):
     )
     resp = query_by_spec(respoolID, spec_by_name)
     assert len(resp.results) == 0
+
+
+def test__query_time_range(create_jobs):
+    salt = create_jobs[0]
+    respoolID = create_jobs[1]
+
+    min_time = timestamp_pb2.Timestamp()
+    max_time = timestamp_pb2.Timestamp()
+    dt = datetime.today() - timedelta(days=1)
+    min_time.FromDatetime(dt)
+    max_time.GetCurrentTime()
+    time_range = peloton.TimeRange(
+        min=min_time,
+        max=max_time,
+    )
+    spec = job_pb2.QuerySpec(
+        keywords=[salt],
+        completionTimeRange=time_range,
+    )
+    resp = query_by_spec(respoolID, spec=spec)
+    # This is a query with keyword for jobs completed
+    # over last one day. This should yield
+    # 2 * NUM_JOBS_PER_STATE jobs for SUCCEEDED and
+    # FAILED states, both of which will have completion time
+    assert len(resp.results) == 2 * NUM_JOBS_PER_STATE
+
+    spec = job_pb2.QuerySpec(
+        keywords=[salt],
+        creationTimeRange=time_range,
+    )
+    resp = query_by_spec(respoolID, spec=spec)
+    # This is a query with keyword for jobs completed
+    # over last one day. This should yield
+    # 3 * NUM_JOBS_PER_STATE jobs for RUNNING, SUCCEEDED and
+    # FAILED states
+    assert len(resp.results) == 3 * NUM_JOBS_PER_STATE
+
+    # use min_time as max and max_time as min
+    # This should result in error in response
+    bad_time_range = peloton.TimeRange(
+        max=min_time,
+        min=max_time,
+    )
+    spec = job_pb2.QuerySpec(
+        keywords=[salt],
+        creationTimeRange=bad_time_range,
+    )
+    resp = query_by_spec(respoolID, spec=spec)
+    assert resp.HasField('error')
