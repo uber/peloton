@@ -86,9 +86,19 @@ func TestObserverStop(t *testing.T) {
 	role := "testrole"
 	zkpath := "/peloton/fake"
 	key := strings.TrimPrefix(zkpath, "/")
+
+	kv, err := libkvmock.New([]string{}, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, kv)
+
+	mockStore := kv.(*libkvmock.Mock)
+	kvCh := make(chan *store.KVPair)
+	var mockKVCh <-chan *store.KVPair = kvCh
+	mockStore.On("Watch", key, mock.Anything).Return(mockKVCh, nil)
+
 	o := observer{
 		role:     role,
-		follower: leadership.NewFollower(nil, key),
+		follower: leadership.NewFollower(kv, key),
 		metrics:  newObserverMetrics(tally.NoopScope, "testobserverrole"),
 		stopChan: make(chan struct{}),
 		running:  true,
@@ -100,6 +110,9 @@ func TestObserverStop(t *testing.T) {
 		o.observe()
 		wg.Done()
 	}()
+	// wait for 1 sec to make sure observer.observe calls observer.waitForEvent
+	time.Sleep(1 * time.Second)
 	o.Stop()
+	close(kvCh)
 	wg.Wait()
 }

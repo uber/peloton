@@ -134,8 +134,17 @@ func (o *observer) observe() {
 		default:
 			err := o.waitForEvent()
 			if err != nil {
-				log.WithFields(log.Fields{"role": o.role}).Errorf("Failure observing election; retrying: %v", err)
-				time.Sleep(zkConnErrRetry)
+				log.WithFields(log.Fields{
+					"role":  o.role,
+					"error": err,
+				}).Errorf("Failure observing election; retrying")
+				// if we already stop the observer, return without sleep
+				select {
+				case <-o.stopChan:
+					return
+				default:
+					time.Sleep(zkConnErrRetry)
+				}
 			}
 		}
 	}
