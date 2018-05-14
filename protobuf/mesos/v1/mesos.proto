@@ -417,7 +417,7 @@ message FrameworkInfo {
  * specifying one of the optional fields. Specifying more than one type
  * is an error.
  *
- * NOTE: This API is unstable and the related feature is experimental.
+ * NOTE: This API is subject to change and the related feature is experimental.
  */
 message CheckInfo {
   enum Type {
@@ -890,7 +890,7 @@ message MasterInfo {
       UNKNOWN = 0;
 
       // The master can handle slaves whose state
-      // changes after re-registering.
+      // changes after reregistering.
       AGENT_UPDATE = 1;
     }
     optional Type type = 1;
@@ -985,6 +985,10 @@ message AgentInfo {
       //
       // (2) The ability to provide operation feedback.
       RESOURCE_PROVIDER = 4;
+
+      // This expresses the capability for the agent to handle persistent volume
+      // resize operations safely. This capability is turned on by default.
+      RESIZE_VOLUME = 5;
     }
 
     // Enum fields should be optional, see: MESOS-4997.
@@ -1454,7 +1458,7 @@ message Resource {
       // the framework will do disk selection based on profile names,
       // instead of vendor specific disk parameters.
       //
-      // Also see the DiskProfile module.
+      // Also see the DiskProfileAdaptor module.
       optional string profile = 6; // EXPERIMENTAL.
     }
 
@@ -1879,6 +1883,8 @@ message Offer {
 
   repeated Resource resources = 5;
   repeated Attribute attributes = 7;
+
+  // Executors of the same framework running on this agent.
   repeated ExecutorID executor_ids = 6;
 
   // Signifies that the resources in this Offer may be unavailable during
@@ -1909,10 +1915,12 @@ message Offer {
       UNRESERVE = 3;
       CREATE = 4;
       DESTROY = 5;
-      CREATE_VOLUME = 7;
-      DESTROY_VOLUME = 8;
-      CREATE_BLOCK = 9;
-      DESTROY_BLOCK = 10;
+      CREATE_VOLUME = 7;  // EXPERIMENTAL.
+      DESTROY_VOLUME = 8; // EXPERIMENTAL.
+      CREATE_BLOCK = 9;   // EXPERIMENTAL.
+      DESTROY_BLOCK = 10; // EXPERIMENTAL.
+      GROW_VOLUME = 11;   // EXPERIMENTAL.
+      SHRINK_VOLUME = 12; // EXPERIMENTAL.
     }
 
     // TODO(vinod): Deprecate this in favor of `LaunchGroup` below.
@@ -1949,19 +1957,45 @@ message Offer {
       repeated Resource volumes = 1;
     }
 
+    // Grow a volume by an additional disk resource.
+    // NOTE: This is currently experimental and only for persistent volumes
+    // created on ROOT/PATH disk.
+    message GrowVolume {
+      required Resource volume = 1;
+      required Resource addition = 2;
+    }
+
+    // Shrink a volume by the size specified in the `subtract` field.
+    // NOTE: This is currently experimental and only for persistent volumes
+    // created on ROOT/PATH disk.
+    message ShrinkVolume {
+      required Resource volume = 1;
+
+      // See comments in `Value.Scalar` for maximum precision supported.
+      required Value.Scalar subtract = 2;
+    }
+
+    // NOTE: For the time being, this API is subject to change and the related
+    // feature is experimental.
     message CreateVolume {
       required Resource source = 1;
       required Resource.DiskInfo.Source.Type target_type = 2;
     }
 
+    // NOTE: For the time being, this API is subject to change and the related
+    // feature is experimental.
     message DestroyVolume {
       required Resource volume = 1;
     }
 
+    // NOTE: For the time being, this API is subject to change and the related
+    // feature is experimental.
     message CreateBlock {
       required Resource source = 1;
     }
 
+    // NOTE: For the time being, this API is subject to change and the related
+    // feature is experimental.
     message DestroyBlock {
       required Resource block = 1;
     }
@@ -1971,7 +2005,7 @@ message Offer {
     // NOTE: The `id` field will allow frameworks to indicate that they wish to
     // receive feedback about an operation. Since this feature is not yet
     // implemented, the `id` field should NOT be set at present. See MESOS-8054.
-    optional OperationID id = 12; // Experimental.
+    optional OperationID id = 12; // EXPERIMENTAL.
 
     optional Launch launch = 2;
     optional LaunchGroup launch_group = 7;
@@ -1979,6 +2013,8 @@ message Offer {
     optional Unreserve unreserve = 4;
     optional Create create = 5;
     optional Destroy destroy = 6;
+    optional GrowVolume grow_volume = 13; // EXPERIMENTAL.
+    optional ShrinkVolume shrink_volume = 14; // EXPERIMENTAL.
     optional CreateVolume create_volume = 8;
     optional DestroyVolume destroy_volume = 9;
     optional CreateBlock create_block = 10;
@@ -2093,6 +2129,14 @@ message TaskInfo {
   // to use this information as needed and to handle tasks without
   // service discovery information.
   optional DiscoveryInfo discovery = 11;
+
+  // Maximum duration for task completion. If the task is non-terminal at the
+  // end of this duration, it will fail with the reason
+  // `REASON_MAX_COMPLETION_TIME_REACHED`. Mesos supports this field for
+  // executor-less tasks, and tasks that use Docker or default executors.
+  // It is the executor's responsibility to implement this, so it might not be
+  // supported by all custom executors.
+  optional DurationInfo max_completion_time = 14;
 }
 
 
@@ -2188,7 +2232,7 @@ enum TaskState {
   //
   // NOTE: This state is not always terminal. For example, tasks might
   // transition from TASK_LOST to TASK_RUNNING or other states when a
-  // partitioned agent re-registers.
+  // partitioned agent reregisters.
   TASK_LOST = 5;     // The task failed but can be rescheduled.
 
   // The following task states are only sent when the framework
@@ -2291,6 +2335,35 @@ enum OperationState {
 
   // TERMINAL: The operation was dropped due to a transient error.
   OPERATION_DROPPED = 5;
+
+  // The operation affects an agent that has lost contact with the master,
+  // typically due to a network failure or partition. The operation may or may
+  // not still be pending.
+  OPERATION_UNREACHABLE = 6;
+
+  // The operation affected an agent that the master cannot contact;
+  // the operator has asserted that the agent has been shutdown, but this has
+  // not been directly confirmed by the master.
+  //
+  // If the operator is correct, the operation is not pending and this is a
+  // terminal state; if the operator is mistaken, the operation may still be
+  // pending and might return to a different state in the future.
+  OPERATION_GONE_BY_OPERATOR = 7;
+
+  // The operation affects an agent that the master recovered from its
+  // state, but that agent has not yet re-registered.
+  //
+  // The operation can transition to `OPERATION_UNREACHABLE` if the
+  // corresponding agent is marked as unreachable, and will transition to
+  // another status if the agent re-registers.
+  OPERATION_RECOVERING = 8;
+
+  // The master has no knowledge of the operation. This is typically
+  // because either (a) the master never had knowledge of the operation, or
+  // (b) the master forgot about the operation because it garbage collected
+  // its metadata about the operation. The operation may or may not still be
+  // pending.
+  OPERATION_UNKNOWN = 9;
 }
 
 
@@ -2298,7 +2371,12 @@ enum OperationState {
  * Describes the current status of an operation.
  */
 message OperationStatus {
+  // While frameworks will only receive status updates for operations on which
+  // they have set an ID, this field is optional because this message is also
+  // used internally by Mesos components when the operation's ID has not been
+  // set.
   optional OperationID operation_id = 1;
+
   required OperationState state = 2;
   optional string message = 3;
 
@@ -2319,7 +2397,7 @@ message OperationStatus {
 * (e.g., the check timed out), these fields must contain empty messages, i.e.,
 * `exit_code` or `status_code` will be unset.
 *
-* NOTE: This API is unstable and the related feature is experimental.
+* NOTE: This API is subject to change and the related feature is experimental.
 */
 message CheckStatusInfo {
   message Command {
@@ -2391,6 +2469,7 @@ message TaskStatus {
     REASON_CONTAINER_LIMITATION_MEMORY = 8;
     REASON_CONTAINER_PREEMPTED = 17;
     REASON_CONTAINER_UPDATE_FAILED = 22;
+    REASON_MAX_COMPLETION_TIME_REACHED = 33;
     REASON_EXECUTOR_REGISTRATION_TIMEOUT = 23;
     REASON_EXECUTOR_REREGISTRATION_TIMEOUT = 24;
     REASON_EXECUTOR_TERMINATED = 1;
@@ -2708,7 +2787,7 @@ message Image {
     // (see MESOS-7088 for details).
     optional Credential credential = 2 [deprecated = true]; // Since 1.3.
 
-    // Docker config containing credentails to authenticate with
+    // Docker config containing credentials to authenticate with
     // docker registry. The secret is expected to be a docker
     // config file in JSON format with UTF-8 character encoding.
     optional Secret config = 3;
@@ -3433,7 +3512,7 @@ message FileInfo {
 
 
 /**
- * Describes information abount a device.
+ * Describes information about a device.
  */
 message Device {
   message Number {
