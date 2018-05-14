@@ -584,3 +584,38 @@ func (suite *SchedulerTestSuite) TestDeletePartialTasksTasks() {
 	}
 	suite.validateReadyQueue(expectedTaskIDs)
 }
+
+func (suite *SchedulerTestSuite) TestTransitTask() {
+	suite.rmTaskTracker.Clear()
+	t := &resmgr.Task{
+		Name:     "job1-1",
+		Priority: 1,
+		JobId:    &peloton.JobID{Value: "job1"},
+		Id:       &peloton.TaskID{Value: "job1-1"},
+		Resource: &task.ResourceConfig{
+			CpuLimit:    1,
+			DiskLimitMb: 10,
+			GpuLimit:    0,
+			MemLimitMb:  100,
+		},
+		Preemptible: true,
+	}
+
+	resPool, err := suite.resTree.Get(&peloton.ResourcePoolID{
+		Value: "respool11",
+	})
+	suite.NoError(err)
+	resPool.SetEntitlement(suite.getEntitlement())
+
+	suite.addTasktotracker(t)
+	rmTask := suite.rmTaskTracker.GetTask(&peloton.TaskID{Value: "job1-1"})
+	rmTask.TransitTo(task.TaskState_PENDING.String())
+
+	err = suite.taskSched.transitTask(rmTask, task.TaskState_PENDING,
+		task.TaskState_READY, "testing")
+	suite.NoError(err)
+
+	err = suite.taskSched.transitTask(rmTask, task.TaskState_PENDING,
+		task.TaskState_READY, "testing")
+	suite.EqualError(err, errTaskNotInCorrectState.Error())
+}

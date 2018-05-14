@@ -284,39 +284,13 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 				"to":      toState.String(),
 				"from":    fromState.String(),
 			}).Error("Task not in tracker")
-			invalidTasks[task.Id.Value] = errTaskIsNotPresent
+			invalidTasks[task.GetId().GetValue()] = errTaskIsNotPresent
 			continue
 		}
 
-		// Locking the RMtask for making the transition
-		rmTaskLock := func() {
-			rmTask.Lock()
-			defer rmTask.Unlock()
-		}
-		rmTaskLock()
-
-		if rmTask.GetCurrentState() != fromState {
+		if err := s.transitTask(rmTask, fromState, toState, reason); err != nil {
 			isInvalidTaskInGang = true
-			log.WithFields(log.Fields{
-				"task_id":    task.Id.Value,
-				"to":         toState.String(),
-				"from":       fromState.String(),
-				"task_state": rmTask.GetCurrentState().String(),
-			}).Error("Task is not in expected state")
-			invalidTasks[task.Id.Value] = errTaskNotInCorrectState
-			continue
-		}
-
-		err := rmTask.TransitTo(toState.String(), statemachine.WithReason(reason))
-		if err != nil {
-			isInvalidTaskInGang = true
-			log.WithFields(log.Fields{
-				"task_id":    task.Id.Value,
-				"to":         toState.String(),
-				"from":       fromState.String(),
-				"task_state": rmTask.GetCurrentState().String(),
-			}).Error("Failed to transition task")
-			invalidTasks[task.Id.Value] = errTaskNotTransitioned
+			invalidTasks[task.GetId().GetValue()] = err
 		}
 	}
 
@@ -324,6 +298,41 @@ func (s *scheduler) transitGang(gang *resmgrsvc.Gang, fromState pt.TaskState, to
 		return invalidTasks, errors.Errorf("Invalid Tasks in gang %s", gang)
 	}
 	return nil, nil
+}
+
+func (s *scheduler) transitTask(rmTask *RMTask,
+	fromState pt.TaskState,
+	toState pt.TaskState,
+	reason string) error {
+	// Locking for making the transition
+	rmTask.Lock()
+	defer rmTask.Unlock()
+
+	taskID := rmTask.Task().GetId().GetValue()
+
+	if rmTask.GetCurrentState() != fromState {
+		log.WithFields(log.Fields{
+			"task_id":    taskID,
+			"to":         toState.String(),
+			"from":       fromState.String(),
+			"task_state": rmTask.GetCurrentState().String(),
+		}).Error("Task is not in expected state")
+		return errTaskNotInCorrectState
+	}
+
+	if err := rmTask.TransitTo(toState.String(),
+		statemachine.WithReason(reason)); err != nil {
+		log.WithFields(log.Fields{
+			"task_id":    taskID,
+			"to":         toState.String(),
+			"from":       fromState.String(),
+			"task_state": rmTask.GetCurrentState().String(),
+		}).WithError(err).
+			Error("Failed to transition task")
+		return errTaskNotTransitioned
+	}
+
+	return nil
 }
 
 // Stop stops Task Scheduler process
