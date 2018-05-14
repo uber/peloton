@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/common"
 
 	"code.uber.internal/infra/peloton/util"
@@ -17,12 +17,15 @@ const (
 	// _waitForTransientErrorBeforeRetry is the time between successive retries
 	// DB updates in case of transient errors in DB read/writes.
 	_waitForTransientErrorBeforeRetry = 1 * time.Millisecond
+	// _waitForDrainingEventBucket is the time between successive checks of
+	// whether there are events remaining in the bucket during shutdownCh
+	_waitForDrainingEventBucket = 1 * time.Millisecond
 )
 
 // StatusProcessor is the interface to process a task status update
 type StatusProcessor interface {
-	ProcessStatusUpdate(ctx context.Context, event *pb_eventstream.Event) error
-	ProcessListeners(event *pb_eventstream.Event)
+	ProcessStatusUpdate(ctx context.Context, event *pbeventstream.Event) error
+	ProcessListeners(event *pbeventstream.Event)
 }
 
 // asyncEventProcessor maps events to a list of buckets; and each bucket would be consumed by a single go routine
@@ -36,30 +39,40 @@ type asyncEventProcessor struct {
 // eventBucket is a bucket of task updates. All updates for one task would end up in one bucket in order; a bucket
 // can hold status updates for multiple tasks.
 type eventBucket struct {
-	eventChannel    chan *pb_eventstream.Event
-	shutdownChannel chan struct{}
+	eventCh chan *pbeventstream.Event
 	// index is used to identify the bucket in eventBuckets
 	index           int
 	processedCount  *int32
 	processedOffset *uint64
+
+	// channel to indicate the eventBucket should stop
+	shutdownCh chan struct{}
+	// channel to indicate drainAndShutdown is complete
+	shutdownCompleteCh chan struct{}
 }
 
 func newEventBucket(size int, index int) *eventBucket {
-	updates := make(chan *pb_eventstream.Event, size)
+	updates := make(chan *pbeventstream.Event, size)
 	var processedCount int32
 	var processedOffset uint64
 	return &eventBucket{
-		eventChannel:    updates,
-		shutdownChannel: make(chan struct{}, 10),
-		index:           index,
-		processedCount:  &processedCount,
-		processedOffset: &processedOffset,
+		eventCh:            updates,
+		shutdownCh:         make(chan struct{}),
+		shutdownCompleteCh: make(chan struct{}),
+		index:              index,
+		processedCount:     &processedCount,
+		processedOffset:    &processedOffset,
 	}
 }
 
-func (t *eventBucket) shutdown() {
-	log.WithField("bucket_index", t.index).Info("Shutting down bucket")
-	t.shutdownChannel <- struct{}{}
+func (t *eventBucket) drainAndShutdown() {
+	log.WithField("bucket_index", t.index).Info("waiting for events in bucket to finish")
+	for len(t.eventCh) > 0 {
+		time.Sleep(_waitForDrainingEventBucket)
+	}
+	log.WithField("bucket_index", t.index).Info("shutting down bucket")
+	close(t.shutdownCh)
+	<-t.shutdownCompleteCh
 }
 
 func (t *eventBucket) getProcessedCount() int32 {
@@ -69,7 +82,7 @@ func (t *eventBucket) getProcessedCount() int32 {
 func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket) {
 	for {
 		select {
-		case event := <-bucket.eventChannel:
+		case event := <-bucket.eventCh:
 			for {
 				// Retry while getting AlreadyExists error.
 				if err := t.ProcessStatusUpdate(context.Background(), event); err == nil {
@@ -90,8 +103,9 @@ func dequeuEventsFromBucket(t StatusProcessor, bucket *eventBucket) {
 
 			atomic.AddInt32(bucket.processedCount, 1)
 			atomic.StoreUint64(bucket.processedOffset, event.Offset)
-		case <-bucket.shutdownChannel:
-			log.WithField("bucket_num", bucket.index).Info("bucket is shutdown")
+		case <-bucket.shutdownCh:
+			log.WithField("bucket_num", bucket.index).Info("bucket is shutdownCh")
+			bucket.shutdownCompleteCh <- struct{}{}
 			return
 		}
 	}
@@ -109,10 +123,10 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 	}
 }
 
-func (t *asyncEventProcessor) addEvent(event *pb_eventstream.Event) {
+func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) {
 	var taskID string
 	var err error
-	if event.Type == pb_eventstream.Event_MESOS_TASK_STATUS {
+	if event.Type == pbeventstream.Event_MESOS_TASK_STATUS {
 		mesosTaskID := event.MesosTaskStatus.GetTaskId().GetValue()
 		taskID, err = util.ParseTaskIDFromMesosTaskID(mesosTaskID)
 		if err != nil {
@@ -121,7 +135,7 @@ func (t *asyncEventProcessor) addEvent(event *pb_eventstream.Event) {
 				Error("Failed to ParseTaskIDFromMesosTaskID")
 			return
 		}
-	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
+	} else if event.Type == pbeventstream.Event_PELOTON_TASK_EVENT {
 		taskID = event.PelotonTaskEvent.TaskId.Value
 		log.WithField("Task ID", taskID).Debug("Received Event " +
 			"from resmgr")
@@ -129,14 +143,14 @@ func (t *asyncEventProcessor) addEvent(event *pb_eventstream.Event) {
 
 	_, instanceID, _ := util.ParseTaskID(taskID)
 	index := instanceID % len(t.eventBuckets)
-	t.eventBuckets[index].eventChannel <- event
+	t.eventBuckets[index].eventCh <- event
 }
 
-func (t *asyncEventProcessor) shutdown() {
+func (t *asyncEventProcessor) drainAndShutdown() {
 	t.RLock()
 	defer t.RUnlock()
 	for _, bucket := range t.eventBuckets {
-		bucket.shutdown()
+		bucket.drainAndShutdown()
 	}
 }
 

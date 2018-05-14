@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -14,12 +13,12 @@ import (
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
+	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 )
 
 var uuidStr = uuid.NewUUID().String()
@@ -31,7 +30,7 @@ func TestBucketEventProcessor(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
+	mockTaskStore := storemocks.NewMockTaskStore(ctrl)
 
 	handler := &statusUpdate{
 		taskStore:       mockTaskStore,
@@ -55,11 +54,11 @@ func TestBucketEventProcessor(t *testing.T) {
 			InstanceId: i,
 			JobId:      jobID,
 		}
-		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
-		jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
-		cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return()
-		cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
-		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return()
+		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil).Times(3)
+		jobFactory.EXPECT().AddJob(jobID).Return(cachedJob).Times(3)
+		cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return().Times(3)
+		cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil).Times(3)
+		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return().Times(3)
 	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
@@ -72,31 +71,13 @@ func TestBucketEventProcessor(t *testing.T) {
 		}
 
 		offset++
-		applier.addEvent(&pb_eventstream.Event{
+		applier.addEvent(&pbeventstream.Event{
 			Offset:          offset,
 			MesosTaskStatus: status,
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			Type:            pbeventstream.Event_MESOS_TASK_STATUS,
 		})
 	}
 
-	time.Sleep(200 * time.Millisecond)
-
-	for i := uint32(0); i < n; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
-		pelotonTaskID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
-		taskInfo := &task.TaskInfo{
-			Runtime: &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
-			},
-			InstanceId: i,
-			JobId:      jobID,
-		}
-		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
-		jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
-		cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return()
-		cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
-		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return()
-	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
 		state := mesos.TaskState_TASK_RUNNING
@@ -108,31 +89,13 @@ func TestBucketEventProcessor(t *testing.T) {
 		}
 
 		offset++
-		applier.addEvent(&pb_eventstream.Event{
+		applier.addEvent(&pbeventstream.Event{
 			Offset:          offset,
 			MesosTaskStatus: status,
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			Type:            pbeventstream.Event_MESOS_TASK_STATUS,
 		})
 	}
 
-	time.Sleep(200 * time.Millisecond)
-
-	for i := uint32(0); i < n; i++ {
-		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
-		pelotonTaskID := fmt.Sprintf("%s-%d", jobID.GetValue(), i)
-		taskInfo := &task.TaskInfo{
-			Runtime: &task.RuntimeInfo{
-				MesosTaskId: &mesos.TaskID{Value: &mesosTaskID},
-			},
-			InstanceId: i,
-			JobId:      jobID,
-		}
-		mockTaskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil)
-		jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
-		cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return()
-		cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
-		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return()
-	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
 		state := mesos.TaskState_TASK_FINISHED
@@ -144,18 +107,16 @@ func TestBucketEventProcessor(t *testing.T) {
 		}
 
 		offset++
-		applier.addEvent(&pb_eventstream.Event{
+		applier.addEvent(&pbeventstream.Event{
 			Offset:          offset,
 			MesosTaskStatus: status,
-			Type:            pb_eventstream.Event_MESOS_TASK_STATUS,
+			Type:            pbeventstream.Event_MESOS_TASK_STATUS,
 		})
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	applier.drainAndShutdown()
 
-	for _, bucket := range applier.eventBuckets {
-		assert.True(t, bucket.getProcessedCount() > 0)
+	for i, bucket := range applier.eventBuckets {
+		assert.True(t, bucket.getProcessedCount() > 0, fmt.Sprintf("bucket %d did not process any event", i))
 	}
-	applier.shutdown()
-
 }
