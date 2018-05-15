@@ -75,13 +75,15 @@ var (
 		},
 		task.TaskState_RUNNING: {
 			task.TaskState_INITIALIZED: StartAction,
+			task.TaskState_LAUNCHED:    LaunchRetryAction,
+			task.TaskState_STARTING:    LaunchRetryAction,
 			task.TaskState_SUCCEEDED:   StartAction,
 			task.TaskState_FAILED:      StartAction,
-			task.TaskState_LAUNCHED:    LaunchRetryAction,
 		},
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: StartAction,
 			task.TaskState_LAUNCHED:    LaunchRetryAction,
+			task.TaskState_STARTING:    LaunchRetryAction,
 			task.TaskState_FAILED:      FailRetryAction,
 		},
 		task.TaskState_KILLED: {
@@ -89,6 +91,7 @@ var (
 			task.TaskState_PENDING:     StopAction,
 			task.TaskState_LAUNCHING:   StopAction,
 			task.TaskState_LAUNCHED:    StopAction,
+			task.TaskState_STARTING:    StopAction,
 			task.TaskState_RUNNING:     StopAction,
 			task.TaskState_KILLING:     ExecutorShutdownAction,
 		},
@@ -103,10 +106,11 @@ var (
 			task.TaskState_PENDING:     StopAction,
 			task.TaskState_LAUNCHING:   StopAction,
 			task.TaskState_LAUNCHED:    StopAction,
+			task.TaskState_STARTING:    StopAction,
 			task.TaskState_RUNNING:     StopAction,
 			task.TaskState_KILLING:     ExecutorShutdownAction,
-			task.TaskState_LOST:        PreemptAction,
 			task.TaskState_KILLED:      PreemptAction,
+			task.TaskState_LOST:        PreemptAction,
 		},
 	}
 )

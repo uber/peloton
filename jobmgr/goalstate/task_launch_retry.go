@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
@@ -51,16 +52,38 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.LaunchTimeout {
-		// launch not times out, just send it to resource manager
-		return sendLaunchInfoToResMgr(ctx, taskEnt)
+	switch cachedTask.CurrentState().State {
+	case task.TaskState_LAUNCHED:
+		if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.LaunchTimeout {
+			// LAUNCHED not times out, just send it to resource manager
+			return sendLaunchInfoToResMgr(ctx, taskEnt)
+		}
+		goalStateDriver.mtx.taskMetrics.TaskLaunchTimeout.Inc(1)
+	case task.TaskState_STARTING:
+		if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.StartTimeout {
+			// the job is STARTING on mesos, enqueue the task in case the start timeout
+			goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now().Add(goalStateDriver.cfg.StartTimeout))
+			return nil
+		}
+		goalStateDriver.mtx.taskMetrics.TaskStartTimeout.Inc(1)
+	default:
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.GetValue(),
+			"instance_id": taskEnt.instanceID,
+			"state":       cachedTask.CurrentState().State,
+		}).Error("unexpected task state, expecting LAUNCHED or STARTING state")
+		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
+		return nil
 	}
 
-	// launch timed out, re-initialize the task to re-launch.
-	log.WithField("job_id", taskEnt.jobID.GetValue()).
-		WithField("instance_id", taskEnt.instanceID).
-		Info("task launch timed out, reinitializing the task")
-	goalStateDriver.mtx.taskMetrics.TaskLaunchTimeout.Inc(1)
+	// start or launch timed out, re-initialize the task to re-launch.
+	log.WithFields(log.Fields{
+		"job_id":      taskEnt.jobID.GetValue(),
+		"instance_id": taskEnt.instanceID,
+		"mesos_id":    cachedTask.GetRunTime().GetMesosTaskId().GetValue(),
+		"state":       cachedTask.CurrentState().State.String(),
+	}).Info("task timed out, reinitializing the task")
+
 	// TODO kill the old task as well instead of waiting for the orphaned task
 	return TaskInitialize(ctx, entity)
 }

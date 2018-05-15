@@ -21,5 +21,6 @@ job_manager:
     job_service_runtime_update_interval: 1s
     max_retry_delay: 60s
     launch_timeout: 60s
+    start_timeout: 60s
   deadline:
     deadline_tracking_period: 60s

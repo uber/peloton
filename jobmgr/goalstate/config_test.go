@@ -14,6 +14,7 @@ func TestConfigNormalize(t *testing.T) {
 	assert.Equal(t, _defaultMaxRetryDelay, c.MaxRetryDelay)
 	assert.Equal(t, _defaultFailureRetryDelay, c.FailureRetryDelay)
 	assert.Equal(t, _defaultLaunchTimeRetryDuration, c.LaunchTimeout)
+	assert.Equal(t, _defaultStartTimeRetryDuration, c.StartTimeout)
 	assert.Equal(t, _defaultJobRuntimeUpdateInterval, c.JobBatchRuntimeUpdateInterval)
 	assert.Equal(t, _defaultJobRuntimeUpdateInterval, c.JobServiceRuntimeUpdateInterval)
 	assert.Equal(t, _defaultJobWorkerThreads, c.NumWorkerJobThreads)

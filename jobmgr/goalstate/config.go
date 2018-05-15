@@ -6,6 +6,7 @@ const (
 	_defaultMaxRetryDelay            = 60 * time.Minute
 	_defaultFailureRetryDelay        = 2 * time.Second
 	_defaultLaunchTimeRetryDuration  = 20 * time.Minute
+	_defaultStartTimeRetryDuration   = 20 * time.Minute
 	_defaultJobRuntimeUpdateInterval = 1 * time.Second
 	_defaultJobWorkerThreads         = 10
 	_defaultTaskWorkerThreads        = 1000
@@ -20,11 +21,16 @@ type Config struct {
 	// will be applied for up to MaxRetryDelay.
 	FailureRetryDelay time.Duration `yaml:"failure_retry_delay"`
 
-	// LaunchTimeout is the timeout value for the launched state.
+	// LaunchTimeout is the timeout value for the LAUNCHED state.
 	// If no update is received from Mesos within this timeout value,
 	// the task will be re-queued to the resource manager for placement
 	// with a new mesos task id.
 	LaunchTimeout time.Duration `yaml:"launch_timeout"`
+	// StartTimeout is the timeout value for the STARTING state.
+	// If no update is received from Mesos within this timeout value,
+	// the task will be re-queued to the resource manager for placement
+	// with a new mesos task id.
+	StartTimeout time.Duration `yaml:"start_timeout"`
 
 	// JobRuntimeUpdateInterval is the interval at which batch jobs runtime updater is run.
 	JobBatchRuntimeUpdateInterval time.Duration `yaml:"job_batch_runtime_update_interval"`
@@ -52,6 +58,10 @@ func (c *Config) normalize() {
 
 	if c.LaunchTimeout == 0 {
 		c.LaunchTimeout = _defaultLaunchTimeRetryDuration
+	}
+
+	if c.StartTimeout == 0 {
+		c.StartTimeout = _defaultStartTimeRetryDuration
 	}
 
 	if c.JobBatchRuntimeUpdateInterval == 0 {

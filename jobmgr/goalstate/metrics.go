@@ -26,6 +26,7 @@ type TaskMetrics struct {
 	TaskRecovered          tally.Counter
 	ExecutorShutdown       tally.Counter
 	TaskLaunchTimeout      tally.Counter
+	TaskStartTimeout       tally.Counter
 	RetryFailedLaunchTotal tally.Counter
 	RetryFailedTasksTotal  tally.Counter
 }
@@ -61,6 +62,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskRecovered:          taskScope.Counter("recovered"),
 		ExecutorShutdown:       taskScope.Counter("executor_shutdown"),
 		TaskLaunchTimeout:      taskScope.Counter("launch_timeout"),
+		TaskStartTimeout:       taskScope.Counter("start_timeout"),
 		RetryFailedLaunchTotal: taskScope.Counter("retry_system_failure_total"),
 		RetryFailedTasksTotal:  taskScope.Counter("retry_failed_total"),
 	}
