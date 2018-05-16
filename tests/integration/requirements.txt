@@ -1,6 +1,7 @@
 pytest==3.0.7
-peloton-client==0.6.10
+peloton-client>=0.6.11
 docker-py==1.7.2
 pyyaml
 enum
 m3>=3.0.0
+protobuf
