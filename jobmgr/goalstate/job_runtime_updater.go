@@ -321,6 +321,12 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		totalInstanceCount += stateCounts[state]
 	}
 
+	// TODO: remove log after job stuck at PENDING state is fixed
+	log.WithField("job_id", id).
+		WithField("total_instance_count", totalInstanceCount).
+		WithField("instances", instances).
+		Debugln()
+
 	if totalInstanceCount != instances {
 		if jobRuntime.GetState() == job.JobState_KILLED && jobRuntime.GetGoalState() == job.JobState_KILLED {
 			// Job already killed, do not do anything
@@ -328,6 +334,9 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		}
 		// Either MV view has not caught up or all instances have not been created
 		if cachedJob.IsPartiallyCreated() {
+			// TODO: remove log after job stuck at PENDING state is fixed
+			log.WithField("job_id", id).
+				Debug("job is partially created")
 			// all instances have not been created, trigger recovery
 			jobRuntime.State = job.JobState_INITIALIZED
 		} else {
@@ -335,6 +344,11 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			return fmt.Errorf("dbs are not in sync")
 		}
 	}
+
+	// TODO: remove log after job stuck at PENDING state is fixed
+	log.WithField("job_id", id).
+		WithField("state", jobRuntime.State.String()).
+		Debug("job runtime state before determineJobRuntimeState")
 
 	jobState := determineJobRuntimeState(jobRuntime, stateCounts, instances, goalStateDriver, cachedJob)
 
