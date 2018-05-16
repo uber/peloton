@@ -10,9 +10,10 @@ type JobMetrics struct {
 	JobCreateFailed     tally.Counter
 	JobRecoveryDuration tally.Gauge
 
-	JobSucceeded tally.Counter
-	JobKilled    tally.Counter
-	JobFailed    tally.Counter
+	JobSucceeded    tally.Counter
+	JobKilled       tally.Counter
+	JobFailed       tally.Counter
+	JobInvalidState tally.Counter
 
 	JobRuntimeUpdated                tally.Counter
 	JobRuntimeUpdateFailed           tally.Counter
@@ -26,6 +27,7 @@ type TaskMetrics struct {
 	TaskRecovered          tally.Counter
 	ExecutorShutdown       tally.Counter
 	TaskLaunchTimeout      tally.Counter
+	TaskInvalidState       tally.Counter
 	TaskStartTimeout       tally.Counter
 	RetryFailedLaunchTotal tally.Counter
 	RetryFailedTasksTotal  tally.Counter
@@ -51,6 +53,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		JobSucceeded:                     jobScope.Counter("job_succeeded"),
 		JobKilled:                        jobScope.Counter("job_killed"),
 		JobFailed:                        jobScope.Counter("job_failed"),
+		JobInvalidState:                  jobScope.Counter("invalid_state"),
 		JobRuntimeUpdated:                jobScope.Counter("runtime_update_success"),
 		JobRuntimeUpdateFailed:           jobScope.Counter("runtime_update_fail"),
 		JobMaxRunningInstancesExcceeding: jobScope.Counter("max_running_instances_exceeded"),
@@ -63,6 +66,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		ExecutorShutdown:       taskScope.Counter("executor_shutdown"),
 		TaskLaunchTimeout:      taskScope.Counter("launch_timeout"),
 		TaskStartTimeout:       taskScope.Counter("start_timeout"),
+		TaskInvalidState:       taskScope.Counter("invalid_state"),
 		RetryFailedLaunchTotal: taskScope.Counter("retry_system_failure_total"),
 		RetryFailedTasksTotal:  taskScope.Counter("retry_failed_total"),
 	}

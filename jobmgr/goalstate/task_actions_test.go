@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -23,7 +23,7 @@ func TestTaskReloadRuntime(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	taskStore := storemocks.NewMockTaskStore(ctrl)
 	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
@@ -49,7 +49,7 @@ func TestTaskReloadRuntime(t *testing.T) {
 		driver:     goalStateDriver,
 	}
 
-	runtime := &pb_task.RuntimeInfo{}
+	runtime := &pbtask.RuntimeInfo{}
 
 	jobFactory.EXPECT().
 		GetJob(jobID).
@@ -70,7 +70,7 @@ func TestTaskReloadRuntime(t *testing.T) {
 		GetJob(jobID).Return(cachedJob)
 
 	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+		GetJobType().Return(pbjob.JobType_BATCH)
 
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -84,20 +84,15 @@ func TestTaskReloadRuntime(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestTaskFailAction(t *testing.T) {
+func TestTaskStateInvalidAction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
+	cachedTask := cachedmocks.NewMockTask(ctrl)
 
 	goalStateDriver := &driver{
-		taskStore:  taskStore,
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
 		jobFactory: jobFactory,
 		mtx:        NewMetrics(tally.NoopScope),
 		cfg:        &Config{},
@@ -113,9 +108,9 @@ func TestTaskFailAction(t *testing.T) {
 		driver:     goalStateDriver,
 	}
 
-	newRuntimes := make(map[uint32]*pb_task.RuntimeInfo)
-	newRuntimes[0] = &pb_task.RuntimeInfo{
-		State: pb_task.TaskState_FAILED,
+	newRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
+	newRuntimes[0] = &pbtask.RuntimeInfo{
+		State: pbtask.TaskState_FAILED,
 	}
 
 	jobFactory.EXPECT().
@@ -123,22 +118,25 @@ func TestTaskFailAction(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), newRuntimes, cached.UpdateCacheAndDB).Return(nil)
+		GetTask(instanceID).
+		Return(cachedTask)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	cachedTask.EXPECT().
+		CurrentState().
+		Return(cached.TaskStateVector{
+			State: pbtask.TaskState_RUNNING,
+		})
 
-	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+	cachedTask.EXPECT().
+		GoalState().
+		Return(cached.TaskStateVector{
+			State: pbtask.TaskState_KILLING,
+		})
 
-	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
+	cachedTask.EXPECT().
+		ID().
+		Return(instanceID)
 
-	jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	err := TaskFailed(context.Background(), taskEnt)
+	err := TaskStateInvalid(context.Background(), taskEnt)
 	assert.NoError(t, err)
 }

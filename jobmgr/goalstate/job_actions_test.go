@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
@@ -125,5 +126,42 @@ func TestUntrackJob(t *testing.T) {
 		ClearJob(jobID).Return()
 
 	err := JobUntrack(context.Background(), jobEnt)
+	assert.NoError(t, err)
+}
+
+// Test JobStateInvalid workflow is as expected
+func TestJobStateInvalidAction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
+
+	goalStateDriver := &driver{
+		jobFactory: jobFactory,
+		mtx:        NewMetrics(tally.NoopScope),
+		cfg:        &Config{},
+	}
+	goalStateDriver.cfg.normalize()
+
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+
+	jobEnt := &jobEntity{
+		id:     jobID,
+		driver: goalStateDriver,
+	}
+
+	jobFactory.EXPECT().
+		GetJob(jobID).
+		Return(cachedJob)
+
+	cachedJob.EXPECT().
+		GetRuntime(context.Background()).
+		Return(&job.RuntimeInfo{
+			State:     job.JobState_KILLING,
+			GoalState: job.JobState_RUNNING,
+		}, nil)
+
+	err := JobStateInvalid(context.Background(), jobEnt)
 	assert.NoError(t, err)
 }

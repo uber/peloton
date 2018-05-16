@@ -38,13 +38,14 @@ const (
 	InitializeAction TaskAction = "initialize_task"
 	// ReloadTaskRuntime reload the task runtime into cache
 	ReloadTaskRuntime TaskAction = "reload_runtime"
-	// FailAction is run when task FAILED goal state
-	FailAction TaskAction = "fail"
 	// LaunchRetryAction is run after task launch to either send to resource manager
 	// that task has been successfully launched or re-initialize the task after lauch timeout
 	LaunchRetryAction TaskAction = "launch_retry"
 	// FailRetryAction retries a failed task
 	FailRetryAction TaskAction = "fail_retry"
+	// TaskStateInvalidAction is executed when a task enters
+	// invalid current state and goal state combination, and it logs a sentry error
+	TaskStateInvalidAction TaskAction = "state_invalid"
 )
 
 // _taskActionsMaps maps the task action string to task action function
@@ -56,10 +57,10 @@ var (
 		PreemptAction:          TaskPreempt,
 		InitializeAction:       TaskInitialize,
 		ReloadTaskRuntime:      TaskReloadRuntime,
-		FailAction:             TaskFailed,
 		LaunchRetryAction:      TaskLaunchRetry,
 		FailRetryAction:        TaskFailRetry,
 		ExecutorShutdownAction: TaskExecutorShutdown,
+		TaskStateInvalidAction: TaskStateInvalid,
 	}
 )
 
@@ -67,7 +68,6 @@ var (
 	// _isoVersionsTaskRules maps current states to action, given a goal state:
 	// goal-state -> current-state -> action.
 	// It assumes task's runtime and goal are at the same version
-	// TODO: add action for invalid state/goal state combination
 	_isoVersionsTaskRules = map[task.TaskState]map[task.TaskState]TaskAction{
 		task.TaskState_UNKNOWN: {
 			// This reloads the task runtime from DB if the task runtime in cache is nil
@@ -79,12 +79,16 @@ var (
 			task.TaskState_STARTING:    LaunchRetryAction,
 			task.TaskState_SUCCEEDED:   StartAction,
 			task.TaskState_FAILED:      StartAction,
+			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
+			task.TaskState_KILLING:     TaskStateInvalidAction,
 		},
 		task.TaskState_SUCCEEDED: {
 			task.TaskState_INITIALIZED: StartAction,
 			task.TaskState_LAUNCHED:    LaunchRetryAction,
 			task.TaskState_STARTING:    LaunchRetryAction,
 			task.TaskState_FAILED:      FailRetryAction,
+			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
+			task.TaskState_KILLING:     TaskStateInvalidAction,
 		},
 		task.TaskState_KILLED: {
 			task.TaskState_INITIALIZED: StopAction,
@@ -93,24 +97,34 @@ var (
 			task.TaskState_LAUNCHED:    StopAction,
 			task.TaskState_STARTING:    StopAction,
 			task.TaskState_RUNNING:     StopAction,
+			task.TaskState_LOST:        TaskStateInvalidAction,
+			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
 			task.TaskState_KILLING:     ExecutorShutdownAction,
 		},
 		task.TaskState_FAILED: {
 			// FAILED is not a valid task goal state.
-			// The actions here are used to recover stuck tasks
-			// whose goal state was incorrectly set to FAILED.
-			task.TaskState_INITIALIZED: FailAction,
+			task.TaskState_INITIALIZED: TaskStateInvalidAction,
+			task.TaskState_PENDING:     TaskStateInvalidAction,
+			task.TaskState_LAUNCHED:    TaskStateInvalidAction,
+			task.TaskState_STARTING:    TaskStateInvalidAction,
+			task.TaskState_RUNNING:     TaskStateInvalidAction,
+			task.TaskState_SUCCEEDED:   TaskStateInvalidAction,
+			task.TaskState_FAILED:      TaskStateInvalidAction,
+			task.TaskState_LOST:        TaskStateInvalidAction,
+			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
+			task.TaskState_KILLING:     TaskStateInvalidAction,
+			task.TaskState_KILLED:      TaskStateInvalidAction,
 		},
 		task.TaskState_PREEMPTING: {
 			task.TaskState_INITIALIZED: StopAction,
 			task.TaskState_PENDING:     StopAction,
-			task.TaskState_LAUNCHING:   StopAction,
 			task.TaskState_LAUNCHED:    StopAction,
 			task.TaskState_STARTING:    StopAction,
 			task.TaskState_RUNNING:     StopAction,
+			task.TaskState_LOST:        PreemptAction,
+			task.TaskState_PREEMPTING:  TaskStateInvalidAction,
 			task.TaskState_KILLING:     ExecutorShutdownAction,
 			task.TaskState_KILLED:      PreemptAction,
-			task.TaskState_LOST:        PreemptAction,
 		},
 	}
 )

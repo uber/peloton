@@ -23,15 +23,19 @@ const (
 	KillAction JobAction = "job_kill"
 	// UntrackAction deletes the job and all its tasks
 	UntrackAction JobAction = "untrack"
+	// JobStateInvalidAction is executed for an unexpected/invalid job goal state,
+	// state combination and it prints a sentry error
+	JobStateInvalidAction JobAction = "state_invalid"
 )
 
 // _jobActionsMaps maps the JobAction string to the Action function.
 var (
 	_jobActionsMaps = map[JobAction]goalstate.Action{
-		NoJobAction:       nil,
-		CreateTasksAction: JobCreateTasks,
-		KillAction:        JobKill,
-		UntrackAction:     JobUntrack,
+		NoJobAction:           nil,
+		CreateTasksAction:     JobCreateTasks,
+		KillAction:            JobKill,
+		UntrackAction:         JobUntrack,
+		JobStateInvalidAction: JobStateInvalid,
 	}
 )
 
@@ -41,12 +45,14 @@ var (
 	_isoVersionsJobRules = map[job.JobState]map[job.JobState]JobAction{
 		job.JobState_RUNNING: {
 			job.JobState_INITIALIZED: CreateTasksAction,
+			job.JobState_KILLING:     JobStateInvalidAction,
 		},
 		job.JobState_SUCCEEDED: {
 			job.JobState_INITIALIZED: CreateTasksAction,
 			job.JobState_SUCCEEDED:   UntrackAction,
 			job.JobState_FAILED:      UntrackAction,
 			job.JobState_KILLED:      UntrackAction,
+			job.JobState_KILLING:     JobStateInvalidAction,
 		},
 		job.JobState_KILLED: {
 			job.JobState_UNKNOWN:     KillAction,
@@ -58,9 +64,13 @@ var (
 			job.JobState_KILLED:      UntrackAction,
 		},
 		job.JobState_FAILED: {
-			job.JobState_SUCCEEDED: UntrackAction,
-			job.JobState_FAILED:    UntrackAction,
-			job.JobState_KILLED:    UntrackAction,
+			job.JobState_INITIALIZED: JobStateInvalidAction,
+			job.JobState_PENDING:     JobStateInvalidAction,
+			job.JobState_RUNNING:     JobStateInvalidAction,
+			job.JobState_SUCCEEDED:   JobStateInvalidAction,
+			job.JobState_FAILED:      JobStateInvalidAction,
+			job.JobState_KILLED:      JobStateInvalidAction,
+			job.JobState_KILLING:     JobStateInvalidAction,
 		},
 	}
 )

@@ -125,4 +125,10 @@ func TestEngineJobSuggestAction(t *testing.T) {
 
 	a = jobEnt.suggestJobAction(job.JobState_RUNNING, job.JobState_SUCCEEDED)
 	assert.Equal(t, NoJobAction, a)
+
+	a = jobEnt.suggestJobAction(job.JobState_KILLING, job.JobState_SUCCEEDED)
+	assert.Equal(t, JobStateInvalidAction, a)
+
+	a = jobEnt.suggestJobAction(job.JobState_KILLING, job.JobState_FAILED)
+	assert.Equal(t, JobStateInvalidAction, a)
 }

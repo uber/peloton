@@ -78,6 +78,29 @@ func TaskPreempt(ctx context.Context, entity goalstate.Entity) error {
 	return nil
 }
 
+// TaskStateInvalid dumps a sentry error to indicate that the
+// task goal state, state combination is not valid
+func TaskStateInvalid(_ context.Context, entity goalstate.Entity) error {
+	taskEnt := entity.(*taskEntity)
+	goalStateDriver := taskEnt.driver
+	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
+	if cachedJob == nil {
+		return nil
+	}
+	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
+	if cachedTask == nil {
+		return nil
+	}
+	log.WithFields(log.Fields{
+		"current_state": cachedTask.CurrentState().State.String(),
+		"goal_state":    cachedTask.GoalState().State.String(),
+		"job_id":        taskEnt.jobID.Value,
+		"instance_id":   cachedTask.ID(),
+	}).Error("unexpected task state")
+	goalStateDriver.mtx.taskMetrics.TaskInvalidState.Inc(1)
+	return nil
+}
+
 // returns the action to be performed after preemption based on the task
 // preemption policy
 func getPostPreemptAction(ctx context.Context, entity goalstate.Entity) (goalstate.Action, error) {
