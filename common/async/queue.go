@@ -10,7 +10,7 @@ import (
 // TODO: This Queue may be changed dramatically going forward, as the main
 // purpose right now is to facilitate the Pool.
 type Queue struct {
-	lock sync.Mutex
+	sync.Mutex
 	// TODO: Consider using circular buffer, if memory overhead can be lowered.
 	list *list.List
 
@@ -33,9 +33,9 @@ func NewQueue() *Queue {
 
 // Enqueue the Job. This method will return immediately.
 func (q *Queue) Enqueue(job Job) {
-	q.lock.Lock()
+	q.Lock()
 	q.list.PushBack(job)
-	q.lock.Unlock()
+	q.Unlock()
 
 	// Try signal a new items is available.
 	select {
@@ -51,11 +51,11 @@ func (q *Queue) DequeueChannel() <-chan Job {
 
 func (q *Queue) run() {
 	for {
-		q.lock.Lock()
+		q.Lock()
 
 		f := q.list.Front()
 		if f == nil {
-			q.lock.Unlock()
+			q.Unlock()
 
 			// Wait for jobs to be enqueued before continuing.
 			<-q.enqueueSignal
@@ -63,7 +63,7 @@ func (q *Queue) run() {
 		}
 
 		q.list.Remove(f)
-		q.lock.Unlock()
+		q.Unlock()
 
 		q.dequeueChannel <- f.Value.(Job)
 	}

@@ -19,6 +19,23 @@ func New() plugins.Strategy {
 // batch is the batch placement strategy which just fills up offers with tasks one at a time.
 type batch struct{}
 
+// PlaceOnce is an implementation of the placement.Strategy interface.
+func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.Host) {
+	for _, host := range hosts {
+		log.WithFields(log.Fields{
+			"unassigned": unassigned,
+			"hosts":      hosts,
+		}).Debug("PlaceOnce batch strategy called")
+
+		unassigned = batch.fillOffer(host, unassigned)
+
+		log.WithFields(log.Fields{
+			"unassigned": unassigned,
+			"hosts":      hosts,
+		}).Debug("PlaceOnce batch strategy returned")
+	}
+}
+
 func (batch *batch) availablePorts(resources []*mesos_v1.Resource) uint64 {
 	var ports uint64
 	for _, resource := range resources {
@@ -32,8 +49,8 @@ func (batch *batch) availablePorts(resources []*mesos_v1.Resource) uint64 {
 	return ports
 }
 
-// fillOffer assigns in sequence as many tasks as possible to the given offer,
-// and returns a list of tasks not assigned to the offer.
+// fillOffer assigns in sequence as many tasks as possible to the given offers in a host,
+// and returns a list of tasks not assigned to that host.
 func (batch *batch) fillOffer(host *models.Host, unassigned []*models.Assignment) []*models.Assignment {
 	remainPorts := batch.availablePorts(host.GetOffer().GetResources())
 	remain := scalar.FromMesosResources(host.GetOffer().GetResources())
@@ -63,21 +80,6 @@ func (batch *batch) fillOffer(host *models.Host, unassigned []*models.Assignment
 		placement.SetHost(host)
 	}
 	return nil
-}
-
-// PlaceOnce is an implementation of the placement.Strategy interface.
-func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.Host) {
-	for _, host := range hosts {
-		log.WithFields(log.Fields{
-			"unassigned": unassigned,
-			"hosts":      hosts,
-		}).Debug("PlaceOnce batch strategy called")
-		unassigned = batch.fillOffer(host, unassigned)
-		log.WithFields(log.Fields{
-			"unassigned": unassigned,
-			"hosts":      hosts,
-		}).Debug("PlaceOnce batch strategy returned")
-	}
 }
 
 func (batch *batch) getHostFilter(assignment *models.Assignment) *hostsvc.HostFilter {

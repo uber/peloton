@@ -206,7 +206,7 @@ func main() {
 	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.HostManagerRole}).
-			Fatal("Could not create smart peer chooser")
+			Fatal("Could not create smart peer chooser for host manager")
 	}
 	defer hostmgrPeerChooser.Stop()
 
@@ -221,7 +221,7 @@ func main() {
 	)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err, "role": common.ResourceManagerRole}).
-			Fatal("Could not create smart peer chooser")
+			Fatal("Could not create smart peer chooser for resource manager")
 	}
 	defer resmgrPeerChooser.Stop()
 
@@ -259,6 +259,7 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Unable to start dispatcher: %v", err)
 	}
+	defer dispatcher.Stop()
 
 	log.Info("Connect to the TaskStore")
 	_, taskStore, _, _, _, _ := stores.CreateStores(&cfg.Storage, rootScope)

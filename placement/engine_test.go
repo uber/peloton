@@ -29,8 +29,11 @@ const (
 	_testReason = "Test Placement Reason"
 )
 
-func setupEngine(t *testing.T) (*gomock.Controller, *engine, *offers_mock.MockService,
-	*tasks_mock.MockService, *mocks.MockStrategy) {
+func setupEngine(t *testing.T) (
+	*gomock.Controller,
+	*engine, *offers_mock.MockService,
+	*tasks_mock.MockService,
+	*mocks.MockStrategy) {
 	ctrl := gomock.NewController(t)
 
 	metrics := metrics.NewMetrics(tally.NoopScope)
@@ -61,7 +64,14 @@ func setupEngine(t *testing.T) (*gomock.Controller, *engine, *offers_mock.MockSe
 			Stateful:  25 * time.Second,
 		},
 	}
-	e := NewEngine(config, mockOfferService, mockTaskService, mockStrategy, async.NewPool(async.PoolOptions{}), metrics)
+	e := NewEngine(
+		config,
+		mockOfferService,
+		mockTaskService,
+		mockStrategy,
+		async.NewPool(async.PoolOptions{}),
+		metrics)
+
 	return ctrl, e.(*engine), mockOfferService, mockTaskService, mockStrategy
 }
 
@@ -105,7 +115,11 @@ func (s *mockService) Acquire(
 	return result, _testReason
 }
 
-func (s *mockService) Dequeue(ctx context.Context, taskType resmgr.TaskType, batchSize int, timeout int) (assignments []*models.Assignment) {
+func (s *mockService) Dequeue(
+	ctx context.Context,
+	taskType resmgr.TaskType,
+	batchSize int,
+	timeout int) (assignments []*models.Assignment) {
 	s.lockAssignments.Lock()
 	defer s.lockAssignments.Unlock()
 	result := s.assignments
@@ -113,11 +127,21 @@ func (s *mockService) Dequeue(ctx context.Context, taskType resmgr.TaskType, bat
 	return result
 }
 
-func (s *mockService) Release(ctx context.Context, offers []*models.Host) {}
+func (s *mockService) Release(
+	ctx context.Context,
+	offers []*models.Host) {
+}
 
-func (s *mockService) Enqueue(ctx context.Context, assignments []*models.Assignment, reason string) {}
+func (s *mockService) Enqueue(
+	ctx context.Context,
+	assignments []*models.Assignment,
+	reason string) {
+}
 
-func (s *mockService) SetPlacements(ctx context.Context, placements []*resmgr.Placement) {}
+func (s *mockService) SetPlacements(
+	ctx context.Context,
+	placements []*resmgr.Placement) {
+}
 
 func TestEnginePlaceMultipleTasks(t *testing.T) {
 	ctrl, engine, _, _, _ := setupEngine(t)
@@ -127,16 +151,19 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 
 	engine.config.MaxPlacementDuration = time.Second
 	deadline := time.Now().Add(time.Second)
+
 	var assignments []*models.Assignment
 	for i := 0; i < createTasks; i++ {
 		assignment := testutil.SetupAssignment(deadline, 1)
 		assignment.GetTask().GetTask().Resource.CpuLimit = 5
 		assignments = append(assignments, assignment)
 	}
+
 	var hosts []*models.Host
 	for i := 0; i < createHosts; i++ {
 		hosts = append(hosts, testutil.SetupHost())
 	}
+
 	mockService := &mockService{
 		assignments: assignments,
 		hosts:       hosts,
@@ -157,6 +184,7 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 			failed++
 		}
 	}
+
 	assert.Equal(t, createTasks, success)
 	assert.Equal(t, 0, failed)
 }

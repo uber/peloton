@@ -33,7 +33,7 @@ const (
 	// _noTasksTimeoutPenalty is the timeout value for a get tasks request.
 	_noTasksTimeoutPenalty = 1 * time.Second
 
-	_failedToPlaceTaskAfterTimeout = "Failed to place task after timeout"
+	_failedToPlaceTaskAfterTimeout = "failed to place task after timeout"
 )
 
 // Engine represents a placement engine that can be started and stopped.
@@ -43,14 +43,20 @@ type Engine interface {
 }
 
 // New creates a new placement engine having one dedicated coordinator per task type.
-func New(dispatcher *yarpc.Dispatcher, parent tally.Scope, cfg *config.PlacementConfig, resMgrClientName string,
-	hostMgrClientName string, taskStore storage.TaskStore) Engine {
+func New(
+	dispatcher *yarpc.Dispatcher,
+	parent tally.Scope,
+	cfg *config.PlacementConfig,
+	resMgrClientName string,
+	hostMgrClientName string,
+	taskStore storage.TaskStore) Engine {
 	resourceManager := resmgrsvc.NewResourceManagerServiceYARPCClient(dispatcher.ClientConfig(resMgrClientName))
 	hostManager := hostsvc.NewInternalHostServiceYARPCClient(dispatcher.ClientConfig(hostMgrClientName))
 	tallyMetrics := tally_metrics.NewMetrics(parent.SubScope("placement"))
 	offerService := offers.NewService(hostManager, resourceManager, tallyMetrics)
 	taskService := tasks.NewService(resourceManager, cfg, tallyMetrics)
 	scope := tally_metrics.NewMetrics(parent.SubScope(strings.ToLower(cfg.TaskType.String())))
+
 	var strategy plugins.Strategy
 	switch cfg.Strategy {
 	case config.Batch:
@@ -60,15 +66,27 @@ func New(dispatcher *yarpc.Dispatcher, parent tally.Scope, cfg *config.Placement
 		placer := algorithms.NewPlacer()
 		strategy = mimir_strategy.New(placer, cfg)
 	}
-	engine := NewEngine(cfg, offerService, taskService, strategy, async.NewPool(async.PoolOptions{
-		MaxWorkers: cfg.Concurrency,
-	}), scope)
+
+	engine := NewEngine(
+		cfg,
+		offerService,
+		taskService,
+		strategy,
+		async.NewPool(async.PoolOptions{
+			MaxWorkers: cfg.Concurrency,
+		}), scope)
+
 	return engine
 }
 
-// NewEngine will creates a new placement engine.
-func NewEngine(config *config.PlacementConfig, offerService offers.Service, taskService tasks.Service,
-	strategy plugins.Strategy, pool *async.Pool, scope *tally_metrics.Metrics) Engine {
+// NewEngine creates a new placement engine.
+func NewEngine(
+	config *config.PlacementConfig,
+	offerService offers.Service,
+	taskService tasks.Service,
+	strategy plugins.Strategy,
+	pool *async.Pool,
+	scope *tally_metrics.Metrics) Engine {
 	result := &engine{
 		config:       config,
 		offerService: offerService,
@@ -78,6 +96,7 @@ func NewEngine(config *config.PlacementConfig, offerService offers.Service, task
 		metrics:      scope,
 	}
 	result.daemon = async.NewDaemon("Placement Engine", result)
+
 	return result
 }
 
@@ -115,6 +134,37 @@ func (e *engine) Run(ctx context.Context) error {
 func (e *engine) Stop() {
 	e.daemon.Stop()
 	e.metrics.Running.Update(0)
+}
+
+// Place will let the coordinator do one placement round.
+// Returns the delay to start next round of placing.
+func (e *engine) Place(ctx context.Context) time.Duration {
+	// Try and get some tasks/assignments
+	assignments := e.taskService.Dequeue(
+		ctx,
+		e.config.TaskType,
+		e.config.TaskDequeueLimit,
+		e.config.TaskDequeueTimeOut)
+
+	if len(assignments) == 0 {
+		return _noTasksTimeoutPenalty
+	}
+
+	filters := e.strategy.Filters(assignments)
+	for f, b := range filters {
+		filter, batch := f, b
+		// Run the placement of each batch in parallel
+		e.pool.Enqueue(async.JobFunc(func(context.Context) {
+			e.placeAssignmentGroup(ctx, filter, batch)
+		}))
+	}
+
+	if !e.strategy.ConcurrencySafe() {
+		// Wait for all batches to be processed
+		e.pool.WaitUntilProcessed()
+	}
+
+	return time.Duration(0)
 }
 
 func (e *engine) getTaskIDs(tasks []*models.Task) []*peloton.TaskID {
@@ -158,8 +208,9 @@ func (e *engine) assignPorts(offer *models.Host, tasks []*models.Task) []uint32 
 	return selectedPorts
 }
 
-func (e *engine) filterAssignments(now time.Time, assignments []*models.Assignment) (assigned, retryable,
-	unassigned []*models.Assignment) {
+func (e *engine) filterAssignments(
+	now time.Time,
+	assignments []*models.Assignment) (assigned, retryable, unassigned []*models.Assignment) {
 	for _, assignment := range assignments {
 		task := assignment.GetTask()
 		if assignment.GetHost() == nil {
@@ -195,7 +246,8 @@ func (e *engine) findUsedHosts(retryable []*models.Assignment) []*models.Host {
 }
 
 // findUnusedHosts will find the hosts that are unused by the assigned and retryable assignments.
-func (e *engine) findUnusedHosts(assigned, retryable []*models.Assignment,
+func (e *engine) findUnusedHosts(
+	assigned, retryable []*models.Assignment,
 	hosts []*models.Host) []*models.Host {
 	assignments := make([]*models.Assignment, 0, len(assigned)+len(retryable))
 	assignments = append(assignments, assigned...)
@@ -286,13 +338,17 @@ func (e *engine) pastDeadline(now time.Time, assignments []*models.Assignment) b
 	return true
 }
 
-func (e *engine) placeAssignmentGroup(ctx context.Context, filter *hostsvc.HostFilter, assignments []*models.Assignment) {
+func (e *engine) placeAssignmentGroup(
+	ctx context.Context,
+	filter *hostsvc.HostFilter,
+	assignments []*models.Assignment) {
 	for len(assignments) > 0 {
 		log.WithFields(log.Fields{
 			"filter":      filter,
 			"assignments": assignments,
 		}).Debug("placing assignment group")
-		// Try and get some hosts
+
+		// Get hosts with available resources and tasks currently running.
 		hosts, reason := e.offerService.Acquire(
 			ctx, e.config.FetchOfferTasks, e.config.TaskType, filter)
 		existing := e.findUsedHosts(assignments)
@@ -339,30 +395,4 @@ func (e *engine) placeAssignmentGroup(ctx context.Context, filter *hostsvc.HostF
 		// Set placements and return unused offers and failed tasks
 		e.cleanup(ctx, assigned, retryable, unassigned, hosts)
 	}
-}
-
-// Place will let the coordinator do one placement round.
-func (e *engine) Place(ctx context.Context) time.Duration {
-	// Try and get some tasks/assignments
-	assignments := e.taskService.Dequeue(
-		ctx, e.config.TaskType, e.config.TaskDequeueLimit, e.config.TaskDequeueTimeOut)
-	if len(assignments) == 0 {
-		return _noTasksTimeoutPenalty
-	}
-
-	filters := e.strategy.Filters(assignments)
-	for f, b := range filters {
-		filter, batch := f, b
-		// Run the placement of each batch in parallel
-		e.pool.Enqueue(async.JobFunc(func(context.Context) {
-			e.placeAssignmentGroup(ctx, filter, batch)
-		}))
-	}
-
-	if !e.strategy.ConcurrencySafe() {
-		// Wait for all batches to be processed
-		e.pool.WaitUntilProcessed()
-	}
-
-	return time.Duration(0)
 }

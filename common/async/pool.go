@@ -19,8 +19,8 @@ type PoolOptions struct {
 // The pool as an internal queue, such that all jobs added will be accepted
 // but not run until it reached the front of the queue and a worker is free.
 type Pool struct {
+	sync.Mutex
 	options    PoolOptions
-	lock       sync.Mutex
 	queue      *Queue
 	numWorkers int
 	jobs       sync.WaitGroup
@@ -54,10 +54,10 @@ func (p *Pool) SetMaxWorkers(num int) {
 		num = DefaultMaxWorkers
 	}
 
-	p.lock.Lock()
+	p.Lock()
 	oldNum := p.numWorkers
 	p.numWorkers = num
-	p.lock.Unlock()
+	p.Unlock()
 
 	for i := oldNum; i < num; i++ {
 		go p.runWorker()
@@ -93,11 +93,11 @@ func (p *Pool) runWorker() {
 
 func (p *Pool) shouldWorkerStop() bool {
 	stop := false
-	p.lock.Lock()
+	p.Lock()
 	if p.numWorkers > p.options.MaxWorkers {
 		p.numWorkers--
 		stop = true
 	}
-	p.lock.Unlock()
+	p.Unlock()
 	return stop
 }
