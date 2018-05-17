@@ -155,15 +155,7 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 		jobID := &peloton.JobID{Value: id}
 		runtime := taskInfo.GetRuntime()
 		cachedJob := p.jobFactory.AddJob(jobID)
-
-		cachedTask := cachedJob.GetTask(uint32(instanceID))
-		if cachedTask == nil {
-			log.WithFields(log.Fields{
-				"job_id":      jobID.GetValue(),
-				"instance_id": uint32(instanceID),
-			}).Error("task is nil in cache with valid job")
-			continue
-		}
+		cachedTask := cachedJob.AddTask(uint32(instanceID))
 
 		cachedRuntime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {

@@ -56,7 +56,7 @@ func TestTaskReloadRuntime(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
-		GetTask(instanceID).
+		AddTask(instanceID).
 		Return(cachedTask)
 
 	taskStore.EXPECT().

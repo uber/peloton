@@ -195,8 +195,11 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		},
 	}).Return(res, nil)
 
-	taskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), jobID, instanceID).Return(runtime, nil)
+	cachedJob.EXPECT().
+		GetTask(instanceID).Return(cachedTask)
+
+	cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -289,8 +292,11 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 		},
 	}).Return(res, nil)
 
-	taskStore.EXPECT().
-		GetTaskRuntime(gomock.Any(), jobID, instanceID).Return(runtime, nil)
+	cachedJob.EXPECT().
+		GetTask(instanceID).Return(cachedTask)
+
+	cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).

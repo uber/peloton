@@ -142,7 +142,7 @@ func TestGetLaunchableTasks(t *testing.T) {
 		jobFactory.EXPECT().
 			GetJob(&peloton.JobID{Value: jobID}).Return(cachedJob)
 		cachedJob.EXPECT().
-			GetTask(uint32(instanceID)).Return(cachedTask)
+			AddTask(uint32(instanceID)).Return(cachedTask)
 		mockTaskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
 			Return(taskInfos[tasks[i].GetValue()].GetConfig(), nil)
@@ -206,7 +206,7 @@ func TestGetLaunchableTasksStateful(t *testing.T) {
 		jobFactory.EXPECT().
 			GetJob(&peloton.JobID{Value: jobID}).Return(cachedJob)
 		cachedJob.EXPECT().
-			GetTask(uint32(instanceID)).Return(cachedTask)
+			AddTask(uint32(instanceID)).Return(cachedTask)
 		mockTaskStore.EXPECT().
 			GetTaskConfig(gomock.Any(), &peloton.JobID{Value: jobID}, uint32(instanceID), gomock.Any()).
 			Return(taskInfos[tasks[i].GetValue()].GetConfig(), nil)

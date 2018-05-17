@@ -19,6 +19,7 @@ import (
 	"github.com/uber-go/tally"
 )
 
+// TestJobKill tests killing a fully created job
 func TestJobKill(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -49,16 +50,13 @@ func TestJobKill(t *testing.T) {
 	}
 
 	instanceCount := uint32(4)
-	jobConfig := pbjob.JobConfig{
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-		Type:          pbjob.JobType_BATCH,
+	cachedTasks := make(map[uint32]cached.Task)
+	mockTasks := make(map[uint32]*cachedmocks.MockTask)
+	for i := uint32(0); i < instanceCount; i++ {
+		cachedTask := cachedmocks.NewMockTask(ctrl)
+		mockTasks[i] = cachedTask
+		cachedTasks[i] = cachedTask
 	}
-
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, nil)
 
 	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	runtimes[0] = &pbtask.RuntimeInfo{
@@ -109,26 +107,39 @@ func TestJobKill(t *testing.T) {
 		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 
-	taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), jobID, gomock.Any()).
-		Return(runtimes, nil)
 	jobFactory.EXPECT().
 		GetJob(jobID).
 		Return(cachedJob).AnyTimes()
+
+	cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		mockTasks[i].EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(runtimes[i], nil)
+	}
+
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), newRuntimes, cached.UpdateCacheAndDB).
 		Return(nil)
+
 	cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH).Times(int(instanceCount))
+
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return().Times(int(instanceCount))
+
 	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return().Times(int(instanceCount))
+
 	jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), jobID).
 		Return(jobRuntime, nil)
+
 	jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), jobID, newJobRuntime).
 		Return(nil)
@@ -137,6 +148,7 @@ func TestJobKill(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// TestJobKillPartiallyCreatedJob tests killing partially created jobs
 func TestJobKillPartiallyCreatedJob(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -166,17 +178,13 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 		driver: goalStateDriver,
 	}
 
-	instanceCount := uint32(4)
-	jobConfig := pbjob.JobConfig{
-		OwningTeam:    "team6",
-		LdapGroups:    []string{"team1", "team2", "team3"},
-		InstanceCount: instanceCount,
-		Type:          pbjob.JobType_BATCH,
+	cachedTasks := make(map[uint32]cached.Task)
+	mockTasks := make(map[uint32]*cachedmocks.MockTask)
+	for i := uint32(2); i < 4; i++ {
+		cachedTask := cachedmocks.NewMockTask(ctrl)
+		mockTasks[i] = cachedTask
+		cachedTasks[i] = cachedTask
 	}
-
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, nil)
 
 	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	runtimes[2] = &pbtask.RuntimeInfo{
@@ -196,20 +204,31 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 		GoalState: pbjob.JobState_KILLED,
 	}
 
-	taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), jobID, gomock.Any()).
-		Return(runtimes, nil)
 	jobFactory.EXPECT().
 		GetJob(jobID).
-		Return(cachedJob)
+		Return(cachedJob).AnyTimes()
+
+	cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks)
+
+	for i := uint32(2); i < 4; i++ {
+		mockTasks[i].EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(runtimes[i], nil).Times(2)
+	}
+
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
+
 	jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), jobID).
 		Return(jobRuntime, nil)
+
 	cachedJob.EXPECT().
 		IsPartiallyCreated().Return(true)
+
 	jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), jobID, newJobRuntime).
 		Return(nil)
@@ -224,23 +243,31 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 	jobRuntime.State = pbjob.JobState_INITIALIZED
 	newJobRuntime.State = pbjob.JobState_KILLING
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(&jobConfig, nil)
-	taskStore.EXPECT().
-		GetTaskRuntimesForJobByRange(gomock.Any(), jobID, gomock.Any()).
-		Return(runtimes, nil)
 	jobFactory.EXPECT().
 		GetJob(jobID).
-		Return(cachedJob)
+		Return(cachedJob).AnyTimes()
+
+	cachedJob.EXPECT().
+		GetAllTasks().
+		Return(cachedTasks)
+
+	for i := uint32(2); i < 4; i++ {
+		mockTasks[i].EXPECT().
+			GetRunTime(gomock.Any()).
+			Return(runtimes[i], nil).AnyTimes()
+	}
+
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
+
 	jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), jobID).
 		Return(jobRuntime, nil)
+
 	cachedJob.EXPECT().
 		IsPartiallyCreated().Return(true)
+
 	jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), jobID, newJobRuntime).
 		Return(nil)

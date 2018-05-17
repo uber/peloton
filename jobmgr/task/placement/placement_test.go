@@ -199,7 +199,7 @@ func TestTaskPlacementNoError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			GetTask(uint32(0)).Return(cachedTask),
+			AddTask(uint32(0)).Return(cachedTask),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().
@@ -296,7 +296,7 @@ func TestTaskPlacementKilledTask(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			GetTask(uint32(0)).Return(cachedTask),
+			AddTask(uint32(0)).Return(cachedTask),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 	)
@@ -349,7 +349,7 @@ func TestTaskPlacementKilledRunningTask(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			GetTask(uint32(0)).Return(cachedTask),
+			AddTask(uint32(0)).Return(cachedTask),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		goalStateDriver.EXPECT().
@@ -400,7 +400,7 @@ func TestTaskPlacementDBError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			GetTask(uint32(0)).Return(cachedTask),
+			AddTask(uint32(0)).Return(cachedTask),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().
@@ -451,7 +451,7 @@ func TestTaskPlacementError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			GetTask(uint32(0)).Return(cachedTask),
+			AddTask(uint32(0)).Return(cachedTask),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().
@@ -512,7 +512,7 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			GetTask(uint32(0)).Return(cachedTask),
+			AddTask(uint32(0)).Return(cachedTask),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		cachedJob.EXPECT().

@@ -97,7 +97,16 @@ func stopInitializedTask(ctx context.Context, taskEnt *taskEntity) error {
 		}
 	}
 
-	runtime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, taskEnt.jobID, taskEnt.instanceID)
+	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
+	if cachedTask == nil {
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.GetValue(),
+			"instance_id": taskEnt.instanceID,
+		}).Error("task is nil in cache with valid job")
+		return nil
+	}
+
+	runtime, err := cachedTask.GetRunTime(ctx)
 	if err != nil {
 		return err
 	}

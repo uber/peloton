@@ -2,6 +2,7 @@ package preemptor
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -57,7 +59,9 @@ func (suite *PreemptorTestSuite) TearDownSuite() {
 }
 
 func (suite *PreemptorTestSuite) TestPreemptionCycle() {
-	runningTaskID := &peloton.TaskID{Value: "test-preemption-1"}
+	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
+	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), 0)
+	runningTaskID := &peloton.TaskID{Value: taskID}
 	runningTask := &resmgr.Task{
 		Id: runningTaskID,
 	}
@@ -69,7 +73,8 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 		},
 	}
 
-	killingTaskID := &peloton.TaskID{Value: "test-preemption-2"}
+	taskID = fmt.Sprintf("%s-%d", jobID.GetValue(), 1)
+	killingTaskID := &peloton.TaskID{Value: taskID}
 	killingTask := &resmgr.Task{
 		Id: killingTaskID,
 	}
@@ -82,6 +87,8 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	}
 
 	cachedJob := cachedmocks.NewMockJob(suite.mockCtrl)
+	runningCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
+	killingCachedTask := cachedmocks.NewMockTask(suite.mockCtrl)
 	runtimes := make(map[uint32]*peloton_task.RuntimeInfo)
 	runtimes[0] = runningTaskInfo.Runtime
 	runtimes[1] = killingTaskInfo.Runtime
@@ -100,9 +107,12 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 			Error: nil,
 		}, nil,
 	)
-	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), runningTaskID.Value).Return(runningTaskInfo, nil)
-	suite.mockTaskStore.EXPECT().GetTaskByID(gomock.Any(), killingTaskID.Value).Return(killingTaskInfo, nil)
-	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob)
+	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob).Times(2)
+	cachedJob.EXPECT().AddTask(uint32(0)).Return(runningCachedTask)
+	cachedJob.EXPECT().AddTask(uint32(1)).Return(killingCachedTask)
+	runningCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(runningTaskInfo.Runtime, nil)
+	killingCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(killingTaskInfo.Runtime, nil)
+
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(ctx context.Context, runtimes map[uint32]*peloton_task.RuntimeInfo, req cached.UpdateRequest) {
 			suite.Equal(peloton_task.TaskState_PREEMPTING, runtimes[runningTaskInfo.InstanceId].GetGoalState())

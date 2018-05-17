@@ -21,33 +21,28 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	jobID := &peloton.JobID{Value: id}
 	goalStateDriver := entity.(*jobEntity).driver
 
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("failed to fetch job config to kill a job")
-		return err
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
+	if cachedJob == nil {
+		return nil
 	}
-
-	instanceCount := jobConfig.GetInstanceCount()
-	instRange := &task.InstanceRange{
-		From: 0,
-		To:   instanceCount,
-	}
-	runtimes, err := goalStateDriver.taskStore.GetTaskRuntimesForJobByRange(ctx, jobID, instRange)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("failed to fetch task runtimes to kill a job")
-		return err
-	}
+	tasks := cachedJob.GetAllTasks()
 
 	// Update task runtimes in DB and cache to kill task
 	updatedRuntimes := make(map[uint32]*task.RuntimeInfo)
-	for instanceID, runtime := range runtimes {
+	for instanceID, cachedTask := range tasks {
+		runtime, err := cachedTask.GetRunTime(ctx)
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", id).
+				WithField("instance_id", instanceID).
+				Info("failed to fetch task runtime to kill a job")
+			return err
+		}
+
 		if runtime.GetGoalState() == task.TaskState_KILLED || util.IsPelotonStateTerminal(runtime.GetState()) {
 			continue
 		}
+
 		updatedRuntime := &task.RuntimeInfo{
 			GoalState: task.TaskState_KILLED,
 			Message:   "Task stop API request",
@@ -56,12 +51,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		updatedRuntimes[instanceID] = updatedRuntime
 	}
 
-	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
-	if cachedJob == nil {
-		return nil
-	}
-
-	err = cachedJob.UpdateTasks(ctx, updatedRuntimes, cached.UpdateCacheAndDB)
+	err := cachedJob.UpdateTasks(ctx, updatedRuntimes, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
@@ -88,8 +78,9 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	// then directly update the job state to KILLED.
 	if len(updatedRuntimes) == 0 && jobRuntime.GetState() == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated() {
 		jobState = job.JobState_KILLED
-		for _, runtime := range runtimes {
-			if !util.IsPelotonStateTerminal(runtime.GetState()) {
+		for _, cachedTask := range tasks {
+			runtime, err := cachedTask.GetRunTime(ctx)
+			if err != nil || !util.IsPelotonStateTerminal(runtime.GetState()) {
 				jobState = job.JobState_KILLING
 				break
 			}

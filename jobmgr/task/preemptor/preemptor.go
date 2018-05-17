@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -13,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
@@ -134,12 +136,21 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 		log.WithField("task_ID", task.Id.Value).
 			Info("preempting running task")
 
-		taskInfo, err := p.taskStore.GetTaskByID(ctx, task.Id.Value)
+		id, instanceID, err := util.ParseTaskID(task.Id.Value)
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			continue
+		}
+
+		jobID := &peloton.JobID{Value: id}
+		cachedJob := p.jobFactory.AddJob(jobID)
+		cachedTask := cachedJob.AddTask(uint32(instanceID))
+		runtime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		}
 
-		if taskInfo.GetRuntime().GetGoalState() == pb_task.TaskState_KILLED {
+		if runtime.GetGoalState() == pb_task.TaskState_KILLED {
 			continue
 		}
 
@@ -151,12 +162,11 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 		}
 
 		// update the task in cache and enqueue to goal state engine
-		cachedJob := p.jobFactory.AddJob(taskInfo.JobId)
-		err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{uint32(taskInfo.InstanceId): updatedRuntime}, cached.UpdateCacheAndDB)
+		err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{uint32(instanceID): updatedRuntime}, cached.UpdateCacheAndDB)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		} else {
-			p.goalStateDriver.EnqueueTask(taskInfo.JobId, taskInfo.InstanceId, time.Now())
+			p.goalStateDriver.EnqueueTask(jobID, uint32(instanceID), time.Now())
 		}
 	}
 	return errs.ErrorOrNil()

@@ -43,6 +43,9 @@ type Job interface {
 	// and then storing it in the cache. If the attempt to persist fails, the local cache is cleaned up.
 	UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req UpdateRequest) error
 
+	// AddTask adds a new task to the job, and if already present, just returns it
+	AddTask(id uint32) Task
+
 	// GetTask from the task id.
 	GetTask(id uint32) Task
 
@@ -131,15 +134,14 @@ func (j *job) ID() *peloton.JobID {
 	return j.id
 }
 
-// addTask adds a new task, and if already present, just returns it
-func (j *job) addTask(instID uint32) *task {
+func (j *job) AddTask(id uint32) Task {
 	j.Lock()
 	defer j.Unlock()
 
-	t, ok := j.tasks[instID]
+	t, ok := j.tasks[id]
 	if !ok {
-		t = newTask(j.ID(), instID, j.jobFactory)
-		j.tasks[instID] = t
+		t = newTask(j.ID(), id, j.jobFactory)
+		j.tasks[id] = t
 	}
 	return t
 }
@@ -260,7 +262,7 @@ func (j *job) createSingleTask(
 		return yarpcerrors.InvalidArgumentErrorf("task %d already exists", instanceID)
 	}
 
-	t := j.addTask(instanceID)
+	t := j.AddTask(instanceID)
 	return t.CreateRuntime(ctx, runtime, owner)
 }
 
@@ -278,7 +280,7 @@ func (j *job) updateSingleTask(
 	runtime *pbtask.RuntimeInfo,
 	req UpdateRequest,
 	owner string) error {
-	t := j.addTask(instanceID)
+	t := j.AddTask(instanceID)
 	return t.UpdateRuntime(ctx, runtime, req)
 }
 

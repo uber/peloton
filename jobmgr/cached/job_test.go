@@ -368,7 +368,7 @@ func TestTasksUpdateDBError(t *testing.T) {
 	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 
 	for i := uint32(0); i < instanceCount; i++ {
-		tt := j.addTask(i)
+		tt := j.AddTask(i).(*task)
 		tt.runtime = oldRuntime
 		runtimes[i] = runtime
 		// Simulate fake DB error
@@ -393,7 +393,7 @@ func TestTasksUpdateRuntimeSingleTask(t *testing.T) {
 		State: pbtask.TaskState_RUNNING,
 	}
 	oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
-	tt := j.addTask(0)
+	tt := j.AddTask(0).(*task)
 	tt.runtime = oldRuntime
 
 	// Update task runtime of only one task

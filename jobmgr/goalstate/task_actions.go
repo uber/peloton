@@ -42,14 +42,7 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	if cachedJob == nil {
 		return nil
 	}
-	cachedTask := cachedJob.GetTask(taskEnt.instanceID)
-	if cachedTask == nil {
-		log.WithFields(log.Fields{
-			"job_id":      taskEnt.jobID.GetValue(),
-			"instance_id": taskEnt.instanceID,
-		}).Error("task is nil in cache with valid job")
-		return nil
-	}
+	cachedTask := cachedJob.AddTask(taskEnt.instanceID)
 
 	runtime, err := goalStateDriver.taskStore.GetTaskRuntime(ctx, taskEnt.jobID, taskEnt.instanceID)
 	if err != nil {

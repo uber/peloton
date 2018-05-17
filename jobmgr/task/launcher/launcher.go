@@ -146,15 +146,7 @@ func (l *launcher) GetLaunchableTasks(
 			// job does not exist, just ignore the task?
 			continue
 		}
-
-		cachedTask := cachedJob.GetTask(uint32(instanceID))
-		if cachedTask == nil {
-			log.WithFields(log.Fields{
-				"job_id":      jobID.GetValue(),
-				"instance_id": uint32(instanceID),
-			}).Error("task is nil in cache with valid job")
-			continue
-		}
+		cachedTask := cachedJob.AddTask(uint32(instanceID))
 
 		cachedRuntime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
