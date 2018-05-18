@@ -1,4 +1,4 @@
-package hostmap
+package host
 
 import (
 	"sync/atomic"

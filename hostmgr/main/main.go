@@ -15,7 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/common/metrics"
 	"code.uber.internal/infra/peloton/common/rpc"
 	"code.uber.internal/infra/peloton/hostmgr"
-	"code.uber.internal/infra/peloton/hostmgr/hostmap"
+	"code.uber.internal/infra/peloton/hostmgr/host"
 	"code.uber.internal/infra/peloton/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
@@ -338,7 +338,7 @@ func main() {
 		cfg.HostManager.TaskReconcilerConfig,
 	)
 
-	loader := hostmap.Loader{
+	loader := host.Loader{
 		OperatorClient: masterOperatorClient,
 		Scope:          rootScope.SubScope("hostmap"),
 	}

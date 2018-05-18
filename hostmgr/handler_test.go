@@ -24,7 +24,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/reservation"
-	"code.uber.internal/infra/peloton/hostmgr/hostmap"
+	"code.uber.internal/infra/peloton/hostmgr/host"
 	hostmgr_mesos_mocks "code.uber.internal/infra/peloton/hostmgr/mesos/mocks"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -268,7 +268,7 @@ func (suite *HostMgrHandlerTestSuite) TestAcquireReleaseHostOffers() {
 
 	suite.Equal(
 		int64(numHosts),
-		suite.testScope.Snapshot().Counters()["acquire_hosts_count+"].Value())
+		suite.testScope.Snapshot().Counters()["acquire_host_offers_count+"].Value())
 
 	// TODO: Add check for number of HostOffers in placing state.
 	suite.checkResourcesGauges(0, "ready")
@@ -890,16 +890,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	scalerType := mesos.Value_SCALAR
 	scalerVal := 200.0
 	name := "cpus"
-
-	loader := &hostmap.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
-	}
 	numAgents := 2
-	response := makeAgentsResponse(numAgents)
-	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
-
-	loader.Load(nil)
+	suite.InitializeHosts(numAgents)
 
 	tests := []struct {
 		err         error
@@ -977,16 +969,8 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 	scalerVal := 200.0
 	name := "cpus"
 	quotaVal := 100.0
-
-	loader := &hostmap.Loader{
-		OperatorClient: suite.masterOperatorClient,
-		Scope:          suite.testScope,
-	}
 	numAgents := 2
-	response := makeAgentsResponse(numAgents)
-	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
-
-	loader.Load(nil)
+	suite.InitializeHosts(numAgents)
 
 	clusterCapacityReq := &hostsvc.ClusterCapacityRequest{}
 
@@ -1497,6 +1481,103 @@ func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {
 	return response
 }
 
+// TestGetHosts tests the hosts, which meets the criteria
+func (suite *HostMgrHandlerTestSuite) TestGetHosts() {
+	defer suite.ctrl.Finish()
+	numAgents := 2
+	suite.InitializeHosts(numAgents)
+	// Matching constraint.
+	acquireReq := &hostsvc.GetHostsRequest{
+		Filter: &hostsvc.HostFilter{
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(2),
+			},
+			ResourceConstraint: &hostsvc.ResourceConstraint{
+				Minimum: &task.ResourceConfig{
+					CpuLimit:    1,
+					MemLimitMb:  1,
+					DiskLimitMb: 1,
+				},
+			},
+		},
+	}
+	// Calling the GetHosts calls
+	acquiredResp, err := suite.handler.GetHosts(
+		rootCtx,
+		acquireReq,
+	)
+	// There should not be any error
+	suite.NoError(err)
+	suite.Nil(acquiredResp.GetError())
+	// Both the hosts should return
+	suite.Equal(len(acquiredResp.Hosts), 2)
+}
+
+// TestGetHostsInvalidFilters tests if the filter is invalid it would return error
+func (suite *HostMgrHandlerTestSuite) TestGetHostsInvalidFilters() {
+	defer suite.ctrl.Finish()
+	numAgents := 2
+	suite.InitializeHosts(numAgents)
+
+	acquireReq := &hostsvc.GetHostsRequest{
+		// Passing the HostFilter Nil
+		Filter: nil,
+	}
+
+	acquiredResp, err := suite.handler.GetHosts(
+		rootCtx,
+		acquireReq,
+	)
+	suite.NoError(err)
+	// It should return error
+	suite.NotNil(acquiredResp.GetError())
+	// Error message should be compared if that's the right error
+	suite.Equal(acquiredResp.GetError().InvalidHostFilter.Message,
+		"Empty host filter")
+
+	// Constraint which does not match.
+	acquireReq = &hostsvc.GetHostsRequest{
+		Filter: &hostsvc.HostFilter{
+			Quantity: &hostsvc.QuantityControl{
+				MaxHosts: uint32(2),
+			},
+			// We are passing resources wich are more then host capacity
+			// So it should return error.
+			ResourceConstraint: &hostsvc.ResourceConstraint{
+				Minimum: &task.ResourceConfig{
+					CpuLimit:    2,
+					MemLimitMb:  2,
+					DiskLimitMb: 1,
+				},
+			},
+		},
+	}
+	acquiredResp, err = suite.handler.GetHosts(
+		rootCtx,
+		acquireReq,
+	)
+
+	suite.NoError(err)
+	// It should return error
+	suite.NotNil(acquiredResp.GetError())
+	// Error message should be compared if that's the right error
+	suite.Equal(acquiredResp.GetError().Failure.Message,
+		"could not return matching hosts INSUFFICIENT_RESOURCES")
+}
+
 func TestHostManagerTestSuite(t *testing.T) {
 	suite.Run(t, new(HostMgrHandlerTestSuite))
+}
+
+// InitializeHosts adds the hosts to host map
+func (suite *HostMgrHandlerTestSuite) InitializeHosts(numAgents int) {
+	loader := &host.Loader{
+		OperatorClient: suite.masterOperatorClient,
+		Scope:          suite.testScope,
+	}
+	response := makeAgentsResponse(numAgents)
+	gomock.InOrder(
+		suite.masterOperatorClient.EXPECT().Agents().Return(response, nil),
+	)
+	loader.Load(nil)
 }

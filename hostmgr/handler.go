@@ -13,20 +13,23 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/common/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/factory/operation"
 	"code.uber.internal/infra/peloton/hostmgr/factory/task"
-	"code.uber.internal/infra/peloton/hostmgr/hostmap"
+	"code.uber.internal/infra/peloton/hostmgr/host"
 	hostmgr_mesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/storage"
+	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
 
@@ -67,16 +70,16 @@ func InitServiceHandler(
 	d.Register(hostsvc.BuildInternalHostServiceYARPCProcedures(handler))
 }
 
+// validateHostFilter validates the host filter passed to
+// AcquireHostOffers or GetHosts request.
 func validateHostFilter(
-	req *hostsvc.AcquireHostOffersRequest) *hostsvc.InvalidHostFilter {
-
-	if req.GetFilter() == nil {
-		log.WithField("request", req).Warn("Empty host constraint")
+	filter *hostsvc.HostFilter) *hostsvc.InvalidHostFilter {
+	if filter == nil {
+		log.WithField("filter", filter).Warn("Empty host constraint")
 		return &hostsvc.InvalidHostFilter{
 			Message: "Empty host filter",
 		}
 	}
-
 	return nil
 }
 
@@ -87,7 +90,7 @@ func (h *serviceHandler) AcquireHostOffers(
 
 	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
-	if invalid := validateHostFilter(body); invalid != nil {
+	if invalid := validateHostFilter(body.GetFilter()); invalid != nil {
 		h.metrics.AcquireHostOffersInvalid.Inc(1)
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
@@ -138,7 +141,62 @@ func (h *serviceHandler) AcquireHostOffers(
 	}
 
 	h.metrics.AcquireHostOffers.Inc(1)
-	h.metrics.AcquireHostsCount.Inc(int64(len(response.HostOffers)))
+	h.metrics.AcquireHostOffersCount.Inc(int64(len(response.HostOffers)))
+
+	log.WithField("response", response).Debug("AcquireHostOffers returned")
+	return &response, nil
+}
+
+// GetHosts implements InternalHostService.GetHosts.
+// This function gets the hosts based on resource requirements
+// and constraints passed in the request through hostsvc.HostFilter
+func (h *serviceHandler) GetHosts(
+	ctx context.Context,
+	body *hostsvc.GetHostsRequest) (*hostsvc.GetHostsResponse, error) {
+	log.WithField("request", body).Debug("GetHosts called.")
+
+	// validating the Host Filter, in case of invalid filter
+	// return InvalidHostFilter error
+	if invalid := validateHostFilter(body.GetFilter()); invalid != nil {
+		h.metrics.GetHostsInvalid.Inc(1)
+		return &hostsvc.GetHostsResponse{
+			Error: &hostsvc.GetHostsResponse_Error{
+				InvalidHostFilter: invalid,
+			},
+		}, nil
+	}
+
+	// Creating the Matcher instance for particular HostFilter and Evaluator
+	matcher := host.NewMatcher(body.GetFilter(),
+		constraints.NewEvaluator(pb_task.LabelConstraint_HOST))
+
+	// Calling the GetMatchingHosts to get the matched hosts for the matcher
+	result, err := matcher.GetMatchingHosts()
+	if err != nil {
+		h.metrics.GetHostsInvalid.Inc(1)
+		return &hostsvc.GetHostsResponse{
+			Error: &hostsvc.GetHostsResponse_Error{
+				Failure: &hostsvc.GetHostsFailure{
+					Message: err.Error(),
+				},
+			},
+		}, nil
+	}
+
+	// Creating empty GetHostsResponse
+	response := hostsvc.GetHostsResponse{
+		Hosts: []*hostsvc.HostInfo{},
+	}
+
+	// Filling agentInfo from result to GetHostsResponse
+	for hostname, agentInfo := range result {
+		response.Hosts = append(response.Hosts,
+			util.CreateHostInfo(hostname, agentInfo))
+	}
+
+	//Updating metrics for GetHosts
+	h.metrics.GetHosts.Inc(1)
+	h.metrics.GetHostsCount.Inc(int64(len(response.Hosts)))
 
 	log.WithField("response", response).Debug("AcquireHostOffers returned")
 	return &response, nil
@@ -826,7 +884,7 @@ func (h *serviceHandler) ClusterCapacity(
 	// Get scalar resource from Mesos resources
 	tAllocatedResources := scalar.FromMesosResources(allocatedResources)
 
-	agentMap := hostmap.GetAgentMap()
+	agentMap := host.GetAgentMap()
 	if agentMap == nil {
 		h.metrics.ClusterCapacityFail.Inc(1)
 		log.Error("error getting host agentmap")

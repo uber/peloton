@@ -25,6 +25,21 @@ message HostOffer {
   repeated mesos.v1.Attribute attributes = 4;
 }
 
+/**
+ * HostInfo describes physical capacity of the hosts
+ * with all their attributes defined
+ */
+message HostInfo {
+    // name of the host
+    string hostname = 1;
+    // agentId is mesos defined agentID
+    mesos.v1.AgentID agentId = 2;
+    // List of mesos resources for the host
+    repeated mesos.v1.Resource resources = 3;
+    // List of attributes defined for that host
+    repeated mesos.v1.Attribute attributes = 4;
+}
+
 
 /**
  *  LaunchableTask describes the task to be launched by host manager including Mesos
@@ -122,6 +137,9 @@ enum HostFilterResult {
     // Host has no available offer to be matched. Usually this means the host is
     // fully used already.
     NO_OFFER = 7;
+
+    // Host has insufficiant resources to match the GetHosts Request.
+    INSUFFICIENT_RESOURCES = 8;
 
     // Host is filtered out because numPlacements * resourceConstraint
     // can already to satisfied.
@@ -225,6 +243,13 @@ message AcquireHostOffersFailure {
 }
 
 /**
+ * Error when GetHosts failed.
+ */
+message GetHostsFailure {
+  string message = 1;
+}
+
+/**
 * Error when cluster is Unavailable
 */
 message ClusterUnavailable {
@@ -244,6 +269,14 @@ service InternalHostService
    *  only be used by one client at a given time.
    */
   rpc AcquireHostOffers(AcquireHostOffersRequest) returns (AcquireHostOffersResponse);
+
+
+  /**
+   *  Get a list of hosts from the host manager which matches the request
+   *  This is just the get operation and there is no lock placed
+   *  on any host.
+   */
+  rpc GetHosts(GetHostsRequest) returns (GetHostsResponse);
 
   /**
    *  Release unused host offers to the host manager.
@@ -387,6 +420,14 @@ message AcquireHostOffersRequest {
   HostFilter filter = 1;
 }
 
+// GetHostsRequest is the request which is been
+// used to call the GetHosts call
+message GetHostsRequest {
+  // HostFilter required for matching the desired hosts
+  // in cluster
+  HostFilter filter = 1;
+}
+
 message AcquireHostOffersResponse {
   message Error {
     InvalidHostFilter invalidHostFilter = 1;
@@ -399,6 +440,23 @@ message AcquireHostOffersResponse {
 
   // key: HostFilterResult's string form, value: count. used for debugging purpose.
   map<string, uint32> filterResultCounts = 3;
+}
+
+// GetHostsResponse is the reponse for GetHosts call
+// it returns the list of hosts if matched or error
+message GetHostsResponse {
+  // Error for the response
+  message Error {
+    // InvalidHostFilter if the filter is invalid
+    InvalidHostFilter invalidHostFilter = 1;
+    // GetHostsFailure if any other error occurs during
+    // fetching the host map
+    GetHostsFailure failure = 2;
+  }
+
+  Error error = 1;
+  // The list of host that have been matched the HostFilter
+  repeated HostInfo hosts = 2;
 }
 
 message ReleaseHostOffersRequest {

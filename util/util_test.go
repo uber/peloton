@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -159,4 +160,26 @@ func TestContains(t *testing.T) {
 	list := []string{"a", "b", "c"}
 	assert.True(t, Contains(list, "a"))
 	assert.False(t, Contains(list, "d"))
+}
+
+// TestCreateHostInfo tests the HostInfo from Mesos Agent Info
+func TestCreateHostInfo(t *testing.T) {
+	// Testing if AgentInfo is nil
+	res := CreateHostInfo("", nil)
+	// HostInfo should be nil
+	assert.Nil(t, res)
+	hostname := "host1"
+	// Creating Valid Agent Info
+	res = CreateHostInfo(hostname, &mesos.AgentInfo{
+		Hostname: &hostname,
+		Id: &mesos.AgentID{
+			Value: &hostname,
+		},
+		Resources:  nil,
+		Attributes: nil,
+	})
+	// Valid Host Info should be returned
+	assert.NotNil(t, res)
+	// Validating host name
+	assert.Equal(t, res.Hostname, hostname)
 }

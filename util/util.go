@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 )
@@ -405,4 +406,21 @@ func Contains(list []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// CreateHostInfo takes the agent Info and create the hostsvc.HostInfo
+func CreateHostInfo(hostname string, agentInfo *mesos.AgentInfo) *hostsvc.HostInfo {
+	// if agentInfo is nil , return nil HostInfo
+	if agentInfo == nil {
+		log.WithField("host", hostname).
+			Warn("Agent Info is nil")
+		return nil
+	}
+	// return the HostInfo object
+	return &hostsvc.HostInfo{
+		Hostname:   hostname,
+		AgentId:    agentInfo.Id,
+		Attributes: agentInfo.Attributes,
+		Resources:  agentInfo.Resources,
+	}
 }
