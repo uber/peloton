@@ -28,6 +28,7 @@ import (
 	"code.uber.internal/infra/peloton/hostmgr/offer"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	"code.uber.internal/infra/peloton/hostmgr/summary"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
@@ -81,6 +82,35 @@ func validateHostFilter(
 		}
 	}
 	return nil
+}
+
+// GetOutstandingOffers returns all the offers present in offer pool.
+func (h *serviceHandler) GetOutstandingOffers(
+	ctx context.Context,
+	body *hostsvc.GetOutstandingOffersRequest) (*hostsvc.GetOutstandingOffersResponse, error) {
+
+	hostOffers, count := h.offerPool.GetOffers(summary.All)
+	if count == 0 {
+		return &hostsvc.GetOutstandingOffersResponse{
+			Error: &hostsvc.GetOutstandingOffersResponse_Error{
+				NoOffers: &hostsvc.NoOffersError{
+					Message: "no offers present in offer pool",
+				},
+			},
+		}, nil
+	}
+
+	outstandingOffers := make([]*mesos.Offer, 0, count)
+
+	for _, hostOffer := range hostOffers {
+		for _, offer := range hostOffer {
+			outstandingOffers = append(outstandingOffers, offer)
+		}
+	}
+
+	return &hostsvc.GetOutstandingOffersResponse{
+		Offers: outstandingOffers,
+	}, nil
 }
 
 // AcquireHostOffers implements InternalHostService.AcquireHostOffers.
@@ -629,15 +659,15 @@ func (h *serviceHandler) LaunchTasks(
 
 func validateLaunchTasks(request *hostsvc.LaunchTasksRequest) error {
 	if len(request.Tasks) <= 0 {
-		return errors.New("Empty task list in LaunchTasksRequest")
+		return errors.New("empty task list in LaunchTasksRequest")
 	}
 
 	if len(request.GetAgentId().GetValue()) <= 0 {
-		return errors.New("Empty agent id in LaunchTasksRequest")
+		return errors.New("empty agent id in LaunchTasksRequest")
 	}
 
 	if len(request.Hostname) <= 0 {
-		return errors.New("Empty hostname in LaunchTasksRequest")
+		return errors.New("empty hostname in LaunchTasksRequest")
 	}
 
 	return nil
@@ -647,12 +677,12 @@ func validateShutdownExecutors(request *hostsvc.ShutdownExecutorsRequest) error 
 	executorList := request.GetExecutors()
 
 	if len(executorList) <= 0 {
-		return errors.New("Empty executor list in ShutdownExecutorsRequest")
+		return errors.New("empty executor list in ShutdownExecutorsRequest")
 	}
 
 	for _, executor := range executorList {
 		if executor.GetAgentId() == nil || executor.GetExecutorId() == nil {
-			return errors.New("Empty Executor Id or Agent Id ")
+			return errors.New("empty Executor Id or Agent Id")
 		}
 	}
 	return nil
@@ -885,7 +915,7 @@ func (h *serviceHandler) ClusterCapacity(
 	tAllocatedResources := scalar.FromMesosResources(allocatedResources)
 
 	agentMap := host.GetAgentMap()
-	if agentMap == nil {
+	if agentMap == nil || len(agentMap.RegisteredAgents) == 0 {
 		h.metrics.ClusterCapacityFail.Inc(1)
 		log.Error("error getting host agentmap")
 		return &hostsvc.ClusterCapacityResponse{
@@ -906,7 +936,7 @@ func (h *serviceHandler) ClusterCapacity(
 	quotaResources, err := h.operatorMasterClient.GetQuota(h.roleName)
 	if err != nil {
 		h.metrics.ClusterCapacityFail.Inc(1)
-		log.WithError(err).Error("error getting quota ")
+		log.WithError(err).Error("error getting quota")
 		return &hostsvc.ClusterCapacityResponse{
 			Error: &hostsvc.ClusterCapacityResponse_Error{
 				ClusterUnavailable: &hostsvc.ClusterUnavailable{

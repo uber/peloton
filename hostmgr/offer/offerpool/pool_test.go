@@ -316,10 +316,46 @@ func (suite *OfferPoolTestSuite) TestReservedOffers() {
 	suite.pool.AddOffers(context.Background(), offers)
 	suite.Equal(suite.GetTimedOfferLen(), 10)
 
-	suite.Equal(len(suite.pool.GetReservedOffers()[_testAgent]), 10)
+	testTable := []struct {
+		offerType     summary.OfferType
+		expectedCount int
+		removeOffer   bool
+		msg           string
+	}{
+		{
+			offerType:     summary.Reserved,
+			expectedCount: 10,
+			removeOffer:   false,
+			msg:           "number of reserved offers matches same as added",
+		},
+		{
+			offerType:     summary.Unreserved,
+			expectedCount: 0,
+			removeOffer:   false,
+			msg:           "number of unreserved offers are not present in offerpool",
+		},
+		{
+			offerType:     summary.All,
+			expectedCount: 10,
+			removeOffer:   false,
+			msg:           "number of all offers matches, all reserved offers added",
+		},
+		{
+			offerType:     summary.Reserved,
+			expectedCount: 10,
+			removeOffer:   true,
+			msg:           "number of reserved resources matches, even on removing dummy offer",
+		},
+	}
 
-	suite.pool.RemoveReservedOffer(_dummyTestAgent, _dummyOfferID)
-	suite.Equal(len(suite.pool.GetReservedOffers()[_testAgent]), 10)
+	for _, tt := range testTable {
+		if tt.removeOffer {
+			suite.pool.RemoveReservedOffer(_dummyTestAgent, _dummyOfferID)
+		}
+
+		poolOffers, _ := suite.pool.GetOffers(tt.offerType)
+		suite.Equal(len(poolOffers[_testAgent]), tt.expectedCount)
+	}
 
 	// no-op, as all the offers are reserved.
 	suite.pool.ReturnUnusedOffers(_dummyTestAgent)

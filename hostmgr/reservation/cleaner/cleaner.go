@@ -18,6 +18,7 @@ import (
 	hostmgrmesos "code.uber.internal/infra/peloton/hostmgr/mesos"
 	"code.uber.internal/infra/peloton/hostmgr/offer/offerpool"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
+	"code.uber.internal/infra/peloton/hostmgr/summary"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"
 )
@@ -65,7 +66,7 @@ func (c *cleaner) Run(isRunning *atomic.Bool) {
 }
 
 func (c *cleaner) cleanUnusedVolumes() {
-	reservedOffers := c.offerPool.GetReservedOffers()
+	reservedOffers, _ := c.offerPool.GetOffers(summary.Reserved)
 	for hostname, offerMap := range reservedOffers {
 		for _, offer := range offerMap {
 			if err := c.cleanOffer(offer); err != nil {

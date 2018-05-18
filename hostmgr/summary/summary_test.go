@@ -605,8 +605,12 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	suite.Equal(5.0, unreservedAmount.Mem)
 	suite.Equal(5.0, unreservedAmount.Disk)
 	suite.Equal(5.0, unreservedAmount.GPU)
-	suite.Equal(len(hybridSummary.GetReservedOffers()), 5)
-	suite.Equal(len(hybridSummary.GetUnreservedOffers()), 5)
+	summaryOffers := hybridSummary.GetOffers(Reserved)
+	suite.Equal(len(summaryOffers), 5)
+	summaryOffers = hybridSummary.GetOffers(Unreserved)
+	suite.Equal(len(summaryOffers), 5)
+	summaryOffers = hybridSummary.GetOffers(All)
+	suite.Equal(len(summaryOffers), 10)
 
 	suite.Equal(ReadyOffer, status)
 }
@@ -709,9 +713,11 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 		}
 		suite.Equal(s.status, tt.afterStatus)
 		suite.Equal(s.readyCount.Load(), tt.expectedReadyCount)
-		suite.Equal(int32(len(s.GetUnreservedOffers())), tt.expectedReadyCount)
+		summaryOffers := s.GetOffers(Unreserved)
+		suite.Equal(int32(len(summaryOffers)), tt.expectedReadyCount)
 		s.RemoveMesosOffer("reserved-offerid-1", "Removing reserved offer")
-		suite.Equal(len(s.GetReservedOffers()), 0)
+		summaryOffers = s.GetOffers(Reserved)
+		suite.Equal(len(summaryOffers), 0)
 	}
 }
 
@@ -727,5 +733,6 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	s.ClaimReservedOffersForLaunch()
 	suite.Equal(s.status, ReadyOffer)
 	suite.Equal(int(s.readyCount.Load()), 1)
-	suite.Equal(len(s.GetReservedOffers()), 0)
+	summaryOffers := s.GetOffers(Reserved)
+	suite.Equal(len(summaryOffers), 0)
 }

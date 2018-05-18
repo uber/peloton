@@ -212,6 +212,18 @@ func (suite *HostMgrHandlerTestSuite) checkResourcesGauges(
 	suite.assertGaugeValues(values)
 }
 
+func (suite *HostMgrHandlerTestSuite) TestGetOutstandingOffers() {
+	defer suite.ctrl.Finish()
+
+	resp, _ := suite.handler.GetOutstandingOffers(rootCtx, &hostsvc.GetOutstandingOffersRequest{})
+	suite.Equal(resp.GetError().GetNoOffers().Message, "no offers present in offer pool")
+
+	numHosts := 5
+	suite.pool.AddOffers(context.Background(), generateOffers(numHosts))
+	resp, _ = suite.handler.GetOutstandingOffers(rootCtx, &hostsvc.GetOutstandingOffersRequest{})
+	suite.Equal(len(resp.Offers), numHosts)
+}
+
 // This checks the happy case of acquire -> release -> acquire
 // sequence and verifies that released resources can be used
 // again by next acquire call.

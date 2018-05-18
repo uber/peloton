@@ -313,6 +313,9 @@ service InternalHostService
 
   // Return leading mesos masters host:port.
   rpc GetMesosMasterHostPort(MesosMasterHostPortRequest) returns (MesosMasterHostPortResponse);
+
+  // Return all the outstanding offers present in offer pool.
+  rpc GetOutstandingOffers(GetOutstandingOffersRequest) returns (GetOutstandingOffersResponse);
 }
 
 /**
@@ -334,6 +337,31 @@ message MesosMasterHostPortRequest {}
 message MesosMasterHostPortResponse {
   string hostname = 1;
   string port = 2;
+}
+
+/**
+ * Request to get all outstanding offers from offer pool.
+ */
+message GetOutstandingOffersRequest {}
+
+/**
+ * Responds all outstanding offers of offer pool.
+ */
+message GetOutstandingOffersResponse {
+  message Error {
+    NoOffersError noOffers = 1;
+  }
+
+  repeated mesos.v1.Offer offers = 1;
+
+  Error error = 2;
+}
+
+/**
+ * NoOffersError represents on outstanding offers are present.
+ */
+message NoOffersError {
+  string message = 1;
 }
 
 /**

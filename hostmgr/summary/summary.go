@@ -35,6 +35,9 @@ func (e InvalidCacheStatus) Error() string {
 // CacheStatus represents status (Ready/Placing) of the host in offer pool's cache (host -> offers).
 type CacheStatus int
 
+// OfferType represents the type of offer in the host summary such as reserved, unreserved, or All.
+type OfferType int
+
 const (
 	// ReadyOffer represents an offer ready to be used.
 	ReadyOffer CacheStatus = iota + 1
@@ -44,6 +47,16 @@ const (
 	// hostPlacingOfferStatusTimeout is a timeout for resetting
 	// PlacingOffer status back to ReadOffer status.
 	hostPlacingOfferStatusTimeout time.Duration = 5 * time.Minute
+)
+
+const (
+	// Reserved offer type, represents an offer reserved for a particular Mesos Role.
+	Reserved OfferType = iota + 1
+	// Unreserved offer type, is not reserved for any Mesos role, and can be used to launch task for
+	// any role if framework has opt-in MULTI_ROLE capability.
+	Unreserved
+	// All represents reserved and unreserved offers.
+	All
 )
 
 // HostSummary is the core component of host manager's internal
@@ -92,11 +105,9 @@ type HostSummary interface {
 	// whether the hostSummary got reset and resources amount for unreserved offers.
 	ResetExpiredPlacingOfferStatus(now time.Time) (bool, scalar.Resources)
 
-	// GetReservedOffers returns all the reserved offers of the host.
-	GetReservedOffers() map[string]*mesos.Offer
-
-	// GetUnreservedOffers returns all the unreserved offers of the host.
-	GetUnreservedOffers() []*mesos.Offer
+	// GetOffers returns offers and #offers present for this host, of type reserved, unreserved or all.
+	// Returns map of offerid -> offer
+	GetOffers(OfferType) map[string]*mesos.Offer
 }
 
 // hostSummary is a data struct holding offers on a particular host.
@@ -429,25 +440,30 @@ func (a *hostSummary) ResetExpiredPlacingOfferStatus(now time.Time) (bool, scala
 	return false, scalar.Resources{}
 }
 
-// GetReservedOffers returns map of offerID to mesos offer object.
-func (a *hostSummary) GetReservedOffers() map[string]*mesos.Offer {
-	a.Lock()
-	defer a.Unlock()
-
-	result := make(map[string]*mesos.Offer)
-	for offerID, offer := range a.reservedOffers {
-		result[offerID] = proto.Clone(offer).(*mesos.Offer)
+// GetOffers returns offers, and #offers present for this host, of type reserved, unreserved or all.
+// Returns map of offerid -> offer
+func (a *hostSummary) GetOffers(offertype OfferType) map[string]*mesos.Offer {
+	offers := make(map[string]*mesos.Offer)
+	switch offertype {
+	case Reserved:
+		for offerID, offer := range a.reservedOffers {
+			offers[offerID] = proto.Clone(offer).(*mesos.Offer)
+		}
+		break
+	case Unreserved:
+		for offerID, offer := range a.unreservedOffers {
+			offers[offerID] = proto.Clone(offer).(*mesos.Offer)
+		}
+		break
+	case All:
+		fallthrough
+	default:
+		offers = a.GetOffers(Unreserved)
+		reservedOffers := a.GetOffers(Reserved)
+		for key, value := range reservedOffers {
+			offers[key] = value
+		}
+		break
 	}
-	return result
-}
-
-// GetUnreservedOffers returns an array on unreserved offers.
-func (a *hostSummary) GetUnreservedOffers() []*mesos.Offer {
-	var offersToReturn []*mesos.Offer
-	a.Lock()
-	defer a.Unlock()
-	for _, offer := range a.unreservedOffers {
-		offersToReturn = append(offersToReturn, offer)
-	}
-	return offersToReturn
+	return offers
 }

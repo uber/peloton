@@ -15,6 +15,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	offerpool_mocks "code.uber.internal/infra/peloton/hostmgr/offer/offerpool/mocks"
+	"code.uber.internal/infra/peloton/hostmgr/summary"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 	mpb_mocks "code.uber.internal/infra/peloton/yarpc/encoding/mpb/mocks"
@@ -92,7 +93,7 @@ func TestCleanUnusedResources(t *testing.T) {
 	hostOffers[offer.GetHostname()] = reservedOffers
 
 	gomock.InOrder(
-		mockOfferPool.EXPECT().GetReservedOffers().Return(hostOffers),
+		mockOfferPool.EXPECT().GetOffers(summary.Reserved).Return(hostOffers, 4),
 		mockOfferPool.EXPECT().RemoveReservedOffer(offer.GetHostname(), offer.GetId().GetValue()),
 		mockSchedulerClient.EXPECT().
 			Call(
@@ -185,7 +186,7 @@ func TestCleanVolume(t *testing.T) {
 	}
 
 	gomock.InOrder(
-		mockOfferPool.EXPECT().GetReservedOffers().Return(hostOffers),
+		mockOfferPool.EXPECT().GetOffers(summary.Reserved).Return(hostOffers, 4),
 		mockVolumeStore.EXPECT().GetPersistentVolume(gomock.Any(), volumeID).Return(volumeInfo, nil),
 		mockVolumeStore.EXPECT().UpdatePersistentVolume(gomock.Any(), volumeInfo).Return(nil),
 		mockOfferPool.EXPECT().RemoveReservedOffer(offer.GetHostname(), offer.GetId().GetValue()),
@@ -285,7 +286,7 @@ func TestNotCleanVolumeIfVolumeGoalstateNotDeleted(t *testing.T) {
 	}
 
 	gomock.InOrder(
-		mockOfferPool.EXPECT().GetReservedOffers().Return(hostOffers),
+		mockOfferPool.EXPECT().GetOffers(summary.Reserved).Return(hostOffers, 4),
 		mockVolumeStore.EXPECT().GetPersistentVolume(gomock.Any(), volumeID).Return(volumeInfo, nil),
 	)
 

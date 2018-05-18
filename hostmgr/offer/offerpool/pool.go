@@ -68,8 +68,8 @@ type Pool interface {
 	// and returns the hostnames which got reset
 	ResetExpiredHostSummaries(now time.Time) []string
 
-	// GetReservedOffers returns all the reserved offers in the cluster.
-	GetReservedOffers() map[string]map[string]*mesos.Offer
+	// GetOffers returns hostname -> map(offerid -> offer) & #offers for reserved, unreserved or all offer type.
+	GetOffers(offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int)
 
 	// RemoveReservedOffers removes given offerID from given host.
 	RemoveReservedOffer(hostname string, offerID string)
@@ -468,16 +468,44 @@ func (p *offerPool) RemoveReservedOffer(hostname string, offerID string) {
 	p.removeOffer(offerID, "Reserved Offer is removed from the pool.")
 }
 
-// GetReservedOffers returns mapping from hostname to their reserved offers.
-func (p *offerPool) GetReservedOffers() map[string]map[string]*mesos.Offer {
+// getOffersByType is a helper method to get hostoffers by offer type
+func (p *offerPool) getOffersByType(
+	offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int) {
+	hostOffers := make(map[string]map[string]*mesos.Offer)
+	var offersCount int
+	for hostname, summary := range p.hostOfferIndex {
+		offers := summary.GetOffers(offerType)
+		hostOffers[hostname] = offers
+		offersCount += len(offers)
+	}
+
+	return hostOffers, offersCount
+}
+
+// GetOffers returns hostname -> map(offerid -> offer)
+// and #offers for reserved, unreserved or all offer types.
+func (p *offerPool) GetOffers(
+	offerType summary.OfferType) (map[string]map[string]*mesos.Offer, int) {
 	p.RLock()
 	defer p.RUnlock()
 
-	result := make(map[string]map[string]*mesos.Offer)
-	for hostname, summary := range p.hostOfferIndex {
-		result[hostname] = summary.GetReservedOffers()
+	var hostOffers map[string]map[string]*mesos.Offer
+	var offersCount int
+
+	switch offerType {
+	case summary.Reserved:
+		hostOffers, offersCount = p.getOffersByType(summary.Reserved)
+		break
+	case summary.Unreserved:
+		hostOffers, offersCount = p.getOffersByType(summary.Unreserved)
+		break
+	case summary.All:
+		fallthrough
+	default:
+		hostOffers, offersCount = p.getOffersByType(summary.All)
+		break
 	}
-	return result
+	return hostOffers, offersCount
 }
 
 // RefreshGaugeMaps refreshes the metrics for hosts in ready and placing state.
