@@ -661,99 +661,111 @@ func (suite *HostMgrHandlerTestSuite) TestShutdownExecutorsFailure() {
 
 	e1 := "e1"
 	a1 := "a1"
-	e2 := "e2"
-	a2 := "a2"
 
-	shutdownExecutors := []*hostsvc.ExecutorOnAgent{
+	testTable := []struct {
+		executors    []*hostsvc.ExecutorOnAgent
+		numExecutors int
+		shutdownCall bool
+		errMsg       string
+		msg          string
+	}{
 		{
-			ExecutorId: &mesos.ExecutorID{Value: &e1},
-			AgentId:    &mesos.AgentID{Value: &a1},
+			executors:    nil,
+			numExecutors: 0,
+			shutdownCall: false,
+			errMsg:       "empty executor list in ShutdownExecutorsRequest",
+			msg:          "Test invalid shutdown executor request with no executors present",
 		},
 		{
-			ExecutorId: &mesos.ExecutorID{Value: &e2},
-			AgentId:    &mesos.AgentID{Value: &a2},
+			executors: []*hostsvc.ExecutorOnAgent{
+				{
+					ExecutorId: &mesos.ExecutorID{Value: &e1},
+					AgentId:    nil,
+				},
+			},
+			numExecutors: 1,
+			shutdownCall: false,
+			errMsg:       "empty Executor Id or Agent Id",
+			msg:          "Test empty Agent ID",
+		},
+		{
+			executors: []*hostsvc.ExecutorOnAgent{
+				{
+					ExecutorId: nil,
+					AgentId:    &mesos.AgentID{Value: &a1},
+				},
+			},
+			numExecutors: 1,
+			shutdownCall: false,
+			errMsg:       "empty Executor Id or Agent Id",
+			msg:          "Test empty Executor ID",
+		},
+		{
+			executors: []*hostsvc.ExecutorOnAgent{
+				{
+					ExecutorId: &mesos.ExecutorID{Value: &e1},
+					AgentId:    &mesos.AgentID{Value: &a1},
+				},
+			},
+			numExecutors: 1,
+			shutdownCall: true,
+			errMsg:       "some error",
+			msg:          "Failed Shutdown Executor Call",
+		},
+		{
+			executors: []*hostsvc.ExecutorOnAgent{
+				{
+					ExecutorId: &mesos.ExecutorID{Value: &e1},
+					AgentId:    &mesos.AgentID{Value: &a1},
+				},
+			},
+			shutdownCall: true,
+			numExecutors: 1,
+			errMsg:       "",
+			msg:          "Successfull Shutdown Executor Call",
 		},
 	}
-	shutdownReq := &hostsvc.ShutdownExecutorsRequest{
-		Executors: shutdownExecutors,
+
+	for _, tt := range testTable {
+		shutdownReq := &hostsvc.ShutdownExecutorsRequest{
+			Executors: tt.executors,
+		}
+
+		if tt.shutdownCall {
+			suite.provider.EXPECT().GetFrameworkID(rootCtx).Return(suite.frameworkID)
+			suite.provider.EXPECT().GetMesosStreamID(rootCtx).Return(_streamID)
+
+			var err error
+			err = nil
+			if len(tt.errMsg) > 0 {
+				err = errors.New(tt.errMsg)
+			}
+
+			callType := sched.Call_SHUTDOWN
+			msg := &sched.Call{
+				FrameworkId: suite.frameworkID,
+				Type:        &callType,
+				Shutdown: &sched.Call_Shutdown{
+					ExecutorId: &mesos.ExecutorID{Value: &e1},
+					AgentId:    &mesos.AgentID{Value: &a1},
+				},
+			}
+			suite.schedulerClient.EXPECT().Call(_streamID, msg).Return(err)
+		}
+
+		resp, err := suite.handler.ShutdownExecutors(rootCtx, shutdownReq)
+		suite.Equal(len(shutdownReq.GetExecutors()), tt.numExecutors)
+
+		if !tt.shutdownCall {
+			suite.Equal(resp.GetError().GetInvalidExecutors().Message, tt.errMsg)
+		} else if tt.shutdownCall && len(tt.errMsg) > 0 {
+			suite.NotNil(resp.GetError().GetShutdownFailure())
+			suite.Equal(int64(1), suite.testScope.Snapshot().Counters()["shutdown_executors_fail+"].Value())
+		} else {
+			suite.NoError(err)
+			suite.Equal(int64(1), suite.testScope.Snapshot().Counters()["shutdown_executors+"].Value())
+		}
 	}
-
-	failedExecutors := make(map[string]string)
-	shutdownedExecutors := make(map[string]string)
-	mockMutex := &sync.Mutex{}
-
-	// Set expectations on provider
-	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-		suite.frameworkID,
-	).Times(2)
-	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
-		_streamID,
-	).Times(2)
-
-	// A failed call.
-	suite.schedulerClient.EXPECT().
-		Call(
-			gomock.Eq(_streamID),
-			gomock.Any(),
-		).
-		Do(func(_ string, msg proto.Message) {
-			// Verify call message and process the executor into failedShutdownedExecutors
-			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_SHUTDOWN, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-			aid := call.GetShutdown().GetAgentId()
-			eid := call.GetShutdown().GetExecutorId()
-
-			suite.NotNil(aid)
-			suite.NotNil(eid)
-			mockMutex.Lock()
-			defer mockMutex.Unlock()
-			failedExecutors[eid.GetValue()] = aid.GetValue()
-		}).
-		Return(errors.New("Some error"))
-
-	// A successful call.
-	suite.schedulerClient.EXPECT().
-		Call(
-			gomock.Eq(_streamID),
-			gomock.Any(),
-		).
-		Do(func(_ string, msg proto.Message) {
-			// Verify call message while process the kill task id into `killedTaskIds`
-			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_SHUTDOWN, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-			aid := call.GetShutdown().GetAgentId()
-			eid := call.GetShutdown().GetExecutorId()
-
-			suite.NotNil(aid)
-			suite.NotNil(eid)
-			mockMutex.Lock()
-			defer mockMutex.Unlock()
-
-			shutdownedExecutors[eid.GetValue()] = aid.GetValue()
-		}).
-		Return(nil)
-
-	resp, err := suite.handler.ShutdownExecutors(rootCtx, shutdownReq)
-	suite.NoError(err)
-	suite.NotNil(resp.GetError().GetShutdownFailure())
-
-	suite.Equal(1, len(failedExecutors))
-	suite.Equal(1, len(shutdownedExecutors))
-
-	suite.NotEqual(shutdownedExecutors, failedExecutors)
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["shutdown_executors+"].Value())
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["shutdown_executors_fail+"].Value())
-
 }
 
 // Test happy case of killing task
@@ -819,91 +831,103 @@ func (suite *HostMgrHandlerTestSuite) TestKillTaskFailure() {
 
 	t1 := "t1"
 	t2 := "t2"
-	taskIDs := []*mesos.TaskID{
-		{Value: &t1},
-		{Value: &t2},
+
+	testTable := []struct {
+		taskIDs     []*mesos.TaskID
+		killRequest bool
+		errMsg      string
+		msg         string
+	}{
+		{
+			taskIDs:     []*mesos.TaskID{},
+			killRequest: false,
+			errMsg:      "",
+			msg:         "Test Kill Task Request w/o any TaskIDs",
+		},
+		{
+			taskIDs: []*mesos.TaskID{
+				{Value: &t1},
+				{Value: &t2},
+			},
+			killRequest: true,
+			errMsg:      "some error",
+			msg:         "Failed Test Kill Task Request with TaskIDs",
+		},
+		{
+			taskIDs: []*mesos.TaskID{
+				{Value: &t1},
+				{Value: &t2},
+			},
+			killRequest: true,
+			errMsg:      "",
+			msg:         "Success Test Kill Task Request with TaskIDs",
+		},
 	}
-	killReq := &hostsvc.KillTasksRequest{
-		TaskIds: taskIDs,
+
+	for _, tt := range testTable {
+		killReq := &hostsvc.KillTasksRequest{
+			TaskIds: tt.taskIDs,
+		}
+
+		if tt.killRequest {
+			var err error
+			err = nil
+			if len(tt.errMsg) > 0 {
+				err = errors.New(tt.errMsg)
+			}
+
+			suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(suite.frameworkID).Times(2)
+			suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(_streamID).Times(2)
+
+			suite.schedulerClient.EXPECT().
+				Call(
+					gomock.Eq(_streamID),
+					gomock.Any()).
+				Do(func(_ string, msg proto.Message) {
+					// Verify call message while process the kill task id into `killedTaskIds`
+					call := msg.(*sched.Call)
+					suite.Equal(sched.Call_KILL, call.GetType())
+					suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
+
+					tid := call.GetKill().GetTaskId()
+					suite.NotNil(tid)
+				}).
+				Return(err).
+				Times(2)
+		}
+
+		resp, _ := suite.handler.KillTasks(rootCtx, killReq)
+
+		if !tt.killRequest {
+			suite.NotNil(resp.GetError().GetInvalidTaskIDs())
+		} else if tt.killRequest && len(tt.errMsg) > 0 {
+			suite.NotNil(resp.GetError().GetKillFailure())
+			suite.Equal(
+				int64(2),
+				suite.testScope.Snapshot().Counters()["kill_tasks_fail+"].Value())
+		} else {
+			suite.Equal(resp, &hostsvc.KillTasksResponse{})
+			suite.Equal(
+				int64(2),
+				suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
+		}
 	}
-
-	killedTaskIds := make(map[string]bool)
-	failedTaskIds := make(map[string]bool)
-	mockMutex := &sync.Mutex{}
-
-	// Set expectations on provider
-	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(
-		suite.frameworkID,
-	).Times(2)
-	suite.provider.EXPECT().GetMesosStreamID(context.Background()).Return(
-		_streamID,
-	).Times(2)
-
-	// A failed call.
-	suite.schedulerClient.EXPECT().
-		Call(
-			gomock.Eq(_streamID),
-			gomock.Any(),
-		).
-		Do(func(_ string, msg proto.Message) {
-			// Verify call message and process task id into `failedTaskIds`
-			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_KILL, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-			tid := call.GetKill().GetTaskId()
-			suite.NotNil(tid)
-			mockMutex.Lock()
-			defer mockMutex.Unlock()
-			failedTaskIds[tid.GetValue()] = true
-		}).
-		Return(errors.New("Some error"))
-
-	// A successful call.
-	suite.schedulerClient.EXPECT().
-		Call(
-			gomock.Eq(_streamID),
-			gomock.Any(),
-		).
-		Do(func(_ string, msg proto.Message) {
-			// Verify call message while process the kill task id into `killedTaskIds`
-			call := msg.(*sched.Call)
-			suite.Equal(sched.Call_KILL, call.GetType())
-			suite.Equal(_frameworkID, call.GetFrameworkId().GetValue())
-
-			tid := call.GetKill().GetTaskId()
-			suite.NotNil(tid)
-			mockMutex.Lock()
-			defer mockMutex.Unlock()
-
-			killedTaskIds[tid.GetValue()] = true
-		}).
-		Return(nil)
-
-	resp, err := suite.handler.KillTasks(rootCtx, killReq)
-	suite.NoError(err)
-	suite.NotNil(resp.GetError().GetKillFailure())
-
-	suite.Equal(1, len(killedTaskIds))
-	suite.Equal(1, len(failedTaskIds))
-
-	suite.NotEqual(killedTaskIds, failedTaskIds)
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["kill_tasks+"].Value())
-
-	suite.Equal(
-		int64(1),
-		suite.testScope.Snapshot().Counters()["kill_tasks_fail+"].Value())
 }
 
 func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	scalerType := mesos.Value_SCALAR
 	scalerVal := 200.0
 	name := "cpus"
+
+	loader := &host.Loader{
+		OperatorClient: suite.masterOperatorClient,
+		Scope:          suite.testScope,
+	}
 	numAgents := 2
-	suite.InitializeHosts(numAgents)
+	response := makeAgentsResponse(numAgents)
+	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+
+	loader.Load(nil)
 
 	tests := []struct {
 		err         error
@@ -976,18 +1000,61 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacity() {
 	}
 }
 
+func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithoutAgentMap() {
+	defer suite.ctrl.Finish()
+
+	clusterCapacityReq := &hostsvc.ClusterCapacityRequest{}
+	response := &mesos_master.Response_GetAgents{
+		Agents: []*mesos_master.Response_GetAgents_Agent{},
+	}
+	loader := &host.Loader{
+		OperatorClient: suite.masterOperatorClient,
+		Scope:          suite.testScope,
+	}
+	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+	loader.Load(nil)
+
+	suite.provider.EXPECT().GetFrameworkID(rootCtx).Return(suite.frameworkID)
+
+	scalerType := mesos.Value_SCALAR
+	scalerVal := 200.0
+	name := "cpus"
+	suite.masterOperatorClient.EXPECT().AllocatedResources(gomock.Any()).Return([]*mesos.Resource{
+		{
+			Name: &name,
+			Scalar: &mesos.Value_Scalar{
+				Value: &scalerVal,
+			},
+			Type: &scalerType,
+		},
+	}, nil)
+
+	// Make the cluster capacity API request
+	resp, _ := suite.handler.ClusterCapacity(
+		rootCtx,
+		clusterCapacityReq,
+	)
+
+	suite.Equal(resp.Error.ClusterUnavailable.Message, "error getting host agentmap")
+}
+
 func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota() {
 	scalerType := mesos.Value_SCALAR
 	scalerVal := 200.0
 	name := "cpus"
 	quotaVal := 100.0
+
+	loader := &host.Loader{
+		OperatorClient: suite.masterOperatorClient,
+		Scope:          suite.testScope,
+	}
 	numAgents := 2
-	suite.InitializeHosts(numAgents)
+	response := makeAgentsResponse(numAgents)
+	suite.masterOperatorClient.EXPECT().Agents().Return(response, nil)
+
+	loader.Load(nil)
 
 	clusterCapacityReq := &hostsvc.ClusterCapacityRequest{}
-
-	// Set expectations on provider interface
-	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(suite.frameworkID)
 
 	responseAllocated := []*mesos.Resource{
 		{
@@ -1009,15 +1076,21 @@ func (suite *HostMgrHandlerTestSuite) TestServiceHandlerClusterCapacityWithQuota
 		},
 	}
 
-	// Set expectations on the mesos operator client
-	suite.masterOperatorClient.EXPECT().AllocatedResources(
-		gomock.Any(),
-	).Return(responseAllocated, nil)
-
-	suite.masterOperatorClient.EXPECT().GetQuota(gomock.Any()).Return(responseQuota, nil)
-
-	// Make the cluster capacity API request
+	// Test GetQuota failure scenario
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(suite.frameworkID)
+	suite.masterOperatorClient.EXPECT().AllocatedResources(gomock.Any()).Return(responseAllocated, nil)
+	suite.masterOperatorClient.EXPECT().GetQuota(gomock.Any()).Return(nil, errors.New("error getting quota"))
 	resp, _ := suite.handler.ClusterCapacity(
+		rootCtx,
+		clusterCapacityReq,
+	)
+	suite.Equal(resp.Error.ClusterUnavailable.Message, "error getting quota")
+
+	// Test GetQuota success scenario
+	suite.provider.EXPECT().GetFrameworkID(context.Background()).Return(suite.frameworkID)
+	suite.masterOperatorClient.EXPECT().AllocatedResources(gomock.Any()).Return(responseAllocated, nil)
+	suite.masterOperatorClient.EXPECT().GetQuota(gomock.Any()).Return(responseQuota, nil)
+	resp, _ = suite.handler.ClusterCapacity(
 		rootCtx,
 		clusterCapacityReq,
 	)
