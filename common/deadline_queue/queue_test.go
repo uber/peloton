@@ -86,27 +86,58 @@ func TestTimeoutQueueOrdering(t *testing.T) {
 		})
 }
 
+// TestEnqueueAndDequeueTasks tests the normal deadline queue operation
+// where one thread dequeues items and multiple threads can enqueue.
 func TestEnqueueAndDequeueTasks(t *testing.T) {
 	q := NewDeadlineQueue(NewQueueMetrics(tally.NoopScope))
 
 	c := 100
 	var wg sync.WaitGroup
-	wg.Add(c)
-
-	for i := 0; i < c; i++ {
-		go func() {
-			tt := q.Dequeue(nil)
-			assert.NotNil(t, tt)
-			wg.Done()
-		}()
-	}
+	wg.Add(1)
 
 	go func() {
 		for i := 0; i < c; i++ {
-			tt := NewItem(strconv.Itoa(i))
-			q.Enqueue(tt, time.Now())
+			tt := q.Dequeue(nil)
+			assert.NotNil(t, tt)
 		}
+		wg.Done()
 	}()
 
+	for i := 0; i < c; i++ {
+		go func() {
+			tt := NewItem(strconv.Itoa(1))
+			q.Enqueue(tt, time.Now())
+		}()
+	}
+
 	wg.Wait()
+}
+
+// TestTimerChannel tests enqueuing one item and then dequeuing it.
+func TestTimerChannel(t *testing.T) {
+	q := NewDeadlineQueue(NewQueueMetrics(tally.NoopScope))
+	c := 100
+
+	for i := 0; i < c; i++ {
+		tt := NewItem(strconv.Itoa(i))
+		q.Enqueue(tt, time.Now())
+	}
+
+	for i := 0; i < c; i++ {
+		tt := q.Dequeue(nil)
+		assert.NotNil(t, tt)
+	}
+}
+
+// TestStopChannel tests stopping the deadline queue using the stop channel.
+func TestStopChannel(t *testing.T) {
+	q := NewDeadlineQueue(NewQueueMetrics(tally.NoopScope))
+
+	stopChan := make(chan struct{})
+	go q.Dequeue(stopChan)
+
+	tt := NewItem(strconv.Itoa(1))
+	q.Enqueue(tt, time.Now())
+
+	close(stopChan)
 }
