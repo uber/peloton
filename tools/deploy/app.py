@@ -30,6 +30,9 @@ from aurora.schema.thermos.schema_base import (
     Task as ThermosTask,
     Process as ThermosProcess,
     Resources,
+    Logger as ThermosLogger,
+    LoggerMode,
+    RotatePolicy,
 )
 from aurora.schema.aurora.base import (
     Announcer,
@@ -212,6 +215,10 @@ class App(object):
         entrypoint_process = ThermosProcess(
             name=self.name,
             cmdline=cmdline,
+            logger=ThermosLogger(
+                mode=LoggerMode('rotate'),
+                rotate=RotatePolicy(log_size=1*GB, backups=10),
+            ),
         )
         thermos_task = ThermosTask(
             name=self.name,
