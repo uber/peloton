@@ -24,6 +24,7 @@ type Pool struct {
 	queue      *Queue
 	numWorkers int
 	jobs       sync.WaitGroup
+	stopChan   chan bool
 }
 
 // NewPool returns a new pool, provided the PoolOptions.
@@ -36,6 +37,7 @@ func NewPool(o PoolOptions) *Pool {
 		options:    o,
 		queue:      NewQueue(),
 		numWorkers: o.MaxWorkers,
+		stopChan:   make(chan bool),
 	}
 
 	// Spawn initial workers.
@@ -78,16 +80,26 @@ func (p *Pool) WaitUntilProcessed() {
 	p.jobs.Wait()
 }
 
+// Stop implements termination of all jobs lazily.
+func (p *Pool) Stop() {
+	for i := 0; i < p.numWorkers; i++ {
+		p.stopChan <- true
+	}
+}
+
 func (p *Pool) runWorker() {
 	for {
 		if p.shouldWorkerStop() {
 			return
 		}
 
-		job := <-p.queue.DequeueChannel()
-		// TODO: Implement Stop() on queue that allows termination of all jobs.
-		job.Run(context.TODO())
-		p.jobs.Done()
+		select {
+		case <-p.stopChan:
+			return
+		case job := <-p.queue.DequeueChannel():
+			job.Run(context.TODO())
+			p.jobs.Done()
+		}
 	}
 }
 
