@@ -141,9 +141,6 @@ func (e *engine) getMaxRetryDelay() time.Duration {
 
 func (e *engine) Enqueue(entity Entity, deadline time.Time) {
 	id := entity.GetID()
-	log.WithField("goalstate_id", id).
-		WithField("goalstate_scheduled", e.IsScheduled(entity)).
-		Debug("enqueue happening in goal state engine")
 	e.queue.Enqueue(e.addItemToEntityMap(id, entity), deadline)
 }
 
