@@ -205,9 +205,9 @@ func (s *RMTaskTestSuite) pendingGang0() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			Preemptible:         true,
-			PlacementTimeout:    60,
-			PlacementRetryCount: 1,
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
 		},
 	}
 	return &gang

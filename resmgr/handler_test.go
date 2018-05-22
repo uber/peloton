@@ -240,9 +240,9 @@ func (s *HandlerTestSuite) pendingGang0() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			Preemptible:         true,
-			PlacementTimeout:    60,
-			PlacementRetryCount: 1,
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
 		},
 	}
 	return &gang
@@ -270,8 +270,8 @@ func (s *HandlerTestSuite) pendingGang1() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			PlacementTimeout:    60,
-			PlacementRetryCount: 1,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
 		},
 	}
 	return &gang
@@ -299,9 +299,9 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			Preemptible:         true,
-			PlacementTimeout:    60,
-			PlacementRetryCount: 1,
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
 		},
 		{
 			Name:         "job2-2",
@@ -318,9 +318,9 @@ func (s *HandlerTestSuite) pendingGang2() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			Preemptible:         true,
-			PlacementTimeout:    60,
-			PlacementRetryCount: 1,
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     1,
 		},
 	}
 	return &gang
@@ -347,9 +347,9 @@ func (s *HandlerTestSuite) pendingGangWithoutPlacement() *resmgrsvc.Gang {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-			Preemptible:         true,
-			PlacementTimeout:    60,
-			PlacementRetryCount: 3,
+			Preemptible:             true,
+			PlacementTimeoutSeconds: 60,
+			PlacementRetryCount:     3,
 		},
 	}
 	return &gang
@@ -515,14 +515,11 @@ func (s *HandlerTestSuite) TestRequeue() {
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
-	s.NoError(err)
+	s.validateStateTransitions(rmtask, []task.TaskState{
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED,
+		task.TaskState_LAUNCHING})
 
 	// Testing to see if we can send same task in the enqueue
 	// request then it should error out
@@ -569,8 +566,6 @@ func (s *HandlerTestSuite) TestRequeue() {
 func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	var gangs []*resmgrsvc.Gang
-	gangs = append(gangs, s.pendingGang0())
 
 	s.rmTaskTracker.AddTask(
 		s.pendingGang0().Tasks[0],
@@ -586,14 +581,11 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
-	s.NoError(err)
+	s.validateStateTransitions(rmtask, []task.TaskState{
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED,
+		task.TaskState_LAUNCHING})
 	s.rmTaskTracker.DeleteTask(s.pendingGang0().Tasks[0].Id)
 	failed, err := s.handler.requeueTask(s.pendingGang0().Tasks[0])
 	s.Error(err)
@@ -604,11 +596,9 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 func (s *HandlerTestSuite) TestRequeueFailures() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	var gangs []*resmgrsvc.Gang
-	gangs = append(gangs, s.pendingGang0())
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
-		Gangs:   gangs,
+		Gangs:   []*resmgrsvc.Gang{s.pendingGang0()},
 	}
 
 	s.rmTaskTracker.AddTask(
@@ -624,14 +614,11 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
-	s.NoError(err)
+	s.validateStateTransitions(rmtask, []task.TaskState{
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED,
+		task.TaskState_LAUNCHING})
 	// Testing to see if we can send same task in the enqueue
 	// request then it should error out
 	node.SetEntitlement(s.getEntitlement())
@@ -645,10 +632,9 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
 		Value: &mesosTaskID,
 	}
-	err = rmtask.TransitTo(task.TaskState_RUNNING.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_SUCCEEDED.String())
-	s.NoError(err)
+	s.validateStateTransitions(rmtask, []task.TaskState{
+		task.TaskState_RUNNING,
+		task.TaskState_SUCCEEDED})
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
 	s.NoError(err)
 	s.NotNil(enqResp.GetError())
@@ -659,8 +645,6 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 func (s *HandlerTestSuite) TestAddingToPendingQueue() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	var gangs []*resmgrsvc.Gang
-	gangs = append(gangs, s.pendingGang0())
 
 	s.rmTaskTracker.AddTask(
 		s.pendingGang0().Tasks[0],
@@ -675,12 +659,10 @@ func (s *HandlerTestSuite) TestAddingToPendingQueue() {
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
-	s.NoError(err)
+	s.validateStateTransitions(rmtask, []task.TaskState{
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED})
 	err = s.handler.addingGangToPendingQueue(s.pendingGang0(), node)
 	s.Error(err)
 	s.EqualValues(err.Error(), errGangNotEnqueued.Error())
@@ -689,8 +671,6 @@ func (s *HandlerTestSuite) TestAddingToPendingQueue() {
 func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	var gangs []*resmgrsvc.Gang
-	gangs = append(gangs, s.pendingGang0())
 
 	s.rmTaskTracker.AddTask(
 		s.pendingGang0().Tasks[0],
@@ -705,12 +685,10 @@ func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
-	s.NoError(err)
+	s.validateStateTransitions(rmtask, []task.TaskState{
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED})
 	err = s.handler.addingGangToPendingQueue(&resmgrsvc.Gang{}, node)
 	s.Error(err)
 	s.EqualValues(err.Error(), errGangNotEnqueued.Error())
@@ -720,8 +698,6 @@ func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	var gangs []*resmgrsvc.Gang
-	gangs = append(gangs, s.pendingGang0())
 
 	s.rmTaskTracker.AddTask(
 		s.pendingGang0().Tasks[0],
@@ -736,15 +712,13 @@ func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
-	s.NoError(err)
+	s.validateStateTransitions(rmtask, []task.TaskState{
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED})
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: nil,
-		Gangs:   gangs,
+		Gangs:   []*resmgrsvc.Gang{s.pendingGang0()},
 	}
 
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
@@ -822,9 +796,10 @@ func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
 			rmTask := handler.rmTracker.GetTask(taskID)
-			rmTask.TransitTo(task.TaskState_PENDING.String())
-			rmTask.TransitTo(task.TaskState_READY.String())
-			rmTask.TransitTo(task.TaskState_PLACING.String())
+			s.validateStateTransitions(rmTask, []task.TaskState{
+				task.TaskState_PENDING,
+				task.TaskState_READY,
+				task.TaskState_PLACING})
 		}
 	}
 	setResp, err := handler.SetPlacements(s.context, setReq)
@@ -850,9 +825,10 @@ func (s *HandlerTestSuite) TestGetTasksByHosts() {
 		hostnames = append(hostnames, placement.Hostname)
 		for _, taskID := range placement.Tasks {
 			rmTask := s.handler.rmTracker.GetTask(taskID)
-			rmTask.TransitTo(task.TaskState_PENDING.String())
-			rmTask.TransitTo(task.TaskState_READY.String())
-			rmTask.TransitTo(task.TaskState_PLACING.String())
+			s.validateStateTransitions(rmTask, []task.TaskState{
+				task.TaskState_PENDING,
+				task.TaskState_READY,
+				task.TaskState_PLACING})
 		}
 	}
 	setResp, err := s.handler.SetPlacements(s.context, setReq)
@@ -1095,9 +1071,10 @@ func (s *HandlerTestSuite) TestGetActiveTasks() {
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
 			rmTask := s.handler.rmTracker.GetTask(taskID)
-			rmTask.TransitTo(task.TaskState_PENDING.String())
-			rmTask.TransitTo(task.TaskState_READY.String())
-			rmTask.TransitTo(task.TaskState_PLACING.String())
+			s.validateStateTransitions(rmTask, []task.TaskState{
+				task.TaskState_PENDING,
+				task.TaskState_READY,
+				task.TaskState_PLACING})
 		}
 	}
 	setResp, err := s.handler.SetPlacements(s.context, setReq)
@@ -1141,10 +1118,14 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 				PolicyName:       rm_task.ExponentialBackOffPolicy,
 			})
 		rmTask := s.handler.rmTracker.GetTask(taskID)
-		rmTask.TransitTo(task.TaskState_PENDING.String())
-		rmTask.TransitTo(task.TaskState_PLACED.String())
-		rmTask.TransitTo(task.TaskState_LAUNCHING.String())
-		rmTask.TransitTo(task.TaskState_RUNNING.String())
+		s.validateStateTransitions(rmTask, []task.TaskState{
+			task.TaskState_PENDING,
+			task.TaskState_READY,
+			task.TaskState_PLACING,
+			task.TaskState_PLACED,
+			task.TaskState_LAUNCHING,
+			task.TaskState_RUNNING,
+		})
 	}
 
 	var calls []*gomock.Call
@@ -1170,11 +1151,9 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
-	var gangs []*resmgrsvc.Gang
-	gangs = append(gangs, s.pendingGang0())
 	enqReq := &resmgrsvc.EnqueueGangsRequest{
 		ResPool: &peloton.ResourcePoolID{Value: "respool3"},
-		Gangs:   gangs,
+		Gangs:   []*resmgrsvc.Gang{s.pendingGang0()},
 	}
 
 	s.rmTaskTracker.AddTask(
@@ -1190,14 +1169,12 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_READY.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACING.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_PLACED.String())
-	s.NoError(err)
-	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
-	s.NoError(err)
+	s.validateStateTransitions(rmtask, []task.TaskState{
+		task.TaskState_READY,
+		task.TaskState_PLACING,
+		task.TaskState_PLACED,
+		task.TaskState_LAUNCHING,
+	})
 
 	// Marking this task to Invalidate
 	// It will not invalidate as its in Lunching state
@@ -1301,5 +1278,13 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 				s.Equal(expectedTaskID, tid)
 			}
 		}
+	}
+}
+
+func (s *HandlerTestSuite) validateStateTransitions(rmtask *rm_task.RMTask,
+	states []task.TaskState) {
+	for _, state := range states {
+		err := rmtask.TransitTo(state.String())
+		s.NoError(err)
 	}
 }

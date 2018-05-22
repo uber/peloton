@@ -56,7 +56,7 @@ func CreateRMTask(
 	// As this is when task is being created , retry should be 0
 	r.Task().PlacementRetryCount = 0
 	// Placement timeout should be equal to placing timeout by default
-	r.Task().PlacementTimeout = config.PlacingTimeout.Seconds()
+	r.Task().PlacementTimeoutSeconds = config.PlacingTimeout.Seconds()
 	// Checking if placement backoff is enabled
 	if !config.EnablePlacementBackoff {
 		return &r, err
@@ -384,7 +384,7 @@ func (rmTask *RMTask) AddBackoff() error {
 		return errors.Errorf("backoff policy is disabled %s", rmTask.Task().Id.GetValue())
 	}
 	// Adding the placement timeout values based on policy
-	rmTask.Task().PlacementTimeout = rmTask.config.PlacingTimeout.Seconds() +
+	rmTask.Task().PlacementTimeoutSeconds = rmTask.config.PlacingTimeout.Seconds() +
 		rmTask.policy.GetNextBackoffDuration(rmTask.Task(), rmTask.config)
 	// Adding the placement retry count based on backoff policy
 	rmTask.Task().PlacementRetryCount++
@@ -395,11 +395,11 @@ func (rmTask *RMTask) AddBackoff() error {
 	}
 	// Updating the timeout rule by that next timer will start with the new time out value.
 	rule := rmTask.stateMachine.GetTimeOutRules()[state.State(task.TaskState_PLACING.String())]
-	rule.Timeout = time.Duration(rmTask.Task().PlacementTimeout) * time.Second
+	rule.Timeout = time.Duration(rmTask.Task().PlacementTimeoutSeconds) * time.Second
 	log.WithFields(log.Fields{
 		"task_id":           rmTask.Task().Id.Value,
 		"retry_count":       rmTask.Task().PlacementRetryCount,
-		"placement_timeout": rmTask.Task().PlacementTimeout,
+		"placement_timeout": rmTask.Task().PlacementTimeoutSeconds,
 	}).Info("Adding backoff to task")
 	return nil
 }

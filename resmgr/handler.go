@@ -401,9 +401,8 @@ func (h *ServiceHandler) requeueUnplacedTask(requeuedTask *resmgr.Task, reason s
 		return err
 	}
 	// Adding to ready Queue
-	var tasks []*resmgr.Task
 	gang := &resmgrsvc.Gang{
-		Tasks: append(tasks, rmTask.Task()),
+		Tasks: []*resmgr.Task{rmTask.Task()},
 	}
 	err = rmtask.GetScheduler().EnqueueGang(gang)
 	if err != nil {
@@ -492,9 +491,8 @@ func (h *ServiceHandler) requeueTask(requeuedTask *resmgr.Task) (*resmgrsvc.Enqu
 			statemachine.WithReason("waiting for placement (task updated with new mesos task id)"),
 			statemachine.WithInfo(mesosTaskID, *requeuedTask.TaskId.Value))
 		// Adding to ready Queue
-		var tasks []*resmgr.Task
 		gang := &resmgrsvc.Gang{
-			Tasks: append(tasks, rmTask.Task()),
+			Tasks: []*resmgr.Task{rmTask.Task()},
 		}
 		err := rmtask.GetScheduler().EnqueueGang(gang)
 		if err != nil {

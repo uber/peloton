@@ -31,14 +31,14 @@ func (suite *BackoffPolicyTestSuite) TestGetNextDuration() {
 	timeout := policy.GetNextBackoffDuration(nil, config)
 	suite.EqualValues(timeout, 0)
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount: 1,
-		PlacementTimeout:    60,
+		PlacementRetryCount:     1,
+		PlacementTimeoutSeconds: 60,
 	}, nil)
 	suite.EqualValues(timeout, 0)
 
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount: 1,
-		PlacementTimeout:    60,
+		PlacementRetryCount:     1,
+		PlacementTimeoutSeconds: 60,
 	}, &Config{
 		LaunchingTimeout:      1 * time.Minute,
 		PlacingTimeout:        1 * time.Minute,
@@ -49,8 +49,8 @@ func (suite *BackoffPolicyTestSuite) TestGetNextDuration() {
 	suite.EqualValues(timeout, 0)
 
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount: 1,
-		PlacementTimeout:    60,
+		PlacementRetryCount:     1,
+		PlacementTimeoutSeconds: 60,
 	}, &Config{
 		LaunchingTimeout:      1 * time.Minute,
 		PlacingTimeout:        1 * time.Minute,
@@ -61,18 +61,18 @@ func (suite *BackoffPolicyTestSuite) TestGetNextDuration() {
 	suite.EqualValues(timeout, 0)
 
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount: 1,
-		PlacementTimeout:    60,
+		PlacementRetryCount:     1,
+		PlacementTimeoutSeconds: 60,
 	}, config)
 	suite.EqualValues(timeout, 30)
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount: 2,
-		PlacementTimeout:    60,
+		PlacementRetryCount:     2,
+		PlacementTimeoutSeconds: 60,
 	}, config)
 	suite.EqualValues(timeout, 60)
 	timeout = policy.GetNextBackoffDuration(&resmgr.Task{
-		PlacementRetryCount: 3,
-		PlacementTimeout:    60,
+		PlacementRetryCount:     3,
+		PlacementTimeoutSeconds: 60,
 	}, config)
 	suite.EqualValues(timeout, 0)
 }

@@ -99,7 +99,7 @@ message Task {
   // This is the timeout for the placement, it needs to be set for different
   // timeout value for each placement iteration. Also it will also be used
   // for communicating between placement engine in case of Host reservation.
-  double placementTimeout = 15;
+  double placementTimeoutSeconds = 15;
 
   // Retry count for how many times this task is failed to be Placed. This is
   // needed for calculating next backoff period and decide when we need

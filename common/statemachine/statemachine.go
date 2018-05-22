@@ -229,8 +229,8 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 	if _, ok := sm.timeoutRules[curState]; ok {
 		log.WithFields(log.Fields{
 			"task_id":           sm.name,
-			"from ":             curState,
-			"to":                to,
+			"rule_from ":        curState,
+			"rule_to":           to,
 			"meta_info_noindex": sm.GetMetaInfo(),
 		}).Info("Stopping state timeout recovery")
 		sm.timer.Stop()
@@ -275,16 +275,16 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 	if rule, ok := sm.timeoutRules[to]; ok {
 		log.WithFields(log.Fields{
 			"task_id":           sm.name,
-			"from":              curState,
-			"to":                to,
+			"rule_from":         curState,
+			"rule_to":           to,
 			"meta_info_noindex": sm.GetMetaInfo(),
 		}).Info("Task transitioned to timeout state")
 		if rule.Timeout != 0 {
 			log.WithFields(log.Fields{
-				"task_id": sm.name,
-				"from":    curState,
-				"to":      to,
-				"timeout": rule.Timeout.String(),
+				"task_id":   sm.name,
+				"rule_from": curState,
+				"rule_to":   to,
+				"timeout":   rule.Timeout.String(),
 			}).Info("Starting timer to recover state if needed")
 			err := sm.timer.Start(rule.Timeout)
 			if err != nil {
@@ -306,8 +306,8 @@ func (sm *statemachine) TransitTo(to State, options ...Option) error {
 	}
 	log.WithFields(log.Fields{
 		"task_id":           sm.name,
-		"from ":             curState,
-		"to":                to,
+		"from_state ":       curState,
+		"to_state":          to,
 		"meta_info_noindex": sm.GetMetaInfo(),
 	}).Info("Task transitioned successfully")
 	return nil
@@ -420,6 +420,28 @@ func (sm *statemachine) rollbackState() error {
 
 		// Call the precall back function, which should fil the t.To state
 		err := rule.PreCallback(t)
+
+		if err != nil {
+			log.WithFields(log.Fields{
+				"task_id":           sm.name,
+				"rule_from":         t.From,
+				"rule_to":           t.To,
+				"current_state":     sm.current,
+				"meta_info_noindex": sm.GetMetaInfo(),
+			}).Info("pre call back returned error")
+			return err
+		}
+
+		if t.To == "" {
+			log.WithFields(log.Fields{
+				"task_id":           sm.name,
+				"rule_from":         t.From,
+				"rule_to":           t.To,
+				"current_state":     sm.current,
+				"meta_info_noindex": sm.GetMetaInfo(),
+			}).Info("pre call back did not return to_state")
+			return errors.New("pre call back failed")
+		}
 
 		if err != nil || t.To == "" {
 			log.WithError(err).WithFields(log.Fields{
