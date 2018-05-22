@@ -164,6 +164,9 @@ func (d *driver) EnqueueTask(jobID *peloton.JobID, instanceID uint32, deadline t
 	}
 	jobType := cachedJob.GetJobType()
 
+	log.WithField("job_id", jobID.GetValue()).
+		Info("enqueue job called")
+
 	d.RLock()
 	defer d.RUnlock()
 
