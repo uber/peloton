@@ -152,9 +152,6 @@ func TestTaskFailRetry(t *testing.T) {
 		}).
 		Return(nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
-
 	cachedJob.EXPECT().
 		GetJobType().Return(pb_job.JobType_BATCH)
 
@@ -237,9 +234,6 @@ func TestTaskFailSystemFailure(t *testing.T) {
 			assert.True(t, runtimes[instanceID].GetState() == pb_task.TaskState_INITIALIZED)
 		}).
 		Return(nil)
-
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
 
 	cachedJob.EXPECT().
 		GetJobType().Return(pb_job.JobType_BATCH)

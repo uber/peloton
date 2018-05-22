@@ -29,7 +29,8 @@ func sendLaunchInfoToResMgr(ctx context.Context, taskEnt *taskEntity) error {
 	}
 	_, err := goalStateDriver.resmgrClient.MarkTasksLaunched(ctx, req)
 
-	goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now().Add(goalStateDriver.cfg.LaunchTimeout))
+	goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID,
+		time.Now().Add(goalStateDriver.cfg.LaunchTimeout))
 
 	return err
 }
@@ -67,7 +68,8 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 	case task.TaskState_STARTING:
 		if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.StartTimeout {
 			// the job is STARTING on mesos, enqueue the task in case the start timeout
-			goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now().Add(goalStateDriver.cfg.StartTimeout))
+			goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID,
+				time.Now().Add(goalStateDriver.cfg.StartTimeout))
 			return nil
 		}
 		goalStateDriver.mtx.taskMetrics.TaskStartTimeout.Inc(1)

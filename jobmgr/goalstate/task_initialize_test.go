@@ -83,9 +83,6 @@ func TestTaskInitialize(t *testing.T) {
 			}
 		}).Return(nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
-
 	cachedJob.EXPECT().
 		GetJobType().Return(pb_job.JobType_BATCH)
 

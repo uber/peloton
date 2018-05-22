@@ -290,6 +290,9 @@ func (h *serviceHandler) Update(
 		h.goalStateDriver.EnqueueTask(jobID, id, time.Now())
 	}
 
+	h.goalStateDriver.EnqueueJob(jobID, time.Now().Add(
+		h.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).

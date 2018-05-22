@@ -231,6 +231,8 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 		return err
 	}
 	t.goalStateDriver.EnqueueTask(jobID, uint32(instanceID), time.Now())
+	t.goalStateDriver.EnqueueJob(jobID, time.Now().Add(
+		t.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -210,6 +211,14 @@ func TestTaskPlacementNoError(t *testing.T) {
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
+		jobFactory.EXPECT().
+			AddJob(testTask.JobId).Return(cachedJob),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		goalStateDriver.EXPECT().
+			GetJobRuntimeDuration(job.JobType_BATCH).
+			Return(1*time.Second),
+		goalStateDriver.EXPECT().
+			EnqueueJob(testTask.JobId, gomock.Any()).Return(),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)
@@ -466,6 +475,12 @@ func TestTaskPlacementError(t *testing.T) {
 			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		goalStateDriver.EXPECT().
+			GetJobRuntimeDuration(job.JobType_BATCH).
+			Return(1*time.Second),
+		goalStateDriver.EXPECT().
+			EnqueueJob(testTask.JobId, gomock.Any()).Return(),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)

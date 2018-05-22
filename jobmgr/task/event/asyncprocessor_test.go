@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -11,6 +12,7 @@ import (
 	"github.com/uber-go/tally"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
@@ -59,6 +61,11 @@ func TestBucketEventProcessor(t *testing.T) {
 		cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return().Times(3)
 		cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil).Times(3)
 		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return().Times(3)
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(3)
+		goalStateDriver.EXPECT().
+			GetJobRuntimeDuration(job.JobType_BATCH).
+			Return(1 * time.Second).Times(3)
+		goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).Return().Times(3)
 	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)

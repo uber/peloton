@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
@@ -66,17 +65,7 @@ func TestTaskReloadRuntime(t *testing.T) {
 	cachedTask.EXPECT().
 		UpdateRuntime(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetJobType().Return(pbjob.JobType_BATCH)
-
 	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 

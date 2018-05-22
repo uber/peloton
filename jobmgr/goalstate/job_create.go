@@ -170,7 +170,8 @@ func recoverTasks(
 						cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{i: taskInfos[i].GetRuntime()}, cached.UpdateCacheOnly)
 					}
 					// run the runtime updater to start instances
-					goalStateDriver.EnqueueJob(jobID, time.Now().Add(goalStateDriver.getJobRuntimeDuration(jobConfig.GetType())))
+					goalStateDriver.EnqueueJob(jobID, time.Now().Add(
+						goalStateDriver.GetJobRuntimeDuration(jobConfig.GetType())))
 				} else {
 					runtimes := make(map[uint32]*task.RuntimeInfo)
 					runtimes[i] = taskInfos[i].GetRuntime()
@@ -209,7 +210,8 @@ func recoverTasks(
 
 		if maxRunningInstances > 0 {
 			// run the runtime updater to start instances
-			goalStateDriver.EnqueueJob(jobID, time.Now().Add(goalStateDriver.getJobRuntimeDuration(jobConfig.GetType())))
+			goalStateDriver.EnqueueJob(jobID, time.Now().Add(
+				goalStateDriver.GetJobRuntimeDuration(jobConfig.GetType())))
 		} else {
 			taskInfo := &task.TaskInfo{
 				JobId:      jobID,

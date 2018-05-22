@@ -226,7 +226,18 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 				Error("failed to parse the task id in placement processor")
 			continue
 		}
-		p.goalStateDriver.EnqueueTask(&peloton.JobID{Value: jobID}, uint32(instanceID), time.Now())
+
+		p.goalStateDriver.EnqueueTask(
+			&peloton.JobID{Value: jobID},
+			uint32(instanceID),
+			time.Now())
+
+		cachedJob := p.jobFactory.AddJob(&peloton.JobID{Value: jobID})
+		p.goalStateDriver.EnqueueJob(
+			&peloton.JobID{Value: jobID},
+			time.Now().Add(
+				p.goalStateDriver.GetJobRuntimeDuration(
+					cachedJob.GetJobType())))
 	}
 }
 
@@ -290,6 +301,9 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 			)
 			if err == nil {
 				p.goalStateDriver.EnqueueTask(t.JobId, t.InstanceId, time.Now())
+				p.goalStateDriver.EnqueueJob(t.JobId, time.Now().Add(
+					p.goalStateDriver.GetJobRuntimeDuration(
+						cachedJob.GetJobType())))
 				break
 			}
 			if common.IsTransientError(err) {

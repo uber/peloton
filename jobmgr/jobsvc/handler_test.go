@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -314,6 +315,12 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	cachedJob.EXPECT().
 		CreateTasks(gomock.Any(), gomock.Any(), "peloton").Return(nil).AnyTimes()
 	goalStateDriver.EXPECT().EnqueueTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
+	cachedJob.EXPECT().
+		GetJobType().Return(job.JobType_BATCH)
+	goalStateDriver.EXPECT().
+		GetJobRuntimeDuration(job.JobType_BATCH).
+		Return(1 * time.Second)
+	goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any())
 	mockTaskStore.EXPECT().
 		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
 		Return(map[string]uint32{}, nil).

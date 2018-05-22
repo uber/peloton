@@ -8,7 +8,7 @@ const (
 	_defaultLaunchTimeRetryDuration  = 20 * time.Minute
 	_defaultStartTimeRetryDuration   = 20 * time.Minute
 	_defaultJobRuntimeUpdateInterval = 1 * time.Second
-	_defaultJobWorkerThreads         = 10
+	_defaultJobWorkerThreads         = 50
 	_defaultTaskWorkerThreads        = 1000
 )
 

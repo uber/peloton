@@ -91,9 +91,6 @@ func TestTaskStop(t *testing.T) {
 		TaskIds: []*mesos_v1.TaskID{taskID},
 	}).Return(nil, nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
-
 	cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
 
@@ -205,9 +202,6 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
-
 	cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)
 
@@ -301,9 +295,6 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
-
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
 
 	cachedJob.EXPECT().
 		GetJobType().Return(pbjob.JobType_BATCH)

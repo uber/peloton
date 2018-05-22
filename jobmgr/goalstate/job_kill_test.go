@@ -109,7 +109,7 @@ func TestJobKill(t *testing.T) {
 
 	jobFactory.EXPECT().
 		GetJob(jobID).
-		Return(cachedJob).AnyTimes()
+		Return(cachedJob)
 
 	cachedJob.EXPECT().
 		GetAllTasks().
@@ -126,7 +126,7 @@ func TestJobKill(t *testing.T) {
 		Return(nil)
 
 	cachedJob.EXPECT().
-		GetJobType().Return(pbjob.JobType_BATCH).Times(int(instanceCount))
+		GetJobType().Return(pbjob.JobType_BATCH)
 
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -134,7 +134,7 @@ func TestJobKill(t *testing.T) {
 
 	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
-		Return().Times(int(instanceCount))
+		Return()
 
 	jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), jobID).
