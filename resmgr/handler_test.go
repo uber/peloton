@@ -24,6 +24,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rm "code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
+	"code.uber.internal/infra/peloton/resmgr/testutil"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -66,9 +67,7 @@ func (s *HandlerTestSuite) SetupSuite() {
 
 	s.resTree = respool.GetTree()
 	// Initializing the resmgr state machine
-	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
-		EnablePlacementBackoff: true,
-	})
+	rm_task.InitTaskTracker(tally.NoopScope, testutil.CreateTaskConfig())
 	s.rmTaskTracker = rm_task.GetTracker()
 	rm_task.InitScheduler(tally.NoopScope, 1*time.Second, s.rmTaskTracker)
 	s.taskScheduler = rm_task.GetScheduler()
@@ -83,14 +82,7 @@ func (s *HandlerTestSuite) SetupSuite() {
 		),
 		rmTracker: s.rmTaskTracker,
 		config: Config{
-			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout:       1 * time.Minute,
-				PlacingTimeout:         1 * time.Minute,
-				PolicyName:             rm_task.ExponentialBackOffPolicy,
-				PlacementRetryBackoff:  30 * time.Second,
-				PlacementRetryCycle:    1,
-				EnablePlacementBackoff: true,
-			},
+			RmTaskConfig: testutil.CreateTaskConfig(),
 		},
 	}
 	s.handler.eventStreamHandler = eventstream.NewEventStreamHandler(
@@ -505,17 +497,12 @@ func (s *HandlerTestSuite) TestRequeue() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		&rm_task.Config{
-			LaunchingTimeout:       1 * time.Minute,
-			PlacingTimeout:         1 * time.Minute,
-			PolicyName:             rm_task.ExponentialBackOffPolicy,
-			EnablePlacementBackoff: true,
-		})
+		testutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	s.validateStateTransitions(rmtask, []task.TaskState{
+	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
@@ -571,17 +558,12 @@ func (s *HandlerTestSuite) TestRequeueTaskNotPresent() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		&rm_task.Config{
-			LaunchingTimeout:       1 * time.Minute,
-			PlacingTimeout:         1 * time.Minute,
-			PolicyName:             rm_task.ExponentialBackOffPolicy,
-			EnablePlacementBackoff: true,
-		})
+		testutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	s.validateStateTransitions(rmtask, []task.TaskState{
+	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
@@ -605,16 +587,12 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		&rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-			PolicyName:       rm_task.ExponentialBackOffPolicy,
-		})
+		testutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	s.validateStateTransitions(rmtask, []task.TaskState{
+	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
@@ -632,7 +610,7 @@ func (s *HandlerTestSuite) TestRequeueFailures() {
 	enqReq.Gangs[0].Tasks[0].TaskId = &mesos_v1.TaskID{
 		Value: &mesosTaskID,
 	}
-	s.validateStateTransitions(rmtask, []task.TaskState{
+	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_RUNNING,
 		task.TaskState_SUCCEEDED})
 	enqResp, err := s.handler.EnqueueGangs(s.context, enqReq)
@@ -650,16 +628,12 @@ func (s *HandlerTestSuite) TestAddingToPendingQueue() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		&rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-			PolicyName:       rm_task.ExponentialBackOffPolicy,
-		})
+		testutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	s.validateStateTransitions(rmtask, []task.TaskState{
+	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED})
@@ -676,16 +650,12 @@ func (s *HandlerTestSuite) TestAddingToPendingQueueFailure() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		&rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-			PolicyName:       rm_task.ExponentialBackOffPolicy,
-		})
+		testutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	s.validateStateTransitions(rmtask, []task.TaskState{
+	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED})
@@ -703,16 +673,12 @@ func (s *HandlerTestSuite) TestRequeuePlacementFailure() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		&rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-			PolicyName:       rm_task.ExponentialBackOffPolicy,
-		})
+		testutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	s.validateStateTransitions(rmtask, []task.TaskState{
+	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED})
@@ -761,11 +727,7 @@ func (s *HandlerTestSuite) getPlacements() []*resmgr.Placement {
 			tasks = append(tasks, task)
 			s.rmTaskTracker.AddTask(&resmgr.Task{
 				Id: task,
-			}, nil, resp, &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			})
+			}, nil, resp, testutil.CreateTaskConfig())
 		}
 
 		placement := &resmgr.Placement{
@@ -796,7 +758,7 @@ func (s *HandlerTestSuite) TestSetAndGetPlacementsSuccess() {
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
 			rmTask := handler.rmTracker.GetTask(taskID)
-			s.validateStateTransitions(rmTask, []task.TaskState{
+			testutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
 				task.TaskState_PLACING})
@@ -825,7 +787,7 @@ func (s *HandlerTestSuite) TestGetTasksByHosts() {
 		hostnames = append(hostnames, placement.Hostname)
 		for _, taskID := range placement.Tasks {
 			rmTask := s.handler.rmTracker.GetTask(taskID)
-			s.validateStateTransitions(rmTask, []task.TaskState{
+			testutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
 				task.TaskState_PLACING})
@@ -913,11 +875,7 @@ func (s *HandlerTestSuite) createRMTasks() ([]*resmgr.Task, []*peloton.TaskID) {
 			},
 		}
 		s.rmTaskTracker.AddTask(rmTask, nil, resp,
-			&rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			})
+			testutil.CreateTaskConfig())
 		rmTasks = append(rmTasks, rmTask)
 	}
 	return rmTasks, tasks
@@ -991,18 +949,14 @@ func (s *HandlerTestSuite) TestMarkTasksLaunched() {
 
 func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 	var c uint64
-	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
-		EnablePlacementBackoff: true,
-	})
+	rm_task.InitTaskTracker(tally.NoopScope, testutil.CreateTaskConfig())
 	handler := &ServiceHandler{
 		metrics:   NewMetrics(tally.NoopScope),
 		maxOffset: &c,
 		rmTracker: rm_task.GetTracker(),
 	}
 	jobID := "test"
-	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
-		EnablePlacementBackoff: true,
-	})
+	rm_task.InitTaskTracker(tally.NoopScope, testutil.CreateTaskConfig())
 	uuidStr := uuid.NewUUID().String()
 	var events []*pb_eventstream.Event
 	resp, _ := respool.NewRespool(tally.NoopScope, "respool-1", nil,
@@ -1041,11 +995,7 @@ func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {
 			TaskId: &mesos_v1.TaskID{
 				Value: &mesosTaskID,
 			},
-		}, nil, resp, &rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-			PolicyName:       rm_task.ExponentialBackOffPolicy,
-		})
+		}, nil, resp, testutil.CreateTaskConfig())
 	}
 	req := &resmgrsvc.NotifyTaskUpdatesRequest{
 		Events: events,
@@ -1071,7 +1021,7 @@ func (s *HandlerTestSuite) TestGetActiveTasks() {
 	for _, placement := range setReq.Placements {
 		for _, taskID := range placement.Tasks {
 			rmTask := s.handler.rmTracker.GetTask(taskID)
-			s.validateStateTransitions(rmTask, []task.TaskState{
+			testutil.ValidateStateTransitions(rmTask, []task.TaskState{
 				task.TaskState_PENDING,
 				task.TaskState_READY,
 				task.TaskState_PLACING})
@@ -1112,13 +1062,9 @@ func (s *HandlerTestSuite) TestGetPreemptibleTasks() {
 		s.rmTaskTracker.AddTask(&resmgr.Task{
 			Id: taskID,
 		}, nil, resp,
-			&rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			})
+			testutil.CreateTaskConfig())
 		rmTask := s.handler.rmTracker.GetTask(taskID)
-		s.validateStateTransitions(rmTask, []task.TaskState{
+		testutil.ValidateStateTransitions(rmTask, []task.TaskState{
 			task.TaskState_PENDING,
 			task.TaskState_READY,
 			task.TaskState_PLACING,
@@ -1160,16 +1106,12 @@ func (s *HandlerTestSuite) TestRequeueInvalidatedTasks() {
 		s.pendingGang0().Tasks[0],
 		nil,
 		node,
-		&rm_task.Config{
-			LaunchingTimeout: 1 * time.Minute,
-			PlacingTimeout:   1 * time.Minute,
-			PolicyName:       rm_task.ExponentialBackOffPolicy,
-		})
+		testutil.CreateTaskConfig())
 	rmtask := s.rmTaskTracker.GetTask(s.pendingGang0().Tasks[0].Id)
 	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo(mesosTaskID,
 		*s.pendingGang0().Tasks[0].TaskId.Value))
 	s.NoError(err)
-	s.validateStateTransitions(rmtask, []task.TaskState{
+	testutil.ValidateStateTransitions(rmtask, []task.TaskState{
 		task.TaskState_READY,
 		task.TaskState_PLACING,
 		task.TaskState_PLACED,
@@ -1250,10 +1192,7 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 		),
 		rmTracker: s.rmTaskTracker,
 		config: Config{
-			RmTaskConfig: &rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-			},
+			RmTaskConfig: testutil.CreateTaskConfig(),
 		},
 	}
 
@@ -1278,13 +1217,5 @@ func (s *HandlerTestSuite) TestGetPendingTasks() {
 				s.Equal(expectedTaskID, tid)
 			}
 		}
-	}
-}
-
-func (s *HandlerTestSuite) validateStateTransitions(rmtask *rm_task.RMTask,
-	states []task.TaskState) {
-	for _, state := range states {
-		err := rmtask.TransitTo(state.String())
-		s.NoError(err)
 	}
 }

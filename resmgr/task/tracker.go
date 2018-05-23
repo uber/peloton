@@ -97,17 +97,17 @@ func InitTaskTracker(parent tally.Scope, config *Config) {
 		metrics:    NewMetrics(parent.SubScope("tracker")),
 		counters:   make(map[string]float64),
 	}
-	defer func() {
-		log.Info("Resource Manager Tracker is initialized")
-	}()
 
-	if !config.EnablePlacementBackoff {
-		return
+	// Checking placement back off is enabled , if yes then initialize
+	// policy factory. Explicitly checking, anything related to
+	// back off policies should come inside this code path.
+	if config.EnablePlacementBackoff {
+		err := InitPolicyFactory()
+		if err != nil {
+			log.Error("Error initializing back off policy")
+		}
 	}
-	err := InitPolicyFactory()
-	if err != nil {
-		log.Error("Error initializing backoff policy")
-	}
+	log.Info("Resource Manager Tracker is initialized")
 }
 
 // GetTracker gets the singleton object of the tracker

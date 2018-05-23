@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
+	"code.uber.internal/infra/peloton/resmgr/testutil"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
@@ -48,10 +49,7 @@ var (
 
 func (suite *PreemptorTestSuite) SetupSuite() {
 	suite.mockCtrl = gomock.NewController(suite.T())
-
-	rm_task.InitTaskTracker(tally.NoopScope, &rm_task.Config{
-		EnablePlacementBackoff: true,
-	})
+	rm_task.InitTaskTracker(tally.NoopScope, testutil.CreateTaskConfig())
 	suite.tracker = rm_task.GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
 		1000,
@@ -503,11 +501,7 @@ func (suite *PreemptorTestSuite) createTasks(numTasks int,
 		t := suite.createTask(i, uint32(i))
 		tasks = append(tasks, t)
 		suite.tracker.AddTask(t, suite.eventStreamHandler, mockResPool,
-			&rm_task.Config{
-				LaunchingTimeout: 1 * time.Minute,
-				PlacingTimeout:   1 * time.Minute,
-				PolicyName:       rm_task.ExponentialBackOffPolicy,
-			})
+			testutil.CreateTaskConfig())
 	}
 	return tasks
 }
@@ -551,32 +545,32 @@ func (suite *PreemptorTestSuite) getMockRanker(tasks []*resmgr.Task) ranker {
 func (suite *PreemptorTestSuite) transitToPlacing(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
-	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_READY.String())
-	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_PLACING.String())
-	suite.NoError(err)
+	testutil.ValidateStateTransitions(rmTask,
+		[]task.TaskState{
+			task.TaskState_PENDING,
+			task.TaskState_READY,
+			task.TaskState_PLACING,
+		})
 }
 
 func (suite *PreemptorTestSuite) transitToReady(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
-	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_READY.String())
-	suite.NoError(err)
+	testutil.ValidateStateTransitions(rmTask,
+		[]task.TaskState{
+			task.TaskState_PENDING,
+			task.TaskState_READY,
+		})
 }
 
 func (suite *PreemptorTestSuite) transitToRunning(taskID *peloton.TaskID) {
 	rmTask := suite.tracker.GetTask(taskID)
 	suite.NotNil(rmTask)
-	err := rmTask.TransitTo(task.TaskState_PENDING.String())
-	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_PLACED.String())
-	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_LAUNCHING.String())
-	suite.NoError(err)
-	err = rmTask.TransitTo(task.TaskState_RUNNING.String())
-	suite.NoError(err)
+	testutil.ValidateStateTransitions(rmTask,
+		[]task.TaskState{
+			task.TaskState_PENDING,
+			task.TaskState_PLACED,
+			task.TaskState_LAUNCHING,
+			task.TaskState_RUNNING,
+		})
 }

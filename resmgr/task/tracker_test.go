@@ -34,10 +34,10 @@ type TrackerTestSuite struct {
 func (suite *TrackerTestSuite) SetupTest() {
 	suite.setup(&Config{
 		EnablePlacementBackoff: true,
-	})
+	}, false)
 }
 
-func (suite *TrackerTestSuite) setup(conf *Config) {
+func (suite *TrackerTestSuite) setup(conf *Config, invalid bool) {
 	InitTaskTracker(tally.NoopScope, conf)
 	suite.tracker = GetTracker()
 	suite.eventStreamHandler = eventstream.NewEventStreamHandler(
@@ -50,6 +50,14 @@ func (suite *TrackerTestSuite) setup(conf *Config) {
 		tally.Scope(tally.NoopScope))
 	suite.hostname = "hostname"
 	suite.task = suite.createTask(1)
+	if invalid {
+		suite.addTaskToTrackerWithTimeoutConfig(suite.task, &Config{
+			PolicyName:             ExponentialBackOffPolicy,
+			PlacingTimeout:         -1 * time.Minute,
+			EnablePlacementBackoff: true,
+		})
+
+	}
 	suite.addTaskToTracker(suite.task)
 }
 
@@ -398,7 +406,7 @@ func (suite *TrackerTestSuite) TestBackoffDisabled() {
 	rmtracker = nil
 	suite.setup(&Config{
 		EnablePlacementBackoff: false,
-	})
+	}, false)
 
 	taskID := fmt.Sprintf("job1-%d", 1)
 	t := &peloton.TaskID{Value: taskID}
@@ -414,5 +422,20 @@ func (suite *TrackerTestSuite) TestBackoffDisabled() {
 
 	err = suite.tracker.MarkItInvalid(t, *rmTask.Task().TaskId.Value)
 	suite.NoError(err)
+	suite.tracker.Clear()
+}
+
+func (suite *TrackerTestSuite) TestInitializeError() {
+	suite.tracker.Clear()
+	rmtracker = nil
+	suite.setup(&Config{
+		EnablePlacementBackoff: true,
+		PlacingTimeout:         -1 * time.Minute,
+	}, true)
+	taskID := fmt.Sprintf("job1-%d", 1)
+	t := &peloton.TaskID{Value: taskID}
+
+	rmTask := suite.tracker.GetTask(t)
+	suite.NotNil(rmTask)
 	suite.tracker.Clear()
 }

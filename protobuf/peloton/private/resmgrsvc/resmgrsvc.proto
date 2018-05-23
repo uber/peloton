@@ -161,11 +161,12 @@ message EnqueueGangsFailure {
     ENQUEUE_GANGS_FAILURE_ERROR_CODE_FAILED_DUE_TO_GANG_FAILED = 3;
   }
   message FailedTask {
-    // Resmgr taskwhich got failed to enqueue/requeue
+    // Resmgr task which is failed to enqueue/requeue
     resmgr.Task task = 1;
-    // Error messege while failed
+    // Error message with failed reason
     string message = 2;
-    // Error code for which it failed
+    // Error code associated with the failure
+    // by that caller can identify the failure
     ErrorCode errorcode = 3;
   }
 
