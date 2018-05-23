@@ -585,7 +585,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	cachedJob.EXPECT().
 		GetJobType().Return(job.JobType_BATCH)
 	goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any())
 	mockTaskStore.EXPECT().

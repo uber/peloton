@@ -63,7 +63,7 @@ func TestBucketEventProcessor(t *testing.T) {
 		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return().Times(3)
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(3)
 		goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1 * time.Second).Times(3)
 		goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).Return().Times(3)
 	}

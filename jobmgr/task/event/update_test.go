@@ -171,7 +171,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
 	)
@@ -243,7 +243,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdate() {
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 
@@ -287,7 +287,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 
@@ -363,7 +363,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 
@@ -405,7 +405,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
 	)
@@ -529,7 +529,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessPreemptedTaskStatusUpdate() {
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 		suite.goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1 * time.Second)
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 		suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))
@@ -579,7 +579,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
 	)
@@ -630,7 +630,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		suite.goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return(),
 	)
@@ -672,7 +672,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 	suite.goalStateDriver.EXPECT().EnqueueTask(_pelotonJobID, _instanceID, gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(_pelotonJobID, gomock.Any()).Return()
 	suite.NoError(suite.updater.ProcessStatusUpdate(context.Background(), event))

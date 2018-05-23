@@ -122,7 +122,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	suite.goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	suite.goalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any()).Return()
 

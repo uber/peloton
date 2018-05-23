@@ -233,11 +233,10 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 			time.Now())
 
 		cachedJob := p.jobFactory.AddJob(&peloton.JobID{Value: jobID})
-		p.goalStateDriver.EnqueueJob(
+		goalstate.EnqueueJobWithDefaultDelay(
 			&peloton.JobID{Value: jobID},
-			time.Now().Add(
-				p.goalStateDriver.GetJobRuntimeDuration(
-					cachedJob.GetJobType())))
+			p.goalStateDriver,
+			cachedJob)
 	}
 }
 
@@ -301,9 +300,8 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 			)
 			if err == nil {
 				p.goalStateDriver.EnqueueTask(t.JobId, t.InstanceId, time.Now())
-				p.goalStateDriver.EnqueueJob(t.JobId, time.Now().Add(
-					p.goalStateDriver.GetJobRuntimeDuration(
-						cachedJob.GetJobType())))
+				goalstate.EnqueueJobWithDefaultDelay(
+					t.JobId, p.goalStateDriver, cachedJob)
 				break
 			}
 			if common.IsTransientError(err) {

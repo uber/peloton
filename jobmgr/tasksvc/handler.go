@@ -311,8 +311,9 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 	for instID := range runtimes {
 		m.goalStateDriver.EnqueueTask(req.GetJobId(), instID, time.Now())
 	}
-	m.goalStateDriver.EnqueueJob(req.GetJobId(), time.Now().Add(
-		m.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+
+	goalstate.EnqueueJobWithDefaultDelay(
+		req.GetJobId(), m.goalStateDriver, cachedJob)
 
 	m.metrics.TaskRefresh.Inc(1)
 	return &task.RefreshResponse{}, nil
@@ -479,8 +480,8 @@ func (m *serviceHandler) Start(
 	for _, instID := range startedInstanceIds {
 		m.goalStateDriver.EnqueueTask(body.GetJobId(), instID, time.Now())
 	}
-	m.goalStateDriver.EnqueueJob(body.GetJobId(), time.Now().Add(
-		m.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+	goalstate.EnqueueJobWithDefaultDelay(
+		body.GetJobId(), m.goalStateDriver, cachedJob)
 
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
@@ -665,8 +666,8 @@ func (m *serviceHandler) Stop(
 		m.goalStateDriver.EnqueueTask(body.GetJobId(), instID, time.Now())
 	}
 
-	m.goalStateDriver.EnqueueJob(body.GetJobId(), time.Now().Add(
-		m.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+	goalstate.EnqueueJobWithDefaultDelay(
+		body.GetJobId(), m.goalStateDriver, cachedJob)
 
 	if err != nil {
 		return &task.StopResponse{

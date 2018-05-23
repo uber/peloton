@@ -8,8 +8,13 @@ const (
 	_defaultLaunchTimeRetryDuration  = 20 * time.Minute
 	_defaultStartTimeRetryDuration   = 20 * time.Minute
 	_defaultJobRuntimeUpdateInterval = 1 * time.Second
-	_defaultJobWorkerThreads         = 50
-	_defaultTaskWorkerThreads        = 1000
+	// Job worker threads should be small because job create and job kill
+	// actions create 1000 parallel threads to update the DB, and if too
+	// many job worker threads do these operations in parallel, it can
+	// lead to DB timeouts due to increased load.
+	// Setting it to 50 based on experiments in production.
+	_defaultJobWorkerThreads  = 50
+	_defaultTaskWorkerThreads = 1000
 )
 
 // Config for the goalstate engine.

@@ -120,11 +120,7 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 		// enqueues of the same job during recovery.
 		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
 			_jobEnqueueMultiplierOnTaskStart*
-				goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
-		log.WithFields(log.Fields{
-			"job_id":      taskEnt.jobID.GetValue(),
-			"instance_id": taskEnt.instanceID,
-		}).Error("task start should not enqueue jobs")
+				goalStateDriver.JobRuntimeDuration(cachedJob.GetJobType())))
 		return nil
 	}
 
@@ -147,7 +143,7 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 		}, cached.UpdateCacheOnly)
 		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
 			_jobEnqueueMultiplierOnTaskStart*
-				goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+				goalStateDriver.JobRuntimeDuration(cachedJob.GetJobType())))
 		return nil
 	}
 

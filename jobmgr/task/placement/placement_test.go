@@ -215,7 +215,7 @@ func TestTaskPlacementNoError(t *testing.T) {
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		goalStateDriver.EXPECT().
 			EnqueueJob(testTask.JobId, gomock.Any()).Return(),
@@ -477,7 +477,7 @@ func TestTaskPlacementError(t *testing.T) {
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		goalStateDriver.EXPECT().
 			EnqueueJob(testTask.JobId, gomock.Any()).Return(),

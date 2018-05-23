@@ -58,8 +58,7 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
-		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
-			goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)
 	}
 	return err
 }

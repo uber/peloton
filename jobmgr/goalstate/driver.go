@@ -74,9 +74,9 @@ type Driver interface {
 	// IsScheduledTask is a helper function to check if a given task is scheduled
 	// for evaluation in the goal state engine.
 	IsScheduledTask(jobID *peloton.JobID, instanceID uint32) bool
-	// GetJobRuntimeDuration returns the mimimum inter-run duration between job
+	// JobRuntimeDuration returns the mimimum inter-run duration between job
 	// runtime updates. This duration is different for batch and service jobs.
-	GetJobRuntimeDuration(jobType job.JobType) time.Duration
+	JobRuntimeDuration(jobType job.JobType) time.Duration
 	// Start is used to start processing items in the goal state engine.
 	Start()
 	// Stop is used to clean all items and then stop the goal state engine.
@@ -109,6 +109,19 @@ func NewDriver(
 		mtx:           NewMetrics(scope),
 		cfg:           &cfg,
 	}
+}
+
+// EnqueueJobWithDefaultDelay is a helper function to enqueue a job into the
+// goal state engine with the default interval at which the job runtime
+// updater is run. Using this function ensures that same job does not
+// get enqueued too many times when multiple task updates for the job
+// are received in a short duration of time.
+func EnqueueJobWithDefaultDelay(
+	jobID *peloton.JobID,
+	goalStateDriver Driver,
+	cachedJob cached.Job) {
+	goalStateDriver.EnqueueJob(jobID, time.Now().Add(
+		goalStateDriver.JobRuntimeDuration(cachedJob.GetJobType())))
 }
 
 type driver struct {
@@ -192,7 +205,7 @@ func (d *driver) IsScheduledTask(jobID *peloton.JobID, instanceID uint32) bool {
 	return d.taskEngine.IsScheduled(taskEntity)
 }
 
-func (d *driver) GetJobRuntimeDuration(jobType job.JobType) time.Duration {
+func (d *driver) JobRuntimeDuration(jobType job.JobType) time.Duration {
 	if jobType == job.JobType_BATCH {
 		return d.cfg.JobBatchRuntimeUpdateInterval
 	}
@@ -218,7 +231,7 @@ func (d *driver) recoverTasks(ctx context.Context, id string, jobConfig *job.Job
 	}
 
 	// Enqueue job into goal state
-	d.EnqueueJob(jobID, time.Now().Add(d.GetJobRuntimeDuration(jobConfig.GetType())))
+	d.EnqueueJob(jobID, time.Now().Add(d.JobRuntimeDuration(jobConfig.GetType())))
 
 	runtimes, err := d.taskStore.GetTaskRuntimesForJobByRange(
 		ctx,

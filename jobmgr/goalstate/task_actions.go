@@ -13,29 +13,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TaskFailed handles initialized tasks with failed goal state.
-// This is not a valid condition and this is implemented to recover
-// tasks stuck in this state due to a previous job manager bug.
-func TaskFailed(ctx context.Context, entity goalstate.Entity) error {
-	taskEnt := entity.(*taskEntity)
-	goalStateDriver := taskEnt.driver
-	cachedJob := goalStateDriver.jobFactory.GetJob(taskEnt.jobID)
-	if cachedJob == nil {
-		return nil
-	}
-
-	runtime := &task.RuntimeInfo{
-		State: task.TaskState_FAILED,
-	}
-	err := cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
-	if err == nil {
-		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
-		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
-			goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
-	}
-	return err
-}
-
 // TaskReloadRuntime reloads task runtime into cache.
 func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	taskEnt := entity.(*taskEntity)

@@ -372,7 +372,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 			EnqueueTask(suite.testJobID, uint32(1), gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		goalStateDriver.EXPECT().
 			EnqueueJob(suite.testJobID, gomock.Any()).Return(),
@@ -436,7 +436,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 
 	goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 
 	goalStateDriver.EXPECT().
@@ -631,7 +631,7 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 
 	goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 
 	goalStateDriver.EXPECT().
@@ -711,7 +711,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 
 	goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 
 	goalStateDriver.EXPECT().
@@ -914,7 +914,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 			EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
 		goalStateDriver.EXPECT().
-			GetJobRuntimeDuration(job.JobType_BATCH).
+			JobRuntimeDuration(job.JobType_BATCH).
 			Return(1*time.Second),
 		goalStateDriver.EXPECT().
 			EnqueueJob(suite.testJobID, gomock.Any()).Return(),
@@ -1203,7 +1203,7 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().Times(int(suite.testJobConfig.GetInstanceCount()))
 	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
 	goalStateDriver.EXPECT().
-		GetJobRuntimeDuration(job.JobType_BATCH).
+		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	goalStateDriver.EXPECT().
 		EnqueueJob(suite.testJobID, gomock.Any()).Return()
