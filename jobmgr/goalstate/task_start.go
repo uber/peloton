@@ -19,6 +19,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	// Job Enqueue should have already happened, hence we should have a
+	// large multiplier for job enqueue in task start to prevent same
+	// job from being enqueued too many times into the goal state engine.
+	// Currently, setting the value to 6, but it requires some investigation
+	// in production if we can set an even larger value.
+	_jobEnqueueMultiplierOnTaskStart = 6
+)
+
 // startStatefulTask starts stateful tasks.
 func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.TaskInfo, goalStateDriver *driver) error {
 	// Volume is in CREATED state so launch the task directly to hostmgr.
@@ -85,7 +94,19 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	if cachedJob.GetSLAConfig().GetMaximumRunningInstances() > 0 {
-		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now())
+		// Tasks are enqueued into goal state in INITIALiZED state either
+		// during recovery or due to task restart due to failure/task lost
+		// or due to launch/starting state timeouts. In all these cases,
+		// job is enqueued into goal state as well. So, this is merely a safety
+		// check, hence enqueue with a large delay to prevent too many
+		// enqueues of the same job during recovery.
+		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
+			_jobEnqueueMultiplierOnTaskStart*
+				goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+		log.WithFields(log.Fields{
+			"job_id":      taskEnt.jobID.GetValue(),
+			"instance_id": taskEnt.instanceID,
+		}).Error("task start should not enqueue jobs")
 		return nil
 	}
 
@@ -106,7 +127,9 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 			Id:     taskEnt.jobID,
 			Config: jobConfig,
 		}, cached.UpdateCacheOnly)
-		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now())
+		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
+			_jobEnqueueMultiplierOnTaskStart*
+				goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
 		return nil
 	}
 
