@@ -85,6 +85,12 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(job)
 	job.EXPECT().UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheAndDB).Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
+	job.EXPECT().
+		GetJobType().Return(peloton_job.JobType_BATCH)
+	suite.goalStateDriver.EXPECT().
+		GetJobRuntimeDuration(peloton_job.JobType_BATCH).
+		Return(1 * time.Second)
+	suite.goalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any())
 
 	err := suite.tracker.trackDeadline()
 

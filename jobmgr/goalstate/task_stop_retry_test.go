@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
@@ -136,7 +135,7 @@ func TestTaskStopNoTimeout(t *testing.T) {
 	}
 
 	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob).Times(2)
+		GetJob(jobID).Return(cachedJob)
 
 	cachedJob.EXPECT().
 		GetTask(instanceID).Return(cachedTask)
@@ -156,13 +155,6 @@ func TestTaskStopNoTimeout(t *testing.T) {
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
-
-	jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	cachedJob.EXPECT().
-		GetJobType().Return(pbjob.JobType_BATCH)
 
 	err := TaskExecutorShutdown(context.Background(), taskEnt)
 	assert.NoError(t, err)

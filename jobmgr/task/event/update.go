@@ -355,7 +355,13 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	}
 
 	// Enqueue task to goal state
-	p.goalStateDriver.EnqueueTask(taskInfo.GetJobId(), taskInfo.GetInstanceId(), time.Now())
+	p.goalStateDriver.EnqueueTask(
+		taskInfo.GetJobId(),
+		taskInfo.GetInstanceId(),
+		time.Now())
+	// Enqueue job to goal state as well
+	p.goalStateDriver.EnqueueJob(taskInfo.GetJobId(), time.Now().Add(
+		p.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
 
 	return nil
 }

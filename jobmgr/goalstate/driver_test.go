@@ -57,32 +57,19 @@ func TestEnqueueTask(t *testing.T) {
 
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
 	goalStateDriver := &driver{
 		taskEngine: taskGoalStateEngine,
 		jobEngine:  jobGoalStateEngine,
-		jobFactory: jobFactory,
 		mtx:        NewMetrics(tally.NoopScope),
 		cfg:        &Config{},
 	}
 	goalStateDriver.cfg.normalize()
-
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetJobType().Return(job.JobType_BATCH)
 
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Do(func(taskEntity goalstate.Entity, deadline time.Time) {
 			assert.Equal(t, taskID, taskEntity.GetID())
 		})
-
-	jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).Return()
 
 	goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
 }
@@ -259,17 +246,7 @@ func TestSyncFromDB(t *testing.T) {
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetJobType().Return(job.JobType_BATCH)
-
 	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
@@ -361,17 +338,7 @@ func TestSyncFromDBWithMaxRunningInstancesSLA(t *testing.T) {
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil).Times(2)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob).Times(2)
-
-	cachedJob.EXPECT().
-		GetJobType().Return(job.JobType_BATCH).Times(2)
-
 	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return().Times(2)
-
-	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return().Times(2)
 

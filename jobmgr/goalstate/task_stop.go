@@ -118,6 +118,8 @@ func stopInitializedTask(ctx context.Context, taskEnt *taskEntity) error {
 	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
+		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
+			goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
 	}
 	return err
 }
@@ -150,7 +152,10 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: runtime}, cached.UpdateCacheAndDB)
 	if err == nil {
 		// timeout for task kill
-		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now().Add(_defaultShutdownExecutorTimeout))
+		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID,
+			time.Now().Add(_defaultShutdownExecutorTimeout))
+		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
+			goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
 	}
 	return err
 }

@@ -28,7 +28,8 @@ func sendLaunchInfoToResMgr(ctx context.Context, taskEnt *taskEntity) error {
 	}
 	_, err := goalStateDriver.resmgrClient.MarkTasksLaunched(ctx, req)
 
-	goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now().Add(goalStateDriver.cfg.LaunchTimeout))
+	goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID,
+		time.Now().Add(goalStateDriver.cfg.LaunchTimeout))
 
 	return err
 }

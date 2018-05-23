@@ -250,7 +250,7 @@ func (m *serviceHandler) List(
 		}, nil
 	}
 
-	m.fillTaskInfoFromResourceManager(ctx, body.GetJobId(), convertTaskMapToSlice(result))
+	//m.fillTaskInfoFromResourceManager(ctx, body.GetJobId(), convertTaskMapToSlice(result))
 	m.metrics.TaskList.Inc(1)
 	resp := &task.ListResponse{
 		Result: &task.ListResponse_Result{
@@ -311,6 +311,8 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 	for instID := range runtimes {
 		m.goalStateDriver.EnqueueTask(req.GetJobId(), instID, time.Now())
 	}
+	m.goalStateDriver.EnqueueJob(req.GetJobId(), time.Now().Add(
+		m.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
 
 	m.metrics.TaskRefresh.Inc(1)
 	return &task.RefreshResponse{}, nil
@@ -476,6 +478,8 @@ func (m *serviceHandler) Start(
 	for _, instID := range startedInstanceIds {
 		m.goalStateDriver.EnqueueTask(body.GetJobId(), instID, time.Now())
 	}
+	m.goalStateDriver.EnqueueJob(body.GetJobId(), time.Now().Add(
+		m.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
 
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
@@ -658,6 +662,9 @@ func (m *serviceHandler) Stop(
 		m.goalStateDriver.EnqueueTask(body.GetJobId(), instID, time.Now())
 	}
 
+	m.goalStateDriver.EnqueueJob(body.GetJobId(), time.Now().Add(
+		m.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+
 	if err != nil {
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
@@ -715,7 +722,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 		}, nil
 	}
 
-	m.fillTaskInfoFromResourceManager(ctx, req.GetJobId(), result)
+	//m.fillTaskInfoFromResourceManager(ctx, req.GetJobId(), result)
 	m.metrics.TaskQuery.Inc(1)
 	resp := &task.QueryResponse{
 		Records: result,
@@ -939,7 +946,7 @@ func (m *serviceHandler) BrowseSandbox(
 // fillTaskInfoFromResourceManager takes a map of taskinfo and update it
 // with result from ResourceManager. All the task in the input should belong
 // to the same jobID passed in
-func (m *serviceHandler) fillTaskInfoFromResourceManager(
+/*func (m *serviceHandler) fillTaskInfoFromResourceManager(
 	ctx context.Context,
 	jobID *peloton.JobID,
 	taskMap []*task.TaskInfo) {
@@ -980,7 +987,7 @@ func (m *serviceHandler) fillTaskInfoFromResourceManager(
 		}
 	}
 	return
-}
+}*/
 
 // GetFrameworkID returns the frameworkID.
 func (m *serviceHandler) getFrameworkID(ctx context.Context) (string, error) {

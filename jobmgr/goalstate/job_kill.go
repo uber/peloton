@@ -72,6 +72,11 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
 	}
 
+	if len(updatedRuntimes) > 0 {
+		goalStateDriver.EnqueueJob(jobID, time.Now().Add(
+			goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
+	}
+
 	// Get job runtime and update job state to killing
 	jobRuntime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobID)
 	if err != nil {

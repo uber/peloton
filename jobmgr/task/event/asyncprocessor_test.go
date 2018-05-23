@@ -12,6 +12,7 @@ import (
 	"github.com/uber-go/tally"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
@@ -60,6 +61,11 @@ func TestBucketEventProcessor(t *testing.T) {
 		cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return()
 		cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
 		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return()
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+		goalStateDriver.EXPECT().
+			GetJobRuntimeDuration(job.JobType_BATCH).
+			Return(1 * time.Second)
+		goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).Return()
 	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
@@ -96,6 +102,11 @@ func TestBucketEventProcessor(t *testing.T) {
 		cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return()
 		cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
 		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return()
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+		goalStateDriver.EXPECT().
+			GetJobRuntimeDuration(job.JobType_BATCH).
+			Return(1 * time.Second)
+		goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).Return()
 	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)
@@ -132,6 +143,11 @@ func TestBucketEventProcessor(t *testing.T) {
 		cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return()
 		cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
 		goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return()
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+		goalStateDriver.EXPECT().
+			GetJobRuntimeDuration(job.JobType_BATCH).
+			Return(1 * time.Second)
+		goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).Return()
 	}
 	for i := uint32(0); i < n; i++ {
 		mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), i, uuidStr)

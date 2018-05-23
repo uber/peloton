@@ -66,17 +66,7 @@ func TestTaskReloadRuntime(t *testing.T) {
 	cachedTask.EXPECT().
 		UpdateRuntime(gomock.Any())
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
-
-	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
-
 	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
@@ -133,9 +123,6 @@ func TestTaskFailAction(t *testing.T) {
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), newRuntimes, cached.UpdateCacheAndDB).Return(nil)
-
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
 
 	cachedJob.EXPECT().
 		GetJobType().Return(pb_job.JobType_BATCH)

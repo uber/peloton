@@ -151,6 +151,8 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 			errs = multierror.Append(errs, err)
 		} else {
 			p.goalStateDriver.EnqueueTask(taskInfo.JobId, taskInfo.InstanceId, time.Now())
+			p.goalStateDriver.EnqueueJob(taskInfo.JobId, time.Now().Add(
+				p.goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
 		}
 	}
 	return errs.ErrorOrNil()

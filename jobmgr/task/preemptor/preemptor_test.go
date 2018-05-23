@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	peloton_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -86,6 +87,11 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(cachedJob)
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheAndDB).Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+	suite.goalStateDriver.EXPECT().
+		GetJobRuntimeDuration(job.JobType_BATCH).
+		Return(1 * time.Second)
+	suite.goalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any()).Return()
 
 	err := suite.preemptor.performPreemptionCycle()
 	suite.NoError(err)

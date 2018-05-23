@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -11,7 +12,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	//"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -371,6 +372,12 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithRanges() {
 			UpdateTasks(gomock.Any(), singleRuntime, cached.UpdateCacheAndDB).Return(nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(suite.testJobID, uint32(1), gomock.Any()).Return(),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		goalStateDriver.EXPECT().
+			GetJobRuntimeDuration(job.JobType_BATCH).
+			Return(1*time.Second),
+		goalStateDriver.EXPECT().
+			EnqueueJob(suite.testJobID, gomock.Any()).Return(),
 	)
 
 	var request = &task.StopRequest{
@@ -427,6 +434,15 @@ func (suite *TaskHandlerTestSuite) TestStopTasksSkipKillNotRunningTask() {
 
 	goalStateDriver.EXPECT().
 		EnqueueTask(suite.testJobID, uint32(2), gomock.Any()).Return()
+
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+
+	goalStateDriver.EXPECT().
+		GetJobRuntimeDuration(job.JobType_BATCH).
+		Return(1 * time.Second)
+
+	goalStateDriver.EXPECT().
+		EnqueueJob(suite.testJobID, gomock.Any()).Return()
 
 	var request = &task.StopRequest{
 		JobId:  suite.testJobID,
@@ -609,6 +625,15 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 	goalStateDriver.EXPECT().
 		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().AnyTimes()
 
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+
+	goalStateDriver.EXPECT().
+		GetJobRuntimeDuration(job.JobType_BATCH).
+		Return(1 * time.Second)
+
+	goalStateDriver.EXPECT().
+		EnqueueJob(suite.testJobID, gomock.Any()).Return()
+
 	var request = &task.StartRequest{
 		JobId: suite.testJobID,
 	}
@@ -676,6 +701,15 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 
 	goalStateDriver.EXPECT().
 		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return()
+
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+
+	goalStateDriver.EXPECT().
+		GetJobRuntimeDuration(job.JobType_BATCH).
+		Return(1 * time.Second)
+
+	goalStateDriver.EXPECT().
+		EnqueueJob(suite.testJobID, gomock.Any()).Return()
 
 	var request = &task.StartRequest{
 		JobId:  suite.testJobID,
@@ -869,6 +903,12 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return(),
+		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
+		goalStateDriver.EXPECT().
+			GetJobRuntimeDuration(job.JobType_BATCH).
+			Return(1*time.Second),
+		goalStateDriver.EXPECT().
+			EnqueueJob(suite.testJobID, gomock.Any()).Return(),
 	)
 
 	var request = &task.StartRequest{
@@ -1153,6 +1193,12 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 		UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheOnly).Return(nil)
 	goalStateDriver.EXPECT().
 		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().Times(int(suite.testJobConfig.GetInstanceCount()))
+	cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)
+	goalStateDriver.EXPECT().
+		GetJobRuntimeDuration(job.JobType_BATCH).
+		Return(1 * time.Second)
+	goalStateDriver.EXPECT().
+		EnqueueJob(suite.testJobID, gomock.Any()).Return()
 
 	var request = &task.RefreshRequest{
 		JobId: suite.testJobID,
@@ -1190,8 +1236,8 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	testReason := "test reason"
-	var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
+	//testReason := "test reason"
+	//var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
 	taskInfos := make(map[uint32]*task.TaskInfo)
 	runningTasks := uint32(testInstanceCount) / 2
 	pendingTasks := uint32(testInstanceCount) - runningTasks
@@ -1202,10 +1248,10 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 		} else {
 			taskInfos[i] = suite.createTestTaskInfo(
 				task.TaskState_PENDING, i)
-			taskEntries = append(taskEntries, &resmgrsvc.GetActiveTasksResponse_TaskEntry{
+			/*taskEntries = append(taskEntries, &resmgrsvc.GetActiveTasksResponse_TaskEntry{
 				TaskID: fmt.Sprintf("%s-%d", suite.testJobID.Value, i),
 				Reason: testReason,
-			})
+			})*/
 		}
 	}
 
@@ -1222,14 +1268,14 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 	mockTaskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), suite.testJobID).
 		Return(taskInfos, nil)
-	mockResmgrClient.EXPECT().
+	/*mockResmgrClient.EXPECT().
 		GetActiveTasks(gomock.Any(), &resmgrsvc.GetActiveTasksRequest{
 			JobID:  suite.testJobID.GetValue(),
 			States: getResourceManagerProcessingStates(),
 		}).Return(&resmgrsvc.GetActiveTasksResponse{
 		TasksByState: map[string]*resmgrsvc.GetActiveTasksResponse_TaskEntries{
 			task.TaskState_PLACING.String(): {TaskEntry: taskEntries}},
-	}, nil)
+	}, nil)*/
 
 	result, err := suite.handler.List(context.Background(), &task.ListRequest{
 		JobId: suite.testJobID,
@@ -1241,7 +1287,7 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 			runningTasks--
 		}
 		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
-			suite.Equal(taskInfo.GetRuntime().GetReason(), testReason)
+			//suite.Equal(taskInfo.GetRuntime().GetReason(), testReason)
 			pendingTasks--
 		}
 	}
@@ -1253,8 +1299,8 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 	ctrl := gomock.NewController(suite.T())
 	defer ctrl.Finish()
 
-	testReason := "test reason"
-	var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
+	//testReason := "test reason"
+	//var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
 	taskInfos := make([]*task.TaskInfo, testInstanceCount)
 	runningTasks := testInstanceCount / 2
 	pendingTasks := testInstanceCount - runningTasks
@@ -1265,10 +1311,10 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 		} else {
 			taskInfos[i] = suite.createTestTaskInfo(
 				task.TaskState_PENDING, uint32(i))
-			taskEntries = append(taskEntries, &resmgrsvc.GetActiveTasksResponse_TaskEntry{
+			/*taskEntries = append(taskEntries, &resmgrsvc.GetActiveTasksResponse_TaskEntry{
 				TaskID: fmt.Sprintf("%s-%d", suite.testJobID.Value, i),
 				Reason: testReason,
-			})
+			})*/
 		}
 	}
 
@@ -1285,14 +1331,14 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 	mockTaskStore.EXPECT().
 		QueryTasks(gomock.Any(), suite.testJobID, nil).
 		Return(taskInfos, uint32(testInstanceCount), nil)
-	mockResmgrClient.EXPECT().
+	/*mockResmgrClient.EXPECT().
 		GetActiveTasks(gomock.Any(), &resmgrsvc.GetActiveTasksRequest{
 			JobID:  suite.testJobID.GetValue(),
 			States: getResourceManagerProcessingStates(),
 		}).Return(&resmgrsvc.GetActiveTasksResponse{
 		TasksByState: map[string]*resmgrsvc.GetActiveTasksResponse_TaskEntries{
 			task.TaskState_PLACING.String(): {TaskEntry: taskEntries}},
-	}, nil)
+	}, nil)*/
 
 	result, err := suite.handler.Query(context.Background(), &task.QueryRequest{
 		JobId: suite.testJobID,
@@ -1304,7 +1350,7 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 			runningTasks--
 		}
 		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
-			suite.Equal(taskInfo.GetRuntime().GetReason(), testReason)
+			//suite.Equal(taskInfo.GetRuntime().GetReason(), testReason)
 			pendingTasks--
 		}
 	}
