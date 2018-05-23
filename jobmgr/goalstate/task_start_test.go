@@ -141,6 +141,9 @@ func TestTaskStartWithSlaMaxRunningInstances(t *testing.T) {
 	cachedJob.EXPECT().
 		GetSLAConfig().Return(jobConfig.Sla)
 
+	cachedJob.EXPECT().
+		GetJobType().Return(job2.JobType_BATCH)
+
 	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
