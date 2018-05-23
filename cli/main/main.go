@@ -223,6 +223,11 @@ var (
 
 	volumeDelete         = volume.Command("delete", "delete a volume")
 	volumeDeleteVolumeID = volumeDelete.Arg("volume", "volume identifier").Required().String()
+
+	// top level command for offers
+	offers = app.Command("offers", "get outstanding offers")
+
+	offersList = offers.Command("list", "list all the outstanding offers")
 )
 
 // TaskRangeValue allows us to define a new target type for kingpin to allow specifying ranges of tasks with from:to syntax as a TaskRangeFlag
@@ -396,6 +401,8 @@ func main() {
 		err = client.VolumeListAction(*volumeListJobName)
 	case volumeDelete.FullCommand():
 		err = client.VolumeDeleteAction(*volumeDeleteVolumeID)
+	case offers.FullCommand():
+		err = client.OffersGetAction()
 	default:
 		app.Fatalf("Unknown command %s", cmd)
 	}

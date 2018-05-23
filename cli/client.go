@@ -13,6 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/volume/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
@@ -21,14 +22,15 @@ import (
 
 // Client is a JSON Client with associated dispatcher and context
 type Client struct {
-	jobClient    job.JobManagerYARPCClient
-	taskClient   task.TaskManagerYARPCClient
-	resClient    respool.ResourceManagerYARPCClient
-	resMgrClient resmgrsvc.ResourceManagerServiceYARPCClient
-	volumeClient volume_svc.VolumeServiceYARPCClient
-	dispatcher   *yarpc.Dispatcher
-	ctx          context.Context
-	cancelFunc   context.CancelFunc
+	jobClient     job.JobManagerYARPCClient
+	taskClient    task.TaskManagerYARPCClient
+	resClient     respool.ResourceManagerYARPCClient
+	resMgrClient  resmgrsvc.ResourceManagerServiceYARPCClient
+	volumeClient  volume_svc.VolumeServiceYARPCClient
+	hostMgrClient hostsvc.InternalHostServiceYARPCClient
+	dispatcher    *yarpc.Dispatcher
+	ctx           context.Context
+	cancelFunc    context.CancelFunc
 	// Debug is whether debug output is enabled
 	Debug bool
 }
@@ -49,6 +51,11 @@ func New(
 		return nil, err
 	}
 
+	hostmgrURL, err := discovery.GetAppURL(common.HostManagerRole)
+	if err != nil {
+		return nil, err
+	}
+
 	t := http.NewTransport()
 
 	dispatcher := yarpc.NewDispatcher(yarpc.Config{
@@ -59,6 +66,9 @@ func New(
 			},
 			common.PelotonResourceManager: transport.Outbounds{
 				Unary: t.NewSingleOutbound(resmgrURL.String()),
+			},
+			common.PelotonHostManager: transport.Outbounds{
+				Unary: t.NewSingleOutbound(hostmgrURL.String()),
 			},
 		},
 	})
@@ -83,6 +93,9 @@ func New(
 			dispatcher.ClientConfig(common.PelotonResourceManager)),
 		volumeClient: volume_svc.NewVolumeServiceYARPCClient(
 			dispatcher.ClientConfig(common.PelotonJobManager),
+		),
+		hostMgrClient: hostsvc.NewInternalHostServiceYARPCClient(
+			dispatcher.ClientConfig(common.PelotonHostManager),
 		),
 		dispatcher: dispatcher,
 		ctx:        ctx,
