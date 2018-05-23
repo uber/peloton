@@ -103,10 +103,6 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
 			_jobEnqueueMultiplierOnTaskStart*
 				goalStateDriver.GetJobRuntimeDuration(cachedJob.GetJobType())))
-		log.WithFields(log.Fields{
-			"job_id":      taskEnt.jobID.GetValue(),
-			"instance_id": taskEnt.instanceID,
-		}).Error("task start should not enqueue jobs")
 		return nil
 	}
 
