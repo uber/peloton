@@ -54,6 +54,7 @@ func (q *deadlineQueue) popIfReady() QueueItem {
 
 	qi := heap.Pop(q.pq).(QueueItem)
 	q.mtx.queuePopDelay.Record(time.Since(qi.Deadline()))
+	qi.SetDeadline(time.Time{})
 	q.mtx.queueLength.Update(float64(q.pq.Len()))
 	return qi
 }
@@ -100,6 +101,8 @@ func (q *deadlineQueue) Enqueue(qi QueueItem, deadline time.Time) {
 }
 
 // Dequeue will be used to dequeue the next queue item whose deadline expires.
+// Currently this implementation works only when there is one thread which
+// is dequeueing, though multiple threads can enqueue.
 func (q *deadlineQueue) Dequeue(stopChan <-chan struct{}) QueueItem {
 	for {
 		q.RLock()

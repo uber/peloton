@@ -91,16 +91,25 @@ func (te *testEntity) GetGoalState() interface{} {
 
 func (te *testEntity) GetActionList(state interface{}, goalstate interface{}) (context.Context, context.CancelFunc, []Action) {
 	var actions []Action
+	actionS := Action{
+		Name:    "testAction",
+		Execute: testAction,
+	}
+	actionF := Action{
+		Name:    "testActionFailure",
+		Execute: testActionFailure,
+	}
+
 	if state == stateValue && goalstate == goalStateValue {
 		// returns sample test action
-		actions = append(actions, testAction)
+		actions = append(actions, actionS)
 	} else if state == stateValue && goalstate == goalStateValueFail {
 		// returns sample test actions which fails thrics before succeeding
-		actions = append(actions, testActionFailure)
+		actions = append(actions, actionF)
 	} else if state == stateValueMulti && goalstate == goalStateValue {
 		// returns both sample test actions with a context timeout
-		actions = append(actions, testAction)
-		actions = append(actions, testActionFailure)
+		actions = append(actions, actionS)
+		actions = append(actions, actionF)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		return ctx, cancel, actions
 	} else if state == stateValueMulti && goalstate == goalStateValueFail {

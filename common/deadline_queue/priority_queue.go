@@ -35,7 +35,6 @@ func (pq *priorityQueue) Pop() interface{} {
 	old[n-1] = nil
 	// Clear index and deadline.
 	item.SetIndex(-1)
-	item.SetDeadline(time.Time{})
 	*pq = old[0 : n-1]
 	// TODO: Down-size if len(pq) < cap(pq) / 2.
 	return item

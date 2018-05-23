@@ -26,11 +26,19 @@ const (
 	// JobStateInvalidAction is executed for an unexpected/invalid job goal state,
 	// state combination and it prints a sentry error
 	JobStateInvalidAction JobAction = "state_invalid"
+	// RuntimeUpdateAction updates the job runtime
+	RuntimeUpdateAction JobAction = "runtime_update"
+	// EvaluateSLAAction evaluates job SLA
+	EvaluateSLAAction JobAction = "evaluate_sla"
+	// ClearAction clears the job runtime
+	ClearAction JobAction = "job_clear"
+	// EnqeueAction enqueues the job again into the goal state engine
+	EnqeueAction JobAction = "enqueue"
 )
 
 // _jobActionsMaps maps the JobAction string to the Action function.
 var (
-	_jobActionsMaps = map[JobAction]goalstate.Action{
+	_jobActionsMaps = map[JobAction]goalstate.ActionExecute{
 		NoJobAction:           nil,
 		CreateTasksAction:     JobCreateTasks,
 		KillAction:            JobKill,
@@ -128,7 +136,12 @@ func (j *jobEntity) GetGoalState() interface{} {
 	return jobRuntime.GetGoalState()
 }
 
-func (j *jobEntity) GetActionList(state interface{}, goalState interface{}) (context.Context, context.CancelFunc, []goalstate.Action) {
+func (j *jobEntity) GetActionList(
+	state interface{},
+	goalState interface{}) (
+	context.Context,
+	context.CancelFunc,
+	[]goalstate.Action) {
 	var actions []goalstate.Action
 
 	jobState := state.(job.JobState)
@@ -137,7 +150,10 @@ func (j *jobEntity) GetActionList(state interface{}, goalState interface{}) (con
 	if jobState == job.JobState_UNKNOWN || jobGoalState == job.JobState_UNKNOWN {
 		// State or goal state could not be loaded from DB, so enqueue the job
 		// back into the goal state engine so that the states can be fetched again.
-		actions = append(actions, JobEnqueue)
+		actions = append(actions, goalstate.Action{
+			Name:    string(EnqeueAction),
+			Execute: JobEnqueue,
+		})
 		return context.Background(), nil, actions
 	}
 
@@ -152,14 +168,28 @@ func (j *jobEntity) GetActionList(state interface{}, goalState interface{}) (con
 
 	if action != nil {
 		// nil action is returned for noop
-		actions = append(actions, action)
+		actions = append(actions, goalstate.Action{
+			Name:    string(actionStr),
+			Execute: action,
+		})
 	}
 
 	if actionStr != UntrackAction {
 		// These should always be run
-		actions = append(actions, JobRuntimeUpdater)
-		actions = append(actions, JobEvaluateMaxRunningInstancesSLA)
-		actions = append(actions, JobClearRuntime)
+		actions = append(actions, goalstate.Action{
+			Name:    string(RuntimeUpdateAction),
+			Execute: JobRuntimeUpdater,
+		})
+
+		actions = append(actions, goalstate.Action{
+			Name:    string(EvaluateSLAAction),
+			Execute: JobEvaluateMaxRunningInstancesSLA,
+		})
+
+		actions = append(actions, goalstate.Action{
+			Name:    string(ClearAction),
+			Execute: JobClearRuntime,
+		})
 	}
 
 	return context.Background(), nil, actions

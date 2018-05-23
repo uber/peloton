@@ -16,10 +16,21 @@ type Entity interface {
 	// for the entity's current state and goal state.
 	// The action list is an array of actions which are executed in order.
 	// Each action needs to be idempotent.
-	GetActionList(state interface{}, goalState interface{}) (context.Context, context.CancelFunc, []Action)
+	GetActionList(state interface{}, goalState interface{}) (
+		context.Context, context.CancelFunc, []Action)
 }
 
-// Action defines the interface for the function to be used by goal state actions.
-// If the action call returns an error, the entity is rescheduled in the goal state
-// engine with an exponential backoff.
-type Action func(ctx context.Context, entity Entity) error
+// ActionExecute defines the interface for the function to be used by the
+// goal state engine clients to implement the execution of an action.
+type ActionExecute func(ctx context.Context, entity Entity) error
+
+// Action defines the interface for the function to be used by goal
+// state actions. If the Execute call returns an error, the entity is
+// rescheduled in the goal state engine with an exponential backoff.
+type Action struct {
+	// Name of the action which will be used as the tag in the emoitted metrics.
+	Name string
+	// Execute is the function called by the goal state
+	// engine to execute the action.
+	Execute ActionExecute
+}

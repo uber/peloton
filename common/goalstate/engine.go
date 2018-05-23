@@ -99,6 +99,9 @@ func (e *engine) addItemToEntityMap(id string, entity Entity) *queue.Item {
 			queueItem: queueItem,
 		}
 		e.entityMap[id] = entityItem
+		// Only update for adds for now. This is to prevent having to compute
+		// the length on every delete as well.
+		e.mtx.totalItems.Update(float64(len(e.entityMap)))
 	}
 	return entityItem.queueItem
 }
@@ -194,7 +197,10 @@ func (e *engine) runActions(entityItem *entityMapItem) (reschedule bool, delay t
 
 	// Execute each action.
 	for _, action := range actions {
-		err := action(ctx, entityItem.entity)
+		tStart := time.Now()
+		err := action.Execute(ctx, entityItem.entity)
+		e.mtx.scope.Tagged(map[string]string{"action": action.Name}).
+			Timer("run_duration").Record(time.Since(tStart))
 		if err != nil {
 			// Backoff and reevaluate the entity again.
 			e.calculateDelay(entityItem)

@@ -75,12 +75,10 @@ func TaskStateInvalid(_ context.Context, entity goalstate.Entity) error {
 
 // returns the action to be performed after preemption based on the task
 // preemption policy
-func getPostPreemptAction(ctx context.Context, entity goalstate.Entity) (goalstate.Action, error) {
+func getPostPreemptAction(ctx context.Context, entity goalstate.Entity) (goalstate.ActionExecute, error) {
 	// Here we check what the task preemption policy is,
 	// if killOnPreempt is set to true then we don't reschedule the task
 	// after it is preempted
-	var action goalstate.Action
-
 	taskEnt := entity.(*taskEntity)
 	goalStateDriver := taskEnt.driver
 
@@ -91,7 +89,7 @@ func getPostPreemptAction(ctx context.Context, entity goalstate.Entity) (goalsta
 	if err != nil {
 		log.WithError(err).
 			Error("unable to get task preemption policy")
-		return action, err
+		return nil, err
 	}
 	if pp != nil && pp.GetKillOnPreempt() {
 		// We are done , we don't want to reschedule it

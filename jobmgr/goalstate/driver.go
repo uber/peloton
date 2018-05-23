@@ -95,10 +95,12 @@ func NewDriver(
 	cfg Config) Driver {
 	cfg.normalize()
 	scope := parentScope.SubScope("goalstate")
+	jobScope := scope.SubScope("job")
+	taskScope := scope.SubScope("task")
 
 	return &driver{
-		jobEngine:     goalstate.NewEngine(cfg.NumWorkerJobThreads, cfg.FailureRetryDelay, cfg.MaxRetryDelay, scope),
-		taskEngine:    goalstate.NewEngine(cfg.NumWorkerTaskThreads, cfg.FailureRetryDelay, cfg.MaxRetryDelay, scope),
+		jobEngine:     goalstate.NewEngine(cfg.NumWorkerJobThreads, cfg.FailureRetryDelay, cfg.MaxRetryDelay, jobScope),
+		taskEngine:    goalstate.NewEngine(cfg.NumWorkerTaskThreads, cfg.FailureRetryDelay, cfg.MaxRetryDelay, taskScope),
 		hostmgrClient: hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 		resmgrClient:  resmgrsvc.NewResourceManagerServiceYARPCClient(d.ClientConfig(common.PelotonResourceManager)),
 		jobStore:      jobStore,

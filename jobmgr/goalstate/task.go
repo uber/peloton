@@ -50,7 +50,7 @@ const (
 
 // _taskActionsMaps maps the task action string to task action function
 var (
-	_taskActionsMaps = map[TaskAction]goalstate.Action{
+	_taskActionsMaps = map[TaskAction]goalstate.ActionExecute{
 		NoTaskAction:           nil,
 		StartAction:            TaskStart,
 		StopAction:             TaskStop,
@@ -174,7 +174,12 @@ func (t *taskEntity) GetGoalState() interface{} {
 	return cachedTask.GoalState()
 }
 
-func (t *taskEntity) GetActionList(state interface{}, goalState interface{}) (context.Context, context.CancelFunc, []goalstate.Action) {
+func (t *taskEntity) GetActionList(
+	state interface{},
+	goalState interface{}) (
+	context.Context,
+	context.CancelFunc,
+	[]goalstate.Action) {
 	var actions []goalstate.Action
 
 	taskState := state.(cached.TaskStateVector)
@@ -184,7 +189,10 @@ func (t *taskEntity) GetActionList(state interface{}, goalState interface{}) (co
 
 	if taskState.State == task.TaskState_UNKNOWN || taskGoalState.State == task.TaskState_UNKNOWN {
 		// no runtime in cache, reload the task runtime
-		actions = append(actions, TaskReloadRuntime)
+		actions = append(actions, goalstate.Action{
+			Name:    string(ReloadTaskRuntime),
+			Execute: TaskReloadRuntime,
+		})
 		return ctx, cancel, actions
 	}
 
@@ -199,7 +207,10 @@ func (t *taskEntity) GetActionList(state interface{}, goalState interface{}) (co
 		Info("running task action")
 
 	if action != nil {
-		actions = append(actions, action)
+		actions = append(actions, goalstate.Action{
+			Name:    string(actionStr),
+			Execute: action,
+		})
 	}
 
 	return ctx, cancel, actions
