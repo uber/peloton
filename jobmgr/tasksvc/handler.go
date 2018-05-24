@@ -28,6 +28,7 @@ import (
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 )
@@ -50,6 +51,7 @@ func InitServiceHandler(
 	frameworkInfoStore storage.FrameworkInfoStore,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
+	candidate leader.Candidate,
 	mesosAgentWorkDir string,
 	hostMgrClientName string,
 	logManager logmanager.LogManager) {
@@ -63,6 +65,7 @@ func InitServiceHandler(
 		taskLauncher:       launcher.GetLauncher(),
 		jobFactory:         jobFactory,
 		goalStateDriver:    goalStateDriver,
+		candidate:          candidate,
 		mesosAgentWorkDir:  mesosAgentWorkDir,
 		hostMgrClient:      hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(hostMgrClientName)),
 		logManager:         logManager,
@@ -80,6 +83,7 @@ type serviceHandler struct {
 	taskLauncher       launcher.Launcher
 	jobFactory         cached.JobFactory
 	goalStateDriver    goalstate.Driver
+	candidate          leader.Candidate
 	mesosAgentWorkDir  string
 	hostMgrClient      hostsvc.InternalHostServiceYARPCClient
 	logManager         logmanager.LogManager
@@ -267,6 +271,12 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 	log.WithField("request", req).Debug("TaskSVC.Refresh called")
 
 	m.metrics.TaskAPIRefresh.Inc(1)
+
+	if !m.candidate.IsLeader() {
+		m.metrics.TaskRefreshFail.Inc(1)
+		return nil, yarpcerrors.UnavailableErrorf("Task Refresh API not suppported on non-leader")
+	}
+
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.GetJobId())
 	if err != nil {
 		log.WithError(err).
@@ -364,6 +374,11 @@ func (m *serviceHandler) Start(
 		_rpcTimeout,
 	)
 	defer cancelFunc()
+
+	if !m.candidate.IsLeader() {
+		m.metrics.TaskStartFail.Inc(1)
+		return nil, yarpcerrors.UnavailableErrorf("Task Start API not suppported on non-leader")
+	}
 
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
 	if err != nil {
@@ -585,6 +600,11 @@ func (m *serviceHandler) Stop(
 		_rpcTimeout,
 	)
 	defer cancelFunc()
+
+	if !m.candidate.IsLeader() {
+		m.metrics.TaskStopFail.Inc(1)
+		return nil, yarpcerrors.UnavailableErrorf("Task Stop API not suppported on non-leader")
+	}
 
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
 	if err != nil {

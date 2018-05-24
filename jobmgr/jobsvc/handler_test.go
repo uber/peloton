@@ -21,6 +21,7 @@ import (
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 
@@ -153,13 +154,16 @@ func (suite *JobHandlerTestSuite) TestCreateJobs() {
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
+	candidate := leadermocks.NewMockCandidate(ctrl)
 
 	suite.handler.jobStore = mockJobStore
 	suite.handler.jobFactory = jobFactory
 	suite.handler.goalStateDriver = goalStateDriver
 	suite.handler.respoolClient = mockRespoolClient
+	suite.handler.candidate = candidate
 
 	// setup mocks
+	candidate.EXPECT().IsLeader().Return(true).AnyTimes()
 	mockRespoolClient.EXPECT().
 		GetResourcePool(
 			gomock.Any(),
@@ -267,6 +271,7 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
 	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
+	candidate := leadermocks.NewMockCandidate(ctrl)
 
 	suite.handler.jobStore = mockJobStore
 	suite.handler.secretStore = mockSecretStore
@@ -274,8 +279,11 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	suite.handler.goalStateDriver = goalStateDriver
 	suite.handler.respoolClient = mockRespoolClient
 	suite.handler.jobSvcCfg.EnableSecrets = true
+	suite.handler.candidate = candidate
 
 	// setup mocks
+	candidate.EXPECT().IsLeader().Return(true).AnyTimes()
+
 	mockRespoolClient.EXPECT().
 		GetResourcePool(
 			gomock.Any(),
@@ -550,13 +558,16 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	candidate := leadermocks.NewMockCandidate(ctrl)
 
 	suite.handler.resmgrClient = mockResmgrClient
 	suite.handler.jobStore = mockJobStore
 	suite.handler.taskStore = mockTaskStore
 	suite.handler.jobFactory = jobFactory
 	suite.handler.goalStateDriver = goalStateDriver
+	suite.handler.candidate = candidate
 
+	candidate.EXPECT().IsLeader().Return(true)
 	mockJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).
 		Return(oldJobConfig, nil).
@@ -691,9 +702,12 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
+	candidate := leadermocks.NewMockCandidate(ctrl)
 	suite.handler.jobFactory = jobFactory
 	suite.handler.goalStateDriver = goalStateDriver
+	suite.handler.candidate = candidate
 
+	candidate.EXPECT().IsLeader().Return(true)
 	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
 		Return(jobConfig, nil)
 	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
@@ -704,11 +718,13 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 	_, err := suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
 	suite.NoError(err)
 
+	candidate.EXPECT().IsLeader().Return(true)
 	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
 		Return(nil, fmt.Errorf("fake db error"))
 	_, err = suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
 	suite.Error(err)
 
+	candidate.EXPECT().IsLeader().Return(true)
 	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
 		Return(jobConfig, nil)
 	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).

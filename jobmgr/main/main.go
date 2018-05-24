@@ -324,6 +324,52 @@ func main() {
 		rootScope,
 	)
 
+	// Create a new task preemptor
+	taskPreemptor := preemptor.New(
+		dispatcher,
+		common.PelotonResourceManager,
+		store, // store implements TaskStore
+		jobFactory,
+		goalStateDriver,
+		&cfg.JobManager.Preemptor,
+		rootScope,
+	)
+
+	// Create a new Dead Line tracker for jobs
+	deadlineTracker := deadline.New(
+		dispatcher,
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		jobFactory,
+		goalStateDriver,
+		rootScope,
+		&cfg.JobManager.Deadline,
+	)
+
+	updateManager := updatesvc.NewManager(store, // JobStore
+		cfg.JobManager.Update)
+
+	server := jobmgr.NewServer(
+		cfg.JobManager.HTTPPort,
+		cfg.JobManager.GRPCPort,
+		jobFactory,
+		goalStateDriver,
+		taskPreemptor,
+		deadlineTracker,
+		updateManager,
+		placementProcessor,
+	)
+
+	candidate, err := leader.NewCandidate(
+		cfg.Election,
+		rootScope,
+		common.JobManagerRole,
+		server,
+	)
+	if err != nil {
+		log.Fatalf("Unable to create leader candidate: %v", err)
+	}
+
 	jobsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
@@ -332,6 +378,7 @@ func main() {
 		store, // store implements SecretStore
 		jobFactory,
 		goalStateDriver,
+		candidate,
 		common.PelotonResourceManager, // TODO: to be removed
 		cfg.JobManager.JobSvcCfg,
 	)
@@ -344,6 +391,7 @@ func main() {
 		store, // store implements FrameworkInfoStore
 		jobFactory,
 		goalStateDriver,
+		candidate,
 		*mesosAgentWorkDir,
 		common.PelotonHostManager,
 		logmanager.NewLogManager(&http.Client{Timeout: _httpClientTimeout}),
@@ -355,9 +403,6 @@ func main() {
 		store, // store implements TaskStore
 		store, // store implements VolumeStore
 	)
-
-	updateManager := updatesvc.NewManager(store, // JobStore
-		cfg.JobManager.Update)
 	updatesvc.InitServiceHandler(dispatcher,
 		store, // store implements JobStore
 		store, // store implements UpdateStore
@@ -393,48 +438,6 @@ func main() {
 		rootScope,
 	)
 
-	// Create a new task preemptor
-	taskPreemptor := preemptor.New(
-		dispatcher,
-		common.PelotonResourceManager,
-		store, // store implements TaskStore
-		jobFactory,
-		goalStateDriver,
-		&cfg.JobManager.Preemptor,
-		rootScope,
-	)
-
-	// Create a new Dead Line tracker for jobs
-	deadlineTracker := deadline.New(
-		dispatcher,
-		store, // store implements JobStore
-		store, // store implements TaskStore
-		jobFactory,
-		goalStateDriver,
-		rootScope,
-		&cfg.JobManager.Deadline,
-	)
-
-	server := jobmgr.NewServer(
-		cfg.JobManager.HTTPPort,
-		cfg.JobManager.GRPCPort,
-		jobFactory,
-		goalStateDriver,
-		taskPreemptor,
-		deadlineTracker,
-		updateManager,
-		placementProcessor,
-	)
-
-	candidate, err := leader.NewCandidate(
-		cfg.Election,
-		rootScope,
-		common.JobManagerRole,
-		server,
-	)
-	if err != nil {
-		log.Fatalf("Unable to create leader candidate: %v", err)
-	}
 	err = candidate.Start()
 	if err != nil {
 		log.Fatalf("Unable to start leader candidate: %v", err)

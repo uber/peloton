@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/job/config"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
+	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 
@@ -49,6 +50,7 @@ func InitServiceHandler(
 	secretStore storage.SecretStore,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
+	candidate leader.Candidate,
 	clientName string,
 	jobSvcCfg Config) {
 
@@ -62,6 +64,7 @@ func InitServiceHandler(
 		rootCtx:         context.Background(),
 		jobFactory:      jobFactory,
 		goalStateDriver: goalStateDriver,
+		candidate:       candidate,
 		metrics:         NewMetrics(parent.SubScope("jobmgr").SubScope("job")),
 		jobSvcCfg:       jobSvcCfg,
 	}
@@ -79,6 +82,7 @@ type serviceHandler struct {
 	rootCtx         context.Context
 	jobFactory      cached.JobFactory
 	goalStateDriver goalstate.Driver
+	candidate       leader.Candidate
 	metrics         *Metrics
 	jobSvcCfg       Config
 }
@@ -95,6 +99,11 @@ func (h *serviceHandler) Create(
 	// It is possible that jobId is nil since protobuf doesn't enforce it
 	if jobID == nil {
 		jobID = &peloton.JobID{Value: ""}
+	}
+
+	if !h.candidate.IsLeader() {
+		h.metrics.JobCreateFail.Inc(1)
+		return nil, yarpcerrors.UnavailableErrorf("Job Create API not suppported on non-leader")
 	}
 
 	if len(jobID.Value) == 0 {
@@ -188,6 +197,11 @@ func (h *serviceHandler) Update(
 	req *job.UpdateRequest) (*job.UpdateResponse, error) {
 
 	h.metrics.JobAPIUpdate.Inc(1)
+
+	if !h.candidate.IsLeader() {
+		h.metrics.JobUpdateFail.Inc(1)
+		return nil, yarpcerrors.UnavailableErrorf("Job Update API not suppported on non-leader")
+	}
 
 	jobID := req.Id
 	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
@@ -378,6 +392,11 @@ func (h *serviceHandler) Get(
 func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (*job.RefreshResponse, error) {
 	log.WithField("request", req).Debug("JobManager.Refresh called")
 	h.metrics.JobAPIRefresh.Inc(1)
+
+	if !h.candidate.IsLeader() {
+		h.metrics.JobRefreshFail.Inc(1)
+		return nil, yarpcerrors.UnavailableErrorf("Job Refresh API not suppported on non-leader")
+	}
 
 	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.GetId())
 	if err != nil {
