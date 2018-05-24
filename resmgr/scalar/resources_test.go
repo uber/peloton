@@ -190,6 +190,34 @@ func TestSet(t *testing.T) {
 	assert.EqualValues(t, float64(4.0), r1.Get(common.DISK))
 }
 
+func TestClone(t *testing.T) {
+	r1 := Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	r2 := r1.Clone()
+	assert.Equal(t, r1.Equal(r2), true)
+}
+
+func TestCopy(t *testing.T) {
+	r1 := Resources{
+		CPU:    1.0,
+		MEMORY: 2.0,
+		DISK:   3.0,
+		GPU:    4.0,
+	}
+	r2 := Resources{
+		CPU:    0.0,
+		MEMORY: 0.0,
+		DISK:   0.0,
+		GPU:    0.0,
+	}
+	r2.Copy(&r1)
+	assert.Equal(t, r1.Equal(&r2), true)
+}
+
 func TestInitializeAllocation(t *testing.T) {
 	alloc := NewAllocation()
 	for _, v := range alloc.Value {

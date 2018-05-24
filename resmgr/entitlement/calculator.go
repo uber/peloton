@@ -174,7 +174,7 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 
 	childs := resp.Children()
 
-	entitlement := resp.GetEntitlement()
+	entitlement := resp.GetEntitlement().Clone()
 	assignments := make(map[string]*scalar.Resources)
 	totalShare := make(map[string]float64)
 	demands := make(map[string]*scalar.Resources)
@@ -187,7 +187,7 @@ func (c *calculator) setEntitlementForChildren(resp respool.ResPool) {
 	// 3. Once the demand is zero , distribute remaining based on share
 
 	// This is the first phase for assignment
-	entitlement = c.calculateAssignmentsFromReservation(resp, demands, entitlement, assignments, totalShare)
+	c.calculateAssignmentsFromReservation(resp, demands, entitlement, assignments, totalShare)
 
 	// This is second phase for distributing remaining resources
 	c.distributeRemainingResources(resp, demands, entitlement, assignments, totalShare)
@@ -223,8 +223,7 @@ func (c *calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
 	demands map[string]*scalar.Resources,
 	entitlement *scalar.Resources,
 	assignments map[string]*scalar.Resources,
-	totalShare map[string]float64,
-) *scalar.Resources {
+	totalShare map[string]float64) {
 	// First Pass: In the first pass of children we get the demand recursively
 	// calculated And then compare with respool reservation and
 	// choose the min of these two
@@ -237,6 +236,7 @@ func (c *calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
 	// As we can ignore the other whose demands are reached as they dont
 	// need to get the fare share
 	childs := resp.Children()
+	cloneEntitlement := entitlement.Clone()
 	for e := childs.Front(); e != nil; e = e.Next() {
 		assignment := new(scalar.Resources)
 		n := e.Value.(respool.ResPool)
@@ -267,17 +267,17 @@ func (c *calculator) calculateAssignmentsFromReservation(resp respool.ResPool,
 			}
 		}
 
-		entitlement = entitlement.Subtract(assignment)
+		cloneEntitlement = cloneEntitlement.Subtract(assignment)
 		assignments[n.ID()] = assignment
 		demands[n.ID()] = demand
 		log.WithFields(log.Fields{
 			"respool":        n.Name(),
 			"limited_demand": demand,
 			"assignment":     assignment,
-			"entitlement":    entitlement,
-		}).Debug("First pass completed for respool")
+			"entitlement":    cloneEntitlement,
+		}).Info("First pass completed for respool")
 	}
-	return entitlement
+	entitlement.Copy(cloneEntitlement)
 }
 
 // calculateDemandForRespool calculates the demand based on number of

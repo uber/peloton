@@ -2,15 +2,14 @@ package entitlement
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-
 	"go.uber.org/yarpc"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -21,6 +20,7 @@ import (
 	res_common "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
+	"code.uber.internal/infra/peloton/resmgr/testutil"
 
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -294,24 +294,7 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 				gomock.Any(),
 				gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				PhysicalResources: []*hostsvc.Resource{
-					{
-						Kind:     common.CPU,
-						Capacity: 100,
-					},
-					{
-						Kind:     common.GPU,
-						Capacity: 0,
-					},
-					{
-						Kind:     common.MEMORY,
-						Capacity: 1000,
-					},
-					{
-						Kind:     common.DISK,
-						Capacity: 6000,
-					},
-				},
+				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
 			Times(3),
 	)
@@ -327,17 +310,13 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 	s.calculator.calculateEntitlement(context.Background())
 
 	res := resPool.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(33))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(333))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
 
 	ResPool12, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool12"})
 	res = ResPool12.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(13))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(133))
-	s.Equal(int64(res.DISK), int64(0))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 13, "GPU": 0, "MEMORY": 133, "DISK": 0}), true)
 
 	ResPool21, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool21"})
 	s.NoError(err)
@@ -346,22 +325,16 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 	s.calculator.calculateEntitlement(context.Background())
 
 	res = resPool.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(30))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(300))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 30, "GPU": 0, "MEMORY": 300, "DISK": 1000}), true)
 
 	res = ResPool12.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(10))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(100))
-	s.Equal(int64(res.DISK), int64(0))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 10, "GPU": 0, "MEMORY": 100, "DISK": 0}), true)
 
 	res = ResPool21.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(30))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(300))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 30, "GPU": 0, "MEMORY": 300, "DISK": 1000}), true)
 
 	ResPool22, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool22"})
 	s.NoError(err)
@@ -369,58 +342,44 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 	s.calculator.calculateEntitlement(context.Background())
 
 	res = resPool.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(26))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(266))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}), true)
 
 	res = ResPool21.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(26))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(266))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}), true)
 
 	res = ResPool22.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(26))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(266))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 26, "GPU": 0, "MEMORY": 266, "DISK": 1000}), true)
 
 	ResPool2, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool2"})
 	s.NoError(err)
 
 	res = ResPool2.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(53))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(533))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 53, "GPU": 0, "MEMORY": 533, "DISK": 1000}), true)
 
 	ResPool3, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
 	s.NoError(err)
 
 	res = ResPool3.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(13))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(133))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 13, "GPU": 0, "MEMORY": 133, "DISK": 1000}), true)
 
 	ResPool1, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool1"})
 	s.NoError(err)
 
 	res = ResPool1.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(33))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(333))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
 
 	ResPoolRoot, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	s.NoError(err)
 
 	res = ResPoolRoot.GetEntitlement()
-	s.Equal(res.CPU, float64(100))
-	s.Equal(res.GPU, float64(0))
-	s.Equal(res.MEMORY, float64(1000))
-	s.Equal(res.DISK, float64(6000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 100, "GPU": 0, "MEMORY": 1000, "DISK": 6000}), true)
 }
 
 func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
@@ -428,24 +387,7 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 	gomock.InOrder(
 		s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				PhysicalResources: []*hostsvc.Resource{
-					{
-						Kind:     common.CPU,
-						Capacity: 100,
-					},
-					{
-						Kind:     common.GPU,
-						Capacity: 0,
-					},
-					{
-						Kind:     common.MEMORY,
-						Capacity: 1000,
-					},
-					{
-						Kind:     common.DISK,
-						Capacity: 6000,
-					},
-				},
+				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
 			Times(1),
 		s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
@@ -514,24 +456,7 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 				gomock.Any(),
 				gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				PhysicalResources: []*hostsvc.Resource{
-					{
-						Kind:     common.CPU,
-						Capacity: 100,
-					},
-					{
-						Kind:     common.GPU,
-						Capacity: 0,
-					},
-					{
-						Kind:     common.MEMORY,
-						Capacity: 1000,
-					},
-					{
-						Kind:     common.DISK,
-						Capacity: 6000,
-					},
-				},
+				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
 			Times(1),
 	)
@@ -568,52 +493,36 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 	s.calculator.calculateEntitlement(context.Background())
 
 	res := ResPoolRoot.GetEntitlement()
-	s.Equal(res.CPU, float64(100))
-	s.Equal(res.GPU, float64(0))
-	s.Equal(res.MEMORY, float64(1000))
-	s.Equal(res.DISK, float64(6000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 100, "GPU": 0, "MEMORY": 1000, "DISK": 6000}), true)
 
 	res = ResPool1.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(33))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(333))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
 
 	res = ResPool2.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(33))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(333))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
 
 	res = ResPool3.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(33))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(333))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 33, "GPU": 0, "MEMORY": 333, "DISK": 1000}), true)
 
 	res = ResPool11.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(16))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(166))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}), true)
 
 	res = ResPool12.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(16))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(166))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}), true)
 
 	res = ResPool21.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(16))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(166))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}), true)
 
 	res = ResPool22.GetEntitlement()
-	s.Equal(int64(res.CPU), int64(16))
-	s.Equal(int64(res.GPU), int64(0))
-	s.Equal(int64(res.MEMORY), int64(166))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 16, "GPU": 0, "MEMORY": 166, "DISK": 1000}), true)
 }
 
 func (s *EntitlementCalculatorTestSuite) TestInitCalculator() {
@@ -731,24 +640,7 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 				gomock.Any(),
 				gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
-				PhysicalResources: []*hostsvc.Resource{
-					{
-						Kind:     common.CPU,
-						Capacity: 100,
-					},
-					{
-						Kind:     common.GPU,
-						Capacity: 0,
-					},
-					{
-						Kind:     common.MEMORY,
-						Capacity: 1000,
-					},
-					{
-						Kind:     common.DISK,
-						Capacity: 6000,
-					},
-				},
+				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
 			Times(1),
 	)
@@ -763,15 +655,34 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 	resPool.AddToDemand(demand)
 	calculator.calculateEntitlement(context.Background())
 	res := resPool.GetEntitlement()
-
-	s.Equal(int64(res.CPU), int64(28))
-	s.Equal(int64(res.GPU), int64(1))
-	s.Equal(int64(res.MEMORY), int64(283))
-	s.Equal(int64(res.DISK), int64(1000))
+	s.Equal(testutil.ValidateResources(res,
+		map[string]int64{"CPU": 28, "GPU": 1, "MEMORY": 283, "DISK": 1000}), true)
 
 	err = resTree.Stop()
 	s.NoError(err)
 	mockCtrl.Finish()
 	respool.Destroy()
 	s.initRespoolTree()
+}
+
+// createClusterCapacity returns the cluster capacity of the cluster
+func (s *EntitlementCalculatorTestSuite) createClusterCapacity() []*hostsvc.Resource {
+	return []*hostsvc.Resource{
+		{
+			Kind:     common.CPU,
+			Capacity: 100,
+		},
+		{
+			Kind:     common.GPU,
+			Capacity: 0,
+		},
+		{
+			Kind:     common.MEMORY,
+			Capacity: 1000,
+		},
+		{
+			Kind:     common.DISK,
+			Capacity: 6000,
+		},
+	}
 }

@@ -6,6 +6,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
+	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"
 
 	"github.com/stretchr/testify/assert"
@@ -38,4 +39,16 @@ func CreateTaskConfig() *rm_task.Config {
 		PlacementRetryCycle:    1,
 		EnablePlacementBackoff: true,
 	}
+}
+
+// ValidateResources validates the resources and the values passed
+// if anything differs it returns false else true
+func ValidateResources(resources *scalar.Resources, values map[string]int64) bool {
+	if int64(resources.CPU) != values["CPU"] ||
+		int64(resources.GPU) != values["GPU"] ||
+		int64(resources.MEMORY) != values["MEMORY"] ||
+		int64(resources.DISK) != values["DISK"] {
+		return false
+	}
+	return true
 }

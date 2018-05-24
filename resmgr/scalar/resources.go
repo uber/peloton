@@ -303,3 +303,24 @@ func (r *Resources) Subtract(other *Resources) *Resources {
 	}
 	return &result
 }
+
+// Clone creates the new new object of the resources
+// and copies the values to the new object and return
+// the new object
+func (r *Resources) Clone() *Resources {
+	return &Resources{
+		CPU:    r.CPU,
+		DISK:   r.DISK,
+		MEMORY: r.MEMORY,
+		GPU:    r.GPU,
+	}
+}
+
+// Copy copies the values from the passed resource object
+// to the calling object
+func (r *Resources) Copy(other *Resources) {
+	r.CPU = other.CPU
+	r.DISK = other.DISK
+	r.MEMORY = other.MEMORY
+	r.GPU = other.GPU
+}

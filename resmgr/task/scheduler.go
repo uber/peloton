@@ -233,15 +233,15 @@ func (s *scheduler) processGangFailure(
 	if len(deletedTasks) > 0 {
 		// we can not dequeue this gang Dropping them
 		// As they can block the whole resource pool.
-		// It could happen that the tasks have bene killed
-		// (Since the time they have been deququed) and
+		// It could happen that the tasks have been killed
+		// (Since the time they have been dequeued) and
 		// removed from the tracker, so we need to drop
 		// them from scheduling and remove their resources
 		// from the resource pool allocation.
 		log.WithError(errTaskIsNotPresent).WithFields(log.Fields{
 			"deleted_tasks": deletedTasks,
-			"From":          pt.TaskState_PENDING.String(),
-			"To":            pt.TaskState_READY.String(),
+			"from":          pt.TaskState_PENDING.String(),
+			"to":            pt.TaskState_READY.String(),
 		}).Info("Tasks could not be transitioned to Ready " +
 			"due to deletion, " +
 			"Dropping them")
@@ -253,8 +253,7 @@ func (s *scheduler) processGangFailure(
 		if err != nil {
 			log.WithError(err).WithField(
 				"Gang", gang).
-				Error("Not able to remove allocation " +
-					"from respool")
+				Error("Not able to remove allocation from respool")
 		}
 	}
 
