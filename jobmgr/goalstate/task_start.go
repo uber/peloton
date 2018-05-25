@@ -12,7 +12,6 @@ import (
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	"code.uber.internal/infra/peloton/storage"
 
 	log "github.com/sirupsen/logrus"
@@ -91,7 +90,8 @@ func startStatefulTask(ctx context.Context, taskEnt *taskEntity, taskInfo *task.
 		return err
 	}
 
-	launchableTasks := launcher.CreateLaunchableTasks(taskInfos)
+	// ignoring skippedTaskInfo for now since this is stateful task
+	launchableTasks, _ := goalStateDriver.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
 	var selectedPorts []uint32
 	runtimePorts := taskInfo.GetRuntime().GetPorts()
 	for _, port := range runtimePorts {

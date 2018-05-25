@@ -7,9 +7,12 @@ import (
 // Metrics is the struct containing all the counters that track internal state
 // of task launcher.
 type Metrics struct {
-	TaskLaunch      tally.Counter
-	TaskLaunchFail  tally.Counter
-	TaskLaunchRetry tally.Counter
+	TaskLaunch     tally.Counter
+	TaskLaunchFail tally.Counter
+	// Increment this counter when we see failure to
+	// populate the task's volume secret from DB
+	TaskPopulateSecretFail tally.Counter
+	TaskLaunchRetry        tally.Counter
 
 	TaskRequeuedOnLaunchFail tally.Counter
 
@@ -28,9 +31,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	launchTaskScope := scope.SubScope("launch_tasks")
 
 	return &Metrics{
-		TaskLaunch:      taskSuccessScope.Counter("launch"),
-		TaskLaunchFail:  taskFailScope.Counter("launch"),
-		TaskLaunchRetry: launchTaskScope.Counter("retry"),
+		TaskLaunch:             taskSuccessScope.Counter("launch"),
+		TaskLaunchFail:         taskFailScope.Counter("launch"),
+		TaskPopulateSecretFail: taskFailScope.Counter("populate_secret"),
+		TaskLaunchRetry:        launchTaskScope.Counter("retry"),
 
 		TaskRequeuedOnLaunchFail: taskFailScope.Counter("launch_fail_requeued_total"),
 		GetDBTaskInfo:            functionCallScope.Timer("get_taskinfo"),

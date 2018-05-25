@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/uber-go/tally"
 
 	"go.uber.org/yarpc"
+	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -34,6 +36,11 @@ type Launcher interface {
 	LaunchStatefulTasks(ctx context.Context, selectedTasks []*hostsvc.LaunchableTask, hostname string, selectedPorts []uint32, checkVolume bool) error
 	// GetLaunchableTasks returns launchable tasks after updating their runtime state with the placement information
 	GetLaunchableTasks(ctx context.Context, tasks []*peloton.TaskID, hostname string, agentID *mesos.AgentID, selectedPorts []uint32) (map[string]*task.TaskInfo, error)
+	// CreateLaunchableTasks generates list of hostsvc.LaunchableTask and a map
+	// of skipped TaskInfo from map of TaskInfo
+	CreateLaunchableTasks(
+		ctx context.Context, tasks map[string]*task.TaskInfo) (
+		[]*hostsvc.LaunchableTask, map[string]*task.TaskInfo)
 	// TryReturnOffers returns the offers in the placement back to host manager
 	TryReturnOffers(ctx context.Context, err error, placement *resmgr.Placement) error
 }
@@ -247,37 +254,96 @@ func (l *launcher) GetLaunchableTasks(
 	return tasksInfo, nil
 }
 
-// CreateLaunchableTasks generates list of hostsvc.LaunchableTask from list of task.TaskInfo
-func CreateLaunchableTasks(tasks map[string]*task.TaskInfo) []*hostsvc.LaunchableTask {
-	var launchableTasks []*hostsvc.LaunchableTask
-	for _, task := range tasks {
-		var launchableTask hostsvc.LaunchableTask
+// updateTaskRuntime updates task runtime with goalstate, reason and message
+// for the given task id.
+func (l *launcher) updateTaskRuntime(
+	ctx context.Context, taskID string,
+	goalstate task.TaskState, reason string, message string) error {
+	runtime := &task.RuntimeInfo{
+		GoalState: goalstate,
+		Reason:    reason,
+		Message:   message,
+	}
+	jobID, instanceID, err := util.ParseTaskID(taskID)
+	if err != nil {
+		return err
+	}
+	cachedJob := l.jobFactory.GetJob(&peloton.JobID{Value: jobID})
+	if cachedJob == nil {
+		return fmt.Errorf("jobID %v not found in cache", jobID)
+	}
+	// update the task in DB and cache, and then schedule to goalstate
+	err = cachedJob.UpdateTasks(ctx,
+		map[uint32]*task.RuntimeInfo{uint32(instanceID): runtime},
+		cached.UpdateCacheAndDB)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// CreateLaunchableTasks generates list of hostsvc.LaunchableTask from map of
+// task.TaskInfo. For tasks containing secrets, it tries to populate secrets
+// from DB. If some tasks are not launched, return a map of skipped taskInfos.
+func (l *launcher) CreateLaunchableTasks(
+	ctx context.Context, tasks map[string]*task.TaskInfo,
+) (launchableTasks []*hostsvc.LaunchableTask,
+	skippedTaskInfos map[string]*task.TaskInfo) {
+	skippedTaskInfos = make(map[string]*task.TaskInfo)
+	for id, taskInfo := range tasks {
+		// if task config has secret volumes, populate secret data in config
+		err := l.populateSecrets(ctx, taskInfo.GetConfig())
+		if err != nil {
+			if yarpcerrors.IsNotFound(err) {
+				// This is not retryable and we will never recover
+				// from this error. Mark the task runtime as KILLED
+				// before dropping it so that we don't try to launch it
+				// again. No need to enqueue to goalstate engine here.
+				// The caller does that for all tasks in TaskInfo
+
+				// TODO: Notify resmgr that the state of this task
+				// is failed and it should not retry this task
+				// Need a private resmgr API for this.
+				err = l.updateTaskRuntime(
+					ctx, id,
+					task.TaskState_KILLED, "REASON_SECRET_NOT_FOUND",
+					err.Error())
+				if err != nil {
+					// Not retrying here, worst case we will attempt to launch
+					// this task again from ProcessPlacement() call, and mark
+					// goalstate properly in the next iteration.
+					log.WithError(err).WithField("task_id", id).
+						Error("failed to update goalstate to KILLED")
+				}
+			} else {
+				// Skip this task in case of transient error but add it to
+				// skippedTaskInfos so that the caller can ask resmgr to
+				// launch this task again
+				skippedTaskInfos[id] = taskInfo
+			}
+			// skip the task for which we could not populate secrets
+			continue
+		}
 		// Add volume info into launchable task if task config has volume.
-		if task.GetConfig().GetVolume() != nil {
+		launchableTask := hostsvc.LaunchableTask{
+			TaskId: taskInfo.GetRuntime().GetMesosTaskId(),
+			Config: taskInfo.GetConfig(),
+			Ports:  taskInfo.GetRuntime().GetPorts(),
+		}
+		if taskInfo.GetConfig().GetVolume() != nil {
 			diskResource := util.NewMesosResourceBuilder().
 				WithName("disk").
-				WithValue(float64(task.GetConfig().GetVolume().GetSizeMB())).
+				WithValue(float64(taskInfo.GetConfig().GetVolume().GetSizeMB())).
 				Build()
-			launchableTask = hostsvc.LaunchableTask{
-				TaskId: task.GetRuntime().GetMesosTaskId(),
-				Config: task.GetConfig(),
-				Ports:  task.GetRuntime().GetPorts(),
-				Volume: &hostsvc.Volume{
-					Id:            task.GetRuntime().GetVolumeID(),
-					ContainerPath: task.GetConfig().GetVolume().GetContainerPath(),
-					Resource:      diskResource,
-				},
-			}
-		} else {
-			launchableTask = hostsvc.LaunchableTask{
-				TaskId: task.GetRuntime().GetMesosTaskId(),
-				Config: task.GetConfig(),
-				Ports:  task.GetRuntime().GetPorts(),
+			launchableTask.Volume = &hostsvc.Volume{
+				Id:            taskInfo.GetRuntime().GetVolumeID(),
+				ContainerPath: taskInfo.GetConfig().GetVolume().GetContainerPath(),
+				Resource:      diskResource,
 			}
 		}
 		launchableTasks = append(launchableTasks, &launchableTask)
 	}
-	return launchableTasks
+	return launchableTasks, skippedTaskInfos
 }
 
 func (l *launcher) LaunchStatefulTasks(
@@ -388,14 +454,9 @@ func (l *launcher) launchTasks(
 	selectedTasks []*hostsvc.LaunchableTask,
 	placement *resmgr.Placement) error {
 	// TODO: Add retry Logic for tasks launching failure
+	var err error
 	if len(selectedTasks) == 0 {
 		return errEmptyTasks
-	}
-
-	err := l.populateSecrets(ctx, selectedTasks)
-	if err != nil {
-		l.metrics.TaskLaunchFail.Inc(1)
-		return err
 	}
 
 	log.WithField("tasks", selectedTasks).Debug("Launching Tasks")
@@ -455,9 +516,8 @@ func (l *launcher) TryReturnOffers(ctx context.Context, err error, placement *re
 	return err
 }
 
-// populateSecrets checks task config for each of the
-// tasks in selectedTasks list for secrets. If the config
-// has volumes of type secret, it means that the Value field
+// populateSecrets checks task config for secret volumes.
+// If the config has volumes of type secret, it means that the Value field
 // of that secret contains the secret ID. This function queries
 // the DB to fetch the secret by secret ID and then replaces
 // the secret Value by the fetched secret data.
@@ -466,40 +526,33 @@ func (l *launcher) TryReturnOffers(ctx context.Context, err error, placement *re
 // actual secrets just before task launch.
 func (l *launcher) populateSecrets(
 	ctx context.Context,
-	selectedTasks []*hostsvc.LaunchableTask,
-) error {
-	for _, selectedTask := range selectedTasks {
-		taskConfig := selectedTask.GetConfig()
-		if taskConfig.GetContainer().GetType() != mesos.ContainerInfo_MESOS {
-			return nil
-		}
-		for _, volume := range taskConfig.GetContainer().GetVolumes() {
-			if volume.GetSource().GetType() == mesos.Volume_Source_SECRET &&
-				volume.GetSource().GetSecret().GetValue().GetData() != nil {
-				// Replace secret ID with actual secret here.
-				// This is done to make sure secrets are read from the DB
-				// when it is absolutely necessary and that they are not
-				// persisted in any place other than the secret_info table
-				// (for example as part of job/task config)
-				ctx, cancel := context.WithTimeout(
-					context.Background(),
-					_defaultSecretStoreTimeout,
-				)
-				defer cancel()
-				secret, err := l.secretStore.GetSecret(
-					ctx, &peloton.SecretID{
-						Value: string(volume.
-							GetSource().
-							GetSecret().
-							GetValue().
-							GetData()),
-					},
-				)
-				if err != nil {
-					return err
-				}
-				volume.GetSource().GetSecret().GetValue().Data = secret.GetValue().GetData()
+	taskConfig *task.TaskConfig) error {
+	if taskConfig.GetContainer().GetType() != mesos.ContainerInfo_MESOS {
+		return nil
+	}
+	for _, volume := range taskConfig.GetContainer().GetVolumes() {
+		if volume.GetSource().GetType() == mesos.Volume_Source_SECRET &&
+			volume.GetSource().GetSecret().GetValue().GetData() != nil {
+			// Replace secret ID with actual secret here.
+			// This is done to make sure secrets are read from the DB
+			// when it is absolutely necessary and that they are not
+			// persisted in any place other than the secret_info table
+			// (for example as part of job/task config)
+			ctx, cancel := context.WithTimeout(
+				context.Background(), _defaultSecretStoreTimeout)
+			defer cancel()
+			secret, err := l.secretStore.GetSecret(
+				ctx, &peloton.SecretID{
+					Value: string(volume.GetSource().GetSecret().GetValue().
+						GetData()),
+				},
+			)
+			if err != nil {
+				l.metrics.TaskPopulateSecretFail.Inc(1)
+				return err
 			}
+			volume.GetSource().GetSecret().GetValue().Data =
+				secret.GetValue().GetData()
 		}
 	}
 	return nil

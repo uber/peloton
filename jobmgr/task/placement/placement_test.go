@@ -208,6 +208,8 @@ func TestTaskPlacementNoError(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		mockTaskLauncher.EXPECT().
+			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
+		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
@@ -468,6 +470,8 @@ func TestTaskPlacementError(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
 		mockTaskLauncher.EXPECT().
+			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
+		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
@@ -534,6 +538,8 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(testTask.Runtime, nil),
+		mockTaskLauncher.EXPECT().
+			CreateLaunchableTasks(gomock.Any(), gomock.Any()).Return(nil, nil),
 		mockTaskLauncher.EXPECT().
 			ProcessPlacement(gomock.Any(), gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake launch error")),
 		jobFactory.EXPECT().

@@ -206,7 +206,23 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 		return
 	}
 
-	launchableTasks := launcher.CreateLaunchableTasks(taskInfos)
+	// CreateLaunchableTasks returns a list of launchableTasks and taskInfo map
+	// of tasks that could not be launched because of transient error in getting
+	// secrets.
+	launchableTasks, skippedTaskInfos := p.taskLauncher.CreateLaunchableTasks(ctx, taskInfos)
+	// enqueue skipped tasks back to resmgr to launch again, instead of waiting
+	// for resmgr timeout
+	if err = p.enqueueTasks(ctx, skippedTaskInfos); err != nil {
+		var taskIDs []string
+		for taskID := range skippedTaskInfos {
+			taskIDs = append(taskIDs, taskID)
+		}
+		// log error and move on to process launchableTasks
+		log.WithError(err).WithFields(log.Fields{
+			"task_ids":    taskIDs,
+			"tasks_total": len(skippedTaskInfos),
+		}).Error("failed to enqueue skipped tasks back to resmgr")
+	}
 	if err = p.taskLauncher.ProcessPlacement(ctx, launchableTasks, placement); err != nil {
 		if err = p.enqueueTasks(ctx, taskInfos); err != nil {
 			var taskIDs []string

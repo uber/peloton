@@ -246,6 +246,10 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 		Return(runtime, nil)
 
 	suite.mockTaskLauncher.EXPECT().
+		CreateLaunchableTasks(gomock.Any(), gomock.Any()).
+		Return(nil, nil)
+
+	suite.mockTaskLauncher.EXPECT().
 		LaunchStatefulTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).
 		Return(nil)
 

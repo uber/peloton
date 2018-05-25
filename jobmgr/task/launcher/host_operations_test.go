@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -43,12 +44,13 @@ func (suite *HostOperationTestSuite) TestGetHostOperations() {
 		hostsvc.OfferOperation_CREATE,
 		hostsvc.OfferOperation_LAUNCH,
 	}
+	taskLauncher := launcher{}
 	testTask := createStatefulTask(0)
 
 	tasksInfo := make(map[string]*task.TaskInfo)
 	tasksInfo["0"] = testTask
-
-	launchableTasks := []*hostsvc.LaunchableTask{CreateLaunchableTasks(tasksInfo)[0]}
+	launchableTasks, _ := taskLauncher.CreateLaunchableTasks(
+		context.Background(), tasksInfo)
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
@@ -89,10 +91,12 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsLaunchOnly() {
 	operationTypes := []hostsvc.OfferOperation_Type{
 		hostsvc.OfferOperation_LAUNCH,
 	}
+	taskLauncher := launcher{}
 	testTask := createStatefulTask(0)
 	tasksInfo := make(map[string]*task.TaskInfo)
 	tasksInfo["0"] = testTask
-	launchableTasks := []*hostsvc.LaunchableTask{CreateLaunchableTasks(tasksInfo)[0]}
+	launchableTasks, _ := taskLauncher.CreateLaunchableTasks(
+		context.Background(), tasksInfo)
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
@@ -125,10 +129,12 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsReserveNoPorts() {
 		hostsvc.OfferOperation_CREATE,
 		hostsvc.OfferOperation_LAUNCH,
 	}
+	taskLauncher := launcher{}
 	testTask := createStatefulTask(0)
 	tasksInfo := make(map[string]*task.TaskInfo)
 	tasksInfo["0"] = testTask
-	launchableTasks := []*hostsvc.LaunchableTask{CreateLaunchableTasks(tasksInfo)[0]}
+	launchableTasks, _ := taskLauncher.CreateLaunchableTasks(
+		context.Background(), tasksInfo)
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{
@@ -173,11 +179,13 @@ func (suite *HostOperationTestSuite) TestGetHostOperationsIncorrectMesosTaskIDFo
 	operationTypes := []hostsvc.OfferOperation_Type{
 		hostsvc.OfferOperation_LAUNCH,
 	}
+	taskLauncher := launcher{}
 	testTask := createStatefulTask(0)
 	testTask.GetRuntime().GetMesosTaskId().Value = util.PtrPrintf("test-format")
 	tasksInfo := make(map[string]*task.TaskInfo)
 	tasksInfo["0"] = testTask
-	launchableTasks := []*hostsvc.LaunchableTask{CreateLaunchableTasks(tasksInfo)[0]}
+	launchableTasks, _ := taskLauncher.CreateLaunchableTasks(
+		context.Background(), tasksInfo)
 	hostOffer := &hostsvc.HostOffer{
 		Hostname: fmt.Sprintf("hostname-%v", "host0"),
 		AgentId: &mesos.AgentID{

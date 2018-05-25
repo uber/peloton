@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -11,6 +12,8 @@ import (
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/uber-go/tally"
+
+	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
@@ -22,6 +25,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	"code.uber.internal/infra/peloton/common/backoff"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
@@ -678,17 +682,23 @@ func TestProcessPlacementsWithNoTasksReleasesOffers(t *testing.T) {
 	time.Sleep(1 * time.Second)
 }
 
-// TestPopulateSecrets tests the populateSecrets function
+// TestCreateLaunchableTasks tests the CreateLaunchableTasks function
 // to make sure that all the tasks in launchableTasks list
 // that contain a volume/secret will be populated with
 // the actual secret data fetched from the secret store
-func TestPopulateSecrets(t *testing.T) {
+func TestCreateLaunchableTasks(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
+	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
 	mockSecretStore := store_mocks.NewMockSecretStore(ctrl)
+	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	cachedJob := cachedmocks.NewMockJob(ctrl)
 	taskLauncher := launcher{
 		secretStore: mockSecretStore,
+		jobFactory:  jobFactory,
+		taskStore:   mockTaskStore,
+		metrics:     NewMetrics(tally.NoopScope),
 	}
 
 	// Expected Secret
@@ -699,45 +709,119 @@ func TestPopulateSecrets(t *testing.T) {
 		},
 	}
 
-	// generate 3 test tasks
-	numTasks := 3
 	mesosContainerizer := mesos.ContainerInfo_MESOS
+
+	// generate 5 test tasks
+	numTasks := 5
+	taskInfos := make(map[string]*task.TaskInfo)
 	var launchableTasks []*hostsvc.LaunchableTask
 	for i := 0; i < numTasks; i++ {
 		idStr := fmt.Sprintf("secret-id-%d", i)
 		tmp := createTestTask(i)
-		tmp.GetConfig().Container = &mesos.ContainerInfo{
-			Type: &mesosContainerizer,
-			Volumes: []*mesos.Volume{
-				jobmgrtask.CreateSecretVolume(testSecretPath, idStr),
-			},
+		taskID := &peloton.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
 		}
-		launchableTask := hostsvc.LaunchableTask{
-			Config: tmp.GetConfig(),
+		// add secrets for even number of tasks, to create a mix
+		if i%2 == 0 {
+			tmp.GetConfig().Container = &mesos.ContainerInfo{
+				Type: &mesosContainerizer,
+			}
+			tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
+				jobmgrtask.CreateSecretVolume(testSecretPath, idStr)}
+			mockSecretStore.EXPECT().
+				GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
+				Return(secret, nil)
 		}
-		launchableTasks = append(launchableTasks, &launchableTask)
-		mockSecretStore.EXPECT().
-			GetSecret(
-				gomock.Any(),
-				&peloton.SecretID{Value: idStr}).
-			Return(secret, nil)
+		taskInfos[taskID.Value] = tmp
 	}
 
-	err := taskLauncher.populateSecrets(context.Background(), launchableTasks)
-	assert.NoError(t, err)
+	launchableTasks, skippedTaskInfos := taskLauncher.CreateLaunchableTasks(
+		context.Background(), taskInfos)
 
+	assert.Equal(t, len(launchableTasks), numTasks)
+	assert.Equal(t, len(skippedTaskInfos), 0)
 	// launchableTasks list should now be updated with actual secret data.
 	// Verify if it matches "test-data" for all tasks
 	for _, task := range launchableTasks {
-		secretFromTask := task.GetConfig().
-			GetContainer().
-			GetVolumes()[0].
-			GetSource().
-			GetSecret().
-			GetValue().
-			GetData()
-		assert.Equal(t, secretFromTask, []byte(testSecretStr))
+		if task.GetConfig().GetContainer().GetVolumes() != nil {
+			secretFromTask := task.GetConfig().GetContainer().GetVolumes()[0].
+				GetSource().GetSecret().GetValue().GetData()
+			assert.Equal(t, secretFromTask, []byte(testSecretStr))
+		}
 	}
+
+	// Simulate error in GetSecret() for one task
+	// generate 5 test tasks
+	taskInfos = make(map[string]*task.TaskInfo)
+	for i := 0; i < numTasks; i++ {
+		idStr := fmt.Sprintf("bad-secret-id-%d", i)
+		tmp := createTestTask(i)
+		taskID := &peloton.TaskID{
+			Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+		}
+		tmp.GetConfig().Container = &mesos.ContainerInfo{
+			Type: &mesosContainerizer,
+		}
+		// add secrets for even number of tasks, to mix it up
+		// simulate GetSecret failure for these tasks
+		if i%2 == 0 {
+			tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
+				jobmgrtask.CreateSecretVolume(testSecretPath, idStr),
+			}
+			mockSecretStore.EXPECT().
+				GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
+				Return(nil, errors.New("get secret error"))
+		}
+		taskInfos[taskID.Value] = tmp
+	}
+
+	launchableTasks, skippedTaskInfos = taskLauncher.CreateLaunchableTasks(
+		context.Background(), taskInfos)
+	// launchableTasks list should only contain tasks that don't have secrets.
+	// GetSecret will fail for tasks that have secrets and the populateSecrets
+	// will remove these tasks from the launchableTasks list.
+	assert.Equal(t, len(launchableTasks), 2)
+	assert.Equal(t, len(skippedTaskInfos), 3)
+
+	for _, task := range launchableTasks {
+		assert.Nil(t, task.GetConfig().GetContainer().GetVolumes())
+	}
+
+	// test secret not found error. make sure, task goalstate is set to killed
+	taskInfos = make(map[string]*task.TaskInfo)
+	idStr := fmt.Sprintf("no-secret-id")
+	tmp := createTestTask(0)
+	taskID := &peloton.TaskID{
+		Value: tmp.JobId.Value + "-" + fmt.Sprint(tmp.InstanceId),
+	}
+	tmp.GetConfig().Container = &mesos.ContainerInfo{
+		Type: &mesosContainerizer,
+	}
+	tmp.GetConfig().GetContainer().Volumes = []*mesos.Volume{
+		jobmgrtask.CreateSecretVolume(testSecretPath, idStr),
+	}
+	jobFactory.EXPECT().GetJob(tmp.JobId).Return(cachedJob)
+	cachedJob.EXPECT().
+		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(ctx context.Context, runtimes map[uint32]*task.RuntimeInfo,
+			req cached.UpdateRequest) {
+			assert.Equal(t, task.TaskState_KILLED, runtimes[0].GetGoalState())
+			assert.Equal(t, "REASON_SECRET_NOT_FOUND", runtimes[0].GetReason())
+		}).
+		Return(nil)
+	mockSecretStore.EXPECT().
+		GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
+		Return(nil, yarpcerrors.NotFoundErrorf(
+			"Cannot find secret wth id %v", idStr))
+
+	taskInfos[taskID.Value] = tmp
+	launchableTasks, skippedTaskInfos = taskLauncher.CreateLaunchableTasks(
+		context.Background(), taskInfos)
+	// launchableTasks list should be empty
+	assert.Equal(t, len(launchableTasks), 0)
+	// since the GetSecret error is not retryable, this task will not be part of
+	// the skippedTaskInfos
+	assert.Equal(t, len(skippedTaskInfos), 0)
 }
 
 // createPlacementMultipleTasks creates the placement with multiple tasks
