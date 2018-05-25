@@ -5,6 +5,7 @@
 
 0.6.14
 ------------------
+* 2018-05-24    Big int in Cassandra casts to int64 Cast big int in Cassandra to int64 upon read       zhixin@uber.com
 * 2018-05-24    Temporary fix to fail write API calls in a non-leader job manager                      apoorvaj@uber.com
 * 2018-05-24    Fix race in the deadline queue unit tests                                              apoorvaj@uber.com
 * 2018-05-24    Add debug log for run time updater                                                     zhixin@uber.com
