@@ -3,6 +3,48 @@
 0.7.0 (unreleased)
 ------------------
 
+0.6.14
+------------------
+* 2018-05-24    Temporary fix to fail write API calls in a non-leader job manager                      apoorvaj@uber.com
+* 2018-05-24    Fix race in the deadline queue unit tests                                              apoorvaj@uber.com
+* 2018-05-24    Add debug log for run time updater                                                     zhixin@uber.com
+* 2018-05-24    Add EnqueueJobWithDefaultDelay helper function to goal state                           apoorvaj@uber.com
+* 2018-05-24    Add pit1-prod01 cluster to integ tests config                                          rcharles@uber.com
+* 2018-05-24    Add CLI to get outstanding offers                                                      varung@uber.com
+* 2018-05-24    Peloton Secrets first cut                                                              adityacb@uber.com
+* 2018-05-23    Peloton archiver code to query and delete jobs                                         adityacb@uber.com
+* 2018-05-23    In task start, enqueue job with a batching delay                                       apoorvaj@uber.com
+* 2018-05-23    Adding TestUtils for tests to remove code duplication as well as fixing comments       mabansal@uber.com
+* 2018-05-22    Add tests for internal hostmanager API service                                         varung@uber.com
+* 2018-05-22    Enable log rotation in thermos for peloton daemons                                     apoorvaj@uber.com
+* 2018-05-22    Reduce number of EnqueueJob calls                                                      apoorvaj@uber.com
+* 2018-05-22    Removing duplication of the code and more consistent logging                           mabansal@uber.com
+* 2018-05-18    Use the version in job configuration protobuf to track job version                     apoorvaj@uber.com
+* 2018-05-18    Add Internal API to expose all offers                                                  varung@uber.com
+* 2018-05-17    Adding GetHosts api from hostmanager to returns the list of hosts which
+                matches the resources and constraints passed by placement engine                       mabansal@uber.com
+* 2018-05-17    Add job query by time range integ test                                                 adityacb@uber.com
+* 2018-05-17    Stop dispatcher in engine and minor refactoring                                        varung@uber.com
+* 2018-05-17    All task runtime read calls to DB should be sent to cache                              apoorvaj@uber.com
+* 2018-05-16    Add action for invalid job and task state                                              zhixin@uber.com
+* 2018-05-16    Implement write through cache for task runtime in job manager                          apoorvaj@uber.com
+* 2018-05-15    bump peloton-client version                                                            varung@uber.com
+* 2018-05-15    Add protobug to integration test requirements.txt                                      zhixin@uber.com
+* 2018-05-15    Add integration test for non-preemptible jobs                                          avyas@uber.com
+* 2018-05-15    Add STARTING task state to goal state                                                  zhixin@uber.com
+* 2018-05-14    Upgrade mesos version in pcluster and mesos proto files to version 1.6.0-rc1           varung@uber.com
+* 2018-05-14    Fix locking of RMTask when transitioning during scheduling                             avyas@uber.com
+* 2018-05-14    Fix flaky unit test in TestBucketEventProcessor                                        zhixin@uber.com
+* 2018-05-14    Add task fail reason in the metrics                                                    chunyang.shen@uber.com
+* 2018-05-14    Fix debian package build script                                                        chunyang.shen@uber.com
+* 2018-05-11    Offer Pool sentry logs, bug fixes, refactoring & unit tests.                           varung@uber.com
+* 2018-05-11    Fix flaky unit test in observer                                                        zhixin@uber.com
+* 2018-05-11    Event stream client functions normally after restarts                                  zhixin@uber.com
+* 2018-05-10    Add revocable resource support                                                         varung@uber.com
+* 2018-05-10    Add QoS controller to pCluster                                                         varung@uber.com
+* 2018-05-10    Preempt ignores task with KILLED goal state                                            zhixin@uber.com
+
+
 0.6.13
 ------------------
 * 2018-05-09    Add filtering `name` and `host` for task query                                         chunyang.shen@uber.com
