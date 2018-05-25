@@ -443,7 +443,9 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (uint64
 	log.Debugf("max version: %v", allResults)
 	for _, value := range allResults {
 		for _, max := range value {
-			return max.(uint64), nil
+			// version is store as big int in Cassandra
+			// gocql would cast big int to int64
+			return uint64(max.(int64)), nil
 		}
 	}
 	return 0, nil
