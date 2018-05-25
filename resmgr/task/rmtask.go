@@ -31,9 +31,14 @@ type RMTask struct {
 	stateMachine        state.StateMachine   // state machine for the task
 	respool             respool.ResPool      // ResPool in which this tasks belongs to
 	statusUpdateHandler *eventstream.Handler // Event handler for updates
-	runTimeStats        *RunTimeStats        // run time stats for resmgr task
-	config              *Config              // resmgr config object
-	policy              Policy               // placement retry backoff policy
+
+	config *Config // resmgr config object
+	policy Policy  // placement retry backoff policy
+
+	runTimeStats *RunTimeStats // run time stats for resmgr task
+
+	// observes the state transitions of the rm task
+	transitionObserver TransitionObserver
 }
 
 // CreateRMTask creates the RM task from resmgr.task
@@ -41,6 +46,7 @@ func CreateRMTask(
 	t *resmgr.Task,
 	handler *eventstream.Handler,
 	respool respool.ResPool,
+	transitionObserver TransitionObserver,
 	config *Config) (*RMTask, error) {
 	r := RMTask{
 		task:                t,
@@ -50,6 +56,7 @@ func CreateRMTask(
 		runTimeStats: &RunTimeStats{
 			StartTime: time.Time{},
 		},
+		transitionObserver: transitionObserver,
 	}
 
 	var err error
@@ -251,6 +258,7 @@ func (rmTask *RMTask) TransitTo(stateTo string, options ...state.Option) error {
 // transitionCallBack is the global callback for the resource manager task
 func (rmTask *RMTask) transitionCallBack(t *state.Transition) error {
 	// Sending State change event to Ready
+	rmTask.transitionObserver.Observe(t.To)
 	rmTask.updateStatus(string(t.To))
 	return nil
 }
