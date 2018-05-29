@@ -31,7 +31,7 @@ var (
 		Default("false").
 		Bool()
 
-	// TODO: deprecate jobMgrURL/resMgrURL once we fix pcluster container network
+	// TODO: deprecate jobMgrURL/resMgrURL/hostMgrURL once we fix pcluster container network
 	//       and make sure that local cli can access Uber Prodution hostname/ip
 	jobMgrURL = app.Flag(
 		"jobmgr",
@@ -44,9 +44,17 @@ var (
 	resMgrURL = app.Flag(
 		"resmgr",
 		"name of the resource manager address to use (http/tchannel) (set $RESMGR_URL to override)").
-		Short('e').
+		Short('v').
 		Default("http://localhost:5290").
 		Envar("RESMGR_URL").
+		URL()
+
+	hostMgrURL = app.Flag(
+		"hostmgr",
+		"name of the host manager address to use (http/tchannel) (set $HOSTMGR_URL to override)").
+		Short('u').
+		Default("http://localhost:5291").
+		Envar("HOSTMGR_URL").
 		URL()
 
 	zkServers = app.Flag(
@@ -329,7 +337,7 @@ func main() {
 	if len(*zkServers) > 0 {
 		discovery, err = leader.NewZkServiceDiscovery(*zkServers, *zkRoot)
 	} else {
-		discovery, err = leader.NewStaticServiceDiscovery(*jobMgrURL, *resMgrURL)
+		discovery, err = leader.NewStaticServiceDiscovery(*jobMgrURL, *resMgrURL, *hostMgrURL)
 	}
 	if err != nil {
 		app.FatalIfError(err, "Fail to initialize service discovery")
@@ -401,7 +409,7 @@ func main() {
 		err = client.VolumeListAction(*volumeListJobName)
 	case volumeDelete.FullCommand():
 		err = client.VolumeDeleteAction(*volumeDeleteVolumeID)
-	case offers.FullCommand():
+	case offersList.FullCommand():
 		err = client.OffersGetAction()
 	default:
 		app.Fatalf("Unknown command %s", cmd)

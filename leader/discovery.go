@@ -16,30 +16,34 @@ import (
 type Discovery interface {
 
 	// Returns the app URL for a given Peloton role such as
-	// peloton-jobmgr or peloton-resmgr etc.
+	// peloton-jobmgr, peloton-resmgr or peloton-hostmgr etc.
 	GetAppURL(role string) (*url.URL, error)
 }
 
 // NewStaticServiceDiscovery creates a staticDiscovery object
 func NewStaticServiceDiscovery(
 	jobmgrURL *url.URL,
-	resmgrURL *url.URL) (Discovery, error) {
+	resmgrURL *url.URL,
+	hostmgrURL *url.URL) (Discovery, error) {
 
 	discovery := &staticDiscovery{
-		jobmgrURL: jobmgrURL,
-		resmgrURL: resmgrURL,
+		jobmgrURL:  jobmgrURL,
+		resmgrURL:  resmgrURL,
+		hostmgrURL: hostmgrURL,
 	}
 
 	discovery.jobmgrURL.Path = common.PelotonEndpointPath
 	discovery.resmgrURL.Path = common.PelotonEndpointPath
+	discovery.hostmgrURL.Path = common.PelotonEndpointPath
 
 	return discovery, nil
 }
 
 // staticDiscovery is the static implementation of Discovery
 type staticDiscovery struct {
-	jobmgrURL *url.URL
-	resmgrURL *url.URL
+	jobmgrURL  *url.URL
+	resmgrURL  *url.URL
+	hostmgrURL *url.URL
 }
 
 // GetAppURL returns the app URL for a given Peloton role
@@ -49,6 +53,8 @@ func (s *staticDiscovery) GetAppURL(role string) (*url.URL, error) {
 		return s.jobmgrURL, nil
 	case common.ResourceManagerRole:
 		return s.resmgrURL, nil
+	case common.HostManagerRole:
+		return s.hostmgrURL, nil
 	default:
 		return nil, fmt.Errorf("invalid Peloton role %s", role)
 	}
