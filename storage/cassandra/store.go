@@ -492,6 +492,13 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 		return nil, err
 	}
 
+	// ConfigurationVersion will be 0 for old jobs created before the
+	// migration to using of ConfigurationVersion. In this case, just
+	// copy over ConfigVersion to ConfigurationVersion.
+	if r.ConfigurationVersion == uint64(0) {
+		r.ConfigurationVersion = uint64(r.ConfigVersion)
+	}
+
 	jobID := id.GetValue()
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("config").From(jobConfigTable).
