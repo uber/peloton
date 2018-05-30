@@ -10,8 +10,9 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
-
 	"code.uber.internal/infra/peloton/util"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -38,6 +39,40 @@ func GetDefaultTaskGoalState(jobType job.JobType) task.TaskState {
 	default:
 		return task.TaskState_SUCCEEDED
 	}
+}
+
+// KillOrphanTask kills a non-stateful Mesos task with unterminated state
+func KillOrphanTask(
+	ctx context.Context,
+	hostmgrClient hostsvc.InternalHostServiceYARPCClient,
+	taskInfo *task.TaskInfo) error {
+
+	// TODO(chunyang.shen): store the stateful info into cache instead of going to DB to fetch config
+	if util.IsTaskHasValidVolume(taskInfo) {
+		// Do not kill stateful orphan task.
+		return nil
+	}
+
+	state := taskInfo.GetRuntime().GetState()
+	mesosTaskID := taskInfo.GetRuntime().GetMesosTaskId()
+	agentID := taskInfo.GetRuntime().GetAgentID()
+
+	// Only kill task if state is not terminal.
+	if !util.IsPelotonStateTerminal(state) && mesosTaskID != nil {
+		var err error
+		if state == task.TaskState_KILLING {
+			err = ShutdownMesosExecutor(ctx, hostmgrClient, mesosTaskID, agentID)
+		} else {
+			err = KillTask(ctx, hostmgrClient, mesosTaskID)
+		}
+		if err != nil {
+			log.WithError(err).
+				WithField("orphan_task_id", mesosTaskID).
+				Error("failed to kill orphan task")
+		}
+		return err
+	}
+	return nil
 }
 
 // KillTask kills a task given its mesos task ID

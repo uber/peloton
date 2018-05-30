@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -91,6 +92,24 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 		"state":       cachedRuntime.State.String(),
 	}).Info("task timed out, reinitializing the task")
 
-	// TODO kill the old task as well instead of waiting for the orphaned task
+	// kill the old task before intializing a new one as the best effort
+	taskConfig, err := goalStateDriver.taskStore.GetTaskConfig(
+		ctx,
+		taskEnt.jobID,
+		taskEnt.instanceID,
+		cachedRuntime.GetConfigVersion())
+
+	taskInfo := &task.TaskInfo{
+		InstanceId: taskEnt.instanceID,
+		JobId:      taskEnt.jobID,
+		Runtime:    cachedRuntime,
+		Config:     taskConfig,
+	}
+
+	if err == nil {
+		jobmgrtask.KillOrphanTask(ctx, goalStateDriver.hostmgrClient, taskInfo)
+	}
+
+	// going to regenerate the mesos id and enqueue to place it again
 	return TaskInitialize(ctx, entity)
 }

@@ -450,6 +450,8 @@ func (m *serviceHandler) Start(
 			// Do not regenerate mesos task ID if task is known that not in mesos yet OR stateful task.
 			runtime.State = task.TaskState_INITIALIZED
 		} else {
+			// Kill the old Mesos task and regenerate a new ID
+			jobmgr_task.KillOrphanTask(ctx, m.hostMgrClient, taskInfo)
 			runtime = util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime.MesosTaskId)
 		}
 

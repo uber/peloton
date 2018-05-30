@@ -200,24 +200,9 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			"db_task_runtime":   taskInfo.GetRuntime(),
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("received status update for orphan mesos task")
-
-		if taskInfo.GetConfig().GetVolume() != nil &&
-			len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
-			// Do not kill stateful orphan task.
-			return nil
-		}
-
-		if !util.IsPelotonStateTerminal(state) {
-			// Only kill task if state is not terminal.
-			err := jobmgr_task.KillTask(ctx, p.hostmgrClient, event.MesosTaskStatus.GetTaskId())
-			if err != nil {
-				log.WithError(err).
-					WithField("orphan_task_id", mesosTaskID).
-					WithField("db_task_id", dbTaskID).
-					Error("failed to kill orphan task")
-			}
-		}
-		return nil
+		taskInfo.GetRuntime().State = state
+		taskInfo.GetRuntime().MesosTaskId = event.MesosTaskStatus.GetTaskId()
+		return jobmgr_task.KillOrphanTask(ctx, p.hostmgrClient, taskInfo)
 	}
 
 	if state == runtime.GetState() {

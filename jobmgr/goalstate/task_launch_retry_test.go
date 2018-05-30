@@ -2,6 +2,7 @@ package goalstate
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
@@ -34,15 +37,17 @@ func TestTaskLaunchTimeout(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
+	mockHostMgr := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
 
 	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		jobStore:   jobStore,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
+		jobEngine:     jobGoalStateEngine,
+		taskEngine:    taskGoalStateEngine,
+		jobStore:      jobStore,
+		taskStore:     taskStore,
+		jobFactory:    jobFactory,
+		hostmgrClient: mockHostMgr,
+		mtx:           NewMetrics(tally.NoopScope),
+		cfg:           &Config{},
 	}
 	goalStateDriver.cfg.normalize()
 
@@ -55,65 +60,80 @@ func TestTaskLaunchTimeout(t *testing.T) {
 		driver:     goalStateDriver,
 	}
 
-	oldMesosTaskID := uuid.New()
-	runtime := &pb_task.RuntimeInfo{
-		State: pb_task.TaskState_LAUNCHED,
-		MesosTaskId: &mesos_v1.TaskID{
-			Value: &oldMesosTaskID,
-		},
-		GoalState: pb_task.TaskState_SUCCEEDED,
+	oldMesosTaskID := &mesos_v1.TaskID{
+		Value: &[]string{uuid.New()}[0],
 	}
+	runtime := &pb_task.RuntimeInfo{
+		State:       pb_task.TaskState_LAUNCHED,
+		MesosTaskId: oldMesosTaskID,
+		GoalState:   pb_task.TaskState_SUCCEEDED,
+	}
+	config := &pb_task.TaskConfig{}
 	newRuntime := runtime
 	jobConfig := &pb_job.JobConfig{
 		Type: pb_job.JobType_BATCH,
 	}
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	for i := 0; i < 2; i++ {
+		jobFactory.EXPECT().
+			GetJob(jobID).Return(cachedJob)
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
+		cachedJob.EXPECT().
+			GetTask(instanceID).Return(cachedTask)
 
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(runtime, nil)
 
-	cachedTask.EXPECT().
-		GetLastRuntimeUpdateTime().Return(time.Now().Add(-goalStateDriver.cfg.LaunchTimeout))
+		cachedTask.EXPECT().
+			GetLastRuntimeUpdateTime().Return(time.Now().Add(-goalStateDriver.cfg.LaunchTimeout))
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+		jobFactory.EXPECT().
+			GetJob(jobID).Return(cachedJob)
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
+		cachedJob.EXPECT().
+			GetTask(instanceID).Return(cachedTask)
 
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+		cachedTask.EXPECT().
+			GetRunTime(gomock.Any()).Return(runtime, nil)
 
-	jobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
+		jobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
 
-	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
-		func(_ context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
-			for _, updatedRuntimeInfo := range runtimes {
-				newRuntime = updatedRuntimeInfo
-			}
-		}).Return(nil)
+		cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
+			func(_ context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
+				for _, updatedRuntimeInfo := range runtimes {
+					newRuntime = updatedRuntimeInfo
+				}
+			}).Return(nil)
 
-	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+		cachedJob.EXPECT().
+			GetJobType().Return(pb_job.JobType_BATCH)
 
-	taskGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
+		taskGoalStateEngine.EXPECT().
+			Enqueue(gomock.Any(), gomock.Any()).
+			Return()
 
-	jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
+		jobGoalStateEngine.EXPECT().
+			Enqueue(gomock.Any(), gomock.Any()).
+			Return()
 
-	err := TaskLaunchRetry(context.Background(), taskEnt)
-	assert.NoError(t, err)
-	assert.NotEqual(t, oldMesosTaskID, newRuntime.MesosTaskId)
-	assert.Equal(t, pb_task.TaskState_INITIALIZED, newRuntime.State)
-	assert.Equal(t, pb_task.TaskState_SUCCEEDED, newRuntime.GoalState)
+		if i == 0 {
+			// test happy case
+			taskStore.EXPECT().GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(config, nil)
+			mockHostMgr.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
+				TaskIds: []*mesos_v1.TaskID{oldMesosTaskID},
+			})
+		} else {
+			// test skip task kill
+			taskStore.EXPECT().GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New(""))
+			mockHostMgr.EXPECT()
+		}
+
+		err := TaskLaunchRetry(context.Background(), taskEnt)
+		assert.NoError(t, err)
+		assert.NotEqual(t, oldMesosTaskID, newRuntime.MesosTaskId)
+		assert.Equal(t, pb_task.TaskState_INITIALIZED, newRuntime.State)
+		assert.Equal(t, pb_task.TaskState_SUCCEEDED, newRuntime.GoalState)
+	}
 }
 
 func TestLaunchedTaskSendLaunchInfoResMgr(t *testing.T) {
@@ -190,15 +210,17 @@ func TestTaskStartTimeout(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
+	mockHostMgr := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
 
 	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		jobStore:   jobStore,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
+		jobEngine:     jobGoalStateEngine,
+		taskEngine:    taskGoalStateEngine,
+		jobStore:      jobStore,
+		taskStore:     taskStore,
+		jobFactory:    jobFactory,
+		hostmgrClient: mockHostMgr,
+		mtx:           NewMetrics(tally.NoopScope),
+		cfg:           &Config{},
 	}
 	goalStateDriver.cfg.normalize()
 
@@ -211,15 +233,15 @@ func TestTaskStartTimeout(t *testing.T) {
 		driver:     goalStateDriver,
 	}
 
-	oldMesosTaskID := uuid.New()
-	runtime := &pb_task.RuntimeInfo{
-		State: pb_task.TaskState_STARTING,
-		MesosTaskId: &mesos_v1.TaskID{
-			Value: &oldMesosTaskID,
-		},
-		GoalState: pb_task.TaskState_SUCCEEDED,
+	oldMesosTaskID := &mesos_v1.TaskID{
+		Value: &[]string{uuid.New()}[0],
 	}
-
+	runtime := &pb_task.RuntimeInfo{
+		State:       pb_task.TaskState_STARTING,
+		MesosTaskId: oldMesosTaskID,
+		GoalState:   pb_task.TaskState_SUCCEEDED,
+	}
+	config := &pb_task.TaskConfig{}
 	jobConfig := &pb_job.JobConfig{
 		Type: pb_job.JobType_BATCH,
 	}
@@ -232,8 +254,7 @@ func TestTaskStartTimeout(t *testing.T) {
 	cachedJob.EXPECT().
 		GetTask(instanceID).Return(cachedTask)
 
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+	taskStore.EXPECT().GetTaskConfig(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(config, nil)
 
 	cachedTask.EXPECT().
 		GetLastRuntimeUpdateTime().Return(time.Now().Add(-goalStateDriver.cfg.LaunchTimeout))
@@ -243,6 +264,9 @@ func TestTaskStartTimeout(t *testing.T) {
 
 	cachedJob.EXPECT().
 		GetTask(instanceID).Return(cachedTask)
+
+	cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(runtime, nil)
@@ -266,6 +290,10 @@ func TestTaskStartTimeout(t *testing.T) {
 	jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
+
+	mockHostMgr.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
+		TaskIds: []*mesos_v1.TaskID{oldMesosTaskID},
+	})
 
 	err := TaskLaunchRetry(context.Background(), taskEnt)
 	assert.NoError(t, err)

@@ -614,7 +614,8 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 	suite.handler.goalStateDriver = goalStateDriver
 	candidate := leadermocks.NewMockCandidate(ctrl)
 	suite.handler.candidate = candidate
-
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	suite.handler.hostMgrClient = mockHostMgr
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
 		expectedTaskIds[taskInfo.GetRuntime().GetMesosTaskId()] = true
@@ -627,6 +628,10 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			task.TaskState_FAILED, i)
 		tasksInfoList = append(tasksInfoList, taskInfos[i])
 	}
+
+	taskInfos[2] = suite.createTestTaskInfo(task.TaskState_INITIALIZED, 3)
+	taskInfos[3] = suite.createTestTaskInfo(task.TaskState_RUNNING, 3)
+	orphanMesosTaskID := taskInfos[3].Runtime.MesosTaskId
 
 	gomock.InOrder(
 		candidate.EXPECT().IsLeader().Return(true),
@@ -664,6 +669,10 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 
 	goalStateDriver.EXPECT().
 		EnqueueJob(suite.testJobID, gomock.Any()).Return()
+
+	mockHostMgr.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
+		TaskIds: []*mesos.TaskID{orphanMesosTaskID},
+	})
 
 	var request = &task.StartRequest{
 		JobId: suite.testJobID,
@@ -922,6 +931,8 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 	suite.handler.goalStateDriver = goalStateDriver
 	candidate := leadermocks.NewMockCandidate(ctrl)
 	suite.handler.candidate = candidate
+	mockHostMgr := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	suite.handler.hostMgrClient = mockHostMgr
 
 	expectedTaskIds := make(map[*mesos.TaskID]bool)
 	for _, taskInfo := range suite.taskInfos {
@@ -955,6 +966,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 			Return(nil),
 		mockTaskStore.EXPECT().
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
+		mockHostMgr.EXPECT().KillTasks(gomock.Any(), gomock.Any()),
 		cachedJob.EXPECT().
 			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 			Do(func(ctx context.Context, runtimes map[uint32]*task.RuntimeInfo, req cached.UpdateRequest) {

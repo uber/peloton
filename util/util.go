@@ -211,6 +211,15 @@ func IsPelotonJobStateTerminal(state job.JobState) bool {
 	}
 }
 
+// IsTaskHasValidVolume returns true if a task is stateful and has a valid volume
+func IsTaskHasValidVolume(taskInfo *task.TaskInfo) bool {
+	if taskInfo.GetConfig().GetVolume() != nil &&
+		len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0 {
+		return true
+	}
+	return false
+}
+
 // ParseTaskID parses the jobID and instanceID from peloton taskID
 func ParseTaskID(taskID string) (string, int, error) {
 	pos := strings.LastIndex(taskID, "-")
