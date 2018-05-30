@@ -175,4 +175,9 @@ type SecretStore interface {
 	// Returns error in case the storage backend is unable to retrieve the
 	// secret from the database
 	GetSecret(ctx context.Context, id *peloton.SecretID) (*peloton.Secret, error)
+
+	// Update a secret described by peloton secret proto message in the database
+	// Returns error in case the storage backend is unable to store the
+	// secret in the database
+	UpdateSecret(ctx context.Context, secret *peloton.Secret) error
 }

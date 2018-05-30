@@ -371,7 +371,8 @@ message UpdateRequest {
   peloton.JobID id = 1;
   JobConfig config = 2;
 
-  // The list of secrets for this job
+  // The list of secrets for this job. This list should contain existing secret
+  // IDs/paths with same or new data. It may also contain additional secrets.
   repeated peloton.Secret secrets=3;
 }
 

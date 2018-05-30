@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -15,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/protobuf/ptypes"
@@ -39,11 +39,7 @@ const (
 
 // JobCreateAction is the action for creating a job
 func (c *Client) JobCreateAction(
-	jobID string,
-	respoolPath string,
-	cfg string,
-	secretPath string,
-	secretStr string,
+	jobID, respoolPath, cfg, secretPath string, secret []byte,
 ) error {
 	respoolID, err := c.LookupResourcePoolID(respoolPath)
 	if err != nil {
@@ -74,13 +70,9 @@ func (c *Client) JobCreateAction(
 		Config: &jobConfig,
 	}
 	// handle secrets
-	if secretPath != "" && secretStr != "" {
-		request.Secrets = []*peloton.Secret{{
-			Path: secretPath,
-			Value: &peloton.Secret_Value{
-				Data: []byte(base64.StdEncoding.EncodeToString([]byte(secretStr))),
-			},
-		}}
+	if secretPath != "" && len(secret) > 0 {
+		request.Secrets = []*peloton.Secret{
+			jobmgrtask.CreateSecretProto("", secretPath, secret)}
 	}
 
 	response, err := c.jobClient.Create(c.ctx, request)
@@ -277,7 +269,8 @@ func (c *Client) JobQueryAction(
 }
 
 // JobUpdateAction is the action of updating a job
-func (c *Client) JobUpdateAction(jobID string, cfg string) error {
+func (c *Client) JobUpdateAction(
+	jobID, cfg, secretPath string, secret []byte) error {
 	var jobConfig job.JobConfig
 	buffer, err := ioutil.ReadFile(cfg)
 	if err != nil {
@@ -292,6 +285,11 @@ func (c *Client) JobUpdateAction(jobID string, cfg string) error {
 			Value: jobID,
 		},
 		Config: &jobConfig,
+	}
+	// handle secrets
+	if secretPath != "" && len(secret) > 0 {
+		request.Secrets = []*peloton.Secret{
+			jobmgrtask.CreateSecretProto("", secretPath, secret)}
 	}
 	response, err := c.jobClient.Update(c.ctx, request)
 	if err != nil {

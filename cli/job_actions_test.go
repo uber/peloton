@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"io/ioutil"
 	"testing"
@@ -19,6 +18,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 )
 
 const (
@@ -80,7 +80,7 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 		respoolLookupResponse *respool.LookupResponse
 		createError           error
 		secretPath            string
-		secretStr             string
+		secret                []byte
 	}{
 		{
 			jobID: "",
@@ -164,12 +164,10 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 					Value: id,
 				},
 				Config: config,
-				Secrets: []*peloton.Secret{{
-					Path: testSecretPath,
-					Value: &peloton.Secret_Value{
-						Data: []byte(base64.StdEncoding.EncodeToString([]byte(testSecretStr))),
-					},
-				}},
+				Secrets: []*peloton.Secret{
+					jobmgrtask.CreateSecretProto(
+						"", testSecretPath, []byte(testSecretStr)),
+				},
 			},
 			jobCreateResponse: &job.CreateResponse{
 				JobId: &peloton.JobID{
@@ -190,14 +188,14 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 			// set secretPath and secretStr explicitly here,
 			// for the rest of the tests, this will default to ""
 			secretPath: testSecretPath,
-			secretStr:  testSecretStr,
+			secret:     []byte(testSecretStr),
 		},
 	}
 
 	for _, t := range tt {
 		suite.withMockResourcePoolLookup(t.respoolLookupRequest, t.respoolLookupResponse)
 		suite.withMockJobCreateResponse(t.jobCreateRequest, t.jobCreateResponse, t.createError)
-		err := c.JobCreateAction(t.jobID, path, testJobConfig, t.secretPath, t.secretStr)
+		err := c.JobCreateAction(t.jobID, path, testJobConfig, t.secretPath, t.secret)
 		if t.createError != nil {
 			suite.EqualError(err, t.createError.Error())
 		} else {
@@ -221,6 +219,8 @@ func (suite *jobActionsTestSuite) TestClient_JobUpdateAction() {
 		jobUpdateRequest  *job.UpdateRequest
 		jobUpdateResponse *job.UpdateResponse
 		updateError       error
+		secretPath        string
+		secret            []byte
 	}{
 		{
 			jobID: id,
@@ -245,11 +245,30 @@ func (suite *jobActionsTestSuite) TestClient_JobUpdateAction() {
 			jobUpdateResponse: &job.UpdateResponse{},
 			updateError:       errors.New("unable to update job"),
 		},
+		{
+			jobID: id,
+			jobUpdateRequest: &job.UpdateRequest{
+				Id: &peloton.JobID{
+					Value: id,
+				},
+				Config: config,
+				Secrets: []*peloton.Secret{
+					jobmgrtask.CreateSecretProto(
+						"", testSecretPath, []byte(testSecretStr)),
+				},
+			},
+			jobUpdateResponse: &job.UpdateResponse{},
+			updateError:       nil,
+			// set secretPath and secretStr explicitly here,
+			// for the rest of the tests, this will default to ""
+			secretPath: testSecretPath,
+			secret:     []byte(testSecretStr),
+		},
 	}
 
 	for _, t := range tt {
 		suite.withMockJobUpdateResponse(t.jobUpdateRequest, t.jobUpdateResponse, t.updateError)
-		err := c.JobUpdateAction(t.jobID, testJobConfig)
+		err := c.JobUpdateAction(t.jobID, testJobConfig, t.secretPath, t.secret)
 		if t.updateError != nil {
 			suite.EqualError(err, t.updateError.Error())
 		} else {

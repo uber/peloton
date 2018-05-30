@@ -128,9 +128,11 @@ var (
 	jobQuerySortBy    = jobQuery.Flag("sort", "sort by property").Default("creation_time").Short('p').String()
 	jobQuerySortOrder = jobQuery.Flag("sortorder", "sort order (ASC or DESC)").Default("DESC").Short('a').String()
 
-	jobUpdate       = job.Command("update", "update a job")
-	jobUpdateID     = jobUpdate.Arg("job", "job identifier").Required().String()
-	jobUpdateConfig = jobUpdate.Arg("config", "YAML job configuration").Required().ExistingFile()
+	jobUpdate           = job.Command("update", "update a job")
+	jobUpdateID         = jobUpdate.Arg("job", "job identifier").Required().String()
+	jobUpdateConfig     = jobUpdate.Arg("config", "YAML job configuration").Required().ExistingFile()
+	jobUpdateSecretPath = jobUpdate.Flag("secret-path", "secret mount path").Default("").String()
+	jobUpdateSecret     = jobUpdate.Flag("secret-data", "secret data string").Default("").String()
 
 	jobGetCache     = job.Command("cache", "get a job cache")
 	jobGetCacheName = jobGetCache.Arg("job", "job identifier").Required().String()
@@ -358,14 +360,8 @@ func main() {
 
 	switch cmd {
 	case jobCreate.FullCommand():
-		err = client.JobCreateAction(
-			*jobCreateID,
-			*jobCreateResPoolPath,
-			*jobCreateConfig,
-			*jobCreateSecretPath,
-			*jobCreateSecret,
-		)
-
+		err = client.JobCreateAction(*jobCreateID, *jobCreateResPoolPath,
+			*jobCreateConfig, *jobCreateSecretPath, []byte(*jobCreateSecret))
 	case jobDelete.FullCommand():
 		err = client.JobDeleteAction(*jobDeleteName)
 	case jobStop.FullCommand():
@@ -379,7 +375,8 @@ func main() {
 	case jobQuery.FullCommand():
 		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryOwner, *jobQueryName, *jobQueryTimeRange, *jobQueryLimit, *jobQueryMaxLimit, *jobQueryOffset, *jobQuerySortBy, *jobQuerySortOrder)
 	case jobUpdate.FullCommand():
-		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig)
+		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig,
+			*jobUpdateSecretPath, []byte(*jobUpdateSecret))
 	case jobGetCache.FullCommand():
 		err = client.JobGetCacheAction(*jobGetCacheName)
 	case taskGet.FullCommand():

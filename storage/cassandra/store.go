@@ -3037,6 +3037,32 @@ func (s *Store) CreateSecret(
 	return nil
 }
 
+// UpdateSecret updates a secret in the secret_info table
+// DO NOT LOG SECRETS in this function
+func (s *Store) UpdateSecret(
+	ctx context.Context,
+	secret *peloton.Secret,
+) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.
+		Update(secretInfoTable).
+		Set("data", secret.GetValue().GetData()).
+		Set("path", secret.GetPath()).
+		Where(qb.Eq{"secret_id": secret.GetId().GetValue(),
+			"valid": secretValid})
+
+	err := s.applyStatement(ctx, stmt, secret.GetId().GetValue())
+	if err != nil {
+		log.WithError(err).
+			WithField("secret_id", secret.GetId().GetValue()).
+			Error("create secret failed")
+		s.metrics.SecretMetrics.SecretUpdateFail.Inc(1)
+		return err
+	}
+	s.metrics.SecretMetrics.SecretUpdate.Inc(1)
+	return nil
+}
+
 // GetSecret gets a secret from the secret_info table
 // DO NOT LOG SECRETS in this function
 func (s *Store) GetSecret(ctx context.Context, id *peloton.SecretID) (*peloton.Secret, error) {

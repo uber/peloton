@@ -1007,6 +1007,11 @@ func (m *Store) CreateSecret(ctx context.Context, secret *peloton.Secret, id *pe
 	return errors.New("Not implemented")
 }
 
+// UpdateSecret updates a secret in the secret_info table
+func (m *Store) UpdateSecret(ctx context.Context, secret *peloton.Secret) error {
+	return errors.New("Not implemented")
+}
+
 // GetSecret gets a secret from the secret_info table
 func (m *Store) GetSecret(ctx context.Context, id *peloton.SecretID) (*peloton.Secret, error) {
 	return nil, errors.New("Not implemented")

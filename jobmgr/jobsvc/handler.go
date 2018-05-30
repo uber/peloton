@@ -154,7 +154,14 @@ func (h *serviceHandler) Create(
 		}, nil
 	}
 
-	err = h.handleSecrets(ctx, jobID, jobConfig, req.GetSecrets())
+	// check secrets and config for input sanity
+	if err = h.validateSecretsAndConfig(
+		jobConfig, req.GetSecrets()); err != nil {
+		return &job.CreateResponse{}, err
+	}
+
+	// create secrets in the DB and add them as secret volumes to defaultconfig
+	err = h.handleCreateSecrets(ctx, jobID, jobConfig, req.GetSecrets())
 	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{}, err
@@ -201,7 +208,7 @@ func (h *serviceHandler) Update(
 		return nil, yarpcerrors.UnavailableErrorf("Job Update API not suppported on non-leader")
 	}
 
-	jobID := req.Id
+	jobID := req.GetId()
 	cachedJob := h.jobFactory.AddJob(jobID)
 	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
@@ -211,7 +218,6 @@ func (h *serviceHandler) Update(
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
-
 	if util.IsPelotonJobStateTerminal(jobRuntime.State) {
 		msg := fmt.Sprintf("Job is in a terminal state:%s", jobRuntime.State)
 		h.metrics.JobUpdateFail.Inc(1)
@@ -225,7 +231,7 @@ func (h *serviceHandler) Update(
 		}, nil
 	}
 
-	newConfig := req.Config
+	newConfig := req.GetConfig()
 	oldConfig, err := h.jobStore.GetJobConfig(ctx, jobID)
 
 	if newConfig.RespoolID == nil {
@@ -240,6 +246,16 @@ func (h *serviceHandler) Update(
 		return nil, err
 	}
 
+	// Remove the existing secret volumes from the config. These were added by
+	// peloton at the time of secret creation. We will add them to new config
+	// after validating the new config at the time of handling secrets. If we
+	// keep these volumes in oldConfig, ValidateUpdatedConfig will fail.
+	existingSecretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(oldConfig)
+
+	// check secrets and new config for input sanity
+	if err := h.validateSecretsAndConfig(newConfig, req.GetSecrets()); err != nil {
+		return &job.UpdateResponse{}, err
+	}
 	err = jobconfig.ValidateUpdatedConfig(oldConfig, newConfig, h.jobSvcCfg.MaxTasksPerJob)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
@@ -253,16 +269,21 @@ func (h *serviceHandler) Update(
 		}, nil
 	}
 
+	if err = h.handleUpdateSecrets(ctx, jobID, existingSecretVolumes, newConfig,
+		req.GetSecrets()); err != nil {
+		h.metrics.JobUpdateFail.Inc(1)
+		return &job.UpdateResponse{}, err
+	}
+
 	diff := jobconfig.CalculateJobDiff(jobID, oldConfig, newConfig)
-	if diff.IsNoop() {
+	// You could just update secrets of a job without changing instance count.
+	// In that case, do not treat this Update as NOOP.
+	if diff.IsNoop() && len(req.GetSecrets()) == 0 {
 		log.WithField("job_id", jobID.GetValue()).
 			Info("update is a noop")
 		return nil, nil
 	}
 
-	// TODO (adityacb): handle secrets here
-	// Do not update secret id of existing secrets.
-	// Just replace the secret data in the database for that id
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Config: newConfig,
 	}, cached.UpdateCacheAndDB)
@@ -343,7 +364,13 @@ func (h *serviceHandler) Get(
 		}, nil
 	}
 
-	cachedJob := h.jobFactory.AddJob(req.Id)
+	// Do not display the secret volumes in defaultconfig that were added by
+	// handleSecrets. They should remain internal to peloton logic.
+	// Secret ID and Path should be returned using the peloton.Secret
+	// proto message.
+	secretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(jobConfig)
+
+	cachedJob := h.jobFactory.AddJob(req.GetId())
 	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
@@ -367,6 +394,7 @@ func (h *serviceHandler) Get(
 			Config:  jobConfig,
 			Runtime: jobRuntime,
 		},
+		Secrets: jobmgrtask.CreateSecretsFromVolumes(secretVolumes),
 	}
 	log.WithField("response", resp).Debug("JobManager.Get returned")
 	return resp, nil
@@ -559,103 +587,201 @@ func (h *serviceHandler) validateResourcePool(
 	return nil
 }
 
-// handleSecrets will validate secrets in Create/Update job
-// request. It will then construct the mesos volume of type
-// secret and add it to the defaultconfig for this job.
-// This will be a noop if no secrets are provided in the
-// request. If secrets are provided in the request but are
-// not enabled on the cluster, this will result in error.
-func (h *serviceHandler) handleSecrets(
-	ctx context.Context,
-	jobID *peloton.JobID,
-	jobConfig *job.JobConfig,
-	secrets []*peloton.Secret,
-) error {
-	if len(secrets) > 0 {
-		if !h.jobSvcCfg.EnableSecrets {
+// validateSecretsAndConfig checks the secrets for input sanity and makes sure
+// that config does not contain any existing secret volumes because that is
+// not supported.
+func (h *serviceHandler) validateSecretsAndConfig(
+	config *job.JobConfig, secrets []*peloton.Secret) error {
+	// make sure that config doesn't have any secret volumes
+	if jobmgrtask.ConfigHasSecretVolumes(config) {
+		return yarpcerrors.InvalidArgumentErrorf(
+			"adding secret volumes directly in config is not allowed",
+		)
+	}
+	// validate secrets payload for input sanity
+	if len(secrets) == 0 {
+		return nil
+	}
+
+	if !h.jobSvcCfg.EnableSecrets && len(secrets) > 0 {
+		return yarpcerrors.InvalidArgumentErrorf(
+			"secrets not supported by cluster",
+		)
+	}
+	for _, secret := range secrets {
+		if secret.GetPath() == "" {
 			return yarpcerrors.InvalidArgumentErrorf(
-				"secrets not supported by cluster",
-			)
+				"secret does not have a path")
 		}
-
-		// Secrets will be common for all instances in a job.
-		// They will be a part of default container config.
-		// This means that if a job is created with secrets,
-		// we will ensure that the job also has a default config
-		// with mesos containerizer. The secrets will be used by
-		// all tasks in that job and all tasks must use
-		// mesos containerizer for processing secrets.
-		if jobConfig.GetDefaultConfig() == nil {
+		// Validate that secret is base64 encoded
+		_, err := base64.StdEncoding.DecodeString(
+			string(secret.GetValue().GetData()))
+		if err != nil {
 			return yarpcerrors.InvalidArgumentErrorf(
-				"default config cannot be nil when using secrets",
+				fmt.Sprintf("failed to decode secret with error: %v", err),
 			)
-		}
-		if jobConfig.GetDefaultConfig().GetContainer() == nil {
-			return yarpcerrors.InvalidArgumentErrorf(
-				"default config doesn't have containerizer info",
-			)
-		}
-		// make sure default config uses mesos containerizer
-		if jobConfig.GetDefaultConfig().GetContainer().GetType() != mesos.ContainerInfo_MESOS {
-			return yarpcerrors.InvalidArgumentErrorf(
-				fmt.Sprintf("secrets not supported for container type %v",
-					jobConfig.GetDefaultConfig().GetContainer().GetType()),
-			)
-		}
-
-		// Go through each instance config and make sure they are
-		// using mesos containerizer
-		for _, taskConfig := range jobConfig.GetInstanceConfig() {
-			if taskConfig != nil && taskConfig.GetContainer() != nil {
-				if taskConfig.GetContainer().GetType() != mesos.ContainerInfo_MESOS {
-					return yarpcerrors.InvalidArgumentErrorf(
-						fmt.Sprintf("secrets not supported for "+
-							"container type %v",
-							taskConfig.GetContainer().GetType()),
-					)
-				}
-			}
-		}
-
-		for _, secret := range secrets {
-			if len(secret.GetId().GetValue()) == 0 {
-				secret.Id = &peloton.SecretID{
-					Value: uuid.New(),
-				}
-				log.WithField("job_id", secret.GetId().GetValue()).
-					Info("Genarating UUID for empty secret ID")
-			}
-
-			// Validate that secret is base64 encoded
-			_, err := base64.StdEncoding.DecodeString(
-				string(secret.GetValue().GetData()),
-			)
-			if err != nil {
-				return yarpcerrors.InvalidArgumentErrorf(
-					fmt.Sprintf("failed to decode secret: %v %v",
-						secret.GetValue().GetData(), err),
-				)
-			}
-
-			// store secret in DB
-			err = h.secretStore.CreateSecret(ctx, secret, jobID)
-			if err != nil {
-				return err
-			}
-
-			// Add volume/secret to default container config with this secret
-			// Use secretID instead of secret data when storing as
-			// part of default config in DB.
-			// This is done to prevent secrets leaks via logging/API etc.
-			// At the time of task launch, launcher will read the
-			// secret by secret-id and replace it by secret data.
-			jobConfig.DefaultConfig.Container.Volumes =
-				append(
-					jobConfig.DefaultConfig.Container.Volumes,
-					jobmgrtask.CreateSecretVolume(secret.GetPath(),
-						secret.GetId().GetValue()),
-				)
 		}
 	}
 	return nil
+}
+
+// handleCreateSecrets handles secrets to be added at the time of creating a job
+func (h *serviceHandler) handleCreateSecrets(
+	ctx context.Context, jobID *peloton.JobID,
+	config *job.JobConfig, secrets []*peloton.Secret,
+) error {
+	// if there are no secrets in the request,
+	// job create doesn't need to handle secrets
+	if len(secrets) == 0 {
+		return nil
+	}
+	// Make sure that the config is using Mesos containerizer for
+	// default config as well as instance configs.
+	if err := jobmgrtask.ValidateMesosContainerizer(config); err != nil {
+		return err
+	}
+	// for each secret, store it in DB and add a secret volume to defaultconfig
+	err := h.addSecretsToDBAndConfig(ctx, jobID, config, secrets, false)
+	return err
+}
+
+// handleUpdateSecrets handles secrets to be added/updated for a job
+func (h *serviceHandler) handleUpdateSecrets(
+	ctx context.Context, jobID *peloton.JobID, secretVolumes []*mesos.Volume,
+	newConfig *job.JobConfig, secrets []*peloton.Secret,
+) error {
+	// if there are no existing secret volumes and no secrets in the request,
+	// this job update doesn't need to handle secrets
+	if len(secretVolumes) == 0 && len(secrets) == 0 {
+		return nil
+	}
+	// Make sure all existing secret volumes are covered in the secrets.
+	// Separate secrets into adds and updates.
+	addSecrets, updateSecrets, err := h.validateExistingSecretVolumes(
+		ctx, secretVolumes, secrets)
+	if err != nil {
+		return err
+	}
+	// add new secrets in DB and add them as secret volumes to defaultconfig
+	if err = h.addSecretsToDBAndConfig(
+		ctx, jobID, newConfig, addSecrets, false); err != nil {
+		return err
+	}
+	// update secrets in DB and add them as secret volumes to defaultconfig
+	err = h.addSecretsToDBAndConfig(ctx, jobID, newConfig, updateSecrets, true)
+	return err
+}
+
+func (h *serviceHandler) addSecretsToDBAndConfig(
+	ctx context.Context, jobID *peloton.JobID, jobConfig *job.JobConfig,
+	secrets []*peloton.Secret, update bool) error {
+	// for each secret, store it in DB and add a secret volume to defaultconfig
+	for _, secret := range secrets {
+		if secret.GetId().GetValue() == "" {
+			secret.Id = &peloton.SecretID{
+				Value: uuid.New(),
+			}
+			log.WithField("job_id", secret.GetId().GetValue()).
+				Info("Genarating UUID for empty secret ID")
+		}
+		// store secret in DB
+		if update {
+			if err := h.secretStore.UpdateSecret(ctx, secret); err != nil {
+				return err
+			}
+		} else {
+			if err := h.secretStore.CreateSecret(ctx, secret, jobID); err != nil {
+				return err
+			}
+		}
+		// Add volume/secret to default container config with this secret
+		// Use secretID instead of secret data when storing as
+		// part of default config in DB.
+		// This is done to prevent secrets leaks via logging/API etc.
+		// At the time of task launch, launcher will read the
+		// secret by secret-id and replace it by secret data.
+		jobConfig.GetDefaultConfig().GetContainer().Volumes =
+			append(jobConfig.GetDefaultConfig().GetContainer().Volumes,
+				jobmgrtask.CreateSecretVolume(secret.GetPath(),
+					secret.GetId().GetValue()),
+			)
+	}
+	return nil
+}
+
+// validateExistingSecretVolumes goes through existing secret volumes and
+// validates that the new secrets list contains a secret as existing secrets
+// for that job. It splits the secrets in request as addSecrets and
+// updateSecrets. addSecrets will be created newly in DB and added to the
+// defaultconfig. updateSecrets will be updated in the DB only because they
+// are already present in defaultconfig.
+//
+// We do not have authN/authZ support on Peloton as of now.
+// So there could be a security hole like this:
+// 		Alice launches jobA with secrets a1,a2,a3
+//		Bob updates jobA and adds more tasks to it
+// 		Bob is not authorized to use secrets a1,a2,a3 but the new task on jobA
+//      would still be able to access them
+// To fix this hole, until authN/authZ is available, we will ensure that any
+// Update request to a job that has secrets associated with it, contains
+// existing secrets (same ID or path) as part of the request. The secret data
+// could be different. This ensures that in the above example, Bob can never
+// have access to a1,a2,a3.
+// TODO: Remove this restriction after authN/authZ is enabled
+// At that time, we will be sure that the job owner is also the secret
+// owner and is updating the job
+func (h *serviceHandler) validateExistingSecretVolumes(
+	ctx context.Context, secretVolumes []*mesos.Volume,
+	secrets []*peloton.Secret,
+) (addSecrets []*peloton.Secret, updateSecrets []*peloton.Secret, err error) {
+	// the number of secrets in the request should be >= the number of
+	// existing secrets in the job config
+	if len(secrets) < len(secretVolumes) {
+		return nil, nil, yarpcerrors.InvalidArgumentErrorf(
+			"number of secrets in request should be >= existing secrets")
+	}
+	// create a map of new secrets provided in the request
+	secretMap := make(map[string]*peloton.Secret)
+	for _, secret := range secrets {
+		if secret.GetId().GetValue() != "" {
+			secretMap[secret.GetId().GetValue()] = secret
+		} else if secret.GetPath() != "" {
+			// TODO: Remove this after we have separate API
+			// for maintaining secrets at which point, secrets should be always
+			// identified by secretID or name (and not created as part of Job
+			// Create/Update API)
+			// currently, the provided secrets may or may not have an ID
+			// so we can identify them with Path
+			secretMap[secret.GetPath()] = secret
+		}
+	}
+
+	// Go through each secret volume, then verify that the secret is also
+	// present in the new secrets list
+	for _, volume := range secretVolumes {
+		// verify that the secret ID or Path in the existing secret volume
+		// is present in the secrets provided in the API request
+		existingSecretID := volume.GetSource().GetSecret().GetValue().GetData()
+		existingSecretPath := volume.GetContainerPath()
+		if secret, ok := secretMap[string(existingSecretID)]; ok {
+			updateSecrets = append(updateSecrets, secret)
+			delete(secretMap, string(existingSecretID))
+		} else if secret, ok := secretMap[string(existingSecretPath)]; ok {
+			// provided secret doesn't have ID but matches the path of an
+			// existing secret. Assign existing secretID to this.
+			secret.GetId().Value = string(existingSecretID)
+			updateSecrets = append(updateSecrets, secret)
+			delete(secretMap, string(existingSecretPath))
+		} else {
+			return nil, nil, yarpcerrors.InvalidArgumentErrorf(
+				fmt.Sprintf("request missing secret with id %v path %v",
+					string(existingSecretID), existingSecretPath))
+		}
+	}
+	// Now the secrets that remain in the secretMap don't already exist.
+	// They should be added not updated.
+	for _, secret := range secretMap {
+		addSecrets = append(addSecrets, secret)
+	}
+	return addSecrets, updateSecrets, nil
 }

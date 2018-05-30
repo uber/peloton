@@ -155,6 +155,8 @@ type SecretMetrics struct {
 	SecretCreateFail tally.Counter
 	SecretGet        tally.Counter
 	SecretGetFail    tally.Counter
+	SecretUpdate     tally.Counter
+	SecretUpdateFail tally.Counter
 	SecretNotFound   tally.Counter
 }
 
@@ -342,6 +344,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	secretMetrics := &SecretMetrics{
 		SecretCreate:     secretSuccessScope.Counter("create"),
 		SecretCreateFail: secretFailScope.Counter("create"),
+		SecretUpdate:     secretSuccessScope.Counter("update"),
+		SecretUpdateFail: secretFailScope.Counter("update"),
 		SecretGet:        secretSuccessScope.Counter("get"),
 		SecretGetFail:    secretFailScope.Counter("get"),
 		SecretNotFound:   secretNotFoundScope.Counter("get"),

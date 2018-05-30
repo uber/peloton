@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -158,4 +160,109 @@ func CreateSecretVolume(secretPath string, secretStr string) *mesos_v1.Volume {
 			},
 		},
 	}
+}
+
+// ValidateMesosContainerizer returns error if either of default config or
+// instance config don't use mesos containerizer. Secrets will be common for all
+// instances in a job. They will be a part of default container config.
+// This means that if a job is created with secrets, we will ensure that the job
+// also has a default config with mesos containerizer. The secrets will be used
+// by all tasks in that job and all tasks must use mesos containerizer for
+// processing secrets.
+func ValidateMesosContainerizer(jobConfig *job.JobConfig) error {
+	// make sure the config uses mesos containerizer
+	if jobConfig.GetDefaultConfig().GetContainer().GetType() !=
+		mesos_v1.ContainerInfo_MESOS {
+		return yarpcerrors.InvalidArgumentErrorf(
+			fmt.Sprintf("container type %v does not match %v",
+				jobConfig.GetDefaultConfig().GetContainer().GetType(),
+				mesos_v1.ContainerInfo_MESOS),
+		)
+	}
+	// Go through each instance config and make sure they are
+	// using mesos containerizer
+	for _, taskConfig := range jobConfig.GetInstanceConfig() {
+		if taskConfig.GetContainer().GetType() != mesos_v1.ContainerInfo_MESOS {
+			return yarpcerrors.InvalidArgumentErrorf(
+				fmt.Sprintf("container type %v does not match %v",
+					taskConfig.GetContainer().GetType(),
+					mesos_v1.ContainerInfo_MESOS),
+			)
+		}
+	}
+	return nil
+}
+
+// CreateSecretsFromVolumes creates secret proto message list from the given
+// list of secret volumes.
+func CreateSecretsFromVolumes(
+	secretVolumes []*mesos_v1.Volume) []*peloton.Secret {
+	secrets := []*peloton.Secret{}
+	for _, volume := range secretVolumes {
+		secrets = append(secrets, CreateSecretProto(
+			string(volume.GetSource().GetSecret().GetValue().GetData()),
+			volume.GetContainerPath(), nil))
+	}
+	return secrets
+}
+
+// CreateSecretProto creates secret proto message from secret-id, path and data
+func CreateSecretProto(id, path string, data []byte) *peloton.Secret {
+	// base64 encode the secret data
+	if len(data) > 0 {
+		data = []byte(base64.StdEncoding.EncodeToString(data))
+	}
+	return &peloton.Secret{
+		Id: &peloton.SecretID{
+			Value: id,
+		},
+		Path: path,
+		Value: &peloton.Secret_Value{
+			Data: data,
+		},
+	}
+}
+
+// IsSecretVolume returns true if the given volume is of type secret
+func IsSecretVolume(volume *mesos_v1.Volume) bool {
+	return volume.GetSource().GetType() == mesos_v1.Volume_Source_SECRET
+}
+
+// ConfigHasSecretVolumes returns true if config contains secret volumes
+func ConfigHasSecretVolumes(jobConfig *job.JobConfig) bool {
+	for _, v := range jobConfig.GetDefaultConfig().GetContainer().GetVolumes() {
+		if ok := IsSecretVolume(v); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveSecretVolumesFromConfig removes secret volumes from the jobconfig
+// in place and returns the secret volumes
+// Secret volumes are added internally at the time of creating a job with
+// secrets by handleSecrets method. They are not supplied in the config in
+// job create/update requests. Consequently, they should not be displayed
+// as part of Job Get API response. This is necessary to achieve the broader
+// goal of using the secrets proto message in Job Create/Update/Get API to
+// describe secrets and not allow users to checkin secrets as part of job config
+func RemoveSecretVolumesFromConfig(jobConfig *job.JobConfig) []*mesos_v1.Volume {
+	if jobConfig.GetDefaultConfig().GetContainer().GetVolumes() == nil {
+		return nil
+	}
+	secretVolumes := []*mesos_v1.Volume{}
+	volumes := []*mesos_v1.Volume{}
+	for _, volume := range jobConfig.GetDefaultConfig().
+		GetContainer().GetVolumes() {
+		if ok := IsSecretVolume(volume); ok {
+			secretVolumes = append(secretVolumes, volume)
+		} else {
+			volumes = append(volumes, volume)
+		}
+	}
+	jobConfig.GetDefaultConfig().GetContainer().Volumes = nil
+	if len(volumes) > 0 {
+		jobConfig.GetDefaultConfig().GetContainer().Volumes = volumes
+	}
+	return secretVolumes
 }

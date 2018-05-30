@@ -1031,10 +1031,9 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 	}
 }
 
-// TestSecrets tests the secret store API to create and
-// get secrets from secret_info table. It also tests
-// helper function createSecretFromResults for positive
-// and negative test cases (different DB query results)
+// TestSecrets tests the secret store API to create, update and get secrets from
+// secret_info table. It also tests helper function createSecretFromResults for
+// positive and negative test cases (different DB query results)
 func (suite *CassandraStoreTestSuite) TestSecrets() {
 	var secretStore storage.SecretStore
 	secretStore = store
@@ -1053,6 +1052,16 @@ func (suite *CassandraStoreTestSuite) TestSecrets() {
 	suite.NoError(err)
 
 	secretResult, err := secretStore.GetSecret(context.Background(), secretID)
+	suite.NoError(err)
+	suite.Equal(secretResult, secret)
+
+	secret.Path = fmt.Sprintf("%v-new", testSecretPath)
+	secret.Value.Data = []byte(fmt.Sprintf("%v-new", testSecretStr))
+	// Test UpdateSecret to verify secret update in data base is successful
+	err = secretStore.UpdateSecret(context.Background(), secret)
+	suite.NoError(err)
+
+	secretResult, err = secretStore.GetSecret(context.Background(), secretID)
 	suite.NoError(err)
 	suite.Equal(secretResult, secret)
 

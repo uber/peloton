@@ -37,9 +37,12 @@ import (
 )
 
 const (
-	testInstanceCount = 2
-	testSecretPath    = "/tmp/secret"
-	testSecretStr     = "top-secret-token"
+	testInstanceCount    = 2
+	testSecretPath       = "/tmp/secret"
+	testSecretPathNew    = "/tmp/secret/new"
+	testSecretStr        = "top-secret-token"
+	testSecretStrUpdated = "top-secret-token-updated"
+	testSecretStrNew     = "top-secret-token-new"
 )
 
 var (
@@ -59,16 +62,40 @@ type JobHandlerTestSuite struct {
 	testJobConfig *job.JobConfig
 	taskInfos     map[uint32]*task.TaskInfo
 
-	ctrl                 *gomock.Controller
-	mockedCandidate      *leadermocks.MockCandidate
-	mockedRespoolClient  *respoolmocks.MockResourceManagerYARPCClient
-	mockedResmgrClient   *resmocks.MockResourceManagerServiceYARPCClient
-	mockedJobFactory     *cachedmocks.MockJobFactory
-	mockedCachedJob      *cachedmocks.MockJob
-	mockedGoalStateDrive *goalstatemocks.MockDriver
-	mockedJobStore       *storemocks.MockJobStore
-	mockedTaskStore      *storemocks.MockTaskStore
-	mockedSecretStore    *storemocks.MockSecretStore
+	ctrl                  *gomock.Controller
+	mockedCandidate       *leadermocks.MockCandidate
+	mockedRespoolClient   *respoolmocks.MockResourceManagerYARPCClient
+	mockedResmgrClient    *resmocks.MockResourceManagerServiceYARPCClient
+	mockedJobFactory      *cachedmocks.MockJobFactory
+	mockedCachedJob       *cachedmocks.MockJob
+	mockedGoalStateDriver *goalstatemocks.MockDriver
+	mockedJobStore        *storemocks.MockJobStore
+	mockedTaskStore       *storemocks.MockTaskStore
+	mockedSecretStore     *storemocks.MockSecretStore
+}
+
+func (suite *JobHandlerTestSuite) setupMocks() {
+	// Initialize mocks for the test
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.mockedJobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.mockedJobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.mockedCachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.mockedGoalStateDriver = goalstatemocks.NewMockDriver(suite.ctrl)
+	suite.mockedRespoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
+	suite.mockedResmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
+	suite.mockedCandidate = leadermocks.NewMockCandidate(suite.ctrl)
+	suite.mockedSecretStore = storemocks.NewMockSecretStore(suite.ctrl)
+	suite.mockedTaskStore = storemocks.NewMockTaskStore(suite.ctrl)
+
+	suite.handler.jobStore = suite.mockedJobStore
+	suite.handler.secretStore = suite.mockedSecretStore
+	suite.handler.taskStore = suite.mockedTaskStore
+	suite.handler.jobFactory = suite.mockedJobFactory
+	suite.handler.goalStateDriver = suite.mockedGoalStateDriver
+	suite.handler.respoolClient = suite.mockedRespoolClient
+	suite.handler.resmgrClient = suite.mockedResmgrClient
+	suite.handler.candidate = suite.mockedCandidate
+	suite.handler.jobSvcCfg.EnableSecrets = true
 }
 
 func (suite *JobHandlerTestSuite) SetupTest() {
@@ -98,31 +125,12 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 	}
 	suite.context = context.Background()
 	suite.taskInfos = taskInfos
-
-	suite.ctrl = gomock.NewController(suite.T())
-	suite.mockedJobStore = storemocks.NewMockJobStore(suite.ctrl)
-	suite.mockedJobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
-	suite.mockedCachedJob = cachedmocks.NewMockJob(suite.ctrl)
-	suite.mockedGoalStateDrive = goalstatemocks.NewMockDriver(suite.ctrl)
-	suite.mockedRespoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
-	suite.mockedResmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
-	suite.mockedCandidate = leadermocks.NewMockCandidate(suite.ctrl)
-	suite.mockedSecretStore = storemocks.NewMockSecretStore(suite.ctrl)
-	suite.mockedTaskStore = storemocks.NewMockTaskStore(suite.ctrl)
-
-	suite.handler.jobStore = suite.mockedJobStore
-	suite.handler.secretStore = suite.mockedSecretStore
-	suite.handler.taskStore = suite.mockedTaskStore
-	suite.handler.jobFactory = suite.mockedJobFactory
-	suite.handler.goalStateDriver = suite.mockedGoalStateDrive
-	suite.handler.respoolClient = suite.mockedRespoolClient
-	suite.handler.resmgrClient = suite.mockedResmgrClient
-	suite.handler.candidate = suite.mockedCandidate
+	suite.setupMocks()
 }
 
 func (suite *JobHandlerTestSuite) TearDownTest() {
-	suite.ctrl.Finish()
 	log.Debug("tearing down")
+	suite.ctrl.Finish()
 }
 
 func TestPelotonJobHandler(t *testing.T) {
@@ -186,7 +194,7 @@ func (suite *JobHandlerTestSuite) TestCreateJobs() {
 		jobConfig,
 		"peloton").
 		Return(nil)
-	suite.mockedGoalStateDrive.EXPECT().
+	suite.mockedGoalStateDriver.EXPECT().
 		EnqueueJob(jobID, gomock.Any()).AnyTimes()
 
 	req := &job.CreateRequest{
@@ -268,32 +276,17 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 		}
 	}
 
-	suite.handler.jobSvcCfg.EnableSecrets = true
-
 	// setup mocks
 	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
-
 	suite.mockedRespoolClient.EXPECT().
-		GetResourcePool(
-			gomock.Any(),
-			gomock.Any()).
+		GetResourcePool(gomock.Any(), gomock.Any()).
 		Return(getRespoolResponse, nil).AnyTimes()
-
 	suite.mockedSecretStore.EXPECT().CreateSecret(
-		gomock.Any(),
-		gomock.Any(),
-		jobID).
-		Return(nil)
-
+		gomock.Any(), gomock.Any(), jobID).Return(nil)
 	suite.mockedCachedJob.EXPECT().Create(
-		gomock.Any(),
-		jobConfig,
-		"peloton").
-		Return(nil)
-
+		gomock.Any(), jobConfig, "peloton").Return(nil)
 	suite.mockedJobFactory.EXPECT().AddJob(jobID).Return(suite.mockedCachedJob)
-
-	suite.mockedGoalStateDrive.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
+	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
 
 	secret := &peloton.Secret{
 		Path: testSecretPath,
@@ -316,6 +309,25 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	suite.Equal(jobID, resp.GetJobId())
 
 	// Negative tests begin
+
+	// Now because the way test is setup, after Create succeeds, jobConfig will
+	// now contain secret volumes (since it is a pointer. this will not happen
+	// for a real client). We can leverage this same config to create job again,
+	// and that should fail because we don't support directly adding secret
+	// volumes to config in Create/Update
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.Error(err)
+	suite.Equal(yarpcerrors.IsInvalidArgument(err), true)
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		"adding secret volumes directly in config is not allowed")
+
+	jobConfig.GetDefaultConfig().GetContainer().Volumes = nil
+	// Simulate DB failure in CreateSecret
+	suite.mockedSecretStore.EXPECT().CreateSecret(
+		gomock.Any(), gomock.Any(), jobID).
+		Return(errors.New("DB error"))
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.Error(err)
 
 	// Create job where one instance is using docker containerizer.
 	jobConfig.InstanceConfig[10].Container =
@@ -523,47 +535,418 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		InstanceCount: newInstanceCount,
 		DefaultConfig: defaultConfig,
 	}
-	var jobRuntime = job.RuntimeInfo{
-		State: job.JobState_PENDING,
-	}
-
-	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
-	suite.mockedJobFactory.EXPECT().
-		AddJob(jobID).
-		Return(suite.mockedCachedJob)
-	suite.mockedCachedJob.EXPECT().
-		GetRuntime(gomock.Any()).
-		Return(&jobRuntime, nil)
+	// setup generic update mocks
+	suite.setupUpdateMocks(jobID)
+	// setup specific update mocks
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).
-		Return(oldJobConfig, nil)
-	suite.mockedCachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Return(nil)
-	suite.mockedTaskStore.EXPECT().
-		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
-		Return(nil).
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil).
 		AnyTimes()
-	suite.mockedCachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), "peloton").Return(nil).AnyTimes()
-	suite.mockedGoalStateDrive.EXPECT().EnqueueTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
-	suite.mockedCachedJob.EXPECT().
-		GetJobType().Return(job.JobType_BATCH)
-	suite.mockedGoalStateDrive.EXPECT().
-		JobRuntimeDuration(job.JobType_BATCH).
-		Return(1 * time.Second)
-	suite.mockedGoalStateDrive.EXPECT().EnqueueJob(jobID, gomock.Any())
-
 	req := &job.UpdateRequest{
 		Id:     jobID,
 		Config: newJobConfig,
 	}
-
 	resp, err := suite.handler.Update(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
 	suite.Equal(jobID, resp.Id)
 	suite.Equal("added 1 instances", resp.Message)
+}
+
+// TestGetJob tests different success/failure scenarios
+// for Job Get API
+func (suite *JobHandlerTestSuite) TestGetJob() {
+	testCmd := "echo test"
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	jobConfig := &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{Value: &testCmd},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(jobConfig, nil)
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+		Return(suite.mockedCachedJob).AnyTimes()
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil).AnyTimes()
+
+	resp, err := suite.handler.Get(suite.context, &job.GetRequest{Id: jobID})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(0, len(resp.GetSecrets()))
+
+	secretID := &peloton.SecretID{
+		Value: uuid.New(),
+	}
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	jobConfig = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{
+				Type: &mesosContainerizer,
+				Volumes: []*mesos.Volume{jobmgrtask.CreateSecretVolume(
+					testSecretPath, secretID.GetValue())},
+			},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(jobConfig, nil)
+
+	resp, err = suite.handler.Get(suite.context, &job.GetRequest{Id: jobID})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(1, len(resp.GetSecrets()))
+	suite.Equal(secretID, resp.GetSecrets()[0].GetId())
+}
+
+func (suite *JobHandlerTestSuite) setupUpdateMocks(jobID *peloton.JobID) {
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+		Return(suite.mockedCachedJob).AnyTimes()
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil).AnyTimes()
+	suite.mockedJobStore.EXPECT().
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
+		Return(nil).AnyTimes()
+	suite.mockedJobStore.EXPECT().
+		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
+		Return(nil).AnyTimes()
+	suite.mockedTaskStore.EXPECT().
+		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
+	suite.mockedCachedJob.EXPECT().
+		CreateTasks(gomock.Any(), gomock.Any(), "peloton").
+		Return(nil).AnyTimes()
+	suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).AnyTimes()
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+		Return(suite.mockedCachedJob).AnyTimes()
+	suite.mockedCachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(nil).AnyTimes()
+	suite.mockedGoalStateDriver.EXPECT().JobRuntimeDuration(job.JobType_BATCH).
+		Return(1 * time.Second).AnyTimes()
+	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
+	suite.mockedGoalStateDriver.EXPECT().EnqueueTask(
+		jobID, gomock.Any(), gomock.Any()).AnyTimes()
+	suite.mockedTaskStore.EXPECT().
+		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
+		Return(map[string]uint32{}, nil).AnyTimes()
+}
+
+// TestUpdateJobWithSecrets tests different success/failure scenarios
+// for Job Update API for jobs that have secrets
+func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
+	testCmd := "echo test"
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+	mesosContainerizer := mesos.ContainerInfo_MESOS
+	oldJobConfig := &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+	newJobConfig := &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+
+	// create a secret
+	// completely new secret
+	secretID := &peloton.SecretID{
+		Value: uuid.New(),
+	}
+	secret := jobmgrtask.CreateSecretProto(secretID.GetValue(),
+		testSecretPath, []byte(testSecretStr))
+	// create updated secret (same id same path) but with new data
+	updatedSecret := jobmgrtask.CreateSecretProto(secretID.GetValue(),
+		testSecretPath, []byte(testSecretStrUpdated))
+	// create another secret
+	addedSecretID := &peloton.SecretID{
+		Value: uuid.New(),
+	}
+	addedSecret := jobmgrtask.CreateSecretProto(addedSecretID.GetValue(),
+		testSecretPath, []byte(testSecretStrNew))
+
+	// setup generic update mocks
+	suite.setupUpdateMocks(jobID)
+	// setup test specific mocks throughout the code
+
+	// Tests begin
+
+	// no secret present in update request and oldConfig and newConfig are the
+	// same. This should be a NOOP
+	req := &job.UpdateRequest{
+		Id:     jobID,
+		Config: newJobConfig,
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	resp, err := suite.handler.Update(suite.context, req)
+	suite.NoError(err)
+	suite.Nil(resp)
+
+	// oldConfig does not contain existing secret volumes, request has one
+	// secret, new secret should be created and config should be populated with
+	// this new secret volume even if instance count remains unchanged.
+	req.Secrets = []*peloton.Secret{secret}
+	suite.mockedSecretStore.EXPECT().CreateSecret(
+		gomock.Any(), secret, jobID).Return(nil)
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(jobID, resp.GetId())
+	suite.Equal("added 0 instances", resp.GetMessage())
+	// Check if new secret volume is present in config and matches the secret
+	// supplied in the request
+	secretVolumes := jobmgrtask.RemoveSecretVolumesFromConfig(newJobConfig)
+	suite.Equal(len(secretVolumes), 1)
+	suite.Equal(secretID.GetValue(),
+		string(secretVolumes[0].GetSource().GetSecret().GetValue().GetData()))
+
+	// One secret present in oldConfig, request has same secret but with empty
+	// secretID, and only path and data. We will look up this secret using path
+	// and then update it. This should succeed and udated config should contain
+	// 1 secret
+	// add secret volumes to oldConfig
+	req.Config = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
+		jobmgrtask.CreateSecretVolume(testSecretPath, secretID.GetValue())}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	// request contains secret with same path, different data and empty ID
+	req.Secrets = []*peloton.Secret{jobmgrtask.CreateSecretProto("",
+		testSecretPath, []byte(testSecretStrUpdated))}
+	// Even if ID is empty, the existing secret volume will contain same path as
+	// supplied secret. So we will update the existing secret with new data.
+	// This should result in once call to update updatedSecret in DB
+	suite.mockedSecretStore.EXPECT().UpdateSecret(
+		gomock.Any(), updatedSecret).Return(nil)
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(jobID, resp.GetId())
+	suite.Equal("added 0 instances", resp.GetMessage())
+
+	// One secret present in oldConfig, request has two secrets (1 update + 1 new),
+	// This should succeed and udated config should contain 2 secrets
+	// add secret volumes to oldConfig
+	newJobConfig = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+	req.Config = newJobConfig
+	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
+		jobmgrtask.CreateSecretVolume(testSecretPath, secretID.GetValue())}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	// request contains one updated and one added secret
+	req.Secrets = []*peloton.Secret{addedSecret, updatedSecret}
+	// This should result in once call to create addedSecret in DB and one
+	// call to update updatedSecret in DB
+	suite.mockedSecretStore.EXPECT().CreateSecret(
+		gomock.Any(), addedSecret, jobID).Return(nil)
+	suite.mockedSecretStore.EXPECT().UpdateSecret(
+		gomock.Any(), updatedSecret).Return(nil)
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(jobID, resp.GetId())
+	suite.Equal("added 0 instances", resp.GetMessage())
+	// Check if new secret volume is present in config and matches the secret
+	// supplied in the request
+	secretVolumes = jobmgrtask.RemoveSecretVolumesFromConfig(newJobConfig)
+	suite.Equal(len(secretVolumes), 2)
+	for _, volume := range secretVolumes {
+		// since secret volumes may not be in the same order, still not totally
+		// deterministic but good enough for this
+		id := string(volume.GetSource().GetSecret().GetValue().GetData())
+		suite.True(id == addedSecretID.GetValue() || id == secretID.GetValue())
+	}
+
+	// request contains a secret with blank secretID
+	req.Secrets = []*peloton.Secret{jobmgrtask.CreateSecretProto(
+		"", testSecretPath, []byte(testSecretStr))}
+	req.Config = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(&job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		}}, nil)
+	suite.mockedSecretStore.EXPECT().CreateSecret(
+		gomock.Any(), gomock.Any(), jobID).Return(nil)
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(jobID, resp.GetId())
+	suite.Equal("added 0 instances", resp.GetMessage())
+
+	// Negative tests begin
+
+	// newJobConfig contains secret volumes directly added to config.
+	// This will be rejected and should result in error
+	req.Config = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{
+				Type: &mesosContainerizer,
+				Volumes: []*mesos.Volume{jobmgrtask.CreateSecretVolume(
+					testSecretPath, secretID.GetValue())},
+			},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	_, err = suite.handler.Update(suite.context, req)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.Equal(
+		yarpcerrors.ErrorMessage(err),
+		"adding secret volumes directly in config is not allowed")
+
+	// Request contains a secret with blank path
+	req.Secrets = []*peloton.Secret{jobmgrtask.CreateSecretProto(
+		secretID.GetValue(), "", []byte(testSecretStr))}
+	req.Config = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	_, err = suite.handler.Update(suite.context, req)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.Equal(yarpcerrors.ErrorMessage(err), "secret does not have a path")
+
+	// Two secrets present in oldConfig, request has only one. This will fail.
+	// Request should contain existing two and/or additional secrets
+	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
+		// insert non-secret volumes, will be ignored
+		getVolume(),
+		jobmgrtask.CreateSecretVolume(testSecretPath, addedSecretID.GetValue()),
+		// insert non-secret volumes, will be ignored
+		getVolume(),
+		jobmgrtask.CreateSecretVolume(testSecretPath, secretID.GetValue()),
+	}
+	req.Config = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command: &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{
+				Type:    &mesosContainerizer,
+				Volumes: []*mesos.Volume{getVolume(), getVolume()},
+			},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	// secret contains one updated and one added secret
+	req.Secrets = []*peloton.Secret{addedSecret}
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		"number of secrets in request should be >= existing secrets")
+
+	// request contains secret that doesn't match existing secret
+	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
+		jobmgrtask.CreateSecretVolume(testSecretPathNew, addedSecretID.GetValue()),
+	}
+	req.Config = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	req.Secrets = []*peloton.Secret{secret}
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		fmt.Sprintf("request missing secret with id %v path %v",
+			addedSecretID.GetValue(), testSecretPathNew))
+
+	// test UpdateSecret failure
+	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = []*mesos.Volume{
+		jobmgrtask.CreateSecretVolume(testSecretPath, addedSecretID.GetValue()),
+	}
+	req.Config = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	req.Secrets = []*peloton.Secret{addedSecret}
+	// Simulate DB failure in UpdateSecret
+	suite.mockedSecretStore.EXPECT().UpdateSecret(
+		gomock.Any(), addedSecret).
+		Return(errors.New("DB error"))
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.Error(err)
+	suite.Equal(yarpcerrors.ErrorMessage(err), "DB error")
+
+	// test CreateSecret failure
+	oldJobConfig.GetDefaultConfig().GetContainer().Volumes = nil
+	req.Config = &job.JobConfig{
+		DefaultConfig: &task.TaskConfig{
+			Command:   &mesos.CommandInfo{Value: &testCmd},
+			Container: &mesos.ContainerInfo{Type: &mesosContainerizer},
+		},
+	}
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	req.Secrets = []*peloton.Secret{addedSecret}
+	// Simulate DB failure in CreateSecret
+	suite.mockedSecretStore.EXPECT().CreateSecret(
+		gomock.Any(), addedSecret, jobID).
+		Return(errors.New("DB error"))
+
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.Error(err)
+	suite.Equal(yarpcerrors.ErrorMessage(err), "DB error")
+
+	// Cluster does not support secrets but update request has secrets,
+	// this will result in error
+	suite.handler.jobSvcCfg.EnableSecrets = false
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil)
+	_, err = suite.handler.Update(suite.context, req)
+	suite.Error(err)
+}
+
+// helper function to generate random volume
+func getVolume() *mesos.Volume {
+	volumeMode := mesos.Volume_RO
+	testPath := "/test"
+	return &mesos.Volume{
+		Mode:          &volumeMode,
+		ContainerPath: &testPath,
+	}
 }
 
 func (suite *JobHandlerTestSuite) TestJobQuery() {
@@ -652,7 +1035,7 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 		Return(jobRuntime, nil)
 	suite.mockedJobFactory.EXPECT().AddJob(id).Return(suite.mockedCachedJob)
 	suite.mockedCachedJob.EXPECT().Update(gomock.Any(), jobInfo, cached.UpdateCacheOnly).Return(nil)
-	suite.mockedGoalStateDrive.EXPECT().EnqueueJob(id, gomock.Any())
+	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(id, gomock.Any())
 	_, err := suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
 	suite.NoError(err)
 
