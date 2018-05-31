@@ -51,6 +51,7 @@ var (
 	_nonTerminalJobStates = []job.JobState{
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
+		job.JobState_KILLING,
 	}
 )
 
@@ -154,7 +155,15 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationPeriodicalCalls() {
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
 			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING}).
+			GetTasksForJobAndStates(
+				context.Background(),
+				suite.testJobID,
+				[]task.TaskState{
+					task.TaskState_LAUNCHED,
+					task.TaskState_STARTING,
+					task.TaskState_RUNNING,
+					task.TaskState_KILLING,
+				}).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -226,7 +235,15 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationCallFailure() {
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
 			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING}).
+			GetTasksForJobAndStates(
+				context.Background(),
+				suite.testJobID,
+				[]task.TaskState{
+					task.TaskState_LAUNCHED,
+					task.TaskState_STARTING,
+					task.TaskState_RUNNING,
+					task.TaskState_KILLING,
+				}).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -281,7 +298,15 @@ func (suite *TaskReconcilerTestSuite) TestReconcilerNotStartIfAlreadyRunning() {
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
 			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING}).
+			GetTasksForJobAndStates(
+				context.Background(),
+				suite.testJobID,
+				[]task.TaskState{
+					task.TaskState_LAUNCHED,
+					task.TaskState_STARTING,
+					task.TaskState_RUNNING,
+					task.TaskState_KILLING,
+				}).
 			Return(suite.taskInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
@@ -326,7 +351,15 @@ func (suite *TaskReconcilerTestSuite) TestTaskReconcilationWithStatingStates() {
 			GetJobsByStates(context.Background(), _nonTerminalJobStates).
 			Return([]peloton.JobID{*suite.testJobID}, nil),
 		suite.mockTaskStore.EXPECT().
-			GetTasksForJobAndStates(context.Background(), suite.testJobID, []task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING}).
+			GetTasksForJobAndStates(
+				context.Background(),
+				suite.testJobID,
+				[]task.TaskState{
+					task.TaskState_LAUNCHED,
+					task.TaskState_STARTING,
+					task.TaskState_RUNNING,
+					task.TaskState_KILLING,
+				}).
 			Return(suite.taskMixedStateInfos, nil),
 		suite.schedulerClient.EXPECT().
 			Call(
