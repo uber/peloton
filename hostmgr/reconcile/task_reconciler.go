@@ -167,7 +167,8 @@ func (r *taskReconciler) reconcileExplicitly(ctx context.Context, running *atomi
 	log.Info("Reconcile tasks explicitly returned.")
 }
 
-// getReconcileTasks queries datastore and get all the RUNNING tasks.
+// getReconcileTasks queries datastore and get
+// all the non-terminal tasks in Mesos.
 func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	[]*sched.Call_Reconcile_Task, error) {
 
@@ -175,6 +176,7 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 	jobStates := []job.JobState{
 		job.JobState_PENDING,
 		job.JobState_RUNNING,
+		job.JobState_KILLING,
 	}
 	jobIDs, err := r.jobStore.GetJobsByStates(ctx, jobStates)
 	if err != nil {
@@ -188,7 +190,12 @@ func (r *taskReconciler) getReconcileTasks(ctx context.Context) (
 		nonTerminalTasks, getTasksErr := r.taskStore.GetTasksForJobAndStates(
 			ctx,
 			&jobID,
-			[]task.TaskState{task.TaskState_LAUNCHED, task.TaskState_STARTING, task.TaskState_RUNNING},
+			[]task.TaskState{
+				task.TaskState_LAUNCHED,
+				task.TaskState_STARTING,
+				task.TaskState_RUNNING,
+				task.TaskState_KILLING,
+			},
 		)
 		if getTasksErr != nil {
 			log.WithError(getTasksErr).WithFields(log.Fields{
