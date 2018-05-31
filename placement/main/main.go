@@ -185,7 +185,7 @@ func main() {
 	}
 	log.WithField("placement_task_type", cfg.Placement.TaskType).Info("Placement engine task type")
 
-	log.WithField("config", cfg).Info("Loaded Placement Engine config")
+	log.WithField("config", cfg).Info("Completed Loading Placement Engine config")
 
 	rootScope, scopeCloser, mux := metrics.InitMetricScope(
 		&cfg.Metrics,

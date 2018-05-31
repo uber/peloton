@@ -58,23 +58,32 @@ func (s *service) Acquire(
 	hostOffers, filterResults, err := s.fetchOffers(ctx, filter)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"hostOffers":     hostOffers,
+			"host_offers":    hostOffers,
 			"filter_results": filterResults,
 			"filter":         filter,
-			"taskType":       taskType,
-			"fetchTasks":     fetchTasks,
+			"task_type":      taskType,
+			"fetch_tasks":    fetchTasks,
 		}).WithError(err).Error(_failedToAcquireHostOffers)
 		s.metrics.OfferGetFail.Inc(1)
 		return offers, _failedToAcquireHostOffers
 	}
 
-	filterRes, _ := json.Marshal(filterResults)
-	if len(hostOffers) == 0 {
+	filterRes, err := json.Marshal(filterResults)
+	if err != nil {
 		log.WithFields(log.Fields{
-			"filter_results": string(filterRes),
-			"filter":         filter,
-			"taskType":       taskType,
-		}).Info("No host offers dequeued")
+			"host_offers":         hostOffers,
+			"task_type":           taskType,
+			"fetch_tasks":         fetchTasks,
+			"filter":              filter,
+			"filter_results":      filterResults,
+			"filter_results_json": string(filterRes),
+		}).Error(err.Error())
+		s.metrics.OfferGetFail.Inc(1)
+		return offers, err.Error()
+	}
+
+	if len(hostOffers) == 0 {
+		return offers, _failedToAcquireHostOffers
 	}
 
 	// Get tasks running on hosts from hostOffers
@@ -86,22 +95,34 @@ func (s *service) Acquire(
 				"hostOffers":     hostOffers,
 				"filter_results": filterResults,
 				"filter":         filter,
-				"taskType":       taskType,
-				"fetchTasks":     fetchTasks,
+				"task_type":      taskType,
+				"fetch_tasks":    fetchTasks,
 			}).WithError(err).Error(_failedToFetchTasksOnHosts)
 			s.metrics.OfferGetFail.Inc(1)
 			return offers, _failedToFetchTasksOnHosts
 		}
+
+		// Log tasks already running on Hosts whose offers are acquired.
+		// TODO: (varung) - remove in long term
+		log.WithFields(log.Fields{
+			"host_offers":         hostOffers,
+			"filter":              filter,
+			"filter_results_json": string(filterRes),
+			"task_type":           taskType,
+			"host_task_map":       hostTasksMap,
+		}).Info("Log tasks already running on Hosts whose offers are acquired")
 	}
 
 	log.WithFields(log.Fields{
-		"hostOffers":             hostOffers,
+		"host_offers":            hostOffers,
 		"filter_results":         filterResults,
 		"filter":                 filter,
-		"taskType":               taskType,
-		"fetchTasks":             fetchTasks,
+		"task_type":              taskType,
+		"fetch_tasks":            fetchTasks,
 		"host_tasks_map_noindex": hostTasksMap,
 	}).Debug("Offer service acquired offers and related tasks")
+
+	s.metrics.OfferGet.Inc(1)
 
 	// Create placement offers from the host offers
 	return s.convertOffers(hostOffers, hostTasksMap, time.Now()), string(filterRes)
@@ -129,20 +150,23 @@ func (s *service) Release(
 	}
 	response, err := s.hostManager.ReleaseHostOffers(ctx, request)
 
-	log.WithFields(log.Fields{
-		"request":  request,
-		"response": response,
-	}).Debug("release host offers request returned")
-
 	if err != nil {
 		log.WithField("error", err).Error("release host offers failed")
 		return
 	}
 
 	if respErr := response.GetError(); respErr != nil {
-		log.WithField("error", respErr).Error("release host offers error")
+		log.WithFields(log.Fields{
+			"release_host_request":        request,
+			"release_host_response":       response,
+			"release_host_response_error": respErr,
+		}).Error("release host offers error")
 		// TODO: Differentiate known error types by metrics and logs.
-		return
+	} else {
+		log.WithFields(log.Fields{
+			"release_host_request":  request,
+			"release_host_response": response,
+		}).Info("release host offers request returned")
 	}
 }
 
@@ -162,8 +186,8 @@ func (s *service) fetchOffers(
 	}
 
 	log.WithFields(log.Fields{
-		"request":  offersRequest,
-		"response": offersResponse,
+		"acquire_host_offers_request":  offersRequest,
+		"acquire_host_offers_response": offersResponse,
 	}).Debug("acquire host offers returned")
 
 	if respErr := offersResponse.GetError(); respErr != nil {

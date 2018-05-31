@@ -167,6 +167,72 @@ func (e *engine) Place(ctx context.Context) time.Duration {
 	return time.Duration(0)
 }
 
+func (e *engine) placeAssignmentGroup(
+	ctx context.Context,
+	filter *hostsvc.HostFilter,
+	assignments []*models.Assignment) {
+	for len(assignments) > 0 {
+		log.WithFields(log.Fields{
+			"filter":          filter,
+			"len_assignments": len(assignments),
+			"assignments":     assignments,
+		}).Debug("placing assignment group")
+
+		// Get hosts with available resources and tasks currently running.
+		hosts, reason := e.offerService.Acquire(
+			ctx,
+			e.config.FetchOfferTasks,
+			e.config.TaskType,
+			filter)
+		existing := e.findUsedHosts(assignments)
+		now := time.Now()
+		for !e.pastDeadline(now, assignments) && len(hosts)+len(existing) == 0 {
+			time.Sleep(_noOffersTimeoutPenalty)
+			hosts, reason = e.offerService.Acquire(
+				ctx,
+				e.config.FetchOfferTasks,
+				e.config.TaskType,
+				filter)
+			now = time.Now()
+		}
+
+		// Add any hosts still assigned to any task so the offers will eventually be returned or used in a placement.
+		hosts = append(hosts, existing...)
+
+		// We where starved from hosts
+		if len(hosts) == 0 {
+			log.WithFields(log.Fields{
+				"filter":      filter,
+				"assignments": assignments,
+			}).Warn("failed to place tasks due to offer starvation")
+			e.metrics.OfferStarved.Inc(1)
+			// Return the tasks
+			e.taskService.Enqueue(ctx, assignments, reason)
+			return
+		}
+		e.metrics.OfferGet.Inc(1)
+
+		// PlaceOnce the tasks on the hosts by delegating to the placement strategy.
+		e.strategy.PlaceOnce(assignments, hosts)
+
+		// Filter the assignments according to if they got assigned, should be retried or where unassigned.
+		assigned, retryable, unassigned := e.filterAssignments(time.Now(), assignments)
+
+		// We will retry the retryable tasks
+		assignments = retryable
+
+		log.WithFields(log.Fields{
+			"filter":     filter,
+			"assigned":   assigned,
+			"retryable":  retryable,
+			"unassigned": unassigned,
+			"hosts":      hosts,
+		}).Debug("Finshed one round placing assignment group")
+		// Set placements and return unused offers and failed tasks
+		e.cleanup(ctx, assigned, retryable, unassigned, hosts)
+	}
+}
+
 func (e *engine) getTaskIDs(tasks []*models.Task) []*peloton.TaskID {
 	var taskIDs []*peloton.TaskID
 	for _, task := range tasks {
@@ -336,63 +402,4 @@ func (e *engine) pastDeadline(now time.Time, assignments []*models.Assignment) b
 		}
 	}
 	return true
-}
-
-func (e *engine) placeAssignmentGroup(
-	ctx context.Context,
-	filter *hostsvc.HostFilter,
-	assignments []*models.Assignment) {
-	for len(assignments) > 0 {
-		log.WithFields(log.Fields{
-			"filter":      filter,
-			"assignments": assignments,
-		}).Debug("placing assignment group")
-
-		// Get hosts with available resources and tasks currently running.
-		hosts, reason := e.offerService.Acquire(
-			ctx, e.config.FetchOfferTasks, e.config.TaskType, filter)
-		existing := e.findUsedHosts(assignments)
-		now := time.Now()
-		for !e.pastDeadline(now, assignments) && len(hosts)+len(existing) == 0 {
-			time.Sleep(_noOffersTimeoutPenalty)
-			hosts, reason = e.offerService.Acquire(
-				ctx, e.config.FetchOfferTasks, e.config.TaskType, filter)
-			now = time.Now()
-		}
-
-		// Add any hosts still assigned to any task so the offers will eventually be returned or used in a placement.
-		hosts = append(hosts, existing...)
-
-		// We where starved from hosts
-		if len(hosts) == 0 {
-			log.WithFields(log.Fields{
-				"filter":      filter,
-				"assignments": assignments,
-			}).Warn("failed to place tasks due to offer starvation")
-			e.metrics.OfferStarved.Inc(1)
-			// Return the tasks
-			e.taskService.Enqueue(ctx, assignments, reason)
-			return
-		}
-		e.metrics.OfferGet.Inc(1)
-
-		// PlaceOnce the tasks on the hosts by delegating to the placement strategy.
-		e.strategy.PlaceOnce(assignments, hosts)
-
-		// Filter the assignments according to if they got assigned, should be retried or where unassigned.
-		assigned, retryable, unassigned := e.filterAssignments(time.Now(), assignments)
-
-		// We will retry the retryable tasks
-		assignments = retryable
-
-		log.WithFields(log.Fields{
-			"filter":     filter,
-			"assigned":   assigned,
-			"retryable":  retryable,
-			"unassigned": unassigned,
-			"hosts":      hosts,
-		}).Debug("Finshed one round placing assignment group")
-		// Set placements and return unused offers and failed tasks
-		e.cleanup(ctx, assigned, retryable, unassigned, hosts)
-	}
 }

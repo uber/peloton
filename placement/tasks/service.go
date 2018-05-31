@@ -14,7 +14,10 @@ import (
 )
 
 const (
-	_timeout = 10 * time.Second
+	_timeout               = 10 * time.Second
+	_failedToEnqueueTasks  = "failed to enqueue tasks back to resource manager"
+	_failedToDequeueTasks  = "failed to dequeue tasks from resource manager"
+	_failedToSetPlacements = "failed to set placements"
 )
 
 // Service will manage gangs/tasks and placements used by any placement strategy.
@@ -30,7 +33,8 @@ type Service interface {
 }
 
 // NewService will create a new task service.
-func NewService(resourceManager resmgrsvc.ResourceManagerServiceYARPCClient,
+func NewService(
+	resourceManager resmgrsvc.ResourceManagerServiceYARPCClient,
 	cfg *config.PlacementConfig,
 	metrics *metrics.Metrics) Service {
 	return &service{
@@ -64,16 +68,34 @@ func (s *service) Dequeue(
 	response, err := s.resourceManager.DequeueGangs(ctx, request)
 	if err != nil {
 		log.WithFields(log.Fields{
-			log.ErrorKey: err,
-			"request":    request,
-			"response":   response,
-		}).Error("dequeue gangs failed")
+			"task_type":              taskType,
+			"batch_size":             batchSize,
+			"dequeue_gangs_request":  request,
+			"dequeue_gangs_response": response,
+		}).WithError(err).Error(_failedToDequeueTasks)
+		return nil
+	}
+
+	if response.GetError() != nil {
+		log.WithFields(log.Fields{
+			"task_type":              taskType,
+			"batch_size":             batchSize,
+			"dequeue_gangs_request":  request,
+			"dequeue_gangs_response": response,
+		}).WithError(errors.New(response.Error.String())).Error(_failedToDequeueTasks)
 		return nil
 	}
 
 	numberOfTasks := 0
 	for _, gang := range response.Gangs {
 		numberOfTasks += len(gang.GetTasks())
+	}
+
+	if numberOfTasks == 0 {
+		log.WithFields(log.Fields{
+			"num_tasks": numberOfTasks,
+		}).Debug("no tasks dequeued from resource manager")
+		return nil
 	}
 
 	// Create assignments from the tasks but without any offers
@@ -89,9 +111,11 @@ func (s *service) Dequeue(
 		log.WithFields(log.Fields{
 			"request":         request,
 			"response":        response,
-			"taskType":        taskType,
-			"batchSize":       batchSize,
+			"task_type":       taskType,
+			"batch_size":      batchSize,
 			"timeout":         timeout,
+			"number_of_tasks": numberOfTasks,
+			"number_of_gangs": len(response.Gangs),
 			"assignments_len": len(assignments),
 			"assignments":     assignments,
 		}).Debug("Dequeued gangs")
@@ -118,25 +142,34 @@ func (s *service) SetPlacements(ctx context.Context, placements []*resmgr.Placem
 	response, err := s.resourceManager.SetPlacements(ctx, request)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"num_placements": len(placements),
-			"error":          err.Error(),
-		}).WithError(errors.New("failed to set placements"))
+			"num_placements":          len(placements),
+			"placements":              placements,
+			"set_placements_request":  request,
+			"set_placements_response": response,
+		}).WithError(err).Error(_failedToSetPlacements)
+		return
+	}
+
+	if response.GetError().GetFailure() != nil {
+		s.metrics.SetPlacementFail.Inc(int64(len(response.GetError().GetFailure().GetFailed())))
+	}
+
+	if response.GetError() != nil {
+		log.WithFields(log.Fields{
+			"num_placements":          len(placements),
+			"placements":              placements,
+			"set_placements_request":  request,
+			"set_placements_response": response,
+		}).WithError(errors.New(response.Error.String())).Error(_failedToSetPlacements)
 		return
 	}
 
 	log.WithFields(log.Fields{
-		"request":  request,
-		"response": response,
+		"set_placements_request":  request,
+		"set_placements_response": response,
 	}).Debug("set placements called")
 
-	if response.GetError() != nil {
-		log.WithFields(log.Fields{
-			"num_placements": len(placements),
-			"error":          response.Error.String(),
-		}).Error("failed to place tasks")
-		return
-	}
-	log.WithField("num_placements", len(placements)).Info("set placements succeeded")
+	log.WithField("num_placements", len(placements)).Info("Set placements succeeded")
 
 	setPlacementDuration := time.Since(setPlacementStart)
 	s.metrics.SetPlacementDuration.Record(setPlacementDuration)
@@ -149,6 +182,9 @@ func (s *service) Enqueue(
 	assignments []*models.Assignment,
 	reason string) {
 	if len(assignments) == 0 {
+		log.WithFields(log.Fields{
+			"assignments": assignments,
+		}).Debug("no assignments to enqueue for resource manager")
 		return
 	}
 
@@ -169,24 +205,30 @@ func (s *service) Enqueue(
 	response, err := s.resourceManager.EnqueueGangs(ctx, request)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"gangs": len(gangs),
-			"error": err.Error(),
-		}).WithError(errors.New("failed to return tasks"))
+			"gangs_len":              len(gangs),
+			"gangs":                  gangs,
+			"enqueue_gangs_request":  request,
+			"enqueue_gangs_response": response,
+		}).WithError(err).Error(_failedToEnqueueTasks)
+		return
+	}
+
+	if response.GetError() != nil {
+		log.WithFields(log.Fields{
+			"gangs_len":              len(gangs),
+			"gangs":                  gangs,
+			"enqueue_gangs_request":  request,
+			"enqueue_gangs_response": response,
+		}).WithError(errors.New(response.Error.String())).Error(_failedToEnqueueTasks)
 		return
 	}
 
 	log.WithFields(log.Fields{
-		"request":  request,
-		"response": response,
-	}).Warn("enqueue gangs back to resmgr called")
-
-	if response.GetError() != nil {
-		log.WithFields(log.Fields{
-			"gangs": len(gangs),
-			"error": response.Error.String(),
-		}).Error("failed to place tasks")
-		return
-	}
+		"gangs_len":              len(gangs),
+		"gangs":                  gangs,
+		"enqueue_gangs_request":  request,
+		"enqueue_gangs_response": response,
+	}).Debug("enqueue gangs returned from resmgr call")
 }
 
 func (s *service) createTasks(gang *resmgrsvc.Gang, now time.Time) []*models.Task {

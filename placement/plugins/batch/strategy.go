@@ -51,7 +51,9 @@ func (batch *batch) availablePorts(resources []*mesos_v1.Resource) uint64 {
 
 // fillOffer assigns in sequence as many tasks as possible to the given offers in a host,
 // and returns a list of tasks not assigned to that host.
-func (batch *batch) fillOffer(host *models.Host, unassigned []*models.Assignment) []*models.Assignment {
+func (batch *batch) fillOffer(
+	host *models.Host,
+	unassigned []*models.Assignment) []*models.Assignment {
 	remainPorts := batch.availablePorts(host.GetOffer().GetResources())
 	remain := scalar.FromMesosResources(host.GetOffer().GetResources())
 	for i, placement := range unassigned {
