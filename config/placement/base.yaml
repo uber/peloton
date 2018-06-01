@@ -12,7 +12,7 @@ placement:
   task_type: 0
   fetch_offer_tasks: false
   strategy: batch
-  concurrency: 4
+  concurrency: 35
   max_rounds:
     unknown: 1
     batch: 1
