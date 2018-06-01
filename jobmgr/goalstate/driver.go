@@ -51,7 +51,7 @@ var (
 		//job.JobState_FAILED,
 		// TODO remove recovery of UNKNOWN state after all old jobs created
 		// before job goal state engine was added have terminated.
-		job.JobState_UNKNOWN,
+		//job.JobState_UNKNOWN,
 	}
 )
 
