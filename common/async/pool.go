@@ -57,13 +57,13 @@ func (p *Pool) SetMaxWorkers(num int) {
 	}
 
 	p.Lock()
-	oldNum := p.numWorkers
-	p.numWorkers = num
-	p.Unlock()
-
-	for i := oldNum; i < num; i++ {
-		go p.runWorker()
+	p.options.MaxWorkers = num
+	if p.numWorkers > p.options.MaxWorkers {
+		go p.stopWorkers()
+	} else if p.numWorkers < p.options.MaxWorkers {
+		go p.addWorkers()
 	}
+	p.Unlock()
 }
 
 // Enqueue a job in the pool.
@@ -80,19 +80,55 @@ func (p *Pool) WaitUntilProcessed() {
 	p.jobs.Wait()
 }
 
-// Stop implements termination of all jobs lazily.
+// Stop sets the assigned workers (goal state) to zero,
+// and then stopWorkers terminates running workers (actual state) to 0 value.
 func (p *Pool) Stop() {
-	for i := 0; i < p.numWorkers; i++ {
-		p.stopChan <- true
+	p.Lock()
+	p.options.MaxWorkers = 0
+	p.Unlock()
+	p.stopWorkers()
+}
+
+// addWorkers add more workers in the pool to achieve goal state of Max Workers in the pool.
+func (p *Pool) addWorkers() {
+	for {
+		p.Lock()
+		// Validate Running workers >= Assigned Workers.
+		if p.numWorkers >= p.options.MaxWorkers {
+			p.Unlock()
+			break
+		} else {
+			p.numWorkers++
+			go p.runWorker()
+		}
+		p.Unlock()
 	}
 }
 
+// stopWorkers stops running workers to achieve goal state of Max Workers in the pool.
+func (p *Pool) stopWorkers() {
+	for {
+		p.Lock()
+		// Validate Running workers <= Assigned Workers.
+		if p.numWorkers <= p.options.MaxWorkers {
+			p.Unlock()
+			break
+		} else {
+			// Send best effort stopChan to terminate worker,
+			// if received then a running worker is terminated.
+			select {
+			case p.stopChan <- true:
+				p.numWorkers--
+			default:
+			}
+		}
+		p.Unlock()
+	}
+}
+
+// runWorker starts a worker go routine to process jobs from FIFO queue.
 func (p *Pool) runWorker() {
 	for {
-		if p.shouldWorkerStop() {
-			return
-		}
-
 		select {
 		case <-p.stopChan:
 			return
@@ -101,15 +137,4 @@ func (p *Pool) runWorker() {
 			p.jobs.Done()
 		}
 	}
-}
-
-func (p *Pool) shouldWorkerStop() bool {
-	stop := false
-	p.Lock()
-	if p.numWorkers > p.options.MaxWorkers {
-		p.numWorkers--
-		stop = true
-	}
-	p.Unlock()
-	return stop
 }

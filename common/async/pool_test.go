@@ -86,6 +86,8 @@ func TestPoolSetMaxWorkers(t *testing.T) {
 			p.SetMaxWorkers(2)
 		} else if i == 6 {
 			p.SetMaxWorkers(6)
+		} else if i == 9 {
+			p.SetMaxWorkers(1)
 		}
 	}
 
@@ -113,12 +115,16 @@ func TestPoolStop(t *testing.T) {
 		}
 	}
 
+	p.SetMaxWorkers(2)
 	for i := 0; i < iter; i++ {
-		test()
+		go func() {
+			test()
+		}()
 	}
+	p.SetMaxWorkers(6)
 
 	p.Stop()
 
-	// Since jobs were terminated, all jobs were not processed
-	assert.NotEqual(t, int64(c*iter), r)
+	// Since pool is stopped, all the workers are terminated
+	assert.Equal(t, p.numWorkers, 0)
 }
