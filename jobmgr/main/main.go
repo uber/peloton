@@ -349,6 +349,19 @@ func main() {
 	updateManager := updatesvc.NewManager(store, // JobStore
 		cfg.JobManager.Update)
 
+	// Create the Task status update which pulls task update events
+	// from HM once started after gaining leadership
+	statusUpdate := event.NewTaskStatusUpdate(
+		dispatcher,
+		store, // store implements JobStore
+		store, // store implements TaskStore
+		store, // store implements VolumeStore
+		jobFactory,
+		goalStateDriver,
+		[]event.Listener{},
+		rootScope,
+	)
+
 	server := jobmgr.NewServer(
 		cfg.JobManager.HTTPPort,
 		cfg.JobManager.GRPCPort,
@@ -358,6 +371,7 @@ func main() {
 		deadlineTracker,
 		updateManager,
 		placementProcessor,
+		statusUpdate,
 	)
 
 	candidate, err := leader.NewCandidate(
@@ -412,31 +426,6 @@ func main() {
 	if err := dispatcher.Start(); err != nil {
 		log.Fatalf("Could not start rpc server: %v", err)
 	}
-
-	// Init the Task status update which pulls task update events
-	// from HM once started after gaining leadership
-	event.InitTaskStatusUpdate(
-		dispatcher,
-		common.PelotonHostManager,
-		store, // store implements JobStore
-		store, // store implements TaskStore
-		store, // store implements VolumeStore
-		jobFactory,
-		goalStateDriver,
-		[]event.Listener{},
-		rootScope,
-	)
-
-	// Init the Task status update which pulls task update events
-	// from HM once started after gaining leadership
-	event.InitTaskStatusUpdateRM(
-		dispatcher,
-		common.PelotonHostManager,
-		store, // store implements JobStore
-		store, // store implements TaskStore
-		common.PelotonResourceManager,
-		rootScope,
-	)
 
 	err = candidate.Start()
 	if err != nil {

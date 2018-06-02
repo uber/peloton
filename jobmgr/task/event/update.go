@@ -3,7 +3,6 @@ package event
 import (
 	"context"
 	"strings"
-	"sync"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -58,77 +57,47 @@ type statusUpdate struct {
 	metrics         *Metrics
 }
 
-// Singleton task status updater
-var statusUpdater *statusUpdate
-var onceInitStatusUpdate sync.Once
-
-// InitTaskStatusUpdate creates a statusUpdate
-func InitTaskStatusUpdate(
+// NewTaskStatusUpdate creates a statusUpdate
+func NewTaskStatusUpdate(
 	d *yarpc.Dispatcher,
-	server string,
 	jobStore storage.JobStore,
 	taskStore storage.TaskStore,
 	volumeStore storage.PersistentVolumeStore,
 	jobFactory cached.JobFactory,
 	goalStateDriver goalstate.Driver,
 	listeners []Listener,
-	parentScope tally.Scope) {
-	onceInitStatusUpdate.Do(func() {
-		if statusUpdater != nil {
-			log.Warning("Task updater has already been initialized")
-			return
-		}
-		statusUpdater = &statusUpdate{
-			jobStore:        jobStore,
-			taskStore:       taskStore,
-			volumeStore:     volumeStore,
-			rootCtx:         context.Background(),
-			metrics:         NewMetrics(parentScope.SubScope("status_updater")),
-			eventClients:    make(map[string]*eventstream.Client),
-			jobFactory:      jobFactory,
-			goalStateDriver: goalStateDriver,
-			listeners:       listeners,
-			hostmgrClient:   hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
-		}
-		// TODO: add config for BucketEventProcessor
-		statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
+	parentScope tally.Scope) StatusUpdate {
 
-		statusUpdaterRM := &statusUpdate{
-			jobStore:     jobStore,
-			taskStore:    taskStore,
-			rootCtx:      context.Background(),
-			metrics:      NewMetrics(parentScope.SubScope("status_updater")),
-			eventClients: make(map[string]*eventstream.Client),
-			listeners:    listeners,
-		}
-		// TODO: add config for BucketEventProcessor
-		statusUpdaterRM.applier = newBucketEventProcessor(statusUpdaterRM, 100, 10000)
-
-		eventClient := eventstream.NewEventStreamClient(
-			d,
-			common.PelotonJobManager,
-			server,
-			statusUpdater,
-			parentScope.SubScope("HostmgrEventStreamClient"))
-		statusUpdater.eventClients[common.PelotonJobManager] = eventClient
-
-		eventClientRM := eventstream.NewEventStreamClient(
-			d,
-			common.PelotonJobManager,
-			common.PelotonResourceManager,
-			statusUpdaterRM,
-			parentScope.SubScope("ResmgrEventStreamClient"))
-		statusUpdaterRM.eventClients[common.PelotonResourceManager] = eventClientRM
-	})
-}
-
-// GetStatusUpdater returns the task status updater. This
-// function assumes the updater has been initialized as part of the
-// InitTaskStatusUpdate function.
-func GetStatusUpdater() StatusUpdate {
-	if statusUpdater == nil {
-		log.Fatal("Status updater is not initialized")
+	statusUpdater := &statusUpdate{
+		jobStore:        jobStore,
+		taskStore:       taskStore,
+		volumeStore:     volumeStore,
+		rootCtx:         context.Background(),
+		metrics:         NewMetrics(parentScope.SubScope("status_updater")),
+		eventClients:    make(map[string]*eventstream.Client),
+		jobFactory:      jobFactory,
+		goalStateDriver: goalStateDriver,
+		listeners:       listeners,
+		hostmgrClient:   hostsvc.NewInternalHostServiceYARPCClient(d.ClientConfig(common.PelotonHostManager)),
 	}
+	// TODO: add config for BucketEventProcessor
+	statusUpdater.applier = newBucketEventProcessor(statusUpdater, 100, 10000)
+
+	eventClient := eventstream.NewEventStreamClient(
+		d,
+		common.PelotonJobManager,
+		common.PelotonHostManager,
+		statusUpdater,
+		parentScope.SubScope("HostmgrEventStreamClient"))
+	statusUpdater.eventClients[common.PelotonHostManager] = eventClient
+
+	eventClientRM := eventstream.NewEventStreamClient(
+		d,
+		common.PelotonJobManager,
+		common.PelotonResourceManager,
+		statusUpdater,
+		parentScope.SubScope("ResmgrEventStreamClient"))
+	statusUpdater.eventClients[common.PelotonResourceManager] = eventClientRM
 	return statusUpdater
 }
 

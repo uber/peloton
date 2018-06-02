@@ -25,15 +25,13 @@ type Server struct {
 	ID   string
 	role string
 
-	getStatusUpdate   func() event.StatusUpdate
-	getStatusUpdateRM func() event.StatusUpdateRM
-
 	jobFactory         cached.JobFactory
 	taskPreemptor      preemptor.Preemptor
 	goalstateDriver    goalstate.Driver
 	deadlineTracker    deadline.Tracker
 	updateManager      updatesvc.Manager
 	placementProcessor placement.Processor
+	statusUpdate       event.StatusUpdate
 }
 
 // NewServer creates a job manager Server instance.
@@ -45,19 +43,19 @@ func NewServer(
 	deadlineTracker deadline.Tracker,
 	updateManager updatesvc.Manager,
 	placementProcessor placement.Processor,
+	statusUpdate event.StatusUpdate,
 ) *Server {
 
 	return &Server{
 		ID:                 leader.NewID(httpPort, grpcPort),
 		role:               common.JobManagerRole,
-		getStatusUpdate:    event.GetStatusUpdater,
-		getStatusUpdateRM:  event.GetStatusUpdaterRM,
 		jobFactory:         jobFactory,
 		taskPreemptor:      taskPreemptor,
 		goalstateDriver:    goalstateDriver,
 		deadlineTracker:    deadlineTracker,
 		updateManager:      updateManager,
 		placementProcessor: placementProcessor,
+		statusUpdate:       statusUpdate,
 	}
 }
 
@@ -68,13 +66,12 @@ func (s *Server) GainedLeadershipCallback() error {
 	log.WithFields(log.Fields{"role": s.role}).Info("Gained leadership")
 
 	s.jobFactory.Start()
-	s.getStatusUpdateRM().Start()
 	s.taskPreemptor.Start()
 	s.goalstateDriver.Start()
 	s.placementProcessor.Start()
 	s.deadlineTracker.Start()
 	s.updateManager.Start()
-	s.getStatusUpdate().Start()
+	s.statusUpdate.Start()
 
 	return nil
 }
@@ -86,8 +83,7 @@ func (s *Server) LostLeadershipCallback() error {
 	log.WithField("role", s.role).Info("Lost leadership")
 
 	s.jobFactory.Stop()
-	s.getStatusUpdate().Stop()
-	s.getStatusUpdateRM().Stop()
+	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
 	s.goalstateDriver.Stop()
@@ -103,8 +99,7 @@ func (s *Server) ShutDownCallback() error {
 	log.WithFields(log.Fields{"role": s.role}).Info("Quitting election")
 
 	s.jobFactory.Stop()
-	s.getStatusUpdate().Stop()
-	s.getStatusUpdateRM().Stop()
+	s.statusUpdate.Stop()
 	s.placementProcessor.Stop()
 	s.taskPreemptor.Stop()
 	s.goalstateDriver.Stop()
