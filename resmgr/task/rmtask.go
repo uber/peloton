@@ -51,23 +51,29 @@ func CreateRMTask(
 			StartTime: time.Time{},
 		},
 	}
+
 	var err error
 	r.stateMachine, err = r.createStateMachine()
+	if err != nil {
+		return nil, err
+	}
+
 	// As this is when task is being created , retry should be 0
 	r.Task().PlacementRetryCount = 0
 	// Placement timeout should be equal to placing timeout by default
 	r.Task().PlacementTimeoutSeconds = config.PlacingTimeout.Seconds()
 	// Checking if placement backoff is enabled
 	if !config.EnablePlacementBackoff {
-		return &r, err
+		return &r, nil
 	}
+
 	// Creating the backoff policy specified in config
 	// and will be used for further backoff calculations.
 	r.policy, err = GetFactory().CreateBackOffPolicy(config)
 	if err != nil {
 		return nil, err
 	}
-	return &r, err
+	return &r, nil
 }
 
 // createStateMachine creates the state machine
@@ -236,7 +242,8 @@ func (rmTask *RMTask) createStateMachine() (state.StateMachine, error) {
 func (rmTask *RMTask) TransitTo(stateTo string, options ...state.Option) error {
 	err := rmTask.stateMachine.TransitTo(state.State(stateTo), options...)
 	if err == nil {
-		GetTracker().UpdateCounters(rmTask.GetCurrentState().String(), stateTo)
+		GetTracker().UpdateCounters(rmTask.GetCurrentState(),
+			task.TaskState(task.TaskState_value[stateTo]))
 	}
 	return err
 }
@@ -276,7 +283,7 @@ func (rmTask *RMTask) timeoutCallbackFromPlacing(t *state.Transition) error {
 		"from_state": t.From,
 		"to_state":   t.To,
 	}).Info("task is pushed back to ready queue")
-	err := rmtask.PushTaskforPlacementAgain()
+	err := rmtask.PushTaskForPlacementAgain()
 	if err != nil {
 		return err
 	}
@@ -292,7 +299,7 @@ func (rmTask *RMTask) timeoutCallbackFromLaunching(t *state.Transition) error {
 			"tracker %s ", t.StateMachine.GetName())
 	}
 
-	err := rmtask.PushTaskforPlacementAgain()
+	err := rmtask.PushTaskForPlacementAgain()
 	if err != nil {
 		return err
 	}
@@ -447,9 +454,9 @@ func (rmTask *RMTask) PushTaskForReadmission() error {
 	return nil
 }
 
-// PushTaskforPlacementAgain pushes the task to ready queue as the placement cycle is not
+// PushTaskForPlacementAgain pushes the task to ready queue as the placement cycle is not
 // completed for this task.
-func (rmTask *RMTask) PushTaskforPlacementAgain() error {
+func (rmTask *RMTask) PushTaskForPlacementAgain() error {
 	var tasks []*resmgr.Task
 	gang := &resmgrsvc.Gang{
 		Tasks: append(tasks, rmTask.task),

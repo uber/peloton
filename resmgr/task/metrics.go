@@ -1,6 +1,8 @@
 package task
 
 import (
+	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+
 	"code.uber.internal/infra/peloton/common/scalar"
 
 	"github.com/uber-go/tally"
@@ -10,20 +12,9 @@ import (
 type Metrics struct {
 	ReadyQueueLen tally.Gauge
 
-	TaskLeninTracker tally.Gauge
+	TasksCountInTracker tally.Gauge
 
-	pendingTasks    tally.Gauge
-	readyTasks      tally.Gauge
-	placingTasks    tally.Gauge
-	placedTasks     tally.Gauge
-	launchingTasks  tally.Gauge
-	launchedTasks   tally.Gauge
-	runningTasks    tally.Gauge
-	succeededTasks  tally.Gauge
-	failedTasks     tally.Gauge
-	lostTasks       tally.Gauge
-	killedTasks     tally.Gauge
-	preemptingTasks tally.Gauge
+	TaskStatesGauge map[task.TaskState]tally.Gauge
 
 	LeakedResources scalar.GaugeMaps
 
@@ -41,22 +32,36 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	leakScope := reconcilerScope.SubScope("leaks")
 	successScope := reconcilerScope.Tagged(map[string]string{"result": "success"})
 	failScope := reconcilerScope.Tagged(map[string]string{"result": "fail"})
-	return &Metrics{
-		ReadyQueueLen:    readyScope.Gauge("ready_queue_length"),
-		TaskLeninTracker: trackerScope.Gauge("task_len_tracker"),
-		pendingTasks:     taskStateScope.Gauge("task_state_pending"),
-		readyTasks:       taskStateScope.Gauge("task_state_ready"),
-		placingTasks:     taskStateScope.Gauge("task_state_placing"),
-		placedTasks:      taskStateScope.Gauge("task_state_placed"),
-		launchingTasks:   taskStateScope.Gauge("task_state_launching"),
-		launchedTasks:    taskStateScope.Gauge("task_state_launched"),
-		runningTasks:     taskStateScope.Gauge("task_state_running"),
-		succeededTasks:   taskStateScope.Gauge("task_state_succeeded"),
-		failedTasks:      taskStateScope.Gauge("task_state_failed"),
-		lostTasks:        taskStateScope.Gauge("task_state_lost"),
-		killedTasks:      taskStateScope.Gauge("task_state_killed"),
-		preemptingTasks:  taskStateScope.Gauge("task_state_preempting"),
 
+	return &Metrics{
+		ReadyQueueLen:       readyScope.Gauge("ready_queue_length"),
+		TasksCountInTracker: trackerScope.Gauge("task_len_tracker"),
+		TaskStatesGauge: map[task.TaskState]tally.Gauge{
+			task.TaskState_PENDING: taskStateScope.Gauge(
+				"task_state_pending"),
+			task.TaskState_READY: taskStateScope.Gauge(
+				"task_state_ready"),
+			task.TaskState_PLACING: taskStateScope.Gauge(
+				"task_state_placing"),
+			task.TaskState_PLACED: taskStateScope.Gauge(
+				"task_state_placed"),
+			task.TaskState_LAUNCHING: taskStateScope.Gauge(
+				"task_state_launching"),
+			task.TaskState_LAUNCHED: taskStateScope.Gauge(
+				"task_state_launched"),
+			task.TaskState_RUNNING: taskStateScope.Gauge(
+				"task_state_running"),
+			task.TaskState_SUCCEEDED: taskStateScope.Gauge(
+				"task_state_succeeded"),
+			task.TaskState_FAILED: taskStateScope.Gauge(
+				"task_state_failed"),
+			task.TaskState_KILLED: taskStateScope.Gauge(
+				"task_state_pending"),
+			task.TaskState_LOST: taskStateScope.Gauge(
+				"task_state_lost"),
+			task.TaskState_PREEMPTING: taskStateScope.Gauge(
+				"task_state_preempting"),
+		},
 		LeakedResources:       scalar.NewGaugeMaps(leakScope),
 		ReconciliationSuccess: successScope.Counter("run"),
 		ReconciliationFail:    failScope.Counter("run"),

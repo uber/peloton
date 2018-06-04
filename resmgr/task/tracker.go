@@ -63,15 +63,15 @@ type Tracker interface {
 	GetActiveTasks(jobID string, respoolID string, states []string) map[string][]*RMTask
 
 	// UpdateCounters updates the counters for each state
-	UpdateCounters(from string, to string)
+	UpdateCounters(from task.TaskState, to task.TaskState)
 }
 
 // tracker is the rmtask tracker
 // map[taskid]*rmtask
 type tracker struct {
-	sync.Mutex
+	sync.RWMutex
 
-	// TODO: we should use sync-map
+	// Map of peloton task ID to the resource manager task
 	tasks map[string]*RMTask
 
 	// Maps hostname -> task type -> task id -> rm task
@@ -79,7 +79,10 @@ type tracker struct {
 
 	metrics *Metrics
 
-	counters map[string]float64
+	// mutex for the state counters
+	cMutex sync.Mutex
+	// map of task state to the count of tasks in the tracker
+	counters map[task.TaskState]float64
 }
 
 // singleton object
@@ -95,7 +98,7 @@ func InitTaskTracker(parent tally.Scope, config *Config) {
 		tasks:      make(map[string]*RMTask),
 		placements: map[string]map[resmgr.TaskType]map[string]*RMTask{},
 		metrics:    NewMetrics(parent.SubScope("tracker")),
-		counters:   make(map[string]float64),
+		counters:   make(map[task.TaskState]float64),
 	}
 
 	// Checking placement back off is enabled , if yes then initialize
@@ -124,25 +127,28 @@ func (tr *tracker) AddTask(
 	handler *eventstream.Handler,
 	respool respool.ResPool,
 	config *Config) error {
-	tr.Lock()
-	defer tr.Unlock()
+
 	rmTask, err := CreateRMTask(t, handler, respool, config)
 	if err != nil {
 		return err
 	}
+
+	tr.Lock()
+	defer tr.Unlock()
+
 	tr.tasks[rmTask.task.Id.Value] = rmTask
 	if rmTask.task.Hostname != "" {
 		tr.setPlacement(rmTask.task.Id, rmTask.task.Hostname)
 	}
-	tr.metrics.TaskLeninTracker.Update(float64(tr.GetSize()))
+	tr.metrics.TasksCountInTracker.Update(float64(tr.GetSize()))
 	return nil
 }
 
 // GetTask gets the RM task for taskID
 // this locks the tracker and get the Task
 func (tr *tracker) GetTask(t *peloton.TaskID) *RMTask {
-	tr.Lock()
-	defer tr.Unlock()
+	tr.RLock()
+	defer tr.RUnlock()
 	return tr.getTask(t)
 }
 
@@ -214,13 +220,13 @@ func (tr *tracker) DeleteTask(t *peloton.TaskID) {
 
 // deleteTask deletes the task from the map
 // this method is not protected, we need to lock tracker
-// before we use this
+// before we use this.
 func (tr *tracker) deleteTask(t *peloton.TaskID) {
 	if rmTask, exists := tr.tasks[t.Value]; exists {
 		tr.clearPlacement(rmTask)
 	}
 	delete(tr.tasks, t.Value)
-	tr.metrics.TaskLeninTracker.Update(float64(tr.GetSize()))
+	tr.metrics.TasksCountInTracker.Update(float64(tr.GetSize()))
 }
 
 // MarkItDone updates the resources in resmgr and removes the task
@@ -230,12 +236,45 @@ func (tr *tracker) MarkItDone(
 	mesosTaskID string) error {
 	tr.Lock()
 	defer tr.Unlock()
+
+	t := tr.getTask(tID)
+	if t == nil {
+		return errors.Errorf("task %s is not in tracker", tID)
+	}
+	return tr.markItDone(t, mesosTaskID)
+}
+
+// MarkItInvalid marks the task done and invalidate them
+// in to respool by that they can be removed from the queue
+func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error {
+	tr.Lock()
+	defer tr.Unlock()
+
 	t := tr.getTask(tID)
 	if t == nil {
 		return errors.Errorf("task %s is not in tracker", tID)
 	}
 
+	// remove the tracker
+	err := tr.markItDone(t, mesosTaskID)
+	if err != nil {
+		return err
+	}
+
+	// We only need to invalidate tasks if they are in PENDING or
+	// INITIALIZED STATE as Pending queue only will have these tasks
+	if t.GetCurrentState() == task.TaskState_PENDING ||
+		t.GetCurrentState() == task.TaskState_INITIALIZED {
+		t.respool.AddInvalidTask(tID)
+	}
+
+	return nil
+}
+
+// tracker needs to be locked before calling this.
+func (tr *tracker) markItDone(t *RMTask, mesosTaskID string) error {
 	// Checking mesos ID again if thats not changed
+	tID := t.Task().GetId()
 	if *t.Task().TaskId.Value != mesosTaskID {
 		return errors.Errorf("for task %s: mesos id %s in tracker is different id %s from event",
 			tID.Value, *t.Task().TaskId.Value, mesosTaskID)
@@ -256,26 +295,6 @@ func (tr *tracker) MarkItDone(
 
 	log.WithField("task_id", tID.Value).Info("Deleting the task from Tracker")
 	tr.deleteTask(tID)
-	return nil
-}
-
-// MarkItInvalid marks the task done and invalidate them
-// in to respool by that they can be removed from the queue
-func (tr *tracker) MarkItInvalid(tID *peloton.TaskID, mesosTaskID string) error {
-	t := tr.GetTask(tID)
-	if t == nil {
-		return errors.Errorf("task %s is not in tracker", tID)
-	}
-	err := tr.MarkItDone(tID, mesosTaskID)
-	if err != nil {
-		return err
-	}
-	// We only need to invalidate tasks if they are in PENDING or
-	// INITIALIZED STATE as Pending queue only will have these tasks
-	if t.GetCurrentState() == task.TaskState_PENDING ||
-		t.GetCurrentState() == task.TaskState_INITIALIZED {
-		t.respool.AddInvalidTask(tID)
-	}
 	return nil
 }
 
@@ -351,8 +370,9 @@ func (tr *tracker) isStateInRequest(state string, reqStates []string) bool {
 // GetActiveTasks returns task to states map, if jobID or respoolID is provided,
 // only tasks for that job or respool will be returned
 func (tr *tracker) GetActiveTasks(jobID string, respoolID string, states []string) map[string][]*RMTask {
-	tr.Lock()
-	defer tr.Unlock()
+	tr.RLock()
+	defer tr.RUnlock()
+
 	taskStates := make(map[string][]*RMTask)
 
 	for _, t := range tr.tasks {
@@ -379,53 +399,26 @@ func (tr *tracker) GetActiveTasks(jobID string, respoolID string, states []strin
 }
 
 // UpdateCounters updates the counters for each state
-func (tr *tracker) UpdateCounters(from string, to string) {
-	tr.Lock()
-	defer tr.Unlock()
+func (tr *tracker) UpdateCounters(from task.TaskState, to task.TaskState) {
+	tr.cMutex.Lock()
+	defer tr.cMutex.Unlock()
+
 	// Reducing the count from state
 	if val, ok := tr.counters[from]; ok {
 		if val > 0 {
 			tr.counters[from] = val - 1
 		}
 	}
+
 	// Incrementing the state counter to +1
 	if val, ok := tr.counters[to]; ok {
 		tr.counters[to] = val + 1
 	} else {
 		tr.counters[to] = 1
 	}
-	// publishing the counters
-	tr.publishCounters()
-}
 
-// publishes the counters for all task states
-func (tr *tracker) publishCounters() {
-	for state, counter := range tr.counters {
-		switch state {
-		case task.TaskState_PENDING.String():
-			tr.metrics.pendingTasks.Update(counter)
-		case task.TaskState_READY.String():
-			tr.metrics.readyTasks.Update(counter)
-		case task.TaskState_PLACING.String():
-			tr.metrics.placingTasks.Update(counter)
-		case task.TaskState_PLACED.String():
-			tr.metrics.placedTasks.Update(counter)
-		case task.TaskState_LAUNCHING.String():
-			tr.metrics.launchingTasks.Update(counter)
-		case task.TaskState_LAUNCHED.String():
-			tr.metrics.launchedTasks.Update(counter)
-		case task.TaskState_RUNNING.String():
-			tr.metrics.runningTasks.Update(counter)
-		case task.TaskState_SUCCEEDED.String():
-			tr.metrics.succeededTasks.Update(counter)
-		case task.TaskState_FAILED.String():
-			tr.metrics.failedTasks.Update(counter)
-		case task.TaskState_LOST.String():
-			tr.metrics.lostTasks.Update(counter)
-		case task.TaskState_KILLED.String():
-			tr.metrics.killedTasks.Update(counter)
-		case task.TaskState_PREEMPTING.String():
-			tr.metrics.preemptingTasks.Update(counter)
-		}
+	// publishing all the counters
+	for state, gauge := range tr.metrics.TaskStatesGauge {
+		gauge.Update(tr.counters[state])
 	}
 }

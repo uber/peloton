@@ -867,7 +867,7 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 		"mesos_task_id": rmTask.Task().TaskId.Value,
 	}).Info("Task is completed and removed from tracker")
 	rmtask.GetTracker().UpdateCounters(
-		t.TaskState_RUNNING.String(), taskState.String())
+		t.TaskState_RUNNING, taskState)
 
 }
 
@@ -1057,8 +1057,8 @@ func (h *ServiceHandler) KillTasks(
 			"current_state": killedRmTask.GetCurrentState().String(),
 		}).Info("Task is Killed and removed from tracker")
 		h.rmTracker.UpdateCounters(
-			killedRmTask.GetCurrentState().String(),
-			t.TaskState_KILLED.String(),
+			killedRmTask.GetCurrentState(),
+			t.TaskState_KILLED,
 		)
 	}
 	if len(tasksNotKilled) == 0 && len(tasksNotFound) == 0 {

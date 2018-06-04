@@ -89,6 +89,7 @@ func (st *statetimer) Start(timeout time.Duration) error {
 	}
 
 	started := make(chan struct{})
+
 	go func() {
 		log.WithField("task_id", st.statemachine.name).
 			Debug("Starting State recovery")
@@ -101,7 +102,7 @@ func (st *statetimer) Start(timeout time.Duration) error {
 			timer.Stop()
 		}()
 
-		started <- struct{}{}
+		close(started)
 
 		select {
 		case <-st.stopChan:
@@ -111,6 +112,7 @@ func (st *statetimer) Start(timeout time.Duration) error {
 			st.recover()
 		}
 	}()
+
 	// wait for goroutine to start
 	<-started
 	return nil
