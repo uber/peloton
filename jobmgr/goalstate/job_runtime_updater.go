@@ -83,7 +83,7 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 		return nil
 	}
 
-	runtime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobID)
+	runtime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
@@ -205,12 +205,13 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 // job runtime state and task state counts.
 func determineJobRuntimeState(jobRuntime *job.RuntimeInfo,
 	stateCounts map[string]uint32,
-	instances uint32,
+	config cached.JobConfig,
 	goalStateDriver *driver,
 	cachedJob cached.Job) job.JobState {
 	var jobState job.JobState
 
-	if jobRuntime.State == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated() {
+	instances := config.GetInstanceCount()
+	if jobRuntime.State == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated(config) {
 		// do not do any thing as all tasks have not been created yet
 		jobState = job.JobState_INITIALIZED
 	} else if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
@@ -251,7 +252,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 	log.WithField("job_id", id).
 		Info("running job runtime update")
 
-	jobRuntime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobID)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
@@ -260,21 +261,10 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	instances := cachedJob.GetInstanceCount()
-	if instances <= 0 {
-		jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
-		if err != nil {
-			log.WithError(err).
-				WithField("job_id", id).
-				Error("failed to get job config in runtime updater")
-			goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
-			return err
-		}
-		cachedJob.Update(ctx, &job.JobInfo{
-			Config:  jobConfig,
-			Runtime: jobRuntime,
-		}, cached.UpdateCacheOnly)
-		instances = cachedJob.GetInstanceCount()
+	config, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
+		return err
 	}
 
 	// Keeping the commented code when we have write through cache, then we
@@ -321,24 +311,25 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		totalInstanceCount += stateCounts[state]
 	}
 
-	// TODO: remove log after job stuck at PENDING state is fixed
-	log.WithField("job_id", id).
-		WithField("total_instance_count", totalInstanceCount).
-		WithField("instances", instances).
-		Debugln()
-
-	if totalInstanceCount != instances {
+	var jobState job.JobState
+	jobRuntimeUpdate := &job.RuntimeInfo{}
+	if totalInstanceCount != config.GetInstanceCount() {
+		// TODO: remove log after job stuck at PENDING state is fixed
+		log.WithField("job_id", id).
+			WithField("total_instance_count", totalInstanceCount).
+			WithField("instances", config.GetInstanceCount()).
+			Debugln()
 		if jobRuntime.GetState() == job.JobState_KILLED && jobRuntime.GetGoalState() == job.JobState_KILLED {
 			// Job already killed, do not do anything
 			return nil
 		}
 		// Either MV view has not caught up or all instances have not been created
-		if cachedJob.IsPartiallyCreated() {
+		if cachedJob.IsPartiallyCreated(config) {
 			// TODO: remove log after job stuck at PENDING state is fixed
 			log.WithField("job_id", id).
 				Debug("job is partially created")
 			// all instances have not been created, trigger recovery
-			jobRuntime.State = job.JobState_INITIALIZED
+			jobState = job.JobState_INITIALIZED
 		} else {
 			// MV has not caught up, wait for it to catch up before doing anything
 			return fmt.Errorf("dbs are not in sync")
@@ -350,7 +341,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		WithField("state", jobRuntime.State.String()).
 		Debug("job runtime state before determineJobRuntimeState")
 
-	jobState := determineJobRuntimeState(jobRuntime, stateCounts, instances, goalStateDriver, cachedJob)
+	jobState = determineJobRuntimeState(jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
 
 	if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) && jobRuntime.GetState() == jobState {
 		log.WithField("job_id", id).
@@ -367,11 +358,11 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		}
 
 		if count > 0 {
-			jobRuntime.StartTime = formatTime(getFirstTaskUpdateTime, time.RFC3339Nano)
+			jobRuntimeUpdate.StartTime = formatTime(getFirstTaskUpdateTime, time.RFC3339Nano)
 		}
 	}
 
-	jobRuntime.State = jobState
+	jobRuntimeUpdate.State = jobState
 	if util.IsPelotonJobStateTerminal(jobState) {
 		// In case a job moved from PENDING/INITIALIZED to KILLED state,
 		// the lastTaskUpdateTime will be 0. In this case, we will use
@@ -382,12 +373,14 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		if lastTaskUpdateTime != 0 {
 			completionTime = formatTime(lastTaskUpdateTime, time.RFC3339Nano)
 		}
-		jobRuntime.CompletionTime = completionTime
+		jobRuntimeUpdate.CompletionTime = completionTime
 	}
-	jobRuntime.TaskStats = stateCounts
+	jobRuntimeUpdate.TaskStats = stateCounts
 
 	// Update the job runtime
-	err = goalStateDriver.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
+	err = cachedJob.Update(ctx, &job.JobInfo{
+		Runtime: jobRuntimeUpdate,
+	}, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
@@ -396,7 +389,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	if util.IsPelotonJobStateTerminal(jobRuntime.GetState()) {
+	if util.IsPelotonJobStateTerminal(jobRuntimeUpdate.GetState()) {
 		// Evaluate this job immediately as no more task updates will arrive
 		goalStateDriver.EnqueueJob(jobID, time.Now())
 	}

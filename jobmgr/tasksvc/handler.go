@@ -28,6 +28,7 @@ import (
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
 	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -396,32 +397,15 @@ func (m *serviceHandler) Start(
 		}, nil
 	}
 
-	jobRuntime, err := m.jobStore.GetJobRuntime(ctx, body.GetJobId())
-	if err != nil {
-		log.WithField("job", body.JobId).
-			WithError(err).
-			Error("failed to get job runtime from db")
-		m.metrics.TaskStartFail.Inc(1)
-		return &task.StartResponse{
-			Error: &task.StartResponse_Error{
-				Failure: &task.TaskStartFailure{
-					Message: fmt.Sprintf("task start failed while getting job status %v", err),
-				},
-			},
-		}, nil
+	cachedJob := m.jobFactory.AddJob(body.GetJobId())
+	jobRuntimeUpdate := &pb_job.RuntimeInfo{
+		State: pb_job.JobState_PENDING,
 	}
+	jobRuntimeUpdate.GoalState = goalstateutil.GetDefaultJobGoalState(jobConfig.GetType())
 
-	if jobConfig.GetType() == pb_job.JobType_SERVICE {
-		jobRuntime.GoalState = pb_job.JobState_RUNNING
-	} else {
-		jobRuntime.GoalState = pb_job.JobState_SUCCEEDED
-	}
-	jobRuntime.State = pb_job.JobState_PENDING
-
-	// Since no action needs to be taken at a job level, only update the DB
-	// and not the cache. Whenever, a job action needs to be taken, the
-	// cache is always updated at that time.
-	err = m.jobStore.UpdateJobRuntime(ctx, body.GetJobId(), jobRuntime)
+	err = cachedJob.Update(ctx, &pb_job.JobInfo{
+		Runtime: jobRuntimeUpdate,
+	}, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -478,7 +462,6 @@ func (m *serviceHandler) Start(
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
 
-	cachedJob := m.jobFactory.AddJob(body.GetJobId())
 	err = cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
@@ -534,7 +517,8 @@ func (m *serviceHandler) stopJob(
 		instanceList = append(instanceList, i)
 	}
 
-	jobRuntime, err := m.jobStore.GetJobRuntime(ctx, jobID)
+	cachedJob := m.jobFactory.AddJob(jobID)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
@@ -556,15 +540,12 @@ func (m *serviceHandler) stopJob(
 		}, nil
 	}
 
-	jobRuntime.GoalState = pb_job.JobState_KILLED
-	jobInfo := &pb_job.JobInfo{
-		Id:      jobID,
-		Config:  jobConfig,
-		Runtime: jobRuntime,
+	jobRuntimeUpdate := &pb_job.RuntimeInfo{
+		GoalState: pb_job.JobState_KILLED,
 	}
-	cachedJob := m.jobFactory.AddJob(jobID)
-
-	err = cachedJob.Update(ctx, jobInfo, cached.UpdateCacheAndDB)
+	err = cachedJob.Update(ctx, &pb_job.JobInfo{
+		Runtime: jobRuntimeUpdate,
+	}, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).

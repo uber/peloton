@@ -185,11 +185,6 @@ func (j *jobEntity) GetActionList(
 			Name:    string(EvaluateSLAAction),
 			Execute: JobEvaluateMaxRunningInstancesSLA,
 		})
-
-		actions = append(actions, goalstate.Action{
-			Name:    string(ClearAction),
-			Execute: JobClearRuntime,
-		})
 	}
 
 	return context.Background(), nil, actions

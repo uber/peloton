@@ -51,7 +51,16 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		updatedRuntimes[instanceID] = updatedRuntime
 	}
 
-	err := cachedJob.UpdateTasks(ctx, updatedRuntimes, cached.UpdateCacheAndDB)
+	config, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id).
+			Error("failed to get config of the job")
+		return err
+	}
+
+	err = cachedJob.UpdateTasks(ctx, updatedRuntimes, cached.UpdateCacheAndDB)
+
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
@@ -71,7 +80,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	// Get job runtime and update job state to killing
-	jobRuntime, err := goalStateDriver.jobStore.GetJobRuntime(ctx, jobID)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
@@ -82,7 +91,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 
 	// If not all instances have been created, and all created instances are already killed,
 	// then directly update the job state to KILLED.
-	if len(updatedRuntimes) == 0 && jobRuntime.GetState() == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated() {
+	if len(updatedRuntimes) == 0 && jobRuntime.GetState() == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated(config) {
 		jobState = job.JobState_KILLED
 		for _, cachedTask := range tasks {
 			runtime, err := cachedTask.GetRunTime(ctx)
@@ -92,9 +101,10 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 			}
 		}
 	}
-	jobRuntime.State = jobState
 
-	err = goalStateDriver.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
+	err = cachedJob.Update(ctx, &job.JobInfo{
+		Runtime: &job.RuntimeInfo{State: jobState},
+	}, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).

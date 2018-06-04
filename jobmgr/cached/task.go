@@ -10,6 +10,7 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"code.uber.internal/infra/peloton/util"
+	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -189,21 +190,12 @@ func (t *task) validateStateUpdate(newRuntime *pbtask.RuntimeInfo) bool {
 	return false
 }
 
-// validateString returns true if length of the string is greater than 0
-func validateString(str string) bool {
-	if len(str) > 0 {
-		return true
-	}
-	return false
-}
-
 // mergeRuntime merges the current runtime and the new runtime and returns the merged
 // runtime back. The runtime provided as input only contains the fields which
 // the caller intends to change and the remaining are kept invalid/nil.
 func (t *task) mergeRuntime(newRuntime *pbtask.RuntimeInfo) *pbtask.RuntimeInfo {
 	currentRuntime := t.runtime
-	runtime := pbtask.RuntimeInfo{}
-	runtime = *currentRuntime
+	runtime := *currentRuntime
 
 	if newRuntime.GetState() != pbtask.TaskState_UNKNOWN {
 		runtime.State = newRuntime.GetState()
@@ -213,15 +205,15 @@ func (t *task) mergeRuntime(newRuntime *pbtask.RuntimeInfo) *pbtask.RuntimeInfo 
 		runtime.MesosTaskId = newRuntime.GetMesosTaskId()
 	}
 
-	if validateString(newRuntime.GetStartTime()) {
+	if stringsutil.ValidateString(newRuntime.GetStartTime()) {
 		runtime.StartTime = newRuntime.GetStartTime()
 	}
 
-	if validateString(newRuntime.GetCompletionTime()) {
+	if stringsutil.ValidateString(newRuntime.GetCompletionTime()) {
 		runtime.CompletionTime = newRuntime.GetCompletionTime()
 	}
 
-	if validateString(newRuntime.GetHost()) {
+	if stringsutil.ValidateString(newRuntime.GetHost()) {
 		runtime.Host = newRuntime.GetHost()
 	}
 
@@ -233,11 +225,11 @@ func (t *task) mergeRuntime(newRuntime *pbtask.RuntimeInfo) *pbtask.RuntimeInfo 
 		runtime.GoalState = newRuntime.GetGoalState()
 	}
 
-	if validateString(newRuntime.GetMessage()) {
+	if stringsutil.ValidateString(newRuntime.GetMessage()) {
 		runtime.Message = newRuntime.GetMessage()
 	}
 
-	if validateString(newRuntime.GetReason()) {
+	if stringsutil.ValidateString(newRuntime.GetReason()) {
 		runtime.Reason = newRuntime.GetReason()
 	}
 
@@ -306,7 +298,9 @@ func (t *task) validateAndMergeRuntime(runtime *pbtask.RuntimeInfo) *pbtask.Runt
 			WithField("old_state", t.runtime.GetState().String()).
 			WithField("new_goal_state", runtime.GetGoalState().String()).
 			WithField("old_goal_state", t.runtime.GetGoalState().String()).
-			Info("failed state validation")
+			WithField("job_id", t.jobID.Value).
+			WithField("instance_id", t.id).
+			Info("failed task state validation")
 		return nil
 	}
 

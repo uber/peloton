@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
@@ -111,36 +110,21 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	if cachedJob.GetSLAConfig().GetMaximumRunningInstances() > 0 {
+	config, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", taskEnt.jobID).
+			WithField("instance_id", taskEnt.instanceID).
+			Error("failed to fetch job config in task start")
+		return err
+	}
+	if config.GetSLAConfig().GetMaximumRunningInstances() > 0 {
 		// Tasks are enqueued into goal state in INITIALiZED state either
 		// during recovery or due to task restart due to failure/task lost
 		// or due to launch/starting state timeouts. In all these cases,
 		// job is enqueued into goal state as well. So, this is merely a safety
 		// check, hence enqueue with a large delay to prevent too many
 		// enqueues of the same job during recovery.
-		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
-			_jobEnqueueMultiplierOnTaskStart*
-				goalStateDriver.JobRuntimeDuration(cachedJob.GetJobType())))
-		return nil
-	}
-
-	// Retrieves job config and task info from data stores.
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, taskEnt.jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", taskEnt.jobID).
-			Error("failed to fetch job config in task start")
-		return err
-	}
-
-	if jobConfig.GetSla().GetMaximumRunningInstances() > 0 {
-		// This check being true implies that job config in cache is not in sync with DB.
-		// Do a forced sync. This should go away after write through cache
-		// implementation for job configuration.
-		cachedJob.Update(ctx, &job.JobInfo{
-			Id:     taskEnt.jobID,
-			Config: jobConfig,
-		}, cached.UpdateCacheOnly)
 		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
 			_jobEnqueueMultiplierOnTaskStart*
 				goalStateDriver.JobRuntimeDuration(cachedJob.GetJobType())))
@@ -175,6 +159,15 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 		} else if pv.GetState() == volume.VolumeState_CREATED {
 			return startStatefulTask(ctx, taskEnt, taskInfo, goalStateDriver)
 		}
+	}
+
+	// TODO(zhixin): remove the call once all read is through cached job
+	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, taskEnt.jobID)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", taskEnt.jobID).
+			Error("failed to fetch job config in task start")
+		return err
 	}
 
 	// TODO: Investigate how to create proper gangs for scheduling (currently, task are treat independently)

@@ -15,45 +15,65 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
 
-// TestJobKill tests killing a fully created job
+type JobKillTestSuite struct {
+	suite.Suite
+
+	ctrl                *gomock.Controller
+	jobStore            *storemocks.MockJobStore
+	jobGoalStateEngine  *goalstatemocks.MockEngine
+	taskGoalStateEngine *goalstatemocks.MockEngine
+	jobFactory          *cachedmocks.MockJobFactory
+	cachedJob           *cachedmocks.MockJob
+	cachedConfig        *cachedmocks.MockJobConfig
+	goalStateDriver     *driver
+	jobID               *peloton.JobID
+	jobEnt              *jobEntity
+}
+
 func TestJobKill(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	suite.Run(t, new(JobKillTestSuite))
+}
 
-	jobStore := storemocks.NewMockJobStore(ctrl)
-	taskStore := storemocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
+func (suite *JobKillTestSuite) SetupTest() {
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedConfig = cachedmocks.NewMockJobConfig(suite.ctrl)
 
-	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		jobStore:   jobStore,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
+	suite.goalStateDriver = &driver{
+		jobEngine:  suite.jobGoalStateEngine,
+		taskEngine: suite.taskGoalStateEngine,
+		jobStore:   suite.jobStore,
+		jobFactory: suite.jobFactory,
 		mtx:        NewMetrics(tally.NoopScope),
 		cfg:        &Config{},
 	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	jobEnt := &jobEntity{
-		id:     jobID,
-		driver: goalStateDriver,
+	suite.goalStateDriver.cfg.normalize()
+	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
+	suite.jobEnt = &jobEntity{
+		id:     suite.jobID,
+		driver: suite.goalStateDriver,
 	}
+}
 
+func (suite *JobKillTestSuite) TearDownTest() {
+	suite.ctrl.Finish()
+}
+
+// TestJobKill tests killing a fully created job
+func (suite JobKillTestSuite) TestJobKill() {
 	instanceCount := uint32(4)
 	cachedTasks := make(map[uint32]cached.Task)
 	mockTasks := make(map[uint32]*cachedmocks.MockTask)
 	for i := uint32(0); i < instanceCount; i++ {
-		cachedTask := cachedmocks.NewMockTask(ctrl)
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
 		mockTasks[i] = cachedTask
 		cachedTasks[i] = cachedTask
 	}
@@ -102,18 +122,26 @@ func TestJobKill(t *testing.T) {
 		State:     pbjob.JobState_RUNNING,
 		GoalState: pbjob.JobState_SUCCEEDED,
 	}
-	newJobRuntime := &pbjob.RuntimeInfo{
-		State:     pbjob.JobState_KILLING,
-		GoalState: pbjob.JobState_SUCCEEDED,
-	}
 
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).
+		AnyTimes()
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetAllTasks().
 		Return(cachedTasks)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLING)
+		}).
+		Return(nil)
 
 	for i := uint32(0); i < instanceCount; i++ {
 		mockTasks[i].EXPECT().
@@ -121,67 +149,37 @@ func TestJobKill(t *testing.T) {
 			Return(runtimes[i], nil)
 	}
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), newRuntimes, cached.UpdateCacheAndDB).
 		Return(nil)
 
-	cachedJob.EXPECT().
-		GetJobType().Return(pbjob.JobType_BATCH)
+	suite.cachedJob.EXPECT().
+		GetJobType().
+		Return(pbjob.JobType_BATCH)
 
-	taskGoalStateEngine.EXPECT().
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
+
+	suite.taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
-		Return().Times(int(instanceCount))
+		Return().
+		Times(int(instanceCount))
 
-	jobGoalStateEngine.EXPECT().
+	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), jobID).
-		Return(jobRuntime, nil)
-
-	jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), jobID, newJobRuntime).
-		Return(nil)
-
-	err := JobKill(context.Background(), jobEnt)
-	assert.NoError(t, err)
+	err := JobKill(context.Background(), suite.jobEnt)
+	suite.NoError(err)
 }
 
 // TestJobKillPartiallyCreatedJob tests killing partially created jobs
-func TestJobKillPartiallyCreatedJob(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := storemocks.NewMockJobStore(ctrl)
-	taskStore := storemocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		taskEngine: taskGoalStateEngine,
-		jobStore:   jobStore,
-		taskStore:  taskStore,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	jobEnt := &jobEntity{
-		id:     jobID,
-		driver: goalStateDriver,
-	}
-
+func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 	cachedTasks := make(map[uint32]cached.Task)
 	mockTasks := make(map[uint32]*cachedmocks.MockTask)
 	for i := uint32(2); i < 4; i++ {
-		cachedTask := cachedmocks.NewMockTask(ctrl)
+		cachedTask := cachedmocks.NewMockTask(suite.ctrl)
 		mockTasks[i] = cachedTask
 		cachedTasks[i] = cachedTask
 	}
@@ -199,18 +197,25 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 		State:     pbjob.JobState_INITIALIZED,
 		GoalState: pbjob.JobState_KILLED,
 	}
-	newJobRuntime := &pbjob.RuntimeInfo{
-		State:     pbjob.JobState_KILLED,
-		GoalState: pbjob.JobState_KILLED,
-	}
 
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob).AnyTimes()
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).AnyTimes()
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetAllTasks().
 		Return(cachedTasks)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLED)
+		}).
+		Return(nil)
 
 	for i := uint32(2); i < 4; i++ {
 		mockTasks[i].EXPECT().
@@ -218,38 +223,49 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 			Return(runtimes[i], nil).Times(2)
 	}
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
 
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), jobID).
-		Return(jobRuntime, nil)
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
 
-	cachedJob.EXPECT().
-		IsPartiallyCreated().Return(true)
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(true)
 
-	jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), jobID, newJobRuntime).
-		Return(nil)
-
-	err := JobKill(context.Background(), jobEnt)
-	assert.NoError(t, err)
+	err := JobKill(context.Background(), suite.jobEnt)
+	suite.NoError(err)
 
 	runtimes[2] = &pbtask.RuntimeInfo{
 		State:     pbtask.TaskState_RUNNING,
 		GoalState: pbtask.TaskState_KILLED,
 	}
 	jobRuntime.State = pbjob.JobState_INITIALIZED
-	newJobRuntime.State = pbjob.JobState_KILLING
 
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob).AnyTimes()
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob).AnyTimes()
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetAllTasks().
 		Return(cachedTasks)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_KILLING)
+		}).
+		Return(nil)
 
 	for i := uint32(2); i < 4; i++ {
 		mockTasks[i].EXPECT().
@@ -257,21 +273,14 @@ func TestJobKillPartiallyCreatedJob(t *testing.T) {
 			Return(runtimes[i], nil).AnyTimes()
 	}
 
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
 
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), jobID).
-		Return(jobRuntime, nil)
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(true)
 
-	cachedJob.EXPECT().
-		IsPartiallyCreated().Return(true)
-
-	jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), jobID, newJobRuntime).
-		Return(nil)
-
-	err = JobKill(context.Background(), jobEnt)
-	assert.NoError(t, err)
+	err = JobKill(context.Background(), suite.jobEnt)
+	suite.NoError(err)
 }

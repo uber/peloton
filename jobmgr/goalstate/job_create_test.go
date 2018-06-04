@@ -74,16 +74,6 @@ func TestJobCreateTasks(t *testing.T) {
 		Type:          pb_job.JobType_BATCH,
 	}
 
-	jobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_INITIALIZED,
-		GoalState: pb_job.JobState_SUCCEEDED,
-	}
-
-	newJobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_PENDING,
-		GoalState: pb_job.JobState_SUCCEEDED,
-	}
-
 	emptyTaskInfo := make(map[uint32]*pb_task.TaskInfo)
 
 	taskStore.EXPECT().
@@ -106,24 +96,24 @@ func TestJobCreateTasks(t *testing.T) {
 		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
 
+	cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pb_job.JobInfo, _ cached.UpdateRequest) {
+			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
+		}).
+		Return(nil)
+
 	resmgrClient.EXPECT().
 		EnqueueGangs(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
 	jobFactory.EXPECT().
 		GetJob(jobID).
-		Return(cachedJob)
+		Return(cachedJob).
+		Times(2)
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Return(nil)
-
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), jobID).
-		Return(&jobRuntime, nil)
-
-	jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), jobID, &newJobRuntime).
 		Return(nil)
 
 	err := JobCreateTasks(context.Background(), jobEnt)
@@ -232,16 +222,6 @@ func TestJobRecover(t *testing.T) {
 		InstanceCount: instanceCount,
 	}
 
-	jobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_INITIALIZED,
-		GoalState: pb_job.JobState_SUCCEEDED,
-	}
-
-	newJobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_PENDING,
-		GoalState: pb_job.JobState_SUCCEEDED,
-	}
-
 	taskInfos := make(map[uint32]*pb_task.TaskInfo)
 	taskInfos[0] = &pb_task.TaskInfo{
 		Runtime: &pb_task.RuntimeInfo{
@@ -277,6 +257,13 @@ func TestJobRecover(t *testing.T) {
 		Return(cachedJob)
 
 	cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pb_job.JobInfo, _ cached.UpdateRequest) {
+			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
+		}).
+		Return(nil)
+
+	cachedJob.EXPECT().
 		GetTask(uint32(1)).Return(nil)
 
 	cachedJob.EXPECT().
@@ -297,18 +284,11 @@ func TestJobRecover(t *testing.T) {
 
 	jobFactory.EXPECT().
 		GetJob(jobID).
-		Return(cachedJob)
+		Return(cachedJob).
+		Times(2)
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Return(nil)
-
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), jobID).
-		Return(&jobRuntime, nil)
-
-	jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), jobID, &newJobRuntime).
 		Return(nil)
 
 	err := JobCreateTasks(context.Background(), jobEnt)
@@ -436,16 +416,6 @@ func TestJobMaxRunningInstances(t *testing.T) {
 		},
 	}
 
-	jobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_INITIALIZED,
-		GoalState: pb_job.JobState_SUCCEEDED,
-	}
-
-	newJobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_PENDING,
-		GoalState: pb_job.JobState_SUCCEEDED,
-	}
-
 	emptyTaskInfo := make(map[uint32]*pb_task.TaskInfo)
 
 	taskStore.EXPECT().
@@ -474,7 +444,8 @@ func TestJobMaxRunningInstances(t *testing.T) {
 
 	jobFactory.EXPECT().
 		GetJob(jobID).
-		Return(cachedJob)
+		Return(cachedJob).
+		Times(2)
 
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -486,12 +457,11 @@ func TestJobMaxRunningInstances(t *testing.T) {
 		}).
 		Return(nil)
 
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), jobID).
-		Return(&jobRuntime, nil)
-
-	jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), jobID, &newJobRuntime).
+	cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pb_job.JobInfo, _ cached.UpdateRequest) {
+			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
+		}).
 		Return(nil)
 
 	err := JobCreateTasks(context.Background(), jobEnt)
@@ -541,16 +511,6 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		},
 	}
 
-	jobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_INITIALIZED,
-		GoalState: pb_job.JobState_SUCCEEDED,
-	}
-
-	newJobRuntime := pb_job.RuntimeInfo{
-		State:     pb_job.JobState_PENDING,
-		GoalState: pb_job.JobState_SUCCEEDED,
-	}
-
 	taskInfos := make(map[uint32]*pb_task.TaskInfo)
 	taskInfos[0] = &pb_task.TaskInfo{
 		Runtime: &pb_task.RuntimeInfo{
@@ -585,6 +545,10 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		AddJob(jobID).
 		Return(cachedJob)
 
+	jobFactory.EXPECT().
+		GetJob(jobID).
+		Return(cachedJob)
+
 	cachedJob.EXPECT().
 		GetTask(uint32(1)).Return(nil)
 
@@ -593,14 +557,10 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		Return(nil)
 
 	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
-
-	jobGoalStateEngine.EXPECT().
-		Enqueue(gomock.Any(), gomock.Any()).
-		Return()
-
-	cachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pb_job.JobInfo, _ cached.UpdateRequest) {
+			assert.Equal(t, jobInfo.Runtime.State, pb_job.JobState_PENDING)
+		}).
 		Return(nil)
 
 	cachedJob.EXPECT().
@@ -621,13 +581,16 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	jobStore.EXPECT().
-		GetJobRuntime(gomock.Any(), jobID).
-		Return(&jobRuntime, nil)
-
-	jobStore.EXPECT().
-		UpdateJobRuntime(gomock.Any(), jobID, &newJobRuntime).
+	cachedJob.EXPECT().
+		CreateTasks(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil)
+
+	cachedJob.EXPECT().
+		GetJobType().Return(pb_job.JobType_BATCH)
+
+	jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
 
 	err := JobCreateTasks(context.Background(), jobEnt)
 	assert.NoError(t, err)

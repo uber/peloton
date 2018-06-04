@@ -45,38 +45,6 @@ func TestJobEnqueue(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestClearRuntime(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-
-	goalStateDriver := &driver{
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-
-	jobEnt := &jobEntity{
-		id:     jobID,
-		driver: goalStateDriver,
-	}
-
-	jobFactory.EXPECT().
-		GetJob(jobID).
-		Return(cachedJob)
-
-	cachedJob.EXPECT().
-		ClearRuntime().Return()
-
-	err := JobClearRuntime(context.Background(), jobEnt)
-	assert.NoError(t, err)
-}
-
 func TestUntrackJob(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

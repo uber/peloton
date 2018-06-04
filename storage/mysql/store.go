@@ -21,6 +21,7 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -183,6 +184,7 @@ func NewStore(config Config, scope tally.Scope) *Store {
 }
 
 // CreateJob creates a job with the job id and the config value
+// TODO: break CreateJob into CreateJobConfig and CreateJobRuntimeWithConfigs
 func (m *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, createdBy string) error {
 	buffer, err := json.Marshal(jobConfig)
 	if err != nil {
@@ -191,10 +193,16 @@ func (m *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 		return err
 	}
 
+	now := time.Now().UTC()
 	initialJobRuntime := &job.RuntimeInfo{
 		State:        job.JobState_INITIALIZED,
 		CreationTime: time.Now().Format(time.RFC3339Nano),
 		TaskStats:    make(map[string]uint32),
+		Revision: &peloton.ChangeLog{
+			CreatedAt: uint64(now.UnixNano()),
+			UpdatedAt: uint64(now.UnixNano()),
+			Version:   1,
+		},
 	}
 	// TODO: make the two following statements in one transaction
 	// 0 is for "ref_key" field which is not used as of now
@@ -212,6 +220,16 @@ func (m *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	}
 	m.metrics.JobMetrics.JobCreate.Inc(1)
 	return nil
+}
+
+// CreateJobRuntimeWithConfig is not yet implemented
+func (m *Store) CreateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, initialRuntime *job.RuntimeInfo, config *job.JobConfig) error {
+	return yarpcerrors.UnimplementedErrorf("CreateJobRuntimeWithConfig is not implemented")
+}
+
+// CreateJobConfig is not yet implemented
+func (m *Store) CreateJobConfig(ctx context.Context, id *peloton.JobID, config *job.JobConfig, version uint64, createBy string) error {
+	return yarpcerrors.UnimplementedErrorf("CreateJobConfig is not implemented")
 }
 
 // UpdateJobConfig updates the job config for a given job id

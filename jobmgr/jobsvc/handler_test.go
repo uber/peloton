@@ -169,17 +169,12 @@ func (suite *JobHandlerTestSuite) TestCreateJobs() {
 			gomock.Any(),
 			gomock.Any()).
 		Return(getRespoolResponse, nil).AnyTimes()
-	mockJobStore.EXPECT().CreateJob(
-		gomock.Any(),
+	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
+	cachedJob.EXPECT().Create(
 		gomock.Any(),
 		jobConfig,
-		gomock.Any()).
+		"peloton").
 		Return(nil)
-	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
-	cachedJob.EXPECT().
-		Update(gomock.Any(),
-			gomock.Any(),
-			cached.UpdateCacheOnly).Return(nil)
 	goalStateDriver.EXPECT().
 		EnqueueJob(jobID, gomock.Any()).AnyTimes()
 
@@ -296,19 +291,14 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 		jobID).
 		Return(nil)
 
-	mockJobStore.EXPECT().CreateJob(
-		gomock.Any(),
+	cachedJob.EXPECT().Create(
 		gomock.Any(),
 		jobConfig,
-		gomock.Any()).
+		"peloton").
 		Return(nil)
 
 	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
-	cachedJob.EXPECT().Update(
-		gomock.Any(),
-		gomock.Any(),
-		cached.UpdateCacheOnly).
-		Return(nil)
+
 	goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
 
 	secret := &peloton.Secret{
@@ -584,8 +574,12 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
 		Return(nil).
 		AnyTimes()
-	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
-	cachedJob.EXPECT().Update(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil)
+	jobFactory.EXPECT().
+		AddJob(jobID).
+		Return(cachedJob)
+	cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(nil)
 	mockTaskStore.EXPECT().
 		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).
@@ -692,7 +686,6 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 	}
 	jobRuntime := &job.RuntimeInfo{State: job.JobState_RUNNING}
 	jobInfo := &job.JobInfo{
-		Id:      id,
 		Config:  jobConfig,
 		Runtime: jobRuntime,
 	}

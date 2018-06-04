@@ -81,8 +81,6 @@ func (f *jobFactory) ClearJob(id *peloton.JobID) {
 		return
 	}
 
-	j.ClearAllTasks()
-
 	f.Lock()
 	defer f.Unlock()
 	delete(f.jobs, j.ID().GetValue())
@@ -137,9 +135,6 @@ func (f *jobFactory) Stop() {
 	}
 
 	f.running = false
-	for _, j := range f.jobs {
-		j.ClearAllTasks()
-	}
 	f.jobs = map[string]*job{}
 	close(f.stopChan)
 	log.Info("job factory stopped")

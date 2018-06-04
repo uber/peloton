@@ -164,7 +164,7 @@ func (suite *jobActionsTestSuite) TestClient_JobCreateAction() {
 					Value: id,
 				},
 				Config: config,
-				Secrets: []*peloton.Secret{&peloton.Secret{
+				Secrets: []*peloton.Secret{{
 					Path: testSecretPath,
 					Value: &peloton.Secret_Value{
 						Data: []byte(base64.StdEncoding.EncodeToString([]byte(testSecretStr))),

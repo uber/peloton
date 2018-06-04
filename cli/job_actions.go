@@ -75,7 +75,7 @@ func (c *Client) JobCreateAction(
 	}
 	// handle secrets
 	if secretPath != "" && secretStr != "" {
-		request.Secrets = []*peloton.Secret{&peloton.Secret{
+		request.Secrets = []*peloton.Secret{{
 			Path: secretPath,
 			Value: &peloton.Secret_Value{
 				Data: []byte(base64.StdEncoding.EncodeToString([]byte(secretStr))),

@@ -282,7 +282,8 @@ func (s *Store) executeBatch(ctx context.Context, stmts []api.Statement) error {
 	}
 }
 
-func (s *Store) createJobConfig(
+// CreateJobConfig creates a job config in db
+func (s *Store) CreateJobConfig(
 	ctx context.Context,
 	id *peloton.JobID,
 	jobConfig *job.JobConfig,
@@ -385,43 +386,14 @@ func (s *Store) createTaskConfig(ctx context.Context, id *peloton.JobID, instanc
 	return nil
 }
 
-// CreateJob creates a job with the job id and the config value
-func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
-	// TODO move to write through cache
-	// Create version 1 of the job config.
-	jobConfig.ChangeLog = &peloton.ChangeLog{
-		CreatedAt: uint64(time.Now().UnixNano()),
-		UpdatedAt: uint64(time.Now().UnixNano()),
-		Version:   1,
-	}
-	if err := s.createJobConfig(ctx, id, jobConfig, jobConfig.GetChangeLog().GetVersion(), owner); err != nil {
-		return err
-	}
-
-	var goalState job.JobState
-	switch jobConfig.Type {
-	case job.JobType_BATCH:
-		goalState = job.JobState_SUCCEEDED
-	default:
-		goalState = job.JobState_RUNNING
-	}
-
-	initialJobRuntime := job.RuntimeInfo{
-		State:                job.JobState_INITIALIZED,
-		CreationTime:         time.Now().UTC().Format(time.RFC3339Nano),
-		TaskStats:            make(map[string]uint32),
-		GoalState:            goalState,
-		ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
-	}
-	// Init the task stats to reflect that all tasks are in initialized state
-	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
-
-	// Create the initial job runtime record
-	err := s.updateJobRuntimeWithConfig(ctx, id, &initialJobRuntime, jobConfig)
+// CreateJobRuntimeWithConfig creates runtime for a job
+func (s *Store) CreateJobRuntimeWithConfig(
+	ctx context.Context,
+	id *peloton.JobID,
+	initialRuntime *job.RuntimeInfo,
+	config *job.JobConfig) error {
+	err := s.updateJobRuntimeWithConfig(ctx, id, initialRuntime, config)
 	if err != nil {
-		log.WithError(err).
-			WithField("job_id", id.GetValue()).
-			Error("CreateJobRuntime failed")
 		s.metrics.JobMetrics.JobCreateRuntimeFail.Inc(1)
 		return err
 	}
@@ -429,7 +401,9 @@ func (s *Store) CreateJob(ctx context.Context, id *peloton.JobID, jobConfig *job
 	return nil
 }
 
-func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (uint64, error) {
+func (s *Store) getMaxJobVersion(
+	ctx context.Context,
+	id *peloton.JobID) (uint64, error) {
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("MAX(version)").From(jobConfigTable).
 		Where(qb.Eq{"job_id": id.GetValue()})
@@ -452,41 +426,21 @@ func (s *Store) getMaxJobVersion(ctx context.Context, id *peloton.JobID) (uint64
 }
 
 // UpdateJobConfig updates a job with the job id and the config value
-func (s *Store) UpdateJobConfig(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig) error {
-	// Increment version.
-	if jobConfig.GetChangeLog().GetVersion() < 1 {
-		// Older job which does not have changelog.
-		// TODO remove this after no more job in the system
-		// does not have a changelog version.
-		v, err := s.getMaxJobVersion(ctx, id)
-		if err != nil {
-			s.metrics.JobMetrics.JobCreateConfigFail.Inc(1)
-			return err
-		}
-		jobConfig.ChangeLog = &peloton.ChangeLog{
-			CreatedAt: uint64(time.Now().UnixNano()),
-			UpdatedAt: uint64(time.Now().UnixNano()),
-			Version:   v + 1,
-		}
-	}
-
-	if err := s.createJobConfig(ctx, id, jobConfig, jobConfig.GetChangeLog().GetVersion(), "<missing owner>"); err != nil {
-		return err
-	}
-
-	r, err := s.GetJobRuntime(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	// Update to use new version.
-	r.ConfigurationVersion = jobConfig.GetChangeLog().GetVersion()
-
-	return s.updateJobRuntimeWithConfig(ctx, id, r, jobConfig)
+// TODO(zhixin): consider remove the function signature
+func (s *Store) UpdateJobConfig(
+	ctx context.Context,
+	id *peloton.JobID,
+	jobConfig *job.JobConfig) error {
+	return s.CreateJobConfig(ctx,
+		id, jobConfig, jobConfig.GetChangeLog().GetVersion(),
+		"<missing owner>")
 }
 
 // GetJobConfig returns a job config given the job id
-func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error) {
+// TODO(zhixin): GetJobConfig takes version as param when write through cache is implemented
+func (s *Store) GetJobConfig(
+	ctx context.Context,
+	id *peloton.JobID) (*job.JobConfig, error) {
 	r, err := s.GetJobRuntime(ctx, id)
 	if err != nil {
 		return nil, err
@@ -524,7 +478,28 @@ func (s *Store) GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobCo
 			return nil, err
 		}
 		s.metrics.JobMetrics.JobGet.Inc(1)
-		return record.GetJobConfig()
+
+		jobConfig, err := record.GetJobConfig()
+		if err != nil {
+			s.metrics.JobMetrics.JobGetFail.Inc(1)
+			return nil, err
+		}
+		if jobConfig.GetChangeLog().GetVersion() < 1 {
+			// Older job which does not have changelog.
+			// TODO (zhixin): remove this after no more job in the system
+			// does not have a changelog version.
+			v, err := s.getMaxJobVersion(ctx, id)
+			if err != nil {
+				s.metrics.JobMetrics.JobGetFail.Inc(1)
+				return nil, err
+			}
+			jobConfig.ChangeLog = &peloton.ChangeLog{
+				CreatedAt: uint64(time.Now().UnixNano()),
+				UpdatedAt: uint64(time.Now().UnixNano()),
+				Version:   v,
+			}
+		}
+		return jobConfig, nil
 	}
 	s.metrics.JobMetrics.JobNotFound.Inc(1)
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", jobID)
@@ -2415,11 +2390,6 @@ func (s *Store) GetResourcePoolsByOwner(ctx context.Context, owner string) (map[
 	return resultMap, nil
 }
 
-func getTaskID(taskInfo *task.TaskInfo) string {
-	jobID := taskInfo.JobId.GetValue()
-	return fmt.Sprintf(taskIDFmt, jobID, taskInfo.InstanceId)
-}
-
 // GetJobRuntime returns the job runtime info
 func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.RuntimeInfo, error) {
 	queryBuilder := s.DataStore.NewQuery()
@@ -2445,7 +2415,22 @@ func (s *Store) GetJobRuntime(ctx context.Context, id *peloton.JobID) (*job.Runt
 			s.metrics.JobMetrics.JobGetRuntimeFail.Inc(1)
 			return nil, err
 		}
-		return record.GetJobRuntime()
+		runtime, err := record.GetJobRuntime()
+		if err != nil {
+			return nil, err
+		}
+
+		if runtime.GetRevision().GetVersion() < 1 {
+			// Older job which does not have changelog.
+			// TODO (zhixin): remove this after no more job in the system
+			// does not have a changelog version.
+			runtime.Revision = &peloton.ChangeLog{
+				CreatedAt: uint64(time.Now().UnixNano()),
+				UpdatedAt: uint64(time.Now().UnixNano()),
+				Version:   1,
+			}
+		}
+		return runtime, nil
 	}
 	s.metrics.JobMetrics.JobNotFound.Inc(1)
 	return nil, fmt.Errorf("Cannot find job wth jobID %v", id.GetValue())

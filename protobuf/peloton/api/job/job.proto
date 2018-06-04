@@ -189,6 +189,9 @@ message RuntimeInfo
   // The version reflects the version of the JobConfig, that is currently
   // used by the job.
   uint64 configurationVersion = 8;
+
+  // Changelog entry to version the job runtime.
+  peloton.ChangeLog revision = 9;
 }
 
 /**

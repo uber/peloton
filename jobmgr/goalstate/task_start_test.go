@@ -9,116 +9,144 @@ import (
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	job2 "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
-	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	mocks2 "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	"code.uber.internal/infra/peloton/storage"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
 
-func TestTaskStartStateless(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+type TaskStartTestSuite struct {
+	suite.Suite
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	resmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
+	ctrl                *gomock.Controller
+	jobStore            *storemocks.MockJobStore
+	taskStore           *storemocks.MockTaskStore
+	jobGoalStateEngine  *goalstatemocks.MockEngine
+	taskGoalStateEngine *goalstatemocks.MockEngine
+	jobFactory          *cachedmocks.MockJobFactory
+	cachedJob           *cachedmocks.MockJob
+	cachedConfig        *cachedmocks.MockJobConfig
+	cachedTask          *cachedmocks.MockTask
+	mockTaskLauncher    *mocks2.MockLauncher
+	mockVolumeStore     *storemocks.MockPersistentVolumeStore
+	goalStateDriver     *driver
+	resmgrClient        *resmocks.MockResourceManagerServiceYARPCClient
+	jobID               *peloton.JobID
+	instanceID          uint32
+	taskEnt             *taskEntity
+}
 
-	goalStateDriver := &driver{
-		jobEngine:    jobGoalStateEngine,
-		taskEngine:   taskGoalStateEngine,
-		jobStore:     jobStore,
-		taskStore:    taskStore,
-		jobFactory:   jobFactory,
-		resmgrClient: resmgrClient,
+func TestTaskStart(t *testing.T) {
+	suite.Run(t, new(TaskStartTestSuite))
+}
+
+func (suite *TaskStartTestSuite) SetupTest() {
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.jobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.taskStore = storemocks.NewMockTaskStore(suite.ctrl)
+
+	suite.resmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
+	suite.jobGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.taskGoalStateEngine = goalstatemocks.NewMockEngine(suite.ctrl)
+	suite.jobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.cachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.cachedConfig = cachedmocks.NewMockJobConfig(suite.ctrl)
+	suite.cachedTask = cachedmocks.NewMockTask(suite.ctrl)
+	suite.mockTaskLauncher = mocks2.NewMockLauncher(suite.ctrl)
+	suite.mockVolumeStore = storemocks.NewMockPersistentVolumeStore(suite.ctrl)
+
+	suite.goalStateDriver = &driver{
+		jobEngine:    suite.jobGoalStateEngine,
+		taskEngine:   suite.taskGoalStateEngine,
+		jobStore:     suite.jobStore,
+		taskStore:    suite.taskStore,
+		jobFactory:   suite.jobFactory,
+		resmgrClient: suite.resmgrClient,
+		volumeStore:  suite.mockVolumeStore,
+		taskLauncher: suite.mockTaskLauncher,
 		mtx:          NewMetrics(tally.NoopScope),
 		cfg:          &Config{},
 	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
+	suite.jobID = &peloton.JobID{Value: uuid.NewRandom().String()}
+	suite.instanceID = 0
+	suite.taskEnt = &taskEntity{
+		jobID:      suite.jobID,
+		instanceID: suite.instanceID,
+		driver:     suite.goalStateDriver,
 	}
 
+	suite.goalStateDriver.cfg.normalize()
+}
+
+func (suite *TaskStartTestSuite) TearDownTest() {
+	suite.ctrl.Finish()
+}
+
+func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 	jobConfig := &job2.JobConfig{
 		RespoolID: &peloton.ResourcePoolID{
 			Value: "my-respool-id",
 		},
 	}
-	taskInfo := &pb_task.TaskInfo{
-		InstanceId: instanceID,
-		Config: &pb_task.TaskConfig{
-			Volume: &pb_task.PersistentVolumeConfig{},
+	taskInfo := &pbtask.TaskInfo{
+		InstanceId: suite.instanceID,
+		Config: &pbtask.TaskConfig{
+			Volume: &pbtask.PersistentVolumeConfig{},
 		},
-		Runtime: &pb_task.RuntimeInfo{},
+		Runtime: &pbtask.RuntimeInfo{},
 	}
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
-		GetSLAConfig().Return(&job2.SlaConfig{})
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
+	suite.cachedConfig.EXPECT().
+		GetSLAConfig().
+		Return(&job2.SlaConfig{})
 
-	taskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)).Return(taskInfo, nil)
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(jobConfig, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
+		Return(taskInfo, nil)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig),
+		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig),
 		ResPool: jobConfig.RespoolID,
 	}
 
-	resmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
+	suite.resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), request).
+		Return(nil, nil)
 
-	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
+	suite.cachedJob.EXPECT().
+		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(nil)
 
-	err := TaskStart(context.Background(), taskEnt)
-	assert.NoError(t, err)
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.NoError(err)
 }
 
-func TestTaskStartWithSlaMaxRunningInstances(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:  jobGoalStateEngine,
-		jobStore:   jobStore,
-		jobFactory: jobFactory,
-		mtx:        NewMetrics(tally.NoopScope),
-		cfg:        &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
+func (suite *TaskStartTestSuite) TestTaskStartWithSlaMaxRunningInstances() {
 	jobConfig := &job2.JobConfig{
 		InstanceCount: 2,
 		Sla: &job2.SlaConfig{
@@ -126,71 +154,31 @@ func TestTaskStartWithSlaMaxRunningInstances(t *testing.T) {
 		},
 	}
 
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.cachedConfig.EXPECT().
+		GetSLAConfig().
+		Return(jobConfig.Sla)
 
-	cachedJob.EXPECT().
-		GetSLAConfig().Return(jobConfig.Sla)
-
-	cachedJob.EXPECT().
+	suite.cachedJob.EXPECT().
 		GetJobType().Return(job2.JobType_BATCH)
 
-	jobGoalStateEngine.EXPECT().
+	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	err := TaskStart(context.Background(), taskEnt)
-	assert.NoError(t, err)
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.NoError(err)
 }
 
-func TestTaskStartStatefullWithVolume(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	mockHost := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	mockTaskLauncher := mocks2.NewMockLauncher(ctrl)
-	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:     jobGoalStateEngine,
-		taskEngine:    taskGoalStateEngine,
-		jobStore:      jobStore,
-		taskStore:     taskStore,
-		volumeStore:   mockVolumeStore,
-		taskLauncher:  mockTaskLauncher,
-		hostmgrClient: mockHost,
-		jobFactory:    jobFactory,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
-
-	runtime := &pb_task.RuntimeInfo{
+func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
+	runtime := &pbtask.RuntimeInfo{
 		MesosTaskId: &mesos_v1.TaskID{
 			Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
 		},
@@ -199,42 +187,40 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 		},
 	}
 
-	jobConfig := &job2.JobConfig{
-		RespoolID: &peloton.ResourcePoolID{
-			Value: "my-respool-id",
-		},
-	}
-
-	taskInfo := &pb_task.TaskInfo{
-		InstanceId: instanceID,
-		Config: &pb_task.TaskConfig{
-			Volume: &pb_task.PersistentVolumeConfig{},
+	taskInfo := &pbtask.TaskInfo{
+		InstanceId: suite.instanceID,
+		Config: &pbtask.TaskConfig{
+			Volume: &pbtask.PersistentVolumeConfig{},
 		},
 		Runtime: runtime,
 	}
 
-	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)
-	taskInfos := make(map[string]*pb_task.TaskInfo)
+	taskID := fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)
+	taskInfos := make(map[string]*pbtask.TaskInfo)
 	taskInfos[taskID] = taskInfo
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
-		GetSLAConfig().Return(&job2.SlaConfig{})
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
+	suite.cachedConfig.EXPECT().
+		GetSLAConfig().
+		Return(&job2.SlaConfig{})
 
-	taskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)).Return(taskInfo, nil)
+	suite.taskStore.EXPECT().
+		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
+		Return(taskInfo, nil)
 
-	mockVolumeStore.EXPECT().
+	suite.mockVolumeStore.EXPECT().
 		GetPersistentVolume(gomock.Any(), runtime.VolumeID).Return(&volume.PersistentVolumeInfo{
 		State: volume.VolumeState_CREATED,
 	}, nil)
 
-	mockTaskLauncher.EXPECT().
+	suite.mockTaskLauncher.EXPECT().
 		GetLaunchableTasks(
 			gomock.Any(),
 			gomock.Any(),
@@ -243,64 +229,32 @@ func TestTaskStartStatefullWithVolume(t *testing.T) {
 			gomock.Any(),
 		).Return(taskInfos, nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).
+		Return(suite.cachedTask)
 
-	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
+	suite.cachedJob.EXPECT().
+		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(nil)
 
-	cachedTask.EXPECT().
-		GetRunTime(gomock.Any()).Return(runtime, nil)
+	suite.cachedTask.EXPECT().
+		GetRunTime(gomock.Any()).
+		Return(runtime, nil)
 
-	mockTaskLauncher.EXPECT().
-		LaunchStatefulTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).Return(nil)
+	suite.mockTaskLauncher.EXPECT().
+		LaunchStatefulTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), false).
+		Return(nil)
 
-	err := TaskStart(context.Background(), taskEnt)
-	assert.NoError(t, err)
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.NoError(err)
 }
 
-func TestTaskStartStatefullWithVolumeDBError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	cachedTask := cachedmocks.NewMockTask(ctrl)
-	mockHost := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	mockTaskLauncher := mocks2.NewMockLauncher(ctrl)
-	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:     jobGoalStateEngine,
-		taskEngine:    taskGoalStateEngine,
-		jobStore:      jobStore,
-		taskStore:     taskStore,
-		volumeStore:   mockVolumeStore,
-		taskLauncher:  mockTaskLauncher,
-		hostmgrClient: mockHost,
-		jobFactory:    jobFactory,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
-
-	runtime := &pb_task.RuntimeInfo{
+func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {
+	runtime := &pbtask.RuntimeInfo{
 		MesosTaskId: &mesos_v1.TaskID{
 			Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
 		},
@@ -309,42 +263,41 @@ func TestTaskStartStatefullWithVolumeDBError(t *testing.T) {
 		},
 	}
 
-	jobConfig := &job2.JobConfig{
-		RespoolID: &peloton.ResourcePoolID{
-			Value: "my-respool-id",
-		},
-	}
-
-	taskInfo := &pb_task.TaskInfo{
-		InstanceId: instanceID,
-		Config: &pb_task.TaskConfig{
-			Volume: &pb_task.PersistentVolumeConfig{},
+	taskInfo := &pbtask.TaskInfo{
+		InstanceId: suite.instanceID,
+		Config: &pbtask.TaskConfig{
+			Volume: &pbtask.PersistentVolumeConfig{},
 		},
 		Runtime: runtime,
 	}
 
-	taskID := fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)
-	taskInfos := make(map[string]*pb_task.TaskInfo)
+	taskID := fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)
+	taskInfos := make(map[string]*pbtask.TaskInfo)
 	taskInfos[taskID] = taskInfo
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
-		GetSLAConfig().Return(&job2.SlaConfig{})
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
+	suite.cachedConfig.EXPECT().
+		GetSLAConfig().
+		Return(&job2.SlaConfig{})
 
-	taskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)).Return(taskInfo, nil)
+	suite.taskStore.EXPECT().
+		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
+		Return(taskInfo, nil)
 
-	mockVolumeStore.EXPECT().
-		GetPersistentVolume(gomock.Any(), runtime.VolumeID).Return(&volume.PersistentVolumeInfo{
-		State: volume.VolumeState_CREATED,
-	}, nil)
+	suite.mockVolumeStore.EXPECT().
+		GetPersistentVolume(gomock.Any(), runtime.VolumeID).
+		Return(&volume.PersistentVolumeInfo{
+			State: volume.VolumeState_CREATED,
+		}, nil)
 
-	mockTaskLauncher.EXPECT().
+	suite.mockTaskLauncher.EXPECT().
 		GetLaunchableTasks(
 			gomock.Any(),
 			gomock.Any(),
@@ -353,59 +306,25 @@ func TestTaskStartStatefullWithVolumeDBError(t *testing.T) {
 			gomock.Any(),
 		).Return(taskInfos, nil)
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
-		GetTask(instanceID).Return(cachedTask)
+	suite.cachedJob.EXPECT().
+		GetTask(suite.instanceID).
+		Return(suite.cachedTask)
 
-	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("fake db write error"))
+	suite.cachedJob.EXPECT().
+		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(fmt.Errorf("fake db write error"))
 
-	err := TaskStart(context.Background(), taskEnt)
-	assert.Error(t, err)
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.Error(err)
 }
 
-func TestTaskStartStatefullWithoutVolume(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 
-	jobStore := store_mocks.NewMockJobStore(ctrl)
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
-	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	mockHost := host_mocks.NewMockInternalHostServiceYARPCClient(ctrl)
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	mockTaskLauncher := mocks2.NewMockLauncher(ctrl)
-	mockVolumeStore := store_mocks.NewMockPersistentVolumeStore(ctrl)
-
-	goalStateDriver := &driver{
-		jobEngine:     jobGoalStateEngine,
-		taskEngine:    taskGoalStateEngine,
-		jobStore:      jobStore,
-		taskStore:     taskStore,
-		volumeStore:   mockVolumeStore,
-		taskLauncher:  mockTaskLauncher,
-		hostmgrClient: mockHost,
-		jobFactory:    jobFactory,
-		resmgrClient:  mockResmgrClient,
-		mtx:           NewMetrics(tally.NoopScope),
-		cfg:           &Config{},
-	}
-	goalStateDriver.cfg.normalize()
-
-	jobID := &peloton.JobID{Value: uuid.NewRandom().String()}
-	instanceID := uint32(0)
-
-	taskEnt := &taskEntity{
-		jobID:      jobID,
-		instanceID: instanceID,
-		driver:     goalStateDriver,
-	}
-
-	runtime := &pb_task.RuntimeInfo{
+	runtime := &pbtask.RuntimeInfo{
 		MesosTaskId: &mesos_v1.TaskID{
 			Value: &[]string{"3c8a3c3e-71e3-49c5-9aed-2929823f595c-1-3c8a3c3e-71e3-49c5-9aed-2929823f5957"}[0],
 		},
@@ -420,38 +339,50 @@ func TestTaskStartStatefullWithoutVolume(t *testing.T) {
 		},
 	}
 
-	taskInfo := &pb_task.TaskInfo{
-		InstanceId: instanceID,
-		Config: &pb_task.TaskConfig{
-			Volume: &pb_task.PersistentVolumeConfig{},
+	taskInfo := &pbtask.TaskInfo{
+		InstanceId: suite.instanceID,
+		Config: &pbtask.TaskConfig{
+			Volume: &pbtask.PersistentVolumeConfig{},
 		},
 		Runtime: runtime,
 	}
 
-	jobFactory.EXPECT().
-		GetJob(jobID).Return(cachedJob)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
-	cachedJob.EXPECT().
-		GetSLAConfig().Return(&job2.SlaConfig{})
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
 
-	jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), jobID).Return(jobConfig, nil)
+	suite.cachedConfig.EXPECT().
+		GetSLAConfig().
+		Return(&job2.SlaConfig{})
 
-	taskStore.EXPECT().
-		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", jobID.GetValue(), instanceID)).Return(taskInfo, nil)
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(jobConfig, nil)
 
-	mockVolumeStore.EXPECT().
-		GetPersistentVolume(gomock.Any(), runtime.VolumeID).Return(nil, &storage.VolumeNotFoundError{})
+	suite.taskStore.EXPECT().
+		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
+		Return(taskInfo, nil)
+
+	suite.mockVolumeStore.EXPECT().
+		GetPersistentVolume(gomock.Any(), runtime.VolumeID).
+		Return(nil, &storage.VolumeNotFoundError{})
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pb_task.TaskInfo{taskInfo}, jobConfig),
+		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig),
 		ResPool: jobConfig.RespoolID,
 	}
-	mockResmgrClient.EXPECT().EnqueueGangs(gomock.Any(), request).Return(nil, nil)
+	suite.resmgrClient.EXPECT().
+		EnqueueGangs(gomock.Any(), request).
+		Return(nil, nil)
 
-	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil)
+	suite.cachedJob.EXPECT().
+		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(nil)
 
-	err := TaskStart(context.Background(), taskEnt)
-	assert.NoError(t, err)
+	err := TaskStart(context.Background(), suite.taskEnt)
+	suite.NoError(err)
 }

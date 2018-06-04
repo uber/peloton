@@ -21,7 +21,6 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 	var err error
 	var jobConfig *job.JobConfig
 	var taskInfos map[uint32]*task.TaskInfo
-	var jobRuntime *job.RuntimeInfo
 
 	startAddTaskTime := time.Now()
 	id := entity.GetID()
@@ -71,18 +70,13 @@ func JobCreateTasks(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// Get job runtime and update job state to pending
-	jobRuntime, err = goalStateDriver.jobStore.GetJobRuntime(ctx, jobID)
-	if err != nil {
-		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
-		log.WithError(err).
-			WithField("job_id", id).
-			Error("failed to get job runtime")
-		return err
+	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
+	if cachedJob == nil {
+		return nil
 	}
-
-	jobRuntime.State = job.JobState_PENDING
-	err = goalStateDriver.jobStore.UpdateJobRuntime(ctx, jobID, jobRuntime)
+	err = cachedJob.Update(ctx, &job.JobInfo{
+		Runtime: &job.RuntimeInfo{State: job.JobState_PENDING},
+	}, cached.UpdateCacheAndDB)
 	if err != nil {
 		goalStateDriver.mtx.jobMetrics.JobCreateFailed.Inc(1)
 		log.WithError(err).

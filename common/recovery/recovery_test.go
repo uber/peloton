@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
@@ -52,6 +53,8 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 			DiskLimitMb: 1500,
 		},
 	}
+
+	now := time.Now()
 	var jobConfig = pb_job.JobConfig{
 		Name:          "TestValidatorWithStore",
 		OwningTeam:    "team6",
@@ -59,9 +62,32 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 		Sla:           &sla,
 		DefaultConfig: &taskConfig,
 		InstanceCount: 2,
+		ChangeLog: &peloton.ChangeLog{
+			CreatedAt: uint64(now.UnixNano()),
+			UpdatedAt: uint64(now.UnixNano()),
+			Version:   1,
+		},
 	}
 
-	err := csStore.CreateJob(ctx, jobID, &jobConfig, "gsg9")
+	initialJobRuntime := pb_job.RuntimeInfo{
+		State:        pb_job.JobState_INITIALIZED,
+		CreationTime: now.Format(time.RFC3339Nano),
+		TaskStats:    make(map[string]uint32),
+		GoalState:    goalState,
+		Revision: &peloton.ChangeLog{
+			CreatedAt: uint64(now.UnixNano()),
+			UpdatedAt: uint64(now.UnixNano()),
+			Version:   1,
+		},
+		ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
+	}
+
+	err := csStore.CreateJobConfig(ctx, jobID, &jobConfig, 1, "gsg9")
+	if err != nil {
+		return nil, err
+	}
+
+	err = csStore.CreateJobRuntimeWithConfig(ctx, jobID, &initialJobRuntime, &jobConfig)
 	if err != nil {
 		return nil, err
 	}

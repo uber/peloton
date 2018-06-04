@@ -160,8 +160,14 @@ func (h *serviceHandler) Create(
 		return &job.CreateResponse{}, err
 	}
 
-	err = h.jobStore.CreateJob(ctx, jobID, jobConfig, "peloton")
+	// Create job in cache and db
+	cachedJob := h.jobFactory.AddJob(jobID)
+	err = cachedJob.Create(ctx, jobConfig, "peloton")
 	if err != nil {
+		// best effort to clean up cache and db when job creation fails
+		h.jobFactory.ClearJob(jobID)
+		h.jobStore.DeleteJob(ctx, jobID)
+
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
@@ -173,14 +179,6 @@ func (h *serviceHandler) Create(
 		}, nil
 	}
 	h.metrics.JobCreate.Inc(1)
-
-	// Store job in cache
-	jobInfo := &job.JobInfo{
-		Id:     jobID,
-		Config: jobConfig,
-	}
-	cachedJob := h.jobFactory.AddJob(jobID)
-	cachedJob.Update(ctx, jobInfo, cached.UpdateCacheOnly)
 
 	// Enqueue job into goal state engine
 	h.goalStateDriver.EnqueueJob(jobID, time.Now())
@@ -261,39 +259,24 @@ func (h *serviceHandler) Update(
 		return nil, nil
 	}
 
-	// TODO move updating the version to write through cache
-	if oldConfig.GetChangeLog().GetVersion() > 0 {
-		newConfig.ChangeLog = &peloton.ChangeLog{
-			CreatedAt: uint64(time.Now().UnixNano()),
-			UpdatedAt: uint64(time.Now().UnixNano()),
-			Version:   oldConfig.GetChangeLog().GetVersion() + 1,
-		}
-	}
-
 	// TODO (adityacb): handle secrets here
 	// Do not update secret id of existing secrets.
 	// Just replace the secret data in the database for that id
-
-	err = h.jobStore.UpdateJobConfig(ctx, jobID, newConfig)
+	cachedJob := h.jobFactory.AddJob(jobID)
+	err = cachedJob.Update(ctx, &job.JobInfo{
+		Config: newConfig,
+	}, cached.UpdateCacheAndDB)
 	if err != nil {
 		h.metrics.JobUpdateFail.Inc(1)
 		return &job.UpdateResponse{
 			Error: &job.UpdateResponse_Error{
-				JobNotFound: &job.JobNotFound{
-					Id:      req.Id,
+				InvalidConfig: &job.InvalidJobConfig{
+					Id:      jobID,
 					Message: err.Error(),
 				},
 			},
 		}, nil
 	}
-
-	// Update the config in the cache.
-	jobInfo := &job.JobInfo{
-		Id:     jobID,
-		Config: newConfig,
-	}
-	cachedJob := h.jobFactory.AddJob(jobID)
-	cachedJob.Update(ctx, jobInfo, cached.UpdateCacheOnly)
 
 	log.WithField("job_id", jobID.GetValue()).
 		Infof("adding %d instances", len(diff.InstancesToAdd))
@@ -416,14 +399,12 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 		return &job.RefreshResponse{}, yarpcerrors.NotFoundErrorf("job not found")
 	}
 
-	jobInfo := &job.JobInfo{
-		Id:      req.GetId(),
-		Config:  jobConfig,
-		Runtime: jobRuntime,
-	}
 	// Update cache and enqueue job into goal state
 	cachedJob := h.jobFactory.AddJob(req.GetId())
-	cachedJob.Update(ctx, jobInfo, cached.UpdateCacheOnly)
+	cachedJob.Update(ctx, &job.JobInfo{
+		Config:  jobConfig,
+		Runtime: jobRuntime,
+	}, cached.UpdateCacheOnly)
 	h.goalStateDriver.EnqueueJob(req.GetId(), time.Now())
 	h.metrics.JobRefresh.Inc(1)
 	return &job.RefreshResponse{}, nil

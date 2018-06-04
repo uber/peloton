@@ -96,6 +96,7 @@ enum SchedulingPolicy {
 message ResourcePoolConfig {
 
   // Change log entry of the Resource Pool config
+  // TODO use peloton.Changelog
   changelog.ChangeLog changeLog = 1;
 
   // Name of the resource pool

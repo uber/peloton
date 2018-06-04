@@ -44,8 +44,10 @@ type Store interface {
 
 // JobStore is the interface to store job states
 type JobStore interface {
-	// CreateJob creates the job configuration and job runtime
-	CreateJob(ctx context.Context, id *peloton.JobID, Config *job.JobConfig, createBy string) error
+	// CreateJobConfig creates the job configuration
+	CreateJobConfig(ctx context.Context, id *peloton.JobID, config *job.JobConfig, version uint64, createBy string) error
+	// CreateJobRuntimeWithConfig creates the job runtime
+	CreateJobRuntimeWithConfig(ctx context.Context, id *peloton.JobID, initialRuntime *job.RuntimeInfo, config *job.JobConfig) error
 	// GetJobConfig fetches the job configuration for a given job
 	GetJobConfig(ctx context.Context, id *peloton.JobID) (*job.JobConfig, error)
 	// QueryJobs queries for all jobs which match the query in the QuerySpec

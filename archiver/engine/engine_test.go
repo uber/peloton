@@ -62,7 +62,7 @@ func (suite *archiverEngineTestSuite) TestEngineStartCleanup() {
 
 	queryResp := &job.QueryResponse{
 		Results: []*job.JobSummary{
-			&job.JobSummary{
+			{
 				Id: &peloton.JobID{Value: "my-job-0"},
 			},
 		},
@@ -185,10 +185,10 @@ func (suite *archiverEngineTestSuite) TestArchiveJobs() {
 	}
 
 	summaryList := []*job.JobSummary{
-		&job.JobSummary{
+		{
 			Id: &peloton.JobID{Value: "my-job-0"},
 		},
-		&job.JobSummary{
+		{
 			Id: &peloton.JobID{Value: "my-job-1"},
 		},
 	}

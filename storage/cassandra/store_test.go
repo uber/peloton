@@ -66,10 +66,44 @@ func TestCassandraStore(t *testing.T) {
 }
 
 func (suite *CassandraStoreTestSuite) createJob(ctx context.Context, id *peloton.JobID, jobConfig *job.JobConfig, owner string) error {
-	if err := store.CreateJob(ctx, id, jobConfig, owner); err != nil {
+	now := time.Now()
+	jobConfig.ChangeLog = &peloton.ChangeLog{
+		CreatedAt: uint64(now.UnixNano()),
+		UpdatedAt: uint64(now.UnixNano()),
+		Version:   1,
+	}
+	if err := store.CreateJobConfig(ctx, id, jobConfig, jobConfig.GetChangeLog().GetVersion(), owner); err != nil {
 		return err
 	}
 
+	var goalState job.JobState
+	switch jobConfig.Type {
+	case job.JobType_BATCH:
+		goalState = job.JobState_SUCCEEDED
+	default:
+		goalState = job.JobState_RUNNING
+	}
+
+	initialJobRuntime := job.RuntimeInfo{
+		State:        job.JobState_INITIALIZED,
+		CreationTime: now.Format(time.RFC3339Nano),
+		TaskStats:    make(map[string]uint32),
+		GoalState:    goalState,
+		Revision: &peloton.ChangeLog{
+			CreatedAt: uint64(now.UnixNano()),
+			UpdatedAt: uint64(now.UnixNano()),
+			Version:   1,
+		},
+		ConfigurationVersion: jobConfig.GetChangeLog().GetVersion(),
+	}
+	// Init the task stats to reflect that all tasks are in initialized state
+	initialJobRuntime.TaskStats[task.TaskState_INITIALIZED.String()] = jobConfig.InstanceCount
+
+	// Create the initial job runtime record
+	err := store.CreateJobRuntimeWithConfig(ctx, id, &initialJobRuntime, jobConfig)
+	if err != nil {
+		return err
+	}
 	return store.CreateTaskConfigs(ctx, id, jobConfig)
 }
 
@@ -1039,7 +1073,7 @@ func (suite *CassandraStoreTestSuite) TestSecrets() {
 	// If the results list has zero rows, this will fail
 	_, err = store.createSecretFromResults(secretID,
 		[]map[string]interface{}{
-		// zero rows mapping to same secret id
+			// zero rows mapping to same secret id
 		})
 	suite.Error(err)
 
@@ -1324,7 +1358,7 @@ func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 			Sla:           &sla,
 			DefaultConfig: &taskConfig,
 		}
-		err := store.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
+		err := suite.createJob(context.Background(), &jobID, &jobConfig, "uber")
 		suite.NoError(err)
 
 		// now, create a mess of tasks
@@ -1846,6 +1880,12 @@ func (suite *CassandraStoreTestSuite) TestJobConfig() {
 	jobConfig.InstanceCount = uint32(newInstanceCount)
 	jobConfig.ChangeLog.Version = uint64(2)
 	err = jobStore.UpdateJobConfig(context.Background(), &jobID, jobConfig)
+	suite.NoError(err)
+
+	// in production, cachedJob would take care of job runtime update
+	jobRuntime.Revision.Version = uint64(2)
+	jobRuntime.ConfigurationVersion = uint64(2)
+	err = jobStore.UpdateJobRuntime(context.Background(), &jobID, jobRuntime)
 	suite.NoError(err)
 
 	jobConfig, err = jobStore.GetJobConfig(context.Background(), &jobID)

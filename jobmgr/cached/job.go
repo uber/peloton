@@ -3,6 +3,7 @@ package cached
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,8 @@ import (
 	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
 
 	"code.uber.internal/infra/peloton/common"
+	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
+	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
@@ -29,9 +32,6 @@ type writeTaskRuntimeToDB func(ctx context.Context, instanceID uint32,
 type Job interface {
 	// Identifier of the job.
 	ID() *peloton.JobID
-
-	// CleanAllTasks cleans up all tasks in the job
-	ClearAllTasks()
 
 	// CreateTasks creates the task runtimes in cache and DB.
 	// Create and Update need to be different functions as the backing
@@ -55,34 +55,25 @@ type Job interface {
 	// Create will be used to create the job configuration and runtime in DB.
 	// Create and Update need to be different functions as the backing
 	// storage calls are different.
-	Create(ctx context.Context, jobInfo *pbjob.JobInfo) error
+	Create(ctx context.Context, config *pbjob.JobConfig, createBy string) error
 
-	// Update updates job with the new runtime. If the request is to update
+	// Update updates job with the new runtime and config. If the request is to update
 	// both DB and cache, it first attempts to persist the request in storage,
 	// If that fails, it just returns back the error for now.
 	// If successful, the cache is updated as well.
-	// TODO persist both job configuration and runtime. Only runtime is persisted with this call.
-	// Job configuration persistence can be implemented after all create and update calls
-	// go through the cache.
 	Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error
 
-	// ClearRuntime sets the cached job runtime to nil
-	// TODO remove after write-through cache
-	ClearRuntime()
-
 	// IsPartiallyCreated returns if job has not been fully created yet
-	IsPartiallyCreated() bool
+	IsPartiallyCreated(config JobConfig) bool
 
 	// GetRuntime returns the runtime of the job
 	GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error)
 
-	// GetInstanceCount returns the instance count in the job config stored in the cache
-	GetInstanceCount() uint32
-
-	// GetSLAConfig returns the SLS configuration in the job config stored in the cache
-	GetSLAConfig() *pbjob.SlaConfig
+	// GetConfig returns the config of the job
+	GetConfig(ctx context.Context) (JobConfig, error)
 
 	// GetJobType returns the job type in the job config stored in the cache
+	// The type can be nil when we read it Logically this should be part of JobConfig
 	GetJobType() pbjob.JobType
 
 	// SetTaskUpdateTime updates the task update times in the job cache
@@ -93,6 +84,24 @@ type Job interface {
 
 	// GetLastTaskUpdateTime gets the last task update time
 	GetLastTaskUpdateTime() float64
+}
+
+//JobConfig stores the job configurations in cache which is fetched multiple
+// times during normal job/task operations.
+// JobConfig makes the job interface cleaner by having the caller request
+// for the configuration first (which can fail due to Cassandra errors
+// if cache is invalid or not populated yet), and then fetch the needed
+// configuration from the interface. Otherwise, caller needs to deal with
+// context and err for each config related call.
+// The interface exposes get methods only so that the caller cannot
+// overwrite any of these configurations.
+type JobConfig interface {
+	// GetInstanceCount returns the instance count in the job config stored in the cache
+	GetInstanceCount() uint32
+	// GetSLAConfig returns the SLA configuration in the job config stored in the cache
+	GetSLAConfig() *pbjob.SlaConfig
+	// GetChangeLog returns the changeLog in the job config stored in the cache
+	GetChangeLog() *peloton.ChangeLog
 }
 
 // newJob creates a new cache job object
@@ -107,6 +116,14 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 	}
 }
 
+// cachedConfig structure holds the config fields need to be cached
+type cachedConfig struct {
+	instanceCount uint32             // Instance count in the job configuration
+	sla           *pbjob.SlaConfig   // SLA configuration in the job configuration
+	jobType       pbjob.JobType      // Job type (batch or service) in the job configuration
+	changeLog     *peloton.ChangeLog // ChangeLog in the job configuration
+}
+
 // job structure holds the information about a given active job
 // in the cache. It should only hold information which either
 // (i) a job manager component needs often and is expensive to
@@ -115,12 +132,11 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 type job struct {
 	sync.RWMutex // Mutex to acquire before accessing any job information in cache
 
-	id            *peloton.JobID     // The job identifier
-	instanceCount uint32             // Instance count in the job configuration
-	sla           pbjob.SlaConfig    // SLA configuration in the job configuration
-	jobType       pbjob.JobType      // Job type (batch or service) in the job configuration
-	jobFactory    *jobFactory        // Pointer to the parent job factory object
-	runtime       *pbjob.RuntimeInfo // Runtime information of the job
+	id      *peloton.JobID     // The job identifier
+	config  *cachedConfig      // The job config need to be cached
+	runtime *pbjob.RuntimeInfo // Runtime information of the job
+
+	jobFactory *jobFactory // Pointer to the parent job factory object
 
 	tasks map[uint32]*task // map of all job tasks
 
@@ -251,7 +267,7 @@ func (j *job) createSingleTask(
 	runtime *pbtask.RuntimeInfo,
 	req UpdateRequest,
 	owner string) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	runtime.Revision = &peloton.ChangeLog{
 		CreatedAt: uint64(now.UnixNano()),
 		UpdatedAt: uint64(now.UnixNano()),
@@ -312,41 +328,361 @@ func (j *job) GetAllTasks() map[uint32]Task {
 	return taskMap
 }
 
-// updateJobInCache updates the job config and runtime in cache.
-//TODO fix this function after write through cache for job config and runtime.
-func (j *job) updateJobInCache(jobInfo *pbjob.JobInfo) {
-	j.runtime = jobInfo.GetRuntime()
-	if jobInfo.GetConfig() != nil {
-		j.instanceCount = jobInfo.GetConfig().GetInstanceCount()
-		if jobInfo.GetConfig().GetSla() != nil {
-			j.sla = *jobInfo.GetConfig().GetSla()
-		}
-		j.jobType = jobInfo.GetConfig().GetType()
-	}
-}
+func (j *job) Create(ctx context.Context, config *pbjob.JobConfig, createBy string) error {
+	j.Lock()
+	defer j.Unlock()
 
-// TODO implement
-func (j *job) Create(ctx context.Context, jobInfo *pbjob.JobInfo) error {
+	if config == nil {
+		return yarpcerrors.InvalidArgumentErrorf("missing config in jobInfo")
+	}
+
+	config, err := j.createJobConfig(ctx, config, createBy)
+	if err != nil {
+		j.invalidateCache()
+		return err
+	}
+
+	err = j.createJobRuntime(ctx, config)
+	if err != nil {
+		j.invalidateCache()
+		return err
+	}
 	return nil
 }
 
+// createJobConfig creates job config in db and cache
+func (j *job) createJobConfig(ctx context.Context, config *pbjob.JobConfig, createBy string) (*pbjob.JobConfig, error) {
+	newConfig := *config
+	now := time.Now().UTC()
+	newConfig.ChangeLog = &peloton.ChangeLog{
+		CreatedAt: uint64(now.UnixNano()),
+		UpdatedAt: uint64(now.UnixNano()),
+		Version:   1,
+	}
+	err := j.jobFactory.jobStore.CreateJobConfig(ctx, j.id, &newConfig, newConfig.ChangeLog.Version, createBy)
+	if err != nil {
+		return nil, err
+	}
+	j.populateJobConfigCache(&newConfig)
+	return &newConfig, nil
+}
+
+// createJobRuntime creates and initialize job runtime in db and cache
+func (j *job) createJobRuntime(ctx context.Context, config *pbjob.JobConfig) error {
+	goalState := goalstateutil.GetDefaultJobGoalState(config.Type)
+	now := time.Now().UTC()
+	initialJobRuntime := &pbjob.RuntimeInfo{
+		State:        pbjob.JobState_INITIALIZED,
+		CreationTime: now.Format(time.RFC3339Nano),
+		TaskStats:    make(map[string]uint32),
+		GoalState:    goalState,
+		Revision: &peloton.ChangeLog{
+			CreatedAt: uint64(now.UnixNano()),
+			UpdatedAt: uint64(now.UnixNano()),
+			Version:   1,
+		},
+		ConfigurationVersion: config.GetChangeLog().GetVersion(),
+	}
+	// Init the task stats to reflect that all tasks are in initialized state
+	initialJobRuntime.TaskStats[pbtask.TaskState_INITIALIZED.String()] = config.InstanceCount
+
+	err := j.jobFactory.jobStore.CreateJobRuntimeWithConfig(ctx, j.id, initialJobRuntime, config)
+	if err != nil {
+		return err
+	}
+	j.runtime = initialJobRuntime
+	return nil
+}
+
+// The runtime being passed should only set the fields which the caller intends to change,
+// the remaining fields should be left unfilled.
+// The config would be updated to the config passed in (except changeLog)
 func (j *job) Update(ctx context.Context, jobInfo *pbjob.JobInfo, req UpdateRequest) error {
 	j.Lock()
 	defer j.Unlock()
 
-	if jobInfo.GetRuntime() != nil && req == UpdateCacheAndDB {
-		if err := j.jobFactory.jobStore.UpdateJobRuntime(ctx, j.ID(), jobInfo.GetRuntime()); err != nil {
+	var updatedConfig *pbjob.JobConfig
+	var err error
+	if jobInfo.GetConfig() != nil {
+		updatedConfig, err = j.getUpdatedJobConfigCache(ctx, jobInfo.GetConfig(), req)
+		if err != nil {
+			j.invalidateCache()
 			return err
 		}
+		if updatedConfig != nil {
+			j.populateJobConfigCache(updatedConfig)
+
+			// if changeLog revision is not nil, config is recovered instead of
+			// updated. No need to update ConfigurationVersion, when config is recovered
+			if jobInfo.GetConfig().GetChangeLog() == nil {
+				// update runtime Configuration version with changeLog revision
+				if jobInfo.GetRuntime() == nil {
+					jobInfo.Runtime = &pbjob.RuntimeInfo{}
+				}
+				jobInfo.Runtime.ConfigurationVersion = updatedConfig.GetChangeLog().GetVersion()
+			}
+		}
 	}
-	j.updateJobInCache(jobInfo)
+
+	var updatedRuntime *pbjob.RuntimeInfo
+	if jobInfo.GetRuntime() != nil {
+		updatedRuntime, err = j.getUpdatedJobRuntimeCache(ctx, jobInfo.GetRuntime(), req)
+		if err != nil {
+			j.invalidateCache()
+			return err
+		}
+		if updatedRuntime != nil {
+			j.runtime = updatedRuntime
+		}
+	}
+
+	if req == UpdateCacheAndDB {
+		// Must update config first then runtime. Update config would create a
+		// new config entry and update runtime would ask job to use the latest
+		// config. If we update the runtime first successfully, and update
+		// config with failure, job would try to access a non-existent config.
+		if updatedConfig != nil {
+			err := j.jobFactory.jobStore.UpdateJobConfig(ctx, j.ID(), updatedConfig)
+			if err != nil {
+				j.invalidateCache()
+				return err
+			}
+		}
+
+		if updatedRuntime != nil {
+			err := j.jobFactory.jobStore.UpdateJobRuntime(ctx, j.ID(), updatedRuntime)
+			if err != nil {
+				j.invalidateCache()
+				return err
+			}
+		}
+	}
 	return nil
 }
 
-func (j *job) ClearRuntime() {
-	j.Lock()
-	defer j.Unlock()
+// getUpdatedJobConfigCache validates the config input and
+// returns updated config. return value is nil, if validation
+// fails
+func (j *job) getUpdatedJobConfigCache(
+	ctx context.Context,
+	config *pbjob.JobConfig,
+	req UpdateRequest) (*pbjob.JobConfig, error) {
+	if req == UpdateCacheAndDB {
+		if j.config == nil {
+			config, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+			if err != nil {
+				return nil, err
+			}
+			j.populateJobConfigCache(config)
+		}
+	}
+
+	updatedConfig := config
+	if j.config != nil {
+		updatedConfig = j.validateAndMergeConfig(config)
+		//TODO(zhixin): return an error which may be required
+		// for stateless job
+	}
+
+	return updatedConfig, nil
+}
+
+// validateAndMergeConfig validates whether the input config should be merged,
+// and returns the merged config if merge is valid.
+func (j *job) validateAndMergeConfig(config *pbjob.JobConfig) *pbjob.JobConfig {
+	if !j.validateConfig(config) {
+		log.WithField("current_revision", j.config.GetChangeLog().GetVersion()).
+			WithField("new_revision", config.GetChangeLog().GetVersion()).
+			WithField("job_id", j.id.Value).
+			Info("failed job config validation")
+		return nil
+	}
+
+	newConfig := *config
+	// ChangeLog is nil when update the config,
+	if newConfig.ChangeLog == nil {
+		currentChangeLog := *j.config.changeLog
+		newConfig.ChangeLog = &currentChangeLog
+		newConfig.ChangeLog.Version++
+		newConfig.ChangeLog.UpdatedAt = uint64(time.Now().UnixNano())
+	}
+	return &newConfig
+}
+
+// validateConfig validates whether the input config is valid
+// to update the exisiting config cache
+func (j *job) validateConfig(newConfig *pbjob.JobConfig) bool {
+	currentConfig := j.config
+
+	if newConfig == nil {
+		return false
+	}
+
+	// changeLog is not nil, newConfig is from db
+	if newConfig.GetChangeLog() != nil {
+		// Make sure that not overwriting with old or same version
+		if newConfig.GetChangeLog().GetVersion() <= currentConfig.GetChangeLog().GetVersion() {
+			return false
+		}
+	}
+	return true
+}
+
+// populateJobConfigCache update the cache in job cache
+func (j *job) populateJobConfigCache(config *pbjob.JobConfig) {
+	if config == nil {
+		return
+	}
+
+	if j.config == nil {
+		j.config = &cachedConfig{}
+	}
+
+	j.config.instanceCount = config.GetInstanceCount()
+
+	if config.GetSla() != nil {
+		j.config.sla = config.GetSla()
+	}
+
+	if config.GetChangeLog() != nil {
+		j.config.changeLog = config.GetChangeLog()
+	}
+
+	j.config.jobType = config.GetType()
+}
+
+// getUpdatedJobRuntimeCache validates the runtime input and
+// returns updated config. return value is nil, if validation
+// fails
+func (j *job) getUpdatedJobRuntimeCache(
+	ctx context.Context,
+	runtime *pbjob.RuntimeInfo,
+	req UpdateRequest) (*pbjob.RuntimeInfo, error) {
+	newRuntime := runtime
+
+	if req == UpdateCacheAndDB {
+		if j.runtime == nil {
+			runtime, err := j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID())
+			if err != nil {
+				return nil, err
+			}
+			j.runtime = runtime
+		}
+	}
+
+	if j.runtime != nil {
+		newRuntime = j.validateAndMergeRuntime(runtime, req)
+	}
+
+	return newRuntime, nil
+}
+
+// validateAndMergeRuntime validates whether a runtime can be merged with
+// existing runtime cache. It returns the merged runtime if merge is valid.
+func (j *job) validateAndMergeRuntime(
+	runtime *pbjob.RuntimeInfo,
+	req UpdateRequest) *pbjob.RuntimeInfo {
+	if !j.validateStateUpdate(runtime) {
+		log.WithField("current_revision", j.runtime.GetRevision().GetVersion()).
+			WithField("new_revision", runtime.GetRevision().GetVersion()).
+			WithField("new_state", runtime.GetState().String()).
+			WithField("old_state", j.runtime.GetState().String()).
+			WithField("new_goal_state", runtime.GetGoalState().String()).
+			WithField("old_goal_state", j.runtime.GetGoalState().String()).
+			WithField("job_id", j.id.Value).
+			Info("failed job state validation")
+		return nil
+	}
+
+	newRuntime := j.mergeRuntime(runtime)
+	// No change in the runtime, ignore the update
+	if reflect.DeepEqual(j.runtime, newRuntime) {
+		return nil
+	}
+
+	return newRuntime
+}
+
+// validateStateUpdate returns whether the runtime update can be
+// applied to the existing job runtime cache.
+func (j *job) validateStateUpdate(newRuntime *pbjob.RuntimeInfo) bool {
+	currentRuntime := j.runtime
+
+	if newRuntime == nil {
+		return false
+	}
+
+	// changeLog is not nil, newRuntime is from db
+	if newRuntime.GetRevision() != nil {
+		// Make sure that not overwriting with old or same version
+		if newRuntime.GetRevision().GetVersion() <=
+			currentRuntime.GetRevision().GetVersion() {
+			return false
+		}
+	}
+	return true
+}
+
+// mergeRuntime merges the current runtime and the new runtime and returns the merged
+// runtime back. The runtime provided as input only contains the fields which
+// the caller intends to change and the remaining are kept invalid/nil.
+func (j *job) mergeRuntime(newRuntime *pbjob.RuntimeInfo) *pbjob.RuntimeInfo {
+	currentRuntime := j.runtime
+	runtime := *currentRuntime
+
+	if newRuntime.GetState() != pbjob.JobState_UNKNOWN {
+		runtime.State = newRuntime.GetState()
+	}
+
+	if stringsutil.ValidateString(newRuntime.GetCreationTime()) {
+		runtime.CreationTime = newRuntime.GetCreationTime()
+	}
+
+	if stringsutil.ValidateString(newRuntime.GetStartTime()) {
+		runtime.StartTime = newRuntime.GetStartTime()
+	}
+
+	if stringsutil.ValidateString(newRuntime.GetCompletionTime()) {
+		runtime.CompletionTime = newRuntime.GetCompletionTime()
+	}
+
+	if len(newRuntime.GetTaskStats()) > 0 {
+		runtime.TaskStats = newRuntime.GetTaskStats()
+	}
+
+	if newRuntime.GetConfigVersion() > 0 {
+		runtime.ConfigVersion = newRuntime.GetConfigVersion()
+	}
+
+	if newRuntime.GetConfigurationVersion() > 0 {
+		runtime.ConfigurationVersion = newRuntime.GetConfigurationVersion()
+	}
+
+	if newRuntime.GetGoalState() != pbjob.JobState_UNKNOWN {
+		runtime.GoalState = newRuntime.GetGoalState()
+	}
+
+	if runtime.Revision == nil {
+		// should never enter here
+		log.WithField("job_id", j.id.GetValue()).
+			Error("runtime changeLog is nil in update jobs")
+		runtime.Revision = &peloton.ChangeLog{
+			Version:   1,
+			CreatedAt: uint64(time.Now().UnixNano()),
+		}
+	}
+
+	// bump up the runtime version
+	runtime.Revision.Version++
+	runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
+
+	return &runtime
+}
+
+// invalidateCache clean job runtime and config cache
+func (j *job) invalidateCache() {
 	j.runtime = nil
+	j.config = nil
 }
 
 func (j *job) SetTaskUpdateTime(t *float64) {
@@ -360,20 +696,11 @@ func (j *job) SetTaskUpdateTime(t *float64) {
 	j.lastTaskUpdateTime = *t
 }
 
-func (j *job) ClearAllTasks() {
-	j.Lock()
-	defer j.Unlock()
-
-	for instID := range j.tasks {
-		delete(j.tasks, instID)
-	}
-}
-
-func (j *job) IsPartiallyCreated() bool {
+func (j *job) IsPartiallyCreated(config JobConfig) bool {
 	j.RLock()
 	defer j.RUnlock()
 
-	if j.instanceCount == uint32(len(j.tasks)) {
+	if config.GetInstanceCount() == uint32(len(j.tasks)) {
 		return false
 	}
 	return true
@@ -383,30 +710,45 @@ func (j *job) GetRuntime(ctx context.Context) (*pbjob.RuntimeInfo, error) {
 	j.Lock()
 	defer j.Unlock()
 
-	if j.runtime != nil {
-		return j.runtime, nil
+	if j.runtime == nil {
+		runtime, err := j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID())
+		if err != nil {
+			return nil, err
+		}
+		j.runtime = runtime
 	}
-	return j.jobFactory.jobStore.GetJobRuntime(ctx, j.ID())
+	return j.runtime, nil
 }
 
-func (j *job) GetInstanceCount() uint32 {
-	j.RLock()
-	defer j.RUnlock()
-	return j.instanceCount
-}
+func (j *job) GetConfig(ctx context.Context) (JobConfig, error) {
+	j.Lock()
+	defer j.Unlock()
 
-func (j *job) GetSLAConfig() *pbjob.SlaConfig {
-	j.RLock()
-	defer j.RUnlock()
-	// return a copy
-	sla := j.sla
-	return &sla
+	if j.config == nil {
+		config, err := j.jobFactory.jobStore.GetJobConfig(ctx, j.ID())
+		if err != nil {
+			return nil, err
+		}
+		j.populateJobConfigCache(config)
+	}
+	return j.config, nil
 }
 
 func (j *job) GetJobType() pbjob.JobType {
 	j.RLock()
 	defer j.RUnlock()
-	return j.jobType
+
+	if j.config != nil {
+		return j.config.jobType
+	}
+
+	// service jobs are optimized for lower latency (e.g. job runtime
+	// updater is run more frequently for service jobs than batch jobs,
+	// service jobs may have higher priority).
+	// For a short duration, when cache does not have the config, running
+	// batch jobs as service jobs is ok, but running service jobs as batch
+	// jobs will create problems. Therefore, default to SERVICE type.
+	return pbjob.JobType_SERVICE
 }
 
 func (j *job) GetFirstTaskUpdateTime() float64 {
@@ -421,4 +763,24 @@ func (j *job) GetLastTaskUpdateTime() float64 {
 	defer j.RUnlock()
 
 	return j.lastTaskUpdateTime
+}
+
+func (c *cachedConfig) GetInstanceCount() uint32 {
+	return c.instanceCount
+}
+
+func (c *cachedConfig) GetSLAConfig() *pbjob.SlaConfig {
+	if c.sla == nil {
+		return nil
+	}
+	tmpSLA := *c.sla
+	return &tmpSLA
+}
+
+func (c *cachedConfig) GetChangeLog() *peloton.ChangeLog {
+	if c.changeLog == nil {
+		return nil
+	}
+	tmpChangeLog := *c.changeLog
+	return &tmpChangeLog
 }
