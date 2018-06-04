@@ -225,6 +225,11 @@ func (j *job) updateTasksInParallel(
 
 				err := write(ctx, instanceID, runtimes[instanceID], req, owner)
 				if err != nil {
+					log.WithError(err).
+						WithFields(log.Fields{
+							"job_id":      j.ID().GetValue(),
+							"instance_id": instanceID,
+						}).Info("failed to write task runtime")
 					atomic.AddUint32(&tasksNotUpdated, 1)
 					if common.IsTransientError(err) {
 						atomic.StoreInt32(&transientError, 1)
@@ -244,12 +249,6 @@ func (j *job) updateTasksInParallel(
 			j.ID(),
 			tasksNotUpdated,
 			time.Since(timeStart))
-		log.WithFields(log.Fields{
-			"job_id":            j.ID().GetValue(),
-			"tasks_updated":     nTasks - tasksNotUpdated,
-			"tasks_not_updated": tasksNotUpdated,
-			"time_elapsed":      time.Since(timeStart),
-		}).Error("failed to update task runtimes")
 		if transientError > 0 {
 			// return a transient error if a transient error is encountered
 			// while creating.updating any task

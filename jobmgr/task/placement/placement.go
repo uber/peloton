@@ -209,8 +209,12 @@ func (p *processor) ProcessPlacement(ctx context.Context, placement *resmgr.Plac
 	launchableTasks := launcher.CreateLaunchableTasks(taskInfos)
 	if err = p.taskLauncher.ProcessPlacement(ctx, launchableTasks, placement); err != nil {
 		if err = p.enqueueTasks(ctx, taskInfos); err != nil {
+			var taskIDs []string
+			for taskID := range taskInfos {
+				taskIDs = append(taskIDs, taskID)
+			}
 			log.WithError(err).WithFields(log.Fields{
-				"task_infos":  taskInfos,
+				"task_ids":    taskIDs,
 				"tasks_total": len(taskInfos),
 			}).Error("failed to enqueue tasks back to resmgr")
 		}

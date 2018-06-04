@@ -166,8 +166,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		statusMsg = event.MesosTaskStatus.GetMessage()
 		isMesosStatus = true
 		log.WithFields(log.Fields{
-			"taskID": taskID,
-			"state":  state.String(),
+			"task_id": taskID,
+			"state":   state.String(),
 		}).Debug("Adding Mesos Event ")
 		reason = event.GetMesosTaskStatus().GetReason()
 	} else if event.Type == pb_eventstream.Event_PELOTON_TASK_EVENT {
@@ -176,13 +176,13 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		state = event.PelotonTaskEvent.State
 		statusMsg = event.PelotonTaskEvent.Message
 		log.WithFields(log.Fields{
-			"taskID": taskID,
-			"state":  state.String(),
+			"task_id": taskID,
+			"state":   state.String(),
 		}).Debug("Adding Peloton Event ")
 	} else {
 		log.WithFields(log.Fields{
-			"taskID": taskID,
-			"state":  state.String(),
+			"task_id": taskID,
+			"state":   state.String(),
 		}).Error("Unknown Event ")
 		return errors.New("Unknown Event ")
 	}
@@ -298,7 +298,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		if util.IsPelotonStateTerminal(runtime.GetState()) {
 			// Skip LOST status update if current state is terminal state.
 			log.WithFields(log.Fields{
-				"db_task_info":      taskInfo,
+				"task_id":           taskID,
+				"db_task_runtime":   taskInfo.GetRuntime(),
 				"task_status_event": event.GetMesosTaskStatus(),
 			}).Debug("skip reschedule lost task as it is already in terminal state")
 			return nil
@@ -307,7 +308,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 			// Do not take any action for killed tasks, just mark it killed.
 			// Same message will go to resource manager which will release the placement.
 			log.WithFields(log.Fields{
-				"db_task_info":      taskInfo,
+				"task_id":           taskID,
+				"db_task_runtime":   taskInfo.GetRuntime(),
 				"task_status_event": event.GetMesosTaskStatus(),
 			}).Debug("mark stopped task as killed due to LOST")
 			updatedRuntime.State = pb_task.TaskState_KILLED
@@ -324,7 +326,8 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 		}
 
 		log.WithFields(log.Fields{
-			"db_task_info":      taskInfo,
+			"task_id":           taskID,
+			"db_task_runtime":   taskInfo.GetRuntime(),
 			"task_status_event": event.GetMesosTaskStatus(),
 		}).Info("reschedule lost task")
 		p.metrics.RetryLostTasksTotal.Inc(1)
@@ -385,8 +388,10 @@ func (p *statusUpdate) updatePersistentVolumeState(ctx context.Context, taskInfo
 	volumeInfo, err := p.volumeStore.GetPersistentVolume(ctx, taskInfo.GetRuntime().GetVolumeID())
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
-			"db_task_info": taskInfo,
-			"volume_id":    taskInfo.GetRuntime().GetVolumeID(),
+			"job_id":          taskInfo.GetJobId().GetValue(),
+			"instance_id":     taskInfo.GetInstanceId(),
+			"db_task_runtime": taskInfo.GetRuntime(),
+			"volume_id":       taskInfo.GetRuntime().GetVolumeID(),
 		}).Error("Failed to read db for given volume")
 		_, ok := err.(*storage.VolumeNotFoundError)
 		if !ok {

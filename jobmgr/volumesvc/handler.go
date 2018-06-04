@@ -129,8 +129,11 @@ func (h *serviceHandler) ListVolumes(
 		volumeInfo, err = h.getVolumeInfo(ctx, info.GetRuntime().GetVolumeID())
 		if err != nil {
 			if err == errVolumeNotFound {
-				log.WithField("task_info", info).
-					Warn("Failed to get persistent volume for task")
+				log.WithFields(log.Fields{
+					"job_id":       info.GetJobId().GetValue(),
+					"instance_id":  info.GetInstanceId(),
+					"task_runtime": info.GetRuntime(),
+				}).Warn("Failed to get persistent volume for task")
 				err = nil
 				continue
 			}
