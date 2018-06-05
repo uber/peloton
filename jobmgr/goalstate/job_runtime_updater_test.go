@@ -144,7 +144,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobCompletionTimeNotEmpty() {
 	suite.NoError(err)
 }
 
-func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_RUNNING() {
 	instanceCount := uint32(100)
 	jobRuntime := pbjob.RuntimeInfo{
 		State:     pbjob.JobState_PENDING,
@@ -165,6 +165,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(false)
 
 	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
@@ -196,9 +200,21 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 
 	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_SUCCEED() {
+	instanceCount := uint32(100)
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_SUCCEEDED,
+	}
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
 
 	// Simulate SUCCEEDED job
-	stateCounts = make(map[string]uint32)
+	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount
 
 	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
@@ -250,13 +266,33 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PENDING() {
+	instanceCount := uint32(100)
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_SUCCEEDED,
+	}
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 
 	// Simulate PENDING job
-	stateCounts = make(map[string]uint32)
+	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_PENDING.String()] = instanceCount / 2
 	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 2
+
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(false)
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -287,13 +323,31 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 			suite.Equal(jobInfo.Runtime.TaskStats[pbtask.TaskState_PENDING.String()], instanceCount/2)
 		}).Return(nil)
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_FAILED() {
+	instanceCount := uint32(100)
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_SUCCEEDED,
+	}
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
+	endTime, _ := time.Parse(time.RFC3339Nano, jobCompletionTime)
+	endTimeUnix := float64(endTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 
 	// Simulate FAILED job
-	stateCounts = make(map[string]uint32)
+	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_FAILED.String()] = instanceCount / 2
 	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 2
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -332,11 +386,30 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_KILLING() {
+	instanceCount := uint32(100)
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_KILLING,
+		GoalState: pbjob.JobState_KILLED,
+	}
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(false)
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 
 	// Simulate KILLING job
-	stateCounts = make(map[string]uint32)
+	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_KILLING.String()] = instanceCount / 4
 	stateCounts[pbtask.TaskState_KILLED.String()] = instanceCount / 2
 	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 4
@@ -345,14 +418,9 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
 
-	jobRuntimeWithKilledGoalState := pbjob.RuntimeInfo{
-		State:     pbjob.JobState_KILLING,
-		GoalState: pbjob.JobState_KILLED,
-	}
-
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
-		Return(&jobRuntimeWithKilledGoalState, nil)
+		Return(&jobRuntime, nil)
 
 	suite.cachedJob.EXPECT().
 		GetConfig(gomock.Any()).
@@ -376,14 +444,32 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 			suite.Equal(jobInfo.Runtime.TaskStats[pbtask.TaskState_KILLED.String()], instanceCount/2)
 		}).Return(nil)
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_KILLED() {
+	instanceCount := uint32(100)
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_SUCCEEDED,
+	}
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
+	endTime, _ := time.Parse(time.RFC3339Nano, jobCompletionTime)
+	endTimeUnix := float64(endTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 
 	// Simulate KILLED job
-	stateCounts = make(map[string]uint32)
+	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_FAILED.String()] = instanceCount / 4
 	stateCounts[pbtask.TaskState_KILLED.String()] = instanceCount / 2
 	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 4
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -423,16 +509,28 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_INITIALIZED() {
+	instanceCount := uint32(100)
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 
 	// Simulate INITIALIZED job
-	stateCounts = make(map[string]uint32)
+	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount / 2
-	jobRuntime = pbjob.RuntimeInfo{
+	jobRuntime := pbjob.RuntimeInfo{
 		State:     pbjob.JobState_INITIALIZED,
 		GoalState: pbjob.JobState_SUCCEEDED,
 	}
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -466,16 +564,39 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 			suite.Equal(jobInfo.Runtime.TaskStats[pbtask.TaskState_SUCCEEDED.String()], instanceCount/2)
 		}).Return(nil)
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
-	suite.Error(err)
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
+
+	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_DBError() {
+	instanceCount := uint32(100)
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_SUCCEEDED,
+	}
 
 	// Simulate fake DB error
-	stateCounts = make(map[string]uint32)
+	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount
 	jobRuntime = pbjob.RuntimeInfo{
 		State:     pbjob.JobState_RUNNING,
 		GoalState: pbjob.JobState_SUCCEEDED,
 	}
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
+	endTime, _ := time.Parse(time.RFC3339Nano, jobCompletionTime)
+	endTimeUnix := float64(endTime.UnixNano()) / float64(time.Second/time.Nanosecond)
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -505,17 +626,31 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(fmt.Errorf("fake db error"))
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.Error(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_IncorrectState() {
+	instanceCount := uint32(100)
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
+	endTime, _ := time.Parse(time.RFC3339Nano, jobCompletionTime)
+	endTimeUnix := float64(endTime.UnixNano()) / float64(time.Second/time.Nanosecond)
 
 	// Simulate SUCCEEDED job with correct task stats in runtime but incorrect state
-	stateCounts = make(map[string]uint32)
+	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount
-	jobRuntime = pbjob.RuntimeInfo{
+	jobRuntime := pbjob.RuntimeInfo{
 		State:     pbjob.JobState_RUNNING,
 		GoalState: pbjob.JobState_SUCCEEDED,
 		TaskStats: stateCounts,
 	}
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
 
 	suite.jobFactory.EXPECT().
 		AddJob(suite.jobID).
@@ -551,14 +686,65 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 		Enqueue(gomock.Any(), gomock.Any()).
 		Return()
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_KILLEDWithNoTask() {
+	instanceCount := uint32(100)
 
 	// Simulate killed job with no tasks created
-	stateCounts = make(map[string]uint32)
-	jobRuntime = pbjob.RuntimeInfo{
+	stateCounts := make(map[string]uint32)
+	jobRuntime := pbjob.RuntimeInfo{
 		State:     pbjob.JobState_KILLED,
 		GoalState: pbjob.JobState_KILLED,
+		TaskStats: stateCounts,
+	}
+
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	suite.jobFactory.EXPECT().
+		AddJob(suite.jobID).
+		Return(suite.cachedJob)
+
+	suite.cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
+
+	suite.taskStore.EXPECT().
+		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
+		Return(stateCounts, nil)
+
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	suite.NoError(err)
+}
+
+func (suite *JobRuntimeUpdaterTestSuite) TestJobRuntimeUpdater_PartiallyCreatedJob() {
+	instanceCount := uint32(100)
+	suite.cachedConfig.EXPECT().
+		GetInstanceCount().
+		Return(instanceCount).
+		AnyTimes()
+
+	startTime, _ := time.Parse(time.RFC3339Nano, jobStartTime)
+	startTimeUnix := float64(startTime.UnixNano()) / float64(time.Second/time.Nanosecond)
+
+	// sum of each state is smaller than instanceCount
+	// simulate partially created job
+	stateCounts := make(map[string]uint32)
+	stateCounts[pbtask.TaskState_PENDING.String()] = instanceCount/2 - 1
+	stateCounts[pbtask.TaskState_SUCCEEDED.String()] = instanceCount/2 - 1
+
+	jobRuntime := pbjob.RuntimeInfo{
+		State:     pbjob.JobState_PENDING,
+		GoalState: pbjob.JobState_SUCCEEDED,
 		TaskStats: stateCounts,
 	}
 
@@ -578,7 +764,26 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobUpdateJobRuntime() {
 		GetTaskStateSummaryForJob(gomock.Any(), suite.jobID).
 		Return(stateCounts, nil)
 
-	err = JobRuntimeUpdater(context.Background(), suite.jobEnt)
+	suite.cachedJob.EXPECT().
+		IsPartiallyCreated(gomock.Any()).
+		Return(true).
+		AnyTimes()
+
+	suite.cachedJob.EXPECT().
+		GetFirstTaskUpdateTime().
+		Return(startTimeUnix)
+
+	suite.cachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Do(func(_ context.Context, jobInfo *pbjob.JobInfo, _ cached.UpdateRequest) {
+			suite.Equal(jobInfo.Runtime.State, pbjob.JobState_INITIALIZED)
+		}).Return(nil)
+
+	suite.jobGoalStateEngine.EXPECT().
+		Enqueue(gomock.Any(), gomock.Any()).
+		Return()
+
+	err := JobRuntimeUpdater(context.Background(), suite.jobEnt)
 	suite.NoError(err)
 }
 

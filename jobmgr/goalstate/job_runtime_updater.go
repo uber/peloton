@@ -267,37 +267,6 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// Keeping the commented code when we have write through cache, then we
-	// can read from cache instead of DB.
-	/*stateCounts := make(map[string]uint32)
-	taskMap := j.GetTasks()
-	j.clearInitializedTaskMap()
-
-	for _, task := range taskMap {
-		runtime := task.GetRunTime()
-		retry := 0
-		for retry < 1000 {
-			if runtime != nil {
-				break
-			}
-			time.Sleep(1 * time.Millisecond)
-			log.WithField("job_id", j.ID()).
-			    WithField("instance_id", task.ID()).
-			    Info("reloading the task runtime within job runtime updater")
-			task.reloadRuntime(ctx)
-			retry++
-		}
-		if runtime == nil {
-			return true, fmt.Errorf("cannot fetch task runtime")
-		}
-
-		stateCounts[runtime.GetState().String()]++
-
-		if runtime.GetState() == task.TaskState_INITIALIZED && runtime.GetGoalState() != task.TaskState_KILLED {
-			j.addTaskToInitializedTaskMap(task.(*task))
-		}
-	}*/
-
 	stateCounts, err := goalStateDriver.taskStore.GetTaskStateSummaryForJob(ctx, jobID)
 	if err != nil {
 		log.WithError(err).
@@ -313,8 +282,11 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	var jobState job.JobState
 	jobRuntimeUpdate := &job.RuntimeInfo{}
+	// if job is KILLED: do nothing
+	// if job is partially created: set job to INITIALIZED and enqueue the job
+	// else: return error and reschedule the job
 	if totalInstanceCount != config.GetInstanceCount() {
-		// TODO: remove log after job stuck at PENDING state is fixed
+		// TODO(zhixin): remove log after job stuck at PENDING state is fixed
 		log.WithField("job_id", id).
 			WithField("total_instance_count", totalInstanceCount).
 			WithField("instances", config.GetInstanceCount()).
@@ -325,7 +297,7 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		}
 		// Either MV view has not caught up or all instances have not been created
 		if cachedJob.IsPartiallyCreated(config) {
-			// TODO: remove log after job stuck at PENDING state is fixed
+			// TODO(zhixin): remove log after job stuck at PENDING state is fixed
 			log.WithField("job_id", id).
 				Debug("job is partially created")
 			// all instances have not been created, trigger recovery
@@ -334,20 +306,20 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			// MV has not caught up, wait for it to catch up before doing anything
 			return fmt.Errorf("dbs are not in sync")
 		}
-	}
-
-	// TODO: remove log after job stuck at PENDING state is fixed
-	log.WithField("job_id", id).
-		WithField("state", jobRuntime.State.String()).
-		Debug("job runtime state before determineJobRuntimeState")
-
-	jobState = determineJobRuntimeState(jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
-
-	if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) && jobRuntime.GetState() == jobState {
+	} else {
+		// TODO(zhixin): remove log after job stuck at PENDING state is fixed
 		log.WithField("job_id", id).
-			WithField("task_stats", stateCounts).
-			Debug("Task stats did not change, return")
-		return nil
+			WithField("state", jobRuntime.State.String()).
+			Debug("job runtime state before determineJobRuntimeState")
+
+		jobState = determineJobRuntimeState(jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
+
+		if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) && jobRuntime.GetState() == jobState {
+			log.WithField("job_id", id).
+				WithField("task_stats", stateCounts).
+				Debug("Task stats did not change, return")
+			return nil
+		}
 	}
 
 	getFirstTaskUpdateTime := cachedJob.GetFirstTaskUpdateTime()
@@ -389,8 +361,13 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	if util.IsPelotonJobStateTerminal(jobRuntimeUpdate.GetState()) {
-		// Evaluate this job immediately as no more task updates will arrive
+	// Evaluate this job immediately when
+	// 1. job state is terminal and no more task updates will arrive, or
+	// 2. job is partially created and need to create additional tasks
+	// (we may have no additional tasks coming in when job is
+	// partially created)
+	if util.IsPelotonJobStateTerminal(jobRuntimeUpdate.GetState()) ||
+		cachedJob.IsPartiallyCreated(config) {
 		goalStateDriver.EnqueueJob(jobID, time.Now())
 	}
 
@@ -399,9 +376,5 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		Info("job runtime updater completed")
 
 	goalStateDriver.mtx.jobMetrics.JobRuntimeUpdated.Inc(1)
-	if jobRuntime.State == job.JobState_INITIALIZED {
-		// This should be hit for only old jobs created with a code version with no job goal state
-		return fmt.Errorf("trigger job recovery")
-	}
 	return nil
 }
