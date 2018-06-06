@@ -54,7 +54,7 @@ func (suite *KillOrphanTaskTestSuite) SetupTest() {
 func (suite *KillOrphanTaskTestSuite) TestNormalKill() {
 	suite.mockHostMgr.EXPECT().
 		KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
-			TaskIds: []*mesos.TaskID{&mesos.TaskID{Value: &suite.mesosTaskID}},
+			TaskIds: []*mesos.TaskID{{Value: &suite.mesosTaskID}},
 		})
 
 	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &suite.taskInfo)
@@ -65,7 +65,7 @@ func (suite *KillOrphanTaskTestSuite) TestNormalKill() {
 func (suite *KillOrphanTaskTestSuite) TestErrorKill() {
 	suite.mockHostMgr.EXPECT().
 		KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
-			TaskIds: []*mesos.TaskID{&mesos.TaskID{Value: &suite.mesosTaskID}},
+			TaskIds: []*mesos.TaskID{{Value: &suite.mesosTaskID}},
 		}).Return(nil, errors.New(""))
 
 	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &suite.taskInfo)
