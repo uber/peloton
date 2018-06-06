@@ -229,7 +229,7 @@ func (r *recoveryHandler) addNonRunningTasks(notRunningTasks []*task.TaskInfo,
 		return
 	}
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs(notRunningTasks, jobConfig),
+		Gangs:   util.ConvertToResMgrGangs(notRunningTasks, jobConfig.GetSla()),
 		ResPool: jobConfig.RespoolID,
 	}
 	log.WithField("request", request).Debug("Adding non running tasks")
@@ -269,7 +269,7 @@ func (r *recoveryHandler) addTaskToTracker(
 	taskInfo *task.TaskInfo,
 	config *job.JobConfig,
 	respool respool.ResPool) error {
-	rmTask := util.ConvertTaskToResMgrTask(taskInfo, config)
+	rmTask := util.ConvertTaskToResMgrTask(taskInfo, config.GetSla())
 	err := rmtask.GetTracker().AddTask(
 		rmTask,
 		r.handler.GetStreamHandler(),

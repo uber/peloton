@@ -118,19 +118,20 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 		Return(suite.cachedConfig, nil)
 
 	suite.cachedConfig.EXPECT().
-		GetSLAConfig().
-		Return(&job2.SlaConfig{})
+		GetSLA().
+		Return(&job2.SlaConfig{}).
+		AnyTimes()
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(jobConfig, nil)
+	suite.cachedConfig.EXPECT().
+		GetRespoolID().
+		Return(jobConfig.RespoolID)
 
 	suite.taskStore.EXPECT().
 		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
 		Return(taskInfo, nil)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig),
+		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig.GetSla()),
 		ResPool: jobConfig.RespoolID,
 	}
 
@@ -163,11 +164,12 @@ func (suite *TaskStartTestSuite) TestTaskStartWithSlaMaxRunningInstances() {
 		Return(suite.cachedConfig, nil)
 
 	suite.cachedConfig.EXPECT().
-		GetSLAConfig().
+		GetSLA().
 		Return(jobConfig.Sla)
 
-	suite.cachedJob.EXPECT().
-		GetJobType().Return(job2.JobType_BATCH)
+	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(job2.JobType_BATCH)
 
 	suite.jobGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -208,7 +210,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolume() {
 		Return(suite.cachedConfig, nil)
 
 	suite.cachedConfig.EXPECT().
-		GetSLAConfig().
+		GetSLA().
 		Return(&job2.SlaConfig{})
 
 	suite.taskStore.EXPECT().
@@ -288,7 +290,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithVolumeDBError() {
 		Return(suite.cachedConfig, nil)
 
 	suite.cachedConfig.EXPECT().
-		GetSLAConfig().
+		GetSLA().
 		Return(&job2.SlaConfig{})
 
 	suite.taskStore.EXPECT().
@@ -360,12 +362,13 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 		Return(suite.cachedConfig, nil)
 
 	suite.cachedConfig.EXPECT().
-		GetSLAConfig().
-		Return(&job2.SlaConfig{})
+		GetSLA().
+		Return(&job2.SlaConfig{}).
+		AnyTimes()
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(jobConfig, nil)
+	suite.cachedConfig.EXPECT().
+		GetRespoolID().
+		Return(jobConfig.RespoolID)
 
 	suite.taskStore.EXPECT().
 		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
@@ -376,7 +379,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 		Return(nil, &storage.VolumeNotFoundError{})
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig),
+		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig.GetSla()),
 		ResPool: jobConfig.RespoolID,
 	}
 	suite.resmgrClient.EXPECT().

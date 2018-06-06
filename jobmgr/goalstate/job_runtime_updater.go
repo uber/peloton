@@ -68,26 +68,32 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 	jobID := &peloton.JobID{Value: id}
 	goalStateDriver := entity.(*jobEntity).driver
 	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
-
-	// TODO SLA is stored in cache. Fetch from cache instead of DB.
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
-			Error("failed to get job config in start instances")
+			Error("Failed to get job config")
 		return err
 	}
 
-	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
+	// Save a read to DB if maxRunningInstances is 0
+	maxRunningInstances := cachedConfig.GetSLA().GetMaximumRunningInstances()
 	if maxRunningInstances == 0 {
 		return nil
 	}
 
+	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, jobID)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id).
+			Error("Failed to get job config in start instances")
+		return err
+	}
 	runtime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
-			Error("failed to get job runtime during start instances")
+			Error("Failed to get job runtime during start instances")
 		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
 		return err
 	}
@@ -177,27 +183,6 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 		tasksToStart--
 	}
 
-	// Keeping the commented code when we have write through cache, then we
-	// can read from cache instead of DB.
-	/*j.RLock()
-	defer j.RUnlock()
-
-	for _, task := range j.initializedTasks {
-		if tasksToStart == 0 {
-			// TBD remove this log after testing
-			log.WithField("job_id", j.id.GetValue()).
-				WithField("started_tasks", (maxRunningInstances - currentScheduledInstances)).
-				Info("scheduled tasks")
-			break
-		}
-
-		if task.IsScheduled() {
-			continue
-		}
-
-		j.m.taskScheduler.schedule(task, time.Now())
-		tasksToStart--
-	}*/
 	return sendTasksToResMgr(ctx, jobID, tasks, jobConfig, goalStateDriver)
 }
 
@@ -263,6 +248,9 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	config, err := cachedJob.GetConfig(ctx)
 	if err != nil {
+		log.WithError(err).
+			WithField("job_id", id).
+			Error("Failed to get job config")
 		goalStateDriver.mtx.jobMetrics.JobRuntimeUpdateFailed.Inc(1)
 		return err
 	}

@@ -142,25 +142,25 @@ func (t *tracker) Stop() error {
 func (t *tracker) trackDeadline() error {
 	jobs := t.jobFactory.GetAllJobs()
 
-	for id, v := range jobs {
+	for id, cachedJob := range jobs {
 		// We need to get the job config
-		jobID := &peloton.JobID{
-			Value: id,
-		}
-
-		jobConfig, err := t.jobStore.GetJobConfig(context.Background(), jobID)
+		ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
+		cachedConfig, err := cachedJob.GetConfig(ctx)
+		cancelFunc()
 		if err != nil {
-			log.WithField("job_id", jobID).Error("could not find job config")
+			log.WithField("job_id", id).
+				WithError(err).
+				Error("Failed to get job config")
 			continue
 		}
 
-		if jobConfig.GetSla().GetMaxRunningTime() == uint32(0) {
+		if cachedConfig.GetSLA().GetMaxRunningTime() == uint32(0) {
 			log.WithField("job_id", id).
 				Info("MaximumRunningTime is 0, Not tracking this job")
 			continue
 		}
 
-		for instance, info := range v.GetAllTasks() {
+		for instance, info := range cachedJob.GetAllTasks() {
 			runtime, err := info.GetRunTime(context.Background())
 			if err != nil {
 				log.WithError(err).
@@ -179,7 +179,7 @@ func (t *tracker) trackDeadline() error {
 			st, _ := time.Parse(time.RFC3339Nano, runtime.GetStartTime())
 			delta := time.Now().UTC().Sub(st)
 			log.WithFields(log.Fields{
-				"deadline":       jobConfig.GetSla().GetMaxRunningTime(),
+				"deadline":       cachedConfig.GetSLA().GetMaxRunningTime(),
 				"time_remaining": delta,
 				"job_id":         id,
 				"instance":       instance,
@@ -187,7 +187,7 @@ func (t *tracker) trackDeadline() error {
 			taskID := &peloton.TaskID{
 				Value: fmt.Sprintf("%s-%d", id, instance),
 			}
-			if jobConfig.GetSla().GetMaxRunningTime() < uint32(delta.Seconds()) {
+			if cachedConfig.GetSLA().GetMaxRunningTime() < uint32(delta.Seconds()) {
 				log.WithField("task_id", taskID.Value).Info("Task is being killed" +
 					" due to deadline exceeded")
 				err := t.stopTask(context.Background(), taskID)

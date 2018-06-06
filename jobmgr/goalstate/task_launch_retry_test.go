@@ -38,6 +38,7 @@ func TestTaskLaunchTimeout(t *testing.T) {
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
 	mockHostMgr := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	jobConfig := cachedmocks.NewMockJobConfig(ctrl)
 
 	goalStateDriver := &driver{
 		jobEngine:     jobGoalStateEngine,
@@ -70,9 +71,6 @@ func TestTaskLaunchTimeout(t *testing.T) {
 	}
 	config := &pb_task.TaskConfig{}
 	newRuntime := runtime
-	jobConfig := &pb_job.JobConfig{
-		Type: pb_job.JobType_BATCH,
-	}
 
 	for i := 0; i < 2; i++ {
 		jobFactory.EXPECT().
@@ -96,7 +94,11 @@ func TestTaskLaunchTimeout(t *testing.T) {
 		cachedTask.EXPECT().
 			GetRunTime(gomock.Any()).Return(runtime, nil)
 
-		jobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
+		cachedJob.EXPECT().
+			GetConfig(gomock.Any()).
+			Return(jobConfig, nil)
+
+		jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
 		cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
 			func(_ context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
@@ -211,6 +213,7 @@ func TestTaskStartTimeout(t *testing.T) {
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
 	mockHostMgr := hostmocks.NewMockInternalHostServiceYARPCClient(ctrl)
+	jobConfig := cachedmocks.NewMockJobConfig(ctrl)
 
 	goalStateDriver := &driver{
 		jobEngine:     jobGoalStateEngine,
@@ -242,9 +245,6 @@ func TestTaskStartTimeout(t *testing.T) {
 		GoalState:   pb_task.TaskState_SUCCEEDED,
 	}
 	config := &pb_task.TaskConfig{}
-	jobConfig := &pb_job.JobConfig{
-		Type: pb_job.JobType_BATCH,
-	}
 
 	newRuntime := runtime
 
@@ -268,10 +268,14 @@ func TestTaskStartTimeout(t *testing.T) {
 	cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(runtime, nil)
 
+	cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(jobConfig, nil)
+
 	cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(runtime, nil)
 
-	jobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
+	jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
 		func(_ context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {

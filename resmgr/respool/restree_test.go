@@ -563,7 +563,7 @@ func (s *resTreeTestSuite) TestConvertTask() {
 		},
 	}
 
-	rmtask := util.ConvertTaskToResMgrTask(ti, jobConfig)
+	rmtask := util.ConvertTaskToResMgrTask(ti, jobConfig.GetSla())
 	s.NotNil(rmtask)
 	s.EqualValues(rmtask.Priority, 12)
 	s.EqualValues(rmtask.Preemptible, true)
@@ -578,7 +578,7 @@ func (s *resTreeTestSuite) TestConvertTask() {
 	}
 	jobConfig = &job.JobConfig{}
 
-	rmtask = util.ConvertTaskToResMgrTask(ti, jobConfig)
+	rmtask = util.ConvertTaskToResMgrTask(ti, jobConfig.GetSla())
 	s.NotNil(rmtask)
 	s.EqualValues(rmtask.Priority, 0)
 	s.EqualValues(rmtask.Preemptible, false)

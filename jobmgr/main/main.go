@@ -410,6 +410,7 @@ func main() {
 		common.PelotonHostManager,
 		logmanager.NewLogManager(&http.Client{Timeout: _httpClientTimeout}),
 	)
+
 	volumesvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
@@ -417,6 +418,7 @@ func main() {
 		store, // store implements TaskStore
 		store, // store implements VolumeStore
 	)
+
 	updatesvc.InitServiceHandler(dispatcher,
 		store, // store implements JobStore
 		store, // store implements UpdateStore

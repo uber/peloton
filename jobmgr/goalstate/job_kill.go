@@ -55,7 +55,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", id).
-			Error("failed to get config of the job")
+			Error("Failed to get job config")
 		return err
 	}
 

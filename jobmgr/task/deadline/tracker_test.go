@@ -54,11 +54,6 @@ func (suite *DeadlineTrackerTestSuite) TearDownSuite() {
 
 func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	jobID := &peloton.JobID{Value: "test-deadline"}
-	jobConfig := &peloton_job.JobConfig{
-		Sla: &peloton_job.SlaConfig{
-			MaxRunningTime: 5,
-		},
-	}
 
 	taskInfo := &peloton_task.TaskInfo{
 		InstanceId: 1,
@@ -73,13 +68,18 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 
 	job := cachedmocks.NewMockJob(suite.mockCtrl)
 	task := cachedmocks.NewMockTask(suite.mockCtrl)
+	jobConfig := cachedmocks.NewMockJobConfig(suite.mockCtrl)
 	jobs := make(map[string]cached.Job)
 	jobs[jobID.Value] = job
 	tasks := make(map[uint32]cached.Task)
 	tasks[1] = task
 
+	jobConfig.EXPECT().GetSLA().
+		Return(&peloton_job.SlaConfig{
+			MaxRunningTime: 5,
+		}).Times(3)
 	suite.jobFactory.EXPECT().GetAllJobs().Return(jobs)
-	suite.mockJobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
+	job.EXPECT().GetConfig(gomock.Any()).Return(jobConfig, nil)
 	job.EXPECT().GetAllTasks().Return(tasks)
 	task.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(job)

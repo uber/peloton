@@ -31,6 +31,7 @@ func TestTaskInitialize(t *testing.T) {
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
 	cachedJob := cachedmocks.NewMockJob(ctrl)
 	cachedTask := cachedmocks.NewMockTask(ctrl)
+	cachedConfig := cachedmocks.NewMockJobConfig(ctrl)
 
 	goalStateDriver := &driver{
 		jobEngine:  jobGoalStateEngine,
@@ -61,10 +62,6 @@ func TestTaskInitialize(t *testing.T) {
 	}
 	newRuntime := runtime
 
-	jobConfig := &pb_job.JobConfig{
-		Type: pb_job.JobType_BATCH,
-	}
-
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
@@ -74,7 +71,7 @@ func TestTaskInitialize(t *testing.T) {
 	cachedTask.EXPECT().
 		GetRunTime(gomock.Any()).Return(runtime, nil)
 
-	jobStore.EXPECT().GetJobConfig(gomock.Any(), gomock.Any()).Return(jobConfig, nil)
+	cachedJob.EXPECT().GetConfig(gomock.Any()).Return(cachedConfig, nil)
 
 	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
 		func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req cached.UpdateRequest) {
@@ -82,6 +79,9 @@ func TestTaskInitialize(t *testing.T) {
 				newRuntime = updatedRuntimeInfo
 			}
 		}).Return(nil)
+
+	cachedConfig.EXPECT().
+		GetType().Return(pb_job.JobType_BATCH)
 
 	cachedJob.EXPECT().
 		GetJobType().Return(pb_job.JobType_BATCH)

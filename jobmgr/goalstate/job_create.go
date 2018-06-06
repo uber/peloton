@@ -108,7 +108,12 @@ func sendTasksToResMgr(
 	}
 
 	// Send tasks to resource manager
-	err := jobmgr_task.EnqueueGangs(ctx, tasks, jobConfig, goalStateDriver.resmgrClient)
+	err := jobmgr_task.EnqueueGangs(
+		ctx,
+		tasks,
+		jobConfig.GetSla(),
+		jobConfig.GetRespoolID(),
+		goalStateDriver.resmgrClient)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).

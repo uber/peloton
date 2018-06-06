@@ -114,6 +114,7 @@ func (suite *JobTestSuite) TestJobSetAndFetchConfigAndRuntime() {
 		},
 		InstanceCount: instanceCount,
 		Type:          pbjob.JobType_BATCH,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 	}
 	jobInfo := &pbjob.JobInfo{
 		Runtime: jobRuntime,
@@ -126,8 +127,10 @@ func (suite *JobTestSuite) TestJobSetAndFetchConfigAndRuntime() {
 	suite.Equal(jobRuntime, actJobRuntime)
 	suite.Equal(instanceCount, actJobConfig.GetInstanceCount())
 	suite.Equal(pbjob.JobType_BATCH, suite.job.GetJobType())
-	suite.Equal(maxRunningInstances, actJobConfig.GetSLAConfig().GetMaximumRunningInstances())
-	suite.Equal(maxRunningTime, actJobConfig.GetSLAConfig().GetMaxRunningTime())
+	suite.Equal(maxRunningInstances, actJobConfig.GetSLA().GetMaximumRunningInstances())
+	suite.Equal(maxRunningTime, actJobConfig.GetSLA().GetMaxRunningTime())
+	suite.Equal(pbjob.JobType_BATCH, actJobConfig.GetType())
+	suite.Equal(jobConfig.RespoolID.Value, actJobConfig.GetRespoolID().Value)
 }
 
 // TestJobDBError tests DB errors during job operations.
@@ -228,6 +231,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeWithCache() {
 func (suite *JobTestSuite) TestJobUpdateConfig() {
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: 10,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 	}
 
 	suite.jobStore.EXPECT().
@@ -278,6 +282,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: 10,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 	}
 
 	suite.jobStore.EXPECT().
@@ -328,6 +333,7 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverConfig() {
 		Name:          "test_job",
 		Type:          pbjob.JobType_BATCH,
 		InstanceCount: 5,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		ChangeLog: &peloton.ChangeLog{
 			CreatedAt: uint64(time.Now().UnixNano()),
 			UpdatedAt: uint64(time.Now().UnixNano()),
@@ -391,6 +397,7 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverRuntime() {
 		Name:          "test_job",
 		Type:          pbjob.JobType_BATCH,
 		InstanceCount: 5,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		ChangeLog: &peloton.ChangeLog{
 			CreatedAt: uint64(time.Now().UnixNano()),
 			UpdatedAt: uint64(time.Now().UnixNano()),
@@ -456,6 +463,7 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverConfigPlusRuntime() {
 		Name:          "test_job",
 		Type:          pbjob.JobType_BATCH,
 		InstanceCount: 5,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		ChangeLog: &peloton.ChangeLog{
 			CreatedAt: uint64(time.Now().UnixNano()),
 			UpdatedAt: uint64(time.Now().UnixNano()),
@@ -580,6 +588,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndRecoverConfig() {
 		Name:          "test_job",
 		Type:          pbjob.JobType_BATCH,
 		InstanceCount: 5,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		ChangeLog: &peloton.ChangeLog{
 			CreatedAt: uint64(time.Now().UnixNano()),
 			UpdatedAt: uint64(time.Now().UnixNano()),
@@ -640,6 +649,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndRecoverConfigPlusRuntime() {
 		Name:          "test_job",
 		Type:          pbjob.JobType_BATCH,
 		InstanceCount: 5,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		ChangeLog: &peloton.ChangeLog{
 			CreatedAt: uint64(time.Now().UnixNano()),
 			UpdatedAt: uint64(time.Now().UnixNano()),
@@ -689,6 +699,7 @@ func (suite *JobTestSuite) TestJobUpdateRuntimePlusConfigAndRecover() {
 		Name:          "test_job",
 		Type:          pbjob.JobType_BATCH,
 		InstanceCount: 5,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		ChangeLog: &peloton.ChangeLog{
 			CreatedAt: uint64(time.Now().UnixNano()),
 			UpdatedAt: uint64(time.Now().UnixNano()),
@@ -776,6 +787,7 @@ func (suite *JobTestSuite) TestJobCreate() {
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: 10,
 		Type:          pbjob.JobType_BATCH,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 	}
 
 	createdBy := "test"
@@ -849,6 +861,7 @@ func (suite *JobTestSuite) TestJobGetConfig() {
 	// Test the case there is no config cache and db returns no err
 	jobConfig := &pbjob.JobConfig{
 		InstanceCount: 10,
+		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 	}
 
 	suite.jobStore.EXPECT().
@@ -858,14 +871,14 @@ func (suite *JobTestSuite) TestJobGetConfig() {
 	config, err = suite.job.GetConfig(context.Background())
 	suite.NoError(err)
 	suite.Equal(config.GetInstanceCount(), jobConfig.GetInstanceCount())
-	suite.Nil(config.GetSLAConfig())
+	suite.Nil(config.GetSLA())
 
 	// Test the case there is config cache after the first call to
 	// GetConfig
 	config, err = suite.job.GetConfig(context.Background())
 	suite.NoError(err)
 	suite.Equal(config.GetInstanceCount(), jobConfig.GetInstanceCount())
-	suite.Nil(config.GetSLAConfig())
+	suite.Nil(config.GetSLA())
 }
 
 // TestJobSetJobUpdateTime tests update the task update time coming from mesos.

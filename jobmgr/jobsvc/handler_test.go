@@ -392,7 +392,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSla())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
@@ -410,7 +410,12 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 			Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	jobmgr_task.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
+	jobmgr_task.EnqueueGangs(
+		suite.handler.rootCtx,
+		tasksInfo,
+		suite.testJobConfig.Sla,
+		suite.testJobConfig.RespoolID,
+		mockResmgrClient)
 	suite.Equal(gangs, expectedGangs)
 }
 
@@ -424,7 +429,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSla())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().
@@ -441,7 +446,12 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 			}).
 			Return(nil, errors.New("Resmgr Error")),
 	)
-	err := jobmgr_task.EnqueueGangs(suite.handler.rootCtx, tasksInfo, suite.testJobConfig, mockResmgrClient)
+	err := jobmgr_task.EnqueueGangs(
+		suite.handler.rootCtx,
+		tasksInfo,
+		suite.testJobConfig.Sla,
+		suite.testJobConfig.RespoolID,
+		mockResmgrClient)
 	suite.Error(err)
 }
 
@@ -558,25 +568,15 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.handler.candidate = candidate
 
 	candidate.EXPECT().IsLeader().Return(true)
-	mockJobStore.EXPECT().
-		GetJobConfig(context.Background(), jobID).
-		Return(oldJobConfig, nil).
-		AnyTimes()
-	mockJobStore.EXPECT().
-		GetJobRuntime(context.Background(), jobID).
-		Return(&jobRuntime, nil).
-		AnyTimes()
-	mockJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
-		Return(nil).
-		AnyTimes()
-	mockJobStore.EXPECT().
-		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
-		Return(nil).
-		AnyTimes()
 	jobFactory.EXPECT().
 		AddJob(jobID).
 		Return(cachedJob)
+	cachedJob.EXPECT().
+		GetRuntime(gomock.Any()).
+		Return(&jobRuntime, nil)
+	mockJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), jobID).
+		Return(oldJobConfig, nil)
 	cachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
@@ -593,10 +593,6 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
 	goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any())
-	mockTaskStore.EXPECT().
-		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
-		Return(map[string]uint32{}, nil).
-		AnyTimes()
 
 	req := &job.UpdateRequest{
 		Id:     jobID,
@@ -636,15 +632,27 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	mockJobStore := store_mocks.NewMockJobStore(ctrl)
 	suite.handler.jobStore = mockJobStore
 
-	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+	mockJobFactory := cachedmocks.NewMockJobFactory(ctrl)
+	suite.handler.jobFactory = mockJobFactory
+
+	mockCachedJob := cachedmocks.NewMockJob(ctrl)
+	mockJobFactory.EXPECT().AddJob(id).
+		Return(mockCachedJob)
+
+	mockCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_SUCCEEDED}, nil)
+
 	mockJobStore.EXPECT().DeleteJob(context.Background(), id).Return(nil)
 
 	res, err := suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
 	suite.Equal(&job.DeleteResponse{}, res)
 	suite.NoError(err)
 
-	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+	mockCachedJob = cachedmocks.NewMockJob(ctrl)
+	mockJobFactory.EXPECT().AddJob(id).
+		Return(mockCachedJob)
+
+	mockCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil)
 
 	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
@@ -653,15 +661,24 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	expectedErr := yarpcerrors.InternalErrorf("Job is not in a terminal state: PENDING")
 	suite.Equal(expectedErr, err)
 
-	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+	mockCachedJob = cachedmocks.NewMockJob(ctrl)
+	mockJobFactory.EXPECT().AddJob(id).
+		Return(mockCachedJob)
+
+	mockCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(nil, fmt.Errorf("fake db error"))
+
 	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
 	suite.Nil(res)
 	suite.Error(err)
 	expectedErr = yarpcerrors.NotFoundErrorf("job not found")
 	suite.Equal(expectedErr, err)
 
-	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+	mockCachedJob = cachedmocks.NewMockJob(ctrl)
+	mockJobFactory.EXPECT().AddJob(id).
+		Return(mockCachedJob)
+
+	mockCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_SUCCEEDED}, nil)
 	mockJobStore.EXPECT().DeleteJob(context.Background(), id).
 		Return(yarpcerrors.InternalErrorf("fake db error"))

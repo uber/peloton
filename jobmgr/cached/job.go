@@ -73,7 +73,11 @@ type Job interface {
 	GetConfig(ctx context.Context) (JobConfig, error)
 
 	// GetJobType returns the job type in the job config stored in the cache
-	// The type can be nil when we read it Logically this should be part of JobConfig
+	// The type can be nil when we read it. It should be only used for
+	// non-critical purpose (e.g calculate delay).
+	// Logically this should be part of JobConfig
+	// TODO(zhixin): remove GetJobType from the interface after
+	// EnqueueJobWithDefaultDelay does not take cached job
 	GetJobType() pbjob.JobType
 
 	// SetTaskUpdateTime updates the task update times in the job cache
@@ -96,10 +100,16 @@ type Job interface {
 // The interface exposes get methods only so that the caller cannot
 // overwrite any of these configurations.
 type JobConfig interface {
-	// GetInstanceCount returns the instance count in the job config stored in the cache
+	// GetInstanceCount returns the instance count
+	// in the job config stored in the cache
 	GetInstanceCount() uint32
-	// GetSLAConfig returns the SLA configuration in the job config stored in the cache
-	GetSLAConfig() *pbjob.SlaConfig
+	// GetType returns the type of the job stored in the cache
+	GetType() pbjob.JobType
+	// GetRespoolID returns the respool id stored in the cache
+	GetRespoolID() *peloton.ResourcePoolID
+	// GetSLA returns the SLA configuration
+	// in the job config stored in the cache
+	GetSLA() *pbjob.SlaConfig
 	// GetChangeLog returns the changeLog in the job config stored in the cache
 	GetChangeLog() *peloton.ChangeLog
 }
@@ -118,10 +128,11 @@ func newJob(id *peloton.JobID, jobFactory *jobFactory) *job {
 
 // cachedConfig structure holds the config fields need to be cached
 type cachedConfig struct {
-	instanceCount uint32             // Instance count in the job configuration
-	sla           *pbjob.SlaConfig   // SLA configuration in the job configuration
-	jobType       pbjob.JobType      // Job type (batch or service) in the job configuration
-	changeLog     *peloton.ChangeLog // ChangeLog in the job configuration
+	instanceCount uint32                  // Instance count in the job configuration
+	sla           *pbjob.SlaConfig        // SLA configuration in the job configuration
+	jobType       pbjob.JobType           // Job type (batch or service) in the job configuration
+	changeLog     *peloton.ChangeLog      // ChangeLog in the job configuration
+	respoolID     *peloton.ResourcePoolID // Resource Pool ID in the job configuration
 }
 
 // job structure holds the information about a given active job
@@ -547,6 +558,10 @@ func (j *job) populateJobConfigCache(config *pbjob.JobConfig) {
 		j.config.changeLog = config.GetChangeLog()
 	}
 
+	if config.GetRespoolID() != nil {
+		j.config.respoolID = config.GetRespoolID()
+	}
+
 	j.config.jobType = config.GetType()
 }
 
@@ -768,12 +783,16 @@ func (c *cachedConfig) GetInstanceCount() uint32 {
 	return c.instanceCount
 }
 
-func (c *cachedConfig) GetSLAConfig() *pbjob.SlaConfig {
-	if c.sla == nil {
+func (c *cachedConfig) GetType() pbjob.JobType {
+	return c.jobType
+}
+
+func (c *cachedConfig) GetRespoolID() *peloton.ResourcePoolID {
+	if c.respoolID == nil {
 		return nil
 	}
-	tmpSLA := *c.sla
-	return &tmpSLA
+	tmpRespoolID := *c.respoolID
+	return &tmpRespoolID
 }
 
 func (c *cachedConfig) GetChangeLog() *peloton.ChangeLog {
@@ -782,4 +801,12 @@ func (c *cachedConfig) GetChangeLog() *peloton.ChangeLog {
 	}
 	tmpChangeLog := *c.changeLog
 	return &tmpChangeLog
+}
+
+func (c *cachedConfig) GetSLA() *pbjob.SlaConfig {
+	if c.sla == nil {
+		return nil
+	}
+	tmpSLA := *c.sla
+	return &tmpSLA
 }

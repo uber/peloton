@@ -118,6 +118,8 @@ func NewDriver(
 // updater is run. Using this function ensures that same job does not
 // get enqueued too many times when multiple task updates for the job
 // are received in a short duration of time.
+// TODO(zhixin): pass in job type instead of cachedJob,
+// remove GetJobType from the interface
 func EnqueueJobWithDefaultDelay(
 	jobID *peloton.JobID,
 	goalStateDriver Driver,

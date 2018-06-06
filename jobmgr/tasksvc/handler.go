@@ -141,9 +141,12 @@ func (m *serviceHandler) Get(
 	body *task.GetRequest) (*task.GetResponse, error) {
 
 	m.metrics.TaskAPIGet.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
+	cachedJob := m.jobFactory.AddJob(body.JobId)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
 	if err != nil {
-		log.Debug("Failed to find job with id %v, err=%v", body.JobId, err)
+		log.WithField("job_id", body.JobId.Value).
+			WithError(err).
+			Debug("Failed to get job config")
 		m.metrics.TaskGetFail.Inc(1)
 		return &task.GetResponse{
 			NotFound: &pb_errors.JobNotFound{
@@ -165,7 +168,7 @@ func (m *serviceHandler) Get(
 		return &task.GetResponse{
 			OutOfRange: &task.InstanceIdOutOfRange{
 				JobId:         body.JobId,
-				InstanceCount: jobConfig.InstanceCount,
+				InstanceCount: cachedConfig.GetInstanceCount(),
 			},
 		}, nil
 	}
@@ -176,7 +179,7 @@ func (m *serviceHandler) Get(
 		return &task.GetResponse{
 			OutOfRange: &task.InstanceIdOutOfRange{
 				JobId:         body.JobId,
-				InstanceCount: jobConfig.InstanceCount,
+				InstanceCount: cachedConfig.GetInstanceCount(),
 			},
 		}, nil
 	}
@@ -215,6 +218,8 @@ func (m *serviceHandler) GetEvents(
 	}, nil
 }
 
+// List/Query API should not use cachedJob
+// because we would not clean up the cache for untracked job
 func (m *serviceHandler) List(
 	ctx context.Context,
 	body *task.ListRequest) (*task.ListResponse, error) {
@@ -224,7 +229,9 @@ func (m *serviceHandler) List(
 	m.metrics.TaskAPIList.Inc(1)
 	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
 	if err != nil {
-		log.Debug("Failed to find job with id %v, err=%v", body.JobId, err)
+		log.WithField("job_id", body.JobId.Value).
+			WithError(err).
+			Debug("Failed to get job config")
 		m.metrics.TaskListFail.Inc(1)
 		return &task.ListResponse{
 			NotFound: &pb_errors.JobNotFound{
@@ -240,8 +247,8 @@ func (m *serviceHandler) List(
 		// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
 		// and  C* store would error out if it cannot find a instance id. A separate
 		// task is filed on the CLI side.
-		if body.Range.To > jobConfig.InstanceCount {
-			body.Range.To = jobConfig.InstanceCount
+		if body.Range.To > jobConfig.GetInstanceCount() {
+			body.Range.To = jobConfig.GetInstanceCount()
 		}
 		result, err = m.taskStore.GetTasksForJobByRange(ctx, body.JobId, body.Range)
 	}
@@ -335,7 +342,7 @@ func (m *serviceHandler) getTaskInfosByRangesFromDB(
 	ctx context.Context,
 	jobID *peloton.JobID,
 	ranges []*task.InstanceRange,
-	jobConfig *pb_job.JobConfig) (map[uint32]*task.TaskInfo, error) {
+	instanceCount uint32) (map[uint32]*task.TaskInfo, error) {
 
 	taskInfos := make(map[uint32]*task.TaskInfo)
 	var err error
@@ -348,8 +355,8 @@ func (m *serviceHandler) getTaskInfosByRangesFromDB(
 			// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
 			// and  C* store would error out if it cannot find a instance id. A separate
 			// task is filed on the CLI side.
-			if taskRange.GetTo() > jobConfig.InstanceCount {
-				taskRange.To = jobConfig.InstanceCount
+			if taskRange.GetTo() > instanceCount {
+				taskRange.To = instanceCount
 			}
 			tmpTaskInfos, err = m.taskStore.GetTasksForJobByRange(ctx, jobID, taskRange)
 			if err != nil {
@@ -381,11 +388,13 @@ func (m *serviceHandler) Start(
 		return nil, yarpcerrors.UnavailableErrorf("Task Start API not suppported on non-leader")
 	}
 
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+	cachedJob := m.jobFactory.AddJob(body.JobId)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
+
 	if err != nil {
-		log.WithField("job", body.JobId).
+		log.WithField("job_id", body.JobId.Value).
 			WithError(err).
-			Error("failed to get job from db")
+			Error("Failed to get job config")
 		m.metrics.TaskStartFail.Inc(1)
 		return &task.StartResponse{
 			Error: &task.StartResponse_Error{
@@ -397,11 +406,11 @@ func (m *serviceHandler) Start(
 		}, nil
 	}
 
-	cachedJob := m.jobFactory.AddJob(body.GetJobId())
 	jobRuntimeUpdate := &pb_job.RuntimeInfo{
 		State: pb_job.JobState_PENDING,
 	}
-	jobRuntimeUpdate.GoalState = goalstateutil.GetDefaultJobGoalState(jobConfig.GetType())
+
+	jobRuntimeUpdate.GoalState = goalstateutil.GetDefaultJobGoalState(cachedConfig.GetType())
 
 	err = cachedJob.Update(ctx, &pb_job.JobInfo{
 		Runtime: jobRuntimeUpdate,
@@ -421,7 +430,7 @@ func (m *serviceHandler) Start(
 	}
 
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
-		ctx, body.GetJobId(), body.GetRanges(), jobConfig)
+		ctx, body.GetJobId(), body.GetRanges(), cachedConfig.GetInstanceCount())
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -431,7 +440,7 @@ func (m *serviceHandler) Start(
 			Error: &task.StartResponse_Error{
 				OutOfRange: &task.InstanceIdOutOfRange{
 					JobId:         body.JobId,
-					InstanceCount: jobConfig.InstanceCount,
+					InstanceCount: cachedConfig.GetInstanceCount(),
 				},
 			},
 		}, nil
@@ -456,7 +465,7 @@ func (m *serviceHandler) Start(
 		}
 
 		// Change the goalstate.
-		runtime.GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
+		runtime.GoalState = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
 		runtime.Message = "Task start API request"
 		runtime.Reason = ""
 		runtimes[taskInfo.InstanceId] = runtime
@@ -510,10 +519,9 @@ func (m *serviceHandler) Start(
 func (m *serviceHandler) stopJob(
 	ctx context.Context,
 	jobID *peloton.JobID,
-	jobConfig *pb_job.JobConfig) (*task.StopResponse, error) {
+	instanceCount uint32) (*task.StopResponse, error) {
 
 	var instanceList []uint32
-	instanceCount := jobConfig.GetInstanceCount()
 
 	for i := uint32(0); i < instanceCount; i++ {
 		instanceList = append(instanceList, i)
@@ -589,11 +597,13 @@ func (m *serviceHandler) Stop(
 		return nil, yarpcerrors.UnavailableErrorf("Task Stop API not suppported on non-leader")
 	}
 
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+	cachedJob := m.jobFactory.AddJob(body.JobId)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
+
 	if err != nil {
-		log.WithField("job", body.JobId).
+		log.WithField("job_id", body.JobId).
 			WithError(err).
-			Error("failed to get job from db")
+			Error("Failed to get job config")
 		m.metrics.TaskStopFail.Inc(1)
 		return &task.StopResponse{
 			Error: &task.StopResponse_Error{
@@ -606,15 +616,15 @@ func (m *serviceHandler) Stop(
 	}
 
 	taskRange := body.GetRanges()
-	if len(taskRange) == 0 || (len(taskRange) == 1 && taskRange[0].From == 0 && taskRange[0].To >= jobConfig.InstanceCount) {
+	if len(taskRange) == 0 || (len(taskRange) == 1 && taskRange[0].From == 0 && taskRange[0].To >= cachedConfig.GetInstanceCount()) {
 		// Stop all tasks in a job, stop entire job instead of task by task
 		log.WithField("job_id", body.GetJobId().GetValue()).
 			Info("stopping all tasks in the job")
-		return m.stopJob(ctx, body.GetJobId(), jobConfig)
+		return m.stopJob(ctx, body.GetJobId(), cachedConfig.GetInstanceCount())
 	}
 
 	taskInfos, err := m.getTaskInfosByRangesFromDB(
-		ctx, body.GetJobId(), taskRange, jobConfig)
+		ctx, body.GetJobId(), taskRange, cachedConfig.GetInstanceCount())
 	if err != nil {
 		log.WithField("job", body.JobId).
 			WithError(err).
@@ -624,7 +634,7 @@ func (m *serviceHandler) Stop(
 			Error: &task.StopResponse_Error{
 				OutOfRange: &task.InstanceIdOutOfRange{
 					JobId:         body.JobId,
-					InstanceCount: jobConfig.InstanceCount,
+					InstanceCount: cachedConfig.GetInstanceCount(),
 				},
 			},
 		}, nil
@@ -651,7 +661,6 @@ func (m *serviceHandler) Stop(
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
 
-	cachedJob := m.jobFactory.AddJob(body.GetJobId())
 	err = cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheAndDB)
 	if err != nil {
 		log.WithError(err).
@@ -697,6 +706,8 @@ func (m *serviceHandler) Restart(
 	return &task.RestartResponse{}, nil
 }
 
+// List/Query API should not use cachedJob
+// because we would not clean up the cache for untracked job
 func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*task.QueryResponse, error) {
 	log.WithField("request", req).Info("TaskSVC.Query called")
 	m.metrics.TaskAPIQuery.Inc(1)
@@ -869,11 +880,12 @@ func (m *serviceHandler) BrowseSandbox(
 	log.WithField("req", req).Debug("TaskSVC.BrowseSandbox called")
 	m.metrics.TaskAPIListLogs.Inc(1)
 
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, req.JobId)
+	cachedJob := m.jobFactory.AddJob(req.JobId)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
 	if err != nil {
 		log.WithField("job_id", req.JobId.Value).
 			WithError(err).
-			Debug("failed to find job with id")
+			Debug("Failed to get job config")
 		m.metrics.TaskListLogsFail.Inc(1)
 		return &task.BrowseSandboxResponse{
 			Error: &task.BrowseSandboxResponse_Error{
@@ -885,7 +897,8 @@ func (m *serviceHandler) BrowseSandbox(
 		}, nil
 	}
 
-	hostname, agentID, taskID, frameworkID, resp := m.getSandboxPathInfo(ctx, jobConfig.InstanceCount, req)
+	hostname, agentID, taskID, frameworkID, resp :=
+		m.getSandboxPathInfo(ctx, cachedConfig.GetInstanceCount(), req)
 	if resp != nil {
 		return resp, nil
 	}

@@ -202,11 +202,12 @@ func (h *serviceHandler) Update(
 	}
 
 	jobID := req.Id
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, jobID)
+	cachedJob := h.jobFactory.AddJob(jobID)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
-			Error("Failed to GetJobRuntime")
+			Error("Failed to get runtime")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
 	}
@@ -262,7 +263,6 @@ func (h *serviceHandler) Update(
 	// TODO (adityacb): handle secrets here
 	// Do not update secret id of existing secrets.
 	// Just replace the secret data in the database for that id
-	cachedJob := h.jobFactory.AddJob(jobID)
 	err = cachedJob.Update(ctx, &job.JobInfo{
 		Config: newConfig,
 	}, cached.UpdateCacheAndDB)
@@ -342,12 +342,14 @@ func (h *serviceHandler) Get(
 			},
 		}, nil
 	}
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.Id)
+
+	cachedJob := h.jobFactory.AddJob(req.Id)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).
 			WithField("job_id", req.Id.Value).
-			Debug("Get jobRuntime failed")
+			Debug("failed to get runtime")
 		return &job.GetResponse{
 			Error: &job.GetResponse_Error{
 				GetRuntimeFail: &apierrors.JobGetRuntimeFail{
@@ -411,6 +413,8 @@ func (h *serviceHandler) Refresh(ctx context.Context, req *job.RefreshRequest) (
 }
 
 // Query returns a list of jobs matching the given query
+// List/Query API should not use cachedJob
+// because we would not clean up the cache for untracked job
 func (h *serviceHandler) Query(ctx context.Context, req *job.QueryRequest) (*job.QueryResponse, error) {
 	log.WithField("request", req).Info("JobManager.Query called")
 	h.metrics.JobAPIQuery.Inc(1)
@@ -454,11 +458,12 @@ func (h *serviceHandler) Delete(
 
 	h.metrics.JobAPIDelete.Inc(1)
 
-	jobRuntime, err := h.jobStore.GetJobRuntime(ctx, req.GetId())
+	cachedJob := h.jobFactory.AddJob(req.Id)
+	jobRuntime, err := cachedJob.GetRuntime(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", req.GetId().GetValue()).
-			Error("Failed to GetJobRuntime")
+			Error("Failed to get runtime")
 		h.metrics.JobDeleteFail.Inc(1)
 		return nil, yarpcerrors.NotFoundErrorf("job not found")
 	}

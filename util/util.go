@@ -291,7 +291,7 @@ func UnmarshalStringArray(jsonStrings []string, resultType reflect.Type) ([]inte
 // of which is a set of 1+ tasks to be admitted and placed as a group.
 func ConvertToResMgrGangs(
 	tasks []*task.TaskInfo,
-	config *job.JobConfig) []*resmgrsvc.Gang {
+	slaConfig *job.SlaConfig) []*resmgrsvc.Gang {
 	var gangs []*resmgrsvc.Gang
 
 	// Gangs of multiple tasks are placed at the front of the returned list for
@@ -300,7 +300,7 @@ func ConvertToResMgrGangs(
 	var multiTaskGangs []*resmgrsvc.Gang
 
 	for _, t := range tasks {
-		resmgrtask := ConvertTaskToResMgrTask(t, config)
+		resmgrtask := ConvertTaskToResMgrTask(t, slaConfig)
 		// Currently a job has at most 1 gang comprising multiple tasks;
 		// those tasks have their MinInstances field set > 1.
 		if resmgrtask.MinInstances > 1 {
@@ -325,7 +325,7 @@ func ConvertToResMgrGangs(
 // ConvertTaskToResMgrTask converts taskinfo to resmgr task.
 func ConvertTaskToResMgrTask(
 	taskInfo *task.TaskInfo,
-	jobConfig *job.JobConfig) *resmgr.Task {
+	slaConfig *job.SlaConfig) *resmgr.Task {
 	instanceID := taskInfo.GetInstanceId()
 	taskID := &peloton.TaskID{
 		Value: fmt.Sprintf(
@@ -336,7 +336,7 @@ func ConvertTaskToResMgrTask(
 
 	// If minInstances > 1, instances w/instanceID between 0..minInstances-1 should be gang-scheduled;
 	// only pass MinInstances value > 1 for those tasks.
-	minInstances := jobConfig.GetSla().GetMinimumRunningInstances()
+	minInstances := slaConfig.GetMinimumRunningInstances()
 	if (minInstances <= 1) || (instanceID >= minInstances) {
 		minInstances = 1
 	}
@@ -354,8 +354,8 @@ func ConvertTaskToResMgrTask(
 		JobId:        taskInfo.GetJobId(),
 		TaskId:       taskInfo.GetRuntime().GetMesosTaskId(),
 		Name:         taskInfo.GetConfig().GetName(),
-		Preemptible:  jobConfig.GetSla().GetPreemptible(),
-		Priority:     jobConfig.GetSla().GetPriority(),
+		Preemptible:  slaConfig.GetPreemptible(),
+		Priority:     slaConfig.GetPriority(),
 		MinInstances: minInstances,
 		Resource:     taskInfo.GetConfig().GetResource(),
 		Constraint:   taskInfo.GetConfig().GetConstraint(),

@@ -2,7 +2,6 @@ package goalstate
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
@@ -40,16 +39,18 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	// TODO get job type from cache instead of DB
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, taskEnt.jobID)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
 	if err != nil {
-		return fmt.Errorf("job config not found for %v", taskEnt.jobID)
+		log.WithField("job_id", taskEnt.jobID).
+			WithError(err).
+			Debug("Failed to get job config")
+		return err
 	}
 
 	updatedRuntime := util.RegenerateMesosTaskID(taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
 
 	// update task runtime
-	updatedRuntime.GoalState = jobmgr_task.GetDefaultTaskGoalState(jobConfig.GetType())
+	updatedRuntime.GoalState = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
 	updatedRuntime.StartTime = ""
 	updatedRuntime.CompletionTime = ""
 	updatedRuntime.Message = "Initialize task"

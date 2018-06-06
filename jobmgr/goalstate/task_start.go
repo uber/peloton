@@ -110,15 +110,16 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 		return nil
 	}
 
-	config, err := cachedJob.GetConfig(ctx)
+	cachedConfig, err := cachedJob.GetConfig(ctx)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", taskEnt.jobID).
 			WithField("instance_id", taskEnt.instanceID).
-			Error("failed to fetch job config in task start")
+			Error("Failed to get job config for task")
 		return err
 	}
-	if config.GetSLAConfig().GetMaximumRunningInstances() > 0 {
+
+	if cachedConfig.GetSLA().GetMaximumRunningInstances() > 0 {
 		// Tasks are enqueued into goal state in INITIALiZED state either
 		// during recovery or due to task restart due to failure/task lost
 		// or due to launch/starting state timeouts. In all these cases,
@@ -127,7 +128,7 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 		// enqueues of the same job during recovery.
 		goalStateDriver.EnqueueJob(taskEnt.jobID, time.Now().Add(
 			_jobEnqueueMultiplierOnTaskStart*
-				goalStateDriver.JobRuntimeDuration(cachedJob.GetJobType())))
+				goalStateDriver.JobRuntimeDuration(cachedConfig.GetType())))
 		return nil
 	}
 
@@ -161,17 +162,13 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 		}
 	}
 
-	// TODO(zhixin): remove the call once all read is through cached job
-	jobConfig, err := goalStateDriver.jobStore.GetJobConfig(ctx, taskEnt.jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", taskEnt.jobID).
-			Error("failed to fetch job config in task start")
-		return err
-	}
-
 	// TODO: Investigate how to create proper gangs for scheduling (currently, task are treat independently)
-	err = jobmgr_task.EnqueueGangs(ctx, []*task.TaskInfo{taskInfo}, jobConfig, goalStateDriver.resmgrClient)
+	err = jobmgr_task.EnqueueGangs(
+		ctx,
+		[]*task.TaskInfo{taskInfo},
+		cachedConfig.GetSLA(),
+		cachedConfig.GetRespoolID(),
+		goalStateDriver.resmgrClient)
 	if err != nil {
 		return err
 	}

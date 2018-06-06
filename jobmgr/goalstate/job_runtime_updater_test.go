@@ -805,6 +805,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 
+	suite.cachedConfig.EXPECT().
+		GetSLA().
+		Return(jobConfig.Sla).AnyTimes()
+
 	// Simulate RUNNING job
 	stateCounts := make(map[string]uint32)
 	stateCounts[pbtask.TaskState_INITIALIZED.String()] = instanceCount / 2
@@ -820,13 +824,22 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		AddJob(suite.jobID).
 		Return(suite.cachedJob)
 
-	suite.jobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.jobID).
-		Return(&jobConfig, nil)
+	suite.jobFactory.EXPECT().
+		GetJob(suite.jobID).
+		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
 		Return(&jobRuntime, nil)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil).
+		Times(2)
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.jobID).
+		Return(&jobConfig, nil)
 
 	suite.taskStore.EXPECT().
 		GetTaskIDsForJobAndState(gomock.Any(), suite.jobID, pbtask.TaskState_INITIALIZED.String()).
@@ -848,10 +861,6 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 	suite.resmgrClient.EXPECT().
 		EnqueueGangs(gomock.Any(), gomock.Any()).
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
-
-	suite.jobFactory.EXPECT().
-		GetJob(suite.jobID).
-		Return(suite.cachedJob)
 
 	suite.cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
@@ -879,6 +888,10 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 	suite.jobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.jobID).
 		Return(&jobConfig, nil)
+
+	suite.cachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(suite.cachedConfig, nil)
 
 	suite.cachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
