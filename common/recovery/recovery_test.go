@@ -2,6 +2,7 @@ package recovery
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -26,6 +27,7 @@ var (
 	pendingJobID         *peloton.JobID
 	runningJobID         *peloton.JobID
 	receivedPendingJobID []string
+	count                int
 )
 
 var mutex = &sync.Mutex{}
@@ -108,22 +110,28 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 }
 
 func recoverPendingTask(ctx context.Context, jobID string, jobConfig *pb_job.JobConfig, jobRuntime *pb_job.RuntimeInfo, batch TasksBatch, errChan chan<- error) {
-	var err error
-
 	if jobID != pendingJobID.GetValue() {
-		err = fmt.Errorf("Got the wrong job id")
+		err := fmt.Errorf("Got the wrong job id")
+		errChan <- err
+	} else {
+		mutex.Lock()
+		receivedPendingJobID = append(receivedPendingJobID, jobID)
+		mutex.Unlock()
 	}
-	errChan <- err
+
 	return
 }
 
 func recoverRunningTask(ctx context.Context, jobID string, jobConfig *pb_job.JobConfig, jobRuntime *pb_job.RuntimeInfo, batch TasksBatch, errChan chan<- error) {
-	var err error
-
 	if jobID != runningJobID.GetValue() {
-		err = fmt.Errorf("Got the wrong job id")
+		err := fmt.Errorf("Got the wrong job id")
+		errChan <- err
+	} else {
+		mutex.Lock()
+		receivedPendingJobID = append(receivedPendingJobID, jobID)
+		mutex.Unlock()
 	}
-	errChan <- err
+
 	return
 }
 
@@ -131,6 +139,23 @@ func recoverAllTask(ctx context.Context, jobID string, jobConfig *pb_job.JobConf
 	mutex.Lock()
 	receivedPendingJobID = append(receivedPendingJobID, jobID)
 	mutex.Unlock()
+	return
+}
+
+func recoverTaskRandomly(
+	ctx context.Context,
+	jobID string,
+	jobConfig *pb_job.JobConfig,
+	jobRuntime *pb_job.RuntimeInfo,
+	batch TasksBatch,
+	errChan chan<- error) {
+	mutex.Lock()
+	if count%9 == 0 {
+		errChan <- errors.New("Task Recovery Failed")
+	}
+	count++
+	mutex.Unlock()
+
 	return
 }
 
@@ -170,7 +195,7 @@ func TestJobRecoveryWithStore(t *testing.T) {
 	assert.NoError(t, err)
 	err = RecoverJobsByState(ctx, csStore, jobStatesAll, recoverAllTask)
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(receivedPendingJobID))
+	assert.Equal(t, 4, len(receivedPendingJobID))
 }
 
 func TestRecoveryAfterJobDelete(t *testing.T) {
@@ -231,4 +256,33 @@ func TestRecoveryAfterJobDelete(t *testing.T) {
 		AnyTimes()
 	err = RecoverJobsByState(ctx, mockJobStore, jobStatesPending, recoverPendingTask)
 	assert.NoError(t, err)
+}
+
+// TestRecoveryWithFailedJobBatches test will create 100 jobs, and eventually 10 jobByBatches.
+// recoverTaskRandomly will send error for recovering 11 jobs, so errChan will have at least 2 messages
+// or max 10 messages if all job batches failed, here errChan will be full.
+// TODO (varung): Add go routine leak test.
+func TestRecoveryWithFailedJobBatches(t *testing.T) {
+	var err error
+	var jobStatesAll = []pb_job.JobState{
+		pb_job.JobState_PENDING,
+		pb_job.JobState_RUNNING,
+		pb_job.JobState_FAILED,
+	}
+	count = 0
+
+	ctx := context.Background()
+
+	for i := 0; i < 50; i++ {
+		_, err = createJob(ctx, pb_job.JobState_PENDING, pb_job.JobState_SUCCEEDED)
+		assert.NoError(t, err)
+	}
+
+	for i := 0; i < 50; i++ {
+		_, err = createJob(ctx, pb_job.JobState_RUNNING, pb_job.JobState_SUCCEEDED)
+		assert.NoError(t, err)
+	}
+
+	err = RecoverJobsByState(ctx, csStore, jobStatesAll, recoverTaskRandomly)
+	assert.Error(t, err)
 }

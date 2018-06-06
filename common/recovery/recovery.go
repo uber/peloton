@@ -36,8 +36,13 @@ type TasksBatch struct {
 }
 
 // RecoverBatchTasks is a function type which is used to recover a batch of tasks for a job.
-type RecoverBatchTasks func(ctx context.Context, jobID string, jobConfig *job.JobConfig,
-	jobRuntime *job.RuntimeInfo, batch TasksBatch, errChan chan<- error)
+type RecoverBatchTasks func(
+	ctx context.Context,
+	jobID string,
+	jobConfig *job.JobConfig,
+	jobRuntime *job.RuntimeInfo,
+	batch TasksBatch,
+	errChan chan<- error)
 
 func createTaskBatches(config *job.JobConfig) []TasksBatch {
 	// check job config
@@ -85,7 +90,12 @@ func createJobBatches(jobIDS []peloton.JobID) []JobsBatch {
 	return batches
 }
 
-func recoverJob(ctx context.Context, jobID string, jobConfig *job.JobConfig, jobRuntime *job.RuntimeInfo, f RecoverBatchTasks) error {
+func recoverJob(
+	ctx context.Context,
+	jobID string,
+	jobConfig *job.JobConfig,
+	jobRuntime *job.RuntimeInfo,
+	f RecoverBatchTasks) error {
 	finished := make(chan bool, 1)
 	errChan := make(chan error, 1)
 
@@ -119,7 +129,12 @@ func recoverJob(ctx context.Context, jobID string, jobConfig *job.JobConfig, job
 	return nil
 }
 
-func recoverJobsBatch(ctx context.Context, jobStore storage.JobStore, batch JobsBatch, errChan chan<- error, f RecoverBatchTasks) {
+func recoverJobsBatch(
+	ctx context.Context,
+	jobStore storage.JobStore,
+	batch JobsBatch,
+	errChan chan<- error,
+	f RecoverBatchTasks) {
 	for _, jobID := range batch.jobs {
 		jobRuntime, err := jobStore.GetJobRuntime(ctx, &jobID)
 		if err != nil {
@@ -175,7 +190,11 @@ func recoverJobsBatch(ctx context.Context, jobStore storage.JobStore, batch Jobs
 }
 
 // RecoverJobsByState is the handler to start a job recovery.
-func RecoverJobsByState(ctx context.Context, jobStore storage.JobStore, jobStates []job.JobState, f RecoverBatchTasks) error {
+func RecoverJobsByState(
+	ctx context.Context,
+	jobStore storage.JobStore,
+	jobStates []job.JobState,
+	f RecoverBatchTasks) error {
 	log.WithField("job_states", jobStates).Info("job states to recover")
 	jobsIDs, err := jobStore.GetJobsByStates(ctx, jobStates)
 	if err != nil {
@@ -185,14 +204,15 @@ func RecoverJobsByState(ctx context.Context, jobStore storage.JobStore, jobState
 	}
 
 	log.WithFields(log.Fields{
-		"total jobs": len(jobsIDs),
-		"job_ids":    jobsIDs,
+		"total_jobs":            len(jobsIDs),
+		"job_ids":               jobsIDs,
+		"job_states_to_recover": jobStates,
 	}).Info("jobs to recover")
 
 	jobBatches := createJobBatches(jobsIDs)
 	var bwg sync.WaitGroup
-	finished := make(chan bool, 1)
-	errChan := make(chan error, 1)
+	finished := make(chan bool)
+	errChan := make(chan error, len(jobBatches))
 	for _, batch := range jobBatches {
 		bwg.Add(1)
 		go func(batch JobsBatch) {
