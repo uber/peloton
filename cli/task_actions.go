@@ -45,6 +45,24 @@ func (c *Client) TaskGetAction(jobID string, instanceID uint32) error {
 	return nil
 }
 
+// TaskGetCacheAction is the acion to get a task cache
+func (c *Client) TaskGetCacheAction(jobID string, instanceID uint32) error {
+	requst := &task.GetCacheRequest{
+		JobId: &peloton.JobID{
+			Value: jobID,
+		},
+		InstanceId: instanceID,
+	}
+
+	response, err := c.taskClient.GetCache(c.ctx, requst)
+	if err != nil {
+		return err
+	}
+	printResponseJSON(response)
+	tabWriter.Flush()
+	return nil
+}
+
 // TaskLogsGetAction is the action to get logs files for given job instance.
 func (c *Client) TaskLogsGetAction(fileName string, jobID string, instanceID uint32, taskID string) error {
 	var request = &task.BrowseSandboxRequest{

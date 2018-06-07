@@ -316,6 +316,9 @@ service JobManager {
   // Debug only method. Allows user to load job runtime state from DB
   // and re-execute the action associated with current state.
   rpc Refresh(RefreshRequest) returns (RefreshResponse);
+
+  // Debug only method. Get the cache of a job stored in Peloton.
+  rpc GetCache(GetCacheRequest) returns(GetCacheResponse);
 }
 
 // DEPRECATED by google.rpc.ALREADY_EXISTS error
@@ -466,3 +469,18 @@ message RefreshRequest {
 
 // DEPRECATED by peloton.api.job.svc.RefreshJobResponse
 message RefreshResponse {}
+
+// DEPRECATED by peloton.api.job.svc.GetJobCacheRequest
+message GetCacheRequest {
+  // The job ID to look up the job.
+  peloton.JobID id = 1;
+}
+
+// DEPRECATED by peloton.api.job.svc.GetJobCacheResponse
+message GetCacheResponse {
+  // The job configuration in cache of the matching job.
+  JobConfig config = 1;
+
+  // The job runtime in cache of the matching job.
+  RuntimeInfo runtime = 2;
+}

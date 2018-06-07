@@ -756,6 +756,32 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 	return resp, nil
 }
 
+func (m *serviceHandler) GetCache(
+	ctx context.Context,
+	req *task.GetCacheRequest) (*task.GetCacheResponse, error) {
+	cachedJob := m.jobFactory.GetJob(req.JobId)
+	if cachedJob == nil {
+		return nil,
+			yarpcerrors.NotFoundErrorf("Job not found in cache")
+	}
+
+	cachedTask := cachedJob.GetTask(req.InstanceId)
+	if cachedTask == nil {
+		return nil,
+			yarpcerrors.NotFoundErrorf("Task not found in cache")
+	}
+
+	runtime, err := cachedTask.GetRunTime(ctx)
+	if err != nil {
+		return nil,
+			yarpcerrors.InternalErrorf("Cannot get task cache with err: %v", err)
+	}
+
+	return &task.GetCacheResponse{
+		Runtime: runtime,
+	}, nil
+}
+
 func (m *serviceHandler) getHostInfoWithTaskID(
 	ctx context.Context,
 	jobID *peloton.JobID,

@@ -484,6 +484,39 @@ func (h *serviceHandler) Delete(
 	return &job.DeleteResponse{}, nil
 }
 
+func (h *serviceHandler) GetCache(
+	ctx context.Context,
+	req *job.GetCacheRequest) (*job.GetCacheResponse, error) {
+	cachedJob := h.jobFactory.GetJob(req.GetId())
+	if cachedJob == nil {
+		return nil,
+			yarpcerrors.NotFoundErrorf("Job not found in cache")
+	}
+
+	runtime, err := cachedJob.GetRuntime(ctx)
+	if err != nil {
+		return nil,
+			yarpcerrors.InternalErrorf("Cannot get job runtime with error %v", err)
+	}
+
+	config, err := cachedJob.GetConfig(ctx)
+	if err != nil {
+		return nil,
+			yarpcerrors.InternalErrorf("Cannot get job config with error %v", err)
+	}
+
+	return &job.GetCacheResponse{
+		Runtime: runtime,
+		Config: &job.JobConfig{
+			ChangeLog:     config.GetChangeLog(),
+			Sla:           config.GetSLA(),
+			RespoolID:     config.GetRespoolID(),
+			Type:          config.GetType(),
+			InstanceCount: config.GetInstanceCount(),
+		},
+	}, nil
+}
+
 // validateResourcePool validates the resource pool before submitting job
 func (h *serviceHandler) validateResourcePool(
 	respoolID *peloton.ResourcePoolID,

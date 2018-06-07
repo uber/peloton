@@ -313,6 +313,31 @@ func (suite *taskActionsTestSuite) TestClient_TaskQueryAction() {
 	}
 }
 
+func (suite *taskActionsTestSuite) TestClient_TaskGetCacheAction() {
+	c := Client{
+		Debug:      false,
+		taskClient: suite.mockTask,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	instanceID := uint32(0)
+
+	suite.mockTask.EXPECT().
+		GetCache(gomock.Any(), &task.GetCacheRequest{
+			JobId:      jobID,
+			InstanceId: instanceID,
+		}).Return(nil, nil)
+
+	err := c.TaskGetCacheAction(jobID.Value, instanceID)
+
+	suite.NoError(err)
+}
+
 func (suite *taskActionsTestSuite) withMockTaskQueryResponse(
 	req *task.QueryRequest,
 	resp *task.QueryResponse,

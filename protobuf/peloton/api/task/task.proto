@@ -514,6 +514,9 @@ service TaskManager
   // Debug only method. Allows user to load task runtime state from DB
   // and re-execute the action associated with current state.
   rpc Refresh(RefreshRequest) returns (RefreshResponse);
+
+  // Debug only method. Get the cache of a task stored in Peloton.
+  rpc GetCache(GetCacheRequest) returns(GetCacheResponse);
 }
 
 // DEPRECATED by google.rpc.INTERNAL error.
@@ -721,3 +724,18 @@ message RefreshRequest {
 
 // DEPRECATED by peloton.api.task.svc.RefreshTasksResponse.
 message RefreshResponse {}
+
+// DEPRECATED by peloton.api.task.svc.GetTaskCacheRequest.
+message GetCacheRequest {
+  // The job ID to look up the task.
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task to get.
+  uint32 instanceId = 2;
+}
+
+// DEPRECATED by peloton.api.task.svc.GetTaskCacheResponse.
+message GetCacheResponse {
+  // The task runtime of the task.
+  RuntimeInfo runtime = 1;
+}

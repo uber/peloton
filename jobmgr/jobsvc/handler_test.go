@@ -11,18 +11,19 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
+	respoolmocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
-	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
+	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
+	cachedtest "code.uber.internal/infra/peloton/jobmgr/cached/test"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
-	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
+	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
@@ -41,12 +42,6 @@ const (
 	testSecretStr     = "top-secret-token"
 )
 
-const (
-	_newConfig        = "testdata/new_config.yaml"
-	_oldConfig        = "testdata/old_config.yaml"
-	_invalidNewConfig = "testdata/invalid_new_config.yaml"
-)
-
 var (
 	defaultResourceConfig = task.ResourceConfig{
 		CpuLimit:    10,
@@ -63,6 +58,17 @@ type JobHandlerTestSuite struct {
 	testJobID     *peloton.JobID
 	testJobConfig *job.JobConfig
 	taskInfos     map[uint32]*task.TaskInfo
+
+	ctrl                 *gomock.Controller
+	mockedCandidate      *leadermocks.MockCandidate
+	mockedRespoolClient  *respoolmocks.MockResourceManagerYARPCClient
+	mockedResmgrClient   *resmocks.MockResourceManagerServiceYARPCClient
+	mockedJobFactory     *cachedmocks.MockJobFactory
+	mockedCachedJob      *cachedmocks.MockJob
+	mockedGoalStateDrive *goalstatemocks.MockDriver
+	mockedJobStore       *storemocks.MockJobStore
+	mockedTaskStore      *storemocks.MockTaskStore
+	mockedSecretStore    *storemocks.MockSecretStore
 }
 
 func (suite *JobHandlerTestSuite) SetupTest() {
@@ -92,9 +98,30 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 	}
 	suite.context = context.Background()
 	suite.taskInfos = taskInfos
+
+	suite.ctrl = gomock.NewController(suite.T())
+	suite.mockedJobStore = storemocks.NewMockJobStore(suite.ctrl)
+	suite.mockedJobFactory = cachedmocks.NewMockJobFactory(suite.ctrl)
+	suite.mockedCachedJob = cachedmocks.NewMockJob(suite.ctrl)
+	suite.mockedGoalStateDrive = goalstatemocks.NewMockDriver(suite.ctrl)
+	suite.mockedRespoolClient = respoolmocks.NewMockResourceManagerYARPCClient(suite.ctrl)
+	suite.mockedResmgrClient = resmocks.NewMockResourceManagerServiceYARPCClient(suite.ctrl)
+	suite.mockedCandidate = leadermocks.NewMockCandidate(suite.ctrl)
+	suite.mockedSecretStore = storemocks.NewMockSecretStore(suite.ctrl)
+	suite.mockedTaskStore = storemocks.NewMockTaskStore(suite.ctrl)
+
+	suite.handler.jobStore = suite.mockedJobStore
+	suite.handler.secretStore = suite.mockedSecretStore
+	suite.handler.taskStore = suite.mockedTaskStore
+	suite.handler.jobFactory = suite.mockedJobFactory
+	suite.handler.goalStateDriver = suite.mockedGoalStateDrive
+	suite.handler.respoolClient = suite.mockedRespoolClient
+	suite.handler.resmgrClient = suite.mockedResmgrClient
+	suite.handler.candidate = suite.mockedCandidate
 }
 
 func (suite *JobHandlerTestSuite) TearDownTest() {
+	suite.ctrl.Finish()
 	log.Debug("tearing down")
 }
 
@@ -125,9 +152,6 @@ func (suite *JobHandlerTestSuite) createTestTaskInfo(
 // TestCreateJobs tests different success/failure scenarios
 // for Job Create API
 func (suite *JobHandlerTestSuite) TestCreateJobs() {
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
 	// setup job config
 	testCmd := "echo test"
 	jobID := &peloton.JobID{
@@ -149,33 +173,20 @@ func (suite *JobHandlerTestSuite) TestCreateJobs() {
 		},
 	}
 
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
-	candidate := leadermocks.NewMockCandidate(ctrl)
-
-	suite.handler.jobStore = mockJobStore
-	suite.handler.jobFactory = jobFactory
-	suite.handler.goalStateDriver = goalStateDriver
-	suite.handler.respoolClient = mockRespoolClient
-	suite.handler.candidate = candidate
-
 	// setup mocks
-	candidate.EXPECT().IsLeader().Return(true).AnyTimes()
-	mockRespoolClient.EXPECT().
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
+	suite.mockedRespoolClient.EXPECT().
 		GetResourcePool(
 			gomock.Any(),
 			gomock.Any()).
 		Return(getRespoolResponse, nil).AnyTimes()
-	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
-	cachedJob.EXPECT().Create(
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().Create(
 		gomock.Any(),
 		jobConfig,
 		"peloton").
 		Return(nil)
-	goalStateDriver.EXPECT().
+	suite.mockedGoalStateDrive.EXPECT().
 		EnqueueJob(jobID, gomock.Any()).AnyTimes()
 
 	req := &job.CreateRequest{
@@ -223,9 +234,6 @@ func (suite *JobHandlerTestSuite) TestCreateJobs() {
 // TestCreateJobWithSecrets tests different success/failure scenarios
 // for Job Create API for jobs that have secrets
 func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
 	// setup job config which uses defaultconfig which has
 	// mesos containerizer
 	testCmd := "echo test"
@@ -260,46 +268,32 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 		}
 	}
 
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
-	mockSecretStore := store_mocks.NewMockSecretStore(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
-	candidate := leadermocks.NewMockCandidate(ctrl)
-
-	suite.handler.jobStore = mockJobStore
-	suite.handler.secretStore = mockSecretStore
-	suite.handler.jobFactory = jobFactory
-	suite.handler.goalStateDriver = goalStateDriver
-	suite.handler.respoolClient = mockRespoolClient
 	suite.handler.jobSvcCfg.EnableSecrets = true
-	suite.handler.candidate = candidate
 
 	// setup mocks
-	candidate.EXPECT().IsLeader().Return(true).AnyTimes()
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
 
-	mockRespoolClient.EXPECT().
+	suite.mockedRespoolClient.EXPECT().
 		GetResourcePool(
 			gomock.Any(),
 			gomock.Any()).
 		Return(getRespoolResponse, nil).AnyTimes()
 
-	mockSecretStore.EXPECT().CreateSecret(
+	suite.mockedSecretStore.EXPECT().CreateSecret(
 		gomock.Any(),
 		gomock.Any(),
 		jobID).
 		Return(nil)
 
-	cachedJob.EXPECT().Create(
+	suite.mockedCachedJob.EXPECT().Create(
 		gomock.Any(),
 		jobConfig,
 		"peloton").
 		Return(nil)
 
-	jobFactory.EXPECT().AddJob(jobID).Return(cachedJob)
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).Return(suite.mockedCachedJob)
 
-	goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
+	suite.mockedGoalStateDrive.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
 
 	secret := &peloton.Secret{
 		Path: testSecretPath,
@@ -383,11 +377,6 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 }
 
 func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	suite.handler.resmgrClient = mockResmgrClient
 	var tasksInfo []*task.TaskInfo
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
@@ -395,7 +384,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSla())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
-		mockResmgrClient.EXPECT().
+		suite.mockedResmgrClient.EXPECT().
 			EnqueueGangs(
 				gomock.Any(),
 				gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
@@ -410,21 +399,16 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 			Return(&resmgrsvc.EnqueueGangsResponse{}, nil),
 	)
 
-	jobmgr_task.EnqueueGangs(
+	jobmgrtask.EnqueueGangs(
 		suite.handler.rootCtx,
 		tasksInfo,
 		suite.testJobConfig.Sla,
 		suite.testJobConfig.RespoolID,
-		mockResmgrClient)
+		suite.mockedResmgrClient)
 	suite.Equal(gangs, expectedGangs)
 }
 
 func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	suite.handler.resmgrClient = mockResmgrClient
 	var tasksInfo []*task.TaskInfo
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
@@ -432,7 +416,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSla())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
-		mockResmgrClient.EXPECT().
+		suite.mockedResmgrClient.EXPECT().
 			EnqueueGangs(
 				gomock.Any(),
 				gomock.Eq(&resmgrsvc.EnqueueGangsRequest{
@@ -446,12 +430,12 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 			}).
 			Return(nil, errors.New("Resmgr Error")),
 	)
-	err := jobmgr_task.EnqueueGangs(
+	err := jobmgrtask.EnqueueGangs(
 		suite.handler.rootCtx,
 		tasksInfo,
 		suite.testJobConfig.Sla,
 		suite.testJobConfig.RespoolID,
-		mockResmgrClient)
+		suite.mockedResmgrClient)
 	suite.Error(err)
 }
 
@@ -497,13 +481,7 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool_Failure() {
 		},
 	}
 
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
 	for _, t := range tt {
-		mockRespoolClient := respool_mocks.NewMockResourceManagerYARPCClient(ctrl)
-		suite.handler.respoolClient = mockRespoolClient
-
 		respoolID := &peloton.ResourcePoolID{
 			Value: t.respoolID,
 		}
@@ -511,11 +489,11 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool_Failure() {
 			Id: respoolID,
 		}
 
-		mockRespoolClient.EXPECT().
+		suite.mockedRespoolClient.EXPECT().
 			GetResourcePool(
 				gomock.Any(),
 				gomock.Eq(request)).
-			Return(t.getRespoolResponse, t.getRespoolError).AnyTimes()
+			Return(t.getRespoolResponse, t.getRespoolError).MaxTimes(1)
 
 		errResponse := suite.handler.validateResourcePool(respoolID)
 		suite.Error(errResponse)
@@ -524,9 +502,6 @@ func (suite *JobHandlerTestSuite) TestValidateResourcePool_Failure() {
 }
 
 func (suite *JobHandlerTestSuite) TestJobScaleUp() {
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
 	testCmd := "echo test"
 	oldInstanceCount := uint32(3)
 	newInstanceCount := uint32(4)
@@ -552,47 +527,32 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		State: job.JobState_PENDING,
 	}
 
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(ctrl)
-	mockResmgrClient := res_mocks.NewMockResourceManagerServiceYARPCClient(ctrl)
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	candidate := leadermocks.NewMockCandidate(ctrl)
-
-	suite.handler.resmgrClient = mockResmgrClient
-	suite.handler.jobStore = mockJobStore
-	suite.handler.taskStore = mockTaskStore
-	suite.handler.jobFactory = jobFactory
-	suite.handler.goalStateDriver = goalStateDriver
-	suite.handler.candidate = candidate
-
-	candidate.EXPECT().IsLeader().Return(true)
-	jobFactory.EXPECT().
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
+	suite.mockedJobFactory.EXPECT().
 		AddJob(jobID).
-		Return(cachedJob)
-	cachedJob.EXPECT().
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
 		GetRuntime(gomock.Any()).
 		Return(&jobRuntime, nil)
-	mockJobStore.EXPECT().
+	suite.mockedJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), jobID).
 		Return(oldJobConfig, nil)
-	cachedJob.EXPECT().
+	suite.mockedCachedJob.EXPECT().
 		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Return(nil)
-	mockTaskStore.EXPECT().
+	suite.mockedTaskStore.EXPECT().
 		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
 		Return(nil).
 		AnyTimes()
-	cachedJob.EXPECT().
+	suite.mockedCachedJob.EXPECT().
 		CreateTasks(gomock.Any(), gomock.Any(), "peloton").Return(nil).AnyTimes()
-	goalStateDriver.EXPECT().EnqueueTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
-	cachedJob.EXPECT().
+	suite.mockedGoalStateDrive.EXPECT().EnqueueTask(jobID, gomock.Any(), gomock.Any()).AnyTimes()
+	suite.mockedCachedJob.EXPECT().
 		GetJobType().Return(job.JobType_BATCH)
-	goalStateDriver.EXPECT().
+	suite.mockedGoalStateDrive.EXPECT().
 		JobRuntimeDuration(job.JobType_BATCH).
 		Return(1 * time.Second)
-	goalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any())
+	suite.mockedGoalStateDrive.EXPECT().EnqueueJob(jobID, gomock.Any())
 
 	req := &job.UpdateRequest{
 		Id:     jobID,
@@ -607,14 +567,8 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 }
 
 func (suite *JobHandlerTestSuite) TestJobQuery() {
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
 	// TODO: add more inputs
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
-	suite.handler.jobStore = mockJobStore
-
-	mockJobStore.EXPECT().QueryJobs(context.Background(), nil, nil, false)
+	suite.mockedJobStore.EXPECT().QueryJobs(context.Background(), nil, nil, false)
 	req := &job.QueryRequest{}
 	resp, err := suite.handler.Query(suite.context, req)
 	suite.NoError(err)
@@ -622,37 +576,26 @@ func (suite *JobHandlerTestSuite) TestJobQuery() {
 }
 
 func (suite *JobHandlerTestSuite) TestJobDelete() {
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
 	id := &peloton.JobID{
 		Value: "my-job",
 	}
 
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
-	suite.handler.jobStore = mockJobStore
+	suite.mockedJobFactory.EXPECT().AddJob(id).
+		Return(suite.mockedCachedJob)
 
-	mockJobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	suite.handler.jobFactory = mockJobFactory
-
-	mockCachedJob := cachedmocks.NewMockJob(ctrl)
-	mockJobFactory.EXPECT().AddJob(id).
-		Return(mockCachedJob)
-
-	mockCachedJob.EXPECT().GetRuntime(gomock.Any()).
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_SUCCEEDED}, nil)
 
-	mockJobStore.EXPECT().DeleteJob(context.Background(), id).Return(nil)
+	suite.mockedJobStore.EXPECT().DeleteJob(context.Background(), id).Return(nil)
 
 	res, err := suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
 	suite.Equal(&job.DeleteResponse{}, res)
 	suite.NoError(err)
 
-	mockCachedJob = cachedmocks.NewMockJob(ctrl)
-	mockJobFactory.EXPECT().AddJob(id).
-		Return(mockCachedJob)
+	suite.mockedJobFactory.EXPECT().AddJob(id).
+		Return(suite.mockedCachedJob)
 
-	mockCachedJob.EXPECT().GetRuntime(gomock.Any()).
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil)
 
 	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
@@ -661,11 +604,10 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	expectedErr := yarpcerrors.InternalErrorf("Job is not in a terminal state: PENDING")
 	suite.Equal(expectedErr, err)
 
-	mockCachedJob = cachedmocks.NewMockJob(ctrl)
-	mockJobFactory.EXPECT().AddJob(id).
-		Return(mockCachedJob)
+	suite.mockedJobFactory.EXPECT().AddJob(id).
+		Return(suite.mockedCachedJob)
 
-	mockCachedJob.EXPECT().GetRuntime(gomock.Any()).
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(nil, fmt.Errorf("fake db error"))
 
 	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
@@ -674,13 +616,12 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 	expectedErr = yarpcerrors.NotFoundErrorf("job not found")
 	suite.Equal(expectedErr, err)
 
-	mockCachedJob = cachedmocks.NewMockJob(ctrl)
-	mockJobFactory.EXPECT().AddJob(id).
-		Return(mockCachedJob)
+	suite.mockedJobFactory.EXPECT().AddJob(id).
+		Return(suite.mockedCachedJob)
 
-	mockCachedJob.EXPECT().GetRuntime(gomock.Any()).
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
 		Return(&job.RuntimeInfo{State: job.JobState_SUCCEEDED}, nil)
-	mockJobStore.EXPECT().DeleteJob(context.Background(), id).
+	suite.mockedJobStore.EXPECT().DeleteJob(context.Background(), id).
 		Return(yarpcerrors.InternalErrorf("fake db error"))
 	res, err = suite.handler.Delete(suite.context, &job.DeleteRequest{Id: id})
 	suite.Nil(res)
@@ -690,9 +631,6 @@ func (suite *JobHandlerTestSuite) TestJobDelete() {
 }
 
 func (suite *JobHandlerTestSuite) TestJobRefresh() {
-	ctrl := gomock.NewController(suite.T())
-	defer ctrl.Finish()
-
 	id := &peloton.JobID{
 		Value: "my-job",
 	}
@@ -707,38 +645,95 @@ func (suite *JobHandlerTestSuite) TestJobRefresh() {
 		Runtime: jobRuntime,
 	}
 
-	mockJobStore := store_mocks.NewMockJobStore(ctrl)
-	suite.handler.jobStore = mockJobStore
-	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
-	cachedJob := cachedmocks.NewMockJob(ctrl)
-	goalStateDriver := goalstatemocks.NewMockDriver(ctrl)
-	candidate := leadermocks.NewMockCandidate(ctrl)
-	suite.handler.jobFactory = jobFactory
-	suite.handler.goalStateDriver = goalStateDriver
-	suite.handler.candidate = candidate
-
-	candidate.EXPECT().IsLeader().Return(true)
-	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
+	suite.mockedJobStore.EXPECT().GetJobConfig(context.Background(), id).
 		Return(jobConfig, nil)
-	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+	suite.mockedJobStore.EXPECT().GetJobRuntime(context.Background(), id).
 		Return(jobRuntime, nil)
-	jobFactory.EXPECT().AddJob(id).Return(cachedJob)
-	cachedJob.EXPECT().Update(gomock.Any(), jobInfo, cached.UpdateCacheOnly).Return(nil)
-	goalStateDriver.EXPECT().EnqueueJob(id, gomock.Any())
+	suite.mockedJobFactory.EXPECT().AddJob(id).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().Update(gomock.Any(), jobInfo, cached.UpdateCacheOnly).Return(nil)
+	suite.mockedGoalStateDrive.EXPECT().EnqueueJob(id, gomock.Any())
 	_, err := suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
 	suite.NoError(err)
 
-	candidate.EXPECT().IsLeader().Return(true)
-	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
+	suite.mockedJobStore.EXPECT().GetJobConfig(context.Background(), id).
 		Return(nil, fmt.Errorf("fake db error"))
 	_, err = suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
 	suite.Error(err)
 
-	candidate.EXPECT().IsLeader().Return(true)
-	mockJobStore.EXPECT().GetJobConfig(context.Background(), id).
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true)
+	suite.mockedJobStore.EXPECT().GetJobConfig(context.Background(), id).
 		Return(jobConfig, nil)
-	mockJobStore.EXPECT().GetJobRuntime(context.Background(), id).
+	suite.mockedJobStore.EXPECT().GetJobRuntime(context.Background(), id).
 		Return(nil, fmt.Errorf("fake db error"))
 	_, err = suite.handler.Refresh(suite.context, &job.RefreshRequest{Id: id})
 	suite.Error(err)
+}
+
+func (suite *JobHandlerTestSuite) TestJobGetCache_JobNotFound() {
+	id := &peloton.JobID{
+		Value: "my-job",
+	}
+
+	// Test job is not in cache
+	suite.mockedJobFactory.EXPECT().
+		GetJob(gomock.Any()).Return(nil)
+	_, err := suite.handler.GetCache(context.Background(), &job.GetCacheRequest{Id: id})
+	suite.Error(err)
+}
+
+func (suite *JobHandlerTestSuite) TestJobGetCache_FailToLoadRuntime() {
+	id := &peloton.JobID{
+		Value: "my-job",
+	}
+
+	// Test fail to get job runtime cache
+	suite.mockedJobFactory.EXPECT().
+		GetJob(gomock.Any()).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetRuntime(gomock.Any()).Return(nil, fmt.Errorf("get runtime err"))
+	_, err := suite.handler.GetCache(context.Background(), &job.GetCacheRequest{Id: id})
+	suite.Error(err)
+}
+
+func (suite *JobHandlerTestSuite) TestJobGetCache_FailToGetJobConfig() {
+	id := &peloton.JobID{
+		Value: "my-job",
+	}
+	jobRuntime := &job.RuntimeInfo{State: job.JobState_RUNNING}
+
+	// Test fail to get job config cache
+	suite.mockedJobFactory.EXPECT().
+		GetJob(gomock.Any()).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetRuntime(gomock.Any()).Return(jobRuntime, nil)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).Return(nil, fmt.Errorf("get runtime err"))
+	_, err := suite.handler.GetCache(context.Background(), &job.GetCacheRequest{Id: id})
+	suite.Error(err)
+}
+
+func (suite *JobHandlerTestSuite) TestJobGetCache_SUCCESS() {
+	id := &peloton.JobID{
+		Value: "my-job",
+	}
+	jobConfig := &job.JobConfig{
+		InstanceCount: 4,
+		Type:          job.JobType_BATCH,
+	}
+	jobRuntime := &job.RuntimeInfo{State: job.JobState_RUNNING}
+
+	// Test succeed path
+	suite.mockedJobFactory.EXPECT().
+		GetJob(gomock.Any()).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetRuntime(gomock.Any()).Return(jobRuntime, nil)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).Return(cachedtest.NewMockJobConfig(suite.ctrl, jobConfig), nil)
+	resp, err := suite.handler.GetCache(context.Background(), &job.GetCacheRequest{Id: id})
+	suite.NoError(err)
+	suite.Equal(resp.Config.Type, jobConfig.Type)
+	suite.Equal(resp.Config.InstanceCount, jobConfig.InstanceCount)
+	suite.Equal(resp.Runtime.State, jobRuntime.State)
 }

@@ -132,12 +132,19 @@ var (
 	jobUpdateID     = jobUpdate.Arg("job", "job identifier").Required().String()
 	jobUpdateConfig = jobUpdate.Arg("config", "YAML job configuration").Required().ExistingFile()
 
+	jobGetCache     = job.Command("cache", "get a job cache")
+	jobGetCacheName = jobGetCache.Arg("job", "job identifier").Required().String()
+
 	// Top level task command
 	task = app.Command("task", "manage tasks")
 
 	taskGet           = task.Command("get", "show task status")
 	taskGetJobName    = taskGet.Arg("job", "job identifier").Required().String()
 	taskGetInstanceID = taskGet.Arg("instance", "job instance id").Required().Uint32()
+
+	taskGetCache           = task.Command("cache", "show task status")
+	taskGetCacheName       = taskGetCache.Arg("job", "job identifier").Required().String()
+	taskGetCacheInstanceID = taskGetCache.Arg("instance", "job instance id").Required().Uint32()
 
 	taskGetEvents           = task.Command("events", "show task events")
 	taskGetEventsJobName    = taskGetEvents.Arg("job", "job identifier").Required().String()
@@ -373,8 +380,12 @@ func main() {
 		err = client.JobQueryAction(*jobQueryLabels, *jobQueryRespoolPath, *jobQueryKeywords, *jobQueryStates, *jobQueryOwner, *jobQueryName, *jobQueryTimeRange, *jobQueryLimit, *jobQueryMaxLimit, *jobQueryOffset, *jobQuerySortBy, *jobQuerySortOrder)
 	case jobUpdate.FullCommand():
 		err = client.JobUpdateAction(*jobUpdateID, *jobUpdateConfig)
+	case jobGetCache.FullCommand():
+		err = client.JobGetCacheAction(*jobGetCacheName)
 	case taskGet.FullCommand():
 		err = client.TaskGetAction(*taskGetJobName, *taskGetInstanceID)
+	case taskGetCache.FullCommand():
+		err = client.TaskGetCacheAction(*taskGetCacheName, *taskGetCacheInstanceID)
 	case taskGetEvents.FullCommand():
 		err = client.TaskGetEventsAction(*taskGetEventsJobName, *taskGetEventsInstanceID)
 	case taskLogsGet.FullCommand():

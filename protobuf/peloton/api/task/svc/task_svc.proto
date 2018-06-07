@@ -56,6 +56,9 @@ service TaskService
   // Debug only method. Allows user to load task runtime state from DB
   // and re-execute the action associated with current state.
   rpc RefreshTasks(RefreshTasksRequest) returns (RefreshTasksResponse);
+
+  // Debug only method. Get the cache of a task stored in Peloton.
+  rpc GetTaskCache(GetTaskCacheRequest) returns(GetTaskCacheResponse);
 }
 
 
@@ -330,3 +333,26 @@ message RefreshTasksRequest {
  *    NOT_FOUND:  if the job or tasks are not found.
  */
 message RefreshTasksResponse {}
+
+/**
+ *  Request message for TaskService.GetTaskCache method.
+ */
+message GetTaskCacheRequest {
+  // The job ID to look up the task.
+  peloton.JobID jobId = 1;
+
+  // The instance ID of the task to get.
+  uint32 instanceId = 2;
+}
+
+/**
+ *  Response message for TaskService.GetTaskCache method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:      if the job or task not found in cache.
+ *    INTERNAL_ERROR: if fail to read cache due to internal error.
+ */
+message GetTaskCacheResponse {
+  // The task runtime of the task.
+  RuntimeInfo runtime = 1;
+}

@@ -365,3 +365,21 @@ func (suite *jobActionsTestSuite) TestClient_JobStatusAction() {
 
 	suite.NoError(c.JobStatusAction(testJobID))
 }
+
+func (suite *jobActionsTestSuite) TestClient_JobGetCacheAction() {
+	c := Client{
+		Debug:      false,
+		resClient:  suite.mockRespool,
+		jobClient:  suite.mockJob,
+		dispatcher: nil,
+		ctx:        suite.ctx,
+	}
+
+	suite.mockJob.EXPECT().GetCache(gomock.Any(), &job.GetCacheRequest{
+		Id: &peloton.JobID{
+			Value: testJobID,
+		},
+	}).Return(nil, nil)
+
+	suite.NoError(c.JobGetCacheAction(testJobID))
+}

@@ -125,6 +125,20 @@ func (c *Client) jobGet(jobID string) (*job.GetResponse, error) {
 	return c.jobClient.Get(c.ctx, request)
 }
 
+// JobGetCacheAction is the action for getting a job cache
+func (c *Client) JobGetCacheAction(jobID string) error {
+	r, err := c.jobClient.GetCache(c.ctx, &job.GetCacheRequest{
+		Id: &peloton.JobID{Value: jobID},
+	})
+	if err != nil {
+		return err
+	}
+
+	printResponseJSON(r)
+	tabWriter.Flush()
+	return nil
+}
+
 // JobRefreshAction calls the refresh API for a job
 func (c *Client) JobRefreshAction(jobID string) error {
 	var request = &job.RefreshRequest{

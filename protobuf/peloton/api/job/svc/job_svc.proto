@@ -42,6 +42,9 @@ service JobService {
   // Debug only method. Allows user to load job runtime state from DB
   // and re-execute the action associated with current state.
   rpc RefreshJob(RefreshJobRequest) returns (RefreshJobResponse);
+
+  // Debug only method. Get the cache of a job stored in Peloton.
+  rpc GetJobCache(GetJobCacheRequest) returns(GetJobCacheResponse);
 }
 
 
@@ -200,3 +203,26 @@ message RefreshJobRequest {
  *    NOT_FOUND:  if the job is not found in Peloton.
  */
 message RefreshJobResponse {}
+
+/**
+ *  Request message for JobService.GetJobCache method.
+ */
+message GetJobCacheRequest {
+  // The job ID to look up the job.
+  peloton.JobID id = 1;
+}
+
+/**
+ *  Response message for JobService.GetJobCache method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:      if the job is not found in Peloton cache.
+ *    INTERNAL_ERROR: if fail to read cache due to internal error.
+ */
+message GetJobCacheResponse {
+  // The job configuration in cache of the matching job.
+  JobConfig config = 1;
+
+  // The job runtime in cache of the matching job.
+  RuntimeInfo runtime = 2;
+}
