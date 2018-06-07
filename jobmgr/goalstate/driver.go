@@ -310,8 +310,8 @@ func (d *driver) Start() {
 	d.Unlock()
 
 	if err := d.syncFromDB(context.Background()); err != nil {
-		// To be decided: Should this be Fatal?
-		log.WithError(err).Error("failed to sync cache and goal state with DB")
+		log.WithError(err).
+			Fatal("failed to sync job manager with DB")
 	}
 
 	atomic.StoreInt32(&d.running, int32(running))
