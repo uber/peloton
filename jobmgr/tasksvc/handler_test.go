@@ -1116,12 +1116,10 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 	suite.Error(err)
 }
 
-func (suite *TaskHandlerTestSuite) TestListTask() {
-	//testReason := "test reason"
-	//var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
+func (suite *TaskHandlerTestSuite) initTestTaskInfo(
+	runningTasks uint32,
+	pendingTasks uint32) map[uint32]*task.TaskInfo {
 	taskInfos := make(map[uint32]*task.TaskInfo)
-	runningTasks := uint32(testInstanceCount) / 2
-	pendingTasks := uint32(testInstanceCount) - runningTasks
 	for i := uint32(0); i < testInstanceCount; i++ {
 		if i < runningTasks {
 			taskInfos[i] = suite.createTestTaskInfo(
@@ -1129,16 +1127,23 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 		} else {
 			taskInfos[i] = suite.createTestTaskInfo(
 				task.TaskState_PENDING, i)
-			/*taskEntries = append(taskEntries, &resmgrsvc.GetActiveTasksResponse_TaskEntry{
-				TaskID: fmt.Sprintf("%s-%d", suite.testJobID.Value, i),
-				Reason: testReason,
-			})*/
 		}
 	}
+	return taskInfos
+}
 
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).
-		Return(suite.testJobConfig, nil)
+func (suite *TaskHandlerTestSuite) TestListTask() {
+	//testReason := "test reason"
+	//var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
+	runningTasks := uint32(testInstanceCount) / 2
+	pendingTasks := uint32(testInstanceCount) - runningTasks
+	taskInfos := suite.initTestTaskInfo(runningTasks, pendingTasks)
+
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil)
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), suite.testJobID).
 		Return(taskInfos, nil)
@@ -1169,6 +1174,92 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 	suite.Equal(pendingTasks, uint32(0))
 }
 
+func (suite *TaskHandlerTestSuite) TestListTaskQueryByRange() {
+	runningTasks := uint32(testInstanceCount) / 2
+	pendingTasks := uint32(testInstanceCount) - runningTasks
+	taskInfos := suite.initTestTaskInfo(runningTasks, pendingTasks)
+
+	// test Query by range
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil)
+	suite.mockedTaskStore.EXPECT().
+		GetTasksForJobByRange(gomock.Any(), suite.testJobID, gomock.Any()).
+		Return(taskInfos, nil)
+	_, err := suite.handler.List(context.Background(), &task.ListRequest{
+		JobId: suite.testJobID,
+		Range: &task.InstanceRange{
+			From: 0,
+			To:   testInstanceCount + 1,
+		},
+	})
+	suite.NoError(err)
+}
+
+func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInDB() {
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(cachedtest.NewMockJobConfig(suite.ctrl, suite.testJobConfig), nil)
+	emptyTaskInfos := make(map[uint32]*task.TaskInfo)
+	suite.mockedTaskStore.EXPECT().
+		GetTasksForJobByRange(gomock.Any(), suite.testJobID, gomock.Any()).
+		Return(emptyTaskInfos, nil)
+	_, err := suite.handler.List(context.Background(), &task.ListRequest{
+		JobId: suite.testJobID,
+		Range: &task.InstanceRange{
+			From: 0,
+			To:   testInstanceCount + 1,
+		},
+	})
+	suite.NoError(err)
+}
+
+func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInCache() {
+	runningTasks := uint32(testInstanceCount) / 2
+	pendingTasks := uint32(testInstanceCount) - runningTasks
+	taskInfos := suite.initTestTaskInfo(runningTasks, pendingTasks)
+
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, errors.New("test error"))
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).
+		Return(suite.testJobConfig, nil)
+	suite.mockedTaskStore.EXPECT().
+		GetTasksForJob(gomock.Any(), suite.testJobID).
+		Return(taskInfos, nil)
+
+	_, err := suite.handler.List(context.Background(), &task.ListRequest{
+		JobId: suite.testJobID,
+	})
+	suite.NoError(err)
+}
+
+func (suite *TaskHandlerTestSuite) TestListTaskNoJobInDB() {
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().
+		GetConfig(gomock.Any()).
+		Return(nil, errors.New("test error"))
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).
+		Return(nil, nil)
+	suite.mockedTaskStore.EXPECT()
+
+	_, err := suite.handler.List(context.Background(), &task.ListRequest{
+		JobId: suite.testJobID,
+	})
+	suite.NoError(err)
+}
+
 func (suite *TaskHandlerTestSuite) TestQueryTask() {
 	//testReason := "test reason"
 	//var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
@@ -1190,8 +1281,8 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 	}
 
 	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).
-		Return(suite.testJobConfig, nil)
+		GetJobRuntime(gomock.Any(), suite.testJobID).
+		Return(suite.testJobRuntime, nil)
 	suite.mockedTaskStore.EXPECT().
 		QueryTasks(gomock.Any(), suite.testJobID, nil).
 		Return(taskInfos, uint32(testInstanceCount), nil)
@@ -1220,6 +1311,32 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 	}
 	suite.Equal(runningTasks, 0)
 	suite.Equal(pendingTasks, 0)
+}
+
+func (suite *TaskHandlerTestSuite) TestQueryTaskQueryJobErr() {
+	suite.mockedJobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.testJobID).
+		Return(suite.testJobRuntime, errors.New("test error"))
+	suite.mockedTaskStore.EXPECT()
+	_, err := suite.handler.Query(context.Background(), &task.QueryRequest{
+		JobId: suite.testJobID,
+	})
+	suite.NoError(err)
+}
+
+func (suite *TaskHandlerTestSuite) TestQueryTaskQueryTaskErr() {
+	taskInfos := make([]*task.TaskInfo, testInstanceCount)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), suite.testJobID).
+		Return(suite.testJobRuntime, nil)
+	suite.mockedTaskStore.EXPECT().
+		QueryTasks(gomock.Any(), suite.testJobID, nil).
+		Return(taskInfos, uint32(testInstanceCount), errors.New("test error"))
+	_, err := suite.handler.Query(context.Background(), &task.QueryRequest{
+		JobId: suite.testJobID,
+	})
+	suite.NoError(err)
 }
 
 func (suite *TaskHandlerTestSuite) TestGetCache_JobNotFound() {

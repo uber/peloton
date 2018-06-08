@@ -227,19 +227,27 @@ func (m *serviceHandler) List(
 	log.WithField("request", body).Debug("TaskSVC.List called")
 
 	m.metrics.TaskAPIList.Inc(1)
-	jobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
-	if err != nil {
-		log.WithField("job_id", body.JobId.Value).
-			WithError(err).
-			Debug("Failed to get job config")
-		m.metrics.TaskListFail.Inc(1)
-		return &task.ListResponse{
-			NotFound: &pb_errors.JobNotFound{
-				Id:      body.JobId,
-				Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
-			},
-		}, nil
+	var instanceCount uint32
+	cachedJobConfig, err := m.jobFactory.GetJob(body.JobId).GetConfig(ctx)
+	if cachedJobConfig == nil || err != nil {
+		dbJobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
+		if dbJobConfig == nil || err != nil {
+			log.WithField("job_id", body.JobId.Value).
+				WithError(err).
+				Debug("Failed to get job config")
+			m.metrics.TaskListFail.Inc(1)
+			return &task.ListResponse{
+				NotFound: &pb_errors.JobNotFound{
+					Id:      body.JobId,
+					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
+				},
+			}, nil
+		}
+		instanceCount = dbJobConfig.GetInstanceCount()
+	} else {
+		instanceCount = cachedJobConfig.GetInstanceCount()
 	}
+
 	var result map[uint32]*task.TaskInfo
 	if body.Range == nil {
 		result, err = m.taskStore.GetTasksForJob(ctx, body.JobId)
@@ -247,8 +255,8 @@ func (m *serviceHandler) List(
 		// Need to do this check as the CLI may send default instance Range (0, MaxUnit32)
 		// and  C* store would error out if it cannot find a instance id. A separate
 		// task is filed on the CLI side.
-		if body.Range.To > jobConfig.GetInstanceCount() {
-			body.Range.To = jobConfig.GetInstanceCount()
+		if body.Range.To > instanceCount {
+			body.Range.To = instanceCount
 		}
 		result, err = m.taskStore.GetTasksForJobByRange(ctx, body.JobId, body.Range)
 	}
@@ -713,7 +721,7 @@ func (m *serviceHandler) Query(ctx context.Context, req *task.QueryRequest) (*ta
 	m.metrics.TaskAPIQuery.Inc(1)
 	callStart := time.Now()
 
-	_, err := m.jobStore.GetJobConfig(ctx, req.JobId)
+	_, err := m.jobStore.GetJobRuntime(ctx, req.JobId)
 	if err != nil {
 		log.Debug("Failed to find job with id %v, err=%v", req.JobId, err)
 		m.metrics.TaskQueryFail.Inc(1)
