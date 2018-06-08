@@ -1011,3 +1011,11 @@ func (m *Store) CreateSecret(ctx context.Context, secret *peloton.Secret, id *pe
 func (m *Store) GetSecret(ctx context.Context, id *peloton.SecretID) (*peloton.Secret, error) {
 	return nil, errors.New("Not implemented")
 }
+
+// GetMaxJobConfigVersion is not yet implemented
+func (m *Store) GetMaxJobConfigVersion(
+	ctx context.Context,
+	id *peloton.JobID,
+) (uint64, error) {
+	return 0, yarpcerrors.UnimplementedErrorf("GetMaxJobConfigVersion is not implemented")
+}

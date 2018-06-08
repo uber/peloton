@@ -65,6 +65,8 @@ type JobStore interface {
 	GetJobsByStates(ctx context.Context, state []job.JobState) ([]peloton.JobID, error)
 	// UpdateJobRuntime updates the runtime of a given job
 	UpdateJobRuntime(ctx context.Context, id *peloton.JobID, runtime *job.RuntimeInfo) error
+	// GetMaxJobConfigVersion returns the maximum version of configs of a given job
+	GetMaxJobConfigVersion(ctx context.Context, id *peloton.JobID) (uint64, error)
 }
 
 // TaskStore is the interface to store task states

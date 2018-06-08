@@ -401,7 +401,8 @@ func (s *Store) CreateJobRuntimeWithConfig(
 	return nil
 }
 
-func (s *Store) getMaxJobVersion(
+// GetMaxJobConfigVersion returns the maximum version of configs of a given job
+func (s *Store) GetMaxJobConfigVersion(
 	ctx context.Context,
 	id *peloton.JobID) (uint64, error) {
 	queryBuilder := s.DataStore.NewQuery()
@@ -488,7 +489,7 @@ func (s *Store) GetJobConfig(
 			// Older job which does not have changelog.
 			// TODO (zhixin): remove this after no more job in the system
 			// does not have a changelog version.
-			v, err := s.getMaxJobVersion(ctx, id)
+			v, err := s.GetMaxJobConfigVersion(ctx, id)
 			if err != nil {
 				s.metrics.JobMetrics.JobGetFail.Inc(1)
 				return nil, err

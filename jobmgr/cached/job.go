@@ -488,10 +488,13 @@ func (j *job) getUpdatedJobConfigCache(
 	}
 
 	updatedConfig := config
+	var err error
+
 	if j.config != nil {
-		updatedConfig = j.validateAndMergeConfig(config)
-		//TODO(zhixin): return an error which may be required
-		// for stateless job
+		updatedConfig, err = j.validateAndMergeConfig(ctx, config)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return updatedConfig, nil
@@ -499,24 +502,39 @@ func (j *job) getUpdatedJobConfigCache(
 
 // validateAndMergeConfig validates whether the input config should be merged,
 // and returns the merged config if merge is valid.
-func (j *job) validateAndMergeConfig(config *pbjob.JobConfig) *pbjob.JobConfig {
+func (j *job) validateAndMergeConfig(
+	ctx context.Context,
+	config *pbjob.JobConfig,
+) (*pbjob.JobConfig, error) {
 	if !j.validateConfig(config) {
 		log.WithField("current_revision", j.config.GetChangeLog().GetVersion()).
 			WithField("new_revision", config.GetChangeLog().GetVersion()).
 			WithField("job_id", j.id.Value).
 			Info("failed job config validation")
-		return nil
+		return nil, nil
 	}
 
 	newConfig := *config
 	// ChangeLog is nil when update the config,
 	if newConfig.ChangeLog == nil {
+		maxVersion, err := j.jobFactory.jobStore.GetMaxJobConfigVersion(ctx, j.id)
+		if err != nil {
+			return nil, err
+		}
+
 		currentChangeLog := *j.config.changeLog
 		newConfig.ChangeLog = &currentChangeLog
-		newConfig.ChangeLog.Version++
+		// update version to maxVersion + 1,
+		// instead of config.ChangeLog.Version + 1
+		// If config update succeed and runtime update
+		// fails, runtime would still points to the old config.
+		// If user tries to update the config again, job manager will
+		// read the old config version and update based on
+		// the old config would cause a 'config already exists' error
+		newConfig.ChangeLog.Version = maxVersion + 1
 		newConfig.ChangeLog.UpdatedAt = uint64(time.Now().UnixNano())
 	}
-	return &newConfig
+	return &newConfig, nil
 }
 
 // validateConfig validates whether the input config is valid

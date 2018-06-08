@@ -115,11 +115,17 @@ func (suite *JobTestSuite) TestJobSetAndFetchConfigAndRuntime() {
 		InstanceCount: instanceCount,
 		Type:          pbjob.JobType_BATCH,
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
 	}
 	jobInfo := &pbjob.JobInfo{
 		Runtime: jobRuntime,
 		Config:  jobConfig,
 	}
+
+	suite.job.config = nil
+	suite.job.runtime = nil
 
 	suite.job.Update(context.Background(), jobInfo, UpdateCacheOnly)
 	actJobRuntime, _ := suite.job.GetRuntime(context.Background())
@@ -234,6 +240,22 @@ func (suite *JobTestSuite) TestJobUpdateConfig() {
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 	}
 
+	suite.job.config = &cachedConfig{
+		instanceCount: 5,
+		changeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+	}
+	suite.job.runtime = &pbjob.RuntimeInfo{
+		Revision: &peloton.ChangeLog{
+			Version: 1,
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(suite.job.config.changeLog.Version, nil)
+
 	suite.jobStore.EXPECT().
 		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
@@ -250,17 +272,6 @@ func (suite *JobTestSuite) TestJobUpdateConfig() {
 		}).
 		Return(nil)
 
-	suite.job.config = &cachedConfig{
-		instanceCount: 5,
-		changeLog: &peloton.ChangeLog{
-			Version: 1,
-		},
-	}
-	suite.job.runtime = &pbjob.RuntimeInfo{
-		Revision: &peloton.ChangeLog{
-			Version: 1,
-		},
-	}
 	err := suite.job.Update(context.Background(), &pbjob.JobInfo{Config: jobConfig}, UpdateCacheAndDB)
 	suite.NoError(err)
 	suite.Equal(suite.job.config.instanceCount, jobConfig.InstanceCount)
@@ -270,6 +281,101 @@ func (suite *JobTestSuite) TestJobUpdateConfig() {
 	config, err := suite.job.GetConfig(context.Background())
 	suite.NoError(err)
 	suite.Equal(config.GetChangeLog().Version, uint64(2))
+}
+
+// TestJobUpdateConfig_RuntimeUpdateFailureRetry tests update to job config,
+// with config db write success but runtime db write error.
+// An retry upon failure should succeed if db stops returning error.
+func (suite *JobTestSuite) TestJobUpdateConfig_RuntimeUpdateFailureRetry() {
+	// the config object stored in db
+	var latestJobConfigInDB *pbjob.JobConfig
+
+	suite.job.runtime = nil
+	suite.job.config = nil
+
+	jobConfig := &pbjob.JobConfig{
+		InstanceCount: 10,
+	}
+
+	jobConfigInDB := &pbjob.JobConfig{
+		InstanceCount: 5,
+		ChangeLog: &peloton.ChangeLog{
+			Version: 1,
+		},
+	}
+
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), gomock.Any()).
+		Return(jobConfigInDB, nil)
+
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(jobConfigInDB.ChangeLog.Version, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(config.InstanceCount, uint32(10))
+			suite.Equal(config.ChangeLog.Version, uint64(2))
+			latestJobConfigInDB = config
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			Revision: &peloton.ChangeLog{
+				Version: 1,
+			},
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.ConfigurationVersion, uint64(2))
+			suite.Equal(runtime.Revision.Version, uint64(2))
+		}).
+		Return(fmt.Errorf("test updateJobRuntime err"))
+
+	err := suite.job.Update(context.Background(), &pbjob.JobInfo{Config: jobConfig}, UpdateCacheAndDB)
+	suite.Error(err)
+
+	// retry the update should succeed
+	suite.jobStore.EXPECT().
+		GetJobConfig(gomock.Any(), gomock.Any()).
+		Return(jobConfigInDB, nil)
+
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(latestJobConfigInDB.ChangeLog.Version, nil)
+
+	suite.jobStore.EXPECT().
+		GetJobRuntime(gomock.Any(), gomock.Any()).
+		Return(&pbjob.RuntimeInfo{
+			Revision: &peloton.ChangeLog{
+				Version: 1,
+			},
+		}, nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, config *pbjob.JobConfig) {
+			suite.Equal(config.InstanceCount, uint32(10))
+			// changeLog version should be the max config version in db + 1
+			suite.Equal(config.ChangeLog.Version, uint64(latestJobConfigInDB.ChangeLog.Version+1))
+		}).
+		Return(nil)
+
+	suite.jobStore.EXPECT().
+		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
+			suite.Equal(runtime.ConfigurationVersion, uint64(latestJobConfigInDB.ChangeLog.Version+1))
+			suite.Equal(runtime.Revision.Version, uint64(2))
+		}).
+		Return(nil)
+
+	err = suite.job.Update(context.Background(), &pbjob.JobInfo{Config: jobConfig}, UpdateCacheAndDB)
+	suite.NoError(err)
 }
 
 // TestJobUpdateRuntimeAndConfig tests update both runtime
@@ -296,6 +402,10 @@ func (suite *JobTestSuite) TestJobUpdateRuntimeAndConfig() {
 				Version:   1,
 			},
 		}, nil)
+
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(suite.job.config.changeLog.Version, nil)
 
 	suite.jobStore.EXPECT().
 		UpdateJobConfig(gomock.Any(), suite.jobID, gomock.Any()).
@@ -356,6 +466,9 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverConfig() {
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(&runtime, nil)
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(initialConfig.ChangeLog.Version, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
@@ -420,6 +533,9 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverRuntime() {
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(&initialRuntime, nil)
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(initialConfig.ChangeLog.Version, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
@@ -486,6 +602,9 @@ func (suite *JobTestSuite) TestJobUpdateConfigAndRecoverConfigPlusRuntime() {
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(&initialRuntime, nil)
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(initialConfig.ChangeLog.Version, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
@@ -722,6 +841,9 @@ func (suite *JobTestSuite) TestJobUpdateRuntimePlusConfigAndRecover() {
 	suite.jobStore.EXPECT().
 		GetJobRuntime(gomock.Any(), suite.jobID).
 		Return(&initialRuntime, nil)
+	suite.jobStore.EXPECT().
+		GetMaxJobConfigVersion(gomock.Any(), suite.jobID).
+		Return(initialConfig.ChangeLog.Version, nil)
 	suite.jobStore.EXPECT().
 		UpdateJobRuntime(gomock.Any(), suite.jobID, gomock.Any()).
 		Do(func(_ context.Context, _ *peloton.JobID, runtime *pbjob.RuntimeInfo) {
