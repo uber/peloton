@@ -5,8 +5,8 @@ import (
 	"sort"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"

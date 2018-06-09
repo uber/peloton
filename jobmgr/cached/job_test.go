@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"

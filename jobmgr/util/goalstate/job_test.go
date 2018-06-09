@@ -3,7 +3,7 @@ package goalstate
 import (
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 
 	"github.com/stretchr/testify/assert"
 )

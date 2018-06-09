@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"

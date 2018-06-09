@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 
 	"code.uber.internal/infra/peloton/common"
 	rc "code.uber.internal/infra/peloton/resmgr/common"

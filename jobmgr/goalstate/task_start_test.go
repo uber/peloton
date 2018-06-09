@@ -7,10 +7,10 @@ import (
 	"fmt"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	job2 "code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	job2 "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 

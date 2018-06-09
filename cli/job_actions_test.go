@@ -7,18 +7,18 @@ import (
 	"io/ioutil"
 	"testing"
 
-	job_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/job/mocks"
-	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
+	job_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job/mocks"
+	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v2"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 )
 
 const (

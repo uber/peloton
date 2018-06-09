@@ -3,7 +3,7 @@ package taskconfig
 import (
 	"reflect"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 )
 
 // Merge returns the merged task config between a base and an override. The

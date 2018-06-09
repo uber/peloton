@@ -3,8 +3,8 @@ package cli
 import (
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/volume/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
 )
 
 const (

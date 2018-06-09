@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/common"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"

@@ -9,10 +9,10 @@ import (
 	"go.uber.org/yarpc/api/transport"
 	"go.uber.org/yarpc/transport/http"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/volume/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 

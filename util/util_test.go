@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"

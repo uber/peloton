@@ -1,0 +1,173 @@
+/**
+ * This file defines the Update service in Peloton API
+ */
+
+syntax = "proto3";
+
+package peloton.api.v0.update.svc;
+
+option go_package = "peloton/api/v0/update/svc";
+option java_package = "peloton.api.v0.update.svc";
+
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/job/job.proto";
+import "peloton/api/v0/update/update.proto";
+
+/**
+ *  Update service interface
+ *  EXPERIMENTAL: This API is not yet stable.
+ */
+service UpdateService
+{
+  // Create a new update for a job.
+  // Only one update can exist for a job at a given time.
+  rpc CreateUpdate(CreateUpdateRequest) returns (CreateUpdateResponse);
+
+  // Get the status of an update.
+  rpc GetUpdate(GetUpdateRequest) returns (GetUpdateResponse);
+
+  // List all updates that are currently running.
+  rpc ListUpdates(ListUpdatesRequest) returns (ListUpdatesResponse);
+
+  // Pause an update.
+  rpc PauseUpdate(PauseUpdateRequest) returns (PauseUpdateResponse);
+
+  // Resume a paused update.
+  rpc ResumeUpdate(ResumeUpdateRequest) returns (ResumeUpdateResponse);
+
+  // Rollback an update.
+  rpc RollbackUpdate(RollbackUpdateRequest) returns (RollbackUpdateResponse);
+
+  // Abort an update.
+  rpc AbortUpdate(AbortUpdateRequest) returns (AbortUpdateResponse);
+}
+
+/**
+ * Request message for UpdateService.CreateUpdate method.
+ */
+message CreateUpdateRequest {
+  // Entity id of the job to be updated.
+  peloton.JobID jobId = 1;
+
+  // New configuration of the job to be updated. The new job config
+  // will be applied to all instances without violating the job SLA.
+  job.JobConfig jobConfig = 2;
+
+  // The options of the update.
+  update.UpdateConfig updateConfig = 3;
+}
+
+/**
+ * Response message for UpdateService.CreateUpdate method.
+ * Returns errors:
+ *   NOT_FOUND:      if the job with the provided identifier is not found.
+ *   ALREADY_EXISTS: if another update for the same job is running.
+ *   INVALID_ARGUMENTS: if the provided job config or update config is invalid.
+ */
+message CreateUpdateResponse {
+  // Identifier for the newly created update.
+  update.UpdateID result = 1;
+}
+
+/**
+ *  Request message for UpdateService.GetUpdate method.
+ */
+message GetUpdateRequest {
+  update.UpdateID updateId = 1;
+}
+
+/**
+ *  Response message for UpdateService.GetUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ */
+message GetUpdateResponse {
+  oneof response {
+    // Update update information.
+    update.UpdateInfo result = 1;
+  }
+}
+
+/**
+ *  Request message for UpdateService.ListUpdates method.
+ */
+message ListUpdatesRequest {
+  // Number of updates to return.
+  int32 limit = 1;
+}
+
+/**
+ *  Response message for UpdateService.ListUpdates method.
+ */
+message ListUpdatesResponse {
+  repeated update.UpdateInfo updateInfo = 1;
+}
+
+/**
+ *  Request message for UpdateService.PauseUpdate method.
+ */
+message PauseUpdateRequest {
+  // Identifier of the update to be paused.
+  update.UpdateID updateId = 1;
+}
+
+/**
+ *  Response message for UpdateService.PauseUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ *    UNAVAILABLE: if the update is in a state which cannot be paused.
+ */
+message PauseUpdateResponse {
+}
+
+/**
+ *  Request message for UpdateService.ResumeUpdate method.
+ */
+message ResumeUpdateRequest {
+  // Identifier of the update to be resumed.
+  update.UpdateID updateId = 1;
+}
+
+/**
+ *  Response message for UpdateService.ResumeUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ *    UNAVAILABLE: if the update is in a state which cannot be resumed.
+ */
+message ResumeUpdateResponse {
+}
+
+/**
+ *  Request message for UpdateService.RollbackUpdate method.
+ */
+message RollbackUpdateRequest {
+  // Identifier of the update to be rolled back.
+  update.UpdateID updateId = 1;
+}
+
+/**
+ *  Response message for UpdateService.RollbackUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ *    UNAVAILABLE: if the update is in a state which cannot be resumed.
+ */
+message RollbackUpdateResponse {
+}
+
+/**
+ *  Request message for UpdateService.AbortUpdate method.
+ */
+message AbortUpdateRequest {
+  // Identifier of the update to be aborted.
+  update.UpdateID updateId = 1;
+  bool softAbort = 2;
+}
+
+/**
+ *  Response message for UpdateService.AbortUpdate method.
+ *  Returns errors:
+ *    NOT_FOUND: if the update with the provided identifier is not found.
+ *    UNAVAILABLE: if the update is in a state which cannot be resumed.
+ */
+message AbortUpdateResponse {
+}

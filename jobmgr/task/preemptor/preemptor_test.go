@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	peloton_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	peloton_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"

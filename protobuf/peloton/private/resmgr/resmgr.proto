@@ -9,8 +9,8 @@ package peloton.private.resmgr;
 option go_package = "peloton/private/resmgr";
 
 import "mesos/v1/mesos.proto";
-import "peloton/api/peloton.proto";
-import "peloton/api/task/task.proto";
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/task/task.proto";
 
 
 /**
@@ -46,16 +46,16 @@ message Task {
   string name = 1;
 
   // The unique ID of the task
-  api.peloton.TaskID id = 2;
+  api.v0.peloton.TaskID id = 2;
 
   // The Job ID of the task for use cases like gang scheduling
-  api.peloton.JobID jobId = 3;
+  api.v0.peloton.JobID jobId = 3;
 
   // The mesos task ID of the task
   mesos.v1.TaskID taskId = 4;
 
   // Resource config of the task
-  api.task.ResourceConfig resource = 5;
+  api.v0.task.ResourceConfig resource = 5;
 
   //
   // Priority of a task. Higher value takes priority over lower value
@@ -75,7 +75,7 @@ message Task {
 
   // Constraint on the labels of the host or tasks on the host that this
   // task should run on. This is copied from the TaskConfig.
-  api.task.Constraint constraint = 9;
+  api.v0.task.Constraint constraint = 9;
 
   // Type of the Task
   TaskType type = 10;
@@ -113,7 +113,7 @@ message Task {
  */
 message Placement {
   // The list of tasks to be placed
-  repeated api.peloton.TaskID tasks = 1;
+  repeated api.v0.peloton.TaskID tasks = 1;
 
   // The name of the host where the tasks are placed
   string hostname = 2;
@@ -137,7 +137,7 @@ message Placement {
 */
 message PreemptionCandidate {
   // The unique ID of the task
-  api.peloton.TaskID id = 1;
+  api.v0.peloton.TaskID id = 1;
 
   // The reason for choosing the task for preemption
   PreemptionReason reason = 2;

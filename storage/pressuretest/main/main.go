@@ -20,8 +20,8 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 )
 
 var (

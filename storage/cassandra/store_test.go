@@ -10,13 +10,13 @@ import (
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/update"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/storage"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
@@ -1073,7 +1073,7 @@ func (suite *CassandraStoreTestSuite) TestSecrets() {
 	// If the results list has zero rows, this will fail
 	_, err = store.createSecretFromResults(secretID,
 		[]map[string]interface{}{
-			// zero rows mapping to same secret id
+		// zero rows mapping to same secret id
 		})
 	suite.Error(err)
 

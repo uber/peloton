@@ -7,12 +7,12 @@ import (
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	apierrors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	apierrors "code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"

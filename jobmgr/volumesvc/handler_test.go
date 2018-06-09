@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
-	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/volume/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
+	volume_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume/svc"
 
 	"code.uber.internal/infra/peloton/storage"
 	storage_mocks "code.uber.internal/infra/peloton/storage/mocks"

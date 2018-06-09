@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	t "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	t "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"

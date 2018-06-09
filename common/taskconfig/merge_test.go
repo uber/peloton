@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/util"
 	"github.com/stretchr/testify/assert"
 )

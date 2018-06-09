@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"github.com/stretchr/testify/assert"
 )

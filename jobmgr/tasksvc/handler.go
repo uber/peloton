@@ -13,11 +13,11 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_errors "code.uber.internal/infra/peloton/.gen/peloton/api/errors"
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_errors "code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 

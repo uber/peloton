@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"

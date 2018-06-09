@@ -15,9 +15,9 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"

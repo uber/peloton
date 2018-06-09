@@ -7,7 +7,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/storage"
 	"go.uber.org/atomic"
 )

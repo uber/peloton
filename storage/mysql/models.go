@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/util"
 )

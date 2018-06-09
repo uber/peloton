@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/util"
 	stringsutil "code.uber.internal/infra/peloton/util/strings"

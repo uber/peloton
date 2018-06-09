@@ -8,6 +8,12 @@ import subprocess
 import sys
 
 peloton_proto = './protobuf/'
+proto_file_paths = [
+    '*/*/*.proto',
+    '*/*/*/*.proto',
+    '*/*/*/*/*.proto',
+    '*/*/*/*/*/*.proto',
+]
 protoc_cmd = (
     'protoc  --proto_path={proto_path} --{gen}_out={mflags}:{out_dir} '
     '--{gen}_opt={gen_opt} {file}'
@@ -18,17 +24,17 @@ doc_opt = 'html,apidoc.html:mesos/*,private/*'
 def protos():
     f = []
     # Py2 glob has no **
-    for g in ['*/*/*.proto', '*/*/*/*.proto', '*/*/*/*/*.proto']:
+    for g in proto_file_paths:
         f += glob.glob(peloton_proto + g)
     return f
 
 
 def mflags(files, go_loc):
     pfiles = [string.replace(f, peloton_proto, '') for f in files]
-    pfiles.remove('peloton/api/peloton.proto')
+    pfiles.remove('peloton/api/v0/peloton.proto')
     m = string.join(['M' + f + '=' + go_loc +
                      os.path.dirname(f) for f in pfiles], ',')
-    m += ',Mpeloton/api/peloton.proto=%speloton/api/peloton' % go_loc
+    m += ',Mpeloton/api/v0/peloton.proto=%speloton/api/v0/peloton' % go_loc
     return m
 
 

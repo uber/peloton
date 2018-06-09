@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/update"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 )
 
 // TaskNotFoundError indicates that task is not found

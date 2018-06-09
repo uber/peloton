@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 )
 
 // UpdateRequest is used to indicate whether the caller wants to update only

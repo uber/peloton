@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"

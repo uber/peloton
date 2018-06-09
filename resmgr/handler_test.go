@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/respool"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pb_respool "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pb_eventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"

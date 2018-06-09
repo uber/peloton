@@ -8,7 +8,7 @@ package peloton.private.resmgr;
 
 option go_package = "peloton/private/resmgrsvc";
 
-import "peloton/api/peloton.proto";
+import "peloton/api/v0/peloton.proto";
 import "peloton/private/resmgr/resmgr.proto";
 import "peloton/private/eventstream/eventstream.proto";
 
@@ -137,12 +137,12 @@ message GetPreemptibleTasksResponse {
 }
 
 message ResourcePoolNotFound {
-  api.peloton.ResourcePoolID id = 1;
+  api.v0.peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
 message ResourcePoolNoPermission {
-  api.peloton.ResourcePoolID id = 1;
+  api.v0.peloton.ResourcePoolID id = 1;
   string message = 2;
 }
 
@@ -182,7 +182,7 @@ message Gang {
 
 message EnqueueGangsRequest {
   // ResourcePool
-  api.peloton.ResourcePoolID resPool = 1;
+  api.v0.peloton.ResourcePoolID resPool = 1;
 
   // The list of gangs to enqueue
   repeated Gang gangs = 2;
@@ -351,7 +351,7 @@ message GetActiveTasksResponse {
 // will be processed, grouped by the gang in which they belong.
 message GetPendingTasksRequest {
   // respoolID of the pool
-  api.peloton.ResourcePoolID respoolID = 1;
+  api.v0.peloton.ResourcePoolID respoolID = 1;
   // limit is the number of gangs to be returned.
   uint32 limit = 2;
 }
@@ -381,16 +381,16 @@ message GetPendingTasksResponse {
 
 message KillTasksRequest {
   // Peloton Task Ids for
-  repeated api.peloton.TaskID tasks = 1;
+  repeated api.v0.peloton.TaskID tasks = 1;
 }
 
 message TasksNotFound {
-  api.peloton.TaskID task = 1;
+  api.v0.peloton.TaskID task = 1;
   string message = 2;
 }
 
 message KillTasksError {
-  api.peloton.TaskID task = 1;
+  api.v0.peloton.TaskID task = 1;
   string message = 2;
 }
 
@@ -404,7 +404,7 @@ message KillTasksResponse {
 
 message MarkTasksLaunchedRequest {
   // Peloton Task Ids
-  repeated api.peloton.TaskID tasks = 1;
+  repeated api.v0.peloton.TaskID tasks = 1;
 }
 
 message MarkTasksLaunchedResponse {}

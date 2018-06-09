@@ -12,9 +12,9 @@ import (
 	"github.com/uber-go/tally"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"

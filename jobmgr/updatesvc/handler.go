@@ -5,8 +5,8 @@ import (
 
 	"github.com/pborman/uuid"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/update"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/update/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
 	"go.uber.org/yarpc"

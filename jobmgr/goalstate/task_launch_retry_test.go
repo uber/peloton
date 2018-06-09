@@ -7,9 +7,9 @@ import (
 	"time"
 
 	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"

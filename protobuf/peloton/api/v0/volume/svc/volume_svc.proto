@@ -1,0 +1,83 @@
+/**
+ *  This file defines the volume service in Peloton API
+ */ 
+
+syntax = "proto3";
+
+package peloton.api.v0.volume.svc;
+
+option go_package = "peloton/api/v0/volume/svc";
+option java_package = "peloton.api.v0.volume.svc";
+
+import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/volume/volume.proto";
+
+/**
+ *  Volume Manager service interface
+ */
+service VolumeService
+{
+  // List associated volumes for given job.
+  rpc ListVolumes(ListVolumesRequest) returns (ListVolumesResponse);
+
+  // Get volume data.
+  rpc GetVolume(GetVolumeRequest) returns (GetVolumeResponse);
+
+  // Delete a persistent volume.
+  rpc DeleteVolume(DeleteVolumeRequest) returns (DeleteVolumeResponse);
+}
+
+/**
+ *  Request message for VolumeService.List method.
+ */
+message ListVolumesRequest {
+  // job ID for the volumes.
+  peloton.JobID jobId = 1;
+}
+
+/**
+ *  Response message for VolumeService.List method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:         if the volume is not found.
+ */
+message ListVolumesResponse {
+  // volumes result map from volume uuid to volume info.
+  map<string, PersistentVolumeInfo> volumes = 1;
+}
+
+/**
+ *  Request message for VolumeService.Get method.
+ */
+message GetVolumeRequest {
+  // the volume id.
+  peloton.VolumeID id = 1;
+}
+
+/**
+ *  Response message for VolumeService.Get method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:         if the volume is not found.
+ */
+message GetVolumeResponse {
+  // volume info result.
+  PersistentVolumeInfo result = 1;
+}
+
+/**
+ *  Request message for VolumeService.Delete method.
+ */
+message DeleteVolumeRequest {
+  // volume id for the delete request.
+  peloton.VolumeID id = 1;
+}
+
+/**
+ *  Response message for VolumeService.Delete method.
+ *
+ *  Return errors:
+ *    NOT_FOUND:         if the volume is not found.
+ */
+message DeleteVolumeResponse {
+}

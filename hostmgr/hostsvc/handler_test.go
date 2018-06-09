@@ -10,7 +10,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
 	"code.uber.internal/infra/peloton/.gen/mesos/v1/master"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/host/svc"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
 
 	"fmt"
 	"github.com/golang/mock/gomock"

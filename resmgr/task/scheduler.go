@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pt "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common/statemachine"

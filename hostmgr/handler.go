@@ -13,11 +13,11 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/common/reservation"

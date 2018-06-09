@@ -9,7 +9,7 @@ package peloton.private.resmgr.taskqueue;
 
 option go_package = "peloton/private/resmgr/taskqueue";
 
-import "peloton/api/task/task.proto";
+import "peloton/api/v0/task/task.proto";
 
 service TaskQueue {
 
@@ -23,7 +23,7 @@ service TaskQueue {
 
 message EnqueueRequest {
   // The list of tasks to enqueue
-  repeated api.task.TaskInfo tasks = 1;
+  repeated api.v0.task.TaskInfo tasks = 1;
 }
 
 message EnqueueResponse {
@@ -37,5 +37,5 @@ message DequeueRequest {
 
 message DequeueResponse {
   // The list of tasks that have been dequeued
-  repeated api.task.TaskInfo tasks = 1;
+  repeated api.v0.task.TaskInfo tasks = 1;
 }

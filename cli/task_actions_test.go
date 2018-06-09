@@ -4,16 +4,16 @@ import (
 	"context"
 	"testing"
 
-	task_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/task/mocks"
+	task_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/suite"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/errors"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/query"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 )
 
 const (

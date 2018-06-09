@@ -6,8 +6,8 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/mesos/v1/maintenance"
-	host "code.uber.internal/infra/peloton/.gen/peloton/api/host"
-	host_svc "code.uber.internal/infra/peloton/.gen/peloton/api/host/svc"
+	host "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host"
+	host_svc "code.uber.internal/infra/peloton/.gen/peloton/api/v0/host/svc"
 
 	"code.uber.internal/infra/peloton/hostmgr/queue"
 	"code.uber.internal/infra/peloton/yarpc/encoding/mpb"

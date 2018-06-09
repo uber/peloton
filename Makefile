@@ -104,6 +104,8 @@ pbgens: $(VENDOR)
 	go get ./vendor/go.uber.org/yarpc/encoding/protobuf/protoc-gen-yarpc-go
 	@mkdir -p $(PBGEN_DIR)
 	./scripts/generate-protobuf.py --generator=go --out-dir=$(PBGEN_DIR)
+        # Temporarily patch the service name in generated yarpc code
+	./scripts/patch-v0-api-yarpc.sh
 
 apidoc: $(VENDOR)
 	go get -u github.com/pseudomuto/protoc-gen-doc/cmd/...
@@ -155,9 +157,9 @@ mockgens: build-mockgen pbgens $(GOMOCK)
 	$(call local_mockgen,common/background,Manager)
 	$(call local_mockgen,common/constraints,Evaluator)
 	$(call local_mockgen,common/goalstate,Engine)
-	$(call local_mockgen,.gen/peloton/api/job,JobManagerYARPCClient)
-	$(call local_mockgen,.gen/peloton/api/respool,ResourceManagerYARPCClient)
-	$(call local_mockgen,.gen/peloton/api/task,TaskManagerYARPCClient)
+	$(call local_mockgen,.gen/peloton/api/v0/job,JobManagerYARPCClient)
+	$(call local_mockgen,.gen/peloton/api/v0/respool,ResourceManagerYARPCClient)
+	$(call local_mockgen,.gen/peloton/api/v0/task,TaskManagerYARPCClient)
 	$(call local_mockgen,.gen/peloton/private/hostmgr/hostsvc,InternalHostServiceYARPCClient)
 	$(call local_mockgen,.gen/peloton/private/resmgrsvc,ResourceManagerServiceYARPCClient)
 	$(call local_mockgen,hostmgr,RecoveryHandler)

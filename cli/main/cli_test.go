@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	pt "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pt "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"github.com/stretchr/testify/assert"
 )

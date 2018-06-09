@@ -1,0 +1,33 @@
+/**
+ *  This file defines the common errors in Peloton API that are imported
+ *  by different subpackages.
+ */ 
+
+syntax = "proto3";
+
+package peloton.api.v0.errors;
+
+option go_package = "peloton/api/v0/errors";
+option java_package = "peloton.api.v0.errors";
+
+import "peloton/api/v0/peloton.proto";
+
+
+message JobNotFound {
+  peloton.JobID id = 1;
+  string message = 2;
+}
+
+message JobGetRuntimeFail {
+  peloton.JobID id = 1;
+  string message = 2;
+}
+
+message UnknownError {
+  string message = 1;
+}
+
+message InvalidRespool {
+  peloton.ResourcePoolID respoolID = 1;
+  string message = 2;
+}

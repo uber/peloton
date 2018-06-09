@@ -1,0 +1,64 @@
+/**
+ *  This file defines the volume related messages in Peloton API
+ */ 
+
+syntax = "proto3";
+
+package peloton.api.v0.volume;
+
+option go_package = "peloton/api/v0/volume";
+option java_package = "peloton.api.v0.volume";
+
+import "peloton/api/v0/peloton.proto";
+
+/**
+ *  States of a persistent volume
+ */
+enum VolumeState {
+  // Reserved for future compatibility of new states.
+  UNKNOWN = 0;
+
+  // The persistent volume is being initialized.
+  INITIALIZED = 1;
+
+  // The persistent volume is created successfully.
+  CREATED = 2;
+
+  // The persistent volume is deleted.
+  DELETED = 3;
+}
+
+/*
+ * Persistent volume information.
+ */
+message PersistentVolumeInfo {
+  // ID of the persistent volume.
+  peloton.VolumeID id = 1;
+
+  // ID of the job that owns the volume.
+  peloton.JobID jobId = 2;
+
+  // ID of the instance that owns the volume.
+  uint32 instanceId = 3;
+
+  // Hostname of the persisted volume.
+  string hostname = 4;
+
+  // Current state of the volume.
+  VolumeState state = 5;
+
+  // Goal state of the volume.
+  VolumeState goalState = 6;
+
+  // Volume size in MB.
+  uint32 sizeMB = 7;
+
+  // Volume mount path inside container.
+  string containerPath = 8;
+
+  // Volume creation time.
+  string createTime = 9;
+
+  // Volume info last update time.
+  string updateTime = 10;
+}

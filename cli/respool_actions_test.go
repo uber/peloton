@@ -5,10 +5,10 @@ import (
 	"io/ioutil"
 	"testing"
 
-	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/respool/mocks"
+	respool_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool/mocks"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	job_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/job/mocks"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	job_mocks "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job/mocks"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/archiver/config"
 	"code.uber.internal/infra/peloton/common/backoff"
 

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/respool"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 
 	"code.uber.internal/infra/peloton/common"
 	rc "code.uber.internal/infra/peloton/resmgr/common"

@@ -1,7 +1,7 @@
 package test
 
 import (
-	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/job"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 

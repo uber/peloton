@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/volume"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"

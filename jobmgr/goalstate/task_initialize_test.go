@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
-	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"

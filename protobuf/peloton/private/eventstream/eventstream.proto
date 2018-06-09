@@ -9,7 +9,7 @@ package peloton.private.eventstream;
 option go_package = "peloton/private/eventstream";
 
 import "mesos/v1/mesos.proto";
-import "peloton/api/task/task.proto";
+import "peloton/api/v0/task/task.proto";
 
 message Event {
   // offset is the sequence id of the event
@@ -24,7 +24,7 @@ message Event {
 
   Type type = 2;
   mesos.v1.TaskStatus mesosTaskStatus = 3;
-  peloton.api.task.TaskEvent pelotonTaskEvent = 4;
+  peloton.api.v0.task.TaskEvent pelotonTaskEvent = 4;
 }
 
 

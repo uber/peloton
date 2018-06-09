@@ -3,7 +3,7 @@ package preemption
 import (
 	"sort"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	rm_task "code.uber.internal/infra/peloton/resmgr/task"

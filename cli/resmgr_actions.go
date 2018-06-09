@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/peloton"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 )
 
