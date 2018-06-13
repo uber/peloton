@@ -65,11 +65,13 @@ var (
 	}
 )
 
-// name of the fields in pbtask.RuntimeInfo,
-// which is used by job/task cache update
+// Name of the fields in pbtask.RuntimeInfo, which is used by job/task cache
+// update request. This list is maintained in sorted order.
 const (
 	AgentIDField         = "AgentID"
 	CompletionTimeField  = "CompletionTime"
+	ConfigVersionField        = "ConfigVersion"
+	DesiredConfigVersionField = "DesiredConfigVersion"
 	FailureCountField    = "FailureCount"
 	GoalStateField       = "GoalState"
 	HostField            = "Host"

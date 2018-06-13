@@ -55,6 +55,14 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 	runtimeDiff[cached.MessageField] = "Initialize task"
 	runtimeDiff[cached.ReasonField] = ""
 
+	// If the task is being upgraded, then move the configuration version to
+	// the desired configuration version.
+	if runtime.GetConfigVersion() != runtime.GetDesiredConfigVersion() {
+		// TBD should the failure count be cleaned up as well?
+		runtimeDiff[cached.ConfigVersionField] =
+			runtime.GetDesiredConfigVersion()
+	}
+
 	err = cachedJob.PatchTasks(ctx,
 		map[uint32]cached.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 	if err == nil {

@@ -53,12 +53,16 @@ func TestTaskInitialize(t *testing.T) {
 		driver:     goalStateDriver,
 	}
 
+	newConfigVersion := uint64(2)
+
 	oldMesosTaskID := uuid.New()
 	runtime := &pbtask.RuntimeInfo{
 		State: pbtask.TaskState_KILLED,
 		MesosTaskId: &mesos_v1.TaskID{
 			Value: &oldMesosTaskID,
 		},
+		ConfigVersion:        newConfigVersion - 1,
+		DesiredConfigVersion: newConfigVersion,
 	}
 	newRuntime := runtime
 
@@ -75,9 +79,22 @@ func TestTaskInitialize(t *testing.T) {
 
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
 		func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
-			for _, rutimeDiff := range runtimeDiffs {
-				assert.Equal(t, pbtask.TaskState_INITIALIZED, rutimeDiff[cached.StateField])
-				assert.Equal(t, pbtask.TaskState_SUCCEEDED, rutimeDiff[cached.GoalStateField])
+			for _, runtimeDiff := range runtimeDiffs {
+				assert.Equal(
+					t,
+					pbtask.TaskState_INITIALIZED,
+					runtimeDiff[cached.StateField],
+				)
+				assert.Equal(
+					t,
+					pbtask.TaskState_SUCCEEDED,
+					runtimeDiff[cached.GoalStateField],
+				)
+				assert.Equal(
+					t,
+					newConfigVersion,
+					runtimeDiff[cached.ConfigVersionField],
+				)
 			}
 		}).Return(nil)
 

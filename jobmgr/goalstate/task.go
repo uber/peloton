@@ -220,25 +220,32 @@ func (t *taskEntity) GetActionList(
 }
 
 // suggestTaskAction provides the task action for a given state and goal state
-func (t *taskEntity) suggestTaskAction(currentState cached.TaskStateVector, goalState cached.TaskStateVector) TaskAction {
-	// First test if the task is at the goal version. If not, we'll have to
-	// trigger a stop and wait until the task is in a terminal state.
-	if currentState.ConfigVersion != goalState.ConfigVersion {
+func (t *taskEntity) suggestTaskAction(
+	currentState cached.TaskStateVector,
+	goalState cached.TaskStateVector) TaskAction {
+	// First check if the current configuration version of a task is the same
+	// as the desired configuration version. If it is not, then upgrade
+	// workflow for the task needs to be triggered. The upgrade workflow
+	// needs to be run for tasks which do not have non-terminal
+	// goal states to avoid trying to upgrade a batch task or a task
+	// which is going to be killed anyways.
+	if currentState.ConfigVersion != goalState.ConfigVersion &&
+		!util.IsPelotonStateTerminal(goalState.State) {
 		switch {
+		// TBD UnknownVersion is not used anywhere, so should be cleaned up.
 		case currentState.ConfigVersion == cached.UnknownVersion,
 			goalState.ConfigVersion == cached.UnknownVersion:
 			// Ignore versions if version is unknown.
 
 		case util.IsPelotonStateTerminal(currentState.State):
-			// TODO restart the task
-			return NoTaskAction
+			return InitializeAction
 
 		default:
 			return StopAction
 		}
 	}
 
-	// At this point the job has the correct version.
+	// At this point the task has the correct version.
 	// Find action to reach goal state from current state.
 	if tr, ok := _isoVersionsTaskRules[goalState.State]; ok {
 		if a, ok := tr[currentState.State]; ok {

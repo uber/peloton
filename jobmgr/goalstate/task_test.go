@@ -112,32 +112,39 @@ func TestTaskActionList(t *testing.T) {
 		instanceID: instanceID,
 	}
 
-	taskState := cached.TaskStateVector{
-		State: pbtask.TaskState_RUNNING,
+	tt := []struct {
+		currentState pbtask.TaskState
+		goalState    pbtask.TaskState
+		lengthAction int
+	}{
+		{
+			currentState: pbtask.TaskState_RUNNING,
+			goalState:    pbtask.TaskState_SUCCEEDED,
+			lengthAction: 0,
+		},
+		{
+			currentState: pbtask.TaskState_INITIALIZED,
+			goalState:    pbtask.TaskState_SUCCEEDED,
+			lengthAction: 1,
+		},
+		{
+			currentState: pbtask.TaskState_UNKNOWN,
+			goalState:    pbtask.TaskState_SUCCEEDED,
+			lengthAction: 1,
+		},
 	}
-	taskGoalState := cached.TaskStateVector{
-		State: pbtask.TaskState_SUCCEEDED,
-	}
-	_, _, actions := taskEnt.GetActionList(taskState, taskGoalState)
-	assert.Equal(t, 0, len(actions))
 
-	taskState = cached.TaskStateVector{
-		State: pbtask.TaskState_INITIALIZED,
-	}
-	taskGoalState = cached.TaskStateVector{
-		State: pbtask.TaskState_SUCCEEDED,
-	}
-	_, _, actions = taskEnt.GetActionList(taskState, taskGoalState)
-	assert.Equal(t, 1, len(actions))
+	for i, test := range tt {
+		taskState := cached.TaskStateVector{
+			State: test.currentState,
+		}
+		taskGoalState := cached.TaskStateVector{
+			State: test.goalState,
+		}
 
-	taskState = cached.TaskStateVector{
-		State: pbtask.TaskState_UNKNOWN,
+		_, _, actions := taskEnt.GetActionList(taskState, taskGoalState)
+		assert.Equal(t, test.lengthAction, len(actions), "test %d fails", i)
 	}
-	taskGoalState = cached.TaskStateVector{
-		State: pbtask.TaskState_SUCCEEDED,
-	}
-	_, _, actions = taskEnt.GetActionList(taskState, taskGoalState)
-	assert.Equal(t, 1, len(actions))
 }
 
 func TestEngineSuggestActionGoalKilled(t *testing.T) {
@@ -149,35 +156,69 @@ func TestEngineSuggestActionGoalKilled(t *testing.T) {
 		instanceID: instanceID,
 	}
 
-	a := taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pbtask.TaskState_KILLED, ConfigVersion: 0})
-	assert.Equal(t, StopAction, a)
+	tt := []struct {
+		currentState         pbtask.TaskState
+		configVersion        uint64
+		desiredConfigVersion uint64
+		action               TaskAction
+	}{
+		{
+			currentState:         pbtask.TaskState_RUNNING,
+			configVersion:        0,
+			desiredConfigVersion: 0,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_RUNNING,
+			configVersion:        10,
+			desiredConfigVersion: cached.UnknownVersion,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_STARTING,
+			configVersion:        10,
+			desiredConfigVersion: cached.UnknownVersion,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_LAUNCHED,
+			configVersion:        10,
+			desiredConfigVersion: cached.UnknownVersion,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_KILLING,
+			configVersion:        10,
+			desiredConfigVersion: cached.UnknownVersion,
+			action:               ExecutorShutdownAction,
+		},
+		{
+			currentState:         pbtask.TaskState_PREEMPTING,
+			configVersion:        10,
+			desiredConfigVersion: cached.UnknownVersion,
+			action:               TaskStateInvalidAction,
+		},
+		{
+			currentState:         pbtask.TaskState_KILLED,
+			configVersion:        10,
+			desiredConfigVersion: 11,
+			action:               NoTaskAction,
+		},
+	}
 
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 10},
-		cached.TaskStateVector{State: pbtask.TaskState_KILLED, ConfigVersion: cached.UnknownVersion})
-	assert.Equal(t, StopAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_STARTING, ConfigVersion: 10},
-		cached.TaskStateVector{State: pbtask.TaskState_KILLED, ConfigVersion: cached.UnknownVersion})
-	assert.Equal(t, StopAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_LAUNCHED, ConfigVersion: 10},
-		cached.TaskStateVector{State: pbtask.TaskState_KILLED, ConfigVersion: cached.UnknownVersion})
-	assert.Equal(t, StopAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_KILLING, ConfigVersion: 10},
-		cached.TaskStateVector{State: pbtask.TaskState_KILLED, ConfigVersion: cached.UnknownVersion})
-	assert.Equal(t, ExecutorShutdownAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_PREEMPTING, ConfigVersion: 10},
-		cached.TaskStateVector{State: pbtask.TaskState_KILLED, ConfigVersion: cached.UnknownVersion})
-	assert.Equal(t, TaskStateInvalidAction, a)
+	for i, test := range tt {
+		a := taskEnt.suggestTaskAction(
+			cached.TaskStateVector{
+				State:         test.currentState,
+				ConfigVersion: test.configVersion,
+			},
+			cached.TaskStateVector{
+				State:         pbtask.TaskState_KILLED,
+				ConfigVersion: test.desiredConfigVersion,
+			},
+		)
+		assert.Equal(t, test.action, a, "test %d fails", i)
+	}
 }
 
 func TestEngineSuggestActionLaunchedState(t *testing.T) {
@@ -204,50 +245,81 @@ func TestEngineSuggestActionGoalRunning(t *testing.T) {
 		instanceID: instanceID,
 	}
 
-	a := taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, NoTaskAction, a)
+	tt := []struct {
+		currentState         pbtask.TaskState
+		configVersion        uint64
+		desiredConfigVersion uint64
+		action               TaskAction
+	}{
+		{
+			currentState:         pbtask.TaskState_RUNNING,
+			configVersion:        0,
+			desiredConfigVersion: 0,
+			action:               NoTaskAction,
+		},
+		{
+			currentState:         pbtask.TaskState_RUNNING,
+			configVersion:        0,
+			desiredConfigVersion: 1,
+			action:               StopAction,
+		},
+		{
+			currentState:         pbtask.TaskState_KILLED,
+			configVersion:        0,
+			desiredConfigVersion: 1,
+			action:               InitializeAction,
+		},
+		{
+			currentState:         pbtask.TaskState_INITIALIZED,
+			configVersion:        cached.UnknownVersion,
+			desiredConfigVersion: 0,
+			action:               StartAction,
+		},
+		{
+			currentState:         pbtask.TaskState_INITIALIZED,
+			configVersion:        123,
+			desiredConfigVersion: 123,
+			action:               StartAction,
+		},
+		{
+			currentState:         pbtask.TaskState_STARTING,
+			configVersion:        0,
+			desiredConfigVersion: 0,
+			action:               LaunchRetryAction,
+		},
+		{
+			currentState:         pbtask.TaskState_LAUNCHED,
+			configVersion:        0,
+			desiredConfigVersion: 0,
+			action:               LaunchRetryAction,
+		},
+		{
+			currentState:         pbtask.TaskState_PREEMPTING,
+			configVersion:        0,
+			desiredConfigVersion: 0,
+			action:               TaskStateInvalidAction,
+		},
+		{
+			currentState:         pbtask.TaskState_KILLING,
+			configVersion:        0,
+			desiredConfigVersion: 0,
+			action:               TaskStateInvalidAction,
+		},
+	}
 
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 1})
-	assert.Equal(t, StopAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_KILLED, ConfigVersion: 0},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 1})
-	assert.Equal(t, NoTaskAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_INITIALIZED, ConfigVersion: cached.UnknownVersion},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, StartAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_INITIALIZED, ConfigVersion: 123},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 123})
-	assert.Equal(t, StartAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_STARTING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, LaunchRetryAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_LAUNCHED, ConfigVersion: 0},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, LaunchRetryAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_PREEMPTING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, TaskStateInvalidAction, a)
-
-	a = taskEnt.suggestTaskAction(
-		cached.TaskStateVector{State: pbtask.TaskState_KILLING, ConfigVersion: 0},
-		cached.TaskStateVector{State: pbtask.TaskState_RUNNING, ConfigVersion: 0})
-	assert.Equal(t, TaskStateInvalidAction, a)
+	for i, test := range tt {
+		a := taskEnt.suggestTaskAction(
+			cached.TaskStateVector{
+				State:         test.currentState,
+				ConfigVersion: test.configVersion,
+			},
+			cached.TaskStateVector{
+				State:         pbtask.TaskState_RUNNING,
+				ConfigVersion: test.desiredConfigVersion,
+			},
+		)
+		assert.Equal(t, test.action, a, "test %d fails", i)
+	}
 }
 
 func TestEngineSuggestActionGoalPreempting(t *testing.T) {
@@ -297,9 +369,8 @@ func TestEngineSuggestActionGoalPreempting(t *testing.T) {
 		},
 	}
 
-	var a TaskAction
 	for i, test := range tt {
-		a = taskEnt.suggestTaskAction(
+		a := taskEnt.suggestTaskAction(
 			cached.TaskStateVector{State: test.currentState, ConfigVersion: 0},
 			cached.TaskStateVector{State: pbtask.TaskState_PREEMPTING, ConfigVersion: 0})
 		assert.Equal(t, test.action, a, "test %d fails", i)
