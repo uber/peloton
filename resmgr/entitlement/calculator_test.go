@@ -35,7 +35,7 @@ type EntitlementCalculatorTestSuite struct {
 	mockHostMgr *host_mocks.MockInternalHostServiceYARPCClient
 }
 
-func (s *EntitlementCalculatorTestSuite) SetupSuite() {
+func (s *EntitlementCalculatorTestSuite) SetupTest() {
 	s.mockCtrl = gomock.NewController(s.T())
 	s.mockHostMgr = host_mocks.NewMockInternalHostServiceYARPCClient(s.mockCtrl)
 
@@ -49,10 +49,7 @@ func (s *EntitlementCalculatorTestSuite) SetupSuite() {
 		metrics:           NewMetrics(tally.NoopScope),
 	}
 	s.initRespoolTree()
-}
-
-func (s *EntitlementCalculatorTestSuite) TearDownSuite() {
-	s.mockCtrl.Finish()
+	s.resTree.Start()
 }
 
 func (s *EntitlementCalculatorTestSuite) initRespoolTree() {
@@ -74,13 +71,10 @@ func (s *EntitlementCalculatorTestSuite) initRespoolTree() {
 	s.calculator.resPoolTree = s.resTree
 }
 
-func (s *EntitlementCalculatorTestSuite) SetupTest() {
-	s.resTree.Start()
-}
-
 func (s *EntitlementCalculatorTestSuite) TearDownTest() {
 	err := s.resTree.Stop()
 	s.NoError(err)
+	s.mockCtrl.Finish()
 }
 
 func TestEntitlementCalculator(t *testing.T) {
@@ -296,7 +290,7 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlement() {
 			Return(&hostsvc.ClusterCapacityResponse{
 				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
-			Times(3),
+			AnyTimes(),
 	)
 	resPool, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool11"})
 	s.NoError(err)
@@ -390,6 +384,7 @@ func (s *EntitlementCalculatorTestSuite) TestUpdateCapacity() {
 				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
 			Times(1),
+
 		s.mockHostMgr.EXPECT().ClusterCapacity(gomock.Any(), gomock.Any()).
 			Return(&hostsvc.ClusterCapacityResponse{
 				PhysicalResources: []*hostsvc.Resource{
@@ -458,7 +453,7 @@ func (s *EntitlementCalculatorTestSuite) TestEntitlementWithMoreDemand() {
 			Return(&hostsvc.ClusterCapacityResponse{
 				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
-			Times(1),
+			AnyTimes(),
 	)
 	ResPoolRoot, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "root"})
 	s.NoError(err)
@@ -642,7 +637,7 @@ func (s *EntitlementCalculatorTestSuite) TestStaticRespoolsEntitlement() {
 			Return(&hostsvc.ClusterCapacityResponse{
 				PhysicalResources: s.createClusterCapacity(),
 			}, nil).
-			Times(1),
+			AnyTimes(),
 	)
 	resPool, err := resTree.Get(&peloton.ResourcePoolID{Value: "respool11s"})
 	s.NoError(err)
