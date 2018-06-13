@@ -1,7 +1,41 @@
 # Changelog for Peloton
 
-0.7.0 (unreleased)
+0.8.0 (unreleased)
 ------------------
+
+0.7.0
+------------------
+* 2018-06-13    Add secrets log formatter to redact secret data in logs                                adityacb@uber.com
+* 2018-06-13    Fixing flaky test case for Entitlement Calculation                                     mabansal@uber.com
+* 2018-06-13    Record state transition durations for RMTask                                           avyas@uber.com
+* 2018-06-13    Refactoring GetHosts in HostManager as well as some code cleanup                       mabansal@uber.com
+* 2018-06-13    Adding Reserver in placement engine for host reservation                               mabansal@uber.com
+* 2018-06-12    Refactor task_test.go to use test suite                                                zhixin@uber.com
+* 2018-06-12    Refine Cassandra Table Attributes                                                      varung@uber.com
+* 2018-06-12    Increase placement engine worker threads                                               varung@uber.com
+* 2018-06-12    Job Update/Get API now supports secrets                                                adityacb@uber.com
+* 2018-06-11    Move v0 Peloton API to protobuf/peloton/api/v0                                         min@uber.com
+* 2018-06-08    Update changeLog version to max version plus one when update job config                zhixin@uber.com
+* 2018-06-08    Fix deadlock in task tracker                                                           avyas@uber.com
+* 2018-06-07    Make job recovery failure a fatal error                                                apoorvaj@uber.com
+* 2018-06-07    Add API to query job and task cache                                                    zhixin@uber.com
+* 2018-06-06    Job runtime and config read gets data from cache when possible                         zhixin@uber.com
+* 2018-06-06    Format code using `gofmt`                                                              avyas@uber.com
+* 2018-06-06    Make errChan buffered eq to len of jobsByBatch to prevent gorountine leak on recoverJobsBatch failure varung@uber.com
+* 2018-06-06    Fix populateSecrets bug when launching tasks from jobmgr                               adityacb@uber.com
+* 2018-06-05    Partially created job set to INITIALIZED and enqueue to goalstate engine               zhixin@uber.com
+* 2018-06-05    Kill the orphan Mesos task before regenerate a new MesosTaskID                         chunyang.shen@uber.com
+* 2018-06-04    Add more logs for placement engine                                                     varung@uber.com
+* 2018-06-04    Remove statusUpdaterRM                                                                 zhixin@uber.com
+* 2018-06-04    Add/cleanup logs to track stuck tasks after failure to launch in job manager           apoorvaj@uber.com
+* 2018-06-04    All job config and runtime update go through cache                                     zhixin@uber.com
+* 2018-06-04    Fix async pool test & minor code refactoring                                           varung@uber.com
+* 2018-05-31    Reconcile jobs and tasks in KILLING state as well                                      apoorvaj@uber.com
+* 2018-05-30    Add stop feature for async pool jobs                                                   varung@uber.com
+* 2018-05-30    Add host manager API support in pCluster for cli                                       varung@uber.com
+* 2018-05-29    Fix GetJobConfig to use the correct configuration version                              apoorvaj@uber.com
+* 2018-05-28    Add metrics to goal state to help debugging                                            apoorvaj@uber.com
+* 2018-05-25    Making consistent function calls in entitlement calculator and reducing duplicate code in tests mabansal@uber.com
 
 0.6.14
 ------------------
