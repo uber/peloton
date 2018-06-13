@@ -92,8 +92,8 @@ func TestOfferService_Return(t *testing.T) {
 	hostOffers := []*hostsvc.HostOffer{
 		hostOffer,
 	}
-	offers := []*models.Host{
-		models.NewHost(hostOffer, nil, time.Now()),
+	offers := []*models.HostOffers{
+		models.NewHostOffers(hostOffer, nil, time.Now()),
 	}
 	gomock.InOrder(
 		mockHostManager.EXPECT().

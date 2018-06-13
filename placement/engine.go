@@ -2,6 +2,7 @@ package placement
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"time"
 
@@ -16,13 +17,15 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	"code.uber.internal/infra/peloton/common/async"
+	"code.uber.internal/infra/peloton/common/queue"
 	"code.uber.internal/infra/peloton/mimir-lib/algorithms"
 	"code.uber.internal/infra/peloton/placement/config"
+	"code.uber.internal/infra/peloton/placement/hosts"
 	tally_metrics "code.uber.internal/infra/peloton/placement/metrics"
 	"code.uber.internal/infra/peloton/placement/models"
 	"code.uber.internal/infra/peloton/placement/offers"
-	//"code.uber.internal/infra/peloton/placement/plugins/batch"
 	mimir_strategy "code.uber.internal/infra/peloton/placement/plugins/mimir"
+	"code.uber.internal/infra/peloton/placement/reserver"
 	"code.uber.internal/infra/peloton/placement/tasks"
 	"code.uber.internal/infra/peloton/storage"
 )
@@ -32,8 +35,12 @@ const (
 	_noOffersTimeoutPenalty = 1 * time.Second
 	// _noTasksTimeoutPenalty is the timeout value for a get tasks request.
 	_noTasksTimeoutPenalty = 1 * time.Second
-
+	// error message for failed placed task
 	_failedToPlaceTaskAfterTimeout = "failed to place task after timeout"
+	// represents the max size of the preemption queue
+	_maxReservationQueueSize = 10000
+	// reservation queue name
+	_reservationQueue = "reservatiom-queue"
 )
 
 // Engine represents a placement engine that can be started and stopped.
@@ -55,6 +62,7 @@ func New(
 	tallyMetrics := tally_metrics.NewMetrics(parent.SubScope("placement"))
 	offerService := offers.NewService(hostManager, resourceManager, tallyMetrics)
 	taskService := tasks.NewService(resourceManager, cfg, tallyMetrics)
+	hostsService := hosts.NewService(hostManager, resourceManager, tallyMetrics)
 	scope := tally_metrics.NewMetrics(parent.SubScope(strings.ToLower(cfg.TaskType.String())))
 
 	var strategy plugins.Strategy
@@ -74,7 +82,9 @@ func New(
 		strategy,
 		async.NewPool(async.PoolOptions{
 			MaxWorkers: cfg.Concurrency,
-		}), scope)
+		}),
+		scope,
+		hostsService)
 
 	return engine
 }
@@ -86,7 +96,8 @@ func NewEngine(
 	taskService tasks.Service,
 	strategy plugins.Strategy,
 	pool *async.Pool,
-	scope *tally_metrics.Metrics) Engine {
+	scope *tally_metrics.Metrics,
+	hostsService hosts.Service) Engine {
 	result := &engine{
 		config:       config,
 		offerService: offerService,
@@ -94,20 +105,28 @@ func NewEngine(
 		strategy:     strategy,
 		pool:         pool,
 		metrics:      scope,
+		hostsService: hostsService,
 	}
 	result.daemon = async.NewDaemon("Placement Engine", result)
+	result.reservationQueue = queue.NewQueue(
+		_reservationQueue,
+		reflect.TypeOf(resmgr.Task{}), _maxReservationQueueSize)
+	result.reserver = reserver.NewReserver(scope, config, hostsService, result.reservationQueue)
 
 	return result
 }
 
 type engine struct {
-	config       *config.PlacementConfig
-	metrics      *tally_metrics.Metrics
-	pool         *async.Pool
-	offerService offers.Service
-	taskService  tasks.Service
-	strategy     plugins.Strategy
-	daemon       async.Daemon
+	config           *config.PlacementConfig
+	metrics          *tally_metrics.Metrics
+	pool             *async.Pool
+	offerService     offers.Service
+	taskService      tasks.Service
+	strategy         plugins.Strategy
+	daemon           async.Daemon
+	reservationQueue queue.Queue
+	reserver         reserver.Reserver
+	hostsService     hosts.Service
 }
 
 func (e *engine) Start() {
@@ -241,7 +260,7 @@ func (e *engine) getTaskIDs(tasks []*models.Task) []*peloton.TaskID {
 	return taskIDs
 }
 
-func (e *engine) assignPorts(offer *models.Host, tasks []*models.Task) []uint32 {
+func (e *engine) assignPorts(offer *models.HostOffers, tasks []*models.Task) []uint32 {
 	availablePortRanges := map[*models.PortRange]struct{}{}
 	for _, resource := range offer.GetOffer().GetResources() {
 		if resource.GetName() != "ports" {
@@ -297,14 +316,14 @@ func (e *engine) filterAssignments(
 }
 
 // findUsedHosts will find the hosts that are used by the retryable assignments.
-func (e *engine) findUsedHosts(retryable []*models.Assignment) []*models.Host {
-	offers := map[*models.Host]struct{}{}
+func (e *engine) findUsedHosts(retryable []*models.Assignment) []*models.HostOffers {
+	offers := map[*models.HostOffers]struct{}{}
 	for _, assignment := range retryable {
 		if offer := assignment.GetHost(); offer != nil {
 			offers[offer] = struct{}{}
 		}
 	}
-	var used []*models.Host
+	var used []*models.HostOffers
 	for offer := range offers {
 		used = append(used, offer)
 	}
@@ -314,13 +333,13 @@ func (e *engine) findUsedHosts(retryable []*models.Assignment) []*models.Host {
 // findUnusedHosts will find the hosts that are unused by the assigned and retryable assignments.
 func (e *engine) findUnusedHosts(
 	assigned, retryable []*models.Assignment,
-	hosts []*models.Host) []*models.Host {
+	hosts []*models.HostOffers) []*models.HostOffers {
 	assignments := make([]*models.Assignment, 0, len(assigned)+len(retryable))
 	assignments = append(assignments, assigned...)
 	assignments = append(assignments, retryable...)
 
 	// For each offer determine if any tasks where assigned to it.
-	usedOffers := map[*models.Host]struct{}{}
+	usedOffers := map[*models.HostOffers]struct{}{}
 	for _, placement := range assignments {
 		offer := placement.GetHost()
 		if offer == nil {
@@ -329,7 +348,7 @@ func (e *engine) findUnusedHosts(
 		usedOffers[offer] = struct{}{}
 	}
 	// Find the unused hosts
-	unusedOffers := []*models.Host{}
+	unusedOffers := []*models.HostOffers{}
 	for _, offer := range hosts {
 		if _, used := usedOffers[offer]; !used {
 			unusedOffers = append(unusedOffers, offer)
@@ -341,7 +360,7 @@ func (e *engine) findUnusedHosts(
 func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placement {
 	createPlacementStart := time.Now()
 	// For each offer find all tasks assigned to it.
-	offersToTasks := map[*models.Host][]*models.Task{}
+	offersToTasks := map[*models.HostOffers][]*models.Task{}
 	for _, placement := range assigned {
 		task := placement.GetTask()
 		offer := placement.GetHost()
@@ -374,7 +393,7 @@ func (e *engine) createPlacement(assigned []*models.Assignment) []*resmgr.Placem
 }
 
 func (e *engine) cleanup(ctx context.Context, assigned, retryable, unassigned []*models.Assignment,
-	offers []*models.Host) {
+	offers []*models.HostOffers) {
 	if len(assigned) > 0 {
 		// Create the resource manager placements.
 		resPlacements := e.createPlacement(assigned)

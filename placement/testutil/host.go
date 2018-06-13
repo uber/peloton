@@ -9,8 +9,8 @@ import (
 	"code.uber.internal/infra/peloton/placement/models"
 )
 
-// SetupHost creates an offer.
-func SetupHost() *models.Host {
+// SetupHostOffers creates an host offer.
+func SetupHostOffers() *models.HostOffers {
 	attribute := "attribute"
 	text := "text"
 	cpuName := "cpus"
@@ -96,5 +96,5 @@ func SetupHost() *models.Host {
 			},
 		},
 	}
-	return models.NewHost(hostOffer, []*resmgr.Task{}, time.Now())
+	return models.NewHostOffers(hostOffer, []*resmgr.Task{}, time.Now())
 }

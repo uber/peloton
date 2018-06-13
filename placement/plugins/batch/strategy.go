@@ -20,7 +20,7 @@ func New() plugins.Strategy {
 type batch struct{}
 
 // PlaceOnce is an implementation of the placement.Strategy interface.
-func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.Host) {
+func (batch *batch) PlaceOnce(unassigned []*models.Assignment, hosts []*models.HostOffers) {
 	for _, host := range hosts {
 		log.WithFields(log.Fields{
 			"unassigned": unassigned,
@@ -51,9 +51,8 @@ func (batch *batch) availablePorts(resources []*mesos_v1.Resource) uint64 {
 
 // fillOffer assigns in sequence as many tasks as possible to the given offers in a host,
 // and returns a list of tasks not assigned to that host.
-func (batch *batch) fillOffer(
-	host *models.Host,
-	unassigned []*models.Assignment) []*models.Assignment {
+
+func (batch *batch) fillOffer(host *models.HostOffers, unassigned []*models.Assignment) []*models.Assignment {
 	remainPorts := batch.availablePorts(host.GetOffer().GetResources())
 	remain := scalar.FromMesosResources(host.GetOffer().GetResources())
 	for i, placement := range unassigned {

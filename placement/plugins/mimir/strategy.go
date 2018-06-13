@@ -58,11 +58,11 @@ func (mimir *mimir) convertAssignments(pelotonAssignments []*models.Assignment) 
 	return assignments, entitiesToAssignments
 }
 
-func (mimir *mimir) convertHosts(hosts []*models.Host) ([]*placement.Group,
-	map[*placement.Group]*models.Host) {
+func (mimir *mimir) convertHosts(hosts []*models.HostOffers) ([]*placement.Group,
+	map[*placement.Group]*models.HostOffers) {
 	// Convert the hosts to groups and keep a map from groups to hosts
 	groups := make([]*placement.Group, 0, len(hosts))
-	groupsToHosts := make(map[*placement.Group]*models.Host, len(hosts))
+	groupsToHosts := make(map[*placement.Group]*models.HostOffers, len(hosts))
 	for _, host := range hosts {
 		data := host.Data()
 		if data == nil {
@@ -85,7 +85,7 @@ func (mimir *mimir) convertHosts(hosts []*models.Host) ([]*placement.Group,
 }
 
 func (mimir *mimir) updateAssignments(assignments []*placement.Assignment,
-	entitiesToAssignments map[*placement.Entity]*models.Assignment, groupsToHosts map[*placement.Group]*models.Host) {
+	entitiesToAssignments map[*placement.Entity]*models.Assignment, groupsToHosts map[*placement.Group]*models.HostOffers) {
 	// Update the Peloton assignments from the mimir assignments
 	for _, assignment := range assignments {
 		if assignment.Failed {
@@ -98,7 +98,7 @@ func (mimir *mimir) updateAssignments(assignments []*placement.Assignment,
 }
 
 // PlaceOnce is an implementation of the placement.Strategy interface.
-func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*models.Host) {
+func (mimir *mimir) PlaceOnce(pelotonAssignments []*models.Assignment, hosts []*models.HostOffers) {
 	assignments, entitiesToAssignments := mimir.convertAssignments(pelotonAssignments)
 	groups, groupsToHosts := mimir.convertHosts(hosts)
 

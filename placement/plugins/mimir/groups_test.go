@@ -11,7 +11,7 @@ import (
 )
 
 func TestGroupMapper_Convert(t *testing.T) {
-	offer := testutil.SetupHost().GetOffer()
+	offer := testutil.SetupHostOffers().GetOffer()
 	group := OfferToGroup(offer)
 	assert.Equal(t, "hostname", group.Name)
 	assert.Equal(t, 4800.0, group.Metrics.Get(CPUAvailable))

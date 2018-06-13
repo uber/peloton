@@ -3,18 +3,18 @@ package models
 // Assignment represents the assignment of a task to an host. Note that the same host can be used in multiple
 // different assignment instances.
 type Assignment struct {
-	Host *Host `json:"host"`
-	Task *Task `json:"task"`
+	HostOffers *HostOffers `json:"host"`
+	Task       *Task       `json:"task"`
 }
 
 // GetHost returns the host that the task was assigned to.
-func (assignment *Assignment) GetHost() *Host {
-	return assignment.Host
+func (assignment *Assignment) GetHost() *HostOffers {
+	return assignment.HostOffers
 }
 
 // SetHost sets the host in the assignment to the given host.
-func (assignment *Assignment) SetHost(host *Host) {
-	assignment.Host = host
+func (assignment *Assignment) SetHost(host *HostOffers) {
+	assignment.HostOffers = host
 }
 
 // GetTask returns the task of the assignment.

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupAssignmentVariables() (*hostsvc.HostOffer, *resmgrsvc.Gang, *resmgr.Task, *Host, *Task, *Assignment) {
+func setupAssignmentVariables() (*hostsvc.HostOffer, *resmgrsvc.Gang, *resmgr.Task, *HostOffers, *Task, *Assignment) {
 	resmgrTask := &resmgr.Task{
 		Name: "task",
 	}
@@ -19,7 +19,7 @@ func setupAssignmentVariables() (*hostsvc.HostOffer, *resmgrsvc.Gang, *resmgr.Ta
 		Hostname: "hostname",
 	}
 	now := time.Now()
-	offer := NewHost(hostOffer, []*resmgr.Task{resmgrTask}, now)
+	offer := NewHostOffers(hostOffer, []*resmgr.Task{resmgrTask}, now)
 	resmgrGang := &resmgrsvc.Gang{
 		Tasks: []*resmgr.Task{
 			resmgrTask,

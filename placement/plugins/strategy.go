@@ -10,7 +10,7 @@ import (
 type Strategy interface {
 	// PlaceOnce takes a list of assignments without any assigned offers and
 	// will assign offers to the task in each assignment.
-	PlaceOnce(assignments []*models.Assignment, hosts []*models.Host)
+	PlaceOnce(assignments []*models.Assignment, hosts []*models.HostOffers)
 
 	// Filters will take a list of assignments and group them into groups that
 	// should use the same host filter to acquire offers from the host manager.

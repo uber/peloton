@@ -15,9 +15,9 @@ func TestBatchPlace(t *testing.T) {
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
-	offers := []*models.Host{
-		testutil.SetupHost(),
-		testutil.SetupHost(),
+	offers := []*models.HostOffers{
+		testutil.SetupHostOffers(),
+		testutil.SetupHostOffers(),
 	}
 	strategy := New()
 	strategy.PlaceOnce(assignments, offers)
@@ -34,9 +34,9 @@ func TestBatchPlaceOneFreeHost(t *testing.T) {
 	}
 	assignments[0].GetTask().GetTask().Resource.CpuLimit = 5
 	assignments[1].GetTask().GetTask().Resource.CpuLimit = 5
-	offers := []*models.Host{
-		testutil.SetupHost(),
-		testutil.SetupHost(),
+	offers := []*models.HostOffers{
+		testutil.SetupHostOffers(),
+		testutil.SetupHostOffers(),
 	}
 	strategy := New()
 	strategy.PlaceOnce(assignments, offers)

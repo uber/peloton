@@ -30,8 +30,8 @@ func TestMimirPlace(t *testing.T) {
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 		testutil.SetupAssignment(time.Now().Add(10*time.Second), 1),
 	}
-	offers := []*models.Host{
-		testutil.SetupHost(),
+	offers := []*models.HostOffers{
+		testutil.SetupHostOffers(),
 	}
 	strategy := setupStrategy()
 	strategy.PlaceOnce(assignments, offers)

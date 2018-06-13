@@ -24,10 +24,10 @@ const (
 // Service will manage offers used by any placement strategy.
 type Service interface {
 	// Acquire fetches a batch of offers from the host manager.
-	Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.TaskType, filter *hostsvc.HostFilter) (offers []*models.Host, reason string)
+	Acquire(ctx context.Context, fetchTasks bool, taskType resmgr.TaskType, filter *hostsvc.HostFilter) (offers []*models.HostOffers, reason string)
 
 	// Release returns the acquired offers back to host manager.
-	Release(ctx context.Context, offers []*models.Host)
+	Release(ctx context.Context, offers []*models.HostOffers)
 }
 
 // NewService will create a new offer service.
@@ -53,7 +53,7 @@ func (s *service) Acquire(
 	ctx context.Context,
 	fetchTasks bool,
 	taskType resmgr.TaskType,
-	filter *hostsvc.HostFilter) (offers []*models.Host, reason string) {
+	filter *hostsvc.HostFilter) (offers []*models.HostOffers, reason string) {
 	// Get list of host -> resources (aggregate of outstanding offers)
 	hostOffers, filterResults, err := s.fetchOffers(ctx, filter)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *service) Acquire(
 // Release returns the acquired offers back to host manager.
 func (s *service) Release(
 	ctx context.Context,
-	hosts []*models.Host) {
+	hosts []*models.HostOffers) {
 	if len(hosts) == 0 {
 		return
 	}
@@ -230,14 +230,14 @@ func (s *service) fetchTasks(
 func (s *service) convertOffers(
 	hostOffers []*hostsvc.HostOffer,
 	tasks map[string]*resmgrsvc.TaskList,
-	now time.Time) []*models.Host {
-	offers := make([]*models.Host, 0, len(hostOffers))
+	now time.Time) []*models.HostOffers {
+	offers := make([]*models.HostOffers, 0, len(hostOffers))
 	for _, hostOffer := range hostOffers {
 		var taskList []*resmgr.Task
 		if tasks != nil && tasks[hostOffer.Hostname] != nil {
 			taskList = tasks[hostOffer.Hostname].Tasks
 		}
-		offers = append(offers, models.NewHost(hostOffer, taskList, now))
+		offers = append(offers, models.NewHostOffers(hostOffer, taskList, now))
 	}
 
 	return offers

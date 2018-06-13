@@ -65,6 +65,16 @@ type Metrics struct {
 
 	// SetPlacementDuration is the timer for set placement
 	SetPlacementDuration tally.Timer
+
+	// Host Metrics
+
+	// HostGet indicates the number of times the scheduler requested
+	// hosts and it was fulfilled successfully
+	HostGet tally.Counter
+
+	// HostGetFail indicates the number of times the scheduler requested
+	// an Host and it failed
+	HostGetFail tally.Counter
 }
 
 // NewMetrics returns a new Metrics struct with all metrics initialized and
@@ -72,6 +82,7 @@ type Metrics struct {
 func NewMetrics(scope tally.Scope) *Metrics {
 	taskScope := scope.SubScope("task")
 	offerScope := scope.SubScope("offer")
+	hostScope := scope.SubScope("host")
 	placementScope := scope.SubScope("placement")
 
 	taskSuccessScope := taskScope.Tagged(map[string]string{"result": "success"})
@@ -79,6 +90,9 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 	offerSuccessScope := offerScope.Tagged(map[string]string{"result": "success"})
 	offerFailScope := offerScope.Tagged(map[string]string{"result": "fail"})
+
+	HostSuccessScope := hostScope.Tagged(map[string]string{"result": "success"})
+	HostFailScope := hostScope.Tagged(map[string]string{"result": "fail"})
 
 	placementSuccessScope := placementScope.Tagged(map[string]string{"result": "success"})
 	placementFailScope := placementScope.Tagged(map[string]string{"result": "fail"})
@@ -105,5 +119,8 @@ func NewMetrics(scope tally.Scope) *Metrics {
 
 		CreatePlacementDuration: placementTimeScope.Timer("create_duration"),
 		SetPlacementDuration:    placementTimeScope.Timer("set_duration"),
+
+		HostGet:     HostSuccessScope.Counter("get"),
+		HostGetFail: HostFailScope.Counter("get"),
 	}
 }

@@ -70,7 +70,7 @@ func setupEngine(t *testing.T) (
 		mockTaskService,
 		mockStrategy,
 		async.NewPool(async.PoolOptions{}),
-		metrics)
+		metrics, nil)
 
 	return ctrl, e.(*engine), mockOfferService, mockTaskService, mockStrategy
 }
@@ -99,14 +99,14 @@ type mockService struct {
 	lockAssignments sync.Mutex
 	lockHosts       sync.Mutex
 	assignments     []*models.Assignment
-	hosts           []*models.Host
+	hosts           []*models.HostOffers
 }
 
 func (s *mockService) Acquire(
 	ctx context.Context,
 	fetchTasks bool,
 	taskType resmgr.TaskType,
-	filter *hostsvc.HostFilter) (offers []*models.Host, reason string) {
+	filter *hostsvc.HostFilter) (offers []*models.HostOffers, reason string) {
 
 	s.lockHosts.Lock()
 	defer s.lockHosts.Unlock()
@@ -129,7 +129,7 @@ func (s *mockService) Dequeue(
 
 func (s *mockService) Release(
 	ctx context.Context,
-	offers []*models.Host) {
+	offers []*models.HostOffers) {
 }
 
 func (s *mockService) Enqueue(
@@ -159,9 +159,9 @@ func TestEnginePlaceMultipleTasks(t *testing.T) {
 		assignments = append(assignments, assignment)
 	}
 
-	var hosts []*models.Host
+	var hosts []*models.HostOffers
 	for i := 0; i < createHosts; i++ {
-		hosts = append(hosts, testutil.SetupHost())
+		hosts = append(hosts, testutil.SetupHostOffers())
 	}
 
 	mockService := &mockService{
@@ -202,9 +202,9 @@ func TestEnginePlaceSubsetOfTasksDueToInsufficientResources(t *testing.T) {
 		assignment := testutil.SetupAssignment(deadline, 1)
 		assignments = append(assignments, assignment)
 	}
-	var hosts []*models.Host
+	var hosts []*models.HostOffers
 	for i := 0; i < createHosts; i++ {
-		hosts = append(hosts, testutil.SetupHost())
+		hosts = append(hosts, testutil.SetupHostOffers())
 	}
 	mockService := &mockService{
 		assignments: assignments,
@@ -264,8 +264,8 @@ func TestEnginePlaceTaskExceedMaxRoundsAndGetsPlaced(t *testing.T) {
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = 1 * time.Second
 
-	host := testutil.SetupHost()
-	offers := []*models.Host{host}
+	host := testutil.SetupHostOffers()
+	offers := []*models.HostOffers{host}
 	assignment := testutil.SetupAssignment(time.Now().Add(1*time.Second), 5)
 	assignment.SetHost(host)
 	assignments := []*models.Assignment{assignment}
@@ -303,8 +303,8 @@ func TestEnginePlaceCallToStrategy(t *testing.T) {
 	defer ctrl.Finish()
 	engine.config.MaxPlacementDuration = 100 * time.Millisecond
 
-	host := testutil.SetupHost()
-	hosts := []*models.Host{host}
+	host := testutil.SetupHostOffers()
+	hosts := []*models.HostOffers{host}
 	assignment := testutil.SetupAssignment(time.Now(), 1)
 	assignment.SetHost(host)
 	assignments := []*models.Assignment{assignment}
@@ -389,7 +389,7 @@ func TestEngineFindUsedOffers(t *testing.T) {
 	used := engine.findUsedHosts(assignments)
 	assert.Equal(t, 0, len(used))
 
-	host := testutil.SetupHost()
+	host := testutil.SetupHostOffers()
 	assignment.SetHost(host)
 	used = engine.findUsedHosts(assignments)
 	assert.Equal(t, 1, len(used))
@@ -403,7 +403,7 @@ func TestEngineFilterAssignments(t *testing.T) {
 	deadline1 := time.Now()
 	now := deadline1.Add(1 * time.Second)
 	deadline2 := now.Add(30 * time.Second)
-	host := testutil.SetupHost()
+	host := testutil.SetupHostOffers()
 
 	assignment1 := testutil.SetupAssignment(deadline1, 1) // assigned
 	assignment1.SetHost(host)
@@ -435,8 +435,8 @@ func TestEngineCleanup(t *testing.T) {
 	ctrl, engine, _, mockTaskService, _ := setupEngine(t)
 	defer ctrl.Finish()
 
-	host := testutil.SetupHost()
-	hosts := []*models.Host{host}
+	host := testutil.SetupHostOffers()
+	hosts := []*models.HostOffers{host}
 	assignment := testutil.SetupAssignment(time.Now(), 1)
 	assignment.SetHost(host)
 	assignments := []*models.Assignment{assignment}
@@ -465,7 +465,7 @@ func TestEngineCreatePlacement(t *testing.T) {
 
 	now := time.Now()
 	deadline := now.Add(30 * time.Second)
-	host := testutil.SetupHost()
+	host := testutil.SetupHostOffers()
 	assignment1 := testutil.SetupAssignment(deadline, 1)
 	assignment1.SetHost(host)
 	assignment2 := testutil.SetupAssignment(deadline, 1)
@@ -495,7 +495,7 @@ func TestEngineAssignPortsAllFromASingleRange(t *testing.T) {
 		assignment1.GetTask(),
 		assignment2.GetTask(),
 	}
-	offer := testutil.SetupHost()
+	offer := testutil.SetupHostOffers()
 
 	ports := engine.assignPorts(offer, tasks)
 	assert.Equal(t, 6, len(ports))
@@ -519,7 +519,7 @@ func TestEngineAssignPortsFromMultipleRanges(t *testing.T) {
 		assignment1.GetTask(),
 		assignment2.GetTask(),
 	}
-	host := testutil.SetupHost()
+	host := testutil.SetupHostOffers()
 	*host.GetOffer().Resources[4].Ranges.Range[0].End = uint64(31001)
 	begin, end := uint64(31002), uint64(31009)
 	host.GetOffer().Resources[4].Ranges.Range = append(
@@ -560,12 +560,12 @@ func TestEngineFindUnusedOffers(t *testing.T) {
 		assignment3,
 		assignment4,
 	}
-	host1 := testutil.SetupHost()
-	host2 := testutil.SetupHost()
+	host1 := testutil.SetupHostOffers()
+	host2 := testutil.SetupHostOffers()
 	assignment1.SetHost(host1)
 	assignment2.SetHost(host1)
 	assignment3.SetHost(host1)
-	offers := []*models.Host{
+	offers := []*models.HostOffers{
 		host1,
 		host2,
 	}
