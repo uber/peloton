@@ -1,11 +1,14 @@
 package host
 
 import (
+	"fmt"
+
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
-	"github.com/pkg/errors"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -40,12 +43,14 @@ func NewMatcher(
 // GetMatchingHosts tries to match the hosts through Host filter
 // and it returns the agentId-> AgentInfo for the matched hosts.
 // If the filter does not match, it returns the error
-func (m *Matcher) GetMatchingHosts() (map[string]*mesos.AgentInfo, error) {
+func (m *Matcher) GetMatchingHosts() (map[string]*mesos.AgentInfo, *hostsvc.GetHostsFailure) {
 	result := m.matchHostsFilter(m.agentMap, m.hostFilter, m.evaluator, m.agentInfoMap)
 	if result == hostsvc.HostFilterResult_MATCH {
 		return m.resultHosts, nil
 	}
-	return nil, errors.Errorf("could not return matching hosts %s", result.String())
+	return nil, &hostsvc.GetHostsFailure{
+		Message: fmt.Sprintf("could not return matching hosts %s", result.String()),
+	}
 }
 
 // matchHostFilter takes the host filter with the agent maps
@@ -59,12 +64,10 @@ func (m *Matcher) matchHostFilter(
 	evaluator constraints.Evaluator,
 	agentInfoMap *AgentInfoMap) hostsvc.HostFilterResult {
 	// tries to get the resource requirement from the host filter
-	min := c.GetResourceConstraint().GetMinimum()
-	if min != nil {
-		scalarMin := scalar.FromResourceConfig(min)
+	if min := c.GetResourceConstraint().GetMinimum(); min != nil {
 		// Checks if the resources in the host are enough for the
 		// filter , if not return INSUFFICIENT_RESOURCES
-		if !resource.Contains(scalarMin) {
+		if scalarMin := scalar.FromResourceConfig(min); !resource.Contains(scalarMin) {
 			return hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES
 		}
 	}
@@ -87,6 +90,7 @@ func (m *Matcher) matchHostFilter(
 		// evaluating result of constraints evaluator
 		switch result {
 		case constraints.EvaluateResultMatch:
+			fallthrough
 		case constraints.EvaluateResultNotApplicable:
 			log.WithFields(log.Fields{
 				"values":     lv,
@@ -114,10 +118,7 @@ func (m *Matcher) matchHostsFilter(
 	evaluator constraints.Evaluator,
 	agentInfoMap *AgentInfoMap) hostsvc.HostFilterResult {
 
-	if agentMap == nil {
-		return hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES
-	}
-	if agentInfoMap == nil {
+	if agentMap == nil || agentInfoMap == nil {
 		return hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES
 	}
 

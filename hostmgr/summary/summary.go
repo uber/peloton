@@ -209,6 +209,7 @@ func matchHostFilter(
 
 		switch result {
 		case constraints.EvaluateResultMatch:
+			fallthrough
 		case constraints.EvaluateResultNotApplicable:
 			log.WithFields(log.Fields{
 				"values":     lv,

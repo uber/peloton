@@ -118,15 +118,16 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 	resources := scalar.FromMesosResources(suite.response.Agents[0].AgentInfo.Resources)
 
 	testTable := []struct {
-		agentid   string
+		agentID   string
 		resources scalar.Resources
 		expected  hostsvc.HostFilterResult
 		filter    *hostsvc.HostFilter
 		msg       string
 	}{
 		{
+			msg:       "Enough resource with GPU",
 			expected:  hostsvc.HostFilterResult_MATCH,
-			agentid:   agentID,
+			agentID:   agentID,
 			resources: resources,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -142,11 +143,11 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 					},
 				},
 			},
-			msg: "Enough resource with GPU",
 		},
 		{
+			msg:       "Not Enough CPU Resources.",
 			expected:  hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES,
-			agentid:   agentID,
+			agentID:   agentID,
 			resources: resources,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -162,11 +163,11 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 					},
 				},
 			},
-			msg: "Not Enough CPU Resources.",
 		},
 		{
+			msg:       "Not enough memory",
 			expected:  hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES,
-			agentid:   agentID,
+			agentID:   agentID,
 			resources: resources,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -181,11 +182,11 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 					},
 				},
 			},
-			msg: "Not enough memory",
 		},
 		{
+			msg:       "Enough resource without GPU",
 			expected:  hostsvc.HostFilterResult_MATCH,
-			agentid:   agentID,
+			agentID:   agentID,
 			resources: resources,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -199,7 +200,6 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 					},
 				},
 			},
-			msg: "Enough resource without GPU",
 		},
 	}
 
@@ -207,7 +207,7 @@ func (suite *MatcherTestSuite) TestResourcesConstraint() {
 		suite.Equal(
 			tt.expected,
 			matcher.matchHostFilter(
-				tt.agentid,
+				tt.agentID,
 				tt.resources,
 				tt.filter,
 				nil,
@@ -292,7 +292,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilter() {
 	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_MATCH)
 	hosts, err := matcher.GetMatchingHosts()
-	suite.NoError(err)
+	suite.Nil(err)
 	// hostfilter should return both the hosts
 	suite.Equal(len(hosts), 2)
 	// invalid agent Map
@@ -336,7 +336,7 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithDifferentosts() {
 	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_MATCH)
 	hosts, err := matcher.GetMatchingHosts()
-	suite.NoError(err)
+	suite.Nil(err)
 	// one host matched
 	suite.Equal(len(hosts), 1)
 }
@@ -373,8 +373,8 @@ func (suite *MatcherTestSuite) TestMatchHostsFilterWithZeroResourceHosts() {
 	result := matcher.matchHostsFilter(matcher.agentMap, filter, nil, GetAgentMap())
 	suite.Equal(result, hostsvc.HostFilterResult_INSUFFICIENT_RESOURCES)
 	hosts, err := matcher.GetMatchingHosts()
-	suite.Error(err)
+	suite.NotNil(err)
 	// this should return error and matching error contents.
-	suite.Contains(err.Error(), "could not return matching hosts")
+	suite.Contains(err.Message, "could not return matching hosts")
 	suite.Nil(hosts)
 }

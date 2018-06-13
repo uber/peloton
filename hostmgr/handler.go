@@ -13,11 +13,11 @@ import (
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	sched "code.uber.internal/infra/peloton/.gen/mesos/v1/scheduler"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/constraints"
 	"code.uber.internal/infra/peloton/common/reservation"
@@ -76,7 +76,6 @@ func InitServiceHandler(
 func validateHostFilter(
 	filter *hostsvc.HostFilter) *hostsvc.InvalidHostFilter {
 	if filter == nil {
-		log.WithField("filter", filter).Warn("Empty host constraint")
 		return &hostsvc.InvalidHostFilter{
 			Message: "Empty host filter",
 		}
@@ -121,6 +120,7 @@ func (h *serviceHandler) AcquireHostOffers(
 	log.WithField("request", body).Debug("AcquireHostOffers called.")
 
 	if invalid := validateHostFilter(body.GetFilter()); invalid != nil {
+		log.WithField("filter", body.GetFilter()).Warn("Invalid Filter")
 		h.metrics.AcquireHostOffersInvalid.Inc(1)
 		return &hostsvc.AcquireHostOffersResponse{
 			Error: &hostsvc.AcquireHostOffersResponse_Error{
@@ -188,12 +188,7 @@ func (h *serviceHandler) GetHosts(
 	// validating the Host Filter, in case of invalid filter
 	// return InvalidHostFilter error
 	if invalid := validateHostFilter(body.GetFilter()); invalid != nil {
-		h.metrics.GetHostsInvalid.Inc(1)
-		return &hostsvc.GetHostsResponse{
-			Error: &hostsvc.GetHostsResponse_Error{
-				InvalidHostFilter: invalid,
-			},
-		}, nil
+		return h.processGetHostsFailure(invalid), nil
 	}
 
 	// Creating the Matcher instance for particular HostFilter and Evaluator
@@ -203,33 +198,41 @@ func (h *serviceHandler) GetHosts(
 	// Calling the GetMatchingHosts to get the matched hosts for the matcher
 	result, err := matcher.GetMatchingHosts()
 	if err != nil {
-		h.metrics.GetHostsInvalid.Inc(1)
-		return &hostsvc.GetHostsResponse{
-			Error: &hostsvc.GetHostsResponse_Error{
-				Failure: &hostsvc.GetHostsFailure{
-					Message: err.Error(),
-				},
-			},
-		}, nil
+		return h.processGetHostsFailure(err), nil
 	}
 
-	// Creating empty GetHostsResponse
-	response := hostsvc.GetHostsResponse{
-		Hosts: []*hostsvc.HostInfo{},
-	}
+	hosts := make([]*hostsvc.HostInfo, 0, len(result))
 
 	// Filling agentInfo from result to GetHostsResponse
 	for hostname, agentInfo := range result {
-		response.Hosts = append(response.Hosts,
-			util.CreateHostInfo(hostname, agentInfo))
+		hosts = append(hosts, util.CreateHostInfo(hostname, agentInfo))
 	}
 
 	//Updating metrics for GetHosts
 	h.metrics.GetHosts.Inc(1)
-	h.metrics.GetHostsCount.Inc(int64(len(response.Hosts)))
+	h.metrics.GetHostsCount.Inc(int64(len(hosts)))
 
-	log.WithField("response", response).Debug("AcquireHostOffers returned")
-	return &response, nil
+	log.WithField("hosts", hosts).Debug("GetHosts returned")
+	return &hostsvc.GetHostsResponse{
+		Hosts: hosts,
+	}, nil
+}
+
+// processGetHostsFailure process the GetHostsFailure and returns the
+// error in respose otherwise with empty error
+func (h *serviceHandler) processGetHostsFailure(err interface{}) *hostsvc.GetHostsResponse {
+	resp := &hostsvc.GetHostsResponse{
+		Error: &hostsvc.GetHostsResponse_Error{},
+	}
+	if filter, ok := err.(*hostsvc.InvalidHostFilter); ok {
+		log.WithField("error", filter.Message).Warn("no matching hosts")
+		resp.Error.InvalidHostFilter = filter
+	} else if hostFailure, ok := err.(*hostsvc.GetHostsFailure); ok {
+		log.WithField("error", hostFailure.Message).Warn("no matching hosts")
+		resp.Error.Failure = hostFailure
+	}
+	h.metrics.GetHostsInvalid.Inc(1)
+	return resp
 }
 
 // ReleaseHostOffers implements InternalHostService.ReleaseHostOffers.
@@ -384,10 +387,10 @@ func (h *serviceHandler) OfferOperations(
 		err = h.persistVolumeInfo(ctx, offerOperations, req.GetHostname())
 	}
 	if err != nil {
-		log.WithError(err).
-			WithField("request", req).
-			WithField("offers", offers).
-			Error("get offer operations failed.")
+		log.WithError(err).WithFields(log.Fields{
+			"request": req,
+			"offers":  offers,
+		}).Error("get offer operations failed.")
 		// For now, decline all offers to Mesos in the hope that next
 		// call to pool will select some different host.
 		// An alternative is to mark offers on the host as ready.
