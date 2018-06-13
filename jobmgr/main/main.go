@@ -136,6 +136,12 @@ var (
 		Default("").
 		Envar("DATACENTER").
 		String()
+
+	enableSecrets = app.Flag(
+		"enable-secrets", "enable handing secrets for this cluster").
+		Default("false").
+		Envar("ENABLE_SECRETS").
+		Bool()
 )
 
 func main() {
@@ -143,7 +149,8 @@ func main() {
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	log.SetFormatter(&log.JSONFormatter{})
+	log.SetFormatter(&logging.SecretsFormatter{
+		JSONFormatter: &log.JSONFormatter{}})
 
 	initialLevel := log.InfoLevel
 	if *debug {
@@ -161,6 +168,9 @@ func main() {
 		logging.ConfigureSentry(&cfg.SentryConfig)
 	}
 
+	if *enableSecrets {
+		cfg.JobManager.JobSvcCfg.EnableSecrets = true
+	}
 	// now, override any CLI flags in the loaded config.Config
 	if *httpPort != 0 {
 		cfg.JobManager.HTTPPort = *httpPort

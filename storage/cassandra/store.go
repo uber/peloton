@@ -2230,10 +2230,14 @@ func (s *Store) applyStatements(ctx context.Context, stmts []api.Statement, jobI
 
 func (s *Store) applyStatement(ctx context.Context, stmt api.Statement, itemName string) error {
 	stmtString, _, _ := stmt.ToSQL()
-	log.Debugf("stmt=%v", stmtString)
+	// Use common.DBStmtLogField to log CQL queries here. Log formatter will use
+	// this string to redact secret_info table queries
+	log.WithField(common.DBStmtLogField, stmtString).Debug("DB stmt string")
 	result, err := s.executeWrite(ctx, stmt)
 	if err != nil {
-		log.Errorf("Fail to execute stmt for %v %v, err=%v", itemName, stmtString, err)
+		log.WithError(err).WithFields(
+			log.Fields{common.DBStmtLogField: stmtString, "itemName": itemName}).
+			Debug("Fail to execute stmt")
 		return err
 	}
 	if result != nil {

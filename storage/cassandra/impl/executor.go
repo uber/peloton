@@ -6,8 +6,10 @@ import (
 
 	"github.com/gocql/gocql"
 
+	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/storage/cassandra/api"
 	qb "code.uber.internal/infra/peloton/storage/querybuilder"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -48,7 +50,9 @@ func (b ExecutorBase) buildQuery(ctx context.Context, stmt api.Statement) (*gocq
 	}
 
 	s.convertUUID(args)
-	log.WithField("uql", uql).WithField("args", args).Debug("cql and args")
+	log.WithFields(log.Fields{common.DBUqlLogField: uql,
+		common.DBArgsLogField: args}).
+		Debug("cql and args")
 
 	qu := s.cSession.Query(uql, args...).WithContext(ctx)
 
@@ -134,8 +138,9 @@ func (w WriteExecutor) ExecuteBatch(ctx context.Context, stmts []api.Statement) 
 			log.WithError(err).Error("Tosql failed")
 			return nil, err
 		}
-		log.WithField("uql", uql).WithField("args", args).Debug("cql and args")
-
+		log.WithFields(log.Fields{common.DBUqlLogField: uql,
+			common.DBArgsLogField: args}).
+			Debug("cql and args")
 		s.convertUUID(args)
 		batch.WithContext(ctx).Query(uql, args...)
 	}

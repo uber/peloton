@@ -138,7 +138,8 @@ func main() {
 	app.HelpFlag.Short('h')
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	log.SetFormatter(&log.JSONFormatter{})
+	log.SetFormatter(&logging.SecretsFormatter{
+		JSONFormatter: &log.JSONFormatter{}})
 
 	initialLevel := log.InfoLevel
 	if *debug {

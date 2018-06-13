@@ -44,4 +44,19 @@ const (
 
 	// RootResPoolID is the ID for Root node
 	RootResPoolID = "root"
+
+	// DBStmtLogField is used by storage code to log DB statements
+	// It is also used by SecretsFormatter to redact DB statements
+	// related to secret_info table
+	DBStmtLogField = "db_stmt"
+
+	// DBUqlLogField is used by storage code to log DB statements
+	// It is also used by SecretsFormatter to redact DB statements
+	// related to secret_info table
+	DBUqlLogField = "db_uql"
+
+	// DBArgsLogField is used by storage code to log DB statements
+	// It is also used by SecretsFormatter to redact DB statements
+	// related to secret_info table
+	DBArgsLogField = "db_args"
 )
