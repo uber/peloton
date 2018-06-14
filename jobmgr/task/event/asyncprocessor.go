@@ -123,7 +123,7 @@ func newBucketEventProcessor(t StatusProcessor, bucketNum int, chanSize int) *as
 	}
 }
 
-func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) {
+func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) error {
 	var taskID string
 	var err error
 	if event.Type == pbeventstream.Event_MESOS_TASK_STATUS {
@@ -133,7 +133,7 @@ func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) {
 			log.WithError(err).
 				WithField("mesos_task_id", mesosTaskID).
 				Error("Failed to ParseTaskIDFromMesosTaskID")
-			return
+			return err
 		}
 	} else if event.Type == pbeventstream.Event_PELOTON_TASK_EVENT {
 		taskID = event.PelotonTaskEvent.TaskId.Value
@@ -141,9 +141,16 @@ func (t *asyncEventProcessor) addEvent(event *pbeventstream.Event) {
 			"from resmgr")
 	}
 
-	_, instanceID, _ := util.ParseTaskID(taskID)
+	_, instanceID, err := util.ParseTaskID(taskID)
+	if err != nil {
+		log.WithError(err).
+			WithField("taskID", taskID).
+			Error("Failed to ParseTaskID")
+		return err
+	}
 	index := instanceID % len(t.eventBuckets)
 	t.eventBuckets[index].eventCh <- event
+	return nil
 }
 
 func (t *asyncEventProcessor) drainAndShutdown() {
