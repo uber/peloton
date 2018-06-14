@@ -155,6 +155,107 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxInstances() {
 	suite.Error(err)
 }
 
+func (suite *TaskConfigTestSuite) TestValidateTaskConfigMaxFailureRetries() {
+	// No error if there is a default task config
+	taskConfig := task.TaskConfig{
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+			FdLimit:     1000,
+		},
+		Ports: []*task.PortConfig{
+			{
+				Name:    "port",
+				EnvName: "PORT",
+			},
+		},
+		Command: &mesos.CommandInfo{
+			Value: util.PtrPrintf("echo Hello"),
+		},
+		RestartPolicy: &task.RestartPolicy{
+			MaxFailures: 200,
+		},
+	}
+
+	jobConfig := job.JobConfig{
+		Name:          fmt.Sprintf("TestJob_1"),
+		InstanceCount: 10,
+		DefaultConfig: &taskConfig,
+	}
+
+	suite.Equal(int(jobConfig.GetDefaultConfig().GetRestartPolicy().GetMaxFailures()), 200)
+	err := ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	suite.Equal(int(jobConfig.GetDefaultConfig().GetRestartPolicy().GetMaxFailures()), 100)
+	suite.NoError(err)
+
+	taskConfig = task.TaskConfig{
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+			FdLimit:     1000,
+		},
+		Ports: []*task.PortConfig{
+			{
+				Name:    "port",
+				EnvName: "PORT",
+			},
+		},
+		Command: &mesos.CommandInfo{
+			Value: util.PtrPrintf("echo Hello"),
+		},
+		RestartPolicy: &task.RestartPolicy{
+			MaxFailures: 200,
+		},
+	}
+
+	taskConfig2 := task.TaskConfig{
+		Resource: &task.ResourceConfig{
+			CpuLimit:    0.8,
+			MemLimitMb:  800,
+			DiskLimitMb: 1500,
+			FdLimit:     1000,
+		},
+		Ports: []*task.PortConfig{
+			{
+				Name:    "port",
+				EnvName: "PORT",
+			},
+		},
+		Command: &mesos.CommandInfo{
+			Value: util.PtrPrintf("echo Hello"),
+		},
+		RestartPolicy: &task.RestartPolicy{
+			MaxFailures: 5,
+		},
+	}
+
+	// No error if all instance configs exist
+	instances := make(map[uint32]*task.TaskConfig)
+	for i := uint32(0); i < 10; i++ {
+		if i == 5 {
+			instances[i] = &taskConfig2
+			continue
+		}
+		instances[i] = &taskConfig
+	}
+	jobConfig = job.JobConfig{
+		Name:           fmt.Sprintf("TestJob_1"),
+		InstanceCount:  10,
+		InstanceConfig: instances,
+	}
+
+	// resets max task retry failures to 10.
+	suite.Equal(int(jobConfig.GetInstanceConfig()[0].GetRestartPolicy().GetMaxFailures()), 200)
+	suite.Equal(int(jobConfig.GetInstanceConfig()[5].GetRestartPolicy().GetMaxFailures()), 5)
+
+	err = ValidateTaskConfig(&jobConfig, maxTasksPerJob)
+	suite.Equal(int(jobConfig.GetInstanceConfig()[0].GetRestartPolicy().GetMaxFailures()), _maxTaskRetries)
+	suite.Equal(int(jobConfig.GetInstanceConfig()[5].GetRestartPolicy().GetMaxFailures()), 5)
+	suite.NoError(err)
+}
+
 func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMinInstances() {
 	// No error if there is a default task config
 	taskConfig := task.TaskConfig{

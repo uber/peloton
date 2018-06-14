@@ -10,7 +10,11 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-const _updateNotSupported = "updating %s not supported"
+const (
+	_updateNotSupported = "updating %s not supported"
+	// Max retries on task failures.
+	_maxTaskRetries = 100
+)
 
 var (
 	errPortNameMissing    = errors.New("port name is missing")
@@ -126,6 +130,14 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 		if taskConfig == nil && defaultConfig == nil {
 			err := fmt.Errorf("missing task config for instance %v", i)
 			return err
+		}
+
+		restartPolicy := defaultConfig.GetRestartPolicy()
+		if taskConfig.GetRestartPolicy() != nil {
+			restartPolicy = taskConfig.GetRestartPolicy()
+		}
+		if restartPolicy.GetMaxFailures() > _maxTaskRetries {
+			restartPolicy.MaxFailures = _maxTaskRetries
 		}
 
 		// Validate port config
