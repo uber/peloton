@@ -3,6 +3,10 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.1
+------------------
+* 2018-06-13    Remove GetJobConfig from DB in TaskQuery and TaskList                                  chunyang.shen@uber.com
+
 0.7.0
 ------------------
 * 2018-06-13    Add secrets log formatter to redact secret data in logs                                adityacb@uber.com
