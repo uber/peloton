@@ -225,6 +225,23 @@ func (p *offerPool) ClaimForLaunch(hostname string, useReservedOffers bool) (map
 	return offerMap, nil
 }
 
+// validateOfferUnavailablity for incoming offer.
+// Reject an offer if maintenance start time is less than current time.
+// Reject an offer if current time is less than 3 hours to maintenance start time.
+// Accept an offer if current time is more than 3 hours to maintenance start time.
+func validateOfferUnavailablity(offer *mesos.Offer) bool {
+	if offer.GetUnavailability() != nil {
+		currentTime := time.Now().UnixNano()
+		unavailabilityStartTime := offer.Unavailability.Start.GetNanoseconds()
+		if (unavailabilityStartTime-currentTime > 0 &&
+			unavailabilityStartTime-currentTime < _defaultRejectUnavailableOffer) ||
+			(currentTime-unavailabilityStartTime >= 0) {
+			return true
+		}
+	}
+	return false
+}
+
 // AddOffers is a callback event when Mesos Master sends offers.
 func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) []*mesos.Offer {
 	var acceptableOffers []*mesos.Offer
@@ -232,18 +249,10 @@ func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) []*mes
 	hostnameToOffers := make(map[string][]*mesos.Offer)
 
 	for _, offer := range offers {
-		// If Unavailability for a offer is going to start after 3 hours from current time,
-		// then only stop accepting them.
-		if offer.GetUnavailability() != nil {
-			currentTime := time.Now().UnixNano()
-			unavailabilityStartTime := offer.Unavailability.Start.GetNanoseconds()
-
-			if unavailabilityStartTime-currentTime > 0 && unavailabilityStartTime-currentTime < _defaultRejectUnavailableOffer {
-				unavailableOffers = append(unavailableOffers, offer.Id)
-				continue
-			}
+		if validateOfferUnavailablity(offer) {
+			unavailableOffers = append(unavailableOffers, offer.Id)
+			continue
 		}
-
 		p.timedOffers.Store(offer.Id.GetValue(), &TimedOffer{
 			Hostname:   offer.GetHostname(),
 			Expiration: time.Now().Add(p.offerHoldTime),

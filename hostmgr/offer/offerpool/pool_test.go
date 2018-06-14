@@ -375,7 +375,10 @@ func (suite *OfferPoolTestSuite) TestOffersWithUnavailability() {
 	offer3 := suite.agent1Offers[2]
 	unavailableOffer1 := suite.agent4Offers[4]
 	unavailableOffer2 := suite.agent1Offers[4]
+	unavailableOffer3 := suite.agent2Offers[4]
+	unavailableOffer4 := suite.agent3Offers[4]
 
+	// Reject the offer, as start time of maintenance is less than 3 hour from current time.
 	startTime := int64(time.Now().Add(time.Duration(2) * time.Hour).UnixNano())
 	unavailableOffer1.Unavailability = &mesos.Unavailability{
 		Start: &mesos.TimeInfo{
@@ -383,11 +386,27 @@ func (suite *OfferPoolTestSuite) TestOffersWithUnavailability() {
 		},
 	}
 
-	// Accept the offer, as start time for maintenance is after 4 hours.
+	// Accept the offer, as start time for maintenance is after 4 hours of current time.
 	startTime2 := int64(time.Now().Add(time.Duration(4) * time.Hour).UnixNano())
 	unavailableOffer2.Unavailability = &mesos.Unavailability{
 		Start: &mesos.TimeInfo{
 			Nanoseconds: &startTime2,
+		},
+	}
+
+	// Reject the offer, as current time is more than start time of maintenance.
+	startTime3 := int64(time.Now().Add(time.Duration(-2) * time.Hour).UnixNano())
+	unavailableOffer3.Unavailability = &mesos.Unavailability{
+		Start: &mesos.TimeInfo{
+			Nanoseconds: &startTime3,
+		},
+	}
+
+	// Reject the offer, as current time is same as maintenance start time.
+	startTime4 := int64(time.Now().UnixNano())
+	unavailableOffer4.Unavailability = &mesos.Unavailability{
+		Start: &mesos.TimeInfo{
+			Nanoseconds: &startTime4,
 		},
 	}
 
@@ -402,7 +421,7 @@ func (suite *OfferPoolTestSuite) TestOffersWithUnavailability() {
 		FrameworkId: frameworkID,
 		Type:        &callType,
 		Decline: &sched.Call_Decline{
-			OfferIds: []*mesos.OfferID{unavailableOffer1.Id},
+			OfferIds: []*mesos.OfferID{unavailableOffer1.Id, unavailableOffer3.Id, unavailableOffer4.Id},
 		},
 	}
 
@@ -413,7 +432,7 @@ func (suite *OfferPoolTestSuite) TestOffersWithUnavailability() {
 	)
 
 	// the offer with Unavailability shouldn't be considered
-	suite.pool.AddOffers(context.Background(), []*mesos.Offer{offer1, offer2, offer3, unavailableOffer1, unavailableOffer2})
+	suite.pool.AddOffers(context.Background(), []*mesos.Offer{offer1, offer2, offer3, unavailableOffer1, unavailableOffer2, unavailableOffer3, unavailableOffer4})
 	suite.Equal(suite.GetTimedOfferLen(), 4)
 
 	// Clear all offers.
