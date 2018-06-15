@@ -95,43 +95,40 @@ func (h *serviceHandler) Create(
 
 	h.metrics.JobAPICreate.Inc(1)
 
-	jobID := req.GetId()
-	// It is possible that jobId is nil since protobuf doesn't enforce it
-	if jobID == nil {
-		jobID = &peloton.JobID{Value: ""}
-	}
-
 	if !h.candidate.IsLeader() {
 		h.metrics.JobCreateFail.Inc(1)
-		return nil, yarpcerrors.UnavailableErrorf("Job Create API not suppported on non-leader")
+		return nil, yarpcerrors.UnavailableErrorf(
+			"Job Create API not suppported on non-leader")
 	}
 
-	if len(jobID.Value) == 0 {
-		jobID.Value = uuid.New()
-		log.WithField("job_id", jobID).Info("Genarating UUID for empty job ID")
-	} else {
-		if uuid.Parse(jobID.Value) == nil {
-			log.WithField("job_id", jobID.Value).Warn("JobID is not valid UUID")
-			h.metrics.JobCreateFail.Inc(1)
-			return &job.CreateResponse{
-				Error: &job.CreateResponse_Error{
-					InvalidJobId: &job.InvalidJobId{
-						Id:      req.Id,
-						Message: "JobID must be valid UUID",
-					},
-				},
-			}, nil
-		}
+	jobID := req.GetId()
+	// It is possible that jobId is nil since protobuf doesn't enforce it
+	if jobID == nil || len(jobID.GetValue()) == 0 {
+		jobID = &peloton.JobID{Value: uuid.New()}
 	}
+
+	if uuid.Parse(jobID.GetValue()) == nil {
+		log.WithField("job_id", jobID.GetValue()).Warn("JobID is not valid UUID")
+		h.metrics.JobCreateFail.Inc(1)
+		return &job.CreateResponse{
+			Error: &job.CreateResponse_Error{
+				InvalidJobId: &job.InvalidJobId{
+					Id:      jobID,
+					Message: "JobID must be valid UUID",
+				},
+			},
+		}, nil
+	}
+
 	jobConfig := req.GetConfig()
 
-	err := h.validateResourcePool(jobConfig.RespoolID)
+	err := h.validateResourcePool(jobConfig.GetRespoolID())
 	if err != nil {
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
 				InvalidConfig: &job.InvalidJobConfig{
-					Id:      req.Id,
+					Id:      jobID,
 					Message: err.Error(),
 				},
 			},
@@ -147,7 +144,7 @@ func (h *serviceHandler) Create(
 		return &job.CreateResponse{
 			Error: &job.CreateResponse_Error{
 				InvalidConfig: &job.InvalidJobConfig{
-					Id:      req.Id,
+					Id:      jobID,
 					Message: err.Error(),
 				},
 			},
@@ -205,7 +202,8 @@ func (h *serviceHandler) Update(
 
 	if !h.candidate.IsLeader() {
 		h.metrics.JobUpdateFail.Inc(1)
-		return nil, yarpcerrors.UnavailableErrorf("Job Update API not suppported on non-leader")
+		return nil, yarpcerrors.UnavailableErrorf(
+			"Job Update API not suppported on non-leader")
 	}
 
 	jobID := req.GetId()
@@ -233,17 +231,16 @@ func (h *serviceHandler) Update(
 
 	newConfig := req.GetConfig()
 	oldConfig, err := h.jobStore.GetJobConfig(ctx, jobID)
-
-	if newConfig.RespoolID == nil {
-		newConfig.RespoolID = oldConfig.RespoolID
-	}
-
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).
 			Error("Failed to GetJobConfig")
 		h.metrics.JobUpdateFail.Inc(1)
 		return nil, err
+	}
+
+	if newConfig.GetRespoolID() == nil {
+		newConfig.RespoolID = oldConfig.GetRespoolID()
 	}
 
 	// Remove the existing secret volumes from the config. These were added by
@@ -348,7 +345,7 @@ func (h *serviceHandler) Get(
 	log.WithField("request", req).Debug("JobManager.Get called")
 	h.metrics.JobAPIGet.Inc(1)
 
-	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.Id)
+	jobConfig, err := h.jobStore.GetJobConfig(ctx, req.GetId())
 	if err != nil {
 		h.metrics.JobGetFail.Inc(1)
 		log.WithError(err).

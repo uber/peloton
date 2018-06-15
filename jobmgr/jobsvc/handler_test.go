@@ -8,6 +8,7 @@ import (
 	"time"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	apierrors "code.uber.internal/infra/peloton/.gen/peloton/api/v0/errors"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
@@ -74,7 +75,8 @@ type JobHandlerTestSuite struct {
 	mockedSecretStore     *storemocks.MockSecretStore
 }
 
-func (suite *JobHandlerTestSuite) setupMocks() {
+// helper to initialize mocks in JobHandlerTestSuite
+func (suite *JobHandlerTestSuite) initializeMocks() {
 	// Initialize mocks for the test
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.mockedJobStore = storemocks.NewMockJobStore(suite.ctrl)
@@ -96,6 +98,48 @@ func (suite *JobHandlerTestSuite) setupMocks() {
 	suite.handler.resmgrClient = suite.mockedResmgrClient
 	suite.handler.candidate = suite.mockedCandidate
 	suite.handler.jobSvcCfg.EnableSecrets = true
+}
+
+// sets up generic mocks that are common to most tests
+func (suite *JobHandlerTestSuite) setupMocks(
+	jobID *peloton.JobID, respoolID *peloton.ResourcePoolID) {
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+		Return(suite.mockedCachedJob).AnyTimes()
+	suite.mockedRespoolClient.EXPECT().
+		GetResourcePool(gomock.Any(), gomock.Any()).Return(&respool.GetResponse{
+		Poolinfo: &respool.ResourcePoolInfo{
+			Id: respoolID,
+		},
+	}, nil).AnyTimes()
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil).AnyTimes()
+	suite.mockedJobStore.EXPECT().
+		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
+		Return(nil).AnyTimes()
+	suite.mockedJobStore.EXPECT().
+		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
+		Return(nil).AnyTimes()
+	suite.mockedTaskStore.EXPECT().
+		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
+	suite.mockedCachedJob.EXPECT().
+		CreateTasks(gomock.Any(), gomock.Any(), "peloton").
+		Return(nil).AnyTimes()
+	suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).AnyTimes()
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+		Return(suite.mockedCachedJob).AnyTimes()
+	suite.mockedCachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(nil).AnyTimes()
+	suite.mockedGoalStateDriver.EXPECT().JobRuntimeDuration(job.JobType_BATCH).
+		Return(1 * time.Second).AnyTimes()
+	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
+	suite.mockedGoalStateDriver.EXPECT().EnqueueTask(
+		jobID, gomock.Any(), gomock.Any()).AnyTimes()
+	suite.mockedTaskStore.EXPECT().
+		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
+		Return(map[string]uint32{}, nil).AnyTimes()
 }
 
 func (suite *JobHandlerTestSuite) SetupTest() {
@@ -125,7 +169,7 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 	}
 	suite.context = context.Background()
 	suite.taskInfos = taskInfos
-	suite.setupMocks()
+	suite.initializeMocks()
 }
 
 func (suite *JobHandlerTestSuite) TearDownTest() {
@@ -175,50 +219,104 @@ func (suite *JobHandlerTestSuite) TestCreateJobs() {
 		Value: "test-respool",
 	}
 	jobConfig.RespoolID = respoolID
-	getRespoolResponse := &respool.GetResponse{
-		Poolinfo: &respool.ResourcePoolInfo{
-			Id: respoolID,
-		},
-	}
 
 	// setup mocks
-	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
-	suite.mockedRespoolClient.EXPECT().
-		GetResourcePool(
-			gomock.Any(),
-			gomock.Any()).
-		Return(getRespoolResponse, nil).AnyTimes()
-	suite.mockedJobFactory.EXPECT().AddJob(jobID).Return(suite.mockedCachedJob)
-	suite.mockedCachedJob.EXPECT().Create(
-		gomock.Any(),
-		jobConfig,
-		"peloton").
+	suite.setupMocks(jobID, respoolID)
+
+	// setup specific mocks throughout the test
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
 		Return(nil)
-	suite.mockedGoalStateDriver.EXPECT().
-		EnqueueJob(jobID, gomock.Any()).AnyTimes()
 
 	req := &job.CreateRequest{
 		Id:     jobID,
 		Config: jobConfig,
 	}
-
 	// Job Create API for this request should pass
 	resp, err := suite.handler.Create(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
 	suite.Equal(jobID, resp.GetJobId())
 
+	// test if handler generates UUID for empty job id
+	suite.mockedJobFactory.EXPECT().AddJob(gomock.Any()).
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
+		Return(nil)
+	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any())
+	resp, err = suite.handler.Create(suite.context, &job.CreateRequest{
+		Id:     nil,
+		Config: jobConfig,
+	})
+	suite.NoError(err)
+	suite.NotEqual(resp.GetJobId().GetValue(), "")
+	suite.NotNil(uuid.Parse(resp.GetJobId().GetValue()))
+
 	// Negative tests begin
+
+	// simulate cachedjob create failure
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
+		Return(errors.New("random error"))
+	suite.mockedJobFactory.EXPECT().ClearJob(jobID)
+	suite.mockedJobStore.EXPECT().DeleteJob(gomock.Any(), jobID)
+
+	resp, err = suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		AlreadyExists: &job.JobAlreadyExists{
+			Id:      jobID,
+			Message: "random error",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
 
 	// Job Create with respool set to nil should fail
 	jobConfig.RespoolID = nil
 	resp, err = suite.handler.Create(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
-	expectedErr := &job.CreateResponse_Error{
+	expectedErr = &job.CreateResponse_Error{
 		InvalidConfig: &job.InvalidJobConfig{
 			Id:      jobID,
 			Message: errNullResourcePoolID.Error(),
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+
+	// Job Create with job_id set to random string should fail
+	badJobID := &peloton.JobID{
+		Value: "bad-job-id-str",
+	}
+	resp, err = suite.handler.Create(suite.context, &job.CreateRequest{
+		Id:     badJobID,
+		Config: jobConfig,
+	})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr = &job.CreateResponse_Error{
+		InvalidJobId: &job.InvalidJobId{
+			Id:      badJobID,
+			Message: "JobID must be valid UUID",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+
+	// simulate a simple error validating task config just to test error
+	// processing code path in Create()
+	suite.handler.jobSvcCfg.MaxTasksPerJob = 1
+	jobConfig.InstanceCount = 2
+	jobConfig.RespoolID = respoolID
+	resp, err = suite.handler.Create(suite.context, &job.CreateRequest{
+		Id:     jobID,
+		Config: jobConfig,
+	})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr = &job.CreateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id: jobID,
+			Message: "Requested tasks: 2 for job is " +
+				"greater than supported: 1 tasks/job",
 		},
 	}
 	suite.Equal(expectedErr, resp.GetError())
@@ -237,6 +335,37 @@ func (suite *JobHandlerTestSuite) TestCreateJobs() {
 		},
 	}
 	suite.Equal(expectedErr, resp.GetError())
+
+}
+
+// Test Job Create/Update/Refresh going to non-leader
+func (suite *JobHandlerTestSuite) TestNonLeader() {
+	// setup the non-leader case
+	suite.mockedCandidate.EXPECT().IsLeader().Return(false).AnyTimes()
+
+	// Test Create
+	createResp, err := suite.handler.Create(suite.context, &job.CreateRequest{})
+	suite.Nil(createResp)
+	suite.Error(err)
+	suite.Equal(yarpcerrors.IsUnavailable(err), true)
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		"Job Create API not suppported on non-leader")
+
+	// Test Update
+	updateResp, err := suite.handler.Update(suite.context, &job.UpdateRequest{})
+	suite.Nil(updateResp)
+	suite.Error(err)
+	suite.Equal(yarpcerrors.IsUnavailable(err), true)
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		"Job Update API not suppported on non-leader")
+
+	// Test Refresh
+	refreshResp, err := suite.handler.Refresh(suite.context, &job.RefreshRequest{})
+	suite.Nil(refreshResp)
+	suite.Error(err)
+	suite.Equal(yarpcerrors.IsUnavailable(err), true)
+	suite.Equal(yarpcerrors.ErrorMessage(err),
+		"Job Refresh API not suppported on non-leader")
 }
 
 // TestCreateJobWithSecrets tests different success/failure scenarios
@@ -261,11 +390,6 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 		Value: "test-respool",
 	}
 	jobConfig.RespoolID = respoolID
-	getRespoolResponse := &respool.GetResponse{
-		Poolinfo: &respool.ResourcePoolInfo{
-			Id: respoolID,
-		},
-	}
 
 	jobConfig.InstanceConfig = make(map[uint32]*task.TaskConfig)
 	for i := uint32(0); i < 25; i++ {
@@ -277,16 +401,13 @@ func (suite *JobHandlerTestSuite) TestCreateJobWithSecrets() {
 	}
 
 	// setup mocks
-	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
-	suite.mockedRespoolClient.EXPECT().
-		GetResourcePool(gomock.Any(), gomock.Any()).
-		Return(getRespoolResponse, nil).AnyTimes()
+	suite.setupMocks(jobID, respoolID)
+
+	// setup mocks specific to this test
 	suite.mockedSecretStore.EXPECT().CreateSecret(
 		gomock.Any(), gomock.Any(), jobID).Return(nil)
 	suite.mockedCachedJob.EXPECT().Create(
 		gomock.Any(), jobConfig, "peloton").Return(nil)
-	suite.mockedJobFactory.EXPECT().AddJob(jobID).Return(suite.mockedCachedJob)
-	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
 
 	secret := &peloton.Secret{
 		Path: testSecretPath,
@@ -520,6 +641,9 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	jobID := &peloton.JobID{
 		Value: "job0",
 	}
+	respoolID := &peloton.ResourcePoolID{
+		Value: "test-respool",
+	}
 	defaultConfig := &task.TaskConfig{
 		Command: &mesos.CommandInfo{Value: &testCmd},
 	}
@@ -536,7 +660,7 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 		DefaultConfig: defaultConfig,
 	}
 	// setup generic update mocks
-	suite.setupUpdateMocks(jobID)
+	suite.setupMocks(jobID, respoolID)
 	// setup specific update mocks
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(oldJobConfig, nil).
@@ -552,25 +676,157 @@ func (suite *JobHandlerTestSuite) TestJobScaleUp() {
 	suite.Equal("added 1 instances", resp.Message)
 }
 
-// TestGetJob tests different success/failure scenarios
-// for Job Get API
+// TestJobUpdateFailure tests failure scenarios for Job Update API
+func (suite *JobHandlerTestSuite) TestJobUpdateFailure() {
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+	respoolID := &peloton.ResourcePoolID{
+		Value: "test-respool",
+	}
+	testCmd := "echo test"
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
+	suite.mockedJobFactory.EXPECT().AddJob(jobID).
+		Return(suite.mockedCachedJob).AnyTimes()
+
+	// simulate GetRuntime failure
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(nil, errors.New("random error"))
+	req := &job.UpdateRequest{Id: jobID, Config: &job.JobConfig{}}
+	resp, err := suite.handler.Update(suite.context, req)
+	suite.Error(err)
+	suite.Nil(resp)
+	suite.Equal(err.Error(), "random error")
+
+	// simulate updating terminal job
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{State: job.JobState_FAILED}, nil)
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.UpdateResponse_Error{
+		InvalidJobId: &job.InvalidJobId{
+			Id:      jobID,
+			Message: "Job is in a terminal state:FAILED",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+
+	// simulate GetJobConfig failure
+	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
+		Return(&job.RuntimeInfo{State: job.JobState_RUNNING}, nil).AnyTimes()
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), jobID).
+		Return(nil, errors.New("DB error"))
+	resp, err = suite.handler.Update(suite.context, req)
+	suite.Error(err)
+	suite.Nil(resp)
+	suite.Equal(err.Error(), "DB error")
+
+	// simulate a simple failure in ValidateUpdatedConfig
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), jobID).
+		Return(&job.JobConfig{
+			OwningTeam: "team-original",
+			RespoolID:  respoolID,
+		}, nil)
+	resp, err = suite.handler.Update(suite.context, &job.UpdateRequest{
+		Id: jobID,
+		Config: &job.JobConfig{
+			OwningTeam: "team-change",
+		},
+	})
+	suite.NoError(err)
+	suite.NotNil(resp)
+
+	expectedErr = &job.UpdateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id: jobID,
+			Message: `1 error occurred:
+
+* updating OwningTeam not supported`,
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+
+	// simulate cachedJob Update failure
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), jobID).
+		Return(&job.JobConfig{
+			RespoolID:     respoolID,
+			DefaultConfig: defaultConfig,
+		}, nil)
+	suite.mockedCachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(errors.New("random error"))
+	resp, err = suite.handler.Update(suite.context, &job.UpdateRequest{
+		Id: jobID,
+		Config: &job.JobConfig{
+			InstanceCount: 1,
+			DefaultConfig: defaultConfig,
+		},
+	})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr = &job.UpdateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id:      jobID,
+			Message: "random error",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+
+	// simulate failure for CreateTaskConfigs
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), jobID).
+		Return(&job.JobConfig{
+			RespoolID:     respoolID,
+			DefaultConfig: defaultConfig,
+		}, nil)
+	suite.mockedCachedJob.EXPECT().
+		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		Return(nil)
+	suite.mockedTaskStore.EXPECT().
+		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
+		Return(errors.New("random error")).AnyTimes()
+
+	resp, err = suite.handler.Update(suite.context, &job.UpdateRequest{
+		Id: jobID,
+		Config: &job.JobConfig{
+			InstanceCount: 1,
+			DefaultConfig: defaultConfig,
+		},
+	})
+	suite.Error(err)
+	suite.Nil(resp)
+	suite.Equal(err.Error(), "random error")
+}
+
+// TestGetJob tests success scenarios for Job Get API
 func (suite *JobHandlerTestSuite) TestGetJob() {
 	testCmd := "echo test"
 	jobID := &peloton.JobID{
 		Value: uuid.New(),
 	}
-
+	respoolID := &peloton.ResourcePoolID{
+		Value: "test-respool",
+	}
 	jobConfig := &job.JobConfig{
 		DefaultConfig: &task.TaskConfig{
 			Command: &mesos.CommandInfo{Value: &testCmd},
 		},
 	}
+
+	// setup mocks
+	suite.setupMocks(jobID, respoolID)
+
+	// setup mocks specific to test
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(context.Background(), jobID).Return(jobConfig, nil)
-	suite.mockedJobFactory.EXPECT().AddJob(jobID).
-		Return(suite.mockedCachedJob).AnyTimes()
-	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
-		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil).AnyTimes()
 
 	resp, err := suite.handler.Get(suite.context, &job.GetRequest{Id: jobID})
 	suite.NoError(err)
@@ -601,38 +857,45 @@ func (suite *JobHandlerTestSuite) TestGetJob() {
 	suite.Equal(secretID, resp.GetSecrets()[0].GetId())
 }
 
-func (suite *JobHandlerTestSuite) setupUpdateMocks(jobID *peloton.JobID) {
-	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
+// TestGetJobFailure tests failure scenarios for Job Get API
+func (suite *JobHandlerTestSuite) TestGetJobFailure() {
+	// setup mocks specific to test
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+	// simulate GetJobConfig failure
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("DB error"))
+	resp, err := suite.handler.Get(suite.context, &job.GetRequest{Id: jobID})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.GetResponse_Error{
+		NotFound: &apierrors.JobNotFound{
+			Id:      jobID,
+			Message: "DB error",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+
+	// simulate GetRuntime failure
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), gomock.Any()).
+		Return(&job.JobConfig{}, nil)
 	suite.mockedJobFactory.EXPECT().AddJob(jobID).
-		Return(suite.mockedCachedJob).AnyTimes()
+		Return(suite.mockedCachedJob)
 	suite.mockedCachedJob.EXPECT().GetRuntime(gomock.Any()).
-		Return(&job.RuntimeInfo{State: job.JobState_PENDING}, nil).AnyTimes()
-	suite.mockedJobStore.EXPECT().
-		UpdateJobRuntime(context.Background(), jobID, gomock.Any()).
-		Return(nil).AnyTimes()
-	suite.mockedJobStore.EXPECT().
-		UpdateJobConfig(context.Background(), jobID, gomock.Any()).
-		Return(nil).AnyTimes()
-	suite.mockedTaskStore.EXPECT().
-		CreateTaskConfigs(context.Background(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
-	suite.mockedCachedJob.EXPECT().
-		CreateTasks(gomock.Any(), gomock.Any(), "peloton").
-		Return(nil).AnyTimes()
-	suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).AnyTimes()
-	suite.mockedJobFactory.EXPECT().AddJob(jobID).
-		Return(suite.mockedCachedJob).AnyTimes()
-	suite.mockedCachedJob.EXPECT().
-		Update(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Return(nil).AnyTimes()
-	suite.mockedGoalStateDriver.EXPECT().JobRuntimeDuration(job.JobType_BATCH).
-		Return(1 * time.Second).AnyTimes()
-	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(jobID, gomock.Any()).AnyTimes()
-	suite.mockedGoalStateDriver.EXPECT().EnqueueTask(
-		jobID, gomock.Any(), gomock.Any()).AnyTimes()
-	suite.mockedTaskStore.EXPECT().
-		GetTaskStateSummaryForJob(context.Background(), gomock.Any()).
-		Return(map[string]uint32{}, nil).AnyTimes()
+		Return(nil, errors.New("random error"))
+	resp, err = suite.handler.Get(suite.context, &job.GetRequest{Id: jobID})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr = &job.GetResponse_Error{
+		GetRuntimeFail: &apierrors.JobGetRuntimeFail{
+			Id:      jobID,
+			Message: "random error",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
 }
 
 // TestUpdateJobWithSecrets tests different success/failure scenarios
@@ -641,6 +904,9 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 	testCmd := "echo test"
 	jobID := &peloton.JobID{
 		Value: uuid.New(),
+	}
+	respoolID := &peloton.ResourcePoolID{
+		Value: "test-respool",
 	}
 	mesosContainerizer := mesos.ContainerInfo_MESOS
 	oldJobConfig := &job.JobConfig{
@@ -674,8 +940,7 @@ func (suite *JobHandlerTestSuite) TestUpdateJobWithSecrets() {
 		testSecretPath, []byte(testSecretStrNew))
 
 	// setup generic update mocks
-	suite.setupUpdateMocks(jobID)
-	// setup test specific mocks throughout the code
+	suite.setupMocks(jobID, respoolID)
 
 	// Tests begin
 
@@ -949,13 +1214,33 @@ func getVolume() *mesos.Volume {
 	}
 }
 
+// TestJobQuery tests success case for Job Query API
+// This is fairly minimal, all interesting test cases are in the unit tests
+// for store.QueryJobs()
 func (suite *JobHandlerTestSuite) TestJobQuery() {
 	// TODO: add more inputs
-	suite.mockedJobStore.EXPECT().QueryJobs(context.Background(), nil, nil, false)
-	req := &job.QueryRequest{}
-	resp, err := suite.handler.Query(suite.context, req)
+	suite.mockedJobStore.EXPECT().QueryJobs(suite.context, nil, nil, false)
+	resp, err := suite.handler.Query(suite.context, &job.QueryRequest{})
 	suite.NoError(err)
 	suite.NotNil(resp)
+}
+
+// TestJobQuery tests failure case for Job Query API
+// This is fairly minimal, all interesting test cases are in the unit tests
+// for store.QueryJobs()
+func (suite *JobHandlerTestSuite) TestJobQueryFailure() {
+	// TODO: add more inputs
+	suite.mockedJobStore.EXPECT().QueryJobs(suite.context, nil, nil, false).
+		Return(nil, nil, uint32(0), errors.New("DB error"))
+	resp, err := suite.handler.Query(suite.context, &job.QueryRequest{})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.QueryResponse_Error{
+		Err: &apierrors.UnknownError{
+			Message: "DB error",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
 }
 
 func (suite *JobHandlerTestSuite) TestJobDelete() {
