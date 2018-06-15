@@ -756,7 +756,7 @@ func (n *resPool) IsRoot() bool {
 //               └─ marketplace
 func (n *resPool) GetPath() string {
 	n.RLock()
-	n.RUnlock()
+	defer n.RUnlock()
 	if n.path == "" {
 		n.path = n.calculatePath()
 	}

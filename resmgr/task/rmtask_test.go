@@ -16,11 +16,14 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	"code.uber.internal/infra/peloton/common/statemachine"
+	sm_mock "code.uber.internal/infra/peloton/common/statemachine/mocks"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
 	"code.uber.internal/infra/peloton/resmgr/respool"
+	"code.uber.internal/infra/peloton/resmgr/respool/mocks"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
@@ -427,4 +430,136 @@ func (s *RMTaskTestSuite) TestLaunchingTimeout() {
 	time.Sleep(3 * time.Second)
 	s.EqualValues(rmtask.GetCurrentState().String(), task.TaskState_READY.String())
 
+}
+
+func (s *RMTaskTestSuite) TestRunTimeStats() {
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	node.SetEntitlement(s.getEntitlement())
+
+	s.tracker.AddTask(
+		s.pendingGang0().Tasks[0],
+		nil,
+		node,
+		&Config{
+			LaunchingTimeout:      2 * time.Second,
+			PlacingTimeout:        2 * time.Second,
+			PlacementRetryCycle:   3,
+			PlacementRetryBackoff: 1 * time.Second,
+			PolicyName:            ExponentialBackOffPolicy,
+		})
+	s.NoError(err)
+	rmtask := s.tracker.GetTask(s.pendingGang0().Tasks[0].Id)
+	err = rmtask.TransitTo(task.TaskState_PENDING.String(), statemachine.WithInfo("mesos_task_id",
+		*s.pendingGang0().Tasks[0].TaskId.Value))
+	s.NoError(err)
+
+	err = rmtask.TransitTo(task.TaskState_READY.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACING.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_PLACED.String())
+	s.NoError(err)
+	err = rmtask.TransitTo(task.TaskState_LAUNCHING.String())
+	s.NoError(err)
+
+	s.Equal(rmtask.RunTimeStats().StartTime, time.Time{})
+
+	before := time.Now()
+	err = rmtask.TransitTo(task.TaskState_RUNNING.String())
+	s.NoError(err)
+
+	s.True(rmtask.RunTimeStats().StartTime.After(before))
+}
+
+func (s *RMTaskTestSuite) TestPushTaskForReadmissionError() {
+	runWithMockNode := func(mnode respool.ResPool, err error) {
+		rmTask, err := CreateRMTask(s.createTask(1),
+			nil,
+			mnode,
+			nil,
+			&Config{
+				LaunchingTimeout:      2 * time.Second,
+				PlacingTimeout:        2 * time.Second,
+				PlacementRetryCycle:   3,
+				PlacementRetryBackoff: 1 * time.Second,
+				PolicyName:            ExponentialBackOffPolicy,
+			},
+		)
+
+		s.NoError(err)
+
+		err = rmTask.PushTaskForReadmission()
+		s.EqualError(err, err.Error())
+	}
+
+	fErr := errors.New("fake error")
+	mockNode := mocks.NewMockResPool(s.ctrl)
+
+	// Mock Enqueue Failure
+	mockNode.EXPECT().EnqueueGang(gomock.Any()).Return(fErr).Times(1)
+	runWithMockNode(mockNode, fErr)
+
+	// Mock Subtract Allocation failure
+	mockNode.EXPECT().EnqueueGang(gomock.Any()).Return(nil).Times(1)
+	mockNode.EXPECT().SubtractFromAllocation(gomock.Any()).Return(fErr).Times(1)
+	runWithMockNode(mockNode, fErr)
+
+	// Mock Add To Allocation failure
+	mockNode.EXPECT().EnqueueGang(gomock.Any()).Return(nil).Times(1)
+	mockNode.EXPECT().SubtractFromAllocation(gomock.Any()).Return(nil).Times(1)
+	mockNode.EXPECT().AddToDemand(gomock.Any()).Return(fErr).Times(1)
+	runWithMockNode(mockNode, fErr)
+}
+
+func (s *RMTaskTestSuite) TestRMTaskTransitToError() {
+	fErr := errors.New("fake error")
+
+	errStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
+	errStateMachine.EXPECT().TransitTo(gomock.Any()).Return(fErr)
+
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	rmTask, err := CreateRMTask(s.createTask(1),
+		nil,
+		node,
+		nil,
+		&Config{
+			LaunchingTimeout:      2 * time.Second,
+			PlacingTimeout:        2 * time.Second,
+			PlacementRetryCycle:   3,
+			PlacementRetryBackoff: 1 * time.Second,
+			PolicyName:            ExponentialBackOffPolicy,
+		})
+	s.NotNil(rmTask.StateMachine())
+	rmTask.stateMachine = errStateMachine
+
+	err = rmTask.TransitTo(task.TaskState_RUNNING.String())
+	s.EqualError(err, fErr.Error())
+}
+
+func (s *RMTaskTestSuite) TestAddBackOffError() {
+	errStateMachine := sm_mock.NewMockStateMachine(s.ctrl)
+	errStateMachine.EXPECT().GetTimeOutRules().Return(make(map[statemachine.
+		State]*statemachine.TimeoutRule))
+
+	node, err := s.resTree.Get(&peloton.ResourcePoolID{Value: "respool3"})
+	s.NoError(err)
+	rmTask, err := CreateRMTask(s.createTask(1),
+		nil,
+		node,
+		nil,
+		&Config{
+			LaunchingTimeout:       2 * time.Second,
+			PlacingTimeout:         2 * time.Second,
+			PlacementRetryCycle:    3,
+			PlacementRetryBackoff:  1 * time.Second,
+			PolicyName:             ExponentialBackOffPolicy,
+			EnablePlacementBackoff: true,
+		})
+	s.NotNil(rmTask.StateMachine())
+	rmTask.stateMachine = errStateMachine
+
+	err = rmTask.AddBackoff()
+	s.EqualError(err, "could not add backoff to task job1-1")
 }

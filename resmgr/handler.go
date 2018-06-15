@@ -842,14 +842,12 @@ func (h *ServiceHandler) handleEvent(event *pb_eventstream.Event) {
 	}
 
 	if taskState == t.TaskState_RUNNING {
-		err = rmTask.TransitTo(t.TaskState_RUNNING.String(), statemachine.WithReason("task running"))
+		err = rmTask.TransitTo(taskState.String(), statemachine.WithReason("task running"))
 		if err != nil {
 			log.WithError(errors.WithStack(err)).
 				WithField("task_id", ptID).
 				Info("Not able to transition to RUNNING for task")
 		}
-		// update the start time
-		rmTask.UpdateStartTime(time.Now().UTC())
 		return
 	}
 

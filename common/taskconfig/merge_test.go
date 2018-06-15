@@ -131,7 +131,7 @@ func TestRetainBaseSecretsInInstanceConfig(t *testing.T) {
 	// should contain existing plus secret volumes
 	volumeMode := mesos_v1.Volume_RO
 	testPath := "/test"
-	instanceConfig.GetContainer().Volumes = []*mesos_v1.Volume{&mesos_v1.Volume{
+	instanceConfig.GetContainer().Volumes = []*mesos_v1.Volume{{
 		Mode: &volumeMode, ContainerPath: &testPath,
 	}}
 	cfg = RetainBaseSecretsInInstanceConfig(defaultConfig, instanceConfig)
