@@ -44,4 +44,7 @@ type Config struct {
 
 	// Backoff Retry Interval in seconds to register background worker for Host Manager
 	HostMgrBackoffRetryIntervalSec int `yaml:"hostmgr_backoff_retry_interval_sec"`
+
+	// Represents scarce resource types such as GPU.
+	ScarceResourceTypes []string `yaml:"scarce_resource_types"`
 }

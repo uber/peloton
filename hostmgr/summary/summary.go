@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/common/constraints"
+	"code.uber.internal/infra/peloton/hostmgr/host"
 	"code.uber.internal/infra/peloton/hostmgr/reservation"
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
 	"code.uber.internal/infra/peloton/storage"
@@ -108,11 +109,21 @@ type HostSummary interface {
 	// GetOffers returns offers and #offers present for this host, of type reserved, unreserved or all.
 	// Returns map of offerid -> offer
 	GetOffers(OfferType) map[string]*mesos.Offer
+
+	// GetAgentID returns the Mesos Agent ID of this host summary.
+	GetAgentID() *mesos.AgentID
 }
 
 // hostSummary is a data struct holding offers on a particular host.
 type hostSummary struct {
 	sync.Mutex
+
+	// Mesos Agent ID
+	agentID *mesos.AgentID
+
+	// scarceResourceTypes are resources, which are exclusively reserved for specific task requirements,
+	// and to prevent every task to schedule on those hosts such as GPU.
+	scarceResourceTypes []string
 
 	// offerID -> unreserved offer
 	unreservedOffers map[string]*mesos.Offer
@@ -129,10 +140,14 @@ type hostSummary struct {
 }
 
 // New returns a zero initialized hostSummary
-func New(volumeStore storage.PersistentVolumeStore) HostSummary {
+func New(
+	volumeStore storage.PersistentVolumeStore,
+	scarceResourceTypes []string) HostSummary {
 	return &hostSummary{
 		unreservedOffers: make(map[string]*mesos.Offer),
 		reservedOffers:   make(map[string]*mesos.Offer),
+
+		scarceResourceTypes: scarceResourceTypes,
 
 		status: ReadyOffer,
 
@@ -160,7 +175,9 @@ func (a *hostSummary) HasAnyOffer() bool {
 func matchHostFilter(
 	offerMap map[string]*mesos.Offer,
 	c *hostsvc.HostFilter,
-	evaluator constraints.Evaluator) hostsvc.HostFilterResult {
+	evaluator constraints.Evaluator,
+	scalarAgentRes scalar.Resources,
+	scarceResourceTypes []string) hostsvc.HostFilterResult {
 
 	if len(offerMap) == 0 {
 		return hostsvc.HostFilterResult_NO_OFFER
@@ -174,9 +191,13 @@ func matchHostFilter(
 			return hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES
 		}
 
-		// Special handling for GPU: GPU hosts are only for GPU tasks.
-		if scalarRes.HasGPU() != scalarMin.HasGPU() {
-			return hostsvc.HostFilterResult_MISMATCH_GPU
+		// Validates iff requested resource types are present on current host.
+		// It prevents a task to be launched on agent which has superset of requested resource types.
+		// As of now, supported scarce resource type is GPU.
+		for _, resourceType := range scarceResourceTypes {
+			if scalar.HasResourceType(scalarAgentRes, scalarMin, resourceType) {
+				return hostsvc.HostFilterResult_SCARCE_RESOURCES
+			}
 		}
 	}
 
@@ -250,7 +271,12 @@ func (a *hostSummary) TryMatch(
 		return hostsvc.HostFilterResult_NO_OFFER, nil
 	}
 
-	match := matchHostFilter(a.unreservedOffers, filter, evaluator)
+	match := matchHostFilter(
+		a.unreservedOffers,
+		filter,
+		evaluator,
+		scalar.FromMesosResources(host.GetAgentInfo(a.GetAgentID()).GetResources()),
+		a.scarceResourceTypes)
 	if match == hostsvc.HostFilterResult_MATCH {
 		var result []*mesos.Offer
 		for _, offer := range a.unreservedOffers {
@@ -281,6 +307,10 @@ func (a *hostSummary) addMesosOffer(offer *mesos.Offer) {
 	} else {
 		a.reservedOffers[offerID] = offer
 	}
+	// Update Mesos Agent ID, at each offer because host name can be same, where as Mesos Agent ID,
+	// changes on restart.
+	// TODO: find an alternative were agent id does not need to be updated each time.
+	a.agentID = offer.GetAgentId()
 }
 
 // AddMesosOffer adds a Mesos offer to the current hostSummary and returns
@@ -467,4 +497,9 @@ func (a *hostSummary) GetOffers(offertype OfferType) map[string]*mesos.Offer {
 		break
 	}
 	return offers
+}
+
+// GetAgentID returns the Mesos Agent ID of this host summary.
+func (a *hostSummary) GetAgentID() *mesos.AgentID {
+	return a.agentID
 }

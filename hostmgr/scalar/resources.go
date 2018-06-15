@@ -115,6 +115,15 @@ func (r Resources) Empty() bool {
 	return len(r.NonEmptyFields()) == 0
 }
 
+// HasResourceType validates requested resource type is present agent resource type.
+func HasResourceType(agentRes, reqRes Resources, resourceType string) bool {
+	switch resourceType {
+	case "GPU":
+		return !reqRes.HasGPU() && agentRes.HasGPU()
+	}
+	return false
+}
+
 // FromResourceConfig creates a new instance of `Resources` from a `ResourceConfig`.
 func FromResourceConfig(rc *task.ResourceConfig) (r Resources) {
 	r.CPU = rc.GetCpuLimit()

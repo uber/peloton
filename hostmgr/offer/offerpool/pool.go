@@ -2,6 +2,7 @@ package offerpool
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"time"
 
@@ -86,6 +87,10 @@ const (
 	_defaultRejectUnavailableOffer = int64(10800000000000)
 )
 
+// supportedScarceResourceTypes are resources types supported to launch scarce resource tasks,
+// exclusively on scarce resource type hosts.
+var supportedScarceResourceTypes = []string{"GPU"}
+
 // NewOfferPool creates a offerPool object and registers the
 // corresponding YARPC procedures.
 func NewOfferPool(
@@ -93,9 +98,20 @@ func NewOfferPool(
 	schedulerClient mpb.SchedulerClient,
 	metrics *Metrics,
 	frameworkInfoProvider hostmgr_mesos.FrameworkInfoProvider,
-	volumeStore storage.PersistentVolumeStore) Pool {
+	volumeStore storage.PersistentVolumeStore,
+	scarceResourceTypes []string) Pool {
+	// GPU is only supported scarce resource type.
+	if !reflect.DeepEqual(supportedScarceResourceTypes, scarceResourceTypes) {
+		log.WithFields(log.Fields{
+			"supported_scarce_resource_types": supportedScarceResourceTypes,
+			"scarce_resource_types":           scarceResourceTypes,
+		}).Error("input scarce resources types are not supported")
+	}
+
 	p := &offerPool{
 		hostOfferIndex: make(map[string]summary.HostSummary),
+
+		scarceResourceTypes: scarceResourceTypes,
 
 		offerHoldTime: offerHoldTime,
 
@@ -125,6 +141,9 @@ type offerPool struct {
 	// number of hosts that has any offers, i.e. both reserved and unreserved
 	// offers. It includes both READY and PLACING state hosts.
 	availableHosts atomic.Uint32
+
+	// scarce resource types, such as GPU.
+	scarceResourceTypes []string
 
 	// Map from offer id to hostname and offer expiration time.
 	// Used when offer is rescinded or pruned.
@@ -277,7 +296,9 @@ func (p *offerPool) AddOffers(ctx context.Context, offers []*mesos.Offer) []*mes
 		_, ok := p.hostOfferIndex[hostname]
 
 		if !ok {
-			p.hostOfferIndex[hostname] = summary.New(p.volumeStore)
+			p.hostOfferIndex[hostname] = summary.New(
+				p.volumeStore,
+				p.scarceResourceTypes)
 		}
 
 		if !p.hostOfferIndex[hostname].HasAnyOffer() {

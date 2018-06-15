@@ -160,6 +160,7 @@ func (suite *HostMgrHandlerTestSuite) SetupTest() {
 		offerpool.NewMetrics(suite.testScope.SubScope("offer")),
 		nil,               /* frameworkInfoProvider */
 		suite.volumeStore, /* volumeStore */
+		[]string{},        /*scarce_resource_types*/
 	)
 
 	suite.handler = &serviceHandler{

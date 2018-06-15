@@ -3,6 +3,7 @@ package main
 import (
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"code.uber.internal/infra/peloton/common/backoff"
@@ -131,6 +132,11 @@ var (
 		Default("").
 		Envar("MESOS_SECRET_FILE").
 		String()
+
+	scarceResourceTypes = app.Flag(
+		"scarce-resource-type", "Scarce Resource Type.").
+		Envar("SCARCE_RESOURCE_TYPES").
+		String()
 )
 
 func main() {
@@ -200,6 +206,11 @@ func main() {
 
 	if *datacenter != "" {
 		cfg.Storage.Cassandra.CassandraConn.DataCenter = *datacenter
+	}
+
+	if *scarceResourceTypes != "" {
+		log.Info(strings.Split(*scarceResourceTypes, ","))
+		cfg.HostManager.ScarceResourceTypes = strings.Split(*scarceResourceTypes, ",")
 	}
 
 	log.WithField("config", cfg).Debug("Loaded Host Manager config")
@@ -398,6 +409,7 @@ func main() {
 		store, // store implements VolumeStore
 		backgroundManager,
 		cfg.HostManager.HostPruningPeriodSec,
+		cfg.HostManager.ScarceResourceTypes,
 	)
 
 	maintenanceQueue := queue.NewMaintenanceQueue()

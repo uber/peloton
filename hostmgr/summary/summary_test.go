@@ -17,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+	"code.uber.internal/infra/peloton/hostmgr/scalar"
 
 	"code.uber.internal/infra/peloton/common/constraints"
 	constraint_mocks "code.uber.internal/infra/peloton/common/constraints/mocks"
@@ -36,6 +37,8 @@ var (
 	_gpuName      = "gpus"
 	_portsName    = "ports"
 	_testAgent    = "agent"
+	_testAgent1   = "agent1"
+	_testAgent2   = "agent2"
 	_dummyOfferID = "dummyofferid"
 
 	_cpuRes = util.NewMesosResourceBuilder().
@@ -97,6 +100,45 @@ func (suite *HostOfferSummaryTestSuite) SetupTest() {
 
 func (suite *HostOfferSummaryTestSuite) TearDownTest() {
 	log.Debug("tearing down")
+}
+
+func (suite *HostOfferSummaryTestSuite) createResourceConfig(cpus, gpus, mem, disk float64) *task.ResourceConfig {
+	return &task.ResourceConfig{
+		CpuLimit:    cpus,
+		MemLimitMb:  mem,
+		DiskLimitMb: disk,
+		GpuLimit:    gpus,
+	}
+}
+
+func (suite *HostOfferSummaryTestSuite) createResources(cpus, gpus, mem, disk float64) []*mesos.Resource {
+	return []*mesos.Resource{
+		util.NewMesosResourceBuilder().
+			WithName(_cpuName).
+			WithValue(cpus).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(_memName).
+			WithValue(mem).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(_diskName).
+			WithValue(disk).
+			Build(),
+		util.NewMesosResourceBuilder().
+			WithName(_gpuName).
+			WithValue(gpus).
+			Build(),
+	}
+}
+
+func (suite *HostOfferSummaryTestSuite) createAgentInfo(agentID string, cpus, gpus, mem, disk float64) *mesos.AgentInfo {
+	return &mesos.AgentInfo{
+		Id: &mesos.AgentID{
+			Value: &agentID,
+		},
+		Resources: suite.createResources(cpus, gpus, mem, disk),
+	}
 }
 
 func (suite *HostOfferSummaryTestSuite) createReservedMesosOffer(
@@ -199,40 +241,22 @@ func TestHostOfferSummaryTestSuite(t *testing.T) {
 
 func (suite *HostOfferSummaryTestSuite) TestResourcesConstraint() {
 
+	scarceResourceType1 := []string{"GPU"}
+	scarceResourceType2 := []string{}
+	scarceResourceType3 := []string{"GPU", "DUMMY_RES"}
+	agent1 := suite.createAgentInfo(_testAgent1, 5.0, 5.0, 5.0, 5.0)
+	agent2 := suite.createAgentInfo(_testAgent2, 5.0, 0, 5.0, 5.0)
+
 	testTable := []struct {
-		expected hostsvc.HostFilterResult
-		filter   *hostsvc.HostFilter
-		offer    *mesos.Offer
-		msg      string
+		msg                string
+		expected           hostsvc.HostFilterResult
+		filter             *hostsvc.HostFilter
+		agent              *mesos.AgentInfo
+		offer              *mesos.Offer
+		scarceResourceType []string
 	}{
 		{
-			expected: hostsvc.HostFilterResult_MATCH,
-			filter: &hostsvc.HostFilter{
-				Quantity: &hostsvc.QuantityControl{
-					MaxHosts: 1,
-				},
-				ResourceConstraint: &hostsvc.ResourceConstraint{
-					NumPorts: uint32(2),
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    1.0,
-						MemLimitMb:  1.0,
-						DiskLimitMb: 1.0,
-						GpuLimit:    1.0,
-					},
-				},
-			},
-			offer: &mesos.Offer{
-				Resources: []*mesos.Resource{
-					_cpuRes,
-					_memRes,
-					_diskRes,
-					_gpuRes,
-					_portsRes,
-				},
-			},
-			msg: "Enough resource with GPU",
-		},
-		{
+			msg:      "Not Enough CPU Resources.",
 			expected: hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -240,51 +264,36 @@ func (suite *HostOfferSummaryTestSuite) TestResourcesConstraint() {
 				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					NumPorts: uint32(2),
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    2.0,
-						MemLimitMb:  1.0,
-						DiskLimitMb: 1.0,
-						GpuLimit:    1.0,
-					},
+					Minimum:  suite.createResourceConfig(2.0, 1.0, 1.0, 1.0),
 				},
 			},
+			agent: agent1,
 			offer: &mesos.Offer{
-				Resources: []*mesos.Resource{
-					_cpuRes,
-					_memRes,
-					_diskRes,
-					_gpuRes,
-					_portsRes,
-				},
+				AgentId:   agent1.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes, _gpuRes, _portsRes},
 			},
-			msg: "Not Enough CPU Resources.",
+			scarceResourceType: scarceResourceType1,
 		},
 		{
+			msg:      "Not enough memory",
 			expected: hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
 					MaxHosts: 1,
 				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    1.0,
-						MemLimitMb:  2.0,
-						DiskLimitMb: 1.0,
-						GpuLimit:    1.0,
-					},
+					Minimum: suite.createResourceConfig(1.0, 1.0, 2.0, 1.0),
 				},
 			},
+			agent: agent1,
 			offer: &mesos.Offer{
-				Resources: []*mesos.Resource{
-					_cpuRes,
-					_memRes,
-					_diskRes,
-					_gpuRes,
-				},
+				AgentId:   agent1.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes, _gpuRes},
 			},
-			msg: "Not enough memory",
+			scarceResourceType: scarceResourceType1,
 		},
 		{
+			msg:      "Not enough ports",
 			expected: hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
@@ -292,86 +301,195 @@ func (suite *HostOfferSummaryTestSuite) TestResourcesConstraint() {
 				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
 					NumPorts: uint32(3),
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    1.0,
-						MemLimitMb:  1.0,
-						DiskLimitMb: 1.0,
-					},
+					Minimum:  suite.createResourceConfig(1.0, 0, 1.0, 1.0),
 				},
 			},
+			agent: agent1,
 			offer: &mesos.Offer{
-				Resources: []*mesos.Resource{
-					_cpuRes,
-					_memRes,
-					_diskRes,
-					_portsRes,
-				},
+				AgentId:   agent1.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes, _portsRes},
 			},
-			msg: "Not enough ports",
+			scarceResourceType: scarceResourceType2,
 		},
 		{
+			msg:      "not enough GPU",
+			expected: hostsvc.HostFilterResult_INSUFFICIENT_OFFER_RESOURCES,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
+				ResourceConstraint: &hostsvc.ResourceConstraint{
+					NumPorts: uint32(2),
+					Minimum:  suite.createResourceConfig(1.0, 1.0, 1.0, 1.0),
+				},
+			},
+			agent: agent1,
+			offer: &mesos.Offer{
+				AgentId:   agent1.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes, _portsRes},
+			},
+			scarceResourceType: scarceResourceType1,
+		},
+		{
+			msg:      "Enough resource with GPU, with scarce_resource_types set",
 			expected: hostsvc.HostFilterResult_MATCH,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
 					MaxHosts: 1,
 				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    1.0,
-						MemLimitMb:  1.0,
-						DiskLimitMb: 1.0,
-					},
+					NumPorts: uint32(2),
+					Minimum:  suite.createResourceConfig(1.0, 1.0, 1.0, 1.0),
 				},
 			},
+			agent: agent1,
 			offer: &mesos.Offer{
-				Resources: []*mesos.Resource{
-					_cpuRes,
-					_memRes,
-					_diskRes,
-				},
+				AgentId:   agent1.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes, _gpuRes, _portsRes},
 			},
-			msg: "Enough resource without GPU",
+			scarceResourceType: scarceResourceType1,
 		},
 		{
-			expected: hostsvc.HostFilterResult_MISMATCH_GPU,
+			msg:      "Enough resource with GPU, without scarce_resource_types set",
+			expected: hostsvc.HostFilterResult_MATCH,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
 					MaxHosts: 1,
 				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    1.0,
-						MemLimitMb:  1.0,
-						DiskLimitMb: 1.0,
-					},
+					NumPorts: uint32(2),
+					Minimum:  suite.createResourceConfig(1.0, 1.0, 1.0, 1.0),
 				},
 			},
+			agent: agent1,
 			offer: &mesos.Offer{
-				Resources: []*mesos.Resource{
-					_cpuRes,
-					_memRes,
-					_diskRes,
-					_gpuRes,
-				},
+				AgentId:   agent1.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes, _gpuRes, _portsRes},
 			},
-			msg: "GPU machines are exclusive",
+			scarceResourceType: scarceResourceType2,
 		},
 		{
+			msg:      "Enough resource without GPU, with scarce_resource_types set",
+			expected: hostsvc.HostFilterResult_MATCH,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
+				ResourceConstraint: &hostsvc.ResourceConstraint{
+					Minimum: suite.createResourceConfig(1.0, 0, 1.0, 1.0),
+				},
+			},
+			agent: agent2,
+			offer: &mesos.Offer{
+				AgentId:   agent2.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes},
+			},
+			scarceResourceType: scarceResourceType1,
+		},
+		{
+			msg:      "Enough resource without GPU, without scarce_resource_types set",
+			expected: hostsvc.HostFilterResult_MATCH,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
+				ResourceConstraint: &hostsvc.ResourceConstraint{
+					Minimum: suite.createResourceConfig(1.0, 0, 1.0, 1.0),
+				},
+			},
+			agent: agent2,
+			offer: &mesos.Offer{
+				AgentId:   agent2.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes},
+			},
+			scarceResourceType: scarceResourceType2,
+		},
+		{
+			msg:      "GPU machines are exclusive",
+			expected: hostsvc.HostFilterResult_SCARCE_RESOURCES,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
+				ResourceConstraint: &hostsvc.ResourceConstraint{
+					Minimum: suite.createResourceConfig(1.0, 0, 1.0, 1.0),
+				},
+			},
+			agent: agent1,
+			offer: &mesos.Offer{
+				AgentId:   agent1.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes, _gpuRes},
+			},
+			scarceResourceType: scarceResourceType1,
+		},
+		{
+			msg:      "Adding DUMMY_RES for non-GPU task does not impact scheduling",
+			expected: hostsvc.HostFilterResult_MATCH,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
+				ResourceConstraint: &hostsvc.ResourceConstraint{
+					Minimum: suite.createResourceConfig(1.0, 0, 1.0, 1.0),
+				},
+			},
+			agent: agent2,
+			offer: &mesos.Offer{
+				AgentId:   agent2.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes},
+			},
+			scarceResourceType: scarceResourceType3,
+		},
+		{
+			msg:      "Adding DUMMY_RES for GPU task does not impact scheduling",
+			expected: hostsvc.HostFilterResult_MATCH,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
+				ResourceConstraint: &hostsvc.ResourceConstraint{
+					Minimum: suite.createResourceConfig(1.0, 1.0, 1.0, 1.0),
+				},
+			},
+			agent: agent1,
+			offer: &mesos.Offer{
+				AgentId:   agent1.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes, _gpuRes},
+			},
+			scarceResourceType: scarceResourceType3,
+		},
+		{
+			msg:      "Adding DUMMY_RES does not impact scheduling",
+			expected: hostsvc.HostFilterResult_MATCH,
+			filter: &hostsvc.HostFilter{
+				Quantity: &hostsvc.QuantityControl{
+					MaxHosts: 1,
+				},
+				ResourceConstraint: &hostsvc.ResourceConstraint{
+					Minimum: suite.createResourceConfig(1.0, 0, 1.0, 1.0),
+				},
+			},
+			agent: agent2,
+			offer: &mesos.Offer{
+				AgentId:   agent2.Id,
+				Resources: []*mesos.Resource{_cpuRes, _memRes, _diskRes},
+			},
+			scarceResourceType: scarceResourceType3,
+		},
+		{
+			msg:      "Empty offer map",
 			expected: hostsvc.HostFilterResult_NO_OFFER,
 			filter: &hostsvc.HostFilter{
 				Quantity: &hostsvc.QuantityControl{
 					MaxHosts: 1,
 				},
 				ResourceConstraint: &hostsvc.ResourceConstraint{
-					Minimum: &task.ResourceConfig{
-						CpuLimit:    1.0,
-						MemLimitMb:  1.0,
-						DiskLimitMb: 1.0,
-					},
+					Minimum: suite.createResourceConfig(1.0, 0, 1.0, 1.0),
 				},
 			},
-			offer: nil,
-			msg:   "Empty offer map",
+			agent:              agent1,
+			offer:              nil,
+			scarceResourceType: scarceResourceType1,
 		},
 	}
 
@@ -387,7 +505,9 @@ func (suite *HostOfferSummaryTestSuite) TestResourcesConstraint() {
 			matchHostFilter(
 				offerMap,
 				tt.filter,
-				nil),
+				nil,
+				scalar.FromMesosResources(tt.agent.GetResources()),
+				tt.scarceResourceType),
 			tt.msg,
 		)
 	}
@@ -468,7 +588,7 @@ func (suite *HostOfferSummaryTestSuite) TestTryMatchSchedulingConstraint() {
 		ctrl := gomock.NewController(suite.T())
 		mockEvaluator := constraint_mocks.NewMockEvaluator(ctrl)
 
-		s := New(suite.mockVolumeStore).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil).(*hostSummary)
 		s.status = tt.initialStatus
 		for _, initialOffer := range tt.initialOffers {
 			suite.Equal(tt.initialStatus, s.AddMesosOffer(context.Background(), initialOffer))
@@ -512,7 +632,7 @@ func (suite *HostOfferSummaryTestSuite) TestAddRemoveHybridOffers() {
 	wg := sync.WaitGroup{}
 	wg.Add(nOffers)
 
-	hybridSummary := New(suite.mockVolumeStore).(*hostSummary)
+	hybridSummary := New(suite.mockVolumeStore, nil).(*hostSummary)
 
 	suite.False(hybridSummary.HasOffer())
 	suite.False(hybridSummary.HasAnyOffer())
@@ -652,7 +772,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil).(*hostSummary)
 		s.status = tt.initialStatus
 		s.statusPlacingOfferExpiration = tt.statusPlacingOfferExpiration
 		s.AddMesosOffers(context.Background(), offers)
@@ -662,7 +782,7 @@ func (suite *HostOfferSummaryTestSuite) TestResetExpiredPlacingOfferStatus() {
 		suite.Equal(s.readyCount.Load(), int32(tt.readyCount), tt.msg)
 	}
 
-	s := New(suite.mockVolumeStore).(*hostSummary)
+	s := New(suite.mockVolumeStore, nil).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	s.statusPlacingOfferExpiration = now.Add(-10 * time.Minute)
 	invalidCacheStatus := s.CasStatus(PlacingOffer, ReadyOffer)
@@ -702,7 +822,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForUnreservedOffersForLaunch() 
 	}
 
 	for _, tt := range testTable {
-		s := New(suite.mockVolumeStore).(*hostSummary)
+		s := New(suite.mockVolumeStore, nil).(*hostSummary)
 		s.AddMesosOffers(context.Background(), offers)
 		suite.Equal(s.readyCount.Load(), int32(len(offers)-1))
 		s.status = tt.initialStatus
@@ -726,7 +846,7 @@ func (suite *HostOfferSummaryTestSuite) TestClaimForReservedOffersForLaunch() {
 	offers := suite.createReservedMesosOffers(5, true)
 	offers = append(offers, suite.createUnreservedMesosOffer("unreserved-offerid-1"))
 
-	s := New(suite.mockVolumeStore).(*hostSummary)
+	s := New(suite.mockVolumeStore, nil).(*hostSummary)
 	s.AddMesosOffers(context.Background(), offers)
 	suite.Equal(int(s.readyCount.Load()), 1)
 

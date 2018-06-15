@@ -66,6 +66,9 @@ cassandra_test_db: peloton_test
 # refer to "$PELOTON_HOME/tools/packaging/peloton-release/README.md" for more details
 peloton_image: uber/peloton
 
+scarce_resource_types:
+  - GPU
+
 # Peloton app specific configs
 peloton_resmgr_container: peloton-resmgr
 peloton_resmgr_ports:

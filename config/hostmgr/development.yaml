@@ -18,3 +18,7 @@ metrics:
 
 storage:
   db_write_concurrency: 40
+
+host_manager:
+  scarce_resource_types:
+    - GPU

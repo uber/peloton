@@ -12,6 +12,15 @@ import (
 
 const zeroEpsilon = 0.000001
 
+func createResource(cpus, gpus, mem, disk float64) Resources {
+	return Resources{
+		CPU:  cpus,
+		Mem:  mem,
+		Disk: disk,
+		GPU:  gpus,
+	}
+}
+
 func TestContains(t *testing.T) {
 	// An empty Resources should container another empty one.
 	empty1 := Resources{}
@@ -216,4 +225,39 @@ func TestNonEmptyFields(t *testing.T) {
 	}
 	assert.False(t, r2.Empty())
 	assert.Equal(t, []string{"cpus", "disk"}, r2.NonEmptyFields())
+}
+
+func TestScarceResourceType(t *testing.T) {
+	testTable := []struct {
+		scarceResourceType []string
+		reqResource        Resources
+		agentResources     Resources
+		expected           bool
+		msg                string
+	}{
+		{
+			msg:                "GPU task can schedule on GPU machine",
+			scarceResourceType: []string{"GPU"},
+			reqResource:        createResource(1.0, 1.0, 100.0, 100.0),
+			agentResources:     createResource(24.0, 4.0, 10000.0, 100000.0),
+			expected:           true,
+		},
+		{
+			msg:                "non-GPU task can not schedule on GPU machine",
+			scarceResourceType: []string{"GPU"},
+			reqResource:        createResource(1.0, 0, 100.0, 100.0),
+			agentResources:     createResource(24.0, 4.0, 10000.0, 100000.0),
+			expected:           false,
+		},
+	}
+
+	for _, tt := range testTable {
+		assert.Equal(t, tt.reqResource.GetCPU(), 1.0)
+		assert.Equal(t, tt.reqResource.GetMem(), 100.0)
+		assert.Equal(t, tt.reqResource.GetDisk(), 100.0)
+		assert.Equal(t, tt.agentResources.GetGPU(), 4.0)
+		for _, resourceType := range tt.scarceResourceType {
+			assert.NotEqual(t, HasResourceType(tt.agentResources, tt.reqResource, resourceType), tt.expected)
+		}
+	}
 }

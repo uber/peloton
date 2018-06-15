@@ -172,6 +172,10 @@ class App(object):
             env_vars['ARCHIVE_INTERVAL'] = self.archive_interval
             env_vars['ARCHIVE_STEP_SIZE'] = self.archive_step_size
 
+        if self.name == 'hostmgr':
+            scarce_resource = ','.join(self.scarce_resource_types)
+            env_vars['SCARCE_RESOURCE_TYPES'] = scarce_resource
+
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))
             for key, val in env_vars.iteritems()

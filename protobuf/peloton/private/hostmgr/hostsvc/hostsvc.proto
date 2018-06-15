@@ -147,6 +147,9 @@ enum HostFilterResult {
 
     // Host has not enough total resources.
     // INSUFFICIENT_TOTAL_RESOURCES ;
+
+    // Host has scarce resources which are to be used by exclusive task (needing those resources).
+    SCARCE_RESOURCES = 9;
 }
 
 /**

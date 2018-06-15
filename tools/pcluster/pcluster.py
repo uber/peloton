@@ -438,9 +438,11 @@ def run_peloton_hostmgr():
         # to not cause port conflicts among apps, increase port
         # by 10 for each instance
         ports = [port + i * 10 for port in config['peloton_hostmgr_ports']]
+        scarce_resource = ','.join(config['scarce_resource_types'])
         name = config['peloton_hostmgr_container'] + repr(i)
         remove_existing_container(name)
-        start_and_wait('hostmgr', name, ports)
+        start_and_wait('hostmgr', name, ports,
+                       extra_env={'SCARCE_RESOURCE_TYPES': scarce_resource})
 
 
 #

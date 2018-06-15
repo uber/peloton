@@ -174,6 +174,12 @@ class VCluster(object):
                 'CASSANDRA_STORE': self.label_name,
                 'CASSANDRA_HOSTS': host
             }
+            if app == 'hostmgr':
+                srt = 'scarce_resource_types'
+                scarce_resource = ','.join(
+                    config.get('peloton').get(app).get(srt))
+                dynamic_env_master['SCARCE_RESOURCE_TYPES'] = scarce_resource
+
             peloton_app_count = int(
                 config.get('peloton').get(app).get('instance_count'))
             self.peloton.setup(

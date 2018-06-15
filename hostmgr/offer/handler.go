@@ -64,7 +64,8 @@ func InitEventHandler(
 	schedulerClient mpb.SchedulerClient,
 	volumeStore storage.PersistentVolumeStore,
 	backgroundMgr background.Manager,
-	hostPruningPeriodSec time.Duration) {
+	hostPruningPeriodSec time.Duration,
+	scarceResourceTypes []string) {
 
 	if handler != nil {
 		log.Warning("Offer event handler has already been initialized")
@@ -77,6 +78,7 @@ func InitEventHandler(
 		metrics,
 		hostmgr_mesos.GetSchedulerDriver(),
 		volumeStore,
+		scarceResourceTypes,
 	)
 	hostPruner := prune.NewHostPruner(
 		pool,

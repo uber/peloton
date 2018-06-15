@@ -137,6 +137,8 @@ peloton:
   start_command: 'bash /bin/entrypoint.sh'
   hostmgr:
     instance_count: 2
+    scarce_resource_types:
+      - GPU
   resmgr:
     instance_count: 2
   jobmgr:
