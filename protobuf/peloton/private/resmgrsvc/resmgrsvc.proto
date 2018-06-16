@@ -8,7 +8,9 @@ package peloton.private.resmgr;
 
 option go_package = "peloton/private/resmgrsvc";
 
+import "mesos/v1/mesos.proto";
 import "peloton/api/v0/peloton.proto";
+import "peloton/api/v0/task/task.proto";
 import "peloton/private/resmgr/resmgr.proto";
 import "peloton/private/eventstream/eventstream.proto";
 
@@ -103,10 +105,10 @@ service ResourceManagerService {
   rpc GetPreemptibleTasks(GetPreemptibleTasksRequest) returns (GetPreemptibleTasksResponse);
 
   /**
-   * MarkTasksLaunched is used to let the resource manager know that the
-   * tasks in the request have been launched.
+   * UpdateTasksState is used to let the resource manager know that the
+   * tasks in the request have been moved to corresponding state.
    */
-  rpc MarkTasksLaunched(MarkTasksLaunchedRequest) returns (MarkTasksLaunchedResponse);
+  rpc UpdateTasksState(UpdateTasksStateRequest) returns (UpdateTasksStateResponse);
 }
 
 message GetPreemptibleTasksFailure {
@@ -402,9 +404,22 @@ message KillTasksResponse {
   repeated Error error = 1;
 }
 
-message MarkTasksLaunchedRequest {
-  // Peloton Task Ids
-  repeated api.v0.peloton.TaskID tasks = 1;
+// UpdateTasksStateRequest is the request message for updating
+// task's state to a desired state in resource manager
+message UpdateTasksStateRequest {
+    // UpdateTaskStateEntry is the entry for UpdateTaskState
+    // Request will have list of UpdateTaskStateEntry
+    message UpdateTaskStateEntry{
+         // Peloton Task ID
+         api.v0.peloton.TaskID task = 1;
+         // Mesos task ID for this instance
+           mesos.v1.TaskID mesosTaskId = 2;
+         // Desired state for the resource manager task
+         api.v0.task.TaskState state = 3;
+    }
+  // List of UpdateTaskEntry
+  repeated UpdateTaskStateEntry taskStates = 1;
 }
 
-message MarkTasksLaunchedResponse {}
+// UpdateTasksStateResponse is the response message for UpdateTasksState
+message UpdateTasksStateResponse {}

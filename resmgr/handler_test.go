@@ -919,32 +919,128 @@ func (s *HandlerTestSuite) TestKillTasks() {
 	s.Equal(res.Error[0].NotFound.Task.Value, tasks[0].Value)
 }
 
-func (s *HandlerTestSuite) TestMarkTasksLaunched() {
+// TestUpdateTasksState tests the update tasks by state
+func (s *HandlerTestSuite) TestUpdateTasksState() {
 	s.rmTaskTracker.Clear()
-	_, tasks := s.createRMTasks()
+	// Creating the New set of Tasks and add them to the tracker
+	rmTasks, _ := s.createRMTasks()
+	invalidMesosID := "invalid_mesos_id"
 
-	var launchedTasks []*peloton.TaskID
-	launchedTasks = append(launchedTasks, tasks[0])
-	launchedTasks = append(launchedTasks, tasks[1])
-
-	// Send valid tasks
-	req := &resmgrsvc.MarkTasksLaunchedRequest{
-		Tasks: launchedTasks,
+	testTable := []struct {
+		updateStateRequestTask *resmgr.Task
+		updatedTaskState       task.TaskState
+		mesosTaskID            *mesos_v1.TaskID
+		expectedState          task.TaskState
+		expectedTask           string
+		msg                    string
+		deletefromTracker      bool
+	}{
+		{
+			msg: "Testing valid tasks, test if the state reached to LAUNCHED",
+			updateStateRequestTask: rmTasks[0],
+			updatedTaskState:       task.TaskState_UNKNOWN,
+			mesosTaskID:            nil,
+			expectedState:          task.TaskState_LAUNCHED,
+			expectedTask:           "",
+		},
+		{
+			msg: "Testing update the same task, It should not update the Launched state",
+			updateStateRequestTask: rmTasks[0],
+			updatedTaskState:       task.TaskState_UNKNOWN,
+			mesosTaskID:            nil,
+			expectedState:          task.TaskState_LAUNCHED,
+			expectedTask:           "",
+		},
+		{
+			msg: "Testing if we pass the nil Resource Manager Task",
+			updateStateRequestTask: nil,
+			updatedTaskState:       task.TaskState_UNKNOWN,
+			mesosTaskID:            nil,
+			expectedState:          task.TaskState_UNKNOWN,
+			expectedTask:           "",
+		},
+		{
+			msg: "Testing RMtask with invalid mesos task id with Terminal state",
+			updateStateRequestTask: rmTasks[0],
+			updatedTaskState:       task.TaskState_KILLED,
+			mesosTaskID: &mesos_v1.TaskID{
+				Value: &invalidMesosID,
+			},
+			expectedState: task.TaskState_UNKNOWN,
+			expectedTask:  "",
+		},
+		{
+			msg: "Testing RMtask with invalid mesos task id.",
+			updateStateRequestTask: rmTasks[0],
+			updatedTaskState:       task.TaskState_UNKNOWN,
+			mesosTaskID: &mesos_v1.TaskID{
+				Value: &invalidMesosID,
+			},
+			expectedState: task.TaskState_UNKNOWN,
+			expectedTask:  "not_nil",
+		},
+		{
+			msg: "Testing RMtask with Terminal State",
+			updateStateRequestTask: rmTasks[0],
+			updatedTaskState:       task.TaskState_KILLED,
+			mesosTaskID:            nil,
+			expectedState:          task.TaskState_UNKNOWN,
+			expectedTask:           "nil",
+		},
+		{
+			msg: "Testing RMtask with Task deleted from tracker",
+			updateStateRequestTask: rmTasks[1],
+			updatedTaskState:       task.TaskState_UNKNOWN,
+			mesosTaskID:            nil,
+			expectedState:          task.TaskState_UNKNOWN,
+			expectedTask:           "nil",
+			deletefromTracker:      true,
+		},
 	}
-	_, err := s.handler.MarkTasksLaunched(s.context, req)
-	s.NoError(err)
-	rmTask := s.rmTaskTracker.GetTask(tasks[0])
-	s.Equal(rmTask.GetCurrentState(), task.TaskState_LAUNCHED)
-	rmTask = s.rmTaskTracker.GetTask(tasks[1])
-	s.Equal(rmTask.GetCurrentState(), task.TaskState_LAUNCHED)
 
-	// Send invalid tasks
-	var notValidkilledtasks []*peloton.TaskID
-	req = &resmgrsvc.MarkTasksLaunchedRequest{
-		Tasks: notValidkilledtasks,
+	for _, tt := range testTable {
+		if tt.deletefromTracker {
+			s.rmTaskTracker.DeleteTask(tt.updateStateRequestTask.Id)
+		}
+		req := s.createUpdateTasksStateRequest(tt.updateStateRequestTask)
+		if tt.mesosTaskID != nil {
+			req.GetTaskStates()[0].MesosTaskId = tt.mesosTaskID
+		}
+		if tt.updatedTaskState != task.TaskState_UNKNOWN {
+			req.GetTaskStates()[0].State = tt.updatedTaskState
+		}
+		_, err := s.handler.UpdateTasksState(s.context, req)
+		s.NoError(err)
+		if tt.expectedState != task.TaskState_UNKNOWN {
+			s.Equal(tt.expectedState, s.rmTaskTracker.GetTask(tt.updateStateRequestTask.Id).GetCurrentState())
+		}
+		switch tt.expectedTask {
+		case "nil":
+			s.Nil(s.rmTaskTracker.GetTask(tt.updateStateRequestTask.Id))
+		case "not_nil":
+			s.NotNil(s.rmTaskTracker.GetTask(tt.updateStateRequestTask.Id))
+		default:
+			break
+		}
 	}
-	_, err = s.handler.MarkTasksLaunched(s.context, req)
-	s.NoError(err)
+}
+
+// createUpdateTasksStateRequest creates UpdateTaskstate Request
+// based on the resource manager task specified
+func (s *HandlerTestSuite) createUpdateTasksStateRequest(
+	rmTask *resmgr.Task,
+) *resmgrsvc.UpdateTasksStateRequest {
+	taskList := make([]*resmgrsvc.UpdateTasksStateRequest_UpdateTaskStateEntry, 0, 1)
+	if rmTask != nil {
+		taskList = append(taskList, &resmgrsvc.UpdateTasksStateRequest_UpdateTaskStateEntry{
+			State:       task.TaskState_LAUNCHED,
+			MesosTaskId: rmTask.GetTaskId(),
+			Task:        rmTask.GetId(),
+		})
+	}
+	return &resmgrsvc.UpdateTasksStateRequest{
+		TaskStates: taskList,
+	}
 }
 
 func (s *HandlerTestSuite) TestNotifyTaskStatusUpdate() {

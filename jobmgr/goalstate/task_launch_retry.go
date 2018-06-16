@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
@@ -15,25 +16,31 @@ import (
 )
 
 // sendLaunchInfoToResMgr lets resource manager that the task has been launched.
-func sendLaunchInfoToResMgr(ctx context.Context, taskEnt *taskEntity) error {
-	var launchedTaskList []*peloton.TaskID
-
-	taskID := &peloton.TaskID{
-		Value: taskEnt.GetID(),
+func sendLaunchInfoToResMgr(ctx context.Context, taskEnt *taskEntity, mesosTaskID *mesosv1.TaskID) error {
+	// Updating resource manager with state as LAUNCHED for the task
+	_, err := taskEnt.driver.resmgrClient.UpdateTasksState(
+		ctx,
+		&resmgrsvc.UpdateTasksStateRequest{
+			TaskStates: []*resmgrsvc.UpdateTasksStateRequest_UpdateTaskStateEntry{
+				{
+					State:       task.TaskState_LAUNCHED,
+					MesosTaskId: mesosTaskID,
+					Task:        &peloton.TaskID{Value: taskEnt.GetID()},
+				},
+			},
+		},
+	)
+	// This would only be channel/network error and nothing else
+	// and this case we should return it from here.
+	if err != nil {
+		return err
 	}
-	goalStateDriver := taskEnt.driver
+	// Starting timeout as we need to track if the task is
+	// launched within timeout period
+	taskEnt.driver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID,
+		time.Now().Add(taskEnt.driver.cfg.LaunchTimeout))
 
-	launchedTaskList = append(launchedTaskList, taskID)
-
-	req := &resmgrsvc.MarkTasksLaunchedRequest{
-		Tasks: launchedTaskList,
-	}
-	_, err := goalStateDriver.resmgrClient.MarkTasksLaunched(ctx, req)
-
-	goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID,
-		time.Now().Add(goalStateDriver.cfg.LaunchTimeout))
-
-	return err
+	return nil
 }
 
 // TaskLaunchRetry retries the launch after launch timeout as well as
@@ -63,7 +70,7 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 	case task.TaskState_LAUNCHED:
 		if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.LaunchTimeout {
 			// LAUNCHED not times out, just send it to resource manager
-			return sendLaunchInfoToResMgr(ctx, taskEnt)
+			return sendLaunchInfoToResMgr(ctx, taskEnt, cachedRuntime.MesosTaskId)
 		}
 		goalStateDriver.mtx.taskMetrics.TaskLaunchTimeout.Inc(1)
 	case task.TaskState_STARTING:

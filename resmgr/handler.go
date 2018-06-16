@@ -1143,32 +1143,65 @@ func (h *ServiceHandler) GetPreemptibleTasks(
 	}, nil
 }
 
-// MarkTasksLaunched is used to notify the resource manager that tasks have been launched
-func (h *ServiceHandler) MarkTasksLaunched(
+// UpdateTasksState will be called to notify the resource manager about the tasks
+// which have been moved to cooresponding state , by that resource manager
+// can take appropriate actions for those tasks. As an example if the tasks been
+// launched then job manager will call resource manager to notify it is launched
+// by that resource manager can stop timer for launching state. Similarly if
+// task is been failed to be launched in host manager due to valid failure then
+// job manager will tell resource manager about the task to be killed by that
+// can be removed from resource manager and relevant resource accounting can be done.
+func (h *ServiceHandler) UpdateTasksState(
 	ctx context.Context,
-	req *resmgrsvc.MarkTasksLaunchedRequest) (*resmgrsvc.MarkTasksLaunchedResponse, error) {
+	req *resmgrsvc.UpdateTasksStateRequest) (*resmgrsvc.UpdateTasksStateResponse, error) {
 
-	launchedTasks := req.GetTasks()
-	if len(launchedTasks) == 0 {
-		return &resmgrsvc.MarkTasksLaunchedResponse{}, nil
+	taskStateList := req.GetTaskStates()
+	if len(taskStateList) == 0 {
+		return &resmgrsvc.UpdateTasksStateResponse{}, nil
 	}
 
-	log.WithField("launched_tasks", launchedTasks).Debug("tasks launched called")
+	log.WithField("task_state_list", taskStateList).
+		Debug("tasks called with states")
 	h.metrics.APILaunchedTasks.Inc(1)
 
-	for _, taskID := range launchedTasks {
-		task := h.rmTracker.GetTask(taskID)
+	for _, updateEntry := range taskStateList {
+		ID := updateEntry.GetTask()
+		// Checking if the task is present in tracker, if not
+		// drop that task to be updated
+		task := h.rmTracker.GetTask(ID)
 		if task == nil {
 			continue
 		}
 
-		err := task.TransitTo(t.TaskState_LAUNCHED.String(), statemachine.WithReason("task launched"))
+		// Checking if the state for the task is in terminal state
+		if util.IsPelotonStateTerminal(updateEntry.GetState()) {
+			err := h.rmTracker.MarkItDone(ID, *updateEntry.MesosTaskId.Value)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"task_id":      ID,
+					"update_entry": updateEntry,
+				}).Error("could not update task")
+			}
+			continue
+		}
+
+		// Checking if the mesos task is same
+		// otherwise drop the task
+		if *task.Task().TaskId.Value != *updateEntry.GetMesosTaskId().Value {
+			continue
+		}
+		err := task.TransitTo(updateEntry.GetState().String(),
+			statemachine.WithReason(
+				fmt.Sprintf("task moved to %s",
+					updateEntry.GetState().String())))
 		if err != nil {
 			log.WithError(err).
-				WithField("task_id", taskID).
-				Info("failed to transit to launched state")
+				WithFields(log.Fields{
+					"task_id":  ID,
+					"to_state": updateEntry.GetState().String(),
+				}).Info("failed to transit")
 			continue
 		}
 	}
-	return &resmgrsvc.MarkTasksLaunchedResponse{}, nil
+	return &resmgrsvc.UpdateTasksStateResponse{}, nil
 }
