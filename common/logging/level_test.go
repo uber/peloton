@@ -45,6 +45,21 @@ func TestLevelOverwriteHandler(t *testing.T) {
 			containResponse:  "Level changed to debug",
 			expectedLogLevel: int(log.DebugLevel),
 		},
+		{
+			url:             "?level=warn&duration=3s",
+			expectedCode:    http.StatusBadRequest,
+			containResponse: "New Level warn is not info or debug",
+		},
+		{
+			url:             "?level=debug&duration=time",
+			expectedCode:    http.StatusBadRequest,
+			containResponse: "invalid duration time",
+		},
+		{
+			url:             "?level=log&duration=3s",
+			expectedCode:    http.StatusBadRequest,
+			containResponse: "not a valid logrus Level",
+		},
 	}
 
 	for _, tt := range handlerTests {
