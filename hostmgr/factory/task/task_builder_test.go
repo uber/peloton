@@ -14,6 +14,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	hostmgrutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -262,15 +263,36 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			strconv.Itoa(int(portsInDiscovery["dynamic_env"])),
 			envMap["DYNAMIC_ENV"])
 
-		suite.Equal("testjob", envMap[PelotonJobID])
-		suite.Equal(fmt.Sprint(i), envMap[PelotonInstanceID])
-		suite.Equal(fmt.Sprint("testjob-", i), envMap[PelotonTaskID])
+		suite.Equal(
+			"testjob",
+			envMap[hostmgrutil.LabelKeyToEnvVarName(PelotonJobIDLabelKey)],
+		)
+		suite.Equal(
+			fmt.Sprint(i),
+			envMap[hostmgrutil.LabelKeyToEnvVarName(PelotonInstanceIDLabelKey)],
+		)
+		suite.Equal(
+			fmt.Sprint("testjob-", i),
+			envMap[hostmgrutil.LabelKeyToEnvVarName(PelotonTaskIDLabelKey)],
+		)
 
 		suite.Equal(&mesos.Labels{
 			Labels: []*mesos.Label{
 				{
 					Key:   &_tmpLabelKey,
 					Value: &_tmpLabelValue,
+				},
+				{
+					Key:   util.PtrPrintf(PelotonJobIDLabelKey),
+					Value: util.PtrPrintf("testjob"),
+				},
+				{
+					Key:   util.PtrPrintf(PelotonInstanceIDLabelKey),
+					Value: util.PtrPrintf(fmt.Sprint(i)),
+				},
+				{
+					Key:   util.PtrPrintf(PelotonTaskIDLabelKey),
+					Value: util.PtrPrintf(fmt.Sprint("testjob-", i)),
 				},
 			},
 		}, info.Labels)
@@ -531,6 +553,74 @@ func (suite *BuilderTestSuite) TestPopulateReservationVolumeInfoNoVolume() {
 	var err error
 	resources, err = populateReservationVolumeInfo(resources, labels, nil)
 	suite.Error(err)
+}
+
+// TestPopulateLabels tests populateLabels.
+func (suite *BuilderTestSuite) TestPopulateLabels() {
+	jobID := "test-job"
+	instanceID := 0
+	resources := suite.getResources(instanceID)
+	builder := NewBuilder(resources)
+
+	tt := []struct {
+		pelotonTaskLabels []*peloton.Label // input labels
+		mesosTaskLabels   *mesos.Labels    // expected output labels
+	}{
+		{
+			// No peloton task label
+			pelotonTaskLabels: []*peloton.Label{},
+			mesosTaskLabels: &mesos.Labels{
+				Labels: []*mesos.Label{
+					&mesos.Label{
+						Key:   util.PtrPrintf(PelotonJobIDLabelKey),
+						Value: util.PtrPrintf("test-job"),
+					},
+					&mesos.Label{
+						Key:   util.PtrPrintf(PelotonInstanceIDLabelKey),
+						Value: util.PtrPrintf("0"),
+					},
+					&mesos.Label{
+						Key:   util.PtrPrintf(PelotonTaskIDLabelKey),
+						Value: util.PtrPrintf("test-job-0"),
+					},
+				},
+			},
+		}, {
+			// Some peloton task labels
+			pelotonTaskLabels: []*peloton.Label{
+				{
+					Key:   _tmpLabelKey,
+					Value: _tmpLabelValue,
+				},
+			},
+			mesosTaskLabels: &mesos.Labels{
+				Labels: []*mesos.Label{
+					&mesos.Label{
+						Key:   &_tmpLabelKey,
+						Value: &_tmpLabelValue,
+					},
+					&mesos.Label{
+						Key:   util.PtrPrintf(PelotonJobIDLabelKey),
+						Value: util.PtrPrintf("test-job"),
+					},
+					&mesos.Label{
+						Key:   util.PtrPrintf(PelotonInstanceIDLabelKey),
+						Value: util.PtrPrintf("0"),
+					},
+					&mesos.Label{
+						Key:   util.PtrPrintf(PelotonTaskIDLabelKey),
+						Value: util.PtrPrintf("test-job-0"),
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tt {
+		mesosTask := &mesos.TaskInfo{}
+		builder.populateLabels(mesosTask, test.pelotonTaskLabels, jobID, instanceID)
+		suite.Equal(test.mesosTaskLabels, mesosTask.Labels)
+	}
 }
 
 func TestBuilderTestSuite(t *testing.T) {

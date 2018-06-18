@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"code.uber.internal/infra/peloton/hostmgr/scalar"
+	hostmgrutil "code.uber.internal/infra/peloton/hostmgr/util"
 	"code.uber.internal/infra/peloton/util"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -17,12 +18,12 @@ import (
 )
 
 const (
-	// PelotonJobID is the environment variable name for job ID
-	PelotonJobID = "PELOTON_JOB_ID"
-	// PelotonInstanceID is the environment variable name for instance ID
-	PelotonInstanceID = "PELOTON_INSTANCE_ID"
-	// PelotonTaskID is the environment variable name for task ID
-	PelotonTaskID = "PELOTON_TASK_ID"
+	// PelotonJobIDLabelKey is the task label key for job ID
+	PelotonJobIDLabelKey = "peloton.job_id"
+	// PelotonInstanceIDLabelKey is the task label key for task instance ID
+	PelotonInstanceIDLabelKey = "peloton.instance_id"
+	// PelotonTaskIDLabelKey is the task label key for task ID
+	PelotonTaskIDLabelKey = "peloton.task_id"
 )
 
 var (
@@ -224,7 +225,7 @@ func (tb *Builder) Build(
 		instanceID,
 	)
 	tb.populateContainerInfo(mesosTask, taskConfig.GetContainer())
-	tb.populateLabels(mesosTask, taskConfig.GetLabels())
+	tb.populateLabels(mesosTask, taskConfig.GetLabels(), jobID, instanceID)
 
 	tb.populateHealthCheck(mesosTask, taskConfig.GetHealthCheck())
 
@@ -301,15 +302,15 @@ func (tb *Builder) populateCommandInfo(
 
 	pelotonEnvs := []*mesos.Environment_Variable{
 		{
-			Name:  util.PtrPrintf(PelotonJobID),
+			Name:  util.PtrPrintf(hostmgrutil.LabelKeyToEnvVarName(PelotonJobIDLabelKey)),
 			Value: &jobID,
 		},
 		{
-			Name:  util.PtrPrintf(PelotonInstanceID),
+			Name:  util.PtrPrintf(hostmgrutil.LabelKeyToEnvVarName(PelotonInstanceIDLabelKey)),
 			Value: util.PtrPrintf("%d", instanceID),
 		},
 		{
-			Name:  util.PtrPrintf(PelotonTaskID),
+			Name:  util.PtrPrintf(hostmgrutil.LabelKeyToEnvVarName(PelotonTaskIDLabelKey)),
 			Value: util.PtrPrintf("%s-%d", jobID, instanceID),
 		},
 	}
@@ -347,21 +348,36 @@ func (tb *Builder) populateContainerInfo(
 func (tb *Builder) populateLabels(
 	mesosTask *mesos.TaskInfo,
 	labels []*peloton.Label,
+	jobID string,
+	instanceID int,
 ) {
+	var mesosLabels *mesos.Labels
+
+	// Translate all peloton task labels into mesos task labels
 	if len(labels) == 0 {
-		return
+		mesosLabels = &mesos.Labels{
+			Labels: make([]*mesos.Label, 0, 3),
+		}
+	} else {
+		mesosLabels = util.ConvertLabels(labels)
 	}
 
-	// Make a deep copy to avoid changing input.
-	mLabels := make([]*mesos.Label, len(labels))
-	for i, l := range labels {
-		mLabels[i] = &mesos.Label{
-			Key:   &l.Key,
-			Value: &l.Value,
-		}
-	}
+	// add mesos task default labels
+	mesosLabels.Labels = append(mesosLabels.Labels, &mesos.Label{
+		Key:   util.PtrPrintf(PelotonJobIDLabelKey),
+		Value: &jobID,
+	})
+	mesosLabels.Labels = append(mesosLabels.Labels, &mesos.Label{
+		Key:   util.PtrPrintf(PelotonInstanceIDLabelKey),
+		Value: util.PtrPrintf("%d", instanceID),
+	})
+	mesosLabels.Labels = append(mesosLabels.Labels, &mesos.Label{
+		Key:   util.PtrPrintf(PelotonTaskIDLabelKey),
+		Value: util.PtrPrintf("%s-%d", jobID, instanceID),
+	})
+
 	mesosTask.Labels = &mesos.Labels{
-		Labels: mLabels,
+		Labels: mesosLabels.Labels,
 	}
 }
 
