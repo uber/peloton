@@ -2,22 +2,32 @@ package task
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
-
-	"github.com/golang/mock/gomock"
-	"github.com/pborman/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
+	"testing"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	host_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
+	"code.uber.internal/infra/peloton/util"
+
+	"github.com/golang/mock/gomock"
+	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/suite"
 )
 
-type KillOrphanTaskTestSuite struct {
+const (
+	testSecretPath = "/tmp/secret"
+	testSecretStr  = "top-secret-token"
+
+	randomErrorStr = "random error"
+)
+
+type JobmgrTaskUtilTestSuite struct {
 	suite.Suite
 	ctrl        *gomock.Controller
 	ctx         context.Context
@@ -25,10 +35,19 @@ type KillOrphanTaskTestSuite struct {
 	jobID       string
 	instanceID  int32
 	mesosTaskID string
-	taskInfo    task.TaskInfo
+	taskInfo    *task.TaskInfo
 }
 
-func (suite *KillOrphanTaskTestSuite) SetupTest() {
+func (suite *JobmgrTaskUtilTestSuite) TearDownTest() {
+	suite.ctrl.Finish()
+}
+
+// TestJobmgrTaskUtilTestSuite tests functions covered in jobmgr/task/util.go
+func TestJobmgrTaskUtilTestSuite(t *testing.T) {
+	suite.Run(t, new(JobmgrTaskUtilTestSuite))
+}
+
+func (suite *JobmgrTaskUtilTestSuite) SetupTest() {
 	suite.ctrl = gomock.NewController(suite.T())
 	suite.ctx = context.Background()
 	suite.mockHostMgr = host_mocks.NewMockInternalHostServiceYARPCClient(suite.ctrl)
@@ -39,7 +58,7 @@ func (suite *KillOrphanTaskTestSuite) SetupTest() {
 		suite.jobID,
 		suite.instanceID,
 		uuid.New())
-	suite.taskInfo = task.TaskInfo{
+	suite.taskInfo = &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			MesosTaskId: &mesos.TaskID{Value: &suite.mesosTaskID},
 			AgentID:     &mesos.AgentID{Value: &suite.mesosTaskID},
@@ -51,60 +70,212 @@ func (suite *KillOrphanTaskTestSuite) SetupTest() {
 	}
 }
 
-// TestNormalKill tests the happy case of KillOrphanTask
-func (suite *KillOrphanTaskTestSuite) TestNormalKill() {
-	suite.mockHostMgr.EXPECT().
-		KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
-			TaskIds: []*mesos.TaskID{{Value: &suite.mesosTaskID}},
-		})
-
-	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &suite.taskInfo)
-	assert.Nil(suite.T(), err)
-}
-
-// TestErrorKill tests when hostmgt returns error
-func (suite *KillOrphanTaskTestSuite) TestErrorKill() {
-	suite.mockHostMgr.EXPECT().
-		KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
-			TaskIds: []*mesos.TaskID{{Value: &suite.mesosTaskID}},
-		}).Return(nil, errors.New(""))
-
-	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &suite.taskInfo)
-	assert.NotNil(suite.T(), err)
-}
-
-// TestKillKilling tests when kill an orphan task in KILLING state
-func (suite *KillOrphanTaskTestSuite) TestKillKilling() {
-	suite.taskInfo.Runtime.State = task.TaskState_KILLING
-	suite.mockHostMgr.EXPECT().ShutdownExecutors(gomock.Any(), gomock.Any())
-	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &suite.taskInfo)
-	assert.NotNil(suite.T(), err)
-}
-
-// TestKillKilling tests when kill an orphan task has no Mesos ID
-func (suite *KillOrphanTaskTestSuite) TestKillNoMesosID() {
-	suite.taskInfo.Runtime = &task.RuntimeInfo{
-		State: task.TaskState_RUNNING,
-	}
-	suite.mockHostMgr.EXPECT()
-	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &suite.taskInfo)
-	assert.NotNil(suite.T(), err)
-}
-
-// TestKillKilling tests when kill a stateful orphan
-func (suite *KillOrphanTaskTestSuite) TestKillStateful() {
+// TestKillStateful tests when kill a stateful orphan
+func (suite *JobmgrTaskUtilTestSuite) TestKillStateful() {
 	suite.taskInfo.Config = &task.TaskConfig{
 		Volume: &task.PersistentVolumeConfig{
 			ContainerPath: "/A/B/C",
 			SizeMB:        1024,
 		},
 	}
-	suite.taskInfo.Runtime = &task.RuntimeInfo{
-		MesosTaskId: &mesos.TaskID{Value: &suite.mesosTaskID},
-		State:       task.TaskState_RUNNING,
-		VolumeID:    &peloton.VolumeID{Value: "peloton_id"},
+	suite.taskInfo.Runtime.VolumeID = &peloton.VolumeID{Value: "peloton_id"}
+	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, suite.taskInfo)
+	suite.Nil(err)
+}
+
+// TestKillOrphanTaskSuccessStateKilled tests when kill a orphan task which is
+// already in KILLED state.
+func (suite *JobmgrTaskUtilTestSuite) TestKillOrphanTaskSuccessStateKilled() {
+	suite.taskInfo.Runtime.State = task.TaskState_KILLED
+	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, suite.taskInfo)
+	suite.Nil(err)
+}
+
+func (suite *JobmgrTaskUtilTestSuite,
+) buildKillTasksReq() *hostsvc.KillTasksRequest {
+	return &hostsvc.KillTasksRequest{
+		TaskIds: []*mesos.TaskID{{Value: &suite.mesosTaskID}},
 	}
-	suite.mockHostMgr.EXPECT()
-	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &suite.taskInfo)
-	assert.NotNil(suite.T(), err)
+}
+
+// TestKillOrphanTaskSuccessStateRunning tests killing orphan task which is in
+// RUNNING state
+func (suite *JobmgrTaskUtilTestSuite) TestKillOrphanTaskSuccessStateRunning() {
+	suite.mockHostMgr.EXPECT().
+		KillTasks(gomock.Any(), suite.buildKillTasksReq())
+	suite.taskInfo.Runtime.State = task.TaskState_RUNNING
+	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, suite.taskInfo)
+	suite.Nil(err)
+}
+
+// TestKillOrphanTaskSuccessStateKilling tests killing orphan task which is in
+// KILLING state
+func (suite *JobmgrTaskUtilTestSuite) TestKillOrphanTaskSuccessStateKilling() {
+	// simulate ShutdownMesosExecutor success for KILLING state
+	suite.taskInfo.Runtime.State = task.TaskState_KILLING
+	suite.mockHostMgr.EXPECT().ShutdownExecutors(gomock.Any(), gomock.Any()).
+		Return(nil, nil)
+	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, suite.taskInfo)
+	suite.Nil(err)
+}
+
+// TestKillOrphanTaskSuccessNoTaskInfo tests killing orphan task with taskInfo
+// as nil
+func (suite *JobmgrTaskUtilTestSuite) TestKillOrphanTaskSuccessNoTaskInfo() {
+	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, &task.TaskInfo{})
+	suite.Nil(err)
+}
+
+// TestKillOrphanTaskRunning tests failure scenarios for KillOrphanTask when
+// task is in RUNNING state
+func (suite *JobmgrTaskUtilTestSuite) TestKillOrphanTaskRunning() {
+	// simulate KillTasks failure for RUNNING state
+	suite.taskInfo.Runtime.State = task.TaskState_RUNNING
+	suite.mockHostMgr.EXPECT().
+		KillTasks(gomock.Any(), suite.buildKillTasksReq()).
+		Return(nil, errors.New(randomErrorStr))
+	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, suite.taskInfo)
+	suite.Error(err)
+}
+
+// TestKillOrphanTaskKilling tests failure scenarios for KillOrphanTask when
+// task is in KILLING state
+func (suite *JobmgrTaskUtilTestSuite) TestKillOrphanTaskKilling() {
+	// simulate ShutdownMesosExecutor failure for KILLING state
+	suite.taskInfo.Runtime.State = task.TaskState_KILLING
+	suite.mockHostMgr.EXPECT().ShutdownExecutors(gomock.Any(), gomock.Any()).
+		Return(nil, errors.New(randomErrorStr))
+	err := KillOrphanTask(suite.ctx, suite.mockHostMgr, suite.taskInfo)
+	suite.Error(err)
+}
+
+// TestKillTaskInvalidTaskIDs tests InvalidTaskIDs error in KillTask
+func (suite *JobmgrTaskUtilTestSuite) TestKillTaskInvalidTaskIDs() {
+	taskID := &mesos.TaskID{Value: &suite.mesosTaskID}
+
+	// Simulate InvalidTaskIDs error
+	resp := &hostsvc.KillTasksResponse{
+		Error: &hostsvc.KillTasksResponse_Error{
+			InvalidTaskIDs: &hostsvc.InvalidTaskIDs{
+				Message: randomErrorStr,
+			},
+		},
+	}
+	suite.mockHostMgr.EXPECT().KillTasks(
+		gomock.Any(), suite.buildKillTasksReq()).Return(resp, nil)
+	err := KillTask(suite.ctx, suite.mockHostMgr, taskID)
+	suite.Error(err)
+	suite.Equal(err.Error(), randomErrorStr)
+}
+
+// TestKillTaskKillFailure tests KillFailure error in KillTask
+func (suite *JobmgrTaskUtilTestSuite) TestKillTaskKillFailure() {
+	taskID := &mesos.TaskID{Value: &suite.mesosTaskID}
+
+	// Simulate KillFailure error
+	resp := &hostsvc.KillTasksResponse{
+		Error: &hostsvc.KillTasksResponse_Error{
+			KillFailure: &hostsvc.KillFailure{
+				Message: randomErrorStr,
+			},
+		},
+	}
+	suite.mockHostMgr.EXPECT().KillTasks(
+		gomock.Any(), suite.buildKillTasksReq()).Return(resp, nil)
+	err := KillTask(suite.ctx, suite.mockHostMgr, taskID)
+	suite.Error(err)
+	suite.Equal(err.Error(), randomErrorStr)
+}
+
+func (suite *JobmgrTaskUtilTestSuite,
+) buildShutdownExecutorsReq() *hostsvc.ShutdownExecutorsRequest {
+	return &hostsvc.ShutdownExecutorsRequest{
+		Executors: []*hostsvc.ExecutorOnAgent{
+			{
+				ExecutorId: &mesos.ExecutorID{Value: &suite.mesosTaskID},
+				AgentId:    &mesos.AgentID{Value: &suite.mesosTaskID},
+			},
+		},
+	}
+}
+
+// TestShutdownExecutorShutdownFailure tests ShutdownFailure error in
+// ShutdownMesosExecutor
+func (suite *JobmgrTaskUtilTestSuite) TestShutdownExecutorShutdownFailure() {
+	// Simulate ShutdownFailure error
+	resp := &hostsvc.ShutdownExecutorsResponse{
+		Error: &hostsvc.ShutdownExecutorsResponse_Error{
+			ShutdownFailure: &hostsvc.ShutdownFailure{
+				Message: randomErrorStr,
+			},
+		},
+	}
+	suite.mockHostMgr.EXPECT().ShutdownExecutors(
+		suite.ctx, suite.buildShutdownExecutorsReq()).Return(resp, nil)
+	err := ShutdownMesosExecutor(suite.ctx, suite.mockHostMgr,
+		&mesos.TaskID{Value: &suite.mesosTaskID},
+		&mesos.AgentID{Value: &suite.mesosTaskID})
+	suite.Error(err)
+	suite.Equal(err.Error(), randomErrorStr)
+}
+
+// TestShutdownExecutorInvalidExecutors tests InvalidExecutors error in
+// ShutdownMesosExecutor
+func (suite *JobmgrTaskUtilTestSuite) TestShutdownExecutorInvalidExecutors() {
+
+	// Simulate InvalidExecutors error
+	resp := &hostsvc.ShutdownExecutorsResponse{
+		Error: &hostsvc.ShutdownExecutorsResponse_Error{
+			InvalidExecutors: &hostsvc.InvalidExecutors{
+				Message: randomErrorStr,
+			},
+		},
+	}
+	suite.mockHostMgr.EXPECT().ShutdownExecutors(
+		suite.ctx, suite.buildShutdownExecutorsReq()).Return(resp, nil)
+	err := ShutdownMesosExecutor(suite.ctx, suite.mockHostMgr,
+		&mesos.TaskID{Value: &suite.mesosTaskID},
+		&mesos.AgentID{Value: &suite.mesosTaskID})
+	suite.Error(err)
+	suite.Equal(err.Error(), randomErrorStr)
+}
+
+// TestCreateInitializingTask tests CreateInitializingTask
+func (suite *JobmgrTaskUtilTestSuite) TestCreateInitializingTask() {
+	runtime := CreateInitializingTask(&peloton.JobID{Value: suite.jobID},
+		uint32(suite.instanceID), &job.JobConfig{})
+	suite.Equal(runtime.GetState(), task.TaskState_INITIALIZED)
+	suite.Equal(runtime.GetGoalState(), task.TaskState_SUCCEEDED)
+}
+
+// TestGetDefaultTaskGoalState tests GetDefaultTaskGoalState
+func (suite *JobmgrTaskUtilTestSuite) TestGetDefaultTaskGoalState() {
+	state := GetDefaultTaskGoalState(job.JobType_SERVICE)
+	suite.Equal(state, task.TaskState_RUNNING)
+
+	state = GetDefaultTaskGoalState(job.JobType_BATCH)
+	suite.Equal(state, task.TaskState_SUCCEEDED)
+
+}
+
+// TestCreateSecretProto tests if CreateSecretProto creates a secret protobuf
+// message from given secret path and data
+func (suite *JobmgrTaskUtilTestSuite) TestCreateSecretProto() {
+	id := uuid.New()
+	secret := CreateSecretProto(id, testSecretPath, []byte(testSecretStr))
+	suite.Equal(secret.GetPath(), testSecretPath)
+	suite.Equal(secret.GetId().GetValue(), id)
+	suite.Equal(secret.GetValue().GetData(),
+		[]byte(base64.StdEncoding.EncodeToString([]byte(testSecretStr))))
+}
+
+// TestCreateSecretsFromVolumes tests building secret proto from secret volumes
+func (suite *JobmgrTaskUtilTestSuite) TestCreateSecretsFromVolumes() {
+	id := uuid.New()
+	secrets := CreateSecretsFromVolumes(
+		[]*mesos.Volume{util.CreateSecretVolume(testSecretPath, id)})
+	suite.Equal(len(secrets), 1)
+	suite.Equal(secrets[0].GetPath(), testSecretPath)
+	suite.Nil(secrets[0].GetValue().GetData())
+	suite.Equal(secrets[0].GetId().GetValue(), id)
 }

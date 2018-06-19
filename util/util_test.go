@@ -302,6 +302,16 @@ func TestCreateHostInfo(t *testing.T) {
 	assert.Equal(t, res.Hostname, hostname)
 }
 
+// helper function to generate random volume
+func getVolume() *mesos.Volume {
+	volumeMode := mesos.Volume_RO
+	testPath := "/test"
+	return &mesos.Volume{
+		Mode:          &volumeMode,
+		ContainerPath: &testPath,
+	}
+}
+
 // createTaskConfigWithSecret creates TaskConfig with a test secret volume.
 func createTaskConfigWithSecret() *task.TaskConfig {
 	mesosContainerizer := mesos.ContainerInfo_MESOS
@@ -309,6 +319,7 @@ func createTaskConfigWithSecret() *task.TaskConfig {
 		Container: &mesos.ContainerInfo{
 			Type: &mesosContainerizer,
 			Volumes: []*mesos.Volume{
+				getVolume(),
 				CreateSecretVolume(testSecretPath, testSecretStr),
 			},
 		},
@@ -323,19 +334,26 @@ func TestRemoveSecretVolumesFromJobConfig(t *testing.T) {
 
 	jobConfig := &job.JobConfig{
 		DefaultConfig: createTaskConfigWithSecret(),
+		InstanceConfig: map[uint32]*task.TaskConfig{
+			0: createTaskConfigWithSecret(),
+		},
 	}
 	// add a non-secret container volume to default config
-	volumeMode := mesos.Volume_RO
-	testPath := "/test"
-	volume := &mesos.Volume{
-		Mode:          &volumeMode,
-		ContainerPath: &testPath,
-	}
 	jobConfig.GetDefaultConfig().GetContainer().Volumes =
-		append(jobConfig.GetDefaultConfig().GetContainer().Volumes, volume)
+		append(jobConfig.GetDefaultConfig().GetContainer().Volumes, getVolume())
 	secretVolumes = RemoveSecretVolumesFromJobConfig(jobConfig)
 	assert.False(t, ConfigHasSecretVolumes(jobConfig.GetDefaultConfig()))
 	assert.Equal(t, len(secretVolumes), 1)
 	assert.Equal(t, []byte(testSecretStr),
 		secretVolumes[0].GetSource().GetSecret().GetValue().GetData())
+	assert.False(t, ConfigHasSecretVolumes(jobConfig.GetInstanceConfig()[0]))
+}
+
+// TestConfigHasSecretVolumes tests if task config has secret volumes
+func TestConfigHasSecretVolumes(t *testing.T) {
+	cfgWithSecret := createTaskConfigWithSecret()
+	cfgWithoutSecret := &task.TaskConfig{}
+
+	assert.True(t, ConfigHasSecretVolumes(cfgWithSecret))
+	assert.False(t, ConfigHasSecretVolumes(cfgWithoutSecret))
 }
