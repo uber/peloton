@@ -1224,10 +1224,7 @@ func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInCache() {
 	taskInfos := suite.initTestTaskInfo(runningTasks, pendingTasks)
 
 	suite.mockedJobFactory.EXPECT().
-		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
-	suite.mockedCachedJob.EXPECT().
-		GetConfig(gomock.Any()).
-		Return(nil, errors.New("test error"))
+		GetJob(suite.testJobID).Return(nil)
 
 	suite.mockedJobStore.EXPECT().
 		GetJobConfig(gomock.Any(), suite.testJobID).
@@ -1242,18 +1239,27 @@ func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInCache() {
 	suite.NoError(err)
 }
 
-func (suite *TaskHandlerTestSuite) TestListTaskNoJobInDB() {
+func (suite *TaskHandlerTestSuite) TestListTaskNoJobConfigInDB() {
+	suite.mockedJobFactory.EXPECT().
+		GetJob(suite.testJobID).Return(nil)
+
+	suite.mockedJobStore.EXPECT().
+		GetJobConfig(gomock.Any(), suite.testJobID).
+		Return(nil, errors.New("No JobConfig"))
+	suite.mockedTaskStore.EXPECT()
+
+	_, err := suite.handler.List(context.Background(), &task.ListRequest{
+		JobId: suite.testJobID,
+	})
+	suite.NoError(err)
+}
+
+func (suite *TaskHandlerTestSuite) TestListTaskNoCachedJobConfig() {
 	suite.mockedJobFactory.EXPECT().
 		GetJob(suite.testJobID).Return(suite.mockedCachedJob)
 	suite.mockedCachedJob.EXPECT().
 		GetConfig(gomock.Any()).
-		Return(nil, errors.New("test error"))
-
-	suite.mockedJobStore.EXPECT().
-		GetJobConfig(gomock.Any(), suite.testJobID).
-		Return(nil, nil)
-	suite.mockedTaskStore.EXPECT()
-
+		Return(nil, errors.New("No JobConfig"))
 	_, err := suite.handler.List(context.Background(), &task.ListRequest{
 		JobId: suite.testJobID,
 	})

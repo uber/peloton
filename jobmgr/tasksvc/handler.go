@@ -228,23 +228,30 @@ func (m *serviceHandler) List(
 
 	m.metrics.TaskAPIList.Inc(1)
 	var instanceCount uint32
-	cachedJobConfig, err := m.jobFactory.GetJob(body.JobId).GetConfig(ctx)
-	if cachedJobConfig == nil || err != nil {
-		dbJobConfig, err := m.jobStore.GetJobConfig(ctx, body.JobId)
-		if dbJobConfig == nil || err != nil {
-			log.WithField("job_id", body.JobId.Value).
-				WithError(err).
-				Debug("Failed to get job config")
-			m.metrics.TaskListFail.Inc(1)
+	var err error
+
+	cachedJob := m.jobFactory.GetJob(body.GetJobId())
+	if cachedJob == nil {
+		dbJobConfig, err := m.jobStore.GetJobConfig(ctx, body.GetJobId())
+		if err != nil {
 			return &task.ListResponse{
 				NotFound: &pb_errors.JobNotFound{
-					Id:      body.JobId,
-					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.JobId, err),
+					Id:      body.GetJobId(),
+					Message: fmt.Sprintf("Failed to find job with id %v, err=%v", body.GetJobId(), err),
 				},
 			}, nil
 		}
 		instanceCount = dbJobConfig.GetInstanceCount()
 	} else {
+		cachedJobConfig, err := cachedJob.GetConfig(ctx)
+		if err != nil {
+			return &task.ListResponse{
+				NotFound: &pb_errors.JobNotFound{
+					Id:      body.GetJobId(),
+					Message: fmt.Sprintf("Job with id %v has no config, err=%v", body.GetJobId(), err),
+				},
+			}, nil
+		}
 		instanceCount = cachedJobConfig.GetInstanceCount()
 	}
 
