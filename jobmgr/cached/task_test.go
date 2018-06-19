@@ -3,6 +3,7 @@ package cached
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
 )
@@ -299,4 +301,21 @@ func (suite *TaskTestSuite) TestReplaceRuntime_StaleRuntime() {
 	err := tt.ReplaceRuntime(newRuntime, false)
 	suite.Nil(err)
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_LAUNCHED)
+}
+
+// TestGetResourceManagerProcessingStates tests
+// whether GetResourceManagerProcessingStates returns right states
+func TestGetResourceManagerProcessingStates(t *testing.T) {
+	expect := []string{
+		pbtask.TaskState_LAUNCHING.String(),
+		pbtask.TaskState_PENDING.String(),
+		pbtask.TaskState_READY.String(),
+		pbtask.TaskState_PLACING.String(),
+		pbtask.TaskState_PLACED.String(),
+	}
+	states := GetResourceManagerProcessingStates()
+	sort.Strings(expect)
+	sort.Strings(states)
+
+	assert.Equal(t, expect, states)
 }

@@ -49,7 +49,9 @@ job_manager:
     # TODO (adityacb): Adjust this limit once we fix T1689063 and T1689077
     # and have a better data model
     max_tasks_per_job: 100000
-    enable_secrets: false
+    enable_secrets: false 
+  # Refresh AciveTaskCache every 5 min
+  active_task_update_period: 300s
 
 election:
   root: "/peloton"

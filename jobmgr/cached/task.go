@@ -392,3 +392,14 @@ func (t *task) GoalState() TaskStateVector {
 		ConfigVersion: t.runtime.GetDesiredConfigVersion(),
 	}
 }
+
+// GetResourceManagerProcessingStates returns the active task states in Resource Manager
+func GetResourceManagerProcessingStates() []string {
+	states := make([]string, len(resMgrOwnedTaskStates))
+	i := 0
+	for k := range resMgrOwnedTaskStates {
+		states[i] = k.String()
+		i++
+	}
+	return states
+}

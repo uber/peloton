@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/background"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
@@ -30,6 +31,7 @@ type Server struct {
 	deadlineTracker    deadline.Tracker
 	placementProcessor placement.Processor
 	statusUpdate       event.StatusUpdate
+	backgroundManager  background.Manager
 }
 
 // NewServer creates a job manager Server instance.
@@ -41,6 +43,7 @@ func NewServer(
 	deadlineTracker deadline.Tracker,
 	placementProcessor placement.Processor,
 	statusUpdate event.StatusUpdate,
+	backgroundManager background.Manager,
 ) *Server {
 
 	return &Server{
@@ -52,6 +55,7 @@ func NewServer(
 		deadlineTracker:    deadlineTracker,
 		placementProcessor: placementProcessor,
 		statusUpdate:       statusUpdate,
+		backgroundManager:  backgroundManager,
 	}
 }
 
@@ -67,6 +71,7 @@ func (s *Server) GainedLeadershipCallback() error {
 	s.placementProcessor.Start()
 	s.deadlineTracker.Start()
 	s.statusUpdate.Start()
+	s.backgroundManager.Start()
 
 	return nil
 }
@@ -83,7 +88,7 @@ func (s *Server) LostLeadershipCallback() error {
 	s.taskPreemptor.Stop()
 	s.goalstateDriver.Stop()
 	s.deadlineTracker.Stop()
-
+	s.backgroundManager.Stop()
 	return nil
 }
 

@@ -1,6 +1,8 @@
 package jobmgr
 
 import (
+	"time"
+
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
@@ -39,4 +41,7 @@ type Config struct {
 
 	// Job service specific configuration
 	JobSvcCfg jobsvc.Config `yaml:"job_service"`
+
+	// Period in sec for updating active cache
+	ActiveTaskUpdatePeriod time.Duration `yaml:"active_task_update_period"`
 }

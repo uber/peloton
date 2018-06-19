@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/common"
+	"code.uber.internal/infra/peloton/common/background"
 	"code.uber.internal/infra/peloton/common/config"
 	"code.uber.internal/infra/peloton/common/health"
 	"code.uber.internal/infra/peloton/common/logging"
@@ -16,6 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/jobsvc"
 	"code.uber.internal/infra/peloton/jobmgr/logmanager"
+	"code.uber.internal/infra/peloton/jobmgr/task/activermtask"
 	"code.uber.internal/infra/peloton/jobmgr/task/deadline"
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
@@ -29,6 +31,7 @@ import (
 	"code.uber.internal/infra/peloton/yarpc/peer"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/uber-go/atomic"
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/api/transport"
@@ -295,6 +298,21 @@ func main() {
 		},
 	})
 
+	// Declare background works
+	backgroundManager := background.NewManager()
+
+	// Register UpdateActiveTasks function
+	activeJobCache := activermtask.NewActiveRMTasks(dispatcher, rootScope)
+	backgroundManager.RegisterWorks(
+		background.Work{
+			Name: "ActiveCacheJob",
+			Func: func(_ *atomic.Bool) {
+				activeJobCache.UpdateActiveTasks()
+			},
+			Period: time.Duration(cfg.JobManager.ActiveTaskUpdatePeriod),
+		},
+	)
+
 	jobFactory := cached.InitJobFactory(
 		store, // store implements JobStore
 		store, // store implements TaskStore
@@ -378,6 +396,7 @@ func main() {
 		deadlineTracker,
 		placementProcessor,
 		statusUpdate,
+		backgroundManager,
 	)
 
 	candidate, err := leader.NewCandidate(
@@ -415,6 +434,7 @@ func main() {
 		*mesosAgentWorkDir,
 		common.PelotonHostManager,
 		logmanager.NewLogManager(&http.Client{Timeout: _httpClientTimeout}),
+		activeJobCache,
 	)
 
 	volumesvc.InitServiceHandler(

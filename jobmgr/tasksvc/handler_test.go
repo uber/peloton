@@ -13,7 +13,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
 	hostmocks "code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc/mocks"
-	//"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 	resmocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
 
 	"code.uber.internal/infra/peloton/jobmgr/cached"
@@ -21,6 +21,7 @@ import (
 	cachedtest "code.uber.internal/infra/peloton/jobmgr/cached/test"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	logmanagermocks "code.uber.internal/infra/peloton/jobmgr/logmanager/mocks"
+	activermtaskmocks "code.uber.internal/infra/peloton/jobmgr/task/activermtask/mocks"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 	"code.uber.internal/infra/peloton/util"
@@ -57,6 +58,7 @@ type TaskHandlerTestSuite struct {
 	mockedLogManager         *logmanagermocks.MockLogManager
 	mockedHostMgr            *hostmocks.MockInternalHostServiceYARPCClient
 	mockedTask               *cachedmocks.MockTask
+	mockedActiveRMTasks      *activermtaskmocks.MockActiveRMTasks
 }
 
 func (suite *TaskHandlerTestSuite) SetupTest() {
@@ -94,6 +96,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	suite.mockedLogManager = logmanagermocks.NewMockLogManager(suite.ctrl)
 	suite.mockedHostMgr = hostmocks.NewMockInternalHostServiceYARPCClient(suite.ctrl)
 	suite.mockedTask = cachedmocks.NewMockTask(suite.ctrl)
+	suite.mockedActiveRMTasks = activermtaskmocks.NewMockActiveRMTasks(suite.ctrl)
 
 	suite.handler.jobStore = suite.mockedJobStore
 	suite.handler.taskStore = suite.mockedTaskStore
@@ -104,6 +107,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 	suite.handler.frameworkInfoStore = suite.mockedFrameworkInfoStore
 	suite.handler.logManager = suite.mockedLogManager
 	suite.handler.hostMgrClient = suite.mockedHostMgr
+	suite.handler.activeRMTasks = suite.mockedActiveRMTasks
 }
 
 func (suite *TaskHandlerTestSuite) TearDownTest() {
@@ -1192,8 +1196,6 @@ func (suite *TaskHandlerTestSuite) initTestTaskInfo(
 }
 
 func (suite *TaskHandlerTestSuite) TestListTask() {
-	//testReason := "test reason"
-	//var taskEntries []*resmgrsvc.GetActiveTasksResponse_TaskEntry
 	runningTasks := uint32(testInstanceCount) / 2
 	pendingTasks := uint32(testInstanceCount) - runningTasks
 	taskInfos := suite.initTestTaskInfo(runningTasks, pendingTasks)
@@ -1206,14 +1208,11 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), suite.testJobID).
 		Return(taskInfos, nil)
-	/*mockResmgrClient.EXPECT().
-		GetActiveTasks(gomock.Any(), &resmgrsvc.GetActiveTasksRequest{
-			JobID:  suite.testJobID.GetValue(),
-			States: getResourceManagerProcessingStates(),
-		}).Return(&resmgrsvc.GetActiveTasksResponse{
-		TasksByState: map[string]*resmgrsvc.GetActiveTasksResponse_TaskEntries{
-			task.TaskState_PLACING.String(): {TaskEntry: taskEntries}},
-	}, nil)*/
+	suite.mockedActiveRMTasks.EXPECT().
+		GetActiveTasks(gomock.Any()).
+		Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
+			Reason: "TEST_REASON",
+		}).Times(2)
 
 	result, err := suite.handler.List(context.Background(), &task.ListRequest{
 		JobId: suite.testJobID,
@@ -1225,7 +1224,7 @@ func (suite *TaskHandlerTestSuite) TestListTask() {
 			runningTasks--
 		}
 		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
-			//suite.Equal(taskInfo.GetRuntime().GetReason(), testReason)
+			suite.Equal(taskInfo.GetRuntime().GetReason(), "TEST_REASON")
 			pendingTasks--
 		}
 	}
@@ -1247,6 +1246,13 @@ func (suite *TaskHandlerTestSuite) TestListTaskQueryByRange() {
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJobByRange(gomock.Any(), suite.testJobID, gomock.Any()).
 		Return(taskInfos, nil)
+
+	suite.mockedActiveRMTasks.EXPECT().
+		GetActiveTasks(gomock.Any()).
+		Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
+			Reason: "TEST_REASON",
+		}).Times(2)
+
 	_, err := suite.handler.List(context.Background(), &task.ListRequest{
 		JobId: suite.testJobID,
 		Range: &task.InstanceRange{
@@ -1291,6 +1297,11 @@ func (suite *TaskHandlerTestSuite) TestListTaskNoTaskInCache() {
 	suite.mockedTaskStore.EXPECT().
 		GetTasksForJob(gomock.Any(), suite.testJobID).
 		Return(taskInfos, nil)
+	suite.mockedActiveRMTasks.EXPECT().
+		GetActiveTasks(gomock.Any()).
+		Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
+			Reason: "TEST_REASON",
+		}).Times(2)
 
 	_, err := suite.handler.List(context.Background(), &task.ListRequest{
 		JobId: suite.testJobID,
@@ -1354,14 +1365,11 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 	suite.mockedTaskStore.EXPECT().
 		QueryTasks(gomock.Any(), suite.testJobID, nil).
 		Return(taskInfos, uint32(testInstanceCount), nil)
-	/*mockResmgrClient.EXPECT().
-		GetActiveTasks(gomock.Any(), &resmgrsvc.GetActiveTasksRequest{
-			JobID:  suite.testJobID.GetValue(),
-			States: getResourceManagerProcessingStates(),
-		}).Return(&resmgrsvc.GetActiveTasksResponse{
-		TasksByState: map[string]*resmgrsvc.GetActiveTasksResponse_TaskEntries{
-			task.TaskState_PLACING.String(): {TaskEntry: taskEntries}},
-	}, nil)*/
+	suite.mockedActiveRMTasks.EXPECT().
+		GetActiveTasks(gomock.Any()).
+		Return(&resmgrsvc.GetActiveTasksResponse_TaskEntry{
+			Reason: "TEST_REASON",
+		}).Times(2)
 
 	result, err := suite.handler.Query(context.Background(), &task.QueryRequest{
 		JobId: suite.testJobID,
@@ -1373,7 +1381,7 @@ func (suite *TaskHandlerTestSuite) TestQueryTask() {
 			runningTasks--
 		}
 		if taskInfo.GetRuntime().GetState() == task.TaskState_PENDING {
-			//suite.Equal(taskInfo.GetRuntime().GetReason(), testReason)
+			suite.Equal(taskInfo.GetRuntime().GetReason(), "TEST_REASON")
 			pendingTasks--
 		}
 	}
