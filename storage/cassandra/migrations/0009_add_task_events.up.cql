@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS task_events (
     instance_id int,
     run_id uuid,
     previous_run_id uuid,
-    update_time timestamp,
+    update_time timeuuid,
     actual_state text,
     goal_state text,
     hostname text,
