@@ -16,7 +16,11 @@ import (
 )
 
 // sendLaunchInfoToResMgr lets resource manager that the task has been launched.
-func sendLaunchInfoToResMgr(ctx context.Context, taskEnt *taskEntity, mesosTaskID *mesosv1.TaskID) error {
+func sendLaunchInfoToResMgr(
+	ctx context.Context,
+	taskEnt *taskEntity,
+	mesosTaskID *mesosv1.TaskID,
+) error {
 	// Updating resource manager with state as LAUNCHED for the task
 	_, err := taskEnt.driver.resmgrClient.UpdateTasksState(
 		ctx,
@@ -30,11 +34,13 @@ func sendLaunchInfoToResMgr(ctx context.Context, taskEnt *taskEntity, mesosTaskI
 			},
 		},
 	)
+
 	// This would only be channel/network error and nothing else
 	// and this case we should return it from here.
 	if err != nil {
 		return err
 	}
+
 	// Starting timeout as we need to track if the task is
 	// launched within timeout period
 	taskEnt.driver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID,
@@ -70,7 +76,11 @@ func TaskLaunchRetry(ctx context.Context, entity goalstate.Entity) error {
 	case task.TaskState_LAUNCHED:
 		if time.Now().Sub(cachedTask.GetLastRuntimeUpdateTime()) < goalStateDriver.cfg.LaunchTimeout {
 			// LAUNCHED not times out, just send it to resource manager
-			return sendLaunchInfoToResMgr(ctx, taskEnt, cachedRuntime.MesosTaskId)
+			return sendLaunchInfoToResMgr(
+				ctx,
+				taskEnt,
+				cachedRuntime.GetMesosTaskId(),
+			)
 		}
 		goalStateDriver.mtx.taskMetrics.TaskLaunchTimeout.Inc(1)
 	case task.TaskState_STARTING:

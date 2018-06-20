@@ -75,7 +75,11 @@ func (c *MockClient) GetPendingTasks(context.Context,
 	...yarpc.CallOption) (*resmgrsvc.GetPendingTasksResponse, error) {
 	return nil, nil
 }
-func (c *MockClient) UpdateTasksState(context.Context, *resmgrsvc.UpdateTasksStateRequest, ...yarpc.CallOption) (*resmgrsvc.UpdateTasksStateResponse, error) {
+func (c *MockClient) UpdateTasksState(
+	context.Context,
+	*resmgrsvc.UpdateTasksStateRequest,
+	...yarpc.CallOption,
+) (*resmgrsvc.UpdateTasksStateResponse, error) {
 	return nil, nil
 }
 
