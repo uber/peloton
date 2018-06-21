@@ -2,8 +2,8 @@ import pytest
 import time
 
 from job import IntegrationTestConfig, Job, kill_jobs
-from peloton_client.pbgen.peloton.api.job import job_pb2
-from peloton_client.pbgen.peloton.api.task import task_pb2
+from peloton_client.pbgen.peloton.api.v0.job import job_pb2
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 
 
 pytestmark = [pytest.mark.default, pytest.mark.task]

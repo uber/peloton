@@ -2,8 +2,8 @@ import pytest
 import time
 
 from job import IntegrationTestConfig, Job
-from peloton_client.pbgen.peloton.api import peloton_pb2
-from peloton_client.pbgen.peloton.api.task import task_pb2
+from peloton_client.pbgen.peloton.api.v0 import peloton_pb2
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 
 # Mark test module so that we can run tests by tags
 pytestmark = [pytest.mark.default, pytest.mark.placement]

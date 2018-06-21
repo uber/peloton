@@ -1,8 +1,8 @@
 import logging
 
 from client import Client
-from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
-from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
+from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
+from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 
 RESPOOL_ROOT = '/'
 log = logging.getLogger(__name__)

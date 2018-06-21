@@ -4,11 +4,11 @@ import datetime
 import time
 
 from peloton_client.client import PelotonClient
-from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
-from peloton_client.pbgen.peloton.api.job import job_pb2 as job
-from peloton_client.pbgen.peloton.api.query import query_pb2 as query
-from peloton_client.pbgen.peloton.api.task import task_pb2 as task
-from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
+from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
+from peloton_client.pbgen.peloton.api.v0.job import job_pb2 as job
+from peloton_client.pbgen.peloton.api.v0.query import query_pb2 as query
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
+from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
 
 from config_generator import (
     config,

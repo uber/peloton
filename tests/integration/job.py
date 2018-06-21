@@ -5,10 +5,11 @@ from client import Client
 from pool import Pool
 from task import Task
 from google.protobuf import json_format
-from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
-from peloton_client.pbgen.peloton.api.job import job_pb2 as job
-from peloton_client.pbgen.peloton.api.task import task_pb2 as task
-from peloton_client.pbgen.peloton.api.respool import respool_pb2 as respool
+
+from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
+from peloton_client.pbgen.peloton.api.v0.job import job_pb2 as job
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
+from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
 from util import load_test_config
 
 

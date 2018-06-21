@@ -11,8 +11,8 @@ from job import Job
 from m3.client import M3
 from m3.emitter import BatchedEmitter
 from google.protobuf import json_format
-from peloton_client.pbgen.peloton.api.job import job_pb2
-from peloton_client.pbgen.peloton.api.task import task_pb2 as task
+from peloton_client.pbgen.peloton.api.v0.job import job_pb2
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
 from peloton_client.pbgen.mesos.v1 import mesos_pb2 as mesos
 from util import load_test_config
 

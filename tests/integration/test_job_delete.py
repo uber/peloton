@@ -3,8 +3,8 @@ import logging
 import grpc
 
 from client import Client
-from peloton_client.pbgen.peloton.api.job import job_pb2
-from peloton_client.pbgen.peloton.api import peloton_pb2 as peloton
+from peloton_client.pbgen.peloton.api.v0.job import job_pb2
+from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 
 log = logging.getLogger(__name__)
 
