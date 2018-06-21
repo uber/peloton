@@ -109,6 +109,7 @@ class App(object):
         self.cpu_limit = 4.0
         self.mem_limit = 16 * GB
         self.disk_limit = 16 * GB
+        self.scarce_resource_types = None
 
         for k, v in kwargs.iteritems():
             setattr(self, k, v)
@@ -175,8 +176,9 @@ class App(object):
             env_vars['ARCHIVE_STEP_SIZE'] = self.archive_step_size
 
         if self.name == 'hostmgr':
-            scarce_resource = ','.join(self.scarce_resource_types)
-            env_vars['SCARCE_RESOURCE_TYPES'] = scarce_resource
+            if self.scarce_resource_types:
+                env_vars['SCARCE_RESOURCE_TYPES'] = ','.join(
+                    self.scarce_resource_types)
 
         params = [
             DockerParameter(name='env', value='%s=%s' % (key, val))
