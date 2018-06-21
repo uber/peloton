@@ -3,6 +3,10 @@
 0.8.0 (unreleased)
 ------------------
 
+0.7.1.1
+------------------
+* 2018-06-20    Set Mesos Task Labels for JobID, InstanceID, TaskID                                    rcharles@uber.com
+
 0.7.1
 ------------------
 * 2018-06-13    Remove GetJobConfig from DB in TaskQuery and TaskList                                  chunyang.shen@uber.com
