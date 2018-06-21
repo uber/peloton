@@ -13,7 +13,7 @@ import (
 // PriorityQueue is FIFO queue which remove the highest priority task item entered first in the queue
 type PriorityQueue struct {
 	sync.RWMutex
-	list *MultiLevelList
+	list MultiLevelList
 }
 
 // NewPriorityQueue intializes the fifo queue and returns the pointer
@@ -100,13 +100,10 @@ func (f *PriorityQueue) Peek(limit uint32) ([]*resmgrsvc.Gang, error) {
 				priority--
 				continue
 			}
-			return items, fmt.Errorf("peek failed err:%s", err)
+			return items, fmt.Errorf("peek failed err: %s", err)
 		}
 
-		gangs, err := toGang(itemsByPriority)
-		if err != nil {
-			return items, fmt.Errorf("peek failed err:%s", err)
-		}
+		gangs := toGang(itemsByPriority)
 
 		items = append(items, gangs...)
 
@@ -121,13 +118,13 @@ func (f *PriorityQueue) Peek(limit uint32) ([]*resmgrsvc.Gang, error) {
 	return items, nil
 }
 
-func toGang(items []interface{}) ([]*resmgrsvc.Gang, error) {
+func toGang(items []interface{}) []*resmgrsvc.Gang {
 	var gangs []*resmgrsvc.Gang
 	for _, item := range items {
 		res := item.(*resmgrsvc.Gang)
 		gangs = append(gangs, res)
 	}
-	return gangs, nil
+	return gangs
 }
 
 // Remove removes the item from the queue

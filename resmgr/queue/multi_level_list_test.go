@@ -14,7 +14,7 @@ import (
 
 type MultiLevelListTestSuite struct {
 	suite.Suite
-	mll      *MultiLevelList
+	mll      MultiLevelList
 	mapTasks map[string]*resmgr.Task
 }
 
@@ -25,57 +25,50 @@ func (suite *MultiLevelListTestSuite) SetupTest() {
 }
 
 func (suite *MultiLevelListTestSuite) AddTasks() {
-	jobID1 := &peloton.JobID{
-		Value: "job1",
-	}
-	taskID1 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
-	}
-	taskItem1 := &resmgr.Task{
-		Name:     "job1-1",
-		Priority: 0,
-		JobId:    jobID1,
-		Id:       taskID1,
-	}
+	taskItem1 := CreateResmgrTask(
+		&peloton.JobID{Value: "job1"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job1", 1)},
+		0)
 
 	err := suite.mll.Push(0, taskItem1)
 	suite.Nil(err)
 	suite.mapTasks["job1-1"] = taskItem1
 	suite.Equal(suite.mll.GetHighestLevel(), 0, "Highest Level should be 0")
 
-	jobID0 := &peloton.JobID{
-		Value: "job2",
-	}
-	taskID0 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID0.Value, 1),
-	}
-	taskItem0 := &resmgr.Task{
-		Name:     "job2-1",
-		Priority: 1,
-		JobId:    jobID0,
-		Id:       taskID0,
-	}
+	taskItem0 := CreateResmgrTask(
+		&peloton.JobID{Value: "job2"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job2", 1)},
+		1)
 
 	err = suite.mll.Push(1, taskItem0)
 	suite.Nil(err)
 	suite.mapTasks["job2-1"] = taskItem0
 	suite.Equal(suite.mll.GetHighestLevel(), 1, "Highest Level should be 1")
 
-	jobID2 := &peloton.JobID{
-		Value: "job1",
-	}
-	taskID2 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
-	}
-	taskItem2 := &resmgr.Task{
-		Name:     "job1-2",
-		Priority: 0,
-		JobId:    jobID2,
-		Id:       taskID2,
-	}
+	taskItem2 := CreateResmgrTask(
+		&peloton.JobID{Value: "job1"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job1", 2)},
+		0)
 	err = suite.mll.Push(0, taskItem2)
 	suite.Nil(err)
 	suite.mapTasks["job1-2"] = taskItem2
+}
+
+// createResmgrTask returns the resmgr task
+func CreateResmgrTask(
+	jobID *peloton.JobID,
+	taskID *peloton.TaskID,
+	priority uint32,
+) *resmgr.Task {
+	return &resmgr.Task{
+		Name:     taskID.Value,
+		Priority: priority,
+		JobId:    jobID,
+		Id:       taskID,
+	}
 }
 
 func (suite *MultiLevelListTestSuite) TearDownTest() {
@@ -87,11 +80,13 @@ func TestPelotonPriorityMap(t *testing.T) {
 }
 
 func (suite *MultiLevelListTestSuite) TestLength() {
-	suite.Equal(suite.mll.Len(0), 2, "Length should be 2")
+	suite.Equal(suite.mll.Len(0), 2,
+		"Length should be 2")
 }
 
 func (suite *MultiLevelListTestSuite) TestSize() {
-	suite.Equal(3, suite.mll.Size(), "Size should be 3")
+	suite.Equal(3, suite.mll.Size(),
+		"Size should be 3")
 }
 
 func (suite *MultiLevelListTestSuite) TestLevels() {
@@ -102,14 +97,27 @@ func (suite *MultiLevelListTestSuite) TestLevels() {
 }
 
 func (suite *MultiLevelListTestSuite) TestPop() {
-	t, _ := suite.mll.Pop(0)
-	suite.Equal(t.(*resmgr.Task).JobId.Value, "job1", "Job 1 should be out")
-	suite.Equal(t.(*resmgr.Task).Id.Value, "job1-1", "Job 1 , Instance 1 should be out")
-	suite.Equal(suite.mll.Len(0), 1, "Length should be 1")
+	t, err := suite.mll.Pop(0)
+	suite.NoError(err)
+	suite.Equal(t.(*resmgr.Task).JobId.Value, "job1",
+		"Job 1 should be out")
+	suite.Equal(t.(*resmgr.Task).Id.Value, "job1-1",
+		"Job 1 , Instance 1 should be out")
+	suite.Equal(suite.mll.Len(0), 1,
+		"Length should be 1")
+	t, err = suite.mll.Pop(0)
+	suite.NoError(err)
+	suite.Equal(t.(*resmgr.Task).JobId.Value, "job1",
+		"Job 1 should be out")
+	suite.NoError(err)
+	t, err = suite.mll.Pop(0)
+	suite.Error(err)
+	suite.Contains(err.Error(), "No items found")
 }
 
 func (suite *MultiLevelListTestSuite) TestRemove() {
-	suite.Equal(suite.mll.Len(0), 2, "Length should be 2")
+	suite.Equal(suite.mll.Len(0), 2,
+		"Length should be 2")
 	taskItem := suite.mapTasks["job1-2"]
 	res := suite.mll.Remove(0, taskItem)
 
@@ -162,43 +170,35 @@ func TestMultiLevelList_Push(t *testing.T) {
 
 func (suite *MultiLevelListTestSuite) TestPushList() {
 	newList := list.New()
-	jobID := &peloton.JobID{
-		Value: "job3",
-	}
-	taskID := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID.Value, 1),
-	}
-	taskItem := &resmgr.Task{
-		Name:     "job3-1",
-		Priority: 2,
-		JobId:    jobID,
-		Id:       taskID,
-	}
+	taskItem := CreateResmgrTask(
+		&peloton.JobID{Value: "job3"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job3", 1)},
+		2)
 	newList.PushBack(taskItem)
+	taskItem1 := CreateResmgrTask(
+		&peloton.JobID{Value: "job3"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job3", 2)},
+		2)
+	newList.PushBack(taskItem1)
 
-	taskID = &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID.Value, 2),
-	}
-	taskItem = &resmgr.Task{
-		Name:     "job3-2",
-		Priority: 2,
-		JobId:    jobID,
-		Id:       taskID,
-	}
-	newList.PushBack(taskItem)
 	err := suite.mll.PushList(2, newList)
 	suite.Nil(err)
-	suite.Equal(2, suite.mll.GetHighestLevel(), "Highest Level should be 2")
+	suite.Equal(2, suite.mll.GetHighestLevel(),
+		"Highest Level should be 2")
 	e, err := suite.mll.Pop(2)
 	suite.NoError(err)
 	retTask := e.(*resmgr.Task)
 	suite.Equal("job3-1", retTask.Id.Value)
-	suite.Equal(false, suite.mll.IsEmpty(2), "Should Not be empty")
+	suite.Equal(false, suite.mll.IsEmpty(2),
+		"Should Not be empty")
 	e, err = suite.mll.Pop(2)
 	suite.NoError(err)
 	retTask = e.(*resmgr.Task)
 	suite.Equal("job3-2", retTask.Id.Value)
-	suite.Equal(true, suite.mll.IsEmpty(2), "Should be empty")
+	suite.Equal(true, suite.mll.IsEmpty(2),
+		"Should be empty")
 }
 
 func TestMultiLevelList_PushList_at_max_capacity(t *testing.T) {
@@ -236,4 +236,27 @@ func (suite *MultiLevelListTestSuite) TestPeekItems() {
 	es, err = suite.mll.PeekItems(3, 100)
 	suite.Error(err)
 	suite.EqualError(err, "No items found in queue for priority 3")
+}
+
+func (suite *MultiLevelListTestSuite) TestPeekItemsReachedLimit() {
+	// level 0 has 2 items
+	es, err := suite.mll.PeekItems(0, 1)
+	suite.NoError(err)
+	suite.Equal(1, len(es))
+	retTask := es[0].(*resmgr.Task)
+	suite.Equal(retTask.Id.Value, "job1-1")
+}
+
+func (suite *MultiLevelListTestSuite) TestPeekItem() {
+	// level 1 has 1 item
+	es, err := suite.mll.PeekItem(1)
+	suite.NoError(err)
+
+	retTask := es.(*resmgr.Task)
+	suite.Equal(retTask.Id.Value, "job2-1")
+
+	// There is no level 3
+	es, err = suite.mll.PeekItem(3)
+	suite.Error(err)
+	suite.Contains(err.Error(), "No items found in queue")
 }

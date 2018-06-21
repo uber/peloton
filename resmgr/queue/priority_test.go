@@ -1,16 +1,20 @@
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
-
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
+
+	"code.uber.internal/infra/peloton/resmgr/queue/mocks"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
 type FifoQueueTestSuite struct {
@@ -25,78 +29,49 @@ func (suite *FifoQueueTestSuite) SetupTest() {
 }
 
 func (suite *FifoQueueTestSuite) AddTasks() {
-
 	// Task - 1
-	jobID1 := &peloton.JobID{
-		Value: "job1",
+	enq1 := CreateResmgrTask(
+		&peloton.JobID{Value: "job1"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job1", 1)},
+		0)
+	gang1 := &resmgrsvc.Gang{
+		Tasks: []*resmgr.Task{enq1},
 	}
-	taskID1 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID1.Value, 1),
-	}
-	enq1 := resmgr.Task{
-		Name:     "job1-1",
-		Priority: 0,
-		JobId:    jobID1,
-		Id:       taskID1,
-	}
-
-	var gang1 resmgrsvc.Gang
-	gang1.Tasks = append(gang1.Tasks, &enq1)
-	suite.fq.Enqueue(&gang1)
+	suite.fq.Enqueue(gang1)
 
 	// Task - 2
-	jobID2 := &peloton.JobID{
-		Value: "job1",
+	enq2 := CreateResmgrTask(
+		&peloton.JobID{Value: "job1"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job1", 2)},
+		1)
+	gang2 := &resmgrsvc.Gang{
+		Tasks: []*resmgr.Task{enq2},
 	}
-	taskID2 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID2.Value, 2),
-	}
-	enq2 := resmgr.Task{
-		Name:     "job1-2",
-		Priority: 1,
-		JobId:    jobID2,
-		Id:       taskID2,
-	}
-
-	var gang2 resmgrsvc.Gang
-	gang2.Tasks = append(gang2.Tasks, &enq2)
-	suite.fq.Enqueue(&gang2)
+	suite.fq.Enqueue(gang2)
 
 	// Task - 3
-	jobID3 := &peloton.JobID{
-		Value: "job2",
+	enq3 := CreateResmgrTask(
+		&peloton.JobID{Value: "job2"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job2", 1)},
+		2)
+	gang3 := &resmgrsvc.Gang{
+		Tasks: []*resmgr.Task{enq3},
 	}
-	taskID3 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID3.Value, 1),
-	}
-	enq3 := resmgr.Task{
-		Name:     "job2-1",
-		Priority: 2,
-		JobId:    jobID3,
-		Id:       taskID3,
-	}
-
-	var gang3 resmgrsvc.Gang
-	gang3.Tasks = append(gang3.Tasks, &enq3)
-	suite.fq.Enqueue(&gang3)
+	suite.fq.Enqueue(gang3)
 
 	// Task - 4
-	jobID4 := &peloton.JobID{
-		Value: "job2",
+	enq4 := CreateResmgrTask(
+		&peloton.JobID{Value: "job2"},
+		&peloton.TaskID{
+			Value: fmt.Sprintf("%s-%d", "job2", 2)},
+		2)
+	gang4 := &resmgrsvc.Gang{
+		Tasks: []*resmgr.Task{enq4},
 	}
-	taskID4 := &peloton.TaskID{
-		Value: fmt.Sprintf("%s-%d", jobID4.Value, 2),
-	}
-	enq4 := resmgr.Task{
-		Name:     "job2-2",
-		Priority: 2,
-		JobId:    jobID4,
-		Id:       taskID4,
-	}
-
-	var gang4 resmgrsvc.Gang
-	gang4.Tasks = append(gang4.Tasks, &enq4)
-	suite.fq.Enqueue(&gang4)
+	suite.fq.Enqueue(gang4)
 }
 
 func (suite *FifoQueueTestSuite) TearDownTest() {
@@ -221,4 +196,64 @@ func (suite *FifoQueueTestSuite) TestRemove() {
 
 	err = suite.fq.Remove(nil)
 	suite.Error(err)
+}
+
+func (suite *FifoQueueTestSuite) TestEnqueueError() {
+	err := suite.fq.Enqueue(nil)
+	suite.Error(err)
+	suite.EqualError(err, "enqueue of empty list")
+}
+
+func (suite *FifoQueueTestSuite) TestDequeueRetryWithNilItem() {
+	q, list := suite.createQueueWithMultiLevelList()
+	gomock.InOrder(
+		list.EXPECT().GetHighestLevel().Return(5),
+		list.EXPECT().Pop(gomock.Any()).Return(nil, errors.New("error")),
+		list.EXPECT().GetHighestLevel().Return(0),
+		list.EXPECT().GetHighestLevel().Return(0),
+		list.EXPECT().Pop(gomock.Any()).Return(nil, nil),
+	)
+	_, err := q.Dequeue()
+	suite.EqualError(err, "dequeue failed")
+
+}
+
+func (suite *FifoQueueTestSuite) TestDequeueRetryError() {
+	q, list := suite.createQueueWithMultiLevelList()
+	gomock.InOrder(
+		list.EXPECT().GetHighestLevel().Return(5),
+		list.EXPECT().Pop(gomock.Any()).Return(nil, errors.New("error")),
+		list.EXPECT().GetHighestLevel().Return(0),
+		list.EXPECT().GetHighestLevel().Return(0),
+		list.EXPECT().Pop(gomock.Any()).Return(nil, errors.New("error in POP")),
+		list.EXPECT().GetHighestLevel().Return(0),
+	)
+	_, err := q.Dequeue()
+	suite.EqualError(err, "error in POP")
+
+}
+
+func (suite *FifoQueueTestSuite) TestPeekItemsError() {
+	q, list := suite.createQueueWithMultiLevelList()
+	gomock.InOrder(
+		list.EXPECT().GetHighestLevel().Return(5),
+		list.EXPECT().PeekItems(gomock.Any(), gomock.Any()).Return(nil, ErrorQueueEmpty("no item")),
+		list.EXPECT().PeekItems(gomock.Any(), gomock.Any()).Return(nil, errors.New("error")),
+	)
+	_, err := q.Peek(5)
+	suite.EqualError(err, "peek failed err: error")
+}
+
+func (suite *FifoQueueTestSuite) TestPeekNoItemsError() {
+	q, list := suite.createQueueWithMultiLevelList()
+	gomock.InOrder(list.EXPECT().GetHighestLevel().Return(0))
+	_, err := q.Peek(0)
+	suite.EqualError(err, "peek failed, queue is empty")
+}
+
+func (suite *FifoQueueTestSuite) createQueueWithMultiLevelList() (*PriorityQueue, *mocks.MockMultiLevelList) {
+	list := mocks.NewMockMultiLevelList(gomock.NewController(suite.T()))
+	return &PriorityQueue{
+		list: list,
+	}, list
 }

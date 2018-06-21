@@ -32,7 +32,7 @@ import (
 type SchedulerTestSuite struct {
 	suite.Suite
 	resTree            respool.Tree
-	readyQueue         *queue.MultiLevelList
+	readyQueue         queue.MultiLevelList
 	taskSched          *scheduler
 	mockCtrl           *gomock.Controller
 	rmTaskTracker      Tracker

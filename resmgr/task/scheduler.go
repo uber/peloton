@@ -52,7 +52,7 @@ type scheduler struct {
 	resPoolTree      respool.Tree
 	schedulingPeriod time.Duration
 	stopChan         chan struct{}
-	queue            *queue.MultiLevelList
+	queue            queue.MultiLevelList
 	rmTaskTracker    Tracker
 	metrics          *Metrics
 	random           *rand.Rand
@@ -77,11 +77,10 @@ func InitScheduler(
 		runningState:     common.RunningStateNotStarted,
 		schedulingPeriod: taskSchedulingPeriod,
 		stopChan:         make(chan struct{}, 1),
-		// TODO: initialize ready queue elsewhere
-		queue:         queue.NewMultiLevelList("ready-queue", maxReadyQueueSize),
-		rmTaskTracker: rmTaskTracker,
-		metrics:       NewMetrics(parent.SubScope("task_scheduler")),
-		random:        rand.New(rand.NewSource(time.Now().UnixNano())),
+		queue:            queue.NewMultiLevelList("ready-queue", maxReadyQueueSize),
+		rmTaskTracker:    rmTaskTracker,
+		metrics:          NewMetrics(parent.SubScope("task_scheduler")),
+		random:           rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 	log.Info("Task scheduler is initialized")
 }
