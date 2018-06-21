@@ -105,6 +105,7 @@ class App(object):
         """
         # Default attributes
         self.enable_debug_logging = False
+        self.enable_secrets = False
         self.cpu_limit = 4.0
         self.mem_limit = 16 * GB
         self.disk_limit = 16 * GB
@@ -160,6 +161,7 @@ class App(object):
                 self.cluster, 'mesos_secret_file', ''),
             'ENABLE_PREEMPTION': getattr(
                 self.cluster, 'enable_preemption', 'false'),
+            'ENABLE_SECRETS': self.enable_secrets,
         }
 
         if self.name == 'placement_stateful':
@@ -627,6 +629,7 @@ class CronApp(App):
         """
         # Default attributes
         self.enable_debug_logging = False
+        self.enable_secrets = False
         self.working_dir = None
         self.cmdline = None
         self.cron_schedule = "\*/5 * * * *"
