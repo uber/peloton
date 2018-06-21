@@ -370,3 +370,126 @@ func (suite *TaskTestSuite) TestTaskUpdateRuntimeInCacheOnly() {
 	suite.Nil(err)
 	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_RUNNING)
 }
+
+// TestTaskPatchRuntime tests updating the task runtime without any DB errors
+func (suite *TaskTestSuite) TestPatchRuntime() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+
+	diff := map[string]interface{}{
+		"State": pbtask.TaskState_RUNNING,
+	}
+
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo) {
+			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
+			suite.Equal(runtime.Revision.Version, uint64(3))
+			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
+		}).
+		Return(nil)
+
+	err := tt.PatchRuntime(context.Background(), diff)
+	suite.Nil(err)
+}
+
+// TestTaskPatchRuntime_NoRuntimeInCache tests updating task runtime when
+// the runtime in cache is nil
+func (suite *TaskTestSuite) TestPatchRuntime_NoRuntimeInCache() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, nil)
+
+	diff := map[string]interface{}{
+		"State": pbtask.TaskState_RUNNING,
+	}
+
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID).Return(runtime, nil)
+
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Do(func(ctx context.Context,
+			jobID *peloton.JobID, instanceID uint32,
+			runtime *pbtask.RuntimeInfo) {
+			suite.Equal(runtime.GetState(), pbtask.TaskState_RUNNING)
+			suite.Equal(runtime.Revision.Version, uint64(3))
+			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
+		}).
+		Return(nil)
+
+	err := tt.PatchRuntime(context.Background(), diff)
+	suite.Nil(err)
+}
+
+// TestPatchRuntime_DBError tests updating the task runtime with DB errors
+func (suite *TaskTestSuite) TestPatchRuntime_DBError() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+
+	diff := map[string]interface{}{
+		"State": pbtask.TaskState_RUNNING,
+	}
+
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Return(fmt.Errorf("fake db error"))
+
+	err := tt.PatchRuntime(context.Background(), diff)
+	suite.NotNil(err)
+}
+
+// TestReplaceRuntime tests replacing runtime in the cache only
+func (suite *TaskTestSuite) TestReplaceRuntime() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+
+	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 3)
+
+	err := tt.ReplaceRuntime(newRuntime, false)
+	suite.Nil(err)
+	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_RUNNING)
+}
+
+// TestReplaceRuntime_NoExistingCache tests replacing cache when
+// there is no existing cache
+func (suite *TaskTestSuite) TestReplaceRuntime_NoExistingCache() {
+	tt := &task{
+		id:    suite.instanceID,
+		jobID: suite.jobID,
+	}
+
+	suite.Equal(suite.instanceID, tt.ID())
+	suite.Equal(suite.jobID.Value, tt.jobID.Value)
+
+	// Test fetching state and goal state of task
+	runtime := pbtask.RuntimeInfo{
+		State:     pbtask.TaskState_RUNNING,
+		GoalState: pbtask.TaskState_SUCCEEDED,
+		Revision: &peloton.ChangeLog{
+			Version: 1,
+		},
+	}
+	tt.ReplaceRuntime(&runtime, false)
+
+	curState := tt.CurrentState()
+	curGoalState := tt.GoalState()
+	suite.Equal(runtime.State, curState.State)
+	suite.Equal(runtime.GoalState, curGoalState.State)
+}
+
+// TestReplaceRuntime_StaleRuntime tests replacing with stale runtime
+func (suite *TaskTestSuite) TestReplaceRuntime_StaleRuntime() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_LAUNCHED, 2)
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+
+	newRuntime := initializeTaskRuntime(pbtask.TaskState_RUNNING, 1)
+
+	err := tt.ReplaceRuntime(newRuntime, false)
+	suite.Nil(err)
+	suite.Equal(tt.runtime.GetState(), pbtask.TaskState_LAUNCHED)
+}

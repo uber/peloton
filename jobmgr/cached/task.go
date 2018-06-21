@@ -13,7 +13,11 @@ import (
 	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
 	log "github.com/sirupsen/logrus"
+	"go.uber.org/yarpc/yarpcerrors"
 )
+
+// RevisionField is the name of Revision field in task.RuntimeInfo
+const RevisionField = "Revision"
 
 // IsResMgrOwnedState returns true if the task state indicates that the task
 // is either waiting for admission or being placed or being preempted.
@@ -104,6 +108,7 @@ func (t *task) JobID() *peloton.JobID {
 
 // validateStateUpdate returns true if the state transition from the previous
 // task runtime to the current one is valid.
+// TODO(zhixin): remove the method after UpdateRuntime is replaced
 func (t *task) validateStateUpdate(newRuntime *pbtask.RuntimeInfo) bool {
 	currentRuntime := t.runtime
 
@@ -117,6 +122,88 @@ func (t *task) validateStateUpdate(newRuntime *pbtask.RuntimeInfo) bool {
 		if newRuntime.GetRevision().GetVersion() <= currentRuntime.GetRevision().GetVersion() {
 			return false
 		}
+	}
+
+	if newRuntime.GetMesosTaskId() != nil {
+		if currentRuntime.GetMesosTaskId().GetValue() != newRuntime.GetMesosTaskId().GetValue() {
+			// mesos task id has changed
+			if newRuntime.GetState() == pbtask.TaskState_INITIALIZED {
+				return true
+			}
+			return false
+		}
+	}
+
+	// mesos task id remains the same as before
+
+	// if state update is not requested, then return true
+	if newRuntime.GetState() == pbtask.TaskState_UNKNOWN {
+		return true
+	}
+
+	//TBD replace if's with more structured checks
+
+	if util.IsPelotonStateTerminal(currentRuntime.GetState()) {
+		// cannot overwrite terminal state without changing the mesos task id
+		return false
+	}
+
+	if IsMesosOwnedState(newRuntime.GetState()) {
+		// update from mesos eventstream is ok from mesos states, resource manager states
+		// and from INITIALIZED and LAUNCHED states.
+		if IsMesosOwnedState(currentRuntime.GetState()) || IsResMgrOwnedState(currentRuntime.GetState()) {
+			return true
+		}
+
+		if currentRuntime.GetState() == pbtask.TaskState_INITIALIZED || currentRuntime.GetState() == pbtask.TaskState_LAUNCHED {
+			return true
+		}
+
+		// Update from KILLING state to only terminal states is allowed
+		if util.IsPelotonStateTerminal(newRuntime.GetState()) && currentRuntime.GetState() == pbtask.TaskState_KILLING {
+			return true
+		}
+	}
+
+	if IsResMgrOwnedState(newRuntime.GetState()) {
+		// update from resource manager evenstream is ok from resource manager states or INITIALIZED state
+		if IsResMgrOwnedState(currentRuntime.GetState()) {
+			return true
+		}
+
+		if currentRuntime.GetState() == pbtask.TaskState_INITIALIZED {
+			return true
+		}
+	}
+
+	if newRuntime.GetState() == pbtask.TaskState_LAUNCHED {
+		// update to LAUNCHED state from resource manager states and INITIALIZED state is ok
+		if IsResMgrOwnedState(currentRuntime.GetState()) {
+			return true
+		}
+		if currentRuntime.GetState() == pbtask.TaskState_INITIALIZED {
+			return true
+		}
+	}
+
+	if newRuntime.GetState() == pbtask.TaskState_KILLING {
+		// update to KILLING state from any non-terminal state is ok
+		return true
+	}
+
+	// any other state transition is invalid
+	return false
+}
+
+// validateState returns true if the state transition from the previous
+// task runtime to the current one is valid.
+// TODO(zhixin): validateState would replace validateStateUpdate
+func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
+	currentRuntime := t.runtime
+
+	if newRuntime == nil {
+		// no runtime is invalid
+		return false
 	}
 
 	if newRuntime.GetMesosTaskId() != nil {
@@ -312,6 +399,101 @@ func (t *task) validateAndMergeRuntime(runtime *pbtask.RuntimeInfo) *pbtask.Runt
 	}
 
 	return newRuntime
+}
+
+// PatchRuntime patches diff to the existing runtime cache
+// in task and persists to DB.
+// TODO(zhixin): replace UpdateRuntime with UpdateCacheAndDB.
+func (t *task) PatchRuntime(ctx context.Context, diff map[string]interface{}) error {
+	if diff == nil {
+		return nil
+	}
+
+	if _, ok := diff[RevisionField]; ok {
+		return yarpcerrors.InvalidArgumentErrorf(
+			"Unexpected Revision field in diff")
+	}
+
+	t.Lock()
+	defer t.Unlock()
+
+	// reload cache if there is none
+	if t.runtime == nil {
+		// fetch runtime from db if not present in cache
+		runtime, err := t.jobFactory.taskStore.GetTaskRuntime(ctx, t.jobID, t.id)
+		if err != nil {
+			return err
+		}
+		t.runtime = runtime
+	}
+
+	// make a copy of runtime since patch() would update runtime in place
+	newRuntime := *t.runtime
+	newRuntimePtr := &newRuntime
+	patch(newRuntimePtr, diff)
+
+	// validate if the patched runtime is valid,
+	// if not ignore the diff, since the runtime has already been updated by
+	// other threads and the change in diff is no longer valid
+	if !t.validateState(newRuntimePtr) {
+		return nil
+	}
+
+	t.updateRevision()
+
+	err := t.jobFactory.taskStore.UpdateTaskRuntime(ctx, t.jobID, t.id, newRuntimePtr)
+	if err != nil {
+		// clean the runtime in cache on DB write failure
+		t.runtime = nil
+		return err
+	}
+	// Store the new runtime in cache
+	t.runtime = newRuntimePtr
+	t.lastRuntimeUpdateTime = time.Now()
+	return nil
+}
+
+// ReplaceRuntime replaces runtime in cache with runtime input.
+// forceReplace would decide whether to check version when replacing the runtime,
+// it should only be used in Refresh for debugging purpose
+// TODO(zhixin): replace UpdateRuntime with UpdateCacheOnly.
+func (t *task) ReplaceRuntime(runtime *pbtask.RuntimeInfo, forceReplace bool) error {
+	if runtime == nil || runtime.GetRevision() == nil {
+		return yarpcerrors.InvalidArgumentErrorf(
+			"ReplaceRuntime expects a non-nil runtime with non-nil Revision")
+	}
+
+	t.Lock()
+	defer t.Unlock()
+
+	// update the cache if,
+	// 1. it is a force replace, or
+	// 2. there is no existing runtime cache,
+	// 3. new runtime has a higher version number than the existing
+	if forceReplace ||
+		t.runtime == nil ||
+		runtime.GetRevision().GetVersion() > t.runtime.GetRevision().GetVersion() {
+		t.runtime = runtime
+		return nil
+	}
+
+	return nil
+}
+
+func (t *task) updateRevision() {
+	if t.runtime.Revision == nil {
+		// should never enter here
+		log.WithField("job_id", t.jobID).
+			WithField("instance_id", t.id).
+			Error("runtime revision is nil in update tasks")
+		t.runtime.Revision = &peloton.ChangeLog{
+			CreatedAt: uint64(time.Now().UnixNano()),
+		}
+	}
+
+	// bump up the runtime version
+	t.runtime.Revision.Version++
+	t.runtime.Revision.UpdatedAt = uint64(time.Now().UnixNano())
 }
 
 // The runtime being passed should only set the fields which the caller intends to change,
