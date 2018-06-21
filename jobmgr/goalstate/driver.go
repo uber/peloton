@@ -258,7 +258,7 @@ func (d *driver) recoverTasks(ctx context.Context, id string, jobConfig *job.Job
 		d.mtx.taskMetrics.TaskRecovered.Inc(1)
 		// Do not add the task again if it already exists
 		if cachedJob.GetTask(instanceID) == nil {
-			cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{instanceID: runtime}, cached.UpdateCacheOnly)
+			cachedJob.ReplaceTasks(map[uint32]*task.RuntimeInfo{instanceID: runtime}, false)
 		}
 
 		// Do not evaluate goal state for tasks which will be evaluated using job create tasks action.

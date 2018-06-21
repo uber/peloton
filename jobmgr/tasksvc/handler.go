@@ -333,7 +333,7 @@ func (m *serviceHandler) Refresh(ctx context.Context, req *task.RefreshRequest) 
 	}
 
 	cachedJob := m.jobFactory.AddJob(req.GetJobId())
-	cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
+	cachedJob.ReplaceTasks(runtimes, true)
 	for instID := range runtimes {
 		m.goalStateDriver.EnqueueTask(req.GetJobId(), instID, time.Now())
 	}

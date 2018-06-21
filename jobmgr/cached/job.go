@@ -45,6 +45,19 @@ type Job interface {
 	// and then storing it in the cache. If the attempt to persist fails, the local cache is cleaned up.
 	UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req UpdateRequest) error
 
+	// PatchTasks patch runtime diff to the existing task cache. runtimeDiffs is a kv map with key
+	// as the instance_id of the task to be updated. Value of runtimesDiffs is a kv map of which
+	// key is the field name to be update, and value is the new value of the field. PatchTasks
+	// would save the change in both cache and DB. If persisting to DB fails, cache would be
+	// invalidated as well.
+	PatchTasks(ctx context.Context, runtimesDiffs map[uint32]map[string]interface{}) error
+
+	// ReplaceTasks replaces task runtime with runtimes in cache.
+	// If forceReplace is false, it would check Revision version
+	// and decide whether to replace the runtime.
+	// If forceReplace is true, the func would always replace the runtime,
+	ReplaceTasks(runtimes map[uint32]*pbtask.RuntimeInfo, forceReplace bool) error
+
 	// AddTask adds a new task to the job, and if already present, just returns it
 	AddTask(id uint32) Task
 
@@ -349,10 +362,6 @@ func (j *job) PatchTasks(
 	return j.runInParallel(getIdsFromDiffs(runtimesDiffs), patchSingleTask)
 }
 
-// ReplaceTasks replace UpdateTasks with UpdateCacheOnly it would be used for
-// recovering cache
-// forceReplace would decide whether to check version when replacing the runtime
-// TODO(zhixin): replace UpdateTasks
 func (j *job) ReplaceTasks(
 	runtimes map[uint32]*pbtask.RuntimeInfo,
 	forceReplace bool) error {

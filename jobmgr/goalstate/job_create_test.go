@@ -267,7 +267,7 @@ func TestJobRecover(t *testing.T) {
 		GetTask(uint32(1)).Return(nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, cached.UpdateCacheOnly).
+		ReplaceTasks(map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
 		Return(nil)
 
 	cachedJob.EXPECT().
@@ -553,7 +553,7 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		GetTask(uint32(1)).Return(nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, cached.UpdateCacheOnly).
+		ReplaceTasks(map[uint32]*pb_task.RuntimeInfo{1: taskInfos[1].GetRuntime()}, false).
 		Return(nil)
 
 	cachedJob.EXPECT().

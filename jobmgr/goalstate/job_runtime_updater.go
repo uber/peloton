@@ -166,7 +166,7 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 		t := cachedJob.GetTask(instID)
 		if t == nil {
 			// Add the task to cache if not found.
-			cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{instID: taskRuntime}, cached.UpdateCacheOnly)
+			cachedJob.ReplaceTasks(map[uint32]*task.RuntimeInfo{instID: taskRuntime}, false)
 		}
 
 		if goalStateDriver.IsScheduledTask(jobID, instID) {

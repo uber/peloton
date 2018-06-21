@@ -244,7 +244,7 @@ func TestSyncFromDB(t *testing.T) {
 		GetTask(instanceID).Return(nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil)
+		ReplaceTasks(gomock.Any(), false).Return(nil)
 
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -336,7 +336,7 @@ func TestSyncFromDBWithMaxRunningInstancesSLA(t *testing.T) {
 		GetTask(instanceID2).Return(nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil).Times(2)
+		ReplaceTasks(gomock.Any(), false).Return(nil).Times(2)
 
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -418,7 +418,7 @@ func TestInitializedJobSyncFromDB(t *testing.T) {
 		GetTask(instanceID).Return(nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly).Return(nil)
+		ReplaceTasks(gomock.Any(), false).Return(nil)
 
 	goalStateDriver.syncFromDB(context.Background())
 }

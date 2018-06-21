@@ -1071,7 +1071,7 @@ func (suite *TaskHandlerTestSuite) TestRefreshTask() {
 	suite.mockedJobFactory.EXPECT().
 		AddJob(suite.testJobID).Return(suite.mockedCachedJob)
 	suite.mockedCachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), runtimes, cached.UpdateCacheOnly).Return(nil)
+		ReplaceTasks(runtimes, true).Return(nil)
 	suite.mockedGoalStateDrive.EXPECT().
 		EnqueueTask(suite.testJobID, gomock.Any(), gomock.Any()).Return().Times(int(suite.testJobConfig.GetInstanceCount()))
 	suite.mockedCachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH)

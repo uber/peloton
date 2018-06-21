@@ -166,7 +166,7 @@ func recoverTasks(
 				if maxRunningInstances > 0 && taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
 					// add task to cache if not already present
 					if cachedJob.GetTask(i) == nil {
-						cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{i: taskInfos[i].GetRuntime()}, cached.UpdateCacheOnly)
+						cachedJob.ReplaceTasks(map[uint32]*task.RuntimeInfo{i: taskInfos[i].GetRuntime()}, false)
 					}
 					// run the runtime updater to start instances
 					EnqueueJobWithDefaultDelay(
@@ -183,7 +183,7 @@ func recoverTasks(
 					tasks = append(tasks, taskInfo)
 					// add task to cache if not already present
 					if cachedJob.GetTask(i) == nil {
-						cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheOnly)
+						cachedJob.ReplaceTasks(runtimes, false)
 					}
 				}
 

@@ -1,7 +1,6 @@
 package cached
 
 import (
-	"context"
 	"testing"
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
@@ -59,7 +58,7 @@ func TestStartStop(t *testing.T) {
 	runtimes[2] = &pbtask.RuntimeInfo{}
 
 	j := f.AddJob(jobID)
-	j.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
+	j.ReplaceTasks(runtimes, false)
 	assert.Equal(t, 3, len(j.GetAllTasks()))
 
 	f.Stop()
@@ -77,7 +76,7 @@ func TestPublishMetrics(t *testing.T) {
 	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
 	runtimes[0] = &pbtask.RuntimeInfo{}
 	j := f.AddJob(jobID)
-	j.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
+	j.ReplaceTasks(runtimes, false)
 
 	f.publishMetrics()
 }

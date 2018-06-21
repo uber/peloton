@@ -1087,11 +1087,14 @@ func (suite *JobTestSuite) TestSetGetTasksInJobInCacheSingle() {
 	instanceCount := uint32(10)
 	runtime := pbtask.RuntimeInfo{
 		State: pbtask.TaskState_RUNNING,
+		Revision: &peloton.ChangeLog{
+			Version: 1,
+		},
 	}
 
 	// Test updating tasks one at a time in cache
 	for i := uint32(0); i < instanceCount; i++ {
-		suite.job.UpdateTasks(context.Background(), map[uint32]*pbtask.RuntimeInfo{i: &runtime}, UpdateCacheOnly)
+		suite.job.ReplaceTasks(map[uint32]*pbtask.RuntimeInfo{i: &runtime}, false)
 	}
 	suite.Equal(instanceCount, uint32(len(suite.job.tasks)))
 
@@ -1107,8 +1110,8 @@ func (suite *JobTestSuite) TestSetGetTasksInJobInCacheSingle() {
 func (suite *JobTestSuite) TestSetGetTasksInJobInCacheBlock() {
 	instanceCount := uint32(10)
 	// Test updating tasks in one call in cache
-	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_SUCCEEDED)
-	suite.job.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
+	runtimes := initializeCurrentRuntimes(instanceCount, pbtask.TaskState_SUCCEEDED)
+	suite.job.ReplaceTasks(runtimes, false)
 
 	// Validate the state of the tasks in cache is correct
 	for instID, runtime := range runtimes {
@@ -1197,8 +1200,8 @@ func (suite *JobTestSuite) TestTasksUpdateRuntimeSingleTask() {
 // TestTasksGetAllTasks tests getting all tasks.
 func (suite *JobTestSuite) TestTasksGetAllTasks() {
 	instanceCount := uint32(10)
-	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_RUNNING)
-	suite.job.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
+	runtimes := initializeCurrentRuntimes(instanceCount, pbtask.TaskState_RUNNING)
+	suite.job.ReplaceTasks(runtimes, false)
 
 	// Test get all tasks
 	ttMap := suite.job.GetAllTasks()
@@ -1209,8 +1212,8 @@ func (suite *JobTestSuite) TestTasksGetAllTasks() {
 func (suite *JobTestSuite) TestPartialJobCheck() {
 	instanceCount := uint32(10)
 
-	runtimes := initializeRuntimes(instanceCount, pbtask.TaskState_RUNNING)
-	suite.job.UpdateTasks(context.Background(), runtimes, UpdateCacheOnly)
+	runtimes := initializeCurrentRuntimes(instanceCount, pbtask.TaskState_RUNNING)
+	suite.job.ReplaceTasks(runtimes, false)
 
 	// Test partial job check
 	suite.job.config.instanceCount = 20
