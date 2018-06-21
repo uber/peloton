@@ -26,6 +26,8 @@ type writeTaskRuntimeToDB func(ctx context.Context, instanceID uint32,
 	runtime *pbtask.RuntimeInfo, req UpdateRequest,
 	owner string) error
 
+type singleTask func(id uint32) error
+
 // Job in the cache.
 // TODO there a lot of methods in this interface. To determine if
 // this can be broken up into smaller pieces.
@@ -296,7 +298,23 @@ func (j *job) CreateTasks(
 	ctx context.Context,
 	runtimes map[uint32]*pbtask.RuntimeInfo,
 	owner string) error {
-	return j.updateTasksInParallel(ctx, runtimes, owner, UpdateCacheAndDB, j.createSingleTask)
+	createSingleTask := func(id uint32) error {
+		runtime := runtimes[id]
+		now := time.Now().UTC()
+		runtime.Revision = &peloton.ChangeLog{
+			CreatedAt: uint64(now.UnixNano()),
+			UpdatedAt: uint64(now.UnixNano()),
+			Version:   1,
+		}
+
+		if j.GetTask(id) != nil {
+			return yarpcerrors.InvalidArgumentErrorf("task %d already exists", id)
+		}
+
+		t := j.AddTask(id)
+		return t.CreateRuntime(ctx, runtime, owner)
+	}
+	return j.runInParallel(getIdsFromRuntimeMap(runtimes), createSingleTask)
 }
 
 // updateSingleTask is a helper function to update a single task
@@ -315,6 +333,119 @@ func (j *job) UpdateTasks(
 	runtimes map[uint32]*pbtask.RuntimeInfo,
 	req UpdateRequest) error {
 	return j.updateTasksInParallel(ctx, runtimes, "", req, j.updateSingleTask)
+}
+
+// PatchTasks replace UpdateTasks with UpdateCacheAndDB
+// TODO(zhixin): replace UpdateTasks
+func (j *job) PatchTasks(
+	ctx context.Context,
+	runtimesDiffs map[uint32]map[string]interface{}) error {
+
+	patchSingleTask := func(id uint32) error {
+		t := j.AddTask(id)
+		return t.PatchRuntime(ctx, runtimesDiffs[id])
+	}
+
+	return j.runInParallel(getIdsFromDiffs(runtimesDiffs), patchSingleTask)
+}
+
+// ReplaceTasks replace UpdateTasks with UpdateCacheOnly it would be used for
+// recovering cache
+// forceReplace would decide whether to check version when replacing the runtime
+// TODO(zhixin): replace UpdateTasks
+func (j *job) ReplaceTasks(
+	runtimes map[uint32]*pbtask.RuntimeInfo,
+	forceReplace bool) error {
+
+	replaceSingleTask := func(id uint32) error {
+		t := j.AddTask(id)
+		return t.ReplaceRuntime(runtimes[id], forceReplace)
+	}
+
+	return j.runInParallel(getIdsFromRuntimeMap(runtimes), replaceSingleTask)
+}
+
+// runInParallel runs go routines which will create/update tasks
+// TODO(zhixin): updateTasksInParallel
+func (j *job) runInParallel(idList []uint32, task singleTask) error {
+	var transientError int32
+
+	nTasks := uint32(len(idList))
+	// indicates if the runtime create/update hit a transient error
+	transientError = 0
+
+	// how many tasks failed to run due to errors
+	tasksNotRun := uint32(0)
+
+	// Each go routine will update at least (nTasks / _defaultMaxParallelBatches)
+	// number of tasks. In addition if nTasks % _defaultMaxParallelBatches > 0,
+	// the first increment number of go routines are going to run
+	// one additional task.
+	increment := nTasks % _defaultMaxParallelBatches
+
+	timeStart := time.Now()
+	wg := new(sync.WaitGroup)
+	prevEnd := uint32(0)
+
+	// run the parallel batches
+	for i := uint32(0); i < _defaultMaxParallelBatches; i++ {
+		// start of the batch
+		updateStart := prevEnd
+		// end of the batch
+		updateEnd := updateStart + (nTasks / _defaultMaxParallelBatches)
+		if increment > 0 {
+			updateEnd++
+			increment--
+		}
+
+		if updateEnd > nTasks {
+			updateEnd = nTasks
+		}
+		prevEnd = updateEnd
+		if updateStart == updateEnd {
+			continue
+		}
+		wg.Add(1)
+
+		// Start a go routine to update all tasks in a batch
+		go func() {
+			defer wg.Done()
+			for k := updateStart; k < updateEnd; k++ {
+				id := idList[k]
+				err := task(id)
+				if err != nil {
+					log.WithError(err).
+						WithFields(log.Fields{
+							"job_id":      j.ID().GetValue(),
+							"instance_id": id,
+						}).Info("failed to write task runtime")
+					atomic.AddUint32(&tasksNotRun, 1)
+					if common.IsTransientError(err) {
+						atomic.StoreInt32(&transientError, 1)
+					}
+					return
+				}
+			}
+		}()
+	}
+	// wait for all batches to complete
+	wg.Wait()
+
+	if tasksNotRun != 0 {
+		msg := fmt.Sprintf(
+			"Updated %d task runtimes for %v, and was unable to write %d tasks in %v",
+			nTasks-tasksNotRun,
+			j.ID(),
+			tasksNotRun,
+			time.Since(timeStart))
+		if transientError > 0 {
+			// return a transient error if a transient error is encountered
+			// while creating.updating any task
+			return yarpcerrors.AbortedErrorf(msg)
+		}
+		return yarpcerrors.InternalErrorf(msg)
+	}
+	return nil
 }
 
 func (j *job) GetTask(id uint32) Task {
@@ -827,4 +958,20 @@ func (c *cachedConfig) GetSLA() *pbjob.SlaConfig {
 	}
 	tmpSLA := *c.sla
 	return &tmpSLA
+}
+
+func getIdsFromRuntimeMap(input map[uint32]*pbtask.RuntimeInfo) []uint32 {
+	result := make([]uint32, 0, len(input))
+	for k := range input {
+		result = append(result, k)
+	}
+	return result
+}
+
+func getIdsFromDiffs(input map[uint32]map[string]interface{}) []uint32 {
+	result := make([]uint32, 0, len(input))
+	for k := range input {
+		result = append(result, k)
+	}
+	return result
 }

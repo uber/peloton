@@ -90,6 +90,33 @@ func initializeCurrentRuntime(state pbtask.TaskState) *pbtask.RuntimeInfo {
 	return runtime
 }
 
+func initializeCurrentRuntimes(instanceCount uint32, state pbtask.TaskState) map[uint32]*pbtask.RuntimeInfo {
+	runtimes := make(map[uint32]*pbtask.RuntimeInfo)
+	for i := uint32(0); i < instanceCount; i++ {
+		runtime := &pbtask.RuntimeInfo{
+			State: state,
+			Revision: &peloton.ChangeLog{
+				CreatedAt: uint64(time.Now().UnixNano()),
+				UpdatedAt: uint64(time.Now().UnixNano()),
+				Version:   1,
+			},
+		}
+		runtimes[i] = runtime
+	}
+	return runtimes
+}
+
+func initializeDiffs(instanceCount uint32, state pbtask.TaskState) map[uint32]map[string]interface{} {
+	diffs := make(map[uint32]map[string]interface{})
+	for i := uint32(0); i < instanceCount; i++ {
+		diff := map[string]interface{}{
+			"State": state,
+		}
+		diffs[i] = diff
+	}
+	return diffs
+}
+
 // TestJobFetchID tests fetching job ID.
 func (suite *JobTestSuite) TestJobFetchID() {
 	// Test fetching ID
@@ -1188,4 +1215,119 @@ func (suite *JobTestSuite) TestPartialJobCheck() {
 	// Test partial job check
 	suite.job.config.instanceCount = 20
 	suite.True(suite.job.IsPartiallyCreated(suite.job.config))
+}
+
+// TestPatchTasks_SetGetTasksSingle tests setting and getting single task in job in cache.
+func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
+	instanceCount := uint32(10)
+	runtimeDiff := map[string]interface{}{
+		"State": pbtask.TaskState_RUNNING,
+	}
+
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), suite.jobID, gomock.Any(), gomock.Any()).
+		Return(nil).Times(int(instanceCount))
+	suite.taskStore.EXPECT().
+		GetTaskRuntime(gomock.Any(), suite.jobID, gomock.Any()).
+		Return(&pbtask.RuntimeInfo{
+			Revision: &peloton.ChangeLog{Version: 1},
+			State:    pbtask.TaskState_INITIALIZED,
+		}, nil).Times(int(instanceCount))
+
+	// Test updating tasks one at a time in cache
+	for i := uint32(0); i < instanceCount; i++ {
+		suite.job.PatchTasks(context.Background(), map[uint32]map[string]interface{}{i: runtimeDiff})
+	}
+	suite.Equal(instanceCount, uint32(len(suite.job.tasks)))
+
+	// Validate the state of the tasks in cache is correct
+	for i := uint32(0); i < instanceCount; i++ {
+		tt := suite.job.GetTask(i)
+		actRuntime, _ := tt.GetRunTime(context.Background())
+		suite.Equal(pbtask.TaskState_RUNNING, actRuntime.State)
+	}
+}
+
+// TestReplaceTasks tests setting and getting tasks as a chunk in a job in cache.
+func (suite *JobTestSuite) TestReplaceTasks() {
+	instanceCount := uint32(10)
+	// Test updating tasks in one call in cache
+	runtimes := initializeCurrentRuntimes(instanceCount, pbtask.TaskState_SUCCEEDED)
+	suite.job.ReplaceTasks(runtimes, false)
+
+	// Validate the state of the tasks in cache is correct
+	for instID, runtime := range runtimes {
+		tt := suite.job.GetTask(instID)
+		actRuntime, _ := tt.GetRunTime(context.Background())
+		suite.Equal(runtime, actRuntime)
+	}
+}
+
+//
+// TestPatchTasks_SetGetTasksMultiple tests patching runtime in multiple
+func (suite *JobTestSuite) TestPatchTasks_SetGetTasksMultiple() {
+	instanceCount := uint32(10)
+
+	diffs := initializeDiffs(instanceCount, pbtask.TaskState_RUNNING)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
+		suite.taskStore.EXPECT().
+			GetTaskRuntime(gomock.Any(), suite.jobID, i).Return(oldRuntime, nil)
+		suite.taskStore.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), suite.jobID, i, gomock.Any()).Return(nil)
+	}
+
+	err := suite.job.PatchTasks(context.Background(), diffs)
+	suite.NoError(err)
+
+	// Validate the state of the tasks in cache is correct
+	for instID := range diffs {
+		tt := suite.job.GetTask(instID)
+		suite.NotNil(tt)
+		actRuntime, _ := tt.GetRunTime(context.Background())
+		suite.NotNil(actRuntime)
+		suite.Equal(pbtask.TaskState_RUNNING, actRuntime.GetState())
+		suite.Equal(uint64(2), actRuntime.GetRevision().GetVersion())
+	}
+}
+
+// TestPatchTasks_DBError tests getting DB error during update task runtimes.
+func (suite *JobTestSuite) TestPatchTasks_DBError() {
+	instanceCount := uint32(10)
+	diffs := initializeDiffs(instanceCount, pbtask.TaskState_RUNNING)
+
+	for i := uint32(0); i < instanceCount; i++ {
+		tt := suite.job.AddTask(i).(*task)
+		tt.runtime = &pbtask.RuntimeInfo{
+			State: pbtask.TaskState_LAUNCHED,
+		}
+		// Simulate fake DB error
+		suite.taskStore.EXPECT().
+			UpdateTaskRuntime(gomock.Any(), suite.jobID, i, gomock.Any()).
+			Return(fmt.Errorf("fake db error"))
+	}
+	err := suite.job.PatchTasks(context.Background(), diffs)
+	suite.Error(err)
+}
+
+// TestPatchTasks_SingleTask tests updating task runtime of a single task in DB.
+func (suite *JobTestSuite) TestPatchTasks_SingleTask() {
+	diffs := initializeDiffs(1, pbtask.TaskState_RUNNING)
+	oldRuntime := initializeCurrentRuntime(pbtask.TaskState_LAUNCHED)
+	tt := suite.job.AddTask(0).(*task)
+	tt.runtime = oldRuntime
+
+	// Update task runtime of only one task
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil)
+	err := suite.job.PatchTasks(context.Background(), diffs)
+	suite.NoError(err)
+
+	// Validate the state of the task in cache is correct
+	att := suite.job.GetTask(0)
+	actRuntime, _ := att.GetRunTime(context.Background())
+	suite.Equal(pbtask.TaskState_RUNNING, actRuntime.GetState())
+	suite.Equal(uint64(2), actRuntime.GetRevision().GetVersion())
 }

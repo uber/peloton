@@ -53,6 +53,15 @@ type Task interface {
 	// UpdateRuntime updates the task run time in DB and cache
 	UpdateRuntime(ctx context.Context, runtime *pbtask.RuntimeInfo, req UpdateRequest) error
 
+	// PatchRuntime patches diff to the existing runtime cache
+	// in task and persists to DB.
+	PatchRuntime(ctx context.Context, diff map[string]interface{}) error
+
+	// ReplaceRuntime replaces cache with runtime
+	// forceReplace would decide whether to check version when replacing the runtime
+	// forceReplace is used for Refresh, which is for debugging only
+	ReplaceRuntime(runtime *pbtask.RuntimeInfo, forceReplace bool) error
+
 	// GetRunTime returns the task run time
 	GetRunTime(ctx context.Context) (*pbtask.RuntimeInfo, error)
 
@@ -430,7 +439,9 @@ func (t *task) PatchRuntime(ctx context.Context, diff map[string]interface{}) er
 	// make a copy of runtime since patch() would update runtime in place
 	newRuntime := *t.runtime
 	newRuntimePtr := &newRuntime
-	patch(newRuntimePtr, diff)
+	if err := patch(newRuntimePtr, diff); err != nil {
+		return err
+	}
 
 	// validate if the patched runtime is valid,
 	// if not ignore the diff, since the runtime has already been updated by
