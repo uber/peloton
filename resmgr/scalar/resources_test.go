@@ -5,6 +5,7 @@ import (
 
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
+	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	"code.uber.internal/infra/peloton/common"
 
@@ -20,16 +21,10 @@ func TestAdd(t *testing.T) {
 	}
 
 	result := empty.Add(&empty)
-	assert.InEpsilon(t, 0.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.MEMORY, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.DISK, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.GPU, zeroEpsilon)
+	assertEqual(t, &Resources{0.0, 0.0, 0.0, 0.0}, result)
 
 	result = r1.Add(&Resources{})
-	assert.InEpsilon(t, 1.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.MEMORY, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.DISK, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, result.GPU, zeroEpsilon)
+	assertEqual(t, &Resources{1.0, 0.0, 0.0, 0.0}, result)
 
 	r2 := Resources{
 		CPU:    4.0,
@@ -38,10 +33,17 @@ func TestAdd(t *testing.T) {
 		GPU:    1.0,
 	}
 	result = r1.Add(&r2)
-	assert.InEpsilon(t, 5.0, result.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, result.MEMORY, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, result.DISK, zeroEpsilon)
-	assert.InEpsilon(t, 1.0, result.GPU, zeroEpsilon)
+	assertEqual(t, &Resources{5.0, 3.0, 2.0, 1.0}, result)
+}
+
+func assertEqual(t *testing.T, expected *Resources, result *Resources) {
+	for _, typeRes := range []string{
+		common.CPU,
+		common.MEMORY,
+		common.DISK,
+		common.GPU} {
+		assert.InEpsilon(t, expected.Get(typeRes), result.Get(typeRes), zeroEpsilon)
+	}
 }
 
 func TestSubtract(t *testing.T) {
@@ -55,10 +57,7 @@ func TestSubtract(t *testing.T) {
 
 	res := r1.Subtract(&empty)
 	assert.NotNil(t, res)
-	assert.InEpsilon(t, 1.0, res.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 2.0, res.MEMORY, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, res.DISK, zeroEpsilon)
-	assert.InEpsilon(t, 4.0, res.GPU, zeroEpsilon)
+	assertEqual(t, &Resources{1.0, 2.0, 3.0, 4.0}, res)
 
 	r2 := Resources{
 		CPU:    2.0,
@@ -69,16 +68,10 @@ func TestSubtract(t *testing.T) {
 	res = r2.Subtract(&r1)
 
 	assert.NotNil(t, res)
-	assert.InEpsilon(t, 1.0, res.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, res.MEMORY, zeroEpsilon)
-	assert.InEpsilon(t, 1.0, res.DISK, zeroEpsilon)
-	assert.InEpsilon(t, 3.0, res.GPU, zeroEpsilon)
+	assertEqual(t, &Resources{1.0, 3.0, 1.0, 3.0}, res)
 
 	res = r1.Subtract(&r2)
-	assert.InEpsilon(t, 0.0, res.CPU, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.MEMORY, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.DISK, zeroEpsilon)
-	assert.InEpsilon(t, 0.0, res.GPU, zeroEpsilon)
+	assertEqual(t, &Resources{0.0, 0.0, 0.0, 0.0}, res)
 }
 
 func TestSubtractLessThanEpsilon(t *testing.T) {
@@ -96,10 +89,7 @@ func TestSubtractLessThanEpsilon(t *testing.T) {
 	}
 	res := r2.Subtract(&r1)
 	assert.NotNil(t, res)
-	assert.Equal(t, float64(0), res.CPU)
-	assert.Equal(t, float64(0), res.MEMORY)
-	assert.Equal(t, float64(0), res.DISK)
-	assert.Equal(t, float64(0), res.GPU)
+	assertEqual(t, &Resources{0.0, 0.0, 0.0, 0.0}, res)
 }
 
 func TestLessThanOrEqual(t *testing.T) {
@@ -150,23 +140,7 @@ func TestConvertToResmgrResource(t *testing.T) {
 		MemLimitMb:  10.0,
 	}
 	res := ConvertToResmgrResource(taskConfig)
-	assert.EqualValues(t, 4.0, res.CPU)
-	assert.EqualValues(t, 5.0, res.DISK)
-	assert.EqualValues(t, 1.0, res.GPU)
-	assert.EqualValues(t, 10.0, res.MEMORY)
-}
-
-func TestGet(t *testing.T) {
-	r1 := Resources{
-		CPU:    1.0,
-		MEMORY: 2.0,
-		DISK:   3.0,
-		GPU:    4.0,
-	}
-	assert.EqualValues(t, float64(1.0), r1.Get(common.CPU))
-	assert.EqualValues(t, float64(4.0), r1.Get(common.GPU))
-	assert.EqualValues(t, float64(2.0), r1.Get(common.MEMORY))
-	assert.EqualValues(t, float64(3.0), r1.Get(common.DISK))
+	assertEqual(t, &Resources{4.0, 10.0, 5.0, 1.0}, res)
 }
 
 func TestSet(t *testing.T) {
@@ -176,18 +150,12 @@ func TestSet(t *testing.T) {
 		DISK:   3.0,
 		GPU:    4.0,
 	}
-	assert.EqualValues(t, float64(1.0), r1.Get(common.CPU))
-	assert.EqualValues(t, float64(4.0), r1.Get(common.GPU))
-	assert.EqualValues(t, float64(2.0), r1.Get(common.MEMORY))
-	assert.EqualValues(t, float64(3.0), r1.Get(common.DISK))
+	assertEqual(t, &Resources{1.0, 2.0, 3.0, 4.0}, &r1)
 	r1.Set(common.CPU, float64(2.0))
 	r1.Set(common.MEMORY, float64(3.0))
 	r1.Set(common.DISK, float64(4.0))
 	r1.Set(common.GPU, float64(5.0))
-	assert.EqualValues(t, float64(2.0), r1.Get(common.CPU))
-	assert.EqualValues(t, float64(5.0), r1.Get(common.GPU))
-	assert.EqualValues(t, float64(3.0), r1.Get(common.MEMORY))
-	assert.EqualValues(t, float64(4.0), r1.Get(common.DISK))
+	assertEqual(t, &Resources{2.0, 3.0, 4.0, 5.0}, &r1)
 }
 
 func TestClone(t *testing.T) {
@@ -355,18 +323,12 @@ func TestGetTaskAllocation(t *testing.T) {
 
 		// total should always be equal to the taskConfig
 		res := alloc.GetByType(TotalAllocation)
-		assert.Equal(t, float64(4.0), res.CPU)
-		assert.Equal(t, float64(5.0), res.DISK)
-		assert.Equal(t, float64(1.0), res.GPU)
-		assert.Equal(t, float64(10.0), res.MEMORY)
+		assertEqual(t, &Resources{4.0, 10.0, 5.0, 1.0}, res)
 
 		// these should be equal to the taskConfig
 		for _, allocType := range test.hasAlloc {
 			res := alloc.GetByType(allocType)
-			assert.Equal(t, float64(4.0), res.CPU)
-			assert.Equal(t, float64(5.0), res.DISK)
-			assert.Equal(t, float64(1.0), res.GPU)
-			assert.Equal(t, float64(10.0), res.MEMORY)
+			assertEqual(t, &Resources{4.0, 10.0, 5.0, 1.0}, res)
 		}
 
 		// these should be equal to zero
@@ -375,4 +337,39 @@ func TestGetTaskAllocation(t *testing.T) {
 			assert.Equal(t, ZeroResource, res)
 		}
 	}
+}
+
+func TestGetGangResources(t *testing.T) {
+	res := GetGangResources(nil)
+	assert.Nil(t, res)
+	res = GetGangResources(&resmgrsvc.Gang{
+		Tasks: []*resmgr.Task{
+			{
+				Resource: &task.ResourceConfig{
+					CpuLimit:    1,
+					DiskLimitMb: 1,
+					GpuLimit:    1,
+					MemLimitMb:  1,
+				},
+			},
+		},
+	})
+	assertEqual(t, &Resources{1.0, 1.0, 1.0, 1.0}, res)
+	assert.Equal(t, "CPU:1.000000, Mem:1.000000, Disk:1.000000, GPU:1.000000", res.String())
+}
+
+func TestGetGangAllocation(t *testing.T) {
+	res := GetGangAllocation(&resmgrsvc.Gang{
+		Tasks: []*resmgr.Task{
+			{
+				Resource: &task.ResourceConfig{
+					CpuLimit:    1,
+					DiskLimitMb: 1,
+					GpuLimit:    1,
+					MemLimitMb:  1,
+				},
+			},
+		},
+	})
+	assertEqual(t, &Resources{1.0, 1.0, 1.0, 1.0}, res.GetByType(TotalAllocation))
 }
