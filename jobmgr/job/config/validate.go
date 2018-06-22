@@ -158,13 +158,13 @@ func validateTaskConfigWithRange(jobConfig *job.JobConfig, maxTasksPerJob uint32
 
 	// Validate sla max/min running instances wrt instanceCount
 	instanceCount := jobConfig.InstanceCount
-	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
+	maxRunningInstances := jobConfig.GetSLA().GetMaximumRunningInstances()
 	if maxRunningInstances == 0 {
 		maxRunningInstances = instanceCount
 	} else if maxRunningInstances > instanceCount {
 		return errMaxInstancesTooBig
 	}
-	minRunningInstances := jobConfig.GetSla().GetMinimumRunningInstances()
+	minRunningInstances := jobConfig.GetSLA().GetMinimumRunningInstances()
 	if minRunningInstances > maxRunningInstances {
 		return errMaxInstancesTooBig
 	}

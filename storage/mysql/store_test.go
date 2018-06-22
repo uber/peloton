@@ -88,7 +88,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetTaskInfo() {
 			Name:          "TestJob_" + strconv.Itoa(i),
 			OwningTeam:    "team6",
 			LdapGroups:    []string{"money", "team6", "otto"},
-			Sla:           sla,
+			SLA:           sla,
 			DefaultConfig: &taskConfig,
 		}
 		jobs = append(jobs, jobConfig)
@@ -180,7 +180,7 @@ func (suite *mySQLStoreTestSuite) TestCreateTasks() {
 			Name:          jobID.GetValue(),
 			OwningTeam:    "team6",
 			LdapGroups:    []string{"money", "team6", "otto"},
-			Sla:           &sla,
+			SLA:           &sla,
 			DefaultConfig: &taskConfig,
 		}
 		err := suite.store.CreateJob(context.Background(), &jobID, &jobConfig, "uber")
@@ -251,7 +251,7 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 
 		var jobconfig = job.JobConfig{
 			Name:          "TestJob_" + strconv.Itoa(i),
-			Sla:           &sla,
+			SLA:           &sla,
 			OwningTeam:    owner,
 			LdapGroups:    []string{"money", "team6", "otto"},
 			DefaultConfig: &taskConfig,
@@ -272,8 +272,8 @@ func (suite *mySQLStoreTestSuite) TestCreateGetJobConfig() {
 		suite.Equal(result.Name, originalJobs[i].Name)
 		suite.Equal(result.DefaultConfig.Resource.FdLimit,
 			originalJobs[i].DefaultConfig.Resource.FdLimit)
-		suite.Equal(result.Sla.MaximumRunningInstances,
-			originalJobs[i].Sla.MaximumRunningInstances)
+		suite.Equal(result.SLA.MaximumRunningInstances,
+			originalJobs[i].SLA.MaximumRunningInstances)
 	}
 
 	jobs, err := suite.store.GetJobsByOwner(context.Background(), "team6")
@@ -450,7 +450,7 @@ func createJobConfig() *job.JobConfig {
 	var jobConfig = job.JobConfig{
 		OwningTeam:    "uber",
 		LdapGroups:    []string{"team1", "team2", "team3"},
-		Sla:           &sla,
+		SLA:           &sla,
 		InstanceCount: uint32(6),
 	}
 	return &jobConfig

@@ -61,7 +61,7 @@ func createJob(ctx context.Context, state pb_job.JobState, goalState pb_job.JobS
 		Name:          "TestValidatorWithStore",
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"money", "team6", "gsg9"},
-		Sla:           &sla,
+		SLA:           &sla,
 		DefaultConfig: &taskConfig,
 		InstanceCount: 2,
 		ChangeLog: &peloton.ChangeLog{

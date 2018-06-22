@@ -45,7 +45,7 @@ var (
 	}
 	_jobConfig = &job.JobConfig{
 		Name:          _jobID,
-		Sla:           _sla,
+		SLA:           _sla,
 		InstanceCount: 1,
 	}
 	_pelotonJobID = &peloton.JobID{

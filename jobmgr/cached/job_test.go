@@ -135,7 +135,7 @@ func (suite *JobTestSuite) TestJobSetAndFetchConfigAndRuntime() {
 		GoalState: pbjob.JobState_SUCCEEDED,
 	}
 	jobConfig := &pbjob.JobConfig{
-		Sla: &pbjob.SlaConfig{
+		SLA: &pbjob.SlaConfig{
 			MaximumRunningInstances: maxRunningInstances,
 			MaxRunningTime:          maxRunningTime,
 		},

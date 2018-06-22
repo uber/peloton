@@ -242,7 +242,7 @@ func (suite *recoveryTestSuite) getQueueContent(
 func (suite *recoveryTestSuite) createJob(jobID *peloton.JobID, instanceCount uint32, minInstances uint32) *job.JobConfig {
 	return &job.JobConfig{
 		Name: jobID.Value,
-		Sla: &job.SlaConfig{
+		SLA: &job.SlaConfig{
 			Preemptible:             true,
 			Priority:                1,
 			MinimumRunningInstances: minInstances,

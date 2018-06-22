@@ -534,7 +534,7 @@ func (h *serviceHandler) GetCache(
 		Runtime: runtime,
 		Config: &job.JobConfig{
 			ChangeLog:     config.GetChangeLog(),
-			Sla:           config.GetSLA(),
+			SLA:           config.GetSLA(),
 			RespoolID:     config.GetRespoolID(),
 			Type:          config.GetType(),
 			InstanceCount: config.GetInstanceCount(),

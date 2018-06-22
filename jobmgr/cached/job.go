@@ -708,8 +708,8 @@ func (j *job) populateJobConfigCache(config *pbjob.JobConfig) {
 
 	j.config.instanceCount = config.GetInstanceCount()
 
-	if config.GetSla() != nil {
-		j.config.sla = config.GetSla()
+	if config.GetSLA() != nil {
+		j.config.sla = config.GetSLA()
 	}
 
 	if config.GetChangeLog() != nil {

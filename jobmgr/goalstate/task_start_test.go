@@ -131,7 +131,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 		Return(taskInfo, nil)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig.GetSla()),
+		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig.GetSLA()),
 		ResPool: jobConfig.RespoolID,
 	}
 
@@ -150,7 +150,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 func (suite *TaskStartTestSuite) TestTaskStartWithSlaMaxRunningInstances() {
 	jobConfig := &job2.JobConfig{
 		InstanceCount: 2,
-		Sla: &job2.SlaConfig{
+		SLA: &job2.SlaConfig{
 			MaximumRunningInstances: 1,
 		},
 	}
@@ -165,7 +165,7 @@ func (suite *TaskStartTestSuite) TestTaskStartWithSlaMaxRunningInstances() {
 
 	suite.cachedConfig.EXPECT().
 		GetSLA().
-		Return(jobConfig.Sla)
+		Return(jobConfig.SLA)
 
 	suite.cachedConfig.EXPECT().
 		GetType().
@@ -379,7 +379,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 		Return(nil, &storage.VolumeNotFoundError{})
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig.GetSla()),
+		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig.GetSLA()),
 		ResPool: jobConfig.RespoolID,
 	}
 	suite.resmgrClient.EXPECT().

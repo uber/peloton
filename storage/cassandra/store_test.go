@@ -150,7 +150,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJobPaging() {
 			Name:          fmt.Sprintf("TestJob_%d", i),
 			OwningTeam:    fmt.Sprintf("owner_%d", 1000+i),
 			LdapGroups:    []string{"TestQueryJobPaging", "team6", "gign"},
-			Sla:           &sla,
+			SLA:           &sla,
 			DefaultConfig: &taskConfig,
 			Labels:        labels,
 			InstanceCount: 10,
@@ -618,7 +618,7 @@ func (suite *CassandraStoreTestSuite) TestQueryJob() {
 			Name:           fmt.Sprintf("TestQueryJob_%d", i),
 			OwningTeam:     fmt.Sprintf("query_owner_%d", i),
 			LdapGroups:     []string{"money", "team6", "gign"},
-			Sla:            &sla,
+			SLA:            &sla,
 			DefaultConfig:  &taskConfig,
 			Labels:         labels,
 			InstanceCount:  10,
@@ -965,7 +965,7 @@ func (suite *CassandraStoreTestSuite) TestCreateGetJobConfig() {
 			Name:           jobID.GetValue(),
 			OwningTeam:     owner,
 			LdapGroups:     []string{"money", "team6", "otto"},
-			Sla:            &sla,
+			SLA:            &sla,
 			InstanceConfig: instanceConfig,
 			InstanceCount:  3,
 			Labels:         labels,
@@ -1364,7 +1364,7 @@ func (suite *CassandraStoreTestSuite) TestCreateTasks() {
 			Name:          jobID.GetValue(),
 			OwningTeam:    "team6",
 			LdapGroups:    []string{"money", "team6", "otto"},
-			Sla:           &sla,
+			SLA:           &sla,
 			DefaultConfig: &taskConfig,
 		}
 		err := suite.createJob(context.Background(), &jobID, &jobConfig, "uber")
@@ -1995,7 +1995,7 @@ func createJobConfig() *job.JobConfig {
 	var jobConfig = job.JobConfig{
 		OwningTeam:    "uber",
 		LdapGroups:    []string{"money", "team6", "otto"},
-		Sla:           &sla,
+		SLA:           &sla,
 		InstanceCount: uint32(6),
 		DefaultConfig: &task.TaskConfig{},
 	}

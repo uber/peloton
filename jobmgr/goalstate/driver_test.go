@@ -286,7 +286,7 @@ func TestSyncFromDBWithMaxRunningInstancesSLA(t *testing.T) {
 	jobConfig := &job.JobConfig{
 		RespoolID:     &peloton.ResourcePoolID{Value: uuid.NewRandom().String()},
 		InstanceCount: 2,
-		Sla: &job.SlaConfig{
+		SLA: &job.SlaConfig{
 			MaximumRunningInstances: 1,
 		},
 	}

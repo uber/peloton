@@ -49,7 +49,7 @@ func createTaskBatches(config *job.JobConfig) []TasksBatch {
 	var batches []TasksBatch
 	initialSingleInstance := uint32(0)
 	numSingleInstances := config.InstanceCount
-	minInstances := config.GetSla().GetMinimumRunningInstances()
+	minInstances := config.GetSLA().GetMinimumRunningInstances()
 
 	if minInstances > 1 {
 		// gangs

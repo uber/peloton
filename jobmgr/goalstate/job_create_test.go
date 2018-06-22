@@ -142,7 +142,7 @@ func TestJobCreateTasks(t *testing.T) {
 		Name:          "TestValidatorWithStore",
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"money", "team6", "gsg9"},
-		Sla:           &sla,
+		SLA:           &sla,
 		DefaultConfig: &taskConfig,
 		InstanceCount: 10,
 	}
@@ -317,7 +317,7 @@ func TestJobRecover(t *testing.T) {
 		Name:          "TestValidatorWithStore",
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"money", "team6", "gsg9"},
-		Sla:           &sla,
+		SLA:           &sla,
 		DefaultConfig: &taskConfig,
 		InstanceCount: 10,
 	}
@@ -411,7 +411,7 @@ func TestJobMaxRunningInstances(t *testing.T) {
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: instanceCount,
 		Type:          pb_job.JobType_BATCH,
-		Sla: &pb_job.SlaConfig{
+		SLA: &pb_job.SlaConfig{
 			MaximumRunningInstances: 1,
 		},
 	}
@@ -450,7 +450,7 @@ func TestJobMaxRunningInstances(t *testing.T) {
 	cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
-			assert.Equal(t, uint32(len(runtimes)), jobConfig.Sla.MaximumRunningInstances)
+			assert.Equal(t, uint32(len(runtimes)), jobConfig.SLA.MaximumRunningInstances)
 			for _, runtime := range runtimes {
 				assert.Equal(t, runtime.GetState(), pb_task.TaskState_PENDING)
 			}
@@ -506,7 +506,7 @@ func TestJobRecoverMaxRunningInstances(t *testing.T) {
 		OwningTeam:    "team6",
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: instanceCount,
-		Sla: &pb_job.SlaConfig{
+		SLA: &pb_job.SlaConfig{
 			MaximumRunningInstances: 1,
 		},
 	}

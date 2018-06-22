@@ -12,7 +12,7 @@ import (
 func NewMockJobConfig(ctrl *gomock.Controller, config *pbjob.JobConfig) *cachedmocks.MockJobConfig {
 	mockJobConfig := cachedmocks.NewMockJobConfig(ctrl)
 	mockJobConfig.EXPECT().GetRespoolID().Return(config.RespoolID).AnyTimes()
-	mockJobConfig.EXPECT().GetSLA().Return(config.GetSla()).AnyTimes()
+	mockJobConfig.EXPECT().GetSLA().Return(config.GetSLA()).AnyTimes()
 	mockJobConfig.EXPECT().GetRespoolID().Return(config.GetRespoolID()).AnyTimes()
 	mockJobConfig.EXPECT().GetChangeLog().Return(config.GetChangeLog()).AnyTimes()
 	mockJobConfig.EXPECT().GetInstanceCount().Return(config.GetInstanceCount()).AnyTimes()

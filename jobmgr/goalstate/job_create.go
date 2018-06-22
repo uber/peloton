@@ -111,7 +111,7 @@ func sendTasksToResMgr(
 	err := jobmgr_task.EnqueueGangs(
 		ctx,
 		tasks,
-		jobConfig.GetSla(),
+		jobConfig.GetSLA(),
 		jobConfig.GetRespoolID(),
 		goalStateDriver.resmgrClient)
 	if err != nil {
@@ -158,7 +158,7 @@ func recoverTasks(
 	var tasks []*task.TaskInfo
 
 	cachedJob := goalStateDriver.jobFactory.AddJob(jobID)
-	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
+	maxRunningInstances := jobConfig.GetSLA().GetMaximumRunningInstances()
 	for i := uint32(0); i < jobConfig.InstanceCount; i++ {
 		if _, ok := taskInfos[i]; ok {
 			if taskInfos[i].GetRuntime().GetState() == task.TaskState_INITIALIZED {
@@ -260,7 +260,7 @@ func createAndEnqueueTasks(
 	}
 	goalStateDriver.mtx.taskMetrics.TaskCreate.Inc(nTasks)
 
-	maxRunningInstances := jobConfig.GetSla().GetMaximumRunningInstances()
+	maxRunningInstances := jobConfig.GetSLA().GetMaximumRunningInstances()
 
 	if maxRunningInstances > 0 {
 		var uTasks []*task.TaskInfo

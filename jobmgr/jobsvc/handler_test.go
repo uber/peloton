@@ -155,7 +155,7 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 	suite.testJobConfig = &job.JobConfig{
 		Name:          suite.testJobID.Value,
 		InstanceCount: testInstanceCount,
-		Sla: &job.SlaConfig{
+		SLA: &job.SlaConfig{
 			Preemptible:             true,
 			Priority:                22,
 			MaximumRunningInstances: 2,
@@ -514,7 +514,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSla())
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSLA())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		suite.mockedResmgrClient.EXPECT().
@@ -535,7 +535,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	jobmgrtask.EnqueueGangs(
 		suite.handler.rootCtx,
 		tasksInfo,
-		suite.testJobConfig.Sla,
+		suite.testJobConfig.SLA,
 		suite.testJobConfig.RespoolID,
 		suite.mockedResmgrClient)
 	suite.Equal(gangs, expectedGangs)
@@ -546,7 +546,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSla())
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSLA())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		suite.mockedResmgrClient.EXPECT().
@@ -566,7 +566,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	err := jobmgrtask.EnqueueGangs(
 		suite.handler.rootCtx,
 		tasksInfo,
-		suite.testJobConfig.Sla,
+		suite.testJobConfig.SLA,
 		suite.testJobConfig.RespoolID,
 		suite.mockedResmgrClient)
 	suite.Error(err)

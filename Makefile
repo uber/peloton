@@ -106,6 +106,8 @@ pbgens: $(VENDOR)
 	./scripts/generate-protobuf.py --generator=go --out-dir=$(PBGEN_DIR)
         # Temporarily patch the service name in generated yarpc code
 	./scripts/patch-v0-api-yarpc.sh
+	# Temporarily rename Sla to SLA for lint
+	./scripts/rename-job-sla.sh
 
 apidoc: $(VENDOR)
 	go get -u github.com/pseudomuto/protoc-gen-doc/cmd/...

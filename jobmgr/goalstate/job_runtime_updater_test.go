@@ -795,7 +795,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		LdapGroups:    []string{"team1", "team2", "team3"},
 		InstanceCount: instanceCount,
 		Type:          pbjob.JobType_BATCH,
-		Sla: &pbjob.SlaConfig{
+		SLA: &pbjob.SlaConfig{
 			MaximumRunningInstances: maxRunningInstances,
 		},
 	}
@@ -807,7 +807,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 
 	suite.cachedConfig.EXPECT().
 		GetSLA().
-		Return(jobConfig.Sla).AnyTimes()
+		Return(jobConfig.SLA).AnyTimes()
 
 	// Simulate RUNNING job
 	stateCounts := make(map[string]uint32)
@@ -845,7 +845,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		GetTaskIDsForJobAndState(gomock.Any(), suite.jobID, pbtask.TaskState_INITIALIZED.String()).
 		Return(initializedTasks, nil)
 
-	for i := uint32(0); i < jobConfig.Sla.MaximumRunningInstances; i++ {
+	for i := uint32(0); i < jobConfig.SLA.MaximumRunningInstances; i++ {
 		suite.taskStore.EXPECT().
 			GetTaskRuntime(gomock.Any(), suite.jobID, gomock.Any()).
 			Return(&pbtask.RuntimeInfo{
@@ -865,7 +865,7 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 	suite.cachedJob.EXPECT().
 		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
 		Do(func(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req cached.UpdateRequest) {
-			suite.Equal(uint32(len(runtimes)), jobConfig.Sla.MaximumRunningInstances)
+			suite.Equal(uint32(len(runtimes)), jobConfig.SLA.MaximumRunningInstances)
 			for _, runtime := range runtimes {
 				suite.Equal(runtime.GetState(), pbtask.TaskState_PENDING)
 			}

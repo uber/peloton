@@ -557,13 +557,13 @@ func (s *resTreeTestSuite) TestConvertTask() {
 		Runtime:    &task.RuntimeInfo{},
 	}
 	jobConfig := &job.JobConfig{
-		Sla: &job.SlaConfig{
+		SLA: &job.SlaConfig{
 			Preemptible: true,
 			Priority:    12,
 		},
 	}
 
-	rmtask := util.ConvertTaskToResMgrTask(ti, jobConfig.GetSla())
+	rmtask := util.ConvertTaskToResMgrTask(ti, jobConfig.GetSLA())
 	s.NotNil(rmtask)
 	s.EqualValues(rmtask.Priority, 12)
 	s.EqualValues(rmtask.Preemptible, true)
@@ -578,7 +578,7 @@ func (s *resTreeTestSuite) TestConvertTask() {
 	}
 	jobConfig = &job.JobConfig{}
 
-	rmtask = util.ConvertTaskToResMgrTask(ti, jobConfig.GetSla())
+	rmtask = util.ConvertTaskToResMgrTask(ti, jobConfig.GetSLA())
 	s.NotNil(rmtask)
 	s.EqualValues(rmtask.Priority, 0)
 	s.EqualValues(rmtask.Preemptible, false)

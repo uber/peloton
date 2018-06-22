@@ -147,7 +147,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMaxInstances() {
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
 		InstanceCount: 10,
-		Sla:           &sla,
+		SLA:           &sla,
 		DefaultConfig: &taskConfig,
 	}
 
@@ -284,7 +284,7 @@ func (suite *TaskConfigTestSuite) TestValidateTaskConfigFailureMinInstances() {
 	jobConfig := job.JobConfig{
 		Name:          fmt.Sprintf("TestJob_1"),
 		InstanceCount: 10,
-		Sla:           &sla,
+		SLA:           &sla,
 		DefaultConfig: &taskConfig,
 	}
 
