@@ -10,7 +10,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
-	"code.uber.internal/infra/peloton/util"
+	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -84,13 +84,15 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 
 	// reschedule the task
 	goalStateDriver.mtx.taskMetrics.RetryFailedTasksTotal.Inc(1)
-	updatedRuntime := util.RegenerateMesosTaskID(taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
-	updatedRuntime.FailureCount = runtime.GetFailureCount() + 1
-	updatedRuntime.Message = "Rescheduled after task failure"
+	runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
+		taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
+	runtimeDiff[cached.FailureCountField] = runtime.GetFailureCount() + 1
+	runtimeDiff[cached.MessageField] = "Rescheduled after task failure"
 	log.WithField("job_id", taskEnt.jobID).
 		WithField("instance_id", taskEnt.instanceID).
 		Debug("restarting failed task")
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
+	err = cachedJob.PatchTasks(ctx,
+		map[uint32]map[string]interface{}{taskEnt.instanceID: runtimeDiff})
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)

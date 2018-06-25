@@ -7,12 +7,15 @@ import (
 	"time"
 
 	"code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/hostmgr/hostsvc"
+
 	"code.uber.internal/infra/peloton/util"
 
+	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -25,10 +28,20 @@ const (
 // CreateInitializingTask for insertion into the storage layer, before being
 // enqueued.
 func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *job.JobConfig) *task.RuntimeInfo {
-	runtime := util.RegenerateMesosTaskID(jobID, instanceID, nil)
-	runtime.ConfigVersion = jobConfig.GetChangeLog().GetVersion()
-	runtime.DesiredConfigVersion = jobConfig.GetChangeLog().GetVersion()
-	runtime.GoalState = GetDefaultTaskGoalState(jobConfig.GetType())
+	mesosTaskID := fmt.Sprintf(
+		"%s-%d-%s",
+		jobID.GetValue(),
+		instanceID,
+		uuid.New())
+	runtime := &task.RuntimeInfo{
+		MesosTaskId: &mesos.TaskID{
+			Value: &mesosTaskID,
+		},
+		State:                task.TaskState_INITIALIZED,
+		ConfigVersion:        jobConfig.GetChangeLog().GetVersion(),
+		DesiredConfigVersion: jobConfig.GetChangeLog().GetVersion(),
+		GoalState:            GetDefaultTaskGoalState(jobConfig.GetType()),
+	}
 	return runtime
 }
 

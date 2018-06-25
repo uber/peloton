@@ -4,12 +4,10 @@ import (
 	"context"
 	"time"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-
 	"code.uber.internal/infra/peloton/common/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	jobmgr_task "code.uber.internal/infra/peloton/jobmgr/task"
-	"code.uber.internal/infra/peloton/util"
+	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -47,16 +45,18 @@ func TaskInitialize(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	updatedRuntime := util.RegenerateMesosTaskID(taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
+	runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
+		taskEnt.jobID, taskEnt.instanceID, runtime.GetMesosTaskId())
 
 	// update task runtime
-	updatedRuntime.GoalState = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
-	updatedRuntime.StartTime = ""
-	updatedRuntime.CompletionTime = ""
-	updatedRuntime.Message = "Initialize task"
-	updatedRuntime.Reason = ""
+	runtimeDiff[cached.GoalStateField] = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
+	runtimeDiff[cached.StartTimeField] = ""
+	runtimeDiff[cached.CompletionTimeField] = ""
+	runtimeDiff[cached.MessageField] = "Initialize task"
+	runtimeDiff[cached.ReasonField] = ""
 
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
+	err = cachedJob.PatchTasks(ctx,
+		map[uint32]map[string]interface{}{taskEnt.instanceID: runtimeDiff})
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)

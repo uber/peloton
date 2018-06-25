@@ -174,11 +174,12 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	// Update task state to PENDING
 	runtime := taskInfo.GetRuntime()
 	if runtime.GetState() != task.TaskState_PENDING {
-		updatedRuntime := &task.RuntimeInfo{
-			State:   task.TaskState_PENDING,
-			Message: "Task sent for placement",
+		runtimeDiff := map[string]interface{}{
+			cached.StateField:   task.TaskState_PENDING,
+			cached.MessageField: "Task sent for placement",
 		}
-		err = cachedJob.UpdateTasks(ctx, map[uint32]*task.RuntimeInfo{taskEnt.instanceID: updatedRuntime}, cached.UpdateCacheAndDB)
+		err = cachedJob.PatchTasks(ctx,
+			map[uint32]map[string]interface{}{taskEnt.instanceID: runtimeDiff})
 	}
 	return err
 }

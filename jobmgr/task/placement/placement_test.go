@@ -476,7 +476,7 @@ func TestTaskPlacementError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil),
+			PatchTasks(gomock.Any(), gomock.Any()).Return(nil),
 		goalStateDriver.EXPECT().
 			EnqueueTask(testTask.JobId, testTask.InstanceId, gomock.Any()).Return(),
 		cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH),
@@ -545,7 +545,7 @@ func TestTaskPlacementPlacementResMgrError(t *testing.T) {
 		jobFactory.EXPECT().
 			AddJob(testTask.JobId).Return(cachedJob),
 		cachedJob.EXPECT().
-			UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Return(fmt.Errorf("fake db error")),
+			PatchTasks(gomock.Any(), gomock.Any()).Return(fmt.Errorf("fake db error")),
 	)
 
 	pp.ProcessPlacement(context.Background(), p)

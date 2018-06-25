@@ -27,7 +27,7 @@ func TaskReloadRuntime(ctx context.Context, entity goalstate.Entity) error {
 	if err != nil {
 		return err
 	}
-	cachedTask.UpdateRuntime(ctx, runtime, cached.UpdateCacheOnly)
+	cachedTask.ReplaceRuntime(runtime, false)
 
 	// This function is called when the runtime in cache is nil.
 	// The task needs to re-enqueued into the goal state engine

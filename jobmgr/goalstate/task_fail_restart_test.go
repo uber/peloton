@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"testing"
 
-	mesos_v1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
-	pb_job "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
+	mesosv1 "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	pbjob "code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	pb_task "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	pbtask "code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 
 	goalstatemocks "code.uber.internal/infra/peloton/common/goalstate/mocks"
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
-	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
+	storemocks "code.uber.internal/infra/peloton/storage/mocks"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -25,7 +25,7 @@ func TestTaskFailNoRetry(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	taskStore := storemocks.NewMockTaskStore(ctrl)
 	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
@@ -53,17 +53,17 @@ func TestTaskFailNoRetry(t *testing.T) {
 
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), instanceID, uuid.NewUUID().String())
 
-	runtime := &pb_task.RuntimeInfo{
-		MesosTaskId:   &mesos_v1.TaskID{Value: &mesosTaskID},
-		State:         pb_task.TaskState_FAILED,
-		GoalState:     pb_task.TaskState_SUCCEEDED,
+	runtime := &pbtask.RuntimeInfo{
+		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
+		State:         pbtask.TaskState_FAILED,
+		GoalState:     pbtask.TaskState_SUCCEEDED,
 		ConfigVersion: 1,
 		Message:       "testFailure",
-		Reason:        mesos_v1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
+		Reason:        mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
 	}
 
-	taskConfig := pb_task.TaskConfig{
-		RestartPolicy: &pb_task.RestartPolicy{
+	taskConfig := pbtask.TaskConfig{
+		RestartPolicy: &pbtask.RestartPolicy{
 			MaxFailures: 0,
 		},
 	}
@@ -88,7 +88,7 @@ func TestTaskFailRetry(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	taskStore := storemocks.NewMockTaskStore(ctrl)
 	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
@@ -116,17 +116,17 @@ func TestTaskFailRetry(t *testing.T) {
 
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), instanceID, uuid.NewUUID().String())
 
-	runtime := &pb_task.RuntimeInfo{
-		MesosTaskId:   &mesos_v1.TaskID{Value: &mesosTaskID},
-		State:         pb_task.TaskState_FAILED,
-		GoalState:     pb_task.TaskState_SUCCEEDED,
+	runtime := &pbtask.RuntimeInfo{
+		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
+		State:         pbtask.TaskState_FAILED,
+		GoalState:     pbtask.TaskState_SUCCEEDED,
 		ConfigVersion: 1,
 		Message:       "testFailure",
-		Reason:        mesos_v1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
+		Reason:        mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
 	}
 
-	taskConfig := pb_task.TaskConfig{
-		RestartPolicy: &pb_task.RestartPolicy{
+	taskConfig := pbtask.TaskConfig{
+		RestartPolicy: &pbtask.RestartPolicy{
 			MaxFailures: 3,
 		},
 	}
@@ -144,16 +144,17 @@ func TestTaskFailRetry(t *testing.T) {
 		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(&taskConfig, nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
-			assert.True(t, runtimes[instanceID].GetMesosTaskId().GetValue() != mesosTaskID)
-			assert.True(t, runtimes[instanceID].GetPrevMesosTaskId().GetValue() == mesosTaskID)
-			assert.True(t, runtimes[instanceID].GetState() == pb_task.TaskState_INITIALIZED)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimesDiffs map[uint32]map[string]interface{}) {
+			runtimeDiff := runtimesDiffs[instanceID]
+			assert.True(t, runtimeDiff[cached.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
+			assert.True(t, runtimeDiff[cached.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
+			assert.True(t, runtimeDiff[cached.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
 		}).
 		Return(nil)
 
 	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+		GetJobType().Return(pbjob.JobType_BATCH)
 
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -171,7 +172,7 @@ func TestTaskFailSystemFailure(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	taskStore := storemocks.NewMockTaskStore(ctrl)
 	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
@@ -199,17 +200,17 @@ func TestTaskFailSystemFailure(t *testing.T) {
 
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), instanceID, uuid.NewUUID().String())
 
-	runtime := &pb_task.RuntimeInfo{
-		MesosTaskId:   &mesos_v1.TaskID{Value: &mesosTaskID},
-		State:         pb_task.TaskState_FAILED,
-		GoalState:     pb_task.TaskState_SUCCEEDED,
+	runtime := &pbtask.RuntimeInfo{
+		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
+		State:         pbtask.TaskState_FAILED,
+		GoalState:     pbtask.TaskState_SUCCEEDED,
 		ConfigVersion: 1,
 		Message:       "testFailure",
-		Reason:        mesos_v1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String(),
+		Reason:        mesosv1.TaskStatus_REASON_CONTAINER_LAUNCH_FAILED.String(),
 	}
 
-	taskConfig := pb_task.TaskConfig{
-		RestartPolicy: &pb_task.RestartPolicy{
+	taskConfig := pbtask.TaskConfig{
+		RestartPolicy: &pbtask.RestartPolicy{
 			MaxFailures: 0,
 		},
 	}
@@ -227,16 +228,17 @@ func TestTaskFailSystemFailure(t *testing.T) {
 		GetTaskConfig(gomock.Any(), jobID, instanceID, gomock.Any()).Return(&taskConfig, nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
-			assert.True(t, runtimes[instanceID].GetMesosTaskId().GetValue() != mesosTaskID)
-			assert.True(t, runtimes[instanceID].GetPrevMesosTaskId().GetValue() == mesosTaskID)
-			assert.True(t, runtimes[instanceID].GetState() == pb_task.TaskState_INITIALIZED)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimesDiffs map[uint32]map[string]interface{}) {
+			runtimeDiff := runtimesDiffs[instanceID]
+			assert.True(t, runtimeDiff[cached.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
+			assert.True(t, runtimeDiff[cached.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
+			assert.True(t, runtimeDiff[cached.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
 		}).
 		Return(nil)
 
 	cachedJob.EXPECT().
-		GetJobType().Return(pb_job.JobType_BATCH)
+		GetJobType().Return(pbjob.JobType_BATCH)
 
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).
@@ -254,7 +256,7 @@ func TestTaskFailDBError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	taskStore := store_mocks.NewMockTaskStore(ctrl)
+	taskStore := storemocks.NewMockTaskStore(ctrl)
 	jobGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	taskGoalStateEngine := goalstatemocks.NewMockEngine(ctrl)
 	jobFactory := cachedmocks.NewMockJobFactory(ctrl)
@@ -282,13 +284,13 @@ func TestTaskFailDBError(t *testing.T) {
 
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), instanceID, uuid.NewUUID().String())
 
-	runtime := &pb_task.RuntimeInfo{
-		MesosTaskId:   &mesos_v1.TaskID{Value: &mesosTaskID},
-		State:         pb_task.TaskState_FAILED,
-		GoalState:     pb_task.TaskState_SUCCEEDED,
+	runtime := &pbtask.RuntimeInfo{
+		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
+		State:         pbtask.TaskState_FAILED,
+		GoalState:     pbtask.TaskState_SUCCEEDED,
 		ConfigVersion: 1,
 		Message:       "testFailure",
-		Reason:        mesos_v1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
+		Reason:        mesosv1.TaskStatus_REASON_COMMAND_EXECUTOR_FAILED.String(),
 	}
 
 	jobFactory.EXPECT().

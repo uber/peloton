@@ -73,10 +73,11 @@ func TestTaskInitialize(t *testing.T) {
 
 	cachedJob.EXPECT().GetConfig(gomock.Any()).Return(cachedConfig, nil)
 
-	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
-		func(_ context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req cached.UpdateRequest) {
-			for _, updatedRuntimeInfo := range runtimes {
-				newRuntime = updatedRuntimeInfo
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
+		func(_ context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			for _, rutimeDiff := range runtimeDiffs {
+				assert.Equal(t, pbtask.TaskState_INITIALIZED, rutimeDiff[cached.StateField])
+				assert.Equal(t, pbtask.TaskState_SUCCEEDED, rutimeDiff[cached.GoalStateField])
 			}
 		}).Return(nil)
 
@@ -97,6 +98,5 @@ func TestTaskInitialize(t *testing.T) {
 	err := TaskInitialize(context.Background(), taskEnt)
 	assert.NoError(t, err)
 	assert.NotEqual(t, oldMesosTaskID, newRuntime.MesosTaskId)
-	assert.Equal(t, pbtask.TaskState_INITIALIZED, newRuntime.State)
-	assert.Equal(t, pbtask.TaskState_SUCCEEDED, newRuntime.GoalState)
+
 }

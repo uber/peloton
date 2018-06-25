@@ -802,11 +802,10 @@ func TestCreateLaunchableTasks(t *testing.T) {
 	}
 	jobFactory.EXPECT().GetJob(tmp.JobId).Return(cachedJob)
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*task.RuntimeInfo,
-			req cached.UpdateRequest) {
-			assert.Equal(t, task.TaskState_KILLED, runtimes[0].GetGoalState())
-			assert.Equal(t, "REASON_SECRET_NOT_FOUND", runtimes[0].GetReason())
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			assert.Equal(t, task.TaskState_KILLED, runtimeDiffs[0][cached.GoalStateField])
+			assert.Equal(t, "REASON_SECRET_NOT_FOUND", runtimeDiffs[0][cached.ReasonField])
 		}).
 		Return(nil)
 	mockSecretStore.EXPECT().

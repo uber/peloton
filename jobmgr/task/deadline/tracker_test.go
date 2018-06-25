@@ -83,9 +83,9 @@ func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
 	job.EXPECT().GetAllTasks().Return(tasks)
 	task.EXPECT().GetRunTime(gomock.Any()).Return(taskInfo.Runtime, nil)
 	suite.jobFactory.EXPECT().AddJob(gomock.Any()).Return(job)
-	job.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*peloton_task.RuntimeInfo, req cached.UpdateRequest) {
-			suite.Equal(peloton_task.TaskState_KILLED, runtimes[1].GetGoalState())
+	job.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			suite.Equal(peloton_task.TaskState_KILLED, runtimeDiffs[1][cached.GoalStateField])
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()

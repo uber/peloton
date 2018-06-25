@@ -17,7 +17,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	pbeventstream "code.uber.internal/infra/peloton/.gen/peloton/private/eventstream"
 
-	"code.uber.internal/infra/peloton/jobmgr/cached"
 	cachedmocks "code.uber.internal/infra/peloton/jobmgr/cached/mocks"
 	goalstatemocks "code.uber.internal/infra/peloton/jobmgr/goalstate/mocks"
 	eventsmocks "code.uber.internal/infra/peloton/jobmgr/task/event/mocks"
@@ -82,7 +81,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 		suite.taskStore.EXPECT().GetTaskByID(context.Background(), pelotonTaskID).Return(taskInfo, nil).Times(3)
 		suite.jobFactory.EXPECT().AddJob(jobID).Return(suite.cachedJob).Times(3)
 		suite.cachedJob.EXPECT().SetTaskUpdateTime(gomock.Any()).Return().Times(3)
-		suite.cachedJob.EXPECT().UpdateTasks(context.Background(), gomock.Any(), cached.UpdateCacheAndDB).Return(nil).Times(3)
+		suite.cachedJob.EXPECT().PatchTasks(context.Background(), gomock.Any()).Return(nil).Times(3)
 		suite.goalStateDriver.EXPECT().EnqueueTask(jobID, i, gomock.Any()).Return().Times(3)
 		suite.cachedJob.EXPECT().GetJobType().Return(job.JobType_BATCH).Times(3)
 		suite.goalStateDriver.EXPECT().

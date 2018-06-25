@@ -63,7 +63,7 @@ func TestTaskReloadRuntime(t *testing.T) {
 		Return(runtime, nil)
 
 	cachedTask.EXPECT().
-		UpdateRuntime(gomock.Any(), gomock.Any(), cached.UpdateCacheOnly)
+		ReplaceRuntime(gomock.Any(), gomock.Any())
 
 	taskGoalStateEngine.EXPECT().
 		Enqueue(gomock.Any(), gomock.Any()).

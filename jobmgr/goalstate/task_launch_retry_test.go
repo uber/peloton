@@ -90,7 +90,6 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 		pb_task.TaskState_SUCCEEDED,
 		oldMesosTaskID)
 	config := &pb_task.TaskConfig{}
-	newRuntime := runtime
 
 	for i := 0; i < 2; i++ {
 		suite.jobFactory.EXPECT().
@@ -120,10 +119,13 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 
 		suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
-		suite.cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
-			func(_ context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
-				for _, updatedRuntimeInfo := range runtimes {
-					newRuntime = updatedRuntimeInfo
+		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
+			func(_ context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+				for _, runtimeDiff := range runtimeDiffs {
+					suite.Equal(oldMesosTaskID, runtimeDiff[cached.PrevMesosTaskIDField])
+					suite.NotEqual(oldMesosTaskID, runtimeDiff[cached.MesosTaskIDField])
+					suite.Equal(pb_task.TaskState_INITIALIZED, runtimeDiff[cached.StateField])
+					suite.Equal(pb_task.TaskState_SUCCEEDED, runtimeDiff[cached.GoalStateField])
 				}
 			}).Return(nil)
 
@@ -150,9 +152,6 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 			suite.mockHostMgr.EXPECT()
 		}
 		suite.NoError(TaskLaunchRetry(context.Background(), suite.getTaskEntity(suite.jobID, suite.instanceID)))
-		suite.NotEqual(oldMesosTaskID, newRuntime.MesosTaskId)
-		suite.Equal(pb_task.TaskState_INITIALIZED, newRuntime.State)
-		suite.Equal(pb_task.TaskState_SUCCEEDED, newRuntime.GoalState)
 	}
 }
 
@@ -229,8 +228,6 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 		oldMesosTaskID)
 	config := &pb_task.TaskConfig{}
 
-	newRuntime := runtime
-
 	suite.jobFactory.EXPECT().
 		GetJob(suite.jobID).Return(suite.cachedJob)
 
@@ -260,10 +257,13 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 
 	suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
-	suite.cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).Do(
-		func(_ context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
-			for _, updatedRuntimeInfo := range runtimes {
-				newRuntime = updatedRuntimeInfo
+	suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
+		func(_ context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			for _, runtimeDiff := range runtimeDiffs {
+				suite.Equal(oldMesosTaskID, runtimeDiff[cached.PrevMesosTaskIDField])
+				suite.NotEqual(oldMesosTaskID, runtimeDiff[cached.MesosTaskIDField])
+				suite.Equal(pb_task.TaskState_INITIALIZED, runtimeDiff[cached.StateField])
+				suite.Equal(pb_task.TaskState_SUCCEEDED, runtimeDiff[cached.GoalStateField])
 			}
 		}).Return(nil)
 
@@ -285,9 +285,6 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 	suite.NoError(TaskLaunchRetry(
 		context.Background(),
 		suite.getTaskEntity(suite.jobID, suite.instanceID)))
-	suite.NotEqual(oldMesosTaskID, newRuntime.MesosTaskId)
-	suite.Equal(pb_task.TaskState_INITIALIZED, newRuntime.State)
-	suite.Equal(pb_task.TaskState_SUCCEEDED, newRuntime.GoalState)
 }
 
 func (suite *TestTaskLaunchRetrySuite) TestStartingTaskReenqueue() {

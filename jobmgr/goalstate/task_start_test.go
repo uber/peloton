@@ -145,7 +145,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 		Return(nil, nil)
 
 	suite.cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	err := TaskStart(context.Background(), suite.taskEnt)
@@ -397,7 +397,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 		Return(nil, nil)
 
 	suite.cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	err := TaskStart(context.Background(), suite.taskEnt)

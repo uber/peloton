@@ -110,7 +110,7 @@ func initializeDiffs(instanceCount uint32, state pbtask.TaskState) map[uint32]ma
 	diffs := make(map[uint32]map[string]interface{})
 	for i := uint32(0); i < instanceCount; i++ {
 		diff := map[string]interface{}{
-			"State": state,
+			StateField: state,
 		}
 		diffs[i] = diff
 	}
@@ -1224,7 +1224,7 @@ func (suite *JobTestSuite) TestPartialJobCheck() {
 func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 	instanceCount := uint32(10)
 	runtimeDiff := map[string]interface{}{
-		"State": pbtask.TaskState_RUNNING,
+		StateField: pbtask.TaskState_RUNNING,
 	}
 
 	suite.taskStore.EXPECT().

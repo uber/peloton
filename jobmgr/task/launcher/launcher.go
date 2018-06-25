@@ -259,10 +259,10 @@ func (l *launcher) GetLaunchableTasks(
 func (l *launcher) updateTaskRuntime(
 	ctx context.Context, taskID string,
 	goalstate task.TaskState, reason string, message string) error {
-	runtime := &task.RuntimeInfo{
-		GoalState: goalstate,
-		Reason:    reason,
-		Message:   message,
+	runtimeDiff := map[string]interface{}{
+		cached.GoalStateField: goalstate,
+		cached.ReasonField:    reason,
+		cached.MessageField:   message,
 	}
 	jobID, instanceID, err := util.ParseTaskID(taskID)
 	if err != nil {
@@ -273,9 +273,8 @@ func (l *launcher) updateTaskRuntime(
 		return fmt.Errorf("jobID %v not found in cache", jobID)
 	}
 	// update the task in DB and cache, and then schedule to goalstate
-	err = cachedJob.UpdateTasks(ctx,
-		map[uint32]*task.RuntimeInfo{uint32(instanceID): runtime},
-		cached.UpdateCacheAndDB)
+	err = cachedJob.PatchTasks(ctx,
+		map[uint32]map[string]interface{}{uint32(instanceID): runtimeDiff})
 	if err != nil {
 		return err
 	}

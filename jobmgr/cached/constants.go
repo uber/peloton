@@ -64,3 +64,20 @@ var (
 		pbtask.TaskState_KILLED:    true,
 	}
 )
+
+// name of the fields in pbtask.RuntimeInfo,
+// which is used by job/task cache update
+const (
+	AgentIDField         = "AgentID"
+	CompletionTimeField  = "CompletionTime"
+	FailureCountField    = "FailureCount"
+	GoalStateField       = "GoalState"
+	MesosTaskIDField     = "MesosTaskId"
+	MessageField         = "Message"
+	PortsField           = "Ports"
+	PrevMesosTaskIDField = "PrevMesosTaskId"
+	ReasonField          = "Reason"
+	RevisionField        = "Revision"
+	StartTimeField       = "StartTime"
+	StateField           = "State"
+)

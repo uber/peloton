@@ -114,9 +114,11 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 	runningCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(runningTaskInfo.Runtime, nil)
 	killingCachedTask.EXPECT().GetRunTime(gomock.Any()).Return(killingTaskInfo.Runtime, nil)
 
-	cachedJob.EXPECT().UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*peloton_task.RuntimeInfo, req cached.UpdateRequest) {
-			suite.Equal(peloton_task.TaskState_PREEMPTING, runtimes[runningTaskInfo.InstanceId].GetGoalState())
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context,
+			runtimeDiffs map[uint32]map[string]interface{}) {
+			suite.Equal(peloton_task.TaskState_PREEMPTING,
+				runtimeDiffs[runningTaskInfo.InstanceId][cached.StateField])
 		}).
 		Return(nil)
 	suite.goalStateDriver.EXPECT().EnqueueTask(gomock.Any(), gomock.Any(), gomock.Any()).Return()

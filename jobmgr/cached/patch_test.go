@@ -24,12 +24,12 @@ func (suite *PatchTestSuite) TestPatch() {
 		Reason: "test",
 	}
 	suite.NoError(patch(input, map[string]interface{}{
-		"State":  pbtask.TaskState_FAILED,
-		"Reason": "test2",
-		"Ports": map[string]uint32{
+		StateField:  pbtask.TaskState_FAILED,
+		ReasonField: "test2",
+		PortsField: map[string]uint32{
 			"http": 8080,
 		},
-		"Revision": &peloton.ChangeLog{
+		RevisionField: &peloton.ChangeLog{
 			Version: 3,
 		},
 	}))
@@ -50,9 +50,9 @@ func (suite *PatchTestSuite) TestPatch_Unset() {
 		},
 	}
 	suite.NoError(patch(input, map[string]interface{}{
-		"State":    pbtask.TaskState_UNKNOWN,
-		"Reason":   "",
-		"Revision": nil,
+		StateField:    pbtask.TaskState_UNKNOWN,
+		ReasonField:   "",
+		RevisionField: nil,
 	}))
 
 	suite.Equal(input.State, pbtask.TaskState_UNKNOWN)
@@ -81,9 +81,9 @@ func (suite *PatchTestSuite) TestPatch_NonExistentField() {
 func (suite *PatchTestSuite) TestPatch_NilEntity() {
 	var input *pbtask.RuntimeInfo
 	err := patch(input, map[string]interface{}{
-		"State":    pbtask.TaskState_UNKNOWN,
-		"Reason":   "",
-		"Revision": nil,
+		StateField:    pbtask.TaskState_UNKNOWN,
+		ReasonField:   "",
+		RevisionField: nil,
 	})
 	suite.Error(err)
 }
@@ -116,6 +116,6 @@ func (suite *PatchTestSuite) TestPatch_WrongType() {
 		},
 	}
 	suite.Error(patch(input, map[string]interface{}{
-		"State": "wrong value",
+		StateField: "wrong value",
 	}))
 }

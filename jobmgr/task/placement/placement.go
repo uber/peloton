@@ -21,6 +21,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/cached"
 	"code.uber.internal/infra/peloton/jobmgr/goalstate"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
+	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	"code.uber.internal/infra/peloton/util"
 )
 
@@ -305,18 +306,18 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 
 	var err error
 	for _, t := range tasks {
-		runtime := util.RegenerateMesosTaskID(t.JobId, t.InstanceId, t.GetRuntime().GetMesosTaskId())
-		runtime.Message = "Regenerate placement"
-		runtime.Reason = "REASON_HOST_REJECT_OFFER"
-		runtime.AgentID = &mesosv1.AgentID{}
-		runtime.Ports = make(map[string]uint32)
+		runtimeDiff := taskutil.RegenerateMesosTaskIDDiff(
+			t.JobId, t.InstanceId, t.GetRuntime().GetMesosTaskId())
+		runtimeDiff[cached.MessageField] = "Regenerate placement"
+		runtimeDiff[cached.ReasonField] = "REASON_HOST_REJECT_OFFER"
+		runtimeDiff[cached.AgentIDField] = &mesosv1.AgentID{}
+		runtimeDiff[cached.PortsField] = make(map[string]uint32)
 		retry := 0
 		for retry < maxRetryCount {
 			cachedJob := p.jobFactory.AddJob(t.JobId)
-			err = cachedJob.UpdateTasks(
+			err = cachedJob.PatchTasks(
 				ctx,
-				map[uint32]*task.RuntimeInfo{uint32(t.InstanceId): runtime},
-				cached.UpdateCacheAndDB,
+				map[uint32]map[string]interface{}{uint32(t.InstanceId): runtimeDiff},
 			)
 			if err == nil {
 				p.goalStateDriver.EnqueueTask(t.JobId, t.InstanceId, time.Now())

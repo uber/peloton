@@ -16,9 +16,6 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-// RevisionField is the name of Revision field in task.RuntimeInfo
-const RevisionField = "Revision"
-
 // IsResMgrOwnedState returns true if the task state indicates that the task
 // is either waiting for admission or being placed or being preempted.
 func IsResMgrOwnedState(state pbtask.TaskState) bool {
@@ -228,7 +225,7 @@ func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
 	// mesos task id remains the same as before
 
 	// if state update is not requested, then return true
-	if newRuntime.GetState() == pbtask.TaskState_UNKNOWN {
+	if newRuntime.GetState() == currentRuntime.GetState() {
 		return true
 	}
 

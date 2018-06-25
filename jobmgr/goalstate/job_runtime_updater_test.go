@@ -863,11 +863,11 @@ func (suite *JobRuntimeUpdaterTestSuite) TestJobEvaluateMaxRunningInstances() {
 		Return(&resmgrsvc.EnqueueGangsResponse{}, nil)
 
 	suite.cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req cached.UpdateRequest) {
-			suite.Equal(uint32(len(runtimes)), jobConfig.SLA.MaximumRunningInstances)
-			for _, runtime := range runtimes {
-				suite.Equal(runtime.GetState(), pbtask.TaskState_PENDING)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			suite.Equal(uint32(len(runtimeDiffs)), jobConfig.SLA.MaximumRunningInstances)
+			for _, runtimeDiff := range runtimeDiffs {
+				suite.Equal(runtimeDiff[cached.StateField], pbtask.TaskState_PENDING)
 			}
 		}).
 		Return(nil)

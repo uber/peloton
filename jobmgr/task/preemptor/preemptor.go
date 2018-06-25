@@ -155,14 +155,14 @@ func (p *preemptor) preemptTasks(ctx context.Context, preemptionCandidates []*re
 		}
 
 		// set goal state to TaskState_PREEMPTING
-		updatedRuntime := &pb_task.RuntimeInfo{
-			GoalState: pb_task.TaskState_PREEMPTING,
-			Message:   "Preempting running task",
-			Reason:    task.Reason.String(),
+		runtimeDiff := map[string]interface{}{
+			cached.StateField:   pb_task.TaskState_PREEMPTING,
+			cached.MessageField: "Preempting running task",
+			cached.ReasonField:  task.Reason.String(),
 		}
 
 		// update the task in cache and enqueue to goal state engine
-		err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{uint32(instanceID): updatedRuntime}, cached.UpdateCacheAndDB)
+		err = cachedJob.PatchTasks(ctx, map[uint32]map[string]interface{}{uint32(instanceID): runtimeDiff})
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		} else {

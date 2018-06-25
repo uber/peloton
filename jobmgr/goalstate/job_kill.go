@@ -28,7 +28,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	tasks := cachedJob.GetAllTasks()
 
 	// Update task runtimes in DB and cache to kill task
-	updatedRuntimes := make(map[uint32]*task.RuntimeInfo)
+	runtimeDiffs := make(map[uint32]map[string]interface{})
 	for instanceID, cachedTask := range tasks {
 		runtime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
@@ -43,12 +43,12 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 			continue
 		}
 
-		updatedRuntime := &task.RuntimeInfo{
-			GoalState: task.TaskState_KILLED,
-			Message:   "Task stop API request",
-			Reason:    "",
+		runtimeDiff := map[string]interface{}{
+			cached.GoalStateField: task.TaskState_KILLED,
+			cached.MessageField:   "Task stop API request",
+			cached.ReasonField:    "",
 		}
-		updatedRuntimes[instanceID] = updatedRuntime
+		runtimeDiffs[instanceID] = runtimeDiff
 	}
 
 	config, err := cachedJob.GetConfig(ctx)
@@ -59,7 +59,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	err = cachedJob.UpdateTasks(ctx, updatedRuntimes, cached.UpdateCacheAndDB)
+	err = cachedJob.PatchTasks(ctx, runtimeDiffs)
 
 	if err != nil {
 		log.WithError(err).
@@ -69,13 +69,13 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	}
 
 	// Schedule all tasks in goal state engine
-	for instanceID := range updatedRuntimes {
+	for instanceID := range runtimeDiffs {
 		goalStateDriver.EnqueueTask(jobID, instanceID, time.Now())
 	}
 
 	// Only enqueue the job into goal state if any of the
 	// tasks need to be killed.
-	if len(updatedRuntimes) > 0 {
+	if len(runtimeDiffs) > 0 {
 		EnqueueJobWithDefaultDelay(jobID, goalStateDriver, cachedJob)
 	}
 
@@ -91,7 +91,9 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 
 	// If not all instances have been created, and all created instances are already killed,
 	// then directly update the job state to KILLED.
-	if len(updatedRuntimes) == 0 && jobRuntime.GetState() == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated(config) {
+	if len(runtimeDiffs) == 0 &&
+		jobRuntime.GetState() == job.JobState_INITIALIZED &&
+		cachedJob.IsPartiallyCreated(config) {
 		jobState = job.JobState_KILLED
 		for _, cachedTask := range tasks {
 			runtime, err := cachedTask.GetRunTime(ctx)

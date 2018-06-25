@@ -121,14 +121,14 @@ func sendTasksToResMgr(
 	}
 
 	// Move all task states to pending
-	runtimes := make(map[uint32]*task.RuntimeInfo)
+	runtimeDiffs := make(map[uint32]map[string]interface{})
 	for _, tt := range tasks {
 		instID := tt.GetInstanceId()
-		runtime := &task.RuntimeInfo{
-			State:   task.TaskState_PENDING,
-			Message: "Task sent for placement",
+		runtimeDiff := map[string]interface{}{
+			cached.StateField:   task.TaskState_PENDING,
+			cached.MessageField: "Task sent for placement",
 		}
-		runtimes[instID] = runtime
+		runtimeDiffs[instID] = runtimeDiff
 	}
 
 	cachedJob := goalStateDriver.jobFactory.GetJob(jobID)
@@ -137,7 +137,7 @@ func sendTasksToResMgr(
 		return nil
 	}
 
-	err = cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheAndDB)
+	err = cachedJob.PatchTasks(ctx, runtimeDiffs)
 	if err != nil {
 		log.WithError(err).
 			WithField("job_id", jobID.GetValue()).

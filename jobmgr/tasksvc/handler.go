@@ -29,6 +29,7 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/event/statechanges"
 	"code.uber.internal/infra/peloton/jobmgr/task/launcher"
 	goalstateutil "code.uber.internal/infra/peloton/jobmgr/util/goalstate"
+	taskutil "code.uber.internal/infra/peloton/jobmgr/util/task"
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/storage"
 	"code.uber.internal/infra/peloton/util"
@@ -464,34 +465,35 @@ func (m *serviceHandler) Start(
 	var startedInstanceIds []uint32
 	var failedInstanceIds []uint32
 	var instanceIds []uint32
-	runtimes := make(map[uint32]*task.RuntimeInfo)
+	runtimeDiffs := make(map[uint32]map[string]interface{})
 	for _, taskInfo := range taskInfos {
-		runtime := &task.RuntimeInfo{}
+		runtimeDiff := make(map[string]interface{})
 		taskState := taskInfo.GetRuntime().GetState()
 
 		if taskState == task.TaskState_INITIALIZED || taskState == task.TaskState_PENDING ||
 			(taskInfo.GetConfig().GetVolume() != nil && len(taskInfo.GetRuntime().GetVolumeID().GetValue()) != 0) {
 			// Do not regenerate mesos task ID if task is known that not in mesos yet OR stateful task.
-			runtime.State = task.TaskState_INITIALIZED
+			runtimeDiff[cached.StateField] = task.TaskState_INITIALIZED
 		} else {
 			// Kill the old Mesos task and regenerate a new ID
 			jobmgr_task.KillOrphanTask(ctx, m.hostMgrClient, taskInfo)
-			runtime = util.RegenerateMesosTaskID(taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime.MesosTaskId)
+			runtimeDiff = taskutil.RegenerateMesosTaskIDDiff(
+				taskInfo.JobId, taskInfo.InstanceId, taskInfo.Runtime.MesosTaskId)
 		}
 
 		// Change the goalstate.
-		runtime.GoalState = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
-		runtime.Message = "Task start API request"
-		runtime.Reason = ""
-		runtimes[taskInfo.InstanceId] = runtime
+		runtimeDiff[cached.GoalStateField] = jobmgr_task.GetDefaultTaskGoalState(cachedConfig.GetType())
+		runtimeDiff[cached.MessageField] = "Task start API request"
+		runtimeDiff[cached.ReasonField] = ""
+		runtimeDiffs[taskInfo.InstanceId] = runtimeDiff
 
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
 
-	err = cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheAndDB)
+	err = cachedJob.PatchTasks(ctx, runtimeDiffs)
 	if err != nil {
 		log.WithError(err).
-			WithField("runtimes", runtimes).
+			WithField("instance_ids", instanceIds).
 			WithField("job_id", body.GetJobId().GetValue()).
 			Error("failed to update task to initialized state")
 		m.metrics.TaskStartFail.Inc(1)
@@ -659,7 +661,7 @@ func (m *serviceHandler) Stop(
 	var stoppedInstanceIds []uint32
 	var failedInstanceIds []uint32
 	var instanceIds []uint32
-	runtimes := make(map[uint32]*task.RuntimeInfo)
+	runtimeDiffs := make(map[uint32]map[string]interface{})
 	// Persist KILLED goalstate for tasks in db.
 	for _, taskInfo := range taskInfos {
 		// Skip update task goalstate if it is already KILLED.
@@ -667,19 +669,19 @@ func (m *serviceHandler) Stop(
 			continue
 		}
 
-		runtime := &task.RuntimeInfo{
-			GoalState: task.TaskState_KILLED,
-			Message:   "Task stop API request",
-			Reason:    "",
+		runtimeDiff := map[string]interface{}{
+			cached.GoalStateField: task.TaskState_KILLED,
+			cached.MessageField:   "Task stop API request",
+			cached.ReasonField:    "",
 		}
-		runtimes[taskInfo.InstanceId] = runtime
+		runtimeDiffs[taskInfo.InstanceId] = runtimeDiff
 		instanceIds = append(instanceIds, taskInfo.InstanceId)
 	}
 
-	err = cachedJob.UpdateTasks(ctx, runtimes, cached.UpdateCacheAndDB)
+	err = cachedJob.PatchTasks(ctx, runtimeDiffs)
 	if err != nil {
 		log.WithError(err).
-			WithField("runtimes", runtimes).
+			WithField("instance_ids", instanceIds).
 			WithField("job_id", body.GetJobId().GetValue()).
 			Error("failed to updated killed goalstate")
 		failedInstanceIds = instanceIds

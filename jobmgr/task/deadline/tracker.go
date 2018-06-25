@@ -213,9 +213,9 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 		Info("stopping task")
 
 	// set goal state to TaskState_KILLED
-	runtime := &pb_task.RuntimeInfo{
-		GoalState: pb_task.TaskState_KILLED,
-		Reason:    "Deadline exceeded",
+	runtimeDiff := map[string]interface{}{
+		cached.GoalStateField: pb_task.TaskState_KILLED,
+		cached.ReasonField:    "Deadline exceeded",
 	}
 
 	id, instanceID, err := util.ParseTaskID(task.GetValue())
@@ -226,7 +226,8 @@ func (t *tracker) stopTask(ctx context.Context, task *peloton.TaskID) error {
 
 	// update the task in DB and cache, and then schedule to goalstate
 	cachedJob := t.jobFactory.AddJob(jobID)
-	err = cachedJob.UpdateTasks(ctx, map[uint32]*pb_task.RuntimeInfo{uint32(instanceID): runtime}, cached.UpdateCacheAndDB)
+	err = cachedJob.PatchTasks(ctx,
+		map[uint32]map[string]interface{}{uint32(instanceID): runtimeDiff})
 	if err != nil {
 		return err
 	}

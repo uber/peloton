@@ -96,26 +96,26 @@ func (suite JobKillTestSuite) TestJobKill() {
 		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 
-	newRuntimes := make(map[uint32]*pbtask.RuntimeInfo)
-	newRuntimes[0] = &pbtask.RuntimeInfo{
-		GoalState: pbtask.TaskState_KILLED,
-		Message:   "Task stop API request",
-		Reason:    "",
+	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs[0] = map[string]interface{}{
+		cached.GoalStateField: pbtask.TaskState_KILLED,
+		cached.MessageField:   "Task stop API request",
+		cached.ReasonField:    "",
 	}
-	newRuntimes[1] = &pbtask.RuntimeInfo{
-		GoalState: pbtask.TaskState_KILLED,
-		Message:   "Task stop API request",
-		Reason:    "",
+	runtimeDiffs[1] = map[string]interface{}{
+		cached.GoalStateField: pbtask.TaskState_KILLED,
+		cached.MessageField:   "Task stop API request",
+		cached.ReasonField:    "",
 	}
-	newRuntimes[2] = &pbtask.RuntimeInfo{
-		GoalState: pbtask.TaskState_KILLED,
-		Message:   "Task stop API request",
-		Reason:    "",
+	runtimeDiffs[2] = map[string]interface{}{
+		cached.GoalStateField: pbtask.TaskState_KILLED,
+		cached.MessageField:   "Task stop API request",
+		cached.ReasonField:    "",
 	}
-	newRuntimes[3] = &pbtask.RuntimeInfo{
-		GoalState: pbtask.TaskState_KILLED,
-		Message:   "Task stop API request",
-		Reason:    "",
+	runtimeDiffs[3] = map[string]interface{}{
+		cached.GoalStateField: pbtask.TaskState_KILLED,
+		cached.MessageField:   "Task stop API request",
+		cached.ReasonField:    "",
 	}
 
 	jobRuntime := &pbjob.RuntimeInfo{
@@ -150,7 +150,7 @@ func (suite JobKillTestSuite) TestJobKill() {
 	}
 
 	suite.cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), newRuntimes, cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), runtimeDiffs).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
@@ -224,7 +224,7 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 	}
 
 	suite.cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().
@@ -274,7 +274,7 @@ func (suite JobKillTestSuite) TestJobKillPartiallyCreatedJob() {
 	}
 
 	suite.cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	suite.cachedJob.EXPECT().

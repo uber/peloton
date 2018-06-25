@@ -113,7 +113,7 @@ func TestJobCreateTasks(t *testing.T) {
 		Times(2)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	err := JobCreateTasks(context.Background(), jobEnt)
@@ -288,7 +288,7 @@ func TestJobRecover(t *testing.T) {
 		Times(2)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	err := JobCreateTasks(context.Background(), jobEnt)
@@ -448,11 +448,11 @@ func TestJobMaxRunningInstances(t *testing.T) {
 		Times(2)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
-		Do(func(ctx context.Context, runtimes map[uint32]*pb_task.RuntimeInfo, req cached.UpdateRequest) {
-			assert.Equal(t, uint32(len(runtimes)), jobConfig.SLA.MaximumRunningInstances)
-			for _, runtime := range runtimes {
-				assert.Equal(t, runtime.GetState(), pb_task.TaskState_PENDING)
+		PatchTasks(gomock.Any(), gomock.Any()).
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			assert.Equal(t, uint32(len(runtimeDiffs)), jobConfig.SLA.MaximumRunningInstances)
+			for _, runtimeDiff := range runtimeDiffs {
+				assert.Equal(t, runtimeDiff[cached.StateField], pb_task.TaskState_PENDING)
 			}
 		}).
 		Return(nil)

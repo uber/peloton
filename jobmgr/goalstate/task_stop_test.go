@@ -78,14 +78,14 @@ func TestTaskStop(t *testing.T) {
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
-	expectedRuntime := &pbtask.RuntimeInfo{
-		State:   pbtask.TaskState_KILLING,
-		Message: "Killing the task",
-		Reason:  "",
+	expectedRuntimeDiff := map[string]interface{}{
+		cached.StateField:   pbtask.TaskState_KILLING,
+		cached.MessageField: "Killing the task",
+		cached.ReasonField:  "",
 	}
-	cachedJob.EXPECT().UpdateTasks(gomock.Any(), map[uint32]*pbtask.RuntimeInfo{
-		instanceID: expectedRuntime,
-	}, cached.UpdateCacheAndDB)
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), map[uint32]map[string]interface{}{
+		instanceID: expectedRuntimeDiff,
+	})
 
 	hostMock.EXPECT().KillTasks(gomock.Any(), &hostsvc.KillTasksRequest{
 		TaskIds: []*mesos_v1.TaskID{taskID},
@@ -199,7 +199,7 @@ func TestTaskStopIfInitializedCallsKillOnResmgr(t *testing.T) {
 		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	cachedJob.EXPECT().
@@ -293,7 +293,7 @@ func TestTaskStopIfPendingCallsKillOnResmgr(t *testing.T) {
 		GetRunTime(gomock.Any()).Return(runtime, nil)
 
 	cachedJob.EXPECT().
-		UpdateTasks(gomock.Any(), gomock.Any(), cached.UpdateCacheAndDB).
+		PatchTasks(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	cachedJob.EXPECT().
