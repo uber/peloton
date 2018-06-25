@@ -2,6 +2,7 @@ import pytest
 import time
 
 from job import IntegrationTestConfig, Job, kill_jobs
+from peloton_client.pbgen.peloton.api.v0.job import job_pb2
 from peloton_client.pbgen.peloton.api.v0.task import task_pb2
 
 
@@ -130,6 +131,8 @@ def test__stop_start_tasks_when_mesos_master_down_and_jobmgr_restarts(
 
 
 def test__kill_mesos_agent_makes_task_resume(long_running_job, mesos_agent):
+    long_running_job.job_config.type = job_pb2.SERVICE
+
     long_running_job.create()
     long_running_job.wait_for_state(goal_state='RUNNING')
 

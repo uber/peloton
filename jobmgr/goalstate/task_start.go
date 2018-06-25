@@ -166,7 +166,8 @@ func TaskStart(ctx context.Context, entity goalstate.Entity) error {
 	err = jobmgr_task.EnqueueGangs(
 		ctx,
 		[]*task.TaskInfo{taskInfo},
-		cachedConfig,
+		cachedConfig.GetSLA(),
+		cachedConfig.GetRespoolID(),
 		goalStateDriver.resmgrClient)
 	if err != nil {
 		return err

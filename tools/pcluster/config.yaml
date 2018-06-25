@@ -95,7 +95,6 @@ peloton_placement_ports:
 peloton_placement_instances:
   - BATCH
   - STATEFUL
-  - STATELESS
 
 peloton_archiver_container: peloton-archiver
 peloton_archiver_ports:

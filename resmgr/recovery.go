@@ -15,7 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr/respool"
 	rmtask "code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/storage"
-	taskutil "code.uber.internal/infra/peloton/util/task"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -229,7 +229,7 @@ func (r *recoveryHandler) addNonRunningTasks(notRunningTasks []*task.TaskInfo,
 		return
 	}
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   taskutil.ConvertToResMgrGangs(notRunningTasks, jobConfig),
+		Gangs:   util.ConvertToResMgrGangs(notRunningTasks, jobConfig.GetSLA()),
 		ResPool: jobConfig.RespoolID,
 	}
 	log.WithField("request", request).Debug("Adding non running tasks")
@@ -269,7 +269,7 @@ func (r *recoveryHandler) addTaskToTracker(
 	taskInfo *task.TaskInfo,
 	config *job.JobConfig,
 	respool respool.ResPool) error {
-	rmTask := taskutil.ConvertTaskToResMgrTask(taskInfo, config)
+	rmTask := util.ConvertTaskToResMgrTask(taskInfo, config.GetSLA())
 	err := rmtask.GetTracker().AddTask(
 		rmTask,
 		r.handler.GetStreamHandler(),

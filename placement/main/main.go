@@ -178,10 +178,6 @@ func main() {
 				// Use mimir strategy for stateful task placement.
 				cfg.Placement.Strategy = config.Mimir
 				cfg.Placement.FetchOfferTasks = true
-			} else if cfg.Placement.TaskType == resmgr.TaskType_STATELESS {
-				// TODO: use mirmir for stateless service
-				cfg.Placement.Strategy = config.Batch
-				cfg.Placement.FetchOfferTasks = false
 			}
 		} else {
 			log.WithField("placement_task_type", *taskType).Error("Invalid placement task type")

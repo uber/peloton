@@ -17,7 +17,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
 	res_mocks "code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc/mocks"
-	taskutil "code.uber.internal/infra/peloton/util/task"
+	"code.uber.internal/infra/peloton/util"
 )
 
 const (
@@ -100,7 +100,7 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangs() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := taskutil.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSLA())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		mockResmgrClient.EXPECT().EnqueueGangs(
@@ -120,7 +120,8 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangs() {
 	EnqueueGangs(
 		context.Background(),
 		tasksInfo,
-		suite.testJobConfig,
+		suite.testJobConfig.SLA,
+		suite.testJobConfig.RespoolID,
 		mockResmgrClient)
 	suite.Equal(gangs, expectedGangs)
 }
@@ -134,7 +135,7 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangsFailure() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := taskutil.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSLA())
 	var expectedGangs []*resmgrsvc.Gang
 	var err error
 	gomock.InOrder(
@@ -154,7 +155,8 @@ func (suite *TaskUtilTestSuite) TestEnqueueGangsFailure() {
 	err = EnqueueGangs(
 		context.Background(),
 		tasksInfo,
-		suite.testJobConfig,
+		suite.testJobConfig.SLA,
+		suite.testJobConfig.RespoolID,
 		mockResmgrClient)
 	suite.Error(err)
 }

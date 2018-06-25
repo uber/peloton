@@ -25,7 +25,7 @@ import (
 	jobmgrtask "code.uber.internal/infra/peloton/jobmgr/task"
 	leadermocks "code.uber.internal/infra/peloton/leader/mocks"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
-	taskutil "code.uber.internal/infra/peloton/util/task"
+	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -514,7 +514,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := taskutil.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSLA())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		suite.mockedResmgrClient.EXPECT().
@@ -535,7 +535,8 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgr() {
 	jobmgrtask.EnqueueGangs(
 		suite.handler.rootCtx,
 		tasksInfo,
-		suite.testJobConfig,
+		suite.testJobConfig.SLA,
+		suite.testJobConfig.RespoolID,
 		suite.mockedResmgrClient)
 	suite.Equal(gangs, expectedGangs)
 }
@@ -545,7 +546,7 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	for _, v := range suite.taskInfos {
 		tasksInfo = append(tasksInfo, v)
 	}
-	gangs := taskutil.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig)
+	gangs := util.ConvertToResMgrGangs(tasksInfo, suite.testJobConfig.GetSLA())
 	var expectedGangs []*resmgrsvc.Gang
 	gomock.InOrder(
 		suite.mockedResmgrClient.EXPECT().
@@ -565,7 +566,8 @@ func (suite *JobHandlerTestSuite) TestSubmitTasksToResmgrError() {
 	err := jobmgrtask.EnqueueGangs(
 		suite.handler.rootCtx,
 		tasksInfo,
-		suite.testJobConfig,
+		suite.testJobConfig.SLA,
+		suite.testJobConfig.RespoolID,
 		suite.mockedResmgrClient)
 	suite.Error(err)
 }
