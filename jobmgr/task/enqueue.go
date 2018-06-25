@@ -7,28 +7,26 @@ import (
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
 	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgrsvc"
 
-	"code.uber.internal/infra/peloton/util"
+	"code.uber.internal/infra/peloton/jobmgr/cached"
+	taskutil "code.uber.internal/infra/peloton/util/task"
 )
 
 // EnqueueGangs enqueues all tasks organized in gangs to respool in resmgr.
 func EnqueueGangs(
 	ctx context.Context,
 	tasks []*task.TaskInfo,
-	slaConfig *job.SlaConfig,
-	respoolID *peloton.ResourcePoolID,
+	jobConfig cached.JobConfig,
 	client resmgrsvc.ResourceManagerServiceYARPCClient) error {
 	ctxWithTimeout, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
 	defer cancelFunc()
 
-	gangs := util.ConvertToResMgrGangs(tasks, slaConfig)
+	gangs := taskutil.ConvertToResMgrGangs(tasks, jobConfig)
 	var request = &resmgrsvc.EnqueueGangsRequest{
 		Gangs:   gangs,
-		ResPool: respoolID,
+		ResPool: jobConfig.GetRespoolID(),
 	}
 
 	response, err := client.EnqueueGangs(ctxWithTimeout, request)

@@ -20,7 +20,7 @@ import (
 	mocks2 "code.uber.internal/infra/peloton/jobmgr/task/launcher/mocks"
 	"code.uber.internal/infra/peloton/storage"
 	storemocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/util"
+	taskutil "code.uber.internal/infra/peloton/util/task"
 
 	"github.com/golang/mock/gomock"
 	"github.com/pborman/uuid"
@@ -126,12 +126,17 @@ func (suite *TaskStartTestSuite) TestTaskStartStateless() {
 		GetRespoolID().
 		Return(jobConfig.RespoolID)
 
+	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(job2.JobType_SERVICE).
+		AnyTimes()
+
 	suite.taskStore.EXPECT().
 		GetTaskByID(gomock.Any(), fmt.Sprintf("%s-%d", suite.jobID.GetValue(), suite.instanceID)).
 		Return(taskInfo, nil)
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig.GetSLA()),
+		Gangs:   taskutil.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig),
 		ResPool: jobConfig.RespoolID,
 	}
 
@@ -367,6 +372,11 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 		AnyTimes()
 
 	suite.cachedConfig.EXPECT().
+		GetType().
+		Return(job2.JobType_SERVICE).
+		AnyTimes()
+
+	suite.cachedConfig.EXPECT().
 		GetRespoolID().
 		Return(jobConfig.RespoolID)
 
@@ -379,7 +389,7 @@ func (suite *TaskStartTestSuite) TestTaskStartStatefulWithoutVolume() {
 		Return(nil, &storage.VolumeNotFoundError{})
 
 	request := &resmgrsvc.EnqueueGangsRequest{
-		Gangs:   util.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig.GetSLA()),
+		Gangs:   taskutil.ConvertToResMgrGangs([]*pbtask.TaskInfo{taskInfo}, jobConfig),
 		ResPool: jobConfig.RespoolID,
 	}
 	suite.resmgrClient.EXPECT().
