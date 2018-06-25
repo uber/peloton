@@ -571,15 +571,15 @@ func (suite *BuilderTestSuite) TestPopulateLabels() {
 			pelotonTaskLabels: []*peloton.Label{},
 			mesosTaskLabels: &mesos.Labels{
 				Labels: []*mesos.Label{
-					&mesos.Label{
+					{
 						Key:   util.PtrPrintf(PelotonJobIDLabelKey),
 						Value: util.PtrPrintf("test-job"),
 					},
-					&mesos.Label{
+					{
 						Key:   util.PtrPrintf(PelotonInstanceIDLabelKey),
 						Value: util.PtrPrintf("0"),
 					},
-					&mesos.Label{
+					{
 						Key:   util.PtrPrintf(PelotonTaskIDLabelKey),
 						Value: util.PtrPrintf("test-job-0"),
 					},
@@ -595,19 +595,19 @@ func (suite *BuilderTestSuite) TestPopulateLabels() {
 			},
 			mesosTaskLabels: &mesos.Labels{
 				Labels: []*mesos.Label{
-					&mesos.Label{
+					{
 						Key:   &_tmpLabelKey,
 						Value: &_tmpLabelValue,
 					},
-					&mesos.Label{
+					{
 						Key:   util.PtrPrintf(PelotonJobIDLabelKey),
 						Value: util.PtrPrintf("test-job"),
 					},
-					&mesos.Label{
+					{
 						Key:   util.PtrPrintf(PelotonInstanceIDLabelKey),
 						Value: util.PtrPrintf("0"),
 					},
-					&mesos.Label{
+					{
 						Key:   util.PtrPrintf(PelotonTaskIDLabelKey),
 						Value: util.PtrPrintf("test-job-0"),
 					},

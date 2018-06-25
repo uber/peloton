@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"testing"
 
-	"code.uber.internal/infra/peloton/.gen/mesos/v1"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/private/resmgr"
-
-	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
 	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
+
+	"code.uber.internal/infra/peloton/.gen/mesos/v1"
+	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 )
 
 func TestGetOfferScalarResourceSummary(t *testing.T) {
@@ -132,28 +130,6 @@ func TestGPUResources(t *testing.T) {
 	}, "*")
 
 	assert.Equal(t, 4, len(rs))
-}
-
-func TestGetTaskType(t *testing.T) {
-	tt := []struct {
-		cfg *task.TaskConfig
-		tt  resmgr.TaskType
-	}{
-		{
-			cfg: &task.TaskConfig{
-				Volume: &task.PersistentVolumeConfig{},
-			},
-			tt: resmgr.TaskType_STATEFUL,
-		},
-		{
-			cfg: &task.TaskConfig{},
-			tt:  resmgr.TaskType_BATCH,
-		},
-	}
-
-	for _, test := range tt {
-		assert.Equal(t, test.tt, getTaskType(test.cfg))
-	}
 }
 
 func TestContains(t *testing.T) {

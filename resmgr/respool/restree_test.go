@@ -15,7 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/common"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
 	store_mocks "code.uber.internal/infra/peloton/storage/mocks"
-	"code.uber.internal/infra/peloton/util"
+	taskutil "code.uber.internal/infra/peloton/util/task"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
@@ -563,7 +563,7 @@ func (s *resTreeTestSuite) TestConvertTask() {
 		},
 	}
 
-	rmtask := util.ConvertTaskToResMgrTask(ti, jobConfig.GetSLA())
+	rmtask := taskutil.ConvertTaskToResMgrTask(ti, jobConfig)
 	s.NotNil(rmtask)
 	s.EqualValues(rmtask.Priority, 12)
 	s.EqualValues(rmtask.Preemptible, true)
@@ -578,7 +578,7 @@ func (s *resTreeTestSuite) TestConvertTask() {
 	}
 	jobConfig = &job.JobConfig{}
 
-	rmtask = util.ConvertTaskToResMgrTask(ti, jobConfig.GetSLA())
+	rmtask = taskutil.ConvertTaskToResMgrTask(ti, jobConfig)
 	s.NotNil(rmtask)
 	s.EqualValues(rmtask.Priority, 0)
 	s.EqualValues(rmtask.Preemptible, false)
