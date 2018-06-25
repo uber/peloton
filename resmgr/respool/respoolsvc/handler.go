@@ -1,7 +1,8 @@
-package respool
+package respoolsvc
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 
@@ -10,6 +11,7 @@ import (
 
 	"code.uber.internal/infra/peloton/common"
 	rc "code.uber.internal/infra/peloton/resmgr/common"
+	res "code.uber.internal/infra/peloton/resmgr/respool"
 	"code.uber.internal/infra/peloton/resmgr/scalar"
 	"code.uber.internal/infra/peloton/storage"
 
@@ -22,6 +24,16 @@ import (
 const (
 	resPoolNotFoundErrString = "Resource pool not found"
 	resPoolDeleteErrString   = "Resource pool could not be deleted"
+	resPoolIsBusy            = "Resource Pool is busy"
+)
+
+var (
+	// ErrServiceHandlerAlreadyStarted error messege if handler is started
+	ErrServiceHandlerAlreadyStarted = errors.New(
+		"Resource pool service is already running")
+	// ErrServiceHandlerAlreadyStopped error messege if handler is stopped
+	ErrServiceHandlerAlreadyStopped = errors.New(
+		"Resource Manager is already stopped, no action will be performed")
 )
 
 // ServiceHandler defines the interface of respool service handler to
@@ -40,11 +52,11 @@ type serviceHandler struct {
 	runningState int32
 
 	store      storage.ResourcePoolStore
-	metrics    *Metrics
+	metrics    *res.Metrics
 	dispatcher *yarpc.Dispatcher
 
-	resPoolTree            Tree
-	resPoolConfigValidator Validator
+	resPoolTree            res.Tree
+	resPoolConfigValidator res.Validator
 
 	jobStore  storage.JobStore
 	taskStore storage.TaskStore
@@ -71,13 +83,13 @@ func InitServiceHandler(
 	}
 
 	scope := parent.SubScope("respool")
-	metrics := NewMetrics(scope)
+	metrics := res.NewMetrics(scope)
 
 	// Initializing Resource Pool Tree.
-	InitTree(scope, store, jobStore, taskStore, cfg)
+	res.InitTree(scope, store, jobStore, taskStore, cfg)
 
 	// Initialize Resource Pool Config Validator.
-	resPoolConfigValidator, err := NewResourcePoolConfigValidator(GetTree())
+	resPoolConfigValidator, err := res.NewResourcePoolConfigValidator(res.GetTree())
 
 	if err != nil {
 		log.Fatalf(
@@ -92,7 +104,7 @@ func InitServiceHandler(
 		metrics:                metrics,
 		dispatcher:             d,
 		runningState:           rc.RunningStateNotStarted,
-		resPoolTree:            GetTree(),
+		resPoolTree:            res.GetTree(),
 		resPoolConfigValidator: resPoolConfigValidator,
 		jobStore:               jobStore,
 		taskStore:              taskStore,
@@ -133,7 +145,7 @@ func (h *serviceHandler) CreateResourcePool(
 		Value: uuid.New(),
 	}
 
-	resourcePoolConfigData := ResourcePoolConfigData{
+	resourcePoolConfigData := res.ResourcePoolConfigData{
 		ID:                 resPoolID,
 		ResourcePoolConfig: resPoolConfig,
 	}
@@ -295,59 +307,36 @@ func (h *serviceHandler) DeleteResourcePool(
 
 	if err != nil || lookupRes.GetError() != nil {
 		h.metrics.DeleteResourcePoolFail.Inc(1)
-		return &respool.DeleteResponse{
-			Error: &respool.DeleteResponse_Error{
-				NotFound: &respool.ResourcePoolPathNotFound{
-					Path: &respool.ResourcePoolPath{
-						Value: req.Path.Value,
-					},
-					Message: resPoolNotFoundErrString,
-				},
-			},
-		}, nil
+		resp := h.getDeleteResponse()
+		resp.GetError().NotFound = h.getResPoolNotFoundError(req.Path.Value)
+		return resp, nil
 	}
 
 	resPoolID := lookupRes.GetId()
 
 	if resPoolID == nil {
 		h.metrics.DeleteResourcePoolFail.Inc(1)
-		return &respool.DeleteResponse{
-			Error: &respool.DeleteResponse_Error{
-				NotFound: &respool.ResourcePoolPathNotFound{
-					Path: &respool.ResourcePoolPath{
-						Value: req.Path.Value,
-					},
-					Message: resPoolNotFoundErrString,
-				},
-			},
-		}, nil
+		resp := h.getDeleteResponse()
+		resp.GetError().NotFound = h.getResPoolNotFoundError(req.Path.Value)
+		return resp, nil
 	}
 
 	resPool, err := h.resPoolTree.Get(resPoolID)
 	if err != nil {
 		h.metrics.DeleteResourcePoolFail.Inc(1)
-		return &respool.DeleteResponse{
-			Error: &respool.DeleteResponse_Error{
-				NotFound: &respool.ResourcePoolPathNotFound{
-					Path: &respool.ResourcePoolPath{
-						Value: req.Path.Value,
-					},
-					Message: resPoolNotFoundErrString,
-				},
-			},
-		}, nil
+		resp := h.getDeleteResponse()
+		resp.GetError().NotFound = h.getResPoolNotFoundError(req.Path.Value)
+		return resp, nil
 	}
 
+	// As if the resource pool is not leaf, Delete method should
+	// not let this operation occur. As delete is only supported for
+	// leaf resource pools
 	if !resPool.IsLeaf() {
 		h.metrics.DeleteResourcePoolFail.Inc(1)
-		return &respool.DeleteResponse{
-			Error: &respool.DeleteResponse_Error{
-				IsNotLeaf: &respool.ResourcePoolIsNotLeaf{
-					Id:      resPoolID,
-					Message: "Resource Pool is not leaf",
-				},
-			},
-		}, nil
+		resp := h.getDeleteResponse()
+		resp.GetError().IsNotLeaf = h.getResPoolNotLeafError(resPoolID)
+		return resp, nil
 	}
 
 	// Get the allocation of the resource pool.
@@ -359,48 +348,84 @@ func (h *serviceHandler) DeleteResourcePool(
 	// by looking demand or allocation.
 	if !(allocation.LessThanOrEqual(scalar.ZeroResource)) ||
 		!(demand.LessThanOrEqual(scalar.ZeroResource)) {
-		return &respool.DeleteResponse{
-			Error: &respool.DeleteResponse_Error{
-				IsBusy: &respool.ResourcePoolIsBusy{
-					Id:      resPoolID,
-					Message: "Resource Pool is busy",
-				},
-			},
-		}, nil
+		h.metrics.DeleteResourcePoolFail.Inc(1)
+		resp := h.getDeleteResponse()
+		resp.GetError().IsBusy = h.getResPoolIsBusyError(resPoolID)
+		return resp, nil
 	}
+
 	// Deleting the respool from In memory tree.
 	if err := h.resPoolTree.Delete(resPoolID); err != nil {
 		h.metrics.DeleteResourcePoolFail.Inc(1)
-		return &respool.DeleteResponse{
-			Error: &respool.DeleteResponse_Error{
-				NotDeleted: &respool.ResourcePoolNotDeleted{
-					Id: resPoolID,
-					Message: err.Error() +
-						resPoolDeleteErrString,
-				},
-			},
-		}, nil
+		// Logging and returning error as this is the API Failed
+		// We need to log the context in resmgr
+		log.WithError(err).WithField("respool", resPoolID).Error("delete Respool failed ")
+
+		resp := h.getDeleteResponse()
+		resp.GetError().NotDeleted = h.getResPoolNotDeletedError(resPoolID, err)
+		return resp, nil
 	}
 
 	// Deleting the resource pool from the DB.
 	if err := h.store.DeleteResourcePool(ctx, resPoolID); err != nil {
 		h.metrics.DeleteResourcePoolFail.Inc(1)
-		log.Errorf("Delete Respool failed with error %v", err)
-		return &respool.DeleteResponse{
-			Error: &respool.DeleteResponse_Error{
-				NotDeleted: &respool.ResourcePoolNotDeleted{
-					Id: resPoolID,
-					Message: err.Error() +
-						resPoolDeleteErrString,
-				},
-			},
-		}, nil
+		// Logging and returning error as this is the API Failed
+		// We need to log the context in resmgr
+		log.WithError(err).WithField("respool", resPoolID).Error("delete Respool failed ")
+		resp := h.getDeleteResponse()
+		resp.GetError().NotDeleted = h.getResPoolNotDeletedError(resPoolID, err)
+		return resp, nil
 	}
 	h.metrics.DeleteResourcePoolSuccess.Inc(1)
 
 	return &respool.DeleteResponse{
 		Error: nil,
 	}, nil
+}
+
+// getDeleteResponse returns the empty respool DeleteResponse
+func (h *serviceHandler) getDeleteResponse() *respool.DeleteResponse {
+	return &respool.DeleteResponse{
+		Error: &respool.DeleteResponse_Error{},
+	}
+}
+
+// getResPoolNotFoundError returns the repool not found error
+func (h *serviceHandler) getResPoolNotFoundError(path string,
+) *respool.ResourcePoolPathNotFound {
+	return &respool.ResourcePoolPathNotFound{
+		Path: &respool.ResourcePoolPath{
+			Value: path,
+		},
+		Message: resPoolNotFoundErrString,
+	}
+}
+
+// getResPoolNotLeafError returns the ResPoolNotLeafError
+func (h *serviceHandler) getResPoolNotLeafError(resPoolID *peloton.ResourcePoolID,
+) *respool.ResourcePoolIsNotLeaf {
+	return &respool.ResourcePoolIsNotLeaf{
+		Id:      resPoolID,
+		Message: "Resource Pool is not leaf",
+	}
+}
+
+// getResPoolIsBusyError returns the ResPoolIsBusyError
+func (h *serviceHandler) getResPoolIsBusyError(resPoolID *peloton.ResourcePoolID,
+) *respool.ResourcePoolIsBusy {
+	return &respool.ResourcePoolIsBusy{
+		Id:      resPoolID,
+		Message: "Resource Pool is busy",
+	}
+}
+
+// getResPoolNotDeletedError returns ResPoolNotDeletedError
+func (h *serviceHandler) getResPoolNotDeletedError(resPoolID *peloton.ResourcePoolID,
+	err error) *respool.ResourcePoolNotDeleted {
+	return &respool.ResourcePoolNotDeleted{
+		Id:      resPoolID,
+		Message: err.Error() + " " + resPoolDeleteErrString,
+	}
 }
 
 // UpdateResourcePool will update resource pool.
@@ -422,7 +447,7 @@ func (h *serviceHandler) UpdateResourcePool(
 	resPoolID := req.GetId()
 	resPoolConfig := req.GetConfig()
 
-	resourcePoolConfigData := ResourcePoolConfigData{
+	resourcePoolConfigData := res.ResourcePoolConfigData{
 		ID:                 resPoolID,
 		ResourcePoolConfig: resPoolConfig,
 	}
@@ -529,7 +554,7 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 
 	path := req.Path
 
-	validator, err := NewResourcePoolConfigValidator(nil)
+	validator, err := res.NewResourcePoolConfigValidator(nil)
 	if err != nil {
 		log.Fatalf(
 			`Error initializing resource pool
@@ -537,8 +562,8 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 			err,
 		)
 	}
-	validator.Register([]ResourcePoolConfigValidatorFunc{ValidateResourcePoolPath})
-	resourcePoolConfigData := ResourcePoolConfigData{
+	validator.Register([]res.ResourcePoolConfigValidatorFunc{res.ValidateResourcePoolPath})
+	resourcePoolConfigData := res.ResourcePoolConfigData{
 		Path: path,
 	}
 	err = validator.Validate(resourcePoolConfigData)
@@ -571,6 +596,12 @@ func (h *serviceHandler) LookupResourcePoolID(ctx context.Context,
 		}, nil
 	}
 
+	if resPool == nil {
+		return &respool.LookupResponse{
+			Id: nil,
+		}, nil
+	}
+
 	h.metrics.LookupResourcePoolIDSuccess.Inc(1)
 
 	return &respool.LookupResponse{
@@ -599,7 +630,7 @@ func (h *serviceHandler) Query(
 	nodeList := h.resPoolTree.GetAllNodes(false)
 	if nodeList != nil {
 		for n := nodeList.Front(); n != nil; n = n.Next() {
-			resPoolNode, _ := n.Value.(ResPool)
+			resPoolNode, _ := n.Value.(res.ResPool)
 			resourcePoolInfos = append(
 				resourcePoolInfos,
 				resPoolNode.ToResourcePoolInfo(),
@@ -622,10 +653,8 @@ func (h *serviceHandler) registerProcs(d *yarpc.Dispatcher) {
 
 // Start will start resource manager.
 func (h *serviceHandler) Start() error {
-
 	if h.runningState == rc.RunningStateRunning {
-		log.Warn("Resource pool service is already running")
-		return nil
+		return ErrServiceHandlerAlreadyStarted
 	}
 
 	atomic.StoreInt32(&h.runningState, rc.RunningStateRunning)
@@ -640,11 +669,7 @@ func (h *serviceHandler) Start() error {
 // Stop will stop resource manager.
 func (h *serviceHandler) Stop() error {
 	if h.runningState == rc.RunningStateNotStarted {
-		log.Warn(
-			`Resource Manager is already stopped,
-			no action will be performed`,
-		)
-		return nil
+		return ErrServiceHandlerAlreadyStopped
 	}
 	atomic.StoreInt32(&h.runningState, rc.RunningStateNotStarted)
 	return nil

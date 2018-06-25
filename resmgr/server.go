@@ -7,7 +7,7 @@ import (
 	"code.uber.internal/infra/peloton/leader"
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
-	"code.uber.internal/infra/peloton/resmgr/respool"
+	respoolsvc "code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
 	"code.uber.internal/infra/peloton/resmgr/task"
 
 	log "github.com/sirupsen/logrus"
@@ -20,7 +20,7 @@ type Server struct {
 	ID                       string
 	role                     string
 	metrics                  *Metrics
-	getResPoolHandler        func() respool.ServiceHandler
+	getResPoolHandler        func() respoolsvc.ServiceHandler
 	getTaskScheduler         func() task.Scheduler
 	getEntitlementCalculator func() entitlement.Calculator
 	getRecoveryHandler       func() RecoveryHandler
@@ -33,7 +33,7 @@ func NewServer(parent tally.Scope, httpPort, grpcPort int) *Server {
 	server := Server{
 		ID:                       leader.NewID(httpPort, grpcPort),
 		role:                     common.ResourceManagerRole,
-		getResPoolHandler:        respool.GetServiceHandler,
+		getResPoolHandler:        respoolsvc.GetServiceHandler,
 		getTaskScheduler:         task.GetScheduler,
 		getEntitlementCalculator: entitlement.GetCalculator,
 		getRecoveryHandler:       GetRecoveryHandler,
@@ -55,10 +55,11 @@ func (s *Server) GainedLeadershipCallback() error {
 
 	err := s.getResPoolHandler().Start()
 	if err != nil {
-		log.Errorf("Failed to start respool service handler")
-		return err
+		log.WithError(err).Error("Failed to start respool service handler")
+		if err != respoolsvc.ErrServiceHandlerAlreadyStarted {
+			return err
+		}
 	}
-
 	err = s.getRecoveryHandler().Start()
 	if err != nil {
 		// If we can not recover then we need to do suicide
@@ -103,8 +104,10 @@ func (s *Server) LostLeadershipCallback() error {
 
 	err := s.getResPoolHandler().Stop()
 	if err != nil {
-		log.Errorf("Failed to stop respool service handler")
-		return err
+		log.WithError(err).Error("Failed to stop respool service handler")
+		if err != respoolsvc.ErrServiceHandlerAlreadyStopped {
+			return err
+		}
 	}
 
 	err = s.getRecoveryHandler().Stop()

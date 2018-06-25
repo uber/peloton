@@ -15,7 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/resmgr"
 	"code.uber.internal/infra/peloton/resmgr/entitlement"
 	"code.uber.internal/infra/peloton/resmgr/preemption"
-	"code.uber.internal/infra/peloton/resmgr/respool"
+	respoolsvc "code.uber.internal/infra/peloton/resmgr/respool/respoolsvc"
 	"code.uber.internal/infra/peloton/resmgr/task"
 	"code.uber.internal/infra/peloton/storage/stores"
 	"code.uber.internal/infra/peloton/yarpc/peer"
@@ -235,7 +235,7 @@ func main() {
 	})
 
 	// Initialize resource pool service handlers
-	respool.InitServiceHandler(
+	respoolsvc.InitServiceHandler(
 		dispatcher,
 		rootScope,
 		store, // store implements RespoolStore
