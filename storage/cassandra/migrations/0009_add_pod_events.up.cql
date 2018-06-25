@@ -1,7 +1,7 @@
 /*
-Task Events represents state changes for each JobID + InstanceID.
+Pod Events represents state changes for each JobID + InstanceID.
 Terminology
-Run: Represents an execution cycle for a task from non-terminal states to RUNNING/terminal state
+Run: Represents an execution cycle for a pod from non-terminal states to RUNNING/terminal state
 which has same run_id. Here non-terminal state must start with INITIALIZED (Peloton state) & TASK_STAGING (Mesos state).
 
 Examples for a `run` are:
@@ -11,36 +11,37 @@ Run 1: INITIALIZED -> PENDING -> LAUNCHED -> RUNNING -> KILLING -> KILLED
 
 Example queries for this table are:
 1) List last X runs for particular instance of a job. (0 < X <= 100)
-2) Get sandbox path for a particular run. Each task state change for a `run` has hostname and mesos agent id.
+2) Get sandbox path for a particular run. Each pod state change for a `run` has hostname and mesos agent id.
 
 Key Considerations for schema design.
 - JobID + InstanceID as partition key, as each query is pointed at these values.
 - Within a partition, runs are sorted in reverse-chronological order (run_id is an incremental value),
   so most recent records represents current `run`.
-- Using LIMIT N, we can fetch last task state change iterations, and using run_id and previous_run_id,
+- Using LIMIT N, we can fetch last pod state change iterations, and using run_id and previous_run_id,
   `runs` will be created.
 - Using LeveledCompactionStrategy, such that each partition is in one SSTable.
 - To bound number of runs, setting TTL to 90 days and Data Archiver to trucate more than 100 runs, whichever occurs first.
   Here, 90 day TTL is primarily a safeguard and not choosing a smaller value as we do not want to clean up the current run as well.
   However, if the current run has been running for 90 days without any upgrades, storing this debug information is not useful, so setting it to 90 days.
 - GC Grace Period is set to 10 days, so recommendation is to run repair in 10 days.
-- unchecked_tombstone_compaction is set to true, such that if a task is crashlooping and too many tombstones
+- unchecked_tombstone_compaction is set to true, such that if a pod is crashlooping and too many tombstones
   are generated then they will be compacted.
 */
 
-CREATE TABLE IF NOT EXISTS task_events (
+CREATE TABLE IF NOT EXISTS pod_events (
     job_id uuid,
     instance_id int,
-    run_id uuid,
-    previous_run_id uuid,
+    run_id bigint,
     update_time timeuuid,
+    pod_status blob,
+    previous_run_id bigint,
     actual_state text,
     goal_state text,
     hostname text,
-    agent_id uuid,
+    agent_id text,
     config_version bigint,
     desired_config_version bigint,
-    volumeID uuid,
+    volumeID text,
     message text,
     reason text,
     PRIMARY KEY ((job_id, instance_id), run_id, update_time)
