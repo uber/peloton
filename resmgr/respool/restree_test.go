@@ -2,6 +2,7 @@ package respool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -33,8 +34,6 @@ type resTreeTestSuite struct {
 	newRoot          *ResPool
 	mockCtrl         *gomock.Controller
 	mockResPoolStore *store_mocks.MockResourcePoolStore
-	mockJobStore     *store_mocks.MockJobStore
-	mockTaskStore    *store_mocks.MockTaskStore
 }
 
 func (s *resTreeTestSuite) SetupSuite() {
@@ -45,22 +44,9 @@ func (s *resTreeTestSuite) SetupSuite() {
 // initTree creates the tree object and store in suite
 func (s *resTreeTestSuite) initTree() {
 	s.mockCtrl = gomock.NewController(s.T())
-	s.mockResPoolStore = store_mocks.NewMockResourcePoolStore(s.mockCtrl)
+	s.resourceTree, s.mockResPoolStore = s.getResourceTreeAndResPoolStore()
 	s.mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(s.getResPools(), nil).AnyTimes()
-	s.mockJobStore = store_mocks.NewMockJobStore(s.mockCtrl)
-	s.mockTaskStore = store_mocks.NewMockTaskStore(s.mockCtrl)
-
-	s.resourceTree = &tree{
-		store:       s.mockResPoolStore,
-		root:        nil,
-		metrics:     NewMetrics(tally.NoopScope),
-		resPools:    make(map[string]ResPool),
-		jobStore:    s.mockJobStore,
-		taskStore:   s.mockTaskStore,
-		scope:       tally.NoopScope,
-		updatedChan: make(chan struct{}, 1),
-	}
 }
 
 func (s *resTreeTestSuite) TearDownSuite() {
@@ -587,22 +573,9 @@ func (s *resTreeTestSuite) TestConvertTask() {
 func (s *resTreeTestSuite) TestDelete() {
 	mockCtrl := gomock.NewController(s.T())
 	defer mockCtrl.Finish()
-
-	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
+	resourceTree, mockResPoolStore := s.getResourceTreeAndResPoolStore()
 	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
 		Return(s.getResPools(), nil).AnyTimes()
-	mockJobStore := store_mocks.NewMockJobStore(s.mockCtrl)
-	mockTaskStore := store_mocks.NewMockTaskStore(s.mockCtrl)
-	resourceTree := &tree{
-		store:       mockResPoolStore,
-		root:        nil,
-		metrics:     NewMetrics(tally.NoopScope),
-		resPools:    make(map[string]ResPool),
-		jobStore:    mockJobStore,
-		taskStore:   mockTaskStore,
-		scope:       tally.NoopScope,
-		updatedChan: make(chan struct{}, 1),
-	}
 	resourceTree.Start()
 
 	s.Equal(10, resourceTree.GetAllNodes(false).Len())
@@ -620,4 +593,78 @@ func (s *resTreeTestSuite) TestDelete() {
 
 func TestPelotonResPool(t *testing.T) {
 	suite.Run(t, new(resTreeTestSuite))
+}
+
+// TestStartError Tests Start method for error
+func (s *resTreeTestSuite) TestStartError() {
+
+	tt := []struct {
+		msg    string
+		config map[string]*respool.ResourcePoolConfig
+		err    error
+		reterr error
+	}{
+		{
+			msg:    "error from store",
+			config: nil,
+			err:    errors.New("error from store"),
+			reterr: nil,
+		},
+		{
+			msg:    "tree start failure",
+			config: nil,
+			err:    nil,
+			reterr: errors.New("failed to start tree"),
+		},
+		{
+			msg:    "tree start successful",
+			config: make(map[string]*respool.ResourcePoolConfig),
+			err:    nil,
+			reterr: nil,
+		},
+	}
+
+	for _, t := range tt {
+		resourceTree, mockResPoolStore := s.getResourceTreeAndResPoolStore()
+		mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+			Return(t.config, t.err)
+		err := resourceTree.Start()
+		if t.err != nil || t.reterr != nil {
+			s.Error(err, t.msg)
+			if t.reterr != nil {
+				s.Contains(err.Error(), t.reterr.Error(), t.msg)
+			} else {
+				s.Contains(err.Error(), t.err.Error(), t.msg)
+			}
+		} else {
+			s.NoError(err, t.msg)
+		}
+	}
+}
+
+// TestBuildTreeError Tests Build tree method for the errors
+func (s *resTreeTestSuite) TestBuildTreeError() {
+	mockCtrl := gomock.NewController(s.T())
+	defer mockCtrl.Finish()
+	resourceTree, mockResPoolStore := s.getResourceTreeAndResPoolStore()
+	mockResPoolStore.EXPECT().GetAllResourcePools(context.Background()).
+		Return(nil, nil)
+	_, err := resourceTree.buildTree("", nil, make(map[string]*respool.ResourcePoolConfig))
+	s.Error(err)
+	s.Contains(err.Error(), "error creating resource pool")
+}
+
+// Creates and retuens the Tree with respool store
+func (s *resTreeTestSuite) getResourceTreeAndResPoolStore() (*tree, *store_mocks.MockResourcePoolStore) {
+	mockResPoolStore := store_mocks.NewMockResourcePoolStore(s.mockCtrl)
+	return &tree{
+		store:       mockResPoolStore,
+		root:        nil,
+		metrics:     NewMetrics(tally.NoopScope),
+		resPools:    make(map[string]ResPool),
+		jobStore:    nil,
+		taskStore:   nil,
+		scope:       tally.NoopScope,
+		updatedChan: make(chan struct{}, 1),
+	}, mockResPoolStore
 }

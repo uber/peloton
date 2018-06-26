@@ -126,6 +126,7 @@ func (t *tree) Start() error {
 			"failed to get resource pool configs from store")
 		return err
 	}
+
 	// Initializing the respoolTree
 	t.root, err = t.initTree(resPoolConfigs)
 	if err != nil {
@@ -240,13 +241,6 @@ func (t *tree) GetAllNodes(leafOnly bool) *list.List {
 		}
 	}
 	return nodesList
-}
-
-// SetAllNodes sets all nodes in the tree
-func (t *tree) SetAllNodes(nodes *map[string]ResPool) {
-	t.Lock()
-	defer t.Unlock()
-	t.resPools = *nodes
 }
 
 // Get returns resource pool config for the given resource pool
