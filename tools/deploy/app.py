@@ -169,6 +169,10 @@ class App(object):
             env_vars['TASK_TYPE'] = 'STATEFUL'
             env_vars['APP'] = 'placement'
 
+        if self.name == 'placement_stateless':
+            env_vars['TASK_TYPE'] = 'STATELESS'
+            env_vars['APP'] = 'placement'
+
         if self.name == 'archiver':
             env_vars['ENABLE_ARCHIVER'] = self.enable_archiver
             env_vars['ARCHIVE_AGE'] = self.archive_age

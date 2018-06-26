@@ -21,6 +21,7 @@ PELOTON_APPS = [
     'resmgr',
     'placement',
     'placement_stateful',
+    'placement_stateless',
     'jobmgr',
     'archiver'
 ]
