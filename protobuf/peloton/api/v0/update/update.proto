@@ -12,19 +12,11 @@ option java_package = "peloton.api.v0.update";
 import "peloton/api/v0/peloton.proto";
 
 /**
- *  A unique ID assigned to a update.
- */
-message UpdateID {
-  string value = 1;
-}
-
-
-/**
  *  Update options for a job update
  */
 message UpdateConfig {
   // Update batch size of the deployment
-  int32 batchSize = 1;
+  uint32 batchSize = 1;
 
   // Update batch percentage of the deployment. If present,
   // will take precedence over batchSize
@@ -36,27 +28,31 @@ message UpdateConfig {
   // startPaused indicates if the update should start in the paused state,
   // requiring an explicit resume to initiate.
   bool startPaused = 4;
+
+  // rollbackOnFailure indicates if the update should be rolled back
+  // automatically if failure is detected
+  bool rollbackOnFailure = 5;
 }
 
 // Runtime state of a job update
 enum State {
+  // Invalid protobuf value
+  INVALID = 0;
+
+  // The update has been created but not started yet
+  INITIALIZED = 1;
+
   // The update is rolling forward
-  ROLLING_FORWARD = 0;
+  ROLLING_FORWARD = 2;
 
-  // The update is rolling back
-  ROLLING_BACK    = 1;
+  // The update has been paused
+  PAUSED = 3;
 
-  // The update is paused
-  PAUSED          = 2;
+  // The update has completed successfully
+  SUCCEEDED = 4;
 
-  // The update completed successfully
-  SUCCEEDED       = 3;
-
-  // The update is rolled back
-  ROLLED_BACK     = 4;
-
-  // The update is aborted
-  ABORTED         = 5;
+  // The update was aborted/cancelled
+  ABORTED = 5;
 }
 
 /**
@@ -64,10 +60,10 @@ enum State {
  */
 message UpdateStatus {
   // Number of tasks that have been updated
-  int32 numTasksDone = 1;
+  uint32 numTasksDone = 1;
 
   // Number of tasks to be updated
-  int32 numTasksRemaining = 2;
+  uint32 numTasksRemaining = 2;
 
   // Runtime state of the update
   State state = 3;
@@ -78,7 +74,7 @@ message UpdateStatus {
  */
 message UpdateInfo {
   // Update ID of the job update
-  UpdateID updateId = 1;
+  peloton.UpdateID updateId = 1;
 
   // Update configuration
   UpdateConfig config = 2;
@@ -88,4 +84,10 @@ message UpdateInfo {
 
   // Job ID of the job update
   peloton.JobID jobId = 4;
+
+  // Configuration version of the job after this update
+  uint64 configVersion = 5;
+
+  // Job configuration version before the update
+  uint64 prevConfigVersion = 6;
 }

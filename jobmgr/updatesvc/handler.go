@@ -3,12 +3,10 @@ package updatesvc
 import (
 	"context"
 
-	"github.com/pborman/uuid"
-
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update/svc"
+
 	"code.uber.internal/infra/peloton/storage"
-	"code.uber.internal/infra/peloton/util"
+
 	"go.uber.org/yarpc"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -34,36 +32,18 @@ type serviceHandler struct {
 
 // Create creates an update for a given job ID.
 func (h *serviceHandler) CreateUpdate(ctx context.Context, req *svc.CreateUpdateRequest) (*svc.CreateUpdateResponse, error) {
-	jobID := req.GetJobId()
-	jr, err := h.jobStore.GetJobRuntime(ctx, jobID)
-	if err != nil {
-		return nil, yarpcerrors.NotFoundErrorf("job not found")
-	}
-
-	if util.IsPelotonJobStateTerminal(jr.GetState()) {
-		return nil, yarpcerrors.InvalidArgumentErrorf("cannot update terminated job")
-	}
-
-	jobUUID := uuid.Parse(jobID.GetValue())
-	if jobUUID == nil {
-		return nil, yarpcerrors.InvalidArgumentErrorf("JobID must be of UUID format")
-	}
-
-	id := &update.UpdateID{
-		Value: uuid.NewSHA1(jobUUID, []byte("update")).String(),
-	}
-
-	if err := h.updateStore.CreateUpdate(ctx, id, jobID, req.GetJobConfig(), req.GetUpdateConfig()); err != nil {
-		return nil, yarpcerrors.AlreadyExistsErrorf("failed to create update in DB")
-	}
-
-	return &svc.CreateUpdateResponse{
-		Result: id,
-	}, nil
+	return nil, yarpcerrors.UnimplementedErrorf(
+		"UpdateService.CreateUpdate is not implemented")
 }
 
 func (h *serviceHandler) GetUpdate(ctx context.Context, req *svc.GetUpdateRequest) (*svc.GetUpdateResponse, error) {
 	return nil, yarpcerrors.UnimplementedErrorf("UpdateService.GetUpdate is not implemented")
+}
+
+func (h *serviceHandler) GetUpdateCache(ctx context.Context,
+	req *svc.GetUpdateCacheRequest) (*svc.GetUpdateCacheResponse, error) {
+	return nil, yarpcerrors.UnimplementedErrorf(
+		"UpdateService.GetUpdateCache is not implemented")
 }
 
 func (h *serviceHandler) PauseUpdate(ctx context.Context, req *svc.PauseUpdateRequest) (*svc.PauseUpdateResponse, error) {

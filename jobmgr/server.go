@@ -10,7 +10,6 @@ import (
 	"code.uber.internal/infra/peloton/jobmgr/task/event"
 	"code.uber.internal/infra/peloton/jobmgr/task/placement"
 	"code.uber.internal/infra/peloton/jobmgr/task/preemptor"
-	"code.uber.internal/infra/peloton/jobmgr/updatesvc"
 	"code.uber.internal/infra/peloton/leader"
 	log "github.com/sirupsen/logrus"
 )
@@ -29,7 +28,6 @@ type Server struct {
 	taskPreemptor      preemptor.Preemptor
 	goalstateDriver    goalstate.Driver
 	deadlineTracker    deadline.Tracker
-	updateManager      updatesvc.Manager
 	placementProcessor placement.Processor
 	statusUpdate       event.StatusUpdate
 }
@@ -41,7 +39,6 @@ func NewServer(
 	goalstateDriver goalstate.Driver,
 	taskPreemptor preemptor.Preemptor,
 	deadlineTracker deadline.Tracker,
-	updateManager updatesvc.Manager,
 	placementProcessor placement.Processor,
 	statusUpdate event.StatusUpdate,
 ) *Server {
@@ -53,7 +50,6 @@ func NewServer(
 		taskPreemptor:      taskPreemptor,
 		goalstateDriver:    goalstateDriver,
 		deadlineTracker:    deadlineTracker,
-		updateManager:      updateManager,
 		placementProcessor: placementProcessor,
 		statusUpdate:       statusUpdate,
 	}
@@ -70,7 +66,6 @@ func (s *Server) GainedLeadershipCallback() error {
 	s.goalstateDriver.Start()
 	s.placementProcessor.Start()
 	s.deadlineTracker.Start()
-	s.updateManager.Start()
 	s.statusUpdate.Start()
 
 	return nil
@@ -88,7 +83,6 @@ func (s *Server) LostLeadershipCallback() error {
 	s.taskPreemptor.Stop()
 	s.goalstateDriver.Stop()
 	s.deadlineTracker.Stop()
-	s.updateManager.Stop()
 
 	return nil
 }

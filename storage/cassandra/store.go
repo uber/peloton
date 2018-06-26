@@ -19,7 +19,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/common"
@@ -2894,92 +2893,6 @@ func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 
 	s.metrics.VolumeMetrics.VolumeDelete.Inc(1)
 	return nil
-}
-
-// CreateUpdate creates a new entry in Cassandra, if it doesn't already exist.
-func (s *Store) CreateUpdate(ctx context.Context, id *update.UpdateID, jobID *peloton.JobID, jobConfig *job.JobConfig, updateConfig *update.UpdateConfig) error {
-	updateConfigBuffer, err := json.Marshal(updateConfig)
-	if err != nil {
-		log.WithError(err).
-			WithField("update_id", id.GetValue()).
-			WithField("job_id", jobID.GetValue()).
-			Error("failed to marshal update config")
-		return err
-	}
-
-	jobConfigBuffer, err := json.Marshal(jobConfig)
-	if err != nil {
-		log.WithError(err).
-			WithField("update_id", id.GetValue()).
-			WithField("job_id", jobID.GetValue()).
-			Error("failed to marshal job config")
-		return err
-	}
-
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Insert(updatesTable).
-		Columns(
-			"update_id",
-			"update_config",
-			"state",
-			"instances_total",
-			"instances_done",
-			"instances_current",
-			"job_id",
-			"job_config",
-			"creation_time").
-		Values(
-			id.GetValue(),
-			string(updateConfigBuffer),
-			update.State_ROLLING_FORWARD,
-			jobConfig.GetInstanceCount(),
-			0,
-			[]int{},
-			jobID.GetValue(),
-			jobConfigBuffer,
-			time.Now()).
-		IfNotExist()
-
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
-		log.WithError(err).
-			WithField("update_id", id.GetValue()).
-			WithField("job_id", jobID.GetValue()).
-			Error("create update in DB failed")
-		return err
-	}
-
-	return nil
-}
-
-// GetUpdateProgress returns the list of tasks being process as well as the
-// overall progress of the update.
-func (s *Store) GetUpdateProgress(ctx context.Context, id *update.UpdateID) ([]uint32, uint32, error) {
-	queryBuilder := s.DataStore.NewQuery()
-	stmt := queryBuilder.Select("instances_current", "instances_done").From(updatesTable).Where(qb.Eq{"update_id": id.GetValue()})
-	result, err := s.DataStore.Execute(ctx, stmt)
-	if err != nil {
-		log.WithError(err).
-			WithField("update_id", id.GetValue()).
-			Error("get update progress from db failed")
-		return nil, 0, err
-	}
-
-	allResults, err := result.All(ctx)
-	if err != nil {
-		log.WithError(err).
-			WithField("update_id", id.GetValue()).
-			Error("get update process all results failed")
-		return nil, 0, err
-	}
-
-	for _, value := range allResults {
-		var record UpdateRecord
-		if err := FillObject(value, &record, reflect.TypeOf(record)); err != nil {
-			return nil, 0, err
-		}
-		return record.GetProcessingInstances(), uint32(record.InstancesDone), nil
-	}
-	return nil, 0, fmt.Errorf("cannot find update with ID %v", id.GetValue())
 }
 
 func parseTime(v string) time.Time {

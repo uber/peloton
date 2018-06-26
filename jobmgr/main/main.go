@@ -356,9 +356,6 @@ func main() {
 		&cfg.JobManager.Deadline,
 	)
 
-	updateManager := updatesvc.NewManager(store, // JobStore
-		cfg.JobManager.Update)
-
 	// Create the Task status update which pulls task update events
 	// from HM once started after gaining leadership
 	statusUpdate := event.NewTaskStatusUpdate(
@@ -379,7 +376,6 @@ func main() {
 		goalStateDriver,
 		taskPreemptor,
 		deadlineTracker,
-		updateManager,
 		placementProcessor,
 		statusUpdate,
 	)

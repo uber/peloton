@@ -8,7 +8,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 )
 
@@ -130,22 +129,6 @@ type TaskStore interface {
 
 // UpdateStore is the interface to store updates and updates progress.
 type UpdateStore interface {
-	// CreateUpdate by creating a new update in the storage. It's an error
-	// if the update already exists.
-	CreateUpdate(ctx context.Context, id *update.UpdateID, jobID *peloton.JobID, jobConfig *job.JobConfig, updateConfig *update.UpdateConfig) error
-
-	// GetUpdateProgress returns the progress of the update.
-	//
-	// The overall state of the update can be explained by `instances` and
-	// `progress`:
-	// - An update can start the next task, if `len(processing) < batch_size`.
-	// - An update has completed `progress - len(processing)` tasks.
-	// - An update is done if
-	//   `progress == InstanceCount && len(processing) == 0`.
-	// - A task has been updated if
-	//  `InstanceID < progress && !processing.Contains(InstanceID)`.
-	// TODO: Create UpdateProgress struct for carrying this state.
-	GetUpdateProgress(ctx context.Context, id *update.UpdateID) (processing []uint32, progress uint32, err error)
 }
 
 // FrameworkInfoStore is the interface to store mesosStreamID for peloton frameworks

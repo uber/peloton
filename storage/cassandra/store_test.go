@@ -15,7 +15,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -1082,7 +1081,7 @@ func (suite *CassandraStoreTestSuite) TestSecrets() {
 	// If the results list has zero rows, this will fail
 	_, err = store.createSecretFromResults(secretID,
 		[]map[string]interface{}{
-			// zero rows mapping to same secret id
+		// zero rows mapping to same secret id
 		})
 	suite.Error(err)
 
@@ -2075,25 +2074,6 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	// Verify volume has been deleted.
 	_, err = volumeStore.GetPersistentVolume(context.Background(), volumeID1)
 	suite.Error(err)
-}
-
-func (suite *CassandraStoreTestSuite) TestUpgrade() {
-	id := &update.UpdateID{
-		Value: uuid.New(),
-	}
-	suite.NoError(store.CreateUpdate(
-		context.Background(),
-		id,
-		&peloton.JobID{
-			Value: uuid.New(),
-		},
-		nil,
-		nil,
-	))
-	processing, progress, err := store.GetUpdateProgress(context.Background(), id)
-	suite.Empty(processing)
-	suite.Equal(uint32(0), progress)
-	suite.NoError(err)
 }
 
 func createJobConfig() *job.JobConfig {

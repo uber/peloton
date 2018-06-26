@@ -27,7 +27,6 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
-	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -1000,17 +999,6 @@ func (m *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 // GetJobsByRespoolID returns jobIDs in a respool
 func (m *Store) GetJobsByRespoolID(ctx context.Context, respoolID *peloton.ResourcePoolID) (map[string]*job.JobConfig, error) {
 	return nil, errors.New("Not implemented")
-}
-
-// CreateUpdate by creating a new update in the storage. It's an error
-// if the update already exists.
-func (m *Store) CreateUpdate(ctx context.Context, id *update.UpdateID, jobID *peloton.JobID, jobConfig *job.JobConfig, updateConfig *update.UpdateConfig) error {
-	return errors.New("Not implemented")
-}
-
-// GetUpdateProgress returns the progress of the update.
-func (m *Store) GetUpdateProgress(ctx context.Context, id *update.UpdateID) (processing []uint32, progress uint32, err error) {
-	return nil, 0, errors.New("Not implemented")
 }
 
 // CreateSecret stores a secret in the secret_info table
