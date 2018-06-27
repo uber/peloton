@@ -29,9 +29,9 @@ import (
 )
 
 const (
-	taskIDFmt   = "testjob-%d-%s"
-	testJobName = "testjob"
-	testPort    = uint32(100)
+	_testJobID = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+	taskIDFmt  = _testJobID + "-%d-%s"
+	testPort   = uint32(100)
 )
 
 var (
@@ -58,11 +58,11 @@ func createTestTask(instanceID int) *task.TaskInfo {
 
 	return &task.TaskInfo{
 		JobId: &peloton.JobID{
-			Value: testJobName,
+			Value: _testJobID,
 		},
 		InstanceId: uint32(instanceID),
 		Config: &task.TaskConfig{
-			Name:     testJobName,
+			Name:     _testJobID,
 			Resource: &_defaultResourceConfig,
 			Ports: []*task.PortConfig{
 				{

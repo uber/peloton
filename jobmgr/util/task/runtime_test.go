@@ -1,10 +1,8 @@
 package task
 
 import (
-	"fmt"
 	"testing"
 
-	"github.com/pborman/uuid"
 	"github.com/stretchr/testify/assert"
 
 	mesos "code.uber.internal/infra/peloton/.gen/mesos/v1"
@@ -15,23 +13,45 @@ import (
 )
 
 func TestRegenerateMesosTaskIDDiff(t *testing.T) {
-	jobID := uuid.New()
-	instanceID := uint32(0)
-	previousMesosID := fmt.Sprintf(
-		"%s-%d-%s",
-		jobID,
-		instanceID,
-		uuid.New())
 
-	diff := RegenerateMesosTaskIDDiff(
-		&peloton.JobID{Value: jobID},
-		instanceID,
-		&mesos.TaskID{Value: &previousMesosID},
-	)
+	testTable := []struct {
+		jobID           string
+		instanceID      uint32
+		runID           string
+		prevMesosTaskID string
+		mesosTaskID     string
+	}{
+		{
+			jobID:           "b64fd26b-0e39-41b7-b22a-205b69f247bd",
+			instanceID:      0,
+			prevMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1690f7cf-9691-42ea-8fd3-7e417246b830",
+			mesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+		},
+		{
+			jobID:           "b64fd26b-0e39-41b7-b22a-205b69f247bd",
+			instanceID:      0,
+			prevMesosTaskID: "",
+			mesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-1",
+		},
+		{
+			jobID:           "b64fd26b-0e39-41b7-b22a-205b69f247bd",
+			instanceID:      0,
+			prevMesosTaskID: "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-2",
+			mesosTaskID:     "b64fd26b-0e39-41b7-b22a-205b69f247bd-0-3",
+		},
+	}
 
-	assert.Equal(t, diff[cached.StateField], task.TaskState_INITIALIZED)
-	assert.Equal(t, *diff[cached.PrevMesosTaskIDField].(*mesos.TaskID).Value,
-		previousMesosID)
-	assert.NotEqual(t, *diff[cached.MesosTaskIDField].(*mesos.TaskID).Value,
-		previousMesosID)
+	for _, tt := range testTable {
+		diff := RegenerateMesosTaskIDDiff(
+			&peloton.JobID{Value: tt.jobID},
+			tt.instanceID,
+			&mesos.TaskID{Value: &tt.prevMesosTaskID},
+		)
+
+		assert.Equal(t, diff[cached.StateField], task.TaskState_INITIALIZED)
+		assert.Equal(t, *diff[cached.PrevMesosTaskIDField].(*mesos.TaskID).Value,
+			tt.prevMesosTaskID)
+		assert.Equal(t, *diff[cached.MesosTaskIDField].(*mesos.TaskID).Value,
+			tt.mesosTaskID)
+	}
 }

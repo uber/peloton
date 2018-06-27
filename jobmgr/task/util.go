@@ -15,7 +15,6 @@ import (
 
 	"code.uber.internal/infra/peloton/util"
 
-	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
@@ -29,10 +28,10 @@ const (
 // enqueued.
 func CreateInitializingTask(jobID *peloton.JobID, instanceID uint32, jobConfig *job.JobConfig) *task.RuntimeInfo {
 	mesosTaskID := fmt.Sprintf(
-		"%s-%d-%s",
+		"%s-%d-%d",
 		jobID.GetValue(),
 		instanceID,
-		uuid.New())
+		1)
 	runtime := &task.RuntimeInfo{
 		MesosTaskId: &mesos.TaskID{
 			Value: &mesosTaskID,

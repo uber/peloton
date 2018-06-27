@@ -24,7 +24,8 @@ import (
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
-var uuidStr = uuid.NewUUID().String()
+var uuidStr = uuid.New()
+var jobID = &peloton.JobID{Value: uuidStr}
 
 type BucketEventProcessorTestSuite struct {
 	suite.Suite
@@ -64,8 +65,6 @@ func (suite *BucketEventProcessorTestSuite) TearDownTest() {
 func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents() {
 	var offset uint64
 	applier := newBucketEventProcessor(suite.handler, 15, 100)
-
-	jobID := &peloton.JobID{Value: "Test"}
 	n := uint32(243)
 
 	for i := uint32(0); i < n; i++ {
@@ -154,7 +153,6 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_MesosEvents
 func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_GetEventProgress() {
 	var offset uint64
 	n := uint32(243)
-	jobID := &peloton.JobID{Value: "Test"}
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), 0, uuidStr)
 
 	suite.statusProcessor.EXPECT().ProcessListeners(gomock.Any()).Return().AnyTimes()
@@ -185,9 +183,7 @@ func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_GetEventPro
 
 // TestBucketEventProcessor_TransientError tests retry on transient error
 func (suite *BucketEventProcessorTestSuite) TestBucketEventProcessor_TransientError() {
-	jobID := &peloton.JobID{Value: "Test"}
 	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), 0, uuidStr)
-
 	suite.statusProcessor.EXPECT().ProcessListeners(gomock.Any()).Return().AnyTimes()
 
 	// return transient error

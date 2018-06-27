@@ -3,6 +3,7 @@ package tasksvc
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -25,7 +26,6 @@ import (
 	"code.uber.internal/infra/peloton/util"
 
 	"github.com/golang/mock/gomock"
-	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
@@ -34,6 +34,7 @@ import (
 
 const (
 	testInstanceCount = 4
+	testJob           = "941ff353-ba82-49fe-8f80-fb5bc649b04d"
 )
 
 type TaskHandlerTestSuite struct {
@@ -64,7 +65,7 @@ func (suite *TaskHandlerTestSuite) SetupTest() {
 		metrics: mtx,
 	}
 	suite.testJobID = &peloton.JobID{
-		Value: "test_job",
+		Value: testJob,
 	}
 	suite.testJobConfig = &job.JobConfig{
 		Name:          suite.testJobID.Value,
@@ -119,7 +120,7 @@ func (suite *TaskHandlerTestSuite) createTestTaskInfo(
 	state task.TaskState,
 	instanceID uint32) *task.TaskInfo {
 
-	var taskID = fmt.Sprintf("%s-%d-%s", suite.testJobID.Value, instanceID, uuid.New())
+	var taskID = fmt.Sprintf("%s-%d-%d", suite.testJobID.Value, instanceID, rand.Int31())
 	return &task.TaskInfo{
 		Runtime: &task.RuntimeInfo{
 			MesosTaskId: &mesos.TaskID{Value: &taskID},
@@ -494,7 +495,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidRanges() {
 	)
 	suite.NoError(err)
 	suite.Equal(len(resp.GetStoppedInstanceIds()), 0)
-	suite.Equal(resp.GetError().GetOutOfRange().GetJobId().GetValue(), "test_job")
+	suite.Equal(resp.GetError().GetOutOfRange().GetJobId().GetValue(), testJob)
 	suite.Equal(
 		resp.GetError().GetOutOfRange().GetInstanceCount(),
 		uint32(testInstanceCount))
@@ -517,7 +518,7 @@ func (suite *TaskHandlerTestSuite) TestStopTasksWithInvalidJobID() {
 		request,
 	)
 	suite.NoError(err)
-	suite.Equal(resp.GetError().GetNotFound().GetId().GetValue(), "test_job")
+	suite.Equal(resp.GetError().GetNotFound().GetId().GetValue(), testJob)
 	suite.Equal(len(resp.GetInvalidInstanceIds()), 0)
 	suite.Equal(len(resp.GetStoppedInstanceIds()), 0)
 }
@@ -803,7 +804,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithInvalidRanges() {
 	)
 	suite.NoError(err)
 	suite.Equal(len(resp.GetStartedInstanceIds()), 0)
-	suite.Equal(resp.GetError().GetOutOfRange().GetJobId().GetValue(), "test_job")
+	suite.Equal(resp.GetError().GetOutOfRange().GetJobId().GetValue(), testJob)
 	suite.Equal(
 		resp.GetError().GetOutOfRange().GetInstanceCount(),
 		uint32(testInstanceCount))

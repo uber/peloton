@@ -2,6 +2,7 @@ package util
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -218,29 +219,59 @@ func IsTaskHasValidVolume(taskInfo *task.TaskInfo) bool {
 	return false
 }
 
+// ParseRunID parse the runID from mesosTaskID
+func ParseRunID(mesosTaskID string) (int, error) {
+	splitMesosTaskID := strings.Split(mesosTaskID, "-")
+	if len(splitMesosTaskID) > 0 {
+		if runID, err := strconv.Atoi(
+			splitMesosTaskID[len(splitMesosTaskID)-1]); err == nil {
+			return runID, nil
+		}
+	}
+	return -1, errors.New("unable to parse mesos task id")
+}
+
 // ParseTaskID parses the jobID and instanceID from peloton taskID
 func ParseTaskID(taskID string) (string, int, error) {
 	pos := strings.LastIndex(taskID, "-")
-	if pos == -1 {
-		return taskID, 0, fmt.Errorf("Invalid task ID %v", taskID)
+	if len(taskID) < uuidLength || pos == -1 {
+		return "", -1, fmt.Errorf("invalid pelotonTaskID %v", taskID)
 	}
 	jobID := taskID[0:pos]
 	ins := taskID[pos+1:]
 
 	instanceID, err := strconv.Atoi(ins)
 	if err != nil {
-		log.Errorf("Failed to parse taskID %v err=%v", taskID, err)
+		log.WithFields(log.Fields{
+			"task_id": taskID,
+			"job_id":  jobID,
+		}).WithError(err).Error("failed to parse taskID")
+		log.Info(err)
+		return "",
+			-1,
+			fmt.Errorf("unable to parse instanceID %v", taskID)
 	}
 	return jobID, instanceID, err
 }
 
 // ParseTaskIDFromMesosTaskID parses the taskID from mesosTaskID
 func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
-	// mesos task id would be "(jobID)-(instanceID)-(GUID)" form
+	// mesos task id would be "(jobID)-(instanceID)-(runID)" form
 	if len(mesosTaskID) < uuidLength+1 {
-		return "", fmt.Errorf("Invalid mesos task ID %v, not ending with uuid", mesosTaskID)
+		return "", fmt.Errorf("invalid mesostaskID %v", mesosTaskID)
 	}
-	pelotonTaskID := mesosTaskID[:len(mesosTaskID)-(uuidLength+1)]
+
+	// TODO: deprecate the check once mesos task id migration is complete from
+	// uuid-int-uuid -> uuid(job ID)-int(instance ID)-int(monotonically incremental)
+	// If uuid has all digits from uuid-int-uuid then it will increment from
+	// that value and not default to 1.
+	var pelotonTaskID string
+	if len(mesosTaskID) > 2*uuidLength {
+		pelotonTaskID = mesosTaskID[:len(mesosTaskID)-(uuidLength+1)]
+	} else {
+		pelotonTaskID = mesosTaskID[:strings.LastIndex(mesosTaskID, "-")]
+	}
+
 	_, _, err := ParseTaskID(pelotonTaskID)
 	if err != nil {
 		log.WithError(err).
@@ -255,7 +286,7 @@ func ParseTaskIDFromMesosTaskID(mesosTaskID string) (string, error) {
 func ParseJobAndInstanceID(mesosTaskID string) (string, int, error) {
 	pelotonTaskID, err := ParseTaskIDFromMesosTaskID(mesosTaskID)
 	if err != nil {
-		return "", 0, err
+		return "", -1, err
 	}
 	return ParseTaskID(pelotonTaskID)
 }

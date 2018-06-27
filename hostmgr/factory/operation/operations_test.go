@@ -22,7 +22,8 @@ const (
 	_perHostDisk        = 30.0
 	_perHostReserveDisk = 12.0
 
-	_taskIDFmt  = "testjob-%d-abcdef12-abcd-1234-5678-1234567890ab"
+	_testJobID  = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+	_taskIDFmt  = _testJobID + "-%d-abcdef12-abcd-1234-5678-1234567890ab"
 	_defaultCmd = "/bin/sh"
 )
 

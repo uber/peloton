@@ -43,7 +43,8 @@ const (
 
 	_epsilon = 0.00001
 
-	_taskIDFmt  = "testjob-%d-abcdef12-abcd-1234-5678-1234567890ab"
+	_testJobID  = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+	_taskIDFmt  = _testJobID + "-%d-abcdef12-abcd-1234-5678-1234567890ab"
 	_defaultCmd = "/bin/sh"
 
 	_cpuName  = "cpus"
@@ -1525,7 +1526,7 @@ func createHostLaunchOperation() *hostsvc.OfferOperation {
 }
 
 func createReservationLabels() *mesos.Labels {
-	return reservation.CreateReservationLabels("testjob", 0, "hostname-0")
+	return reservation.CreateReservationLabels(_testJobID, 0, "hostname-0")
 }
 
 func makeAgentsResponse(numAgents int) *mesos_master.Response_GetAgents {

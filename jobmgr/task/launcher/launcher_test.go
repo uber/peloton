@@ -33,8 +33,7 @@ import (
 )
 
 const (
-	taskIDFmt      = "testjob-%d-%s"
-	testJobName    = "testjob"
+	taskIDFmt      = _testJobID + "-%d-%s"
 	testPort       = uint32(100)
 	testSecretPath = "/tmp/secret"
 	testSecretStr  = "test-data"
@@ -64,11 +63,11 @@ func createTestTask(instanceID int) *task.TaskInfo {
 
 	return &task.TaskInfo{
 		JobId: &peloton.JobID{
-			Value: testJobName,
+			Value: _testJobID,
 		},
 		InstanceId: uint32(instanceID),
 		Config: &task.TaskConfig{
-			Name:     testJobName,
+			Name:     _testJobID,
 			Resource: &_defaultResourceConfig,
 			Ports: []*task.PortConfig{
 				{

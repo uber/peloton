@@ -53,7 +53,7 @@ func (suite *DeadlineTrackerTestSuite) TearDownSuite() {
 }
 
 func (suite *DeadlineTrackerTestSuite) TestDeadlineTrackingCycle() {
-	jobID := &peloton.JobID{Value: "test-deadline"}
+	jobID := &peloton.JobID{Value: "bca875f5-322a-4439-b0c9-63e3cf9f982e"}
 
 	taskInfo := &peloton_task.TaskInfo{
 		InstanceId: 1,

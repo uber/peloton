@@ -114,7 +114,7 @@ func TestTaskFailRetry(t *testing.T) {
 		driver:     goalStateDriver,
 	}
 
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), instanceID, uuid.NewUUID().String())
+	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID.GetValue(), instanceID, 1)
 
 	runtime := &pbtask.RuntimeInfo{
 		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},
@@ -198,7 +198,7 @@ func TestTaskFailSystemFailure(t *testing.T) {
 		driver:     goalStateDriver,
 	}
 
-	mesosTaskID := fmt.Sprintf("%s-%d-%s", jobID.GetValue(), instanceID, uuid.NewUUID().String())
+	mesosTaskID := fmt.Sprintf("%s-%d-%d", jobID.GetValue(), instanceID, 1)
 
 	runtime := &pbtask.RuntimeInfo{
 		MesosTaskId:   &mesosv1.TaskID{Value: &mesosTaskID},

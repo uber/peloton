@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	taskIDFmt  = "testjob-%d-abcdef12-abcd-1234-5678-1234567890ab"
+	_testJobID = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+	taskIDFmt  = _testJobID + "-%d-abcdef12-abcd-1234-5678-1234567890ab"
 	defaultCmd = "/bin/sh"
 )
 
@@ -224,7 +225,7 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			sc)
 		discoveryInfo := info.GetDiscovery()
 		suite.NotNil(discoveryInfo)
-		suite.Equal("testjob", discoveryInfo.GetName()) // job id
+		suite.Equal(_testJobID, discoveryInfo.GetName()) // job id
 		mesosPorts := discoveryInfo.GetPorts().GetPorts()
 		suite.Equal(3, len(mesosPorts))
 
@@ -264,7 +265,7 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			envMap["DYNAMIC_ENV"])
 
 		suite.Equal(
-			"testjob",
+			_testJobID,
 			envMap[hostmgrutil.LabelKeyToEnvVarName(PelotonJobIDLabelKey)],
 		)
 		suite.Equal(
@@ -272,7 +273,7 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 			envMap[hostmgrutil.LabelKeyToEnvVarName(PelotonInstanceIDLabelKey)],
 		)
 		suite.Equal(
-			fmt.Sprint("testjob-", i),
+			fmt.Sprint(_testJobID+"-", i),
 			envMap[hostmgrutil.LabelKeyToEnvVarName(PelotonTaskIDLabelKey)],
 		)
 
@@ -284,7 +285,7 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 				},
 				{
 					Key:   util.PtrPrintf(PelotonJobIDLabelKey),
-					Value: util.PtrPrintf("testjob"),
+					Value: util.PtrPrintf(_testJobID),
 				},
 				{
 					Key:   util.PtrPrintf(PelotonInstanceIDLabelKey),
@@ -292,7 +293,7 @@ func (suite *BuilderTestSuite) TestPortTasks() {
 				},
 				{
 					Key:   util.PtrPrintf(PelotonTaskIDLabelKey),
-					Value: util.PtrPrintf(fmt.Sprint("testjob-", i)),
+					Value: util.PtrPrintf(fmt.Sprint(_testJobID+"-", i)),
 				},
 			},
 		}, info.Labels)

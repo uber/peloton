@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -51,52 +52,181 @@ func TestConvertLabels(t *testing.T) {
 	assert.Equal(t, pelotonLabels[0].GetValue(), mesosLabels.GetLabels()[0].GetValue())
 }
 
+func TestParseRunID(t *testing.T) {
+	mesosTaskID := uuid.New() + "-1-" + uuid.New()
+	runID, err := ParseRunID(mesosTaskID)
+	assert.Equal(t, runID, -1)
+	assert.Error(t, err)
+
+	mesosTaskID = uuid.New() + "-1-abc"
+	runID, err = ParseRunID(mesosTaskID)
+	assert.Equal(t, runID, -1)
+	assert.Error(t, err)
+
+	mesosTaskID = uuid.New() + "-1-1"
+	runID, err = ParseRunID(mesosTaskID)
+	assert.Equal(t, runID, 1)
+	assert.NoError(t, err)
+}
+
 func TestParseTaskID(t *testing.T) {
-	jobID, instanceID, err := ParseTaskID("Test-1234")
-	assert.Equal(t, jobID, "Test")
-	assert.Equal(t, instanceID, 1234)
-	assert.Nil(t, err)
+	ID := uuid.New()
+	testTable := []struct {
+		msg           string
+		pelotonTaskID string
+		jobID         string
+		instanceID    int
+		err           error
+	}{
+		{
+			msg:           "Correct pelotonTaskID - uuid-int",
+			pelotonTaskID: ID + "-1234",
+			jobID:         ID,
+			instanceID:    1234,
+			err:           nil,
+		},
+		{
+			msg:           "Incorrect pelotonTaskID - uuid_text",
+			pelotonTaskID: ID + "-1234test",
+			jobID:         "",
+			instanceID:    -1,
+			err:           errors.New("unable to parse instanceID " + ID + "-1234test"),
+		},
+		{
+			msg:           "Incorrect pelotonTaskID - text-int",
+			pelotonTaskID: "Test-1234",
+			jobID:         "",
+			instanceID:    -1,
+			err:           errors.New("invalid pelotonTaskID Test-1234"),
+		},
+		{
+			msg:           "Incorrect pelotonTaskID - text",
+			pelotonTaskID: "Test",
+			jobID:         "",
+			instanceID:    -1,
+			err:           errors.New("invalid pelotonTaskID Test"),
+		},
+		{
+			msg:           "Incorrect pelotonTaskID - text_int",
+			pelotonTaskID: "Test_1234",
+			jobID:         "",
+			instanceID:    -1,
+			err:           errors.New("invalid pelotonTaskID Test_1234"),
+		},
+		{
+			msg:           "Incorrect pelotonTaskID - text_text",
+			pelotonTaskID: "Test_1234test",
+			jobID:         "",
+			instanceID:    -1,
+			err:           errors.New("invalid pelotonTaskID Test_1234test"),
+		},
+	}
 
-	jobID, instanceID, err = ParseTaskID("a2342-Test_3-52344")
-	assert.Equal(t, jobID, "a2342-Test_3")
-	assert.Equal(t, instanceID, 52344)
-	assert.Nil(t, err)
-
-	jobID, instanceID, err = ParseTaskID("a234Test_3_52344")
-	assert.Equal(t, jobID, "a234Test_3_52344")
-	assert.Equal(t, instanceID, 0)
-	assert.NotNil(t, err)
-
-	jobID, instanceID, err = ParseTaskID("a234Test_3-52344qw")
-	assert.NotNil(t, err)
+	for _, tt := range testTable {
+		jobID, instanceID, err := ParseTaskID(tt.pelotonTaskID)
+		assert.Equal(t, jobID, tt.jobID)
+		assert.Equal(t, instanceID, tt.instanceID)
+		assert.Equal(t, err, tt.err)
+	}
 }
 
 func TestParseTaskIDFromMesosTaskID(t *testing.T) {
-	taskID, err := ParseTaskIDFromMesosTaskID("Test-1234-11da214")
-	assert.Equal(t, taskID, "")
-	assert.NotNil(t, err)
+	ID := uuid.New()
+	testTable := []struct {
+		msg           string
+		mesosTaskID   string
+		pelotonTaskID string
+		err           error
+	}{
+		{
+			msg:           "Correct mesosTaskID uuid-instanceid-runid(uuid)",
+			mesosTaskID:   ID + "-170-" + ID,
+			pelotonTaskID: ID + "-170",
+			err:           nil,
+		},
+		{
+			msg:           "Correct mesosTaskID uuid-instanceid-runid(int)",
+			mesosTaskID:   ID + "-170-1",
+			pelotonTaskID: ID + "-170",
+			err:           nil,
+		},
+		{
+			msg:           "Incorrect mesosTaskID text-instanceid-runid(int)",
+			mesosTaskID:   "Test-170-1",
+			pelotonTaskID: "",
+			err:           errors.New("invalid mesostaskID Test-170-1"),
+		},
+		{
+			msg:           "Incorrect mesosTaskID text",
+			mesosTaskID:   "Test",
+			pelotonTaskID: "",
+			err:           errors.New("invalid mesostaskID Test"),
+		},
+		{
+			msg:           "Incorrect mesosTaskID uuid",
+			mesosTaskID:   ID,
+			pelotonTaskID: "",
+			err:           errors.New("invalid mesostaskID " + ID),
+		},
+		{
+			msg:           "Incorrect mesosTaskID uuid-text",
+			mesosTaskID:   ID + "-test",
+			pelotonTaskID: "",
+			err:           errors.New("unable to parse instanceID " + ID),
+		},
+		{
+			msg:           "Incorrect mesosTaskID uuid-text",
+			mesosTaskID:   ID + "-test-1",
+			pelotonTaskID: "",
+			err:           errors.New("unable to parse instanceID " + ID + "-test"),
+		},
+	}
 
-	taskID, err = ParseTaskIDFromMesosTaskID("a2342-Test_3-" + uuid.NewUUID().String())
-	assert.NotNil(t, err)
-	assert.Equal(t, taskID, "")
+	for _, tt := range testTable {
+		pelotonTaskID, err := ParseTaskIDFromMesosTaskID(tt.mesosTaskID)
+		assert.Equal(t, pelotonTaskID, tt.pelotonTaskID)
+		assert.Equal(t, err, tt.err)
+	}
+}
 
-	taskID, err = ParseTaskIDFromMesosTaskID("a2342-Test-3-" + uuid.NewUUID().String())
-	assert.Nil(t, err)
-	assert.Equal(t, taskID, "a2342-Test-3")
+func TestParseJobAndInstanceID(t *testing.T) {
+	ID := uuid.New()
+	testTable := []struct {
+		msg         string
+		mesosTaskID string
+		jobID       string
+		instanceID  int
+		err         error
+	}{
+		{
+			msg:         "Correct mesosTaskID uuid-instanceid-runid(uuid)",
+			mesosTaskID: ID + "-1-" + ID,
+			jobID:       ID,
+			instanceID:  1,
+			err:         nil,
+		},
+		{
+			msg:         "Correct mesosTaskID uuid-instanceid-runid(int)",
+			mesosTaskID: ID + "-1-" + "1",
+			jobID:       ID,
+			instanceID:  1,
+			err:         nil,
+		},
+		{
+			msg:         "Incorrect mesosTaskID uuid-text-runid(int)",
+			mesosTaskID: ID + "-test-" + "1",
+			jobID:       "",
+			instanceID:  -1,
+			err:         errors.New("unable to parse instanceID " + ID + "-test"),
+		},
+	}
 
-	taskID, err = ParseTaskIDFromMesosTaskID("Test-0")
-	assert.Equal(t, taskID, "")
-	assert.NotNil(t, err)
-
-	taskID, err = ParseTaskIDFromMesosTaskID("Test_1234-223_wde2")
-	assert.NotNil(t, err)
-
-	taskID, err = ParseTaskIDFromMesosTaskID("Test_123a")
-	assert.NotNil(t, err)
-
-	taskID, err = ParseTaskIDFromMesosTaskID("test1006-170-057fbf96-e7f1-11e6-943a-a45e60eeffd5")
-	assert.Equal(t, taskID, "test1006-170")
-	assert.Nil(t, err)
+	for _, tt := range testTable {
+		jobID, instanceID, err := ParseJobAndInstanceID(tt.mesosTaskID)
+		assert.Equal(t, jobID, tt.jobID)
+		assert.Equal(t, instanceID, tt.instanceID)
+		assert.Equal(t, err, tt.err)
+	}
 }
 
 func TestNonGPUResources(t *testing.T) {

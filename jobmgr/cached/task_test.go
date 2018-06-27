@@ -355,6 +355,37 @@ func (suite *TaskTestSuite) TestPatchRuntime() {
 	suite.Nil(err)
 }
 
+// TestTaskPatchRuntime tests updating the task runtime without any DB errors
+func (suite *TaskTestSuite) TestPatchRuntime_WithInitializedState() {
+	runtime := initializeTaskRuntime(pbtask.TaskState_INITIALIZED, 2)
+	currentMesosTaskID := "acf6e6d4-51be-4b60-8900-683f11252848" + "-1-1"
+	runtime.MesosTaskId = &mesosv1.TaskID{
+		Value: &currentMesosTaskID,
+	}
+	runtime.GoalState = pbtask.TaskState_SUCCEEDED
+	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
+
+	mesosTaskID := "acf6e6d4-51be-4b60-8900-683f11252848" + "-1-2"
+	diff := map[string]interface{}{
+		StateField: pbtask.TaskState_INITIALIZED,
+		MesosTaskIDField: &mesosv1.TaskID{
+			Value: &mesosTaskID,
+		},
+	}
+
+	suite.taskStore.EXPECT().
+		UpdateTaskRuntime(gomock.Any(), suite.jobID, suite.instanceID, gomock.Any()).
+		Do(func(ctx context.Context, jobID *peloton.JobID, instanceID uint32, runtime *pbtask.RuntimeInfo) {
+			suite.Equal(runtime.GetState(), pbtask.TaskState_INITIALIZED)
+			suite.Equal(uint64(runtime.Revision.Version), uint64(3))
+			suite.Equal(runtime.GetGoalState(), pbtask.TaskState_SUCCEEDED)
+		}).
+		Return(nil)
+
+	err := tt.PatchRuntime(context.Background(), diff)
+	suite.Nil(err)
+}
+
 // TestPatchRuntime_KillInitializedTask tests updating the case of
 // trying to kill initialized task
 func (suite *TaskTestSuite) TestPatchRuntime_KillInitializedTask() {

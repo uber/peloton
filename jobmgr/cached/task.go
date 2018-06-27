@@ -12,9 +12,12 @@ import (
 	"code.uber.internal/infra/peloton/util"
 	stringsutil "code.uber.internal/infra/peloton/util/strings"
 
+	"github.com/pborman/uuid"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/yarpc/yarpcerrors"
 )
+
+var uuidLength = len(uuid.New())
 
 // IsResMgrOwnedState returns true if the task state indicates that the task
 // is either waiting for admission or being placed or being preempted.
@@ -201,6 +204,27 @@ func (t *task) validateStateUpdate(newRuntime *pbtask.RuntimeInfo) bool {
 	return false
 }
 
+// validateRunID validates whether newRunID is greater than current runID,
+// since each restart/upgrade for a task's runID is monotonically incremented.
+func validateRunID(mesosTaskID, prevMesosTaskID string) bool {
+	// TODO: remove this check, post mesostaskID migration.
+	if len(mesosTaskID) > 2*uuidLength && len(prevMesosTaskID) > 2*uuidLength {
+		return true
+	}
+
+	var newRunID, currentRunID int
+	var err error
+
+	if newRunID, err = util.ParseRunID(mesosTaskID); err != nil {
+		return false
+	}
+	// TODO: remove prevMesosTaskID len check post mesostaskID migration
+	if currentRunID, err = util.ParseRunID(prevMesosTaskID); err != nil {
+		return len(prevMesosTaskID) > 2*uuidLength || false
+	}
+	return newRunID > currentRunID
+}
+
 // validateState returns true if the state transition from the previous
 // task runtime to the current one is valid.
 // TODO(zhixin): validateState would replace validateStateUpdate
@@ -213,7 +237,13 @@ func (t *task) validateState(newRuntime *pbtask.RuntimeInfo) bool {
 	}
 
 	if newRuntime.GetMesosTaskId() != nil {
-		if currentRuntime.GetMesosTaskId().GetValue() != newRuntime.GetMesosTaskId().GetValue() {
+		if currentRuntime.GetMesosTaskId().GetValue() !=
+			newRuntime.GetMesosTaskId().GetValue() {
+			// Validate post migration, new runid is greater than previous one
+			if !validateRunID(newRuntime.GetMesosTaskId().GetValue(),
+				currentRuntime.GetMesosTaskId().GetValue()) {
+				return false
+			}
 			// mesos task id has changed
 			if newRuntime.GetState() == pbtask.TaskState_INITIALIZED {
 				return true

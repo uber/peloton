@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	_testPelotonTaskIDFmt = "testjob-%d"
+	_testJobID            = "bca875f5-322a-4439-b0c9-63e3cf9f982e"
+	_testPelotonTaskIDFmt = _testJobID + "-%d"
 )
 
 type HostOperationTestSuite struct {
