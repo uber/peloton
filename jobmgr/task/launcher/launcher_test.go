@@ -701,13 +701,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 	}
 
 	// Expected Secret
-	secret := &peloton.Secret{
-		Path: testSecretPath,
-		Value: &peloton.Secret_Value{
-			Data: []byte(testSecretStr),
-		},
-	}
-
+	secret := jobmgrtask.CreateSecretProto("", testSecretPath, []byte(testSecretStr))
 	mesosContainerizer := mesos.ContainerInfo_MESOS
 
 	// generate 5 test tasks
@@ -820,6 +814,18 @@ func TestCreateLaunchableTasks(t *testing.T) {
 	// since the GetSecret error is not retryable, this task will not be part of
 	// the skippedTaskInfos
 	assert.Equal(t, len(skippedTaskInfos), 0)
+
+	// simulate error in base64 decoding of secret data.
+	// use non-base64 encoded data in the secret
+	secret.GetValue().Data = []byte(testSecretStr)
+	mockSecretStore.EXPECT().
+		GetSecret(gomock.Any(), &peloton.SecretID{Value: idStr}).
+		Return(secret, nil)
+	launchableTasks, skippedTaskInfos = taskLauncher.CreateLaunchableTasks(
+		context.Background(), taskInfos)
+	assert.Equal(t, len(launchableTasks), 0)
+	// this task is skipped because of the base64 decode error
+	assert.Equal(t, len(skippedTaskInfos), 1)
 }
 
 // createPlacementMultipleTasks creates the placement with multiple tasks
