@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sync"
 	"time"
@@ -319,6 +320,8 @@ func (l *launcher) CreateLaunchableTasks(
 				// Skip this task in case of transient error but add it to
 				// skippedTaskInfos so that the caller can ask resmgr to
 				// launch this task again
+				log.WithError(err).WithField("task_id", id).
+					Error("populateSecrets failed. skipping task")
 				skippedTaskInfos[id] = taskInfo
 			}
 			// skip the task for which we could not populate secrets
@@ -551,8 +554,14 @@ func (l *launcher) populateSecrets(
 				l.metrics.TaskPopulateSecretFail.Inc(1)
 				return err
 			}
+			secretStr, err := base64.StdEncoding.DecodeString(
+				string(secret.GetValue().GetData()))
+			if err != nil {
+				l.metrics.TaskPopulateSecretFail.Inc(1)
+				return err
+			}
 			volume.GetSource().GetSecret().GetValue().Data =
-				secret.GetValue().GetData()
+				[]byte(secretStr)
 		}
 	}
 	return nil
