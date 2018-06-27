@@ -169,8 +169,13 @@ func (h *serviceHandler) Create(
 	err = cachedJob.Create(ctx, jobConfig, "peloton")
 	if err != nil {
 		// best effort to clean up cache and db when job creation fails
-		h.jobFactory.ClearJob(jobID)
-		h.jobStore.DeleteJob(ctx, jobID)
+		// and the err is not due to job has already existed.
+		// if job already exists, and one calls create again,
+		// it should not clean up the running job.
+		if !yarpcerrors.IsAlreadyExists(err) {
+			h.jobFactory.ClearJob(jobID)
+			h.jobStore.DeleteJob(ctx, jobID)
+		}
 
 		h.metrics.JobCreateFail.Inc(1)
 		return &job.CreateResponse{

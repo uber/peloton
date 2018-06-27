@@ -33,7 +33,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
-
 	"go.uber.org/yarpc/yarpcerrors"
 )
 
@@ -62,6 +61,7 @@ type JobHandlerTestSuite struct {
 	testJobID     *peloton.JobID
 	testJobConfig *job.JobConfig
 	taskInfos     map[uint32]*task.TaskInfo
+	testRespoolID *peloton.ResourcePoolID
 
 	ctrl                  *gomock.Controller
 	mockedCandidate       *leadermocks.MockCandidate
@@ -150,7 +150,7 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 		jobSvcCfg: Config{MaxTasksPerJob: _defaultMaxTasksPerJob},
 	}
 	suite.testJobID = &peloton.JobID{
-		Value: "test_job",
+		Value: uuid.New(),
 	}
 	suite.testJobConfig = &job.JobConfig{
 		Name:          suite.testJobID.Value,
@@ -161,6 +161,9 @@ func (suite *JobHandlerTestSuite) SetupTest() {
 			MaximumRunningInstances: 2,
 			MinimumRunningInstances: 1,
 		},
+	}
+	suite.testRespoolID = &peloton.ResourcePoolID{
+		Value: "test-respool",
 	}
 	var taskInfos = make(map[uint32]*task.TaskInfo)
 	for i := uint32(0); i < testInstanceCount; i++ {
@@ -201,10 +204,216 @@ func (suite *JobHandlerTestSuite) createTestTaskInfo(
 	}
 }
 
-// TestCreateJobs tests different success/failure scenarios
-// for Job Create API
-func (suite *JobHandlerTestSuite) TestCreateJobs() {
+// TestCreateJob_Success tests the success path of creating job
+func (suite *JobHandlerTestSuite) TestCreateJob_Success() {
 	// setup job config
+	testCmd := "echo test"
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+	}
+
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+	// setup specific mocks throughout the test
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
+		Return(nil)
+
+	req := &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	}
+	// Job Create API for this request should pass
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(suite.testJobID, resp.GetJobId())
+}
+
+// TestCreateJob_EmptyID tests create a job with empty uuid
+func (suite *JobHandlerTestSuite) TestCreateJob_EmptyID() {
+	testCmd := "echo test"
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+	}
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+	// test if handler generates UUID for empty job id
+	suite.mockedJobFactory.EXPECT().AddJob(gomock.Any()).
+		Return(suite.mockedCachedJob)
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
+		Return(nil)
+	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any())
+	resp, err := suite.handler.Create(suite.context, &job.CreateRequest{
+		Id:     nil,
+		Config: jobConfig,
+	})
+	suite.NoError(err)
+	suite.NotEqual(resp.GetJobId().GetValue(), "")
+	suite.NotNil(uuid.Parse(resp.GetJobId().GetValue()))
+}
+
+// TestCreateJob_InternalError tests job create return internal error
+func (suite *JobHandlerTestSuite) TestCreateJob_InternalError() {
+	testCmd := "echo test"
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+	}
+	req := &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	}
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+	// simulate cachedjob create failure
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
+		Return(errors.New("random error"))
+	suite.mockedJobFactory.EXPECT().ClearJob(suite.testJobID)
+	suite.mockedJobStore.EXPECT().DeleteJob(gomock.Any(), suite.testJobID)
+
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		AlreadyExists: &job.JobAlreadyExists{
+			Id:      suite.testJobID,
+			Message: "random error",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+}
+
+// TestCreateJob_JobAlreadyExistErr tests job create when the job has already
+// existed
+func (suite *JobHandlerTestSuite) TestCreateJob_JobAlreadyExistErr() {
+	testCmd := "echo test"
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+	}
+	req := &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	}
+	alreayExistErr := yarpcerrors.AlreadyExistsErrorf("job already exist")
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
+		Return(alreayExistErr)
+
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		AlreadyExists: &job.JobAlreadyExists{
+			Id:      suite.testJobID,
+			Message: alreayExistErr.Error(),
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+}
+
+// TestCreateJob_NilRespool tests job create with nil respool fail
+func (suite *JobHandlerTestSuite) TestCreateJob_NilRespool() {
+	testCmd := "echo test"
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+	}
+	req := &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	}
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+	// Job Create with respool set to nil should fail
+	jobConfig.RespoolID = nil
+	resp, err := suite.handler.Create(suite.context, req)
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id:      suite.testJobID,
+			Message: errNullResourcePoolID.Error(),
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+}
+
+// TestCreateJob_BadJobID tests job_id set to random string should fail
+func (suite *JobHandlerTestSuite) TestCreateJob_BadJobID() {
+	testCmd := "echo test"
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+	}
+
+	badJobID := &peloton.JobID{
+		Value: "bad-job-id-str",
+	}
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
+	resp, err := suite.handler.Create(suite.context, &job.CreateRequest{
+		Id:     badJobID,
+		Config: jobConfig,
+	})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		InvalidJobId: &job.InvalidJobId{
+			Id:      badJobID,
+			Message: "JobID must be valid UUID",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+}
+
+// TestCreateJob_ValidationErr tests job create fails with bad config
+func (suite *JobHandlerTestSuite) TestCreateJob_ValidationErr() {
+	testCmd := "echo test"
+	defaultConfig := &task.TaskConfig{
+		Command: &mesos.CommandInfo{Value: &testCmd},
+	}
+	jobConfig := &job.JobConfig{
+		DefaultConfig: defaultConfig,
+		RespoolID:     suite.testRespoolID,
+	}
+	suite.setupMocks(suite.testJobID, suite.testRespoolID)
+	// simulate a simple error validating task config just to test error
+	// processing code path in Create()
+	suite.handler.jobSvcCfg.MaxTasksPerJob = 1
+	jobConfig.InstanceCount = 2
+	resp, err := suite.handler.Create(suite.context, &job.CreateRequest{
+		Id:     suite.testJobID,
+		Config: jobConfig,
+	})
+	suite.NoError(err)
+	suite.NotNil(resp)
+	expectedErr := &job.CreateResponse_Error{
+		InvalidConfig: &job.InvalidJobConfig{
+			Id: suite.testJobID,
+			Message: "Requested tasks: 2 for job is " +
+				"greater than supported: 1 tasks/job",
+		},
+	}
+	suite.Equal(expectedErr, resp.GetError())
+}
+
+func (suite *JobHandlerTestSuite) TestCreateJob_RootRespoolFail() {
 	testCmd := "echo test"
 	jobID := &peloton.JobID{
 		Value: uuid.New(),
@@ -215,127 +424,25 @@ func (suite *JobHandlerTestSuite) TestCreateJobs() {
 	jobConfig := &job.JobConfig{
 		DefaultConfig: defaultConfig,
 	}
-	respoolID := &peloton.ResourcePoolID{
-		Value: "test-respool",
-	}
-	jobConfig.RespoolID = respoolID
-
-	// setup mocks
-	suite.setupMocks(jobID, respoolID)
-
-	// setup specific mocks throughout the test
-	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
-		Return(nil)
-
-	req := &job.CreateRequest{
-		Id:     jobID,
-		Config: jobConfig,
-	}
-	// Job Create API for this request should pass
-	resp, err := suite.handler.Create(suite.context, req)
-	suite.NoError(err)
-	suite.NotNil(resp)
-	suite.Equal(jobID, resp.GetJobId())
-
-	// test if handler generates UUID for empty job id
-	suite.mockedJobFactory.EXPECT().AddJob(gomock.Any()).
-		Return(suite.mockedCachedJob)
-	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
-		Return(nil)
-	suite.mockedGoalStateDriver.EXPECT().EnqueueJob(gomock.Any(), gomock.Any())
-	resp, err = suite.handler.Create(suite.context, &job.CreateRequest{
-		Id:     nil,
-		Config: jobConfig,
-	})
-	suite.NoError(err)
-	suite.NotEqual(resp.GetJobId().GetValue(), "")
-	suite.NotNil(uuid.Parse(resp.GetJobId().GetValue()))
-
-	// Negative tests begin
-
-	// simulate cachedjob create failure
-	suite.mockedCachedJob.EXPECT().Create(gomock.Any(), jobConfig, "peloton").
-		Return(errors.New("random error"))
-	suite.mockedJobFactory.EXPECT().ClearJob(jobID)
-	suite.mockedJobStore.EXPECT().DeleteJob(gomock.Any(), jobID)
-
-	resp, err = suite.handler.Create(suite.context, req)
-	suite.NoError(err)
-	suite.NotNil(resp)
-	expectedErr := &job.CreateResponse_Error{
-		AlreadyExists: &job.JobAlreadyExists{
-			Id:      jobID,
-			Message: "random error",
-		},
-	}
-	suite.Equal(expectedErr, resp.GetError())
-
-	// Job Create with respool set to nil should fail
-	jobConfig.RespoolID = nil
-	resp, err = suite.handler.Create(suite.context, req)
-	suite.NoError(err)
-	suite.NotNil(resp)
-	expectedErr = &job.CreateResponse_Error{
-		InvalidConfig: &job.InvalidJobConfig{
-			Id:      jobID,
-			Message: errNullResourcePoolID.Error(),
-		},
-	}
-	suite.Equal(expectedErr, resp.GetError())
-
-	// Job Create with job_id set to random string should fail
-	badJobID := &peloton.JobID{
-		Value: "bad-job-id-str",
-	}
-	resp, err = suite.handler.Create(suite.context, &job.CreateRequest{
-		Id:     badJobID,
-		Config: jobConfig,
-	})
-	suite.NoError(err)
-	suite.NotNil(resp)
-	expectedErr = &job.CreateResponse_Error{
-		InvalidJobId: &job.InvalidJobId{
-			Id:      badJobID,
-			Message: "JobID must be valid UUID",
-		},
-	}
-	suite.Equal(expectedErr, resp.GetError())
-
-	// simulate a simple error validating task config just to test error
-	// processing code path in Create()
-	suite.handler.jobSvcCfg.MaxTasksPerJob = 1
-	jobConfig.InstanceCount = 2
-	jobConfig.RespoolID = respoolID
-	resp, err = suite.handler.Create(suite.context, &job.CreateRequest{
-		Id:     jobID,
-		Config: jobConfig,
-	})
-	suite.NoError(err)
-	suite.NotNil(resp)
-	expectedErr = &job.CreateResponse_Error{
-		InvalidConfig: &job.InvalidJobConfig{
-			Id: jobID,
-			Message: "Requested tasks: 2 for job is " +
-				"greater than supported: 1 tasks/job",
-		},
-	}
-	suite.Equal(expectedErr, resp.GetError())
-
 	// Job Create with respool set to root should fail
 	jobConfig.RespoolID = &peloton.ResourcePoolID{
 		Value: common.RootResPoolID,
 	}
-	resp, err = suite.handler.Create(suite.context, req)
+	req := &job.CreateRequest{
+		Id:     jobID,
+		Config: jobConfig,
+	}
+	suite.mockedCandidate.EXPECT().IsLeader().Return(true).AnyTimes()
+	resp, err := suite.handler.Create(suite.context, req)
 	suite.NoError(err)
 	suite.NotNil(resp)
-	expectedErr = &job.CreateResponse_Error{
+	expectedErr := &job.CreateResponse_Error{
 		InvalidConfig: &job.InvalidJobConfig{
 			Id:      jobID,
 			Message: errRootResourcePoolID.Error(),
 		},
 	}
 	suite.Equal(expectedErr, resp.GetError())
-
 }
 
 // Test Job Create/Update/Refresh going to non-leader
