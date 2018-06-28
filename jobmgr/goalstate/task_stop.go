@@ -118,14 +118,14 @@ func stopInitializedTask(ctx context.Context, taskEnt *taskEntity) error {
 		return nil
 	}
 
-	runtimeDiff := map[string]interface{}{
+	runtimeDiff := cached.RuntimeDiff{
 		cached.StateField:   task.TaskState_KILLED,
 		cached.MessageField: "Non-running task killed",
 		cached.ReasonField:  "",
 	}
 
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]map[string]interface{}{taskEnt.instanceID: runtimeDiff})
+		map[uint32]cached.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)
@@ -155,13 +155,13 @@ func stopMesosTask(ctx context.Context, taskEnt *taskEntity, runtime *task.Runti
 		return err
 	}
 
-	runtimeDiff := map[string]interface{}{
+	runtimeDiff := cached.RuntimeDiff{
 		cached.StateField:   task.TaskState_KILLING,
 		cached.MessageField: "Killing the task",
 		cached.ReasonField:  "",
 	}
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]map[string]interface{}{taskEnt.instanceID: runtimeDiff})
+		map[uint32]cached.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 
 	if err == nil {
 		// timeout for task kill

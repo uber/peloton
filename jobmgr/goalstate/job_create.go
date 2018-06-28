@@ -121,10 +121,10 @@ func sendTasksToResMgr(
 	}
 
 	// Move all task states to pending
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	for _, tt := range tasks {
 		instID := tt.GetInstanceId()
-		runtimeDiff := map[string]interface{}{
+		runtimeDiff := cached.RuntimeDiff{
 			cached.StateField:   task.TaskState_PENDING,
 			cached.MessageField: "Task sent for placement",
 		}

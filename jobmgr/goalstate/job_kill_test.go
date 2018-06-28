@@ -96,7 +96,7 @@ func (suite JobKillTestSuite) TestJobKill() {
 		GoalState: pbtask.TaskState_SUCCEEDED,
 	}
 
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[0] = map[string]interface{}{
 		cached.GoalStateField: pbtask.TaskState_KILLED,
 		cached.MessageField:   "Task stop API request",

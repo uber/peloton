@@ -449,7 +449,7 @@ func TestJobMaxRunningInstances(t *testing.T) {
 
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			assert.Equal(t, uint32(len(runtimeDiffs)), jobConfig.SLA.MaximumRunningInstances)
 			for _, runtimeDiff := range runtimeDiffs {
 				assert.Equal(t, runtimeDiff[cached.StateField], pb_task.TaskState_PENDING)

@@ -120,7 +120,7 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskLaunchTimeout() {
 		suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
 		suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
-			func(_ context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
 					suite.Equal(oldMesosTaskID, runtimeDiff[cached.PrevMesosTaskIDField])
 					suite.NotEqual(oldMesosTaskID, runtimeDiff[cached.MesosTaskIDField])
@@ -258,7 +258,7 @@ func (suite *TestTaskLaunchRetrySuite) TestTaskStartTimeout() {
 	suite.jobConfig.EXPECT().GetType().Return(pb_job.JobType_BATCH)
 
 	suite.cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
-		func(_ context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+		func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			for _, runtimeDiff := range runtimeDiffs {
 				suite.Equal(oldMesosTaskID, runtimeDiff[cached.PrevMesosTaskIDField])
 				suite.NotEqual(oldMesosTaskID, runtimeDiff[cached.MesosTaskIDField])

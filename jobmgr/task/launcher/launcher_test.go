@@ -796,7 +796,7 @@ func TestCreateLaunchableTasks(t *testing.T) {
 	jobFactory.EXPECT().GetJob(tmp.JobId).Return(cachedJob)
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			assert.Equal(t, task.TaskState_KILLED, runtimeDiffs[0][cached.GoalStateField])
 			assert.Equal(t, "REASON_SECRET_NOT_FOUND", runtimeDiffs[0][cached.ReasonField])
 		}).

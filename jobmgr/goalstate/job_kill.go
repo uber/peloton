@@ -28,7 +28,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 	tasks := cachedJob.GetAllTasks()
 
 	// Update task runtimes in DB and cache to kill task
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	for instanceID, cachedTask := range tasks {
 		runtime, err := cachedTask.GetRunTime(ctx)
 		if err != nil {
@@ -43,7 +43,7 @@ func JobKill(ctx context.Context, entity goalstate.Entity) error {
 			continue
 		}
 
-		runtimeDiff := map[string]interface{}{
+		runtimeDiff := cached.RuntimeDiff{
 			cached.GoalStateField: task.TaskState_KILLED,
 			cached.MessageField:   "Task stop API request",
 			cached.ReasonField:    "",

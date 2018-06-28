@@ -465,9 +465,9 @@ func (m *serviceHandler) Start(
 	var startedInstanceIds []uint32
 	var failedInstanceIds []uint32
 	var instanceIds []uint32
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	for _, taskInfo := range taskInfos {
-		runtimeDiff := make(map[string]interface{})
+		runtimeDiff := make(cached.RuntimeDiff)
 		taskState := taskInfo.GetRuntime().GetState()
 
 		if taskState == task.TaskState_INITIALIZED || taskState == task.TaskState_PENDING ||
@@ -661,7 +661,7 @@ func (m *serviceHandler) Stop(
 	var stoppedInstanceIds []uint32
 	var failedInstanceIds []uint32
 	var instanceIds []uint32
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	// Persist KILLED goalstate for tasks in db.
 	for _, taskInfo := range taskInfos {
 		// Skip update task goalstate if it is already KILLED.
@@ -669,7 +669,7 @@ func (m *serviceHandler) Stop(
 			continue
 		}
 
-		runtimeDiff := map[string]interface{}{
+		runtimeDiff := cached.RuntimeDiff{
 			cached.GoalStateField: task.TaskState_KILLED,
 			cached.MessageField:   "Task stop API request",
 			cached.ReasonField:    "",

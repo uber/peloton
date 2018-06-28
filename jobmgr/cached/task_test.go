@@ -373,7 +373,7 @@ func (suite *TaskTestSuite) TestPatchRuntime() {
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
 
-	diff := map[string]interface{}{
+	diff := RuntimeDiff{
 		StateField: pbtask.TaskState_RUNNING,
 	}
 
@@ -411,7 +411,7 @@ func (suite *TaskTestSuite) TestPatchRuntime_WithInitializedState() {
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
 
 	mesosTaskID := "acf6e6d4-51be-4b60-8900-683f11252848" + "-1-2"
-	diff := map[string]interface{}{
+	diff := RuntimeDiff{
 		StateField: pbtask.TaskState_INITIALIZED,
 		MesosTaskIDField: &mesosv1.TaskID{
 			Value: &mesosTaskID,
@@ -448,7 +448,7 @@ func (suite *TaskTestSuite) TestPatchRuntime_KillInitializedTask() {
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
 
-	diff := map[string]interface{}{
+	diff := RuntimeDiff{
 		GoalStateField: pbtask.TaskState_KILLED,
 	}
 
@@ -482,7 +482,7 @@ func (suite *TaskTestSuite) TestPatchRuntime_NoRuntimeInCache() {
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, nil)
 
-	diff := map[string]interface{}{
+	diff := RuntimeDiff{
 		StateField: pbtask.TaskState_RUNNING,
 	}
 
@@ -517,7 +517,7 @@ func (suite *TaskTestSuite) TestPatchRuntime_DBError() {
 	runtime.GoalState = pbtask.TaskState_SUCCEEDED
 	tt := initializeTask(suite.taskStore, suite.jobID, suite.instanceID, runtime)
 
-	diff := map[string]interface{}{
+	diff := RuntimeDiff{
 		StateField: pbtask.TaskState_RUNNING,
 	}
 

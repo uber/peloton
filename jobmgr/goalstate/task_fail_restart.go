@@ -92,7 +92,7 @@ func TaskFailRetry(ctx context.Context, entity goalstate.Entity) error {
 		WithField("instance_id", taskEnt.instanceID).
 		Debug("restarting failed task")
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]map[string]interface{}{taskEnt.instanceID: runtimeDiff})
+		map[uint32]cached.RuntimeDiff{taskEnt.instanceID: runtimeDiff})
 	if err == nil {
 		goalStateDriver.EnqueueTask(taskEnt.jobID, taskEnt.instanceID, time.Now())
 		EnqueueJobWithDefaultDelay(taskEnt.jobID, goalStateDriver, cachedJob)

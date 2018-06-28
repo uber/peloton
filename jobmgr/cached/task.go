@@ -55,7 +55,7 @@ type Task interface {
 
 	// PatchRuntime patches diff to the existing runtime cache
 	// in task and persists to DB.
-	PatchRuntime(ctx context.Context, diff map[string]interface{}) error
+	PatchRuntime(ctx context.Context, diff RuntimeDiff) error
 
 	// ReplaceRuntime replaces cache with runtime
 	// forceReplace would decide whether to check version when replacing the runtime
@@ -452,7 +452,7 @@ func (t *task) validateAndMergeRuntime(runtime *pbtask.RuntimeInfo) *pbtask.Runt
 // PatchRuntime patches diff to the existing runtime cache
 // in task and persists to DB.
 // TODO(zhixin): replace UpdateRuntime with UpdateCacheAndDB.
-func (t *task) PatchRuntime(ctx context.Context, diff map[string]interface{}) error {
+func (t *task) PatchRuntime(ctx context.Context, diff RuntimeDiff) error {
 	if diff == nil {
 		return nil
 	}

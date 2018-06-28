@@ -74,7 +74,7 @@ func TestTaskInitialize(t *testing.T) {
 	cachedJob.EXPECT().GetConfig(gomock.Any()).Return(cachedConfig, nil)
 
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).Do(
-		func(_ context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+		func(_ context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			for _, rutimeDiff := range runtimeDiffs {
 				assert.Equal(t, pbtask.TaskState_INITIALIZED, rutimeDiff[cached.StateField])
 				assert.Equal(t, pbtask.TaskState_SUCCEEDED, rutimeDiff[cached.GoalStateField])

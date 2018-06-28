@@ -78,12 +78,12 @@ func TestTaskStop(t *testing.T) {
 	jobFactory.EXPECT().
 		GetJob(jobID).Return(cachedJob)
 
-	expectedRuntimeDiff := map[string]interface{}{
+	expectedRuntimeDiff := cached.RuntimeDiff{
 		cached.StateField:   pbtask.TaskState_KILLING,
 		cached.MessageField: "Killing the task",
 		cached.ReasonField:  "",
 	}
-	cachedJob.EXPECT().PatchTasks(gomock.Any(), map[uint32]map[string]interface{}{
+	cachedJob.EXPECT().PatchTasks(gomock.Any(), map[uint32]cached.RuntimeDiff{
 		instanceID: expectedRuntimeDiff,
 	})
 

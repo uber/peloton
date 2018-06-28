@@ -314,7 +314,7 @@ func (p *statusUpdate) ProcessStatusUpdate(ctx context.Context, event *pb_events
 	cachedJob.SetTaskUpdateTime(event.MesosTaskStatus.Timestamp)
 	err = cachedJob.PatchTasks(
 		ctx,
-		map[uint32]map[string]interface{}{taskInfo.GetInstanceId(): runtimeDiff},
+		map[uint32]cached.RuntimeDiff{taskInfo.GetInstanceId(): runtimeDiff},
 	)
 	if err != nil {
 		log.WithError(err).

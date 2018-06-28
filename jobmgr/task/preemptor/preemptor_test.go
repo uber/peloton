@@ -116,7 +116,7 @@ func (suite *PreemptorTestSuite) TestPreemptionCycle() {
 
 	cachedJob.EXPECT().PatchTasks(gomock.Any(), gomock.Any()).
 		Do(func(ctx context.Context,
-			runtimeDiffs map[uint32]map[string]interface{}) {
+			runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			suite.Equal(peloton_task.TaskState_PREEMPTING,
 				runtimeDiffs[runningTaskInfo.InstanceId][cached.StateField])
 		}).

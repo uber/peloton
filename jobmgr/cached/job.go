@@ -28,6 +28,11 @@ type writeTaskRuntimeToDB func(ctx context.Context, instanceID uint32,
 
 type singleTask func(id uint32) error
 
+// RuntimeDiff to be applied to the runtime struct.
+// key is the field name to be updated,
+// value is the value to be updated to.
+type RuntimeDiff map[string]interface{}
+
 // Job in the cache.
 // TODO there a lot of methods in this interface. To determine if
 // this can be broken up into smaller pieces.
@@ -45,12 +50,13 @@ type Job interface {
 	// and then storing it in the cache. If the attempt to persist fails, the local cache is cleaned up.
 	UpdateTasks(ctx context.Context, runtimes map[uint32]*pbtask.RuntimeInfo, req UpdateRequest) error
 
-	// PatchTasks patch runtime diff to the existing task cache. runtimeDiffs is a kv map with key
-	// as the instance_id of the task to be updated. Value of runtimesDiffs is a kv map of which
-	// key is the field name to be update, and value is the new value of the field. PatchTasks
-	// would save the change in both cache and DB. If persisting to DB fails, cache would be
-	// invalidated as well.
-	PatchTasks(ctx context.Context, runtimesDiffs map[uint32]map[string]interface{}) error
+	// PatchTasks patch runtime diff to the existing task cache. runtimeDiffs
+	// is a kv map with key as the instance_id of the task to be updated.
+	// Value of runtimeDiffs is RuntimeDiff, of which key is the field name
+	// to be update, and value is the new value of the field. PatchTasks
+	// would save the change in both cache and DB. If persisting to DB fails,
+	// cache would be invalidated as well.
+	PatchTasks(ctx context.Context, runtimeDiffs map[uint32]RuntimeDiff) error
 
 	// ReplaceTasks replaces task runtime with runtimes in cache.
 	// If forceReplace is false, it would check Revision version
@@ -352,14 +358,14 @@ func (j *job) UpdateTasks(
 // TODO(zhixin): replace UpdateTasks
 func (j *job) PatchTasks(
 	ctx context.Context,
-	runtimesDiffs map[uint32]map[string]interface{}) error {
+	runtimeDiffs map[uint32]RuntimeDiff) error {
 
 	patchSingleTask := func(id uint32) error {
 		t := j.AddTask(id)
-		return t.PatchRuntime(ctx, runtimesDiffs[id])
+		return t.PatchRuntime(ctx, runtimeDiffs[id])
 	}
 
-	return j.runInParallel(getIdsFromDiffs(runtimesDiffs), patchSingleTask)
+	return j.runInParallel(getIdsFromDiffs(runtimeDiffs), patchSingleTask)
 }
 
 func (j *job) ReplaceTasks(
@@ -977,7 +983,7 @@ func getIdsFromRuntimeMap(input map[uint32]*pbtask.RuntimeInfo) []uint32 {
 	return result
 }
 
-func getIdsFromDiffs(input map[uint32]map[string]interface{}) []uint32 {
+func getIdsFromDiffs(input map[uint32]RuntimeDiff) []uint32 {
 	result := make([]uint32, 0, len(input))
 	for k := range input {
 		result = append(result, k)

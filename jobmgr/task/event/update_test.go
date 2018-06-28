@@ -153,14 +153,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdate() {
 	timeNow := float64(time.Now().UnixNano())
 	event.MesosTaskStatus.Timestamp = &timeNow
 	taskInfo := createTestTaskInfo(task.TaskState_INITIALIZED)
-	runtimeDiff := map[string]interface{}{
+	runtimeDiff := cached.RuntimeDiff{
 		cached.MessageField:        "testFailure",
 		cached.CompletionTimeField: "",
 		cached.StateField:          task.TaskState_RUNNING,
 		cached.StartTimeField:      _currentTime,
 		cached.ReasonField:         "",
 	}
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
 
 	gomock.InOrder(
@@ -222,7 +222,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskFailedStatusUpdate() {
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
 		PatchTasks(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
 				runtimeDiff[cached.StateField],
@@ -270,7 +270,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateWithRetry() {
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
 		PatchTasks(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
 				runtimeDiff[cached.StateField],
@@ -346,7 +346,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessTaskLostStatusUpdateNoRetryForStat
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
 		PatchTasks(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
 				runtimeDiff[cached.StateField],
@@ -380,13 +380,13 @@ func (suite *TaskUpdaterTestSuite) TestProcessStoppedTaskLostStatusUpdate() {
 	taskInfo := createTestTaskInfo(task.TaskState_RUNNING)
 	taskInfo.Runtime.GoalState = task.TaskState_KILLED
 
-	runtimeDiff := map[string]interface{}{
+	runtimeDiff := cached.RuntimeDiff{
 		cached.StateField:          task.TaskState_KILLED,
 		cached.ReasonField:         failureReason.String(),
 		cached.MessageField:        "Stopped task LOST event: " + _failureMsg,
 		cached.CompletionTimeField: _currentTime,
 	}
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
 
 	gomock.InOrder(
@@ -507,7 +507,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessPreemptedTaskStatusUpdate() {
 			SetTaskUpdateTime(gomock.Any()).Return()
 		cachedJob.EXPECT().
 			PatchTasks(context.Background(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 				runtimeDiff := runtimeDiffs[_instanceID]
 				suite.Equal(
 					preemptMessage,
@@ -540,14 +540,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateVolumeUponRunning() {
 		Value: "testVolume",
 	}
 	taskInfo.GetRuntime().VolumeID = testVolumeID
-	runtimeDiff := map[string]interface{}{
+	runtimeDiff := cached.RuntimeDiff{
 		cached.StateField:          task.TaskState_RUNNING,
 		cached.StartTimeField:      _currentTime,
 		cached.MessageField:        "testFailure",
 		cached.CompletionTimeField: "",
 		cached.ReasonField:         "",
 	}
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
 
 	volumeInfo := &volume.PersistentVolumeInfo{
@@ -596,14 +596,14 @@ func (suite *TaskUpdaterTestSuite) TestProcessStatusUpdateSkipVolumeUponRunningI
 		Value: "testVolume",
 	}
 	taskInfo.GetRuntime().VolumeID = testVolumeID
-	runtimeDiff := map[string]interface{}{
+	runtimeDiff := cached.RuntimeDiff{
 		cached.StateField:          task.TaskState_RUNNING,
 		cached.StartTimeField:      _currentTime,
 		cached.MessageField:        "testFailure",
 		cached.CompletionTimeField: "",
 		cached.ReasonField:         "",
 	}
-	runtimeDiffs := make(map[uint32]map[string]interface{})
+	runtimeDiffs := make(map[uint32]cached.RuntimeDiff)
 	runtimeDiffs[_instanceID] = runtimeDiff
 
 	volumeInfo := &volume.PersistentVolumeInfo{
@@ -654,7 +654,7 @@ func (suite *TaskUpdaterTestSuite) TestProcessFailedTaskRunningStatusUpdate() {
 		SetTaskUpdateTime(gomock.Any()).Return()
 	cachedJob.EXPECT().
 		PatchTasks(context.Background(), gomock.Any()).
-		Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 			runtimeDiff := runtimeDiffs[_instanceID]
 			suite.Equal(
 				runtimeDiff[cached.StateField],

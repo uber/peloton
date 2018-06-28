@@ -145,8 +145,8 @@ func TestTaskFailRetry(t *testing.T) {
 
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimesDiffs map[uint32]map[string]interface{}) {
-			runtimeDiff := runtimesDiffs[instanceID]
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			runtimeDiff := runtimeDiffs[instanceID]
 			assert.True(t, runtimeDiff[cached.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
 			assert.True(t, runtimeDiff[cached.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
 			assert.True(t, runtimeDiff[cached.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)
@@ -229,8 +229,8 @@ func TestTaskFailSystemFailure(t *testing.T) {
 
 	cachedJob.EXPECT().
 		PatchTasks(gomock.Any(), gomock.Any()).
-		Do(func(ctx context.Context, runtimesDiffs map[uint32]map[string]interface{}) {
-			runtimeDiff := runtimesDiffs[instanceID]
+		Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
+			runtimeDiff := runtimeDiffs[instanceID]
 			assert.True(t, runtimeDiff[cached.MesosTaskIDField].(*mesosv1.TaskID).GetValue() != mesosTaskID)
 			assert.True(t, runtimeDiff[cached.PrevMesosTaskIDField].(*mesosv1.TaskID).GetValue() == mesosTaskID)
 			assert.True(t, runtimeDiff[cached.StateField].(pbtask.TaskState) == pbtask.TaskState_INITIALIZED)

@@ -260,7 +260,7 @@ func (l *launcher) GetLaunchableTasks(
 func (l *launcher) updateTaskRuntime(
 	ctx context.Context, taskID string,
 	goalstate task.TaskState, reason string, message string) error {
-	runtimeDiff := map[string]interface{}{
+	runtimeDiff := cached.RuntimeDiff{
 		cached.GoalStateField: goalstate,
 		cached.ReasonField:    reason,
 		cached.MessageField:   message,
@@ -275,7 +275,7 @@ func (l *launcher) updateTaskRuntime(
 	}
 	// update the task in DB and cache, and then schedule to goalstate
 	err = cachedJob.PatchTasks(ctx,
-		map[uint32]map[string]interface{}{uint32(instanceID): runtimeDiff})
+		map[uint32]cached.RuntimeDiff{uint32(instanceID): runtimeDiff})
 	if err != nil {
 		return err
 	}

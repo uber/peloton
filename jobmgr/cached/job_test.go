@@ -106,10 +106,10 @@ func initializeCurrentRuntimes(instanceCount uint32, state pbtask.TaskState) map
 	return runtimes
 }
 
-func initializeDiffs(instanceCount uint32, state pbtask.TaskState) map[uint32]map[string]interface{} {
-	diffs := make(map[uint32]map[string]interface{})
+func initializeDiffs(instanceCount uint32, state pbtask.TaskState) map[uint32]RuntimeDiff {
+	diffs := make(map[uint32]RuntimeDiff)
 	for i := uint32(0); i < instanceCount; i++ {
-		diff := map[string]interface{}{
+		diff := RuntimeDiff{
 			StateField: state,
 		}
 		diffs[i] = diff
@@ -1255,7 +1255,7 @@ func (suite *JobTestSuite) TestPartialJobCheck() {
 // TestPatchTasks_SetGetTasksSingle tests setting and getting single task in job in cache.
 func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 	instanceCount := uint32(10)
-	runtimeDiff := map[string]interface{}{
+	runtimeDiff := RuntimeDiff{
 		StateField: pbtask.TaskState_RUNNING,
 	}
 
@@ -1276,7 +1276,7 @@ func (suite *JobTestSuite) TestPatchTasks_SetGetTasksSingle() {
 
 	// Test updating tasks one at a time in cache
 	for i := uint32(0); i < instanceCount; i++ {
-		suite.job.PatchTasks(context.Background(), map[uint32]map[string]interface{}{i: runtimeDiff})
+		suite.job.PatchTasks(context.Background(), map[uint32]RuntimeDiff{i: runtimeDiff})
 	}
 	suite.Equal(instanceCount, uint32(len(suite.job.tasks)))
 

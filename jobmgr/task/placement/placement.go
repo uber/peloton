@@ -317,7 +317,7 @@ func (p *processor) enqueueTasks(ctx context.Context, tasks map[string]*task.Tas
 			cachedJob := p.jobFactory.AddJob(t.JobId)
 			err = cachedJob.PatchTasks(
 				ctx,
-				map[uint32]map[string]interface{}{uint32(t.InstanceId): runtimeDiff},
+				map[uint32]cached.RuntimeDiff{uint32(t.InstanceId): runtimeDiff},
 			)
 			if err == nil {
 				p.goalStateDriver.EnqueueTask(t.JobId, t.InstanceId, time.Now())

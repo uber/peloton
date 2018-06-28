@@ -588,7 +588,7 @@ func (suite *TaskHandlerTestSuite) TestStartAllTasks() {
 			GetTasksForJob(gomock.Any(), suite.testJobID).Return(taskInfos, nil),
 		suite.mockedCachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
 					suite.Equal(runtimeDiff[cached.StateField], task.TaskState_INITIALIZED)
 				}
@@ -660,7 +660,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRanges() {
 			GetTasksForJobByRange(gomock.Any(), suite.testJobID, taskRanges[0]).Return(singleTaskInfo, nil),
 		suite.mockedCachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
 					suite.Equal(runtimeDiff[cached.StateField], task.TaskState_INITIALIZED)
 					suite.Equal(runtimeDiff[cached.GoalStateField], task.TaskState_SUCCEEDED)
@@ -847,7 +847,7 @@ func (suite *TaskHandlerTestSuite) TestStartTasksWithRangesForLaunchedTask() {
 		suite.mockedHostMgr.EXPECT().KillTasks(gomock.Any(), gomock.Any()),
 		suite.mockedCachedJob.EXPECT().
 			PatchTasks(gomock.Any(), gomock.Any()).
-			Do(func(ctx context.Context, runtimeDiffs map[uint32]map[string]interface{}) {
+			Do(func(ctx context.Context, runtimeDiffs map[uint32]cached.RuntimeDiff) {
 				for _, runtimeDiff := range runtimeDiffs {
 					suite.Equal(runtimeDiff[cached.StateField], task.TaskState_INITIALIZED)
 				}
