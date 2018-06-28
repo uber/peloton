@@ -188,6 +188,8 @@ func JobEvaluateMaxRunningInstancesSLA(ctx context.Context, entity goalstate.Ent
 
 // determineJobRuntimeState determines the job state based on current
 // job runtime state and task state counts.
+// This function is not expected to be called when
+// totalInstanceCount < config.GetInstanceCount
 func determineJobRuntimeState(jobRuntime *job.RuntimeInfo,
 	stateCounts map[string]uint32,
 	config cached.JobConfig,
@@ -195,21 +197,28 @@ func determineJobRuntimeState(jobRuntime *job.RuntimeInfo,
 	cachedJob cached.Job) job.JobState {
 	var jobState job.JobState
 
-	instances := config.GetInstanceCount()
-	if jobRuntime.State == job.JobState_INITIALIZED && cachedJob.IsPartiallyCreated(config) {
+	// use totalInstanceCount instead of config.GetInstanceCount,
+	// because totalInstanceCount can be larger than config.GetInstanceCount
+	// due to a race condition bug. Although the bug is fixed, the change is
+	// needed to unblock affected jobs.
+	// Also if in the future, similar bug occur again, using totalInstanceCount
+	// would ensure the bug would not make a job stuck.
+	totalInstanceCount := getTotalInstanceCount(stateCounts)
+	if totalInstanceCount < config.GetInstanceCount() &&
+		cachedJob.IsPartiallyCreated(config) {
 		// do not do any thing as all tasks have not been created yet
 		jobState = job.JobState_INITIALIZED
-	} else if stateCounts[task.TaskState_SUCCEEDED.String()] == instances {
+	} else if stateCounts[task.TaskState_SUCCEEDED.String()] == totalInstanceCount {
 		jobState = job.JobState_SUCCEEDED
 		goalStateDriver.mtx.jobMetrics.JobSucceeded.Inc(1)
 	} else if stateCounts[task.TaskState_SUCCEEDED.String()]+
-		stateCounts[task.TaskState_FAILED.String()] == instances {
+		stateCounts[task.TaskState_FAILED.String()] == totalInstanceCount {
 		jobState = job.JobState_FAILED
 		goalStateDriver.mtx.jobMetrics.JobFailed.Inc(1)
 	} else if stateCounts[task.TaskState_KILLED.String()] > 0 &&
 		(stateCounts[task.TaskState_SUCCEEDED.String()]+
 			stateCounts[task.TaskState_FAILED.String()]+
-			stateCounts[task.TaskState_KILLED.String()] == instances) {
+			stateCounts[task.TaskState_KILLED.String()] == totalInstanceCount) {
 		jobState = job.JobState_KILLED
 		goalStateDriver.mtx.jobMetrics.JobKilled.Inc(1)
 	} else if jobRuntime.State == job.JobState_KILLING {
@@ -263,31 +272,19 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 		return err
 	}
 
-	totalInstanceCount := uint32(0)
-	for _, state := range task.TaskState_name {
-		totalInstanceCount += stateCounts[state]
-	}
-
 	var jobState job.JobState
 	jobRuntimeUpdate := &job.RuntimeInfo{}
+	totalInstanceCount := getTotalInstanceCount(stateCounts)
 	// if job is KILLED: do nothing
 	// if job is partially created: set job to INITIALIZED and enqueue the job
 	// else: return error and reschedule the job
-	if totalInstanceCount != config.GetInstanceCount() {
-		// TODO(zhixin): remove log after job stuck at PENDING state is fixed
-		log.WithField("job_id", id).
-			WithField("total_instance_count", totalInstanceCount).
-			WithField("instances", config.GetInstanceCount()).
-			Debugln()
+	if totalInstanceCount < config.GetInstanceCount() {
 		if jobRuntime.GetState() == job.JobState_KILLED && jobRuntime.GetGoalState() == job.JobState_KILLED {
 			// Job already killed, do not do anything
 			return nil
 		}
 		// Either MV view has not caught up or all instances have not been created
 		if cachedJob.IsPartiallyCreated(config) {
-			// TODO(zhixin): remove log after job stuck at PENDING state is fixed
-			log.WithField("job_id", id).
-				Debug("job is partially created")
 			// all instances have not been created, trigger recovery
 			jobState = job.JobState_INITIALIZED
 		} else {
@@ -295,14 +292,21 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 			return fmt.Errorf("dbs are not in sync")
 		}
 	} else {
-		// TODO(zhixin): remove log after job stuck at PENDING state is fixed
-		log.WithField("job_id", id).
-			WithField("state", jobRuntime.State.String()).
-			Debug("job runtime state before determineJobRuntimeState")
+		if totalInstanceCount > config.GetInstanceCount() {
+			log.WithField("job_id", id).
+				WithField("total_instance_count", totalInstanceCount).
+				WithField("instances", config.GetInstanceCount()).
+				Error("total instance count is greater than expected")
+		}
 
-		jobState = determineJobRuntimeState(jobRuntime, stateCounts, config, goalStateDriver, cachedJob)
+		// case totalInstanceCount > config.GetInstanceCount is handled
+		// by determineJobRuntimeState
+		jobState = determineJobRuntimeState(jobRuntime, stateCounts,
+			config, goalStateDriver, cachedJob)
 
-		if jobRuntime.GetTaskStats() != nil && reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) && jobRuntime.GetState() == jobState {
+		if jobRuntime.GetTaskStats() != nil &&
+			reflect.DeepEqual(stateCounts, jobRuntime.GetTaskStats()) &&
+			jobRuntime.GetState() == jobState {
 			log.WithField("job_id", id).
 				WithField("task_stats", stateCounts).
 				Debug("Task stats did not change, return")
@@ -365,4 +369,12 @@ func JobRuntimeUpdater(ctx context.Context, entity goalstate.Entity) error {
 
 	goalStateDriver.mtx.jobMetrics.JobRuntimeUpdated.Inc(1)
 	return nil
+}
+
+func getTotalInstanceCount(stateCounts map[string]uint32) uint32 {
+	totalInstanceCount := uint32(0)
+	for _, state := range task.TaskState_name {
+		totalInstanceCount += stateCounts[state]
+	}
+	return totalInstanceCount
 }
