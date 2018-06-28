@@ -15,6 +15,7 @@ storage:
   cassandra:
     max_batch_size_rows: 50
     max_parallel_batches: 1000
+    max_updates_job: 10
     connection:
       contactPoints: ["cassandra"]
       port: 9042

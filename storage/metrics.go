@@ -112,6 +112,28 @@ type TaskMetrics struct {
 	TaskQueryTasksFail tally.Counter
 }
 
+// UpdateMetrics is a struct for tracking job update related
+// counters in the storage layer.
+type UpdateMetrics struct {
+	UpdateCreate     tally.Counter
+	UpdateCreateFail tally.Counter
+
+	UpdateGet     tally.Counter
+	UpdateGetFail tally.Counter
+
+	UpdateWriteProgress     tally.Counter
+	UpdateWriteProgressFail tally.Counter
+
+	UpdateGetProgess     tally.Counter
+	UpdateGetProgessFail tally.Counter
+
+	UpdateGetForJob     tally.Counter
+	UpdateGetForJobFail tally.Counter
+
+	UpdateDeleteFail tally.Counter
+	UpdateDelete     tally.Counter
+}
+
 // ResourcePoolMetrics is a struct for tracking resource pool related counters in the storage layer
 type ResourcePoolMetrics struct {
 	ResourcePoolCreate     tally.Counter
@@ -183,6 +205,7 @@ type ErrorMetrics struct {
 type Metrics struct {
 	JobMetrics            *JobMetrics
 	TaskMetrics           *TaskMetrics
+	UpdateMetrics         *UpdateMetrics
 	ResourcePoolMetrics   *ResourcePoolMetrics
 	FrameworkStoreMetrics *FrameworkStoreMetrics
 	VolumeMetrics         *VolumeMetrics
@@ -201,6 +224,10 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	taskSuccessScope := taskScope.Tagged(map[string]string{"result": "success"})
 	taskFailScope := taskScope.Tagged(map[string]string{"result": "fail"})
 	taskNotFoundScope := taskScope.Tagged(map[string]string{"result": "not_found"})
+
+	updateScope := scope.SubScope("update")
+	updateSuccessScope := updateScope.Tagged(map[string]string{"result": "success"})
+	updateFailScope := updateScope.Tagged(map[string]string{"result": "fail"})
 
 	resourcePoolScope := scope.SubScope("resource_pool")
 	resourcePoolSuccessScope := resourcePoolScope.Tagged(map[string]string{"result": "success"})
@@ -309,6 +336,26 @@ func NewMetrics(scope tally.Scope) *Metrics {
 		TaskNotFound:   taskNotFoundScope.Counter("get"),
 	}
 
+	updateMetrics := &UpdateMetrics{
+		UpdateCreate:     updateSuccessScope.Counter("create"),
+		UpdateCreateFail: updateFailScope.Counter("create"),
+
+		UpdateGet:     updateSuccessScope.Counter("get"),
+		UpdateGetFail: updateFailScope.Counter("get"),
+
+		UpdateWriteProgress:     updateSuccessScope.Counter("write_progress"),
+		UpdateWriteProgressFail: updateFailScope.Counter("write_progress"),
+
+		UpdateGetProgess:     updateSuccessScope.Counter("get_progress"),
+		UpdateGetProgessFail: updateFailScope.Counter("get_progress"),
+
+		UpdateGetForJob:     updateSuccessScope.Counter("get_for_job"),
+		UpdateGetForJobFail: updateFailScope.Counter("get_for_job"),
+
+		UpdateDelete:     updateSuccessScope.Counter("delete"),
+		UpdateDeleteFail: updateFailScope.Counter("delete"),
+	}
+
 	resourcePoolMetrics := &ResourcePoolMetrics{
 		ResourcePoolCreate:     resourcePoolSuccessScope.Counter("create"),
 		ResourcePoolCreateFail: resourcePoolFailScope.Counter("create"),
@@ -371,6 +418,7 @@ func NewMetrics(scope tally.Scope) *Metrics {
 	metrics := &Metrics{
 		JobMetrics:            jobMetrics,
 		TaskMetrics:           taskMetrics,
+		UpdateMetrics:         updateMetrics,
 		ResourcePoolMetrics:   resourcePoolMetrics,
 		FrameworkStoreMetrics: frameworkStoreMetrics,
 		VolumeMetrics:         volumeMetrics,

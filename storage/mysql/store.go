@@ -27,6 +27,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/peloton"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -998,6 +999,78 @@ func (m *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 
 // GetJobsByRespoolID returns jobIDs in a respool
 func (m *Store) GetJobsByRespoolID(ctx context.Context, respoolID *peloton.ResourcePoolID) (map[string]*job.JobConfig, error) {
+	return nil, errors.New("Not implemented")
+}
+
+// CreateUpdate by creating a new update in the storage. It's an error
+// if the update already exists.
+func (m *Store) CreateUpdate(
+	ctx context.Context,
+	id *peloton.UpdateID,
+	jobID *peloton.JobID,
+	updateConfig *update.UpdateConfig,
+	jobConfigVersion uint64,
+	prevJobConfigVersion uint64,
+	state update.State,
+	instancesTotal uint32,
+) error {
+	return errors.New("Not implemented")
+}
+
+// DeleteUpdate deletes the update from the update_info table and deletes all
+// job and task configurations created for the update.
+func (m *Store) DeleteUpdate(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+	jobID *peloton.JobID,
+	jobConfigVersion uint64) error {
+	return errors.New("Not implemented")
+}
+
+// GetUpdate fetches the job update stored in the DB
+func (m *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
+	jobID *peloton.JobID,
+	updateConfig *update.UpdateConfig,
+	jobConfigVersion uint64,
+	prevJobConfigVersion uint64,
+	state update.State,
+	instancesTotal uint32,
+	instancesDone uint32,
+	instanceCurrent []uint32,
+	creationTime time.Time,
+	updateTime time.Time,
+	err error) {
+	err = errors.New("Not implemented")
+	return
+}
+
+// WriteUpdateProgress writes the progress of the job update to the DB
+func (m *Store) WriteUpdateProgress(
+	ctx context.Context,
+	id *peloton.UpdateID,
+	state update.State,
+	instancesDone uint32,
+	instancesCurrent []uint32) error {
+	return errors.New("Not implemented")
+}
+
+// GetUpdateProgress fetches the job update progress, which includes the
+// instances already updated, instances being updated and the current
+// state of the update.
+func (m *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
+	state update.State,
+	instancesDone uint32,
+	instancesTotal uint32,
+	instanceCurrent []uint32,
+	updateTime time.Time,
+	err error) {
+	err = errors.New("Not implemented")
+	return
+}
+
+// GetUpdatesForJob returns the list of job updates created for a given job
+func (m *Store) GetUpdatesForJob(ctx context.Context,
+	jobID *peloton.JobID) ([]*peloton.UpdateID, error) {
 	return nil, errors.New("Not implemented")
 }
 

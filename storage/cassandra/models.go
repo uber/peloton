@@ -9,6 +9,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/job"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/storage/querybuilder"
 
 	"code.uber.internal/infra/peloton/util"
@@ -106,16 +107,31 @@ type FrameworkInfoRecord struct {
 
 // Resource pool (to be added)
 
-// UpdateRecord tracks the update info
+// UpdateRecord tracks the job update info
 type UpdateRecord struct {
-	InstancesCurrent []int `cql:"instances_current"`
-	InstancesDone    int   `cql:"instances_done"`
+	UpdateID             querybuilder.UUID `cql:"update_id"`
+	UpdateOptions        []byte            `cql:"update_options"`
+	State                string            `cql:"update_state"`
+	JobID                querybuilder.UUID `cql:"job_id"`
+	InstancesTotal       int               `cql:"instances_total"`
+	InstancesCurrent     []int             `cql:"instances_current"`
+	InstancesDone        int               `cql:"instances_done"`
+	JobConfigVersion     int64             `cql:"job_config_version"`
+	PrevJobConfigVersion int64             `cql:"job_config_prev_version"`
+	CreationTime         time.Time         `cql:"creation_time"`
+	UpdateTime           time.Time         `cql:"update_time"`
+}
+
+// GetUpdateConfig unmarshals and returns the configuration of the job update.
+func (u *UpdateRecord) GetUpdateConfig() (*update.UpdateConfig, error) {
+	config := &update.UpdateConfig{}
+	return config, proto.Unmarshal(u.UpdateOptions, config)
 }
 
 // GetProcessingInstances returns a list of tasks currently being upgraded.
-func (r *UpdateRecord) GetProcessingInstances() []uint32 {
-	p := make([]uint32, len(r.InstancesCurrent))
-	for i, v := range r.InstancesCurrent {
+func (u *UpdateRecord) GetProcessingInstances() []uint32 {
+	p := make([]uint32, len(u.InstancesCurrent))
+	for i, v := range u.InstancesCurrent {
 		p[i] = uint32(v)
 	}
 	return p

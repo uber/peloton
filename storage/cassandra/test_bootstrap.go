@@ -37,6 +37,7 @@ func MigrateForTest() *Config {
 		Migrations:         "migrations",
 		MaxBatchSize:       20,
 		MaxParallelBatches: 10,
+		MaxUpdatesPerJob:   10,
 	}
 	dir, err := os.Getwd()
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	pb_volume "code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/common"
@@ -56,6 +57,7 @@ const (
 	frameworksTable       = "frameworks"
 	taskJobStateView      = "mv_task_by_state"
 	jobByStateView        = "mv_job_by_state"
+	updatesByJobView      = "mv_updates_by_job"
 	resPoolsTable         = "respools"
 	resPoolsOwnerView     = "mv_respools_by_owner"
 	volumeTable           = "persistent_volumes"
@@ -92,6 +94,9 @@ type Config struct {
 	MaxBatchSize int `yaml:"max_batch_size_rows"`
 	// MaxParallelBatches controls the maximum number of go routines run to create tasks
 	MaxParallelBatches int `yaml:"max_parallel_batches"`
+	// MaxUpdatesPerJob controls the maximum number of
+	// updates per job kept in the database
+	MaxUpdatesPerJob int `yaml:"max_updates_job"`
 }
 
 type luceneClauses []string
@@ -2174,10 +2179,17 @@ func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 		return err
 	}
 
-	stmt = queryBuilder.Delete(jobRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
-	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+	// Delete all updates for the job
+	updateIDs, err := s.GetUpdatesForJob(ctx, id)
+	if err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 		return err
+	}
+
+	for _, id := range updateIDs {
+		if err := s.deleteSingleUpdate(ctx, id); err != nil {
+			return err
+		}
 	}
 
 	stmt = queryBuilder.Delete(jobIndexTable).Where(qb.Eq{"job_id": id.GetValue()})
@@ -2187,7 +2199,13 @@ func (s *Store) DeleteJob(ctx context.Context, id *peloton.JobID) error {
 	}
 
 	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{"job_id": id.GetValue()})
-	err := s.applyStatement(ctx, stmt, id.GetValue())
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
+		return err
+	}
+
+	stmt = queryBuilder.Delete(jobRuntimeTable).Where(qb.Eq{"job_id": id.GetValue()})
+	err = s.applyStatement(ctx, stmt, id.GetValue())
 	if err != nil {
 		s.metrics.JobMetrics.JobDeleteFail.Inc(1)
 	} else {
@@ -2895,6 +2913,382 @@ func (s *Store) DeletePersistentVolume(ctx context.Context, volumeID *peloton.Vo
 	return nil
 }
 
+// CreateUpdate creates a new update entry in DB.
+// If it already exists, the create will return an error.
+func (s *Store) CreateUpdate(
+	ctx context.Context,
+	id *peloton.UpdateID,
+	jobID *peloton.JobID,
+	updateConfig *update.UpdateConfig,
+	jobConfigVersion uint64,
+	prevJobConfigVersion uint64,
+	state update.State,
+	instancesTotal uint32,
+) error {
+	updateConfigBuffer, err := proto.Marshal(updateConfig)
+	if err != nil {
+		log.WithError(err).
+			WithField("update_id", id.GetValue()).
+			WithField("job_id", jobID.GetValue()).
+			Error("failed to marshal update config")
+		s.metrics.UpdateMetrics.UpdateCreateFail.Inc(1)
+		return err
+	}
+
+	// Insert the update into the DB. Use CAS to ensure
+	// that it does not exist already.
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Insert(updatesTable).
+		Columns(
+			"update_id",
+			"update_options",
+			"update_state",
+			"instances_total",
+			"instances_done",
+			"instances_current",
+			"job_id",
+			"job_config_version",
+			"job_config_prev_version",
+			"creation_time").
+		Values(
+			id.GetValue(),
+			updateConfigBuffer,
+			state.String(),
+			instancesTotal,
+			0,
+			[]int{},
+			jobID.GetValue(),
+			jobConfigVersion,
+			prevJobConfigVersion,
+			time.Now()).
+		IfNotExist()
+
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		log.WithError(err).
+			WithField("update_id", id.GetValue()).
+			WithField("job_id", jobID.GetValue()).
+			Info("create update in DB failed")
+		s.metrics.UpdateMetrics.UpdateCreateFail.Inc(1)
+		return err
+	}
+
+	// best effort to clean up previous updates for the job
+	go func() {
+		if err := s.cleanupPreviousUpdatesForJob(ctx, jobID); err != nil {
+			log.WithError(err).
+				WithField("job_id", jobID.GetValue()).
+				Info("failed to clean up previous updates")
+		}
+	}()
+
+	s.metrics.UpdateMetrics.UpdateCreate.Inc(1)
+	return nil
+}
+
+// TODO determine if this function should be part of storage or api handler.
+// cleanupPreviousUpdatesForJob cleans up the old job configurations
+// and updates. This is called when a new update is created, and ensures
+// that the number of configurations and updates in the DB do not keep
+// increasing continuously.
+func (s *Store) cleanupPreviousUpdatesForJob(
+	ctx context.Context,
+	jobID *peloton.JobID) error {
+	var updateList []*SortUpdateInfo
+
+	// first fetch the updates for the job
+	updates, err := s.GetUpdatesForJob(ctx, jobID)
+	if err != nil {
+		return err
+	}
+
+	for _, updateID := range updates {
+		var allResults []map[string]interface{}
+
+		// get the job configuration version
+		queryBuilder := s.DataStore.NewQuery()
+		stmt := queryBuilder.Select("job_config_version").From(updatesTable).
+			Where(qb.Eq{"update_id": updateID.GetValue()})
+
+		allResults, err = s.executeRead(ctx, stmt)
+		if err != nil {
+			log.WithError(err).
+				WithField("update_id", updateID.GetValue()).
+				Info("failed to get job config version")
+			return err
+		}
+
+		if len(allResults) <= s.Conf.MaxUpdatesPerJob {
+			// nothing to clean up
+			return nil
+		}
+
+		for _, value := range allResults {
+			var record UpdateRecord
+			if err := FillObject(value, &record,
+				reflect.TypeOf(record)); err != nil {
+				log.WithError(err).
+					WithField("update_id", updateID.GetValue()).
+					Info("failed to fill the update record")
+				return err
+			}
+
+			// sort as per the job configuration version
+			updateInfo := &SortUpdateInfo{
+				updateID:         updateID,
+				jobConfigVersion: uint64(record.JobConfigVersion),
+			}
+			updateList = append(updateList, updateInfo)
+		}
+	}
+
+	sort.Sort(sort.Reverse(SortedUpdateList(updateList)))
+	for _, u := range updateList[s.Conf.MaxUpdatesPerJob:] {
+		// delete the old job and task configurations, and then the update
+		s.DeleteUpdate(ctx, u.updateID, jobID, u.jobConfigVersion)
+	}
+	return nil
+}
+
+// DeleteUpdate deletes the update from the update_info table and deletes all
+// job and task configurations created for the update.
+func (s *Store) DeleteUpdate(
+	ctx context.Context,
+	updateID *peloton.UpdateID,
+	jobID *peloton.JobID,
+	jobConfigVersion uint64) error {
+	// first delete the task and job configurations created for this update
+	if err := s.deleteJobConfigVersion(ctx, jobID, jobConfigVersion); err != nil {
+		return err
+	}
+
+	// next clean up the update from the update_info table
+	return s.deleteSingleUpdate(ctx, updateID)
+}
+
+// GetUpdate fetches the job update stored in the DB.
+func (s *Store) GetUpdate(ctx context.Context, id *peloton.UpdateID) (
+	jobID *peloton.JobID,
+	updateConfig *update.UpdateConfig,
+	jobConfigVersion uint64,
+	prevJobConfigVersion uint64,
+	state update.State,
+	instancesTotal uint32,
+	instancesDone uint32,
+	instanceCurrent []uint32,
+	creationTime time.Time,
+	updateTime time.Time,
+	err error) {
+	var allResults []map[string]interface{}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(updatesTable).
+		Where(qb.Eq{"update_id": id.GetValue()})
+	allResults, err = s.executeRead(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("update_id", id.GetValue()).
+			Info("failed to get job update")
+		s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
+		return
+	}
+
+	for _, value := range allResults {
+		var record UpdateRecord
+		if err = FillObject(value, &record,
+			reflect.TypeOf(record)); err != nil {
+			s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
+			return
+		}
+
+		updateConfig, err = record.GetUpdateConfig()
+		if err != nil {
+			s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
+			return
+		}
+
+		jobID = &peloton.JobID{Value: record.JobID.String()}
+		jobConfigVersion = uint64(record.JobConfigVersion)
+		prevJobConfigVersion = uint64(record.PrevJobConfigVersion)
+		state = update.State(update.State_value[record.State])
+		instancesTotal = uint32(record.InstancesTotal)
+		instancesDone = uint32(record.InstancesDone)
+		instanceCurrent = record.GetProcessingInstances()
+		creationTime = record.CreationTime
+		updateTime = record.UpdateTime
+		s.metrics.UpdateMetrics.UpdateGet.Inc(1)
+		return
+	}
+
+	s.metrics.UpdateMetrics.UpdateGetFail.Inc(1)
+	err = yarpcerrors.InvalidArgumentErrorf(
+		"update not found")
+	return
+}
+
+// deleteSingleUpdate deletes a given update from the update_info table.
+func (s *Store) deleteSingleUpdate(ctx context.Context, id *peloton.UpdateID) error {
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Delete(updatesTable).Where(qb.Eq{
+		"update_id": id.GetValue()})
+
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		log.WithError(err).
+			WithField("update_id", id.GetValue()).
+			Info("failed to delete the update")
+		s.metrics.UpdateMetrics.UpdateDeleteFail.Inc(1)
+		return err
+	}
+
+	s.metrics.UpdateMetrics.UpdateDelete.Inc(1)
+	return nil
+}
+
+// deleteJobConfigVersion deletes the job and task configurations for a given
+// job identifier and a configuration version.
+func (s *Store) deleteJobConfigVersion(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	version uint64) error {
+	queryBuilder := s.DataStore.NewQuery()
+
+	// first delete the task configurations
+	stmt := queryBuilder.Delete(taskConfigTable).Where(qb.Eq{
+		"job_id": jobID.GetValue(), "version": version})
+	if err := s.applyStatement(ctx, stmt, jobID.GetValue()); err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			WithField("version", version).
+			Info("failed to delete the task configurations")
+		return err
+	}
+
+	// next delete the job configuration
+	stmt = queryBuilder.Delete(jobConfigTable).Where(qb.Eq{
+		"job_id": jobID.GetValue(), "version": version})
+	err := s.applyStatement(ctx, stmt, jobID.GetValue())
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			WithField("version", version).
+			Info("failed to delete the job configuration")
+	}
+	return err
+}
+
+// WriteUpdateProgress writes the progress of the job update to the DB.
+// The inputs to this function are the only mutable fields in update.
+func (s *Store) WriteUpdateProgress(
+	ctx context.Context,
+	id *peloton.UpdateID,
+	state update.State,
+	instancesDone uint32,
+	instancesCurrent []uint32) error {
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Update(updatesTable).
+		Set("update_state", state.String()).
+		Set("instances_done", instancesDone).
+		Set("instances_current", instancesCurrent).
+		Set("update_time", time.Now().UTC()).
+		Where(qb.Eq{"update_id": id.GetValue()})
+
+	if err := s.applyStatement(ctx, stmt, id.GetValue()); err != nil {
+		log.WithError(err).
+			WithFields(log.Fields{
+				"update_id":             id.GetValue(),
+				"update_state":          state.String(),
+				"update_instances_done": instancesDone,
+			}).Info("write update progress in DB failed")
+		s.metrics.UpdateMetrics.UpdateWriteProgressFail.Inc(1)
+		return err
+	}
+
+	s.metrics.UpdateMetrics.UpdateWriteProgress.Inc(1)
+	return nil
+}
+
+// GetUpdateProgress fetches the job update progress, which includes the
+// instances already updated, instances being updated and the current
+// state of the update.
+func (s *Store) GetUpdateProgress(ctx context.Context, id *peloton.UpdateID) (
+	state update.State,
+	instancesDone uint32,
+	instancesTotal uint32,
+	instanceCurrent []uint32,
+	updateTime time.Time,
+	err error) {
+	var allResults []map[string]interface{}
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("*").From(updatesTable).
+		Where(qb.Eq{"update_id": id.GetValue()})
+	allResults, err = s.executeRead(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("update_id", id.GetValue()).
+			Info("failed to get job update")
+		s.metrics.UpdateMetrics.UpdateGetProgessFail.Inc(1)
+		return
+	}
+
+	for _, value := range allResults {
+		var record UpdateRecord
+		if err = FillObject(value, &record, reflect.TypeOf(record)); err != nil {
+			s.metrics.UpdateMetrics.UpdateGetProgessFail.Inc(1)
+			return
+		}
+
+		state = update.State(update.State_value[record.State])
+		instancesDone = uint32(record.InstancesDone)
+		instancesTotal = uint32(record.InstancesTotal)
+		instanceCurrent = record.GetProcessingInstances()
+		updateTime = record.UpdateTime
+		s.metrics.UpdateMetrics.UpdateGetProgess.Inc(1)
+		return
+	}
+
+	s.metrics.UpdateMetrics.UpdateGetProgessFail.Inc(1)
+	err = yarpcerrors.InvalidArgumentErrorf(
+		"cannot find update with ID %v", id.GetValue())
+	return
+}
+
+// GetUpdatesForJob returns the list of job updates created for a given job.
+func (s *Store) GetUpdatesForJob(ctx context.Context,
+	jobID *peloton.JobID) ([]*peloton.UpdateID, error) {
+	var updateIDs []*peloton.UpdateID
+
+	queryBuilder := s.DataStore.NewQuery()
+	stmt := queryBuilder.Select("update_id").From(updatesByJobView).
+		Where(qb.Eq{"job_id": jobID.GetValue()})
+	allResults, err := s.executeRead(ctx, stmt)
+	if err != nil {
+		log.WithError(err).
+			WithField("job_id", jobID.GetValue()).
+			Info("failed to fetch updates for a given job")
+		s.metrics.UpdateMetrics.UpdateGetForJobFail.Inc(1)
+		return nil, err
+	}
+
+	for _, value := range allResults {
+		var record UpdateRecord
+		err := FillObject(value, &record, reflect.TypeOf(record))
+		if err != nil {
+			log.WithError(err).
+				WithField("job_id", jobID.GetValue()).
+				Info("failed to fill update record for the job")
+			s.metrics.UpdateMetrics.UpdateGetForJobFail.Inc(1)
+			return nil, err
+		}
+
+		updateIDs = append(updateIDs,
+			&peloton.UpdateID{Value: record.UpdateID.String()})
+	}
+
+	s.metrics.UpdateMetrics.UpdateGetForJob.Inc(1)
+	return updateIDs, nil
+}
+
 func parseTime(v string) time.Time {
 	r, err := time.Parse(time.RFC3339Nano, v)
 	if err != nil {
@@ -3184,3 +3578,21 @@ type SortedTaskInfoList []*task.TaskInfo
 func (a SortedTaskInfoList) Len() int           { return len(a) }
 func (a SortedTaskInfoList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a SortedTaskInfoList) Less(i, j int) bool { return a[i].InstanceId < a[j].InstanceId }
+
+// SortUpdateInfo is the structure used by the sortable interface for
+// updates, where the sorting will be done according to the job configuration
+// version for a given job.
+type SortUpdateInfo struct {
+	updateID         *peloton.UpdateID
+	jobConfigVersion uint64
+}
+
+// SortedUpdateList implements a sortable interface for updates according
+// to the job configuration versions for a given job.
+type SortedUpdateList []*SortUpdateInfo
+
+func (u SortedUpdateList) Len() int      { return len(u) }
+func (u SortedUpdateList) Swap(i, j int) { u[i], u[j] = u[j], u[i] }
+func (u SortedUpdateList) Less(i, j int) bool {
+	return u[i].jobConfigVersion < u[j].jobConfigVersion
+}

@@ -15,6 +15,7 @@ import (
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/query"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/respool"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/task"
+	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/update"
 	"code.uber.internal/infra/peloton/.gen/peloton/api/v0/volume"
 
 	"code.uber.internal/infra/peloton/storage"
@@ -27,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/uber-go/tally"
+	"go.uber.org/yarpc/yarpcerrors"
 )
 
 const (
@@ -1081,7 +1083,7 @@ func (suite *CassandraStoreTestSuite) TestSecrets() {
 	// If the results list has zero rows, this will fail
 	_, err = store.createSecretFromResults(secretID,
 		[]map[string]interface{}{
-			// zero rows mapping to same secret id
+		// zero rows mapping to same secret id
 		})
 	suite.Error(err)
 
@@ -2074,6 +2076,229 @@ func (suite *CassandraStoreTestSuite) TestPersistentVolumeInfo() {
 	// Verify volume has been deleted.
 	_, err = volumeStore.GetPersistentVolume(context.Background(), volumeID1)
 	suite.Error(err)
+}
+
+// TestUpdate tests all job update related APIs by writing and reading
+// from actual Cassandra instance. Since the state needs to be
+// created in Cassandra and DB calls are not mocked, one test will be used
+// test all cases.
+func (suite *CassandraStoreTestSuite) TestUpdate() {
+	// the job identifier
+	jobID := &peloton.JobID{
+		Value: uuid.New(),
+	}
+
+	// the update identifier
+	updateID := &peloton.UpdateID{
+		Value: uuid.New(),
+	}
+
+	// the update configuration
+	updateConfig := &update.UpdateConfig{
+		BatchSize: 5,
+	}
+
+	// job config versions
+	jobVersion := uint64(5)
+	jobPrevVersion := uint64(4)
+
+	// update state
+	state := update.State_INITIALIZED
+	instancesTotal := uint32(60)
+
+	// get a non-existent update
+	_, _, _, _, _, _, _, _, _, _, err := store.GetUpdate(
+		context.Background(),
+		updateID,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+
+	// get progress of a non-existent update
+	_, _, _, _, _, err = store.GetUpdateProgress(
+		context.Background(),
+		updateID,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+
+	// make sure job has no updates
+	updateList, err := store.GetUpdatesForJob(context.Background(), jobID)
+	suite.NoError(err)
+	suite.Equal(len(updateList), 0)
+
+	// create a new update
+	suite.NoError(store.CreateUpdate(
+		context.Background(),
+		updateID,
+		jobID,
+		updateConfig,
+		jobVersion,
+		jobPrevVersion,
+		state,
+		instancesTotal,
+	))
+
+	// create an update with bad updateConfig
+	suite.Error(store.CreateUpdate(
+		context.Background(),
+		updateID,
+		jobID,
+		nil,
+		jobVersion,
+		jobPrevVersion,
+		state,
+		instancesTotal,
+	))
+
+	// creating same update again should fail
+	err = store.CreateUpdate(
+		context.Background(),
+		updateID,
+		jobID,
+		updateConfig,
+		jobVersion,
+		jobPrevVersion,
+		state,
+		instancesTotal,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsAlreadyExists(err))
+
+	// get the same update
+	nJobID,
+		nUpdateConfig,
+		nconfigVersion,
+		nPrevConfigVersion,
+		nState,
+		nTotal,
+		nDone,
+		nCurrent,
+		_, _, err := store.GetUpdate(
+		context.Background(),
+		updateID,
+	)
+	suite.NoError(err)
+	suite.Equal(nJobID.GetValue(), jobID.GetValue())
+	suite.Equal(nUpdateConfig.GetBatchSize(), updateConfig.GetBatchSize())
+	suite.Equal(nconfigVersion, jobVersion)
+	suite.Equal(nPrevConfigVersion, jobPrevVersion)
+	suite.Equal(nState, state)
+	suite.Equal(nTotal, instancesTotal)
+	suite.Equal(nDone, uint32(0))
+	suite.Equal(len(nCurrent), 0)
+
+	// get the progress
+	nState,
+		nDone,
+		nTotal,
+		nCurrent,
+		_, err = store.GetUpdateProgress(
+		context.Background(),
+		updateID,
+	)
+	suite.NoError(err)
+	suite.Equal(nState, state)
+	suite.Equal(nTotal, instancesTotal)
+	suite.Equal(nDone, uint32(0))
+	suite.Equal(len(nCurrent), 0)
+
+	// write new progress
+	state = update.State_ROLLING_FORWARD
+	instancesDone := uint32(5)
+	instanceCurrent := []uint32{5, 6, 7, 8}
+	err = store.WriteUpdateProgress(
+		context.Background(),
+		updateID,
+		state,
+		instancesDone,
+		instanceCurrent,
+	)
+	suite.NoError(err)
+
+	// get the update
+	nJobID,
+		nUpdateConfig,
+		nconfigVersion,
+		nPrevConfigVersion,
+		nState,
+		nTotal,
+		nDone,
+		nCurrent,
+		_, _, err = store.GetUpdate(
+		context.Background(),
+		updateID,
+	)
+	suite.NoError(err)
+	suite.Equal(nJobID.GetValue(), jobID.GetValue())
+	suite.Equal(nUpdateConfig.GetBatchSize(), updateConfig.GetBatchSize())
+	suite.Equal(nconfigVersion, jobVersion)
+	suite.Equal(nPrevConfigVersion, jobPrevVersion)
+	suite.Equal(nState, state)
+	suite.Equal(nTotal, instancesTotal)
+	suite.Equal(nDone, instancesDone)
+	suite.Equal(nCurrent, instanceCurrent)
+
+	// get the progress
+	nState,
+		nDone,
+		nTotal,
+		nCurrent,
+		_, err = store.GetUpdateProgress(
+		context.Background(),
+		updateID,
+	)
+	suite.NoError(err)
+	suite.Equal(nState, state)
+	suite.Equal(nTotal, instancesTotal)
+	suite.Equal(nDone, instancesDone)
+	suite.Equal(nCurrent, instanceCurrent)
+
+	// fetch update for job
+	updateList, err = store.GetUpdatesForJob(context.Background(), jobID)
+	suite.NoError(err)
+	suite.Equal(len(updateList), 1)
+	suite.Equal(updateList[0].GetValue(), updateID.GetValue())
+
+	// create 15 updates
+	count := 15
+	for i := 0; i < count; i++ {
+		id := &peloton.UpdateID{
+			Value: uuid.New(),
+		}
+		suite.NoError(store.CreateUpdate(
+			context.Background(),
+			id,
+			jobID,
+			updateConfig,
+			jobVersion,
+			jobPrevVersion,
+			state,
+			instancesTotal,
+		))
+	}
+
+	// delete the first update
+	err = store.DeleteUpdate(context.Background(), updateID, jobID, jobVersion)
+	suite.NoError(err)
+
+	// delete the job
+	store.DeleteJob(context.Background(), jobID)
+
+	// make sure update is not found
+	_, _, _, _, _, _, _, _, _, _, err = store.GetUpdate(
+		context.Background(),
+		updateID,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
+
+	_, _, _, _, _, err = store.GetUpdateProgress(
+		context.Background(),
+		updateID,
+	)
+	suite.Error(err)
+	suite.True(yarpcerrors.IsInvalidArgument(err))
 }
 
 func createJobConfig() *job.JobConfig {
