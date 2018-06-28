@@ -1,5 +1,5 @@
 # Used for launching peloton job
-peloton-client~=0.7.0
+peloton-client>=0.7.1
 
 # To parse yaml config for vCluster
 pyyaml>=3.12

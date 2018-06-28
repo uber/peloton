@@ -2,9 +2,9 @@ import os
 import yaml
 
 from peloton_client.pbgen.mesos.v1 import mesos_pb2 as mesos
-from peloton_client.pbgen.peloton.v0.api.task import task_pb2 as task
-from peloton_client.pbgen.peloton.v0.api.respool import respool_pb2 as respool
-from peloton_client.pbgen.peloton.v0.api import peloton_pb2 as peloton
+from peloton_client.pbgen.peloton.api.v0.task import task_pb2 as task
+from peloton_client.pbgen.peloton.api.v0.respool import respool_pb2 as respool
+from peloton_client.pbgen.peloton.api.v0 import peloton_pb2 as peloton
 
 
 def load_config():
