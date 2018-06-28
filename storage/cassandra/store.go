@@ -1587,29 +1587,18 @@ func specContains(specifier []string, item string) bool {
 func (s *Store) GetTasksByQuerySpec(
 	ctx context.Context,
 	jobID *peloton.JobID,
-	spec *task.QuerySpec) (map[uint32]*task.TaskInfo, uint32, error) {
-
-	jobConfig, err := s.GetJobConfig(ctx, jobID)
-	if err != nil {
-		log.WithError(err).
-			WithField("job_id", jobID.GetValue()).
-			Error("QueryTasks failed to get job config")
-		s.metrics.TaskMetrics.TaskQueryTasksFail.Inc(1)
-		return nil, 0, err
-	}
+	spec *task.QuerySpec) (map[uint32]*task.TaskInfo, error) {
 
 	taskStates := spec.GetTaskStates()
 	names := spec.GetNames()
 	hosts := spec.GetHosts()
 
 	var tasks map[uint32]*task.TaskInfo
+	var err error
 
 	if len(taskStates) == 0 {
 		//Get all tasks for the job if query doesn't specify the task state(s)
-		tasks, err = s.GetTasksForJobByRange(ctx, jobID, &task.InstanceRange{
-			From: 0,
-			To:   jobConfig.InstanceCount,
-		})
+		tasks, err = s.GetTasksForJobByRange(ctx, jobID, nil)
 
 	} else {
 		//Get tasks with specified states
@@ -1622,7 +1611,7 @@ func (s *Store) GetTasksByQuerySpec(
 			WithField("states", taskStates).
 			Error("QueryTasks failed to get tasks for the job")
 		s.metrics.TaskMetrics.TaskQueryTasksFail.Inc(1)
-		return nil, 0, err
+		return nil, err
 	}
 	filteredTasks := make(map[uint32]*task.TaskInfo)
 	// Filtering name and host
@@ -1645,7 +1634,7 @@ func (s *Store) GetTasksByQuerySpec(
 		"task_size":  len(tasks),
 		"duration":   time.Since(start).Seconds(),
 	}).Debug("Query in memory filtering time")
-	return filteredTasks, jobConfig.InstanceCount, nil
+	return filteredTasks, nil
 }
 
 // getTaskStateCount returns the task count for a peloton job with certain state
@@ -1746,9 +1735,11 @@ func (s *Store) GetTasksForJobByRange(ctx context.Context,
 	queryBuilder := s.DataStore.NewQuery()
 	stmt := queryBuilder.Select("*").
 		From(taskRuntimeTable).
-		Where(qb.Eq{"job_id": jobID}).
-		Where("instance_id >= ?", instanceRange.From).
-		Where("instance_id < ?", instanceRange.To)
+		Where(qb.Eq{"job_id": jobID})
+	if instanceRange != nil {
+		stmt = stmt.Where("instance_id >= ?", instanceRange.From).
+			Where("instance_id < ?", instanceRange.To)
+	}
 
 	allResults, err := s.executeRead(ctx, stmt)
 	if err != nil {
@@ -2608,9 +2599,12 @@ func Less(orderByList []*query.OrderBy, t1 *task.TaskInfo, t2 *task.TaskInfo) bo
 }
 
 // QueryTasks returns the tasks filtered on states(spec.TaskStates) in the given offset..offset+limit range.
-func (s *Store) QueryTasks(ctx context.Context, jobID *peloton.JobID, spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error) {
+func (s *Store) QueryTasks(
+	ctx context.Context,
+	jobID *peloton.JobID,
+	spec *task.QuerySpec) ([]*task.TaskInfo, uint32, error) {
 
-	tasks, instanceCount, err := s.GetTasksByQuerySpec(ctx, jobID, spec)
+	tasks, err := s.GetTasksByQuerySpec(ctx, jobID, spec)
 	if err != nil {
 		s.metrics.TaskMetrics.TaskQueryTasksFail.Inc(1)
 		return nil, 0, err
@@ -2655,7 +2649,7 @@ func (s *Store) QueryTasks(ctx context.Context, jobID *peloton.JobID, spec *task
 	}
 
 	s.metrics.TaskMetrics.TaskQueryTasks.Inc(1)
-	return result, instanceCount, nil
+	return result, uint32(len(sortedTasksResult)), nil
 }
 
 // CreatePersistentVolume creates a persistent volume entry.
